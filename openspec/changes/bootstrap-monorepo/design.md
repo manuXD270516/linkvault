@@ -69,7 +69,9 @@ hacía fallar cualquier import de `@linkvault/shared` desde una app. Consecuenci
 `type:lib` (una app no importa otra), `platform:any` solo de `platform:any`, y se permite importar el `package.json` raíz
 para la versión de D9. Límite conocido del test tabular (D4): las filas "producción importa tooling" y "lib importa app"
 fallan por la regla de import relativo entre proyectos antes de evaluar tags, porque ni las apps ni `workspace-rules`
-tienen alias; el escenario observable de la spec se cumple, pero esas dos restricciones por tag no se prueban aisladas. Restricciones comunes: `type:lib` no depende de `type:app`; `scope:shared` no depende de nada; `scope:ai` solo de
+tienen alias; el escenario observable de la spec se cumple, pero esas dos restricciones por tag no se prueban aisladas.
+
+Restricciones comunes a ambos bloques: `type:lib` no depende de `type:app`; `scope:shared` no depende de nada; `scope:ai` solo de
 `scope:shared`; `platform:browser` solo de `platform:browser|any`. `web` es `browser`; `api`, `worker` y `ai` son `node`;
 `shared` es `any`.
 
