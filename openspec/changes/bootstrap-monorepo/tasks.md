@@ -67,10 +67,10 @@
 
 ## 10. Integración continua
 
-- [ ] 10.1 [infra] Escribir `.github/workflows/ci.yml` con checkout `fetch-depth: 0`, pnpm desde `packageManager`, Node desde `.nvmrc`, `nrwl/nx-set-shas` y las etapas `affected lint` → `openspec validate --all` → `affected typecheck` → `affected test` → `affected build` (D14); verificar con `actionlint` que el workflow es válido.
-- [ ] 10.2 [ai] Definir `AI_CHAIN=mock` y `AI_MOCK_MODE=replay` en el entorno de la etapa de tests del workflow y añadir en `tools/test-env` un test que compruebe que el proceso de test ve esos valores; verificar que el test pasa en local sin `.env` gracias al preset de 4.1.
-- [ ] 10.3 [infra] Cachear el store de pnpm y el directorio de binarios de `mongodb-memory-server` con `MONGOMS_VERSION` como clave; verificar en el workflow que la clave de caché incluye la versión.
-- [ ] 10.4 [infra] Verificar el cálculo de afectados sin commits de prueba: `pnpm nx show projects --affected --files=apps/web/src/main.ts` incluye `web` y excluye `api` y `worker`; `--files=eslint.config.mjs` incluye todos.
+- [x] 10.1 [infra] Escribir `.github/workflows/ci.yml` con checkout `fetch-depth: 0`, pnpm desde `packageManager`, Node desde `.nvmrc`, `nrwl/nx-set-shas` y las etapas `affected lint` → `openspec validate --all` → `affected typecheck` → `affected test` → `affected build` (D14); verificar con `actionlint` que el workflow es válido.
+- [x] 10.2 [ai] Definir `AI_CHAIN=mock` y `AI_MOCK_MODE=replay` en el entorno de la etapa de tests del workflow y añadir en `tools/test-env` un test que compruebe que el proceso de test ve esos valores; verificar que el test pasa en local sin `.env` gracias al preset de 4.1.
+- [x] 10.3 [infra] Cachear el store de pnpm y el directorio de binarios de `mongodb-memory-server` con `MONGOMS_VERSION` como clave; verificar en el workflow que la clave de caché incluye la versión.
+- [x] 10.4 [infra] Verificar el cálculo de afectados sin commits de prueba: `pnpm nx show projects --affected --files=apps/web/src/main.ts` incluye `web` y excluye `api` y `worker`; `--files=eslint.config.mjs` incluye todos.
 
 ## 11. Documentación y cierre
 
