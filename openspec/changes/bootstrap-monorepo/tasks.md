@@ -7,8 +7,8 @@
 
 ## 2. Infraestructura local
 
-- [ ] 2.1 [infra] Escribir el servicio `mongo` en `docker-compose.yml` con `--replSet rs0`, `hostname: mongo` y el healthcheck idempotente basado en `NotYetInitialized` e `isWritablePrimary` (D6); verificar con `docker compose up -d --wait mongo` sobre volumen vacío y repitiendo sobre el volumen existente, sin error en ninguno.
-- [ ] 2.2 [infra] Añadir `redis` (healthcheck `redis-cli ping`), `minio` (healthcheck `mc ready local`) y `ollama` bajo el perfil `ai-local` (D6); verificar que `docker compose up -d --wait` deja mongo, redis y minio saludables sin ollama, y que con `--profile ai-local` ollama responde en su puerto del host.
+- [x] 2.1 [infra] Escribir el servicio `mongo` en `docker-compose.yml` con `--replSet rs0`, `hostname: mongo` y el healthcheck idempotente basado en `NotYetInitialized` e `isWritablePrimary` (D6); verificar con `docker compose up -d --wait mongo` sobre volumen vacío y repitiendo sobre el volumen existente, sin error en ninguno.
+- [x] 2.2 [infra] Añadir `redis` (healthcheck `redis-cli ping`), `minio` (healthcheck `mc ready local`) y `ollama` bajo el perfil `ai-local` (D6); verificar que `docker compose up -d --wait` deja mongo, redis y minio saludables sin ollama, y que con `--profile ai-local` ollama responde en su puerto del host.
 
 ## 3. Proyectos y corredor de tests
 
