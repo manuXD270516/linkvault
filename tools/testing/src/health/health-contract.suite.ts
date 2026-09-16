@@ -4,7 +4,8 @@ import {
   type HealthReadinessResponse,
 } from '@linkvault/shared';
 import { MongoMemoryReplSet } from 'mongodb-memory-server-core';
-import { afterEach, describe, expect, it } from 'vitest';
+import { type ConnectOptions, Connection } from 'mongoose';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getMongoTestUri } from '../mongo/mongo-test-client';
 import {
   RedisPingDouble,
@@ -28,7 +29,11 @@ export interface HealthContractTarget {
   /** Valor esperado de `service` en el cuerpo. */
   readonly service: string;
   start(dependencies: HealthContractDependencies): Promise<RunningHealthApp>;
+  /** Opciones que la app pasa a Mongoose; el reintento de la conexión inicial debe reenviarlas iguales. */
+  readonly mongooseConnectOptions: ConnectOptions;
 }
+
+const SHORT_SERVER_SELECTION_MS = 300;
 
 /** Tope de la respuesta completa de `GET /health` (spec runtime-health). */
 export const HEALTH_RESPONSE_BUDGET_MS = 1_500;
@@ -313,5 +318,95 @@ export function describeHealthContract(target: HealthContractTarget): void {
       },
       MONGO_LATE_START_TIMEOUT_MS + 30_000,
     );
+
+    it(
+      'retries the initial MongoDB connection with the same options after it fails, and recovers to 200',
+      async () => {
+        const calls: OpenUriCall[] = [];
+        const originalOpenUri = Connection.prototype.openUri;
+        const openUri = vi
+          .spyOn(Connection.prototype, 'openUri')
+          .mockImplementation(function (
+            this: Connection,
+            uri: string,
+            options?: ConnectOptions,
+          ) {
+            // Copia antes de delegar: Mongoose borra `_fireAndForget` del objeto que recibe.
+            calls.push({ uri, options: options ? { ...options } : undefined });
+            return originalOpenUri.call(this, uri, options);
+          });
+        cleanups.push(async () => {
+          openUri.mockRestore();
+        });
+        const retries = (): OpenUriCall[] =>
+          calls.filter((call) => !isInitialOpen(call));
+
+        const port = await freePort();
+        // Solo en este test: una selección de servidor corta hace que la conexión inicial emita `error` enseguida.
+        const mongoUri = `mongodb://127.0.0.1:${port}/linkvault?directConnection=true&serverSelectionTimeoutMS=${SHORT_SERVER_SELECTION_MS}`;
+        const redis = await startRedis('up');
+        const app = await startApp({ mongoUri, redisUrl: redis.url });
+
+        await waitUntil(() => retries().length > 0, WARM_UP_TIMEOUT_MS);
+        expect(retries().length).toBeGreaterThan(0);
+        const down = await pollHealth(
+          app.baseUrl,
+          (p) => p.body.checks.redis.status === 'up',
+          WARM_UP_TIMEOUT_MS,
+        );
+        expectBody(down, 'down', 'up');
+
+        const replSet = await MongoMemoryReplSet.create({
+          binary: { version: MONGOMS_VERSION },
+          instanceOpts: [{ port }],
+          replSet: { count: 1, ip: '127.0.0.1', storageEngine: 'wiredTiger' },
+        });
+        cleanups.push(async () => {
+          await replSet.stop();
+        });
+        await replSet.waitUntilRunning();
+
+        const recovered = await pollHealth(
+          app.baseUrl,
+          (p) => p.statusCode === 200,
+          RECOVERY_TIMEOUT_MS,
+        );
+        expect(recovered.statusCode).toBe(200);
+        expectBody(recovered, 'up', 'up');
+
+        const [initial] = calls.filter(isInitialOpen);
+        expect(initial).toEqual({
+          uri: mongoUri,
+          options: { ...target.mongooseConnectOptions, _fireAndForget: true },
+        });
+        for (const retry of retries()) {
+          expect(retry).toEqual({
+            uri: mongoUri,
+            options: target.mongooseConnectOptions,
+          });
+        }
+      },
+      2 * WARM_UP_TIMEOUT_MS + RECOVERY_TIMEOUT_MS + 30_000,
+    );
   });
+}
+
+interface OpenUriCall {
+  readonly uri: string;
+  readonly options: object | undefined;
+}
+
+/** `mongoose.createConnection()` abre la conexión inicial con `_fireAndForget`; los reintentos no lo llevan. */
+function isInitialOpen(call: OpenUriCall): boolean {
+  return call.options !== undefined && '_fireAndForget' in call.options;
+}
+
+async function waitUntil(
+  condition: () => boolean,
+  timeoutMs: number,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!condition() && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+  }
 }

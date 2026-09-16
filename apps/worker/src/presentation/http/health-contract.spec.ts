@@ -1,9 +1,11 @@
 import { describeHealthContract } from '@linkvault/testing';
 import { createWorkerApp } from '../../app/create-worker-app';
+import { buildMongooseConnectOptions } from '../../infrastructure/persistence/mongoose-connect-options';
 import { workerTestConfig } from '../../test-support/test-config';
 
 describeHealthContract({
   service: 'worker',
+  mongooseConnectOptions: buildMongooseConnectOptions(),
   async start({ mongoUri, redisUrl }) {
     const config = await workerTestConfig({
       MONGO_URI: mongoUri,

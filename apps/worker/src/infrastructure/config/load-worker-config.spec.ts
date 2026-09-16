@@ -76,4 +76,15 @@ describe('worker configuration', () => {
       FEATURE_HEADLESS_EXTRACTION: false,
     });
   });
+
+  it('keeps .env.example free of AI_PROVIDER and real-looking API keys', () => {
+    const raw = readFileSync(ENV_EXAMPLE, 'utf8');
+
+    expect(readEnvExample()).not.toHaveProperty('AI_PROVIDER');
+    expect(raw).not.toMatch(/\bAI_PROVIDER\b/);
+    // Prefijos de claves reales: OpenAI/OpenRouter (`sk-`), Anthropic (`sk-ant-`) y AWS (`AKIA`).
+    expect(raw).not.toMatch(/(^|[^A-Za-z0-9])sk-/m);
+    expect(raw).not.toContain('sk-ant-');
+    expect(raw).not.toContain('AKIA');
+  });
 });

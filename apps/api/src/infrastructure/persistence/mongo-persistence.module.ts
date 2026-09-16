@@ -4,6 +4,7 @@ import type { Connection } from 'mongoose';
 import type { ApiConfig } from '../config/api-config.schema';
 import { APP_CONFIG } from '../config/app-config.module';
 import { MongoInitialConnectRetry } from './mongo-initial-connect-retry';
+import { buildMongooseConnectOptions } from './mongoose-connect-options';
 
 @Module({
   providers: [MongoInitialConnectRetry],
@@ -20,12 +21,16 @@ class MongoConnectionRetryModule {}
     MongooseModule.forRootAsync({
       imports: [MongoConnectionRetryModule],
       inject: [APP_CONFIG, MongoInitialConnectRetry],
-      useFactory: (config: ApiConfig, retry: MongoInitialConnectRetry) => ({
-        uri: config.MONGO_URI,
-        lazyConnection: true,
-        connectionFactory: (connection: Connection) =>
-          retry.attach(connection, config.MONGO_URI),
-      }),
+      useFactory: (config: ApiConfig, retry: MongoInitialConnectRetry) => {
+        const connectOptions = buildMongooseConnectOptions();
+        return {
+          ...connectOptions,
+          uri: config.MONGO_URI,
+          lazyConnection: true,
+          connectionFactory: (connection: Connection) =>
+            retry.attach(connection, config.MONGO_URI, connectOptions),
+        };
+      },
     }),
   ],
 })

@@ -3,7 +3,11 @@ import {
   Injectable,
   Logger,
 } from '@nestjs/common';
-import { ConnectionStates, type Connection } from 'mongoose';
+import {
+  type ConnectOptions,
+  ConnectionStates,
+  type Connection,
+} from 'mongoose';
 
 const BASE_DELAY_MS = 250;
 export const MONGO_RETRY_MAX_DELAY_MS = 2_000;
@@ -26,7 +30,12 @@ export class MongoInitialConnectRetry implements BeforeApplicationShutdown {
   private timer: NodeJS.Timeout | undefined;
   private stopped = false;
 
-  attach(connection: Connection, uri: string): Connection {
+  /** `options` son las mismas que recibió `forRootAsync`; cada reintento las reenvía. */
+  attach(
+    connection: Connection,
+    uri: string,
+    options: Readonly<ConnectOptions>,
+  ): Connection {
     let attempt = 0;
     let connected = false;
     this.connections.add(connection);
@@ -50,7 +59,8 @@ export class MongoInitialConnectRetry implements BeforeApplicationShutdown {
           return;
         }
         // Un nuevo fallo vuelve a emitir `error` y reprograma el reintento.
-        connection.openUri(uri).catch(() => undefined);
+        // Copia: Mongoose puede mutar el objeto de opciones que recibe.
+        connection.openUri(uri, { ...options }).catch(() => undefined);
       }, delay);
       this.timer.unref();
     });
