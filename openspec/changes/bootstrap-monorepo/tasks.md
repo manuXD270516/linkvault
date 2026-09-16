@@ -1,9 +1,9 @@
 ## 1. Base del workspace
 
-- [ ] 1.1 [infra] Inicializar el workspace Nx integrado con pnpm (`nx.json`, `pnpm-workspace.yaml`, `package.json`, `tsconfig.base.json` en modo strict) (D1); verificar que `pnpm nx report` lista Nx y sus plugins.
-- [ ] 1.2 [infra] Fijar `.nvmrc` (Node 22 LTS), el campo `packageManager` con la versión exacta de pnpm y `@fission-ai/openspec` como devDependency fijada; verificar que `pnpm install` desde un clon limpio no emite avisos de versión y que `pnpm exec openspec --version` responde.
-- [ ] 1.3 [infra] Cambiar `.gitattributes` a `* text=auto eol=lf` con los binarios marcados, y ejecutar `git add --renormalize .` seguido de `git checkout -- .` (D13); verificar que `git ls-files --eol` muestra `i/lf w/lf` en todos los archivos de texto.
-- [ ] 1.4 [infra] Configurar `eslint.config.mjs` (sin reglas con información de tipos, D4) y Prettier base (`endOfLine: "lf"`), y declarar `namedInputs.sharedGlobals` en `nx.json` con rutas `{workspaceRoot}/` (D1); verificar que `pnpm nx run-many -t lint` pasa sobre el workspace vacío.
+- [x] 1.1 [infra] Inicializar el workspace Nx integrado con pnpm (`nx.json`, `pnpm-workspace.yaml`, `package.json`, `tsconfig.base.json` en modo strict) (D1); verificar que `pnpm nx report` lista Nx y sus plugins.
+- [x] 1.2 [infra] Fijar `.nvmrc` (Node 22 LTS), el campo `packageManager` con la versión exacta de pnpm y `@fission-ai/openspec` como devDependency fijada; verificar que `pnpm install` desde un clon limpio no emite avisos de versión y que `pnpm exec openspec --version` responde.
+- [x] 1.3 [infra] Cambiar `.gitattributes` a `* text=auto eol=lf` con los binarios marcados, y ejecutar `git add --renormalize .` seguido de `git checkout -- .` (D13); verificar que `git ls-files --eol` muestra `i/lf w/lf` en todos los archivos de texto.
+- [x] 1.4 [infra] Configurar `eslint.config.mjs` (sin reglas con información de tipos, D4) y Prettier base (`endOfLine: "lf"`), y declarar `namedInputs.sharedGlobals` en `nx.json` con rutas `{workspaceRoot}/` (D1); verificar que `pnpm nx run-many -t lint` pasa sobre el workspace vacío.
 
 ## 2. Infraestructura local
 

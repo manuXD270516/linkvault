@@ -1,0 +1,8 @@
+packages:
+  - 'apps/*'
+  - 'libs/*'
+  - 'tools/*'
+
+# pnpm bloquea los scripts de instalación por defecto; nx necesita su postinstall.
+allowBuilds:
+  nx: true

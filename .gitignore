@@ -1,9 +1,31 @@
+# Dependencias
 node_modules/
+
+# Salidas de build y cobertura
 dist/
-.nx/
+tmp/
+out-tsc/
+coverage/
+
+# Nx
+.nx/cache/
+.nx/workspace-data/
+
+# Entorno y secretos
 .env
 .env.*
-coverage/
+!.env.example
+
+# Logs e informes
 *.log
 reports/
+
+# Editores y SO
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# Claude Code
 .claude/settings.local.json
