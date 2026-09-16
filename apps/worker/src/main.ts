@@ -1,13 +1,22 @@
-import { Logger } from '@nestjs/common';
-import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app/app.module';
+import { Logger } from 'nestjs-pino';
+import { createWorkerApp } from './app/create-worker-app';
+import { loadWorkerConfigOrExit } from './infrastructure/config/load-worker-config';
 
-// Contexto de aplicación sin HTTP. La creación con FastifyAdapter en WORKER_HEALTH_PORT
-// y la conexión de BullMQ llegan en la tarea 5.5 de bootstrap-monorepo.
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.createApplicationContext(AppModule);
+  const config = loadWorkerConfigOrExit(process.env);
+  const app = await createWorkerApp(config);
   app.enableShutdownHooks();
-  Logger.log('Worker started', 'Bootstrap');
+  await app.listen(config.WORKER_HEALTH_PORT);
+  app
+    .get(Logger)
+    .log(
+      `Worker health listening on port ${config.WORKER_HEALTH_PORT}`,
+      'Bootstrap',
+    );
 }
 
-void bootstrap();
+bootstrap().catch((error: unknown) => {
+  const name = error instanceof Error ? error.name : 'UnknownError';
+  process.stderr.write(`[worker] Startup failed: ${name}\n`);
+  process.exit(1);
+});

@@ -30,32 +30,32 @@
 
 ## 5. Arranque de las apps backend
 
-- [ ] 5.1 [backend] Implementar la validación de configuración con zod en `infrastructure/config` de `api`, con salida de error por `process.stderr.write`, y escribir `.env.example` con todas las variables, `AI_CHAIN=mock`, `AI_MOCK_MODE=replay`, `FEATURE_HEADLESS_EXTRACTION=false` y la URI de Mongo con `directConnection=true` (D6, D8); verificar con un test que una variable ausente termina el proceso nombrándola sin su valor y que `.env.example` pasa la validación.
-- [ ] 5.2 [backend] Aplicar la misma validación de configuración a `worker`, incluida `WORKER_HEALTH_PORT`; verificar con el mismo par de tests en `worker`.
-- [ ] 5.3 [backend] Cablear `nestjs-pino` en `api` y `worker` con las rutas de redacción de D11; verificar con un test que registra una petición con `authorization` y `cookie`, un objeto con `apiKey` en la raíz, y otro con `refreshToken` a un nivel y `apiKey` a dos niveles, y comprueba que ningún valor aparece.
-- [ ] 5.4 [backend] Registrar Mongoose (`lazyConnection`, con reintento de `openUri` y backoff tope 2 s si la conexión inicial falla) y el cliente de salud de ioredis (`lazyConnect`, sin cola offline, `maxRetriesPerRequest: 1`, backoff tope 2 s, `connect()` sin esperar en `onModuleInit`) en `api` (D8); verificar con un test que la app arranca con ambas URIs apuntando a puertos cerrados.
-- [ ] 5.5 [backend] Crear `worker` con `NestFactory.create` y `FastifyAdapter` escuchando en `WORKER_HEALTH_PORT`, con las mismas conexiones que `api` más `BullModule.forRoot` (`maxRetriesPerRequest: null`) sin colas registradas (D8, D9); verificar con un test que el worker arranca con Mongo y Redis apagados.
-- [ ] 5.6 [backend] Aplicar `setGlobalPrefix('api', { exclude: ['health', 'health/live'] })` en `api` (D10); verificar con un test que `GET /api/<inexistente>` devuelve 404 JSON de Nest.
+- [x] 5.1 [backend] Implementar la validación de configuración con zod en `infrastructure/config` de `api`, con salida de error por `process.stderr.write`, y escribir `.env.example` con todas las variables, `AI_CHAIN=mock`, `AI_MOCK_MODE=replay`, `FEATURE_HEADLESS_EXTRACTION=false` y la URI de Mongo con `directConnection=true` (D6, D8); verificar con un test que una variable ausente termina el proceso nombrándola sin su valor y que `.env.example` pasa la validación.
+- [x] 5.2 [backend] Aplicar la misma validación de configuración a `worker`, incluida `WORKER_HEALTH_PORT`; verificar con el mismo par de tests en `worker`.
+- [x] 5.3 [backend] Cablear `nestjs-pino` en `api` y `worker` con las rutas de redacción de D11; verificar con un test que registra una petición con `authorization` y `cookie`, un objeto con `apiKey` en la raíz, y otro con `refreshToken` a un nivel y `apiKey` a dos niveles, y comprueba que ningún valor aparece.
+- [x] 5.4 [backend] Registrar Mongoose (`lazyConnection`, con reintento de `openUri` y backoff tope 2 s si la conexión inicial falla) y el cliente de salud de ioredis (`lazyConnect`, sin cola offline, `maxRetriesPerRequest: 1`, backoff tope 2 s, `connect()` sin esperar en `onModuleInit`) en `api` (D8); verificar con un test que la app arranca con ambas URIs apuntando a puertos cerrados.
+- [x] 5.5 [backend] Crear `worker` con `NestFactory.create` y `FastifyAdapter` escuchando en `WORKER_HEALTH_PORT`, con las mismas conexiones que `api` más `BullModule.forRoot` (`maxRetriesPerRequest: null`) sin colas registradas (D8, D9); verificar con un test que el worker arranca con Mongo y Redis apagados.
+- [x] 5.6 [backend] Aplicar `setGlobalPrefix('api', { exclude: ['health', 'health/live'] })` en `api` (D10); verificar con un test que `GET /api/<inexistente>` devuelve 404 JSON de Nest.
 
 ## 6. Salud
 
-- [ ] 6.1 [backend] Exponer `GET /health/live` en `api` y `worker` con `service` y `version` (desde `APP_VERSION` o `package.json`) (D9); verificar con un test por app que responde 200 en < 1 s con Mongo y Redis apagados y sin credenciales.
-- [ ] 6.2 [backend] Implementar los indicadores de Mongo y Redis con timeout de 500 ms en `infrastructure/health` de `api`, que devuelven `down` sin propagar el mensaje del driver (D9); verificar con tests unitarios de indicador para `up`, `down` y dependencia colgada.
-- [ ] 6.3 [backend] Exponer `GET /health` en `api` con terminus y un controlador que adapta su salida (incluida la excepción de 503) al JSON de la spec; verificar con la suite de integración (Mongo de `tools/testing` y doble de Redis) que cubre 200 con todo arriba y 503 con Redis en `stop`.
-- [ ] 6.4 [backend] Ampliar la suite de 6.3 con cuatro filas: dependencia en `hang` responde 503 en ≤ 1500 ms; URI con usuario y contraseña contra un puerto cerrado no expone URI, usuario, contraseña ni mensaje del driver; el doble de Redis pasando de `stop` a `up` lleva `GET /health` a 200 sin reiniciar la app; y la app arrancada antes que `MongoMemoryReplSet` pasa a 200 cuando Mongo aparece, sin reiniciar. Verificar que la suite pasa.
-- [ ] 6.5 [backend] Replicar indicadores y `GET /health` en `worker` con `service: "worker"`; verificar con la suite de 6.3–6.4 parametrizada contra el puerto del worker.
+- [x] 6.1 [backend] Exponer `GET /health/live` en `api` y `worker` con `service` y `version` (desde `APP_VERSION` o `package.json`) (D9); verificar con un test por app que responde 200 en < 1 s con Mongo y Redis apagados y sin credenciales.
+- [x] 6.2 [backend] Implementar los indicadores de Mongo y Redis con timeout de 500 ms en `infrastructure/health` de `api`, que devuelven `down` sin propagar el mensaje del driver (D9); verificar con tests unitarios de indicador para `up`, `down` y dependencia colgada.
+- [x] 6.3 [backend] Exponer `GET /health` en `api` con terminus y un controlador que adapta su salida (incluida la excepción de 503) al JSON de la spec; verificar con la suite de integración (Mongo de `tools/testing` y doble de Redis) que cubre 200 con todo arriba y 503 con Redis en `stop`.
+- [x] 6.4 [backend] Ampliar la suite de 6.3 con cuatro filas: dependencia en `hang` responde 503 en ≤ 1500 ms; URI con usuario y contraseña contra un puerto cerrado no expone URI, usuario, contraseña ni mensaje del driver; el doble de Redis pasando de `stop` a `up` lleva `GET /health` a 200 sin reiniciar la app; y la app arrancada antes que `MongoMemoryReplSet` pasa a 200 cuando Mongo aparece, sin reiniciar. Verificar que la suite pasa.
+- [x] 6.5 [backend] Replicar indicadores y `GET /health` en `worker` con `service: "worker"`; verificar con la suite de 6.3–6.4 parametrizada contra el puerto del worker.
 
 ## 7. Frontend
 
-- [ ] 7.1 [frontend] Configurar Angular Material y Tailwind en `apps/web` (D12); verificar que `pnpm nx build web` pasa y que el CSS generado contiene una utilidad de Tailwind usada en el placeholder.
-- [ ] 7.2 [frontend] Configurar `@angular/localize` con ES como locale fuente y EN declarado; verificar que `pnpm nx build web` pasa sin errores de extracción.
-- [ ] 7.3 [frontend] Crear la ruta placeholder con carga diferida y su test de render; verificar que `pnpm nx test web` pasa.
-- [ ] 7.4 [frontend] Añadir `apps/web/proxy.conf.json` que reenvía `/api` a `http://localhost:3000` y referenciarlo en el target `serve` (D10); verificar con `api` y `web` en marcha que `GET http://localhost:4200/api/<inexistente>` devuelve el 404 JSON de la API.
+- [x] 7.1 [frontend] Configurar Angular Material y Tailwind en `apps/web` (D12); verificar que `pnpm nx build web` pasa y que el CSS generado contiene una utilidad de Tailwind usada en el placeholder.
+- [x] 7.2 [frontend] Configurar `@angular/localize` con ES como locale fuente y EN declarado; verificar que `pnpm nx build web` pasa sin errores de extracción.
+- [x] 7.3 [frontend] Crear la ruta placeholder con carga diferida y su test de render; verificar que `pnpm nx test web` pasa.
+- [x] 7.4 [frontend] Añadir `apps/web/proxy.conf.json` que reenvía `/api` a `http://localhost:3000` y referenciarlo en el target `serve` (D10); verificar con `api` y `web` en marcha que `GET http://localhost:4200/api/<inexistente>` devuelve el 404 JSON de la API.
 
 ## 8. Contratos de IA
 
-- [ ] 8.1 [ai] Escribir `libs/ai/src/domain/ports/llm-provider.port.ts` con `ProviderCapabilities`, `CompletionRequest`, `CompletionResult` y `LlmProvider` según design-v0.2 §4.2; verificar que `pnpm nx typecheck ai` pasa.
-- [ ] 8.2 [ai] Escribir `libs/ai/src/domain/task.ts` (`AiTask`) y `libs/ai/src/domain/errors.ts` (`SchemaViolation`, `ProviderUnavailable`, `QuotaExceeded`, `FixtureMissing`) y exportarlos desde `index.ts`; verificar que `apps/worker` los importa por `@linkvault/ai` y que `pnpm nx typecheck worker` pasa.
+- [x] 8.1 [ai] Escribir `libs/ai/src/domain/ports/llm-provider.port.ts` con `ProviderCapabilities`, `CompletionRequest`, `CompletionResult` y `LlmProvider` según design-v0.2 §4.2; verificar que `pnpm nx typecheck ai` pasa.
+- [x] 8.2 [ai] Escribir `libs/ai/src/domain/task.ts` (`AiTask`) y `libs/ai/src/domain/errors.ts` (`SchemaViolation`, `ProviderUnavailable`, `QuotaExceeded`, `FixtureMissing`) y exportarlos desde `index.ts`; verificar que `apps/worker` los importa por `@linkvault/ai` y que `pnpm nx typecheck worker` pasa.
 
 ## 9. Límites arquitectónicos
 

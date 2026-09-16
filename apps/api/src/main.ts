@@ -1,19 +1,17 @@
-import { Logger } from '@nestjs/common';
-import { NestFactory } from '@nestjs/core';
-import {
-  FastifyAdapter,
-  NestFastifyApplication,
-} from '@nestjs/platform-fastify';
-import { AppModule } from './app/app.module';
+import { Logger } from 'nestjs-pino';
+import { createApp } from './app/create-app';
+import { loadApiConfigOrExit } from './infrastructure/config/load-api-config';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create<NestFastifyApplication>(
-    AppModule,
-    new FastifyAdapter(),
-  );
-  const port = Number(process.env['PORT'] ?? 3000);
-  await app.listen(port);
-  Logger.log(`API listening on http://localhost:${port}`, 'Bootstrap');
+  const config = loadApiConfigOrExit(process.env);
+  const app = await createApp(config);
+  app.enableShutdownHooks();
+  await app.listen(config.PORT);
+  app.get(Logger).log(`API listening on port ${config.PORT}`, 'Bootstrap');
 }
 
-void bootstrap();
+bootstrap().catch((error: unknown) => {
+  const name = error instanceof Error ? error.name : 'UnknownError';
+  process.stderr.write(`[api] Startup failed: ${name}\n`);
+  process.exit(1);
+});

@@ -1,9 +1,23 @@
-import { Module } from '@nestjs/common';
-import { SharedProbe } from '@linkvault/shared';
-
-// Sonda temporal (tarea 3.5 de bootstrap-monorepo): fuerza a que el build resuelva el alias
-// @linkvault/shared. Se elimina junto con SharedProbe cuando llegue el primer contrato real.
-export const SHARED_ALIAS_PROBE: SharedProbe = SharedProbe.Resolved;
+import { type DynamicModule, Module } from '@nestjs/common';
+import type { ApiConfig } from '../infrastructure/config/api-config.schema';
+import { AppConfigModule } from '../infrastructure/config/app-config.module';
+import { AppLoggerModule } from '../infrastructure/logging/app-logger.module';
+import { MongoPersistenceModule } from '../infrastructure/persistence/mongo-persistence.module';
+import { RedisHealthModule } from '../infrastructure/redis/redis-health.module';
+import { HealthModule } from '../presentation/http/health.module';
 
 @Module({})
-export class AppModule {}
+export class AppModule {
+  static register(config: ApiConfig): DynamicModule {
+    return {
+      module: AppModule,
+      imports: [
+        AppConfigModule.forRoot(config),
+        AppLoggerModule,
+        MongoPersistenceModule,
+        RedisHealthModule,
+        HealthModule,
+      ],
+    };
+  }
+}

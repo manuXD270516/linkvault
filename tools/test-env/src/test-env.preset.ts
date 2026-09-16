@@ -15,6 +15,10 @@ export const TEST_ENV = {
  * Entrada `@linkvault/test-env/preset`: la carga Node al leer el vitest.config, así que solo importa paquetes.
  */
 export const testEnvPreset = defineConfig({
+  // Los tests resuelven los alias `@linkvault/*` de tsconfig.base.json igual que tsc (resolución nativa de Vite 8).
+  resolve: {
+    tsconfigPaths: true,
+  },
   test: {
     env: { ...TEST_ENV },
   },

@@ -1,1 +1,1 @@
-export * from './enums/shared-probe.enum';
+export * from './schemas/health.schema';
