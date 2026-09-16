@@ -9,7 +9,7 @@ const port = z.coerce.number().int().min(1).max(65_535);
  */
 export const apiConfigSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']),
-  PORT: port,
+  API_PORT: port,
   MONGO_URI: z.string().regex(/^mongodb(\+srv)?:\/\/\S+$/),
   REDIS_URL: z.string().regex(/^rediss?:\/\/\S+$/),
   // Lista ordenada de proveedores de IA (design-v0.2 §4.4); los nombres válidos los fija ai-gateway-core.

@@ -6,8 +6,8 @@ async function bootstrap(): Promise<void> {
   const config = loadApiConfigOrExit(process.env);
   const app = await createApp(config);
   app.enableShutdownHooks();
-  await app.listen(config.PORT);
-  app.get(Logger).log(`API listening on port ${config.PORT}`, 'Bootstrap');
+  await app.listen(config.API_PORT);
+  app.get(Logger).log(`API listening on port ${config.API_PORT}`, 'Bootstrap');
 }
 
 bootstrap().catch((error: unknown) => {

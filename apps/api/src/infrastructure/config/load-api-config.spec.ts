@@ -37,14 +37,14 @@ describe('api configuration', () => {
       loadApiConfigOrExit({
         ...example,
         MONGO_URI: undefined,
-        PORT: secretLike,
+        API_PORT: secretLike,
       }),
     ).toThrow(ProcessExit);
 
     expect(exit).toHaveBeenCalledWith(1);
     const output = stderr.mock.calls.map(([chunk]) => String(chunk)).join('');
     expect(output).toContain('MONGO_URI (missing)');
-    expect(output).toContain('PORT (invalid)');
+    expect(output).toContain('API_PORT (invalid)');
     expect(output).not.toContain(secretLike);
     expect(output).not.toContain(example['REDIS_URL']);
   });
@@ -69,7 +69,7 @@ describe('api configuration', () => {
     expect(exit).not.toHaveBeenCalled();
     expect(config).toMatchObject({
       NODE_ENV: 'development',
-      PORT: 3000,
+      API_PORT: 3000,
       MONGO_URI: 'mongodb://localhost:27017/linkvault?directConnection=true',
       AI_CHAIN: 'mock',
       AI_MOCK_MODE: 'replay',

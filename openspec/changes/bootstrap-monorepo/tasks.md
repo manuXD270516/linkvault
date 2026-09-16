@@ -74,5 +74,5 @@
 
 ## 11. Documentación y cierre
 
-- [ ] 11.1 [infra] Escribir `README.md` con prerrequisitos (Node, pnpm, Docker, VC++ en Windows), `docker compose up -d --wait`, `pnpm nx serve api|worker|web`, perfil `ai-local`, URI de Mongo desde host y desde contenedor, y un párrafo de salida a Turborepo (ADR-011); verificar siguiendo el README desde un clon limpio hasta `GET /health` 200 en `api` y `worker`.
+- [x] 11.1 [infra] Escribir `README.md` con prerrequisitos (Node, pnpm, Docker, VC++ en Windows), `docker compose up -d --wait`, `pnpm nx serve api|worker|web`, perfil `ai-local`, URI de Mongo desde host y desde contenedor, y un párrafo de salida a Turborepo (ADR-011); verificar siguiendo el README desde un clon limpio hasta `GET /health` 200 en `api` y `worker`.
 - [x] 11.2 [infra] Ejecutar `pnpm nx run-many -t lint,typecheck,test,build` y `pnpm exec openspec validate --all` sobre el workspace completo; verificar que todo pasa en verde antes de abrir el PR.

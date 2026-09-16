@@ -23,7 +23,7 @@ export async function apiTestConfig(
 ): Promise<ApiConfig> {
   return {
     NODE_ENV: 'test',
-    PORT: 0,
+    API_PORT: 0,
     MONGO_URI: `mongodb://127.0.0.1:${await closedPort()}/linkvault?directConnection=true`,
     REDIS_URL: `redis://127.0.0.1:${await closedPort()}`,
     AI_CHAIN: 'mock',
