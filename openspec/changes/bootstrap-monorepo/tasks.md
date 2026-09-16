@@ -59,11 +59,11 @@
 
 ## 9. Límites arquitectónicos
 
-- [ ] 9.1 [infra] Configurar `@nx/enforce-module-boundaries` en dos bloques (general y archivos de test) construidos desde un único array de restricciones compartido (D2); verificar que `pnpm nx run-many -t lint` pasa en el estado actual, incluidos los tests que importan `tools/testing`.
-- [ ] 9.2 [infra] Añadir el bloque `no-restricted-imports` para `**/domain/**` con la lista cerrada de la spec (D3); verificar que `pnpm nx run-many -t lint` sigue pasando.
-- [ ] 9.3 [ai] Añadir el bloque `@typescript-eslint/no-restricted-imports` para SDKs de IA con la lista cerrada y la exclusión de `libs/ai/src/infrastructure/providers/**` (D3); verificar que `pnpm nx run-many -t lint` sigue pasando.
-- [ ] 9.4 [infra] Activar `@typescript-eslint/no-explicit-any` y `no-console` como error en proyectos de producto; verificar que `pnpm nx run-many -t lint` sigue pasando.
-- [ ] 9.5 [infra] Escribir en `tools/workspace-rules` el test tabular con `lintText` que cubre cada escenario de la spec `workspace`: código de producción importando `type:test-util` y `type:tooling` (falla), test importando `type:test-util` de su plataforma (pasa), test de `web` importando `tools/testing` (falla por plataforma), spec de `libs/shared` importando `@linkvault/ai` (falla), SDK fuera y dentro de providers, solapamiento en `libs/ai/src/domain`, dominio e infraestructura importando framework, lib→app, shared→ai, web→ai, `any` y `console` (D4); verificar que `pnpm nx test workspace-rules` pasa y que al desactivar cualquiera de las reglas su fila falla.
+- [x] 9.1 [infra] Configurar `@nx/enforce-module-boundaries` en dos bloques (general y archivos de test) construidos desde un único array de restricciones compartido (D2); verificar que `pnpm nx run-many -t lint` pasa en el estado actual, incluidos los tests que importan `tools/testing`.
+- [x] 9.2 [infra] Añadir el bloque `no-restricted-imports` para `**/domain/**` con la lista cerrada de la spec (D3); verificar que `pnpm nx run-many -t lint` sigue pasando.
+- [x] 9.3 [ai] Añadir el bloque `@typescript-eslint/no-restricted-imports` para SDKs de IA con la lista cerrada y la exclusión de `libs/ai/src/infrastructure/providers/**` (D3); verificar que `pnpm nx run-many -t lint` sigue pasando.
+- [x] 9.4 [infra] Activar `@typescript-eslint/no-explicit-any` y `no-console` como error en proyectos de producto; verificar que `pnpm nx run-many -t lint` sigue pasando.
+- [x] 9.5 [infra] Escribir en `tools/workspace-rules` el test tabular con `lintText` que cubre cada escenario de la spec `workspace`: código de producción importando `type:test-util` y `type:tooling` (falla), test importando `type:test-util` de su plataforma (pasa), test de `web` importando `tools/testing` (falla por plataforma), spec de `libs/shared` importando `@linkvault/ai` (falla), SDK fuera y dentro de providers, solapamiento en `libs/ai/src/domain`, dominio e infraestructura importando framework, lib→app, shared→ai, web→ai, `any` y `console` (D4); verificar que `pnpm nx test workspace-rules` pasa y que al desactivar cualquiera de las reglas su fila falla.
 
 ## 10. Integración continua
 
