@@ -1,0 +1,8 @@
+# core.autocrlf=true en este equipo: sin esto, al clonar o hacer checkout los .sh
+# quedan con CRLF en el working tree y se rompen de dos maneras:
+#   - '#!/usr/bin/env bash\r'  -> "bad interpreter: no such file or directory"
+#   - los patrones de 'case'/'grep' dejan de casar por el \r final
+* text=auto
+*.sh  text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
