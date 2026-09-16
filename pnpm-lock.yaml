@@ -278,6 +278,9 @@ importers:
       '@nx/angular':
         specifier: 23.2.1
         version: 23.2.1(7e86a9b07192ecd4f0cd68d8326ea85c)
+      '@nx/devkit':
+        specifier: 23.2.1
+        version: 23.2.1(nx@23.2.1(@swc/core@1.16.2(@swc/helpers@0.5.23)))
       '@nx/eslint':
         specifier: 23.2.1
         version: 23.2.1(@babel/traverse@7.29.8(supports-color@7.2.0))(@nx/jest@23.2.1(@babel/traverse@7.29.8(supports-color@7.2.0))(@swc/core@1.16.2(@swc/helpers@0.5.23))(@types/node@22.20.2)(babel-plugin-macros@3.1.0)(nx@23.2.1(@swc/core@1.16.2(@swc/helpers@0.5.23)))(supports-color@7.2.0)(typescript@6.0.3))(@swc/core@1.16.2(@swc/helpers@0.5.23))(@zkochan/js-yaml@0.0.7)(eslint@10.10.0(jiti@2.7.0)(supports-color@7.2.0))(nx@23.2.1(@swc/core@1.16.2(@swc/helpers@0.5.23)))(supports-color@7.2.0)

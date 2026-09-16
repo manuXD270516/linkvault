@@ -45,8 +45,11 @@ const rows: readonly RuleRow[] = [
     expectedRuleIds: [BOUNDARIES],
   },
   {
-    // tools/workspace-rules (type:tooling) no tiene alias a propósito: nadie debe importarlo. La fila usa
-    // una ruta relativa, que la regla rechaza igualmente.
+    // tools/workspace-rules (type:tooling) no tiene alias a propósito: nadie debe importarlo, así que la única
+    // forma de alcanzarlo es una ruta relativa. Lo que dispara aquí es la comprobación de import relativo entre
+    // proyectos de @nx/enforce-module-boundaries (mismo ruleId), que corta antes de evaluar tags. El escenario
+    // observable de la spec (el lint falla) se cumple; la restricción por tag (type:app solo depende de type:lib)
+    // queda cubierta indirectamente por la fila anterior, que la dispara por tag. Ver design.md D2.
     name: 'production code of api imports a type:tooling project',
     filePath: 'apps/api/src/app/probe.ts',
     code: "import { WORKSPACE_ROOT } from '../../../../tools/workspace-rules/src/index';\n\nexport const probe = WORKSPACE_ROOT;\n",
@@ -72,7 +75,11 @@ const rows: readonly RuleRow[] = [
     expectedRuleIds: [BOUNDARIES],
   },
   {
-    // Las apps no tienen alias: una lib solo podría alcanzarlas por ruta relativa, que la regla rechaza.
+    // Las apps no tienen alias, así que una lib solo puede alcanzarlas por ruta relativa. Lo que dispara aquí es
+    // la comprobación de import relativo entre proyectos de @nx/enforce-module-boundaries (mismo ruleId), que corta
+    // antes de evaluar tags. El escenario observable de la spec (el lint falla) se cumple; la restricción por tag
+    // (type:lib solo depende de type:lib) queda cubierta indirectamente por las filas lib -> lib que sí la evalúan
+    // por tag (shared -> ai). Ver design.md D2.
     name: 'a lib imports an app',
     filePath: 'libs/ai/src/probe.ts',
     code: "import { AppModule } from '../../../apps/api/src/app/app.module';\n\nexport const probe = AppModule;\n",

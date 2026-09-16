@@ -11,6 +11,8 @@ export default mergeConfig(
     test: {
       name: 'workspace-rules',
       environment: 'node',
+      // workspace-projects.spec.ts calcula el grafo de Nx: sin daemon, que heredaría los pipes de Vitest.
+      env: { NX_DAEMON: 'false' },
       globals: false,
       include: ['src/**/*.{spec,test}.ts'],
       watch: false,
