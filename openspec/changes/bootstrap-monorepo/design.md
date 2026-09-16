@@ -60,7 +60,16 @@ construidos desde **un único array de restricciones** definido una vez en `esli
 `type:app` y `type:lib` no pueden depender de `type:test-util` ni de `type:tooling`; y uno para `**/*.spec.ts`,
 `**/*.test.ts` y `**/vitest.config.*`, idéntico salvo que añade `type:test-util` a lo permitido. Si el bloque de tests
 declarara solo la excepción, ESLint descartaría en los tests las restricciones de ámbito y plataforma (el mismo problema
-de D3). Las restricciones de plataforma siguen aplicando a los tests: `web` no puede importar `tools/testing`. Restricciones comunes: `type:lib` no depende de `type:app`; `scope:shared` no depende de nada; `scope:ai` solo de
+de D3). Las restricciones de plataforma siguen aplicando a los tests: `web` no puede importar `tools/testing`.
+
+**Ajuste durante la implementación.** Las restricciones se expresan con `onlyDependOnLibsWithTags` (listas de lo
+permitido) y no con `notDependOnLibsWithTags`. Nx evalúa `notDependOnLibsWithTags` sobre dependencias transitivas y el
+grafo no distingue las aristas que solo vienen de configuración de tests: `shared → test-env` (por su `vitest.config`)
+hacía fallar cualquier import de `@linkvault/shared` desde una app. Consecuencias aceptadas: `type:app` solo depende de
+`type:lib` (una app no importa otra), `platform:any` solo de `platform:any`, y se permite importar el `package.json` raíz
+para la versión de D9. Límite conocido del test tabular (D4): las filas "producción importa tooling" y "lib importa app"
+fallan por la regla de import relativo entre proyectos antes de evaluar tags, porque ni las apps ni `workspace-rules`
+tienen alias; el escenario observable de la spec se cumple, pero esas dos restricciones por tag no se prueban aisladas. Restricciones comunes: `type:lib` no depende de `type:app`; `scope:shared` no depende de nada; `scope:ai` solo de
 `scope:shared`; `platform:browser` solo de `platform:browser|any`. `web` es `browser`; `api`, `worker` y `ai` son `node`;
 `shared` es `any`.
 
@@ -151,8 +160,9 @@ arrancada antes que `docker compose up` recupera Mongo sin reiniciar, como exige
 
 Redis usa **dos clientes con opciones distintas**:
 
-- **Cliente de salud** (ioredis): `lazyConnect: true`, `enableOfflineQueue: false`, `maxRetriesPerRequest: 1` y
-  `retryStrategy` con backoff de tope 2 s. En `onModuleInit` se llama a `connect()` sin esperar, capturando el error en
+- **Cliente de salud** (ioredis): `lazyConnect: true`, `enableOfflineQueue: false`, `maxRetriesPerRequest: 1`,
+  `enableReadyCheck: false` (la salud solo necesita `PING`; el ready check envía `INFO`, que el doble RESP de los tests no
+  implementa) y `retryStrategy` con backoff de tope 2 s. En `onModuleInit` se llama a `connect()` sin esperar, capturando el error en
   el log; así el primer `GET /health` no se encuentra un stream sin abrir.
 - **Conexión de BullMQ** (solo `worker`): `BullModule.forRoot` con `maxRetriesPerRequest: null`, que BullMQ exige para
   sus workers. No se registra ninguna cola ni `Worker`; queda lista para el primer job de `job-links`.
