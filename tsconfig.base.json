@@ -22,7 +22,11 @@
     "forceConsistentCasingInFileNames": true,
     "paths": {
       "@linkvault/shared": ["./libs/shared/src/index.ts"],
-      "@linkvault/ai": ["./libs/ai/src/index.ts"]
+      "@linkvault/ai": ["./libs/ai/src/index.ts"],
+      "@linkvault/test-env": ["./tools/test-env/src/index.ts"],
+      "@linkvault/testing": ["./tools/testing/src/index.ts"],
+      "@linkvault/test-env/preset": ["./tools/test-env/src/test-env.preset.ts"],
+      "@linkvault/testing/preset": ["./tools/testing/src/testing.preset.ts"]
     }
   },
   "exclude": ["node_modules", "tmp"]

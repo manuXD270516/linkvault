@@ -22,11 +22,11 @@
 
 ## 4. Tooling de tests
 
-- [ ] 4.1 [infra] Generar `tools/test-env` con tags `scope:tooling type:test-util platform:any` y un preset de Vitest que solo fija `test.env` (`AI_CHAIN=mock`, `AI_MOCK_MODE=replay`), sin dependencias de Node (D7); verificar con un test propio que ve ambos valores.
-- [ ] 4.2 [infra] Generar `tools/testing` con tags `scope:tooling type:test-util platform:node`, un preset que extiende `tools/test-env` y añade el `globalSetup` con `MongoMemoryReplSet` de un nodo y `MONGOMS_VERSION` exacta de la línea 7.0 (D7); verificar con un test que abre una transacción multi-documento y confirma.
-- [ ] 4.3 [infra] Añadir a `tools/testing` un servidor TCP de prueba que responde `PING` en protocolo RESP, con modos `up`, `stop` y `hang` controlables desde el test (D7); verificar con un test que ioredis recibe `PONG` en `up`, falla en `stop` y no recibe respuesta en `hang`.
-- [ ] 4.4 [infra] Generar `tools/workspace-rules` con tags `scope:tooling type:tooling platform:node` y un test que instancie `ESLint` con la configuración real del repo (D4); verificar que `pnpm nx test workspace-rules` pasa.
-- [ ] 4.5 [infra] Hacer que `shared` y `ai` extiendan el preset de `tools/test-env`, y `api` y `worker` el de `tools/testing` (`web` usa el builder de Angular con su propia configuración y no lee variables de IA); verificar que `pnpm nx run-many -t test -p api,worker,shared,ai` sigue pasando y que los tests de `shared` y `ai` no arrancan Mongo.
+- [x] 4.1 [infra] Generar `tools/test-env` con tags `scope:tooling type:test-util platform:any` y un preset de Vitest que solo fija `test.env` (`AI_CHAIN=mock`, `AI_MOCK_MODE=replay`), sin dependencias de Node (D7); verificar con un test propio que ve ambos valores.
+- [x] 4.2 [infra] Generar `tools/testing` con tags `scope:tooling type:test-util platform:node`, un preset que extiende `tools/test-env` y añade el `globalSetup` con `MongoMemoryReplSet` de un nodo y `MONGOMS_VERSION` exacta de la línea 7.0 (D7); verificar con un test que abre una transacción multi-documento y confirma.
+- [x] 4.3 [infra] Añadir a `tools/testing` un servidor TCP de prueba que responde `PING` en protocolo RESP, con modos `up`, `stop` y `hang` controlables desde el test (D7); verificar con un test que ioredis recibe `PONG` en `up`, falla en `stop` y no recibe respuesta en `hang`.
+- [x] 4.4 [infra] Generar `tools/workspace-rules` con tags `scope:tooling type:tooling platform:node` y un test que instancie `ESLint` con la configuración real del repo (D4); verificar que `pnpm nx test workspace-rules` pasa.
+- [x] 4.5 [infra] Hacer que `shared` y `ai` extiendan el preset de `tools/test-env`, y `api` y `worker` el de `tools/testing` (`web` usa el builder de Angular con su propia configuración y no lee variables de IA); verificar que `pnpm nx run-many -t test -p api,worker,shared,ai` sigue pasando y que los tests de `shared` y `ai` no arrancan Mongo.
 
 ## 5. Arranque de las apps backend
 

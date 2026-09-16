@@ -1,22 +1,22 @@
 import { defineConfig, mergeConfig } from 'vitest/config';
 import { testEnvPreset } from '@linkvault/test-env/preset';
 
-// Vitest para una librería sin decoradores (D5 de bootstrap-monorepo): sin transformador adicional.
-// platform:node: entorno node sin DOM y sin globals; los tests importan describe/it/expect de 'vitest'.
+// platform:node, type:tooling: sin Mongo; extiende el preset base para ver el entorno de IA en mock como el
+// resto de tests del repo.
 export default mergeConfig(
   testEnvPreset,
   defineConfig({
     root: import.meta.dirname,
-    cacheDir: '../../node_modules/.vite/libs/ai',
+    cacheDir: '../../node_modules/.vite/tools/workspace-rules',
     test: {
-      name: 'ai',
+      name: 'workspace-rules',
       environment: 'node',
       globals: false,
       include: ['src/**/*.{spec,test}.ts'],
       watch: false,
       passWithNoTests: false,
       coverage: {
-        reportsDirectory: '../../coverage/libs/ai',
+        reportsDirectory: '../../coverage/tools/workspace-rules',
       },
     },
   }),
