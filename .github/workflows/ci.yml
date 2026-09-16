@@ -1,0 +1,19 @@
+name: ci
+on: { push: { branches: [main] }, pull_request: {} }
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env: { AI_CHAIN: mock, AI_MOCK_MODE: replay }
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: npm i -g @fission-ai/openspec@latest && openspec validate --all
+      - run: pnpm install --frozen-lockfile
+        if: hashFiles('pnpm-lock.yaml') != ''
+      - run: pnpm nx affected -t lint,typecheck,test --base=origin/main~1 --head=HEAD
+        if: hashFiles('nx.json') != ''
+      - run: pnpm nx affected -t build --base=origin/main~1 --head=HEAD
+        if: hashFiles('nx.json') != ''

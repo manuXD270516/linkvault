@@ -1,0 +1,104 @@
+# Fuente única para el orquestador (scripts/change.sh) y /lv:new.
+# Cada change: nombre, ADRs implicados, agentes y párrafo de alcance que se pasa a /opsx:ff.
+changes:
+  - name: bootstrap-monorepo
+    adrs: [001, 006, 007, 009, 011, 014]
+    agents: [devops, backend-dev, frontend-dev, ai-engineer]
+    scope: |
+      Nx workspace con pnpm: apps/api (Nest + Fastify), apps/worker (Nest standalone), apps/web (Angular 22 standalone, zoneless),
+      libs/shared, libs/ai (solo estructura de carpetas y ports). ESLint con no-restricted-imports para SDKs de IA fuera de
+      libs/ai/infrastructure/providers y regla de capas (domain no importa @nestjs, mongoose, bullmq). Vitest en los 5 proyectos.
+      docker-compose.yml: mongo 7 replica set rs0 (init container), redis 7, minio, ollama bajo profile ai-local. .env.example.
+      GitHub Actions: lint → openspec validate --all → nx affected test (AI_CHAIN=mock) → build. README con comandos.
+      Solo /health en api y worker. NADA de features de negocio.
+  - name: ai-gateway-core
+    adrs: [005, 014, 016]
+    agents: [ai-engineer]
+    scope: |
+      Implementar docs/design-v0.2.md §4.1–4.6, §4.9, §4.10 y la spec de §4.13 en libs/ai: ports, AiTask, runTask,
+      StructuredOutputPipeline (un repair prompt, siguiente proveedor, degradación), RoutingPolicy por capabilities,
+      MockDeterministicProvider (synth y replay primero, record después), OllamaProvider, OpenRouterProvider,
+      AiUsageLedger en Mongo, circuit breaker, PiiRedactor, PromptRegistry (front-matter + Mustache), caché por inputHash.
+      Sin proveedores de pago ni BYOK aún. Tarea de ejemplo: classify-skills.
+  - name: ai-eval-harness
+    adrs: [014]
+    agents: [ai-engineer]
+    scope: |
+      docs/design-v0.2.md §4.11: libs/ai/evals/<task>/golden.jsonl, corredor `nx run ai:eval --task --provider`,
+      métricas schema_validity_rate, field_accuracy, skills_recall/precision, latency_p50, cost_per_run; reporte Markdown en reports/.
+      CI corre con mock/replay. Incluir 5 vacantes anonimizadas de ejemplo (placeholder para reemplazar por reales).
+  - name: auth-users
+    adrs: [012]
+    agents: [backend-dev, frontend-dev]
+    scope: |
+      Registro/login email+password (Argon2id), access token en memoria, refresh en cookie httpOnly SameSite=Lax con rotación
+      y detección de reuso, /auth/refresh, /auth/logout, perfil con aiConsent.externalProviders, outputLanguage, redactName.
+      Frontend: páginas login/registro, interceptor, guard, store de sesión.
+  - name: groups
+    adrs: [002]
+    agents: [backend-dev, frontend-dev]
+    scope: |
+      CRUD de grupo, código de invitación, unirse por código, roles owner/member, salir del grupo. Frontend: lista y detalle de grupo.
+  - name: job-links
+    adrs: [002, 008, 009]
+    agents: [backend-dev, frontend-dev]
+    scope: |
+      JobLink canónico con dedupe platform:externalJobId → urlHash; canonicalizadores para LinkedIn, Computrabajo, Indeed,
+      Trabajopolis, Get on Board; GroupLink; POST /links y POST /links/import (texto plano con varias URLs, ej. chat de WhatsApp);
+      respuesta con alreadyInGroups (B6); outbox_events + relay a BullMQ. Frontend: guardar link, importar texto, lista por grupo y privada.
+  - name: link-enrichment
+    adrs: [003, 010, 014]
+    agents: [backend-dev, ai-engineer, frontend-dev]
+    scope: |
+      Worker: job enrich-link idempotente, ExtractorStrategy chain (OG/JSON-LD → adapter por plataforma → runTask extract-job →
+      headless tras flag), merge por procedencia por campo, cola por dominio con limiter y robots.txt, snapshot en MinIO,
+      previewStatus pending|enriched|partial|failed|manual, SSE link.enriched. Frontend: card con preview, edición manual con origen por campo.
+  - name: applications-tracking
+    adrs: [004, 015]
+    agents: [backend-dev, frontend-dev]
+    scope: |
+      Application (userId, linkId) único, máquina de estados canónica con stageLabel en IN_PROCESS, ApplicationEvent,
+      visibility private por defecto con opt-in group, fitScore? reservado, evento ApplicationStale modelado (sin notificación).
+      Frontend: kanban por estado, timeline, avatares en card de grupo.
+  - name: group-comments
+    adrs: [015]
+    agents: [backend-dev, frontend-dev]
+    scope: |
+      GroupLinkComment plano (texto ≤ 500, autor, fecha), crear y borrar propio. Card muestra últimos 2 y contador.
+  - name: public-preview-share
+    adrs: [013]
+    agents: [backend-dev, frontend-dev]
+    scope: |
+      GET /p/:slug en la API: HTML con OG tags desde el preview y redirect a la SPA para humanos; sharePublic por link.
+      Frontend: vista pública del preview y CTA "Guardar en LinkVault" con ?import=<slug>.
+  - name: cv-upload-extract
+    adrs: [006, 009]
+    agents: [backend-dev, frontend-dev]
+    scope: |
+      POST /cv multipart (PDF/DOCX ≤ 5 MB) a MinIO, cv_documents con versiones e isDefault, worker extract-cv (pdf-parse, mammoth).
+      Frontend: subir, listar, marcar por defecto.
+  - name: cv-match-suggestions
+    adrs: [014]
+    agents: [ai-engineer, backend-dev, frontend-dev]
+    scope: |
+      docs/design-v0.2.md §4.7, §4.8, §4.12: tareas match-cv y critique-suggestions, evaluator-optimizer acotado (máx 2, juez distinto
+      si hay ≥2 proveedores), MatchReport con evidence obligatoria, RuleBasedMatcher degradado, ai_analyses, Application.fitScore,
+      ai_feedback ("no me convence"), SSE analysis.step. Frontend: diff aceptar/rechazar, badge de fit.
+  - name: study-roadmap
+    adrs: [014]
+    agents: [ai-engineer, frontend-dev]
+    scope: |
+      resources.seed.json curado por skill, tarea build-roadmap que prioriza missingSkills y completa con LLM marcando verified=false,
+      roadmaps colección, export a Markdown. Frontend: roadmap por semanas.
+  - name: ai-byok
+    adrs: [014]
+    agents: [ai-engineer, backend-dev, frontend-dev]
+    scope: |
+      Vault libsodium secretbox con AI_VAULT_KEY, claves por vendor (anthropic, openai, openrouter), proveedores byok:<userId>:<vendor>
+      con prioridad 0 en routing, AnthropicProvider y OpenAIProvider, revocación, redactor pino. Frontend: gestión de claves en perfil.
+  - name: deploy-prod
+    adrs: [001, 009]
+    agents: [devops]
+    scope: |
+      docker-compose.prod.yml con Traefik + Let's Encrypt, réplicas del worker, healthchecks, CD a staging en main y prod por tag,
+      infra/README.md con alternativas (VPS, Fly/Railway/Render, k3s+Helm, Cloud Run), observabilidad mínima (/metrics, pino, OTel opcional).

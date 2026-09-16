@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm *)", "Bash(npx *)", "Bash(node *)", "Bash(tsx *)",
+      "Bash(git add *)", "Bash(git commit *)", "Bash(git checkout *)", "Bash(git switch *)", "Bash(git branch *)",
+      "Bash(git push *)", "Bash(git status*)", "Bash(git diff *)", "Bash(git log *)", "Bash(git rev-parse *)",
+      "Bash(gh *)", "Bash(openspec *)", "Bash(docker compose *)", "Bash(docker ps*)", "Bash(curl *)", "Bash(http *)",
+      "Bash(ls *)", "Bash(cat *)", "Bash(mkdir *)", "Bash(sleep *)", "Bash(pkill -f nx*)", "Bash(kill *)",
+      "WebSearch", "WebFetch"
+    ],
+    "deny": ["Bash(rm -rf *)", "Bash(git push --force*)", "Bash(git reset --hard*)", "Read(.env)", "Read(.env.*)"]
+  },
+  "hooks": {
+    "PreToolUse": [
+      { "matcher": "Edit|Write|MultiEdit",
+        "hooks": [{ "type": "command", "command": "bash .claude/hooks/require-openspec-change.sh" }] }
+    ],
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "openspec validate --all 2>&1 | tail -n 10 || true" }] }
+    ]
+  }
+}
