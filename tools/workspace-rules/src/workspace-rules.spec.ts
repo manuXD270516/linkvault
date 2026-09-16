@@ -12,6 +12,7 @@ const RULES_UNDER_TEST = [
   '@nx/enforce-module-boundaries',
   'no-restricted-imports',
   '@typescript-eslint/no-restricted-imports',
+  'no-restricted-syntax',
   '@typescript-eslint/no-explicit-any',
   'no-console',
 ] as const;
@@ -30,6 +31,11 @@ interface RuleRow {
 const BOUNDARIES = '@nx/enforce-module-boundaries';
 const DOMAIN_IMPORTS = 'no-restricted-imports';
 const AI_SDK_IMPORTS = '@typescript-eslint/no-restricted-imports';
+/** `import()` y `require()` de SDKs; en este repo no-restricted-syntax solo se usa para eso. */
+const AI_SDK_SYNTAX = 'no-restricted-syntax';
+const AI_SDK_RULES: readonly RuleUnderTest[] = [AI_SDK_IMPORTS, AI_SDK_SYNTAX];
+/** La spec exige que el error de SDKs nombre la ruta permitida. */
+const AI_PROVIDERS_PATH = 'libs/ai/src/infrastructure/providers';
 
 const rows: readonly RuleRow[] = [
   {
@@ -89,6 +95,38 @@ const rows: readonly RuleRow[] = [
     filePath: 'apps/worker/src/app/probe.ts',
     code: "import OpenAI from 'openai';\n\nexport const probe = OpenAI;\n",
     expectedRuleIds: [AI_SDK_IMPORTS],
+  },
+  {
+    name: 'worker imports the Anthropic SDK',
+    filePath: 'apps/worker/src/app/probe.ts',
+    code: "import Anthropic from '@anthropic-ai/sdk';\n\nexport const probe = Anthropic;\n",
+    expectedRuleIds: [AI_SDK_IMPORTS],
+  },
+  {
+    name: 'worker imports an AI provider SDK dynamically',
+    filePath: 'apps/worker/src/app/probe.ts',
+    code: "export const probe = (): Promise<unknown> => import('openai');\n",
+    expectedRuleIds: [AI_SDK_SYNTAX],
+  },
+  {
+    name: 'worker requires an AI provider SDK',
+    filePath: 'apps/worker/src/app/probe.ts',
+    code: "declare const require: (id: string) => unknown;\n\nexport const probe = require('ollama');\n",
+    expectedRuleIds: [AI_SDK_SYNTAX],
+  },
+  {
+    name: 'libs/ai providers folder imports an AI provider SDK dynamically',
+    filePath: 'libs/ai/src/infrastructure/providers/probe.ts',
+    code: "export const probe = (): Promise<unknown> => import('openai');\n",
+    expectedRuleIds: [],
+    unexpectedRuleIds: [AI_SDK_SYNTAX],
+  },
+  {
+    name: 'libs/ai providers folder requires an AI provider SDK',
+    filePath: 'libs/ai/src/infrastructure/providers/probe.ts',
+    code: "declare const require: (id: string) => unknown;\n\nexport const probe = require('ollama');\n",
+    expectedRuleIds: [],
+    unexpectedRuleIds: [AI_SDK_SYNTAX],
   },
   {
     name: 'libs/ai providers folder imports an AI provider SDK',
@@ -161,6 +199,13 @@ describe('workspace lint rules', () => {
       expect(reported).toEqual([...expectedRuleIds].sort());
       for (const ruleId of unexpectedRuleIds) {
         expect(reported).not.toContain(ruleId);
+      }
+
+      const sdkMessages = messages.filter((message) =>
+        AI_SDK_RULES.some((rule) => rule === message.ruleId),
+      );
+      for (const message of sdkMessages) {
+        expect(message.message).toContain(AI_PROVIDERS_PATH);
       }
     },
     60_000,

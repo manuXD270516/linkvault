@@ -96,6 +96,16 @@ const sourceFiles = [
 ];
 const testFiles = ['**/*.spec.ts', '**/*.test.ts', '**/vitest.config.*'];
 
+/**
+ * Lista cerrada de SDKs de proveedores de IA (spec workspace, ADR-014), definida una sola vez para los imports
+ * estáticos (`@typescript-eslint/no-restricted-imports`) y para `import()` y `require` (`no-restricted-syntax`).
+ * `\x2F` en lugar de `/`: el literal regex de los selectores de esquery termina en la primera barra.
+ */
+const AI_SDK_MODULE_REGEX =
+  '^(?:@anthropic-ai\\x2F.+|@openrouter\\x2F.+|(?:openai|ollama|openrouter)(?:\\x2F.*)?)$';
+const AI_SDK_MESSAGE =
+  'Los SDKs de proveedores de IA solo se importan en libs/ai/src/infrastructure/providers (ADR-014); el resto usa runTask de @linkvault/ai.';
+
 export default [
   ...nx.configs['flat/base'],
   ...nx.configs['flat/typescript'],
@@ -180,12 +190,23 @@ export default [
         {
           patterns: [
             {
-              regex:
-                '^(?:@anthropic-ai/.+|@openrouter/.+|(?:openai|ollama|openrouter)(?:/.*)?)$',
-              message:
-                'Los SDKs de proveedores de IA solo se importan en libs/ai/src/infrastructure/providers (ADR-014); el resto usa runTask de @linkvault/ai.',
+              regex: AI_SDK_MODULE_REGEX,
+              message: AI_SDK_MESSAGE,
             },
           ],
+        },
+      ],
+      // `import('sdk')` y `require('sdk')` no pasan por no-restricted-imports. Ningún otro bloque configura
+      // no-restricted-syntax sobre estos archivos; si se añade uno, ESLint no combinaría las opciones (D3).
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: `ImportExpression[source.value=/${AI_SDK_MODULE_REGEX}/]`,
+          message: AI_SDK_MESSAGE,
+        },
+        {
+          selector: `CallExpression[callee.name='require'][arguments.0.value=/${AI_SDK_MODULE_REGEX}/]`,
+          message: AI_SDK_MESSAGE,
         },
       ],
     },
