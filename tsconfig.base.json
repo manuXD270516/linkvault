@@ -20,7 +20,10 @@
     "noFallthroughCasesInSwitch": true,
     "noPropertyAccessFromIndexSignature": true,
     "forceConsistentCasingInFileNames": true,
-    "paths": {}
+    "paths": {
+      "@linkvault/shared": ["./libs/shared/src/index.ts"],
+      "@linkvault/ai": ["./libs/ai/src/index.ts"]
+    }
   },
   "exclude": ["node_modules", "tmp"]
 }

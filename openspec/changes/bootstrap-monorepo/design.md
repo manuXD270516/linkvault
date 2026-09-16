@@ -90,8 +90,10 @@ fallaría con "file not included in project". Si en el futuro se activan, `tools
 
 ### D5 — Vitest en todos los proyectos, con transformador explícito
 
-- **Nest (`api`, `worker`)**: Vitest con `unplugin-swc` para emitir metadatos de decoradores; sin él la inyección de
-  dependencias de Nest falla en los tests.
+- **Nest (`api`, `worker`)**: Vitest con `unplugin-swc` (`tsconfigFile: false`, `decoratorMetadata: true`) para emitir
+  metadatos de decoradores. Verificado en la implementación: con Vite 8, Oxc también los emite si el tsconfig tiene
+  `emitDecoratorMetadata: true`, así que swc no es imprescindible hoy; se mantiene porque garantiza los metadatos con
+  independencia del tsconfig. El test de inyección falla si ambas vías están desactivadas.
 - **Angular (`web`)**: builder `@angular/build:unit-test` con Vitest, que es el camino soportado por Angular para zoneless.
 - **Librerías y tooling**: Vitest sin transformador adicional.
 

@@ -12,13 +12,13 @@
 
 ## 3. Proyectos y corredor de tests
 
-- [ ] 3.1 [backend] Generar `apps/api` con `@nx/nest`, adaptador Fastify, `--e2eTestRunner=none` y tags `scope:api type:app platform:node`; verificar que `pnpm nx build api` produce el bundle.
-- [ ] 3.2 [backend] Generar `apps/worker` con `@nx/nest`, `--e2eTestRunner=none` y tags `scope:worker type:app platform:node`; verificar que `pnpm nx build worker` produce el bundle.
-- [ ] 3.3 [infra] Configurar Vitest con `unplugin-swc` en `api` y `worker`, con un test que instancie un módulo Nest con un proveedor inyectado (D5); verificar que `pnpm nx run-many -t test -p api,worker` pasa.
-- [ ] 3.4 [frontend] Generar `apps/web` con `@nx/angular` standalone y zoneless, `--e2eTestRunner=none`, builder de tests `@angular/build:unit-test` y tags `scope:web type:app platform:browser` (D5); verificar que `pnpm nx build web` y `pnpm nx test web` pasan y que el bundle no incluye Zone.js.
-- [ ] 3.5 [backend] Generar `libs/shared` con alias `@linkvault/shared`, carpetas `schemas/`, `enums/`, `events/`, Vitest y tags `scope:shared type:lib platform:any`; verificar que `apps/api` importa un enum de prueba por el alias y que `pnpm nx build api` pasa.
-- [ ] 3.6 [ai] Generar `libs/ai` con alias `@linkvault/ai`, el árbol de ADR-014 bajo `src/` (con `.gitkeep` donde no haya archivos), Vitest y tags `scope:ai type:lib platform:node`; verificar que el árbol coincide con el escenario "El árbol de carpetas refleja el ADR-014".
-- [ ] 3.7 [infra] Declarar el target `typecheck` explícito en los cinco proyectos (D1); verificar con `pnpm nx show project <p> --json` que existe en los cinco y que `pnpm nx run-many -t typecheck` pasa.
+- [x] 3.1 [backend] Generar `apps/api` con `@nx/nest`, adaptador Fastify, `--e2eTestRunner=none` y tags `scope:api type:app platform:node`; verificar que `pnpm nx build api` produce el bundle.
+- [x] 3.2 [backend] Generar `apps/worker` con `@nx/nest`, `--e2eTestRunner=none` y tags `scope:worker type:app platform:node`; verificar que `pnpm nx build worker` produce el bundle.
+- [x] 3.3 [infra] Configurar Vitest con `unplugin-swc` en `api` y `worker`, con un test que instancie un módulo Nest con un proveedor inyectado (D5); verificar que `pnpm nx run-many -t test -p api,worker` pasa.
+- [x] 3.4 [frontend] Generar `apps/web` con `@nx/angular` standalone y zoneless, `--e2eTestRunner=none`, builder de tests `@angular/build:unit-test` y tags `scope:web type:app platform:browser` (D5); verificar que `pnpm nx build web` y `pnpm nx test web` pasan y que el bundle no incluye Zone.js.
+- [x] 3.5 [backend] Generar `libs/shared` con alias `@linkvault/shared`, carpetas `schemas/`, `enums/`, `events/`, Vitest y tags `scope:shared type:lib platform:any`; verificar que `apps/api` importa un enum de prueba por el alias y que `pnpm nx build api` pasa.
+- [x] 3.6 [ai] Generar `libs/ai` con alias `@linkvault/ai`, el árbol de ADR-014 bajo `src/` (con `.gitkeep` donde no haya archivos), Vitest y tags `scope:ai type:lib platform:node`; verificar que el árbol coincide con el escenario "El árbol de carpetas refleja el ADR-014".
+- [x] 3.7 [infra] Declarar el target `typecheck` explícito en los cinco proyectos (D1); verificar con `pnpm nx show project <p> --json` que existe en los cinco y que `pnpm nx run-many -t typecheck` pasa.
 
 ## 4. Tooling de tests
 
