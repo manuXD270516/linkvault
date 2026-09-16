@@ -4,6 +4,14 @@
   "projectType": "application",
   "prefix": "lv",
   "sourceRoot": "apps/web/src",
+  "i18n": {
+    "sourceLocale": "es",
+    "locales": {
+      "en": {
+        "translation": "apps/web/src/locale/messages.en.xlf"
+      }
+    }
+  },
   "tags": ["scope:web", "type:app", "platform:browser"],
   "targets": {
     "build": {
@@ -21,7 +29,8 @@
             "input": "apps/web/public"
           }
         ],
-        "styles": ["apps/web/src/styles.scss"]
+        "styles": ["apps/web/src/tailwind.css", "apps/web/src/styles.scss"],
+        "polyfills": ["@angular/localize/init"]
       },
       "configurations": {
         "production": {
@@ -49,6 +58,9 @@
     "serve": {
       "continuous": true,
       "executor": "@angular/build:dev-server",
+      "options": {
+        "proxyConfig": "apps/web/proxy.conf.json"
+      },
       "defaultConfiguration": "development",
       "configurations": {
         "production": {
@@ -57,6 +69,14 @@
         "development": {
           "buildTarget": "web:build:development"
         }
+      }
+    },
+    "extract-i18n": {
+      "executor": "@angular/build:extract-i18n",
+      "options": {
+        "buildTarget": "web:build",
+        "format": "xlf",
+        "outputPath": "apps/web/src/locale"
       }
     },
     "test": {

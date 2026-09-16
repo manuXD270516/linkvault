@@ -1,0 +1,7 @@
+/*
+ * Tailwind 4 va en un CSS propio (no en styles.scss) para que Sass no procese sus directivas.
+ * Tailwind emite todo dentro de capas (@layer theme, base, components, utilities); los estilos de
+ * Angular Material se emiten sin capa, y en la cascada lo que no tiene capa gana a cualquier capa,
+ * así que el preflight (@layer base) no puede pisar a Material. El escaneo de clases se limita a src/.
+ */
+@import 'tailwindcss' source('.');
