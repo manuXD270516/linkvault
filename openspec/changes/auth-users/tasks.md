@@ -29,10 +29,10 @@
 
 ## 5. Módulo auth: casos de uso
 
-- [ ] 5.1 [backend] Use case `register` (política, email único, límite por IP, creación con perfil por defecto, apertura de sesión); verificar con tests unitarios de "Registro correcto", "Email ya registrado", límite de registros por IP y "Fallo al abrir la sesión tras crear el usuario".
-- [ ] 5.2 [backend] Use case `login` (consumo de límites por email e IP antes de verificar, hash ficticio, reinicio del contador del email en éxito); verificar con tests unitarios de "Credenciales inválidas indistinguibles", "Demasiados fallos por email", "Email inexistente también se limita" y "Login correcto reinicia el contador".
-- [ ] 5.3 [backend] Use cases `refresh-session` y `logout`; verificar con tests unitarios de "Rotación correcta", "Reuso revoca la sesión", "Refresh concurrente", "Logout revoca el refresh" y "Logout sin sesión", y que el aviso de reuso contiene `userId` y `sessionId` pero ningún token.
-- [ ] 5.4 [backend] Use case `change-password` (consume el límite del email, verifica la actual, revoca las sesiones distintas de `sid` y después guarda el hash); verificar con tests unitarios de "Cambio correcto revoca las otras sesiones", "Contraseña actual incorrecta", "Fuerza bruta de la contraseña actual" y que un fallo al revocar no cambia el hash.
+- [x] 5.1 [backend] Use case `register` (política, email único, límite por IP, creación con perfil por defecto, apertura de sesión); verificar con tests unitarios de "Registro correcto", "Email ya registrado", límite de registros por IP y "Fallo al abrir la sesión tras crear el usuario".
+- [x] 5.2 [backend] Use case `login` (consumo de límites por email e IP antes de verificar, hash ficticio, reinicio del contador del email en éxito); verificar con tests unitarios de "Credenciales inválidas indistinguibles", "Demasiados fallos por email", "Email inexistente también se limita" y "Login correcto reinicia el contador".
+- [x] 5.3 [backend] Use cases `refresh-session` y `logout`; verificar con tests unitarios de "Rotación correcta", "Reuso revoca la sesión", "Refresh concurrente", "Logout revoca el refresh" y "Logout sin sesión", y que el aviso de reuso contiene `userId` y `sessionId` pero ningún token.
+- [x] 5.4 [backend] Use case `change-password` (consume el límite del email, verifica la actual, revoca las sesiones distintas de `sid` y después guarda el hash); verificar con tests unitarios de "Cambio correcto revoca las otras sesiones", "Contraseña actual incorrecta", "Fuerza bruta de la contraseña actual" y que un fallo al revocar no cambia el hash.
 
 ## 6. Presentación de api
 
