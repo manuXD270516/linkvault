@@ -5,8 +5,10 @@ import type { WorkerConfig } from '../config/worker-config.schema';
 
 /**
  * Conexión raíz de BullMQ (D8), separada del cliente de salud. `maxRetriesPerRequest: null` es obligatorio
- * para los `Worker` de BullMQ. Sin colas ni `Worker` registrados: el primer job llega con `job-links`, y
- * hasta entonces no se abre ninguna conexión a Redis por esta vía.
+ * para los `Worker` de BullMQ. Sigue sin colas ni `Worker` registrados, y por eso no abre ninguna conexión a Redis por
+ * esta vía: `job-links` ya publica jobs en `enrich-link`, pero desde el relay del outbox de `api` y a propósito sin
+ * consumidor (D7 de job-links). Los jobs esperan en la cola —y sus links, en `pending`— hasta que `link-enrichment`
+ * registre aquí el primer `Worker`; un consumidor provisional los descartaría, que es lo que el outbox evita.
  */
 @Module({
   imports: [

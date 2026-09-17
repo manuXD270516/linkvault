@@ -45,6 +45,17 @@ export const apiConfigSchema = z
     AUTH_ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().min(60).max(3600),
     AUTH_REFRESH_TTL_DAYS: z.coerce.number().int().min(1).max(90),
     AUTH_REFRESH_MAX_DAYS: z.coerce.number().int().min(1).max(365),
+    // Relay del outbox (D6 de job-links, ADR-009). Apagado, `api` no registra la cola ni abre conexión a Redis por
+    // BullMQ: los eventos esperan en `outbox_events`. El intervalo va en milisegundos; por debajo de 100 ms el relay
+    // competiría consigo mismo y por encima de 5 min el enriquecimiento tardaría más que el corte que lo provocó.
+    OUTBOX_RELAY_ENABLED: z
+      .enum(['true', 'false'])
+      .transform((value) => value === 'true'),
+    OUTBOX_RELAY_INTERVAL_MS: z.coerce
+      .number()
+      .int()
+      .min(100)
+      .max(300_000),
   })
   // Cada issue lleva `path` con la variable: `parseEnv` descarta los issues que no nombran ninguna.
   .superRefine((config, ctx) => {

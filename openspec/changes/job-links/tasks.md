@@ -2,8 +2,8 @@
 
 - [x] 1.1 [backend] `libs/shared/src/schemas/link.schema.ts` con los schemas y tipos de D8 (incluidos `shared`, `displayUrl`, `listLinksQuerySchema` y `linkPageSchema` con `total`), los códigos `invalid_url`, `text_too_long` y `link_not_found` en `apiErrorCodeSchema` y sus entradas en `API_ERROR_STATUS`/`API_ERROR_MESSAGES`; verificar con tests de los schemas, incluido que los límites de negocio (2048 de URL y 20 000 de texto) **no** los rechaza zod —solo sus cotas de cordura— para que los códigos propios sean alcanzables, y `pnpm nx run-many -t typecheck -p shared api` en verde.
 - [x] 1.2 [backend] `libs/shared/src/events/link-created.event.ts` con el contrato versionado del evento y su schema; verificar con un test que valida un evento completo y rechaza uno sin `linkId`.
-- [ ] 1.3 [infra] Añadir `@nestjs/schedule` como dependencia y las variables `OUTBOX_RELAY_ENABLED` y `OUTBOX_RELAY_INTERVAL_MS` a `api-config.schema.ts`, `.env.example` (`true`/`1000`) y `apiTestConfig` (`false`); verificar con los tests de configuración de api y el que valida `.env.example`.
-- [ ] 1.4 [infra] Módulo del relay que registra `ScheduleModule.forRoot()` y `BullModule.registerQueue` (con listener de `error` en la cola) y que `AppModule` solo importa cuando `OUTBOX_RELAY_ENABLED`; verificar que con el relay apagado `api` no crea ninguna `Queue` (`app.get(Queue, { optional: true })` es `undefined`) ni abre conexiones a Redis, y que la suite de integración de `api` sigue en verde sin ruido de reintentos.
+- [x] 1.3 [infra] Añadir `@nestjs/schedule` como dependencia y las variables `OUTBOX_RELAY_ENABLED` y `OUTBOX_RELAY_INTERVAL_MS` a `api-config.schema.ts`, `.env.example` (`true`/`1000`) y `apiTestConfig` (`false`); verificar con los tests de configuración de api y el que valida `.env.example`.
+- [x] 1.4 [infra] Módulo del relay que registra `ScheduleModule.forRoot()` y `BullModule.registerQueue` (con listener de `error` en la cola) y que `AppModule` solo importa cuando `OUTBOX_RELAY_ENABLED`; verificar que con el relay apagado `api` no crea ninguna `Queue` (`app.get(Queue, { optional: true })` es `undefined`) ni abre conexiones a Redis, y que la suite de integración de `api` sigue en verde sin ruido de reintentos.
 - [ ] 1.5 [infra] Escribir `docs/adr/ADR-021.md` con las decisiones no triviales de este change: `dedupeKey` unificada como concreción de ADR-008 (en vez de índices parciales), relay del outbox dentro de `api` con backoff y agotamiento por tiempo, colección `user_links`, y cascada del borrado de grupo mediante `GroupDeletionHooks`; verificar que `openspec validate --all` pasa y que el proposal lo referencia.
 
 ## 2. Dominio de links
@@ -27,10 +27,10 @@
 
 ## 4. Outbox
 
-- [ ] 4.1 [backend] `infrastructure/outbox/`: schema `outbox_events`, puerto `OUTBOX_CLOCK`, índice parcial `(publishedAt, nextAttemptAt, createdAt)` y `MongoOutbox.append(event, session)` escribiendo explícitamente `publishedAt: null`, `failedAt: null`, `attempts: 0` y `nextAttemptAt: now`; verificar con "Alta con evento" y "Fallo al escribir el evento" en tests de integración con transacción real.
-- [ ] 4.2 [backend] `OutboxRelay` (intervalo configurable, apagable, publicación con `jobId` determinista, marcado tras publicar, retención de la cola de D6); verificar con "Publicación correcta", "Entrega idempotente" y "Cola caída al guardar".
-- [ ] 4.3 [backend] Backoff exponencial con `nextAttemptAt` y agotamiento a las 24 h; verificar con "Reintento tras un fallo de la cola", "Corte largo de la cola" y "Evento agotado" (con reloj movible, sin esperas reales).
-- [ ] 4.4 [backend] Verificar "Cola sin consumidor" de forma estructural: `apps/worker` no registra ningún `Worker` para `enrich-link` (test de arranque o de DI), el link sigue `pending` tras publicarse su evento, y actualizar el comentario de `BullmqConnectionModule`, que hoy dice que el primer job llega con este change.
+- [x] 4.1 [backend] `infrastructure/outbox/`: schema `outbox_events`, puerto `OUTBOX_CLOCK`, índice parcial `(publishedAt, nextAttemptAt, createdAt)` y `MongoOutbox.append(event, session)` escribiendo explícitamente `publishedAt: null`, `failedAt: null`, `attempts: 0` y `nextAttemptAt: now`; verificar con "Alta con evento" y "Fallo al escribir el evento" en tests de integración con transacción real.
+- [x] 4.2 [backend] `OutboxRelay` (intervalo configurable, apagable, publicación con `jobId` determinista, marcado tras publicar, retención de la cola de D6); verificar con "Publicación correcta", "Entrega idempotente" y "Cola caída al guardar".
+- [x] 4.3 [backend] Backoff exponencial con `nextAttemptAt` y agotamiento a las 24 h; verificar con "Reintento tras un fallo de la cola", "Corte largo de la cola" y "Evento agotado" (con reloj movible, sin esperas reales).
+- [x] 4.4 [backend] Verificar "Cola sin consumidor" de forma estructural: `apps/worker` no registra ningún `Worker` para `enrich-link` (test de arranque o de DI), el link sigue `pending` tras publicarse su evento, y actualizar el comentario de `BullmqConnectionModule`, que hoy dice que el primer job llega con este change.
 
 ## 5. Casos de uso y API
 
