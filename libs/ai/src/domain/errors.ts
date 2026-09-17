@@ -9,7 +9,9 @@ export class SchemaViolation extends Error {
     readonly providerId: string,
     readonly issues: readonly string[],
   ) {
-    super(`Output of task "${taskName}" from provider "${providerId}" violates its schema`);
+    super(
+      `Output of task "${taskName}" from provider "${providerId}" violates its schema`,
+    );
   }
 }
 
@@ -40,5 +42,26 @@ export class FixtureMissing extends Error {
 
   constructor(readonly key: string) {
     super(`No replay fixture for key "${key}"`);
+  }
+}
+
+/** Modo `synth` del mock para una tarea que no declara `sample` (ADR-018 §4). */
+export class SynthUnsupported extends Error {
+  override readonly name = 'SynthUnsupported';
+
+  constructor(readonly taskName: string) {
+    super(`Task "${taskName}" declares no sample for synth mode`);
+  }
+}
+
+/** `degrade(input)` devolvió una salida que no cumple el `outputSchema`: error de programación (ADR-018 §1). */
+export class InvalidDegradeOutput extends Error {
+  override readonly name = 'InvalidDegradeOutput';
+
+  constructor(
+    readonly taskName: string,
+    readonly issues: readonly string[],
+  ) {
+    super(`Degrade output of task "${taskName}" violates its output schema`);
   }
 }

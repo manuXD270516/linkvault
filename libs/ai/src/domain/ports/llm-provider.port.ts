@@ -12,6 +12,17 @@ export interface ProviderCapabilities {
   costPer1kOut: number;
 }
 
+/**
+ * Identidad de la ejecución (D4 de ai-gateway-core, ADR-018 §3). La usa el mock para localizar fixtures; los
+ * proveedores reales la ignoran. Viaja fuera del texto del prompt.
+ */
+export interface CompletionTrace {
+  taskName: string;
+  promptVersion: string;
+  /** sha256(canonicalJSON([taskName, promptVersion, outputLanguage, parsedInput])) */
+  key: string;
+}
+
 export interface CompletionRequest {
   system: string;
   user: string;
@@ -19,6 +30,7 @@ export interface CompletionRequest {
   maxTokens?: number;
   responseFormat?: 'text' | 'json';
   signal?: AbortSignal;
+  trace?: CompletionTrace;
 }
 
 export interface CompletionResult {
