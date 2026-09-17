@@ -157,6 +157,18 @@ const rows: readonly RuleRow[] = [
     expectedRuleIds: [DOMAIN_IMPORTS],
   },
   {
+    name: 'a domain folder of api imports @nestjs/common (El dominio importa el framework)',
+    filePath: 'apps/api/src/modules/probe/domain/probe.ts',
+    code: "import { Injectable } from '@nestjs/common';\n\nexport const probe = Injectable;\n",
+    expectedRuleIds: [DOMAIN_IMPORTS],
+  },
+  {
+    name: 'a domain folder of api imports bullmq (El dominio importa el framework)',
+    filePath: 'apps/api/src/modules/probe/domain/probe.ts',
+    code: "import { Queue } from 'bullmq';\n\nexport const probe = Queue;\n",
+    expectedRuleIds: [DOMAIN_IMPORTS],
+  },
+  {
     name: 'libs/ai domain imports the application layer',
     filePath: 'libs/ai/src/domain/x.ts',
     code: "import { RunTaskUseCase } from '../application/run-task.usecase';\n\nexport const probe = RunTaskUseCase;\n",
