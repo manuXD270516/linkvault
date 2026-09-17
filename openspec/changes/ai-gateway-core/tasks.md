@@ -1,23 +1,23 @@
 ## 1. Base de tests y contratos de dominio
 
-- [ ] 1.1 [infra] Hacer que `libs/ai/vitest.config.mts` extienda `@linkvault/testing/preset` y añada `unplugin-swc` como el worker (D14); verificar con una sonda de inyección por constructor en `libs/ai` y con una transacción contra el Mongo en memoria, y que `pnpm nx test ai` sigue pasando.
-- [ ] 1.2 [ai] Crear `domain/run-context.ts` y `domain/ai-result.ts` según D2, y añadir `trace?` a `CompletionRequest`; verificar con `pnpm nx typecheck ai` y un test de tipos que un `degraded` sin `output` compila y un `RunContext` sin `aiConsent` no.
-- [ ] 1.3 [ai] Ampliar `AiTask` con `dataSensitivity?`, `degrade?` y `sample?`, añadir `SynthUnsupported` e `InvalidDegradeOutput` a `domain/errors.ts`, y crear los puertos `prompt-registry`, `usage-ledger`, `result-cache`, `quota-policy`, `circuit-breaker`, `clock` y `ai-logger` (D1, D2); verificar que `pnpm nx typecheck ai` y `pnpm nx lint ai` pasan.
-- [ ] 1.4 [ai] Implementar `domain/routing-policy.ts` puro con `satisfies`, consentimiento solo para tareas `personal`, exclusión de circuitos abiertos y orden de ADR-018 §8; verificar con tests de "Capacidad insuficiente", "Sin consentimiento en una tarea personal", "Tarea pública sin consentimiento", "Proveedor gratuito antes que uno de pago" y "Local antes que remoto a igual coste".
-- [ ] 1.5 [infra] Ampliar el bloque de lint de dominio con patrones anclados por segmento hacia `application`, `infrastructure`, `presentation`, `tasks` y `ai.module` (D1), y añadir al test tabular de `tools/workspace-rules` una fila positiva (`../application/x` falla) y una negativa (`./application.entity` pasa); verificar que la positiva falla si se quita el patrón y que `pnpm nx run-many -t lint` pasa.
+- [x] 1.1 [infra] Hacer que `libs/ai/vitest.config.mts` extienda `@linkvault/testing/preset` y añada `unplugin-swc` como el worker (D14); verificar con una sonda de inyección por constructor en `libs/ai` y con una transacción contra el Mongo en memoria, y que `pnpm nx test ai` sigue pasando.
+- [x] 1.2 [ai] Crear `domain/run-context.ts` y `domain/ai-result.ts` según D2, y añadir `trace?` a `CompletionRequest`; verificar con `pnpm nx typecheck ai` y un test de tipos que un `degraded` sin `output` compila y un `RunContext` sin `aiConsent` no.
+- [x] 1.3 [ai] Ampliar `AiTask` con `dataSensitivity?`, `degrade?` y `sample?`, añadir `SynthUnsupported` e `InvalidDegradeOutput` a `domain/errors.ts`, y crear los puertos `prompt-registry`, `usage-ledger`, `result-cache`, `quota-policy`, `circuit-breaker`, `clock` y `ai-logger` (D1, D2); verificar que `pnpm nx typecheck ai` y `pnpm nx lint ai` pasan.
+- [x] 1.4 [ai] Implementar `domain/routing-policy.ts` puro con `satisfies`, consentimiento solo para tareas `personal`, exclusión de circuitos abiertos y orden de ADR-018 §8; verificar con tests de "Capacidad insuficiente", "Sin consentimiento en una tarea personal", "Tarea pública sin consentimiento", "Proveedor gratuito antes que uno de pago" y "Local antes que remoto a igual coste".
+- [x] 1.5 [infra] Ampliar el bloque de lint de dominio con patrones anclados por segmento hacia `application`, `infrastructure`, `presentation`, `tasks` y `ai.module` (D1), y añadir al test tabular de `tools/workspace-rules` una fila positiva (`../application/x` falla) y una negativa (`./application.entity` pasa); verificar que la positiva falla si se quita el patrón y que `pnpm nx run-many -t lint` pasa.
 
 ## 2. Utilidades de aplicación
 
-- [ ] 2.1 [ai] Implementar `application/canonical-json.ts` y `application/execution-key.ts` según D4; verificar con tests de reordenación anidada, `undefined` omitido, `-0`, orden de arrays conservado y el escenario "Vector de referencia" con un valor fijo.
-- [ ] 2.2 [ai] Implementar `application/json-extraction.ts` (D3); verificar con tests para JSON limpio, JSON en bloque de código con texto alrededor, llaves dentro de strings con escapes y texto sin JSON.
-- [ ] 2.3 [ai] Implementar `application/task-registry.ts` con rechazo de duplicados y de `maxAttempts` fuera de {1, 2}; verificar con tests de registro, búsqueda, duplicado y "Presupuesto de intentos inválido".
+- [x] 2.1 [ai] Implementar `application/canonical-json.ts` y `application/execution-key.ts` según D4; verificar con tests de reordenación anidada, `undefined` omitido, `-0`, orden de arrays conservado y el escenario "Vector de referencia" con un valor fijo.
+- [x] 2.2 [ai] Implementar `application/json-extraction.ts` (D3); verificar con tests para JSON limpio, JSON en bloque de código con texto alrededor, llaves dentro de strings con escapes y texto sin JSON.
+- [x] 2.3 [ai] Implementar `application/task-registry.ts` con rechazo de duplicados y de `maxAttempts` fuera de {1, 2}; verificar con tests de registro, búsqueda, duplicado y "Presupuesto de intentos inválido".
 
 ## 3. Redacción de datos personales
 
-- [ ] 3.1 [ai] Implementar en `application/pii-redactor.ts` los detectores de email y URL con marcadores estables (D11); verificar con tests de "Valor repetido" y de URLs con y sin esquema.
-- [ ] 3.2 [ai] Añadir el detector de móvil boliviano y de números con prefijo `+`; verificar con una tabla de positivos (`+591 71234567`, `71234567`, `+54 9 11 1234-5678`) y negativos.
-- [ ] 3.3 [ai] Añadir el detector de números locales LatAm con separadores y las exclusiones de fechas, años, rangos de años, rangos mes.año y montos (D11); verificar con "Números que no son teléfonos" y una tabla de positivos (`11 1234-5678`, `55 1234 5678`, `9 1234 5678`) y negativos (`2019 – 2023`, `03.2020 - 06.2022`).
-- [ ] 3.4 [ai] Añadir la redacción opcional del nombre y la reinyección recursiva en la salida; verificar con "Redacción de nombre activada", "Marcador en la salida" y que el mapa no queda accesible tras la ejecución.
+- [x] 3.1 [ai] Implementar en `application/pii-redactor.ts` los detectores de email y URL con marcadores estables (D11); verificar con tests de "Valor repetido" y de URLs con y sin esquema.
+- [x] 3.2 [ai] Añadir el detector de móvil boliviano y de números con prefijo `+`; verificar con una tabla de positivos (`+591 71234567`, `71234567`, `+54 9 11 1234-5678`) y negativos.
+- [x] 3.3 [ai] Añadir el detector de números locales LatAm con separadores y las exclusiones de fechas, años, rangos de años, rangos mes.año y montos (D11); verificar con "Números que no son teléfonos" y una tabla de positivos (`11 1234-5678`, `55 1234 5678`, `9 1234 5678`) y negativos (`2019 – 2023`, `03.2020 - 06.2022`).
+- [x] 3.4 [ai] Añadir la redacción opcional del nombre y la reinyección recursiva en la salida; verificar con "Redacción de nombre activada", "Marcador en la salida" y que el mapa no queda accesible tras la ejecución.
 
 ## 4. Prompts y tarea de ejemplo
 
@@ -55,7 +55,7 @@
 
 ## 9. Persistencia
 
-- [ ] 9.1 [infra] Ampliar el doble RESP de `tools/testing` con `GET`, `SET` (`EX`/`PX`) y `DEL` sobre un mapa con expiración; verificar con tests de ioredis para set/get, expiración y borrado sin romper los tests de salud.
+- [x] 9.1 [infra] Ampliar el doble RESP de `tools/testing` con `GET`, `SET` (`EX`/`PX`) y `DEL` sobre un mapa con expiración; verificar con tests de ioredis para set/get, expiración y borrado sin romper los tests de salud.
 - [ ] 9.2 [ai] Implementar `infrastructure/persistence/redis-result-cache.ts` y su cliente con el patrón del cliente de salud (D8); verificar contra el doble RESP "Caché compartida entre procesos", expiración, y que con el doble en `stop` una lectura y una escritura no lanzan.
 - [ ] 9.3 [ai] Implementar `infrastructure/persistence/mongo-usage-ledger.ts` con el schema de D9, `bufferCommands: false` e índice; verificar con `MongoMemoryReplSet` la escritura de cada `outcome` con sus campos nulos y a 0, y "Input con datos personales".
 - [ ] 9.4 [ai] Implementar `infrastructure/quota/config-quota-policy.ts` con `countDocuments` en 24 h, `maxTimeMS` y carrera contra un temporizador de 300 ms (D9); verificar contra Mongo en memoria "Límite alcanzado" y una tarea sin límite, "Conteo no disponible" con un conteo que lanza error, y con un conteo que nunca resuelve que `allows` devuelve `true` en menos de 1 s.
