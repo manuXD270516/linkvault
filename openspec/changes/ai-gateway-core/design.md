@@ -100,8 +100,10 @@ política, no de capacidad). Se propagan como excepción solo: input inválido (
 parseado por zod. `canonicalJSON`: claves de objeto ordenadas por código de unidad, `undefined` omitido en objetos, `-0`
 serializado como `0`, arrays en su orden, sin espacios. Un vector de referencia fijo en el test protege la compatibilidad de
 fixtures. La misma clave identifica la caché, el mock y el `inputHash` del ledger. Viaja en
-`CompletionRequest.trace = { taskName, promptVersion, key }` (campo opcional nuevo del contrato), que los proveedores reales
-ignoran. Se calcula antes de la redacción.
+`CompletionRequest.trace = { taskName, promptVersion, key, input? }` (campo opcional nuevo del contrato), que los
+proveedores reales ignoran. Se calcula antes de la redacción. `trace.input` (input parseado, sin redactar) lo necesita el mock
+en modo synth y `runTask` solo lo rellena cuando el proveedor es `mock`: ninguna petición a un proveedor real lo contiene.
+Los errores de programación del mock (`MockMisuse`, `InvalidFixture`) se propagan como `FixtureMissing`.
 
 ### D5 — Mock: replay y synth
 
@@ -148,7 +150,8 @@ publica tipos).
 Clave `ai:cache:v1:<key>`, valor `{ output, providerId, model, promptVersion }`, TTL `AI_CACHE_TTL_SECONDS` (por defecto
 604 800). Si la configuración de `AI_CHAIN` incluye `mock`, `runTask` recibe un caché nulo y no lo lee ni escribe.
 `libs/ai` crea su propio cliente ioredis desde `REDIS_URL` con el patrón del cliente de salud del worker: `lazyConnect`,
-`enableOfflineQueue: false`, `maxRetriesPerRequest: 1`, `enableReadyCheck: false`, `connect()` sin esperar en
+`enableOfflineQueue: false`, `maxRetriesPerRequest: 1`, `enableReadyCheck: false`, `commandTimeout: 500` (un Redis que
+acepta la conexión y no responde no puede colgar `runTask`), `connect()` sin esperar en
 `onModuleInit`, un único aviso por racha de fallos en el listener `error`, `disconnect()` al apagar. Cualquier error de
 lectura o escritura cuenta como fallo de caché. El doble RESP de `tools/testing` añade `GET`, `SET` (`EX`, `PX`) y `DEL`.
 

@@ -46,3 +46,25 @@ export {
   SchemaViolation,
   SynthUnsupported,
 } from './domain/errors';
+export {
+  AiModule,
+  type AiModuleAsyncOptions,
+  type AiModuleOptions,
+} from './ai.module';
+export { RUN_TASK } from './ai.tokens';
+export type { RunTaskFn } from './application/run-task.usecase';
+export {
+  classifySkillsTask,
+  type ClassifySkillsInput,
+  type ClassifySkillsOutput,
+} from './tasks/classify-skills.task';
+export {
+  formatAiConfigProblems,
+  parseAiConfig,
+  type AiEnv,
+} from './infrastructure/config/parse-ai-config';
+export type {
+  AiConfig,
+  AiConfigProblem,
+  AiConfigResult,
+} from './infrastructure/config/ai-config.schema';

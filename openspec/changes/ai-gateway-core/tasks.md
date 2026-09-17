@@ -38,20 +38,20 @@
 ## 6. Resiliencia
 
 - [x] 6.1 [ai] Implementar `infrastructure/resilience/in-memory-circuit-breaker.ts` con `openIds`, `tryAcquire`, `recordSuccess` y `recordFailure` y `Clock` inyectable (D10); verificar con "Apertura tras fallos repetidos", "Recuperación en half-open", fallo en half-open que reabre y "Permiso de prueba no usado".
-- [ ] 6.2 [ai] Conectar el breaker a `runTask` (`openIds` a la política, `tryAcquire` antes de completar, `schema_error` como disponibilidad); verificar con un test de integración con proveedores falsos que un proveedor con 5 errores queda fuera de la siguiente ejecución.
-- [ ] 6.3 [ai] Implementar la carrera de `complete()` contra la señal combinada del timeout del proveedor y `ctx.signal` filtrando ausentes, pasándola en `req.signal` (D10); verificar con timeouts de decenas de ms y temporizadores reales "Proveedor que no responde", una ejecución sin `ctx.signal`, que `req.signal` llega abortado al proveedor, y "Cancelación del llamador" sin `provider_error` ni fallo en el breaker.
+- [x] 6.2 [ai] Conectar el breaker a `runTask` (`openIds` a la política, `tryAcquire` antes de completar, `schema_error` como disponibilidad); verificar con un test de integración con proveedores falsos que un proveedor con 5 errores queda fuera de la siguiente ejecución.
+- [x] 6.3 [ai] Implementar la carrera de `complete()` contra la señal combinada del timeout del proveedor y `ctx.signal` filtrando ausentes, pasándola en `req.signal` (D10); verificar con timeouts de decenas de ms y temporizadores reales "Proveedor que no responde", una ejecución sin `ctx.signal`, que `req.signal` llega abortado al proveedor, y "Cancelación del llamador" sin `provider_error` ni fallo en el breaker.
 
 ## 7. Mock determinista
 
 - [x] 7.1 [ai] Implementar `infrastructure/providers/mock-deterministic.provider.ts` en modo replay con `AI_FIXTURES_DIR` y la clave de `trace` (D5); verificar con "Fixture existente", "Fixture ausente en CI", "Mismo input con claves en otro orden" y "Cambio en el texto de la plantilla".
-- [ ] 7.2 [ai] Añadir el modo synth con `TaskRegistry`, `task.sample` y PRNG mulberry32 sembrado con la clave, prefiriendo fixture si existe (D5); verificar de punta a punta con `runTask` "Mismo input dos veces en modo synth", "Salida sintetizada válida y creíble" y "Tarea sin muestra".
-- [ ] 7.3 [ai] Escribir a mano los fixtures de replay de `classify-skills` para los inputs de test con `"source": "handwritten"` (D13); verificar que `pnpm nx test ai` pasa con `AI_MOCK_MODE=replay` y sin red.
+- [x] 7.2 [ai] Añadir el modo synth con `TaskRegistry`, `task.sample` y PRNG mulberry32 sembrado con la clave, prefiriendo fixture si existe (D5); verificar de punta a punta con `runTask` "Mismo input dos veces en modo synth", "Salida sintetizada válida y creíble" y "Tarea sin muestra".
+- [x] 7.3 [ai] Escribir a mano los fixtures de replay de `classify-skills` para los inputs de test con `"source": "handwritten"` (D13); verificar que `pnpm nx test ai` pasa con `AI_MOCK_MODE=replay` y sin red.
 
 ## 8. Proveedores reales
 
 - [x] 8.1 [ai] Implementar `infrastructure/providers/ollama.provider.ts` con `num_ctx`, `num_predict`, uso de tokens, latencia y `healthy()` (D6); verificar contra un servidor `node:http` local "Completado contra Ollama" (incluido `num_ctx` en el cuerpo) y "Ollama no disponible".
 - [x] 8.2 [ai] Implementar `infrastructure/providers/openrouter.provider.ts` con URL base configurable, `response_format`, `data_collection: "deny"` y errores sin cuerpo ni credencial (D6); verificar contra un servidor `node:http` local "Completado contra OpenRouter" y "Error de la API".
-- [ ] 8.3 [ai] Implementar `infrastructure/providers/provider-registry.ts` que construye los proveedores de una configuración ya validada, incluida la cadena vacía de `none`; verificar con tests de construcción por cada combinación de `AI_CHAIN` y "Sin IA configurada" ejecutando `runTask`.
+- [x] 8.3 [ai] Implementar `infrastructure/providers/provider-registry.ts` que construye los proveedores de una configuración ya validada, incluida la cadena vacía de `none`; verificar con tests de construcción por cada combinación de `AI_CHAIN` y "Sin IA configurada" ejecutando `runTask`.
 
 ## 9. Persistencia
 
@@ -59,24 +59,24 @@
 - [x] 9.2 [ai] Implementar `infrastructure/persistence/redis-result-cache.ts` y su cliente con el patrón del cliente de salud (D8); verificar contra el doble RESP "Caché compartida entre procesos", expiración, y que con el doble en `stop` una lectura y una escritura no lanzan.
 - [x] 9.3 [ai] Implementar `infrastructure/persistence/mongo-usage-ledger.ts` con el schema de D9, `bufferCommands: false` e índice; verificar con `MongoMemoryReplSet` la escritura de cada `outcome` con sus campos nulos y a 0, y "Input con datos personales".
 - [x] 9.4 [ai] Implementar `infrastructure/quota/config-quota-policy.ts` con `countDocuments` en 24 h, `maxTimeMS` y carrera contra un temporizador de 300 ms (D9); verificar contra Mongo en memoria "Límite alcanzado" y una tarea sin límite, "Conteo no disponible" con un conteo que lanza error, y con un conteo que nunca resuelve que `allows` devuelve `true` en menos de 1 s.
-- [ ] 9.5 [ai] Verificar "Ledger no disponible": un test de `runTask` con proveedor falso de latencia 0 y el ledger de Mongo sobre una conexión sin servidor que comprueba que el resultado llega en menos de 1 s.
+- [x] 9.5 [ai] Verificar "Ledger no disponible": un test de `runTask` con proveedor falso de latencia 0 y el ledger de Mongo sobre una conexión sin servidor que comprueba que el resultado llega en menos de 1 s.
 
 ## 10. Configuración y módulo
 
-- [ ] 10.1 [ai] Implementar `infrastructure/config/ai-config.schema.ts` y `parse-ai-config.ts` con problemas `{ variable, problem, detail? }` (D12); verificar con tests de "Proveedor desconocido", "Proveedor externo sin credencial", "Mock en producción", "Arranque en producción con el mock en la cadena", "Producción sin mock con AI_MOCK_MODE heredado", "Modo no soportado", "Modelo de pago configurado", URL base no https y `AI_QUOTAS` mal formado, comprobando que ningún mensaje contiene la credencial.
+- [x] 10.1 [ai] Implementar `infrastructure/config/ai-config.schema.ts` y `parse-ai-config.ts` con problemas `{ variable, problem, detail? }` (D12); verificar con tests de "Proveedor desconocido", "Proveedor externo sin credencial", "Mock en producción", "Arranque en producción con el mock en la cadena", "Producción sin mock con AI_MOCK_MODE heredado", "Modo no soportado", "Modelo de pago configurado", URL base no https y `AI_QUOTAS` mal formado, comprobando que ningún mensaje contiene la credencial.
 - [ ] 10.2 [backend] Aceptar `none` en `AI_CHAIN` y dejar de exigir `AI_MOCK_MODE` en los schemas de configuración de api y worker, componer `parseAiConfig` en el del worker antes de crear Nest y añadir `detail?` a `env-parser` del worker; verificar con los tests de configuración del worker (proveedor desconocido nombra `AI_CHAIN` y el identificador) y de api (`none` válido).
-- [ ] 10.3 [ai] Implementar `infrastructure/logging/nest-ai-logger.ts` y un `AiLogger` en memoria para tests (D12); verificar con un test que el logger en memoria captura `debug` y `warn`.
-- [ ] 10.4 [ai] Implementar `ai.module.ts` (`AiModule.forRootAsync`) que registra tareas, prompts, proveedores, caché o caché nula, ledger, cuota, breaker y exporta `RUN_TASK` (D12); verificar con un test que compila el módulo con una configuración `mock`/`replay` y resuelve `RUN_TASK`.
-- [ ] 10.5 [ai] Test de integración de `AiModule` con Mongo en memoria y el doble RESP que espera `connection.asPromise()`, ejecuta `classify-skills` en replay y comprueba con `vi.waitFor` el registro `success` en `ai_usage`; verificar que pasa de forma estable en 5 ejecuciones seguidas.
+- [x] 10.3 [ai] Implementar `infrastructure/logging/nest-ai-logger.ts` y un `AiLogger` en memoria para tests (D12); verificar con un test que el logger en memoria captura `debug` y `warn`.
+- [x] 10.4 [ai] Implementar `ai.module.ts` (`AiModule.forRootAsync`) que registra tareas, prompts, proveedores, caché o caché nula, ledger, cuota, breaker y exporta `RUN_TASK` (D12); verificar con un test que compila el módulo con una configuración `mock`/`replay` y resuelve `RUN_TASK`.
+- [x] 10.5 [ai] Test de integración de `AiModule` con Mongo en memoria y el doble RESP que espera `connection.asPromise()`, ejecuta `classify-skills` en replay y comprueba con `vi.waitFor` el registro `success` en `ai_usage`; verificar que pasa de forma estable en 5 ejecuciones seguidas.
 - [ ] 10.6 [backend] Importar `AiModule` en `apps/worker` y añadir `*.headers.authorization` y `*.headers.Authorization` a la redacción del logger; verificar con el test de arranque del worker sin dependencias y un test de log que no contiene la cabecera.
-- [ ] 10.7 [infra] Copiar `libs/ai/src/infrastructure/prompts/**` como assets del build de `worker` y añadir un paso de CI tras `build` que comprueba `dist/apps/worker/assets/ai/prompts/classify-skills.v1.md` (D7); verificar con `pnpm nx build worker` y la comprobación local del paso.
+- [x] 10.7 [infra] Copiar `libs/ai/src/infrastructure/prompts/**` como assets del build de `worker` y añadir un paso de CI tras `build` que comprueba `dist/apps/worker/assets/ai/prompts/classify-skills.v1.md` (D7); verificar con `pnpm nx build worker` y la comprobación local del paso.
 - [ ] 10.8 [infra] Actualizar `.env.example` con las variables de D6–D9 y valores seguros (`OPENROUTER_API_KEY`, `OPENROUTER_MODEL` y `AI_QUOTAS` vacías, `openrouter` fuera de `AI_CHAIN`) y `AI_MOCK_MODE=synth`; verificar que los tests de configuración de api y worker pasan con el `.env.example` actualizado.
 
 ## 11. Protección de datos de punta a punta
 
-- [ ] 11.1 [ai] Test de integración de `runTask` con `classify-skills` contra el servidor local que imita OpenRouter: el cuerpo recibido contiene `[EMAIL_1]` y `[PHONE_1]` y no los valores, y la salida devuelta tiene el email reinyectado; verificar que pasa y falla si se desactiva la redacción.
-- [ ] 11.2 [ai] Test de "Log de una petición a OpenRouter" con el `AiLogger` en memoria en `debug` y una respuesta de error que repite el prompt: ningún log ni mensaje de error contiene la credencial, el prompt ni el cuerpo; verificar que pasa.
-- [ ] 11.3 [ai] Test de "Entrada de caché": tras un `success` con proveedor real falso, la entrada en el doble RESP solo contiene `output`, `providerId`, `model` y `promptVersion`; verificar que pasa.
+- [x] 11.1 [ai] Test de integración de `runTask` con `classify-skills` contra el servidor local que imita OpenRouter: el cuerpo recibido contiene `[EMAIL_1]` y `[PHONE_1]` y no los valores, y la salida devuelta tiene el email reinyectado; verificar que pasa y falla si se desactiva la redacción.
+- [x] 11.2 [ai] Test de "Log de una petición a OpenRouter" con el `AiLogger` en memoria en `debug` y una respuesta de error que repite el prompt: ningún log ni mensaje de error contiene la credencial, el prompt ni el cuerpo; verificar que pasa.
+- [x] 11.3 [ai] Test de "Entrada de caché": tras un `success` con proveedor real falso, la entrada en el doble RESP solo contiene `output`, `providerId`, `model` y `promptVersion`; verificar que pasa.
 
 ## 12. Cierre
 
