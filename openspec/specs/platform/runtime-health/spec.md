@@ -1,0 +1,132 @@
+# platform/runtime-health Specification
+
+## Purpose
+
+Garantiza que `api` y `worker` arranquen de forma predecible, se nieguen a arrancar con una configuración incompleta y
+permitan a un operador, a un orquestador o a las pruebas de humo distinguir "el proceso vive" de "el proceso puede
+atender", sin exponer datos sensibles ni requerir autenticación.
+
+## Requirements
+
+### Requirement: Configuración validada al arrancar
+
+`api` y `worker` SHALL validar su configuración de entorno antes de aceptar tráfico. Si falta una variable obligatoria
+o tiene un formato inválido, el proceso SHALL terminar con código distinto de cero y un mensaje que nombre la variable,
+sin incluir su valor.
+
+#### Scenario: Variable obligatoria ausente
+
+- **GIVEN** la variable de conexión a MongoDB sin definir
+- **WHEN** se arranca `api`
+- **THEN** el proceso SHALL terminar con código distinto de cero
+- **AND** el mensaje SHALL nombrar la variable ausente
+
+#### Scenario: El ejemplo de configuración es suficiente
+
+- **GIVEN** un archivo `.env` copiado sin cambios de `.env.example`
+- **WHEN** se arrancan `api` y `worker`
+- **THEN** ninguno SHALL fallar por validación de configuración
+
+### Requirement: Arranque independiente de las dependencias
+
+`api` y `worker` SHALL arrancar y servir su liveness aunque MongoDB o Redis no estén disponibles en el momento del
+arranque, y SHALL recuperar la conexión cuando la dependencia vuelva sin necesidad de reiniciar el proceso.
+
+#### Scenario: Arranque con dependencias apagadas
+
+- **GIVEN** MongoDB y Redis detenidos
+- **WHEN** se arranca `api`
+- **THEN** el proceso SHALL quedar en ejecución
+- **AND** `GET /health/live` SHALL responder 200
+
+#### Scenario: Dependencia que vuelve
+
+- **GIVEN** `api` arrancada con Redis detenido
+- **WHEN** Redis se levanta
+- **THEN** `GET /health` SHALL pasar a responder 200 sin reiniciar `api`
+
+### Requirement: Liveness
+
+`api` y `worker` SHALL exponer `GET /health/live` sin autenticación y fuera de cualquier prefijo de rutas. SHALL responder
+200 en menos de un segundo mientras el proceso esté vivo, independientemente del estado de sus dependencias, con el
+nombre del servicio y su versión.
+
+#### Scenario: Proceso vivo
+
+- **WHEN** se hace `GET /health/live`
+- **THEN** SHALL responder 200 en menos de un segundo
+- **AND** el cuerpo SHALL incluir el nombre del servicio y su versión
+
+#### Scenario: Sin autenticación
+
+- **GIVEN** una petición sin credenciales
+- **WHEN** hace `GET /health/live` o `GET /health`
+- **THEN** NO SHALL responder 401 ni 403
+
+### Requirement: Readiness sobre las dependencias
+
+`api` y `worker` SHALL exponer `GET /health` sin autenticación y fuera de cualquier prefijo de rutas. SHALL reportar
+MongoDB y Redis de forma individual y responder 200 si ambas están disponibles o 503 si alguna no lo está. Cada
+comprobación SHALL abortar a los 500 ms y la respuesta completa SHALL llegar en 1500 ms como máximo. El cuerpo SHALL
+tener la forma `{ status, service, version, checks: { mongo: { status }, redis: { status } } }`, con `status` igual a
+`up` o `down`.
+
+#### Scenario: Todas las dependencias disponibles
+
+- **GIVEN** MongoDB y Redis accesibles
+- **WHEN** se hace `GET /health`
+- **THEN** SHALL responder 200
+- **AND** `checks.mongo.status` y `checks.redis.status` SHALL valer `up`
+
+#### Scenario: Una dependencia caída
+
+- **GIVEN** Redis inaccesible y MongoDB accesible
+- **WHEN** se hace `GET /health`
+- **THEN** SHALL responder 503
+- **AND** `checks.redis.status` SHALL valer `down` y `checks.mongo.status` SHALL valer `up`
+
+#### Scenario: Dependencia que no responde
+
+- **GIVEN** una dependencia que acepta la conexión pero nunca responde
+- **WHEN** se hace `GET /health`
+- **THEN** SHALL responder 503 en 1500 ms como máximo
+
+### Requirement: Health del worker
+
+`worker` SHALL servir `GET /health/live` y `GET /health` en su propio puerto, distinto del de la API, con el mismo
+contrato y el nombre de servicio `worker`.
+
+#### Scenario: El worker responde en su propio puerto
+
+- **GIVEN** `api` y `worker` en ejecución
+- **WHEN** se hace `GET /health` contra el puerto del worker
+- **THEN** SHALL responder con el mismo contrato que la API
+- **AND** `service` SHALL valer `worker`
+
+### Requirement: La salud no filtra información sensible
+
+Las respuestas de `GET /health` y `GET /health/live` NO SHALL incluir cadenas de conexión, credenciales, nombres de
+usuario, rutas internas ni mensajes o trazas de los drivers.
+
+#### Scenario: URI con credenciales contra una dependencia inalcanzable
+
+- **GIVEN** una URI de MongoDB con usuario y contraseña que apunta a un puerto sin servicio
+- **WHEN** se hace `GET /health`
+- **THEN** `checks.mongo.status` SHALL valer `down`
+- **AND** el cuerpo NO SHALL contener la URI, el usuario, la contraseña ni el mensaje del driver
+
+### Requirement: Logs sin secretos
+
+Los logs de `api` y `worker` SHALL ser estructurados y NO SHALL contener valores de cabeceras `authorization`, `cookie`
+o `set-cookie`, ni de campos `password`, `apiKey`, `accessToken` o `refreshToken` situados en el objeto registrado o
+hasta dos niveles de anidación por debajo de él.
+
+#### Scenario: Petición con cabeceras sensibles
+
+- **WHEN** `api` registra una petición con cabeceras `authorization` y `cookie`
+- **THEN** la línea de log SHALL contener esas claves con el valor redactado
+
+#### Scenario: Objeto anidado con secretos
+
+- **WHEN** se registra un objeto con `refreshToken` en el primer nivel de anidación y `apiKey` en el segundo
+- **THEN** ninguno de los dos valores SHALL aparecer en la salida
