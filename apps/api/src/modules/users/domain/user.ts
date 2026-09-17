@@ -34,10 +34,11 @@ export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
-/** Nombre visible sin espacios exteriores, entre 1 y 60 caracteres. */
+/** Nombre visible sin espacios exteriores, entre 1 y 60 caracteres (code points, el mismo criterio que zod 4). */
 export function normalizeDisplayName(displayName: string): string {
   const trimmed = displayName.trim();
-  if (trimmed.length < 1 || trimmed.length > DISPLAY_NAME_MAX_LENGTH) {
+  const length = [...trimmed].length;
+  if (length < 1 || length > DISPLAY_NAME_MAX_LENGTH) {
     throw new InvalidDisplayName();
   }
   return trimmed;

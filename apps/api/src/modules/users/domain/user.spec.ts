@@ -1,5 +1,6 @@
 import {
   DISPLAY_NAME_MAX_LENGTH as SHARED_DISPLAY_NAME_MAX_LENGTH,
+  displayNameSchema,
   emailSchema,
   outputLanguageSchema,
 } from '@linkvault/shared';
@@ -52,6 +53,24 @@ describe('normalizeDisplayName', () => {
     const name = 'a'.repeat(DISPLAY_NAME_MAX_LENGTH);
 
     expect(normalizeDisplayName(`  ${name}  `)).toBe(name);
+  });
+
+  it.each([
+    '😀'.repeat(DISPLAY_NAME_MAX_LENGTH),
+    '😀'.repeat(DISPLAY_NAME_MAX_LENGTH + 1),
+    'a'.repeat(DISPLAY_NAME_MAX_LENGTH + 1),
+    ' Ana ',
+  ])('agrees with the shared displayName contract for %j', (raw) => {
+    const contract = displayNameSchema.safeParse(raw).success;
+
+    let domain = true;
+    try {
+      normalizeDisplayName(raw);
+    } catch {
+      domain = false;
+    }
+
+    expect(domain).toBe(contract);
   });
 
   it('uses the same limit as the shared contract', () => {
