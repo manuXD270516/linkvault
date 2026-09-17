@@ -12,8 +12,10 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# `actions: read`: nrwl/nx-set-shas consulta las ejecuciones previas en verde de main para fijar NX_BASE en push.
 permissions:
   contents: read
+  actions: read
 
 jobs:
   verify:
