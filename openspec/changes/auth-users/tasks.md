@@ -24,8 +24,8 @@
 - [x] 4.5 [backend] `JoseAccessTokenSigner` (HS256, `sub`, `sid`, `typ`, tolerancia 5 s, algoritmo fijado); verificar con tests de token válido, caducado, firmado con otro secreto, con `alg: none` y con `typ` distinto.
 - [x] 4.6 [backend] `MongoSessionRepository`, parte 1: `auth_sessions` y `refresh_tokens` con índices único y TTL (`Model.init()`), apertura de sesión y revocación por sesión o por usuario salvo una; verificar con tests de integración de apertura, revocación y búsqueda por hash.
 - [x] 4.7 [backend] `MongoSessionRepository`, parte 2: rotación con `withTransaction` que devuelve `rotated`/`conflict`/`reused`/`invalid` (D4); verificar con tests de integración de dos rotaciones concurrentes del mismo token (una gana, la otra `conflict`), de que `reused` deja la sesión revocada y de "Revocación durante un refresh".
-- [ ] 4.8 [backend] `RedisAppModule` (cliente propio con las opciones de D7) y `RedisAttemptLimiter` (`consume` antes de verificar, claves HMAC, `DEL` del email y `DECR` de la IP en éxito); verificar contra el doble de Redis (conteo, ventana, `reset`, `Retry-After`, IP que no acumula éxitos).
-- [ ] 4.9 [backend] Fail-open con aviso por racha, agrupación IPv6 por /64 y limitador en memoria para tests; verificar con el doble caído (permite y un solo aviso sin email en dos peticiones) y con tests de claves IPv6.
+- [x] 4.8 [backend] `RedisAppModule` (cliente propio con las opciones de D7) y `RedisAttemptLimiter` (`consume` antes de verificar, claves HMAC, `DEL` del email y `DECR` de la IP en éxito); verificar contra el doble de Redis (conteo, ventana, `reset`, `Retry-After`, IP que no acumula éxitos).
+- [x] 4.9 [backend] Fail-open con aviso por racha, agrupación IPv6 por /64 y limitador en memoria para tests; verificar con el doble caído (permite y un solo aviso sin email en dos peticiones) y con tests de claves IPv6.
 
 ## 5. Módulo auth: casos de uso
 
