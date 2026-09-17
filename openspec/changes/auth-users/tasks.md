@@ -60,4 +60,4 @@
 ## 8. Cierre
 
 - [x] 8.1 [infra] Actualizar README (flujo de auth y variables `AUTH_*`), `docs/RUNBOOK.md` y `openspec-changes.yaml`: verificación de email y recuperación de contraseña en un change posterior; en `deploy-prod`, `trustProxy`, reseteo manual de contraseña por operador documentado, aviso de privacidad y borrado de cuenta; en `cv-match-suggestions`, controles de consentimiento con texto honesto (qué dato, a quién, qué se redacta, revocable) con `consentedAt` y versión del texto, idioma de salida ("Idioma de los análisis de IA") y redacción del nombre; en `groups`, `/` como lista de grupos con estado vacío. Verificar que las variables de `.env.example` coinciden con `apiConfigSchema`.
-- [ ] 8.2 [infra] Ejecutar `pnpm nx affected -t lint,typecheck,test,build --base=main` con `AI_CHAIN=mock AI_MOCK_MODE=replay` y `pnpm exec openspec validate --all`; verificar que todo pasa en verde.
+- [x] 8.2 [infra] Ejecutar `pnpm nx affected -t lint,typecheck,test,build --base=main` con `AI_CHAIN=mock AI_MOCK_MODE=replay` y `pnpm exec openspec validate --all`; verificar que todo pasa en verde.
