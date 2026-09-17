@@ -88,6 +88,28 @@ Los tests usan un MongoDB efímero en replica set (`mongodb-memory-server`, sin 
 primera ejecución descarga el binario de MongoDB, unos 600 MB en Windows. CI (`.github/workflows/ci.yml`) ejecuta lint →
 validación de OpenSpec → typecheck → test → build sobre los proyectos afectados.
 
+## Evaluación de IA
+
+Los golden sets de las tareas evaluables viven en `libs/ai/src/evals/<task>/` (ADR-019).
+
+```bash
+pnpm nx run ai:eval --task=classify-skills --provider=mock                     # replay de fixtures contra la línea base
+pnpm nx run ai:eval --task=classify-skills --provider=mock --update-baseline   # reescribe baseline.json a propósito
+pnpm nx run ai:eval --task=classify-skills --provider=ollama --ollama-url=http://localhost:11434
+pnpm nx run ai:eval-ci                                                          # todas las tareas en mock (CI)
+pnpm nx run ai:record-fixtures --task=classify-skills --upstream=ollama --ollama-url=http://localhost:11434 --timeout-ms=300000
+```
+
+- `--provider=mock` usa replay y falla (código 1) si una métrica bloqueante, el golden o la versión del prompt difieren de
+  `baseline.json`, tanto si empeora como si mejora. Cambiar prompt, modelo o fixtures del golden exige `--update-baseline` en
+  el mismo commit.
+- Con proveedores reales (`ollama`, u `openrouter` solo con `--allow-external`) mide el modelo sin comparar con la línea base;
+  los casos degradados cuentan en el reporte, que se escribe en `reports/eval/<task>/<proveedor>.md` (ignorado por git).
+- `ai:record-fixtures` graba los fixtures que falten para los casos del golden (con `--overwrite`, también los existentes); un
+  upstream externo exige `--allow-external`. `AI_MOCK_MODE` solo admite `replay` y `synth`.
+- Ollama: con la app de escritorio basta `http://localhost:11434`; si ese puerto está ocupado, levanta el contenedor del perfil
+  `ai-local` con `OLLAMA_PORT=11435` y usa `--ollama-url=http://localhost:11435`.
+
 ## Estructura
 
 | Ruta                    | Qué es                                                                                                       |

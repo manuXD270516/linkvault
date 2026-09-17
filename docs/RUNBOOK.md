@@ -214,7 +214,7 @@ Orden y notas específicas:
 | # | Change | Nota para el prompt de alcance |
 |---|---|---|
 | 2 | `ai-gateway-core` | Pega literal docs/design-v0.2.md §4.1–4.6, 4.9, 4.10 y la spec de §4.13. Pide primero `MockDeterministicProvider` en modo `synth` y `replay`, luego Ollama, luego OpenRouter. Sin proveedores de pago aún. |
-| 3 | `ai-eval-harness` | §4.11. Empieza con 5 vacantes reales anonimizadas en `golden.jsonl`; tú las eliges. |
+| 3 | `ai-eval-harness` | §4.11. Corredor, métricas y línea base con 5 casos sintéticos (`placeholder`) de `classify-skills`; el golden real de `extract-job` (`/lv:golden 20`) llega con `link-enrichment` (ADR-019). |
 | 4 | `auth-users` | ADR-012. Incluir `aiConsent`, `outputLanguage`. |
 | 5 | `groups` | Invitación por código; roles owner/member. |
 | 6 | `job-links` | ADR-008, 009. Canonicalizadores para LinkedIn, Computrabajo, Indeed, Trabajopolis, Get on Board. Import desde texto (B1). "Ya está en Grupo X" (B6). |
@@ -243,8 +243,8 @@ Antes de que arranquen, fija el contrato en libs/shared (schemas zod + endpoints
 - **Retomar:** `claude --continue` reanuda la última sesión; `claude --resume` elige una.
 - **No edites `CLAUDE.md` a mano en caliente:** pídele a Claude Code `# <regla nueva>` (la tecla `#` agrega a CLAUDE.md) para que quede consistente.
 - **Cuando el hook bloquee una edición**, es correcto: crea el change o marca la tarea dentro del change activo.
-- **Fixtures del mock:** cuando un test falle con `FixtureMissing`, corre una vez `AI_MOCK_MODE=record AI_CHAIN=ollama pnpm nx test ai` (o con OpenRouter) para grabarlo, revisa el JSON y commitéalo.
-  > Nota: hoy `AI_MOCK_MODE=record` se rechaza al arrancar; el modo `record` está diferido al change `ai-eval-harness` (ADR-018 §5). Hasta entonces, los fixtures de replay se escriben a mano con `"source": "handwritten"`.
+- **Fixtures del mock:** la grabación es un comando (ADR-019). Para los casos del golden de una tarea evaluable, `pnpm nx run ai:record-fixtures --task=<t> --upstream=ollama --ollama-url=http://localhost:11434 --timeout-ms=300000` graba los que falten (OpenRouter solo con `--upstream=openrouter --allow-external`); revisa el JSON y comprueba replay con `pnpm nx run ai:eval --task=<t> --provider=mock`. Si cambian las métricas, `--update-baseline` en el mismo commit que los fixtures.
+  > Nota: el registro automático de fixtures pendientes desde los tests llega con `link-enrichment`. Hasta entonces, cuando un test falle con `FixtureMissing` de una clave que no sale de un golden, el fixture se escribe a mano con `"source": "handwritten"`. `AI_MOCK_MODE=record` sigue rechazándose al arrancar e indica usar `nx run ai:record-fixtures`.
 
 ## Paso 7 — Definition of Done (pégalo en cada PR)
 
@@ -307,7 +307,7 @@ Qué hace: corre `claude -p "/lv:<etapa>"` en modo `acceptEdits`, guarda cada sa
 ### 9.5 Lo que sigue siendo manual (a propósito)
 - Leer `proposal.md`/`design.md` antes del debate y aprobar tras él.
 - Elegir las 5 vacantes reales del golden set (`ai-eval-harness`).
-- Grabar fixtures del mock con un proveedor real (modo `record`, disponible a partir de `ai-eval-harness`; ADR-018 §5).
+- Grabar fixtures del mock con un proveedor real (`pnpm nx run ai:record-fixtures`, ADR-019) y evaluar con `pnpm nx run ai:eval` (en mock/replay contra la línea base; con `--provider=ollama` para medir un modelo real).
 - `git push` y abrir el PR.
 
 ### 9.6 Notas
@@ -324,8 +324,8 @@ Lo que en el Paso 9 seguía siendo manual ahora tiene comando:
 | Antes manual | Ahora | Marcador de éxito |
 |---|---|---|
 | Leer y aprobar la spec | `/lv:review` — architect + qa-reviewer con checklist de 5 puntos; corrigen forma, reportan fondo | `SPEC: APROBADA` |
-| Elegir vacantes reales del golden set | `/lv:golden 10` — busca en bolsas públicas (WebSearch/WebFetch), anonimiza, valida contra zod, crea 3 CVs sintéticos | `GOLDEN: OK (N)` |
-| Grabar fixtures del mock | `/lv:fixtures` — detecta `FixtureMissing`, graba con Ollama/OpenRouter, valida, vuelve a replay | `FIXTURES: OK (N)` |
+| Elegir vacantes reales del golden set | `/lv:golden 20` — busca en bolsas públicas (WebSearch/WebFetch), anonimiza, valida con el cargador del eval harness, crea 3 CVs sintéticos; exige la tarea registrada como evaluable | `GOLDEN: OK (N)` |
+| Grabar fixtures del mock | `/lv:fixtures` — graba con `nx run ai:record-fixtures` (Ollama/OpenRouter) los casos del golden que faltan, revisa y comprueba replay con `nx run ai:eval` | `FIXTURES: OK (N)` |
 | Prueba manual (`docker compose up`, curl, UI) | `/lv:smoke` — levanta todo, ejecuta los flujos HTTP derivados de la spec, Playwright en la UI, reporte con capturas | `SMOKE: OK` |
 | Rama, push, PR | `/lv:ship` — rama `change/<n>`, push, `gh pr create` con cuerpo desde la spec y DoD marcado | `SHIP: OK <url>` |
 | Encadenar todo lo anterior | `/lv:run <change\|next> [--no-ship]` — las 9 etapas sin preguntar, se detiene en el primer marcador de fallo | `RUN: OK <change>` |
@@ -337,11 +337,11 @@ Tras `make setup` y `claude`:
 /lv:context                      ← 1 vez; confirma que entendió y qué sigue
 /lv:run bootstrap-monorepo
 /lv:run ai-gateway-core
-/lv:run ai-eval-harness          ← incluye /lv:golden 10 automáticamente
+/lv:run ai-eval-harness
 /lv:run auth-users
 /lv:run groups
 /lv:run job-links
-/lv:run link-enrichment
+/lv:run link-enrichment          ← incluye /lv:golden 20 tras registrar extract-job
 /lv:run applications-tracking    ← aquí ya tienes el MVP demostrable
 /lv:run group-comments
 /lv:run public-preview-share

@@ -1,13 +1,27 @@
 ---
-description: Graba automáticamente los fixtures del mock (modo record) para los tests que fallan con FixtureMissing
+description: Graba con un proveedor real los fixtures del mock que faltan para los golden sets de las tareas evaluables
 argument-hint: [proveedor: ollama|openrouter, por defecto ollama]
 ---
-> Nota: hoy `AI_MOCK_MODE=record` se rechaza al arrancar; el modo `record` está diferido al change `ai-eval-harness` (ADR-018 §5). Hasta entonces, los fixtures de replay se escriben a mano con `"source": "handwritten"` y el paso 2 no es ejecutable.
+Proveedor: "$ARGUMENTS" (por defecto ollama en `OLLAMA_URL`; si Ollama no responde en `OLLAMA_URL`, usa openrouter con
+`--allow-external` si hay `OPENROUTER_API_KEY`; si tampoco, detente y dímelo). La grabación es un comando, no un modo del mock
+(ADR-019): `AI_MOCK_MODE` solo admite `replay` y `synth`.
 
-Proveedor: "$ARGUMENTS" (por defecto ollama; si Ollama no responde en OLLAMA_URL, usa openrouter si hay OPENROUTER_API_KEY; si tampoco, detente y dímelo).
-1) Corre `AI_CHAIN=mock AI_MOCK_MODE=replay pnpm nx run-many -t test` y recoge todos los `FixtureMissing(<key>)`.
-2) Si hay alguno: `AI_MOCK_MODE=record AI_CHAIN=<proveedor> pnpm nx run-many -t test` para grabarlos en libs/ai/infrastructure/fixtures/.
-3) Revisa cada fixture nuevo: JSON válido contra el outputSchema de su tarea, sin PII (emails, teléfonos), sin texto truncado.
-   Los inválidos: repite la grabación una vez; si sigue mal, corrígelo a mano manteniendo coherencia con el input.
-4) Vuelve a correr en replay: debe estar todo en verde. Commit `test(ai): fixtures grabados con <proveedor> (N)`.
+> Nota: el registro automático de fixtures pendientes desde los tests llega con `link-enrichment`. Hasta entonces, los fixtures
+> que pidan los tests (`FixtureMissing` de una clave que no sale de ningún golden) se escriben a mano con `"source": "handwritten"`.
+
+1) Tareas: las registradas como evaluables en `libs/ai/src/evals/evaluable-tasks.ts`. Para cada una graba los casos del golden
+   que no tengan fixture (los existentes se omiten sin contactar al proveedor):
+   - Ollama: `pnpm nx run ai:record-fixtures --task=<t> --upstream=ollama --ollama-url=<OLLAMA_URL> --timeout-ms=300000`
+   - OpenRouter (externo; la redacción de datos personales la aplica `runTask`):
+     `pnpm nx run ai:record-fixtures --task=<t> --upstream=openrouter --allow-external --timeout-ms=300000`
+   Código 1 = grabación incompleta (el comando lista los casos no grabados): repite una vez. Código 2 = uso o configuración:
+   detente con el motivo.
+2) Revisa cada fixture nuevo en `<AI_FIXTURES_DIR>/<t>/<clave>.json`: `source` es `recorded:<proveedor>:<modelo>`, `text` valida
+   contra el outputSchema de la tarea, no hay texto truncado y solo contiene valores del input (reinyectados), nunca datos
+   personales inventados (emails, teléfonos, nombres). Si uno no cumple, bórralo y regrábalo una vez; si sigue mal, detente.
+3) Comprueba replay: `pnpm nx run ai:eval --task=<t> --provider=mock` debe terminar con código 0. Si falla porque cambiaron los
+   fixtures del golden (métricas distintas de la línea base), revisa el reporte en `reports/eval/<t>/mock.md` y, si el cambio es
+   el esperado, ejecuta `pnpm nx run ai:eval --task=<t> --provider=mock --update-baseline` para commitear la línea base junto a los
+   fixtures. Después, `AI_CHAIN=mock AI_MOCK_MODE=replay pnpm nx run-many -t test` en verde.
+4) Commit `test(ai): fixtures grabados con <proveedor> (N)` (fixtures y, si cambió, `baseline.json` en el mismo commit).
 Termina con la línea exacta "FIXTURES: OK (N)" o "FIXTURES: FALLO (motivo)".
