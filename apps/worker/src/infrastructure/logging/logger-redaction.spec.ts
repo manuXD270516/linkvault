@@ -21,6 +21,8 @@ const SECRETS = {
   nestedRefreshToken: 'one-level-refresh-token-s3cr3t',
   deepApiKey: 'two-levels-api-key-s3cr3t',
   setCookie: 'refresh=set-cookie-s3cr3t',
+  nestedAuthorization: 'Bearer nested-lowercase-authorization-s3cr3t',
+  nestedCapitalAuthorization: 'Bearer nested-capital-authorization-s3cr3t',
 } as const;
 
 const DEPTHS = ['password', 'apiKey', 'accessToken', 'refreshToken'].flatMap(
@@ -52,6 +54,19 @@ class LogProbeController {
         },
       },
       'nested object',
+    );
+    // Petición saliente a un proveedor de IA (D12 de ai-gateway-core): `headers` anidado en otro objeto.
+    this.logger.info(
+      {
+        request: {
+          url: 'https://openrouter.ai/api/v1/chat/completions',
+          headers: { authorization: SECRETS.nestedAuthorization },
+        },
+        upstream: {
+          headers: { Authorization: SECRETS.nestedCapitalAuthorization },
+        },
+      },
+      'outgoing request',
     );
     for (const { value } of DEPTHS) {
       this.logger.info(value, 'depth matrix');
@@ -155,6 +170,24 @@ describe('log redaction', () => {
     expect(output()).toContain('nested object');
     expect(output()).not.toContain(SECRETS.nestedRefreshToken);
     expect(output()).not.toContain(SECRETS.deepApiKey);
+  });
+
+  it('redacts authorization and Authorization in nested headers objects', () => {
+    const entry = destination.lines
+      .map(
+        (line) =>
+          JSON.parse(line) as {
+            msg?: string;
+            request?: { headers?: Record<string, unknown> };
+            upstream?: { headers?: Record<string, unknown> };
+          },
+      )
+      .find((line) => line.msg === 'outgoing request');
+
+    expect(entry?.request?.headers).toEqual({ authorization: '[Redacted]' });
+    expect(entry?.upstream?.headers).toEqual({ Authorization: '[Redacted]' });
+    expect(output()).not.toContain(SECRETS.nestedAuthorization);
+    expect(output()).not.toContain(SECRETS.nestedCapitalAuthorization);
   });
 
   it.each(DEPTHS)('redacts $field at depth $depth', ({ field, depth }) => {

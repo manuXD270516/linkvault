@@ -3,7 +3,10 @@ import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createWorkerApp } from '../../app/create-worker-app';
 import { PACKAGE_VERSION } from '../../infrastructure/app-version';
-import { workerTestConfig } from '../../test-support/test-config';
+import {
+  workerTestAiConfig,
+  workerTestConfig,
+} from '../../test-support/test-config';
 
 describe('worker GET /health/live', () => {
   let app: NestFastifyApplication | undefined;
@@ -16,7 +19,7 @@ describe('worker GET /health/live', () => {
   async function start(appVersion?: string): Promise<string> {
     // Mongo y Redis apuntan a puertos cerrados: la liveness no depende de ellos.
     const config = await workerTestConfig({ APP_VERSION: appVersion });
-    app = await createWorkerApp(config);
+    app = await createWorkerApp(config, workerTestAiConfig());
     await app.listen(config.WORKER_HEALTH_PORT, '127.0.0.1');
     return `http://127.0.0.1:${config.WORKER_HEALTH_PORT}`;
   }

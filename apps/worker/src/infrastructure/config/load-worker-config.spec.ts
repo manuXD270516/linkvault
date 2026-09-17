@@ -49,6 +49,51 @@ describe('worker configuration', () => {
     expect(output).not.toContain(example['REDIS_URL']);
   });
 
+  it('exits with code 1 naming AI_CHAIN and the unknown provider in a single line', () => {
+    const exit = vi.spyOn(process, 'exit').mockImplementation((code) => {
+      throw new ProcessExit(code);
+    });
+    const stderr = vi
+      .spyOn(process.stderr, 'write')
+      .mockImplementation(() => true);
+
+    expect(() =>
+      loadWorkerConfigOrExit({
+        ...readEnvExample(),
+        MONGO_URI: undefined,
+        AI_CHAIN: 'mock,gpt-magic',
+      }),
+    ).toThrow(ProcessExit);
+
+    expect(exit).toHaveBeenCalledWith(1);
+    expect(stderr).toHaveBeenCalledTimes(1);
+    expect(String(stderr.mock.calls[0]?.[0])).toBe(
+      '[worker] Invalid configuration, check these environment variables: MONGO_URI (missing), AI_CHAIN (invalid: unknown provider gpt-magic)\n',
+    );
+  });
+
+  it('never prints the OpenRouter credential among AI problems', () => {
+    vi.spyOn(process, 'exit').mockImplementation((code) => {
+      throw new ProcessExit(code);
+    });
+    const stderr = vi
+      .spyOn(process.stderr, 'write')
+      .mockImplementation(() => true);
+    const apiKey = 'openrouter-key-s3cr3t';
+
+    expect(() =>
+      loadWorkerConfigOrExit({
+        ...readEnvExample(),
+        AI_CHAIN: `openrouter,${apiKey}`,
+        OPENROUTER_API_KEY: apiKey,
+      }),
+    ).toThrow(ProcessExit);
+
+    const output = stderr.mock.calls.map(([chunk]) => String(chunk)).join('');
+    expect(output).toContain('AI_CHAIN (invalid');
+    expect(output).not.toContain(apiKey);
+  });
+
   it('requires WORKER_HEALTH_PORT', () => {
     const result = parseEnv(workerConfigSchema, {
       ...readEnvExample(),
@@ -90,9 +135,14 @@ describe('worker configuration', () => {
   it('accepts .env.example unchanged', () => {
     const exit = vi.spyOn(process, 'exit');
 
-    const config = loadWorkerConfigOrExit(readEnvExample());
+    const { config, ai } = loadWorkerConfigOrExit(readEnvExample());
 
     expect(exit).not.toHaveBeenCalled();
+    expect(ai).toMatchObject({
+      nodeEnv: 'development',
+      chain: ['mock'],
+      mock: { mode: 'replay' },
+    });
     expect(config).toMatchObject({
       NODE_ENV: 'development',
       WORKER_HEALTH_PORT: 3001,

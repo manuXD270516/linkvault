@@ -3,8 +3,8 @@ import { createWorkerApp } from './app/create-worker-app';
 import { loadWorkerConfigOrExit } from './infrastructure/config/load-worker-config';
 
 async function bootstrap(): Promise<void> {
-  const config = loadWorkerConfigOrExit(process.env);
-  const app = await createWorkerApp(config);
+  const { config, ai } = loadWorkerConfigOrExit(process.env);
+  const app = await createWorkerApp(config, ai);
   app.enableShutdownHooks();
   await app.listen(config.WORKER_HEALTH_PORT);
   app

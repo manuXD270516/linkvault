@@ -1,3 +1,4 @@
+import type { AiConfig } from '@linkvault/ai';
 import { NestFactory } from '@nestjs/core';
 import {
   FastifyAdapter,
@@ -13,9 +14,10 @@ import { AppModule } from './app.module';
  */
 export async function createWorkerApp(
   config: WorkerConfig,
+  ai: AiConfig,
 ): Promise<NestFastifyApplication> {
   const app = await NestFactory.create<NestFastifyApplication>(
-    AppModule.register(config),
+    AppModule.register(config, ai),
     new FastifyAdapter(),
     { bufferLogs: true },
   );
