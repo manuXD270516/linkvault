@@ -15,12 +15,22 @@ export class SchemaViolation extends Error {
   }
 }
 
-/** El proveedor falló, expiró o tiene el circuit breaker abierto. */
+/**
+ * El proveedor falló, expiró o tiene el circuit breaker abierto. `httpStatus` distingue una caída de un rechazo
+ * (D6 de ai-gateway-core). Nunca lleva el cuerpo de la respuesta, la petición, cabeceras ni credenciales.
+ */
 export class ProviderUnavailable extends Error {
   override readonly name = 'ProviderUnavailable';
 
-  constructor(readonly providerId: string) {
-    super(`Provider "${providerId}" is unavailable`);
+  constructor(
+    readonly providerId: string,
+    readonly httpStatus?: number,
+  ) {
+    super(
+      httpStatus === undefined
+        ? `Provider "${providerId}" is unavailable`
+        : `Provider "${providerId}" is unavailable (HTTP ${httpStatus})`,
+    );
   }
 }
 
