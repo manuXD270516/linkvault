@@ -1,0 +1,9 @@
+{
+  "source": "recorded:ollama:qwen2.5:7b",
+  "text": "{\"skills\":[{\"name\":\"React Native\",\"category\":\"framework\"},{\"name\":\"TypeScript\",\"category\":\"language\"},{\"name\":\"Jest\",\"category\":\"tool\"},{\"name\":\"Firebase\",\"category\":\"tool\"},{\"name\":\"iOS\",\"category\":\"platform\"},{\"name\":\"Android\",\"category\":\"platform\"},{\"name\":\"mobile development\",\"category\":\"domain\"},{\"name\":\"team leadership\",\"category\":\"soft\"},{\"name\":\"mentoring\",\"category\":\"soft\"},{\"name\":\"communication skills\",\"category\":\"soft\"},{\"name\":\"English\",\"category\":\"language\"}]}",
+  "model": "qwen2.5:7b",
+  "usage": {
+    "inputTokens": 504,
+    "outputTokens": 144
+  }
+}

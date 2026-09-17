@@ -25,14 +25,14 @@
 - [x] 4.1 [ai] Implementar en `evals/recording/` la escritura de fixtures en `success` con `source`, `model` y `usage`, `--overwrite` y la lista de casos no grabados, con un upstream falso en memoria (D7); verificar con "Fixture existente" y "Respuesta inválida no se graba".
 - [x] 4.2 [ai] Verificar contra un servidor `node:http` local que imita Ollama "Grabar y reproducir".
 - [x] 4.3 [ai] Verificar contra un servidor local que imita OpenRouter "Upstream externo con datos personales" y "Upstream externo sin permiso explícito" (código 2).
-- [ ] 4.4 [ai] Implementar `cli/record-fixtures.ts` (`--task`, `--upstream`, `--overwrite`, `--allow-external`, `--ollama-url`, `--timeout-ms`, `--evals-dir`) con rechazo en producción y códigos de D6, y cambiar en `parseAiConfig` el detalle del rechazo de `AI_MOCK_MODE=record` a "use nx run ai:record-fixtures"; verificar con "Grabación en producción" (código 2) en un proceso hijo y el test de configuración de `record`.
+- [x] 4.4 [ai] Implementar `cli/record-fixtures.ts` (`--task`, `--upstream`, `--overwrite`, `--allow-external`, `--ollama-url`, `--timeout-ms`, `--evals-dir`) con rechazo en producción y códigos de D6, y cambiar en `parseAiConfig` el detalle del rechazo de `AI_MOCK_MODE=record` a "use nx run ai:record-fixtures"; verificar con "Grabación en producción" (código 2) en un proceso hijo y el test de configuración de `record`.
 
 ## 5. Datos de classify-skills
 
-- [ ] 5.1 [ai] Escribir `evals/classify-skills/golden.jsonl` con los 5 casos placeholder de D4 (solo valores de contacto reservados); verificar que el cargador los valida y que "Coherencia entre registro y golden sets" pasa sobre el repo real.
+- [x] 5.1 [ai] Escribir `evals/classify-skills/golden.jsonl` con los 5 casos placeholder de D4 (solo valores de contacto reservados); verificar que el cargador los valida y que "Coherencia entre registro y golden sets" pasa sobre el repo real.
 - [x] 5.2 [infra] Consultar si la app Ollama de escritorio (`127.0.0.1:11434`) ya tiene `qwen2.5:7b` y **pedir decisión humana**: usar la app o el contenedor en `OLLAMA_PORT=11435` con descarga de ~4.7 GB (D8); sin confirmación humana en la conversación, terminar con `APPLY: PAUSA (modelo)`. Verificar con `GET /api/tags` del Ollama elegido que el modelo está disponible.
-- [ ] 5.3 [ai] Grabar los fixtures del golden con `nx run ai:record-fixtures --task=classify-skills --upstream=ollama --ollama-url=<elegida> --timeout-ms=300000`, aplicando la contingencia de D9 si algún caso falla; verificar que los 5 fixtures tienen `source` `recorded:ollama:qwen2.5:7b` y que el comando termina con código 0.
-- [ ] 5.4 [ai] Ejecutar la corrida de referencia `nx run ai:eval --task=classify-skills --provider=ollama --ollama-url=<elegida>`, anotar sus métricas para la descripción del PR (D9) y escribir `baseline.json` con `--provider=mock --update-baseline`; verificar "Evaluación contra Ollama" en el reporte local y que `--provider=mock` sin `--update-baseline` termina con código 0.
+- [x] 5.3 [ai] Grabar los fixtures del golden con `nx run ai:record-fixtures --task=classify-skills --upstream=ollama --ollama-url=<elegida> --timeout-ms=300000`, aplicando la contingencia de D9 si algún caso falla; verificar que los 5 fixtures tienen `source` `recorded:ollama:qwen2.5:7b` y que el comando termina con código 0.
+- [x] 5.4 [ai] Ejecutar la corrida de referencia `nx run ai:eval --task=classify-skills --provider=ollama --ollama-url=<elegida>`, anotar sus métricas para la descripción del PR (D9) y escribir `baseline.json` con `--provider=mock --update-baseline`; verificar "Evaluación contra Ollama" en el reporte local y que `--provider=mock` sin `--update-baseline` termina con código 0.
 
 ## 6. CI y documentación
 

@@ -1,0 +1,9 @@
+{
+  "source": "recorded:ollama:qwen2.5:7b",
+  "text": "{\"skills\":[{\"name\":\"Node.js\",\"category\":\"framework\"},{\"name\":\"TypeScript\",\"category\":\"language\"},{\"name\":\"NestJS\",\"category\":\"framework\"},{\"name\":\"PostgreSQL\",\"category\":\"tool\"},{\"name\":\"Redis\",\"category\":\"tool\"},{\"name\":\"Docker\",\"category\":\"tool\"},{\"name\":\"Kubernetes\",\"category\":\"tool\"},{\"name\":\"AWS\",\"category\":\"platform\"},{\"name\":\"SQL\",\"category\":\"language\"},{\"name\":\"Git\",\"category\":\"tool\"},{\"name\":\"Kafka\",\"category\":\"tool\"}]}",
+  "model": "qwen2.5:7b",
+  "usage": {
+    "inputTokens": 543,
+    "outputTokens": 145
+  }
+}

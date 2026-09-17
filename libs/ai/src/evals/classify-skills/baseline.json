@@ -1,0 +1,11 @@
+{
+  "task": "classify-skills",
+  "promptVersion": "v1",
+  "goldenSha256": "8e06294162cc4f748e370397e53521a3be592817ba22c9e461f12925a3d84db6",
+  "metrics": {
+    "degraded_rate": 0,
+    "schema_validity_rate": 1,
+    "skills_precision": 0.901010101010101,
+    "skills_recall": 0.8787878787878789
+  }
+}
