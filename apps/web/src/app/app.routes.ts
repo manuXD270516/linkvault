@@ -1,10 +1,35 @@
 import { Route } from '@angular/router';
+import { authGuard, guestGuard } from './core/auth/auth.guards';
 
+/** Rutas visibles en español salvo `/login` (D11). Todas exigen sesión salvo `/login` y `/registro`. */
 export const appRoutes: Route[] = [
   {
-    path: '',
-    pathMatch: 'full',
-    loadComponent: () =>
-      import('./features/home/home.page').then((m) => m.HomePage),
+    path: 'login',
+    canActivate: [guestGuard],
+    loadComponent: () => import('./features/auth/login.page').then((m) => m.LoginPage),
   },
+  {
+    path: 'registro',
+    canActivate: [guestGuard],
+    loadComponent: () =>
+      import('./features/auth/register.page').then((m) => m.RegisterPage),
+  },
+  {
+    path: '',
+    canActivate: [authGuard],
+    loadComponent: () => import('./layout/shell/shell').then((m) => m.Shell),
+    children: [
+      {
+        path: '',
+        pathMatch: 'full',
+        loadComponent: () => import('./features/home/home.page').then((m) => m.HomePage),
+      },
+      {
+        path: 'perfil',
+        loadComponent: () =>
+          import('./features/profile/profile.page').then((m) => m.ProfilePage),
+      },
+    ],
+  },
+  { path: '**', redirectTo: '' },
 ];

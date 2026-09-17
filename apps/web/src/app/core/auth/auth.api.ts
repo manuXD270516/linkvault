@@ -2,20 +2,19 @@ import {
   HttpClient,
   HttpContext,
   HttpContextToken,
-  HttpErrorResponse,
   HttpHeaders,
 } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import {
-  apiErrorResponseSchema,
-  type ChangePasswordRequest,
-  type LoginRequest,
-  type RegisterRequest,
-  type SessionResponse,
-  type UpdateProfileRequest,
-  type UserProfile,
+import type {
+  ChangePasswordRequest,
+  LoginRequest,
+  RegisterRequest,
+  SessionResponse,
+  UpdateProfileRequest,
+  UserProfile,
 } from '@linkvault/shared';
 import { Observable } from 'rxjs';
+import { hasApiErrorCode } from '../api/api-error';
 import {
   REFRESH_LOCKS,
   REFRESH_LOCK_NAME,
@@ -187,9 +186,5 @@ function authPostOptions(skipBearer: boolean): {
 }
 
 function isRefreshConflict(error: unknown): boolean {
-  if (!(error instanceof HttpErrorResponse) || error.status !== 409) {
-    return false;
-  }
-  const body = apiErrorResponseSchema.safeParse(error.error);
-  return body.success && body.data.code === 'refresh_conflict';
+  return hasApiErrorCode(error, 409, 'refresh_conflict');
 }
