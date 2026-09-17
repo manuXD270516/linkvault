@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { apiErrorResponseSchema } from '@linkvault/shared';
-import { getMongoTestUri } from '@linkvault/testing';
+import {
+  apiErrorResponseSchema,
+  sessionResponseSchema,
+} from '@linkvault/shared';
+import { getMongoTestUri, RedisPingDouble } from '@linkvault/testing';
 import { Controller, Get } from '@nestjs/common';
 import { getConnectionToken } from '@nestjs/mongoose';
 import {
@@ -15,6 +18,11 @@ import { configureApp } from '../../../app/create-app';
 import type { AuthenticatedUser } from '../../../presentation/http/auth-context/authenticated-user';
 import { CurrentUser } from '../../../presentation/http/auth-context/current-user.decorator';
 import { Public } from '../../../presentation/http/auth-context/public.decorator';
+import {
+  authPost,
+  createAuthTestApp,
+  type AuthTestApp,
+} from '../../../test-support/auth-test-app';
 import { apiTestConfig } from '../../../test-support/test-config';
 import { UsersFacade } from '../../users/application/users.facade';
 import {
@@ -24,7 +32,8 @@ import {
 import { JoseAccessTokenSigner } from '../infrastructure/jose-access-token-signer';
 
 // Guard global de access token (tarea 6.3 de auth-users) sobre el `AppModule` real y `configureApp`, con MongoDB del
-// preset. `UsersController` llega en 6.8: la ruta protegida de test hace de `GET /api/users/me` en los escenarios.
+// preset. Los escenarios de la spec atacan la ruta real `GET /api/users/me`; la ruta de prueba solo cubre lo que no tiene
+// equivalente real: la identidad que deja el guard y `@CurrentUser()` en una ruta pública.
 
 @Controller('test-guard')
 class GuardProbeController {
@@ -40,7 +49,8 @@ class GuardProbeController {
   }
 }
 
-const PROTECTED_URL = '/api/test-guard/me';
+const PROFILE_URL = '/api/users/me';
+const PROBE_URL = '/api/test-guard/me';
 const HASH = '$argon2id$v=19$m=19456,t=2,p=1$c2FsdA$aGFzaA';
 
 function withDatabase(uri: string, database: string): string {
@@ -105,10 +115,10 @@ describe('access token guard over the api app', () => {
     return (await signerAt.sign({ userId, sessionId })).accessToken;
   }
 
-  function getProtected(token?: string) {
+  function getProtected(token?: string, url = PROFILE_URL) {
     return app.inject({
       method: 'GET',
-      url: PROTECTED_URL,
+      url,
       headers: token === undefined ? {} : { authorization: `Bearer ${token}` },
     });
   }
@@ -129,9 +139,12 @@ describe('access token guard over the api app', () => {
 
   it('answers a valid token with the user and session of the token', async () => {
     const userId = await registerUser();
-    const { accessToken } = await signer.sign({ userId, sessionId: 'session-a' });
+    const { accessToken } = await signer.sign({
+      userId,
+      sessionId: 'session-a',
+    });
 
-    const response = await getProtected(accessToken);
+    const response = await getProtected(accessToken, PROBE_URL);
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ userId, sessionId: 'session-a' });
@@ -154,7 +167,10 @@ describe('access token guard over the api app', () => {
       { secret: 'another-test-jwt-secret-of-32-chars!!', ttlSeconds: 900 },
       { now: () => new Date() },
     );
-    const { accessToken } = await other.sign({ userId, sessionId: 'session-a' });
+    const { accessToken } = await other.sign({
+      userId,
+      sessionId: 'session-a',
+    });
 
     await expectUnauthorized(await getProtected(accessToken));
   });
@@ -166,28 +182,6 @@ describe('access token guard over the api app', () => {
     });
 
     await expectUnauthorized(await getProtected(accessToken));
-  });
-
-  it('Token anterior al cambio de contraseña', async () => {
-    const userId = await registerUser();
-    const tokenB = await tokenIssuedAt(userId, 'session-b', new Date());
-    expect((await getProtected(tokenB)).statusCode).toBe(200);
-
-    // `iat` tiene precisión de segundos: el cambio debe caer en un segundo posterior a la emisión de B.
-    await new Promise((resolve) =>
-      setTimeout(resolve, 1_000 - (Date.now() % 1_000) + 20),
-    );
-    // Cambio de contraseña desde la sesión A.
-    await users.setPasswordHash(userId, '$argon2id$new-hash');
-    const state = await users.getAuthState(userId);
-    const tokenA = await tokenIssuedAt(
-      userId,
-      'session-a',
-      new Date((state?.passwordChangedAt.getTime() ?? 0) + 1_000),
-    );
-
-    await expectUnauthorized(await getProtected(tokenB));
-    expect((await getProtected(tokenA)).statusCode).toBe(200);
   });
 
   it('Salud pública', async () => {
@@ -212,5 +206,71 @@ describe('access token guard over the api app', () => {
 
     expect(response.statusCode).toBe(500);
     expect(response.json()).toMatchObject({ code: 'internal_error' });
+  });
+});
+
+describe('access token guard after a password change', () => {
+  let redis: RedisPingDouble;
+  let harness: AuthTestApp;
+
+  beforeAll(async () => {
+    redis = await RedisPingDouble.start('up');
+    harness = await createAuthTestApp({
+      mongoUri: getMongoTestUri(),
+      redisUrl: redis.url,
+    });
+  });
+
+  afterAll(async () => {
+    await harness.close();
+    await redis.close();
+  });
+
+  function getProfile(accessToken: string) {
+    return harness.app.inject({
+      method: 'GET',
+      url: PROFILE_URL,
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+  }
+
+  async function login(email: string, password: string) {
+    const response = await authPost(harness.app, 'login', {
+      body: { email, password },
+    });
+    expect(response.statusCode).toBe(200);
+    return sessionResponseSchema.parse(response.json());
+  }
+
+  it('Token anterior al cambio de contraseña', async () => {
+    const email = `guard-${randomUUID()}@example.com`;
+    const password = 'correct-horse-battery';
+    const registered = await authPost(harness.app, 'register', {
+      body: { email, password, displayName: 'Ana' },
+    });
+    expect(registered.statusCode).toBe(201);
+    const sessionA = await login(email, password);
+    const sessionB = await login(email, password);
+    expect((await getProfile(sessionB.accessToken)).statusCode).toBe(200);
+
+    // `iat` tiene precisión de segundos: el cambio debe caer en un segundo posterior a la emisión del token de B.
+    await new Promise((resolve) =>
+      setTimeout(resolve, 1_000 - (Date.now() % 1_000) + 20),
+    );
+    const changed = await authPost(harness.app, 'password', {
+      accessToken: sessionA.accessToken,
+      body: {
+        currentPassword: password,
+        newPassword: 'new-correct-horse-battery',
+      },
+    });
+    expect(changed.statusCode).toBe(204);
+
+    const response = await getProfile(sessionB.accessToken);
+    expect(response.statusCode).toBe(401);
+    expect(apiErrorResponseSchema.parse(response.json())).toEqual({
+      code: 'unauthorized',
+      message: expect.any(String),
+    });
   });
 });

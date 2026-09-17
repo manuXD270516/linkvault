@@ -60,6 +60,11 @@ function parseIpv6(raw: string): number[] | null {
   const [head = '', rest] = halves;
   const headParts = head === '' ? [] : head.split(':');
   const restParts = rest === undefined || rest === '' ? [] : rest.split(':');
+  // Con `::` debe quedar al menos un grupo comprimido: 8 o más grupos explícitos no son una IPv6 (y darían un tamaño
+  // negativo al rellenar).
+  if (rest !== undefined && headParts.length + restParts.length > 7) {
+    return null;
+  }
   const parts =
     rest === undefined
       ? headParts
@@ -68,11 +73,7 @@ function parseIpv6(raw: string): number[] | null {
           ...Array<string>(8 - headParts.length - restParts.length).fill('0'),
           ...restParts,
         ];
-  if (
-    parts.length !== 8 ||
-    (rest !== undefined && headParts.length + restParts.length > 7) ||
-    !parts.every((part) => HEXTET.test(part))
-  ) {
+  if (parts.length !== 8 || !parts.every((part) => HEXTET.test(part))) {
     return null;
   }
   return parts.map((part) => Number.parseInt(part, 16));

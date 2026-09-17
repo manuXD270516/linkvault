@@ -57,7 +57,9 @@ describe('AuthController password and HTTP attempt limits', () => {
       mongoUri: getMongoTestUri(),
       redisUrl: redis.url,
     });
-    hasher = harness.app.get<PasswordHasher>(PASSWORD_HASHER, { strict: false });
+    hasher = harness.app.get<PasswordHasher>(PASSWORD_HASHER, {
+      strict: false,
+    });
   });
 
   afterAll(async () => {
@@ -137,16 +139,24 @@ describe('AuthController password and HTTP attempt limits', () => {
     expect(response.statusCode).toBe(204);
     expect(response.headers['set-cookie']).toBeUndefined();
     expect(
-      (await authPost(harness.app, 'refresh', { refreshToken: sessionB.refreshToken }))
-        .statusCode,
+      (
+        await authPost(harness.app, 'refresh', {
+          refreshToken: sessionB.refreshToken,
+        })
+      ).statusCode,
     ).toBe(401);
     expect(
-      (await authPost(harness.app, 'refresh', { refreshToken: sessionA.refreshToken }))
-        .statusCode,
+      (
+        await authPost(harness.app, 'refresh', {
+          refreshToken: sessionA.refreshToken,
+        })
+      ).statusCode,
     ).toBe(200);
     const ip = nextIp();
     expect((await login(sessionA.email, PASSWORD, ip)).statusCode).toBe(401);
-    expect((await login(sessionA.email, NEW_PASSWORD, ip)).statusCode).toBe(200);
+    expect((await login(sessionA.email, NEW_PASSWORD, ip)).statusCode).toBe(
+      200,
+    );
   });
 
   it('Contraseña actual incorrecta', async () => {
@@ -166,7 +176,9 @@ describe('AuthController password and HTTP attempt limits', () => {
   it('Fuerza bruta de la contraseña actual', async () => {
     const session = await registerUser();
     for (let attempt = 0; attempt < 5; attempt += 1) {
-      expect((await changePassword(session, WRONG_PASSWORD)).statusCode).toBe(401);
+      expect((await changePassword(session, WRONG_PASSWORD)).statusCode).toBe(
+        401,
+      );
     }
     const verifications = spyVerifications();
 
@@ -198,7 +210,9 @@ describe('AuthController password and HTTP attempt limits', () => {
   it('Demasiados fallos por email', async () => {
     const { email } = await registerUser();
     for (let attempt = 0; attempt < 5; attempt += 1) {
-      expect((await login(email, WRONG_PASSWORD, nextIp())).statusCode).toBe(401);
+      expect((await login(email, WRONG_PASSWORD, nextIp())).statusCode).toBe(
+        401,
+      );
     }
 
     const response = await login(email, PASSWORD, nextIp());
@@ -214,7 +228,9 @@ describe('AuthController password and HTTP attempt limits', () => {
   it('Email inexistente también se limita', async () => {
     const email = `nadie-${randomUUID()}@example.com`;
     for (let attempt = 0; attempt < 5; attempt += 1) {
-      expect((await login(email, WRONG_PASSWORD, nextIp())).statusCode).toBe(401);
+      expect((await login(email, WRONG_PASSWORD, nextIp())).statusCode).toBe(
+        401,
+      );
     }
 
     expect((await login(email, WRONG_PASSWORD, nextIp())).statusCode).toBe(429);
@@ -279,7 +295,12 @@ describe('AuthController password and HTTP attempt limits', () => {
 
     expect(first.statusCode).toBe(200);
     expect(second.statusCode).toBe(200);
-    expect(warned).toHaveBeenCalledTimes(1);
+    // Solo cuentan los avisos del limitador: el cliente Redis de salud también avisa, según el momento, de que perdió la
+    // conexión, y ese aviso no es parte del escenario.
+    const limiterWarnings = warned.mock.calls.filter(([message]) =>
+      String(message).startsWith('Attempt limiter store unavailable'),
+    );
+    expect(limiterWarnings).toHaveLength(1);
     expect(JSON.stringify(warned.mock.calls)).not.toContain(email);
   });
 });

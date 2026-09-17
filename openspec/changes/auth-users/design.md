@@ -57,6 +57,10 @@ módulos: los usan la salud (plataforma), `users` y `auth`, y así ningún módu
 adaptadores de Mongo y Redis de la app (`MongoPersistenceModule`, un nuevo `RedisAppModule`) siguen en
 `apps/api/src/infrastructure/`; las carpetas planas actuales no se mueven.
 
+Nota de implementación: el filtro global de errores (`presentation/http/api-exception.filter.ts`, plataforma) traduce los
+errores de dominio de `auth` y `users` importándolos directamente. Es aceptable con dos módulos; cuando `groups` añada los
+suyos, se sustituirá por una base común de error de dominio con `code` que el filtro traduzca sin conocer los módulos.
+
 ### D2 — Regla de lint entre módulos
 
 El bloque actual `**/domain/**` usa la regla base `no-restricted-imports` con la lista de infraestructura y la prohibición
@@ -202,8 +206,10 @@ y `sessionId`).
 ### D12 — Tests
 
 - Dominio y use cases: unitarios con repositorios, hasher, firmador, limitador y reloj en memoria.
-- Endpoints: integración con `createApp` + `inject` de Fastify sobre `mongodb-memory-server` y el doble de Redis; un
-  spec por requisito con `it(...)` con el nombre del escenario. Los repositorios esperan `Model.init()` antes de probar
+- Endpoints: integración con `createApp` + `inject` de Fastify sobre `mongodb-memory-server` y el doble de Redis, con
+  `it(...)` con el nombre del escenario (nota de implementación: los specs de integración se agrupan por endpoint/tarea,
+  `auth.controller.{register-login,refresh,logout,password}.spec.ts`, en lugar de uno por requisito; la trazabilidad es
+  por nombre de escenario). Los repositorios esperan `Model.init()` antes de probar
   índices únicos; ningún test depende del borrado por TTL (el monitor corre cada 60 s).
 - Web: Vitest + TestBed para store, `AuthApi`, interceptor (single-flight con `HttpTestingController`), guards,
   initializer y páginas. "Almacenamiento limpio" se prueba en unitario sobre `localStorage` y `sessionStorage` (jsdom no

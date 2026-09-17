@@ -32,10 +32,16 @@ describe('ipLimitGroup', () => {
     );
   });
 
-  it.each(['', 'unknown', '999.1.1.1', '1:2:3', 'gggg::1', '1::2::3'])(
-    'keeps an unrecognized value %j as its own group',
-    (ip) => {
-      expect(ipLimitGroup(ip)).toBe(ip);
-    },
-  );
+  it.each([
+    '',
+    'unknown',
+    '999.1.1.1',
+    '1:2:3',
+    'gggg::1',
+    '1::2::3',
+    '1:2:3:4:5:6:7:8::9',
+    '1:2:3:4:5:6:7::8:9',
+  ])('keeps an unrecognized value %j as its own group', (ip) => {
+    expect(ipLimitGroup(ip)).toBe(ip);
+  });
 });

@@ -145,7 +145,7 @@ describe('log redaction', () => {
     return destination.lines.join('\n');
   }
 
-  it('keeps authorization and cookie keys in the request log with redacted values', () => {
+  it('keeps authorization and cookie keys in the request log with redacted values (Petición con cabeceras sensibles)', () => {
     const requestLog = destination.lines
       .map(
         (line) =>
@@ -171,7 +171,7 @@ describe('log redaction', () => {
     expect(output()).not.toContain(SECRETS.rootApiKey);
   });
 
-  it('redacts refreshToken one level deep and apiKey two levels deep', () => {
+  it('redacts refreshToken one level deep and apiKey two levels deep (Objeto anidado con secretos)', () => {
     expect(output()).toContain('nested object');
     expect(output()).not.toContain(SECRETS.nestedRefreshToken);
     expect(output()).not.toContain(SECRETS.deepApiKey);

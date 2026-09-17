@@ -151,7 +151,7 @@ const rows: readonly RuleRow[] = [
     expectedRuleIds: [DOMAIN_IMPORTS, AI_SDK_IMPORTS],
   },
   {
-    name: 'a domain folder of api imports infrastructure',
+    name: 'a domain folder of api imports infrastructure (El dominio importa el framework)',
     filePath: 'apps/api/src/modules/probe/domain/probe.ts',
     code: "import { Schema } from 'mongoose';\n\nexport const probe = Schema;\n",
     expectedRuleIds: [DOMAIN_IMPORTS],
@@ -218,7 +218,7 @@ const rows: readonly RuleRow[] = [
     unexpectedRuleIds: [DOMAIN_IMPORTS],
   },
   {
-    name: 'an infrastructure folder of api imports infrastructure',
+    name: 'an infrastructure folder of api imports infrastructure (La infraestructura importa el framework)',
     filePath: 'apps/api/src/modules/probe/infrastructure/probe.ts',
     code: "import { Schema } from 'mongoose';\n\nexport const probe = Schema;\n",
     expectedRuleIds: [],
