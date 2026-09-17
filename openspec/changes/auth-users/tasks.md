@@ -1,13 +1,13 @@
 ## 1. Base y plataforma
 
-- [ ] 1.1 [infra] Añadir `@node-rs/argon2`, `jose` y `@fastify/cookie` (api) y `@ngrx/signals` (web) con versiones compatibles con Node 22, NestJS 11 y Angular 22; verificar que `pnpm install` termina sin builds nativos fallidos en Windows y que `pnpm nx run-many -t typecheck` pasa.
-- [ ] 1.2 [infra] Ampliar el doble RESP de `tools/testing` con `SET ... PX NX`, `INCR`, `PTTL` y `MULTI`/`EXEC` (D7); verificar con tests del doble usando ioredis real, incluido que `EXEC` devuelve el array con los resultados de `INCR` y `PTTL`.
-- [ ] 1.3 [backend] Añadir `currentPassword`, `newPassword` y `passwordHash` a `LOG_REDACT_PATHS` en `api` y `worker` (D10); verificar con el escenario "Cambio de contraseña registrado" y que los tests de redacción existentes siguen pasando.
-- [ ] 1.4 [backend] Añadir las variables `AUTH_*` a `apiConfigSchema` con las reglas y los `path` de D9, a `.env.example` y a `apiTestConfig`; verificar con "Secreto corto", "Secreto de ejemplo en producción", "Máximo menor que la caducidad" y que los tests de configuración, arranque, DI y salud de api y worker pasan.
+- [x] 1.1 [infra] Añadir `@node-rs/argon2`, `jose` y `@fastify/cookie` (api) y `@ngrx/signals` (web) con versiones compatibles con Node 22, NestJS 11 y Angular 22; verificar que `pnpm install` termina sin builds nativos fallidos en Windows y que `pnpm nx run-many -t typecheck` pasa.
+- [x] 1.2 [infra] Ampliar el doble RESP de `tools/testing` con `SET ... PX NX`, `INCR`, `PTTL` y `MULTI`/`EXEC` (D7); verificar con tests del doble usando ioredis real, incluido que `EXEC` devuelve el array con los resultados de `INCR` y `PTTL`.
+- [x] 1.3 [backend] Añadir `currentPassword`, `newPassword` y `passwordHash` a `LOG_REDACT_PATHS` en `api` y `worker` (D10); verificar con el escenario "Cambio de contraseña registrado" y que los tests de redacción existentes siguen pasando.
+- [x] 1.4 [backend] Añadir las variables `AUTH_*` a `apiConfigSchema` con las reglas y los `path` de D9, a `.env.example` y a `apiTestConfig`; verificar con "Secreto corto", "Secreto de ejemplo en producción", "Máximo menor que la caducidad" y que los tests de configuración, arranque, DI y salud de api y worker pasan.
 
 ## 2. Contratos compartidos
 
-- [ ] 2.1 [backend] Crear `libs/shared/src/schemas/auth.schema.ts` y `user-profile.schema.ts` (D8) exportados desde el índice; verificar con tests de los schemas: normalización de email, límites de `displayName`, política de contraseña (9, 10, 128, 129 caracteres e igual al email), `updateProfileRequestSchema` vacío, con campo desconocido y con `outputLanguage` `fr`.
+- [x] 2.1 [backend] Crear `libs/shared/src/schemas/auth.schema.ts` y `user-profile.schema.ts` (D8) exportados desde el índice; verificar con tests de los schemas: normalización de email, límites de `displayName`, política de contraseña (9, 10, 128, 129 caracteres e igual al email), `updateProfileRequestSchema` vacío, con campo desconocido y con `outputLanguage` `fr`.
 
 ## 3. Módulo users
 
@@ -47,8 +47,8 @@
 
 ## 7. Web
 
-- [ ] 7.1 [frontend] `SessionStore` con `@ngrx/signals` y `AuthApi` con las llamadas de auth y perfil; verificar con tests del store y de `AuthApi` con `HttpTestingController` (`X-Requested-With` en todo `POST /api/auth/*`, sin Bearer en login, registro, refresh y logout).
-- [ ] 7.2 [frontend] `refresh()` de `AuthApi`: single-flight, lock `lv-refresh` de Web Locks con respaldo sin lock, reintentos con jitter ante 409, logout al agotarlos y `AbortSignal` (D11); verificar con dos llamadas concurrentes que producen un solo refresh, "Conflicto de refresh entre pestañas", "Cinco pestañas restauradas a la vez" (doble de `navigator.locks`), tres 409 seguidos que llaman a logout y abort sin logout.
+- [x] 7.1 [frontend] `SessionStore` con `@ngrx/signals` y `AuthApi` con las llamadas de auth y perfil; verificar con tests del store y de `AuthApi` con `HttpTestingController` (`X-Requested-With` en todo `POST /api/auth/*`, sin Bearer en login, registro, refresh y logout).
+- [x] 7.2 [frontend] `refresh()` de `AuthApi`: single-flight, lock `lv-refresh` de Web Locks con respaldo sin lock, reintentos con jitter ante 409, logout al agotarlos y `AbortSignal` (D11); verificar con dos llamadas concurrentes que producen un solo refresh, "Conflicto de refresh entre pestañas", "Cinco pestañas restauradas a la vez" (doble de `navigator.locks`), cuatro 409 seguidos (petición inicial y 3 reintentos) que llaman a logout y abort sin logout.
 - [ ] 7.3 [frontend] Interceptor funcional y registro en `app.config.ts`; verificar con "Token caducado durante el uso", "Refresh rechazado" y "Contraseña actual incorrecta no renueva".
 - [ ] 7.4 [frontend] Initializer de restauración ("Conectando…", timeout de 10 s que aborta) y `authGuard`/`guestGuard` con `returnUrl` interno; verificar con "Recarga con sesión", "API sin respuesta al cargar", "Ruta protegida sin sesión", "Página de invitado con sesión" y "Ruta de retorno externa" (también `/\evil.example`).
 - [ ] 7.5 [frontend] Rutas (`/login`, `/registro`, `/perfil`, `/`), shell con botón de cerrar sesión y página de inicio "Hola, {displayName}"; verificar con tests de rutas (lazy, guards aplicados) y "Logout con red caída".
