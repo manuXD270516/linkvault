@@ -2,7 +2,7 @@ import { createServer, type Server, type Socket } from 'node:net';
 
 /**
  * Estados del doble de Redis (D7 de bootstrap-monorepo):
- * - `up`: acepta conexiones y responde a PING.
+ * - `up`: acepta conexiones y responde a PING, GET, SET y DEL.
  * - `stop`: no escucha; las conexiones se rechazan y las abiertas se destruyen.
  * - `hang`: acepta conexiones y nunca responde.
  */
@@ -13,17 +13,29 @@ interface ParsedCommand {
   readonly consumed: number;
 }
 
+interface StoredValue {
+  readonly value: string;
+  /** Instante (ms desde epoch) a partir del cual la clave deja de existir; null si no expira. */
+  readonly expiresAt: number | null;
+}
+
 const CRLF = '\r\n';
+const NIL = `$-1${CRLF}`;
+const OK = `+OK${CRLF}`;
 const ASTERISK = 0x2a;
 const DOLLAR = 0x24;
+const INTEGER = /^-?\d+$/;
 
 /**
- * Servidor TCP mínimo que habla RESP solo para PING. Escucha en 127.0.0.1 en un puerto efímero que conserva
- * al pasar de `stop` a `up` o `hang`, para que un cliente ya configurado pueda reconectar sin reiniciar.
+ * Servidor TCP mínimo que habla RESP2 para PING, GET, SET (`EX`/`PX`) y DEL (D8 de ai-gateway-core) sobre un mapa en
+ * memoria con expiración perezosa; el resto de comandos responde `-ERR unknown command`. Escucha en 127.0.0.1 en un
+ * puerto efímero que conserva al pasar de `stop` a `up` o `hang`, para que un cliente ya configurado pueda reconectar
+ * sin reiniciar.
  */
 export class RedisPingDouble {
   private server: Server | null = null;
   private readonly sockets = new Set<Socket>();
+  private readonly store = new Map<string, StoredValue>();
   private currentMode: RedisDoubleMode = 'stop';
   private assignedPort = 0;
 
@@ -56,9 +68,11 @@ export class RedisPingDouble {
     return this.currentMode;
   }
 
+  /** Pasar a `stop` equivale a reiniciar un Redis sin persistencia: los datos guardados se pierden. */
   async setMode(mode: RedisDoubleMode): Promise<void> {
     if (mode === 'stop') {
       await this.shutdown();
+      this.store.clear();
     } else if (this.server === null) {
       await this.listen();
     }
@@ -67,6 +81,7 @@ export class RedisPingDouble {
 
   async close(): Promise<void> {
     await this.shutdown();
+    this.store.clear();
     this.currentMode = 'stop';
   }
 
@@ -116,13 +131,102 @@ export class RedisPingDouble {
       let command = parseCommand(buffer);
       while (command !== null) {
         buffer = buffer.subarray(command.consumed);
-        const response = reply(command.args);
+        const response = this.reply(command.args);
         if (response.length > 0) {
           socket.write(response);
         }
         command = parseCommand(buffer);
       }
     });
+  }
+
+  private reply(args: readonly string[]): string {
+    const [name, ...rest] = args;
+    if (name === undefined) {
+      return '';
+    }
+    switch (name.toUpperCase()) {
+      case 'PING':
+        return rest[0] === undefined ? `+PONG${CRLF}` : bulk(rest[0]);
+      case 'GET':
+        return this.get(rest);
+      case 'SET':
+        return this.set(rest);
+      case 'DEL':
+        return this.del(rest);
+      default:
+        return error(`unknown command '${name.replace(/[\r\n]/g, ' ')}'`);
+    }
+  }
+
+  private get(args: readonly string[]): string {
+    const [key] = args;
+    if (key === undefined || args.length !== 1) {
+      return wrongArity('get');
+    }
+    const stored = this.read(key);
+    return stored === undefined ? NIL : bulk(stored.value);
+  }
+
+  /** `SET key value [EX seconds | PX milliseconds]`, con los mismos errores que Redis ante opciones inválidas. */
+  private set(args: readonly string[]): string {
+    const [key, value, ...options] = args;
+    if (key === undefined || value === undefined) {
+      return wrongArity('set');
+    }
+    let ttlMs: number | null = null;
+    for (let index = 0; index < options.length; index += 2) {
+      const option = options[index]?.toUpperCase();
+      const amount = options[index + 1];
+      if (
+        (option !== 'EX' && option !== 'PX') ||
+        amount === undefined ||
+        ttlMs !== null
+      ) {
+        return error('syntax error');
+      }
+      const parsed = INTEGER.test(amount) ? Number(amount) : Number.NaN;
+      if (!Number.isSafeInteger(parsed)) {
+        return error('value is not an integer or out of range');
+      }
+      if (parsed <= 0) {
+        return error("invalid expire time in 'set' command");
+      }
+      ttlMs = option === 'EX' ? parsed * 1_000 : parsed;
+    }
+    this.store.set(key, {
+      value,
+      expiresAt: ttlMs === null ? null : Date.now() + ttlMs,
+    });
+    return OK;
+  }
+
+  private del(keys: readonly string[]): string {
+    if (keys.length === 0) {
+      return wrongArity('del');
+    }
+    let removed = 0;
+    for (const key of new Set(keys)) {
+      if (this.read(key) !== undefined) {
+        this.store.delete(key);
+        removed += 1;
+      }
+    }
+    return `:${removed}${CRLF}`;
+  }
+
+  /** Devuelve el valor vigente; si la clave ya expiró la elimina (expiración perezosa). */
+  private read(key: string): StoredValue | undefined {
+    const stored = this.store.get(key);
+    if (
+      stored !== undefined &&
+      stored.expiresAt !== null &&
+      stored.expiresAt <= Date.now()
+    ) {
+      this.store.delete(key);
+      return undefined;
+    }
+    return stored;
   }
 }
 
@@ -185,17 +289,14 @@ function parseInline(buffer: Buffer): ParsedCommand | null {
   return { args, consumed: lineEnd + 1 };
 }
 
-function reply(args: readonly string[]): string {
-  const [name, ...rest] = args;
-  if (name === undefined) {
-    return '';
-  }
-  if (name.toUpperCase() === 'PING') {
-    const [message] = rest;
-    return message === undefined
-      ? `+PONG${CRLF}`
-      : `$${Buffer.byteLength(message)}${CRLF}${message}${CRLF}`;
-  }
-  const safeName = name.replace(/[\r\n]/g, ' ');
-  return `-ERR unknown command '${safeName}'${CRLF}`;
+function bulk(value: string): string {
+  return `$${Buffer.byteLength(value)}${CRLF}${value}${CRLF}`;
+}
+
+function error(message: string): string {
+  return `-ERR ${message}${CRLF}`;
+}
+
+function wrongArity(command: string): string {
+  return error(`wrong number of arguments for '${command}' command`);
 }
