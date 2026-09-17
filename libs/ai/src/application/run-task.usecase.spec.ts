@@ -56,10 +56,21 @@ interface Harness {
   };
 }
 
-/** Registro de prompts cuyo `render` falla como un prompt que no puede renderizarse. */
-class InvalidPromptRegistry extends InMemoryPromptRegistry {
+/** Registro de prompts cuyo `render` rechaza con el error dado. */
+class FailingRenderPromptRegistry extends InMemoryPromptRegistry {
+  constructor(private readonly failure: Error) {
+    super();
+  }
+
   override render(): Promise<RenderedPrompt> {
-    return Promise.reject(
+    return Promise.reject(this.failure);
+  }
+}
+
+/** Registro de prompts cuyo `render` falla como un prompt que no puede renderizarse. */
+class InvalidPromptRegistry extends FailingRenderPromptRegistry {
+  constructor() {
+    super(
       new InvalidPrompt('classify-skills', 'v1', 'template is not valid Mustache'),
     );
   }
@@ -401,6 +412,32 @@ describe('RunTask: errors that propagate instead of degrading', () => {
     expect(deps.breaker.failures).toEqual([]);
     expect(deps.breaker.released).toEqual([]);
     expect(deps.ledger.records).toEqual([]);
+  });
+
+  it('wraps any other render failure in InvalidPrompt without leaking its message', async () => {
+    const prompts = new FailingRenderPromptRegistry(
+      new Error('boom ana.perez@example.com'),
+    );
+    const provider = new FakeLlmProvider('ollama', [VALID]);
+    const task = { ...classifySkillsTask, degrade: () => ({ skills: [] }) };
+    const { runTask, deps } = harness([provider], { prompts });
+
+    const error = await runTask
+      .execute(task, INPUT, CONSENT)
+      .catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(InvalidPrompt);
+    expect(error).toMatchObject({
+      taskName: 'classify-skills',
+      promptVersion: 'v1',
+    });
+    expect((error as Error).message).not.toContain('boom');
+    expect((error as Error).message).not.toContain('ana.perez@example.com');
+    expect(provider.calls).toBe(0);
+    expect(deps.ledger.records).toEqual([]);
+    expect(deps.breaker.acquired).toEqual([]);
+    expect(deps.breaker.failures).toEqual([]);
+    expect(deps.breaker.released).toEqual([]);
   });
 
   it('leaves the half-open permit available when rendering raises InvalidPrompt', async () => {

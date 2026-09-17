@@ -207,9 +207,22 @@ Solo para tareas `personal` y proveedores `external`. Detectores, en este orden 
 
 - **email**;
 - **URL**: `https?://…`, dominios que empiezan por `www.`, y dominios sin esquema con TLD habitual en CVs y portafolios
-  (`com`, `net`, `org`, `io`, `dev`, `app`, `me`, `co`, `ai`, `xyz` y los de país de LatAm como `bo`, `ar`, `mx`, `cl`,
-  `pe`, `co`, `uy`, `py`, `ec`, `ve`, `br`), con o sin ruta. Nombres de tecnologías con punto que no terminan en esos TLD
-  (`Node.js`, `ASP.NET`, `Vue.js`) quedan fuera; la ampliación nació en QA porque `www.anaperez.dev` salía sin redactar;
+  (`com`, `net`, `org`, `io`, `dev`, `app`, `me`, `co`, `ai`, `xyz` y los de país de LatAm `bo`, `ar`, `mx`, `cl`, `pe`,
+  `uy`, `py`, `ec`, `ve`, `br`), con o sin ruta. La ampliación nació en QA porque `www.anaperez.dev` salía sin redactar.
+  Nombres de tecnologías cuyo sufijo no es uno de esos TLD (`Node.js`, `Vue.js`) no casan. Los que sí terminan en uno de
+  ellos se salvan con una **lista cerrada de nombres técnicos** que se compara con el host completo y sin distinguir
+  mayúsculas, solo en la rama sin esquema ni `www.`: `asp.net`, `ado.net`, `vb.net`, `ml.net`, `json.net`, `rx.net`,
+  `akka.net`, `socket.io`, `hangfire.io`. Un host sin puerto ni ruta cuyo TLD tiene mayúscula inicial y el resto en
+  minúsculas, seguido de espacio y letra, se trata como fin de frase sin espacio (`NestJS.Me encargué`), no como dominio.
+  Un TLD todo en mayúsculas (`ANAPEREZ.DEV ES MI SITIO`) sí se redacta, para que un CV escrito en mayúsculas no filtre el
+  dominio.
+
+  **Política de sobre-redacción aceptada.** Ante la duda se redacta: un falso positivo solo cuesta contexto al modelo (el
+  valor se reinyecta en la salida), mientras que un falso negativo saca un dato personal del perímetro. Consecuencias
+  conocidas: `github.com` sin perfil, nombres de archivo como `setup.py` y tecnologías con forma de dominio que no estén en
+  la lista cerrada llegan como `[URL_n]` al proveedor externo. Para `classify-skills`, que el prompt instruye a no tratar
+  los marcadores como skills, eso significa perder esas skills con proveedores externos; con proveedores locales (sin
+  redacción) no ocurre. La lista cerrada se amplía cuando el eval harness mida skills perdidas;
 - **teléfono**: móvil boliviano de 8 dígitos que empieza por 6 o 7 (opcionalmente con `+591`); cualquier número con `+`
   seguido de 7 a 14 dígitos con separadores; locales LatAm de 8 a 11 dígitos en 2 a 4 grupos separados por espacio, guion o
   punto, con un prefijo de área opcional entre paréntesis (`(011) 4123-4567`), que forma parte del teléfono redactado.

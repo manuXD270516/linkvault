@@ -90,6 +90,27 @@ describe('PiiRedactor: URL', () => {
       '[URL_1] y [URL_2]',
     ],
     ['bare platform domain', 'github.com sin perfil', '[URL_1] sin perfil'],
+    ['capitalized TLD at the end of the text', 'anaperez.Me', '[URL_1]'],
+    [
+      'capitalized TLD followed by a comma',
+      'Contacto: anaperez.Me, Lima',
+      'Contacto: [URL_1], Lima',
+    ],
+    [
+      'capitalized TLD followed by a path',
+      'anaperez.Me/cv y más',
+      '[URL_1] y más',
+    ],
+    [
+      'lowercase TLD followed by a word',
+      'Anaperez.dev es mi sitio',
+      '[URL_1] es mi sitio',
+    ],
+    [
+      'uppercase TLD followed by a word',
+      'ANAPEREZ.DEV ES MI SITIO',
+      '[URL_1] ES MI SITIO',
+    ],
   ];
 
   it.each(positives)('redacts %s', (_label, text, expected) => {
@@ -137,6 +158,12 @@ describe('PiiRedactor: URL', () => {
     'Migración a v2.0',
     'Frameworks, e.g. Angular',
     'anaperez.devs no es un dominio',
+    'NestJS.Me encargué del backend',
+    'Angular.Co mencé en 2020',
+    'Json.NET',
+    'Rx.NET',
+    'Akka.NET',
+    'Hangfire.io',
   ])('leaves %s unchanged', (text) => {
     expect(redactText(text)).toBe(text);
   });

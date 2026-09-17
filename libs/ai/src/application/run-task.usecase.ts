@@ -7,6 +7,7 @@ import type {
 import {
   AiProgrammingError,
   InvalidDegradeOutput,
+  InvalidPrompt,
   ProviderUnavailable,
 } from '../domain/errors';
 import type { AiLogger } from '../domain/ports/ai-logger.port';
@@ -340,9 +341,16 @@ export class RunTask {
         if (acquired) this.deps.breaker.release(provider.id);
         throw cause;
       }
-      // Un fallo antes de contactar al proveedor que no es de programación no es un `provider_error`: sin permiso
-      // tomado no se cuenta en el breaker ni en el ledger, y se propaga como hasta ahora.
-      if (!acquired) throw error;
+      // Sin permiso tomado, el fallo ocurrió al renderizar el prompt: no es un `provider_error` (ni breaker ni ledger) y
+      // se propaga como `InvalidPrompt` (D2). El detalle solo lleva el `name` del error: su mensaje podría contener el
+      // input o el prompt.
+      if (!acquired) {
+        throw new InvalidPrompt(
+          task.name,
+          task.promptVersion,
+          `render failed (${error instanceof Error ? error.name : 'unknown error'})`,
+        );
+      }
       // Cancelación del llamador: ni `provider_error` ni fallo en el breaker; se devuelve el permiso de half-open.
       if (execution.ctx.signal?.aborted) {
         this.deps.breaker.release(provider.id);

@@ -97,8 +97,21 @@ const TECHNOLOGY_NAMES_LIKE_DOMAINS: ReadonlySet<string> = new Set([
   'ado.net',
   'vb.net',
   'ml.net',
+  'json.net',
+  'rx.net',
+  'akka.net',
   'socket.io',
+  'hangfire.io',
 ]);
+
+/**
+ * TLD escrito como palabra que empieza frase: mayúscula inicial y el resto en minúsculas (`Me`, `Co`, `Dev`). Un TLD
+ * en minúsculas (`Anaperez.dev es…`) o todo en mayúsculas (`ANAPEREZ.DEV es…`) no cuenta: ante la duda se redacta.
+ */
+const SENTENCE_START_TLD = /^\p{Lu}\p{Ll}*$/u;
+
+/** Tras el host: un espacio y una letra, como la palabra siguiente de una frase. */
+const FOLLOWED_BY_WORD = /^\p{Zs}\p{L}/u;
 
 /** Puntuación final que acompaña a una URL en prosa y no forma parte de ella. */
 const TRAILING_PUNCTUATION = /[.,;:!?'"]$/;
@@ -111,12 +124,34 @@ const detectUrls: Detector = (text, markers) =>
     URL_PATTERN,
     (match, ...args: unknown[]) => {
       const groups = args.at(-1) as UrlGroups;
-      const isTechnologyName =
-        groups.bare !== undefined &&
-        TECHNOLOGY_NAMES_LIKE_DOMAINS.has(groups.bare.toLowerCase());
-      return isTechnologyName ? match : markUrl(match, markers);
+      const source = args.at(-2) as string;
+      const offset = args.at(-3) as number;
+      const bare = groups.bare;
+      if (bare === undefined) return markUrl(match, markers);
+      const notADomain =
+        TECHNOLOGY_NAMES_LIKE_DOMAINS.has(bare.toLowerCase()) ||
+        isSentenceWithoutSpace(bare, match, source.slice(offset + match.length));
+      return notADomain ? match : markUrl(match, markers);
     },
   );
+
+/**
+ * Fin de frase sin espacio tras el punto (`NestJS.Me encargué`, `Angular.Co mencé`), solo en la rama sin esquema ni
+ * `www.` (D11): el host no lleva puerto ni ruta, su TLD tiene mayúscula inicial y le siguen un espacio y una letra.
+ * `anaperez.Me` al final, seguido de `,` o de `/`, y `Anaperez.dev es mi sitio` se siguen redactando.
+ */
+function isSentenceWithoutSpace(
+  bare: string,
+  match: string,
+  after: string,
+): boolean {
+  const tld = bare.slice(bare.lastIndexOf('.') + 1);
+  return (
+    match === bare &&
+    SENTENCE_START_TLD.test(tld) &&
+    FOLLOWED_BY_WORD.test(after)
+  );
+}
 
 /** Grupo con nombre de `URL_PATTERN`; `undefined` si encajó otra rama. */
 interface UrlGroups {
