@@ -3,6 +3,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   type ElementRef,
+  type TemplateRef,
   computed,
   effect,
   inject,
@@ -51,6 +52,7 @@ export class GroupDetailPage {
   protected readonly failure = signal<RequestFailure | null>(null);
   protected readonly working = signal(false);
   protected readonly isOwner = computed(() => this.group()?.role === 'owner');
+  protected readonly memberCount = computed(() => this.group()?.memberCount ?? 0);
   /** Mensaje de invitación cuando no hay portapapeles: se muestra seleccionado para copiarlo a mano. */
   protected readonly invitationToCopy = signal('');
   protected readonly invitationCopied = signal(false);
@@ -58,6 +60,7 @@ export class GroupDetailPage {
   protected readonly rotateOffer = signal(false);
 
   private readonly invitationField = viewChild<ElementRef<HTMLTextAreaElement>>('invitationField');
+  private readonly deleteMessage = viewChild.required<TemplateRef<unknown>>('deleteMessage');
 
   constructor() {
     void this.load();
@@ -91,12 +94,11 @@ export class GroupDetailPage {
     });
   }
 
-  /** Borrar el grupo: la confirmación dice a cuántos miembros afecta, porque no se puede deshacer. */
+  /** Borrar el grupo: la confirmación dice a cuántos afecta (plantilla, porque el mensaje pluraliza con un ICU). */
   protected async remove(): Promise<void> {
-    const memberCount = this.group()?.memberCount ?? 0;
     const confirmed = await confirmWith(this.dialog, {
       title: $localize`:@@groups.detail.deleteTitle:Borrar el grupo`,
-      message: $localize`:@@groups.detail.deleteMessage:Se borrará para los ${memberCount}:COUNT: miembros. No se puede deshacer.`,
+      message: this.deleteMessage(),
       confirmLabel: $localize`:@@groups.detail.deleteConfirm:Borrar`,
     });
     if (!confirmed) {

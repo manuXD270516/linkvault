@@ -45,7 +45,7 @@ describe('JoinGroupPage', () => {
     return harness.routeNativeElement as HTMLElement;
   }
 
-  it('Enlace de invitación', async () => {
+  it('opens an empty form when the link carries no code', async () => {
     store.setSession(sessionWith('token-1'));
     harness = await RouterTestingHarness.create();
 
@@ -59,6 +59,17 @@ describe('JoinGroupPage', () => {
     buttonWithText(dialog(), 'Cancelar').click();
     await vi.waitFor(() => expect(router.url).toBe('/grupos'));
     await flushGroupsList(http);
+  });
+
+  it('Enlace de invitación', async () => {
+    store.setSession(sessionWith('token-1'));
+    harness = await RouterTestingHarness.create();
+
+    await harness.navigateByUrl('/unirse?codigo=ABCD2345');
+    await settle();
+    await harness.fixture.whenStable();
+
+    expect(code()).toBe('ABCD2345');
   });
 
   it('El código no queda en la URL', async () => {

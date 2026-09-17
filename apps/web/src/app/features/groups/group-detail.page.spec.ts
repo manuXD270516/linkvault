@@ -337,6 +337,16 @@ describe('GroupDetailPage', () => {
     );
   });
 
+  it('Borrado de un grupo en el que estás solo', async () => {
+    await openDetail({ ...ownerDetail, memberCount: 1 }, [members[0]]);
+
+    await act('Borrar el grupo');
+
+    expect(dialog().textContent?.replace(/\s+/g, ' ')).toContain(
+      'Se borrará solo para ti. No se puede deshacer.',
+    );
+  });
+
   it('Borrado informado', async () => {
     await openDetail({ ...ownerDetail, memberCount: 3 });
 

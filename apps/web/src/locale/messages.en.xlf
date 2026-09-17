@@ -114,6 +114,11 @@
         <source>Crear grupo</source>
         <target>Create group</target>
       </trans-unit>
+      <trans-unit id="groups.detail.deleteMessage" datatype="html">
+        <source>{VAR_PLURAL, plural, =1 {Se borrará solo para ti. No se puede deshacer.} other {Se borrará para los
+    <x id="INTERPOLATION"/> miembros. No se puede deshacer.}}</source>
+        <target>{VAR_PLURAL, plural, =1 {It will be deleted just for you. This cannot be undone.} other {It will be deleted for all <x id="INTERPOLATION"/> members. This cannot be undone.}}</target>
+      </trans-unit>
       <trans-unit id="groups.detail.notFound" datatype="html">
         <source>Ese grupo no existe o ya no perteneces a él</source>
         <target>That group does not exist or you no longer belong to it</target>
@@ -205,10 +210,6 @@
       <trans-unit id="groups.detail.deleteTitle" datatype="html">
         <source>Borrar el grupo</source>
         <target>Delete the group</target>
-      </trans-unit>
-      <trans-unit id="groups.detail.deleteMessage" datatype="html">
-        <source>Se borrará para los <x id="COUNT" equiv-text="memberCount"/> miembros. No se puede deshacer.</source>
-        <target>It will be deleted for all <x id="COUNT" equiv-text="memberCount"/> members. This cannot be undone.</target>
       </trans-unit>
       <trans-unit id="groups.detail.deleteConfirm" datatype="html">
         <source>Borrar</source>

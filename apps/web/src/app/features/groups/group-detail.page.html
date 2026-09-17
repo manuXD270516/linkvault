@@ -1,3 +1,12 @@
+<!-- El mensaje de borrado pluraliza, así que vive en plantilla: un ICU no se puede escribir en TypeScript. -->
+<ng-template #deleteMessage>
+  @let count = memberCount();
+  <ng-container i18n="@@groups.detail.deleteMessage"
+    >{count, plural, =1 {Se borrará solo para ti. No se puede deshacer.} other {Se borrará para los
+    {{ count }} miembros. No se puede deshacer.}}</ng-container
+  >
+</ng-template>
+
 <section class="mx-auto flex max-w-2xl flex-col gap-6 p-6">
   @if (notFound()) {
     <p role="alert" i18n="@@groups.detail.notFound">Ese grupo no existe o ya no perteneces a él</p>

@@ -142,8 +142,9 @@ guardada.
 
 ### Requirement: Acciones del detalle
 
-Salir, expulsar y borrar SHALL pedir confirmación antes de llamar a la API; la de borrar SHALL decir "Se borrará para los
-N miembros. No se puede deshacer." Salir y borrar SHALL navegar a `/grupos` al terminar; expulsar SHALL actualizar la
+Salir, expulsar y borrar SHALL pedir confirmación antes de llamar a la API; la de borrar SHALL decir a cuántos afecta: con más de un miembro,
+"Se borrará para los N miembros. No se puede deshacer."; con un único miembro, "Se borrará solo para ti. No se puede
+deshacer." Salir y borrar SHALL navegar a `/grupos` al terminar; expulsar SHALL actualizar la
 lista de miembros en la misma pantalla y ofrecer "Regenerar el código para que no pueda volver a entrar", oferta que ya
 cuenta como confirmación. Regenerar el código desde su botón SHALL pedir confirmación diciendo "Los miembros actuales siguen dentro; solo dejará de servir el código anterior" y
 SHALL mostrar el nuevo.
@@ -165,6 +166,12 @@ SHALL mostrar el nuevo.
 - **GIVEN** el owner de un grupo con 3 miembros
 - **WHEN** pulsa borrar
 - **THEN** la confirmación SHALL decir "Se borrará para los 3 miembros. No se puede deshacer."
+
+#### Scenario: Borrado de un grupo en el que estás solo
+
+- **GIVEN** el owner de un grupo con un único miembro
+- **WHEN** pulsa borrar
+- **THEN** la confirmación SHALL decir "Se borrará solo para ti. No se puede deshacer."
 
 #### Scenario: Expulsar ofrece regenerar el código
 
