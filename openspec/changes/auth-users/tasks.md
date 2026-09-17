@@ -11,9 +11,9 @@
 
 ## 3. Módulo users
 
-- [ ] 3.1 [backend] Dominio de `users` (entidad con `passwordChangedAt`, perfil por defecto, `normalizeEmail`) y puerto `USER_REPOSITORY` con repositorio en memoria; verificar con "Perfil tras el registro" a nivel de dominio y tests de normalización.
-- [ ] 3.2 [backend] `MongoUserRepository` con schema, índice único sobre el email normalizado (esperando `Model.init()`) y traducción del duplicado a error de dominio; verificar con tests de integración sobre `mongodb-memory-server` (alta, búsqueda por email e id, duplicado, actualización parcial, `setPasswordHash` fija `passwordChangedAt`).
-- [ ] 3.3 [backend] Use cases `get-my-profile` y `update-my-profile` y `UsersFacade` exportado (`findCredentialsByEmail`, `createWithPassword`, `setPasswordHash`, `getAuthState`, `getProfile`); verificar con tests unitarios sobre el repositorio en memoria, incluida la actualización que solo cambia los campos enviados.
+- [x] 3.1 [backend] Dominio de `users` (entidad con `passwordChangedAt`, perfil por defecto, `normalizeEmail`) y puerto `USER_REPOSITORY` con repositorio en memoria; verificar con "Perfil tras el registro" a nivel de dominio y tests de normalización.
+- [x] 3.2 [backend] `MongoUserRepository` con schema, índice único sobre el email normalizado (esperando `Model.init()`) y traducción del duplicado a error de dominio; verificar con tests de integración sobre `mongodb-memory-server` (alta, búsqueda por email e id, duplicado, actualización parcial, `setPasswordHash` fija `passwordChangedAt`).
+- [x] 3.3 [backend] Use cases `get-my-profile` y `update-my-profile` y `UsersFacade` exportado (`findCredentialsByEmail`, `createWithPassword`, `setPasswordHash`, `getAuthState`, `getProfile`); verificar con tests unitarios sobre el repositorio en memoria, incluida la actualización que solo cambia los campos enviados.
 
 ## 4. Módulo auth: dominio y adaptadores
 
