@@ -27,7 +27,8 @@ Antes de cualquier tarea lee, en este orden: `docs/design-v0.2.md` (decisiones v
 - Único punto de entrada: `runTask(task, input, ctx)`. Prohibido importar SDKs de proveedores fuera de `libs/ai/infrastructure/providers` (lint `no-restricted-imports`).
 - Cada proveedor declara `capabilities`; el routing filtra por capacidades, consentimiento, cuota y circuit breaker (ADR-014).
 - Salidas estructuradas: `temperature 0`, zod, un repair prompt, luego siguiente proveedor, luego degradación honesta (`RuleBasedMatcher`).
-- Mock determinista con modos `replay` (CI), `synth` (dev), `record`. `synth` prohibido en producción. Clave = sha256(task + promptVersion + canonicalJSON(input)).
+- Mock determinista con modos `replay` (CI) y `synth` (dev); fixtures reales con `nx run ai:record-fixtures` (ADR-019). `synth` prohibido en producción. Clave según ADR-018 §3.
+- Cambiar prompt, modelo o fixtures del golden = `nx run ai:eval --provider=mock --update-baseline` en el mismo commit.
 - Prompts en `libs/ai/infrastructure/prompts/<task>.vN.md` (front-matter + Mustache). Cambiar prompt = nueva versión + fixtures + corrida del eval harness.
 - Proveedores `external` reciben el input pasado por `PiiRedactor`. Nunca persistir prompts renderizados ni loguear claves.
 - En tests y CI: `AI_CHAIN=mock`, `AI_MOCK_MODE=replay`.

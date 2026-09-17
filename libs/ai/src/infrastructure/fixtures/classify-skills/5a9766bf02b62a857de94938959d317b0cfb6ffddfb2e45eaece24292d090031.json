@@ -1,0 +1,9 @@
+{
+  "source": "recorded:ollama:qwen2.5:7b",
+  "text": "{\"skills\":[{\"name\":\"Terraform\",\"category\":\"tool\"},{\"name\":\"GitHub Actions\",\"category\":\"tool\"},{\"name\":\"Docker\",\"category\":\"tool\"},{\"name\":\"Prometheus\",\"category\":\"tool\"},{\"name\":\"Grafana\",\"category\":\"tool\"},{\"name\":\"Bash\",\"category\":\"language\"},{\"name\":\"AWS\",\"category\":\"platform\"},{\"name\":\"Kubernetes\",\"category\":\"platform\"}]}",
+  "model": "qwen2.5:7b",
+  "usage": {
+    "inputTokens": 509,
+    "outputTokens": 110
+  }
+}

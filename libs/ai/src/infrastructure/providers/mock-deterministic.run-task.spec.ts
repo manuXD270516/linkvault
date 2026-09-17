@@ -166,7 +166,13 @@ describe('runTask with the mock in replay mode (handwritten fixtures)', () => {
         source: string;
         text: string;
       };
-      expect(fixture.source).toBe('handwritten');
+      // Los de los tests son dobles escritos a mano; el resto son fixtures del golden grabados con
+      // `nx run ai:record-fixtures` (D7 y D9 de ai-eval-harness).
+      if (expectedKeys.includes(file.replace(/\.json$/, ''))) {
+        expect(fixture.source).toBe('handwritten');
+      } else {
+        expect(fixture.source).toMatch(/^recorded:[a-z]+:.+$/);
+      }
       expect(
         classifySkillsOutputSchema.safeParse(JSON.parse(fixture.text)).success,
       ).toBe(true);

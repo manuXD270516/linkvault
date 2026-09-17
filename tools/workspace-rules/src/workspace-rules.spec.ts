@@ -30,6 +30,8 @@ interface RuleRow {
 
 const BOUNDARIES = '@nx/enforce-module-boundaries';
 const DOMAIN_IMPORTS = 'no-restricted-imports';
+/** El bloque de `libs/ai/src/evals` usa la misma regla base que el dominio, con su propia lista (D1 de ai-eval-harness). */
+const EVALS_IMPORTS = 'no-restricted-imports';
 const AI_SDK_IMPORTS = '@typescript-eslint/no-restricted-imports';
 /** `import()` y `require()` de SDKs; en este repo no-restricted-syntax solo se usa para eso. */
 const AI_SDK_SYNTAX = 'no-restricted-syntax';
@@ -174,6 +176,71 @@ const rows: readonly RuleRow[] = [
     code: "import { Schema } from 'mongoose';\n\nexport const probe = Schema;\n",
     expectedRuleIds: [],
     unexpectedRuleIds: [DOMAIN_IMPORTS],
+  },
+  {
+    name: 'libs/ai evals imports ai.module',
+    filePath: 'libs/ai/src/evals/runner/x.ts',
+    code: "import { AiModule } from '../../ai.module';\n\nexport const probe = AiModule;\n",
+    expectedRuleIds: [EVALS_IMPORTS],
+  },
+  {
+    // `..` desde evals/runner resuelve a evals/index o src/index: cualquier barrel de libs/ai arrastra ai.module.
+    name: 'libs/ai evals imports an index through ..',
+    filePath: 'libs/ai/src/evals/runner/x.ts',
+    code: "import * as ai from '..';\n\nexport const probe = ai;\n",
+    expectedRuleIds: [EVALS_IMPORTS],
+  },
+  {
+    name: 'libs/ai evals imports a concrete domain file',
+    filePath: 'libs/ai/src/evals/runner/x.ts',
+    code: "import { DEFAULT_DATA_SENSITIVITY } from '../../domain/task';\n\nexport const probe = DEFAULT_DATA_SENSITIVITY;\n",
+    expectedRuleIds: [],
+    unexpectedRuleIds: [EVALS_IMPORTS],
+  },
+  {
+    // El bloque de evals usa la regla base: la de SDKs (typescript-eslint) sigue aplicando sobre evals/.
+    name: 'libs/ai evals imports an AI provider SDK',
+    filePath: 'libs/ai/src/evals/runner/x.ts',
+    code: "import OpenAI from 'openai';\n\nexport const probe = OpenAI;\n",
+    expectedRuleIds: [AI_SDK_IMPORTS],
+  },
+  {
+    name: 'libs/ai evals imports the Nest framework',
+    filePath: 'libs/ai/src/evals/runner/x.ts',
+    code: "import { Injectable } from '@nestjs/common';\n\nexport const probe = Injectable;\n",
+    expectedRuleIds: [EVALS_IMPORTS],
+  },
+  {
+    name: 'libs/ai evals imports mongoose',
+    filePath: 'libs/ai/src/evals/runner/x.ts',
+    code: "import { Schema } from 'mongoose';\n\nexport const probe = Schema;\n",
+    expectedRuleIds: [EVALS_IMPORTS],
+  },
+  {
+    name: 'libs/ai evals imports ioredis',
+    filePath: 'libs/ai/src/evals/runner/x.ts',
+    code: "import Redis from 'ioredis';\n\nexport const probe = Redis;\n",
+    expectedRuleIds: [EVALS_IMPORTS],
+  },
+  {
+    name: 'libs/ai evals imports the test doubles of application/testing',
+    filePath: 'libs/ai/src/evals/runner/x.ts',
+    code: "import * as doubles from '../../application/testing/in-memory-ports';\n\nexport const probe = doubles;\n",
+    expectedRuleIds: [EVALS_IMPORTS],
+  },
+  {
+    name: 'libs/ai evals imports an index through ./index',
+    filePath: 'libs/ai/src/evals/runner/x.ts',
+    code: "import * as barrel from './index';\n\nexport const probe = barrel;\n",
+    expectedRuleIds: [EVALS_IMPORTS],
+  },
+  {
+    // Anclado al segmento completo: `./indexer` no es un index.
+    name: 'libs/ai evals imports a file whose name starts with index',
+    filePath: 'libs/ai/src/evals/runner/x.ts',
+    code: "import * as indexer from './indexer';\n\nexport const probe = indexer;\n",
+    expectedRuleIds: [],
+    unexpectedRuleIds: [EVALS_IMPORTS],
   },
   {
     name: 'product code declares an explicit any',

@@ -1,0 +1,9 @@
+{
+  "source": "recorded:ollama:qwen2.5:7b",
+  "text": "{\"skills\":[{\"name\":\"Python\",\"category\":\"language\"},{\"name\":\"pandas\",\"category\":\"tool\"},{\"name\":\"SQL\",\"category\":\"tool\"},{\"name\":\"Power BI\",\"category\":\"tool\"},{\"name\":\"Excel\",\"category\":\"tool\"},{\"name\":\"Scrum\",\"category\":\"framework\"}]}",
+  "model": "qwen2.5:7b",
+  "usage": {
+    "inputTokens": 527,
+    "outputTokens": 80
+  }
+}

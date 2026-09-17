@@ -178,6 +178,52 @@ export default [
     },
   },
 
+  // Eval harness (D1 de ai-eval-harness, ADR-019): `libs/ai/src/evals` corre fuera de Nest con `node --import tsx`, así que
+  // no importa framework ni infraestructura, ni el barrel de libs/ai (arrastraría ai.module), ni los dobles de test de
+  // application/testing. Usa la regla base `no-restricted-imports`, como el dominio: la de typescript-eslint ya lleva los SDKs
+  // de IA y ESLint no combina opciones entre bloques (ADR-017). Ningún archivo casa a la vez con este bloque y con el de
+  // dominio (`**/domain/**`) mientras `evals/` no tenga una carpeta `domain`; si la tuviera, este bloque, posterior, lo pisaría.
+  {
+    basePath: import.meta.dirname,
+    files: ['libs/ai/src/evals/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              regex: '^@nestjs/',
+              message:
+                'El eval harness no importa Nest: compón lo necesario en evals/runner (D3 de ai-eval-harness).',
+            },
+            {
+              regex: '^(?:mongoose|ioredis)(?:/.*)?$',
+              message:
+                'El eval harness no importa infraestructura de persistencia: usa los dobles propios de evals/runner.',
+            },
+            // Especificadores que resuelven a un `index` (`.`, `..`, `../..`, `./index`, `**/index`): el barrel de libs/ai
+            // exporta ai.module y arrastraría Nest al proceso del harness.
+            {
+              regex: '^(?:\\.{1,2}(?:/\\.\\.)*/?|(?:.*/)?index(?:\\.[cm]?[jt]s)?)$',
+              message:
+                'El eval harness no importa un index de libs/ai: importa el archivo concreto (p. ej. ../../domain/task).',
+            },
+            {
+              regex: '(?:^|/)ai\\.module(?:\\.[cm]?[jt]s)?$',
+              message:
+                'El eval harness no importa ai.module: compón RunTask en evals/runner (D3 de ai-eval-harness).',
+            },
+            {
+              regex: '(?:^|/)application/testing(?:/|$)',
+              message:
+                'El eval harness no importa los dobles de test de application/testing: usa los de evals/runner.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
   // Sin `any` explícito ni `console` (CLAUDE.md): en proyectos de producto y también en tools/*, que no tienen
   // un uso legítimo de ninguno de los dos. Los logs pasan por pino; los scripts de arranque, por process.stderr.
   {
