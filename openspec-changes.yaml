@@ -42,6 +42,8 @@ changes:
     agents: [backend-dev, frontend-dev]
     scope: |
       CRUD de grupo, código de invitación, unirse por código, roles owner/member, salir del grupo. Frontend: lista y detalle de grupo.
+      `/` pasa a ser la lista de grupos del usuario, con estado vacío, y sustituye al saludo "Hola, {displayName}" de
+      auth-users (D11). Rutas visibles en español como las de auth-users (`/grupos`).
   - name: job-links
     adrs: [002, 008, 009]
     agents: [backend-dev, frontend-dev]
@@ -90,7 +92,7 @@ changes:
       POST /cv multipart (PDF/DOCX ≤ 5 MB) a MinIO, cv_documents con versiones e isDefault, worker extract-cv (pdf-parse, mammoth).
       Frontend: subir, listar, marcar por defecto.
   - name: cv-match-suggestions
-    adrs: [014]
+    adrs: [014, 018, 020]
     agents: [ai-engineer, backend-dev, frontend-dev]
     scope: |
       docs/design-v0.2.md §4.7, §4.8, §4.12: tareas match-cv y critique-suggestions, evaluator-optimizer acotado (máx 2, juez distinto
@@ -100,6 +102,10 @@ changes:
       con CVs reales anonimizados (diferidos desde ai-gateway-core, ADR-018). Métricas de redacción en el eval harness
       (skills ocultadas por la redacción y PII anotada que no se redacta) sobre ese golden de CVs, para medir la sobre-redacción
       y el falso negativo aceptados en ADR-018 (diferidas desde ai-eval-harness, ADR-019).
+      Controles de IA en el perfil del SPA (diferidos desde auth-users, ADR-020; la API y los valores por defecto ya existen en
+      PATCH /api/users/me): consentimiento de proveedores externos con texto honesto (qué dato se envía, a quién, qué se
+      redacta y que es revocable), guardando `consentedAt` y la versión del texto aceptado; idioma de salida con la etiqueta
+      "Idioma de los análisis de IA" (`outputLanguage`); y redacción del nombre propio (`redactName`).
   - name: study-roadmap
     adrs: [014]
     agents: [ai-engineer, frontend-dev]
@@ -113,8 +119,18 @@ changes:
       Vault libsodium secretbox con AI_VAULT_KEY, claves por vendor (anthropic, openai, openrouter), proveedores byok:<userId>:<vendor>
       con prioridad 0 en routing, AnthropicProvider y OpenAIProvider, revocación, redactor pino. Frontend: gestión de claves en perfil.
   - name: deploy-prod
-    adrs: [001, 009]
+    adrs: [001, 009, 020]
     agents: [devops]
     scope: |
       docker-compose.prod.yml con Traefik + Let's Encrypt, réplicas del worker, healthchecks, CD a staging en main y prod por tag,
       infra/README.md con alternativas (VPS, Fly/Railway/Render, k3s+Helm, Cloud Run), observabilidad mínima (/metrics, pino, OTel opcional).
+      Heredado de auth-users (ADR-020): `trustProxy` de api y cabecera de IP real detrás de Traefik, para que los límites de
+      intentos cuenten por IP del cliente y no del proxy; reseteo manual de contraseña por un operador, documentado (no hay
+      recuperación por email hasta auth-email-recovery); aviso de privacidad; y borrado de cuenta.
+  - name: auth-email-recovery
+    adrs: [012, 020]
+    agents: [backend-dev, frontend-dev]
+    scope: |
+      Diferido desde auth-users (fuera de su alcance por no haber infraestructura de email, ADR-020): verificación del email de
+      la cuenta y recuperación de contraseña por email. Alcance, proveedor de correo y orden en la secuencia por decidir al
+      crear el change.

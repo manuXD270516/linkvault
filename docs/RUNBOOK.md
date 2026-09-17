@@ -216,17 +216,18 @@ Orden y notas específicas:
 | 2 | `ai-gateway-core` | Pega literal docs/design-v0.2.md §4.1–4.6, 4.9, 4.10 y la spec de §4.13. Pide primero `MockDeterministicProvider` en modo `synth` y `replay`, luego Ollama, luego OpenRouter. Sin proveedores de pago aún. |
 | 3 | `ai-eval-harness` | §4.11. Corredor, métricas y línea base con 5 casos sintéticos (`placeholder`) de `classify-skills`; el golden real de `extract-job` (`/lv:golden 20`) llega con `link-enrichment` (ADR-019). |
 | 4 | `auth-users` | ADR-012. Incluir `aiConsent`, `outputLanguage`. |
-| 5 | `groups` | Invitación por código; roles owner/member. |
+| 5 | `groups` | Invitación por código; roles owner/member. `/` pasa a ser la lista de grupos con estado vacío (sustituye el saludo de `auth-users`). |
 | 6 | `job-links` | ADR-008, 009. Canonicalizadores para LinkedIn, Computrabajo, Indeed, Trabajopolis, Get on Board. Import desde texto (B1). "Ya está en Grupo X" (B6). |
 | 7 | `link-enrichment` | ADR-003, 010. Cola por dominio. `extract-job` vía `runTask`. SSE. |
 | 8 | `applications-tracking` | ADR-004, 015. Kanban + timeline. |
 | 9 | `group-comments` | Planos, sin hilos. |
 | 10 | `public-preview-share` | ADR-013. |
 | 11 | `cv-upload-extract` | MinIO, pdf-parse, mammoth. |
-| 12 | `cv-match-suggestions` | §4.8 y 4.12. Evaluator-optimizer acotado, `evidence` obligatoria, `ai_feedback`. |
+| 12 | `cv-match-suggestions` | §4.8 y 4.12. Evaluator-optimizer acotado, `evidence` obligatoria, `ai_feedback`. Controles de IA del perfil diferidos desde `auth-users`: consentimiento con texto honesto, `consentedAt` y versión del texto, "Idioma de los análisis de IA" y redacción del nombre. |
 | 13 | `study-roadmap` | Catálogo curado `resources.seed.json` primero. |
 | 14 | `ai-byok` | libsodium vault. |
-| 15 | `deploy-prod` | compose prod + Traefik + docs de alternativas. |
+| 15 | `deploy-prod` | compose prod + Traefik + docs de alternativas. Heredado de `auth-users` (ADR-020): `trustProxy`, reseteo manual de contraseña por operador documentado, aviso de privacidad y borrado de cuenta. |
+| 16 | `auth-email-recovery` | Fuera de §6: verificación de email y recuperación de contraseña, diferidas desde `auth-users` (ADR-020). Alcance y orden por decidir al crearlo. |
 
 **Paralelizar front y back (changes 4–8):** en `/opsx:apply` pide:
 ```
@@ -262,6 +263,10 @@ Antes de que arranquen, fija el contrato en libs/shared (schemas zod + endpoints
 | `/opsx:*` no aparece | `openspec init` no eligió Claude Code → vuelve a correrlo o `openspec update` |
 | Hook bloquea todo | Verifica que el script tenga `chmod +x`; prueba `echo '{"tool_input":{"file_path":"apps/x.ts"}}' \| bash .claude/hooks/require-openspec-change.sh` |
 | Mongo: "Transaction numbers are only allowed on a replica set member" | El healthcheck de `mongo` no ha inicializado `rs0`: revisa su estado con `docker compose ps` o `docker inspect --format '{{json .State.Health}}' linkvault-mongo-1` (ver ADR-017) |
+| `api` no arranca nombrando `AUTH_JWT_SECRET` u otra `AUTH_*` | Tu `.env` es anterior a `auth-users`: copia el bloque `AUTH_*` de `.env.example`. Con `NODE_ENV=production` el secreto de ejemplo se rechaza a propósito |
+| Login o registro responden `429` en pruebas locales o en `/lv:smoke` | Contadores de intentos de la ventana de 15 min en Redis. En local: `docker compose exec redis sh -c "redis-cli --scan --pattern 'auth:*' \| xargs -r redis-cli del"`. Nunca en un entorno compartido |
+| `POST /api/auth/*` responde `403` o `415` | Falta `X-Requested-With: linkvault` o el cuerpo no es `application/json` (defensa CSRF, ADR-020) |
+| La sesión no se restaura al recargar el SPA | Abre el SPA en `http://localhost:4200` (el proxy mantiene `/api` en el mismo origen); la cookie `lv_refresh` solo viaja a `/api/auth` |
 | Claude Code ignora un ADR | Pídele explícitamente: "Relee docs/adr/ADR-0XX.md y explica cómo tu cambio lo cumple" |
 | Contexto muy largo / respuestas erráticas | `/compact` o `/clear` + volver al Paso 3 (prompt de verificación de contexto) |
 
@@ -292,7 +297,7 @@ Verifica Node ≥ 22, pnpm, Docker; instala Claude Code y OpenSpec si faltan; `g
 Sesión interactiva típica por change: `/clear` → `/lv:new next` → (lees) → `/lv:debate` → (lees, commit) → `/lv:apply` → `/lv:qa` → (prueba manual) → `/lv:archive`.
 
 ### 9.3 `openspec-changes.yaml` — el manifiesto
-Los 15 changes con ADRs, agentes y párrafo de alcance. Es lo que `/lv:new` pasa a `/opsx:ff`; edítalo si recortas o reordenas alcance. Añadir un change = añadir una entrada.
+Los 15 changes de §6, más los añadidos después (`auth-email-recovery`), con ADRs, agentes y párrafo de alcance. Es lo que `/lv:new` pasa a `/opsx:ff`; edítalo si recortas o reordenas alcance. Añadir un change = añadir una entrada.
 
 ### 9.4 `scripts/change.sh` — orquestador headless con puertas humanas
 ```bash
@@ -350,6 +355,7 @@ Tras `make setup` y `claude`:
 /lv:run study-roadmap
 /lv:run ai-byok
 /lv:run deploy-prod
+/lv:run auth-email-recovery      ← fuera de §6; revisa su alcance antes (ver tabla del Paso 5)
 ```
 O simplemente `/lv:run next` quince veces: cada uno lee el manifiesto, salta lo archivado y toma el siguiente. Entre changes usa `/clear`.
 
