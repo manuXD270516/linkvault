@@ -4,6 +4,8 @@ import { AppConfigModule } from '../infrastructure/config/app-config.module';
 import { AppLoggerModule } from '../infrastructure/logging/app-logger.module';
 import { MongoPersistenceModule } from '../infrastructure/persistence/mongo-persistence.module';
 import { RedisHealthModule } from '../infrastructure/redis/redis-health.module';
+import { AuthModule } from '../modules/auth/presentation/auth.module';
+import { UsersModule } from '../modules/users/presentation/users.module';
 import { HealthModule } from '../presentation/http/health.module';
 
 @Module({})
@@ -17,6 +19,8 @@ export class AppModule {
         MongoPersistenceModule,
         RedisHealthModule,
         HealthModule,
+        UsersModule,
+        AuthModule,
       ],
     };
   }

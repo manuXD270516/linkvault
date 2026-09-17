@@ -20,6 +20,7 @@ import { APP_CONFIG } from '../../infrastructure/config/app-config.module';
 import { MongoHealthIndicator } from '../../infrastructure/health/mongo-health.indicator';
 import { RedisHealthIndicator } from '../../infrastructure/health/redis-health.indicator';
 import { withTimeout } from '../../infrastructure/health/with-timeout';
+import { Public } from './auth-context/public.decorator';
 
 export const HEALTH_SERVICE_NAME = 'api';
 /** Tope de la respuesta completa de `GET /health` (D9). */
@@ -33,8 +34,10 @@ interface ReadinessOutcome {
 /**
  * Salud en dos niveles (ADR-017 §5), fuera del prefijo `/api` y sin autenticación. Adapta la salida de
  * terminus, incluida su `ServiceUnavailableException`, al contrato `HealthReadinessResponse` de
- * `@linkvault/shared`: solo estados `up`/`down`, nunca detalles de los indicadores.
+ * `@linkvault/shared`: solo estados `up`/`down`, nunca detalles de los indicadores. Pública: queda fuera del guard
+ * global de access token (D3 de auth-users).
  */
+@Public()
 @Controller('health')
 export class HealthController {
   private readonly version: string;
