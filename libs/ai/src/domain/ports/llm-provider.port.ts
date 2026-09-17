@@ -21,6 +21,11 @@ export interface CompletionTrace {
   promptVersion: string;
   /** sha256(canonicalJSON([taskName, promptVersion, outputLanguage, parsedInput])) */
   key: string;
+  /**
+   * Input ya parseado por `inputSchema`, antes de la redacción. Solo lo usa el modo `synth` del mock para llamar a
+   * `task.sample`; ningún proveedor lo envía, registra ni persiste.
+   */
+  input?: unknown;
 }
 
 export interface CompletionRequest {

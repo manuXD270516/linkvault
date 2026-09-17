@@ -176,6 +176,48 @@ describe('InMemoryCircuitBreaker', () => {
     expect(breaker.tryAcquire('ollama')).toBe(true);
   });
 
+  it('release returns a granted half-open permit so a new tryAcquire gets it again', () => {
+    const clock = new FakeClock();
+    const breaker = new InMemoryCircuitBreaker(clock);
+    failTimes(breaker, 'ollama', 5);
+    clock.advance(30_000);
+
+    expect(breaker.tryAcquire('ollama')).toBe(true);
+    expect(breaker.tryAcquire('ollama')).toBe(false);
+
+    breaker.release('ollama');
+
+    expect(breaker.openIds().has('ollama')).toBe(false);
+    expect(breaker.tryAcquire('ollama')).toBe(true);
+    // Sigue en half-open: un fallo de la nueva prueba reabre.
+    breaker.recordFailure('ollama');
+    expect(breaker.openIds()).toEqual(new Set(['ollama']));
+  });
+
+  it('release without a granted permit does nothing', () => {
+    const clock = new FakeClock();
+    const breaker = new InMemoryCircuitBreaker(clock);
+
+    // Cerrado: no toca la ventana de errores.
+    failTimes(breaker, 'ollama', 4);
+    breaker.release('ollama');
+    breaker.release('unknown');
+    breaker.recordFailure('ollama');
+    expect(breaker.openIds()).toEqual(new Set(['ollama']));
+
+    // Abierto sin estar listo para prueba: sigue abierto.
+    clock.advance(10_000);
+    breaker.release('ollama');
+    expect(breaker.openIds()).toEqual(new Set(['ollama']));
+    expect(breaker.tryAcquire('ollama')).toBe(false);
+
+    // Half-open sin permiso tomado: el permiso sigue siendo único.
+    clock.advance(20_000);
+    breaker.release('ollama');
+    expect(breaker.tryAcquire('ollama')).toBe(true);
+    expect(breaker.tryAcquire('ollama')).toBe(false);
+  });
+
   it('ignores a late failure from a request started before the circuit opened', () => {
     const clock = new FakeClock();
     const breaker = new InMemoryCircuitBreaker(clock);

@@ -93,6 +93,13 @@ export class InMemoryCircuitBreaker implements CircuitBreaker {
     }
   }
 
+  release(providerId: string): void {
+    const circuit = this.circuits.get(providerId);
+    if (circuit === undefined || circuit.openedAt === null) return;
+    // Devuelve el permiso sin reabrir ni contar un error: el circuito sigue en half-open.
+    circuit.probeInFlight = false;
+  }
+
   private admitsProbe(circuit: ProviderCircuit, now: number): boolean {
     return (
       circuit.openedAt !== null &&

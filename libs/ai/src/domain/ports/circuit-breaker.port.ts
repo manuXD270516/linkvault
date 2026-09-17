@@ -9,4 +9,9 @@ export interface CircuitBreaker {
   recordSuccess(providerId: string): void;
   /** Solo errores de proveedor (red, código de error, timeout). */
   recordFailure(providerId: string): void;
+  /**
+   * Devuelve un permiso de half-open ya concedido sin tocar la ventana de errores. `runTask` lo llama cuando aborta
+   * `ctx.signal`; sin permiso concedido no hace nada.
+   */
+  release(providerId: string): void;
 }

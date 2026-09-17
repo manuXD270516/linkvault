@@ -56,7 +56,13 @@ describe('domain contracts (types)', () => {
     };
 
     expectTypeOf<CompletionRequest['trace']>().toEqualTypeOf<
-      { taskName: string; promptVersion: string; key: string } | undefined
+      | {
+          taskName: string;
+          promptVersion: string;
+          key: string;
+          input?: unknown;
+        }
+      | undefined
     >();
     expect(req.trace?.key).toBe('abc');
   });
