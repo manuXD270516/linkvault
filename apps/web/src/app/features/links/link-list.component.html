@@ -1,0 +1,36 @@
+@if (links().length === 0) {
+  @if (scope() === 'mine') {
+    <p data-testid="links-empty" i18n="@@links.list.emptyMine">
+      Aquí guardas ofertas solo para ti. Las que compartiste están en tus grupos.
+    </p>
+  } @else {
+    <p data-testid="links-empty" i18n="@@links.list.emptyGroup">
+      Todavía no hay ofertas aquí. Guarda un link o pega el chat donde las compartís.
+    </p>
+  }
+} @else {
+  <ul class="flex list-none flex-col gap-3 p-0" data-testid="link-list">
+    @for (link of links(); track link.id) {
+      <li class="flex flex-col gap-1">
+        <!-- Se abre `displayUrl`, no la normalizada: la normalización es identidad y puede no resolver (D2). -->
+        <a
+          class="font-medium"
+          [href]="link.displayUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+          data-testid="link-open"
+          >{{ label(link.displayUrl) }}</a
+        >
+        <span class="flex flex-wrap gap-x-3 gap-y-1 text-sm">
+          <span data-testid="link-platform">{{ platformName(link.platform) }}</span>
+          @if (link.sharedBy; as sharer) {
+            <span i18n="@@links.list.sharedBy">Compartido por {{ sharer.displayName }}</span>
+          }
+          @if (withoutPreview(link.previewStatus)) {
+            <span i18n="@@links.list.noPreview">Sin vista previa todavía</span>
+          }
+        </span>
+      </li>
+    }
+  </ul>
+}

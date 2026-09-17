@@ -51,8 +51,8 @@
 
 ## 7. Web
 
-- [ ] 7.1 [frontend] `core/links/links.api.ts` y `LinksStore` (lista por grupo y privada, paginación por cursor, recarga tras guardar, importar o quitar); verificar con tests de `HttpTestingController` y del store.
-- [ ] 7.2 [frontend] `link-list.component.ts` con la etiqueta derivada de la URL, el estado "Sin vista previa todavía", apertura en pestaña nueva con `rel="noopener noreferrer"` y los estados vacíos; verificar con "Grupo con links", "Grupo sin links", "Abrir una oferta" y el estado vacío de la vista privada.
+- [x] 7.1 [frontend] `core/links/links.api.ts` y `LinksStore` (lista por grupo y privada, paginación por cursor, recarga tras guardar, importar o quitar); verificar con tests de `HttpTestingController` y del store.
+- [x] 7.2 [frontend] `link-list.component.ts` con la etiqueta derivada de la URL, el estado "Sin vista previa todavía", apertura en pestaña nueva con `rel="noopener noreferrer"` y los estados vacíos; verificar con "Grupo con links", "Grupo sin links", "Abrir una oferta" y el estado vacío de la vista privada.
 - [ ] 7.3 [frontend] Formulario de guardar un link con sus mensajes; verificar con "Link guardado", "URL inválida", "Aviso de link repetido", "El link ya estaba en este grupo" y "Vacante conocida compartida por primera vez".
 - [ ] 7.4 [frontend] Diálogo de importar con contador de caracteres y resumen con plurales; verificar con "Importación con repetidos", "Importación sin enlaces", "Importación recortada a 50" y "Texto demasiado largo".
 - [ ] 7.5 [frontend] Quitar un link con confirmación y permisos por rol; verificar con "Quitar un enlace que no era una oferta" y "Sin permiso para quitar".
