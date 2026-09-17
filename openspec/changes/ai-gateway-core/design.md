@@ -182,8 +182,10 @@ Plazos: por intento, `signal = AbortSignal.any([AbortSignal.timeout(providerTime
 (filtrar es obligatorio: `AbortSignal.any` lanza `TypeError` con `undefined`). La señal combinada se pasa en `req.signal`
 para que `fetch` cierre el socket, y `runTask` compite `provider.complete(req)` contra una promesa que rechaza al abortarse,
 así que el intento termina aunque el proveedor ignore la señal. Si abortó el timeout del proveedor: `provider_error` y
-`recordFailure`. Si abortó `ctx.signal`: sin `provider_error` ni `recordFailure`, se interrumpe la cadena y se devuelve un
-único `degraded` con `providers_failed`. En tests, los timeouts son de decenas de milisegundos con temporizadores reales.
+`recordFailure`. Si abortó `ctx.signal`: sin `provider_error` ni `recordFailure`, se llama a `breaker.release(id)` para
+devolver un permiso de half-open ya concedido (sin él quedaría tomado para siempre y el proveedor no volvería en ese
+proceso), se interrumpe la cadena y se devuelve un único `degraded` con `providers_failed`. `release` es el único método
+que el puerto `CircuitBreaker` añade respecto a lo descrito arriba. En tests, los timeouts son de decenas de milisegundos con temporizadores reales.
 
 ### D11 — `PiiRedactor`
 
