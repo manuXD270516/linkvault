@@ -55,7 +55,7 @@
 - [x] 7.6 [frontend] Página de login (mostrar/ocultar, mensajes por código, `returnUrl` en el enlace a registro); verificar con "Login correcto con redirección", "Credenciales inválidas", "Demasiados intentos", mensaje sin conexión y "Almacenamiento limpio tras el login" (`localStorage` y `sessionStorage`).
 - [x] 7.7 [frontend] Página de registro (pista de longitud, aviso de datos, mostrar/ocultar, `returnUrl`); verificar con "Registro conserva la ruta pedida", "Email ya registrado" (email pasado por `state`, no en la URL) y errores de validación en cliente.
 - [x] 7.8 [frontend] Página de perfil con `displayName` y cambio de contraseña; verificar con "Guardar el nombre", "Cambiar la contraseña" (incluida la renovación en la petición siguiente), "Contraseña actual incorrecta en el perfil", mensaje de `429` y pista de longitud, y que no hay controles de consentimiento, idioma de salida ni redacción del nombre.
-- [ ] 7.9 [frontend] Marcar textos i18n de auth, perfil, inicio y shell, ejecutar `extract-i18n`, traducir `messages.en.xlf` y añadir el spec que exige `target` en cada unidad; verificar con "Traducciones completas" y que `pnpm nx build web` pasa.
+- [x] 7.9 [frontend] Marcar textos i18n de auth, perfil, inicio y shell, ejecutar `extract-i18n`, traducir `messages.en.xlf` y añadir el spec que exige `target` en cada unidad; verificar con "Traducciones completas" y que `pnpm nx build web` pasa.
 
 ## 8. Cierre
 
