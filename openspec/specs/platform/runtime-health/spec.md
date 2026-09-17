@@ -118,7 +118,7 @@ usuario, rutas internas ni mensajes o trazas de los drivers.
 ### Requirement: Logs sin secretos
 
 Los logs de `api` y `worker` SHALL ser estructurados y NO SHALL contener valores de cabeceras `authorization`, `cookie`
-o `set-cookie`, ni de campos `password`, `apiKey`, `accessToken` o `refreshToken` situados en el objeto registrado o
+o `set-cookie`, ni de campos `password`, `currentPassword`, `newPassword`, `passwordHash`, `apiKey`, `accessToken` o `refreshToken` situados en el objeto registrado o
 hasta dos niveles de anidación por debajo de él.
 
 #### Scenario: Petición con cabeceras sensibles
@@ -130,3 +130,8 @@ hasta dos niveles de anidación por debajo de él.
 
 - **WHEN** se registra un objeto con `refreshToken` en el primer nivel de anidación y `apiKey` en el segundo
 - **THEN** ninguno de los dos valores SHALL aparecer en la salida
+
+#### Scenario: Cambio de contraseña registrado
+
+- **WHEN** se registra un objeto con `currentPassword`, `newPassword` y `passwordHash` en el primer nivel de anidación
+- **THEN** ninguno de esos valores SHALL aparecer en la salida
