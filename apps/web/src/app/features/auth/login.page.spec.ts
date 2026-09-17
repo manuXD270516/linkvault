@@ -5,6 +5,7 @@ import { RouterTestingHarness } from '@angular/router/testing';
 import {
   apiError,
   buttonWithText,
+  flushGroupsList,
   providePageTesting,
   sessionWith,
   settle,
@@ -66,6 +67,7 @@ describe('LoginPage', () => {
     http.expectOne('/api/auth/login').flush(sessionWith('token-1'));
 
     await vi.waitFor(() => expect(router.url).toBe('/grupos'));
+    await flushGroupsList(http);
   });
 
   it('Ruta de retorno externa', async () => {
@@ -75,6 +77,7 @@ describe('LoginPage', () => {
     http.expectOne('/api/auth/login').flush(sessionWith('token-1'));
 
     await vi.waitFor(() => expect(router.url).toBe('/grupos'));
+    await flushGroupsList(http);
   });
 
   it('Credenciales inválidas', async () => {
@@ -175,6 +178,7 @@ describe('LoginPage', () => {
     await submitCredentials('ana@example.com', 'contraseña-larga');
     http.expectOne('/api/auth/login').flush(sessionWith('token-secreto'));
     await vi.waitFor(() => expect(router.url).toBe('/grupos'));
+    await flushGroupsList(http);
 
     for (const storage of [localStorage, sessionStorage]) {
       const values = Array.from({ length: storage.length }, (_, index) => {

@@ -104,6 +104,8 @@ describe('appRoutes', () => {
       const harness = await RouterTestingHarness.create();
 
       await harness.navigateByUrl('/', Shell);
+      // La lista se pide al entrar (7.3); aquí solo interesa la ruta.
+      http.expectOne('/api/groups').flush([]);
 
       expect(harness.fixture.debugElement.query(By.directive(GroupsListPage))).not.toBeNull();
       expect(router.url).toBe('/grupos');
@@ -154,6 +156,7 @@ describe('appRoutes', () => {
       const harness = await RouterTestingHarness.create();
 
       await harness.navigateByUrl('/registro', Shell);
+      http.expectOne('/api/groups').flush([]);
 
       expect(harness.fixture.debugElement.query(By.directive(GroupsListPage))).not.toBeNull();
       expect(router.url).toBe('/grupos');
@@ -164,6 +167,7 @@ describe('appRoutes', () => {
       const harness = await RouterTestingHarness.create();
 
       await harness.navigateByUrl('/no-existe');
+      http.expectOne('/api/groups').flush([]);
 
       expect(router.url).toBe('/grupos');
     });

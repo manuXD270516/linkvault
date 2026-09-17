@@ -1,8 +1,8 @@
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
-import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { type HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { type EnvironmentProviders, type Provider, provideZonelessChangeDetection } from '@angular/core';
 import { provideRouter } from '@angular/router';
-import type { SessionResponse, UserProfile } from '@linkvault/shared';
+import type { GroupSummary, SessionResponse, UserProfile } from '@linkvault/shared';
 import { appRoutes } from '../app/app.routes';
 import { authInterceptor } from '../app/core/auth/auth.interceptor';
 import { REFRESH_LOCKS } from '../app/core/auth/refresh-coordination';
@@ -46,6 +46,18 @@ export function providePageTesting(): (Provider | EnvironmentProviders)[] {
     provideRouter(appRoutes),
     { provide: REFRESH_LOCKS, useValue: null },
   ];
+}
+
+/**
+ * Responde a la carga de la lista que `/grupos` pide al entrar. Espera a la petición porque el router activa la página
+ * en la detección de cambios, un paso después de que la URL ya sea `/grupos`.
+ */
+export async function flushGroupsList(
+  http: HttpTestingController,
+  groups: GroupSummary[] = [],
+): Promise<void> {
+  const request = await vi.waitFor(() => http.expectOne({ method: 'GET', url: '/api/groups' }));
+  request.flush(groups);
 }
 
 export function typeInto(host: HTMLElement, selector: string, value: string): void {

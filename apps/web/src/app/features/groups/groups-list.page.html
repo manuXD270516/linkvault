@@ -1,0 +1,45 @@
+<section class="mx-auto flex max-w-3xl flex-col gap-4 p-6">
+  <h1 class="text-2xl font-medium" i18n="@@groups.list.title">Tus grupos</h1>
+  <p i18n="@@groups.list.purpose">
+    Un grupo es donde tú y tu círculo juntan las ofertas de empleo que encuentran
+  </p>
+
+  @if (failure(); as currentFailure) {
+    <lv-request-error [failure]="currentFailure" />
+  }
+
+  @if (isEmpty()) {
+    <p i18n="@@groups.list.empty">Crea un grupo o únete con un código</p>
+  } @else {
+    <ul class="flex list-none flex-col gap-2 p-0">
+      @for (group of groups(); track group.id) {
+        @let memberCount = group.memberCount;
+        <li>
+          <mat-card class="p-4">
+            <a class="text-lg font-medium" [routerLink]="['/grupos', group.id]">{{ group.name }}</a>
+            <p>
+              @if (group.role === 'owner') {
+                <ng-container i18n="@@groups.role.owner">Propietario</ng-container>
+              } @else {
+                <ng-container i18n="@@groups.role.member">Miembro</ng-container>
+              }
+              ·
+              <ng-container i18n="@@groups.memberCount"
+                >{{ memberCount }} {memberCount, plural, =1 {miembro} other {miembros}}</ng-container
+              >
+            </p>
+          </mat-card>
+        </li>
+      }
+    </ul>
+  }
+
+  <div class="flex flex-wrap gap-2">
+    <button mat-flat-button type="button" (click)="openCreate()" i18n="@@groups.list.createAction">
+      Crear un grupo
+    </button>
+    <button mat-stroked-button type="button" (click)="openJoin()" i18n="@@groups.list.joinAction">
+      Unirse con un código
+    </button>
+  </div>
+</section>

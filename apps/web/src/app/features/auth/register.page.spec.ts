@@ -5,6 +5,7 @@ import { RouterTestingHarness } from '@angular/router/testing';
 import {
   apiError,
   buttonWithText,
+  flushGroupsList,
   providePageTesting,
   sessionWith,
   settle,
@@ -102,6 +103,7 @@ describe('RegisterPage', () => {
       .flush(sessionWith('token-1'), { status: 201, statusText: 'Created' });
 
     await vi.waitFor(() => expect(router.url).toBe('/grupos'));
+    await flushGroupsList(http);
   });
 
   it('Email ya registrado', async () => {

@@ -1,0 +1,44 @@
+<h2 mat-dialog-title i18n="@@groups.join.title">Unirse a un grupo</h2>
+
+<mat-dialog-content>
+  <form class="flex flex-col gap-2" [formGroup]="form" (ngSubmit)="submit()" novalidate>
+    <mat-form-field>
+      <mat-label i18n="@@groups.join.code">Código de invitación</mat-label>
+      <input matInput formControlName="code" autocomplete="off" />
+      @if (form.controls.code.invalid) {
+        <mat-error i18n="@@groups.join.codeRequired">Pega el código que te compartieron</mat-error>
+      }
+    </mat-form-field>
+
+    @if (failure(); as currentFailure) {
+      @if (invalidCode()) {
+        <p class="text-(--mat-sys-error)" role="alert" i18n="@@groups.error.invalidInviteCode">
+          Ese código no corresponde a ningún grupo
+        </p>
+      } @else if (groupFull()) {
+        <p class="text-(--mat-sys-error)" role="alert" i18n="@@groups.error.groupFull">
+          Ese grupo ya tiene 50 miembros, el máximo
+        </p>
+      } @else if (tooManyGroups()) {
+        <p class="text-(--mat-sys-error)" role="alert" i18n="@@groups.error.tooManyGroups">
+          Ya perteneces a 20 grupos, el máximo
+        </p>
+      } @else {
+        <lv-request-error [failure]="currentFailure" />
+      }
+    }
+  </form>
+</mat-dialog-content>
+
+<mat-dialog-actions>
+  <button mat-button type="button" mat-dialog-close i18n="@@groups.cancel">Cancelar</button>
+  <button
+    mat-flat-button
+    type="button"
+    [disabled]="submitting()"
+    (click)="submit()"
+    i18n="@@groups.join.submit"
+  >
+    Unirme
+  </button>
+</mat-dialog-actions>
