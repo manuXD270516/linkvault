@@ -1,64 +1,50 @@
-import { workspaceRoot } from '@nx/devkit';
-import { expect, test, type Response } from '@playwright/test';
-import { join } from 'node:path';
+import { expect, test, type ConsoleMessage, type Response } from '@playwright/test';
 
-const SCREENSHOT_DIR = join(
-  workspaceRoot,
-  'reports',
-  'smoke',
-  'bootstrap-monorepo',
-);
 const APP_ORIGIN = 'http://localhost:4200';
+const REFRESH_URL = `${APP_ORIGIN}/api/auth/refresh`;
 
-test('home placeholder renders in Spanish without errors', async ({ page }) => {
+/** Sin cookie, el arranque intenta restaurar la sesión y la API responde 401: es el único fallo esperado. */
+function isExpectedRefresh401(status: number, method: string, url: string): boolean {
+  return status === 401 && method === 'POST' && url === REFRESH_URL;
+}
+
+test('root without session ends on /login in Spanish without errors', async ({ page }) => {
   const consoleErrors: string[] = [];
   const failedResponses: string[] = [];
-  const scriptUrls: string[] = [];
+  let refresh401Seen = false;
 
-  page.on('console', (message) => {
-    if (message.type() === 'error') {
-      consoleErrors.push(message.text());
+  page.on('console', (message: ConsoleMessage) => {
+    if (message.type() !== 'error') {
+      return;
     }
+    // Chrome registra en consola cada respuesta >= 400; se ignora solo la del refresh de arranque.
+    if (message.location().url === REFRESH_URL && message.text().includes('401')) {
+      return;
+    }
+    consoleErrors.push(message.text());
   });
   page.on('pageerror', (error) => consoleErrors.push(error.message));
   page.on('response', (response: Response) => {
     const url = response.url();
-    if (!url.startsWith(APP_ORIGIN)) {
+    if (!url.startsWith(APP_ORIGIN) || response.status() < 400) {
       return;
     }
-    if (response.status() >= 400) {
-      failedResponses.push(`${response.status()} ${url}`);
+    if (isExpectedRefresh401(response.status(), response.request().method(), url)) {
+      refresh401Seen = true;
+      return;
     }
-    if (response.request().resourceType() === 'script') {
-      scriptUrls.push(url);
-    }
+    failedResponses.push(`${response.status()} ${response.request().method()} ${url}`);
   });
 
   await page.goto('/');
 
-  const heading = page.getByRole('heading', { level: 1 });
-  await expect(heading).toHaveText('LinkVault');
-  await expect(
-    page.getByText('La aplicación está en construcción.'),
-  ).toBeVisible();
+  await expect(page).toHaveURL(/\/login(\?|$)/);
+  await expect(page.getByRole('heading', { level: 1, name: 'Iniciar sesión' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Entrar' })).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('lang', 'es');
   await expect(page).toHaveTitle('LinkVault');
 
-  // La página llega por loadComponent: su contenido vive dentro de <lv-home-page>, que el router inserta
-  // después de <router-outlet>, y el navegador ha pedido un chunk JS además del de entrada.
-  await expect(
-    page.locator('lv-root router-outlet + lv-home-page h1'),
-  ).toHaveText('LinkVault');
-  const lazyChunks = scriptUrls.filter((url) =>
-    /\/chunk-[A-Z0-9]+\.js(\?|$)/.test(url),
-  );
-  expect(lazyChunks.length).toBeGreaterThan(0);
-
+  expect(refresh401Seen).toBe(true);
   expect(consoleErrors).toEqual([]);
   expect(failedResponses).toEqual([]);
-
-  await page.screenshot({
-    path: join(SCREENSHOT_DIR, 'home.png'),
-    fullPage: true,
-  });
 });
