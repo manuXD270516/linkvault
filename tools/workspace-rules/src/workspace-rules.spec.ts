@@ -170,6 +170,53 @@ const rows: readonly RuleRow[] = [
     expectedRuleIds: [],
     unexpectedRuleIds: [DOMAIN_IMPORTS],
   },
+  // Dominio por módulo de api (D2 de auth-users), sobre módulos reales: el bloque por módulo reemplaza al genérico, así
+  // que las filas de mongoose y ../application comprueban que conserva la lista de DOMAIN_RESTRICTED_PATTERNS.
+  {
+    name: 'El dominio importa otro módulo',
+    filePath: 'apps/api/src/modules/auth/domain/probe.ts',
+    code: "import { User } from '../../users/domain/user';\n\nexport const probe = User;\n",
+    expectedRuleIds: [DOMAIN_IMPORTS],
+  },
+  {
+    name: 'a nested file of the auth domain imports the users module',
+    filePath: 'apps/api/src/modules/auth/domain/sub/probe.ts',
+    code: "import { User } from '../../../users/domain/user';\n\nexport const probe = User;\n",
+    expectedRuleIds: [DOMAIN_IMPORTS],
+  },
+  {
+    name: 'the users domain imports the auth module',
+    filePath: 'apps/api/src/modules/users/domain/probe.ts',
+    code: "import { PasswordPolicy } from '../../auth/domain/password-policy';\n\nexport const probe = PasswordPolicy;\n",
+    expectedRuleIds: [DOMAIN_IMPORTS],
+  },
+  {
+    name: 'the auth domain imports mongoose',
+    filePath: 'apps/api/src/modules/auth/domain/probe.ts',
+    code: "import { Schema } from 'mongoose';\n\nexport const probe = Schema;\n",
+    expectedRuleIds: [DOMAIN_IMPORTS],
+  },
+  {
+    name: 'the auth domain imports its application layer',
+    filePath: 'apps/api/src/modules/auth/domain/probe.ts',
+    code: "import { LoginUseCase } from '../application/x';\n\nexport const probe = LoginUseCase;\n",
+    expectedRuleIds: [DOMAIN_IMPORTS],
+  },
+  {
+    name: 'El dominio importa su propio módulo',
+    filePath: 'apps/api/src/modules/auth/domain/probe.ts',
+    code: "import { PasswordPolicy } from './password-policy';\n\nexport const probe = PasswordPolicy;\n",
+    expectedRuleIds: [],
+    unexpectedRuleIds: [DOMAIN_IMPORTS],
+  },
+  {
+    // Una carpeta propia llamada como otro módulo no es ese módulo: el patrón exige subir con `../`.
+    name: 'the auth domain imports its own folder named like another module',
+    filePath: 'apps/api/src/modules/auth/domain/probe.ts',
+    code: "import { User } from './users/domain/user';\n\nexport const probe = User;\n",
+    expectedRuleIds: [],
+    unexpectedRuleIds: [DOMAIN_IMPORTS],
+  },
   {
     name: 'an infrastructure folder of api imports infrastructure',
     filePath: 'apps/api/src/modules/probe/infrastructure/probe.ts',
