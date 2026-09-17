@@ -81,6 +81,20 @@ export const apiErrorCodeSchema = z.enum([
   'unauthorized',
   // 415: cuerpo que no es `application/json`.
   'unsupported_media_type',
+  // 404: el grupo no existe, quien pregunta no es miembro o el `:id` no tiene formato de identificador (mismo cuerpo).
+  'group_not_found',
+  // 404: el usuario indicado no es miembro del grupo o su `:userId` no tiene formato de identificador.
+  'member_not_found',
+  // 403: el usuario es miembro del grupo pero la acción exige el rol `owner`.
+  'forbidden',
+  // 404: código de invitación desconocido o con formato inválido, con el mismo cuerpo en ambos casos.
+  'invalid_invite_code',
+  // 409: el grupo ya tiene el máximo de miembros.
+  'group_full',
+  // 409: el usuario ya pertenece al máximo de grupos.
+  'too_many_groups',
+  // 409: el owner no puede salir de su grupo ni ser expulsado (no hay transferencia de propiedad).
+  'owner_cannot_leave',
   // 500
   'internal_error',
 ]);

@@ -5,6 +5,7 @@ import { RouterTestingHarness } from '@angular/router/testing';
 import {
   apiError,
   buttonWithText,
+  flushGroupsList,
   providePageTesting,
   sessionWith,
   settle,
@@ -84,6 +85,25 @@ describe('RegisterPage', () => {
 
     const links = Array.from(host().querySelectorAll<HTMLAnchorElement>('a[href^="/login"]'));
     expect(links.map((link) => link.getAttribute('href'))).toEqual(['/login?returnUrl=%2Fperfil']);
+  });
+
+  it('does not add a return route to the login link when there was none', async () => {
+    await harness.navigateByUrl('/registro', RegisterPage);
+
+    const links = Array.from(host().querySelectorAll<HTMLAnchorElement>('a[href^="/login"]'));
+    expect(links.map((link) => link.getAttribute('href'))).toEqual(['/login']);
+  });
+
+  it('navigates to the group list without a return route', async () => {
+    await harness.navigateByUrl('/registro', RegisterPage);
+
+    await register('Ana', 'ana@example.com', 'contraseña-larga');
+    http
+      .expectOne('/api/auth/register')
+      .flush(sessionWith('token-1'), { status: 201, statusText: 'Created' });
+
+    await vi.waitFor(() => expect(router.url).toBe('/grupos'));
+    await flushGroupsList(http);
   });
 
   it('Email ya registrado', async () => {

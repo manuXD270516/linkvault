@@ -151,6 +151,37 @@ const API_MODULES = existsSync(API_MODULES_DIR)
       .sort()
   : [];
 
+/** Capas de un módulo de api, para anclar el patrón al segmento siguiente al nombre del módulo. */
+const API_MODULE_LAYERS = 'domain|application|infrastructure|presentation';
+
+/**
+ * Entrada pública de un módulo de api (D8 de groups): su facade de aplicación, sus errores de dominio y sus dobles
+ * de test. Se expresa como alternativas relativas a la raíz del módulo importado, para meterlas en un lookahead
+ * negativo. `application/testing` admite el barrel además de los archivos de dentro.
+ */
+const API_MODULE_PUBLIC_ENTRY =
+  'application/[^/]*\\.facade(?:\\.[cm]?[jt]s)?$|domain/errors(?:\\.[cm]?[jt]s)?$|application/testing(?:/|$)';
+
+/**
+ * Patrones de `no-restricted-imports` que impiden a un módulo de api importar código de otro (D2 de auth-users,
+ * D8 de groups). Los imports entre módulos son siempre relativos (`../../<otro>/…`): los módulos no tienen alias.
+ *
+ * - `domain/`: prohibición absoluta, sin excepciones (ADR-020 §6). La entrada pública de otro módulo tampoco vale:
+ *   el dominio se comunica con eventos o con un port que implementa `infrastructure/`.
+ * - `application/` e `infrastructure/`: solo la entrada pública, vía lookahead negativo.
+ * - `presentation/`: fuera de la regla, porque el cableado de Nest importa el módulo de otro contexto.
+ */
+function apiCrossModulePatterns(moduleName, { allowPublicEntry }) {
+  return API_MODULES.filter((other) => other !== moduleName).map((other) => ({
+    regex: `^(?:\\.\\./)+${other}/${
+      allowPublicEntry ? `(?!${API_MODULE_PUBLIC_ENTRY})` : ''
+    }(?:${API_MODULE_LAYERS})(?:/|$)`,
+    message: allowPublicEntry
+      ? `El módulo ${moduleName} solo entra a ${other} por su entrada pública: ${other}/application/*.facade, ${other}/domain/errors o ${other}/application/testing/**.`
+      : `El dominio de ${moduleName} no importa el módulo ${other}: comunícalos con eventos de dominio o una fachada desde application.`,
+  }));
+}
+
 export default [
   ...nx.configs['flat/base'],
   ...nx.configs['flat/typescript'],
@@ -197,8 +228,9 @@ export default [
     },
   },
 
-  // Dominio de cada módulo de api (D2 de auth-users): además de la lista genérica, no importa otros módulos. Este bloque,
-  // posterior, reemplaza las opciones del genérico sobre los mismos archivos, así que lleva la lista completa.
+  // Dominio de cada módulo de api (D2 de auth-users): además de la lista genérica, no importa otros módulos, y sin
+  // ninguna excepción (ni facade, ni domain/errors, ni los dobles de test). Este bloque, posterior, reemplaza las
+  // opciones del genérico sobre los mismos archivos, así que lleva la lista completa.
   // `basePath` ancla `files` a la raíz del repo, igual que en los bloques de evals y SDKs.
   ...API_MODULES.map((moduleName) => ({
     basePath: import.meta.dirname,
@@ -209,17 +241,38 @@ export default [
         {
           patterns: [
             ...DOMAIN_RESTRICTED_PATTERNS,
-            ...API_MODULES.filter((other) => other !== moduleName).map(
-              (other) => ({
-                regex: `^(?:\\.\\./)+${other}/(?:domain|application|infrastructure|presentation)(?:/|$)`,
-                message: `El dominio de ${moduleName} no importa el módulo ${other}: comunícalos con eventos de dominio o una fachada desde application.`,
-              }),
-            ),
+            ...apiCrossModulePatterns(moduleName, { allowPublicEntry: false }),
           ],
         },
       ],
     },
   })),
+
+  // Aplicación e infraestructura de cada módulo de api (D8 de groups): pueden usar el framework y la persistencia,
+  // pero de otro módulo solo alcanzan su entrada pública (facade, domain/errors y los dobles de application/testing).
+  // Ningún bloque anterior configura `no-restricted-imports` sobre estos archivos, así que la lista no repite la del
+  // dominio (ESLint no combina las opciones de una regla entre bloques, ADR-017). `presentation/` queda fuera a
+  // propósito: es donde se cablea la inyección de dependencias entre módulos de Nest.
+  ...API_MODULES.flatMap((moduleName) => {
+    // Con un solo módulo no hay nada que prohibir y `patterns` no admite una lista vacía.
+    const patterns = apiCrossModulePatterns(moduleName, {
+      allowPublicEntry: true,
+    });
+    return patterns.length === 0
+      ? []
+      : [
+          {
+            basePath: import.meta.dirname,
+            files: [
+              `apps/api/src/modules/${moduleName}/application/**/*.ts`,
+              `apps/api/src/modules/${moduleName}/infrastructure/**/*.ts`,
+            ],
+            rules: {
+              'no-restricted-imports': ['error', { patterns }],
+            },
+          },
+        ];
+  }),
 
   // Eval harness (D1 de ai-eval-harness, ADR-019): `libs/ai/src/evals` corre fuera de Nest con `node --import tsx`, así que
   // no importa framework ni infraestructura, ni el barrel de libs/ai (arrastraría ai.module), ni los dobles de test de

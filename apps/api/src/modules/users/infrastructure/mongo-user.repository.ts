@@ -68,6 +68,25 @@ export class MongoUserRepository implements UserRepository {
     return document ? toUser(document) : null;
   }
 
+  /** Una sola consulta `$in` con proyección de `displayName`: ningún otro campo del perfil sale de `users` (D7 de
+   * groups). Los ids mal formados se descartan antes de consultar, así que no llegan a `CastError`. */
+  async findDisplayNames(ids: readonly string[]): Promise<Map<string, string>> {
+    const wanted = [...new Set(ids)].filter(isObjectIdHex);
+    if (wanted.length === 0) {
+      return new Map();
+    }
+    const documents = await this.model
+      .find({ _id: { $in: wanted } }, { displayName: 1 })
+      .lean<Pick<UserDocument, '_id' | 'displayName'>[]>()
+      .exec();
+    return new Map(
+      documents.map((document) => [
+        document._id.toHexString(),
+        document.displayName,
+      ]),
+    );
+  }
+
   async updateProfile(
     id: string,
     changes: ProfileChanges,

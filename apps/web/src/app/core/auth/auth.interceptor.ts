@@ -3,6 +3,7 @@ import { inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { catchError, from, switchMap, throwError } from 'rxjs';
 import { hasApiErrorCode } from '../api/api-error';
+import { HOME_ROUTE } from '../navigation/home-route';
 import { AuthApi, SKIP_BEARER } from './auth.api';
 import { SessionStore } from './session.store';
 
@@ -29,7 +30,7 @@ export const authInterceptor: HttpInterceptorFn = (request, next) => {
         catchError(() => {
           store.clear();
           void router.navigate(['/login'], {
-            queryParams: router.url === '/' ? {} : { returnUrl: router.url },
+            queryParams: router.url === HOME_ROUTE ? {} : { returnUrl: router.url },
           });
           return throwError(() => error);
         }),

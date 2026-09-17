@@ -114,12 +114,12 @@ cuerpo, `Content-Type: application/json` (si no, `415`). Los intentos se cuentan
 
 ### Rutas del SPA
 
-| Ruta        | Acceso     | Contenido                                            |
-| ----------- | ---------- | ---------------------------------------------------- |
-| `/login`    | Sin sesión | Login. Con sesión redirige a `/`.                    |
-| `/registro` | Sin sesión | Registro. Con sesión redirige a `/`.                 |
-| `/`         | Con sesión | Saludo "Hola, {displayName}".                        |
-| `/perfil`   | Con sesión | Email (solo lectura), nombre y cambio de contraseña. |
+| Ruta        | Acceso     | Contenido                                                            |
+| ----------- | ---------- | -------------------------------------------------------------------- |
+| `/login`    | Sin sesión | Login. Con sesión redirige a `/grupos`.                              |
+| `/registro` | Sin sesión | Registro. Con sesión redirige a `/grupos`.                           |
+| `/`         | Con sesión | Redirige a `/grupos`, la pantalla de inicio (ver [Grupos](#grupos)). |
+| `/perfil`   | Con sesión | Email (solo lectura), nombre y cambio de contraseña.                 |
 
 Sin sesión, una ruta autenticada lleva a `/login?returnUrl=<ruta>` y, tras entrar, vuelve a ella. Al cargar, el SPA muestra
 "Conectando…" e intenta restaurar la sesión con la cookie durante como máximo 10 segundos.
@@ -168,6 +168,94 @@ Redis local:
 
 ```bash
 docker compose exec redis sh -c "redis-cli --scan --pattern 'auth:*' | xargs -r redis-cli del"
+```
+
+## Grupos
+
+Un grupo es el espacio donde una persona y su círculo juntan las ofertas de empleo que encuentran
+([ADR-002](docs/adr/ADR-002.md)). Solo se entra con un código de invitación: no hay buscador ni directorio de grupos. Los
+links llegan con el change `job-links`; hoy un grupo tiene nombre, miembros y código.
+
+### Endpoints
+
+Todas las rutas exigen access token (`Authorization: Bearer`); sin él responden `401 unauthorized`.
+
+| Método y ruta                            | Quién             | Respuesta                                                                |
+| ---------------------------------------- | ----------------- | ------------------------------------------------------------------------ |
+| `POST /api/groups`                       | cualquier usuario | `201` con el grupo nuevo, ya con `inviteCode`; `name` inválido, `400`.   |
+| `GET /api/groups`                        | cualquier usuario | `200` con sus grupos (`role`, `memberCount`, `joinedAt`), sin el código. |
+| `POST /api/groups/join`                  | cualquier usuario | `200` con el grupo al que entra; nunca devuelve el código.               |
+| `GET /api/groups/:id`                    | miembro           | `200` con el detalle; `inviteCode` solo si es owner.                     |
+| `PATCH /api/groups/:id`                  | owner             | `200` con el detalle renombrado.                                         |
+| `DELETE /api/groups/:id`                 | owner             | `204`; borra el grupo y sus membresías en una transacción.               |
+| `POST /api/groups/:id/invite-code`       | owner             | `200` con `{ "inviteCode": "…" }`; el código anterior deja de servir.    |
+| `GET /api/groups/:id/members`            | miembro           | `200` con `userId`, `displayName`, `role` y `joinedAt`, por antigüedad.  |
+| `DELETE /api/groups/:id/members/me`      | miembro           | `204` al salir; el owner recibe `409 owner_cannot_leave`.                |
+| `DELETE /api/groups/:id/members/:userId` | owner             | `204` al expulsar; la membresía `owner` no se puede eliminar.            |
+
+La lista ordena por `joinedAt` descendente y descarta las membresías cuyo grupo ya no existe. `memberCount` sale de una
+sola agregación, no de un conteo por grupo.
+
+**Privacidad.** Quien no es miembro no distingue un grupo ajeno de uno inexistente: el grupo ajeno, un id que no existe y
+un id con otro formato responden `404 group_not_found` con el mismo cuerpo. Un miembro que no es owner ya sabe que el
+grupo existe, así que las acciones de owner le responden `403 forbidden`. La lista de miembros muestra el nombre visible
+de cada uno, nunca el email ni ningún otro dato de contacto.
+
+Códigos de error propios: `group_not_found` (404), `invalid_invite_code` (404), `member_not_found` (404), `forbidden`
+(403), `group_full` (409), `too_many_groups` (409) y `owner_cannot_leave` (409).
+
+### Código de invitación
+
+Cada grupo tiene uno: 8 caracteres del alfabeto `23456789ABCDEFGHJKMNPQRSTVWXYZ` (base32 de Crockford sin `0`, `1`, `I`,
+`L`, `O` ni `U`, que se confunden al dictar o copiar), único entre todos los grupos, sin caducidad y reutilizable. Solo lo
+ve el owner, que puede regenerarlo cuando quiera: el anterior deja de servir y los miembros actuales siguen dentro.
+
+Al unirse, el código se normaliza (espacios exteriores fuera y mayúsculas), así que `" abcd2345 "` y `ABCD2345` son el
+mismo. Un código desconocido y uno con formato imposible responden igual (`404 invalid_invite_code`), para no revelar
+cuáles existen. Volver a unirse siendo ya miembro responde `200` con el rol actual, sin duplicar la membresía.
+
+El enlace de invitación del SPA es `<origen>/unirse?codigo=<código>`: quien lo tenga puede entrar y ver los nombres de los
+miembros, así que el owner debe regenerar el código si se filtró.
+
+### Límites
+
+- **50 miembros por grupo.** Unirse a uno completo responde `409 group_full`.
+- **20 grupos por usuario.** Crear o unirse por encima del tope responde `409 too_many_groups`. Volver a un grupo del que
+  ya se es miembro sigue funcionando aunque se esté en el límite.
+
+Son límites antiabuso, no invariantes: dos uniones simultáneas pueden dejar un grupo con 51 miembros. Lo que sí impide el
+índice único `(groupId, userId)` es una membresía duplicada.
+
+### Roles
+
+El creador es `owner` y cada grupo tiene exactamente una membresía `owner`; no hay campo `ownerId`, la propiedad vive solo
+en la membresía. El owner renombra, regenera el código, expulsa y borra el grupo; un miembro solo puede salir. El owner no
+puede salir ni ser expulsado: todavía no hay transferencia de propiedad, así que quien quiere irse borra el grupo.
+
+### Rutas del SPA
+
+| Ruta          | Contenido                                                                                                                                     |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/grupos`     | Pantalla de inicio: grupos con su rol y su número de miembros, o el estado vacío con crear y unirse.                                          |
+| `/grupos/:id` | Detalle: miembros con fecha de alta; el owner ve el código, copia la invitación, renombra, regenera, expulsa y borra; el miembro puede salir. |
+| `/unirse`     | Formulario de unirse. `?codigo=<código>` lo abre con el código escrito y lo quita de la URL al leerlo.                                        |
+
+`/` redirige a `/grupos`. Las tres exigen sesión: desde el enlace de invitación sin sesión, el código vuelve tras el login
+o el registro.
+
+### Probar los grupos en local
+
+Con la API en marcha y un access token obtenido como en [Probar en local](#probar-en-local):
+
+```bash
+T='Authorization: Bearer <accessToken>'
+J='Content-Type: application/json'
+GROUP_ID=...   # el id que devuelve la creación
+
+curl -s -H "$T" -H "$J" http://localhost:3000/api/groups -d '{"name":"Backend Bolivia"}'   # 201 con inviteCode
+curl -s -H "$T" http://localhost:3000/api/groups                                           # sus grupos
+curl -s -H "$T" -H "$J" http://localhost:3000/api/groups/join -d '{"code":"abcd2345"}'      # 200, código normalizado
+curl -s -H "$T" "http://localhost:3000/api/groups/$GROUP_ID/members"                       # nombres, rol y fecha
 ```
 
 ## Calidad

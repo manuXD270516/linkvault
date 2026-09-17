@@ -35,15 +35,15 @@
         <target>Enter your password</target>
       </trans-unit>
       <trans-unit id="login.invalidCredentials" datatype="html">
-        <source> Email o contraseña incorrectos </source>
+        <source>Email o contraseña incorrectos</source>
         <target>Incorrect email or password</target>
       </trans-unit>
       <trans-unit id="login.submit" datatype="html">
-        <source> Entrar </source>
+        <source>Entrar</source>
         <target>Sign in</target>
       </trans-unit>
       <trans-unit id="login.noAccount" datatype="html">
-        <source> ¿No tienes cuenta? <x id="START_LINK" ctype="x-a" equiv-text="&lt;a routerLink=&quot;/registro&quot; [queryParams]=&quot;returnQueryParams&quot;&gt;"/>Crear cuenta<x id="CLOSE_LINK" ctype="x-a" equiv-text="&lt;/a&gt;"/></source>
+        <source>¿No tienes cuenta? <x id="START_LINK" ctype="x-a" equiv-text="&lt;a routerLink=&quot;/registro&quot; [queryParams]=&quot;returnQueryParams&quot;&gt;"/>Crear cuenta<x id="CLOSE_LINK" ctype="x-a" equiv-text="&lt;/a&gt;"/></source>
         <target>Don't have an account? <x id="START_LINK" ctype="x-a" equiv-text="&lt;a routerLink=&quot;/registro&quot; [queryParams]=&quot;returnQueryParams&quot;&gt;"/>Create account<x id="CLOSE_LINK" ctype="x-a" equiv-text="&lt;/a&gt;"/></target>
       </trans-unit>
       <trans-unit id="register.title" datatype="html">
@@ -67,15 +67,15 @@
         <target>The password must be between 10 and 128 characters</target>
       </trans-unit>
       <trans-unit id="register.passwordIsEmail" datatype="html">
-        <source> La contraseña no puede ser tu email </source>
+        <source>La contraseña no puede ser tu email</source>
         <target>The password can't be your email</target>
       </trans-unit>
       <trans-unit id="register.dataNotice" datatype="html">
-        <source> Usamos tu email para iniciar sesión y tu nombre para mostrarte en tus grupos. No lo compartimos fuera de LinkVault. </source>
+        <source>Usamos tu email para iniciar sesión y tu nombre para mostrarte en tus grupos. No lo compartimos fuera de LinkVault.</source>
         <target>We use your email to sign you in and your name to show you in your groups. We don't share it outside LinkVault.</target>
       </trans-unit>
       <trans-unit id="register.emailTaken" datatype="html">
-        <source> Ya existe una cuenta con este email. <x id="START_LINK" ctype="x-a" equiv-text="&lt;a routerLink=&quot;/login&quot; [queryParams]=&quot;returnQueryParams&quot; [state]=&quot;{ email: attemptedEmail() }&quot;
+        <source>Ya existe una cuenta con este email. <x id="START_LINK" ctype="x-a" equiv-text="&lt;a routerLink=&quot;/login&quot; [queryParams]=&quot;returnQueryParams&quot; [state]=&quot;{ email: attemptedEmail() }&quot;
             &gt;"/>¿Quieres iniciar sesión?<x id="CLOSE_LINK" ctype="x-a" equiv-text="&lt;/a
           &gt;"/></source>
         <target>An account with this email already exists. <x id="START_LINK" ctype="x-a" equiv-text="&lt;a routerLink=&quot;/login&quot; [queryParams]=&quot;returnQueryParams&quot; [state]=&quot;{ email: attemptedEmail() }&quot;
@@ -83,16 +83,229 @@
           &gt;"/></target>
       </trans-unit>
       <trans-unit id="register.submit" datatype="html">
-        <source> Crear cuenta </source>
+        <source>Crear cuenta</source>
         <target>Create account</target>
       </trans-unit>
       <trans-unit id="register.haveAccount" datatype="html">
-        <source> ¿Ya tienes cuenta? <x id="START_LINK" ctype="x-a" equiv-text="&lt;a routerLink=&quot;/login&quot; [queryParams]=&quot;returnQueryParams&quot;&gt;"/>Inicia sesión<x id="CLOSE_LINK" ctype="x-a" equiv-text="&lt;/a&gt;"/></source>
+        <source>¿Ya tienes cuenta? <x id="START_LINK" ctype="x-a" equiv-text="&lt;a routerLink=&quot;/login&quot; [queryParams]=&quot;returnQueryParams&quot;&gt;"/>Inicia sesión<x id="CLOSE_LINK" ctype="x-a" equiv-text="&lt;/a&gt;"/></source>
         <target>Already have an account? <x id="START_LINK" ctype="x-a" equiv-text="&lt;a routerLink=&quot;/login&quot; [queryParams]=&quot;returnQueryParams&quot;&gt;"/>Sign in<x id="CLOSE_LINK" ctype="x-a" equiv-text="&lt;/a&gt;"/></target>
       </trans-unit>
-      <trans-unit id="home.greeting" datatype="html">
-        <source>Hola, <x id="INTERPOLATION" equiv-text="{{ displayName() }}"/></source>
-        <target>Hi, <x id="INTERPOLATION" equiv-text="{{ displayName() }}"/></target>
+      <trans-unit id="groups.create.title" datatype="html">
+        <source>Crear un grupo</source>
+        <target>Create a group</target>
+      </trans-unit>
+      <trans-unit id="groups.create.name" datatype="html">
+        <source>Nombre del grupo</source>
+        <target>Group name</target>
+      </trans-unit>
+      <trans-unit id="groups.create.nameInvalid" datatype="html">
+        <source>Escribe un nombre de hasta 60 caracteres</source>
+        <target>Enter a name of up to 60 characters</target>
+      </trans-unit>
+      <trans-unit id="groups.error.tooManyGroups" datatype="html">
+        <source>Ya perteneces a 20 grupos, el máximo</source>
+        <target>You already belong to 20 groups, the maximum</target>
+      </trans-unit>
+      <trans-unit id="groups.cancel" datatype="html">
+        <source>Cancelar</source>
+        <target>Cancel</target>
+      </trans-unit>
+      <trans-unit id="groups.create.submit" datatype="html">
+        <source>Crear grupo</source>
+        <target>Create group</target>
+      </trans-unit>
+      <trans-unit id="groups.detail.deleteMessage" datatype="html">
+        <source>{VAR_PLURAL, plural, =1 {Se borrará solo para ti. No se puede deshacer.} other {Se borrará para los
+    <x id="INTERPOLATION"/> miembros. No se puede deshacer.}}</source>
+        <target>{VAR_PLURAL, plural, =1 {It will be deleted just for you. This cannot be undone.} other {It will be deleted for all <x id="INTERPOLATION"/> members. This cannot be undone.}}</target>
+      </trans-unit>
+      <trans-unit id="groups.detail.notFound" datatype="html">
+        <source>Ese grupo no existe o ya no perteneces a él</source>
+        <target>That group does not exist or you no longer belong to it</target>
+      </trans-unit>
+      <trans-unit id="groups.detail.backToList" datatype="html">
+        <source>Volver a tus grupos</source>
+        <target>Back to your groups</target>
+      </trans-unit>
+      <trans-unit id="groups.detail.linksPending" datatype="html">
+        <source>Aquí aparecerán las ofertas que compartan los miembros. Pronto podrás guardar links en este grupo.</source>
+        <target>The job posts shared by the members will show up here. You will soon be able to save links in this group.</target>
+      </trans-unit>
+      <trans-unit id="groups.detail.inviteTitle" datatype="html">
+        <source>Código de invitación</source>
+        <target>Invite code</target>
+      </trans-unit>
+      <trans-unit id="groups.detail.inviteWarning" datatype="html">
+        <source>Quien tenga este código puede entrar y ver los nombres de los miembros. Regenéralo si se filtró.</source>
+        <target>Anyone with this code can join and see the names of the members. Regenerate it if it leaked.</target>
+      </trans-unit>
+      <trans-unit id="groups.detail.invitationCopied" datatype="html">
+        <source>Invitación copiada</source>
+        <target>Invitation copied</target>
+      </trans-unit>
+      <trans-unit id="groups.detail.invitationFallback" datatype="html">
+        <source>No pudimos usar el portapapeles. Copia este mensaje:</source>
+        <target>We could not use the clipboard. Copy this message:</target>
+      </trans-unit>
+      <trans-unit id="groups.detail.copyInvitation" datatype="html">
+        <source>Copiar invitación</source>
+        <target>Copy invitation</target>
+      </trans-unit>
+      <trans-unit id="groups.detail.rename" datatype="html">
+        <source>Renombrar</source>
+        <target>Rename</target>
+      </trans-unit>
+      <trans-unit id="groups.detail.rotateInviteCode" datatype="html">
+        <source>Regenerar el código</source>
+        <target>Regenerate the code</target>
+      </trans-unit>
+      <trans-unit id="groups.detail.membersTitle" datatype="html">
+        <source>Miembros</source>
+        <target>Members</target>
+      </trans-unit>
+      <trans-unit id="groups.role.owner" datatype="html">
+        <source>Propietario</source>
+        <target>Owner</target>
+      </trans-unit>
+      <trans-unit id="groups.role.member" datatype="html">
+        <source>Miembro</source>
+        <target>Member</target>
+      </trans-unit>
+      <trans-unit id="groups.detail.joinedAt" datatype="html">
+        <source>Desde el <x id="INTERPOLATION" equiv-text="{{ member.joinedAt | date: &apos;dd/MM/yyyy&apos; }}"/></source>
+        <target>Since <x id="INTERPOLATION" equiv-text="{{ member.joinedAt | date: &apos;dd/MM/yyyy&apos; }}"/></target>
+      </trans-unit>
+      <trans-unit id="groups.detail.removeMember" datatype="html">
+        <source>Expulsar</source>
+        <target>Remove</target>
+      </trans-unit>
+      <trans-unit id="groups.detail.rotateAfterRemoval" datatype="html">
+        <source>Regenerar el código para que no pueda volver a entrar</source>
+        <target>Regenerate the code so they cannot join again</target>
+      </trans-unit>
+      <trans-unit id="groups.detail.rotateOfferDismiss" datatype="html">
+        <source>Ahora no</source>
+        <target>Not now</target>
+      </trans-unit>
+      <trans-unit id="groups.detail.delete" datatype="html">
+        <source>Borrar el grupo</source>
+        <target>Delete the group</target>
+      </trans-unit>
+      <trans-unit id="groups.detail.leave" datatype="html">
+        <source>Salir del grupo</source>
+        <target>Leave the group</target>
+      </trans-unit>
+      <trans-unit id="groups.detail.leaveTitle" datatype="html">
+        <source>Salir del grupo</source>
+        <target>Leave the group</target>
+      </trans-unit>
+      <trans-unit id="groups.detail.leaveMessage" datatype="html">
+        <source>Dejarás de ver este grupo. Para volver necesitarás el código de invitación.</source>
+        <target>You will stop seeing this group. To come back you will need the invite code.</target>
+      </trans-unit>
+      <trans-unit id="groups.detail.leaveConfirm" datatype="html">
+        <source>Salir</source>
+        <target>Leave</target>
+      </trans-unit>
+      <trans-unit id="groups.detail.deleteTitle" datatype="html">
+        <source>Borrar el grupo</source>
+        <target>Delete the group</target>
+      </trans-unit>
+      <trans-unit id="groups.detail.deleteConfirm" datatype="html">
+        <source>Borrar</source>
+        <target>Delete</target>
+      </trans-unit>
+      <trans-unit id="groups.detail.rotateTitle" datatype="html">
+        <source>Regenerar el código</source>
+        <target>Regenerate the code</target>
+      </trans-unit>
+      <trans-unit id="groups.detail.rotateMessage" datatype="html">
+        <source>Los miembros actuales siguen dentro; solo dejará de servir el código anterior</source>
+        <target>The current members stay in; only the previous code will stop working</target>
+      </trans-unit>
+      <trans-unit id="groups.detail.rotateConfirm" datatype="html">
+        <source>Regenerar</source>
+        <target>Regenerate</target>
+      </trans-unit>
+      <trans-unit id="groups.detail.invitationMessage" datatype="html">
+        <source>Únete a «<x id="NAME" equiv-text="group.name"/>» en LinkVault: <x id="LINK" ctype="x-a" equiv-text="link"/> (código <x id="CODE" equiv-text="group.inviteCode"/>)</source>
+        <target>Join “<x id="NAME" equiv-text="group.name"/>” on LinkVault: <x id="LINK" ctype="x-a" equiv-text="link"/> (code <x id="CODE" equiv-text="group.inviteCode"/>)</target>
+      </trans-unit>
+      <trans-unit id="groups.detail.removeMemberTitle" datatype="html">
+        <source>Expulsar del grupo</source>
+        <target>Remove from the group</target>
+      </trans-unit>
+      <trans-unit id="groups.detail.removeMemberMessage" datatype="html">
+        <source><x id="NAME" equiv-text="member.displayName"/> dejará de ver este grupo. Podrá volver a entrar si consigue el código.</source>
+        <target><x id="NAME" equiv-text="member.displayName"/> will stop seeing this group. They can join again if they get the code.</target>
+      </trans-unit>
+      <trans-unit id="groups.detail.removeMemberConfirm" datatype="html">
+        <source>Expulsar</source>
+        <target>Remove</target>
+      </trans-unit>
+      <trans-unit id="groups.list.title" datatype="html">
+        <source>Tus grupos</source>
+        <target>Your groups</target>
+      </trans-unit>
+      <trans-unit id="groups.list.purpose" datatype="html">
+        <source>Un grupo es donde tú y tu círculo juntan las ofertas de empleo que encuentran</source>
+        <target>A group is where you and your circle gather the job openings you find</target>
+      </trans-unit>
+      <trans-unit id="groups.list.empty" datatype="html">
+        <source>Crea un grupo o únete con un código</source>
+        <target>Create a group or join with a code</target>
+      </trans-unit>
+      <trans-unit id="groups.memberCount" datatype="html">
+        <source><x id="INTERPOLATION" equiv-text="{{ memberCount }}"/> <x id="ICU" equiv-text="{memberCount, plural, =1 {miembro} other {miembros}}" xid="543866510348449206"/></source>
+        <target><x id="INTERPOLATION" equiv-text="{{ memberCount }}"/> <x id="ICU" equiv-text="{memberCount, plural, =1 {miembro} other {miembros}}" xid="543866510348449206"/></target>
+      </trans-unit>
+      <trans-unit id="543866510348449206" datatype="html">
+        <source>{VAR_PLURAL, plural, =1 {miembro} other {miembros}}</source>
+        <target>{VAR_PLURAL, plural, =1 {member} other {members}}</target>
+      </trans-unit>
+      <trans-unit id="groups.list.createAction" datatype="html">
+        <source>Crear un grupo</source>
+        <target>Create a group</target>
+      </trans-unit>
+      <trans-unit id="groups.list.joinAction" datatype="html">
+        <source>Unirse con un código</source>
+        <target>Join with a code</target>
+      </trans-unit>
+      <trans-unit id="groups.join.title" datatype="html">
+        <source>Unirse a un grupo</source>
+        <target>Join a group</target>
+      </trans-unit>
+      <trans-unit id="groups.join.code" datatype="html">
+        <source>Código de invitación</source>
+        <target>Invite code</target>
+      </trans-unit>
+      <trans-unit id="groups.join.codeRequired" datatype="html">
+        <source>Pega el código que te compartieron</source>
+        <target>Paste the code you were given</target>
+      </trans-unit>
+      <trans-unit id="groups.error.invalidInviteCode" datatype="html">
+        <source>Ese código no corresponde a ningún grupo</source>
+        <target>That code does not match any group</target>
+      </trans-unit>
+      <trans-unit id="groups.error.groupFull" datatype="html">
+        <source>Ese grupo ya tiene 50 miembros, el máximo</source>
+        <target>That group already has 50 members, the maximum</target>
+      </trans-unit>
+      <trans-unit id="groups.join.submit" datatype="html">
+        <source>Unirme</source>
+        <target>Join</target>
+      </trans-unit>
+      <trans-unit id="groups.joinPage.title" datatype="html">
+        <source>Unirse a un grupo</source>
+        <target>Join a group</target>
+      </trans-unit>
+      <trans-unit id="groups.rename.title" datatype="html">
+        <source>Renombrar el grupo</source>
+        <target>Rename the group</target>
+      </trans-unit>
+      <trans-unit id="groups.rename.submit" datatype="html">
+        <source>Guardar nombre nuevo</source>
+        <target>Save new name</target>
       </trans-unit>
       <trans-unit id="profile.title" datatype="html">
         <source>Perfil</source>
@@ -111,7 +324,7 @@
         <target>Name saved</target>
       </trans-unit>
       <trans-unit id="profile.saveName" datatype="html">
-        <source> Guardar nombre </source>
+        <source>Guardar nombre</source>
         <target>Save name</target>
       </trans-unit>
       <trans-unit id="profile.passwordTitle" datatype="html">
@@ -135,15 +348,15 @@
         <target>The new password must be at least 10 characters long and can't be your email</target>
       </trans-unit>
       <trans-unit id="profile.passwordChanged" datatype="html">
-        <source> Contraseña cambiada. Cerramos tu sesión en los demás dispositivos. </source>
+        <source>Contraseña cambiada. Cerramos tu sesión en los demás dispositivos.</source>
         <target>Password changed. We signed you out on your other devices.</target>
       </trans-unit>
       <trans-unit id="profile.wrongCurrentPassword" datatype="html">
-        <source> La contraseña actual no es correcta </source>
+        <source>La contraseña actual no es correcta</source>
         <target>The current password is incorrect</target>
       </trans-unit>
       <trans-unit id="profile.changePassword" datatype="html">
-        <source> Cambiar contraseña </source>
+        <source>Cambiar contraseña</source>
         <target>Change password</target>
       </trans-unit>
       <trans-unit id="shell.brand" datatype="html">
@@ -155,8 +368,12 @@
         <target>Profile</target>
       </trans-unit>
       <trans-unit id="shell.logout" datatype="html">
-        <source> Cerrar sesión </source>
+        <source>Cerrar sesión</source>
         <target>Sign out</target>
+      </trans-unit>
+      <trans-unit id="confirm.cancel" datatype="html">
+        <source>Cancelar</source>
+        <target>Cancel</target>
       </trans-unit>
       <trans-unit id="error.tooManyAttempts" datatype="html">
         <source>Demasiados intentos. Vuelve a intentarlo en <x id="INTERPOLATION" equiv-text="{{ minutes }}"/> <x id="ICU" equiv-text="{minutes, plural, =1 {minuto} other {minutos}}" xid="4693155463045116188"/></source>

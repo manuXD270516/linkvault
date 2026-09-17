@@ -38,6 +38,16 @@ import {
   TooManyAttempts,
 } from '../../modules/auth/domain/errors';
 import {
+  GroupFull,
+  GroupNotFound,
+  InvalidGroupName,
+  InvalidInviteCode,
+  MemberNotFound,
+  OwnerCannotLeave,
+  OwnerRoleRequired,
+  TooManyGroups,
+} from '../../modules/groups/domain/errors';
+import {
   EmailAlreadyRegistered,
   InvalidDisplayName,
   InvalidProfileChanges,
@@ -54,14 +64,25 @@ const THROWN: Record<string, () => unknown> = {
   'invalid-refresh': () => new InvalidRefresh('reused'),
   'refresh-conflict': () => new RefreshConflict(),
   'invalid-access-token': () => new InvalidAccessToken(),
-  'password-policy': () => new PasswordPolicyViolation('newPassword', 'too_short'),
+  'password-policy': () =>
+    new PasswordPolicyViolation('newPassword', 'too_short'),
   'email-already-registered': () => new EmailAlreadyRegistered(),
   'invalid-profile-field': () => new InvalidProfileChanges('outputLanguage'),
   'invalid-profile-empty': () => new InvalidProfileChanges(),
   'invalid-display-name': () => new InvalidDisplayName(),
   'user-not-found': () => new UserNotFound('user-123'),
+  'group-not-found': () => new GroupNotFound(),
+  'member-not-found': () => new MemberNotFound(),
+  'owner-role-required': () => new OwnerRoleRequired(),
+  'invalid-invite-code': () => new InvalidInviteCode(),
+  'group-full': () => new GroupFull(),
+  'too-many-groups': () => new TooManyGroups(),
+  'owner-cannot-leave': () => new OwnerCannotLeave(),
+  'invalid-group-name': () => new InvalidGroupName(),
   unknown: () =>
-    new Error(`E11000 duplicate key error dup key: { email: "${SECRET_EMAIL}" }`),
+    new Error(
+      `E11000 duplicate key error dup key: { email: "${SECRET_EMAIL}" }`,
+    ),
   'non-error': () => `leaked ${SECRET_EMAIL}`,
   'not-found': () => new NotFoundException(),
   unavailable: () =>
@@ -196,22 +217,40 @@ describe('ApiExceptionFilter', () => {
     ['invalid-profile-field', 400, 'validation_error', ['outputLanguage']],
     ['invalid-display-name', 400, 'validation_error', ['displayName']],
     ['invalid-profile-empty', 400, 'validation_error', undefined],
-  ])(
-    'translates %s to %i %s',
-    async (name, status, code, fields) => {
-      const response = await get(name);
+    ['group-not-found', 404, 'group_not_found', undefined],
+    ['member-not-found', 404, 'member_not_found', undefined],
+    ['owner-role-required', 403, 'forbidden', undefined],
+    ['invalid-invite-code', 404, 'invalid_invite_code', undefined],
+    ['group-full', 409, 'group_full', undefined],
+    ['too-many-groups', 409, 'too_many_groups', undefined],
+    ['owner-cannot-leave', 409, 'owner_cannot_leave', undefined],
+    ['invalid-group-name', 400, 'validation_error', ['name']],
+  ])('translates %s to %i %s', async (name, status, code, fields) => {
+    const response = await get(name);
 
-      expect(response.statusCode).toBe(status);
-      const body = apiErrorResponseSchema.parse(response.json());
-      expect(body).toEqual(
-        fields === undefined
-          ? { code, message: expect.any(String) }
-          : { code, message: expect.any(String), fields },
-      );
-      expect(response.headers['retry-after']).toBeUndefined();
-      expect(response.headers['set-cookie']).toBeUndefined();
-    },
-  );
+    expect(response.statusCode).toBe(status);
+    const body = apiErrorResponseSchema.parse(response.json());
+    expect(body).toEqual(
+      fields === undefined
+        ? { code, message: expect.any(String) }
+        : { code, message: expect.any(String), fields },
+    );
+    expect(response.headers['retry-after']).toBeUndefined();
+    expect(response.headers['set-cookie']).toBeUndefined();
+  });
+
+  it('gives the same body to a missing group, an unknown invite code and their variants', async () => {
+    const notFound = await get('group-not-found');
+    const invalidCode = await get('invalid-invite-code');
+
+    // Los dos son 404, pero con código distinto: el SPA explica cada uno a su manera.
+    expect(notFound.statusCode).toBe(invalidCode.statusCode);
+    expect(notFound.json()).toMatchObject({ code: 'group_not_found' });
+    expect(invalidCode.json()).toMatchObject({ code: 'invalid_invite_code' });
+    // Ninguno lleva identificadores ni códigos de invitación.
+    expect(notFound.body).not.toMatch(/[0-9a-f]{24}/);
+    expect(invalidCode.body).not.toMatch(/[0-9A-Z]{8}/);
+  });
 
   it('does not expose the internal reason of a rejected refresh or the user id', async () => {
     const refresh = await get('invalid-refresh');

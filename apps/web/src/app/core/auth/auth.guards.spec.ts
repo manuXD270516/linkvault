@@ -8,6 +8,7 @@ import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import type { SessionResponse, UserProfile } from '@linkvault/shared';
+import { HOME_ROUTE } from '../navigation/home-route';
 import { authGuard, guestGuard } from './auth.guards';
 import { authInterceptor } from './auth.interceptor';
 import { REFRESH_LOCKS } from './refresh-coordination';
@@ -27,8 +28,8 @@ const user: UserProfile = {
 
 const session: SessionResponse = { accessToken: 'token-1', expiresIn: 900, user };
 
-@Component({ selector: 'lv-home-stub', template: 'inicio' })
-class HomeStub {}
+@Component({ selector: 'lv-groups-stub', template: 'grupos' })
+class GroupsStub {}
 
 @Component({ selector: 'lv-profile-stub', template: 'perfil' })
 class ProfileStub {}
@@ -62,7 +63,8 @@ describe('session restore and guards', () => {
         provideHttpClient(withInterceptors([authInterceptor])),
         provideHttpClientTesting(),
         provideRouter([
-          { path: '', component: HomeStub, canActivate: [authGuard] },
+          { path: '', pathMatch: 'full', redirectTo: HOME_ROUTE },
+          { path: 'grupos', component: GroupsStub, canActivate: [authGuard] },
           { path: 'perfil', component: ProfileStub, canActivate: [authGuard] },
           { path: 'login', component: LoginStub, canActivate: [guestGuard] },
         ]),
@@ -178,8 +180,8 @@ describe('session restore and guards', () => {
     http.expectOne('/api/auth/refresh').flush(session);
     await navigation;
 
-    expect(router.url).toBe('/');
-    expect(harness.routeNativeElement?.textContent).toContain('inicio');
+    expect(router.url).toBe(HOME_ROUTE);
+    expect(harness.routeNativeElement?.textContent).toContain('grupos');
   });
 
   it('Ruta de retorno externa', async () => {
@@ -205,7 +207,7 @@ describe('session restore and guards', () => {
       store.setSession(session);
       await router.navigateByUrl(safeReturnUrl(requested));
 
-      expect(router.url).toBe('/');
+      expect(router.url).toBe(HOME_ROUTE);
     }
   });
 });
@@ -216,7 +218,7 @@ describe('safeReturnUrl', () => {
     expect(safeReturnUrl('/grupos/1?tab=links#top')).toBe('/grupos/1?tab=links#top');
   });
 
-  it('falls back to / for missing, external or ambiguous routes', () => {
+  it('falls back to the home route for missing, external or ambiguous routes', () => {
     for (const returnUrl of [
       null,
       undefined,
@@ -229,7 +231,7 @@ describe('safeReturnUrl', () => {
       '/\t/evil.example',
       '/\n/evil.example',
     ]) {
-      expect(safeReturnUrl(returnUrl)).toBe('/');
+      expect(safeReturnUrl(returnUrl)).toBe(HOME_ROUTE);
     }
   });
 });

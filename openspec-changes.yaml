@@ -51,6 +51,14 @@ changes:
       JobLink canónico con dedupe platform:externalJobId → urlHash; canonicalizadores para LinkedIn, Computrabajo, Indeed,
       Trabajopolis, Get on Board; GroupLink; POST /links y POST /links/import (texto plano con varias URLs, ej. chat de WhatsApp);
       respuesta con alreadyInGroups (B6); outbox_events + relay a BullMQ. Frontend: guardar link, importar texto, lista por grupo y privada.
+      Heredado de `groups` (su design.md, Open Questions): decidir qué ocurre con los `group_links` cuando se borra un grupo, ya que
+      es este change quien los crea. Hoy DELETE /api/groups/:id borra grupo y membresías en una transacción; hay que elegir entre
+      borrarlos en esa misma transacción, archivarlos o dejarlos huérfanos, y dejarlo escrito en la spec de borrado (el JobLink
+      canónico nunca se borra: solo la relación con el grupo).
+      También heredado de `groups`: límite de intentos sobre POST /api/groups/join, hoy sin contador porque el código solo revela
+      nombres de miembros y exige sesión; en cuanto el código dé acceso a links de terceros, contar los intentos fallidos por usuario
+      y por IP con el mismo mecanismo de `auth` (ventanas fijas en Redis, 429 too_many_attempts con Retry-After).
+      Y `settings.defaultVisibility` del grupo (fuera de alcance en `groups`, D1), que solo tiene sentido cuando hay links que mostrar.
   - name: link-enrichment
     adrs: [003, 010, 014]
     agents: [backend-dev, ai-engineer, frontend-dev]
@@ -74,6 +82,10 @@ changes:
       Application (userId, linkId) único, máquina de estados canónica con stageLabel en IN_PROCESS, ApplicationEvent,
       visibility private por defecto con opt-in group, fitScore? reservado, evento ApplicationStale modelado (sin notificación).
       Frontend: kanban por estado, timeline, avatares en card de grupo.
+      Requisito previo heredado de `groups` (Risks de su design.md), a resolver en este change o antes: transferencia de propiedad
+      de un grupo. Hoy el owner no puede salir ni ser expulsado y su única salida es borrar el grupo, que a partir de `job-links`
+      se lleva por delante los links del grupo y aquí, además, lo que los miembros compartan de sus postulaciones. Alcance mínimo:
+      el owner nombra owner a otro miembro y pasa a member (la membresía owner sigue siendo única), y después ya puede salir.
   - name: group-comments
     adrs: [015]
     agents: [backend-dev, frontend-dev]
@@ -85,6 +97,10 @@ changes:
     scope: |
       GET /p/:slug en la API: HTML con OG tags desde el preview y redirect a la SPA para humanos; sharePublic por link.
       Frontend: vista pública del preview y CTA "Guardar en LinkVault" con ?import=<slug>.
+      Heredado de `groups` (D1 de su design.md): el `slug` de grupo de docs/design.md no se creó, porque nada lo usaba. Si este
+      change lo necesita para las URLs públicas, lo añade él: campo `slug` en la colección `groups` con índice único, generación
+      a partir del nombre con desambiguación y backfill de los grupos ya existentes (migración, no valor por defecto), teniendo en
+      cuenta que el nombre del grupo no es único y que el slug no debe filtrar nada que el código de invitación ya protege.
   - name: cv-upload-extract
     adrs: [006, 009]
     agents: [backend-dev, frontend-dev]
@@ -127,6 +143,11 @@ changes:
       Heredado de auth-users (ADR-020): `trustProxy` de api y cabecera de IP real detrás de Traefik, para que los límites de
       intentos cuenten por IP del cliente y no del proxy; reseteo manual de contraseña por un operador, documentado (no hay
       recuperación por email hasta auth-email-recovery); aviso de privacidad; y borrado de cuenta.
+      Heredado de `groups` (Risks de su design.md): los logs de acceso (Traefik y cualquier otro proxy o CDN delante del SPA) NO
+      deben registrar las query strings de las rutas del SPA, incluidas /login y /registro. El enlace de invitación es
+      /unirse?codigo=<código> y, aunque la página borra el código de la URL en cuanto lo lee, antes del login viaja además en el
+      returnUrl de esas dos rutas; registrarlo dejaría códigos de invitación en claro en los logs. Revisar también Referrer-Policy
+      para que el código no salga hacia terceros.
   - name: auth-email-recovery
     adrs: [012, 020]
     agents: [backend-dev, frontend-dev]

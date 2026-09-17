@@ -1,0 +1,22 @@
+<h2 mat-dialog-title i18n="@@groups.rename.title">Renombrar el grupo</h2>
+
+<mat-dialog-content>
+  <form class="flex flex-col gap-2" [formGroup]="form" (ngSubmit)="submit()" novalidate>
+    <mat-form-field>
+      <mat-label i18n="@@groups.create.name">Nombre del grupo</mat-label>
+      <input matInput formControlName="name" autocomplete="off" />
+      @if (form.controls.name.invalid) {
+        <mat-error i18n="@@groups.create.nameInvalid">
+          Escribe un nombre de hasta 60 caracteres
+        </mat-error>
+      }
+    </mat-form-field>
+  </form>
+</mat-dialog-content>
+
+<mat-dialog-actions>
+  <button mat-button type="button" mat-dialog-close i18n="@@groups.cancel">Cancelar</button>
+  <button mat-flat-button type="button" (click)="submit()" i18n="@@groups.rename.submit">
+    Guardar nombre nuevo
+  </button>
+</mat-dialog-actions>

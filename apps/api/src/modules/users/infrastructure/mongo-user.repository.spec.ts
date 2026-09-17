@@ -123,6 +123,34 @@ describe('MongoUserRepository', () => {
     }
   });
 
+  it('finds the display names of several users in one query', async () => {
+    const ana = await repository.create(newUser('nombres-ana@example.com'));
+    const bruno = await repository.create(
+      newUser('nombres-bruno@example.com', 'Bruno'),
+    );
+
+    expect(await repository.findDisplayNames([ana.id, bruno.id])).toEqual(
+      new Map([
+        [ana.id, 'Ana'],
+        [bruno.id, 'Bruno'],
+      ]),
+    );
+  });
+
+  it('leaves unknown and malformed ids out of the display names', async () => {
+    const ana = await repository.create(newUser('nombres-raros@example.com'));
+
+    expect(
+      await repository.findDisplayNames([
+        ana.id,
+        new mongoose.Types.ObjectId().toHexString(),
+        'twelve-bytes',
+      ]),
+    ).toEqual(new Map([[ana.id, 'Ana']]));
+    expect(await repository.findDisplayNames([])).toEqual(new Map());
+    expect(await repository.findDisplayNames(['nope'])).toEqual(new Map());
+  });
+
   it('updates only the sent profile fields', async () => {
     const created = await repository.create(newUser('parcial@example.com'));
 

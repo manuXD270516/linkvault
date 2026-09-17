@@ -12,6 +12,11 @@ export interface UserRepository {
   findByEmail(email: string): Promise<User | null>;
   /** `null` también si el id no tiene un formato válido. */
   findById(id: string): Promise<User | null>;
+  /**
+   * Nombre visible de cada id conocido, en una sola consulta. Un id desconocido o con un formato inválido no aparece en
+   * el mapa: quien llama decide cómo mostrarlo.
+   */
+  findDisplayNames(ids: readonly string[]): Promise<Map<string, string>>;
   /** Actualiza de forma atómica solo los campos presentes en `changes`; `null` si el usuario no existe. */
   updateProfile(id: string, changes: ProfileChanges): Promise<User | null>;
   /** Sustituye el hash y fija `passwordChangedAt`; `false` si el usuario no existe. */

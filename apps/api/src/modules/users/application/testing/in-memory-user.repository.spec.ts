@@ -77,6 +77,16 @@ describe('InMemoryUserRepository', () => {
     });
   });
 
+  it('finds display names by id and skips the unknown ones', async () => {
+    const repository = new InMemoryUserRepository();
+    const created = await repository.create(newUser());
+
+    expect(
+      await repository.findDisplayNames([created.id, 'missing', created.id]),
+    ).toEqual(new Map([[created.id, 'Ana']]));
+    expect(await repository.findDisplayNames([])).toEqual(new Map());
+  });
+
   it('does not leak internal state through returned objects', async () => {
     const repository = new InMemoryUserRepository();
     const created = await repository.create(newUser());

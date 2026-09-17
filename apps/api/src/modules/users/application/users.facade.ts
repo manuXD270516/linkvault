@@ -79,4 +79,12 @@ export class UsersFacade {
     const user = await this.users.findById(userId);
     return user ? toUserProfile(user) : null;
   }
+
+  /**
+   * Nombre visible de cada id conocido, en una sola consulta (D7 de groups): es lo único que otro módulo puede saber de
+   * un usuario ajeno. Un id desconocido no aparece en el mapa; el email nunca sale de `users`.
+   */
+  getDisplayNames(userIds: readonly string[]): Promise<Map<string, string>> {
+    return this.users.findDisplayNames(userIds);
+  }
 }

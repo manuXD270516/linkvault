@@ -13,7 +13,12 @@ import type { ApiConfig } from '../infrastructure/config/api-config.schema';
 import { REDIS_APP_CLIENT } from '../infrastructure/redis/redis-app-client';
 import { CLOCK } from '../modules/auth/application/ports/clock.port';
 import type { Clock } from '../modules/auth/domain/clock';
+import {
+  AUTH_SESSION_MODEL_NAME,
+  REFRESH_TOKEN_MODEL_NAME,
+} from '../modules/auth/infrastructure/session.schemas';
 import { REFRESH_COOKIE_NAME } from '../modules/auth/presentation/refresh-cookie';
+import { USER_MODEL_NAME } from '../modules/users/infrastructure/user.schema';
 import { apiTestConfig } from './test-config';
 
 // App completa de `api` para los tests de integración de auth (D12 de auth-users): el `AppModule` real con el mismo
@@ -76,6 +81,13 @@ export async function createAuthTestApp(
 
   const connection = app.get<Connection>(getConnectionToken());
   await connection.asPromise();
+  // Los índices se construyen en segundo plano: sin esperarlos, un alta duplicada puede colarse antes de que exista el
+  // único de `email` y el test de "Email ya registrado" vería un 201.
+  await Promise.all(
+    [USER_MODEL_NAME, AUTH_SESSION_MODEL_NAME, REFRESH_TOKEN_MODEL_NAME].map(
+      (model) => connection.model(model).init(),
+    ),
+  );
   // Sin esperar a Redis, el limitador fallaría abierto y los tests de límites pasarían sin probar nada.
   const redis = app.get<Redis>(REDIS_APP_CLIENT);
   if (redis.status !== 'ready') {

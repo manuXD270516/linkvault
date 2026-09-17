@@ -1,7 +1,8 @@
 import { Route } from '@angular/router';
 import { authGuard, guestGuard } from './core/auth/auth.guards';
+import { HOME_ROUTE } from './core/navigation/home-route';
 
-/** Rutas visibles en español salvo `/login` (D11). Todas exigen sesión salvo `/login` y `/registro`. */
+/** Rutas visibles en español salvo `/login` (D11 de auth-users). Todas exigen sesión salvo `/login` y `/registro`. */
 export const appRoutes: Route[] = [
   {
     path: 'login',
@@ -19,10 +20,21 @@ export const appRoutes: Route[] = [
     canActivate: [authGuard],
     loadComponent: () => import('./layout/shell/shell').then((m) => m.Shell),
     children: [
+      { path: '', pathMatch: 'full', redirectTo: HOME_ROUTE },
       {
-        path: '',
-        pathMatch: 'full',
-        loadComponent: () => import('./features/home/home.page').then((m) => m.HomePage),
+        path: 'grupos',
+        loadComponent: () =>
+          import('./features/groups/groups-list.page').then((m) => m.GroupsListPage),
+      },
+      {
+        path: 'grupos/:id',
+        loadComponent: () =>
+          import('./features/groups/group-detail.page').then((m) => m.GroupDetailPage),
+      },
+      {
+        path: 'unirse',
+        loadComponent: () =>
+          import('./features/groups/join-group.page').then((m) => m.JoinGroupPage),
       },
       {
         path: 'perfil',
@@ -31,5 +43,5 @@ export const appRoutes: Route[] = [
       },
     ],
   },
-  { path: '**', redirectTo: '' },
+  { path: '**', redirectTo: HOME_ROUTE },
 ];
