@@ -37,8 +37,11 @@ export type {
 } from './domain/run-context';
 export type { AiTask, AiTaskName, DataSensitivity, Rng } from './domain/task';
 export {
+  AiProgrammingError,
   FixtureMissing,
   InvalidDegradeOutput,
+  InvalidFixture,
+  MockMisuse,
   ProviderUnavailable,
   SchemaViolation,
   SynthUnsupported,

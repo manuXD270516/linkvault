@@ -1,13 +1,21 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z, ZodError } from 'zod';
+import type { CircuitBreaker } from '../domain/ports/circuit-breaker.port';
 import type { LlmProvider } from '../domain/ports/llm-provider.port';
 import type { RunContext } from '../domain/run-context';
-import { FixtureMissing, InvalidDegradeOutput } from '../domain/errors';
+import {
+  FixtureMissing,
+  InvalidDegradeOutput,
+  InvalidFixture,
+  MockMisuse,
+  SynthUnsupported,
+} from '../domain/errors';
 import type { AiTask } from '../domain/task';
 import {
   classifySkillsTask,
   type ClassifySkillsOutput,
 } from '../tasks/classify-skills.task';
+import { InMemoryCircuitBreaker } from '../infrastructure/resilience/in-memory-circuit-breaker';
 import { executionKey } from './execution-key';
 import { RunTask, type RunTaskDeps } from './run-task.usecase';
 import { FakeLlmProvider } from './testing/fake-llm-provider';
@@ -48,7 +56,9 @@ interface Harness {
 
 function harness(
   providers: readonly LlmProvider[],
-  overrides: Partial<Harness['deps']> = {},
+  overrides: Partial<Omit<Harness['deps'], 'breaker'>> & {
+    breaker?: CircuitBreaker;
+  } = {},
 ): Harness {
   const deps = {
     providers,
@@ -61,7 +71,8 @@ function harness(
     logger: new InMemoryAiLogger(),
     ...overrides,
   };
-  return { runTask: new RunTask(deps), deps };
+  // Con un breaker real inyectado, los tests no leen las listas de RecordingNullCircuitBreaker.
+  return { runTask: new RunTask(deps), deps: deps as Harness['deps'] };
 }
 
 describe('RunTask: main path', () => {
@@ -142,8 +153,33 @@ describe('RunTask: main path', () => {
         outputLanguage: 'en',
         input: INPUT,
       }),
+      // Solo el mock recibe el input parseado (D4).
+      input: INPUT,
     });
     expect(provider.requests[0]?.user).not.toContain('stripped by zod');
+  });
+
+  it('never sends trace.input to a real provider, local or external', async () => {
+    const external = new FakeLlmProvider('openrouter', [new Error('down')], {
+      capabilities: { external: true },
+    });
+    const local = new FakeLlmProvider('ollama', [VALID], {
+      capabilities: { costPer1kOut: 0.1 },
+    });
+    const { runTask } = harness([local, external]);
+
+    await runTask.execute(
+      classifySkillsTask,
+      { text: 'ana@example.com TypeScript' },
+      CONSENT,
+    );
+
+    for (const request of [...external.requests, ...local.requests]) {
+      expect(request.trace).toBeDefined();
+      expect(request.trace).not.toHaveProperty('input');
+    }
+    expect(external.calls).toBe(1);
+    expect(local.calls).toBe(1);
   });
 
   it('renders the prompt with the validated input and the default language', async () => {
@@ -312,6 +348,27 @@ describe('RunTask: errors that propagate instead of degrading', () => {
     expect(next.calls).toBe(0);
     expect(deps.ledger.records.map((r) => r.outcome)).not.toContain('degraded');
   });
+
+  it.each([
+    ['MockMisuse', () => new MockMisuse('trace missing')],
+    ['InvalidFixture', () => new InvalidFixture('classify-skills', 'k')],
+    ['SynthUnsupported', () => new SynthUnsupported('classify-skills')],
+  ])(
+    'propagates %s from the mock without trying the next provider',
+    async (name, makeError) => {
+      const mock = new FakeLlmProvider('mock', [makeError()]);
+      const next = new FakeLlmProvider('ollama', [VALID]);
+      const { runTask, deps } = harness([mock, next]);
+
+      await expect(
+        runTask.execute(classifySkillsTask, INPUT, CONSENT),
+      ).rejects.toMatchObject({ name });
+      expect(next.calls).toBe(0);
+      expect(deps.breaker.failures).toEqual([]);
+      expect(deps.breaker.released).toEqual(['mock']);
+      expect(deps.ledger.records).toEqual([]);
+    },
+  );
 
   it('propagates FixtureMissing raised during the repair request', async () => {
     const mock = new FakeLlmProvider('mock', [
@@ -980,5 +1037,252 @@ describe('RunTask: quotas', () => {
     expect(deps.logger.warnings.map((w) => w.message)).toContain(
       'AI quota check failed, allowing execution',
     );
+  });
+});
+
+describe('RunTask: circuit breaker integration', () => {
+  it('Apertura tras fallos repetidos', async () => {
+    const clock = new ManualClock();
+    const breaker = new InMemoryCircuitBreaker(clock);
+    const failing = new FakeLlmProvider('ollama', [new Error('ECONNREFUSED')]);
+    const healthy = new FakeLlmProvider('openrouter', [VALID], {
+      capabilities: { external: true },
+    });
+    const { runTask } = harness([failing, healthy], { clock, breaker });
+
+    for (let run = 0; run < 5; run++) {
+      clock.advance(1_000);
+      await runTask.execute(
+        classifySkillsTask,
+        { text: `TypeScript ${run}` },
+        CONSENT,
+      );
+    }
+    expect(failing.calls).toBe(5);
+
+    clock.advance(1_000);
+    const result = await runTask.execute(
+      classifySkillsTask,
+      { text: 'TypeScript final' },
+      CONSENT,
+    );
+
+    expect(result).toMatchObject({
+      status: 'success',
+      providerId: 'openrouter',
+    });
+    expect(failing.calls).toBe(5);
+  });
+
+  it('counts a schema_error as availability and a provider_error as a failure', async () => {
+    const { runTask, deps } = harness([
+      new FakeLlmProvider('ollama', [INVALID, INVALID]),
+      new FakeLlmProvider('mock', [new Error('down')]),
+      new FakeLlmProvider('zeta', [VALID]),
+    ]);
+
+    await runTask.execute(classifySkillsTask, INPUT, CONSENT);
+
+    expect(deps.breaker.acquired).toEqual(['ollama', 'mock', 'zeta']);
+    expect(deps.breaker.successes).toEqual(['ollama', 'zeta']);
+    expect(deps.breaker.failures).toEqual(['mock']);
+  });
+
+  it('Recuperación en half-open', async () => {
+    const clock = new ManualClock();
+    const breaker = new InMemoryCircuitBreaker(clock);
+    for (let i = 0; i < 5; i++) breaker.recordFailure('ollama');
+    const provider = new FakeLlmProvider('ollama', [VALID]);
+    const { runTask } = harness([provider], { clock, breaker });
+
+    await expect(
+      runTask.execute(classifySkillsTask, INPUT, CONSENT),
+    ).resolves.toMatchObject({ status: 'degraded', reason: 'no_providers' });
+    clock.advance(30_000);
+    const result = await runTask.execute(classifySkillsTask, INPUT, {
+      ...CONSENT,
+      outputLanguage: 'en',
+    });
+
+    expect(result).toMatchObject({ status: 'success', providerId: 'ollama' });
+    expect(breaker.openIds().size).toBe(0);
+  });
+
+  it('Permiso de prueba no usado', async () => {
+    const clock = new ManualClock();
+    const breaker = new InMemoryCircuitBreaker(clock);
+    for (let i = 0; i < 5; i++) breaker.recordFailure('openrouter');
+    clock.advance(30_000);
+    const local = new FakeLlmProvider('ollama', [VALID]);
+    const halfOpen = new FakeLlmProvider('openrouter', [VALID], {
+      capabilities: { external: true },
+    });
+    const first = harness([halfOpen, local], { clock, breaker });
+
+    // El local resuelve primero: el proveedor en half-open no llega a tomar el permiso.
+    await first.runTask.execute(classifySkillsTask, INPUT, CONSENT);
+    expect(halfOpen.calls).toBe(0);
+
+    const second = harness([halfOpen], { clock, breaker });
+    const result = await second.runTask.execute(classifySkillsTask, INPUT, {
+      ...CONSENT,
+      outputLanguage: 'en',
+    });
+
+    expect(result).toMatchObject({
+      status: 'success',
+      providerId: 'openrouter',
+    });
+  });
+
+  it('skips a provider without a breaker permit and reports no_providers when none was contacted', async () => {
+    const clock = new ManualClock();
+    const breaker = new InMemoryCircuitBreaker(clock);
+    for (let i = 0; i < 5; i++) breaker.recordFailure('ollama');
+    clock.advance(30_000);
+    // Otro proceso lógico ya tomó el permiso de prueba.
+    expect(breaker.tryAcquire('ollama')).toBe(true);
+    const provider = new FakeLlmProvider('ollama', [VALID]);
+    const { runTask, deps } = harness([provider], { clock, breaker });
+
+    const result = await runTask.execute(classifySkillsTask, INPUT, CONSENT);
+
+    expect(result).toEqual({ status: 'degraded', reason: 'no_providers' });
+    expect(provider.calls).toBe(0);
+    expect(deps.ledger.records.map((r) => r.outcome)).toEqual(['degraded']);
+  });
+});
+
+describe('RunTask: deadlines and cancellation (real timers)', () => {
+  const neverResolves = () => new Promise<string>(() => undefined);
+
+  it('Proveedor que no responde', async () => {
+    const stuck = new FakeLlmProvider('ollama', [neverResolves]);
+    const healthy = new FakeLlmProvider('openrouter', [VALID], {
+      capabilities: { external: true },
+    });
+    const { runTask, deps } = harness([stuck, healthy], {
+      providerTimeoutsMs: { ollama: 30, openrouter: 1_000 },
+    });
+
+    const startedAt = Date.now();
+    const result = await runTask.execute(classifySkillsTask, INPUT, CONSENT);
+
+    expect(Date.now() - startedAt).toBeLessThan(1_000);
+    expect(result).toMatchObject({
+      status: 'success',
+      providerId: 'openrouter',
+    });
+    expect(deps.ledger.records.map((r) => [r.providerId, r.outcome])).toEqual([
+      ['ollama', 'provider_error'],
+      ['openrouter', 'success'],
+    ]);
+    expect(deps.breaker.failures).toEqual(['ollama']);
+    expect(deps.logger.warnings[0]?.fields).toMatchObject({
+      providerId: 'ollama',
+      error: 'TimeoutError',
+    });
+  });
+
+  it('runs without ctx.signal and passes a combined signal in req.signal', async () => {
+    const provider = new FakeLlmProvider('ollama', [VALID]);
+    const { runTask } = harness([provider], {
+      providerTimeoutsMs: { ollama: 50 },
+    });
+
+    const result = await runTask.execute(classifySkillsTask, INPUT, CONSENT);
+
+    expect(result).toMatchObject({ status: 'success' });
+    const signal = provider.requests[0]?.signal;
+    expect(signal).toBeInstanceOf(AbortSignal);
+    expect(signal?.aborted).toBe(false);
+  });
+
+  it('delivers req.signal aborted to a provider that times out', async () => {
+    const stuck = new FakeLlmProvider('ollama', [neverResolves]);
+    const { runTask } = harness([stuck], {
+      providerTimeoutsMs: { ollama: 20 },
+    });
+
+    const result = await runTask.execute(classifySkillsTask, INPUT, CONSENT);
+
+    expect(result).toEqual({ status: 'degraded', reason: 'providers_failed' });
+    expect(stuck.requests[0]?.signal?.aborted).toBe(true);
+  });
+
+  it('applies the timeout to the repair request too', async () => {
+    const provider = new FakeLlmProvider('ollama', [INVALID, neverResolves]);
+    const { runTask, deps } = harness([provider], {
+      providerTimeoutsMs: { ollama: 30 },
+    });
+
+    const result = await runTask.execute(classifySkillsTask, INPUT, CONSENT);
+
+    expect(result).toEqual({ status: 'degraded', reason: 'providers_failed' });
+    expect(provider.calls).toBe(2);
+    expect(deps.ledger.records[0]).toMatchObject({
+      outcome: 'provider_error',
+      inputTokens: 100,
+    });
+  });
+
+  it('Cancelación del llamador', async () => {
+    const controller = new AbortController();
+    const stuck = new FakeLlmProvider('ollama', [neverResolves]);
+    const next = new FakeLlmProvider('openrouter', [VALID], {
+      capabilities: { external: true },
+    });
+    const { runTask, deps } = harness([stuck, next], {
+      providerTimeoutsMs: { ollama: 5_000, openrouter: 5_000 },
+    });
+    setTimeout(() => controller.abort(), 20);
+
+    const result = await runTask.execute(classifySkillsTask, INPUT, {
+      ...CONSENT,
+      signal: controller.signal,
+    });
+
+    expect(result).toEqual({ status: 'degraded', reason: 'providers_failed' });
+    expect(stuck.requests[0]?.signal?.aborted).toBe(true);
+    expect(next.calls).toBe(0);
+    expect(deps.breaker.failures).toEqual([]);
+    expect(deps.breaker.released).toEqual(['ollama']);
+    expect(deps.ledger.records.map((r) => [r.outcome, r.reason])).toEqual([
+      ['degraded', 'providers_failed'],
+    ]);
+    expect(deps.logger.warnings).toEqual([]);
+  });
+
+  it('returns the half-open permit of a cancelled probe to a real breaker', async () => {
+    const clock = new ManualClock();
+    const breaker = new InMemoryCircuitBreaker(clock);
+    for (let i = 0; i < 5; i++) breaker.recordFailure('ollama');
+    clock.advance(30_000);
+    const controller = new AbortController();
+    const provider = new FakeLlmProvider('ollama', [neverResolves, VALID]);
+    const { runTask } = harness([provider], { clock, breaker });
+    setTimeout(() => controller.abort(), 20);
+
+    await runTask.execute(classifySkillsTask, INPUT, {
+      ...CONSENT,
+      signal: controller.signal,
+    });
+    const result = await runTask.execute(classifySkillsTask, INPUT, CONSENT);
+
+    expect(result).toMatchObject({ status: 'success', providerId: 'ollama' });
+  });
+
+  it('degrades without contacting providers when ctx.signal is already aborted', async () => {
+    const provider = new FakeLlmProvider('ollama', [VALID]);
+    const { runTask, deps } = harness([provider]);
+
+    const result = await runTask.execute(classifySkillsTask, INPUT, {
+      ...CONSENT,
+      signal: AbortSignal.abort(),
+    });
+
+    expect(result).toEqual({ status: 'degraded', reason: 'providers_failed' });
+    expect(provider.calls).toBe(0);
+    expect(deps.breaker.acquired).toEqual([]);
   });
 });

@@ -5,7 +5,7 @@ import type {
   DegradedReason,
 } from '../domain/ai-result';
 import {
-  FixtureMissing,
+  AiProgrammingError,
   InvalidDegradeOutput,
   ProviderUnavailable,
 } from '../domain/errors';
@@ -14,6 +14,7 @@ import type { CircuitBreaker } from '../domain/ports/circuit-breaker.port';
 import type { Clock } from '../domain/ports/clock.port';
 import type {
   CompletionRequest,
+  CompletionResult,
   LlmProvider,
 } from '../domain/ports/llm-provider.port';
 import type { PromptRegistry } from '../domain/ports/prompt-registry.port';
@@ -36,7 +37,7 @@ import {
 import { dataSensitivityOf, type AiTask } from '../domain/task';
 import { executionKey } from './execution-key';
 import { PiiRedactor } from './pii-redactor';
-import { cacheForChain } from './null-result-cache';
+import { cacheForChain, MOCK_PROVIDER_ID } from './null-result-cache';
 import {
   runStructuredOutput,
   StructuredOutputProviderError,
@@ -55,6 +56,11 @@ export interface RunTaskDeps {
   breaker: CircuitBreaker;
   clock: Clock;
   logger: AiLogger;
+  /**
+   * Plazo por petición de cada proveedor en ms (`OLLAMA_TIMEOUT_MS`, `OPENROUTER_TIMEOUT_MS`); los ausentes usan
+   * `DEFAULT_PROVIDER_TIMEOUT_MS`.
+   */
+  providerTimeoutsMs?: Readonly<Record<string, number>>;
 }
 
 /** Firma del punto de entrada: `runTask(task, input, ctx)`. */
@@ -74,7 +80,12 @@ interface Execution {
 type AttemptOutcome<O> =
   | { kind: 'success'; output: O; model: string }
   | { kind: 'schema_error' }
-  | { kind: 'provider_error' };
+  | { kind: 'provider_error' }
+  | { kind: 'skipped' }
+  | { kind: 'cancelled' };
+
+/** Plazo por petición a un proveedor sin plazo configurado (D10). */
+export const DEFAULT_PROVIDER_TIMEOUT_MS = 30_000;
 
 const NO_USAGE: CompletionUsage = { inputTokens: 0, outputTokens: 0 };
 
@@ -89,8 +100,9 @@ export class RunTask {
   }
 
   /**
-   * Ejecuta una tarea. Devuelve `success` o `degraded`; solo lanza por input inválido (`ZodError`), `FixtureMissing`
-   * e `InvalidDegradeOutput`.
+   * Ejecuta una tarea. Devuelve `success` o `degraded`; solo lanza por input inválido (`ZodError`) y por errores de
+   * programación (`AiProgrammingError`: `FixtureMissing`, `MockMisuse`, `InvalidFixture`, `SynthUnsupported`,
+   * `InvalidDegradeOutput`).
    */
   readonly execute: RunTaskFn = async <I, O>(
     task: AiTask<I, O>,
@@ -128,7 +140,12 @@ export class RunTask {
       return this.degrade(task, parsedInput, 'no_providers', execution);
     }
 
+    let attempted = 0;
     for (const provider of chain) {
+      // Cancelación del llamador (D10): se interrumpe la cadena con un único `degraded` `providers_failed`.
+      if (ctx.signal?.aborted) {
+        return this.degrade(task, parsedInput, 'providers_failed', execution);
+      }
       const outcome = await this.attempt(
         provider,
         task,
@@ -136,6 +153,10 @@ export class RunTask {
         outputLanguage,
         execution,
       );
+      if (outcome.kind === 'cancelled') {
+        return this.degrade(task, parsedInput, 'providers_failed', execution);
+      }
+      if (outcome.kind !== 'skipped') attempted++;
       if (outcome.kind === 'success') {
         // Solo se guardan éxitos (ADR-018 §6): nunca `degraded`.
         await this.writeCache(execution, {
@@ -154,7 +175,13 @@ export class RunTask {
         };
       }
     }
-    return this.degrade(task, parsedInput, 'providers_failed', execution);
+    // Si ningún proveedor llegó a contactarse (todos sin permiso del breaker), no hubo proveedores disponibles.
+    return this.degrade(
+      task,
+      parsedInput,
+      attempted === 0 ? 'no_providers' : 'providers_failed',
+      execution,
+    );
   };
 
   /**
@@ -252,19 +279,29 @@ export class RunTask {
       temperature: task.temperature,
       maxTokens: task.budget.maxTokens,
       responseFormat: provider.capabilities.jsonMode ? 'json' : 'text',
-      signal: execution.ctx.signal,
       trace: {
         taskName: task.name,
         promptVersion: task.promptVersion,
         key: execution.key,
+        // Input parseado sin redactar: solo para el mock (synth), nunca en peticiones a proveedores reales (D4).
+        ...(provider.id === MOCK_PROVIDER_ID ? { input: parsedInput } : {}),
       },
     };
+    // Justo antes de completar (D10): en half-open concede un único permiso; si no hay permiso, se salta sin registro.
+    if (!this.deps.breaker.tryAcquire(provider.id)) {
+      this.deps.logger.debug('AI provider skipped: circuit open', {
+        task: task.name,
+        providerId: provider.id,
+      });
+      return { kind: 'skipped' };
+    }
     const startedAt = this.deps.clock.now();
     const latency = () => this.deps.clock.now() - startedAt;
 
     try {
       const result = await runStructuredOutput({
-        complete: (req) => provider.complete(req),
+        complete: (req) =>
+          this.completeWithDeadline(provider, req, execution.ctx.signal),
         request,
         outputSchema: task.outputSchema,
         maxAttempts: task.budget.maxAttempts,
@@ -275,6 +312,8 @@ export class RunTask {
         usage: result.usage,
         latencyMs: latency(),
       };
+      // Cualquier respuesta, válida o no según el schema, cuenta como disponibilidad (ADR-018 §7).
+      this.deps.breaker.recordSuccess(provider.id);
       if (result.status === 'valid') {
         this.record(execution, 'success', base);
         const output = redaction
@@ -287,8 +326,18 @@ export class RunTask {
     } catch (error) {
       const cause =
         error instanceof StructuredOutputProviderError ? error.cause : error;
-      // El fixture ausente del mock en replay no es un fallo de proveedor: debe hacer fallar el test (D2).
-      if (cause instanceof FixtureMissing) throw cause;
+      // Errores de programación (FixtureMissing, MockMisuse, InvalidFixture, SynthUnsupported): no son fallos del
+      // proveedor y deben hacer fallar el test o el arranque que los provoca (D2, D4).
+      if (cause instanceof AiProgrammingError) {
+        this.deps.breaker.release(provider.id);
+        throw cause;
+      }
+      // Cancelación del llamador: ni `provider_error` ni fallo en el breaker; se devuelve el permiso de half-open.
+      if (execution.ctx.signal?.aborted) {
+        this.deps.breaker.release(provider.id);
+        return { kind: 'cancelled' };
+      }
+      this.deps.breaker.recordFailure(provider.id);
       this.record(execution, 'provider_error', {
         provider,
         model: null,
@@ -307,6 +356,44 @@ export class RunTask {
       });
       return { kind: 'provider_error' };
     }
+  }
+
+  /**
+   * Una petición al proveedor con plazo (D10): la señal combina el timeout del proveedor y `ctx.signal` (filtrando
+   * ausentes), viaja en `req.signal` y además compite contra `complete()`, así que la petición termina al abortarse
+   * aunque el proveedor ignore la señal. Al abortar rechaza con el motivo de la señal.
+   */
+  private completeWithDeadline(
+    provider: LlmProvider,
+    request: CompletionRequest,
+    callerSignal: AbortSignal | undefined,
+  ): Promise<CompletionResult> {
+    const signal = AbortSignal.any(
+      [AbortSignal.timeout(this.timeoutFor(provider.id)), callerSignal].filter(
+        (candidate): candidate is AbortSignal => candidate !== undefined,
+      ),
+    );
+    if (signal.aborted) return Promise.reject(abortReason(signal));
+
+    return new Promise<CompletionResult>((resolve, reject) => {
+      const onAbort = () => reject(abortReason(signal));
+      signal.addEventListener('abort', onAbort, { once: true });
+      let completion: Promise<CompletionResult>;
+      try {
+        completion = provider.complete({ ...request, signal });
+      } catch (error) {
+        completion = Promise.reject(error);
+      }
+      completion
+        .then(resolve, reject)
+        .finally(() => signal.removeEventListener('abort', onAbort));
+    });
+  }
+
+  private timeoutFor(providerId: string): number {
+    return (
+      this.deps.providerTimeoutsMs?.[providerId] ?? DEFAULT_PROVIDER_TIMEOUT_MS
+    );
   }
 
   /** Resultado degradado con su único registro y la salida validada de `task.degrade`, si existe. */
@@ -386,4 +473,12 @@ export class RunTask {
       error: error instanceof Error ? error.name : 'unknown',
     });
   }
+}
+
+/** Motivo del aborto como `Error` (el de `AbortSignal.timeout` es un `DOMException` `TimeoutError`). */
+function abortReason(signal: AbortSignal): Error {
+  const reason: unknown = signal.reason;
+  return reason instanceof Error
+    ? reason
+    : new DOMException('The operation was aborted', 'AbortError');
 }

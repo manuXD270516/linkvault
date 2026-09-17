@@ -1,7 +1,12 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { z } from 'zod';
-import { FixtureMissing, SynthUnsupported } from '../../domain/errors';
+import {
+  FixtureMissing,
+  InvalidFixture,
+  MockMisuse,
+  SynthUnsupported,
+} from '../../domain/errors';
 import type {
   CompletionRequest,
   CompletionResult,
@@ -31,22 +36,9 @@ export interface MockDeterministicProviderOptions {
   tasks?: Pick<TaskRegistry, 'get'>;
 }
 
-/** Error de programación: `runTask` no pasó la identidad de la ejecución o el mock está mal configurado. */
-export class MockMisuse extends Error {
-  override readonly name = 'MockMisuse';
-}
-
-/** Fixture corrupto: error de programación de quien lo escribió, distinto de un fixture ausente. */
-export class InvalidFixture extends Error {
-  override readonly name = 'InvalidFixture';
-
-  constructor(
-    readonly taskName: string,
-    readonly key: string,
-  ) {
-    super(`Replay fixture "${taskName}/${key}.json" is malformed`);
-  }
-}
+// `MockMisuse` e `InvalidFixture` viven en domain/errors.ts (marca `AiProgrammingError` que runTask propaga); se
+// reexportan aquí para quien los importa junto al proveedor.
+export { InvalidFixture, MockMisuse } from '../../domain/errors';
 
 const fixtureSchema = z.object({
   source: z.string().min(1),
