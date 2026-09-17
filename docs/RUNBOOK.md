@@ -306,7 +306,7 @@ Qué hace: corre `claude -p "/lv:<etapa>"` en modo `acceptEdits`, guarda cada sa
 
 ### 9.5 Lo que sigue siendo manual (a propósito)
 - Leer `proposal.md`/`design.md` antes del debate y aprobar tras él.
-- Elegir las 5 vacantes reales del golden set (`ai-eval-harness`).
+- Revisar las vacantes reales del golden set de `extract-job` (`/lv:golden 20`, en `link-enrichment`); el golden de `classify-skills` es sintético (`placeholder`).
 - Grabar fixtures del mock con un proveedor real (`pnpm nx run ai:record-fixtures`, ADR-019) y evaluar con `pnpm nx run ai:eval` (en mock/replay contra la línea base; con `--provider=ollama` para medir un modelo real).
 - `git push` y abrir el PR.
 

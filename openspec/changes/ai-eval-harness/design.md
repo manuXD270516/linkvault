@@ -53,6 +53,11 @@ lista de SDKs de IA y ESLint no combina opciones entre bloques (ADR-017). Prohí
 cualquier especificador que resuelva a un `index` de `libs/ai` (`..`, `../..`, `./index`, `**/index`), `**/ai.module` y
 `**/application/testing/**`. El corredor usa dobles propios de ledger, cuota y breaker en `runner/`.
 
+Nota de implementación: además de lo anterior existen `cli/eval-command.ts` y `cli/record-fixtures-command.ts` (lógica
+testable de cada comando; `eval.ts` y `record-fixtures.ts` solo la invocan y fijan `process.exitCode`), `metrics/metric.ts`
+(contrato de métrica), `metrics/aggregate.ts` (agregación) y el helper de tests `metrics/test-cases.spec-helper.ts`, excluido
+de la compilación de la librería.
+
 ### D2 — Ejecución con `node --import tsx`
 
 Targets `nx:run-commands` en `libs/ai/project.json`, con `cwd` en la raíz del workspace y
@@ -98,6 +103,9 @@ código 2. Los 5 casos de `classify-skills` son avisos sintéticos (3 ES, 2 EN; 
 `tags: ["placeholder"]`, con contactos solo de valores reservados: emails `@example.com`, teléfonos `7000000x`, dominios
 `.example`.
 
+Nota de implementación: `EvaluableTask` admite además `caseColumns?`, columnas específicas de la tarea para la tabla por caso
+del reporte (en `classify-skills`, skills faltantes y sobrantes), de modo que el reporte de D6 no conoce ninguna tarea.
+
 ### D5 — Métricas y línea base
 
 Genéricas: `schema_validity_rate` = casos `success` / casos (bloqueante), `degraded_rate` (bloqueante), `latency_p50`
@@ -111,6 +119,10 @@ línea ni de espacios. Con `--provider=mock`, código 1 si no existe la línea b
 si `schema_validity_rate < 1` o si una métrica bloqueante difiere en más de `1e-9`; los mensajes distinguen "empeoró", "mejoró",
 "golden cambió", "prompt cambió" y "sin línea base", y todos incluyen
 `nx run ai:eval --task=<t> --provider=mock --update-baseline`. `--update-baseline` reescribe y termina en 0.
+
+Nota de implementación: también terminan con código 1 una métrica bloqueante nueva sin valor en la línea base
+(`metric_added`), una métrica de la línea base que ya no se calcula (`metric_removed`) y un `baseline.json` ilegible
+(`invalid`). `--update-baseline` solo se acepta con `--provider=mock`; con otro proveedor es error de uso (código 2).
 
 ### D6 — Reporte y códigos de salida
 
@@ -133,6 +145,9 @@ salida validada y reinyectada, tokens del ledger en memoria. La redacción para 
 sin `--allow-external` → código 2 antes de contactar a nadie. `parseAiConfig` mantiene el rechazo de `AI_MOCK_MODE=record` con
 el detalle "use nx run ai:record-fixtures".
 
+Nota de implementación: un `success` cuyo `providerId` no es el upstream pedido no se graba y cuenta como caso no grabado
+(código 1), para que un fixture nunca atribuya al upstream la salida de otro proveedor.
+
 ### D8 — Ollama local para grabar
 
 Antes de descargar nada se consulta `GET http://127.0.0.1:11434/api/tags`. Si la app de escritorio ya tiene `qwen2.5:7b`,
@@ -143,6 +158,9 @@ lugar de depender de `.env`. `.env.example` y el README documentan el puerto alt
 
 Las tareas que tocan el modelo (5.2 a 5.4) terminan el apply con el marcador `APPLY: PAUSA (modelo)` si no hay confirmación
 humana en la conversación, en lugar de descargar o marcar sin hacer.
+
+Resultado (tarea 5.2): la app de escritorio solo tenía `qwen2.5:3b`; el humano eligió descargar `qwen2.5:7b` en la app de
+escritorio (`127.0.0.1:11434`, GPU), y `GET /api/tags` confirmó el modelo antes de grabar.
 
 ### D9 — Grabación del golden y contingencia
 

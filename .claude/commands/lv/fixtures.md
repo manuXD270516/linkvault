@@ -2,8 +2,9 @@
 description: Graba con un proveedor real los fixtures del mock que faltan para los golden sets de las tareas evaluables
 argument-hint: [proveedor: ollama|openrouter, por defecto ollama]
 ---
-Proveedor: "$ARGUMENTS" (por defecto ollama en `OLLAMA_URL`; si Ollama no responde en `OLLAMA_URL`, usa openrouter con
-`--allow-external` si hay `OPENROUTER_API_KEY`; si tampoco, detente y dímelo). La grabación es un comando, no un modo del mock
+Proveedor: "$ARGUMENTS" (por defecto ollama en `OLLAMA_URL`). Si Ollama no responde en `OLLAMA_URL`, detente y dímelo: NO
+cambies a openrouter por tu cuenta. `--allow-external` solo se usa si el humano lo pidió explícitamente en esta conversación
+(argumento `openrouter` o confirmación directa), porque envía los textos a un tercero (ADR-019 §6). La grabación es un comando, no un modo del mock
 (ADR-019): `AI_MOCK_MODE` solo admite `replay` y `synth`.
 
 > Nota: el registro automático de fixtures pendientes desde los tests llega con `link-enrichment`. Hasta entonces, los fixtures
@@ -12,7 +13,7 @@ Proveedor: "$ARGUMENTS" (por defecto ollama en `OLLAMA_URL`; si Ollama no respon
 1) Tareas: las registradas como evaluables en `libs/ai/src/evals/evaluable-tasks.ts`. Para cada una graba los casos del golden
    que no tengan fixture (los existentes se omiten sin contactar al proveedor):
    - Ollama: `pnpm nx run ai:record-fixtures --task=<t> --upstream=ollama --ollama-url=<OLLAMA_URL> --timeout-ms=300000`
-   - OpenRouter (externo; la redacción de datos personales la aplica `runTask`):
+   - OpenRouter (externo, solo con confirmación humana explícita; la redacción de datos personales la aplica `runTask`):
      `pnpm nx run ai:record-fixtures --task=<t> --upstream=openrouter --allow-external --timeout-ms=300000`
    Código 1 = grabación incompleta (el comando lista los casos no grabados): repite una vez. Código 2 = uso o configuración:
    detente con el motivo.

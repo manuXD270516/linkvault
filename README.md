@@ -86,7 +86,8 @@ pnpm exec openspec validate --all              # specs y changes de OpenSpec
 
 Los tests usan un MongoDB efímero en replica set (`mongodb-memory-server`, sin Docker) y fijan la IA en mock. La
 primera ejecución descarga el binario de MongoDB, unos 600 MB en Windows. CI (`.github/workflows/ci.yml`) ejecuta lint →
-validación de OpenSpec → typecheck → test → build sobre los proyectos afectados.
+validación de OpenSpec → typecheck → test → evaluación de IA en replay (`ai:eval-ci`, si `ai` está afectado) → build sobre
+los proyectos afectados.
 
 ## Evaluación de IA
 
