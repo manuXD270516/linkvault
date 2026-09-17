@@ -34,18 +34,6 @@ export class ProviderUnavailable extends Error {
   }
 }
 
-/** La cuota del usuario para la tarea y el proveedor está agotada. */
-export class QuotaExceeded extends Error {
-  override readonly name = 'QuotaExceeded';
-
-  constructor(
-    readonly taskName: string,
-    readonly providerId: string,
-  ) {
-    super(`Quota exceeded for task "${taskName}" on provider "${providerId}"`);
-  }
-}
-
 /** Modo `replay` sin fixture para la clave sha256(task + promptVersion + canonicalJSON(input)). */
 export class FixtureMissing extends Error {
   override readonly name = 'FixtureMissing';

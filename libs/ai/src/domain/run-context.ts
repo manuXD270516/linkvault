@@ -23,3 +23,10 @@ export interface RunContext {
   /** Plazo total de la ejecución. */
   signal?: AbortSignal;
 }
+
+/** Idioma de salida efectivo de una ejecución: el del contexto o `es`. */
+export function outputLanguageOf(
+  ctx: Pick<RunContext, 'outputLanguage'>,
+): OutputLanguage {
+  return ctx.outputLanguage ?? DEFAULT_OUTPUT_LANGUAGE;
+}

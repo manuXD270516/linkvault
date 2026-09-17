@@ -40,7 +40,6 @@ export {
   FixtureMissing,
   InvalidDegradeOutput,
   ProviderUnavailable,
-  QuotaExceeded,
   SchemaViolation,
   SynthUnsupported,
 } from './domain/errors';
