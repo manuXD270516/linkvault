@@ -142,6 +142,9 @@ export class RedisPingDouble {
 
   private accept(socket: Socket): void {
     this.sockets.add(socket);
+    // Como Redis (`tcp-nodelay yes`): sin esto, Nagle retiene los envíos pequeños que siguen al primero hasta recibir el
+    // ACK del cliente (hasta ~40 ms en Linux), y cada MULTI/EXEC del limitador de intentos costaría esa espera.
+    socket.setNoDelay(true);
     socket.on('close', () => this.sockets.delete(socket));
     // Un cliente que corta la conexión no debe tumbar el proceso de test.
     socket.on('error', () => socket.destroy());
@@ -153,14 +156,18 @@ export class RedisPingDouble {
         return;
       }
       buffer = Buffer.concat([buffer, chunk]);
+      // Las respuestas de los comandos que llegan juntos (un MULTI encolado, por ejemplo) se envían en un solo write,
+      // igual que el búfer de salida de Redis: un paquete por tanda en lugar de uno por comando.
+      const responses: string[] = [];
       let command = parseCommand(buffer);
       while (command !== null) {
         buffer = buffer.subarray(command.consumed);
-        const response = this.reply(command.args, session);
-        if (response.length > 0) {
-          socket.write(response);
-        }
+        responses.push(this.reply(command.args, session));
         command = parseCommand(buffer);
+      }
+      const response = responses.join('');
+      if (response.length > 0) {
+        socket.write(response);
       }
     });
   }

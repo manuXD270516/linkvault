@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-09-17
+# Solo corrige el doble de Redis de los tests y dos specs de Vitest: ningún requisito de `auth/credentials` cambia.
+skip_specs: true

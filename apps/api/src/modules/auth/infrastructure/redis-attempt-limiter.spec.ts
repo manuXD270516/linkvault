@@ -51,6 +51,18 @@ function limiter(windowMs = ATTEMPT_WINDOW_MS): RedisAttemptLimiter {
   return new RedisAttemptLimiter(client, { secret: SECRET, windowMs });
 }
 
+/** Espera a que Redis dé la clave por caducada (`PTTL` -2); no supone cuánto tarda el runner en llegar hasta aquí. */
+async function waitUntilExpired(name: string): Promise<void> {
+  // Se rinde antes del timeout del test para que el fallo diga que la clave no caducó, no que el test tardó demasiado.
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    if ((await inspector.pttl(name)) === -2) {
+      return;
+    }
+    await delay(10);
+  }
+  throw new Error('the counter never expired');
+}
+
 async function consumeTimes(
   target: RedisAttemptLimiter,
   key: AttemptKey,
@@ -138,16 +150,25 @@ describe('RedisAttemptLimiter', () => {
   });
 
   it('starts a new window once the previous one expires', async () => {
-    const target = limiter(150);
+    const target = limiter();
+    const name = attemptKeyName(emailKey, SECRET);
     await consumeTimes(target, emailKey, 5, 5);
     expect((await target.consume(emailKey, 5)).allowed).toBe(false);
+    expect(await inspector.get(name)).toBe('6');
 
-    await delay(200);
+    // El final de la ventana se adelanta acortando la caducidad del contador, en lugar de acortar la ventana y confiar
+    // en que los seis intentos entren en ella: así el resultado no depende de lo que tarde la máquina.
+    await inspector.set(name, '6', 'PX', 20);
+    await waitUntilExpired(name);
 
     expect(await target.consume(emailKey, 5)).toEqual({
       allowed: true,
       retryAfterSeconds: 0,
     });
+    // La ventana nueva vuelve a durar lo que marca la política, no lo que quedaba de la anterior.
+    const pttl = await inspector.pttl(name);
+    expect(pttl).toBeGreaterThan(ATTEMPT_WINDOW_MS - 5_000);
+    expect(pttl).toBeLessThanOrEqual(ATTEMPT_WINDOW_MS);
   });
 
   it('counts concurrent attempts atomically', async () => {
@@ -199,18 +220,24 @@ describe('RedisAttemptLimiter', () => {
     expect(later.every((decision) => decision.allowed)).toBe(true);
   });
 
-  it('Logins correctos no agotan el límite por IP', async () => {
-    const target = limiter();
+  // 51 logins correctos son más de 150 idas y vueltas a Redis; el margen es para un runner de CI cargado, no porque se
+  // espere que tarde tanto.
+  it(
+    'Logins correctos no agotan el límite por IP',
+    { timeout: 30_000 },
+    async () => {
+      const target = limiter();
 
-    for (let i = 0; i < LOGIN_ATTEMPTS_PER_IP + 1; i++) {
-      const decision = await target.consume(ipKey, LOGIN_ATTEMPTS_PER_IP);
-      expect(decision.allowed).toBe(true);
-      await target.recordLoginSuccess(EMAIL, IP);
-    }
+      for (let i = 0; i < LOGIN_ATTEMPTS_PER_IP + 1; i++) {
+        const decision = await target.consume(ipKey, LOGIN_ATTEMPTS_PER_IP);
+        expect(decision.allowed).toBe(true);
+        await target.recordLoginSuccess(EMAIL, IP);
+      }
 
-    // Un contador que vuelve a 0 se borra: la IP no conserva ventana por logins correctos.
-    expect(await inspector.get(attemptKeyName(ipKey, SECRET))).toBeNull();
-  });
+      // Un contador que vuelve a 0 se borra: la IP no conserva ventana por logins correctos.
+      expect(await inspector.get(attemptKeyName(ipKey, SECRET))).toBeNull();
+    },
+  );
 
   it('keeps failed IP attempts after a success of another attempt', async () => {
     const target = limiter();

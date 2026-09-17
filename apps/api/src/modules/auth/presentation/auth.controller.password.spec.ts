@@ -271,18 +271,24 @@ describe('AuthController password and HTTP attempt limits', () => {
     expect(statuses).toEqual([401, 401, 401, 401, 200, 401, 401, 401, 401]);
   });
 
-  it('Logins correctos no agotan el límite por IP', async () => {
-    const { email } = await registerUser();
-    const ip = nextIp();
-    const statuses: number[] = [];
+  // 51 logins correctos con Argon2id real y una sesión nueva por login: el margen es para un runner de CI cargado, no
+  // porque se espere que tarde tanto.
+  it(
+    'Logins correctos no agotan el límite por IP',
+    { timeout: 30_000 },
+    async () => {
+      const { email } = await registerUser();
+      const ip = nextIp();
+      const statuses: number[] = [];
 
-    for (let attempt = 0; attempt < 51; attempt += 1) {
-      statuses.push((await login(email, PASSWORD, ip)).statusCode);
-    }
+      for (let attempt = 0; attempt < 51; attempt += 1) {
+        statuses.push((await login(email, PASSWORD, ip)).statusCode);
+      }
 
-    expect(statuses).not.toContain(429);
-    expect(statuses.every((status) => status === 200)).toBe(true);
-  });
+      expect(statuses).not.toContain(429);
+      expect(statuses.every((status) => status === 200)).toBe(true);
+    },
+  );
 
   // Último: detiene el doble de Redis de este archivo.
   it('Almacén de contadores caído', async () => {
