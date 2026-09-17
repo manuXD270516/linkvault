@@ -160,6 +160,18 @@ export default [
               message:
                 'La capa de dominio no importa infraestructura: mueve este uso a infrastructure/ y expón un port.',
             },
+            // `domain` no importa de otras capas (D1 de ai-gateway-core). Anclado por segmento de ruta: el bloque
+            // aplica a todo `**/domain/**` y `./application.entity` (módulo `applications`) es un import legítimo.
+            {
+              regex: '(^|/)(application|infrastructure|presentation|tasks)(/|$)',
+              message:
+                'La capa de dominio no importa de otras capas (application, infrastructure, presentation, tasks): invierte la dependencia con un port.',
+            },
+            {
+              regex: 'ai\\.module$',
+              message:
+                'La capa de dominio no importa de otras capas (ai.module): invierte la dependencia con un port.',
+            },
           ],
         },
       ],

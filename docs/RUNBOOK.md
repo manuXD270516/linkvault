@@ -244,6 +244,7 @@ Antes de que arranquen, fija el contrato en libs/shared (schemas zod + endpoints
 - **No edites `CLAUDE.md` a mano en caliente:** pídele a Claude Code `# <regla nueva>` (la tecla `#` agrega a CLAUDE.md) para que quede consistente.
 - **Cuando el hook bloquee una edición**, es correcto: crea el change o marca la tarea dentro del change activo.
 - **Fixtures del mock:** cuando un test falle con `FixtureMissing`, corre una vez `AI_MOCK_MODE=record AI_CHAIN=ollama pnpm nx test ai` (o con OpenRouter) para grabarlo, revisa el JSON y commitéalo.
+  > Nota: hoy `AI_MOCK_MODE=record` se rechaza al arrancar; el modo `record` está diferido al change `ai-eval-harness` (ADR-018 §5). Hasta entonces, los fixtures de replay se escriben a mano con `"source": "handwritten"`.
 
 ## Paso 7 — Definition of Done (pégalo en cada PR)
 
@@ -306,7 +307,7 @@ Qué hace: corre `claude -p "/lv:<etapa>"` en modo `acceptEdits`, guarda cada sa
 ### 9.5 Lo que sigue siendo manual (a propósito)
 - Leer `proposal.md`/`design.md` antes del debate y aprobar tras él.
 - Elegir las 5 vacantes reales del golden set (`ai-eval-harness`).
-- Grabar fixtures del mock con un proveedor real (`AI_MOCK_MODE=record`).
+- Grabar fixtures del mock con un proveedor real (modo `record`, disponible a partir de `ai-eval-harness`; ADR-018 §5).
 - `git push` y abrir el PR.
 
 ### 9.6 Notas

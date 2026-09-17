@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseEnv as parseDotenv } from 'node:util';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { parseEnv } from './env-parser';
+import { formatInvalidVariables, parseEnv } from './env-parser';
 import { loadWorkerConfigOrExit } from './load-worker-config';
 import { workerConfigSchema } from './worker-config.schema';
 
@@ -49,6 +49,51 @@ describe('worker configuration', () => {
     expect(output).not.toContain(example['REDIS_URL']);
   });
 
+  it('exits with code 1 naming AI_CHAIN and the unknown provider in a single line', () => {
+    const exit = vi.spyOn(process, 'exit').mockImplementation((code) => {
+      throw new ProcessExit(code);
+    });
+    const stderr = vi
+      .spyOn(process.stderr, 'write')
+      .mockImplementation(() => true);
+
+    expect(() =>
+      loadWorkerConfigOrExit({
+        ...readEnvExample(),
+        MONGO_URI: undefined,
+        AI_CHAIN: 'mock,gpt-magic',
+      }),
+    ).toThrow(ProcessExit);
+
+    expect(exit).toHaveBeenCalledWith(1);
+    expect(stderr).toHaveBeenCalledTimes(1);
+    expect(String(stderr.mock.calls[0]?.[0])).toBe(
+      '[worker] Invalid configuration, check these environment variables: MONGO_URI (missing), AI_CHAIN (invalid: unknown provider gpt-magic)\n',
+    );
+  });
+
+  it('never prints the OpenRouter credential among AI problems', () => {
+    vi.spyOn(process, 'exit').mockImplementation((code) => {
+      throw new ProcessExit(code);
+    });
+    const stderr = vi
+      .spyOn(process.stderr, 'write')
+      .mockImplementation(() => true);
+    const apiKey = 'openrouter-key-s3cr3t';
+
+    expect(() =>
+      loadWorkerConfigOrExit({
+        ...readEnvExample(),
+        AI_CHAIN: `openrouter,${apiKey}`,
+        OPENROUTER_API_KEY: apiKey,
+      }),
+    ).toThrow(ProcessExit);
+
+    const output = stderr.mock.calls.map(([chunk]) => String(chunk)).join('');
+    expect(output).toContain('AI_CHAIN (invalid');
+    expect(output).not.toContain(apiKey);
+  });
+
   it('requires WORKER_HEALTH_PORT', () => {
     const result = parseEnv(workerConfigSchema, {
       ...readEnvExample(),
@@ -61,18 +106,48 @@ describe('worker configuration', () => {
     });
   });
 
+  it('accepts AI_CHAIN=none without AI_MOCK_MODE', () => {
+    const result = parseEnv(workerConfigSchema, {
+      ...readEnvExample(),
+      AI_CHAIN: 'none',
+      AI_MOCK_MODE: undefined,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.config.AI_CHAIN).toBe('none');
+  });
+
+  it('prints the detail of an invalid variable', () => {
+    expect(
+      formatInvalidVariables('worker', [
+        { name: 'MONGO_URI', reason: 'missing' },
+        {
+          name: 'AI_CHAIN',
+          reason: 'invalid',
+          detail: 'unknown provider gpt-magic',
+        },
+      ]),
+    ).toBe(
+      '[worker] Invalid configuration, check these environment variables: MONGO_URI (missing), AI_CHAIN (invalid: unknown provider gpt-magic)\n',
+    );
+  });
+
   it('accepts .env.example unchanged', () => {
     const exit = vi.spyOn(process, 'exit');
 
-    const config = loadWorkerConfigOrExit(readEnvExample());
+    const { config, ai } = loadWorkerConfigOrExit(readEnvExample());
 
     expect(exit).not.toHaveBeenCalled();
+    expect(ai).toMatchObject({
+      nodeEnv: 'development',
+      chain: ['mock'],
+      mock: { mode: 'synth' },
+    });
     expect(config).toMatchObject({
       NODE_ENV: 'development',
       WORKER_HEALTH_PORT: 3001,
       MONGO_URI: 'mongodb://localhost:27017/linkvault?directConnection=true',
       AI_CHAIN: 'mock',
-      AI_MOCK_MODE: 'replay',
       FEATURE_HEADLESS_EXTRACTION: false,
     });
   });

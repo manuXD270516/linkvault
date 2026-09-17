@@ -155,6 +155,20 @@ const rows: readonly RuleRow[] = [
     expectedRuleIds: [DOMAIN_IMPORTS],
   },
   {
+    name: 'libs/ai domain imports the application layer',
+    filePath: 'libs/ai/src/domain/x.ts',
+    code: "import { RunTaskUseCase } from '../application/run-task.usecase';\n\nexport const probe = RunTaskUseCase;\n",
+    expectedRuleIds: [DOMAIN_IMPORTS],
+  },
+  {
+    // Anclado por segmento (D1 de ai-gateway-core): `application.entity` no es la carpeta `application`.
+    name: 'a domain folder of the applications module imports its own entity',
+    filePath: 'apps/api/src/modules/applications/domain/x.ts',
+    code: "import { Application } from './application.entity';\n\nexport const probe = Application;\n",
+    expectedRuleIds: [],
+    unexpectedRuleIds: [DOMAIN_IMPORTS],
+  },
+  {
     name: 'an infrastructure folder of api imports infrastructure',
     filePath: 'apps/api/src/modules/probe/infrastructure/probe.ts',
     code: "import { Schema } from 'mongoose';\n\nexport const probe = Schema;\n",

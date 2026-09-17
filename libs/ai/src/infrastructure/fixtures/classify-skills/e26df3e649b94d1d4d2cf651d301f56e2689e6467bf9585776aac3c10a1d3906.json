@@ -1,0 +1,6 @@
+{
+  "source": "handwritten",
+  "text": "{\"skills\":[{\"name\":\"TypeScript\",\"category\":\"language\"},{\"name\":\"NestJS\",\"category\":\"framework\"}]}",
+  "model": "handwritten",
+  "usage": { "inputTokens": 0, "outputTokens": 0 }
+}

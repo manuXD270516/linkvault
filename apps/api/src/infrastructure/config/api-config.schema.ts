@@ -12,9 +12,13 @@ export const apiConfigSchema = z.object({
   API_PORT: port,
   MONGO_URI: z.string().regex(/^mongodb(\+srv)?:\/\/\S+$/),
   REDIS_URL: z.string().regex(/^rediss?:\/\/\S+$/),
-  // Lista ordenada de proveedores de IA (design-v0.2 §4.4); los nombres válidos los fija ai-gateway-core.
-  AI_CHAIN: z.string().regex(/^[a-z0-9-]+(,[a-z0-9-]+)*$/),
-  AI_MOCK_MODE: z.enum(['replay', 'synth', 'record']),
+  // `none` o lista ordenada de proveedores de IA (design-v0.2 §4.4). Aquí solo se valida la forma: los identificadores
+  // conocidos, `AI_MOCK_MODE` (exigido solo si la cadena incluye `mock`) y el resto de reglas viven en `parseAiConfig`
+  // de `@linkvault/ai` (D12 de ai-gateway-core, ADR-018 §2).
+  AI_CHAIN: z.union([
+    z.literal('none'),
+    z.string().regex(/^[a-z0-9-]+(,[a-z0-9-]+)*$/),
+  ]),
   FEATURE_HEADLESS_EXTRACTION: z
     .enum(['true', 'false'])
     .transform((value) => value === 'true'),

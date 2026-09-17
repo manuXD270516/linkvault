@@ -12,12 +12,16 @@ const SENSITIVE_FIELDS = [
 
 /**
  * Rutas de redacción de pino (D11). pino no admite comodines recursivos y `*.apiKey` no casa con la raíz,
- * así que cada campo sensible se declara en la raíz, a un nivel y a dos niveles de anidación.
+ * así que cada campo sensible se declara en la raíz, a un nivel y a dos niveles de anidación. La cabecera
+ * `authorization` de cualquier objeto `headers` anidado un nivel (p. ej. una petición saliente a un proveedor de IA)
+ * se redacta en minúsculas y con mayúscula inicial (D12 de ai-gateway-core).
  */
 export const LOG_REDACT_PATHS: readonly string[] = [
   'req.headers.authorization',
   'req.headers.cookie',
   'res.headers["set-cookie"]',
+  '*.headers.authorization',
+  '*.headers.Authorization',
   ...SENSITIVE_FIELDS.flatMap((field) => [field, `*.${field}`, `*.*.${field}`]),
 ];
 
