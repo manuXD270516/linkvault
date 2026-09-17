@@ -94,8 +94,9 @@ Cuando ningún proveedor de la cadena produce una salida válida, o la cadena qu
 `runTask` NO SHALL lanzar una excepción: SHALL devolver `status: "degraded"` con un motivo (`no_providers`,
 `providers_failed` o `quota_exceeded`). Si la tarea declara una función de degradación, el resultado SHALL incluir su salida
 validada contra el schema de salida; una salida de degradación inválida SHALL lanzarse como error de programación.
-`runTask` solo SHALL propagar como excepción el input inválido, el fixture ausente del mock en replay y la salida de
-degradación inválida.
+`runTask` solo SHALL propagar como excepción el input inválido y los errores de programación: fixture ausente o inválido
+del mock, tarea sin muestra en modo synth, uso incorrecto del mock, prompt que no puede renderizarse y salida de
+degradación inválida. Cualquier otro fallo SHALL traducirse en fallback o degradación.
 
 #### Scenario: Cadena agotada sin función de degradación
 

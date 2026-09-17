@@ -28,6 +28,7 @@ import type {
   UsageOutcome,
   UsageRecord,
 } from '../domain/ports/usage-ledger.port';
+import { MOCK_PROVIDER_ID } from '../domain/provider-ids';
 import { buildChain } from '../domain/routing-policy';
 import {
   outputLanguageOf,
@@ -37,7 +38,7 @@ import {
 import { dataSensitivityOf, type AiTask } from '../domain/task';
 import { executionKey } from './execution-key';
 import { PiiRedactor } from './pii-redactor';
-import { cacheForChain, MOCK_PROVIDER_ID } from './null-result-cache';
+import { cacheForChain } from './null-result-cache';
 import {
   runStructuredOutput,
   StructuredOutputProviderError,
@@ -102,7 +103,7 @@ export class RunTask {
   /**
    * Ejecuta una tarea. Devuelve `success` o `degraded`; solo lanza por input inválido (`ZodError`) y por errores de
    * programación (`AiProgrammingError`: `FixtureMissing`, `MockMisuse`, `InvalidFixture`, `SynthUnsupported`,
-   * `InvalidDegradeOutput`).
+   * `InvalidPrompt`, `InvalidDegradeOutput`).
    */
   readonly execute: RunTaskFn = async <I, O>(
     task: AiTask<I, O>,
@@ -269,36 +270,42 @@ export class RunTask {
             personName: execution.ctx.personName,
           })
         : undefined;
-    const prompt = await this.deps.prompts.render(
-      { taskName: task.name, promptVersion: task.promptVersion },
-      { input: redaction?.value ?? parsedInput, outputLanguage },
-    );
-    const request: CompletionRequest = {
-      system: prompt.system,
-      user: prompt.user,
-      temperature: task.temperature,
-      maxTokens: task.budget.maxTokens,
-      responseFormat: provider.capabilities.jsonMode ? 'json' : 'text',
-      trace: {
-        taskName: task.name,
-        promptVersion: task.promptVersion,
-        key: execution.key,
-        // Input parseado sin redactar: solo para el mock (synth), nunca en peticiones a proveedores reales (D4).
-        ...(provider.id === MOCK_PROVIDER_ID ? { input: parsedInput } : {}),
-      },
-    };
-    // Justo antes de completar (D10): en half-open concede un único permiso; si no hay permiso, se salta sin registro.
-    if (!this.deps.breaker.tryAcquire(provider.id)) {
-      this.deps.logger.debug('AI provider skipped: circuit open', {
-        task: task.name,
-        providerId: provider.id,
-      });
-      return { kind: 'skipped' };
-    }
-    const startedAt = this.deps.clock.now();
+    // `acquired`: el breaker concedió permiso (quizá el único de half-open). Solo entonces hay algo que devolver con
+    // `release` si la ejecución termina por un error de programación o una cancelación (D2, D10).
+    let acquired = false;
+    let startedAt = 0;
     const latency = () => this.deps.clock.now() - startedAt;
 
     try {
+      const prompt = await this.deps.prompts.render(
+        { taskName: task.name, promptVersion: task.promptVersion },
+        { input: redaction?.value ?? parsedInput, outputLanguage },
+      );
+      const request: CompletionRequest = {
+        system: prompt.system,
+        user: prompt.user,
+        temperature: task.temperature,
+        maxTokens: task.budget.maxTokens,
+        responseFormat: provider.capabilities.jsonMode ? 'json' : 'text',
+        trace: {
+          taskName: task.name,
+          promptVersion: task.promptVersion,
+          key: execution.key,
+          // Input parseado sin redactar: solo para el mock (synth), nunca en peticiones a proveedores reales (D4).
+          ...(provider.id === MOCK_PROVIDER_ID ? { input: parsedInput } : {}),
+        },
+      };
+      // Justo antes de completar (D10): en half-open concede un único permiso; si no hay permiso, se salta sin registro.
+      if (!this.deps.breaker.tryAcquire(provider.id)) {
+        this.deps.logger.debug('AI provider skipped: circuit open', {
+          task: task.name,
+          providerId: provider.id,
+        });
+        return { kind: 'skipped' };
+      }
+      acquired = true;
+      startedAt = this.deps.clock.now();
+
       const result = await runStructuredOutput({
         complete: (req) =>
           this.completeWithDeadline(provider, req, execution.ctx.signal),
@@ -326,12 +333,16 @@ export class RunTask {
     } catch (error) {
       const cause =
         error instanceof StructuredOutputProviderError ? error.cause : error;
-      // Errores de programación (FixtureMissing, MockMisuse, InvalidFixture, SynthUnsupported): no son fallos del
-      // proveedor y deben hacer fallar el test o el arranque que los provoca (D2, D4).
+      // Errores de programación (`AiProgrammingError`: InvalidPrompt al renderizar, FixtureMissing, MockMisuse,
+      // InvalidFixture, SynthUnsupported): no son fallos del proveedor y deben hacer fallar el test o el arranque que los
+      // provoca (D2, D4). Antes se devuelve el permiso de half-open si se había tomado (D10).
       if (cause instanceof AiProgrammingError) {
-        this.deps.breaker.release(provider.id);
+        if (acquired) this.deps.breaker.release(provider.id);
         throw cause;
       }
+      // Un fallo antes de contactar al proveedor que no es de programación no es un `provider_error`: sin permiso
+      // tomado no se cuenta en el breaker ni en el ledger, y se propaga como hasta ahora.
+      if (!acquired) throw error;
       // Cancelación del llamador: ni `provider_error` ni fallo en el breaker; se devuelve el permiso de half-open.
       if (execution.ctx.signal?.aborted) {
         this.deps.breaker.release(provider.id);

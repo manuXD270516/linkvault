@@ -13,10 +13,7 @@ import {
   AI_MODULE_OPTIONS,
   RUN_TASK,
 } from './ai.tokens';
-import {
-  MOCK_PROVIDER_ID,
-  NullResultCache,
-} from './application/null-result-cache';
+import { NullResultCache } from './application/null-result-cache';
 import { RunTask, type RunTaskFn } from './application/run-task.usecase';
 import { TaskRegistry, type AnyAiTask } from './application/task-registry';
 import type { AiLogger } from './domain/ports/ai-logger.port';
@@ -25,6 +22,7 @@ import type { Clock } from './domain/ports/clock.port';
 import type { PromptRegistry } from './domain/ports/prompt-registry.port';
 import type { QuotaPolicy } from './domain/ports/quota-policy.port';
 import type { ResultCache } from './domain/ports/result-cache.port';
+import { MOCK_PROVIDER_ID } from './domain/provider-ids';
 import type { AiConfig } from './infrastructure/config/ai-config.schema';
 import { NestAiLogger } from './infrastructure/logging/nest-ai-logger';
 import { MongoUsageLedger } from './infrastructure/persistence/mongo-usage-ledger';

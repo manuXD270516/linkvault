@@ -41,6 +41,7 @@ export {
   FixtureMissing,
   InvalidDegradeOutput,
   InvalidFixture,
+  InvalidPrompt,
   MockMisuse,
   ProviderUnavailable,
   SchemaViolation,

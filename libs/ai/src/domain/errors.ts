@@ -41,7 +41,10 @@ export class ProviderUnavailable extends Error {
   }
 }
 
-/** Modo `replay` sin fixture para la clave sha256(task + promptVersion + canonicalJSON(input)). */
+/**
+ * Modo `replay` sin fixture para la clave `sha256(canonicalJSON([taskName, promptVersion, outputLanguage, parsedInput]))`
+ * (ADR-018 §3, D4 de ai-gateway-core).
+ */
 export class FixtureMissing extends AiProgrammingError {
   override readonly name = 'FixtureMissing';
 
@@ -85,5 +88,23 @@ export class InvalidFixture extends AiProgrammingError {
     readonly key: string,
   ) {
     super(`Replay fixture "${taskName}/${key}.json" is malformed`);
+  }
+}
+
+/**
+ * El prompt de una tarea no existe o no puede renderizarse (archivo ausente, front-matter o secciones inválidas,
+ * Mustache inválido). Error de programación (D2, ADR-018 §1): falla el arranque o la ejecución que lo provoca.
+ */
+export class InvalidPrompt extends AiProgrammingError {
+  override readonly name = 'InvalidPrompt';
+
+  constructor(
+    readonly taskName: string,
+    readonly promptVersion: string,
+    detail: string,
+  ) {
+    super(
+      `Prompt of task "${taskName}" version "${promptVersion}" is not usable: ${detail}`,
+    );
   }
 }

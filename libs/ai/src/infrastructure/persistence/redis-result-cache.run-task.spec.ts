@@ -43,6 +43,33 @@ function whenReady(client: Redis): Promise<void> {
   return new Promise((resolve) => client.once('ready', () => resolve()));
 }
 
+/**
+ * Un proceso lógico: cliente Redis propio, `RedisResultCache` propia y `RunTask` independiente sobre `provider`, con
+ * los demás puertos en memoria y también propios.
+ */
+async function startRunTaskProcess(
+  url: string,
+  provider: FakeLlmProvider,
+): Promise<RunTask> {
+  const logger = new InMemoryAiLogger();
+  const client = createAiCacheRedisClient(url);
+  const connection = new AiCacheRedisConnection(client, logger);
+  connection.onModuleInit();
+  cleanups.push(() => connection.onApplicationShutdown());
+  await whenReady(client);
+  const clock = new ManualClock();
+  return new RunTask({
+    providers: [provider],
+    prompts: new InMemoryPromptRegistry(),
+    cache: new RedisResultCache(client),
+    ledger: new InMemoryUsageLedger(),
+    quota: new InMemoryQuotaPolicy(),
+    breaker: new InMemoryCircuitBreaker(clock),
+    clock,
+    logger,
+  });
+}
+
 describe('runTask with the Redis result cache', () => {
   it('Entrada de caché', async () => {
     const double = await RedisPingDouble.start('up');
@@ -123,5 +150,38 @@ describe('runTask with the Redis result cache', () => {
       cached: true,
     });
     expect(provider.calls).toBe(1);
+  });
+
+  it('Caché compartida entre procesos', async () => {
+    const double = await RedisPingDouble.start('up');
+    cleanups.push(() => double.close());
+    const ctx = { aiConsent: { externalProviders: false } };
+    const writerProvider = new FakeLlmProvider(
+      'ollama',
+      [JSON.stringify(OUTPUT)],
+      { model: 'qwen2.5:7b' },
+    );
+    const readerProvider = new FakeLlmProvider(
+      'ollama',
+      [JSON.stringify({ skills: [] })],
+      { model: 'other-model' },
+    );
+    const writer = await startRunTaskProcess(double.url, writerProvider);
+    const reader = await startRunTaskProcess(double.url, readerProvider);
+
+    const first = await writer.execute(classifySkillsTask, INPUT, ctx);
+    const second = await reader.execute(classifySkillsTask, INPUT, ctx);
+
+    expect(first).toMatchObject({ status: 'success', cached: false });
+    expect(writerProvider.calls).toBe(1);
+    expect(second).toEqual({
+      status: 'success',
+      output: OUTPUT,
+      providerId: 'ollama',
+      model: 'qwen2.5:7b',
+      promptVersion: 'v1',
+      cached: true,
+    });
+    expect(readerProvider.calls).toBe(0);
   });
 });

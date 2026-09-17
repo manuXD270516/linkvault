@@ -80,8 +80,18 @@ interface RunContext {
 `AiTask` gana `dataSensitivity?: 'personal' | 'public'` (por defecto `personal`), `degrade?(input): O` y
 `sample?(input, rng): O`. El registro valida `budget.maxAttempts ∈ {1, 2}`. `satisfies(caps, requires)`: cada booleano
 requerido `true` exige `true`; `maxContextTokens` se compara con `>=`; costes y `external` requeridos se ignoran (son de
-política, no de capacidad). Se propagan como excepción solo: input inválido (`ZodError`), `FixtureMissing` y salida de
-`degrade` inválida (`InvalidDegradeOutput`).
+política, no de capacidad). Se propagan como excepción solo el input inválido (`ZodError`) y los **errores de
+programación**, que heredan de `AiProgrammingError` en `domain/errors.ts`: `FixtureMissing`, `InvalidFixture`,
+`MockMisuse`, `SynthUnsupported`, `InvalidPrompt` e `InvalidDegradeOutput`. Una clase base evita que `application` importe
+de `infrastructure` y que cada error nuevo de este tipo obligue a tocar `runTask`. Antes de propagarlos se libera el
+permiso de half-open si se había tomado (D10).
+
+`RunTask` no comprueba que la tarea esté registrada: **registrar es responsabilidad de `AiModule`**, único punto que lo
+construye, y es el registro el que valida `maxAttempts` y la existencia del prompt al arrancar. Un consumidor que construya
+`RunTask` a mano asume esa validación.
+
+`QuotaExceeded`, listado en design-v0.2 §4.1 y creado en `bootstrap-monorepo`, se retira: la cuota degrada con
+`quota_exceeded` sin lanzar (ADR-018 §9) y ningún código lo usaba.
 
 ### D3 — Pipeline de salida estructurada
 
@@ -103,7 +113,8 @@ fixtures. La misma clave identifica la caché, el mock y el `inputHash` del ledg
 `CompletionRequest.trace = { taskName, promptVersion, key, input? }` (campo opcional nuevo del contrato), que los
 proveedores reales ignoran. Se calcula antes de la redacción. `trace.input` (input parseado, sin redactar) lo necesita el mock
 en modo synth y `runTask` solo lo rellena cuando el proveedor es `mock`: ninguna petición a un proveedor real lo contiene.
-Los errores de programación del mock (`MockMisuse`, `InvalidFixture`) se propagan como `FixtureMissing`.
+Los errores de programación del mock (`MockMisuse`, `InvalidFixture`) se propagan igual que `FixtureMissing`, cada uno con
+su clase, como errores de programación (D2).
 
 ### D5 — Mock: replay y synth
 
@@ -195,10 +206,14 @@ que el puerto `CircuitBreaker` añade respecto a lo descrito arriba. En tests, l
 Solo para tareas `personal` y proveedores `external`. Detectores, en este orden y con marcadores estables por valor:
 
 - **email**;
-- **URL**: `https?://…` y dominios de perfil sin esquema (`linkedin.com/in/…`, `github.com/…`);
+- **URL**: `https?://…`, dominios que empiezan por `www.`, y dominios sin esquema con TLD habitual en CVs y portafolios
+  (`com`, `net`, `org`, `io`, `dev`, `app`, `me`, `co`, `ai`, `xyz` y los de país de LatAm como `bo`, `ar`, `mx`, `cl`,
+  `pe`, `co`, `uy`, `py`, `ec`, `ve`, `br`), con o sin ruta. Nombres de tecnologías con punto que no terminan en esos TLD
+  (`Node.js`, `ASP.NET`, `Vue.js`) quedan fuera; la ampliación nació en QA porque `www.anaperez.dev` salía sin redactar;
 - **teléfono**: móvil boliviano de 8 dígitos que empieza por 6 o 7 (opcionalmente con `+591`); cualquier número con `+`
   seguido de 7 a 14 dígitos con separadores; locales LatAm de 8 a 11 dígitos en 2 a 4 grupos separados por espacio, guion o
-  punto. Antes de este detector se enmascaran las exclusiones: fechas (`dd/mm/aaaa`, `aaaa-mm-dd`), años de 4 dígitos
+  punto, con un prefijo de área opcional entre paréntesis (`(011) 4123-4567`), que forma parte del teléfono redactado.
+  Antes de este detector se enmascaran las exclusiones: fechas (`dd/mm/aaaa`, `aaaa-mm-dd`), años de 4 dígitos
   sueltos, rangos de años `(19|20)\d{2}\s*[-–]\s*(19|20)\d{2}`, rangos mes.año `\d{2}[./]\d{4}\s*[-–]\s*\d{2}[./]\d{4}` y
   montos precedidos de moneda (`Bs`, `USD`, `$`);
 - **nombre**, con `ctx.redactName` y `ctx.personName`, sin distinguir mayúsculas.

@@ -14,14 +14,13 @@ import type {
   LlmProvider,
   ProviderCapabilities,
 } from '../../domain/ports/llm-provider.port';
+import { MOCK_PROVIDER_ID } from '../../domain/provider-ids';
 import type { Rng } from '../../domain/task';
 import type { TaskRegistry } from '../../application/task-registry';
 
 // Proveedor mock determinista (D5 de ai-gateway-core, ADR-018 §3 y §4). Localiza la ejecución por `req.trace`, nunca
 // por el texto del prompt. `replay`: fixture o `FixtureMissing`. `synth`: fixture si existe; si no, `task.sample` con
 // mulberry32 sembrado con la clave. `synth` en producción lo impide la configuración (D12).
-
-export const MOCK_PROVIDER_ID = 'mock';
 
 /** Modelo que se informa en las salidas sintetizadas. */
 export const MOCK_SYNTH_MODEL = 'mock-synth';

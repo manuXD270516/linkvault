@@ -72,6 +72,24 @@ describe('PiiRedactor: URL', () => {
       'https://www.linkedin.com/in/ana-perez/',
       '[URL_1]',
     ],
+    ['domain with www', 'Portfolio: www.anaperez.dev', 'Portfolio: [URL_1]'],
+    [
+      'domain without scheme with a path',
+      'Ver anaperez.dev/portfolio.',
+      'Ver [URL_1].',
+    ],
+    ['domain with a country second-level TLD', 'mi-sitio.com.bo', '[URL_1]'],
+    [
+      'personal .io domain next to a technology name',
+      'Socket.IO en anaperez.io',
+      'Socket.IO en [URL_1]',
+    ],
+    [
+      'technology site written with www or a subdomain',
+      'www.socket.io y docs.socket.io',
+      '[URL_1] y [URL_2]',
+    ],
+    ['bare platform domain', 'github.com sin perfil', '[URL_1] sin perfil'],
   ];
 
   it.each(positives)('redacts %s', (_label, text, expected) => {
@@ -84,6 +102,22 @@ describe('PiiRedactor: URL', () => {
     );
   });
 
+  it('redacts the QA portfolio and phone line without leaving the domain or the area code', () => {
+    const redacted = redactText(
+      'Portfolio: www.anaperez.dev · Tel (011) 4123-4567',
+    );
+
+    expect(redacted).toBe('Portfolio: [URL_1] · Tel [PHONE_1]');
+    expect(redacted).not.toContain('anaperez');
+    expect(redacted).not.toContain('(011)');
+  });
+
+  it('keeps emails whole when their domain has a listed TLD', () => {
+    expect(redactText('ana@anaperez.dev y anaperez.dev')).toBe(
+      '[EMAIL_1] y [URL_1]',
+    );
+  });
+
   it('numbers emails and URLs independently', () => {
     expect(redactText('ana@example.com https://ana.dev')).toBe(
       '[EMAIL_1] [URL_1]',
@@ -93,8 +127,16 @@ describe('PiiRedactor: URL', () => {
   it.each([
     'Experiencia con Node.js y Vue.js',
     'Trabajé en GitHub y LinkedIn',
-    'github.com sin perfil',
     'versión 2.3.1',
+    'Node.js',
+    'ASP.NET',
+    'Vue.js',
+    'APIs con ASP.NET Core y ASP.NET/MVC',
+    'Tiempo real con socket.io y Redis',
+    'Socket.IO sobre Node.js',
+    'Migración a v2.0',
+    'Frameworks, e.g. Angular',
+    'anaperez.devs no es un dominio',
   ])('leaves %s unchanged', (text) => {
     expect(redactText(text)).toBe(text);
   });
@@ -174,6 +216,8 @@ describe('PiiRedactor: LatAm local numbers and exclusions', () => {
     ['+54 9 11 2019-5678', '[PHONE_1]'],
     ['2019-2023: 11 1234-5678', '2019-2023: [PHONE_1]'],
     ['Bs 8500 al 55 1234 5678', 'Bs 8500 al [PHONE_1]'],
+    ['(011) 4123-4567', '[PHONE_1]'],
+    ['Tel (11) 4123 4567.', 'Tel [PHONE_1].'],
   ];
 
   it.each(positives)('redacts %s', (text, expected) => {

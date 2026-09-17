@@ -52,11 +52,53 @@ const EMAIL_PATTERN =
   /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
 
 /**
- * URLs con esquema http(s) o perfiles sin esquema (`linkedin.com/in/…`, `github.com/…`, con `www.` o subdominio de
- * país opcional). Una sola expresión para numerar por orden de aparición.
+ * TLD de dominios sin esquema habituales en CVs y portafolios (D11): genéricos y de país de LatAm. Un dominio con
+ * `www.` o con esquema se redacta con cualquier TLD.
  */
-const URL_PATTERN =
-  /\bhttps?:\/\/[^\s<>"'`]+|(?<![\w.@/-])(?:(?:www|[a-z]{2})\.)?(?:linkedin\.com\/in\/|github\.com\/)[^\s<>"'`]+/gi;
+const BARE_DOMAIN_TLDS = [
+  'com', 'net', 'org', 'io', 'dev', 'app', 'me', 'co', 'ai', 'xyz',
+  'bo', 'ar', 'mx', 'cl', 'pe', 'uy', 'py', 'ec', 've', 'br',
+] as const;
+
+/** Etiqueta de dominio: letras ASCII, dígitos y guiones internos. */
+const DOMAIN_LABEL = String.raw`[a-z0-9](?:[a-z0-9-]*[a-z0-9])?`;
+/** Puerto, ruta, query o fragmento opcionales tras el host (`\x60` es el acento grave). */
+const URL_TAIL = String.raw`(?::\d{1,5})?(?:[/?#][^\s<>"'\x60]*)?`;
+/** Inicio de un host: no continúa una palabra, otro host, un email ni una ruta. */
+const HOST_START = String.raw`(?<![\p{L}\p{N}_.@/-])`;
+/** Fin de un host: no sigue una letra, dígito, guion o `_` (así `anaperez.devs` no es `anaperez.dev`). */
+const HOST_END = String.raw`(?![\p{L}\p{N}_-])`;
+
+/**
+ * Una sola expresión, para numerar por orden de aparición, con tres ramas en este orden: URL con esquema `http(s)`;
+ * host que empieza por `www.` con cualquier TLD; y dominio sin esquema cuyo TLD está en `BARE_DOMAIN_TLDS`, con o sin
+ * ruta (grupo `bare`: el host). Los nombres de tecnologías con punto que no acaban en esos TLD (`Node.js`,
+ * `Vue.js`), las versiones (`v2.0`) y las abreviaturas (`e.g.`) no encajan en ninguna rama.
+ */
+const URL_PATTERN = new RegExp(
+  [
+    String.raw`\bhttps?://[^\s<>"'\x60]+`,
+    String.raw`${HOST_START}www\.(?:${DOMAIN_LABEL}\.)+[a-z]{2,}${HOST_END}${URL_TAIL}`,
+    String.raw`${HOST_START}(?<bare>(?:${DOMAIN_LABEL}\.)+(?:${BARE_DOMAIN_TLDS.join('|')}))${HOST_END}${URL_TAIL}`,
+  ].join('|'),
+  'giu',
+);
+
+/**
+ * Nombres de tecnologías que son, letra por letra, un dominio sin esquema con TLD de `BARE_DOMAIN_TLDS`. Se comparan
+ * sin distinguir mayúsculas contra el host completo escrito sin `www.` ni esquema, con o sin lo que le siga
+ * (`ASP.NET/MVC`): `socket.io` y `Socket.IO` no se redactan; `anaperez.io`, `my.socket.io`, `www.socket.io` y
+ * `https://socket.io` sí. Lista cerrada a propósito: un nombre técnico que falte se redacta de más (y se reinyecta en la
+ * salida); una regla por contexto o por mayúsculas dejaría pasar dominios personales escritos en mayúsculas o junto a
+ * términos técnicos.
+ */
+const TECHNOLOGY_NAMES_LIKE_DOMAINS: ReadonlySet<string> = new Set([
+  'asp.net',
+  'ado.net',
+  'vb.net',
+  'ml.net',
+  'socket.io',
+]);
 
 /** Puntuación final que acompaña a una URL en prosa y no forma parte de ella. */
 const TRAILING_PUNCTUATION = /[.,;:!?'"]$/;
@@ -65,7 +107,21 @@ const detectEmails: Detector = (text, markers) =>
   text.replace(EMAIL_PATTERN, (email) => markers.markerFor('EMAIL', email));
 
 const detectUrls: Detector = (text, markers) =>
-  text.replace(URL_PATTERN, (match) => markUrl(match, markers));
+  text.replace(
+    URL_PATTERN,
+    (match, ...args: unknown[]) => {
+      const groups = args.at(-1) as UrlGroups;
+      const isTechnologyName =
+        groups.bare !== undefined &&
+        TECHNOLOGY_NAMES_LIKE_DOMAINS.has(groups.bare.toLowerCase());
+      return isTechnologyName ? match : markUrl(match, markers);
+    },
+  );
+
+/** Grupo con nombre de `URL_PATTERN`; `undefined` si encajó otra rama. */
+interface UrlGroups {
+  bare?: string;
+}
 
 function markUrl(match: string, markers: MarkerTable): string {
   const url = trimUrl(match);
@@ -141,8 +197,12 @@ function internationalNumberEnd(candidate: string): number {
   return end;
 }
 
-/** Secuencia máxima de grupos de dígitos separados por un único espacio, guion o punto. */
-const DIGIT_RUN_PATTERN = /(?<![\p{L}\p{N}+])\d+(?:[\p{Zs}.-]\d+)*/gu;
+/**
+ * Secuencia máxima de grupos de dígitos separados por un único espacio, guion o punto, con un prefijo de área opcional
+ * de 2 a 4 dígitos entre paréntesis (`(011) 4123-4567`) que cuenta como su primer grupo.
+ */
+const DIGIT_RUN_PATTERN =
+  /(?<![\p{L}\p{N}+])(?:\(\d{2,4}\)[\p{Zs}.-]?)?\d+(?:[\p{Zs}.-]\d+)*/gu;
 
 const LOCAL_MIN_DIGITS = 8;
 const LOCAL_MAX_DIGITS = 11;
@@ -152,7 +212,7 @@ const YEAR_GROUP = /^(?:19|20)\d{2}$/;
 
 /**
  * Números locales LatAm: 8 a 11 dígitos en 2 a 4 grupos separados por espacio, guion o punto (`11 1234-5678`,
- * `55 1234 5678`, `9 1234 5678`). Dentro de una secuencia más larga se redacta, desde cada grupo, la ventana más
+ * `55 1234 5678`, `9 1234 5678`, `(011) 4123-4567`, donde el prefijo entre paréntesis es un grupo más). Dentro de una secuencia más larga se redacta, desde cada grupo, la ventana más
  * larga que cumpla; una ventana formada solo por años (`2019 2020`) no es un teléfono.
  */
 const detectLocalNumbers: Detector = (text, markers) =>
@@ -164,6 +224,12 @@ function redactLocalWindows(run: string, markers: MarkerTable): string {
     start: group.index,
     end: group.index + group[0].length,
   }));
+  // El prefijo de área entre paréntesis es el primer grupo e incluye los paréntesis: se redacta con el número.
+  const areaCode = groups[0];
+  if (run.startsWith('(') && areaCode !== undefined) {
+    areaCode.start = 0;
+    areaCode.end = run.indexOf(')') + 1;
+  }
   let result = '';
   let copiedUntil = 0;
   let first = 0;

@@ -2,11 +2,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { z, ZodError } from 'zod';
 import type { CircuitBreaker } from '../domain/ports/circuit-breaker.port';
 import type { LlmProvider } from '../domain/ports/llm-provider.port';
+import type { RenderedPrompt } from '../domain/ports/prompt-registry.port';
 import type { RunContext } from '../domain/run-context';
 import {
   FixtureMissing,
   InvalidDegradeOutput,
   InvalidFixture,
+  InvalidPrompt,
   MockMisuse,
   SynthUnsupported,
 } from '../domain/errors';
@@ -52,6 +54,15 @@ interface Harness {
     clock: ManualClock;
     logger: InMemoryAiLogger;
   };
+}
+
+/** Registro de prompts cuyo `render` falla como un prompt que no puede renderizarse. */
+class InvalidPromptRegistry extends InMemoryPromptRegistry {
+  override render(): Promise<RenderedPrompt> {
+    return Promise.reject(
+      new InvalidPrompt('classify-skills', 'v1', 'template is not valid Mustache'),
+    );
+  }
 }
 
 function harness(
@@ -353,8 +364,12 @@ describe('RunTask: errors that propagate instead of degrading', () => {
     ['MockMisuse', () => new MockMisuse('trace missing')],
     ['InvalidFixture', () => new InvalidFixture('classify-skills', 'k')],
     ['SynthUnsupported', () => new SynthUnsupported('classify-skills')],
+    [
+      'InvalidPrompt',
+      () => new InvalidPrompt('classify-skills', 'v1', 'template is not valid Mustache'),
+    ],
   ])(
-    'propagates %s from the mock without trying the next provider',
+    'propagates the programming error %s without trying the next provider',
     async (name, makeError) => {
       const mock = new FakeLlmProvider('mock', [makeError()]);
       const next = new FakeLlmProvider('ollama', [VALID]);
@@ -369,6 +384,69 @@ describe('RunTask: errors that propagate instead of degrading', () => {
       expect(deps.ledger.records).toEqual([]);
     },
   );
+
+  it('propagates InvalidPrompt raised while rendering without degrading or touching the breaker', async () => {
+    const prompts = new InvalidPromptRegistry();
+    const provider = new FakeLlmProvider('ollama', [VALID]);
+    const next = new FakeLlmProvider('zeta', [VALID]);
+    const task = { ...classifySkillsTask, degrade: () => ({ skills: [] }) };
+    const { runTask, deps } = harness([provider, next], { prompts });
+
+    await expect(runTask.execute(task, INPUT, CONSENT)).rejects.toBeInstanceOf(
+      InvalidPrompt,
+    );
+    expect(provider.calls).toBe(0);
+    expect(next.calls).toBe(0);
+    expect(deps.breaker.acquired).toEqual([]);
+    expect(deps.breaker.failures).toEqual([]);
+    expect(deps.breaker.released).toEqual([]);
+    expect(deps.ledger.records).toEqual([]);
+  });
+
+  it('leaves the half-open permit available when rendering raises InvalidPrompt', async () => {
+    const clock = new ManualClock();
+    const breaker = new InMemoryCircuitBreaker(clock);
+    for (let i = 0; i < 5; i++) breaker.recordFailure('ollama');
+    clock.advance(30_000);
+    const provider = new FakeLlmProvider('ollama', [VALID]);
+    const broken = harness([provider], {
+      clock,
+      breaker,
+      prompts: new InvalidPromptRegistry(),
+    });
+
+    await expect(
+      broken.runTask.execute(classifySkillsTask, INPUT, CONSENT),
+    ).rejects.toBeInstanceOf(InvalidPrompt);
+
+    expect(breaker.openIds().size).toBe(0);
+    const healthy = harness([provider], { clock, breaker });
+    await expect(
+      healthy.runTask.execute(classifySkillsTask, INPUT, CONSENT),
+    ).resolves.toMatchObject({ status: 'success', providerId: 'ollama' });
+  });
+
+  it('returns the half-open permit when a programming error is raised after acquiring it', async () => {
+    const clock = new ManualClock();
+    const breaker = new InMemoryCircuitBreaker(clock);
+    for (let i = 0; i < 5; i++) breaker.recordFailure('ollama');
+    clock.advance(30_000);
+    const provider = new FakeLlmProvider('ollama', [
+      new InvalidPrompt('classify-skills', 'v1', 'broken'),
+      VALID,
+    ]);
+    const { runTask } = harness([provider], { clock, breaker });
+
+    await expect(
+      runTask.execute(classifySkillsTask, INPUT, CONSENT),
+    ).rejects.toBeInstanceOf(InvalidPrompt);
+
+    expect(breaker.tryAcquire('ollama')).toBe(true);
+    breaker.release('ollama');
+    await expect(
+      runTask.execute(classifySkillsTask, INPUT, CONSENT),
+    ).resolves.toMatchObject({ status: 'success', providerId: 'ollama' });
+  });
 
   it('propagates FixtureMissing raised during the repair request', async () => {
     const mock = new FakeLlmProvider('mock', [

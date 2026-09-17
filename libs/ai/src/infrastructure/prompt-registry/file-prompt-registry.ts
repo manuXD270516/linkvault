@@ -9,24 +9,15 @@ import type {
   PromptView,
   RenderedPrompt,
 } from '../../domain/ports/prompt-registry.port';
+import { InvalidPrompt } from '../../domain/errors';
 
 // Prompts versionados en archivos (design-v0.2 §4.6, D7 de ai-gateway-core, requisito "Prompts versionados").
 // `<promptsDir>/<task>.<version>.md`: front-matter YAML con `task` y `version`, y dos secciones `# system` y `# user`.
 // Plantillas Mustache sin lógica renderizadas sin escapar (`escape` por llamada, sin tocar `Mustache.escape` global).
 
-export class InvalidPrompt extends Error {
-  override readonly name = 'InvalidPrompt';
-
-  constructor(
-    readonly taskName: string,
-    readonly promptVersion: string,
-    detail: string,
-  ) {
-    super(
-      `Prompt of task "${taskName}" version "${promptVersion}" is not usable: ${detail}`,
-    );
-  }
-}
+// `InvalidPrompt` vive en domain/errors.ts (marca `AiProgrammingError` que runTask propaga); se reexporta aquí para
+// quien lo importa junto al registro.
+export { InvalidPrompt } from '../../domain/errors';
 
 interface PromptTemplate {
   system: string;
