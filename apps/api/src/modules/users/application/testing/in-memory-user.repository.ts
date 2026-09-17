@@ -44,6 +44,17 @@ export class InMemoryUserRepository implements UserRepository {
     return Promise.resolve(user ? structuredClone(user) : null);
   }
 
+  findDisplayNames(ids: readonly string[]): Promise<Map<string, string>> {
+    const names = new Map<string, string>();
+    for (const id of new Set(ids)) {
+      const user = this.users.get(id);
+      if (user) {
+        names.set(id, user.profile.displayName);
+      }
+    }
+    return Promise.resolve(names);
+  }
+
   updateProfile(id: string, changes: ProfileChanges): Promise<User | null> {
     const user = this.users.get(id);
     if (!user) {

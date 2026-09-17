@@ -154,4 +154,52 @@ describe('UsersFacade', () => {
       expect(await facade.getProfile('missing')).toBeNull();
     });
   });
+
+  describe('getDisplayNames', () => {
+    async function register(email: string, displayName: string) {
+      const { id } = await facade.createWithPassword({
+        email,
+        passwordHash: '$argon2id$hash',
+        displayName,
+      });
+      return id;
+    }
+
+    it('returns the display name of every known id', async () => {
+      const ana = await register('ana@example.com', 'Ana');
+      const bruno = await register('bruno@example.com', 'Bruno');
+
+      expect(await facade.getDisplayNames([ana, bruno])).toEqual(
+        new Map([
+          [ana, 'Ana'],
+          [bruno, 'Bruno'],
+        ]),
+      );
+    });
+
+    it('leaves unknown ids out of the map', async () => {
+      const ana = await register('ana@example.com', 'Ana');
+
+      const names = await facade.getDisplayNames(['missing', ana, 'nope']);
+
+      expect(names.has('missing')).toBe(false);
+      expect(names.has('nope')).toBe(false);
+      expect([...names]).toEqual([[ana, 'Ana']]);
+    });
+
+    it('returns an empty map for an empty list', async () => {
+      await register('ana@example.com', 'Ana');
+
+      expect(await facade.getDisplayNames([])).toEqual(new Map());
+    });
+
+    it('does not expose any other profile field', async () => {
+      const ana = await register('ana@example.com', 'Ana');
+
+      const names = await facade.getDisplayNames([ana]);
+
+      expect([...names.values()]).toEqual(['Ana']);
+      expect(JSON.stringify([...names])).not.toContain('example.com');
+    });
+  });
 });
