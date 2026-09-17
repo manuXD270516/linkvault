@@ -43,7 +43,7 @@
 - [ ] 6.5 [backend] `AuthController` refresh; verificar con tests de integración de "Rotación correcta", "Refresh sin cookie", "Reuso revoca la sesión", "Refresh concurrente", "Tres refresh concurrentes con el mismo token", "Refresh token no guardado en claro" y "Refresh sin cabecera".
 - [ ] 6.6 [backend] `AuthController` logout; verificar con tests de integración de "Logout revoca el refresh", "Logout sin sesión" y "Revocación durante un refresh".
 - [ ] 6.7 [backend] `POST /auth/password` y límites HTTP; verificar con tests de integración de "Cambio correcto revoca las otras sesiones", "Contraseña actual incorrecta", "Fuerza bruta de la contraseña actual", "Demasiados fallos por email", "Fallos concurrentes", "Logins correctos no agotan el límite por IP" y "Almacén de contadores caído".
-- [ ] 6.8 [backend] `UsersController` (`GET`/`PATCH /users/me`) cableado en `UsersModule` y ambos módulos en `AppModule`; verificar con tests de integración de "Consulta correcta", "Activar el consentimiento", "Campo no editable" e "Idioma no soportado", el test de tipos de `outputLanguage` (D8) y que el test de DI de `api` sigue pasando.
+- [x] 6.8 [backend] `UsersController` (`GET`/`PATCH /users/me`) cableado en `UsersModule` y ambos módulos en `AppModule`; verificar con tests de integración de "Consulta correcta", "Activar el consentimiento", "Campo no editable" e "Idioma no soportado", el test de tipos de `outputLanguage` (D8) y que el test de DI de `api` sigue pasando.
 
 ## 7. Web
 
