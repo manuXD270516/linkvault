@@ -295,9 +295,7 @@ describe('Coherencia entre registro y golden sets', () => {
     });
   });
 
-  // Pendiente de la tarea 5.1 de ai-eval-harness: `classify-skills/golden.jsonl` aún no existe en el repo. La 5.1 quita
-  // el `skip` al escribir el golden set real.
-  it.skip('Coherencia entre registro y golden sets: libs/ai/src/evals of the repository', async () => {
+  it('Coherencia entre registro y golden sets: libs/ai/src/evals of the repository', async () => {
     await expect(registryCoherence(REAL_EVALS_DIR)).resolves.toEqual({
       withoutGolden: [],
       unregistered: [],

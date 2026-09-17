@@ -257,7 +257,7 @@ describe('parseAiConfig', () => {
       {
         variable: 'AI_MOCK_MODE',
         problem: 'invalid',
-        detail: 'record: diferido a ai-eval-harness',
+        detail: 'use nx run ai:record-fixtures',
       },
     ]);
     expect(
