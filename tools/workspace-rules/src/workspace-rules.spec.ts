@@ -30,6 +30,8 @@ interface RuleRow {
 
 const BOUNDARIES = '@nx/enforce-module-boundaries';
 const DOMAIN_IMPORTS = 'no-restricted-imports';
+/** Los límites entre módulos de api (D8 de groups) usan la misma regla base que el dominio, con su propia lista. */
+const MODULE_IMPORTS = 'no-restricted-imports';
 /** El bloque de `libs/ai/src/evals` usa la misma regla base que el dominio, con su propia lista (D1 de ai-eval-harness). */
 const EVALS_IMPORTS = 'no-restricted-imports';
 const AI_SDK_IMPORTS = '@typescript-eslint/no-restricted-imports';
@@ -228,6 +230,55 @@ const rows: readonly RuleRow[] = [
     code: "import { User } from './users/domain/user';\n\nexport const probe = User;\n",
     expectedRuleIds: [],
     unexpectedRuleIds: [DOMAIN_IMPORTS],
+  },
+  // Entrada pública entre módulos de api (D8 de groups), sobre módulos reales: `application/` e `infrastructure/`
+  // solo alcanzan de otro módulo su facade, sus errores de dominio y sus dobles de test; `domain/` no tiene ninguna
+  // de esas excepciones y `presentation/` queda fuera de la regla.
+  {
+    name: 'Un módulo lee el repositorio de otro',
+    filePath: 'apps/api/src/modules/groups/application/probe.ts',
+    code: "import { MongoUserRepository } from '../../users/infrastructure/mongo-user.repository';\n\nexport const probe = MongoUserRepository;\n",
+    expectedRuleIds: [MODULE_IMPORTS],
+  },
+  {
+    name: 'Un módulo usa la entrada pública de otro (la fachada)',
+    filePath: 'apps/api/src/modules/groups/application/probe.ts',
+    code: "import { UsersFacade } from '../../users/application/users.facade';\n\nexport const probe = UsersFacade;\n",
+    expectedRuleIds: [],
+    unexpectedRuleIds: [MODULE_IMPORTS],
+  },
+  {
+    name: 'Un módulo usa la entrada pública de otro (los errores de dominio)',
+    filePath: 'apps/api/src/modules/groups/application/probe.ts',
+    code: "import { UserNotFound } from '../../users/domain/errors';\n\nexport const probe = UserNotFound;\n",
+    expectedRuleIds: [],
+    unexpectedRuleIds: [MODULE_IMPORTS],
+  },
+  {
+    name: 'Un test usa el doble en memoria de otro módulo',
+    filePath: 'apps/api/src/modules/groups/infrastructure/probe.spec.ts',
+    code: "import { InMemoryUserRepository } from '../../users/application/testing/in-memory-user.repository';\n\nexport const probe = InMemoryUserRepository;\n",
+    expectedRuleIds: [],
+    unexpectedRuleIds: [MODULE_IMPORTS],
+  },
+  {
+    name: 'Cableado de Nest entre módulos',
+    filePath: 'apps/api/src/modules/groups/presentation/probe.ts',
+    code: "import { UsersModule } from '../../users/presentation/users.module';\n\nexport const probe = UsersModule;\n",
+    expectedRuleIds: [],
+    unexpectedRuleIds: [MODULE_IMPORTS],
+  },
+  {
+    name: 'El dominio no usa la entrada pública de otro',
+    filePath: 'apps/api/src/modules/auth/domain/probe.ts',
+    code: "import { UserNotFound } from '../../users/domain/errors';\n\nexport const probe = UserNotFound;\n",
+    expectedRuleIds: [DOMAIN_IMPORTS],
+  },
+  {
+    name: 'Acceso directo a las colecciones de grupos',
+    filePath: 'apps/api/src/modules/users/application/probe.ts',
+    code: "import { MongoGroupRepository } from '../../groups/infrastructure/mongo-group.repository';\n\nexport const probe = MongoGroupRepository;\n",
+    expectedRuleIds: [MODULE_IMPORTS],
   },
   {
     name: 'an infrastructure folder of api imports infrastructure (La infraestructura importa el framework)',
