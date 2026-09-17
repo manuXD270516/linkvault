@@ -10,8 +10,8 @@ import {
   type Types,
 } from 'mongoose';
 import type {
-  AddMember,
-  CreateGroup,
+  AddMemberInput,
+  CreateGroupInput,
   GroupRepository,
   UserGroup,
 } from '../application/ports/group-repository.port';
@@ -94,7 +94,7 @@ export class MongoGroupRepository implements GroupRepository {
    * Grupo y membresía `owner` en la misma transacción (D6). El reintento del código va por fuera: una transacción que
    * abortó por la clave duplicada no se puede continuar, así que se repite entera con un código nuevo (D3).
    */
-  async create(input: CreateGroup): Promise<Group> {
+  async create(input: CreateGroupInput): Promise<Group> {
     const ownerId = toUserObjectId(input.ownerId);
     if (ownerId === null) {
       throw new Error('A group owner needs a well formed user id');
@@ -228,7 +228,7 @@ export class MongoGroupRepository implements GroupRepository {
     return new Map(rows.map((row) => [row._id.toHexString(), row.count]));
   }
 
-  async addMember(input: AddMember): Promise<Membership> {
+  async addMember(input: AddMemberInput): Promise<Membership> {
     const ids = this.toMembershipIds(input.groupId, input.userId);
     if (ids === null) {
       throw new Error('A membership needs well formed group and user ids');

@@ -7,8 +7,8 @@ import {
 import { isGroupId, isUserId } from '../../domain/identifier';
 import { createMembership, type Membership } from '../../domain/membership';
 import type {
-  AddMember,
-  CreateGroup,
+  AddMemberInput,
+  CreateGroupInput,
   GroupRepository,
   UserGroup,
 } from '../ports/group-repository.port';
@@ -35,7 +35,7 @@ export class InMemoryGroupRepository implements GroupRepository {
   }
 
   // `async` aunque no espere a nadie: un código agotado tiene que rechazar la promesa, no lanzar en la llamada.
-  async create(input: CreateGroup): Promise<Group> {
+  async create(input: CreateGroupInput): Promise<Group> {
     const id = this.nextGroupId();
     const group: Group = {
       ...createGroup({
@@ -124,7 +124,7 @@ export class InMemoryGroupRepository implements GroupRepository {
     return Promise.resolve(counts);
   }
 
-  addMember(input: AddMember): Promise<Membership> {
+  addMember(input: AddMemberInput): Promise<Membership> {
     const existing = this.memberships.find(
       (membership) =>
         membership.groupId === input.groupId &&

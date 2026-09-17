@@ -17,12 +17,12 @@
 
 ## 4. Casos de uso
 
-- [ ] 4.1 [backend] `create-group` y `list-my-groups` (límite de 20, orden por `joinedAt` descendente, sin `inviteCode`, huérfanas descartadas y sin contar para el límite); verificar con "Grupo creado", "Nombres repetidos", "Límite alcanzado al crear", "Lista con rol", "Sin grupos" y "Membresía huérfana".
-- [ ] 4.2 [backend] `get-group` y `rename-group` con la resolución de pertenencia de D2 y el mapeo único `toGroupDetail`; verificar con "Detalle para el owner", "Detalle para un miembro", "Grupo ajeno indistinguible de uno inexistente", "El owner renombra", "Un miembro no puede renombrar" y "Nombre inválido".
-- [ ] 4.3 [backend] `rotate-invite-code` y `delete-group`; verificar con "Regenerar el código", "Un miembro no puede regenerar", "El owner borra el grupo", "Un miembro no puede borrar" y el test de invariante "cada grupo tiene exactamente una membresía owner".
-- [ ] 4.4 [backend] `join-by-code` (normalización, formato inválido resuelto en el dominio, idempotencia, límites); verificar con "Unirse por código", "Código desconocido", "Código con formato inválido", "Unirse dos veces", "El owner se une a su propio grupo", "Grupo completo", "Límite alcanzado al unirse" y "En el límite, volver a un grupo propio".
-- [ ] 4.5 [backend] `list-members`, `leave-group` y `remove-member`; verificar con "Un miembro ve la lista", "Un extraño no ve la lista", "Un miembro sale", "El owner no puede salir", "El owner expulsa", "Un miembro no puede expulsar" y "Expulsar a quien no es miembro".
-- [ ] 4.6 [backend] `GroupsFacade` (`isMember`, `getGroupsOf`) expuesto por `GroupsModule`; verificar con "Otro módulo comprueba pertenencia" sobre los dobles y con un test de DI que resuelve el facade desde otro módulo.
+- [x] 4.1 [backend] `create-group` y `list-my-groups` (límite de 20, orden por `joinedAt` descendente, sin `inviteCode`, huérfanas descartadas y sin contar para el límite); verificar con "Grupo creado", "Nombres repetidos", "Límite alcanzado al crear", "Lista con rol", "Sin grupos" y "Membresía huérfana".
+- [x] 4.2 [backend] `get-group` y `rename-group` con la resolución de pertenencia de D2 y el mapeo único `toGroupDetail`; verificar con "Detalle para el owner", "Detalle para un miembro", "Grupo ajeno indistinguible de uno inexistente", "El owner renombra", "Un miembro no puede renombrar" y "Nombre inválido".
+- [x] 4.3 [backend] `rotate-invite-code` y `delete-group`; verificar con "Regenerar el código", "Un miembro no puede regenerar", "El owner borra el grupo", "Un miembro no puede borrar" y el test de invariante "cada grupo tiene exactamente una membresía owner".
+- [x] 4.4 [backend] `join-by-code` (normalización, formato inválido resuelto en el dominio, idempotencia, límites); verificar con "Unirse por código", "Código desconocido", "Código con formato inválido", "Unirse dos veces", "El owner se une a su propio grupo", "Grupo completo", "Límite alcanzado al unirse" y "En el límite, volver a un grupo propio".
+- [x] 4.5 [backend] `list-members`, `leave-group` y `remove-member`; verificar con "Un miembro ve la lista", "Un extraño no ve la lista", "Un miembro sale", "El owner no puede salir", "El owner expulsa", "Un miembro no puede expulsar" y "Expulsar a quien no es miembro".
+- [x] 4.6 [backend] `GroupsFacade` (`isMember`, `getGroupsOf`) expuesto por `GroupsModule`; verificar con "Otro módulo comprueba pertenencia" sobre los dobles y con un test de DI que resuelve el facade desde otro módulo.
 
 ## 5. API
 

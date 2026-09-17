@@ -16,7 +16,7 @@ export interface UserGroup {
   readonly joinedAt: Date;
 }
 
-export interface CreateGroup {
+export interface CreateGroupInput {
   /** Nombre ya normalizado y validado por el caso de uso. */
   readonly name: string;
   /** Usuario que queda como `owner`; su membresía se escribe en la misma transacción. */
@@ -24,7 +24,7 @@ export interface CreateGroup {
   readonly now: Date;
 }
 
-export interface AddMember {
+export interface AddMemberInput {
   readonly groupId: string;
   readonly userId: string;
   readonly now: Date;
@@ -35,7 +35,7 @@ export interface GroupRepository {
    * Crea el grupo y la membresía `owner` en una transacción: nunca queda un grupo sin owner con un código válido (D6).
    * El código de invitación lo pide al generador y reintenta ante una colisión del índice único (D3).
    */
-  create(input: CreateGroup): Promise<Group>;
+  create(input: CreateGroupInput): Promise<Group>;
   /** `null` también si el id no tiene el formato de un id de grupo. */
   findById(groupId: string): Promise<Group | null>;
   /** `inviteCode` ya normalizado y con el formato comprobado por el dominio. */
@@ -56,7 +56,7 @@ export interface GroupRepository {
    * Añade al usuario como `member`. Idempotente: si ya era miembro (o si dos peticiones coinciden y el índice único
    * rechaza la segunda) devuelve la membresía existente sin crear una segunda (D5).
    */
-  addMember(input: AddMember): Promise<Membership>;
+  addMember(input: AddMemberInput): Promise<Membership>;
   /**
    * Borra la membresía; `false` si no existía. No exige que el grupo exista, para que una membresía huérfana se pueda
    * soltar y libere la plaza (D6). Quién puede salir o ser expulsado lo decide el caso de uso con el dominio.
