@@ -141,7 +141,7 @@ describe('worker configuration', () => {
     expect(ai).toMatchObject({
       nodeEnv: 'development',
       chain: ['mock'],
-      mock: { mode: 'replay' },
+      mock: { mode: 'synth' },
     });
     expect(config).toMatchObject({
       NODE_ENV: 'development',

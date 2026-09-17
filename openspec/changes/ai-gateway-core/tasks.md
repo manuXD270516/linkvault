@@ -70,7 +70,7 @@
 - [x] 10.5 [ai] Test de integración de `AiModule` con Mongo en memoria y el doble RESP que espera `connection.asPromise()`, ejecuta `classify-skills` en replay y comprueba con `vi.waitFor` el registro `success` en `ai_usage`; verificar que pasa de forma estable en 5 ejecuciones seguidas.
 - [x] 10.6 [backend] Importar `AiModule` en `apps/worker` y añadir `*.headers.authorization` y `*.headers.Authorization` a la redacción del logger; verificar con el test de arranque del worker sin dependencias y un test de log que no contiene la cabecera.
 - [x] 10.7 [infra] Copiar `libs/ai/src/infrastructure/prompts/**` como assets del build de `worker` y añadir un paso de CI tras `build` que comprueba `dist/apps/worker/assets/ai/prompts/classify-skills.v1.md` (D7); verificar con `pnpm nx build worker` y la comprobación local del paso.
-- [ ] 10.8 [infra] Actualizar `.env.example` con las variables de D6–D9 y valores seguros (`OPENROUTER_API_KEY`, `OPENROUTER_MODEL` y `AI_QUOTAS` vacías, `openrouter` fuera de `AI_CHAIN`) y `AI_MOCK_MODE=synth`; verificar que los tests de configuración de api y worker pasan con el `.env.example` actualizado.
+- [x] 10.8 [infra] Actualizar `.env.example` con las variables de D6–D9 y valores seguros (`OPENROUTER_API_KEY`, `OPENROUTER_MODEL` y `AI_QUOTAS` vacías, `openrouter` fuera de `AI_CHAIN`) y `AI_MOCK_MODE=synth`; verificar que los tests de configuración de api y worker pasan con el `.env.example` actualizado.
 
 ## 11. Protección de datos de punta a punta
 
@@ -80,4 +80,4 @@
 
 ## 12. Cierre
 
-- [ ] 12.1 [infra] Ejecutar `pnpm nx affected -t lint,typecheck,test,build --base=main` y `pnpm exec openspec validate --all` con `AI_CHAIN=mock AI_MOCK_MODE=replay`; verificar que todo pasa en verde.
+- [x] 12.1 [infra] Ejecutar `pnpm nx affected -t lint,typecheck,test,build --base=main` y `pnpm exec openspec validate --all` con `AI_CHAIN=mock AI_MOCK_MODE=replay`; verificar que todo pasa en verde.
