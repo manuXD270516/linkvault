@@ -5,6 +5,9 @@ import type { ApiConfig } from '../config/api-config.schema';
 
 const SENSITIVE_FIELDS = [
   'password',
+  'currentPassword',
+  'newPassword',
+  'passwordHash',
   'apiKey',
   'accessToken',
   'refreshToken',

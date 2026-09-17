@@ -21,19 +21,28 @@ const SECRETS = {
   nestedRefreshToken: 'one-level-refresh-token-s3cr3t',
   deepApiKey: 'two-levels-api-key-s3cr3t',
   setCookie: 'refresh=set-cookie-s3cr3t',
+  currentPassword: 'current-password-s3cr3t',
+  newPassword: 'new-password-s3cr3t',
+  passwordHash: '$argon2id$v=19$m=19456,t=2,p=1$password-hash-s3cr3t',
 } as const;
 
-const DEPTHS = ['password', 'apiKey', 'accessToken', 'refreshToken'].flatMap(
-  (field) => [
-    { field, depth: 0, value: { [field]: `${field}-depth0-s3cr3t` } },
-    { field, depth: 1, value: { a: { [field]: `${field}-depth1-s3cr3t` } } },
-    {
-      field,
-      depth: 2,
-      value: { a: { b: { [field]: `${field}-depth2-s3cr3t` } } },
-    },
-  ],
-);
+const DEPTHS = [
+  'password',
+  'currentPassword',
+  'newPassword',
+  'passwordHash',
+  'apiKey',
+  'accessToken',
+  'refreshToken',
+].flatMap((field) => [
+  { field, depth: 0, value: { [field]: `${field}-depth0-s3cr3t` } },
+  { field, depth: 1, value: { a: { [field]: `${field}-depth1-s3cr3t` } } },
+  {
+    field,
+    depth: 2,
+    value: { a: { b: { [field]: `${field}-depth2-s3cr3t` } } },
+  },
+]);
 
 @Controller('log-probe')
 class LogProbeController {
@@ -52,6 +61,17 @@ class LogProbeController {
         },
       },
       'nested object',
+    );
+    // Cuerpo de un cambio de contraseña y usuario con hash (D10 de auth-users), en el primer nivel de anidación.
+    this.logger.info(
+      {
+        body: {
+          currentPassword: SECRETS.currentPassword,
+          newPassword: SECRETS.newPassword,
+        },
+        user: { passwordHash: SECRETS.passwordHash },
+      },
+      'password change',
     );
     for (const { value } of DEPTHS) {
       this.logger.info(value, 'depth matrix');
@@ -155,6 +175,13 @@ describe('log redaction', () => {
     expect(output()).toContain('nested object');
     expect(output()).not.toContain(SECRETS.nestedRefreshToken);
     expect(output()).not.toContain(SECRETS.deepApiKey);
+  });
+
+  it('Cambio de contraseña registrado', () => {
+    expect(output()).toContain('password change');
+    expect(output()).not.toContain(SECRETS.currentPassword);
+    expect(output()).not.toContain(SECRETS.newPassword);
+    expect(output()).not.toContain(SECRETS.passwordHash);
   });
 
   it.each(DEPTHS)('redacts $field at depth $depth', ({ field, depth }) => {
