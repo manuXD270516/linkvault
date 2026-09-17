@@ -1,0 +1,18 @@
+{
+  "name": "shared",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/shared/src",
+  "projectType": "library",
+  "tags": ["scope:shared", "type:lib", "platform:any"],
+  "// targets": "to see all targets run: nx show project shared --web",
+  "targets": {
+    "typecheck": {
+      "options": {
+        "commands": [
+          "tsc --noEmit -p tsconfig.lib.json",
+          "tsc --noEmit -p tsconfig.spec.json"
+        ]
+      }
+    }
+  }
+}

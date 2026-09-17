@@ -1,0 +1,23 @@
+packages:
+  - 'apps/*'
+  - 'libs/*'
+  - 'tools/*'
+
+# pnpm bloquea los scripts de instalación por defecto; nx necesita su postinstall.
+# El resto se declara en false a propósito:
+# - @parcel/watcher y unrs-resolver llegan vía @nx/jest (dependencia interna de @nx/eslint y @nx/nest);
+#   usan binarios precompilados y el repo no usa Jest.
+# - @nestjs/core solo ejecuta un aviso de opencollective (lo añadió el generador @nx/nest).
+# - @swc/core: su postinstall solo comprueba el binario nativo (ya instalado como dependencia opcional
+#   por plataforma) e instala un respaldo wasm si falta.
+# - esbuild, lmdb y msgpackr-extract (vía @angular/build): el script solo valida el binario nativo o lo compila
+#   si falta; los precompilados llegan como dependencias opcionales por plataforma y funcionan sin él.
+allowBuilds:
+  nx: true
+  '@parcel/watcher': false
+  unrs-resolver: false
+  '@nestjs/core': false
+  '@swc/core': false
+  esbuild: false
+  lmdb: false
+  msgpackr-extract: false

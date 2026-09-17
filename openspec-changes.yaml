@@ -8,7 +8,7 @@ changes:
       Nx workspace con pnpm: apps/api (Nest + Fastify), apps/worker (Nest standalone), apps/web (Angular 22 standalone, zoneless),
       libs/shared, libs/ai (solo estructura de carpetas y ports). ESLint con no-restricted-imports para SDKs de IA fuera de
       libs/ai/infrastructure/providers y regla de capas (domain no importa @nestjs, mongoose, bullmq). Vitest en los 5 proyectos.
-      docker-compose.yml: mongo 7 replica set rs0 (init container), redis 7, minio, ollama bajo profile ai-local. .env.example.
+      docker-compose.yml: mongo 7 replica set rs0 (inicializado por su healthcheck, ver ADR-017), redis 7, minio, ollama bajo profile ai-local. .env.example.
       GitHub Actions: lint → openspec validate --all → nx affected test (AI_CHAIN=mock) → build. README con comandos.
       Solo /health en api y worker. NADA de features de negocio.
   - name: ai-gateway-core

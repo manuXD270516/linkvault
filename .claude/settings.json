@@ -8,7 +8,13 @@
       "Bash(ls *)", "Bash(cat *)", "Bash(mkdir *)", "Bash(sleep *)", "Bash(pkill -f nx*)", "Bash(kill *)",
       "WebSearch", "WebFetch"
     ],
-    "deny": ["Bash(rm -rf *)", "Bash(git push --force*)", "Bash(git reset --hard*)", "Read(.env)", "Read(.env.*)"]
+    "deny": [
+      "Bash(rm -rf *)", "Bash(git push --force*)", "Bash(git reset --hard*)",
+      "Read(.env)", "Read(.env.local)", "Read(.env.*.local)",
+      "Read(.env.development)", "Read(.env.dev)", "Read(.env.test)",
+      "Read(.env.staging)", "Read(.env.stage)", "Read(.env.production)", "Read(.env.prod)",
+      "Read(.env.*.secret)", "Read(.env.secret)", "Read(**/.env)", "Read(**/.env.local)"
+    ]
   },
   "hooks": {
     "PreToolUse": [

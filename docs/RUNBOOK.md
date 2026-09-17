@@ -132,7 +132,7 @@ Para bootstrap-monorepo, el proposal debe referenciar ADR-001, 006, 007, 009, 01
 - Nx workspace con pnpm: apps/api (Nest + Fastify), apps/worker (Nest standalone), apps/web (Angular 22 standalone, zoneless), libs/shared, libs/ai (vacía salvo estructura de carpetas y ports).
 - ESLint con regla no-restricted-imports para @anthropic-ai/sdk, openai, ollama, @openrouter/* fuera de libs/ai/infrastructure/providers, y regla de capas (domain no importa @nestjs, mongoose, bullmq).
 - Vitest configurado en los 5 proyectos con un test trivial cada uno.
-- docker-compose.yml: mongo 7 como replica set rs0 (con init container), redis 7, minio, ollama bajo profile ai-local. .env.example con las variables de docs/design.md §7.8.
+- docker-compose.yml: mongo 7 como replica set rs0 (inicializado por su healthcheck, ver ADR-017), redis 7, minio, ollama bajo profile ai-local. .env.example con las variables de docs/design.md §7.8.
 - GitHub Actions: lint → openspec validate --all → nx affected test (AI_CHAIN=mock) → build.
 - README con comandos: pnpm install, docker compose up -d, pnpm nx serve api|worker|web.
 NADA de features de negocio. Los health checks /health en api y worker son el único endpoint.
@@ -260,7 +260,7 @@ Antes de que arranquen, fija el contrato en libs/shared (schemas zod + endpoints
 |---|---|
 | `/opsx:*` no aparece | `openspec init` no eligió Claude Code → vuelve a correrlo o `openspec update` |
 | Hook bloquea todo | Verifica que el script tenga `chmod +x`; prueba `echo '{"tool_input":{"file_path":"apps/x.ts"}}' \| bash .claude/hooks/require-openspec-change.sh` |
-| Mongo: "Transaction numbers are only allowed on a replica set member" | El compose no inicializó `rs0`; revisa el init container (`rs.initiate()`) |
+| Mongo: "Transaction numbers are only allowed on a replica set member" | El healthcheck de `mongo` no ha inicializado `rs0`: revisa su estado con `docker compose ps` o `docker inspect --format '{{json .State.Health}}' linkvault-mongo-1` (ver ADR-017) |
 | Claude Code ignora un ADR | Pídele explícitamente: "Relee docs/adr/ADR-0XX.md y explica cómo tu cambio lo cumple" |
 | Contexto muy largo / respuestas erráticas | `/compact` o `/clear` + volver al Paso 3 (prompt de verificación de contexto) |
 

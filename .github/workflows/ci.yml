@@ -1,19 +1,94 @@
+# Integración continua de LinkVault (D14 de bootstrap-monorepo, spec platform/ci-pipeline).
+# Etapas en orden, cada una en su propio step: si una falla, las siguientes no se ejecutan.
 name: ci
-on: { push: { branches: [main] }, pull_request: {} }
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Una ejecución por ref; en PR, un push nuevo cancela la anterior. En main se completan todas.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    env: { AI_CHAIN: mock, AI_MOCK_MODE: replay }
+  verify:
+    name: lint, specs, typecheck, test, build
+    # Fijado en lugar de ubuntu-latest para que un cambio de imagen no altere el binario de Mongo de los tests:
+    # mongodb-memory-server resuelve MongoDB 7.0.x en Ubuntu 24.04 al build ubuntu2204 (no hay build 2404
+    # antes de la 8.0).
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      # Runner efímero: sin daemon de Nx (evita además el bloqueo de pipes heredados por el daemon).
+      NX_DAEMON: 'false'
     steps:
-      - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: pnpm }
-      - run: npm i -g @fission-ai/openspec@latest && openspec validate --all
-      - run: pnpm install --frozen-lockfile
-        if: hashFiles('pnpm-lock.yaml') != ''
-      - run: pnpm nx affected -t lint,typecheck,test --base=origin/main~1 --head=HEAD
-        if: hashFiles('nx.json') != ''
-      - run: pnpm nx affected -t build --base=origin/main~1 --head=HEAD
-        if: hashFiles('nx.json') != ''
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # Historial completo: nx affected necesita la base del cambio.
+          fetch-depth: 0
+
+      # Sin `version`: pnpm/action-setup lee el campo packageManager de package.json.
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # El store de pnpm lo cachea setup-node (`cache: pnpm`, clave derivada de pnpm-lock.yaml). Los binarios de
+      # MongoDB de mongodb-memory-server se cachean aparte, con la versión leída de su única fuente.
+      - name: Read MONGOMS_VERSION
+        id: mongoms
+        shell: bash
+        run: |
+          version="$(sed -nE "s/^export const MONGOMS_VERSION = '([^']+)';$/\1/p" tools/testing/src/testing.preset.ts)"
+          if [ -z "$version" ]; then
+            echo "::error file=tools/testing/src/testing.preset.ts::MONGOMS_VERSION not found"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # mongodb-memory-server descarga en ~/.cache/mongodb-binaries (su ruta global por defecto).
+      - name: Cache MongoDB binaries
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/mongodb-binaries
+          key: mongodb-binaries-${{ runner.os }}-${{ runner.arch }}-${{ steps.mongoms.outputs.version }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Fija NX_BASE y NX_HEAD: en PR, la base de la rama destino; en main, el último commit con CI en verde.
+      - name: Derive affected base and head
+        uses: nrwl/nx-set-shas@v5
+        with:
+          main-branch-name: main
+
+      - name: Lint
+        run: pnpm nx affected -t lint
+
+      - name: Validate OpenSpec specs
+        run: pnpm exec openspec validate --all --no-interactive
+
+      - name: Typecheck
+        run: pnpm nx affected -t typecheck
+
+      # IA en mock determinista (spec ci-pipeline, CLAUDE.md). En el step y no en el job: explícito y sin que otro
+      # step lo pise. Gana a cualquier variable de IA del runner; el preset de Vitest de tools/test-env lo fija también
+      # en local, y tools/test-env/src/test-env.preset.spec.ts comprueba lo que ve el proceso de test.
+      - name: Test
+        env:
+          AI_CHAIN: mock
+          AI_MOCK_MODE: replay
+        run: pnpm nx affected -t test
+
+      - name: Build
+        run: pnpm nx affected -t build

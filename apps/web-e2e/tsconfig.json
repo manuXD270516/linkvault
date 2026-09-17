@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "preserve",
+    "outDir": "../../dist/out-tsc",
+    "sourceMap": false,
+    "types": ["node"]
+  },
+  "include": ["playwright.config.mts", "src/**/*.ts"]
+}

@@ -2,7 +2,19 @@
 # quedan con CRLF en el working tree y se rompen de dos maneras:
 #   - '#!/usr/bin/env bash\r'  -> "bad interpreter: no such file or directory"
 #   - los patrones de 'case'/'grep' dejan de casar por el \r final
-* text=auto
+# Todo el texto se normaliza a LF en el índice y en el disco (D13 de bootstrap-monorepo),
+# así Windows y CI ven los mismos bytes.
+* text=auto eol=lf
 *.sh  text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
+
+# Binarios: sin conversión de finales de línea ni diff textual
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.pdf   binary
+*.woff  binary
+*.woff2 binary
