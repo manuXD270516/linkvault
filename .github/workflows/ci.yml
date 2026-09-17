@@ -90,6 +90,16 @@ jobs:
           AI_MOCK_MODE: replay
         run: pnpm nx affected -t test
 
+      # Eval harness en replay contra la línea base (D10 de ai-eval-harness, ADR-019): falla si una métrica bloqueante,
+      # el golden o la versión del prompt difieren de baseline.json; el mensaje nombra la métrica y ambos valores y se
+      # reproduce en local con `pnpm nx run ai:eval-ci`. Mismo entorno de IA que Test, más NODE_ENV=test.
+      - name: Eval (replay)
+        env:
+          NODE_ENV: test
+          AI_CHAIN: mock
+          AI_MOCK_MODE: replay
+        run: pnpm nx affected -t eval-ci
+
       - name: Build
         run: pnpm nx affected -t build
 

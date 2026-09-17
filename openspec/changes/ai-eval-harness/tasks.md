@@ -36,9 +36,9 @@
 
 ## 6. CI y documentación
 
-- [ ] 6.1 [infra] Tras 5.4, añadir a `.github/workflows/ci.yml` el step `pnpm nx affected -t eval-ci` después de `Test` con `NODE_ENV=test`, `AI_CHAIN=mock` y `AI_MOCK_MODE=replay` (D10); verificar con actionlint, con `nx show projects --affected --files=libs/ai/src/index.ts -t eval-ci` (incluye `ai`) y `--files=apps/web/src/main.ts` (no), y ejecutando localmente `pnpm nx run ai:eval-ci` con ese entorno (código 0) y con la línea base alterada (código 1, restaurada después).
+- [x] 6.1 [infra] Tras 5.4, añadir a `.github/workflows/ci.yml` el step `pnpm nx affected -t eval-ci` después de `Test` con `NODE_ENV=test`, `AI_CHAIN=mock` y `AI_MOCK_MODE=replay` (D10); verificar con actionlint, con `nx show projects --affected --files=libs/ai/src/index.ts -t eval-ci` (incluye `ai`) y `--files=apps/web/src/main.ts` (no), y ejecutando localmente `pnpm nx run ai:eval-ci` con ese entorno (código 0) y con la línea base alterada (código 1, restaurada después).
 - [x] 6.2 [infra] Actualizar `.claude/commands/lv/fixtures.md` al flujo de D11, CLAUDE.md (sección del módulo IA: grabación por comando), `docs/RUNBOOK.md` (menciones de `AI_MOCK_MODE=record`), `.env.example` (puerto alternativo de Ollama y promesa del modelo `:free`) y README (comandos `ai:eval` y `ai:record-fixtures`); verificar que no quedan referencias a `AI_MOCK_MODE=record` como forma de grabar y que los tests de configuración de api y worker pasan con `.env.example`.
 
 ## 7. Cierre
 
-- [ ] 7.1 [infra] Ejecutar `pnpm nx affected -t lint,typecheck,test,build --base=main`, `pnpm nx run ai:eval-ci` con el entorno de CI y `pnpm exec openspec validate --all`; verificar que todo pasa en verde.
+- [x] 7.1 [infra] Ejecutar `pnpm nx affected -t lint,typecheck,test,build --base=main`, `pnpm nx run ai:eval-ci` con el entorno de CI y `pnpm exec openspec validate --all`; verificar que todo pasa en verde.
