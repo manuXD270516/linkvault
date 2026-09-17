@@ -22,6 +22,9 @@ export const API_ERROR_STATUS: Readonly<Record<ApiErrorCode, number>> = {
   group_full: 409,
   too_many_groups: 409,
   owner_cannot_leave: 409,
+  invalid_url: 400,
+  text_too_long: 400,
+  link_not_found: 404,
 };
 
 /**
@@ -46,6 +49,9 @@ export const API_ERROR_MESSAGES: Readonly<Record<ApiErrorCode, string>> = {
   group_full: 'Group is full',
   too_many_groups: 'Too many groups',
   owner_cannot_leave: 'The owner cannot leave the group',
+  invalid_url: 'That does not look like a job link',
+  text_too_long: 'Text is too long',
+  link_not_found: 'Link not found',
 };
 
 /** Cuerpo `{ code, message, fields? }`. `fields` solo nombra campos y se omite si está vacío. */

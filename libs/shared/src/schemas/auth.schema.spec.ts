@@ -220,7 +220,7 @@ describe('sessionResponseSchema', () => {
 });
 
 describe('api error contract', () => {
-  it('lists the error codes of the auth, profile and group endpoints', () => {
+  it('lists the error codes of the auth, profile, group and link endpoints', () => {
     expect(apiErrorCodeSchema.options).toEqual([
       'validation_error',
       'invalid_credentials',
@@ -238,6 +238,9 @@ describe('api error contract', () => {
       'group_full',
       'too_many_groups',
       'owner_cannot_leave',
+      'invalid_url',
+      'text_too_long',
+      'link_not_found',
       'internal_error',
     ]);
   });
