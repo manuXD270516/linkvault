@@ -47,7 +47,7 @@
 - [x] 7.7 [frontend] Confirmación compartida y acciones de salir y borrar (con el recuento en el texto); verificar con "Salir del grupo", "Cancelar el borrado" y "Borrado informado".
 - [x] 7.8 [frontend] Renombrar y regenerar el código (confirmación que aclara que los miembros actuales siguen dentro); verificar con tests del renombrado y de la regeneración, incluido el texto de la confirmación.
 - [x] 7.9 [frontend] Copiar la invitación (URL absoluta con `/unirse?codigo=`, con respaldo si no hay portapapeles) y expulsar con la propuesta de regenerar; verificar con "Invitación copiada" y "Expulsar ofrece regenerar el código".
-- [ ] 7.10 [frontend] Marcar los textos i18n de grupos, ejecutar `extract-i18n` y traducir `messages.en.xlf`; verificar con "Traducciones completas" y `pnpm nx build web`.
+- [x] 7.10 [frontend] Marcar los textos i18n de grupos, ejecutar `extract-i18n` y traducir `messages.en.xlf`; verificar con "Traducciones completas" y `pnpm nx build web`.
 
 ## 8. Cierre
 

@@ -195,6 +195,412 @@
           <context context-type="linenumber">81,83</context>
         </context-group>
       </trans-unit>
+      <trans-unit id="groups.create.title" datatype="html">
+        <source>Crear un grupo</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/create-group.dialog.html</context>
+          <context context-type="linenumber">1,4</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.create.name" datatype="html">
+        <source>Nombre del grupo</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/create-group.dialog.html</context>
+          <context context-type="linenumber">6,7</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/rename-group.dialog.html</context>
+          <context context-type="linenumber">6,7</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.create.nameInvalid" datatype="html">
+        <source> Escribe un nombre de hasta 60 caracteres </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/create-group.dialog.html</context>
+          <context context-type="linenumber">10,13</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/rename-group.dialog.html</context>
+          <context context-type="linenumber">10,13</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.error.tooManyGroups" datatype="html">
+        <source> Ya perteneces a 20 grupos, el máximo </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/create-group.dialog.html</context>
+          <context context-type="linenumber">18,21</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/join-group.dialog.html</context>
+          <context context-type="linenumber">24,27</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.cancel" datatype="html">
+        <source>Cancelar</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/create-group.dialog.html</context>
+          <context context-type="linenumber">28,30</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/join-group.dialog.html</context>
+          <context context-type="linenumber">34,36</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/rename-group.dialog.html</context>
+          <context context-type="linenumber">18,19</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.create.submit" datatype="html">
+        <source> Crear grupo </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/create-group.dialog.html</context>
+          <context context-type="linenumber">36,38</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.detail.notFound" datatype="html">
+        <source>Ese grupo no existe o ya no perteneces a él</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
+          <context context-type="linenumber">3,4</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.detail.backToList" datatype="html">
+        <source>Volver a tus grupos</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
+          <context context-type="linenumber">4,5</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.detail.linksPending" datatype="html">
+        <source> Aquí aparecerán las ofertas que compartan los miembros. Pronto podrás guardar links en este grupo. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
+          <context context-type="linenumber">9,13</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.detail.inviteTitle" datatype="html">
+        <source>Código de invitación</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
+          <context context-type="linenumber">15,16</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.detail.inviteWarning" datatype="html">
+        <source> Quien tenga este código puede entrar y ver los nombres de los miembros. Regenéralo si se filtró. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
+          <context context-type="linenumber">18,21</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.detail.invitationCopied" datatype="html">
+        <source>Invitación copiada</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
+          <context context-type="linenumber">22,24</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.detail.invitationFallback" datatype="html">
+        <source> No pudimos usar el portapapeles. Copia este mensaje: </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
+          <context context-type="linenumber">26,28</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.detail.copyInvitation" datatype="html">
+        <source> Copiar invitación </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
+          <context context-type="linenumber">38,40</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.detail.rename" datatype="html">
+        <source> Renombrar </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
+          <context context-type="linenumber">47,49</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.detail.rotateInviteCode" datatype="html">
+        <source> Regenerar el código </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
+          <context context-type="linenumber">56,58</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.detail.membersTitle" datatype="html">
+        <source>Miembros</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
+          <context context-type="linenumber">63,64</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.role.owner" datatype="html">
+        <source>Propietario</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
+          <context context-type="linenumber">70,71</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/groups-list.page.html</context>
+          <context context-type="linenumber">22,23</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.role.member" datatype="html">
+        <source>Miembro</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
+          <context context-type="linenumber">72,74</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/groups-list.page.html</context>
+          <context context-type="linenumber">24,26</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.detail.joinedAt" datatype="html">
+        <source>Desde el <x id="INTERPOLATION" equiv-text="{{ member.joinedAt | date: &apos;dd/MM/yyyy&apos; }}"/></source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
+          <context context-type="linenumber">76,77</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.detail.removeMember" datatype="html">
+        <source> Expulsar </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
+          <context context-type="linenumber">86,88</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.detail.rotateAfterRemoval" datatype="html">
+        <source> Regenerar el código para que no pueda volver a entrar </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
+          <context context-type="linenumber">101,103</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.detail.rotateOfferDismiss" datatype="html">
+        <source> Ahora no </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
+          <context context-type="linenumber">104,107</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.detail.delete" datatype="html">
+        <source> Borrar el grupo </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
+          <context context-type="linenumber">118,120</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.detail.leave" datatype="html">
+        <source> Salir del grupo </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
+          <context context-type="linenumber">128,132</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.detail.leaveTitle" datatype="html">
+        <source>Salir del grupo</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
+          <context context-type="linenumber">81</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.detail.leaveMessage" datatype="html">
+        <source>Dejarás de ver este grupo. Para volver necesitarás el código de invitación.</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
+          <context context-type="linenumber">82</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.detail.leaveConfirm" datatype="html">
+        <source>Salir</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
+          <context context-type="linenumber">83</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.detail.deleteTitle" datatype="html">
+        <source>Borrar el grupo</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
+          <context context-type="linenumber">98</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.detail.deleteMessage" datatype="html">
+        <source>Se borrará para los <x id="COUNT" equiv-text="memberCount"/> miembros. No se puede deshacer.</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
+          <context context-type="linenumber">99</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.detail.deleteConfirm" datatype="html">
+        <source>Borrar</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
+          <context context-type="linenumber">100</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.detail.rotateTitle" datatype="html">
+        <source>Regenerar el código</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
+          <context context-type="linenumber">136</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.detail.rotateMessage" datatype="html">
+        <source>Los miembros actuales siguen dentro; solo dejará de servir el código anterior</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
+          <context context-type="linenumber">137</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.detail.rotateConfirm" datatype="html">
+        <source>Regenerar</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
+          <context context-type="linenumber">138</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.detail.invitationMessage" datatype="html">
+        <source>Únete a «<x id="NAME" equiv-text="group.name"/>» en LinkVault: <x id="LINK" ctype="x-a" equiv-text="link"/> (código <x id="CODE" equiv-text="group.inviteCode"/>)</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
+          <context context-type="linenumber">159</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.detail.removeMemberTitle" datatype="html">
+        <source>Expulsar del grupo</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
+          <context context-type="linenumber">173</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.detail.removeMemberMessage" datatype="html">
+        <source><x id="NAME" equiv-text="member.displayName"/> dejará de ver este grupo. Podrá volver a entrar si consigue el código.</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
+          <context context-type="linenumber">174</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.detail.removeMemberConfirm" datatype="html">
+        <source>Expulsar</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
+          <context context-type="linenumber">175</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.list.title" datatype="html">
+        <source>Tus grupos</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/groups-list.page.html</context>
+          <context context-type="linenumber">2,3</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.list.purpose" datatype="html">
+        <source> Un grupo es donde tú y tu círculo juntan las ofertas de empleo que encuentran </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/groups-list.page.html</context>
+          <context context-type="linenumber">4,7</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.list.empty" datatype="html">
+        <source>Crea un grupo o únete con un código</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/groups-list.page.html</context>
+          <context context-type="linenumber">12,14</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.memberCount" datatype="html">
+        <source><x id="INTERPOLATION" equiv-text="{{ memberCount }}"/> <x id="ICU" equiv-text="{memberCount, plural, =1 {miembro} other {miembros}}" xid="543866510348449206"/></source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/groups-list.page.html</context>
+          <context context-type="linenumber">28,29</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="543866510348449206" datatype="html">
+        <source>{VAR_PLURAL, plural, =1 {miembro} other {miembros}}</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/groups-list.page.html</context>
+          <context context-type="linenumber">28</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.list.createAction" datatype="html">
+        <source> Crear un grupo </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/groups-list.page.html</context>
+          <context context-type="linenumber">39,41</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.list.joinAction" datatype="html">
+        <source> Unirse con un código </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/groups-list.page.html</context>
+          <context context-type="linenumber">42,45</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.join.title" datatype="html">
+        <source>Unirse a un grupo</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/join-group.dialog.html</context>
+          <context context-type="linenumber">1,4</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.join.code" datatype="html">
+        <source>Código de invitación</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/join-group.dialog.html</context>
+          <context context-type="linenumber">6,7</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.join.codeRequired" datatype="html">
+        <source>Pega el código que te compartieron</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/join-group.dialog.html</context>
+          <context context-type="linenumber">9,11</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.error.invalidInviteCode" datatype="html">
+        <source> Ese código no corresponde a ningún grupo </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/join-group.dialog.html</context>
+          <context context-type="linenumber">16,18</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.error.groupFull" datatype="html">
+        <source> Ese grupo ya tiene 50 miembros, el máximo </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/join-group.dialog.html</context>
+          <context context-type="linenumber">20,22</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.join.submit" datatype="html">
+        <source> Unirme </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/join-group.dialog.html</context>
+          <context context-type="linenumber">42,44</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.joinPage.title" datatype="html">
+        <source>Unirse a un grupo</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/join-group.page.ts</context>
+          <context context-type="linenumber">17,20</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.rename.title" datatype="html">
+        <source>Renombrar el grupo</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/rename-group.dialog.html</context>
+          <context context-type="linenumber">1,4</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.rename.submit" datatype="html">
+        <source> Guardar nombre nuevo </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/rename-group.dialog.html</context>
+          <context context-type="linenumber">20,22</context>
+        </context-group>
+      </trans-unit>
       <trans-unit id="profile.title" datatype="html">
         <source>Perfil</source>
         <context-group purpose="location">
@@ -313,6 +719,13 @@
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/layout/shell/shell.html</context>
           <context context-type="linenumber">12,14</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="confirm.cancel" datatype="html">
+        <source> Cancelar </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/shared/ui/confirm.dialog.ts</context>
+          <context context-type="linenumber">24,26</context>
         </context-group>
       </trans-unit>
       <trans-unit id="error.tooManyAttempts" datatype="html">

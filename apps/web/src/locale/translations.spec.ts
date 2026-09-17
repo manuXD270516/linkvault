@@ -1,15 +1,25 @@
 import enMessages from './messages.en.xlf' with { loader: 'text' };
 import sourceMessages from './messages.xlf' with { loader: 'text' };
 
-/** Unidades de un XLIFF 1.2 por id, con su `target` (null si falta). */
-function translationUnits(xliff: string): Map<string, string | null> {
+/** Unidades de un XLIFF 1.2 por id, con su elemento `target` (null si falta). */
+function translationUnits(xliff: string): Map<string, Element | null> {
   const document = new DOMParser().parseFromString(xliff, 'application/xml');
   expect(document.getElementsByTagName('parsererror')).toHaveLength(0);
   return new Map(
     Array.from(document.getElementsByTagName('trans-unit')).map((unit) => [
       unit.getAttribute('id') ?? '',
-      unit.getElementsByTagName('target')[0]?.textContent ?? null,
+      unit.getElementsByTagName('target')[0] ?? null,
     ]),
+  );
+}
+
+/**
+ * Un `target` está traducido si tiene texto o, al menos, los marcadores del mensaje: el mensaje que solo envuelve un
+ * plural (`{{ n }} {n, plural, …}`) es únicamente `<x/>`, y sus palabras viven en la unidad del ICU, que sí se comprueba.
+ */
+function isTranslated(target: Element | null): boolean {
+  return (
+    target !== null && ((target.textContent?.trim() ?? '') !== '' || target.childElementCount > 0)
   );
 }
 
@@ -19,7 +29,7 @@ describe('messages.en.xlf', () => {
 
     expect(units.size).toBeGreaterThan(0);
     for (const [id, target] of units) {
-      expect.soft(target?.trim(), `trans-unit "${id}" without target`).toBeTruthy();
+      expect.soft(isTranslated(target), `trans-unit "${id}" without target`).toBe(true);
     }
   });
 
