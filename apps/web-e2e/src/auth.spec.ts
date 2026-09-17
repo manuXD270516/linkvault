@@ -63,10 +63,9 @@ test('auth flow: register, restore, profile, password change, logout and login',
     expect(response.status()).toBe(201);
     accessTokens.push(await readAccessToken(response));
 
-    await expect(page).toHaveURL(/\/$/);
-    await expect(
-      page.getByRole('heading', { level: 1, name: `Hola, ${DISPLAY_NAME}` }),
-    ).toBeVisible();
+    await expect(page).toHaveURL(/\/grupos$/);
+    await expect(page.getByRole('heading', { level: 1, name: 'Tus grupos' })).toBeVisible();
+    await expect(page.getByText('Crea un grupo o únete con un código')).toBeVisible();
     await page.screenshot({ path: join(SCREENSHOT_DIR, 'inicio.png'), fullPage: true });
   });
 
@@ -77,10 +76,8 @@ test('auth flow: register, restore, profile, password change, logout and login',
     expect(response.status()).toBe(200);
     accessTokens.push(await readAccessToken(response));
 
-    await expect(page).toHaveURL(/\/$/);
-    await expect(
-      page.getByRole('heading', { level: 1, name: `Hola, ${DISPLAY_NAME}` }),
-    ).toBeVisible();
+    await expect(page).toHaveURL(/\/grupos$/);
+    await expect(page.getByRole('heading', { level: 1, name: 'Tus grupos' })).toBeVisible();
   });
 
   await test.step('access token is not persisted in web storage or IndexedDB', async () => {
