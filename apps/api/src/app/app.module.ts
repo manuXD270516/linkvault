@@ -5,6 +5,7 @@ import { AppLoggerModule } from '../infrastructure/logging/app-logger.module';
 import { MongoPersistenceModule } from '../infrastructure/persistence/mongo-persistence.module';
 import { RedisHealthModule } from '../infrastructure/redis/redis-health.module';
 import { AuthModule } from '../modules/auth/presentation/auth.module';
+import { GroupsModule } from '../modules/groups/presentation/groups.module';
 import { UsersModule } from '../modules/users/presentation/users.module';
 import { HealthModule } from '../presentation/http/health.module';
 
@@ -21,6 +22,7 @@ export class AppModule {
         HealthModule,
         UsersModule,
         AuthModule,
+        GroupsModule,
       ],
     };
   }

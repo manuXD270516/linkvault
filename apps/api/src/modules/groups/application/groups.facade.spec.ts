@@ -1,10 +1,6 @@
-import { Inject, Injectable, Module } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { CreateGroup } from './create-group.usecase';
 import { GroupsFacade } from './groups.facade';
-import { GROUPS_CLOCK } from './ports/clock.port';
-import { GROUP_REPOSITORY } from './ports/group-repository.port';
 import {
   MovableClock,
   StubInviteCodeGenerator,
@@ -76,61 +72,5 @@ describe('GroupsFacade', () => {
   it('answers an empty list for a user without groups and for a malformed id', async () => {
     await expect(facade.getGroupsOf(BETO)).resolves.toEqual([]);
     await expect(facade.getGroupsOf('no-es-un-id')).resolves.toEqual([]);
-  });
-});
-
-// Cableado: el facade es la única entrada, así que otro módulo tiene que poder inyectarlo importando el módulo que lo
-// exporta. `GroupsModule` llega con la tarea 5.1; aquí se comprueba el contrato de DI con los dobles en memoria.
-
-@Module({
-  providers: [
-    {
-      provide: GROUP_REPOSITORY,
-      useFactory: () =>
-        new InMemoryGroupRepository(new StubInviteCodeGenerator()),
-    },
-    { provide: GROUPS_CLOCK, useClass: MovableClock },
-    GroupsFacade,
-  ],
-  exports: [GroupsFacade],
-})
-class GroupsModuleDouble {}
-
-/** Otro módulo del monolito, que solo conoce el facade. */
-@Injectable()
-class SomeOtherModuleService {
-  constructor(@Inject(GroupsFacade) private readonly groups: GroupsFacade) {}
-
-  canSee(groupId: string, userId: string): Promise<boolean> {
-    return this.groups.isMember(groupId, userId);
-  }
-}
-
-@Module({
-  imports: [GroupsModuleDouble],
-  providers: [SomeOtherModuleService],
-})
-class OtherModule {}
-
-describe('GroupsFacade wiring', () => {
-  it('is injectable from another module', async () => {
-    const moduleRef = await Test.createTestingModule({
-      imports: [OtherModule],
-    }).compile();
-
-    const service = moduleRef.get(SomeOtherModuleService);
-    const repositoryFromDi = moduleRef.get<InMemoryGroupRepository>(
-      GROUP_REPOSITORY,
-      { strict: false },
-    );
-    const group = await repositoryFromDi.create({
-      name: 'Desde DI',
-      ownerId: ANA,
-      now: new Date('2026-09-17T10:00:00.000Z'),
-    });
-
-    await expect(service.canSee(group.id, ANA)).resolves.toBe(true);
-    await expect(service.canSee(group.id, BETO)).resolves.toBe(false);
-    await moduleRef.close();
   });
 });

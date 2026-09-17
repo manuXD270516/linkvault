@@ -13,6 +13,10 @@ import {
   TooManyAttempts,
 } from '../../modules/auth/domain/errors';
 import {
+  GroupsError,
+  InvalidGroupName,
+} from '../../modules/groups/domain/errors';
+import {
   EmailAlreadyRegistered,
   InvalidProfileChanges,
   UserNotFound,
@@ -35,6 +39,9 @@ interface ApiErrorReply {
  *   `validation_error` con su campo; `UserNotFound` → 401 `unauthorized`, porque el único usuario que una petición puede
  *   buscar es el de su access token (no hay rutas sobre otros usuarios): si no existe, el token no identifica a nadie, como
  *   exige "Rutas protegidas por defecto", y un 404 invitaría al SPA a tratarlo como un recurso ausente y no como sesión.
+ * - Errores de dominio de `groups`: cada uno lleva su `code` (`group_not_found` → 404, `member_not_found` → 404,
+ *   `forbidden` → 403, `invalid_invite_code` → 404, `group_full` → 409, `too_many_groups` → 409, `owner_cannot_leave` →
+ *   409), así que basta un `instanceof GroupsError`; `InvalidGroupName` va antes porque además nombra el campo `name`.
  * - `HttpException` 400 (JSON mal formado, que Nest convierte desde Fastify) → `validation_error` sin campos, y 415 →
  *   `unsupported_media_type`. El resto de `HttpException` (404 de ruta desconocida, 503 de la salud) conserva la
  *   respuesta de Nest.
@@ -97,6 +104,12 @@ export class ApiExceptionFilter extends BaseExceptionFilter {
     if (exception instanceof UserNotFound) {
       return reply('unauthorized');
     }
+    if (exception instanceof InvalidGroupName) {
+      return reply('validation_error', [exception.field]);
+    }
+    if (exception instanceof GroupsError) {
+      return reply(exception.code);
+    }
     if (exception instanceof HttpException) {
       switch (exception.getStatus()) {
         case HttpStatus.BAD_REQUEST:
@@ -130,5 +143,9 @@ function reply(
   fields: readonly string[] = [],
   headers: Readonly<Record<string, string>> = {},
 ): ApiErrorReply {
-  return { status: API_ERROR_STATUS[code], body: apiErrorBody(code, fields), headers };
+  return {
+    status: API_ERROR_STATUS[code],
+    body: apiErrorBody(code, fields),
+    headers,
+  };
 }

@@ -26,11 +26,11 @@
 
 ## 5. API
 
-- [ ] 5.1 [backend] `GroupsController` con los 10 endpoints y `GroupsModule` (importa `UsersModule`, exporta `GroupsFacade`) cableado en `AppModule`, con pipe zod y `@CurrentUser()`; verificar que cada ruta responde `401` sin token y que el test de DI de `api` sigue pasando.
-- [ ] 5.2 [backend] Integración del CRUD por HTTP; verificar con "Grupo creado", "Nombre inválido", "Lista con rol", "Detalle para el owner", "Detalle para un miembro", "Grupo ajeno indistinguible de uno inexistente" (incluido el id mal formado), "El owner renombra", "Un miembro no puede renombrar", "Regenerar el código", "El owner borra el grupo" y "Un miembro no puede borrar".
-- [ ] 5.3 [backend] Integración de unión y lista de miembros; verificar con "Unirse por código" (sin código de invitación en la respuesta), "Código desconocido", "Código con formato inválido", "Unirse dos veces", "Grupo completo", "Límite alcanzado al unirse", "Un miembro ve la lista", "Un extraño no ve la lista" y "Un tercero no ve el perfil" (la lista no contiene ningún email).
-- [ ] 5.4 [backend] Integración de salida y expulsión; verificar con "Un miembro sale", "El owner no puede salir", "El owner expulsa" (incluido que puede volver a unirse), "Un miembro no puede expulsar" y "Expulsar a quien no es miembro" con id mal formado.
-- [ ] 5.5 [backend] Traducción de los 7 errores nuevos en el filtro (`group_not_found`→404, `member_not_found`→404, `forbidden`→403, `invalid_invite_code`→404, `group_full`→409, `too_many_groups`→409, `owner_cannot_leave`→409); verificar con tests del filtro y que los cuerpos de 404 de "Grupo ajeno indistinguible de uno inexistente" son idénticos.
+- [x] 5.1 [backend] `GroupsController` con los 10 endpoints y `GroupsModule` (importa `UsersModule`, exporta `GroupsFacade`) cableado en `AppModule`, con pipe zod y `@CurrentUser()`; verificar que cada ruta responde `401` sin token y que el test de DI de `api` sigue pasando.
+- [x] 5.2 [backend] Integración del CRUD por HTTP; verificar con "Grupo creado", "Nombre inválido", "Lista con rol", "Detalle para el owner", "Detalle para un miembro", "Grupo ajeno indistinguible de uno inexistente" (incluido el id mal formado), "El owner renombra", "Un miembro no puede renombrar", "Regenerar el código", "El owner borra el grupo" y "Un miembro no puede borrar".
+- [x] 5.3 [backend] Integración de unión y lista de miembros; verificar con "Unirse por código" (sin código de invitación en la respuesta), "Código desconocido", "Código con formato inválido", "Unirse dos veces", "Grupo completo", "Límite alcanzado al unirse", "Un miembro ve la lista", "Un extraño no ve la lista" y "Un tercero no ve el perfil" (la lista no contiene ningún email).
+- [x] 5.4 [backend] Integración de salida y expulsión; verificar con "Un miembro sale", "El owner no puede salir", "El owner expulsa" (incluido que puede volver a unirse), "Un miembro no puede expulsar" y "Expulsar a quien no es miembro" con id mal formado.
+- [x] 5.5 [backend] Traducción de los 7 errores nuevos en el filtro (`group_not_found`→404, `member_not_found`→404, `forbidden`→403, `invalid_invite_code`→404, `group_full`→409, `too_many_groups`→409, `owner_cannot_leave`→409); verificar con tests del filtro y que los cuerpos de 404 de "Grupo ajeno indistinguible de uno inexistente" son idénticos.
 
 ## 6. Límites entre módulos
 
