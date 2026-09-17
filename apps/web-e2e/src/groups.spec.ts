@@ -220,8 +220,10 @@ test('groups flow: create, invite link, members, expel, leave and delete', async
     await test.step('the owner deletes the group after a confirmation that says who it affects', async () => {
       await owner.getByRole('button', { name: 'Borrar el grupo' }).click();
       const dialog = owner.getByRole('dialog');
+      // En este punto el owner se quedó solo (expulsó al otro miembro), así que la confirmación usa la rama
+      // singular del plural ICU; con más de un miembro diría "Se borrará para los N miembros".
       await expect(dialog).toContainText(
-        /Se borrará para los \d+ miembros\. No se puede deshacer\./,
+        'Se borrará solo para ti. No se puede deshacer.',
       );
       await owner.screenshot({
         path: join(SCREENSHOT_DIR, 'confirmar-borrado.png'),
