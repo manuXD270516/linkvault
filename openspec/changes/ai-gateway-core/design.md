@@ -215,7 +215,10 @@ Solo para tareas `personal` y proveedores `external`. Detectores, en este orden 
   `akka.net`, `socket.io`, `hangfire.io`. Un host sin puerto ni ruta cuyo TLD tiene mayúscula inicial y el resto en
   minúsculas, seguido de espacio y letra, se trata como fin de frase sin espacio (`NestJS.Me encargué`), no como dominio.
   Un TLD todo en mayúsculas (`ANAPEREZ.DEV ES MI SITIO`) sí se redacta, para que un CV escrito en mayúsculas no filtre el
-  dominio.
+  dominio. **Excepción consciente a la política de abajo:** esta regla crea un falso negativo aceptado, un dominio sin
+  esquema ni `www.` con TLD en mayúscula inicial seguido de palabra (`Mi sitio: anaperez.Dev es nuevo`) sale sin redactar.
+  Se acepta porque la escritura con TLD capitalizado es rara en dominios reales y frecuente en frases pegadas; se medirá en
+  `ai-eval-harness` y se revisará si aparece en CVs reales.
 
   **Política de sobre-redacción aceptada.** Ante la duda se redacta: un falso positivo solo cuesta contexto al modelo (el
   valor se reinyecta en la salida), mientras que un falso negativo saca un dato personal del perímetro. Consecuencias
@@ -278,6 +281,8 @@ unitarios siguen sin tocar Mongo.
 - **Falsos negativos del `PiiRedactor`** en teléfonos con formatos raros → tabla de casos positivos y negativos por detector;
   se prioriza redactar de más. Dirección y documento quedan sin redactar hasta `cv-match-suggestions`, que es el primer
   change que envía CVs.
+- **Falso negativo de URL con TLD capitalizado seguido de palabra** (`anaperez.Dev es nuevo`) → aceptado en D11 para no
+  redactar frases pegadas como `NestJS.Me encargué`; se mide en `ai-eval-harness`.
 - **La caché guarda salidas con datos del propio input** → clave por hash del input y TTL; ver D8.
 - **Breaker por proceso** → con N réplicas, hasta 5·N fallos antes de excluir un proveedor en todas; revisable en
   `deploy-prod`.
