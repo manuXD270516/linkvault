@@ -1,11 +1,11 @@
 ## 1. Contratos compartidos
 
-- [ ] 1.1 [backend] Crear `libs/shared/src/schemas/group.schema.ts` con los schemas y tipos de D9 (código: solo cadena no vacía ≤64 normalizada a mayúsculas), añadir los 7 códigos de error nuevos a `apiErrorCodeSchema` y sus entradas a `API_ERROR_STATUS` y `API_ERROR_MESSAGES` de `apps/api/src/presentation/http/api-error.ts`; verificar con tests de los schemas (`name` de 0, 1, 60 y 61 caracteres y con espacios; código en minúsculas y con espacios; `groupDetailSchema` con y sin `inviteCode`) y con `pnpm nx run-many -t typecheck -p shared api` en verde.
+- [x] 1.1 [backend] Crear `libs/shared/src/schemas/group.schema.ts` con los schemas y tipos de D9 (código: solo cadena no vacía ≤64 normalizada a mayúsculas), añadir los 7 códigos de error nuevos a `apiErrorCodeSchema` y sus entradas a `API_ERROR_STATUS` y `API_ERROR_MESSAGES` de `apps/api/src/presentation/http/api-error.ts`; verificar con tests de los schemas (`name` de 0, 1, 60 y 61 caracteres y con espacios; código en minúsculas y con espacios; `groupDetailSchema` con y sin `inviteCode`) y con `pnpm nx run-many -t typecheck -p shared api` en verde.
 
 ## 2. Dominio de groups
 
-- [ ] 2.1 [backend] `domain/group.ts`, `domain/membership.ts` y `domain/limits.ts` (nombre normalizado, roles, quién puede renombrar, regenerar, expulsar, borrar y salir, máximos 50/20); verificar con tests unitarios de cada regla, incluido que el owner no puede salir ni ser expulsado.
-- [ ] 2.2 [backend] `domain/invite-code.ts` (alfabeto de 30 símbolos de D3, formato, normalización) y `domain/errors.ts`; verificar con tests del formato (válido, 7 y 9 caracteres, caracteres ambiguos `0/O/1/I/L/U`, minúsculas y espacios) y con un test que comprueba que cada `code` existe en `apiErrorCodeSchema`.
+- [x] 2.1 [backend] `domain/group.ts`, `domain/membership.ts` y `domain/limits.ts` (nombre normalizado, roles, quién puede renombrar, regenerar, expulsar, borrar y salir, máximos 50/20); verificar con tests unitarios de cada regla, incluido que el owner no puede salir ni ser expulsado.
+- [x] 2.2 [backend] `domain/invite-code.ts` (alfabeto de 30 símbolos de D3, formato, normalización) y `domain/errors.ts`; verificar con tests del formato (válido, 7 y 9 caracteres, caracteres ambiguos `0/O/1/I/L/U`, minúsculas y espacios) y con un test que comprueba que cada `code` existe en `apiErrorCodeSchema`.
 
 ## 3. Puertos y adaptadores
 

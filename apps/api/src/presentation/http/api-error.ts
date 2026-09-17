@@ -15,6 +15,13 @@ export const API_ERROR_STATUS: Readonly<Record<ApiErrorCode, number>> = {
   unsupported_media_type: 415,
   too_many_attempts: 429,
   internal_error: 500,
+  group_not_found: 404,
+  member_not_found: 404,
+  forbidden: 403,
+  invalid_invite_code: 404,
+  group_full: 409,
+  too_many_groups: 409,
+  owner_cannot_leave: 409,
 };
 
 /**
@@ -32,6 +39,13 @@ export const API_ERROR_MESSAGES: Readonly<Record<ApiErrorCode, string>> = {
   unsupported_media_type: 'Request body must be application/json',
   too_many_attempts: 'Too many attempts',
   internal_error: 'Internal server error',
+  group_not_found: 'Group not found',
+  member_not_found: 'Member not found',
+  forbidden: 'Not allowed',
+  invalid_invite_code: 'Invalid invite code',
+  group_full: 'Group is full',
+  too_many_groups: 'Too many groups',
+  owner_cannot_leave: 'The owner cannot leave the group',
 };
 
 /** Cuerpo `{ code, message, fields? }`. `fields` solo nombra campos y se omite si está vacío. */

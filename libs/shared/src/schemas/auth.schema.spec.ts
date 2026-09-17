@@ -220,7 +220,7 @@ describe('sessionResponseSchema', () => {
 });
 
 describe('api error contract', () => {
-  it('lists the error codes of the auth and profile endpoints', () => {
+  it('lists the error codes of the auth, profile and group endpoints', () => {
     expect(apiErrorCodeSchema.options).toEqual([
       'validation_error',
       'invalid_credentials',
@@ -231,6 +231,13 @@ describe('api error contract', () => {
       'csrf_header_missing',
       'unauthorized',
       'unsupported_media_type',
+      'group_not_found',
+      'member_not_found',
+      'forbidden',
+      'invalid_invite_code',
+      'group_full',
+      'too_many_groups',
+      'owner_cannot_leave',
       'internal_error',
     ]);
   });
