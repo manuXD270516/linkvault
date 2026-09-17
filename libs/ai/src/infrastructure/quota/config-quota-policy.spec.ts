@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { getMongoTestUri } from '@linkvault/testing';
 import mongoose, { type Connection } from 'mongoose';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { AiLogFields, AiLogger } from '../../domain/ports/ai-logger.port';
+import { InMemoryAiLogger } from '../../application/testing/in-memory-ports';
 import type { Clock } from '../../domain/ports/clock.port';
 import type {
   UsageOutcome,
@@ -20,18 +20,6 @@ import { ConfigQuotaPolicy, QUOTA_WINDOW_MS } from './config-quota-policy';
 
 const NOW = Date.parse('2026-09-17T10:00:00.000Z');
 const clock: Clock = { now: () => NOW };
-
-class CapturingLogger implements AiLogger {
-  readonly warnings: { message: string; fields?: AiLogFields }[] = [];
-
-  debug(): void {
-    // No se usa.
-  }
-
-  warn(message: string, fields?: AiLogFields): void {
-    this.warnings.push({ message, fields });
-  }
-}
 
 class RecordingCounter implements SuccessCounter {
   readonly queries: SuccessCountQuery[] = [];
@@ -87,7 +75,7 @@ describe('ConfigQuotaPolicy', () => {
     const userId = 'quota-reached';
     await ledger.record(usage(userId, 'success', 60_000));
     await ledger.record(usage(userId, 'success', QUOTA_WINDOW_MS - 1_000));
-    const logger = new CapturingLogger();
+    const logger = new InMemoryAiLogger();
     const policy = new ConfigQuotaPolicy({
       limits: { 'classify-skills': 2 },
       counter: ledger,
@@ -110,7 +98,7 @@ describe('ConfigQuotaPolicy', () => {
       limits: { 'classify-skills': 2 },
       counter: ledger,
       clock,
-      logger: new CapturingLogger(),
+      logger: new InMemoryAiLogger(),
     });
 
     await expect(policy.allows(userId, 'classify-skills')).resolves.toBe(true);
@@ -122,7 +110,7 @@ describe('ConfigQuotaPolicy', () => {
       limits: { 'extract-job': 1 },
       counter,
       clock,
-      logger: new CapturingLogger(),
+      logger: new InMemoryAiLogger(),
     });
 
     await expect(policy.allows('any-user', 'classify-skills')).resolves.toBe(
@@ -137,7 +125,7 @@ describe('ConfigQuotaPolicy', () => {
       limits: { 'classify-skills': 5 },
       counter,
       clock,
-      logger: new CapturingLogger(),
+      logger: new InMemoryAiLogger(),
     });
 
     await policy.allows('user-1', 'classify-skills');
@@ -153,7 +141,7 @@ describe('ConfigQuotaPolicy', () => {
   });
 
   it('Conteo no disponible', async () => {
-    const logger = new CapturingLogger();
+    const logger = new InMemoryAiLogger();
     const policy = new ConfigQuotaPolicy({
       limits: { 'classify-skills': 1 },
       counter: new RecordingCounter(() =>
@@ -174,7 +162,7 @@ describe('ConfigQuotaPolicy', () => {
   });
 
   it('allows in less than 1 second when the count never resolves', async () => {
-    const logger = new CapturingLogger();
+    const logger = new InMemoryAiLogger();
     const policy = new ConfigQuotaPolicy({
       limits: { 'classify-skills': 1 },
       counter: new RecordingCounter(() => new Promise<number>(() => undefined)),

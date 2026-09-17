@@ -1,7 +1,7 @@
 import { RedisPingDouble } from '@linkvault/testing';
 import type { Redis } from 'ioredis';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { AiLogFields, AiLogger } from '../../domain/ports/ai-logger.port';
+import { InMemoryAiLogger } from '../../application/testing/in-memory-ports';
 import type { CachedResult } from '../../domain/ports/result-cache.port';
 import {
   AiCacheRedisConnection,
@@ -22,22 +22,10 @@ const entry: CachedResult = {
   promptVersion: 'v1',
 };
 
-class CapturingLogger implements AiLogger {
-  readonly warnings: { message: string; fields?: AiLogFields }[] = [];
-
-  debug(): void {
-    // No se usa.
-  }
-
-  warn(message: string, fields?: AiLogFields): void {
-    this.warnings.push({ message, fields });
-  }
-}
-
 interface Process {
   client: Redis;
   connection: AiCacheRedisConnection;
-  logger: CapturingLogger;
+  logger: InMemoryAiLogger;
 }
 
 const doubles: RedisPingDouble[] = [];
@@ -52,7 +40,7 @@ async function startDouble(): Promise<RedisPingDouble> {
 /** Simula un proceso: cliente propio y conexión arrancada como en onModuleInit. */
 function startProcess(url: string): Process {
   const client = createAiCacheRedisClient(url);
-  const logger = new CapturingLogger();
+  const logger = new InMemoryAiLogger();
   const connection = new AiCacheRedisConnection(client, logger);
   connection.onModuleInit();
   const started = { client, connection, logger };
@@ -63,6 +51,14 @@ function startProcess(url: string): Process {
 function whenReady(client: Redis): Promise<void> {
   if (client.status === 'ready') return Promise.resolve();
   return new Promise((resolve) => client.once('ready', () => resolve()));
+}
+
+async function timed<T>(
+  work: Promise<T>,
+): Promise<{ value: T; elapsed: number }> {
+  const started = Date.now();
+  const value = await work;
+  return { value, elapsed: Date.now() - started };
 }
 
 afterEach(async () => {
@@ -164,6 +160,45 @@ describe('RedisResultCache', () => {
     await expect(cache.get(KEY)).resolves.toBeNull();
     await expect(cache.set(KEY, entry)).resolves.toBeUndefined();
     await expect.poll(() => logger.warnings.length).toBe(1);
+  });
+
+  it('does not hang on read or write when the double accepts connections and never answers', async () => {
+    // Sin respuesta al handshake el cliente nunca llega a `ready`: sin cola offline, los comandos fallan enseguida.
+    const double = await RedisPingDouble.start('hang');
+    doubles.push(double);
+    const { client } = startProcess(double.url);
+    const cache = new RedisResultCache(client);
+
+    const [read, write] = await Promise.all([
+      timed(cache.get(KEY)),
+      timed(cache.set(KEY, entry)),
+    ]);
+
+    expect(read.value).toBeNull();
+    expect(write.value).toBeUndefined();
+    expect(read.elapsed).toBeLessThan(1_000);
+    expect(write.elapsed).toBeLessThan(1_000);
+  });
+
+  it('times out read and write after 500 ms when a connected Redis stops answering', async () => {
+    const double = await startDouble();
+    const { client } = startProcess(double.url);
+    await whenReady(client);
+    const cache = new RedisResultCache(client);
+    await double.setMode('hang');
+
+    const [read, write] = await Promise.all([
+      timed(cache.get(KEY)),
+      timed(cache.set(KEY, entry)),
+    ]);
+
+    expect(client.status).toBe('ready');
+    expect(read.value).toBeNull();
+    expect(write.value).toBeUndefined();
+    for (const { elapsed } of [read, write]) {
+      expect(elapsed).toBeGreaterThanOrEqual(450);
+      expect(elapsed).toBeLessThan(1_000);
+    }
   });
 
   it('backs off exponentially up to 2 seconds', () => {

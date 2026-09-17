@@ -17,6 +17,9 @@ export function aiCacheRedisRetryDelay(times: number): number {
   );
 }
 
+/** Milisegundos máximos por comando: un Redis que acepta la conexión y no responde no puede colgar `runTask` (D8). */
+export const AI_CACHE_REDIS_COMMAND_TIMEOUT_MS = 500;
+
 /** `enableReadyCheck: false`: el doble RESP de los tests no responde a INFO. */
 export function createAiCacheRedisClient(url: string): Redis {
   return new Redis(url, {
@@ -24,6 +27,7 @@ export function createAiCacheRedisClient(url: string): Redis {
     enableOfflineQueue: false,
     maxRetriesPerRequest: 1,
     enableReadyCheck: false,
+    commandTimeout: AI_CACHE_REDIS_COMMAND_TIMEOUT_MS,
     retryStrategy: aiCacheRedisRetryDelay,
   });
 }
