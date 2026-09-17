@@ -20,10 +20,8 @@ import { computeMetrics } from '../metrics/aggregate';
 import type { MetricValue } from '../metrics/metric';
 import {
   buildBaseline,
-  compareWithBaseline,
+  checkOrUpdateBaseline,
   formatBaselineProblems,
-  readBaseline,
-  writeBaseline,
 } from '../runner/baseline';
 import {
   composeEvalRunTask,
@@ -115,9 +113,7 @@ export async function runEvalCommand(
     provider: args.provider,
     allowExternal: args.allowExternal,
     ...(args.ollamaUrl === undefined ? {} : { ollamaUrl: args.ollamaUrl }),
-    ...(args.timeoutMs === undefined
-      ? {}
-      : { ollamaTimeoutMs: args.timeoutMs }),
+    ...(args.timeoutMs === undefined ? {} : { timeoutMs: args.timeoutMs }),
     tasks: registry.map((evaluable) => evaluable.task),
     cwd: io.cwd,
     logger: new StderrAiLogger(io.stderr),
@@ -184,24 +180,34 @@ async function evaluateTask(
       cases,
       metrics,
     });
-    if (args.updateBaseline) {
-      const path = await writeBaseline(paths.evalsDir, current);
-      baselineColumn = current.metrics;
-      baselineMessages.push(`baseline updated: ${path}`);
-    } else {
-      const stored = await readBaseline(paths.evalsDir, taskName);
-      baselineColumn =
-        stored.status === 'found' ? stored.baseline.metrics : null;
-      const comparison = compareWithBaseline(stored, current, metrics);
-      if (!comparison.ok) {
+    const check = await checkOrUpdateBaseline({
+      evalsDir: paths.evalsDir,
+      current,
+      metrics,
+      update: args.updateBaseline,
+    });
+    switch (check.status) {
+      case 'updated':
+        baselineColumn = check.baseline.metrics;
+        baselineMessages.push(`baseline updated: ${check.path}`);
+        break;
+      case 'matches':
+        baselineColumn = check.stored.metrics;
+        break;
+      case 'differs':
+        baselineColumn =
+          check.stored.status === 'found'
+            ? check.stored.baseline.metrics
+            : null;
         exitCode = EXIT_CODES.regression;
         for (const message of formatBaselineProblems(
           taskName,
-          comparison.problems,
+          check.problems,
         )) {
-          io.stderr(`${message}\n`);
+          io.stderr(`${message}
+`);
         }
-      }
+        break;
     }
   }
 

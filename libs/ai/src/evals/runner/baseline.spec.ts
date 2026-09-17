@@ -136,7 +136,7 @@ describe('strict baseline in replay', () => {
   it('Sin regresión', async () => {
     await evaluate(true);
 
-    await expect(evaluate()).resolves.toEqual({ status: 'matches' });
+    await expect(evaluate()).resolves.toMatchObject({ status: 'matches' });
   });
 
   it('Regresión de recall', async () => {
@@ -190,6 +190,7 @@ describe('strict baseline in replay', () => {
 
     expect(check).toEqual({
       status: 'differs',
+      stored: { status: 'missing' },
       problems: [{ kind: 'missing' }],
     });
     const [message] = messagesOf(check);
@@ -209,10 +210,12 @@ describe('strict baseline in replay', () => {
 
     const check = await evaluate();
 
-    expect(check).toEqual({
+    expect(check).toMatchObject({
       status: 'differs',
+      stored: { status: 'found' },
       problems: [{ kind: 'golden_changed' }],
     });
+    if (check.status === 'differs') expect(check.problems).toHaveLength(1);
     const [message] = messagesOf(check);
     expect(message).toContain('El golden cambió');
     expect(message).toContain(COMMAND);
@@ -225,7 +228,7 @@ describe('strict baseline in replay', () => {
     expect(crlf).not.toBe(lf);
     await writeFile(goldenPath(evalsDir, TASK), crlf);
 
-    await expect(evaluate()).resolves.toEqual({ status: 'matches' });
+    await expect(evaluate()).resolves.toMatchObject({ status: 'matches' });
 
     const lfCases = parseGolden(classifySkillsEvaluable, lf);
     const crlfCases = parseGolden(classifySkillsEvaluable, crlf);
@@ -258,11 +261,12 @@ describe('strict baseline in replay', () => {
 
     const updated = await evaluate(true);
 
-    expect(updated).toEqual({
+    expect(updated).toMatchObject({
       status: 'updated',
       path: baselinePath(evalsDir, TASK),
+      baseline: { task: TASK, metrics: { skills_recall: 1 } },
     });
-    await expect(evaluate()).resolves.toEqual({ status: 'matches' });
+    await expect(evaluate()).resolves.toMatchObject({ status: 'matches' });
     const written = await readFile(baselinePath(evalsDir, TASK), 'utf8');
     expect(written).toBe(
       serializeBaseline({

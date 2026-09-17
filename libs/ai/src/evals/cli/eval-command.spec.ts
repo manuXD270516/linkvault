@@ -90,16 +90,18 @@ describe('runEvalCommand', () => {
     return [`--evals-dir=${evalsDir}`, `--reports-dir=${reportsDir}`];
   }
 
-  async function writeFixtures() {
+  /** Fixtures con las skills esperadas de cada caso, o las de `overrides` por `id`. */
+  async function writeFixtures(overrides: Record<string, string[]> = {}) {
     const golden = await loadGolden(classifySkillsEvaluable, evalsDir);
     if (!golden.ok) throw new Error('invalid test golden');
     for (const goldenCase of golden.cases) {
+      const skills = overrides[goldenCase.id] ?? goldenCase.expected.skills;
       await writeFile(
         join(fixturesDir, TASK, `${goldenCase.key}.json`),
         JSON.stringify({
           source: 'handwritten',
           text: JSON.stringify({
-            skills: goldenCase.expected.skills.map((name) => ({
+            skills: skills.map((name) => ({
               name,
               category: 'tool',
             })),
@@ -242,6 +244,108 @@ describe('runEvalCommand', () => {
     await expect(
       readFile(join(reportsDir, TASK, 'mock.md'), 'utf8'),
     ).resolves.toContain('## Casos');
+  });
+
+  it('Evaluación en replay', async () => {
+    // Centinela configurado como OLLAMA_URL: la cadena es solo el mock, así que no debe recibir ninguna petición.
+    let requests = 0;
+    const sentinel = createServer((_req, res) => {
+      requests++;
+      res.statusCode = 500;
+      res.end();
+    });
+    await new Promise<void>((done) => sentinel.listen(0, '127.0.0.1', done));
+    const { port } = sentinel.address() as AddressInfo;
+    try {
+      await writeFixtures();
+      const env = {
+        NODE_ENV: 'test',
+        AI_FIXTURES_DIR: fixturesDir,
+        OLLAMA_URL: `http://127.0.0.1:${String(port)}`,
+      };
+      await expect(
+        runEvalCommand(
+          [`--task=${TASK}`, '--provider=mock', '--update-baseline', ...dirs()],
+          captureIo(env),
+        ),
+      ).resolves.toBe(EXIT_CODES.success);
+
+      const io = captureIo(env);
+      const code = await runEvalCommand(
+        [`--task=${TASK}`, '--provider=mock', ...dirs()],
+        io,
+      );
+
+      expect(code).toBe(EXIT_CODES.success);
+      const report = await readFile(join(reportsDir, TASK, 'mock.md'), 'utf8');
+      const caseRows = report
+        .split('\n')
+        .filter((line) => /^\| `(es|en)-01` \|/.test(line));
+      expect(caseRows).toHaveLength(GOLDEN.length);
+      expect(report).toContain(
+        '| `schema_validity_rate` | bloqueante | 1 | 1 |',
+      );
+      expect(report).toContain('| `skills_recall` | bloqueante | 1 | 1 |');
+      expect(report).toContain('golden set `placeholder`');
+      expect(requests).toBe(0);
+    } finally {
+      await new Promise<void>((done) => sentinel.close(() => done()));
+    }
+  });
+
+  it('Regresión de recall', async () => {
+    await writeFixtures();
+    const env = { NODE_ENV: 'test', AI_FIXTURES_DIR: fixturesDir };
+    await expect(
+      runEvalCommand(
+        [`--task=${TASK}`, '--provider=mock', '--update-baseline', ...dirs()],
+        captureIo(env),
+      ),
+    ).resolves.toBe(EXIT_CODES.success);
+    // El fixture de es-01 pierde Docker: recall del caso 1/2, media (1/2 + 1) / 2.
+    await writeFixtures({ 'es-01': ['TypeScript'] });
+
+    const io = captureIo(env);
+    const code = await runEvalCommand(
+      [`--task=${TASK}`, '--provider=mock', ...dirs()],
+      io,
+    );
+
+    expect(code).toBe(EXIT_CODES.regression);
+    const stderr = io.err.join('');
+    expect(stderr).toContain(
+      '[classify-skills] skills_recall empeoró: actual 0.75, línea base 1',
+    );
+    expect(stderr).not.toContain('mejoró');
+    expect(stderr).toContain(
+      'nx run ai:eval --task=classify-skills --provider=mock --update-baseline',
+    );
+  });
+
+  it('Casos con la misma clave de ejecución', async () => {
+    await writeFile(
+      goldenPath(evalsDir, TASK),
+      `${[
+        GOLDEN[0],
+        GOLDEN[1],
+        { ...GOLDEN[0], id: 'es-02', tags: ['placeholder', 'duplicado'] },
+      ]
+        .map((line) => JSON.stringify(line))
+        .join('\n')}\n`,
+    );
+    // Sin fixtures: si se ejecutara algún caso, terminaría con código 3.
+    const io = captureIo({ NODE_ENV: 'test', AI_FIXTURES_DIR: fixturesDir });
+
+    const code = await runEvalCommand(
+      [`--task=${TASK}`, '--provider=mock', ...dirs()],
+      io,
+    );
+
+    expect(code).toBe(EXIT_CODES.usage);
+    const stderr = io.err.join('');
+    expect(stderr).toContain('id "es-02"');
+    expect(stderr).toContain('same execution key as case "es-01"');
+    expect(io.out).toEqual([]);
   });
 
   it('Fixture ausente en replay: exits with code 3 naming the case id and the key', async () => {

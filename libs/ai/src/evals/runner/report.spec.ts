@@ -7,7 +7,11 @@ import type { ClassifySkillsExpected } from '../classify-skills/metrics';
 import type { CaseResult } from '../evaluable-task';
 import { classifySkillsEvaluable } from '../evaluable-tasks';
 import { computeMetrics } from '../metrics/aggregate';
-import { degraded, success, testCaseResult } from '../metrics/test-cases';
+import {
+  degraded,
+  success,
+  testCaseResult,
+} from '../metrics/test-cases.spec-helper';
 import { formatNumber, renderReport, reportModel, writeReport } from './report';
 
 // Tarea 3.3: reporte Markdown (D6 de ai-eval-harness; requisito "Corredor de evaluación").

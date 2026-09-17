@@ -7,7 +7,11 @@ import {
   findEvaluableTask,
 } from '../evaluable-tasks';
 import { computeMetrics } from '../metrics/aggregate';
-import { degraded, success, testCaseResult } from '../metrics/test-cases';
+import {
+  degraded,
+  success,
+  testCaseResult,
+} from '../metrics/test-cases.spec-helper';
 import {
   classifySkillsExpectedSchema,
   compareSkills,

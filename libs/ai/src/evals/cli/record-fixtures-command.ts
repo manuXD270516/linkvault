@@ -68,9 +68,7 @@ export async function runRecordFixturesCommand(
     provider: args.upstream,
     allowExternal: args.allowExternal,
     ...(args.ollamaUrl === undefined ? {} : { ollamaUrl: args.ollamaUrl }),
-    ...(args.timeoutMs === undefined
-      ? {}
-      : { ollamaTimeoutMs: args.timeoutMs }),
+    ...(args.timeoutMs === undefined ? {} : { timeoutMs: args.timeoutMs }),
     tasks: registry.map((e) => e.task),
     cwd: io.cwd,
     logger: new StderrAiLogger(io.stderr),

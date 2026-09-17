@@ -205,6 +205,44 @@ const rows: readonly RuleRow[] = [
     expectedRuleIds: [AI_SDK_IMPORTS],
   },
   {
+    name: 'libs/ai evals imports the Nest framework',
+    filePath: 'libs/ai/src/evals/runner/x.ts',
+    code: "import { Injectable } from '@nestjs/common';\n\nexport const probe = Injectable;\n",
+    expectedRuleIds: [EVALS_IMPORTS],
+  },
+  {
+    name: 'libs/ai evals imports mongoose',
+    filePath: 'libs/ai/src/evals/runner/x.ts',
+    code: "import { Schema } from 'mongoose';\n\nexport const probe = Schema;\n",
+    expectedRuleIds: [EVALS_IMPORTS],
+  },
+  {
+    name: 'libs/ai evals imports ioredis',
+    filePath: 'libs/ai/src/evals/runner/x.ts',
+    code: "import Redis from 'ioredis';\n\nexport const probe = Redis;\n",
+    expectedRuleIds: [EVALS_IMPORTS],
+  },
+  {
+    name: 'libs/ai evals imports the test doubles of application/testing',
+    filePath: 'libs/ai/src/evals/runner/x.ts',
+    code: "import * as doubles from '../../application/testing/in-memory-ports';\n\nexport const probe = doubles;\n",
+    expectedRuleIds: [EVALS_IMPORTS],
+  },
+  {
+    name: 'libs/ai evals imports an index through ./index',
+    filePath: 'libs/ai/src/evals/runner/x.ts',
+    code: "import * as barrel from './index';\n\nexport const probe = barrel;\n",
+    expectedRuleIds: [EVALS_IMPORTS],
+  },
+  {
+    // Anclado al segmento completo: `./indexer` no es un index.
+    name: 'libs/ai evals imports a file whose name starts with index',
+    filePath: 'libs/ai/src/evals/runner/x.ts',
+    code: "import * as indexer from './indexer';\n\nexport const probe = indexer;\n",
+    expectedRuleIds: [],
+    unexpectedRuleIds: [EVALS_IMPORTS],
+  },
+  {
     name: 'product code declares an explicit any',
     filePath: 'libs/shared/src/probe.ts',
     code: 'export const probe: any = 1;\n',

@@ -212,6 +212,7 @@ describe('eval CLI in a child process', () => {
         'utf8',
       );
       expect(report).toContain('- Proveedor: `ollama`');
+      expect(report).toContain('- Prompt: `v1`');
       expect(report).toContain('- Modelo: qwen2.5:7b');
       expect(report).toContain(
         '| `es-01` | placeholder | degraded (providers_failed) |',

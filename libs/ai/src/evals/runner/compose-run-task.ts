@@ -33,8 +33,8 @@ export interface ComposeEvalRunTaskOptions {
   allowExternal: boolean;
   /** `--ollama-url`: sustituye a `OLLAMA_URL`. */
   ollamaUrl?: string;
-  /** `--timeout-ms`: sustituye a `OLLAMA_TIMEOUT_MS`. */
-  ollamaTimeoutMs?: number;
+  /** `--timeout-ms`: sustituye al plazo del proveedor elegido (`OLLAMA_TIMEOUT_MS` u `OPENROUTER_TIMEOUT_MS`). */
+  timeoutMs?: number;
   /** Tareas para el registro de `buildProviders`. */
   tasks: readonly AnyAiTask[];
   /** Base de rutas relativas de prompts y fixtures; por defecto la de `parseAiConfig` (`process.cwd()`). */
@@ -61,9 +61,17 @@ export type ComposeEvalRunTaskResult =
 
 const systemClock: Clock = { now: () => Date.now() };
 
-/** Entorno efectivo de D3: el recibido con `NODE_ENV`, `AI_CHAIN`, `AI_MOCK_MODE` y los flags de Ollama fijados. */
+/** Variable del plazo por petición de cada proveedor; el mock no tiene plazo configurable. */
+const TIMEOUT_VARIABLES: Readonly<Record<AiProviderId, string | undefined>> = {
+  mock: undefined,
+  ollama: 'OLLAMA_TIMEOUT_MS',
+  openrouter: 'OPENROUTER_TIMEOUT_MS',
+};
+
+/** Entorno efectivo de D3: el recibido con `NODE_ENV`, `AI_CHAIN`, `AI_MOCK_MODE`, `--ollama-url` y `--timeout-ms` fijados. */
 export function evalEnv(options: ComposeEvalRunTaskOptions): AiEnv {
-  const { env, provider, ollamaUrl, ollamaTimeoutMs } = options;
+  const { env, provider, ollamaUrl, timeoutMs } = options;
+  const timeoutVariable = TIMEOUT_VARIABLES[provider];
   const nodeEnv = env['NODE_ENV'];
   return {
     ...env,
@@ -71,9 +79,9 @@ export function evalEnv(options: ComposeEvalRunTaskOptions): AiEnv {
     AI_CHAIN: provider,
     ...(provider === 'mock' ? { AI_MOCK_MODE: 'replay' } : {}),
     ...(ollamaUrl === undefined ? {} : { OLLAMA_URL: ollamaUrl }),
-    ...(ollamaTimeoutMs === undefined
+    ...(timeoutMs === undefined || timeoutVariable === undefined
       ? {}
-      : { OLLAMA_TIMEOUT_MS: String(ollamaTimeoutMs) }),
+      : { [timeoutVariable]: String(timeoutMs) }),
   };
 }
 

@@ -1,8 +1,8 @@
 import type { AiResult } from '../../domain/ai-result';
 import type { CaseResult } from '../evaluable-task';
 
-// Constructor de `CaseResult` para tests de métricas, reporte y línea base. Sin dependencias de test: vive junto a
-// las métricas para no importar `application/testing/**` desde `evals/` (D1).
+// Constructor de `CaseResult` para tests de métricas, reporte y línea base. Fuera del build de la lib (`*.spec-helper.ts`),
+// junto a las métricas para no importar `application/testing/**` desde `evals/` (D1).
 
 export interface TestCaseOptions<I, O, E> {
   id: string;

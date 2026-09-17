@@ -227,10 +227,15 @@ export function compareWithBaseline(
   return { ok: problems.length === 0, problems };
 }
 
+/** Resultado del paso de línea base; lleva la línea base escrita o leída para la columna del reporte. */
 export type BaselineCheck =
-  | { status: 'updated'; path: string }
-  | { status: 'matches' }
-  | { status: 'differs'; problems: readonly BaselineProblem[] };
+  | { status: 'updated'; path: string; baseline: Baseline }
+  | { status: 'matches'; stored: Baseline }
+  | {
+      status: 'differs';
+      stored: StoredBaseline;
+      problems: readonly BaselineProblem[];
+    };
 
 /**
  * Paso de línea base de una evaluación en replay: con `update` reescribe la línea base con el resultado actual; si no,
@@ -246,6 +251,7 @@ export async function checkOrUpdateBaseline(options: {
     return {
       status: 'updated',
       path: await writeBaseline(options.evalsDir, options.current),
+      baseline: options.current,
     };
   }
   const stored = await readBaseline(options.evalsDir, options.current.task);
@@ -254,9 +260,10 @@ export async function checkOrUpdateBaseline(options: {
     options.current,
     options.metrics,
   );
-  return comparison.ok
-    ? { status: 'matches' }
-    : { status: 'differs', problems: comparison.problems };
+  if (comparison.ok && stored.status === 'found') {
+    return { status: 'matches', stored: stored.baseline };
+  }
+  return { status: 'differs', stored, problems: comparison.problems };
 }
 
 /** Comando que reescribe la línea base de una tarea; aparece en todos los mensajes de fallo. */

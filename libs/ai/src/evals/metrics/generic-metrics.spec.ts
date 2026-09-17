@@ -11,7 +11,7 @@ import {
   median,
   schemaValidityRate,
 } from './generic-metrics';
-import { degraded, success, testCaseResult } from './test-cases';
+import { degraded, success, testCaseResult } from './test-cases.spec-helper';
 
 // Tarea 2.1 (specs/ai/eval-harness, requisito "Métricas"; D5 de ai-eval-harness).
 

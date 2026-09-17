@@ -120,7 +120,7 @@ describe('runRecordFixturesCommand', () => {
     await expect(readdir(fixturesDir)).rejects.toThrow();
   });
 
-  it('exits with code 2 for an unknown task or an external upstream without permission', async () => {
+  it('exits with code 2 for an unknown task', async () => {
     const unknown = captureIo({ NODE_ENV: 'test' });
     await expect(
       runRecordFixturesCommand(
@@ -129,7 +129,11 @@ describe('runRecordFixturesCommand', () => {
       ),
     ).resolves.toBe(EXIT_CODES.usage);
     expect(unknown.err.join('')).toContain('Unknown task "no-existe"');
+    expect(requests).toBe(0);
+  });
 
+  it('Upstream externo sin permiso explícito', async () => {
+    // El servidor centinela hace de OpenRouter: sin --allow-external no debe recibir ninguna petición.
     const external = captureIo({
       NODE_ENV: 'test',
       OPENROUTER_API_KEY: 'sk-or-test',

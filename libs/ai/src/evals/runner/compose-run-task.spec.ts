@@ -103,7 +103,7 @@ describe('composeEvalRunTask', () => {
           OLLAMA_TIMEOUT_MS: '1000',
         },
         ollamaUrl: 'http://127.0.0.1:11435',
-        ollamaTimeoutMs: 300_000,
+        timeoutMs: 300_000,
       }),
     );
     expect(config.chain).toEqual(['ollama']);
@@ -113,11 +113,44 @@ describe('composeEvalRunTask', () => {
     });
   });
 
+  it('applies --timeout-ms to OPENROUTER_TIMEOUT_MS with openrouter and leaves the Ollama timeout alone', () => {
+    const { config } = valueOf(
+      compose({
+        provider: 'openrouter',
+        allowExternal: true,
+        env: {
+          NODE_ENV: 'test',
+          OPENROUTER_API_KEY: 'sk-test',
+          OPENROUTER_MODEL: 'vendor/model:free',
+          OPENROUTER_TIMEOUT_MS: '1000',
+          OLLAMA_TIMEOUT_MS: '2000',
+        },
+        timeoutMs: 45_000,
+      }),
+    );
+    expect(config.openrouter?.timeoutMs).toBe(45_000);
+    expect(config.ollama).toBeUndefined();
+
+    const { config: ollama } = valueOf(
+      compose({
+        provider: 'ollama',
+        env: { OPENROUTER_TIMEOUT_MS: '1000' },
+        timeoutMs: 45_000,
+      }),
+    );
+    expect(ollama.ollama?.timeoutMs).toBe(45_000);
+  });
+
+  it('ignores --timeout-ms with the mock', () => {
+    const { config } = valueOf(compose({ timeoutMs: 45_000 }));
+    expect(config.chain).toEqual(['mock']);
+  });
+
   it('returns the configuration problems instead of throwing or exiting', () => {
     const result = compose({
       provider: 'ollama',
       ollamaUrl: 'not a url',
-      ollamaTimeoutMs: 0,
+      timeoutMs: 0,
     });
 
     expect(result.ok).toBe(false);
