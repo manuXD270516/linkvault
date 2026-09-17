@@ -2,6 +2,7 @@ import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { App } from './app';
+import { SessionStore } from './core/auth/session.store';
 
 describe('App', () => {
   beforeEach(async () => {
@@ -16,5 +17,17 @@ describe('App', () => {
     await fixture.whenStable();
     const host = fixture.nativeElement as HTMLElement;
     expect(host.querySelector('router-outlet')).not.toBeNull();
+  });
+
+  it('shows "Conectando…" until the session status is known', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    const host = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector('[role="status"]')?.textContent).toContain('Conectando…');
+
+    TestBed.inject(SessionStore).clear();
+    await fixture.whenStable();
+
+    expect(host.querySelector('[role="status"]')).toBeNull();
   });
 });

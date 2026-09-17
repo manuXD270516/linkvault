@@ -1,0 +1,93 @@
+import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
+import { getConnectionToken } from '@nestjs/mongoose';
+import type { Redis } from 'ioredis';
+import type { Connection } from 'mongoose';
+import type { ApiConfig } from '../../../infrastructure/config/api-config.schema';
+import { APP_CONFIG } from '../../../infrastructure/config/app-config.module';
+import { REDIS_APP_CLIENT } from '../../../infrastructure/redis/redis-app-client';
+import { RedisAppModule } from '../../../infrastructure/redis/redis-app.module';
+import { UsersModule } from '../../users/presentation/users.module';
+import { ChangePassword } from '../application/change-password.usecase';
+import { SessionOpener } from '../application/issued-session';
+import { Login } from '../application/login.usecase';
+import { Logout } from '../application/logout.usecase';
+import { ACCESS_TOKEN_SIGNER } from '../application/ports/access-token-signer.port';
+import { ATTEMPT_LIMITER } from '../application/ports/attempt-limiter.port';
+import { AUTH_SECURITY_LOG } from '../application/ports/auth-security-log.port';
+import { CLOCK } from '../application/ports/clock.port';
+import { PASSWORD_HASHER } from '../application/ports/password-hasher.port';
+import { SESSION_REPOSITORY } from '../application/ports/session-repository.port';
+import { USER_ACCOUNTS } from '../application/ports/user-accounts.port';
+import { RefreshSession } from '../application/refresh-session.usecase';
+import { Register } from '../application/register.usecase';
+import type { Clock } from '../domain/clock';
+import { RefreshSessionPolicy } from '../domain/refresh-session';
+import { Argon2PasswordHasher } from '../infrastructure/argon2-password-hasher';
+import { JoseAccessTokenSigner } from '../infrastructure/jose-access-token-signer';
+import { MongoSessionRepository } from '../infrastructure/mongo-session.repository';
+import { NestAuthSecurityLog } from '../infrastructure/nest-auth-security-log';
+import { RedisAttemptLimiter } from '../infrastructure/redis-attempt-limiter';
+import { SystemClock } from '../infrastructure/system-clock';
+import { UsersFacadeUserAccounts } from '../infrastructure/users-facade-user-accounts';
+import { AccessTokenGuard } from './access-token.guard';
+import { AuthController } from './auth.controller';
+
+/**
+ * Módulo `auth` (D1 de auth-users): endpoints de `/api/auth`, use cases, adaptadores de sus puertos y el guard global de
+ * access token. Necesita `AppConfigModule` (global) y la conexión Mongoose por defecto; abre su propia conexión Redis de
+ * aplicación (`RedisAppModule`) para el límite de intentos.
+ */
+@Module({
+  imports: [UsersModule, RedisAppModule],
+  controllers: [AuthController],
+  providers: [
+    { provide: CLOCK, useClass: SystemClock },
+    {
+      provide: ACCESS_TOKEN_SIGNER,
+      inject: [APP_CONFIG, CLOCK],
+      useFactory: (config: ApiConfig, clock: Clock) =>
+        new JoseAccessTokenSigner(
+          {
+            secret: config.AUTH_JWT_SECRET,
+            ttlSeconds: config.AUTH_ACCESS_TOKEN_TTL_SECONDS,
+          },
+          clock,
+        ),
+    },
+    { provide: USER_ACCOUNTS, useClass: UsersFacadeUserAccounts },
+    {
+      provide: PASSWORD_HASHER,
+      // El hash ficticio se calcula al crear el adaptador, una vez por arranque (D6).
+      useFactory: () => new Argon2PasswordHasher(),
+    },
+    {
+      provide: SESSION_REPOSITORY,
+      inject: [getConnectionToken(), APP_CONFIG, CLOCK],
+      useFactory: (connection: Connection, config: ApiConfig, clock: Clock) =>
+        new MongoSessionRepository(
+          connection,
+          new RefreshSessionPolicy(clock, {
+            refreshTtlDays: config.AUTH_REFRESH_TTL_DAYS,
+            refreshMaxDays: config.AUTH_REFRESH_MAX_DAYS,
+          }),
+          clock,
+        ),
+    },
+    {
+      provide: ATTEMPT_LIMITER,
+      inject: [REDIS_APP_CLIENT, APP_CONFIG],
+      useFactory: (client: Redis, config: ApiConfig) =>
+        new RedisAttemptLimiter(client, { secret: config.AUTH_JWT_SECRET }),
+    },
+    { provide: AUTH_SECURITY_LOG, useFactory: () => new NestAuthSecurityLog() },
+    SessionOpener,
+    Register,
+    Login,
+    RefreshSession,
+    Logout,
+    ChangePassword,
+    { provide: APP_GUARD, useClass: AccessTokenGuard },
+  ],
+})
+export class AuthModule {}

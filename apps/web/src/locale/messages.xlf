@@ -2,18 +2,359 @@
 <xliff version="1.2" xmlns="urn:oasis:names:tc:xliff:document:1.2">
   <file source-language="es" datatype="plaintext" original="ng2.template">
     <body>
-      <trans-unit id="home.title" datatype="html">
-        <source>LinkVault</source>
+      <trans-unit id="app.connecting" datatype="html">
+        <source>Conectando…</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/app.html</context>
+          <context context-type="linenumber">2,5</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="login.title" datatype="html">
+        <source>Iniciar sesión</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/login.page.html</context>
+          <context context-type="linenumber">2,4</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="auth.email" datatype="html">
+        <source>Email</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/login.page.html</context>
+          <context context-type="linenumber">6,7</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/register.page.html</context>
+          <context context-type="linenumber">16,17</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+          <context context-type="linenumber">6,7</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="auth.emailInvalid" datatype="html">
+        <source>Introduce un email válido</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/login.page.html</context>
+          <context context-type="linenumber">9,11</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/register.page.html</context>
+          <context context-type="linenumber">19,21</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="auth.password" datatype="html">
+        <source>Contraseña</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/login.page.html</context>
+          <context context-type="linenumber">14,16</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/register.page.html</context>
+          <context context-type="linenumber">24,26</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="auth.hidePassword" datatype="html">
+        <source>Ocultar</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/login.page.html</context>
+          <context context-type="linenumber">29,30</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/register.page.html</context>
+          <context context-type="linenumber">39,40</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+          <context context-type="linenumber">58,59</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+          <context context-type="linenumber">85,86</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="auth.showPassword" datatype="html">
+        <source>Mostrar</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/login.page.html</context>
+          <context context-type="linenumber">31,33</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/register.page.html</context>
+          <context context-type="linenumber">41,43</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+          <context context-type="linenumber">60,62</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+          <context context-type="linenumber">87,89</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="login.passwordRequired" datatype="html">
+        <source>Introduce tu contraseña</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/login.page.html</context>
+          <context context-type="linenumber">35,37</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="login.invalidCredentials" datatype="html">
+        <source> Email o contraseña incorrectos </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/login.page.html</context>
+          <context context-type="linenumber">42,45</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="login.submit" datatype="html">
+        <source> Entrar </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/login.page.html</context>
+          <context context-type="linenumber">50,52</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="login.noAccount" datatype="html">
+        <source> ¿No tienes cuenta? <x id="START_LINK" ctype="x-a" equiv-text="&lt;a routerLink=&quot;/registro&quot; [queryParams]=&quot;returnQueryParams&quot;&gt;"/>Crear cuenta<x id="CLOSE_LINK" ctype="x-a" equiv-text="&lt;/a&gt;"/></source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/login.page.html</context>
+          <context context-type="linenumber">55,57</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="register.title" datatype="html">
+        <source>Crear cuenta</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/register.page.html</context>
+          <context context-type="linenumber">2,4</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="register.displayName" datatype="html">
+        <source>Nombre</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/register.page.html</context>
+          <context context-type="linenumber">6,7</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="register.displayNameInvalid" datatype="html">
+        <source>Escribe un nombre de hasta 60 caracteres</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/register.page.html</context>
+          <context context-type="linenumber">10,13</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="auth.passwordHint" datatype="html">
+        <source>Mínimo 10 caracteres</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/register.page.html</context>
+          <context context-type="linenumber">44,45</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+          <context context-type="linenumber">90,91</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="register.passwordInvalid" datatype="html">
+        <source>La contraseña debe tener entre 10 y 128 caracteres</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/register.page.html</context>
+          <context context-type="linenumber">47,50</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="register.passwordIsEmail" datatype="html">
+        <source> La contraseña no puede ser tu email </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/register.page.html</context>
+          <context context-type="linenumber">53,57</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="register.dataNotice" datatype="html">
+        <source> Usamos tu email para iniciar sesión y tu nombre para mostrarte en tus grupos. No lo compartimos fuera de LinkVault. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/register.page.html</context>
+          <context context-type="linenumber">58,62</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="register.emailTaken" datatype="html">
+        <source> Ya existe una cuenta con este email. <x id="START_LINK" ctype="x-a" equiv-text="&lt;a routerLink=&quot;/login&quot; [queryParams]=&quot;returnQueryParams&quot; [state]=&quot;{ email: attemptedEmail() }&quot;
+            &gt;"/>¿Quieres iniciar sesión?<x id="CLOSE_LINK" ctype="x-a" equiv-text="&lt;/a
+          &gt;"/></source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/register.page.html</context>
+          <context context-type="linenumber">65,70</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="register.submit" datatype="html">
+        <source> Crear cuenta </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/register.page.html</context>
+          <context context-type="linenumber">76,79</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="register.haveAccount" datatype="html">
+        <source> ¿Ya tienes cuenta? <x id="START_LINK" ctype="x-a" equiv-text="&lt;a routerLink=&quot;/login&quot; [queryParams]=&quot;returnQueryParams&quot;&gt;"/>Inicia sesión<x id="CLOSE_LINK" ctype="x-a" equiv-text="&lt;/a&gt;"/></source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/register.page.html</context>
+          <context context-type="linenumber">81,83</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="home.greeting" datatype="html">
+        <source>Hola, <x id="INTERPOLATION" equiv-text="{{ displayName() }}"/></source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/home/home.page.html</context>
+          <context context-type="linenumber">2,4</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="profile.title" datatype="html">
+        <source>Perfil</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+          <context context-type="linenumber">2,4</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="profile.displayName" datatype="html">
+        <source>Nombre</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+          <context context-type="linenumber">11,12</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="profile.displayNameInvalid" datatype="html">
+        <source>Escribe un nombre de hasta 60 caracteres</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+          <context context-type="linenumber">15,18</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="profile.nameSaved" datatype="html">
+        <source>Nombre guardado</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+          <context context-type="linenumber">21,23</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="profile.saveName" datatype="html">
+        <source> Guardar nombre </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+          <context context-type="linenumber">28,32</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="profile.passwordTitle" datatype="html">
+        <source>Cambiar la contraseña</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+          <context context-type="linenumber">39,42</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="profile.currentPassword" datatype="html">
+        <source>Contraseña actual</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+          <context context-type="linenumber">42,44</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="profile.currentPasswordRequired" datatype="html">
+        <source>Introduce tu contraseña actual</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+          <context context-type="linenumber">64,68</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="profile.newPassword" datatype="html">
+        <source>Nueva contraseña</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+          <context context-type="linenumber">69,71</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="profile.newPasswordInvalid" datatype="html">
+        <source>La nueva contraseña debe tener al menos 10 caracteres y no puede ser tu email</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+          <context context-type="linenumber">93,96</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+          <context context-type="linenumber">99,103</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+          <context context-type="linenumber">115,118</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="profile.passwordChanged" datatype="html">
+        <source> Contraseña cambiada. Cerramos tu sesión en los demás dispositivos. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+          <context context-type="linenumber">105,108</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="profile.wrongCurrentPassword" datatype="html">
+        <source> La contraseña actual no es correcta </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+          <context context-type="linenumber">111,113</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="profile.changePassword" datatype="html">
+        <source> Cambiar contraseña </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+          <context context-type="linenumber">128,131</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="shell.brand" datatype="html">
+        <source>LinkVault</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/layout/shell/shell.html</context>
           <context context-type="linenumber">2,3</context>
         </context-group>
       </trans-unit>
-      <trans-unit id="home.underConstruction" datatype="html">
-        <source>La aplicación está en construcción.</source>
+      <trans-unit id="shell.profile" datatype="html">
+        <source>Perfil</source>
         <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/home/home.page.html</context>
-          <context context-type="linenumber">3,5</context>
+          <context context-type="sourcefile">apps/web/src/app/layout/shell/shell.html</context>
+          <context context-type="linenumber">4,6</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="shell.logout" datatype="html">
+        <source> Cerrar sesión </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/layout/shell/shell.html</context>
+          <context context-type="linenumber">12,14</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="error.tooManyAttempts" datatype="html">
+        <source>Demasiados intentos. Vuelve a intentarlo en <x id="INTERPOLATION" equiv-text="{{ minutes }}"/> <x id="ICU" equiv-text="{minutes, plural, =1 {minuto} other {minutos}}" xid="4693155463045116188"/></source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/shared/ui/request-error.ts</context>
+          <context context-type="linenumber">17,19</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="4693155463045116188" datatype="html">
+        <source>{VAR_PLURAL, plural, =1 {minuto} other {minutos}}</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/shared/ui/request-error.ts</context>
+          <context context-type="linenumber">18</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="error.tooManyAttemptsLater" datatype="html">
+        <source>Demasiados intentos. Vuelve a intentarlo más tarde</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/shared/ui/request-error.ts</context>
+          <context context-type="linenumber">22,25</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="error.offline" datatype="html">
+        <source>No pudimos conectar con LinkVault. Revisa tu conexión</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/shared/ui/request-error.ts</context>
+          <context context-type="linenumber">28,30</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="error.unknown" datatype="html">
+        <source>Algo salió mal. Inténtalo de nuevo</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/shared/ui/request-error.ts</context>
+          <context context-type="linenumber">32,34</context>
         </context-group>
       </trans-unit>
     </body>

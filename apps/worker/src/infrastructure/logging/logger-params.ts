@@ -5,6 +5,9 @@ import type { WorkerConfig } from '../config/worker-config.schema';
 
 const SENSITIVE_FIELDS = [
   'password',
+  'currentPassword',
+  'newPassword',
+  'passwordHash',
   'apiKey',
   'accessToken',
   'refreshToken',

@@ -1,0 +1,17 @@
+<mat-toolbar class="flex gap-2">
+  <a mat-button routerLink="/" i18n="@@shell.brand">LinkVault</a>
+  <span class="flex-1"></span>
+  <a mat-button routerLink="/perfil" i18n="@@shell.profile">Perfil</a>
+  <button
+    mat-button
+    type="button"
+    [disabled]="loggingOut()"
+    (click)="logout()"
+    i18n="@@shell.logout"
+  >
+    Cerrar sesión
+  </button>
+</mat-toolbar>
+<main>
+  <router-outlet />
+</main>

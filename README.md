@@ -76,6 +76,100 @@ REDIS_URL=redis://localhost:6380
 
 La URL de la app (`REDIS_URL`, `MONGO_URI`) debe apuntar al mismo puerto que publicas.
 
+## Autenticación
+
+Cuentas con email y contraseña (Argon2id) y sesión según [ADR-012](docs/adr/ADR-012.md) y
+[ADR-020](docs/adr/ADR-020.md). No hay verificación de email ni recuperación de contraseña: llegan en un change posterior
+(`auth-email-recovery` en `openspec-changes.yaml`).
+
+### Flujo
+
+1. **Registro o login.** `POST /api/auth/register` (`email`, `password`, `displayName`) responde `201` y
+   `POST /api/auth/login` (`email`, `password`) responde `200`. Ambos abren una sesión nueva y devuelven en el cuerpo
+   `accessToken`, `expiresIn` (segundos) y el perfil, y fijan la cookie `lv_refresh` (`HttpOnly`, `SameSite=Lax`,
+   `Path=/api/auth`; `Secure` con `NODE_ENV=production`) con un refresh token opaco. En la base de datos solo se guarda su
+   hash.
+2. **Peticiones autenticadas.** El SPA guarda el access token solo en memoria (nunca en `localStorage`, `sessionStorage`,
+   IndexedDB ni cookies) y lo envía como `Authorization: Bearer`. Toda ruta bajo `/api` lo exige salvo register, login,
+   refresh y logout; `/health` y `/health/live` siguen públicos. Sin token válido, la API responde `401` con código
+   `unauthorized`.
+3. **Refresh.** Ante ese `401`, el SPA llama a `POST /api/auth/refresh`, que lee el refresh token de la cookie, lo rota
+   (cookie nueva) y devuelve un access token nuevo. El refresh caduca a los `AUTH_REFRESH_TTL_DAYS` desde la última rotación,
+   sin pasar de `AUTH_REFRESH_MAX_DAYS` desde que se abrió la sesión. Presentar un token rotado hace menos de 10 s responde
+   `409 refresh_conflict` (pestañas que refrescan a la vez; el SPA serializa los refresh y reintenta). Pasados 10 s cuenta
+   como reuso: revoca la sesión completa y responde `401 invalid_refresh`.
+4. **Logout.** `POST /api/auth/logout` revoca la sesión de la cookie, la borra y responde `204`, haya cookie o no. El access
+   token ya emitido sigue valiendo hasta que caduca (15 min con `.env.example`).
+5. **Cambio de contraseña.** `POST /api/auth/password` (`currentPassword`, `newPassword`, con access token) responde `204` y
+   revoca las demás sesiones del usuario; la sesión actual sigue abierta tras un refresh.
+
+Perfil propio: `GET /api/users/me` y `PATCH /api/users/me` (`displayName`, `aiConsent.externalProviders`, `outputLanguage`,
+`redactName`). El SPA solo muestra el email, el nombre y el cambio de contraseña; los controles de IA llegan con
+`cv-match-suggestions`.
+
+**Protecciones.** Todo `POST /api/auth/*` exige la cabecera `X-Requested-With: linkvault` (si falta, `403`) y, si lleva
+cuerpo, `Content-Type: application/json` (si no, `415`). Los intentos se cuentan en Redis por ventanas fijas de 15 minutos:
+5 fallos por email (exista o no la cuenta), 50 logins fallidos por IP y 10 registros por IP; al superarlos la API responde
+`429 too_many_attempts` con `Retry-After`. Si Redis no responde, las peticiones pasan sin límite y la API registra un aviso.
+
+### Rutas del SPA
+
+| Ruta        | Acceso     | Contenido                                            |
+| ----------- | ---------- | ---------------------------------------------------- |
+| `/login`    | Sin sesión | Login. Con sesión redirige a `/`.                    |
+| `/registro` | Sin sesión | Registro. Con sesión redirige a `/`.                 |
+| `/`         | Con sesión | Saludo "Hola, {displayName}".                        |
+| `/perfil`   | Con sesión | Email (solo lectura), nombre y cambio de contraseña. |
+
+Sin sesión, una ruta autenticada lleva a `/login?returnUrl=<ruta>` y, tras entrar, vuelve a ella. Al cargar, el SPA muestra
+"Conectando…" e intenta restaurar la sesión con la cookie durante como máximo 10 segundos.
+
+### Variables
+
+`api` valida estas variables al arrancar; si una falta o no es válida, el arranque falla nombrándola sin mostrar su valor.
+`worker` no las lee.
+
+| Variable                        | `.env.example`                             | Regla                                                                                 |
+| ------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------- |
+| `AUTH_JWT_SECRET`               | `dev-only-change-me-not-a-real-jwt-secret` | Mínimo 32 caracteres; con `NODE_ENV=production` se rechaza el valor de ejemplo.       |
+| `AUTH_ACCESS_TOKEN_TTL_SECONDS` | `900`                                      | Vida del access token, de 60 a 3600 segundos.                                         |
+| `AUTH_REFRESH_TTL_DAYS`         | `30`                                       | Caducidad deslizante del refresh token, de 1 a 90 días.                               |
+| `AUTH_REFRESH_MAX_DAYS`         | `90`                                       | Máximo absoluto de una sesión, hasta 365 días y no menor que `AUTH_REFRESH_TTL_DAYS`. |
+
+El secreto firma los access tokens y las claves de los contadores de intentos: cambiarlo invalida los access tokens emitidos
+y reinicia esos contadores. En producción usa un valor propio, por ejemplo 48 bytes aleatorios en base64url.
+
+### Probar en local
+
+Con la infraestructura y las apps en marcha (ver [Puesta en marcha](#puesta-en-marcha)), abre http://localhost:4200: el
+proxy de `web` reenvía `/api` a la API en el mismo origen, así que la cookie funciona sin CORS. Crea una cuenta en
+`/registro`, recarga en `/perfil` para comprobar que la sesión se restaura y cierra sesión desde la barra.
+
+Contra la API directamente, con un archivo de cookies de `curl` (contiene el refresh token: bórralo al terminar):
+
+```bash
+H='X-Requested-With: linkvault'
+J='Content-Type: application/json'
+
+curl -i -c cookies.txt -H "$H" -H "$J" http://localhost:3000/api/auth/register \
+  -d '{"email":"ana@example.com","password":"una-clave-de-prueba","displayName":"Ana"}'
+curl -i -c cookies.txt -H "$H" -H "$J" http://localhost:3000/api/auth/login \
+  -d '{"email":"ana@example.com","password":"una-clave-de-prueba"}'
+
+curl -i http://localhost:3000/api/users/me -H "Authorization: Bearer <accessToken>"   # sin cabecera: 401
+
+curl -i -b cookies.txt -c cookies.txt -H "$H" -X POST http://localhost:3000/api/auth/refresh   # rota la cookie
+curl -i -b cookies.txt -c cookies.txt -H "$H" -X POST http://localhost:3000/api/auth/logout    # 204
+rm cookies.txt
+```
+
+Si durante las pruebas quedas bloqueado con `429`, espera a que pase la ventana de 15 minutos o borra los contadores de tu
+Redis local:
+
+```bash
+docker compose exec redis sh -c "redis-cli --scan --pattern 'auth:*' | xargs -r redis-cli del"
+```
+
 ## Calidad
 
 ```bash

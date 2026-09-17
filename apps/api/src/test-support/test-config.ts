@@ -29,6 +29,10 @@ export async function apiTestConfig(
     AI_CHAIN: 'mock',
     FEATURE_HEADLESS_EXTRACTION: false,
     LOG_LEVEL: 'silent',
+    AUTH_JWT_SECRET: 'test-only-jwt-secret-at-least-32-chars',
+    AUTH_ACCESS_TOKEN_TTL_SECONDS: 900,
+    AUTH_REFRESH_TTL_DAYS: 30,
+    AUTH_REFRESH_MAX_DAYS: 90,
     ...overrides,
   };
 }
