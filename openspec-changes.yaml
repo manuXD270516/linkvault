@@ -27,6 +27,9 @@ changes:
       docs/design-v0.2.md §4.11: libs/ai/evals/<task>/golden.jsonl, corredor `nx run ai:eval --task --provider`,
       métricas schema_validity_rate, field_accuracy, skills_recall/precision, latency_p50, cost_per_run; reporte Markdown en reports/.
       CI corre con mock/replay. Incluir 5 vacantes anonimizadas de ejemplo (placeholder para reemplazar por reales).
+      Modo `record` del MockDeterministicProvider (diferido desde ai-gateway-core, ADR-018): delega en un upstream real, guarda solo
+      respuestas que validan, y si el upstream es `external` redacta con PiiRedactor antes de enviar y guarda el texto reinyectado.
+      Punto de entrada real para grabar fuera del preset de Vitest (target `ai:record-fixtures`) y /lv:fixtures actualizado para usarlo.
   - name: auth-users
     adrs: [012]
     agents: [backend-dev, frontend-dev]
@@ -53,6 +56,8 @@ changes:
       Worker: job enrich-link idempotente, ExtractorStrategy chain (OG/JSON-LD → adapter por plataforma → runTask extract-job →
       headless tras flag), merge por procedencia por campo, cola por dominio con limiter y robots.txt, snapshot en MinIO,
       previewStatus pending|enriched|partial|failed|manual, SSE link.enriched. Frontend: card con preview, edición manual con origen por campo.
+      extract-job se declara `dataSensitivity: public` y cada ejecución pasa un plazo total por link en `ctx.signal`, para que una
+      importación masiva (B1) no espere los timeouts completos de toda la cadena (ADR-018).
   - name: applications-tracking
     adrs: [004, 015]
     agents: [backend-dev, frontend-dev]
@@ -84,6 +89,8 @@ changes:
       docs/design-v0.2.md §4.7, §4.8, §4.12: tareas match-cv y critique-suggestions, evaluator-optimizer acotado (máx 2, juez distinto
       si hay ≥2 proveedores), MatchReport con evidence obligatoria, RuleBasedMatcher degradado, ai_analyses, Application.fitScore,
       ai_feedback ("no me convence"), SSE analysis.step. Frontend: diff aceptar/rechazar, badge de fit.
+      PiiRedactor: detectores de dirección postal y documento de identidad (CI con extensión departamental, DNI, cédula), afinados
+      con CVs reales anonimizados (diferidos desde ai-gateway-core, ADR-018).
   - name: study-roadmap
     adrs: [014]
     agents: [ai-engineer, frontend-dev]
