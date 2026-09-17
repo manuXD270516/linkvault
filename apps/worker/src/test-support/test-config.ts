@@ -27,7 +27,6 @@ export async function workerTestConfig(
     MONGO_URI: `mongodb://127.0.0.1:${await closedPort()}/linkvault?directConnection=true`,
     REDIS_URL: `redis://127.0.0.1:${await closedPort()}`,
     AI_CHAIN: 'mock',
-    AI_MOCK_MODE: 'replay',
     FEATURE_HEADLESS_EXTRACTION: false,
     LOG_LEVEL: 'silent',
     ...overrides,

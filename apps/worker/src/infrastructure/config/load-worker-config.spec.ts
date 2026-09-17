@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseEnv as parseDotenv } from 'node:util';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { parseEnv } from './env-parser';
+import { formatInvalidVariables, parseEnv } from './env-parser';
 import { loadWorkerConfigOrExit } from './load-worker-config';
 import { workerConfigSchema } from './worker-config.schema';
 
@@ -61,6 +61,32 @@ describe('worker configuration', () => {
     });
   });
 
+  it('accepts AI_CHAIN=none without AI_MOCK_MODE', () => {
+    const result = parseEnv(workerConfigSchema, {
+      ...readEnvExample(),
+      AI_CHAIN: 'none',
+      AI_MOCK_MODE: undefined,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.config.AI_CHAIN).toBe('none');
+  });
+
+  it('prints the detail of an invalid variable', () => {
+    expect(
+      formatInvalidVariables('worker', [
+        { name: 'MONGO_URI', reason: 'missing' },
+        {
+          name: 'AI_CHAIN',
+          reason: 'invalid',
+          detail: 'unknown provider gpt-magic',
+        },
+      ]),
+    ).toBe(
+      '[worker] Invalid configuration, check these environment variables: MONGO_URI (missing), AI_CHAIN (invalid: unknown provider gpt-magic)\n',
+    );
+  });
+
   it('accepts .env.example unchanged', () => {
     const exit = vi.spyOn(process, 'exit');
 
@@ -72,7 +98,6 @@ describe('worker configuration', () => {
       WORKER_HEALTH_PORT: 3001,
       MONGO_URI: 'mongodb://localhost:27017/linkvault?directConnection=true',
       AI_CHAIN: 'mock',
-      AI_MOCK_MODE: 'replay',
       FEATURE_HEADLESS_EXTRACTION: false,
     });
   });

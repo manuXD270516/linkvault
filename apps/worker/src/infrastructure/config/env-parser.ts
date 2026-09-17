@@ -1,9 +1,13 @@
 import type { z } from 'zod';
 
-/** Variable de entorno rechazada por el schema. Nunca incluye el valor recibido. */
+/**
+ * Variable de entorno rechazada. Nunca incluye el valor recibido: `detail` solo lleva identificadores o textos fijos
+ * (p. ej. los problemas de `parseAiConfig`, D12 de ai-gateway-core), nunca valores de credenciales.
+ */
 export interface InvalidVariable {
   readonly name: string;
   readonly reason: 'missing' | 'invalid';
+  readonly detail?: string;
 }
 
 export type EnvParseResult<T> =
@@ -43,13 +47,16 @@ export function parseEnv<S extends z.ZodObject>(
   return { ok: false, invalid: [...invalid.values()] };
 }
 
-/** Mensaje de error de arranque: nombres de variables y motivo, sin valores. */
+/** Mensaje de error de arranque: nombres de variables, motivo y detalle, sin valores. */
 export function formatInvalidVariables(
   service: string,
   invalid: readonly InvalidVariable[],
 ): string {
   const list = invalid
-    .map((variable) => `${variable.name} (${variable.reason})`)
+    .map(
+      (variable) =>
+        `${variable.name} (${variable.reason}${variable.detail === undefined ? '' : `: ${variable.detail}`})`,
+    )
     .join(', ');
   return `[${service}] Invalid configuration, check these environment variables: ${list}\n`;
 }

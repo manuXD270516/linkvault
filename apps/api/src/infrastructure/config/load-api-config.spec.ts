@@ -72,9 +72,30 @@ describe('api configuration', () => {
       API_PORT: 3000,
       MONGO_URI: 'mongodb://localhost:27017/linkvault?directConnection=true',
       AI_CHAIN: 'mock',
-      AI_MOCK_MODE: 'replay',
       FEATURE_HEADLESS_EXTRACTION: false,
     });
+  });
+
+  it('accepts AI_CHAIN=none without AI_MOCK_MODE', () => {
+    const result = parseEnv(apiConfigSchema, {
+      ...readEnvExample(),
+      AI_CHAIN: 'none',
+      AI_MOCK_MODE: undefined,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.config.AI_CHAIN).toBe('none');
+  });
+
+  it('does not validate AI_MOCK_MODE, whose rule lives in parseAiConfig', () => {
+    const result = parseEnv(apiConfigSchema, {
+      ...readEnvExample(),
+      AI_CHAIN: 'ollama',
+      AI_MOCK_MODE: 'record',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.config).not.toHaveProperty('AI_MOCK_MODE');
   });
 
   it('keeps .env.example free of AI_PROVIDER and real-looking API keys', () => {
