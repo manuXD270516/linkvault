@@ -160,7 +160,9 @@ Las tareas que tocan el modelo (5.2 a 5.4) terminan el apply con el marcador `AP
 humana en la conversación, en lugar de descargar o marcar sin hacer.
 
 Resultado (tarea 5.2): la app de escritorio solo tenía `qwen2.5:3b`; el humano eligió descargar `qwen2.5:7b` en la app de
-escritorio (`127.0.0.1:11434`, GPU), y `GET /api/tags` confirmó el modelo antes de grabar.
+escritorio (`127.0.0.1:11434`, GPU), y `GET /api/tags` confirmó el modelo antes de grabar. Con GPU la grabación de los 5 casos
+(tarea 5.3) terminó en unos 16 s, sin reintentos ni contingencia de D9, así que el límite de 300 s de `--timeout-ms` no
+llegó a condicionar la grabación; en CPU sigue siendo el valor recomendado.
 
 ### D9 — Grabación del golden y contingencia
 
