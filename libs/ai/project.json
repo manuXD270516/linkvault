@@ -13,6 +13,37 @@
           "tsc --noEmit -p tsconfig.spec.json"
         ]
       }
+    },
+    "eval": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node --import tsx libs/ai/src/evals/cli/eval.ts",
+        "cwd": ".",
+        "env": {
+          "TSX_TSCONFIG_PATH": "libs/ai/tsconfig.lib.json"
+        }
+      }
+    },
+    "eval-ci": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "node --import tsx libs/ai/src/evals/cli/eval.ts --all --provider=mock",
+        "cwd": ".",
+        "env": {
+          "TSX_TSCONFIG_PATH": "libs/ai/tsconfig.lib.json"
+        }
+      }
+    },
+    "record-fixtures": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node --import tsx libs/ai/src/evals/cli/record-fixtures.ts",
+        "cwd": ".",
+        "env": {
+          "TSX_TSCONFIG_PATH": "libs/ai/tsconfig.lib.json"
+        }
+      }
     }
   }
 }

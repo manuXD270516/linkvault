@@ -50,6 +50,7 @@
     "prettier": "3.9.6",
     "tailwindcss": "^4.3.3",
     "tslib": "^2.3.0",
+    "tsx": "4.23.13",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.70.0",
     "unplugin-swc": "^1.6.0",

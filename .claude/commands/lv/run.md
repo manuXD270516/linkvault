@@ -14,4 +14,3 @@ Ejecuta en orden, deteniéndote SOLO si una etapa devuelve su marcador de fallo;
 8) /lv:archive <change>        → luego `git add -A && git commit -m "feat(<área>): <change>"`
 9) /lv:ship <change>           → salvo --no-ship
 Al final imprime una tabla etapa/marcador/duración aproximada y la línea exacta "RUN: OK <change>" o "RUN: FALLO <etapa> (motivo)".
-Si el siguiente change del manifiesto es ai-eval-harness, ejecuta /lv:golden 10 justo después de /lv:apply.
