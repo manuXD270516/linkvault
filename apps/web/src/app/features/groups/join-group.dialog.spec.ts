@@ -7,6 +7,7 @@ import type { GroupSummary } from '@linkvault/shared';
 import {
   apiError,
   buttonWithText,
+  flushGroupDetail,
   flushGroupsList,
   providePageTesting,
   sessionWith,
@@ -94,6 +95,13 @@ describe('JoinGroupDialog', () => {
     await flushGroupsList(http, [joined]);
 
     await vi.waitFor(() => expect(router.url).toBe('/grupos/g2'));
+    await flushGroupDetail(http, {
+      id: 'g2',
+      name: 'Frontend Bolivia',
+      role: 'member',
+      memberCount: 4,
+      createdAt: '2026-09-10T12:00:00.000Z',
+    });
     await vi.waitFor(() =>
       expect(document.body.querySelector('mat-dialog-container')).toBeNull(),
     );

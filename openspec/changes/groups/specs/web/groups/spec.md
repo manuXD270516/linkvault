@@ -125,7 +125,8 @@ guardada.
 
 - **GIVEN** el owner de "Backend Bolivia" en el detalle
 - **WHEN** copia la invitación
-- **THEN** el texto copiado SHALL empezar por `http` y contener `/unirse?codigo=` con el código y el nombre del grupo
+- **THEN** el texto copiado SHALL ser el mensaje de invitación con el nombre del grupo, el código y un enlace absoluto que
+  empieza por `http` y contiene `/unirse?codigo=`
 
 #### Scenario: Grupo sin links todavía
 

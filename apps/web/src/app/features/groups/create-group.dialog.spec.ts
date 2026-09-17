@@ -7,6 +7,7 @@ import type { GroupDetail } from '@linkvault/shared';
 import {
   apiError,
   buttonWithText,
+  flushGroupDetail,
   flushGroupsList,
   providePageTesting,
   sessionWith,
@@ -100,6 +101,7 @@ describe('CreateGroupDialog', () => {
     ]);
 
     await vi.waitFor(() => expect(router.url).toBe('/grupos/g3'));
+    await flushGroupDetail(http, created);
     await vi.waitFor(() =>
       expect(document.body.querySelector('mat-dialog-container')).toBeNull(),
     );
@@ -140,5 +142,6 @@ describe('CreateGroupDialog', () => {
     await flushGroupsList(http);
 
     await vi.waitFor(() => expect(router.url).toBe('/grupos/g3'));
+    await flushGroupDetail(http, created);
   });
 });

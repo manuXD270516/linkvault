@@ -43,10 +43,10 @@
 - [x] 7.3 [frontend] `/grupos` con línea de propósito, tarjetas y estado vacío; verificar con "Estado vacío", "Lista con grupos" y "Lista actualizada al volver".
 - [x] 7.4 [frontend] Diálogos de crear y unirse (el nombre se valida con el schema compartido; el código solo se normaliza en cliente, el formato lo juzga la API) y mensajes por código; verificar con "Grupo creado", "Límite de grupos", "Unirse con un código válido", "Código inválido" y "Límite de grupos al unirse".
 - [x] 7.5 [frontend] Ruta `/unirse` que lee `codigo` de la query y la limpia con `replaceUrl`; verificar con "Enlace de invitación", "Enlace de invitación sin sesión", "Enlace de invitación sin cuenta" y "El código no queda en la URL".
-- [ ] 7.6 [frontend] `/grupos/:id` con miembros (nombre, rol y fecha de alta), aviso de links pendientes y, para el owner, código con advertencia; verificar con "Detalle como owner", "Detalle como miembro", "Grupo sin links todavía" y "Grupo ajeno".
-- [ ] 7.7 [frontend] Confirmación compartida y acciones de salir y borrar (con el recuento en el texto); verificar con "Salir del grupo", "Cancelar el borrado" y "Borrado informado".
-- [ ] 7.8 [frontend] Renombrar y regenerar el código (confirmación que aclara que los miembros actuales siguen dentro); verificar con tests del renombrado y de la regeneración, incluido el texto de la confirmación.
-- [ ] 7.9 [frontend] Copiar la invitación (URL absoluta con `/unirse?codigo=`, con respaldo si no hay portapapeles) y expulsar con la propuesta de regenerar; verificar con "Invitación copiada" y "Expulsar ofrece regenerar el código".
+- [x] 7.6 [frontend] `/grupos/:id` con miembros (nombre, rol y fecha de alta), aviso de links pendientes y, para el owner, código con advertencia; verificar con "Detalle como owner", "Detalle como miembro", "Grupo sin links todavía" y "Grupo ajeno".
+- [x] 7.7 [frontend] Confirmación compartida y acciones de salir y borrar (con el recuento en el texto); verificar con "Salir del grupo", "Cancelar el borrado" y "Borrado informado".
+- [x] 7.8 [frontend] Renombrar y regenerar el código (confirmación que aclara que los miembros actuales siguen dentro); verificar con tests del renombrado y de la regeneración, incluido el texto de la confirmación.
+- [x] 7.9 [frontend] Copiar la invitación (URL absoluta con `/unirse?codigo=`, con respaldo si no hay portapapeles) y expulsar con la propuesta de regenerar; verificar con "Invitación copiada" y "Expulsar ofrece regenerar el código".
 - [ ] 7.10 [frontend] Marcar los textos i18n de grupos, ejecutar `extract-i18n` y traducir `messages.en.xlf`; verificar con "Traducciones completas" y `pnpm nx build web`.
 
 ## 8. Cierre

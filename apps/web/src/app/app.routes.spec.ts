@@ -9,6 +9,7 @@ import { type Route, Router, provideRouter } from '@angular/router';
 import { By } from '@angular/platform-browser';
 import { RouterTestingHarness } from '@angular/router/testing';
 import type { SessionResponse } from '@linkvault/shared';
+import { flushGroupDetail } from '../testing/auth-testing';
 import { appRoutes } from './app.routes';
 import { authGuard, guestGuard } from './core/auth/auth.guards';
 import { authInterceptor } from './core/auth/auth.interceptor';
@@ -116,6 +117,14 @@ describe('appRoutes', () => {
       const harness = await RouterTestingHarness.create();
 
       await harness.navigateByUrl('/grupos/g1', Shell);
+      // El detalle pide el grupo y sus miembros al entrar (7.6); aquí solo interesa la ruta.
+      await flushGroupDetail(http, {
+        id: 'g1',
+        name: 'Backend Bolivia',
+        role: 'member',
+        memberCount: 1,
+        createdAt: '2026-09-17T12:00:00.000Z',
+      });
       expect(harness.fixture.debugElement.query(By.directive(GroupDetailPage))).not.toBeNull();
 
       await harness.navigateByUrl('/unirse', Shell);

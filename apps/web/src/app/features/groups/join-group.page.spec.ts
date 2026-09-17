@@ -4,6 +4,7 @@ import { Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import {
   buttonWithText,
+  flushGroupDetail,
   flushGroupsList,
   providePageTesting,
   sessionWith,
@@ -136,5 +137,12 @@ describe('JoinGroupPage', () => {
     await flushGroupsList(http);
 
     await vi.waitFor(() => expect(router.url).toBe('/grupos/g2'));
+    await flushGroupDetail(http, {
+      id: 'g2',
+      name: 'Frontend Bolivia',
+      role: 'member',
+      memberCount: 4,
+      createdAt: '2026-09-10T12:00:00.000Z',
+    });
   });
 });

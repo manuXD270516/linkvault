@@ -1,0 +1,136 @@
+<section class="mx-auto flex max-w-2xl flex-col gap-6 p-6">
+  @if (notFound()) {
+    <p role="alert" i18n="@@groups.detail.notFound">Ese grupo no existe o ya no perteneces a él</p>
+    <a routerLink="/grupos" i18n="@@groups.detail.backToList">Volver a tus grupos</a>
+  } @else if (group(); as currentGroup) {
+    <h1 class="text-2xl font-medium">{{ currentGroup.name }}</h1>
+
+    <p i18n="@@groups.detail.linksPending">
+      Aquí aparecerán las ofertas que compartan los miembros. Pronto podrás guardar links en este
+      grupo.
+    </p>
+
+    @if (isOwner() && currentGroup.inviteCode; as inviteCode) {
+      <section class="flex flex-col gap-2">
+        <h2 class="text-xl font-medium" i18n="@@groups.detail.inviteTitle">Código de invitación</h2>
+        <p class="font-mono text-lg" data-testid="invite-code">{{ inviteCode }}</p>
+        <p i18n="@@groups.detail.inviteWarning">
+          Quien tenga este código puede entrar y ver los nombres de los miembros. Regenéralo si se
+          filtró.
+        </p>
+        @if (invitationCopied()) {
+          <p role="status" i18n="@@groups.detail.invitationCopied">Invitación copiada</p>
+        }
+        @if (invitationToCopy(); as invitation) {
+          <p i18n="@@groups.detail.invitationFallback">
+            No pudimos usar el portapapeles. Copia este mensaje:
+          </p>
+          <textarea class="w-full" rows="3" readonly #invitationField data-testid="invitation-fallback">{{ invitation }}</textarea>
+        }
+
+        <div class="flex flex-wrap gap-2">
+          <button
+            mat-stroked-button
+            type="button"
+            (click)="copyInvitation()"
+            i18n="@@groups.detail.copyInvitation"
+          >
+            Copiar invitación
+          </button>
+          <button
+            mat-stroked-button
+            type="button"
+            [disabled]="working()"
+            (click)="rename()"
+            i18n="@@groups.detail.rename"
+          >
+            Renombrar
+          </button>
+          <button
+            mat-stroked-button
+            type="button"
+            [disabled]="working()"
+            (click)="rotateInviteCode()"
+            i18n="@@groups.detail.rotateInviteCode"
+          >
+            Regenerar el código
+          </button>
+        </div>
+      </section>
+    }
+
+    <section class="flex flex-col gap-2">
+      <h2 class="text-xl font-medium" i18n="@@groups.detail.membersTitle">Miembros</h2>
+      <ul class="flex list-none flex-col gap-2 p-0">
+        @for (member of members(); track member.userId) {
+          <li class="flex flex-wrap items-center gap-2">
+            <span class="font-medium">{{ member.displayName }}</span>
+            <span>
+              @if (member.role === 'owner') {
+                <ng-container i18n="@@groups.role.owner">Propietario</ng-container>
+              } @else {
+                <ng-container i18n="@@groups.role.member">Miembro</ng-container>
+              }
+            </span>
+            <span i18n="@@groups.detail.joinedAt"
+              >Desde el {{ member.joinedAt | date: 'dd/MM/yyyy' }}</span
+            >
+            @if (isOwner() && member.role !== 'owner') {
+              <button
+                mat-button
+                type="button"
+                [disabled]="working()"
+                (click)="removeMember(member)"
+                i18n="@@groups.detail.removeMember"
+              >
+                Expulsar
+              </button>
+            }
+          </li>
+        }
+      </ul>
+      @if (rotateOffer()) {
+        <div class="flex flex-wrap items-center gap-2" role="status">
+          <button
+            mat-stroked-button
+            type="button"
+            [disabled]="working()"
+            (click)="acceptRotateOffer()"
+            i18n="@@groups.detail.rotateAfterRemoval"
+          >
+            Regenerar el código para que no pueda volver a entrar
+          </button>
+          <button mat-button type="button" (click)="dismissRotateOffer()" i18n="@@groups.detail.rotateOfferDismiss">
+            Ahora no
+          </button>
+        </div>
+      }
+    </section>
+
+    @if (isOwner()) {
+      <button
+        mat-stroked-button
+        type="button"
+        [disabled]="working()"
+        (click)="remove()"
+        i18n="@@groups.detail.delete"
+      >
+        Borrar el grupo
+      </button>
+    } @else {
+      <button
+        mat-stroked-button
+        type="button"
+        [disabled]="working()"
+        (click)="leave()"
+        i18n="@@groups.detail.leave"
+      >
+        Salir del grupo
+      </button>
+    }
+  }
+
+  @if (failure(); as currentFailure) {
+    <lv-request-error [failure]="currentFailure" />
+  }
+</section>

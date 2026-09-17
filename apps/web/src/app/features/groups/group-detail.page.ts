@@ -1,13 +1,221 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { DatePipe } from '@angular/common';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  type ElementRef,
+  computed,
+  effect,
+  inject,
+  signal,
+  viewChild,
+} from '@angular/core';
+import { MatButtonModule } from '@angular/material/button';
+import { MatDialog } from '@angular/material/dialog';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import type { GroupDetail, GroupMember } from '@linkvault/shared';
+import { firstValueFrom } from 'rxjs';
+import {
+  type RequestFailure,
+  hasApiErrorCode,
+  toRequestFailure,
+} from '../../core/api/api-error';
+import { GroupsApi } from '../../core/groups/groups.api';
+import { GroupsStore } from '../../core/groups/groups.store';
+import { HOME_ROUTE } from '../../core/navigation/home-route';
+import { confirmWith } from '../../shared/ui/confirm.dialog';
+import { RequestError } from '../../shared/ui/request-error';
+import { RenameGroupDialog, type RenameGroupDialogData } from './rename-group.dialog';
 
-/** Página provisional de `/grupos/:id`: los miembros, el código y las acciones llegan en 7.6 a 7.9. */
+/**
+ * Detalle de un grupo (`/grupos/:id`): nombre, miembros con su rol y su fecha de alta y, para el owner, el código de
+ * invitación con su advertencia. Un `404` es el mismo para un grupo inexistente, uno ajeno y un identificador mal
+ * formado (D2), así que solo se puede decir que el grupo no existe o que el usuario ya no pertenece a él; además se
+ * quita de la lista guardada, que podría traerlo todavía.
+ */
 @Component({
   selector: 'lv-group-detail-page',
-  template: `
-    <section class="p-6">
-      <h1 class="text-2xl font-medium" i18n="@@groups.detail.title">Grupo</h1>
-    </section>
-  `,
+  imports: [DatePipe, MatButtonModule, RequestError, RouterLink],
+  templateUrl: './group-detail.page.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class GroupDetailPage {}
+export class GroupDetailPage {
+  private readonly api = inject(GroupsApi);
+  private readonly store = inject(GroupsStore);
+  private readonly dialog = inject(MatDialog);
+  private readonly router = inject(Router);
+  protected readonly groupId = inject(ActivatedRoute).snapshot.paramMap.get('id') ?? '';
+
+  protected readonly group = signal<GroupDetail | null>(null);
+  protected readonly members = signal<GroupMember[]>([]);
+  protected readonly notFound = signal(false);
+  protected readonly failure = signal<RequestFailure | null>(null);
+  protected readonly working = signal(false);
+  protected readonly isOwner = computed(() => this.group()?.role === 'owner');
+  /** Mensaje de invitación cuando no hay portapapeles: se muestra seleccionado para copiarlo a mano. */
+  protected readonly invitationToCopy = signal('');
+  protected readonly invitationCopied = signal(false);
+  /** Tras expulsar se ofrece regenerar el código; aceptar la oferta ya es la confirmación. */
+  protected readonly rotateOffer = signal(false);
+
+  private readonly invitationField = viewChild<ElementRef<HTMLTextAreaElement>>('invitationField');
+
+  constructor() {
+    void this.load();
+    // El respaldo aparece ya seleccionado, para que baste con copiar.
+    effect(() => this.invitationField()?.nativeElement.select());
+  }
+
+  protected async load(): Promise<void> {
+    this.failure.set(null);
+    try {
+      this.group.set(await this.api.getGroup(this.groupId));
+      this.members.set(await this.api.listMembers(this.groupId));
+    } catch (error: unknown) {
+      this.handle(error);
+    }
+  }
+
+  /** Salir del grupo: el owner no puede, así que solo se ofrece a los demás. */
+  protected async leave(): Promise<void> {
+    const confirmed = await confirmWith(this.dialog, {
+      title: $localize`:@@groups.detail.leaveTitle:Salir del grupo`,
+      message: $localize`:@@groups.detail.leaveMessage:Dejarás de ver este grupo. Para volver necesitarás el código de invitación.`,
+      confirmLabel: $localize`:@@groups.detail.leaveConfirm:Salir`,
+    });
+    if (!confirmed) {
+      return;
+    }
+    await this.run(async () => {
+      await this.store.leave(this.groupId);
+      await this.router.navigateByUrl(HOME_ROUTE);
+    });
+  }
+
+  /** Borrar el grupo: la confirmación dice a cuántos miembros afecta, porque no se puede deshacer. */
+  protected async remove(): Promise<void> {
+    const memberCount = this.group()?.memberCount ?? 0;
+    const confirmed = await confirmWith(this.dialog, {
+      title: $localize`:@@groups.detail.deleteTitle:Borrar el grupo`,
+      message: $localize`:@@groups.detail.deleteMessage:Se borrará para los ${memberCount}:COUNT: miembros. No se puede deshacer.`,
+      confirmLabel: $localize`:@@groups.detail.deleteConfirm:Borrar`,
+    });
+    if (!confirmed) {
+      return;
+    }
+    await this.run(async () => {
+      await this.store.remove(this.groupId);
+      await this.router.navigateByUrl(HOME_ROUTE);
+    });
+  }
+
+  /** Renombrar: el nombre se valida en el diálogo con el schema compartido y la lista se recarga para no mostrarlo viejo. */
+  protected async rename(): Promise<void> {
+    const current = this.group();
+    if (!current) {
+      return;
+    }
+    const name = await firstValueFrom(
+      this.dialog
+        .open<RenameGroupDialog, RenameGroupDialogData, string | undefined>(RenameGroupDialog, {
+          data: { name: current.name },
+        })
+        .afterClosed(),
+    );
+    if (name === undefined) {
+      return;
+    }
+    await this.run(async () => {
+      this.group.set(await this.api.renameGroup(this.groupId, name));
+      await this.store.load();
+    });
+  }
+
+  /** Regenerar el código: los miembros actuales siguen dentro, solo deja de servir el código anterior. */
+  protected async rotateInviteCode(): Promise<void> {
+    const confirmed = await confirmWith(this.dialog, {
+      title: $localize`:@@groups.detail.rotateTitle:Regenerar el código`,
+      message: $localize`:@@groups.detail.rotateMessage:Los miembros actuales siguen dentro; solo dejará de servir el código anterior`,
+      confirmLabel: $localize`:@@groups.detail.rotateConfirm:Regenerar`,
+    });
+    if (!confirmed) {
+      return;
+    }
+    await this.run(async () => {
+      const { inviteCode } = await this.api.rotateInviteCode(this.groupId);
+      this.group.update((group) => (group ? { ...group, inviteCode } : group));
+    });
+  }
+
+  /**
+   * Copia el mensaje de invitación con el enlace absoluto del SPA. Sin portapapeles (o si lo deniega el navegador), deja
+   * el mensaje visible y seleccionado para copiarlo a mano.
+   */
+  protected async copyInvitation(): Promise<void> {
+    const group = this.group();
+    if (!group?.inviteCode) {
+      return;
+    }
+    const link = `${window.location.origin}/unirse?codigo=${encodeURIComponent(group.inviteCode)}`;
+    const message = $localize`:@@groups.detail.invitationMessage:Únete a «${group.name}:NAME:» en LinkVault: ${link}:LINK: (código ${group.inviteCode}:CODE:)`;
+    this.invitationCopied.set(false);
+    this.invitationToCopy.set('');
+    try {
+      await navigator.clipboard.writeText(message);
+      this.invitationCopied.set(true);
+    } catch {
+      this.invitationToCopy.set(message);
+    }
+  }
+
+  /** Expulsar a un miembro: la lista se actualiza sin salir de la pantalla y se ofrece regenerar el código. */
+  protected async removeMember(member: GroupMember): Promise<void> {
+    const confirmed = await confirmWith(this.dialog, {
+      title: $localize`:@@groups.detail.removeMemberTitle:Expulsar del grupo`,
+      message: $localize`:@@groups.detail.removeMemberMessage:${member.displayName}:NAME: dejará de ver este grupo. Podrá volver a entrar si consigue el código.`,
+      confirmLabel: $localize`:@@groups.detail.removeMemberConfirm:Expulsar`,
+    });
+    if (!confirmed) {
+      return;
+    }
+    await this.run(async () => {
+      await this.store.removeMember(this.groupId, member.userId);
+      await this.load();
+      this.rotateOffer.set(true);
+    });
+  }
+
+  /** La oferta de regenerar tras expulsar ya cuenta como confirmación, así que no se vuelve a preguntar. */
+  protected async acceptRotateOffer(): Promise<void> {
+    this.rotateOffer.set(false);
+    await this.run(async () => {
+      const { inviteCode } = await this.api.rotateInviteCode(this.groupId);
+      this.group.update((group) => (group ? { ...group, inviteCode } : group));
+    });
+  }
+
+  protected dismissRotateOffer(): void {
+    this.rotateOffer.set(false);
+  }
+
+  /** Ejecuta una acción sin dejar que se solapen y traduciendo su fallo como el de la carga. */
+  private async run(action: () => Promise<void>): Promise<void> {
+    this.working.set(true);
+    this.failure.set(null);
+    try {
+      await action();
+    } catch (error: unknown) {
+      this.handle(error);
+    } finally {
+      this.working.set(false);
+    }
+  }
+
+  private handle(error: unknown): void {
+    if (hasApiErrorCode(error, 404, 'group_not_found')) {
+      this.notFound.set(true);
+      this.store.forget(this.groupId);
+      return;
+    }
+    this.failure.set(toRequestFailure(error));
+  }
+}
