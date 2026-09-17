@@ -49,7 +49,8 @@ Para bajar la infraestructura sin borrar datos: `docker compose down`.
 docker compose --profile ai-local up -d --wait   # añade ollama en http://localhost:11434
 ```
 
-No descarga modelos. Por defecto la IA va en mock determinista (`AI_CHAIN=mock`, `AI_MOCK_MODE=replay`).
+No descarga modelos. En desarrollo, `.env.example` usa el mock con `AI_CHAIN=mock` y `AI_MOCK_MODE=synth`; los tests y CI fuerzan `AI_CHAIN=mock` y `AI_MOCK_MODE=replay`. `AI_CHAIN=none` desactiva la IA (las tareas degradan).
+Un worker compilado que no arranque desde la raíz del workspace necesita `AI_PROMPTS_DIR=dist/apps/worker/assets/ai/prompts` (o la ruta absoluta equivalente).
 
 ### MongoDB
 
