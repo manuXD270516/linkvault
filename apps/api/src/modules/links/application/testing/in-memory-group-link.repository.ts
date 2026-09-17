@@ -26,6 +26,8 @@ export class InMemoryGroupLinkRepository implements GroupLinkRepository {
 
   /** Sesión con la que se escribió la última relación: un test comprueba que fue la de la transacción del alta. */
   lastSession: TransactionSession | null = null;
+  /** Cuántas veces se preguntó por los grupos que ya tienen un link: lo usa el test que descarta el N+1 (D4). */
+  groupsWithLinkCalls = 0;
 
   constructor(private readonly links: InMemoryJobLinkRepository) {}
 
@@ -87,6 +89,7 @@ export class InMemoryGroupLinkRepository implements GroupLinkRepository {
     groupIds: readonly string[],
     linkId: string,
   ): Promise<Set<string>> {
+    this.groupsWithLinkCalls += 1;
     const wanted = new Set(groupIds.filter((groupId) => isGroupId(groupId)));
     const found = new Set<string>();
     if (!isLinkId(linkId)) {

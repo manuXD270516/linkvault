@@ -10,6 +10,12 @@ export const MAX_URL_LENGTH = 2048;
 /** Máximo de caracteres del texto de una importación (spec links/sharing). */
 export const MAX_IMPORT_TEXT_LENGTH = 20_000;
 
+/**
+ * Máximo de links que una importación guarda por llamada (spec links/sharing). Cuenta solo los que hay que guardar, no
+ * los que ya estaban en el destino: así volver a pegar el mismo chat avanza con los siguientes en vez de no hacer nada.
+ */
+export const MAX_LINKS_PER_IMPORT = 50;
+
 /** Longitud en code points, el mismo criterio que zod 4. */
 function lengthOf(value: string): number {
   return [...value].length;
