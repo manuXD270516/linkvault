@@ -13,9 +13,12 @@ import { appRoutes } from './app.routes';
 import { authGuard, guestGuard } from './core/auth/auth.guards';
 import { authInterceptor } from './core/auth/auth.interceptor';
 import { SessionStore } from './core/auth/session.store';
+import { HOME_ROUTE } from './core/navigation/home-route';
 import { LoginPage } from './features/auth/login.page';
 import { RegisterPage } from './features/auth/register.page';
-import { HomePage } from './features/home/home.page';
+import { GroupDetailPage } from './features/groups/group-detail.page';
+import { GroupsListPage } from './features/groups/groups-list.page';
+import { JoinGroupPage } from './features/groups/join-group.page';
 import { ProfilePage } from './features/profile/profile.page';
 import { Shell } from './layout/shell/shell';
 
@@ -44,13 +47,24 @@ function routeAt(path: string, routes: Route[] | undefined = appRoutes): Route {
 describe('appRoutes', () => {
   it('loads every page lazily', () => {
     const shell = routeAt('');
-    const routes = [routeAt('login'), routeAt('registro'), shell, ...(shell.children ?? [])];
+    const pages = [routeAt('login'), routeAt('registro'), shell, ...(shell.children ?? [])].filter(
+      (route) => route.redirectTo === undefined,
+    );
 
-    expect(routes).toHaveLength(5);
-    for (const route of routes) {
+    // login, registro, el shell y sus cuatro páginas: /grupos, /grupos/:id, /unirse y /perfil.
+    expect(pages).toHaveLength(7);
+    for (const route of pages) {
       expect(route.component).toBeUndefined();
       expect(route.loadComponent).toBeTypeOf('function');
     }
+  });
+
+  it('redirects the empty route and the unknown ones to the home route', () => {
+    const shell = routeAt('');
+
+    expect(routeAt('', shell.children).redirectTo).toBe(HOME_ROUTE);
+    expect(routeAt('**').redirectTo).toBe(HOME_ROUTE);
+    expect(HOME_ROUTE).toBe('/grupos');
   });
 
   it('applies guestGuard to /login and /registro and authGuard to the shell', () => {
@@ -59,7 +73,9 @@ describe('appRoutes', () => {
     expect(routeAt('login').canActivate).toEqual([guestGuard]);
     expect(routeAt('registro').canActivate).toEqual([guestGuard]);
     expect(shell.canActivate).toEqual([authGuard]);
-    expect(routeAt('perfil', shell.children).canActivate).toBeUndefined();
+    for (const path of ['grupos', 'grupos/:id', 'unirse', 'perfil']) {
+      expect(routeAt(path, shell.children).canActivate).toBeUndefined();
+    }
   });
 
   describe('navigation', () => {
@@ -83,14 +99,25 @@ describe('appRoutes', () => {
 
     afterEach(() => http.verify());
 
-    it('shows the home page inside the shell with a session', async () => {
+    it('redirects / to the group list inside the shell with a session', async () => {
       store.setSession(session);
       const harness = await RouterTestingHarness.create();
 
       await harness.navigateByUrl('/', Shell);
 
-      expect(harness.fixture.debugElement.query(By.directive(HomePage))).not.toBeNull();
-      expect(harness.routeNativeElement?.textContent).toContain('Hola, Ana');
+      expect(harness.fixture.debugElement.query(By.directive(GroupsListPage))).not.toBeNull();
+      expect(router.url).toBe('/grupos');
+    });
+
+    it('shows the group detail and the join page inside the shell with a session', async () => {
+      store.setSession(session);
+      const harness = await RouterTestingHarness.create();
+
+      await harness.navigateByUrl('/grupos/g1', Shell);
+      expect(harness.fixture.debugElement.query(By.directive(GroupDetailPage))).not.toBeNull();
+
+      await harness.navigateByUrl('/unirse', Shell);
+      expect(harness.fixture.debugElement.query(By.directive(JoinGroupPage))).not.toBeNull();
     });
 
     it('shows the profile page inside the shell with a session', async () => {
@@ -122,23 +149,23 @@ describe('appRoutes', () => {
       expect(page).toBeInstanceOf(RegisterPage);
     });
 
-    it('redirects /registro to / with a session', async () => {
+    it('redirects /registro to /grupos with a session', async () => {
       store.setSession(session);
       const harness = await RouterTestingHarness.create();
 
       await harness.navigateByUrl('/registro', Shell);
 
-      expect(harness.fixture.debugElement.query(By.directive(HomePage))).not.toBeNull();
-      expect(router.url).toBe('/');
+      expect(harness.fixture.debugElement.query(By.directive(GroupsListPage))).not.toBeNull();
+      expect(router.url).toBe('/grupos');
     });
 
-    it('redirects unknown routes to /', async () => {
+    it('redirects unknown routes to /grupos', async () => {
       store.setSession(session);
       const harness = await RouterTestingHarness.create();
 
       await harness.navigateByUrl('/no-existe');
 
-      expect(router.url).toBe('/');
+      expect(router.url).toBe('/grupos');
     });
   });
 });

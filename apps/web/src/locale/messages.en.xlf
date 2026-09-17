@@ -90,10 +90,6 @@
         <source> ¿Ya tienes cuenta? <x id="START_LINK" ctype="x-a" equiv-text="&lt;a routerLink=&quot;/login&quot; [queryParams]=&quot;returnQueryParams&quot;&gt;"/>Inicia sesión<x id="CLOSE_LINK" ctype="x-a" equiv-text="&lt;/a&gt;"/></source>
         <target>Already have an account? <x id="START_LINK" ctype="x-a" equiv-text="&lt;a routerLink=&quot;/login&quot; [queryParams]=&quot;returnQueryParams&quot;&gt;"/>Sign in<x id="CLOSE_LINK" ctype="x-a" equiv-text="&lt;/a&gt;"/></target>
       </trans-unit>
-      <trans-unit id="home.greeting" datatype="html">
-        <source>Hola, <x id="INTERPOLATION" equiv-text="{{ displayName() }}"/></source>
-        <target>Hi, <x id="INTERPOLATION" equiv-text="{{ displayName() }}"/></target>
-      </trans-unit>
       <trans-unit id="profile.title" datatype="html">
         <source>Perfil</source>
         <target>Profile</target>

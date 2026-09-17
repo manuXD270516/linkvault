@@ -59,13 +59,13 @@ describe('LoginPage', () => {
     expect(store.status()).toBe('authenticated');
   });
 
-  it('navigates to / without a return route', async () => {
+  it('navigates to the group list without a return route', async () => {
     await harness.navigateByUrl('/login', LoginPage);
 
     await submitCredentials('ana@example.com', 'contraseña-larga');
     http.expectOne('/api/auth/login').flush(sessionWith('token-1'));
 
-    await vi.waitFor(() => expect(router.url).toBe('/'));
+    await vi.waitFor(() => expect(router.url).toBe('/grupos'));
   });
 
   it('Ruta de retorno externa', async () => {
@@ -74,7 +74,7 @@ describe('LoginPage', () => {
     await submitCredentials('ana@example.com', 'contraseña-larga');
     http.expectOne('/api/auth/login').flush(sessionWith('token-1'));
 
-    await vi.waitFor(() => expect(router.url).toBe('/'));
+    await vi.waitFor(() => expect(router.url).toBe('/grupos'));
   });
 
   it('Credenciales inválidas', async () => {
@@ -160,6 +160,13 @@ describe('LoginPage', () => {
     expect(link?.getAttribute('href')).toBe('/registro?returnUrl=%2Fperfil');
   });
 
+  it('does not add a return route to the registration link when there was none', async () => {
+    await harness.navigateByUrl('/login', LoginPage);
+
+    const link = host().querySelector<HTMLAnchorElement>('a[href^="/registro"]');
+    expect(link?.getAttribute('href')).toBe('/registro');
+  });
+
   it('Almacenamiento limpio tras el login', async () => {
     localStorage.clear();
     sessionStorage.clear();
@@ -167,7 +174,7 @@ describe('LoginPage', () => {
 
     await submitCredentials('ana@example.com', 'contraseña-larga');
     http.expectOne('/api/auth/login').flush(sessionWith('token-secreto'));
-    await vi.waitFor(() => expect(router.url).toBe('/'));
+    await vi.waitFor(() => expect(router.url).toBe('/grupos'));
 
     for (const storage of [localStorage, sessionStorage]) {
       const values = Array.from({ length: storage.length }, (_, index) => {

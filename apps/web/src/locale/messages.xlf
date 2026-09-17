@@ -195,13 +195,6 @@
           <context context-type="linenumber">81,83</context>
         </context-group>
       </trans-unit>
-      <trans-unit id="home.greeting" datatype="html">
-        <source>Hola, <x id="INTERPOLATION" equiv-text="{{ displayName() }}"/></source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/home/home.page.html</context>
-          <context context-type="linenumber">2,4</context>
-        </context-group>
-      </trans-unit>
       <trans-unit id="profile.title" datatype="html">
         <source>Perfil</source>
         <context-group purpose="location">
