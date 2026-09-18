@@ -1,4 +1,8 @@
-import { LINK_ENRICHED_EVENT_TYPE } from '@linkvault/shared';
+import {
+  LINK_ENRICHED_EVENT_TYPE,
+  PASTED_PREVIEW_EXTRACTOR,
+  type PreviewSources,
+} from '@linkvault/shared';
 import { describe, expect, it } from 'vitest';
 import { ExtractionChain } from '../domain/extraction-chain';
 import type { ExtractorStrategy } from '../domain/extractors/extractor';
@@ -31,6 +35,7 @@ import type { PageFetchResult } from './ports/page-fetcher.port';
 
 const LINK_ID = '68c0f0f0f0f0f0f0f0f0f0f0';
 const ANA = '68c0aaaaaaaaaaaaaaaaaaaa';
+const BETO = '68c0bbbbbbbbbbbbbbbbbbbb';
 const NOW = new Date('2026-09-18T10:00:00.000Z');
 const DEADLINE_MS = 45_000;
 
@@ -56,6 +61,7 @@ function linkOf(overrides: Partial<StoredLink> = {}): StoredLink {
   return {
     id: LINK_ID,
     displayUrl: 'https://bolsa.example/jobs/1?utm_source=whatsapp',
+    originalUrls: ['https://bolsa.example/jobs/1?utm_source=whatsapp'],
     createdBy: ANA,
     previewStatus: 'pending',
     previewVersion: 1,
@@ -338,6 +344,130 @@ describe('Fallido', () => {
   });
 });
 
+/** Un link que Beto completó pegando el texto de la oferta, con título y empresa. */
+const PASTED_SOURCES = {
+  title: {
+    value: 'Arquitecto de Soluciones',
+    source: 'pasted',
+    extractor: PASTED_PREVIEW_EXTRACTOR,
+    by: BETO,
+    at: '2026-09-17T10:00:00.000Z',
+  },
+  company: {
+    value: 'Empresa Ejemplo',
+    source: 'pasted',
+    extractor: PASTED_PREVIEW_EXTRACTOR,
+    by: BETO,
+    at: '2026-09-17T10:00:00.000Z',
+  },
+} as const satisfies PreviewSources;
+
+function pastedLink(overrides: Partial<StoredLink> = {}): StoredLink {
+  return linkOf({
+    previewStatus: 'enriched',
+    preview: { title: 'Arquitecto de Soluciones', company: 'Empresa Ejemplo' },
+    previewSources: PASTED_SOURCES,
+    ...overrides,
+  });
+}
+
+describe('Una lectura fallida no borra lo pegado', () => {
+  it('Una lectura fallida no borra lo pegado', async () => {
+    const { useCase, links } = harnessOf({
+      link: pastedLink(),
+      response: { ok: false, reason: 'http_error' },
+    });
+
+    expect(
+      await useCase.execute({
+        linkId: LINK_ID,
+        previewVersion: 1,
+        deferrals: 0,
+      }),
+    ).toEqual({ kind: 'done', previewStatus: 'enriched', previewVersion: 2 });
+    expect(links.peek(LINK_ID)?.preview).toEqual({
+      title: 'Arquitecto de Soluciones',
+      company: 'Empresa Ejemplo',
+    });
+    expect(links.peek(LINK_ID)?.previewSources).toEqual(PASTED_SOURCES);
+    // El motivo queda registrado igual: es lo que la tarjeta cuenta de la última lectura.
+    expect(links.writes[0].write.lastEnrichmentError).toEqual({
+      reason: 'http_error',
+      at: NOW.toISOString(),
+    });
+  });
+
+  it('keeps a pasted card readable when robots.txt forbids the page, as happens with LinkedIn', async () => {
+    // Completar una tarjeta de LinkedIn pegando y pulsar después reintentar no puede volver a dejarla en "no se pudo
+    // leer": el estado sale de los campos que tiene, y el motivo no reintentable se conserva.
+    const { useCase, links } = harnessOf({
+      link: pastedLink(),
+      robots: new FakeRobots({ allowed: false, crawlDelayMs: 0 }),
+    });
+
+    await useCase.execute({ linkId: LINK_ID, previewVersion: 1, deferrals: 0 });
+
+    expect(links.peek(LINK_ID)?.previewStatus).toBe('enriched');
+    expect(links.writes[0].write.lastEnrichmentError?.reason).toBe(
+      'robots_disallowed',
+    );
+  });
+
+  it('derives partial when what was pasted lacks the company', async () => {
+    const { useCase, links } = harnessOf({
+      link: pastedLink({
+        previewStatus: 'partial',
+        preview: { title: 'Arquitecto de Soluciones' },
+        previewSources: { title: PASTED_SOURCES.title },
+      }),
+      response: { ok: false, reason: 'timeout' },
+    });
+
+    await useCase.execute({ linkId: LINK_ID, previewVersion: 1, deferrals: 0 });
+
+    expect(links.peek(LINK_ID)?.previewStatus).toBe('partial');
+    expect(links.writes[0].write.lastEnrichmentError?.reason).toBe('timeout');
+  });
+
+  it('stays manual when a pasted card also has a hand-written field', async () => {
+    const { useCase, links } = harnessOf({
+      link: pastedLink({
+        previewStatus: 'manual',
+        preview: {
+          title: 'Arquitecto de Soluciones',
+          company: 'Empresa Ejemplo',
+          location: 'La Paz',
+        },
+        previewSources: {
+          ...PASTED_SOURCES,
+          location: {
+            value: 'La Paz',
+            source: 'manual',
+            by: ANA,
+            at: '2026-09-17T11:00:00.000Z',
+          },
+        },
+      }),
+      response: { ok: false, reason: 'blocked' },
+    });
+
+    await useCase.execute({ linkId: LINK_ID, previewVersion: 1, deferrals: 0 });
+
+    expect(links.peek(LINK_ID)?.previewStatus).toBe('manual');
+    expect(links.writes[0].write.lastEnrichmentError?.reason).toBe('blocked');
+  });
+
+  it('keeps what was pasted when the page is read again and says something else', async () => {
+    const { useCase, links } = harnessOf({ link: pastedLink() });
+
+    await useCase.execute({ linkId: LINK_ID, previewVersion: 1, deferrals: 0 });
+
+    expect(links.peek(LINK_ID)?.previewSources).toEqual(PASTED_SOURCES);
+    expect(links.peek(LINK_ID)?.previewStatus).toBe('enriched');
+    expect(links.writes[0].write.lastEnrichmentError).toBeNull();
+  });
+});
+
 describe('La bolsa prohíbe la lectura', () => {
   it('uses the reason of a forbidden read, told apart from a page error', async () => {
     const { useCase, links } = harnessOf({
@@ -496,5 +626,56 @@ describe('Almacenamiento caído', () => {
 
     expect(links.peek(LINK_ID)?.previewStatus).toBe('enriched');
     expect(links.peek(LINK_ID)?.snapshotKey).toBeUndefined();
+  });
+});
+
+describe('Otras URLs de la misma vacante', () => {
+  it('El historial tiene la misma vacante sin el parámetro prohibido', async () => {
+    // El repositorio le da a la cadena el historial del link; la lectura sale de la URL permitida, pero lo que se abre
+    // al pulsar la tarjeta sigue siendo la `displayUrl`.
+    const forbidden = 'https://bolsa.example/jobs/1?search_id=9';
+    const robots = new FakeRobots();
+    robots.forbidden.add(forbidden);
+    const { useCase, links } = harnessOf({
+      link: linkOf({
+        displayUrl: forbidden,
+        originalUrls: [forbidden, 'https://bolsa.example/jobs/1'],
+      }),
+      robots,
+    });
+
+    expect(
+      await useCase.execute({
+        linkId: LINK_ID,
+        previewVersion: 1,
+        deferrals: 0,
+      }),
+    ).toEqual({ kind: 'done', previewStatus: 'enriched', previewVersion: 2 });
+    expect(links.peek(LINK_ID)?.displayUrl).toBe(forbidden);
+    expect(links.peek(LINK_ID)?.originalUrls).toEqual([
+      forbidden,
+      'https://bolsa.example/jobs/1',
+    ]);
+    expect(links.writes[0].write.lastEnrichmentError).toBeNull();
+  });
+
+  it('Todo el historial está prohibido', async () => {
+    const { useCase, links } = harnessOf({
+      link: linkOf({
+        displayUrl: 'https://bolsa.example/jobs/1?search_id=9',
+        originalUrls: [
+          'https://bolsa.example/jobs/1?search_id=9',
+          'https://bolsa.example/jobs/1?search_id=12',
+        ],
+      }),
+      robots: new FakeRobots({ allowed: false, crawlDelayMs: 0 }),
+    });
+
+    await useCase.execute({ linkId: LINK_ID, previewVersion: 1, deferrals: 0 });
+
+    expect(links.peek(LINK_ID)?.previewStatus).toBe('failed');
+    expect(links.writes[0].write.lastEnrichmentError?.reason).toBe(
+      'robots_disallowed',
+    );
   });
 });

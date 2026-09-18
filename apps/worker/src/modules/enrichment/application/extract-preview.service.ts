@@ -1,5 +1,6 @@
 import type { EnrichmentFailureReason, PreviewDraft } from '@linkvault/shared';
 import type { ExtractionChain } from '../domain/extraction-chain';
+import { historyRescueUrls } from '../domain/history-rescue';
 import {
   effectiveWaitMs,
   onBusyHost,
@@ -14,12 +15,16 @@ import type { Robots } from './ports/robots.port';
 // permiso del sitio, turno del host, descarga, parseo y cadena de extracción. El caso de uso de arriba se queda con lo
 // suyo —idempotencia, merge, estado y escritura— y este servicio con la parte que habla con el sitio.
 //
-// La descarga va **siempre por `displayUrl`**, la primera URL que escribió una persona, nunca por la normalizada: la
+// La descarga va **por `displayUrl`**, la primera URL que escribió una persona, nunca por la normalizada: la
 // normalizada existe solo para la identidad del link (ADR-008) y puede haber perdido parámetros que el sitio necesita
-// para servir la oferta.
+// para servir la oferta. La única excepción es el rescate por historial (D7 de paste-job-description): si el
+// `robots.txt` niega la `displayUrl`, se lee la primera URL permitida del historial del mismo host, dentro del mismo
+// turno. La `displayUrl` no cambia: sigue siendo la que se abre.
 
 export interface LinkToExtract {
   readonly displayUrl: string;
+  /** Las URLs con las que se ha guardado la vacante, de la más antigua a la más reciente (D7 de paste-job-description). */
+  readonly originalUrls: readonly string[];
   /** Quién guardó el link: la etapa de IA se atribuye a esa persona (D7). */
   readonly createdBy: string;
 }
@@ -87,8 +92,8 @@ export class ExtractPreviewService {
   ) {}
 
   async run(input: ExtractPreviewInput): Promise<ExtractionAttempt> {
-    const url = input.link.displayUrl;
-    const host = hostOf(url);
+    const displayUrl = input.link.displayUrl;
+    const host = hostOf(displayUrl);
     // Una URL que no tiene host no se puede pedir a nadie; el link se guardó con algo que no es una dirección.
     if (host === null) return { kind: 'failed', reason: 'http_error' };
 
@@ -125,9 +130,26 @@ export class ExtractPreviewService {
 
       // El permiso de esta URL no vale para el destino de una redirección, así que la descarga vuelve a preguntar en
       // cada salto.
-      const permission = await this.robots.decide(url);
+      const permission = await this.robots.decide(displayUrl);
       crawlDelayMs = permission.crawlDelayMs;
-      if (!permission.allowed) {
+      let url: string | null = permission.allowed ? displayUrl : null;
+
+      // Rescate por historial: las demás URLs de la vacante del mismo host, una a una y dentro de este mismo turno,
+      // hasta la primera permitida. Ninguna prohibida llega a pedirse.
+      if (url === null) {
+        for (const candidate of historyRescueUrls(
+          displayUrl,
+          input.link.originalUrls,
+        )) {
+          const decision = await this.robots.decide(candidate);
+          crawlDelayMs = Math.max(crawlDelayMs, decision.crawlDelayMs);
+          if (decision.allowed) {
+            url = candidate;
+            break;
+          }
+        }
+      }
+      if (url === null) {
         return { kind: 'failed', reason: 'robots_disallowed' };
       }
 

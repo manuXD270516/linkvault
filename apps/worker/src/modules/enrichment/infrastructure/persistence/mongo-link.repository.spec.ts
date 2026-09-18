@@ -32,6 +32,7 @@ async function insertLink(
 ): Promise<string> {
   const created = await links.create({
     displayUrl: 'https://bolsa.example/jobs/1?utm_source=whatsapp',
+    originalUrls: ['https://bolsa.example/jobs/1?utm_source=whatsapp'],
     createdBy: ANA,
     previewStatus: 'pending',
     previewVersion: 1,
@@ -94,12 +95,63 @@ describe('findById', () => {
     expect(await repository.findById(linkId)).toEqual({
       id: linkId,
       displayUrl: 'https://bolsa.example/jobs/1?utm_source=whatsapp',
+      originalUrls: ['https://bolsa.example/jobs/1?utm_source=whatsapp'],
       createdBy: ANA.toHexString(),
       previewStatus: 'pending',
       previewVersion: 1,
       preview: {},
       previewSources: {},
     });
+  });
+
+  it('reads the whole URL history, in the order it was saved', async () => {
+    // El rescate por historial (D7 de paste-job-description) prueba estas URLs cuando `robots.txt` niega la
+    // `displayUrl`: sin ellas en el puerto, la cadena no tendría a qué recurrir.
+    const linkId = await insertLink({
+      displayUrl: 'https://bolsa.example/jobs/1?search_id=9',
+      originalUrls: [
+        'https://bolsa.example/jobs/1?search_id=9',
+        'https://bolsa.example/jobs/1',
+      ],
+    });
+
+    expect((await repository.findById(linkId))?.originalUrls).toEqual([
+      'https://bolsa.example/jobs/1?search_id=9',
+      'https://bolsa.example/jobs/1',
+    ]);
+  });
+
+  it('reads a link without history as having only its displayUrl', async () => {
+    // `api` crea todo link con su historial, pero el worker no escribe `originalUrls` y no puede darlo por hecho: un
+    // documento sin él se lee con la única URL que seguro tiene.
+    const linkId = await insertLink();
+    await links.collection.updateOne(
+      { _id: new mongoose.Types.ObjectId(linkId) },
+      { $unset: { originalUrls: '' } },
+    );
+
+    expect((await repository.findById(linkId))?.originalUrls).toEqual([
+      'https://bolsa.example/jobs/1?utm_source=whatsapp',
+    ]);
+  });
+
+  it('does not touch the history when it writes the preview', async () => {
+    const linkId = await insertLink({
+      originalUrls: [
+        'https://bolsa.example/jobs/1?utm_source=whatsapp',
+        'https://bolsa.example/jobs/1',
+      ],
+    });
+
+    await repository.writePreview(linkId, 1, writeOf());
+
+    const raw = await links.collection.findOne({
+      _id: new mongoose.Types.ObjectId(linkId),
+    });
+    expect(raw?.['originalUrls']).toEqual([
+      'https://bolsa.example/jobs/1?utm_source=whatsapp',
+      'https://bolsa.example/jobs/1',
+    ]);
   });
 
   it('answers nothing for a link that no longer exists', async () => {

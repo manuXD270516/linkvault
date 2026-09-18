@@ -35,6 +35,11 @@ export class MongoLinkRepository implements LinkRepository {
     return {
       id: found._id.toHexString(),
       displayUrl: found.displayUrl,
+      // `api` crea todo link con su historial; si faltara, la única URL segura es la que se abre.
+      originalUrls:
+        found.originalUrls !== undefined && found.originalUrls.length > 0
+          ? [...found.originalUrls]
+          : [found.displayUrl],
       createdBy: found.createdBy.toHexString(),
       previewStatus: found.previewStatus,
       previewVersion: found.previewVersion,

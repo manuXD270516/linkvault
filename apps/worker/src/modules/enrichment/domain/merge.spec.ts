@@ -1,5 +1,6 @@
 import type { PreviewSources, StoredPreview } from '@linkvault/shared';
 import {
+  PASTED_PREVIEW_EXTRACTOR,
   draftFrom,
   hasAnyField,
   hasRequiredFields,
@@ -15,17 +16,18 @@ import {
 import { describe, expect, it } from 'vitest';
 import {
   EMPTY_PREVIEW_STATE,
-  applyManualField,
   mergeDrafts,
   mergeIntoStored,
   type PreviewState,
 } from './merge';
+import { applyManualField } from './testing/manual-field';
 
 // Requisito "Preview con procedencia por campo" (specs/links/enrichment) y D4 de link-enrichment.
 
 const AT = '2026-09-18T10:00:00.000Z';
 const BEFORE = '2026-09-01T10:00:00.000Z';
 const ANA = '68c0f0f0f0f0f0f0f0f0f0f0';
+const BETO = '68c0b0b0b0b0b0b0b0b0b0b0';
 
 /**
  * El estado del que parte un caso de `PREVIEW_REPLACED_CASES`, con su procedencia puesta en `title`. Pasa por el
@@ -182,6 +184,113 @@ describe('Lo manual no se pisa', () => {
       replaced: { value: 'Arquitecto(a) de Soluciones', extractor: 'json-ld' },
     });
   });
+
+  it('Lo manual no se pisa', () => {
+    // Un campo escrito a mano sobre lo que otra persona pegó: la relectura no toca ni el valor ni lo que guardaba para
+    // deshacerse, y los campos que nadie escribió a mano sí se actualizan.
+    const stored = stateOf(
+      { title: 'Arquitecto de Soluciones (Java)', company: 'Vieja S.A.' },
+      {
+        title: {
+          value: 'Arquitecto de Soluciones (Java)',
+          source: 'manual',
+          by: ANA,
+          at: BEFORE,
+          replaced: {
+            value: 'Arquitecto de Soluciones',
+            source: 'pasted',
+            extractor: PASTED_PREVIEW_EXTRACTOR,
+            by: BETO,
+            at: '2026-08-30T10:00:00.000Z',
+          },
+        },
+        company: {
+          value: 'Vieja S.A.',
+          source: 'auto',
+          extractor: 'metadata',
+          at: BEFORE,
+        },
+      },
+    );
+
+    const merged = mergeIntoStored(
+      stored,
+      draftFrom('json-ld', {
+        title: 'Arquitecto(a) de Soluciones',
+        company: 'Empresa Ejemplo',
+      }),
+      AT,
+    );
+
+    expect(merged.sources.title).toEqual(stored.sources.title);
+    expect(merged.preview.title).toBe('Arquitecto de Soluciones (Java)');
+    expect(merged.sources.company).toEqual({
+      value: 'Empresa Ejemplo',
+      source: 'auto',
+      extractor: 'json-ld',
+      at: AT,
+    });
+  });
+});
+
+describe('Lo pegado no se pisa', () => {
+  const pasted = stateOf(
+    { title: 'Arquitecto(a) de Soluciones', company: 'Empresa Ejemplo' },
+    {
+      title: {
+        value: 'Arquitecto(a) de Soluciones',
+        source: 'auto',
+        extractor: 'json-ld',
+        at: BEFORE,
+      },
+      company: {
+        value: 'Empresa Ejemplo',
+        source: 'pasted',
+        extractor: PASTED_PREVIEW_EXTRACTOR,
+        by: BETO,
+        at: BEFORE,
+        replaced: {
+          value: 'Empresa Ejemplo S.A.',
+          source: 'auto',
+          extractor: 'metadata',
+          at: '2026-08-30T10:00:00.000Z',
+        },
+      },
+    },
+  );
+
+  it('Una relectura no pisa lo pegado', () => {
+    const merged = mergeIntoStored(
+      pasted,
+      draftFrom('json-ld', {
+        title: 'Arquitecto de Soluciones Sr.',
+        company: 'Otra Empresa',
+      }),
+      AT,
+    );
+
+    // La empresa sigue siendo la pegada, entera: con quien la pegó y con lo que guardaba para deshacerse.
+    expect(merged.preview.company).toBe('Empresa Ejemplo');
+    expect(merged.sources.company).toEqual(pasted.sources.company);
+    // Lo que nadie pegó ni escribió sí se relee.
+    expect(merged.preview.title).toBe('Arquitecto de Soluciones Sr.');
+    expect(previewSourcesSchema.parse(merged.sources)).toEqual(merged.sources);
+  });
+
+  it('does not offer to go back where nobody acted: a re-read stores nothing it replaces', () => {
+    const merged = mergeIntoStored(
+      pasted,
+      draftFrom('ai:extract-job', { title: 'Arquitecto de Soluciones Sr.' }),
+      AT,
+    );
+
+    expect(merged.sources.title).toEqual({
+      value: 'Arquitecto de Soluciones Sr.',
+      source: 'auto',
+      extractor: 'ai:extract-job',
+      at: AT,
+    });
+  });
 });
 
 describe('Reenriquecimiento con datos nuevos', () => {
@@ -287,7 +396,12 @@ describe('Se guarda lo que la edición desplazó', () => {
       source: 'manual',
       by: ANA,
       at: AT,
-      replaced: { value: 'Arquitecto(a) de Soluciones', extractor: 'json-ld' },
+      replaced: {
+        value: 'Arquitecto(a) de Soluciones',
+        source: 'auto',
+        extractor: 'json-ld',
+        at: BEFORE,
+      },
     });
     expect(previewSourcesSchema.parse(edited.sources)).toEqual(edited.sources);
   });
@@ -313,7 +427,7 @@ describe('Se guarda lo que la edición desplazó', () => {
 
 describe('Tabla de merges', () => {
   const stored = stateOf(
-    { title: 'Guardado', company: 'Guardada S.A.', location: 'La Paz' },
+    { title: 'Guardado', company: 'Guardada S.A.', location: 'Cochabamba' },
     {
       title: {
         value: 'Guardado',
@@ -328,9 +442,10 @@ describe('Tabla de merges', () => {
         at: BEFORE,
       },
       location: {
-        value: 'La Paz',
-        source: 'auto',
-        extractor: 'metadata',
+        value: 'Cochabamba',
+        source: 'pasted',
+        extractor: PASTED_PREVIEW_EXTRACTOR,
+        by: BETO,
         at: BEFORE,
       },
     },
@@ -343,7 +458,7 @@ describe('Tabla de merges', () => {
     >;
     field: 'title' | 'company' | 'location' | 'summary';
     value: string | undefined;
-    source: 'auto' | 'manual' | undefined;
+    source: 'auto' | 'pasted' | 'manual' | undefined;
   }[] = [
     {
       name: 'campo ausente en la pasada: se conserva el guardado',
@@ -372,6 +487,13 @@ describe('Tabla de merges', () => {
       field: 'company',
       value: 'Guardada S.A.',
       source: 'manual',
+    },
+    {
+      name: 'automático contra pegado: gana el pegado',
+      proposed: { location: 'Santa Cruz' },
+      field: 'location',
+      value: 'Cochabamba',
+      source: 'pasted',
     },
     {
       name: 'campo nuevo que nadie había escrito: entra',

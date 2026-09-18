@@ -17,8 +17,17 @@ export const LINK_REPOSITORY = Symbol('LINK_REPOSITORY');
 /** El link tal y como lo necesita el enriquecimiento. */
 export interface EnrichableLink {
   readonly id: string;
-  /** Por donde se descarga: la primera URL que escribió una persona, nunca la normalizada (D3). */
+  /**
+   * Por donde se descarga: la primera URL que escribió una persona, nunca la normalizada (D3). Si su `robots.txt` la
+   * niega, se lee otra de `originalUrls` del mismo host, pero esta no cambia: es la que se abre.
+   */
   readonly displayUrl: string;
+  /**
+   * Las URLs con las que se ha guardado la vacante, de la más antigua a la más reciente, sin repetidas; siempre
+   * incluye `displayUrl`. Son las que se prueban cuando `robots.txt` niega `displayUrl` (D7 de
+   * paste-job-description).
+   */
+  readonly originalUrls: readonly string[];
   /** Quién lo guardó: a esa persona se atribuye la ejecución de la IA (D7). */
   readonly createdBy: string;
   readonly previewStatus: PreviewStatus;

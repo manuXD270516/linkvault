@@ -22,6 +22,12 @@ export interface JobLinkDocument {
   _id: Types.ObjectId;
   /** La primera URL que escribió una persona: es por donde se descarga, siempre (D3). */
   displayUrl: string;
+  /**
+   * Las URLs con las que se ha guardado la vacante, de la más antigua a la más reciente; la primera es `displayUrl`.
+   * La escribe `api`; el worker solo la lee, para el rescate por historial (D7 de paste-job-description). Opcional
+   * aquí porque el worker no la escribe nunca y no puede dar por hecho que un documento la tenga.
+   */
+  originalUrls?: string[];
   /** Quién guardó el link: a esa persona se atribuye la ejecución de la IA (D7). */
   createdBy: Types.ObjectId;
   previewStatus: PreviewStatus;
@@ -37,6 +43,9 @@ export interface JobLinkDocument {
 export const jobLinkSchema = new Schema<JobLinkDocument>(
   {
     displayUrl: { type: String, required: true },
+    // Sin `default`: Mongoose inicializa los arrays a `[]`, y un documento sin historial no debe parecer uno con el
+    // historial vacío. El repositorio lo lee como `[displayUrl]`.
+    originalUrls: { type: [String], required: false, default: undefined },
     createdBy: { type: Schema.Types.ObjectId, required: true },
     previewStatus: {
       type: String,
