@@ -11,6 +11,7 @@ import {
   settle,
   testUser,
   typeInto,
+  verifyNoPendingRequests,
 } from '../../../testing/auth-testing';
 import { SessionStore } from '../../core/auth/session.store';
 import { Shell } from '../../layout/shell/shell';
@@ -33,7 +34,7 @@ describe('ProfilePage', () => {
     expect(harness.fixture.debugElement.query(By.directive(ProfilePage))).not.toBeNull();
   });
 
-  afterEach(() => http.verify());
+  afterEach(() => verifyNoPendingRequests(http));
 
   function host(): HTMLElement {
     return harness.routeNativeElement as HTMLElement;

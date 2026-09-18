@@ -1,6 +1,7 @@
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { type HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { type EnvironmentProviders, type Provider, provideZonelessChangeDetection } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import type {
   GroupDetail,
@@ -13,6 +14,7 @@ import type {
 import { appRoutes } from '../app/app.routes';
 import { authInterceptor } from '../app/core/auth/auth.interceptor';
 import { REFRESH_LOCKS } from '../app/core/auth/refresh-coordination';
+import { EventsChannel } from '../app/core/events/events.channel';
 
 /** Utilidades compartidas por los tests de páginas de `web`. No las importa código de producción. */
 
@@ -84,6 +86,16 @@ export async function flushGroupDetail(
   list.flush(members);
   const page = await vi.waitFor(() => http.expectOne(`${url}/links?limit=20`));
   page.flush({ items: links, total: links.length });
+}
+
+/**
+ * Comprueba que no quedó ninguna petición sin responder, cerrando antes el canal de eventos: las pantallas de links lo
+ * abren con una petición que **no termina nunca** (es un flujo SSE), así que sin cerrarlo `verify()` la contaría como
+ * pendiente en cualquier test que pase por ellas. Al cerrarlo queda cancelada, que es lo que se ignora.
+ */
+export function verifyNoPendingRequests(http: HttpTestingController): void {
+  TestBed.inject(EventsChannel).disconnect();
+  http.verify({ ignoreCancelled: true });
 }
 
 export function typeInto(host: HTMLElement, selector: string, value: string): void {

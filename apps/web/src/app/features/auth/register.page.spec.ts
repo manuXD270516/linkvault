@@ -10,6 +10,7 @@ import {
   sessionWith,
   settle,
   typeInto,
+  verifyNoPendingRequests,
 } from '../../../testing/auth-testing';
 import { SessionStore } from '../../core/auth/session.store';
 import { LoginPage } from './login.page';
@@ -29,7 +30,7 @@ describe('RegisterPage', () => {
     harness = await RouterTestingHarness.create();
   });
 
-  afterEach(() => http.verify());
+  afterEach(() => verifyNoPendingRequests(http));
 
   function host(): HTMLElement {
     return harness.routeNativeElement as HTMLElement;

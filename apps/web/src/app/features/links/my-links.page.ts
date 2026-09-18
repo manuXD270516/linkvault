@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialog } from '@angular/material/dialog';
+import { EventsChannel } from '../../core/events/events.channel';
 import { LinksStore } from '../../core/links/links.store';
 import { RequestError } from '../../shared/ui/request-error';
 import { ImportLinksDialog } from './import-links.dialog';
@@ -29,6 +30,9 @@ export class MyLinksPage {
   protected readonly failure = this.store.failure;
 
   constructor() {
+    // El canal deja que las tarjetas se enteren solas de las lecturas que terminan; si no se puede abrir, la lista
+    // sigue funcionando con lo que devolvió la API.
+    inject(EventsChannel).connect();
     void this.store.open({ kind: 'mine' });
   }
 

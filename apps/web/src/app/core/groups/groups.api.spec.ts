@@ -1,7 +1,11 @@
 import { HttpTestingController } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import type { GroupDetail, GroupMember, GroupSummary } from '@linkvault/shared';
-import { providePageTesting, sessionWith } from '../../../testing/auth-testing';
+import {
+  providePageTesting,
+  sessionWith,
+  verifyNoPendingRequests,
+} from '../../../testing/auth-testing';
 import { SessionStore } from '../auth/session.store';
 import { GroupsApi, normalizeInviteCode } from './groups.api';
 
@@ -40,7 +44,7 @@ describe('GroupsApi', () => {
     TestBed.inject(SessionStore).setSession(sessionWith('token-1'));
   });
 
-  afterEach(() => http.verify());
+  afterEach(() => verifyNoPendingRequests(http));
 
   /** Toda petición de grupos lleva el Bearer que pone el interceptor. */
   function expectRequest(method: string, url: string): ReturnType<HttpTestingController['expectOne']> {

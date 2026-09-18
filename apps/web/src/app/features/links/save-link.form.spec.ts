@@ -8,6 +8,7 @@ import {
   sessionWith,
   settle,
   typeInto,
+  verifyNoPendingRequests,
 } from '../../../testing/auth-testing';
 import { SessionStore } from '../../core/auth/session.store';
 import { LinksStore } from '../../core/links/links.store';
@@ -23,6 +24,7 @@ const link: JobLinkSummary = {
   displayUrl: URL_TO_SAVE,
   platform: 'linkedin',
   previewStatus: 'pending',
+  previewVersion: 1,
   sharedBy: { userId: 'u1', displayName: 'Ana' },
   sharedAt: '2026-09-17T10:00:00.000Z',
 };
@@ -65,7 +67,7 @@ describe('SaveLinkForm', () => {
     await fixture.whenStable();
   });
 
-  afterEach(() => http.verify());
+  afterEach(() => verifyNoPendingRequests(http));
 
   function host(): HTMLElement {
     return fixture.nativeElement as HTMLElement;

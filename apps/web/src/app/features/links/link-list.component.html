@@ -1,3 +1,13 @@
+@if (reading(); as progress) {
+  @let done = progress.done;
+  @let total = progress.total;
+  <!-- El ICU es todo el contenido del párrafo, sin espacios alrededor: así el mensaje es una sola unidad de i18n. -->
+  <p role="status" data-testid="links-reading" i18n="@@links.list.reading"
+    >{total, plural, =1 {Leyendo ofertas: {{ done }} de 1 lista} other {Leyendo ofertas: {{ done }}
+    de {{ total }} listas}}</p
+  >
+}
+
 @if (links().length === 0) {
   @if (scope() === 'mine') {
     <p data-testid="links-empty" i18n="@@links.list.emptyMine">
@@ -12,41 +22,25 @@
   <ul class="flex list-none flex-col gap-3 p-0" data-testid="link-list">
     @for (link of links(); track link.id) {
       <li class="flex flex-col gap-1">
-        <!-- Se abre `displayUrl`, no la normalizada: la normalización es identidad y puede no resolver (D2). -->
-        <a
-          class="font-medium"
-          [href]="link.displayUrl"
-          target="_blank"
-          rel="noopener noreferrer"
-          data-testid="link-open"
-          >{{ label(link.displayUrl) }}</a
-        >
-        <span class="flex flex-wrap gap-x-3 gap-y-1 text-sm">
-          <span data-testid="link-platform">{{ platformName(link.platform) }}</span>
-          @if (link.sharedBy; as sharer) {
-            <span i18n="@@links.list.sharedBy">Compartido por {{ sharer.displayName }}</span>
-          }
-          @if (withoutPreview(link.previewStatus)) {
-            <span i18n="@@links.list.noPreview">Sin vista previa todavía</span>
-          }
-          @if (canRemove(link)) {
-            <button
-              mat-button
-              type="button"
-              [disabled]="removing()"
-              (click)="remove(link)"
-              data-testid="link-remove"
-              i18n="@@links.list.remove"
-            >
-              Quitar
-            </button>
-          }
-        </span>
+        <lv-link-card
+          [link]="link"
+          [canRemove]="canRemove(link)"
+          [busy]="working()"
+          (complete)="editPreview(link)"
+          (retry)="retry(link)"
+          (remove)="remove(link)"
+        />
       </li>
     }
   </ul>
 }
 
 @if (failure(); as currentFailure) {
-  <lv-request-error [failure]="currentFailure" />
+  @if (notRetryable()) {
+    <p role="alert" i18n="@@links.retry.notRetryable">
+      Esta oferta no se puede volver a leer automáticamente. Complétala a mano.
+    </p>
+  } @else {
+    <lv-request-error [failure]="currentFailure" />
+  }
 }

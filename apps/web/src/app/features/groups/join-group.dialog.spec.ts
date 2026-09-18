@@ -13,6 +13,7 @@ import {
   sessionWith,
   settle,
   typeInto,
+  verifyNoPendingRequests,
 } from '../../../testing/auth-testing';
 import { SessionStore } from '../../core/auth/session.store';
 import { Shell } from '../../layout/shell/shell';
@@ -39,7 +40,7 @@ describe('JoinGroupDialog', () => {
     harness = await RouterTestingHarness.create();
   });
 
-  afterEach(() => http.verify());
+  afterEach(() => verifyNoPendingRequests(http));
 
   function page(): HTMLElement {
     const debugElement = harness.fixture.debugElement.query(By.directive(GroupsListPage));

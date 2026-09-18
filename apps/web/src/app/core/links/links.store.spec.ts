@@ -1,7 +1,12 @@
 import { HttpTestingController } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import type { JobLinkSummary, LinkPage } from '@linkvault/shared';
-import { providePageTesting, sessionWith, settle } from '../../../testing/auth-testing';
+import {
+  providePageTesting,
+  sessionWith,
+  settle,
+  verifyNoPendingRequests,
+} from '../../../testing/auth-testing';
 import { SessionStore } from '../auth/session.store';
 import { LinksStore } from './links.store';
 
@@ -12,6 +17,7 @@ function linkWith(id: string): JobLinkSummary {
     displayUrl: `https://www.linkedin.com/jobs/view/${id}/?utm_source=share`,
     platform: 'linkedin',
     previewStatus: 'pending',
+    previewVersion: 1,
     sharedBy: { userId: 'u1', displayName: 'Ana' },
     sharedAt: '2026-09-17T10:00:00.000Z',
   };
@@ -31,7 +37,7 @@ describe('LinksStore', () => {
     TestBed.inject(SessionStore).setSession(sessionWith('token-1'));
   });
 
-  afterEach(() => http.verify());
+  afterEach(() => verifyNoPendingRequests(http));
 
   /** Espera a que la acción encadene la recarga y la responde con `page`. */
   async function flushPage(url: string, page: LinkPage): Promise<void> {

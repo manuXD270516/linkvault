@@ -1,7 +1,21 @@
-import { computed, inject } from '@angular/core';
-import type { ImportLinksResponse, JobLinkSummary, SaveLinkResponse } from '@linkvault/shared';
-import { patchState, signalStore, withComputed, withMethods, withState } from '@ngrx/signals';
+import { DestroyRef, computed, inject } from '@angular/core';
+import type {
+  ImportLinksResponse,
+  JobLinkSummary,
+  LinkPage,
+  SaveLinkResponse,
+  UpdatePreviewRequest,
+} from '@linkvault/shared';
+import {
+  patchState,
+  signalStore,
+  withComputed,
+  withHooks,
+  withMethods,
+  withState,
+} from '@ngrx/signals';
 import { type RequestFailure, toRequestFailure } from '../api/api-error';
+import { EventsChannel } from '../events/events.channel';
 import { LINKS_PAGE_SIZE, LinksApi } from './links.api';
 
 /**
@@ -10,6 +24,16 @@ import { LINKS_PAGE_SIZE, LinksApi } from './links.api';
  * endpoint van las peticiones.
  */
 export type LinksScope = { kind: 'group'; groupId: string } | { kind: 'mine' };
+
+/**
+ * Cuántas lecturas van terminadas de las que se están esperando. `total` sale del listado entero o de lo que devolvió la
+ * importación, **nunca** de contar los links de la página cargada: una importación de cincuenta ofertas no cabe en una
+ * página de veinte, y el contador diría veinte.
+ */
+export interface ReadingProgress {
+  done: number;
+  total: number;
+}
 
 /**
  * Lista de links paginada por cursor (D9). `loaded` distingue "todavía no se ha pedido" de "no hay links", que es lo que
@@ -26,6 +50,8 @@ export interface LinksState {
   loaded: boolean;
   /** Fallo de la última carga; las acciones propagan su error al llamante, que lo traduce por código. */
   failure: RequestFailure | null;
+  /** Progreso de las lecturas en curso, o `null` cuando no se está esperando ninguna. */
+  reading: ReadingProgress | null;
 }
 
 const initialState: LinksState = {
@@ -37,6 +63,7 @@ const initialState: LinksState = {
   loadingMore: false,
   loaded: false,
   failure: null,
+  reading: null,
 };
 
 export const LinksStore = signalStore(
@@ -73,12 +100,27 @@ export const LinksStore = signalStore(
           total: page.total,
           nextCursor: page.nextCursor ?? null,
           loaded: true,
+          reading: readingOf(page),
         });
       } catch (error: unknown) {
         patchState(store, { failure: toRequestFailure(error) });
       } finally {
         patchState(store, { loading: false });
       }
+    };
+
+    /**
+     * Reemplaza la tarjeta de un link ya cargado, sin tocar el orden, el `total` ni el cursor: es lo que hace que una
+     * corrección a mano o un aviso del canal de eventos se vean sin volver a pedir la lista. Un link que no está en la
+     * lista abierta se ignora: puede ser de otro grupo, o de una página que todavía no se ha cargado.
+     */
+    const replace = (link: JobLinkSummary): void => {
+      const items = store.items();
+      const index = items.findIndex((item) => item.id === link.id);
+      if (index === -1) {
+        return;
+      }
+      patchState(store, { items: items.map((item, at) => (at === index ? link : item)) });
     };
 
     return {
@@ -119,11 +161,56 @@ export const LinksStore = signalStore(
         return response;
       },
 
-      /** Importa el texto pegado en la lista abierta y recarga con lo que haya entrado. */
+      /**
+       * Importa el texto pegado en la lista abierta y recarga con lo que haya entrado. Lo que va a leerse es lo que
+       * acaba de entrar, así que el contador sale de la respuesta y no de la página: las ofertas nuevas pueden ser más
+       * que los links que caben en ella.
+       */
       async importText(text: string): Promise<ImportLinksResponse> {
         const response = await api.importLinks(text, groupIdOf(store.scope()) ?? undefined);
         await reload();
+        if (response.created > 0) {
+          patchState(store, { reading: { done: 0, total: response.created } });
+        }
         return response;
+      },
+
+      replace,
+
+      /**
+       * Aplica el aviso de un link que terminó su lectura: reemplaza su tarjeta y suma uno al contador. Un aviso de un
+       * link que no está en la lista abierta no cuenta; el contador desaparece cuando ya no queda nada por leer.
+       */
+      applyEnriched(link: JobLinkSummary): void {
+        if (!store.items().some((item) => item.id === link.id)) {
+          return;
+        }
+        replace(link);
+        const reading = store.reading();
+        if (reading === null) {
+          return;
+        }
+        const done = reading.done + 1;
+        patchState(store, {
+          reading: done >= reading.total ? null : { ...reading, done },
+        });
+      },
+
+      /**
+       * Guarda la corrección a mano del preview y deja la tarjeta con lo que respondió la API. El error viaja al
+       * formulario, que lo muestra sin perder lo escrito.
+       */
+      async updatePreview(linkId: string, body: UpdatePreviewRequest): Promise<JobLinkSummary> {
+        const link = await api.updatePreview(linkId, body);
+        replace(link);
+        return link;
+      },
+
+      /** Vuelve a pedir la lectura de una oferta; la tarjeta queda como la devuelve la API, de vuelta en `pending`. */
+      async retryEnrichment(linkId: string): Promise<JobLinkSummary> {
+        const link = await api.enrich(linkId);
+        replace(link);
+        return link;
       },
 
       /** Quita el link de la lista abierta (solo la relación) y recarga. */
@@ -139,6 +226,38 @@ export const LinksStore = signalStore(
       },
     };
   }),
+  withHooks({
+    /**
+     * Escucha los avisos del canal de eventos mientras la aplicación vive y vuelve a pedir la lista cuando la pestaña
+     * recupera el foco. Lo segundo es lo que hace que la espera acabe aunque el canal no esté disponible: al volver a
+     * mirar, lo que hay en pantalla es lo que dice la API.
+     */
+    onInit(store, channel = inject(EventsChannel), destroyRef = inject(DestroyRef)) {
+      const subscription = channel.linkEnriched.subscribe(({ link }) => {
+        store.applyEnriched(link);
+      });
+      const onVisibilityChange = (): void => {
+        if (document.visibilityState === 'visible') {
+          void store.reload();
+        }
+      };
+      document.addEventListener('visibilitychange', onVisibilityChange);
+      destroyRef.onDestroy(() => {
+        subscription.unsubscribe();
+        document.removeEventListener('visibilitychange', onVisibilityChange);
+      });
+    },
+  }),
 );
+
+/**
+ * Lecturas que se están esperando al cargar una lista: solo cuando todo lo cargado sigue sin leerse, y entonces son
+ * tantas como links tiene el listado entero. Si ya hay ofertas leídas, no hay una espera que contar.
+ */
+function readingOf(page: LinkPage): ReadingProgress | null {
+  const waiting =
+    page.items.length > 0 && page.items.every((item) => item.previewStatus === 'pending');
+  return waiting ? { done: 0, total: page.total } : null;
+}
 
 export type LinksStore = InstanceType<typeof LinksStore>;

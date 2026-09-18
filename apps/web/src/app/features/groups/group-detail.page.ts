@@ -22,6 +22,7 @@ import {
 } from '../../core/api/api-error';
 import { GroupsApi } from '../../core/groups/groups.api';
 import { GroupsStore } from '../../core/groups/groups.store';
+import { EventsChannel } from '../../core/events/events.channel';
 import { LinksStore } from '../../core/links/links.store';
 import { HOME_ROUTE } from '../../core/navigation/home-route';
 import { ImportLinksDialog } from '../links/import-links.dialog';
@@ -82,6 +83,9 @@ export class GroupDetailPage {
   private readonly deleteMessage = viewChild.required<TemplateRef<unknown>>('deleteMessage');
 
   constructor() {
+    // El canal deja que las tarjetas se enteren solas de las lecturas que terminan; si no se puede abrir, la lista
+    // sigue funcionando con lo que devolvió la API.
+    inject(EventsChannel).connect();
     void this.enter();
     // El respaldo aparece ya seleccionado, para que baste con copiar.
     effect(() => this.invitationField()?.nativeElement.select());

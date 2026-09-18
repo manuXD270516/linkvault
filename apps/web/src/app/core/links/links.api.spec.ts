@@ -1,7 +1,11 @@
 import { HttpTestingController } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import type { ImportLinksResponse, JobLinkSummary, LinkPage, SaveLinkResponse } from '@linkvault/shared';
-import { providePageTesting, sessionWith } from '../../../testing/auth-testing';
+import {
+  providePageTesting,
+  sessionWith,
+  verifyNoPendingRequests,
+} from '../../../testing/auth-testing';
 import { SessionStore } from '../auth/session.store';
 import { LinksApi } from './links.api';
 
@@ -11,6 +15,7 @@ const link: JobLinkSummary = {
   displayUrl: 'https://www.linkedin.com/jobs/view/3912345678/?utm_source=share',
   platform: 'linkedin',
   previewStatus: 'pending',
+  previewVersion: 1,
   sharedBy: { userId: 'u1', displayName: 'Ana' },
   sharedAt: '2026-09-17T10:00:00.000Z',
 };
@@ -43,7 +48,7 @@ describe('LinksApi', () => {
     TestBed.inject(SessionStore).setSession(sessionWith('token-1'));
   });
 
-  afterEach(() => http.verify());
+  afterEach(() => verifyNoPendingRequests(http));
 
   /** Toda petición de links lleva el Bearer que pone el interceptor. */
   function expectRequest(
