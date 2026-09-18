@@ -97,7 +97,8 @@ export class ImportLinks {
           existing += 1;
         }
       } catch {
-        // Un fallo aislado (una carrera perdida, una escritura rechazada) no impide el resto del chat.
+        // `unrecognized` cuenta lo que no se pudo leer **ni guardar** (spec links/sharing): un fallo aislado —una
+        // carrera perdida, una escritura rechazada— se suma aquí y no impide el resto del chat.
         unrecognized += 1;
       }
     }

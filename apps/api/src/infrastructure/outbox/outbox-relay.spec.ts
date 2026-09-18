@@ -205,6 +205,8 @@ describe('OutboxRelay', () => {
     queue.down = true;
     const linkId = newLinkId();
 
+    // El `201` de la petición, con la cola caída y el relay apagado, lo comprueba la integración HTTP del guardado
+    // (`links.controller.save.spec`, mismo nombre de escenario): aquí no hay app, solo el relay y su cola.
     // Guardar no toca la cola: el evento queda escrito pase lo que pase con Redis.
     await appendLinkCreated(linkId);
     await relay.publishPending();

@@ -83,8 +83,8 @@ donde ese link ya estaba, con su `id` y su `name`. NO SHALL incluir grupos a los
 ### Requirement: Importar links desde un texto
 
 `POST /api/links/import` SHALL aceptar `text` (hasta 20 000 caracteres) y opcionalmente `groupId`, aplicar las mismas
-reglas que guardar uno a uno y responder `201` con `created`, `existing`, `unrecognized`, `skipped` y los links
-resultantes. Las URLs SHALL procesarse en el orden del texto. El tope de 50 SHALL contar solo las que hay que guardar, no las que ya
+reglas que guardar uno a uno y responder `201` con `created`, `existing`, `unrecognized` (las URLs que no se
+pudieron leer ni guardar: no superan la normalización o su guardado falló), `skipped` y los links resultantes. Las URLs SHALL procesarse en el orden del texto. El tope de 50 SHALL contar solo las que hay que guardar, no las que ya
 estaban en el destino, de modo que volver a importar el mismo texto avance con las siguientes; el resto SHALL contarse en
 `skipped`, sin error. Un fallo al procesar una URL NO SHALL impedir el resto. Un `text` más largo
 del máximo SHALL responder `400` con código `text_too_long`.

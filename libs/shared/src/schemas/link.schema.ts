@@ -125,8 +125,9 @@ export const saveLinkResponseSchema = z.strictObject({
 export type SaveLinkResponse = z.infer<typeof saveLinkResponseSchema>;
 
 /**
- * Respuesta de `POST /api/links/import`: `created` nuevas, `existing` ya presentes en el destino, `unrecognized` URLs
- * que no superan la normalización y `skipped` las que quedaron fuera del tope por llamada.
+ * Respuesta de `POST /api/links/import`: `created` nuevas, `existing` ya presentes en el destino, `unrecognized` las que
+ * no se pudieron leer ni guardar (no superan la normalización o su guardado falló) y `skipped` las que quedaron fuera
+ * del tope por llamada.
  */
 export const importLinksResponseSchema = z.strictObject({
   created: z.number().int().nonnegative(),

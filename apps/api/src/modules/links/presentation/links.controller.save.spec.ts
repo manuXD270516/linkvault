@@ -91,12 +91,16 @@ describe('POST /api/links', () => {
     expect(mine.json<{ total: number }>().total).toBe(1);
   });
 
-  it('writes the vacancy and its outbox event in the same transaction', async () => {
+  it('Cola caída al guardar', async () => {
+    // La app de estos tests corre con `OUTBOX_RELAY_ENABLED=false` y sin Redis: para guardar es lo mismo que una cola
+    // caída, porque el alta nunca toca la cola. La respuesta es 201 y el evento queda pendiente en `outbox_events`
+    // hasta que el relay pueda publicarlo (ADR-009); su publicación y sus reintentos se prueban en `outbox-relay.spec`.
     const carla = await http.authenticated('Carla');
     const response = await save(carla, {
       url: 'https://www.indeed.com/viewjob?jk=1a2b3c4d5e6f7a8b',
     });
 
+    expect(response.statusCode).toBe(201);
     const { link } = saveLinkResponseSchema.parse(response.json());
     const event = await http.connection
       .collection('outbox_events')
@@ -104,6 +108,8 @@ describe('POST /api/links', () => {
 
     expect(event?.['type']).toBe('LinkCreated.v1');
     expect(event?.['publishedAt']).toBeNull();
+    expect(event?.['failedAt']).toBeNull();
+    expect(event?.['attempts']).toBe(0);
   });
 
   it('URL no reconocida', async () => {
@@ -235,7 +241,9 @@ describe('POST /api/links/import', () => {
     expect(list.json<{ total: number }>().total).toBe(3);
   });
 
-  it('Chat con más de 50 enlaces', async () => {
+  // Dos importaciones de 60 URLs son 110 transacciones cortas de verdad (D5): con la suite entera en marcha tardan
+  // más que el `testTimeout` por defecto de 5 s, así que este escenario lleva el suyo.
+  it('Chat con más de 50 enlaces', { timeout: 30_000 }, async () => {
     const group = await http.createGroup(ana, 'Muchos');
     const chat = Array.from(
       { length: 60 },

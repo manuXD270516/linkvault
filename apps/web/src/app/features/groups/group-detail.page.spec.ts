@@ -135,11 +135,15 @@ describe('GroupDetailPage', () => {
     return await vi.waitFor(() => http.expectOne({ method, url }));
   }
 
-  /** Entra en el detalle y responde al grupo, a sus miembros y a la primera página de sus links. */
+  /**
+   * Entra en el detalle y responde al grupo, a sus miembros y a la primera página de sus links. `total` es el número de
+   * links del grupo entero, que no tiene por qué ser el de la página: quien lo necesite lo pasa aparte.
+   */
   async function openDetail(
     detail: GroupDetail,
     list: GroupMember[] = members,
     links: JobLinkSummary[] = [],
+    total: number = links.length,
   ): Promise<void> {
     await harness.navigateByUrl(`/grupos/${detail.id}`, Shell);
     http.expectOne({ method: 'GET', url: `/api/groups/${detail.id}` }).flush(detail);
@@ -148,7 +152,7 @@ describe('GroupDetailPage', () => {
     await settle();
     http
       .expectOne(`/api/groups/${detail.id}/links?limit=20`)
-      .flush({ items: links, total: links.length } satisfies LinkPage);
+      .flush({ items: links, total } satisfies LinkPage);
     await settle();
     await harness.fixture.whenStable();
   }
@@ -406,13 +410,13 @@ describe('GroupDetailPage', () => {
   });
 
   it('Borrado informado', async () => {
-    // El recuento de ofertas es el `total` del listado, no el número de links cargados.
-    await openDetail({ ...ownerDetail, memberCount: 3 }, members, [linkOfBeto, linkOfAna]);
+    // El recuento sale del `total` del listado, no de los links cargados: la primera página trae 2 de 37.
+    await openDetail({ ...ownerDetail, memberCount: 3 }, members, [linkOfBeto, linkOfAna], 37);
 
     await act('Borrar el grupo');
 
     expect(dialog().textContent?.replace(/\s+/g, ' ')).toContain(
-      'Se borrará para los 3 miembros y se perderán las 2 ofertas compartidas aquí (las que estén en otros grupos siguen ahí). No se puede deshacer.',
+      'Se borrará para los 3 miembros y se perderán las 37 ofertas compartidas aquí (las que estén en otros grupos siguen ahí). No se puede deshacer.',
     );
 
     await answer('Borrar');

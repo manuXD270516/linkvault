@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { Logger } from '@nestjs/common';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GroupNotFound } from '../../groups/domain/errors';
 import { TextTooLong } from '../domain/errors';
 import { MAX_IMPORT_TEXT_LENGTH, MAX_LINKS_PER_IMPORT } from '../domain/limits';
@@ -70,6 +71,25 @@ beforeEach(() => {
   );
 });
 
+/**
+ * Espía todo lo que podría registrar algo (el logger de Nest y la consola) y devuelve lo que se haya escrito. Los
+ * espías los deshace `vi.restoreAllMocks` al terminar cada test.
+ */
+function spyOnEveryLogger(): unknown[] {
+  const logged: unknown[] = [];
+  const record = (...args: unknown[]): void => {
+    logged.push(...args);
+  };
+  for (const method of ['log', 'warn', 'error', 'debug', 'verbose'] as const) {
+    vi.spyOn(Logger.prototype, method).mockImplementation(record);
+    vi.spyOn(Logger, method).mockImplementation(record);
+  }
+  for (const method of ['log', 'info', 'warn', 'error', 'debug'] as const) {
+    vi.spyOn(console, method).mockImplementation(record);
+  }
+  return logged;
+}
+
 /** Texto con `count` URLs distintas, una por línea, como un chat pegado. */
 function chatWith(count: number): string {
   return Array.from(
@@ -77,6 +97,10 @@ function chatWith(count: number): string {
     (_, index) => `[10:0${index % 10}] Ana: https://empresa.example/careers/${index}`,
   ).join('\n');
 }
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe('ImportLinks', () => {
   it('Importar un chat', async () => {
@@ -159,6 +183,10 @@ describe('ImportLinks', () => {
       JOB_PAGE,
       '[17/9/2026, 10:03] Beto Mamani: mi correo es beto@example.com',
     ].join('\n');
+    // `links` no inyecta ningún logger —ni pino ni el de Nest—, así que el texto no puede acabar en un log ni por
+    // descuido. Estos espías lo dejan probado en vez de dicho: si alguien añadiera un `logger.log(text)` o un
+    // `console.log`, este test fallaría.
+    const logged = spyOnEveryLogger();
 
     const response = await importLinks.execute(ANA, {
       text: chat,
@@ -171,9 +199,13 @@ describe('ImportLinks', () => {
       await groupLinks.listByGroup(BACKEND, { limit: 20 }),
       outbox.appended,
     ]);
-    expect(stored).not.toContain('70000000');
-    expect(stored).not.toContain('beto@example.com');
-    expect(stored).not.toContain('Quispe');
+    for (const trace of [stored, JSON.stringify(logged)]) {
+      expect(trace).not.toContain('70000000');
+      expect(trace).not.toContain('beto@example.com');
+      expect(trace).not.toContain('Quispe');
+    }
+    // De hecho, la importación no registró absolutamente nada.
+    expect(logged).toEqual([]);
   });
 
   it('counts the links it could not read and keeps going with the rest', async () => {
@@ -194,6 +226,29 @@ describe('ImportLinks', () => {
       unrecognized: 2,
       skipped: 0,
     });
+  });
+
+  it('counts a link it could not save in unrecognized, and saves the rest', async () => {
+    // `unrecognized` cuenta lo que no se pudo **leer ni guardar** (spec links/sharing): una escritura que falla —una
+    // carrera perdida, una transacción rechazada— no puede tirar la importación entera ni desaparecer del resumen.
+    vi.spyOn(links, 'withResolvedLink').mockRejectedValueOnce(
+      new Error('the write failed'),
+    );
+
+    const response = await importLinks.execute(ANA, {
+      text: `${JOB_PAGE} ${COMPUTRABAJO}`,
+      groupId: BACKEND,
+    });
+
+    expect(response).toMatchObject({
+      created: 1,
+      existing: 0,
+      unrecognized: 1,
+      skipped: 0,
+    });
+    expect(response.links).toHaveLength(1);
+    expect(response.links[0]?.platform).toBe('computrabajo');
+    expect(await groupLinks.countByGroup(BACKEND)).toBe(1);
   });
 
   it('keeps the order of the text and one entry per vacancy', async () => {

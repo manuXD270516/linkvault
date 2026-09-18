@@ -78,9 +78,8 @@ durante el apply, se implementa como `generic` y se anota; no se inventan reglas
 
 ### D3 — Dedupe y altas concurrentes
 
-`save-link` normaliza, canonicaliza y calcula `dedupeKey`; después `findOneAndUpdate({ dedupeKey }, { $setOnInsert: …,
-$push: { originalUrls: { $each: [url], $slice: -20 } } }, { upsert: true, new: true })`, comprobando antes si la URL ya
-estaba para no repetirla. El `$slice` acota el historial: sin él, una plataforma reconocida con un parámetro aleatorio
+`save-link` normaliza, canonicaliza y calcula `dedupeKey`; después resuelve el link por esa clave: si no existe lo crea con
+`displayUrl` fijado, y si existe añade la URL al historial con `$push … $slice: -20` solo cuando no estaba. El `$slice` acota el historial: sin él, una plataforma reconocida con un parámetro aleatorio
 haría crecer el array sin límite hasta los 16 MB del documento y dejaría el link inescribible.
 
 Un upsert simultáneo puede chocar con el índice único y lanzar 11000, que **no** es un `TransientTransactionError`: la
@@ -143,6 +142,9 @@ manifiesto).
 
 ### D7b — Cascada del borrado de grupo sin romper los límites entre módulos
 
+> Superado por ADR-021 §6: el mecanismo final es la clase `GroupDeletionHooks` provista por `GroupsModule` y registrada
+> por `LinksModule` en `onModuleInit`, ejecutada tras confirmar el borrado. El resto de esta decisión sigue vigente.
+
 El borrado de grupo vive en `MongoGroupRepository.deleteGroup` (`groups`) y su `session` es privada; `groups` no puede
 importar `links` ni al revés fuera de las entradas públicas. Para que "de forma atómica" sea cierto:
 
@@ -162,7 +164,7 @@ unificada, el relay dentro de `api` y la colección `user_links`.
 `importLinksRequestSchema` (`text` 1..20000, `groupId?`), `jobLinkSummarySchema` (`id`, `normalizedUrl`, `displayUrl`,
 `platform`, `previewStatus`, `sharedBy?`, `sharedAt`/`savedAt`), `saveLinkResponseSchema` (`link`, `created`,
 `sharedBy?`, `alreadyInGroups[]`), `importLinksResponseSchema` (`created`, `existing`, `unrecognized`, `skipped`,
-`links[]`), `listLinksQuerySchema` (`limit` 1..50, `cursor?`), `linkPageSchema` (`items[]`, `nextCursor?`),
+`links[]`), `listLinksQuerySchema` (`limit` 1..50, `cursor?`), `linkPageSchema` (`items[]`, `total`, `nextCursor?`),
 `platformSchema` y `previewStatusSchema`. `apiErrorCodeSchema` suma `invalid_url` (400), `text_too_long` (400) y
 `link_not_found` (404).
 

@@ -1,11 +1,17 @@
 import { linkPageSchema, type GroupDetail, type LinkPage } from '@linkvault/shared';
 import { getMongoTestUri } from '@linkvault/testing';
+import mongoose from 'mongoose';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   createLinksTestApp,
   type LinksTestApp,
   type TestMember,
 } from '../../../test-support/links-test-app';
+import { jobLinkDraft } from '../application/testing/link-fixtures';
+import {
+  GROUP_LINKS_COLLECTION,
+  JOB_LINKS_COLLECTION,
+} from '../infrastructure/link.schemas';
 
 // `GET /api/groups/:id/links` y `GET /api/links/mine` (tarea 5.8 de job-links) sobre la app completa.
 
@@ -47,6 +53,46 @@ describe('link listings', () => {
     expect(response.statusCode).toBe(201);
   }
 
+  /** Siembra 50 links del grupo, todos compartidos por Ana en el mismo instante, y devuelve sus ids. */
+  async function seedFifty(groupId: string): Promise<string[]> {
+    const sharedAt = new Date('2026-09-17T10:00:00.000Z');
+    const owner = new mongoose.Types.ObjectId(ana.userId);
+    const jobLinks = [];
+    const relations = [];
+    for (let index = 0; index < 50; index += 1) {
+      const linkId = new mongoose.Types.ObjectId();
+      const draft = jobLinkDraft(
+        `https://empresa.example/careers/paginado-${index}`,
+        { createdBy: ana.userId, now: sharedAt },
+      );
+      jobLinks.push({
+        _id: linkId,
+        normalizedUrl: draft.normalizedUrl,
+        urlHash: draft.urlHash,
+        dedupeKey: draft.dedupeKey,
+        platform: draft.platform,
+        displayUrl: draft.displayUrl,
+        originalUrls: [...draft.originalUrls],
+        previewStatus: draft.previewStatus,
+        previewVersion: draft.previewVersion,
+        createdBy: owner,
+        createdAt: sharedAt,
+        updatedAt: sharedAt,
+      });
+      relations.push({
+        groupId: new mongoose.Types.ObjectId(groupId),
+        linkId,
+        sharedBy: owner,
+        sharedAt,
+      });
+    }
+    await http.connection.collection(JOB_LINKS_COLLECTION).insertMany(jobLinks);
+    await http.connection
+      .collection(GROUP_LINKS_COLLECTION)
+      .insertMany(relations);
+    return jobLinks.map((document) => document._id.toHexString());
+  }
+
   async function listGroup(
     member: TestMember,
     groupId: string,
@@ -83,15 +129,10 @@ describe('link listings', () => {
 
   it('Paginación sin saltos ni repetidos', async () => {
     const group = await groupOf(ana, 'Muchos links');
-    const chat = Array.from(
-      { length: 50 },
-      (_, index) => `https://empresa.example/careers/paginado-${index}`,
-    ).join('\n');
-    const imported = await http.request('POST', '/api/links/import', {
-      authorization: ana.authorization,
-      body: { text: chat, groupId: group.id },
-    });
-    expect(imported.statusCode).toBe(201);
+    // Los 50 links se siembran con una escritura por colección y todos con el mismo `sharedAt`, que es el caso que la
+    // paginación tiene que resolver. Importarlos por HTTP serían 50 transacciones, y lo que se prueba aquí es el
+    // recorrido de las páginas, no el alta (eso es "Importar un chat", con su propio escenario).
+    const saved = await seedFifty(group.id);
 
     const seen: string[] = [];
     let cursor: string | undefined;
@@ -111,6 +152,7 @@ describe('link listings', () => {
 
     expect(seen).toHaveLength(50);
     expect(new Set(seen).size).toBe(50);
+    expect(new Set(seen)).toEqual(new Set(saved));
   });
 
   it('keeps the same total no matter the page size', async () => {
