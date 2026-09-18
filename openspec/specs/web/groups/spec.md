@@ -101,8 +101,7 @@ miembros, el máximo" y `too_many_groups` "Ya perteneces a 20 grupos, el máximo
 
 ### Requirement: Detalle del grupo
 
-`/grupos/:id` SHALL mostrar el nombre del grupo y la lista de miembros con su nombre, su rol y su fecha de alta. En este change SHALL mostrar siempre "Aquí aparecerán las ofertas que compartan los miembros. Pronto
-podrás guardar links en este grupo." Si el usuario es `owner`, SHALL mostrar además el código de invitación con la advertencia "Quien tenga
+`/grupos/:id` SHALL mostrar el nombre del grupo y la lista de miembros con su nombre, su rol y su fecha de alta. Los links compartidos en el grupo se muestran según la spec `web/links`. Si el usuario es `owner`, SHALL mostrar además el código de invitación con la advertencia "Quien tenga
 este código puede entrar y ver los nombres de los miembros. Regenéralo si se filtró.", un botón que copia el mensaje de invitación
 "Únete a «{nombre}» en LinkVault: {enlace} (código {código})", donde `{enlace}` es la URL absoluta del SPA con
 `/unirse?codigo=<código>`, y las acciones de renombrar, regenerar el código, expulsar a
@@ -134,7 +133,7 @@ guardada.
 
 - **GIVEN** un miembro de un grupo recién creado
 - **WHEN** abre el detalle
-- **THEN** SHALL ver "Aquí aparecerán las ofertas que compartan los miembros. Pronto podrás guardar links en este grupo."
+- **THEN** SHALL ver el estado vacío de la lista de links que define la spec `web/links`
 
 #### Scenario: Grupo ajeno
 
@@ -144,9 +143,11 @@ guardada.
 
 ### Requirement: Acciones del detalle
 
-Salir, expulsar y borrar SHALL pedir confirmación antes de llamar a la API; la de borrar SHALL decir a cuántos afecta: con más de un miembro,
-"Se borrará para los N miembros. No se puede deshacer."; con un único miembro, "Se borrará solo para ti. No se puede
-deshacer." Salir y borrar SHALL navegar a `/grupos` al terminar; expulsar SHALL actualizar la
+Salir, expulsar y borrar SHALL pedir confirmación antes de llamar a la API; la de borrar SHALL decir a cuántos afecta y cuántas ofertas se pierden, con el
+plural correcto y omitiendo la parte de las ofertas cuando el grupo no tiene ninguna: "Se borrará para los N miembros y
+se perderán las X ofertas compartidas aquí (las que estén en otros grupos siguen ahí). No se puede deshacer.", con sus
+variantes para un solo miembro ("Se borrará solo para ti…"), para una sola oferta ("se perderá 1 oferta") y para ninguna
+(el texto sin la parte de ofertas). El recuento SHALL venir del `total` que devuelve el listado de links del grupo, no de los que haya cargados en pantalla. Salir y borrar SHALL navegar a `/grupos` al terminar; expulsar SHALL actualizar la
 lista de miembros en la misma pantalla y ofrecer "Regenerar el código para que no pueda volver a entrar", oferta que ya
 cuenta como confirmación. Regenerar el código desde su botón SHALL pedir confirmación diciendo "Los miembros actuales siguen dentro; solo dejará de servir el código anterior" y
 SHALL mostrar el nuevo.
@@ -165,9 +166,9 @@ SHALL mostrar el nuevo.
 
 #### Scenario: Borrado informado
 
-- **GIVEN** el owner de un grupo con 3 miembros
+- **GIVEN** el owner de un grupo con 3 miembros y 37 ofertas, de las que la primera página trae 2
 - **WHEN** pulsa borrar
-- **THEN** la confirmación SHALL decir "Se borrará para los 3 miembros. No se puede deshacer."
+- **THEN** la confirmación SHALL decir "Se borrará para los 3 miembros y se perderán las 37 ofertas compartidas aquí (las que estén en otros grupos siguen ahí). No se puede deshacer."
 
 #### Scenario: Borrado de un grupo en el que estás solo
 

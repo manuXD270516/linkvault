@@ -128,9 +128,10 @@ recibir `403`.
 
 ### Requirement: Borrado por el owner
 
-`DELETE /api/groups/:id` SHALL borrar el grupo y todas sus membresías de forma atómica y responder `204` solo si quien
-pide es el `owner`; un miembro que no es owner SHALL recibir `403`. Tras el borrado, el grupo SHALL responder `404` a
-todos sus antiguos miembros y su código de invitación NO SHALL servir.
+`DELETE /api/groups/:id` SHALL borrar el grupo, todas sus membresías y todas sus relaciones con links
+(`GroupLink`) de forma atómica y responder `204` solo si quien
+pide es el `owner`; un miembro que no es owner SHALL recibir `403`. Los `JobLink` compartidos en él NO SHALL borrarse: siguen disponibles en otros grupos y en las listas privadas. Tras el
+borrado, el grupo SHALL responder `404` a todos sus antiguos miembros y su código de invitación NO SHALL servir.
 
 #### Scenario: El owner borra el grupo
 
@@ -146,6 +147,13 @@ todos sus antiguos miembros y su código de invitación NO SHALL servir.
 - **WHEN** intenta borrar el grupo
 - **THEN** la respuesta SHALL ser `403` con código `forbidden`
 - **AND** el grupo SHALL seguir existiendo
+
+#### Scenario: El borrado no destruye las vacantes
+
+- **GIVEN** un grupo con un link que también está en otro grupo del mismo usuario
+- **WHEN** el owner borra el primer grupo
+- **THEN** las relaciones de ese grupo con sus links NO SHALL existir
+- **AND** el link SHALL seguir apareciendo en el otro grupo
 
 ### Requirement: Límite de grupos por usuario
 
