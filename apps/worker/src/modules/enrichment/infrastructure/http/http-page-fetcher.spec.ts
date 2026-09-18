@@ -317,6 +317,61 @@ describe('Redirecciones', () => {
     expect(httpFetch.attempts).toHaveLength(MAX_REDIRECTS + 1);
   });
 
+  it('no sigue una redirección a una ruta prohibida', async () => {
+    // `robots.txt` prohíbe rutas, no dominios: el permiso de la ruta pedida no dice nada del destino, así que se
+    // vuelve a preguntar antes de pedirlo y lo prohibido no llega a descargarse (ADR-003).
+    const httpFetch = fetcherOf({
+      'https://bolsa.example/jobs/1': () =>
+        new Response(null, {
+          status: 302,
+          headers: { location: '/login?next=/jobs/1' },
+        }),
+    });
+    const asked: string[] = [];
+
+    const result = await pageFetcherOf(httpFetch).fetchPage(
+      'https://bolsa.example/jobs/1',
+      {
+        allowRedirect: (url) => {
+          asked.push(url);
+          return Promise.resolve(false);
+        },
+      },
+    );
+
+    // El motivo es del sitio, no un error nuestro.
+    expect(result).toEqual({ ok: false, reason: 'robots_disallowed' });
+    expect(asked).toEqual(['https://bolsa.example/login?next=/jobs/1']);
+    expect(httpFetch.attempts.map(({ url }) => url)).toEqual([
+      'https://bolsa.example/jobs/1',
+    ]);
+  });
+
+  it('asks for permission at every hop, and follows the ones allowed', async () => {
+    const httpFetch = fetcherOf({
+      'https://bolsa.example/jobs/1': () =>
+        new Response(null, { status: 301, headers: { location: '/jobs/1/es' } }),
+      'https://bolsa.example/jobs/1/es': () => html('<html><h1>Oferta</h1></html>'),
+    });
+    const asked: string[] = [];
+
+    const result = await pageFetcherOf(httpFetch).fetchPage(
+      'https://bolsa.example/jobs/1',
+      {
+        allowRedirect: (url) => {
+          asked.push(url);
+          return Promise.resolve(true);
+        },
+      },
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      finalUrl: 'https://bolsa.example/jobs/1/es',
+    });
+    expect(asked).toEqual(['https://bolsa.example/jobs/1/es']);
+  });
+
   it('does not follow a redirect to another host', async () => {
     // El permiso del `robots.txt` y el turno de descarga son del host que pedimos. Seguir la redirección sería leer
     // de un sitio al que no hemos preguntado nada, así que se abandona en lugar de obedecerla.

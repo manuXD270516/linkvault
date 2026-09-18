@@ -6,3 +6,5 @@ export * from './schemas/health.schema';
 export * from './schemas/link.schema';
 export * from './schemas/preview.schema';
 export * from './schemas/user-profile.schema';
+export * from './testing/job-link-schema-options';
+export * from './testing/manual-edit-cases';

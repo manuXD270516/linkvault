@@ -37,7 +37,8 @@ import {
  * sobre lo recién escrito en vez de descartarse, que es lo que la persona espera al pulsar guardar.
  *
  * Una petición que no pide ningún cambio NO sube la versión: subirla mataría un enriquecimiento en vuelo a cambio de
- * nada.
+ * nada. "Ningún cambio" incluye reenviar un campo con el valor que ya tenía escrito a mano, que es lo que hace el SPA
+ * cuando alguien guarda dos veces el mismo formulario.
  */
 @Injectable()
 export class UpdateLinkPreview {

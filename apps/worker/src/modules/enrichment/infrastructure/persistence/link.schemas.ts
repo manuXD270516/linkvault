@@ -56,7 +56,7 @@ export const jobLinkSchema = new Schema<JobLinkDocument>(
           },
           at: { type: String, required: true },
         },
-        { _id: false, versionKey: false, strict: true },
+        { _id: false, versionKey: false, strict: true, minimize: false },
       ),
       required: false,
     },

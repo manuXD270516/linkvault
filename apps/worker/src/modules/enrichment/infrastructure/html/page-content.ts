@@ -1,4 +1,4 @@
-import * as cheerio from 'cheerio';
+import * as cheerio from 'cheerio/slim';
 import { scrubContactDetails } from '../../domain/contact-scrub';
 import type { PageContent } from '../../domain/page-content';
 

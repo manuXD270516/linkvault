@@ -27,6 +27,8 @@ import type { SnapshotStore } from '../ports/snapshot-store.port';
 /** `robots.txt` que permite todo y no pide espera, que es el caso de las dos bolsas legibles del manifiesto. */
 export class FakeRobots implements Robots {
   readonly asked: string[] = [];
+  /** Rutas concretas que este `robots.txt` prohíbe, para los sitios que solo niegan una parte. */
+  readonly forbidden = new Set<string>();
 
   constructor(
     private readonly decision: RobotsDecision = {
@@ -37,7 +39,11 @@ export class FakeRobots implements Robots {
 
   decide(url: string): Promise<RobotsDecision> {
     this.asked.push(url);
-    return Promise.resolve(this.decision);
+    return Promise.resolve(
+      this.forbidden.has(url)
+        ? { ...this.decision, allowed: false }
+        : this.decision,
+    );
   }
 }
 
@@ -63,6 +69,8 @@ export class FakeHostMutex implements HostMutex {
 /** Descarga que devuelve lo que se le diga, anotando a qué URL fue y con qué plazo. */
 export class FakePageFetcher implements PageFetcher {
   readonly requested: { url: string; timeoutMs?: number }[] = [];
+  /** Destino al que esta descarga redirige, cuando el test quiere una redirección. */
+  redirectsTo: string | null = null;
 
   constructor(private result: PageFetchResult) {}
 
@@ -70,12 +78,21 @@ export class FakePageFetcher implements PageFetcher {
     this.result = result;
   }
 
-  fetchPage(
+  async fetchPage(
     url: string,
     options: PageFetchOptions = {},
   ): Promise<PageFetchResult> {
     this.requested.push({ url, timeoutMs: options.timeoutMs });
-    return Promise.resolve(this.result);
+    if (this.redirectsTo === null) return this.result;
+
+    // Lo mismo que hace `HttpPageFetcher`: pedir permiso para el destino **antes** de pedir el destino.
+    const allowed = (await options.allowRedirect?.(this.redirectsTo)) ?? true;
+    if (!allowed) return { ok: false, reason: 'robots_disallowed' };
+    this.requested.push({
+      url: this.redirectsTo,
+      timeoutMs: options.timeoutMs,
+    });
+    return this.result;
   }
 }
 

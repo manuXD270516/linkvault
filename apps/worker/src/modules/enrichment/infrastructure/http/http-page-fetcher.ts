@@ -10,7 +10,9 @@ import type {
 // Las redirecciones se siguen **a mano** (`redirect: 'manual'`) por dos motivos que `redirect: 'follow'` no permite:
 // contarlas, y comprobar a dónde llevan. Una redirección a otro host no se sigue, porque el permiso del `robots.txt` y
 // el turno de descarga se pidieron para el host de la URL original: seguirla sería descargar de un sitio al que no
-// hemos preguntado nada, que es exactamente lo que ADR-003 prohíbe.
+// hemos preguntado nada, que es exactamente lo que ADR-003 prohíbe. Y dentro del mismo host se vuelve a pedir permiso
+// para cada destino (`allowRedirect`) antes de pedirlo: el `robots.txt` prohíbe rutas, así que un `302` desde una ruta
+// permitida hacia una con `Disallow` es justo la forma de saltarse las reglas sin haberlas roto en la primera URL.
 //
 // El tope de bytes se aplica leyendo el cuerpo por trozos y abandonando al superarlo: `response.text()` ya se habría
 // traído la respuesta entera en memoria antes de poder medirla.
@@ -92,7 +94,7 @@ export class HttpPageFetcher implements PageFetcher {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      return await this.follow(start, controller.signal);
+      return await this.follow(start, controller.signal, options.allowRedirect);
     } catch {
       // El único error que llega hasta aquí es el de la red o el del plazo; `AbortSignal` no distingue cuál con
       // certeza, y para la persona los dos significan lo mismo.
@@ -108,6 +110,7 @@ export class HttpPageFetcher implements PageFetcher {
   private async follow(
     start: URL,
     signal: AbortSignal,
+    allowRedirect: ((url: string) => Promise<boolean>) | undefined,
   ): Promise<PageFetchResult> {
     let current = start;
     for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
@@ -126,6 +129,11 @@ export class HttpPageFetcher implements PageFetcher {
         await response.body?.cancel();
         const next = this.nextHop(response, current);
         if (next === null) return { ok: false, reason: 'http_error' };
+        // El permiso se pide **antes** de la petición al destino: lo prohibido no llega a descargarse, y el motivo es
+        // del sitio, no nuestro.
+        if (allowRedirect !== undefined && !(await allowRedirect(next.href))) {
+          return { ok: false, reason: 'robots_disallowed' };
+        }
         current = next;
         continue;
       }

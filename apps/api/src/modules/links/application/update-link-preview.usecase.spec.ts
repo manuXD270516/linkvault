@@ -94,11 +94,15 @@ describe('UpdateLinkPreview', () => {
     });
   });
 
-  it('raises previewVersion, so an enrichment in flight cannot overwrite it', async () => {
+  it('Estado tras editar a mano', async () => {
+    // Y la versión sube: es lo que impide que un enriquecimiento en vuelo pise la corrección al terminar.
     const linkId = await sharedLink();
 
-    await updatePreview.execute(BETO, linkId, { fields: { title: 'Otro' } });
+    const summary = await updatePreview.execute(BETO, linkId, {
+      fields: { title: 'Otro' },
+    });
 
+    expect(summary.previewStatus).toBe('manual');
     expect((await links.findById(linkId))?.previewVersion).toBe(3);
   });
 
@@ -168,6 +172,24 @@ describe('UpdateLinkPreview', () => {
     expect(summary.previewStatus).toBe('enriched');
   });
 
+  it('la misma edición dos veces: la segunda no sube previewVersion', async () => {
+    // El SPA reenvía el formulario entero. Si un valor que no se movió subiera la versión, el segundo guardado mataría
+    // el enriquecimiento en vuelo a cambio de nada.
+    const linkId = await sharedLink();
+    await updatePreview.execute(BETO, linkId, {
+      fields: { title: 'Ingeniero de Backend' },
+    });
+    expect((await links.findById(linkId))?.previewVersion).toBe(3);
+
+    const summary = await updatePreview.execute(BETO, linkId, {
+      fields: { title: 'Ingeniero de Backend' },
+    });
+
+    expect(summary.previewVersion).toBe(3);
+    expect(summary.preview?.title).toBe('Ingeniero de Backend');
+    expect((await links.findById(linkId))?.previewVersion).toBe(3);
+  });
+
   it('redoes the edit over what an enrichment wrote in between, instead of dropping it', async () => {
     const linkId = await sharedLink();
     const original = links.updatePreview.bind(links);
@@ -192,11 +214,13 @@ describe('UpdateLinkPreview', () => {
       return await original(id, expectedVersion, changes);
     };
 
+    // El valor es distinto del guardado a propósito: una edición que reenvía lo que ya había no escribe nada, así que
+    // no habría carrera que perder.
     const summary = await updatePreview.execute(ANA, linkId, {
-      fields: { company: 'Acme Bolivia' },
+      fields: { company: 'Acme Bolivia S.R.L.' },
     });
 
-    expect(summary.preview?.company).toBe('Acme Bolivia');
+    expect(summary.preview?.company).toBe('Acme Bolivia S.R.L.');
     // Lo que escribió el enriquecimiento sigue ahí: la edición se rehízo encima, no lo descartó.
     expect(summary.preview?.title).toBe('Título recién leído');
   });

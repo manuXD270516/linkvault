@@ -140,6 +140,48 @@ describe('Se descarga lo que escribió la persona', () => {
     expect(mutex.acquired).toEqual([]);
   });
 
+  it('tampoco descarga una redirección a una ruta prohibida', async () => {
+    // El permiso se pidió para la ruta de la oferta; el sitio contesta `302` hacia una que su `robots.txt` niega. Sin
+    // volver a preguntar en el salto, una ruta permitida sería la puerta de atrás de cualquier `Disallow` (ADR-003).
+    const robots = new FakeRobots();
+    robots.forbidden.add('https://bolsa.example/login');
+    const fetcher = new FakePageFetcher(htmlResponse(JOB_POSTING_PAGE));
+    fetcher.redirectsTo = 'https://bolsa.example/login';
+    const { service, mutex } = harnessOf([new MetadataExtractor()], {
+      robots,
+      fetcher,
+    });
+
+    expect(
+      await service.run({ link: LINK, deferrals: 0, deadlineAt: 45_000 }),
+    ).toEqual({
+      kind: 'failed',
+      reason: 'robots_disallowed',
+    });
+    // Se preguntó por las dos rutas, y de la prohibida no se llegó a pedir nada.
+    expect(robots.asked).toEqual([
+      LINK.displayUrl,
+      'https://bolsa.example/login',
+    ]);
+    expect(fetcher.requested.map(({ url }) => url)).toEqual([LINK.displayUrl]);
+    // Y el turno del host se devuelve igual: el sitio no tiene la culpa de nuestra cortesía.
+    expect(mutex.released).toHaveLength(1);
+  });
+
+  it('follows a redirect the site does allow', async () => {
+    const fetcher = new FakePageFetcher(htmlResponse(JOB_POSTING_PAGE));
+    fetcher.redirectsTo = 'https://bolsa.example/jobs/1/es';
+    const { service } = harnessOf([new MetadataExtractor()], { fetcher });
+
+    expect(
+      await service.run({ link: LINK, deferrals: 0, deadlineAt: 45_000 }),
+    ).toMatchObject({ kind: 'extracted' });
+    expect(fetcher.requested.map(({ url }) => url)).toEqual([
+      LINK.displayUrl,
+      'https://bolsa.example/jobs/1/es',
+    ]);
+  });
+
   it('defers instead of waiting when the host is busy', async () => {
     const mutex = new FakeHostMutex();
     mutex.busy.add('bolsa.example');

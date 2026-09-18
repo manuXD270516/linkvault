@@ -282,7 +282,7 @@ describe('Edición durante un enriquecimiento', () => {
 });
 
 describe('Enriquecido', () => {
-  it('leaves the link enriched with previewVersion one unit higher', async () => {
+  it('Estado tras enriquecer', async () => {
     const { useCase, links } = harnessOf();
 
     await useCase.execute({ linkId: LINK_ID, previewVersion: 1, deferrals: 0 });
@@ -363,7 +363,9 @@ describe('La bolsa nos bloquea', () => {
 
     expect(links.writes[0].write.lastEnrichmentError?.reason).toBe('blocked');
   });
+});
 
+describe('La bolsa pide esperar', () => {
   it('tells a site asking us to come back later from one blocking us', async () => {
     const { useCase, links } = harnessOf({
       response: { ok: false, reason: 'rate_limited' },
@@ -467,7 +469,7 @@ describe('Snapshot guardado', () => {
     expect(links.peek(LINK_ID)?.snapshotKey).toBe(`${LINK_ID}/2.html.gz`);
   });
 
-  it('is read from the link, never guessed from the version', async () => {
+  it('La copia guardada no se deduce de la versión', async () => {
     // La versión sube también con las ediciones a mano y con los reintentos, que no producen snapshot: aquí el link
     // queda en la versión 3 con la copia de la 2.
     const { useCase, links } = harnessOf();

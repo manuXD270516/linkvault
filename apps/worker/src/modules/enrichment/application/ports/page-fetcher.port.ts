@@ -12,10 +12,12 @@ export const PAGE_FETCHER = Symbol('PAGE_FETCHER');
 /**
  * Motivos que puede producir una descarga, un subconjunto de los de D5. `blocked` es el sitio negándonos la petición
  * (`401`/`403`) y `rate_limited` el sitio pidiendo que volvamos más tarde (`429`): los dos son suyos, no nuestros, y
- * por eso se cuentan aparte de `http_error`.
+ * por eso se cuentan aparte de `http_error`. `robots_disallowed` es el destino de una redirección que el `robots.txt`
+ * prohíbe: tampoco es un error nuestro, es el sitio diciendo que ahí no se entra.
  */
 export type PageFetchFailureReason = Extract<
   EnrichmentFailureReason,
+  | 'robots_disallowed'
   | 'blocked'
   | 'rate_limited'
   | 'not_html'
@@ -45,6 +47,13 @@ export interface PageFetchOptions {
    * menos plazo total que eso.
    */
   readonly timeoutMs?: number;
+  /**
+   * Permiso para **cada destino de una redirección**, antes de pedirlo. El permiso que el caso de uso consultó es el
+   * de la URL que escribió la persona, y una redirección lleva a otra ruta: sin volver a preguntar, un `302` desde una
+   * ruta permitida hacia una con `Disallow` descargaría lo que el sitio prohíbe (ADR-003). Quien no lo pase sigue las
+   * redirecciones sin preguntar, que es lo que quiere quien ya sabe que no las habrá.
+   */
+  readonly allowRedirect?: (url: string) => Promise<boolean>;
 }
 
 export interface PageFetcher {

@@ -90,7 +90,8 @@ export class ExtractPreviewService {
     // Una URL que no tiene host no se puede pedir a nadie; el link se guardó con algo que no es una dirección.
     if (host === null) return { kind: 'failed', reason: 'http_error' };
 
-    // Primero el permiso: preguntar al `robots.txt` no cuesta una petición al sitio salvo la primera vez del día.
+    // Primero el permiso: preguntar al `robots.txt` no cuesta una petición al sitio salvo la primera vez del día. El
+    // de esta URL no vale para el destino de una redirección, así que la descarga vuelve a preguntar en cada salto.
     const permission = await this.robots.decide(url);
     if (!permission.allowed) {
       return { kind: 'failed', reason: 'robots_disallowed' };
@@ -119,6 +120,11 @@ export class ExtractPreviewService {
 
       const fetched = await this.pageFetcher.fetchPage(url, {
         timeoutMs: Math.min(this.options.fetchTimeoutMs, remainingMs),
+        // El permiso de arriba es el de esta URL. Una redirección lleva a otra ruta, y el `robots.txt` prohíbe rutas:
+        // cada salto vuelve a preguntar antes de pedir nada, o una ruta permitida que redirige a una prohibida sería
+        // la puerta de atrás de ADR-003. La respuesta sale de la caché por host, así que no cuesta otra petición.
+        allowRedirect: async (next: string) =>
+          (await this.robots.decide(next)).allowed,
       });
       if (!fetched.ok) return { kind: 'failed', reason: fetched.reason };
       html = fetched.html;

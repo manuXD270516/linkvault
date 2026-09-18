@@ -110,7 +110,7 @@ describe('Registro de entradas pendientes de fixture', () => {
     expect(pendingFixturePath({ ...env, VITEST: 'true' })).toBe(logPath);
   });
 
-  it('no anota la entrada de una tarea personal', async () => {
+  it('Entrada de una tarea con datos personales', async () => {
     const runTask = runTaskWithEmptyFixtures(join(root, 'fixtures'));
 
     await expect(
@@ -163,7 +163,11 @@ describe('Lectura del registro', () => {
 
     const raw = await readFile(logPath, 'utf8');
     expect(raw.split('\n').filter((line) => line !== '')).toHaveLength(100);
-    expect(readPendingFixtures(logPath)).toEqual([shared, other]);
+    // Sin orden: el registro conserva el de la primera aparición, y cuál de los tres procesos escribe antes lo decide
+    // el sistema operativo. Lo que sí se afirma es que no se pierde ninguna clave y que ninguna se repite.
+    const pending = readPendingFixtures(logPath);
+    expect(pending).toHaveLength(2);
+    expect(pending).toEqual(expect.arrayContaining([shared, other]));
   });
 
   it('ignora líneas rotas y devuelve las demás', async () => {

@@ -121,7 +121,10 @@ export const jobLinkSchema = new Schema<JobLinkDocument>(
     createdAt: { type: Date, required: true },
     updatedAt: { type: Date, required: true },
   },
-  { ...schemaOptions, collection: JOB_LINKS_COLLECTION },
+  // `minimize: false` solo aquí: un `preview` o un `previewSources` que se quedan vacíos son un dato —"se leyó y no
+  // había nada"— y Mongoose, minimizando, los borraría del documento. Las mismas opciones tiene el schema del worker
+  // sobre esta colección, y el test tabular de cada lado las compara con la tabla de `libs/shared` (D11).
+  { ...schemaOptions, minimize: false, collection: JOB_LINKS_COLLECTION },
 );
 
 // Una vacante por clave de dedupe: es lo que cierra la carrera de dos altas simultáneas de la misma URL (D3).

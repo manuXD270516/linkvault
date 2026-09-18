@@ -1,4 +1,9 @@
-import { previewSourcesSchema, storedPreviewSchema } from '@linkvault/shared';
+import type { ManualEditStoredEntry } from '@linkvault/shared';
+import {
+  MANUAL_EDIT_REPLACED_CASES,
+  previewSourcesSchema,
+  storedPreviewSchema,
+} from '@linkvault/shared';
 import { describe, expect, it } from 'vitest';
 import { PreviewFieldUnknown } from './errors';
 import { applyManualEdit, type EditablePreview } from './preview-edit';
@@ -26,6 +31,55 @@ const extracted: EditablePreview = {
     },
   },
 };
+
+const BEFORE = '2026-09-18T11:00:00.000Z';
+
+/** Lo guardado de un caso de `MANUAL_EDIT_REPLACED_CASES`, con su procedencia puesta en `title`. */
+function storedForCase(entry: ManualEditStoredEntry | undefined): EditablePreview {
+  if (entry === undefined) return {};
+  return {
+    preview: { title: entry.value },
+    previewSources: {
+      title:
+        entry.source === 'auto'
+          ? {
+              value: entry.value,
+              source: 'auto',
+              extractor: entry.extractor,
+              at: BEFORE,
+            }
+          : {
+              value: entry.value,
+              source: 'manual',
+              by: ANA,
+              at: BEFORE,
+              ...(entry.replaced === undefined
+                ? {}
+                : { replaced: entry.replaced }),
+            },
+    },
+  };
+}
+
+describe('Se guarda lo que la edición desplazó', () => {
+  // La misma tabla la itera el spec de `applyManualField` en el worker: las dos funciones aplican esta regla, el
+  // código está duplicado a propósito y lo que se comparte son los casos. Si una de las dos cambia, el otro spec se
+  // pone en rojo.
+  it.each(MANUAL_EDIT_REPLACED_CASES)('$name', ({ stored, edit, expected }) => {
+    const edited = applyManualEdit(
+      storedForCase(stored),
+      { fields: { title: edit } },
+      ANA,
+      NOW,
+    );
+    const entry = edited.previewSources.title;
+
+    expect(edited.preview.title).toBe(edit);
+    expect(entry?.source === 'manual' ? entry.replaced : undefined).toEqual(
+      expected,
+    );
+  });
+});
 
 describe('applyManualEdit', () => {
   it('Corregir el título', () => {
@@ -69,6 +123,71 @@ describe('applyManualEdit', () => {
     expect(entry?.source === 'manual' ? entry.replaced : undefined).toEqual({
       value: 'Backend Engineer',
       extractor: 'json-ld',
+    });
+  });
+
+  it('la misma edición dos veces: la segunda no cambia nada', () => {
+    const first = applyManualEdit(
+      extracted,
+      { fields: { title: 'Ingeniero de Backend' } },
+      ANA,
+      NOW,
+    );
+
+    const again = applyManualEdit(
+      first,
+      { fields: { title: 'Ingeniero de Backend' } },
+      ANA,
+      NOW,
+    );
+
+    expect(again.changed).toBe(false);
+    expect(again.previewSources.title).toEqual(first.previewSources.title);
+  });
+
+  it('compares values by shape, not by reference', () => {
+    // Lo que llega de una petición HTTP nunca es la misma referencia que lo guardado: una lista de habilidades igual
+    // campo por campo es la misma edición, y una con un nivel distinto no lo es.
+    const written = applyManualEdit(
+      {},
+      { fields: { skills: [{ name: 'TypeScript', required: true }] } },
+      ANA,
+      NOW,
+    );
+
+    expect(
+      applyManualEdit(
+        written,
+        { fields: { skills: [{ name: 'TypeScript', required: true }] } },
+        ANA,
+        NOW,
+      ).changed,
+    ).toBe(false);
+    expect(
+      applyManualEdit(
+        written,
+        { fields: { skills: [{ name: 'TypeScript', required: false }] } },
+        ANA,
+        NOW,
+      ).changed,
+    ).toBe(true);
+  });
+
+  it('writing by hand what the extraction read is a change, because it pins the field', () => {
+    const edited = applyManualEdit(
+      extracted,
+      { fields: { title: 'Backend Engineer' } },
+      ANA,
+      NOW,
+    );
+
+    expect(edited.changed).toBe(true);
+    expect(edited.previewSources.title).toEqual({
+      value: 'Backend Engineer',
+      source: 'manual',
+      by: ANA,
+      at: AT,
+      replaced: { value: 'Backend Engineer', extractor: 'json-ld' },
     });
   });
 

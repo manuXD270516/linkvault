@@ -394,11 +394,11 @@ peticiones SHALL esperar a que vuelva.
 - **THEN** SHALL encolarse un job por cada uno con su `jobId` determinista
 - **AND** SHALL informarse de cuántos se reencolaron
 
-#### Scenario: No se duplica lo que ya está en la cola
+#### Scenario: No se duplica el trabajo que ya está en la cola
 
-- **GIVEN** un link en `pending` cuyo job sigue en la cola
+- **GIVEN** un link en `pending` cuyo trabajo sigue en la cola
 - **WHEN** se ejecuta el comando
-- **THEN** NO SHALL añadirse un job duplicado
+- **THEN** el link SHALL leerse una sola vez: el trabajo anterior SHALL descartarse por versión al llegarle el turno
 
 #### Scenario: Publicador apagado
 

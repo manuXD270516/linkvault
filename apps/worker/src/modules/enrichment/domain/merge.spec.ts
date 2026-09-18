@@ -1,5 +1,13 @@
-import type { PreviewSources, StoredPreview } from '@linkvault/shared';
-import { previewSourcesSchema, storedPreviewSchema } from '@linkvault/shared';
+import type {
+  ManualEditStoredEntry,
+  PreviewSources,
+  StoredPreview,
+} from '@linkvault/shared';
+import {
+  MANUAL_EDIT_REPLACED_CASES,
+  previewSourcesSchema,
+  storedPreviewSchema,
+} from '@linkvault/shared';
 import { describe, expect, it } from 'vitest';
 import {
   EMPTY_PREVIEW_STATE,
@@ -15,6 +23,33 @@ import { draftFrom, hasAnyField, hasRequiredFields } from './preview-draft';
 const AT = '2026-09-18T10:00:00.000Z';
 const BEFORE = '2026-09-01T10:00:00.000Z';
 const ANA = '68c0f0f0f0f0f0f0f0f0f0f0';
+
+/** El estado del que parte un caso de `MANUAL_EDIT_REPLACED_CASES`, con su procedencia puesta en `title`. */
+function storedForCase(entry: ManualEditStoredEntry | undefined): PreviewState {
+  if (entry === undefined) return EMPTY_PREVIEW_STATE;
+  return stateOf(
+    { title: entry.value },
+    {
+      title:
+        entry.source === 'auto'
+          ? {
+              value: entry.value,
+              source: 'auto',
+              extractor: entry.extractor,
+              at: BEFORE,
+            }
+          : {
+              value: entry.value,
+              source: 'manual',
+              by: ANA,
+              at: BEFORE,
+              ...(entry.replaced === undefined
+                ? {}
+                : { replaced: entry.replaced }),
+            },
+    },
+  );
+}
 
 function stateOf(
   preview: StoredPreview,
@@ -269,50 +304,27 @@ describe('Se guarda lo que la edición desplazó', () => {
     expect(previewSourcesSchema.parse(edited.sources)).toEqual(edited.sources);
   });
 
-  it('keeps the original automatic value across successive edits', () => {
-    // A lo que se vuelve es a lo que leyó la página, no a lo que otra persona escribió antes.
-    const first = applyManualField(
-      stateOf(
-        { title: 'Lo extraído' },
-        {
-          title: {
-            value: 'Lo extraído',
-            source: 'auto',
-            extractor: 'json-ld',
-            at: BEFORE,
-          },
-        },
-      ),
-      'title',
-      'Lo de Ana',
-      ANA,
-      BEFORE,
-    );
+  // La misma tabla la itera el spec de `applyManualEdit` en `api`: las dos funciones aplican esta regla y el código
+  // está duplicado a propósito, así que lo que se comparte son los casos. Si una de las dos cambia, el otro spec se
+  // pone en rojo.
+  it.each(MANUAL_EDIT_REPLACED_CASES)(
+    '$name',
+    ({ stored, edit, expected }) => {
+      const edited = applyManualField(
+        storedForCase(stored),
+        'title',
+        edit,
+        ANA,
+        AT,
+      );
+      const entry = edited.sources.title;
 
-    const second = applyManualField(first, 'title', 'Lo de Beto', ANA, AT);
-
-    expect(second.sources.title).toMatchObject({
-      value: 'Lo de Beto',
-      replaced: { value: 'Lo extraído', extractor: 'json-ld' },
-    });
-  });
-
-  it('has nothing to keep when the field was never extracted', () => {
-    const edited = applyManualField(
-      EMPTY_PREVIEW_STATE,
-      'company',
-      'Empresa Ejemplo',
-      ANA,
-      AT,
-    );
-
-    expect(edited.sources.company).toEqual({
-      value: 'Empresa Ejemplo',
-      source: 'manual',
-      by: ANA,
-      at: AT,
-    });
-  });
+      expect(edited.preview.title).toBe(edit);
+      expect(entry?.source === 'manual' ? entry.replaced : undefined).toEqual(
+        expected,
+      );
+    },
+  );
 });
 
 describe('Tabla de merges', () => {

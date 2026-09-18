@@ -1,4 +1,6 @@
 import {
+  JOB_LINK_SCHEMA_OPTIONS,
+  LAST_ENRICHMENT_ERROR_SCHEMA_OPTIONS,
   PREVIEW_FIELD_NAMES,
   PREVIEW_LANGUAGE_KEYS,
   PREVIEW_REPLACED_KEYS,
@@ -11,12 +13,15 @@ import {
 } from '@linkvault/shared';
 import { Schema } from 'mongoose';
 import { describe, expect, it } from 'vitest';
+import { jobLinkSchema } from './link.schemas';
 import { previewSourcesSubSchema, previewSubSchema } from './preview.schemas';
 
-// D11 de link-enrichment: la forma de `preview` y `previewSources` se declara **una sola vez** en `libs/shared` y el
-// schema de Mongoose del worker se deriva de ella. Este test tabular es la mitad del contrato —la otra está en
-// `api`—: añadir un campo en `libs/shared` y reflejarlo solo en uno de los dos schemas rompe aquí, que es lo que
-// impide que dos `strict: true` divergentes descarten campos en silencio.
+// D11 de link-enrichment: la forma de `preview` y `previewSources` —y las opciones con las que se declara
+// `job_links`— se declaran **una sola vez** en `libs/shared` y el schema de Mongoose del worker se deriva de ellas.
+// Este test tabular es la mitad del contrato —la otra está en `api`—: añadir un campo en `libs/shared` y reflejarlo
+// solo en uno de los dos schemas rompe aquí, que es lo que impide que dos `strict: true` divergentes descarten campos
+// en silencio. Lo mismo con las opciones: un `minimize` distinto a cada lado guarda documentos distintos según quién
+// escriba.
 
 /** Claves de primer nivel de un subschema, en su orden de declaración. */
 function keysOf(schema: Schema): string[] {
@@ -41,6 +46,34 @@ function enumOf(schema: Schema, path: string): unknown {
 function defaultOf(schema: Schema, path: string): unknown {
   return (schema.path(path) as { defaultValue?: unknown }).defaultValue;
 }
+
+/** Las opciones que declara el schema, acotadas a las de la tabla: Mongoose rellena muchas más por su cuenta. */
+function declaredOptions(
+  schema: Schema,
+  expected: Readonly<Record<string, unknown>>,
+): Record<string, unknown> {
+  const options = schema.options as Record<string, unknown>;
+  return Object.fromEntries(
+    Object.keys(expected).map((key) => [key, options[key]]),
+  );
+}
+
+describe('Las opciones de job_links', () => {
+  it('are the ones the contract declares, the same the api schema uses', () => {
+    expect(declaredOptions(jobLinkSchema, JOB_LINK_SCHEMA_OPTIONS)).toEqual(
+      JOB_LINK_SCHEMA_OPTIONS,
+    );
+  });
+
+  it('are also the same for the lastEnrichmentError subdocument', () => {
+    expect(
+      declaredOptions(
+        nestedAt(jobLinkSchema, 'lastEnrichmentError'),
+        LAST_ENRICHMENT_ERROR_SCHEMA_OPTIONS,
+      ),
+    ).toEqual(LAST_ENRICHMENT_ERROR_SCHEMA_OPTIONS);
+  });
+});
 
 describe('El preview guardado', () => {
   it('has exactly the fields of the contract, in its order', () => {

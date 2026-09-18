@@ -1,4 +1,6 @@
 import {
+  JOB_LINK_SCHEMA_OPTIONS,
+  LAST_ENRICHMENT_ERROR_SCHEMA_OPTIONS,
   PREVIEW_FIELD_NAMES,
   PREVIEW_FIELD_STORED_TYPES,
   PREVIEW_LANGUAGE_KEYS,
@@ -12,9 +14,10 @@ import { describe, expect, it } from 'vitest';
 import { jobLinkSchema } from './link.schemas';
 import { previewSourcesSubSchema, previewSubSchema } from './preview.schemas';
 
-// Test tabular de la tarea 5.1: las claves de los subschemas de Mongoose salen de `libs/shared` y de ningún otro sitio.
-// El worker tiene el suyo sobre la misma tabla; si un campo se añade en `libs/shared` y solo se refleja en uno de los
-// dos, el test del otro falla. No hace falta Mongo: todo se lee del schema.
+// Test tabular de la tarea 5.1: las claves de los subschemas de Mongoose **y las opciones con las que se declara
+// `job_links`** salen de `libs/shared` y de ningún otro sitio. El worker tiene el suyo sobre las mismas tablas; si un
+// campo se añade en `libs/shared` y solo se refleja en uno de los dos, o si un `minimize` cambia solo a un lado, el
+// test del otro falla. No hace falta Mongo: todo se lee del schema.
 
 /** Rutas declaradas de un subschema, en orden de declaración. */
 function pathsOf(schema: Schema): string[] {
@@ -29,6 +32,34 @@ function nestedSchema(schema: Schema, path: string): Schema {
   }
   return nested;
 }
+
+/** Las opciones que declara el schema, acotadas a las de la tabla: Mongoose rellena muchas más por su cuenta. */
+function declaredOptions(
+  schema: Schema,
+  expected: Readonly<Record<string, unknown>>,
+): Record<string, unknown> {
+  const options = schema.options as Record<string, unknown>;
+  return Object.fromEntries(
+    Object.keys(expected).map((key) => [key, options[key]]),
+  );
+}
+
+describe('opciones de job_links', () => {
+  it('declares the same schema options as the worker view of the collection', () => {
+    expect(declaredOptions(jobLinkSchema, JOB_LINK_SCHEMA_OPTIONS)).toEqual(
+      JOB_LINK_SCHEMA_OPTIONS,
+    );
+  });
+
+  it('declares the same options for lastEnrichmentError as the worker does', () => {
+    expect(
+      declaredOptions(
+        nestedSchema(jobLinkSchema, 'lastEnrichmentError'),
+        LAST_ENRICHMENT_ERROR_SCHEMA_OPTIONS,
+      ),
+    ).toEqual(LAST_ENRICHMENT_ERROR_SCHEMA_OPTIONS);
+  });
+});
 
 describe('preview subschema', () => {
   it('declares exactly the fields of the shared contract', () => {

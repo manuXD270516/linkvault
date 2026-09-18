@@ -16,6 +16,10 @@ import { PreviewFieldUnknown } from './errors';
 // - "Volver a lo extraído" de un campo que nunca tuvo valor automático lo deja **sin valor**: lo extraído era nada, y
 //   dejar ahí la edición que se acaba de deshacer sería no hacer nada con un 200 delante.
 //
+// - Un campo que llega con el valor que ya tenía escrito a mano no cuenta como cambio, y por eso una misma edición
+//   enviada dos veces no sube `previewVersion`: la segunda no tendría nada que guardar y sí mataría un
+//   enriquecimiento en vuelo.
+//
 // Los `revert` se aplican antes que los `fields`: así, si la misma petición devuelve un campo a lo extraído y escribe
 // otro valor encima, gana el valor nuevo y su `replaced` es el automático recién recuperado.
 
@@ -76,6 +80,12 @@ export function applyManualEdit(
   }
   for (const [name, value] of Object.entries(edit.fields ?? {})) {
     requireField(name);
+    // Un campo que ya estaba escrito a mano con ese mismo valor no es un cambio: el SPA reenvía el formulario entero,
+    // y subir la versión por un valor que no se movió mataría un enriquecimiento en vuelo a cambio de nada. Escribir a
+    // mano lo que puso la extracción sí cambia algo —fija el campo y guarda lo desplazado—, así que no entra aquí.
+    if (alreadyWrittenByHand(sources[name], preview[name], value)) {
+      continue;
+    }
     preview[name] = value;
     sources[name] = {
       value,
@@ -94,6 +104,49 @@ export function applyManualEdit(
     previewSources: sources as PreviewSources,
     changed,
   };
+}
+
+/**
+ * Si ese campo ya lo escribió una persona con ese mismo valor. Se compara contra la procedencia y contra lo guardado a
+ * la vez: los dos tienen que decir lo mismo para que no escribir sea, de verdad, no cambiar nada.
+ */
+function alreadyWrittenByHand(
+  entry: SourceEntry | undefined,
+  stored: unknown,
+  value: unknown,
+): boolean {
+  return (
+    entry?.source === 'manual' &&
+    sameValue(entry.value, value) &&
+    sameValue(stored, value)
+  );
+}
+
+/**
+ * Igualdad por valor. Los valores del preview son datos JSON —cadenas, números, nulos, listas de habilidades o de
+ * idiomas y el objeto del salario—, así que la comparación recorre listas y objetos planos en vez de fiarse de la
+ * identidad de la referencia, que para lo que llega de una petición HTTP nunca se cumple.
+ */
+function sameValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return (
+      a.length === b.length &&
+      a.every((item, index) => sameValue(item, b[index]))
+    );
+  }
+  if (isRecord(a) && isRecord(b)) {
+    const keys = Object.keys(a);
+    return (
+      keys.length === Object.keys(b).length &&
+      keys.every((key) => key in b && sameValue(a[key], b[key]))
+    );
+  }
+  return false;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function requireField(name: string): void {

@@ -17,9 +17,12 @@ export const LINK_ENRICHED_CHANNEL = 'events:link.enriched';
 export const LINK_ENRICHED_EVENT_TYPE = 'LinkEnriched.v1';
 
 /**
- * Datos del aviso. `previewVersion` es la versión ya escrita en el link: `api` la usa para no repartir un aviso que
- * llegó tarde, y por eso empieza en 1 y nunca es 0 ni negativa. `previewStatus` es el estado con el que quedó el link;
- * el publicador solo avisa de estados terminados (`enriched`, `partial`, `failed`), nunca de `pending`.
+ * Datos del aviso. `previewVersion` es la versión que el worker acababa de escribir en el link, y viaja como **dato
+ * del aviso, no como filtro**: `api` no descarta ningún aviso por ella. Lo que reparte lo compone leyendo el link de
+ * Mongo, que es donde está la verdad de este instante —si alguien corrigió el preview a mano entre el aviso y el
+ * reparto, la pantalla tiene que ver la corrección, no lo que el worker dejó—. Por ser una versión ya escrita empieza
+ * en 1 y nunca es 0 ni negativa. `previewStatus` es el estado con el que quedó el link; el publicador solo avisa de
+ * estados terminados (`enriched`, `partial`, `failed`), nunca de `pending`.
  */
 export const linkEnrichedPayloadSchema = z.strictObject({
   linkId: z.string().min(1),
