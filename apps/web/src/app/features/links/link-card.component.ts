@@ -1,0 +1,91 @@
+import { DatePipe } from '@angular/common';
+import { ChangeDetectionStrategy, Component, LOCALE_ID, computed, inject, input, output } from '@angular/core';
+import { MatButtonModule } from '@angular/material/button';
+import type { JobLinkSummary, PreviewFieldName } from '@linkvault/shared';
+import {
+  daysSince,
+  fieldOrigin,
+  formatSalary,
+  linkLabel,
+  modalityLabel,
+  originText,
+  platformName,
+  seniorityLabel,
+} from './link-preview';
+import { linkCardStatus } from './link-status';
+
+/**
+ * Tarjeta de una oferta (spec web/links). Muestra lo que se leyó de la vacante —título, empresa, ubicación, modalidad y
+ * seniority— y, cuando todavía no hay nada, la etiqueta derivada de la URL, para que la fila siga siendo reconocible.
+ *
+ * Es presentacional: recibe el link ya cargado y avisa de las acciones hacia arriba, porque quien sabe a qué lista
+ * pertenece (un grupo o la privada) es `LinkList`, no la tarjeta.
+ */
+@Component({
+  selector: 'lv-link-card',
+  imports: [DatePipe, MatButtonModule],
+  templateUrl: './link-card.component.html',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+})
+export class LinkCard {
+  readonly link = input.required<JobLinkSummary>();
+  /** `true` si quien mira puede quitar este link de la lista que está viendo. */
+  readonly canRemove = input(false);
+  /** `true` mientras hay una acción en curso sobre la lista: los botones no se pueden pulsar dos veces. */
+  readonly busy = input(false);
+
+  readonly remove = output<void>();
+  /** Completar la oferta a mano: quien la abre es `LinkList`, que sabe recargar la lista al guardar. */
+  readonly complete = output<void>();
+  /** Volver a pedir la lectura; solo se ofrece cuando el motivo del fallo es transitorio. */
+  readonly retry = output<void>();
+
+  private readonly locale = inject(LOCALE_ID);
+
+  private readonly preview = computed(() => this.link().preview);
+  private readonly sources = computed(() => this.link().previewSources);
+
+  /** El título de la vacante cuando se pudo leer; si no, la etiqueta derivada de la URL. */
+  protected readonly headline = computed(() => {
+    const title = this.preview()?.title;
+    return title === undefined || title.length === 0 ? linkLabel(this.link().displayUrl) : title;
+  });
+
+  protected readonly company = computed(() => this.preview()?.company ?? null);
+  protected readonly location = computed(() => this.preview()?.location ?? null);
+  protected readonly modality = computed(() => modalityLabel(this.preview()?.modality));
+  protected readonly seniority = computed(() => seniorityLabel(this.preview()?.seniority));
+  protected readonly platform = computed(() => platformName(this.link().platform));
+  protected readonly salary = computed(() => formatSalary(this.preview()?.salary, this.locale));
+
+  /**
+   * `true` si el salario lo dedujo la IA. Entonces se enseña sin destacar: un salario inventado es el dato que más daño
+   * hace de esta tarjeta, y presentarlo como si estuviera escrito en la oferta sería mentir por tipografía.
+   */
+  protected readonly salaryIsGuessed = computed(
+    () => fieldOrigin(this.sources()?.salary)?.kind === 'ai',
+  );
+
+  /** Días desde que se publicó la oferta, si la página lo dijo. */
+  protected readonly daysSincePosted = computed(() =>
+    daysSince(this.preview()?.postedAt, new Date()),
+  );
+
+  protected readonly expiresAt = computed(() => this.preview()?.expiresAt ?? null);
+
+  /**
+   * Qué se le dice a la persona sobre esta oferta. Se recalcula con el link, así que un aviso que llega por el canal de
+   * eventos cambia el texto sin que nadie recargue nada.
+   */
+  protected readonly status = computed(() => linkCardStatus(this.link(), new Date()));
+
+  /**
+   * Quién escribió ese dato, cuando no fue la página: "Escrito por Ana" o "Deducido por la IA". Lo leído de la página no
+   * se anota, que es el caso normal y llenaría la tarjeta de ruido; lo que sí hace falta decir es cuándo el dato lo puso
+   * una persona —el link es compartido y las demás lo ven— y cuándo es una conjetura de la IA.
+   */
+  protected note(field: PreviewFieldName): string | null {
+    const origin = fieldOrigin(this.sources()?.[field]);
+    return origin === null || origin.kind === 'page' ? null : originText(origin);
+  }
+}

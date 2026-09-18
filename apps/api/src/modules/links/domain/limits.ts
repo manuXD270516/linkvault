@@ -44,3 +44,19 @@ export function assertImportTextWithinLimit(text: string): void {
     throw new TextTooLong();
   }
 }
+
+// Límites por ventana de tiempo (spec links/enrichment y links/sharing, D13 de link-enrichment). El contador vive detrás
+// del puerto LINK_LIMITER; aquí solo están los números y cuánto dura su ventana.
+
+/** Ventana de los dos límites por tiempo de `links`. La misma que la de `auth`, para no inventar una segunda unidad. */
+export const LINK_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+
+/**
+ * Relecturas que se pueden pedir de un mismo link en la ventana. Cuenta **por link y no por persona**: lo que el límite
+ * protege es al sitio del que se descarga, no a nuestro servidor, así que dos miembros del mismo grupo pulsando
+ * "reintentar" cuentan contra el mismo contador.
+ */
+export const ENRICH_RETRIES_PER_LINK = 3;
+
+/** Importaciones que puede hacer una persona en la ventana. Cada una guarda hasta `MAX_LINKS_PER_IMPORT` links. */
+export const IMPORTS_PER_USER = 10;

@@ -57,6 +57,15 @@ export class InMemoryUserLinkRepository implements UserLinkRepository {
     return Promise.resolve(entry ? toUserLink(entry) : null);
   }
 
+  relationsOfLink(linkId: string): Promise<UserLink[]> {
+    if (!isLinkId(linkId)) {
+      return Promise.resolve([]);
+    }
+    return Promise.resolve(
+      this.entries.filter((entry) => entry.linkId === linkId).map(toUserLink),
+    );
+  }
+
   async listByUser(userId: string, query: LinkListQuery): Promise<LinkListPage> {
     if (!isUserId(userId)) {
       return { items: [] };

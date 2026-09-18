@@ -5,10 +5,11 @@ import type {
 } from '@linkvault/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import { GroupNotFound } from '../../groups/domain/errors';
+import { TooManyLinkAttempts } from '../domain/errors';
 import type { NewJobLink } from '../domain/job-link';
 import { extractUrls } from '../domain/link-text';
 import { assertImportTextWithinLimit, MAX_LINKS_PER_IMPORT } from '../domain/limits';
-import { toJobLinkSummary, toLinkSharer } from './link.mapper';
+import { displayNameIdsOf, toJobLinkSummary, toLinkSharer } from './link.mapper';
 import { LINKS_CLOCK, type Clock } from './ports/clock.port';
 import {
   GROUP_LINK_REPOSITORY,
@@ -26,6 +27,7 @@ import {
   LINK_USER_DIRECTORY,
   type LinkUserDirectory,
 } from './ports/link-user-directory.port';
+import { LINK_LIMITER, type LinkLimiter } from './ports/link-limiter.port';
 import { OUTBOX, type Outbox } from './ports/outbox.port';
 import {
   USER_LINK_REPOSITORY,
@@ -41,6 +43,11 @@ import { draftFrom, saveOneLink, type SavedLink } from './save-one-link';
  * El orden es el del texto. Cada link va en su **propia transacción** (D5): un fallo aislado no tira el resto, y una
  * importación de 50 links no es una transacción larga contra `transactionLifetimeLimitSeconds`. El tope de 50 cuenta
  * solo los que hay que guardar, así que volver a pegar el mismo chat avanza con los siguientes.
+ *
+ * El límite por ventana se cuenta **lo primero**, antes de tocar el texto o la base de datos: es lo que protege de
+ * cincuenta chats pegados seguidos. Falla **abierto** (D13): si el contador no responde, la importación sigue, porque
+ * negarla por un Redis lento sería peor que dejarla pasar. Guardar un link de uno en uno NO cuenta contra él: es otra
+ * operación y otro coste.
  */
 @Injectable()
 export class ImportLinks {
@@ -53,6 +60,7 @@ export class ImportLinks {
     @Inject(OUTBOX) private readonly outbox: Outbox,
     @Inject(GROUP_MEMBERSHIP) private readonly membership: GroupMembership,
     @Inject(LINK_USER_DIRECTORY) private readonly directory: LinkUserDirectory,
+    @Inject(LINK_LIMITER) private readonly limiter: LinkLimiter,
     @Inject(LINKS_CLOCK) private readonly clock: Clock,
   ) {}
 
@@ -60,6 +68,10 @@ export class ImportLinks {
     userId: string,
     request: ImportLinksRequest,
   ): Promise<ImportLinksResponse> {
+    const decision = await this.limiter.consume({ kind: 'import', userId });
+    if (!decision.allowed) {
+      throw new TooManyLinkAttempts(decision.retryAfterSeconds);
+    }
     assertImportTextWithinLimit(request.text);
     const groupId = request.groupId;
     if (
@@ -136,14 +148,18 @@ export class ImportLinks {
     saved: readonly SavedLink[],
     inGroup: boolean,
   ): Promise<JobLinkSummary[]> {
-    const names = inGroup
-      ? await this.directory.displayNamesOf(
-          saved.map((entry) => entry.sharedBy),
-        )
-      : new Map<string, string>();
+    const ids = displayNameIdsOf(
+      saved.map((entry) => entry.link),
+      inGroup ? saved.map((entry) => entry.sharedBy) : [],
+    );
+    const names =
+      ids.length === 0
+        ? new Map<string, string>()
+        : await this.directory.displayNamesOf(ids);
     return saved.map((entry) =>
       toJobLinkSummary(entry.link, {
         sharedAt: entry.sharedAt,
+        names,
         ...(inGroup
           ? { sharedBy: toLinkSharer(entry.sharedBy, names.get(entry.sharedBy)) }
           : {}),

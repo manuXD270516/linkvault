@@ -71,7 +71,11 @@ class FailingRenderPromptRegistry extends InMemoryPromptRegistry {
 class InvalidPromptRegistry extends FailingRenderPromptRegistry {
   constructor() {
     super(
-      new InvalidPrompt('classify-skills', 'v1', 'template is not valid Mustache'),
+      new InvalidPrompt(
+        'classify-skills',
+        'v1',
+        'template is not valid Mustache',
+      ),
     );
   }
 }
@@ -91,6 +95,8 @@ function harness(
     breaker: new RecordingNullCircuitBreaker(),
     clock: new ManualClock(),
     logger: new InMemoryAiLogger(),
+    // Varios de estos tests esperan la ausencia de un fixture a propósito: quedan fuera del registro de pendientes (4.6).
+    pendingFixtures: null,
     ...overrides,
   };
   // Con un breaker real inyectado, los tests no leen las listas de RecordingNullCircuitBreaker.
@@ -377,7 +383,12 @@ describe('RunTask: errors that propagate instead of degrading', () => {
     ['SynthUnsupported', () => new SynthUnsupported('classify-skills')],
     [
       'InvalidPrompt',
-      () => new InvalidPrompt('classify-skills', 'v1', 'template is not valid Mustache'),
+      () =>
+        new InvalidPrompt(
+          'classify-skills',
+          'v1',
+          'template is not valid Mustache',
+        ),
     ],
   ])(
     'propagates the programming error %s without trying the next provider',

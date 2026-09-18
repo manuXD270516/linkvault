@@ -11,6 +11,7 @@ import {
   sessionWith,
   settle,
   typeInto,
+  verifyNoPendingRequests,
 } from '../../../testing/auth-testing';
 import { SessionStore } from '../../core/auth/session.store';
 import { GroupsStore } from '../../core/groups/groups.store';
@@ -40,6 +41,7 @@ const linkOfBeto: JobLinkSummary = {
   displayUrl: 'https://co.computrabajo.com/trabajo-de-analista-de-datos-en-acme-1A2B3C',
   platform: 'computrabajo',
   previewStatus: 'pending',
+  previewVersion: 1,
   sharedBy: { userId: 'u2', displayName: 'Beto' },
   sharedAt: '2026-09-17T10:00:00.000Z',
 };
@@ -50,6 +52,7 @@ const linkOfAna: JobLinkSummary = {
   displayUrl: 'https://www.linkedin.com/jobs/view/backend-engineer-3912345678',
   platform: 'linkedin',
   previewStatus: 'pending',
+  previewVersion: 1,
   sharedBy: { userId: 'u1', displayName: 'Ana' },
   sharedAt: '2026-09-17T09:00:00.000Z',
 };
@@ -82,7 +85,7 @@ describe('GroupDetailPage', () => {
     harness = await RouterTestingHarness.create();
   });
 
-  afterEach(() => http.verify());
+  afterEach(() => verifyNoPendingRequests(http));
 
   function page(): HTMLElement {
     const debugElement = harness.fixture.debugElement.query(By.directive(GroupDetailPage));

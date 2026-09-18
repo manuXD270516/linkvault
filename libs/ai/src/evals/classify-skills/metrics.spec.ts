@@ -137,7 +137,7 @@ describe('classify-skills metrics', () => {
 
 describe('evaluable task registry', () => {
   it('registers classify-skills with its expected schema and blocking metrics', () => {
-    expect(evaluableTaskNames()).toEqual(['classify-skills']);
+    expect(evaluableTaskNames()).toEqual(['classify-skills', 'extract-job']);
     expect(findEvaluableTask('classify-skills')).toBe(EVALUABLE_TASKS[0]);
     expect(findEvaluableTask('no-existe')).toBeUndefined();
     expect(classifySkillsEvaluable.expectedSchema).toBe(

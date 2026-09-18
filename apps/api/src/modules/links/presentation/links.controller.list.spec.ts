@@ -7,7 +7,10 @@ import {
   type LinksTestApp,
   type TestMember,
 } from '../../../test-support/links-test-app';
-import { jobLinkDraft } from '../application/testing/link-fixtures';
+import {
+  enrichedPreview,
+  jobLinkDraft,
+} from '../application/testing/link-fixtures';
 import {
   GROUP_LINKS_COLLECTION,
   JOB_LINKS_COLLECTION,
@@ -125,6 +128,109 @@ describe('link listings', () => {
     ]);
     expect(page.items[0]?.previewStatus).toBe('pending');
     expect(page.nextCursor).toBeUndefined();
+  });
+
+  it('answers when the reading of each offer was asked for', async () => {
+    const group = await groupOf(ana, 'Lectura pedida');
+    await save(ana, JOB_PAGE, group);
+    // Un link de antes de `link-enrichment`: se guardó sin `previewRequestedAt` y el listado no puede romperse por eso.
+    const legacyAt = new Date('2026-01-02T03:04:05.000Z');
+    const legacy = jobLinkDraft('https://empresa.example/careers/antiguo', {
+      createdBy: ana.userId,
+      now: legacyAt,
+    });
+    const legacyId = new mongoose.Types.ObjectId();
+    await http.connection.collection(JOB_LINKS_COLLECTION).insertOne({
+      _id: legacyId,
+      normalizedUrl: legacy.normalizedUrl,
+      urlHash: legacy.urlHash,
+      dedupeKey: legacy.dedupeKey,
+      platform: legacy.platform,
+      displayUrl: legacy.displayUrl,
+      originalUrls: [...legacy.originalUrls],
+      previewStatus: legacy.previewStatus,
+      previewVersion: legacy.previewVersion,
+      createdBy: new mongoose.Types.ObjectId(ana.userId),
+      createdAt: legacyAt,
+      updatedAt: legacyAt,
+    });
+    await http.connection.collection(GROUP_LINKS_COLLECTION).insertOne({
+      groupId: new mongoose.Types.ObjectId(group.id),
+      linkId: legacyId,
+      sharedBy: new mongoose.Types.ObjectId(ana.userId),
+      sharedAt: legacyAt,
+    });
+
+    const page = await listGroup(ana, group.id);
+    const saved = page.items.find((item) => item.displayUrl === JOB_PAGE);
+    const old = page.items.find((item) => item.id === legacyId.toHexString());
+
+    expect(saved?.previewRequestedAt).toBeDefined();
+    expect(old?.previewRequestedAt).toBe(legacyAt.toISOString());
+  });
+
+  it('Oferta enriquecida', async () => {
+    const group = await groupOf(ana, 'Oferta leída', beto);
+    const readAt = new Date('2026-09-18T11:00:00.000Z');
+    const draft = jobLinkDraft('https://empresa.example/careers/leida', {
+      createdBy: ana.userId,
+      now: readAt,
+    });
+    const linkId = new mongoose.Types.ObjectId();
+    await http.connection.collection(JOB_LINKS_COLLECTION).insertOne({
+      _id: linkId,
+      normalizedUrl: draft.normalizedUrl,
+      urlHash: draft.urlHash,
+      dedupeKey: draft.dedupeKey,
+      platform: draft.platform,
+      displayUrl: draft.displayUrl,
+      originalUrls: [...draft.originalUrls],
+      previewStatus: 'manual',
+      previewVersion: 3,
+      ...enrichedPreview(ana.userId),
+      previewRequestedAt: readAt,
+      createdBy: new mongoose.Types.ObjectId(ana.userId),
+      createdAt: readAt,
+      updatedAt: readAt,
+    });
+    await http.connection.collection(GROUP_LINKS_COLLECTION).insertOne({
+      groupId: new mongoose.Types.ObjectId(group.id),
+      linkId,
+      sharedBy: new mongoose.Types.ObjectId(ana.userId),
+      sharedAt: readAt,
+    });
+
+    const page = await listGroup(beto, group.id);
+    const item = page.items[0];
+
+    expect(item?.previewStatus).toBe('manual');
+    expect(item?.previewVersion).toBe(3);
+    expect(item?.preview).toEqual({
+      title: 'Backend Engineer',
+      company: 'Acme Bolivia',
+      location: 'La Paz, Bolivia',
+      modality: 'remote',
+    });
+    expect(item?.previewSources?.title?.source).toBe('auto');
+    expect(
+      item?.previewSources?.company?.source === 'manual'
+        ? item.previewSources.company.by
+        : undefined,
+    ).toEqual({ userId: ana.userId, displayName: 'Ana' });
+  });
+
+  it('a pending link keeps answering exactly like before', async () => {
+    const group = await groupOf(ana, 'Sin leer todavía');
+    await save(ana, JOB_PAGE, group);
+
+    const page = await listGroup(ana, group.id);
+    const item = page.items[0];
+
+    expect(item?.previewStatus).toBe('pending');
+    expect(item?.previewVersion).toBe(1);
+    expect(item?.preview).toBeUndefined();
+    expect(item?.previewSources).toBeUndefined();
+    expect(item?.lastEnrichmentError).toBeUndefined();
   });
 
   it('Paginación sin saltos ni repetidos', async () => {

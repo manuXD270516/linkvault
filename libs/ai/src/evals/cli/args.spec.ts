@@ -123,6 +123,7 @@ describe('parseRecordFixturesArgs', () => {
       ok: true,
       args: {
         task: 'classify-skills',
+        fromPending: false,
         upstream: 'ollama',
         overwrite: true,
         allowExternal: false,
@@ -133,8 +134,45 @@ describe('parseRecordFixturesArgs', () => {
     });
   });
 
+  it('acepta --from-pending sin --task, con su registro', () => {
+    expect(
+      parseRecordFixturesArgs([
+        '--from-pending',
+        '--pending-file=tmp/pendientes.jsonl',
+        '--upstream=ollama',
+      ]),
+    ).toEqual({
+      ok: true,
+      args: {
+        fromPending: true,
+        pendingFile: 'tmp/pendientes.jsonl',
+        upstream: 'ollama',
+        overwrite: false,
+        allowExternal: false,
+        evalsDir: DEFAULT_EVALS_DIR,
+      },
+    });
+  });
+
+  it('acepta --from-pending filtrado por tarea', () => {
+    expect(
+      parseRecordFixturesArgs([
+        '--from-pending',
+        '--task=extract-job',
+        '--upstream=ollama',
+      ]),
+    ).toMatchObject({
+      ok: true,
+      args: { fromPending: true, task: 'extract-job' },
+    });
+  });
+
   it.each([
-    [['--upstream=ollama'], '--task is required'],
+    [['--upstream=ollama'], '--task is required unless --from-pending'],
+    [
+      ['--task=a', '--upstream=ollama', '--pending-file=x'],
+      '--pending-file requires --from-pending',
+    ],
     [['--task=a'], '--upstream is required'],
     [['--task=a', '--upstream=mock'], '--upstream must be one of'],
     [['--task=a', '--upstream=ollama', '--reports-dir=x'], 'unknown flag'],

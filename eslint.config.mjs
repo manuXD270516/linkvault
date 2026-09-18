@@ -119,9 +119,12 @@ const DOMAIN_RESTRICTED_PATTERNS = [
     message:
       'La capa de dominio no importa infraestructura: mueve este uso a infrastructure/ y expón un port.',
   },
+  // `cheerio` y `robots-parser` (link-enrichment, ADR-022): el dominio recibe un `PageContent` ya parseado y una
+  // decisión de robots ya tomada, nunca el parser. Así la cadena de extracción se prueba sin HTML ni red y el parser
+  // se puede cambiar sin tocarla.
   {
     regex:
-      '^(?:mongoose|mongodb|bullmq|ioredis|fastify|minio|pino|nestjs-pino)(?:/.*)?$',
+      '^(?:mongoose|mongodb|bullmq|ioredis|fastify|minio|pino|nestjs-pino|cheerio|robots-parser)(?:/.*)?$',
     message:
       'La capa de dominio no importa infraestructura: mueve este uso a infrastructure/ y expón un port.',
   },

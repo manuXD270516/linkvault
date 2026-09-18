@@ -1,0 +1,9 @@
+{
+  "source": "recorded:ollama:qwen2.5:7b",
+  "text": "{\"isJobPosting\":true,\"preview\":{\"title\":\"Desarrollador Backend Semi Senior\",\"company\":\"Fintech Ejemplo\",\"location\":\"La Paz, Bolivia\",\"modality\":\"hybrid\",\"seniority\":\"mid\",\"salary\":{\"min\":9000,\"max\":13000,\"currency\":\"Bs\",\"period\":\"month\"},\"skills\":[{\"name\":\"TypeScript\",\"required\":true},{\"name\":\"NestJS\",\"required\":true},{\"name\":\"MongoDB\",\"required\":true},{\"name\":\"Redis\",\"required\":true},{\"name\":\"Docker\",\"required\":true}],\"languages\":[],\"summary\":\"Mantendrás servicios en TypeScript sobre NestJS, con MongoDB y Redis, desplegados con Docker.\",\"postedAt\":\"2026-09-01\",\"expiresAt\":\"2026-09-20\"}}",
+  "model": "qwen2.5:7b",
+  "usage": {
+    "inputTokens": 1345,
+    "outputTokens": 219
+  }
+}

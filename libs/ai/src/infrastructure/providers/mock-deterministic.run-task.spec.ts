@@ -99,6 +99,8 @@ const REPLAY_CASES = [
 function replayRunTask(fixturesDir = FIXTURES_DIR): RunTask {
   const clock = new ManualClock();
   return new RunTask({
+    // "Fixture ausente en replay" espera el error a propósito: este archivo queda fuera del registro de pendientes (4.6).
+    pendingFixtures: null,
     providers: [new MockDeterministicProvider({ mode: 'replay', fixturesDir })],
     prompts: new FilePromptRegistry({ promptsDir: PROMPTS_DIR }),
     cache: new InMemoryResultCache(),

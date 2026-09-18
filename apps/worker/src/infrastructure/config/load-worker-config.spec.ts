@@ -149,6 +149,77 @@ describe('worker configuration', () => {
       MONGO_URI: 'mongodb://localhost:27017/linkvault?directConnection=true',
       AI_CHAIN: 'mock',
       FEATURE_HEADLESS_EXTRACTION: false,
+      ENRICH_FETCH_TIMEOUT_MS: 10_000,
+      ENRICH_MAX_BYTES: 2_097_152,
+      ENRICH_DOMAIN_DELAY_MS: 2_000,
+      ENRICH_DEADLINE_MS: 45_000,
+      ENRICH_ROBOTS_TTL_SECONDS: 43_200,
+      ENRICH_USER_AGENT:
+        'LinkVaultBot/0.1 (+https://github.com/manuXD270516/linkvault)',
+      ENRICH_CONCURRENCY: 4,
+      ENRICH_MAX_DEFERRALS: 600,
+      S3_ENDPOINT: 'http://localhost:9000',
+      S3_REGION: 'us-east-1',
+      S3_SNAPSHOTS_BUCKET: 'snapshots',
+    });
+  });
+
+  it('requires the object storage variables it reads, and only those', () => {
+    const result = parseEnv(workerConfigSchema, {
+      ...readEnvExample(),
+      S3_ENDPOINT: undefined,
+      S3_SNAPSHOTS_BUCKET: undefined,
+      // El bucket de CVs no lo lee nadie todavía: su ausencia no impide arrancar.
+      S3_BUCKET: undefined,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      invalid: [
+        { name: 'S3_ENDPOINT', reason: 'missing' },
+        { name: 'S3_SNAPSHOTS_BUCKET', reason: 'missing' },
+      ],
+    });
+  });
+
+  it('requires the enrichment variables', () => {
+    const result = parseEnv(workerConfigSchema, {
+      ...readEnvExample(),
+      ENRICH_USER_AGENT: undefined,
+      ENRICH_MAX_DEFERRALS: undefined,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      invalid: [
+        { name: 'ENRICH_USER_AGENT', reason: 'missing' },
+        { name: 'ENRICH_MAX_DEFERRALS', reason: 'missing' },
+      ],
+    });
+  });
+
+  it('rejects a link deadline shorter than a single download', () => {
+    const result = parseEnv(workerConfigSchema, {
+      ...readEnvExample(),
+      ENRICH_FETCH_TIMEOUT_MS: '60000',
+      ENRICH_DEADLINE_MS: '5000',
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      invalid: [{ name: 'ENRICH_DEADLINE_MS', reason: 'invalid' }],
+    });
+  });
+
+  it('keeps the courtesy delay between requests to the same host', () => {
+    const result = parseEnv(workerConfigSchema, {
+      ...readEnvExample(),
+      ENRICH_DOMAIN_DELAY_MS: '0',
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      invalid: [{ name: 'ENRICH_DOMAIN_DELAY_MS', reason: 'invalid' }],
     });
   });
 

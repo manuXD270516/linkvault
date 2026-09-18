@@ -1,4 +1,8 @@
-import { type AiConfig, type AiConfigProblem, parseAiConfig } from '@linkvault/ai';
+import {
+  type AiConfig,
+  type AiConfigProblem,
+  parseAiConfig,
+} from '@linkvault/ai';
 import {
   formatInvalidVariables,
   type InvalidVariable,

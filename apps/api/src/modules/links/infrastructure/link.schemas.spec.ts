@@ -43,6 +43,20 @@ async function writeErrorCode(
   }
 }
 
+/** `true` si el plan elegido recorre la colección entera en algún punto. */
+async function scansTheWholeCollection(
+  collection: string,
+  filter: Record<string, unknown>,
+  sort: Record<string, 1 | -1>,
+): Promise<boolean> {
+  const explained: unknown = await connection
+    .collection(collection)
+    .find(filter)
+    .sort(sort)
+    .explain('queryPlanner');
+  return JSON.stringify(explained).includes('COLLSCAN');
+}
+
 function jobLinkDocument(dedupeKey: string): Omit<JobLinkDocument, '_id'> {
   return {
     normalizedUrl: 'https://linkedin.com/jobs/view/3811111111',
@@ -87,6 +101,24 @@ describe('job_links collection', () => {
     expect(indexes).toContainEqual(
       expect.objectContaining({ key: { dedupeKey: 1 }, unique: true }),
     );
+  });
+
+  it('declares the index the backfill walks by preview status', async () => {
+    const indexes = await connection.collection(JOB_LINKS_COLLECTION).indexes();
+
+    expect(indexes).toContainEqual(
+      expect.objectContaining({ key: { previewStatus: 1, _id: 1 } }),
+    );
+  });
+
+  it('answers the backfill query without scanning the whole collection', async () => {
+    await expect(
+      scansTheWholeCollection(
+        JOB_LINKS_COLLECTION,
+        { previewStatus: 'pending' },
+        { _id: 1 },
+      ),
+    ).resolves.toBe(false);
   });
 
   it('rejects a second vacancy with the same dedupe key', async () => {
@@ -165,6 +197,26 @@ describe('group_links collection', () => {
     );
   });
 
+  it('declares the index that finds who can see a link', async () => {
+    const indexes = await connection
+      .collection(GROUP_LINKS_COLLECTION)
+      .indexes();
+
+    expect(indexes).toContainEqual(
+      expect.objectContaining({ key: { linkId: 1 } }),
+    );
+  });
+
+  it('answers the fan out query without scanning the whole collection', async () => {
+    await expect(
+      scansTheWholeCollection(
+        GROUP_LINKS_COLLECTION,
+        { linkId: LINK_ID },
+        { _id: 1 },
+      ),
+    ).resolves.toBe(false);
+  });
+
   it('rejects the same link twice in the same group', async () => {
     const model = connection.model<GroupLinkDocument>(GROUP_LINK_MODEL_NAME);
     await model.create({
@@ -218,6 +270,24 @@ describe('user_links collection', () => {
     expect(indexes).toContainEqual(
       expect.objectContaining({ key: { userId: 1, savedAt: -1, _id: -1 } }),
     );
+  });
+
+  it('declares the index that finds who has a link in their private list', async () => {
+    const indexes = await connection.collection(USER_LINKS_COLLECTION).indexes();
+
+    expect(indexes).toContainEqual(
+      expect.objectContaining({ key: { linkId: 1 } }),
+    );
+  });
+
+  it('answers the fan out query without scanning the whole collection', async () => {
+    await expect(
+      scansTheWholeCollection(
+        USER_LINKS_COLLECTION,
+        { linkId: LINK_ID },
+        { _id: 1 },
+      ),
+    ).resolves.toBe(false);
   });
 
   it('rejects the same link twice in the same private list', async () => {

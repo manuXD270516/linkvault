@@ -26,6 +26,8 @@ const summary = {
   displayUrl: 'https://www.linkedin.com/jobs/view/3811111111/?utm_source=wa',
   platform: 'linkedin',
   previewStatus: 'pending',
+  previewVersion: 1,
+  previewRequestedAt: '2026-09-17T10:00:00.000Z',
   sharedBy: { userId: '66e9a0000000000000000002', displayName: 'Ana' },
   sharedAt: '2026-09-17T10:00:00.000Z',
 } as const;
@@ -90,7 +92,9 @@ describe('saveLinkRequestSchema', () => {
     const overLimit = `https://example.com/${'a'.repeat(LINK_URL_MAX_LENGTH)}`;
 
     expect(atLimit).toHaveLength(LINK_URL_MAX_LENGTH);
-    expect(saveLinkRequestSchema.safeParse({ url: atLimit }).success).toBe(true);
+    expect(saveLinkRequestSchema.safeParse({ url: atLimit }).success).toBe(
+      true,
+    );
     // Pasa el contrato HTTP para que el dominio pueda responder `invalid_url` en vez de `validation_error`.
     expect(saveLinkRequestSchema.safeParse({ url: overLimit }).success).toBe(
       true,
@@ -142,13 +146,15 @@ describe('importLinksRequestSchema', () => {
       true,
     );
     // Pasa el contrato HTTP para que el dominio pueda responder `text_too_long` en vez de `validation_error`.
-    expect(importLinksRequestSchema.safeParse({ text: overLimit }).success).toBe(
-      true,
-    );
+    expect(
+      importLinksRequestSchema.safeParse({ text: overLimit }).success,
+    ).toBe(true);
   });
 
   it('rejects an empty text and one past the sanity bound', () => {
-    expect(importLinksRequestSchema.safeParse({ text: '' }).success).toBe(false);
+    expect(importLinksRequestSchema.safeParse({ text: '' }).success).toBe(
+      false,
+    );
     expect(
       importLinksRequestSchema.safeParse({
         text: 'a'.repeat(IMPORT_TEXT_INPUT_MAX_LENGTH + 1),
@@ -158,7 +164,9 @@ describe('importLinksRequestSchema', () => {
 
   it('exposes the text limits', () => {
     expect(IMPORT_TEXT_MAX_LENGTH).toBe(20_000);
-    expect(IMPORT_TEXT_INPUT_MAX_LENGTH).toBeGreaterThan(IMPORT_TEXT_MAX_LENGTH);
+    expect(IMPORT_TEXT_INPUT_MAX_LENGTH).toBeGreaterThan(
+      IMPORT_TEXT_MAX_LENGTH,
+    );
   });
 });
 
@@ -182,6 +190,89 @@ describe('jobLinkSummarySchema', () => {
     ).toBe(false);
     expect(
       jobLinkSummarySchema.safeParse({ ...summary, urlHash: 'abc' }).success,
+    ).toBe(false);
+  });
+
+  it('keeps taking a link with no preview at all', () => {
+    const parsed = jobLinkSummarySchema.parse(summary);
+
+    expect(parsed.preview).toBeUndefined();
+    expect(parsed.previewSources).toBeUndefined();
+    expect(parsed.lastEnrichmentError).toBeUndefined();
+  });
+
+  it('always carries the preview version, so a late notice can be told apart', () => {
+    const { previewVersion: _missing, ...without } = summary;
+
+    expect(jobLinkSummarySchema.safeParse(without).success).toBe(false);
+    expect(
+      jobLinkSummarySchema.safeParse({ ...summary, previewVersion: 0 }).success,
+    ).toBe(false);
+  });
+
+  it('takes a link saved before the enrichment, without when its reading was asked for', () => {
+    const { previewRequestedAt: _legacy, ...older } = summary;
+
+    expect(jobLinkSummarySchema.safeParse(older).success).toBe(true);
+  });
+
+  it('takes an enriched link with its preview, its provenance and its last failure', () => {
+    const enriched = {
+      ...summary,
+      previewStatus: 'partial',
+      preview: { title: 'Backend Engineer' },
+      previewSources: {
+        title: {
+          value: 'Backend Engineer',
+          source: 'auto',
+          extractor: 'json-ld',
+          at: '2026-09-17T10:05:00.000Z',
+        },
+      },
+      lastEnrichmentError: {
+        reason: 'no_data',
+        at: '2026-09-17T10:05:00.000Z',
+      },
+    } as const;
+
+    expect(jobLinkSummarySchema.parse(enriched)).toEqual(enriched);
+  });
+
+  it('answers who wrote a field by name, not by identifier', () => {
+    const manual = {
+      value: 'Backend Engineer II',
+      source: 'manual',
+      at: '2026-09-18T10:00:00.000Z',
+    } as const;
+
+    expect(
+      jobLinkSummarySchema.safeParse({
+        ...summary,
+        previewSources: { title: { ...manual, by: 'u1' } },
+      }).success,
+    ).toBe(false);
+    expect(
+      jobLinkSummarySchema.safeParse({
+        ...summary,
+        previewSources: {
+          title: { ...manual, by: { userId: 'u1', displayName: 'Ana' } },
+        },
+      }).success,
+    ).toBe(true);
+  });
+
+  it('rejects a preview field that is not in the preview and an unknown failure reason', () => {
+    expect(
+      jobLinkSummarySchema.safeParse({
+        ...summary,
+        preview: { image: 'https://cdn/x.png' },
+      }).success,
+    ).toBe(false);
+    expect(
+      jobLinkSummarySchema.safeParse({
+        ...summary,
+        lastEnrichmentError: { reason: 'oops', at: '2026-09-17T10:05:00.000Z' },
+      }).success,
     ).toBe(false);
   });
 });

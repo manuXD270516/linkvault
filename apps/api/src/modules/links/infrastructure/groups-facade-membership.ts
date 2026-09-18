@@ -20,6 +20,20 @@ export class GroupsFacadeMembership implements GroupMembership {
     return this.groups.membershipOf(groupId, userId);
   }
 
+  /**
+   * Una consulta por grupo: un link suele estar en uno o dos, y el facade no ofrece una lectura conjunta. Si algún día
+   * un link vive en decenas de grupos, esto es lo que hay que cambiar.
+   */
+  async memberIdsOf(groupIds: readonly string[]): Promise<string[]> {
+    const members = new Set<string>();
+    for (const groupId of groupIds) {
+      for (const userId of await this.groups.memberIdsOf(groupId)) {
+        members.add(userId);
+      }
+    }
+    return [...members];
+  }
+
   async groupsOf(userId: string): Promise<UserGroup[]> {
     const groups = await this.groups.getGroupsOf(userId);
     return groups.map((group) => ({

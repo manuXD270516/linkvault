@@ -7,10 +7,11 @@ import {
   providePageTesting,
   sessionWith,
   settle,
+  verifyNoPendingRequests,
 } from '../../../testing/auth-testing';
 import { SessionStore } from '../../core/auth/session.store';
 import { LinksStore } from '../../core/links/links.store';
-import { LinkList, type LinkListScope, linkLabel } from './link-list.component';
+import { LinkList, type LinkListScope } from './link-list.component';
 
 const linkedin: JobLinkSummary = {
   id: 'l1',
@@ -19,6 +20,7 @@ const linkedin: JobLinkSummary = {
     'https://www.linkedin.com/jobs/view/senior-backend-engineer-at-acme-3912345678/?utm_source=share',
   platform: 'linkedin',
   previewStatus: 'pending',
+  previewVersion: 1,
   sharedBy: { userId: 'u1', displayName: 'Ana' },
   sharedAt: '2026-09-17T10:00:00.000Z',
 };
@@ -29,6 +31,7 @@ const computrabajo: JobLinkSummary = {
   displayUrl: 'https://co.computrabajo.com/trabajo-de-analista-de-datos-en-acme-1A2B3C',
   platform: 'computrabajo',
   previewStatus: 'pending',
+  previewVersion: 1,
   sharedBy: { userId: 'u2', displayName: 'Beto' },
   sharedAt: '2026-09-17T09:00:00.000Z',
 };
@@ -40,6 +43,7 @@ const priv: JobLinkSummary = {
   displayUrl: 'https://ejemplo.test/ofertas/analista',
   platform: 'generic',
   previewStatus: 'pending',
+  previewVersion: 1,
   sharedAt: '2026-09-17T08:00:00.000Z',
 };
 
@@ -119,9 +123,16 @@ describe('LinkList', () => {
     expect(text()).not.toContain('Compartido por');
   });
 
-  it('hides the pending notice once the preview exists', async () => {
-    await render([{ ...linkedin, previewStatus: 'enriched' }]);
+  it('hides the pending notice once the offer can be read', async () => {
+    await render([
+      {
+        ...linkedin,
+        previewStatus: 'enriched',
+        preview: { title: 'Ingeniera de datos', company: 'Acme' },
+      },
+    ]);
 
+    expect(text()).toContain('Ingeniera de datos');
     expect(text()).not.toContain('Sin vista previa todavía');
   });
 });
@@ -170,7 +181,7 @@ describe('LinkList al quitar', () => {
     await fixture.whenStable();
   });
 
-  afterEach(() => http.verify());
+  afterEach(() => verifyNoPendingRequests(http));
 
   function host(): HTMLElement {
     return fixture.nativeElement as HTMLElement;
@@ -308,23 +319,102 @@ describe('LinkList al quitar', () => {
   });
 });
 
-describe('linkLabel', () => {
-  it.each([
-    [
-      'https://www.linkedin.com/jobs/view/senior-backend-engineer-at-acme-3912345678/?utm_source=share',
-      'senior backend engineer at acme 3912345678',
-    ],
-    [
-      'https://co.computrabajo.com/trabajo-de-analista-de-datos-en-acme-1A2B3C',
-      'trabajo de analista de datos en acme 1A2B3C',
-    ],
-    ['https://ejemplo.test/ofertas/analista.html', 'analista'],
-    ['https://ejemplo.test/ofertas/desarrollador%20senior', 'desarrollador senior'],
-    ['https://ejemplo.test/ofertas/analista/', 'analista'],
-    ['https://www.getonboard.com/', 'getonboard.com'],
-    ['https://ejemplo.test', 'ejemplo.test'],
-    ['no-es-una-url', 'no-es-una-url'],
-  ])('derives the label of %s', (url, expected) => {
-    expect(linkLabel(url)).toBe(expected);
+/** Oferta que falló por un tiempo de espera agotado: el motivo es transitorio, así que la tarjeta ofrece reintentar. */
+const timedOut: JobLinkSummary = {
+  ...linkedin,
+  previewStatus: 'failed',
+  previewRequestedAt: '2026-09-17T10:00:00.000Z',
+  lastEnrichmentError: { reason: 'timeout', at: '2026-09-17T10:01:00.000Z' },
+};
+
+describe('LinkList al reintentar la lectura', () => {
+  let fixture: ComponentFixture<RemoveHost>;
+  let http: HttpTestingController;
+  let store: LinksStore;
+
+  beforeEach(async () => {
+    TestBed.configureTestingModule({ providers: providePageTesting() });
+    http = TestBed.inject(HttpTestingController);
+    TestBed.inject(SessionStore).setSession(sessionWith('token-1'));
+    store = TestBed.inject(LinksStore);
+
+    const opening = store.open({ kind: 'group', groupId: 'g1' });
+    http.expectOne(GROUP_PAGE).flush({ items: [timedOut], total: 1 } satisfies LinkPage);
+    await opening;
+
+    fixture = TestBed.createComponent(RemoveHost);
+    await fixture.whenStable();
+  });
+
+  afterEach(() => verifyNoPendingRequests(http));
+
+  function host(): HTMLElement {
+    return fixture.nativeElement as HTMLElement;
+  }
+
+  async function clickRetry(): Promise<void> {
+    host().querySelector<HTMLButtonElement>('[data-testid="link-retry"]')?.click();
+    await settle();
+  }
+
+  it('Reintento aceptado', async () => {
+    expect(host().textContent).toContain('No pudimos leer esta oferta');
+
+    await clickRetry();
+
+    const request = http.expectOne({ method: 'POST', url: '/api/links/l1/enrich' });
+    request.flush(
+      {
+        ...timedOut,
+        previewStatus: 'pending',
+        previewVersion: 2,
+        previewRequestedAt: new Date().toISOString(),
+        lastEnrichmentError: undefined,
+      } satisfies JobLinkSummary,
+      { status: 202, statusText: 'Accepted' },
+    );
+    await settle();
+    await fixture.whenStable();
+
+    // La lista no se vuelve a pedir: la tarjeta se reemplaza con lo que respondió la API.
+    http.expectNone(GROUP_PAGE);
+    expect(host().textContent).toContain('Leyendo la oferta…');
+    expect(host().textContent).not.toContain('No pudimos leer esta oferta');
+  });
+
+  it('explains a retry the API refuses instead of showing a generic error', async () => {
+    await clickRetry();
+
+    http.expectOne({ method: 'POST', url: '/api/links/l1/enrich' }).flush(
+      { code: 'enrichment_not_retryable', message: 'enrichment_not_retryable' },
+      { status: 409, statusText: 'Conflict' },
+    );
+    await settle();
+    await fixture.whenStable();
+
+    expect(host().textContent).toContain(
+      'Esta oferta no se puede volver a leer automáticamente. Complétala a mano.',
+    );
+  });
+
+  /** Lo que la bolsa prohíbe no se reintenta desde la UI: el botón no existe, no es que falle al pulsarlo. */
+  it('does not offer to retry what will not change', async () => {
+    const opening = store.open({ kind: 'group', groupId: 'g1' });
+    http.expectOne(GROUP_PAGE).flush({
+      items: [
+        {
+          ...timedOut,
+          lastEnrichmentError: { reason: 'robots_disallowed', at: '2026-09-17T10:01:00.000Z' },
+        },
+      ],
+      total: 1,
+    } satisfies LinkPage);
+    await opening;
+    await fixture.whenStable();
+
+    expect(host().querySelector('[data-testid="link-retry"]')).toBeNull();
+    expect(host().textContent).toContain(
+      'Esta bolsa no permite la lectura automática de sus ofertas',
+    );
   });
 });

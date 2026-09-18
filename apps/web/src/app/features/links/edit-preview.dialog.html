@@ -1,0 +1,143 @@
+<h2 mat-dialog-title i18n="@@links.edit.title">Corregir la oferta</h2>
+
+<mat-dialog-content>
+  <p i18n="@@links.edit.explanation">
+    Lo que corrijas aquí lo verán las demás personas del grupo, con tu nombre.
+  </p>
+
+  <form class="flex flex-col gap-2" [formGroup]="form" (ngSubmit)="submit()" novalidate>
+    <mat-form-field>
+      <mat-label i18n="@@links.field.title">Puesto</mat-label>
+      <input matInput formControlName="title" autocomplete="off" data-testid="preview-title" />
+    </mat-form-field>
+    <ng-container [ngTemplateOutlet]="meta" [ngTemplateOutletContext]="{ $implicit: 'title' }" />
+
+    <mat-form-field>
+      <mat-label i18n="@@links.field.company">Empresa</mat-label>
+      <input matInput formControlName="company" autocomplete="off" data-testid="preview-company" />
+    </mat-form-field>
+    <ng-container [ngTemplateOutlet]="meta" [ngTemplateOutletContext]="{ $implicit: 'company' }" />
+
+    <mat-form-field>
+      <mat-label i18n="@@links.field.location">Ubicación</mat-label>
+      <input matInput formControlName="location" autocomplete="off" data-testid="preview-location" />
+    </mat-form-field>
+    <ng-container [ngTemplateOutlet]="meta" [ngTemplateOutletContext]="{ $implicit: 'location' }" />
+
+    <mat-form-field>
+      <mat-label i18n="@@links.field.modality">Modalidad</mat-label>
+      <mat-select formControlName="modality" data-testid="preview-modality">
+        <mat-option value="unknown" i18n="@@links.field.unknown">No lo dice</mat-option>
+        <mat-option value="remote" i18n="@@links.modality.remote">Remoto</mat-option>
+        <mat-option value="hybrid" i18n="@@links.modality.hybrid">Híbrido</mat-option>
+        <mat-option value="onsite" i18n="@@links.modality.onsite">Presencial</mat-option>
+      </mat-select>
+    </mat-form-field>
+    <ng-container [ngTemplateOutlet]="meta" [ngTemplateOutletContext]="{ $implicit: 'modality' }" />
+
+    <mat-form-field>
+      <mat-label i18n="@@links.field.seniority">Experiencia</mat-label>
+      <mat-select formControlName="seniority" data-testid="preview-seniority">
+        <mat-option value="unknown" i18n="@@links.field.unknown">No lo dice</mat-option>
+        <mat-option value="intern" i18n="@@links.seniority.intern">Prácticas</mat-option>
+        <mat-option value="junior" i18n="@@links.seniority.junior">Junior</mat-option>
+        <mat-option value="mid" i18n="@@links.seniority.mid">Intermedio</mat-option>
+        <mat-option value="senior" i18n="@@links.seniority.senior">Senior</mat-option>
+        <mat-option value="lead" i18n="@@links.seniority.lead">Líder</mat-option>
+      </mat-select>
+    </mat-form-field>
+    <ng-container [ngTemplateOutlet]="meta" [ngTemplateOutletContext]="{ $implicit: 'seniority' }" />
+
+    <div class="flex flex-wrap gap-2">
+      <mat-form-field>
+        <mat-label i18n="@@links.field.salaryMin">Salario desde</mat-label>
+        <input matInput type="number" formControlName="salaryMin" data-testid="preview-salary-min" />
+      </mat-form-field>
+      <mat-form-field>
+        <mat-label i18n="@@links.field.salaryMax">Salario hasta</mat-label>
+        <input matInput type="number" formControlName="salaryMax" data-testid="preview-salary-max" />
+      </mat-form-field>
+      <mat-form-field>
+        <mat-label i18n="@@links.field.currency">Moneda</mat-label>
+        <input
+          matInput
+          formControlName="salaryCurrency"
+          autocomplete="off"
+          data-testid="preview-salary-currency"
+        />
+      </mat-form-field>
+      <mat-form-field>
+        <mat-label i18n="@@links.field.period">Periodo</mat-label>
+        <mat-select formControlName="salaryPeriod" data-testid="preview-salary-period">
+          <mat-option value="" i18n="@@links.field.unknown">No lo dice</mat-option>
+          <mat-option value="month" i18n="@@links.salary.month">al mes</mat-option>
+          <mat-option value="year" i18n="@@links.salary.year">al año</mat-option>
+          <mat-option value="hour" i18n="@@links.salary.hour">por hora</mat-option>
+        </mat-select>
+      </mat-form-field>
+    </div>
+    <ng-container [ngTemplateOutlet]="meta" [ngTemplateOutletContext]="{ $implicit: 'salary' }" />
+
+    <mat-form-field>
+      <mat-label i18n="@@links.field.summary">Resumen</mat-label>
+      <textarea matInput rows="3" formControlName="summary" data-testid="preview-summary"></textarea>
+    </mat-form-field>
+    <ng-container [ngTemplateOutlet]="meta" [ngTemplateOutletContext]="{ $implicit: 'summary' }" />
+
+    <div class="flex flex-wrap gap-2">
+      <mat-form-field>
+        <mat-label i18n="@@links.field.postedAt">Publicada el</mat-label>
+        <input matInput type="date" formControlName="postedAt" data-testid="preview-posted-at" />
+      </mat-form-field>
+      <mat-form-field>
+        <mat-label i18n="@@links.field.expiresAt">Cierra el</mat-label>
+        <input matInput type="date" formControlName="expiresAt" data-testid="preview-expires-at" />
+      </mat-form-field>
+    </div>
+    <ng-container [ngTemplateOutlet]="meta" [ngTemplateOutletContext]="{ $implicit: 'postedAt' }" />
+    <ng-container [ngTemplateOutlet]="meta" [ngTemplateOutletContext]="{ $implicit: 'expiresAt' }" />
+  </form>
+
+  @if (failure(); as currentFailure) {
+    <lv-request-error [failure]="currentFailure" />
+  }
+</mat-dialog-content>
+
+<mat-dialog-actions>
+  <button mat-button type="button" mat-dialog-close i18n="@@links.edit.cancel">Cancelar</button>
+  <button
+    mat-flat-button
+    type="button"
+    [disabled]="saving()"
+    (click)="submit()"
+    data-testid="preview-save"
+    i18n="@@links.edit.save"
+  >
+    Guardar
+  </button>
+</mat-dialog-actions>
+
+<!--
+  De dónde salió cada campo y, si lo escribió una persona sobre algo extraído, la vuelta atrás. Va en una plantilla
+  suelta porque es lo mismo para los once campos y repetirla sería la forma más fácil de que acabaran diciendo cosas
+  distintas.
+-->
+<ng-template #meta let-field>
+  <span class="flex flex-wrap items-center gap-2 text-xs">
+    @if (origin(field); as source) {
+      <span [attr.data-testid]="'origin-' + field">{{ source }}</span>
+    }
+    @if (canRevert(field)) {
+      <button
+        mat-button
+        type="button"
+        [attr.aria-pressed]="isReverting(field)"
+        [attr.data-testid]="'revert-' + field"
+        (click)="toggleRevert(field)"
+        i18n="@@links.edit.revert"
+      >
+        Volver a lo extraído
+      </button>
+    }
+  </span>
+</ng-template>

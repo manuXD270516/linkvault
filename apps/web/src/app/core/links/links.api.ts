@@ -1,11 +1,14 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import type {
+  EnrichLinkResponse,
   ImportLinksRequest,
   ImportLinksResponse,
   LinkPage,
   SaveLinkRequest,
   SaveLinkResponse,
+  UpdatePreviewRequest,
+  UpdatePreviewResponse,
 } from '@linkvault/shared';
 import { firstValueFrom } from 'rxjs';
 
@@ -55,6 +58,23 @@ export class LinksApi {
   listMyLinks(query: LinksPageQuery = {}): Promise<LinkPage> {
     return firstValueFrom(
       this.http.get<LinkPage>(`${LINKS_URL}/mine`, { params: pageParams(query) }),
+    );
+  }
+
+  /**
+   * Corrige a mano los campos del preview y devuelve el link ya actualizado, para que la tarjeta se reemplace sin
+   * volver a pedir la lista. `revert` son los campos que vuelven a lo que se extrajo de la página.
+   */
+  updatePreview(linkId: string, body: UpdatePreviewRequest): Promise<UpdatePreviewResponse> {
+    return firstValueFrom(
+      this.http.patch<UpdatePreviewResponse>(`${LINKS_URL}/${encodeURIComponent(linkId)}/preview`, body),
+    );
+  }
+
+  /** Vuelve a pedir la lectura de una oferta que falló por algo pasajero; responde con el link de vuelta en `pending`. */
+  enrich(linkId: string): Promise<EnrichLinkResponse> {
+    return firstValueFrom(
+      this.http.post<EnrichLinkResponse>(`${LINKS_URL}/${encodeURIComponent(linkId)}/enrich`, {}),
     );
   }
 

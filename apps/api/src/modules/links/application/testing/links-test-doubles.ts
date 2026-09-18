@@ -1,9 +1,15 @@
-import type { GroupRole } from '@linkvault/shared';
+import type { GroupRole, JobLinkSummary } from '@linkvault/shared';
 import type { Clock } from '../ports/clock.port';
+import type { EnrichmentBroadcaster } from '../ports/enrichment-broadcaster.port';
 import type {
   GroupMembership,
   UserGroup,
 } from '../ports/group-membership.port';
+import type {
+  LinkLimitDecision,
+  LinkLimitKey,
+  LinkLimiter,
+} from '../ports/link-limiter.port';
 import type { LinkUserDirectory } from '../ports/link-user-directory.port';
 import type { Outbox, OutboxEvent } from '../ports/outbox.port';
 import type { TransactionSession } from '../ports/transaction-session';
@@ -86,6 +92,21 @@ export class InMemoryGroupMembership implements GroupMembership {
     return Promise.resolve(this.roles.get(keyOf(groupId, userId)) ?? null);
   }
 
+  memberIdsOf(groupIds: readonly string[]): Promise<string[]> {
+    const members = new Set<string>();
+    for (const key of this.roles.keys()) {
+      const [groupId, userId] = key.split('|');
+      if (
+        groupId !== undefined &&
+        userId !== undefined &&
+        groupIds.includes(groupId)
+      ) {
+        members.add(userId);
+      }
+    }
+    return Promise.resolve([...members]);
+  }
+
   groupsOf(userId: string): Promise<UserGroup[]> {
     this.groupsOfCalls += 1;
     const groups: UserGroup[] = [];
@@ -130,4 +151,79 @@ export class InMemoryLinkUserDirectory implements LinkUserDirectory {
 
 function keyOf(groupId: string, userId: string): string {
   return `${groupId}|${userId}`;
+}
+
+/**
+ * Limitador en memoria con las mismas reglas que `CounterLinkLimiter`: ventana fija por clave y conteo antes de actuar.
+ * `unavailable` simula que el contador no responde, para probar que la importación falla abierta y la relectura cerrada
+ * **en el adaptador**, no aquí: este doble solo deja elegir la respuesta.
+ */
+export class InMemoryLinkLimiter implements LinkLimiter {
+  /** Claves consumidas, en orden, para comprobar qué contó un caso de uso. */
+  readonly consumed: LinkLimitKey[] = [];
+  private readonly counters = new Map<string, number>();
+  private readonly limits = new Map<string, number>();
+
+  constructor(private readonly defaultLimit = Number.MAX_SAFE_INTEGER) {}
+
+  /** Fija el límite de una clave concreta, para agotar una ventana sin repetir llamadas. */
+  withLimit(key: LinkLimitKey, limit: number): this {
+    this.limits.set(nameOfLimit(key), limit);
+    return this;
+  }
+
+  /** Deja la clave sin cupo ya consumido, como si la ventana estuviera agotada. */
+  exhaust(key: LinkLimitKey): this {
+    this.limits.set(nameOfLimit(key), 0);
+    return this;
+  }
+
+  consume(key: LinkLimitKey): Promise<LinkLimitDecision> {
+    this.consumed.push(key);
+    const name = nameOfLimit(key);
+    const count = (this.counters.get(name) ?? 0) + 1;
+    this.counters.set(name, count);
+    const limit = this.limits.get(name) ?? this.defaultLimit;
+    return Promise.resolve(
+      count <= limit
+        ? { allowed: true, retryAfterSeconds: 0 }
+        : { allowed: false, retryAfterSeconds: 900 },
+    );
+  }
+}
+
+function nameOfLimit(key: LinkLimitKey): string {
+  return key.kind === 'enrich-link'
+    ? `enrich-link:${key.linkId}`
+    : `import:${key.userId}`;
+}
+
+/**
+ * Canal de salida en memoria: apunta qué link se envió a quién y permite declarar que no hay nadie escuchando, que es
+ * el caso normal cuando el worker trabaja de madrugada.
+ */
+export class InMemoryEnrichmentBroadcaster implements EnrichmentBroadcaster {
+  /** Envíos, en orden, para comprobar a quién se avisó y con qué. */
+  readonly sent: { userId: string; link: JobLinkSummary }[] = [];
+  private listening = true;
+
+  /** Deja el canal sin ninguna conexión abierta. */
+  withoutListeners(): this {
+    this.listening = false;
+    return this;
+  }
+
+  hasListeners(): boolean {
+    return this.listening;
+  }
+
+  send(userId: string, link: JobLinkSummary): number {
+    this.sent.push({ userId, link });
+    return 1;
+  }
+
+  /** A quién se avisó, sin repetir y en orden de aviso. */
+  get recipients(): string[] {
+    return [...new Set(this.sent.map((entry) => entry.userId))];
+  }
 }

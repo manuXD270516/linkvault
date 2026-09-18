@@ -1,0 +1,9 @@
+{
+  "source": "recorded:ollama:qwen2.5:7b",
+  "text": "{\"isJobPosting\":true,\"preview\":{\"title\":\"Senior Data Engineer\",\"company\":\"Northwind Labs\",\"location\":\"Latin America\",\"modality\":\"remote\",\"seniority\":\"senior\",\"salary\":{\"min\":null,\"max\":null,\"currency\":\"USD\",\"period\":null},\"skills\":[{\"name\":\"Python\",\"required\":true},{\"name\":\"Airflow\",\"required\":true},{\"name\":\"SQL\",\"required\":true},{\"name\":\"Terraform\",\"required\":true}],\"languages\":[{\"name\":\"Inglés\",\"level\":\"fluent\"}],\"summary\":\"Build and maintain the data platform, design pipelines, model the warehouse, and keep the infrastructure as code on AWS.\",\"postedAt\":null,\"expiresAt\":null}}",
+  "model": "qwen2.5:7b",
+  "usage": {
+    "inputTokens": 1312,
+    "outputTokens": 182
+  }
+}

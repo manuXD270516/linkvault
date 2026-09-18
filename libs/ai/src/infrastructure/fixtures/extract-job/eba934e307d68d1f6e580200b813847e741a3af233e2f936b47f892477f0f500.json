@@ -1,0 +1,9 @@
+{
+  "source": "recorded:ollama:qwen2.5:7b",
+  "text": "{\"isJobPosting\":true,\"preview\":{\"title\":\"Arquitecto de Soluciones\",\"company\":\"Empresa Ejemplo\",\"location\":\"La Paz, Bolivia\",\"modality\":\"onsite\",\"seniority\":\"senior\",\"salary\":{\"min\":null,\"max\":null,\"currency\":null,\"period\":null},\"skills\":[{\"name\":\"Java\",\"required\":true},{\"name\":\"Spring\",\"required\":true},{\"name\":\"SQL\",\"required\":true},{\"name\":\"Docker\",\"required\":true}],\"languages\":[],\"summary\":\"Diseñar servicios en Java con Spring, definir contratos de integración y revisar despliegues en Kubernetes.\",\"postedAt\":\"2026-09-15\",\"expiresAt\":\"2026-09-30\"}}",
+  "model": "qwen2.5:7b",
+  "usage": {
+    "inputTokens": 1412,
+    "outputTokens": 195
+  }
+}

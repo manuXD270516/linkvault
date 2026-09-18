@@ -1,3 +1,9 @@
+import type {
+  EnrichmentFailureReason,
+  PreviewSources,
+  PreviewStatus,
+  StoredPreview,
+} from '@linkvault/shared';
 import type { JobLink, NewJobLink } from '../../domain/job-link';
 import type { TransactionSession } from './transaction-session';
 
@@ -13,6 +19,13 @@ export interface ResolvedJobLink {
   readonly link: JobLink;
   /** `true` solo si la vacante no existía en LinkVault; compartir una conocida NO cuenta. */
   readonly created: boolean;
+}
+
+/** Lo que deja una edición manual del preview: el preview ya mezclado y su procedencia. */
+export interface ManualPreviewWrite {
+  readonly preview: StoredPreview;
+  readonly previewSources: PreviewSources;
+  readonly now: Date;
 }
 
 export interface JobLinkRepository {
@@ -32,4 +45,41 @@ export interface JobLinkRepository {
 
   /** Link por id; `null` si no existe o el id no tiene formato de identificador. */
   findById(linkId: string): Promise<JobLink | null>;
+
+  /**
+   * Guarda el preview editado a mano: deja el link en `manual` y sube `previewVersion`, **condicionado** a la versión
+   * leída. Devuelve `null` si nadie casó esa condición —el link ya no existe o otra escritura ganó la carrera—, que es
+   * lo que impide que una edición pise un enriquecimiento que terminó entre la lectura y la escritura (D2).
+   */
+  updatePreview(
+    linkId: string,
+    expectedVersion: number,
+    changes: ManualPreviewWrite,
+  ): Promise<JobLink | null>;
+
+  /**
+   * Links en ese estado, en orden de `_id` y como mucho `limit`, por el índice `{ previewStatus: 1, _id: 1 }` (D10). Con
+   * `reasons`, solo los que fallaron por uno de esos motivos: es lo que deja fuera del rescate lo que la bolsa prohíbe
+   * leer, lo que bloquea y lo que no era una oferta. El filtro va en la consulta y no después, para que `limit`
+   * signifique "reencola tantos" y no "mira tantos".
+   */
+  listByPreviewStatus(
+    status: PreviewStatus,
+    limit: number,
+    reasons?: readonly EnrichmentFailureReason[],
+  ): Promise<JobLink[]>;
+
+  /**
+   * Abre una transacción, apunta sobre el link una petición de lectura nueva —sube `previewVersion`, vuelve a
+   * `pending`, limpia `lastEnrichmentError` y apunta `previewRequestedAt`— y ejecuta `work` con el link ya actualizado
+   * **dentro de la misma sesión**, para que el evento del outbox se escriba con él o no quede nada (D10).
+   *
+   * Es el mismo camino que el alta de un link: ni el reintento ni el backfill tocan la cola. `null` si el link no
+   * existe o su id no tiene formato de identificador.
+   */
+  withRequestedEnrichment<T>(
+    linkId: string,
+    now: Date,
+    work: (link: JobLink, session: TransactionSession) => Promise<T>,
+  ): Promise<T | null>;
 }

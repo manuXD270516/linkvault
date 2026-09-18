@@ -1,0 +1,129 @@
+<!-- Se abre `displayUrl`, no la normalizada: la normalización es identidad y puede no resolver (D2). -->
+<a
+  class="font-medium"
+  [href]="link().displayUrl"
+  target="_blank"
+  rel="noopener noreferrer"
+  data-testid="link-open"
+  >{{ headline() }}</a
+>
+@if (note('title'); as titleNote) {
+  <span class="text-xs" data-testid="note-title">{{ titleNote }}</span>
+}
+
+@if (company(); as name) {
+  <!-- El separador va aquí y no como margen: el título es un enlace en línea y sin él se leía "Full StackAcme". -->
+  <span class="ml-2" data-testid="link-company"
+    >{{ name }}
+    @if (note('company'); as companyNote) {
+      <span class="text-xs" data-testid="note-company">{{ companyNote }}</span>
+    }
+  </span>
+}
+
+<span class="flex flex-wrap gap-x-3 gap-y-1 text-sm">
+  @if (location(); as place) {
+    <span data-testid="link-location">{{ place }}</span>
+    @if (note('location'); as locationNote) {
+      <span class="text-xs" data-testid="note-location">{{ locationNote }}</span>
+    }
+  }
+  @if (modality(); as modalityText) {
+    <span data-testid="link-modality">{{ modalityText }}</span>
+    @if (note('modality'); as modalityNote) {
+      <span class="text-xs" data-testid="note-modality">{{ modalityNote }}</span>
+    }
+  }
+  @if (seniority(); as seniorityText) {
+    <span data-testid="link-seniority">{{ seniorityText }}</span>
+    @if (note('seniority'); as seniorityNote) {
+      <span class="text-xs" data-testid="note-seniority">{{ seniorityNote }}</span>
+    }
+  }
+</span>
+
+<span class="flex flex-wrap gap-x-3 gap-y-1 text-sm">
+  <!-- El salario deducido por la IA se lee igual que el resto: sin negrita, para no venderlo como un dato de la oferta. -->
+  @if (salary(); as salaryText) {
+    <span
+      data-testid="link-salary"
+      [class.font-medium]="!salaryIsGuessed()"
+      [attr.data-guess]="salaryIsGuessed() ? 'ai' : null"
+      >{{ salaryText }}</span
+    >
+    @if (note('salary'); as salaryNote) {
+      <span class="text-xs" data-testid="note-salary">{{ salaryNote }}</span>
+    }
+  }
+  @let days = daysSincePosted();
+  @if (days !== null) {
+    <span data-testid="link-posted" i18n="@@links.card.postedAgo"
+      >{days, plural, =0 {Publicada hoy} =1 {Publicada ayer} other {Publicada hace {{ days }}
+      días}}</span
+    >
+  }
+  @if (expiresAt(); as closing) {
+    <span data-testid="link-expires" i18n="@@links.card.closesAt"
+      >Cierra el {{ closing | date: 'dd/MM/yyyy' }}</span
+    >
+  }
+</span>
+
+<span class="flex flex-wrap gap-x-3 gap-y-1 text-sm">
+  <span data-testid="link-platform">{{ platform() }}</span>
+  @if (link().sharedBy; as sharer) {
+    <span i18n="@@links.list.sharedBy">Compartido por {{ sharer.displayName }}</span>
+  }
+  @let state = status();
+  @if (state.text; as statusText) {
+    <span data-testid="link-status">{{ statusText }}</span>
+  }
+  <!-- Corregir se ofrece siempre, con el nombre que toca: lo que falta se completa, lo que está mal se edita. -->
+  @if (state.needsHand) {
+    <button
+      mat-button
+      type="button"
+      [disabled]="busy()"
+      (click)="complete.emit()"
+      data-testid="link-complete"
+      i18n="@@links.card.completeByHand"
+    >
+      Completar a mano
+    </button>
+  } @else {
+    <button
+      mat-button
+      type="button"
+      [disabled]="busy()"
+      (click)="complete.emit()"
+      data-testid="link-edit"
+      i18n="@@links.card.edit"
+    >
+      Editar
+    </button>
+  }
+  @if (state.canRetry) {
+    <button
+      mat-button
+      type="button"
+      [disabled]="busy()"
+      (click)="retry.emit()"
+      data-testid="link-retry"
+      i18n="@@links.card.retry"
+    >
+      Reintentar
+    </button>
+  }
+  @if (canRemove()) {
+    <button
+      mat-button
+      type="button"
+      [disabled]="busy()"
+      (click)="remove.emit()"
+      data-testid="link-remove"
+      i18n="@@links.list.remove"
+    >
+      Quitar
+    </button>
+  }
+</span>

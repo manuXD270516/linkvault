@@ -1,0 +1,9 @@
+{
+  "source": "recorded:ollama:qwen2.5:7b",
+  "text": "{\"isJobPosting\":true,\"preview\":{\"title\":\"Jefe de Operaciones\",\"company\":null,\"location\":\"Cochabamba, Bolivia\",\"modality\":\"onsite\",\"seniority\":\"unknown\",\"salary\":null,\"skills\":[{\"name\":\"Planificación de producción\",\"required\":true},{\"name\":\"Coordinación de equipos\",\"required\":true},{\"name\":\"Control de indicadores de calidad\",\"required\":true},{\"name\":\"Manejo de Excel\",\"required\":true}],\"languages\":[],\"summary\":\"Planificar la producción, coordinar a los equipos de turno y controlar los indicadores de calidad.\",\"postedAt\":null,\"expiresAt\":null}}",
+  "model": "qwen2.5:7b",
+  "usage": {
+    "inputTokens": 1316,
+    "outputTokens": 162
+  }
+}

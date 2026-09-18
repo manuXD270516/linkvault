@@ -1,4 +1,10 @@
-import type { Platform, PreviewStatus } from '@linkvault/shared';
+import type {
+  LastEnrichmentError,
+  Platform,
+  PreviewSources,
+  PreviewStatus,
+  StoredPreview,
+} from '@linkvault/shared';
 import type { Canonicalization } from './canonicalizers/canonicalizer';
 
 // `JobLink` (D1 de job-links): la vacante como entidad única de LinkVault. La misma oferta compartida con URLs distintas
@@ -29,6 +35,17 @@ export interface JobLink {
   readonly originalUrls: readonly string[];
   readonly previewStatus: PreviewStatus;
   readonly previewVersion: number;
+  /** Vacante leída de la página. Ausente mientras nadie la haya leído; nunca completa del todo (`storedPreview`). */
+  readonly preview?: StoredPreview;
+  /** Quién puso cada campo del preview: el extractor que lo produjo o la persona que lo escribió a mano (D4). */
+  readonly previewSources?: PreviewSources;
+  /** Motivo del último fallo de lectura. Nunca lleva el cuerpo de la respuesta ni la URL del usuario (D5). */
+  readonly lastEnrichmentError?: LastEnrichmentError;
+  /**
+   * Cuándo se pidió leer la oferta: el alta y cada reintento la apuntan. Sin ella, un `pending` no distingue "se está
+   * leyendo" de "se quedó colgado con el relay caído" (D5). Ausente en los links guardados antes de `link-enrichment`.
+   */
+  readonly previewRequestedAt?: Date;
   readonly createdBy: string;
   readonly createdAt: Date;
   readonly updatedAt: Date;
@@ -73,6 +90,7 @@ export function createJobLink(params: {
     originalUrls: [params.displayUrl],
     previewStatus: 'pending',
     previewVersion: INITIAL_PREVIEW_VERSION,
+    previewRequestedAt: params.now,
     createdBy: params.createdBy,
     createdAt: params.now,
     updatedAt: params.now,

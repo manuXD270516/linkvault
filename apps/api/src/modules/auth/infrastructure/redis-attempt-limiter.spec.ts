@@ -3,6 +3,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { RedisPingDouble } from '@linkvault/testing';
 import { Redis } from 'ioredis';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { RedisFixedWindowCounter } from '../../../infrastructure/limits/redis-fixed-window-counter';
 import { createRedisAppClient } from '../../../infrastructure/redis/redis-app-client';
 import type { AttemptKey } from '../application/ports/attempt-limiter.port';
 import {
@@ -48,7 +49,10 @@ afterEach(async () => {
 });
 
 function limiter(windowMs = ATTEMPT_WINDOW_MS): RedisAttemptLimiter {
-  return new RedisAttemptLimiter(client, { secret: SECRET, windowMs });
+  return new RedisAttemptLimiter(new RedisFixedWindowCounter(client), {
+    secret: SECRET,
+    windowMs,
+  });
 }
 
 /** Espera a que Redis dé la clave por caducada (`PTTL` -2); no supone cuánto tarda el runner en llegar hasta aquí. */

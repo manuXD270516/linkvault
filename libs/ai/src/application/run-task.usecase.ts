@@ -6,6 +6,7 @@ import type {
 } from '../domain/ai-result';
 import {
   AiProgrammingError,
+  FixtureMissing,
   InvalidDegradeOutput,
   InvalidPrompt,
   ProviderUnavailable,
@@ -38,6 +39,10 @@ import {
 } from '../domain/run-context';
 import { dataSensitivityOf, type AiTask } from '../domain/task';
 import { executionKey } from './execution-key';
+import {
+  pendingFixtureLogFrom,
+  type PendingFixtureLog,
+} from './pending-fixtures';
 import { PiiRedactor } from './pii-redactor';
 import { cacheForChain } from './null-result-cache';
 import {
@@ -63,6 +68,11 @@ export interface RunTaskDeps {
    * `DEFAULT_PROVIDER_TIMEOUT_MS`.
    */
   providerTimeoutsMs?: Readonly<Record<string, number>>;
+  /**
+   * Registro de entradas pendientes de fixture. Sin declarar, se decide por entorno en cada anotación
+   * (`pendingFixtureLogFrom`), que es lo que permite a un test apagarlo con `AI_PENDING_FIXTURES=off`. `null` lo apaga.
+   */
+  pendingFixtures?: PendingFixtureLog | null;
 }
 
 /** Firma del punto de entrada: `runTask(task, input, ctx)`. */
@@ -339,6 +349,15 @@ export class RunTask {
       // provoca (D2, D4). Antes se devuelve el permiso de half-open si se había tomado (D10).
       if (cause instanceof AiProgrammingError) {
         if (acquired) this.deps.breaker.release(provider.id);
+        // Un fixture que falta se anota antes de propagar el error: el test falla igual, pero deja dicho qué grabar.
+        if (cause instanceof FixtureMissing) {
+          this.recordPendingFixture(
+            task,
+            parsedInput,
+            outputLanguage,
+            execution,
+          );
+        }
         throw cause;
       }
       // Sin permiso tomado, el fallo ocurrió al renderizar el prompt: no es un `provider_error` (ni breaker ni ledger) y
@@ -413,6 +432,33 @@ export class RunTask {
     return (
       this.deps.providerTimeoutsMs?.[providerId] ?? DEFAULT_PROVIDER_TIMEOUT_MS
     );
+  }
+
+  /**
+   * Anota la entrada que no tiene fixture (spec "Registro de entradas pendientes de fixture"). La entrada de una tarea
+   * `personal` no se anota: el registro queda en disco y CLAUDE.md prohíbe guardar ahí texto de CV.
+   */
+  private recordPendingFixture<I, O>(
+    task: AiTask<I, O>,
+    parsedInput: I,
+    outputLanguage: OutputLanguage,
+    execution: Execution,
+  ): void {
+    const log =
+      this.deps.pendingFixtures === undefined
+        ? pendingFixtureLogFrom()
+        : this.deps.pendingFixtures;
+    if (log === null) return;
+
+    const redacted = dataSensitivityOf(task) === 'personal';
+    log.record({
+      task: task.name,
+      promptVersion: task.promptVersion,
+      outputLanguage,
+      key: execution.key,
+      ...(redacted ? {} : { input: parsedInput }),
+      redacted,
+    });
   }
 
   /** Resultado degradado con su único registro y la salida validada de `task.degrade`, si existe. */

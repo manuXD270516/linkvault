@@ -9,7 +9,10 @@ import { type Route, Router, provideRouter } from '@angular/router';
 import { By } from '@angular/platform-browser';
 import { RouterTestingHarness } from '@angular/router/testing';
 import type { SessionResponse } from '@linkvault/shared';
-import { flushGroupDetail } from '../testing/auth-testing';
+import {
+  flushGroupDetail,
+  verifyNoPendingRequests,
+} from '../testing/auth-testing';
 import { appRoutes } from './app.routes';
 import { authGuard, guestGuard } from './core/auth/auth.guards';
 import { authInterceptor } from './core/auth/auth.interceptor';
@@ -99,7 +102,7 @@ describe('appRoutes', () => {
       store = TestBed.inject(SessionStore);
     });
 
-    afterEach(() => http.verify());
+    afterEach(() => verifyNoPendingRequests(http));
 
     it('redirects / to the group list inside the shell with a session', async () => {
       store.setSession(session);

@@ -195,3 +195,164 @@ describe('findById', () => {
     expect(await repository.findById('no-es-un-id')).toBeNull();
   });
 });
+
+describe('updatePreview', () => {
+  it('stores the preview with its provenance, raises the version and leaves the link manual', async () => {
+    const { link } = await save(JOB_PAGE);
+
+    const updated = await repository.updatePreview(link.id, 1, {
+      preview: { title: 'Backend Engineer', skills: [{ name: 'TS', required: true }] },
+      previewSources: {
+        title: {
+          value: 'Backend Engineer',
+          source: 'manual',
+          by: ANA,
+          at: later.toISOString(),
+          replaced: { value: 'Backend', extractor: 'json-ld' },
+        },
+      },
+      now: later,
+    });
+
+    expect(updated?.previewStatus).toBe('manual');
+    expect(updated?.previewVersion).toBe(2);
+    expect(updated?.preview).toEqual({
+      title: 'Backend Engineer',
+      skills: [{ name: 'TS', required: true }],
+    });
+    expect(updated?.previewSources?.title).toEqual({
+      value: 'Backend Engineer',
+      source: 'manual',
+      by: ANA,
+      at: later.toISOString(),
+      replaced: { value: 'Backend', extractor: 'json-ld' },
+    });
+  });
+
+  it('drops a preview field that the shared contract does not know', async () => {
+    const { link } = await save(JOB_PAGE);
+
+    const updated = await repository.updatePreview(link.id, 1, {
+      // `strict: true`: lo que no está en el schema derivado de `libs/shared` no se guarda.
+      preview: { title: 'Backend', image: 'https://example.com/a.png' } as never,
+      previewSources: {},
+      now: later,
+    });
+
+    expect(Object.keys(updated?.preview ?? {})).toEqual(['title']);
+  });
+
+  it('writes nothing when the version already moved on', async () => {
+    const { link } = await save(JOB_PAGE);
+    await repository.updatePreview(link.id, 1, {
+      preview: { title: 'Primera' },
+      previewSources: {},
+      now: later,
+    });
+
+    const late = await repository.updatePreview(link.id, 1, {
+      preview: { title: 'Tardía' },
+      previewSources: {},
+      now: later,
+    });
+
+    expect(late).toBeNull();
+    expect((await repository.findById(link.id))?.preview?.title).toBe('Primera');
+  });
+
+  it('answers null for an unknown or malformed id', async () => {
+    const changes = { preview: {}, previewSources: {}, now: later };
+
+    expect(await repository.updatePreview(objectId(99), 1, changes)).toBeNull();
+    expect(await repository.updatePreview('no-es-un-id', 1, changes)).toBeNull();
+  });
+});
+
+describe('withRequestedEnrichment', () => {
+  it('raises the version, goes back to pending and clears the reason of the failure', async () => {
+    const { link } = await save(JOB_PAGE);
+    await connection.collection(JOB_LINKS_COLLECTION).updateOne(
+      { _id: new mongoose.Types.ObjectId(link.id) },
+      {
+        $set: {
+          previewStatus: 'failed',
+          lastEnrichmentError: { reason: 'timeout', at: now.toISOString() },
+        },
+      },
+    );
+
+    const requested = await repository.withRequestedEnrichment(
+      link.id,
+      later,
+      (updated) => Promise.resolve(updated),
+    );
+
+    expect(requested?.previewStatus).toBe('pending');
+    expect(requested?.previewVersion).toBe(2);
+    expect(requested?.lastEnrichmentError).toBeUndefined();
+    expect(requested?.previewRequestedAt).toEqual(later);
+  });
+
+  it('answers null for an unknown or malformed id, without running the work', async () => {
+    let ran = false;
+    const work = (): Promise<boolean> => {
+      ran = true;
+      return Promise.resolve(true);
+    };
+
+    expect(
+      await repository.withRequestedEnrichment(objectId(99), later, work),
+    ).toBeNull();
+    expect(
+      await repository.withRequestedEnrichment('no-es-un-id', later, work),
+    ).toBeNull();
+    expect(ran).toBe(false);
+  });
+});
+
+describe('listByPreviewStatus', () => {
+  /** Deja el link en `failed` con ese motivo, como lo dejaría el worker. */
+  async function markFailed(linkId: string, reason: string): Promise<void> {
+    await connection.collection(JOB_LINKS_COLLECTION).updateOne(
+      { _id: new mongoose.Types.ObjectId(linkId) },
+      {
+        $set: {
+          previewStatus: 'failed',
+          lastEnrichmentError: { reason, at: now.toISOString() },
+        },
+      },
+    );
+  }
+
+  it('walks the links of a status in identifier order, up to the limit', async () => {
+    const first = await save(JOB_PAGE);
+    const second = await save('https://empresa.example/careers/backend');
+    await save('https://empresa.example/careers/otra');
+
+    const page = await repository.listByPreviewStatus('pending', 2);
+
+    expect(page.map((link) => link.id)).toEqual(
+      [first.link.id, second.link.id].sort(),
+    );
+  });
+
+  it('keeps out of the rescue what cannot be read again', async () => {
+    const transient = await save(JOB_PAGE);
+    const refused = await save('https://empresa.example/careers/robots');
+    await markFailed(transient.link.id, 'timeout');
+    await markFailed(refused.link.id, 'robots_disallowed');
+
+    const rescued = await repository.listByPreviewStatus('failed', 50, [
+      'timeout',
+      'http_error',
+    ]);
+
+    expect(rescued.map((link) => link.id)).toEqual([transient.link.id]);
+  });
+
+  it('answers nothing for a limit of zero', async () => {
+    await save(JOB_PAGE);
+
+    expect(await repository.listByPreviewStatus('pending', 0)).toEqual([]);
+  });
+});

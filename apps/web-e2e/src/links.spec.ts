@@ -1,8 +1,23 @@
 import { workspaceRoot } from '@nx/devkit';
+import type {
+  EnrichmentFailureReason,
+  PreviewSources,
+  StoredPreview,
+} from '@linkvault/shared';
 import { type Page, expect, test } from '@playwright/test';
+import { MongoClient } from 'mongodb';
 import { join } from 'node:path';
 
 const SCREENSHOT_DIR = join(workspaceRoot, 'reports', 'smoke', 'job-links');
+/** Las capturas del preview son de `link-enrichment`, no de `job-links`: cada change guarda las suyas. */
+const ENRICHMENT_SCREENSHOT_DIR = join(workspaceRoot, 'reports', 'smoke', 'link-enrichment');
+
+/**
+ * Base de `api`, para escribir en `job_links` lo que el worker habría escrito al leer la página. Es el mismo valor por
+ * defecto de `.env.example`; con un `.env` propio, Nx lo pasa en `MONGO_URI` y manda ese.
+ */
+const MONGO_URI =
+  process.env['MONGO_URI'] ?? 'mongodb://localhost:27017/linkvault?directConnection=true';
 
 const RUN_ID = Date.now();
 const USER = {
@@ -12,19 +27,59 @@ const USER = {
 };
 const GROUP_NAME = `Smoke Links ${RUN_ID}`;
 
+// El identificador de cada oferta lleva `RUN_ID`, así que cada ejecución guarda vacantes nuevas. No es cosmético: la
+// vacante es canónica y se deduplica entre grupos, de modo que unas URLs fijas harían que una ejecución heredara el
+// preview y el estado que le dejó la anterior. Con identificadores propios, "Leyendo la oferta…" es de verdad una
+// lectura recién pedida y el enriquecimiento que este smoke escribe no puede contaminar la siguiente pasada.
+//
+// Cada identificador respeta la forma que reconoce su canonicalizador: dígitos en LinkedIn y Trabajopolis, hexadecimal
+// en Computrabajo y un slug de tres partes en Get on Board.
+const COMPUTRABAJO_ID = RUN_ID.toString(16);
+
 /** URL con slug: lo que se guarda (`displayUrl`) lo conserva, mientras que la normalizada se queda en el id. */
-const LINKEDIN_URL =
-  'https://www.linkedin.com/jobs/view/senior-backend-engineer-at-acme-3912345678/?utm_source=smoke';
-const LINKEDIN_LABEL = 'senior backend engineer at acme 3912345678';
-const COMPUTRABAJO_URL =
-  'https://bo.computrabajo.com/ofertas-de-trabajo/oferta-de-trabajo-de-analista-de-datos-en-acme-1a2b3c4d5e6f7890';
-const COMPUTRABAJO_LABEL = 'oferta de trabajo de analista de datos en acme 1a2b3c4d5e6f7890';
+const LINKEDIN_URL = `https://www.linkedin.com/jobs/view/senior-backend-engineer-at-acme-${RUN_ID}/?utm_source=smoke`;
+const LINKEDIN_LABEL = `senior backend engineer at acme ${RUN_ID}`;
+const COMPUTRABAJO_URL = `https://bo.computrabajo.com/ofertas-de-trabajo/oferta-de-trabajo-de-analista-de-datos-en-acme-${COMPUTRABAJO_ID}`;
+const COMPUTRABAJO_LABEL = `oferta de trabajo de analista de datos en acme ${COMPUTRABAJO_ID}`;
 /** Lo que alguien pega en el chat sin ser una oferta: se guarda igual y luego se quita. */
-const VIDEO_URL = 'https://ejemplo.test/videos/video-de-gatos';
-const VIDEO_LABEL = 'video de gatos';
-const PRIVATE_URL =
-  'https://www.getonbrd.com/jobs/programming/desarrollador-frontend-senior-acme-remote-ab12';
-const PRIVATE_LABEL = 'desarrollador frontend senior acme remote ab12';
+const VIDEO_URL = `https://ejemplo.test/videos/video-de-gatos-${RUN_ID}`;
+const VIDEO_LABEL = `video de gatos ${RUN_ID}`;
+const PRIVATE_URL = `https://www.getonbrd.com/jobs/programming/desarrollador-frontend-senior-acme-remote-${RUN_ID}`;
+const PRIVATE_LABEL = `desarrollador frontend senior acme remote ${RUN_ID}`;
+/** La única de las cinco bolsas cuyo `robots.txt` permite leer una oferta y que además publica JSON-LD (design §Context). */
+const TRABAJOPOLIS_URL = `https://www.trabajopolis.bo/trabajo/${RUN_ID}/aviso-acme-bo-${RUN_ID}/`;
+const TRABAJOPOLIS_LABEL = `aviso acme bo ${RUN_ID}`;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Día (`YYYY-MM-DD`) de un instante, que es la precisión con la que una bolsa publica sus fechas. */
+function isoDay(millis: number): string {
+  return new Date(millis).toISOString().slice(0, 10);
+}
+
+/** El mismo día escrito como lo escribe la tarjeta (`dd/MM/yyyy`). */
+function spanishDay(day: string): string {
+  const [year, month, dayOfMonth] = day.split('-');
+  return `${dayOfMonth}/${month}/${year}`;
+}
+
+/**
+ * La vacante que la extracción habría leído de la página. Las fechas se calculan desde la ejecución para que
+ * "Publicada hace 3 días" siga diciendo lo mismo dentro de un año: `postedAt` es el día UTC de hace tres días, así que
+ * la diferencia con el reloj del navegador está siempre entre tres y cuatro días y la tarjeta la trunca a tres.
+ */
+const JOB = {
+  title: 'Desarrollador Full Stack',
+  company: 'Acme Bolivia',
+  location: 'La Paz, Bolivia',
+  modality: 'remote',
+  seniority: 'senior',
+  salary: { min: 8000, max: 12000, currency: 'BOB', period: 'month' },
+  postedAt: isoDay(RUN_ID - 3 * DAY_MS),
+  expiresAt: isoDay(RUN_ID + 21 * DAY_MS),
+} as const;
+/** Lo que una persona corrige a mano sobre lo extraído. */
+const CORRECTED_TITLE = 'Ingeniero de Software Senior';
 
 const CHAT = [
   `Ana: mirad esta oferta ${LINKEDIN_URL}`,
@@ -49,8 +104,74 @@ async function saveLink(page: Page, url: string): Promise<void> {
   await page.getByRole('button', { name: 'Guardar', exact: true }).click();
 }
 
+/**
+ * Deja en `job_links` el resultado de una lectura, como si el worker acabara de terminarla.
+ *
+ * Es el doble de la extracción: el worker descarga de internet y aquí no se toca la red, así que el enriquecimiento se
+ * escribe donde el worker lo habría escrito y lo que el smoke comprueba es lo que sigue —lo que el SPA hace con un
+ * preview, con una corrección a mano y con un fallo—. Todo lo demás de estos pasos es de verdad: `PATCH .../preview` y
+ * `POST .../enrich` son la API real, con su transacción y su límite por link.
+ *
+ * `previewVersion` sube como en una escritura del worker, porque la edición manual y el reintento escriben
+ * condicionados a ella (D2).
+ */
+async function seedEnrichment(displayUrl: string, fields: Record<string, unknown>): Promise<void> {
+  const client = new MongoClient(MONGO_URI);
+  try {
+    await client.connect();
+    const written = await client
+      .db()
+      .collection('job_links')
+      .updateOne(
+        { displayUrl },
+        { $set: { ...fields, updatedAt: new Date() }, $inc: { previewVersion: 1 } },
+      );
+    expect(written.matchedCount).toBe(1);
+  } finally {
+    await client.close();
+  }
+}
+
+/** Un campo que salió del JSON-LD de la página, con la forma de procedencia que guarda el worker. */
+function fromPage<Value>(value: Value, at: string) {
+  return { value, source: 'auto', extractor: 'json-ld', at } as const;
+}
+
+/**
+ * Una lectura que salió bien: los campos de la vacante y de dónde salió cada uno (D4). Lo escrito se declara con los
+ * tipos de `libs/shared`, que son los mismos de los que se derivan los schemas de Mongoose: así un cambio del contrato
+ * rompe este doble en lugar de dejarlo escribiendo algo que la API descartaría en silencio.
+ */
+async function seedReadOffer(displayUrl: string): Promise<void> {
+  const at = new Date().toISOString();
+  const preview: StoredPreview = { ...JOB };
+  const previewSources: PreviewSources = {
+    title: fromPage(JOB.title, at),
+    company: fromPage(JOB.company, at),
+    location: fromPage(JOB.location, at),
+    modality: fromPage(JOB.modality, at),
+    seniority: fromPage(JOB.seniority, at),
+    // El salario no estaba en el JSON-LD: lo dedujo la IA, y la tarjeta tiene que decirlo.
+    salary: { value: { ...JOB.salary }, source: 'auto', extractor: 'ai:extract-job', at },
+    postedAt: fromPage(JOB.postedAt, at),
+    expiresAt: fromPage(JOB.expiresAt, at),
+  };
+  await seedEnrichment(displayUrl, { previewStatus: 'enriched', preview, previewSources });
+}
+
+/** Una lectura que no salió: el estado y el motivo con el que la tarjeta decide qué decir y qué ofrecer (D5). */
+async function seedFailedRead(
+  displayUrl: string,
+  reason: EnrichmentFailureReason,
+): Promise<void> {
+  await seedEnrichment(displayUrl, {
+    previewStatus: 'failed',
+    lastEnrichmentError: { reason, at: new Date().toISOString() },
+  });
+}
+
 test('links flow: save, open, import a chat, remove and the private list', async ({ browser }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(240_000);
   const context = await browser.newContext();
   const pageErrors: string[] = [];
 
@@ -83,7 +204,8 @@ test('links flow: save, open, import a chat, remove and the private list', async
       await expect(row).toHaveCount(1);
       await expect(row).toContainText('LinkedIn');
       await expect(row).toContainText(`Compartido por ${USER.displayName}`);
-      await expect(row).toContainText('Sin vista previa todavía');
+      // La lectura se acaba de pedir: la tarjeta lo dice así, no como una lectura que ya no va a llegar (D5).
+      await expect(row).toContainText('Leyendo la oferta…');
       await expect(page.getByLabel('Pega el enlace de una oferta')).toHaveValue('');
       await page.screenshot({ path: join(SCREENSHOT_DIR, 'link-guardado.png'), fullPage: true });
     });
@@ -164,6 +286,125 @@ test('links flow: save, open, import a chat, remove and the private list', async
       await expect(linkRow(page, LINKEDIN_LABEL)).toHaveCount(1);
       await expect(linkRow(page, COMPUTRABAJO_LABEL)).toHaveCount(1);
       await expect(page.getByText(PRIVATE_LABEL)).toHaveCount(0);
+    });
+
+    await test.step('Oferta enriquecida', async () => {
+      await saveLink(page, TRABAJOPOLIS_URL);
+      await expect(linkRow(page, TRABAJOPOLIS_LABEL)).toHaveCount(1);
+
+      await seedReadOffer(TRABAJOPOLIS_URL);
+      await page.reload();
+
+      const row = linkRow(page, JOB.title);
+      await expect(row.getByTestId('link-open')).toHaveText(JOB.title);
+      await expect(row.getByTestId('link-company')).toContainText(JOB.company);
+      await expect(row.getByTestId('link-location')).toHaveText(JOB.location);
+      await expect(row.getByTestId('link-modality')).toHaveText('Remoto');
+      await expect(row.getByTestId('link-seniority')).toHaveText('Senior');
+      // La etiqueta derivada de la URL desaparece en cuanto la oferta tiene nombre propio.
+      await expect(page.getByText(TRABAJOPOLIS_LABEL)).toHaveCount(0);
+      // Una oferta legible no necesita que le cuenten nada más.
+      await expect(row.getByTestId('link-status')).toHaveCount(0);
+      await page.screenshot({ path: join(ENRICHMENT_SCREENSHOT_DIR, 'oferta-enriquecida.png'), fullPage: true });
+    });
+
+    await test.step('Oferta con salario y fechas', async () => {
+      const row = linkRow(page, JOB.title);
+      const salary = row.getByTestId('link-salary');
+
+      // El agrupador de miles lo pone el locale del navegador, así que se comprueba la forma, no sus puntos.
+      await expect(salary).toHaveText(/^[\d.,\s]+ – [\d.,\s]+ BOB al mes$/);
+      // Deducido por la IA: se enseña sin destacar y se dice quién lo dedujo.
+      await expect(salary).toHaveAttribute('data-guess', 'ai');
+      await expect(row.getByTestId('note-salary')).toHaveText('Deducido por la IA');
+      await expect(row.getByTestId('link-posted')).toHaveText('Publicada hace 3 días');
+      await expect(row.getByTestId('link-expires')).toHaveText(
+        `Cierra el ${spanishDay(JOB.expiresAt)}`,
+      );
+    });
+
+    await test.step('Corregir el título', async () => {
+      await linkRow(page, JOB.title).getByTestId('link-edit').click();
+      const dialog = page.getByRole('dialog');
+      await expect(dialog.getByTestId('preview-title')).toHaveValue(JOB.title);
+
+      await dialog.getByTestId('preview-title').fill(CORRECTED_TITLE);
+      await dialog.getByTestId('preview-save').click();
+
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+      await expect(linkRow(page, CORRECTED_TITLE).getByTestId('link-open')).toHaveText(
+        CORRECTED_TITLE,
+      );
+      await expect(linkRow(page, JOB.title)).toHaveCount(0);
+    });
+
+    await test.step('Quién lo escribió, en la tarjeta', async () => {
+      const row = linkRow(page, CORRECTED_TITLE);
+
+      await expect(row.getByTestId('note-title')).toHaveText(`Escrito por ${USER.displayName}`);
+      // Lo que leyó la página no se anota: llenaría la tarjeta de ruido y es el caso normal.
+      await expect(row.getByTestId('note-company')).toHaveCount(0);
+      await page.screenshot({ path: join(ENRICHMENT_SCREENSHOT_DIR, 'oferta-corregida.png'), fullPage: true });
+    });
+
+    await test.step('Origen de cada campo', async () => {
+      await linkRow(page, CORRECTED_TITLE).getByTestId('link-edit').click();
+      const dialog = page.getByRole('dialog');
+
+      await expect(dialog.getByTestId('origin-title')).toHaveText(
+        `Escrito por ${USER.displayName}`,
+      );
+      await expect(dialog.getByTestId('origin-company')).toHaveText('Leído de la página');
+      await expect(dialog.getByTestId('origin-salary')).toHaveText('Deducido por la IA');
+      await page.screenshot({ path: join(ENRICHMENT_SCREENSHOT_DIR, 'origen-de-cada-campo.png'), fullPage: true });
+    });
+
+    await test.step('Volver a lo extraído', async () => {
+      const dialog = page.getByRole('dialog');
+      await dialog.getByTestId('revert-title').click();
+      // El formulario enseña ya a qué va a volver, antes de guardar.
+      await expect(dialog.getByTestId('preview-title')).toHaveValue(JOB.title);
+
+      await dialog.getByTestId('preview-save').click();
+
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+      const row = linkRow(page, JOB.title);
+      await expect(row.getByTestId('link-open')).toHaveText(JOB.title);
+      await expect(row.getByTestId('note-title')).toHaveCount(0);
+    });
+
+    await test.step('Oferta que no se pudo leer', async () => {
+      await seedFailedRead(COMPUTRABAJO_URL, 'timeout');
+      await page.reload();
+
+      const row = linkRow(page, COMPUTRABAJO_LABEL);
+      await expect(row.getByTestId('link-status')).toHaveText('No pudimos leer esta oferta');
+      await expect(row.getByTestId('link-complete')).toBeVisible();
+      await expect(row.getByTestId('link-retry')).toBeVisible();
+      await page.screenshot({ path: join(ENRICHMENT_SCREENSHOT_DIR, 'oferta-sin-leer.png'), fullPage: true });
+    });
+
+    await test.step('Reintento aceptado', async () => {
+      const row = linkRow(page, COMPUTRABAJO_LABEL);
+      await row.getByTestId('link-retry').click();
+
+      // La API devolvió el link de vuelta en `pending` y sin motivo de fallo: ya no hay nada que reintentar.
+      await expect(row.getByTestId('link-status')).toHaveText('Leyendo la oferta…');
+      await expect(row.getByTestId('link-retry')).toHaveCount(0);
+      await page.screenshot({ path: join(ENRICHMENT_SCREENSHOT_DIR, 'reintento-aceptado.png'), fullPage: true });
+    });
+
+    await test.step('Bolsa que no permite la lectura', async () => {
+      await seedFailedRead(LINKEDIN_URL, 'robots_disallowed');
+      await page.reload();
+
+      const row = linkRow(page, LINKEDIN_LABEL);
+      await expect(row.getByTestId('link-status')).toHaveText(
+        'Esta bolsa no permite la lectura automática de sus ofertas',
+      );
+      // Volver a pedir lo que el sitio ya negó no cambiaría nada, así que ni se ofrece.
+      await expect(row.getByTestId('link-retry')).toHaveCount(0);
+      await expect(row.getByTestId('link-complete')).toBeVisible();
     });
 
     expect(pageErrors).toEqual([]);

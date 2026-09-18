@@ -170,8 +170,13 @@ describe('outbox relay module', () => {
     expect(moduleRef.get(OutboxRelay)).toBeInstanceOf(OutboxRelay);
   });
 
-  it('keeps the queue retention of D6', () => {
+  it('keeps the queue retention of D6 and retries what throws', () => {
+    // Los reintentos solo cubren lo que revienta: una bolsa que bloquea o una página que no es oferta son resultados
+    // que el consumidor guarda con su motivo y no gastan intentos. Sin `attempts`, BullMQ haría uno solo y un corte de
+    // Mongo de un segundo dejaría el link en `failed` con "reintentos agotados" sin haber reintentado nada.
     expect(ENRICH_LINK_JOB_OPTIONS).toEqual({
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 5_000 },
       removeOnComplete: { age: 86_400, count: 1_000 },
       removeOnFail: { age: 604_800 },
     });

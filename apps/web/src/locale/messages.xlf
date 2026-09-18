@@ -431,84 +431,84 @@
         <source>Salir del grupo</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">122</context>
+          <context context-type="linenumber">126</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.leaveMessage" datatype="html">
         <source>Dejarás de ver este grupo. Para volver necesitarás el código de invitación.</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">123</context>
+          <context context-type="linenumber">127</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.leaveConfirm" datatype="html">
         <source>Salir</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">124</context>
+          <context context-type="linenumber">128</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.deleteTitle" datatype="html">
         <source>Borrar el grupo</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">138</context>
+          <context context-type="linenumber">142</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.deleteConfirm" datatype="html">
         <source>Borrar</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">140</context>
+          <context context-type="linenumber">144</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.rotateTitle" datatype="html">
         <source>Regenerar el código</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">176</context>
+          <context context-type="linenumber">180</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.rotateMessage" datatype="html">
         <source>Los miembros actuales siguen dentro; solo dejará de servir el código anterior</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">177</context>
+          <context context-type="linenumber">181</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.rotateConfirm" datatype="html">
         <source>Regenerar</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">178</context>
+          <context context-type="linenumber">182</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.invitationMessage" datatype="html">
         <source>Únete a «<x id="NAME" equiv-text="group.name"/>» en LinkVault: <x id="LINK" ctype="x-a" equiv-text="link"/> (código <x id="CODE" equiv-text="group.inviteCode"/>)</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">199</context>
+          <context context-type="linenumber">203</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.removeMemberTitle" datatype="html">
         <source>Expulsar del grupo</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">213</context>
+          <context context-type="linenumber">217</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.removeMemberMessage" datatype="html">
         <source><x id="NAME" equiv-text="member.displayName"/> dejará de ver este grupo. Podrá volver a entrar si consigue el código.</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">214</context>
+          <context context-type="linenumber">218</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.removeMemberConfirm" datatype="html">
         <source>Expulsar</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">215</context>
+          <context context-type="linenumber">219</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.list.title" datatype="html">
@@ -623,6 +623,261 @@
           <context context-type="linenumber">20,22</context>
         </context-group>
       </trans-unit>
+      <trans-unit id="links.edit.title" datatype="html">
+        <source>Corregir la oferta</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
+          <context context-type="linenumber">1,4</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.edit.explanation" datatype="html">
+        <source> Lo que corrijas aquí lo verán las demás personas del grupo, con tu nombre. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
+          <context context-type="linenumber">5,8</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.field.title" datatype="html">
+        <source>Puesto</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
+          <context context-type="linenumber">10,11</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.field.company" datatype="html">
+        <source>Empresa</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
+          <context context-type="linenumber">16,17</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.field.location" datatype="html">
+        <source>Ubicación</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
+          <context context-type="linenumber">22,23</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.field.modality" datatype="html">
+        <source>Modalidad</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
+          <context context-type="linenumber">28,29</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.field.unknown" datatype="html">
+        <source>No lo dice</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
+          <context context-type="linenumber">30,31</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
+          <context context-type="linenumber">41,42</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
+          <context context-type="linenumber">72,73</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.modality.remote" datatype="html">
+        <source>Remoto</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
+          <context context-type="linenumber">31,32</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
+          <context context-type="linenumber">106</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.modality.hybrid" datatype="html">
+        <source>Híbrido</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
+          <context context-type="linenumber">32,33</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
+          <context context-type="linenumber">108</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.modality.onsite" datatype="html">
+        <source>Presencial</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
+          <context context-type="linenumber">33,35</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
+          <context context-type="linenumber">110</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.field.seniority" datatype="html">
+        <source>Experiencia</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
+          <context context-type="linenumber">39,40</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.seniority.intern" datatype="html">
+        <source>Prácticas</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
+          <context context-type="linenumber">42,43</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
+          <context context-type="linenumber">120</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.seniority.junior" datatype="html">
+        <source>Junior</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
+          <context context-type="linenumber">43,44</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
+          <context context-type="linenumber">122</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.seniority.mid" datatype="html">
+        <source>Intermedio</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
+          <context context-type="linenumber">44,45</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
+          <context context-type="linenumber">124</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.seniority.senior" datatype="html">
+        <source>Senior</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
+          <context context-type="linenumber">45,46</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
+          <context context-type="linenumber">126</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.seniority.lead" datatype="html">
+        <source>Líder</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
+          <context context-type="linenumber">46,48</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
+          <context context-type="linenumber">128</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.field.salaryMin" datatype="html">
+        <source>Salario desde</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
+          <context context-type="linenumber">53,54</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.field.salaryMax" datatype="html">
+        <source>Salario hasta</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
+          <context context-type="linenumber">57,58</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.field.currency" datatype="html">
+        <source>Moneda</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
+          <context context-type="linenumber">61,63</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.field.period" datatype="html">
+        <source>Periodo</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
+          <context context-type="linenumber">70,71</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.salary.month" datatype="html">
+        <source>al mes</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
+          <context context-type="linenumber">73,74</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
+          <context context-type="linenumber">169</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.salary.year" datatype="html">
+        <source>al año</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
+          <context context-type="linenumber">74,75</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
+          <context context-type="linenumber">171</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.salary.hour" datatype="html">
+        <source>por hora</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
+          <context context-type="linenumber">75,76</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
+          <context context-type="linenumber">173</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.field.summary" datatype="html">
+        <source>Resumen</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
+          <context context-type="linenumber">82,83</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.field.postedAt" datatype="html">
+        <source>Publicada el</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
+          <context context-type="linenumber">89,90</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.field.expiresAt" datatype="html">
+        <source>Cierra el</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
+          <context context-type="linenumber">93,94</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.edit.cancel" datatype="html">
+        <source>Cancelar</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
+          <context context-type="linenumber">107,109</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.edit.save" datatype="html">
+        <source> Guardar </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
+          <context context-type="linenumber">116,118</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.edit.revert" datatype="html">
+        <source> Volver a lo extraído </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
+          <context context-type="linenumber">139,142</context>
+        </context-group>
+      </trans-unit>
       <trans-unit id="links.import.title" datatype="html">
         <source> Pega aquí el chat: encontraremos los enlaces de ofertas
 </source>
@@ -710,74 +965,202 @@
           <context context-type="linenumber">75,78</context>
         </context-group>
       </trans-unit>
+      <trans-unit id="links.card.postedAgo" datatype="html">
+        <source>{VAR_PLURAL, plural, =0 {Publicada hoy} =1 {Publicada ayer} other {Publicada hace <x id="INTERPOLATION"/>
+      días}}</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
+          <context context-type="linenumber">60,64</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.card.closesAt" datatype="html">
+        <source>Cierra el <x id="INTERPOLATION" equiv-text="{{ closing | date: &apos;dd/MM/yyyy&apos; }}"/></source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
+          <context context-type="linenumber">66,69</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.list.sharedBy" datatype="html">
+        <source>Compartido por <x id="INTERPOLATION" equiv-text="{{ sharer.displayName }}"/></source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
+          <context context-type="linenumber">74,76</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.card.completeByHand" datatype="html">
+        <source> Completar a mano </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
+          <context context-type="linenumber">90,93</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.card.edit" datatype="html">
+        <source> Editar </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
+          <context context-type="linenumber">101,104</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.card.retry" datatype="html">
+        <source> Reintentar </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
+          <context context-type="linenumber">113,116</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.list.remove" datatype="html">
+        <source> Quitar </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
+          <context context-type="linenumber">125,129</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.list.reading" datatype="html">
+        <source>{VAR_PLURAL, plural, =1 {Leyendo ofertas: <x id="INTERPOLATION"/> de 1 lista} other {Leyendo ofertas: <x id="INTERPOLATION"/>
+    de <x id="INTERPOLATION_1"/> listas}}</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-list.component.html</context>
+          <context context-type="linenumber">6,12</context>
+        </context-group>
+      </trans-unit>
       <trans-unit id="links.list.emptyMine" datatype="html">
         <source> Aquí guardas ofertas solo para ti. Las que compartiste están en tus grupos. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-list.component.html</context>
-          <context context-type="linenumber">4,7</context>
+          <context context-type="linenumber">14,17</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.list.emptyGroup" datatype="html">
         <source> Todavía no hay ofertas aquí. Guarda un link o pega el chat donde las compartís. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-list.component.html</context>
-          <context context-type="linenumber">8,12</context>
+          <context context-type="linenumber">18,22</context>
         </context-group>
       </trans-unit>
-      <trans-unit id="links.list.sharedBy" datatype="html">
-        <source>Compartido por <x id="INTERPOLATION" equiv-text="{{ sharer.displayName }}"/></source>
+      <trans-unit id="links.retry.notRetryable" datatype="html">
+        <source> Esta oferta no se puede volver a leer automáticamente. Complétala a mano. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-list.component.html</context>
-          <context context-type="linenumber">27,28</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="links.list.noPreview" datatype="html">
-        <source>Sin vista previa todavía</source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/links/link-list.component.html</context>
-          <context context-type="linenumber">30,32</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="links.list.remove" datatype="html">
-        <source> Quitar </source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/links/link-list.component.html</context>
-          <context context-type="linenumber">41,42</context>
+          <context context-type="linenumber">41,44</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.list.removeTitle" datatype="html">
         <source>Quitar el enlace</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-list.component.ts</context>
-          <context context-type="linenumber">104</context>
+          <context context-type="linenumber">93</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.list.removeMessageMine" datatype="html">
         <source>Se quita de tu lista; la oferta sigue disponible en tus grupos.</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-list.component.ts</context>
-          <context context-type="linenumber">107</context>
+          <context context-type="linenumber">96</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.list.removeMessageGroup" datatype="html">
         <source>Se quita de este grupo; la oferta sigue disponible en otros grupos.</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-list.component.ts</context>
-          <context context-type="linenumber">108</context>
+          <context context-type="linenumber">97</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.list.removeConfirm" datatype="html">
         <source>Quitar</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-list.component.ts</context>
-          <context context-type="linenumber">109</context>
+          <context context-type="linenumber">98</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.platform.generic" datatype="html">
         <source>Otra web</source>
         <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/links/link-list.component.ts</context>
-          <context context-type="linenumber">131</context>
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
+          <context context-type="linenumber">96</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.salary.from" datatype="html">
+        <source>Desde <x id="MIN" equiv-text="format(min)"/></source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
+          <context context-type="linenumber">155</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.salary.upTo" datatype="html">
+        <source>Hasta <x id="MAX" equiv-text="format(max)"/></source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
+          <context context-type="linenumber">157</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.origin.page" datatype="html">
+        <source>Leído de la página</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
+          <context context-type="linenumber">202</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.origin.ai" datatype="html">
+        <source>Deducido por la IA</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
+          <context context-type="linenumber">204</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.origin.manual" datatype="html">
+        <source>Escrito por <x id="NAME" equiv-text="origin.by.displayName"/></source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
+          <context context-type="linenumber">206</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.status.missingFields" datatype="html">
+        <source>Faltan datos de esta oferta</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-status.ts</context>
+          <context context-type="linenumber">53</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.status.reading" datatype="html">
+        <source>Leyendo la oferta…</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-status.ts</context>
+          <context context-type="linenumber">63</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.list.noPreview" datatype="html">
+        <source>Sin vista previa todavía</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-status.ts</context>
+          <context context-type="linenumber">69</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.status.robotsDisallowed" datatype="html">
+        <source>Esta bolsa no permite la lectura automática de sus ofertas</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-status.ts</context>
+          <context context-type="linenumber">80</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.status.blocked" datatype="html">
+        <source>Esta bolsa no nos deja leer esta oferta</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-status.ts</context>
+          <context context-type="linenumber">82</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.status.notAJob" datatype="html">
+        <source>Esto no parece una oferta</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-status.ts</context>
+          <context context-type="linenumber">84</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.status.unreadable" datatype="html">
+        <source>No pudimos leer esta oferta</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-status.ts</context>
+          <context context-type="linenumber">86</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.mine.title" datatype="html">

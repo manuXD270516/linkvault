@@ -3,12 +3,17 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  PENDING_FIXTURES_OFF,
+  PENDING_FIXTURES_SWITCH_VAR,
+} from '../../application/pending-fixtures';
 import type { AiEnv } from '../../infrastructure/config/parse-ai-config';
 import {
   classifySkillsEvaluable,
   EVALUABLE_TASKS,
   evaluableTaskNames,
+  extractJobEvaluable,
 } from '../evaluable-tasks';
 import { goldenPath, loadGolden } from '../golden.schema';
 import { EXIT_CODES } from './args';
@@ -25,6 +30,17 @@ import {
 const WORKSPACE_ROOT = resolve(import.meta.dirname, '../../../../..');
 const REAL_EVALS_DIR = join(WORKSPACE_ROOT, 'libs/ai/src/evals');
 const TASK = 'classify-skills';
+const OTHER_TASK = 'extract-job';
+
+/** Golden mínimo de la segunda tarea evaluable, para que `--all` evalúe de verdad más de una. */
+const OTHER_GOLDEN = [
+  {
+    id: 'listado-01',
+    input: { text: 'Empleos en Bolivia. Busca por categoría y por ciudad.' },
+    expected: { isJobPosting: false },
+    tags: ['placeholder'],
+  },
+];
 
 const GOLDEN = [
   {
@@ -80,9 +96,21 @@ describe('runEvalCommand', () => {
       goldenPath(evalsDir, TASK),
       `${GOLDEN.map((line) => JSON.stringify(line)).join('\n')}\n`,
     );
+    await mkdir(join(evalsDir, OTHER_TASK), { recursive: true });
+    await mkdir(join(fixturesDir, OTHER_TASK), { recursive: true });
+    await writeFile(
+      goldenPath(evalsDir, OTHER_TASK),
+      `${OTHER_GOLDEN.map((line) => JSON.stringify(line)).join('\n')}\n`,
+    );
+  });
+
+  // "Fixture ausente en replay" espera el error a propósito: este archivo queda fuera del registro de pendientes (4.6).
+  beforeEach(() => {
+    vi.stubEnv(PENDING_FIXTURES_SWITCH_VAR, PENDING_FIXTURES_OFF);
   });
 
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await rm(root, { recursive: true, force: true });
   });
 
@@ -106,6 +134,24 @@ describe('runEvalCommand', () => {
               category: 'tool',
             })),
           }),
+          model: 'fixture-model',
+          usage: { inputTokens: 0, outputTokens: 0 },
+        }),
+      );
+    }
+    await writeOtherFixtures();
+  }
+
+  /** Fixtures de la segunda tarea: una página que no es una vacante. */
+  async function writeOtherFixtures() {
+    const golden = await loadGolden(extractJobEvaluable, evalsDir);
+    if (!golden.ok) throw new Error('invalid test golden');
+    for (const goldenCase of golden.cases) {
+      await writeFile(
+        join(fixturesDir, OTHER_TASK, `${goldenCase.key}.json`),
+        JSON.stringify({
+          source: 'handwritten',
+          text: JSON.stringify({ isJobPosting: false, preview: null }),
           model: 'fixture-model',
           usage: { inputTokens: 0, outputTokens: 0 },
         }),
@@ -212,6 +258,9 @@ describe('runEvalCommand', () => {
       ),
     ).resolves.toBe(EXIT_CODES.success);
     expect(update.out.join('')).toContain('baseline updated');
+    // `--all` evalúa las dos tareas registradas, no solo la primera.
+    expect(update.out.join('')).toContain('classify-skills [mock]');
+    expect(update.out.join('')).toContain('extract-job [mock]');
 
     const check = captureIo(env);
     await expect(
@@ -376,15 +425,16 @@ describe('Coherencia entre registro y golden sets', () => {
   });
 
   it('detects registered tasks without golden set and golden sets without registered task', async () => {
+    // `match-cv` es un nombre de tarea de IA que todavía no es evaluable: su golden sobraría.
     await mkdir(join(evalsDir, 'metrics'));
-    await mkdir(join(evalsDir, 'extract-job'));
-    await writeFile(join(evalsDir, 'extract-job', 'golden.jsonl'), '');
+    await mkdir(join(evalsDir, 'match-cv'));
+    await writeFile(join(evalsDir, 'match-cv', 'golden.jsonl'), '');
     await writeFile(join(evalsDir, 'golden.jsonl'), '');
 
-    await expect(goldenTaskDirs(evalsDir)).resolves.toEqual(['extract-job']);
+    await expect(goldenTaskDirs(evalsDir)).resolves.toEqual(['match-cv']);
     await expect(registryCoherence(evalsDir)).resolves.toEqual({
-      withoutGolden: ['classify-skills'],
-      unregistered: ['extract-job'],
+      withoutGolden: ['classify-skills', 'extract-job'],
+      unregistered: ['match-cv'],
     });
   });
 

@@ -3,7 +3,12 @@ import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { RouterTestingHarness } from '@angular/router/testing';
 import type { JobLinkSummary, LinkPage } from '@linkvault/shared';
-import { providePageTesting, sessionWith, settle } from '../../../testing/auth-testing';
+import {
+  providePageTesting,
+  sessionWith,
+  settle,
+  verifyNoPendingRequests,
+} from '../../../testing/auth-testing';
 import { SessionStore } from '../../core/auth/session.store';
 import { Shell } from '../../layout/shell/shell';
 import { MyLinksPage } from './my-links.page';
@@ -16,6 +21,7 @@ const priv: JobLinkSummary = {
   displayUrl: 'https://ejemplo.test/ofertas/analista-de-datos',
   platform: 'generic',
   previewStatus: 'pending',
+  previewVersion: 1,
   sharedAt: '2026-09-17T10:00:00.000Z',
 };
 
@@ -30,7 +36,7 @@ describe('MyLinksPage', () => {
     harness = await RouterTestingHarness.create();
   });
 
-  afterEach(() => http.verify());
+  afterEach(() => verifyNoPendingRequests(http));
 
   function page(): HTMLElement {
     const debugElement = harness.fixture.debugElement.query(By.directive(MyLinksPage));

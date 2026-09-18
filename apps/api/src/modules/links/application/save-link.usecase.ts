@@ -5,7 +5,7 @@ import type {
 } from '@linkvault/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import { GroupNotFound } from '../../groups/domain/errors';
-import { toJobLinkSummary, toLinkSharer } from './link.mapper';
+import { displayNameIdsOf, toJobLinkSummary, toLinkSharer } from './link.mapper';
 import {
   GROUP_LINK_REPOSITORY,
   type GroupLinkRepository,
@@ -90,15 +90,20 @@ export class SaveLink {
     groupId: string | undefined,
   ): Promise<SaveLinkResponse> {
     const inGroup = groupId !== undefined;
-    const names = inGroup
-      ? await this.directory.displayNamesOf([saved.sharedBy])
-      : new Map<string, string>();
+    // Una sola consulta para quien compartió y para quien escribió a mano algún campo del preview: compartir una
+    // vacante que otro ya corrigió no puede costar una consulta por campo (D4).
+    const ids = displayNameIdsOf([saved.link], inGroup ? [saved.sharedBy] : []);
+    const names =
+      ids.length === 0
+        ? new Map<string, string>()
+        : await this.directory.displayNamesOf(ids);
     const sharer = inGroup
       ? toLinkSharer(saved.sharedBy, names.get(saved.sharedBy))
       : undefined;
     return {
       link: toJobLinkSummary(saved.link, {
         sharedAt: saved.sharedAt,
+        names,
         ...(sharer === undefined ? {} : { sharedBy: sharer }),
       }),
       created: saved.created,

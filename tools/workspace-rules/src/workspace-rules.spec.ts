@@ -171,6 +171,26 @@ const rows: readonly RuleRow[] = [
     expectedRuleIds: [DOMAIN_IMPORTS],
   },
   {
+    // link-enrichment (ADR-022): el parser de HTML y el de `robots.txt` viven en `infrastructure/`; el dominio recibe
+    // un `PageContent` ya parseado y una decisión de robots ya tomada.
+    name: 'a domain folder of the worker imports the HTML parser',
+    filePath: 'apps/worker/src/modules/probe/domain/probe.ts',
+    code: "import { load } from 'cheerio/slim';\n\nexport const probe = load;\n",
+    expectedRuleIds: [DOMAIN_IMPORTS],
+  },
+  {
+    name: 'a domain folder of the worker imports the robots.txt parser',
+    filePath: 'apps/worker/src/modules/probe/domain/probe.ts',
+    code: "import robotsParser from 'robots-parser';\n\nexport const probe = robotsParser;\n",
+    expectedRuleIds: [DOMAIN_IMPORTS],
+  },
+  {
+    name: 'a domain folder of the worker imports the object storage client',
+    filePath: 'apps/worker/src/modules/probe/domain/probe.ts',
+    code: "import { S3Client } from '@aws-sdk/client-s3';\n\nexport const probe = S3Client;\n",
+    expectedRuleIds: [DOMAIN_IMPORTS],
+  },
+  {
     name: 'libs/ai domain imports the application layer',
     filePath: 'libs/ai/src/domain/x.ts',
     code: "import { RunTaskUseCase } from '../application/run-task.usecase';\n\nexport const probe = RunTaskUseCase;\n",

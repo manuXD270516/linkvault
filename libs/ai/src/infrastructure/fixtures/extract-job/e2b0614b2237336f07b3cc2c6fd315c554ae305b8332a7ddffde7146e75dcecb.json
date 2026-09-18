@@ -1,0 +1,9 @@
+{
+  "source": "recorded:ollama:qwen2.5:7b",
+  "text": "{\"isJobPosting\":true,\"preview\":{\"title\":\"Analista de Datos\",\"company\":\"Distribuidora Andina\",\"location\":\"Santa Cruz de la Sierra\",\"modality\":\"hybrid\",\"seniority\":\"mid\",\"salary\":null,\"skills\":[{\"name\":\"Python\",\"required\":true},{\"name\":\"SQL\",\"required\":true},{\"name\":\"Power BI\",\"required\":true},{\"name\":\"Excel\",\"required\":true}],\"languages\":[],\"summary\":\"Construye reportes de ventas e inventario, automatiza la limpieza de datos con Python y escribe consultas SQL sobre el almacén de datos.\",\"postedAt\":null,\"expiresAt\":null}}",
+  "model": "qwen2.5:7b",
+  "usage": {
+    "inputTokens": 1340,
+    "outputTokens": 165
+  }
+}

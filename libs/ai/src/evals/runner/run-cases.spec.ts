@@ -1,7 +1,11 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  PENDING_FIXTURES_OFF,
+  PENDING_FIXTURES_SWITCH_VAR,
+} from '../../application/pending-fixtures';
 import { RunTask } from '../../application/run-task.usecase';
 import type { AnyAiTask } from '../../application/task-registry';
 import { FixtureMissing, ProviderUnavailable } from '../../domain/errors';
@@ -101,6 +105,15 @@ describe('runCases with the mock in replay', () => {
       }),
     );
   }
+
+  // Este archivo comprueba el fixture ausente a propósito: queda fuera del registro de pendientes (4.6).
+  beforeEach(() => {
+    vi.stubEnv(PENDING_FIXTURES_SWITCH_VAR, PENDING_FIXTURES_OFF);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
 
   function replay() {
     const composed = composeEvalRunTask({
@@ -216,6 +229,7 @@ describe('runCases with a failing provider', () => {
     const provider = new FailingProvider();
     const ledger = new EvalUsageLedger();
     const runTask = new RunTask({
+      pendingFixtures: null,
       providers: [provider],
       prompts: new FilePromptRegistry({ promptsDir: PROMPTS_DIR }),
       cache: new NullResultCache(),

@@ -1,0 +1,9 @@
+{
+  "source": "recorded:ollama:qwen2.5:7b",
+  "text": "{\"isJobPosting\":false,\"preview\":null}",
+  "model": "qwen2.5:7b",
+  "usage": {
+    "inputTokens": 1357,
+    "outputTokens": 13
+  }
+}

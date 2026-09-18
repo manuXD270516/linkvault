@@ -21,4 +21,9 @@ export interface GroupMembership {
   membershipOf(groupId: string, userId: string): Promise<GroupRole | null>;
   /** Grupos del usuario, del más reciente al más antiguo. Una sola llamada por petición (D4). */
   groupsOf(userId: string): Promise<UserGroup[]>;
+  /**
+   * Quiénes son miembros de esos grupos, sin repetir. Lo usa el reparto de un aviso para saber a quién avisar de un
+   * link compartido; un grupo que no existe simplemente no aporta a nadie.
+   */
+  memberIdsOf(groupIds: readonly string[]): Promise<string[]>;
 }

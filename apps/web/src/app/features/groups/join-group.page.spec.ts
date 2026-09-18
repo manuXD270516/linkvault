@@ -10,6 +10,7 @@ import {
   sessionWith,
   settle,
   typeInto,
+  verifyNoPendingRequests,
 } from '../../../testing/auth-testing';
 import { SessionStore } from '../../core/auth/session.store';
 
@@ -26,7 +27,7 @@ describe('JoinGroupPage', () => {
     store = TestBed.inject(SessionStore);
   });
 
-  afterEach(() => http.verify());
+  afterEach(() => verifyNoPendingRequests(http));
 
   /** El diálogo se abre en el overlay, fuera del árbol del componente. */
   function dialog(): HTMLElement {

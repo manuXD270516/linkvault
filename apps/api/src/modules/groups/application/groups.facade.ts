@@ -38,6 +38,15 @@ export class GroupsFacade {
   }
 
   /**
+   * Identificadores de los miembros del grupo. Lo usa `links` para saber a quién avisar de un link compartido ahí; no
+   * salen nombres ni emails, que son de `users`. Un grupo que no existe devuelve una lista vacía.
+   */
+  async memberIdsOf(groupId: string): Promise<string[]> {
+    const members = await this.groups.listMembers(groupId);
+    return members.map((member) => member.userId);
+  }
+
+  /**
    * Grupos del usuario, del más reciente al más antiguo. Las membresías huérfanas no aparecen (D6), así que quien
    * filtre por esta lista nunca verá contenido de un grupo borrado.
    */

@@ -4,11 +4,14 @@ import { APP_CONFIG } from '../config/app-config.module';
 import type { WorkerConfig } from '../config/worker-config.schema';
 
 /**
- * Conexión raíz de BullMQ (D8), separada del cliente de salud. `maxRetriesPerRequest: null` es obligatorio
- * para los `Worker` de BullMQ. Sigue sin colas ni `Worker` registrados, y por eso no abre ninguna conexión a Redis por
- * esta vía: `job-links` ya publica jobs en `enrich-link`, pero desde el relay del outbox de `api` y a propósito sin
- * consumidor (D7 de job-links). Los jobs esperan en la cola —y sus links, en `pending`— hasta que `link-enrichment`
- * registre aquí el primer `Worker`; un consumidor provisional los descartaría, que es lo que el outbox evita.
+ * Conexión raíz de BullMQ (D8), separada del cliente de salud. `maxRetriesPerRequest: null` es obligatorio para los
+ * `Worker` de BullMQ. Sigue sin colas ni `Worker` registrados aquí, y por eso no abre ninguna conexión a Redis por
+ * esta vía.
+ *
+ * El consumidor de `enrich-link` que trajo `link-enrichment` **no pasa por este módulo**: construye su `Worker` en
+ * `modules/enrichment` con su propia conexión, porque `concurrency` y `lockDuration` salen de la configuración y las
+ * opciones de `@Processor` se fijan al escribir el código. Este módulo queda como la raíz que necesitará la primera
+ * cola que el worker publique o consuma con `@nestjs/bullmq`.
  */
 @Module({
   imports: [

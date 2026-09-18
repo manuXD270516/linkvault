@@ -3,10 +3,16 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "sourceRoot": "apps/api/src",
   "projectType": "application",
-  "tags": ["scope:api", "type:app", "platform:node"],
+  "tags": [
+    "scope:api",
+    "type:app",
+    "platform:node"
+  ],
   "targets": {
     "prune-lockfile": {
-      "dependsOn": ["build"],
+      "dependsOn": [
+        "build"
+      ],
       "cache": true,
       "executor": "@nx/js:prune-lockfile",
       "inputs": [
@@ -30,23 +36,32 @@
       }
     },
     "copy-workspace-modules": {
-      "dependsOn": ["build"],
+      "dependsOn": [
+        "build"
+      ],
       "cache": true,
-      "outputs": ["{workspaceRoot}/dist/apps/api/workspace_modules"],
+      "outputs": [
+        "{workspaceRoot}/dist/apps/api/workspace_modules"
+      ],
       "executor": "@nx/js:copy-workspace-modules",
       "options": {
         "buildTarget": "build"
       }
     },
     "prune": {
-      "dependsOn": ["prune-lockfile", "copy-workspace-modules"],
+      "dependsOn": [
+        "prune-lockfile",
+        "copy-workspace-modules"
+      ],
       "executor": "nx:noop"
     },
     "serve": {
       "continuous": true,
       "executor": "@nx/js:node",
       "defaultConfiguration": "development",
-      "dependsOn": ["build"],
+      "dependsOn": [
+        "build"
+      ],
       "options": {
         "buildTarget": "api:build",
         "runBuildTargetDependencies": false
@@ -66,6 +81,17 @@
           "tsc --noEmit -p tsconfig.app.json",
           "tsc --noEmit -p tsconfig.spec.json"
         ]
+      }
+    },
+    "backfill-enrichment": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "node --import tsx apps/api/src/backfill-enrichment.ts",
+        "cwd": ".",
+        "env": {
+          "TSX_TSCONFIG_PATH": "apps/api/tsconfig.app.json"
+        }
       }
     }
   }

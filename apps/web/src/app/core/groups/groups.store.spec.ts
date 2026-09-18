@@ -1,7 +1,12 @@
 import { HttpTestingController } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import type { GroupDetail, GroupSummary } from '@linkvault/shared';
-import { providePageTesting, sessionWith, settle } from '../../../testing/auth-testing';
+import {
+  providePageTesting,
+  sessionWith,
+  settle,
+  verifyNoPendingRequests,
+} from '../../../testing/auth-testing';
 import { SessionStore } from '../auth/session.store';
 import { GroupsStore } from './groups.store';
 
@@ -41,7 +46,7 @@ describe('GroupsStore', () => {
     TestBed.inject(SessionStore).setSession(sessionWith('token-1'));
   });
 
-  afterEach(() => http.verify());
+  afterEach(() => verifyNoPendingRequests(http));
 
   /** Espera a que la acción encadene la recarga y la responde con `groups`. */
   async function flushList(groups: GroupSummary[]): Promise<void> {

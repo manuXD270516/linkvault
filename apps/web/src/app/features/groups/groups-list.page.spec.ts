@@ -3,7 +3,12 @@ import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { RouterTestingHarness } from '@angular/router/testing';
 import type { GroupSummary } from '@linkvault/shared';
-import { providePageTesting, sessionWith, settle } from '../../../testing/auth-testing';
+import {
+  providePageTesting,
+  sessionWith,
+  settle,
+  verifyNoPendingRequests,
+} from '../../../testing/auth-testing';
 import { SessionStore } from '../../core/auth/session.store';
 import { Shell } from '../../layout/shell/shell';
 import { GroupsListPage } from './groups-list.page';
@@ -36,7 +41,7 @@ describe('GroupsListPage', () => {
     harness = await RouterTestingHarness.create();
   });
 
-  afterEach(() => http.verify());
+  afterEach(() => verifyNoPendingRequests(http));
 
   /** La página vive dentro del shell: se busca por su directiva, no por el elemento de la ruta. */
   function page(): HTMLElement {
