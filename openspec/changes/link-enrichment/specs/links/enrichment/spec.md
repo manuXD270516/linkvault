@@ -39,8 +39,8 @@ sin error.
 
 ### Requirement: Cadena de extracción lícita
 
-La extracción SHALL recorrer, en orden, JSON-LD `JobPosting`, los metadatos de la página (Open Graph y equivalentes), el
-adaptador de la plataforma si lo hay, y `runTask('extract-job')` sobre el texto de la página. La cadena SHALL detenerse
+La extracción SHALL recorrer, en orden, JSON-LD `JobPosting`, los metadatos de la página (Open Graph y equivalentes) y
+`runTask('extract-job')` sobre el texto de la página. La cadena SHALL detenerse
 en cuanto los campos obligatorios (`title` y `company`) estén completos. La etapa headless SHALL existir como último
 eslabón y SHALL estar apagada mientras `FEATURE_HEADLESS_EXTRACTION` sea `false`. La descarga SHALL usar siempre
 `displayUrl`, nunca la URL normalizada.
@@ -83,8 +83,10 @@ eslabón y SHALL estar apagada mientras `FEATURE_HEADLESS_EXTRACTION` sea `false
 
 Antes de descargar, el worker SHALL consultar el `robots.txt` del host y SHALL respetar sus reglas para su
 `User-Agent`, que SHALL identificar al producto y ofrecer una forma de contacto. El `robots.txt` SHALL cachearse por
-host. Las descargas SHALL hacerse de una en una por dominio, con una espera mínima entre peticiones al mismo dominio.
-Una descarga SHALL abandonarse si supera su tiempo máximo o su tamaño máximo, y SHALL aceptarse solo contenido HTML.
+host. Cuando el `robots.txt` no declare un grupo para nuestro agente, SHALL aplicarse el grupo `*`. Las descargas SHALL
+hacerse de una en una por dominio, con una espera entre peticiones al mismo dominio que SHALL ser la mayor entre la
+configurada y el `Crawl-delay` que pida el sitio. Una descarga SHALL abandonarse si supera su tiempo máximo o su tamaño
+máximo, y SHALL aceptarse solo contenido HTML.
 
 #### Scenario: robots.txt prohíbe la ruta
 
@@ -118,12 +120,27 @@ Una descarga SHALL abandonarse si supera su tiempo máximo o su tamaño máximo,
 - **THEN** SHALL abandonarse
 - **AND** el link SHALL quedar en `failed` con el motivo registrado
 
+#### Scenario: El sitio pide más espera de la configurada
+
+- **GIVEN** un host cuyo `robots.txt` declara un `Crawl-delay` mayor que el configurado
+- **WHEN** se enriquecen dos links de ese host
+- **THEN** entre las dos peticiones SHALL mediar al menos el `Crawl-delay` del sitio
+
+#### Scenario: robots.txt que no es texto
+
+- **GIVEN** un host que responde una página de bloqueo al pedir su `robots.txt`
+- **WHEN** se enriquece un link suyo
+- **THEN** NO SHALL interpretarse como reglas
+- **AND** SHALL asumirse permitido
+
 ### Requirement: Preview con procedencia por campo
 
 Cada campo del preview SHALL guardarse con su valor, su origen (`auto` con el identificador del extractor que lo
 produjo, o `manual` con quién lo escribió y cuándo) y su confianza. Un merge automático NO SHALL sobrescribir nunca un
-campo cuyo origen es `manual`. Entre dos valores automáticos SHALL ganar el de la etapa anterior de la cadena, que es la
-más fiable.
+campo cuyo origen es `manual`, y SHALL guardar en el campo el valor automático que la edición desplazó, para poder
+volver a él. Dentro de una misma pasada, entre dos valores automáticos SHALL ganar el de la etapa anterior de la cadena,
+que es la más fiable. Frente a lo ya guardado, un valor automático nuevo SHALL sustituir al automático anterior aunque
+venga de una etapa menos fiable: la página pudo cambiar.
 
 #### Scenario: Lo manual no se pisa
 
@@ -134,10 +151,23 @@ más fiable.
 
 #### Scenario: Gana la etapa más fiable
 
-- **GIVEN** JSON-LD y la IA proponiendo empresas distintas
+- **GIVEN** JSON-LD y la IA proponiendo empresas distintas en la misma pasada
 - **WHEN** se mezclan
 - **THEN** SHALL conservarse la de JSON-LD
 - **AND** el campo SHALL decir de qué extractor salió
+
+#### Scenario: Reenriquecimiento con datos nuevos
+
+- **GIVEN** un link cuyo `title` automático salió de JSON-LD hace semanas
+- **WHEN** se vuelve a enriquecer y solo la IA propone un título distinto
+- **THEN** SHALL guardarse el título nuevo
+- **AND** el campo SHALL decir que salió de la IA
+
+#### Scenario: Se guarda lo que la edición desplazó
+
+- **GIVEN** un link con el `title` extraído de la página
+- **WHEN** una persona lo corrige a mano
+- **THEN** el campo SHALL conservar el valor automático anterior y su extractor
 
 ### Requirement: Estados del enriquecimiento
 
@@ -145,7 +175,9 @@ Al terminar, el link SHALL quedar en `enriched` si tiene los campos obligatorios
 todos, y en `failed` si no obtuvo nada o no pudo descargarse. `previewVersion` SHALL subir en uno con cada
 enriquecimiento que cambie el preview, y la escritura SHALL condicionarse a la versión leída, de modo que dos
 enriquecimientos simultáneos no se pisen. Un fallo SHALL registrar su motivo en el link, sin la respuesta del sitio ni
-datos personales.
+datos personales, tomándolo de una lista cerrada que SHALL distinguir lo que no es culpa nuestra —el sitio prohíbe la
+lectura, el sitio nos bloquea, o lo que hay no es una oferta— del resto de fallos. Un job que agote sus reintentos SHALL
+dejar el link en `failed` con su propio motivo, nunca en `pending` para siempre.
 
 #### Scenario: Enriquecido
 
@@ -170,6 +202,30 @@ datos personales.
 - **WHEN** ambas terminan
 - **THEN** solo una SHALL escribir
 - **AND** el link SHALL tener `previewVersion` una sola unidad mayor
+
+#### Scenario: La bolsa prohíbe la lectura
+
+- **GIVEN** una plataforma cuyo `robots.txt` prohíbe la ruta de sus ofertas
+- **WHEN** se enriquece un link suyo
+- **THEN** el motivo SHALL ser el de lectura prohibida, distinto del de un error de la página
+
+#### Scenario: La bolsa nos bloquea
+
+- **WHEN** el sitio responde `403` a la descarga
+- **THEN** el motivo SHALL ser el de bloqueo, distinto del de lectura prohibida y del de error
+
+#### Scenario: Lo compartido no era una oferta
+
+- **GIVEN** un enlace a un vídeo o a una página de listado
+- **WHEN** se lee y no hay vacante que extraer
+- **THEN** el motivo SHALL decir que no parece una oferta
+
+#### Scenario: Job que agota sus reintentos
+
+- **GIVEN** un job cuyo procesamiento falla siempre
+- **WHEN** se agotan sus reintentos
+- **THEN** el link SHALL quedar `failed` con el motivo de reintentos agotados
+- **AND** NO SHALL quedarse en `pending`
 
 ### Requirement: Extracción estructurada con IA
 
@@ -220,8 +276,9 @@ preview se guarde.
 
 `PATCH /api/links/:id/preview` SHALL permitir a quien puede ver el link corregir los campos del preview. Los campos
 enviados SHALL guardarse con origen `manual`, quién los escribió y cuándo, y el link SHALL pasar a `previewStatus`
-`manual`. Quien no puede ver el link SHALL recibir `404` con código `link_not_found`. Un campo que no existe en el
-schema SHALL responder `400`.
+`manual`. La edición SHALL subir `previewVersion`, de modo que un enriquecimiento en vuelo que partió de la versión
+anterior NO SHALL poder pisarla. SHALL poder devolverse un campo a su valor automático anterior. Quien no puede ver el
+link SHALL recibir `404` con código `link_not_found`. Un campo que no existe en el schema SHALL responder `400`.
 
 #### Scenario: Corregir el título
 
@@ -240,10 +297,49 @@ schema SHALL responder `400`.
 - **WHEN** se envía un campo que no está en el schema del preview
 - **THEN** la respuesta SHALL ser `400` nombrando el campo
 
+#### Scenario: Edición durante un enriquecimiento
+
+- **GIVEN** un enriquecimiento en curso que leyó el link antes de la edición
+- **WHEN** una persona corrige un campo y el enriquecimiento intenta escribir después
+- **THEN** SHALL conservarse lo que escribió la persona
+- **AND** el enriquecimiento SHALL terminar sin escribir
+
+#### Scenario: Volver a lo extraído
+
+- **GIVEN** un campo editado a mano que desplazó un valor automático
+- **WHEN** quien puede verlo pide devolverlo a lo extraído
+- **THEN** el campo SHALL recuperar el valor automático y su origen
+
+### Requirement: Reintentar la lectura de una oferta
+
+`POST /api/links/:id/enrich` SHALL volver a encolar la lectura de un link que quedó `failed` por un motivo transitorio,
+para quien puede verlo, respondiendo `202`. Un link cuyo motivo es que la bolsa prohíbe la lectura NO SHALL reencolarse.
+Los reintentos manuales por link SHALL estar acotados por ventana de tiempo, respondiendo `429` al superarse.
+
+#### Scenario: Reintento aceptado
+
+- **GIVEN** un link `failed` por un tiempo de espera agotado
+- **WHEN** quien lo ve pide reintentar
+- **THEN** la respuesta SHALL ser `202` y SHALL encolarse su lectura
+
+#### Scenario: Reintento inútil
+
+- **GIVEN** un link `failed` porque la bolsa prohíbe la lectura
+- **WHEN** alguien pide reintentar
+- **THEN** la respuesta SHALL decir que no se puede leer automáticamente
+- **AND** NO SHALL encolarse nada
+
+#### Scenario: Demasiados reintentos
+
+- **WHEN** se piden más reintentos de los permitidos para ese link en la ventana
+- **THEN** la respuesta SHALL ser `429`
+
 ### Requirement: Reencolado de links sin preview
 
-SHALL existir un comando que reencole los links en `previewStatus` `pending` que no tengan trabajo vivo, reutilizando el
-mismo `jobId` determinista, con un límite por ejecución y sin ejecutarse solo al arrancar la aplicación.
+SHALL existir un comando que reencole links por su `previewStatus`, con un límite por ejecución y sin ejecutarse solo al
+arrancar la aplicación. SHALL cubrir los que quedaron en `pending` sin trabajo vivo y, cuando se le pida, los `failed`
+por un motivo transitorio, nunca los que la bolsa prohíbe leer. Reencolar SHALL funcionar aunque la cola conserve un job
+terminal con el mismo identificador.
 
 #### Scenario: Pendientes reencolados
 
@@ -257,3 +353,15 @@ mismo `jobId` determinista, con un límite por ejecución y sin ejecutarse solo 
 - **GIVEN** un link en `pending` cuyo job sigue en la cola
 - **WHEN** se ejecuta el comando
 - **THEN** NO SHALL añadirse un job duplicado
+
+#### Scenario: Job terminal que estorba
+
+- **GIVEN** un link cuyo job anterior quedó registrado como fallido y sigue retenido
+- **WHEN** se reencola ese link
+- **THEN** el trabajo SHALL volver a ejecutarse
+
+#### Scenario: Rescate de los transitorios
+
+- **GIVEN** links `failed` por tiempo agotado y otros porque la bolsa prohíbe la lectura
+- **WHEN** se ejecuta el comando pidiendo los fallidos
+- **THEN** SHALL reencolarse solo los del primer grupo

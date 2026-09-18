@@ -7,9 +7,10 @@ preguntar cada pocos segundos ni obligar a recargar.
 
 ### Requirement: Canal de eventos autenticado
 
-`GET /api/events` SHALL abrir un flujo de eventos servidor→cliente para la sesión que lo pide. Sin sesión válida SHALL
-responder `401`. El flujo SHALL enviar latidos periódicos para que los intermediarios no lo cierren, y SHALL cerrarse
-limpiamente cuando el cliente se va o cuando la sesión deja de ser válida.
+`GET /api/events` SHALL abrir un flujo de eventos servidor→cliente para la sesión que lo pide, autenticado con el mismo
+access token que el resto de la API y sin llevar credenciales en la URL. Sin sesión válida SHALL responder `401`. El
+flujo SHALL enviar latidos periódicos para que los intermediarios no lo cierren, SHALL cerrarse limpiamente cuando el
+cliente se va o cuando el proceso se apaga, y una sesión caducada NO SHALL poder reabrirlo.
 
 #### Scenario: Suscripción con sesión
 
@@ -20,6 +21,18 @@ limpiamente cuando el cliente se va o cuando la sesión deja de ser válida.
 #### Scenario: Sin sesión
 
 - **WHEN** se abre el canal sin token válido
+- **THEN** la respuesta SHALL ser `401`
+
+#### Scenario: Credenciales fuera de la URL
+
+- **WHEN** un cliente abre el canal
+- **THEN** el token SHALL viajar en la cabecera de autorización
+- **AND** la URL del canal NO SHALL contener ningún token
+
+#### Scenario: Sesión caducada al reconectar
+
+- **GIVEN** un cliente cuyo canal se cortó y cuyo access token ya caducó
+- **WHEN** intenta reconectar sin renovarlo
 - **THEN** la respuesta SHALL ser `401`
 
 #### Scenario: Latido
