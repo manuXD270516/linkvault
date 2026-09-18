@@ -106,7 +106,7 @@ máximo, y SHALL aceptarse solo contenido HTML.
 - **GIVEN** diez links del mismo dominio encolados a la vez
 - **WHEN** el worker los procesa
 - **THEN** NO SHALL haber dos descargas simultáneas a ese dominio
-- **AND** entre dos peticiones al mismo dominio SHALL mediar la espera configurada
+- **AND** entre dos peticiones al mismo dominio SHALL mediar la espera efectiva
 
 #### Scenario: Respuesta que no es HTML
 
@@ -126,6 +126,12 @@ máximo, y SHALL aceptarse solo contenido HTML.
 - **WHEN** se enriquecen dos links de ese host
 - **THEN** entre las dos peticiones SHALL mediar al menos el `Crawl-delay` del sitio
 
+#### Scenario: Host que nunca se libera
+
+- **GIVEN** un host ocupado que no termina de liberarse
+- **WHEN** un link suyo se aplaza más veces de las permitidas
+- **THEN** SHALL darse por bloqueado en vez de seguir aplazándose
+
 #### Scenario: robots.txt que no es texto
 
 - **GIVEN** un host que responde una página de bloqueo al pedir su `robots.txt`
@@ -135,8 +141,9 @@ máximo, y SHALL aceptarse solo contenido HTML.
 
 ### Requirement: Preview con procedencia por campo
 
-Cada campo del preview SHALL guardarse con su valor, su origen (`auto` con el identificador del extractor que lo
-produjo, o `manual` con quién lo escribió y cuándo) y su confianza. Un merge automático NO SHALL sobrescribir nunca un
+Cada campo del preview SHALL guardarse con su valor y su origen: `auto` con el identificador del extractor que lo
+produjo, o `manual` con quién lo escribió y cuándo. Al leerse, el origen `manual` SHALL decir el nombre visible de quien
+escribió el campo, no su identificador. Un merge automático NO SHALL sobrescribir nunca un
 campo cuyo origen es `manual`, y SHALL guardar en el campo el valor automático que la edición desplazó, para poder
 volver a él. Dentro de una misma pasada, entre dos valores automáticos SHALL ganar el de la etapa anterior de la cadena,
 que es la más fiable. Frente a lo ya guardado, un valor automático nuevo SHALL sustituir al automático anterior aunque
@@ -216,9 +223,16 @@ dejar el link en `failed` con su propio motivo, nunca en `pending` para siempre.
 
 #### Scenario: Lo compartido no era una oferta
 
-- **GIVEN** un enlace a un vídeo o a una página de listado
-- **WHEN** se lee y no hay vacante que extraer
+- **GIVEN** un enlace a un vídeo, cuya página se descarga y se parsea sin `JobPosting`
+- **WHEN** la extracción con IA responde que eso no es una vacante
 - **THEN** el motivo SHALL decir que no parece una oferta
+- **AND** NO SHALL guardarse un título sacado de esa página
+
+#### Scenario: Se leyó la página pero no había datos
+
+- **GIVEN** una página que sí es una oferta pero de la que no se obtiene título ni empresa
+- **WHEN** termina la cadena
+- **THEN** el motivo SHALL ser el de falta de datos, distinto del de "no es una oferta"
 
 #### Scenario: Job que agota sus reintentos
 
@@ -229,15 +243,27 @@ dejar el link en `failed` con su propio motivo, nunca en `pending` para siempre.
 
 ### Requirement: Extracción estructurada con IA
 
-La tarea `extract-job` SHALL declararse `public` y devolver un `JobPreview` validado por su schema. Su ejecución SHALL
+La tarea `extract-job` SHALL declararse `public` y devolver una salida validada que diga **si lo leído es una vacante**
+y, cuando lo sea, sus campos. La ejecución SHALL atribuirse a quien guardó el link, para que cuente contra sus cuotas y
+quede en el registro de uso. Su ejecución SHALL
 recibir un plazo total por link, de modo que una importación grande no espere los tiempos máximos de toda la cadena de
 proveedores. Una degradación de la IA NO SHALL fallar el job: el link SHALL quedar con lo que las etapas anteriores
 hayan obtenido.
 
 #### Scenario: Salida validada
 
-- **WHEN** `extract-job` responde con un `JobPreview` válido
+- **WHEN** `extract-job` responde que es una vacante, con sus campos válidos
 - **THEN** sus campos SHALL entrar en el merge con origen `auto`
+
+#### Scenario: La IA dice que no es una vacante
+
+- **WHEN** `extract-job` responde que lo leído no es una vacante
+- **THEN** NO SHALL entrar ningún campo suyo en el preview
+
+#### Scenario: La ejecución se atribuye a quien guardó el link
+
+- **WHEN** se ejecuta `extract-job` para un link
+- **THEN** el registro de uso SHALL atribuirla a quien guardó ese link
 
 #### Scenario: IA degradada
 
@@ -312,22 +338,33 @@ link SHALL recibir `404` con código `link_not_found`. Un campo que no existe en
 
 ### Requirement: Reintentar la lectura de una oferta
 
-`POST /api/links/:id/enrich` SHALL volver a encolar la lectura de un link que quedó `failed` por un motivo transitorio,
-para quien puede verlo, respondiendo `202`. Un link cuyo motivo es que la bolsa prohíbe la lectura NO SHALL reencolarse.
-Los reintentos manuales por link SHALL estar acotados por ventana de tiempo, respondiendo `429` al superarse.
+`POST /api/links/:id/enrich` SHALL volver a pedir la lectura de un link que quedó `failed` por un motivo transitorio,
+para quien puede verlo, respondiendo `202`. El link SHALL volver a `pending`, sin el motivo del fallo anterior, y su
+petición SHALL viajar por el mismo camino transaccional que el alta de un link, de modo que funcione aunque la cola
+conserve trabajo terminal de la versión anterior. Un link que la bolsa prohíbe leer, que la bolsa bloquea o que no es una
+oferta NO SHALL reintentarse: la respuesta SHALL ser `409`. Los reintentos por link SHALL estar acotados por ventana de
+tiempo, respondiendo `429` al superarse.
 
 #### Scenario: Reintento aceptado
 
 - **GIVEN** un link `failed` por un tiempo de espera agotado
 - **WHEN** quien lo ve pide reintentar
-- **THEN** la respuesta SHALL ser `202` y SHALL encolarse su lectura
+- **THEN** la respuesta SHALL ser `202`
+- **AND** el link SHALL quedar `pending` sin el motivo anterior
+- **AND** SHALL quedar pedida su lectura
+
+#### Scenario: Reintento con trabajo terminal retenido
+
+- **GIVEN** un link cuyo intento anterior quedó registrado como fallido y sigue retenido
+- **WHEN** quien lo ve pide reintentar
+- **THEN** la lectura SHALL volver a ejecutarse
 
 #### Scenario: Reintento inútil
 
 - **GIVEN** un link `failed` porque la bolsa prohíbe la lectura
 - **WHEN** alguien pide reintentar
-- **THEN** la respuesta SHALL decir que no se puede leer automáticamente
-- **AND** NO SHALL encolarse nada
+- **THEN** la respuesta SHALL ser `409` diciendo que no se puede leer automáticamente
+- **AND** NO SHALL pedirse ninguna lectura
 
 #### Scenario: Demasiados reintentos
 
@@ -336,10 +373,11 @@ Los reintentos manuales por link SHALL estar acotados por ventana de tiempo, res
 
 ### Requirement: Reencolado de links sin preview
 
-SHALL existir un comando que reencole links por su `previewStatus`, con un límite por ejecución y sin ejecutarse solo al
-arrancar la aplicación. SHALL cubrir los que quedaron en `pending` sin trabajo vivo y, cuando se le pida, los `failed`
-por un motivo transitorio, nunca los que la bolsa prohíbe leer. Reencolar SHALL funcionar aunque la cola conserve un job
-terminal con el mismo identificador.
+SHALL existir un comando que vuelva a pedir la lectura de links por su `previewStatus`, con un límite por ejecución y
+sin ejecutarse solo al arrancar la aplicación. SHALL cubrir los que quedaron en `pending` sin trabajo vivo y, cuando se
+le pida, los `failed` por un motivo transitorio, nunca los que la bolsa prohíbe leer, los que bloquea ni los que no son
+ofertas. SHALL funcionar aunque la cola conserve trabajo terminal y aunque el publicador esté apagado, en cuyo caso las
+peticiones SHALL esperar a que vuelva.
 
 #### Scenario: Pendientes reencolados
 
@@ -354,11 +392,12 @@ terminal con el mismo identificador.
 - **WHEN** se ejecuta el comando
 - **THEN** NO SHALL añadirse un job duplicado
 
-#### Scenario: Job terminal que estorba
+#### Scenario: Publicador apagado
 
-- **GIVEN** un link cuyo job anterior quedó registrado como fallido y sigue retenido
-- **WHEN** se reencola ese link
-- **THEN** el trabajo SHALL volver a ejecutarse
+- **GIVEN** el publicador de la cola apagado
+- **WHEN** se ejecuta el comando
+- **THEN** las peticiones SHALL quedar registradas
+- **AND** SHALL publicarse cuando el publicador vuelva
 
 #### Scenario: Rescate de los transitorios
 

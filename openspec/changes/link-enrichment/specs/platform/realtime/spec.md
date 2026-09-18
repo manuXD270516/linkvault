@@ -62,7 +62,9 @@ datos de otras personas.
 ### Requirement: Aviso de link enriquecido
 
 Al terminar un enriquecimiento que cambia el preview, el worker SHALL publicar un aviso que la API reparte por el canal
-como evento `link.enriched`, con el identificador del link, su `previewStatus` y su `previewVersion`. Si no hay nadie
+como evento `link.enriched`. El evento SHALL llevar el link ya actualizado —su identificador, su estado, su versión, su
+preview con el origen de cada campo y el motivo del último fallo si lo hubo—, de modo que quien lo recibe pueda pintar
+la tarjeta sin volver a preguntar. Si no hay nadie
 escuchando, el aviso SHALL descartarse sin error: el estado verdadero sigue en la base de datos y el listado lo trae al
 recargar.
 
@@ -70,7 +72,8 @@ recargar.
 
 - **GIVEN** un usuario mirando la lista de links de su grupo
 - **WHEN** termina el enriquecimiento de uno de ellos
-- **THEN** SHALL recibir `link.enriched` con su identificador, estado y versión
+- **THEN** SHALL recibir `link.enriched` con ese link, su estado, su versión y su preview
+- **AND** NO SHALL necesitar ninguna petición más para mostrarlo
 
 #### Scenario: Nadie escuchando
 

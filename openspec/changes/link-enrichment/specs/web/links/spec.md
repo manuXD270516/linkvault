@@ -8,9 +8,9 @@ cierra; uno sin preview SHALL mostrar una etiqueta legible derivada de su URL (�
 extensión, o el dominio si no lo hay). Todos SHALL mostrar la plataforma, quién lo compartió y su estado. Sin links
 SHALL mostrar "Todavía no hay ofertas aquí. Guarda un link o pega el chat donde las compartís."
 
-El texto de estado SHALL derivarse de lo que la persona tiene delante, no del nombre interno del estado: mientras haya
-lectura en curso SHALL decir "Leyendo la oferta…"; un link sin datos que ya no se está leyendo, "Sin vista previa
-todavía"; uno al que le faltan campos, "Faltan datos de esta oferta"; y uno que no se pudo leer, un texto según el
+El texto de estado SHALL derivarse de lo que la persona tiene delante, no del nombre interno del estado: un link cuya
+lectura se pidió hace poco SHALL decir "Leyendo la oferta…"; uno sin datos cuya lectura se pidió hace tiempo y no ha
+terminado, "Sin vista previa todavía"; uno al que le faltan campos, "Faltan datos de esta oferta"; y uno que no se pudo leer, un texto según el
 motivo —"Esta bolsa no permite la lectura automática de sus ofertas", "Esta bolsa no nos deja leer esta oferta", "Esto
 no parece una oferta" o "No pudimos leer esta oferta"— con la acción de completarla a mano y, cuando el motivo sea
 transitorio, la de reintentar.
@@ -32,6 +32,18 @@ transitorio, la de reintentar.
 - **GIVEN** un link `enriched` con título, empresa, ubicación, modalidad y seniority
 - **WHEN** un miembro abre el detalle
 - **THEN** SHALL ver esos datos en lugar de la etiqueta derivada de la URL
+
+#### Scenario: Oferta recién guardada
+
+- **GIVEN** un link cuya lectura se acaba de pedir
+- **WHEN** un miembro abre el detalle
+- **THEN** SHALL ver "Leyendo la oferta…"
+
+#### Scenario: Lectura que nunca llegó
+
+- **GIVEN** un link sin datos cuya lectura se pidió hace mucho
+- **WHEN** un miembro abre el detalle
+- **THEN** SHALL ver "Sin vista previa todavía"
 
 #### Scenario: Oferta con salario y fechas
 

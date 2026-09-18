@@ -5,8 +5,12 @@
 Un `JobLink` nuevo SHALL nacer con `previewStatus` `pending`, `previewVersion` 1 y sin datos de la vacante más allá de su
 URL y su plataforma. El estado SHALL ser `pending` mientras no se haya intentado enriquecer, `enriched` cuando la
 extracción completó los campos obligatorios, `partial` cuando obtuvo algo pero no todos, `failed` cuando no obtuvo nada,
-y `manual` cuando una persona editó el preview. `previewVersion` SHALL subir en uno con cada enriquecimiento que cambie
-el preview y SHALL identificar la versión del trabajo encolado y del snapshot guardado.
+y `manual` cuando una persona editó el preview.
+
+`previewVersion` SHALL ser el contador de versión del preview y SHALL subir con cada cambio, venga de un
+enriquecimiento, de una edición manual o de una nueva petición de lectura; SHALL identificar el trabajo pedido, de modo
+que una petición nueva nunca comparta identidad con una anterior. La copia guardada de la página SHALL localizarse por
+la clave que el link guarda, NO SHALL deducirse de `previewVersion`.
 
 #### Scenario: Link recién guardado
 
@@ -22,6 +26,12 @@ el preview y SHALL identificar la versión del trabajo encolado y del snapshot g
 
 #### Scenario: Estado tras editar a mano
 
-- **GIVEN** un link `partial`
+- **GIVEN** un link `partial` con `previewVersion` 2
 - **WHEN** una persona corrige uno de sus campos
-- **THEN** su `previewStatus` SHALL ser `manual`
+- **THEN** su `previewStatus` SHALL ser `manual` y su `previewVersion` 3
+
+#### Scenario: La copia guardada no se deduce de la versión
+
+- **GIVEN** un link enriquecido en su versión 2 y editado después a mano
+- **WHEN** se busca la copia de su página
+- **THEN** SHALL encontrarse por la clave que el link guarda
