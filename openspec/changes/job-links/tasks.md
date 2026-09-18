@@ -63,6 +63,6 @@
 
 ## 8. Cierre
 
-- [ ] 8.1 [frontend] Smoke de navegador en `apps/web-e2e/src/links.spec.ts`: guardar un link en un grupo, abrirlo, pegar un chat con varias URLs y ver el resumen y la lista, quitar uno, y comprobar la vista privada; verificar con `pnpm nx e2e web-e2e` sobre los servidores locales.
+- [x] 8.1 [frontend] Smoke de navegador en `apps/web-e2e/src/links.spec.ts`: guardar un link en un grupo, abrirlo, pegar un chat con varias URLs y ver el resumen y la lista, quitar uno, y comprobar la vista privada; verificar con `pnpm nx e2e web-e2e` sobre los servidores locales.
 - [x] 8.2 [infra] Actualizar README (sección de links: endpoints, dedupe, importación, outbox y cola) y `openspec-changes.yaml`: en `link-enrichment`, implementar el consumidor (idempotente por sí mismo, no solo por `jobId`), el backfill de los links `pending` si hiciera falta, las plataformas que quedaran como `generic` y el uso de `displayUrl` para descargar; en `group-comments`, `comment`, `tags` y `pinned` de `group_links` y `settings.defaultVisibility`; en `applications-tracking`, la transferencia de propiedad como primera tarea (borrar un grupo ahora destruye ofertas de terceros) y el límite de intentos de `POST /groups/join`; y el rate limit de `POST /links/import`. Verificar que no quedan referencias al aviso "Pronto podrás guardar links en este grupo".
 - [ ] 8.3 [infra] Ejecutar `pnpm nx affected -t lint,typecheck,test,build --base=main` con `AI_CHAIN=mock AI_MOCK_MODE=replay` y `pnpm exec openspec validate --all`; verificar que todo pasa en verde.
