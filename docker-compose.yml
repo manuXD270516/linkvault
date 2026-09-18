@@ -67,13 +67,33 @@ services:
       # Credenciales solo de desarrollo local; se sobrescriben desde .env.
       MINIO_ROOT_USER: ${S3_ACCESS_KEY:-linkvault}
       MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-linkvault-dev-secret}
+      # Alias autenticado para el healthcheck: el `local` que trae la imagen es anónimo y no puede crear buckets.
+      # `MC_HOST_<alias>` deja la credencial fuera de la línea de comandos.
+      MC_HOST_admin: http://${S3_ACCESS_KEY:-linkvault}:${S3_SECRET_KEY:-linkvault-dev-secret}@localhost:9000
     ports:
       - '${MINIO_PORT:-9000}:9000'
       - '${MINIO_CONSOLE_PORT:-9001}:9001'
     volumes:
       - minio-data:/data
+    # El healthcheck crea el bucket de snapshots (D12 de link-enrichment, ADR-022) de forma idempotente y solo da
+    # "healthy" con el bucket y su regla de expiración puestos, igual que el de mongo con el replica set:
+    # - la comprobación normal es un `ilm rule ls`, que solo lee; falla tanto si el bucket no existe como si no
+    #   tiene configuración de ciclo de vida, y solo entonces se crea el bucket y se importa la regla.
+    # - `mb --ignore-existing` no falla con el bucket ya creado e `ilm rule import` **reemplaza** la configuración
+    #   entera, así que repetirlo deja una sola regla; `ilm rule add` acumularía una por arranque.
+    # - la expiración a 30 días no es decorativa: el bucket guarda páginas completas y su razón de ser es poder
+    #   construir después el golden real sin volver a pedirle nada al sitio, que no necesita historia infinita.
+    # - se hace aquí y no en un contenedor de un solo uso porque `docker compose up -d --wait` da por fallido un
+    #   servicio que termina, aunque termine bien, y entonces `--wait` no garantizaría que el bucket ya existe.
     healthcheck:
-      test: ['CMD', 'mc', 'ready', 'local']
+      test:
+        - CMD-SHELL
+        - >-
+          mc ready local &&
+          { mc ilm rule ls admin/${S3_SNAPSHOTS_BUCKET:-snapshots} > /dev/null 2>&1 ||
+          { mc mb --ignore-existing admin/${S3_SNAPSHOTS_BUCKET:-snapshots} &&
+          echo '{"Rules":[{"ID":"expire-snapshots-30d","Status":"Enabled","Expiration":{"Days":30},"Filter":{}}]}'
+          | mc ilm rule import admin/${S3_SNAPSHOTS_BUCKET:-snapshots}; }; }
       interval: 5s
       timeout: 5s
       retries: 10

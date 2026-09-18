@@ -32,6 +32,24 @@ export async function workerTestConfig(
     AI_CHAIN: 'mock',
     FEATURE_HEADLESS_EXTRACTION: false,
     LOG_LEVEL: 'silent',
+    // Enriquecimiento: los mismos valores de `.env.example`, salvo las esperas, que se acortan porque en los tests
+    // `PAGE_FETCHER`, `ROBOTS` y `HOST_MUTEX` son dobles y nadie debe quedarse esperando de verdad.
+    ENRICH_FETCH_TIMEOUT_MS: 1_000,
+    ENRICH_MAX_BYTES: 2_097_152,
+    ENRICH_DOMAIN_DELAY_MS: 250,
+    ENRICH_DEADLINE_MS: 5_000,
+    ENRICH_ROBOTS_TTL_SECONDS: 43_200,
+    ENRICH_USER_AGENT:
+      'LinkVaultBot/0.1 (+https://github.com/manuXD270516/linkvault)',
+    ENRICH_CONCURRENCY: 4,
+    ENRICH_MAX_DEFERRALS: 600,
+    // Almacenamiento de objetos: apunta a un puerto cerrado, como Mongo y Redis. Ningún test escribe de verdad en
+    // él; `SNAPSHOT_STORE` es un puerto con doble.
+    S3_ENDPOINT: `http://127.0.0.1:${await closedPort()}`,
+    S3_REGION: 'us-east-1',
+    S3_ACCESS_KEY: 'test-access-key',
+    S3_SECRET_KEY: 'test-secret-key',
+    S3_SNAPSHOTS_BUCKET: 'snapshots',
     ...overrides,
   };
 }
