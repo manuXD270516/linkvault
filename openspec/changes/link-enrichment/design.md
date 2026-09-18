@@ -65,7 +65,10 @@ prohíbe. Con eso, el worker pierde la carrera y termina sin escribir.
 
 ### D3 — La cadena y su orden
 
-`ExtractorStrategy { id, supports(page), extract(ctx): Promise<PreviewDraft> }`, ejecutados en orden fijo:
+`ExtractorStrategy { id, supports(page), extract(ctx): Promise<ExtractionOutcome> }`, donde el resultado es el
+borrador de campos y, opcionalmente, si lo leído **es** una vacante: sin ese segundo dato no hay forma de separar
+`not_a_job` de `no_data` (D5). `json-ld` se pronuncia cuando encuentra el `JobPosting`, la IA siempre, y `metadata`
+nunca. Se ejecutan en orden fijo:
 
 | # | Extractor | Qué aporta |
 |---|---|---|
@@ -160,7 +163,9 @@ roto. En ningún caso se registra el cuerpo de la respuesta ni la URL completa e
   veces antes de su turno; el tope se fija contando eso, no con un número bonito. El `Worker` corre con `concurrency: 4` global. El host
   sale del link leído en Mongo, no del evento: `LinkCreated.v1` nunca lleva la URL del usuario.
 - `ENRICH_FETCH_TIMEOUT_MS` (10 s), `ENRICH_MAX_BYTES` (2 MiB, cortando el flujo), solo `text/html`, máximo 3
-  redirecciones, solo `http(s)`.
+  redirecciones y solo `http(s)`. Una redirección **a otro host no se sigue**: el permiso del `robots.txt` y el turno
+  del mutex se pidieron para el host original, así que seguirla sería descargar de un sitio al que no preguntamos
+  nada.
 - `lockDuration` del `Worker` por encima de `ENRICH_DEADLINE_MS`, gzip asíncrono y recorte del HTML antes de parsear,
   para que un job no se dé por `stalled` y se reentregue (C18).
 

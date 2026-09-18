@@ -135,6 +135,11 @@ export function mergeIntoStored(
  * Una edición manual, con el valor automático que desplaza guardado en `replaced` para poder ofrecer "Volver a lo
  * extraído". Ediciones sucesivas conservan **el automático original**, no la edición anterior: a lo que se vuelve es a
  * lo que leyó la página, no a lo que otra persona escribió antes.
+ *
+ * La misma regla la aplica `applyManualEdit` en `apps/api/src/modules/links/domain/preview-edit.ts` (su función
+ * `displacedBy`), que es el que corre cuando alguien edita de verdad: `api` escribe, el worker solo respeta lo escrito.
+ * Están duplicadas a propósito —son dos módulos y el dominio de uno no puede importar el del otro—, así que **las dos
+ * se cambian a la vez**: si divergen, "Volver a lo extraído" devolvería a cosas distintas según quién tocara el campo.
  */
 export function applyManualField<Field extends PreviewFieldName>(
   stored: PreviewState,

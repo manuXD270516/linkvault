@@ -60,7 +60,7 @@ import {
   S3SnapshotStore,
   createS3SnapshotUploader,
 } from './infrastructure/storage/s3-snapshot.store';
-import { LoggingEnrichmentNotifier } from './infrastructure/notifications/logging-enrichment-notifier';
+import { RedisEnrichmentNotifier } from './infrastructure/notifications/redis-enrichment-notifier';
 import { SystemClock } from './infrastructure/system-clock';
 
 // Módulo del enriquecimiento (D1 de link-enrichment). Aquí se cablea todo: los puertos con sus implementaciones y el
@@ -164,9 +164,13 @@ export class EnrichmentModule {
               }),
             ),
         },
-        // El publicador de Redis del canal SSE llega con la tarea 6.7; hasta entonces el aviso se registra y no sale
-        // del proceso, que es lo que un worker sin SPA escuchando necesita.
-        { provide: ENRICHMENT_NOTIFIER, useClass: LoggingEnrichmentNotifier },
+        {
+          // Publica en el canal que `api` reparte por SSE (D9). Comparte el cliente del módulo porque solo publica: el
+          // que necesita conexión propia es el suscriptor de `api`, que en modo suscripción deja de aceptar comandos.
+          provide: ENRICHMENT_NOTIFIER,
+          inject: [ENRICHMENT_REDIS],
+          useFactory: (redis: Redis) => new RedisEnrichmentNotifier(redis),
+        },
         {
           provide: ExtractionChain,
           inject: [APP_CONFIG, RUN_TASK, CLOCK],

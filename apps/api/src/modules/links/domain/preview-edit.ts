@@ -102,7 +102,14 @@ function requireField(name: string): void {
   }
 }
 
-/** Lo automático que una edición desplaza: el valor de la entrada si era automática, o el que ya traía si era manual. */
+/**
+ * Lo automático que una edición desplaza: el valor de la entrada si era automática, o el que ya traía si era manual.
+ *
+ * La misma regla vive en `applyManualField`, en `apps/worker/src/modules/enrichment/domain/merge.ts`, porque el worker
+ * necesita el mismo modelo del preview para mezclar una reextracción sin pisar lo manual. Están duplicadas a propósito
+ * —son dos módulos y el dominio de uno no puede importar el del otro—, así que **las dos se cambian a la vez**: si
+ * divergen, "Volver a lo extraído" devolvería a cosas distintas según quién tocara el campo.
+ */
 function displacedBy(
   previous: SourceEntry | undefined,
 ): { value: unknown; extractor: string } | undefined {

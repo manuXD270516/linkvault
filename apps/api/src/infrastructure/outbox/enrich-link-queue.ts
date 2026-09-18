@@ -2,8 +2,8 @@ import { Logger } from '@nestjs/common';
 import type { DefaultJobOptions } from 'bullmq';
 
 // Cola `enrich-link` tal y como la registra `api` (D6 de job-links). Aquí solo viven su configuración y el listener de
-// errores; quien publica en ella es el relay. El consumidor llega con `link-enrichment` (D7): en este change nadie la
-// procesa a propósito, para que los jobs esperen en lugar de descartarse.
+// errores; quien publica en ella es el relay. El consumidor vive en `apps/worker/src/modules/enrichment` desde
+// `link-enrichment` (D7): `api` no procesa esta cola ni monta ninguna `Queue` fuera de aquí.
 
 /**
  * Retención de D6: un job completado se olvida al día (o al llegar a 1000) y uno fallido, a la semana. Mientras el job
