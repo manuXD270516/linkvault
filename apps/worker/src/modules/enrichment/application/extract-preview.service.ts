@@ -64,6 +64,9 @@ export interface ExtractPreviewOptions extends HostTurnRules {
   readonly fetchTimeoutMs: number;
 }
 
+/** Un sitio que no ha pedido ninguna espera, o al que todavía no se le ha podido preguntar. */
+const NO_CRAWL_DELAY = 0;
+
 /** Host de una URL, para pedir su turno. Sale del link leído en Mongo: el evento nunca trae la URL del usuario. */
 function hostOf(url: string): string | null {
   try {
@@ -90,19 +93,20 @@ export class ExtractPreviewService {
     // Una URL que no tiene host no se puede pedir a nadie; el link se guardó con algo que no es una dirección.
     if (host === null) return { kind: 'failed', reason: 'http_error' };
 
-    // Primero el permiso: preguntar al `robots.txt` no cuesta una petición al sitio salvo la primera vez del día. El
-    // de esta URL no vale para el destino de una redirección, así que la descarga vuelve a preguntar en cada salto.
-    const permission = await this.robots.decide(url);
-    if (!permission.allowed) {
-      return { kind: 'failed', reason: 'robots_disallowed' };
-    }
-
+    // El turno del host va **primero**, y el permiso dentro. Preguntar al `robots.txt` cuesta una petición al sitio la
+    // primera vez, y su caché es por host: preguntando antes del turno, siete links del mismo host encolados a la vez
+    // fallan la caché a la vez y llaman tres veces a la puerta de un sitio al que habíamos prometido ir de uno en uno
+    // (ADR-003). Dentro del turno solo pregunta quien va a descargar, y el resto se lo encuentra ya cacheado.
     const lease = await this.hostMutex.acquire(host);
     if (lease === null) {
+      // Sin turno no hay permiso a mano, así que el aplazamiento usa nuestra cortesía y no el `Crawl-delay` del sitio.
+      // No es un atajo: el aplazamiento solo dice cuándo volver a intentarlo, y la espera de verdad entre dos
+      // peticiones la guarda el mutex, que no concede el turno hasta que vence. Volver antes de tiempo cuesta otro
+      // aplazamiento, que no cuesta nada, y no una petición al sitio.
       const decision = onBusyHost(
         this.options,
         input.deferrals,
-        permission.crawlDelayMs,
+        NO_CRAWL_DELAY,
       );
       return decision.kind === 'defer'
         ? {
@@ -114,9 +118,19 @@ export class ExtractPreviewService {
     }
 
     let html: string;
+    // Lo que el sitio pide esperar, para soltar el turno con ello aunque no se llegue a preguntar.
+    let crawlDelayMs = NO_CRAWL_DELAY;
     try {
       const remainingMs = input.deadlineAt - this.now();
       if (remainingMs <= 0) return { kind: 'failed', reason: 'timeout' };
+
+      // El permiso de esta URL no vale para el destino de una redirección, así que la descarga vuelve a preguntar en
+      // cada salto.
+      const permission = await this.robots.decide(url);
+      crawlDelayMs = permission.crawlDelayMs;
+      if (!permission.allowed) {
+        return { kind: 'failed', reason: 'robots_disallowed' };
+      }
 
       const fetched = await this.pageFetcher.fetchPage(url, {
         timeoutMs: Math.min(this.options.fetchTimeoutMs, remainingMs),
@@ -129,11 +143,10 @@ export class ExtractPreviewService {
       if (!fetched.ok) return { kind: 'failed', reason: fetched.reason };
       html = fetched.html;
     } finally {
-      // El turno se suelta pase lo que pase, y se convierte en la espera que pide el sitio: hasta un fallo deja al
-      // host descansando lo suyo, porque insistir en el sitio que acaba de fallar es lo contrario de la cortesía.
-      await lease.release(
-        effectiveWaitMs(this.options, permission.crawlDelayMs),
-      );
+      // El turno se suelta pase lo que pase —también cuando el `robots.txt` niega la ruta—, y se convierte en la
+      // espera que pide el sitio: hasta un fallo deja al host descansando lo suyo, porque insistir en el sitio que
+      // acaba de fallar es lo contrario de la cortesía.
+      await lease.release(effectiveWaitMs(this.options, crawlDelayMs));
     }
 
     const page = this.parsePage(html);

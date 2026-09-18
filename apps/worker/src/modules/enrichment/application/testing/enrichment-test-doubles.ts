@@ -47,22 +47,75 @@ export class FakeRobots implements Robots {
   }
 }
 
-/** Turno por host que siempre se concede, anotando la espera con la que se soltó cada uno. */
+/**
+ * Turno por host, anotando la espera con la que se soltó cada uno. Como el mutex de Redis, **es exclusivo mientras el
+ * turno está tomado**: quien lo pide con otro dentro se lleva `null` y se aplaza. Un doble que concediera el turno a
+ * todos no podría distinguir entre pedir permiso dentro del turno y pedirlo fuera, que es de lo que vive la cortesía.
+ */
 export class FakeHostMutex implements HostMutex {
   readonly acquired: string[] = [];
   readonly released: { host: string; waitMs: number }[] = [];
-  /** Hosts que están ocupados: pedir su turno devuelve `null`. */
+  /** Hosts que están ocupados desde antes: pedir su turno devuelve `null`. */
   readonly busy = new Set<string>();
+  private readonly taken = new Set<string>();
 
   acquire(host: string): Promise<HostLease | null> {
     this.acquired.push(host);
-    if (this.busy.has(host)) return Promise.resolve(null);
+    if (this.busy.has(host) || this.taken.has(host))
+      return Promise.resolve(null);
+    this.taken.add(host);
     return Promise.resolve({
       release: (waitMs: number) => {
+        this.taken.delete(host);
         this.released.push({ host, waitMs });
         return Promise.resolve();
       },
     });
+  }
+}
+
+/** El host de una URL para la caché del `robots.txt`; la URL entera si no se puede interpretar. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * `robots.txt` con caché por host, como `RedisCachedRobots`: la primera consulta de un host le pide el fichero al sitio
+ * y las siguientes salen de la caché. La caché se llena **cuando vuelve la petición**, no al empezarla, así que dos
+ * consultas a la vez del mismo host la fallan las dos y pisan dos veces el sitio, exactamente como en producción: es lo
+ * que deja ver si el permiso se pregunta dentro del turno del host o fuera.
+ */
+export class FakeCachingRobots implements Robots {
+  readonly asked: string[] = [];
+  /** Un apunte por petición al `robots.txt` del sitio; lo que la caché ahorra no aparece aquí. */
+  readonly fetched: string[] = [];
+  /** Rutas concretas que este `robots.txt` prohíbe, para los sitios que solo niegan una parte. */
+  readonly forbidden = new Set<string>();
+  private readonly cached = new Set<string>();
+
+  constructor(
+    private readonly decision: RobotsDecision = {
+      allowed: true,
+      crawlDelayMs: 0,
+    },
+  ) {}
+
+  async decide(url: string): Promise<RobotsDecision> {
+    this.asked.push(url);
+    const host = hostOf(url);
+    if (!this.cached.has(host)) {
+      this.fetched.push(host);
+      // Pedirle el fichero al sitio tarda: hasta que no vuelve, la caché sigue vacía para todos los demás.
+      await new Promise((resolve) => setImmediate(resolve));
+      this.cached.add(host);
+    }
+    return this.forbidden.has(url)
+      ? { ...this.decision, allowed: false }
+      : this.decision;
   }
 }
 

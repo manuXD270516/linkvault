@@ -2,7 +2,11 @@ import { Module, type OnModuleInit } from '@nestjs/common';
 import { LimitsModule } from '../../../infrastructure/limits/limits.module';
 import { OutboxModule } from '../../../infrastructure/outbox/outbox.module';
 import { RealtimeModule } from '../../../infrastructure/realtime/realtime.module';
-import { createRedisAppClient } from '../../../infrastructure/redis/redis-app-client';
+import {
+  createRedisSubscriberClient,
+  REDIS_SUBSCRIBER_CLIENT,
+  RedisSubscriberConnection,
+} from '../../../infrastructure/redis/redis-subscriber-client';
 import { APP_CONFIG } from '../../../infrastructure/config/app-config.module';
 import type { ApiConfig } from '../../../infrastructure/config/api-config.schema';
 import { GroupDeletionHooks } from '../../groups/application/group-deletion-hooks';
@@ -31,7 +35,10 @@ import { GroupLinksDeletionHook } from '../infrastructure/group-links-deletion.h
 import { CounterLinkLimiter } from '../infrastructure/counter-link-limiter';
 import { EventStreamBroadcaster } from '../infrastructure/event-stream-broadcaster';
 import { LinkEnrichedSubscription } from '../infrastructure/link-enriched.subscription';
-import { RedisEnrichmentNotices } from '../infrastructure/redis-enrichment-notices';
+import {
+  RedisEnrichmentNotices,
+  type RedisSubscriber,
+} from '../infrastructure/redis-enrichment-notices';
 import { GroupsFacadeMembership } from '../infrastructure/groups-facade-membership';
 import { MongoGroupLinkRepository } from '../infrastructure/mongo-group-link.repository';
 import { MongoJobLinkRepository } from '../infrastructure/mongo-job-link.repository';
@@ -55,7 +62,7 @@ import { LinksController } from './links.controller';
  *
  * Sí abre una conexión de Redis en **modo suscripción** para los avisos de enriquecimiento, una sola por proceso (D9).
  * Si Redis no está, la suscripción avisa una vez y `api` sigue sirviendo peticiones: lo único que se pierde es que una
- * pantalla abierta se entere sola.
+ * pantalla abierta se entere sola, y se recupera sola cuando Redis vuelve.
  *
  * Al arrancar registra su limpieza en `GroupDeletionHooks`, para que borrar un grupo se lleve sus `GroupLink` dentro de
  * la misma transacción y no deje relaciones huérfanas (D7b). `groups` sigue sin conocer a `links`.
@@ -79,16 +86,23 @@ import { LinksController } from './links.controller';
     { provide: ENRICHMENT_BROADCASTER, useClass: EventStreamBroadcaster },
     {
       // Conexión propia: un cliente de Redis en modo suscripción no acepta comandos, así que no puede ser el mismo que
-      // cuenta intentos. Se conecta sin bloquear el arranque y se cierra al apagar.
-      provide: ENRICHMENT_NOTICES,
+      // cuenta intentos. Y tampoco puede ser un cliente **de aplicación**: ese no encola comandos sin conexión, así que
+      // el `SUBSCRIBE` del arranque se rechazaba antes de que existiera el socket y el canal quedaba muerto en cualquier
+      // ejecución real. `createRedisSubscriberClient` es la configuración de un suscriptor y `RedisEnrichmentNotices`
+      // conecta antes de pedir el canal; aquí solo se cablea.
+      provide: REDIS_SUBSCRIBER_CLIENT,
       inject: [APP_CONFIG],
-      useFactory: (config: ApiConfig) => {
-        const client = createRedisAppClient(config.REDIS_URL);
-        // Sin listener, ioredis escribiría cada reintento por consola.
-        client.on('error', () => undefined);
-        return new RedisEnrichmentNotices(client);
-      },
+      useFactory: (config: ApiConfig) =>
+        createRedisSubscriberClient(config.REDIS_URL),
     },
+    {
+      provide: ENRICHMENT_NOTICES,
+      inject: [REDIS_SUBSCRIBER_CLIENT],
+      useFactory: (client: RedisSubscriber) =>
+        new RedisEnrichmentNotices(client),
+    },
+    // Abrir la conexión es de quien se suscribe; cerrarla al apagar, de esto.
+    RedisSubscriberConnection,
     { provide: LINKS_CLOCK, useClass: SystemClock },
     SaveLink,
     ImportLinks,

@@ -402,4 +402,52 @@ describe('RedisPingDouble', () => {
       await expect(inTransaction.call('EXEC')).resolves.toEqual([2]);
     });
   });
+
+  describe('SUBSCRIBE, UNSUBSCRIBE and PUBLISH', () => {
+    /** Lo próximo que reciba una conexión suscrita, o un fallo si no llega nada. */
+    function nextMessage(client: Redis): Promise<[string, string]> {
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(
+          () => reject(new Error('no message arrived')),
+          2_000,
+        );
+        client.once('message', (channel: string, message: string) => {
+          clearTimeout(timer);
+          resolve([channel, message]);
+        });
+      });
+    }
+
+    it('delivers what one connection publishes to the ones listening', async () => {
+      const listener = track(createClient(double));
+      const publisher = track(createClient(double));
+      await listener.connect();
+      await publisher.connect();
+
+      await expect(listener.subscribe('events:link')).resolves.toBe(1);
+      const arrived = nextMessage(listener);
+      await expect(publisher.publish('events:link', '{"n":1}')).resolves.toBe(
+        1,
+      );
+
+      await expect(arrived).resolves.toEqual(['events:link', '{"n":1}']);
+    });
+
+    it('does not deliver to a connection that did not ask, or that left', async () => {
+      const listener = track(createClient(double));
+      const deaf = track(createClient(double));
+      const publisher = track(createClient(double));
+      await listener.connect();
+      await deaf.connect();
+      await publisher.connect();
+      await listener.subscribe('events:link');
+
+      // Nadie más escucha ese canal: un solo receptor.
+      await expect(publisher.publish('events:link', 'uno')).resolves.toBe(1);
+      await expect(publisher.publish('events:otro', 'dos')).resolves.toBe(0);
+
+      await expect(listener.unsubscribe('events:link')).resolves.toBe(0);
+      await expect(publisher.publish('events:link', 'tres')).resolves.toBe(0);
+    });
+  });
 });

@@ -9,6 +9,7 @@ import {
   type ExtractPreviewOptions,
 } from './extract-preview.service';
 import {
+  FakeCachingRobots,
   FakeHostMutex,
   FakePageFetcher,
   FakeRobots,
@@ -25,6 +26,12 @@ const LINK = {
   createdBy: '68c0f0f0f0f0f0f0f0f0f0f0',
 };
 
+/** Otra vacante de la misma bolsa: mismo host, otra ruta. */
+const SAME_HOST_LINK = {
+  ...LINK,
+  displayUrl: 'https://bolsa.example/jobs/2',
+};
+
 const OPTIONS: ExtractPreviewOptions = {
   fetchTimeoutMs: 10_000,
   domainDelayMs: 2_000,
@@ -34,9 +41,12 @@ const OPTIONS: ExtractPreviewOptions = {
 const JOB_POSTING_PAGE =
   '<html><head><script type="application/ld+json">{"@type":"JobPosting","title":"Arquitecto(a) de Soluciones","hiringOrganization":{"name":"Empresa Ejemplo"}}</script></head><body><main>Arquitecto</main></body></html>';
 
+/** Los dos `robots.txt` de mentira: el que contesta siempre lo mismo y el que además cachea por host. */
+type TestRobots = FakeRobots | FakeCachingRobots;
+
 interface Harness {
   service: ExtractPreviewService;
-  robots: FakeRobots;
+  robots: TestRobots;
   mutex: FakeHostMutex;
   fetcher: FakePageFetcher;
   parsed: string[];
@@ -52,7 +62,7 @@ function harnessOf(
     page,
     elapsedPerCall = 0,
   }: {
-    robots?: FakeRobots;
+    robots?: TestRobots;
     mutex?: FakeHostMutex;
     fetcher?: FakePageFetcher;
     page?: PageContent;
@@ -137,7 +147,10 @@ describe('Se descarga lo que escribió la persona', () => {
       reason: 'robots_disallowed',
     });
     expect(fetcher.requested).toEqual([]);
-    expect(mutex.acquired).toEqual([]);
+    // El permiso se pregunta **dentro** del turno del host, así que el turno se toma y se suelta igual: preguntar es
+    // una petición al sitio, y las peticiones al sitio van de una en una.
+    expect(mutex.acquired).toEqual(['bolsa.example']);
+    expect(mutex.released).toEqual([{ host: 'bolsa.example', waitMs: 2_000 }]);
   });
 
   it('tampoco descarga una redirección a una ruta prohibida', async () => {
@@ -210,6 +223,104 @@ describe('Se descarga lo que escribió la persona', () => {
       kind: 'failed',
       reason: 'host_busy',
     });
+  });
+});
+
+describe('robots.txt cacheado', () => {
+  it('asks the robots.txt once for two links of the same host processed at the same time', async () => {
+    // Lo que el smoke destapó: preguntando el permiso antes de pedir el turno, los jobs del mismo host fallan la caché
+    // a la vez y llaman todos a la puerta del sitio. Siete links del mismo host acabaron pidiendo tres veces el
+    // `robots.txt` de un sitio al que le habíamos prometido ir de uno en uno (ADR-003).
+    const robots = new FakeCachingRobots();
+    const mutex = new FakeHostMutex();
+    const { service } = harnessOf([new MetadataExtractor()], { robots, mutex });
+
+    const [first, second] = await Promise.all([
+      service.run({ link: LINK, deferrals: 0, deadlineAt: 45_000 }),
+      service.run({ link: SAME_HOST_LINK, deferrals: 0, deadlineAt: 45_000 }),
+    ]);
+
+    expect(robots.fetched).toEqual(['bolsa.example']);
+    expect(first).toMatchObject({ kind: 'extracted' });
+    // El segundo no espera ocupando un hueco del `Worker`: se aplaza y vuelve con la caché caliente.
+    expect(second).toEqual({ kind: 'deferred', deferrals: 1, waitMs: 2_000 });
+    expect(mutex.released).toEqual([{ host: 'bolsa.example', waitMs: 2_000 }]);
+  });
+
+  it('does not ask the site again for a host it already asked', async () => {
+    const robots = new FakeCachingRobots();
+    const { service } = harnessOf([new MetadataExtractor()], { robots });
+
+    await service.run({ link: LINK, deferrals: 0, deadlineAt: 45_000 });
+    await service.run({
+      link: SAME_HOST_LINK,
+      deferrals: 0,
+      deadlineAt: 45_000,
+    });
+
+    expect(robots.asked).toEqual([LINK.displayUrl, SAME_HOST_LINK.displayUrl]);
+    expect(robots.fetched).toEqual(['bolsa.example']);
+  });
+
+  it('still refuses a forbidden path without downloading it, and gives the turn back', async () => {
+    const robots = new FakeCachingRobots();
+    robots.forbidden.add(SAME_HOST_LINK.displayUrl);
+    const mutex = new FakeHostMutex();
+    const { service, fetcher } = harnessOf([new MetadataExtractor()], {
+      robots,
+      mutex,
+    });
+
+    expect(
+      await service.run({
+        link: SAME_HOST_LINK,
+        deferrals: 0,
+        deadlineAt: 45_000,
+      }),
+    ).toEqual({ kind: 'failed', reason: 'robots_disallowed' });
+    expect(fetcher.requested).toEqual([]);
+    expect(mutex.released).toEqual([{ host: 'bolsa.example', waitMs: 2_000 }]);
+  });
+});
+
+describe('Una descarga a la vez por dominio', () => {
+  it('never downloads twice at the same time from the same host', async () => {
+    const robots = new FakeCachingRobots();
+    const mutex = new FakeHostMutex();
+    const { service, fetcher } = harnessOf([new MetadataExtractor()], {
+      robots,
+      mutex,
+    });
+
+    const attempts = await Promise.all(
+      Array.from({ length: 7 }, () =>
+        service.run({ link: LINK, deferrals: 0, deadlineAt: 45_000 }),
+      ),
+    );
+
+    // De siete a la vez, uno descarga y seis se aplazan; y el sitio recibe una sola petición de su `robots.txt`.
+    expect(attempts.filter(({ kind }) => kind === 'extracted')).toHaveLength(1);
+    expect(attempts.filter(({ kind }) => kind === 'deferred')).toHaveLength(6);
+    expect(fetcher.requested).toHaveLength(1);
+    expect(robots.fetched).toEqual(['bolsa.example']);
+  });
+
+  it('lets two different hosts go at the same time', async () => {
+    const robots = new FakeCachingRobots();
+    const mutex = new FakeHostMutex();
+    const { service } = harnessOf([new MetadataExtractor()], { robots, mutex });
+
+    const attempts = await Promise.all([
+      service.run({ link: LINK, deferrals: 0, deadlineAt: 45_000 }),
+      service.run({
+        link: { ...LINK, displayUrl: 'https://otra.example/jobs/9' },
+        deferrals: 0,
+        deadlineAt: 45_000,
+      }),
+    ]);
+
+    expect(attempts.every(({ kind }) => kind === 'extracted')).toBe(true);
+    expect(robots.fetched).toEqual(['bolsa.example', 'otra.example']);
   });
 });
 

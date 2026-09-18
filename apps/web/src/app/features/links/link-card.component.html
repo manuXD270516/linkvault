@@ -12,7 +12,8 @@
 }
 
 @if (company(); as name) {
-  <span data-testid="link-company"
+  <!-- El separador va aquí y no como margen: el título es un enlace en línea y sin él se leía "Full StackAcme". -->
+  <span class="ml-2" data-testid="link-company"
     >{{ name }}
     @if (note('company'); as companyNote) {
       <span class="text-xs" data-testid="note-company">{{ companyNote }}</span>

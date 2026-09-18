@@ -24,6 +24,9 @@ interface ClientSession {
   queue: (readonly string[])[] | null;
   /** Un comando rechazado al encolar hace que `EXEC` responda `EXECABORT`. */
   aborted: boolean;
+  /** Canales a los que se suscribió esta conexión: el pub/sub de Redis es por conexión, no por clave. */
+  readonly channels: Set<string>;
+  readonly socket: Socket;
 }
 
 const CRLF = '\r\n';
@@ -47,11 +50,16 @@ const ARITY: ReadonlyMap<string, number> = new Map([
   ['INCR', 2],
   ['DECR', 2],
   ['PTTL', 2],
+  ['SUBSCRIBE', -2],
+  ['UNSUBSCRIBE', -1],
+  ['PUBLISH', 3],
 ]);
 
 /**
  * Servidor TCP mínimo que habla RESP2 para PING, GET, SET (`EX`/`PX`/`NX`) y DEL (D8 de ai-gateway-core), INCR, DECR,
- * PTTL y MULTI/EXEC/DISCARD (D7 de auth-users) sobre un mapa en memoria con expiración perezosa; el resto de comandos
+ * PTTL y MULTI/EXEC/DISCARD (D7 de auth-users) sobre un mapa en memoria con expiración perezosa, y para
+ * SUBSCRIBE/UNSUBSCRIBE/PUBLISH (D9 de link-enrichment), que es lo que hace falta para probar que una suscripción sale
+ * de verdad y no solo contra un doble complaciente; el resto de comandos
  * responde `-ERR unknown command`. Escucha en 127.0.0.1 en un
  * puerto efímero que conserva al pasar de `stop` a `up` o `hang`, para que un cliente ya configurado pueda reconectar
  * sin reiniciar.
@@ -59,6 +67,8 @@ const ARITY: ReadonlyMap<string, number> = new Map([
 export class RedisPingDouble {
   private server: Server | null = null;
   private readonly sockets = new Set<Socket>();
+  /** Conexiones vivas, para repartir lo que se publique a las que estén suscritas. */
+  private readonly sessions = new Set<ClientSession>();
   private readonly store = new Map<string, StoredValue>();
   private currentMode: RedisDoubleMode = 'stop';
   private assignedPort = 0;
@@ -137,6 +147,7 @@ export class RedisPingDouble {
       socket.destroy();
     }
     this.sockets.clear();
+    this.sessions.clear();
     return new Promise((resolve) => server.close(() => resolve()));
   }
 
@@ -149,7 +160,14 @@ export class RedisPingDouble {
     // Un cliente que corta la conexión no debe tumbar el proceso de test.
     socket.on('error', () => socket.destroy());
 
-    const session: ClientSession = { queue: null, aborted: false };
+    const session: ClientSession = {
+      queue: null,
+      aborted: false,
+      channels: new Set(),
+      socket,
+    };
+    this.sessions.add(session);
+    socket.on('close', () => this.sessions.delete(session));
     let buffer = Buffer.alloc(0);
     socket.on('data', (chunk: Buffer) => {
       if (this.currentMode !== 'up') {
@@ -182,6 +200,12 @@ export class RedisPingDouble {
       return '';
     }
     const name = rawName.toUpperCase();
+    // El pub/sub no pasa por la cola de `MULTI`: va por conexión y es lo único que Redis deja hacer a un suscriptor.
+    if (name === 'SUBSCRIBE' || name === 'UNSUBSCRIBE' || name === 'PUBLISH') {
+      return (
+        this.validate(rawName, rest.length) ?? this.pubsub(name, rest, session)
+      );
+    }
     switch (name) {
       case 'MULTI':
         return this.multi(rest, session);
@@ -360,6 +384,46 @@ export class RedisPingDouble {
       return `:-1${CRLF}`;
     }
     return `:${Math.max(0, stored.expiresAt - Date.now())}${CRLF}`;
+  }
+
+  /** SUBSCRIBE, UNSUBSCRIBE y PUBLISH, ya validados: el reparto es a las conexiones suscritas en este momento. */
+  private pubsub(
+    name: 'SUBSCRIBE' | 'UNSUBSCRIBE' | 'PUBLISH',
+    args: readonly string[],
+    session: ClientSession,
+  ): string {
+    if (name === 'PUBLISH') {
+      const [channel = '', message = ''] = args;
+      let receivers = 0;
+      for (const other of this.sessions) {
+        if (!other.channels.has(channel)) {
+          continue;
+        }
+        receivers += 1;
+        other.socket.write(
+          `*3${CRLF}${bulk('message')}${bulk(channel)}${bulk(message)}`,
+        );
+      }
+      return `:${receivers}${CRLF}`;
+    }
+    // Sin canales, `UNSUBSCRIBE` se los lleva todos, como Redis.
+    const channels =
+      args.length > 0
+        ? args
+        : name === 'UNSUBSCRIBE'
+          ? [...session.channels]
+          : [];
+    const confirmation = name.toLowerCase();
+    return channels
+      .map((channel) => {
+        if (name === 'SUBSCRIBE') {
+          session.channels.add(channel);
+        } else {
+          session.channels.delete(channel);
+        }
+        return `*3${CRLF}${bulk(confirmation)}${bulk(channel)}:${session.channels.size}${CRLF}`;
+      })
+      .join('');
   }
 
   private del(keys: readonly string[]): string {
