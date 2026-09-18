@@ -8,7 +8,8 @@
   >{{ headline() }}</a
 >
 @if (note('title'); as titleNote) {
-  <span class="text-xs" data-testid="note-title">{{ titleNote }}</span>
+  <!-- Margen explícito: el título es un enlace en línea y sin él se leía "…Soporte TIDescripción pegada por…". -->
+  <span class="ml-2 text-xs" data-testid="note-title">{{ titleNote }}</span>
 }
 
 @if (company(); as name) {

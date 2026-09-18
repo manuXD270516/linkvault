@@ -6,11 +6,14 @@ import type {
 } from '@linkvault/shared';
 import { type Page, expect, test } from '@playwright/test';
 import { MongoClient } from 'mongodb';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const SCREENSHOT_DIR = join(workspaceRoot, 'reports', 'smoke', 'job-links');
 /** Las capturas del preview son de `link-enrichment`, no de `job-links`: cada change guarda las suyas. */
 const ENRICHMENT_SCREENSHOT_DIR = join(workspaceRoot, 'reports', 'smoke', 'link-enrichment');
+/** Y las de pegar la descripción, de `paste-job-description`. */
+const PASTE_SCREENSHOT_DIR = join(workspaceRoot, 'reports', 'smoke', 'paste-job-description');
 
 /**
  * Base de `api`, para escribir en `job_links` lo que el worker habría escrito al leer la página. Es el mismo valor por
@@ -24,6 +27,12 @@ const USER = {
   displayName: 'Smoke Links',
   email: `smoke-links+${RUN_ID}@example.com`,
   password: `Links-pass-${RUN_ID}`,
+};
+/** Otro miembro del grupo, mirando la misma lista mientras el primero pega. */
+const MEMBER = {
+  displayName: 'Smoke Miembro',
+  email: `smoke-links-member+${RUN_ID}@example.com`,
+  password: `Member-pass-${RUN_ID}`,
 };
 const GROUP_NAME = `Smoke Links ${RUN_ID}`;
 
@@ -49,6 +58,50 @@ const PRIVATE_LABEL = `desarrollador frontend senior acme remote ${RUN_ID}`;
 /** La única de las cinco bolsas cuyo `robots.txt` permite leer una oferta y que además publica JSON-LD (design §Context). */
 const TRABAJOPOLIS_URL = `https://www.trabajopolis.bo/trabajo/${RUN_ID}/aviso-acme-bo-${RUN_ID}/`;
 const TRABAJOPOLIS_LABEL = `aviso acme bo ${RUN_ID}`;
+/** Otra oferta de LinkedIn, para completarla pegando el cuerpo y escribiendo aparte el título y la empresa. */
+const LINKEDIN_TYPED_URL = `https://www.linkedin.com/jobs/view/analista-contable-${RUN_ID + 1}/`;
+const LINKEDIN_TYPED_LABEL = `analista contable ${RUN_ID + 1}`;
+const BLOCKED_TEXT = 'LinkedIn no nos deja leer sus ofertas. Pega su descripción para completarla';
+
+/** Entrada de un caso del golden de `extract-pasted-job`. */
+interface PastedGoldenInput {
+  text: string;
+  knownTitle?: string;
+  knownCompany?: string;
+}
+
+/**
+ * Lo que se pega sale tal cual del golden de `extract-pasted-job`, no de una copia. `api` lee lo pegado con el mock en
+ * `replay`, que solo responde a una entrada con fixture grabado: un texto que difiriera en un carácter se quedaría sin
+ * respuesta. Leerlo del golden hace que este smoke siga al caso si alguien lo regraba.
+ */
+function pastedGoldenInput(id: string): PastedGoldenInput {
+  const golden = readFileSync(
+    join(workspaceRoot, 'libs', 'ai', 'src', 'evals', 'extract-pasted-job', 'golden.jsonl'),
+    'utf8',
+  );
+  for (const line of golden.split('\n')) {
+    if (line.trim() === '') {
+      continue;
+    }
+    const entry = JSON.parse(line) as { id: string; input: PastedGoldenInput };
+    if (entry.id === id) {
+      return entry.input;
+    }
+  }
+  throw new Error(`The extract-pasted-job golden has no case "${id}"`);
+}
+
+/** Una oferta copiada entre mensajes de un chat: trae el puesto y la empresa en el propio texto. */
+const PASTED_FROM_CHAT = pastedGoldenInput('oferta-entre-chat');
+/** Lo que la IA lee de ella: el fixture grabado de ese caso. */
+const CHAT_JOB = {
+  title: 'Ingeniero de Soporte TI',
+  company: 'Distribuidora Andina',
+  location: 'Santa Cruz de la Sierra',
+} as const;
+/** El cuerpo copiado desde la app de LinkedIn, sin cabecera: el puesto y la empresa se escriben aparte. */
+const PASTED_FROM_APP = pastedGoldenInput('linkedin-app-con-titulo-escrito');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -87,10 +140,13 @@ const CHAT = [
   `Ana: nada que ver, pero mirad ${VIDEO_URL}`,
 ].join('\n');
 
-async function register(page: Page): Promise<void> {
-  await page.getByLabel('Nombre', { exact: true }).fill(USER.displayName);
-  await page.getByLabel('Email', { exact: true }).fill(USER.email);
-  await page.getByLabel('Contraseña', { exact: true }).fill(USER.password);
+async function register(
+  page: Page,
+  user: { displayName: string; email: string; password: string } = USER,
+): Promise<void> {
+  await page.getByLabel('Nombre', { exact: true }).fill(user.displayName);
+  await page.getByLabel('Email', { exact: true }).fill(user.email);
+  await page.getByLabel('Contraseña', { exact: true }).fill(user.password);
   await page.getByRole('button', { name: 'Crear cuenta' }).click();
 }
 
@@ -171,13 +227,17 @@ async function seedFailedRead(
 }
 
 test('links flow: save, open, import a chat, remove and the private list', async ({ browser }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(300_000);
   const context = await browser.newContext();
+  const memberContext = await browser.newContext();
   const pageErrors: string[] = [];
 
   try {
     const page = await context.newPage();
-    page.on('pageerror', (error) => pageErrors.push(error.message));
+    const member = await memberContext.newPage();
+    for (const current of [page, member]) {
+      current.on('pageerror', (error) => pageErrors.push(error.message));
+    }
     let groupUrl = '';
 
     await test.step('the user registers and creates a group', async () => {
@@ -399,16 +459,140 @@ test('links flow: save, open, import a chat, remove and the private list', async
       await page.reload();
 
       const row = linkRow(page, LINKEDIN_LABEL);
-      await expect(row.getByTestId('link-status')).toHaveText(
-        'Esta bolsa no permite la lectura automática de sus ofertas',
-      );
+      // La tarjeta dice qué hacer, no solo qué pasó: lo que la completa es el texto que la persona ya tiene delante.
+      await expect(row.getByTestId('link-status')).toHaveText(BLOCKED_TEXT);
+      // Pegar es la acción principal, a la vista y sin abrir ningún menú; completar a mano queda como alternativa.
+      await expect(row.getByTestId('link-paste')).toBeVisible();
+      await expect(row.getByTestId('link-paste')).toHaveText('Pegar la descripción');
+      await expect(row.getByTestId('link-complete')).toBeVisible();
       // Volver a pedir lo que el sitio ya negó no cambiaría nada, así que ni se ofrece.
       await expect(row.getByTestId('link-retry')).toHaveCount(0);
-      await expect(row.getByTestId('link-complete')).toBeVisible();
+      await page.screenshot({ path: join(PASTE_SCREENSHOT_DIR, 'bolsa-bloqueada.png'), fullPage: true });
+    });
+
+    await test.step('another member joins the group and watches the same list', async () => {
+      const inviteCode = ((await page.getByTestId('invite-code').textContent()) ?? '').trim();
+      expect(inviteCode).not.toBe('');
+
+      await member.goto('/registro');
+      await register(member, MEMBER);
+      await expect(member).toHaveURL(/\/grupos$/);
+      await member.goto(`/unirse?codigo=${inviteCode}`);
+      await member.getByRole('dialog').getByRole('button', { name: 'Unirme' }).click();
+
+      await expect(member).toHaveURL(groupUrl);
+      await expect(linkRow(member, LINKEDIN_LABEL).getByTestId('link-status')).toHaveText(
+        BLOCKED_TEXT,
+      );
+    });
+
+    await test.step('Oferta de LinkedIn completada pegando su texto', async () => {
+      await linkRow(page, LINKEDIN_LABEL).getByTestId('link-paste').click();
+      const dialog = page.getByRole('dialog');
+      await dialog.getByTestId('paste-text').fill(PASTED_FROM_CHAT.text);
+      await expect(dialog.getByTestId('paste-counter')).toContainText(
+        `${PASTED_FROM_CHAT.text.length} /`,
+      );
+      await page.screenshot({ path: join(PASTE_SCREENSHOT_DIR, 'dialogo-pegar.png'), fullPage: true });
+
+      await dialog.getByTestId('paste-submit').click();
+
+      // Sin recargar: la respuesta del pegado actualiza la tarjeta.
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+      const row = linkRow(page, CHAT_JOB.title);
+      await expect(row.getByTestId('link-open')).toHaveText(CHAT_JOB.title);
+      await expect(row.getByTestId('link-company')).toContainText(CHAT_JOB.company);
+      await expect(row.getByTestId('link-location')).toHaveText(CHAT_JOB.location);
+      await expect(row.getByTestId('link-modality')).toHaveText('Presencial');
+      // Cada campo dice que salió del texto que pegó esta persona.
+      const pastedBy = `Descripción pegada por ${USER.displayName}`;
+      await expect(row.getByTestId('note-title')).toHaveText(pastedBy);
+      await expect(row.getByTestId('note-company')).toHaveText(pastedBy);
+      await expect(row.getByTestId('note-location')).toHaveText(pastedBy);
+      // Con título y empresa la oferta ya se explica sola.
+      await expect(row.getByTestId('link-status')).toHaveCount(0);
+      await expect(row.getByTestId('link-undo-paste')).toHaveText(
+        `Deshacer lo que pegó ${USER.displayName}`,
+      );
+      await page.screenshot({ path: join(PASTE_SCREENSHOT_DIR, 'oferta-pegada.png'), fullPage: true });
+    });
+
+    await test.step('Lo que pega otro miembro también llega', async () => {
+      // El otro miembro no recarga: lo pegado le llega por el canal de avisos.
+      const row = linkRow(member, CHAT_JOB.title);
+      await expect(row.getByTestId('link-open')).toHaveText(CHAT_JOB.title);
+      await expect(row.getByTestId('note-title')).toHaveText(
+        `Descripción pegada por ${USER.displayName}`,
+      );
+      await member.screenshot({ path: join(PASTE_SCREENSHOT_DIR, 'otro-miembro.png'), fullPage: true });
+    });
+
+    await test.step('Lo pegado se distingue', async () => {
+      await linkRow(page, CHAT_JOB.title).getByTestId('link-edit').click();
+      const dialog = page.getByRole('dialog');
+
+      await expect(dialog.getByTestId('origin-company')).toHaveText(
+        `Descripción pegada por ${USER.displayName}`,
+      );
+      await page.screenshot({ path: join(PASTE_SCREENSHOT_DIR, 'origen-pegado.png'), fullPage: true });
+      await dialog.getByRole('button', { name: 'Cancelar' }).click();
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+    });
+
+    await test.step('Deshacer deja el estado que corresponde', async () => {
+      await linkRow(page, CHAT_JOB.title).getByTestId('link-undo-paste').click();
+
+      // Todo el pegado se deshace de una vez, y el link vuelve a estar bloqueado, no "escrito a mano".
+      const row = linkRow(page, LINKEDIN_LABEL);
+      await expect(row.getByTestId('link-status')).toHaveText(BLOCKED_TEXT);
+      await expect(row.getByTestId('link-paste')).toBeVisible();
+      await expect(row.getByTestId('link-retry')).toHaveCount(0);
+      await expect(row.getByTestId('link-undo-paste')).toHaveCount(0);
+      await expect(linkRow(page, CHAT_JOB.title)).toHaveCount(0);
+      await page.screenshot({ path: join(PASTE_SCREENSHOT_DIR, 'pegado-deshecho.png'), fullPage: true });
+
+      // Lo que deshace uno también lo ve el otro, sin recargar.
+      await expect(linkRow(member, LINKEDIN_LABEL).getByTestId('link-status')).toHaveText(
+        BLOCKED_TEXT,
+      );
+    });
+
+    await test.step('Completar una oferta de LinkedIn', async () => {
+      await saveLink(page, LINKEDIN_TYPED_URL);
+      await expect(linkRow(page, LINKEDIN_TYPED_LABEL)).toHaveCount(1);
+      await seedFailedRead(LINKEDIN_TYPED_URL, 'robots_disallowed');
+      await page.reload();
+
+      await linkRow(page, LINKEDIN_TYPED_LABEL).getByTestId('link-paste').click();
+      const dialog = page.getByRole('dialog');
+      await dialog.getByTestId('paste-text').fill(PASTED_FROM_APP.text);
+      // Lo que se ve arriba de la oferta en la app y el texto copiado no trae.
+      const title = PASTED_FROM_APP.knownTitle ?? '';
+      const company = PASTED_FROM_APP.knownCompany ?? '';
+      await dialog.getByTestId('paste-title').fill(title);
+      await dialog.getByTestId('paste-company').fill(company);
+      await dialog.getByTestId('paste-submit').click();
+
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+      const row = linkRow(page, title);
+      await expect(row.getByTestId('link-open')).toHaveText(title);
+      await expect(row.getByTestId('link-company')).toContainText(company);
+      // El título y la empresa los escribió la persona; lo demás salió de la descripción que pegó.
+      await expect(row.getByTestId('note-title')).toHaveText(`Escrito por ${USER.displayName}`);
+      await expect(row.getByTestId('note-location')).toHaveText(
+        `Descripción pegada por ${USER.displayName}`,
+      );
+      await expect(row.getByTestId('link-modality')).toHaveText('Presencial');
+      await expect(row.getByTestId('link-status')).toHaveCount(0);
+      await page.screenshot({
+        path: join(PASTE_SCREENSHOT_DIR, 'titulo-escrito-aparte.png'),
+        fullPage: true,
+      });
     });
 
     expect(pageErrors).toEqual([]);
   } finally {
+    await memberContext.close();
     await context.close();
   }
 });
