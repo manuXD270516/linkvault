@@ -44,8 +44,8 @@ cliente se va o cuando el proceso se apaga, y una sesión caducada NO SHALL pode
 ### Requirement: Cada quien recibe solo lo suyo
 
 Un evento sobre un link SHALL llegar únicamente a los usuarios que pueden verlo: los miembros de un grupo donde está
-compartido y quienes lo tienen en su lista privada. El evento SHALL llevar el identificador del link y su estado, nunca
-datos de otras personas.
+compartido y quienes lo tienen en su lista privada. El evento NO SHALL llevar nada que esa persona no pueda ver ya de ese
+link.
 
 #### Scenario: Miembro del grupo avisado
 

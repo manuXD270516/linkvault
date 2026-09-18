@@ -130,7 +130,8 @@ máximo, y SHALL aceptarse solo contenido HTML.
 
 - **GIVEN** un host ocupado que no termina de liberarse
 - **WHEN** un link suyo se aplaza más veces de las permitidas
-- **THEN** SHALL darse por bloqueado en vez de seguir aplazándose
+- **THEN** SHALL darse por fallido con un motivo propio, transitorio y reintentable
+- **AND** ese motivo NO SHALL ser el de que el sitio nos bloquea, porque el sitio no ha dicho nada
 
 #### Scenario: robots.txt que no es texto
 

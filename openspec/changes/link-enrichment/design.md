@@ -123,6 +123,7 @@ lista cerrada:
 | `blocked` | El sitio responde `401`, `403` o `429` | "Esta bolsa no nos deja leer esta oferta" |
 | `not_a_job` | La página se descargó y se parseó, no hay `JobPosting` en su JSON-LD y `extract-job` responde que no es una vacante | "Esto no parece una oferta" + quitar en un clic |
 | `not_html`, `too_large`, `timeout`, `http_error`, `no_data` | Lo demás | "No pudimos leer esta oferta" |
+| `deferred_too_long` | El link esperó su turno de host más veces de las permitidas | igual que el anterior |
 | `retries_exhausted` | El job agotó sus reintentos | igual que el anterior |
 
 `pending` significa dos cosas distintas para quien mira, así que el link guarda `previewRequestedAt`: la fecha en que se
@@ -150,8 +151,10 @@ roto. En ningún caso se registra el cuerpo de la respuesta ni la URL completa e
   existen en la versión instalada. Una sola clave hace las dos cosas: el consumidor toma
   `SET enrich:host:<host> NX PX (ENRICH_FETCH_TIMEOUT_MS + espera efectiva)` y **no la borra al terminar**, de modo que
   su caducidad es a la vez la exclusión y la espera entre peticiones. Si no la consigue,
-  `job.moveToDelayed(now + espera)`; un job que se aplaza más de `ENRICH_MAX_DEFERRALS` veces se da por `blocked`, para
-  que un host caído no haga girar en vacío los slots del worker. El `Worker` corre con `concurrency: 4` global. El host
+  `job.moveToDelayed(now + espera)`; un job que se aplaza más de `ENRICH_MAX_DEFERRALS` veces se da por
+  `deferred_too_long`, para que un host caído no haga girar en vacío los slots del worker. **No** por `blocked`: el sitio
+  no ha dicho nada, el que no llegó a tiempo fue nuestro turno, así que es un fallo transitorio y reintentable. El tope
+  se cuenta en aplazamientos, no en minutos, y se fija para que una importación de 50 links del mismo host quepa entera. El `Worker` corre con `concurrency: 4` global. El host
   sale del link leído en Mongo, no del evento: `LinkCreated.v1` nunca lleva la URL del usuario.
 - `ENRICH_FETCH_TIMEOUT_MS` (10 s), `ENRICH_MAX_BYTES` (2 MiB, cortando el flujo), solo `text/html`, máximo 3
   redirecciones, solo `http(s)`.
@@ -169,7 +172,8 @@ de nadie. Salida `jobPreviewSchema`, `temperature 0`.
   inservibles los fixtures, la caché y la línea base (C6).
 - **`ctx.userId = link.createdBy`**, que el worker ya tiene en el documento leído: sin eso, las cuotas por usuario y
   tarea de ADR-018 §9 no aplicarían nunca a `extract-job` y el ledger no diría de quién fue el gasto. No hace falta leer
-  `users` para eso.
+  `users` para eso. La relectura que pide otra persona también se atribuye a quien guardó el link; queda dicho en
+  ADR-022 para que no se lea como un error.
 - **Salida propia de la tarea**: `{ isJobPosting: boolean, preview: jobPreviewSchema | null }`, no `jobPreviewSchema` a
   secas. Con un schema que exige `title`, un modelo a temperatura 0 inventa un título para un vídeo de YouTube; con el
   discriminador puede decir que eso no es una vacante, que es lo que el motivo `not_a_job` necesita para existir.
@@ -229,7 +233,7 @@ operación con carrera—. Y no hay dual-write: la verdad sigue siendo una trans
 `nx run api:backfill-enrichment -- --limit=500 [--status=pending|failed]` usa el índice `{ previewStatus: 1, _id: 1 }` y
 no mira `outbox_events`. Con `--status=pending` no sube la versión (el trabajo sigue siendo el mismo y el `jobId` que ya
 está en la cola lo deduplica); con `--status=failed` sí, y solo rescata los motivos transitorios: `timeout`,
-`http_error` y `retries_exhausted`. `robots_disallowed`, `blocked` y `not_a_job` no se reintentan nunca —ni por botón ni
+`http_error`, `deferred_too_long` y `retries_exhausted`. `robots_disallowed`, `blocked` y `not_a_job` no se reintentan nunca —ni por botón ni
 por comando—, porque volver a pedir lo que un sitio ya negó es exactamente el daño que ADR-003 quiere evitar.
 
 ### D11 — Contratos nuevos en `libs/shared`
