@@ -1,9 +1,8 @@
-import type { ManualEditStoredEntry } from '@linkvault/shared';
+import { previewSourcesSchema, storedPreviewSchema } from '@linkvault/shared';
 import {
   MANUAL_EDIT_REPLACED_CASES,
-  previewSourcesSchema,
-  storedPreviewSchema,
-} from '@linkvault/shared';
+  type ManualEditStoredEntry,
+} from '@linkvault/testing';
 import { describe, expect, it } from 'vitest';
 import { PreviewFieldUnknown } from './errors';
 import { applyManualEdit, type EditablePreview } from './preview-edit';

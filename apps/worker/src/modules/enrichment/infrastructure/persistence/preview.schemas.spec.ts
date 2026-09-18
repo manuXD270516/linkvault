@@ -1,16 +1,5 @@
-import {
-  JOB_LINK_SCHEMA_OPTIONS,
-  LAST_ENRICHMENT_ERROR_SCHEMA_OPTIONS,
-  PREVIEW_FIELD_NAMES,
-  PREVIEW_LANGUAGE_KEYS,
-  PREVIEW_REPLACED_KEYS,
-  PREVIEW_SALARY_KEYS,
-  PREVIEW_SKILL_KEYS,
-  PREVIEW_SOURCE_ENTRY_KEYS,
-  jobModalitySchema,
-  jobSenioritySchema,
-  salaryPeriodSchema,
-} from '@linkvault/shared';
+import { PREVIEW_FIELD_NAMES, PREVIEW_LANGUAGE_KEYS, PREVIEW_REPLACED_KEYS, PREVIEW_SALARY_KEYS, PREVIEW_SKILL_KEYS, PREVIEW_SOURCE_ENTRY_KEYS, jobModalitySchema, jobSenioritySchema, salaryPeriodSchema } from '@linkvault/shared';
+import { JOB_LINK_SCHEMA_OPTIONS, LAST_ENRICHMENT_ERROR_SCHEMA_OPTIONS } from '@linkvault/testing';
 import { Schema } from 'mongoose';
 import { describe, expect, it } from 'vitest';
 import { jobLinkSchema } from './link.schemas';

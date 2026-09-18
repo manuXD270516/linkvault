@@ -72,7 +72,7 @@ describe('BackfillEnrichment', () => {
     }
   });
 
-  it('No se duplica lo que ya está en la cola', async () => {
+  it('No se duplica el trabajo que ya está en la cola', async () => {
     const linkId = pendingLink('sin-duplicar');
     const staleJobId = linkCreatedJobId({ linkId, previewVersion: 1 });
 
@@ -83,7 +83,9 @@ describe('BackfillEnrichment', () => {
     };
 
     // La versión sube **siempre**: con la misma, `Queue.add` sobre un job retenido es un no-op y el atasco no se
-    // deshace. Y no se duplica trabajo, porque el consumidor descarta el job viejo por versión.
+    // deshace. El trabajo no se duplica porque el consumidor descarta el job viejo al ver que su versión ya pasó; esa
+    // otra mitad del escenario vive donde puede comprobarse de verdad, en "Job de una versión vieja" de
+    // `apps/worker/src/modules/enrichment/application/enrich-link.usecase.spec.ts`.
     expect(payload.previewVersion).toBe(2);
     expect(linkCreatedJobId(payload)).not.toBe(staleJobId);
     expect(outbox.size).toBe(1);
