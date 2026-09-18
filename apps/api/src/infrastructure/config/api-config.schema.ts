@@ -12,7 +12,9 @@ export const AUTH_JWT_SECRET_EXAMPLE =
 /**
  * Configuración de `api` (D8 de bootstrap-monorepo). Todas obligatorias salvo `APP_VERSION`, que inyecta el
  * build y tiene como respaldo la versión de `package.json` (D9). Las variables de MinIO (`S3_*`) están en
- * `.env.example` pero no se validan hasta que algún código las lea.
+ * `.env.example` pero no se validan hasta que algún código las lea. La configuración de IA (`AI_*`, `OLLAMA_*`,
+ * `OPENROUTER_*`) no se valida aquí sino con `parseAiConfig` de `@linkvault/ai` en `loadApiConfigOrExit`, igual que
+ * en el worker (D1 de paste-job-description).
  */
 export const apiConfigSchema = z
   .object({
@@ -51,11 +53,16 @@ export const apiConfigSchema = z
     OUTBOX_RELAY_ENABLED: z
       .enum(['true', 'false'])
       .transform((value) => value === 'true'),
-    OUTBOX_RELAY_INTERVAL_MS: z.coerce
+    OUTBOX_RELAY_INTERVAL_MS: z.coerce.number().int().min(100).max(300_000),
+    // Plazo de la lectura de un texto pegado (D1 de paste-job-description), en milisegundos: es el `ctx.signal` de
+    // `runTask('extract-pasted-job')`, y la petición HTTP espera como mucho eso. Por debajo de un segundo ningún
+    // proveedor real llega a responder; por encima de dos minutos el diálogo lleva demasiado tiempo en "Leyendo…" y un
+    // proxy intermedio ya habría cortado la conexión. El resto de la configuración de IA la valida `parseAiConfig`.
+    PASTE_EXTRACTION_TIMEOUT_MS: z.coerce
       .number()
       .int()
-      .min(100)
-      .max(300_000),
+      .min(1_000)
+      .max(120_000),
   })
   // Cada issue lleva `path` con la variable: `parseEnv` descarta los issues que no nombran ninguna.
   .superRefine((config, ctx) => {

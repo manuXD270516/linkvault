@@ -3,7 +3,8 @@ import { createApp } from './app/create-app';
 import { loadApiConfigOrExit } from './infrastructure/config/load-api-config';
 
 async function bootstrap(): Promise<void> {
-  const config = loadApiConfigOrExit(process.env);
+  // La configuración de IA ya se valida aquí (el arranque falla si es inválida); `AiModule` la recibirá al montarse.
+  const { config } = loadApiConfigOrExit(process.env);
   const app = await createApp(config);
   app.enableShutdownHooks();
   await app.listen(config.API_PORT);

@@ -105,20 +105,22 @@ jobs:
       - name: Build
         run: pnpm nx affected -t build
 
-      # Los prompts de libs/ai se copian como assets del worker (D7 de ai-gateway-core) y copy-webpack-plugin no falla
-      # si no copia nada. El runner parte de un checkout limpio sin dist/, así que dist/apps/worker/main.js solo existe
-      # si el step Build construyó el worker (o lo restauró de la caché de Nx, que restaura también sus assets): sin él,
-      # worker no estaba afectado y no hay nada que comprobar.
-      - name: Check worker prompt assets
+      # Los prompts de libs/ai se copian como assets del worker (D7 de ai-gateway-core) y de api (D1 de
+      # paste-job-description), y copy-webpack-plugin no falla si no copia nada. El runner parte de un checkout limpio
+      # sin dist/, así que dist/apps/<app>/main.js solo existe si el step Build construyó la app (o la restauró de la
+      # caché de Nx, que restaura también sus assets): sin él, la app no estaba afectada y no hay nada que comprobar.
+      - name: Check prompt assets
         shell: bash
         run: |
-          if [ ! -f dist/apps/worker/main.js ]; then
-            echo "worker not built in this run; skipping prompt assets check"
-            exit 0
-          fi
-          prompt=dist/apps/worker/assets/ai/prompts/classify-skills.v1.md
-          if [ ! -f "$prompt" ]; then
-            echo "::error file=apps/worker/webpack.config.js::$prompt missing: the worker build did not copy libs/ai/src/infrastructure/prompts as assets"
-            exit 1
-          fi
-          echo "worker prompt assets present: $prompt"
+          for app in worker api; do
+            if [ ! -f "dist/apps/$app/main.js" ]; then
+              echo "$app not built in this run; skipping its prompt assets check"
+              continue
+            fi
+            prompt="dist/apps/$app/assets/ai/prompts/classify-skills.v1.md"
+            if [ ! -f "$prompt" ]; then
+              echo "::error file=apps/$app/webpack.config.js::$prompt missing: the $app build did not copy libs/ai/src/infrastructure/prompts as assets"
+              exit 1
+            fi
+            echo "$app prompt assets present: $prompt"
+          done
