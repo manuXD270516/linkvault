@@ -25,6 +25,9 @@ cp .env.example .env
 docker compose up -d --wait        # mongo (replica set rs0), redis y minio, esperando a que estén sanos
 ```
 
+Si ya tenías un `.env` de antes del enriquecimiento de links, cópiale de `.env.example` las variables `ENRICH_*` y `S3_*`:
+son obligatorias y **el worker no arranca sin ellas** (ver [Variables del enriquecimiento](#variables-del-enriquecimiento)).
+
 Arranca cada app en su propia terminal:
 
 ```bash
@@ -265,8 +268,9 @@ curl -s -H "$T" "http://localhost:3000/api/groups/$GROUP_ID/members"            
 Un link es una oferta de empleo guardada en LinkVault: compartida en un grupo o solo para uno mismo. La vacante
 (`JobLink`) es única en todo el sistema y nunca se borra; lo que se crea y se quita es la **relación** con un grupo o con
 una lista privada ([ADR-008](docs/adr/ADR-008.md), [ADR-021](docs/adr/ADR-021.md)). El preview (título, empresa,
-modalidad) llega con el change `link-enrichment`: hoy todo link nace `pending` y el SPA lo muestra como "Sin vista previa
-todavía".
+modalidad) lo escribe el worker leyendo la página de la oferta; todo link nace `pending` y pasa a `enriched`, `partial`,
+`failed` o `manual`. Cómo se lee, qué se le dice a la persona cuando no se puede y qué bolsas no lo permiten está en
+[Enriquecimiento de ofertas](#enriquecimiento-de-ofertas).
 
 ### Endpoints
 
@@ -277,6 +281,8 @@ Todas las rutas exigen access token (`Authorization: Bearer`); sin él responden
 | `POST /api/links`                      | cualquier usuario | `201` con el link, `created`, `shared`, `sharedBy?` y `alreadyInGroups`.           |
 | `POST /api/links/import`               | cualquier usuario | `201` con el resumen de la importación y los links guardados.                      |
 | `GET /api/links/mine`                  | cualquier usuario | `200` con su lista privada: `items`, `total` y `nextCursor`.                       |
+| `PATCH /api/links/:linkId/preview`     | quien ve el link  | `200` con el link; corrige campos a mano o los devuelve a lo extraído.             |
+| `POST /api/links/:linkId/enrich`       | quien ve el link  | `202`: la relectura queda pedida; la hace el worker.                               |
 | `DELETE /api/links/mine/:linkId`       | quien lo guardó   | `204`; quita solo la entrada privada.                                              |
 | `GET /api/groups/:id/links`            | miembro           | `200` con los links del grupo, cada uno con `sharedBy` (`userId` y `displayName`). |
 | `DELETE /api/groups/:id/links/:linkId` | autor u owner     | `204`; otro miembro recibe `403 forbidden`.                                        |
@@ -295,7 +301,9 @@ link que no está en esa lista. Quitar un link de un grupo lo pueden hacer quien
 le responde `403 forbidden` y no `404`, porque ya ve el link en la lista y no hay nada que ocultarle.
 
 Códigos de error propios: `invalid_url` (400, campo `url`), `text_too_long` (400, campo `text`), `link_not_found` (404) y
-`forbidden` (403). Un cursor manipulado responde `400 validation_error` nombrando `cursor`.
+`forbidden` (403). Un cursor manipulado responde `400 validation_error` nombrando `cursor`. Los de la edición y la
+relectura —`preview_field_unknown` (400), `enrichment_not_retryable` (409) y `too_many_attempts` (429)— se explican en
+[Enriquecimiento de ofertas](#enriquecimiento-de-ofertas).
 
 ### Paginación de los listados
 
@@ -340,8 +348,10 @@ extraídas, así que se puede pegar una conversación con nombres y teléfonos.
   válida) y `skipped` (lo que quedó fuera del tope), con los links guardados.
 - Cada link va en su propia transacción: un fallo aislado no tira el resto de la importación.
 
-Todavía no hay límite de llamadas a `POST /api/links/import`: llega con `link-enrichment`, que es cuando cada importación
-pasa a encolar trabajo real (anotado en `openspec-changes.yaml`).
+`POST /api/links/import` está acotado a **10 llamadas por usuario cada 15 minutos** (cada una guarda hasta 50 links);
+pasado el tope responde `429 too_many_attempts` con `Retry-After`. El contador **falla abierto**: si el almacén no
+responde, la importación pasa, porque lo que se permitiría de más es escribir en nuestra propia base de datos. Guardar
+links de uno en uno con `POST /api/links` no gasta ese contador.
 
 ### Outbox y cola
 
@@ -356,9 +366,10 @@ Un relay dentro de `api` publica esos eventos en la cola `enrich-link` de BullMQ
 - Un fallo de publicación aplaza el evento a `now + min(2^intentos s, 5 min)`. Solo a las **24 h** desde que se escribió
   se da por perdido, con un aviso que nombra el id y el tipo del evento y nada más: un corte de Redis de minutos u horas
   no quema los reintentos.
-- **Nadie consume `enrich-link` todavía**, a propósito: los jobs esperan en la cola hasta que llegue el consumidor de
-  `link-enrichment` y el link sigue `pending`. La retención olvida un job completado al día (o a los 1000) y uno fallido a
-  la semana, así que ese consumidor tendrá que ser idempotente por sí mismo y no solo por el `jobId`.
+- **Quien consume `enrich-link` es `apps/worker`** (ver [Enriquecimiento de ofertas](#enriquecimiento-de-ofertas)). Con
+  el worker parado los jobs esperan en la cola y el link sigue `pending`. La retención olvida un job completado al día (o
+  a los 1000) y uno fallido a la semana; pasada esa retención el `jobId` ya no protege de nada, así que el consumidor es
+  idempotente por sí mismo, por `previewVersion` ([ADR-022](docs/adr/ADR-022.md) §1).
 - El relay supone **una sola instancia de `api`**: con varias, todas competirían por los mismos eventos pendientes (riesgo
   aceptado en ADR-021).
 
@@ -377,7 +388,9 @@ Los tests corren con el relay apagado, así que la suite de integración de `api
 | `/mis-links`  | "Solo para mí": los links guardados sin grupo, con las mismas acciones.                         |
 
 Cada fila abre `displayUrl` en una pestaña nueva con `rel="noopener noreferrer"`. Quitar un link pide confirmación y solo
-se ofrece a quien lo compartió y al owner del grupo.
+se ofrece a quien lo compartió y al owner del grupo. La tarjeta muestra además el preview con quién escribió cada dato,
+el diálogo para corregirlo a mano y, solo en los motivos reintentables, la acción de volver a pedir la lectura; los
+previews que van llegando actualizan la tarjeta en vivo por el canal SSE.
 
 ### Probar los links en local
 
@@ -395,13 +408,207 @@ curl -s -H "$T" -H "$J" http://localhost:3000/api/links/import \
   -d "{\"text\":\"mira esta https://example.com/a y esta https://example.com/b\",\"groupId\":\"$GROUP_ID\"}"
 curl -s -H "$T" "http://localhost:3000/api/groups/$GROUP_ID/links?limit=20"                         # página del grupo
 curl -s -H "$T" http://localhost:3000/api/links/mine                                                # lista privada
+
+LINK_ID=...   # un link de los listados
+curl -s -H "$T" -H "$J" -X PATCH "http://localhost:3000/api/links/$LINK_ID/preview" \
+  -d '{"fields":{"title":"Backend Engineer"}}'                                                      # corregir a mano
+curl -s -H "$T" -H "$J" -X PATCH "http://localhost:3000/api/links/$LINK_ID/preview" \
+  -d '{"revert":["title"]}'                                                                         # volver a lo extraído
+curl -s -i -H "$T" -X POST "http://localhost:3000/api/links/$LINK_ID/enrich"                        # 202, 409 o 429
+curl -sN -H "$T" http://localhost:3000/api/events                                                   # canal SSE (Ctrl+C)
 ```
 
-Con el relay encendido y Redis arriba, el job queda esperando a que exista un consumidor:
+Con el relay encendido y Redis arriba, el job se publica en `enrich-link`; con el worker parado se queda ahí esperando:
 
 ```bash
 docker compose exec redis redis-cli keys 'bull:enrich-link:*'
 ```
+
+## Enriquecimiento de ofertas
+
+Guardar un link deja el preview en `pending` y encola su lectura. Quien la hace es **`apps/worker`**, consumiendo la cola
+`enrich-link`: descarga la página de la oferta, saca de ella lo que puede (título, empresa, ubicación, modalidad,
+seniority, salario, skills, idiomas, resumen y fechas), lo guarda en el `JobLink` y avisa a las pantallas abiertas.
+Decisiones y alternativas descartadas: [ADR-003](docs/adr/ADR-003.md) (cadena lícita) y [ADR-022](docs/adr/ADR-022.md)
+(idempotencia, procedencia, motivos, cortesía, SSE, backfill y snapshots).
+
+### Qué bolsas no permiten la lectura automática
+
+Esto no es un fallo del producto y el SPA no lo presenta como tal: **hay bolsas de empleo que nos prohíben o nos impiden
+leer sus ofertas**, y un link suyo va a quedarse casi siempre sin preview automático. Medición del `robots.txt` de las
+cinco plataformas del manifiesto con nuestro `User-Agent`, del 2026-09-17 (ADR-022, Contexto):
+
+| Plataforma       | `robots.txt`                  | Una oferta                                        | Datos estructurados           |
+| ---------------- | ----------------------------- | ------------------------------------------------- | ----------------------------- |
+| **LinkedIn**     | `Disallow: /` para `*`        | **prohibida**: ni se pide                         | —                             |
+| **Indeed**       | `/viewjob` prohibido para `*` | **prohibida**: ni se pide                         | —                             |
+| **Computrabajo** | responde `403` al pedirlo     | se asume permitido, pero el sitio **nos bloquea** | —                             |
+| Trabajopolis     | permitido                     | `200`, 287 KB                                     | JSON-LD `JobPosting` completo |
+| Get on Board     | permitido (sin reglas)        | `200`, 198 KB                                     | Open Graph rico; sin JSON-LD  |
+
+Consecuencias, dichas sin rodeos:
+
+- Un link de **LinkedIn** o **Indeed** termina en `robots_disallowed`. La tarjeta dice "Esta bolsa no permite la lectura
+  automática de sus ofertas" y **no ofrece reintentar**: volver a pedir lo que un sitio ya negó por escrito es
+  exactamente lo que ADR-003 evita.
+- Un link de **Computrabajo** termina en `blocked` ("Esta bolsa no nos deja leer esta oferta"), tampoco reintentable.
+- La salida en los tres casos es la **edición manual** del preview (`PATCH /api/links/:linkId/preview`): el link sigue
+  siendo útil, abre igual y se puede completar a mano.
+- **No hay adaptadores de selectores por plataforma** y no los habrá mientras la medición diga esto: serían código que no
+  podríamos ni probar contra el sitio real (ADR-022 §3).
+- La medición lleva fecha a propósito. Un `robots.txt` cambia: si LinkedIn o Indeed abrieran sus ofertas, la decisión se
+  revisa con una medición nueva, no con una intuición.
+
+### La cadena de extracción
+
+1. **Se descarga `displayUrl`**, la primera URL que escribió una persona, **nunca la normalizada**: la normalizada existe
+   solo para la identidad del link (ADR-008) y puede haber perdido parámetros que el sitio necesita para servir la
+   oferta.
+2. **Permiso del sitio.** Se lee su `robots.txt` con nuestro `User-Agent` (`ENRICH_USER_AGENT`, identificable y con URL
+   de contacto) y se cachea por host `ENRICH_ROBOTS_TTL_SECONDS` —también el "prohibido"—. Si no se puede leer, se asume
+   permitido; si no es texto, no se interpreta.
+3. **Turno del host.** Un host a la vez, con una clave en Redis. Mientras se descarga, el host queda tomado; al terminar,
+   la clave se reescribe con la **espera efectiva**, que es `max(ENRICH_DOMAIN_DELAY_MS, Crawl-delay del sitio)`: el
+   sitio puede pedir más espera, nunca menos. Un job que encuentra el host ocupado se aplaza y no ocupa concurrencia
+   mientras espera; `ENRICH_MAX_DEFERRALS` solo evita que un host que nunca se libera rebote para siempre.
+4. **Descarga.** Solo `text/html`, con `ENRICH_FETCH_TIMEOUT_MS` de plazo y corte del flujo al pasar de
+   `ENRICH_MAX_BYTES`.
+5. **Parseo.** El HTML se convierte en título, texto limpio, metaetiquetas y bloques JSON-LD. El texto sale ya **sin
+   `mailto:`, `tel:`, emails ni teléfonos**: son datos del reclutador que no hacen falta para leer la vacante.
+6. **Extractores, en este orden fijo:** `json-ld` (`JobPosting` de schema.org) → `metadata` (Open Graph, `<title>`,
+   `description`) → `ai:extract-job` (por `runTask`, ver [Evaluación de IA](#evaluación-de-ia)) → `headless`, que hoy es
+   un hueco y no se ejecuta (`FEATURE_HEADLESS_EXTRACTION=false`). **Parada temprana**: en cuanto hay título y empresa no
+   se ejecuta ninguna etapa más, así que una página con JSON-LD completo no llama a la IA. El plazo total del link
+   (`ENRICH_DEADLINE_MS`) se reparte entre las etapas; la que se queda sin plazo se salta, y una etapa que se rompe no
+   tira lo que sacaron las anteriores.
+7. **Merge y escritura.** Dentro de una misma pasada gana la etapa anterior del orden de arriba; frente a lo ya guardado
+   gana lo nuevo automático, **salvo un campo escrito a mano, que no se toca nunca**. Un campo que esta pasada no trajo
+   no borra el que ya había. La escritura va condicionada a `previewVersion`: quien pierde la carrera no escribe, no sube
+   snapshot y no avisa.
+
+La IA se llama con `outputLanguage` fijo `es` (el preview es compartido: no puede depender del idioma de una persona) y se
+atribuye a **quien guardó el link**, también cuando la relectura la pide otro: el gasto pertenece al dueño del dato
+(ADR-022 §6).
+
+### Estados y motivos
+
+El texto de la tarjeta **no sale del nombre del estado**, sino de los campos que hay, del motivo del último fallo y de
+cuándo se pidió la lectura:
+
+| Estado     | Qué significa                                                                                             |
+| ---------- | --------------------------------------------------------------------------------------------------------- |
+| `pending`  | La lectura está pedida. Menos de 10 min: "Leyendo la oferta…"; más: "Sin vista previa todavía".           |
+| `enriched` | Se leyó y salieron los obligatorios: título y empresa.                                                    |
+| `partial`  | Se leyó y salió algo, pero no lo obligatorio: "Faltan datos de esta oferta".                              |
+| `failed`   | No se pudo leer, o se leyó y no salió nada. El motivo va en `lastEnrichmentError`.                        |
+| `manual`   | Alguien escribió algún campo a mano. Manda sobre el estado: un fallo posterior no lo devuelve a `failed`. |
+
+Motivos de `lastEnrichmentError.reason`. Los tres primeros **no son errores nuestros**, y por eso ni se reintentan ni se
+presentan como tales:
+
+| Motivo              | Qué pasó                                                    | Qué ve la persona                                      | ¿Reintentar? |
+| ------------------- | ----------------------------------------------------------- | ------------------------------------------------------ | ------------ |
+| `robots_disallowed` | El `robots.txt` del sitio prohíbe esa ruta                  | "Esta bolsa no permite la lectura automática…"         | **No**       |
+| `blocked`           | El sitio respondió `401`/`403` a nuestra petición           | "Esta bolsa no nos deja leer esta oferta"              | **No**       |
+| `not_a_job`         | Se leyó y la IA dice que eso no es una vacante              | "Esto no parece una oferta" (la acción es quitarlo)    | **No**       |
+| `rate_limited`      | El sitio respondió `429`: literalmente "vuelve más tarde"   | "No pudimos leer esta oferta"                          | Sí           |
+| `host_busy`         | Nuestro turno para ese host no llegó a tiempo               | "No pudimos leer esta oferta"                          | Sí           |
+| `timeout`           | La descarga agotó su plazo                                  | "No pudimos leer esta oferta"                          | Sí           |
+| `http_error`        | Otro error de red o de HTTP                                 | "No pudimos leer esta oferta"                          | Sí           |
+| `not_html`          | La respuesta no era HTML (un PDF, una imagen)               | "No pudimos leer esta oferta"                          | Sí           |
+| `too_large`         | La página pasó de `ENRICH_MAX_BYTES`                        | "No pudimos leer esta oferta"                          | Sí           |
+| `no_data`           | Se leyó y se parseó, pero no salió ningún campo             | "No pudimos leer esta oferta" (completar o reintentar) | Sí           |
+| `retries_exhausted` | El job agotó sus intentos; el link no se queda en `pending` | "No pudimos leer esta oferta"                          | Sí           |
+
+Dos distinciones que parecen sutiles y no lo son: `no_data` (la página se leyó y no dijo nada) lleva a "complétalo o
+reinténtalo" mientras que `not_a_job` lleva a "quítalo"; y `host_busy` no es `blocked`, porque el sitio no negó nada: el
+que no llegó a tiempo fue nuestro turno.
+
+### Corregir a mano, volver a pedir la lectura y avisos en vivo
+
+- `PATCH /api/links/:linkId/preview` lo puede usar **cualquiera que pueda ver el link**, no solo quien lo guardó: un
+  `JobLink` es de todos los grupos donde está compartido, y un dato equivocado no puede quedarse eterno para los demás.
+  Lo que hace segura esa apertura es que cada campo guarda quién lo escribió y cuándo, y **guarda el valor automático que
+  desplazó**, así que una edición ajena se ve en la tarjeta y se deshace con "Volver a lo extraído" (`revert`). Un campo
+  que no existe responde `400 preview_field_unknown` nombrándolo.
+- `POST /api/links/:linkId/enrich` responde `202` y deja el link en `pending` otra vez. Un motivo no reintentable
+  responde `409 enrichment_not_retryable` y **no gasta cuota**. El límite es de **3 relecturas por link cada 15
+  minutos** —por link y no por persona: lo que protege es al sitio del que se descarga— y responde
+  `429 too_many_attempts`. Ese contador **falla cerrado**: si el almacén no responde, la relectura se niega, porque lo
+  que se permitiría de más es volver a descargar la página de un tercero.
+- Ni ese endpoint ni el backfill montan una cola: los dos escriben `LinkCreated.v1` en el outbox dentro de la transacción
+  que sube `previewVersion`, y el relay lo publica (ADR-022 §8). Por eso funcionan con `OUTBOX_RELAY_ENABLED=false`: los
+  eventos esperan ahí y se publican cuando vuelva a encenderse.
+- `GET /api/events` es el canal SSE por el que la tarjeta se entera de que su preview ya está, sin recargar la lista. Lo
+  protege el guard global (`Authorization: Bearer`), así que **no hay tokens en la URL**; el SPA lo lee con `HttpClient`
+  (`observe: 'events'`, `responseType: 'text'`, `reportProgress: true`) y no con `EventSource`, que no pasa por el
+  interceptor que pone y refresca el access token. Cada aviso lleva el link ya actualizado dentro —estado, versión,
+  preview, origen de cada campo y motivo del último fallo— y se reparte solo a quien puede ver ese link.
+
+### Variables del enriquecimiento
+
+Las lee **el worker**, y **todas son obligatorias**: sin ellas no arranca y dice cuáles faltan. Un `.env` creado antes de
+este change no las tiene, así que **cópialas de [`.env.example`](.env.example) antes de levantar el worker**.
+
+| Variable                    | `.env.example`          | Qué hace                                                                                          |
+| --------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------- |
+| `ENRICH_FETCH_TIMEOUT_MS`   | `10000`                 | Plazo de una descarga (1 000–60 000). Es además lo que dura la exclusión del host.                |
+| `ENRICH_MAX_BYTES`          | `2097152`               | Tamaño máximo del HTML (64 KiB–32 MiB); al pasarlo se corta el flujo.                             |
+| `ENRICH_DOMAIN_DELAY_MS`    | `2000`                  | Espera mínima entre dos peticiones al mismo host (250–300 000); el `Crawl-delay` puede pedir más. |
+| `ENRICH_DEADLINE_MS`        | `45000`                 | Plazo total por link (5 000–300 000), repartido entre las etapas de la cadena.                    |
+| `ENRICH_ROBOTS_TTL_SECONDS` | `43200`                 | Vida de la caché de `robots.txt` por host, en segundos (60–604 800).                              |
+| `ENRICH_USER_AGENT`         | `LinkVaultBot/0.1 (+…)` | Agente identificable con URL de contacto; contra él se resuelve el grupo del `robots.txt`.        |
+| `ENRICH_CONCURRENCY`        | `4`                     | Jobs simultáneos en el proceso (1–64). Es global: un host a la vez lo garantiza el mutex.         |
+| `ENRICH_MAX_DEFERRALS`      | `600`                   | Aplazamientos por host ocupado antes de darlo por fallido transitorio (1–10 000).                 |
+| `S3_ENDPOINT`               | `http://localhost:9000` | Almacén de objetos: MinIO en local, cualquier S3 en producción.                                   |
+| `S3_REGION`                 | `us-east-1`             | MinIO la ignora, pero el protocolo la exige para firmar la petición.                              |
+| `S3_ACCESS_KEY`             | `linkvault`             | Credencial del almacén; docker compose la usa además como raíz de MinIO.                          |
+| `S3_SECRET_KEY`             | `linkvault-dev-secret`  | Idem. Valor de desarrollo, nunca uno real.                                                        |
+| `S3_SNAPSHOTS_BUCKET`       | `snapshots`             | Bucket de los snapshots; el healthcheck de MinIO lo crea con su regla de 30 días.                 |
+
+`ENRICH_DOMAIN_DELAY_MS` y `ENRICH_CONCURRENCY` son la cara visible de nuestra cortesía con sitios ajenos: bajarlos en un
+entorno real es una decisión con consecuencias, no un ajuste de rendimiento.
+
+### Reencolar lo que quedó sin leer (backfill)
+
+Comando **manual**: no se ejecuta al arrancar la aplicación, porque un despliegue no es una razón para volver a descargar
+páginas ajenas. Arranca el contexto de `api` sin servidor HTTP y sin cola, escribe en el outbox y se apaga.
+
+```bash
+pnpm nx run api:backfill-enrichment                             # 500 links `pending` (valores por defecto)
+pnpm nx run api:backfill-enrichment --limit=200                 # una tanda más corta
+pnpm nx run api:backfill-enrichment --status=failed --limit=50  # rescate de los fallos transitorios
+```
+
+- `--status` admite `pending` (por defecto) y `failed`; `--limit` va de 1 a 5000 (500 por defecto). Nx reenvía los dos al
+  comando tal cual, y `pnpm nx run api:backfill-enrichment -- --limit=200` hace lo mismo. Un argumento que no se entiende
+  **no se ignora**: el comando falla diciendo qué corregir, porque reencolar de más significa volver a descargar páginas
+  de terceros.
+- Con `--status=failed` **rescata** `timeout`, `http_error`, `rate_limited`, `host_busy`, `not_html`, `too_large`,
+  `no_data` y `retries_exhausted`, y **deja fuera** `robots_disallowed`, `blocked` y `not_a_job`: volver a pedir lo que un
+  sitio ya negó es el daño que ADR-003 existe para evitar, y en `not_a_job` no hay nada nuevo que leer.
+- **Sube `previewVersion` siempre**, también con `--status=pending`: con la misma versión el `jobId` determinista no
+  cambia y `Queue.add` sobre un job retenido es un no-op silencioso, que es justo el atasco que el comando existe para
+  deshacer. Tampoco duplica trabajo: si el job viejo sigue vivo, el consumidor lo descarta por versión.
+- Avanza en tandas y no vacía la base de una vez; al terminar imprime cuántos links pidió de cuántos encontró.
+
+### Snapshots y el golden real de `extract-job`
+
+Cada lectura que gana la escritura guarda una copia comprimida de la página en
+`snapshots/<linkId>/<previewVersion>.html.gz`, y **su clave se guarda en el link** (`snapshotKey`): nunca se deduce de
+`previewVersion`, que también sube con las ediciones manuales y con los reintentos, que no producen snapshot. Si el
+almacén está caído, el enriquecimiento no falla; lo que se pierde es la copia.
+
+El bucket tiene una **regla de expiración a 30 días**, que crea el healthcheck de MinIO al levantar el compose. Su única
+razón de existir es poder construir después el **golden real de `extract-job`** sin volver a pedirle nada al sitio, y eso
+no necesita historia infinita. La consecuencia es operativa y está asumida:
+
+> **El golden real de `extract-job` hay que grabarlo dentro de esos 30 días.** Pasados, el snapshot ya no está y habrá
+> que volver a descargar las páginas, con el permiso del sitio que corresponda.
+
+El golden que hay hoy en `libs/ai/src/evals/extract-job/golden.jsonl` es **sintético** (siete casos, uno de ellos una
+página de listado que espera `isJobPosting: false`); las vacantes reales llegan con `/lv:golden 20`
+(ver [docs/RUNBOOK.md](docs/RUNBOOK.md)).
 
 ## Calidad
 
@@ -426,6 +633,8 @@ pnpm nx run ai:eval --task=classify-skills --provider=mock --update-baseline   #
 pnpm nx run ai:eval --task=classify-skills --provider=ollama --ollama-url=http://localhost:11434
 pnpm nx run ai:eval-ci                                                          # todas las tareas en mock (CI)
 pnpm nx run ai:record-fixtures --task=classify-skills --upstream=ollama --ollama-url=http://localhost:11434 --timeout-ms=300000
+pnpm nx run ai:record-fixtures --from-pending --upstream=ollama --ollama-url=http://localhost:11434   # lo que anotaron los tests
+pnpm nx run ai:record-fixtures --from-pending --task=extract-job --pending-file=tmp/ai-pending-fixtures.jsonl --upstream=ollama
 ```
 
 - `--provider=mock` usa replay y falla (código 1) si una métrica bloqueante, el golden o la versión del prompt difieren de
@@ -435,23 +644,32 @@ pnpm nx run ai:record-fixtures --task=classify-skills --upstream=ollama --ollama
   los casos degradados cuentan en el reporte, que se escribe en `reports/eval/<task>/<proveedor>.md` (ignorado por git).
 - `ai:record-fixtures` graba los fixtures que falten para los casos del golden (con `--overwrite`, también los existentes); un
   upstream externo exige `--allow-external`. `AI_MOCK_MODE` solo admite `replay` y `synth`.
+- **Fixtures pendientes.** Cuando un test en replay pide una ejecución cuyo fixture no existe, `runTask` la anota en un
+  registro JSONL (`tmp/ai-pending-fixtures.jsonl` por defecto, o `AI_PENDING_FIXTURES_FILE`) con su tarea, su versión de
+  prompt, su idioma de salida y la clave que falta. Solo se escribe **durante los tests**, nunca en producción, y un test
+  que espera la ausencia del fixture lo apaga con `AI_PENDING_FIXTURES=off`.
+  `ai:record-fixtures --from-pending` graba esas entradas en vez de los casos del golden: acepta `--task` para filtrar y
+  `--pending-file` para leer otro registro (ese flag **solo** vale con `--from-pending`). El registro es append-only y se
+  deduplica al consumirlo, así que varios archivos de test anotando a la vez no se pisan. Lo que no se puede grabar —una
+  entrada de una tarea `personal`, que nunca lleva su texto, o una que quedó obsoleta— se lista con su motivo y no hace
+  fallar el comando.
 - Ollama: con la app de escritorio basta `http://localhost:11434`; si ese puerto está ocupado, levanta el contenedor del perfil
   `ai-local` con `OLLAMA_PORT=11435` y usa `--ollama-url=http://localhost:11435`.
 
 ## Estructura
 
-| Ruta                    | Qué es                                                                                                       |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `apps/api`              | API HTTP (NestJS + Fastify). Rutas bajo `/api`; `/health` y `/health/live` fuera del prefijo.                |
-| `apps/worker`           | Procesos en segundo plano (NestJS + BullMQ); solo expone salud en `WORKER_HEALTH_PORT`.                      |
-| `apps/web`              | SPA Angular 22 standalone y zoneless, con Material, Tailwind e i18n ES/EN.                                   |
-| `libs/shared`           | Contratos compartidos entre plataformas: schemas zod, enums y eventos de integración.                        |
-| `libs/ai`               | Módulo de IA (ADR-014): ports, tareas y errores; los SDKs de proveedores solo en `infrastructure/providers`. |
-| `tools/test-env`        | Preset de Vitest con las variables de IA en mock (todas las plataformas).                                    |
-| `tools/testing`         | Preset de Vitest para Node con MongoDB efímero, doble de Redis y suite de contrato de salud.                 |
-| `tools/workspace-rules` | Test tabular que comprueba las reglas de lint del workspace.                                                 |
-| `openspec/`             | Specs y changes de OpenSpec.                                                                                 |
-| `docs/`                 | Diseño, ADRs y runbook.                                                                                      |
+| Ruta                    | Qué es                                                                                                         |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `apps/api`              | API HTTP (NestJS + Fastify). Rutas bajo `/api`; `/health` y `/health/live` fuera del prefijo.                  |
+| `apps/worker`           | Procesos en segundo plano (NestJS + BullMQ): consume `enrich-link`; solo expone salud en `WORKER_HEALTH_PORT`. |
+| `apps/web`              | SPA Angular 22 standalone y zoneless, con Material, Tailwind e i18n ES/EN.                                     |
+| `libs/shared`           | Contratos compartidos entre plataformas: schemas zod, enums y eventos de integración.                          |
+| `libs/ai`               | Módulo de IA (ADR-014): ports, tareas y errores; los SDKs de proveedores solo en `infrastructure/providers`.   |
+| `tools/test-env`        | Preset de Vitest con las variables de IA en mock (todas las plataformas).                                      |
+| `tools/testing`         | Preset de Vitest para Node con MongoDB efímero, doble de Redis y suite de contrato de salud.                   |
+| `tools/workspace-rules` | Test tabular que comprueba las reglas de lint del workspace.                                                   |
+| `openspec/`             | Specs y changes de OpenSpec.                                                                                   |
+| `docs/`                 | Diseño, ADRs y runbook.                                                                                        |
 
 Los límites entre proyectos (tags `scope:*`, `type:*`, `platform:*`), la capa de dominio, los SDKs de IA, `any` y
 `console` se comprueban con lint (`eslint.config.mjs`).

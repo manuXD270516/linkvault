@@ -214,11 +214,11 @@ Orden y notas específicas:
 | # | Change | Nota para el prompt de alcance |
 |---|---|---|
 | 2 | `ai-gateway-core` | Pega literal docs/design-v0.2.md §4.1–4.6, 4.9, 4.10 y la spec de §4.13. Pide primero `MockDeterministicProvider` en modo `synth` y `replay`, luego Ollama, luego OpenRouter. Sin proveedores de pago aún. |
-| 3 | `ai-eval-harness` | §4.11. Corredor, métricas y línea base con 5 casos sintéticos (`placeholder`) de `classify-skills`; el golden real de `extract-job` (`/lv:golden 20`) llega con `link-enrichment` (ADR-019). |
+| 3 | `ai-eval-harness` | §4.11. Corredor, métricas y línea base con 5 casos sintéticos (`placeholder`) de `classify-skills`; el golden de `extract-job` que dejó `link-enrichment` también es sintético, y el real (`/lv:golden 20`) sigue pendiente (ADR-019). |
 | 4 | `auth-users` | ADR-012. Incluir `aiConsent`, `outputLanguage`. |
 | 5 | `groups` | Invitación por código; roles owner/member. `/` pasa a ser la lista de grupos con estado vacío (sustituye el saludo de `auth-users`). |
 | 6 | `job-links` | ADR-008, 009. Canonicalizadores para LinkedIn, Computrabajo, Indeed, Trabajopolis, Get on Board. Import desde texto (B1). "Ya está en Grupo X" (B6). |
-| 7 | `link-enrichment` | ADR-003, 010. Cola por dominio. `extract-job` vía `runTask`. SSE. |
+| 7 | `link-enrichment` | ADR-003, 010 y **ADR-022** (cierra las decisiones del change). Un host a la vez con mutex en Redis, `extract-job` vía `runTask`, SSE, backfill por el outbox. Cómo operarlo: Paso 6 bis. |
 | 8 | `applications-tracking` | ADR-004, 015. Kanban + timeline. |
 | 9 | `group-comments` | Planos, sin hilos. |
 | 10 | `public-preview-share` | ADR-013. |
@@ -226,7 +226,7 @@ Orden y notas específicas:
 | 12 | `cv-match-suggestions` | §4.8 y 4.12. Evaluator-optimizer acotado, `evidence` obligatoria, `ai_feedback`. Controles de IA del perfil diferidos desde `auth-users`: consentimiento con texto honesto, `consentedAt` y versión del texto, "Idioma de los análisis de IA" y redacción del nombre. |
 | 13 | `study-roadmap` | Catálogo curado `resources.seed.json` primero. |
 | 14 | `ai-byok` | libsodium vault. |
-| 15 | `deploy-prod` | compose prod + Traefik + docs de alternativas. Heredado de `auth-users` (ADR-020): `trustProxy`, reseteo manual de contraseña por operador documentado, aviso de privacidad y borrado de cuenta. |
+| 15 | `deploy-prod` | compose prod + Traefik + docs de alternativas. Heredado de `auth-users` (ADR-020): `trustProxy`, reseteo manual de contraseña por operador documentado, aviso de privacidad y borrado de cuenta. Heredado de `link-enrichment` (ADR-022): elegir proveedor de objetos (el cliente habla S3) y crear allí el bucket de snapshots con su expiración a 30 días, fijar las `ENRICH_*` por entorno y decidir dónde queda encendido el relay del outbox, que sigue siendo de una sola instancia. |
 | 16 | `auth-email-recovery` | Fuera de §6: verificación de email y recuperación de contraseña, diferidas desde `auth-users` (ADR-020). Alcance y orden por decidir al crearlo. |
 
 **Paralelizar front y back (changes 4–8):** en `/opsx:apply` pide:
@@ -245,7 +245,30 @@ Antes de que arranquen, fija el contrato en libs/shared (schemas zod + endpoints
 - **No edites `CLAUDE.md` a mano en caliente:** pídele a Claude Code `# <regla nueva>` (la tecla `#` agrega a CLAUDE.md) para que quede consistente.
 - **Cuando el hook bloquee una edición**, es correcto: crea el change o marca la tarea dentro del change activo.
 - **Fixtures del mock:** la grabación es un comando (ADR-019). Para los casos del golden de una tarea evaluable, `pnpm nx run ai:record-fixtures --task=<t> --upstream=ollama --ollama-url=http://localhost:11434 --timeout-ms=300000` graba los que falten (OpenRouter solo con `--upstream=openrouter --allow-external`); revisa el JSON y comprueba replay con `pnpm nx run ai:eval --task=<t> --provider=mock`. Si cambian las métricas, `--update-baseline` en el mismo commit que los fixtures.
-  > Nota: el registro automático de fixtures pendientes desde los tests llega con `link-enrichment`. Hasta entonces, cuando un test falle con `FixtureMissing` de una clave que no sale de un golden, el fixture se escribe a mano con `"source": "handwritten"`. `AI_MOCK_MODE=record` sigue rechazándose al arrancar e indica usar `nx run ai:record-fixtures`.
+  > **Fixtures pendientes (desde `link-enrichment`): ya no se escriben a mano.** Cuando un test en replay pide una ejecución cuyo fixture no existe, `runTask` la anota en `tmp/ai-pending-fixtures.jsonl` (o donde diga `AI_PENDING_FIXTURES_FILE`) con la tarea, la versión del prompt, el idioma de salida y la clave que falta. Para grabarlas: `pnpm nx run ai:record-fixtures --from-pending --upstream=ollama --ollama-url=http://localhost:11434`, con `--task=<t>` para filtrar por tarea y `--pending-file=<archivo>` para leer otro registro (ese flag solo vale con `--from-pending`). El registro solo se escribe durante los tests, nunca en producción, y un test que espera la ausencia del fixture lo apaga con `AI_PENDING_FIXTURES=off`. Lo que no se puede grabar (tareas `personal`, que nunca llevan su entrada, o entradas obsoletas) se lista con su motivo y no hace fallar el comando. `AI_MOCK_MODE=record` sigue rechazándose al arrancar e indica usar `nx run ai:record-fixtures`.
+
+## Paso 6 bis — Operar el enriquecimiento de links
+
+Desde `link-enrichment`, `apps/worker` consume la cola `enrich-link` y escribe el preview de cada oferta. El detalle
+está en el [README](../README.md#enriquecimiento-de-ofertas) y las decisiones en [ADR-022](adr/ADR-022.md); aquí solo lo
+que hay que tener presente al operar y al probar a mano.
+
+- **Variables nuevas, obligatorias.** El worker lee `ENRICH_FETCH_TIMEOUT_MS`, `ENRICH_MAX_BYTES`,
+  `ENRICH_DOMAIN_DELAY_MS`, `ENRICH_DEADLINE_MS`, `ENRICH_ROBOTS_TTL_SECONDS`, `ENRICH_USER_AGENT`,
+  `ENRICH_CONCURRENCY`, `ENRICH_MAX_DEFERRALS` y las `S3_*` del snapshot (`S3_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY`,
+  `S3_SECRET_KEY`, `S3_SNAPSHOTS_BUCKET`). **Un `.env` anterior a este change no las tiene y el worker no arranca**:
+  cópialas de `.env.example` antes de levantarlo. `docker compose up -d --wait` crea el bucket de snapshots con su
+  regla de expiración a 30 días.
+- **Hay bolsas que no se pueden leer, y el producto lo dice.** Con la medición del 2026-09-17 (ADR-022), **LinkedIn** e
+  **Indeed** prohíben la lectura en su `robots.txt` (`robots_disallowed`) y **Computrabajo** nos bloquea con `403`
+  (`blocked`). No es un fallo del producto, no se reintenta, y la salida es completar el preview a mano. Al probar el
+  enriquecimiento de punta a punta usa **Trabajopolis** (JSON-LD) o **Get on Board** (Open Graph), que sí se leen.
+- **Reencolar lo que quedó sin leer:** `pnpm nx run api:backfill-enrichment --status=pending --limit=500` (y
+  `--status=failed` para rescatar solo los motivos transitorios). Es manual a propósito: no corre al desplegar, porque
+  un despliegue no es razón para volver a descargar páginas ajenas. Funciona con `OUTBOX_RELAY_ENABLED=false`: escribe
+  en el outbox y el relay publica cuando vuelva.
+- **El golden real de `extract-job` tiene fecha límite.** El snapshot de cada página vive **30 días**; pasados, hay que
+  volver a descargarla. Si vas a correr `/lv:golden 20` con vacantes reales, hazlo dentro de esa ventana.
 
 ## Paso 7 — Definition of Done (pégalo en cada PR)
 
@@ -264,6 +287,11 @@ Antes de que arranquen, fija el contrato en libs/shared (schemas zod + endpoints
 | Hook bloquea todo | Verifica que el script tenga `chmod +x`; prueba `echo '{"tool_input":{"file_path":"apps/x.ts"}}' \| bash .claude/hooks/require-openspec-change.sh` |
 | Mongo: "Transaction numbers are only allowed on a replica set member" | El healthcheck de `mongo` no ha inicializado `rs0`: revisa su estado con `docker compose ps` o `docker inspect --format '{{json .State.Health}}' linkvault-mongo-1` (ver ADR-017) |
 | `api` no arranca nombrando `AUTH_JWT_SECRET` u otra `AUTH_*` | Tu `.env` es anterior a `auth-users`: copia el bloque `AUTH_*` de `.env.example`. Con `NODE_ENV=production` el secreto de ejemplo se rechaza a propósito |
+| El `worker` no arranca nombrando `ENRICH_*` o `S3_*` | Tu `.env` es anterior a `link-enrichment`: copia esos dos bloques de `.env.example`. Todas son obligatorias |
+| Un link de LinkedIn, Indeed o Computrabajo se queda sin preview | Es el comportamiento correcto: esas bolsas nos prohíben (`robots_disallowed`) o nos bloquean (`blocked`) la lectura. No se reintenta; se completa a mano (ADR-022 §3). Para probar la lectura automática usa Trabajopolis o Get on Board |
+| Los links se quedan en `pending` para siempre | Por orden: ¿está el worker levantado (`pnpm nx serve worker`)?; ¿`OUTBOX_RELAY_ENABLED=true` en `api`?; ¿hay jobs en la cola (`docker compose exec redis redis-cli keys 'bull:enrich-link:*'`)? Si el atasco ya existía, desatáscalo con `pnpm nx run api:backfill-enrichment --status=pending`, que sube `previewVersion` y cambia el `jobId` |
+| `POST /api/links/:id/enrich` responde `409` o `429` | `409 enrichment_not_retryable`: el motivo del fallo no se reintenta (`robots_disallowed`, `blocked`, `not_a_job`). `429 too_many_attempts`: 3 relecturas por link cada 15 min, o el contador de Redis no respondió (ese límite falla cerrado a propósito) |
+| El worker avisa de que no pudo guardar el snapshot | MinIO caído o sin bucket: `docker compose up -d --wait` lo crea con su regla de 30 días. El enriquecimiento no falla por eso; lo que se pierde es la copia para el golden real |
 | Login o registro responden `429` en pruebas locales o en `/lv:smoke` | Contadores de intentos de la ventana de 15 min en Redis. En local: `docker compose exec redis sh -c "redis-cli --scan --pattern 'auth:*' \| xargs -r redis-cli del"`. Nunca en un entorno compartido |
 | `POST /api/auth/*` responde `403` o `415` | Falta `X-Requested-With: linkvault` o el cuerpo no es `application/json` (defensa CSRF, ADR-020) |
 | La sesión no se restaura al recargar el SPA | Abre el SPA en `http://localhost:4200` (el proxy mantiene `/api` en el mismo origen); la cookie `lv_refresh` solo viaja a `/api/auth` |
@@ -311,8 +339,8 @@ Qué hace: corre `claude -p "/lv:<etapa>"` en modo `acceptEdits`, guarda cada sa
 
 ### 9.5 Lo que sigue siendo manual (a propósito)
 - Leer `proposal.md`/`design.md` antes del debate y aprobar tras él.
-- Revisar las vacantes reales del golden set de `extract-job` (`/lv:golden 20`, en `link-enrichment`); el golden de `classify-skills` es sintético (`placeholder`).
-- Grabar fixtures del mock con un proveedor real (`pnpm nx run ai:record-fixtures`, ADR-019) y evaluar con `pnpm nx run ai:eval` (en mock/replay contra la línea base; con `--provider=ollama` para medir un modelo real).
+- Revisar las vacantes reales del golden set de `extract-job` (`/lv:golden 20`); el golden que dejó `link-enrichment` es sintético (siete casos), igual que el de `classify-skills` (`placeholder`). **Los snapshots de las páginas caducan a los 30 días**: el golden real hay que grabarlo dentro de esa ventana o habrá que volver a descargarlas (ADR-022 §10).
+- Grabar fixtures del mock con un proveedor real (`pnpm nx run ai:record-fixtures`, ADR-019) y evaluar con `pnpm nx run ai:eval` (en mock/replay contra la línea base; con `--provider=ollama` para medir un modelo real). Los que anotaron los tests se graban con `--from-pending` (ver Paso 6).
 - `git push` y abrir el PR.
 
 ### 9.6 Notas
@@ -330,7 +358,7 @@ Lo que en el Paso 9 seguía siendo manual ahora tiene comando:
 |---|---|---|
 | Leer y aprobar la spec | `/lv:review` — architect + qa-reviewer con checklist de 5 puntos; corrigen forma, reportan fondo | `SPEC: APROBADA` |
 | Elegir vacantes reales del golden set | `/lv:golden 20` — busca en bolsas públicas (WebSearch/WebFetch), anonimiza, valida con el cargador del eval harness, crea 3 CVs sintéticos; exige la tarea registrada como evaluable | `GOLDEN: OK (N)` |
-| Grabar fixtures del mock | `/lv:fixtures` — graba con `nx run ai:record-fixtures` (Ollama/OpenRouter) los casos del golden que faltan, revisa y comprueba replay con `nx run ai:eval` | `FIXTURES: OK (N)` |
+| Grabar fixtures del mock | `/lv:fixtures` — graba con `nx run ai:record-fixtures` (Ollama/OpenRouter) los casos del golden que faltan —y con `--from-pending`, los que anotaron los tests—, revisa y comprueba replay con `nx run ai:eval` | `FIXTURES: OK (N)` |
 | Prueba manual (`docker compose up`, curl, UI) | `/lv:smoke` — levanta todo, ejecuta los flujos HTTP derivados de la spec, Playwright en la UI, reporte con capturas | `SMOKE: OK` |
 | Rama, push, PR | `/lv:ship` — rama `change/<n>`, push, `gh pr create` con cuerpo desde la spec y DoD marcado | `SHIP: OK <url>` |
 | Encadenar todo lo anterior | `/lv:run <change\|next> [--no-ship]` — las 9 etapas sin preguntar, se detiene en el primer marcador de fallo | `RUN: OK <change>` |
