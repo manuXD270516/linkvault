@@ -84,6 +84,29 @@ changes:
       Rate limit de POST /api/links/import, diferido en `job-links` porque hasta aquí la importación no encolaba trabajo real: en
       cuanto cada importación dispare hasta 50 descargas y ejecuciones de IA, contar las llamadas por usuario con el mismo mecanismo
       de `auth` (ventanas fijas en Redis, 429 too_many_attempts con Retry-After).
+  - name: paste-job-description
+    adrs: [003, 010, 018, 022]
+    agents: [backend-dev, ai-engineer, frontend-dev]
+    scope: |
+      Decisión humana del 2026-09-18, tras el smoke de `link-enrichment`: se adelanta a `applications-tracking` porque
+      de las cinco bolsas del manifiesto hoy solo una se deja leer. LinkedIn e Indeed lo prohíben por robots.txt,
+      Computrabajo bloquea, y Trabajopolis bloquea en su CDN el cliente HTTP de Node aunque deje pasar a curl con las
+      mismas cabeceras (reports/smoke/link-enrichment/REPORT.md §6). No se sortea: es una protección deliberada.
+      Pegar la descripción de una oferta es el único camino lícito para esas bolsas, y seguir postulaciones sobre
+      tarjetas sin título sería peor producto que no seguirlas.
+      Alcance: en una tarjeta que no se pudo leer (y en cualquier otra, como corrección), pegar el texto de la oferta;
+      `extract-job` lo lee con la misma salida `{ isJobPosting, preview }` y sus campos entran en el preview con un
+      origen propio (ni "leído de la página" ni "escrito por <nombre>": "pegado por <nombre>"), sujeto al mismo merge de
+      ADR-022 que no pisa lo manual y a la misma escritura condicionada por `previewVersion`. El texto pegado es de un
+      tercero y NO se persiste ni se registra, igual que el chat en `job-links`; sí pasa por la higiene de emails y
+      teléfonos antes de la IA. La tarea sigue siendo `public`. Límite por usuario con el limitador de
+      `apps/api/src/infrastructure/limits/`, y la ejecución se atribuye a quien pega.
+      Heredado de `link-enrichment` y decidible aquí: un link cuyo `displayUrl` (inmutable, ADR-021) lleva un parámetro
+      que el robots.txt del sitio prohíbe queda ilegible para siempre aunque su historial `originalUrls` tenga la misma
+      vacante sin ese parámetro. Decidir si, cuando robots niega el `displayUrl`, se prueban las demás URLs del
+      historial antes de rendirse con `robots_disallowed`.
+      Golden: añadir a `extract-job` casos de texto pegado (sin HTML, con ruido de chat alrededor) sin tocar los siete
+      de páginas, con su línea base en replay y fixtures grabados contra Ollama local.
   - name: applications-tracking
     adrs: [004, 015]
     agents: [backend-dev, frontend-dev]
