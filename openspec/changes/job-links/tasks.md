@@ -53,10 +53,10 @@
 
 - [x] 7.1 [frontend] `core/links/links.api.ts` y `LinksStore` (lista por grupo y privada, paginación por cursor, recarga tras guardar, importar o quitar); verificar con tests de `HttpTestingController` y del store.
 - [x] 7.2 [frontend] `link-list.component.ts` con la etiqueta derivada de la URL, el estado "Sin vista previa todavía", apertura en pestaña nueva con `rel="noopener noreferrer"` y los estados vacíos; verificar con "Grupo con links", "Grupo sin links", "Abrir una oferta" y el estado vacío de la vista privada.
-- [ ] 7.3 [frontend] Formulario de guardar un link con sus mensajes; verificar con "Link guardado", "URL inválida", "Aviso de link repetido", "El link ya estaba en este grupo" y "Vacante conocida compartida por primera vez".
-- [ ] 7.4 [frontend] Diálogo de importar con contador de caracteres y resumen con plurales; verificar con "Importación con repetidos", "Importación sin enlaces", "Importación recortada a 50" y "Texto demasiado largo".
-- [ ] 7.5 [frontend] Quitar un link con confirmación y permisos por rol; verificar con "Quitar un enlace que no era una oferta" y "Sin permiso para quitar".
-- [ ] 7.6 [frontend] Ruta `/mis-links` ("Solo para mí") y su enlace en la barra; verificar con "Vista privada", "Vista privada vacía" y el test de rutas lazy.
+- [x] 7.3 [frontend] Formulario de guardar un link con sus mensajes; verificar con "Link guardado", "URL inválida", "Aviso de link repetido", "El link ya estaba en este grupo" y "Vacante conocida compartida por primera vez".
+- [x] 7.4 [frontend] Diálogo de importar con contador de caracteres y resumen con plurales; verificar con "Importación con repetidos", "Importación sin enlaces", "Importación recortada a 50" y "Texto demasiado largo".
+- [x] 7.5 [frontend] Quitar un link con confirmación y permisos por rol; verificar con "Quitar un enlace que no era una oferta" y "Sin permiso para quitar".
+- [x] 7.6 [frontend] Ruta `/mis-links` ("Solo para mí") y su enlace en la barra; verificar con "Vista privada", "Vista privada vacía" y el test de rutas lazy.
 - [ ] 7.7 [frontend] Integrar la lista de links en `/grupos/:id` sustituyendo el aviso de links pendientes; verificar con "Grupo sin links todavía" (nuevo contenido) y que el resto de escenarios del detalle siguen pasando.
 - [ ] 7.8 [frontend] Confirmación de borrado del grupo con el recuento de ofertas del `total` del listado, con sus plurales y el caso sin ofertas; verificar con "Borrado informado", "Borrado de un grupo en el que estás solo" y actualizar `apps/web-e2e/src/groups.spec.ts` y `group-detail.page.spec.ts`.
 - [ ] 7.9 [frontend] Marcar los textos i18n de links, ejecutar `extract-i18n` y traducir `messages.en.xlf`; verificar con "Traducciones completas" y `pnpm nx build web`.

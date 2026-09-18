@@ -69,6 +69,14 @@ describe('Shell', () => {
     expect(host.querySelector('a[href="/perfil"]')?.textContent).toContain('Perfil');
   });
 
+  it('shows a link to the private list of links', async () => {
+    const fixture = TestBed.createComponent(Shell);
+    await fixture.whenStable();
+    const host = fixture.nativeElement as HTMLElement;
+
+    expect(host.querySelector('a[href="/mis-links"]')?.textContent).toContain('Solo para mí');
+  });
+
   it('logs out and navigates to /login', async () => {
     const fixture = TestBed.createComponent(Shell);
     await fixture.whenStable();

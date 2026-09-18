@@ -1,0 +1,33 @@
+<section class="mx-auto flex max-w-2xl flex-col gap-6 p-6">
+  <h1 class="text-2xl font-medium" i18n="@@links.mine.title">Solo para mí</h1>
+
+  <lv-save-link-form />
+
+  <div>
+    <button mat-stroked-button type="button" (click)="openImport()" i18n="@@links.mine.import">
+      Pegar un chat
+    </button>
+  </div>
+
+  @if (loaded()) {
+    <lv-link-list [links]="links()" scope="mine" />
+  }
+
+  @if (hasMore()) {
+    <div>
+      <button
+        mat-stroked-button
+        type="button"
+        [disabled]="loadingMore()"
+        (click)="loadMore()"
+        i18n="@@links.mine.more"
+      >
+        Ver más
+      </button>
+    </div>
+  }
+
+  @if (failure(); as currentFailure) {
+    <lv-request-error [failure]="currentFailure" />
+  }
+</section>

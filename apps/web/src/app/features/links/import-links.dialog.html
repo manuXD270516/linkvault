@@ -1,0 +1,78 @@
+<h2 mat-dialog-title i18n="@@links.import.title">
+  Pega aquí el chat: encontraremos los enlaces de ofertas
+</h2>
+
+<mat-dialog-content>
+  @if (summary(); as result) {
+    @if (nothingFound()) {
+      <p role="status" data-testid="import-nothing" i18n="@@links.import.nothingFound">
+        No encontramos ninguna oferta en ese texto
+      </p>
+    } @else {
+      @let created = result.created;
+      @let existing = result.existing;
+      <p role="status" data-testid="import-summary">
+        <ng-container i18n="@@links.import.summary"
+          >{created, plural, =1 {1 guardada} other {{{ created }} guardadas}}, {existing, plural, =1
+          {1 ya estaba} other {{{ existing }} ya estaban}}</ng-container
+        >
+      </p>
+    }
+
+    @if (result.unrecognized > 0) {
+      @let unrecognized = result.unrecognized;
+      <p data-testid="import-unrecognized">
+        <ng-container i18n="@@links.import.unrecognized"
+          >{unrecognized, plural, =1 {1 enlace no se pudo leer} other {{{ unrecognized }} enlaces no
+          se pudieron leer}}</ng-container
+        >
+      </p>
+    }
+
+    @if (result.skipped > 0) {
+      <p data-testid="import-skipped" i18n="@@links.import.skipped">
+        Nos quedamos en 50: vuelve a pegar el mismo texto para continuar
+      </p>
+    }
+  } @else {
+    <mat-form-field class="w-full">
+      <textarea
+        matInput
+        rows="8"
+        [value]="text()"
+        (input)="onInput($event)"
+        i18n-aria-label="@@links.import.textLabel"
+        aria-label="Texto del chat"
+        data-testid="import-text"
+      ></textarea>
+      <mat-hint align="end" data-testid="import-counter">{{ length() }} / 20 000</mat-hint>
+    </mat-form-field>
+
+    @if (tooLong()) {
+      <p class="text-(--mat-sys-error)" role="alert" i18n="@@links.import.tooLong">
+        Pega menos texto: hasta 20 000 caracteres
+      </p>
+    } @else if (failure(); as currentFailure) {
+      <lv-request-error [failure]="currentFailure" />
+    }
+  }
+</mat-dialog-content>
+
+<mat-dialog-actions>
+  @if (summary()) {
+    <button mat-flat-button type="button" mat-dialog-close i18n="@@links.import.close">
+      Cerrar
+    </button>
+  } @else {
+    <button mat-button type="button" mat-dialog-close i18n="@@links.import.cancel">Cancelar</button>
+    <button
+      mat-flat-button
+      type="button"
+      [disabled]="submitting() || !canImport()"
+      (click)="submit()"
+      i18n="@@links.import.submit"
+    >
+      Importar
+    </button>
+  }
+</mat-dialog-actions>

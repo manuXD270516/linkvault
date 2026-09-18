@@ -29,8 +29,24 @@
           @if (withoutPreview(link.previewStatus)) {
             <span i18n="@@links.list.noPreview">Sin vista previa todavía</span>
           }
+          @if (canRemove(link)) {
+            <button
+              mat-button
+              type="button"
+              [disabled]="removing()"
+              (click)="remove(link)"
+              data-testid="link-remove"
+              i18n="@@links.list.remove"
+            >
+              Quitar
+            </button>
+          }
         </span>
       </li>
     }
   </ul>
+}
+
+@if (failure(); as currentFailure) {
+  <lv-request-error [failure]="currentFailure" />
 }

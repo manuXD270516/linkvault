@@ -20,6 +20,7 @@ import { RegisterPage } from './features/auth/register.page';
 import { GroupDetailPage } from './features/groups/group-detail.page';
 import { GroupsListPage } from './features/groups/groups-list.page';
 import { JoinGroupPage } from './features/groups/join-group.page';
+import { MyLinksPage } from './features/links/my-links.page';
 import { ProfilePage } from './features/profile/profile.page';
 import { Shell } from './layout/shell/shell';
 
@@ -52,8 +53,8 @@ describe('appRoutes', () => {
       (route) => route.redirectTo === undefined,
     );
 
-    // login, registro, el shell y sus cuatro páginas: /grupos, /grupos/:id, /unirse y /perfil.
-    expect(pages).toHaveLength(7);
+    // login, registro, el shell y sus cinco páginas: /grupos, /grupos/:id, /unirse, /mis-links y /perfil.
+    expect(pages).toHaveLength(8);
     for (const route of pages) {
       expect(route.component).toBeUndefined();
       expect(route.loadComponent).toBeTypeOf('function');
@@ -74,7 +75,7 @@ describe('appRoutes', () => {
     expect(routeAt('login').canActivate).toEqual([guestGuard]);
     expect(routeAt('registro').canActivate).toEqual([guestGuard]);
     expect(shell.canActivate).toEqual([authGuard]);
-    for (const path of ['grupos', 'grupos/:id', 'unirse', 'perfil']) {
+    for (const path of ['grupos', 'grupos/:id', 'unirse', 'mis-links', 'perfil']) {
       expect(routeAt(path, shell.children).canActivate).toBeUndefined();
     }
   });
@@ -129,6 +130,18 @@ describe('appRoutes', () => {
 
       await harness.navigateByUrl('/unirse', Shell);
       expect(harness.fixture.debugElement.query(By.directive(JoinGroupPage))).not.toBeNull();
+    });
+
+    it('shows the private list inside the shell with a session', async () => {
+      store.setSession(session);
+      const harness = await RouterTestingHarness.create();
+
+      await harness.navigateByUrl('/mis-links', Shell);
+      // La lista privada se pide al entrar (7.6); aquí solo interesa la ruta.
+      const request = await vi.waitFor(() => http.expectOne('/api/links/mine?limit=20'));
+      request.flush({ items: [], total: 0 });
+
+      expect(harness.fixture.debugElement.query(By.directive(MyLinksPage))).not.toBeNull();
     });
 
     it('shows the profile page inside the shell with a session', async () => {

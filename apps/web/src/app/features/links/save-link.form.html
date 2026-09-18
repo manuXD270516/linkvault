@@ -1,0 +1,35 @@
+<form class="flex flex-col gap-2" [formGroup]="form" (ngSubmit)="submit()" novalidate>
+  <div class="flex flex-wrap items-start gap-2">
+    <mat-form-field class="flex-1">
+      <mat-label i18n="@@links.save.url">Pega el enlace de una oferta</mat-label>
+      <input matInput formControlName="url" autocomplete="off" data-testid="save-link-url" />
+    </mat-form-field>
+    <button
+      mat-flat-button
+      type="submit"
+      [disabled]="submitting() || form.invalid"
+      i18n="@@links.save.submit"
+    >
+      Guardar
+    </button>
+  </div>
+
+  @if (invalidUrl()) {
+    <p class="text-(--mat-sys-error)" role="alert" i18n="@@links.save.invalidUrl">
+      Eso no parece un enlace de una oferta
+    </p>
+  } @else if (failure(); as currentFailure) {
+    <lv-request-error [failure]="currentFailure" />
+  }
+
+  @if (alreadyInGroups(); as groups) {
+    <p role="status" data-testid="save-link-already-in-groups" i18n="@@links.save.alreadyInGroups">
+      Ya lo tienes en: {{ groups }}
+    </p>
+  }
+  @if (sharedByName(); as name) {
+    <p role="status" data-testid="save-link-already-there" i18n="@@links.save.alreadyThere">
+      Ya estaba aquí, lo compartió {{ name }}
+    </p>
+  }
+</form>

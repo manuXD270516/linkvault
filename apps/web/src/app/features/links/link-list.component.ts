@@ -1,5 +1,12 @@
-import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, input, signal } from '@angular/core';
+import { MatButtonModule } from '@angular/material/button';
+import { MatDialog } from '@angular/material/dialog';
 import type { JobLinkSummary, Platform, PreviewStatus } from '@linkvault/shared';
+import { type RequestFailure, toRequestFailure } from '../../core/api/api-error';
+import { SessionStore } from '../../core/auth/session.store';
+import { LinksStore } from '../../core/links/links.store';
+import { confirmWith } from '../../shared/ui/confirm.dialog';
+import { RequestError } from '../../shared/ui/request-error';
 
 /** De qué lista son los links: la de un grupo o la privada. Solo cambia el texto del estado vacío. */
 export type LinkListScope = 'group' | 'mine';
@@ -59,17 +66,61 @@ function decodeSegment(segment: string): string {
  * nueva con `rel="noopener noreferrer"` y muestra su etiqueta, su plataforma, quién la compartió y "Sin vista previa
  * todavía": en este change nadie prepara la vista previa, así que no se promete que esté en camino.
  *
- * Es una lista tonta: recibe lo ya cargado. Quien la usa decide cuándo mostrarla, para que el estado vacío no aparezca
- * mientras la página carga.
+ * Recibe los links ya cargados, así que quien la usa decide cuándo mostrarla y el estado vacío no aparece mientras la
+ * página carga. Quitar sí lo resuelve ella: la confirmación y el destino (grupo o lista privada) son los mismos en las
+ * dos pantallas y `LinksStore` ya sabe de cuál se trata.
  */
 @Component({
   selector: 'lv-link-list',
+  imports: [MatButtonModule, RequestError],
   templateUrl: './link-list.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class LinkList {
   readonly links = input.required<JobLinkSummary[]>();
   readonly scope = input.required<LinkListScope>();
+  /** `true` si quien mira es `owner` del grupo: puede quitar también lo que compartieron otros. */
+  readonly canModerate = input(false);
+
+  private readonly store = inject(LinksStore);
+  private readonly dialog = inject(MatDialog);
+  private readonly session = inject(SessionStore);
+
+  protected readonly removing = signal(false);
+  protected readonly failure = signal<RequestFailure | null>(null);
+
+  /** Quitar lo ofrece a quien compartió el link y al owner; en la lista privada, todo link propio se puede quitar. */
+  protected canRemove(link: JobLinkSummary): boolean {
+    if (this.scope() === 'mine') {
+      return true;
+    }
+    const userId = this.session.user()?.id;
+    return this.canModerate() || (userId !== undefined && link.sharedBy?.userId === userId);
+  }
+
+  /** Solo se borra la relación con este grupo o con esta lista: la vacante sigue en los demás. */
+  protected async remove(link: JobLinkSummary): Promise<void> {
+    const confirmed = await confirmWith(this.dialog, {
+      title: $localize`:@@links.list.removeTitle:Quitar el enlace`,
+      message:
+        this.scope() === 'mine'
+          ? $localize`:@@links.list.removeMessageMine:Se quita de tu lista; la oferta sigue disponible en tus grupos.`
+          : $localize`:@@links.list.removeMessageGroup:Se quita de este grupo; la oferta sigue disponible en otros grupos.`,
+      confirmLabel: $localize`:@@links.list.removeConfirm:Quitar`,
+    });
+    if (!confirmed) {
+      return;
+    }
+    this.removing.set(true);
+    this.failure.set(null);
+    try {
+      await this.store.remove(link.id);
+    } catch (error: unknown) {
+      this.failure.set(toRequestFailure(error));
+    } finally {
+      this.removing.set(false);
+    }
+  }
 
   protected label(displayUrl: string): string {
     return linkLabel(displayUrl);

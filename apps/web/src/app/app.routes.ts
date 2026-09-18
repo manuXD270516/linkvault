@@ -37,6 +37,11 @@ export const appRoutes: Route[] = [
           import('./features/groups/join-group.page').then((m) => m.JoinGroupPage),
       },
       {
+        path: 'mis-links',
+        loadComponent: () =>
+          import('./features/links/my-links.page').then((m) => m.MyLinksPage),
+      },
+      {
         path: 'perfil',
         loadComponent: () =>
           import('./features/profile/profile.page').then((m) => m.ProfilePage),

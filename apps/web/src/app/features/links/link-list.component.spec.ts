@@ -1,6 +1,15 @@
-import { provideZonelessChangeDetection } from '@angular/core';
+import { HttpTestingController, type TestRequest } from '@angular/common/http/testing';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
-import type { JobLinkSummary } from '@linkvault/shared';
+import type { JobLinkSummary, LinkPage } from '@linkvault/shared';
+import {
+  buttonWithText,
+  providePageTesting,
+  sessionWith,
+  settle,
+} from '../../../testing/auth-testing';
+import { SessionStore } from '../../core/auth/session.store';
+import { LinksStore } from '../../core/links/links.store';
 import { LinkList, type LinkListScope, linkLabel } from './link-list.component';
 
 const linkedin: JobLinkSummary = {
@@ -38,7 +47,8 @@ describe('LinkList', () => {
   let fixture: ComponentFixture<LinkList>;
 
   beforeEach(() => {
-    TestBed.configureTestingModule({ providers: [provideZonelessChangeDetection()] });
+    TestBed.configureTestingModule({ providers: providePageTesting() });
+    TestBed.inject(SessionStore).setSession(sessionWith('token-1'));
     fixture = TestBed.createComponent(LinkList);
   });
 
@@ -113,6 +123,188 @@ describe('LinkList', () => {
     await render([{ ...linkedin, previewStatus: 'enriched' }]);
 
     expect(text()).not.toContain('Sin vista previa todavía');
+  });
+});
+
+/** El detalle del grupo y `/mis-links` componen así la lista: los links salen del store, que recarga al quitar. */
+@Component({
+  selector: 'lv-link-list-remove-host',
+  imports: [LinkList],
+  template: `<lv-link-list [links]="items()" [scope]="scope()" [canModerate]="canModerate()" />`,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+})
+class RemoveHost {
+  readonly items = inject(LinksStore).items;
+  readonly scope = signal<LinkListScope>('group');
+  readonly canModerate = signal(false);
+}
+
+const GROUP_PAGE = '/api/groups/g1/links?limit=20';
+const MINE_PAGE = '/api/links/mine?limit=20';
+
+/** Compartido por Ana, que es quien mira (`testUser` es `u1`). */
+const ofAna: JobLinkSummary = { ...linkedin, id: 'l1' };
+/** Compartido por Beto, otro miembro del grupo. */
+const ofBeto: JobLinkSummary = {
+  ...computrabajo,
+  id: 'l2',
+  sharedBy: { userId: 'u2', displayName: 'Beto' },
+};
+
+describe('LinkList al quitar', () => {
+  let fixture: ComponentFixture<RemoveHost>;
+  let http: HttpTestingController;
+  let store: LinksStore;
+
+  beforeEach(async () => {
+    TestBed.configureTestingModule({ providers: providePageTesting() });
+    http = TestBed.inject(HttpTestingController);
+    TestBed.inject(SessionStore).setSession(sessionWith('token-1'));
+    store = TestBed.inject(LinksStore);
+
+    const opening = store.open({ kind: 'group', groupId: 'g1' });
+    http.expectOne(GROUP_PAGE).flush({ items: [ofAna, ofBeto], total: 2 } satisfies LinkPage);
+    await opening;
+
+    fixture = TestBed.createComponent(RemoveHost);
+    await fixture.whenStable();
+  });
+
+  afterEach(() => http.verify());
+
+  function host(): HTMLElement {
+    return fixture.nativeElement as HTMLElement;
+  }
+
+  function removeButtons(): HTMLButtonElement[] {
+    return Array.from(host().querySelectorAll<HTMLButtonElement>('[data-testid="link-remove"]'));
+  }
+
+  /** Botón de quitar de la fila cuya etiqueta contiene `label`; `null` si esa fila no lo ofrece. */
+  function removeButtonFor(label: string): HTMLButtonElement | null {
+    const row = Array.from(host().querySelectorAll('li')).find((item) =>
+      item.textContent?.includes(label),
+    );
+    if (!row) {
+      throw new Error(`Row "${label}" not rendered`);
+    }
+    return row.querySelector<HTMLButtonElement>('[data-testid="link-remove"]');
+  }
+
+  function dialog(): HTMLElement {
+    const container = document.body.querySelector<HTMLElement>('mat-dialog-container');
+    if (!container) {
+      throw new Error('Dialog not opened');
+    }
+    return container;
+  }
+
+  /** Pulsa quitar en esa fila y espera a que aparezca la confirmación. */
+  async function clickRemove(label: string): Promise<void> {
+    const button = removeButtonFor(label);
+    if (!button) {
+      throw new Error(`Row "${label}" does not offer to remove`);
+    }
+    button.click();
+    await settle();
+    await fixture.whenStable();
+  }
+
+  async function confirm(): Promise<void> {
+    buttonWithText(dialog(), 'Quitar').click();
+    await settle();
+  }
+
+  /** El borrado arranca al cerrarse la confirmación, es decir tras su animación de cierre. */
+  async function awaitRequest(method: string, url: string): Promise<TestRequest> {
+    return await vi.waitFor(() => http.expectOne({ method, url }));
+  }
+
+  it('Quitar un enlace que no era una oferta', async () => {
+    await clickRemove('senior backend engineer');
+
+    expect(dialog().textContent).toContain(
+      'Se quita de este grupo; la oferta sigue disponible en otros grupos.',
+    );
+    await confirm();
+
+    (await awaitRequest('DELETE', '/api/groups/g1/links/l1')).flush(null, {
+      status: 204,
+      statusText: 'No Content',
+    });
+    await settle();
+    http.expectOne(GROUP_PAGE).flush({ items: [ofBeto], total: 1 } satisfies LinkPage);
+    await settle();
+    await fixture.whenStable();
+
+    expect(host().textContent).not.toContain('senior backend engineer');
+    expect(host().textContent).toContain('analista de datos');
+  });
+
+  it('Sin permiso para quitar', async () => {
+    expect(removeButtons()).toHaveLength(1);
+    expect(removeButtonFor('analista de datos')).toBeNull();
+    expect(removeButtonFor('senior backend engineer')).not.toBeNull();
+  });
+
+  it('lets the owner remove what someone else shared', async () => {
+    fixture.componentInstance.canModerate.set(true);
+    await fixture.whenStable();
+
+    expect(removeButtons()).toHaveLength(2);
+
+    await clickRemove('analista de datos');
+    await confirm();
+
+    (await awaitRequest('DELETE', '/api/groups/g1/links/l2')).flush(null, {
+      status: 204,
+      statusText: 'No Content',
+    });
+    await settle();
+    http.expectOne(GROUP_PAGE).flush({ items: [ofAna], total: 1 } satisfies LinkPage);
+    await settle();
+    await fixture.whenStable();
+
+    expect(host().textContent).not.toContain('analista de datos');
+  });
+
+  it('removes any link of the private list', async () => {
+    const opening = store.open({ kind: 'mine' });
+    http.expectOne(MINE_PAGE).flush({ items: [priv], total: 1 } satisfies LinkPage);
+    await opening;
+    fixture.componentInstance.scope.set('mine');
+    await fixture.whenStable();
+
+    expect(removeButtons()).toHaveLength(1);
+
+    await clickRemove('analista');
+    expect(dialog().textContent).toContain(
+      'Se quita de tu lista; la oferta sigue disponible en tus grupos.',
+    );
+    await confirm();
+
+    (await awaitRequest('DELETE', '/api/links/mine/l3')).flush(null, {
+      status: 204,
+      statusText: 'No Content',
+    });
+    await settle();
+    http.expectOne(MINE_PAGE).flush({ items: [], total: 0 } satisfies LinkPage);
+    await settle();
+    await fixture.whenStable();
+
+    expect(host().textContent).toContain(
+      'Aquí guardas ofertas solo para ti. Las que compartiste están en tus grupos.',
+    );
+  });
+
+  it('keeps the link when the confirmation is cancelled', async () => {
+    await clickRemove('senior backend engineer');
+    buttonWithText(dialog(), 'Cancelar').click();
+    await settle();
+    await fixture.whenStable();
+
+    http.expectNone({ method: 'DELETE', url: '/api/groups/g1/links/l1' });
+    expect(host().textContent).toContain('senior backend engineer');
   });
 });
 
