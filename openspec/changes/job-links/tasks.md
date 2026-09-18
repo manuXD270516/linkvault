@@ -4,7 +4,7 @@
 - [x] 1.2 [backend] `libs/shared/src/events/link-created.event.ts` con el contrato versionado del evento y su schema; verificar con un test que valida un evento completo y rechaza uno sin `linkId`.
 - [x] 1.3 [infra] Añadir `@nestjs/schedule` como dependencia y las variables `OUTBOX_RELAY_ENABLED` y `OUTBOX_RELAY_INTERVAL_MS` a `api-config.schema.ts`, `.env.example` (`true`/`1000`) y `apiTestConfig` (`false`); verificar con los tests de configuración de api y el que valida `.env.example`.
 - [x] 1.4 [infra] Módulo del relay que registra `ScheduleModule.forRoot()` y `BullModule.registerQueue` (con listener de `error` en la cola) y que `AppModule` solo importa cuando `OUTBOX_RELAY_ENABLED`; verificar que con el relay apagado `api` no crea ninguna `Queue` (`app.get(Queue, { optional: true })` es `undefined`) ni abre conexiones a Redis, y que la suite de integración de `api` sigue en verde sin ruido de reintentos.
-- [ ] 1.5 [infra] Escribir `docs/adr/ADR-021.md` con las decisiones no triviales de este change: `dedupeKey` unificada como concreción de ADR-008 (en vez de índices parciales), relay del outbox dentro de `api` con backoff y agotamiento por tiempo, colección `user_links`, y cascada del borrado de grupo mediante `GroupDeletionHooks`; verificar que `openspec validate --all` pasa y que el proposal lo referencia.
+- [x] 1.5 [infra] Escribir `docs/adr/ADR-021.md` con las decisiones no triviales de este change: `dedupeKey` unificada como concreción de ADR-008 (en vez de índices parciales), relay del outbox dentro de `api` con backoff y agotamiento por tiempo, colección `user_links`, y cascada del borrado de grupo mediante `GroupDeletionHooks`; verificar que `openspec validate --all` pasa y que el proposal lo referencia.
 
 ## 2. Dominio de links
 
