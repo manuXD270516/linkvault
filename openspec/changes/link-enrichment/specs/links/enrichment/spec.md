@@ -221,6 +221,12 @@ dejar el link en `failed` con su propio motivo, nunca en `pending` para siempre.
 
 - **WHEN** el sitio responde `403` a la descarga
 - **THEN** el motivo SHALL ser el de bloqueo, distinto del de lectura prohibida y del de error
+- **AND** NO SHALL poder reintentarse
+
+#### Scenario: La bolsa pide esperar
+
+- **WHEN** el sitio responde `429` a la descarga
+- **THEN** el motivo SHALL ser transitorio y reintentable, distinto del de bloqueo
 
 #### Scenario: Lo compartido no era una oferta
 
@@ -231,7 +237,8 @@ dejar el link en `failed` con su propio motivo, nunca en `pending` para siempre.
 
 #### Scenario: Se leyó la página pero no había datos
 
-- **GIVEN** una página que sí es una oferta pero de la que no se obtiene título ni empresa
+- **GIVEN** una página que se leyó bien y de la que ninguna etapa obtuvo título ni empresa, sin que la IA llegara a
+  pronunciarse
 - **WHEN** termina la cadena
 - **THEN** el motivo SHALL ser el de falta de datos, distinto del de "no es una oferta"
 

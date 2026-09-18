@@ -120,10 +120,11 @@ lista cerrada:
 | Motivo | Cuándo | Qué ve la persona |
 |---|---|---|
 | `robots_disallowed` | El `robots.txt` del sitio prohíbe esa ruta | "Esta bolsa no permite la lectura automática de sus ofertas" |
-| `blocked` | El sitio responde `401`, `403` o `429` | "Esta bolsa no nos deja leer esta oferta" |
+| `blocked` | El sitio responde `401` o `403` | "Esta bolsa no nos deja leer esta oferta" |
+| `rate_limited` | El sitio responde `429`, que literalmente significa "vuelve más tarde" | "No pudimos leer esta oferta" |
 | `not_a_job` | La página se descargó y se parseó, no hay `JobPosting` en su JSON-LD y `extract-job` responde que no es una vacante | "Esto no parece una oferta" + quitar en un clic |
 | `not_html`, `too_large`, `timeout`, `http_error`, `no_data` | Lo demás | "No pudimos leer esta oferta" |
-| `deferred_too_long` | El link esperó su turno de host más veces de las permitidas | igual que el anterior |
+| `host_busy` | El link esperó su turno de host más veces de las permitidas | igual que el anterior |
 | `retries_exhausted` | El job agotó sus reintentos | igual que el anterior |
 
 `pending` significa dos cosas distintas para quien mira, así que el link guarda `previewRequestedAt`: la fecha en que se
@@ -149,12 +150,14 @@ roto. En ningún caso se registra el cuerpo de la respuesta ni la URL completa e
 - `User-Agent: LinkVaultBot/0.1 (+https://github.com/manuXD270516/linkvault)`.
 - **Un host a la vez con un mutex en Redis**, no con los grupos de BullMQ: `group`/`groupKey` son de BullMQ Pro y no
   existen en la versión instalada. Una sola clave hace las dos cosas: el consumidor toma
-  `SET enrich:host:<host> NX PX (ENRICH_FETCH_TIMEOUT_MS + espera efectiva)` y **no la borra al terminar**, de modo que
-  su caducidad es a la vez la exclusión y la espera entre peticiones. Si no la consigue,
-  `job.moveToDelayed(now + espera)`; un job que se aplaza más de `ENRICH_MAX_DEFERRALS` veces se da por
-  `deferred_too_long`, para que un host caído no haga girar en vacío los slots del worker. **No** por `blocked`: el sitio
-  no ha dicho nada, el que no llegó a tiempo fue nuestro turno, así que es un fallo transitorio y reintentable. El tope
-  se cuenta en aplazamientos, no en minutos, y se fija para que una importación de 50 links del mismo host quepa entera. El `Worker` corre con `concurrency: 4` global. El host
+  `SET enrich:host:<host> NX PX ENRICH_FETCH_TIMEOUT_MS` mientras descarga y, al terminar, la reescribe sin `NX` con
+  `PX = espera efectiva`: así la exclusión dura lo que dura la descarga y la espera dura lo que pide el sitio, en vez de
+  retener un host doce segundos por una página que tardó trescientos milisegundos. Si no la consigue,
+  `job.moveToDelayed(now + espera)`; un job aplazado no consume nada mientras está `delayed`, así que el tope
+  `ENRICH_MAX_DEFERRALS` es holgado y solo existe para que un host que nunca se libera no rebote para siempre. Al
+  agotarlo el motivo es `host_busy`, **no** `blocked`: el sitio no ha dicho nada, el que no llegó a tiempo fue nuestro
+  turno, así que es transitorio y reintentable. Cincuenta links de un mismo host tardan minutos y rebotan cientos de
+  veces antes de su turno; el tope se fija contando eso, no con un número bonito. El `Worker` corre con `concurrency: 4` global. El host
   sale del link leído en Mongo, no del evento: `LinkCreated.v1` nunca lleva la URL del usuario.
 - `ENRICH_FETCH_TIMEOUT_MS` (10 s), `ENRICH_MAX_BYTES` (2 MiB, cortando el flujo), solo `text/html`, máximo 3
   redirecciones, solo `http(s)`.
@@ -209,8 +212,9 @@ quién puede ver ese link y lo envía a las conexiones abiertas de esos usuarios
 hay tokens en URLs ni en logs de acceso, y una sesión caducada no consigue reabrir el canal: eso es lo que sustituye a
 "cerrar el canal cuando la sesión deja de ser válida".
 
-**El aviso lleva el preview dentro.** `api` ya lee el link para resolver destinatarios, así que envía en el mismo evento
-el resumen actualizado (`preview`, `previewSources`, `previewStatus`, `previewVersion`, `lastEnrichmentError`). Sin eso
+**El aviso lleva el preview dentro.** Por cada aviso, `api` lee el link una vez para componer el resumen, además de
+resolver destinatarios en `group_links` y `user_links` —no es gratis, y con los índices de D9 es una lectura por id—, y
+envía en el mismo evento el resumen actualizado (`preview`, `previewSources`, `previewStatus`, `previewVersion`, `lastEnrichmentError`). Sin eso
 la tarjeta no tendría de dónde leerlo: no hay `GET /api/links/:id` y la spec prohíbe volver a pedir la lista entera.
 Cuando ese endpoint haga falta de verdad —`applications-tracking` y `public-preview-share` lo van a pedir— se escribe
 allí.
@@ -231,17 +235,19 @@ produce un identificador nuevo y el job terminal retenido una semana deja de est
 operación con carrera—. Y no hay dual-write: la verdad sigue siendo una transacción de Mongo.
 
 `nx run api:backfill-enrichment -- --limit=500 [--status=pending|failed]` usa el índice `{ previewStatus: 1, _id: 1 }` y
-no mira `outbox_events`. Con `--status=pending` no sube la versión (el trabajo sigue siendo el mismo y el `jobId` que ya
-está en la cola lo deduplica); con `--status=failed` sí, y solo rescata los motivos transitorios: `timeout`,
-`http_error`, `deferred_too_long` y `retries_exhausted`. `robots_disallowed`, `blocked` y `not_a_job` no se reintentan nunca —ni por botón ni
+no mira `outbox_events`. Sube la versión **siempre**, también con `--status=pending`: con la misma versión el `jobId` no cambia y
+`Queue.add` sobre un job retenido es un no-op silencioso, que es justo el atasco que el comando existe para deshacer. No
+duplica trabajo, porque si el job viejo sigue en la cola el consumidor lo descarta por versión (D2 §2). Con
+`--status=failed` solo rescata los motivos transitorios: `timeout`,
+`http_error`, `rate_limited`, `host_busy` y `retries_exhausted`. Un `rate_limited` espera lo que el sitio pidió en su
+`Retry-After` antes de volver. `robots_disallowed`, `blocked` y `not_a_job` no se reintentan nunca —ni por botón ni
 por comando—, porque volver a pedir lo que un sitio ya negó es exactamente el daño que ADR-003 quiere evitar.
 
 ### D11 — Contratos nuevos en `libs/shared`
 
 `jobPreviewSchema` (design-v0.2 §4.7, estricto) es la salida de la IA dentro de
 `extractJobOutputSchema = { isJobPosting, preview | null }`. Lo que se guarda y lo que sale por la API es
-`storedPreviewSchema = jobPreviewSchema.partial()` más `image` —que solo pone el extractor `metadata` desde `og:image`,
-nunca la IA, que inventaría URLs— con `previewSourcesSchema`: un preview `partial` no puede validar contra el estricto.
+`storedPreviewSchema = jobPreviewSchema.partial()` con `previewSourcesSchema`: un preview `partial` no puede validar contra el estricto.
 En `previewSources`, `by` se guarda como `userId` y sale por la API como `{ userId, displayName }`.
 
 Además `updatePreviewRequestSchema`, el evento `LinkEnriched.v1`, los motivos de D5 y tres códigos de error:
@@ -264,7 +270,9 @@ no necesita historia infinita.
 ### D13 — Límite de la importación, con spec
 
 El rate limit de `POST /api/links/import` (heredado del manifiesto) tiene requisito en `links/sharing`, no solo una
-tarea (C13). El limitador de intentos deja de ser privado de `auth`: su implementación Redis se mueve a
+tarea. Falla **abierto**, como el de `auth`: negar una importación por un Redis lento sería peor que dejarla pasar. El
+límite de reintentos manuales por link, en cambio, falla **cerrado**: lo que se permitiría sin contador es volver a
+descargar de un sitio ajeno, y negar un reintento no rompe nada. El limitador de intentos deja de ser privado de `auth`: su implementación Redis se mueve a
 `apps/api/src/infrastructure/limits/`, infraestructura de plataforma como el outbox, y `auth` y `links` la consumen por
 su propio token. Así `links` no importa nada de `auth` y la regla de módulos de ADR-020 §6 se respeta.
 

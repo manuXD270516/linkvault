@@ -17,7 +17,7 @@ transitorio, la de reintentar.
 
 #### Scenario: Grupo con links
 
-- **GIVEN** un miembro de un grupo con dos links
+- **GIVEN** un miembro de un grupo con dos links guardados hace tiempo y sin preview
 - **WHEN** abre el detalle
 - **THEN** SHALL ver los dos con su etiqueta, su plataforma, quién los compartió y "Sin vista previa todavía"
 
