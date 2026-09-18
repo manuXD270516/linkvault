@@ -51,14 +51,10 @@ changes:
       JobLink canónico con dedupe platform:externalJobId → urlHash; canonicalizadores para LinkedIn, Computrabajo, Indeed,
       Trabajopolis, Get on Board; GroupLink; POST /links y POST /links/import (texto plano con varias URLs, ej. chat de WhatsApp);
       respuesta con alreadyInGroups (B6); outbox_events + relay a BullMQ. Frontend: guardar link, importar texto, lista por grupo y privada.
-      Heredado de `groups` (su design.md, Open Questions): decidir qué ocurre con los `group_links` cuando se borra un grupo, ya que
-      es este change quien los crea. Hoy DELETE /api/groups/:id borra grupo y membresías en una transacción; hay que elegir entre
-      borrarlos en esa misma transacción, archivarlos o dejarlos huérfanos, y dejarlo escrito en la spec de borrado (el JobLink
-      canónico nunca se borra: solo la relación con el grupo).
-      También heredado de `groups`: límite de intentos sobre POST /api/groups/join, hoy sin contador porque el código solo revela
-      nombres de miembros y exige sesión; en cuanto el código dé acceso a links de terceros, contar los intentos fallidos por usuario
-      y por IP con el mismo mecanismo de `auth` (ventanas fijas en Redis, 429 too_many_attempts con Retry-After).
-      Y `settings.defaultVisibility` del grupo (fuera de alcance en `groups`, D1), que solo tiene sentido cuando hay links que mostrar.
+      Resuelto lo heredado de `groups` (Open Questions de su design.md): DELETE /api/groups/:id borra los `group_links` del grupo
+      dentro de su misma transacción, mediante `GroupDeletionHooks` (ADR-021 §6); el `JobLink` canónico nunca se borra.
+      Lo demás que traía de `groups` se movió: el límite de intentos de POST /api/groups/join, a `applications-tracking`, y
+      `settings.defaultVisibility`, a `group-comments`.
   - name: link-enrichment
     adrs: [003, 010, 014]
     agents: [backend-dev, ai-engineer, frontend-dev]
@@ -75,6 +71,19 @@ changes:
       input y directorio de fixtures de cada FixtureMissing en un archivo con ruta absoluta (solo NODE_ENV=test, deduplicado al
       consumir, tests que esperan FixtureMissing a propósito excluidos) y `ai:record-fixtures --from-pending` lo graba; /lv:fixtures
       pasa a usarlo.
+      Heredado de `job-links` (ADR-021): la cola `enrich-link` ya existe y `api` publica en ella LinkCreated.v1 desde su outbox, pero
+      NADIE la consume; este change escribe ese consumidor y tiene que ser idempotente POR SÍ MISMO, no solo por el `jobId`
+      determinista `enrich:<linkId>:<previewVersion>`: la retención de la cola (removeOnComplete al día o a los 1000, removeOnFail a
+      la semana) olvida los jobs y, a partir de ahí, un evento republicado vuelve a entrar. Descargar SIEMPRE por `displayUrl`, nunca
+      por `normalizedUrl`, que es solo identidad (fuerza https, quita www., fragmento y parámetros de campaña, y puede no resolver).
+      Backfill de los links que quedaran en `previewStatus: pending` sin job (relay apagado, evento agotado a las 24 h o guardados
+      antes de este change): decidir si hace falta y, si lo hace, reencolar por `linkId` reusando el mismo `jobId`.
+      Formas de URL que hoy caen en `generic` y se deduplican por `urlHash`: las subpáginas (/apply) y los prefijos de idioma de Get
+      on Board. Ninguna de las cinco plataformas previstas quedó sin canonicalizador; si aparecen enlaces reales que justifiquen esas
+      formas, se amplía el canonicalizador en este change.
+      Rate limit de POST /api/links/import, diferido en `job-links` porque hasta aquí la importación no encolaba trabajo real: en
+      cuanto cada importación dispare hasta 50 descargas y ejecuciones de IA, contar las llamadas por usuario con el mismo mecanismo
+      de `auth` (ventanas fijas en Redis, 429 too_many_attempts con Retry-After).
   - name: applications-tracking
     adrs: [004, 015]
     agents: [backend-dev, frontend-dev]
@@ -82,15 +91,25 @@ changes:
       Application (userId, linkId) único, máquina de estados canónica con stageLabel en IN_PROCESS, ApplicationEvent,
       visibility private por defecto con opt-in group, fitScore? reservado, evento ApplicationStale modelado (sin notificación).
       Frontend: kanban por estado, timeline, avatares en card de grupo.
-      Requisito previo heredado de `groups` (Risks de su design.md), a resolver en este change o antes: transferencia de propiedad
-      de un grupo. Hoy el owner no puede salir ni ser expulsado y su única salida es borrar el grupo, que a partir de `job-links`
-      se lleva por delante los links del grupo y aquí, además, lo que los miembros compartan de sus postulaciones. Alcance mínimo:
-      el owner nombra owner a otro miembro y pasa a member (la membresía owner sigue siendo única), y después ya puede salir.
+      PRIMERA TAREA del change, heredada de `groups` (Risks de su design.md) y ya urgente desde `job-links`: transferencia de
+      propiedad de un grupo. El owner no puede salir ni ser expulsado y su única salida es borrar el grupo, que hoy YA destruye las
+      ofertas que los demás miembros compartieron allí (quien solo las guardó en ese grupo las pierde, porque compartir no crea
+      entrada privada, ADR-021 §5) y aquí destruiría además lo que compartan de sus postulaciones. Alcance mínimo: el owner nombra
+      owner a otro miembro y pasa a member (la membresía owner sigue siendo única), y después ya puede salir.
+      También heredado de `groups` vía `job-links`: límite de intentos sobre POST /api/groups/join, todavía sin contador. El código
+      de invitación ya da acceso a links de terceros desde `job-links`, así que aquí, que además abre las postulaciones compartidas,
+      hay que contar los intentos fallidos por usuario y por IP con el mismo mecanismo de `auth` (ventanas fijas en Redis, 429
+      too_many_attempts con Retry-After).
   - name: group-comments
     adrs: [015]
     agents: [backend-dev, frontend-dev]
     scope: |
       GroupLinkComment plano (texto ≤ 500, autor, fecha), crear y borrar propio. Card muestra últimos 2 y contador.
+      Heredado de `job-links`: los campos `comment`, `tags` y `pinned` de `group_links` que describe docs/design.md, que su schema
+      dejó fuera porque nada los usaba (hoy la relación es `{ groupId, linkId, sharedBy, sharedAt }`); este change los añade con lo
+      que necesite la card, sin tocar los índices `(groupId, linkId)` único y `(groupId, sharedAt, _id)` del listado paginado.
+      Y `settings.defaultVisibility` del grupo (fuera de alcance en `groups`, D1, y en `job-links`, donde la visibilidad se elige al
+      guardar): solo tiene sentido cuando el grupo ya tiene links y una preferencia por defecto que aplicar.
   - name: public-preview-share
     adrs: [013]
     agents: [backend-dev, frontend-dev]
