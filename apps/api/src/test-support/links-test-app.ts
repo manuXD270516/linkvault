@@ -1,10 +1,18 @@
 import { randomUUID } from 'node:crypto';
 import type { GroupDetail } from '@linkvault/shared';
 import { getConnectionToken } from '@nestjs/mongoose';
-import type { NestFastifyApplication } from '@nestjs/platform-fastify';
+import {
+  FastifyAdapter,
+  type NestFastifyApplication,
+} from '@nestjs/platform-fastify';
+import { Test } from '@nestjs/testing';
 import type { Connection } from 'mongoose';
+import { Logger } from 'nestjs-pino';
 import { expect } from 'vitest';
-import { createApp } from '../app/create-app';
+import { AppModule } from '../app/app.module';
+import { configureApp } from '../app/create-app';
+import { FIXED_WINDOW_COUNTER } from '../infrastructure/limits/fixed-window-counter';
+import { InMemoryFixedWindowCounter } from '../infrastructure/limits/testing/in-memory-fixed-window-counter';
 import {
   ACCESS_TOKEN_SIGNER,
   type AccessTokenSigner,
@@ -28,6 +36,10 @@ import { apiTestConfig } from './test-config';
 //
 // La URI del replica set la pasa quien llama (`getMongoTestUri()`): este archivo no es un spec, así que no puede
 // depender de `@linkvault/testing`, que es una librería de tests.
+//
+// El **contador de intentos** se sustituye por el de memoria: esta suite no levanta Redis (ADR-021 §4) y el límite de
+// relecturas falla cerrado a propósito, así que con el contador real ningún reintento llegaría a probarse. La política
+// de fallo se prueba aparte, en el adaptador de `links`, con un contador que sí deja de responder.
 
 const HASH = '$argon2id$v=19$m=19456,t=2,p=1$c2FsdA$aGFzaA';
 
@@ -66,7 +78,18 @@ export async function createLinksTestApp(
   const config = await apiTestConfig({
     MONGO_URI: withDatabase(mongoUri, `${name}-${randomUUID()}`),
   });
-  const app = await createApp(config);
+  const moduleRef = await Test.createTestingModule({
+    imports: [AppModule.register(config)],
+  })
+    .overrideProvider(FIXED_WINDOW_COUNTER)
+    .useValue(new InMemoryFixedWindowCounter())
+    .compile();
+  const app = moduleRef.createNestApplication<NestFastifyApplication>(
+    new FastifyAdapter(),
+    { bufferLogs: true },
+  );
+  app.useLogger(app.get(Logger));
+  await configureApp(app);
   await app.init();
   await app.getHttpAdapter().getInstance().ready();
   const connection = app.get<Connection>(getConnectionToken());

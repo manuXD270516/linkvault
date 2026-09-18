@@ -1,12 +1,14 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { getConnectionToken } from '@nestjs/mongoose';
-import type { Redis } from 'ioredis';
 import type { Connection } from 'mongoose';
 import type { ApiConfig } from '../../../infrastructure/config/api-config.schema';
 import { APP_CONFIG } from '../../../infrastructure/config/app-config.module';
-import { REDIS_APP_CLIENT } from '../../../infrastructure/redis/redis-app-client';
-import { RedisAppModule } from '../../../infrastructure/redis/redis-app.module';
+import {
+  FIXED_WINDOW_COUNTER,
+  type FixedWindowCounter,
+} from '../../../infrastructure/limits/fixed-window-counter';
+import { LimitsModule } from '../../../infrastructure/limits/limits.module';
 import { UsersModule } from '../../users/presentation/users.module';
 import { ChangePassword } from '../application/change-password.usecase';
 import { SessionOpener } from '../application/issued-session';
@@ -35,11 +37,12 @@ import { AuthController } from './auth.controller';
 
 /**
  * Módulo `auth` (D1 de auth-users): endpoints de `/api/auth`, use cases, adaptadores de sus puertos y el guard global de
- * access token. Necesita `AppConfigModule` (global) y la conexión Mongoose por defecto; abre su propia conexión Redis de
- * aplicación (`RedisAppModule`) para el límite de intentos.
+ * access token. Necesita `AppConfigModule` (global) y la conexión Mongoose por defecto; el límite de intentos lo cuenta
+ * con el contador por ventana fija de `infrastructure/limits`, que es plataforma y comparte con `links` (D13 de
+ * link-enrichment): `auth` pone el nombre de cada contador y qué hacer si no responde, no la conexión.
  */
 @Module({
-  imports: [UsersModule, RedisAppModule],
+  imports: [UsersModule, LimitsModule],
   controllers: [AuthController],
   providers: [
     { provide: CLOCK, useClass: SystemClock },
@@ -76,9 +79,9 @@ import { AuthController } from './auth.controller';
     },
     {
       provide: ATTEMPT_LIMITER,
-      inject: [REDIS_APP_CLIENT, APP_CONFIG],
-      useFactory: (client: Redis, config: ApiConfig) =>
-        new RedisAttemptLimiter(client, { secret: config.AUTH_JWT_SECRET }),
+      inject: [FIXED_WINDOW_COUNTER, APP_CONFIG],
+      useFactory: (counter: FixedWindowCounter, config: ApiConfig) =>
+        new RedisAttemptLimiter(counter, { secret: config.AUTH_JWT_SECRET }),
     },
     { provide: AUTH_SECURITY_LOG, useFactory: () => new NestAuthSecurityLog() },
     SessionOpener,

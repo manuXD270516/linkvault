@@ -1,11 +1,16 @@
 import {
+  enrichmentFailureReasonSchema,
   platformSchema,
   previewStatusSchema,
+  type LastEnrichmentError,
   type Platform,
+  type PreviewSources,
   type PreviewStatus,
+  type StoredPreview,
 } from '@linkvault/shared';
 import { Schema, Types } from 'mongoose';
 import { isGroupId, isLinkId, isUserId } from '../domain/identifier';
+import { previewSourcesSubSchema, previewSubSchema } from './preview.schemas';
 
 // Colecciones del módulo `links` (D1 de job-links).
 //
@@ -41,6 +46,16 @@ export interface JobLinkDocument {
   originalUrls: string[];
   previewStatus: PreviewStatus;
   previewVersion: number;
+  /** Vacante leída de la página, con los campos que la extracción consiguió. Ausente mientras nadie la haya leído. */
+  preview?: StoredPreview;
+  /** Quién puso cada campo del preview: el extractor que lo produjo o la persona que lo escribió. */
+  previewSources?: PreviewSources;
+  /** Motivo del último fallo de lectura, sin el cuerpo de la respuesta ni la URL del usuario. */
+  lastEnrichmentError?: LastEnrichmentError;
+  /** Clave de la copia comprimida de la página. Se lee de aquí; NUNCA se deduce de `previewVersion` (D12). */
+  snapshotKey?: string;
+  /** Cuándo se pidió leer la oferta. Ausente en los links guardados antes de `link-enrichment`. */
+  previewRequestedAt?: Date;
   createdBy: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
@@ -83,6 +98,25 @@ export const jobLinkSchema = new Schema<JobLinkDocument>(
       enum: [...previewStatusSchema.options],
     },
     previewVersion: { type: Number, required: true },
+    // Forma derivada de `libs/shared`, compartida con el schema del worker (D11).
+    preview: { type: previewSubSchema, required: false },
+    previewSources: { type: previewSourcesSubSchema, required: false },
+    lastEnrichmentError: {
+      type: new Schema(
+        {
+          reason: {
+            type: String,
+            required: true,
+            enum: [...enrichmentFailureReasonSchema.options],
+          },
+          at: { type: String, required: true },
+        },
+        { _id: false, versionKey: false, strict: true, minimize: false },
+      ),
+      required: false,
+    },
+    snapshotKey: { type: String, required: false },
+    previewRequestedAt: { type: Date, required: false },
     createdBy: { type: Schema.Types.ObjectId, required: true },
     createdAt: { type: Date, required: true },
     updatedAt: { type: Date, required: true },
@@ -92,6 +126,9 @@ export const jobLinkSchema = new Schema<JobLinkDocument>(
 
 // Una vacante por clave de dedupe: es lo que cierra la carrera de dos altas simultáneas de la misma URL (D3).
 jobLinkSchema.index({ dedupeKey: 1 }, { unique: true });
+// Reencolado por estado (`api:backfill-enrichment`, D10): los links de un estado en orden de `_id`, que es por donde el
+// comando avanza en tandas. Sin él, rescatar los `pending` de una base con cien mil vacantes sería un escaneo completo.
+jobLinkSchema.index({ previewStatus: 1, _id: 1 });
 
 export const groupLinkSchema = new Schema<GroupLinkDocument>(
   {
@@ -108,6 +145,10 @@ groupLinkSchema.index({ groupId: 1, linkId: 1 }, { unique: true });
 // Listado paginado del grupo. El `_id` desempata: sin él, 50 links guardados en el mismo instante se repetirían o se
 // saltarían al pasar de página (D8).
 groupLinkSchema.index({ groupId: 1, sharedAt: -1, _id: -1 });
+// Reparto de un aviso de enriquecimiento (D9 de link-enrichment): quién puede ver ESE link. Los otros dos índices
+// llevan el link en segunda posición, así que no sirven para buscar por link solo; sin este, cada aviso de una
+// importación de 50 links sería un escaneo completo de la colección.
+groupLinkSchema.index({ linkId: 1 });
 
 export const userLinkSchema = new Schema<UserLinkDocument>(
   {
@@ -122,6 +163,8 @@ export const userLinkSchema = new Schema<UserLinkDocument>(
 userLinkSchema.index({ userId: 1, linkId: 1 }, { unique: true });
 // Listado paginado de la lista privada, con el mismo desempate por `_id`.
 userLinkSchema.index({ userId: 1, savedAt: -1, _id: -1 });
+// La otra mitad del reparto de un aviso: quién tiene ESE link en su lista privada.
+userLinkSchema.index({ linkId: 1 });
 
 /**
  * Guardas de formato: un identificador que no tiene la forma de un ObjectId nunca llega a Mongo, así que no hay

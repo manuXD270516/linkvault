@@ -1,13 +1,11 @@
 import { RedisPingDouble } from '@linkvault/testing';
 import type { Redis } from 'ioredis';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { FixedWindowCounterLogger } from '../../../infrastructure/limits/redis-fixed-window-counter';
+import { RedisFixedWindowCounter } from '../../../infrastructure/limits/redis-fixed-window-counter';
 import { createRedisAppClient } from '../../../infrastructure/redis/redis-app-client';
 import type { AttemptKey } from '../application/ports/attempt-limiter.port';
-import {
-  attemptKeyName,
-  RedisAttemptLimiter,
-  type AttemptLimiterLogger,
-} from './redis-attempt-limiter';
+import { attemptKeyName, RedisAttemptLimiter } from './redis-attempt-limiter';
 
 // Fail-open del límite de intentos y agrupación IPv6 (tarea 4.9 de auth-users, D7) contra el doble RESP.
 
@@ -15,7 +13,7 @@ const SECRET = 'test-only-jwt-secret-at-least-32-chars';
 const EMAIL = 'ana@example.com';
 const emailKey: AttemptKey = { kind: 'login-email', email: EMAIL };
 
-class RecordingLogger implements AttemptLimiterLogger {
+class RecordingLogger implements FixedWindowCounterLogger {
   readonly warnings: string[] = [];
   readonly infos: string[] = [];
 
@@ -44,7 +42,10 @@ beforeEach(async () => {
   client.on('error', () => undefined);
   await client.connect();
   logger = new RecordingLogger();
-  limiter = new RedisAttemptLimiter(client, { secret: SECRET }, logger);
+  limiter = new RedisAttemptLimiter(
+    new RedisFixedWindowCounter(client, logger),
+    { secret: SECRET },
+  );
 });
 
 afterEach(async () => {

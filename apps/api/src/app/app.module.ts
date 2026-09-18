@@ -9,6 +9,7 @@ import { AuthModule } from '../modules/auth/presentation/auth.module';
 import { GroupsModule } from '../modules/groups/presentation/groups.module';
 import { LinksModule } from '../modules/links/presentation/links.module';
 import { UsersModule } from '../modules/users/presentation/users.module';
+import { EventsModule } from '../presentation/http/events.module';
 import { HealthModule } from '../presentation/http/health.module';
 
 @Module({})
@@ -26,6 +27,7 @@ export class AppModule {
         MongoPersistenceModule,
         RedisHealthModule,
         HealthModule,
+        EventsModule,
         UsersModule,
         AuthModule,
         GroupsModule,

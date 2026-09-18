@@ -1,8 +1,13 @@
+import type {
+  EnrichmentFailureReason,
+  PreviewStatus,
+} from '@linkvault/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import { getConnectionToken } from '@nestjs/mongoose';
 import { mongo, type ClientSession, type Connection, type Model } from 'mongoose';
 import type {
   JobLinkRepository,
+  ManualPreviewWrite,
   ResolvedJobLink,
 } from '../application/ports/job-link-repository.port';
 import type { TransactionSession } from '../application/ports/transaction-session';
@@ -99,6 +104,90 @@ export class MongoJobLinkRepository implements JobLinkRepository {
     return document ? toJobLink(document) : null;
   }
 
+  async listByPreviewStatus(
+    status: PreviewStatus,
+    limit: number,
+    reasons?: readonly EnrichmentFailureReason[],
+  ): Promise<JobLink[]> {
+    if (limit <= 0) {
+      return [];
+    }
+    const documents = await this.links
+      .find({
+        previewStatus: status,
+        ...(reasons === undefined
+          ? {}
+          : { 'lastEnrichmentError.reason': { $in: [...reasons] } }),
+      })
+      .sort({ _id: 1 })
+      .limit(limit)
+      .lean()
+      .exec();
+    return documents.map(toJobLink);
+  }
+
+  async updatePreview(
+    linkId: string,
+    expectedVersion: number,
+    changes: ManualPreviewWrite,
+  ): Promise<JobLink | null> {
+    const id = toLinkObjectId(linkId);
+    if (id === null) {
+      return null;
+    }
+    // La condición por versión es la que decide la carrera con un enriquecimiento en vuelo: si ya escribió, no casa
+    // nada y quien llama vuelve a leer en vez de pisarlo (D2).
+    const updated = await this.links
+      .findOneAndUpdate(
+        { _id: id, previewVersion: expectedVersion },
+        {
+          $set: {
+            preview: changes.preview,
+            previewSources: changes.previewSources,
+            previewStatus: 'manual',
+            updatedAt: changes.now,
+          },
+          $inc: { previewVersion: 1 },
+        },
+        { returnDocument: 'after' },
+      )
+      .lean()
+      .exec();
+    return updated === null ? null : toJobLink(updated);
+  }
+
+  async withRequestedEnrichment<T>(
+    linkId: string,
+    now: Date,
+    work: (link: JobLink, session: TransactionSession) => Promise<T>,
+  ): Promise<T | null> {
+    const id = toLinkObjectId(linkId);
+    if (id === null) {
+      return null;
+    }
+    return await this.withTransaction(async (session) => {
+      const updated = await this.links
+        .findOneAndUpdate(
+          { _id: id },
+          {
+            $set: {
+              previewStatus: 'pending',
+              previewRequestedAt: now,
+              updatedAt: now,
+            },
+            $inc: { previewVersion: 1 },
+            // El motivo del fallo anterior desaparece: el link vuelve a estar en espera, no fallido.
+            $unset: { lastEnrichmentError: '' },
+          },
+          { returnDocument: 'after' },
+        )
+        .session(session)
+        .lean()
+        .exec();
+      return updated === null ? null : await work(toJobLink(updated), session);
+    });
+  }
+
   /** Vacante de la clave: la existente con su historial al día, o una nueva. */
   private async resolve(
     draft: NewJobLink,
@@ -182,6 +271,9 @@ function toDocument(draft: NewJobLink): Omit<JobLinkDocument, '_id'> {
     originalUrls: [...draft.originalUrls],
     previewStatus: draft.previewStatus,
     previewVersion: draft.previewVersion,
+    ...(draft.previewRequestedAt === undefined
+      ? {}
+      : { previewRequestedAt: draft.previewRequestedAt }),
     createdBy,
     createdAt: draft.createdAt,
     updatedAt: draft.updatedAt,
@@ -202,6 +294,16 @@ export function toJobLink(document: JobLinkDocument): JobLink {
     originalUrls: [...document.originalUrls],
     previewStatus: document.previewStatus,
     previewVersion: document.previewVersion,
+    ...(document.preview === undefined ? {} : { preview: document.preview }),
+    ...(document.previewSources === undefined
+      ? {}
+      : { previewSources: document.previewSources }),
+    ...(document.lastEnrichmentError === undefined
+      ? {}
+      : { lastEnrichmentError: document.lastEnrichmentError }),
+    ...(document.previewRequestedAt === undefined
+      ? {}
+      : { previewRequestedAt: document.previewRequestedAt }),
     createdBy: document.createdBy.toHexString(),
     createdAt: document.createdAt,
     updatedAt: document.updatedAt,

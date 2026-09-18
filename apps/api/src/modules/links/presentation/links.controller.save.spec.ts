@@ -11,7 +11,11 @@ import {
   type LinksTestApp,
   type TestMember,
 } from '../../../test-support/links-test-app';
-import { MAX_IMPORT_TEXT_LENGTH, MAX_LINKS_PER_IMPORT } from '../domain/limits';
+import {
+  IMPORTS_PER_USER,
+  MAX_IMPORT_TEXT_LENGTH,
+  MAX_LINKS_PER_IMPORT,
+} from '../domain/limits';
 import { JOB_LINKS_COLLECTION } from '../infrastructure/link.schemas';
 
 // `POST /api/links` y `POST /api/links/import` (tarea 5.7 de job-links) sobre la app completa con el Mongo del preset.
@@ -310,5 +314,49 @@ describe('POST /api/links/import', () => {
       code: 'group_not_found',
       message: 'Group not found',
     });
+  });
+
+  it('Ventana agotada', async () => {
+    // Usuario propio: el límite es por persona y esta suite comparte la app entre tests.
+    const carla = await http.authenticated('Carla');
+    for (let attempt = 0; attempt < IMPORTS_PER_USER; attempt += 1) {
+      const allowed = await importChat(carla, {
+        text: `https://empresa.example/careers/limite-${attempt}`,
+      });
+      expect(allowed.statusCode).toBe(201);
+    }
+
+    const refusedUrl = 'https://empresa.example/careers/pasado-el-limite';
+    const refused = await importChat(carla, { text: refusedUrl });
+
+    expect(refused.statusCode).toBe(429);
+    expect(refused.json()).toEqual({
+      code: 'too_many_attempts',
+      message: expect.any(String),
+    });
+    expect(Number(refused.headers['retry-after'])).toBeGreaterThan(0);
+    // Ningún link nuevo: el límite cuenta antes de mirar el texto.
+    expect(
+      await http.connection
+        .collection(JOB_LINKS_COLLECTION)
+        .countDocuments({ displayUrl: refusedUrl }),
+    ).toBe(0);
+  });
+
+  it('Guardar uno a uno no cuenta', async () => {
+    const dario = await http.authenticated('Darío');
+    for (let attempt = 0; attempt < IMPORTS_PER_USER; attempt += 1) {
+      await importChat(dario, {
+        text: `https://empresa.example/careers/suelto-${attempt}`,
+      });
+    }
+    expect((await importChat(dario, { text: JOB_PAGE })).statusCode).toBe(429);
+
+    const single = await http.request('POST', '/api/links', {
+      authorization: dario.authorization,
+      body: { url: JOB_PAGE },
+    });
+
+    expect(single.statusCode).toBe(201);
   });
 });

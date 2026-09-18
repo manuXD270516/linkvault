@@ -1,7 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GroupNotFound } from '../../groups/domain/errors';
-import { TextTooLong } from '../domain/errors';
+import { TextTooLong, TooManyLinkAttempts } from '../domain/errors';
 import { MAX_IMPORT_TEXT_LENGTH, MAX_LINKS_PER_IMPORT } from '../domain/limits';
 import { ImportLinks } from './import-links.usecase';
 import { SaveLink } from './save-link.usecase';
@@ -11,6 +11,7 @@ import { InMemoryUserLinkRepository } from './testing/in-memory-user-link.reposi
 import { objectId } from './testing/link-fixtures';
 import {
   InMemoryGroupMembership,
+  InMemoryLinkLimiter,
   InMemoryLinkUserDirectory,
   InMemoryOutbox,
   MovableClock,
@@ -35,6 +36,7 @@ let groupLinks: InMemoryGroupLinkRepository;
 let userLinks: InMemoryUserLinkRepository;
 let outbox: InMemoryOutbox;
 let membership: InMemoryGroupMembership;
+let limiter: InMemoryLinkLimiter;
 let importLinks: ImportLinks;
 let saveLink: SaveLink;
 
@@ -51,6 +53,7 @@ beforeEach(() => {
   const directory = new InMemoryLinkUserDirectory()
     .set(ANA, 'Ana')
     .set(BETO, 'Beto');
+  limiter = new InMemoryLinkLimiter();
   importLinks = new ImportLinks(
     links,
     groupLinks,
@@ -58,6 +61,7 @@ beforeEach(() => {
     outbox,
     membership,
     directory,
+    limiter,
     clock,
   );
   saveLink = new SaveLink(
@@ -317,5 +321,38 @@ describe('ImportLinks', () => {
       'Beto',
       'Ana',
     ]);
+  });
+});
+
+describe('import limit per user', () => {
+  it('Ventana agotada', async () => {
+    limiter.exhaust({ kind: 'import', userId: ANA });
+
+    await expect(
+      importLinks.execute(ANA, { text: `${JOB_PAGE} ${COMPUTRABAJO}` }),
+    ).rejects.toBeInstanceOf(TooManyLinkAttempts);
+    // Ni un link creado ni un evento encolado: el límite cuenta antes de tocar nada.
+    expect(links.size).toBe(0);
+    expect(outbox.size).toBe(0);
+  });
+
+  it('counts one import per call, and only for whoever asks', async () => {
+    await importLinks.execute(ANA, { text: JOB_PAGE });
+    await importLinks.execute(BETO, { text: COMPUTRABAJO });
+
+    expect(limiter.consumed).toEqual([
+      { kind: 'import', userId: ANA },
+      { kind: 'import', userId: BETO },
+    ]);
+  });
+
+  it('Guardar uno a uno no cuenta', async () => {
+    limiter.exhaust({ kind: 'import', userId: ANA });
+
+    const saved = await saveLink.execute(ANA, { url: JOB_PAGE });
+
+    expect(saved.created).toBe(true);
+    // Ni siquiera se preguntó al contador: guardar un link suelto es otra operación y otro coste.
+    expect(limiter.consumed).toEqual([]);
   });
 });

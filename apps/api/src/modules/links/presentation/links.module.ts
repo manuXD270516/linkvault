@@ -1,21 +1,37 @@
 import { Module, type OnModuleInit } from '@nestjs/common';
+import { LimitsModule } from '../../../infrastructure/limits/limits.module';
 import { OutboxModule } from '../../../infrastructure/outbox/outbox.module';
+import { RealtimeModule } from '../../../infrastructure/realtime/realtime.module';
+import { createRedisAppClient } from '../../../infrastructure/redis/redis-app-client';
+import { APP_CONFIG } from '../../../infrastructure/config/app-config.module';
+import type { ApiConfig } from '../../../infrastructure/config/api-config.schema';
 import { GroupDeletionHooks } from '../../groups/application/group-deletion-hooks';
 import { GroupsModule } from '../../groups/presentation/groups.module';
 import { UsersModule } from '../../users/presentation/users.module';
+import { BackfillEnrichment } from '../application/backfill-enrichment.usecase';
+import { DeliverLinkEnriched } from '../application/deliver-link-enriched.usecase';
 import { ImportLinks } from '../application/import-links.usecase';
 import { ListGroupLinks } from '../application/list-group-links.usecase';
 import { ListMyLinks } from '../application/list-my-links.usecase';
 import { LINKS_CLOCK } from '../application/ports/clock.port';
+import { ENRICHMENT_BROADCASTER } from '../application/ports/enrichment-broadcaster.port';
+import { ENRICHMENT_NOTICES } from '../application/ports/enrichment-notices.port';
 import { GROUP_LINK_REPOSITORY } from '../application/ports/group-link-repository.port';
 import { GROUP_MEMBERSHIP } from '../application/ports/group-membership.port';
 import { JOB_LINK_REPOSITORY } from '../application/ports/job-link-repository.port';
+import { LINK_LIMITER } from '../application/ports/link-limiter.port';
 import { LINK_USER_DIRECTORY } from '../application/ports/link-user-directory.port';
 import { USER_LINK_REPOSITORY } from '../application/ports/user-link-repository.port';
 import { RemoveGroupLink } from '../application/remove-group-link.usecase';
 import { RemoveMyLink } from '../application/remove-my-link.usecase';
+import { RequestLinkEnrichment } from '../application/request-link-enrichment.usecase';
 import { SaveLink } from '../application/save-link.usecase';
+import { UpdateLinkPreview } from '../application/update-link-preview.usecase';
 import { GroupLinksDeletionHook } from '../infrastructure/group-links-deletion.hook';
+import { CounterLinkLimiter } from '../infrastructure/counter-link-limiter';
+import { EventStreamBroadcaster } from '../infrastructure/event-stream-broadcaster';
+import { LinkEnrichedSubscription } from '../infrastructure/link-enriched.subscription';
+import { RedisEnrichmentNotices } from '../infrastructure/redis-enrichment-notices';
 import { GroupsFacadeMembership } from '../infrastructure/groups-facade-membership';
 import { MongoGroupLinkRepository } from '../infrastructure/mongo-group-link.repository';
 import { MongoJobLinkRepository } from '../infrastructure/mongo-job-link.repository';
@@ -30,14 +46,28 @@ import { LinksController } from './links.controller';
  * quien lo importa debe registrar `MongooseModule.forRoot*`.
  *
  * Importa `GroupsModule` para la pertenencia y el rol (`GroupsFacade`), `UsersModule` para los nombres visibles de quien
- * compartió (`UsersFacade`) y `OutboxModule` para escribir el evento dentro de la transacción del alta: la dependencia
- * va siempre de `links` a los demás, que es la dirección permitida. No exporta nada: todavía nadie entra a `links`.
+ * compartió (`UsersFacade`), `OutboxModule` para escribir el evento dentro de la transacción del alta y `LimitsModule`
+ * para contar importaciones y relecturas: la dependencia va siempre de `links` a los demás, que es la dirección
+ * permitida. No exporta nada: todavía nadie entra a `links`.
+ *
+ * NO monta ninguna `Queue`: reintentar y reencolar van por el outbox (D10 de link-enrichment), así que la suite de
+ * integración de `api` sigue sin necesitar Redis para escribir en la cola.
+ *
+ * Sí abre una conexión de Redis en **modo suscripción** para los avisos de enriquecimiento, una sola por proceso (D9).
+ * Si Redis no está, la suscripción avisa una vez y `api` sigue sirviendo peticiones: lo único que se pierde es que una
+ * pantalla abierta se entere sola.
  *
  * Al arrancar registra su limpieza en `GroupDeletionHooks`, para que borrar un grupo se lleve sus `GroupLink` dentro de
  * la misma transacción y no deje relaciones huérfanas (D7b). `groups` sigue sin conocer a `links`.
  */
 @Module({
-  imports: [GroupsModule, UsersModule, OutboxModule],
+  imports: [
+    GroupsModule,
+    UsersModule,
+    OutboxModule,
+    LimitsModule,
+    RealtimeModule,
+  ],
   controllers: [LinksController, GroupLinksController],
   providers: [
     { provide: JOB_LINK_REPOSITORY, useClass: MongoJobLinkRepository },
@@ -45,6 +75,20 @@ import { LinksController } from './links.controller';
     { provide: USER_LINK_REPOSITORY, useClass: MongoUserLinkRepository },
     { provide: GROUP_MEMBERSHIP, useClass: GroupsFacadeMembership },
     { provide: LINK_USER_DIRECTORY, useClass: UsersFacadeLinkDirectory },
+    { provide: LINK_LIMITER, useClass: CounterLinkLimiter },
+    { provide: ENRICHMENT_BROADCASTER, useClass: EventStreamBroadcaster },
+    {
+      // Conexión propia: un cliente de Redis en modo suscripción no acepta comandos, así que no puede ser el mismo que
+      // cuenta intentos. Se conecta sin bloquear el arranque y se cierra al apagar.
+      provide: ENRICHMENT_NOTICES,
+      inject: [APP_CONFIG],
+      useFactory: (config: ApiConfig) => {
+        const client = createRedisAppClient(config.REDIS_URL);
+        // Sin listener, ioredis escribiría cada reintento por consola.
+        client.on('error', () => undefined);
+        return new RedisEnrichmentNotices(client);
+      },
+    },
     { provide: LINKS_CLOCK, useClass: SystemClock },
     SaveLink,
     ImportLinks,
@@ -52,6 +96,11 @@ import { LinksController } from './links.controller';
     ListMyLinks,
     RemoveGroupLink,
     RemoveMyLink,
+    UpdateLinkPreview,
+    RequestLinkEnrichment,
+    DeliverLinkEnriched,
+    LinkEnrichedSubscription,
+    BackfillEnrichment,
     GroupLinksDeletionHook,
   ],
 })

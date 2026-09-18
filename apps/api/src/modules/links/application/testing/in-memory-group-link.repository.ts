@@ -61,6 +61,17 @@ export class InMemoryGroupLinkRepository implements GroupLinkRepository {
     return Promise.resolve(relation ? toGroupLink(relation) : null);
   }
 
+  relationsOfLink(linkId: string): Promise<GroupLink[]> {
+    if (!isLinkId(linkId)) {
+      return Promise.resolve([]);
+    }
+    return Promise.resolve(
+      this.relations
+        .filter((relation) => relation.linkId === linkId)
+        .map(toGroupLink),
+    );
+  }
+
   async listByGroup(
     groupId: string,
     query: LinkListQuery,

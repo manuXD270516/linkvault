@@ -2,7 +2,7 @@ import type { LinkPage, ListLinksQuery } from '@linkvault/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import { GroupNotFound } from '../../groups/domain/errors';
 import { toLinkListQuery } from './link-cursor';
-import { toLinkPage } from './link.mapper';
+import { displayNameIdsOf, toLinkPage } from './link.mapper';
 import {
   GROUP_LINK_REPOSITORY,
   type GroupLinkRepository,
@@ -22,7 +22,8 @@ import {
  * porque su contenido es de este módulo; la pertenencia se resuelve por el puerto, sin leer las colecciones de `groups`.
  *
  * Quien no es miembro recibe `group_not_found`, igual que si el grupo no existiera: un extraño no puede distinguirlos ni
- * enterarse de cuántas ofertas hay dentro. Los nombres de quien compartió se resuelven en una sola consulta por página.
+ * enterarse de cuántas ofertas hay dentro. Los nombres visibles —quien compartió y quien escribió a mano cualquier campo
+ * del preview— se resuelven en **una sola consulta** por página, no una por link ni una por campo.
  */
 @Injectable()
 export class ListGroupLinks {
@@ -47,9 +48,10 @@ export class ListGroupLinks {
     );
     const total = await this.groupLinks.countByGroup(groupId);
     const names = await this.directory.displayNamesOf(
-      page.items
-        .map((item) => item.sharedBy)
-        .filter((sharedBy): sharedBy is string => sharedBy !== undefined),
+      displayNameIdsOf(
+        page.items.map((item) => item.link),
+        page.items.map((item) => item.sharedBy),
+      ),
     );
     return toLinkPage(page, total, names);
   }

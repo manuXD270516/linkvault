@@ -1,5 +1,10 @@
 import { z } from 'zod';
 import { groupNameSchema } from './group.schema';
+import {
+  lastEnrichmentErrorSchema,
+  resolvedPreviewSourcesSchema,
+  storedPreviewSchema,
+} from './preview.schema';
 
 // Contratos HTTP del módulo `links` (D8 de job-links). Los límites de negocio (2048 caracteres de URL y 20 000 de texto
 // importado) NO se validan aquí: los juzga el dominio, para que una URL demasiado larga responda `invalid_url` (400) y
@@ -43,7 +48,12 @@ export const platformSchema = z.enum([
 ]);
 export type Platform = z.infer<typeof platformSchema>;
 
-/** Estado del preview de una vacante. En este change solo se produce `pending`. */
+/**
+ * Estado del preview de una vacante. `pending` lo pone `api` al guardar el link y al pedir su relectura; los otros
+ * cuatro los escribe el worker al terminar el enriquecimiento (D5 de link-enrichment), salvo `manual`, que también lo
+ * pone la edición a mano. `pending` significa dos cosas para quien mira —"se está leyendo" y "nadie la ha leído
+ * todavía"—, y por eso el link guarda además `previewRequestedAt`.
+ */
 export const previewStatusSchema = z.enum([
   'pending',
   'enriched',
@@ -88,6 +98,17 @@ export type LinkSharer = z.infer<typeof linkSharerSchema>;
  * Link tal y como lo ven las listas y las respuestas de guardado. `normalizedUrl` es solo identidad: lo que el SPA abre
  * es `displayUrl`, la primera URL que escribió una persona (D2). `sharedBy` falta en la lista privada, donde no hay con
  * quién compartir; `sharedAt` lleva ahí la fecha de guardado, para que la lista del SPA sea la misma en ambas vistas.
+ *
+ * Lo del enriquecimiento va **opcional** (D11 de link-enrichment): un link recién guardado no tiene preview, ni
+ * procedencia, ni motivo de fallo, y un link de antes de este change tampoco. `previewSources` sale con `by` ya resuelto
+ * a `{ userId, displayName }`: la tarjeta dice "Escrito por Ana", no un identificador.
+ *
+ * `previewVersion` NO es opcional: todo link tiene una desde el alta, y es lo que permite a quien recibe un aviso por
+ * el canal de eventos descartar el que llega tarde en vez de pintar un preview viejo encima de uno nuevo (D9).
+ *
+ * `previewRequestedAt` es cuándo se pidió leer la oferta, y es lo que le da sentido a un `pending` (D5): uno reciente es
+ * "Leyendo la oferta…" y uno viejo, "Sin vista previa todavía". Es opcional porque los links guardados antes de este
+ * change no lo tienen; al mapear se responde con `createdAt`, que es cuando se pidió su lectura por primera vez.
  */
 export const jobLinkSummarySchema = z.strictObject({
   id: z.string().min(1),
@@ -95,10 +116,29 @@ export const jobLinkSummarySchema = z.strictObject({
   displayUrl: z.string().min(1),
   platform: platformSchema,
   previewStatus: previewStatusSchema,
+  previewVersion: z.number().int().positive(),
+  preview: storedPreviewSchema.optional(),
+  previewSources: resolvedPreviewSourcesSchema.optional(),
+  lastEnrichmentError: lastEnrichmentErrorSchema.optional(),
+  previewRequestedAt: z.iso.datetime().optional(),
   sharedBy: linkSharerSchema.optional(),
   sharedAt: z.iso.datetime(),
 });
 export type JobLinkSummary = z.infer<typeof jobLinkSummarySchema>;
+
+/**
+ * Respuesta de `PATCH /api/links/:id/preview`: el link con su preview ya actualizado, con la misma forma que trae en un
+ * listado, para que el SPA pueda reemplazar la tarjeta sin volver a pedir la lista.
+ */
+export const updatePreviewResponseSchema = jobLinkSummarySchema;
+export type UpdatePreviewResponse = JobLinkSummary;
+
+/**
+ * Respuesta de `POST /api/links/:id/enrich` (`202`): el link ya de vuelta en `pending`, sin el motivo del fallo
+ * anterior y con la lectura recién pedida.
+ */
+export const enrichLinkResponseSchema = jobLinkSummarySchema;
+export type EnrichLinkResponse = JobLinkSummary;
 
 /** Resultado de compartir en el destino: `created` si la relación es nueva, `already_there` si ya estaba. */
 export const shareOutcomeSchema = z.enum(['created', 'already_there']);

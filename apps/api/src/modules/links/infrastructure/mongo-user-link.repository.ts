@@ -81,6 +81,16 @@ export class MongoUserLinkRepository implements UserLinkRepository {
     return document ? toUserLink(document) : null;
   }
 
+  async relationsOfLink(linkId: string): Promise<UserLink[]> {
+    const id = toLinkObjectId(linkId);
+    if (id === null) {
+      return [];
+    }
+    // Misma consulta por el índice `{ linkId: 1 }` que en los grupos: la otra mitad de los destinatarios de un aviso.
+    const documents = await this.userLinks.find({ linkId: id }).lean().exec();
+    return documents.map(toUserLink);
+  }
+
   async listByUser(userId: string, query: LinkListQuery): Promise<LinkListPage> {
     const id = toUserObjectId(userId);
     if (id === null) {

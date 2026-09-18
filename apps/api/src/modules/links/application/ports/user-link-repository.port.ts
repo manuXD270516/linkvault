@@ -33,6 +33,11 @@ export interface UserLinkRepository {
   ): Promise<SavedUserLink>;
   /** Entrada concreta; `null` si el link no está en esa lista o algún id está mal formado. */
   find(userId: string, linkId: string): Promise<UserLink | null>;
+  /**
+   * Quién tiene ese link en su lista privada, y desde cuándo. Una sola consulta por el índice `{ linkId: 1 }`: es la
+   * otra mitad del reparto de un aviso de enriquecimiento (D9 de link-enrichment).
+   */
+  relationsOfLink(linkId: string): Promise<UserLink[]>;
   /** Página de la lista privada, por `savedAt` y `_id` descendentes. */
   listByUser(userId: string, query: LinkListQuery): Promise<LinkListPage>;
   /** Cuántos links tiene la lista privada. No depende del tamaño de página. */

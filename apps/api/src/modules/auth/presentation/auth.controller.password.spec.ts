@@ -301,10 +301,10 @@ describe('AuthController password and HTTP attempt limits', () => {
 
     expect(first.statusCode).toBe(200);
     expect(second.statusCode).toBe(200);
-    // Solo cuentan los avisos del limitador: el cliente Redis de salud también avisa, según el momento, de que perdió la
-    // conexión, y ese aviso no es parte del escenario.
+    // Solo cuentan los avisos del contador de intentos: el cliente Redis de salud también avisa, según el momento, de
+    // que perdió la conexión, y ese aviso no es parte del escenario.
     const limiterWarnings = warned.mock.calls.filter(([message]) =>
-      String(message).startsWith('Attempt limiter store unavailable'),
+      String(message).startsWith('Attempt counter store unavailable'),
     );
     expect(limiterWarnings).toHaveLength(1);
     expect(JSON.stringify(warned.mock.calls)).not.toContain(email);

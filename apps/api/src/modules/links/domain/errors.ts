@@ -10,6 +10,9 @@ export type LinksErrorCode =
   | 'text_too_long'
   | 'link_not_found'
   | 'forbidden'
+  | 'preview_field_unknown'
+  | 'enrichment_not_retryable'
+  | 'too_many_attempts'
   | 'validation_error';
 
 export abstract class LinksError extends Error {
@@ -75,5 +78,50 @@ export class InvalidCursor extends LinksError {
 
   constructor() {
     super('Invalid cursor');
+  }
+}
+
+/**
+ * La edición manual nombró un campo que no existe en el preview (400). Lleva el campo **dentro del error** para que la
+ * respuesta lo nombre: "no conozco ese campo" sin decir cuál obligaría a quien lo envió a adivinar. El nombre viene de
+ * la petición, así que el contrato ya lo acotó en longitud antes de llegar aquí; no es un dato personal.
+ */
+export class PreviewFieldUnknown extends LinksError {
+  override readonly name = 'PreviewFieldUnknown';
+  readonly code = 'preview_field_unknown';
+
+  constructor(readonly field: string) {
+    super('Unknown preview field');
+  }
+}
+
+/**
+ * Se pidió volver a leer una oferta que no se puede volver a leer (409): la bolsa prohíbe la lectura, la bolsa nos
+ * bloquea o lo compartido no era una oferta. Volver a pedir lo que un sitio ya negó es exactamente el daño que ADR-003
+ * quiere evitar, así que no es un fallo transitorio que reintentar sino una respuesta definitiva.
+ */
+export class EnrichmentNotRetryable extends LinksError {
+  override readonly name = 'EnrichmentNotRetryable';
+  readonly code = 'enrichment_not_retryable';
+
+  constructor() {
+    super('That link cannot be read automatically');
+  }
+}
+
+/**
+ * Se agotó el límite de la ventana (429): reintentos de lectura de un link o importaciones de una persona. `links` tiene
+ * el suyo y no el de `auth` porque el dominio de un módulo no importa el de otro (ADR-020 §6); lo que comparten es el
+ * limitador de infraestructura, no el error.
+ */
+export class TooManyLinkAttempts extends LinksError {
+  override readonly name = 'TooManyLinkAttempts';
+  readonly code = 'too_many_attempts';
+  /** Segundos hasta que la ventana se reinicia; sale en `Retry-After`, entero y como mínimo 1, igual que en `auth`. */
+  readonly retryAfterSeconds: number;
+
+  constructor(retryAfterSeconds: number) {
+    super('Too many attempts');
+    this.retryAfterSeconds = Math.max(1, Math.ceil(retryAfterSeconds));
   }
 }

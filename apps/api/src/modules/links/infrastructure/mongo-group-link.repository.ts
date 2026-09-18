@@ -84,6 +84,17 @@ export class MongoGroupLinkRepository implements GroupLinkRepository {
     return document ? toGroupLink(document) : null;
   }
 
+  async relationsOfLink(linkId: string): Promise<GroupLink[]> {
+    const id = toLinkObjectId(linkId);
+    if (id === null) {
+      return [];
+    }
+    // Una sola consulta por el índice `{ linkId: 1 }`: sin él, cada aviso de una importación de 50 links sería un
+    // escaneo completo de la colección (D9).
+    const documents = await this.groupLinks.find({ linkId: id }).lean().exec();
+    return documents.map(toGroupLink);
+  }
+
   async listByGroup(
     groupId: string,
     query: LinkListQuery,

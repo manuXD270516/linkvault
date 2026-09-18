@@ -25,6 +25,8 @@ export const API_ERROR_STATUS: Readonly<Record<ApiErrorCode, number>> = {
   invalid_url: 400,
   text_too_long: 400,
   link_not_found: 404,
+  preview_field_unknown: 400,
+  enrichment_not_retryable: 409,
 };
 
 /**
@@ -52,6 +54,8 @@ export const API_ERROR_MESSAGES: Readonly<Record<ApiErrorCode, string>> = {
   invalid_url: 'That does not look like a job link',
   text_too_long: 'Text is too long',
   link_not_found: 'Link not found',
+  preview_field_unknown: 'Unknown preview field',
+  enrichment_not_retryable: 'That link cannot be read automatically',
 };
 
 /** Cuerpo `{ code, message, fields? }`. `fields` solo nombra campos y se omite si está vacío. */

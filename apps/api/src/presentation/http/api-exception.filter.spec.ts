@@ -48,11 +48,14 @@ import {
   TooManyGroups,
 } from '../../modules/groups/domain/errors';
 import {
+  EnrichmentNotRetryable,
   InvalidCursor,
   InvalidUrl,
   LinkNotFound,
   LinkRemovalForbidden,
+  PreviewFieldUnknown,
   TextTooLong,
+  TooManyLinkAttempts,
 } from '../../modules/links/domain/errors';
 import {
   EmailAlreadyRegistered,
@@ -91,6 +94,9 @@ const THROWN: Record<string, () => unknown> = {
   'link-not-found': () => new LinkNotFound(),
   'link-removal-forbidden': () => new LinkRemovalForbidden(),
   'invalid-cursor': () => new InvalidCursor(),
+  'preview-field-unknown': () => new PreviewFieldUnknown('image'),
+  'enrichment-not-retryable': () => new EnrichmentNotRetryable(),
+  'too-many-link-attempts': () => new TooManyLinkAttempts(41.2),
   unknown: () =>
     new Error(
       `E11000 duplicate key error dup key: { email: "${SECRET_EMAIL}" }`,
@@ -243,6 +249,9 @@ describe('ApiExceptionFilter', () => {
     ['link-not-found', 404, 'link_not_found', undefined],
     ['link-removal-forbidden', 403, 'forbidden', undefined],
     ['invalid-cursor', 400, 'validation_error', ['cursor']],
+    // El campo desconocido sí se nombra: sin decir cuál, quien lo envió tendría que adivinarlo.
+    ['preview-field-unknown', 400, 'preview_field_unknown', ['image']],
+    ['enrichment-not-retryable', 409, 'enrichment_not_retryable', undefined],
   ])('translates %s to %i %s', async (name, status, code, fields) => {
     const response = await get(name);
 
@@ -287,6 +296,18 @@ describe('ApiExceptionFilter', () => {
       message: expect.any(String),
     });
     expect(response.headers['retry-after']).toBe('13');
+  });
+
+  it('translates the retry limit of a link to 429 with its own Retry-After', async () => {
+    const response = await get('too-many-link-attempts');
+
+    expect(response.statusCode).toBe(429);
+    expect(response.json()).toEqual({
+      code: 'too_many_attempts',
+      message: expect.any(String),
+    });
+    // Se redondea hacia arriba como el de `auth`: 41,2 s de espera no se anuncian como 41.
+    expect(response.headers['retry-after']).toBe('42');
   });
 
   it.each(['unknown', 'non-error'])(

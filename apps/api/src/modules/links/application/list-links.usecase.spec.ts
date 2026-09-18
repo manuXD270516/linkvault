@@ -8,8 +8,13 @@ import { SaveLink } from './save-link.usecase';
 import { InMemoryGroupLinkRepository } from './testing/in-memory-group-link.repository';
 import { InMemoryJobLinkRepository } from './testing/in-memory-job-link.repository';
 import { InMemoryUserLinkRepository } from './testing/in-memory-user-link.repository';
-import { objectId } from './testing/link-fixtures';
 import {
+  enrichedPreview,
+  jobLinkDraft,
+  objectId,
+} from './testing/link-fixtures';
+import {
+  IN_MEMORY_SESSION,
   InMemoryGroupMembership,
   InMemoryLinkUserDirectory,
   InMemoryOutbox,
@@ -55,7 +60,7 @@ beforeEach(() => {
     clock,
   );
   listGroupLinks = new ListGroupLinks(groupLinks, membership, directory);
-  listMyLinks = new ListMyLinks(userLinks);
+  listMyLinks = new ListMyLinks(userLinks, directory);
 });
 
 describe('ListGroupLinks', () => {
@@ -201,5 +206,70 @@ describe('ListMyLinks', () => {
     await expect(
       listMyLinks.execute(ANA, { limit: 20, cursor: 'roto' }),
     ).rejects.toBeInstanceOf(InvalidCursor);
+  });
+});
+
+describe('read offers in the listings', () => {
+  /** Guarda `count` links de Ana en su lista privada, todos con campos escritos a mano. */
+  async function seedEnriched(count: number): Promise<void> {
+    for (let index = 0; index < count; index += 1) {
+      const link = links.seed({
+        ...jobLinkDraft(`https://empresa.example/careers/leida-${index}`, {
+          createdBy: ANA,
+          now: clock.now(),
+        }),
+        previewStatus: 'manual',
+        previewVersion: 2,
+        ...enrichedPreview(ANA),
+      });
+      await userLinks.save(
+        { userId: ANA, linkId: link.id, savedAt: clock.now() },
+        IN_MEMORY_SESSION,
+      );
+      clock.advance(1000);
+    }
+  }
+
+  it('Oferta enriquecida', async () => {
+    await seedEnriched(1);
+
+    const page = await listMyLinks.execute(ANA, {
+      limit: LINK_PAGE_DEFAULT_LIMIT,
+    });
+    const item = page.items[0];
+
+    expect(item?.previewStatus).toBe('manual');
+    expect(item?.previewVersion).toBe(2);
+    expect(item?.preview?.title).toBe('Backend Engineer');
+    expect(
+      item?.previewSources?.company?.source === 'manual'
+        ? item.previewSources.company.by
+        : undefined,
+    ).toEqual({ userId: ANA, displayName: 'Ana' });
+  });
+
+  it('resolves the names of twenty links with one query, not one per field', async () => {
+    await seedEnriched(20);
+    directory.calls = 0;
+
+    const page = await listMyLinks.execute(ANA, {
+      limit: LINK_PAGE_DEFAULT_LIMIT,
+    });
+
+    expect(page.items).toHaveLength(20);
+    expect(directory.calls).toBe(1);
+  });
+
+  it('a pending link keeps answering exactly like before', async () => {
+    await saveLink.execute(ANA, { url: JOB_PAGE });
+    directory.calls = 0;
+
+    const page = await listMyLinks.execute(ANA, { limit: 20 });
+
+    expect(page.items[0]?.previewStatus).toBe('pending');
+    expect(page.items[0]?.preview).toBeUndefined();
+    expect(page.items[0]?.previewSources).toBeUndefined();
+    // Sin nada escrito a mano no hay ningún nombre que resolver: la lista privada sigue sin consultar el directorio.
+    expect(directory.calls).toBe(0);
   });
 });

@@ -38,6 +38,11 @@ export interface GroupLinkRepository {
   ): Promise<SharedGroupLink>;
   /** Relación concreta; `null` si el link no está en ese grupo o algún id está mal formado. */
   find(groupId: string, linkId: string): Promise<GroupLink | null>;
+  /**
+   * Grupos donde está ese link, con quién lo compartió y cuándo. Una sola consulta por el índice `{ linkId: 1 }`: es la
+   * mitad del reparto de un aviso de enriquecimiento (D9 de link-enrichment).
+   */
+  relationsOfLink(linkId: string): Promise<GroupLink[]>;
   /** Página de links del grupo, por `sharedAt` y `_id` descendentes. */
   listByGroup(groupId: string, query: LinkListQuery): Promise<LinkListPage>;
   /** Cuántos links tiene el grupo. No depende del tamaño de página. */

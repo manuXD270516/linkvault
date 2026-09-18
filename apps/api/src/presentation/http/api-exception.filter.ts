@@ -16,7 +16,12 @@ import {
   GroupsError,
   InvalidGroupName,
 } from '../../modules/groups/domain/errors';
-import { InvalidCursor, LinksError } from '../../modules/links/domain/errors';
+import {
+  InvalidCursor,
+  LinksError,
+  PreviewFieldUnknown,
+  TooManyLinkAttempts,
+} from '../../modules/links/domain/errors';
 import {
   EmailAlreadyRegistered,
   InvalidProfileChanges,
@@ -44,8 +49,10 @@ interface ApiErrorReply {
  *   `forbidden` → 403, `invalid_invite_code` → 404, `group_full` → 409, `too_many_groups` → 409, `owner_cannot_leave` →
  *   409), así que basta un `instanceof GroupsError`; `InvalidGroupName` va antes porque además nombra el campo `name`.
  * - Errores de dominio de `links`, también por su `code` (`invalid_url` → 400, `text_too_long` → 400, `link_not_found`
- *   → 404, `forbidden` → 403); `InvalidCursor` va antes porque es un `validation_error` que nombra el campo `cursor`.
- *   `invalid_url` y `text_too_long` NO nombran campo: el código ya dice cuál es, y el SPA traduce el código.
+ *   → 404, `forbidden` → 403, `enrichment_not_retryable` → 409); `InvalidCursor` va antes porque es un
+ *   `validation_error` que nombra el campo `cursor`, `PreviewFieldUnknown` porque nombra el campo que no existe y
+ *   `TooManyLinkAttempts` porque lleva su `Retry-After`. `invalid_url` y `text_too_long` NO nombran campo: el código ya
+ *   dice cuál es, y el SPA traduce el código.
  * - `HttpException` 400 (JSON mal formado, que Nest convierte desde Fastify) → `validation_error` sin campos, y 415 →
  *   `unsupported_media_type`. El resto de `HttpException` (404 de ruta desconocida, 503 de la salud) conserva la
  *   respuesta de Nest.
@@ -116,6 +123,14 @@ export class ApiExceptionFilter extends BaseExceptionFilter {
     }
     if (exception instanceof InvalidCursor) {
       return reply('validation_error', [exception.field]);
+    }
+    if (exception instanceof PreviewFieldUnknown) {
+      return reply('preview_field_unknown', [exception.field]);
+    }
+    if (exception instanceof TooManyLinkAttempts) {
+      return reply('too_many_attempts', [], {
+        'Retry-After': String(exception.retryAfterSeconds),
+      });
     }
     if (exception instanceof LinksError) {
       return reply(exception.code);

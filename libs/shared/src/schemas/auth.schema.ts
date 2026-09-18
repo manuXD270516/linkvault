@@ -69,7 +69,8 @@ export const apiErrorCodeSchema = z.enum([
   'invalid_credentials',
   // 409
   'email_taken',
-  // 429, con cabecera `Retry-After` en segundos.
+  // 429, con cabecera `Retry-After` en segundos. También lo usan los límites de la importación de links y de los
+  // reintentos de lectura de una oferta: para quien lo recibe es lo mismo, "has pedido demasiado, espera".
   'too_many_attempts',
   // 401: refresh token ausente, desconocido, caducado, reusado o de una sesión revocada.
   'invalid_refresh',
@@ -101,6 +102,10 @@ export const apiErrorCodeSchema = z.enum([
   'text_too_long',
   // 404: el link no está en ese grupo ni en esa lista privada.
   'link_not_found',
+  // 400: la edición del preview nombra un campo que no existe en el schema del preview.
+  'preview_field_unknown',
+  // 409: se pide releer una oferta que la bolsa prohíbe leer, que nos bloquea o que no era una oferta.
+  'enrichment_not_retryable',
   // 500
   'internal_error',
 ]);
