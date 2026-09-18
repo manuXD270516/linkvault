@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import type { GroupDetail, GroupMember } from '@linkvault/shared';
+import type { GroupDetail, GroupMember, JobLinkSummary, LinkPage } from '@linkvault/shared';
 import {
   buttonWithText,
   flushGroupsList,
@@ -32,6 +32,26 @@ const memberDetail: GroupDetail = {
   role: 'member',
   memberCount: 2,
   createdAt: '2026-09-10T12:00:00.000Z',
+};
+
+const linkOfBeto: JobLinkSummary = {
+  id: 'l1',
+  normalizedUrl: 'https://co.computrabajo.com/trabajo/1A2B3C',
+  displayUrl: 'https://co.computrabajo.com/trabajo-de-analista-de-datos-en-acme-1A2B3C',
+  platform: 'computrabajo',
+  previewStatus: 'pending',
+  sharedBy: { userId: 'u2', displayName: 'Beto' },
+  sharedAt: '2026-09-17T10:00:00.000Z',
+};
+
+const linkOfAna: JobLinkSummary = {
+  id: 'l2',
+  normalizedUrl: 'https://www.linkedin.com/jobs/view/3912345678',
+  displayUrl: 'https://www.linkedin.com/jobs/view/backend-engineer-3912345678',
+  platform: 'linkedin',
+  previewStatus: 'pending',
+  sharedBy: { userId: 'u1', displayName: 'Ana' },
+  sharedAt: '2026-09-17T09:00:00.000Z',
 };
 
 const members: GroupMember[] = [
@@ -78,7 +98,7 @@ describe('GroupDetailPage', () => {
 
   /** Cada miembro como `[nombre, rol, fecha de alta]`. */
   function memberRows(): string[][] {
-    return Array.from(page().querySelectorAll('li')).map((row) =>
+    return Array.from(page().querySelectorAll('[data-testid="members"] li')).map((row) =>
       Array.from(row.children)
         .filter((cell) => cell.tagName === 'SPAN')
         .map((cell) => cell.textContent?.trim() ?? ''),
@@ -115,12 +135,20 @@ describe('GroupDetailPage', () => {
     return await vi.waitFor(() => http.expectOne({ method, url }));
   }
 
-  /** Entra en el detalle y responde al grupo y a sus miembros. */
-  async function openDetail(detail: GroupDetail, list: GroupMember[] = members): Promise<void> {
+  /** Entra en el detalle y responde al grupo, a sus miembros y a la primera página de sus links. */
+  async function openDetail(
+    detail: GroupDetail,
+    list: GroupMember[] = members,
+    links: JobLinkSummary[] = [],
+  ): Promise<void> {
     await harness.navigateByUrl(`/grupos/${detail.id}`, Shell);
     http.expectOne({ method: 'GET', url: `/api/groups/${detail.id}` }).flush(detail);
     await settle();
     http.expectOne({ method: 'GET', url: `/api/groups/${detail.id}/members` }).flush(list);
+    await settle();
+    http
+      .expectOne(`/api/groups/${detail.id}/links?limit=20`)
+      .flush({ items: links, total: links.length } satisfies LinkPage);
     await settle();
     await harness.fixture.whenStable();
   }
@@ -140,6 +168,8 @@ describe('GroupDetailPage', () => {
       ['Beto', 'Miembro', 'Desde el 17/09/2026'],
     ]);
     expect(buttonTexts()).toEqual([
+      'Guardar',
+      'Pegar un chat',
       'Copiar invitación',
       'Renombrar',
       'Regenerar el código',
@@ -155,7 +185,7 @@ describe('GroupDetailPage', () => {
       ['Ana', 'Propietario', 'Desde el 10/09/2026'],
       ['Beto', 'Miembro', 'Desde el 17/09/2026'],
     ]);
-    expect(buttonTexts()).toEqual(['Salir del grupo']);
+    expect(buttonTexts()).toEqual(['Guardar', 'Pegar un chat', 'Salir del grupo']);
     expect(page().querySelector('[data-testid="invite-code"]')).toBeNull();
     expect(text()).not.toContain('Regenéralo si se filtró');
   });
@@ -164,8 +194,25 @@ describe('GroupDetailPage', () => {
     await openDetail(memberDetail, [members[0]]);
 
     expect(text()).toContain(
-      'Aquí aparecerán las ofertas que compartan los miembros. Pronto podrás guardar links en este grupo.',
+      'Todavía no hay ofertas aquí. Guarda un link o pega el chat donde las compartís.',
     );
+    expect(text()).not.toContain('Pronto podrás guardar links en este grupo');
+  });
+
+  it('Grupo con links', async () => {
+    await openDetail(memberDetail, members, [linkOfBeto]);
+
+    expect(text()).toContain('trabajo de analista de datos en acme');
+    expect(text()).toContain('Compartido por Beto');
+    expect(text()).toContain('Sin vista previa todavía');
+    // Un miembro que no es owner no puede quitar lo que compartió otro.
+    expect(page().querySelector('[data-testid="link-remove"]')).toBeNull();
+  });
+
+  it('lets the owner remove any link of the group', async () => {
+    await openDetail(ownerDetail, members, [linkOfBeto]);
+
+    expect(page().querySelector('[data-testid="link-remove"]')).not.toBeNull();
   });
 
   it('Grupo ajeno', async () => {
@@ -342,18 +389,30 @@ describe('GroupDetailPage', () => {
 
     await act('Borrar el grupo');
 
+    // Sin ofertas, el mensaje se queda en la parte de los miembros.
     expect(dialog().textContent?.replace(/\s+/g, ' ')).toContain(
       'Se borrará solo para ti. No se puede deshacer.',
     );
   });
 
-  it('Borrado informado', async () => {
-    await openDetail({ ...ownerDetail, memberCount: 3 });
+  it('cuenta una sola oferta en singular', async () => {
+    await openDetail({ ...ownerDetail, memberCount: 1 }, [members[0]], [linkOfBeto]);
 
     await act('Borrar el grupo');
 
     expect(dialog().textContent?.replace(/\s+/g, ' ')).toContain(
-      'Se borrará para los 3 miembros. No se puede deshacer.',
+      'Se borrará solo para ti y se perderá 1 oferta compartida aquí (las que estén en otros grupos siguen ahí). No se puede deshacer.',
+    );
+  });
+
+  it('Borrado informado', async () => {
+    // El recuento de ofertas es el `total` del listado, no el número de links cargados.
+    await openDetail({ ...ownerDetail, memberCount: 3 }, members, [linkOfBeto, linkOfAna]);
+
+    await act('Borrar el grupo');
+
+    expect(dialog().textContent?.replace(/\s+/g, ' ')).toContain(
+      'Se borrará para los 3 miembros y se perderán las 2 ofertas compartidas aquí (las que estén en otros grupos siguen ahí). No se puede deshacer.',
     );
 
     await answer('Borrar');

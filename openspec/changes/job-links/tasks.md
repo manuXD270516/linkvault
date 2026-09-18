@@ -57,9 +57,9 @@
 - [x] 7.4 [frontend] Diálogo de importar con contador de caracteres y resumen con plurales; verificar con "Importación con repetidos", "Importación sin enlaces", "Importación recortada a 50" y "Texto demasiado largo".
 - [x] 7.5 [frontend] Quitar un link con confirmación y permisos por rol; verificar con "Quitar un enlace que no era una oferta" y "Sin permiso para quitar".
 - [x] 7.6 [frontend] Ruta `/mis-links` ("Solo para mí") y su enlace en la barra; verificar con "Vista privada", "Vista privada vacía" y el test de rutas lazy.
-- [ ] 7.7 [frontend] Integrar la lista de links en `/grupos/:id` sustituyendo el aviso de links pendientes; verificar con "Grupo sin links todavía" (nuevo contenido) y que el resto de escenarios del detalle siguen pasando.
-- [ ] 7.8 [frontend] Confirmación de borrado del grupo con el recuento de ofertas del `total` del listado, con sus plurales y el caso sin ofertas; verificar con "Borrado informado", "Borrado de un grupo en el que estás solo" y actualizar `apps/web-e2e/src/groups.spec.ts` y `group-detail.page.spec.ts`.
-- [ ] 7.9 [frontend] Marcar los textos i18n de links, ejecutar `extract-i18n` y traducir `messages.en.xlf`; verificar con "Traducciones completas" y `pnpm nx build web`.
+- [x] 7.7 [frontend] Integrar la lista de links en `/grupos/:id` sustituyendo el aviso de links pendientes; verificar con "Grupo sin links todavía" (nuevo contenido) y que el resto de escenarios del detalle siguen pasando.
+- [x] 7.8 [frontend] Confirmación de borrado del grupo con el recuento de ofertas del `total` del listado, con sus plurales y el caso sin ofertas; verificar con "Borrado informado", "Borrado de un grupo en el que estás solo" y actualizar `apps/web-e2e/src/groups.spec.ts` y `group-detail.page.spec.ts`.
+- [x] 7.9 [frontend] Marcar los textos i18n de links, ejecutar `extract-i18n` y traducir `messages.en.xlf`; verificar con "Traducciones completas" y `pnpm nx build web`.
 
 ## 8. Cierre
 

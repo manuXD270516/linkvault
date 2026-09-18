@@ -6,6 +6,7 @@ import type {
   GroupDetail,
   GroupMember,
   GroupSummary,
+  JobLinkSummary,
   SessionResponse,
   UserProfile,
 } from '@linkvault/shared';
@@ -66,17 +67,23 @@ export async function flushGroupsList(
   request.flush(groups);
 }
 
-/** Responde al grupo y a sus miembros, las dos peticiones que `/grupos/:id` hace al entrar. */
+/**
+ * Responde al grupo, a sus miembros y a la primera página de sus links, las tres peticiones que `/grupos/:id` hace al
+ * entrar. Los links se piden los últimos, ya sabiendo que el grupo existe.
+ */
 export async function flushGroupDetail(
   http: HttpTestingController,
   detail: GroupDetail,
   members: GroupMember[] = [],
+  links: JobLinkSummary[] = [],
 ): Promise<void> {
   const url = `/api/groups/${detail.id}`;
   const group = await vi.waitFor(() => http.expectOne({ method: 'GET', url }));
   group.flush(detail);
   const list = await vi.waitFor(() => http.expectOne({ method: 'GET', url: `${url}/members` }));
   list.flush(members);
+  const page = await vi.waitFor(() => http.expectOne(`${url}/links?limit=20`));
+  page.flush({ items: links, total: links.length });
 }
 
 export function typeInto(host: HTMLElement, selector: string, value: string): void {

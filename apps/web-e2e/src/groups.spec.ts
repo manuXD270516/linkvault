@@ -114,7 +114,7 @@ test('groups flow: create, invite link, members, expel, leave and delete', async
       await expect(owner.getByRole('heading', { level: 1, name: GROUP_NAME })).toBeVisible();
       await expect(
         owner.getByText(
-          'Aquí aparecerán las ofertas que compartan los miembros. Pronto podrás guardar links en este grupo.',
+          'Todavía no hay ofertas aquí. Guarda un link o pega el chat donde las compartís.',
         ),
       ).toBeVisible();
       await expect(
@@ -220,8 +220,9 @@ test('groups flow: create, invite link, members, expel, leave and delete', async
     await test.step('the owner deletes the group after a confirmation that says who it affects', async () => {
       await owner.getByRole('button', { name: 'Borrar el grupo' }).click();
       const dialog = owner.getByRole('dialog');
-      // En este punto el owner se quedó solo (expulsó al otro miembro), así que la confirmación usa la rama
-      // singular del plural ICU; con más de un miembro diría "Se borrará para los N miembros".
+      // En este punto el owner se quedó solo (expulsó al otro miembro) y el grupo no tiene ofertas, así que la
+      // confirmación usa la rama singular de los miembros y omite la de las ofertas; con más de un miembro diría
+      // "Se borrará para los N miembros" y, con ofertas, "y se perderán las X ofertas compartidas aquí".
       await expect(dialog).toContainText(
         'Se borrará solo para ti. No se puede deshacer.',
       );

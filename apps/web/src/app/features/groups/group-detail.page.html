@@ -1,9 +1,21 @@
-<!-- El mensaje de borrado pluraliza, así que vive en plantilla: un ICU no se puede escribir en TypeScript. -->
+<!--
+  El mensaje de borrado pluraliza dos veces: por miembros y por ofertas. Vive en plantilla porque un ICU no se puede
+  escribir en TypeScript, y cada rama repite la frase entera para que no dependa de dónde caen los espacios. El recuento
+  de ofertas es el `total` del listado de links del grupo; sin ninguna, la rama `=0` deja la frase sin esa parte.
+-->
 <ng-template #deleteMessage>
   @let count = memberCount();
+  @let offers = linksTotal();
   <ng-container i18n="@@groups.detail.deleteMessage"
-    >{count, plural, =1 {Se borrará solo para ti. No se puede deshacer.} other {Se borrará para los
-    {{ count }} miembros. No se puede deshacer.}}</ng-container
+    >{count, plural, =1 {{offers, plural, =0 {Se borrará solo para ti. No se puede deshacer.} =1 {Se
+    borrará solo para ti y se perderá 1 oferta compartida aquí (las que estén en otros grupos siguen
+    ahí). No se puede deshacer.} other {Se borrará solo para ti y se perderán las {{ offers }} ofertas
+    compartidas aquí (las que estén en otros grupos siguen ahí). No se puede deshacer.}}} other {{offers,
+    plural, =0 {Se borrará para los {{ count }} miembros. No se puede deshacer.} =1 {Se borrará para
+    los {{ count }} miembros y se perderá 1 oferta compartida aquí (las que estén en otros grupos siguen
+    ahí). No se puede deshacer.} other {Se borrará para los {{ count }} miembros y se perderán las
+    {{ offers }} ofertas compartidas aquí (las que estén en otros grupos siguen ahí). No se puede
+    deshacer.}}}}</ng-container
   >
 </ng-template>
 
@@ -14,10 +26,30 @@
   } @else if (group(); as currentGroup) {
     <h1 class="text-2xl font-medium">{{ currentGroup.name }}</h1>
 
-    <p i18n="@@groups.detail.linksPending">
-      Aquí aparecerán las ofertas que compartan los miembros. Pronto podrás guardar links en este
-      grupo.
-    </p>
+    <section class="flex flex-col gap-3">
+      <lv-save-link-form />
+      <div>
+        <button mat-stroked-button type="button" (click)="openImport()" i18n="@@links.pasteChat">
+          Pegar un chat
+        </button>
+      </div>
+      @if (linksLoaded()) {
+        <lv-link-list [links]="links()" scope="group" [canModerate]="isOwner()" />
+      }
+      @if (hasMoreLinks()) {
+        <div>
+          <button
+            mat-stroked-button
+            type="button"
+            [disabled]="loadingMoreLinks()"
+            (click)="loadMoreLinks()"
+            i18n="@@links.more"
+          >
+            Ver más
+          </button>
+        </div>
+      }
+    </section>
 
     @if (isOwner() && currentGroup.inviteCode; as inviteCode) {
       <section class="flex flex-col gap-2">
@@ -70,7 +102,7 @@
 
     <section class="flex flex-col gap-2">
       <h2 class="text-xl font-medium" i18n="@@groups.detail.membersTitle">Miembros</h2>
-      <ul class="flex list-none flex-col gap-2 p-0">
+      <ul class="flex list-none flex-col gap-2 p-0" data-testid="members">
         @for (member of members(); track member.userId) {
           <li class="flex flex-wrap items-center gap-2">
             <span class="font-medium">{{ member.displayName }}</span>
