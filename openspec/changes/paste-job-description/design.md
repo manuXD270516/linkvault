@@ -4,7 +4,7 @@
 desplazado en `replaced`), la edición manual por `PATCH /api/links/:id/preview` con escritura condicionada a
 `previewVersion`, el reintento por el outbox, el canal SSE y la tarea `extract-job`, que responde
 `{ isJobPosting, preview | null }`. La IA solo corre en el worker: `apps/api` no importa `AiModule`. La higiene de
-contactos (`scrubContactDetails`) vive en el dominio del worker. El limitador de plataforma está en
+contactos y el filtro de valores vacíos del borrador viven en el dominio del worker. El limitador de plataforma está en
 `apps/api/src/infrastructure/limits/`.
 
 El smoke midió que de las cinco bolsas solo Get on Board se deja leer (REPORT.md §6 de `link-enrichment`). Y encontró un
@@ -19,128 +19,160 @@ y cuando `robots.txt` niega el `displayUrl` se **prueban las demás URLs del his
 
 **Goals:**
 - Que una oferta de LinkedIn, Indeed, Computrabajo o Trabajopolis se pueda completar en un gesto, con lo que la persona
-  ya tiene delante.
-- Que el texto de un tercero no quede guardado en ningún sitio.
-- Que lo pegado no se pierda por una relectura ni pise lo que alguien escribió a mano.
+  ya tiene delante, y que la tarjeta bloqueada diga que esa es la salida.
+- Que el texto de entrada no quede guardado en ningún sitio, y que lo que sí se guarda —los campos derivados— no lleve
+  datos de contacto ni nombres de terceros.
+- Que lo pegado no se pierda por una relectura, no pise lo escrito a mano, y que un pegado equivocado se pueda deshacer.
 - Que ningún link se quede ilegible por el parámetro que tenía su primera URL.
 
 **Non-Goals:**
 - Crear un link a partir de un texto sin URL: no tendría clave de dedupe (ADR-008, ADR-021).
-- Leer capturas de pantalla, PDFs o imágenes.
+- Leer capturas de pantalla, PDFs o imágenes, o leer el portapapeles sin que la persona pegue.
 - Sortear cualquier bloqueo de un sitio.
 - Cambiar qué URL se abre al pulsar la tarjeta: sigue siendo `displayUrl`.
+- Guardar una copia privada de la descripción para cuando la bolsa retire la oferta: es de `applications-tracking` o
+  de `cv`, con su propio ADR.
 
 ## Decisions
 
 ### D1 — El texto se lee en la API, dentro de la petición
 
-`POST /api/links/:id/pasted` recibe el texto, lo pasa por la higiene de contactos, ejecuta `runTask('extract-job')` y
-escribe el resultado, todo en la misma petición. El texto solo existe en la memoria de ese proceso mientras dura.
+`POST /api/links/:id/pasted` recibe el texto, lo limpia, ejecuta la extracción y escribe el resultado, todo en la misma
+petición. El texto de entrada solo existe en la memoria de ese proceso mientras dura. La alternativa natural —outbox,
+cola, worker— se descartó porque dejaba el texto escrito en `outbox_events` y en los datos del job, retenido hasta una
+semana si fallaba.
 
-La alternativa natural —el camino del enriquecimiento: outbox, cola, worker— se descartó porque deja el texto escrito
-en `outbox_events` y en los datos del job, retenido hasta una semana si falla; "no se guarda" pasaría a ser "se guarda un
-rato y se borra". Un canal directo api→worker sin persistencia evitaría las dos cosas, pero a costa de un mecanismo de
-petición-respuesta entre procesos que hoy no existe.
+**Cómo monta `api` la IA**, en tres piezas:
 
-**`api` monta `AiModule`** igual que el worker (`AiModule.forRootAsync` con la conexión Mongoose por defecto para el
-ledger y `REDIS_URL` para la caché): mismo ledger, mismas cuotas por usuario y tarea (ADR-018 §9), misma cadena de
-proveedores y el mismo `AI_CHAIN`. La tarea sigue siendo `public`: el texto es de una oferta publicada, no un dato de la
-persona que lo pega. `ctx.userId` es quien pega, que es a quien se atribuye la ejecución y contra quien cuenta su cuota.
-`outputLanguage` sigue fijo en `es`, por la misma razón que en ADR-022: el preview es compartido.
+- **Configuración**: `api` valida la de IA con el mismo `parseAiConfig` de `libs/ai` que usa el worker, al estilo de
+  `loadWorkerConfigOrExit`, en vez de duplicar sus reglas en `api-config.schema.ts`.
+- **Módulo**: `AppModule` construye `AiModule.forRootAsync` una vez y se lo pasa a `LinksModule.register(aiModule)`,
+  que es quien necesita `RUN_TASK`; `AiModule` no es global, y así lo resuelve ya el worker. Los arranques de la suite
+  de integración reciben su configuración de IA de test (`AI_CHAIN=mock`, `AI_MOCK_MODE=replay`).
+- **Prompts**: el webpack de `api` copia `libs/ai/src/infrastructure/prompts` a sus assets, igual que el del worker:
+  sin eso, una imagen de `api` que no arranque desde la raíz del repo falla al primer pegado.
 
-El plazo de la ejecución lo fija `PASTE_EXTRACTION_TIMEOUT_MS` (20 s por defecto), pasado en `ctx.signal`. Una
-degradación, un plazo agotado o una cuota superada responden `503 extraction_unavailable` sin tocar el link: la persona
-conserva lo pegado en el diálogo y puede reintentar.
+`ctx.userId` es quien pega, `outputLanguage` fijo `es` (ADR-022 §6: el preview es compartido) y el plazo lo fija
+`PASTE_EXTRACTION_TIMEOUT_MS` (20 s) en `ctx.signal`, que además **se aborta si el cliente cierra la conexión**: no se
+gasta IA para un diálogo que ya nadie mira.
 
-### D2 — Un tercer origen: `pasted`
+### D2 — Lo pegado se trata como dato personal, no como página pública
 
-`previewSources[campo].source` admite `'auto' | 'pasted' | 'manual'`. `pasted` lleva `by` y `at` como `manual`, y además
-`extractor: 'ai:extract-job'`, porque la interpretación la hizo la IA: la tarjeta dice "Pegado por Beto", y el
-formulario puede recordar que lo leyó la IA.
+El texto pegado no es una página publicada: es lo que la persona copió, y puede traer el nombre del reclutador, trozos
+del chat o mensajes de terceros. Por eso **no** se lee con `extract-job` (`public`) sino con **`extract-pasted-job`**,
+una tarea registrada aparte con la misma salida, `dataSensitivity: 'personal'` (ADR-018 §11) y su propio prompt
+`extract-pasted-job.v1.md`, derivado del de `extract-job` —tocar ese prompt obligaría a una `v2` y a regrabar los
+fixtures y la línea base de las páginas, que no cambian—. No va a
+un proveedor externo sin el consentimiento de quien pega, y si va, pasa por el `PiiRedactor`. Con la cadena de hoy
+—mock o Ollama local— no cuesta nada; protege el día que se añada OpenRouter. Tiene su golden y su línea base propios,
+que miden precisamente texto copiado de una app, y su clave determinista no se cruza con la de las páginas.
 
-La **precedencia** es un orden total: `manual` (3) > `pasted` (2) > `auto` (1). Las reglas de ADR-022 se generalizan:
+El prompt pide además no reproducir nombres de personas en `summary`, y el golden lo comprueba.
 
-- Un merge **automático** (el del worker) no sustituye nada de rango superior: ni `manual` ni `pasted`.
-- **Pegar** sustituye lo `auto`, sustituye lo `pasted` anterior (una persona pega una versión mejor), y no toca lo
-  `manual`.
-- **Editar a mano** lo sustituye todo.
-- Cuando una edición desplaza un valor de rango inferior, `replaced` guarda el valor **y su origen**:
-  `{ value, source: 'auto', extractor }` o `{ value, source: 'pasted', by, at }`. Por eso "volver a" devuelve al valor
-  pegado cuando lo hubo, y no a lo que dijo la página antes de pegar: lo pegado era mejor que lo leído, o no se habría
-  pegado.
+### D3 — Un tercer origen, una sola regla de precedencia
 
-`replaced` gana un campo (`source`) y deja de suponer que lo desplazado era automático. Los documentos existentes, sin
-`source` en `replaced`, se leen como `auto`, que es lo único que podían ser: no hace falta migrar.
+`previewSources[campo].source` admite `'auto' | 'pasted' | 'manual'`. `pasted` lleva `by`, `at` y
+`extractor: 'ai:extract-pasted-job'`: la tarjeta dice "Descripción pegada por Beto" y el formulario puede recordar que lo
+leyó la IA.
 
-### D3 — Las dos copias de la regla se mueven juntas
+La precedencia es un orden total, `manual` > `pasted` > `auto`, y vive **una sola vez**, en `libs/shared`, como
+función pura `mayOverwrite(previo, entrante)`. La usan el merge del worker y el pegado de `api`: si alguien cambia el
+orden, cambia para los dos. Las reglas:
 
-La regla de merge vive duplicada a propósito en `apps/worker/.../domain/merge.ts` y `apps/api/.../domain/preview-edit.ts`
-(ADR-022), con la tabla de casos compartida en `@linkvault/testing` que los dos specs recorren. Este change amplía esa
-tabla con los casos de `pasted` —relectura sobre pegado, pegado sobre manual, manual sobre pegado, volver a lo pegado— y
-toca las dos implementaciones a la vez. Si solo cambiara una, la tabla dejaría el spec de la otra en rojo, que es para
-lo que existe.
+- Un merge **automático** no sustituye nada de rango superior.
+- **Pegar** sustituye lo `auto` y lo `pasted` anterior (alguien pega una versión mejor) y **nunca toca un campo
+  `manual`, ni su `replaced`**: "volver" en un campo escrito a mano devuelve a lo que había cuando se escribió.
+- **Pegar solo escribe campos con valor.** Lo que la IA devuelve como `null`, `''`, `[]` o `'unknown'` no borra lo que
+  la página ya había dado; si no, un pegado que no trae la empresa la dejaría en blanco para siempre, porque lo
+  automático ya no puede pisar lo pegado. El filtro de valores vacíos del worker (`draftFrom`, `saysSomething`,
+  `hasRequiredFields`) pasa a `libs/shared` y lo usan los dos.
+- **Toda sustitución guarda lo desplazado.** `replaced` pasa a ser la entrada desplazada completa —valor, origen,
+  extractor, autor y fecha—, sin su propio `replaced`. Así un pegado equivocado se deshace ("Volver a lo anterior"),
+  una corrección a mano sobre algo pegado vuelve a lo pegado, y la edición abierta a cualquiera que puede ver el link
+  sigue siendo reversible, que es la condición con la que ADR-022 §9 la abrió. Un `replaced` antiguo sin `source` se
+  lee como `auto`.
 
-La regla nueva de **pegar** solo la aplica `api`: el worker no pega. Pero el worker necesita saber que `pasted` existe
-y que no lo puede sustituir.
+La tabla de casos de `@linkvault/testing` se amplía con los de `pasted`, pero lo que protege que las dos copias no
+diverjan es que el orden sea una sola función compartida: la tabla modela `replaced`, y la regla de pegar solo la
+aplica `api`. `applyManualField` del worker, que no tiene llamador en producción, pasa a ser un helper de test.
 
-### D4 — La higiene de contactos pasa a `libs/shared`
+### D4 — La higiene pasa a `libs/shared`
 
-`scrubContactDetails` es una función pura sobre texto, sin dependencias, que ahora necesitan los dos procesos. Se mueve
-de `apps/worker/.../domain/contact-scrub.ts` a `libs/shared`, que es donde viven las reglas que comparten ambos, y el
-worker la importa de ahí. Copiarla en `api` sería la tercera regla duplicada de este módulo, y esta sí se puede
-compartir sin cruzar ningún límite: `libs/shared` es importable desde cualquier `domain/`.
+`scrubContactDetails` es una función pura que ahora necesitan los dos procesos. Se mueve a `libs/shared`, importable
+desde cualquier `domain/`. No cambia su comportamiento, aunque junte el texto en una línea: cambiarlo invalidaría los
+fixtures de páginas. Por eso los inputs del golden de texto pegado se guardan **ya limpios**, que es exactamente lo que
+recibe la tarea.
 
-### D5 — Límites: tamaño, frecuencia y fallo cerrado
+### D5 — Validación, límites y códigos
 
-- El texto se acepta hasta **20 000 caracteres**, como la importación de `job-links`, y `extract-job` lo recorta a sus
-  24 000 declarados; un texto más largo responde `400` antes de gastar nada.
-- **10 pegados por usuario cada 15 minutos**, con el limitador de `apps/api/src/infrastructure/limits/`.
-- El límite **falla cerrado**, como el de reintentos: cada pegado es una ejecución de IA, y lo que se permitiría sin
-  contador es gastar sin techo.
-- El orden de comprobaciones es: permiso de lectura del link (404) → texto válido (400) → límite (429) → IA. Así un
-  `404` o un `400` no consumen cuota.
+Orden real, porque el pipe valida antes que el caso de uso:
 
-### D6 — Escritura y aviso
+1. **400**: texto vacío o solo espacios (`validation_error`), más de 20 000 caracteres (`text_too_long`, el código que
+   ya usa la importación).
+2. **404** `link_not_found`: quien pide no puede ver el link.
+3. **422** `not_a_job_posting`: el texto queda vacío tras la higiene (un pegado que solo tenía un teléfono), sin gastar
+   límite ni IA.
+4. **Límite de pegados**: 10 por usuario cada 15 min con el limitador de plataforma. Falla **cerrado**, pero con el
+   contador caído responde **503** `extraction_unavailable`, no un 429 que diría "pegaste demasiadas" a quien no pegó
+   ninguna. Superado, **429** `too_many_attempts` con `Retry-After`.
+5. **IA**: `isJobPosting: false` → **422** `not_a_job_posting`; degradación o plazo agotado → **503**
+   `extraction_unavailable` con `Retry-After`; cuota diaria de IA superada → **429** `ai_quota_exceeded` con
+   `Retry-After` y un mensaje propio, porque "inténtalo en un rato" sería mentira cuando la ventana es de un día.
 
-El resultado se escribe con la misma escritura condicionada por `previewVersion` que la edición manual (ADR-022 §1), y
-sube la versión, de modo que un enriquecimiento en vuelo no pise lo pegado. Si pierde la carrera se rehace sobre lo que
-el otro escribió, como hace `PATCH`. El estado queda `enriched` si están `title` y `company` y `partial` si no; se limpia
-`lastEnrichmentError`. La respuesta es el resumen del link, y como el cambio lo hace `api`, el aviso a las demás
-pantallas abiertas sale por el mismo reparto de SSE que ya existe, sin pasar por Redis.
+Un 503 **devuelve el intento** al contador: la persona no pierde uno de sus diez pegados porque el proveedor no
+respondió. La cuota de IA de `extract-pasted-job` es independiente de la de `extract-job`, porque son tareas distintas:
+pegar no consume el presupuesto con el que se leen los links propios.
 
-Lo que `extract-job` devuelve con `isJobPosting: false` responde `422 not_a_job_posting` y no escribe nada: el link
-no cambia porque alguien pegó la conversación en vez de la oferta.
+### D6 — Estado, escritura y aviso
 
-### D7 — Probar el historial cuando `robots.txt` niega
+- **Estado derivado de los campos cuando hay algo pegado**: `enriched` si están `title` y `company`, `partial` si no, y
+  `manual` si además hay algún campo escrito a mano (la misma prioridad que ya usa el worker). El worker aplica la misma
+  regla: una lectura fallida sobre un link con campos pegados **no** lo devuelve a `failed`.
+- **Pegar no borra un motivo que no se puede reintentar.** Si el link estaba en `robots_disallowed` o `blocked`, el
+  motivo se conserva: pegar no lo convierte en reintentable, y el botón de reintentar no reaparece.
+- Escritura condicionada por `previewVersion`, que sube. Si pierde la carrera, se rehace **reutilizando la extracción
+  ya hecha**, sin volver a llamar a la IA.
+- Pegar sobre un link en `pending` hace que el enriquecimiento en vuelo pierda la carrera por versión y no escriba: los
+  campos que habría traído de la página no llegan. Se acepta: lo pegado es de rango superior y la persona acaba de
+  decir qué contiene la oferta.
+- **El aviso SSE se publica en el canal de Redis** que ya existe, no se reparte solo en el proceso: llega a todas las
+  instancias de `api`, incluida la propia. `PATCH` pasa a avisar igual, que hoy no lo hace.
 
-En `ExtractPreviewService`, si `robots.decide(displayUrl)` niega, se recorren las demás URLs de `originalUrls` en orden
-—las más recientes primero, que son las que tienen más probabilidades de seguir vivas—, pidiendo permiso para cada una
-dentro del mismo turno del host, y se descarga la primera permitida. Si ninguna lo está, `robots_disallowed` como hoy.
-La `displayUrl` no cambia: sigue siendo lo que la persona escribió y lo que se abre. El historial solo tiene URLs de la
-misma vacante (ADR-021), así que probarlas no es leer algo distinto.
+### D7 — Rescatar por el historial, con un disparador real
+
+Dos piezas, y la segunda es la que hace que la primera sirva:
+
+- **En la cadena**: si `robots.txt` niega el `displayUrl`, el worker prueba las demás URLs de `originalUrls` **del mismo
+  host**, sin repetidas y sin la propia `displayUrl`, las más recientes primero, pidiendo permiso para cada una dentro
+  del mismo turno de ese host. Una URL de otro host no se prueba: su turno y su `Crawl-delay` son otros. El worker
+  necesita para eso `originalUrls` en su esquema y en su puerto.
+- **El disparador**: un link nace con una sola URL en su historial, y `robots_disallowed` no se reintenta, así que sin
+  más la cadena nueva no se ejecutaría nunca. Cuando alguien **vuelve a guardar la vacante con una URL nueva** y el link
+  está en `failed` por `robots_disallowed`, `saveOneLink` pide una lectura nueva en la misma transacción —sube la
+  versión, pasa a `pending`, escribe en el outbox—, como hace el reintento. No se vuelve a pedir la URL prohibida: se
+  prueba la nueva. Es exactamente el caso del smoke.
+
+Sin interfaz propia y sin backfill: los links que ya estén así se rescatan pegando su descripción o volviendo a guardar
+la URL limpia.
 
 ## Risks / Trade-offs
 
 - **`api` gana la IA.** Es la dependencia más pesada que se le ha añadido, y una petición HTTP pasa a poder tardar lo que
-  tarde un proveedor. Lo acotan el plazo de D1, el límite de D5 y que el endpoint solo lo usa una persona que acaba de
-  pegar algo y está mirando.
-- **Varias instancias de `api`** ejecutan IA cada una: las cuotas son por usuario sobre el ledger, así que siguen
-  siendo globales; el breaker es por proceso (ADR-018 §7), como en el worker.
-- **Lo pegado puede estar mal interpretado.** Por eso es un origen distinto de lo escrito a mano, se puede corregir
-  encima y se puede volver a él.
-- **Una persona puede pegar el texto de otra oferta** en la tarjeta equivocada. La autoría visible y la edición
-  reversible lo hacen visible y reparable, igual que la edición manual (ADR-022 §9).
+  tarde un proveedor. Lo acotan el plazo de D1, el límite de D5 y que el endpoint lo usa una persona que acaba de pegar
+  y está mirando.
+- **Varias instancias de `api`** ejecutan IA cada una: las cuotas son por usuario sobre el ledger, así que siguen siendo
+  globales; el breaker es por proceso (ADR-018 §7), como en el worker.
+- **Lo copiado desde la app del móvil casi nunca trae la cabecera** —título y empresa—, y la salida exige título. Por
+  eso el diálogo pide título y empresa aparte, precargados con lo que ya tiene la tarjeta: la persona los ve en la
+  cabecera de la app y los escribe si faltan, y cuentan como escritos a mano.
+- **Una persona puede pegar la oferta equivocada.** Se ve quién fue y se deshace con "Volver a lo anterior".
+- **La descripción no se guarda**, así que cuando la bolsa retire la oferta se pierde el texto. Se acepta aquí.
 
 ## Migration Plan
 
-Nada que migrar: `previewSources` admite un valor más en `source`, y un `replaced` sin `source` se lee como `auto`.
-
-El rescate por historial (D7) vale para las lecturas que ocurran a partir de ahora. Los links que **ya** quedaron
-`failed` con `robots_disallowed` no se reintentan solos: ese motivo no es reintentable ni por el botón ni por el
-backfill (ADR-022 §4), a propósito, porque volver a pedir lo que un sitio prohibió es lo que ADR-003 evita. Esos links
-se completan pegando su descripción, que es justo lo que este change añade.
+Nada que migrar: `previewSources` admite un valor más en `source`, y un `replaced` sin `source` se lee como `auto`. Los
+links que ya estén en `robots_disallowed` se rescatan pegando su descripción o volviendo a guardar una URL permitida.
 
 ## Open Questions
 
-- Si en algún momento se quiere crear un link a partir de un texto sin URL, hará falta una clave de dedupe que no sea
-  una URL; queda fuera de este change.
+- Crear un link a partir de un texto sin URL exigirá una clave de dedupe que no sea una URL; fuera de este change.
