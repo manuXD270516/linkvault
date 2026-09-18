@@ -33,6 +33,9 @@ export async function apiTestConfig(
     AUTH_ACCESS_TOKEN_TTL_SECONDS: 900,
     AUTH_REFRESH_TTL_DAYS: 30,
     AUTH_REFRESH_MAX_DAYS: 90,
+    // Relay apagado (D6 de job-links): los tests no lanzan timers ni registran la cola contra el Redis cerrado.
+    OUTBOX_RELAY_ENABLED: false,
+    OUTBOX_RELAY_INTERVAL_MS: 1000,
     ...overrides,
   };
 }

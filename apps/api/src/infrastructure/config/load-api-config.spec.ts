@@ -77,6 +77,8 @@ describe('api configuration', () => {
       AUTH_ACCESS_TOKEN_TTL_SECONDS: 900,
       AUTH_REFRESH_TTL_DAYS: 30,
       AUTH_REFRESH_MAX_DAYS: 90,
+      OUTBOX_RELAY_ENABLED: true,
+      OUTBOX_RELAY_INTERVAL_MS: 1000,
     });
   });
 
@@ -177,6 +179,12 @@ describe('api configuration', () => {
     ['AUTH_REFRESH_TTL_DAYS', '0'],
     ['AUTH_REFRESH_TTL_DAYS', '91'],
     ['AUTH_REFRESH_MAX_DAYS', '366'],
+    // El relay se enciende o se apaga con palabras, como FEATURE_HEADLESS_EXTRACTION: `1` no es un booleano.
+    ['OUTBOX_RELAY_ENABLED', '1'],
+    ['OUTBOX_RELAY_ENABLED', 'yes'],
+    ['OUTBOX_RELAY_INTERVAL_MS', '99'],
+    ['OUTBOX_RELAY_INTERVAL_MS', '300001'],
+    ['OUTBOX_RELAY_INTERVAL_MS', '1000.5'],
   ])('rejects %s=%s naming the variable', (name, value) => {
     const result = parseEnv(apiConfigSchema, {
       ...readEnvExample(),
@@ -195,6 +203,8 @@ describe('api configuration', () => {
     ['AUTH_ACCESS_TOKEN_TTL_SECONDS', '3600'],
     ['AUTH_REFRESH_TTL_DAYS', '1'],
     ['AUTH_REFRESH_MAX_DAYS', '365'],
+    ['OUTBOX_RELAY_INTERVAL_MS', '100'],
+    ['OUTBOX_RELAY_INTERVAL_MS', '300000'],
   ])('accepts the limit %s=%s', (name, value) => {
     const result = parseEnv(apiConfigSchema, {
       ...readEnvExample(),
@@ -212,6 +222,16 @@ describe('api configuration', () => {
     });
 
     expect(result.ok).toBe(true);
+  });
+
+  it('turns OUTBOX_RELAY_ENABLED into a boolean', () => {
+    const result = parseEnv(apiConfigSchema, {
+      ...readEnvExample(),
+      OUTBOX_RELAY_ENABLED: 'false',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.config.OUTBOX_RELAY_ENABLED).toBe(false);
   });
 
   it('keeps .env.example free of AI_PROVIDER and real-looking API keys', () => {

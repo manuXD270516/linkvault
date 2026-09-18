@@ -51,8 +51,8 @@ describe('GroupsFacade', () => {
     });
 
     await expect(facade.getGroupsOf(ANA)).resolves.toEqual([
-      { groupId: other.id, role: 'member' },
-      { groupId: own.id, role: 'owner' },
+      { groupId: other.id, name: 'De Beto', role: 'member' },
+      { groupId: own.id, name: 'De Ana', role: 'owner' },
     ]);
   });
 
@@ -65,8 +65,23 @@ describe('GroupsFacade', () => {
     });
 
     await expect(facade.getGroupsOf(ANA)).resolves.toEqual([
-      { groupId: own.id, role: 'owner' },
+      { groupId: own.id, name: 'Vivo', role: 'owner' },
     ]);
+  });
+
+  it('answers the role of a member and null for anybody else', async () => {
+    const createGroup = new CreateGroup(repository, clock);
+    const own = await createGroup.execute(ANA, 'De Ana');
+    await repository.addMember({
+      groupId: own.id,
+      userId: BETO,
+      now: clock.now(),
+    });
+
+    await expect(facade.membershipOf(own.id, ANA)).resolves.toBe('owner');
+    await expect(facade.membershipOf(own.id, BETO)).resolves.toBe('member');
+    await expect(facade.membershipOf(ORPHAN_GROUP, ANA)).resolves.toBeNull();
+    await expect(facade.membershipOf('no-es-un-id', ANA)).resolves.toBeNull();
   });
 
   it('answers an empty list for a user without groups and for a malformed id', async () => {

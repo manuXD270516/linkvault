@@ -22,7 +22,11 @@ import {
 } from '../../core/api/api-error';
 import { GroupsApi } from '../../core/groups/groups.api';
 import { GroupsStore } from '../../core/groups/groups.store';
+import { LinksStore } from '../../core/links/links.store';
 import { HOME_ROUTE } from '../../core/navigation/home-route';
+import { ImportLinksDialog } from '../links/import-links.dialog';
+import { LinkList } from '../links/link-list.component';
+import { SaveLinkForm } from '../links/save-link.form';
 import { confirmWith } from '../../shared/ui/confirm.dialog';
 import { RequestError } from '../../shared/ui/request-error';
 import { RenameGroupDialog, type RenameGroupDialogData } from './rename-group.dialog';
@@ -35,13 +39,21 @@ import { RenameGroupDialog, type RenameGroupDialogData } from './rename-group.di
  */
 @Component({
   selector: 'lv-group-detail-page',
-  imports: [DatePipe, MatButtonModule, RequestError, RouterLink],
+  imports: [
+    DatePipe,
+    LinkList,
+    MatButtonModule,
+    RequestError,
+    RouterLink,
+    SaveLinkForm,
+  ],
   templateUrl: './group-detail.page.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class GroupDetailPage {
   private readonly api = inject(GroupsApi);
   private readonly store = inject(GroupsStore);
+  private readonly linksStore = inject(LinksStore);
   private readonly dialog = inject(MatDialog);
   private readonly router = inject(Router);
   protected readonly groupId = inject(ActivatedRoute).snapshot.paramMap.get('id') ?? '';
@@ -59,13 +71,39 @@ export class GroupDetailPage {
   /** Tras expulsar se ofrece regenerar el código; aceptar la oferta ya es la confirmación. */
   protected readonly rotateOffer = signal(false);
 
+  /** Links del grupo: los pone `LinksStore`, que también los recarga al guardar, importar o quitar. */
+  protected readonly links = this.linksStore.items;
+  protected readonly linksLoaded = this.linksStore.loaded;
+  protected readonly linksTotal = this.linksStore.total;
+  protected readonly hasMoreLinks = this.linksStore.hasMore;
+  protected readonly loadingMoreLinks = this.linksStore.loadingMore;
+
   private readonly invitationField = viewChild<ElementRef<HTMLTextAreaElement>>('invitationField');
   private readonly deleteMessage = viewChild.required<TemplateRef<unknown>>('deleteMessage');
 
   constructor() {
-    void this.load();
+    void this.enter();
     // El respaldo aparece ya seleccionado, para que baste con copiar.
     effect(() => this.invitationField()?.nativeElement.select());
+  }
+
+  /**
+   * Los links se piden solo cuando ya se sabe que el grupo existe y es del usuario: si el detalle responde `404`, no hay
+   * lista que pedir. Va aparte de `load`, que también se usa para refrescar los miembros tras expulsar.
+   */
+  private async enter(): Promise<void> {
+    await this.load();
+    if (this.group() !== null) {
+      await this.linksStore.open({ kind: 'group', groupId: this.groupId });
+    }
+  }
+
+  protected openImport(): void {
+    this.dialog.open(ImportLinksDialog);
+  }
+
+  protected loadMoreLinks(): void {
+    void this.linksStore.loadMore();
   }
 
   protected async load(): Promise<void> {

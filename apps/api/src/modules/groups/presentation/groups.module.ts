@@ -3,6 +3,7 @@ import { UsersModule } from '../../users/presentation/users.module';
 import { CreateGroup } from '../application/create-group.usecase';
 import { DeleteGroup } from '../application/delete-group.usecase';
 import { GetGroup } from '../application/get-group.usecase';
+import { GroupDeletionHooks } from '../application/group-deletion-hooks';
 import { GroupsFacade } from '../application/groups.facade';
 import { JoinByCode } from '../application/join-by-code.usecase';
 import { LeaveGroup } from '../application/leave-group.usecase';
@@ -24,8 +25,9 @@ import { GroupsController } from './groups.controller';
 /**
  * Módulo `groups` (D1 y D7). Usa la conexión Mongoose por defecto de la app (`getConnectionToken()`), así que quien lo
  * importa debe registrar `MongooseModule.forRoot*`. Importa `UsersModule` solo para los nombres visibles de los miembros
- * (`UsersFacade`, a través de `UsersFacadeMemberDirectory`) y exporta únicamente `GroupsFacade`: es la única entrada del
- * resto de la API a los grupos, y lo que consumirá `job-links`.
+ * (`UsersFacade`, a través de `UsersFacadeMemberDirectory`) y exporta `GroupsFacade` —la única entrada del resto de la
+ * API a los grupos— y `GroupDeletionHooks`, donde otro módulo registra la limpieza de lo suyo al borrar un grupo (D7b de
+ * job-links): sin hooks registrados, el borrado se comporta como antes.
  */
 @Module({
   imports: [UsersModule],
@@ -46,7 +48,8 @@ import { GroupsController } from './groups.controller';
     LeaveGroup,
     RemoveMember,
     GroupsFacade,
+    GroupDeletionHooks,
   ],
-  exports: [GroupsFacade],
+  exports: [GroupsFacade, GroupDeletionHooks],
 })
 export class GroupsModule {}

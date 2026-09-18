@@ -9,9 +9,11 @@ import {
 // link de un grupo; ningún archivo de dominio, aplicación o infraestructura de otro módulo lee las colecciones de
 // `groups` (lo comprueba el lint). Solo lecturas: crear, unirse o expulsar pasa por la API, no por aquí.
 
-/** Grupo del usuario visto desde fuera del módulo: el identificador y el rol, nada más. */
+/** Grupo del usuario visto desde fuera del módulo: el identificador, el nombre y el rol, nada más. */
 export interface UserGroupRef {
   readonly groupId: string;
+  /** Lo necesita `links` para decir "ya lo tienes en Backend Bolivia" sin leer la colección de grupos. */
+  readonly name: string;
   readonly role: GroupRole;
 }
 
@@ -23,7 +25,16 @@ export class GroupsFacade {
 
   /** `true` si el usuario es miembro del grupo, con cualquier rol. Un identificador mal formado responde `false`. */
   async isMember(groupId: string, userId: string): Promise<boolean> {
-    return (await this.groups.findMembership(groupId, userId)) !== null;
+    return (await this.membershipOf(groupId, userId)) !== null;
+  }
+
+  /**
+   * Rol del usuario en el grupo, o `null` si no es miembro, el grupo no existe o el identificador está mal formado. Lo
+   * usa `links` para dejar que el `owner` quite un link que compartió otro, sin poder leer nada más de `groups`.
+   */
+  async membershipOf(groupId: string, userId: string): Promise<GroupRole | null> {
+    const membership = await this.groups.findMembership(groupId, userId);
+    return membership === null ? null : membership.role;
   }
 
   /**
@@ -34,6 +45,7 @@ export class GroupsFacade {
     const memberships = await this.groups.listGroupsOfUser(userId);
     return memberships.map((membership) => ({
       groupId: membership.group.id,
+      name: membership.group.name,
       role: membership.role,
     }));
   }

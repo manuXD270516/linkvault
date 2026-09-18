@@ -95,6 +95,12 @@ export const apiErrorCodeSchema = z.enum([
   'too_many_groups',
   // 409: el owner no puede salir de su grupo ni ser expulsado (no hay transferencia de propiedad).
   'owner_cannot_leave',
+  // 400: la URL guardada no es `http(s)`, no tiene host o pasa del máximo de caracteres.
+  'invalid_url',
+  // 400: el texto de la importación pasa del máximo de caracteres.
+  'text_too_long',
+  // 404: el link no está en ese grupo ni en esa lista privada.
+  'link_not_found',
   // 500
   'internal_error',
 ]);

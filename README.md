@@ -173,8 +173,8 @@ docker compose exec redis sh -c "redis-cli --scan --pattern 'auth:*' | xargs -r 
 ## Grupos
 
 Un grupo es el espacio donde una persona y su círculo juntan las ofertas de empleo que encuentran
-([ADR-002](docs/adr/ADR-002.md)). Solo se entra con un código de invitación: no hay buscador ni directorio de grupos. Los
-links llegan con el change `job-links`; hoy un grupo tiene nombre, miembros y código.
+([ADR-002](docs/adr/ADR-002.md)). Solo se entra con un código de invitación: no hay buscador ni directorio de grupos. Lo
+que se comparte dentro está en [Links](#links).
 
 ### Endpoints
 
@@ -187,7 +187,7 @@ Todas las rutas exigen access token (`Authorization: Bearer`); sin él responden
 | `POST /api/groups/join`                  | cualquier usuario | `200` con el grupo al que entra; nunca devuelve el código.               |
 | `GET /api/groups/:id`                    | miembro           | `200` con el detalle; `inviteCode` solo si es owner.                     |
 | `PATCH /api/groups/:id`                  | owner             | `200` con el detalle renombrado.                                         |
-| `DELETE /api/groups/:id`                 | owner             | `204`; borra el grupo y sus membresías en una transacción.               |
+| `DELETE /api/groups/:id`                 | owner             | `204`; borra el grupo, sus membresías y sus links en una transacción.    |
 | `POST /api/groups/:id/invite-code`       | owner             | `200` con `{ "inviteCode": "…" }`; el código anterior deja de servir.    |
 | `GET /api/groups/:id/members`            | miembro           | `200` con `userId`, `displayName`, `role` y `joinedAt`, por antigüedad.  |
 | `DELETE /api/groups/:id/members/me`      | miembro           | `204` al salir; el owner recibe `409 owner_cannot_leave`.                |
@@ -230,18 +230,20 @@ Son límites antiabuso, no invariantes: dos uniones simultáneas pueden dejar un
 
 El creador es `owner` y cada grupo tiene exactamente una membresía `owner`; no hay campo `ownerId`, la propiedad vive solo
 en la membresía. El owner renombra, regenera el código, expulsa y borra el grupo; un miembro solo puede salir. El owner no
-puede salir ni ser expulsado: todavía no hay transferencia de propiedad, así que quien quiere irse borra el grupo.
+puede salir ni ser expulsado: todavía no hay transferencia de propiedad, así que quien quiere irse borra el grupo, y
+borrarlo se lleva por delante los links que los demás compartieron allí (la confirmación del SPA dice cuántas ofertas se
+pierden). La transferencia es la primera tarea de `applications-tracking`.
 
 ### Rutas del SPA
 
-| Ruta          | Contenido                                                                                                                                     |
-| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/grupos`     | Pantalla de inicio: grupos con su rol y su número de miembros, o el estado vacío con crear y unirse.                                          |
-| `/grupos/:id` | Detalle: miembros con fecha de alta; el owner ve el código, copia la invitación, renombra, regenera, expulsa y borra; el miembro puede salir. |
-| `/unirse`     | Formulario de unirse. `?codigo=<código>` lo abre con el código escrito y lo quita de la URL al leerlo.                                        |
+| Ruta          | Contenido                                                                                                                                                                                 |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/grupos`     | Pantalla de inicio: grupos con su rol y su número de miembros, o el estado vacío con crear y unirse.                                                                                      |
+| `/grupos/:id` | Detalle: miembros con fecha de alta y los links del grupo (ver [Links](#links)); el owner ve el código, copia la invitación, renombra, regenera, expulsa y borra; el miembro puede salir. |
+| `/unirse`     | Formulario de unirse. `?codigo=<código>` lo abre con el código escrito y lo quita de la URL al leerlo.                                                                                    |
 
 `/` redirige a `/grupos`. Las tres exigen sesión: desde el enlace de invitación sin sesión, el código vuelve tras el login
-o el registro.
+o el registro. La confirmación de borrado dice a cuántos miembros afecta y cuántas ofertas se pierden.
 
 ### Probar los grupos en local
 
@@ -256,6 +258,149 @@ curl -s -H "$T" -H "$J" http://localhost:3000/api/groups -d '{"name":"Backend Bo
 curl -s -H "$T" http://localhost:3000/api/groups                                           # sus grupos
 curl -s -H "$T" -H "$J" http://localhost:3000/api/groups/join -d '{"code":"abcd2345"}'      # 200, código normalizado
 curl -s -H "$T" "http://localhost:3000/api/groups/$GROUP_ID/members"                       # nombres, rol y fecha
+```
+
+## Links
+
+Un link es una oferta de empleo guardada en LinkVault: compartida en un grupo o solo para uno mismo. La vacante
+(`JobLink`) es única en todo el sistema y nunca se borra; lo que se crea y se quita es la **relación** con un grupo o con
+una lista privada ([ADR-008](docs/adr/ADR-008.md), [ADR-021](docs/adr/ADR-021.md)). El preview (título, empresa,
+modalidad) llega con el change `link-enrichment`: hoy todo link nace `pending` y el SPA lo muestra como "Sin vista previa
+todavía".
+
+### Endpoints
+
+Todas las rutas exigen access token (`Authorization: Bearer`); sin él responden `401 unauthorized`.
+
+| Método y ruta                          | Quién             | Respuesta                                                                          |
+| -------------------------------------- | ----------------- | ---------------------------------------------------------------------------------- |
+| `POST /api/links`                      | cualquier usuario | `201` con el link, `created`, `shared`, `sharedBy?` y `alreadyInGroups`.           |
+| `POST /api/links/import`               | cualquier usuario | `201` con el resumen de la importación y los links guardados.                      |
+| `GET /api/links/mine`                  | cualquier usuario | `200` con su lista privada: `items`, `total` y `nextCursor`.                       |
+| `DELETE /api/links/mine/:linkId`       | quien lo guardó   | `204`; quita solo la entrada privada.                                              |
+| `GET /api/groups/:id/links`            | miembro           | `200` con los links del grupo, cada uno con `sharedBy` (`userId` y `displayName`). |
+| `DELETE /api/groups/:id/links/:linkId` | autor u owner     | `204`; otro miembro recibe `403 forbidden`.                                        |
+
+`POST /api/links` y `POST /api/links/import` aceptan `groupId`: con él el link se comparte en ese grupo; sin él queda en
+la lista privada de quien lo guarda. Compartir en un grupo **no** crea además entrada privada (ADR-021 §5).
+
+`created` dice si la vacante no existía en LinkVault y `shared` (`created` o `already_there`), si la relación con el
+destino es nueva: son cosas distintas, y el SPA solo avisa "ya estaba aquí" con la segunda, nombrando a quien la compartió
+primero. `alreadyInGroups` lista los **grupos propios**, distintos del destino, donde ese link ya estaba; nunca un grupo
+ajeno.
+
+**Privacidad.** Un grupo del que no se es miembro, un id que no existe y un id con otro formato responden igual
+(`404 group_not_found`), como en [Grupos](#grupos). Un `:linkId` mal formado responde `404 link_not_found`, lo mismo que un
+link que no está en esa lista. Quitar un link de un grupo lo pueden hacer quien lo compartió y el owner; a otro miembro se
+le responde `403 forbidden` y no `404`, porque ya ve el link en la lista y no hay nada que ocultarle.
+
+Códigos de error propios: `invalid_url` (400, campo `url`), `text_too_long` (400, campo `text`), `link_not_found` (404) y
+`forbidden` (403). Un cursor manipulado responde `400 validation_error` nombrando `cursor`.
+
+### Paginación de los listados
+
+Los dos listados comparten contrato: `limit` de 1 a 50 (20 por defecto) y `cursor` opaco. El orden es por fecha de
+compartido o de guardado y, a igualdad, por el identificador de la relación, ambos descendentes, así que 50 links creados
+en el mismo instante se paginan sin saltos ni repetidos. `total` es el tamaño del listado entero y no depende del tamaño
+de página; `nextCursor` solo viaja cuando hay más.
+
+### Identidad y dedupe
+
+La misma vacante compartida con dos URLs distintas es un solo `JobLink`. La clave es `dedupeKey`, con un único índice
+único (ADR-021 §1):
+
+- `"<plataforma>:<externalJobId>"` cuando un canonicalizador reconoce la oferta. Hay uno por plataforma prevista:
+  `linkedin` (`/jobs/view/<id>`, el `/comm/jobs/view/<id>` de sus correos y el `currentJobId` de la búsqueda),
+  `computrabajo` (el identificador final, con slug variable y un dominio por país), `indeed` (`jk`), `trabajopolis` (el
+  número de `/trabajo/<id>/<slug>`) y `getonboard` (el slug de la oferta).
+- `"url:<urlHash>"` cuando ninguno la reconoce (`platform: generic`): el `sha256` de la URL normalizada.
+
+La normalización es **solo identidad**: `https`, host en minúsculas y sin `www.`, sin credenciales, sin fragmento, sin
+barra final, sin parámetros de campaña (`utm_*`, `gclid`, `fbclid`, `mc_cid`, `mc_eid`, `igshid`, `ref`, `trk`,
+`trkcampaign`) y con el resto de parámetros ordenados, de modo que el hash no depende de su orden. Lo que el SPA abre y lo
+que `link-enrichment` descargará es `displayUrl`, la primera URL que escribió una persona, que es inmutable; las 20
+últimas URLs originales quedan como historial. Una URL que no es `http(s)`, que no tiene host o que pasa de 2048
+caracteres responde `400 invalid_url`.
+
+Formas que hoy caen en `generic` a propósito, porque ningún enlace conocido justifica otra cosa: las subpáginas
+(`/apply`) y los prefijos de idioma de Get on Board. Degradan a dedupe por `urlHash`, que nunca funde vacantes distintas;
+como mucho, la misma oferta cuenta dos veces.
+
+### Importación de un chat
+
+`POST /api/links/import` recibe el texto pegado (un chat de WhatsApp, por ejemplo) y se queda con las URLs, en el orden en
+que aparecen. El texto **no se guarda en ninguna colección ni se registra en ningún log**: de ahí solo salen las URLs
+extraídas, así que se puede pegar una conversación con nombres y teléfonos.
+
+- Máximo 20 000 caracteres de texto; por encima, `400 text_too_long`.
+- Las URLs repetidas que normalizan igual cuentan una vez.
+- Máximo 50 links guardados por llamada. El tope cuenta solo los que hay que guardar, no los que ya estaban en el destino,
+  así que volver a pegar el mismo chat avanza con los siguientes.
+- La respuesta resume `created` (nuevas), `existing` (ya estaban en el destino), `unrecognized` (lo que no es una URL
+  válida) y `skipped` (lo que quedó fuera del tope), con los links guardados.
+- Cada link va en su propia transacción: un fallo aislado no tira el resto de la importación.
+
+Todavía no hay límite de llamadas a `POST /api/links/import`: llega con `link-enrichment`, que es cuando cada importación
+pasa a encolar trabajo real (anotado en `openspec-changes.yaml`).
+
+### Outbox y cola
+
+Guardar un link escribe en **una sola transacción** la vacante, la relación y el evento `LinkCreated.v1` en
+`outbox_events` (patrón outbox, [ADR-009](docs/adr/ADR-009.md)): o se guardan las tres cosas o ninguna.
+
+Un relay dentro de `api` publica esos eventos en la cola `enrich-link` de BullMQ (ADR-021 §2-§4):
+
+- Cada `OUTBOX_RELAY_INTERVAL_MS` toma hasta 50 eventos pendientes vencidos, **publica primero y marca después**, con el
+  `jobId` determinista `enrich:<linkId>:<previewVersion>`: si la marca no llega a guardarse, la vuelta siguiente republica
+  y el `jobId` impide el duplicado. Una vuelta nunca se solapa con la anterior.
+- Un fallo de publicación aplaza el evento a `now + min(2^intentos s, 5 min)`. Solo a las **24 h** desde que se escribió
+  se da por perdido, con un aviso que nombra el id y el tipo del evento y nada más: un corte de Redis de minutos u horas
+  no quema los reintentos.
+- **Nadie consume `enrich-link` todavía**, a propósito: los jobs esperan en la cola hasta que llegue el consumidor de
+  `link-enrichment` y el link sigue `pending`. La retención olvida un job completado al día (o a los 1000) y uno fallido a
+  la semana, así que ese consumidor tendrá que ser idempotente por sí mismo y no solo por el `jobId`.
+- El relay supone **una sola instancia de `api`**: con varias, todas competirían por los mismos eventos pendientes (riesgo
+  aceptado en ADR-021).
+
+| Variable                   | `.env.example` | Regla                                                                                    |
+| -------------------------- | -------------- | ---------------------------------------------------------------------------------------- |
+| `OUTBOX_RELAY_ENABLED`     | `true`         | Con `false`, `api` no registra la cola ni abre Redis por esta vía y los eventos esperan. |
+| `OUTBOX_RELAY_INTERVAL_MS` | `1000`         | Milisegundos entre vueltas del relay, de 100 a 300 000.                                  |
+
+Los tests corren con el relay apagado, así que la suite de integración de `api` no necesita Redis.
+
+### Rutas del SPA
+
+| Ruta          | Contenido                                                                                       |
+| ------------- | ----------------------------------------------------------------------------------------------- |
+| `/grupos/:id` | Además de los miembros, los links del grupo, el formulario de guardar y el diálogo de importar. |
+| `/mis-links`  | "Solo para mí": los links guardados sin grupo, con las mismas acciones.                         |
+
+Cada fila abre `displayUrl` en una pestaña nueva con `rel="noopener noreferrer"`. Quitar un link pide confirmación y solo
+se ofrece a quien lo compartió y al owner del grupo.
+
+### Probar los links en local
+
+Con la API en marcha y un access token obtenido como en [Probar en local](#probar-en-local):
+
+```bash
+T='Authorization: Bearer <accessToken>'
+J='Content-Type: application/json'
+GROUP_ID=...   # un grupo del que seas miembro
+
+curl -s -H "$T" -H "$J" http://localhost:3000/api/links \
+  -d "{\"url\":\"https://www.linkedin.com/jobs/view/1234567890/\",\"groupId\":\"$GROUP_ID\"}"       # 201
+curl -s -H "$T" -H "$J" http://localhost:3000/api/links -d '{"url":"https://example.com/vacante"}'  # sin grupo: privado
+curl -s -H "$T" -H "$J" http://localhost:3000/api/links/import \
+  -d "{\"text\":\"mira esta https://example.com/a y esta https://example.com/b\",\"groupId\":\"$GROUP_ID\"}"
+curl -s -H "$T" "http://localhost:3000/api/groups/$GROUP_ID/links?limit=20"                         # página del grupo
+curl -s -H "$T" http://localhost:3000/api/links/mine                                                # lista privada
+```
+
+Con el relay encendido y Redis arriba, el job queda esperando a que exista un consumidor:
+
+```bash
+docker compose exec redis redis-cli keys 'bull:enrich-link:*'
 ```
 
 ## Calidad

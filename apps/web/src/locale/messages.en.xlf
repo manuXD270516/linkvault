@@ -115,9 +115,15 @@
         <target>Create group</target>
       </trans-unit>
       <trans-unit id="groups.detail.deleteMessage" datatype="html">
-        <source>{VAR_PLURAL, plural, =1 {Se borrará solo para ti. No se puede deshacer.} other {Se borrará para los
-    <x id="INTERPOLATION"/> miembros. No se puede deshacer.}}</source>
-        <target>{VAR_PLURAL, plural, =1 {It will be deleted just for you. This cannot be undone.} other {It will be deleted for all <x id="INTERPOLATION"/> members. This cannot be undone.}}</target>
+        <source>{VAR_PLURAL_2, plural, =1 {{VAR_PLURAL, plural, =0 {Se borrará solo para ti. No se puede deshacer.} =1 {Se
+    borrará solo para ti y se perderá 1 oferta compartida aquí (las que estén en otros grupos siguen
+    ahí). No se puede deshacer.} other {Se borrará solo para ti y se perderán las <x id="INTERPOLATION"/> ofertas
+    compartidas aquí (las que estén en otros grupos siguen ahí). No se puede deshacer.}}} other {{VAR_PLURAL_1, plural, =0 {Se borrará para los <x id="INTERPOLATION_1"/> miembros. No se puede deshacer.} =1 {Se borrará para
+    los <x id="INTERPOLATION_1"/> miembros y se perderá 1 oferta compartida aquí (las que estén en otros grupos siguen
+    ahí). No se puede deshacer.} other {Se borrará para los <x id="INTERPOLATION_1"/> miembros y se perderán las
+    <x id="INTERPOLATION"/> ofertas compartidas aquí (las que estén en otros grupos siguen ahí). No se puede
+    deshacer.}}}}</source>
+        <target>{VAR_PLURAL_2, plural, =1 {{VAR_PLURAL, plural, =0 {It will be deleted just for you. This cannot be undone.} =1 {It will be deleted just for you and 1 job post shared here will be lost (the ones that are in other groups stay there). This cannot be undone.} other {It will be deleted just for you and the <x id="INTERPOLATION"/> job posts shared here will be lost (the ones that are in other groups stay there). This cannot be undone.}}} other {{VAR_PLURAL_1, plural, =0 {It will be deleted for all <x id="INTERPOLATION_1"/> members. This cannot be undone.} =1 {It will be deleted for all <x id="INTERPOLATION_1"/> members and 1 job post shared here will be lost (the ones that are in other groups stay there). This cannot be undone.} other {It will be deleted for all <x id="INTERPOLATION_1"/> members and the <x id="INTERPOLATION"/> job posts shared here will be lost (the ones that are in other groups stay there). This cannot be undone.}}}}</target>
       </trans-unit>
       <trans-unit id="groups.detail.notFound" datatype="html">
         <source>Ese grupo no existe o ya no perteneces a él</source>
@@ -126,10 +132,6 @@
       <trans-unit id="groups.detail.backToList" datatype="html">
         <source>Volver a tus grupos</source>
         <target>Back to your groups</target>
-      </trans-unit>
-      <trans-unit id="groups.detail.linksPending" datatype="html">
-        <source>Aquí aparecerán las ofertas que compartan los miembros. Pronto podrás guardar links en este grupo.</source>
-        <target>The job posts shared by the members will show up here. You will soon be able to save links in this group.</target>
       </trans-unit>
       <trans-unit id="groups.detail.inviteTitle" datatype="html">
         <source>Código de invitación</source>
@@ -394,6 +396,134 @@
       <trans-unit id="error.unknown" datatype="html">
         <source>Algo salió mal. Inténtalo de nuevo</source>
         <target>Something went wrong. Please try again</target>
+      </trans-unit>
+      <trans-unit id="links.pasteChat" datatype="html">
+        <source> Pegar un chat </source>
+        <target>Paste a chat</target>
+      </trans-unit>
+      <trans-unit id="links.more" datatype="html">
+        <source> Ver más </source>
+        <target>Show more</target>
+      </trans-unit>
+      <trans-unit id="links.import.title" datatype="html">
+        <source> Pega aquí el chat: encontraremos los enlaces de ofertas
+</source>
+        <target>Paste the chat here: we will find the job links</target>
+      </trans-unit>
+      <trans-unit id="links.import.nothingFound" datatype="html">
+        <source> No encontramos ninguna oferta en ese texto </source>
+        <target>We didn't find any job post in that text</target>
+      </trans-unit>
+      <trans-unit id="6848367234862052805" datatype="html">
+        <source>{VAR_PLURAL, plural, =1 {1 guardada} other {<x id="INTERPOLATION"/> guardadas}}</source>
+        <target>{VAR_PLURAL, plural, =1 {1 saved} other {<x id="INTERPOLATION"/> saved}}</target>
+      </trans-unit>
+      <trans-unit id="links.import.summary" datatype="html">
+        <source><x id="ICU" equiv-text="{created, plural, =1 {1 guardada} other {{{ created }} guardadas}}" xid="5311772678838343571"/>, <x id="ICU_1" equiv-text="{existing, plural, =1
+          {1 ya estaba} other {{{ existing }} ya estaban}}" xid="5299465799020170654"/></source>
+        <target><x id="ICU" equiv-text="{created, plural, =1 {1 guardada} other {{{ created }} guardadas}}" xid="5311772678838343571"/>, <x id="ICU_1" equiv-text="{existing, plural, =1
+          {1 ya estaba} other {{{ existing }} ya estaban}}" xid="5299465799020170654"/></target>
+      </trans-unit>
+      <trans-unit id="7900024920285931675" datatype="html">
+        <source>{VAR_PLURAL, plural, =1 {1 ya estaba} other {<x id="INTERPOLATION"/> ya estaban}}</source>
+        <target>{VAR_PLURAL, plural, =1 {1 was already there} other {<x id="INTERPOLATION"/> were already there}}</target>
+      </trans-unit>
+      <trans-unit id="links.import.unrecognized" datatype="html">
+        <source>{VAR_PLURAL, plural, =1 {1 enlace no se pudo leer} other {<x id="INTERPOLATION"/> enlaces no
+          se pudieron leer}}</source>
+        <target>{VAR_PLURAL, plural, =1 {1 link could not be read} other {<x id="INTERPOLATION"/> links could not be read}}</target>
+      </trans-unit>
+      <trans-unit id="links.import.skipped" datatype="html">
+        <source> Nos quedamos en 50: vuelve a pegar el mismo texto para continuar </source>
+        <target>We stopped at 50: paste the same text again to continue</target>
+      </trans-unit>
+      <trans-unit id="links.import.textLabel" datatype="html">
+        <source>Texto del chat</source>
+        <target>Chat text</target>
+      </trans-unit>
+      <trans-unit id="links.import.tooLong" datatype="html">
+        <source> Pega menos texto: hasta 20 000 caracteres </source>
+        <target>Paste less text: up to 20,000 characters</target>
+      </trans-unit>
+      <trans-unit id="links.import.close" datatype="html">
+        <source> Cerrar </source>
+        <target>Close</target>
+      </trans-unit>
+      <trans-unit id="links.import.cancel" datatype="html">
+        <source>Cancelar</source>
+        <target>Cancel</target>
+      </trans-unit>
+      <trans-unit id="links.import.submit" datatype="html">
+        <source> Importar </source>
+        <target>Import</target>
+      </trans-unit>
+      <trans-unit id="links.list.emptyMine" datatype="html">
+        <source> Aquí guardas ofertas solo para ti. Las que compartiste están en tus grupos. </source>
+        <target>Here you save job posts just for you. The ones you shared are in your groups.</target>
+      </trans-unit>
+      <trans-unit id="links.list.emptyGroup" datatype="html">
+        <source> Todavía no hay ofertas aquí. Guarda un link o pega el chat donde las compartís. </source>
+        <target>There are no job posts here yet. Save a link or paste the chat where you share them.</target>
+      </trans-unit>
+      <trans-unit id="links.list.sharedBy" datatype="html">
+        <source>Compartido por <x id="INTERPOLATION" equiv-text="{{ sharer.displayName }}"/></source>
+        <target>Shared by <x id="INTERPOLATION" equiv-text="{{ sharer.displayName }}"/></target>
+      </trans-unit>
+      <trans-unit id="links.list.noPreview" datatype="html">
+        <source>Sin vista previa todavía</source>
+        <target>No preview yet</target>
+      </trans-unit>
+      <trans-unit id="links.list.remove" datatype="html">
+        <source> Quitar </source>
+        <target>Remove</target>
+      </trans-unit>
+      <trans-unit id="links.list.removeTitle" datatype="html">
+        <source>Quitar el enlace</source>
+        <target>Remove the link</target>
+      </trans-unit>
+      <trans-unit id="links.list.removeMessageMine" datatype="html">
+        <source>Se quita de tu lista; la oferta sigue disponible en tus grupos.</source>
+        <target>It will be removed from your list; the job post is still available in your groups.</target>
+      </trans-unit>
+      <trans-unit id="links.list.removeMessageGroup" datatype="html">
+        <source>Se quita de este grupo; la oferta sigue disponible en otros grupos.</source>
+        <target>It will be removed from this group; the job post is still available in other groups.</target>
+      </trans-unit>
+      <trans-unit id="links.list.removeConfirm" datatype="html">
+        <source>Quitar</source>
+        <target>Remove</target>
+      </trans-unit>
+      <trans-unit id="links.platform.generic" datatype="html">
+        <source>Otra web</source>
+        <target>Another site</target>
+      </trans-unit>
+      <trans-unit id="links.mine.title" datatype="html">
+        <source>Solo para mí</source>
+        <target>Just for me</target>
+      </trans-unit>
+      <trans-unit id="links.save.url" datatype="html">
+        <source>Pega el enlace de una oferta</source>
+        <target>Paste the link of a job post</target>
+      </trans-unit>
+      <trans-unit id="links.save.submit" datatype="html">
+        <source> Guardar </source>
+        <target>Save</target>
+      </trans-unit>
+      <trans-unit id="links.save.invalidUrl" datatype="html">
+        <source> Eso no parece un enlace de una oferta </source>
+        <target>That doesn't look like a job post link</target>
+      </trans-unit>
+      <trans-unit id="links.save.alreadyInGroups" datatype="html">
+        <source> Ya lo tienes en: <x id="INTERPOLATION" equiv-text="{{ groups }}"/> </source>
+        <target>You already have it in: <x id="INTERPOLATION" equiv-text="{{ groups }}"/></target>
+      </trans-unit>
+      <trans-unit id="links.save.alreadyThere" datatype="html">
+        <source> Ya estaba aquí, lo compartió <x id="INTERPOLATION" equiv-text="{{ name }}"/> </source>
+        <target>It was already here, <x id="INTERPOLATION" equiv-text="{{ name }}"/> shared it</target>
+      </trans-unit>
+      <trans-unit id="shell.myLinks" datatype="html">
+        <source>Solo para mí</source>
+        <target>Just for me</target>
       </trans-unit>
     </body>
   </file>
