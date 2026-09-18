@@ -11,8 +11,8 @@ import {
   applyPastedPreview,
   effectiveHeader,
   failureKeptAfterPaste,
-  pastedPreviewStatus,
 } from './preview-paste';
+import { previewStatusOf } from './preview-status';
 
 // Pegar la descripción sobre lo que ya estaba guardado (D3 y D6 de paste-job-description). Sin Mongo y sin Nest: es
 // dominio. Lo que se guarda en `replaced` lo fija además la tabla `PREVIEW_REPLACED_CASES`, en `preview-edit.spec.ts`.
@@ -147,7 +147,7 @@ describe('applyPastedPreview', () => {
     expect(pasted.previewSources.title).toEqual(
       readFromPage.previewSources?.title,
     );
-    expect(pastedPreviewStatus(pasted.preview, pasted.previewSources)).toBe(
+    expect(previewStatusOf(pasted.preview, pasted.previewSources, undefined)).toBe(
       'enriched',
     );
   });
@@ -278,13 +278,25 @@ describe('effectiveHeader', () => {
   });
 });
 
-describe('pastedPreviewStatus', () => {
+describe('previewStatusOf', () => {
   it('Estado tras completar con título y empresa', () => {
     const pasted = applyPastedPreview({}, { extracted: anasOffer }, ANA, NOW);
 
-    expect(pastedPreviewStatus(pasted.preview, pasted.previewSources)).toBe(
+    expect(previewStatusOf(pasted.preview, pasted.previewSources, undefined)).toBe(
       'enriched',
     );
+  });
+
+  it('is failed when nothing is left and a read had failed, which leaves the reason of the link as it was', () => {
+    expect(
+      previewStatusOf({}, {}, { reason: 'robots_disallowed', at: NOW.toISOString() }),
+    ).toBe('failed');
+  });
+
+  it('is pending when nothing is left and nobody ever tried to read it', () => {
+    // Sin motivo guardado no hubo lectura fallida: decir `failed` haría que la tarjeta contara "No pudimos leer esta
+    // oferta" de una lectura que nunca ocurrió.
+    expect(previewStatusOf({}, {}, undefined)).toBe('pending');
   });
 
   it('is partial without a company, and manual as soon as a person wrote a field', () => {
@@ -301,10 +313,10 @@ describe('pastedPreviewStatus', () => {
       NOW,
     );
 
-    expect(pastedPreviewStatus(partial.preview, partial.previewSources)).toBe(
+    expect(previewStatusOf(partial.preview, partial.previewSources, undefined)).toBe(
       'partial',
     );
-    expect(pastedPreviewStatus(manual.preview, manual.previewSources)).toBe(
+    expect(previewStatusOf(manual.preview, manual.previewSources, undefined)).toBe(
       'manual',
     );
   });

@@ -3,6 +3,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { LinkNotFound } from '../domain/errors';
 import type { JobLink } from '../domain/job-link';
 import { applyManualEdit } from '../domain/preview-edit';
+import { previewStatusOf } from '../domain/preview-status';
 import { requireReadableLink, type ReadableLink } from './link-access';
 import { displayNameIdsOf, toJobLinkSummary, toLinkSharer } from './link.mapper';
 import { LINKS_CLOCK, type Clock } from './ports/clock.port';
@@ -89,6 +90,13 @@ export class UpdateLinkPreview {
         {
           preview: edited.preview,
           previewSources: edited.previewSources,
+          // Escribir a mano deja `manual`; volver atrás deja lo que corresponde a los campos que quedan, y un link
+          // que se queda sin nada vuelve a `failed` con el motivo que conservaba, o a `pending` si nunca falló.
+          previewStatus: previewStatusOf(
+            edited.preview,
+            edited.previewSources,
+            current.lastEnrichmentError,
+          ),
           now: this.clock.now(),
         },
       );

@@ -145,7 +145,7 @@ export class MongoJobLinkRepository implements JobLinkRepository {
           $set: {
             preview: changes.preview,
             previewSources: changes.previewSources,
-            previewStatus: 'manual',
+            previewStatus: changes.previewStatus,
             updatedAt: changes.now,
           },
           $inc: { previewVersion: 1 },

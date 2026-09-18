@@ -179,6 +179,7 @@ describe('DeliverLinkEnriched', () => {
           at: clock.now().toISOString(),
         },
       },
+      previewStatus: 'manual',
       now: clock.now(),
     });
 

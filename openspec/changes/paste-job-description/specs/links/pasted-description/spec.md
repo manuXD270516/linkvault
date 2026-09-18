@@ -13,8 +13,10 @@ petición y responder `200` con el link actualizado. Los campos obtenidos del te
 `pasted`, quién lo pegó y cuándo. El título y la empresa escritos aparte SHALL pasarse a la extracción como contexto,
 para que no tenga que adivinarlos, y SHALL entrar con origen `manual` **solo si difieren de lo que el link ya tenía**:
 un valor igual al actual se ignora, de modo que lo que venía precargado y nadie tocó no cambia de autor ni queda
-fijado. Solo SHALL escribirse campos con valor: lo que la extracción no obtenga NO SHALL borrar lo que ya hubiera. `previewVersion` SHALL
-subir. Quien no puede ver el link SHALL recibir `404` con código `link_not_found`.
+fijado. Solo SHALL escribirse campos con valor: lo que la extracción no obtenga NO SHALL borrar lo que ya hubiera.
+`previewVersion` SHALL subir cuando el pegado cambie algún campo; un pegado que no cambia nada NO SHALL escribir ni
+avisar, para no matar un enriquecimiento en vuelo a cambio de nada. Quien no puede ver el link SHALL recibir `404` con
+código `link_not_found`.
 
 #### Scenario: Oferta de LinkedIn completada pegando su texto
 
@@ -110,7 +112,8 @@ IA de quien pega, `429` con código `ai_quota_exceeded` y `Retry-After`. En todo
 Cuando un pegado sustituya un campo, SHALL guardarse la entrada sustituida —su valor, su origen y su autor—, y quien
 puede ver el link SHALL poder devolver el campo a ella, campo por campo o todos los de un mismo pegado de una vez. Pegar
 NO SHALL tocar un campo escrito a mano, ni lo que ese campo guardaba para deshacerse. Deshacer SHALL llegar un nivel
-atrás: si sobre un pegado se pegan otros dos, el primero ya no se recupera.
+atrás: si sobre un pegado se pegan otros dos, el primero ya no se recupera. Tras deshacer, el estado SHALL derivarse de
+los campos que queden, con la misma regla que tras pegar: deshacer no es escribir a mano.
 
 #### Scenario: La oferta equivocada, deshecha
 
@@ -123,6 +126,20 @@ atrás: si sobre un pegado se pegan otros dos, el primero ya no se recupera.
 - **GIVEN** un link en el que Ana pegó una oferta que tocó varios campos
 - **WHEN** se pide deshacer lo que pegó Ana
 - **THEN** todos esos campos SHALL volver a lo que tenían antes, en una sola operación
+
+#### Scenario: Deshacer deja el estado que corresponde
+
+- **GIVEN** un link de LinkedIn en `failed` porque la bolsa no permite la lectura, completado después pegando su texto
+- **WHEN** se deshace todo ese pegado
+- **THEN** el link SHALL volver a `failed` con el motivo de lectura prohibida
+- **AND** NO SHALL quedar en `manual`
+
+#### Scenario: Deshacer no pierde lo escrito a mano
+
+- **GIVEN** un link con un pegado y un campo escrito a mano
+- **WHEN** se deshace el pegado
+- **THEN** el campo escrito a mano SHALL seguir igual
+- **AND** el link SHALL quedar en `manual`
 
 #### Scenario: Volver a lo leído de la página
 

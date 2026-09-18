@@ -211,7 +211,7 @@ describe('findById', () => {
 });
 
 describe('updatePreview', () => {
-  it('stores the preview with its provenance, raises the version and leaves the link manual', async () => {
+  it('stores the preview with its provenance and the status it is given, and raises the version', async () => {
     const { link } = await save(JOB_PAGE);
 
     const updated = await repository.updatePreview(link.id, 1, {
@@ -225,6 +225,7 @@ describe('updatePreview', () => {
           replaced: { value: 'Backend', source: 'auto', extractor: 'json-ld' },
         },
       },
+      previewStatus: 'manual',
       now: later,
     });
 
@@ -280,6 +281,7 @@ describe('updatePreview', () => {
     const updated = await repository.updatePreview(link.id, 1, {
       preview: { title: 'Backend Engineer II', company: 'Acme Bolivia' },
       previewSources,
+      previewStatus: 'manual',
       now: later,
     });
 
@@ -306,6 +308,7 @@ describe('updatePreview', () => {
         image: 'https://example.com/a.png',
       } as never,
       previewSources: {},
+      previewStatus: 'manual',
       now: later,
     });
 
@@ -317,12 +320,14 @@ describe('updatePreview', () => {
     await repository.updatePreview(link.id, 1, {
       preview: { title: 'Primera' },
       previewSources: {},
+      previewStatus: 'manual',
       now: later,
     });
 
     const late = await repository.updatePreview(link.id, 1, {
       preview: { title: 'Tardía' },
       previewSources: {},
+      previewStatus: 'manual',
       now: later,
     });
 
@@ -333,12 +338,45 @@ describe('updatePreview', () => {
   });
 
   it('answers null for an unknown or malformed id', async () => {
-    const changes = { preview: {}, previewSources: {}, now: later };
+    const changes = {
+      preview: {},
+      previewSources: {},
+      previewStatus: 'manual',
+      now: later,
+    } as const;
 
     expect(await repository.updatePreview(objectId(99), 1, changes)).toBeNull();
     expect(
       await repository.updatePreview('no-es-un-id', 1, changes),
     ).toBeNull();
+  });
+});
+
+describe('updatePreview after going back', () => {
+  it('writes the status it is given and keeps the reason of the failure', async () => {
+    const { link } = await save(JOB_PAGE);
+    await connection.collection(JOB_LINKS_COLLECTION).updateOne(
+      { _id: new mongoose.Types.ObjectId(link.id) },
+      {
+        $set: {
+          previewStatus: 'enriched',
+          lastEnrichmentError: {
+            reason: 'robots_disallowed',
+            at: now.toISOString(),
+          },
+        },
+      },
+    );
+
+    const updated = await repository.updatePreview(link.id, 1, {
+      preview: {},
+      previewSources: {},
+      previewStatus: 'failed',
+      now: later,
+    });
+
+    expect(updated?.previewStatus).toBe('failed');
+    expect(updated?.lastEnrichmentError?.reason).toBe('robots_disallowed');
   });
 });
 

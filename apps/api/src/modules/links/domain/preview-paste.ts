@@ -2,13 +2,10 @@ import {
   PASTED_PREVIEW_EXTRACTOR,
   PREVIEW_FIELD_NAMES,
   draftFrom,
-  hasRequiredFields,
   mayOverwrite,
   type EnrichmentFailureReason,
   type JobPreview,
   type LastEnrichmentError,
-  type PreviewSources,
-  type PreviewStatus,
   type StoredPreview,
 } from '@linkvault/shared';
 import {
@@ -153,21 +150,6 @@ function writeByHand(
     at,
     ...(replaced === undefined ? {} : { replaced }),
   };
-}
-
-/**
- * Estado del link tras pegar (D6): se deriva de los campos, con la misma prioridad que el worker. `manual` si alguno lo
- * escribió una persona, `enriched` si están título y empresa, y `partial` si no.
- */
-export function pastedPreviewStatus(
-  preview: StoredPreview,
-  sources: PreviewSources,
-): PreviewStatus {
-  const writtenByHand = PREVIEW_FIELD_NAMES.some(
-    (field) => sources[field]?.source === 'manual',
-  );
-  if (writtenByHand) return 'manual';
-  return hasRequiredFields(preview) ? 'enriched' : 'partial';
 }
 
 /**

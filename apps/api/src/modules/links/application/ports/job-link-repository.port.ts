@@ -31,6 +31,8 @@ export interface ResolvedJobLink {
 export interface ManualPreviewWrite {
   readonly preview: StoredPreview;
   readonly previewSources: PreviewSources;
+  /** Estado derivado de los campos que quedan (`previewStatusOf`): `manual` al escribir a mano, otro tras volver atrás. */
+  readonly previewStatus: PreviewStatus;
   readonly now: Date;
 }
 
@@ -65,7 +67,7 @@ export interface JobLinkRepository {
   findById(linkId: string): Promise<JobLink | null>;
 
   /**
-   * Guarda el preview editado a mano: deja el link en `manual` y sube `previewVersion`, **condicionado** a la versión
+   * Guarda el preview editado a mano con el estado que le dan —no lo toca el motivo del fallo— y sube `previewVersion`, **condicionado** a la versión
    * leída. Devuelve `null` si nadie casó esa condición —el link ya no existe o otra escritura ganó la carrera—, que es
    * lo que impide que una edición pise un enriquecimiento que terminó entre la lectura y la escritura (D2).
    */

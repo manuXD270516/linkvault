@@ -84,7 +84,7 @@ export class InMemoryJobLinkRepository implements JobLinkRepository {
       ...link,
       preview: changes.preview,
       previewSources: changes.previewSources,
-      previewStatus: 'manual',
+      previewStatus: changes.previewStatus,
       previewVersion: link.previewVersion + 1,
       updatedAt: changes.now,
     };

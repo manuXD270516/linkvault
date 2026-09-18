@@ -366,6 +366,51 @@ describe('pasting a description, read by the AI of the suite in replay', () => {
     expect(response.statusCode).toBe(401);
   });
 
+  /** Deshace todo lo que pegó alguien, como "Deshacer lo que pegó <nombre>": un `revert` de sus campos pegados. */
+  async function undoPasted(linkId: string, pasted: JobLinkSummary) {
+    const fields = Object.entries(pasted.previewSources ?? {})
+      .filter(([, entry]) => entry?.source === 'pasted')
+      .map(([field]) => field);
+    expect(fields.length).toBeGreaterThan(0);
+    return await fx.http.request('PATCH', `/api/links/${linkId}/preview`, {
+      authorization: fx.ana.authorization,
+      body: { revert: fields },
+    });
+  }
+
+  it('Deshacer deja el estado que corresponde', async () => {
+    const linkId = await sharedLink(fx);
+    const pasted = await paste(fx, fx.beto, linkId, {
+      text: pastedGoldenInput('oferta-entre-chat').text,
+    });
+    expect(pasted.json<JobLinkSummary>().previewStatus).toBe('enriched');
+
+    const undone = await undoPasted(linkId, pasted.json<JobLinkSummary>());
+
+    expect(undone.statusCode).toBe(200);
+    const summary = undone.json<JobLinkSummary>();
+    expect(summary.previewStatus).toBe('failed');
+    expect(summary.lastEnrichmentError?.reason).toBe('robots_disallowed');
+    expect(summary.preview?.title).toBeUndefined();
+  });
+
+  it('Deshacer no pierde lo escrito a mano', async () => {
+    const linkId = await sharedLink(fx);
+    const input = pastedGoldenInput('linkedin-app-con-titulo-escrito');
+    const pasted = await paste(fx, fx.beto, linkId, {
+      text: input.text,
+      title: input.knownTitle,
+      company: input.knownCompany,
+    });
+
+    const undone = await undoPasted(linkId, pasted.json<JobLinkSummary>());
+
+    const summary = undone.json<JobLinkSummary>();
+    expect(summary.previewStatus).toBe('manual');
+    expect(summary.preview?.title).toBe('Analista Contable Senior');
+    expect(summary.previewSources?.summary).toBeUndefined();
+  });
+
   it('Texto con datos de contacto', async () => {
     // El caso sembrado del golden es exactamente este texto sin su email ni su teléfono.
     const input = pastedGoldenInput('sembrado-contacto-reclutador');

@@ -20,9 +20,9 @@ import {
   applyPastedPreview,
   effectiveHeader,
   failureKeptAfterPaste,
-  pastedPreviewStatus,
   type PastedContent,
 } from '../domain/preview-paste';
+import { previewStatusOf } from '../domain/preview-status';
 import { requireReadableLink, type ReadableLink } from './link-access';
 import {
   displayNameIdsOf,
@@ -195,9 +195,10 @@ export class PasteDescription {
         {
           preview: merged.preview,
           previewSources: merged.previewSources,
-          previewStatus: pastedPreviewStatus(
+          previewStatus: previewStatusOf(
             merged.preview,
             merged.previewSources,
+            kept,
           ),
           ...(kept === undefined ? {} : { lastEnrichmentError: kept }),
           now,
