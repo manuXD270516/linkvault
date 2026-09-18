@@ -7,8 +7,11 @@ produjo, `pasted` con quién pegó el texto del que salió y cuándo, o `manual`
 los orígenes `pasted` y `manual` SHALL decir el nombre visible de la persona, no su identificador. La precedencia SHALL
 ser **escrito a mano > pegado > leído de la página**, y SHALL ser una sola regla para todo lo que escribe el preview: un
 merge automático NO SHALL sobrescribir un campo `manual` ni `pasted`, y un pegado NO SHALL sobrescribir un campo
-`manual`. Cuando algo sustituya un campo, SHALL guardarse la entrada sustituida —valor, origen, extractor, autor y
-fecha— para poder volver a ella. Un valor vacío NO SHALL sustituir a uno que ya hubiera. Dentro de una misma pasada,
+`manual`. Cuando una persona sustituya un campo —pegando una descripción o escribiendo a mano—, SHALL guardarse la
+entrada sustituida —valor, origen, extractor, autor y fecha— para poder volver a ella; una relectura automática que
+sustituye un valor automático por otro no guarda nada, y la tarjeta no ofrece volver en ese campo. En un merge
+automático o en un pegado, un valor vacío NO SHALL sustituir a uno que ya hubiera; una persona que escribe a mano sí
+puede vaciar un campo. Dentro de una misma pasada,
 entre dos valores automáticos SHALL ganar el de la etapa anterior de la cadena, que es la más fiable. Frente a lo ya
 guardado, un valor automático nuevo SHALL sustituir al automático anterior aunque venga de una etapa menos fiable: la
 página pudo cambiar.
@@ -148,8 +151,9 @@ Cuando `robots.txt` prohíba la `displayUrl` de un link, el worker SHALL probar 
 mismo host**, sin repetidas y las más recientes primero, pidiendo permiso a `robots.txt` para cada una dentro del mismo
 turno del host, y SHALL leer la primera permitida. Una URL de otro host NO SHALL probarse. Solo si ninguna está
 permitida SHALL rendirse con `robots_disallowed`. La `displayUrl` NO SHALL cambiar: sigue siendo la que se abre. Cuando
-alguien vuelva a guardar la vacante con una URL que no estaba en su historial y el link esté en `failed` por
-`robots_disallowed`, SHALL pedirse una lectura nueva en la misma operación, sin volver a pedir la URL prohibida.
+alguien vuelva a guardar la vacante con una URL que no estaba en su historial, **del mismo host** que la `displayUrl`, y
+el link esté en `failed` por `robots_disallowed`, SHALL pedirse una lectura nueva en la misma operación, sin volver a
+pedir la URL prohibida. Una URL nueva de otro host NO SHALL pedir nada, porque la lectura no la probaría.
 
 #### Scenario: El historial tiene la misma vacante sin el parámetro prohibido
 

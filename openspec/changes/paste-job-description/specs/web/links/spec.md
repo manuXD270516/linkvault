@@ -130,9 +130,11 @@ que una persona corrige lo ven las demás. Un error de la API SHALL mostrarse si
 Cada link SHALL ofrecer "Pegar la descripción" a quien puede verlo, en un diálogo que funcione igual desde cualquier
 pantalla que muestre el link. El diálogo SHALL explicar "Pega el texto de la oferta tal como la ves: lo leemos para
 completar la tarjeta y no lo guardamos", SHALL ofrecer además los campos de título y empresa precargados con lo que ya
-tenga la tarjeta —porque lo que se copia desde la app del móvil casi nunca trae la cabecera—, y mientras la API responde
+tenga la tarjeta —porque lo que se copia desde la app del móvil casi nunca trae la cabecera—, y SHALL enviar solo los que
+la persona haya cambiado. Mientras la API responde
 SHALL mostrar "Leyendo… puede tardar unos segundos" sin permitir enviarlo dos veces. Al terminar, la tarjeta SHALL
-actualizarse sin recargar. Un `422` SHALL mostrar "Eso no parece una oferta de trabajo. Copia la descripción de la
+actualizarse sin recargar, y ofrecer "Deshacer lo que pegó <nombre>", que devuelve de una vez todos los campos de ese
+pegado. Un `422` SHALL mostrar "Eso no parece una oferta de trabajo. Copia la descripción de la
 oferta, no la conversación"; un `503`, "No pudimos leerla ahora, inténtalo en un rato"; un `429` por límite de pegados,
 "Pegaste demasiadas ofertas seguidas, espera un poco"; y un `429` por cuota de IA, "Llegaste al límite de lecturas de
 hoy, vuelve mañana". En todos ellos SHALL conservarse lo pegado.

@@ -10,8 +10,10 @@ ya tiene delante, sin guardar nunca ese texto y tratándolo como el dato persona
 `POST /api/links/:id/pasted` SHALL aceptar, de quien puede ver el link, el texto de una oferta y, opcionalmente, su
 título y su empresa escritos aparte. SHALL leer el texto con la extracción estructurada de IA dentro de la misma
 petición y responder `200` con el link actualizado. Los campos obtenidos del texto SHALL entrar en el preview con origen
-`pasted`, quién lo pegó y cuándo; el título y la empresa escritos aparte SHALL entrar con origen `manual`. Solo SHALL
-escribirse campos con valor: lo que la extracción no obtenga NO SHALL borrar lo que ya hubiera. `previewVersion` SHALL
+`pasted`, quién lo pegó y cuándo. El título y la empresa escritos aparte SHALL pasarse a la extracción como contexto,
+para que no tenga que adivinarlos, y SHALL entrar con origen `manual` **solo si difieren de lo que el link ya tenía**:
+un valor igual al actual se ignora, de modo que lo que venía precargado y nadie tocó no cambia de autor ni queda
+fijado. Solo SHALL escribirse campos con valor: lo que la extracción no obtenga NO SHALL borrar lo que ya hubiera. `previewVersion` SHALL
 subir. Quien no puede ver el link SHALL recibir `404` con código `link_not_found`.
 
 #### Scenario: Oferta de LinkedIn completada pegando su texto
@@ -28,6 +30,13 @@ subir. Quien no puede ver el link SHALL recibir `404` con código `link_not_foun
 - **THEN** el título y la empresa SHALL quedar con origen `manual`
 - **AND** el resto de campos, con origen `pasted`
 - **AND** el link SHALL quedar con título y empresa
+
+#### Scenario: Título precargado sin tocar no se vuelve manual
+
+- **GIVEN** un link cuyo título se leyó de la página
+- **WHEN** alguien pega la descripción dejando el título precargado tal como estaba
+- **THEN** el título NO SHALL pasar a origen `manual` ni a nombre de quien pega
+- **AND** el link NO SHALL quedar en estado `manual` por ello
 
 #### Scenario: Pegar no deja huecos
 
@@ -99,14 +108,21 @@ IA de quien pega, `429` con código `ai_quota_exceeded` y `Retry-After`. En todo
 ### Requirement: Deshacer un pegado
 
 Cuando un pegado sustituya un campo, SHALL guardarse la entrada sustituida —su valor, su origen y su autor—, y quien
-puede ver el link SHALL poder devolver el campo a ella. Pegar NO SHALL tocar un campo escrito a mano, ni lo que ese
-campo guardaba para deshacerse.
+puede ver el link SHALL poder devolver el campo a ella, campo por campo o todos los de un mismo pegado de una vez. Pegar
+NO SHALL tocar un campo escrito a mano, ni lo que ese campo guardaba para deshacerse. Deshacer SHALL llegar un nivel
+atrás: si sobre un pegado se pegan otros dos, el primero ya no se recupera.
 
 #### Scenario: La oferta equivocada, deshecha
 
 - **GIVEN** un link cuyos campos pegó Beto
 - **WHEN** Ana pega encima el texto de otra oferta y después se pide volver a lo anterior
 - **THEN** los campos SHALL recuperar lo que pegó Beto, con su origen y su autor
+
+#### Scenario: Deshacer todo un pegado
+
+- **GIVEN** un link en el que Ana pegó una oferta que tocó varios campos
+- **WHEN** se pide deshacer lo que pegó Ana
+- **THEN** todos esos campos SHALL volver a lo que tenían antes, en una sola operación
 
 #### Scenario: Volver a lo leído de la página
 
@@ -129,6 +145,13 @@ reproducir nombres de personas.
   teléfono
 - **AND** la entrada que recibe la IA NO SHALL contener el email ni el teléfono
 - **AND** el resumen guardado NO SHALL contener el nombre del reclutador
+
+#### Scenario: Con consentimiento, el proveedor externo es elegible
+
+- **GIVEN** un usuario que aceptó enviar sus datos a proveedores externos
+- **AND** una cadena con un proveedor externo antes que uno local
+- **WHEN** pega una oferta
+- **THEN** la lectura SHALL poder ir al proveedor externo, con los datos personales redactados
 
 #### Scenario: Sin consentimiento, sin proveedor externo
 

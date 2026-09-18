@@ -69,6 +69,18 @@ que miden precisamente texto copiado de una app, y su clave determinista no se c
 
 El prompt pide además no reproducir nombres de personas en `summary`, y el golden lo comprueba.
 
+**La entrada** de la tarea es `{ text, knownTitle?, knownCompany? }`: el texto ya limpio más el título y la empresa que
+la persona escribió aparte, como contexto, para que la IA no invente un título que el texto copiado del móvil no trae.
+Forman parte de la clave determinista, como el resto de la entrada.
+
+**El consentimiento** sale del perfil de quien pega. `links` no puede importar el dominio de `users` (ADR-020 §6), así
+que el puerto de fachada que ya usa para los nombres gana `aiConsentOf(userId)`, resuelto por `UsersFacade`. Pasar un
+`false` fijo cumpliría el escenario "sin consentimiento" por accidente y nunca leería el perfil.
+
+Queda como **condición para añadir un proveedor externo**: si la cadena solo tiene proveedores externos y quien pega no
+dio su consentimiento, hoy la respuesta sería `503` "inténtalo en un rato" para siempre. El día que se añada OpenRouter
+hará falta un código propio (`ai_consent_required`) que lleve a dar ese permiso.
+
 ### D3 — Un tercer origen, una sola regla de precedencia
 
 `previewSources[campo].source` admite `'auto' | 'pasted' | 'manual'`. `pasted` lleva `by`, `at` y
@@ -86,11 +98,19 @@ orden, cambia para los dos. Las reglas:
   la página ya había dado; si no, un pegado que no trae la empresa la dejaría en blanco para siempre, porque lo
   automático ya no puede pisar lo pegado. El filtro de valores vacíos del worker (`draftFrom`, `saysSomething`,
   `hasRequiredFields`) pasa a `libs/shared` y lo usan los dos.
-- **Toda sustitución guarda lo desplazado.** `replaced` pasa a ser la entrada desplazada completa —valor, origen,
-  extractor, autor y fecha—, sin su propio `replaced`. Así un pegado equivocado se deshace ("Volver a lo anterior"),
+- **Lo que sustituye una persona guarda lo desplazado.** Cuando se pega o se escribe a mano, `replaced` guarda la
+  entrada desplazada completa —valor, origen, extractor, autor y fecha—, sin su propio `replaced`; una relectura
+  automática que cambia un valor automático por otro no guarda nada, y la tarjeta no ofrece "volver" donde nadie
+  actuó. Así un pegado equivocado se deshace ("Volver a lo anterior"),
   una corrección a mano sobre algo pegado vuelve a lo pegado, y la edición abierta a cualquiera que puede ver el link
   sigue siendo reversible, que es la condición con la que ADR-022 §9 la abrió. Un `replaced` antiguo sin `source` se
-  lee como `auto`.
+  lee como `auto`. Deshacer llega **un nivel** atrás: tres pegados seguidos pierden el primero, y se acepta.
+- **Lo precargado no cambia de autor.** El título y la empresa escritos aparte solo cuentan como `manual` si difieren de
+  lo que el link ya tenía: el SPA envía solo los que la persona cambió y la API ignora un valor igual al actual. Si no,
+  cada pegado sobre un link con título lo atribuiría a quien pega, lo fijaría para siempre y dejaría el link en
+  `manual`.
+- **Vaciar es cosa de personas.** La regla de que un valor vacío no sustituye a uno lleno vale para los merges
+  automáticos y para lo pegado; escribir a mano puede vaciar un campo, como hoy.
 
 La tabla de casos de `@linkvault/testing` se amplía con los de `pasted`, pero lo que protege que las dos copias no
 diverjan es que el orden sea una sola función compartida: la tabla modela `replaced`, y la regla de pegar solo la
@@ -119,8 +139,12 @@ Orden real, porque el pipe valida antes que el caso de uso:
    `extraction_unavailable` con `Retry-After`; cuota diaria de IA superada → **429** `ai_quota_exceeded` con
    `Retry-After` y un mensaje propio, porque "inténtalo en un rato" sería mentira cuando la ventana es de un día.
 
-Un 503 **devuelve el intento** al contador: la persona no pierde uno de sus diez pegados porque el proveedor no
-respondió. La cuota de IA de `extract-pasted-job` es independiente de la de `extract-job`, porque son tareas distintas:
+Un 503 **devuelve el intento** al contador —el puerto del limitador gana `refund`, que baja el contador sin pasar de
+cero—: la persona no pierde uno de sus diez pegados porque el proveedor no respondió.
+
+La cuota de IA se configura como cualquier otra en `AI_QUOTAS`, que pasa a conocer `extract-pasted-job`; vacía, que es
+el valor por defecto, no limita. Como la política de cuotas solo responde sí o no, el `Retry-After` del `429
+ai_quota_exceeded` es conservador y fijo: la ventana entera, 24 h, que es lo que dice el mensaje ("vuelve mañana"). La cuota de IA de `extract-pasted-job` es independiente de la de `extract-job`, porque son tareas distintas:
 pegar no consume el presupuesto con el que se leen los links propios.
 
 ### D6 — Estado, escritura y aviso
@@ -136,7 +160,9 @@ pegar no consume el presupuesto con el que se leen los links propios.
   campos que habría traído de la página no llegan. Se acepta: lo pegado es de rango superior y la persona acaba de
   decir qué contiene la oferta.
 - **El aviso SSE se publica en el canal de Redis** que ya existe, no se reparte solo en el proceso: llega a todas las
-  instancias de `api`, incluida la propia. `PATCH` pasa a avisar igual, que hoy no lo hace.
+  instancias de `api`, incluida la propia. `PATCH` pasa a avisar igual, que hoy no lo hace. Como la suite de `api` no
+  tiene Redis (ADR-021 §4), la publicación se prueba con un doble del puerto en el caso de uso, y el recorrido completo
+  —dos pantallas, un pegado— en el e2e.
 
 ### D7 — Rescatar por el historial, con un disparador real
 
@@ -147,7 +173,8 @@ Dos piezas, y la segunda es la que hace que la primera sirva:
   del mismo turno de ese host. Una URL de otro host no se prueba: su turno y su `Crawl-delay` son otros. El worker
   necesita para eso `originalUrls` en su esquema y en su puerto.
 - **El disparador**: un link nace con una sola URL en su historial, y `robots_disallowed` no se reintenta, así que sin
-  más la cadena nueva no se ejecutaría nunca. Cuando alguien **vuelve a guardar la vacante con una URL nueva** y el link
+  más la cadena nueva no se ejecutaría nunca. Cuando alguien **vuelve a guardar la vacante con una URL nueva del mismo
+  host** —las de otro host no se probarían, así que no piden nada— y el link
   está en `failed` por `robots_disallowed`, `saveOneLink` pide una lectura nueva en la misma transacción —sube la
   versión, pasa a `pending`, escribe en el outbox—, como hace el reintento. No se vuelve a pedir la URL prohibida: se
   prueba la nueva. Es exactamente el caso del smoke.
