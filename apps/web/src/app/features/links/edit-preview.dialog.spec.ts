@@ -248,4 +248,90 @@ describe('EditPreviewDialog', () => {
 
     expect(dialog().textContent).toContain('Corregir la oferta');
   });
+
+  /** Carga en la lista otro link en lugar del de partida, como si la persona abriera otra pantalla. */
+  async function showOnly(other: JobLinkSummary): Promise<void> {
+    const opening = TestBed.inject(LinksStore).open({ kind: 'group', groupId: 'g1' });
+    http.expectOne(GROUP_PAGE).flush({ items: [other], total: 1 } satisfies LinkPage);
+    await opening;
+    await fixture.whenStable();
+  }
+
+  const beto = { userId: 'u2', displayName: 'Beto' };
+
+  /** La empresa la sacó la IA del texto que pegó Beto; el título lo corrigió Ana encima de lo que pegó Beto. */
+  const pastedLink: JobLinkSummary = {
+    ...link,
+    preview: { title: 'Ingeniera de datos', company: 'Acme' },
+    previewSources: {
+      title: {
+        value: 'Ingeniera de datos',
+        source: 'manual',
+        by: { userId: 'u1', displayName: 'Ana' },
+        at: '2026-09-18T11:00:00.000Z',
+        replaced: {
+          value: 'Data Engineer',
+          source: 'pasted',
+          extractor: 'ai:extract-pasted-job',
+          by: beto,
+          at: '2026-09-18T10:00:00.000Z',
+        },
+      },
+      company: {
+        value: 'Acme',
+        source: 'pasted',
+        extractor: 'ai:extract-pasted-job',
+        by: beto,
+        at: '2026-09-18T10:00:00.000Z',
+      },
+    },
+  };
+
+  it('Lo pegado se distingue', async () => {
+    await showOnly(pastedLink);
+    await openDialog();
+
+    expect(originOf('company')).toBe('Descripción pegada por Beto');
+    expect(originOf('title')).toBe('Escrito por Ana');
+    // Lo pegado sobre un campo vacío no desplazó nada: no hay "anterior" al que volver.
+    expect(dialog().querySelector('[data-testid="revert-company"]')).toBeNull();
+  });
+
+  it('Volver a lo pegado', async () => {
+    await showOnly(pastedLink);
+    await openDialog();
+
+    const revert = dialog().querySelector<HTMLButtonElement>('[data-testid="revert-title"]');
+    expect(revert?.textContent?.trim()).toBe('Volver a lo anterior');
+    revert?.click();
+    await fixture.whenStable();
+    expect(valueOf('title')).toBe('Data Engineer');
+    await save();
+
+    const request = http.expectOne({ method: 'PATCH', url: PREVIEW_URL });
+    expect(request.request.body).toEqual({ revert: ['title'] });
+    request.flush({
+      ...pastedLink,
+      previewVersion: 4,
+      preview: { title: 'Data Engineer', company: 'Acme' },
+      previewSources: {
+        ...pastedLink.previewSources,
+        title: {
+          value: 'Data Engineer',
+          source: 'pasted',
+          extractor: 'ai:extract-pasted-job',
+          by: beto,
+          at: '2026-09-18T10:00:00.000Z',
+        },
+      },
+    } satisfies JobLinkSummary);
+    await settle();
+    await fixture.whenStable();
+
+    await closed();
+    expect(host().querySelector('[data-testid="link-open"]')?.textContent?.trim()).toBe('Data Engineer');
+    expect(host().querySelector('[data-testid="note-title"]')?.textContent?.trim()).toBe(
+      'Descripción pegada por Beto',
+    );
+  });
 });

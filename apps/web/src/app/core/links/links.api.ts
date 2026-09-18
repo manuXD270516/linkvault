@@ -4,7 +4,9 @@ import type {
   EnrichLinkResponse,
   ImportLinksRequest,
   ImportLinksResponse,
+  JobLinkSummary,
   LinkPage,
+  PastedDescriptionRequest,
   SaveLinkRequest,
   SaveLinkResponse,
   UpdatePreviewRequest,
@@ -68,6 +70,16 @@ export class LinksApi {
   updatePreview(linkId: string, body: UpdatePreviewRequest): Promise<UpdatePreviewResponse> {
     return firstValueFrom(
       this.http.patch<UpdatePreviewResponse>(`${LINKS_URL}/${encodeURIComponent(linkId)}/preview`, body),
+    );
+  }
+
+  /**
+   * Completa la oferta con el texto que pegó la persona y devuelve el link ya actualizado. La API lo lee dentro de la
+   * misma petición y no lo guarda; aquí tampoco se guarda en ningún sitio: viaja en el cuerpo y nada más.
+   */
+  pasteDescription(linkId: string, body: PastedDescriptionRequest): Promise<JobLinkSummary> {
+    return firstValueFrom(
+      this.http.post<JobLinkSummary>(`${LINKS_URL}/${encodeURIComponent(linkId)}/pasted`, body),
     );
   }
 

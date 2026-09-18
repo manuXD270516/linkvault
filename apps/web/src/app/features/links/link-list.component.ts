@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { MatDialog } from '@angular/material/dialog';
-import type { JobLinkSummary } from '@linkvault/shared';
+import type { JobLinkSummary, PreviewFieldName } from '@linkvault/shared';
 import { type RequestFailure, isApiFailure, toRequestFailure } from '../../core/api/api-error';
 import { SessionStore } from '../../core/auth/session.store';
 import { LinksStore } from '../../core/links/links.store';
@@ -8,6 +8,7 @@ import { confirmWith } from '../../shared/ui/confirm.dialog';
 import { RequestError } from '../../shared/ui/request-error';
 import { EditPreviewDialog, type EditPreviewDialogData } from './edit-preview.dialog';
 import { LinkCard } from './link-card.component';
+import { PasteDescriptionDialog, type PasteDescriptionDialogData } from './paste-description.dialog';
 
 /** De qué lista son los links: la de un grupo o la privada. Solo cambia el texto del estado vacío. */
 export type LinkListScope = 'group' | 'mine';
@@ -37,7 +38,7 @@ export class LinkList {
   private readonly dialog = inject(MatDialog);
   private readonly session = inject(SessionStore);
 
-  /** `true` mientras se quita o se relee un link: las dos acciones bloquean los botones de la lista. */
+  /** `true` mientras se quita, se relee o se deshace un pegado: las tres acciones bloquean los botones de la lista. */
   protected readonly working = signal(false);
   /** Cuántas lecturas van listas de las que se están esperando; `null` cuando no hay ninguna en curso. */
   protected readonly reading = this.store.reading;
@@ -69,6 +70,33 @@ export class LinkList {
     this.dialog.open<EditPreviewDialog, EditPreviewDialogData>(EditPreviewDialog, {
       data: { link },
     });
+  }
+
+  /**
+   * Abre el pegado de la descripción. Como la corrección a mano, el diálogo deja la tarjeta actualizada en el store al
+   * terminar, así que aquí no hay nada más que hacer.
+   */
+  protected pasteDescription(link: JobLinkSummary): void {
+    this.failure.set(null);
+    this.dialog.open<PasteDescriptionDialog, PasteDescriptionDialogData>(PasteDescriptionDialog, {
+      data: { link },
+    });
+  }
+
+  /** Devuelve a lo anterior, en una sola petición, todos los campos del último pegado de ese link. */
+  protected async undoPaste(link: JobLinkSummary, fields: PreviewFieldName[]): Promise<void> {
+    if (this.working()) {
+      return;
+    }
+    this.working.set(true);
+    this.failure.set(null);
+    try {
+      await this.store.undoPaste(link.id, fields);
+    } catch (error: unknown) {
+      this.failure.set(toRequestFailure(error));
+    } finally {
+      this.working.set(false);
+    }
   }
 
   /** Vuelve a pedir la lectura de una oferta que falló por algo pasajero. */

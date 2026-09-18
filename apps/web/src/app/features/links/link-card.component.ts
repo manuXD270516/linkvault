@@ -6,6 +6,7 @@ import {
   daysSince,
   fieldOrigin,
   formatSalary,
+  latestPaste,
   linkLabel,
   modalityLabel,
   originText,
@@ -39,6 +40,10 @@ export class LinkCard {
   readonly complete = output<void>();
   /** Volver a pedir la lectura; solo se ofrece cuando el motivo del fallo es transitorio. */
   readonly retry = output<void>();
+  /** Completar la oferta pegando su descripción: el diálogo lo abre `LinkList`, igual que el de completar a mano. */
+  readonly pasteDescription = output<void>();
+  /** Deshacer de una vez todos los campos del último pegado; emite los campos que hay que devolver a lo anterior. */
+  readonly undoPaste = output<PreviewFieldName[]>();
 
   private readonly locale = inject(LOCALE_ID);
 
@@ -80,9 +85,16 @@ export class LinkCard {
   protected readonly status = computed(() => linkCardStatus(this.link(), new Date()));
 
   /**
-   * Quién escribió ese dato, cuando no fue la página: "Escrito por Ana" o "Deducido por la IA". Lo leído de la página no
-   * se anota, que es el caso normal y llenaría la tarjeta de ruido; lo que sí hace falta decir es cuándo el dato lo puso
-   * una persona —el link es compartido y las demás lo ven— y cuándo es una conjetura de la IA.
+   * El último pegado que sigue a la vista, para ofrecer "Deshacer lo que pegó Ana": una persona puede pegar la oferta
+   * equivocada en un link compartido, y devolverlo campo a campo sería pedir a las demás que adivinaran cuáles tocó.
+   */
+  protected readonly lastPaste = computed(() => latestPaste(this.sources()));
+
+  /**
+   * Quién escribió ese dato, cuando no fue la página: "Escrito por Ana", "Descripción pegada por Beto" o "Deducido por
+   * la IA". Lo leído de la página no se anota, que es el caso normal y llenaría la tarjeta de ruido; lo que sí hace
+   * falta decir es cuándo el dato lo puso una persona —el link es compartido y las demás lo ven— y cuándo es una
+   * conjetura de la IA.
    */
   protected note(field: PreviewFieldName): string | null {
     const origin = fieldOrigin(this.sources()?.[field]);

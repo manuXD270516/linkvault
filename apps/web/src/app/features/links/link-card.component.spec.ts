@@ -196,7 +196,7 @@ describe('LinkCard: lo que se dice del estado', () => {
     return host().querySelector('[data-testid="link-status"]')?.textContent?.trim() ?? '';
   }
 
-  function action(name: 'complete' | 'retry' | 'remove'): HTMLButtonElement | null {
+  function action(name: 'complete' | 'retry' | 'remove' | 'paste'): HTMLButtonElement | null {
     return host().querySelector<HTMLButtonElement>(`[data-testid="link-${name}"]`);
   }
 
@@ -236,9 +236,62 @@ describe('LinkCard: lo que se dice del estado', () => {
       lastEnrichmentError: { reason: 'robots_disallowed', at: '2026-09-18T11:00:00.000Z' },
     });
 
-    expect(status()).toBe('Esta bolsa no permite la lectura automática de sus ofertas');
+    expect(status()).toBe(
+      'LinkedIn no nos deja leer sus ofertas. Pega su descripción para completarla',
+    );
+    // La acción principal está a la vista, destacada y antes que completar a mano: sin ella la tarjeta se queda así.
+    const paste = action('paste');
+    expect(paste?.textContent?.trim()).toBe('Pegar la descripción');
+    expect(paste?.hasAttribute('mat-flat-button')).toBe(true);
+    const buttons = Array.from(host().querySelectorAll('button'));
+    expect(buttons.indexOf(paste as HTMLButtonElement)).toBeLessThan(
+      buttons.indexOf(action('complete') as HTMLButtonElement),
+    );
+    expect(action('complete')?.hasAttribute('mat-flat-button')).toBe(false);
     expect(action('retry')).toBeNull();
-    expect(action('complete')).not.toBeNull();
+  });
+
+  it('asks to paste the description when the site blocks us too', async () => {
+    await render({
+      ...bare,
+      platform: 'computrabajo',
+      previewStatus: 'failed',
+      lastEnrichmentError: { reason: 'blocked', at: '2026-09-18T11:00:00.000Z' },
+    });
+
+    expect(status()).toBe(
+      'Computrabajo no nos deja leer sus ofertas. Pega su descripción para completarla',
+    );
+    expect(action('paste')?.hasAttribute('mat-flat-button')).toBe(true);
+  });
+
+  /** "Otra web no nos deja…" no se entiende: una web sin nombre propio es "esta web". */
+  it('does not name a site it has no name for', async () => {
+    await render({
+      ...bare,
+      platform: 'generic',
+      previewStatus: 'failed',
+      lastEnrichmentError: { reason: 'robots_disallowed', at: '2026-09-18T11:00:00.000Z' },
+    });
+
+    expect(status()).toBe(
+      'Esta web no nos deja leer sus ofertas. Pega su descripción para completarla',
+    );
+  });
+
+  /** Con título la tarjeta ya se reconoce: pegar sigue a mano, pero deja de ser lo primero que se pide. */
+  it('keeps the plain text when the forbidden offer already has a title', async () => {
+    await render({
+      ...bare,
+      previewStatus: 'partial',
+      preview: { title: 'Ingeniera de datos' },
+      lastEnrichmentError: { reason: 'robots_disallowed', at: '2026-09-18T11:00:00.000Z' },
+    });
+
+    expect(status()).toBe('Esta bolsa no permite la lectura automática de sus ofertas');
+    expect(action('paste')).not.toBeNull();
+    expect(action('paste')?.hasAttribute('mat-flat-button')).toBe(false);
+    expect(action('retry')).toBeNull();
   });
 
   it('Lo compartido no era una oferta', async () => {
@@ -257,7 +310,8 @@ describe('LinkCard: lo que se dice del estado', () => {
   it('says the site blocked us apart from what the site forbids', async () => {
     await render({
       ...bare,
-      previewStatus: 'failed',
+      previewStatus: 'partial',
+      preview: { title: 'Ingeniera de datos' },
       lastEnrichmentError: { reason: 'blocked', at: '2026-09-18T11:00:00.000Z' },
     });
 
@@ -357,5 +411,100 @@ describe('LinkCard: quién escribió cada dato', () => {
     expect(note('salary')).toBe('Deducido por la IA');
     // Lo leído de la página es el caso normal: anotarlo llenaría la tarjeta de ruido.
     expect(note('company')).toBeNull();
+  });
+});
+
+/** Lo que sale de un texto pegado dice de quién es la descripción, y todo un pegado se deshace de una vez. */
+describe('LinkCard: lo pegado', () => {
+  let fixture: ComponentFixture<LinkCard>;
+
+  const beto = { userId: 'u2', displayName: 'Beto' };
+  const ana = { userId: 'u1', displayName: 'Ana' };
+
+  /** Beto pegó la oferta ayer; hoy Ana pegó otra encima que solo trajo la empresa y la ubicación. */
+  const pasted: JobLinkSummary = {
+    ...enriched,
+    previewSources: {
+      title: {
+        value: 'Ingeniera de datos',
+        source: 'pasted',
+        extractor: 'ai:extract-pasted-job',
+        by: beto,
+        at: '2026-09-17T10:00:00.000Z',
+      },
+      company: {
+        value: 'Acme',
+        source: 'pasted',
+        extractor: 'ai:extract-pasted-job',
+        by: ana,
+        at: '2026-09-18T10:00:00.000Z',
+        replaced: {
+          value: 'Acme SA',
+          source: 'pasted',
+          extractor: 'ai:extract-pasted-job',
+          by: beto,
+          at: '2026-09-17T10:00:00.000Z',
+        },
+      },
+      location: {
+        value: 'La Paz, Bolivia',
+        source: 'pasted',
+        extractor: 'ai:extract-pasted-job',
+        by: ana,
+        at: '2026-09-18T10:00:00.000Z',
+      },
+      modality: {
+        value: 'hybrid',
+        source: 'manual',
+        by: ana,
+        at: '2026-09-18T10:00:00.000Z',
+      },
+    },
+  };
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({ providers: providePageTesting() });
+    fixture = TestBed.createComponent(LinkCard);
+  });
+
+  async function render(link: JobLinkSummary): Promise<void> {
+    fixture.componentRef.setInput('link', link);
+    await fixture.whenStable();
+  }
+
+  function host(): HTMLElement {
+    return fixture.nativeElement as HTMLElement;
+  }
+
+  function note(field: string): string | null {
+    return host().querySelector(`[data-testid="note-${field}"]`)?.textContent?.trim() ?? null;
+  }
+
+  it('says whose pasted description each field came from', async () => {
+    await render(pasted);
+
+    expect(note('title')).toBe('Descripción pegada por Beto');
+    expect(note('company')).toBe('Descripción pegada por Ana');
+    expect(note('modality')).toBe('Escrito por Ana');
+  });
+
+  it('undoes the whole latest paste, and only the fields it wrote', async () => {
+    await render(pasted);
+    const undone: string[][] = [];
+    fixture.componentInstance.undoPaste.subscribe((fields) => undone.push(fields));
+
+    const undo = host().querySelector<HTMLButtonElement>('[data-testid="link-undo-paste"]');
+    expect(undo?.textContent?.trim()).toBe('Deshacer lo que pegó Ana');
+    undo?.click();
+
+    // Lo que Ana escribió a mano en el mismo momento no es parte del pegado: se devuelve campo a campo.
+    expect(undone).toEqual([['company', 'location']]);
+  });
+
+  it('offers no undo when nothing on the card came from a paste', async () => {
+    await render(enriched);
+
+    expect(host().querySelector('[data-testid="link-undo-paste"]')).toBeNull();
+    expect(host().querySelector('[data-testid="link-paste"]')).not.toBeNull();
   });
 });

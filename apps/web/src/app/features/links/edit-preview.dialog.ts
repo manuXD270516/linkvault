@@ -44,10 +44,10 @@ export type EditableField = (typeof EDITABLE_FIELDS)[number];
 
 /**
  * Corregir a mano el preview de una oferta (spec web/links). Cada campo enseña de dónde salió su valor —de la página,
- * de la IA o de una persona con su nombre— porque el link es compartido y lo que una persona corrige lo ven las demás.
+ * de la IA, de la descripción que alguien pegó o de una persona, con su nombre— porque el link es compartido y lo que una persona corrige lo ven las demás.
  *
  * Solo viajan a la API los campos que cambiaron: enviarlos todos marcaría como escrito a mano lo que nadie tocó, y a
- * partir de ahí ninguna relectura podría mejorarlo. Un campo que vuelve a lo extraído viaja aparte, en `revert`.
+ * partir de ahí ninguna relectura podría mejorarlo. Un campo que vuelve a lo anterior viaja aparte, en `revert`.
  *
  * El error de la API se muestra sin cerrar el diálogo: lo escrito no se pierde.
  */
@@ -96,7 +96,7 @@ export class EditPreviewDialog {
 
   protected readonly saving = signal(false);
   protected readonly failure = signal<RequestFailure | null>(null);
-  /** Campos marcados para volver a lo extraído; se excluyen de lo que se escribe a mano. */
+  /** Campos marcados para volver a lo anterior; se excluyen de lo que se escribe a mano. */
   private readonly reverting = signal<readonly EditableField[]>([]);
 
   /** De dónde salió el valor de ese campo, en palabras; `null` si nadie lo ha escrito todavía. */
@@ -104,10 +104,12 @@ export class EditPreviewDialog {
     return originText(fieldOrigin(this.sources[field]));
   }
 
-  /** Solo se puede volver a lo extraído en un campo escrito a mano que desplazó un valor automático. */
+  /**
+   * Solo se puede volver a lo anterior en un campo que una persona puso —escribiéndolo o pegando la descripción— y que
+   * desplazó otro valor: lo que había es lo que guarda `replaced`, con su origen y su autor.
+   */
   protected canRevert(field: EditableField): boolean {
-    const entry = this.sources[field];
-    return entry?.source === 'manual' && entry.replaced !== undefined;
+    return this.displaced(field) !== undefined;
   }
 
   protected isReverting(field: EditableField): boolean {
@@ -115,7 +117,7 @@ export class EditPreviewDialog {
   }
 
   /**
-   * Marca (o desmarca) un campo para volver a lo extraído y enseña ya el valor que recuperará, para que la persona vea
+   * Marca (o desmarca) un campo para volver a lo anterior y enseña ya el valor que recuperará, para que la persona vea
    * a qué va a volver antes de guardar.
    */
   protected toggleRevert(field: EditableField): void {
@@ -124,12 +126,18 @@ export class EditPreviewDialog {
       this.show(field, this.preview[field] ?? null);
       return;
     }
-    const entry = this.sources[field];
-    if (entry?.source !== 'manual' || entry.replaced === undefined) {
+    const replaced = this.displaced(field);
+    if (replaced === undefined) {
       return;
     }
     this.reverting.update((fields) => [...fields, field]);
-    this.show(field, entry.replaced.value);
+    this.show(field, replaced.value);
+  }
+
+  /** La entrada que desplazó quien puso ese campo; lo automático nunca guarda nada, porque ahí no actuó nadie. */
+  private displaced(field: EditableField): { value: unknown } | undefined {
+    const entry = this.sources[field];
+    return entry === undefined || entry.source === 'auto' ? undefined : entry.replaced;
   }
 
   protected async submit(): Promise<void> {

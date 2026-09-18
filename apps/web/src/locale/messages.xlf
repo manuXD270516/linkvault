@@ -643,12 +643,20 @@
           <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
           <context context-type="linenumber">10,11</context>
         </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/paste-description.dialog.html</context>
+          <context context-type="linenumber">27,29</context>
+        </context-group>
       </trans-unit>
       <trans-unit id="links.field.company" datatype="html">
         <source>Empresa</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
           <context context-type="linenumber">16,17</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/paste-description.dialog.html</context>
+          <context context-type="linenumber">38,40</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.field.location" datatype="html">
@@ -688,7 +696,7 @@
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
-          <context context-type="linenumber">106</context>
+          <context context-type="linenumber">111</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.modality.hybrid" datatype="html">
@@ -699,7 +707,7 @@
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
-          <context context-type="linenumber">108</context>
+          <context context-type="linenumber">113</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.modality.onsite" datatype="html">
@@ -710,7 +718,7 @@
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
-          <context context-type="linenumber">110</context>
+          <context context-type="linenumber">115</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.field.seniority" datatype="html">
@@ -728,7 +736,7 @@
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
-          <context context-type="linenumber">120</context>
+          <context context-type="linenumber">125</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.seniority.junior" datatype="html">
@@ -739,7 +747,7 @@
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
-          <context context-type="linenumber">122</context>
+          <context context-type="linenumber">127</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.seniority.mid" datatype="html">
@@ -750,7 +758,7 @@
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
-          <context context-type="linenumber">124</context>
+          <context context-type="linenumber">129</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.seniority.senior" datatype="html">
@@ -761,18 +769,18 @@
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
-          <context context-type="linenumber">126</context>
+          <context context-type="linenumber">131</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.seniority.lead" datatype="html">
         <source>Líder</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
-          <context context-type="linenumber">46,48</context>
+          <context context-type="linenumber">46,47</context>
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
-          <context context-type="linenumber">128</context>
+          <context context-type="linenumber">133</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.field.salaryMin" datatype="html">
@@ -811,7 +819,7 @@
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
-          <context context-type="linenumber">169</context>
+          <context context-type="linenumber">174</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.salary.year" datatype="html">
@@ -822,7 +830,7 @@
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
-          <context context-type="linenumber">171</context>
+          <context context-type="linenumber">176</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.salary.hour" datatype="html">
@@ -833,7 +841,7 @@
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
-          <context context-type="linenumber">173</context>
+          <context context-type="linenumber">178</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.field.summary" datatype="html">
@@ -872,10 +880,10 @@
         </context-group>
       </trans-unit>
       <trans-unit id="links.edit.revert" datatype="html">
-        <source> Volver a lo extraído </source>
+        <source> Volver a lo anterior </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
-          <context context-type="linenumber">139,142</context>
+          <context context-type="linenumber">139,141</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.import.title" datatype="html">
@@ -943,6 +951,10 @@
           <context context-type="sourcefile">apps/web/src/app/features/links/import-links.dialog.html</context>
           <context context-type="linenumber">53,55</context>
         </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/paste-description.dialog.html</context>
+          <context context-type="linenumber">56,58</context>
+        </context-group>
       </trans-unit>
       <trans-unit id="links.import.close" datatype="html">
         <source> Cerrar </source>
@@ -970,49 +982,67 @@
       días}}</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
-          <context context-type="linenumber">60,64</context>
+          <context context-type="linenumber">61,65</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.card.closesAt" datatype="html">
         <source>Cierra el <x id="INTERPOLATION" equiv-text="{{ closing | date: &apos;dd/MM/yyyy&apos; }}"/></source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
-          <context context-type="linenumber">66,69</context>
+          <context context-type="linenumber">67,70</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.list.sharedBy" datatype="html">
         <source>Compartido por <x id="INTERPOLATION" equiv-text="{{ sharer.displayName }}"/></source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
-          <context context-type="linenumber">74,76</context>
+          <context context-type="linenumber">75,77</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.card.paste" datatype="html">
+        <source> Pegar la descripción </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
+          <context context-type="linenumber">94,97</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
+          <context context-type="linenumber">131,134</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.card.completeByHand" datatype="html">
         <source> Completar a mano </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
-          <context context-type="linenumber">90,93</context>
+          <context context-type="linenumber">107,110</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.card.edit" datatype="html">
         <source> Editar </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
-          <context context-type="linenumber">101,104</context>
+          <context context-type="linenumber">118,121</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.card.undoPaste" datatype="html">
+        <source> Deshacer lo que pegó <x id="INTERPOLATION" equiv-text="{{ pasted.by.displayName }}"/> </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
+          <context context-type="linenumber">143,145</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.card.retry" datatype="html">
         <source> Reintentar </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
-          <context context-type="linenumber">113,116</context>
+          <context context-type="linenumber">155,158</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.list.remove" datatype="html">
         <source> Quitar </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
-          <context context-type="linenumber">125,129</context>
+          <context context-type="linenumber">167,171</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.list.reading" datatype="html">
@@ -1041,126 +1071,147 @@
         <source> Esta oferta no se puede volver a leer automáticamente. Complétala a mano. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-list.component.html</context>
-          <context context-type="linenumber">41,44</context>
+          <context context-type="linenumber">43,46</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.list.removeTitle" datatype="html">
         <source>Quitar el enlace</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-list.component.ts</context>
-          <context context-type="linenumber">93</context>
+          <context context-type="linenumber">121</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.list.removeMessageMine" datatype="html">
         <source>Se quita de tu lista; la oferta sigue disponible en tus grupos.</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-list.component.ts</context>
-          <context context-type="linenumber">96</context>
+          <context context-type="linenumber">124</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.list.removeMessageGroup" datatype="html">
         <source>Se quita de este grupo; la oferta sigue disponible en otros grupos.</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-list.component.ts</context>
-          <context context-type="linenumber">97</context>
+          <context context-type="linenumber">125</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.list.removeConfirm" datatype="html">
         <source>Quitar</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-list.component.ts</context>
-          <context context-type="linenumber">98</context>
+          <context context-type="linenumber">126</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.platform.generic" datatype="html">
         <source>Otra web</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
-          <context context-type="linenumber">96</context>
+          <context context-type="linenumber">101</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.salary.from" datatype="html">
         <source>Desde <x id="MIN" equiv-text="format(min)"/></source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
-          <context context-type="linenumber">155</context>
+          <context context-type="linenumber">160</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.salary.upTo" datatype="html">
         <source>Hasta <x id="MAX" equiv-text="format(max)"/></source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
-          <context context-type="linenumber">157</context>
+          <context context-type="linenumber">162</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.origin.page" datatype="html">
         <source>Leído de la página</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
-          <context context-type="linenumber">202</context>
+          <context context-type="linenumber">209</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.origin.ai" datatype="html">
         <source>Deducido por la IA</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
-          <context context-type="linenumber">204</context>
+          <context context-type="linenumber">211</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.origin.pasted" datatype="html">
+        <source>Descripción pegada por <x id="NAME" equiv-text="origin.by.displayName"/></source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
+          <context context-type="linenumber">213</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.origin.manual" datatype="html">
         <source>Escrito por <x id="NAME" equiv-text="origin.by.displayName"/></source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
-          <context context-type="linenumber">206</context>
+          <context context-type="linenumber">215</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.status.missingFields" datatype="html">
         <source>Faltan datos de esta oferta</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-status.ts</context>
-          <context context-type="linenumber">53</context>
+          <context context-type="linenumber">72</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.status.reading" datatype="html">
         <source>Leyendo la oferta…</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-status.ts</context>
-          <context context-type="linenumber">63</context>
+          <context context-type="linenumber">83</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.list.noPreview" datatype="html">
         <source>Sin vista previa todavía</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-status.ts</context>
-          <context context-type="linenumber">69</context>
+          <context context-type="linenumber">90</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.status.pasteFirstGeneric" datatype="html">
+        <source>Esta web no nos deja leer sus ofertas. Pega su descripción para completarla</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-status.ts</context>
+          <context context-type="linenumber">109</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.status.pasteFirst" datatype="html">
+        <source><x id="PLATFORM" equiv-text="platformName(platform)"/> no nos deja leer sus ofertas. Pega su descripción para completarla</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-status.ts</context>
+          <context context-type="linenumber">110</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.status.robotsDisallowed" datatype="html">
         <source>Esta bolsa no permite la lectura automática de sus ofertas</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-status.ts</context>
-          <context context-type="linenumber">80</context>
+          <context context-type="linenumber">117</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.status.blocked" datatype="html">
         <source>Esta bolsa no nos deja leer esta oferta</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-status.ts</context>
-          <context context-type="linenumber">82</context>
+          <context context-type="linenumber">119</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.status.notAJob" datatype="html">
         <source>Esto no parece una oferta</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-status.ts</context>
-          <context context-type="linenumber">84</context>
+          <context context-type="linenumber">121</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.status.unreadable" datatype="html">
         <source>No pudimos leer esta oferta</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-status.ts</context>
-          <context context-type="linenumber">86</context>
+          <context context-type="linenumber">123</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.mine.title" datatype="html">
@@ -1168,6 +1219,83 @@
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/my-links.page.html</context>
           <context context-type="linenumber">2,5</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.paste.title" datatype="html">
+        <source>Pegar la descripción</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/paste-description.dialog.html</context>
+          <context context-type="linenumber">1,4</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.paste.explanation" datatype="html">
+        <source> Pega el texto de la oferta tal como la ves: lo leemos para completar la tarjeta y no lo guardamos </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/paste-description.dialog.html</context>
+          <context context-type="linenumber">5,8</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.paste.textLabel" datatype="html">
+        <source>Descripción de la oferta</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/paste-description.dialog.html</context>
+          <context context-type="linenumber">10,12</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.paste.headerHint" datatype="html">
+        <source> Si lo que pegas no trae el puesto o la empresa, escríbelos aquí </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/paste-description.dialog.html</context>
+          <context context-type="linenumber">24,26</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.paste.reading" datatype="html">
+        <source> Leyendo… puede tardar unos segundos </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/paste-description.dialog.html</context>
+          <context context-type="linenumber">52,54</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.paste.notAJobPosting" datatype="html">
+        <source>Eso no parece una oferta de trabajo. Copia la descripción de la oferta, no la conversación</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/paste-description.dialog.html</context>
+          <context context-type="linenumber">65,67</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.paste.unavailable" datatype="html">
+        <source>No pudimos leerla ahora, inténtalo en un rato</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/paste-description.dialog.html</context>
+          <context context-type="linenumber">71,73</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.paste.tooManyPastes" datatype="html">
+        <source>Pegaste demasiadas ofertas seguidas, espera un poco</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/paste-description.dialog.html</context>
+          <context context-type="linenumber">76,78</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.paste.quotaExceeded" datatype="html">
+        <source>Llegaste al límite de lecturas de hoy, vuelve mañana</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/paste-description.dialog.html</context>
+          <context context-type="linenumber">81,83</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.paste.cancel" datatype="html">
+        <source> Cancelar </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/paste-description.dialog.html</context>
+          <context context-type="linenumber">100,103</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.paste.submit" datatype="html">
+        <source> Completar la oferta </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/paste-description.dialog.html</context>
+          <context context-type="linenumber">110,112</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.save.url" datatype="html">

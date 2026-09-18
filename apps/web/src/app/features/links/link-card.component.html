@@ -78,6 +78,22 @@
   @if (state.text; as statusText) {
     <span data-testid="link-status">{{ statusText }}</span>
   }
+  <!--
+    Cuando la bolsa no nos deja leer una oferta sin título, pegar su descripción es lo que la completa: va primero, con
+    el botón destacado y a la vista, sin menús. Completarla a mano queda como alternativa.
+  -->
+  @if (state.pasteFirst) {
+    <button
+      mat-flat-button
+      type="button"
+      [disabled]="busy()"
+      (click)="pasteDescription.emit()"
+      data-testid="link-paste"
+      i18n="@@links.card.paste"
+    >
+      Pegar la descripción
+    </button>
+  }
   <!-- Corregir se ofrece siempre, con el nombre que toca: lo que falta se completa, lo que está mal se edita. -->
   @if (state.needsHand) {
     <button
@@ -100,6 +116,31 @@
       i18n="@@links.card.edit"
     >
       Editar
+    </button>
+  }
+  <!-- Pegar la descripción se ofrece en cualquier link: también sirve para corregir una oferta que se leyó mal. -->
+  @if (!state.pasteFirst) {
+    <button
+      mat-button
+      type="button"
+      [disabled]="busy()"
+      (click)="pasteDescription.emit()"
+      data-testid="link-paste"
+      i18n="@@links.card.paste"
+    >
+      Pegar la descripción
+    </button>
+  }
+  @if (lastPaste(); as pasted) {
+    <button
+      mat-button
+      type="button"
+      [disabled]="busy()"
+      (click)="undoPaste.emit(pasted.fields)"
+      data-testid="link-undo-paste"
+      i18n="@@links.card.undoPaste"
+    >
+      Deshacer lo que pegó {{ pasted.by.displayName }}
     </button>
   }
   @if (state.canRetry) {

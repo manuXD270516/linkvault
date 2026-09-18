@@ -430,8 +430,72 @@
         <target>Save</target>
       </trans-unit>
       <trans-unit id="links.edit.revert" datatype="html">
-        <source> Volver a lo extraído </source>
-        <target>Back to what we read</target>
+        <source> Volver a lo anterior </source>
+        <target>Back to what was there before</target>
+      </trans-unit>
+      <trans-unit id="links.card.paste" datatype="html">
+        <source> Pegar la descripción </source>
+        <target>Paste the description</target>
+      </trans-unit>
+      <trans-unit id="links.card.undoPaste" datatype="html">
+        <source> Deshacer lo que pegó <x id="INTERPOLATION" equiv-text="{{ pasted.by.displayName }}"/> </source>
+        <target>Undo what <x id="INTERPOLATION" equiv-text="{{ pasted.by.displayName }}"/> pasted</target>
+      </trans-unit>
+      <trans-unit id="links.origin.pasted" datatype="html">
+        <source>Descripción pegada por <x id="NAME" equiv-text="origin.by.displayName"/></source>
+        <target>Description pasted by <x id="NAME" equiv-text="origin.by.displayName"/></target>
+      </trans-unit>
+      <trans-unit id="links.status.pasteFirstGeneric" datatype="html">
+        <source>Esta web no nos deja leer sus ofertas. Pega su descripción para completarla</source>
+        <target>This site does not let us read its job posts. Paste the description to complete it</target>
+      </trans-unit>
+      <trans-unit id="links.status.pasteFirst" datatype="html">
+        <source><x id="PLATFORM" equiv-text="platformName(platform)"/> no nos deja leer sus ofertas. Pega su descripción para completarla</source>
+        <target><x id="PLATFORM" equiv-text="platformName(platform)"/> does not let us read its job posts. Paste the description to complete it</target>
+      </trans-unit>
+      <trans-unit id="links.paste.title" datatype="html">
+        <source>Pegar la descripción</source>
+        <target>Paste the description</target>
+      </trans-unit>
+      <trans-unit id="links.paste.explanation" datatype="html">
+        <source> Pega el texto de la oferta tal como la ves: lo leemos para completar la tarjeta y no lo guardamos </source>
+        <target>Paste the text of the job post as you see it: we read it to complete the card and we do not keep it</target>
+      </trans-unit>
+      <trans-unit id="links.paste.textLabel" datatype="html">
+        <source>Descripción de la oferta</source>
+        <target>Job description</target>
+      </trans-unit>
+      <trans-unit id="links.paste.headerHint" datatype="html">
+        <source> Si lo que pegas no trae el puesto o la empresa, escríbelos aquí </source>
+        <target>If what you paste does not include the position or the company, type them here</target>
+      </trans-unit>
+      <trans-unit id="links.paste.reading" datatype="html">
+        <source> Leyendo… puede tardar unos segundos </source>
+        <target>Reading… this may take a few seconds</target>
+      </trans-unit>
+      <trans-unit id="links.paste.notAJobPosting" datatype="html">
+        <source>Eso no parece una oferta de trabajo. Copia la descripción de la oferta, no la conversación</source>
+        <target>That does not look like a job post. Copy the job description, not the conversation</target>
+      </trans-unit>
+      <trans-unit id="links.paste.unavailable" datatype="html">
+        <source>No pudimos leerla ahora, inténtalo en un rato</source>
+        <target>We could not read it right now, try again in a while</target>
+      </trans-unit>
+      <trans-unit id="links.paste.tooManyPastes" datatype="html">
+        <source>Pegaste demasiadas ofertas seguidas, espera un poco</source>
+        <target>You pasted too many job posts in a row, wait a little</target>
+      </trans-unit>
+      <trans-unit id="links.paste.quotaExceeded" datatype="html">
+        <source>Llegaste al límite de lecturas de hoy, vuelve mañana</source>
+        <target>You reached today's reading limit, come back tomorrow</target>
+      </trans-unit>
+      <trans-unit id="links.paste.cancel" datatype="html">
+        <source> Cancelar </source>
+        <target>Cancel</target>
+      </trans-unit>
+      <trans-unit id="links.paste.submit" datatype="html">
+        <source> Completar la oferta </source>
+        <target>Complete the job post</target>
       </trans-unit>
       <trans-unit id="links.import.title" datatype="html">
         <source> Pega aquí el chat: encontraremos los enlaces de ofertas

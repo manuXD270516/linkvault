@@ -94,6 +94,16 @@ describe('LinksApi', () => {
     await expect(result).resolves.toEqual(imported);
   });
 
+  it('sends a pasted description with the header written apart', async () => {
+    const result = api.pasteDescription('l1', { text: 'Buscamos backend…', title: 'Backend Engineer' });
+
+    const request = expectRequest('POST', '/api/links/l1/pasted');
+    expect(request.request.body).toEqual({ text: 'Buscamos backend…', title: 'Backend Engineer' });
+    request.flush(link);
+
+    await expect(result).resolves.toEqual(link);
+  });
+
   it('lists the links of a group with the default page size', async () => {
     const result = api.listGroupLinks('g1');
 
