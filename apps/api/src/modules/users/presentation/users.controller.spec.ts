@@ -10,7 +10,10 @@ import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import type { Connection } from 'mongoose';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../../../app/create-app';
-import { apiTestConfig } from '../../../test-support/test-config';
+import {
+  apiTestAiConfig,
+  apiTestConfig,
+} from '../../../test-support/test-config';
 import {
   ACCESS_TOKEN_SIGNER,
   type AccessTokenSigner,
@@ -48,7 +51,7 @@ describe('UsersController', () => {
     const config = await apiTestConfig({
       MONGO_URI: withDatabase(getMongoTestUri(), `users-http-${randomUUID()}`),
     });
-    app = await createApp(config);
+    app = await createApp(config, apiTestAiConfig());
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
     const connection = app.get<Connection>(getConnectionToken());

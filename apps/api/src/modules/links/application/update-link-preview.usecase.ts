@@ -1,6 +1,7 @@
 import type { JobLinkSummary, UpdatePreviewRequest } from '@linkvault/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import { LinkNotFound } from '../domain/errors';
+import type { JobLink } from '../domain/job-link';
 import { applyManualEdit } from '../domain/preview-edit';
 import { requireReadableLink, type ReadableLink } from './link-access';
 import { displayNameIdsOf, toJobLinkSummary, toLinkSharer } from './link.mapper';
@@ -17,6 +18,10 @@ import {
   JOB_LINK_REPOSITORY,
   type JobLinkRepository,
 } from './ports/job-link-repository.port';
+import {
+  LINK_ENRICHED_PUBLISHER,
+  type LinkEnrichedPublisher,
+} from './ports/link-enriched-publisher.port';
 import {
   LINK_USER_DIRECTORY,
   type LinkUserDirectory,
@@ -39,6 +44,9 @@ import {
  * Una petición que no pide ningún cambio NO sube la versión: subirla mataría un enriquecimiento en vuelo a cambio de
  * nada. "Ningún cambio" incluye reenviar un campo con el valor que ya tenía escrito a mano, que es lo que hace el SPA
  * cuando alguien guarda dos veces el mismo formulario.
+ *
+ * Una corrección que se escribe se anuncia en el canal de avisos, como un enriquecimiento, para que las demás pantallas
+ * abiertas la vean (spec platform/realtime, "Una corrección a mano también llega").
  */
 @Injectable()
 export class UpdateLinkPreview {
@@ -54,6 +62,8 @@ export class UpdateLinkPreview {
     @Inject(GROUP_MEMBERSHIP) private readonly membership: GroupMembership,
     @Inject(LINK_USER_DIRECTORY) private readonly directory: LinkUserDirectory,
     @Inject(LINKS_CLOCK) private readonly clock: Clock,
+    @Inject(LINK_ENRICHED_PUBLISHER)
+    private readonly publisher: LinkEnrichedPublisher,
   ) {}
 
   async execute(
@@ -83,6 +93,7 @@ export class UpdateLinkPreview {
         },
       );
       if (written !== null) {
+        this.announce(written);
         return await this.toSummary(readable, written);
       }
       // Otra escritura ganó: se vuelve a leer y la corrección se aplica sobre lo que hay ahora.
@@ -93,6 +104,21 @@ export class UpdateLinkPreview {
       current = reread;
     }
     throw new Error('The preview could not be saved after repeated conflicts');
+  }
+
+  /**
+   * Avisa a las demás pantallas por el canal compartido (D6 de paste-job-description), **sin esperar**: publicar nunca
+   * retrasa ni hace fallar la respuesta de quien corrigió.
+   */
+  private announce(link: JobLink): void {
+    void this.publisher
+      .publish({
+        linkId: link.id,
+        previewStatus: link.previewStatus,
+        previewVersion: link.previewVersion,
+      })
+      // El puerto promete no lanzar; esto es por si un adaptador lo incumple, que no tumbe el proceso.
+      .catch(() => undefined);
   }
 
   private readers() {

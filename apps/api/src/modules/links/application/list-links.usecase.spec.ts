@@ -12,6 +12,7 @@ import {
   enrichedPreview,
   jobLinkDraft,
   objectId,
+  pastedPreview,
 } from './testing/link-fixtures';
 import {
   IN_MEMORY_SESSION,
@@ -210,8 +211,14 @@ describe('ListMyLinks', () => {
 });
 
 describe('read offers in the listings', () => {
-  /** Guarda `count` links de Ana en su lista privada, todos con campos escritos a mano. */
-  async function seedEnriched(count: number): Promise<void> {
+  /**
+   * Guarda `count` links de Ana en su lista privada, todos con campos escritos a mano; con `withPasted`, uno de cada
+   * dos lleva además campos que pegó Beto.
+   */
+  async function seedEnriched(
+    count: number,
+    withPasted = false,
+  ): Promise<void> {
     for (let index = 0; index < count; index += 1) {
       const link = links.seed({
         ...jobLinkDraft(`https://empresa.example/careers/leida-${index}`, {
@@ -220,7 +227,9 @@ describe('read offers in the listings', () => {
         }),
         previewStatus: 'manual',
         previewVersion: 2,
-        ...enrichedPreview(ANA),
+        ...(withPasted && index % 2 === 0
+          ? pastedPreview(BETO, ANA)
+          : enrichedPreview(ANA)),
       });
       await userLinks.save(
         { userId: ANA, linkId: link.id, savedAt: clock.now() },
@@ -258,6 +267,26 @@ describe('read offers in the listings', () => {
 
     expect(page.items).toHaveLength(20);
     expect(directory.calls).toBe(1);
+  });
+
+  it('resolves pasted and manual authors of twenty links with one query', async () => {
+    await seedEnriched(20, true);
+    directory.calls = 0;
+
+    const page = await listMyLinks.execute(ANA, {
+      limit: LINK_PAGE_DEFAULT_LIMIT,
+    });
+
+    expect(page.items).toHaveLength(20);
+    expect(directory.calls).toBe(1);
+    const pasted = page.items.find(
+      (item) => item.previewSources?.summary?.source === 'pasted',
+    );
+    const summary = pasted?.previewSources?.summary;
+    expect(summary?.source === 'pasted' ? summary.by : undefined).toEqual({
+      userId: BETO,
+      displayName: 'Beto',
+    });
   });
 
   it('a pending link keeps answering exactly like before', async () => {

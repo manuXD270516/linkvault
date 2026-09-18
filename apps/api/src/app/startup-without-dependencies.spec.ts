@@ -4,7 +4,7 @@ import type { Redis } from 'ioredis';
 import type { Connection } from 'mongoose';
 import { afterEach, describe, expect, it } from 'vitest';
 import { REDIS_HEALTH_CLIENT } from '../infrastructure/redis/redis-health-client';
-import { apiTestConfig } from '../test-support/test-config';
+import { apiTestAiConfig, apiTestConfig } from '../test-support/test-config';
 import { createApp } from './create-app';
 
 describe('api startup with MongoDB and Redis unreachable', () => {
@@ -18,7 +18,7 @@ describe('api startup with MongoDB and Redis unreachable', () => {
   it('starts listening without waiting for its dependencies', async () => {
     const startedAt = Date.now();
 
-    app = await createApp(await apiTestConfig());
+    app = await createApp(await apiTestConfig(), apiTestAiConfig());
     await app.listen(0, '127.0.0.1');
 
     // Muy por debajo de serverSelectionTimeoutMS (30 s): el arranque no esperó a MongoDB.

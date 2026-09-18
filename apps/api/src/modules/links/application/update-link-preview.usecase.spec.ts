@@ -8,10 +8,12 @@ import {
   enrichedPreview,
   jobLinkDraft,
   objectId,
+  pastedPreview,
 } from './testing/link-fixtures';
 import {
   IN_MEMORY_SESSION,
   InMemoryGroupMembership,
+  InMemoryLinkEnrichedPublisher,
   InMemoryLinkUserDirectory,
   MovableClock,
 } from './testing/links-test-doubles';
@@ -31,6 +33,7 @@ let groupLinks: InMemoryGroupLinkRepository;
 let userLinks: InMemoryUserLinkRepository;
 let directory: InMemoryLinkUserDirectory;
 let membership: InMemoryGroupMembership;
+let publisher: InMemoryLinkEnrichedPublisher;
 let updatePreview: UpdateLinkPreview;
 
 beforeEach(() => {
@@ -42,6 +45,7 @@ beforeEach(() => {
   membership = new InMemoryGroupMembership()
     .withMember(BACKEND, ANA, 'owner', 'Backend Bolivia')
     .withMember(BACKEND, BETO);
+  publisher = new InMemoryLinkEnrichedPublisher();
   updatePreview = new UpdateLinkPreview(
     links,
     groupLinks,
@@ -49,6 +53,7 @@ beforeEach(() => {
     membership,
     directory,
     clock,
+    publisher,
   );
 });
 
@@ -90,7 +95,9 @@ describe('UpdateLinkPreview', () => {
     });
     expect(title?.source === 'manual' ? title.replaced : undefined).toEqual({
       value: 'Backend Engineer',
+      source: 'auto',
       extractor: 'json-ld',
+      at: '2026-09-18T11:00:00.000Z',
     });
   });
 
@@ -144,6 +151,71 @@ describe('UpdateLinkPreview', () => {
 
     expect(summary.preview?.title).toBe('Backend Engineer');
     expect(summary.previewSources?.title?.source).toBe('auto');
+  });
+
+  it('Volver a lo pegado', async () => {
+    // Beto pegó el título y Ana lo corrigió a mano después.
+    const link = links.seed({
+      ...jobLinkDraft(JOB_PAGE, { createdBy: ANA, now: clock.now() }),
+      previewStatus: 'manual',
+      previewVersion: 3,
+      ...pastedPreview(BETO, ANA),
+    });
+    await userLinks.save(
+      { userId: ANA, linkId: link.id, savedAt: clock.now() },
+      IN_MEMORY_SESSION,
+    );
+
+    const summary = await updatePreview.execute(ANA, link.id, {
+      revert: ['title'],
+    });
+
+    expect(summary.preview?.title).toBe('Backend Engineer');
+    expect(summary.previewSources?.title).toEqual({
+      value: 'Backend Engineer',
+      source: 'pasted',
+      extractor: 'ai:extract-pasted-job',
+      by: { userId: BETO, displayName: 'Beto' },
+      at: '2026-09-18T11:00:00.000Z',
+    });
+    expect(summary.previewVersion).toBe(4);
+  });
+
+  it('Una corrección a mano también llega', async () => {
+    const linkId = await sharedLink();
+
+    await updatePreview.execute(BETO, linkId, {
+      fields: { title: 'Ingeniero de Backend' },
+    });
+
+    // Publicado en el canal compartido: lo reparte `DeliverLinkEnriched` a quienes ven el link, en cualquier instancia.
+    expect(publisher.published).toEqual([
+      { linkId, previewStatus: 'manual', previewVersion: 3 },
+    ]);
+  });
+
+  it('answers without waiting for the notice, and a Redis that is down does not make it fail', async () => {
+    const linkId = await sharedLink();
+    publisher.hang();
+
+    const first = await updatePreview.execute(BETO, linkId, {
+      fields: { title: 'Ingeniero de Backend' },
+    });
+    publisher.fail();
+    const second = await updatePreview.execute(BETO, linkId, {
+      fields: { title: 'Ingeniera de Backend' },
+    });
+
+    expect(first.previewVersion).toBe(3);
+    expect(second.previewVersion).toBe(4);
+  });
+
+  it('announces nothing when the edit changes nothing', async () => {
+    const linkId = await sharedLink();
+
+    await updatePreview.execute(ANA, linkId, {});
+
+    expect(publisher.published).toEqual([]);
   });
 
   it('can also be edited from the private list', async () => {

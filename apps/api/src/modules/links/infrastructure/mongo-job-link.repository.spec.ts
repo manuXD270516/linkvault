@@ -107,6 +107,15 @@ describe('withResolvedLink', () => {
     const again = await save(JOB_PAGE, BETO);
 
     expect(again.link.originalUrls).toEqual([JOB_PAGE]);
+    expect(again.urlAdded).toBe(false);
+  });
+
+  it('says whether the url was new to the history of a vacancy that already existed', async () => {
+    const first = await save(JOB_PAGE);
+    const second = await save(SEARCH_PAGE, BETO, later);
+
+    expect(first.urlAdded).toBe(false);
+    expect(second.urlAdded).toBe(true);
   });
 
   it('Historial acotado', async () => {
@@ -333,6 +342,91 @@ describe('updatePreview', () => {
   });
 });
 
+describe('writePastedPreview', () => {
+  const pasted = {
+    preview: { title: 'Coordinador de Logística', location: 'El Alto' },
+    previewSources: {
+      title: {
+        value: 'Coordinador de Logística',
+        source: 'pasted',
+        extractor: PASTED_PREVIEW_EXTRACTOR,
+        by: ANA,
+        at: later.toISOString(),
+      },
+      location: {
+        value: 'El Alto',
+        source: 'pasted',
+        extractor: PASTED_PREVIEW_EXTRACTOR,
+        by: ANA,
+        at: later.toISOString(),
+      },
+    },
+  } satisfies { preview: object; previewSources: PreviewSources };
+
+  async function failedBy(reason: 'robots_disallowed' | 'timeout') {
+    const { link } = await save(JOB_PAGE);
+    await connection.collection(JOB_LINKS_COLLECTION).updateOne(
+      { _id: new mongoose.Types.ObjectId(link.id) },
+      {
+        $set: {
+          previewStatus: 'failed',
+          lastEnrichmentError: { reason, at: now.toISOString() },
+        },
+      },
+    );
+    return link.id;
+  }
+
+  it('stores what was pasted with the status it was given, raises the version and keeps the reason it is given', async () => {
+    const linkId = await failedBy('robots_disallowed');
+
+    const written = await repository.writePastedPreview(linkId, 1, {
+      ...pasted,
+      previewStatus: 'partial',
+      lastEnrichmentError: {
+        reason: 'robots_disallowed',
+        at: now.toISOString(),
+      },
+      now: later,
+    });
+
+    expect(written?.previewStatus).toBe('partial');
+    expect(written?.previewVersion).toBe(2);
+    expect(written?.previewSources?.title?.source).toBe('pasted');
+    expect(written?.lastEnrichmentError?.reason).toBe('robots_disallowed');
+    const stored = await repository.findById(linkId);
+    expect(stored?.previewSources).toEqual(pasted.previewSources);
+  });
+
+  it('clears the reason it is not given', async () => {
+    const linkId = await failedBy('timeout');
+
+    const written = await repository.writePastedPreview(linkId, 1, {
+      ...pasted,
+      previewStatus: 'partial',
+      now: later,
+    });
+
+    expect(written?.lastEnrichmentError).toBeUndefined();
+    expect((await repository.findById(linkId))?.lastEnrichmentError).toBe(
+      undefined,
+    );
+  });
+
+  it('writes nothing when another write already raised the version', async () => {
+    const linkId = await failedBy('timeout');
+
+    expect(
+      await repository.writePastedPreview(linkId, 7, {
+        ...pasted,
+        previewStatus: 'partial',
+        now: later,
+      }),
+    ).toBeNull();
+    expect((await repository.findById(linkId))?.previewVersion).toBe(1);
+  });
+});
+
 describe('withRequestedEnrichment', () => {
   it('raises the version, goes back to pending and clears the reason of the failure', async () => {
     const { link } = await save(JOB_PAGE);
@@ -372,6 +466,54 @@ describe('withRequestedEnrichment', () => {
       await repository.withRequestedEnrichment('no-es-un-id', later, work),
     ).toBeNull();
     expect(ran).toBe(false);
+  });
+});
+
+describe('requestEnrichment', () => {
+  it('asks for a new reading inside the transaction of the save', async () => {
+    const { link } = await save(JOB_PAGE);
+    await connection.collection(JOB_LINKS_COLLECTION).updateOne(
+      { _id: new mongoose.Types.ObjectId(link.id) },
+      {
+        $set: {
+          previewStatus: 'failed',
+          lastEnrichmentError: {
+            reason: 'robots_disallowed',
+            at: now.toISOString(),
+          },
+        },
+      },
+    );
+
+    const requested = await repository.withResolvedLink(
+      jobLinkDraft(SEARCH_PAGE, { createdBy: BETO, now: later }),
+      (resolved, session) =>
+        repository.requestEnrichment(resolved.link.id, later, session),
+    );
+
+    expect(requested?.previewStatus).toBe('pending');
+    expect(requested?.previewVersion).toBe(2);
+    expect(requested?.lastEnrichmentError).toBeUndefined();
+    expect(requested?.originalUrls).toEqual([JOB_PAGE, SEARCH_PAGE]);
+    expect((await repository.findById(link.id))?.previewVersion).toBe(2);
+  });
+
+  it('writes nothing if the transaction of the save fails afterwards', async () => {
+    const { link } = await save(JOB_PAGE);
+
+    await expect(
+      repository.withResolvedLink(
+        jobLinkDraft(SEARCH_PAGE, { createdBy: BETO, now: later }),
+        async (resolved, session) => {
+          await repository.requestEnrichment(resolved.link.id, later, session);
+          throw new Error('the outbox write failed');
+        },
+      ),
+    ).rejects.toThrow('the outbox write failed');
+
+    const stored = await repository.findById(link.id);
+    expect(stored?.previewVersion).toBe(1);
+    expect(stored?.originalUrls).toEqual([JOB_PAGE]);
   });
 });
 

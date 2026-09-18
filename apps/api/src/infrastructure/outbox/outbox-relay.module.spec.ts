@@ -9,7 +9,7 @@ import { Queue } from 'bullmq';
 import { afterEach, describe, expect, it } from 'vitest';
 import { AppModule } from '../../app/app.module';
 import { createApp } from '../../app/create-app';
-import { apiTestConfig } from '../../test-support/test-config';
+import { apiTestAiConfig, apiTestConfig } from '../../test-support/test-config';
 import { AppConfigModule } from '../config/app-config.module';
 import { MongoPersistenceModule } from '../persistence/mongo-persistence.module';
 import {
@@ -121,7 +121,7 @@ function optionalGet(reference: TestingModule, token: unknown): unknown {
 describe('outbox relay module', () => {
   it('creates no queue when the relay is disabled', async () => {
     moduleRef = await Test.createTestingModule({
-      imports: [AppModule.register(await apiTestConfig())],
+      imports: [AppModule.register(await apiTestConfig(), apiTestAiConfig())],
     }).compile();
 
     expect(optionalGet(moduleRef, Queue)).toBeUndefined();
@@ -136,7 +136,10 @@ describe('outbox relay module', () => {
   it('opens no BullMQ connection to Redis when the relay is disabled', async () => {
     server = await RedisPortSpy.start();
 
-    app = await createApp(await apiTestConfig({ REDIS_URL: server.url }));
+    app = await createApp(
+      await apiTestConfig({ REDIS_URL: server.url }),
+      apiTestAiConfig(),
+    );
     await app.init();
     await new Promise((resolve) => setTimeout(resolve, 250));
 

@@ -46,7 +46,7 @@ export async function apiTestConfig(
 }
 
 /** Raíz del workspace (la carpeta con `nx.json`), buscada hacia arriba desde el directorio de trabajo del test. */
-function workspaceRoot(): string {
+export function workspaceRoot(): string {
   let dir = process.cwd();
   while (!existsSync(join(dir, 'nx.json'))) {
     const parent = dirname(dir);

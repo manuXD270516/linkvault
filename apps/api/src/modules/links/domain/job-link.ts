@@ -123,3 +123,31 @@ export function withOriginalUrl(
     ? link
     : { ...link, originalUrls, updatedAt: now };
 }
+
+/** Host de una URL (con su puerto, como lo compara el worker), o `null` si no es una dirección. */
+function hostOf(url: string): string | null {
+  try {
+    return new URL(url).host;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Si volver a guardar la vacante con `url` —una URL que **no estaba** en su historial— debe pedir una lectura nueva (D7
+ * de paste-job-description): solo cuando el link está en `failed` porque `robots.txt` prohíbe su `displayUrl` y la URL
+ * nueva es **del mismo host**. Es el disparador del rescate por historial: `robots_disallowed` no se reintenta, así que
+ * sin esto la cadena que prueba las demás URLs no se ejecutaría nunca. Una URL de otro host no pide nada, porque esa
+ * cadena no la probaría: su turno y su `Crawl-delay` son otros.
+ */
+export function asksForHistoryRescue(link: JobLink, url: string): boolean {
+  if (
+    link.previewStatus !== 'failed' ||
+    link.lastEnrichmentError?.reason !== 'robots_disallowed' ||
+    url === link.displayUrl
+  ) {
+    return false;
+  }
+  const host = hostOf(link.displayUrl);
+  return host !== null && hostOf(url) === host;
+}

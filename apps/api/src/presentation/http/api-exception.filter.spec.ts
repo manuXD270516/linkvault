@@ -59,6 +59,9 @@ import {
   PreviewFieldUnknown,
   TextTooLong,
   TooManyLinkAttempts,
+  NotAJobPosting,
+  ExtractionUnavailable,
+  AiQuotaExceeded,
 } from '../../modules/links/domain/errors';
 import {
   EmailAlreadyRegistered,
@@ -100,6 +103,9 @@ const THROWN: Record<string, () => unknown> = {
   'preview-field-unknown': () => new PreviewFieldUnknown('image'),
   'enrichment-not-retryable': () => new EnrichmentNotRetryable(),
   'too-many-link-attempts': () => new TooManyLinkAttempts(41.2),
+  'not-a-job-posting': () => new NotAJobPosting(),
+  'extraction-unavailable': () => new ExtractionUnavailable(60),
+  'ai-quota-exceeded': () => new AiQuotaExceeded(86_400),
   unknown: () =>
     new Error(
       `E11000 duplicate key error dup key: { email: "${SECRET_EMAIL}" }`,
@@ -378,6 +384,30 @@ describe('ApiExceptionFilter', () => {
     // Se redondea hacia arriba como el de `auth`: 41,2 s de espera no se anuncian como 41.
     expect(response.headers['retry-after']).toBe('42');
   });
+
+  it('answers a paste that is not a job posting with 422 not_a_job_posting', async () => {
+    const response = await get('not-a-job-posting');
+
+    expect(response.statusCode).toBe(422);
+    expect(response.json()).toEqual({
+      code: 'not_a_job_posting',
+      message: expect.any(String),
+    });
+  });
+
+  it.each([
+    ['extraction-unavailable', 503, 'extraction_unavailable', '60'],
+    ['ai-quota-exceeded', 429, 'ai_quota_exceeded', '86400'],
+  ])(
+    'answers %s with %i %s and its Retry-After',
+    async (name, status, code, retryAfter) => {
+      const response = await get(name);
+
+      expect(response.statusCode).toBe(status);
+      expect(response.json()).toEqual({ code, message: expect.any(String) });
+      expect(response.headers['retry-after']).toBe(retryAfter);
+    },
+  );
 
   it.each(['unknown', 'non-error'])(
     'answers a %s failure with 500 internal_error without details or the email in the logs',

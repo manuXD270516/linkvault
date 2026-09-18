@@ -1,7 +1,10 @@
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../../../app/create-app';
-import { apiTestConfig } from '../../../test-support/test-config';
+import {
+  apiTestAiConfig,
+  apiTestConfig,
+} from '../../../test-support/test-config';
 import {
   clearRefreshCookie,
   isRefreshCookieSecure,
@@ -45,7 +48,7 @@ describe('refresh cookie', () => {
   let app: NestFastifyApplication;
 
   beforeAll(async () => {
-    app = await createApp(await apiTestConfig());
+    app = await createApp(await apiTestConfig(), apiTestAiConfig());
     const fastify = app.getHttpAdapter().getInstance();
     fastify.get<{ Querystring: { secure?: string } }>(
       '/api/auth/test-set',

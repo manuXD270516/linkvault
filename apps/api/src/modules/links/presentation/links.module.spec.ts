@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { RUN_TASK } from '@linkvault/ai';
 import { apiErrorResponseSchema } from '@linkvault/shared';
 import { getMongoTestUri } from '@linkvault/testing';
 import { getConnectionToken } from '@nestjs/mongoose';
@@ -7,7 +8,10 @@ import type { Connection } from 'mongoose';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../../../app/create-app';
 import { MongoOutbox } from '../../../infrastructure/outbox/mongo-outbox';
-import { apiTestConfig } from '../../../test-support/test-config';
+import {
+  apiTestAiConfig,
+  apiTestConfig,
+} from '../../../test-support/test-config';
 import { ImportLinks } from '../application/import-links.usecase';
 import { ListGroupLinks } from '../application/list-group-links.usecase';
 import { ListMyLinks } from '../application/list-my-links.usecase';
@@ -17,6 +21,7 @@ import { GROUP_MEMBERSHIP } from '../application/ports/group-membership.port';
 import { JOB_LINK_REPOSITORY } from '../application/ports/job-link-repository.port';
 import { LINK_USER_DIRECTORY } from '../application/ports/link-user-directory.port';
 import { OUTBOX } from '../application/ports/outbox.port';
+import { PASTED_EXTRACTION } from '../application/ports/pasted-extraction.port';
 import { USER_LINK_REPOSITORY } from '../application/ports/user-link-repository.port';
 import { RemoveGroupLink } from '../application/remove-group-link.usecase';
 import { RemoveMyLink } from '../application/remove-my-link.usecase';
@@ -25,6 +30,7 @@ import { GroupsFacadeMembership } from '../infrastructure/groups-facade-membersh
 import { MongoGroupLinkRepository } from '../infrastructure/mongo-group-link.repository';
 import { MongoJobLinkRepository } from '../infrastructure/mongo-job-link.repository';
 import { MongoUserLinkRepository } from '../infrastructure/mongo-user-link.repository';
+import { RunTaskPastedExtraction } from '../infrastructure/run-task-pasted-extraction';
 import { SystemClock } from '../infrastructure/system-clock';
 import { UsersFacadeLinkDirectory } from '../infrastructure/users-facade-link-directory';
 
@@ -47,7 +53,7 @@ describe('LinksModule', () => {
     const config = await apiTestConfig({
       MONGO_URI: withDatabase(getMongoTestUri(), `links-di-${randomUUID()}`),
     });
-    app = await createApp(config);
+    app = await createApp(config, apiTestAiConfig());
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
     await app.get<Connection>(getConnectionToken()).asPromise();
@@ -80,6 +86,24 @@ describe('LinksModule', () => {
     [LINKS_CLOCK, SystemClock],
   ])('binds a port to its Mongo or facade adapter', (token, adapter) => {
     expect(app.get(token, { strict: false })).toBeInstanceOf(adapter);
+  });
+
+  it('resolves runTask inside the links module, from the one AiModule the app builds', () => {
+    // `PASTED_EXTRACTION` es un proveedor de `LinksModule` que inyecta `RUN_TASK`: si `AiModule` no le llegara, la app
+    // no habría arrancado. Y hay un solo `runTask` en toda la app.
+    expect(app.get(PASTED_EXTRACTION, { strict: false })).toBeInstanceOf(
+      RunTaskPastedExtraction,
+    );
+    expect(typeof app.get(RUN_TASK, { strict: false })).toBe('function');
+  });
+
+  it('runs AI with the mock in replay, so the suite opens no new connection for it', () => {
+    // Con `mock` en la cadena, `AiModule` no crea el cliente de Redis de la caché y el ledger usa la conexión Mongoose
+    // de la app: la suite de `api` sigue sin Redis (ADR-021 §4).
+    expect(apiTestAiConfig()).toMatchObject({
+      chain: ['mock'],
+      mock: { mode: 'replay' },
+    });
   });
 
   it('resolves the outbox port from the outbox module, the one of the platform', () => {

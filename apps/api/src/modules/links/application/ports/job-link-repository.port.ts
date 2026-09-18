@@ -1,5 +1,6 @@
 import type {
   EnrichmentFailureReason,
+  LastEnrichmentError,
   PreviewSources,
   PreviewStatus,
   StoredPreview,
@@ -19,12 +20,29 @@ export interface ResolvedJobLink {
   readonly link: JobLink;
   /** `true` solo si la vacante no existía en LinkVault; compartir una conocida NO cuenta. */
   readonly created: boolean;
+  /**
+   * `true` si la vacante ya existía y la URL no estaba en su historial, así que se acaba de añadir. Es lo que distingue
+   * "se volvió a guardar con otra URL" de "se volvió a guardar la misma" (D7 de paste-job-description).
+   */
+  readonly urlAdded: boolean;
 }
 
 /** Lo que deja una edición manual del preview: el preview ya mezclado y su procedencia. */
 export interface ManualPreviewWrite {
   readonly preview: StoredPreview;
   readonly previewSources: PreviewSources;
+  readonly now: Date;
+}
+
+/**
+ * Lo que deja un pegado (D6 de paste-job-description): el preview ya mezclado, su procedencia, el estado derivado de los
+ * campos y el motivo de fallo que sobrevive —ausente si no sobrevive ninguno—.
+ */
+export interface PastedPreviewWrite {
+  readonly preview: StoredPreview;
+  readonly previewSources: PreviewSources;
+  readonly previewStatus: PreviewStatus;
+  readonly lastEnrichmentError?: LastEnrichmentError;
   readonly now: Date;
 }
 
@@ -63,6 +81,17 @@ export interface JobLinkRepository {
    * leer, lo que bloquea y lo que no era una oferta. El filtro va en la consulta y no después, para que `limit`
    * signifique "reencola tantos" y no "mira tantos".
    */
+  /**
+   * Guarda lo que dejó un pegado y sube `previewVersion`, **condicionado** a la versión leída, como la edición manual.
+   * El estado y el motivo del fallo los decide quien llama: el motivo que no llega se borra. `null` si nadie casó la
+   * condición —el link ya no existe u otra escritura ganó la carrera—, y quien llama rehace la mezcla sobre lo nuevo.
+   */
+  writePastedPreview(
+    linkId: string,
+    expectedVersion: number,
+    changes: PastedPreviewWrite,
+  ): Promise<JobLink | null>;
+
   listByPreviewStatus(
     status: PreviewStatus,
     limit: number,
@@ -82,4 +111,15 @@ export interface JobLinkRepository {
     now: Date,
     work: (link: JobLink, session: TransactionSession) => Promise<T>,
   ): Promise<T | null>;
+
+  /**
+   * Lo mismo que `withRequestedEnrichment`, pero **dentro de una transacción ya abierta**: la de `withResolvedLink`,
+   * cuando volver a guardar una vacante pide su lectura (D7 de paste-job-description). Quien llama escribe el evento del
+   * outbox en la misma sesión. `null` si el link no existe.
+   */
+  requestEnrichment(
+    linkId: string,
+    now: Date,
+    session: TransactionSession,
+  ): Promise<JobLink | null>;
 }

@@ -1,4 +1,5 @@
 import fastifyCookie from '@fastify/cookie';
+import type { AiConfig } from '@linkvault/ai';
 import { NestFactory } from '@nestjs/core';
 import {
   FastifyAdapter,
@@ -30,9 +31,10 @@ export async function configureApp(app: NestFastifyApplication): Promise<void> {
 /** Crea la aplicación sin escuchar. `main.ts` y los tests comparten este arranque. */
 export async function createApp(
   config: ApiConfig,
+  ai: AiConfig,
 ): Promise<NestFastifyApplication> {
   const app = await NestFactory.create<NestFastifyApplication>(
-    AppModule.register(config),
+    AppModule.register(config, ai),
     new FastifyAdapter(),
     { bufferLogs: true },
   );

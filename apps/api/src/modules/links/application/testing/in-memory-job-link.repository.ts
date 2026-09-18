@@ -11,6 +11,7 @@ import { isLinkId } from '../../domain/identifier';
 import type {
   JobLinkRepository,
   ManualPreviewWrite,
+  PastedPreviewWrite,
   ResolvedJobLink,
 } from '../ports/job-link-repository.port';
 import type { TransactionSession } from '../ports/transaction-session';
@@ -91,11 +92,80 @@ export class InMemoryJobLinkRepository implements JobLinkRepository {
     return Promise.resolve(structuredClone(updated));
   }
 
+  /** Escrituras de pegados que no casaron su versión: prueba que se rehízo la mezcla, no la lectura. */
+  lostPasteRaces = 0;
+  /** Se ejecuta justo antes de la próxima escritura de un pegado: deja simular otra escritura que gana la carrera. */
+  private beforeNextPasteWrite: (() => void) | undefined;
+
+  interleaveBeforeNextPasteWrite(action: () => void): void {
+    this.beforeNextPasteWrite = action;
+  }
+
+  /** Cambia un link guardado como lo haría otra escritura, subiendo su versión. */
+  overwrite(linkId: string, changes: Partial<JobLink>): void {
+    const link = this.links.get(linkId);
+    if (link === undefined) {
+      throw new Error(`No link ${linkId} to overwrite`);
+    }
+    this.links.set(linkId, {
+      ...link,
+      ...changes,
+      previewVersion: link.previewVersion + 1,
+    });
+  }
+
+  writePastedPreview(
+    linkId: string,
+    expectedVersion: number,
+    changes: PastedPreviewWrite,
+  ): Promise<JobLink | null> {
+    const interleaved = this.beforeNextPasteWrite;
+    this.beforeNextPasteWrite = undefined;
+    interleaved?.();
+    const link = isLinkId(linkId) ? this.links.get(linkId) : undefined;
+    // Misma condición que el adaptador real: una versión que ya avanzó no casa y el pegado no escribe nada.
+    if (link === undefined || link.previewVersion !== expectedVersion) {
+      this.lostPasteRaces += 1;
+      return Promise.resolve(null);
+    }
+    const { lastEnrichmentError: _previous, ...rest } = link;
+    const updated: JobLink = {
+      ...rest,
+      preview: changes.preview,
+      previewSources: changes.previewSources,
+      previewStatus: changes.previewStatus,
+      ...(changes.lastEnrichmentError === undefined
+        ? {}
+        : { lastEnrichmentError: changes.lastEnrichmentError }),
+      previewVersion: link.previewVersion + 1,
+      updatedAt: changes.now,
+    };
+    this.links.set(link.id, updated);
+    return Promise.resolve(structuredClone(updated));
+  }
+
   async withRequestedEnrichment<T>(
     linkId: string,
     now: Date,
     work: (link: JobLink, session: TransactionSession) => Promise<T>,
   ): Promise<T | null> {
+    const updated = this.markRequested(linkId, now);
+    return updated === null
+      ? null
+      : await work(structuredClone(updated), IN_MEMORY_SESSION);
+  }
+
+  requestEnrichment(
+    linkId: string,
+    now: Date,
+    _session: TransactionSession,
+  ): Promise<JobLink | null> {
+    const updated = this.markRequested(linkId, now);
+    return Promise.resolve(updated === null ? null : structuredClone(updated));
+  }
+
+  /** Lectura nueva pedida: sube la versión, vuelve a `pending` y olvida el fallo anterior. */
+  private markRequested(linkId: string, now: Date): JobLink | null {
     const link = isLinkId(linkId) ? this.links.get(linkId) : undefined;
     if (link === undefined) {
       return null;
@@ -109,7 +179,7 @@ export class InMemoryJobLinkRepository implements JobLinkRepository {
       updatedAt: now,
     };
     this.links.set(link.id, updated);
-    return await work(structuredClone(updated), IN_MEMORY_SESSION);
+    return updated;
   }
 
   /** Alta directa para preparar un test, sin pasar por el caso de uso. */
@@ -129,11 +199,15 @@ export class InMemoryJobLinkRepository implements JobLinkRepository {
         draft.updatedAt,
       );
       this.links.set(existing.id, updated);
-      return { link: structuredClone(updated), created: false };
+      return {
+        link: structuredClone(updated),
+        created: false,
+        urlAdded: !existing.originalUrls.includes(draft.displayUrl),
+      };
     }
     const link: JobLink = { ...draft, id: this.nextLinkId() };
     this.links.set(link.id, link);
-    return { link: structuredClone(link), created: true };
+    return { link: structuredClone(link), created: true, urlAdded: false };
   }
 
   private nextLinkId(): string {

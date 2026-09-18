@@ -14,10 +14,10 @@ import { loadApiConfigOrExit } from './infrastructure/config/load-api-config';
 
 async function main(): Promise<void> {
   const options = parseBackfillArgs(process.argv.slice(2));
-  const { config } = loadApiConfigOrExit(process.env);
+  const { config, ai } = loadApiConfigOrExit(process.env);
   // Sin relay: este comando escribe en el outbox, no publica. Encender la cola aquí abriría Redis para nada.
   const context = await NestFactory.createApplicationContext(
-    AppModule.register({ ...config, OUTBOX_RELAY_ENABLED: false }),
+    AppModule.register({ ...config, OUTBOX_RELAY_ENABLED: false }, ai),
     { bufferLogs: true },
   );
   try {

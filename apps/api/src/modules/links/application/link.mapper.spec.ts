@@ -10,6 +10,7 @@ import {
   enrichedPreview,
   jobLinkDraft,
   objectId,
+  pastedPreview,
 } from './testing/link-fixtures';
 
 // Mapeo de un `JobLink` al contrato de la API. Lo del enriquecimiento se prueba aquí y no por HTTP porque es una función
@@ -93,9 +94,9 @@ describe('toJobLinkSummary with a read offer', () => {
       userId: ANA,
       displayName: 'Ana',
     });
-    expect(
-      company?.source === 'manual' ? company.replaced : undefined,
-    ).toEqual({ value: 'ACME S.R.L.', source: 'auto', extractor: 'metadata' });
+    expect(company?.source === 'manual' ? company.replaced : undefined).toEqual(
+      { value: 'ACME S.R.L.', source: 'auto', extractor: 'metadata' },
+    );
   });
 
   it('falls back to a neutral name when the directory does not know the author', () => {
@@ -135,6 +136,56 @@ describe('toJobLinkSummary with a read offer', () => {
   });
 });
 
+describe('toJobLinkSummary with a pasted description', () => {
+  const ANA = objectId(1);
+  const BETO = objectId(2);
+  const pasted = jobLink({
+    previewStatus: 'manual',
+    previewVersion: 4,
+    ...pastedPreview(BETO, ANA),
+  });
+  const summary = toJobLinkSummary(pasted, {
+    sharedAt: SHARED_AT,
+    names: new Map([
+      [ANA, 'Ana'],
+      [BETO, 'Beto'],
+    ]),
+  });
+
+  it('Lo pegado se distingue', () => {
+    expect(jobLinkSummarySchema.parse(summary)).toEqual(summary);
+    expect(summary.previewSources?.summary).toEqual({
+      value: 'Servicios en Node.js para pagos.',
+      source: 'pasted',
+      extractor: 'ai:extract-pasted-job',
+      by: { userId: BETO, displayName: 'Beto' },
+      at: '2026-09-18T11:00:00.000Z',
+    });
+  });
+
+  it('names the author of what a field keeps to be undone', () => {
+    const title = summary.previewSources?.title;
+
+    expect(title?.source === 'manual' ? title.replaced : undefined).toEqual({
+      value: 'Backend Engineer',
+      source: 'pasted',
+      extractor: 'ai:extract-pasted-job',
+      by: { userId: BETO, displayName: 'Beto' },
+      at: '2026-09-18T11:00:00.000Z',
+    });
+    // Lo que salió de la página no tiene autor y sale tal cual.
+    const company = summary.previewSources?.company;
+    expect(company?.source === 'pasted' ? company.replaced : undefined).toEqual(
+      {
+        value: 'ACME S.R.L.',
+        source: 'auto',
+        extractor: 'metadata',
+        at: '2026-09-18T11:00:00.000Z',
+      },
+    );
+  });
+});
+
 describe('displayNameIdsOf', () => {
   const ANA = objectId(1);
   const BETO = objectId(2);
@@ -150,6 +201,16 @@ describe('displayNameIdsOf', () => {
       ANA,
       BETO,
     ]);
+  });
+
+  it('asks for whoever pasted a field and whoever signed what it keeps to be undone', () => {
+    const CARLA = objectId(3);
+    const links = [
+      jobLink({ id: objectId(11), ...pastedPreview(BETO, ANA) }),
+      jobLink({ id: objectId(12), ...pastedPreview(CARLA, ANA) }),
+    ];
+
+    expect(displayNameIdsOf(links)).toEqual([ANA, BETO, CARLA]);
   });
 
   it('asks for nobody when no field was written by hand', () => {

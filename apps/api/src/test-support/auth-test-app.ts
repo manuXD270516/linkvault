@@ -19,7 +19,7 @@ import {
 } from '../modules/auth/infrastructure/session.schemas';
 import { REFRESH_COOKIE_NAME } from '../modules/auth/presentation/refresh-cookie';
 import { USER_MODEL_NAME } from '../modules/users/infrastructure/user.schema';
-import { apiTestConfig } from './test-config';
+import { apiTestAiConfig, apiTestConfig } from './test-config';
 
 // App completa de `api` para los tests de integración de auth (D12 de auth-users): el `AppModule` real con el mismo
 // `configureApp` que `createApp`, una base de datos propia en el Mongo del preset y el doble de Redis. Solo sustituye el
@@ -66,7 +66,7 @@ export async function createAuthTestApp(
   });
   const clock = new OffsetClock();
   const moduleRef = await Test.createTestingModule({
-    imports: [AppModule.register(config)],
+    imports: [AppModule.register(config, apiTestAiConfig())],
   })
     .overrideProvider(CLOCK)
     .useValue(clock)

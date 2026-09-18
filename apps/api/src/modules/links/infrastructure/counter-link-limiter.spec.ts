@@ -9,6 +9,7 @@ import {
   ENRICH_RETRIES_PER_LINK,
   IMPORTS_PER_USER,
   LINK_LIMIT_WINDOW_MS,
+  PASTES_PER_USER,
 } from '../domain/limits';
 
 // Política de fallo de los dos límites de `links` (tarea 6.4 y D13). Es lo único que este adaptador decide y es
@@ -29,8 +30,12 @@ class CounterDouble implements FixedWindowCounter {
     return Promise.resolve(true);
   }
 
-  giveBack(): Promise<boolean> {
-    return Promise.resolve(true);
+  readonly givenBack: string[] = [];
+  answersGiveBack = true;
+
+  giveBack(key: string): Promise<boolean> {
+    this.givenBack.push(key);
+    return Promise.resolve(this.answersGiveBack);
   }
 }
 
@@ -91,5 +96,59 @@ describe('CounterLinkLimiter', () => {
     });
 
     expect(counter.asked[0]?.key).not.toMatch(/https?:/);
+  });
+
+  it('El contador no responde: a paste is refused, saying the counter is down and not that the window ran out', async () => {
+    const limiter = new CounterLinkLimiter(new CounterDouble(null));
+
+    const decision = await limiter.consume({
+      kind: 'paste-description',
+      userId: USER_ID,
+    });
+
+    expect(decision).toEqual({
+      allowed: false,
+      retryAfterSeconds: 60,
+      unavailable: true,
+    });
+  });
+
+  it('counts the pastes of a person with their own limit', async () => {
+    const counter = new CounterDouble(ALLOWED);
+
+    await new CounterLinkLimiter(counter).consume({
+      kind: 'paste-description',
+      userId: USER_ID,
+    });
+
+    expect(counter.asked).toEqual([
+      {
+        key: `links:paste:${USER_ID}`,
+        limit: { limit: PASTES_PER_USER, windowMs: LINK_LIMIT_WINDOW_MS },
+      },
+    ]);
+  });
+
+  it('gives an attempt back on the same counter it was taken from', async () => {
+    const counter = new CounterDouble(ALLOWED);
+
+    await new CounterLinkLimiter(counter).refund({
+      kind: 'paste-description',
+      userId: USER_ID,
+    });
+
+    expect(counter.givenBack).toEqual([`links:paste:${USER_ID}`]);
+  });
+
+  it('a refund with the counter down does not throw: the attempt just stays spent', async () => {
+    const counter = new CounterDouble(null);
+    counter.answersGiveBack = false;
+
+    await expect(
+      new CounterLinkLimiter(counter).refund({
+        kind: 'paste-description',
+        userId: USER_ID,
+      }),
+    ).resolves.toBeUndefined();
   });
 });

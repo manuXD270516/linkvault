@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { RUN_TASK, type RunTaskFn } from '@linkvault/ai';
 import type { GroupDetail } from '@linkvault/shared';
 import { getConnectionToken } from '@nestjs/mongoose';
 import {
@@ -7,11 +8,16 @@ import {
 } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
 import type { Connection } from 'mongoose';
-import { Logger } from 'nestjs-pino';
+import { Logger, PARAMS_PROVIDER_TOKEN } from 'nestjs-pino';
+import type { DestinationStream } from 'pino';
 import { expect } from 'vitest';
 import { AppModule } from '../app/app.module';
 import { configureApp } from '../app/create-app';
-import { FIXED_WINDOW_COUNTER } from '../infrastructure/limits/fixed-window-counter';
+import {
+  FIXED_WINDOW_COUNTER,
+  type FixedWindowCounter,
+} from '../infrastructure/limits/fixed-window-counter';
+import { buildLoggerParams } from '../infrastructure/logging/logger-params';
 import { InMemoryFixedWindowCounter } from '../infrastructure/limits/testing/in-memory-fixed-window-counter';
 import {
   ACCESS_TOKEN_SIGNER,
@@ -28,7 +34,7 @@ import {
 } from '../modules/links/infrastructure/link.schemas';
 import { UsersFacade } from '../modules/users/application/users.facade';
 import { USER_MODEL_NAME } from '../modules/users/infrastructure/user.schema';
-import { apiTestConfig } from './test-config';
+import { apiTestAiConfig, apiTestConfig } from './test-config';
 
 // App completa de `api` para los tests de integración HTTP de `links` (D10 de job-links): el `AppModule` real con una
 // base de datos propia por archivo. Los usuarios se crean con `UsersFacade` y el access token se firma con el
@@ -71,19 +77,43 @@ export interface LinksTestApp {
   close(): Promise<void>;
 }
 
+/**
+ * Sustituciones para los tests que necesitan otra cosa que la app tal cual:
+ * - `runTask`: un doble de `RUN_TASK` para los escenarios en que la IA degrada o agota su cuota. Sin él, `runTask` es el
+ *   mock en `replay` con los fixtures grabados; nunca `synth`.
+ * - `counter`: otro contador de intentos, para simular uno caído o una ventana agotada.
+ * - `logDestination`: adónde van los logs, a nivel `debug`, para comprobar qué **no** se registra.
+ */
+export interface LinksTestAppOptions {
+  readonly runTask?: RunTaskFn;
+  readonly counter?: FixedWindowCounter;
+  readonly logDestination?: DestinationStream;
+}
+
 export async function createLinksTestApp(
   name: string,
   mongoUri: string,
+  options: LinksTestAppOptions = {},
 ): Promise<LinksTestApp> {
   const config = await apiTestConfig({
     MONGO_URI: withDatabase(mongoUri, `${name}-${randomUUID()}`),
   });
-  const moduleRef = await Test.createTestingModule({
-    imports: [AppModule.register(config)],
+  let builder = Test.createTestingModule({
+    imports: [AppModule.register(config, apiTestAiConfig())],
   })
     .overrideProvider(FIXED_WINDOW_COUNTER)
-    .useValue(new InMemoryFixedWindowCounter())
-    .compile();
+    .useValue(options.counter ?? new InMemoryFixedWindowCounter());
+  if (options.runTask !== undefined) {
+    builder = builder.overrideProvider(RUN_TASK).useValue(options.runTask);
+  }
+  if (options.logDestination !== undefined) {
+    builder = builder
+      .overrideProvider(PARAMS_PROVIDER_TOKEN)
+      .useValue(
+        buildLoggerParams({ LOG_LEVEL: 'debug' }, options.logDestination),
+      );
+  }
+  const moduleRef = await builder.compile();
   const app = moduleRef.createNestApplication<NestFastifyApplication>(
     new FastifyAdapter(),
     { bufferLogs: true },

@@ -2,7 +2,10 @@ import { apiErrorResponseSchema } from '@linkvault/shared';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../../../app/create-app';
-import { apiTestConfig } from '../../../test-support/test-config';
+import {
+  apiTestAiConfig,
+  apiTestConfig,
+} from '../../../test-support/test-config';
 import { setRefreshCookie } from './refresh-cookie';
 
 // Hook de cabeceras de `POST /api/auth/*` (D5 de auth-users) sobre el arranque real (`createApp`), con rutas de test
@@ -12,7 +15,7 @@ describe('auth POST headers hook', () => {
   let handled: number;
 
   beforeAll(async () => {
-    app = await createApp(await apiTestConfig());
+    app = await createApp(await apiTestConfig(), apiTestAiConfig());
     const fastify = app.getHttpAdapter().getInstance();
     // Si el hook deja pasar la petición, la ruta fija la cookie: así se ve que un rechazo no emite `Set-Cookie`.
     fastify.post('/api/auth/test-echo', async (request, reply) => {

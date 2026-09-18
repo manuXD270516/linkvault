@@ -24,6 +24,12 @@ export interface UserAuthState {
   readonly passwordChangedAt: Date;
 }
 
+/** Consentimiento de IA de un usuario, tal y como lo ve otro módulo: solo el permiso, sin el resto del perfil. */
+export interface UserAiConsent {
+  /** Permiso para enviar sus datos a proveedores de IA externos. */
+  readonly externalProviders: boolean;
+}
+
 export interface CreateUserWithPassword {
   readonly email: string;
   /** Hash Argon2id ya calculado por `auth`; `users` nunca ve la contraseña. */
@@ -78,6 +84,18 @@ export class UsersFacade {
   async getProfile(userId: string): Promise<UserProfile | null> {
     const user = await this.users.findById(userId);
     return user ? toUserProfile(user) : null;
+  }
+
+  /**
+   * Consentimiento de IA de un usuario (D2 de paste-job-description): `links` lo necesita para leer lo que pega, que es
+   * un dato personal suyo, y no puede leer el perfil entero ni el dominio de `users` (ADR-020 §6). Un usuario que no
+   * existe no ha consentido nada: responde sin permiso, que es el valor seguro.
+   */
+  async aiConsentOf(userId: string): Promise<UserAiConsent> {
+    const user = await this.users.findById(userId);
+    return {
+      externalProviders: user?.profile.aiConsent.externalProviders ?? false,
+    };
   }
 
   /**

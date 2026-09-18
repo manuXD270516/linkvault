@@ -85,6 +85,18 @@ describe('RedisFixedWindowCounter', () => {
     expect((await counter.consume(KEY, WINDOW))?.allowed).toBe(true);
   });
 
+  it('never gives back more than it took: the counter does not go below zero', async () => {
+    await counter.consume(KEY, WINDOW);
+
+    expect(await counter.giveBack(KEY)).toBe(true);
+    expect(await counter.giveBack(KEY)).toBe(true);
+
+    // Sin crédito acumulado: caben exactamente los dos de la ventana, no tres.
+    expect((await counter.consume(KEY, WINDOW))?.allowed).toBe(true);
+    expect((await counter.consume(KEY, WINDOW))?.allowed).toBe(true);
+    expect((await counter.consume(KEY, WINDOW))?.allowed).toBe(false);
+  });
+
   it('says that the store did not answer instead of deciding for the caller', async () => {
     await double.setMode('stop');
 

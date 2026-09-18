@@ -5,8 +5,9 @@ import { SaveLink } from './save-link.usecase';
 import { InMemoryGroupLinkRepository } from './testing/in-memory-group-link.repository';
 import { InMemoryJobLinkRepository } from './testing/in-memory-job-link.repository';
 import { InMemoryUserLinkRepository } from './testing/in-memory-user-link.repository';
-import { objectId } from './testing/link-fixtures';
+import { jobLinkDraft, objectId } from './testing/link-fixtures';
 import {
+  IN_MEMORY_SESSION,
   InMemoryGroupMembership,
   InMemoryLinkUserDirectory,
   InMemoryOutbox,
@@ -231,5 +232,105 @@ describe('SaveLink', () => {
     expect(other.link.id).not.toBe(first.link.id);
     expect(links.size).toBe(2);
     expect(outbox.size).toBe(2);
+  });
+});
+
+describe('rescue through the history of urls', () => {
+  // Una vacante de Trabajopolis cuya primera URL lleva `search_id`, que su `robots.txt` prohíbe (el caso del smoke).
+  const FORBIDDEN =
+    'https://www.trabajopolis.bo/trabajo/1238122/arquitecto-de-soluciones?search_id=1789686903.0046';
+  const ALLOWED =
+    'https://www.trabajopolis.bo/trabajo/1238122/arquitecto-de-soluciones';
+  const OTHER_HOST =
+    'https://trabajopolis.bo/trabajo/1238122/arquitecto-de-soluciones';
+
+  /** El link en `failed` porque `robots.txt` prohíbe su `displayUrl`, guardado por Ana en su lista privada. */
+  async function forbiddenLink(): Promise<string> {
+    const link = links.seed({
+      ...jobLinkDraft(FORBIDDEN, { createdBy: ANA, now: clock.now() }),
+      previewStatus: 'failed',
+      previewVersion: 2,
+      lastEnrichmentError: {
+        reason: 'robots_disallowed',
+        at: clock.now().toISOString(),
+      },
+    });
+    await userLinks.save(
+      { userId: ANA, linkId: link.id, savedAt: clock.now() },
+      IN_MEMORY_SESSION,
+    );
+    clock.advance(60_000);
+    return link.id;
+  }
+
+  it('Se vuelve a guardar la vacante con otra URL', async () => {
+    const linkId = await forbiddenLink();
+
+    const response = await saveLink.execute(BETO, {
+      url: ALLOWED,
+      groupId: BACKEND,
+    });
+
+    expect(response.link.id).toBe(linkId);
+    expect(response.created).toBe(false);
+    expect(response.link.previewStatus).toBe('pending');
+    expect(response.link.previewVersion).toBe(3);
+    expect(response.link.lastEnrichmentError).toBeUndefined();
+    // La `displayUrl` no cambia; la URL permitida queda en el historial, que es lo que la cadena del worker probará.
+    expect(response.link.displayUrl).toBe(FORBIDDEN);
+    const stored = await links.findById(linkId);
+    expect(stored?.originalUrls).toEqual([FORBIDDEN, ALLOWED]);
+    expect(outbox.appended).toEqual([
+      expect.objectContaining({
+        type: 'LinkCreated.v1',
+        payload: { linkId, previewVersion: 3 },
+      }),
+    ]);
+    expect(outbox.allWrittenWith(IN_MEMORY_SESSION)).toBe(true);
+  });
+
+  it('saving the same url again asks for nothing', async () => {
+    const linkId = await forbiddenLink();
+
+    const response = await saveLink.execute(BETO, {
+      url: FORBIDDEN,
+      groupId: BACKEND,
+    });
+
+    expect(response.link.previewStatus).toBe('failed');
+    expect((await links.findById(linkId))?.previewVersion).toBe(2);
+    expect(outbox.size).toBe(0);
+  });
+
+  it('a new url of another host asks for nothing, because the reading would not try it', async () => {
+    const linkId = await forbiddenLink();
+
+    const response = await saveLink.execute(BETO, {
+      url: OTHER_HOST,
+      groupId: BACKEND,
+    });
+
+    expect(response.link.id).toBe(linkId);
+    expect(response.link.previewStatus).toBe('failed');
+    expect(response.link.lastEnrichmentError?.reason).toBe('robots_disallowed');
+    expect(outbox.size).toBe(0);
+  });
+
+  it('a new url of a link that failed for another reason asks for nothing', async () => {
+    const link = links.seed({
+      ...jobLinkDraft(FORBIDDEN, { createdBy: ANA, now: clock.now() }),
+      previewStatus: 'failed',
+      previewVersion: 2,
+      lastEnrichmentError: { reason: 'blocked', at: clock.now().toISOString() },
+    });
+
+    const response = await saveLink.execute(BETO, {
+      url: ALLOWED,
+      groupId: BACKEND,
+    });
+
+    expect(response.link.id).toBe(link.id);
+    expect(response.link.previewStatus).toBe('failed');
+    expect(outbox.size).toBe(0);
   });
 });
