@@ -9,6 +9,7 @@ import {
   type Schema,
   type Types,
 } from 'mongoose';
+import { GroupDeletionHooks } from '../application/group-deletion-hooks';
 import type {
   AddMemberInput,
   CreateGroupInput,
@@ -77,6 +78,7 @@ export class MongoGroupRepository implements GroupRepository {
   constructor(
     @Inject(getConnectionToken()) private readonly connection: Connection,
     @Inject(INVITE_CODE_GENERATOR) private readonly codes: InviteCodeGenerator,
+    private readonly deletionHooks: GroupDeletionHooks,
   ) {
     this.groups = modelOf<GroupDocument>(
       connection,
@@ -307,7 +309,12 @@ export class MongoGroupRepository implements GroupRepository {
     throw new InviteCodeUnavailable();
   }
 
-  /** Grupo y membresías en la misma transacción: nadie queda mirando un grupo a medio borrar (D6). */
+  /**
+   * Grupo, membresías y lo que otros módulos cuelguen de él, en la misma transacción: nadie queda mirando un grupo a
+   * medio borrar (D6) ni deja relaciones huérfanas (D7b). Los hooks corren **después** de confirmar que el grupo existía,
+   * así que un borrado que no encuentra nada no ejecuta ninguno, y **antes** de terminar la transacción, así que si uno
+   * falla no se borra tampoco el grupo.
+   */
   async deleteGroup(groupId: string): Promise<boolean> {
     const id = toGroupObjectId(groupId);
     if (id === null) {
@@ -322,6 +329,7 @@ export class MongoGroupRepository implements GroupRepository {
         return false;
       }
       await this.members.deleteMany({ groupId: id }).session(session).exec();
+      await this.deletionHooks.runAll(groupId, session);
       return true;
     });
   }

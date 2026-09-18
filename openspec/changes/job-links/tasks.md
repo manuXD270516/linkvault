@@ -39,15 +39,15 @@
 - [x] 5.3 [backend] `import-links` (extraer → normalizar → deduplicar → descartar las ya presentes → cortar a 50, una transacción por link, resumen, texto nunca persistido); verificar con "Importar un chat", "Importar sin URLs", "Chat con más de 50 enlaces", "Segunda pasada del mismo chat", "Texto demasiado largo" y "Texto con datos personales".
 - [x] 5.4 [backend] `list-group-links` y `list-my-links`; verificar con "Miembro ve los links del grupo", "Extraño no ve los links" y "Lista privada".
 - [x] 5.5 [backend] `remove-group-link` y `remove-my-link` (autor u owner, solo la relación); verificar con "Quitar lo que no era una oferta", "El owner limpia el grupo", "Un miembro no quita lo de otro" y "Quitar no destruye la vacante".
-- [ ] 5.6 [backend] `LinksController` y `GroupLinksController` cableados en `LinksModule` y en `AppModule`, con pipe zod y `@CurrentUser()`; verificar `401` sin token en las seis rutas y que el test de DI de `api` sigue pasando.
-- [ ] 5.7 [backend] Integración HTTP de guardado e importación; verificar con "Guardar en un grupo", "Guardar en privado", "URL no reconocida", "Grupo ajeno" (cuerpos idénticos con id mal formado), "Importar un chat", "Chat con más de 50 enlaces" y "Texto demasiado largo".
-- [ ] 5.8 [backend] Integración HTTP de los listados; verificar con "Miembro ve los links del grupo", "Paginación sin saltos ni repetidos", "Extraño no ve los links" y "Lista privada", incluido `total`.
-- [ ] 5.9 [backend] Integración HTTP de los borrados y traducción de los códigos nuevos en el filtro; verificar con los cuatro escenarios de quitar y tests del filtro para `invalid_url`, `text_too_long` y `link_not_found`.
+- [x] 5.6 [backend] `LinksController` y `GroupLinksController` cableados en `LinksModule` y en `AppModule`, con pipe zod y `@CurrentUser()`; verificar `401` sin token en las seis rutas y que el test de DI de `api` sigue pasando.
+- [x] 5.7 [backend] Integración HTTP de guardado e importación; verificar con "Guardar en un grupo", "Guardar en privado", "URL no reconocida", "Grupo ajeno" (cuerpos idénticos con id mal formado), "Importar un chat", "Chat con más de 50 enlaces" y "Texto demasiado largo".
+- [x] 5.8 [backend] Integración HTTP de los listados; verificar con "Miembro ve los links del grupo", "Paginación sin saltos ni repetidos", "Extraño no ve los links" y "Lista privada", incluido `total`.
+- [x] 5.9 [backend] Integración HTTP de los borrados y traducción de los códigos nuevos en el filtro; verificar con los cuatro escenarios de quitar y tests del filtro para `invalid_url`, `text_too_long` y `link_not_found`.
 
 ## 6. Borrado de grupo en cascada
 
-- [ ] 6.1 [backend] `GroupDeletionHooks` (clase provista y exportada por `GroupsModule`, con `register` y `runAll`) y su ejecución dentro de la transacción de `deleteGroup`, después de confirmar que el grupo existía (D7b), sin hooks registrados por defecto; verificar que los tests de borrado de `groups` siguen pasando y que un borrado que no encuentra el grupo no ejecuta ningún hook.
-- [ ] 6.2 [backend] Adaptador de `links` registrado con `register(...)` en el `onModuleInit` de `LinksModule` (que ya importa `GroupsModule`); verificar con "El borrado no destruye las vacantes" y que borrar un grupo deja 0 `group_links` suyos y el `JobLink` intacto.
+- [x] 6.1 [backend] `GroupDeletionHooks` (clase provista y exportada por `GroupsModule`, con `register` y `runAll`) y su ejecución dentro de la transacción de `deleteGroup`, después de confirmar que el grupo existía (D7b), sin hooks registrados por defecto; verificar que los tests de borrado de `groups` siguen pasando y que un borrado que no encuentra el grupo no ejecuta ningún hook.
+- [x] 6.2 [backend] Adaptador de `links` registrado con `register(...)` en el `onModuleInit` de `LinksModule` (que ya importa `GroupsModule`); verificar con "El borrado no destruye las vacantes" y que borrar un grupo deja 0 `group_links` suyos y el `JobLink` intacto.
 
 ## 7. Web
 

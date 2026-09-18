@@ -23,6 +23,7 @@ import {
   GROUPS_COLLECTION,
   type GroupMemberDocument,
 } from './group.schemas';
+import { GroupDeletionHooks } from '../application/group-deletion-hooks';
 import { MongoGroupRepository } from './mongo-group.repository';
 
 // Adaptador Mongo del puerto GROUP_REPOSITORY, altas y lecturas (tarea 3.3 de groups), contra el MongoMemoryReplSet del
@@ -47,7 +48,11 @@ beforeAll(async () => {
     .createConnection(getMongoTestUri(), { dbName: `groups-${randomUUID()}` })
     .asPromise();
   generator = new StubInviteCodeGenerator();
-  repository = new MongoGroupRepository(connection, generator);
+  repository = new MongoGroupRepository(
+    connection,
+    generator,
+    new GroupDeletionHooks(),
+  );
   await connection.model(GROUP_MODEL_NAME).init();
   await connection.model(GROUP_MEMBER_MODEL_NAME).init();
 });
@@ -67,6 +72,18 @@ function createGroupOf(ownerId: string, name = 'Backend Bolivia') {
 
 function newUserId(): string {
   return new mongoose.Types.ObjectId().toHexString();
+}
+
+/** Repositorio con su propio registro de hooks, para que lo que registre un test no afecte a los demás. */
+function withHooks(): {
+  hooks: GroupDeletionHooks;
+  repository: MongoGroupRepository;
+} {
+  const hooks = new GroupDeletionHooks();
+  return {
+    hooks,
+    repository: new MongoGroupRepository(connection, generator, hooks),
+  };
 }
 
 /** Borra solo el documento del grupo, como haría un borrado que corre a la vez que un `join`: deja huérfana la membresía. */
@@ -375,7 +392,11 @@ describe('a generator that repeats a taken code', () => {
     const taken = await createGroupOf(OWNER, 'Ocupa el código');
     const repeated = new StubInviteCodeGenerator([taken.inviteCode, FREE_CODE]);
 
-    const group = await new MongoGroupRepository(connection, repeated).create({
+    const group = await new MongoGroupRepository(
+      connection,
+      repeated,
+      new GroupDeletionHooks(),
+    ).create({
       name: 'Reintenta al crear',
       ownerId: OWNER,
       now,
@@ -399,6 +420,7 @@ describe('a generator that repeats a taken code', () => {
     const rotated = await new MongoGroupRepository(
       connection,
       repeated,
+      new GroupDeletionHooks(),
     ).rotateInviteCode(group.id, later);
 
     expect(rotated?.inviteCode).toBe(ANOTHER_FREE_CODE);
@@ -412,7 +434,11 @@ describe('a generator that repeats a taken code', () => {
     );
 
     await expect(
-      new MongoGroupRepository(connection, always).create({
+      new MongoGroupRepository(
+        connection,
+        always,
+        new GroupDeletionHooks(),
+      ).create({
         name: 'Nunca creado',
         ownerId: OWNER,
         now,
@@ -457,6 +483,62 @@ describe('delete', () => {
     ['a malformed id', MALFORMED],
   ])('reports false when deleting %s', async (_case, groupId) => {
     await expect(repository.deleteGroup(groupId)).resolves.toBe(false);
+  });
+
+  it('runs the registered deletion hooks inside the transaction (D7b)', async () => {
+    const calls: { groupId: string; session: object }[] = [];
+    const { hooks, repository } = withHooks();
+    hooks.register({
+      deleteRelationsOf: (groupId, session) => {
+        calls.push({ groupId, session });
+        return Promise.resolve();
+      },
+    });
+    const group = await createGroupOf(OWNER, 'Con hooks');
+
+    await expect(repository.deleteGroup(group.id)).resolves.toBe(true);
+
+    expect(calls.map((call) => call.groupId)).toEqual([group.id]);
+    // La sesión es la de la transacción del borrado: el hook escribe con ella o no escribe nada.
+    expect(calls[0]?.session).toBeInstanceOf(mongoose.mongo.ClientSession);
+  });
+
+  it('runs no hook when the group was not there (nor when the id is malformed)', async () => {
+    let runs = 0;
+    const { hooks, repository } = withHooks();
+    hooks.register({
+      deleteRelationsOf: () => {
+        runs += 1;
+        return Promise.resolve();
+      },
+    });
+
+    await expect(
+      repository.deleteGroup(new mongoose.Types.ObjectId().toHexString()),
+    ).resolves.toBe(false);
+    await expect(repository.deleteGroup(MALFORMED)).resolves.toBe(false);
+
+    expect(runs).toBe(0);
+  });
+
+  it('undoes the whole deletion when a hook fails', async () => {
+    const { hooks, repository } = withHooks();
+    hooks.register({
+      deleteRelationsOf: () => Promise.reject(new Error('the hook failed')),
+    });
+    const group = await createGroupOf(OWNER, 'Hook que falla');
+
+    await expect(repository.deleteGroup(group.id)).rejects.toThrow(
+      'the hook failed',
+    );
+
+    // Ni el grupo ni sus membresías se pierden si la limpieza de otro módulo no pudo hacerse.
+    await expect(repository.findById(group.id)).resolves.not.toBeNull();
+    await expect(
+      connection
+        .collection(GROUP_MEMBERS_COLLECTION)
+        .countDocuments({ groupId: new mongoose.Types.ObjectId(group.id) }),
+    ).resolves.toBe(1);
   });
 });
 

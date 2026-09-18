@@ -48,6 +48,13 @@ import {
   TooManyGroups,
 } from '../../modules/groups/domain/errors';
 import {
+  InvalidCursor,
+  InvalidUrl,
+  LinkNotFound,
+  LinkRemovalForbidden,
+  TextTooLong,
+} from '../../modules/links/domain/errors';
+import {
   EmailAlreadyRegistered,
   InvalidDisplayName,
   InvalidProfileChanges,
@@ -79,6 +86,11 @@ const THROWN: Record<string, () => unknown> = {
   'too-many-groups': () => new TooManyGroups(),
   'owner-cannot-leave': () => new OwnerCannotLeave(),
   'invalid-group-name': () => new InvalidGroupName(),
+  'invalid-url': () => new InvalidUrl(),
+  'text-too-long': () => new TextTooLong(),
+  'link-not-found': () => new LinkNotFound(),
+  'link-removal-forbidden': () => new LinkRemovalForbidden(),
+  'invalid-cursor': () => new InvalidCursor(),
   unknown: () =>
     new Error(
       `E11000 duplicate key error dup key: { email: "${SECRET_EMAIL}" }`,
@@ -225,6 +237,12 @@ describe('ApiExceptionFilter', () => {
     ['too-many-groups', 409, 'too_many_groups', undefined],
     ['owner-cannot-leave', 409, 'owner_cannot_leave', undefined],
     ['invalid-group-name', 400, 'validation_error', ['name']],
+    // Errores de `links`: `invalid_url` y `text_too_long` no nombran campo, el código ya dice cuál es.
+    ['invalid-url', 400, 'invalid_url', undefined],
+    ['text-too-long', 400, 'text_too_long', undefined],
+    ['link-not-found', 404, 'link_not_found', undefined],
+    ['link-removal-forbidden', 403, 'forbidden', undefined],
+    ['invalid-cursor', 400, 'validation_error', ['cursor']],
   ])('translates %s to %i %s', async (name, status, code, fields) => {
     const response = await get(name);
 
