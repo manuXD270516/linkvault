@@ -1,6 +1,9 @@
 import {
   apiErrorResponseSchema,
+  PASTED_TEXT_MAX_LENGTH,
+  pastedDescriptionRequestSchema,
   registerRequestSchema,
+  type PastedDescriptionRequest,
   type RegisterRequest,
 } from '@linkvault/shared';
 import {
@@ -124,6 +127,14 @@ class ThrowingController {
   ): { email: string } {
     return { email: body.email };
   }
+
+  @Post('pasted')
+  paste(
+    @Body(new ZodValidationPipe(pastedDescriptionRequestSchema))
+    body: PastedDescriptionRequest,
+  ): { length: number } {
+    return { length: body.text.length };
+  }
 }
 
 // Filtro global de errores (D8 de auth-users) sobre una app mínima configurada con el mismo `configureApp` que `createApp`.
@@ -191,6 +202,64 @@ describe('ApiExceptionFilter', () => {
 
     expect(response.statusCode).toBe(201);
     expect(response.json()).toEqual({ email: 'ana@example.com' });
+  });
+
+  describe('Lo pegado tiene que parecer una oferta', () => {
+    function paste(
+      payload: unknown,
+    ): ReturnType<NestFastifyApplication['inject']> {
+      return app.inject({
+        method: 'POST',
+        url: '/api/test-errors/pasted',
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify(payload),
+      });
+    }
+
+    it('Texto vacío', async () => {
+      const response = await paste({ text: '   \n\t  ' });
+
+      expect(response.statusCode).toBe(400);
+      expect(apiErrorResponseSchema.parse(response.json())).toEqual({
+        code: 'validation_error',
+        message: expect.any(String),
+        fields: ['text'],
+      });
+    });
+
+    it('answers a text over twenty thousand characters with 400 text_too_long, without echoing it', async () => {
+      const text = `MARCA-${'a'.repeat(PASTED_TEXT_MAX_LENGTH)}`;
+
+      const response = await paste({ text });
+
+      expect(response.statusCode).toBe(400);
+      expect(apiErrorResponseSchema.parse(response.json())).toEqual({
+        code: 'text_too_long',
+        message: expect.any(String),
+      });
+      expect(response.body).not.toContain('MARCA-');
+    });
+
+    it('takes twenty thousand characters, measured without the outer spaces', async () => {
+      const response = await paste({
+        text: `  ${'a'.repeat(PASTED_TEXT_MAX_LENGTH)}  `,
+      });
+
+      expect(response.statusCode).toBe(201);
+      expect(response.json()).toEqual({ length: PASTED_TEXT_MAX_LENGTH });
+    });
+
+    it('keeps validation_error when something else is wrong besides the length', async () => {
+      const response = await paste({
+        text: 'a'.repeat(PASTED_TEXT_MAX_LENGTH + 1),
+        salary: 3000,
+      });
+
+      expect(response.statusCode).toBe(400);
+      const body = apiErrorResponseSchema.parse(response.json());
+      expect(body.code).toBe('validation_error');
+      expect([...(body.fields ?? [])].sort()).toEqual(['salary', 'text']);
+    });
   });
 
   it('answers malformed JSON with 400 validation_error and no fields', async () => {

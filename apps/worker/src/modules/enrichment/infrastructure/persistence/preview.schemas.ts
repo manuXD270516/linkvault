@@ -1,5 +1,6 @@
 import {
   PREVIEW_FIELD_STORED_TYPES,
+  PREVIEW_SOURCE_KINDS,
   jobModalitySchema,
   jobSenioritySchema,
   salaryPeriodSchema,
@@ -28,9 +29,6 @@ const subdocumentOptions = {
   strict: true,
   minimize: false,
 } as const;
-
-/** Origen de un campo (D4). `auto` lleva `extractor`; `manual`, `by` y quizá `replaced`. */
-const PREVIEW_SOURCE_KINDS = ['auto', 'manual'] as const;
 
 function enumOf(options: readonly string[]): SchemaDefinitionProperty {
   return { type: String, required: false, enum: [...options] };
@@ -94,7 +92,10 @@ export function previewValueDefinition(
   return STORED_TYPE_DEFINITIONS[PREVIEW_FIELD_STORED_TYPES[field]]();
 }
 
-/** Procedencia de un campo: quién puso ese valor, cuándo, y el automático que una edición manual desplazó. */
+/**
+ * Procedencia de un campo: de dónde salió ese valor (`auto`, `pasted` o `manual`, de `PREVIEW_SOURCE_KINDS`), quién lo
+ * escribió o lo pegó, cuándo, y la entrada completa que desplazó una persona (D3 de paste-job-description).
+ */
 function previewSourceEntry(field: PreviewFieldName): Schema {
   return new Schema(
     {
@@ -107,7 +108,16 @@ function previewSourceEntry(field: PreviewFieldName): Schema {
         type: new Schema(
           {
             value: previewValueDefinition(field),
-            extractor: { type: String, required: true },
+            // Nada más que `value` es obligatorio: un `replaced` de antes de paste-job-description es
+            // `{ value, extractor }`, y `previewSourcesSchema` lo lee como `auto`.
+            source: {
+              type: String,
+              required: false,
+              enum: [...PREVIEW_SOURCE_KINDS],
+            },
+            extractor: { type: String, required: false },
+            by: { type: String, required: false },
+            at: { type: String, required: false },
           },
           subdocumentOptions,
         ),

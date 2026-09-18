@@ -1,4 +1,4 @@
-import { PREVIEW_FIELD_NAMES, PREVIEW_LANGUAGE_KEYS, PREVIEW_REPLACED_KEYS, PREVIEW_SALARY_KEYS, PREVIEW_SKILL_KEYS, PREVIEW_SOURCE_ENTRY_KEYS, jobModalitySchema, jobSenioritySchema, salaryPeriodSchema } from '@linkvault/shared';
+import { PREVIEW_FIELD_NAMES, PREVIEW_LANGUAGE_KEYS, PREVIEW_REPLACED_KEYS, PREVIEW_SALARY_KEYS, PREVIEW_SKILL_KEYS, PREVIEW_SOURCE_ENTRY_KEYS, PREVIEW_SOURCE_KINDS, jobModalitySchema, jobSenioritySchema, salaryPeriodSchema } from '@linkvault/shared';
 import { JOB_LINK_SCHEMA_OPTIONS, LAST_ENRICHMENT_ERROR_SCHEMA_OPTIONS } from '@linkvault/testing';
 import { Schema } from 'mongoose';
 import { describe, expect, it } from 'vitest';
@@ -113,7 +113,19 @@ describe('La procedencia guardada', () => {
     }
   });
 
-  it('keeps in `replaced` the automatic value with the same shape as its field', () => {
+  it('admits every source of the contract, in the entry and in what it displaced', () => {
+    // Un origen nuevo en `libs/shared` que no llegara aquí haría que Mongoose rechazara lo pegado al escribirlo.
+    for (const field of PREVIEW_FIELD_NAMES) {
+      const entry = nestedAt(previewSourcesSubSchema, field);
+
+      expect(enumOf(entry, 'source')).toEqual([...PREVIEW_SOURCE_KINDS]);
+      expect(enumOf(nestedAt(entry, 'replaced'), 'source')).toEqual([
+        ...PREVIEW_SOURCE_KINDS,
+      ]);
+    }
+  });
+
+  it('keeps in `replaced` the displaced entry with the same shape as its field', () => {
     const replaced = nestedAt(
       nestedAt(previewSourcesSubSchema, 'salary'),
       'replaced',

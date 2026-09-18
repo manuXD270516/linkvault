@@ -1,5 +1,5 @@
+import type { PreviewDraft } from '@linkvault/shared';
 import type { PageContent } from '../page-content';
-import type { PreviewDraft } from '../preview-draft';
 
 // La etapa de la cadena de extracción (D3 de link-enrichment). El orden en que se ejecutan es el contrato: es lo que
 // decide los empates dentro de una pasada, así que no hay confianza numérica que calcular.

@@ -252,7 +252,9 @@ describe('the events channel', () => {
     await theirs.readUntil(': keep-alive', (text) =>
       text.includes(': keep-alive'),
     );
-    await mine.readUntil(': keep-alive', (text) => text.includes(': keep-alive'));
+    await mine.readUntil(': keep-alive', (text) =>
+      text.includes(': keep-alive'),
+    );
     const linkId = await enrichedOffer('extranio-no-avisado');
 
     await http.app

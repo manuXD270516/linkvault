@@ -2,6 +2,7 @@ import {
   jobModalitySchema,
   jobSenioritySchema,
   PREVIEW_FIELD_STORED_TYPES,
+  PREVIEW_SOURCE_KINDS,
   salaryPeriodSchema,
   type PreviewFieldName,
   type PreviewStoredType,
@@ -26,9 +27,6 @@ const subdocumentOptions = {
   strict: true,
   minimize: false,
 } as const;
-
-/** Origen de un campo. `auto` lleva `extractor`; `manual`, `by` y quizá `replaced`. */
-const PREVIEW_SOURCE_KINDS = ['auto', 'manual'] as const;
 
 /** Salario publicado: cada parte puede faltar por separado. */
 function salaryDefinition(): Schema {
@@ -122,8 +120,9 @@ export function previewValueDefinition(
 }
 
 /**
- * Procedencia de un campo (D4): quién puso ese valor, con qué extractor o a mano, cuándo, y el valor automático que una
- * edición manual desplazó. El valor guardado repite la forma del campo, para que `replaced` pueda devolverse tal cual.
+ * Procedencia de un campo (D4; D3 de paste-job-description): de dónde salió ese valor —`auto`, `pasted` o `manual`, de
+ * `PREVIEW_SOURCE_KINDS`—, con qué extractor, quién lo escribió o lo pegó, cuándo, y la entrada completa que desplazó
+ * una persona. El valor guardado repite la forma del campo, para que `replaced` pueda devolverse tal cual.
  */
 function previewSourceEntry(field: PreviewFieldName): Schema {
   return new Schema(
@@ -141,7 +140,16 @@ function previewSourceEntry(field: PreviewFieldName): Schema {
         type: new Schema(
           {
             value: previewValueDefinition(field),
-            extractor: { type: String, required: true },
+            // Nada más que `value` es obligatorio: un `replaced` de antes de paste-job-description es
+            // `{ value, extractor }`, y `previewSourcesSchema` lo lee como `auto`.
+            source: {
+              type: String,
+              required: false,
+              enum: [...PREVIEW_SOURCE_KINDS],
+            },
+            extractor: { type: String, required: false },
+            by: { type: String, required: false },
+            at: { type: String, required: false },
           },
           subdocumentOptions,
         ),

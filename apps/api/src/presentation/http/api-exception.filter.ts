@@ -39,7 +39,8 @@ interface ApiErrorReply {
 
 /**
  * Filtro global de errores (D8 de auth-users). Traduce a `{ code, message, fields? }`:
- * - `RequestValidationError` del pipe zod → 400 `validation_error` nombrando los campos.
+ * - `RequestValidationError` del pipe zod → 400 `validation_error` nombrando los campos, o el código propio que pida su
+ *   schema (`text_too_long` del texto pegado).
  * - Errores de dominio de `auth` por su `code`, con `Retry-After` en `TooManyAttempts`.
  * - Errores de dominio de `users`: `EmailAlreadyRegistered` → 409 `email_taken`; `InvalidProfileChanges` → 400
  *   `validation_error` con su campo; `UserNotFound` → 401 `unauthorized`, porque el único usuario que una petición puede
@@ -90,7 +91,7 @@ export class ApiExceptionFilter extends BaseExceptionFilter {
   /** `undefined` si la respuesta de Nest para esa `HttpException` se conserva. */
   private translate(exception: unknown): ApiErrorReply | undefined {
     if (exception instanceof RequestValidationError) {
-      return reply('validation_error', exception.fields);
+      return reply(exception.code, exception.fields);
     }
     if (exception instanceof TooManyAttempts) {
       return reply('too_many_attempts', [], {

@@ -95,7 +95,7 @@ describe('toJobLinkSummary with a read offer', () => {
     });
     expect(
       company?.source === 'manual' ? company.replaced : undefined,
-    ).toEqual({ value: 'ACME S.R.L.', extractor: 'metadata' });
+    ).toEqual({ value: 'ACME S.R.L.', source: 'auto', extractor: 'metadata' });
   });
 
   it('falls back to a neutral name when the directory does not know the author', () => {

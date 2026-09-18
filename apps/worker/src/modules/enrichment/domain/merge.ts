@@ -1,11 +1,11 @@
 import {
   PREVIEW_FIELD_NAMES,
   type JobPreview,
+  type PreviewDraft,
   type PreviewFieldName,
   type PreviewSources,
   type StoredPreview,
 } from '@linkvault/shared';
-import type { PreviewDraft } from './preview-draft';
 
 // Mezcla del preview con su procedencia por campo (D4 de link-enrichment, ADR-010). Son **dos reglas distintas**, no
 // una, y C4 las separó por un motivo concreto:

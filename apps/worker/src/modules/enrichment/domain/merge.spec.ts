@@ -1,8 +1,16 @@
 import type { PreviewSources, StoredPreview } from '@linkvault/shared';
-import { previewSourcesSchema, storedPreviewSchema } from '@linkvault/shared';
 import {
-  MANUAL_EDIT_REPLACED_CASES,
-  type ManualEditStoredEntry,
+  draftFrom,
+  hasAnyField,
+  hasRequiredFields,
+  previewSourcesSchema,
+  storedPreviewSchema,
+} from '@linkvault/shared';
+import {
+  CASE_ACTED_AT,
+  CASE_ACTOR,
+  PREVIEW_REPLACED_CASES,
+  type ReplacedCaseStored,
 } from '@linkvault/testing';
 import { describe, expect, it } from 'vitest';
 import {
@@ -12,7 +20,6 @@ import {
   mergeIntoStored,
   type PreviewState,
 } from './merge';
-import { draftFrom, hasAnyField, hasRequiredFields } from './preview-draft';
 
 // Requisito "Preview con procedencia por campo" (specs/links/enrichment) y D4 de link-enrichment.
 
@@ -20,31 +27,16 @@ const AT = '2026-09-18T10:00:00.000Z';
 const BEFORE = '2026-09-01T10:00:00.000Z';
 const ANA = '68c0f0f0f0f0f0f0f0f0f0f0';
 
-/** El estado del que parte un caso de `MANUAL_EDIT_REPLACED_CASES`, con su procedencia puesta en `title`. */
-function storedForCase(entry: ManualEditStoredEntry | undefined): PreviewState {
-  if (entry === undefined) return EMPTY_PREVIEW_STATE;
-  return stateOf(
-    { title: entry.value },
-    {
-      title:
-        entry.source === 'auto'
-          ? {
-              value: entry.value,
-              source: 'auto',
-              extractor: entry.extractor,
-              at: BEFORE,
-            }
-          : {
-              value: entry.value,
-              source: 'manual',
-              by: ANA,
-              at: BEFORE,
-              ...(entry.replaced === undefined
-                ? {}
-                : { replaced: entry.replaced }),
-            },
-    },
-  );
+/**
+ * El estado del que parte un caso de `PREVIEW_REPLACED_CASES`, con su procedencia puesta en `title`. Pasa por el
+ * contrato de `libs/shared`, que es como se lee lo guardado: un `replaced` antiguo sin origen llega ya como `auto`.
+ */
+function storedForCase(stored: ReplacedCaseStored | undefined): PreviewState {
+  if (stored === undefined) return EMPTY_PREVIEW_STATE;
+  return {
+    preview: storedPreviewSchema.parse({ title: stored.value }),
+    sources: previewSourcesSchema.parse({ title: stored }),
+  };
 }
 
 function stateOf(
@@ -300,27 +292,23 @@ describe('Se guarda lo que la edición desplazó', () => {
     expect(previewSourcesSchema.parse(edited.sources)).toEqual(edited.sources);
   });
 
-  // La misma tabla la itera el spec de `applyManualEdit` en `api`: las dos funciones aplican esta regla y el código
-  // está duplicado a propósito, así que lo que se comparte son los casos. Si una de las dos cambia, el otro spec se
-  // pone en rojo.
-  it.each(MANUAL_EDIT_REPLACED_CASES)(
-    '$name',
-    ({ stored, edit, expected }) => {
-      const edited = applyManualField(
-        storedForCase(stored),
-        'title',
-        edit,
-        ANA,
-        AT,
-      );
-      const entry = edited.sources.title;
+  // La misma tabla la itera el spec de `applyManualEdit` en `api`: lo que se comparte son los casos, no el código. El
+  // worker no pega ni deshace, así que aquí solo corren los casos de escribir a mano.
+  it.each(
+    PREVIEW_REPLACED_CASES.filter((testCase) => testCase.action === 'manual'),
+  )('$name', (testCase) => {
+    if (testCase.action !== 'manual') return;
+    const edited = applyManualField(
+      storedForCase(testCase.stored),
+      'title',
+      testCase.value,
+      CASE_ACTOR,
+      CASE_ACTED_AT,
+    );
 
-      expect(edited.preview.title).toBe(edit);
-      expect(entry?.source === 'manual' ? entry.replaced : undefined).toEqual(
-        expected,
-      );
-    },
-  );
+    expect(edited.sources.title).toEqual(testCase.expected);
+    expect(edited.preview.title).toBe(testCase.expected.value);
+  });
 });
 
 describe('Tabla de merges', () => {

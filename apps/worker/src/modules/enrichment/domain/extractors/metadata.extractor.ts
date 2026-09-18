@@ -1,6 +1,5 @@
-import { scrubContactDetails } from '../contact-scrub';
+import { draftFrom, scrubContactDetails } from '@linkvault/shared';
 import type { PageContent } from '../page-content';
-import { draftFrom } from '../preview-draft';
 import { toPlainText, truncateSummary } from '../plain-text';
 import {
   type ExtractionContext,

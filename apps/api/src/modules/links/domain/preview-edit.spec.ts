@@ -1,7 +1,9 @@
 import { previewSourcesSchema, storedPreviewSchema } from '@linkvault/shared';
 import {
-  MANUAL_EDIT_REPLACED_CASES,
-  type ManualEditStoredEntry,
+  CASE_ACTED_AT,
+  CASE_ACTOR,
+  PREVIEW_REPLACED_CASES,
+  type ReplacedCaseStored,
 } from '@linkvault/testing';
 import { describe, expect, it } from 'vitest';
 import { PreviewFieldUnknown } from './errors';
@@ -31,53 +33,45 @@ const extracted: EditablePreview = {
   },
 };
 
-const BEFORE = '2026-09-18T11:00:00.000Z';
-
-/** Lo guardado de un caso de `MANUAL_EDIT_REPLACED_CASES`, con su procedencia puesta en `title`. */
-function storedForCase(entry: ManualEditStoredEntry | undefined): EditablePreview {
-  if (entry === undefined) return {};
+/**
+ * Lo guardado de un caso de `PREVIEW_REPLACED_CASES`, con su procedencia puesta en `title`. Pasa por el contrato de
+ * `libs/shared`, que es como se lee lo guardado: un `replaced` antiguo sin origen llega ya como `auto`.
+ */
+function storedForCase(
+  stored: ReplacedCaseStored | undefined,
+): EditablePreview {
+  if (stored === undefined) return {};
   return {
-    preview: { title: entry.value },
-    previewSources: {
-      title:
-        entry.source === 'auto'
-          ? {
-              value: entry.value,
-              source: 'auto',
-              extractor: entry.extractor,
-              at: BEFORE,
-            }
-          : {
-              value: entry.value,
-              source: 'manual',
-              by: ANA,
-              at: BEFORE,
-              ...(entry.replaced === undefined
-                ? {}
-                : { replaced: entry.replaced }),
-            },
-    },
+    preview: { title: stored.value },
+    previewSources: previewSourcesSchema.parse({ title: stored }),
   };
 }
 
 describe('Se guarda lo que la edición desplazó', () => {
-  // La misma tabla la itera el spec de `applyManualField` en el worker: las dos funciones aplican esta regla, el
-  // código está duplicado a propósito y lo que se comparte son los casos. Si una de las dos cambia, el otro spec se
-  // pone en rojo.
-  it.each(MANUAL_EDIT_REPLACED_CASES)('$name', ({ stored, edit, expected }) => {
+  // La misma tabla la itera el spec del worker: lo que se comparte son los casos, no el código. Si una de las dos
+  // copias cambia lo que guarda para deshacer, el otro spec se pone en rojo.
+  it.each(
+    PREVIEW_REPLACED_CASES.filter((testCase) => testCase.action !== 'pasted'),
+  )('$name', (testCase) => {
     const edited = applyManualEdit(
-      storedForCase(stored),
-      { fields: { title: edit } },
-      ANA,
-      NOW,
+      storedForCase(testCase.stored),
+      testCase.action === 'revert'
+        ? { revert: ['title'] }
+        : { fields: { title: testCase.value } },
+      CASE_ACTOR,
+      new Date(CASE_ACTED_AT),
     );
-    const entry = edited.previewSources.title;
 
-    expect(edited.preview.title).toBe(edit);
-    expect(entry?.source === 'manual' ? entry.replaced : undefined).toEqual(
-      expected,
-    );
+    expect(edited.previewSources.title).toEqual(testCase.expected);
+    expect(edited.preview.title).toEqual(testCase.expected?.value);
   });
+
+  // Pegar lo aplica `applyPastedPreview`, que llega con la tarea 3.4 de paste-job-description y recorrerá estos casos.
+  for (const testCase of PREVIEW_REPLACED_CASES.filter(
+    (candidate) => candidate.action === 'pasted',
+  )) {
+    it.todo(`${testCase.name} (applyPastedPreview)`);
+  }
 });
 
 describe('applyManualEdit', () => {

@@ -27,6 +27,9 @@ export const API_ERROR_STATUS: Readonly<Record<ApiErrorCode, number>> = {
   link_not_found: 404,
   preview_field_unknown: 400,
   enrichment_not_retryable: 409,
+  not_a_job_posting: 422,
+  extraction_unavailable: 503,
+  ai_quota_exceeded: 429,
 };
 
 /**
@@ -56,6 +59,9 @@ export const API_ERROR_MESSAGES: Readonly<Record<ApiErrorCode, string>> = {
   link_not_found: 'Link not found',
   preview_field_unknown: 'Unknown preview field',
   enrichment_not_retryable: 'That link cannot be read automatically',
+  not_a_job_posting: 'That does not look like a job posting',
+  extraction_unavailable: 'We could not read it now, try again in a while',
+  ai_quota_exceeded: "You reached today's reading limit, come back tomorrow",
 };
 
 /** Cuerpo `{ code, message, fields? }`. `fields` solo nombra campos y se omite si está vacío. */

@@ -1,4 +1,5 @@
 import { extractJobTask, type RunTaskFn } from '@linkvault/ai';
+import { draftFrom } from '@linkvault/shared';
 import {
   NOTHING_EXTRACTED,
   type ExtractionContext,
@@ -6,7 +7,6 @@ import {
   type ExtractorStrategy,
 } from '../../domain/extractors/extractor';
 import type { PageContent } from '../../domain/page-content';
-import { draftFrom } from '../../domain/preview-draft';
 
 // Tercera etapa de la cadena (D3 y D7 de link-enrichment): `runTask('extract-job')` sobre el texto limpio de la
 // página. Vive en `application/` y no en `domain/` porque necesita un puerto —`RUN_TASK`—, que es lo único que el

@@ -1,11 +1,12 @@
 import {
   PREVIEW_FIELD_NAMES,
+  hasAnyField,
+  hasRequiredFields,
   type EnrichmentFailureReason,
   type PreviewSources,
   type PreviewStatus,
 } from '@linkvault/shared';
 import type { PreviewState } from './merge';
-import { hasAnyField, hasRequiredFields } from './preview-draft';
 
 // Estados y motivos del enriquecimiento (D5 de link-enrichment), puros. Es la parte del change que decide **qué se le
 // dice a la persona**, y por eso está separada de quien escribe en Mongo: se lee entera de un vistazo.

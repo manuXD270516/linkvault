@@ -1,11 +1,10 @@
-import type { EnrichmentFailureReason } from '@linkvault/shared';
+import type { EnrichmentFailureReason, PreviewDraft } from '@linkvault/shared';
 import type { ExtractionChain } from '../domain/extraction-chain';
 import {
   effectiveWaitMs,
   onBusyHost,
   type HostTurnRules,
 } from '../domain/host-turn';
-import type { PreviewDraft } from '../domain/preview-draft';
 import type { HostMutex } from './ports/host-mutex.port';
 import type { PageFetcher } from './ports/page-fetcher.port';
 import type { PageParser } from './ports/page-parser.port';

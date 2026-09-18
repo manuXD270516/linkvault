@@ -140,12 +140,12 @@ export function isPreviewFieldName(name: string): name is PreviewFieldName {
  */
 export const previewExtractorIdSchema = z.string().min(1).max(64);
 
-/** Quién escribió un campo a mano, tal y como se guarda: solo su identificador. */
+/** Quién escribió un campo a mano o pegó el texto del que salió, tal y como se guarda: solo su identificador. */
 export const previewAuthorIdSchema = z.string().min(1);
 
 /**
- * Quién escribió un campo a mano, tal y como sale por la API: la tarjeta dice "Escrito por Ana", no un identificador.
- * `api` resuelve el nombre con `LINK_USER_DIRECTORY`; el worker nunca lo necesita.
+ * Quién escribió o pegó un campo, tal y como sale por la API: la tarjeta dice "Escrito por Ana" o "Descripción pegada
+ * por Beto", no un identificador. `api` resuelve el nombre con `LINK_USER_DIRECTORY`; el worker nunca lo necesita.
  */
 export const previewAuthorSchema = z.strictObject({
   userId: z.string().min(1),
@@ -154,8 +154,21 @@ export const previewAuthorSchema = z.strictObject({
 export type PreviewAuthor = z.infer<typeof previewAuthorSchema>;
 
 /**
- * Claves de una entrada de procedencia, para el test tabular que compara los dos schemas de Mongoose (D11). `extractor`
- * y `by` no conviven nunca: cuál de las dos está lo decide `source`.
+ * Orígenes de un campo del preview (D3 de paste-job-description): `auto` es lo leído de la página, `pasted` lo sacado de
+ * un texto que una persona pegó y `manual` lo que una persona escribió. El orden de la lista es el de la precedencia, de
+ * menos a más: lo decide `mayOverwrite`, no este orden, pero se declaran igual para que leerlos no confunda.
+ */
+export const PREVIEW_SOURCE_KINDS = ['auto', 'pasted', 'manual'] as const;
+export const previewSourceKindSchema = z.enum(PREVIEW_SOURCE_KINDS);
+export type PreviewSourceKind = z.infer<typeof previewSourceKindSchema>;
+
+/** Extractor con el que se guardan los campos sacados de un texto pegado: la tarea de IA que lo leyó. */
+export const PASTED_PREVIEW_EXTRACTOR = 'ai:extract-pasted-job';
+
+/**
+ * Claves de una entrada de procedencia, para el test tabular que compara los dos schemas de Mongoose (D11). Cuáles
+ * lleva cada entrada lo decide `source`: `auto` lleva `extractor` y nunca `by`, `manual` al revés, y `pasted` lleva
+ * **los dos**, porque dice quién pegó el texto y qué lo leyó.
  */
 export const PREVIEW_SOURCE_ENTRY_KEYS = [
   'value',
@@ -167,31 +180,86 @@ export const PREVIEW_SOURCE_ENTRY_KEYS = [
 ] as const;
 
 /**
- * Procedencia de un campo (D4 de link-enrichment, ADR-010 sin `confidence`). Unión discriminada por `source` en vez de
- * campos opcionales sueltos: un valor automático lleva siempre su extractor y nunca un autor, uno manual al revés, y
- * `replaced` —el valor automático que desplazó la edición, lo que permite "Volver a lo extraído"— solo existe en el
- * manual. El orden total de la cadena (D3) decide los empates, así que no hay confianza numérica que guardar.
+ * Las tres formas de una entrada de procedencia, sin `replaced`. Son a la vez la entrada de un campo `auto` y lo que
+ * `replaced` guarda de la entrada desplazada.
+ *
+ * `atOfAuto` existe solo por `replaced`: hasta `paste-job-description`, `replaced` guardaba `{ value, extractor }` sin
+ * fecha, y esos documentos siguen en la base de datos.
+ */
+function previewEntryShapes<
+  Value extends z.ZodType,
+  By extends z.ZodType,
+  AtOfAuto extends z.ZodType,
+>(value: Value, by: By, atOfAuto: AtOfAuto) {
+  return {
+    auto: {
+      value,
+      source: z.literal('auto'),
+      extractor: previewExtractorIdSchema,
+      at: atOfAuto,
+    },
+    pasted: {
+      value,
+      source: z.literal('pasted'),
+      extractor: previewExtractorIdSchema,
+      by,
+      at: z.iso.datetime(),
+    },
+    manual: {
+      value,
+      source: z.literal('manual'),
+      by,
+      at: z.iso.datetime(),
+    },
+  };
+}
+
+/**
+ * Lo que guarda `replaced`: la entrada que una persona desplazó —pegando o escribiendo a mano— **completa**, con su
+ * valor, su origen, su extractor, su autor y su fecha, para que "Volver a lo anterior" la devuelva tal cual era. No
+ * lleva su propio `replaced`: deshacer llega un nivel atrás, y tres pegados seguidos pierden el primero (D3).
+ *
+ * Un `replaced` de antes de este change era `{ value, extractor }`, siempre de un valor automático: se lee como `auto`,
+ * sin fecha, porque nunca la tuvo.
+ */
+function displacedEntrySchema<Value extends z.ZodType, By extends z.ZodType>(
+  value: Value,
+  by: By,
+) {
+  const shapes = previewEntryShapes(value, by, z.iso.datetime().optional());
+  return z.preprocess(
+    (raw) =>
+      typeof raw === 'object' &&
+      raw !== null &&
+      !Array.isArray(raw) &&
+      !('source' in raw)
+        ? { ...raw, source: 'auto' }
+        : raw,
+    z.discriminatedUnion('source', [
+      z.strictObject(shapes.auto),
+      z.strictObject(shapes.pasted),
+      z.strictObject(shapes.manual),
+    ]),
+  );
+}
+
+/**
+ * Procedencia de un campo (D4 de link-enrichment, ADR-010 sin `confidence`; D3 de paste-job-description). Unión
+ * discriminada por `source` en vez de campos opcionales sueltos: un valor automático lleva siempre su extractor y nunca
+ * un autor, uno manual al revés, y uno pegado los dos. `replaced` —la entrada desplazada, lo que permite "Volver a lo
+ * anterior"— solo existe donde actuó una persona: una relectura automática no guarda lo que sustituye. El orden total
+ * de la cadena decide los empates entre automáticos, así que no hay confianza numérica que guardar.
  */
 function previewFieldSchema<Value extends z.ZodType, By extends z.ZodType>(
   value: Value,
   by: By,
 ) {
+  const shapes = previewEntryShapes(value, by, z.iso.datetime());
+  const replaced = displacedEntrySchema(value, by).optional();
   return z.discriminatedUnion('source', [
-    z.strictObject({
-      value,
-      source: z.literal('auto'),
-      extractor: previewExtractorIdSchema,
-      at: z.iso.datetime(),
-    }),
-    z.strictObject({
-      value,
-      source: z.literal('manual'),
-      by,
-      at: z.iso.datetime(),
-      replaced: z
-        .strictObject({ value, extractor: previewExtractorIdSchema })
-        .optional(),
-    }),
+    z.strictObject(shapes.auto),
+    z.strictObject({ ...shapes.pasted, replaced }),
+    z.strictObject({ ...shapes.manual, replaced }),
   ]);
 }
 
@@ -233,13 +301,13 @@ function previewSourcesSchemaWith<By extends z.ZodType>(by: By) {
   });
 }
 
-/** Procedencia tal y como se guarda: `by` es el identificador de quien escribió el campo. */
+/** Procedencia tal y como se guarda: `by` es el identificador de quien escribió o pegó el campo. */
 export const previewSourcesSchema = previewSourcesSchemaWith(
   previewAuthorIdSchema,
 );
 export type PreviewSources = z.infer<typeof previewSourcesSchema>;
 
-/** Procedencia tal y como sale por la API: `by` ya resuelto a `{ userId, displayName }`. */
+/** Procedencia tal y como sale por la API: todo `by` ya resuelto a `{ userId, displayName }`, también el de `replaced`. */
 export const resolvedPreviewSourcesSchema =
   previewSourcesSchemaWith(previewAuthorSchema);
 export type ResolvedPreviewSources = z.infer<
@@ -356,7 +424,12 @@ export const PREVIEW_FIELD_STORED_TYPES = {
 } as const satisfies Readonly<Record<PreviewFieldName, PreviewStoredType>>;
 
 /** Claves de `salary` tal y como se guardan, para que los dos schemas declaren las mismas. */
-export const PREVIEW_SALARY_KEYS = ['min', 'max', 'currency', 'period'] as const;
+export const PREVIEW_SALARY_KEYS = [
+  'min',
+  'max',
+  'currency',
+  'period',
+] as const;
 
 /** Claves de una habilidad guardada. */
 export const PREVIEW_SKILL_KEYS = ['name', 'required'] as const;
@@ -364,5 +437,15 @@ export const PREVIEW_SKILL_KEYS = ['name', 'required'] as const;
 /** Claves de un idioma guardado. */
 export const PREVIEW_LANGUAGE_KEYS = ['name', 'level'] as const;
 
-/** Claves de `replaced`, el valor automático que desplazó una edición manual. */
-export const PREVIEW_REPLACED_KEYS = ['value', 'extractor'] as const;
+/**
+ * Claves de `replaced`, la entrada que desplazó una persona al pegar o escribir a mano: las de una entrada de procedencia
+ * sin su propio `replaced`. En Mongoose ninguna salvo `value` es obligatoria, porque los `replaced` de antes de
+ * paste-job-description solo tienen `value` y `extractor`; es `previewSourcesSchema` quien los lee como `auto`.
+ */
+export const PREVIEW_REPLACED_KEYS = [
+  'value',
+  'source',
+  'extractor',
+  'by',
+  'at',
+] as const;

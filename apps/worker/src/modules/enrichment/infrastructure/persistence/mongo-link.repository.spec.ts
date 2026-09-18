@@ -1,4 +1,9 @@
 import { randomUUID } from 'node:crypto';
+import {
+  PASTED_PREVIEW_EXTRACTOR,
+  previewSourcesSchema,
+  type PreviewSources,
+} from '@linkvault/shared';
 import { getMongoTestUri } from '@linkvault/testing';
 import mongoose, { type Connection, type Model } from 'mongoose';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
@@ -188,6 +193,7 @@ describe('writePreview', () => {
             at: AT.toISOString(),
             replaced: {
               value: 'Arquitecto(a) de Soluciones',
+              source: 'auto',
               extractor: 'json-ld',
             },
           },
@@ -200,8 +206,71 @@ describe('writePreview', () => {
       source: 'manual',
       by: ANA.toHexString(),
       at: AT.toISOString(),
-      replaced: { value: 'Arquitecto(a) de Soluciones', extractor: 'json-ld' },
+      replaced: {
+        value: 'Arquitecto(a) de Soluciones',
+        source: 'auto',
+        extractor: 'json-ld',
+      },
     });
+  });
+
+  it('keeps manual over pasted whole: source, author, extractor and date, of the entry and of what it displaced', async () => {
+    // Los dos schemas de `job_links` son `strict: true`: una clave que no declararan se descartaría en silencio y
+    // "Volver a lo pegado" devolvería un valor sin origen ni autor. Por eso se mira también el documento crudo.
+    const linkId = await insertLink();
+    const beto = new mongoose.Types.ObjectId().toHexString();
+    const previewSources = {
+      title: {
+        value: 'Arquitecto de Soluciones (Java)',
+        source: 'manual',
+        by: ANA.toHexString(),
+        at: AT.toISOString(),
+        replaced: {
+          value: 'Arquitecto de Soluciones',
+          source: 'pasted',
+          extractor: PASTED_PREVIEW_EXTRACTOR,
+          by: beto,
+          at: '2026-09-17T10:00:00.000Z',
+        },
+      },
+      company: {
+        value: 'Empresa Ejemplo',
+        source: 'pasted',
+        extractor: PASTED_PREVIEW_EXTRACTOR,
+        by: beto,
+        at: '2026-09-17T10:00:00.000Z',
+        replaced: {
+          value: 'Empresa Ejemplo S.A.',
+          source: 'auto',
+          extractor: 'json-ld',
+          at: '2026-09-16T10:00:00.000Z',
+        },
+      },
+    } as const satisfies PreviewSources;
+
+    await repository.writePreview(
+      linkId,
+      1,
+      writeOf({
+        previewStatus: 'manual',
+        preview: {
+          title: 'Arquitecto de Soluciones (Java)',
+          company: 'Empresa Ejemplo',
+        },
+        previewSources,
+      }),
+    );
+
+    expect((await repository.findById(linkId))?.previewSources).toEqual(
+      previewSources,
+    );
+    const raw = await links.collection.findOne({
+      _id: new mongoose.Types.ObjectId(linkId),
+    });
+    expect(raw?.['previewSources']).toEqual(previewSources);
+    expect(previewSourcesSchema.parse(raw?.['previewSources'])).toEqual(
+      previewSources,
+    );
   });
 
   it('stores every shape of the contract, salary and lists included', async () => {

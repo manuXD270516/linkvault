@@ -1,4 +1,9 @@
 import { randomUUID } from 'node:crypto';
+import {
+  PASTED_PREVIEW_EXTRACTOR,
+  previewSourcesSchema,
+  type PreviewSources,
+} from '@linkvault/shared';
 import { getMongoTestUri } from '@linkvault/testing';
 import mongoose, { type Connection } from 'mongoose';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
@@ -208,7 +213,7 @@ describe('updatePreview', () => {
           source: 'manual',
           by: ANA,
           at: later.toISOString(),
-          replaced: { value: 'Backend', extractor: 'json-ld' },
+          replaced: { value: 'Backend', source: 'auto', extractor: 'json-ld' },
         },
       },
       now: later,
@@ -225,8 +230,61 @@ describe('updatePreview', () => {
       source: 'manual',
       by: ANA,
       at: later.toISOString(),
-      replaced: { value: 'Backend', extractor: 'json-ld' },
+      replaced: { value: 'Backend', source: 'auto', extractor: 'json-ld' },
     });
+  });
+
+  it('keeps manual over pasted whole: source, author, extractor and date, of the entry and of what it displaced', async () => {
+    // Los dos schemas de `job_links` son `strict: true`: una clave que no declararan se descartaría en silencio y
+    // "Volver a lo pegado" devolvería un valor sin origen ni autor. Por eso se mira también el documento crudo.
+    const { link } = await save(JOB_PAGE);
+    const pastedAt = now.toISOString();
+    const previewSources = {
+      title: {
+        value: 'Backend Engineer II',
+        source: 'manual',
+        by: ANA,
+        at: later.toISOString(),
+        replaced: {
+          value: 'Backend Engineer',
+          source: 'pasted',
+          extractor: PASTED_PREVIEW_EXTRACTOR,
+          by: BETO,
+          at: pastedAt,
+        },
+      },
+      company: {
+        value: 'Acme Bolivia',
+        source: 'pasted',
+        extractor: PASTED_PREVIEW_EXTRACTOR,
+        by: BETO,
+        at: pastedAt,
+        replaced: {
+          value: 'ACME S.R.L.',
+          source: 'auto',
+          extractor: 'json-ld',
+          at: '2026-09-16T10:00:00.000Z',
+        },
+      },
+    } as const satisfies PreviewSources;
+
+    const updated = await repository.updatePreview(link.id, 1, {
+      preview: { title: 'Backend Engineer II', company: 'Acme Bolivia' },
+      previewSources,
+      now: later,
+    });
+
+    expect(updated?.previewSources).toEqual(previewSources);
+    expect((await repository.findById(link.id))?.previewSources).toEqual(
+      previewSources,
+    );
+    const raw = await connection
+      .collection(JOB_LINKS_COLLECTION)
+      .findOne({ _id: new mongoose.Types.ObjectId(link.id) });
+    expect(raw?.['previewSources']).toEqual(previewSources);
+    expect(previewSourcesSchema.parse(raw?.['previewSources'])).toEqual(
+      previewSources,
+    );
   });
 
   it('drops a preview field that the shared contract does not know', async () => {
@@ -234,7 +292,10 @@ describe('updatePreview', () => {
 
     const updated = await repository.updatePreview(link.id, 1, {
       // `strict: true`: lo que no está en el schema derivado de `libs/shared` no se guarda.
-      preview: { title: 'Backend', image: 'https://example.com/a.png' } as never,
+      preview: {
+        title: 'Backend',
+        image: 'https://example.com/a.png',
+      } as never,
       previewSources: {},
       now: later,
     });
@@ -257,14 +318,18 @@ describe('updatePreview', () => {
     });
 
     expect(late).toBeNull();
-    expect((await repository.findById(link.id))?.preview?.title).toBe('Primera');
+    expect((await repository.findById(link.id))?.preview?.title).toBe(
+      'Primera',
+    );
   });
 
   it('answers null for an unknown or malformed id', async () => {
     const changes = { preview: {}, previewSources: {}, now: later };
 
     expect(await repository.updatePreview(objectId(99), 1, changes)).toBeNull();
-    expect(await repository.updatePreview('no-es-un-id', 1, changes)).toBeNull();
+    expect(
+      await repository.updatePreview('no-es-un-id', 1, changes),
+    ).toBeNull();
   });
 });
 

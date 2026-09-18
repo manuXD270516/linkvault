@@ -39,7 +39,7 @@ const link: JobLinkSummary = {
       source: 'manual',
       by: { userId: 'u1', displayName: 'Ana' },
       at: '2026-09-18T10:00:00.000Z',
-      replaced: { value: 'Data Engineer (m/f)', extractor: 'metadata' },
+      replaced: { value: 'Data Engineer (m/f)', source: 'auto', extractor: 'metadata' },
     },
     company: {
       value: 'Acme',

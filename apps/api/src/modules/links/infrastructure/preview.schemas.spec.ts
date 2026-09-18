@@ -1,4 +1,4 @@
-import { PREVIEW_FIELD_NAMES, PREVIEW_FIELD_STORED_TYPES, PREVIEW_LANGUAGE_KEYS, PREVIEW_REPLACED_KEYS, PREVIEW_SALARY_KEYS, PREVIEW_SKILL_KEYS, PREVIEW_SOURCE_ENTRY_KEYS } from '@linkvault/shared';
+import { PREVIEW_FIELD_NAMES, PREVIEW_FIELD_STORED_TYPES, PREVIEW_LANGUAGE_KEYS, PREVIEW_REPLACED_KEYS, PREVIEW_SALARY_KEYS, PREVIEW_SKILL_KEYS, PREVIEW_SOURCE_ENTRY_KEYS, PREVIEW_SOURCE_KINDS } from '@linkvault/shared';
 import { JOB_LINK_SCHEMA_OPTIONS, LAST_ENRICHMENT_ERROR_SCHEMA_OPTIONS } from '@linkvault/testing';
 import type { Schema } from 'mongoose';
 import { describe, expect, it } from 'vitest';
@@ -88,7 +88,22 @@ describe('previewSources subschema', () => {
   );
 
   it.each([...PREVIEW_FIELD_NAMES])(
-    'stores the displaced automatic value of %s with the same shape as the field',
+    'admits every source of the contract in %s and in what it displaced',
+    (field) => {
+      // Un origen nuevo en `libs/shared` que no llegara aquí haría que Mongoose rechazara lo pegado al escribirlo.
+      const entry = nestedSchema(previewSourcesSubSchema, field);
+      const enumOf = (schema: Schema): unknown =>
+        (schema.path('source').options as Record<string, unknown>)['enum'];
+
+      expect(enumOf(entry)).toEqual([...PREVIEW_SOURCE_KINDS]);
+      expect(enumOf(nestedSchema(entry, 'replaced'))).toEqual([
+        ...PREVIEW_SOURCE_KINDS,
+      ]);
+    },
+  );
+
+  it.each([...PREVIEW_FIELD_NAMES])(
+    'stores the displaced entry of %s with the same shape as the field',
     (field) => {
       const entry = nestedSchema(previewSourcesSubSchema, field);
       const replaced = nestedSchema(entry, 'replaced');

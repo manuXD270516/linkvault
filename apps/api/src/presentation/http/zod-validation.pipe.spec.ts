@@ -1,4 +1,6 @@
 import {
+  PASTED_TEXT_MAX_LENGTH,
+  pastedDescriptionRequestSchema,
   registerRequestSchema,
   updateProfileRequestSchema,
 } from '@linkvault/shared';
@@ -100,5 +102,33 @@ describe('ZodValidationPipe', () => {
     expect(validationErrorOf(() => pipe.transform(undefined)).fields).toEqual(
       [],
     );
+  });
+
+  it('answers the code its schema asks for when that is all that fails', () => {
+    const pipe = new ZodValidationPipe(pastedDescriptionRequestSchema);
+
+    const error = validationErrorOf(() =>
+      pipe.transform({ text: 'a'.repeat(PASTED_TEXT_MAX_LENGTH + 1) }),
+    );
+
+    expect(error.code).toBe('text_too_long');
+    expect(error.fields).toEqual([]);
+  });
+
+  it('keeps validation_error when anything else fails too', () => {
+    const pipe = new ZodValidationPipe(pastedDescriptionRequestSchema);
+
+    const tooLongAndUnknown = validationErrorOf(() =>
+      pipe.transform({
+        text: 'a'.repeat(PASTED_TEXT_MAX_LENGTH + 1),
+        location: 'La Paz',
+      }),
+    );
+    const empty = validationErrorOf(() => pipe.transform({ text: '  ' }));
+
+    expect(tooLongAndUnknown.code).toBe('validation_error');
+    expect([...tooLongAndUnknown.fields].sort()).toEqual(['location', 'text']);
+    expect(empty.code).toBe('validation_error');
+    expect(empty.fields).toEqual(['text']);
   });
 });

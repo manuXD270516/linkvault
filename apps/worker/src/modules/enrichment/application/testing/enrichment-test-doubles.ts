@@ -3,8 +3,11 @@ import type {
   ExtractionOutcome,
   ExtractorStrategy,
 } from '../../domain/extractors/extractor';
-import { draftFrom } from '../../domain/preview-draft';
-import type { JobPreview, LinkEnrichedEvent } from '@linkvault/shared';
+import {
+  draftFrom,
+  type JobPreview,
+  type LinkEnrichedEvent,
+} from '@linkvault/shared';
 import type { Clock } from '../ports/clock.port';
 import type { EnrichmentNotifier } from '../ports/enrichment-notifier.port';
 import type { HostLease, HostMutex } from '../ports/host-mutex.port';

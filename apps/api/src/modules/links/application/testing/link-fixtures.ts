@@ -76,7 +76,7 @@ export function enrichedPreview(editedBy: string): Pick<
         source: 'manual',
         by: editedBy,
         at: EXTRACTED_AT,
-        replaced: { value: 'ACME S.R.L.', extractor: 'metadata' },
+        replaced: { value: 'ACME S.R.L.', source: 'auto', extractor: 'metadata' },
       },
     },
   };

@@ -105,6 +105,9 @@ orden, cambia para los dos. Las reglas:
   una corrección a mano sobre algo pegado vuelve a lo pegado, y la edición abierta a cualquiera que puede ver el link
   sigue siendo reversible, que es la condición con la que ADR-022 §9 la abrió. Un `replaced` antiguo sin `source` se
   lee como `auto`. Deshacer llega **un nivel** atrás: tres pegados seguidos pierden el primero, y se acepta.
+- **Escribir a mano sobre lo escrito a mano no desplaza nada nuevo**: el campo conserva lo que guardaba, que es lo que
+  dijo la página o el pegado. "Volver" desde un campo escrito a mano devuelve a la fuente, no a una corrección
+  intermedia de otra persona. Es la regla que `link-enrichment` ya publicó y probó con "Volver a lo extraído".
 - **Lo precargado no cambia de autor.** El título y la empresa escritos aparte solo cuentan como `manual` si difieren de
   lo que el link ya tenía: el SPA envía solo los que la persona cambió y la API ignora un valor igual al actual. Si no,
   cada pegado sobre un link con título lo atribuiría a quien pega, lo fijaría para siempre y dejaría el link en
