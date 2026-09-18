@@ -1,0 +1,9 @@
+{
+  "source": "recorded:ollama:qwen2.5:7b",
+  "text": "{\"isJobPosting\":true,\"preview\":{\"title\":\"Desarrollador Frontend Senior\",\"company\":null,\"location\":\"Bolivia\",\"modality\":\"remote\",\"seniority\":\"senior\",\"salary\":null,\"skills\":[{\"name\":\"Angular\",\"required\":true},{\"name\":\"TypeScript\",\"required\":true},{\"name\":\"RxJS\",\"required\":true},{\"name\":\"Jest\",\"required\":true}],\"languages\":[],\"summary\":\"Construye la banca móvil y web de nuestros clientes, trabajando con Angular y TypeScript, consumiendo APIs REST y cuidando la accesibilidad y el rendimiento de cada pantalla.\",\"postedAt\":null,\"expiresAt\":null}}",
+  "model": "qwen2.5:7b",
+  "usage": {
+    "inputTokens": 2037,
+    "outputTokens": 165
+  }
+}

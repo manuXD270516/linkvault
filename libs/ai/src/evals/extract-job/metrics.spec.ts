@@ -186,7 +186,11 @@ describe('extract-job metrics', () => {
 
 describe('evaluable task registry', () => {
   it('registra extract-job con su expected schema y sus métricas bloqueantes', () => {
-    expect(evaluableTaskNames()).toEqual(['classify-skills', 'extract-job']);
+    expect(evaluableTaskNames()).toEqual([
+      'classify-skills',
+      'extract-job',
+      'extract-pasted-job',
+    ]);
     expect(findEvaluableTask('extract-job')).toBe(EVALUABLE_TASKS[1]);
     expect(extractJobEvaluable.expectedSchema).toBe(extractJobExpectedSchema);
 

@@ -1,0 +1,9 @@
+{
+  "source": "recorded:ollama:qwen2.5:7b",
+  "text": "{\"isJobPosting\":true,\"preview\":{\"title\":\"Data Analyst\",\"company\":\"Lakeside Analytics\",\"location\":\"anywhere in Latin America\",\"modality\":\"remote\",\"seniority\":\"unknown\",\"salary\":null,\"skills\":[{\"name\":\"SQL\",\"required\":true},{\"name\":\"Python\",\"required\":true},{\"name\":\"dbt\",\"required\":false}],\"languages\":[],\"summary\":\"Build sales and churn dashboards, write SQL against the warehouse, automate reports with Python and publish them in Tableau.\",\"postedAt\":null,\"expiresAt\":null}}",
+  "model": "qwen2.5:7b",
+  "usage": {
+    "inputTokens": 1953,
+    "outputTokens": 138
+  }
+}

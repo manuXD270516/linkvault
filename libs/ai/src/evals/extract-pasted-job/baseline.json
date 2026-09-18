@@ -1,0 +1,13 @@
+{
+  "task": "extract-pasted-job",
+  "promptVersion": "v1",
+  "goldenSha256": "db23c9cb590c8c7f7e17725a35ffaba35dcaa5b47a7835e9722d7eaac96777f0",
+  "metrics": {
+    "degraded_rate": 0,
+    "field_accuracy": 0.9047619047619048,
+    "schema_validity_rate": 1,
+    "skills_precision": 0.8166666666666667,
+    "skills_recall": 0.9099999999999999,
+    "summary_person_name_rate": 0
+  }
+}

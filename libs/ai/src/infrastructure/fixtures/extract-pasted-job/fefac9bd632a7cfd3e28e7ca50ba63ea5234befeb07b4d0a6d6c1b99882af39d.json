@@ -1,0 +1,9 @@
+{
+  "source": "recorded:ollama:qwen2.5:7b",
+  "text": "{\"isJobPosting\":true,\"preview\":{\"title\":\"Coordinador de Logística\",\"company\":null,\"location\":\"El Alto, Bolivia\",\"modality\":\"hybrid\",\"seniority\":\"unknown\",\"salary\":null,\"skills\":[{\"name\":\"Operaciones logísticas\",\"required\":true},{\"name\":\"Excel\",\"required\":true},{\"name\":\"Gestión de flotas\",\"required\":true}],\"languages\":[],\"summary\":\"Coordinarás la flota de camiones y las rutas de distribución entre El Alto, Oruro y Cochabamba, y negociarás con los proveedores de transporte.\",\"postedAt\":null,\"expiresAt\":null}}",
+  "model": "qwen2.5:7b",
+  "usage": {
+    "inputTokens": 2002,
+    "outputTokens": 160
+  }
+}

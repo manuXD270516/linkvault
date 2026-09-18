@@ -1,0 +1,9 @@
+{
+  "source": "recorded:ollama:qwen2.5:7b",
+  "text": "{\"isJobPosting\":true,\"preview\":{\"title\":\"Ingeniero de Soporte TI\",\"company\":\"Distribuidora Andina\",\"location\":\"Santa Cruz de la Sierra\",\"modality\":\"onsite\",\"seniority\":\"mid\",\"salary\":null,\"skills\":[{\"name\":\"Linux\",\"required\":true},{\"name\":\"Windows Server\",\"required\":true},{\"name\":\"Redes\",\"required\":true},{\"name\":\"Active Directory\",\"required\":true}],\"languages\":[],\"summary\":\"Atienda los incidentes de los usuarios, administre los servidores Linux y Windows Server y mantenga la red de las sucursales.\",\"postedAt\":null,\"expiresAt\":null}}",
+  "model": "qwen2.5:7b",
+  "usage": {
+    "inputTokens": 2039,
+    "outputTokens": 165
+  }
+}

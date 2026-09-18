@@ -14,6 +14,7 @@ import {
   EVALUABLE_TASKS,
   evaluableTaskNames,
   extractJobEvaluable,
+  extractPastedJobEvaluable,
 } from '../evaluable-tasks';
 import { goldenPath, loadGolden } from '../golden.schema';
 import { EXIT_CODES } from './args';
@@ -31,6 +32,17 @@ const WORKSPACE_ROOT = resolve(import.meta.dirname, '../../../../..');
 const REAL_EVALS_DIR = join(WORKSPACE_ROOT, 'libs/ai/src/evals');
 const TASK = 'classify-skills';
 const OTHER_TASK = 'extract-job';
+const PASTED_TASK = 'extract-pasted-job';
+
+/** Golden mínimo de la tercera: una conversación pegada que no es una vacante. */
+const PASTED_GOLDEN = [
+  {
+    id: 'chat-01',
+    input: { text: '¿Vienes el sábado? Sí, llevo la torta.' },
+    expected: { isJobPosting: false },
+    tags: ['placeholder'],
+  },
+];
 
 /** Golden mínimo de la segunda tarea evaluable, para que `--all` evalúe de verdad más de una. */
 const OTHER_GOLDEN = [
@@ -102,6 +114,12 @@ describe('runEvalCommand', () => {
       goldenPath(evalsDir, OTHER_TASK),
       `${OTHER_GOLDEN.map((line) => JSON.stringify(line)).join('\n')}\n`,
     );
+    await mkdir(join(evalsDir, PASTED_TASK), { recursive: true });
+    await mkdir(join(fixturesDir, PASTED_TASK), { recursive: true });
+    await writeFile(
+      goldenPath(evalsDir, PASTED_TASK),
+      `${PASTED_GOLDEN.map((line) => JSON.stringify(line)).join('\n')}\n`,
+    );
   });
 
   // "Fixture ausente en replay" espera el error a propósito: este archivo queda fuera del registro de pendientes (4.6).
@@ -142,19 +160,27 @@ describe('runEvalCommand', () => {
     await writeOtherFixtures();
   }
 
-  /** Fixtures de la segunda tarea: una página que no es una vacante. */
+  /** Fixtures de la segunda y la tercera tarea: una página y un texto pegado que no son una vacante. */
   async function writeOtherFixtures() {
-    const golden = await loadGolden(extractJobEvaluable, evalsDir);
-    if (!golden.ok) throw new Error('invalid test golden');
-    for (const goldenCase of golden.cases) {
+    const pages = await loadGolden(extractJobEvaluable, evalsDir);
+    const pasted = await loadGolden(extractPastedJobEvaluable, evalsDir);
+    if (!pages.ok || !pasted.ok) throw new Error('invalid test golden');
+    const notAJob = JSON.stringify({
+      source: 'handwritten',
+      text: JSON.stringify({ isJobPosting: false, preview: null }),
+      model: 'fixture-model',
+      usage: { inputTokens: 0, outputTokens: 0 },
+    });
+    for (const goldenCase of pages.cases) {
       await writeFile(
         join(fixturesDir, OTHER_TASK, `${goldenCase.key}.json`),
-        JSON.stringify({
-          source: 'handwritten',
-          text: JSON.stringify({ isJobPosting: false, preview: null }),
-          model: 'fixture-model',
-          usage: { inputTokens: 0, outputTokens: 0 },
-        }),
+        notAJob,
+      );
+    }
+    for (const goldenCase of pasted.cases) {
+      await writeFile(
+        join(fixturesDir, PASTED_TASK, `${goldenCase.key}.json`),
+        notAJob,
       );
     }
   }
@@ -258,9 +284,10 @@ describe('runEvalCommand', () => {
       ),
     ).resolves.toBe(EXIT_CODES.success);
     expect(update.out.join('')).toContain('baseline updated');
-    // `--all` evalúa las dos tareas registradas, no solo la primera.
+    // `--all` evalúa todas las tareas registradas, no solo la primera.
     expect(update.out.join('')).toContain('classify-skills [mock]');
     expect(update.out.join('')).toContain('extract-job [mock]');
+    expect(update.out.join('')).toContain('extract-pasted-job [mock]');
 
     const check = captureIo(env);
     await expect(
@@ -433,7 +460,7 @@ describe('Coherencia entre registro y golden sets', () => {
 
     await expect(goldenTaskDirs(evalsDir)).resolves.toEqual(['match-cv']);
     await expect(registryCoherence(evalsDir)).resolves.toEqual({
-      withoutGolden: ['classify-skills', 'extract-job'],
+      withoutGolden: ['classify-skills', 'extract-job', 'extract-pasted-job'],
       unregistered: ['match-cv'],
     });
   });

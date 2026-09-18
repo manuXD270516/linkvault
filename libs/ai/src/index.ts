@@ -66,6 +66,11 @@ export {
   type ExtractJobOutput,
 } from './tasks/extract-job.task';
 export {
+  extractPastedJobTask,
+  type ExtractPastedJobInput,
+  type ExtractPastedJobOutput,
+} from './tasks/extract-pasted-job.task';
+export {
   formatAiConfigProblems,
   parseAiConfig,
   type AiEnv,
