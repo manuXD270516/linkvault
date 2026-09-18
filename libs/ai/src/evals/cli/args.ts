@@ -46,7 +46,12 @@ export const RECORDING_UPSTREAMS = ['ollama', 'openrouter'] as const;
 export type RecordingUpstream = (typeof RECORDING_UPSTREAMS)[number];
 
 export interface RecordFixturesArgs {
-  task: string;
+  /** Ausente solo con `--from-pending` sin filtrar por tarea. */
+  task?: string;
+  /** `--from-pending`: graba lo anotado por los tests en vez de los casos del golden. */
+  fromPending: boolean;
+  /** `--pending-file`: registro de entradas pendientes; solo con `--from-pending`. */
+  pendingFile?: string;
   upstream: RecordingUpstream;
   overwrite: boolean;
   allowExternal: boolean;
@@ -72,6 +77,8 @@ const EVAL_FLAGS: Readonly<Record<string, FlagKind>> = {
 
 const RECORD_FIXTURES_FLAGS: Readonly<Record<string, FlagKind>> = {
   task: 'string',
+  'from-pending': 'boolean',
+  'pending-file': 'string',
   upstream: 'string',
   overwrite: 'boolean',
   'allow-external': 'boolean',
@@ -85,7 +92,8 @@ export const EVAL_USAGE =
   '[--allow-external] [--ollama-url=<url>] [--timeout-ms=<ms>] [--evals-dir=<dir>] [--reports-dir=<dir>]';
 
 export const RECORD_FIXTURES_USAGE =
-  'Usage: nx run ai:record-fixtures --task=<task> --upstream=<ollama|openrouter> [--overwrite] [--allow-external] ' +
+  'Usage: nx run ai:record-fixtures (--task=<task> | --from-pending [--task=<task>]) ' +
+  '--upstream=<ollama|openrouter> [--pending-file=<file>] [--overwrite] [--allow-external] ' +
   '[--ollama-url=<url>] [--timeout-ms=<ms>] [--evals-dir=<dir>]';
 
 export function parseEvalArgs(argv: readonly string[]): ParseResult<EvalArgs> {
@@ -150,8 +158,19 @@ export function parseRecordFixturesArgs(
   const values = flags.args;
 
   const task = stringFlag(values, 'task');
-  if (task === undefined) {
-    return fail('--task is required', RECORD_FIXTURES_USAGE);
+  const fromPending = booleanFlag(values, 'from-pending');
+  if (task === undefined && !fromPending) {
+    return fail(
+      '--task is required unless --from-pending',
+      RECORD_FIXTURES_USAGE,
+    );
+  }
+  const pendingFile = stringFlag(values, 'pending-file');
+  if (pendingFile !== undefined && !fromPending) {
+    return fail(
+      '--pending-file requires --from-pending',
+      RECORD_FIXTURES_USAGE,
+    );
   }
   const upstream = stringFlag(values, 'upstream');
   if (upstream === undefined) {
@@ -174,7 +193,9 @@ export function parseRecordFixturesArgs(
   return {
     ok: true,
     args: {
-      task,
+      ...optional('task', task),
+      fromPending,
+      ...optional('pendingFile', pendingFile),
       upstream,
       overwrite: booleanFlag(values, 'overwrite'),
       allowExternal: booleanFlag(values, 'allow-external'),

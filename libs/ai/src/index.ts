@@ -60,6 +60,12 @@ export {
   type ClassifySkillsOutput,
 } from './tasks/classify-skills.task';
 export {
+  extractJobTask,
+  EXTRACT_JOB_TEXT_MAX_LENGTH,
+  type ExtractJobInput,
+  type ExtractJobOutput,
+} from './tasks/extract-job.task';
+export {
   formatAiConfigProblems,
   parseAiConfig,
   type AiEnv,

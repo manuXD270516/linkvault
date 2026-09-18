@@ -11,6 +11,10 @@ import {
   vi,
 } from 'vitest';
 import type { AnyAiTask } from '../../application/task-registry';
+import {
+  PENDING_FIXTURES_OFF,
+  PENDING_FIXTURES_SWITCH_VAR,
+} from '../../application/pending-fixtures';
 import { FixtureMissing } from '../../domain/errors';
 import { classifySkillsTask } from '../../tasks/classify-skills.task';
 import {
@@ -76,7 +80,8 @@ describe('composeEvalRunTask', () => {
       mode: 'replay',
       fixturesDir: emptyFixturesDir,
     });
-    // En synth sintetizaría; en replay, sin fixture, lanza.
+    // En synth sintetizaría; en replay, sin fixture, lanza. Espera la ausencia: fuera del registro de pendientes (4.6).
+    vi.stubEnv(PENDING_FIXTURES_SWITCH_VAR, PENDING_FIXTURES_OFF);
     await expect(
       runTask.execute(
         classifySkillsTask,

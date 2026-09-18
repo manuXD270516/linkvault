@@ -4,6 +4,11 @@ import {
   type ClassifySkillsOutput,
 } from '../tasks/classify-skills.task';
 import {
+  extractJobTask,
+  type ExtractJobInput,
+  type ExtractJobOutput,
+} from '../tasks/extract-job.task';
+import {
   CLASSIFY_SKILLS_CASE_COLUMNS,
   CLASSIFY_SKILLS_METRICS,
   classifySkillsExpectedSchema,
@@ -14,6 +19,12 @@ import {
   type AnyEvaluableTask,
   type EvaluableTask,
 } from './evaluable-task';
+import {
+  EXTRACT_JOB_CASE_COLUMNS,
+  EXTRACT_JOB_METRICS,
+  extractJobExpectedSchema,
+  type ExtractJobExpected,
+} from './extract-job/metrics';
 
 // Registro de tareas evaluables (D1 y D4 de ai-eval-harness, ADR-019 §2). `--all` evalúa estas tareas, en este orden.
 // Toda tarea registrada tiene golden set y viceversa (lo comprueba un test del CLI).
@@ -29,8 +40,20 @@ export const classifySkillsEvaluable: EvaluableTask<
   caseColumns: CLASSIFY_SKILLS_CASE_COLUMNS,
 };
 
+export const extractJobEvaluable: EvaluableTask<
+  ExtractJobInput,
+  ExtractJobOutput,
+  ExtractJobExpected
+> = {
+  task: extractJobTask,
+  expectedSchema: extractJobExpectedSchema,
+  metrics: EXTRACT_JOB_METRICS,
+  caseColumns: EXTRACT_JOB_CASE_COLUMNS,
+};
+
 export const EVALUABLE_TASKS: readonly AnyEvaluableTask[] = [
   eraseEvaluableTask(classifySkillsEvaluable),
+  eraseEvaluableTask(extractJobEvaluable),
 ];
 
 /** Tarea evaluable por nombre, o `undefined` si no está registrada. */

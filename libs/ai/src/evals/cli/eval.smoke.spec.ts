@@ -165,7 +165,7 @@ describe('eval CLI in a child process', () => {
       baseline.metrics['skills_recall'] = 0.5;
       await writeFile(path, JSON.stringify(baseline));
 
-      const regression = await runCli(['--all', '--provider=mock']);
+      const regression = await runCli([`--task=${TASK}`, '--provider=mock']);
       expect(regression.code).toBe(1);
       expect(regression.stderr).toContain('skills_recall mejoró');
       expect(regression.stderr).toContain(

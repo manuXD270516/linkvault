@@ -1,0 +1,12 @@
+{
+  "task": "extract-job",
+  "promptVersion": "v1",
+  "goldenSha256": "df3ad0deb85b6dcad2dcba71164e8e8bce3e602fe58e10740db161641e04b711",
+  "metrics": {
+    "degraded_rate": 0,
+    "field_accuracy": 0.92,
+    "schema_validity_rate": 1,
+    "skills_precision": 0.8125,
+    "skills_recall": 0.6587301587301587
+  }
+}

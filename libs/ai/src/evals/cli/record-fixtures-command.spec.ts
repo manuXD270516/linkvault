@@ -7,13 +7,17 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { executionKey } from '../../application/execution-key';
+import type { PendingFixture } from '../../application/pending-fixtures';
 import type { AiEnv } from '../../infrastructure/config/parse-ai-config';
+import { extractJobTask } from '../../tasks/extract-job.task';
 import { classifySkillsEvaluable } from '../evaluable-tasks';
 import { goldenPath, loadGolden } from '../golden.schema';
 import { EXIT_CODES } from './args';
 import type { CliIo } from './eval-command';
 import {
   fixturesDirOf,
+  pendingFileOf,
   runRecordFixturesCommand,
 } from './record-fixtures-command';
 
@@ -229,4 +233,207 @@ describe('runRecordFixturesCommand', () => {
     expect(run.stderr).toContain('NODE_ENV=production');
     expect(requests).toBe(0);
   }, 60_000);
+});
+
+describe('runRecordFixturesCommand --from-pending', () => {
+  let root: string;
+  let fixturesDir: string;
+  let pendingFile: string;
+  let server: Server;
+  let requests: number;
+  let ollamaUrl: string;
+
+  /** Entrada anotada por `runTask` durante un test, con su clave real. */
+  function pending(text: string): PendingFixture {
+    const input = extractJobTask.inputSchema.parse({ text });
+    return {
+      task: 'extract-job',
+      promptVersion: extractJobTask.promptVersion,
+      outputLanguage: 'es',
+      key: executionKey({
+        taskName: 'extract-job',
+        promptVersion: extractJobTask.promptVersion,
+        outputLanguage: 'es',
+        input,
+      }),
+      input,
+      redacted: false,
+    };
+  }
+
+  const FIRST = pending('Analista de Datos. Requisitos: Python y SQL.');
+  const SECOND = pending('Jefe de Planta. Requisitos: cinco años y Excel.');
+
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), 'lv-pending-cli-'));
+    fixturesDir = join(root, 'fixtures');
+    pendingFile = join(root, 'pending.jsonl');
+    requests = 0;
+    // Doble del proveedor: responde como Ollama con una salida válida de `extract-job`.
+    server = createServer((req, res) => {
+      requests++;
+      let received = '';
+      req.setEncoding('utf8');
+      req.on('data', (chunk: string) => {
+        received += chunk;
+      });
+      req.on('end', () => {
+        res.setHeader('Content-Type', 'application/json');
+        res.end(
+          JSON.stringify({
+            model: 'doble',
+            message: {
+              content: JSON.stringify({
+                isJobPosting: true,
+                preview: {
+                  title: received.includes('Planta')
+                    ? 'Jefe de Planta'
+                    : 'Analista de Datos',
+                  company: null,
+                  location: null,
+                  modality: 'unknown',
+                  seniority: 'unknown',
+                  salary: null,
+                  skills: [],
+                  languages: [],
+                  summary: '',
+                  postedAt: null,
+                  expiresAt: null,
+                },
+              }),
+            },
+            prompt_eval_count: 11,
+            eval_count: 7,
+          }),
+        );
+      });
+    });
+    await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+    ollamaUrl = `http://127.0.0.1:${String((server.address() as AddressInfo).port)}`;
+  });
+
+  afterEach(async () => {
+    await new Promise<void>((done) => server.close(() => done()));
+    await rm(root, { recursive: true, force: true });
+  });
+
+  async function writePending(...entries: PendingFixture[]): Promise<void> {
+    await writeFile(
+      pendingFile,
+      entries.map((entry) => JSON.stringify(entry) + '\n').join(''),
+      'utf8',
+    );
+  }
+
+  function pendingArgv(...extra: string[]): string[] {
+    return [
+      '--from-pending',
+      `--pending-file=${pendingFile}`,
+      '--upstream=ollama',
+      `--ollama-url=${ollamaUrl}`,
+      '--timeout-ms=5000',
+      ...extra,
+    ];
+  }
+
+  it('graba las dos entradas anotadas contra el proveedor', async () => {
+    await writePending(FIRST, SECOND);
+    const io = captureIo({ NODE_ENV: 'test', AI_FIXTURES_DIR: fixturesDir });
+
+    await expect(runRecordFixturesCommand(pendingArgv(), io)).resolves.toBe(
+      EXIT_CODES.success,
+    );
+
+    const out = io.out.join('');
+    expect(out).toContain('2 annotated entries');
+    expect(out).toContain(
+      'extract-job [ollama]: 2 recorded, 0 skipped, 0 failed',
+    );
+    await expect(readdir(join(fixturesDir, 'extract-job'))).resolves.toEqual(
+      expect.arrayContaining([FIRST.key + '.json', SECOND.key + '.json']),
+    );
+    expect(requests).toBe(2);
+  });
+
+  it('deduplica la misma clave anotada dos veces', async () => {
+    await writePending(FIRST, FIRST, SECOND);
+    const io = captureIo({ NODE_ENV: 'test', AI_FIXTURES_DIR: fixturesDir });
+
+    await expect(runRecordFixturesCommand(pendingArgv(), io)).resolves.toBe(
+      EXIT_CODES.success,
+    );
+
+    expect(requests).toBe(2);
+    await expect(
+      readdir(join(fixturesDir, 'extract-job')),
+    ).resolves.toHaveLength(2);
+  });
+
+  it('no graba una entrada sin su input ni una obsoleta, y lo dice', async () => {
+    const personal: PendingFixture = {
+      task: 'classify-skills',
+      promptVersion: 'v1',
+      outputLanguage: 'es',
+      key: 'a'.repeat(64),
+      redacted: true,
+    };
+    const stale: PendingFixture = { ...SECOND, key: 'b'.repeat(64) };
+    await writePending(FIRST, personal, stale);
+    const io = captureIo({ NODE_ENV: 'test', AI_FIXTURES_DIR: fixturesDir });
+
+    await expect(runRecordFixturesCommand(pendingArgv(), io)).resolves.toBe(
+      EXIT_CODES.success,
+    );
+
+    const out = io.out.join('');
+    expect(out).toContain('not recordable classify-skills:aaaaaaaaaaaa');
+    expect(out).toContain('the task is personal');
+    expect(out).toContain('not recordable extract-job:bbbbbbbbbbbb');
+    expect(out).toContain('stale annotation');
+    expect(requests).toBe(1);
+  });
+
+  it('filtra por tarea y no contacta al proveedor si no queda nada', async () => {
+    await writePending(FIRST);
+    const io = captureIo({ NODE_ENV: 'test', AI_FIXTURES_DIR: fixturesDir });
+
+    await expect(
+      runRecordFixturesCommand(pendingArgv('--task=classify-skills'), io),
+    ).resolves.toBe(EXIT_CODES.success);
+
+    expect(io.out.join('')).toContain('no pending entries');
+    expect(requests).toBe(0);
+  });
+
+  it('salta lo que ya tiene fixture sin contactar al proveedor', async () => {
+    await writePending(FIRST);
+    await mkdir(join(fixturesDir, 'extract-job'), { recursive: true });
+    await writeFile(
+      join(fixturesDir, 'extract-job', FIRST.key + '.json'),
+      '{}',
+    );
+    const io = captureIo({ NODE_ENV: 'test', AI_FIXTURES_DIR: fixturesDir });
+
+    await expect(runRecordFixturesCommand(pendingArgv(), io)).resolves.toBe(
+      EXIT_CODES.success,
+    );
+
+    expect(io.out.join('')).toContain('0 recorded, 1 skipped, 0 failed');
+    expect(requests).toBe(0);
+  });
+
+  it('resuelve el registro por defecto contra el directorio de trabajo', () => {
+    expect(pendingFileOf({ env: {}, cwd: root }, {})).toBe(
+      join(root, 'tmp/ai-pending-fixtures.jsonl'),
+    );
+    expect(
+      pendingFileOf(
+        { env: { AI_PENDING_FIXTURES_FILE: pendingFile }, cwd: root },
+        {},
+      ),
+    ).toBe(pendingFile);
+    expect(
+      pendingFileOf({ env: {}, cwd: root }, { pendingFile: 'x/pending.jsonl' }),
+    ).toBe(join(root, 'x/pending.jsonl'));
+  });
 });

@@ -1,0 +1,9 @@
+{
+  "source": "recorded:ollama:qwen2.5:7b",
+  "text": "{\"isJobPosting\":true,\"preview\":{\"title\":\"Desarrollador Full-Stack\",\"company\":\"Empresa Ejemplo\",\"location\":\"Bolivia\",\"modality\":\"remote\",\"seniority\":\"senior\",\"salary\":null,\"skills\":[{\"name\":\"React\",\"required\":true},{\"name\":\"TypeScript\",\"required\":true},{\"name\":\"Node.js\",\"required\":true},{\"name\":\"PostgreSQL\",\"required\":true},{\"name\":\"Git\",\"required\":true},{\"name\":\"Pruebas automatizadas\",\"required\":true},{\"name\":\"Docker\",\"required\":false},{\"name\":\"AWS\",\"required\":false}],\"languages\":[],\"summary\":\"Trabajarás con React y TypeScript en el frontend, con Node.js y PostgreSQL en el backend, y participarás en las decisiones de arquitectura del producto.\",\"postedAt\":null,\"expiresAt\":null}}",
+  "model": "qwen2.5:7b",
+  "usage": {
+    "inputTokens": 1330,
+    "outputTokens": 216
+  }
+}
