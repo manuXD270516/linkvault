@@ -79,6 +79,15 @@ export const LinksStore = signalStore(
     const groupIdOf = (scope: LinksScope | null): string | null =>
       scope?.kind === 'group' ? scope.groupId : null;
 
+    /** El ámbito abierto; sin ninguno, guardar o importar es un error de programación y no sale ninguna petición. */
+    const openScope = (): LinksScope => {
+      const scope = store.scope();
+      if (scope === null) {
+        throw new Error('No list is open: open a group or the private list before saving links');
+      }
+      return scope;
+    };
+
     const fetchPage = (scope: LinksScope, cursor?: string) =>
       scope.kind === 'group'
         ? api.listGroupLinks(scope.groupId, { limit: LINKS_PAGE_SIZE, cursor })
@@ -156,9 +165,13 @@ export const LinksStore = signalStore(
         }
       },
 
-      /** Guarda una URL en la lista abierta y recarga; el error viaja al formulario, que lo traduce por código. */
+      /**
+       * Guarda una URL en la lista abierta y recarga; el error viaja al formulario, que lo traduce por código. Sin lista
+       * abierta no envía nada: el destino (grupo o lista privada) sale del ámbito, y adivinarlo sería guardar donde no
+       * se pidió.
+       */
       async save(url: string): Promise<SaveLinkResponse> {
-        const response = await api.saveLink(url, groupIdOf(store.scope()) ?? undefined);
+        const response = await api.saveLink(url, groupIdOf(openScope()) ?? undefined);
         await reload();
         return response;
       },
@@ -169,7 +182,7 @@ export const LinksStore = signalStore(
        * que los links que caben en ella.
        */
       async importText(text: string): Promise<ImportLinksResponse> {
-        const response = await api.importLinks(text, groupIdOf(store.scope()) ?? undefined);
+        const response = await api.importLinks(text, groupIdOf(openScope()) ?? undefined);
         await reload();
         if (response.created > 0) {
           patchState(store, { reading: { done: 0, total: response.created } });

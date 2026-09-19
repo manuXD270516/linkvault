@@ -1,15 +1,17 @@
 <section class="mx-auto flex max-w-2xl flex-col gap-6 p-6">
   <h1 class="text-2xl font-medium" i18n="@@links.mine.title">Solo para mí</h1>
 
-  <lv-save-link-form />
+  @if (scopeReady()) {
+    <lv-save-link-form />
 
-  <div>
-    <button mat-stroked-button type="button" (click)="openImport()" i18n="@@links.pasteChat">
-      Pegar un chat
-    </button>
-  </div>
+    <div>
+      <button mat-stroked-button type="button" (click)="openImport()" i18n="@@links.pasteChat">
+        Pegar un chat
+      </button>
+    </div>
+  }
 
-  @if (loaded()) {
+  @if (scopeReady() && loaded()) {
     <lv-link-list [links]="links()" scope="mine" />
   }
 

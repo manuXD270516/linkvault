@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialog } from '@angular/material/dialog';
 import { EventsChannel } from '../../core/events/events.channel';
@@ -28,6 +28,8 @@ export class MyLinksPage {
   protected readonly loadingMore = this.store.loadingMore;
   protected readonly hasMore = this.store.hasMore;
   protected readonly failure = this.store.failure;
+  /** `true` solo con la lista privada abierta: guardar e importar nunca pueden ir al grupo que se miraba antes. */
+  protected readonly scopeReady = computed(() => this.store.scope()?.kind === 'mine');
 
   constructor() {
     // El canal deja que las tarjetas se enteren solas de las lecturas que terminan; si no se puede abrir, la lista

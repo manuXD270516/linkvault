@@ -15,6 +15,7 @@ import {
 } from '../../../testing/auth-testing';
 import { SessionStore } from '../../core/auth/session.store';
 import { GroupsStore } from '../../core/groups/groups.store';
+import { LinksStore, type LinksScope } from '../../core/links/links.store';
 import { Shell } from '../../layout/shell/shell';
 import { GroupDetailPage } from './group-detail.page';
 
@@ -180,6 +181,79 @@ describe('GroupDetailPage', () => {
     await settle();
     await harness.fixture.whenStable();
   }
+
+  describe('Guardar antes de que se abra el grupo no guarda en otro sitio', () => {
+    /** Deja abierta en `LinksStore` la lista de la que se viene, como tras mirar otro grupo o la lista privada. */
+    async function comeFrom(scope: LinksScope): Promise<void> {
+      const opening = TestBed.inject(LinksStore).open(scope);
+      http
+        .expectOne(scope.kind === 'group' ? `/api/groups/${scope.groupId}/links?limit=20` : '/api/links/mine?limit=20')
+        .flush({ items: [linkOfBeto], total: 1 } satisfies LinkPage);
+      await opening;
+    }
+
+    /** Entra en el grupo y se queda entre pintar el grupo y abrir su lista: con los miembros todavía por llegar. */
+    async function enterUntilMembers(): Promise<void> {
+      await harness.navigateByUrl(`/grupos/${memberDetail.id}`, Shell);
+      http.expectOne({ method: 'GET', url: `/api/groups/${memberDetail.id}` }).flush(memberDetail);
+      await settle();
+      await harness.fixture.whenStable();
+    }
+
+    function saveField(): HTMLInputElement | null {
+      return page().querySelector<HTMLInputElement>('lv-save-link-form input');
+    }
+
+    async function finishEntering(): Promise<void> {
+      http.expectOne({ method: 'GET', url: `/api/groups/${memberDetail.id}/members` }).flush(members);
+      await settle();
+      http.expectOne(`/api/groups/${memberDetail.id}/links?limit=20`).flush({ items: [], total: 0 });
+      await settle();
+      await harness.fixture.whenStable();
+    }
+
+    it('coming from another group', async () => {
+      await comeFrom({ kind: 'group', groupId: 'g-anterior' });
+
+      await enterUntilMembers();
+
+      expect(page().textContent).toContain(memberDetail.name);
+      expect(saveField()).toBeNull();
+      expect(buttonTexts()).not.toContain('Pegar un chat');
+      // Tampoco se pintan los links del grupo anterior mientras llega la lista de este.
+      expect(page().querySelector('[data-testid="link-list"]')).toBeNull();
+      expect(TestBed.inject(LinksStore).scope()).toBeNull();
+      http.expectNone({ method: 'POST', url: '/api/links' });
+
+      await finishEntering();
+
+      expect(saveField()).not.toBeNull();
+      expect(buttonTexts()).toContain('Pegar un chat');
+    });
+
+    it('coming from the private list', async () => {
+      await comeFrom({ kind: 'mine' });
+
+      await enterUntilMembers();
+
+      expect(saveField()).toBeNull();
+      expect(buttonTexts()).not.toContain('Pegar un chat');
+      http.expectNone({ method: 'POST', url: '/api/links' });
+
+      await finishEntering();
+
+      typeInto(page(), 'lv-save-link-form input', 'https://www.linkedin.com/jobs/view/3999999999/');
+      await harness.fixture.whenStable();
+      buttonWithText(page(), 'Guardar').click();
+      const save = await vi.waitFor(() => http.expectOne({ method: 'POST', url: '/api/links' }));
+      expect(save.request.body).toEqual({
+        url: 'https://www.linkedin.com/jobs/view/3999999999/',
+        groupId: memberDetail.id,
+      });
+      save.flush(null, { status: 500, statusText: 'Error' });
+      await settle();
+    });
+  });
 
   it('Detalle como owner', async () => {
     await openDetail(ownerDetail);

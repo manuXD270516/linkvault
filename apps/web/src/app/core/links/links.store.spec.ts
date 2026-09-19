@@ -70,6 +70,18 @@ describe('LinksStore', () => {
     expect(store.failure()).toBeNull();
   });
 
+  it('never saves or imports without an open list', async () => {
+    await expect(store.save('https://www.linkedin.com/jobs/view/3912345678/')).rejects.toThrow(
+      'No list is open',
+    );
+    await expect(store.importText('https://www.linkedin.com/jobs/view/3912345678/')).rejects.toThrow(
+      'No list is open',
+    );
+
+    http.expectNone({ method: 'POST', url: '/api/links' });
+    http.expectNone({ method: 'POST', url: '/api/links/import' });
+  });
+
   it('reports an empty list only once loaded', async () => {
     expect(store.isEmpty()).toBe(false);
 
