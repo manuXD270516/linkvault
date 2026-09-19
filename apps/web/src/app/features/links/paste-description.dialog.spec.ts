@@ -295,7 +295,7 @@ describe('PasteDescriptionDialog', () => {
     http.expectNone({ method: 'POST', url: PASTED_URL });
   });
 
-  it('Deshacer todo un pegado', async () => {
+  it('Deshacer un pegado con la cabecera escrita aparte', async () => {
     await showList([completed]);
 
     const undo = host().querySelector<HTMLButtonElement>('[data-testid="link-undo-paste"]');
@@ -303,7 +303,39 @@ describe('PasteDescriptionDialog', () => {
     undo?.click();
     await settle();
 
-    // Todos los campos de ese pegado, en una sola operación; lo escrito a mano aparte no es parte del pegado.
+    // El título y la empresa se teclearon en el mismo diálogo: son parte del gesto y se deshacen con él.
+    const request = http.expectOne({ method: 'PATCH', url: PREVIEW_URL });
+    expect(request.request.body).toEqual({ revert: ['title', 'company', 'location', 'modality'] });
+    request.flush({ ...blocked, previewVersion: 4 } satisfies JobLinkSummary);
+    await settle();
+    await fixture.whenStable();
+
+    expect(host().querySelector('[data-testid="link-status"]')?.textContent?.trim()).toBe(
+      'LinkedIn no nos deja leer sus ofertas. Pega su descripción para completarla',
+    );
+    expect(host().querySelector('[data-testid="link-undo-paste"]')).toBeNull();
+  });
+
+  it('Deshacer todo un pegado', async () => {
+    // Ana corrigió a mano el título y la empresa después de pegar: eso ya no es parte del pegado.
+    const corrected = '2026-09-18T13:00:00.000Z';
+    await showList([
+      {
+        ...completed,
+        previewSources: {
+          ...completed.previewSources,
+          title: { value: 'Ingeniera de datos', source: 'manual', by: ana, at: corrected },
+          company: { value: 'Acme', source: 'manual', by: ana, at: corrected },
+        },
+      },
+    ]);
+
+    const undo = host().querySelector<HTMLButtonElement>('[data-testid="link-undo-paste"]');
+    expect(undo?.textContent?.trim()).toBe('Deshacer lo que pegó Ana');
+    undo?.click();
+    await settle();
+
+    // Todos los campos de ese pegado, en una sola operación; la corrección posterior se queda como está.
     const request = http.expectOne({ method: 'PATCH', url: PREVIEW_URL });
     expect(request.request.body).toEqual({ revert: ['location', 'modality'] });
     request.flush({

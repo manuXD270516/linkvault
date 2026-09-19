@@ -453,11 +453,12 @@ describe('LinkCard: lo pegado', () => {
         by: ana,
         at: '2026-09-18T10:00:00.000Z',
       },
+      // Una corrección a mano de Ana hecha después del pegado: no es parte de él.
       modality: {
         value: 'hybrid',
         source: 'manual',
         by: ana,
-        at: '2026-09-18T10:00:00.000Z',
+        at: '2026-09-18T11:00:00.000Z',
       },
     },
   };
@@ -497,8 +498,26 @@ describe('LinkCard: lo pegado', () => {
     expect(undo?.textContent?.trim()).toBe('Deshacer lo que pegó Ana');
     undo?.click();
 
-    // Lo que Ana escribió a mano en el mismo momento no es parte del pegado: se devuelve campo a campo.
+    // Lo que Ana corrigió a mano después no es parte del pegado: se devuelve campo a campo.
     expect(undone).toEqual([['company', 'location']]);
+  });
+
+  it('undoes the header typed in the same paste along with it', async () => {
+    const at = '2026-09-18T10:00:00.000Z';
+    await render({
+      ...enriched,
+      previewSources: {
+        title: { value: 'Ingeniera de datos', source: 'manual', by: ana, at },
+        company: { value: 'Acme', source: 'manual', by: ana, at },
+        location: { value: 'La Paz, Bolivia', source: 'pasted', extractor: 'ai:extract-pasted-job', by: ana, at },
+      },
+    });
+    const undone: string[][] = [];
+    fixture.componentInstance.undoPaste.subscribe((fields) => undone.push(fields));
+
+    host().querySelector<HTMLButtonElement>('[data-testid="link-undo-paste"]')?.click();
+
+    expect(undone).toEqual([['title', 'company', 'location']]);
   });
 
   it('offers no undo when nothing on the card came from a paste', async () => {

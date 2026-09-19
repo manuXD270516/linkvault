@@ -226,25 +226,38 @@ export interface PasteInEffect {
 }
 
 /**
- * El último pegado que sigue a la vista, o `null` si ningún campo sale ya de un texto pegado. Un pegado son los campos
- * que comparten origen `pasted`, autor y fecha: se escribieron en la misma petición, así que se deshacen juntos
- * ("Deshacer lo que pegó Ana"). Lo escrito aparte en el mismo diálogo —título y empresa— es `manual` y no entra: eso
- * lo escribió la persona, y se devuelve campo a campo.
+ * El último pegado que sigue a la vista, o `null` si ningún campo sale ya de un texto pegado. Un pegado es todo lo que
+ * se escribió en ese gesto, así que se deshace junto ("Deshacer lo que pegó Ana"): los campos con origen `pasted` y
+ * los `manual` que comparten su autor y su fecha, que son el título y la empresa tecleados en el mismo diálogo. Sin
+ * ellos, un link de LinkedIn completado con su cabecera escrita aparte seguiría en `manual` tras deshacer. Una
+ * corrección a mano posterior —otro autor u otra fecha— no es parte del pegado y no se toca.
  *
  * Si quedan campos de dos pegados distintos (el segundo no trajo todos los campos del primero), se ofrece deshacer el
  * más reciente, que es el que la persona acaba de ver.
  */
 export function latestPaste(sources: ResolvedPreviewSources | undefined): PasteInEffect | null {
+  const entries = Object.entries(sources ?? {}) as [PreviewFieldName, PreviewSourceEntry | undefined][];
   let latest: PasteInEffect | null = null;
-  for (const [name, entry] of Object.entries(sources ?? {}) as [PreviewFieldName, PreviewSourceEntry | undefined][]) {
+  for (const [, entry] of entries) {
     if (entry?.source !== 'pasted') {
       continue;
     }
-    if (latest !== null && latest.at === entry.at && latest.by.userId === entry.by.userId) {
-      latest.fields.push(name);
-    } else if (latest === null || Date.parse(entry.at) > Date.parse(latest.at)) {
-      latest = { by: entry.by, at: entry.at, fields: [name] };
+    if (latest === null || Date.parse(entry.at) > Date.parse(latest.at)) {
+      latest = { by: entry.by, at: entry.at, fields: [] };
     }
   }
+  if (latest === null) {
+    return null;
+  }
+  const { by, at } = latest;
+  // Se recorren en el orden de las fuentes, sin separar lo pegado de lo tecleado: es un solo gesto.
+  latest.fields = entries
+    .filter(
+      ([, entry]) =>
+        (entry?.source === 'pasted' || entry?.source === 'manual') &&
+        entry.at === at &&
+        entry.by.userId === by.userId,
+    )
+    .map(([name]) => name);
   return latest;
 }

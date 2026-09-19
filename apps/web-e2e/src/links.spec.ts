@@ -590,6 +590,24 @@ test('links flow: save, open, import a chat, remove and the private list', async
       });
     });
 
+    await test.step('Deshacer un pegado con la cabecera escrita aparte', async () => {
+      const title = PASTED_FROM_APP.knownTitle ?? '';
+      await linkRow(page, title).getByTestId('link-undo-paste').click();
+
+      // El título y la empresa se teclearon en el mismo pegado: se van con él, y el link vuelve a estar bloqueado en
+      // vez de quedarse "escrito a mano".
+      const row = linkRow(page, LINKEDIN_TYPED_LABEL);
+      await expect(row.getByTestId('link-status')).toHaveText(BLOCKED_TEXT);
+      await expect(row.getByTestId('link-paste')).toBeVisible();
+      await expect(row.getByTestId('link-undo-paste')).toHaveCount(0);
+      await expect(row.getByTestId('note-title')).toHaveCount(0);
+      await expect(linkRow(page, title)).toHaveCount(0);
+      await page.screenshot({
+        path: join(PASTE_SCREENSHOT_DIR, 'cabecera-deshecha.png'),
+        fullPage: true,
+      });
+    });
+
     expect(pageErrors).toEqual([]);
   } finally {
     await memberContext.close();
