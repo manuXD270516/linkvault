@@ -128,7 +128,8 @@ function checkStatusRules(body: StatusRuleInput, ctx: z.RefinementCtx): void {
     ctx.addIssue({
       code: 'custom',
       path: ['appliedAt'],
-      message: 'appliedAt is only allowed with applied, in_process, offer or accepted',
+      message:
+        'appliedAt is only allowed with applied, in_process, offer or accepted',
     });
   }
 }
@@ -191,10 +192,9 @@ export const linkIdListSchema = z
         .filter((id) => id.length > 0),
     ),
   ])
-  .refine(
-    (ids) => ids.length >= 1 && ids.length <= APPLICATION_LINK_IDS_MAX,
-    { message: `Between 1 and ${APPLICATION_LINK_IDS_MAX} link ids` },
-  );
+  .refine((ids) => ids.length >= 1 && ids.length <= APPLICATION_LINK_IDS_MAX, {
+    message: `Between 1 and ${APPLICATION_LINK_IDS_MAX} link ids`,
+  });
 
 /** Query de `GET /api/applications`: sin `linkIds`, todas las postulaciones de quien pide. */
 export const applicationListQuerySchema = z.object({

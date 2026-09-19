@@ -348,15 +348,15 @@ describe('linkIds in the queries', () => {
     Array.from({ length: count }, (_, index) => `id${index}`).join(',');
 
   it('splits, trims and deduplicates the list', () => {
-    expect(
-      groupTrackersQuerySchema.parse({ linkIds: ' a, b ,a,,c ' }),
-    ).toEqual({ linkIds: ['a', 'b', 'c'] });
+    expect(groupTrackersQuerySchema.parse({ linkIds: ' a, b ,a,,c ' })).toEqual(
+      { linkIds: ['a', 'b', 'c'] },
+    );
   });
 
   it('accepts 50 ids and names linkIds with 51', () => {
-    expect(groupTrackersQuerySchema.safeParse({ linkIds: ids(50) }).success).toBe(
-      true,
-    );
+    expect(
+      groupTrackersQuerySchema.safeParse({ linkIds: ids(50) }).success,
+    ).toBe(true);
     expect(
       fieldsOf(groupTrackersQuerySchema.safeParse({ linkIds: ids(51) })),
     ).toEqual(['linkIds']);

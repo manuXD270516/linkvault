@@ -4,7 +4,11 @@ import { LinksFacade } from './links.facade';
 import { InMemoryGroupLinkRepository } from './testing/in-memory-group-link.repository';
 import { InMemoryJobLinkRepository } from './testing/in-memory-job-link.repository';
 import { InMemoryUserLinkRepository } from './testing/in-memory-user-link.repository';
-import { enrichedPreview, jobLinkDraft, objectId } from './testing/link-fixtures';
+import {
+  enrichedPreview,
+  jobLinkDraft,
+  objectId,
+} from './testing/link-fixtures';
 import {
   IN_MEMORY_SESSION,
   InMemoryGroupMembership,
