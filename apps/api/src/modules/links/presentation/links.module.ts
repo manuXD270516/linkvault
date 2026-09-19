@@ -25,6 +25,7 @@ import { ListMyLinks } from '../application/list-my-links.usecase';
 import { LINKS_CLOCK } from '../application/ports/clock.port';
 import { ENRICHMENT_BROADCASTER } from '../application/ports/enrichment-broadcaster.port';
 import { ENRICHMENT_NOTICES } from '../application/ports/enrichment-notices.port';
+import { GROUP_LINK_COMMENT_REPOSITORY } from '../application/ports/group-link-comment-repository.port';
 import { GROUP_LINK_REPOSITORY } from '../application/ports/group-link-repository.port';
 import { GROUP_MEMBERSHIP } from '../application/ports/group-membership.port';
 import { JOB_LINK_REPOSITORY } from '../application/ports/job-link-repository.port';
@@ -51,6 +52,7 @@ import {
   type RedisSubscriber,
 } from '../infrastructure/redis-enrichment-notices';
 import { GroupsFacadeMembership } from '../infrastructure/groups-facade-membership';
+import { MongoGroupLinkCommentRepository } from '../infrastructure/mongo-group-link-comment.repository';
 import { MongoGroupLinkRepository } from '../infrastructure/mongo-group-link.repository';
 import { MongoJobLinkRepository } from '../infrastructure/mongo-job-link.repository';
 import { MongoUserLinkRepository } from '../infrastructure/mongo-user-link.repository';
@@ -95,6 +97,10 @@ import { LinksController } from './links.controller';
   providers: [
     { provide: JOB_LINK_REPOSITORY, useClass: MongoJobLinkRepository },
     { provide: GROUP_LINK_REPOSITORY, useClass: MongoGroupLinkRepository },
+    {
+      provide: GROUP_LINK_COMMENT_REPOSITORY,
+      useClass: MongoGroupLinkCommentRepository,
+    },
     { provide: USER_LINK_REPOSITORY, useClass: MongoUserLinkRepository },
     { provide: GROUP_MEMBERSHIP, useClass: GroupsFacadeMembership },
     { provide: LINK_USER_DIRECTORY, useClass: UsersFacadeLinkDirectory },

@@ -42,7 +42,7 @@ export class RemoveGroupLink {
     if (relation.sharedBy !== userId && role !== 'owner') {
       throw new LinkRemovalForbidden();
     }
-    if (!(await this.groupLinks.remove(groupId, linkId))) {
+    if (!(await this.groupLinks.removeWithComments(groupId, linkId))) {
       // Otra petición se le adelantó: para quien pide, el link ya no está en el grupo.
       throw new LinkNotFound();
     }

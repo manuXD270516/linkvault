@@ -14,6 +14,7 @@ import {
   USER_LINKS_COLLECTION,
   jobLinkSchema,
 } from './link.schemas';
+import { MongoGroupLinkCommentRepository } from './mongo-group-link-comment.repository';
 import { MongoGroupLinkRepository } from './mongo-group-link.repository';
 import { MongoUserLinkRepository } from './mongo-user-link.repository';
 
@@ -106,7 +107,10 @@ beforeAll(async () => {
   connection = await mongoose
     .createConnection(getMongoTestUri(), { dbName: `links-${randomUUID()}` })
     .asPromise();
-  groupLinks = new MongoGroupLinkRepository(connection);
+  groupLinks = new MongoGroupLinkRepository(
+    connection,
+    new MongoGroupLinkCommentRepository(connection),
+  );
   userLinks = new MongoUserLinkRepository(connection);
   // Los dos repositorios registran sus modelos; el de las vacantes se registra aquí, porque aquí no se guardan por su
   // repositorio: se siembran de una vez.

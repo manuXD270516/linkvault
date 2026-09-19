@@ -21,12 +21,17 @@ interface ListedRow {
   _id: Types.ObjectId;
   date: Date;
   sharedBy?: Types.ObjectId;
+  /** Solo en un grupo (D7 de group-comments): la nota y los contadores de comentarios de la relación. */
+  note?: { text: string; createdAt: Date };
+  commentCount?: number;
+  commentsRevision?: number;
   link: JobLinkDocument;
 }
 
 /**
  * Página de relaciones con su vacante. `dateField` es `sharedAt` o `savedAt`; `withSharer` deja fuera a quien compartió
- * en la lista privada, donde no hay con quién compartir.
+ * en la lista privada, donde no hay con quién compartir, y con él la nota y los contadores de comentarios, que solo
+ * tiene una relación de grupo.
  */
 export async function listLinkPage<D>(
   model: Model<D>,
@@ -55,7 +60,9 @@ export async function listLinkPage<D>(
           _id: 1,
           date: `$${dateField}`,
           link: 1,
-          ...(withSharer ? { sharedBy: 1 } : {}),
+          ...(withSharer
+            ? { sharedBy: 1, note: 1, commentCount: 1, commentsRevision: 1 }
+            : {}),
         },
       },
     ])
@@ -69,6 +76,18 @@ export async function listLinkPage<D>(
       ? {}
       : { sharedBy: row.sharedBy.toHexString() }),
     sharedAt: row.date,
+    ...(withSharer
+      ? {
+          inGroup: {
+            ...(row.note === undefined
+              ? {}
+              : { note: { text: row.note.text, createdAt: row.note.createdAt } }),
+            // Un documento anterior a group-comments no tiene los contadores: se leen como 0.
+            commentCount: row.commentCount ?? 0,
+            commentsRevision: row.commentsRevision ?? 0,
+          },
+        }
+      : {}),
   }));
   const last = page[page.length - 1];
   return rows.length > page.length && last !== undefined

@@ -79,3 +79,9 @@ export const PASTE_UNAVAILABLE_RETRY_AFTER_SECONDS = 60;
  * cuotas solo responde sí o no, así que es conservador y coincide con el mensaje, "vuelve mañana" (D5).
  */
 export const AI_QUOTA_RETRY_AFTER_SECONDS = 24 * 60 * 60;
+
+/**
+ * Comentarios que una persona puede publicar en la ventana, en todos sus grupos (D6 de group-comments). Cuenta por
+ * persona porque un script cambia de destino; borrar no cuenta.
+ */
+export const COMMENTS_PER_USER = 30;

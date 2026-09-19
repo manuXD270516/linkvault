@@ -26,6 +26,18 @@ export interface ListedLink {
   /** Quién lo compartió. Ausente en la lista privada: allí no hay con quién compartir. */
   readonly sharedBy?: string;
   readonly sharedAt: Date;
+  /**
+   * Nota y contadores de comentarios de la relación (D7 de group-comments). Solo en el listado de un grupo: la lista
+   * privada no tiene nota ni comentarios.
+   */
+  readonly inGroup?: ListedGroupRelation;
+}
+
+/** Lo que una relación de grupo aporta a su fila del listado. */
+export interface ListedGroupRelation {
+  readonly note?: { readonly text: string; readonly createdAt: Date };
+  readonly commentCount: number;
+  readonly commentsRevision: number;
 }
 
 /** Página de un listado. `nextCursor` solo viaja cuando hay más filas detrás. */

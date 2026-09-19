@@ -37,6 +37,16 @@ function share(
   );
 }
 
+function comment(groupId: string, linkId: string, authorId: string) {
+  return groupLinks.addComment({
+    groupId,
+    linkId,
+    authorId,
+    text: 'Piden inglés C1',
+    createdAt: later,
+  });
+}
+
 describe('share', () => {
   it('shares a link in a group', async () => {
     const { relation, created } = await share(BACKEND, link.id, ANA);
@@ -47,6 +57,8 @@ describe('share', () => {
       linkId: link.id,
       sharedBy: ANA,
       sharedAt: now,
+      commentCount: 0,
+      commentsRevision: 0,
     });
   });
 
@@ -85,6 +97,8 @@ describe('find and listByGroup', () => {
       linkId: link.id,
       sharedBy: ANA,
       sharedAt: now,
+      commentCount: 0,
+      commentsRevision: 0,
     });
   });
 
@@ -167,20 +181,22 @@ describe('groupsWithLink', () => {
   });
 });
 
-describe('remove, deleteByGroup and deleteByLink', () => {
+describe('removeWithComments and deleteByGroup', () => {
   it('removes the relation and never the vacancy', async () => {
     await share(BACKEND, link.id, ANA);
     await share(FRONTEND, link.id, ANA);
 
-    expect(await groupLinks.remove(BACKEND, link.id)).toBe(true);
+    expect(await groupLinks.removeWithComments(BACKEND, link.id)).toBe(true);
     expect(await groupLinks.find(BACKEND, link.id)).toBeNull();
     expect(await groupLinks.find(FRONTEND, link.id)).not.toBeNull();
     expect(await links.findById(link.id)).not.toBeNull();
   });
 
   it('answers false when the link was not in the list', async () => {
-    expect(await groupLinks.remove(BACKEND, link.id)).toBe(false);
-    expect(await groupLinks.remove('no-es-un-id', link.id)).toBe(false);
+    expect(await groupLinks.removeWithComments(BACKEND, link.id)).toBe(false);
+    expect(await groupLinks.removeWithComments('no-es-un-id', link.id)).toBe(
+      false,
+    );
   });
 
   it('deletes every relation of a group, and only of that group', async () => {
@@ -194,12 +210,144 @@ describe('remove, deleteByGroup and deleteByLink', () => {
     expect(links.size).toBe(2);
   });
 
-  it('deletes every relation of a link', async () => {
+  it('takes the comments of that relation along, and only of that relation', async () => {
     await share(BACKEND, link.id, ANA);
     await share(FRONTEND, link.id, ANA);
+    await comment(BACKEND, link.id, BETO);
+    await comment(FRONTEND, link.id, BETO);
 
-    expect(await groupLinks.deleteByLink(link.id)).toBe(2);
-    expect(groupLinks.size).toBe(0);
+    await groupLinks.removeWithComments(BACKEND, link.id);
+
+    expect(groupLinks.comments.of(BACKEND, link.id)).toHaveLength(0);
+    expect(groupLinks.comments.of(FRONTEND, link.id)).toHaveLength(1);
+  });
+
+  it('deletes the comments of the group first, with the session it gets', async () => {
+    await share(BACKEND, link.id, ANA);
+    await share(FRONTEND, link.id, ANA);
+    await comment(BACKEND, link.id, BETO);
+    await comment(FRONTEND, link.id, BETO);
+
+    await groupLinks.deleteByGroup(BACKEND, IN_MEMORY_SESSION);
+
+    expect(groupLinks.comments.lastSession).toBe(IN_MEMORY_SESSION);
+    expect(groupLinks.comments.of(BACKEND, link.id)).toHaveLength(0);
+    expect(groupLinks.comments.of(FRONTEND, link.id)).toHaveLength(1);
+  });
+});
+
+describe('the note', () => {
+  const note = { text: 'Esta es la que te dije', createdAt: now };
+
+  it('is written only when the relation is created', async () => {
+    await groupLinks.share(
+      { groupId: BACKEND, linkId: link.id, sharedBy: ANA, sharedAt: now, note },
+      IN_MEMORY_SESSION,
+    );
+    const again = await groupLinks.share(
+      {
+        groupId: BACKEND,
+        linkId: link.id,
+        sharedBy: BETO,
+        sharedAt: later,
+        note: { text: 'Yo también la vi', createdAt: later },
+      },
+      IN_MEMORY_SESSION,
+    );
+
+    expect(again.relation.note).toEqual(note);
+    expect((await groupLinks.find(BACKEND, link.id))?.note).toEqual(note);
+  });
+
+  it('is cleared, whether there was one or not, and false without the relation', async () => {
+    await groupLinks.share(
+      { groupId: BACKEND, linkId: link.id, sharedBy: ANA, sharedAt: now, note },
+      IN_MEMORY_SESSION,
+    );
+
+    expect(await groupLinks.clearNote(BACKEND, link.id)).toBe(true);
+    expect(await groupLinks.clearNote(BACKEND, link.id)).toBe(true);
+    expect((await groupLinks.find(BACKEND, link.id))?.note).toBeUndefined();
+    expect(await groupLinks.clearNote(FRONTEND, link.id)).toBe(false);
+  });
+});
+
+describe('the comment counters', () => {
+  it('start at 0 on a new relation', async () => {
+    await share(BACKEND, link.id, ANA);
+
+    expect(await groupLinks.find(BACKEND, link.id)).toMatchObject({
+      commentCount: 0,
+      commentsRevision: 0,
+    });
+  });
+
+  it('go up with every comment and report the sharedAt of the relation', async () => {
+    await share(BACKEND, link.id, ANA);
+
+    const first = await comment(BACKEND, link.id, BETO);
+    const second = await comment(BACKEND, link.id, ANA);
+
+    expect(first?.counters).toEqual({ count: 1, revision: 1, sharedAt: now });
+    expect(second?.counters).toEqual({ count: 2, revision: 2, sharedAt: now });
+    expect(second?.comment.text).toBe('Piden inglés C1');
+  });
+
+  it('answer null and store nothing when the relation does not exist', async () => {
+    expect(await comment(BACKEND, link.id, BETO)).toBeNull();
+    expect(groupLinks.comments.size).toBe(0);
+  });
+
+  it('count down and revise up on a delete, and answer null without the comment', async () => {
+    await share(BACKEND, link.id, ANA);
+    const added = await comment(BACKEND, link.id, BETO);
+    const commentId = added?.comment.id ?? '';
+
+    expect(await groupLinks.removeComment(BACKEND, link.id, commentId)).toEqual({
+      count: 0,
+      revision: 2,
+      sharedAt: now,
+    });
+    expect(await groupLinks.removeComment(BACKEND, link.id, commentId)).toBeNull();
+    expect(await groupLinks.find(BACKEND, link.id)).toMatchObject({
+      commentCount: 0,
+      commentsRevision: 2,
+    });
+  });
+
+  it('start again from 0 when the link is shared again', async () => {
+    await share(BACKEND, link.id, ANA);
+    await comment(BACKEND, link.id, BETO);
+    await groupLinks.removeWithComments(BACKEND, link.id);
+    await share(BACKEND, link.id, ANA, later);
+
+    expect(await groupLinks.find(BACKEND, link.id)).toMatchObject({
+      commentCount: 0,
+      commentsRevision: 0,
+      sharedAt: later,
+    });
+  });
+
+  it('come with the note in the group listing', async () => {
+    await groupLinks.share(
+      {
+        groupId: BACKEND,
+        linkId: link.id,
+        sharedBy: ANA,
+        sharedAt: now,
+        note: { text: 'Mira', createdAt: now },
+      },
+      IN_MEMORY_SESSION,
+    );
+    await comment(BACKEND, link.id, BETO);
+
+    const page = await groupLinks.listByGroup(BACKEND, { limit: 20 });
+
+    expect(page.items[0]?.inGroup).toEqual({
+      note: { text: 'Mira', createdAt: now },
+      commentCount: 1,
+      commentsRevision: 1,
+    });
   });
 });
 

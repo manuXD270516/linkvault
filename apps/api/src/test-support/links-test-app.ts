@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { RUN_TASK, type RunTaskFn } from '@linkvault/ai';
 import type { GroupDetail } from '@linkvault/shared';
+import type { Type } from '@nestjs/common';
 import { getConnectionToken } from '@nestjs/mongoose';
 import {
   FastifyAdapter,
@@ -27,6 +28,11 @@ import {
   GROUP_MEMBER_MODEL_NAME,
   GROUP_MODEL_NAME,
 } from '../modules/groups/infrastructure/group.schemas';
+import {
+  GROUP_LINK_COMMENT_REPOSITORY,
+  type GroupLinkCommentRepository,
+} from '../modules/links/application/ports/group-link-comment-repository.port';
+import { GROUP_LINK_COMMENT_MODEL_NAME } from '../modules/links/infrastructure/group-link-comment.schemas';
 import {
   GROUP_LINK_MODEL_NAME,
   JOB_LINK_MODEL_NAME,
@@ -83,11 +89,14 @@ export interface LinksTestApp {
  *   mock en `replay` con los fixtures grabados; nunca `synth`.
  * - `counter`: otro contador de intentos, para simular uno caído o una ventana agotada.
  * - `logDestination`: adónde van los logs, a nivel `debug`, para comprobar qué **no** se registra.
+ * - `commentRepository`: otro adaptador de comentarios, para forzar que falle el borrado de comentarios y comprobar que
+ *   la transacción se deshace entera (group-comments).
  */
 export interface LinksTestAppOptions {
   readonly runTask?: RunTaskFn;
   readonly counter?: FixedWindowCounter;
   readonly logDestination?: DestinationStream;
+  readonly commentRepository?: Type<GroupLinkCommentRepository>;
 }
 
 export async function createLinksTestApp(
@@ -105,6 +114,11 @@ export async function createLinksTestApp(
     .useValue(options.counter ?? new InMemoryFixedWindowCounter());
   if (options.runTask !== undefined) {
     builder = builder.overrideProvider(RUN_TASK).useValue(options.runTask);
+  }
+  if (options.commentRepository !== undefined) {
+    builder = builder
+      .overrideProvider(GROUP_LINK_COMMENT_REPOSITORY)
+      .useClass(options.commentRepository);
   }
   if (options.logDestination !== undefined) {
     builder = builder
@@ -131,6 +145,7 @@ export async function createLinksTestApp(
     JOB_LINK_MODEL_NAME,
     GROUP_LINK_MODEL_NAME,
     USER_LINK_MODEL_NAME,
+    GROUP_LINK_COMMENT_MODEL_NAME,
   ]) {
     await connection.model(model).init();
   }

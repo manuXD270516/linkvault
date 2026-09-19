@@ -2,13 +2,17 @@
 // corresponde; el filtro de errores de presentación decide el estado HTTP. Nunca llevan la URL del usuario, el texto
 // importado ni nombres: pueden acabar en un log.
 //
-// `group_not_found` no está aquí: quien no es miembro del grupo de destino recibe el error de `groups`, su dueño.
+// `group_not_found` casi nunca está aquí: quien no es miembro del grupo de destino recibe el error de `groups`, su dueño.
+// La excepción es `CommentsGroupNotFound`: los casos de uso de comentarios y notas (group-comments) no importan el
+// dominio de `groups` (critic 16) y responden con este, que tiene el mismo código y el mismo cuerpo.
 
 /** Códigos de `apiErrorCodeSchema` que produce el dominio de `links` (lo comprueba un test). */
 export type LinksErrorCode =
   | 'invalid_url'
   | 'text_too_long'
   | 'link_not_found'
+  | 'comment_not_found'
+  | 'group_not_found'
   | 'forbidden'
   | 'preview_field_unknown'
   | 'enrichment_not_retryable'
@@ -171,5 +175,88 @@ export class AiQuotaExceeded extends LinksError {
   constructor(retryAfterSeconds: number) {
     super('The daily AI quota is exhausted');
     this.retryAfterSeconds = Math.max(1, Math.ceil(retryAfterSeconds));
+  }
+}
+
+// Comentarios y nota de quien comparte (D1, D4 y D10 de group-comments). Ninguno lleva el texto del comentario o de la
+// nota: pueden acabar en un log.
+
+/**
+ * Base de los errores de un campo de la petición que solo el dominio puede juzgar (400 `validation_error` nombrando
+ * `field`). El filtro HTTP tiene una rama para ella antes de la de `LinksError`, como `InvalidApplicationField`.
+ */
+export abstract class InvalidLinkField extends LinksError {
+  readonly code = 'validation_error';
+  /** Campo de la petición que nombra la respuesta. */
+  abstract readonly field: string;
+}
+
+/** El texto de un comentario queda vacío tras normalizarse o pasa de 500 caracteres (400 nombrando `text`). */
+export class InvalidCommentText extends InvalidLinkField {
+  override readonly name = 'InvalidCommentText';
+  readonly field = 'text';
+
+  constructor() {
+    super('Invalid comment text');
+  }
+}
+
+/** La nota de quien comparte pasa de 280 caracteres tras normalizarse (400 nombrando `note`). */
+export class InvalidShareNote extends InvalidLinkField {
+  override readonly name = 'InvalidShareNote';
+  readonly field = 'note';
+
+  constructor() {
+    super('Invalid share note');
+  }
+}
+
+/**
+ * El comentario no existe, ya se borró, es de otro link o de otro grupo, o su `:commentId` no tiene formato de
+ * identificador (404). Los cinco casos responden lo mismo.
+ */
+export class CommentNotFound extends LinksError {
+  override readonly name = 'CommentNotFound';
+  readonly code = 'comment_not_found';
+
+  constructor() {
+    super('Comment not found');
+  }
+}
+
+/**
+ * Quien pide es miembro del grupo pero no escribió el comentario ni es `owner` (403). No es un 404: ya ve ese comentario
+ * en el hilo, así que no hay nada que ocultarle (mismo criterio que `LinkRemovalForbidden`).
+ */
+export class CommentDeletionForbidden extends LinksError {
+  override readonly name = 'CommentDeletionForbidden';
+  readonly code = 'forbidden';
+
+  constructor() {
+    super('Only the author or the group owner can delete a comment');
+  }
+}
+
+/** Quien pide es miembro del grupo pero no compartió el link ni es `owner` (403), haya o no nota. */
+export class NoteRemovalForbidden extends LinksError {
+  override readonly name = 'NoteRemovalForbidden';
+  readonly code = 'forbidden';
+
+  constructor() {
+    super('Only the member who shared the link or the group owner can remove its note');
+  }
+}
+
+/**
+ * Quien pide no es miembro del grupo, el grupo no existe o su `:id` está mal formado (404 `group_not_found`, el mismo
+ * cuerpo que da `groups`). Propio de `links` para que los casos de uso de comentarios no importen el dominio de
+ * `groups` (critic 16).
+ */
+export class CommentsGroupNotFound extends LinksError {
+  override readonly name = 'CommentsGroupNotFound';
+  readonly code = 'group_not_found';
+
+  constructor() {
+    super('Group not found');
   }
 }
