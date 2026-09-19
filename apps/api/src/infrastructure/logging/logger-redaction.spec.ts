@@ -12,7 +12,7 @@ import {
   PinoLogger,
 } from 'nestjs-pino';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { buildLoggerParams } from './logger-params';
+import { buildLoggerParams, stripReferer } from './logger-params';
 
 const SECRETS = {
   authorization: 'Bearer header-authorization-s3cr3t',
@@ -24,7 +24,31 @@ const SECRETS = {
   currentPassword: 'current-password-s3cr3t',
   newPassword: 'new-password-s3cr3t',
   passwordHash: '$argon2id$v=19$m=19456,t=2,p=1$password-hash-s3cr3t',
+  inviteCode: 'INV1T3S3CR3T',
+  inviteFragment: 'fragment-s3cr3t',
 } as const;
+
+/** Peticiones con `referer` (escenarios de "Logs sin secretos"), identificadas por `x-probe`. */
+const REFERERS = [
+  {
+    scenario: 'Petición desde la página de unirse con un código',
+    probe: 'referer-join',
+    referer: `http://localhost:4200/unirse?codigo=${SECRETS.inviteCode}#${SECRETS.inviteFragment}`,
+    logged: 'http://localhost:4200/unirse',
+  },
+  {
+    scenario: 'Referer con el código dentro de returnUrl',
+    probe: 'referer-return-url',
+    referer: `http://localhost:4200/login?returnUrl=%2Funirse%3Fcodigo%3D${SECRETS.inviteCode}`,
+    logged: 'http://localhost:4200/login',
+  },
+  {
+    scenario: 'Referer que no es una URL absoluta',
+    probe: 'referer-relative',
+    referer: `/unirse?codigo=${SECRETS.inviteCode}#${SECRETS.inviteFragment}`,
+    logged: '/unirse',
+  },
+] as const;
 
 const DEPTHS = [
   'password',
@@ -135,6 +159,15 @@ describe('log redaction', () => {
       },
     });
     expect(response.statusCode).toBe(200);
+
+    for (const { probe, referer } of REFERERS) {
+      const withReferer = await app.inject({
+        method: 'GET',
+        url: '/log-probe',
+        headers: { referer, 'x-probe': probe },
+      });
+      expect(withReferer.statusCode).toBe(200);
+    }
   });
 
   afterAll(async () => {
@@ -145,15 +178,20 @@ describe('log redaction', () => {
     return destination.lines.join('\n');
   }
 
-  it('keeps authorization and cookie keys in the request log with redacted values (Petición con cabeceras sensibles)', () => {
-    const requestLog = destination.lines
+  function requestHeaders(probe: string): Record<string, unknown> | undefined {
+    return destination.lines
       .map(
         (line) =>
           JSON.parse(line) as { req?: { headers?: Record<string, unknown> } },
       )
-      .find((entry) => entry.req?.headers?.['x-probe'] === 'visible');
+      .find((entry) => entry.req?.headers?.['x-probe'] === probe)?.req
+      ?.headers;
+  }
 
-    expect(requestLog?.req?.headers).toMatchObject({
+  it('keeps authorization and cookie keys in the request log with redacted values (Petición con cabeceras sensibles)', () => {
+    const requestLog = { req: { headers: requestHeaders('visible') } };
+
+    expect(requestLog.req.headers).toMatchObject({
       authorization: '[Redacted]',
       cookie: '[Redacted]',
     });
@@ -186,5 +224,23 @@ describe('log redaction', () => {
 
   it.each(DEPTHS)('redacts $field at depth $depth', ({ field, depth }) => {
     expect(output()).not.toContain(`${field}-depth${depth}-s3cr3t`);
+  });
+
+  it.each(REFERERS)('$scenario', ({ probe, logged }) => {
+    expect(requestHeaders(probe)?.['referer']).toBe(logged);
+    expect(output()).not.toContain(SECRETS.inviteCode);
+    expect(output()).not.toContain(SECRETS.inviteFragment);
+  });
+
+  it('redacts a referer that is not a string', () => {
+    expect(stripReferer(['http://localhost:4200/unirse?codigo=x'])).toBe(
+      '[Redacted]',
+    );
+  });
+
+  it('Petición sin referer', () => {
+    const headers = requestHeaders('visible');
+    expect(headers).toBeDefined();
+    expect(headers).not.toHaveProperty('referer');
   });
 });

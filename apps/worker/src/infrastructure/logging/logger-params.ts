@@ -22,11 +22,43 @@ const SENSITIVE_FIELDS = [
 export const LOG_REDACT_PATHS: readonly string[] = [
   'req.headers.authorization',
   'req.headers.cookie',
+  'req.headers.referer',
   'res.headers["set-cookie"]',
   '*.headers.authorization',
   '*.headers.Authorization',
   ...SENSITIVE_FIELDS.flatMap((field) => [field, `*.${field}`, `*.*.${field}`]),
 ];
+
+const REDACTED = '[Redacted]';
+const REFERER_PATH = ['req', 'headers', 'referer'] as const;
+
+/**
+ * El `referer` se reduce a origen más ruta: su query string puede llevar un código de invitación
+ * (`/unirse?codigo=…`, `returnUrl`). Si no es una URL http(s) absoluta se corta en el primer `?` o `#`.
+ */
+export function stripReferer(value: unknown): unknown {
+  if (typeof value !== 'string') return REDACTED;
+  try {
+    const url = new URL(value);
+    if (url.protocol === 'http:' || url.protocol === 'https:') {
+      return `${url.origin}${url.pathname}`;
+    }
+  } catch {
+    // No es una URL absoluta: se corta a mano.
+  }
+  return value.split(/[?#]/, 1)[0];
+}
+
+/**
+ * Cualquier ruta redactada vale `[Redacted]`, salvo el `referer`, que conserva origen y ruta. Se compara segmento a
+ * segmento: en las rutas con comodín pino pasa un `Symbol` en `path`, y `path.join` lanzaría.
+ */
+export function censorLogValue(value: unknown, path: readonly unknown[]): unknown {
+  const isReferer =
+    path.length === REFERER_PATH.length &&
+    REFERER_PATH.every((segment, index) => path[index] === segment);
+  return isReferer ? stripReferer(value) : REDACTED;
+}
 
 /** Parámetros de `nestjs-pino`. `destination` solo se pasa en tests, para capturar la salida. */
 export function buildLoggerParams(
@@ -35,7 +67,7 @@ export function buildLoggerParams(
 ): Params {
   const options: Options = {
     level: config.LOG_LEVEL,
-    redact: { paths: [...LOG_REDACT_PATHS] },
+    redact: { paths: [...LOG_REDACT_PATHS], censor: censorLogValue },
   };
   return { pinoHttp: destination ? [options, destination] : options };
 }
