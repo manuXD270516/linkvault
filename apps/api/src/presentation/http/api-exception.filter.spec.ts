@@ -41,6 +41,7 @@ import {
   TooManyAttempts,
 } from '../../modules/auth/domain/errors';
 import {
+  AlreadyOwner,
   GroupFull,
   GroupNotFound,
   InvalidGroupName,
@@ -49,6 +50,7 @@ import {
   OwnerCannotLeave,
   OwnerRoleRequired,
   TooManyGroups,
+  TooManyJoinAttempts,
 } from '../../modules/groups/domain/errors';
 import {
   EnrichmentNotRetryable,
@@ -94,6 +96,8 @@ const THROWN: Record<string, () => unknown> = {
   'group-full': () => new GroupFull(),
   'too-many-groups': () => new TooManyGroups(),
   'owner-cannot-leave': () => new OwnerCannotLeave(),
+  'already-owner': () => new AlreadyOwner(),
+  'too-many-join-attempts': () => new TooManyJoinAttempts(899.4),
   'invalid-group-name': () => new InvalidGroupName(),
   'invalid-url': () => new InvalidUrl(),
   'text-too-long': () => new TextTooLong(),
@@ -317,6 +321,7 @@ describe('ApiExceptionFilter', () => {
     ['group-full', 409, 'group_full', undefined],
     ['too-many-groups', 409, 'too_many_groups', undefined],
     ['owner-cannot-leave', 409, 'owner_cannot_leave', undefined],
+    ['already-owner', 409, 'already_owner', undefined],
     ['invalid-group-name', 400, 'validation_error', ['name']],
     // Errores de `links`: `invalid_url` y `text_too_long` no nombran campo, el código ya dice cuál es.
     ['invalid-url', 400, 'invalid_url', undefined],
@@ -383,6 +388,18 @@ describe('ApiExceptionFilter', () => {
     });
     // Se redondea hacia arriba como el de `auth`: 41,2 s de espera no se anuncian como 41.
     expect(response.headers['retry-after']).toBe('42');
+  });
+
+  it('translates the join limit to 429 with its Retry-After, although it is a GroupsError', async () => {
+    const response = await get('too-many-join-attempts');
+
+    expect(response.statusCode).toBe(429);
+    expect(response.json()).toEqual({
+      code: 'too_many_attempts',
+      message: expect.any(String),
+    });
+    // Sin su rama propia, la de `GroupsError` respondería el mismo código sin la cabecera.
+    expect(response.headers['retry-after']).toBe('900');
   });
 
   it('answers a paste that is not a job posting with 422 not_a_job_posting', async () => {

@@ -1,8 +1,8 @@
 ## 1. Contratos y dominio
 
 - [x] 1.1 [backend] En `libs/shared`, `transferOwnershipRequestSchema` (`{ userId }`) en `group.schema.ts` y el código `already_owner` (409) en `apiErrorCodeSchema`, con sus entradas en `API_ERROR_STATUS`/`API_ERROR_MESSAGES`; corregir el comentario de `owner_cannot_leave` ("no hay transferencia de propiedad"); verificar con los tests de schemas y `pnpm nx run-many -t typecheck -p shared api web`.
-- [ ] 1.2 [backend] Dominio de `groups`: `canTransferOwnership(role)`, la regla "el destino es otro miembro" y los errores `AlreadyOwner` y `TooManyJoinAttempts(retryAfterSeconds)` en `groups/domain/errors`; corregir el comentario de `membership.ts`; verificar con tests unitarios de `membership.spec.ts` y `errors.spec.ts`.
-- [ ] 1.3 [backend] `api-exception.filter.ts`: rama propia de `TooManyJoinAttempts` **justo antes** del `instanceof GroupsError`, que responde `429 too_many_attempts` con `Retry-After`, y `AlreadyOwner` → `409 already_owner` por la rama de `GroupsError`; verificar con filas nuevas en `api-exception.filter.spec.ts` que comprueban el código y la cabecera.
+- [x] 1.2 [backend] Dominio de `groups`: `canTransferOwnership(role)`, la regla "el destino es otro miembro" y los errores `AlreadyOwner` y `TooManyJoinAttempts(retryAfterSeconds)` en `groups/domain/errors`; corregir el comentario de `membership.ts`; verificar con tests unitarios de `membership.spec.ts` y `errors.spec.ts`.
+- [x] 1.3 [backend] `api-exception.filter.ts`: rama propia de `TooManyJoinAttempts` **justo antes** del `instanceof GroupsError`, que responde `429 too_many_attempts` con `Retry-After`, y `AlreadyOwner` → `409 already_owner` por la rama de `GroupsError`; verificar con filas nuevas en `api-exception.filter.spec.ts` que comprueban el código y la cabecera.
 
 ## 2. Repositorio de `groups`
 

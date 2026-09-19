@@ -11,6 +11,8 @@ export type GroupsErrorCode =
   | 'group_full'
   | 'too_many_groups'
   | 'owner_cannot_leave'
+  | 'already_owner'
+  | 'too_many_attempts'
   | 'validation_error';
 
 export abstract class GroupsError extends Error {
@@ -83,13 +85,43 @@ export class TooManyGroups extends GroupsError {
   }
 }
 
-/** El owner no puede salir de su grupo ni expulsarse a sí mismo (409): sin transferencia de propiedad, borra el grupo. */
+/**
+ * El owner no puede salir de su grupo ni expulsarse a sí mismo (409): para irse, primero nombra owner a otro miembro.
+ * También lo recibe quien sale justo después de recibir la propiedad.
+ */
 export class OwnerCannotLeave extends GroupsError {
   override readonly name = 'OwnerCannotLeave';
   readonly code = 'owner_cannot_leave';
 
   constructor() {
     super('The owner cannot leave the group');
+  }
+}
+
+/** El owner se nombra owner a sí mismo al transferir la propiedad (409). */
+export class AlreadyOwner extends GroupsError {
+  override readonly name = 'AlreadyOwner';
+  readonly code = 'already_owner';
+
+  constructor() {
+    super('The user already owns the group');
+  }
+}
+
+/**
+ * Demasiados códigos de invitación incorrectos del usuario o de su IP (429, ADR-025 §6). Hereda de `GroupsError`, así
+ * que el filtro de errores le da su propia rama justo antes de `instanceof GroupsError` para enviar `Retry-After`. No
+ * dice qué contador rechazó: el mensaje es el mismo si el bloqueo viene de la IP compartida.
+ */
+export class TooManyJoinAttempts extends GroupsError {
+  override readonly name = 'TooManyJoinAttempts';
+  readonly code = 'too_many_attempts';
+  /** Segundos hasta que la ventana se reinicia; sale en `Retry-After`, entero y como mínimo 1, igual que en `auth`. */
+  readonly retryAfterSeconds: number;
+
+  constructor(retryAfterSeconds: number) {
+    super('Too many attempts');
+    this.retryAfterSeconds = Math.max(1, Math.ceil(retryAfterSeconds));
   }
 }
 

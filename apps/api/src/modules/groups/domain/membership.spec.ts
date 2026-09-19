@@ -7,8 +7,10 @@ import {
   canRemoveMembers,
   canRenameGroup,
   canRotateInviteCode,
+  canTransferOwnership,
   createMembership,
   GROUP_ROLES,
+  isOtherMember,
   isOwner,
 } from './membership';
 
@@ -33,6 +35,7 @@ describe('what the owner can do', () => {
     ['rotate the invite code', canRotateInviteCode],
     ['delete the group', canDeleteGroup],
     ['remove members', canRemoveMembers],
+    ['transfer the ownership', canTransferOwnership],
   ] as const)('only the owner can %s', (_action, can) => {
     expect(can('owner')).toBe(true);
     expect(can('member')).toBe(false);
@@ -54,6 +57,20 @@ describe('leaving and being removed', () => {
 
   it('does not let the owner membership be removed', () => {
     expect(canBeRemoved('owner')).toBe(false);
+  });
+});
+
+describe('transferring the ownership', () => {
+  it('accepts another member as the target', () => {
+    expect(
+      isOtherMember('66e9a0000000000000000002', '66e9a0000000000000000003'),
+    ).toBe(true);
+  });
+
+  it('rejects the owner naming himself', () => {
+    expect(
+      isOtherMember('66e9a0000000000000000002', '66e9a0000000000000000002'),
+    ).toBe(false);
   });
 });
 

@@ -1,6 +1,7 @@
 import { apiErrorCodeSchema } from '@linkvault/shared';
 import { describe, expect, it } from 'vitest';
 import {
+  AlreadyOwner,
   GroupFull,
   GroupNotFound,
   GroupsError,
@@ -10,6 +11,7 @@ import {
   OwnerCannotLeave,
   OwnerRoleRequired,
   TooManyGroups,
+  TooManyJoinAttempts,
 } from './errors';
 
 const errors = [
@@ -20,6 +22,8 @@ const errors = [
   new GroupFull(),
   new TooManyGroups(),
   new OwnerCannotLeave(),
+  new AlreadyOwner(),
+  new TooManyJoinAttempts(900),
   new InvalidGroupName(),
 ];
 
@@ -32,6 +36,8 @@ describe('groups domain errors', () => {
     [new GroupFull(), 'group_full'],
     [new TooManyGroups(), 'too_many_groups'],
     [new OwnerCannotLeave(), 'owner_cannot_leave'],
+    [new AlreadyOwner(), 'already_owner'],
+    [new TooManyJoinAttempts(900), 'too_many_attempts'],
     [new InvalidGroupName(), 'validation_error'],
   ] as const)('%s carries the API code %s', (error, code) => {
     expect(error).toBeInstanceOf(GroupsError);
@@ -53,6 +59,8 @@ describe('groups domain errors', () => {
       'GroupFull',
       'TooManyGroups',
       'OwnerCannotLeave',
+      'AlreadyOwner',
+      'TooManyJoinAttempts',
       'InvalidGroupName',
     ]);
   });
@@ -60,6 +68,18 @@ describe('groups domain errors', () => {
   it('gives the same message for a missing group and one the user is not in', () => {
     expect(new GroupNotFound().message).toBe(new GroupNotFound().message);
   });
+
+  it.each([
+    [900, 900],
+    [0.2, 1],
+    [0, 1],
+    [59.1, 60],
+  ])(
+    'sends a whole Retry-After of at least one second (%s -> %s)',
+    (seconds, expected) => {
+      expect(new TooManyJoinAttempts(seconds).retryAfterSeconds).toBe(expected);
+    },
+  );
 
   it('names the field of an invalid group name', () => {
     expect(new InvalidGroupName().field).toBe('name');

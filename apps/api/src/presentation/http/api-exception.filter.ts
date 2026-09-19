@@ -15,6 +15,7 @@ import {
 import {
   GroupsError,
   InvalidGroupName,
+  TooManyJoinAttempts,
 } from '../../modules/groups/domain/errors';
 import {
   InvalidCursor,
@@ -50,7 +51,8 @@ interface ApiErrorReply {
  *   exige "Rutas protegidas por defecto", y un 404 invitaría al SPA a tratarlo como un recurso ausente y no como sesión.
  * - Errores de dominio de `groups`: cada uno lleva su `code` (`group_not_found` → 404, `member_not_found` → 404,
  *   `forbidden` → 403, `invalid_invite_code` → 404, `group_full` → 409, `too_many_groups` → 409, `owner_cannot_leave` →
- *   409), así que basta un `instanceof GroupsError`; `InvalidGroupName` va antes porque además nombra el campo `name`.
+ *   409, `already_owner` → 409), así que basta un `instanceof GroupsError`; `InvalidGroupName` va antes porque además
+ *   nombra el campo `name`, y `TooManyJoinAttempts` (429) justo antes porque lleva su `Retry-After` (ADR-025 §8).
  * - Errores de dominio de `links`, también por su `code` (`invalid_url` → 400, `text_too_long` → 400, `link_not_found`
  *   → 404, `forbidden` → 403, `enrichment_not_retryable` → 409, `not_a_job_posting` → 422); `InvalidCursor` va antes porque es un
  *   `validation_error` que nombra el campo `cursor`, `PreviewFieldUnknown` porque nombra el campo que no existe y
@@ -120,6 +122,11 @@ export class ApiExceptionFilter extends BaseExceptionFilter {
     }
     if (exception instanceof InvalidGroupName) {
       return reply('validation_error', [exception.field]);
+    }
+    if (exception instanceof TooManyJoinAttempts) {
+      return reply(exception.code, [], {
+        'Retry-After': String(exception.retryAfterSeconds),
+      });
     }
     if (exception instanceof GroupsError) {
       return reply(exception.code);
