@@ -1,9 +1,22 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  computed,
+  effect,
+  inject,
+  input,
+  signal,
+  untracked,
+} from '@angular/core';
 import { MatDialog } from '@angular/material/dialog';
-import type { JobLinkSummary, PreviewFieldName } from '@linkvault/shared';
+import type { Application, GroupTracker, JobLinkSummary, PreviewFieldName } from '@linkvault/shared';
 import { type RequestFailure, isApiFailure, toRequestFailure } from '../../core/api/api-error';
+import { ApplicationsStore } from '../../core/applications/applications.store';
 import { SessionStore } from '../../core/auth/session.store';
 import { LinksStore } from '../../core/links/links.store';
+import { ApplicationMoves } from '../applications/application-moves';
+import { ShareInvitation } from '../applications/share-invitation';
 import { confirmWith } from '../../shared/ui/confirm.dialog';
 import { RequestError } from '../../shared/ui/request-error';
 import { EditPreviewDialog, type EditPreviewDialogData } from './edit-preview.dialog';
@@ -33,10 +46,22 @@ export class LinkList {
   readonly scope = input.required<LinkListScope>();
   /** `true` si quien mira es `owner` del grupo: puede quitar también lo que compartieron otros. */
   readonly canModerate = input(false);
+  /** Grupo de la lista, para sus estados compartidos y la invitación a compartir; `null` en `/mis-links`. */
+  readonly groupId = input<string | null>(null);
 
   private readonly store = inject(LinksStore);
   private readonly dialog = inject(MatDialog);
   private readonly session = inject(SessionStore);
+  private readonly applications = inject(ApplicationsStore);
+  private readonly moves = inject(ApplicationMoves);
+  private readonly invitation = inject(ShareInvitation);
+
+  /** Links cuyo estado ya se pidió desde esta lista: cada página y cada link añadido se piden una sola vez. */
+  private readonly requested = new Set<string>();
+  /** Links cuyo último gesto respondió que ya se seguían (otra pestaña): muestran "Ya la seguías". */
+  protected readonly alreadyTracked = signal<ReadonlySet<string>>(new Set());
+  /** `true` si "Postulé" sobre una oferta seguida chocó con un cambio de otra pestaña. */
+  protected readonly trackingConflict = signal(false);
 
   /** `true` mientras se quita, se relee o se deshace un pegado: las tres acciones bloquean los botones de la lista. */
   protected readonly working = signal(false);
@@ -51,6 +76,127 @@ export class LinkList {
   protected readonly notRetryable = computed(() =>
     isApiFailure(this.failure(), 409, 'enrichment_not_retryable'),
   );
+
+  constructor() {
+    // Estados de postulaciones por bloques (D11, critic 13): uno por cada página que se pinta y otro por los links que
+    // entran al guardar o importar. Lo ya pedido no se vuelve a pedir: la recarga tras guardar trae la primera página
+    // entera y solo lo nuevo hace falta.
+    effect(() => {
+      const fresh = this.links()
+        .map((link) => link.id)
+        .filter((id) => !this.requested.has(id));
+      const groupId = this.groupId();
+      if (fresh.length === 0) {
+        return;
+      }
+      for (const id of fresh) {
+        this.requested.add(id);
+      }
+      untracked(() => {
+        void this.applications.loadOwn(fresh);
+        if (groupId !== null) {
+          void this.applications.loadShared(groupId, fresh);
+        }
+      });
+    });
+    // Al volver a la pestaña, los compartidos de todo lo cargado, por bloques de hasta 50: es lo que puede haber
+    // cambiado en otra sesión (D8: no hay aviso en vivo).
+    const onVisibilityChange = (): void => {
+      const groupId = this.groupId();
+      if (document.visibilityState === 'visible' && groupId !== null) {
+        void this.applications.loadShared(
+          groupId,
+          this.links().map((link) => link.id),
+        );
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    inject(DestroyRef).onDestroy(() =>
+      document.removeEventListener('visibilitychange', onVisibilityChange),
+    );
+  }
+
+  protected own(link: JobLinkSummary): Application | null {
+    return this.applications.byLinkId()[link.id] ?? null;
+  }
+
+  /** Estados compartidos del link en el grupo; `null` fuera de un grupo, donde no se muestran avatares. */
+  protected trackersOf(link: JobLinkSummary): readonly GroupTracker[] | null {
+    const groupId = this.groupId();
+    return groupId === null ? null : (this.applications.shared()[groupId]?.[link.id] ?? []);
+  }
+
+  /**
+   * "Me interesa" o "Postulé" (spec web/applications, "Seguir desde la tarjeta de la oferta"). Sin seguirla, empieza a
+   * seguirla; si ya la sigue en "Guardada" o "Interés", "Postulé" la mueve. "Postulé" pregunta la fecha si no la hay.
+   * En un grupo, si queda privada, se invita a compartir (D7).
+   */
+  protected async trackGesture(link: JobLinkSummary, gesture: 'interested' | 'applied'): Promise<void> {
+    if (this.working()) {
+      return;
+    }
+    this.failure.set(null);
+    this.trackingConflict.set(false);
+    const current = this.own(link);
+    if (current !== null) {
+      if (gesture === 'applied') {
+        await this.markApplied(link, current);
+      }
+      return;
+    }
+    let appliedAt: string | undefined;
+    if (gesture === 'applied') {
+      const answer = await this.moves.askAppliedDate();
+      if (answer === null) {
+        return;
+      }
+      appliedAt = answer.appliedAt;
+    }
+    this.working.set(true);
+    try {
+      const { application, created } = await this.applications.track(link.id, gesture, appliedAt);
+      this.setAlreadyTracked(link.id, !created);
+      this.invite(application, gesture);
+    } catch (error: unknown) {
+      this.failure.set(toRequestFailure(error));
+    } finally {
+      this.working.set(false);
+    }
+  }
+
+  private async markApplied(link: JobLinkSummary, current: Application): Promise<void> {
+    this.working.set(true);
+    try {
+      const outcome = await this.moves.move(current, 'applied');
+      if (outcome.kind === 'moved') {
+        this.setAlreadyTracked(link.id, false);
+        this.invite(outcome.application, 'applied');
+      } else if (outcome.kind === 'conflict') {
+        this.trackingConflict.set(true);
+      } else if (outcome.kind === 'failed') {
+        this.failure.set(outcome.failure);
+      }
+    } finally {
+      this.working.set(false);
+    }
+  }
+
+  private setAlreadyTracked(linkId: string, already: boolean): void {
+    const next = new Set(this.alreadyTracked());
+    if (already) {
+      next.add(linkId);
+    } else {
+      next.delete(linkId);
+    }
+    this.alreadyTracked.set(next);
+  }
+
+  /** Solo en un grupo: en `/mis-links` no hay nadie mirando (D7). La propia invitación descarta lo ya compartido. */
+  private invite(application: Application, gesture: 'interested' | 'applied'): void {
+    if (this.groupId() !== null) {
+      void this.invitation.offer(application, gesture);
+    }
+  }
 
   /** Quitar lo ofrece a quien compartió el link y al owner; en la lista privada, todo link propio se puede quitar. */
   protected canRemove(link: JobLinkSummary): boolean {

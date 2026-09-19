@@ -40,7 +40,12 @@
         </button>
       </div>
       @if (linksLoaded()) {
-        <lv-link-list [links]="links()" scope="group" [canModerate]="isOwner()" />
+        <lv-link-list
+          [links]="links()"
+          scope="group"
+          [groupId]="groupId"
+          [canModerate]="isOwner()"
+        />
       }
       @if (hasMoreLinks()) {
         <div>
