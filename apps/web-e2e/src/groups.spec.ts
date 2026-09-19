@@ -249,3 +249,137 @@ test('groups flow: create, invite link, members, expel, leave and delete', async
     await joinerContext.close();
   }
 });
+
+const FIRST_OWNER = {
+  displayName: 'Smoke Ana',
+  email: `smoke-transfer-ana+${RUN_ID}@example.com`,
+  password: `Ana-pass-${RUN_ID}`,
+};
+const HEIR = {
+  displayName: 'Smoke Beto',
+  email: `smoke-transfer-beto+${RUN_ID}@example.com`,
+  password: `Beto-pass-${RUN_ID}`,
+};
+const TRANSFER_GROUP_NAME = `Smoke Traspaso ${RUN_ID}`;
+/**
+ * Oferta de LinkedIn con un id propio de esta ejecución, para que no herede nada de la anterior. LinkedIn no deja leer
+ * sus ofertas, así que el worker no toca la red; aquí solo importa que el link siga en el grupo.
+ */
+const TRANSFER_LINK_URL = `https://www.linkedin.com/jobs/view/ingeniero-backend-traspaso-${RUN_ID}/`;
+const TRANSFER_LINK_LABEL = `ingeniero backend traspaso ${RUN_ID}`;
+
+test('ownership transfer: the owner makes another member the owner, leaves, and the group keeps its links', async ({
+  browser,
+}) => {
+  test.setTimeout(180_000);
+  const ownerContext = await browser.newContext();
+  const heirContext = await browser.newContext();
+  const pageErrors: string[] = [];
+
+  try {
+    const owner = await ownerContext.newPage();
+    const heir = await heirContext.newPage();
+    for (const page of [owner, heir]) {
+      page.on('pageerror', (error) => pageErrors.push(error.message));
+    }
+    let inviteCode = '';
+    let groupUrl = '';
+
+    await test.step('the owner creates a group and shares a link in it', async () => {
+      await owner.goto('/registro');
+      await register(owner, FIRST_OWNER);
+      await expect(owner).toHaveURL(/\/grupos$/);
+
+      await owner.getByRole('button', { name: 'Crear un grupo' }).click();
+      const dialog = owner.getByRole('dialog');
+      await dialog.getByLabel('Nombre del grupo', { exact: true }).fill(TRANSFER_GROUP_NAME);
+      await dialog.getByRole('button', { name: 'Crear grupo' }).click();
+      await expect(owner).toHaveURL(/\/grupos\/[0-9a-f]{24}$/);
+      groupUrl = owner.url();
+
+      await owner.getByLabel('Pega el enlace de una oferta').fill(TRANSFER_LINK_URL);
+      await owner.getByRole('button', { name: 'Guardar', exact: true }).click();
+      await expect(owner.locator('li').filter({ hasText: TRANSFER_LINK_LABEL })).toHaveCount(1);
+
+      inviteCode = ((await owner.getByTestId('invite-code').textContent()) ?? '').trim();
+      expect(inviteCode).toMatch(INVITE_CODE);
+      // Solo, el propietario no tiene a quién nombrar: su única salida es borrar.
+      await expect(owner.getByText('Eres el único miembro: para irte, borra el grupo')).toBeVisible();
+    });
+
+    await test.step('a second user joins with the code', async () => {
+      await heir.goto('/registro');
+      await register(heir, HEIR);
+      await expect(heir).toHaveURL(/\/grupos$/);
+
+      await heir.goto(`/unirse?codigo=${inviteCode}`);
+      await heir.getByRole('dialog').getByRole('button', { name: 'Unirme' }).click();
+      await expect(heir).toHaveURL(groupUrl);
+    });
+
+    await test.step('the owner makes the second user the owner after a confirmation', async () => {
+      await owner.reload();
+      await expect(owner.getByText('Para salir, nombra propietario a otro miembro')).toBeVisible();
+      await expect(owner.getByRole('button', { name: 'Salir del grupo' })).toHaveCount(0);
+      // Sobre sí mismo no se ofrece: solo sobre los demás.
+      await expect(owner.getByRole('button', { name: 'Nombrar propietario' })).toHaveCount(1);
+
+      await owner
+        .getByTestId('members')
+        .getByRole('listitem')
+        .filter({ hasText: HEIR.displayName })
+        .getByRole('button', { name: 'Nombrar propietario' })
+        .click();
+      const dialog = owner.getByRole('dialog');
+      await expect(dialog).toContainText(
+        `«${HEIR.displayName}» tendrá el rol de propietario de «${TRANSFER_GROUP_NAME}»: podrá renombrarlo, expulsar miembros y borrarlo. Tú seguirás como miembro y no podrás deshacerlo.`,
+      );
+      await owner.screenshot({
+        path: join(SCREENSHOT_DIR, 'confirmar-traspaso.png'),
+        fullPage: true,
+      });
+      await dialog.getByRole('button', { name: 'Nombrar propietario', exact: true }).click();
+
+      // Sin salir de la pantalla, el detalle pasa a verse como miembro.
+      await expect(owner).toHaveURL(groupUrl);
+      await expect(
+        owner.getByTestId('members').getByRole('listitem').filter({ hasText: HEIR.displayName }),
+      ).toContainText('Propietario');
+      await expect(
+        owner.getByTestId('members').getByRole('listitem').filter({ hasText: FIRST_OWNER.displayName }),
+      ).toContainText('Miembro');
+      await expect(owner.getByTestId('invite-code')).toHaveCount(0);
+      await expect(owner.getByRole('button', { name: 'Borrar el grupo' })).toHaveCount(0);
+      await expect(owner.getByRole('button', { name: 'Salir del grupo' })).toBeVisible();
+    });
+
+    await test.step('the former owner leaves the group', async () => {
+      await owner.getByRole('button', { name: 'Salir del grupo' }).click();
+      await owner.getByRole('dialog').getByRole('button', { name: 'Salir', exact: true }).click();
+
+      await expect(owner).toHaveURL(/\/grupos$/);
+      await expect(owner.getByText(TRANSFER_GROUP_NAME)).toHaveCount(0);
+    });
+
+    await test.step('the new owner keeps the group with its links', async () => {
+      await heir.reload();
+      await expect(heir.getByRole('heading', { level: 1, name: TRANSFER_GROUP_NAME })).toBeVisible();
+      await expect(
+        heir.getByTestId('members').getByRole('listitem').filter({ hasText: HEIR.displayName }),
+      ).toContainText('Propietario');
+      await expect(heir.getByTestId('members').getByRole('listitem')).toHaveCount(1);
+      await expect(heir.getByTestId('invite-code')).toHaveText(inviteCode);
+      await expect(heir.getByText('Eres el único miembro: para irte, borra el grupo')).toBeVisible();
+
+      const link = heir.locator('li').filter({ hasText: TRANSFER_LINK_LABEL });
+      await expect(link).toHaveCount(1);
+      await expect(link).toContainText(`Compartido por ${FIRST_OWNER.displayName}`);
+      await heir.screenshot({ path: join(SCREENSHOT_DIR, 'nuevo-propietario.png'), fullPage: true });
+    });
+
+    expect(pageErrors).toEqual([]);
+  } finally {
+    await ownerContext.close();
+    await heirContext.close();
+  }
+});
