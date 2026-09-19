@@ -1,12 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { getMongoTestUri } from '@linkvault/testing';
-import mongoose, {
-  type ClientSession,
-  type Connection,
-  type Types,
-} from 'mongoose';
+import mongoose, { type Connection, type Types } from 'mongoose';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import type { NewApplicationEvent } from '../domain/application-event';
 import {
   changeStatus,
   startTracking,
@@ -55,12 +50,7 @@ class UntrackBeforeReread extends MongoApplicationRepository {
 
 /** Repositorio cuya escritura del evento falla siempre. */
 class FailingEvents extends MongoApplicationRepository {
-  protected override insertEvent(
-    _applicationId: Types.ObjectId,
-    _userId: Types.ObjectId,
-    _event: NewApplicationEvent,
-    _session: ClientSession,
-  ): Promise<void> {
+  protected override insertEvent(): Promise<void> {
     return Promise.reject(new Error('event insert failed'));
   }
 }

@@ -398,7 +398,12 @@ describe('response schemas', () => {
   });
 
   it('accepts a card without title nor company', () => {
-    const { title: _title, company: _company, ...bare } = card;
+    const bare = {
+      id: card.id,
+      displayUrl: card.displayUrl,
+      platform: card.platform,
+      previewStatus: card.previewStatus,
+    };
 
     expect(
       applicationSchema.safeParse({ ...application, link: bare }).success,
@@ -412,7 +417,9 @@ describe('response schemas', () => {
   });
 
   it('requires statusChangedAt', () => {
-    const { statusChangedAt: _changed, ...withoutIt } = application;
+    const withoutIt = Object.fromEntries(
+      Object.entries(application).filter(([key]) => key !== 'statusChangedAt'),
+    );
 
     expect(applicationSchema.safeParse(withoutIt).success).toBe(false);
   });

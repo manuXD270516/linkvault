@@ -15,8 +15,8 @@ const payload = {
   staleAfterDays: APPLICATION_STALE_AFTER_DAYS,
 } as const;
 
-// "El contrato existe" (applications/tracking, "Postulación estancada, solo modelada").
-describe('applicationStaleEventSchema', () => {
+// Spec applications/tracking, "Postulación estancada, solo modelada".
+describe('El contrato existe (applicationStaleEventSchema)', () => {
   it('accepts an event with all its fields', () => {
     const event = applicationStaleEvent(payload);
 
@@ -39,7 +39,9 @@ describe('applicationStaleEventSchema', () => {
   });
 
   it('rejects the same event without the application id', () => {
-    const { applicationId: _id, ...withoutId } = payload;
+    const withoutId = Object.fromEntries(
+      Object.entries(payload).filter(([key]) => key !== 'applicationId'),
+    );
     const result = applicationStaleEventSchema.safeParse({
       type: APPLICATION_STALE_EVENT_TYPE,
       payload: withoutId,

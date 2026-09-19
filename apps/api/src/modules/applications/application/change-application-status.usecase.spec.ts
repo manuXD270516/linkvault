@@ -200,7 +200,7 @@ describe('Etapa libre solo en «En proceso»', () => {
     expect(moved.stageLabel).toBe('Prueba técnica');
   });
 
-  it('Cambiar de etapa sin cambiar de estado', async () => {
+  it('Cambiar de etapa sin cambiar de estado / Cambiar de etapa cuenta', async () => {
     const application = await tracked('in_process', {
       stageLabel: 'Prueba técnica',
     });

@@ -1,8 +1,9 @@
-import type {
-  Application,
-  EditWrite,
-  StartedTracking,
-  StatusWrite,
+import {
+  withoutStageAndDate,
+  type Application,
+  type EditWrite,
+  type StartedTracking,
+  type StatusWrite,
 } from '../../domain/application.entity';
 import type {
   ApplicationEvent,
@@ -87,9 +88,8 @@ export class InMemoryApplicationRepository implements ApplicationRepository {
     ) {
       return Promise.resolve(false);
     }
-    const { stageLabel: _stage, appliedAt: _appliedAt, ...rest } = application;
     const updated: Application = {
-      ...rest,
+      ...withoutStageAndDate(application),
       status: write.status,
       ...(write.stageLabel === undefined
         ? {}

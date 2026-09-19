@@ -169,11 +169,6 @@ export function changeStatus(
     statusChangedAt: now,
     updatedAt: now,
   };
-  const {
-    stageLabel: _previousStage,
-    appliedAt: _previousDate,
-    ...rest
-  } = current;
   return {
     kind: 'changed',
     write,
@@ -187,7 +182,7 @@ export function changeStatus(
       at: now,
     },
     next: {
-      ...rest,
+      ...withoutStageAndDate(current),
       status: request.status,
       ...(stageLabel === undefined ? {} : { stageLabel }),
       ...(appliedAt === undefined ? {} : { appliedAt }),
@@ -195,6 +190,30 @@ export function changeStatus(
       updatedAt: now,
       version: current.version + 1,
     },
+  };
+}
+
+/**
+ * Copia de la postulación sin etapa ni fecha de postulación, para rehacerlas tras un cambio de estado: quien llama pone
+ * las que resultan. Campo a campo, para que ninguna quede por descuido.
+ */
+export function withoutStageAndDate(
+  application: Application,
+): Omit<Application, 'stageLabel' | 'appliedAt'> {
+  return {
+    id: application.id,
+    userId: application.userId,
+    linkId: application.linkId,
+    status: application.status,
+    visibility: application.visibility,
+    notes: application.notes,
+    statusChangedAt: application.statusChangedAt,
+    ...(application.fitScore === undefined
+      ? {}
+      : { fitScore: application.fitScore }),
+    version: application.version,
+    createdAt: application.createdAt,
+    updatedAt: application.updatedAt,
   };
 }
 
