@@ -310,7 +310,7 @@ describe('the note (2.8)', () => {
 });
 
 describe('removeWithComments and deleteByGroup (2.9)', () => {
-  it('takes the relation, its note and its comments in one go', async () => {
+  it('Quitar se lleva los comentarios de ese grupo: takes the relation, its note and its comments in one go', async () => {
     const linkId = await shareLink(JOB_PAGE, BACKEND, {
       note: { text: 'Mira', createdAt: now },
     });
