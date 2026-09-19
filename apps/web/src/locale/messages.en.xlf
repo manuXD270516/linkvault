@@ -812,9 +812,9 @@
         <source>Se quita de tu lista; la oferta sigue disponible en tus grupos.</source>
         <target>It will be removed from your list; the job post is still available in your groups.</target>
       </trans-unit>
-      <trans-unit id="links.list.removeMessageGroup" datatype="html">
-        <source>Se quita de este grupo; la oferta sigue disponible en otros grupos.</source>
-        <target>It will be removed from this group; the job post is still available in other groups.</target>
+      <trans-unit id="links.list.removeMessageGroupComments" datatype="html">
+        <source>{VAR_PLURAL, plural, =0 {Se quita de este grupo; la oferta sigue disponible en otros grupos.} =1 {Se quita de este grupo junto con su comentario; la oferta sigue disponible en otros grupos.} other {Se quita de este grupo junto con sus <x id="INTERPOLATION"/> comentarios; la oferta sigue disponible en otros grupos.}}</source>
+        <target>{VAR_PLURAL, plural, =0 {It will be removed from this group; the job post is still available in other groups.} =1 {It will be removed from this group along with its comment; the job post is still available in other groups.} other {It will be removed from this group along with its <x id="INTERPOLATION"/> comments; the job post is still available in other groups.}}</target>
       </trans-unit>
       <trans-unit id="links.list.removeConfirm" datatype="html">
         <source>Quitar</source>
@@ -1059,6 +1059,150 @@
       <trans-unit id="error.unknown" datatype="html">
         <source>Algo salió mal. Inténtalo de nuevo</source>
         <target>Something went wrong. Please try again</target>
+      </trans-unit>
+      <trans-unit id="comments.ago.now" datatype="html">
+        <source>hace un momento</source>
+        <target>just now</target>
+      </trans-unit>
+      <trans-unit id="comments.ago.minutes" datatype="html">
+        <source>hace <x id="INTERPOLATION" equiv-text="{{ minutes }}"/> min</source>
+        <target><x id="INTERPOLATION" equiv-text="{{ minutes }}"/> min ago</target>
+      </trans-unit>
+      <trans-unit id="comments.ago.hours" datatype="html">
+        <source>hace <x id="INTERPOLATION" equiv-text="{{ hours }}"/> h</source>
+        <target><x id="INTERPOLATION" equiv-text="{{ hours }}"/> h ago</target>
+      </trans-unit>
+      <trans-unit id="comments.ago.yesterday" datatype="html">
+        <source>ayer</source>
+        <target>yesterday</target>
+      </trans-unit>
+      <trans-unit id="comments.authorLeft" datatype="html">
+        <source>ya no está en el grupo</source>
+        <target>no longer in the group</target>
+      </trans-unit>
+      <trans-unit id="comments.card.comment" datatype="html">
+        <source>Comentar</source>
+        <target>Comment</target>
+      </trans-unit>
+      <trans-unit id="comments.card.reply" datatype="html">
+        <source>Responder</source>
+        <target>Reply</target>
+      </trans-unit>
+      <trans-unit id="comments.card.viewAll" datatype="html">
+        <source>Ver los <x id="INTERPOLATION" equiv-text="{{ count }}"/> comentarios</source>
+        <target>View all <x id="INTERPOLATION" equiv-text="{{ count }}"/> comments</target>
+      </trans-unit>
+      <trans-unit id="comments.dialog.title" datatype="html">
+        <source>Comentarios</source>
+        <target>Comments</target>
+      </trans-unit>
+      <trans-unit id="comments.dialog.close" datatype="html">
+        <source>Cerrar</source>
+        <target>Close</target>
+      </trans-unit>
+      <trans-unit id="comments.dialog.older" datatype="html">
+        <source> Ver comentarios anteriores </source>
+        <target>Show earlier comments</target>
+      </trans-unit>
+      <trans-unit id="comments.dialog.newer" datatype="html">
+        <source> Ver comentarios nuevos </source>
+        <target>Show new comments</target>
+      </trans-unit>
+      <trans-unit id="comments.dialog.empty" datatype="html">
+        <source> Todavía nadie comentó esta oferta. Cuenta lo que sepas: requisitos, si ya cerró, a quién escribir. </source>
+        <target>No comments yet. Share what you know: requirements, whether it has closed, who to contact.</target>
+      </trans-unit>
+      <trans-unit id="comments.compose.label" datatype="html">
+        <source>Escribe un comentario</source>
+        <target>Write a comment</target>
+      </trans-unit>
+      <trans-unit id="comments.compose.hint" datatype="html">
+        <source>Lo verán los miembros de este grupo y seguirá aquí aunque salgas.</source>
+        <target>Members of this group will see it, and it will stay here even if you leave.</target>
+      </trans-unit>
+      <trans-unit id="comments.compose.submit" datatype="html">
+        <source> Comentar </source>
+        <target>Post</target>
+      </trans-unit>
+      <trans-unit id="comments.compose.max" datatype="html">
+        <source> Máximo 500 caracteres </source>
+        <target>500 characters max</target>
+      </trans-unit>
+      <trans-unit id="comments.compose.tooMany" datatype="html">
+        <source>{VAR_PLURAL, plural, =1 {Escribiste muchos comentarios seguidos. Vuelve a intentarlo en 1 minuto} other {Escribiste muchos comentarios seguidos. Vuelve a intentarlo en <x id="INTERPOLATION"/> minutos}}</source>
+        <target>{VAR_PLURAL, plural, =1 {You've posted a lot of comments in a row. Try again in 1 minute} other {You've posted a lot of comments in a row. Try again in <x id="INTERPOLATION"/> minutes}}</target>
+      </trans-unit>
+      <trans-unit id="comments.compose.tooManyLater" datatype="html">
+        <source>Escribiste muchos comentarios seguidos. Vuelve a intentarlo más tarde</source>
+        <target>You've posted a lot of comments in a row. Try again later</target>
+      </trans-unit>
+      <trans-unit id="comments.compose.failed" datatype="html">
+        <source>No se pudo publicar el comentario. Inténtalo de nuevo.</source>
+        <target>Couldn't post the comment. Please try again.</target>
+      </trans-unit>
+      <trans-unit id="comments.delete" datatype="html">
+        <source> Borrar </source>
+        <target>Delete</target>
+      </trans-unit>
+      <trans-unit id="comments.delete.title" datatype="html">
+        <source>Borrar el comentario</source>
+        <target>Delete the comment</target>
+      </trans-unit>
+      <trans-unit id="comments.delete.own" datatype="html">
+        <source>¿Borrar tu comentario? No se puede deshacer.</source>
+        <target>Delete your comment? This can't be undone.</target>
+      </trans-unit>
+      <trans-unit id="comments.delete.other" datatype="html">
+        <source>¿Borrar el comentario de <x id="NAME" equiv-text="comment.author.displayName"/>? Desaparecerá para todo el grupo y no se puede deshacer.</source>
+        <target>Delete <x id="NAME" equiv-text="comment.author.displayName"/>'s comment? It will disappear for the whole group and can't be undone.</target>
+      </trans-unit>
+      <trans-unit id="comments.delete.confirm" datatype="html">
+        <source>Borrar</source>
+        <target>Delete</target>
+      </trans-unit>
+      <trans-unit id="comments.gone" datatype="html">
+        <source>Esta oferta ya no está en el grupo</source>
+        <target>This job is no longer in the group</target>
+      </trans-unit>
+      <trans-unit id="comments.note.from" datatype="html">
+        <source>Nota de <x id="INTERPOLATION" equiv-text="{{ sharer.displayName }}"/></source>
+        <target>Note from <x id="INTERPOLATION" equiv-text="{{ sharer.displayName }}"/></target>
+      </trans-unit>
+      <trans-unit id="comments.note.remove" datatype="html">
+        <source> Quitar la nota </source>
+        <target>Remove note</target>
+      </trans-unit>
+      <trans-unit id="comments.note.removeTitle" datatype="html">
+        <source>Quitar la nota</source>
+        <target>Remove note</target>
+      </trans-unit>
+      <trans-unit id="comments.note.removeOwn" datatype="html">
+        <source>¿Quitar la nota? No se puede deshacer.</source>
+        <target>Remove the note? This can't be undone.</target>
+      </trans-unit>
+      <trans-unit id="comments.note.removeOther" datatype="html">
+        <source>¿Quitar la nota de <x id="NAME" equiv-text="sharer.displayName"/>? Desaparecerá para todo el grupo y no se puede deshacer.</source>
+        <target>Remove <x id="NAME" equiv-text="sharer.displayName"/>'s note? It will disappear for the whole group and can't be undone.</target>
+      </trans-unit>
+      <trans-unit id="comments.note.removeConfirm" datatype="html">
+        <source>Quitar la nota</source>
+        <target>Remove note</target>
+      </trans-unit>
+      <trans-unit id="comments.note.label" datatype="html">
+        <source>Nota para el grupo (opcional)</source>
+        <target>Note for the group (optional)</target>
+      </trans-unit>
+      <trans-unit id="comments.note.placeholder" datatype="html">
+        <source>Por ejemplo: esta es la que te dije</source>
+        <target>E.g. this is the one I told you about</target>
+      </trans-unit>
+      <trans-unit id="comments.note.max" datatype="html">
+        <source> Máximo 280 caracteres </source>
+        <target>280 characters max</target>
+      </trans-unit>
+      <trans-unit id="comments.note.discarded" datatype="html">
+        <source> Tu nota no se añadió porque la oferta ya estaba en el grupo. </source>
+        <target>Your note wasn't added because the job was already in the group.</target>
       </trans-unit>
     </body>
   </file>

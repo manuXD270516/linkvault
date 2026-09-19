@@ -1,6 +1,11 @@
 import { HttpClient, HttpEventType } from '@angular/common/http';
 import { DestroyRef, Injectable, InjectionToken, inject, signal } from '@angular/core';
-import { LINK_ENRICHED_EVENT_NAME, type LinkEnrichedMessage } from '@linkvault/shared';
+import {
+  GROUP_LINK_COMMENTS_EVENT_NAME,
+  type GroupLinkCommentsMessage,
+  LINK_ENRICHED_EVENT_NAME,
+  type LinkEnrichedMessage,
+} from '@linkvault/shared';
 import { Observable, Subject, type Subscription } from 'rxjs';
 
 const EVENTS_URL = '/api/events';
@@ -34,6 +39,7 @@ export const EVENTS_FIRST_RETRY_DELAY_MS = new InjectionToken<number>(
 export class EventsChannel {
   private readonly http = inject(HttpClient);
   private readonly enriched = new Subject<LinkEnrichedMessage>();
+  private readonly comments = new Subject<GroupLinkCommentsMessage>();
 
   private subscription: Subscription | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -50,6 +56,12 @@ export class EventsChannel {
 
   /** Avisos de links enriquecidos, en el orden en que llegan. */
   readonly linkEnriched: Observable<LinkEnrichedMessage> = this.enriched.asObservable();
+
+  /**
+   * Avisos de comentarios publicados o borrados en un link de un grupo (D9 de group-comments). Solo llegan a los
+   * miembros actuales de ese grupo, con el resumen de la tarjeta ya actualizado.
+   */
+  readonly groupLinkComments: Observable<GroupLinkCommentsMessage> = this.comments.asObservable();
 
   constructor() {
     // Apagado al destruirse el inyector: sin esto, una reconexión programada seguiría viva tras cerrar la aplicación.
@@ -151,12 +163,19 @@ export class EventsChannel {
         data.push(value);
       }
     }
-    if (name !== LINK_ENRICHED_EVENT_NAME || data.length === 0) {
+    if (data.length === 0) {
       return;
     }
-    const message = parseMessage(data.join('\n'));
-    if (message !== null) {
-      this.enriched.next(message);
+    if (name === LINK_ENRICHED_EVENT_NAME) {
+      const message = parseMessage(data.join('\n'));
+      if (message !== null) {
+        this.enriched.next(message);
+      }
+    } else if (name === GROUP_LINK_COMMENTS_EVENT_NAME) {
+      const message = parseCommentsMessage(data.join('\n'));
+      if (message !== null) {
+        this.comments.next(message);
+      }
     }
   }
 }
@@ -167,12 +186,7 @@ export class EventsChannel {
  * y en `core/links/links.api.ts`). Un mensaje que no se entiende se descarta: el listado sigue siendo la verdad.
  */
 function parseMessage(data: string): LinkEnrichedMessage | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(data);
-  } catch {
-    return null;
-  }
+  const parsed = parseJson(data);
   if (typeof parsed !== 'object' || parsed === null || !('link' in parsed)) {
     return null;
   }
@@ -181,4 +195,65 @@ function parseMessage(data: string): LinkEnrichedMessage | null {
     return null;
   }
   return typeof (link as { id: unknown }).id === 'string' ? (parsed as LinkEnrichedMessage) : null;
+}
+
+function parseJson(data: string): unknown {
+  try {
+    return JSON.parse(data) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
+}
+
+function isCount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+}
+
+/** Un comentario del resumen: lo justo para pintarlo en la tarjeta y en el hilo sin romper la plantilla. */
+function isComment(value: unknown): boolean {
+  if (!isRecord(value) || !isRecord(value['author'])) {
+    return false;
+  }
+  return (
+    isNonEmptyString(value['id']) &&
+    isNonEmptyString(value['author']['userId']) &&
+    isNonEmptyString(value['author']['displayName']) &&
+    typeof value['authorLeft'] === 'boolean' &&
+    typeof value['text'] === 'string' &&
+    isNonEmptyString(value['createdAt'])
+  );
+}
+
+/**
+ * Lee el aviso de comentarios con una guarda de forma, sin zod, por el mismo motivo que `parseMessage`. Comprueba lo que
+ * el store y las plantillas usan: los identificadores, el tipo de cambio y el resumen (`count`, `revision`, `sharedAt` y
+ * hasta dos comentarios). Lo que no encaja se descarta: la lista y el hilo siguen siendo la verdad.
+ */
+function parseCommentsMessage(data: string): GroupLinkCommentsMessage | null {
+  const parsed = parseJson(data);
+  if (!isRecord(parsed) || !isRecord(parsed['comments'])) {
+    return null;
+  }
+  const summary = parsed['comments'];
+  const latest = summary['latest'];
+  const valid =
+    isNonEmptyString(parsed['groupId']) &&
+    isNonEmptyString(parsed['linkId']) &&
+    isNonEmptyString(parsed['commentId']) &&
+    (parsed['change'] === 'created' || parsed['change'] === 'deleted') &&
+    isCount(summary['count']) &&
+    isCount(summary['revision']) &&
+    isNonEmptyString(summary['sharedAt']) &&
+    Array.isArray(latest) &&
+    latest.length <= 2 &&
+    latest.every(isComment);
+  return valid ? (parsed as GroupLinkCommentsMessage) : null;
 }

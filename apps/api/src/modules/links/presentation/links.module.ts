@@ -17,14 +17,21 @@ import { GroupDeletionHooks } from '../../groups/application/group-deletion-hook
 import { GroupsModule } from '../../groups/presentation/groups.module';
 import { UsersModule } from '../../users/presentation/users.module';
 import { BackfillEnrichment } from '../application/backfill-enrichment.usecase';
+import { DeleteGroupLinkComment } from '../application/delete-group-link-comment.usecase';
+import { DeliverCommentsChanged } from '../application/deliver-comments-changed.usecase';
 import { DeliverLinkEnriched } from '../application/deliver-link-enriched.usecase';
 import { ImportLinks } from '../application/import-links.usecase';
+import { ListGroupLinkComments } from '../application/list-group-link-comments.usecase';
 import { ListGroupLinks } from '../application/list-group-links.usecase';
 import { LinksFacade } from '../application/links.facade';
 import { ListMyLinks } from '../application/list-my-links.usecase';
 import { LINKS_CLOCK } from '../application/ports/clock.port';
+import { COMMENT_NOTICES } from '../application/ports/comment-notices.port';
+import { COMMENTS_BROADCASTER } from '../application/ports/comments-broadcaster.port';
+import { COMMENTS_CHANGED_PUBLISHER } from '../application/ports/comments-changed-publisher.port';
 import { ENRICHMENT_BROADCASTER } from '../application/ports/enrichment-broadcaster.port';
 import { ENRICHMENT_NOTICES } from '../application/ports/enrichment-notices.port';
+import { GROUP_LINK_COMMENT_REPOSITORY } from '../application/ports/group-link-comment-repository.port';
 import { GROUP_LINK_REPOSITORY } from '../application/ports/group-link-repository.port';
 import { GROUP_MEMBERSHIP } from '../application/ports/group-membership.port';
 import { JOB_LINK_REPOSITORY } from '../application/ports/job-link-repository.port';
@@ -36,14 +43,18 @@ import {
 import { PASTED_EXTRACTION } from '../application/ports/pasted-extraction.port';
 import { LINK_ENRICHED_PUBLISHER } from '../application/ports/link-enriched-publisher.port';
 import { PasteDescription } from '../application/paste-description.usecase';
+import { PostGroupLinkComment } from '../application/post-group-link-comment.usecase';
 import { USER_LINK_REPOSITORY } from '../application/ports/user-link-repository.port';
 import { RemoveGroupLink } from '../application/remove-group-link.usecase';
 import { RemoveMyLink } from '../application/remove-my-link.usecase';
+import { RemoveShareNote } from '../application/remove-share-note.usecase';
 import { RequestLinkEnrichment } from '../application/request-link-enrichment.usecase';
 import { SaveLink } from '../application/save-link.usecase';
 import { UpdateLinkPreview } from '../application/update-link-preview.usecase';
 import { GroupLinksDeletionHook } from '../infrastructure/group-links-deletion.hook';
+import { CommentsChangedSubscription } from '../infrastructure/comments-changed.subscription';
 import { CounterLinkLimiter } from '../infrastructure/counter-link-limiter';
+import { EventStreamCommentsBroadcaster } from '../infrastructure/event-stream-comments-broadcaster';
 import { EventStreamBroadcaster } from '../infrastructure/event-stream-broadcaster';
 import { LinkEnrichedSubscription } from '../infrastructure/link-enriched.subscription';
 import {
@@ -51,13 +62,17 @@ import {
   type RedisSubscriber,
 } from '../infrastructure/redis-enrichment-notices';
 import { GroupsFacadeMembership } from '../infrastructure/groups-facade-membership';
+import { MongoGroupLinkCommentRepository } from '../infrastructure/mongo-group-link-comment.repository';
 import { MongoGroupLinkRepository } from '../infrastructure/mongo-group-link.repository';
 import { MongoJobLinkRepository } from '../infrastructure/mongo-job-link.repository';
 import { MongoUserLinkRepository } from '../infrastructure/mongo-user-link.repository';
 import { RunTaskPastedExtraction } from '../infrastructure/run-task-pasted-extraction';
+import { RedisCommentNotices } from '../infrastructure/redis-comment-notices';
+import { RedisCommentsChangedPublisher } from '../infrastructure/redis-comments-changed-publisher';
 import { RedisLinkEnrichedPublisher } from '../infrastructure/redis-link-enriched-publisher';
 import { SystemClock } from '../infrastructure/system-clock';
 import { UsersFacadeLinkDirectory } from '../infrastructure/users-facade-link-directory';
+import { GroupLinkCommentsController } from './group-link-comments.controller';
 import { GroupLinksController } from './group-links.controller';
 import { LinksController } from './links.controller';
 
@@ -75,7 +90,8 @@ import { LinksController } from './links.controller';
  * NO monta ninguna `Queue`: reintentar y reencolar van por el outbox (D10 de link-enrichment), así que la suite de
  * integración de `api` sigue sin necesitar Redis para escribir en la cola.
  *
- * Sí abre una conexión de Redis en **modo suscripción** para los avisos de enriquecimiento, una sola por proceso (D9).
+ * Sí abre una conexión de Redis en **modo suscripción** para los avisos de enriquecimiento y de comentarios, una sola por
+ * proceso y compartida por los dos canales (D9 de link-enrichment y de group-comments).
  * Si Redis no está, la suscripción avisa una vez y `api` sigue sirviendo peticiones: lo único que se pierde es que una
  * pantalla abierta se entere sola, y se recupera sola cuando Redis vuelve.
  *
@@ -91,15 +107,24 @@ import { LinksController } from './links.controller';
     RealtimeModule,
     RedisAppModule,
   ],
-  controllers: [LinksController, GroupLinksController],
+  controllers: [
+    LinksController,
+    GroupLinksController,
+    GroupLinkCommentsController,
+  ],
   providers: [
     { provide: JOB_LINK_REPOSITORY, useClass: MongoJobLinkRepository },
     { provide: GROUP_LINK_REPOSITORY, useClass: MongoGroupLinkRepository },
+    {
+      provide: GROUP_LINK_COMMENT_REPOSITORY,
+      useClass: MongoGroupLinkCommentRepository,
+    },
     { provide: USER_LINK_REPOSITORY, useClass: MongoUserLinkRepository },
     { provide: GROUP_MEMBERSHIP, useClass: GroupsFacadeMembership },
     { provide: LINK_USER_DIRECTORY, useClass: UsersFacadeLinkDirectory },
     { provide: LINK_LIMITER, useClass: CounterLinkLimiter },
     { provide: ENRICHMENT_BROADCASTER, useClass: EventStreamBroadcaster },
+    { provide: COMMENTS_BROADCASTER, useClass: EventStreamCommentsBroadcaster },
     {
       // Conexión propia: un cliente de Redis en modo suscripción no acepta comandos, así que no puede ser el mismo que
       // cuenta intentos. Y tampoco puede ser un cliente **de aplicación**: ese no encola comandos sin conexión, así que
@@ -116,6 +141,13 @@ import { LinksController } from './links.controller';
       inject: [REDIS_SUBSCRIBER_CLIENT],
       useFactory: (client: RedisSubscriber) =>
         new RedisEnrichmentNotices(client),
+    },
+    {
+      // El **mismo** cliente suscriptor que los avisos de enriquecimiento: una conexión en modo suscripción por proceso,
+      // con los dos canales. Cada adaptador filtra los mensajes de su canal.
+      provide: COMMENT_NOTICES,
+      inject: [REDIS_SUBSCRIBER_CLIENT],
+      useFactory: (client: RedisSubscriber) => new RedisCommentNotices(client),
     },
     // Abrir la conexión es de quien se suscribe; cerrarla al apagar, de esto.
     RedisSubscriberConnection,
@@ -140,6 +172,12 @@ import { LinksController } from './links.controller';
       inject: [REDIS_APP_CLIENT],
       useFactory: (client: Redis) => new RedisLinkEnrichedPublisher(client),
     },
+    {
+      // Aviso de comentarios con el cliente de aplicación: solo publica, sin texto ni autor (D9 de group-comments).
+      provide: COMMENTS_CHANGED_PUBLISHER,
+      inject: [REDIS_APP_CLIENT],
+      useFactory: (client: Redis) => new RedisCommentsChangedPublisher(client),
+    },
     { provide: LINKS_CLOCK, useClass: SystemClock },
     SaveLink,
     PasteDescription,
@@ -152,6 +190,12 @@ import { LinksController } from './links.controller';
     RequestLinkEnrichment,
     DeliverLinkEnriched,
     LinkEnrichedSubscription,
+    PostGroupLinkComment,
+    DeleteGroupLinkComment,
+    ListGroupLinkComments,
+    RemoveShareNote,
+    DeliverCommentsChanged,
+    CommentsChangedSubscription,
     BackfillEnrichment,
     GroupLinksDeletionHook,
     LinksFacade,

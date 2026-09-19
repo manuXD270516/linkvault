@@ -1,6 +1,13 @@
+import { HttpEventType } from '@angular/common/http';
 import { HttpTestingController } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import type { JobLinkSummary, LinkPage } from '@linkvault/shared';
+import type {
+  CommentsSummary,
+  GroupLinkComment,
+  GroupLinkCommentsMessage,
+  JobLinkSummary,
+  LinkPage,
+} from '@linkvault/shared';
 import {
   providePageTesting,
   sessionWith,
@@ -8,6 +15,7 @@ import {
   verifyNoPendingRequests,
 } from '../../../testing/auth-testing';
 import { SessionStore } from '../auth/session.store';
+import { EventsChannel } from '../events/events.channel';
 import { LinksStore } from './links.store';
 
 function linkWith(id: string): JobLinkSummary {
@@ -21,6 +29,47 @@ function linkWith(id: string): JobLinkSummary {
     sharedBy: { userId: 'u1', displayName: 'Ana' },
     sharedAt: '2026-09-17T10:00:00.000Z',
   };
+}
+
+const SHARED_AT = '2026-09-17T10:00:00.000Z';
+
+function commentWith(id: string, text: string, displayName = 'Beto'): GroupLinkComment {
+  return {
+    id,
+    author: { userId: `u-${displayName}`, displayName },
+    authorLeft: false,
+    text,
+    createdAt: '2026-09-19T10:00:00.000Z',
+  };
+}
+
+function summaryWith(
+  revision: number,
+  latest: GroupLinkComment[],
+  count = latest.length,
+  sharedAt = SHARED_AT,
+): CommentsSummary {
+  return { count, revision, sharedAt, latest };
+}
+
+/** Un link del grupo con nota y dos comentarios, como lo trae el listado del grupo. */
+function linkWithContext(id: string, revision = 2): JobLinkSummary {
+  return {
+    ...linkWith(id),
+    note: { text: 'Esta es la que te dije', createdAt: SHARED_AT },
+    comments: summaryWith(revision, [
+      commentWith('c2', 'Ya cerró'),
+      commentWith('c1', 'Piden inglés C1'),
+    ]),
+  };
+}
+
+function noticeFor(
+  linkId: string,
+  comments: CommentsSummary,
+  groupId = 'g1',
+): GroupLinkCommentsMessage {
+  return { groupId, linkId, change: 'created', commentId: comments.latest[0]?.id ?? 'c0', comments };
 }
 
 const GROUP_PAGE = '/api/groups/g1/links?limit=20';
@@ -616,6 +665,179 @@ describe('LinksStore', () => {
 
       await expect(retrying).resolves.toEqual(retried);
       expect(store.items()[0]).toEqual(retried);
+    });
+  });
+
+  describe('group comments', () => {
+    it('La lectura de la oferta no borra los comentarios', async () => {
+      await openGroup({ items: [linkWithContext('l1')], total: 1 });
+      const enriched: JobLinkSummary = {
+        ...linkWith('l1'),
+        previewStatus: 'enriched',
+        previewVersion: 2,
+        preview: { title: 'Backend Engineer', company: 'Acme' },
+      };
+
+      store.applyEnriched(enriched);
+
+      const [card] = store.items();
+      expect(card?.preview?.title).toBe('Backend Engineer');
+      expect(card?.note?.text).toBe('Esta es la que te dije');
+      expect(card?.comments?.latest.map((comment) => comment.text)).toEqual([
+        'Ya cerró',
+        'Piden inglés C1',
+      ]);
+    });
+
+    it('Corregir el preview no borra los comentarios', async () => {
+      await openGroup({ items: [linkWithContext('l1')], total: 1 });
+
+      const updating = store.updatePreview('l1', { fields: { title: 'Título corregido' } });
+      http
+        .expectOne({ method: 'PATCH', url: '/api/links/l1/preview' })
+        .flush({ ...linkWith('l1'), previewVersion: 2, preview: { title: 'Título corregido' } });
+      await updating;
+
+      const [card] = store.items();
+      expect(card?.preview?.title).toBe('Título corregido');
+      expect(card?.note?.text).toBe('Esta es la que te dije');
+      expect(card?.comments?.count).toBe(2);
+    });
+
+    it('keeps the note and the comments after pasting a description too', async () => {
+      await openGroup({ items: [linkWithContext('l1')], total: 1 });
+
+      const pasting = store.pasteDescription('l1', { text: 'Buscamos backend…' });
+      http
+        .expectOne({ method: 'POST', url: '/api/links/l1/pasted' })
+        .flush({ ...linkWith('l1'), previewVersion: 3 });
+      await pasting;
+
+      expect(store.items()[0]).toMatchObject({
+        previewVersion: 3,
+        note: { text: 'Esta es la que te dije' },
+      });
+      expect(store.items()[0]?.comments?.count).toBe(2);
+    });
+
+    it('Comentario que llega mientras miras', async () => {
+      await openGroup({ items: [linkWithContext('l1')], total: 1 });
+      const channel = TestBed.inject(EventsChannel);
+      channel.connect();
+      const beto = commentWith('c3', 'Lo vi en LinkedIn');
+      const message = noticeFor('l1', summaryWith(3, [beto, commentWith('c2', 'Ya cerró')], 3));
+
+      const request = http.expectOne('/api/events');
+      const body = `event: group-link.comments\ndata: ${JSON.stringify(message)}\n\n`;
+      request.event({ type: HttpEventType.DownloadProgress, loaded: body.length, partialText: body });
+      await settle();
+
+      expect(store.items()[0]?.comments).toEqual(message.comments);
+    });
+
+    it('Un resumen viejo no pisa uno nuevo', async () => {
+      await openGroup({ items: [linkWithContext('l1', 7)], total: 1 });
+      const late = noticeFor('l1', summaryWith(6, [commentWith('c9', 'Viejo')], 5));
+
+      store.applyCommentsChanged(late);
+
+      expect(store.items()[0]?.comments?.revision).toBe(7);
+      expect(store.items()[0]?.comments?.count).toBe(2);
+    });
+
+    it('Volver a compartir no congela la tarjeta', async () => {
+      await openGroup({ items: [linkWithContext('l1', 7)], total: 1 });
+      const reshared = noticeFor(
+        'l1',
+        summaryWith(1, [commentWith('c9', 'De nuevo aquí')], 1, '2026-09-19T12:00:00.000Z'),
+      );
+
+      store.applyCommentsChanged(reshared);
+
+      expect(store.items()[0]?.comments).toEqual(reshared.comments);
+    });
+
+    it('ignores the notices of another group and of links that are not loaded', async () => {
+      await openGroup({ items: [linkWithContext('l1')], total: 1 });
+
+      store.applyCommentsChanged(noticeFor('l1', summaryWith(9, [], 0), 'g2'));
+      store.applyCommentsChanged(noticeFor('l2', summaryWith(9, [], 0)));
+
+      expect(store.items()[0]?.comments?.revision).toBe(2);
+      expect(store.items()).toHaveLength(1);
+    });
+
+    it('applies the summary of a posted comment unless a newer one already arrived', async () => {
+      await openGroup({ items: [linkWithContext('l1')], total: 1 });
+      const mine = commentWith('c3', 'Ya cerró', 'Ana');
+
+      const posting = store.postComment('g1', 'l1', 'Ya cerró');
+      const request = http.expectOne({ method: 'POST', url: '/api/groups/g1/links/l1/comments' });
+      expect(request.request.body).toEqual({ text: 'Ya cerró' });
+      // El aviso de un comentario posterior llega antes que la respuesta del propio.
+      const newer = summaryWith(4, [commentWith('c4', 'Otro'), mine], 4);
+      store.applyCommentsChanged(noticeFor('l1', newer));
+      request.flush(
+        { comment: mine, comments: summaryWith(3, [mine, commentWith('c2', 'Ya cerró')], 3) },
+        { status: 201, statusText: 'Created' },
+      );
+      await expect(posting).resolves.toMatchObject({ comment: mine });
+
+      expect(store.items()[0]?.comments).toEqual(newer);
+    });
+
+    it('applies the summary of the 200 of a deletion', async () => {
+      await openGroup({ items: [linkWithContext('l1')], total: 1 });
+      const after = summaryWith(3, [commentWith('c1', 'Piden inglés C1')], 1);
+
+      const deleting = store.deleteComment('g1', 'l1', 'c2');
+      http
+        .expectOne({ method: 'DELETE', url: '/api/groups/g1/links/l1/comments/c2' })
+        .flush({ comments: after });
+
+      await expect(deleting).resolves.toEqual({ comments: after });
+      expect(store.items()[0]?.comments).toEqual(after);
+    });
+
+    it('takes a comment_not_found on deletion as done', async () => {
+      await openGroup({ items: [linkWithContext('l1')], total: 1 });
+
+      const deleting = store.deleteComment('g1', 'l1', 'c2');
+      http
+        .expectOne({ method: 'DELETE', url: '/api/groups/g1/links/l1/comments/c2' })
+        .flush(
+          { code: 'comment_not_found', message: 'Not found' },
+          { status: 404, statusText: 'Not Found' },
+        );
+
+      await expect(deleting).resolves.toBeNull();
+    });
+
+    it('propagates any other deletion error', async () => {
+      await openGroup({ items: [linkWithContext('l1')], total: 1 });
+
+      const deleting = store.deleteComment('g1', 'l1', 'c2');
+      http
+        .expectOne({ method: 'DELETE', url: '/api/groups/g1/links/l1/comments/c2' })
+        .flush({ code: 'forbidden', message: 'Forbidden' }, { status: 403, statusText: 'Forbidden' });
+
+      await expect(deleting).rejects.toMatchObject({ status: 403 });
+      expect(store.items()[0]?.comments?.count).toBe(2);
+    });
+
+    it('drops the note from the card once removed, without reloading', async () => {
+      await openGroup({ items: [linkWithContext('l1')], total: 1 });
+
+      const removing = store.removeNote('g1', 'l1');
+      http
+        .expectOne({ method: 'DELETE', url: '/api/groups/g1/links/l1/note' })
+        .flush(null, { status: 204, statusText: 'No Content' });
+      await removing;
+
+      await settle();
+      http.expectNone(GROUP_PAGE);
+      expect(store.items()[0]?.note).toBeUndefined();
+      expect(store.items()[0]?.comments?.count).toBe(2);
     });
   });
 });

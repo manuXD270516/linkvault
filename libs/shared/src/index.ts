@@ -1,9 +1,11 @@
 export * from './events/application-stale.event';
+export * from './events/group-link-comments.event';
 export * from './events/link-created.event';
 export * from './events/link-enriched.event';
 export * from './schemas/application.schema';
 export * from './schemas/auth.schema';
 export * from './schemas/group.schema';
+export * from './schemas/group-link-comment.schema';
 export * from './schemas/health.schema';
 export * from './schemas/link.schema';
 export * from './schemas/pasted-description.schema';
@@ -11,4 +13,5 @@ export * from './schemas/preview.schema';
 export * from './schemas/user-profile.schema';
 export * from './preview/precedence';
 export * from './preview/preview-draft';
+export * from './text/comment-text';
 export * from './text/contact-scrub';

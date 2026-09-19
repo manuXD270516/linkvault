@@ -2,16 +2,25 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  type TemplateRef,
   computed,
   effect,
   inject,
   input,
   signal,
   untracked,
+  viewChild,
 } from '@angular/core';
 import { MatDialog } from '@angular/material/dialog';
+import { MatSnackBar } from '@angular/material/snack-bar';
 import type { Application, GroupTracker, JobLinkSummary, PreviewFieldName } from '@linkvault/shared';
-import { type RequestFailure, isApiFailure, toRequestFailure } from '../../core/api/api-error';
+import { firstValueFrom } from 'rxjs';
+import {
+  type RequestFailure,
+  hasApiErrorCode,
+  isApiFailure,
+  toRequestFailure,
+} from '../../core/api/api-error';
 import { ApplicationsStore } from '../../core/applications/applications.store';
 import { SessionStore } from '../../core/auth/session.store';
 import { LinksStore } from '../../core/links/links.store';
@@ -19,9 +28,19 @@ import { ApplicationMoves } from '../applications/application-moves';
 import { ShareInvitation } from '../applications/share-invitation';
 import { confirmWith } from '../../shared/ui/confirm.dialog';
 import { RequestError } from '../../shared/ui/request-error';
+import {
+  COMMENTS_DIALOG_SIZE,
+  CommentsDialog,
+  type CommentsDialogData,
+  type CommentsDialogResult,
+} from './comments.dialog';
 import { EditPreviewDialog, type EditPreviewDialogData } from './edit-preview.dialog';
 import { LinkCard } from './link-card.component';
+import { linkLabel } from './link-preview';
 import { PasteDescriptionDialog, type PasteDescriptionDialogData } from './paste-description.dialog';
+
+/** Cuánto se ve "Esta oferta ya no está en el grupo" tras cerrarse el hilo. */
+const GONE_NOTICE_MS = 6000;
 
 /** De qué lista son los links: la de un grupo o la privada. Solo cambia el texto del estado vacío. */
 export type LinkListScope = 'group' | 'mine';
@@ -51,6 +70,7 @@ export class LinkList {
 
   private readonly store = inject(LinksStore);
   private readonly dialog = inject(MatDialog);
+  private readonly snackBar = inject(MatSnackBar);
   private readonly session = inject(SessionStore);
   private readonly applications = inject(ApplicationsStore);
   private readonly moves = inject(ApplicationMoves);
@@ -68,6 +88,10 @@ export class LinkList {
   /** Cuántas lecturas van listas de las que se están esperando; `null` cuando no hay ninguna en curso. */
   protected readonly reading = this.store.reading;
   protected readonly failure = signal<RequestFailure | null>(null);
+  /** Comentarios del link que se va a quitar del grupo; lo lee el mensaje de la confirmación, que pluraliza. */
+  protected readonly removingCommentCount = signal(0);
+  /** El mensaje de quitar en un grupo vive en plantilla: un ICU no se puede escribir en TypeScript. */
+  private readonly removeGroupMessage = viewChild.required<TemplateRef<unknown>>('removeGroupMessage');
 
   /**
    * La API puede negar un reintento que la tarjeta sí ofrecía: entre que se pintó y se pulsó, la lectura pudo terminar
@@ -200,11 +224,7 @@ export class LinkList {
 
   /** Quitar lo ofrece a quien compartió el link y al owner; en la lista privada, todo link propio se puede quitar. */
   protected canRemove(link: JobLinkSummary): boolean {
-    if (this.scope() === 'mine') {
-      return true;
-    }
-    const userId = this.session.user()?.id;
-    return this.canModerate() || (userId !== undefined && link.sharedBy?.userId === userId);
+    return this.scope() === 'mine' || this.isSharerOrOwner(link);
   }
 
   /**
@@ -261,14 +281,101 @@ export class LinkList {
     }
   }
 
-  /** Solo se borra la relación con este grupo o con esta lista: la vacante sigue en los demás. */
+  /**
+   * Abre el hilo del link en el grupo. Si se cierra porque la oferta ya no está en el grupo (un `404` al abrir o al
+   * publicar), se dice y se vuelve a pedir la lista, que todavía la enseñaba.
+   */
+  protected async openComments(link: JobLinkSummary): Promise<void> {
+    const groupId = this.groupId();
+    if (groupId === null) {
+      return;
+    }
+    this.failure.set(null);
+    const title = link.preview?.title;
+    const ref = this.dialog.open<CommentsDialog, CommentsDialogData, CommentsDialogResult>(
+      CommentsDialog,
+      {
+        data: {
+          groupId,
+          linkId: link.id,
+          headline: title === undefined || title.length === 0 ? linkLabel(link.displayUrl) : title,
+          canModerate: this.canModerate(),
+        },
+        autoFocus: 'dialog',
+        ...COMMENTS_DIALOG_SIZE,
+      },
+    );
+    const result = await firstValueFrom(ref.afterClosed());
+    if (result === 'gone') {
+      this.snackBar.open(
+        $localize`:@@comments.gone:Esta oferta ya no está en el grupo`,
+        undefined,
+        { duration: GONE_NOTICE_MS, politeness: 'assertive' },
+      );
+      void this.store.reload();
+    }
+  }
+
+  /** Quitar la nota lo pueden quien compartió el link y el propietario del grupo (D3 de group-comments). */
+  protected canRemoveNote(link: JobLinkSummary): boolean {
+    return this.scope() === 'group' && link.note !== undefined && this.isSharerOrOwner(link);
+  }
+
+  /**
+   * Quita la nota tras confirmarlo. La confirmación dice de quién es: la propia solo avisa de que no se puede deshacer;
+   * la ajena, que desaparece para todo el grupo (business 5, iteración 2). La tarjeta la deja de mostrar sin recargar.
+   */
+  protected async removeNote(link: JobLinkSummary): Promise<void> {
+    const groupId = this.groupId();
+    if (groupId === null || this.working()) {
+      return;
+    }
+    const sharer = link.sharedBy;
+    const own = sharer !== undefined && sharer.userId === this.session.user()?.id;
+    const confirmed = await confirmWith(this.dialog, {
+      title: $localize`:@@comments.note.removeTitle:Quitar la nota`,
+      message:
+        own || sharer === undefined
+          ? $localize`:@@comments.note.removeOwn:¿Quitar la nota? No se puede deshacer.`
+          : $localize`:@@comments.note.removeOther:¿Quitar la nota de ${sharer.displayName}:NAME:? Desaparecerá para todo el grupo y no se puede deshacer.`,
+      confirmLabel: $localize`:@@comments.note.removeConfirm:Quitar la nota`,
+    });
+    if (!confirmed) {
+      return;
+    }
+    this.working.set(true);
+    this.failure.set(null);
+    try {
+      await this.store.removeNote(groupId, link.id);
+    } catch (error: unknown) {
+      this.failure.set(toRequestFailure(error));
+      // La oferta ya no está en el grupo: la lista se vuelve a pedir para no seguir enseñándola.
+      if (hasApiErrorCode(error, 404, 'link_not_found')) {
+        void this.store.reload();
+      }
+    } finally {
+      this.working.set(false);
+    }
+  }
+
+  private isSharerOrOwner(link: JobLinkSummary): boolean {
+    const userId = this.session.user()?.id;
+    return this.canModerate() || (userId !== undefined && link.sharedBy?.userId === userId);
+  }
+
+  /**
+   * Solo se borra la relación con este grupo o con esta lista: la vacante sigue en los demás. En un grupo, la
+   * confirmación dice cuántos comentarios se van con ella (spec web/links): el número sale del contador del link, no de
+   * los dos que enseña la tarjeta.
+   */
   protected async remove(link: JobLinkSummary): Promise<void> {
+    this.removingCommentCount.set(link.comments?.count ?? 0);
     const confirmed = await confirmWith(this.dialog, {
       title: $localize`:@@links.list.removeTitle:Quitar el enlace`,
       message:
         this.scope() === 'mine'
           ? $localize`:@@links.list.removeMessageMine:Se quita de tu lista; la oferta sigue disponible en tus grupos.`
-          : $localize`:@@links.list.removeMessageGroup:Se quita de este grupo; la oferta sigue disponible en otros grupos.`,
+          : this.removeGroupMessage(),
       confirmLabel: $localize`:@@links.list.removeConfirm:Quitar`,
     });
     if (!confirmed) {

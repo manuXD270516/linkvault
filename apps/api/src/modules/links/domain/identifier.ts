@@ -25,3 +25,8 @@ export function isGroupId(id: string): boolean {
 export function isUserId(id: string): boolean {
   return isObjectIdHex(id);
 }
+
+/** `true` si la cadena puede identificar a un comentario. No dice que el comentario exista. */
+export function isCommentId(id: string): boolean {
+  return isObjectIdHex(id);
+}

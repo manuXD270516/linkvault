@@ -2,6 +2,13 @@ import { apiErrorCodeSchema } from '@linkvault/shared';
 import { describe, expect, it } from 'vitest';
 import {
   AiQuotaExceeded,
+  CommentDeletionForbidden,
+  CommentNotFound,
+  CommentsGroupNotFound,
+  InvalidCommentText,
+  InvalidLinkField,
+  InvalidShareNote,
+  NoteRemovalForbidden,
   EnrichmentNotRetryable,
   ExtractionUnavailable,
   InvalidCursor,
@@ -27,6 +34,12 @@ const errors = [
   new NotAJobPosting(),
   new ExtractionUnavailable(60),
   new AiQuotaExceeded(86_400),
+  new InvalidCommentText(),
+  new InvalidShareNote(),
+  new CommentNotFound(),
+  new CommentDeletionForbidden(),
+  new NoteRemovalForbidden(),
+  new CommentsGroupNotFound(),
 ];
 
 describe('links domain errors', () => {
@@ -42,6 +55,12 @@ describe('links domain errors', () => {
     [new NotAJobPosting(), 'not_a_job_posting'],
     [new ExtractionUnavailable(60), 'extraction_unavailable'],
     [new AiQuotaExceeded(86_400), 'ai_quota_exceeded'],
+    [new InvalidCommentText(), 'validation_error'],
+    [new InvalidShareNote(), 'validation_error'],
+    [new CommentNotFound(), 'comment_not_found'],
+    [new CommentDeletionForbidden(), 'forbidden'],
+    [new NoteRemovalForbidden(), 'forbidden'],
+    [new CommentsGroupNotFound(), 'group_not_found'],
   ] as const)('%s carries the API code %s', (error, code) => {
     expect(error).toBeInstanceOf(LinksError);
     expect(error.code).toBe(code);
@@ -66,6 +85,12 @@ describe('links domain errors', () => {
       'NotAJobPosting',
       'ExtractionUnavailable',
       'AiQuotaExceeded',
+      'InvalidCommentText',
+      'InvalidShareNote',
+      'CommentNotFound',
+      'CommentDeletionForbidden',
+      'NoteRemovalForbidden',
+      'CommentsGroupNotFound',
     ]);
   });
 
@@ -84,6 +109,10 @@ describe('links domain errors', () => {
     expect(new InvalidUrl().field).toBe('url');
     expect(new TextTooLong().field).toBe('text');
     expect(new InvalidCursor().field).toBe('cursor');
+    expect(new InvalidCommentText()).toBeInstanceOf(InvalidLinkField);
+    expect(new InvalidShareNote()).toBeInstanceOf(InvalidLinkField);
+    expect(new InvalidCommentText().field).toBe('text');
+    expect(new InvalidShareNote().field).toBe('note');
   });
 
   it('carries no url, imported text or cursor in the message', () => {

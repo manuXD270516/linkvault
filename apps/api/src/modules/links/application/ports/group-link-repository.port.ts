@@ -1,3 +1,8 @@
+import type {
+  GroupLinkComment,
+  NewGroupLinkComment,
+} from '../../domain/group-link-comment';
+import type { ShareNote } from '../../domain/share-note';
 import type { LinkListPage, LinkListQuery } from './link-listing';
 import type { TransactionSession } from './transaction-session';
 
@@ -12,6 +17,28 @@ export interface GroupLink {
   readonly linkId: string;
   readonly sharedBy: string;
   readonly sharedAt: Date;
+  /** Nota de quien lo compartió, si la dejó al crear la relación y nadie la quitó (D3 de group-comments). */
+  readonly note?: ShareNote;
+  /** Comentarios del link en este grupo; 0 si el documento no tiene el campo (D2 de group-comments). */
+  readonly commentCount: number;
+  /** Revisión del resumen de comentarios: sube con cada alta y cada borrado, nunca baja mientras dure la relación. */
+  readonly commentsRevision: number;
+}
+
+/**
+ * Contadores de comentarios de la relación tras un alta o un borrado. `sharedAt` identifica la relación: al quitar el
+ * link y volver a compartirlo, la revisión vuelve a 0 con otro `sharedAt` (critic 2 de la iteración 2).
+ */
+export interface CommentsCounters {
+  readonly count: number;
+  readonly revision: number;
+  readonly sharedAt: Date;
+}
+
+/** Comentario recién guardado y los contadores de la relación tras guardarlo. */
+export interface AddedComment {
+  readonly comment: GroupLinkComment;
+  readonly counters: CommentsCounters;
 }
 
 /** Relación tras compartir, y si la creó esta petición o ya estaba. */
@@ -25,12 +52,14 @@ export interface ShareInGroupInput {
   readonly linkId: string;
   readonly sharedBy: string;
   readonly sharedAt: Date;
+  /** Nota de quien comparte. Solo se guarda si la relación es nueva: la del primero no cambia. */
+  readonly note?: ShareNote;
 }
 
 export interface GroupLinkRepository {
   /**
    * Comparte el link en el grupo. Idempotente: si ya estaba devuelve la relación existente con `created` `false`, sin
-   * cambiar quién lo compartió primero. Se llama dentro de la transacción del alta.
+   * cambiar quién lo compartió primero ni su nota. Se llama dentro de la transacción del alta.
    */
   share(
     input: ShareInGroupInput,
@@ -43,7 +72,10 @@ export interface GroupLinkRepository {
    * mitad del reparto de un aviso de enriquecimiento (D9 de link-enrichment).
    */
   relationsOfLink(linkId: string): Promise<GroupLink[]>;
-  /** Página de links del grupo, por `sharedAt` y `_id` descendentes. */
+  /**
+   * Página de links del grupo, por `sharedAt` y `_id` descendentes, con la nota y los contadores de comentarios de
+   * cada relación.
+   */
   listByGroup(groupId: string, query: LinkListQuery): Promise<LinkListPage>;
   /** Cuántos links tiene el grupo. No depende del tamaño de página. */
   countByGroup(groupId: string): Promise<number>;
@@ -61,13 +93,32 @@ export interface GroupLinkRepository {
    * applications-tracking). Los ids mal formados no aportan nada.
    */
   linkIdsIn(groupId: string, linkIds: readonly string[]): Promise<Set<string>>;
-  /** Quita el link del grupo; `false` si no estaba. NUNCA borra el `JobLink`. */
-  remove(groupId: string, linkId: string): Promise<boolean>;
   /**
-   * Borra todas las relaciones del grupo y devuelve cuántas. La usa el hook del borrado de grupo, dentro de la
-   * transacción de `groups` (D7b).
+   * Quita el link del grupo **con su nota y sus comentarios**, en una transacción (D2 y D8 de group-comments): o se
+   * borra todo o nada. `false` si la relación no estaba. NUNCA borra el `JobLink`.
+   */
+  removeWithComments(groupId: string, linkId: string): Promise<boolean>;
+  /**
+   * Borra todas las relaciones del grupo y, antes, sus comentarios, con la sesión recibida, y devuelve cuántas
+   * relaciones. La usa el hook del borrado de grupo, dentro de la transacción de `groups` (D7b de job-links, D8 de
+   * group-comments).
    */
   deleteByGroup(groupId: string, session: TransactionSession): Promise<number>;
-  /** Borra las relaciones de un link con cualquier grupo y devuelve cuántas. */
-  deleteByLink(linkId: string): Promise<number>;
+  /**
+   * Guarda un comentario en una transacción (D2 de group-comments): primero `$inc` de `commentCount` y
+   * `commentsRevision` en la relación y después el comentario. `null` si la relación ya no existe, sin guardar nada:
+   * un comentario nunca queda sin su relación, tampoco en la carrera con `removeWithComments`.
+   */
+  addComment(comment: NewGroupLinkComment): Promise<AddedComment | null>;
+  /**
+   * Borra un comentario en una transacción: primero el comentario y, solo si se borró, `$inc` de `-1` en
+   * `commentCount` y `+1` en `commentsRevision`. `null` si el comentario no estaba (otro borrado se adelantó).
+   */
+  removeComment(
+    groupId: string,
+    linkId: string,
+    commentId: string,
+  ): Promise<CommentsCounters | null>;
+  /** Quita la nota de la relación, la hubiera o no; `false` si la relación no existe. */
+  clearNote(groupId: string, linkId: string): Promise<boolean>;
 }

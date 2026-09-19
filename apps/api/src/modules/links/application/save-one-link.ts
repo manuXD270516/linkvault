@@ -8,6 +8,7 @@ import {
   type NewJobLink,
 } from '../domain/job-link';
 import { isUrlTooLong } from '../domain/limits';
+import type { ShareNote } from '../domain/share-note';
 import { normalizeUrl, toDisplayUrl } from '../domain/url';
 import type { GroupLinkRepository } from './ports/group-link-repository.port';
 import type {
@@ -43,6 +44,8 @@ export interface SavedLink {
   /** Quién la compartió primero en el grupo; en la lista privada, quien la guardó. */
   readonly sharedBy: string;
   readonly sharedAt: Date;
+  /** Nota de la relación con el grupo: la de quien la compartió primero, si la dejó. Nunca en la lista privada. */
+  readonly note?: ShareNote;
 }
 
 /**
@@ -93,10 +96,12 @@ export async function saveOneLink(
     draft: NewJobLink;
     userId: string;
     groupId?: string;
+    /** Nota de quien comparte (D3 de group-comments): solo con grupo y solo se guarda si la relación es nueva. */
+    note?: ShareNote;
     now: Date;
   },
 ): Promise<SavedLink> {
-  const { groupId, userId, now } = params;
+  const { groupId, userId, now, note } = params;
   return await writers.links.withResolvedLink(
     params.draft,
     async (resolved, session) => {
@@ -110,7 +115,17 @@ export async function saveOneLink(
       const shared =
         groupId === undefined
           ? await saveInPrivateList(writers, { link, userId, now }, session)
-          : await shareInGroup(writers, { link, userId, groupId, now }, session);
+          : await shareInGroup(
+              writers,
+              {
+                link,
+                userId,
+                groupId,
+                now,
+                ...(note === undefined ? {} : { note }),
+              },
+              session,
+            );
       if (resolved.created) {
         // Un evento por vacante creada (D6): el relay lo publicará y `link-enrichment` lo consumirá.
         await writers.outbox.append(
@@ -164,7 +179,13 @@ async function requestRescueIfAsked(
 
 async function shareInGroup(
   writers: LinkWriters,
-  params: { link: JobLink; userId: string; groupId: string; now: Date },
+  params: {
+    link: JobLink;
+    userId: string;
+    groupId: string;
+    now: Date;
+    note?: ShareNote;
+  },
   session: TransactionSession,
 ): Promise<Omit<SavedLink, 'link' | 'created'>> {
   const { relation, created } = await writers.groupLinks.share(
@@ -173,6 +194,7 @@ async function shareInGroup(
       linkId: params.link.id,
       sharedBy: params.userId,
       sharedAt: params.now,
+      ...(params.note === undefined ? {} : { note: params.note }),
     },
     session,
   );
@@ -180,6 +202,7 @@ async function shareInGroup(
     shared: created ? 'created' : 'already_there',
     sharedBy: relation.sharedBy,
     sharedAt: relation.sharedAt,
+    ...(relation.note === undefined ? {} : { note: relation.note }),
   };
 }
 

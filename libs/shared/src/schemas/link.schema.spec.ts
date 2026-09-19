@@ -129,6 +129,59 @@ describe('saveLinkRequestSchema', () => {
     expect(LINK_URL_MAX_LENGTH).toBe(2048);
     expect(LINK_URL_INPUT_MAX_LENGTH).toBeGreaterThan(LINK_URL_MAX_LENGTH);
   });
+
+  describe('note', () => {
+    const url = 'https://example.com/jobs/1';
+    const groupId = '66e9a0000000000000000001';
+
+    it('Guardar con una nota: normalizes it', () => {
+      expect(
+        saveLinkRequestSchema.parse({
+          url,
+          groupId,
+          note: '  Esta es la que te dije ',
+        }),
+      ).toEqual({ url, groupId, note: 'Esta es la que te dije' });
+    });
+
+    it('Nota sin grupo: names note', () => {
+      const result = saveLinkRequestSchema.safeParse({ url, note: 'Para mí' });
+
+      expect(result.success).toBe(false);
+      expect(result.error?.issues.map((issue) => issue.path[0])).toEqual([
+        'note',
+      ]);
+    });
+
+    it('Nota vacía sin grupo: behaves as if no note was sent', () => {
+      expect(saveLinkRequestSchema.parse({ url, note: '   ' })).toEqual({
+        url,
+      });
+      expect(
+        saveLinkRequestSchema.parse({ url, groupId, note: '\u202E \r\n' }),
+      ).toEqual({ url, groupId });
+    });
+
+    it('Nota demasiado larga: 280 characters fit and 281 name note', () => {
+      expect(
+        saveLinkRequestSchema.safeParse({
+          url,
+          groupId,
+          note: 'a'.repeat(280),
+        }).success,
+      ).toBe(true);
+      const result = saveLinkRequestSchema.safeParse({
+        url,
+        groupId,
+        note: 'a'.repeat(281),
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error?.issues.map((issue) => issue.path[0])).toEqual([
+        'note',
+      ]);
+    });
+  });
 });
 
 describe('importLinksRequestSchema', () => {
@@ -173,6 +226,21 @@ describe('importLinksRequestSchema', () => {
 describe('jobLinkSummarySchema', () => {
   it('accepts exactly the summary fields', () => {
     expect(jobLinkSummarySchema.parse(summary)).toEqual(summary);
+  });
+
+  it('accepts a group link with its note and its comments summary', () => {
+    const inGroup = {
+      ...summary,
+      note: { text: 'Esta es la que te dije', createdAt: summary.sharedAt },
+      comments: {
+        count: 0,
+        revision: 0,
+        sharedAt: summary.sharedAt,
+        latest: [],
+      },
+    };
+
+    expect(jobLinkSummarySchema.parse(inGroup)).toEqual(inGroup);
   });
 
   it('accepts a private link with no sharer', () => {

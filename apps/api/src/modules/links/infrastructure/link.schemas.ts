@@ -68,6 +68,18 @@ export interface GroupLinkDocument {
   /** Quien lo compartió primero; no cambia aunque otro lo vuelva a compartir. */
   sharedBy: Types.ObjectId;
   sharedAt: Date;
+  /**
+   * Nota de quien lo compartió (D3 de group-comments). Se escribe solo al crear la relación y no se edita; ausente si no
+   * la hay. En docs/design.md se llamaba `comment` (ADR-026, "Se aparta de").
+   */
+  note?: { text: string; createdAt: Date };
+  /**
+   * Comentarios del link en este grupo y revisión del resumen (D2 de group-comments). Solo los escribe
+   * `MongoGroupLinkRepository`, con `$inc` en la transacción del alta o del borrado de un comentario. Un documento
+   * anterior a group-comments no los tiene y se lee como 0: no hay migración.
+   */
+  commentCount?: number;
+  commentsRevision?: number;
 }
 
 export interface UserLinkDocument {
@@ -139,6 +151,18 @@ export const groupLinkSchema = new Schema<GroupLinkDocument>(
     linkId: { type: Schema.Types.ObjectId, required: true },
     sharedBy: { type: Schema.Types.ObjectId, required: true },
     sharedAt: { type: Date, required: true },
+    note: {
+      type: new Schema(
+        {
+          text: { type: String, required: true },
+          createdAt: { type: Date, required: true },
+        },
+        { _id: false, versionKey: false, strict: true },
+      ),
+      required: false,
+    },
+    commentCount: { type: Number, required: false, default: 0 },
+    commentsRevision: { type: Number, required: false, default: 0 },
   },
   { ...schemaOptions, collection: GROUP_LINKS_COLLECTION },
 );

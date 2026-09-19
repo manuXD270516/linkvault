@@ -191,4 +191,112 @@ describe('SaveLinkForm', () => {
 
     http.expectNone({ method: 'POST', url: '/api/links' });
   });
+
+  describe('nota para el grupo', () => {
+    function noteField(): HTMLTextAreaElement | null {
+      return host().querySelector<HTMLTextAreaElement>('[data-testid="save-link-note"]');
+    }
+
+    async function writeNote(note: string): Promise<void> {
+      const field = noteField();
+      if (!field) {
+        throw new Error('Note field not rendered');
+      }
+      field.value = note;
+      field.dispatchEvent(new Event('input'));
+      await fixture.whenStable();
+    }
+
+    it('Compartir con nota', async () => {
+      expect(host().textContent).toContain('Nota para el grupo (opcional)');
+      expect(noteField()?.placeholder).toBe('Por ejemplo: esta es la que te dije');
+
+      await writeNote('Esta es la que te dije');
+      const request = await save();
+      expect(request.request.body).toEqual({
+        url: URL_TO_SAVE,
+        groupId: 'g1',
+        note: 'Esta es la que te dije',
+      });
+      request.flush(saved, { status: 201, statusText: 'Created' });
+      await flushReload([
+        { ...link, note: { text: 'Esta es la que te dije', createdAt: link.sharedAt } },
+      ]);
+
+      expect(host().querySelector('[data-testid="link-note-author"]')?.textContent?.trim()).toBe(
+        'Nota de Ana',
+      );
+      expect(host().querySelector('[data-testid="link-note-text"]')?.textContent).toBe(
+        'Esta es la que te dije',
+      );
+      expect(noteField()?.value).toBe('');
+      expect(text()).not.toContain('Tu nota no se añadió');
+    });
+
+    it('La oferta ya estaba', async () => {
+      await writeNote('Yo también la vi');
+      const request = await save();
+      request.flush(
+        {
+          ...saved,
+          created: false,
+          shared: 'already_there',
+          sharedBy: { userId: 'u9', displayName: 'Ana' },
+        },
+        { status: 201, statusText: 'Created' },
+      );
+      await flushReload([link]);
+
+      expect(text()).toContain('Ya estaba aquí, lo compartió Ana');
+      expect(text()).toContain('Tu nota no se añadió porque la oferta ya estaba en el grupo.');
+      expect(noteField()?.value).toBe('Yo también la vi');
+      expect(urlField().value).toBe('');
+    });
+
+    it('says nothing about the note when none was written', async () => {
+      const request = await save();
+      expect(request.request.body).toEqual({ url: URL_TO_SAVE, groupId: 'g1' });
+      request.flush(
+        { ...saved, created: false, shared: 'already_there', sharedBy: { userId: 'u9', displayName: 'Ana' } },
+        { status: 201, statusText: 'Created' },
+      );
+      await flushReload([link]);
+
+      expect(text()).not.toContain('Tu nota no se añadió');
+    });
+
+    it('counts the note up to 280 and does not save a longer one', async () => {
+      await writeNote(`  ${'n'.repeat(280)}  `);
+      expect(host().querySelector('[data-testid="save-link-note-counter"]')?.textContent?.trim()).toBe(
+        '280/280',
+      );
+
+      expect(host().querySelector('[data-testid="save-link-note-too-long"]')).toBeNull();
+
+      await writeNote('n'.repeat(281));
+      expect(host().querySelector('[data-testid="save-link-note-counter"]')?.textContent?.trim()).toBe(
+        '281/280',
+      );
+      typeInto(host(), '[data-testid="save-link-url"]', URL_TO_SAVE);
+      await fixture.whenStable();
+      buttonWithText(host(), 'Guardar').click();
+      await settle();
+      await fixture.whenStable();
+
+      http.expectNone({ method: 'POST', url: '/api/links' });
+      expect(host().querySelector('[data-testid="save-link-note-too-long"]')?.textContent?.trim()).toBe(
+        'Máximo 280 caracteres',
+      );
+    });
+
+    it('Sin nota en la lista privada', async () => {
+      const opening = TestBed.inject(LinksStore).open({ kind: 'mine' });
+      http.expectOne('/api/links/mine?limit=20').flush({ items: [], total: 0 } satisfies LinkPage);
+      await opening;
+      await fixture.whenStable();
+
+      expect(noteField()).toBeNull();
+      expect(host().textContent).not.toContain('Nota para el grupo');
+    });
+  });
 });

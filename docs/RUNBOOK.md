@@ -484,6 +484,137 @@ al operar y al probar a mano. Los comandos usan el Mongo del compose local; en o
   docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'db.applications.aggregate([{ $lookup: { from: "job_links", localField: "linkId", foreignField: "_id", as: "link" } }, { $match: { link: { $size: 0 } } }, { $project: { userId: 1, linkId: 1, status: 1 } }]).toArray()'
   ```
 
+## Paso 6 sexies — Operar los comentarios de grupo
+
+Desde `group-comments`, cada link compartido en un grupo tiene su hilo de comentarios
+(`/api/groups/:id/links/:linkId/comments`) y la nota de quien lo compartió. El detalle para quien usa el producto, los
+endpoints, sus códigos y el aviso en vivo están en el [README](../README.md#comentarios-y-notas-en-los-grupos); las
+decisiones, en [ADR-026](adr/ADR-026.md). Aquí, lo que hay que tener presente al operar y al probar a mano. Los comandos
+usan el Mongo y el Redis del compose local; en otro entorno, cambia la URI o el host por los suyos.
+
+- **Sin variables nuevas, sin datos que rellenar.** La colección `group_link_comments` nace vacía y `api` construye su
+  índice al arrancar (`autoIndex` de Mongoose). `group_links` gana `note?`, `commentCount` y `commentsRevision`, que se
+  leen como "sin nota", 0 y 0 mientras no existan: no hay backfill, los crea el primer comentario. Ningún índice de
+  `group_links` cambia. Comentar, borrar un comentario, quitar un link y borrar un grupo usan transacciones, así que
+  Mongo tiene que ser replica set (ADR-017), como siempre. Para volver a la versión anterior basta con desplegarla:
+  ignora los campos y la colección.
+- **El texto de un comentario y el de una nota no se leen al depurar.** No están en ningún log ni en el mensaje de
+  Redis, y ahí deben seguir: no los copies a un ticket. Las consultas de abajo proyectan solo identificadores y
+  recuentos.
+- **Comprobar el índice.** Debe listar, además de `_id_`, `groupId_1_linkId_1_createdAt_-1__id_-1` en
+  `group_link_comments`, y los tres de siempre en `group_links` (`groupId_1_linkId_1` con `unique: true`,
+  `groupId_1_sharedAt_-1__id_-1` y `linkId_1`):
+
+  ```bash
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'printjson({ group_link_comments: db.group_link_comments.getIndexes().map((i) => ({ name: i.name, key: i.key })), group_links: db.group_links.getIndexes().map((i) => ({ name: i.name, unique: i.unique })) })'
+  ```
+
+  Con solo `_id_` en `group_link_comments`, `api` todavía no ha arrancado con este change contra esa base (o falló la
+  construcción: busca el error en su log y reinícialo con Mongo sano). Sin ese índice, el hilo y el resumen de la
+  tarjeta siguen respondiendo, pero recorren la colección entera. Que el hilo lo usa se ve con `explain`, que debe
+  mostrar un `IXSCAN` con ese nombre y ningún `SORT`:
+
+  ```bash
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'printjson(db.group_link_comments.find({ groupId: ObjectId("<groupId>"), linkId: ObjectId("<linkId>") }).sort({ createdAt: -1, _id: -1 }).limit(20).explain().queryPlanner.winningPlan)'
+  ```
+
+- **Deriva de `commentCount`** (riesgo aceptado en ADR-026). `commentCount` lo mantiene `group_links` con `$inc` dentro
+  de la transacción de cada alta y de cada borrado, así que solo se desvía si alguien toca la base a mano. `revision`
+  **no se recalcula**: solo necesita crecer. Primero, **solo lectura**: cada relación cuyo contador no coincide con sus
+  comentarios reales. Debe devolver `[]`:
+
+  ```bash
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'db.group_links.aggregate([{ $lookup: { from: "group_link_comments", localField: "linkId", foreignField: "linkId", let: { g: "$groupId" }, pipeline: [{ $match: { $expr: { $eq: ["$groupId", "$$g"] } } }, { $count: "n" }], as: "real" } }, { $project: { groupId: 1, linkId: 1, stored: { $ifNull: ["$commentCount", 0] }, real: { $ifNull: [{ $first: "$real.n" }, 0] } } }, { $match: { $expr: { $ne: ["$stored", "$real"] } } }]).toArray()'
+  ```
+
+  Y, también **solo lectura**, los comentarios que no tienen relación. Deben ser `[]` siempre: quitar un link o borrar
+  un grupo se lleva sus comentarios en la misma transacción, y un huérfano reaparecería al volver a compartir el link:
+
+  ```bash
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'db.group_link_comments.aggregate([{ $group: { _id: { groupId: "$groupId", linkId: "$linkId" }, comments: { $sum: 1 } } }, { $lookup: { from: "group_links", localField: "_id.linkId", foreignField: "linkId", let: { g: "$_id.groupId" }, pipeline: [{ $match: { $expr: { $eq: ["$groupId", "$$g"] } } }, { $project: { _id: 1 } }], as: "relation" } }, { $match: { relation: { $size: 0 } } }, { $project: { _id: 0, groupId: "$_id.groupId", linkId: "$_id.linkId", comments: 1 } }]).toArray()'
+  ```
+
+- **Reparar la deriva.** Solo si la primera consulta devolvió algo. Recuenta y escribe **una transacción por relación
+  desviada** (las demás no se tocan), con el `$inc` de `commentsRevision` que hace que las pantallas abiertas acepten el
+  resumen corregido. La transacción es lo que evita pisar un comentario que entre a la vez: si choca, se reintenta.
+  Imprime `<_id> <antes> -> <después>` de cada una:
+
+  ```bash
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'const s = db.getMongo().startSession(); const d = s.getDatabase(db.getName()); const drift = d.group_links.aggregate([{ $lookup: { from: "group_link_comments", localField: "linkId", foreignField: "linkId", let: { g: "$groupId" }, pipeline: [{ $match: { $expr: { $eq: ["$groupId", "$$g"] } } }, { $count: "n" }], as: "real" } }, { $project: { stored: { $ifNull: ["$commentCount", 0] }, real: { $ifNull: [{ $first: "$real.n" }, 0] } } }, { $match: { $expr: { $ne: ["$stored", "$real"] } } }]).toArray(); drift.forEach((r) => s.withTransaction(() => { const rel = d.group_links.findOne({ _id: r._id }, { groupId: 1, linkId: 1 }); if (rel === null) return; const real = d.group_link_comments.countDocuments({ groupId: rel.groupId, linkId: rel.linkId }); d.group_links.updateOne({ _id: r._id }, { $set: { commentCount: real }, $inc: { commentsRevision: 1 } }); print(`${r._id} ${r.stored} -> ${real}`); })); s.endSession(); print(`${drift.length} relations`)'
+  ```
+
+  Repite la consulta de deriva: debe devolver `[]`. Un huérfano de la segunda consulta se borra por su pareja
+  `(groupId, linkId)`, y solo si la relación de verdad no existe (la comprobación va dentro de la transacción, así que
+  no borra nada si alguien la vuelve a compartir en ese instante):
+
+  ```bash
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'const s = db.getMongo().startSession(); const d = s.getDatabase(db.getName()); const pair = { groupId: ObjectId("<groupId>"), linkId: ObjectId("<linkId>") }; s.withTransaction(() => { if (d.group_links.countDocuments(pair) !== 0) { print("the relation exists: nothing deleted"); return; } print(d.group_link_comments.deleteMany(pair).deletedCount + " orphan comments deleted"); }); s.endSession()'
+  ```
+
+- **Borrar a mano los comentarios de una persona.** Hoy no existe el borrado de cuenta: `deploy-prod` hereda de ADR-026
+  qué hace con los `group_link_comments` de quien borra su cuenta (borrarlos o anonimizarlos), y hasta entonces una
+  petición de borrado se atiende a mano. Quien salió de un grupo tampoco puede borrar lo suyo sin volver a entrar,
+  aunque el propietario del grupo sí puede. Primero su `_id`, por su email normalizado, y qué tiene escrito, sin leer
+  ningún texto:
+
+  ```bash
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'db.users.findOne({ email: "<email>" }, { _id: 1, displayName: 1 })'
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'db.group_link_comments.aggregate([{ $match: { authorId: ObjectId("<userId>") } }, { $group: { _id: { groupId: "$groupId", linkId: "$linkId" }, comments: { $sum: 1 } } }]).toArray()'
+  ```
+
+  El borrado va **en una transacción**, y por cada link baja `commentCount` en lo que borró y sube `commentsRevision`:
+  hacerlo con `deleteMany` a secas dejaría los contadores desviados. Imprime cuántos borró y en cuántos links:
+
+  ```bash
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'const s = db.getMongo().startSession(); const d = s.getDatabase(db.getName()); const u = ObjectId("<userId>"); s.withTransaction(() => { const pairs = d.group_link_comments.aggregate([{ $match: { authorId: u } }, { $group: { _id: { groupId: "$groupId", linkId: "$linkId" }, n: { $sum: 1 } } }]).toArray(); let total = 0; pairs.forEach((p) => { const n = d.group_link_comments.deleteMany({ groupId: p._id.groupId, linkId: p._id.linkId, authorId: u }).deletedCount; d.group_links.updateOne({ groupId: p._id.groupId, linkId: p._id.linkId }, { $inc: { commentCount: -n, commentsRevision: 1 } }); total += n; }); print(`${total} comments deleted in ${pairs.length} links`); }); s.endSession()'
+  ```
+
+  Sus **notas** son texto suyo igual que sus comentarios, y van aparte, porque viven en la relación que creó. No tocan
+  ningún contador:
+
+  ```bash
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'print(db.group_links.updateMany({ sharedBy: ObjectId("<userId>"), note: { $exists: true } }, { $unset: { note: 1 } }).modifiedCount + " notes removed")'
+  ```
+
+  Repite las dos consultas de arriba (deben quedar en `[]`) y la de deriva. Un borrado a mano **no publica ningún
+  aviso**: las pantallas abiertas se ponen al día al volver a la pestaña o al reabrir el hilo. Borrar su cuenta, sus
+  membresías, sus links y sus postulaciones no entra aquí: es el resto del borrado de cuenta de `deploy-prod`.
+- **Límite de comentarios.** `CounterLinkLimiter` escribe un contador de ventana fija de **15 min** en Redis,
+  `links:comment:<userId>` (**30** comentarios por persona, en todos sus grupos; `<userId>` es el `_id` hexadecimal).
+  El valor es lo contado en la ventana y el `TTL`, lo que le queda. Borrar no cuenta, y un comentario que no llega a
+  guardarse devuelve su intento. Falla abierto: sin Redis se comenta igual.
+
+  ```bash
+  docker compose exec redis redis-cli get links:comment:<userId>
+  docker compose exec redis redis-cli ttl links:comment:<userId>
+  ```
+
+  Liberar a una persona antes de que pase la ventana (`DEL` devuelve `1` si había contador y `0` si no):
+
+  ```bash
+  docker compose exec redis redis-cli del links:comment:<userId>
+  ```
+
+  Nunca borres el patrón entero en un entorno compartido. En local, para ver quién está cerca del tope (valor, segundos
+  que le quedan y clave, de mayor a menor):
+
+  ```bash
+  docker compose exec redis sh -c "redis-cli --scan --pattern 'links:comment:*' | while read -r k; do echo \"\$(redis-cli get \"\$k\") \$(redis-cli ttl \"\$k\") \$k\"; done | sort -rn"
+  ```
+
+- **El canal en vivo.** `api` publica cada alta y cada borrado en `events:group-link.comments` y cada instancia lo
+  reparte por SSE a los miembros actuales del grupo. Cuántas instancias están escuchando (debe ser una por `api` en
+  marcha; `0` con `api` parado):
+
+  ```bash
+  docker compose exec redis redis-cli pubsub numsub events:group-link.comments
+  ```
+
+  Para verlo pasar, `docker compose exec redis redis-cli subscribe events:group-link.comments` (Ctrl+C para salir).
+  **Cada mensaje lleva solo `{ groupId, linkId, commentId, change }`**: si alguna vez aparece ahí el texto de un
+  comentario, es un fallo grave de privacidad, no una curiosidad. El texto solo sale por SSE, hacia los miembros de ese
+  grupo. Un aviso perdido no rompe nada: no hay outbox a propósito, y la tarjeta se pone al día en la siguiente lectura.
+
 ## Paso 7 — Definition of Done (pégalo en cada PR)
 
 - [ ] Change archivado; spec delta mergeada en `openspec/specs/`

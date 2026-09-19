@@ -341,7 +341,10 @@ Todas las rutas exigen access token (`Authorization: Bearer`); sin él responden
 | `DELETE /api/groups/:id/links/:linkId` | autor u owner     | `204`; otro miembro recibe `403 forbidden`.                                        |
 
 `POST /api/links` y `POST /api/links/import` aceptan `groupId`: con él el link se comparte en ese grupo; sin él queda en
-la lista privada de quien lo guarda. Compartir en un grupo **no** crea además entrada privada (ADR-021 §5).
+la lista privada de quien lo guarda. Compartir en un grupo **no** crea además entrada privada (ADR-021 §5). `POST
+/api/links` acepta además `note`, la nota de quien comparte, y `GET /api/groups/:id/links` devuelve esa nota y el
+resumen de comentarios de cada tarjeta: los dos están en
+[Comentarios y notas en los grupos](#comentarios-y-notas-en-los-grupos), con las rutas del hilo.
 
 `created` dice si la vacante no existía en LinkVault y `shared` (`created` o `already_there`), si la relación con el
 destino es nueva: son cosas distintas, y el SPA solo avisa "ya estaba aquí" con la segunda, nombrando a quien la compartió
@@ -356,8 +359,9 @@ le responde `403 forbidden` y no `404`, porque ya ve el link en la lista y no ha
 Códigos de error propios: `invalid_url` (400, campo `url`), `text_too_long` (400, campo `text`), `link_not_found` (404) y
 `forbidden` (403). Un cursor manipulado responde `400 validation_error` nombrando `cursor`. Los de la edición y la
 relectura —`preview_field_unknown` (400), `enrichment_not_retryable` (409) y `too_many_attempts` (429)— se explican en
-[Enriquecimiento de ofertas](#enriquecimiento-de-ofertas), y los del pegado —`not_a_job_posting` (422),
-`extraction_unavailable` (503) y `ai_quota_exceeded` (429)— en [Pegar la descripción](#pegar-la-descripción).
+[Enriquecimiento de ofertas](#enriquecimiento-de-ofertas), los del pegado —`not_a_job_posting` (422),
+`extraction_unavailable` (503) y `ai_quota_exceeded` (429)— en [Pegar la descripción](#pegar-la-descripción), y
+`comment_not_found` (404), en [Comentarios y notas en los grupos](#comentarios-y-notas-en-los-grupos).
 
 ### Paginación de los listados
 
@@ -1020,6 +1024,163 @@ curl -s -H "$T" -H "$J" -X PATCH "http://localhost:3000/api/applications/$APP_ID
 curl -s -H "$T" "http://localhost:3000/api/groups/$GROUP_ID/applications?linkIds=$LINK_ID"   # tu nombre y in_process, sin la etapa
 curl -s -H "$T" "http://localhost:3000/api/applications/$APP_ID/events"                     # dos eventos
 curl -s -i -H "$T" -X DELETE "http://localhost:3000/api/applications/$APP_ID"               # 204: dejar de seguir
+```
+
+## Comentarios y notas en los grupos
+
+El contexto que hoy se cuenta en el chat ("piden C1", "ya cerró", "escríbele a Ana") se queda pegado a la oferta, en el
+grupo donde se dijo. Hay dos cosas distintas ([ADR-015](docs/adr/ADR-015.md), [ADR-026](docs/adr/ADR-026.md)):
+
+- la **nota**, una por relación, que escribe quien comparte el link en el momento de compartirlo;
+- los **comentarios**, muchos, que escribe cualquier miembro del grupo.
+
+Los dos son **del grupo**: el mismo link en otro grupo tiene su propio hilo, y quien lo tiene en su lista privada no ve
+ninguno. Nunca salen en la página pública. Cómo operarlo:
+[RUNBOOK, Paso 6 sexies](docs/RUNBOOK.md#paso-6-sexies--operar-los-comentarios-de-grupo).
+
+### Para quien usa el producto
+
+- **La tarjeta del grupo** muestra, bajo el preview, "Nota de {nombre}" y los **2 últimos comentarios** (el más antiguo
+  arriba) con su autor y una fecha relativa ("hace un momento", "hace 5 min", "ayer", `dd/MM/yyyy`). La nota y cada
+  comentario se cortan a dos líneas; el texto entero está en el hilo. La acción dice qué falta por ver: "Comentar" sin
+  ninguno, "Responder" con 1 o 2 y "Ver los N comentarios" con más. En `/mis-links` no hay nada de esto.
+- **El hilo** se abre desde esa acción, en un diálogo: los comentarios en orden cronológico, "Ver comentarios
+  anteriores" para seguir hacia atrás y un compositor con contador de 500 caracteres, que publica con el botón o con
+  Ctrl/Cmd+Enter (Enter a secas es un salto de línea). La indicación dice qué pasa con lo que se escribe: "Lo verán los
+  miembros de este grupo y seguirá aquí aunque salgas.". Por debajo de 600 px el diálogo ocupa la pantalla y el
+  compositor queda por encima del teclado.
+- **Quién borra qué.** Un comentario lo borran **su autor** y el **propietario del grupo**; la nota, **quien compartió
+  el link** y el propietario. Nadie edita ni lo uno ni lo otro: no hay ruta para hacerlo. El borrado no deja marca, y la
+  confirmación de lo ajeno lo dice ("Desaparecerá para todo el grupo y no se puede deshacer."). Es la forma de moderar
+  un grupo sin tener que quitar la oferta entera, que se llevaría por delante lo valioso.
+- **Salir del grupo no borra nada.** Los comentarios se quedan con el nombre de su autor y la marca "ya no está en el
+  grupo", que se calcula en cada lectura. Mientras está fuera, esa persona no lee el hilo ni borra lo suyo, y el
+  propietario sí puede borrarlo; si vuelve, la marca desaparece sola y puede volver a borrarlo. Lo que sí se lleva todo
+  es **quitar el link del grupo** o **borrar el grupo**: relación, nota y comentarios se borran en una transacción, y
+  volver a compartir el link empieza de cero. La confirmación de quitar un link dice cuántos comentarios se pierden.
+- **En vivo.** Con la pantalla del grupo abierta, un comentario nuevo o borrado actualiza el contador y los 2 últimos de
+  la tarjeta sin recargar, y el hilo abierto lo añade o lo quita ("Ver comentarios nuevos" cuando llega más de lo que
+  cabe en el resumen). Un cambio de nota **no** se avisa en vivo.
+
+### Endpoints
+
+Todas las rutas exigen access token (`Authorization: Bearer`); sin él responden `401 unauthorized`. Los identificadores
+de la URL no pasan por la validación del cuerpo: uno mal formado responde el mismo `404` que uno inexistente.
+
+| Método y ruta                                              | Quién                   | Respuesta                                                                   |
+| ---------------------------------------------------------- | ----------------------- | --------------------------------------------------------------------------- |
+| `POST /api/groups/:id/links/:linkId/comments`              | miembro                 | `201` con `{ comment, comments }`, el comentario y el resumen actualizado.  |
+| `GET /api/groups/:id/links/:linkId/comments?limit&cursor`  | miembro                 | `200` con `{ items, total, nextCursor? }`, del más reciente al más antiguo. |
+| `DELETE /api/groups/:id/links/:linkId/comments/:commentId` | autor u owner           | `200` con `{ comments }`, el resumen ya actualizado.                        |
+| `DELETE /api/groups/:id/links/:linkId/note`                | quien compartió u owner | `204`, hubiera nota o no.                                                   |
+| `POST /api/links` con `note`                               | quien comparte          | `201`; la nota solo se guarda si la relación es nueva.                      |
+
+- **El cuerpo del alta** es `{ "text": "…" }`, de 1 a 500 caracteres tras normalizar. La **nota** llega en
+  `POST /api/links { url, groupId, note }` y admite hasta 280. Los dos textos se normalizan igual (saltos de línea
+  unificados, caracteres de control y de dirección fuera, `trim`) y **nada más**: un teléfono o un email se guardan tal
+  cual, y el HTML se guarda y se devuelve como texto plano, que el SPA pinta escapado, nunca como HTML. Una nota que
+  queda vacía tras normalizar equivale a no enviarla; con texto y sin `groupId` responde `400` nombrando `note`.
+  `POST /api/links/import` no admite nota.
+- **Si el link ya estaba en el grupo** (`shared: "already_there"`), la nota enviada se descarta sin error y la del
+  primero no cambia: el SPA avisa "Tu nota no se añadió…" y deja el texto en el campo. La respuesta trae `link.note`, la
+  de la relación.
+- **El resumen** (`comments`) viaja dentro de `GET /api/groups/:id/links` y en las respuestas del alta y del borrado:
+  `count`, `revision`, `sharedAt` y `latest` (los 2 últimos, con `author`, `authorLeft`, `text` y `createdAt`).
+  `revision` sube con cada alta y cada borrado y nunca retrocede **mientras dure la relación**; `sharedAt` dice de qué
+  relación es, porque al volver a compartir el link la revisión empieza otra vez en 0. El SPA compara la pareja
+  (`sharedAt`, `revision`) y así un aviso atrasado nunca pisa un resumen más nuevo.
+- **El hilo** se pagina como los listados de links: `limit` de 1 a 50 (20 por defecto) y `cursor` opaco por
+  `(createdAt, _id)`. `total` sale de `commentCount` y no depende del tamaño de página. Un cursor manipulado responde
+  `400 validation_error` nombrando `cursor`.
+- **Sin N+1:** el listado del grupo hace 5 lecturas por página (miembros, página, total, una agregación `$topN` para los
+  2 últimos de cada link y los nombres) y el hilo, 4 (miembros, relación, página y nombres), pida 2 links o 50.
+
+| Respuesta | Código              | Cuándo                                                                                                                                                  |
+| --------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `400`     | `validation_error`  | `text` vacío o de más de 500 tras normalizar (campo `text`); `note` de más de 280 o con texto y sin grupo (campo `note`); `limit` o `cursor` inválidos. |
+| `403`     | `forbidden`         | Otro miembro intenta borrar un comentario ajeno, o quitar una nota que no es suya sin ser owner. Se responde `403` y no `404` porque ya los ve.         |
+| `404`     | `group_not_found`   | Quien pide no es miembro **ahora**, el grupo no existe o su id está mal formado.                                                                        |
+| `404`     | `link_not_found`    | El link no está compartido en ese grupo (también si lo quitaron a mitad) o su id está mal formado.                                                      |
+| `404`     | `comment_not_found` | El comentario no existe, es de otro link o de otro grupo, su id está mal formado o otro borrado se adelantó.                                            |
+| `429`     | `too_many_attempts` | Más de 30 comentarios en 15 minutos, con `Retry-After`.                                                                                                 |
+
+### Límite de comentarios
+
+**30 comentarios por persona cada 15 minutos**, contados en todos sus grupos, con el contador de ventana fija de Redis
+`links:comment:<userId>` (el `<userId>` es el `_id` hexadecimal). Pasado el tope, `429 too_many_attempts` con
+`Retry-After`, y el SPA dice cuántos minutos esperar.
+
+- Se cuenta **por persona**, no por grupo ni por link: un script que reparte lo mismo en varios grupos gasta el mismo
+  contador.
+- El intento se gasta **antes** de la transacción y **se devuelve** si el comentario no llega a guardarse, incluida la
+  carrera que termina en `404 link_not_found`. Lo que rechaza la validación (`400`) y lo que rechaza la pertenencia
+  (`404`) no cuenta, y **borrar no cuenta**.
+- **Falla abierto:** si Redis no responde, el comentario se guarda igual, porque lo que se permite de más es escribir en
+  nuestra propia base y avisar a los 50 miembros de un grupo como mucho.
+- Liberar a alguien antes de que pase la ventana:
+  [RUNBOOK](docs/RUNBOOK.md#paso-6-sexies--operar-los-comentarios-de-grupo).
+
+### El aviso en vivo
+
+Un alta o un borrado se publica en el canal de Redis `events:group-link.comments` (tipo `GroupLinkCommentsChanged.v1`),
+después de confirmar la escritura y sin esperar a que se publique: la respuesta no depende del aviso. Cada instancia de
+`api` lo recibe y lo reparte por el canal SSE de `GET /api/events` (evento `group-link.comments`). Cada tramo lleva
+cosas distintas a propósito:
+
+| Tramo | Qué lleva                                                                                                  | Por qué                                                                                                                                                                                       |
+| ----- | ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Redis | `{ groupId, linkId, commentId, change }` (`created` o `deleted`)                                           | El canal no sabe quién puede ver qué, sus mensajes se ven con `MONITOR` y cualquier suscriptor los recibe todos: **el texto de un comentario nunca viaja por Redis, ni aparece en los logs**. |
+| SSE   | `{ groupId, linkId, change, commentId, comments }`, con el texto, el autor y `authorLeft` de los 2 últimos | Solo llega a los miembros **actuales** de ese grupo, que ya pueden leer lo mismo con un `GET`; sin el texto, cada comentario costaría una petición por miembro conectado.                     |
+
+Los destinatarios son los miembros del grupo, no quienes ven el link por otro sitio. Si el link ya no está compartido
+allí cuando toca repartir, no se envía nada. Es un aviso de mejor esfuerzo, sin outbox: si Redis está caído, la tarjeta
+se pone al día al volver a la pestaña o al reabrir el hilo.
+
+### Colección, índices y campos nuevos
+
+`api` construye los índices al arrancar (`autoIndex` de Mongoose). Cómo comprobarlos:
+[RUNBOOK](docs/RUNBOOK.md#paso-6-sexies--operar-los-comentarios-de-grupo).
+
+| Colección             | Índice                                              | Para qué                                                                              |
+| --------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `group_link_comments` | `{ groupId: 1, linkId: 1, createdAt: -1, _id: -1 }` | El hilo paginado, los 2 últimos de cada link, el borrado por relación y el del grupo. |
+
+Un comentario es `{ _id, groupId, linkId, authorId, text, createdAt }`. `group_links` suma tres campos y **no cambia
+ninguno de sus índices**: `note?` (`text`, `createdAt`, sin `updatedAt` porque no se edita), `commentCount` y
+`commentsRevision`, que se leen como 0 si el documento no los tiene. No hay migración ni backfill: los crea el primer
+`$inc`.
+
+`group_links` es el **único dueño** de esos dos contadores y el único que abre las transacciones que tocan comentarios,
+así que comentar y quitar el link a la vez chocan en el mismo documento y una de las dos se reintenta: nunca queda un
+comentario sin su relación que reaparezca al volver a compartirla.
+
+### Probar los comentarios en local
+
+Con la API en marcha, un access token obtenido como en [Probar en local](#probar-en-local) y un link compartido en un
+grupo del que seas miembro:
+
+```bash
+T='Authorization: Bearer <accessToken>'
+J='Content-Type: application/json'
+GROUP_ID=...   # un grupo del que seas miembro
+LINK_ID=...    # un link compartido en ese grupo
+
+curl -s -H "$T" -H "$J" http://localhost:3000/api/links \
+  -d "{\"url\":\"https://www.getonbrd.com/jobs/backend\",\"groupId\":\"$GROUP_ID\",\"note\":\"esta es la que te dije\"}"   # 201 con link.note
+curl -s -H "$T" -H "$J" "http://localhost:3000/api/groups/$GROUP_ID/links/$LINK_ID/comments" -d '{"text":"piden C1"}'      # 201 con comment y comments
+curl -s -H "$T" "http://localhost:3000/api/groups/$GROUP_ID/links/$LINK_ID/comments?limit=20"                              # el hilo, con total
+curl -s -H "$T" "http://localhost:3000/api/groups/$GROUP_ID/links?limit=20"                                                # la nota y el resumen en la tarjeta
+COMMENT_ID=...  # el comment.id del alta
+curl -s -H "$T" -X DELETE "http://localhost:3000/api/groups/$GROUP_ID/links/$LINK_ID/comments/$COMMENT_ID"                  # 200 con comments
+curl -s -i -H "$T" -X DELETE "http://localhost:3000/api/groups/$GROUP_ID/links/$LINK_ID/note"                              # 204
+curl -sN -H "$T" http://localhost:3000/api/events                                                                          # el canal SSE (Ctrl+C)
+```
+
+Con el `curl -sN` de la última línea abierto en otra terminal, cada alta y cada borrado sale como un evento
+`group-link.comments`. Lo que Redis reparte entre instancias se ve sin texto alguno:
+
+```bash
+docker compose exec redis redis-cli subscribe events:group-link.comments
 ```
 
 ## Calidad

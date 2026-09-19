@@ -2,6 +2,7 @@ import { IMPORT_TEXT_MAX_LENGTH, LINK_URL_MAX_LENGTH } from '@linkvault/shared';
 import { describe, expect, it } from 'vitest';
 import { InvalidUrl, TextTooLong } from './errors';
 import {
+  COMMENTS_PER_USER,
   assertImportTextWithinLimit,
   assertUrlWithinLimit,
   isImportTextTooLong,
@@ -59,5 +60,11 @@ describe('both limits measure code points, like zod', () => {
     expect(isUrlTooLong(`https://example.com/${'ñ'.repeat(MAX_URL_LENGTH - 20)}`)).toBe(
       false,
     );
+  });
+});
+
+describe('comment limit', () => {
+  it('allows 30 comments per person in the window', () => {
+    expect(COMMENTS_PER_USER).toBe(30);
   });
 });

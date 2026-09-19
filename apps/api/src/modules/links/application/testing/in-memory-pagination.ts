@@ -1,6 +1,7 @@
 import type {
   LinkListPage,
   LinkListQuery,
+  ListedGroupRelation,
   ListedLink,
 } from '../ports/link-listing';
 import type { InMemoryJobLinkRepository } from './in-memory-job-link.repository';
@@ -25,6 +26,7 @@ export async function pageOf<T extends StoredRelation>(
   query: LinkListQuery,
   links: InMemoryJobLinkRepository,
   sharerOf: (relation: T) => string | undefined,
+  inGroupOf?: (relation: T) => ListedGroupRelation,
 ): Promise<LinkListPage> {
   const ordered = [...relations].sort(byDateThenIdDescending);
   const after = query.cursor;
@@ -50,6 +52,7 @@ export async function pageOf<T extends StoredRelation>(
       link,
       ...(sharedBy === undefined ? {} : { sharedBy }),
       sharedAt: relation.date,
+      ...(inGroupOf === undefined ? {} : { inGroup: inGroupOf(relation) }),
     });
   }
   const last = page[page.length - 1];

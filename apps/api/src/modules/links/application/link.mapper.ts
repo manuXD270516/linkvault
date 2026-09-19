@@ -1,11 +1,13 @@
 import {
   PREVIEW_FIELD_NAMES,
+  type CommentsSummary,
   type JobLinkSummary,
   type LinkPage,
   type LinkSharer,
   type PreviewFieldName,
   type PreviewSources,
   type ResolvedPreviewSources,
+  type ShareNote,
 } from '@linkvault/shared';
 import type { JobLink } from '../domain/job-link';
 import { encodeCursor } from './link-cursor';
@@ -36,6 +38,10 @@ export interface SummaryContext {
   readonly sharedBy?: LinkSharer;
   /** Nombres visibles ya resueltos; un id que no esté se responde como "Usuario". */
   readonly names?: Map<string, string>;
+  /** Nota de quien lo compartió; solo en un grupo y solo si la tiene (D3 de group-comments). */
+  readonly note?: ShareNote;
+  /** Resumen de sus comentarios en el grupo; solo en el listado de un grupo (D7 de group-comments). */
+  readonly comments?: CommentsSummary;
 }
 
 /** Link con cómo llegó a la lista. `sharedBy` falta en la lista privada, donde no hay con quién compartir. */
@@ -65,6 +71,8 @@ export function toJobLinkSummary(
     ).toISOString(),
     ...(options.sharedBy === undefined ? {} : { sharedBy: options.sharedBy }),
     sharedAt: options.sharedAt.toISOString(),
+    ...(options.note === undefined ? {} : { note: options.note }),
+    ...(options.comments === undefined ? {} : { comments: options.comments }),
   };
 }
 

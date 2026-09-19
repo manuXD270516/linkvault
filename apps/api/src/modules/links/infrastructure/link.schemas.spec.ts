@@ -183,6 +183,40 @@ describe('job_links collection', () => {
 });
 
 describe('group_links collection', () => {
+  it('keeps exactly its three indexes: group-comments adds none', async () => {
+    const indexes = await connection
+      .collection(GROUP_LINKS_COLLECTION)
+      .indexes();
+
+    expect(indexes.map((index) => index.key)).toEqual([
+      { _id: 1 },
+      { groupId: 1, linkId: 1 },
+      { groupId: 1, sharedAt: -1, _id: -1 },
+      { linkId: 1 },
+    ]);
+  });
+
+  it('stores the note with its creation date and starts the comment counters at 0', async () => {
+    const model = connection.model<GroupLinkDocument>(GROUP_LINK_MODEL_NAME);
+    const created = await model.create({
+      groupId: new mongoose.Types.ObjectId(),
+      linkId: LINK_ID,
+      sharedBy: USER_ID,
+      sharedAt: now,
+      note: { text: 'Esta es la que te dije', createdAt: now },
+    });
+    const raw = await connection
+      .collection(GROUP_LINKS_COLLECTION)
+      .findOne({ _id: created._id });
+
+    expect(raw?.['note']).toEqual({
+      text: 'Esta es la que te dije',
+      createdAt: now,
+    });
+    expect(raw?.['commentCount']).toBe(0);
+    expect(raw?.['commentsRevision']).toBe(0);
+  });
+
   it('declares the unique relation and the paginated listing index', async () => {
     expect(groupLinkSchema.get('bufferCommands')).toBe(false);
     const indexes = await connection

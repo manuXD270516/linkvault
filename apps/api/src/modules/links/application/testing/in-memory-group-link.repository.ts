@@ -1,5 +1,9 @@
+import type { NewGroupLinkComment } from '../../domain/group-link-comment';
 import { isGroupId, isLinkId } from '../../domain/identifier';
+import type { ShareNote } from '../../domain/share-note';
 import type {
+  AddedComment,
+  CommentsCounters,
   GroupLink,
   GroupLinkRepository,
   ShareInGroupInput,
@@ -8,17 +12,28 @@ import type {
 import type { LinkListPage, LinkListQuery } from '../ports/link-listing';
 import type { TransactionSession } from '../ports/transaction-session';
 import type { InMemoryJobLinkRepository } from './in-memory-job-link.repository';
+import { InMemoryGroupLinkCommentRepository } from './in-memory-group-link-comment.repository';
 import { pageOf, type StoredRelation } from './in-memory-pagination';
 
 // Relación grupo–vacante en memoria para tests de application (D10 de job-links). No es un adaptador de producción: el
 // real es `MongoGroupLinkRepository`. Impone lo mismo que el índice único `(groupId, linkId)`: un grupo tiene cada link
 // una sola vez y quien lo compartió primero no cambia.
+//
+// Es el **único dueño** de `commentCount` y `commentsRevision`, como `MongoGroupLinkRepository` (D2 de group-comments):
+// escribe los comentarios a través del doble de comentarios que recibe. No emula el rollback ni la carrera de dos
+// transacciones: eso lo prueban los tests de integración.
 
 interface StoredGroupLink extends StoredRelation {
   readonly groupId: string;
   readonly linkId: string;
   readonly sharedBy: string;
+  note?: ShareNote;
+  commentCount: number;
+  commentsRevision: number;
 }
+
+/** Sesión de mentira de las transacciones de este doble. */
+const OWN_SESSION: TransactionSession = Object.freeze({ inMemoryOwner: true });
 
 export class InMemoryGroupLinkRepository implements GroupLinkRepository {
   private readonly relations: StoredGroupLink[] = [];
@@ -29,7 +44,15 @@ export class InMemoryGroupLinkRepository implements GroupLinkRepository {
   /** Cuántas veces se preguntó por los grupos que ya tienen un link: lo usa el test que descarta el N+1 (D4). */
   groupsWithLinkCalls = 0;
 
-  constructor(private readonly links: InMemoryJobLinkRepository) {}
+  /** Llamadas a las lecturas del listado, para el test de las lecturas fijas (D7 de group-comments). */
+  listByGroupCalls = 0;
+  countByGroupCalls = 0;
+  findCalls = 0;
+
+  constructor(
+    private readonly links: InMemoryJobLinkRepository,
+    readonly comments: InMemoryGroupLinkCommentRepository = new InMemoryGroupLinkCommentRepository(),
+  ) {}
 
   /** Cuántas relaciones hay en total; lo usan los tests del borrado en cascada. */
   get size(): number {
@@ -51,12 +74,16 @@ export class InMemoryGroupLinkRepository implements GroupLinkRepository {
       linkId: input.linkId,
       sharedBy: input.sharedBy,
       date: input.sharedAt,
+      ...(input.note === undefined ? {} : { note: input.note }),
+      commentCount: 0,
+      commentsRevision: 0,
     };
     this.relations.push(relation);
     return Promise.resolve({ relation: toGroupLink(relation), created: true });
   }
 
   find(groupId: string, linkId: string): Promise<GroupLink | null> {
+    this.findCalls += 1;
     const relation = this.relationOf(groupId, linkId);
     return Promise.resolve(relation ? toGroupLink(relation) : null);
   }
@@ -76,6 +103,7 @@ export class InMemoryGroupLinkRepository implements GroupLinkRepository {
     groupId: string,
     query: LinkListQuery,
   ): Promise<LinkListPage> {
+    this.listByGroupCalls += 1;
     if (!isGroupId(groupId)) {
       return { items: [] };
     }
@@ -84,10 +112,16 @@ export class InMemoryGroupLinkRepository implements GroupLinkRepository {
       query,
       this.links,
       (relation) => relation.sharedBy,
+      (relation) => ({
+        ...(relation.note === undefined ? {} : { note: relation.note }),
+        commentCount: relation.commentCount,
+        commentsRevision: relation.commentsRevision,
+      }),
     );
   }
 
   countByGroup(groupId: string): Promise<number> {
+    this.countByGroupCalls += 1;
     if (!isGroupId(groupId)) {
       return Promise.resolve(0);
     }
@@ -132,29 +166,60 @@ export class InMemoryGroupLinkRepository implements GroupLinkRepository {
     return Promise.resolve(found);
   }
 
-  remove(groupId: string, linkId: string): Promise<boolean> {
+  async removeWithComments(groupId: string, linkId: string): Promise<boolean> {
     const relation = this.relationOf(groupId, linkId);
     if (relation === undefined) {
-      return Promise.resolve(false);
+      return false;
     }
     this.relations.splice(this.relations.indexOf(relation), 1);
-    return Promise.resolve(true);
+    await this.comments.deleteByRelation(groupId, linkId, OWN_SESSION);
+    return true;
   }
 
-  deleteByGroup(
+  async deleteByGroup(
     groupId: string,
     session: TransactionSession,
   ): Promise<number> {
     this.lastSession = session;
-    return Promise.resolve(
-      this.deleteWhere((relation) => relation.groupId === groupId),
-    );
+    await this.comments.deleteByGroup(groupId, session);
+    return this.deleteWhere((relation) => relation.groupId === groupId);
   }
 
-  deleteByLink(linkId: string): Promise<number> {
-    return Promise.resolve(
-      this.deleteWhere((relation) => relation.linkId === linkId),
-    );
+  async addComment(comment: NewGroupLinkComment): Promise<AddedComment | null> {
+    const relation = this.relationOf(comment.groupId, comment.linkId);
+    if (relation === undefined) {
+      return null;
+    }
+    relation.commentCount += 1;
+    relation.commentsRevision += 1;
+    const stored = await this.comments.insert(comment, OWN_SESSION);
+    return { comment: stored, counters: countersOf(relation) };
+  }
+
+  async removeComment(
+    groupId: string,
+    linkId: string,
+    commentId: string,
+  ): Promise<CommentsCounters | null> {
+    const relation = this.relationOf(groupId, linkId);
+    if (
+      relation === undefined ||
+      !(await this.comments.deleteOne(groupId, linkId, commentId, OWN_SESSION))
+    ) {
+      return null;
+    }
+    relation.commentCount -= 1;
+    relation.commentsRevision += 1;
+    return countersOf(relation);
+  }
+
+  clearNote(groupId: string, linkId: string): Promise<boolean> {
+    const relation = this.relationOf(groupId, linkId);
+    if (relation === undefined) {
+      return Promise.resolve(false);
+    }
+    delete relation.note;
+    return Promise.resolve(true);
   }
 
   /** Alta directa para preparar un test, sin pasar por el caso de uso. */
@@ -199,6 +264,17 @@ function toGroupLink(relation: StoredGroupLink): GroupLink {
     groupId: relation.groupId,
     linkId: relation.linkId,
     sharedBy: relation.sharedBy,
+    sharedAt: relation.date,
+    ...(relation.note === undefined ? {} : { note: relation.note }),
+    commentCount: relation.commentCount,
+    commentsRevision: relation.commentsRevision,
+  };
+}
+
+function countersOf(relation: StoredGroupLink): CommentsCounters {
+  return {
+    count: relation.commentCount,
+    revision: relation.commentsRevision,
     sharedAt: relation.date,
   };
 }

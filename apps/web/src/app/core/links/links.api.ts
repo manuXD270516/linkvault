@@ -1,6 +1,10 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import type {
+  CommentPage,
+  CreateCommentRequest,
+  CreateCommentResponse,
+  DeleteCommentResponse,
   EnrichLinkResponse,
   ImportLinksRequest,
   ImportLinksResponse,
@@ -39,9 +43,15 @@ export interface LinksPageQuery {
 export class LinksApi {
   private readonly http = inject(HttpClient);
 
-  /** Guarda una URL; sin `groupId` el link queda solo en la lista privada de quien lo guarda. */
-  saveLink(url: string, groupId?: string): Promise<SaveLinkResponse> {
+  /**
+   * Guarda una URL; sin `groupId` el link queda solo en la lista privada de quien lo guarda. `note` es la nota para el
+   * grupo (D3 de group-comments): solo viaja con grupo y con texto, porque una nota vacía equivale a no enviarla.
+   */
+  saveLink(url: string, groupId?: string, note?: string): Promise<SaveLinkResponse> {
     const body: SaveLinkRequest = groupId === undefined ? { url } : { url, groupId };
+    if (groupId !== undefined && note !== undefined && note.trim().length > 0) {
+      body.note = note;
+    }
     return firstValueFrom(this.http.post<SaveLinkResponse>(LINKS_URL, body));
   }
 
@@ -102,6 +112,35 @@ export class LinksApi {
       this.http.delete<null>(`${LINKS_URL}/mine/${encodeURIComponent(linkId)}`),
     );
   }
+
+  /** Una página del hilo de un link en un grupo, del más reciente al más antiguo (D7 de group-comments). */
+  comments(groupId: string, linkId: string, query: LinksPageQuery = {}): Promise<CommentPage> {
+    return firstValueFrom(
+      this.http.get<CommentPage>(commentsUrl(groupId, linkId), { params: pageParams(query) }),
+    );
+  }
+
+  /** Publica un comentario; responde con él y con el resumen de la tarjeta ya actualizado. */
+  postComment(groupId: string, linkId: string, text: string): Promise<CreateCommentResponse> {
+    const body: CreateCommentRequest = { text };
+    return firstValueFrom(this.http.post<CreateCommentResponse>(commentsUrl(groupId, linkId), body));
+  }
+
+  /** Borra un comentario; responde `200 { comments }` con el resumen nuevo, la misma forma que el alta. */
+  deleteComment(groupId: string, linkId: string, commentId: string): Promise<DeleteCommentResponse> {
+    return firstValueFrom(
+      this.http.delete<DeleteCommentResponse>(
+        `${commentsUrl(groupId, linkId)}/${encodeURIComponent(commentId)}`,
+      ),
+    );
+  }
+
+  /** Quita la nota de quien compartió el link (`204`); no hay forma de editarla. */
+  async removeNote(groupId: string, linkId: string): Promise<void> {
+    await firstValueFrom(
+      this.http.delete<null>(`${groupLinksUrl(groupId)}/${encodeURIComponent(linkId)}/note`),
+    );
+  }
 }
 
 /** El `cursor` es opaco: viaja tal cual y solo cuando lo hay, para que la primera página no lo lleve vacío. */
@@ -112,4 +151,8 @@ function pageParams({ limit = LINKS_PAGE_SIZE, cursor }: LinksPageQuery): HttpPa
 
 function groupLinksUrl(groupId: string): string {
   return `${GROUPS_URL}/${encodeURIComponent(groupId)}/links`;
+}
+
+function commentsUrl(groupId: string, linkId: string): string {
+  return `${groupLinksUrl(groupId)}/${encodeURIComponent(linkId)}/comments`;
 }

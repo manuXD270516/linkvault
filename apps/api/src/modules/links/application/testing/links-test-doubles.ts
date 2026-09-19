@@ -1,9 +1,13 @@
 import type {
+  GroupLinkCommentsChangedPayload,
+  GroupLinkCommentsMessage,
   GroupRole,
   JobLinkSummary,
   LinkEnrichedPayload,
 } from '@linkvault/shared';
 import type { Clock } from '../ports/clock.port';
+import type { CommentsBroadcaster } from '../ports/comments-broadcaster.port';
+import type { CommentsChangedPublisher } from '../ports/comments-changed-publisher.port';
 import type { EnrichmentBroadcaster } from '../ports/enrichment-broadcaster.port';
 import type {
   GroupMembership,
@@ -103,11 +107,23 @@ export class InMemoryGroupMembership implements GroupMembership {
     return this;
   }
 
+  /** Saca a alguien del grupo, como salir o ser expulsado. */
+  withoutMember(groupId: string, userId: string): this {
+    this.roles.delete(keyOf(groupId, userId));
+    return this;
+  }
+
+  /** Cuántas veces se preguntó por los miembros: lo usa el test de las lecturas fijas (D7 de group-comments). */
+  memberIdsOfCalls = 0;
+  membershipOfCalls = 0;
+
   membershipOf(groupId: string, userId: string): Promise<GroupRole | null> {
+    this.membershipOfCalls += 1;
     return Promise.resolve(this.roles.get(keyOf(groupId, userId)) ?? null);
   }
 
   memberIdsOf(groupIds: readonly string[]): Promise<string[]> {
+    this.memberIdsOfCalls += 1;
     const members = new Set<string>();
     for (const key of this.roles.keys()) {
       const [groupId, userId] = key.split('|');
@@ -263,6 +279,8 @@ function nameOfLimit(key: LinkLimitKey): string {
       return `import:${key.userId}`;
     case 'paste-description':
       return `paste-description:${key.userId}`;
+    case 'comment':
+      return `comment:${key.userId}`;
   }
 }
 
@@ -341,5 +359,64 @@ export class FakePastedExtraction implements PastedExtractionPort {
   extract(request: PastedExtractionRequest): Promise<PastedExtraction> {
     this.requests.push(request);
     return Promise.resolve(this.answer);
+  }
+}
+
+/**
+ * Publicador de avisos de comentarios en memoria: apunta lo publicado. Con `hang()`, publicar no termina nunca, que es
+ * como se prueba que el caso de uso no espera al aviso; con `fail()`, falla como un Redis caído.
+ */
+export class InMemoryCommentsChangedPublisher
+  implements CommentsChangedPublisher
+{
+  readonly published: GroupLinkCommentsChangedPayload[] = [];
+  private mode: 'up' | 'hang' | 'fail' = 'up';
+
+  hang(): this {
+    this.mode = 'hang';
+    return this;
+  }
+
+  fail(): this {
+    this.mode = 'fail';
+    return this;
+  }
+
+  publish(payload: GroupLinkCommentsChangedPayload): Promise<void> {
+    this.published.push(payload);
+    switch (this.mode) {
+      case 'up':
+        return Promise.resolve();
+      case 'hang':
+        return new Promise<void>(() => undefined);
+      case 'fail':
+        return Promise.reject(new Error('Connection is closed.'));
+    }
+  }
+}
+
+/** Canal de salida de los avisos de comentarios en memoria: apunta qué se envió a quién. */
+export class InMemoryCommentsBroadcaster implements CommentsBroadcaster {
+  readonly sent: { userId: string; message: GroupLinkCommentsMessage }[] = [];
+  private listening = true;
+
+  /** Deja el canal sin ninguna conexión abierta. */
+  withoutListeners(): this {
+    this.listening = false;
+    return this;
+  }
+
+  hasListeners(): boolean {
+    return this.listening;
+  }
+
+  send(userId: string, message: GroupLinkCommentsMessage): number {
+    this.sent.push({ userId, message });
+    return 1;
+  }
+
+  /** A quién se avisó, sin repetir y en orden de aviso. */
+  get recipients(): string[] {
+    return [...new Set(this.sent.map((entry) => entry.userId))];
   }
 }

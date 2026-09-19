@@ -9,6 +9,8 @@ import {
   JOB_LINK_MODEL_NAME,
   JOB_LINKS_COLLECTION,
 } from './link.schemas';
+import { GROUP_LINK_COMMENT_MODEL_NAME } from './group-link-comment.schemas';
+import { MongoGroupLinkCommentRepository } from './mongo-group-link-comment.repository';
 import { MongoGroupLinkRepository } from './mongo-group-link.repository';
 import { MongoJobLinkRepository } from './mongo-job-link.repository';
 
@@ -54,9 +56,13 @@ beforeAll(async () => {
     .createConnection(getMongoTestUri(), { dbName: `links-${randomUUID()}` })
     .asPromise();
   links = new MongoJobLinkRepository(connection);
-  groupLinks = new MongoGroupLinkRepository(connection);
+  groupLinks = new MongoGroupLinkRepository(
+    connection,
+    new MongoGroupLinkCommentRepository(connection),
+  );
   await connection.model(JOB_LINK_MODEL_NAME).init();
   await connection.model(GROUP_LINK_MODEL_NAME).init();
+  await connection.model(GROUP_LINK_COMMENT_MODEL_NAME).init();
 });
 
 afterEach(async () => {
@@ -114,6 +120,8 @@ describe('find, listByGroup and countByGroup', () => {
       linkId,
       sharedBy: ANA,
       sharedAt: now,
+      commentCount: 0,
+      commentsRevision: 0,
     });
   });
 
@@ -178,12 +186,12 @@ describe('groupsWithLink', () => {
   });
 });
 
-describe('remove, deleteByGroup and deleteByLink', () => {
+describe('removeWithComments and deleteByGroup', () => {
   it('Quitar no destruye la vacante', async () => {
     const { linkId } = await shareLink(JOB_PAGE, BACKEND, ANA);
     await shareLink(SEARCH_PAGE, FRONTEND, ANA, later);
 
-    expect(await groupLinks.remove(BACKEND, linkId)).toBe(true);
+    expect(await groupLinks.removeWithComments(BACKEND, linkId)).toBe(true);
     expect(await groupLinks.find(BACKEND, linkId)).toBeNull();
     expect((await groupLinks.listByGroup(FRONTEND, { limit: 20 })).items).toHaveLength(
       1,
@@ -194,8 +202,10 @@ describe('remove, deleteByGroup and deleteByLink', () => {
   it('answers false when the link was not in that group', async () => {
     const { linkId } = await shareLink(JOB_PAGE, BACKEND, ANA);
 
-    expect(await groupLinks.remove(FRONTEND, linkId)).toBe(false);
-    expect(await groupLinks.remove('no-es-un-id', linkId)).toBe(false);
+    expect(await groupLinks.removeWithComments(FRONTEND, linkId)).toBe(false);
+    expect(await groupLinks.removeWithComments('no-es-un-id', linkId)).toBe(
+      false,
+    );
   });
 
   it('deletes every relation of a group, and only of that group', async () => {
@@ -221,16 +231,6 @@ describe('remove, deleteByGroup and deleteByLink', () => {
     ).toBe(2);
   });
 
-  it('deletes every relation of a link', async () => {
-    const { linkId } = await shareLink(JOB_PAGE, BACKEND, ANA);
-    await shareLink(SEARCH_PAGE, FRONTEND, ANA, later);
-
-    expect(await groupLinks.deleteByLink(linkId)).toBe(2);
-    expect(
-      await connection.collection(GROUP_LINKS_COLLECTION).countDocuments(),
-    ).toBe(0);
-    expect(await groupLinks.deleteByLink('no-es-un-id')).toBe(0);
-  });
 });
 
 describe('linkIdsIn', () => {

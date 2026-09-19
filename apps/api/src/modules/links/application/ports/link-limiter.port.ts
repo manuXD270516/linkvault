@@ -17,7 +17,12 @@ export type LinkLimitKey =
   /** Importaciones de una persona. Guardar un link suelto NO cuenta contra este límite. */
   | { readonly kind: 'import'; readonly userId: string }
   /** Pegados de descripción de una persona, en cualquier link. */
-  | { readonly kind: 'paste-description'; readonly userId: string };
+  | { readonly kind: 'paste-description'; readonly userId: string }
+  /**
+   * Comentarios que publica una persona, en todos sus grupos (D6 de group-comments). Falla abierto: lo que se permite de
+   * más es escribir en nuestra base y repartir a 50 conexiones como mucho. Borrar no cuenta.
+   */
+  | { readonly kind: 'comment'; readonly userId: string };
 
 export interface LinkLimitDecision {
   readonly allowed: boolean;

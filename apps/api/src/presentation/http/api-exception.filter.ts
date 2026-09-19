@@ -23,6 +23,7 @@ import {
 } from '../../modules/groups/domain/errors';
 import {
   InvalidCursor,
+  InvalidLinkField,
   LinksError,
   PreviewFieldUnknown,
   TooManyLinkAttempts,
@@ -61,7 +62,10 @@ interface ApiErrorReply {
  *   → 404, `forbidden` → 403, `enrichment_not_retryable` → 409, `not_a_job_posting` → 422); `InvalidCursor` va antes porque es un
  *   `validation_error` que nombra el campo `cursor`, `PreviewFieldUnknown` porque nombra el campo que no existe y
  *   `TooManyLinkAttempts`, `ExtractionUnavailable` (503) y `AiQuotaExceeded` (429) porque llevan su `Retry-After`. `invalid_url` y `text_too_long` NO nombran campo: el código ya
- *   dice cuál es, y el SPA traduce el código.
+ *   dice cuál es, y el SPA traduce el código. `InvalidLinkField` (group-comments) va antes que la genérica porque es un
+ *   `validation_error` que nombra su campo: `InvalidCommentText` (`text`) e `InvalidShareNote` (`note`). Por la genérica
+ *   salen `CommentNotFound` → 404 `comment_not_found`, `CommentDeletionForbidden` y `NoteRemovalForbidden` → 403
+ *   `forbidden`, y `CommentsGroupNotFound` → 404 `group_not_found`, con el mismo cuerpo que da `groups`.
  * - Errores de dominio de `applications`, por su `code` (`application_not_found` → 404, `application_conflict` → 409,
  *   `link_not_found` → 404, `group_not_found` → 404); `InvalidApplicationField` va antes porque es un
  *   `validation_error` que nombra su campo: `InvalidAppliedAt` (`appliedAt`, la fecha futura que solo el dominio puede
@@ -138,6 +142,9 @@ export class ApiExceptionFilter extends BaseExceptionFilter {
     }
     if (exception instanceof GroupsError) {
       return reply(exception.code);
+    }
+    if (exception instanceof InvalidLinkField) {
+      return reply('validation_error', [exception.field]);
     }
     if (exception instanceof InvalidCursor) {
       return reply('validation_error', [exception.field]);

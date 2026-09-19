@@ -5,6 +5,7 @@ import { RouterLink } from '@angular/router';
 import type { Application, GroupTracker, JobLinkSummary, PreviewFieldName } from '@linkvault/shared';
 import { statusLabel } from '../applications/application-status.labels';
 import { TrackerAvatars } from '../applications/tracker-avatars.component';
+import { CommentAgo } from './comment-ago.component';
 import {
   daysSince,
   fieldOrigin,
@@ -27,7 +28,7 @@ import { linkCardStatus } from './link-status';
  */
 @Component({
   selector: 'lv-link-card',
-  imports: [DatePipe, MatButtonModule, RouterLink, TrackerAvatars],
+  imports: [CommentAgo, DatePipe, MatButtonModule, RouterLink, TrackerAvatars],
   templateUrl: './link-card.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -43,6 +44,13 @@ export class LinkCard {
   readonly alreadyTracked = input(false);
   /** Quién comparte su estado sobre esta oferta en el grupo; `null` fuera de un grupo, donde no hay avatares. */
   readonly trackers = input<readonly GroupTracker[] | null>(null);
+  /**
+   * `true` en el detalle de un grupo: solo ahí hay nota de quien compartió y comentarios (spec web/group-comments). En
+   * `/mis-links` la tarjeta no los muestra aunque el link los tenga en algún grupo.
+   */
+  readonly groupView = input(false);
+  /** `true` si quien mira puede quitar la nota: quien compartió el link o el propietario del grupo. */
+  readonly canRemoveNote = input(false);
 
   readonly remove = output<void>();
   /** Completar la oferta a mano: quien la abre es `LinkList`, que sabe recargar la lista al guardar. */
@@ -55,6 +63,10 @@ export class LinkCard {
   readonly undoPaste = output<PreviewFieldName[]>();
   /** Gesto de seguimiento: "Me interesa" o "Postulé". La fecha y la invitación a compartir las resuelve `LinkList`. */
   readonly track = output<'interested' | 'applied'>();
+  /** Abrir el hilo de comentarios del link en el grupo; el diálogo lo abre `LinkList`. */
+  readonly openComments = output<void>();
+  /** Quitar la nota; la confirmación (propia o ajena) la pide `LinkList`, que sabe quién mira. */
+  readonly removeNote = output<void>();
 
   private readonly locale = inject(LOCALE_ID);
 
@@ -69,6 +81,17 @@ export class LinkCard {
     const status = this.application()?.status;
     return status === undefined || status === 'saved' || status === 'interested';
   });
+
+  /** La nota de quien compartió, solo en el grupo. */
+  protected readonly shareNote = computed(() => (this.groupView() ? (this.link().note ?? null) : null));
+
+  /** Cuántos comentarios tiene el link en el grupo: del contador que trae, no de los que se ven. */
+  protected readonly commentCount = computed(() => this.link().comments?.count ?? 0);
+
+  /** Los dos últimos comentarios, el más antiguo arriba: `latest` llega del más reciente al más antiguo. */
+  protected readonly latestComments = computed(() =>
+    this.groupView() ? [...(this.link().comments?.latest ?? [])].reverse() : [],
+  );
 
   private readonly preview = computed(() => this.link().preview);
   private readonly sources = computed(() => this.link().previewSources);
