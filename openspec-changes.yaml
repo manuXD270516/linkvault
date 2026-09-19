@@ -107,6 +107,26 @@ changes:
       historial antes de rendirse con `robots_disallowed`.
       Golden: añadir a `extract-job` casos de texto pegado (sin HTML, con ruido de chat alrededor) sin tocar los siete
       de páginas, con su línea base en replay y fixtures grabados contra Ollama local.
+  - name: groups-ownership-join-limit
+    adrs: [002, 020, 021]
+    agents: [backend-dev, frontend-dev]
+    scope: |
+      Decisión humana del 2026-09-19 tras el debate de applications-tracking: la transferencia de propiedad de un grupo y el
+      límite de intentos de POST /api/groups/join salen de `applications-tracking` a este change, que se entrega ANTES. Ambas
+      son deudas de `groups` (Risks de su design.md) que `job-links` volvió más caras; no dependen de las postulaciones, que
+      sobreviven al borrado del grupo (ADR-024).
+      Transferencia: el owner nombra propietario a otro miembro y pasa a member en una escritura atómica; la membresía owner es
+      única, garantizada por un índice único parcial con nombre explícito (`one_owner_per_group`) y detección de duplicados por
+      nombre de índice. Borrar, salir y expulsar condicionan su escritura al rol (`deleteGroup` borra primero la membresía owner
+      de quien pide; `removeMember` devuelve removed | now_owner | not_member), para que ninguna carrera deje un grupo sin
+      propietario ni borre uno que ya cambió de manos. Después el antiguo owner puede salir.
+      Límite del join: códigos incorrectos contados por usuario (10) y por IP (50, IPv6 por /64) en ventanas fijas de 15 min con
+      el contador de `apps/api/src/infrastructure/limits/`, consumidos antes de resolver y devueltos con try/finally salvo en
+      InvalidInviteCode, solo en los contadores que contaron; un acierto no reinicia; 429 too_many_attempts con Retry-After por
+      el error de dominio TooManyJoinAttempts con su rama en el filtro; falla abierto. `ipLimitGroup` pasa de `auth` a
+      infraestructura de plataforma.
+      Frontend: "Nombrar propietario", textos del propietario para salir, confirmación de borrado que sugiere transferir y
+      mensaje del 429. En ES siempre "propietario"; en EN "owner". Decisiones no triviales en ADR-025 tras su propio debate.
   - name: applications-tracking
     adrs: [004, 015]
     agents: [backend-dev, frontend-dev]
@@ -114,15 +134,8 @@ changes:
       Application (userId, linkId) único, máquina de estados canónica con stageLabel en IN_PROCESS, ApplicationEvent,
       visibility private por defecto con opt-in group, fitScore? reservado, evento ApplicationStale modelado (sin notificación).
       Frontend: kanban por estado, timeline, avatares en card de grupo.
-      PRIMERA TAREA del change, heredada de `groups` (Risks de su design.md) y ya urgente desde `job-links`: transferencia de
-      propiedad de un grupo. El owner no puede salir ni ser expulsado y su única salida es borrar el grupo, que hoy YA destruye las
-      ofertas que los demás miembros compartieron allí (quien solo las guardó en ese grupo las pierde, porque compartir no crea
-      entrada privada, ADR-021 §5) y aquí destruiría además lo que compartan de sus postulaciones. Alcance mínimo: el owner nombra
-      owner a otro miembro y pasa a member (la membresía owner sigue siendo única), y después ya puede salir.
-      También heredado de `groups` vía `job-links`: límite de intentos sobre POST /api/groups/join, todavía sin contador. El código
-      de invitación ya da acceso a links de terceros desde `job-links`, así que aquí, que además abre las postulaciones compartidas,
-      hay que contar los intentos fallidos por usuario y por IP con el mismo mecanismo de `auth` (ventanas fijas en Redis, 429
-      too_many_attempts con Retry-After).
+      La transferencia de propiedad de un grupo y el límite de intentos de POST /api/groups/join, que este change heredaba de
+      `groups`, van ahora en el change anterior, `groups-ownership-join-limit` (decisión humana del 2026-09-19).
   - name: group-comments
     adrs: [015]
     agents: [backend-dev, frontend-dev]
@@ -190,6 +203,8 @@ changes:
       /unirse?codigo=<código> y, aunque la página borra el código de la URL en cuanto lo lee, antes del login viaja además en el
       returnUrl de esas dos rutas; registrarlo dejaría códigos de invitación en claro en los logs. Revisar también Referrer-Policy
       para que el código no salga hacia terceros.
+      Heredado de `applications-tracking` (ADR-024): el borrado de cuenta debe borrar en cascada sus `applications` y sus
+      `application_events`, que guardan notas y etapas privadas.
   - name: auth-email-recovery
     adrs: [012, 020]
     agents: [backend-dev, frontend-dev]

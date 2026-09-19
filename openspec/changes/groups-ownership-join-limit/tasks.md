@@ -1,0 +1,42 @@
+## 1. Contratos y dominio
+
+- [ ] 1.1 [backend] En `libs/shared`, `transferOwnershipRequestSchema` (`{ userId }`) en `group.schema.ts` y el código `already_owner` (409) en `apiErrorCodeSchema`, con sus entradas en `API_ERROR_STATUS`/`API_ERROR_MESSAGES`; corregir el comentario de `owner_cannot_leave` ("no hay transferencia de propiedad"); verificar con los tests de schemas y `pnpm nx run-many -t typecheck -p shared api web`.
+- [ ] 1.2 [backend] Dominio de `groups`: `canTransferOwnership(role)`, la regla "el destino es otro miembro" y los errores `AlreadyOwner` y `TooManyJoinAttempts(retryAfterSeconds)` en `groups/domain/errors`; corregir el comentario de `membership.ts`; verificar con tests unitarios de `membership.spec.ts` y `errors.spec.ts`.
+- [ ] 1.3 [backend] `api-exception.filter.ts`: rama propia de `TooManyJoinAttempts` **antes** de la de `GroupsError`, junto a `TooManyLinkAttempts`, que responde `429 too_many_attempts` con `Retry-After`, y `AlreadyOwner` → `409 already_owner`; verificar con filas nuevas en `api-exception.filter.spec.ts` que comprueban la cabecera.
+
+## 2. Repositorio de `groups`
+
+- [ ] 2.1 [backend] Puerto `GroupRepository`: `transferOwnership(groupId, from, to)` → `transferred | not_owner | target_not_member`, `removeMember` → `removed | now_owner | not_member` y `deleteGroup(groupId, ownerId)` → `deleted | not_found | not_owner`; implementarlos en el repositorio en memoria con la misma semántica condicionada por rol y adaptar los casos de uso actuales a los tipos nuevos sin cambiar su comportamiento; verificar con `in-memory-group.repository.spec.ts` y la suite de `groups` en verde.
+- [ ] 2.2 [backend] `group.schemas.ts`: índice único parcial `{ groupId: 1 }` con `role: 'owner'` y nombre `one_owner_per_group`, constantes con los nombres por defecto `groupId_1_userId_1` e `inviteCode_1`, y `duplicateKeyIndex(error)` en lugar de `duplicateKeyFields` en `create`, `rotateInviteCode` y `addMember`; verificar con integración: `getIndexes()` muestra los tres nombres, el índice rechaza una segunda membresía `owner` con un `11000` sobre `one_owner_per_group`, y `addMember` no la toma por "ya era miembro".
+- [ ] 2.3 [backend] `MongoGroupRepository.transferOwnership` en transacción (degradar primero, promover después, ambos condicionados por rol); verificar con integración en `mongodb-memory-server` (replset): transferencia correcta, `not_owner`, `target_not_member` sin cambios, y `joinedAt` intacto.
+- [ ] 2.4 [backend] `MongoGroupRepository.removeMember` condicionado a `role: 'member'` con relectura si no borra; verificar con la prueba determinista de repositorio (promover al miembro y pedir `removeMember` → `now_owner` sin borrar nada), `removed`, `not_member` y la membresía huérfana que se sigue soltando.
+- [ ] 2.5 [backend] `MongoGroupRepository.deleteGroup(groupId, ownerId)`: primero `members.deleteOne({ groupId, userId: ownerId, role: 'owner' })` dentro de la transacción y `not_owner` si no borra nada, después grupo, membresías y hooks como hoy; verificar con integración: `deleted`, `not_found`, `not_owner` sin borrar nada, y un hook que falla sigue deshaciendo todo.
+
+## 3. Casos de uso y endpoint de la transferencia
+
+- [ ] 3.1 [backend] Caso de uso `TransferOwnership` con el orden de errores de D1 (`group_not_found` → `forbidden` → `already_owner` → `member_not_found`); verificar con unitarios sobre el repositorio en memoria: "El owner nombra a otro", "Un miembro no puede transferir", "Transferir a quien no es miembro" y "Transferirse a sí mismo".
+- [ ] 3.2 [backend] `LeaveGroup` traduce `now_owner` a `owner_cannot_leave`, `RemoveMember` a `forbidden`, y `DeleteGroup` traduce `not_owner` a `forbidden`; verificar con unitarios de "Salir justo después de recibir la propiedad", "El antiguo owner sale tras transferir" y el `403` del borrado.
+- [ ] 3.3 [backend] `POST /api/groups/:id/owner` en `GroupsController` con su pipe zod, respondiendo `GroupDetail` sin `inviteCode`; verificar por HTTP los escenarios funcionales: los cuatro de 3.1, "El nuevo owner ve el código y el anterior no", "El nuevo owner puede expulsar al anterior" y "El antiguo owner sale tras transferir".
+- [ ] 3.4 [backend] Pruebas de concurrencia por HTTP con peticiones realmente simultáneas: "Dos transferencias a la vez", "Transferir mientras el elegido se va" y "Borrar mientras se transfiere", repetidas varias veces por prueba; verificar con la suite de integración de `api`.
+
+## 4. Límite de intentos del join
+
+- [ ] 4.1 [backend] Mover `ipLimitGroup` de `auth/domain/client-ip.ts` a `apps/api/src/infrastructure/limits/client-ip.ts` con su spec, y que `auth` (adaptador y doble en memoria) lo importe de ahí; verificar con la suite de `auth` sin cambios y con que el fichero antiguo ya no existe.
+- [ ] 4.2 [backend] Puerto `JOIN_ATTEMPT_LIMITER` en `groups/application/ports` (`consume(userId, ip)` → `JoinAttempt` con los contadores que contaron y el `Retry-After`; `giveBack(attempt)`) y su doble en memoria; verificar con su spec.
+- [ ] 4.3 [backend] `CounterJoinAttemptLimiter` en `groups/infrastructure` sobre `FIXED_WINDOW_COUNTER` (claves `groups:join:user:*` y `groups:join:ip:*`, 10 y 50 en 15 min, `Retry-After` el mayor, `giveBack` solo en los contadores cuyo `consume` no fue `null`, falla abierto con un aviso por racha sin código ni usuario); `GroupsModule` importa `LimitsModule`; verificar con tests del adaptador con un contador que responde, otro que devuelve `null` y otro que responde en uno solo de los dos.
+- [ ] 4.4 [backend] `JoinByCode`: consume antes de resolver, lanza `TooManyJoinAttempts` si se superó, y resuelve dentro de `try/finally` devolviendo el intento salvo en `InvalidInviteCode`; verificar con unitarios: código desconocido (no se devuelve), unión, ya miembro, `group_full`, `too_many_groups` y un error inesperado del repositorio (se devuelve en todos).
+- [ ] 4.5 [backend] El controlador de unirse pasa `request.ip`; verificar por HTTP: "Demasiados códigos incorrectos", "Los códigos válidos no cuentan", "Un grupo completo no gasta intentos", "Un código válido no reinicia la cuenta", "Los mal formados también cuentan", "Límite por IP", "Intentos concurrentes" y "Almacén de contadores caído", con el doble RESP del contador.
+
+## 5. Frontend de grupos
+
+- [ ] 5.1 [frontend] `GroupsApi.transferOwnership` y `GroupsStore`; en `group-detail.page`, "Nombrar propietario" por miembro para el propietario con su confirmación y recarga como miembro al terminar; verificar con TestBed: "Nombrar propietario y salir" y "Cancelar la transferencia".
+- [ ] 5.2 [frontend] Textos del propietario en el detalle: "Para salir, nombra propietario a otro miembro", "Eres el único miembro: para irte, borra el grupo" y la frase nueva de la confirmación de borrado con más de un miembro; verificar con TestBed: "Detalle como owner", "Owner solo en su grupo", "Borrado informado" y "Borrado de un grupo en el que estás solo".
+- [ ] 5.3 [frontend] El diálogo y la página de unirse muestran "Demasiados códigos incorrectos. Espera unos minutos y vuelve a probar" para `too_many_attempts`, conservando el código; verificar con "Demasiados intentos al unirse".
+- [ ] 5.4 [frontend] Marcar los textos nuevos de grupos y traducirlos en `messages.en.xlf` ("Make owner", "To leave, make another member the owner"…), comprobando que ningún texto en español dice "owner"; verificar con "Traducciones completas" de `web/groups`.
+- [ ] 5.5 [frontend] Ampliar `apps/web-e2e/src/groups.spec.ts`: el propietario nombra propietario a un segundo usuario, sale, y el grupo sigue con sus links para el nuevo propietario; verificar con `pnpm nx e2e web-e2e`.
+
+## 6. Cierre
+
+- [ ] 6.1 [infra] Documentar en `README.md` la transferencia de propiedad y el límite al unirse, y en `docs/RUNBOOK.md` la transferencia, el límite del join (claves de Redis y cómo liberar a alguien), la consulta de "un owner por grupo" antes de desplegar el índice parcial y la comprobación de `getIndexes()` después; verificar leyendo que las rutas, claves y comandos citados existen.
+- [ ] 6.2 [infra] Verificar que ADR-025 (redactado al cerrar el debate de este change) cubre lo implementado: índice parcial con nombre, escrituras condicionadas por rol, qué cuenta en el límite, por qué un acierto no reinicia y la devolución en `finally`; verificar que el proposal lo referencia.
+- [ ] 6.3 [infra] `pnpm nx affected -t lint,typecheck,test --base=main` y `openspec validate --all` en verde; verificar con la salida en archivo.
