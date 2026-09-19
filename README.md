@@ -197,6 +197,7 @@ Todas las rutas exigen access token (`Authorization: Bearer`); sin él responden
 | `GET /api/groups/:id/members`            | miembro           | `200` con `userId`, `displayName`, `role` y `joinedAt`, por antigüedad.  |
 | `DELETE /api/groups/:id/members/me`      | miembro           | `204` al salir; el owner recibe `409 owner_cannot_leave`.                |
 | `DELETE /api/groups/:id/members/:userId` | owner             | `204` al expulsar; la membresía `owner` no se puede eliminar.            |
+| `POST /api/groups/:id/owner`             | owner             | `200` con el detalle visto ya como miembro, sin `inviteCode`.            |
 
 La lista ordena por `joinedAt` descendente y descarta las membresías cuyo grupo ya no existe. `memberCount` sale de una
 sola agregación, no de un conteo por grupo.
@@ -207,7 +208,8 @@ grupo existe, así que las acciones de owner le responden `403 forbidden`. La li
 de cada uno, nunca el email ni ningún otro dato de contacto.
 
 Códigos de error propios: `group_not_found` (404), `invalid_invite_code` (404), `member_not_found` (404), `forbidden`
-(403), `group_full` (409), `too_many_groups` (409) y `owner_cannot_leave` (409).
+(403), `group_full` (409), `too_many_groups` (409), `owner_cannot_leave` (409), `already_owner` (409, el owner se nombra
+a sí mismo; el SPA nunca ofrece ese camino) y `too_many_attempts` (429, con `Retry-After`, ver [Límites](#límites)).
 
 ### Código de invitación
 
@@ -228,27 +230,71 @@ miembros, así que el owner debe regenerar el código si se filtró.
 - **20 grupos por usuario.** Crear o unirse por encima del tope responde `409 too_many_groups`. Volver a un grupo del que
   ya se es miembro sigue funcionando aunque se esté en el límite.
 
+- **Códigos incorrectos al unirse** ([ADR-025](docs/adr/ADR-025.md)): **10 por usuario** y **100 por IP** (una IPv6
+  cuenta por su prefijo /64) en ventanas fijas de **15 minutos**. Al superarlos, `POST /api/groups/join` responde
+  `429 too_many_attempts` con `Retry-After`, y el SPA dice cuántos minutos esperar, con el mismo mensaje del login.
+
 Son límites antiabuso, no invariantes: dos uniones simultáneas pueden dejar un grupo con 51 miembros. Lo que sí impide el
 índice único `(groupId, userId)` es una membresía duplicada.
+
+Del límite del join, lo que conviene saber al probar:
+
+- **Solo cuentan los códigos incorrectos** (desconocidos o mal formados), y se cuentan **antes** de buscar el código, así
+  que peticiones simultáneas no se saltan el tope. Un código válido devuelve su intento, también si la unión acaba en
+  `group_full`, `too_many_groups` o un error inesperado; pero **no pone a cero** la cuenta, para que nadie la reinicie
+  intercalando el código de un grupo propio. Un código vacío lo rechaza la validación (`400`) y no cuenta.
+- **Primero el usuario, después la IP.** Si el contador del usuario rechaza, la IP no se toca: un usuario bloqueado que
+  insiste no gasta los intentos de quienes comparten su red. Si rechaza el de la IP, el usuario recupera su intento.
+  `Retry-After` es el del contador que rechazó.
+- **Falla abierto:** si Redis no responde, se procesa la unión sin límite; el contador avisa una vez por racha de fallos.
+- **Sin `trustProxy`** (lo configura `deploy-prod`), detrás de un proxy todas las peticiones comparten IP y el contador de
+  IP se vuelve global. En local no hay proxy.
+
+Los contadores viven en Redis con las claves `groups:join:user:<userId>` y `groups:join:ip:<grupo de IP>`. Si quedas
+bloqueado en local, espera a que pase la ventana o bórralos (en un entorno compartido, ver el
+[RUNBOOK](docs/RUNBOOK.md#paso-6-quater--operar-la-propiedad-de-los-grupos-y-el-límite-del-join)):
+
+```bash
+docker compose exec redis sh -c "redis-cli --scan --pattern 'groups:join:*' | xargs -r redis-cli del"
+```
 
 ### Roles
 
 El creador es `owner` y cada grupo tiene exactamente una membresía `owner`; no hay campo `ownerId`, la propiedad vive solo
-en la membresía. El owner renombra, regenera el código, expulsa y borra el grupo; un miembro solo puede salir. El owner no
-puede salir ni ser expulsado: todavía no hay transferencia de propiedad, así que quien quiere irse borra el grupo, y
-borrarlo se lleva por delante los links que los demás compartieron allí (la confirmación del SPA dice cuántas ofertas se
-pierden). La transferencia es la primera tarea de `applications-tracking`.
+en la membresía. El owner renombra, regenera el código, expulsa, borra el grupo y **nombra propietario a otro miembro**;
+un miembro solo puede salir. El owner no puede salir ni ser expulsado: para irse, primero transfiere la propiedad y
+después sale como cualquier miembro. Si es el único miembro, su única salida es borrar el grupo, y borrarlo se lleva por
+delante los links compartidos allí (la confirmación del SPA dice cuántas ofertas se pierden).
+
+**Transferir la propiedad** ([ADR-025](docs/adr/ADR-025.md)): `POST /api/groups/:id/owner` con `{ "userId": "…" }`. El
+elegido pasa a `owner` y quien transfiere a `member`, sin cambiar su `joinedAt`, y la respuesta ya es el detalle de un
+miembro (sin `inviteCode`). Quien transfirió no puede deshacerlo; el nuevo owner sí puede devolverle la propiedad.
+Errores, en este orden: `404 group_not_found` (no es miembro o id mal formado), `403 forbidden` (no es owner),
+`409 already_owner` (se nombra a sí mismo) y `404 member_not_found` (el elegido no es miembro o su id está mal formado).
+
+Un grupo tiene exactamente un owner también ante carreras entre transferir, salir, expulsar y borrar:
+
+- Degradar y promover van en **una transacción**, en ese orden: se confirman juntos o ninguno, así que nunca queda un
+  grupo **sin** owner.
+- El índice único parcial `one_owner_per_group` de `group_members` (`{ groupId: 1 }` con `role: 'owner'`) impide que
+  haya **dos**, también ante escrituras futuras. `api` lo construye al arrancar; si no puede (datos antiguos con dos owners
+  en un grupo), registra un `error` y sigue sirviendo. Cómo resolverlo: [RUNBOOK](docs/RUNBOOK.md#paso-6-quater--operar-la-propiedad-de-los-grupos-y-el-límite-del-join).
+- Salir, expulsar y borrar comprueban el rol **al escribir**: quien acaba de recibir la propiedad no puede salir
+  (`409 owner_cannot_leave`), quien acaba de cederla no puede expulsar al nuevo owner ni borrar el grupo (`403 forbidden`).
 
 ### Rutas del SPA
 
-| Ruta          | Contenido                                                                                                                                                                                 |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/grupos`     | Pantalla de inicio: grupos con su rol y su número de miembros, o el estado vacío con crear y unirse.                                                                                      |
-| `/grupos/:id` | Detalle: miembros con fecha de alta y los links del grupo (ver [Links](#links)); el owner ve el código, copia la invitación, renombra, regenera, expulsa y borra; el miembro puede salir. |
-| `/unirse`     | Formulario de unirse. `?codigo=<código>` lo abre con el código escrito y lo quita de la URL al leerlo.                                                                                    |
+| Ruta          | Contenido                                                                                                                                                                                                                                                                                                             |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/grupos`     | Pantalla de inicio: grupos con su rol y su número de miembros, o el estado vacío con crear y unirse.                                                                                                                                                                                                                  |
+| `/grupos/:id` | Detalle: miembros con fecha de alta y los links del grupo (ver [Links](#links)); el owner ve el código, copia la invitación, renombra, regenera, expulsa, nombra propietario a otro miembro y borra; el miembro puede salir. El owner ve "Para salir, nombra propietario a otro miembro" donde el miembro ve "Salir". |
+| `/unirse`     | Formulario de unirse. `?codigo=<código>` lo abre con el código escrito y lo quita de la URL al leerlo.                                                                                                                                                                                                                |
 
 `/` redirige a `/grupos`. Las tres exigen sesión: desde el enlace de invitación sin sesión, el código vuelve tras el login
-o el registro. La confirmación de borrado dice a cuántos miembros afecta y cuántas ofertas se pierden.
+o el registro. La confirmación de borrado dice a cuántos miembros afecta y cuántas ofertas se pierden y, con más de un
+miembro, empieza por "Si solo quieres irte, nombra propietario a otro miembro y sal del grupo.". "Nombrar propietario"
+pide confirmación ("«{nombre}» tendrá el rol de propietario de «{grupo}»…") y, al terminar, recarga el detalle ya como
+miembro, con "Salir" a mano.
 
 ### Probar los grupos en local
 
@@ -263,6 +309,9 @@ curl -s -H "$T" -H "$J" http://localhost:3000/api/groups -d '{"name":"Backend Bo
 curl -s -H "$T" http://localhost:3000/api/groups                                           # sus grupos
 curl -s -H "$T" -H "$J" http://localhost:3000/api/groups/join -d '{"code":"abcd2345"}'      # 200, código normalizado
 curl -s -H "$T" "http://localhost:3000/api/groups/$GROUP_ID/members"                       # nombres, rol y fecha
+MEMBER_ID=...  # el userId de otro miembro, de la lista anterior
+curl -s -H "$T" -H "$J" "http://localhost:3000/api/groups/$GROUP_ID/owner" -d "{\"userId\":\"$MEMBER_ID\"}"   # 200, ya como miembro
+curl -s -i -H "$T" -X DELETE "http://localhost:3000/api/groups/$GROUP_ID/members/me"       # 204: el antiguo owner sale
 ```
 
 ## Links
