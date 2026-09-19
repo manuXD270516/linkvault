@@ -1,6 +1,7 @@
 import { workspaceRoot } from '@nx/devkit';
 import { expect, test, type Page, type Response } from '@playwright/test';
 import { join } from 'node:path';
+import { resetRegisterLimit } from './support/register-limit';
 
 const SCREENSHOT_DIR = join(workspaceRoot, 'reports', 'smoke', 'auth-users');
 
@@ -34,6 +35,12 @@ async function fillLogin(page: Page, email: string, password: string): Promise<v
   await page.getByLabel('Contraseña', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Entrar' }).click();
 }
+
+// El límite de registros por IP es de toda la suite: cada spec parte de cero para que un `429` de `auth` no
+// haga fallar lo que este spec prueba (ver `support/register-limit.ts`).
+test.beforeAll(() => {
+  resetRegisterLimit();
+});
 
 test('auth flow: register, restore, profile, password change, logout and login', async ({
   page,

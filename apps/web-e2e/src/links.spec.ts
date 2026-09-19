@@ -9,6 +9,7 @@ import { MongoClient } from 'mongodb';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { JOB_ID_SLOTS, jobIdBase } from './support/job-ids';
+import { resetRegisterLimit } from './support/register-limit';
 
 const SCREENSHOT_DIR = join(workspaceRoot, 'reports', 'smoke', 'job-links');
 /** Las capturas del preview son de `link-enrichment`, no de `job-links`: cada change guarda las suyas. */
@@ -147,6 +148,10 @@ async function register(
   page: Page,
   user: { displayName: string; email: string; password: string } = USER,
 ): Promise<void> {
+  // El límite de registros por IP (10 cada 15 min) es de toda la suite y los specs corren a la vez desde la misma
+  // máquina: se vacía justo antes de cada alta para que un 429 de `auth` no haga fallar lo que se prueba aquí. El
+  // límite en sí lo prueban los tests de `api` (ver `support/register-limit.ts`).
+  resetRegisterLimit();
   await page.getByLabel('Nombre', { exact: true }).fill(user.displayName);
   await page.getByLabel('Email', { exact: true }).fill(user.email);
   await page.getByLabel('Contraseña', { exact: true }).fill(user.password);

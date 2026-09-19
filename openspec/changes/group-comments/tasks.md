@@ -85,10 +85,10 @@
 
 ## 7. Cierre
 
-- [ ] 7.1 [frontend] `JOB_ID_SLOTS.comments = 3` en `apps/web-e2e/src/support/job-ids.ts` y `apps/web-e2e/src/comments.spec.ts`: Ana comparte un link con nota y Beto, miembro, ve la nota en la tarjeta; verificar con `pnpm nx e2e web-e2e`.
-- [ ] 7.2 [frontend] Ampliar `comments.spec.ts`: Beto comenta y Ana ve el comentario y "Responder" sin recargar; verificar con `pnpm nx e2e web-e2e`.
-- [ ] 7.3 [frontend] Ampliar `comments.spec.ts`: Ana, propietaria, borra el comentario de Beto y desaparece en la pantalla de Beto sin recargar; verificar con `pnpm nx e2e web-e2e`.
-- [ ] 7.4 [frontend] Ampliar `comments.spec.ts`: Beto comenta de nuevo y sale del grupo, y Ana, al recargar, ve "ya no está en el grupo"; verificar con `pnpm nx e2e web-e2e`.
+- [x] 7.1 [frontend] `JOB_ID_SLOTS.comments = 3` en `apps/web-e2e/src/support/job-ids.ts` y `apps/web-e2e/src/comments.spec.ts`: Ana comparte un link con nota y Beto, miembro, ve la nota en la tarjeta; verificar con `pnpm nx e2e web-e2e`.
+- [x] 7.2 [frontend] Ampliar `comments.spec.ts`: Beto comenta y Ana ve el comentario y "Responder" sin recargar; verificar con `pnpm nx e2e web-e2e`.
+- [x] 7.3 [frontend] Ampliar `comments.spec.ts`: Ana, propietaria, borra el comentario de Beto y desaparece en la pantalla de Beto sin recargar; verificar con `pnpm nx e2e web-e2e`.
+- [x] 7.4 [frontend] Ampliar `comments.spec.ts`: Beto comenta de nuevo y sale del grupo, y Ana, al recargar, ve "ya no está en el grupo"; verificar con `pnpm nx e2e web-e2e`.
 - [x] 7.5 [infra] Verificar que el `scope` de `deploy-prod` en `openspec-changes.yaml` contiene la herencia "el borrado de cuenta borra o anonimiza sus `group_link_comments` (ADR-026)", escrita durante el debate.
 - [x] 7.6 [infra] Revisar que `docs/adr/ADR-026.md` cubre lo implementado (módulo, dueño de contadores, revisión y `sharedAt`, carrera y sus dos tests, nota, permisos con moderación del owner, texto sin reescribir, límite y su orden, lecturas fijas, ciclo de vida y aviso en vivo) y corregirlo si algo cambió; verificar que el proposal lo referencia.
 - [x] 7.7 [infra] `README.md`: comentarios y nota en la tarjeta del grupo, qué ven los miembros, qué puede borrar el propietario y qué pasa al salir. `docs/RUNBOOK.md`: colección `group_link_comments`, cómo recalcular `commentCount` con una agregación, cómo borrar a mano los comentarios de una persona hasta que exista el borrado de cuenta, y el canal `events:group-link.comments`. Verificar leyendo que las rutas y comandos citados existen.
