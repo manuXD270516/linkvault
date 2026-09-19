@@ -8,6 +8,10 @@ import {
 } from '@nestjs/common';
 import { BaseExceptionFilter } from '@nestjs/core';
 import {
+  ApplicationsError,
+  InvalidApplicationField,
+} from '../../modules/applications/domain/errors';
+import {
   AuthError,
   PasswordPolicyViolation,
   TooManyAttempts,
@@ -58,6 +62,10 @@ interface ApiErrorReply {
  *   `validation_error` que nombra el campo `cursor`, `PreviewFieldUnknown` porque nombra el campo que no existe y
  *   `TooManyLinkAttempts`, `ExtractionUnavailable` (503) y `AiQuotaExceeded` (429) porque llevan su `Retry-After`. `invalid_url` y `text_too_long` NO nombran campo: el código ya
  *   dice cuál es, y el SPA traduce el código.
+ * - Errores de dominio de `applications`, por su `code` (`application_not_found` → 404, `application_conflict` → 409,
+ *   `link_not_found` → 404, `group_not_found` → 404); `InvalidApplicationField` va antes porque es un
+ *   `validation_error` que nombra su campo: `InvalidAppliedAt` (`appliedAt`, la fecha futura que solo el dominio puede
+ *   juzgar con su reloj) y las defensas de la etapa (`stageLabel`) y de las notas (`notes`).
  * - `HttpException` 400 (JSON mal formado, que Nest convierte desde Fastify) → `validation_error` sin campos, y 415 →
  *   `unsupported_media_type`. El resto de `HttpException` (404 de ruta desconocida, 503 de la salud) conserva la
  *   respuesta de Nest.
@@ -147,6 +155,12 @@ export class ApiExceptionFilter extends BaseExceptionFilter {
       });
     }
     if (exception instanceof LinksError) {
+      return reply(exception.code);
+    }
+    if (exception instanceof InvalidApplicationField) {
+      return reply('validation_error', [exception.field]);
+    }
+    if (exception instanceof ApplicationsError) {
       return reply(exception.code);
     }
     if (exception instanceof HttpException) {
