@@ -22,6 +22,7 @@ import {
   Param,
   Patch,
   Post,
+  Req,
 } from '@nestjs/common';
 import type { AuthenticatedUser } from '../../../presentation/http/auth-context/authenticated-user';
 import { CurrentUser } from '../../../presentation/http/auth-context/current-user.decorator';
@@ -37,6 +38,12 @@ import { RemoveMember } from '../application/remove-member.usecase';
 import { RenameGroup } from '../application/rename-group.usecase';
 import { RotateInviteCode } from '../application/rotate-invite-code.usecase';
 import { TransferOwnership } from '../application/transfer-ownership.usecase';
+
+/** Lo que el controlador lee de la petición de Fastify. */
+export interface GroupsHttpRequest {
+  /** IP del cliente; sin `trustProxy`, la del socket (ADR-025, riesgos aceptados). */
+  readonly ip: string;
+}
 
 /**
  * Grupos y membresías (specs groups/group-management y groups/membership). Todas las rutas exigen access token: el guard
@@ -82,8 +89,9 @@ export class GroupsController {
   join(
     @CurrentUser() user: AuthenticatedUser,
     @Body(new ZodValidationPipe(joinGroupRequestSchema)) body: JoinGroupRequest,
+    @Req() request: GroupsHttpRequest,
   ): Promise<GroupSummary> {
-    return this.joinByCode.execute(user.userId, body.code);
+    return this.joinByCode.execute(user.userId, body.code, request.ip);
   }
 
   @Get(':id')

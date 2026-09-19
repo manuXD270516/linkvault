@@ -5,6 +5,8 @@ import { MongooseModule, getConnectionToken } from '@nestjs/mongoose';
 import { Test, type TestingModule } from '@nestjs/testing';
 import mongoose, { type Connection } from 'mongoose';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { AppConfigModule } from '../../../infrastructure/config/app-config.module';
+import { apiTestConfig } from '../../../test-support/test-config';
 import { GroupsFacade } from '../application/groups.facade';
 import {
   GROUP_MEMBERS_COLLECTION,
@@ -42,6 +44,7 @@ describe('GroupsModule startup with two owners in a group', () => {
     );
     moduleRef = await Test.createTestingModule({
       imports: [
+        AppConfigModule.forRoot(await apiTestConfig()),
         MongooseModule.forRoot(getMongoTestUri(), { dbName }),
         GroupsModule,
       ],

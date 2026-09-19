@@ -353,3 +353,20 @@ conservadora y coherente con D1, D2 y ADR-025.
   `health-live`). El `error` se registra igual en cuanto la construcción falla; si la app se apaga antes, no se
   registra nada. El motivo es el nombre, el código y el `codeName` del error (`MongoServerError 11000 DuplicateKey`), sin
   su mensaje, que lleva el `groupId` duplicado.
+- **`JoinAttempt` lleva `counted`, `rejected` y `retryAfterSeconds`** (4.2). `counted` son los contadores en los que el
+  intento cuenta en ese momento: tras un rechazo de la IP, solo `ip`, porque el usuario ya recuperó el suyo. `giveBack`
+  de un intento rechazado no hace nada, y así el contador que rechazó se queda con su intento aunque alguien lo llame
+  por error. Si el contador del usuario respondió `null` y la IP rechaza, no se devuelve nada al usuario, porque no se
+  le contó.
+- **Los umbrales del join viven en `groups/domain/limits.ts`** (`JOIN_ATTEMPTS_PER_USER`, `JOIN_ATTEMPTS_PER_IP`,
+  `JOIN_ATTEMPT_WINDOW_MS`), junto a los demás límites antiabuso del módulo. El adaptador exporta `joinUserKey` y
+  `joinIpKey`, que son las claves que citará el RUNBOOK (tarea 6.2).
+- **`JoinByCode.execute(userId, code, ip)`** (4.4): la IP es un parámetro más, y el controlador pasa `request.ip`
+  mediante un tipo propio (`GroupsHttpRequest`), sin importar el de `auth`.
+- **Arnés del join en `apps/api/src/test-support/groups-join-test-app.ts`** (4.5a), junto al de `links`. El contador
+  controlable cuenta sin reloj, y por clave puede rechazar siempre o devolver `null`. La IP por defecto de cada test sale
+  de `198.18.0.0/15`, un rango reservado para pruebas. "Almacén de contadores caído" (4.5b) no usa el doble: usa el
+  `RedisFixedWindowCounter` real sobre un Redis inalcanzable, porque el aviso "como mucho uno por racha" es del
+  contador y no del adaptador.
+- **Los specs que compilan `GroupsModule` suelto registran `AppConfigModule`** (4.3): `LimitsModule` crea el cliente
+  Redis a partir de `APP_CONFIG`. No abre conexión (`lazyConnect`) y nadie se une en esos tests.

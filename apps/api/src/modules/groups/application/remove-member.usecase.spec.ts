@@ -15,6 +15,7 @@ import {
   StubInviteCodeGenerator,
 } from './testing/groups-test-doubles';
 import { InMemoryGroupRepository } from './testing/in-memory-group.repository';
+import { InMemoryJoinAttemptLimiter } from './testing/in-memory-join-attempt-limiter';
 
 const ANA = '66e9a0000000000000000001';
 const BETO = '66e9a0000000000000000002';
@@ -62,7 +63,11 @@ describe('RemoveMember', () => {
     await expect(repository.listMembers(group.id)).resolves.toHaveLength(2);
     // Con el código vigente puede volver a entrar: por eso la UI ofrece regenerarlo.
     await expect(
-      new JoinByCode(repository, clock).execute(BETO, group.inviteCode),
+      new JoinByCode(
+        repository,
+        clock,
+        new InMemoryJoinAttemptLimiter(),
+      ).execute(BETO, group.inviteCode, '203.0.113.7'),
     ).resolves.toMatchObject({ id: group.id, role: 'member' });
   });
 

@@ -5,6 +5,8 @@ import { MongooseModule, getConnectionToken } from '@nestjs/mongoose';
 import { Test, type TestingModule } from '@nestjs/testing';
 import type { Connection } from 'mongoose';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { AppConfigModule } from '../../../infrastructure/config/app-config.module';
+import { apiTestConfig } from '../../../test-support/test-config';
 import { UsersFacade } from '../../users/application/users.facade';
 import { CreateGroup } from '../application/create-group.usecase';
 import { GroupsFacade } from '../application/groups.facade';
@@ -36,6 +38,8 @@ describe('GroupsModule', () => {
   beforeAll(async () => {
     moduleRef = await Test.createTestingModule({
       imports: [
+        // `LimitsModule` (límite del join) lee la URL de Redis de la configuración; nadie se une en estos tests.
+        AppConfigModule.forRoot(await apiTestConfig()),
         MongooseModule.forRoot(getMongoTestUri(), {
           dbName: `groups-module-${randomUUID()}`,
         }),

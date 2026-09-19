@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { getConnectionToken } from '@nestjs/mongoose';
 import { mongo, type Connection } from 'mongoose';
+import { LimitsModule } from '../../../infrastructure/limits/limits.module';
 import { UsersModule } from '../../users/presentation/users.module';
 import { CreateGroup } from '../application/create-group.usecase';
 import { DeleteGroup } from '../application/delete-group.usecase';
@@ -21,6 +22,7 @@ import { GROUPS_CLOCK } from '../application/ports/clock.port';
 import { GROUP_MEMBER_DIRECTORY } from '../application/ports/group-member-directory.port';
 import { GROUP_REPOSITORY } from '../application/ports/group-repository.port';
 import { INVITE_CODE_GENERATOR } from '../application/ports/invite-code-generator.port';
+import { JOIN_ATTEMPT_LIMITER } from '../application/ports/join-attempt-limiter.port';
 import { RemoveMember } from '../application/remove-member.usecase';
 import { RenameGroup } from '../application/rename-group.usecase';
 import { RotateInviteCode } from '../application/rotate-invite-code.usecase';
@@ -31,6 +33,7 @@ import {
   groupMemberSchema,
   ONE_OWNER_PER_GROUP_INDEX,
 } from '../infrastructure/group.schemas';
+import { CounterJoinAttemptLimiter } from '../infrastructure/counter-join-attempt-limiter';
 import { MongoGroupRepository } from '../infrastructure/mongo-group.repository';
 import { RandomInviteCodeGenerator } from '../infrastructure/random-invite-code-generator';
 import { SystemClock } from '../infrastructure/system-clock';
@@ -40,7 +43,8 @@ import { GroupsController } from './groups.controller';
 /**
  * Módulo `groups` (D1 y D7). Usa la conexión Mongoose por defecto de la app (`getConnectionToken()`), así que quien lo
  * importa debe registrar `MongooseModule.forRoot*`. Importa `UsersModule` solo para los nombres visibles de los miembros
- * (`UsersFacade`, a través de `UsersFacadeMemberDirectory`) y exporta `GroupsFacade` —la única entrada del resto de la
+ * (`UsersFacade`, a través de `UsersFacadeMemberDirectory`), `LimitsModule` para el contador del límite de intentos al
+ * unirse por código (ADR-025 §6; requiere `AppConfigModule` por su cliente Redis) y exporta `GroupsFacade` —la única entrada del resto de la
  * API a los grupos— y `GroupDeletionHooks`, donde otro módulo registra la limpieza de lo suyo al borrar un grupo (D7b de
  * job-links): sin hooks registrados, el borrado se comporta como antes.
  *
@@ -54,13 +58,14 @@ import { GroupsController } from './groups.controller';
  * no se registra nada: no es un índice que falló.
  */
 @Module({
-  imports: [UsersModule],
+  imports: [UsersModule, LimitsModule],
   controllers: [GroupsController],
   providers: [
     { provide: GROUP_REPOSITORY, useClass: MongoGroupRepository },
     { provide: GROUPS_CLOCK, useClass: SystemClock },
     { provide: INVITE_CODE_GENERATOR, useClass: RandomInviteCodeGenerator },
     { provide: GROUP_MEMBER_DIRECTORY, useClass: UsersFacadeMemberDirectory },
+    { provide: JOIN_ATTEMPT_LIMITER, useClass: CounterJoinAttemptLimiter },
     CreateGroup,
     ListMyGroups,
     GetGroup,
