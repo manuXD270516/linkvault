@@ -60,7 +60,12 @@ beforeEach(() => {
     directory,
     clock,
   );
-  listGroupLinks = new ListGroupLinks(groupLinks, membership, directory);
+  listGroupLinks = new ListGroupLinks(
+    groupLinks,
+    groupLinks.comments,
+    membership,
+    directory,
+  );
   listMyLinks = new ListMyLinks(userLinks, directory);
 });
 
@@ -141,6 +146,7 @@ describe('ListGroupLinks', () => {
     directory = new InMemoryLinkUserDirectory();
     listGroupLinks = new ListGroupLinks(
       groupLinks,
+      groupLinks.comments,
       new InMemoryGroupMembership().withMember(BACKEND, ANA),
       directory,
     );

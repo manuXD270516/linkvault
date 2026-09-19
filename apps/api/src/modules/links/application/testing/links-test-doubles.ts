@@ -107,11 +107,23 @@ export class InMemoryGroupMembership implements GroupMembership {
     return this;
   }
 
+  /** Saca a alguien del grupo, como salir o ser expulsado. */
+  withoutMember(groupId: string, userId: string): this {
+    this.roles.delete(keyOf(groupId, userId));
+    return this;
+  }
+
+  /** Cuántas veces se preguntó por los miembros: lo usa el test de las lecturas fijas (D7 de group-comments). */
+  memberIdsOfCalls = 0;
+  membershipOfCalls = 0;
+
   membershipOf(groupId: string, userId: string): Promise<GroupRole | null> {
+    this.membershipOfCalls += 1;
     return Promise.resolve(this.roles.get(keyOf(groupId, userId)) ?? null);
   }
 
   memberIdsOf(groupIds: readonly string[]): Promise<string[]> {
+    this.memberIdsOfCalls += 1;
     const members = new Set<string>();
     for (const key of this.roles.keys()) {
       const [groupId, userId] = key.split('|');
@@ -267,6 +279,8 @@ function nameOfLimit(key: LinkLimitKey): string {
       return `import:${key.userId}`;
     case 'paste-description':
       return `paste-description:${key.userId}`;
+    case 'comment':
+      return `comment:${key.userId}`;
   }
 }
 

@@ -6,6 +6,7 @@ import type {
 } from '../../../infrastructure/limits/fixed-window-counter';
 import { CounterLinkLimiter } from './counter-link-limiter';
 import {
+  COMMENTS_PER_USER,
   ENRICH_RETRIES_PER_LINK,
   IMPORTS_PER_USER,
   LINK_LIMIT_WINDOW_MS,
@@ -150,5 +151,52 @@ describe('CounterLinkLimiter', () => {
         userId: USER_ID,
       }),
     ).resolves.toBeUndefined();
+  });
+
+  describe('comments (D6 de group-comments)', () => {
+    it('counts 30 comments per person in 15 minutes, under links:comment:<userId>', async () => {
+      const counter = new CounterDouble(ALLOWED);
+      const limiter = new CounterLinkLimiter(counter);
+
+      expect(
+        await limiter.consume({ kind: 'comment', userId: USER_ID }),
+      ).toEqual(ALLOWED);
+      expect(counter.asked).toEqual([
+        {
+          key: `links:comment:${USER_ID}`,
+          limit: { limit: COMMENTS_PER_USER, windowMs: LINK_LIMIT_WINDOW_MS },
+        },
+      ]);
+      expect(COMMENTS_PER_USER).toBe(30);
+    });
+
+    it('answers the exhausted window of the counter', async () => {
+      const limiter = new CounterLinkLimiter(
+        new CounterDouble({ allowed: false, retryAfterSeconds: 120 }),
+      );
+
+      expect(
+        await limiter.consume({ kind: 'comment', userId: USER_ID }),
+      ).toEqual({ allowed: false, retryAfterSeconds: 120 });
+    });
+
+    it('Contador caído: a comment goes ahead', async () => {
+      const limiter = new CounterLinkLimiter(new CounterDouble(null));
+
+      expect(
+        await limiter.consume({ kind: 'comment', userId: USER_ID }),
+      ).toEqual({ allowed: true, retryAfterSeconds: 0 });
+    });
+
+    it('gives an attempt back on the same key, also with the counter down', async () => {
+      const counter = new CounterDouble(ALLOWED);
+      counter.answersGiveBack = false;
+      const limiter = new CounterLinkLimiter(counter);
+
+      await expect(
+        limiter.refund({ kind: 'comment', userId: USER_ID }),
+      ).resolves.toBeUndefined();
+      expect(counter.givenBack).toEqual([`links:comment:${USER_ID}`]);
+    });
   });
 });

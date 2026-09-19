@@ -5,6 +5,9 @@ import type {
 } from '@linkvault/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import { GroupNotFound } from '../../groups/domain/errors';
+import { InvalidShareNote } from '../domain/errors';
+import { createShareNote } from '../domain/share-note';
+import { toShareNoteView } from './comment.mapper';
 import { displayNameIdsOf, toJobLinkSummary, toLinkSharer } from './link.mapper';
 import {
   GROUP_LINK_REPOSITORY,
@@ -41,6 +44,10 @@ import { requireDraft, saveOneLink, type SavedLink } from './save-one-link';
  *
  * Los grupos del usuario se resuelven **una sola vez** y sirven para las dos cosas: comprobar que el destino es suyo y
  * calcular `alreadyInGroups` con una única consulta de relaciones (D4), sin una consulta por grupo.
+ *
+ * La nota (D3 de group-comments) llega ya normalizada por el contrato y el dominio la vuelve a validar: vacía equivale a
+ * no enviarla; con texto exige grupo. Solo se guarda si la relación es nueva: si el link ya estaba, se descarta sin error
+ * y la respuesta trae la nota del primero.
  */
 @Injectable()
 export class SaveLink {
@@ -61,6 +68,10 @@ export class SaveLink {
     request: SaveLinkRequest,
   ): Promise<SaveLinkResponse> {
     const groupId = request.groupId;
+    const note = createShareNote(request.note, this.clock.now());
+    if (note !== null && groupId === undefined) {
+      throw new InvalidShareNote();
+    }
     const draft = requireDraft(request.url, userId, this.clock.now());
     const myGroups = await this.membership.groupsOf(userId);
     if (groupId !== undefined && !isMemberOf(myGroups, groupId)) {
@@ -70,6 +81,7 @@ export class SaveLink {
       draft,
       userId,
       ...(groupId === undefined ? {} : { groupId }),
+      ...(note === null ? {} : { note }),
       now: this.clock.now(),
     });
     return await this.toResponse(saved, myGroups, groupId);
@@ -105,6 +117,9 @@ export class SaveLink {
         sharedAt: saved.sharedAt,
         names,
         ...(sharer === undefined ? {} : { sharedBy: sharer }),
+        ...(inGroup && saved.note !== undefined
+          ? { note: toShareNoteView(saved.note) }
+          : {}),
       }),
       created: saved.created,
       shared: saved.shared,

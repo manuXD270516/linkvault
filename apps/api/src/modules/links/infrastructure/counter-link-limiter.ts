@@ -9,6 +9,7 @@ import type {
   LinkLimiter,
 } from '../application/ports/link-limiter.port';
 import {
+  COMMENTS_PER_USER,
   ENRICH_RETRIES_PER_LINK,
   IMPORTS_PER_USER,
   LINK_LIMIT_WINDOW_MS,
@@ -27,6 +28,8 @@ import {
 // - `paste-description` **falla cerrado** también: sin contador, nada acotaría las llamadas a la IA que hace cada pegado.
 //   Pero lo dice (`unavailable`), para que la respuesta sea "inténtalo en un rato" y no "pegaste demasiadas" (D5 de
 //   paste-job-description).
+// - `comment` **falla abierto**, como la importación (D6 de group-comments): lo que se permite de más es escribir en
+//   nuestra base y repartir un aviso a los miembros de un grupo.
 //
 // El nombre del contador lleva un identificador interno, que no es un dato personal: el del link en la relectura y el
 // del usuario (`userId`) en la importación y el pegado, que se cuentan por persona. Nunca la URL, el email ni el texto.
@@ -65,6 +68,8 @@ function nameOf(key: LinkLimitKey): string {
       return `links:import:${key.userId}`;
     case 'paste-description':
       return `links:paste:${key.userId}`;
+    case 'comment':
+      return `links:comment:${key.userId}`;
   }
 }
 
@@ -76,6 +81,8 @@ function limitOf(key: LinkLimitKey): number {
       return IMPORTS_PER_USER;
     case 'paste-description':
       return PASTES_PER_USER;
+    case 'comment':
+      return COMMENTS_PER_USER;
   }
 }
 
@@ -88,6 +95,7 @@ function failureDecisionOf(key: LinkLimitKey): LinkLimitDecision {
         retryAfterSeconds: CLOSED_RETRY_AFTER_SECONDS,
       };
     case 'import':
+    case 'comment':
       return { allowed: true, retryAfterSeconds: 0 };
     case 'paste-description':
       return {

@@ -1,8 +1,18 @@
 import type { LinkPage, ListLinksQuery } from '@linkvault/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import { GroupNotFound } from '../../groups/domain/errors';
-import { toLinkListQuery } from './link-cursor';
-import { displayNameIdsOf, toLinkPage } from './link.mapper';
+import type { GroupLinkComment } from '../domain/group-link-comment';
+import {
+  authorIdsOf,
+  toCommentsSummary,
+  toShareNoteView,
+} from './comment.mapper';
+import { encodeCursor, toLinkListQuery } from './link-cursor';
+import { displayNameIdsOf, toJobLinkSummary, toLinkSharer } from './link.mapper';
+import {
+  GROUP_LINK_COMMENT_REPOSITORY,
+  type GroupLinkCommentRepository,
+} from './ports/group-link-comment-repository.port';
 import {
   GROUP_LINK_REPOSITORY,
   type GroupLinkRepository,
@@ -11,6 +21,7 @@ import {
   GROUP_MEMBERSHIP,
   type GroupMembership,
 } from './ports/group-membership.port';
+import type { ListedLink } from './ports/link-listing';
 import {
   LINK_USER_DIRECTORY,
   type LinkUserDirectory,
@@ -22,14 +33,23 @@ import {
  * porque su contenido es de este módulo; la pertenencia se resuelve por el puerto, sin leer las colecciones de `groups`.
  *
  * Quien no es miembro recibe `group_not_found`, igual que si el grupo no existiera: un extraño no puede distinguirlos ni
- * enterarse de cuántas ofertas hay dentro. Los nombres visibles —quien compartió y quien escribió a mano cualquier campo
- * del preview— se resuelven en **una sola consulta** por página, no una por link ni una por campo.
+ * enterarse de cuántas ofertas hay dentro.
+ *
+ * Cada link trae la nota de quien lo compartió y el resumen de sus comentarios en este grupo (D7 de group-comments),
+ * con **cinco lecturas fijas por página**, sea de 2 links o de 50:
+ * 1. `memberIdsOf`, que da la pertenencia y `authorLeft` para toda la página;
+ * 2. la página, que ya trae la nota y los contadores de cada relación;
+ * 3. el total;
+ * 4. una agregación con los dos últimos comentarios de cada link;
+ * 5. los nombres visibles —quien compartió, quien escribió a mano el preview y los autores—, en una sola llamada.
  */
 @Injectable()
 export class ListGroupLinks {
   constructor(
     @Inject(GROUP_LINK_REPOSITORY)
     private readonly groupLinks: GroupLinkRepository,
+    @Inject(GROUP_LINK_COMMENT_REPOSITORY)
+    private readonly comments: GroupLinkCommentRepository,
     @Inject(GROUP_MEMBERSHIP) private readonly membership: GroupMembership,
     @Inject(LINK_USER_DIRECTORY) private readonly directory: LinkUserDirectory,
   ) {}
@@ -39,7 +59,8 @@ export class ListGroupLinks {
     groupId: string,
     query: ListLinksQuery,
   ): Promise<LinkPage> {
-    if ((await this.membership.membershipOf(groupId, userId)) === null) {
+    const members = new Set(await this.membership.memberIdsOf([groupId]));
+    if (!members.has(userId)) {
       throw new GroupNotFound();
     }
     const page = await this.groupLinks.listByGroup(
@@ -47,12 +68,55 @@ export class ListGroupLinks {
       toLinkListQuery(query),
     );
     const total = await this.groupLinks.countByGroup(groupId);
-    const names = await this.directory.displayNamesOf(
-      displayNameIdsOf(
+    const latest = await this.comments.latestByLinks(
+      groupId,
+      page.items.map((item) => item.link.id),
+    );
+    const names = await this.directory.displayNamesOf([
+      ...displayNameIdsOf(
         page.items.map((item) => item.link),
         page.items.map((item) => item.sharedBy),
       ),
-    );
-    return toLinkPage(page, total, names);
+      ...authorIdsOf([...latest.values()].flat()),
+    ]);
+    return {
+      items: page.items.map((item) =>
+        toGroupItem(item, latest.get(item.link.id) ?? [], names, members),
+      ),
+      total,
+      ...(page.nextCursor === undefined
+        ? {}
+        : { nextCursor: encodeCursor(page.nextCursor) }),
+    };
   }
+}
+
+/** Fila del listado del grupo, con su nota y el resumen de sus comentarios. */
+function toGroupItem(
+  item: ListedLink,
+  latest: readonly GroupLinkComment[],
+  names: Map<string, string>,
+  members: ReadonlySet<string>,
+): LinkPage['items'][number] {
+  const inGroup = item.inGroup ?? { commentCount: 0, commentsRevision: 0 };
+  return toJobLinkSummary(item.link, {
+    sharedAt: item.sharedAt,
+    names,
+    ...(item.sharedBy === undefined
+      ? {}
+      : { sharedBy: toLinkSharer(item.sharedBy, names.get(item.sharedBy)) }),
+    ...(inGroup.note === undefined
+      ? {}
+      : { note: toShareNoteView(inGroup.note) }),
+    comments: toCommentsSummary(
+      {
+        count: inGroup.commentCount,
+        revision: inGroup.commentsRevision,
+        sharedAt: item.sharedAt,
+      },
+      latest,
+      names,
+      members,
+    ),
+  });
 }
