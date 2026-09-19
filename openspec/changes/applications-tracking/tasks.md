@@ -69,7 +69,7 @@
 - [x] 6.16 [frontend] "Compartido · Deshacer" que vuelve a `private`, con el `applicationId` capturado en el gesto y el `404` en silencio; verificar con "Deshacer compartir" y "Se dejó de seguir entretanto".
 - [x] 6.17 [frontend] Avatares en la tarjeta de grupo (iniciales con color derivado del `userId`, cinco y "+N", etiqueta "<nombre> · postulación: <estado>"), sin avatares en `/mis-links`; verificar con "Avatares en la tarjeta", "Más de cinco" y "Estado ajeno en tercera persona".
 - [x] 6.18 [frontend] Estados compartidos por bloques de hasta 50: por página, por links añadidos y, al recuperar el foco, uno por cada bloque de los links cargados; verificar con "Volver a la pestaña".
-- [ ] 6.19 [frontend] Tras el rebase de 1.1, marcar todos los textos de postulaciones y traducirlos en `messages.en.xlf`; verificar con "Traducciones completas" de `web/applications`.
+- [x] 6.19 [frontend] Tras el rebase de 1.1, marcar todos los textos de postulaciones y traducirlos en `messages.en.xlf`; verificar con "Traducciones completas" de `web/applications`.
 
 ## 7. Cierre
 
