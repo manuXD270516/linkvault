@@ -823,6 +823,205 @@ En la tarjeta:
   y luego deshecho vuelve a `failed` con su motivo, no a `manual`.
 - **Deshacer llega un solo nivel atrás**: si sobre un pegado se pegan otros dos, el primero ya no se recupera.
 
+## Postulaciones
+
+Una postulación es el seguimiento que una persona hace de una oferta: en qué punto está, desde cuándo y qué ha pasado.
+Hay **una por persona y oferta**, es **privada** y es **de quien la sigue**, no del grupo. Guardar un link **no** crea
+ninguna: nace con el primer gesto ("Me interesa", "Postulé" o moverla en el tablero). Los estados son los de
+[ADR-004](docs/adr/ADR-004.md), con transiciones libres; las decisiones y las alternativas descartadas están en
+[ADR-024](docs/adr/ADR-024.md). Cómo operarlo: [RUNBOOK, Paso 6 quinquies](docs/RUNBOOK.md#paso-6-quinquies--operar-las-postulaciones).
+
+### Para quien usa el producto
+
+- **Seguir una oferta.** En cualquier tarjeta del detalle de un grupo o de `/mis-links`, "Me interesa" o "Postulé". Una
+  tarjeta que ya sigues muestra el nombre de tu estado con un enlace al tablero, y sigue ofreciendo "Postulé" mientras
+  esté en "Guardada" o "Interés". Si ya la seguías desde otra pestaña, la tarjeta muestra tu estado real con "Ya la
+  seguías".
+- **El tablero, `/postulaciones`** (enlace "Postulaciones" en la barra). Tiene seis columnas: "Interés" (también lo que
+  esté en `saved`), "Postuladas", "En proceso", "Con oferta", "Aceptadas" y "Cerradas". "Cerradas" reúne las rechazadas,
+  retiradas y expiradas con una etiqueta que dice cuál es cada una. No hay columna de guardadas. Cada tarjeta muestra el
+  título (o la etiqueta de su URL), la empresa, la plataforma, la etapa en "En proceso", "Postulaste hoy / ayer / hace N
+  días" y una marca si la compartes.
+- **Mover.** Arrastra la tarjeta a otra columna o, sin ratón, usa "Mover a…", que ofrece todos los estados salvo
+  "Guardada".
+  - Soltar en "En proceso" pide una etapa opcional (texto libre, hasta 60 caracteres; por ejemplo, "Prueba técnica").
+  - Soltar en "Cerradas" pregunta cuál de los tres cierres es.
+  - La tarjeta cambia de columna cuando la API lo confirma, y vuelve a su sitio si falla o cancelas.
+  - Se puede saltar etapas, retroceder para corregir un error, cerrar desde cualquier estado y reabrir una cerrada.
+    Cada cambio queda en el historial.
+- **"¿Cuándo postulaste?"** Se pregunta al entrar **sin fecha previa** en "Postuladas", "En proceso", "Con oferta" o
+  "Aceptadas", desde la tarjeta o desde el tablero. En "En proceso" va en el mismo diálogo que la etapa. "Hoy" es el
+  botón principal y tiene el foco; "Otro día" abre un selector que no admite días futuros. Si ya hay fecha, no se
+  pregunta.
+- **El panel** se abre al pulsar una tarjeta del tablero y reúne:
+  - la oferta (en una pestaña nueva);
+  - el estado y la etapa;
+  - el historial, del cambio más antiguo al más reciente;
+  - las notas privadas (hasta 2000 caracteres);
+  - el interruptor "Compartir mi estado con mis grupos";
+  - "Dejar de seguir".
+- **Compartir tras el gesto.** En el detalle de un grupo, tras "Me interesa" o "Postulé" sobre una postulación privada,
+  aparece un aviso: "¿Que tus grupos vean que postulaste a esta oferta? También quien entre después." (o "…que te
+  interesa…").
+  - Tiene dos acciones: "Compartir" y "Qué verán". "Compartir" muestra "Compartido · Deshacer".
+  - El aviso no se cierra antes de 10 s ni mientras tenga el foco. Si no pulsas, la postulación sigue privada.
+  - En `/mis-links` no aparece, porque ahí no hay grupo mirando.
+
+### Qué ve el grupo y qué no
+
+Compartir es **un solo interruptor por postulación** (`visibility`: `private` por defecto, o `group`), sin listas de
+grupos. Con `group`, te ven los miembros de **cada grupo tuyo donde esté esa oferta**, ahora o más adelante, incluidos
+quienes entren después. Es el texto que acompaña al interruptor y a "Qué verán".
+
+- **Lo que ven:** tu nombre visible, como avatar con iniciales en la tarjeta de la oferta, y tu **estado canónico**,
+  también cuando cambia (por ejemplo, "Rechazada"). La etiqueta accesible es "Beto · postulación: Postulada". Se ven
+  hasta cinco avatares y después "+N". En `/mis-links` no hay avatares.
+- **Lo que nunca ven:** la etapa, las notas, el historial, la fecha de postulación, la `version` ni el id de la
+  postulación. El schema de la respuesta es estricto y no los admite.
+- **La visibilidad se deriva al leer, no se guarda.** Una postulación sale en la tarjeta del link L en el grupo G si y
+  solo si ahora mismo cumple las tres condiciones:
+  - es `group`;
+  - su dueña es miembro **actual** de G;
+  - L está compartido **ahora** en G.
+
+  Salir del grupo, ser expulsada, que quiten el link o que borren el grupo no escribe nada en la postulación: deja de
+  cumplirse la condición y deja de verse. Si se revierte (vuelve a entrar, vuelven a compartir el link), vuelve a verse.
+  Por eso `applications` no está registrado en `GroupDeletionHooks` ([ADR-024 §6](docs/adr/ADR-024.md)), y por eso
+  borrar un grupo no le quita a nadie su postulación ni la ficha de la oferta en su tablero.
+
+- **Los avatares no se mueven en vivo** (ADR-024 §9). Se actualizan al abrir el grupo, al cargar más, al guardar o
+  importar links y al volver a la pestaña. Tu propio avatar aparece o desaparece al momento cuando compartes, dejas de
+  compartir o dejas de seguir.
+
+### "Dejar de seguir"
+
+Está en el panel y pide confirmación: "Dejarás de seguir esta oferta: se borrarán tu estado, tus notas y tu historial
+de esta oferta. Tus grupos dejarán de verte en ella. No se puede deshacer.".
+
+- `DELETE /api/applications/:id` borra la postulación y **todos** sus eventos en una transacción. No hay borrado
+  lógico. La oferta sigue donde estaba: en el grupo y en tu lista privada, si la tenías.
+- Volver a seguirla crea una postulación **nueva**, con `version` 1 y un historial vacío.
+- Es la salida para lo que se siguió por error. Cerrarla como "Retirada" mentiría sobre el proceso.
+- Si otra pestaña ya la había borrado, el `404` se trata como éxito: el panel se cierra sin error. Mientras la petición
+  está en curso, el botón queda bloqueado. Cualquier otra operación sobre una postulación que ya no existe responde
+  `404 application_not_found`, y el SPA la quita de la pantalla sin mostrar error.
+
+### Endpoints
+
+Todas las rutas exigen access token (`Authorization: Bearer`); sin él responden `401 unauthorized`. Las de
+`/api/applications/:id` solo operan sobre las postulaciones de quien pide: una ajena, una inexistente y un id mal formado
+responden el mismo `404 application_not_found`.
+
+| Método y ruta                        | Quién             | Respuesta                                                                               |
+| ------------------------------------ | ----------------- | --------------------------------------------------------------------------------------- |
+| `POST /api/applications`             | quien ve el link  | `201` con `{ application, created }`; `created: false` si ya la seguía, sin tocarla.    |
+| `GET /api/applications`              | cualquier usuario | `200` con `{ items }`, las suyas, de la actualizada más recientemente a la más antigua. |
+| `PATCH /api/applications/:id/status` | la dueña          | `200` con la postulación; cambia estado y etapa, con `version`.                         |
+| `PATCH /api/applications/:id`        | la dueña          | `200` con la postulación; cambia `notes`, `visibility` o ambas, sin `version`.          |
+| `GET /api/applications/:id/events`   | la dueña          | `200` con `{ items }`, el historial del evento más antiguo al más reciente.             |
+| `DELETE /api/applications/:id`       | la dueña          | `204`; "Dejar de seguir": borra la postulación y su historial.                          |
+| `GET /api/groups/:id/applications`   | miembro           | `200` con `{ items: [{ linkId, trackers: [{ userId, displayName, status }] }] }`.       |
+
+- **Toda postulación que devuelve la API** lleva `id`, `linkId`, `status`, `stageLabel?`, `visibility`, `notes`,
+  `appliedAt?`, `statusChangedAt`, `version`, `createdAt`, `updatedAt` y **`link`**. `link` es la ficha de la oferta sin
+  contexto de grupo (`id`, `displayUrl`, `platform`, `previewStatus`, `title?`, `company?`), así que el tablero sigue
+  pintando la oferta aunque ya no estés en el grupo donde la viste. Vale para el alta, los dos `PATCH` y el tablero.
+- **`POST /api/applications`** recibe `{ "linkId", "status", "stageLabel"?, "appliedAt"? }` y admite cualquier estado
+  canónico. Solo se puede seguir un link que se ve (el grupo del que eres miembro o tu lista privada). Si no, responde
+  `404 link_not_found`, el mismo cuerpo que da `links`. Se comprueba antes que la fecha: un link ajeno da ese `404`
+  aunque `appliedAt` sea futura.
+- **`GET /api/applications?linkIds=a,b,…`** (opcional) limita la lista a esos links. Es lo que usa el SPA para pintar
+  el estado propio de cada página de tarjetas.
+- **`PATCH /api/applications/:id/status`** recibe `{ "status", "stageLabel"?, "appliedAt"?, "version" }` y decide en
+  este orden:
+  1. **Sin cambios.** Pedir el mismo estado y la misma etapa responde `200` sin escribir y **sin mirar la `version`**:
+     un doble clic desde una pestaña vieja no es un conflicto.
+  2. **Conflicto.** Si hay cambio y la `version` no es la actual, `409 application_conflict`. El SPA vuelve a pedir la
+     lista y dice "Esta postulación cambió en otra pestaña…".
+  3. **Cambio.** Si no, escribe el cambio y su evento en una transacción y sube `version`.
+
+  La etapa se comporta así:
+  - Solo con `in_process`, de 1 a 60 caracteres tras `trim`.
+  - Omitida estando en `in_process` y pidiendo `in_process`, se conserva; `null` la borra.
+  - Cambiar solo la etapa es un cambio con evento.
+  - Salir de `in_process` la borra.
+
+  `statusChangedAt` cambia solo con el estado o la etapa.
+
+- **`PATCH /api/applications/:id`** recibe `{ "notes"?, "visibility"? }` (al menos uno). Es última escritura gana: no
+  toca `version` ni `statusChangedAt`, así que compartir en una pestaña no hace fallar un arrastre en otra. Las notas se
+  guardan tal como se escriben; `""` las borra.
+- **`GET /api/groups/:id/applications?linkIds=a,b,…`** (obligatoria) devuelve **todos** los links pedidos que están
+  compartidos en el grupo, en el orden pedido, también con `trackers` vacío. Los que no están en el grupo no salen.
+  - Los `trackers` van del último cambio de estado o de etapa al más antiguo (editar una nota no reordena), con el
+    `userId` como desempate. Quien pide también aparece si comparte el suyo.
+  - Hace siempre cuatro lecturas (miembros, links del grupo, postulaciones compartidas, nombres), pida 2 links o 50.
+
+| Respuesta | Código                  | Cuándo                                                                                                                                                                                                                                                                                                    |
+| --------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `400`     | `validation_error`      | Nombra el campo: `status` desconocido; `stageLabel` vacía, de más de 60 o con otro estado; `notes` de más de 2000; `appliedAt` inválida, futura o con un estado que no la admite; `linkIds` vacía o con más de 50 tras deduplicar. `PATCH /api/applications/:id` sin `notes` ni `visibility`: sin campos. |
+| `404`     | `application_not_found` | La postulación no es de quien pide, no existe (también tras "Dejar de seguir") o su id está mal formado.                                                                                                                                                                                                  |
+| `404`     | `link_not_found`        | `POST`: quien pide no ve el link, no existe o su id está mal formado.                                                                                                                                                                                                                                     |
+| `404`     | `group_not_found`       | `GET /api/groups/:id/applications`: quien pide no es miembro, el grupo no existe o su id está mal formado.                                                                                                                                                                                                |
+| `409`     | `application_conflict`  | `PATCH …/status` con una `version` que ya no es la actual y un cambio real.                                                                                                                                                                                                                               |
+
+### `appliedAt` y el margen de 24 h
+
+La fecha de postulación se decide por el **estado de destino**, nunca por el de origen ([ADR-024 §3](docs/adr/ADR-024.md)):
+
+| Destino                                                        | Sin `appliedAt` en la petición | Con `appliedAt` en la petición |
+| -------------------------------------------------------------- | ------------------------------ | ------------------------------ |
+| `applied`, `in_process`, `offer`, `accepted`, sin fecha previa | la hora del cambio             | la enviada                     |
+| `applied`, `in_process`, `offer`, `accepted`, con fecha previa | se conserva                    | se ignora y se conserva        |
+| `saved`, `interested`                                          | se borra                       | `400`                          |
+| `rejected`, `withdrawn`, `expired`                             | no se toca                     | `400`                          |
+
+- **"Hoy" no viaja.** Con "Hoy", el SPA **omite** `appliedAt` y el servidor usa la hora del cambio. Con otro día, manda
+  la ISO de la **medianoche local** de ese día (`Z` o desplazamiento).
+- **Margen de 24 h.** Solo se rechaza como futura una fecha posterior a `now + 24 h` según el reloj del servidor
+  (`400 validation_error` nombrando `appliedAt`). Así, ni una zona horaria adelantada ni un reloj de cliente que va por
+  delante rechazan una fecha legítima.
+- Una fecha futura es `400` **también** cuando se iba a ignorar. La excepción es el "sin cambios", que responde `200`
+  antes de mirarla.
+- **Corregir una fecha que ya existe no es posible** en este change: la enviada se ignora.
+- Deshacer un "Postulé" por error (volver a "Interés") borra la fecha. Reabrir en "En proceso" una oferta cerrada sin
+  haber postulado la fija.
+
+### Colecciones e índices
+
+Dos colecciones nuevas en MongoDB. Ninguna guarda un `groupId`: la visibilidad en un grupo se deriva en cada lectura.
+`api` construye los índices al arrancar (`autoIndex` de Mongoose). Cómo comprobarlos:
+[RUNBOOK](docs/RUNBOOK.md#paso-6-quinquies--operar-las-postulaciones).
+
+| Colección            | Índice                                    | Para qué                                                                              |
+| -------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------- |
+| `applications`       | `{ userId: 1, linkId: 1 }`, **único**     | Una postulación por persona y oferta, también ante dos altas simultáneas.             |
+| `applications`       | `{ userId: 1, updatedAt: -1, _id: -1 }`   | El tablero: las de una persona, de la actualizada más recientemente a la más antigua. |
+| `applications`       | `{ linkId: 1, visibility: 1, userId: 1 }` | Los estados compartidos de una página de tarjetas, en una sola consulta.              |
+| `application_events` | `{ applicationId: 1, at: 1, _id: 1 }`     | El historial en orden y su borrado entero al dejar de seguir.                         |
+
+`application_events` repite el `userId` para filtrar el historial por dueña sin leer la postulación. `fitScore` existe
+en el modelo, reservado para `cv-match-suggestions`: nadie lo escribe y la API nunca lo devuelve.
+
+### Probar las postulaciones en local
+
+Con la API en marcha, un access token obtenido como en [Probar en local](#probar-en-local) y un link que veas:
+
+```bash
+T='Authorization: Bearer <accessToken>'
+J='Content-Type: application/json'
+LINK_ID=...    # el id de un link de tu grupo o de tu lista privada
+GROUP_ID=...   # un grupo donde está ese link
+
+curl -s -H "$T" -H "$J" http://localhost:3000/api/applications -d "{\"linkId\":\"$LINK_ID\",\"status\":\"interested\"}"   # 201, created: true
+APP_ID=...     # el application.id de la respuesta
+curl -s -H "$T" -H "$J" -X PATCH "http://localhost:3000/api/applications/$APP_ID/status" -d '{"status":"in_process","stageLabel":"Prueba técnica","version":1}'   # 200, version 2
+curl -s -H "$T" -H "$J" -X PATCH "http://localhost:3000/api/applications/$APP_ID" -d '{"visibility":"group"}'   # 200, version sigue en 2
+curl -s -H "$T" "http://localhost:3000/api/groups/$GROUP_ID/applications?linkIds=$LINK_ID"   # tu nombre y in_process, sin la etapa
+curl -s -H "$T" "http://localhost:3000/api/applications/$APP_ID/events"                     # dos eventos
+curl -s -i -H "$T" -X DELETE "http://localhost:3000/api/applications/$APP_ID"               # 204: dejar de seguir
+```
+
 ## Calidad
 
 ```bash
