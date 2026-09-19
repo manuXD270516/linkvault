@@ -234,8 +234,9 @@ describe('groups join attempt limit', () => {
       (response) => response.statusCode === 404,
     );
     const limited = responses.filter((response) => response.statusCode === 429);
-    expect(resolved.length).toBeLessThanOrEqual(JOIN_ATTEMPTS_PER_USER);
-    expect(resolved.length + limited.length).toBe(30);
+    // Con el contador en memoria, que cuenta de forma atómica, se resuelven justo 10 y el resto se rechaza.
+    expect(resolved).toHaveLength(JOIN_ATTEMPTS_PER_USER);
+    expect(limited).toHaveLength(30 - JOIN_ATTEMPTS_PER_USER);
   });
 });
 
@@ -274,7 +275,8 @@ describe('groups join attempt limit with the counter store down', () => {
     expect(responses.map((response) => response.statusCode)).toEqual([
       200, 200,
     ]);
-    expect(warnings.length).toBeLessThanOrEqual(1);
+    // Un solo aviso para la racha entera de fallos, sin el usuario ni el código.
+    expect(warnings).toHaveLength(1);
     for (const warning of warnings) {
       expect(warning).not.toContain(ana.userId);
       expect(warning).not.toContain(first.inviteCode ?? '');

@@ -397,7 +397,9 @@ describe('GroupsController ownership transfer', () => {
     });
   });
 
-  describe('concurrency, asserting only invariants', () => {
+  // Qué petición gana depende del planificador, así que no se afirma cuál; pero la transacción reintenta y una de las dos
+  // gana siempre: cada ronda afirma exactamente una de las combinaciones que admite la spec.
+  describe('concurrency, asserting only what the spec allows', () => {
     it('Dos transferencias a la vez', async () => {
       for (let round = 0; round < RACE_REPETITIONS; round += 1) {
         const { group, ana, beto, carla } = await groupOfAnaWithBetoAndCarla();
@@ -407,20 +409,14 @@ describe('GroupsController ownership transfer', () => {
           transfer(ana, group.id, carla.profile.id),
         ]);
 
-        const owners = await ownersOf(group.id);
-        expect(owners).toHaveLength(1);
-        const successes = [toBeto, toCarla].filter((response) =>
-          isSuccess(response.statusCode),
-        );
-        // Dos 200 dirían que Beto y Carla son owner a la vez.
-        expect(successes.length).toBeLessThanOrEqual(1);
-        if (isSuccess(toBeto.statusCode)) {
-          expect(owners).toEqual([beto.profile.id]);
-        } else if (isSuccess(toCarla.statusCode)) {
-          expect(owners).toEqual([carla.profile.id]);
-        } else {
-          expect(owners).toEqual([ana.profile.id]);
-        }
+        // Una responde 200 y la otra 403 forbidden: quien pedía ya no era owner.
+        expect([toBeto.statusCode, toCarla.statusCode].sort()).toEqual([
+          200, 403,
+        ]);
+        const [winner, loser] =
+          toBeto.statusCode === 200 ? [beto, toCarla] : [carla, toBeto];
+        expect(loser.json()).toMatchObject({ code: 'forbidden' });
+        await expect(ownersOf(group.id)).resolves.toEqual([winner.profile.id]);
       }
     }, 60_000);
 
@@ -435,19 +431,26 @@ describe('GroupsController ownership transfer', () => {
           }),
         ]);
 
-        const owners = await ownersOf(group.id);
-        expect(owners).toHaveLength(1);
-        // Transferir a Beto y que Beto se haya ido dejaría el grupo sin owner.
+        // Exactamente una de las dos sale bien.
         expect(
-          isSuccess(transferred.statusCode) && isSuccess(left.statusCode),
-        ).toBe(false);
+          [transferred, left].filter((response) =>
+            isSuccess(response.statusCode),
+          ),
+        ).toHaveLength(1);
         if (isSuccess(transferred.statusCode)) {
-          expect(owners).toEqual([beto.profile.id]);
+          // Ganó la transferencia: Beto ya es owner y no puede salir.
+          expect(transferred.statusCode).toBe(200);
           expect(left.statusCode).toBe(409);
-        }
-        if (isSuccess(left.statusCode)) {
-          expect(owners).toEqual([ana.profile.id]);
+          expect(left.json()).toMatchObject({ code: 'owner_cannot_leave' });
+          await expect(ownersOf(group.id)).resolves.toEqual([beto.profile.id]);
+        } else {
+          // Ganó la salida: Beto ya no es miembro y la transferencia no lo encuentra.
+          expect(left.statusCode).toBe(204);
           expect(transferred.statusCode).toBe(404);
+          expect(transferred.json()).toMatchObject({
+            code: 'member_not_found',
+          });
+          await expect(ownersOf(group.id)).resolves.toEqual([ana.profile.id]);
         }
       }
     }, 60_000);
@@ -463,13 +466,13 @@ describe('GroupsController ownership transfer', () => {
           transfer(ana, group.id, beto.profile.id),
         ]);
 
-        // O el grupo se borró entero, o sigue con un único owner.
+        // El grupo está borrado del todo, o existe con Beto como único owner.
         if (await groupExists(group.id)) {
-          await expect(ownersOf(group.id)).resolves.toHaveLength(1);
+          await expect(ownersOf(group.id)).resolves.toEqual([beto.profile.id]);
         } else {
           await expect(membershipCount(group.id)).resolves.toBe(0);
         }
-        // Borrar y transferir no pueden haber salido bien los dos.
+        // Nunca salen bien las dos.
         expect(
           isSuccess(deleted.statusCode) && isSuccess(transferred.statusCode),
         ).toBe(false);
@@ -477,7 +480,7 @@ describe('GroupsController ownership transfer', () => {
           await expect(groupExists(group.id)).resolves.toBe(false);
         }
         if (isSuccess(transferred.statusCode)) {
-          await expect(ownersOf(group.id)).resolves.toEqual([beto.profile.id]);
+          await expect(groupExists(group.id)).resolves.toBe(true);
         }
       }
     }, 60_000);
