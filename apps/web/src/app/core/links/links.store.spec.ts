@@ -665,6 +665,9 @@ describe('LinksStore', () => {
 
       await expect(retrying).resolves.toEqual(retried);
       expect(store.items()[0]).toEqual(retried);
+    });
+  });
+
   describe('group comments', () => {
     it('La lectura de la oferta no borra los comentarios', async () => {
       await openGroup({ items: [linkWithContext('l1')], total: 1 });
