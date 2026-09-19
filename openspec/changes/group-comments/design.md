@@ -671,3 +671,5 @@ Decisiones del SPA que D11 no fijaba. Se eligió lo más conservador y coherente
 | I16 | 4.1 | `RedisCommentsChangedPublisher` copia solo los cuatro campos del contrato al publicar, aunque quien llame pase más. | "El texto no viaja por Redis" no depende de quien llame. |
 | I17 | 4.2 | `RedisCommentNotices` no cierra el cliente al dejar de escuchar: solo suelta su canal. La conexión la cierra `RedisSubscriberConnection`, como hasta ahora. | El cliente es compartido con los avisos de enriquecimiento. |
 | I18 | 4.3 | `DeliverCommentsChanged` también termina sin más lecturas si el grupo no tiene miembros (grupo borrado entre el aviso y el reparto). | Nada que repartir. |
+| I19 | 2.12, 5.x | `createLinksTestApp` admite `commentRepository` (otro adaptador de comentarios) para forzar el fallo del borrado; `test-support/comments-test-app.ts` monta el escenario común de las pruebas HTTP (Ana propietaria, Beto y Carla miembros, un extraño). | Probar "Todo o nada" y "Si falla la limpieza no se borra nada" con la app real. |
+| I20 | 5.7 | Además del texto de un comentario, se comprueba que la nota tampoco aparece en los logs. | Misma regla de CLAUDE.md para notas. |

@@ -62,8 +62,14 @@ import {
   TrackersGroupNotFound,
 } from '../../modules/applications/domain/errors';
 import {
+  CommentDeletionForbidden,
+  CommentNotFound,
+  CommentsGroupNotFound,
   EnrichmentNotRetryable,
+  InvalidCommentText,
   InvalidCursor,
+  InvalidShareNote,
+  NoteRemovalForbidden,
   InvalidUrl,
   LinkNotFound,
   LinkRemovalForbidden,
@@ -119,6 +125,12 @@ const THROWN: Record<string, () => unknown> = {
   'not-a-job-posting': () => new NotAJobPosting(),
   'extraction-unavailable': () => new ExtractionUnavailable(60),
   'ai-quota-exceeded': () => new AiQuotaExceeded(86_400),
+  'invalid-comment-text': () => new InvalidCommentText(),
+  'invalid-share-note': () => new InvalidShareNote(),
+  'comment-not-found': () => new CommentNotFound(),
+  'comment-deletion-forbidden': () => new CommentDeletionForbidden(),
+  'note-removal-forbidden': () => new NoteRemovalForbidden(),
+  'comments-group-not-found': () => new CommentsGroupNotFound(),
   'application-not-found': () => new ApplicationNotFound(),
   'application-conflict': () => new ApplicationConflict(),
   'tracked-link-not-found': () => new TrackedLinkNotFound(),
@@ -348,6 +360,13 @@ describe('ApiExceptionFilter', () => {
     // El campo desconocido sí se nombra: sin decir cuál, quien lo envió tendría que adivinarlo.
     ['preview-field-unknown', 400, 'preview_field_unknown', ['image']],
     ['enrichment-not-retryable', 409, 'enrichment_not_retryable', undefined],
+    // Comentarios y nota de group-comments: los de campo nombran su campo (rama `InvalidLinkField`).
+    ['invalid-comment-text', 400, 'validation_error', ['text']],
+    ['invalid-share-note', 400, 'validation_error', ['note']],
+    ['comment-not-found', 404, 'comment_not_found', undefined],
+    ['comment-deletion-forbidden', 403, 'forbidden', undefined],
+    ['note-removal-forbidden', 403, 'forbidden', undefined],
+    ['comments-group-not-found', 404, 'group_not_found', undefined],
     // Errores de `applications`: la fecha futura nombra `appliedAt` (tiene su rama antes de la genérica).
     ['invalid-applied-at', 400, 'validation_error', ['appliedAt']],
     ['invalid-stage-label', 400, 'validation_error', ['stageLabel']],

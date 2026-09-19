@@ -72,6 +72,7 @@ import { RedisCommentsChangedPublisher } from '../infrastructure/redis-comments-
 import { RedisLinkEnrichedPublisher } from '../infrastructure/redis-link-enriched-publisher';
 import { SystemClock } from '../infrastructure/system-clock';
 import { UsersFacadeLinkDirectory } from '../infrastructure/users-facade-link-directory';
+import { GroupLinkCommentsController } from './group-link-comments.controller';
 import { GroupLinksController } from './group-links.controller';
 import { LinksController } from './links.controller';
 
@@ -106,7 +107,11 @@ import { LinksController } from './links.controller';
     RealtimeModule,
     RedisAppModule,
   ],
-  controllers: [LinksController, GroupLinksController],
+  controllers: [
+    LinksController,
+    GroupLinksController,
+    GroupLinkCommentsController,
+  ],
   providers: [
     { provide: JOB_LINK_REPOSITORY, useClass: MongoJobLinkRepository },
     { provide: GROUP_LINK_REPOSITORY, useClass: MongoGroupLinkRepository },

@@ -55,15 +55,15 @@
 
 ## 5. Presentación y HTTP
 
-- [ ] 5.1 [backend] Tras 1.1, rama `InvalidLinkField` → `validation_error` con `[field]` antes de la de `LinksError` en `api-exception.filter.ts`; verificar con filas nuevas en `api-exception.filter.spec.ts` para `InvalidCommentText`, `InvalidShareNote`, `CommentNotFound`, `CommentDeletionForbidden`, `NoteRemovalForbidden` y `CommentsGroupNotFound`.
-- [ ] 5.2 [backend] `POST groups/:id/links/:linkId/comments` en `GroupLinkCommentsController`, ids de la URL fuera del pipe para el 404 uniforme; verificar por HTTP los escenarios de 3.2, "Comentario vacío", "Comentario demasiado largo", "Justo en el límite", "HTML como texto" y "Caracteres invisibles fuera".
-- [ ] 5.3 [backend] `GET groups/:id/links/:linkId/comments`; verificar por HTTP los escenarios de 3.4 e "Hilo paginado sin saltos ni repetidos", con cursor manipulado → `400` nombrando `cursor`.
-- [ ] 5.4 [backend] `DELETE groups/:id/links/:linkId/comments/:commentId` con `200 { comments }`; verificar por HTTP los escenarios de 3.3 y "Sin edición".
-- [ ] 5.5 [backend] `DELETE groups/:id/links/:linkId/note` y `note` en `POST /api/links`; verificar por HTTP los escenarios de 3.8, "La nota no se edita", "Guardar con una nota", "Nota sin grupo", "Nota vacía sin grupo" y "Nota demasiado larga".
-- [ ] 5.6 [backend] Integración de pertenencia con los endpoints reales de `groups`: "Sale del grupo", "Expulsado", "Fuera del grupo no borra" y "Vuelve y borra".
-- [ ] 5.7 [backend] Integración del límite y de los logs: "Ventana agotada" (`429` con `Retry-After`), "Contador caído", "Borrar no cuenta" y "El texto no se registra" (capturador de `logger-redaction.spec.ts`).
-- [ ] 5.8 [backend] Humo HTTP concurrente de "Comentar mientras se quita": 20 repeticiones de alta y retirada a la vez, con ningún comentario huérfano y respuestas `201` o `404 link_not_found`.
-- [ ] 5.9 [backend] Integración "Dos borrados a la vez": el autor y el owner borran el mismo comentario a la vez; una respuesta `200` y otra `404 comment_not_found`, `count` −1 y `revision` +1.
+- [x] 5.1 [backend] Tras 1.1, rama `InvalidLinkField` → `validation_error` con `[field]` antes de la de `LinksError` en `api-exception.filter.ts`; verificar con filas nuevas en `api-exception.filter.spec.ts` para `InvalidCommentText`, `InvalidShareNote`, `CommentNotFound`, `CommentDeletionForbidden`, `NoteRemovalForbidden` y `CommentsGroupNotFound`.
+- [x] 5.2 [backend] `POST groups/:id/links/:linkId/comments` en `GroupLinkCommentsController`, ids de la URL fuera del pipe para el 404 uniforme; verificar por HTTP los escenarios de 3.2, "Comentario vacío", "Comentario demasiado largo", "Justo en el límite", "HTML como texto" y "Caracteres invisibles fuera".
+- [x] 5.3 [backend] `GET groups/:id/links/:linkId/comments`; verificar por HTTP los escenarios de 3.4 e "Hilo paginado sin saltos ni repetidos", con cursor manipulado → `400` nombrando `cursor`.
+- [x] 5.4 [backend] `DELETE groups/:id/links/:linkId/comments/:commentId` con `200 { comments }`; verificar por HTTP los escenarios de 3.3 y "Sin edición".
+- [x] 5.5 [backend] `DELETE groups/:id/links/:linkId/note` y `note` en `POST /api/links`; verificar por HTTP los escenarios de 3.8, "La nota no se edita", "Guardar con una nota", "Nota sin grupo", "Nota vacía sin grupo" y "Nota demasiado larga".
+- [x] 5.6 [backend] Integración de pertenencia con los endpoints reales de `groups`: "Sale del grupo", "Expulsado", "Fuera del grupo no borra" y "Vuelve y borra".
+- [x] 5.7 [backend] Integración del límite y de los logs: "Ventana agotada" (`429` con `Retry-After`), "Contador caído", "Borrar no cuenta" y "El texto no se registra" (capturador de `logger-redaction.spec.ts`).
+- [x] 5.8 [backend] Humo HTTP concurrente de "Comentar mientras se quita": 20 repeticiones de alta y retirada a la vez, con ningún comentario huérfano y respuestas `201` o `404 link_not_found`.
+- [x] 5.9 [backend] Integración "Dos borrados a la vez": el autor y el owner borran el mismo comentario a la vez; una respuesta `200` y otra `404 comment_not_found`, `count` −1 y `revision` +1.
 
 ## 6. Frontend
 

@@ -62,8 +62,8 @@ import { RunTaskPastedExtraction } from '../infrastructure/run-task-pasted-extra
 import { SystemClock } from '../infrastructure/system-clock';
 import { UsersFacadeLinkDirectory } from '../infrastructure/users-facade-link-directory';
 
-// Cableado de `LinksModule` dentro de la app (tarea 5.6 de job-links) y rutas protegidas: sin access token, las seis
-// responden `401 unauthorized` antes de tocar nada.
+// Cableado de `LinksModule` dentro de la app (tarea 5.6 de job-links, 4.5 de group-comments) y rutas protegidas: sin
+// access token, todas responden `401 unauthorized` antes de tocar nada.
 
 const LINK_ID = '66e9a0000000000000000001';
 const GROUP_ID = '66e9a0000000000000000002';
@@ -242,6 +242,10 @@ describe('LinksModule', () => {
     ['DELETE', `/api/links/mine/${LINK_ID}`],
     ['GET', `/api/groups/${GROUP_ID}/links`],
     ['DELETE', `/api/groups/${GROUP_ID}/links/${LINK_ID}`],
+    ['POST', `/api/groups/${GROUP_ID}/links/${LINK_ID}/comments`],
+    ['GET', `/api/groups/${GROUP_ID}/links/${LINK_ID}/comments`],
+    ['DELETE', `/api/groups/${GROUP_ID}/links/${LINK_ID}/comments/${LINK_ID}`],
+    ['DELETE', `/api/groups/${GROUP_ID}/links/${LINK_ID}/note`],
   ])('answers 401 to %s %s without a token', async (method, url) => {
     const response = await app.inject({
       method: method as 'GET',
