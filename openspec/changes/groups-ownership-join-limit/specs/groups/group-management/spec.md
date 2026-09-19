@@ -35,7 +35,5 @@ borrado, el grupo SHALL responder `404` a todos sus antiguos miembros y su códi
 
 - **GIVEN** un grupo con el owner Ana y el miembro Beto
 - **WHEN** llegan a la vez la transferencia de Ana a Beto y el borrado del grupo pedido por Ana
-- **THEN** o bien la transferencia SHALL responder `200`, el borrado `403` con código `forbidden` y el grupo SHALL
-  seguir existiendo con Beto como único owner, o bien el borrado SHALL responder `204` y la transferencia `404` con
-  código `group_not_found` o `403` con código `forbidden`
-- **AND** en ningún caso SHALL quedar un grupo sin owner ni borrarse un grupo cuyo owner ya era Beto
+- **THEN** al terminar las dos, el grupo SHALL estar borrado o existir con Beto como único owner
+- **AND** NO SHALL ocurrir que las dos respuestas sean `2xx`

@@ -5,8 +5,9 @@
 `POST /api/groups/:id/owner` SHALL aceptar `userId` y, si quien pide es el `owner` y `userId` es otro miembro del grupo,
 hacer a ese miembro `owner` y a quien pide `member` en una sola escritura atómica, sin cambiar la fecha de alta de
 ninguno, y responder `200` con el detalle del grupo visto por quien pide (`role` `member`, sin `inviteCode`). El grupo
-SHALL tener exactamente una membresía `owner` en todo momento, también ante peticiones simultáneas: lo garantiza un
-índice único sobre la membresía `owner` de cada grupo. Quien no es miembro, o un `:id` mal formado, SHALL recibir `404`
+SHALL tener exactamente una membresía `owner` en todo momento, también ante peticiones simultáneas: un índice único
+sobre la membresía `owner` de cada grupo SHALL impedir que haya más de una, y degradar a quien pide y promover al
+elegido SHALL confirmarse juntos o no confirmarse ninguno, de modo que nunca quede ninguna. Quien no es miembro, o un `:id` mal formado, SHALL recibir `404`
 con código `group_not_found`; un miembro que no es owner, `403` con código `forbidden`; un `userId` que no es miembro del
 grupo o mal formado, `404` con código `member_not_found`; y el owner sobre sí mismo, `409` con código `already_owner`.
 Transferir NO SHALL cambiar el código de invitación ni los links del grupo.
@@ -43,6 +44,7 @@ Transferir NO SHALL cambiar el código de invitación ni los links del grupo.
 - **GIVEN** el owner de un grupo
 - **WHEN** intenta nombrar owner a un usuario que no pertenece al grupo y a otro con el identificador `no-es-un-id`
 - **THEN** ambas respuestas SHALL ser `404` con código `member_not_found`
+- **AND** quien pedía SHALL seguir siendo el único owner del grupo
 
 #### Scenario: Transferirse a sí mismo
 
@@ -76,14 +78,16 @@ Transferir NO SHALL cambiar el código de invitación ni los links del grupo.
 ### Requirement: Límite de intentos al unirse
 
 `POST /api/groups/join` SHALL contar los intentos con códigos incorrectos con contadores por ventana fija de 15 minutos:
-como máximo 10 por usuario y 50 por IP (IPv6 agrupada por su prefijo /64). Cada intento SHALL contarse en ambos
-contadores **antes** de resolver el código, de modo que peticiones concurrentes no superen el límite, y SHALL devolverse
-cuando el resultado no sea un código desconocido o mal formado —se una, ya fuera miembro, el grupo esté completo, se
-haya llegado al límite de grupos o la unión falle por cualquier otro error—, y solo en los contadores donde de verdad se
-contó. Un código válido NO SHALL poner a cero ningún contador. Superado cualquiera de los dos límites, SHALL responder
-`429` con código `too_many_attempts` y cabecera `Retry-After` en segundos, sin resolver el código aunque sea válido. Si
-el almacén de contadores no está disponible, la unión SHALL procesarse sin límite y SHALL registrarse un aviso, sin el
-código ni el usuario, al empezar cada racha de fallos del almacén.
+como máximo 10 por usuario y 100 por IP (IPv6 agrupada por su prefijo /64). Cada intento SHALL contarse **antes** de
+resolver el código, de modo que peticiones concurrentes no superen el límite: primero en el contador del usuario y,
+solo si este no lo rechaza, en el de la IP. Si el contador del usuario rechaza, SHALL responderse `429` sin contar nada
+en el de la IP. Si el de la IP rechaza, SHALL devolverse el intento al del usuario y responderse `429`. El intento
+SHALL devolverse también cuando el resultado no sea un código desconocido o mal formado —se una, ya fuera miembro, el
+grupo esté completo, se haya llegado al límite de grupos o la unión falle por cualquier otro error—, y solo en los
+contadores donde de verdad se contó. Un código válido NO SHALL poner a cero ningún contador. El `429` SHALL llevar
+código `too_many_attempts` y cabecera `Retry-After` en segundos, la del contador que rechazó, sin resolver el código
+aunque sea válido. Si el almacén de contadores no está disponible, la unión SHALL procesarse sin límite y SHALL
+registrarse como mucho un aviso por racha de fallos del almacén, sin el código ni el usuario.
 
 #### Scenario: Demasiados códigos incorrectos
 
@@ -118,9 +122,24 @@ código ni el usuario, al empezar cada racha de fallos del almacén.
 
 #### Scenario: Límite por IP
 
-- **GIVEN** 50 intentos con códigos desconocidos de distintos usuarios desde la misma IP en la ventana actual
+- **GIVEN** 100 intentos con códigos desconocidos de distintos usuarios desde la misma IP en la ventana actual
 - **WHEN** otro usuario intenta unirse desde esa IP
 - **THEN** la respuesta SHALL ser `429`
+
+#### Scenario: Un usuario bloqueado no gasta intentos de la IP
+
+- **GIVEN** 90 intentos con códigos desconocidos desde una IP en la ventana actual, 10 de ellos de Ana, que ya está
+  bloqueada
+- **WHEN** Ana hace 20 intentos más desde esa IP
+- **THEN** las 20 respuestas SHALL ser `429`
+- **AND** Beto SHALL poder probar desde esa IP 10 códigos desconocidos y recibir `404` con código
+  `invalid_invite_code` en todos
+
+#### Scenario: El bloqueo de la IP no gasta intentos del usuario
+
+- **GIVEN** 100 intentos con códigos desconocidos de otros usuarios desde una IP en la ventana actual
+- **WHEN** Ana, sin intentos en la ventana, prueba 5 códigos desde esa IP y recibe `429`
+- **THEN** desde otra IP SHALL poder probar 10 códigos desconocidos antes de recibir `429`
 
 #### Scenario: Intentos concurrentes
 
@@ -132,7 +151,7 @@ código ni el usuario, al empezar cada racha de fallos del almacén.
 - **GIVEN** Redis no disponible
 - **WHEN** un usuario se une dos veces con códigos válidos
 - **THEN** ambas respuestas SHALL ser `200`
-- **AND** SHALL registrarse un solo aviso, que no contiene el código ni el usuario
+- **AND** SHALL registrarse como mucho un aviso, que no contiene el código ni el usuario
 
 ## MODIFIED Requirements
 
@@ -165,3 +184,41 @@ SHALL transferir la propiedad a otro miembro. Quien no es miembro SHALL recibir
 - **WHEN** sale del grupo
 - **THEN** la respuesta SHALL ser `204`
 - **AND** el grupo SHALL seguir existiendo con su nuevo owner, sus links y el resto de miembros
+
+### Requirement: Expulsar a un miembro
+
+`DELETE /api/groups/:id/members/:userId` SHALL eliminar la membresía indicada y responder `204` solo si quien pide es el
+`owner`. Un miembro que no es owner SHALL recibir `403` con código `forbidden`. El owner sobre sí mismo SHALL recibir
+`409` con código `owner_cannot_leave`. Un usuario que no es miembro del grupo, o un `userId` sin el formato de un identificador de usuario, SHALL responder `404`
+con código `member_not_found`. La membresía `owner` NO SHALL poder eliminarse: si, al borrar, la membresía indicada ya
+es la del owner —porque quien expulsa acaba de cederle la propiedad—, SHALL responder `403` con código `forbidden` y NO
+SHALL borrarse nada.
+
+#### Scenario: El owner expulsa
+
+- **GIVEN** un grupo con el owner y un miembro
+- **WHEN** el owner expulsa al miembro
+- **THEN** la respuesta SHALL ser `204`
+- **AND** el expulsado NO SHALL ver el grupo en su lista
+- **AND** el expulsado SHALL poder volver a unirse con el código vigente
+
+#### Scenario: Un miembro no puede expulsar
+
+- **GIVEN** dos miembros que no son owner
+- **WHEN** uno intenta expulsar al otro
+- **THEN** la respuesta SHALL ser `403` con código `forbidden`
+- **AND** ambos SHALL seguir siendo miembros
+
+#### Scenario: Expulsar a quien no es miembro
+
+- **GIVEN** el owner de un grupo
+- **WHEN** intenta expulsar a un usuario que no pertenece al grupo y a otro con el identificador `no-es-un-id`
+- **THEN** ambas respuestas SHALL ser `404` con código `member_not_found`
+
+#### Scenario: Expulsar a quien acaba de recibir la propiedad
+
+- **GIVEN** un grupo en el que Ana acaba de nombrar owner a Beto, mientras una petición de Ana para expulsar a Beto ya
+  había comprobado que Ana era la owner
+- **WHEN** esa expulsión intenta borrar la membresía de Beto
+- **THEN** la respuesta SHALL ser `403` con código `forbidden`
+- **AND** Beto SHALL seguir siendo el owner del grupo

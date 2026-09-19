@@ -108,25 +108,26 @@ changes:
       Golden: añadir a `extract-job` casos de texto pegado (sin HTML, con ruido de chat alrededor) sin tocar los siete
       de páginas, con su línea base en replay y fixtures grabados contra Ollama local.
   - name: groups-ownership-join-limit
-    adrs: [002, 020, 021]
+    adrs: [020, 021, 025]
     agents: [backend-dev, frontend-dev]
     scope: |
       Decisión humana del 2026-09-19 tras el debate de applications-tracking: la transferencia de propiedad de un grupo y el
       límite de intentos de POST /api/groups/join salen de `applications-tracking` a este change, que se entrega ANTES. Ambas
       son deudas de `groups` (Risks de su design.md) que `job-links` volvió más caras; no dependen de las postulaciones, que
-      sobreviven al borrado del grupo (ADR-024).
+      sobreviven al borrado del grupo (lo decide el ADR de `applications-tracking`).
       Transferencia: el owner nombra propietario a otro miembro y pasa a member en una escritura atómica; la membresía owner es
       única, garantizada por un índice único parcial con nombre explícito (`one_owner_per_group`) y detección de duplicados por
-      nombre de índice. Borrar, salir y expulsar condicionan su escritura al rol (`deleteGroup` borra primero la membresía owner
+      `keyPattern` completo. Borrar, salir y expulsar condicionan su escritura al rol (`deleteGroup` borra primero la membresía owner
       de quien pide; `removeMember` devuelve removed | now_owner | not_member), para que ninguna carrera deje un grupo sin
       propietario ni borre uno que ya cambió de manos. Después el antiguo owner puede salir.
-      Límite del join: códigos incorrectos contados por usuario (10) y por IP (50, IPv6 por /64) en ventanas fijas de 15 min con
-      el contador de `apps/api/src/infrastructure/limits/`, consumidos antes de resolver y devueltos con try/finally salvo en
+      Límite del join: códigos incorrectos contados por usuario (10) y por IP (100, IPv6 por /64) en ventanas fijas de 15 min con
+      el contador de `apps/api/src/infrastructure/limits/`, primero el del usuario (si ya bloquea, 429 sin tocar la IP), consumidos antes de
+      resolver y devueltos con try/finally salvo en
       InvalidInviteCode, solo en los contadores que contaron; un acierto no reinicia; 429 too_many_attempts con Retry-After por
       el error de dominio TooManyJoinAttempts con su rama en el filtro; falla abierto. `ipLimitGroup` pasa de `auth` a
       infraestructura de plataforma.
       Frontend: "Nombrar propietario", textos del propietario para salir, confirmación de borrado que sugiere transferir y
-      mensaje del 429. En ES siempre "propietario"; en EN "owner". Decisiones no triviales en ADR-025 tras su propio debate.
+      mensaje del 429. En ES siempre "propietario"; en EN "owner". Decisiones no triviales en ADR-025.
   - name: applications-tracking
     adrs: [004, 015]
     agents: [backend-dev, frontend-dev]
