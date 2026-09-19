@@ -1,11 +1,13 @@
 import { CdkDrag, type CdkDragDrop, CdkDropList, CdkDropListGroup } from '@angular/cdk/drag-drop';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { MatDialog } from '@angular/material/dialog';
 import { RouterLink } from '@angular/router';
 import type { Application, ApplicationStatus } from '@linkvault/shared';
 import type { RequestFailure } from '../../core/api/api-error';
 import { ApplicationsStore } from '../../core/applications/applications.store';
 import { RequestError } from '../../shared/ui/request-error';
 import { ApplicationCard } from './application-card.component';
+import { ApplicationDetailDialog, type ApplicationDetailDialogData } from './application-detail.dialog';
 import { ApplicationMoves, type MoveOutcome } from './application-moves';
 import {
   BOARD_COLUMNS,
@@ -37,6 +39,7 @@ const COLUMN_TARGET: Record<Exclude<BoardColumnId, 'closed'>, ApplicationStatus>
 export class ApplicationsBoardPage {
   private readonly store = inject(ApplicationsStore);
   private readonly moves = inject(ApplicationMoves);
+  private readonly dialog = inject(MatDialog);
 
   protected readonly loaded = this.store.boardLoaded;
   protected readonly loadFailure = this.store.boardFailure;
@@ -60,6 +63,17 @@ export class ApplicationsBoardPage {
 
   constructor() {
     void this.store.loadBoard();
+  }
+
+  /** El panel se abre a la derecha, a toda la altura: el tablero sigue a la vista detrás. */
+  protected openDetail(application: Application): void {
+    this.dialog.open<ApplicationDetailDialog, ApplicationDetailDialogData>(ApplicationDetailDialog, {
+      data: { id: application.id, linkId: application.linkId },
+      position: { right: '0', top: '0' },
+      height: '100%',
+      width: 'min(32rem, 100vw)',
+      maxWidth: '100vw',
+    });
   }
 
   protected async dropped(event: CdkDragDrop<BoardColumnId, BoardColumnId, Application>): Promise<void> {

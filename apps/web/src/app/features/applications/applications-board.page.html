@@ -46,6 +46,7 @@
               [cdkDragDisabled]="moving()"
               [application]="application"
               [busy]="moving()"
+              (open)="openDetail(application)"
               (moveTo)="moveTo(application, $event)"
             />
           }
