@@ -1,0 +1,47 @@
+<article class="flex flex-col gap-1 rounded border border-(--mat-sys-outline-variant) p-3" data-testid="application-card">
+  <button
+    type="button"
+    class="text-left font-medium underline-offset-2 hover:underline"
+    (click)="open.emit()"
+    data-testid="application-open"
+  >
+    {{ headline() }}
+  </button>
+  @if (application().link.company; as company) {
+    <span data-testid="application-company">{{ company }}</span>
+  }
+  <span class="text-sm" data-testid="application-platform">{{ platform() }}</span>
+  @if (closedLabel(); as closed) {
+    <span class="text-sm font-medium" data-testid="application-closed">{{ closed }}</span>
+  }
+  @if (stage(); as stageText) {
+    <span class="text-sm" data-testid="application-stage">{{ stageText }}</span>
+  }
+  @if (application().appliedAt; as appliedAt) {
+    <lv-applied-ago class="text-sm" [appliedAt]="appliedAt" />
+  }
+  @if (application().visibility === 'group') {
+    <span class="text-sm" data-testid="application-shared" i18n="@@applications.card.shared"
+      >Compartida con tus grupos</span
+    >
+  }
+  <div>
+    <button
+      mat-button
+      type="button"
+      [matMenuTriggerFor]="moveMenu"
+      [disabled]="busy()"
+      data-testid="application-move"
+      i18n="@@applications.card.moveTo"
+    >
+      Mover a…
+    </button>
+  </div>
+  <mat-menu #moveMenu="matMenu">
+    @for (target of targets(); track target.status) {
+      <button mat-menu-item type="button" (click)="moveTo.emit(target.status)" [attr.data-status]="target.status">
+        {{ target.label }}
+      </button>
+    }
+  </mat-menu>
+</article>

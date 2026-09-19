@@ -77,6 +77,14 @@ describe('Shell', () => {
     expect(host.querySelector('a[href="/mis-links"]')?.textContent).toContain('Solo para mí');
   });
 
+  it('shows a link to the applications board', async () => {
+    const fixture = TestBed.createComponent(Shell);
+    await fixture.whenStable();
+    const host = fixture.nativeElement as HTMLElement;
+
+    expect(host.querySelector('a[href="/postulaciones"]')?.textContent).toContain('Postulaciones');
+  });
+
   it('logs out and navigates to /login', async () => {
     const fixture = TestBed.createComponent(Shell);
     await fixture.whenStable();

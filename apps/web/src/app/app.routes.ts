@@ -42,6 +42,11 @@ export const appRoutes: Route[] = [
           import('./features/links/my-links.page').then((m) => m.MyLinksPage),
       },
       {
+        path: 'postulaciones',
+        loadChildren: () =>
+          import('./features/applications/applications.routes').then((m) => m.APPLICATIONS_ROUTES),
+      },
+      {
         path: 'perfil',
         loadComponent: () =>
           import('./features/profile/profile.page').then((m) => m.ProfilePage),
