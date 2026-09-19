@@ -213,3 +213,71 @@
     </button>
   }
 </span>
+
+<!--
+  Nota y comentarios del grupo (spec web/group-comments). Todo se pinta con interpolación, que escapa: un comentario con
+  `<b>` se lee tal cual y un enlace no es clicable. Cada texto se corta a dos líneas; el completo está en el hilo.
+-->
+@if (groupView()) {
+  <div class="flex flex-col gap-1 text-sm" data-testid="link-group-context">
+    @if (shareNote(); as note) {
+      <div class="flex flex-col" data-testid="link-note">
+        @if (link().sharedBy; as sharer) {
+          <span class="text-xs font-medium" data-testid="link-note-author" i18n="@@comments.note.from"
+            >Nota de {{ sharer.displayName }}</span
+          >
+        }
+        <p class="m-0 line-clamp-2 whitespace-pre-line break-words" data-testid="link-note-text">{{ note.text }}</p>
+        @if (canRemoveNote()) {
+          <div>
+            <button
+              mat-button
+              type="button"
+              [disabled]="busy()"
+              (click)="removeNote.emit()"
+              data-testid="link-note-remove"
+              i18n="@@comments.note.remove"
+            >
+              Quitar la nota
+            </button>
+          </div>
+        }
+      </div>
+    }
+
+    @if (latestComments().length > 0) {
+      <ul class="m-0 flex list-none flex-col gap-1 p-0" data-testid="link-comments">
+        @for (comment of latestComments(); track comment.id) {
+          <li class="flex flex-col" data-testid="link-comment">
+            <span class="flex flex-wrap items-baseline gap-x-2 text-xs">
+              <span class="font-medium" data-testid="comment-author">{{ comment.author.displayName }}</span>
+              @if (comment.authorLeft) {
+                <span data-testid="comment-author-left" i18n="@@comments.authorLeft">ya no está en el grupo</span>
+              }
+              <lv-comment-ago [createdAt]="comment.createdAt" />
+            </span>
+            <p class="m-0 line-clamp-2 whitespace-pre-line break-words" data-testid="comment-text">{{ comment.text }}</p>
+          </li>
+        }
+      </ul>
+    }
+
+    <div>
+      @let count = commentCount();
+      <button
+        mat-button
+        type="button"
+        (click)="openComments.emit()"
+        data-testid="link-comments-open"
+      >
+        @if (count === 0) {
+          <ng-container i18n="@@comments.card.comment">Comentar</ng-container>
+        } @else if (count <= 2) {
+          <ng-container i18n="@@comments.card.reply">Responder</ng-container>
+        } @else {
+          <ng-container i18n="@@comments.card.viewAll">Ver los {{ count }} comentarios</ng-container>
+        }
+      </button>
+    </div>
+  </div>
+}
