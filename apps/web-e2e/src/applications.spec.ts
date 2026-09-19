@@ -153,6 +153,17 @@ test('applications flow: track from the group, share, move on the board and untr
       await expect(card).toContainText('Postulaste hoy');
       await tracker.screenshot({ path: join(SCREENSHOT_DIR, 'tablero.png'), fullPage: true });
 
+      // Vuelve a compartir desde el panel, con el interruptor: la marca aparece en la tarjeta del tablero.
+      await card.getByTestId('application-open').click();
+      const panel = dialogWith(tracker, 'lv-application-detail-dialog');
+      await expect(panel.getByTestId('detail-share-scope')).toContainText(
+        'Nunca la etapa, las notas ni el historial.',
+      );
+      await panel.getByRole('switch', { name: 'Compartir mi estado con mis grupos' }).click();
+      await expect(card.getByTestId('application-shared')).toBeVisible();
+      await panel.getByRole('button', { name: 'Cerrar', exact: true }).click();
+      await expect(tracker.locator('mat-dialog-container')).toHaveCount(0);
+
       await card.getByTestId('application-move').click();
       await tracker.getByRole('menuitem', { name: 'En proceso' }).click();
       const stageDialog = dialogWith(tracker, 'lv-stage-dialog');
@@ -165,6 +176,18 @@ test('applications flow: track from the group, share, move on the board and untr
       await expect(moved).toContainText(OFFER_LABEL);
       await expect(moved).toContainText(STAGE);
       await expect(column(tracker, 'applied').getByTestId('application-card')).toHaveCount(0);
+    });
+
+    await test.step('7.1 the other member sees "En proceso" and never the stage', async () => {
+      await owner.goto(groupUrl);
+      const avatar = offerRow(owner).getByTestId('tracker-avatar');
+      await expect(avatar).toHaveCount(1);
+      await expect(avatar).toHaveAttribute(
+        'aria-label',
+        `${TRACKER.displayName} · postulación: En proceso`,
+      );
+      await expect(owner.locator('body')).not.toContainText(STAGE);
+      await owner.screenshot({ path: join(SCREENSHOT_DIR, 'avatar-en-proceso.png'), fullPage: true });
     });
 
     await test.step('7.2 untracking from the panel asks first, then removes the card', async () => {
@@ -195,6 +218,12 @@ test('applications flow: track from the group, share, move on the board and untr
       await expect(row.getByTestId('link-interested')).toBeVisible();
       await expect(row.getByTestId('link-applied')).toBeVisible();
       await expect(row.getByTestId('link-own-status')).toHaveCount(0);
+    });
+
+    await test.step('7.2 the other member no longer sees the avatar', async () => {
+      await owner.goto(groupUrl);
+      await expect(offerRow(owner)).toHaveCount(1);
+      await expect(offerRow(owner).getByTestId('tracker-avatar')).toHaveCount(0);
     });
 
     expect(pageErrors).toEqual([]);
