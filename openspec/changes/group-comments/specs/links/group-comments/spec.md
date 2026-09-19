@@ -3,13 +3,15 @@
 ### Requirement: Comentar un link del grupo
 
 `POST /api/groups/:id/links/:linkId/comments` SHALL aceptar `text` y, si quien pide es miembro del grupo y el link está
-compartido en ese grupo, guardar un comentario con su texto normalizado, su autor y su fecha, y responder `201` con el
-comentario (`id`, `author` con `userId` y `displayName`, `authorLeft` `false`, `text`, `createdAt`) y el resumen de
-comentarios de ese link en el grupo (`count` y `latest`). Quien no es miembro, un grupo inexistente o un `:id` mal
-formado SHALL recibir `404` con código `group_not_found` y el mismo cuerpo en los tres casos. Un link que no está
-compartido en ese grupo, o un `:linkId` mal formado, SHALL recibir `404` con código `link_not_found`. Un texto que tras
-normalizarse quede vacío o pase de 500 caracteres SHALL recibir `400` con código `validation_error` nombrando `text`, y
-NO SHALL guardarse nada.
+compartido en ese grupo, guardar un comentario con su texto normalizado, su autor y su fecha. SHALL responder `201` con
+el comentario (`id`, `author` con `userId` y `displayName`, `authorLeft` `false`, `text`, `createdAt`) y el resumen de
+comentarios de ese link en el grupo (`count`, `latest`, `revision` y `sharedAt`).
+- Quien no es miembro, un grupo inexistente o un `:id` mal formado SHALL recibir `404` con código `group_not_found` y el
+  mismo cuerpo en los tres casos.
+- Un link que no está compartido en ese grupo, o un `:linkId` mal formado, SHALL recibir `404` con código
+  `link_not_found`.
+- Un texto que tras normalizarse quede vacío o pase de 500 caracteres SHALL recibir `400` con código `validation_error`
+  nombrando `text`, y NO SHALL guardarse nada.
 
 #### Scenario: Comentar una oferta del grupo
 
@@ -78,17 +80,19 @@ logs ni en ningún aviso que viaje por Redis.
 
 #### Scenario: El texto no se registra
 
-- **WHEN** un miembro comenta "Piden inglés C1" y otro miembro intenta borrarlo sin ser su autor
+- **WHEN** un miembro comenta "Piden inglés C1" y otro miembro que no es owner intenta borrarlo
 - **THEN** ningún log de la API SHALL contener "Piden inglés C1"
 
 ### Requirement: Hilo de un link en el grupo
 
 `GET /api/groups/:id/links/:linkId/comments` SHALL devolver, a los miembros actuales del grupo, los comentarios de ese
-link **en ese grupo**, del más reciente al más antiguo y, a igual fecha, por identificador, ambos descendentes. SHALL
-paginarse con `limit` (20 por defecto, 50 como máximo) y un `cursor` opaco, e incluir `total`, el número de comentarios
-del link en el grupo. Un cursor manipulado SHALL responder `400` con código `validation_error` nombrando `cursor`.
-Quien no es miembro SHALL recibir `404` con código `group_not_found`; un link que no está en el grupo, `404` con código
-`link_not_found`. Los comentarios que ese mismo link tenga en otro grupo NO SHALL aparecer.
+link **en ese grupo**, del más reciente al más antiguo y, a igual fecha, por identificador, ambos descendentes.
+- SHALL paginarse con `limit` (20 por defecto, 50 como máximo) y un `cursor` opaco.
+- SHALL incluir `total`, el número de comentarios del link en el grupo.
+- Un cursor manipulado SHALL responder `400` con código `validation_error` nombrando `cursor`.
+- Quien no es miembro SHALL recibir `404` con código `group_not_found`; un link que no está en el grupo, `404` con código
+  `link_not_found`.
+- Los comentarios que ese mismo link tenga en otro grupo NO SHALL aparecer.
 
 #### Scenario: Hilo paginado sin saltos ni repetidos
 
@@ -109,26 +113,46 @@ Quien no es miembro SHALL recibir `404` con código `group_not_found`; un link q
 - **WHEN** pide el hilo de ese link en el grupo
 - **THEN** la respuesta SHALL ser `404` con código `group_not_found`
 
-### Requirement: Borrar un comentario propio
+### Requirement: Borrar un comentario
 
-`DELETE /api/groups/:id/links/:linkId/comments/:commentId` SHALL borrar el comentario y responder `204` solo si quien
-pide es su autor y miembro actual del grupo. Cualquier otro miembro SHALL recibir `403` con código `forbidden`, también
-el propietario del grupo, y el comentario NO SHALL borrarse. Un comentario que no existe, que ya se borró, que es de otro
-link o de otro grupo, o un `:commentId` mal formado SHALL responder `404` con código `comment_not_found`. Quien no es
-miembro SHALL recibir `404` con código `group_not_found`. Borrar SHALL bajar en uno el contador del link en el grupo.
-Los comentarios NO SHALL poder editarse: no existe ninguna operación que cambie su texto.
+`DELETE /api/groups/:id/links/:linkId/comments/:commentId` SHALL borrar el comentario y responder `200` con
+`{ comments }`, el resumen ya actualizado de ese link en el grupo (la misma forma que en el `POST`), si quien pide es
+miembro actual del grupo y además es su autor o el `owner` del grupo.
+- Cualquier otro miembro SHALL recibir `403` con código `forbidden`, y el comentario NO SHALL borrarse.
+- Un comentario que no existe, que ya se borró, que es de otro link o de otro grupo, o un `:commentId` mal formado SHALL
+  responder `404` con código `comment_not_found`.
+- Quien no es miembro SHALL recibir `404` con código `group_not_found`.
+
+El comentario borrado, también el que borra el `owner`, SHALL desaparecer sin dejar rastro en el hilo ni en el resumen.
+Borrar SHALL bajar en uno el contador del link en el grupo y subir en uno su `revision`. Dos borrados simultáneos del
+mismo comentario SHALL borrarlo una sola vez: uno responde `200` y el otro `404` con código `comment_not_found`. Los
+comentarios NO SHALL poder editarse: nadie, ni su autor ni el `owner`, tiene una operación que cambie su texto.
 
 #### Scenario: Borrar el propio
 
 - **GIVEN** un link con dos comentarios en un grupo, uno de Beto
 - **WHEN** Beto borra el suyo
-- **THEN** la respuesta SHALL ser `204`
+- **THEN** la respuesta SHALL ser `200` con `comments.count` 1
 - **AND** el hilo SHALL tener `total` 1 y NO SHALL contener el de Beto
 
-#### Scenario: El propietario no borra lo ajeno
+#### Scenario: El propietario borra un comentario ajeno
+
+- **GIVEN** un comentario de Beto en un grupo cuya propietaria es Ana
+- **WHEN** Ana lo borra
+- **THEN** la respuesta SHALL ser `200` con el resumen actualizado
+- **AND** el hilo NO SHALL contener el comentario ni ninguna marca de que existió
+
+#### Scenario: Dos borrados a la vez
+
+- **GIVEN** un link con tres comentarios, uno de Beto, y `revision` R
+- **WHEN** Beto y la propietaria piden a la vez borrar ese comentario
+- **THEN** una respuesta SHALL ser `200` y la otra `404` con código `comment_not_found`
+- **AND** el link SHALL quedar con `count` 2 y `revision` R + 1
+
+#### Scenario: Otro miembro no borra lo ajeno
 
 - **GIVEN** un comentario de Beto
-- **WHEN** Ana, propietaria del grupo, intenta borrarlo
+- **WHEN** Carla, miembro sin ser owner, intenta borrarlo
 - **THEN** la respuesta SHALL ser `403` con código `forbidden`
 - **AND** el comentario SHALL seguir en el hilo
 
@@ -148,16 +172,22 @@ Los comentarios NO SHALL poder editarse: no existe ninguna operación que cambie
 #### Scenario: Sin edición
 
 - **GIVEN** un comentario de Beto
-- **WHEN** Beto envía un `PATCH` a la ruta de ese comentario con otro texto
-- **THEN** la respuesta SHALL ser `404`
+- **WHEN** Beto y la propietaria envían un `PATCH` a la ruta de ese comentario con otro texto
+- **THEN** ambas respuestas SHALL ser `404`
 - **AND** el texto del comentario NO SHALL cambiar
 
 ### Requirement: Resumen de comentarios en el listado del grupo
 
-Cada link de `GET /api/groups/:id/links` SHALL incluir `comments` con `count`, el número de comentarios del link en ese
-grupo, y `latest`, sus dos comentarios más recientes (o menos si no hay tantos) del más reciente al más antiguo, con la
-misma forma que en el hilo. El listado SHALL resolverse con un número fijo de lecturas por página, sea cual sea el
-número de links de la página y de comentarios de cada uno: nunca una lectura por link ni por comentario.
+Cada link de `GET /api/groups/:id/links` SHALL incluir `comments` con:
+- `count`: el número de comentarios del link en ese grupo;
+- `latest`: sus dos comentarios más recientes (o menos si no hay tantos), del más reciente al más antiguo, con la misma
+  forma que en el hilo;
+- `revision`: un número que SHALL crecer con cada comentario publicado o borrado en ese link y grupo, y que nunca
+  retrocede mientras dure la relación (al quitar el link y volver a compartirlo, empieza de nuevo en 0);
+- `sharedAt`: el `sharedAt` de la relación, que identifica cada vez que el link se compartió en el grupo.
+
+El listado SHALL resolverse con un número fijo de lecturas por página, sea cual sea el número de links de la página y de
+comentarios de cada uno: nunca una lectura por link ni por comentario.
 
 #### Scenario: Tarjeta con tres comentarios
 
@@ -169,7 +199,13 @@ número de links de la página y de comentarios de cada uno: nunca una lectura p
 
 - **GIVEN** un link recién compartido
 - **WHEN** un miembro pide los links del grupo
-- **THEN** ese link SHALL traer `comments.count` 0 y `latest` vacío
+- **THEN** ese link SHALL traer `comments.count` 0, `latest` vacío y `revision` 0
+
+#### Scenario: La revisión crece con cada cambio
+
+- **GIVEN** un link con `comments.revision` R
+- **WHEN** un miembro publica un comentario y después lo borra
+- **THEN** el listado SHALL traer `comments.revision` R + 2 y `count` igual que antes
 
 #### Scenario: Lecturas fijas
 
@@ -180,10 +216,14 @@ número de links de la página y de comentarios de cada uno: nunca una lectura p
 ### Requirement: Límite de comentarios
 
 Publicar un comentario SHALL contar por persona en una ventana fija de 15 minutos, con un máximo de 30 comentarios en
-todos sus grupos. Superado el límite, SHALL responder `429` con código `too_many_attempts` y cabecera `Retry-After` en
-segundos, y NO SHALL guardarse el comentario. Un comentario rechazado por validación, por pertenencia o por el link NO
-SHALL gastar intento. El contador SHALL fallar abierto: si el almacén de contadores no responde, el comentario SHALL
-guardarse. Borrar NO SHALL contar.
+todos sus grupos.
+- Superado el límite, SHALL responder `429` con código `too_many_attempts` y cabecera `Retry-After` en segundos, y NO
+  SHALL guardarse el comentario.
+- Un comentario rechazado por validación o por pertenencia NO SHALL llegar a contar.
+- Uno que cuenta y después no se guarda, por cualquier motivo, SHALL devolver el intento. Incluye que el link deje de
+  estar en el grupo entretanto.
+- El contador SHALL fallar abierto: si el almacén de contadores no responde, el comentario SHALL guardarse.
+- Borrar NO SHALL contar.
 
 #### Scenario: Ventana agotada
 
@@ -198,6 +238,13 @@ guardarse. Borrar NO SHALL contar.
 - **WHEN** envía un comentario vacío y después uno válido
 - **THEN** la primera respuesta SHALL ser `400` y la segunda `201`
 
+#### Scenario: Carrera que termina en 404 no gasta
+
+- **GIVEN** un miembro con 29 comentarios en la ventana actual
+- **WHEN** comenta un link que se quita del grupo entre la comprobación del límite y la escritura, y después comenta otro
+  link del grupo
+- **THEN** la primera respuesta SHALL ser `404` con código `link_not_found` y la segunda `201`
+
 #### Scenario: Contador caído
 
 - **GIVEN** el almacén de contadores sin responder
@@ -208,15 +255,18 @@ guardarse. Borrar NO SHALL contar.
 
 - **GIVEN** un miembro que agotó sus comentarios de la ventana
 - **WHEN** borra uno suyo
-- **THEN** la respuesta SHALL ser `204`
+- **THEN** la respuesta SHALL ser `200`
 
 ### Requirement: Autores que ya no están en el grupo
 
-Salir de un grupo o ser expulsado NO SHALL borrar ni cambiar los comentarios de esa persona en ese grupo. Mientras no
-sea miembro, sus comentarios SHALL seguir mostrándose con su nombre y `authorLeft` `true`, en el hilo y en el resumen.
-Esa persona no puede leerlos ni borrarlos porque no es miembro. Si vuelve a unirse, `authorLeft` SHALL volver a ser
-`false` y SHALL poder borrarlos. `authorLeft` SHALL derivarse de la pertenencia actual en cada lectura, sin escribir
-nada al salir, al ser expulsado ni al volver.
+Salir de un grupo o ser expulsado NO SHALL borrar ni cambiar los comentarios de esa persona en ese grupo.
+- Mientras no sea miembro, sus comentarios SHALL seguir mostrándose con su nombre y `authorLeft` `true`, en el hilo y en
+  el resumen.
+- Mientras no sea miembro, esa persona no puede leerlos ni borrarlos.
+- Si vuelve a unirse, `authorLeft` SHALL volver a ser `false` y SHALL poder borrarlos.
+
+`authorLeft` SHALL derivarse de la pertenencia actual en cada lectura, sin escribir nada al salir, al ser expulsado ni al
+volver.
 
 #### Scenario: Sale del grupo
 
@@ -242,16 +292,17 @@ nada al salir, al ser expulsado ni al volver.
 - **GIVEN** Beto, que salió de un grupo donde dejó un comentario
 - **WHEN** vuelve a unirse con el código y borra el comentario
 - **THEN** antes de borrarlo SHALL verlo con `authorLeft` `false`
-- **AND** la respuesta al borrado SHALL ser `204`
+- **AND** la respuesta al borrado SHALL ser `200`
 
 ### Requirement: Los comentarios viven con la relación
 
-Los comentarios de un link en un grupo SHALL existir solo mientras el link esté compartido en ese grupo. Quitar el link
-del grupo SHALL borrar sus comentarios de ese grupo en la misma transacción que borra la relación: o se borra todo o no
-se borra nada. Volver a compartir después ese link en el grupo SHALL empezar con 0 comentarios. Quitarlo de un grupo NO
-SHALL tocar los comentarios que tenga en otro. Un comentario que llega a la vez que se quita el link NO SHALL quedar
-guardado sin su relación: o se guarda antes de quitarse el link (y se borra con él) o responde `404` con código
-`link_not_found`.
+Los comentarios de un link en un grupo SHALL existir solo mientras el link esté compartido en ese grupo.
+- Quitar el link del grupo SHALL borrar sus comentarios de ese grupo en la misma transacción que borra la relación: o
+  se borra todo o no se borra nada.
+- Volver a compartir después ese link en el grupo SHALL empezar con 0 comentarios.
+- Quitarlo de un grupo NO SHALL tocar los comentarios que tenga en otro.
+- Un comentario que llega a la vez que se quita el link NO SHALL quedar guardado sin su relación: o se guarda antes de
+  quitarse el link (y se borra con él) o responde `404` con código `link_not_found`.
 
 #### Scenario: Quitar la oferta se lleva sus comentarios
 
@@ -273,15 +324,24 @@ guardado sin su relación: o se guarda antes de quitarse el link (y se borra con
 
 #### Scenario: Comentar mientras se quita
 
-- **WHEN** llegan a la vez un comentario sobre un link y la petición de quitar ese link del grupo
-- **THEN** al terminar las dos NO SHALL existir ningún comentario de ese link en ese grupo
-- **AND** el comentario SHALL haber respondido `201` o `404` con código `link_not_found`
+- **GIVEN** una transacción de alta de comentario que ya actualizó la relación sin confirmar
+- **WHEN** otra transacción quita el link del grupo, el alta confirma y la retirada se reintenta
+- **THEN** NO SHALL existir ningún comentario de ese link en ese grupo
+- **AND** el alta SHALL haber devuelto el comentario
+
+#### Scenario: Quitar mientras se comenta
+
+- **GIVEN** una transacción que ya borró la relación sin confirmar
+- **WHEN** empieza el alta de un comentario, la retirada confirma y el alta se reintenta
+- **THEN** el alta SHALL responder `404` con código `link_not_found`
+- **AND** NO SHALL existir ningún comentario de ese link en ese grupo
 
 ### Requirement: Publicar no depende del aviso
 
-Publicar o borrar un comentario SHALL avisar después de confirmarse, por el canal que describe `platform/realtime`. Si el
-aviso no se puede publicar, la respuesta NO SHALL retrasarse ni fallar por ello, y SHALL registrarse como mucho un aviso
-por racha de fallos, sin el texto del comentario ni el usuario.
+Publicar o borrar un comentario SHALL avisar después de confirmarse la escritura, por el canal que describe
+`platform/realtime`, sin esperar a que el aviso salga. Si el aviso no se puede publicar, la respuesta NO SHALL retrasarse
+ni fallar por ello, y SHALL registrarse como mucho un aviso por racha de fallos, sin el texto del comentario ni el
+usuario.
 
 #### Scenario: Redis caído al comentar
 

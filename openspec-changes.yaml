@@ -138,7 +138,7 @@ changes:
       La transferencia de propiedad de un grupo y el límite de intentos de POST /api/groups/join, que este change heredaba de
       `groups`, van ahora en el change anterior, `groups-ownership-join-limit` (decisión humana del 2026-09-19).
   - name: group-comments
-    adrs: [015]
+    adrs: [015, 026]
     agents: [backend-dev, frontend-dev]
     scope: |
       GroupLinkComment plano (texto ≤ 500, autor, fecha), crear y borrar propio. Card muestra últimos 2 y contador.
@@ -211,6 +211,7 @@ changes:
       para que el código no salga hacia terceros.
       Heredado de `applications-tracking` (ADR-024): el borrado de cuenta debe borrar en cascada sus `applications` y sus
       `application_events`, que guardan notas y etapas privadas.
+      Heredado de `group-comments` (ADR-026): el borrado de cuenta borra o anonimiza sus `group_link_comments` (ADR-026).
   - name: auth-email-recovery
     adrs: [012, 020]
     agents: [backend-dev, frontend-dev]

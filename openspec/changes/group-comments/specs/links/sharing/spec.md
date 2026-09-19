@@ -2,16 +2,23 @@
 
 ### Requirement: Guardar un link
 
-`POST /api/links` SHALL aceptar `url` y opcionalmente `groupId` y `note`, y responder `201` con el link (id, URL
-normalizada, `displayUrl`, plataforma, `previewStatus`), `created` (si la vacante no existía en LinkVault), `shared`
-(`created` o `already_there`, según si la relación con el destino es nueva) y `alreadyInGroups`. Con `groupId`, el usuario
-SHALL ser miembro de ese grupo y el link SHALL quedar compartido en él; sin `groupId`, el link SHALL quedar solo en la
-lista privada del usuario. `note` SHALL admitirse solo con `groupId`, normalizarse con las mismas reglas que el texto de
-un comentario y medir como mucho 280 caracteres; una `note` que tras normalizarse queda vacía SHALL tratarse como si no
-se hubiera enviado. Una `note` sin `groupId` o de más de 280 caracteres SHALL responder `400` con código
-`validation_error` nombrando `note`, sin guardar nada. Una URL no reconocida SHALL responder `400` con código
-`invalid_url`. Un grupo del que no se es miembro, o un identificador mal formado, SHALL responder `404` con código
-`group_not_found`.
+`POST /api/links` SHALL aceptar `url` y opcionalmente `groupId` y `note`, y responder `201` con:
+- el link (id, URL normalizada, `displayUrl`, plataforma, `previewStatus`);
+- `created`: si la vacante no existía en LinkVault;
+- `shared`: `created` o `already_there`, según si la relación con el destino es nueva;
+- `alreadyInGroups`.
+
+Con `groupId`, el usuario SHALL ser miembro de ese grupo y el link SHALL quedar compartido en él; sin `groupId`, el link
+SHALL quedar solo en la lista privada del usuario.
+
+`note` SHALL normalizarse primero, con las mismas reglas que el texto de un comentario:
+- una `note` que tras normalizarse queda vacía SHALL tratarse como si no se hubiera enviado, también sin `groupId`;
+- una `note` con texto SHALL admitirse solo con `groupId` y medir como mucho 280 caracteres;
+- con texto y sin `groupId`, o de más de 280 caracteres, SHALL responder `400` con código `validation_error` nombrando
+  `note`, sin guardar nada.
+
+Una URL no reconocida SHALL responder `400` con código `invalid_url`. Un grupo del que no se es miembro, o un
+identificador mal formado, SHALL responder `404` con código `group_not_found`.
 
 #### Scenario: Guardar en un grupo
 
@@ -51,9 +58,14 @@ se hubiera enviado. Una `note` sin `groupId` o de más de 280 caracteres SHALL r
 
 #### Scenario: Nota sin grupo
 
-- **WHEN** un usuario guarda una URL sin `groupId` y con una nota
+- **WHEN** un usuario guarda una URL sin `groupId` y con la nota "Para mí"
 - **THEN** la respuesta SHALL ser `400` con código `validation_error` nombrando `note`
 - **AND** NO SHALL guardarse ningún link
+
+#### Scenario: Nota vacía sin grupo
+
+- **WHEN** un usuario guarda una URL sin `groupId` y con la nota "   "
+- **THEN** la respuesta SHALL ser `201` y el link SHALL quedar en su lista privada
 
 #### Scenario: Nota demasiado larga
 
@@ -62,9 +74,9 @@ se hubiera enviado. Una `note` sin `groupId` o de más de 280 caracteres SHALL r
 
 ### Requirement: Compartir sin duplicar
 
-Guardar en un grupo un link que ese grupo ya tiene NO SHALL crear una segunda relación ni cambiar quién lo compartió
-primero ni su nota, y SHALL responder `201` con `shared` `already_there` y quién lo compartió. Una `note` enviada en ese
-caso SHALL descartarse sin error. El mismo link SHALL poder estar en varios grupos y en la lista privada de varios
+Guardar en un grupo un link que ese grupo ya tiene NO SHALL crear una segunda relación, ni cambiar quién lo compartió
+primero, ni cambiar su nota. SHALL responder `201` con `shared` `already_there` y quién lo compartió. Una `note` enviada
+en ese caso SHALL descartarse sin error. El mismo link SHALL poder estar en varios grupos y en la lista privada de varios
 usuarios a la vez.
 
 #### Scenario: Dos miembros comparten la misma vacante
@@ -90,13 +102,15 @@ usuarios a la vez.
 
 ### Requirement: Listado de links de un grupo
 
-`GET /api/groups/:id/links` SHALL devolver, para los miembros del grupo, sus links con `id`, URL normalizada,
-`displayUrl`, plataforma, `previewStatus`, quién los compartió (`sharedBy` con `userId` y `displayName`), `sharedAt`,
-la nota de quien lo compartió (`note` con `text` y `updatedAt`, solo si la tiene) y el resumen de sus comentarios en ese
-grupo (`comments`, spec `links/group-comments`). Los links SHALL ordenarse por `sharedAt` y, a igualdad, por
-identificador, ambos descendentes, y paginarse con `limit` (20 por defecto, 50 como máximo) y un `cursor` opaco. La
-respuesta SHALL incluir `total`, el número de links del grupo. Quien no es miembro SHALL recibir `404` con código
-`group_not_found`.
+`GET /api/groups/:id/links` SHALL devolver, para los miembros del grupo, sus links con:
+- `id`, URL normalizada, `displayUrl`, plataforma y `previewStatus`;
+- quién los compartió (`sharedBy` con `userId` y `displayName`) y `sharedAt`;
+- la nota de quien lo compartió (`note` con `text` y `createdAt`), solo si la tiene;
+- el resumen de sus comentarios en ese grupo (`comments`, spec `links/group-comments`).
+
+Los links SHALL ordenarse por `sharedAt` y, a igualdad, por identificador, ambos descendentes, y paginarse con `limit`
+(20 por defecto, 50 como máximo) y un `cursor` opaco. La respuesta SHALL incluir `total`, el número de links del grupo.
+Quien no es miembro SHALL recibir `404` con código `group_not_found`.
 
 #### Scenario: Miembro ve los links del grupo
 
@@ -123,17 +137,32 @@ respuesta SHALL incluir `total`, el número de links del grupo. Quien no es miem
 - **THEN** el primero SHALL traer su `note` y `comments.count` 2
 - **AND** el segundo NO SHALL traer `note` y SHALL traer `comments.count` 0
 
+### Requirement: Listado de links privados
+
+`GET /api/links/mine` SHALL devolver los links que el usuario guardó sin grupo, con los mismos campos que el listado de
+un grupo salvo `note` y `comments`, que NO SHALL incluirse, con `total` y la misma paginación. SHALL ordenarlos por fecha
+de guardado y, a igualdad, por identificador, ambos descendentes. NO SHALL incluir los links que solo guardó dentro de
+un grupo.
+
+#### Scenario: Lista privada
+
+- **GIVEN** un usuario con un link privado y otro guardado en un grupo
+- **WHEN** consulta su lista privada
+- **THEN** la respuesta SHALL ser `200` con solo el link privado
+
 #### Scenario: La lista privada no trae comentarios
 
-- **GIVEN** un usuario con un link en su lista privada que también tiene comentarios en un grupo suyo
+- **GIVEN** un usuario con un link en su lista privada que también tiene nota y comentarios en un grupo suyo
 - **WHEN** consulta su lista privada
 - **THEN** ese link NO SHALL traer `note` ni `comments`
 
 ### Requirement: Quitar un link de un grupo o de la lista privada
 
-`DELETE /api/groups/:id/links/:linkId` SHALL borrar la relación del link con el grupo, su nota y todos sus comentarios en
-ese grupo en una sola transacción, y responder `204` si quien pide lo compartió o es `owner` del grupo; otro miembro
-SHALL recibir `403` con código `forbidden`, y quien no es miembro `404` con código `group_not_found`.
+`DELETE /api/groups/:id/links/:linkId` SHALL borrar en una sola transacción la relación del link con el grupo, su nota y
+todos sus comentarios en ese grupo. SHALL responder `204` si quien pide lo compartió o es `owner` del grupo.
+- Otro miembro SHALL recibir `403` con código `forbidden`.
+- Quien no es miembro SHALL recibir `404` con código `group_not_found`.
+
 `DELETE /api/links/mine/:linkId` SHALL borrar la entrada privada del usuario y responder `204`. En ningún caso SHALL
 borrarse el `JobLink`: sigue disponible en los demás grupos y listas. Un link que no está en ese grupo o en esa lista
 SHALL responder `404` con código `link_not_found`.
@@ -182,35 +211,55 @@ SHALL responder `404` con código `link_not_found`.
 
 ### Requirement: Nota de quien comparte
 
-Cada link compartido en un grupo SHALL poder llevar como mucho una nota. La escribe quien lo compartió primero: al
-guardarlo con `POST /api/links` o, después, con `PATCH /api/groups/:id/links/:linkId/note`, que SHALL aceptar `text`
-(cadena o `null`) y responder `200` con la nota resultante (`note` con `text` y `updatedAt`, o `null`). Una cadena SHALL
-normalizarse como el texto de un comentario y sustituir la nota; `null` o una cadena que queda vacía SHALL quitarla. La
-nota no guarda historial. Solo quien compartió el link SHALL poder cambiarla o quitarla: otro miembro SHALL recibir `403`
-con código `forbidden`, también el `owner`. Quien no es miembro SHALL recibir `404` con código `group_not_found`, y un
-link que no está en el grupo, `404` con código `link_not_found`. Más de 280 caracteres SHALL responder `400` con código
-`validation_error` nombrando `text`. `POST /api/links/import` NO SHALL aceptar nota.
+Cada link compartido en un grupo SHALL poder llevar como mucho una nota. La escribe solo quien crea la relación, al
+guardarlo con `POST /api/links`. Después NO SHALL poder editarse: solo borrarse.
+`DELETE /api/groups/:id/links/:linkId/note` SHALL comprobar, en este orden:
+1. la pertenencia: quien no es miembro SHALL recibir `404` con código `group_not_found`;
+2. la relación: un link que no está en el grupo SHALL recibir `404` con código `link_not_found`;
+3. el permiso: quien no compartió el link y no es `owner` SHALL recibir `403` con código `forbidden`, tenga o no nota
+   el link;
+4. el borrado: SHALL quitar la nota y responder `204`, la hubiera o no. Si al borrar la relación ya no existe, SHALL
+   responder `404` con código `link_not_found`.
 
-#### Scenario: Corregir la nota
+`POST /api/links/import` NO SHALL aceptar nota.
+
+#### Scenario: Quien compartió quita su nota
 
 - **GIVEN** un link que Ana compartió en un grupo con la nota "Esta es la que te dije"
-- **WHEN** Ana la cambia por "Esta es la de Acme que te dije"
-- **THEN** la respuesta SHALL ser `200` con la nota nueva
-- **AND** el listado del grupo SHALL mostrar la nota nueva
-
-#### Scenario: Quitar la nota
-
-- **GIVEN** un link con nota compartido por Ana
-- **WHEN** Ana envía `text` `null`
-- **THEN** la respuesta SHALL ser `200` con `note` `null`
+- **WHEN** Ana borra la nota
+- **THEN** la respuesta SHALL ser `204`
 - **AND** el link NO SHALL traer `note` en el listado del grupo
 
-#### Scenario: Solo quien compartió
+#### Scenario: El propietario quita una nota ajena
 
 - **GIVEN** un link con nota compartido por Beto en un grupo cuya propietaria es Ana
-- **WHEN** Ana y Carla, miembro, intentan cambiar la nota
-- **THEN** ambas respuestas SHALL ser `403` con código `forbidden`
+- **WHEN** Ana borra la nota
+- **THEN** la respuesta SHALL ser `204` y el link SHALL seguir en el grupo sin nota
+
+#### Scenario: Otro miembro no la quita
+
+- **GIVEN** un link con nota compartido por Beto
+- **WHEN** Carla, miembro sin ser owner, intenta borrar la nota
+- **THEN** la respuesta SHALL ser `403` con código `forbidden`
 - **AND** la nota NO SHALL cambiar
+
+#### Scenario: Quitar una nota que ya no está
+
+- **GIVEN** un link compartido por Ana cuya nota ya se quitó desde otra pestaña
+- **WHEN** Ana vuelve a pedir que se quite
+- **THEN** la respuesta SHALL ser `204`
+
+#### Scenario: Sin permiso aunque no haya nota
+
+- **GIVEN** un link sin nota compartido por Beto
+- **WHEN** Carla, miembro sin ser owner, pide quitar la nota
+- **THEN** la respuesta SHALL ser `403` con código `forbidden`
+
+#### Scenario: La nota no se edita
+
+- **GIVEN** un link con nota compartido por Ana
+- **WHEN** Ana envía un `PATCH` a la ruta de la nota con otro texto
+- **THEN** la respuesta SHALL ser `404` y la nota NO SHALL cambiar
 
 #### Scenario: Importar no escribe notas
 
