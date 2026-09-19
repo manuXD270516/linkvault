@@ -60,10 +60,11 @@ identificador de la postulación.
 
 `GET /api/groups/:id/applications` SHALL aceptar `linkIds` (de 1 a 50 identificadores separados por comas) y devolver,
 a un miembro del grupo, por cada uno de esos links que está compartido en ese grupo, quiénes de sus miembros actuales lo
-siguen con `visibility` `group`, con su `userId`, su `displayName` y su estado, del cambio más reciente al más antiguo.
-Quien pide SHALL aparecer también si comparte el suyo. Un link que no está en ese grupo, o un identificador mal formado,
-NO SHALL aparecer en la respuesta. El número de consultas a la base de datos NO SHALL depender del número de links
-pedidos. Quien no es miembro, o un `:id` mal formado, SHALL recibir `404` con código `group_not_found`; más de 50
+siguen con `visibility` `group`, con su `userId`, su `displayName` y su estado, del último cambio de estado o de etapa
+más reciente al más antiguo (editar notas o visibilidad no cambia ese orden). Quien pide SHALL aparecer también si
+comparte el suyo. Un link que no está en ese grupo, o un identificador mal formado,
+NO SHALL aparecer en la respuesta. El número de lecturas que hace para responder —miembros del grupo, links del grupo,
+postulaciones compartidas y nombres, una de cada— NO SHALL depender del número de links pedidos. Quien no es miembro, o un `:id` mal formado, SHALL recibir `404` con código `group_not_found`; más de 50
 identificadores, o ninguno, SHALL responder `400` con código `validation_error` nombrando `linkIds`.
 
 #### Scenario: Página de un grupo con procesos compartidos
@@ -72,6 +73,12 @@ identificadores, o ninguno, SHALL responder `400` con código `validation_error`
   `applied` en L1 y L2
 - **WHEN** Carla, miembro del grupo, consulta los estados compartidos de L1 y L2
 - **THEN** la respuesta SHALL traer a Ana y a Beto en L1 y solo a Beto en L2, cada uno con su nombre y su estado
+
+#### Scenario: Una nota no reordena los avatares
+
+- **GIVEN** un link del grupo donde Ana cambió de estado ayer y Beto hoy, ambos compartiendo
+- **WHEN** Ana edita la nota de su postulación y un miembro consulta los estados compartidos de ese link
+- **THEN** Beto SHALL aparecer antes que Ana
 
 #### Scenario: Link que no está en el grupo
 
@@ -89,7 +96,8 @@ identificadores, o ninguno, SHALL responder `400` con código `validation_error`
 
 - **GIVEN** un grupo con 50 links y postulaciones compartidas en todos
 - **WHEN** un miembro consulta los estados compartidos de los 50 y después de solo 2
-- **THEN** ambas consultas SHALL hacer el mismo número de consultas a la base de datos
+- **THEN** ambas peticiones SHALL hacer el mismo número de lecturas: una de los miembros, una de los links del grupo,
+  una de las postulaciones compartidas y una de los nombres
 
 #### Scenario: Demasiados links
 

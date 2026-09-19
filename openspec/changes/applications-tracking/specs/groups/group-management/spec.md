@@ -1,35 +1,10 @@
-## MODIFIED Requirements
+## ADDED Requirements
 
-### Requirement: Borrado por el owner
+### Requirement: El borrado no alcanza a las postulaciones
 
-`DELETE /api/groups/:id` SHALL borrar el grupo, todas sus membresías y todas sus relaciones con links
-(`GroupLink`) de forma atómica y responder `204` solo si quien
-pide es el `owner`; un miembro que no es owner SHALL recibir `403`. Los `JobLink` compartidos en él NO SHALL borrarse: siguen disponibles en otros grupos y en las listas privadas. Las
-postulaciones de sus miembros NO SHALL borrarse ni cambiar: dejan de verse en ese grupo porque el grupo ya no existe, y
-cada persona conserva la suya con su estado y su historial. Tras el
-borrado, el grupo SHALL responder `404` a todos sus antiguos miembros y su código de invitación NO SHALL servir.
-
-#### Scenario: El owner borra el grupo
-
-- **GIVEN** un grupo con dos miembros
-- **WHEN** el owner lo borra
-- **THEN** la respuesta SHALL ser `204`
-- **AND** el grupo NO SHALL aparecer en la lista de ninguno de los dos
-- **AND** unirse con su código SHALL responder `404`
-
-#### Scenario: Un miembro no puede borrar
-
-- **GIVEN** un miembro que no es owner
-- **WHEN** intenta borrar el grupo
-- **THEN** la respuesta SHALL ser `403` con código `forbidden`
-- **AND** el grupo SHALL seguir existiendo
-
-#### Scenario: El borrado no destruye las vacantes
-
-- **GIVEN** un grupo con un link que también está en otro grupo del mismo usuario
-- **WHEN** el owner borra el primer grupo
-- **THEN** las relaciones de ese grupo con sus links NO SHALL existir
-- **AND** el link SHALL seguir apareciendo en el otro grupo
+Borrar un grupo NO SHALL borrar ni cambiar ninguna postulación de sus miembros: cada persona SHALL conservar la suya con
+su estado, su etapa, sus notas, su visibilidad y su historial. Las postulaciones compartidas SHALL dejar de verse en ese
+grupo porque el grupo ya no existe, sin que el borrado escriba nada en ellas.
 
 #### Scenario: El borrado no destruye las postulaciones
 
