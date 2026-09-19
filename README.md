@@ -740,7 +740,7 @@ Hasta este change solo el worker ejecutaba IA. Ahora `api` también, dentro de l
 - **Prompts en una imagen.** El build de `api` copia `libs/ai/src/infrastructure/prompts` a
   `dist/apps/api/assets/ai/prompts`, igual que el del worker, y CI comprueba que la copia está. Un `api` compilado que
   no arranque desde la raíz del workspace necesita `AI_PROMPTS_DIR=dist/apps/api/assets/ai/prompts` (o la ruta absoluta
-  equivalente); si no, fallaría al primer pegado.
+  equivalente); si no, **no arranca**: `AiModule` comprueba al iniciarse que existen los prompts de todas sus tareas.
 - La cuota se lleva por usuario en el ledger de Mongo (`ai_usage`), así que es global aunque haya varias instancias de
   `api`; el circuit breaker, en cambio, es por proceso.
 
@@ -755,8 +755,11 @@ Cada campo del preview guarda de dónde salió, y hay tres orígenes con **un so
 - Pegar sustituye lo leído de la página y lo pegado antes, **nunca un campo escrito a mano**. Y solo escribe los campos
   que trae con valor: si el texto no dice la empresa, se queda la que había.
 - Escribir a mano sustituye cualquier cosa, y es lo único que puede vaciar un campo.
-- Pegar no borra el motivo `robots_disallowed` o `blocked`: la tarjeta queda completa, pero no vuelve a ofrecer un
-  reintento que el sitio ya negó.
+- Pegar conserva el motivo del último fallo de lectura, salvo `not_a_job`, que el propio pegado desmiente: con
+  `robots_disallowed` o `blocked` la tarjeta queda completa sin volver a ofrecer un reintento que el sitio ya negó, y
+  deshacer el pegado devuelve el link al fallo que tenía.
+- "Deshacer lo que pegó <nombre>" deshace todo ese gesto, incluidos el título y la empresa tecleados en el mismo
+  diálogo.
 
 Lo que sustituye una persona (pegando o escribiendo) **guarda la entrada que desplazó entera**: valor, origen y autor.
 En la tarjeta:

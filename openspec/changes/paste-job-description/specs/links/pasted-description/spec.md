@@ -54,13 +54,21 @@ código `link_not_found`.
 ### Requirement: Estado tras pegar
 
 Tras pegar, el estado SHALL derivarse de los campos: `manual` si hay algún campo escrito a mano, `enriched` si están
-título y empresa, y `partial` si no. Un motivo de fallo que no se puede reintentar —la bolsa prohíbe la lectura o nos
-bloquea— SHALL conservarse, de modo que pegar no ofrezca un reintento inútil.
+título y empresa, y `partial` si no. El motivo del último fallo de lectura SHALL conservarse, salvo que diga que lo
+compartido no era una oferta, que es justo lo que un pegado reconocido como oferta desmiente: así pegar no ofrece un
+reintento inútil sobre una bolsa que prohíbe o bloquea, y deshacer el pegado devuelve el link al fallo que tenía.
 
 #### Scenario: Estado tras completar con título y empresa
 
 - **WHEN** lo pegado da título y empresa y nadie escribió nada a mano
 - **THEN** el link SHALL quedar `enriched`
+
+#### Scenario: Pegar y deshacer sobre un fallo pasajero
+
+- **GIVEN** un link en `failed` porque su lectura agotó el tiempo
+- **WHEN** alguien lo completa pegando su texto y después se deshace ese pegado
+- **THEN** el link SHALL volver a `failed` con el motivo de tiempo agotado
+- **AND** SHALL poder reintentarse su lectura
 
 #### Scenario: El motivo de la bolsa se conserva
 
@@ -110,7 +118,8 @@ IA de quien pega, `429` con código `ai_quota_exceeded` y `Retry-After`. En todo
 ### Requirement: Deshacer un pegado
 
 Cuando un pegado sustituya un campo, SHALL guardarse la entrada sustituida —su valor, su origen y su autor—, y quien
-puede ver el link SHALL poder devolver el campo a ella, campo por campo o todos los de un mismo pegado de una vez. Pegar
+puede ver el link SHALL poder devolver el campo a ella, campo por campo o todos los de un mismo pegado de una vez; un
+pegado es todo lo que se escribió en ese gesto, incluidos el título y la empresa tecleados en el mismo diálogo. Pegar
 NO SHALL tocar un campo escrito a mano, ni lo que ese campo guardaba para deshacerse. Deshacer SHALL llegar un nivel
 atrás: si sobre un pegado se pegan otros dos, el primero ya no se recupera. Tras deshacer, el estado SHALL derivarse de
 los campos que queden, con la misma regla que tras pegar: deshacer no es escribir a mano.
@@ -126,6 +135,14 @@ los campos que queden, con la misma regla que tras pegar: deshacer no es escribi
 - **GIVEN** un link en el que Ana pegó una oferta que tocó varios campos
 - **WHEN** se pide deshacer lo que pegó Ana
 - **THEN** todos esos campos SHALL volver a lo que tenían antes, en una sola operación
+
+#### Scenario: Deshacer un pegado con la cabecera escrita aparte
+
+- **GIVEN** un link de LinkedIn bloqueado que Ana completó pegando el cuerpo y escribiendo el título y la empresa en el
+  mismo diálogo
+- **WHEN** se pide deshacer lo que pegó Ana
+- **THEN** también el título y la empresa SHALL volver a lo que tenían
+- **AND** el link SHALL volver a decir que la bolsa no deja leer sus ofertas
 
 #### Scenario: Deshacer deja el estado que corresponde
 

@@ -50,7 +50,8 @@ semana si fallaba.
   que es quien necesita `RUN_TASK`; `AiModule` no es global, y así lo resuelve ya el worker. Los arranques de la suite
   de integración reciben su configuración de IA de test (`AI_CHAIN=mock`, `AI_MOCK_MODE=replay`).
 - **Prompts**: el webpack de `api` copia `libs/ai/src/infrastructure/prompts` a sus assets, igual que el del worker:
-  sin eso, una imagen de `api` que no arranque desde la raíz del repo falla al primer pegado.
+  sin eso, una imagen de `api` que no arranque desde la raíz del repo **no arranca**, porque `AiModule` comprueba al
+  iniciarse que existen los prompts de todas sus tareas.
 
 `ctx.userId` es quien pega, `outputLanguage` fijo `es` (ADR-022 §6: el preview es compartido) y el plazo lo fija
 `PASTE_EXTRACTION_TIMEOUT_MS` (20 s) en `ctx.signal`, que además **se aborta si el cliente cierra la conexión**: no se
@@ -155,8 +156,12 @@ pegar no consume el presupuesto con el que se leen los links propios.
 - **Estado derivado de los campos cuando hay algo pegado**: `enriched` si están `title` y `company`, `partial` si no, y
   `manual` si además hay algún campo escrito a mano (la misma prioridad que ya usa el worker). El worker aplica la misma
   regla: una lectura fallida sobre un link con campos pegados **no** lo devuelve a `failed`.
-- **Pegar no borra un motivo que no se puede reintentar.** Si el link estaba en `robots_disallowed` o `blocked`, el
-  motivo se conserva: pegar no lo convierte en reintentable, y el botón de reintentar no reaparece.
+- **Pegar conserva el motivo del último fallo**, salvo `not_a_job`, que es lo único que un pegado reconocido como
+  oferta desmiente. Un motivo que no se puede reintentar no se vuelve reintentable, y deshacer el pegado devuelve el
+  link al fallo que tenía —con un motivo pasajero, reintentable— en vez de a un `pending` sin trabajo detrás.
+- **Deshacer un pegado es deshacer todo lo de ese gesto**: los campos con origen `pasted` y los que se tecleen en el
+  mismo diálogo, que comparten autor y fecha. Si solo se deshiciera lo pegado, un link de LinkedIn completado con su
+  cabecera escrita aparte seguiría en `manual` tras deshacer.
 - Escritura condicionada por `previewVersion`, que sube. Si pierde la carrera, se rehace **reutilizando la extracción
   ya hecha**, sin volver a llamar a la IA.
 - Pegar sobre un link en `pending` hace que el enriquecimiento en vuelo pierda la carrera por versión y no escriba: los

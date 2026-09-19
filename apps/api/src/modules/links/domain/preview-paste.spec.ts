@@ -147,9 +147,9 @@ describe('applyPastedPreview', () => {
     expect(pasted.previewSources.title).toEqual(
       readFromPage.previewSources?.title,
     );
-    expect(previewStatusOf(pasted.preview, pasted.previewSources, undefined)).toBe(
-      'enriched',
-    );
+    expect(
+      previewStatusOf(pasted.preview, pasted.previewSources, undefined),
+    ).toBe('enriched');
   });
 
   it('Cuerpo sin cabecera, con título y empresa escritos aparte', () => {
@@ -282,14 +282,18 @@ describe('previewStatusOf', () => {
   it('Estado tras completar con título y empresa', () => {
     const pasted = applyPastedPreview({}, { extracted: anasOffer }, ANA, NOW);
 
-    expect(previewStatusOf(pasted.preview, pasted.previewSources, undefined)).toBe(
-      'enriched',
-    );
+    expect(
+      previewStatusOf(pasted.preview, pasted.previewSources, undefined),
+    ).toBe('enriched');
   });
 
   it('is failed when nothing is left and a read had failed, which leaves the reason of the link as it was', () => {
     expect(
-      previewStatusOf({}, {}, { reason: 'robots_disallowed', at: NOW.toISOString() }),
+      previewStatusOf(
+        {},
+        {},
+        { reason: 'robots_disallowed', at: NOW.toISOString() },
+      ),
     ).toBe('failed');
   });
 
@@ -313,12 +317,12 @@ describe('previewStatusOf', () => {
       NOW,
     );
 
-    expect(previewStatusOf(partial.preview, partial.previewSources, undefined)).toBe(
-      'partial',
-    );
-    expect(previewStatusOf(manual.preview, manual.previewSources, undefined)).toBe(
-      'manual',
-    );
+    expect(
+      previewStatusOf(partial.preview, partial.previewSources, undefined),
+    ).toBe('partial');
+    expect(
+      previewStatusOf(manual.preview, manual.previewSources, undefined),
+    ).toBe('manual');
   });
 });
 
@@ -331,10 +335,17 @@ describe('failureKeptAfterPaste', () => {
     },
   );
 
-  it.each(['timeout', 'http_error', 'no_data', 'not_a_job'] as const)(
-    'drops %s, which no longer describes a link with its fields',
+  it.each(['timeout', 'http_error', 'no_data', 'rate_limited'] as const)(
+    'keeps %s, so undoing the paste leaves the link failed and retryable',
     (reason) => {
-      expect(failureKeptAfterPaste({ reason, at: READ_AT })).toBeUndefined();
+      const failure = { reason, at: READ_AT };
+      expect(failureKeptAfterPaste(failure)).toEqual(failure);
     },
   );
+
+  it('drops not_a_job, which a paste recognised as a job posting refutes', () => {
+    expect(
+      failureKeptAfterPaste({ reason: 'not_a_job', at: READ_AT }),
+    ).toBeUndefined();
+  });
 });

@@ -8,6 +8,8 @@ import {
   TooManyLinkAttempts,
 } from '../domain/errors';
 import { PasteDescription } from './paste-description.usecase';
+import { RequestLinkEnrichment } from './request-link-enrichment.usecase';
+import { UpdateLinkPreview } from './update-link-preview.usecase';
 import { InMemoryGroupLinkRepository } from './testing/in-memory-group-link.repository';
 import { InMemoryJobLinkRepository } from './testing/in-memory-job-link.repository';
 import { InMemoryUserLinkRepository } from './testing/in-memory-user-link.repository';
@@ -19,6 +21,7 @@ import {
   InMemoryLinkEnrichedPublisher,
   InMemoryLinkLimiter,
   InMemoryLinkUserDirectory,
+  InMemoryOutbox,
   MovableClock,
 } from './testing/links-test-doubles';
 
@@ -377,12 +380,79 @@ describe('PasteDescription: what is written', () => {
     expect(summary.lastEnrichmentError?.reason).toBe('robots_disallowed');
   });
 
-  it('forgets a transient failure, which no longer describes a link with its fields', async () => {
+  it('Pegar y deshacer sobre un fallo pasajero', async () => {
+    const failedAt = clock.now().toISOString();
     const link = links.seed({
       ...jobLinkDraft(LINKEDIN_JOB, { createdBy: ANA, now: clock.now() }),
       previewStatus: 'failed',
       previewVersion: 2,
-      lastEnrichmentError: { reason: 'timeout', at: clock.now().toISOString() },
+      lastEnrichmentError: { reason: 'timeout', at: failedAt },
+    });
+    await share(link.id);
+    const membership = new InMemoryGroupMembership()
+      .withMember(BACKEND, ANA, 'owner', 'Backend Bolivia')
+      .withMember(BACKEND, BETO);
+    const directory = new InMemoryLinkUserDirectory()
+      .set(ANA, 'Ana')
+      .set(BETO, 'Beto');
+    const updatePreview = new UpdateLinkPreview(
+      links,
+      groupLinks,
+      userLinks,
+      membership,
+      directory,
+      clock,
+      publisher,
+    );
+    const outbox = new InMemoryOutbox();
+    const requestEnrichment = new RequestLinkEnrichment(
+      links,
+      groupLinks,
+      userLinks,
+      membership,
+      outbox,
+      limiter,
+      directory,
+      clock,
+    );
+
+    const pasted = await pasteDescription.execute(BETO, link.id, {
+      text: PASTED_TEXT,
+    });
+    // Pegar conserva el motivo: lo único que un pegado desmiente es que no fuera una oferta.
+    expect(pasted.previewStatus).toBe('partial');
+    expect(pasted.lastEnrichmentError).toEqual({
+      reason: 'timeout',
+      at: failedAt,
+    });
+
+    const pastedFields = Object.entries(pasted.previewSources ?? {})
+      .filter(([, entry]) => entry?.source === 'pasted')
+      .map(([field]) => field);
+    const undone = await updatePreview.execute(BETO, link.id, {
+      revert: pastedFields,
+    });
+
+    expect(undone.previewStatus).toBe('failed');
+    expect(undone.lastEnrichmentError?.reason).toBe('timeout');
+    expect(undone.preview?.title).toBeUndefined();
+
+    // Y se puede reintentar su lectura: nada queda en `pending` sin trabajo detrás.
+    const retried = await requestEnrichment.execute(BETO, link.id);
+    expect(retried.previewStatus).toBe('pending');
+    expect(retried.lastEnrichmentError).toBeUndefined();
+    expect(outbox.size).toBe(1);
+  });
+
+  it('forgets not_a_job, which a paste recognised as a job posting refutes', async () => {
+    const link = links.seed({
+      ...jobLinkDraft(LINKEDIN_JOB, { createdBy: ANA, now: clock.now() }),
+      previewStatus: 'failed',
+      previewVersion: 2,
+      lastEnrichmentError: {
+        reason: 'not_a_job',
+        at: clock.now().toISOString(),
+      },
     });
     await share(link.id);
 

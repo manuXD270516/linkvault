@@ -1,4 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Writable } from 'node:stream';
 import type { RunTaskFn } from '@linkvault/ai';
@@ -6,12 +7,14 @@ import {
   apiErrorResponseSchema,
   jobLinkSummarySchema,
   scrubContactDetails,
+  type EnrichmentFailureReason,
   type GroupDetail,
   type JobLinkSummary,
+  type SaveLinkResponse,
 } from '@linkvault/shared';
 import { getMongoTestUri } from '@linkvault/testing';
 import mongoose from 'mongoose';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type {
   AttemptOutcome,
   FixedWindowCounter,
@@ -25,7 +28,7 @@ import {
   type TestMember,
 } from '../../../test-support/links-test-app';
 import { pastedGoldenInput } from '../../../test-support/pasted-golden';
-import { workspaceRoot } from '../../../test-support/test-config';
+import { UsersFacade } from '../../users/application/users.facade';
 import { jobLinkDraft } from '../application/testing/link-fixtures';
 import {
   GROUP_LINKS_COLLECTION,
@@ -97,11 +100,12 @@ let jobIds = 3_811_000_000;
 
 /**
  * Link compartido por Ana en el grupo. Por defecto, uno de LinkedIn en `failed` porque su `robots.txt` prohíbe la
- * lectura; con `preview`, uno ya leído de la página con esos campos.
+ * lectura —o por el motivo `reason`—; con `preview`, uno ya leído de la página con esos campos.
  */
 async function sharedLink(
   { http, ana, group }: PasteFixture,
   preview?: { title: string; company: string },
+  reason: EnrichmentFailureReason = 'robots_disallowed',
 ): Promise<string> {
   jobIds += 1;
   const draft = jobLinkDraft(`https://www.linkedin.com/jobs/view/${jobIds}/`, {
@@ -124,7 +128,7 @@ async function sharedLink(
     ...(preview === undefined
       ? {
           previewStatus: 'failed',
-          lastEnrichmentError: { reason: 'robots_disallowed', at },
+          lastEnrichmentError: { reason, at },
         }
       : {
           previewStatus: 'enriched',
@@ -411,72 +415,139 @@ describe('pasting a description, read by the AI of the suite in replay', () => {
     expect(summary.previewSources?.summary).toBeUndefined();
   });
 
+  it('Pegar y deshacer sobre un fallo pasajero', async () => {
+    // Otra persona del grupo: Beto ya gasta en esta suite los diez pegados de su ventana.
+    const carla = await fx.http.authenticated('Carla');
+    await fx.http.join(carla, fx.group);
+    const linkId = await sharedLink(fx, undefined, 'timeout');
+
+    const pasted = await paste(fx, carla, linkId, {
+      text: pastedGoldenInput('linkedin-app-sin-cabecera').text,
+    });
+
+    expect(pasted.statusCode).toBe(200);
+    expect(pasted.json<JobLinkSummary>().lastEnrichmentError?.reason).toBe(
+      'timeout',
+    );
+    const undone = await undoPasted(linkId, pasted.json<JobLinkSummary>());
+    expect(undone.statusCode).toBe(200);
+    const summary = undone.json<JobLinkSummary>();
+    expect(summary.previewStatus).toBe('failed');
+    expect(summary.lastEnrichmentError?.reason).toBe('timeout');
+    expect(summary.preview?.title).toBeUndefined();
+
+    // Y se puede reintentar su lectura.
+    const retried = await fx.http.request(
+      'POST',
+      `/api/links/${linkId}/enrich`,
+      { authorization: carla.authorization },
+    );
+    expect(retried.statusCode).toBe(202);
+    expect(retried.json<JobLinkSummary>().previewStatus).toBe('pending');
+  });
+
   it('Texto con datos de contacto', async () => {
     // El caso sembrado del golden es exactamente este texto sin su email ni su teléfono.
     const input = pastedGoldenInput('sembrado-contacto-reclutador');
     expect(scrubContactDetails(SEEDED_RAW_TEXT)).toBe(input.text);
     expect(input.text).not.toContain(SEEDED_EMAIL);
     expect(input.text).not.toContain(SEEDED_PHONE);
-    const linkId = await sharedLink(fx);
+    // Registro de entradas pendientes propio de este test, para leer solo lo que anota él.
+    const pendingDir = mkdtempSync(join(tmpdir(), 'lv-pasted-pending-'));
+    const pendingPath = join(pendingDir, 'ai-pending-fixtures.jsonl');
+    vi.stubEnv('AI_PENDING_FIXTURES_FILE', pendingPath);
+    try {
+      // El link se guarda por HTTP, como lo haría Ana: así el outbox tiene su `LinkCreated` y no es vacío por construcción.
+      jobIds += 1;
+      const saved = await fx.http.request('POST', '/api/links', {
+        authorization: fx.ana.authorization,
+        body: {
+          url: `https://www.linkedin.com/jobs/view/${jobIds}/`,
+          groupId: fx.group.id,
+        },
+      });
+      expect(saved.statusCode).toBe(201);
+      const linkId = saved.json<SaveLinkResponse>().link.id;
 
-    const response = await paste(fx, fx.beto, linkId, {
-      text: SEEDED_RAW_TEXT,
-    });
+      const response = await paste(fx, fx.beto, linkId, {
+        text: SEEDED_RAW_TEXT,
+      });
 
-    expect(response.statusCode).toBe(200);
-    const summary = response.json<JobLinkSummary>();
-    expect(summary.preview?.title).toBe('Coordinador de Logística');
-    expect(summary.preview?.summary).not.toContain(SEEDED_RECRUITER);
-    expect(summary.preview?.summary).not.toContain('Ximena');
+      expect(response.statusCode).toBe(200);
+      const summary = response.json<JobLinkSummary>();
+      expect(summary.preview?.title).toBe('Coordinador de Logística');
+      expect(summary.preview?.summary).not.toContain(SEEDED_RECRUITER);
+      expect(summary.preview?.summary).not.toContain('Ximena');
 
-    const forbidden = [
-      SEEDED_RAW_TEXT,
-      SEEDED_MARK,
-      SEEDED_EMAIL,
-      SEEDED_PHONE,
-    ];
-    const stored = JSON.stringify(
-      await fx.http.connection
-        .collection(JOB_LINKS_COLLECTION)
-        .find({})
-        .toArray(),
-    );
-    const outbox = JSON.stringify(
-      await fx.http.connection
+      // Una variante de la marca no tiene fixture: fuerza un `FixtureMissing`, que `runTask` anota como pendiente. La
+      // pega otra persona para no gastar los pegados de Beto.
+      const variantMark = `${SEEDED_MARK}-B`;
+      const dora = await fx.http.authenticated('Dora');
+      await fx.http.join(dora, fx.group);
+      const missing = await paste(fx, dora, linkId, {
+        text: SEEDED_RAW_TEXT.replace(SEEDED_MARK, variantMark),
+      });
+      expect(missing.statusCode).toBe(500);
+
+      const forbidden = [
+        SEEDED_RAW_TEXT,
+        SEEDED_MARK,
+        variantMark,
+        SEEDED_EMAIL,
+        SEEDED_PHONE,
+      ];
+      const stored = JSON.stringify(
+        await fx.http.connection
+          .collection(JOB_LINKS_COLLECTION)
+          .find({})
+          .toArray(),
+      );
+      const outboxEvents = await fx.http.connection
         .collection(OUTBOX_EVENTS_COLLECTION)
         .find({})
-        .toArray(),
-    );
-    const ledger = JSON.stringify(
-      await fx.http.connection.collection('ai_usage').find({}).toArray(),
-    );
-    const pendingPath = join(
-      workspaceRoot(),
-      'tmp',
-      'ai-pending-fixtures.jsonl',
-    );
-    const pending = existsSync(pendingPath)
-      ? readFileSync(pendingPath, 'utf8')
-      : '';
-    const logged = logs.lines.join('');
-    // La lectura sí pasó por el ledger de la IA: que esté vacío no probaría nada.
-    expect(ledger).toContain('extract-pasted-job');
-    expect(logged).not.toBe('');
-    for (const [where, content] of Object.entries({
-      stored,
-      outbox,
-      ledger,
-      pending,
-      logged,
-    })) {
-      for (const secret of forbidden) {
-        expect(
-          content.includes(secret),
-          `${where} contains ${secret === SEEDED_RAW_TEXT ? 'the pasted text' : secret}`,
-        ).toBe(false);
+        .toArray();
+      const outbox = JSON.stringify(outboxEvents);
+      const ledger = JSON.stringify(
+        await fx.http.connection.collection('ai_usage').find({}).toArray(),
+      );
+      const pending = existsSync(pendingPath)
+        ? readFileSync(pendingPath, 'utf8')
+        : '';
+      const logged = logs.lines.join('');
+      // Ninguno de los sitios revisados está vacío: vacío no probaría nada.
+      expect(outboxEvents.length).toBeGreaterThan(0);
+      expect(outbox).toContain(linkId);
+      expect(ledger).toContain('extract-pasted-job');
+      expect(logged).not.toBe('');
+      const pendingEntries = pending
+        .split('\n')
+        .filter((line) => line.trim() !== '')
+        .map((line) => JSON.parse(line) as Record<string, unknown>);
+      expect(pendingEntries).toHaveLength(1);
+      expect(pendingEntries[0]).toMatchObject({
+        task: 'extract-pasted-job',
+        redacted: true,
+      });
+      expect(pendingEntries[0]).not.toHaveProperty('input');
+      for (const [where, content] of Object.entries({
+        stored,
+        outbox,
+        ledger,
+        pending,
+        logged,
+      })) {
+        for (const secret of forbidden) {
+          expect(
+            content.includes(secret),
+            `${where} contains ${secret === SEEDED_RAW_TEXT ? 'the pasted text' : secret}`,
+          ).toBe(false);
+        }
       }
+      expect(stored).not.toContain(SEEDED_RECRUITER);
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(pendingDir, { recursive: true, force: true });
     }
-    expect(stored).not.toContain(SEEDED_RECRUITER);
   });
 });
 
@@ -566,6 +637,38 @@ describe('pasting a description when the AI or the counter fail', () => {
     }
 
     expect(new Set(statuses)).toEqual(new Set([503]));
+  });
+
+  it('answers extraction_unavailable and gives the attempt back when the consent cannot be read', async () => {
+    counter.mode = 'up';
+    const linkId = await sharedLink(fx);
+    const before = await storedLink(fx, linkId);
+    const callsBefore = calls;
+    // Mongo no responde justo al leer el perfil de quien pega.
+    const users = fx.http.app.get(UsersFacade, { strict: false });
+    const consent = vi
+      .spyOn(users, 'aiConsentOf')
+      .mockRejectedValueOnce(
+        new mongoose.mongo.MongoNetworkError('connect ECONNREFUSED'),
+      );
+    const giveBack = vi.spyOn(counter, 'giveBack');
+
+    try {
+      const response = await paste(fx, fx.beto, linkId, { text: 'Oferta.' });
+
+      expect(consent).toHaveBeenCalledOnce();
+      expect(response.statusCode).toBe(503);
+      expect(response.json<{ code: string }>().code).toBe(
+        'extraction_unavailable',
+      );
+      expect(response.headers['retry-after']).toBe('60');
+      expect(calls).toBe(callsBefore);
+      expect(giveBack).toHaveBeenCalledWith(`links:paste:${fx.beto.userId}`);
+      expect(await storedLink(fx, linkId)).toEqual(before);
+    } finally {
+      consent.mockRestore();
+      giveBack.mockRestore();
+    }
   });
 
   it('Ventana agotada', async () => {

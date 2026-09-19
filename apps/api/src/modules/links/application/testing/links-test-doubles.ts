@@ -159,7 +159,18 @@ export class InMemoryLinkUserDirectory implements LinkUserDirectory {
     return this;
   }
 
+  private consentDown = false;
+
+  /** Simula que el perfil no se puede leer (Mongo caído): `aiConsentOf` rechaza. */
+  failConsent(): this {
+    this.consentDown = true;
+    return this;
+  }
+
   aiConsentOf(userId: string): Promise<LinkUserAiConsent> {
+    if (this.consentDown) {
+      return Promise.reject(new Error('The user profile could not be read'));
+    }
     return Promise.resolve({ externalProviders: this.consenting.has(userId) });
   }
 
@@ -320,9 +331,7 @@ export class InMemoryLinkEnrichedPublisher implements LinkEnrichedPublisher {
 export class FakePastedExtraction implements PastedExtractionPort {
   readonly requests: PastedExtractionRequest[] = [];
 
-  constructor(
-    private answer: PastedExtraction = { outcome: 'unavailable' },
-  ) {}
+  constructor(private answer: PastedExtraction = { outcome: 'unavailable' }) {}
 
   answering(answer: PastedExtraction): this {
     this.answer = answer;

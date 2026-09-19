@@ -1,16 +1,26 @@
 import { randomUUID } from 'node:crypto';
-import { RUN_TASK } from '@linkvault/ai';
+import {
+  AiModule,
+  parseAiConfig,
+  RUN_TASK,
+  type AiConfig,
+} from '@linkvault/ai';
 import { apiErrorResponseSchema } from '@linkvault/shared';
 import { getMongoTestUri } from '@linkvault/testing';
+import { ModulesContainer } from '@nestjs/core';
 import { getConnectionToken } from '@nestjs/mongoose';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
+import { Test } from '@nestjs/testing';
+import { Redis } from 'ioredis';
 import type { Connection } from 'mongoose';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { AppModule } from '../../../app/app.module';
 import { createApp } from '../../../app/create-app';
 import { MongoOutbox } from '../../../infrastructure/outbox/mongo-outbox';
 import {
   apiTestAiConfig,
   apiTestConfig,
+  workspaceRoot,
 } from '../../../test-support/test-config';
 import { ImportLinks } from '../application/import-links.usecase';
 import { ListGroupLinks } from '../application/list-group-links.usecase';
@@ -44,6 +54,30 @@ function withDatabase(uri: string, database: string): string {
   const url = new URL(uri);
   url.pathname = `/${database}`;
   return url.toString();
+}
+
+/** Clientes de Redis que `AiModule` tiene instanciados en una app ya construida. */
+function aiRedisClientsOf(modules: ModulesContainer): Redis[] {
+  return [...modules.values()]
+    .filter((module) => module.metatype === AiModule)
+    .flatMap((module) =>
+      [...module.providers.values()].map(
+        (wrapper): unknown => wrapper.instance,
+      ),
+    )
+    .filter((instance): instance is Redis => instance instanceof Redis);
+}
+
+/** Configuración de IA con un proveedor real en la cadena: la que sí crea el cliente de la caché. Nadie la llama. */
+function aiConfigWithRealCache(): AiConfig {
+  const result = parseAiConfig(
+    { NODE_ENV: 'test', AI_CHAIN: 'ollama', OLLAMA_URL: 'http://127.0.0.1:9' },
+    { cwd: workspaceRoot() },
+  );
+  if (!result.ok) {
+    throw new Error('aiConfigWithRealCache: invalid AI configuration');
+  }
+  return result.config;
 }
 
 describe('LinksModule', () => {
@@ -97,13 +131,37 @@ describe('LinksModule', () => {
     expect(typeof app.get(RUN_TASK, { strict: false })).toBe('function');
   });
 
-  it('runs AI with the mock in replay, so the suite opens no new connection for it', () => {
+  it('runs AI with the mock in replay, so the suite opens no new connection for it', async () => {
     // Con `mock` en la cadena, `AiModule` no crea el cliente de Redis de la caché y el ledger usa la conexión Mongoose
-    // de la app: la suite de `api` sigue sin Redis (ADR-021 §4).
+    // de la app: la suite de `api` sigue sin Redis (ADR-021 §4). Se mira en la app construida, no en la configuración.
     expect(apiTestAiConfig()).toMatchObject({
       chain: ['mock'],
       mock: { mode: 'replay' },
     });
+    expect(aiRedisClientsOf(app.get(ModulesContainer))).toEqual([]);
+
+    // Control: la misma búsqueda sí encuentra el cliente cuando la cadena lleva un proveedor real. Sin `init`, el
+    // cliente perezoso no llega a conectar: nada toca la red.
+    const control = await Test.createTestingModule({
+      imports: [
+        AppModule.register(
+          await apiTestConfig({
+            MONGO_URI: withDatabase(
+              getMongoTestUri(),
+              `links-di-control-${randomUUID()}`,
+            ),
+          }),
+          aiConfigWithRealCache(),
+        ),
+      ],
+    }).compile();
+    try {
+      const clients = aiRedisClientsOf(control.get(ModulesContainer));
+      expect(clients).toHaveLength(1);
+      expect(clients[0]?.status).toBe('wait');
+    } finally {
+      await control.close();
+    }
   });
 
   it('resolves the outbox port from the outbox module, the one of the platform', () => {

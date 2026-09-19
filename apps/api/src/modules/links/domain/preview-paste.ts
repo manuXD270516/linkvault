@@ -153,24 +153,24 @@ function writeByHand(
 }
 
 /**
- * Motivos que sobreviven a un pegado (D6): los del sitio, que no se reintentan. Pegar no convierte en legible lo que el
- * sitio prohibió o bloqueó, y borrarlos volvería a ofrecer un reintento inútil. `not_a_job` tampoco se reintenta, pero
- * no sobrevive: un pegado que llega a escribirse es uno que la IA reconoció como oferta, y dice lo contrario.
+ * Motivos que un pegado desmiente (D6): solo `not_a_job`. Un pegado que llega a escribirse es uno que la IA reconoció
+ * como oferta, y dice lo contrario de "lo compartido no era una oferta".
  */
-const REASONS_KEPT_AFTER_PASTE: readonly EnrichmentFailureReason[] = [
-  'robots_disallowed',
-  'blocked',
+const REASONS_REFUTED_BY_PASTE: readonly EnrichmentFailureReason[] = [
+  'not_a_job',
 ];
 
 /**
- * El motivo de fallo que sobrevive a un pegado. Un fallo transitorio ya no describe un link que tiene sus campos, y
- * se borra.
+ * El motivo de fallo que sobrevive a un pegado: el del último fallo, salvo el que el pegado desmiente. Pegar no
+ * convierte en legible lo que la bolsa prohibió o bloqueó —borrarlo volvería a ofrecer un reintento inútil—, y un
+ * fallo pasajero se conserva para que deshacer el pegado devuelva el link a `failed` con su motivo, reintentable, y no
+ * a un `pending` que nadie va a resolver.
  */
 export function failureKeptAfterPaste(
   lastError: LastEnrichmentError | undefined,
 ): LastEnrichmentError | undefined {
   return lastError !== undefined &&
-    REASONS_KEPT_AFTER_PASTE.includes(lastError.reason)
+    !REASONS_REFUTED_BY_PASTE.includes(lastError.reason)
     ? lastError
     : undefined;
 }

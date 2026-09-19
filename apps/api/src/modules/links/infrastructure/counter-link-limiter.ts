@@ -28,7 +28,8 @@ import {
 //   Pero lo dice (`unavailable`), para que la respuesta sea "inténtalo en un rato" y no "pegaste demasiadas" (D5 de
 //   paste-job-description).
 //
-// El nombre del contador lleva el identificador del link, que no es un dato personal; nunca la URL ni el usuario.
+// El nombre del contador lleva un identificador interno, que no es un dato personal: el del link en la relectura y el
+// del usuario (`userId`) en la importación y el pegado, que se cuentan por persona. Nunca la URL, el email ni el texto.
 
 /** Segundos que se anuncian cuando el contador no responde y el límite falla cerrado. */
 const CLOSED_RETRY_AFTER_SECONDS = Math.ceil(LINK_LIMIT_WINDOW_MS / 1000);

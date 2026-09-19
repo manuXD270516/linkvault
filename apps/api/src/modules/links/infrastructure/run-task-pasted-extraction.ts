@@ -4,7 +4,11 @@ import {
   type RunTaskFn,
 } from '@linkvault/ai';
 import { scrubContactDetails } from '@linkvault/shared';
-import type { LinkUserDirectory } from '../application/ports/link-user-directory.port';
+import { Logger } from '@nestjs/common';
+import type {
+  LinkUserAiConsent,
+  LinkUserDirectory,
+} from '../application/ports/link-user-directory.port';
 import type {
   PastedExtraction,
   PastedExtractionPort,
@@ -21,16 +25,27 @@ import type {
  *   y la tarea es `personal`, así que un proveedor externo solo es elegible si lo aceptó.
  * - `ctx.userId` es quien pega —el gasto y la cuota son suyos— y `outputLanguage` es fijo `es`, porque el preview es
  *   compartido (ADR-022 §6).
+ * - **Sin consentimiento legible, no disponible**: si la fachada no responde (Mongo caído), no se sabe qué proveedores
+ *   son elegibles, y suponer cualquiera de las dos cosas sería peor que decir "inténtalo en un rato". Se responde
+ *   `unavailable`, que el caso de uso convierte en 503 con `Retry-After` y con el intento devuelto.
  * - **Plazo**: `ctx.signal` combina `PASTE_EXTRACTION_TIMEOUT_MS` con el cierre de la conexión del cliente. `runTask`
  *   convierte un aborto en `degraded`, que aquí es "no disponible".
  *
  * Nada del texto se registra: ni aquí ni en `runTask`, que no persiste prompts renderizados.
  */
+/** Lo que el adaptador necesita de un logger; `Logger` de Nest lo cumple. */
+export interface PastedExtractionLogger {
+  warn(message: string): void;
+}
+
 export class RunTaskPastedExtraction implements PastedExtractionPort {
   constructor(
     private readonly runTask: RunTaskFn,
     private readonly directory: LinkUserDirectory,
     private readonly timeoutMs: number,
+    private readonly logger: PastedExtractionLogger = new Logger(
+      RunTaskPastedExtraction.name,
+    ),
   ) {}
 
   async extract(request: PastedExtractionRequest): Promise<PastedExtraction> {
@@ -48,7 +63,10 @@ export class RunTaskPastedExtraction implements PastedExtractionPort {
         ? {}
         : { knownCompany: request.knownCompany }),
     };
-    const consent = await this.directory.aiConsentOf(request.userId);
+    const consent = await this.consentOf(request.userId);
+    if (consent === null) {
+      return { outcome: 'unavailable' };
+    }
 
     const result = await this.runTask(extractPastedJobTask, input, {
       userId: request.userId,
@@ -66,6 +84,19 @@ export class RunTaskPastedExtraction implements PastedExtractionPort {
       return { outcome: 'not_a_job_posting' };
     }
     return { outcome: 'extracted', fields: result.output.preview ?? {} };
+  }
+
+  /** El consentimiento de quien pega, o `null` si no se pudo leer. Se registra el nombre del error, nunca el usuario. */
+  private async consentOf(userId: string): Promise<LinkUserAiConsent | null> {
+    try {
+      return await this.directory.aiConsentOf(userId);
+    } catch (error: unknown) {
+      const name = error instanceof Error ? error.name : 'UnknownError';
+      this.logger.warn(
+        `Could not read the AI consent of whoever pastes (${name}); the paste answers unavailable`,
+      );
+      return null;
+    }
   }
 
   /** El plazo de la lectura y, si llega, el cierre de la conexión del cliente: lo primero que ocurra. */

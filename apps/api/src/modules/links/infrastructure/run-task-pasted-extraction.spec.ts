@@ -217,6 +217,26 @@ describe('RunTaskPastedExtraction', () => {
     expect(calls[0]?.ctx.signal?.aborted).toBe(true);
   });
 
+  it('answers unavailable without calling the AI when the consent cannot be read', async () => {
+    const { runTask, calls } = runTaskDouble(() =>
+      Promise.resolve(success({ isJobPosting: true, preview })),
+    );
+    const warnings: string[] = [];
+    const adapter = new RunTaskPastedExtraction(
+      runTask,
+      directory.failConsent(),
+      20_000,
+      { warn: (message) => warnings.push(message) },
+    );
+
+    expect(await adapter.extract({ userId: ANA, text: 'Oferta.' })).toEqual({
+      outcome: 'unavailable',
+    });
+    expect(calls).toHaveLength(0);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).not.toContain(ANA);
+  });
+
   it('lets a programming error through, so the test that causes it fails', async () => {
     const { runTask } = runTaskDouble(() =>
       Promise.reject(new FixtureMissing('abc')),
