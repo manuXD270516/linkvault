@@ -24,6 +24,7 @@ import {
 } from '../../../test-support/test-config';
 import { ImportLinks } from '../application/import-links.usecase';
 import { ListGroupLinks } from '../application/list-group-links.usecase';
+import { LinksFacade } from '../application/links.facade';
 import { ListMyLinks } from '../application/list-my-links.usecase';
 import { LINKS_CLOCK } from '../application/ports/clock.port';
 import { GROUP_LINK_REPOSITORY } from '../application/ports/group-link-repository.port';
@@ -162,6 +163,12 @@ describe('LinksModule', () => {
     } finally {
       await control.close();
     }
+  });
+
+  it('provides the links facade, the only entry of other modules', () => {
+    expect(app.get(LinksFacade, { strict: false })).toBeInstanceOf(
+      LinksFacade,
+    );
   });
 
   it('resolves the outbox port from the outbox module, the one of the platform', () => {

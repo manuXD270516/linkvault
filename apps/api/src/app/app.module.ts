@@ -6,6 +6,7 @@ import { AppLoggerModule } from '../infrastructure/logging/app-logger.module';
 import { OutboxRelayModule } from '../infrastructure/outbox/outbox-relay.module';
 import { MongoPersistenceModule } from '../infrastructure/persistence/mongo-persistence.module';
 import { RedisHealthModule } from '../infrastructure/redis/redis-health.module';
+import { ApplicationsModule } from '../modules/applications/presentation/applications.module';
 import { AuthModule } from '../modules/auth/presentation/auth.module';
 import { GroupsModule } from '../modules/groups/presentation/groups.module';
 import { LinksModule } from '../modules/links/presentation/links.module';
@@ -30,6 +31,9 @@ export class AppModule {
     const aiModule = AiModule.forRootAsync({
       useFactory: () => ({ config: ai, redisUrl: config.REDIS_URL }),
     });
+    // Igual con `LinksModule`: `ApplicationsModule` recibe este mismo objeto para usar `LinksFacade`. Importar la clase a
+    // secas crearía una segunda instancia de `LinksModule` sin `RUN_TASK` (D1 de applications-tracking).
+    const linksModule = LinksModule.register(aiModule);
 
     return {
       module: AppModule,
@@ -44,7 +48,8 @@ export class AppModule {
         AuthModule,
         GroupsModule,
         aiModule,
-        LinksModule.register(aiModule),
+        linksModule,
+        ApplicationsModule.register(linksModule),
         ...(config.OUTBOX_RELAY_ENABLED ? [OutboxRelayModule] : []),
       ],
     };

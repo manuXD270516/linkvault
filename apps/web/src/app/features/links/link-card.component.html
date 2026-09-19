@@ -70,6 +70,50 @@
   }
 </span>
 
+<!-- Seguimiento: los gestos van en primera persona; el estado propio, con su nombre neutro y enlace al tablero. -->
+<span class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm" data-testid="link-tracking">
+  @if (ownStatus(); as own) {
+    <span data-testid="link-own-status"
+      ><ng-container i18n="@@applications.card.ownStatus">Tu postulación:</ng-container>&ngsp;<a
+        routerLink="/postulaciones"
+        data-testid="link-own-status-link"
+        >{{ own }}</a
+      ></span
+    >
+    @if (alreadyTracked()) {
+      <span data-testid="link-already-tracked" i18n="@@applications.card.alreadyTracked"
+        >Ya la seguías</span
+      >
+    }
+  } @else {
+    <button
+      mat-stroked-button
+      type="button"
+      [disabled]="busy()"
+      (click)="track.emit('interested')"
+      data-testid="link-interested"
+      i18n="@@applications.gesture.interested"
+    >
+      Me interesa
+    </button>
+  }
+  @if (offersApplied()) {
+    <button
+      mat-stroked-button
+      type="button"
+      [disabled]="busy()"
+      (click)="track.emit('applied')"
+      data-testid="link-applied"
+      i18n="@@applications.gesture.applied"
+    >
+      Postulé
+    </button>
+  }
+  @if (trackers(); as others) {
+    <lv-tracker-avatars [trackers]="others" />
+  }
+</span>
+
 <span class="flex flex-wrap gap-x-3 gap-y-1 text-sm">
   <span data-testid="link-platform">{{ platform() }}</span>
   @if (link().sharedBy; as sharer) {

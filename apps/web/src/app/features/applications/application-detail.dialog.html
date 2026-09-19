@@ -1,0 +1,149 @@
+@if (application(); as current) {
+  <h2 mat-dialog-title>{{ headline() }}</h2>
+  <mat-dialog-content class="flex flex-col gap-4">
+    <section class="flex flex-col gap-1">
+      <a
+        [href]="current.link.displayUrl"
+        target="_blank"
+        rel="noopener noreferrer"
+        data-testid="detail-offer"
+        i18n="@@applications.detail.openOffer"
+        >Abrir la oferta</a
+      >
+      @if (current.link.company; as company) {
+        <span>{{ company }}</span>
+      }
+      <span class="text-sm">{{ platform() }}</span>
+    </section>
+
+    <section class="flex flex-col gap-1">
+      <h3 class="font-medium" i18n="@@applications.detail.statusTitle">Estado</h3>
+      <p data-testid="detail-status">
+        {{ status() }}
+        @if (stage(); as stageText) {
+          · <span data-testid="detail-stage">{{ stageText }}</span>
+        }
+      </p>
+      @if (current.appliedAt; as appliedAt) {
+        <lv-applied-ago class="text-sm" [appliedAt]="appliedAt" />
+      }
+      <div class="flex flex-wrap gap-2">
+        <button
+          mat-stroked-button
+          type="button"
+          [matMenuTriggerFor]="moveMenu"
+          [disabled]="working() || untracking()"
+          data-testid="detail-move"
+          i18n="@@applications.card.moveTo"
+        >
+          Mover a…
+        </button>
+        @if (current.status === 'in_process') {
+          <button
+            mat-button
+            type="button"
+            [disabled]="working() || untracking()"
+            (click)="editStage()"
+            data-testid="detail-edit-stage"
+            i18n="@@applications.detail.editStage"
+          >
+            Cambiar la etapa
+          </button>
+        }
+      </div>
+      <mat-menu #moveMenu="matMenu">
+        @for (target of targets(); track target.status) {
+          <button mat-menu-item type="button" (click)="move(target.status)" [attr.data-status]="target.status">
+            {{ target.label }}
+          </button>
+        }
+      </mat-menu>
+      @if (conflict()) {
+        <p role="alert" i18n="@@applications.board.conflict">
+          Esta postulación cambió en otra pestaña. La hemos actualizado; muévela de nuevo si hace falta.
+        </p>
+      }
+      @if (moveFailure(); as failure) {
+        <lv-request-error [failure]="failure" />
+      }
+    </section>
+
+    <section class="flex flex-col gap-1">
+      <h3 class="font-medium" i18n="@@applications.detail.historyTitle">Historial</h3>
+      @if (events(); as history) {
+        <ol class="flex list-none flex-col gap-1 p-0" data-testid="detail-history">
+          @for (event of history; track event.id) {
+            <li>
+              <span>{{ rowLabel(event) }}</span>&ngsp;<span class="ml-1 text-sm">{{ event.at | date: 'dd/MM/yyyy HH:mm' }}</span>
+            </li>
+          }
+        </ol>
+      }
+      @if (timelineFailure(); as failure) {
+        <lv-request-error [failure]="failure" />
+      }
+    </section>
+
+    <section class="flex flex-col gap-1">
+      <mat-form-field>
+        <mat-label i18n="@@applications.detail.notes">Notas (solo las ves tú)</mat-label>
+        <textarea
+          matInput
+          rows="4"
+          [attr.maxlength]="notesMaxLength"
+          [value]="notes()"
+          (input)="onNotes($event)"
+          data-testid="detail-notes"
+        ></textarea>
+      </mat-form-field>
+      <div class="flex flex-wrap items-center gap-2">
+        <button
+          mat-stroked-button
+          type="button"
+          [disabled]="working() || untracking()"
+          (click)="saveNotes()"
+          data-testid="detail-save-notes"
+          i18n="@@applications.detail.saveNotes"
+        >
+          Guardar la nota
+        </button>
+        @if (notesSaved()) {
+          <span role="status" i18n="@@applications.detail.notesSaved">Nota guardada</span>
+        }
+      </div>
+      @if (notesFailure(); as failure) {
+        <lv-request-error [failure]="failure" />
+      }
+    </section>
+
+    <section class="flex flex-col gap-1">
+      <mat-slide-toggle
+        [checked]="current.visibility === 'group'"
+        [disabled]="working() || untracking()"
+        (change)="toggleShare($event)"
+        aria-describedby="share-scope"
+        data-testid="detail-share"
+        >{{ shareLabel }}</mat-slide-toggle
+      >
+      <p id="share-scope" class="text-sm" data-testid="detail-share-scope">{{ shareScope }}</p>
+      @if (shareFailure(); as failure) {
+        <lv-request-error [failure]="failure" />
+      }
+    </section>
+  </mat-dialog-content>
+  <mat-dialog-actions class="flex justify-between">
+    <button
+      mat-button
+      type="button"
+      [disabled]="untracking()"
+      (click)="untrack()"
+      data-testid="detail-untrack"
+      i18n="@@applications.untrack.button"
+    >
+      Dejar de seguir
+    </button>
+    <button mat-flat-button type="button" mat-dialog-close i18n="@@applications.detail.close">
+      Cerrar
+    </button>
+  </mat-dialog-actions>
+}

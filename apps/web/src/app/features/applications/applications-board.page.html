@@ -1,0 +1,57 @@
+<section class="flex flex-col gap-4 p-6">
+  <h1 class="text-2xl font-medium" i18n="@@applications.board.title">Postulaciones</h1>
+
+  @if (conflict()) {
+    <p role="alert" data-testid="board-conflict" i18n="@@applications.board.conflict">
+      Esta postulación cambió en otra pestaña. La hemos actualizado; muévela de nuevo si hace falta.
+    </p>
+  }
+  @if (failure(); as currentFailure) {
+    <lv-request-error [failure]="currentFailure" />
+  }
+  @if (loadFailure(); as currentFailure) {
+    <lv-request-error [failure]="currentFailure" />
+  }
+
+  @if (isEmpty()) {
+    <div class="flex flex-col gap-2" data-testid="board-empty">
+      <p i18n="@@applications.board.empty">
+        Aquí verás las ofertas que sigues. Pulsa «Me interesa» o «Postulé» en cualquier oferta de tus
+        grupos o de tu lista.
+      </p>
+      <div class="flex flex-wrap gap-4">
+        <a routerLink="/grupos" i18n="@@applications.board.goToGroups">Ir a tus grupos</a>
+        <a routerLink="/mis-links" i18n="@@applications.board.goToMine">Ir a Solo para mí</a>
+      </div>
+    </div>
+  } @else if (loaded()) {
+    <div class="grid gap-4 overflow-x-auto md:grid-cols-6" cdkDropListGroup data-testid="board">
+      @for (column of columns(); track column.id) {
+        <section
+          class="flex min-h-24 flex-col gap-2"
+          cdkDropList
+          [cdkDropListData]="column.id"
+          (cdkDropListDropped)="dropped($event)"
+          [attr.data-column]="column.id"
+          [attr.aria-labelledby]="'column-' + column.id"
+        >
+          <h2 class="text-lg font-medium" [id]="'column-' + column.id">
+            {{ column.title }}
+            <span class="text-sm">({{ column.items.length }})</span>
+          </h2>
+          @for (application of column.items; track application.id) {
+            <lv-application-card
+              cdkDrag
+              [cdkDragData]="application"
+              [cdkDragDisabled]="moving()"
+              [application]="application"
+              [busy]="moving()"
+              (open)="openDetail(application)"
+              (moveTo)="moveTo(application, $event)"
+            />
+          }
+        </section>
+      }
+    </div>
+  }
+</section>

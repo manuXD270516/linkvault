@@ -3,7 +3,12 @@ import { HttpTestingController, type TestRequest } from '@angular/common/http/te
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import type { JobLinkSummary, LinkPage } from '@linkvault/shared';
-import { providePageTesting, sessionWith, settle } from '../../../testing/auth-testing';
+import {
+  flushPendingApplicationStates,
+  providePageTesting,
+  sessionWith,
+  settle,
+} from '../../../testing/auth-testing';
 import { SessionStore } from '../../core/auth/session.store';
 import { EventsChannel } from '../../core/events/events.channel';
 import { LinksStore } from '../../core/links/links.store';
@@ -69,6 +74,7 @@ describe('La tarjeta se actualiza sola', () => {
   afterEach(() => {
     vi.useRealTimers();
     channel.disconnect();
+    flushPendingApplicationStates(http);
     http.verify({ ignoreCancelled: true });
   });
 

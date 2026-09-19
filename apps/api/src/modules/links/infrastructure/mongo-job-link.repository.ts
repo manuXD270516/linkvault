@@ -6,6 +6,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { getConnectionToken } from '@nestjs/mongoose';
 import { mongo, type ClientSession, type Connection, type Model } from 'mongoose';
 import type {
+  JobLinkCard,
   JobLinkRepository,
   ManualPreviewWrite,
   PastedPreviewWrite,
@@ -103,6 +104,31 @@ export class MongoJobLinkRepository implements JobLinkRepository {
     }
     const document = await this.links.findById(id).lean().exec();
     return document ? toJobLink(document) : null;
+  }
+
+  async cardsOf(linkIds: readonly string[]): Promise<JobLinkCard[]> {
+    const ids = [...new Set(linkIds)]
+      .map((linkId) => toLinkObjectId(linkId))
+      .filter((id): id is NonNullable<typeof id> => id !== null);
+    if (ids.length === 0) {
+      return [];
+    }
+    // Una sola consulta `$in` por `_id` con proyección: el tablero pinta decenas de fichas y no necesita ni el historial
+    // de URLs ni la procedencia del preview.
+    const documents = await this.links
+      .find(
+        { _id: { $in: ids } },
+        {
+          displayUrl: 1,
+          platform: 1,
+          previewStatus: 1,
+          'preview.title': 1,
+          'preview.company': 1,
+        },
+      )
+      .lean<CardDocument[]>()
+      .exec();
+    return documents.map(toCard);
   }
 
   async listByPreviewStatus(
@@ -317,6 +343,25 @@ export class MongoJobLinkRepository implements JobLinkRepository {
       await session.endSession();
     }
   }
+}
+
+/** Lo que trae la proyección de `cardsOf`. */
+type CardDocument = Pick<
+  JobLinkDocument,
+  '_id' | 'displayUrl' | 'platform' | 'previewStatus'
+> & { preview?: { title?: string; company?: string | null } };
+
+function toCard(document: CardDocument): JobLinkCard {
+  const title = document.preview?.title;
+  const company = document.preview?.company;
+  return {
+    id: document._id.toHexString(),
+    displayUrl: document.displayUrl,
+    platform: document.platform,
+    previewStatus: document.previewStatus,
+    ...(typeof title === 'string' && title.length > 0 ? { title } : {}),
+    ...(typeof company === 'string' && company.length > 0 ? { company } : {}),
+  };
 }
 
 /** Documento de una vacante nueva. Quien la guarda tiene que ser un usuario con id bien formado. */

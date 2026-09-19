@@ -232,3 +232,43 @@ describe('remove, deleteByGroup and deleteByLink', () => {
     expect(await groupLinks.deleteByLink('no-es-un-id')).toBe(0);
   });
 });
+
+describe('linkIdsIn', () => {
+  it('answers which of the links are shared in the group, in one query', async () => {
+    const first = await shareLink(JOB_PAGE, BACKEND, ANA);
+    const second = await shareLink(OTHER_JOB, FRONTEND, BETO);
+
+    expect(
+      await groupLinks.linkIdsIn(BACKEND, [
+        first.linkId,
+        second.linkId,
+        new mongoose.Types.ObjectId().toHexString(),
+        'no-es-un-id',
+      ]),
+    ).toEqual(new Set([first.linkId]));
+  });
+
+  it('answers nothing for a malformed group or no well formed link', async () => {
+    const first = await shareLink(JOB_PAGE, BACKEND, ANA);
+
+    expect(await groupLinks.linkIdsIn('no-es-un-id', [first.linkId])).toEqual(
+      new Set(),
+    );
+    expect(await groupLinks.linkIdsIn(BACKEND, ['no-es-un-id'])).toEqual(
+      new Set(),
+    );
+  });
+
+  it('uses the unique (groupId, linkId) index', async () => {
+    const first = await shareLink(JOB_PAGE, BACKEND, ANA);
+    const plan: unknown = await connection
+      .collection(GROUP_LINKS_COLLECTION)
+      .find({
+        groupId: new mongoose.Types.ObjectId(BACKEND),
+        linkId: { $in: [new mongoose.Types.ObjectId(first.linkId)] },
+      })
+      .explain('queryPlanner');
+
+    expect(JSON.stringify(plan)).toContain('"groupId":1,"linkId":1');
+  });
+});

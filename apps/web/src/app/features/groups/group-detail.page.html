@@ -33,14 +33,21 @@
     <h1 class="text-2xl font-medium">{{ currentGroup.name }}</h1>
 
     <section class="flex flex-col gap-3">
-      <lv-save-link-form />
-      <div>
-        <button mat-stroked-button type="button" (click)="openImport()" i18n="@@links.pasteChat">
-          Pegar un chat
-        </button>
-      </div>
-      @if (linksLoaded()) {
-        <lv-link-list [links]="links()" scope="group" [canModerate]="isOwner()" />
+      @if (linksScopeReady()) {
+        <lv-save-link-form />
+        <div>
+          <button mat-stroked-button type="button" (click)="openImport()" i18n="@@links.pasteChat">
+            Pegar un chat
+          </button>
+        </div>
+      }
+      @if (linksScopeReady() && linksLoaded()) {
+        <lv-link-list
+          [links]="links()"
+          scope="group"
+          [groupId]="groupId"
+          [canModerate]="isOwner()"
+        />
       }
       @if (hasMoreLinks()) {
         <div>

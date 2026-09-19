@@ -6,6 +6,171 @@
         <source>Conectando…</source>
         <target>Connecting…</target>
       </trans-unit>
+      <trans-unit id="applications.card.shared" datatype="html">
+        <source>Compartida con tus grupos</source>
+        <target>Shared with your groups</target>
+      </trans-unit>
+      <trans-unit id="applications.card.moveTo" datatype="html">
+        <source> Mover a… </source>
+        <target>Move to…</target>
+      </trans-unit>
+      <trans-unit id="applications.detail.openOffer" datatype="html">
+        <source>Abrir la oferta</source>
+        <target>Open the job post</target>
+      </trans-unit>
+      <trans-unit id="applications.detail.statusTitle" datatype="html">
+        <source>Estado</source>
+        <target>Status</target>
+      </trans-unit>
+      <trans-unit id="applications.detail.editStage" datatype="html">
+        <source> Cambiar la etapa </source>
+        <target>Change the stage</target>
+      </trans-unit>
+      <trans-unit id="applications.board.conflict" datatype="html">
+        <source> Esta postulación cambió en otra pestaña. La hemos actualizado; muévela de nuevo si hace falta. </source>
+        <target>This application changed in another tab. We have updated it; move it again if needed.</target>
+      </trans-unit>
+      <trans-unit id="applications.detail.historyTitle" datatype="html">
+        <source>Historial</source>
+        <target>History</target>
+      </trans-unit>
+      <trans-unit id="applications.detail.notes" datatype="html">
+        <source>Notas (solo las ves tú)</source>
+        <target>Notes (only you see them)</target>
+      </trans-unit>
+      <trans-unit id="applications.detail.saveNotes" datatype="html">
+        <source> Guardar la nota </source>
+        <target>Save the note</target>
+      </trans-unit>
+      <trans-unit id="applications.detail.notesSaved" datatype="html">
+        <source>Nota guardada</source>
+        <target>Note saved</target>
+      </trans-unit>
+      <trans-unit id="applications.untrack.button" datatype="html">
+        <source> Dejar de seguir </source>
+        <target>Stop tracking</target>
+      </trans-unit>
+      <trans-unit id="applications.detail.close" datatype="html">
+        <source> Cerrar </source>
+        <target>Close</target>
+      </trans-unit>
+      <trans-unit id="applications.untrack.title" datatype="html">
+        <source>Dejar de seguir</source>
+        <target>Stop tracking</target>
+      </trans-unit>
+      <trans-unit id="applications.untrack.message" datatype="html">
+        <source>Dejarás de seguir esta oferta: se borrarán tu estado, tus notas y tu historial de esta oferta. Tus grupos dejarán de verte en ella. No se puede deshacer.</source>
+        <target>You will stop tracking this job post: your status, your notes and your history for it will be deleted. Your groups will no longer see you on it. This cannot be undone.</target>
+      </trans-unit>
+      <trans-unit id="applications.untrack.confirm" datatype="html">
+        <source>Dejar de seguir</source>
+        <target>Stop tracking</target>
+      </trans-unit>
+      <trans-unit id="applications.status.saved" datatype="html">
+        <source>Guardada</source>
+        <target>Saved</target>
+      </trans-unit>
+      <trans-unit id="applications.status.interested" datatype="html">
+        <source>Interés</source>
+        <target>Interested</target>
+      </trans-unit>
+      <trans-unit id="applications.status.applied" datatype="html">
+        <source>Postulada</source>
+        <target>Applied</target>
+      </trans-unit>
+      <trans-unit id="applications.status.inProcess" datatype="html">
+        <source>En proceso</source>
+        <target>In progress</target>
+      </trans-unit>
+      <trans-unit id="applications.status.offer" datatype="html">
+        <source>Oferta</source>
+        <target>Offer</target>
+      </trans-unit>
+      <trans-unit id="applications.status.accepted" datatype="html">
+        <source>Aceptada</source>
+        <target>Accepted</target>
+      </trans-unit>
+      <trans-unit id="applications.status.rejected" datatype="html">
+        <source>Rechazada</source>
+        <target>Rejected</target>
+      </trans-unit>
+      <trans-unit id="applications.status.withdrawn" datatype="html">
+        <source>Retirada</source>
+        <target>Withdrawn</target>
+      </trans-unit>
+      <trans-unit id="applications.status.expired" datatype="html">
+        <source>Expirada</source>
+        <target>Expired</target>
+      </trans-unit>
+      <trans-unit id="applications.column.interest" datatype="html">
+        <source>Interés</source>
+        <target>Interested</target>
+      </trans-unit>
+      <trans-unit id="applications.column.applied" datatype="html">
+        <source>Postuladas</source>
+        <target>Applied</target>
+      </trans-unit>
+      <trans-unit id="applications.column.inProcess" datatype="html">
+        <source>En proceso</source>
+        <target>In progress</target>
+      </trans-unit>
+      <trans-unit id="applications.column.offer" datatype="html">
+        <source>Con oferta</source>
+        <target>Offer</target>
+      </trans-unit>
+      <trans-unit id="applications.column.accepted" datatype="html">
+        <source>Aceptadas</source>
+        <target>Accepted</target>
+      </trans-unit>
+      <trans-unit id="applications.column.closed" datatype="html">
+        <source>Cerradas</source>
+        <target>Closed</target>
+      </trans-unit>
+      <trans-unit id="applications.board.title" datatype="html">
+        <source>Postulaciones</source>
+        <target>Applications</target>
+      </trans-unit>
+      <trans-unit id="applications.board.empty" datatype="html">
+        <source> Aquí verás las ofertas que sigues. Pulsa «Me interesa» o «Postulé» en cualquier oferta de tus grupos o de tu lista. </source>
+        <target>Here you will see the job posts you track. Press “I'm interested” or “I applied” on any job post in your groups or in your list.</target>
+      </trans-unit>
+      <trans-unit id="applications.board.goToGroups" datatype="html">
+        <source>Ir a tus grupos</source>
+        <target>Go to your groups</target>
+      </trans-unit>
+      <trans-unit id="applications.board.goToMine" datatype="html">
+        <source>Ir a Solo para mí</source>
+        <target>Go to Just for me</target>
+      </trans-unit>
+      <trans-unit id="applications.appliedAgo" datatype="html">
+        <source>{VAR_PLURAL, plural, =0 {Postulaste hoy} =1 {Postulaste ayer} other {Postulaste hace <x id="INTERPOLATION"/>
+    días}}</source>
+        <target>{VAR_PLURAL, plural, =0 {You applied today} =1 {You applied yesterday} other {You applied <x id="INTERPOLATION"/> days ago}}</target>
+      </trans-unit>
+      <trans-unit id="applications.appliedDate.question" datatype="html">
+        <source> ¿Cuándo postulaste? </source>
+        <target>When did you apply?</target>
+      </trans-unit>
+      <trans-unit id="applications.appliedDate.today" datatype="html">
+        <source> Hoy </source>
+        <target>Today</target>
+      </trans-unit>
+      <trans-unit id="applications.appliedDate.otherDay" datatype="html">
+        <source> Otro día </source>
+        <target>Another day</target>
+      </trans-unit>
+      <trans-unit id="applications.appliedDate.day" datatype="html">
+        <source>Día en que postulaste</source>
+        <target>Day you applied</target>
+      </trans-unit>
+      <trans-unit id="applications.appliedDate.future" datatype="html">
+        <source> No puede ser un día futuro </source>
+        <target>It cannot be a future day</target>
+      </trans-unit>
+      <trans-unit id="applications.appliedDate.confirm" datatype="html">
+        <source> Usar ese día </source>
+        <target>Use that day</target>
+      </trans-unit>
       <trans-unit id="login.title" datatype="html">
         <source>Iniciar sesión</source>
         <target>Sign in</target>
@@ -586,6 +751,22 @@
         <source>Cierra el <x id="INTERPOLATION" equiv-text="{{ closing | date: &apos;dd/MM/yyyy&apos; }}"/></source>
         <target>Closes on <x id="INTERPOLATION" equiv-text="{{ closing | date: &apos;dd/MM/yyyy&apos; }}"/></target>
       </trans-unit>
+      <trans-unit id="applications.card.ownStatus" datatype="html">
+        <source>Tu postulación:</source>
+        <target>Your application:</target>
+      </trans-unit>
+      <trans-unit id="applications.card.alreadyTracked" datatype="html">
+        <source>Ya la seguías</source>
+        <target>You were already tracking it</target>
+      </trans-unit>
+      <trans-unit id="applications.gesture.interested" datatype="html">
+        <source> Me interesa </source>
+        <target>I'm interested</target>
+      </trans-unit>
+      <trans-unit id="applications.gesture.applied" datatype="html">
+        <source> Postulé </source>
+        <target>I applied</target>
+      </trans-unit>
       <trans-unit id="links.list.sharedBy" datatype="html">
         <source>Compartido por <x id="INTERPOLATION" equiv-text="{{ sharer.displayName }}"/></source>
         <target>Shared by <x id="INTERPOLATION" equiv-text="{{ sharer.displayName }}"/></target>
@@ -771,6 +952,10 @@
         <source>LinkVault</source>
         <target>LinkVault</target>
       </trans-unit>
+      <trans-unit id="shell.applications" datatype="html">
+        <source>Postulaciones</source>
+        <target>Applications</target>
+      </trans-unit>
       <trans-unit id="shell.myLinks" datatype="html">
         <source>Solo para mí</source>
         <target>Just for me</target>
@@ -786,6 +971,74 @@
       <trans-unit id="confirm.cancel" datatype="html">
         <source> Cancelar </source>
         <target>Cancel</target>
+      </trans-unit>
+      <trans-unit id="applications.closing.title" datatype="html">
+        <source>¿Cómo se cerró?</source>
+        <target>How did it close?</target>
+      </trans-unit>
+      <trans-unit id="applications.share.failed" datatype="html">
+        <source>No se pudo cambiar lo que ven tus grupos. Inténtalo desde el tablero.</source>
+        <target>We could not change what your groups see. Try it from the board.</target>
+      </trans-unit>
+      <trans-unit id="applications.share.inviteApplied" datatype="html">
+        <source>¿Que tus grupos vean que postulaste a esta oferta? También quien entre después.</source>
+        <target>Let your groups see that you applied to this job post? Also whoever joins later.</target>
+      </trans-unit>
+      <trans-unit id="applications.share.inviteInterested" datatype="html">
+        <source>¿Que tus grupos vean que te interesa esta oferta? También quien entre después.</source>
+        <target>Let your groups see that you are interested in this job post? Also whoever joins later.</target>
+      </trans-unit>
+      <trans-unit id="applications.share.whatTheyWillSee" datatype="html">
+        <source> Qué verán </source>
+        <target>What they will see</target>
+      </trans-unit>
+      <trans-unit id="applications.share.share" datatype="html">
+        <source> Compartir </source>
+        <target>Share</target>
+      </trans-unit>
+      <trans-unit id="applications.share.shared" datatype="html">
+        <source>Compartido</source>
+        <target>Shared</target>
+      </trans-unit>
+      <trans-unit id="applications.share.undo" datatype="html">
+        <source> Deshacer </source>
+        <target>Undo</target>
+      </trans-unit>
+      <trans-unit id="applications.share.understood" datatype="html">
+        <source> Entendido </source>
+        <target>Got it</target>
+      </trans-unit>
+      <trans-unit id="applications.share.scope" datatype="html">
+        <source>Te verán los miembros de tus grupos donde esté esta oferta, ahora o más adelante, incluidos quienes se unan después. Verán tu nombre y tu estado, también cuando cambie (por ejemplo, «Rechazada»). Nunca la etapa, las notas ni el historial. Puedes dejar de compartir cuando quieras.</source>
+        <target>Members of your groups where this job post is, now or later, will see you, including those who join afterwards. They will see your name and your status, also when it changes (for example, “Rejected”). Never the stage, the notes or the history. You can stop sharing whenever you want.</target>
+      </trans-unit>
+      <trans-unit id="applications.share.toggle" datatype="html">
+        <source>Compartir mi estado con mis grupos</source>
+        <target>Share my status with my groups</target>
+      </trans-unit>
+      <trans-unit id="applications.stage.title" datatype="html">
+        <source>En proceso</source>
+        <target>In progress</target>
+      </trans-unit>
+      <trans-unit id="applications.stage.label" datatype="html">
+        <source>Etapa (opcional)</source>
+        <target>Stage (optional)</target>
+      </trans-unit>
+      <trans-unit id="applications.stage.hint" datatype="html">
+        <source>Por ejemplo, «Entrevista» o «Prueba técnica». Solo la ves tú.</source>
+        <target>For example, “Interview” or “Technical test”. Only you see it.</target>
+      </trans-unit>
+      <trans-unit id="applications.stage.save" datatype="html">
+        <source> Guardar </source>
+        <target>Save</target>
+      </trans-unit>
+      <trans-unit id="applications.avatar.label" datatype="html">
+        <source><x id="NAME" equiv-text="displayName"/> · postulación: <x id="STATUS" equiv-text="statusLabel(status)"/></source>
+        <target><x id="NAME" equiv-text="displayName"/> · application: <x id="STATUS" equiv-text="statusLabel(status)"/></target>
+      </trans-unit>
+      <trans-unit id="applications.avatar.list" datatype="html">
+        <source>Siguen esta oferta</source>
+        <target>Tracking this job post</target>
       </trans-unit>
       <trans-unit id="error.tooManyAttempts" datatype="html">
         <source>Demasiados intentos. Vuelve a intentarlo en <x id="INTERPOLATION" equiv-text="{{ minutes }}"/> <x id="ICU" equiv-text="{minutes, plural, =1 {minuto} other {minutos}}" xid="4693155463045116188"/></source>

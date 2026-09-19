@@ -26,6 +26,10 @@
           [link]="link"
           [canRemove]="canRemove(link)"
           [busy]="working()"
+          [application]="own(link)"
+          [alreadyTracked]="alreadyTracked().has(link.id)"
+          [trackers]="trackersOf(link)"
+          (track)="trackGesture(link, $event)"
           (complete)="editPreview(link)"
           (retry)="retry(link)"
           (pasteDescription)="pasteDescription(link)"
@@ -35,6 +39,12 @@
       </li>
     }
   </ul>
+}
+
+@if (trackingConflict()) {
+  <p role="alert" i18n="@@applications.board.conflict">
+    Esta postulación cambió en otra pestaña. La hemos actualizado; muévela de nuevo si hace falta.
+  </p>
 }
 
 @if (failure(); as currentFailure) {

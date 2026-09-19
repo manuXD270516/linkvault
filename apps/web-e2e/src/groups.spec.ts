@@ -1,11 +1,14 @@
 import { workspaceRoot } from '@nx/devkit';
 import { expect, test, type Page } from '@playwright/test';
 import { join } from 'node:path';
+import { JOB_ID_SLOTS, jobIdBase } from './support/job-ids';
 
 const SCREENSHOT_DIR = join(workspaceRoot, 'reports', 'smoke', 'groups');
 const APP_ORIGIN = 'http://localhost:4200';
 
 const RUN_ID = Date.now();
+/** Id de oferta de este spec: único aunque otro spec arranque en el mismo milisegundo. */
+const JOB_ID = jobIdBase(JOB_ID_SLOTS.groups);
 const OWNER = {
   displayName: 'Smoke Owner',
   email: `smoke-owner+${RUN_ID}@example.com`,
@@ -265,8 +268,8 @@ const TRANSFER_GROUP_NAME = `Smoke Traspaso ${RUN_ID}`;
  * Oferta de LinkedIn con un id propio de esta ejecución, para que no herede nada de la anterior. LinkedIn no deja leer
  * sus ofertas, así que el worker no toca la red; aquí solo importa que el link siga en el grupo.
  */
-const TRANSFER_LINK_URL = `https://www.linkedin.com/jobs/view/ingeniero-backend-traspaso-${RUN_ID}/`;
-const TRANSFER_LINK_LABEL = `ingeniero backend traspaso ${RUN_ID}`;
+const TRANSFER_LINK_URL = `https://www.linkedin.com/jobs/view/ingeniero-backend-traspaso-${JOB_ID}/`;
+const TRANSFER_LINK_LABEL = `ingeniero backend traspaso ${JOB_ID}`;
 
 test('ownership transfer: the owner makes another member the owner, leaves, and the group keeps its links', async ({
   browser,

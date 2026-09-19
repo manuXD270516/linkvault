@@ -1,5 +1,7 @@
+export * from './events/application-stale.event';
 export * from './events/link-created.event';
 export * from './events/link-enriched.event';
+export * from './schemas/application.schema';
 export * from './schemas/auth.schema';
 export * from './schemas/group.schema';
 export * from './schemas/health.schema';

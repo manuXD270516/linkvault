@@ -95,7 +95,27 @@ export async function flushGroupDetail(
  */
 export function verifyNoPendingRequests(http: HttpTestingController): void {
   TestBed.inject(EventsChannel).disconnect();
+  flushPendingApplicationStates(http);
   http.verify({ ignoreCancelled: true });
+}
+
+/**
+ * Responde vacío a las peticiones de estados de postulaciones que la lista de links hace sola al pintar una página
+ * (estado propio y, en un grupo, estados compartidos). Son de fondo, como el canal de eventos: los tests que no tratan
+ * de postulaciones no tienen por qué responderlas, y los que sí las responden antes de llegar aquí.
+ */
+export function flushPendingApplicationStates(http: HttpTestingController): void {
+  const pending = http.match(
+    (request) =>
+      request.method === 'GET' &&
+      ((request.url === '/api/applications' && request.params.has('linkIds')) ||
+        /^\/api\/groups\/[^/]+\/applications$/.test(request.url)),
+  );
+  for (const request of pending) {
+    if (!request.cancelled) {
+      request.flush({ items: [] });
+    }
+  }
 }
 
 export function typeInto(host: HTMLElement, selector: string, value: string): void {

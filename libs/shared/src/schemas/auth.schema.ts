@@ -116,6 +116,10 @@ export const apiErrorCodeSchema = z.enum([
   // 429, con `Retry-After`: quien pega agot√≥ su cuota diaria de IA. Distinto de `too_many_attempts`, cuya ventana es de
   // minutos: decir "int√©ntalo en un rato" ser√≠a mentira cuando hay que esperar al d√≠a siguiente.
   'ai_quota_exceeded',
+  // 404: la postulaciÛn no existe, es de otra persona o su `:id` no tiene formato de identificador (mismo cuerpo).
+  'application_not_found',
+  // 409: el estado o la etapa cambiaron desde otra pestaÒa desde que se pintÛ (`version` distinta).
+  'application_conflict',
   // 500
   'internal_error',
 ]);

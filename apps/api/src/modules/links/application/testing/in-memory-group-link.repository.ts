@@ -114,6 +114,24 @@ export class InMemoryGroupLinkRepository implements GroupLinkRepository {
     return Promise.resolve(found);
   }
 
+  /** Cuántas veces se preguntó qué links están en un grupo: lo usa el test de las lecturas fijas (D6). */
+  linkIdsInCalls = 0;
+
+  linkIdsIn(groupId: string, linkIds: readonly string[]): Promise<Set<string>> {
+    this.linkIdsInCalls += 1;
+    const wanted = new Set(linkIds.filter((linkId) => isLinkId(linkId)));
+    const found = new Set<string>();
+    if (!isGroupId(groupId)) {
+      return Promise.resolve(found);
+    }
+    for (const relation of this.relations) {
+      if (relation.groupId === groupId && wanted.has(relation.linkId)) {
+        found.add(relation.linkId);
+      }
+    }
+    return Promise.resolve(found);
+  }
+
   remove(groupId: string, linkId: string): Promise<boolean> {
     const relation = this.relationOf(groupId, linkId);
     if (relation === undefined) {

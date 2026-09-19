@@ -78,6 +78,15 @@ export class GroupDetailPage {
   protected readonly linksTotal = this.linksStore.total;
   protected readonly hasMoreLinks = this.linksStore.hasMore;
   protected readonly loadingMoreLinks = this.linksStore.loadingMore;
+  /**
+   * `true` solo cuando la lista abierta en `LinksStore` es la de este grupo. Guardar e importar van al ámbito abierto
+   * (`LinksStore.scope()`), así que hasta entonces no se ofrecen: entre pintar el grupo y abrir su lista, un "Guardar"
+   * acabaría en la lista privada o en el grupo que se miraba antes.
+   */
+  protected readonly linksScopeReady = computed(() => {
+    const scope = this.linksStore.scope();
+    return scope?.kind === 'group' && scope.groupId === this.groupId;
+  });
 
   private readonly invitationField = viewChild<ElementRef<HTMLTextAreaElement>>('invitationField');
   private readonly deleteMessage = viewChild.required<TemplateRef<unknown>>('deleteMessage');
@@ -86,6 +95,8 @@ export class GroupDetailPage {
     // El canal deja que las tarjetas se enteren solas de las lecturas que terminan; si no se puede abrir, la lista
     // sigue funcionando con lo que devolvió la API.
     inject(EventsChannel).connect();
+    // Se olvida la lista anterior (otro grupo o la privada) antes de pintar nada: ni sus links ni su ámbito sirven aquí.
+    this.linksStore.close();
     void this.enter();
     // El respaldo aparece ya seleccionado, para que baste con copiar.
     effect(() => this.invitationField()?.nativeElement.select());

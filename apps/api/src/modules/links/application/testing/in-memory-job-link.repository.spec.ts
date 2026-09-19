@@ -129,3 +129,34 @@ describe('findById', () => {
     expect(found).not.toBe(link);
   });
 });
+
+describe('cardsOf', () => {
+  it('answers the card of each existing link, once, and nothing for malformed ids', async () => {
+    const { link } = await resolve(JOB_PAGE);
+    repository.overwrite(link.id, {
+      previewStatus: 'partial',
+      preview: { title: 'Backend', company: null },
+    });
+
+    const cards = await repository.cardsOf([
+      link.id,
+      link.id,
+      objectId(99),
+      'no-es-un-id',
+    ]);
+
+    expect(cards).toEqual([
+      {
+        id: link.id,
+        displayUrl: link.displayUrl,
+        platform: 'linkedin',
+        previewStatus: 'partial',
+        title: 'Backend',
+      },
+    ]);
+  });
+
+  it('answers nothing for an empty list', async () => {
+    await expect(repository.cardsOf([])).resolves.toEqual([]);
+  });
+});

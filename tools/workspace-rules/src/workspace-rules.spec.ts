@@ -301,6 +301,26 @@ const rows: readonly RuleRow[] = [
     expectedRuleIds: [MODULE_IMPORTS],
   },
   {
+    // Spec links/sharing, "Acceso directo a las colecciones de links" (applications-tracking).
+    name: 'Acceso directo a las colecciones de links (repositorio)',
+    filePath: 'apps/api/src/modules/groups/infrastructure/probe.ts',
+    code: "import { MongoJobLinkRepository } from '../../links/infrastructure/mongo-job-link.repository';\n\nexport const probe = MongoJobLinkRepository;\n",
+    expectedRuleIds: [MODULE_IMPORTS],
+  },
+  {
+    name: 'Acceso directo a las colecciones de links (schemas)',
+    filePath: 'apps/api/src/modules/users/application/probe.ts',
+    code: "import { jobLinkSchema } from '../../links/infrastructure/link.schemas';\n\nexport const probe = jobLinkSchema;\n",
+    expectedRuleIds: [MODULE_IMPORTS],
+  },
+  {
+    name: 'Un módulo usa la fachada de links',
+    filePath: 'apps/api/src/modules/groups/infrastructure/probe.ts',
+    code: "import { LinksFacade } from '../../links/application/links.facade';\n\nexport const probe = LinksFacade;\n",
+    expectedRuleIds: [],
+    unexpectedRuleIds: [MODULE_IMPORTS],
+  },
+  {
     name: 'an infrastructure folder of api imports infrastructure (La infraestructura importa el framework)',
     filePath: 'apps/api/src/modules/probe/infrastructure/probe.ts',
     code: "import { Schema } from 'mongoose';\n\nexport const probe = Schema;\n",

@@ -1,7 +1,10 @@
 import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, LOCALE_ID, computed, inject, input, output } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
-import type { JobLinkSummary, PreviewFieldName } from '@linkvault/shared';
+import { RouterLink } from '@angular/router';
+import type { Application, GroupTracker, JobLinkSummary, PreviewFieldName } from '@linkvault/shared';
+import { statusLabel } from '../applications/application-status.labels';
+import { TrackerAvatars } from '../applications/tracker-avatars.component';
 import {
   daysSince,
   fieldOrigin,
@@ -24,7 +27,7 @@ import { linkCardStatus } from './link-status';
  */
 @Component({
   selector: 'lv-link-card',
-  imports: [DatePipe, MatButtonModule],
+  imports: [DatePipe, MatButtonModule, RouterLink, TrackerAvatars],
   templateUrl: './link-card.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -34,6 +37,12 @@ export class LinkCard {
   readonly canRemove = input(false);
   /** `true` mientras hay una acción en curso sobre la lista: los botones no se pueden pulsar dos veces. */
   readonly busy = input(false);
+  /** La postulación propia sobre esta oferta, o `null` si no la sigue (spec web/applications). */
+  readonly application = input<Application | null>(null);
+  /** `true` si el último gesto respondió que ya la seguía (otra pestaña): se dice "Ya la seguías". */
+  readonly alreadyTracked = input(false);
+  /** Quién comparte su estado sobre esta oferta en el grupo; `null` fuera de un grupo, donde no hay avatares. */
+  readonly trackers = input<readonly GroupTracker[] | null>(null);
 
   readonly remove = output<void>();
   /** Completar la oferta a mano: quien la abre es `LinkList`, que sabe recargar la lista al guardar. */
@@ -44,8 +53,22 @@ export class LinkCard {
   readonly pasteDescription = output<void>();
   /** Deshacer de una vez todos los campos del último pegado; emite los campos que hay que devolver a lo anterior. */
   readonly undoPaste = output<PreviewFieldName[]>();
+  /** Gesto de seguimiento: "Me interesa" o "Postulé". La fecha y la invitación a compartir las resuelve `LinkList`. */
+  readonly track = output<'interested' | 'applied'>();
 
   private readonly locale = inject(LOCALE_ID);
+
+  /** Nombre neutro del estado propio, con enlace al tablero. */
+  protected readonly ownStatus = computed(() => {
+    const application = this.application();
+    return application === null ? null : statusLabel(application.status);
+  });
+
+  /** "Postulé" se ofrece sin seguirla y mientras está en "Guardada" o "Interés" (spec "Seguir desde la tarjeta"). */
+  protected readonly offersApplied = computed(() => {
+    const status = this.application()?.status;
+    return status === undefined || status === 'saved' || status === 'interested';
+  });
 
   private readonly preview = computed(() => this.link().preview);
   private readonly sources = computed(() => this.link().previewSources);

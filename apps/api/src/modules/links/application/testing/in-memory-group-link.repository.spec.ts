@@ -202,3 +202,18 @@ describe('remove, deleteByGroup and deleteByLink', () => {
     expect(groupLinks.size).toBe(0);
   });
 });
+
+describe('linkIdsIn', () => {
+  it('answers which of the links are shared in the group', async () => {
+    await share(BACKEND, link.id, ANA);
+    await share(FRONTEND, other.id, ANA);
+
+    expect(
+      await groupLinks.linkIdsIn(BACKEND, [link.id, other.id, 'no-es-un-id']),
+    ).toEqual(new Set([link.id]));
+    expect(await groupLinks.linkIdsIn(STRANGERS, [link.id])).toEqual(new Set());
+    expect(await groupLinks.linkIdsIn('no-es-un-id', [link.id])).toEqual(
+      new Set(),
+    );
+  });
+});

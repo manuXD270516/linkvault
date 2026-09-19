@@ -53,6 +53,15 @@ import {
   TooManyJoinAttempts,
 } from '../../modules/groups/domain/errors';
 import {
+  ApplicationConflict,
+  ApplicationNotFound,
+  InvalidAppliedAt,
+  InvalidNotes,
+  InvalidStageLabel,
+  TrackedLinkNotFound,
+  TrackersGroupNotFound,
+} from '../../modules/applications/domain/errors';
+import {
   EnrichmentNotRetryable,
   InvalidCursor,
   InvalidUrl,
@@ -110,6 +119,13 @@ const THROWN: Record<string, () => unknown> = {
   'not-a-job-posting': () => new NotAJobPosting(),
   'extraction-unavailable': () => new ExtractionUnavailable(60),
   'ai-quota-exceeded': () => new AiQuotaExceeded(86_400),
+  'application-not-found': () => new ApplicationNotFound(),
+  'application-conflict': () => new ApplicationConflict(),
+  'tracked-link-not-found': () => new TrackedLinkNotFound(),
+  'trackers-group-not-found': () => new TrackersGroupNotFound(),
+  'invalid-applied-at': () => new InvalidAppliedAt(),
+  'invalid-stage-label': () => new InvalidStageLabel(),
+  'invalid-notes': () => new InvalidNotes(),
   unknown: () =>
     new Error(
       `E11000 duplicate key error dup key: { email: "${SECRET_EMAIL}" }`,
@@ -332,6 +348,14 @@ describe('ApiExceptionFilter', () => {
     // El campo desconocido sí se nombra: sin decir cuál, quien lo envió tendría que adivinarlo.
     ['preview-field-unknown', 400, 'preview_field_unknown', ['image']],
     ['enrichment-not-retryable', 409, 'enrichment_not_retryable', undefined],
+    // Errores de `applications`: la fecha futura nombra `appliedAt` (tiene su rama antes de la genérica).
+    ['invalid-applied-at', 400, 'validation_error', ['appliedAt']],
+    ['invalid-stage-label', 400, 'validation_error', ['stageLabel']],
+    ['invalid-notes', 400, 'validation_error', ['notes']],
+    ['application-not-found', 404, 'application_not_found', undefined],
+    ['application-conflict', 409, 'application_conflict', undefined],
+    ['tracked-link-not-found', 404, 'link_not_found', undefined],
+    ['trackers-group-not-found', 404, 'group_not_found', undefined],
   ])('translates %s to %i %s', async (name, status, code, fields) => {
     const response = await get(name);
 

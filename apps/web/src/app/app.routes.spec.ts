@@ -53,10 +53,11 @@ describe('appRoutes', () => {
   it('loads every page lazily', () => {
     const shell = routeAt('');
     const pages = [routeAt('login'), routeAt('registro'), shell, ...(shell.children ?? [])].filter(
-      (route) => route.redirectTo === undefined,
+      (route) => route.redirectTo === undefined && route.loadChildren === undefined,
     );
 
-    // login, registro, el shell y sus cinco páginas: /grupos, /grupos/:id, /unirse, /mis-links y /perfil.
+    // login, registro, el shell y sus cinco páginas: /grupos, /grupos/:id, /unirse, /mis-links y /perfil. El tablero
+    // de /postulaciones tiene su propio archivo de rutas ("Ruta diferida").
     expect(pages).toHaveLength(8);
     for (const route of pages) {
       expect(route.component).toBeUndefined();
@@ -78,7 +79,7 @@ describe('appRoutes', () => {
     expect(routeAt('login').canActivate).toEqual([guestGuard]);
     expect(routeAt('registro').canActivate).toEqual([guestGuard]);
     expect(shell.canActivate).toEqual([authGuard]);
-    for (const path of ['grupos', 'grupos/:id', 'unirse', 'mis-links', 'perfil']) {
+    for (const path of ['grupos', 'grupos/:id', 'unirse', 'mis-links', 'postulaciones', 'perfil']) {
       expect(routeAt(path, shell.children).canActivate).toBeUndefined();
     }
   });
@@ -145,6 +146,32 @@ describe('appRoutes', () => {
       request.flush({ items: [], total: 0 });
 
       expect(harness.fixture.debugElement.query(By.directive(MyLinksPage))).not.toBeNull();
+    });
+
+    it('Ruta diferida', async () => {
+      const board = routeAt('postulaciones', routeAt('').children);
+      expect(board.component).toBeUndefined();
+      expect(board.loadComponent).toBeUndefined();
+      expect(board.loadChildren).toBeTypeOf('function');
+
+      store.setSession(session);
+      const harness = await RouterTestingHarness.create();
+      await harness.navigateByUrl('/grupos', Shell);
+      http.expectOne('/api/groups').flush([]);
+      // El router guarda en su copia de la ruta lo que carga con `loadChildren`: hasta navegar al tablero no hay nada.
+      const loaded = (): unknown =>
+        Reflect.get(routeAt('postulaciones', routeAt('', router.config).children), '_loadedRoutes');
+      expect(loaded()).toBeUndefined();
+
+      await harness.navigateByUrl('/postulaciones', Shell);
+      const request = await vi.waitFor(() => http.expectOne('/api/applications'));
+      request.flush({ items: [] });
+
+      expect(loaded()).toBeDefined();
+      expect(router.url).toBe('/postulaciones');
+      await vi.waitFor(() =>
+        expect(harness.routeNativeElement?.textContent).toContain('Aquí verás las ofertas que sigues'),
+      );
     });
 
     it('shows the profile page inside the shell with a session', async () => {

@@ -220,14 +220,14 @@ Orden y notas específicas:
 | 6 | `job-links` | ADR-008, 009. Canonicalizadores para LinkedIn, Computrabajo, Indeed, Trabajopolis, Get on Board. Import desde texto (B1). "Ya está en Grupo X" (B6). |
 | 7 | `link-enrichment` | ADR-003, 010 y **ADR-022** (cierra las decisiones del change). Un host a la vez con mutex en Redis, `extract-job` vía `runTask`, SSE, backfill por el outbox. Cómo operarlo: Paso 6 bis. |
 | 7b | `groups-ownership-join-limit` | Fuera de §6, antes de `applications-tracking`: transferencia de propiedad del grupo y límite de intentos del join (**ADR-025**). Cómo operarlo: Paso 6 quater. |
-| 8 | `applications-tracking` | ADR-004, 015. Kanban + timeline. |
+| 8 | `applications-tracking` | ADR-004, 015 y **ADR-024** (transiciones libres, visibilidad derivada, "Dejar de seguir"). Kanban + timeline. Cómo operarlo: Paso 6 quinquies. |
 | 9 | `group-comments` | Planos, sin hilos. |
 | 10 | `public-preview-share` | ADR-013. |
 | 11 | `cv-upload-extract` | MinIO, pdf-parse, mammoth. |
 | 12 | `cv-match-suggestions` | §4.8 y 4.12. Evaluator-optimizer acotado, `evidence` obligatoria, `ai_feedback`. Controles de IA del perfil diferidos desde `auth-users`: consentimiento con texto honesto, `consentedAt` y versión del texto, "Idioma de los análisis de IA" y redacción del nombre. |
 | 13 | `study-roadmap` | Catálogo curado `resources.seed.json` primero. |
 | 14 | `ai-byok` | libsodium vault. |
-| 15 | `deploy-prod` | compose prod + Traefik + docs de alternativas. Heredado de `auth-users` (ADR-020): `trustProxy`, reseteo manual de contraseña por operador documentado, aviso de privacidad y borrado de cuenta. Heredado de `link-enrichment` (ADR-022): elegir proveedor de objetos (el cliente habla S3) y crear allí el bucket de snapshots con su expiración a 30 días, fijar las `ENRICH_*` por entorno y decidir dónde queda encendido el relay del outbox, que sigue siendo de una sola instancia. Heredado de `paste-job-description` (ADR-023): fijar `PASTE_EXTRACTION_TIMEOUT_MS` y la cuota de `extract-pasted-job` en `AI_QUOTAS` por entorno, y copiar los prompts también en la imagen de `api` (`AI_PROMPTS_DIR=dist/apps/api/assets/ai/prompts` si no arranca desde la raíz). Heredado de `groups-ownership-join-limit` (ADR-025): `trustProxy` también por el contador de IP del join, y la consulta de "un owner por grupo" antes del primer despliegue (Paso 6 quater). |
+| 15 | `deploy-prod` | compose prod + Traefik + docs de alternativas. Heredado de `auth-users` (ADR-020): `trustProxy`, reseteo manual de contraseña por operador documentado, aviso de privacidad y borrado de cuenta. Heredado de `link-enrichment` (ADR-022): elegir proveedor de objetos (el cliente habla S3) y crear allí el bucket de snapshots con su expiración a 30 días, fijar las `ENRICH_*` por entorno y decidir dónde queda encendido el relay del outbox, que sigue siendo de una sola instancia. Heredado de `paste-job-description` (ADR-023): fijar `PASTE_EXTRACTION_TIMEOUT_MS` y la cuota de `extract-pasted-job` en `AI_QUOTAS` por entorno, y copiar los prompts también en la imagen de `api` (`AI_PROMPTS_DIR=dist/apps/api/assets/ai/prompts` si no arranca desde la raíz). Heredado de `groups-ownership-join-limit` (ADR-025): `trustProxy` también por el contador de IP del join, y la consulta de "un owner por grupo" antes del primer despliegue (Paso 6 quater). Heredado de `applications-tracking` (ADR-024): el borrado de cuenta tiene que borrar en cascada las `applications` y los `application_events` de esa persona; hasta entonces, a mano (Paso 6 quinquies). |
 | 16 | `auth-email-recovery` | Fuera de §6: verificación de email y recuperación de contraseña, diferidas desde `auth-users` (ADR-020). Alcance y orden por decidir al crearlo. |
 
 **Paralelizar front y back (changes 4–8):** en `/opsx:apply` pide:
@@ -416,6 +416,73 @@ usan el Mongo y el Redis del compose local; en otro entorno, cambia la URI o el 
 - **Sin `trustProxy`**, detrás de un proxy todas las peticiones llegan con la IP del proxy y el contador de IP es global:
   100 códigos incorrectos de cualquiera bloquean a todos. Configurarlo es requisito de salida a producción de
   `deploy-prod`. En local y en las pruebas no hay proxy.
+
+## Paso 6 quinquies — Operar las postulaciones
+
+Desde `applications-tracking`, cada persona sigue sus ofertas en `/postulaciones` (`/api/applications`) y puede
+compartir su estado con sus grupos (`GET /api/groups/:id/applications`). El detalle para quien usa el producto, los
+endpoints, sus códigos, qué ve el grupo y la regla de `appliedAt` están en el
+[README](../README.md#postulaciones); las decisiones, en [ADR-024](adr/ADR-024.md). Aquí, lo que hay que tener presente
+al operar y al probar a mano. Los comandos usan el Mongo del compose local; en otro entorno, cambia la URI por la suya.
+
+- **Sin variables nuevas, sin datos que rellenar.** Hay dos colecciones nuevas, `applications` y `application_events`,
+  que nacen vacías. `api` construye sus índices al arrancar (`autoIndex` de Mongoose). El alta, el cambio de estado y
+  "Dejar de seguir" usan transacciones, así que Mongo tiene que ser replica set (ADR-017), como siempre.
+- **Las notas y la etapa son privadas.** Al depurar, no las leas ni las copies a un ticket o a un log: proyecta solo los
+  campos que necesites (ver más abajo). El grupo nunca las recibe, y la API tampoco devuelve nunca `fitScore`.
+- **Comprobar los índices.** Debe listar, además de `_id_`, `userId_1_linkId_1` con `unique: true`,
+  `userId_1_updatedAt_-1__id_-1` y `linkId_1_visibility_1_userId_1` en `applications`, y `applicationId_1_at_1__id_1`
+  en `application_events`:
+
+  ```bash
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'printjson({ applications: db.applications.getIndexes().map((i) => ({ name: i.name, key: i.key, unique: i.unique })), application_events: db.application_events.getIndexes().map((i) => ({ name: i.name, key: i.key })) })'
+  ```
+
+  `MongoServerError: ns does not exist` significa que `api` todavía no ha arrancado con este change contra esa base:
+  arráncalo y repite. Si falta algún índice, busca el error en el log de `api` y reinícialo con Mongo sano. En una base vacía el único no puede
+  fallar. Sin `userId_1_linkId_1`, dos altas simultáneas podrían crear dos postulaciones de la misma persona para la
+  misma oferta.
+- **Consultar las postulaciones de un usuario sin ver sus notas.** Primero su `_id`, por su email normalizado
+  (minúsculas y sin espacios exteriores):
+
+  ```bash
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'db.users.findOne({ email: "<email>" }, { _id: 1, displayName: 1 })'
+  ```
+
+  Después, sus postulaciones con una proyección **de inclusión**. Así no salen ni las notas ni la etapa, tampoco las que
+  añada un change futuro. La segunda línea cuenta sus eventos de historial sin leerlos:
+
+  ```bash
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'db.applications.find({ userId: ObjectId("<userId>") }, { linkId: 1, status: 1, visibility: 1, appliedAt: 1, statusChangedAt: 1, version: 1, updatedAt: 1 }).sort({ updatedAt: -1 }).toArray()'
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'db.application_events.countDocuments({ userId: ObjectId("<userId>") })'
+  ```
+
+  Que una postulación `group` se vea en un grupo depende también de que la persona sea miembro y de que el link esté
+  compartido allí **ahora**. Se deriva al leer, así que no hay ningún campo que lo diga: mira `group_members` y
+  `group_links`.
+- **La cascada al borrar una cuenta está pendiente, y la hereda `deploy-prod`** (ADR-024, riesgos aceptados). Hoy no
+  existe el borrado de cuenta. Cuando exista, tendrá que borrar las `applications` y los `application_events` de esa
+  persona. Mientras tanto, si alguien pide que se borren sus datos, se hace a mano, en una transacción, con el `_id` de
+  la consulta anterior. `application_events` repite el `userId`, así que el filtro alcanza todo su historial:
+
+  ```bash
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'const s = db.getMongo().startSession(); s.withTransaction(() => { const d = s.getDatabase("linkvault"); const u = ObjectId("<userId>"); printjson({ events: d.application_events.deleteMany({ userId: u }).deletedCount, applications: d.applications.deleteMany({ userId: u }).deletedCount }); }); s.endSession()'
+  ```
+
+  Repite las dos consultas de arriba: deben devolver `[]` y `0`. Sus avatares ya dejan de verse en cuanto deja de ser
+  miembro de un grupo (visibilidad derivada), pero sus datos privados siguen guardados hasta este borrado. Borrar su
+  cuenta, sus membresías y sus links no entra aquí: es el resto del borrado de cuenta de `deploy-prod`.
+- **Lo que se ve en el log y es normal:**
+  - `409 application_conflict`: una pestaña vieja movió una tarjeta que otra ya había cambiado.
+  - `404 application_not_found` tras un `DELETE`: se dejó de seguir en otra pestaña, y el SPA lo trata como "ya no la
+    sigues".
+- **Lo que no es normal: un `500` con `The link of an application has no card`.** Es un invariante roto, porque un
+  `JobLink` nunca se borra (ADR-021): en ese caso el tablero omite la postulación en lugar de caerse. Localiza las
+  huérfanas, sin notas:
+
+  ```bash
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'db.applications.aggregate([{ $lookup: { from: "job_links", localField: "linkId", foreignField: "_id", as: "link" } }, { $match: { link: { $size: 0 } } }, { $project: { userId: 1, linkId: 1, status: 1 } }]).toArray()'
+  ```
 
 ## Paso 7 — Definition of Done (pégalo en cada PR)
 
