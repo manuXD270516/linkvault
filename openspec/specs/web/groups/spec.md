@@ -57,7 +57,10 @@ cuanto lo lee, para que dentro de la aplicación deje de estar en la URL (con se
 login el código viaja en `returnUrl`, que es inevitable) y SHALL exigir sesión como el resto de rutas
 (quien no la tenga vuelve a ella tras iniciar sesión o registrarse). Al unirse, SHALL navegar al detalle del grupo.
 `invalid_invite_code` SHALL mostrar "Ese código no corresponde a ningún grupo", `group_full` "Ese grupo ya tiene 50
-miembros, el máximo" y `too_many_groups` "Ya perteneces a 20 grupos, el máximo".
+miembros, el máximo", `too_many_groups` "Ya perteneces a 20 grupos, el máximo" y `too_many_attempts` el mismo mensaje
+de demasiados intentos que el resto del SPA: "Demasiados intentos. Vuelve a intentarlo en N minutos", con N tomado de
+`Retry-After` en minutos redondeados hacia arriba y el plural correcto, o "Demasiados intentos. Vuelve a intentarlo
+más tarde" si la respuesta no trae `Retry-After`; en todos los casos SHALL conservar el código escrito.
 
 #### Scenario: Unirse con un código válido
 
@@ -99,13 +102,26 @@ miembros, el máximo" y `too_many_groups` "Ya perteneces a 20 grupos, el máximo
 - **WHEN** la unión responde `409` con `too_many_groups`
 - **THEN** el SPA SHALL mostrar "Ya perteneces a 20 grupos, el máximo"
 
+#### Scenario: Demasiados intentos al unirse
+
+- **WHEN** la unión responde `429` con `too_many_attempts` y `Retry-After` 540
+- **THEN** el SPA SHALL mostrar "Demasiados intentos. Vuelve a intentarlo en 9 minutos" y conservar el código escrito
+
+#### Scenario: Demasiados intentos sin tiempo de espera
+
+- **WHEN** la unión responde `429` con `too_many_attempts` sin cabecera `Retry-After`
+- **THEN** el SPA SHALL mostrar "Demasiados intentos. Vuelve a intentarlo más tarde" y conservar el código escrito
+
 ### Requirement: Detalle del grupo
 
 `/grupos/:id` SHALL mostrar el nombre del grupo y la lista de miembros con su nombre, su rol y su fecha de alta. Los links compartidos en el grupo se muestran según la spec `web/links`. Si el usuario es `owner`, SHALL mostrar además el código de invitación con la advertencia "Quien tenga
 este código puede entrar y ver los nombres de los miembros. Regenéralo si se filtró.", un botón que copia el mensaje de invitación
 "Únete a «{nombre}» en LinkVault: {enlace} (código {código})", donde `{enlace}` es la URL absoluta del SPA con
 `/unirse?codigo=<código>`, y las acciones de renombrar, regenerar el código, expulsar a
-un miembro y borrar el grupo. Si no es owner, SHALL mostrar la acción de salir y ninguna acción de owner. Un `404` SHALL
+un miembro, "Nombrar propietario" sobre cada miembro que no sea él mismo y borrar el grupo; en lugar de la acción de salir SHALL mostrar "Para
+salir, nombra propietario a otro miembro", o, si es el único miembro, "Eres el único miembro: para irte, borra el grupo".
+Si no es owner, SHALL mostrar la acción de salir y ninguna acción de owner. En español los textos SHALL decir siempre
+"propietario", nunca "owner". Un `404` SHALL
 mostrar "Ese grupo no existe o ya no perteneces a él" con un enlace a `/grupos`, y SHALL quitar ese grupo de la lista
 guardada.
 
@@ -113,7 +129,21 @@ guardada.
 
 - **GIVEN** el owner de un grupo con dos miembros
 - **WHEN** abre el detalle
-- **THEN** SHALL ver el código de invitación con su advertencia, el botón de copiar la invitación, los dos miembros con su fecha de alta y las acciones de renombrar, regenerar, expulsar y borrar
+- **THEN** SHALL ver el código de invitación con su advertencia, el botón de copiar la invitación, los dos miembros con su fecha de alta y las acciones de renombrar, regenerar, expulsar, "Nombrar propietario" y borrar
+- **AND** SHALL ver "Para salir, nombra propietario a otro miembro" en lugar de la acción de salir
+
+#### Scenario: Nombrar propietario sobre los demás
+
+- **GIVEN** Ana, owner de un grupo con los miembros Beto y Carla
+- **WHEN** abre el detalle
+- **THEN** SHALL ver "Nombrar propietario" sobre Beto y sobre Carla
+- **AND** NO SHALL verlo sobre sí misma
+
+#### Scenario: Owner solo en su grupo
+
+- **GIVEN** el owner de un grupo en el que es el único miembro
+- **WHEN** abre el detalle
+- **THEN** SHALL ver "Eres el único miembro: para irte, borra el grupo" y NO SHALL ver "Nombrar propietario"
 
 #### Scenario: Detalle como miembro
 
@@ -143,11 +173,15 @@ guardada.
 
 ### Requirement: Acciones del detalle
 
-Salir, expulsar y borrar SHALL pedir confirmación antes de llamar a la API; la de borrar SHALL decir a cuántos afecta y cuántas ofertas se pierden, con el
+Salir, expulsar, nombrar propietario y borrar SHALL pedir confirmación antes de llamar a la API; la de borrar SHALL decir a cuántos afecta y cuántas ofertas se pierden, con el
 plural correcto y omitiendo la parte de las ofertas cuando el grupo no tiene ninguna: "Se borrará para los N miembros y
 se perderán las X ofertas compartidas aquí (las que estén en otros grupos siguen ahí). No se puede deshacer.", con sus
 variantes para un solo miembro ("Se borrará solo para ti…"), para una sola oferta ("se perderá 1 oferta") y para ninguna
-(el texto sin la parte de ofertas). El recuento SHALL venir del `total` que devuelve el listado de links del grupo, no de los que haya cargados en pantalla. Salir y borrar SHALL navegar a `/grupos` al terminar; expulsar SHALL actualizar la
+(el texto sin la parte de ofertas); cuando haya más de un miembro SHALL empezar por "Si solo quieres irte, nombra
+propietario a otro miembro y sal del grupo.", antes de ese texto. El recuento SHALL venir del `total` que devuelve el listado de links del grupo, no de los que haya cargados en pantalla. La de nombrar propietario SHALL decir
+"«{nombre}» tendrá el rol de propietario de «{grupo}»: podrá renombrarlo, expulsar miembros y borrarlo. Tú seguirás
+como miembro y no podrás deshacerlo."; al terminar, el detalle SHALL mostrarse como miembro —sin el código ni las acciones de
+owner y con la acción de salir— sin salir de la pantalla. Salir y borrar SHALL navegar a `/grupos` al terminar; expulsar SHALL actualizar la
 lista de miembros en la misma pantalla y ofrecer "Regenerar el código para que no pueda volver a entrar", oferta que ya
 cuenta como confirmación. Regenerar el código desde su botón SHALL pedir confirmación diciendo "Los miembros actuales siguen dentro; solo dejará de servir el código anterior" y
 SHALL mostrar el nuevo.
@@ -168,7 +202,7 @@ SHALL mostrar el nuevo.
 
 - **GIVEN** el owner de un grupo con 3 miembros y 37 ofertas, de las que la primera página trae 2
 - **WHEN** pulsa borrar
-- **THEN** la confirmación SHALL decir "Se borrará para los 3 miembros y se perderán las 37 ofertas compartidas aquí (las que estén en otros grupos siguen ahí). No se puede deshacer."
+- **THEN** la confirmación SHALL decir "Si solo quieres irte, nombra propietario a otro miembro y sal del grupo. Se borrará para los 3 miembros y se perderán las 37 ofertas compartidas aquí (las que estén en otros grupos siguen ahí). No se puede deshacer."
 
 #### Scenario: Borrado de un grupo en el que estás solo
 
@@ -182,6 +216,19 @@ SHALL mostrar el nuevo.
 - **WHEN** expulsa a un miembro y confirma
 - **THEN** la lista de miembros SHALL actualizarse sin salir de la pantalla
 - **AND** SHALL ofrecer "Regenerar el código para que no pueda volver a entrar"
+
+#### Scenario: Nombrar propietario y salir
+
+- **GIVEN** Ana, owner de "Backend Bolivia", en el detalle con el miembro Beto
+- **WHEN** pulsa "Nombrar propietario" sobre Beto y confirma
+- **THEN** el detalle SHALL mostrar a Beto como propietario y a Ana como miembro, sin el código de invitación
+- **AND** SHALL ofrecer a Ana la acción de salir
+
+#### Scenario: Cancelar la transferencia
+
+- **GIVEN** el owner en el detalle
+- **WHEN** pulsa "Nombrar propietario" y cancela la confirmación
+- **THEN** el SPA NO SHALL llamar a la API y SHALL seguir siendo owner en pantalla
 
 ### Requirement: Textos en español e inglés
 
