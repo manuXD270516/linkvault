@@ -145,12 +145,18 @@ máximo, y SHALL aceptarse solo contenido HTML.
 ### Requirement: Preview con procedencia por campo
 
 Cada campo del preview SHALL guardarse con su valor y su origen: `auto` con el identificador del extractor que lo
-produjo, o `manual` con quién lo escribió y cuándo. Al leerse, el origen `manual` SHALL decir el nombre visible de quien
-escribió el campo, no su identificador. Un merge automático NO SHALL sobrescribir nunca un
-campo cuyo origen es `manual`, y SHALL guardar en el campo el valor automático que la edición desplazó, para poder
-volver a él. Dentro de una misma pasada, entre dos valores automáticos SHALL ganar el de la etapa anterior de la cadena,
-que es la más fiable. Frente a lo ya guardado, un valor automático nuevo SHALL sustituir al automático anterior aunque
-venga de una etapa menos fiable: la página pudo cambiar.
+produjo, `pasted` con quién pegó el texto del que salió y cuándo, o `manual` con quién lo escribió y cuándo. Al leerse,
+los orígenes `pasted` y `manual` SHALL decir el nombre visible de la persona, no su identificador. La precedencia SHALL
+ser **escrito a mano > pegado > leído de la página**, y SHALL ser una sola regla para todo lo que escribe el preview: un
+merge automático NO SHALL sobrescribir un campo `manual` ni `pasted`, y un pegado NO SHALL sobrescribir un campo
+`manual`. Cuando una persona sustituya un campo —pegando una descripción o escribiendo a mano—, SHALL guardarse la
+entrada sustituida —valor, origen, extractor, autor y fecha— para poder volver a ella; una relectura automática que
+sustituye un valor automático por otro no guarda nada, y la tarjeta no ofrece volver en ese campo. En un merge
+automático o en un pegado, un valor vacío NO SHALL sustituir a uno que ya hubiera; una persona que escribe a mano sí
+puede vaciar un campo. Dentro de una misma pasada,
+entre dos valores automáticos SHALL ganar el de la etapa anterior de la cadena, que es la más fiable. Frente a lo ya
+guardado, un valor automático nuevo SHALL sustituir al automático anterior aunque venga de una etapa menos fiable: la
+página pudo cambiar.
 
 #### Scenario: Lo manual no se pisa
 
@@ -179,15 +185,36 @@ venga de una etapa menos fiable: la página pudo cambiar.
 - **WHEN** una persona lo corrige a mano
 - **THEN** el campo SHALL conservar el valor automático anterior y su extractor
 
+#### Scenario: Una relectura no pisa lo pegado
+
+- **GIVEN** un link cuyo `company` salió de un texto pegado
+- **WHEN** se vuelve a leer la página y la extracción propone otra empresa
+- **THEN** `company` SHALL seguir siendo la pegada, con origen `pasted`
+
+#### Scenario: Pegar no pisa lo escrito a mano
+
+- **GIVEN** un link cuyo `title` escribió una persona a mano
+- **WHEN** otra persona pega el texto de la oferta y de él sale otro título
+- **THEN** `title` SHALL seguir siendo el escrito a mano, con lo que guardaba para deshacerse intacto
+- **AND** los campos que nadie escribió a mano SHALL tomar lo pegado
+
+#### Scenario: Volver a lo pegado
+
+- **GIVEN** un campo que salió de un texto pegado y después se corrigió a mano
+- **WHEN** se pide volver al valor anterior
+- **THEN** el campo SHALL recuperar el valor pegado, con su origen `pasted` y su autor
+
 ### Requirement: Estados del enriquecimiento
 
 Al terminar, el link SHALL quedar en `enriched` si tiene los campos obligatorios, en `partial` si obtuvo algo pero no
-todos, y en `failed` si no obtuvo nada o no pudo descargarse. `previewVersion` SHALL subir en uno con cada
-enriquecimiento que cambie el preview, y la escritura SHALL condicionarse a la versión leída, de modo que dos
-enriquecimientos simultáneos no se pisen. Un fallo SHALL registrar su motivo en el link, sin la respuesta del sitio ni
-datos personales, tomándolo de una lista cerrada que SHALL distinguir lo que no es culpa nuestra —el sitio prohíbe la
-lectura, el sitio nos bloquea, o lo que hay no es una oferta— del resto de fallos. Un job que agote sus reintentos SHALL
-dejar el link en `failed` con su propio motivo, nunca en `pending` para siempre.
+todos, y en `failed` si no obtuvo nada o no pudo descargarse. Si el preview ya tiene campos pegados o escritos a mano,
+una lectura fallida NO SHALL devolverlo a `failed`: su estado SHALL seguir derivándose de los campos que tiene, con el
+motivo del fallo registrado. `previewVersion` SHALL subir en uno con cada enriquecimiento que cambie el preview, y la
+escritura SHALL condicionarse a la versión leída, de modo que dos enriquecimientos simultáneos no se pisen. Un fallo
+SHALL registrar su motivo en el link, sin la respuesta del sitio ni datos personales, tomándolo de una lista cerrada que
+SHALL distinguir lo que no es culpa nuestra —el sitio prohíbe la lectura, el sitio nos bloquea, o lo que hay no es una
+oferta— del resto de fallos. Un job que agote sus reintentos SHALL dejar el link en `failed` con su propio motivo, nunca
+en `pending` para siempre.
 
 #### Scenario: Enriquecido
 
@@ -250,6 +277,13 @@ dejar el link en `failed` con su propio motivo, nunca en `pending` para siempre.
 - **WHEN** se agotan sus reintentos
 - **THEN** el link SHALL quedar `failed` con el motivo de reintentos agotados
 - **AND** NO SHALL quedarse en `pending`
+
+#### Scenario: Una lectura fallida no borra lo pegado
+
+- **GIVEN** un link completado pegando su texto, con título y empresa
+- **WHEN** una lectura posterior de su página falla
+- **THEN** el link SHALL seguir `enriched` con lo pegado
+- **AND** SHALL registrar el motivo del fallo
 
 ### Requirement: Extracción estructurada con IA
 
@@ -414,3 +448,42 @@ peticiones SHALL esperar a que vuelva.
 - **GIVEN** links `failed` por tiempo agotado y otros porque la bolsa prohíbe la lectura
 - **WHEN** se ejecuta el comando pidiendo los fallidos
 - **THEN** SHALL reencolarse solo los del primer grupo
+
+### Requirement: Otras URLs de la misma vacante
+
+Cuando `robots.txt` prohíba la `displayUrl` de un link, el worker SHALL probar las demás URLs de su historial **del
+mismo host**, sin repetidas y las más recientes primero, pidiendo permiso a `robots.txt` para cada una dentro del mismo
+turno del host, y SHALL leer la primera permitida. Una URL de otro host NO SHALL probarse. Solo si ninguna está
+permitida SHALL rendirse con `robots_disallowed`. La `displayUrl` NO SHALL cambiar: sigue siendo la que se abre. Cuando
+alguien vuelva a guardar la vacante con una URL que no estaba en su historial, **del mismo host** que la `displayUrl`, y
+el link esté en `failed` por `robots_disallowed`, SHALL pedirse una lectura nueva en la misma operación, sin volver a
+pedir la URL prohibida. Una URL nueva de otro host NO SHALL pedir nada, porque la lectura no la probaría.
+
+#### Scenario: El historial tiene la misma vacante sin el parámetro prohibido
+
+- **GIVEN** un link cuya `displayUrl` lleva un parámetro que el `robots.txt` del sitio prohíbe
+- **AND** cuyo historial tiene la misma vacante sin ese parámetro, en el mismo host
+- **WHEN** se enriquece
+- **THEN** SHALL leerse la URL permitida del historial
+- **AND** la `displayUrl` NO SHALL cambiar
+
+#### Scenario: Se vuelve a guardar la vacante con otra URL
+
+- **GIVEN** un link en `failed` porque `robots.txt` prohíbe su `displayUrl`
+- **WHEN** alguien guarda la misma vacante con una URL que el sitio sí permite
+- **THEN** SHALL pedirse una lectura nueva del link
+- **AND** esa lectura SHALL usar la URL permitida
+
+#### Scenario: Todo el historial está prohibido
+
+- **GIVEN** un link cuyas URLs están todas prohibidas por `robots.txt`
+- **WHEN** se enriquece
+- **THEN** NO SHALL descargarse ninguna
+- **AND** el link SHALL quedar `failed` con `robots_disallowed`
+
+#### Scenario: URL del historial en otro host
+
+- **GIVEN** un link cuya `displayUrl` está prohibida y cuyo historial solo tiene otra URL en un host distinto
+- **WHEN** se enriquece
+- **THEN** NO SHALL pedirse nada a ese otro host
+- **AND** el link SHALL quedar `failed` con `robots_disallowed`
