@@ -117,8 +117,9 @@ export const LinksStore = signalStore(
 
     /**
      * Carga la primera página como nueva carga vigente: deja sin efecto cualquier carga anterior y cualquier página
-     * siguiente en vuelo (por eso apaga `loadingMore`). Devuelve su número si terminó bien, o `null` si no había lista
-     * abierta o falló; nunca rechaza. Si otra carga la supera mientras espera, no toca el estado (design D2).
+     * siguiente en vuelo (por eso apaga `loadingMore`). Devuelve su número —también si otra carga la superó, y quien
+     * llama lo revalida con `stillCurrent`—, o `null` si no había lista abierta o si falló; nunca rechaza. Si otra
+     * carga la supera mientras espera, no toca el estado (design D2).
      */
     const loadFirstPage = async (): Promise<number | null> => {
       const scope = store.scope();

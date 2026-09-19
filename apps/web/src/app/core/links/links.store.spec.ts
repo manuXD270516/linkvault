@@ -486,6 +486,10 @@ describe('LinksStore', () => {
       http.expectNone(GROUP_PAGE);
       expect(ids()).toEqual(['b1']);
       expect(store.reading()).toBeNull();
+
+      // Lo importado quedó en A, que es adonde fue el `POST`: se ve al volver.
+      await openGroup({ items: [linkWith('n1'), readLinkWith('a1')], total: 2 });
+      expect(ids()).toEqual(['n1', 'a1']);
     });
 
     it('reloads and opens the counter when an import answers after coming back to its group', async () => {
@@ -495,7 +499,9 @@ describe('LinksStore', () => {
       const request = http.expectOne({ method: 'POST', url: '/api/links/import' });
 
       const openingB = store.open(GROUP_B);
-      const openingA = store.open(GROUP_A);
+      // Un ámbito equivalente pero distinto objeto: `stillOn` compara por valor (design D1), así que la importación
+      // sigue siendo de la lista abierta aunque se haya salido y vuelto.
+      const openingA = store.open({ kind: 'group', groupId: 'g1' });
       http.expectOne(OTHER_GROUP_PAGE).flush({ items: [readLinkWith('b1')], total: 1 } satisfies LinkPage);
       http.expectOne(GROUP_PAGE).flush({ items: [readLinkWith('a1')], total: 1 } satisfies LinkPage);
       await Promise.all([openingB, openingA]);
