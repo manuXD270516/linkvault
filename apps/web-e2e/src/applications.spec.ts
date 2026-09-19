@@ -1,10 +1,13 @@
 import { workspaceRoot } from '@nx/devkit';
 import { type Page, expect, test } from '@playwright/test';
 import { join } from 'node:path';
+import { JOB_ID_SLOTS, jobIdBase } from './support/job-ids';
 
 const SCREENSHOT_DIR = join(workspaceRoot, 'reports', 'smoke', 'applications-tracking');
 
 const RUN_ID = Date.now();
+/** Id de oferta de este spec: único aunque otro spec arranque en el mismo milisegundo. */
+const JOB_ID = jobIdBase(JOB_ID_SLOTS.applications);
 /** Quien crea el grupo y guarda la oferta; es quien mira los avatares. */
 const OWNER = {
   displayName: 'Smoke Dueña',
@@ -21,8 +24,8 @@ const GROUP_NAME = `Smoke Postulaciones ${RUN_ID}`;
 
 // Oferta de LinkedIn con un identificador propio de esta ejecución: el worker no descarga LinkedIn (su `robots.txt` lo
 // prohíbe), así que la tarjeta se queda con la etiqueta de la URL, y ninguna ejecución hereda la vacante de otra.
-const OFFER_URL = `https://www.linkedin.com/jobs/view/analista-de-datos-${RUN_ID}/`;
-const OFFER_LABEL = `analista de datos ${RUN_ID}`;
+const OFFER_URL = `https://www.linkedin.com/jobs/view/analista-de-datos-${JOB_ID}/`;
+const OFFER_LABEL = `analista de datos ${JOB_ID}`;
 const STAGE = 'Entrevista';
 
 async function register(

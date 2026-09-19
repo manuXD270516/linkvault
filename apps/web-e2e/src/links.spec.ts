@@ -8,6 +8,7 @@ import { type Page, expect, test } from '@playwright/test';
 import { MongoClient } from 'mongodb';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { JOB_ID_SLOTS, jobIdBase } from './support/job-ids';
 
 const SCREENSHOT_DIR = join(workspaceRoot, 'reports', 'smoke', 'job-links');
 /** Las capturas del preview son de `link-enrichment`, no de `job-links`: cada change guarda las suyas. */
@@ -23,6 +24,8 @@ const MONGO_URI =
   process.env['MONGO_URI'] ?? 'mongodb://localhost:27017/linkvault?directConnection=true';
 
 const RUN_ID = Date.now();
+/** Id de oferta de este spec: único aunque otro spec arranque en el mismo milisegundo. */
+const JOB_ID = jobIdBase(JOB_ID_SLOTS.links);
 const USER = {
   displayName: 'Smoke Links',
   email: `smoke-links+${RUN_ID}@example.com`,
@@ -46,8 +49,8 @@ const GROUP_NAME = `Smoke Links ${RUN_ID}`;
 const COMPUTRABAJO_ID = RUN_ID.toString(16);
 
 /** URL con slug: lo que se guarda (`displayUrl`) lo conserva, mientras que la normalizada se queda en el id. */
-const LINKEDIN_URL = `https://www.linkedin.com/jobs/view/senior-backend-engineer-at-acme-${RUN_ID}/?utm_source=smoke`;
-const LINKEDIN_LABEL = `senior backend engineer at acme ${RUN_ID}`;
+const LINKEDIN_URL = `https://www.linkedin.com/jobs/view/senior-backend-engineer-at-acme-${JOB_ID}/?utm_source=smoke`;
+const LINKEDIN_LABEL = `senior backend engineer at acme ${JOB_ID}`;
 const COMPUTRABAJO_URL = `https://bo.computrabajo.com/ofertas-de-trabajo/oferta-de-trabajo-de-analista-de-datos-en-acme-${COMPUTRABAJO_ID}`;
 const COMPUTRABAJO_LABEL = `oferta de trabajo de analista de datos en acme ${COMPUTRABAJO_ID}`;
 /** Lo que alguien pega en el chat sin ser una oferta: se guarda igual y luego se quita. */
@@ -56,11 +59,11 @@ const VIDEO_LABEL = `video de gatos ${RUN_ID}`;
 const PRIVATE_URL = `https://www.getonbrd.com/jobs/programming/desarrollador-frontend-senior-acme-remote-${RUN_ID}`;
 const PRIVATE_LABEL = `desarrollador frontend senior acme remote ${RUN_ID}`;
 /** La única de las cinco bolsas cuyo `robots.txt` permite leer una oferta y que además publica JSON-LD (design §Context). */
-const TRABAJOPOLIS_URL = `https://www.trabajopolis.bo/trabajo/${RUN_ID}/aviso-acme-bo-${RUN_ID}/`;
-const TRABAJOPOLIS_LABEL = `aviso acme bo ${RUN_ID}`;
+const TRABAJOPOLIS_URL = `https://www.trabajopolis.bo/trabajo/${JOB_ID}/aviso-acme-bo-${JOB_ID}/`;
+const TRABAJOPOLIS_LABEL = `aviso acme bo ${JOB_ID}`;
 /** Otra oferta de LinkedIn, para completarla pegando el cuerpo y escribiendo aparte el título y la empresa. */
-const LINKEDIN_TYPED_URL = `https://www.linkedin.com/jobs/view/analista-contable-${RUN_ID + 1}/`;
-const LINKEDIN_TYPED_LABEL = `analista contable ${RUN_ID + 1}`;
+const LINKEDIN_TYPED_URL = `https://www.linkedin.com/jobs/view/analista-contable-${JOB_ID + 1}/`;
+const LINKEDIN_TYPED_LABEL = `analista contable ${JOB_ID + 1}`;
 const BLOCKED_TEXT = 'LinkedIn no nos deja leer sus ofertas. Pega su descripción para completarla';
 
 /** Entrada de un caso del golden de `extract-pasted-job`. */
