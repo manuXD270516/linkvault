@@ -145,8 +145,8 @@ changes:
       Heredado de `job-links`: los campos `comment`, `tags` y `pinned` de `group_links` que describe docs/design.md, que su schema
       dejó fuera porque nada los usaba (hoy la relación es `{ groupId, linkId, sharedBy, sharedAt }`); este change los añade con lo
       que necesite la card, sin tocar los índices `(groupId, linkId)` único y `(groupId, sharedAt, _id)` del listado paginado.
-      Y `settings.defaultVisibility` del grupo (fuera de alcance en `groups`, D1, y en `job-links`, donde la visibilidad se elige al
-      guardar): solo tiene sentido cuando el grupo ya tiene links y una preferencia por defecto que aplicar.
+      Decisión humana del 2026-09-19: de esos campos solo entra `comment` (la nota de quien comparte); `tags` y `pinned` quedan
+      fuera hasta que un uso los pida, y `settings.defaultVisibility` pasa a `public-preview-share`.
   - name: public-preview-share
     adrs: [013]
     agents: [backend-dev, frontend-dev]
@@ -157,6 +157,11 @@ changes:
       change lo necesita para las URLs públicas, lo añade él: campo `slug` en la colección `groups` con índice único, generación
       a partir del nombre con desambiguación y backfill de los grupos ya existentes (migración, no valor por defecto), teniendo en
       cuenta que el nombre del grupo no es único y que el slug no debe filtrar nada que el código de invitación ya protege.
+      Decisión humana del 2026-09-19 (group-comments): `settings.defaultVisibility` del grupo sale de `group-comments` y entra
+      aquí, donde significa "los links de este grupo se comparten públicamente por defecto: sí/no" (docs/design-v0.2.md §5.5,
+      `sharePublic` true por defecto en los links de grupo). Decidir su valor por defecto, quién lo cambia (el owner), si aplica
+      solo a los links que se compartan después o también a los existentes, y cómo convive con el `sharePublic` de cada link.
+      Heredado de `group-comments` (ADR-026): la página pública `/p/:slug` NO expone comentarios ni notas de grupo.
   - name: cv-upload-extract
     adrs: [006, 009]
     agents: [backend-dev, frontend-dev]
