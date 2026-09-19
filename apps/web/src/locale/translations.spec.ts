@@ -33,6 +33,17 @@ describe('messages.en.xlf', () => {
     }
   });
 
+  it('never says "owner" in Spanish', () => {
+    // En español el rol es siempre "propietario" (spec web/groups); `owner` solo es el valor de `role` en la API.
+    const document = new DOMParser().parseFromString(sourceMessages, 'application/xml');
+    const sources = Array.from(document.getElementsByTagName('source'));
+
+    expect(sources.length).toBeGreaterThan(0);
+    for (const source of sources) {
+      expect.soft(source.textContent ?? '').not.toMatch(/owner/i);
+    }
+  });
+
   it('has exactly the units extracted from the Spanish source', () => {
     const source = [...translationUnits(sourceMessages).keys()].sort();
     const english = [...translationUnits(enMessages).keys()].sort();

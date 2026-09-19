@@ -228,6 +228,34 @@ export class GroupDetailPage {
     });
   }
 
+  /**
+   * Nombrar propietario a otro miembro (D3). No se puede deshacer desde aquí, así que la confirmación lo dice. La API
+   * responde el detalle ya como miembro (sin código); los miembros se piden otra vez para ver los roles nuevos, sin
+   * salir de la pantalla, que ya ofrece "Salir".
+   */
+  protected async transferOwnership(member: GroupMember): Promise<void> {
+    const current = this.group();
+    if (!current) {
+      return;
+    }
+    const confirmed = await confirmWith(this.dialog, {
+      title: $localize`:@@groups.detail.transferTitle:Nombrar propietario`,
+      message: $localize`:@@groups.detail.transferMessage:«${member.displayName}:NAME:» tendrá el rol de propietario de «${current.name}:GROUP:»: podrá renombrarlo, expulsar miembros y borrarlo. Tú seguirás como miembro y no podrás deshacerlo.`,
+      confirmLabel: $localize`:@@groups.detail.transferConfirm:Nombrar propietario`,
+    });
+    if (!confirmed) {
+      return;
+    }
+    await this.run(async () => {
+      const detail = await this.store.transferOwnership(this.groupId, member.userId);
+      this.rotateOffer.set(false);
+      this.invitationToCopy.set('');
+      this.invitationCopied.set(false);
+      this.group.set(detail);
+      this.members.set(await this.api.listMembers(this.groupId));
+    });
+  }
+
   /** La oferta de regenerar tras expulsar ya cuenta como confirmación, así que no se vuelve a preguntar. */
   protected async acceptRotateOffer(): Promise<void> {
     this.rotateOffer.set(false);

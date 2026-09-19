@@ -139,6 +139,25 @@ describe('GroupsStore', () => {
     }
   });
 
+  it('reloads the list after transferring the ownership', async () => {
+    const asMember: GroupDetail = {
+      id: 'g1',
+      name: 'Backend Bolivia',
+      role: 'member',
+      memberCount: 3,
+      createdAt: '2026-09-17T10:00:00.000Z',
+    };
+    const transferring = store.transferOwnership('g1', 'u2');
+
+    const request = http.expectOne({ method: 'POST', url: '/api/groups/g1/owner' });
+    expect(request.request.body).toEqual({ userId: 'u2' });
+    request.flush(asMember);
+    await flushList([{ ...backend, role: 'member' }]);
+
+    await expect(transferring).resolves.toEqual(asMember);
+    expect(store.groups()).toEqual([{ ...backend, role: 'member' }]);
+  });
+
   it('propagates the error of an action without reloading the list', async () => {
     const creating = store.create('Data LatAm');
 

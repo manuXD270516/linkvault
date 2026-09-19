@@ -140,6 +140,34 @@ describe('JoinGroupDialog', () => {
     await vi.waitFor(() => expect(alertText()).toBe('Ese grupo ya tiene 50 miembros, el máximo'));
   });
 
+  it('Demasiados intentos al unirse', async () => {
+    await openDialog();
+
+    await submitCode('ABCD2345');
+    // Mismo mensaje que el resto del SPA, con los minutos de `Retry-After` redondeados hacia arriba.
+    const { body, options } = apiError('too_many_attempts', 429, { 'Retry-After': '540' });
+    http.expectOne('/api/groups/join').flush(body, options);
+    await vi.waitFor(() =>
+      expect(alertText()).toBe('Demasiados intentos. Vuelve a intentarlo en 9 minutos'),
+    );
+
+    expect(codeInput()?.value).toBe('ABCD2345');
+    expect(router.url).toBe('/grupos');
+  });
+
+  it('Demasiados intentos sin tiempo de espera', async () => {
+    await openDialog();
+
+    await submitCode('ABCD2345');
+    const { body, options } = apiError('too_many_attempts', 429);
+    http.expectOne('/api/groups/join').flush(body, options);
+    await vi.waitFor(() =>
+      expect(alertText()).toBe('Demasiados intentos. Vuelve a intentarlo más tarde'),
+    );
+
+    expect(codeInput()?.value).toBe('ABCD2345');
+  });
+
   it('does not call the API with a blank code', async () => {
     await openDialog();
 

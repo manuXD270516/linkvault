@@ -3,6 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import {
+  apiError,
   buttonWithText,
   flushGroupDetail,
   flushGroupsList,
@@ -156,5 +157,27 @@ describe('JoinGroupPage', () => {
       memberCount: 4,
       createdAt: '2026-09-10T12:00:00.000Z',
     });
+  });
+
+  it('keeps the code of the invitation link when there are too many attempts', async () => {
+    store.setSession(sessionWith('token-1'));
+    harness = await RouterTestingHarness.create();
+
+    await harness.navigateByUrl('/unirse?codigo=ABCD2345');
+    await settle();
+    await harness.fixture.whenStable();
+
+    buttonWithText(dialog(), 'Unirme').click();
+    await settle();
+    const { body, options } = apiError('too_many_attempts', 429, { 'Retry-After': '540' });
+    http.expectOne('/api/groups/join').flush(body, options);
+
+    await vi.waitFor(() =>
+      expect(dialog().querySelector('[role="alert"]')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+        'Demasiados intentos. Vuelve a intentarlo en 9 minutos',
+      ),
+    );
+    expect(code()).toBe('ABCD2345');
+    expect(router.url).toBe('/unirse');
   });
 });
