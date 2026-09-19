@@ -46,12 +46,12 @@
 
 ## 4. Aviso en vivo
 
-- [ ] 4.1 [backend] `RedisCommentsChangedPublisher` sobre `REDIS_APP_CLIENT` (nunca lanza, un `warn` por racha sin cuerpo); verificar con unitarios con un cliente doble que falla y con el contenido publicado (sin `text` ni `authorId`).
-- [ ] 4.2 [backend] `RedisCommentNotices` sobre el cliente suscriptor compartido: filtra por canal, valida con el schema estricto, descarta sin registrar contenido y vuelve a pedir el canal en cada `ready`; verificar con unitarios con un suscriptor doble que recibe los dos canales.
-- [ ] 4.3 [backend] `DeliverCommentsChanged` sobre `COMMENTS_BROADCASTER`: sin lecturas si nadie escucha; nada si la relación ya no existe; si no, un resumen y envío solo a miembros actuales; verificar con unitarios de "Los miembros se enteran", "Quien ve el link por otro sitio no recibe nada", "Quien salió deja de recibir", "Borrar también avisa", "Link quitado antes de repartir" y "Nadie escuchando".
-- [ ] 4.4 [backend] Adaptador de `COMMENTS_BROADCASTER` sobre `EventStreamRegistry` con `groupLinkCommentsMessage`; verificar con un unitario de nombre de evento y cuerpo.
-- [ ] 4.5 [backend] `LinksModule`: publicador, broadcaster, suscripción y reparto sobre el mismo `REDIS_SUBSCRIBER_CLIENT`; verificar con `links.module.spec.ts` (una sola conexión de suscripción) y `dependency-injection.spec.ts`.
-- [ ] 4.6 [backend] Integración con Redis real (patrón de `redis-enrichment-notices.integration.spec.ts`): publicar en una "instancia" llega a otra y el mensaje de Redis no contiene el texto ("El texto no viaja por Redis").
+- [x] 4.1 [backend] `RedisCommentsChangedPublisher` sobre `REDIS_APP_CLIENT` (nunca lanza, un `warn` por racha sin cuerpo); verificar con unitarios con un cliente doble que falla y con el contenido publicado (sin `text` ni `authorId`).
+- [x] 4.2 [backend] `RedisCommentNotices` sobre el cliente suscriptor compartido: filtra por canal, valida con el schema estricto, descarta sin registrar contenido y vuelve a pedir el canal en cada `ready`; verificar con unitarios con un suscriptor doble que recibe los dos canales.
+- [x] 4.3 [backend] `DeliverCommentsChanged` sobre `COMMENTS_BROADCASTER`: sin lecturas si nadie escucha; nada si la relación ya no existe; si no, un resumen y envío solo a miembros actuales; verificar con unitarios de "Los miembros se enteran", "Quien ve el link por otro sitio no recibe nada", "Quien salió deja de recibir", "Borrar también avisa", "Link quitado antes de repartir" y "Nadie escuchando".
+- [x] 4.4 [backend] Adaptador de `COMMENTS_BROADCASTER` sobre `EventStreamRegistry` con `groupLinkCommentsMessage`; verificar con un unitario de nombre de evento y cuerpo.
+- [x] 4.5 [backend] `LinksModule`: publicador, broadcaster, suscripción y reparto sobre el mismo `REDIS_SUBSCRIBER_CLIENT`; verificar con `links.module.spec.ts` (una sola conexión de suscripción) y `dependency-injection.spec.ts`.
+- [x] 4.6 [backend] Integración con Redis real (patrón de `redis-enrichment-notices.integration.spec.ts`): publicar en una "instancia" llega a otra y el mensaje de Redis no contiene el texto ("El texto no viaja por Redis").
 
 ## 5. Presentación y HTTP
 

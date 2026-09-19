@@ -22,7 +22,18 @@ import {
   apiTestConfig,
   workspaceRoot,
 } from '../../../test-support/test-config';
+import { REDIS_SUBSCRIBER_CLIENT } from '../../../infrastructure/redis/redis-subscriber-client';
+import { DeleteGroupLinkComment } from '../application/delete-group-link-comment.usecase';
+import { DeliverCommentsChanged } from '../application/deliver-comments-changed.usecase';
 import { ImportLinks } from '../application/import-links.usecase';
+import { ListGroupLinkComments } from '../application/list-group-link-comments.usecase';
+import { PostGroupLinkComment } from '../application/post-group-link-comment.usecase';
+import { RemoveShareNote } from '../application/remove-share-note.usecase';
+import { COMMENT_NOTICES } from '../application/ports/comment-notices.port';
+import { COMMENTS_BROADCASTER } from '../application/ports/comments-broadcaster.port';
+import { COMMENTS_CHANGED_PUBLISHER } from '../application/ports/comments-changed-publisher.port';
+import { ENRICHMENT_NOTICES } from '../application/ports/enrichment-notices.port';
+import { GROUP_LINK_COMMENT_REPOSITORY } from '../application/ports/group-link-comment-repository.port';
 import { ListGroupLinks } from '../application/list-group-links.usecase';
 import { LinksFacade } from '../application/links.facade';
 import { ListMyLinks } from '../application/list-my-links.usecase';
@@ -37,7 +48,13 @@ import { USER_LINK_REPOSITORY } from '../application/ports/user-link-repository.
 import { RemoveGroupLink } from '../application/remove-group-link.usecase';
 import { RemoveMyLink } from '../application/remove-my-link.usecase';
 import { SaveLink } from '../application/save-link.usecase';
+import { EventStreamCommentsBroadcaster } from '../infrastructure/event-stream-comments-broadcaster';
 import { GroupsFacadeMembership } from '../infrastructure/groups-facade-membership';
+import { LinksModule } from './links.module';
+import { MongoGroupLinkCommentRepository } from '../infrastructure/mongo-group-link-comment.repository';
+import { RedisCommentNotices } from '../infrastructure/redis-comment-notices';
+import { RedisCommentsChangedPublisher } from '../infrastructure/redis-comments-changed-publisher';
+import { RedisEnrichmentNotices } from '../infrastructure/redis-enrichment-notices';
 import { MongoGroupLinkRepository } from '../infrastructure/mongo-group-link.repository';
 import { MongoJobLinkRepository } from '../infrastructure/mongo-job-link.repository';
 import { MongoUserLinkRepository } from '../infrastructure/mongo-user-link.repository';
@@ -163,6 +180,49 @@ describe('LinksModule', () => {
     } finally {
       await control.close();
     }
+  });
+
+  it('resolves the use cases of group comments and notes', () => {
+    for (const useCase of [
+      PostGroupLinkComment,
+      DeleteGroupLinkComment,
+      ListGroupLinkComments,
+      RemoveShareNote,
+      DeliverCommentsChanged,
+    ]) {
+      expect(app.get(useCase, { strict: false })).toBeInstanceOf(useCase);
+    }
+  });
+
+  it.each([
+    [GROUP_LINK_COMMENT_REPOSITORY, MongoGroupLinkCommentRepository],
+    [COMMENTS_CHANGED_PUBLISHER, RedisCommentsChangedPublisher],
+    [COMMENTS_BROADCASTER, EventStreamCommentsBroadcaster],
+    [COMMENT_NOTICES, RedisCommentNotices],
+  ])('binds a comments port to its adapter', (token, adapter) => {
+    expect(app.get(token, { strict: false })).toBeInstanceOf(adapter);
+  });
+
+  it('opens one subscriber connection for both channels', () => {
+    const links = [...app.get(ModulesContainer).values()].find(
+      (module) => module.metatype === LinksModule,
+    );
+    const redisClients = [...(links?.providers.values() ?? [])]
+      .map((wrapper): unknown => wrapper.instance)
+      .filter((instance): instance is Redis => instance instanceof Redis);
+    const subscriber = app.get<Redis>(REDIS_SUBSCRIBER_CLIENT, {
+      strict: false,
+    });
+    const enrichment = app.get<RedisEnrichmentNotices>(ENRICHMENT_NOTICES, {
+      strict: false,
+    });
+    const comments = app.get<RedisCommentNotices>(COMMENT_NOTICES, {
+      strict: false,
+    });
+
+    expect(redisClients).toEqual([subscriber]);
+    expect(Reflect.get(enrichment, 'client')).toBe(subscriber);
+    expect(Reflect.get(comments, 'client')).toBe(subscriber);
   });
 
   it('provides the links facade, the only entry of other modules', () => {
