@@ -1,6 +1,7 @@
 import type {
   EnrichmentFailureReason,
   LastEnrichmentError,
+  Platform,
   PreviewSources,
   PreviewStatus,
   StoredPreview,
@@ -48,6 +49,19 @@ export interface PastedPreviewWrite {
   readonly now: Date;
 }
 
+/**
+ * Ficha mínima de un link para pintarlo fuera de `links` (la tarjeta del tablero de `applications`): lo justo para
+ * abrirlo y reconocerlo. Título y empresa faltan si el link no tiene preview o la empresa se leyó como desconocida.
+ */
+export interface JobLinkCard {
+  readonly id: string;
+  readonly displayUrl: string;
+  readonly platform: Platform;
+  readonly previewStatus: PreviewStatus;
+  readonly title?: string;
+  readonly company?: string;
+}
+
 export interface JobLinkRepository {
   /**
    * Abre una transacción, resuelve el `JobLink` por su `dedupeKey` —lo crea o reutiliza el existente añadiendo la URL
@@ -65,6 +79,12 @@ export interface JobLinkRepository {
 
   /** Link por id; `null` si no existe o el id no tiene formato de identificador. */
   findById(linkId: string): Promise<JobLink | null>;
+
+  /**
+   * Fichas de varios links en **una sola consulta** `$in` con proyección (D1 de applications-tracking). Los ids mal
+   * formados o que no existen no aportan nada; el orden de la respuesta no está garantizado.
+   */
+  cardsOf(linkIds: readonly string[]): Promise<JobLinkCard[]>;
 
   /**
    * Guarda el preview editado a mano con el estado que le dan —no lo toca el motivo del fallo— y sube `previewVersion`, **condicionado** a la versión

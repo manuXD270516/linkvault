@@ -55,6 +55,12 @@ export interface GroupLinkRepository {
     groupIds: readonly string[],
     linkId: string,
   ): Promise<Set<string>>;
+  /**
+   * De los links indicados, cuáles están compartidos en el grupo. Una sola consulta por el índice único
+   * `(groupId, linkId)`: es la segunda lectura fija de los estados compartidos de un grupo (D6 de
+   * applications-tracking). Los ids mal formados no aportan nada.
+   */
+  linkIdsIn(groupId: string, linkIds: readonly string[]): Promise<Set<string>>;
   /** Quita el link del grupo; `false` si no estaba. NUNCA borra el `JobLink`. */
   remove(groupId: string, linkId: string): Promise<boolean>;
   /**

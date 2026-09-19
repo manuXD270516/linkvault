@@ -14,8 +14,8 @@
 
 ## 2. Fachada de `links`
 
-- [ ] 2.1 [backend] `JobLinkRepository.cardsOf(linkIds)` (una consulta `$in` con proyección) y `GroupLinkRepository.linkIdsIn(groupId, linkIds)` (una consulta), en Mongo y en memoria, ignorando ids mal formados; verificar con integración y con los specs de los repositorios en memoria.
-- [ ] 2.2 [backend] `LinksFacade` (`links/application/links.facade.ts`) con `canRead`, `cardsOf` y `linkIdsSharedIn`, exportada por `LinksModule`; verificar con los escenarios de "Links disponibles para otros módulos" y con una fila nueva en el test tabular de `tools/workspace-rules` que hace fallar un import de `links/infrastructure` desde otro módulo.
+- [x] 2.1 [backend] `JobLinkRepository.cardsOf(linkIds)` (una consulta `$in` con proyección) y `GroupLinkRepository.linkIdsIn(groupId, linkIds)` (una consulta), en Mongo y en memoria, ignorando ids mal formados; verificar con integración y con los specs de los repositorios en memoria.
+- [x] 2.2 [backend] `LinksFacade` (`links/application/links.facade.ts`) con `canRead`, `cardsOf` y `linkIdsSharedIn`, exportada por `LinksModule`; verificar con los escenarios de "Links disponibles para otros módulos" y con una fila nueva en el test tabular de `tools/workspace-rules` que hace fallar un import de `links/infrastructure` desde otro módulo.
 
 ## 3. Dominio de `applications`
 

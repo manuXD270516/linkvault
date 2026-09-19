@@ -138,6 +138,24 @@ export class MongoGroupLinkRepository implements GroupLinkRepository {
     return new Set(found.map((groupId: Types.ObjectId) => groupId.toHexString()));
   }
 
+  async linkIdsIn(
+    groupId: string,
+    linkIds: readonly string[],
+  ): Promise<Set<string>> {
+    const group = toGroupObjectId(groupId);
+    const ids = [...new Set(linkIds)]
+      .map((linkId) => toLinkObjectId(linkId))
+      .filter((linkId): linkId is Types.ObjectId => linkId !== null);
+    if (group === null || ids.length === 0) {
+      return new Set();
+    }
+    // Una sola consulta por el índice único `(groupId, linkId)`, pida 2 links o 50 (D6 de applications-tracking).
+    const found = await this.groupLinks
+      .distinct('linkId', { groupId: group, linkId: { $in: ids } })
+      .exec();
+    return new Set(found.map((linkId: Types.ObjectId) => linkId.toHexString()));
+  }
+
   async remove(groupId: string, linkId: string): Promise<boolean> {
     const ids = this.toRelationIds(groupId, linkId);
     if (ids === null) {

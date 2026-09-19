@@ -20,6 +20,7 @@ import { BackfillEnrichment } from '../application/backfill-enrichment.usecase';
 import { DeliverLinkEnriched } from '../application/deliver-link-enriched.usecase';
 import { ImportLinks } from '../application/import-links.usecase';
 import { ListGroupLinks } from '../application/list-group-links.usecase';
+import { LinksFacade } from '../application/links.facade';
 import { ListMyLinks } from '../application/list-my-links.usecase';
 import { LINKS_CLOCK } from '../application/ports/clock.port';
 import { ENRICHMENT_BROADCASTER } from '../application/ports/enrichment-broadcaster.port';
@@ -67,7 +68,9 @@ import { LinksController } from './links.controller';
  * Importa `GroupsModule` para la pertenencia y el rol (`GroupsFacade`), `UsersModule` para los nombres visibles de quien
  * compartió (`UsersFacade`), `OutboxModule` para escribir el evento dentro de la transacción del alta y `LimitsModule`
  * para contar importaciones y relecturas: la dependencia va siempre de `links` a los demás, que es la dirección
- * permitida. No exporta nada: todavía nadie entra a `links`. La IA le llega por `register(aiModule)`.
+ * permitida. Exporta solo `LinksFacade`, la única entrada de otros módulos (D1 de applications-tracking), y quien la
+ * use recibe **la misma instancia** del módulo que construye `AppModule` (`register(aiModule)`), nunca la clase a secas:
+ * una segunda instancia no tendría `RUN_TASK` y la app no arrancaría. La IA le llega por `register(aiModule)`.
  *
  * NO monta ninguna `Queue`: reintentar y reencolar van por el outbox (D10 de link-enrichment), así que la suite de
  * integración de `api` sigue sin necesitar Redis para escribir en la cola.
@@ -151,7 +154,9 @@ import { LinksController } from './links.controller';
     LinkEnrichedSubscription,
     BackfillEnrichment,
     GroupLinksDeletionHook,
+    LinksFacade,
   ],
+  exports: [LinksFacade],
 })
 export class LinksModule implements OnModuleInit {
   /**

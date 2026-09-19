@@ -601,3 +601,79 @@ describe('listByPreviewStatus', () => {
     expect(await repository.listByPreviewStatus('pending', 0)).toEqual([]);
   });
 });
+
+describe('cardsOf', () => {
+  it('answers the cards of several links in one query, without the malformed ids', async () => {
+    const first = await save(JOB_PAGE);
+    const second = await save('https://www.linkedin.com/jobs/view/3822222222/');
+    const third = await save('https://www.linkedin.com/jobs/view/3833333333/');
+    await connection
+      .collection(JOB_LINKS_COLLECTION)
+      .updateOne(
+        { _id: new mongoose.Types.ObjectId(second.link.id) },
+        {
+          $set: {
+            previewStatus: 'enriched',
+            preview: { title: 'Backend Engineer', company: 'Acme' },
+          },
+        },
+      );
+    await connection
+      .collection(JOB_LINKS_COLLECTION)
+      .updateOne(
+        { _id: new mongoose.Types.ObjectId(third.link.id) },
+        {
+          $set: {
+            previewStatus: 'partial',
+            preview: { title: 'Frontend', company: null },
+          },
+        },
+      );
+
+    const cards = await repository.cardsOf([
+      first.link.id,
+      second.link.id,
+      third.link.id,
+      objectId(99),
+      'no-es-un-id',
+    ]);
+    const byId = new Map(cards.map((card) => [card.id, card]));
+
+    expect(cards).toHaveLength(3);
+    expect(byId.get(first.link.id)).toEqual({
+      id: first.link.id,
+      displayUrl: first.link.displayUrl,
+      platform: 'linkedin',
+      previewStatus: 'pending',
+    });
+    expect(byId.get(second.link.id)).toEqual({
+      id: second.link.id,
+      displayUrl: second.link.displayUrl,
+      platform: 'linkedin',
+      previewStatus: 'enriched',
+      title: 'Backend Engineer',
+      company: 'Acme',
+    });
+    expect(byId.get(third.link.id)).toEqual({
+      id: third.link.id,
+      displayUrl: third.link.displayUrl,
+      platform: 'linkedin',
+      previewStatus: 'partial',
+      title: 'Frontend',
+    });
+  });
+
+  it('answers nothing without well formed ids', async () => {
+    await expect(repository.cardsOf(['no-es-un-id'])).resolves.toEqual([]);
+  });
+
+  it('reads the cards through the _id index', async () => {
+    const { link } = await save(JOB_PAGE);
+    const plan: unknown = await connection
+      .collection(JOB_LINKS_COLLECTION)
+      .find({ _id: { $in: [new mongoose.Types.ObjectId(link.id)] } })
+      .explain('queryPlanner');
+
+    expect(JSON.stringify(plan)).not.toContain('COLLSCAN');
+  });
+});

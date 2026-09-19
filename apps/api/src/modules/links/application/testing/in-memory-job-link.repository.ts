@@ -9,6 +9,7 @@ import {
 } from '../../domain/job-link';
 import { isLinkId } from '../../domain/identifier';
 import type {
+  JobLinkCard,
   JobLinkRepository,
   ManualPreviewWrite,
   PastedPreviewWrite,
@@ -49,6 +50,19 @@ export class InMemoryJobLinkRepository implements JobLinkRepository {
     }
     const link = this.links.get(linkId);
     return Promise.resolve(link ? structuredClone(link) : null);
+  }
+
+  /** Cuántas veces se pidieron fichas: lo usa el test que exige una sola llamada por tablero. */
+  cardsOfCalls = 0;
+
+  cardsOf(linkIds: readonly string[]): Promise<JobLinkCard[]> {
+    this.cardsOfCalls += 1;
+    const cards = [...new Set(linkIds)]
+      .filter((linkId) => isLinkId(linkId))
+      .map((linkId) => this.links.get(linkId))
+      .filter((link): link is JobLink => link !== undefined)
+      .map(toJobLinkCard);
+    return Promise.resolve(cards);
   }
 
   listByPreviewStatus(
@@ -215,4 +229,18 @@ export class InMemoryJobLinkRepository implements JobLinkRepository {
     this.nextId += 1;
     return id;
   }
+}
+
+/** Ficha de un link con la misma forma que la proyección del adaptador real. */
+export function toJobLinkCard(link: JobLink): JobLinkCard {
+  const title = link.preview?.title;
+  const company = link.preview?.company;
+  return {
+    id: link.id,
+    displayUrl: link.displayUrl,
+    platform: link.platform,
+    previewStatus: link.previewStatus,
+    ...(typeof title === 'string' && title.length > 0 ? { title } : {}),
+    ...(typeof company === 'string' && company.length > 0 ? { company } : {}),
+  };
 }
