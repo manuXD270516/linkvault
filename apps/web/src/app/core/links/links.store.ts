@@ -1,5 +1,9 @@
 import { DestroyRef, computed, inject } from '@angular/core';
 import type {
+  CommentsSummary,
+  CreateCommentResponse,
+  DeleteCommentResponse,
+  GroupLinkCommentsMessage,
   ImportLinksResponse,
   JobLinkSummary,
   LinkPage,
@@ -16,7 +20,7 @@ import {
   withMethods,
   withState,
 } from '@ngrx/signals';
-import { type RequestFailure, toRequestFailure } from '../api/api-error';
+import { type RequestFailure, hasApiErrorCode, toRequestFailure } from '../api/api-error';
 import { EventsChannel } from '../events/events.channel';
 import { LINKS_PAGE_SIZE, LinksApi } from './links.api';
 
@@ -168,12 +172,34 @@ export const LinksStore = signalStore(
      * lista abierta se ignora: puede ser de otro grupo, o de una página que todavía no se ha cargado.
      */
     const replace = (link: JobLinkSummary): void => {
+      updateItem(link.id, (item) => keepGroupContext(item, link));
+    };
+
+    /** Cambia un link ya cargado sin tocar el orden, el `total` ni el cursor; uno que no está cargado se ignora. */
+    const updateItem = (
+      linkId: string,
+      change: (item: JobLinkSummary) => JobLinkSummary,
+    ): void => {
       const items = store.items();
-      const index = items.findIndex((item) => item.id === link.id);
+      const index = items.findIndex((item) => item.id === linkId);
       if (index === -1) {
         return;
       }
-      patchState(store, { items: items.map((item, at) => (at === index ? link : item)) });
+      patchState(store, { items: items.map((item, at) => (at === index ? change(item) : item)) });
+    };
+
+    /**
+     * Pinta el resumen de comentarios de un link del grupo abierto si es más nuevo que el que tiene la tarjeta (D11 de
+     * group-comments). Lo usan el aviso en vivo y las respuestas de publicar y de borrar: los tres llegan en cualquier
+     * orden, y uno atrasado no debe pisar a otro más reciente. Un resumen de otro grupo se ignora.
+     */
+    const applySummary = (groupId: string, linkId: string, summary: CommentsSummary): void => {
+      if (groupIdOf(store.scope()) !== groupId) {
+        return;
+      }
+      updateItem(linkId, (item) =>
+        isNewerSummary(item.comments, summary) ? { ...item, comments: summary } : item,
+      );
     };
 
     /**
@@ -325,6 +351,55 @@ export const LinksStore = signalStore(
         return link;
       },
 
+      /** Aplica el aviso en vivo de un comentario publicado o borrado en un link del grupo abierto. */
+      applyCommentsChanged(message: GroupLinkCommentsMessage): void {
+        applySummary(message.groupId, message.linkId, message.comments);
+      },
+
+      /**
+       * Publica un comentario y deja la tarjeta con el resumen que respondió la API, si es más nuevo que el que ya
+       * tiene. El error viaja al hilo, que lo explica sin perder lo escrito.
+       */
+      async postComment(groupId: string, linkId: string, text: string): Promise<CreateCommentResponse> {
+        const response = await api.postComment(groupId, linkId, text);
+        applySummary(groupId, linkId, response.comments);
+        return response;
+      },
+
+      /**
+       * Borra un comentario y deja la tarjeta con el resumen de la respuesta. Un `404 comment_not_found` ya es el
+       * resultado pedido (se borró en otra pestaña): devuelve `null` sin error, y la tarjeta la corrige el aviso de ese
+       * borrado o la próxima lectura de la lista.
+       */
+      async deleteComment(
+        groupId: string,
+        linkId: string,
+        commentId: string,
+      ): Promise<DeleteCommentResponse | null> {
+        try {
+          const response = await api.deleteComment(groupId, linkId, commentId);
+          applySummary(groupId, linkId, response.comments);
+          return response;
+        } catch (error: unknown) {
+          if (hasApiErrorCode(error, 404, 'comment_not_found')) {
+            return null;
+          }
+          throw error;
+        }
+      },
+
+      /** Quita la nota de un link del grupo; la tarjeta deja de mostrarla sin recargar la lista. */
+      async removeNote(groupId: string, linkId: string): Promise<void> {
+        await api.removeNote(groupId, linkId);
+        if (groupIdOf(store.scope()) === groupId) {
+          updateItem(linkId, (item) => {
+            const withoutNote = { ...item };
+            delete withoutNote.note;
+            return withoutNote;
+          });
+        }
+      },
+
       /**
        * Quita el link de la lista abierta (solo la relación) y recarga; si al responder ya está abierta otra lista, no
        * la recarga (design D4).
@@ -358,6 +433,9 @@ export const LinksStore = signalStore(
       const subscription = channel.linkEnriched.subscribe(({ link }) => {
         store.applyEnriched(link);
       });
+      subscription.add(
+        channel.groupLinkComments.subscribe((message) => store.applyCommentsChanged(message)),
+      );
       const onVisibilityChange = (): void => {
         if (document.visibilityState === 'visible') {
           void store.reload();
@@ -380,6 +458,41 @@ function readingOf(page: LinkPage): ReadingProgress | null {
   const waiting =
     page.items.length > 0 && page.items.every((item) => item.previewStatus === 'pending');
   return waiting ? { done: 0, total: page.total } : null;
+}
+
+/**
+ * La tarjeta nueva con la nota y los comentarios de la anterior cuando no los trae (critic 1 de group-comments): el
+ * aviso `link.enriched`, la corrección del preview y el pegado responden con el link sin su contexto de grupo, y
+ * sustituir la tarjeta tal cual borraría de la pantalla lo que el grupo escribió. Si los trae, manda el resumen más
+ * nuevo.
+ */
+function keepGroupContext(current: JobLinkSummary, incoming: JobLinkSummary): JobLinkSummary {
+  const note = incoming.note ?? current.note;
+  const comments =
+    incoming.comments === undefined || !isNewerSummary(current.comments, incoming.comments)
+      ? current.comments
+      : incoming.comments;
+  return {
+    ...incoming,
+    ...(note === undefined ? {} : { note }),
+    ...(comments === undefined ? {} : { comments }),
+  };
+}
+
+/**
+ * `true` si `incoming` debe sustituir al resumen que ya se pinta. Se compara la pareja (`sharedAt`, `revision`): un
+ * `sharedAt` distinto gana siempre, porque el link se quitó y se volvió a compartir y su revisión empezó de nuevo; con
+ * el mismo, gana la revisión mayor o igual (critic 4 de la iteración 1 y critic 2 de la iteración 2).
+ */
+export function isNewerSummary(
+  current: CommentsSummary | undefined,
+  incoming: CommentsSummary,
+): boolean {
+  return (
+    current === undefined ||
+    current.sharedAt !== incoming.sharedAt ||
+    incoming.revision >= current.revision
+  );
 }
 
 export type LinksStore = InstanceType<typeof LinksStore>;

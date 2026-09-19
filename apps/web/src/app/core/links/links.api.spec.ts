@@ -1,6 +1,15 @@
 import { HttpTestingController } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import type { ImportLinksResponse, JobLinkSummary, LinkPage, SaveLinkResponse } from '@linkvault/shared';
+import type {
+  CommentPage,
+  CommentsSummary,
+  CreateCommentResponse,
+  GroupLinkComment,
+  ImportLinksResponse,
+  JobLinkSummary,
+  LinkPage,
+  SaveLinkResponse,
+} from '@linkvault/shared';
 import {
   providePageTesting,
   sessionWith,
@@ -35,6 +44,21 @@ const imported: ImportLinksResponse = {
   unrecognized: 0,
   skipped: 0,
   links: [link],
+};
+
+const comment: GroupLinkComment = {
+  id: 'c1',
+  author: { userId: 'u2', displayName: 'Beto' },
+  authorLeft: false,
+  text: 'Piden inglés C1',
+  createdAt: '2026-09-19T10:00:00.000Z',
+};
+
+const summary: CommentsSummary = {
+  count: 1,
+  revision: 1,
+  sharedAt: '2026-09-17T10:00:00.000Z',
+  latest: [comment],
 };
 
 describe('LinksApi', () => {
@@ -170,5 +194,104 @@ describe('LinksApi', () => {
     );
 
     await expect(result).rejects.toMatchObject({ status: 400 });
+  });
+
+  describe('group comments', () => {
+    it('saves a link with a note for the group', async () => {
+      const result = api.saveLink('https://ejemplo.test/oferta', 'g1', 'Esta es la que te dije');
+
+      const request = expectRequest('POST', '/api/links');
+      expect(request.request.body).toEqual({
+        url: 'https://ejemplo.test/oferta',
+        groupId: 'g1',
+        note: 'Esta es la que te dije',
+      });
+      request.flush(saved, { status: 201, statusText: 'Created' });
+
+      await expect(result).resolves.toEqual(saved);
+    });
+
+    /** Una nota en blanco es "no enviada", y sin grupo no hay a quién dejarla: en ninguno de los dos casos viaja. */
+    it('never sends a blank note or a note without a group', async () => {
+      const blank = api.saveLink('https://ejemplo.test/oferta', 'g1', '   ');
+      const blankRequest = expectRequest('POST', '/api/links');
+      expect(blankRequest.request.body).toEqual({ url: 'https://ejemplo.test/oferta', groupId: 'g1' });
+      blankRequest.flush(saved, { status: 201, statusText: 'Created' });
+      await blank;
+
+      const privateLink = api.saveLink('https://ejemplo.test/oferta', undefined, 'Nota');
+      const privateRequest = expectRequest('POST', '/api/links');
+      expect(privateRequest.request.body).toEqual({ url: 'https://ejemplo.test/oferta' });
+      privateRequest.flush(saved, { status: 201, statusText: 'Created' });
+      await privateLink;
+    });
+
+    it('reads the first page of a thread', async () => {
+      const result = api.comments('g1', 'l1');
+      const page: CommentPage = { items: [comment], total: 1 };
+
+      expectRequest('GET', '/api/groups/g1/links/l1/comments?limit=20').flush(page);
+
+      await expect(result).resolves.toEqual(page);
+    });
+
+    it('reads the next page of a thread with its cursor', async () => {
+      const result = api.comments('g1', 'l1', { cursor: 'Y3Vyc29y' });
+      const page: CommentPage = { items: [comment], total: 21 };
+
+      expectRequest('GET', '/api/groups/g1/links/l1/comments?limit=20&cursor=Y3Vyc29y').flush(page);
+
+      await expect(result).resolves.toEqual(page);
+    });
+
+    it('posts a comment and returns it with the new summary', async () => {
+      const result = api.postComment('g1', 'l1', 'Piden inglés C1');
+      const response: CreateCommentResponse = { comment, comments: summary };
+
+      const request = expectRequest('POST', '/api/groups/g1/links/l1/comments');
+      expect(request.request.body).toEqual({ text: 'Piden inglés C1' });
+      request.flush(response, { status: 201, statusText: 'Created' });
+
+      await expect(result).resolves.toEqual(response);
+    });
+
+    it('deletes a comment and returns the new summary', async () => {
+      const result = api.deleteComment('g1', 'l1', 'c1');
+      const after: CommentsSummary = { ...summary, count: 0, revision: 2, latest: [] };
+
+      expectRequest('DELETE', '/api/groups/g1/links/l1/comments/c1').flush({ comments: after });
+
+      await expect(result).resolves.toEqual({ comments: after });
+    });
+
+    it('removes the note of a link', async () => {
+      const result = api.removeNote('g1', 'l1');
+
+      expectRequest('DELETE', '/api/groups/g1/links/l1/note').flush(null, {
+        status: 204,
+        statusText: 'No Content',
+      });
+
+      await expect(result).resolves.toBeUndefined();
+    });
+
+    it('escapes the identifiers of the comment paths', async () => {
+      const result = api.deleteComment('g 1', 'l/1', 'c?1');
+
+      expectRequest('DELETE', '/api/groups/g%201/links/l%2F1/comments/c%3F1').flush({ comments: summary });
+
+      await expect(result).resolves.toEqual({ comments: summary });
+    });
+
+    it('propagates comment_not_found to the caller', async () => {
+      const result = api.deleteComment('g1', 'l1', 'c1');
+
+      expectRequest('DELETE', '/api/groups/g1/links/l1/comments/c1').flush(
+        { code: 'comment_not_found', message: 'Comment not found' },
+        { status: 404, statusText: 'Not Found' },
+      );
+
+      await expect(result).rejects.toMatchObject({ status: 404 });
+    });
   });
 });

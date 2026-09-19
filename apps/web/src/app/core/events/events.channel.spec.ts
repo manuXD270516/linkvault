@@ -1,7 +1,7 @@
 import { HttpEventType } from '@angular/common/http';
 import { HttpTestingController, type TestRequest } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import type { JobLinkSummary, LinkEnrichedMessage } from '@linkvault/shared';
+import type { GroupLinkCommentsMessage, JobLinkSummary, LinkEnrichedMessage } from '@linkvault/shared';
 import { providePageTesting, sessionWith, settle } from '../../../testing/auth-testing';
 import { SessionStore } from '../auth/session.store';
 import { EVENTS_FIRST_RETRY_DELAY_MS, EventsChannel } from './events.channel';
@@ -15,6 +15,27 @@ const link: JobLinkSummary = {
   previewVersion: 2,
   preview: { title: 'Ingeniera de datos', company: 'Acme' },
   sharedAt: '2026-09-18T10:00:00.000Z',
+};
+
+const commentsMessage: GroupLinkCommentsMessage = {
+  groupId: 'g1',
+  linkId: 'l1',
+  change: 'created',
+  commentId: 'c3',
+  comments: {
+    count: 3,
+    revision: 3,
+    sharedAt: '2026-09-18T10:00:00.000Z',
+    latest: [
+      {
+        id: 'c3',
+        author: { userId: 'u2', displayName: 'Beto' },
+        authorLeft: false,
+        text: 'Ya cerró',
+        createdAt: '2026-09-19T10:00:00.000Z',
+      },
+    ],
+  },
 };
 
 /** Un evento del canal tal y como lo escribe la API: nombre, cuerpo y la línea en blanco que lo cierra. */
@@ -166,5 +187,54 @@ describe('EventsChannel', () => {
     expect(request.cancelled).toBe(true);
     expect(channel.connected()).toBe(false);
     expect(received).toHaveLength(1);
+  });
+
+  describe('group-link.comments', () => {
+    let comments: GroupLinkCommentsMessage[];
+
+    beforeEach(() => {
+      comments = [];
+      channel.groupLinkComments.subscribe((message) => comments.push(message));
+    });
+
+    it('dispatches a valid comments notice apart from the link notices', async () => {
+      const request = openChannel();
+      push(request, sse('group-link.comments', commentsMessage));
+      await settle();
+
+      expect(comments).toEqual([commentsMessage]);
+      expect(received).toEqual([]);
+    });
+
+    it('discards a malformed comments notice', async () => {
+      const request = openChannel();
+      const { comments: summary } = commentsMessage;
+      const { latest } = summary;
+      const malformed: unknown[] = [
+        { ...commentsMessage, change: 'edited' },
+        { ...commentsMessage, groupId: '' },
+        { ...commentsMessage, comments: { ...summary, revision: -1 } },
+        { ...commentsMessage, comments: { ...summary, sharedAt: undefined } },
+        { ...commentsMessage, comments: { ...summary, latest: [...latest, ...latest, ...latest] } },
+        { ...commentsMessage, comments: { ...summary, latest: [{ id: 'c3', text: 'sin autor' }] } },
+      ];
+      push(
+        request,
+        'event: group-link.comments\ndata: no-es-json\n\n' +
+          malformed.map((data) => sse('group-link.comments', data)).join(''),
+      );
+      await settle();
+
+      expect(comments).toEqual([]);
+    });
+
+    it('does not take a notice with another name for a comments notice', async () => {
+      const request = openChannel();
+      push(request, sse('group-link.comments.v2', commentsMessage) + sse('link.enriched', commentsMessage));
+      await settle();
+
+      expect(comments).toEqual([]);
+      expect(received).toEqual([]);
+    });
   });
 });
