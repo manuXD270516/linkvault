@@ -1,15 +1,15 @@
 ## 1. Carreras de LinksStore
 
-- [ ] 1.1 [frontend] `links.store.ts`: contador `listLoad` con `stillCurrent` y `stillOn(scope)` por valor (design D1);
+- [x] 1.1 [frontend] `links.store.ts`: contador `listLoad` con `stillCurrent` y `stillOn(scope)` por valor (design D1);
   helper interno de primera página que incrementa `listLoad` antes del `await`, pone `loadingMore: false`, descarta
   respuesta, error y `finally` si ya no es la última y devuelve su número (o `null` sin ámbito o si falló); `reload()`
   público lo envuelve; `close()` incrementa `listLoad` (D2, D3).
-- [ ] 1.2 [frontend] `links.store.ts`: `loadMore()` captura `listLoad` y descarta la página, el error y el `finally` si
+- [x] 1.2 [frontend] `links.store.ts`: `loadMore()` captura `listLoad` y descarta la página, el error y el `finally` si
   cambió (D3); `save`, `importText` y `remove` capturan el ámbito y no recargan si `!stillOn`, e `importText` abre
   `reading` solo si su carga terminó bien y sigue siendo la última (D4); `updatePreview`, `pasteDescription`,
   `undoPaste` y `retryEnrichment` solo llaman a `replace()` si `stillOn` (D5). Ninguna promesa rechaza por un descarte
   (D2).
-- [ ] 1.3 [frontend] Ampliar `links.store.spec.ts` (TestBed + `HttpTestingController`) con un test por Scenario de
+- [x] 1.3 [frontend] Ampliar `links.store.spec.ts` (TestBed + `HttpTestingController`) con un test por Scenario de
   "La lista mostrada es la del ámbito abierto": abrir A, abrir B antes de la respuesta de A, responder A y luego B → en
   medio B sin links de A y cargando, al final solo los de B; B antes que A → B; error tardío de A → sin `failure` y
   cargando; error de B → `failure` y sin carga; `loadMore` en A y abrir B → la página no se añade y `loadingMore` en
