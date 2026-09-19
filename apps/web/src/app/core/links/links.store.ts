@@ -260,9 +260,11 @@ export const LinksStore = signalStore(
        * abierta no envía nada: el destino (grupo o lista privada) sale del ámbito, y adivinarlo sería guardar donde no
        * se pidió. Si al responder ya está abierta otra lista, no la recarga: esa ya la cargó su propio `open` (design D4).
        */
-      async save(url: string): Promise<SaveLinkResponse> {
+      async save(url: string, note?: string): Promise<SaveLinkResponse> {
+        // La nota solo existe en un grupo: en la lista privada no hay nadie a quien dejársela (D3 de group-comments).
         const scope = openScope();
-        const response = await api.saveLink(url, groupIdOf(scope) ?? undefined);
+        const groupId = groupIdOf(scope) ?? undefined;
+        const response = await api.saveLink(url, groupId, groupId === undefined ? undefined : note);
         if (stillOn(scope)) {
           await loadFirstPage();
         }

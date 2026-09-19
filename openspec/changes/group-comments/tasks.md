@@ -80,8 +80,8 @@
 - [x] 6.11 [frontend] `comments.dialog` en vivo (altas): añade lo que viene en `latest` sin duplicar; verificar con "Con el hilo abierto" y "Mi propio comentario, una vez".
 - [x] 6.12 [frontend] `comments.dialog` en vivo ("Ver comentarios nuevos" y bajas): botón cuando lo nuevo no viene en `latest`, y quitar lo borrado; verificar con "Varios a la vez" y "Borrado que llega mientras miras".
 - [x] 6.13 [frontend] `save-link.form`: campo de nota solo en grupo, con contador de 280, y tras `already_there` con nota, "Tu nota no se añadió…" dejando el texto en el campo; verificar con "Compartir con nota", "La oferta ya estaba" y "Sin nota en la lista privada".
-- [ ] 6.14 [frontend] Confirmación de quitar un link con el número de comentarios de `comments.count` (plural ICU); verificar con "Quitar un link con comentarios" y los escenarios existentes de `web/links`.
-- [ ] 6.15 [frontend] Tras 1.1, marcar todos los textos de D11 y traducirlos en `messages.en.xlf`; verificar con "Traducciones completas".
+- [x] 6.14 [frontend] Confirmación de quitar un link con el número de comentarios de `comments.count` (plural ICU); verificar con "Quitar un link con comentarios" y los escenarios existentes de `web/links`.
+- [x] 6.15 [frontend] Tras 1.1, marcar todos los textos de D11 y traducirlos en `messages.en.xlf`; verificar con "Traducciones completas".
 
 ## 7. Cierre
 

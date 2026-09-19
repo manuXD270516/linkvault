@@ -645,3 +645,26 @@ Decisiones tomadas al implementar que el diseño no fijaba. Se eligió lo más c
 | I13 | 3.3 | Tras borrar, el resumen se compone con una lectura de miembros, `latestByLinks` y, solo si queda algún comentario, los nombres. | El `200 { comments }` lleva `authorLeft` como cualquier otro resumen. |
 | I14 | 3.7 | La respuesta de `POST /api/links` en un grupo trae `link.note` (la de la relación: la del primero si ya estaba). No trae `comments`. `SaveLink` vuelve a rechazar con `InvalidShareNote` una nota con texto sin grupo. | Escenario "Guardar con una nota"; el resumen de comentarios es del listado del grupo. |
 | I15 | 3.5 | `ListGroupLinks` sigue lanzando `GroupNotFound` de `groups` (deuda heredada, Risks), aunque ya pregunta con `memberIdsOf`. | No cambiar comportamiento observable fuera del alcance. |
+
+## Decisiones de implementación (frontend)
+
+Decisiones del SPA que D11 no fijaba. Se eligió lo más conservador y coherente con las specs `web/group-comments` y
+`web/links`.
+
+| # | Tarea | Decisión | Motivo |
+|---|-------|----------|--------|
+| F1 | 6.1 | `saveLink` solo envía `note` con grupo y con texto que no sea blanco; el texto viaja sin normalizar (lo normaliza la API). Lo mismo el comentario. | "Vacía" es "no enviada" (critic 12a) y la normalización tiene un solo dueño. |
+| F2 | 6.2 | La guarda de `group-link.comments` comprueba identificadores, `change`, `count`/`revision` enteros ≥ 0, `sharedAt` y hasta 2 comentarios con autor, `authorLeft` y texto. El 2 va escrito en la guarda y no se importa `COMMENTS_SUMMARY_LATEST`. | `core/` no puede arrastrar el módulo de schemas con zod al bundle inicial. |
+| F3 | 6.3 | `replace` conserva `note` y `comments` si el link nuevo no los trae; si trae `comments`, gana el más nuevo por (`sharedAt`, `revision`). | Nunca pintar un resumen más viejo que el que ya se ve. |
+| F4 | 6.4, 6.10 | `LinksStore.deleteComment` convierte `404 comment_not_found` en `null` y no toca la tarjeta; la corrige el aviso de ese borrado o la próxima lectura de la lista. | Sin respuesta no hay un resumen fiable que pintar, y adivinarlo podría bajar el contador dos veces. |
+| F5 | 6.5 | Quitar la nota: título y botón "Quitar la nota" / "Remove note". Un `404 link_not_found` muestra el error genérico y vuelve a pedir la lista. | La confirmación de `confirmWith` necesita título y botón; D11 solo fijaba el mensaje. |
+| F6 | 6.6 | "Nota de <nombre>" usa `sharedBy`, porque la nota solo la escribe quien crea la relación. "Ver los N comentarios" no lleva ICU: solo aparece con N ≥ 3. | La nota no trae autor propio en el contrato. |
+| F7 | 6.6 | Fecha relativa (`CommentAgo`): menos de 1 min, "hace un momento"; menos de 1 h, minutos; mismo día de calendario de quien mira, horas; día anterior, "ayer"; después, `dd/MM/yyyy`. Una fecha futura cuenta como "hace un momento". | Mismo formato de fecha que el resto de tarjetas. |
+| F8 | 6.7, 6.9 | "Esta oferta ya no está en el grupo" se muestra en un `MatSnackBar` (6 s) desde `LinkList` al cerrarse el hilo con `'gone'`, tanto al abrir como al publicar; `group_not_found` se trata igual que `link_not_found`. | El diálogo ya está cerrado cuando hay que decirlo; es el mismo patrón que la invitación a compartir. |
+| F9 | 6.8 | "Por debajo de `sm`" es `Breakpoints.XSmall` de CDK (< 600 px), observado dentro del diálogo, que sigue el giro de pantalla. En pantalla completa el marco mide `visualViewport.height` (y baja `offsetTop`), con `100dvh` si no hay esa API. | D11 pide `BreakpointObserver`; el viewport visual es lo que queda por encima del teclado. |
+| F10 | 6.9 | El contador y el bloqueo miden como la API: texto normalizado y en code points. Enter a secas es salto de línea; solo Ctrl/Cmd+Enter publica. | Que "500 rodeados de espacios" quepa también en el SPA. |
+| F11 | 6.10 | Borrar: título "Borrar el comentario" y botón "Borrar". Mientras hay una confirmación abierta o un borrado en curso, todos los "Borrar" del hilo quedan deshabilitados. Otros errores se muestran con el mensaje genérico sin quitar el comentario. | Un solo borrado a la vez; D11 solo fijaba los mensajes. |
+| F12 | 6.11, 6.12 | El hilo une y ordena por (`createdAt`, `id`) y deduplica por `id`, venga el comentario de una página, de la respuesta o de un aviso. "Ver comentarios nuevos" sustituye lo cargado por la primera página. | Da igual el orden de llegada; la spec dice "vuelve a pedir la primera página". |
+| F13 | 6.13 | El campo de nota lleva contador `n/280` y "Máximo 280 caracteres" / "280 characters max" (no estaban en D11), y bloquea Guardar por encima del límite. | Mismo trato que el cuadro de comentario. |
+| F14 | 6.14 | El mensaje de quitar en un grupo pasa a un ICU en plantilla (`links.list.removeMessageGroupComments`, con rama `=0` igual al texto anterior) y desaparece la unidad `links.list.removeMessageGroup`. | Un plural solo se puede escribir y extraer en plantilla. |
+| F15 | 6.15 | Textos nuevos que D11 no listaba: "Cerrar" / "Close" en el hilo, "Borrar el comentario" / "Delete the comment" y los de F5 y F13. | Hacen falta para cerrar el hilo en pantalla completa y para las confirmaciones. |

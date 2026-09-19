@@ -14,6 +14,33 @@
     </button>
   </div>
 
+  @if (inGroup()) {
+    <mat-form-field class="w-full">
+      <mat-label i18n="@@comments.note.label">Nota para el grupo (opcional)</mat-label>
+      <textarea
+        matInput
+        formControlName="note"
+        rows="2"
+        i18n-placeholder="@@comments.note.placeholder"
+        placeholder="Por ejemplo: esta es la que te dije"
+        data-testid="save-link-note"
+      ></textarea>
+      <mat-hint align="end" data-testid="save-link-note-counter"
+        >{{ noteLength() }}/{{ noteMaxLength }}</mat-hint
+      >
+    </mat-form-field>
+    @if (noteTooLong()) {
+      <p
+        class="m-0 text-sm text-(--mat-sys-error)"
+        role="alert"
+        data-testid="save-link-note-too-long"
+        i18n="@@comments.note.max"
+      >
+        Máximo 280 caracteres
+      </p>
+    }
+  }
+
   @if (invalidUrl()) {
     <p class="text-(--mat-sys-error)" role="alert" i18n="@@links.save.invalidUrl">
       Eso no parece un enlace de una oferta
@@ -30,6 +57,11 @@
   @if (sharedByName(); as name) {
     <p role="status" data-testid="save-link-already-there" i18n="@@links.save.alreadyThere">
       Ya estaba aquí, lo compartió {{ name }}
+    </p>
+  }
+  @if (noteDiscarded()) {
+    <p role="status" data-testid="save-link-note-discarded" i18n="@@comments.note.discarded">
+      Tu nota no se añadió porque la oferta ya estaba en el grupo.
     </p>
   }
 </form>

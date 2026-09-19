@@ -157,6 +157,53 @@ describe('LinkList: la nota del grupo', () => {
     expect(rowOf('senior backend engineer').querySelector('[data-testid="link-note"]')).not.toBeNull();
   });
 
+  describe('quitar un link con comentarios', () => {
+    function withComments(count: number): JobLinkSummary {
+      const latest = [
+        {
+          id: 'c9',
+          author: { userId: 'u2', displayName: 'Beto' },
+          authorLeft: false,
+          text: 'Ya cerró',
+          createdAt: '2026-09-19T10:00:00.000Z',
+        },
+      ];
+      return { ...ofAna, comments: { count, revision: count, sharedAt: ofAna.sharedAt, latest } };
+    }
+
+    async function confirmationFor(count: number): Promise<string> {
+      await setUp(testUser, [withComments(count)]);
+      rowOf('senior backend engineer')
+        .querySelector<HTMLButtonElement>('[data-testid="link-remove"]')
+        ?.click();
+      await settle();
+      await fixture.whenStable();
+      const text = dialog().textContent?.replace(/\s+/g, ' ').trim() ?? '';
+      buttonWithText(dialog(), 'Cancelar').click();
+      await settle();
+      return text;
+    }
+
+    it('Quitar un link con comentarios', async () => {
+      expect(await confirmationFor(4)).toContain(
+        'Se quita de este grupo junto con sus 4 comentarios; la oferta sigue disponible en otros grupos.',
+      );
+    });
+
+    it('says it in the singular for a single comment', async () => {
+      expect(await confirmationFor(1)).toContain(
+        'Se quita de este grupo junto con su comentario; la oferta sigue disponible en otros grupos.',
+      );
+    });
+
+    it('says nothing about comments when there are none', async () => {
+      const text = await confirmationFor(0);
+
+      expect(text).toContain('Se quita de este grupo; la oferta sigue disponible en otros grupos.');
+      expect(text).not.toContain('comentario');
+    });
+  });
+
   it('does not offer to remove a note to a member who neither shared it nor owns the group', async () => {
     await setUp({ ...testUser, id: 'u3', displayName: 'Carla' });
 

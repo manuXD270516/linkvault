@@ -2,12 +2,14 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  type TemplateRef,
   computed,
   effect,
   inject,
   input,
   signal,
   untracked,
+  viewChild,
 } from '@angular/core';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
@@ -86,6 +88,10 @@ export class LinkList {
   /** Cuántas lecturas van listas de las que se están esperando; `null` cuando no hay ninguna en curso. */
   protected readonly reading = this.store.reading;
   protected readonly failure = signal<RequestFailure | null>(null);
+  /** Comentarios del link que se va a quitar del grupo; lo lee el mensaje de la confirmación, que pluraliza. */
+  protected readonly removingCommentCount = signal(0);
+  /** El mensaje de quitar en un grupo vive en plantilla: un ICU no se puede escribir en TypeScript. */
+  private readonly removeGroupMessage = viewChild.required<TemplateRef<unknown>>('removeGroupMessage');
 
   /**
    * La API puede negar un reintento que la tarjeta sí ofrecía: entre que se pintó y se pulsó, la lectura pudo terminar
@@ -357,14 +363,19 @@ export class LinkList {
     return this.canModerate() || (userId !== undefined && link.sharedBy?.userId === userId);
   }
 
-  /** Solo se borra la relación con este grupo o con esta lista: la vacante sigue en los demás. */
+  /**
+   * Solo se borra la relación con este grupo o con esta lista: la vacante sigue en los demás. En un grupo, la
+   * confirmación dice cuántos comentarios se van con ella (spec web/links): el número sale del contador del link, no de
+   * los dos que enseña la tarjeta.
+   */
   protected async remove(link: JobLinkSummary): Promise<void> {
+    this.removingCommentCount.set(link.comments?.count ?? 0);
     const confirmed = await confirmWith(this.dialog, {
       title: $localize`:@@links.list.removeTitle:Quitar el enlace`,
       message:
         this.scope() === 'mine'
           ? $localize`:@@links.list.removeMessageMine:Se quita de tu lista; la oferta sigue disponible en tus grupos.`
-          : $localize`:@@links.list.removeMessageGroup:Se quita de este grupo; la oferta sigue disponible en otros grupos.`,
+          : this.removeGroupMessage(),
       confirmLabel: $localize`:@@links.list.removeConfirm:Quitar`,
     });
     if (!confirmed) {

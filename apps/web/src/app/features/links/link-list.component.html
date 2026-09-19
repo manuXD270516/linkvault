@@ -1,3 +1,17 @@
+<!--
+  Confirmación de quitar un link del grupo: dice cuántos comentarios se van con él. Cada rama repite la frase entera para
+  que no dependa de dónde caen los espacios; el ICU es todo el contenido, así el mensaje es una sola unidad de i18n.
+-->
+<ng-template #removeGroupMessage>
+  @let comments = removingCommentCount();
+  <ng-container i18n="@@links.list.removeMessageGroupComments"
+    >{comments, plural, =0 {Se quita de este grupo; la oferta sigue disponible en otros grupos.} =1 {Se
+    quita de este grupo junto con su comentario; la oferta sigue disponible en otros grupos.} other {Se
+    quita de este grupo junto con sus {{ comments }} comentarios; la oferta sigue disponible en otros
+    grupos.}}</ng-container
+  >
+</ng-template>
+
 @if (reading(); as progress) {
   @let done = progress.done;
   @let total = progress.total;
