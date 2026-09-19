@@ -247,6 +247,8 @@ describe('api error contract', () => {
       'not_a_job_posting',
       'extraction_unavailable',
       'ai_quota_exceeded',
+      'application_not_found',
+      'application_conflict',
       'internal_error',
     ]);
   });
