@@ -45,6 +45,35 @@ function column(page: Page, id: string) {
   return page.locator(`[data-column="${id}"]`);
 }
 
+/** Espera de las comprobaciones que dependen de los estados de postulaciones: con la máquina cargada, 5 s son justos. */
+const STATE_TIMEOUT = 15_000;
+
+/**
+ * Abre el detalle del grupo y espera a que lleguen los estados de postulaciones de su página: el propio
+ * (`GET /api/applications?linkIds=…`, que decide los gestos) y los compartidos (`GET /api/groups/:id/applications`, que
+ * pinta los avatares). La fila se pinta antes que ambos, así que sin esta espera una comprobación de ausencia pasaría
+ * en vacío.
+ */
+async function openGroupWithStates(page: Page, groupUrl: string): Promise<void> {
+  const groupId = new URL(groupUrl).pathname.split('/').at(-1) ?? '';
+  const ownStates = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'GET' &&
+      response.url().includes('/api/applications?linkIds=') &&
+      response.ok(),
+    { timeout: STATE_TIMEOUT },
+  );
+  const sharedStates = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'GET' &&
+      response.url().includes(`/api/groups/${groupId}/applications`) &&
+      response.ok(),
+    { timeout: STATE_TIMEOUT },
+  );
+  await page.goto(groupUrl);
+  await Promise.all([ownStates, sharedStates]);
+}
+
 /** El diálogo que contiene ese componente: el panel y su confirmación pueden estar abiertos a la vez. */
 function dialogWith(page: Page, selector: string) {
   return page.locator('mat-dialog-container').filter({ has: page.locator(selector) });
@@ -83,7 +112,7 @@ test('applications flow: track from the group, share, move on the board and untr
 
       await owner.getByLabel('Pega el enlace de una oferta').fill(OFFER_URL);
       await owner.getByRole('button', { name: 'Guardar', exact: true }).click();
-      await expect(offerRow(owner)).toHaveCount(1);
+      await expect(offerRow(owner)).toHaveCount(1, { timeout: STATE_TIMEOUT });
     });
 
     await test.step('a second member joins the group', async () => {
@@ -123,9 +152,9 @@ test('applications flow: track from the group, share, move on the board and untr
     });
 
     await test.step('7.1 the other member sees the avatar with "Postulada"', async () => {
-      await owner.goto(groupUrl);
+      await openGroupWithStates(owner, groupUrl);
       const avatar = offerRow(owner).getByTestId('tracker-avatar');
-      await expect(avatar).toHaveCount(1);
+      await expect(avatar).toHaveCount(1, { timeout: STATE_TIMEOUT });
       await expect(avatar).toHaveAttribute(
         'aria-label',
         `${TRACKER.displayName} · postulación: Postulada`,
@@ -134,12 +163,28 @@ test('applications flow: track from the group, share, move on the board and untr
     });
 
     await test.step('7.1 undoing the share hides the avatar', async () => {
+      // Antes de deshacer, su propio avatar está a la vista: así la ausencia de después no pasa en vacío.
+      await expect(offerRow(tracker).getByTestId('tracker-avatar')).toHaveCount(1, {
+        timeout: STATE_TIMEOUT,
+      });
+      const unshared = tracker.waitForResponse(
+        (response) =>
+          response.request().method() === 'PATCH' &&
+          /\/api\/applications\/[^/]+$/.test(new URL(response.url()).pathname) &&
+          response.ok(),
+        { timeout: STATE_TIMEOUT },
+      );
       await tracker.getByTestId('share-notice-undo').click();
-      await expect(offerRow(tracker).getByTestId('tracker-avatar')).toHaveCount(0);
+      await unshared;
+      await expect(offerRow(tracker).getByTestId('tracker-avatar')).toHaveCount(0, {
+        timeout: STATE_TIMEOUT,
+      });
 
-      await owner.goto(groupUrl);
-      await expect(offerRow(owner)).toHaveCount(1);
-      await expect(offerRow(owner).getByTestId('tracker-avatar')).toHaveCount(0);
+      await openGroupWithStates(owner, groupUrl);
+      await expect(offerRow(owner)).toHaveCount(1, { timeout: STATE_TIMEOUT });
+      await expect(offerRow(owner).getByTestId('tracker-avatar')).toHaveCount(0, {
+        timeout: STATE_TIMEOUT,
+      });
     });
 
     await test.step('7.1 the board shows it in "Postuladas" and moves it to "En proceso" with a stage', async () => {
@@ -179,9 +224,9 @@ test('applications flow: track from the group, share, move on the board and untr
     });
 
     await test.step('7.1 the other member sees "En proceso" and never the stage', async () => {
-      await owner.goto(groupUrl);
+      await openGroupWithStates(owner, groupUrl);
       const avatar = offerRow(owner).getByTestId('tracker-avatar');
-      await expect(avatar).toHaveCount(1);
+      await expect(avatar).toHaveCount(1, { timeout: STATE_TIMEOUT });
       await expect(avatar).toHaveAttribute(
         'aria-label',
         `${TRACKER.displayName} · postulación: En proceso`,
@@ -213,17 +258,19 @@ test('applications flow: track from the group, share, move on the board and untr
     });
 
     await test.step('7.2 the group card offers "Me interesa" and "Postulé" again', async () => {
-      await tracker.goto(groupUrl);
+      await openGroupWithStates(tracker, groupUrl);
       const row = offerRow(tracker);
-      await expect(row.getByTestId('link-interested')).toBeVisible();
-      await expect(row.getByTestId('link-applied')).toBeVisible();
-      await expect(row.getByTestId('link-own-status')).toHaveCount(0);
+      await expect(row.getByTestId('link-own-status')).toHaveCount(0, { timeout: STATE_TIMEOUT });
+      await expect(row.getByTestId('link-interested')).toBeVisible({ timeout: STATE_TIMEOUT });
+      await expect(row.getByTestId('link-applied')).toBeVisible({ timeout: STATE_TIMEOUT });
     });
 
     await test.step('7.2 the other member no longer sees the avatar', async () => {
-      await owner.goto(groupUrl);
-      await expect(offerRow(owner)).toHaveCount(1);
-      await expect(offerRow(owner).getByTestId('tracker-avatar')).toHaveCount(0);
+      await openGroupWithStates(owner, groupUrl);
+      await expect(offerRow(owner)).toHaveCount(1, { timeout: STATE_TIMEOUT });
+      await expect(offerRow(owner).getByTestId('tracker-avatar')).toHaveCount(0, {
+        timeout: STATE_TIMEOUT,
+      });
     });
 
     expect(pageErrors).toEqual([]);
