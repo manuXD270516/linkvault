@@ -53,9 +53,9 @@ describe('Comentar mientras se quita (5.8, smoke)', () => {
       expect(await fx.counters(linkId)).toBeNull();
       expect(await fx.storedComments(linkId)).toBe(0);
     }
-    expect([...statuses].every((status) => ['201', '404'].includes(status))).toBe(
-      true,
-    );
+    // Cada ronda ya afirmó su respuesta (201 o 404 con `link_not_found`) y que no quedó ni relación ni comentario.
+    // Este test es humo: el entrelazado depende del azar, así que no se exige ver los dos resultados. Los
+    // invariantes de la carrera los prueban los dos tests deterministas de `mongo-group-link.comments.spec.ts`.
   });
 });
 

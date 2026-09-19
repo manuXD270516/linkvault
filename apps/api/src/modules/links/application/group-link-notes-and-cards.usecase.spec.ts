@@ -351,7 +351,7 @@ describe('RemoveShareNote (3.8)', () => {
 });
 
 describe('RemoveGroupLink with comments (3.9)', () => {
-  it('Quitar se lleva los comentarios de ese grupo, and only of that group', async () => {
+  it('Quitar la oferta se lleva sus comentarios, and only of that group', async () => {
     const linkId = await harness.shared(BACKEND, ANA, url(1), 'Mira');
     await harness.shared(
       FRONTEND,

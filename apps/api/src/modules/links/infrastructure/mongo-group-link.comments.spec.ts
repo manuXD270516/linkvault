@@ -274,7 +274,7 @@ describe('the note (2.8)', () => {
     });
   });
 
-  it('lists the note and the counters of each relation', async () => {
+  it('Nota y comentarios en el listado: lists the note and the counters of each relation', async () => {
     const withNote = await shareLink(JOB_PAGE, BACKEND, { note });
     const plain = await shareLink(OTHER_JOB, BACKEND, { sharedAt: later });
     await groupLinks.addComment(draft(BACKEND, withNote));
