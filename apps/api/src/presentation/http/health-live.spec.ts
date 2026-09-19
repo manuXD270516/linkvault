@@ -3,7 +3,7 @@ import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createApp } from '../../app/create-app';
 import { PACKAGE_VERSION } from '../../infrastructure/app-version';
-import { apiTestConfig } from '../../test-support/test-config';
+import { apiTestAiConfig, apiTestConfig } from '../../test-support/test-config';
 
 describe('api GET /health/live', () => {
   let app: NestFastifyApplication | undefined;
@@ -15,7 +15,10 @@ describe('api GET /health/live', () => {
 
   async function start(appVersion?: string): Promise<string> {
     // Mongo y Redis apuntan a puertos cerrados: la liveness no depende de ellos.
-    app = await createApp(await apiTestConfig({ APP_VERSION: appVersion }));
+    app = await createApp(
+      await apiTestConfig({ APP_VERSION: appVersion }),
+      apiTestAiConfig(),
+    );
     await app.listen(0, '127.0.0.1');
     return app.getUrl();
   }

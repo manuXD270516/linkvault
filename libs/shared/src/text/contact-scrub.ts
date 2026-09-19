@@ -3,9 +3,13 @@
 // IA, ni tienen por qué quedarse guardados en el resumen. No es redacción reversible; es no llevarse lo que no sirve,
 // y de paso ahorra tokens.
 //
-// Vive en `domain/` porque es una regla sobre texto, sin dependencias: la usan el parser de HTML
-// (`infrastructure/html/`) al construir el texto limpio y el extractor de JSON-LD al recortar la descripción, que es
-// el otro sitio por donde un correo entraría en el preview.
+// Es una regla sobre texto, sin dependencias, y vive en `libs/shared` desde paste-job-description (D4) porque la
+// necesitan los dos procesos: en el worker, el parser de HTML al construir el texto limpio y los extractores de
+// JSON-LD y metadatos al recortar la descripción; en `api`, el texto pegado antes de llegar a la IA.
+//
+// Su comportamiento **no cambia** con la mudanza, aunque junte el texto en una sola línea: la entrada de `extract-job`
+// sale de aquí, y cambiarla invalidaría los fixtures de páginas. Por eso los inputs del golden de texto pegado se guardan
+// ya pasados por esta función.
 
 /** `mailto:` y `tel:` escritos tal cual en el texto. */
 const CONTACT_URI = /\b(?:mailto|tel|callto|whatsapp):\S+/gi;

@@ -1,0 +1,9 @@
+{
+  "source": "recorded:ollama:qwen2.5:7b",
+  "text": "{\"isJobPosting\":true,\"preview\":{\"title\":\"Analista Contable Senior\",\"company\":\"Grupo Cordillera\",\"location\":\"Cochabamba, Bolivia\",\"modality\":\"onsite\",\"seniority\":\"senior\",\"salary\":null,\"skills\":[{\"name\":\"Excel\",\"required\":true},{\"name\":\"SAP\",\"required\":false}],\"languages\":[],\"summary\":\"Llevarás la contabilidad de tres empresas del grupo: registros diarios, conciliaciones bancarias, cierres mensuales y declaraciones de impuestos. Prepararás los estados financieros para la gerencia y acompañarás las auditorías externas.\",\"postedAt\":null,\"expiresAt\":null}}",
+  "model": "qwen2.5:7b",
+  "usage": {
+    "inputTokens": 2035,
+    "outputTokens": 166
+  }
+}

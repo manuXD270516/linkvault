@@ -27,6 +27,8 @@ docker compose up -d --wait        # mongo (replica set rs0), redis y minio, esp
 
 Si ya tenías un `.env` de antes del enriquecimiento de links, cópiale de `.env.example` las variables `ENRICH_*` y `S3_*`:
 son obligatorias y **el worker no arranca sin ellas** (ver [Variables del enriquecimiento](#variables-del-enriquecimiento)).
+Si es de antes de pegar descripciones, cópiale además `PASTE_EXTRACTION_TIMEOUT_MS` y la sección `--- IA ---` entera:
+**`api` ya no arranca sin ellas** (ver [La IA que ejecuta `api`](#la-ia-que-ejecuta-api)).
 
 Arranca cada app en su propia terminal:
 
@@ -53,7 +55,7 @@ docker compose --profile ai-local up -d --wait   # añade ollama en http://local
 ```
 
 No descarga modelos. En desarrollo, `.env.example` usa el mock con `AI_CHAIN=mock` y `AI_MOCK_MODE=synth`; los tests y CI fuerzan `AI_CHAIN=mock` y `AI_MOCK_MODE=replay`. `AI_CHAIN=none` desactiva la IA (las tareas degradan).
-Un worker compilado que no arranque desde la raíz del workspace necesita `AI_PROMPTS_DIR=dist/apps/worker/assets/ai/prompts` (o la ruta absoluta equivalente).
+La IA la ejecutan **dos procesos**: el worker (lectura de páginas) y `api` (descripciones pegadas). Un `api` o un worker compilado que no arranque desde la raíz del workspace necesita `AI_PROMPTS_DIR=dist/apps/<api|worker>/assets/ai/prompts` (o la ruta absoluta equivalente).
 
 ### MongoDB
 
@@ -270,7 +272,8 @@ Un link es una oferta de empleo guardada en LinkVault: compartida en un grupo o 
 una lista privada ([ADR-008](docs/adr/ADR-008.md), [ADR-021](docs/adr/ADR-021.md)). El preview (título, empresa,
 modalidad) lo escribe el worker leyendo la página de la oferta; todo link nace `pending` y pasa a `enriched`, `partial`,
 `failed` o `manual`. Cómo se lee, qué se le dice a la persona cuando no se puede y qué bolsas no lo permiten está en
-[Enriquecimiento de ofertas](#enriquecimiento-de-ofertas).
+[Enriquecimiento de ofertas](#enriquecimiento-de-ofertas); cómo se completa una oferta que no se deja leer, en
+[Pegar la descripción](#pegar-la-descripción).
 
 ### Endpoints
 
@@ -283,6 +286,7 @@ Todas las rutas exigen access token (`Authorization: Bearer`); sin él responden
 | `GET /api/links/mine`                  | cualquier usuario | `200` con su lista privada: `items`, `total` y `nextCursor`.                       |
 | `PATCH /api/links/:linkId/preview`     | quien ve el link  | `200` con el link; corrige campos a mano o los devuelve a lo extraído.             |
 | `POST /api/links/:linkId/enrich`       | quien ve el link  | `202`: la relectura queda pedida; la hace el worker.                               |
+| `POST /api/links/:linkId/pasted`       | quien ve el link  | `200` con el link completado con el texto pegado, leído en la misma petición.      |
 | `DELETE /api/links/mine/:linkId`       | quien lo guardó   | `204`; quita solo la entrada privada.                                              |
 | `GET /api/groups/:id/links`            | miembro           | `200` con los links del grupo, cada uno con `sharedBy` (`userId` y `displayName`). |
 | `DELETE /api/groups/:id/links/:linkId` | autor u owner     | `204`; otro miembro recibe `403 forbidden`.                                        |
@@ -303,7 +307,8 @@ le responde `403 forbidden` y no `404`, porque ya ve el link en la lista y no ha
 Códigos de error propios: `invalid_url` (400, campo `url`), `text_too_long` (400, campo `text`), `link_not_found` (404) y
 `forbidden` (403). Un cursor manipulado responde `400 validation_error` nombrando `cursor`. Los de la edición y la
 relectura —`preview_field_unknown` (400), `enrichment_not_retryable` (409) y `too_many_attempts` (429)— se explican en
-[Enriquecimiento de ofertas](#enriquecimiento-de-ofertas).
+[Enriquecimiento de ofertas](#enriquecimiento-de-ofertas), y los del pegado —`not_a_job_posting` (422),
+`extraction_unavailable` (503) y `ai_quota_exceeded` (429)— en [Pegar la descripción](#pegar-la-descripción).
 
 ### Paginación de los listados
 
@@ -413,8 +418,10 @@ LINK_ID=...   # un link de los listados
 curl -s -H "$T" -H "$J" -X PATCH "http://localhost:3000/api/links/$LINK_ID/preview" \
   -d '{"fields":{"title":"Backend Engineer"}}'                                                      # corregir a mano
 curl -s -H "$T" -H "$J" -X PATCH "http://localhost:3000/api/links/$LINK_ID/preview" \
-  -d '{"revert":["title"]}'                                                                         # volver a lo extraído
+  -d '{"revert":["title"]}'                                                                         # volver a lo anterior
 curl -s -i -H "$T" -X POST "http://localhost:3000/api/links/$LINK_ID/enrich"                        # 202, 409 o 429
+curl -s -i -H "$T" -H "$J" "http://localhost:3000/api/links/$LINK_ID/pasted" \
+  -d '{"text":"Buscamos Backend Engineer con Node y MongoDB, remoto…","company":"Acme"}'           # 200, 422, 429 o 503
 curl -sN -H "$T" http://localhost:3000/api/events                                                   # canal SSE (Ctrl+C)
 ```
 
@@ -448,12 +455,16 @@ cinco plataformas del manifiesto con nuestro `User-Agent`, del 2026-09-17 (ADR-0
 
 Consecuencias, dichas sin rodeos:
 
-- Un link de **LinkedIn** o **Indeed** termina en `robots_disallowed`. La tarjeta dice "Esta bolsa no permite la lectura
-  automática de sus ofertas" y **no ofrece reintentar**: volver a pedir lo que un sitio ya negó por escrito es
-  exactamente lo que ADR-003 evita.
-- Un link de **Computrabajo** termina en `blocked` ("Esta bolsa no nos deja leer esta oferta"), tampoco reintentable.
-- La salida en los tres casos es la **edición manual** del preview (`PATCH /api/links/:linkId/preview`): el link sigue
-  siendo útil, abre igual y se puede completar a mano.
+- Un link de **LinkedIn** o **Indeed** termina en `robots_disallowed` y **no ofrece reintentar**: volver a pedir lo que
+  un sitio ya negó por escrito es exactamente lo que ADR-003 evita.
+- Un link de **Computrabajo** termina en `blocked`, tampoco reintentable.
+- La salida en los tres casos es **pegar la descripción** de la oferta ([Pegar la descripción](#pegar-la-descripción)):
+  mientras la tarjeta no tiene título dice "<Plataforma> no nos deja leer sus ofertas. Pega su descripción para
+  completarla", con "Pegar la descripción" como acción principal y completarla a mano
+  (`PATCH /api/links/:linkId/preview`) como secundaria. El link sigue siendo útil y abre igual.
+- El smoke de `link-enrichment`, posterior a esta medición, encontró además que el CDN de **Trabajopolis** rechaza el
+  cliente de Node aunque su `robots.txt` lo permita: en la práctica, hoy solo Get on Board se lee de punta a punta
+  (ADR-023, Contexto).
 - **No hay adaptadores de selectores por plataforma** y no los habrá mientras la medición diga esto: serían código que no
   podríamos ni probar contra el sitio real (ADR-022 §3).
 - La medición lleva fecha a propósito. Un `robots.txt` cambia: si LinkedIn o Indeed abrieran sus ofertas, la decisión se
@@ -482,13 +493,34 @@ Consecuencias, dichas sin rodeos:
    (`ENRICH_DEADLINE_MS`) se reparte entre las etapas; la que se queda sin plazo se salta, y una etapa que se rompe no
    tira lo que sacaron las anteriores.
 7. **Merge y escritura.** Dentro de una misma pasada gana la etapa anterior del orden de arriba; frente a lo ya guardado
-   gana lo nuevo automático, **salvo un campo escrito a mano, que no se toca nunca**. Un campo que esta pasada no trajo
-   no borra el que ya había. La escritura va condicionada a `previewVersion`: quien pierde la carrera no escribe, no sube
+   gana lo nuevo automático, **salvo un campo escrito a mano o pegado, que la lectura no toca nunca** (ver
+   [Precedencia y deshacer](#precedencia-y-deshacer)). Un campo que esta pasada no trajo no borra el que ya había. La escritura va condicionada a `previewVersion`: quien pierde la carrera no escribe, no sube
    snapshot y no avisa.
 
 La IA se llama con `outputLanguage` fijo `es` (el preview es compartido: no puede depender del idioma de una persona) y se
 atribuye a **quien guardó el link**, también cuando la relectura la pide otro: el gasto pertenece al dueño del dato
 (ADR-022 §6).
+
+### Rescate por el historial de URLs
+
+La misma vacante puede haberse guardado con varias URLs (el link guarda las 20 últimas en su historial,
+`originalUrls`). Si el `robots.txt` prohíbe la `displayUrl` —el caso real: una URL de Trabajopolis con `search_id`, que
+su `robots.txt` prohíbe, mientras la misma oferta sin ese parámetro está permitida—, el worker **prueba las demás URLs
+del historial** antes de rendirse:
+
+- **Solo las del mismo host** que la `displayUrl`, sin repetidas y sin la propia `displayUrl`, **las más recientes
+  primero**. Una URL de otro host no se prueba: su turno y su `Crawl-delay` son otros (ADR-022 §5).
+- Pide permiso para cada una **dentro del mismo turno del host** y descarga **la primera permitida**. Ninguna prohibida
+  llega a pedirse. Si ninguna lo está, el link termina en `robots_disallowed`, como antes.
+- `displayUrl` **no cambia** ([ADR-021](docs/adr/ADR-021.md)): la tarjeta sigue abriendo la URL que se compartió.
+
+**Qué lo dispara.** `robots_disallowed` no se reintenta nunca, así que el rescate necesita un disparador: **volver a
+guardar la vacante con una URL nueva del mismo host** (con `POST /api/links` o en una importación) sobre un link que
+está en `failed` por `robots_disallowed`. Ese guardado pide una lectura nueva en la misma transacción —sube
+`previewVersion`, vuelve a `pending` y escribe en el outbox, como un reintento—, y el worker prueba la URL nueva. Guardar
+otra vez la misma URL, una que ya estaba en el historial, una de otro host, o hacerlo sobre un link que ya no está en
+`failed` (por ejemplo, porque se completó pegando su descripción) no pide nada. No hay backfill de los links que ya
+están en `robots_disallowed`: se rescatan así o pegando su descripción. Detalle: [ADR-023](docs/adr/ADR-023.md) §6.
 
 ### Estados y motivos
 
@@ -502,6 +534,10 @@ cuándo se pidió la lectura:
 | `partial`  | Se leyó y salió algo, pero no lo obligatorio: "Faltan datos de esta oferta".                              |
 | `failed`   | No se pudo leer, o se leyó y no salió nada. El motivo va en `lastEnrichmentError`.                        |
 | `manual`   | Alguien escribió algún campo a mano. Manda sobre el estado: un fallo posterior no lo devuelve a `failed`. |
+
+Un link completado **pegando su descripción** sigue la misma regla: `enriched` con título y empresa, `partial` sin ellos,
+`manual` si además alguien escribió algo a mano; y una lectura fallida posterior tampoco lo devuelve a `failed` ni borra
+lo pegado ([ADR-023](docs/adr/ADR-023.md) §5).
 
 Motivos de `lastEnrichmentError.reason`. Los tres primeros **no son errores nuestros**, y por eso ni se reintentan ni se
 presentan como tales:
@@ -528,8 +564,8 @@ que no llegó a tiempo fue nuestro turno.
 
 - `PATCH /api/links/:linkId/preview` lo puede usar **cualquiera que pueda ver el link**, no solo quien lo guardó: un
   `JobLink` es de todos los grupos donde está compartido, y un dato equivocado no puede quedarse eterno para los demás.
-  Lo que hace segura esa apertura es que cada campo guarda quién lo escribió y cuándo, y **guarda el valor automático que
-  desplazó**, así que una edición ajena se ve en la tarjeta y se deshace con "Volver a lo extraído" (`revert`). Un campo
+  Lo que hace segura esa apertura es que cada campo guarda quién lo escribió y cuándo, y **guarda lo que desplazó**
+  (valor, origen y autor), así que una edición ajena se ve en la tarjeta y se deshace con "Volver a lo anterior" (`revert`). Un campo
   que no existe responde `400 preview_field_unknown` nombrándolo.
 - `POST /api/links/:linkId/enrich` responde `202` y deja el link en `pending` otra vez. Un motivo no reintentable
   responde `409 enrichment_not_retryable` y **no gasta cuota**. El límite es de **3 relecturas por link cada 15
@@ -610,6 +646,134 @@ El golden que hay hoy en `libs/ai/src/evals/extract-job/golden.jsonl` es **sint�
 página de listado que espera `isJobPosting: false`); las vacantes reales llegan con `/lv:golden 20`
 (ver [docs/RUNBOOK.md](docs/RUNBOOK.md)).
 
+## Pegar la descripción
+
+El smoke de `link-enrichment` midió que de las cinco bolsas solo **Get on Board** se deja leer: LinkedIn e Indeed lo
+prohíben, Computrabajo nos bloquea (ver [la tabla](#qué-bolsas-no-permiten-la-lectura-automática)) y el CDN de
+Trabajopolis rechaza el cliente de Node (ADR-023, Contexto). Esos links se quedan sin preview automático. La persona, en cambio, tiene la oferta delante en su teléfono. La salida lícita es que **pegue su texto** y la
+IA lo convierta en la misma vacante legible que da una página bien marcada. Decisiones y alternativas descartadas:
+[ADR-023](docs/adr/ADR-023.md).
+
+### Para quien usa el producto
+
+- **Dónde.** "Pegar la descripción" está en **cualquier tarjeta**: también sirve para corregir una oferta mal leída o
+  incompleta. En las que la bolsa no deja leer y todavía no tienen título, es la acción principal ("<Plataforma> no nos
+  deja leer sus ofertas. Pega su descripción para completarla") y completarla a mano, la secundaria. Puede hacerlo
+  cualquiera que vea el link, no solo quien lo guardó.
+- **Qué copiar desde el móvil.** El texto de la oferta tal como se ve en la app de la bolsa —"Acerca del empleo", los
+  requisitos, la modalidad—, hasta 20 000 caracteres. **No** la conversación donde te pasaron el link: eso responde "Eso
+  no parece una oferta de trabajo". Los emails y teléfonos se quitan antes de leer el texto.
+- **Por qué el puesto y la empresa se piden aparte.** Lo que se copia desde la app casi nunca trae la cabecera, y sin
+  puesto la oferta no se puede completar. El diálogo los muestra precargados con lo que el link ya tenía: si los dejas
+  tal cual no cambian de autor; si los cambias, cuentan como escritos a mano por ti. Además se le pasan a la IA como
+  contexto, para que no invente un puesto que el texto no trae.
+- **El texto no se guarda.** Se lee dentro de la misma petición y se descarta: no se escribe en ninguna colección, cola,
+  caché ni log. Se guardan solo los campos que salen de él (puesto, empresa, modalidad, skills…), marcados "Descripción
+  pegada por <nombre>". La consecuencia, asumida: cuando la bolsa retire la oferta, el texto completo ya no está en
+  ningún sitio.
+- **Mientras lee** el diálogo dice "Leyendo… puede tardar unos segundos" y no deja enviar dos veces. Si algo falla, lo
+  pegado sigue en el cuadro para volver a intentarlo.
+
+### Endpoint, límites y códigos
+
+`POST /api/links/:linkId/pasted` con `{ "text": "…", "title"?: "…", "company"?: "…" }` responde `200` con el link ya
+actualizado (la misma forma que una fila de lista), y avisa a las demás pantallas por el canal SSE. Se comprueba en
+este orden: el cuerpo (`400`), el permiso de lectura (`404`), el texto tras quitarle emails y teléfonos (`422`, **sin
+gastar límite ni IA**), el límite de pegados (`503` o `429`) y por último la IA (`422`, `503` o `429`).
+
+| Respuesta | Código                   | Cuándo                                                                                                                          |
+| --------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| `400`     | `validation_error`       | Texto vacío o de solo espacios, `title`/`company` vacíos, o un cuerpo con campos de más.                                        |
+| `400`     | `text_too_long`          | Más de 20 000 caracteres.                                                                                                       |
+| `404`     | `link_not_found`         | Quien pide no puede ver el link, o el id no existe.                                                                             |
+| `422`     | `not_a_job_posting`      | El texto queda vacío tras quitar emails y teléfonos, o la IA dice que no es una oferta.                                         |
+| `503`     | `extraction_unavailable` | La IA degradó o no respondió en `PASTE_EXTRACTION_TIMEOUT_MS`, o el contador de pegados no respondió. Con `Retry-After` (60 s). |
+| `429`     | `too_many_attempts`      | Más de **10 pegados por usuario cada 15 minutos**. Con `Retry-After`.                                                           |
+| `429`     | `ai_quota_exceeded`      | Quien pega agotó su **cuota diaria** de `extract-pasted-job`: "vuelve mañana". `Retry-After` fijo de 24 h.                      |
+
+- En ningún caso de error cambia el link.
+- **Un fallo de la IA devuelve el intento**: un `503` resta el pegado del contador (sin bajar de cero), así que nadie
+  pierde uno de sus diez porque el proveedor no respondió.
+- El contador de pegados **falla cerrado**: sin Redis no se lee nada, porque nada más acotaría las llamadas a la IA. Pero
+  responde `503` y no `429`, para no decir "pegaste demasiadas" a quien no pegó ninguna.
+- **La cuota diaria es propia** y se configura en `AI_QUOTAS` con la tarea `extract-pasted-job`, **independiente** de
+  la de `extract-job`: pegar no gasta el presupuesto con el que se leen los links propios. Cuenta las lecturas con éxito
+  de las últimas 24 h por usuario. Con `AI_QUOTAS` vacía no hay cuota y este `429` no aparece. Ejemplo:
+  `AI_QUOTAS=extract-job=200,extract-pasted-job=30`.
+- Si el cliente cierra la conexión antes de la respuesta, la lectura se aborta: no se gasta IA para un diálogo que ya
+  nadie mira.
+- Un pegado que no cambia ningún campo no escribe, no sube `previewVersion` y no avisa.
+
+### Lo pegado es un dato personal
+
+Una página de una bolsa es contenido **publicado**, y por eso `extract-job` es una tarea `public`. Lo pegado no: es lo
+que alguien seleccionó en su teléfono, y en la práctica arrastra el nombre del reclutador, trozos de un chat o notas
+propias. Por eso se lee con **su propia tarea, `extract-pasted-job`**, registrada con `dataSensitivity: 'personal'`
+(ADR-023 §2, ADR-018 §11):
+
+- **No sale a un proveedor externo sin el consentimiento de quien pega** (`aiConsent.externalProviders` de su perfil), y
+  si sale, pasa por el `PiiRedactor`. Con la cadena de hoy —mock u Ollama local— no sale de la máquina.
+- Su prompt (`libs/ai/src/infrastructure/prompts/extract-pasted-job.v1.md`) deriva del de `extract-job` y pide además no
+  reproducir nombres de personas en el resumen; su golden (`libs/ai/src/evals/extract-pasted-job/golden.jsonl`, seis
+  casos sintéticos de texto copiado de una app) lo mide con `summary_person_name_rate`. Se evalúa como las demás:
+  `pnpm nx run ai:eval --task=extract-pasted-job --provider=mock`.
+- **Condición pendiente para el día que se añada un proveedor externo a la cadena de `api`**: si la cadena solo tuviera
+  externos y quien pega no hubiera dado su consentimiento, hoy respondería `503` "inténtalo en un rato" **para siempre**.
+  Ese change tiene que añadir antes un código `ai_consent_required`, con un mensaje que lleve a dar el permiso
+  (ADR-023, riesgos aceptados).
+
+### La IA que ejecuta `api`
+
+Hasta este change solo el worker ejecutaba IA. Ahora `api` también, dentro de la petición del pegado:
+
+- **Variables.** `api` valida al arrancar la configuración de IA con el mismo `parseAiConfig` de `libs/ai` que el worker
+  —`AI_CHAIN`, `AI_MOCK_MODE`, `AI_PROMPTS_DIR`, `AI_FIXTURES_DIR`, `AI_CACHE_TTL_SECONDS`, `AI_QUOTAS`, las
+  `OLLAMA_*` y las `OPENROUTER_*`, con las mismas reglas: `AI_CHAIN` siempre, `AI_MOCK_MODE` si la cadena lleva `mock`,
+  clave y modelo si lleva `openrouter`— y además **`PASTE_EXTRACTION_TIMEOUT_MS`** (`20000` en `.env.example`, de 1 000
+  a 120 000 ms): el plazo de la lectura, que es lo que como mucho espera la petición.
+- **Son obligatorias.** Si falta o no vale alguna, `api` no arranca y lo dice nombrándola, sin su valor:
+  `[api] Invalid configuration, check these environment variables: PASTE_EXTRACTION_TIMEOUT_MS (missing)`. Un `.env`
+  anterior necesita copiar de [`.env.example`](.env.example) `PASTE_EXTRACTION_TIMEOUT_MS` y la sección `--- IA ---`.
+  Reglas que antes solo aplicaba el worker ahora también tumban `api`: `mock` con `NODE_ENV=production`, un
+  `AI_MOCK_MODE` fuera de `replay`/`synth` o una tarea desconocida en `AI_QUOTAS`.
+- **Tests y CI** corren con `AI_CHAIN=mock` y `AI_MOCK_MODE=replay`, como el resto.
+- **Prompts en una imagen.** El build de `api` copia `libs/ai/src/infrastructure/prompts` a
+  `dist/apps/api/assets/ai/prompts`, igual que el del worker, y CI comprueba que la copia está. Un `api` compilado que
+  no arranque desde la raíz del workspace necesita `AI_PROMPTS_DIR=dist/apps/api/assets/ai/prompts` (o la ruta absoluta
+  equivalente); si no, **no arranca**: `AiModule` comprueba al iniciarse que existen los prompts de todas sus tareas.
+- La cuota se lleva por usuario en el ledger de Mongo (`ai_usage`), así que es global aunque haya varias instancias de
+  `api`; el circuit breaker, en cambio, es por proceso.
+
+### Precedencia y deshacer
+
+Cada campo del preview guarda de dónde salió, y hay tres orígenes con **un solo orden**, que comparten `api` y el worker
+(`mayOverwrite` en `libs/shared`):
+
+> **escrito a mano > pegado > leído de la página**
+
+- Una lectura automática **no pisa** lo pegado ni lo escrito a mano.
+- Pegar sustituye lo leído de la página y lo pegado antes, **nunca un campo escrito a mano**. Y solo escribe los campos
+  que trae con valor: si el texto no dice la empresa, se queda la que había.
+- Escribir a mano sustituye cualquier cosa, y es lo único que puede vaciar un campo.
+- Pegar conserva el motivo del último fallo de lectura, salvo `not_a_job`, que el propio pegado desmiente y se cambia
+  por `no_data` con la misma fecha: con `robots_disallowed` o `blocked` la tarjeta queda completa sin volver a ofrecer
+  un reintento que el sitio ya negó, y deshacer el pegado devuelve el link a `failed` con un motivo, nunca a un
+  `pending` sin lectura en curso.
+- "Deshacer lo que pegó <nombre>" deshace todo ese gesto, incluidos el título y la empresa tecleados en el mismo
+  diálogo.
+
+Lo que sustituye una persona (pegando o escribiendo) **guarda la entrada que desplazó entera**: valor, origen y autor.
+En la tarjeta:
+
+- **"Volver a lo anterior"**, campo a campo en el diálogo de edición: devuelve ese campo a lo que había, con su origen y
+  su autor (lo leído de la página vuelve con su extractor; lo que pegó Beto vuelve como "Descripción pegada por Beto").
+  Es el `revert` de `PATCH /api/links/:linkId/preview`.
+- **"Deshacer lo que pegó <nombre>"**: devuelve de una vez todos los campos de un mismo pegado (los que comparten autor y
+  fecha), en una sola petición. No toca lo escrito a mano, tampoco el puesto y la empresa escritos en el diálogo de
+  pegado, que se devuelven campo a campo. Tras deshacer, el estado se recalcula: un link de LinkedIn completado pegando
+  y luego deshecho vuelve a `failed` con su motivo, no a `manual`.
+- **Deshacer llega un solo nivel atrás**: si sobre un pegado se pegan otros dos, el primero ya no se recupera.
+
 ## Calidad
 
 ```bash
@@ -660,7 +824,7 @@ pnpm nx run ai:record-fixtures --from-pending --task=extract-job --pending-file=
 
 | Ruta                    | Qué es                                                                                                         |
 | ----------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `apps/api`              | API HTTP (NestJS + Fastify). Rutas bajo `/api`; `/health` y `/health/live` fuera del prefijo.                  |
+| `apps/api`              | API HTTP (NestJS + Fastify). Rutas bajo `/api`; `/health` y `/health/live` fuera del prefijo. Ejecuta IA.      |
 | `apps/worker`           | Procesos en segundo plano (NestJS + BullMQ): consume `enrich-link`; solo expone salud en `WORKER_HEALTH_PORT`. |
 | `apps/web`              | SPA Angular 22 standalone y zoneless, con Material, Tailwind e i18n ES/EN.                                     |
 | `libs/shared`           | Contratos compartidos entre plataformas: schemas zod, enums y eventos de integración.                          |

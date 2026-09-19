@@ -413,8 +413,10 @@ describe('LinkList al reintentar la lectura', () => {
     await fixture.whenStable();
 
     expect(host().querySelector('[data-testid="link-retry"]')).toBeNull();
+    // Sin título, lo que sí puede completarla es pegar su descripción, y eso es lo que se ofrece.
     expect(host().textContent).toContain(
-      'Esta bolsa no permite la lectura automática de sus ofertas',
+      'LinkedIn no nos deja leer sus ofertas. Pega su descripción para completarla',
     );
+    expect(host().querySelector('[data-testid="link-paste"]')).not.toBeNull();
   });
 });

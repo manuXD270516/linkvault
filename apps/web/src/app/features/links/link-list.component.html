@@ -28,6 +28,8 @@
           [busy]="working()"
           (complete)="editPreview(link)"
           (retry)="retry(link)"
+          (pasteDescription)="pasteDescription(link)"
+          (undoPaste)="undoPaste(link, $event)"
           (remove)="remove(link)"
         />
       </li>

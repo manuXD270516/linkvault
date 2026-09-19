@@ -60,3 +60,22 @@ export const ENRICH_RETRIES_PER_LINK = 3;
 
 /** Importaciones que puede hacer una persona en la ventana. Cada una guarda hasta `MAX_LINKS_PER_IMPORT` links. */
 export const IMPORTS_PER_USER = 10;
+
+/**
+ * Pegados de descripción que puede hacer una persona en la ventana (D5 de paste-job-description). Cada uno es una
+ * llamada a la IA dentro de una petición HTTP, así que se cuenta por persona, que es quien la gasta.
+ */
+export const PASTES_PER_USER = 10;
+
+/**
+ * `Retry-After` de un pegado que no se pudo leer ahora (503): la IA degradó o no respondió, o el contador no responde.
+ * Es un fallo transitorio de un proveedor o de Redis, no una ventana que haya que esperar, así que se anuncia poco: un
+ * minuto, lo que el SPA traduce como "inténtalo en un rato".
+ */
+export const PASTE_UNAVAILABLE_RETRY_AFTER_SECONDS = 60;
+
+/**
+ * `Retry-After` de la cuota diaria de IA agotada (429 `ai_quota_exceeded`): la ventana entera, 24 h. La política de
+ * cuotas solo responde sí o no, así que es conservador y coincide con el mensaje, "vuelve mañana" (D5).
+ */
+export const AI_QUOTA_RETRY_AFTER_SECONDS = 24 * 60 * 60;

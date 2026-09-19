@@ -6,9 +6,9 @@ import type { PageContent } from './page-content';
 import { mergeDrafts } from './merge';
 import {
   hasRequiredFields,
-  valuesOf,
+  valuesOfDraft,
   type PreviewDraft,
-} from './preview-draft';
+} from '@linkvault/shared';
 
 // Orquestador de la cadena de extracción (D3 y D7 de link-enrichment). Puro: recibe la página ya parseada y las
 // etapas ya construidas, y no sabe de HTML, de red ni de IA.
@@ -58,7 +58,7 @@ export class ExtractionChain {
 
     for (const extractor of this.extractors) {
       // Parada temprana: con los obligatorios ya leídos, seguir preguntando no cambiaría el resultado.
-      if (hasRequiredFields(valuesOf(mergeDrafts(drafts)))) break;
+      if (hasRequiredFields(valuesOfDraft(mergeDrafts(drafts)))) break;
       if (!extractor.supports(input.page)) continue;
 
       const remainingMs = input.deadlineAt - this.now();

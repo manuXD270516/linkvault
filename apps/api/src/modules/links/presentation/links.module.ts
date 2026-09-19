@@ -1,7 +1,11 @@
-import { Module, type OnModuleInit } from '@nestjs/common';
+import { RUN_TASK, type RunTaskFn } from '@linkvault/ai';
+import type { Redis } from 'ioredis';
+import { type DynamicModule, Module, type OnModuleInit } from '@nestjs/common';
 import { LimitsModule } from '../../../infrastructure/limits/limits.module';
 import { OutboxModule } from '../../../infrastructure/outbox/outbox.module';
 import { RealtimeModule } from '../../../infrastructure/realtime/realtime.module';
+import { REDIS_APP_CLIENT } from '../../../infrastructure/redis/redis-app-client';
+import { RedisAppModule } from '../../../infrastructure/redis/redis-app.module';
 import {
   createRedisSubscriberClient,
   REDIS_SUBSCRIBER_CLIENT,
@@ -24,7 +28,13 @@ import { GROUP_LINK_REPOSITORY } from '../application/ports/group-link-repositor
 import { GROUP_MEMBERSHIP } from '../application/ports/group-membership.port';
 import { JOB_LINK_REPOSITORY } from '../application/ports/job-link-repository.port';
 import { LINK_LIMITER } from '../application/ports/link-limiter.port';
-import { LINK_USER_DIRECTORY } from '../application/ports/link-user-directory.port';
+import {
+  LINK_USER_DIRECTORY,
+  type LinkUserDirectory,
+} from '../application/ports/link-user-directory.port';
+import { PASTED_EXTRACTION } from '../application/ports/pasted-extraction.port';
+import { LINK_ENRICHED_PUBLISHER } from '../application/ports/link-enriched-publisher.port';
+import { PasteDescription } from '../application/paste-description.usecase';
 import { USER_LINK_REPOSITORY } from '../application/ports/user-link-repository.port';
 import { RemoveGroupLink } from '../application/remove-group-link.usecase';
 import { RemoveMyLink } from '../application/remove-my-link.usecase';
@@ -43,6 +53,8 @@ import { GroupsFacadeMembership } from '../infrastructure/groups-facade-membersh
 import { MongoGroupLinkRepository } from '../infrastructure/mongo-group-link.repository';
 import { MongoJobLinkRepository } from '../infrastructure/mongo-job-link.repository';
 import { MongoUserLinkRepository } from '../infrastructure/mongo-user-link.repository';
+import { RunTaskPastedExtraction } from '../infrastructure/run-task-pasted-extraction';
+import { RedisLinkEnrichedPublisher } from '../infrastructure/redis-link-enriched-publisher';
 import { SystemClock } from '../infrastructure/system-clock';
 import { UsersFacadeLinkDirectory } from '../infrastructure/users-facade-link-directory';
 import { GroupLinksController } from './group-links.controller';
@@ -55,7 +67,7 @@ import { LinksController } from './links.controller';
  * Importa `GroupsModule` para la pertenencia y el rol (`GroupsFacade`), `UsersModule` para los nombres visibles de quien
  * compartió (`UsersFacade`), `OutboxModule` para escribir el evento dentro de la transacción del alta y `LimitsModule`
  * para contar importaciones y relecturas: la dependencia va siempre de `links` a los demás, que es la dirección
- * permitida. No exporta nada: todavía nadie entra a `links`.
+ * permitida. No exporta nada: todavía nadie entra a `links`. La IA le llega por `register(aiModule)`.
  *
  * NO monta ninguna `Queue`: reintentar y reencolar van por el outbox (D10 de link-enrichment), así que la suite de
  * integración de `api` sigue sin necesitar Redis para escribir en la cola.
@@ -74,6 +86,7 @@ import { LinksController } from './links.controller';
     OutboxModule,
     LimitsModule,
     RealtimeModule,
+    RedisAppModule,
   ],
   controllers: [LinksController, GroupLinksController],
   providers: [
@@ -103,8 +116,30 @@ import { LinksController } from './links.controller';
     },
     // Abrir la conexión es de quien se suscribe; cerrarla al apagar, de esto.
     RedisSubscriberConnection,
+    {
+      // `RUN_TASK` llega del `AiModule` que `register` importa: sin él, este proveedor no se resuelve y la app no arranca.
+      provide: PASTED_EXTRACTION,
+      inject: [RUN_TASK, LINK_USER_DIRECTORY, APP_CONFIG],
+      useFactory: (
+        runTask: RunTaskFn,
+        directory: LinkUserDirectory,
+        config: ApiConfig,
+      ) =>
+        new RunTaskPastedExtraction(
+          runTask,
+          directory,
+          config.PASTE_EXTRACTION_TIMEOUT_MS,
+        ),
+    },
+    {
+      // Publica en el canal de avisos con el cliente de aplicación, que solo manda comandos: el de suscripción no puede.
+      provide: LINK_ENRICHED_PUBLISHER,
+      inject: [REDIS_APP_CLIENT],
+      useFactory: (client: Redis) => new RedisLinkEnrichedPublisher(client),
+    },
     { provide: LINKS_CLOCK, useClass: SystemClock },
     SaveLink,
+    PasteDescription,
     ImportLinks,
     ListGroupLinks,
     ListMyLinks,
@@ -119,6 +154,15 @@ import { LinksController } from './links.controller';
   ],
 })
 export class LinksModule implements OnModuleInit {
+  /**
+   * `LinksModule` con la IA (D1 de paste-job-description): el pegado lee el texto con `RUN_TASK`. `aiModule` es el mismo
+   * objeto que importa `AppModule`, construido una vez: `AiModule` no es global y `RUN_TASK` solo es visible para quien
+   * lo importa. Lo demás del módulo sigue en su decorador; Nest suma las dos partes.
+   */
+  static register(aiModule: DynamicModule): DynamicModule {
+    return { module: LinksModule, imports: [aiModule] };
+  }
+
   constructor(
     private readonly deletionHooks: GroupDeletionHooks,
     private readonly groupLinksDeletion: GroupLinksDeletionHook,

@@ -226,7 +226,7 @@ Orden y notas específicas:
 | 12 | `cv-match-suggestions` | §4.8 y 4.12. Evaluator-optimizer acotado, `evidence` obligatoria, `ai_feedback`. Controles de IA del perfil diferidos desde `auth-users`: consentimiento con texto honesto, `consentedAt` y versión del texto, "Idioma de los análisis de IA" y redacción del nombre. |
 | 13 | `study-roadmap` | Catálogo curado `resources.seed.json` primero. |
 | 14 | `ai-byok` | libsodium vault. |
-| 15 | `deploy-prod` | compose prod + Traefik + docs de alternativas. Heredado de `auth-users` (ADR-020): `trustProxy`, reseteo manual de contraseña por operador documentado, aviso de privacidad y borrado de cuenta. Heredado de `link-enrichment` (ADR-022): elegir proveedor de objetos (el cliente habla S3) y crear allí el bucket de snapshots con su expiración a 30 días, fijar las `ENRICH_*` por entorno y decidir dónde queda encendido el relay del outbox, que sigue siendo de una sola instancia. |
+| 15 | `deploy-prod` | compose prod + Traefik + docs de alternativas. Heredado de `auth-users` (ADR-020): `trustProxy`, reseteo manual de contraseña por operador documentado, aviso de privacidad y borrado de cuenta. Heredado de `link-enrichment` (ADR-022): elegir proveedor de objetos (el cliente habla S3) y crear allí el bucket de snapshots con su expiración a 30 días, fijar las `ENRICH_*` por entorno y decidir dónde queda encendido el relay del outbox, que sigue siendo de una sola instancia. Heredado de `paste-job-description` (ADR-023): fijar `PASTE_EXTRACTION_TIMEOUT_MS` y la cuota de `extract-pasted-job` en `AI_QUOTAS` por entorno, y copiar los prompts también en la imagen de `api` (`AI_PROMPTS_DIR=dist/apps/api/assets/ai/prompts` si no arranca desde la raíz). |
 | 16 | `auth-email-recovery` | Fuera de §6: verificación de email y recuperación de contraseña, diferidas desde `auth-users` (ADR-020). Alcance y orden por decidir al crearlo. |
 
 **Paralelizar front y back (changes 4–8):** en `/opsx:apply` pide:
@@ -270,6 +270,40 @@ que hay que tener presente al operar y al probar a mano.
 - **El golden real de `extract-job` tiene fecha límite.** El snapshot de cada página vive **30 días**; pasados, hay que
   volver a descargarla. Si vas a correr `/lv:golden 20` con vacantes reales, hazlo dentro de esa ventana.
 
+## Paso 6 ter — Operar el pegado de descripciones
+
+Desde `paste-job-description`, una oferta que la bolsa no deja leer se completa **pegando su texto**
+(`POST /api/links/:linkId/pasted`), y `api` lo lee con IA dentro de la misma petición. El detalle para quien usa el
+producto, los códigos y la precedencia están en el [README](../README.md#pegar-la-descripción); las decisiones, en
+[ADR-023](adr/ADR-023.md). Aquí, lo que hay que tener presente al operar y al probar a mano.
+
+- **`api` ejecuta IA y tiene una variable nueva, obligatoria.** Valida al arrancar la configuración de IA con el mismo
+  `parseAiConfig` que el worker (`AI_*`, `OLLAMA_*`, `OPENROUTER_*`) y además `PASTE_EXTRACTION_TIMEOUT_MS` (`20000`,
+  de 1 000 a 120 000 ms). **Un `.env` anterior no la tiene y `api` no arranca**: copia de `.env.example`
+  `PASTE_EXTRACTION_TIMEOUT_MS` y la sección `--- IA ---`. Un `api` compilado que no arranque desde la raíz necesita
+  `AI_PROMPTS_DIR=dist/apps/api/assets/ai/prompts`; el build los copia y CI lo comprueba en el paso "Check prompt
+  assets".
+- **El texto pegado no se guarda en ningún sitio.** Ni en Mongo, ni en el outbox, ni en BullMQ, ni en la caché, ni en
+  los logs, ni en el registro de fixtures pendientes. Al depurar no lo busques: no está, a propósito. El ledger
+  `ai_usage` registra cada lectura (resultado, motivo, proveedor, latencia) sin su entrada.
+- **Es un dato personal.** La tarea `extract-pasted-job` es `personal`: no va a un proveedor externo sin el
+  consentimiento de quien pega. Con mock u Ollama no sale de la máquina. **Antes de añadir OpenRouter (u otro externo)
+  a la cadena de `api`** hay que añadir el código `ai_consent_required` (ADR-023, riesgos aceptados): sin él, una
+  cadena solo de externos respondería `503` "inténtalo en un rato" para siempre a quien no dio su consentimiento.
+- **Límites.** 10 pegados por usuario cada 15 min (contador `links:paste:<userId>` en Redis, que falla cerrado con
+  `503`), y un `503` de la IA devuelve el intento. Aparte, la cuota diaria de IA de `extract-pasted-job` en
+  `AI_QUOTAS`, independiente de la de `extract-job`; vacía, no hay cuota.
+- **Probar a mano.** En desarrollo, `.env.example` deja `AI_CHAIN=mock` con `AI_MOCK_MODE=synth`, que responde sin
+  modelo. Para medir un modelo real: `AI_CHAIN=ollama` en tu `.env`, `pnpm nx serve api`, y súbele
+  `PASTE_EXTRACTION_TIMEOUT_MS` si Ollama corre en CPU. El golden de la tarea se evalúa con
+  `pnpm nx run ai:eval --task=extract-pasted-job --provider=mock`; cambiar su prompt exige `--update-baseline` en el
+  mismo commit.
+- **Rescate por historial** (worker). Si el `robots.txt` prohíbe la `displayUrl`, el worker prueba las demás URLs de
+  `originalUrls` **del mismo host**, las más recientes primero y dentro del mismo turno, y lee la primera permitida;
+  `displayUrl` no cambia. Se dispara **al volver a guardar la vacante con una URL nueva del mismo host** sobre un link
+  en `failed` por `robots_disallowed`: ese guardado sube `previewVersion`, lo pasa a `pending` y escribe en el outbox.
+  No hay backfill para los que ya están así, y `api:backfill-enrichment --status=failed` sigue sin tocarlos.
+
 ## Paso 7 — Definition of Done (pégalo en cada PR)
 
 - [ ] Change archivado; spec delta mergeada en `openspec/specs/`
@@ -288,9 +322,12 @@ que hay que tener presente al operar y al probar a mano.
 | Mongo: "Transaction numbers are only allowed on a replica set member" | El healthcheck de `mongo` no ha inicializado `rs0`: revisa su estado con `docker compose ps` o `docker inspect --format '{{json .State.Health}}' linkvault-mongo-1` (ver ADR-017) |
 | `api` no arranca nombrando `AUTH_JWT_SECRET` u otra `AUTH_*` | Tu `.env` es anterior a `auth-users`: copia el bloque `AUTH_*` de `.env.example`. Con `NODE_ENV=production` el secreto de ejemplo se rechaza a propósito |
 | El `worker` no arranca nombrando `ENRICH_*` o `S3_*` | Tu `.env` es anterior a `link-enrichment`: copia esos dos bloques de `.env.example`. Todas son obligatorias |
-| Un link de LinkedIn, Indeed o Computrabajo se queda sin preview | Es el comportamiento correcto: esas bolsas nos prohíben (`robots_disallowed`) o nos bloquean (`blocked`) la lectura. No se reintenta; se completa a mano (ADR-022 §3). Para probar la lectura automática usa Trabajopolis o Get on Board |
+| Un link de LinkedIn, Indeed o Computrabajo se queda sin preview | Es el comportamiento correcto: esas bolsas nos prohíben (`robots_disallowed`) o nos bloquean (`blocked`) la lectura. No se reintenta; se completa **pegando su descripción** o a mano (ADR-022 §3, ADR-023). Para probar la lectura automática usa Get on Board: el smoke encontró que el CDN de Trabajopolis rechaza el cliente de Node. Si el `displayUrl` lleva un parámetro prohibido y existe la misma oferta sin él, guardar esa URL limpia dispara el rescate por historial (Paso 6 ter) |
 | Los links se quedan en `pending` para siempre | Por orden: ¿está el worker levantado (`pnpm nx serve worker`)?; ¿`OUTBOX_RELAY_ENABLED=true` en `api`?; ¿hay jobs en la cola (`docker compose exec redis redis-cli keys 'bull:enrich-link:*'`)? Si el atasco ya existía, desatáscalo con `pnpm nx run api:backfill-enrichment --status=pending`, que sube `previewVersion` y cambia el `jobId` |
 | `POST /api/links/:id/enrich` responde `409` o `429` | `409 enrichment_not_retryable`: el motivo del fallo no se reintenta (`robots_disallowed`, `blocked`, `not_a_job`). `429 too_many_attempts`: 3 relecturas por link cada 15 min, o el contador de Redis no respondió (ese límite falla cerrado a propósito) |
+| `api` no arranca nombrando `PASTE_EXTRACTION_TIMEOUT_MS`, `AI_CHAIN`, `AI_MOCK_MODE`, `AI_QUOTAS` u otra `AI_*`/`OLLAMA_*`/`OPENROUTER_*` (`[api] Invalid configuration, check these environment variables: …`) | Desde `paste-job-description` `api` ejecuta IA y valida su configuración con el mismo `parseAiConfig` que el worker. Si falta `PASTE_EXTRACTION_TIMEOUT_MS`, tu `.env` es anterior: cópiala de `.env.example` junto con la sección `--- IA ---`. Si es `invalid`, el detalle dice por qué: `mock` con `NODE_ENV=production`, `AI_MOCK_MODE` distinto de `replay`/`synth` (`record` se graba con `nx run ai:record-fixtures`), `openrouter` sin `OPENROUTER_API_KEY` u `OPENROUTER_MODEL`, o una tarea desconocida en `AI_QUOTAS`. Si no arranca porque no encuentra un prompt, es un `api` compilado fuera de la raíz: necesita `AI_PROMPTS_DIR=dist/apps/api/assets/ai/prompts`, porque `AiModule` comprueba al iniciarse que existen los prompts de todas sus tareas |
+| `POST /api/links/:id/pasted` responde `503 extraction_unavailable` siempre | Por orden: ¿`curl http://localhost:3000/health` da `200`? Con Redis caído el contador de pegados falla cerrado y responde `503` sin llamar a la IA. ¿`AI_CHAIN=none`? Entonces toda lectura degrada. ¿Ollama arriba y con el modelo? `curl http://localhost:11434/api/tags` debe listar `OLLAMA_MODEL` (si no, `ollama pull qwen2.5:7b`). ¿El plazo? Un modelo en CPU puede pasar de los 20 s de `PASTE_EXTRACTION_TIMEOUT_MS`: súbelo (hasta 120 000) y reinicia `api`; `OLLAMA_TIMEOUT_MS` también corta. ¿La cadena solo tiene `openrouter` y quien pega no dio su consentimiento? Responde `503` para siempre hasta que exista `ai_consent_required` (ADR-023). Tras varios fallos seguidos el circuit breaker del proceso deja de llamar a ese proveedor unos 30 s. El ledger dice qué pasó, sin el texto: `docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval "db.ai_usage.find({task:'extract-pasted-job'},{_id:0,outcome:1,reason:1,providerId:1,latencyMs:1,at:1}).sort({at:-1}).limit(5)"` (`degraded` con `no_providers`: ningún proveedor elegible; con `providers_failed`: fallaron o se agotó el plazo). Un `503` no gasta pegados |
+| `POST /api/links/:id/pasted` responde `429` | Mira el código. `ai_quota_exceeded` ("vuelve mañana", `Retry-After` de 24 h): quien pega agotó su cuota diaria de `extract-pasted-job` en `AI_QUOTAS`, que cuenta sus lecturas con éxito de las últimas 24 h en `ai_usage` y es independiente de la de `extract-job`. En local, sube o quita esa entrada de `AI_QUOTAS` y reinicia `api`; en un entorno compartido se ajusta la cuota del entorno, nunca el ledger. `too_many_attempts` ("espera un poco"): más de 10 pegados en 15 min; en local, `docker compose exec redis redis-cli del links:paste:<userId>`. Nunca en un entorno compartido |
 | El worker avisa de que no pudo guardar el snapshot | MinIO caído o sin bucket: `docker compose up -d --wait` lo crea con su regla de 30 días. El enriquecimiento no falla por eso; lo que se pierde es la copia para el golden real |
 | Login o registro responden `429` en pruebas locales o en `/lv:smoke` | Contadores de intentos de la ventana de 15 min en Redis. En local: `docker compose exec redis sh -c "redis-cli --scan --pattern 'auth:*' \| xargs -r redis-cli del"`. Nunca en un entorno compartido |
 | `POST /api/auth/*` responde `403` o `415` | Falta `X-Requested-With: linkvault` o el cuerpo no es `application/json` (defensa CSRF, ADR-020) |

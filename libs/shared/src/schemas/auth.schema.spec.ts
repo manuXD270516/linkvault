@@ -243,6 +243,9 @@ describe('api error contract', () => {
       'link_not_found',
       'preview_field_unknown',
       'enrichment_not_retryable',
+      'not_a_job_posting',
+      'extraction_unavailable',
+      'ai_quota_exceeded',
       'internal_error',
     ]);
   });

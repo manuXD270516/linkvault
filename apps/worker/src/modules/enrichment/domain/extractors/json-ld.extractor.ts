@@ -1,12 +1,12 @@
 import {
   PREVIEW_SKILLS_MAX,
+  draftFrom,
+  scrubContactDetails,
   type JobPreview,
   type JobSalary,
   type SalaryPeriod,
 } from '@linkvault/shared';
-import { scrubContactDetails } from '../contact-scrub';
 import type { PageContent } from '../page-content';
-import { draftFrom } from '../preview-draft';
 import { toPlainText, truncateSummary } from '../plain-text';
 import {
   NOTHING_EXTRACTED,

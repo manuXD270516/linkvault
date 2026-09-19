@@ -21,6 +21,8 @@ import {
   LinksError,
   PreviewFieldUnknown,
   TooManyLinkAttempts,
+  ExtractionUnavailable,
+  AiQuotaExceeded,
 } from '../../modules/links/domain/errors';
 import {
   EmailAlreadyRegistered,
@@ -39,7 +41,8 @@ interface ApiErrorReply {
 
 /**
  * Filtro global de errores (D8 de auth-users). Traduce a `{ code, message, fields? }`:
- * - `RequestValidationError` del pipe zod → 400 `validation_error` nombrando los campos.
+ * - `RequestValidationError` del pipe zod → 400 `validation_error` nombrando los campos, o el código propio que pida su
+ *   schema (`text_too_long` del texto pegado).
  * - Errores de dominio de `auth` por su `code`, con `Retry-After` en `TooManyAttempts`.
  * - Errores de dominio de `users`: `EmailAlreadyRegistered` → 409 `email_taken`; `InvalidProfileChanges` → 400
  *   `validation_error` con su campo; `UserNotFound` → 401 `unauthorized`, porque el único usuario que una petición puede
@@ -49,9 +52,9 @@ interface ApiErrorReply {
  *   `forbidden` → 403, `invalid_invite_code` → 404, `group_full` → 409, `too_many_groups` → 409, `owner_cannot_leave` →
  *   409), así que basta un `instanceof GroupsError`; `InvalidGroupName` va antes porque además nombra el campo `name`.
  * - Errores de dominio de `links`, también por su `code` (`invalid_url` → 400, `text_too_long` → 400, `link_not_found`
- *   → 404, `forbidden` → 403, `enrichment_not_retryable` → 409); `InvalidCursor` va antes porque es un
+ *   → 404, `forbidden` → 403, `enrichment_not_retryable` → 409, `not_a_job_posting` → 422); `InvalidCursor` va antes porque es un
  *   `validation_error` que nombra el campo `cursor`, `PreviewFieldUnknown` porque nombra el campo que no existe y
- *   `TooManyLinkAttempts` porque lleva su `Retry-After`. `invalid_url` y `text_too_long` NO nombran campo: el código ya
+ *   `TooManyLinkAttempts`, `ExtractionUnavailable` (503) y `AiQuotaExceeded` (429) porque llevan su `Retry-After`. `invalid_url` y `text_too_long` NO nombran campo: el código ya
  *   dice cuál es, y el SPA traduce el código.
  * - `HttpException` 400 (JSON mal formado, que Nest convierte desde Fastify) → `validation_error` sin campos, y 415 →
  *   `unsupported_media_type`. El resto de `HttpException` (404 de ruta desconocida, 503 de la salud) conserva la
@@ -90,7 +93,7 @@ export class ApiExceptionFilter extends BaseExceptionFilter {
   /** `undefined` si la respuesta de Nest para esa `HttpException` se conserva. */
   private translate(exception: unknown): ApiErrorReply | undefined {
     if (exception instanceof RequestValidationError) {
-      return reply('validation_error', exception.fields);
+      return reply(exception.code, exception.fields);
     }
     if (exception instanceof TooManyAttempts) {
       return reply('too_many_attempts', [], {
@@ -127,8 +130,12 @@ export class ApiExceptionFilter extends BaseExceptionFilter {
     if (exception instanceof PreviewFieldUnknown) {
       return reply('preview_field_unknown', [exception.field]);
     }
-    if (exception instanceof TooManyLinkAttempts) {
-      return reply('too_many_attempts', [], {
+    if (
+      exception instanceof TooManyLinkAttempts ||
+      exception instanceof ExtractionUnavailable ||
+      exception instanceof AiQuotaExceeded
+    ) {
+      return reply(exception.code, [], {
         'Retry-After': String(exception.retryAfterSeconds),
       });
     }

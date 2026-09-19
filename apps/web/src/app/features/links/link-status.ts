@@ -1,9 +1,11 @@
 import {
   type EnrichmentFailureReason,
   type JobLinkSummary,
+  type Platform,
   type StoredPreview,
   isRetryableEnrichmentReason,
 } from '@linkvault/shared';
+import { platformName } from './link-preview';
 
 /**
  * Lo que la tarjeta dice del estado de una oferta y qué se puede hacer con ella (spec web/links).
@@ -21,6 +23,11 @@ export interface LinkCardStatus {
   canRetry: boolean;
   /** `true` cuando lo compartido no era una oferta: lo que toca ahí es quitarlo, no completarlo. */
   notAnOffer: boolean;
+  /**
+   * `true` cuando lo que toca es pegar la descripción: la bolsa no nos deja leerla y la oferta todavía no tiene título.
+   * Entonces "Pegar la descripción" es la acción principal y completarla a mano, la secundaria (paste-job-description).
+   */
+  pasteFirst: boolean;
 }
 
 /**
@@ -34,17 +41,29 @@ export function linkCardStatus(link: JobLinkSummary, now: Date): LinkCardStatus 
   const preview = link.preview;
   // Con título y empresa la oferta ya es legible, la haya escrito la página, la IA o una persona.
   if (isReadable(preview)) {
-    return { text: null, needsHand: false, canRetry: false, notAnOffer: false };
+    return { text: null, needsHand: false, canRetry: false, notAnOffer: false, pasteFirst: false };
   }
 
   const error = link.lastEnrichmentError;
   if (error !== undefined) {
+    // Sin título y con una bolsa que no nos deja leer, lo único que va a completar la tarjeta es lo que la persona ya
+    // tiene delante: el texto de la oferta. Decir solo "no se puede leer" dejaría la tarjeta como está.
+    if (isClosedToUs(error.reason) && !filled(preview?.title)) {
+      return {
+        text: pasteFirstText(link.platform),
+        needsHand: true,
+        canRetry: false,
+        notAnOffer: false,
+        pasteFirst: true,
+      };
+    }
     const notAnOffer = error.reason === 'not_a_job';
     return {
       text: failureText(error.reason),
       needsHand: !notAnOffer,
       canRetry: isRetryableEnrichmentReason(error.reason),
       notAnOffer,
+      pasteFirst: false,
     };
   }
 
@@ -54,6 +73,7 @@ export function linkCardStatus(link: JobLinkSummary, now: Date): LinkCardStatus 
       needsHand: true,
       canRetry: false,
       notAnOffer: false,
+      pasteFirst: false,
     };
   }
 
@@ -64,13 +84,30 @@ export function linkCardStatus(link: JobLinkSummary, now: Date): LinkCardStatus 
         needsHand: false,
         canRetry: false,
         notAnOffer: false,
+        pasteFirst: false,
       }
     : {
         text: $localize`:@@links.list.noPreview:Sin vista previa todavía`,
         needsHand: true,
         canRetry: false,
         notAnOffer: false,
+        pasteFirst: false,
       };
+}
+
+/** Motivos en los que la bolsa, y no algo pasajero, nos impide leer la oferta: prohibirlo o bloquearnos. */
+function isClosedToUs(reason: EnrichmentFailureReason): boolean {
+  return reason === 'robots_disallowed' || reason === 'blocked';
+}
+
+/**
+ * Qué hacer con una oferta que la bolsa no nos deja leer, con el nombre de la bolsa. Una web sin canonicalizador propio
+ * no tiene un nombre que decir ("Otra web no nos deja…" no se entiende), así que ahí se habla de "esta web".
+ */
+function pasteFirstText(platform: Platform): string {
+  return platform === 'generic'
+    ? $localize`:@@links.status.pasteFirstGeneric:Esta web no nos deja leer sus ofertas. Pega su descripción para completarla`
+    : $localize`:@@links.status.pasteFirst:${platformName(platform)}:PLATFORM: no nos deja leer sus ofertas. Pega su descripción para completarla`;
 }
 
 /** Texto honesto de cada motivo (D5): lo que el sitio no permite no se cuenta como un error nuestro. */

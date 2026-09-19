@@ -1,8 +1,9 @@
-import type { JobSalary } from '@linkvault/shared';
+import type { JobSalary, ResolvedPreviewSources } from '@linkvault/shared';
 import {
   daysSince,
   fieldOrigin,
   formatSalary,
+  latestPaste,
   linkLabel,
   modalityLabel,
   platformName,
@@ -153,5 +154,58 @@ describe('fieldOrigin', () => {
 
   it('says nothing about a field nobody wrote', () => {
     expect(fieldOrigin(undefined)).toBeNull();
+  });
+});
+
+describe('latestPaste', () => {
+  const ana = { userId: 'u1', displayName: 'Ana' };
+  const beto = { userId: 'u2', displayName: 'Beto' };
+  const pastedAt = '2026-09-18T12:00:00.000Z';
+  const later = '2026-09-18T13:00:00.000Z';
+  const pasted = <const T>(value: T, by = ana, at = pastedAt) =>
+    ({ value, source: 'pasted', extractor: 'ai:extract-pasted-job', by, at }) as const;
+  const manual = <const T>(value: T, by = ana, at = pastedAt) => ({ value, source: 'manual', by, at }) as const;
+
+  it('Deshacer un pegado con la cabecera escrita aparte', () => {
+    const sources: ResolvedPreviewSources = {
+      title: manual('Ingeniera de datos'),
+      company: manual('Acme'),
+      location: pasted('Bolivia'),
+      modality: pasted('remote'),
+    };
+
+    // El título y la empresa se teclearon en el mismo diálogo: mismo autor, misma fecha, un solo gesto.
+    expect(latestPaste(sources)).toEqual({
+      by: ana,
+      at: pastedAt,
+      fields: ['title', 'company', 'location', 'modality'],
+    });
+  });
+
+  it('leaves out a correction by hand made after the paste', () => {
+    const sources: ResolvedPreviewSources = {
+      title: manual('Ingeniera de datos senior', ana, later),
+      company: manual('Acme SA', beto, pastedAt),
+      location: pasted('Bolivia'),
+      modality: pasted('remote'),
+    };
+
+    expect(latestPaste(sources)?.fields).toEqual(['location', 'modality']);
+  });
+
+  it('undoes only the latest of two pastes still on the card, with its own header', () => {
+    const sources: ResolvedPreviewSources = {
+      title: manual('Ingeniera de datos', beto, pastedAt),
+      location: pasted('Bolivia', beto, pastedAt),
+      company: manual('Acme', ana, later),
+      modality: pasted('remote', ana, later),
+    };
+
+    expect(latestPaste(sources)).toEqual({ by: ana, at: later, fields: ['company', 'modality'] });
+  });
+
+  it('offers nothing when only fields written by hand are left', () => {
+    expect(latestPaste({ title: manual('Ingeniera de datos'), company: manual('Acme') })).toBeNull();
+    expect(latestPaste(undefined)).toBeNull();
   });
 });

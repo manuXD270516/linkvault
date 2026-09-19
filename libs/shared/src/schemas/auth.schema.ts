@@ -106,6 +106,13 @@ export const apiErrorCodeSchema = z.enum([
   'preview_field_unknown',
   // 409: se pide releer una oferta que la bolsa prohíbe leer, que nos bloquea o que no era una oferta.
   'enrichment_not_retryable',
+  // 422: el texto pegado no parece una oferta, o no queda nada de él tras quitarle los datos de contacto.
+  'not_a_job_posting',
+  // 503, con `Retry-After`: la IA no respondió a tiempo, degradó, o el contador de pegados no responde.
+  'extraction_unavailable',
+  // 429, con `Retry-After`: quien pega agotó su cuota diaria de IA. Distinto de `too_many_attempts`, cuya ventana es de
+  // minutos: decir "inténtalo en un rato" sería mentira cuando hay que esperar al día siguiente.
+  'ai_quota_exceeded',
   // 500
   'internal_error',
 ]);

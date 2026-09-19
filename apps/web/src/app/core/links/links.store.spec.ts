@@ -213,6 +213,36 @@ describe('LinksStore', () => {
     expect(store.items().map((item) => item.id)).toEqual(['l1']);
   });
 
+  it('replaces the card with what the API answered after pasting, without reloading', async () => {
+    await openGroup({ items: [linkWith('l1'), linkWith('l2')], total: 2 });
+    const completed: JobLinkSummary = {
+      ...linkWith('l2'),
+      previewStatus: 'enriched',
+      previewVersion: 2,
+      preview: { title: 'Backend Engineer', company: 'Acme' },
+    };
+
+    const pasting = store.pasteDescription('l2', { text: 'Buscamos backend…' });
+    http.expectOne({ method: 'POST', url: '/api/links/l2/pasted' }).flush(completed);
+
+    await expect(pasting).resolves.toEqual(completed);
+    await settle();
+    http.expectNone(GROUP_PAGE);
+    expect(store.items().map((item) => item.preview?.title)).toEqual([undefined, 'Backend Engineer']);
+  });
+
+  it('undoes every field of a paste in a single request', async () => {
+    await openGroup({ items: [linkWith('l1')], total: 1 });
+
+    const undoing = store.undoPaste('l1', ['company', 'location', 'summary']);
+    const request = http.expectOne({ method: 'PATCH', url: '/api/links/l1/preview' });
+    expect(request.request.body).toEqual({ revert: ['company', 'location', 'summary'] });
+    request.flush({ ...linkWith('l1'), previewVersion: 3 });
+
+    await expect(undoing).resolves.toMatchObject({ previewVersion: 3 });
+    expect(store.items()[0]?.previewVersion).toBe(3);
+  });
+
   it('forgets the previous list when another one is opened', async () => {
     await openGroup({ items: [linkWith('l1')], total: 1, nextCursor: 'Y3Vyc29y' });
 

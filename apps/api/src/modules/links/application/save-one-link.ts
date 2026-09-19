@@ -1,18 +1,29 @@
 import { linkCreatedEvent, type ShareOutcome } from '@linkvault/shared';
 import { canonicalize } from '../domain/canonicalizers/registry';
 import { InvalidUrl } from '../domain/errors';
-import { createJobLink, type JobLink, type NewJobLink } from '../domain/job-link';
+import {
+  asksForHistoryRescue,
+  createJobLink,
+  type JobLink,
+  type NewJobLink,
+} from '../domain/job-link';
 import { isUrlTooLong } from '../domain/limits';
 import { normalizeUrl, toDisplayUrl } from '../domain/url';
 import type { GroupLinkRepository } from './ports/group-link-repository.port';
-import type { JobLinkRepository } from './ports/job-link-repository.port';
+import type {
+  JobLinkRepository,
+  ResolvedJobLink,
+} from './ports/job-link-repository.port';
 import type { Outbox } from './ports/outbox.port';
 import type { TransactionSession } from './ports/transaction-session';
 import type { UserLinkRepository } from './ports/user-link-repository.port';
 
 // Paso común de guardar un link, que comparten `save-link` y `import-links` (D3, D4 y D6 de job-links): la vacante, su
 // relación con el destino y el evento del outbox se escriben en la misma transacción, o no se escribe nada. El evento
-// se añade solo cuando la vacante es nueva: un link compartido por segunda vez no necesita enriquecerse otra vez.
+// se añade cuando la vacante es nueva: un link compartido por segunda vez no necesita enriquecerse otra vez. La
+// excepción es el rescate por historial (D7 de paste-job-description): volver a guardar, con una URL nueva del mismo
+// host, una vacante cuya `displayUrl` prohíbe `robots.txt` pide una lectura nueva en la misma transacción, como el
+// reintento, para que la cadena del worker pruebe esa URL.
 
 /** Puertos de escritura que necesita el paso. Se pasan juntos para que los dos casos de uso no repitan el cableado. */
 export interface LinkWriters {
@@ -89,7 +100,13 @@ export async function saveOneLink(
   return await writers.links.withResolvedLink(
     params.draft,
     async (resolved, session) => {
-      const { link } = resolved;
+      const link = await requestRescueIfAsked(
+        writers,
+        resolved,
+        params.draft.displayUrl,
+        now,
+        session,
+      );
       const shared =
         groupId === undefined
           ? await saveInPrivateList(writers, { link, userId, now }, session)
@@ -107,6 +124,42 @@ export async function saveOneLink(
       return { link, created: resolved.created, ...shared };
     },
   );
+}
+
+/**
+ * Pide una lectura nueva del link si volver a guardarlo con esta URL la merece (`asksForHistoryRescue`): sube la versión,
+ * vuelve a `pending` y escribe `LinkCreated.v1` en el outbox, todo en la sesión del guardado. Si no, el link tal cual.
+ */
+async function requestRescueIfAsked(
+  writers: LinkWriters,
+  resolved: ResolvedJobLink,
+  url: string,
+  now: Date,
+  session: TransactionSession,
+): Promise<JobLink> {
+  if (
+    resolved.created ||
+    !resolved.urlAdded ||
+    !asksForHistoryRescue(resolved.link, url)
+  ) {
+    return resolved.link;
+  }
+  const requested = await writers.links.requestEnrichment(
+    resolved.link.id,
+    now,
+    session,
+  );
+  if (requested === null) {
+    return resolved.link;
+  }
+  await writers.outbox.append(
+    linkCreatedEvent({
+      linkId: requested.id,
+      previewVersion: requested.previewVersion,
+    }),
+    session,
+  );
+  return requested;
 }
 
 async function shareInGroup(

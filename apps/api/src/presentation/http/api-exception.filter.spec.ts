@@ -1,6 +1,9 @@
 import {
   apiErrorResponseSchema,
+  PASTED_TEXT_MAX_LENGTH,
+  pastedDescriptionRequestSchema,
   registerRequestSchema,
+  type PastedDescriptionRequest,
   type RegisterRequest,
 } from '@linkvault/shared';
 import {
@@ -56,6 +59,9 @@ import {
   PreviewFieldUnknown,
   TextTooLong,
   TooManyLinkAttempts,
+  NotAJobPosting,
+  ExtractionUnavailable,
+  AiQuotaExceeded,
 } from '../../modules/links/domain/errors';
 import {
   EmailAlreadyRegistered,
@@ -97,6 +103,9 @@ const THROWN: Record<string, () => unknown> = {
   'preview-field-unknown': () => new PreviewFieldUnknown('image'),
   'enrichment-not-retryable': () => new EnrichmentNotRetryable(),
   'too-many-link-attempts': () => new TooManyLinkAttempts(41.2),
+  'not-a-job-posting': () => new NotAJobPosting(),
+  'extraction-unavailable': () => new ExtractionUnavailable(60),
+  'ai-quota-exceeded': () => new AiQuotaExceeded(86_400),
   unknown: () =>
     new Error(
       `E11000 duplicate key error dup key: { email: "${SECRET_EMAIL}" }`,
@@ -123,6 +132,14 @@ class ThrowingController {
     @Body(new ZodValidationPipe(registerRequestSchema)) body: RegisterRequest,
   ): { email: string } {
     return { email: body.email };
+  }
+
+  @Post('pasted')
+  paste(
+    @Body(new ZodValidationPipe(pastedDescriptionRequestSchema))
+    body: PastedDescriptionRequest,
+  ): { length: number } {
+    return { length: body.text.length };
   }
 }
 
@@ -191,6 +208,64 @@ describe('ApiExceptionFilter', () => {
 
     expect(response.statusCode).toBe(201);
     expect(response.json()).toEqual({ email: 'ana@example.com' });
+  });
+
+  describe('Lo pegado tiene que parecer una oferta', () => {
+    function paste(
+      payload: unknown,
+    ): ReturnType<NestFastifyApplication['inject']> {
+      return app.inject({
+        method: 'POST',
+        url: '/api/test-errors/pasted',
+        headers: { 'content-type': 'application/json' },
+        payload: JSON.stringify(payload),
+      });
+    }
+
+    it('Texto vacío', async () => {
+      const response = await paste({ text: '   \n\t  ' });
+
+      expect(response.statusCode).toBe(400);
+      expect(apiErrorResponseSchema.parse(response.json())).toEqual({
+        code: 'validation_error',
+        message: expect.any(String),
+        fields: ['text'],
+      });
+    });
+
+    it('answers a text over twenty thousand characters with 400 text_too_long, without echoing it', async () => {
+      const text = `MARCA-${'a'.repeat(PASTED_TEXT_MAX_LENGTH)}`;
+
+      const response = await paste({ text });
+
+      expect(response.statusCode).toBe(400);
+      expect(apiErrorResponseSchema.parse(response.json())).toEqual({
+        code: 'text_too_long',
+        message: expect.any(String),
+      });
+      expect(response.body).not.toContain('MARCA-');
+    });
+
+    it('takes twenty thousand characters, measured without the outer spaces', async () => {
+      const response = await paste({
+        text: `  ${'a'.repeat(PASTED_TEXT_MAX_LENGTH)}  `,
+      });
+
+      expect(response.statusCode).toBe(201);
+      expect(response.json()).toEqual({ length: PASTED_TEXT_MAX_LENGTH });
+    });
+
+    it('keeps validation_error when something else is wrong besides the length', async () => {
+      const response = await paste({
+        text: 'a'.repeat(PASTED_TEXT_MAX_LENGTH + 1),
+        salary: 3000,
+      });
+
+      expect(response.statusCode).toBe(400);
+      const body = apiErrorResponseSchema.parse(response.json());
+      expect(body.code).toBe('validation_error');
+      expect([...(body.fields ?? [])].sort()).toEqual(['salary', 'text']);
+    });
   });
 
   it('answers malformed JSON with 400 validation_error and no fields', async () => {
@@ -309,6 +384,30 @@ describe('ApiExceptionFilter', () => {
     // Se redondea hacia arriba como el de `auth`: 41,2 s de espera no se anuncian como 41.
     expect(response.headers['retry-after']).toBe('42');
   });
+
+  it('answers a paste that is not a job posting with 422 not_a_job_posting', async () => {
+    const response = await get('not-a-job-posting');
+
+    expect(response.statusCode).toBe(422);
+    expect(response.json()).toEqual({
+      code: 'not_a_job_posting',
+      message: expect.any(String),
+    });
+  });
+
+  it.each([
+    ['extraction-unavailable', 503, 'extraction_unavailable', '60'],
+    ['ai-quota-exceeded', 429, 'ai_quota_exceeded', '86400'],
+  ])(
+    'answers %s with %i %s and its Retry-After',
+    async (name, status, code, retryAfter) => {
+      const response = await get(name);
+
+      expect(response.statusCode).toBe(status);
+      expect(response.json()).toEqual({ code, message: expect.any(String) });
+      expect(response.headers['retry-after']).toBe(retryAfter);
+    },
+  );
 
   it.each(['unknown', 'non-error'])(
     'answers a %s failure with 500 internal_error without details or the email in the logs',

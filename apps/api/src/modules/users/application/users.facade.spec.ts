@@ -155,6 +155,32 @@ describe('UsersFacade', () => {
     });
   });
 
+  describe('aiConsentOf', () => {
+    it('reads the consent from the profile of that user', async () => {
+      const { id } = await facade.createWithPassword({
+        email: 'ana@example.com',
+        passwordHash: '$argon2id$hash',
+        displayName: 'Ana',
+      });
+
+      expect(await facade.aiConsentOf(id)).toEqual({
+        externalProviders: false,
+      });
+
+      await repository.updateProfile(id, {
+        aiConsent: { externalProviders: true },
+      });
+
+      expect(await facade.aiConsentOf(id)).toEqual({ externalProviders: true });
+    });
+
+    it('answers without consent for a user that does not exist', async () => {
+      expect(await facade.aiConsentOf('missing')).toEqual({
+        externalProviders: false,
+      });
+    });
+  });
+
   describe('getDisplayNames', () => {
     async function register(email: string, displayName: string) {
       const { id } = await facade.createWithPassword({

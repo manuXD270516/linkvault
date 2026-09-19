@@ -40,6 +40,7 @@ import { ConfigQuotaPolicy } from './infrastructure/quota/config-quota-policy';
 import { InMemoryCircuitBreaker } from './infrastructure/resilience/in-memory-circuit-breaker';
 import { classifySkillsTask } from './tasks/classify-skills.task';
 import { extractJobTask } from './tasks/extract-job.task';
+import { extractPastedJobTask } from './tasks/extract-pasted-job.task';
 
 // `AiModule` (D8, D9 y D12 de ai-gateway-core). Compone runTask con sus adaptadores a partir de una configuración ya
 // validada por `parseAiConfig`: no lee `process.env`. Usa la conexión Mongoose por defecto de la app
@@ -58,10 +59,14 @@ export interface AiModuleAsyncOptions {
   useFactory: (...args: never[]) => AiModuleOptions | Promise<AiModuleOptions>;
 }
 
-/** Tareas registradas: `classify-skills` (D13 de ai-gateway-core) y `extract-job` (D7 de link-enrichment). */
+/**
+ * Tareas registradas: `classify-skills` (D13 de ai-gateway-core), `extract-job` (D7 de link-enrichment) y
+ * `extract-pasted-job` (D2 de paste-job-description).
+ */
 export const AI_TASKS: readonly AnyAiTask[] = [
   classifySkillsTask as unknown as AnyAiTask,
   extractJobTask as unknown as AnyAiTask,
+  extractPastedJobTask as unknown as AnyAiTask,
 ];
 
 const AI_TASK_REGISTRY = Symbol('AI_TASK_REGISTRY');

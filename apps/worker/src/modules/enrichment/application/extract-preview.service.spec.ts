@@ -23,6 +23,7 @@ import type { ExtractorStrategy } from '../domain/extractors/extractor';
 
 const LINK = {
   displayUrl: 'https://bolsa.example/jobs/1?utm_source=whatsapp',
+  originalUrls: ['https://bolsa.example/jobs/1?utm_source=whatsapp'],
   createdBy: '68c0f0f0f0f0f0f0f0f0f0f0',
 };
 
@@ -30,6 +31,7 @@ const LINK = {
 const SAME_HOST_LINK = {
   ...LINK,
   displayUrl: 'https://bolsa.example/jobs/2',
+  originalUrls: ['https://bolsa.example/jobs/2'],
 };
 
 const OPTIONS: ExtractPreviewOptions = {
@@ -523,5 +525,152 @@ describe('Una dirección que no es una dirección', () => {
     ).toEqual({ kind: 'failed', reason: 'http_error' });
     expect(robots.asked).toEqual([]);
     expect(mutex.acquired).toEqual([]);
+  });
+});
+
+// Requisito "Otras URLs de la misma vacante" (specs/links/enrichment) y D7 de paste-job-description: cuando el
+// `robots.txt` niega la `displayUrl`, se prueban las demás URLs del historial del mismo host, dentro del mismo turno.
+
+/** Lo que el smoke encontró en Trabajopolis: la primera URL guardada lleva el `search_id` que su `robots.txt` prohíbe. */
+const FORBIDDEN_DISPLAY_URL = 'https://bolsa.example/jobs/1?search_id=9';
+
+describe('Otras URLs de la misma vacante', () => {
+  it('El historial tiene la misma vacante sin el parámetro prohibido', async () => {
+    const robots = new FakeRobots();
+    robots.forbidden.add(FORBIDDEN_DISPLAY_URL);
+    robots.forbidden.add('https://bolsa.example/jobs/1?search_id=12');
+    const mutex = new FakeHostMutex();
+    const { service, fetcher } = harnessOf([new MetadataExtractor()], {
+      robots,
+      mutex,
+    });
+
+    const attempt = await service.run({
+      link: {
+        ...LINK,
+        displayUrl: FORBIDDEN_DISPLAY_URL,
+        // De la más antigua a la más reciente, como lo guarda `api`; con una repetida y una de otro host.
+        originalUrls: [
+          FORBIDDEN_DISPLAY_URL,
+          'https://bolsa.example/jobs/1',
+          'https://otra.example/jobs/1',
+          'https://bolsa.example/jobs/1?search_id=12',
+          'https://bolsa.example/jobs/1?search_id=12',
+        ],
+      },
+      deferrals: 0,
+      deadlineAt: 45_000,
+    });
+
+    expect(attempt).toMatchObject({ kind: 'extracted' });
+    // Las más recientes primero, sin repetidas, sin volver a preguntar por la `displayUrl` y sin tocar el otro host.
+    expect(robots.asked).toEqual([
+      FORBIDDEN_DISPLAY_URL,
+      'https://bolsa.example/jobs/1?search_id=12',
+      'https://bolsa.example/jobs/1',
+    ]);
+    // Solo se pide la permitida: ninguna URL prohibida llega al sitio.
+    expect(fetcher.requested.map(({ url }) => url)).toEqual([
+      'https://bolsa.example/jobs/1',
+    ]);
+    // Todo dentro de un solo turno del host.
+    expect(mutex.acquired).toEqual(['bolsa.example']);
+    expect(mutex.released).toEqual([{ host: 'bolsa.example', waitMs: 2_000 }]);
+  });
+
+  it('does not look at the history when the displayUrl is allowed', async () => {
+    const { service, robots, fetcher } = harnessOf([new MetadataExtractor()]);
+
+    await service.run({
+      link: {
+        ...LINK,
+        originalUrls: [LINK.displayUrl, 'https://bolsa.example/jobs/1'],
+      },
+      deferrals: 0,
+      deadlineAt: 45_000,
+    });
+
+    expect(robots.asked).toEqual([LINK.displayUrl]);
+    expect(fetcher.requested.map(({ url }) => url)).toEqual([LINK.displayUrl]);
+  });
+
+  it('Todo el historial está prohibido', async () => {
+    const robots = new FakeRobots({ allowed: false, crawlDelayMs: 5_000 });
+    const mutex = new FakeHostMutex();
+    const { service, fetcher } = harnessOf([new MetadataExtractor()], {
+      robots,
+      mutex,
+    });
+
+    expect(
+      await service.run({
+        link: {
+          ...LINK,
+          displayUrl: FORBIDDEN_DISPLAY_URL,
+          originalUrls: [
+            FORBIDDEN_DISPLAY_URL,
+            'https://bolsa.example/jobs/1?search_id=12',
+          ],
+        },
+        deferrals: 0,
+        deadlineAt: 45_000,
+      }),
+    ).toEqual({ kind: 'failed', reason: 'robots_disallowed' });
+    expect(robots.asked).toEqual([
+      FORBIDDEN_DISPLAY_URL,
+      'https://bolsa.example/jobs/1?search_id=12',
+    ]);
+    expect(fetcher.requested).toEqual([]);
+    // Un solo turno, soltado con la espera que pide el sitio.
+    expect(mutex.acquired).toEqual(['bolsa.example']);
+    expect(mutex.released).toEqual([{ host: 'bolsa.example', waitMs: 5_000 }]);
+  });
+
+  it('URL del historial en otro host', async () => {
+    const robots = new FakeRobots();
+    robots.forbidden.add(FORBIDDEN_DISPLAY_URL);
+    const mutex = new FakeHostMutex();
+    const { service, fetcher } = harnessOf([new MetadataExtractor()], {
+      robots,
+      mutex,
+    });
+
+    expect(
+      await service.run({
+        link: {
+          ...LINK,
+          displayUrl: FORBIDDEN_DISPLAY_URL,
+          originalUrls: [FORBIDDEN_DISPLAY_URL, 'https://otra.example/jobs/1'],
+        },
+        deferrals: 0,
+        deadlineAt: 45_000,
+      }),
+    ).toEqual({ kind: 'failed', reason: 'robots_disallowed' });
+    // Al otro host no se le pide nada: ni su `robots.txt`, ni su turno, ni la página.
+    expect(robots.asked).toEqual([FORBIDDEN_DISPLAY_URL]);
+    expect(mutex.acquired).toEqual(['bolsa.example']);
+    expect(fetcher.requested).toEqual([]);
+  });
+
+  it('skips history entries that are not addresses', async () => {
+    const robots = new FakeRobots();
+    robots.forbidden.add(FORBIDDEN_DISPLAY_URL);
+    const { service, fetcher } = harnessOf([new MetadataExtractor()], {
+      robots,
+    });
+
+    expect(
+      await service.run({
+        link: {
+          ...LINK,
+          displayUrl: FORBIDDEN_DISPLAY_URL,
+          originalUrls: [FORBIDDEN_DISPLAY_URL, 'no es una url'],
+        },
+        deferrals: 0,
+        deadlineAt: 45_000,
+      }),
+    ).toEqual({ kind: 'failed', reason: 'robots_disallowed' });
+    expect(robots.asked).toEqual([FORBIDDEN_DISPLAY_URL]);
+    expect(fetcher.requested).toEqual([]);
   });
 });

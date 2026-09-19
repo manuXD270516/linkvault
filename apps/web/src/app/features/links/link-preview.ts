@@ -4,6 +4,7 @@ import type {
   JobSeniority,
   Platform,
   PreviewAuthor,
+  PreviewFieldName,
   ResolvedPreviewSources,
 } from '@linkvault/shared';
 
@@ -17,13 +18,14 @@ export const AI_EXTRACTOR_ID = 'ai:extract-job';
 export type PreviewSourceEntry = NonNullable<ResolvedPreviewSources[keyof ResolvedPreviewSources]>;
 
 /**
- * De dónde salió un dato, en los tres orígenes que la persona distingue: leído de la página, deducido por la IA o
- * escrito por alguien. La diferencia entre los dos primeros importa —un salario deducido es el peor dato para
- * equivocarse— y el tercero lleva nombre, porque el link es compartido.
+ * De dónde salió un dato, en los orígenes que la persona distingue: leído de la página, deducido por la IA, sacado de
+ * la descripción que alguien pegó o escrito por alguien. La diferencia entre los dos primeros importa —un salario
+ * deducido es el peor dato para equivocarse— y los dos últimos llevan nombre, porque el link es compartido.
  */
 export type PreviewFieldOrigin =
   | { kind: 'page'; extractor: string }
   | { kind: 'ai' }
+  | { kind: 'pasted'; by: PreviewAuthor }
   | { kind: 'manual'; by: PreviewAuthor };
 
 /** Procedencia de un campo, o `null` si nadie lo ha escrito todavía. */
@@ -33,6 +35,9 @@ export function fieldOrigin(entry: PreviewSourceEntry | undefined): PreviewField
   }
   if (entry.source === 'manual') {
     return { kind: 'manual', by: entry.by };
+  }
+  if (entry.source === 'pasted') {
+    return { kind: 'pasted', by: entry.by };
   }
   return entry.extractor === AI_EXTRACTOR_ID ? { kind: 'ai' } : { kind: 'page', extractor: entry.extractor };
 }
@@ -192,9 +197,11 @@ export function daysSince(date: string | null | undefined, now: Date): number | 
 }
 
 /**
- * De dónde salió un dato, en palabras. Los tres orígenes se dicen distinto a propósito: "Leído de la página" es lo que
- * pone la oferta, "Deducido por la IA" es una conjetura nuestra y "Escrito por Ana" es una persona que se hace
- * responsable. Confundirlos es lo que convierte un salario inventado en un salario creído.
+ * De dónde salió un dato, en palabras. Los orígenes se dicen distinto a propósito: "Leído de la página" es lo que pone
+ * la oferta, "Deducido por la IA" es una conjetura nuestra, "Descripción pegada por Beto" es lo que leímos de un texto
+ * que alguien pegó y "Escrito por Ana" es una persona que se hace responsable. Confundirlos es lo que convierte un
+ * salario inventado en un salario creído. Lo pegado no dice "Pegado por": en un grupo de WhatsApp se confundiría con
+ * quien pegó el link.
  */
 export function originText(origin: PreviewFieldOrigin | null): string | null {
   switch (origin?.kind) {
@@ -202,9 +209,55 @@ export function originText(origin: PreviewFieldOrigin | null): string | null {
       return $localize`:@@links.origin.page:Leído de la página`;
     case 'ai':
       return $localize`:@@links.origin.ai:Deducido por la IA`;
+    case 'pasted':
+      return $localize`:@@links.origin.pasted:Descripción pegada por ${origin.by.displayName}:NAME:`;
     case 'manual':
       return $localize`:@@links.origin.manual:Escrito por ${origin.by.displayName}:NAME:`;
     default:
       return null;
   }
+}
+
+/** Un pegado que todavía se ve en la tarjeta: quién lo hizo, cuándo y qué campos siguen diciendo lo que él trajo. */
+export interface PasteInEffect {
+  by: PreviewAuthor;
+  at: string;
+  fields: PreviewFieldName[];
+}
+
+/**
+ * El último pegado que sigue a la vista, o `null` si ningún campo sale ya de un texto pegado. Un pegado es todo lo que
+ * se escribió en ese gesto, así que se deshace junto ("Deshacer lo que pegó Ana"): los campos con origen `pasted` y
+ * los `manual` que comparten su autor y su fecha, que son el título y la empresa tecleados en el mismo diálogo. Sin
+ * ellos, un link de LinkedIn completado con su cabecera escrita aparte seguiría en `manual` tras deshacer. Una
+ * corrección a mano posterior —otro autor u otra fecha— no es parte del pegado y no se toca.
+ *
+ * Si quedan campos de dos pegados distintos (el segundo no trajo todos los campos del primero), se ofrece deshacer el
+ * más reciente, que es el que la persona acaba de ver.
+ */
+export function latestPaste(sources: ResolvedPreviewSources | undefined): PasteInEffect | null {
+  const entries = Object.entries(sources ?? {}) as [PreviewFieldName, PreviewSourceEntry | undefined][];
+  let latest: PasteInEffect | null = null;
+  for (const [, entry] of entries) {
+    if (entry?.source !== 'pasted') {
+      continue;
+    }
+    if (latest === null || Date.parse(entry.at) > Date.parse(latest.at)) {
+      latest = { by: entry.by, at: entry.at, fields: [] };
+    }
+  }
+  if (latest === null) {
+    return null;
+  }
+  const { by, at } = latest;
+  // Se recorren en el orden de las fuentes, sin separar lo pegado de lo tecleado: es un solo gesto.
+  latest.fields = entries
+    .filter(
+      ([, entry]) =>
+        (entry?.source === 'pasted' || entry?.source === 'manual') &&
+        entry.at === at &&
+        entry.by.userId === by.userId,
+    )
+    .map(([name]) => name);
+  return latest;
 }

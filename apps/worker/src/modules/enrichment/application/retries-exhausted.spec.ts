@@ -1,4 +1,7 @@
-import { LINK_ENRICHED_EVENT_TYPE } from '@linkvault/shared';
+import {
+  LINK_ENRICHED_EVENT_TYPE,
+  PASTED_PREVIEW_EXTRACTOR,
+} from '@linkvault/shared';
 import { describe, expect, it } from 'vitest';
 import { ExtractionChain } from '../domain/extraction-chain';
 import { EnrichLinkUseCase } from './enrich-link.usecase';
@@ -27,6 +30,7 @@ function linkOf(overrides: Partial<StoredLink> = {}): StoredLink {
   return {
     id: LINK_ID,
     displayUrl: 'https://bolsa.example/jobs/1',
+    originalUrls: ['https://bolsa.example/jobs/1'],
     createdBy: ANA,
     previewStatus: 'pending',
     previewVersion: 1,
@@ -163,6 +167,42 @@ describe('Job que agota sus reintentos', () => {
 
     // El estado sigue diciendo que ahí hay algo escrito; el motivo, que la última lectura no llegó.
     expect(links.peek(LINK_ID)?.previewStatus).toBe('manual');
+    expect(links.writes[0].write.lastEnrichmentError?.reason).toBe(
+      'retries_exhausted',
+    );
+  });
+
+  it('does not take a pasted link back to failed either', async () => {
+    const { useCase, links } = harnessOf(
+      linkOf({
+        previewStatus: 'enriched',
+        preview: { title: 'Arquitecto', company: 'Empresa Ejemplo' },
+        previewSources: {
+          title: {
+            value: 'Arquitecto',
+            source: 'pasted',
+            extractor: PASTED_PREVIEW_EXTRACTOR,
+            by: ANA,
+            at: NOW.toISOString(),
+          },
+          company: {
+            value: 'Empresa Ejemplo',
+            source: 'pasted',
+            extractor: PASTED_PREVIEW_EXTRACTOR,
+            by: ANA,
+            at: NOW.toISOString(),
+          },
+        },
+      }),
+    );
+
+    await useCase.markRetriesExhausted({
+      linkId: LINK_ID,
+      previewVersion: 1,
+      deferrals: 0,
+    });
+
+    expect(links.peek(LINK_ID)?.previewStatus).toBe('enriched');
     expect(links.writes[0].write.lastEnrichmentError?.reason).toBe(
       'retries_exhausted',
     );

@@ -141,6 +141,16 @@ describe('parseAiConfig', () => {
     ).toBe(resolve(CWD, 'fixtures/ai'));
   });
 
+  it('accepts a quota for extract-pasted-job, separate from the one of extract-job', () => {
+    expect(
+      config({
+        NODE_ENV: 'development',
+        AI_CHAIN: 'none',
+        AI_QUOTAS: 'extract-job=200,extract-pasted-job=20',
+      }).quotas,
+    ).toEqual({ 'extract-job': 200, 'extract-pasted-job': 20 });
+  });
+
   it('treats empty strings as absent', () => {
     expect(
       config({

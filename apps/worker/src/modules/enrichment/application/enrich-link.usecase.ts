@@ -74,7 +74,11 @@ export class EnrichLinkUseCase {
 
     const startedAt = this.clock.now();
     const attempt = await this.extractPreview.run({
-      link: { displayUrl: link.displayUrl, createdBy: link.createdBy },
+      link: {
+        displayUrl: link.displayUrl,
+        originalUrls: link.originalUrls,
+        createdBy: link.createdBy,
+      },
       deferrals: job.deferrals,
       deadlineAt: startedAt.getTime() + this.deadlineMs,
     });

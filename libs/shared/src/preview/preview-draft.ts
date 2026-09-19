@@ -1,11 +1,11 @@
+import type { ZodType } from 'zod';
 import {
   PREVIEW_FIELD_NAMES,
   jobPreviewSchema,
   type JobPreview,
   type PreviewFieldName,
   type StoredPreview,
-} from '@linkvault/shared';
-import type { ZodType } from 'zod';
+} from '../schemas/preview.schema';
 
 // Lo que una etapa de la cadena propone (D3 y D4 de link-enrichment): campos sueltos, cada uno con el extractor que lo
 // produjo. **Sin confianza numérica**: el orden total de la cadena decide los empates, y un número por campo sería un
@@ -13,6 +13,10 @@ import type { ZodType } from 'zod';
 //
 // Un extractor solo propone lo que de verdad leyó. Lo que no leyó se queda fuera del borrador, y por eso un campo
 // ausente nunca borra el que ya había.
+//
+// Vivía en el dominio del worker; está aquí desde paste-job-description (D3) porque el pegado de `api` necesita el
+// mismo filtro de valores vacíos: sin él, un pegado que no trae la empresa la dejaría en blanco para siempre, ya que lo
+// automático no puede pisar lo pegado. Lo usan los dos procesos, sin copiarlo.
 
 /** Valor propuesto para un campo, con el extractor del que salió. */
 export interface DraftField<Value> {
@@ -33,7 +37,7 @@ export const EMPTY_DRAFT: PreviewDraft = {};
  * mismo escrito de otra forma, y `'unknown'` es la manera que tienen `modality` y `seniority` de decirlo dentro de su
  * enum. Proponerlos haría que una etapa fiable tapara con un hueco lo que otra posterior sí sabe.
  */
-function saysSomething(value: unknown): boolean {
+export function saysSomething(value: unknown): boolean {
   if (value === undefined || value === null) return false;
   if (typeof value === 'string')
     return value.trim() !== '' && value !== 'unknown';
@@ -69,7 +73,7 @@ export function draftFrom(
 }
 
 /** Los valores de un borrador, sin su procedencia: es lo que se mira para saber si la pasada ya está completa. */
-export function valuesOf(draft: PreviewDraft): StoredPreview {
+export function valuesOfDraft(draft: PreviewDraft): StoredPreview {
   const values: Record<string, unknown> = {};
   for (const name of PREVIEW_FIELD_NAMES) {
     const field = draft[name];

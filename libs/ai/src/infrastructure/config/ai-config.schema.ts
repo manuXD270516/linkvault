@@ -19,6 +19,8 @@ export type AiNodeEnv = (typeof NODE_ENVS)[number];
 /** Tareas que admite `AI_QUOTAS`: las de `AiTaskName`. */
 export const KNOWN_TASK_NAMES: readonly AiTaskName[] = [
   'extract-job',
+  // Texto pegado por una persona (D2 y D5 de paste-job-description): cuota propia, independiente de `extract-job`.
+  'extract-pasted-job',
   'match-cv',
   'critique-suggestions',
   'build-roadmap',

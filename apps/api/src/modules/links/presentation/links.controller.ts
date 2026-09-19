@@ -1,13 +1,16 @@
 import {
   importLinksRequestSchema,
   listLinksQuerySchema,
+  pastedDescriptionRequestSchema,
   saveLinkRequestSchema,
   updatePreviewRequestSchema,
   type EnrichLinkResponse,
   type ImportLinksRequest,
   type ImportLinksResponse,
+  type JobLinkSummary,
   type LinkPage,
   type ListLinksQuery,
+  type PastedDescriptionRequest,
   type SaveLinkRequest,
   type SaveLinkResponse,
   type UpdatePreviewRequest,
@@ -24,12 +27,18 @@ import {
   Patch,
   Post,
   Query,
+  Res,
 } from '@nestjs/common';
 import type { AuthenticatedUser } from '../../../presentation/http/auth-context/authenticated-user';
 import { CurrentUser } from '../../../presentation/http/auth-context/current-user.decorator';
+import {
+  clientClosedSignal,
+  type RawResponse,
+} from '../../../presentation/http/client-closed-signal';
 import { ZodValidationPipe } from '../../../presentation/http/zod-validation.pipe';
 import { ImportLinks } from '../application/import-links.usecase';
 import { ListMyLinks } from '../application/list-my-links.usecase';
+import { PasteDescription } from '../application/paste-description.usecase';
 import { RemoveMyLink } from '../application/remove-my-link.usecase';
 import { RequestLinkEnrichment } from '../application/request-link-enrichment.usecase';
 import { SaveLink } from '../application/save-link.usecase';
@@ -52,6 +61,7 @@ export class LinksController {
     private readonly removeMyLink: RemoveMyLink,
     private readonly updateLinkPreview: UpdateLinkPreview,
     private readonly requestLinkEnrichment: RequestLinkEnrichment,
+    private readonly pasteDescription: PasteDescription,
   ) {}
 
   @Post()
@@ -108,6 +118,31 @@ export class LinksController {
     @Param('linkId') linkId: string,
   ): Promise<EnrichLinkResponse> {
     return this.requestLinkEnrichment.execute(user.userId, linkId);
+  }
+
+  /**
+   * Completar una oferta pegando su texto (spec links/pasted-description). Responde `200` con el link ya actualizado: la
+   * IA lee el texto dentro de esta misma petición. El pipe valida antes que el caso de uso, así que un texto vacío es
+   * `400` y uno de más de 20 000 caracteres `400` `text_too_long` sin mirar siquiera el link.
+   *
+   * Si el cliente cierra la conexión antes de la respuesta, la lectura se aborta. `passthrough` deja que Nest siga
+   * respondiendo como siempre: la respuesta en crudo solo se mira para saber si se fue.
+   */
+  @Post(':linkId/pasted')
+  @HttpCode(HttpStatus.OK)
+  pasted(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('linkId') linkId: string,
+    @Body(new ZodValidationPipe(pastedDescriptionRequestSchema))
+    body: PastedDescriptionRequest,
+    @Res({ passthrough: true }) reply: { readonly raw: RawResponse },
+  ): Promise<JobLinkSummary> {
+    return this.pasteDescription.execute(
+      user.userId,
+      linkId,
+      body,
+      clientClosedSignal(reply.raw),
+    );
   }
 
   @Delete('mine/:linkId')

@@ -118,9 +118,9 @@
 </mat-dialog-actions>
 
 <!--
-  De dónde salió cada campo y, si lo escribió una persona sobre algo extraído, la vuelta atrás. Va en una plantilla
-  suelta porque es lo mismo para los once campos y repetirla sería la forma más fácil de que acabaran diciendo cosas
-  distintas.
+  De dónde salió cada campo y, si una persona lo escribió o lo pegó sobre otro valor, la vuelta atrás. Va en una
+  plantilla suelta porque es lo mismo para los once campos y repetirla sería la forma más fácil de que acabaran diciendo
+  cosas distintas.
 -->
 <ng-template #meta let-field>
   <span class="flex flex-wrap items-center gap-2 text-xs">
@@ -136,7 +136,7 @@
         (click)="toggleRevert(field)"
         i18n="@@links.edit.revert"
       >
-        Volver a lo extraído
+        Volver a lo anterior
       </button>
     }
   </span>

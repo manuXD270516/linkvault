@@ -13,7 +13,9 @@ export function currentUserOf(context: ExecutionContext): AuthenticatedUser {
   const request = context.switchToHttp().getRequest<AuthenticatableRequest>();
   const user = request[AUTHENTICATED_USER_PROPERTY];
   if (user === undefined) {
-    throw new Error('@CurrentUser() requires a route protected by the access token guard');
+    throw new Error(
+      '@CurrentUser() requires a route protected by the access token guard',
+    );
   }
   return user;
 }

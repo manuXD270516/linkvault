@@ -23,7 +23,10 @@ import {
   createAuthTestApp,
   type AuthTestApp,
 } from '../../../test-support/auth-test-app';
-import { apiTestConfig } from '../../../test-support/test-config';
+import {
+  apiTestAiConfig,
+  apiTestConfig,
+} from '../../../test-support/test-config';
 import { UsersFacade } from '../../users/application/users.facade';
 import {
   ACCESS_TOKEN_SIGNER,
@@ -70,7 +73,7 @@ describe('access token guard over the api app', () => {
       MONGO_URI: withDatabase(getMongoTestUri(), `auth-guard-${randomUUID()}`),
     });
     const moduleRef = await Test.createTestingModule({
-      imports: [AppModule.register(config)],
+      imports: [AppModule.register(config, apiTestAiConfig())],
       controllers: [GuardProbeController],
     }).compile();
     app = moduleRef.createNestApplication<NestFastifyApplication>(

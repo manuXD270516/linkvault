@@ -3,6 +3,8 @@ import type {
   ImportLinksResponse,
   JobLinkSummary,
   LinkPage,
+  PastedDescriptionRequest,
+  PreviewFieldName,
   SaveLinkResponse,
   UpdatePreviewRequest,
 } from '@linkvault/shared';
@@ -202,6 +204,27 @@ export const LinksStore = signalStore(
        */
       async updatePreview(linkId: string, body: UpdatePreviewRequest): Promise<JobLinkSummary> {
         const link = await api.updatePreview(linkId, body);
+        replace(link);
+        return link;
+      },
+
+      /**
+       * Completa la oferta con el texto pegado y deja la tarjeta con lo que respondió la API, esté en la vista que esté:
+       * el diálogo se abre desde cualquier pantalla que muestre el link, y la tarjeta cambia sin recargar la lista. El
+       * error viaja al diálogo, que lo explica sin perder lo pegado.
+       */
+      async pasteDescription(linkId: string, body: PastedDescriptionRequest): Promise<JobLinkSummary> {
+        const link = await api.pasteDescription(linkId, body);
+        replace(link);
+        return link;
+      },
+
+      /**
+       * Deshace de una vez todos los campos de un mismo pegado ("Deshacer lo que pegó Ana"): es el `revert` de la
+       * edición con la lista entera, en una sola petición, para que nadie vea la tarjeta a medio deshacer.
+       */
+      async undoPaste(linkId: string, fields: readonly PreviewFieldName[]): Promise<JobLinkSummary> {
+        const link = await api.updatePreview(linkId, { revert: [...fields] });
         replace(link);
         return link;
       },

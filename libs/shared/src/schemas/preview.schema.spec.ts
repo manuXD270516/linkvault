@@ -9,6 +9,7 @@ import {
   jobSenioritySchema,
   lastEnrichmentErrorSchema,
   NON_RETRYABLE_ENRICHMENT_REASONS,
+  PASTED_PREVIEW_EXTRACTOR,
   PREVIEW_FIELD_NAME_INPUT_MAX_LENGTH,
   PREVIEW_FIELD_NAMES,
   PREVIEW_FIELD_STORED_TYPES,
@@ -18,6 +19,7 @@ import {
   PREVIEW_SKILL_KEYS,
   PREVIEW_SKILLS_MAX,
   PREVIEW_SOURCE_ENTRY_KEYS,
+  PREVIEW_SOURCE_KINDS,
   PREVIEW_SUMMARY_MAX_LENGTH,
   previewSourcesSchema,
   resolvedPreviewSourcesSchema,
@@ -223,7 +225,9 @@ describe('PREVIEW_FIELD_STORED_TYPES', () => {
     expect([...PREVIEW_LANGUAGE_KEYS]).toEqual(
       Object.keys(jobPreviewSchema.shape.languages.element.shape),
     );
-    expect([...PREVIEW_REPLACED_KEYS]).toEqual(['value', 'extractor']);
+    expect([...PREVIEW_REPLACED_KEYS]).toEqual(
+      PREVIEW_SOURCE_ENTRY_KEYS.filter((key) => key !== 'replaced'),
+    );
   });
 });
 
@@ -234,12 +238,20 @@ describe('previewSourcesSchema', () => {
     extractor: 'json-ld',
     at: '2026-09-17T10:00:00.000Z',
   } as const;
+  const pastedAlone = {
+    value: 'Backend Engineer (Node)',
+    source: 'pasted',
+    extractor: PASTED_PREVIEW_EXTRACTOR,
+    by: '66e9a0000000000000000003',
+    at: '2026-09-18T09:00:00.000Z',
+  } as const;
+  const pasted = { ...pastedAlone, replaced: automatic } as const;
   const manual = {
     value: 'Backend Engineer II',
     source: 'manual',
     by: '66e9a0000000000000000002',
     at: '2026-09-18T10:00:00.000Z',
-    replaced: { value: 'Backend Engineer', extractor: 'json-ld' },
+    replaced: automatic,
   } as const;
 
   it('takes an automatic field with its extractor and a manual one with its author', () => {
@@ -251,11 +263,43 @@ describe('previewSourcesSchema', () => {
     });
   });
 
+  it('takes a pasted field with who pasted it, when, and what read it', () => {
+    expect(previewSourcesSchema.parse({ title: pasted })).toEqual({
+      title: pasted,
+    });
+    expect(previewSourcesSchema.parse({ title: pastedAlone })).toEqual({
+      title: pastedAlone,
+    });
+    expect([...PREVIEW_SOURCE_KINDS]).toEqual(['auto', 'pasted', 'manual']);
+  });
+
+  it('demands both the author and the extractor on a pasted field', () => {
+    const withoutAuthor = {
+      value: pastedAlone.value,
+      source: 'pasted',
+      extractor: pastedAlone.extractor,
+      at: pastedAlone.at,
+    };
+    const withoutExtractor = {
+      value: pastedAlone.value,
+      source: 'pasted',
+      by: pastedAlone.by,
+      at: pastedAlone.at,
+    };
+
+    expect(
+      previewSourcesSchema.safeParse({ title: withoutAuthor }).success,
+    ).toBe(false);
+    expect(
+      previewSourcesSchema.safeParse({ title: withoutExtractor }).success,
+    ).toBe(false);
+  });
+
   it('takes a preview with no provenance at all', () => {
     expect(previewSourcesSchema.parse({})).toEqual({});
   });
 
-  it('never mixes the extractor with the author', () => {
+  it('never gives an automatic field an author nor a manual one an extractor', () => {
     expect(
       previewSourcesSchema.safeParse({
         title: { ...automatic, by: '66e9a0000000000000000002' },
@@ -273,10 +317,77 @@ describe('previewSourcesSchema', () => {
     ).toBe(false);
   });
 
-  it('only keeps the displaced value on a manual field', () => {
+  it('only keeps the displaced entry where a person acted', () => {
     expect(
       previewSourcesSchema.safeParse({
-        title: { ...automatic, replaced: manual.replaced },
+        title: { ...automatic, replaced: automatic },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('keeps the whole displaced entry: value, source, extractor, author and date', () => {
+    const manualOverPasted = { ...manual, replaced: pastedAlone };
+    const pastedOverPasted = { ...pasted, replaced: pastedAlone };
+    const manualOverManual = {
+      ...manual,
+      replaced: {
+        value: 'Lo de Ana',
+        source: 'manual',
+        by: '66e9a0000000000000000004',
+        at: '2026-09-17T12:00:00.000Z',
+      },
+    } as const;
+
+    expect(previewSourcesSchema.parse({ title: manualOverPasted })).toEqual({
+      title: manualOverPasted,
+    });
+    expect(previewSourcesSchema.parse({ title: pastedOverPasted })).toEqual({
+      title: pastedOverPasted,
+    });
+    expect(previewSourcesSchema.parse({ title: manualOverManual })).toEqual({
+      title: manualOverManual,
+    });
+  });
+
+  it('keeps one level only: the displaced entry carries no displaced entry of its own', () => {
+    expect(
+      previewSourcesSchema.safeParse({
+        title: { ...manual, replaced: pasted },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('reads an old displaced value without source as an automatic one', () => {
+    const old = { value: 'Backend Engineer', extractor: 'json-ld' } as const;
+
+    expect(
+      previewSourcesSchema.parse({ title: { ...manual, replaced: old } }),
+    ).toEqual({
+      title: { ...manual, replaced: { ...old, source: 'auto' } },
+    });
+    expect(
+      resolvedPreviewSourcesSchema.parse({
+        title: {
+          ...manual,
+          by: { userId: manual.by, displayName: 'Ana' },
+          replaced: old,
+        },
+      }).title,
+    ).toMatchObject({ replaced: { ...old, source: 'auto' } });
+  });
+
+  it('still refuses an old displaced value that is not one', () => {
+    expect(
+      previewSourcesSchema.safeParse({
+        title: { ...manual, replaced: { value: 'Backend Engineer' } },
+      }).success,
+    ).toBe(false);
+    expect(
+      previewSourcesSchema.safeParse({
+        title: {
+          ...manual,
+          replaced: { value: 'Backend Engineer', by: manual.by, at: manual.at },
+        },
       }).success,
     ).toBe(false);
   });
@@ -284,13 +395,21 @@ describe('previewSourcesSchema', () => {
   it('types the value of each field like the preview does', () => {
     expect(
       previewSourcesSchema.safeParse({
-        ...{},
         modality: { ...automatic, value: 'remote' },
       }).success,
     ).toBe(true);
     expect(
       previewSourcesSchema.safeParse({
         modality: { ...automatic, value: 'hibrido' },
+      }).success,
+    ).toBe(false);
+    expect(
+      previewSourcesSchema.safeParse({
+        modality: {
+          ...manual,
+          value: 'remote',
+          replaced: { ...automatic, value: 'hibrido' },
+        },
       }).success,
     ).toBe(false);
     expect(
@@ -310,7 +429,16 @@ describe('previewSourcesSchema', () => {
 
   it('names the keys of an entry for the schemas derived from it', () => {
     expect([...PREVIEW_SOURCE_ENTRY_KEYS].sort()).toEqual(
-      [...new Set([...Object.keys(automatic), ...Object.keys(manual)])].sort(),
+      [
+        ...new Set([
+          ...Object.keys(automatic),
+          ...Object.keys(pasted),
+          ...Object.keys(manual),
+        ]),
+      ].sort(),
+    );
+    expect([...PREVIEW_REPLACED_KEYS].sort()).toEqual(
+      Object.keys(pastedAlone).sort(),
     );
   });
 
@@ -329,6 +457,32 @@ describe('previewSourcesSchema', () => {
     });
     expect(
       resolvedPreviewSourcesSchema.safeParse({ title: manual }).success,
+    ).toBe(false);
+  });
+
+  it('answers with the display name of whoever pasted, also inside the displaced entry', () => {
+    const displaced = {
+      ...pastedAlone,
+      by: { userId: pastedAlone.by, displayName: 'Beto' },
+    };
+    const resolved = {
+      title: {
+        ...manual,
+        by: { userId: manual.by, displayName: 'Ana' },
+        replaced: displaced,
+      },
+    };
+
+    expect(resolvedPreviewSourcesSchema.parse(resolved)).toEqual(resolved);
+    expect(
+      resolvedPreviewSourcesSchema.safeParse({
+        title: { ...resolved.title, replaced: pastedAlone },
+      }).success,
+    ).toBe(false);
+    expect(
+      previewSourcesSchema.safeParse({
+        title: { ...manual, replaced: displaced },
+      }).success,
     ).toBe(false);
   });
 });

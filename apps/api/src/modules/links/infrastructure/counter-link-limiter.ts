@@ -12,6 +12,8 @@ import {
   ENRICH_RETRIES_PER_LINK,
   IMPORTS_PER_USER,
   LINK_LIMIT_WINDOW_MS,
+  PASTE_UNAVAILABLE_RETRY_AFTER_SECONDS,
+  PASTES_PER_USER,
 } from '../domain/limits';
 
 // Adaptador de LINK_LIMITER sobre el contador por ventana fija de `infrastructure/limits` (D13). `links` pone el nombre
@@ -22,8 +24,12 @@ import {
 // - `enrich-link` **falla cerrado**: lo que se permitiría de más es volver a descargar la página de un sitio ajeno, que
 //   es justo el daño que ADR-003 quiere evitar, y negar un reintento no rompe nada: la lectura sigue pudiéndose pedir
 //   más tarde y el preview se puede completar a mano.
+// - `paste-description` **falla cerrado** también: sin contador, nada acotaría las llamadas a la IA que hace cada pegado.
+//   Pero lo dice (`unavailable`), para que la respuesta sea "inténtalo en un rato" y no "pegaste demasiadas" (D5 de
+//   paste-job-description).
 //
-// El nombre del contador lleva el identificador del link, que no es un dato personal; nunca la URL ni el usuario.
+// El nombre del contador lleva un identificador interno, que no es un dato personal: el del link en la relectura y el
+// del usuario (`userId`) en la importación y el pegado, que se cuentan por persona. Nunca la URL, el email ni el texto.
 
 /** Segundos que se anuncian cuando el contador no responde y el límite falla cerrado. */
 const CLOSED_RETRY_AFTER_SECONDS = Math.ceil(LINK_LIMIT_WINDOW_MS / 1000);
@@ -44,6 +50,11 @@ export class CounterLinkLimiter implements LinkLimiter {
     }
     return failureDecisionOf(key);
   }
+
+  /** Devuelve el intento con `giveBack`, que no deja el contador por debajo de cero. Un contador caído no es un error. */
+  async refund(key: LinkLimitKey): Promise<void> {
+    await this.counter.giveBack(nameOf(key));
+  }
 }
 
 function nameOf(key: LinkLimitKey): string {
@@ -52,6 +63,8 @@ function nameOf(key: LinkLimitKey): string {
       return `links:enrich:${key.linkId}`;
     case 'import':
       return `links:import:${key.userId}`;
+    case 'paste-description':
+      return `links:paste:${key.userId}`;
   }
 }
 
@@ -61,10 +74,12 @@ function limitOf(key: LinkLimitKey): number {
       return ENRICH_RETRIES_PER_LINK;
     case 'import':
       return IMPORTS_PER_USER;
+    case 'paste-description':
+      return PASTES_PER_USER;
   }
 }
 
-/** Qué se responde cuando el contador no respondió: abierto para la importación, cerrado para la relectura. */
+/** Qué se responde cuando el contador no respondió: abierto para la importación, cerrado para la relectura y el pegado. */
 function failureDecisionOf(key: LinkLimitKey): LinkLimitDecision {
   switch (key.kind) {
     case 'enrich-link':
@@ -74,5 +89,11 @@ function failureDecisionOf(key: LinkLimitKey): LinkLimitDecision {
       };
     case 'import':
       return { allowed: true, retryAfterSeconds: 0 };
+    case 'paste-description':
+      return {
+        allowed: false,
+        retryAfterSeconds: PASTE_UNAVAILABLE_RETRY_AFTER_SECONDS,
+        unavailable: true,
+      };
   }
 }

@@ -1,13 +1,13 @@
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { apiTestConfig } from '../test-support/test-config';
+import { apiTestAiConfig, apiTestConfig } from '../test-support/test-config';
 import { createApp } from './create-app';
 
 describe('api global prefix', () => {
   let app: NestFastifyApplication;
 
   beforeAll(async () => {
-    app = await createApp(await apiTestConfig());
+    app = await createApp(await apiTestConfig(), apiTestAiConfig());
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
   });

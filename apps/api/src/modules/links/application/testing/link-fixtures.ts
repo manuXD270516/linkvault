@@ -1,3 +1,4 @@
+import { PASTED_PREVIEW_EXTRACTOR } from '@linkvault/shared';
 import { canonicalize } from '../../domain/canonicalizers/registry';
 import {
   createJobLink,
@@ -41,10 +42,9 @@ const EXTRACTED_AT = '2026-09-18T11:00:00.000Z';
  * persona —y el campo conserva lo que esa corrección desplazó— y `modality` la puso la IA. Es el caso que los tests de
  * la API necesitan para comprobar que el origen sale resuelto a un nombre visible y que lo manual se distingue.
  */
-export function enrichedPreview(editedBy: string): Pick<
-  JobLink,
-  'preview' | 'previewSources'
-> {
+export function enrichedPreview(
+  editedBy: string,
+): Pick<JobLink, 'preview' | 'previewSources'> {
   return {
     preview: {
       title: 'Backend Engineer',
@@ -76,7 +76,65 @@ export function enrichedPreview(editedBy: string): Pick<
         source: 'manual',
         by: editedBy,
         at: EXTRACTED_AT,
-        replaced: { value: 'ACME S.R.L.', extractor: 'metadata' },
+        replaced: {
+          value: 'ACME S.R.L.',
+          source: 'auto',
+          extractor: 'metadata',
+        },
+      },
+    },
+  };
+}
+
+/**
+ * Vacante completada pegando su descripción: `company` y `summary` los pegó `pastedBy` sobre lo leído de la página, y
+ * `title` lo corrigió `editedBy` a mano sobre lo que había pegado `pastedBy`, así que su `replaced` también lleva autor.
+ * Es el caso que necesita el mapeo para comprobar que resuelve todos los nombres —lo pegado, lo escrito y lo que se
+ * guarda para deshacerse— en la misma consulta.
+ */
+export function pastedPreview(
+  pastedBy: string,
+  editedBy: string,
+): Pick<JobLink, 'preview' | 'previewSources'> {
+  return {
+    preview: {
+      title: 'Backend Engineer (Node)',
+      company: 'Acme Bolivia',
+      summary: 'Servicios en Node.js para pagos.',
+    },
+    previewSources: {
+      title: {
+        value: 'Backend Engineer (Node)',
+        source: 'manual',
+        by: editedBy,
+        at: EXTRACTED_AT,
+        replaced: {
+          value: 'Backend Engineer',
+          source: 'pasted',
+          extractor: PASTED_PREVIEW_EXTRACTOR,
+          by: pastedBy,
+          at: EXTRACTED_AT,
+        },
+      },
+      company: {
+        value: 'Acme Bolivia',
+        source: 'pasted',
+        extractor: PASTED_PREVIEW_EXTRACTOR,
+        by: pastedBy,
+        at: EXTRACTED_AT,
+        replaced: {
+          value: 'ACME S.R.L.',
+          source: 'auto',
+          extractor: 'metadata',
+          at: EXTRACTED_AT,
+        },
+      },
+      summary: {
+        value: 'Servicios en Node.js para pagos.',
+        source: 'pasted',
+        extractor: PASTED_PREVIEW_EXTRACTOR,
+        by: pastedBy,
+        at: EXTRACTED_AT,
       },
     },
   };

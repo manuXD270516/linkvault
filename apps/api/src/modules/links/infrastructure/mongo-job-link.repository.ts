@@ -8,6 +8,7 @@ import { mongo, type ClientSession, type Connection, type Model } from 'mongoose
 import type {
   JobLinkRepository,
   ManualPreviewWrite,
+  PastedPreviewWrite,
   ResolvedJobLink,
 } from '../application/ports/job-link-repository.port';
 import type { TransactionSession } from '../application/ports/transaction-session';
@@ -144,10 +145,46 @@ export class MongoJobLinkRepository implements JobLinkRepository {
           $set: {
             preview: changes.preview,
             previewSources: changes.previewSources,
-            previewStatus: 'manual',
+            previewStatus: changes.previewStatus,
             updatedAt: changes.now,
           },
           $inc: { previewVersion: 1 },
+        },
+        { returnDocument: 'after' },
+      )
+      .lean()
+      .exec();
+    return updated === null ? null : toJobLink(updated);
+  }
+
+  async writePastedPreview(
+    linkId: string,
+    expectedVersion: number,
+    changes: PastedPreviewWrite,
+  ): Promise<JobLink | null> {
+    const id = toLinkObjectId(linkId);
+    if (id === null) {
+      return null;
+    }
+    // La misma condición por versión que la edición manual: un enriquecimiento en vuelo que termine después ya no casa,
+    // y si fue él quien escribió primero, quien llama vuelve a leer y rehace la mezcla con la misma extracción (D6).
+    const updated = await this.links
+      .findOneAndUpdate(
+        { _id: id, previewVersion: expectedVersion },
+        {
+          $set: {
+            preview: changes.preview,
+            previewSources: changes.previewSources,
+            previewStatus: changes.previewStatus,
+            updatedAt: changes.now,
+            ...(changes.lastEnrichmentError === undefined
+              ? {}
+              : { lastEnrichmentError: changes.lastEnrichmentError }),
+          },
+          $inc: { previewVersion: 1 },
+          ...(changes.lastEnrichmentError === undefined
+            ? { $unset: { lastEnrichmentError: '' } }
+            : {}),
         },
         { returnDocument: 'after' },
       )
@@ -166,26 +203,47 @@ export class MongoJobLinkRepository implements JobLinkRepository {
       return null;
     }
     return await this.withTransaction(async (session) => {
-      const updated = await this.links
-        .findOneAndUpdate(
-          { _id: id },
-          {
-            $set: {
-              previewStatus: 'pending',
-              previewRequestedAt: now,
-              updatedAt: now,
-            },
-            $inc: { previewVersion: 1 },
-            // El motivo del fallo anterior desaparece: el link vuelve a estar en espera, no fallido.
-            $unset: { lastEnrichmentError: '' },
-          },
-          { returnDocument: 'after' },
-        )
-        .session(session)
-        .lean()
-        .exec();
-      return updated === null ? null : await work(toJobLink(updated), session);
+      const updated = await this.markRequested(id, now, session);
+      return updated === null ? null : await work(updated, session);
     });
+  }
+
+  async requestEnrichment(
+    linkId: string,
+    now: Date,
+    session: TransactionSession,
+  ): Promise<JobLink | null> {
+    const id = toLinkObjectId(linkId);
+    return id === null
+      ? null
+      : await this.markRequested(id, now, session as ClientSession);
+  }
+
+  /** Lectura nueva pedida: sube la versión, vuelve a `pending`, apunta cuándo y olvida el fallo anterior. */
+  private async markRequested(
+    id: NonNullable<ReturnType<typeof toLinkObjectId>>,
+    now: Date,
+    session: ClientSession,
+  ): Promise<JobLink | null> {
+    const updated = await this.links
+      .findOneAndUpdate(
+        { _id: id },
+        {
+          $set: {
+            previewStatus: 'pending',
+            previewRequestedAt: now,
+            updatedAt: now,
+          },
+          $inc: { previewVersion: 1 },
+          // El motivo del fallo anterior desaparece: el link vuelve a estar en espera, no fallido.
+          $unset: { lastEnrichmentError: '' },
+        },
+        { returnDocument: 'after' },
+      )
+      .session(session)
+      .lean()
+      .exec();
+    return updated === null ? null : toJobLink(updated);
   }
 
   /** Vacante de la clave: la existente con su historial al día, o una nueva. */
@@ -199,14 +257,22 @@ export class MongoJobLinkRepository implements JobLinkRepository {
       .lean()
       .exec();
     if (existing !== null) {
-      return { link: await this.remember(existing, draft, session), created: false };
+      return {
+        link: await this.remember(existing, draft, session),
+        created: false,
+        urlAdded: !existing.originalUrls.includes(draft.displayUrl),
+      };
     }
     const created = await this.links.create([toDocument(draft)], { session });
     const document = created[0];
     if (document === undefined) {
       throw new Error('The job link insert returned no document');
     }
-    return { link: toJobLink(document.toObject()), created: true };
+    return {
+      link: toJobLink(document.toObject()),
+      created: true,
+      urlAdded: false,
+    };
   }
 
   /**

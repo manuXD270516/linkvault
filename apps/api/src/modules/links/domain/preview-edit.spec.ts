@@ -1,17 +1,21 @@
 import { previewSourcesSchema, storedPreviewSchema } from '@linkvault/shared';
 import {
-  MANUAL_EDIT_REPLACED_CASES,
-  type ManualEditStoredEntry,
+  CASE_ACTED_AT,
+  CASE_ACTOR,
+  PREVIEW_REPLACED_CASES,
+  type ReplacedCaseStored,
 } from '@linkvault/testing';
 import { describe, expect, it } from 'vitest';
 import { PreviewFieldUnknown } from './errors';
 import { applyManualEdit, type EditablePreview } from './preview-edit';
+import { applyPastedPreview } from './preview-paste';
 
 // Mezcla de una edición manual con lo que ya estaba guardado (D4). Sin Mongo y sin Nest: es dominio.
 
 const ANA = '000000000000000000000001';
 const NOW = new Date('2026-09-18T12:00:00.000Z');
 const AT = NOW.toISOString();
+const EXTRACTED_AT = '2026-09-18T11:00:00.000Z';
 
 const extracted: EditablePreview = {
   preview: { title: 'Backend Engineer', company: 'ACME S.R.L.' },
@@ -20,63 +24,64 @@ const extracted: EditablePreview = {
       value: 'Backend Engineer',
       source: 'auto',
       extractor: 'json-ld',
-      at: '2026-09-18T11:00:00.000Z',
+      at: EXTRACTED_AT,
     },
     company: {
       value: 'ACME S.R.L.',
       source: 'auto',
       extractor: 'metadata',
-      at: '2026-09-18T11:00:00.000Z',
+      at: EXTRACTED_AT,
     },
   },
 };
 
-const BEFORE = '2026-09-18T11:00:00.000Z';
-
-/** Lo guardado de un caso de `MANUAL_EDIT_REPLACED_CASES`, con su procedencia puesta en `title`. */
-function storedForCase(entry: ManualEditStoredEntry | undefined): EditablePreview {
-  if (entry === undefined) return {};
+/**
+ * Lo guardado de un caso de `PREVIEW_REPLACED_CASES`, con su procedencia puesta en `title`. Pasa por el contrato de
+ * `libs/shared`, que es como se lee lo guardado: un `replaced` antiguo sin origen llega ya como `auto`.
+ */
+function storedForCase(
+  stored: ReplacedCaseStored | undefined,
+): EditablePreview {
+  if (stored === undefined) return {};
   return {
-    preview: { title: entry.value },
-    previewSources: {
-      title:
-        entry.source === 'auto'
-          ? {
-              value: entry.value,
-              source: 'auto',
-              extractor: entry.extractor,
-              at: BEFORE,
-            }
-          : {
-              value: entry.value,
-              source: 'manual',
-              by: ANA,
-              at: BEFORE,
-              ...(entry.replaced === undefined
-                ? {}
-                : { replaced: entry.replaced }),
-            },
-    },
+    preview: { title: stored.value },
+    previewSources: previewSourcesSchema.parse({ title: stored }),
   };
 }
 
 describe('Se guarda lo que la edición desplazó', () => {
-  // La misma tabla la itera el spec de `applyManualField` en el worker: las dos funciones aplican esta regla, el
-  // código está duplicado a propósito y lo que se comparte son los casos. Si una de las dos cambia, el otro spec se
-  // pone en rojo.
-  it.each(MANUAL_EDIT_REPLACED_CASES)('$name', ({ stored, edit, expected }) => {
+  // La misma tabla la itera el spec del worker: lo que se comparte son los casos, no el código. Si una de las dos
+  // copias cambia lo que guarda para deshacer, el otro spec se pone en rojo.
+  it.each(
+    PREVIEW_REPLACED_CASES.filter((testCase) => testCase.action !== 'pasted'),
+  )('$name', (testCase) => {
     const edited = applyManualEdit(
-      storedForCase(stored),
-      { fields: { title: edit } },
-      ANA,
-      NOW,
+      storedForCase(testCase.stored),
+      testCase.action === 'revert'
+        ? { revert: ['title'] }
+        : { fields: { title: testCase.value } },
+      CASE_ACTOR,
+      new Date(CASE_ACTED_AT),
     );
-    const entry = edited.previewSources.title;
 
-    expect(edited.preview.title).toBe(edit);
-    expect(entry?.source === 'manual' ? entry.replaced : undefined).toEqual(
-      expected,
+    expect(edited.previewSources.title).toEqual(testCase.expected);
+    expect(edited.preview.title).toEqual(testCase.expected?.value);
+  });
+
+  // Pegar lo aplica `applyPastedPreview`: la misma tabla, contra la función que corre al pegar.
+  it.each(
+    PREVIEW_REPLACED_CASES.filter((testCase) => testCase.action === 'pasted'),
+  )('$name (applyPastedPreview)', (testCase) => {
+    if (testCase.action !== 'pasted') return;
+    const pasted = applyPastedPreview(
+      storedForCase(testCase.stored),
+      { extracted: { title: testCase.value } },
+      CASE_ACTOR,
+      new Date(CASE_ACTED_AT),
     );
+
+    expect(pasted.previewSources.title).toEqual(testCase.expected);
+    expect(pasted.preview.title).toEqual(testCase.expected.value);
   });
 });
 
@@ -96,7 +101,12 @@ describe('applyManualEdit', () => {
       source: 'manual',
       by: ANA,
       at: AT,
-      replaced: { value: 'Backend Engineer', extractor: 'json-ld' },
+      replaced: {
+        value: 'Backend Engineer',
+        source: 'auto',
+        extractor: 'json-ld',
+        at: EXTRACTED_AT,
+      },
     });
     // Los demás campos no se tocan.
     expect(edited.preview.company).toBe('ACME S.R.L.');
@@ -106,7 +116,7 @@ describe('applyManualEdit', () => {
     );
   });
 
-  it('Se guarda lo que la edición desplazó, y una segunda edición no lo pierde', () => {
+  it('a second edit keeps what the first one displaced', () => {
     const first = applyManualEdit(
       extracted,
       { fields: { title: 'Ingeniero de Backend' } },
@@ -114,15 +124,19 @@ describe('applyManualEdit', () => {
       NOW,
     );
 
-    const second = applyManualEdit(first, { fields: { title: 'Backend' } }, ANA, NOW);
+    const second = applyManualEdit(
+      first,
+      { fields: { title: 'Backend' } },
+      ANA,
+      NOW,
+    );
     const entry = second.previewSources.title;
 
-    // El valor desplazado sigue siendo el que leyó la máquina, no la primera corrección: "Volver a lo extraído"
-    // promete devolver a la página, no a otra edición.
-    expect(entry?.source === 'manual' ? entry.replaced : undefined).toEqual({
-      value: 'Backend Engineer',
-      extractor: 'json-ld',
-    });
+    // Lo desplazado sigue siendo lo que leyó la máquina, no la primera corrección: "volver" desde un campo escrito a
+    // mano devuelve a la fuente, no a otra edición.
+    expect(entry?.source === 'manual' ? entry.replaced : undefined).toEqual(
+      extracted.previewSources?.title,
+    );
   });
 
   it('la misma edición dos veces: la segunda no cambia nada', () => {
@@ -186,7 +200,12 @@ describe('applyManualEdit', () => {
       source: 'manual',
       by: ANA,
       at: AT,
-      replaced: { value: 'Backend Engineer', extractor: 'json-ld' },
+      replaced: {
+        value: 'Backend Engineer',
+        source: 'auto',
+        extractor: 'json-ld',
+        at: EXTRACTED_AT,
+      },
     });
   });
 
@@ -202,12 +221,10 @@ describe('applyManualEdit', () => {
 
     expect(reverted.changed).toBe(true);
     expect(reverted.preview.title).toBe('Backend Engineer');
-    expect(reverted.previewSources.title).toEqual({
-      value: 'Backend Engineer',
-      source: 'auto',
-      extractor: 'json-ld',
-      at: AT,
-    });
+    // Vuelve la entrada que se desplazó, tal cual: con la fecha en que se leyó, no con la de ahora.
+    expect(reverted.previewSources.title).toEqual(
+      extracted.previewSources?.title,
+    );
   });
 
   it('a field written by hand that displaced nothing goes back to having no value', () => {
@@ -218,7 +235,38 @@ describe('applyManualEdit', () => {
       NOW,
     );
 
-    const reverted = applyManualEdit(edited, { revert: ['location'] }, ANA, NOW);
+    const reverted = applyManualEdit(
+      edited,
+      { revert: ['location'] },
+      ANA,
+      NOW,
+    );
+
+    expect(reverted.changed).toBe(true);
+    expect(Object.keys(reverted.preview)).not.toContain('location');
+    expect(Object.keys(reverted.previewSources)).not.toContain('location');
+  });
+
+  it('a pasted field that displaced nothing goes back to having no value', () => {
+    const pasted: EditablePreview = {
+      preview: { location: 'La Paz' },
+      previewSources: {
+        location: {
+          value: 'La Paz',
+          source: 'pasted',
+          extractor: 'ai:extract-pasted-job',
+          by: ANA,
+          at: EXTRACTED_AT,
+        },
+      },
+    };
+
+    const reverted = applyManualEdit(
+      pasted,
+      { revert: ['location'] },
+      ANA,
+      NOW,
+    );
 
     expect(reverted.changed).toBe(true);
     expect(Object.keys(reverted.preview)).not.toContain('location');
@@ -259,10 +307,9 @@ describe('applyManualEdit', () => {
     const entry = both.previewSources.title;
 
     expect(both.preview.title).toBe('Backend developer');
-    expect(entry?.source === 'manual' ? entry.replaced : undefined).toEqual({
-      value: 'Backend Engineer',
-      extractor: 'json-ld',
-    });
+    expect(entry?.source === 'manual' ? entry.replaced : undefined).toEqual(
+      extracted.previewSources?.title,
+    );
   });
 
   it.each([

@@ -1,12 +1,15 @@
 import { apiErrorCodeSchema } from '@linkvault/shared';
 import { describe, expect, it } from 'vitest';
 import {
+  AiQuotaExceeded,
   EnrichmentNotRetryable,
+  ExtractionUnavailable,
   InvalidCursor,
   InvalidUrl,
   LinkNotFound,
   LinkRemovalForbidden,
   LinksError,
+  NotAJobPosting,
   PreviewFieldUnknown,
   TextTooLong,
   TooManyLinkAttempts,
@@ -21,6 +24,9 @@ const errors = [
   new PreviewFieldUnknown('image'),
   new EnrichmentNotRetryable(),
   new TooManyLinkAttempts(30),
+  new NotAJobPosting(),
+  new ExtractionUnavailable(60),
+  new AiQuotaExceeded(86_400),
 ];
 
 describe('links domain errors', () => {
@@ -33,6 +39,9 @@ describe('links domain errors', () => {
     [new PreviewFieldUnknown('image'), 'preview_field_unknown'],
     [new EnrichmentNotRetryable(), 'enrichment_not_retryable'],
     [new TooManyLinkAttempts(30), 'too_many_attempts'],
+    [new NotAJobPosting(), 'not_a_job_posting'],
+    [new ExtractionUnavailable(60), 'extraction_unavailable'],
+    [new AiQuotaExceeded(86_400), 'ai_quota_exceeded'],
   ] as const)('%s carries the API code %s', (error, code) => {
     expect(error).toBeInstanceOf(LinksError);
     expect(error.code).toBe(code);
@@ -54,6 +63,9 @@ describe('links domain errors', () => {
       'PreviewFieldUnknown',
       'EnrichmentNotRetryable',
       'TooManyLinkAttempts',
+      'NotAJobPosting',
+      'ExtractionUnavailable',
+      'AiQuotaExceeded',
     ]);
   });
 
@@ -64,6 +76,8 @@ describe('links domain errors', () => {
   it('rounds the wait of the retry limit up to a whole second, never below one', () => {
     expect(new TooManyLinkAttempts(41.2).retryAfterSeconds).toBe(42);
     expect(new TooManyLinkAttempts(0).retryAfterSeconds).toBe(1);
+    expect(new ExtractionUnavailable(0.5).retryAfterSeconds).toBe(1);
+    expect(new AiQuotaExceeded(86_400).retryAfterSeconds).toBe(86_400);
   });
 
   it('names the field of the errors that come from a request field', () => {

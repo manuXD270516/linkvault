@@ -18,9 +18,10 @@ import type { LinkListPage, ListedLink } from './ports/link-listing';
 // tienen, y sin él el SPA no podría distinguir un `pending` que se está leyendo de uno que se quedó colgado (D5). La
 // fecha de alta es exactamente cuando se pidió su lectura por primera vez, así que el respaldo no miente.
 //
-// La procedencia sale con `by` resuelto a `{ userId, displayName }` (D4): la tarjeta dice "Escrito por Ana", no un
-// identificador. Los nombres llegan ya resueltos en un `Map`, porque quien llama los pide **todos de una vez** para la
-// página entera —`displayNameIdsOf`—; resolverlos aquí sería una consulta por campo manual.
+// La procedencia sale con `by` resuelto a `{ userId, displayName }` (D4; D3 de paste-job-description): la tarjeta dice
+// "Escrito por Ana" o "Descripción pegada por Beto", no un identificador, y lo mismo el autor de lo que guarda
+// `replaced`. Los nombres llegan ya resueltos en un `Map`, porque quien llama los pide **todos de una vez** para la
+// página entera —`displayNameIdsOf`—; resolverlos aquí sería una consulta por campo.
 
 /**
  * Nombre que se muestra cuando el directorio no conoce a quien compartió. Defensa en profundidad: hoy no existe el
@@ -53,7 +54,9 @@ export function toJobLinkSummary(
     ...(link.preview === undefined ? {} : { preview: link.preview }),
     ...(link.previewSources === undefined
       ? {}
-      : { previewSources: toResolvedPreviewSources(link.previewSources, names) }),
+      : {
+          previewSources: toResolvedPreviewSources(link.previewSources, names),
+        }),
     ...(link.lastEnrichmentError === undefined
       ? {}
       : { lastEnrichmentError: link.lastEnrichmentError }),
@@ -74,8 +77,9 @@ export function toLinkSharer(
 }
 
 /**
- * Identificadores cuyo nombre visible hace falta para responder esos links: quien los compartió y quien escribió a mano
- * cualquiera de sus campos. Se piden **en una sola consulta** por página, no uno por campo ni uno por link.
+ * Identificadores cuyo nombre visible hace falta para responder esos links: quien los compartió, quien escribió a mano o
+ * pegó cualquiera de sus campos y quien firmaba lo que esos campos guardan para deshacerse. Se piden **en una sola
+ * consulta** por página, no uno por campo ni uno por link.
  */
 export function displayNameIdsOf(
   links: readonly JobLink[],
@@ -88,15 +92,18 @@ export function displayNameIdsOf(
     }
   }
   for (const link of links) {
-    for (const userId of manualAuthorIdsOf(link)) {
+    for (const userId of authorIdsOf(link)) {
       ids.add(userId);
     }
   }
   return [...ids];
 }
 
-/** Quién escribió a mano algún campo de ese link. Vacío en un link que nadie ha tocado. */
-function manualAuthorIdsOf(link: JobLink): string[] {
+/**
+ * Quién escribió a mano o pegó algún campo de ese link, incluido el autor de la entrada que cada campo guarda en
+ * `replaced`. Vacío en un link que nadie ha tocado.
+ */
+function authorIdsOf(link: JobLink): string[] {
   const sources = link.previewSources;
   if (sources === undefined) {
     return [];
@@ -104,14 +111,26 @@ function manualAuthorIdsOf(link: JobLink): string[] {
   const ids: string[] = [];
   for (const field of PREVIEW_FIELD_NAMES) {
     const entry = sources[field];
-    if (entry?.source === 'manual') {
-      ids.push(entry.by);
+    if (entry === undefined || entry.source === 'auto') {
+      continue;
+    }
+    ids.push(entry.by);
+    if (entry.replaced !== undefined && entry.replaced.source !== 'auto') {
+      ids.push(entry.replaced.by);
     }
   }
   return ids;
 }
 
-/** Procedencia con `by` resuelto a `{ userId, displayName }`; lo automático sale tal cual. */
+/** Lo que un campo escrito por una persona guarda para deshacerse, tal y como se guarda. */
+type DisplacedEntry = NonNullable<
+  Extract<
+    NonNullable<PreviewSources[PreviewFieldName]>,
+    { source: 'manual' | 'pasted' }
+  >['replaced']
+>;
+
+/** Procedencia con todo `by` resuelto a `{ userId, displayName }`, también el de `replaced`; lo automático sale tal cual. */
 export function toResolvedPreviewSources(
   sources: PreviewSources,
   names: Map<string, string>,
@@ -129,8 +148,9 @@ export function toResolvedPreviewSources(
 }
 
 /**
- * Copia la entrada de un campo resolviendo el autor si es manual. El `as never` acota a este punto la pérdida de tipo
- * que supone recorrer los campos por nombre: fuera de aquí, `ResolvedPreviewSources` sigue tipado campo a campo.
+ * Copia la entrada de un campo resolviendo su autor —si la escribió o pegó una persona— y el de la entrada que guarda
+ * en `replaced`. El `as never` acota a este punto la pérdida de tipo que supone recorrer los campos por nombre: fuera de
+ * aquí, `ResolvedPreviewSources` sigue tipado campo a campo.
  */
 function assignResolved(
   resolved: ResolvedPreviewSources,
@@ -138,13 +158,28 @@ function assignResolved(
   entry: NonNullable<PreviewSources[PreviewFieldName]>,
   names: Map<string, string>,
 ): void {
-  resolved[field] =
-    entry.source === 'manual'
-      ? ({
-          ...entry,
-          by: toLinkSharer(entry.by, names.get(entry.by)),
-        } as never)
-      : (entry as never);
+  if (entry.source === 'auto') {
+    resolved[field] = entry as never;
+    return;
+  }
+  const { replaced, ...rest } = entry;
+  resolved[field] = {
+    ...rest,
+    by: toLinkSharer(entry.by, names.get(entry.by)),
+    ...(replaced === undefined
+      ? {}
+      : { replaced: resolveDisplaced(replaced, names) }),
+  } as never;
+}
+
+/** La entrada desplazada con su autor resuelto; la que salió de la página no tiene autor y sale tal cual. */
+function resolveDisplaced(
+  replaced: DisplacedEntry,
+  names: Map<string, string>,
+): unknown {
+  return replaced.source === 'auto'
+    ? replaced
+    : { ...replaced, by: toLinkSharer(replaced.by, names.get(replaced.by)) };
 }
 
 /**

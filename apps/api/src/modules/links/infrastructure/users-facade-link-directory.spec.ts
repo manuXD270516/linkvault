@@ -9,11 +9,13 @@ import { UsersFacadeLinkDirectory } from './users-facade-link-directory';
 
 const HASH = '$argon2id$v=19$m=19456,t=2,p=1$c2FsdA$aGFzaA';
 
+let repository: InMemoryUserRepository;
 let users: UsersFacade;
 let directory: UsersFacadeLinkDirectory;
 
 beforeEach(() => {
-  users = new UsersFacade(new InMemoryUserRepository(), new MovableClock());
+  repository = new InMemoryUserRepository();
+  users = new UsersFacade(repository, new MovableClock());
   directory = new UsersFacadeLinkDirectory(users);
 });
 
@@ -60,5 +62,20 @@ describe('UsersFacadeLinkDirectory', () => {
     const names = await directory.displayNamesOf([ana]);
 
     expect(JSON.stringify([...names])).not.toContain('example.com');
+  });
+
+  it('reads the AI consent of whoever pastes from their profile', async () => {
+    const ana = await register('ana@example.com', 'Ana');
+    const beto = await register('beto@example.com', 'Beto');
+    await repository.updateProfile(beto, {
+      aiConsent: { externalProviders: true },
+    });
+
+    expect(await directory.aiConsentOf(ana)).toEqual({
+      externalProviders: false,
+    });
+    expect(await directory.aiConsentOf(beto)).toEqual({
+      externalProviders: true,
+    });
   });
 });

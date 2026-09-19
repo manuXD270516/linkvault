@@ -1,4 +1,8 @@
-import type { GroupRole, JobLinkSummary } from '@linkvault/shared';
+import type {
+  GroupRole,
+  JobLinkSummary,
+  LinkEnrichedPayload,
+} from '@linkvault/shared';
 import type { Clock } from '../ports/clock.port';
 import type { EnrichmentBroadcaster } from '../ports/enrichment-broadcaster.port';
 import type {
@@ -10,8 +14,17 @@ import type {
   LinkLimitKey,
   LinkLimiter,
 } from '../ports/link-limiter.port';
-import type { LinkUserDirectory } from '../ports/link-user-directory.port';
+import type {
+  LinkUserAiConsent,
+  LinkUserDirectory,
+} from '../ports/link-user-directory.port';
+import type { LinkEnrichedPublisher } from '../ports/link-enriched-publisher.port';
 import type { Outbox, OutboxEvent } from '../ports/outbox.port';
+import type {
+  PastedExtraction,
+  PastedExtractionPort,
+  PastedExtractionRequest,
+} from '../ports/pasted-extraction.port';
 import type { TransactionSession } from '../ports/transaction-session';
 
 // Dobles en memoria de los puertos pequeños de `links` para tests de application (D10 de job-links). No son adaptadores
@@ -37,8 +50,10 @@ export class MovableClock implements Clock {
 
 /** Outbox en memoria: acumula los eventos escritos, en orden, para que un test compruebe qué se encolará. */
 export class InMemoryOutbox implements Outbox {
-  private readonly events: { event: OutboxEvent; session: TransactionSession }[] =
-    [];
+  private readonly events: {
+    event: OutboxEvent;
+    session: TransactionSession;
+  }[] = [];
 
   /** Eventos escritos, en orden. */
   get appended(): readonly OutboxEvent[] {
@@ -136,6 +151,29 @@ export class InMemoryLinkUserDirectory implements LinkUserDirectory {
     return this;
   }
 
+  /** Usuarios que aceptaron enviar sus datos a proveedores externos; los demás no. */
+  private readonly consenting = new Set<string>();
+
+  withConsent(userId: string): this {
+    this.consenting.add(userId);
+    return this;
+  }
+
+  private consentDown = false;
+
+  /** Simula que el perfil no se puede leer (Mongo caído): `aiConsentOf` rechaza. */
+  failConsent(): this {
+    this.consentDown = true;
+    return this;
+  }
+
+  aiConsentOf(userId: string): Promise<LinkUserAiConsent> {
+    if (this.consentDown) {
+      return Promise.reject(new Error('The user profile could not be read'));
+    }
+    return Promise.resolve({ externalProviders: this.consenting.has(userId) });
+  }
+
   displayNamesOf(userIds: readonly string[]): Promise<Map<string, string>> {
     this.calls += 1;
     const found = new Map<string, string>();
@@ -178,8 +216,33 @@ export class InMemoryLinkLimiter implements LinkLimiter {
     return this;
   }
 
+  /** Claves devueltas, en orden. */
+  readonly refunded: LinkLimitKey[] = [];
+  private down = false;
+
+  /** Simula el contador caído con la respuesta que da el adaptador para un límite que falla cerrado y lo dice. */
+  goDown(): this {
+    this.down = true;
+    return this;
+  }
+
+  /** Como `giveBack` del contador: baja sin pasar de cero. */
+  refund(key: LinkLimitKey): Promise<void> {
+    this.refunded.push(key);
+    const name = nameOfLimit(key);
+    this.counters.set(name, Math.max(0, (this.counters.get(name) ?? 0) - 1));
+    return Promise.resolve();
+  }
+
   consume(key: LinkLimitKey): Promise<LinkLimitDecision> {
     this.consumed.push(key);
+    if (this.down) {
+      return Promise.resolve({
+        allowed: false,
+        retryAfterSeconds: 60,
+        unavailable: true,
+      });
+    }
     const name = nameOfLimit(key);
     const count = (this.counters.get(name) ?? 0) + 1;
     this.counters.set(name, count);
@@ -193,9 +256,14 @@ export class InMemoryLinkLimiter implements LinkLimiter {
 }
 
 function nameOfLimit(key: LinkLimitKey): string {
-  return key.kind === 'enrich-link'
-    ? `enrich-link:${key.linkId}`
-    : `import:${key.userId}`;
+  switch (key.kind) {
+    case 'enrich-link':
+      return `enrich-link:${key.linkId}`;
+    case 'import':
+      return `import:${key.userId}`;
+    case 'paste-description':
+      return `paste-description:${key.userId}`;
+  }
 }
 
 /**
@@ -225,5 +293,53 @@ export class InMemoryEnrichmentBroadcaster implements EnrichmentBroadcaster {
   /** A quién se avisó, sin repetir y en orden de aviso. */
   get recipients(): string[] {
     return [...new Set(this.sent.map((entry) => entry.userId))];
+  }
+}
+
+/**
+ * Publicador de avisos en memoria: apunta lo publicado. Con `hang()`, publicar no termina nunca, que es como se prueba
+ * que quien publica no espera a que termine; con `fail()`, falla como un Redis caído.
+ */
+export class InMemoryLinkEnrichedPublisher implements LinkEnrichedPublisher {
+  readonly published: LinkEnrichedPayload[] = [];
+  private mode: 'up' | 'hang' | 'fail' = 'up';
+
+  hang(): this {
+    this.mode = 'hang';
+    return this;
+  }
+
+  fail(): this {
+    this.mode = 'fail';
+    return this;
+  }
+
+  publish(payload: LinkEnrichedPayload): Promise<void> {
+    this.published.push(payload);
+    switch (this.mode) {
+      case 'up':
+        return Promise.resolve();
+      case 'hang':
+        return new Promise<void>(() => undefined);
+      case 'fail':
+        return Promise.reject(new Error('Connection is closed.'));
+    }
+  }
+}
+
+/** Lectura del texto pegado que responde lo que se le diga, y apunta qué se le pidió. */
+export class FakePastedExtraction implements PastedExtractionPort {
+  readonly requests: PastedExtractionRequest[] = [];
+
+  constructor(private answer: PastedExtraction = { outcome: 'unavailable' }) {}
+
+  answering(answer: PastedExtraction): this {
+    this.answer = answer;
+    return this;
+  }
+
+  extract(request: PastedExtractionRequest): Promise<PastedExtraction> {
+    this.requests.push(request);
+    return Promise.resolve(this.answer);
   }
 }

@@ -7,6 +7,7 @@ import type { ProviderCapabilities } from './ports/llm-provider.port';
 
 export type AiTaskName =
   | 'extract-job'
+  | 'extract-pasted-job'
   | 'match-cv'
   | 'critique-suggestions'
   | 'build-roadmap'

@@ -1,3 +1,4 @@
+import { type AiConfig, AiModule } from '@linkvault/ai';
 import { type DynamicModule, Module } from '@nestjs/common';
 import type { ApiConfig } from '../infrastructure/config/api-config.schema';
 import { AppConfigModule } from '../infrastructure/config/app-config.module';
@@ -17,8 +18,19 @@ export class AppModule {
   /**
    * El relay del outbox se importa solo si está encendido (D6 de job-links): es lo que crea la cola de BullMQ, y con
    * `OUTBOX_RELAY_ENABLED=false` no debe existir ninguna `Queue` ni conexión a Redis por esa vía.
+   *
+   * `ai` es la configuración de IA ya validada por `parseAiConfig` en `loadApiConfigOrExit` (D1 de
+   * paste-job-description): `api` lee el texto pegado dentro de la petición. `AiModule` usa la conexión Mongoose por
+   * defecto que registra `MongoPersistenceModule`, y solo abre Redis si la cadena usa la caché real: con `mock`, que es
+   * lo que usan los tests, no abre ninguna conexión nueva.
    */
-  static register(config: ApiConfig): DynamicModule {
+  static register(config: ApiConfig, ai: AiConfig): DynamicModule {
+    // Se construye una sola vez y se le pasa a `LinksModule`, como hace el worker: `RUN_TASK` lo exporta `AiModule`, y
+    // lo que un módulo importa no llega a sus hermanos. Es el mismo objeto, así que Nest lo instancia una vez.
+    const aiModule = AiModule.forRootAsync({
+      useFactory: () => ({ config: ai, redisUrl: config.REDIS_URL }),
+    });
+
     return {
       module: AppModule,
       imports: [
@@ -31,7 +43,8 @@ export class AppModule {
         UsersModule,
         AuthModule,
         GroupsModule,
-        LinksModule,
+        aiModule,
+        LinksModule.register(aiModule),
         ...(config.OUTBOX_RELAY_ENABLED ? [OutboxRelayModule] : []),
       ],
     };

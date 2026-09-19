@@ -13,7 +13,10 @@ export type LinksErrorCode =
   | 'preview_field_unknown'
   | 'enrichment_not_retryable'
   | 'too_many_attempts'
-  | 'validation_error';
+  | 'validation_error'
+  | 'not_a_job_posting'
+  | 'extraction_unavailable'
+  | 'ai_quota_exceeded';
 
 export abstract class LinksError extends Error {
   abstract readonly code: LinksErrorCode;
@@ -122,6 +125,51 @@ export class TooManyLinkAttempts extends LinksError {
 
   constructor(retryAfterSeconds: number) {
     super('Too many attempts');
+    this.retryAfterSeconds = Math.max(1, Math.ceil(retryAfterSeconds));
+  }
+}
+
+/**
+ * Lo pegado no es una oferta (422): se queda vacío sin sus datos de contacto, o la IA respondió que no es una vacante
+ * (spec links/pasted-description). El link no cambia.
+ */
+export class NotAJobPosting extends LinksError {
+  override readonly name = 'NotAJobPosting';
+  readonly code = 'not_a_job_posting';
+
+  constructor() {
+    super('That does not look like a job posting');
+  }
+}
+
+/**
+ * No se pudo leer lo pegado ahora (503): la IA degradó o no respondió a tiempo, o el contador de pegados no responde y
+ * el límite falla cerrado (D5). Es transitorio, así que lleva `Retry-After`; y no gasta el intento de quien pegó.
+ */
+export class ExtractionUnavailable extends LinksError {
+  override readonly name = 'ExtractionUnavailable';
+  readonly code = 'extraction_unavailable';
+  /** Segundos que se anuncian en `Retry-After`, enteros y como mínimo 1. */
+  readonly retryAfterSeconds: number;
+
+  constructor(retryAfterSeconds: number) {
+    super('The pasted text could not be read right now');
+    this.retryAfterSeconds = Math.max(1, Math.ceil(retryAfterSeconds));
+  }
+}
+
+/**
+ * Quien pega agotó su cuota diaria de IA (429). Distinto de `TooManyLinkAttempts`, cuya ventana es de minutos: decir
+ * "inténtalo en un rato" sería mentira cuando hay que esperar al día siguiente (D5).
+ */
+export class AiQuotaExceeded extends LinksError {
+  override readonly name = 'AiQuotaExceeded';
+  readonly code = 'ai_quota_exceeded';
+  /** Segundos que se anuncian en `Retry-After`: la ventana entera de la cuota, porque la política solo dice sí o no. */
+  readonly retryAfterSeconds: number;
+
+  constructor(retryAfterSeconds: number) {
+    super('The daily AI quota is exhausted');
     this.retryAfterSeconds = Math.max(1, Math.ceil(retryAfterSeconds));
   }
 }

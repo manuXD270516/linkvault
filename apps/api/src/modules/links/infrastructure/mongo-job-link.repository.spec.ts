@@ -1,4 +1,9 @@
 import { randomUUID } from 'node:crypto';
+import {
+  PASTED_PREVIEW_EXTRACTOR,
+  previewSourcesSchema,
+  type PreviewSources,
+} from '@linkvault/shared';
 import { getMongoTestUri } from '@linkvault/testing';
 import mongoose, { type Connection } from 'mongoose';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
@@ -102,6 +107,15 @@ describe('withResolvedLink', () => {
     const again = await save(JOB_PAGE, BETO);
 
     expect(again.link.originalUrls).toEqual([JOB_PAGE]);
+    expect(again.urlAdded).toBe(false);
+  });
+
+  it('says whether the url was new to the history of a vacancy that already existed', async () => {
+    const first = await save(JOB_PAGE);
+    const second = await save(SEARCH_PAGE, BETO, later);
+
+    expect(first.urlAdded).toBe(false);
+    expect(second.urlAdded).toBe(true);
   });
 
   it('Historial acotado', async () => {
@@ -197,7 +211,7 @@ describe('findById', () => {
 });
 
 describe('updatePreview', () => {
-  it('stores the preview with its provenance, raises the version and leaves the link manual', async () => {
+  it('stores the preview with its provenance and the status it is given, and raises the version', async () => {
     const { link } = await save(JOB_PAGE);
 
     const updated = await repository.updatePreview(link.id, 1, {
@@ -208,9 +222,10 @@ describe('updatePreview', () => {
           source: 'manual',
           by: ANA,
           at: later.toISOString(),
-          replaced: { value: 'Backend', extractor: 'json-ld' },
+          replaced: { value: 'Backend', source: 'auto', extractor: 'json-ld' },
         },
       },
+      previewStatus: 'manual',
       now: later,
     });
 
@@ -225,8 +240,62 @@ describe('updatePreview', () => {
       source: 'manual',
       by: ANA,
       at: later.toISOString(),
-      replaced: { value: 'Backend', extractor: 'json-ld' },
+      replaced: { value: 'Backend', source: 'auto', extractor: 'json-ld' },
     });
+  });
+
+  it('keeps manual over pasted whole: source, author, extractor and date, of the entry and of what it displaced', async () => {
+    // Los dos schemas de `job_links` son `strict: true`: una clave que no declararan se descartaría en silencio y
+    // "Volver a lo pegado" devolvería un valor sin origen ni autor. Por eso se mira también el documento crudo.
+    const { link } = await save(JOB_PAGE);
+    const pastedAt = now.toISOString();
+    const previewSources = {
+      title: {
+        value: 'Backend Engineer II',
+        source: 'manual',
+        by: ANA,
+        at: later.toISOString(),
+        replaced: {
+          value: 'Backend Engineer',
+          source: 'pasted',
+          extractor: PASTED_PREVIEW_EXTRACTOR,
+          by: BETO,
+          at: pastedAt,
+        },
+      },
+      company: {
+        value: 'Acme Bolivia',
+        source: 'pasted',
+        extractor: PASTED_PREVIEW_EXTRACTOR,
+        by: BETO,
+        at: pastedAt,
+        replaced: {
+          value: 'ACME S.R.L.',
+          source: 'auto',
+          extractor: 'json-ld',
+          at: '2026-09-16T10:00:00.000Z',
+        },
+      },
+    } as const satisfies PreviewSources;
+
+    const updated = await repository.updatePreview(link.id, 1, {
+      preview: { title: 'Backend Engineer II', company: 'Acme Bolivia' },
+      previewSources,
+      previewStatus: 'manual',
+      now: later,
+    });
+
+    expect(updated?.previewSources).toEqual(previewSources);
+    expect((await repository.findById(link.id))?.previewSources).toEqual(
+      previewSources,
+    );
+    const raw = await connection
+      .collection(JOB_LINKS_COLLECTION)
+      .findOne({ _id: new mongoose.Types.ObjectId(link.id) });
+    expect(raw?.['previewSources']).toEqual(previewSources);
+    expect(previewSourcesSchema.parse(raw?.['previewSources'])).toEqual(
+      previewSources,
+    );
   });
 
   it('drops a preview field that the shared contract does not know', async () => {
@@ -234,8 +303,12 @@ describe('updatePreview', () => {
 
     const updated = await repository.updatePreview(link.id, 1, {
       // `strict: true`: lo que no está en el schema derivado de `libs/shared` no se guarda.
-      preview: { title: 'Backend', image: 'https://example.com/a.png' } as never,
+      preview: {
+        title: 'Backend',
+        image: 'https://example.com/a.png',
+      } as never,
       previewSources: {},
+      previewStatus: 'manual',
       now: later,
     });
 
@@ -247,24 +320,148 @@ describe('updatePreview', () => {
     await repository.updatePreview(link.id, 1, {
       preview: { title: 'Primera' },
       previewSources: {},
+      previewStatus: 'manual',
       now: later,
     });
 
     const late = await repository.updatePreview(link.id, 1, {
       preview: { title: 'Tardía' },
       previewSources: {},
+      previewStatus: 'manual',
       now: later,
     });
 
     expect(late).toBeNull();
-    expect((await repository.findById(link.id))?.preview?.title).toBe('Primera');
+    expect((await repository.findById(link.id))?.preview?.title).toBe(
+      'Primera',
+    );
   });
 
   it('answers null for an unknown or malformed id', async () => {
-    const changes = { preview: {}, previewSources: {}, now: later };
+    const changes = {
+      preview: {},
+      previewSources: {},
+      previewStatus: 'manual',
+      now: later,
+    } as const;
 
     expect(await repository.updatePreview(objectId(99), 1, changes)).toBeNull();
-    expect(await repository.updatePreview('no-es-un-id', 1, changes)).toBeNull();
+    expect(
+      await repository.updatePreview('no-es-un-id', 1, changes),
+    ).toBeNull();
+  });
+});
+
+describe('updatePreview after going back', () => {
+  it('writes the status it is given and keeps the reason of the failure', async () => {
+    const { link } = await save(JOB_PAGE);
+    await connection.collection(JOB_LINKS_COLLECTION).updateOne(
+      { _id: new mongoose.Types.ObjectId(link.id) },
+      {
+        $set: {
+          previewStatus: 'enriched',
+          lastEnrichmentError: {
+            reason: 'robots_disallowed',
+            at: now.toISOString(),
+          },
+        },
+      },
+    );
+
+    const updated = await repository.updatePreview(link.id, 1, {
+      preview: {},
+      previewSources: {},
+      previewStatus: 'failed',
+      now: later,
+    });
+
+    expect(updated?.previewStatus).toBe('failed');
+    expect(updated?.lastEnrichmentError?.reason).toBe('robots_disallowed');
+  });
+});
+
+describe('writePastedPreview', () => {
+  const pasted = {
+    preview: { title: 'Coordinador de Logística', location: 'El Alto' },
+    previewSources: {
+      title: {
+        value: 'Coordinador de Logística',
+        source: 'pasted',
+        extractor: PASTED_PREVIEW_EXTRACTOR,
+        by: ANA,
+        at: later.toISOString(),
+      },
+      location: {
+        value: 'El Alto',
+        source: 'pasted',
+        extractor: PASTED_PREVIEW_EXTRACTOR,
+        by: ANA,
+        at: later.toISOString(),
+      },
+    },
+  } satisfies { preview: object; previewSources: PreviewSources };
+
+  async function failedBy(reason: 'robots_disallowed' | 'timeout') {
+    const { link } = await save(JOB_PAGE);
+    await connection.collection(JOB_LINKS_COLLECTION).updateOne(
+      { _id: new mongoose.Types.ObjectId(link.id) },
+      {
+        $set: {
+          previewStatus: 'failed',
+          lastEnrichmentError: { reason, at: now.toISOString() },
+        },
+      },
+    );
+    return link.id;
+  }
+
+  it('stores what was pasted with the status it was given, raises the version and keeps the reason it is given', async () => {
+    const linkId = await failedBy('robots_disallowed');
+
+    const written = await repository.writePastedPreview(linkId, 1, {
+      ...pasted,
+      previewStatus: 'partial',
+      lastEnrichmentError: {
+        reason: 'robots_disallowed',
+        at: now.toISOString(),
+      },
+      now: later,
+    });
+
+    expect(written?.previewStatus).toBe('partial');
+    expect(written?.previewVersion).toBe(2);
+    expect(written?.previewSources?.title?.source).toBe('pasted');
+    expect(written?.lastEnrichmentError?.reason).toBe('robots_disallowed');
+    const stored = await repository.findById(linkId);
+    expect(stored?.previewSources).toEqual(pasted.previewSources);
+  });
+
+  it('clears the reason it is not given', async () => {
+    const linkId = await failedBy('timeout');
+
+    const written = await repository.writePastedPreview(linkId, 1, {
+      ...pasted,
+      previewStatus: 'partial',
+      now: later,
+    });
+
+    expect(written?.lastEnrichmentError).toBeUndefined();
+    expect((await repository.findById(linkId))?.lastEnrichmentError).toBe(
+      undefined,
+    );
+  });
+
+  it('writes nothing when another write already raised the version', async () => {
+    const linkId = await failedBy('timeout');
+
+    expect(
+      await repository.writePastedPreview(linkId, 7, {
+        ...pasted,
+        previewStatus: 'partial',
+        now: later,
+      }),
+    ).toBeNull();
+    expect((await repository.findById(linkId))?.previewVersion).toBe(1);
   });
 });
 
@@ -307,6 +504,54 @@ describe('withRequestedEnrichment', () => {
       await repository.withRequestedEnrichment('no-es-un-id', later, work),
     ).toBeNull();
     expect(ran).toBe(false);
+  });
+});
+
+describe('requestEnrichment', () => {
+  it('asks for a new reading inside the transaction of the save', async () => {
+    const { link } = await save(JOB_PAGE);
+    await connection.collection(JOB_LINKS_COLLECTION).updateOne(
+      { _id: new mongoose.Types.ObjectId(link.id) },
+      {
+        $set: {
+          previewStatus: 'failed',
+          lastEnrichmentError: {
+            reason: 'robots_disallowed',
+            at: now.toISOString(),
+          },
+        },
+      },
+    );
+
+    const requested = await repository.withResolvedLink(
+      jobLinkDraft(SEARCH_PAGE, { createdBy: BETO, now: later }),
+      (resolved, session) =>
+        repository.requestEnrichment(resolved.link.id, later, session),
+    );
+
+    expect(requested?.previewStatus).toBe('pending');
+    expect(requested?.previewVersion).toBe(2);
+    expect(requested?.lastEnrichmentError).toBeUndefined();
+    expect(requested?.originalUrls).toEqual([JOB_PAGE, SEARCH_PAGE]);
+    expect((await repository.findById(link.id))?.previewVersion).toBe(2);
+  });
+
+  it('writes nothing if the transaction of the save fails afterwards', async () => {
+    const { link } = await save(JOB_PAGE);
+
+    await expect(
+      repository.withResolvedLink(
+        jobLinkDraft(SEARCH_PAGE, { createdBy: BETO, now: later }),
+        async (resolved, session) => {
+          await repository.requestEnrichment(resolved.link.id, later, session);
+          throw new Error('the outbox write failed');
+        },
+      ),
+    ).rejects.toThrow('the outbox write failed');
+
+    const stored = await repository.findById(link.id);
+    expect(stored?.previewVersion).toBe(1);
+    expect(stored?.originalUrls).toEqual([JOB_PAGE]);
   });
 });
 

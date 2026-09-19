@@ -1,5 +1,5 @@
 import * as cheerio from 'cheerio/slim';
-import { scrubContactDetails } from '../../domain/contact-scrub';
+import { scrubContactDetails } from '@linkvault/shared';
 import type { PageContent } from '../../domain/page-content';
 
 // Del HTML descargado al `PageContent` que consume la cadena de extracción (D3 y D7 de link-enrichment).
