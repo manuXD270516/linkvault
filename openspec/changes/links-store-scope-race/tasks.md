@@ -22,10 +22,10 @@
 
 ## 2. Detalle de grupo
 
-- [ ] 2.1 [frontend] `group-detail.page.ts`: flag `destroyed` con `DestroyRef.onDestroy`; `enter()` no llama a
+- [x] 2.1 [frontend] `group-detail.page.ts`: flag `destroyed` con `DestroyRef.onDestroy`; `enter()` no llama a
   `LinksStore.open` si está puesto (D6). Test en `group-detail.page.spec.ts`: destruir la página antes de que responda
   `listMembers` → no sale `GET /api/groups/<id>/links` y el ámbito del store no cambia.
 
 ## 3. Verificación
 
-- [ ] 3.1 [frontend] `pnpm nx affected -t lint,typecheck,test` en verde.
+- [x] 3.1 [frontend] `pnpm nx affected -t lint,typecheck,test` en verde.
