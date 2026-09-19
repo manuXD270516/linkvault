@@ -4,7 +4,7 @@
 
 ## 1. Contratos en `libs/shared`
 
-- [ ] 1.1 [infra] Rebasar `change/group-comments` sobre `main` y comprobarlo con `git merge-base --is-ancestor main HEAD` antes de tocar `apiErrorCodeSchema`, `api-exception.filter.ts` o `messages.*.xlf`.
+- [x] 1.1 [infra] Rebasar `change/group-comments` sobre `main` y comprobarlo con `git merge-base --is-ancestor main HEAD` antes de tocar `apiErrorCodeSchema`, `api-exception.filter.ts` o `messages.*.xlf`.
 - [ ] 1.2 [backend] `libs/shared/src/text/comment-text.ts`: `normalizeCommentText` (`\r\n`/`\r` → `\n`, quita C0/C1 salvo `\n` y U+202A–U+202E/U+2066–U+2069, `trim`), `COMMENT_TEXT_MAX_LENGTH = 500` y `SHARE_NOTE_MAX_LENGTH = 280`, exportados desde `index.ts`; verificar con una tabla de casos (teléfono y email intactos, `<b>` intacto, nulo y U+202E fuera, idempotente).
 - [ ] 1.3 [backend] `libs/shared/src/schemas/group-link-comment.schema.ts`: `commentTextSchema` (normaliza y exige 1–500 code points), `createCommentRequestSchema`, `listCommentsQuerySchema` (`limit` 20/50 y `cursor` como los links) y `shareNoteSchema` (`text`, `createdAt`); verificar con tests de 0, 500 y 501 caracteres y de solo espacios.
 - [ ] 1.4 [backend] Respuestas: `groupLinkCommentSchema` (`id`, `author` con `linkSharerSchema`, `authorLeft`, `text`, `createdAt`), `commentsSummarySchema` (`count`, `revision` entero ≥ 0, `sharedAt`, `latest` de 0 a 2), `createCommentResponseSchema`, `deleteCommentResponseSchema` (`{ comments }`) y `commentPageSchema`; verificar con tests de que `strictObject` rechaza un email en el autor, un `latest` de 3 y una `revision` negativa.
