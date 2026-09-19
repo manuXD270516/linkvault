@@ -2,6 +2,7 @@ import { DatePipe } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   type ElementRef,
   type TemplateRef,
   computed,
@@ -88,6 +89,9 @@ export class GroupDetailPage {
     return scope?.kind === 'group' && scope.groupId === this.groupId;
   });
 
+  /** `true` cuando ya se salió de la pantalla: lo que quedó esperando no debe tocar la lista de la siguiente. */
+  private destroyed = false;
+
   private readonly invitationField = viewChild<ElementRef<HTMLTextAreaElement>>('invitationField');
   private readonly deleteMessage = viewChild.required<TemplateRef<unknown>>('deleteMessage');
 
@@ -97,6 +101,9 @@ export class GroupDetailPage {
     inject(EventsChannel).connect();
     // Se olvida la lista anterior (otro grupo o la privada) antes de pintar nada: ni sus links ni su ámbito sirven aquí.
     this.linksStore.close();
+    inject(DestroyRef).onDestroy(() => {
+      this.destroyed = true;
+    });
     void this.enter();
     // El respaldo aparece ya seleccionado, para que baste con copiar.
     effect(() => this.invitationField()?.nativeElement.select());
@@ -104,11 +111,12 @@ export class GroupDetailPage {
 
   /**
    * Los links se piden solo cuando ya se sabe que el grupo existe y es del usuario: si el detalle responde `404`, no hay
-   * lista que pedir. Va aparte de `load`, que también se usa para refrescar los miembros tras expulsar.
+   * lista que pedir. Va aparte de `load`, que también se usa para refrescar los miembros tras expulsar. Si el usuario ya
+   * salió mientras respondía el detalle, no se abre nada: esa lista llegaría a la pantalla siguiente (design D6).
    */
   private async enter(): Promise<void> {
     await this.load();
-    if (this.group() !== null) {
+    if (!this.destroyed && this.group() !== null) {
       await this.linksStore.open({ kind: 'group', groupId: this.groupId });
     }
   }

@@ -94,18 +94,45 @@ export const LinksStore = signalStore(
         : api.listMyLinks({ limit: LINKS_PAGE_SIZE, cursor });
 
     /**
-     * Recarga desde la primera página, descartando lo ya cargado: tras guardar, importar o quitar, el orden y el `total`
-     * cambian, y seguir paginando sobre un cursor viejo repetiría u omitiría links. Nunca rechaza, para que un fallo de
-     * la recarga no se confunda con el de la acción.
+     * Número de la última carga de la lista (design D1). Sube con cada carga de la primera página y con `close()`: solo
+     * la carga vigente escribe, y la respuesta, el error o la página siguiente de una carga superada se descartan. Vive
+     * en el cierre y no en el estado porque no es algo que la UI deba observar.
      */
-    const reload = async (): Promise<void> => {
+    let listLoad = 0;
+
+    /** `true` si `load` sigue siendo la última carga; si no, su respuesta se descarta sin tocar nada. */
+    const stillCurrent = (load: number): boolean => load === listLoad;
+
+    /**
+     * `true` si sigue abierta la misma lista que se capturó, comparando por valor (tipo y grupo) y no por identidad: lo
+     * pedido en A vale si el usuario salió y volvió a A. Es lo que usan las acciones, que solo no deben cruzar de lista.
+     */
+    const stillOn = (scope: LinksScope | null): boolean => {
+      const open = store.scope();
+      if (open === null || scope === null) {
+        return open === scope;
+      }
+      return open.kind === scope.kind && groupIdOf(open) === groupIdOf(scope);
+    };
+
+    /**
+     * Carga la primera página como nueva carga vigente: deja sin efecto cualquier carga anterior y cualquier página
+     * siguiente en vuelo (por eso apaga `loadingMore`). Devuelve su número —también si otra carga la superó, y quien
+     * llama lo revalida con `stillCurrent`—, o `null` si no había lista abierta o si falló; nunca rechaza. Si otra
+     * carga la supera mientras espera, no toca el estado (design D2).
+     */
+    const loadFirstPage = async (): Promise<number | null> => {
       const scope = store.scope();
       if (scope === null) {
-        return;
+        return null;
       }
-      patchState(store, { loading: true, failure: null });
+      const load = ++listLoad;
+      patchState(store, { loading: true, loadingMore: false, failure: null });
       try {
         const page = await fetchPage(scope);
+        if (!stillCurrent(load)) {
+          return load;
+        }
         patchState(store, {
           items: page.items,
           total: page.total,
@@ -113,11 +140,26 @@ export const LinksStore = signalStore(
           loaded: true,
           reading: readingOf(page),
         });
+        return load;
       } catch (error: unknown) {
-        patchState(store, { failure: toRequestFailure(error) });
+        if (stillCurrent(load)) {
+          patchState(store, { failure: toRequestFailure(error) });
+        }
+        return null;
       } finally {
-        patchState(store, { loading: false });
+        if (stillCurrent(load)) {
+          patchState(store, { loading: false });
+        }
       }
+    };
+
+    /**
+     * Recarga desde la primera página, descartando lo ya cargado: tras guardar, importar o quitar, el orden y el `total`
+     * cambian, y seguir paginando sobre un cursor viejo repetiría u omitiría links. Nunca rechaza, para que un fallo de
+     * la recarga no se confunda con el de la acción.
+     */
+    const reload = async (): Promise<void> => {
+      await loadFirstPage();
     };
 
     /**
@@ -134,6 +176,17 @@ export const LinksStore = signalStore(
       patchState(store, { items: items.map((item, at) => (at === index ? link : item)) });
     };
 
+    /**
+     * Reemplaza la tarjeta que devolvió una edición solo si sigue abierta la lista donde se pidió: `sharedBy` y
+     * `sharedAt` son de esa lista, y en otra pisarían quién lo compartió allí (design D5). Una recarga de la misma lista
+     * no la invalida.
+     */
+    const replaceIfStillOn = (scope: LinksScope | null, link: JobLinkSummary): void => {
+      if (stillOn(scope)) {
+        replace(link);
+      }
+    };
+
     return {
       /** Entra en una lista: olvida la anterior (podría ser la de otro grupo) y carga su primera página. */
       async open(scope: LinksScope): Promise<void> {
@@ -143,48 +196,67 @@ export const LinksStore = signalStore(
 
       reload,
 
-      /** Trae la página siguiente y la añade al final; sin cursor o con una carga en curso no hace nada. */
+      /**
+       * Trae la página siguiente y la añade al final; sin cursor o con una carga en curso no hace nada. Si mientras
+       * espera se abre, cierra o recarga la lista, la página es de un cursor viejo y se descarta entera, incluido el fin
+       * de `loadingMore`, que ya apagó la carga nueva (design D3).
+       */
       async loadMore(): Promise<void> {
         const scope = store.scope();
         const cursor = store.nextCursor();
         if (scope === null || cursor === null || store.loading() || store.loadingMore()) {
           return;
         }
+        const load = listLoad;
         patchState(store, { loadingMore: true, failure: null });
         try {
           const page = await fetchPage(scope, cursor);
-          patchState(store, {
-            items: [...store.items(), ...page.items],
-            total: page.total,
-            nextCursor: page.nextCursor ?? null,
-          });
+          if (stillCurrent(load)) {
+            patchState(store, {
+              items: [...store.items(), ...page.items],
+              total: page.total,
+              nextCursor: page.nextCursor ?? null,
+            });
+          }
         } catch (error: unknown) {
-          patchState(store, { failure: toRequestFailure(error) });
+          if (stillCurrent(load)) {
+            patchState(store, { failure: toRequestFailure(error) });
+          }
         } finally {
-          patchState(store, { loadingMore: false });
+          if (stillCurrent(load)) {
+            patchState(store, { loadingMore: false });
+          }
         }
       },
 
       /**
        * Guarda una URL en la lista abierta y recarga; el error viaja al formulario, que lo traduce por código. Sin lista
        * abierta no envía nada: el destino (grupo o lista privada) sale del ámbito, y adivinarlo sería guardar donde no
-       * se pidió.
+       * se pidió. Si al responder ya está abierta otra lista, no la recarga: esa ya la cargó su propio `open` (design D4).
        */
       async save(url: string): Promise<SaveLinkResponse> {
-        const response = await api.saveLink(url, groupIdOf(openScope()) ?? undefined);
-        await reload();
+        const scope = openScope();
+        const response = await api.saveLink(url, groupIdOf(scope) ?? undefined);
+        if (stillOn(scope)) {
+          await loadFirstPage();
+        }
         return response;
       },
 
       /**
        * Importa el texto pegado en la lista abierta y recarga con lo que haya entrado. Lo que va a leerse es lo que
        * acaba de entrar, así que el contador sale de la respuesta y no de la página: las ofertas nuevas pueden ser más
-       * que los links que caben en ella.
+       * que los links que caben en ella. El contador solo se abre si la recarga terminó bien y sigue siendo la última:
+       * en otra lista no son sus lecturas, y con la lista en error no avanzaría (design D4).
        */
       async importText(text: string): Promise<ImportLinksResponse> {
-        const response = await api.importLinks(text, groupIdOf(openScope()) ?? undefined);
-        await reload();
-        if (response.created > 0) {
+        const scope = openScope();
+        const response = await api.importLinks(text, groupIdOf(scope) ?? undefined);
+        if (!stillOn(scope)) {
+          return response;
+        }
+        const load = await loadFirstPage();
+        if (load !== null && stillCurrent(load) && response.created > 0) {
           patchState(store, { reading: { done: 0, total: response.created } });
         }
         return response;
@@ -216,8 +288,9 @@ export const LinksStore = signalStore(
        * formulario, que lo muestra sin perder lo escrito.
        */
       async updatePreview(linkId: string, body: UpdatePreviewRequest): Promise<JobLinkSummary> {
+        const scope = store.scope();
         const link = await api.updatePreview(linkId, body);
-        replace(link);
+        replaceIfStillOn(scope, link);
         return link;
       },
 
@@ -227,8 +300,9 @@ export const LinksStore = signalStore(
        * error viaja al diálogo, que lo explica sin perder lo pegado.
        */
       async pasteDescription(linkId: string, body: PastedDescriptionRequest): Promise<JobLinkSummary> {
+        const scope = store.scope();
         const link = await api.pasteDescription(linkId, body);
-        replace(link);
+        replaceIfStillOn(scope, link);
         return link;
       },
 
@@ -237,27 +311,39 @@ export const LinksStore = signalStore(
        * edición con la lista entera, en una sola petición, para que nadie vea la tarjeta a medio deshacer.
        */
       async undoPaste(linkId: string, fields: readonly PreviewFieldName[]): Promise<JobLinkSummary> {
+        const scope = store.scope();
         const link = await api.updatePreview(linkId, { revert: [...fields] });
-        replace(link);
+        replaceIfStillOn(scope, link);
         return link;
       },
 
       /** Vuelve a pedir la lectura de una oferta; la tarjeta queda como la devuelve la API, de vuelta en `pending`. */
       async retryEnrichment(linkId: string): Promise<JobLinkSummary> {
+        const scope = store.scope();
         const link = await api.enrich(linkId);
-        replace(link);
+        replaceIfStillOn(scope, link);
         return link;
       },
 
-      /** Quita el link de la lista abierta (solo la relación) y recarga. */
+      /**
+       * Quita el link de la lista abierta (solo la relación) y recarga; si al responder ya está abierta otra lista, no
+       * la recarga (design D4).
+       */
       async remove(linkId: string): Promise<void> {
-        const groupId = groupIdOf(store.scope());
+        const scope = store.scope();
+        const groupId = groupIdOf(scope);
         await (groupId === null ? api.removeMyLink(linkId) : api.removeGroupLink(groupId, linkId));
-        await reload();
+        if (stillOn(scope)) {
+          await loadFirstPage();
+        }
       },
 
-      /** Olvida la lista al salir de la pantalla, para que la siguiente no muestre la anterior mientras carga. */
+      /**
+       * Olvida la lista al salir de la pantalla, para que la siguiente no muestre la anterior mientras carga. Deja sin
+       * efecto cualquier carga en vuelo: su respuesta ya no tiene dónde pintarse.
+       */
       close(): void {
+        listLoad++;
         patchState(store, initialState);
       },
     };

@@ -24,6 +24,20 @@ function linkWith(id: string): JobLinkSummary {
 }
 
 const GROUP_PAGE = '/api/groups/g1/links?limit=20';
+const OTHER_GROUP_PAGE = '/api/groups/g2/links?limit=20';
+const GROUP_A = { kind: 'group', groupId: 'g1' } as const;
+const GROUP_B = { kind: 'group', groupId: 'g2' } as const;
+const NOT_FOUND = { status: 404, statusText: 'Not Found' } as const;
+const NOT_FOUND_BODY = { code: 'group_not_found', message: 'Not found' } as const;
+
+/** Un link ya leído: una página solo con links así no abre el contador de lecturas. */
+function readLinkWith(id: string, sharedBy = 'Ana'): JobLinkSummary {
+  return {
+    ...linkWith(id),
+    previewStatus: 'enriched',
+    sharedBy: { userId: `u-${sharedBy}`, displayName: sharedBy },
+  };
+}
 const MINE_PAGE = '/api/links/mine?limit=20';
 
 describe('LinksStore', () => {
@@ -277,5 +291,331 @@ describe('LinksStore', () => {
     expect(store.items()).toEqual([]);
     expect(store.loaded()).toBe(false);
     expect(store.scope()).toBeNull();
+  });
+
+  describe('when the list changes while a request is in flight', () => {
+    function ids(): string[] {
+      return store.items().map((item) => item.id);
+    }
+
+    it('never shows the links of the previous group while the next one loads', async () => {
+      const openingA = store.open(GROUP_A);
+      const openingB = store.open(GROUP_B);
+
+      http.expectOne(GROUP_PAGE).flush({ items: [readLinkWith('a1')], total: 1 } satisfies LinkPage);
+      await openingA;
+
+      expect(store.items()).toEqual([]);
+      expect(store.loaded()).toBe(false);
+      expect(store.loading()).toBe(true);
+
+      http
+        .expectOne(OTHER_GROUP_PAGE)
+        .flush({ items: [readLinkWith('b1'), readLinkWith('b2')], total: 2 } satisfies LinkPage);
+      await openingB;
+
+      expect(ids()).toEqual(['b1', 'b2']);
+      expect(store.total()).toBe(2);
+      expect(store.loading()).toBe(false);
+    });
+
+    it('keeps the open group when the previous list answers last', async () => {
+      const openingA = store.open(GROUP_A);
+      const openingB = store.open(GROUP_B);
+
+      http.expectOne(OTHER_GROUP_PAGE).flush({ items: [readLinkWith('b1')], total: 1 } satisfies LinkPage);
+      await openingB;
+      http
+        .expectOne(GROUP_PAGE)
+        .flush({ items: [readLinkWith('a1'), readLinkWith('a2')], total: 2 } satisfies LinkPage);
+      await expect(openingA).resolves.toBeUndefined();
+
+      expect(ids()).toEqual(['b1']);
+      expect(store.total()).toBe(1);
+      expect(store.loading()).toBe(false);
+    });
+
+    it('ignores a late error of the previous group and keeps loading', async () => {
+      const openingA = store.open(GROUP_A);
+      const openingB = store.open(GROUP_B);
+
+      http.expectOne(GROUP_PAGE).flush(NOT_FOUND_BODY, NOT_FOUND);
+      await expect(openingA).resolves.toBeUndefined();
+
+      expect(store.failure()).toBeNull();
+      expect(store.loading()).toBe(true);
+
+      http.expectOne(OTHER_GROUP_PAGE).flush({ items: [readLinkWith('b1')], total: 1 } satisfies LinkPage);
+      await openingB;
+      expect(ids()).toEqual(['b1']);
+      expect(store.failure()).toBeNull();
+    });
+
+    it('shows the error of the open group and stops loading', async () => {
+      const openingA = store.open(GROUP_A);
+      const openingB = store.open(GROUP_B);
+
+      http.expectOne(OTHER_GROUP_PAGE).flush(NOT_FOUND_BODY, NOT_FOUND);
+      await expect(openingB).resolves.toBeUndefined();
+
+      expect(store.failure()).toMatchObject({ kind: 'api', status: 404, code: 'group_not_found' });
+      expect(store.loading()).toBe(false);
+
+      http.expectOne(GROUP_PAGE).flush({ items: [readLinkWith('a1')], total: 1 } satisfies LinkPage);
+      await openingA;
+      expect(store.items()).toEqual([]);
+      expect(store.failure()).not.toBeNull();
+    });
+
+    it('drops the next page of the previous group', async () => {
+      await openGroup({ items: [readLinkWith('a1')], total: 2, nextCursor: 'Y3Vyc29y' });
+
+      const more = store.loadMore();
+      expect(store.loadingMore()).toBe(true);
+      const openingB = store.open(GROUP_B);
+
+      http
+        .expectOne('/api/groups/g1/links?limit=20&cursor=Y3Vyc29y')
+        .flush({ items: [readLinkWith('a2')], total: 2 } satisfies LinkPage);
+      await expect(more).resolves.toBeUndefined();
+
+      expect(store.items()).toEqual([]);
+      expect(store.loadingMore()).toBe(false);
+
+      http.expectOne(OTHER_GROUP_PAGE).flush({ items: [readLinkWith('b1')], total: 1 } satisfies LinkPage);
+      await openingB;
+      expect(ids()).toEqual(['b1']);
+      expect(store.loadingMore()).toBe(false);
+    });
+
+    it('drops the next page of a stale cursor when the same list reloads on focus', async () => {
+      await openGroup({ items: [readLinkWith('l1')], total: 3, nextCursor: 'Y3Vyc29y' });
+
+      const more = store.loadMore();
+      document.dispatchEvent(new Event('visibilitychange'));
+      expect(store.loadingMore()).toBe(false);
+
+      http.expectOne(GROUP_PAGE).flush({
+        items: [readLinkWith('l1'), readLinkWith('l2')],
+        total: 3,
+        nextCursor: 'bnVldm8',
+      } satisfies LinkPage);
+      await settle();
+      http
+        .expectOne('/api/groups/g1/links?limit=20&cursor=Y3Vyc29y')
+        .flush({ items: [readLinkWith('l2'), readLinkWith('l3')], total: 3 } satisfies LinkPage);
+      await more;
+
+      expect(ids()).toEqual(['l1', 'l2']);
+      expect(store.nextCursor()).toBe('bnVldm8');
+      expect(store.loadingMore()).toBe(false);
+      expect(store.loading()).toBe(false);
+    });
+
+    it('stays empty and idle when the list is closed before it answers', async () => {
+      const opening = store.open(GROUP_A);
+
+      store.close();
+      http.expectOne(GROUP_PAGE).flush({ items: [readLinkWith('a1')], total: 1 } satisfies LinkPage);
+      await expect(opening).resolves.toBeUndefined();
+
+      expect(store.items()).toEqual([]);
+      expect(store.loaded()).toBe(false);
+      expect(store.loading()).toBe(false);
+      expect(store.scope()).toBeNull();
+    });
+
+    it('keeps the second of two reloads of the same list that answer out of order', async () => {
+      await openGroup({ items: [readLinkWith('l1')], total: 1 });
+
+      const first = store.reload();
+      const second = store.reload();
+      const [firstRequest, secondRequest] = http.match(GROUP_PAGE);
+
+      secondRequest?.flush({ items: [readLinkWith('l2'), readLinkWith('l1')], total: 2 } satisfies LinkPage);
+      await second;
+      firstRequest?.flush({ items: [readLinkWith('l1')], total: 1 } satisfies LinkPage);
+      await first;
+
+      expect(ids()).toEqual(['l2', 'l1']);
+      expect(store.total()).toBe(2);
+      expect(store.loading()).toBe(false);
+    });
+
+    it('resolves a save with its response even when its reload is superseded', async () => {
+      await openGroup({ items: [], total: 0 });
+
+      const saving = store.save('https://ejemplo.test/oferta');
+      http
+        .expectOne({ method: 'POST', url: '/api/links' })
+        .flush(
+          { link: readLinkWith('l1'), created: true, shared: 'created', alreadyInGroups: [] },
+          { status: 201, statusText: 'Created' },
+        );
+      await settle();
+      const focus = store.reload();
+      const [saveReload, focusReload] = http.match(GROUP_PAGE);
+
+      focusReload?.flush({ items: [readLinkWith('l1'), readLinkWith('l0')], total: 2 } satisfies LinkPage);
+      await focus;
+      saveReload?.flush({ items: [readLinkWith('l1')], total: 1 } satisfies LinkPage);
+
+      await expect(saving).resolves.toMatchObject({ created: true, shared: 'created' });
+      expect(ids()).toEqual(['l1', 'l0']);
+    });
+
+    it('does not reload another group nor open the counter when an import answers there', async () => {
+      await openGroup({ items: [readLinkWith('a1')], total: 1 });
+
+      const importing = store.importText('mira esto https://ejemplo.test/oferta');
+      const request = http.expectOne({ method: 'POST', url: '/api/links/import' });
+      expect(request.request.body).toMatchObject({ groupId: 'g1' });
+
+      const openingB = store.open(GROUP_B);
+      http.expectOne(OTHER_GROUP_PAGE).flush({ items: [readLinkWith('b1')], total: 1 } satisfies LinkPage);
+      await openingB;
+
+      request.flush(
+        { created: 1, existing: 0, unrecognized: 0, skipped: 0, links: [linkWith('n1')] },
+        { status: 201, statusText: 'Created' },
+      );
+      await expect(importing).resolves.toMatchObject({ created: 1 });
+      await settle();
+
+      http.expectNone(OTHER_GROUP_PAGE);
+      http.expectNone(GROUP_PAGE);
+      expect(ids()).toEqual(['b1']);
+      expect(store.reading()).toBeNull();
+
+      // Lo importado quedó en A, que es adonde fue el `POST`: se ve al volver.
+      await openGroup({ items: [linkWith('n1'), readLinkWith('a1')], total: 2 });
+      expect(ids()).toEqual(['n1', 'a1']);
+    });
+
+    it('reloads and opens the counter when an import answers after coming back to its group', async () => {
+      await openGroup({ items: [readLinkWith('a1')], total: 1 });
+
+      const importing = store.importText('mira esto https://ejemplo.test/oferta');
+      const request = http.expectOne({ method: 'POST', url: '/api/links/import' });
+
+      const openingB = store.open(GROUP_B);
+      // Un ámbito equivalente pero distinto objeto: `stillOn` compara por valor (design D1), así que la importación
+      // sigue siendo de la lista abierta aunque se haya salido y vuelto.
+      const openingA = store.open({ kind: 'group', groupId: 'g1' });
+      http.expectOne(OTHER_GROUP_PAGE).flush({ items: [readLinkWith('b1')], total: 1 } satisfies LinkPage);
+      http.expectOne(GROUP_PAGE).flush({ items: [readLinkWith('a1')], total: 1 } satisfies LinkPage);
+      await Promise.all([openingB, openingA]);
+
+      request.flush(
+        {
+          created: 2,
+          existing: 0,
+          unrecognized: 0,
+          skipped: 0,
+          links: [linkWith('n1'), linkWith('n2')],
+        },
+        { status: 201, statusText: 'Created' },
+      );
+      await flushPage(GROUP_PAGE, {
+        items: [linkWith('n1'), linkWith('n2'), readLinkWith('a1')],
+        total: 3,
+      });
+
+      await expect(importing).resolves.toMatchObject({ created: 2 });
+      expect(ids()).toEqual(['n1', 'n2', 'a1']);
+      expect(store.reading()).toEqual({ done: 0, total: 2 });
+    });
+
+    it('shows the failure and no counter when the reload after an import fails', async () => {
+      await openGroup({ items: [], total: 0 });
+
+      const importing = store.importText('mira esto https://ejemplo.test/oferta');
+      http
+        .expectOne({ method: 'POST', url: '/api/links/import' })
+        .flush(
+          { created: 1, existing: 0, unrecognized: 0, skipped: 0, links: [linkWith('n1')] },
+          { status: 201, statusText: 'Created' },
+        );
+      await settle();
+      http
+        .expectOne(GROUP_PAGE)
+        .flush({ code: 'internal', message: 'Boom' }, { status: 500, statusText: 'Server Error' });
+
+      await expect(importing).resolves.toMatchObject({ created: 1 });
+      expect(store.failure()).toMatchObject({ status: 500 });
+      expect(store.reading()).toBeNull();
+      expect(store.loading()).toBe(false);
+    });
+
+    it('does not reload another group when a save or a removal answers there', async () => {
+      await openGroup({ items: [readLinkWith('a1')], total: 1 });
+
+      const saving = store.save('https://ejemplo.test/oferta');
+      const saveRequest = http.expectOne({ method: 'POST', url: '/api/links' });
+      expect(saveRequest.request.body).toMatchObject({ groupId: 'g1' });
+      const openingB = store.open(GROUP_B);
+      http.expectOne(OTHER_GROUP_PAGE).flush({ items: [readLinkWith('b1')], total: 1 } satisfies LinkPage);
+      await openingB;
+      saveRequest.flush(
+        { link: readLinkWith('n1'), created: true, shared: 'created', alreadyInGroups: [] },
+        { status: 201, statusText: 'Created' },
+      );
+      await expect(saving).resolves.toMatchObject({ created: true });
+      await settle();
+      http.expectNone(OTHER_GROUP_PAGE);
+      http.expectNone(GROUP_PAGE);
+
+      await openGroup({ items: [readLinkWith('a1')], total: 1 });
+      const removing = store.remove('a1');
+      const removeRequest = http.expectOne({ method: 'DELETE', url: '/api/groups/g1/links/a1' });
+      const reopeningB = store.open(GROUP_B);
+      http.expectOne(OTHER_GROUP_PAGE).flush({ items: [readLinkWith('b1')], total: 1 } satisfies LinkPage);
+      await reopeningB;
+      removeRequest.flush(null, { status: 204, statusText: 'No Content' });
+      await expect(removing).resolves.toBeUndefined();
+      await settle();
+      http.expectNone(OTHER_GROUP_PAGE);
+      http.expectNone(GROUP_PAGE);
+      expect(ids()).toEqual(['b1']);
+    });
+
+    it('keeps the card of the open group when an edit asked from another group answers', async () => {
+      await openGroup({ items: [readLinkWith('l1', 'Ana')], total: 1 });
+
+      const pasting = store.pasteDescription('l1', { text: 'Buscamos backend…' });
+      const request = http.expectOne({ method: 'POST', url: '/api/links/l1/pasted' });
+      const openingB = store.open(GROUP_B);
+      http
+        .expectOne(OTHER_GROUP_PAGE)
+        .flush({ items: [readLinkWith('l1', 'Luis')], total: 1 } satisfies LinkPage);
+      await openingB;
+
+      const edited: JobLinkSummary = {
+        ...readLinkWith('l1', 'Ana'),
+        previewVersion: 2,
+        preview: { title: 'Backend Engineer' },
+      };
+      request.flush(edited);
+
+      await expect(pasting).resolves.toEqual(edited);
+      expect(store.items()[0]?.sharedBy?.displayName).toBe('Luis');
+      expect(store.items()[0]?.preview).toBeUndefined();
+    });
+
+    it('replaces the card of the same list even if it was reloaded meanwhile', async () => {
+      await openGroup({ items: [readLinkWith('l1')], total: 1 });
+
+      const retrying = store.retryEnrichment('l1');
+      const request = http.expectOne({ method: 'POST', url: '/api/links/l1/enrich' });
+      const reloading = store.reload();
+      http.expectOne(GROUP_PAGE).flush({ items: [readLinkWith('l1')], total: 1 } satisfies LinkPage);
+      await reloading;
+
+      const retried: JobLinkSummary = { ...readLinkWith('l1'), previewStatus: 'pending', previewVersion: 2 };
+      request.flush(retried);
+
+      await expect(retrying).resolves.toEqual(retried);
+      expect(store.items()[0]).toEqual(retried);
+    });
   });
 });

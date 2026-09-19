@@ -255,6 +255,20 @@ describe('GroupDetailPage', () => {
     });
   });
 
+  it('does not ask for the links of a group already left behind', async () => {
+    await harness.navigateByUrl(`/grupos/${memberDetail.id}`, Shell);
+    http.expectOne({ method: 'GET', url: `/api/groups/${memberDetail.id}` }).flush(memberDetail);
+    await settle();
+
+    // El usuario sale de la pantalla mientras todavía se esperan los miembros.
+    harness.fixture.destroy();
+    http.expectOne({ method: 'GET', url: `/api/groups/${memberDetail.id}/members` }).flush(members);
+    await settle();
+
+    http.expectNone(`/api/groups/${memberDetail.id}/links?limit=20`);
+    expect(TestBed.inject(LinksStore).scope()).toBeNull();
+  });
+
   it('Detalle como owner', async () => {
     await openDetail(ownerDetail);
 
