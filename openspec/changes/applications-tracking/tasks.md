@@ -4,7 +4,7 @@
 
 ## 1. Contratos de postulaciones en `libs/shared`
 
-- [ ] 1.1 [infra] Comprobar que `groups-ownership-join-limit` está fusionado en `main` y rebasar `change/applications-tracking` sobre `main` antes de tocar `apiErrorCodeSchema`, `api-exception.filter.ts` o `messages.*.xlf`; verificar con `git log main` (el merge del change anterior está) y `git merge-base --is-ancestor main HEAD`.
+- [x] 1.1 [infra] Comprobar que `groups-ownership-join-limit` está fusionado en `main` y rebasar `change/applications-tracking` sobre `main` antes de tocar `apiErrorCodeSchema`, `api-exception.filter.ts` o `messages.*.xlf`; verificar con `git log main` (el merge del change anterior está) y `git merge-base --is-ancestor main HEAD`.
 - [ ] 1.2 [backend] `libs/shared/src/schemas/application.schema.ts`: `APPLICATION_STATUSES`, `CLOSED_STATUSES`, `applicationStatusSchema`, `applicationVisibilitySchema`, `stageLabelSchema` (1–60 tras `trim`) y `applicationNotesSchema` (≤ 2000, vacía permitida), exportados desde `index.ts`; verificar con tests del schema.
 - [ ] 1.3 [backend] `trackLinkRequestSchema` y `changeApplicationStatusRequestSchema` (con `version`, `stageLabel` texto, `null` u omitido, el refinamiento que rechaza texto de etapa fuera de `in_process` nombrando `stageLabel`, y `appliedAt?` solo con `applied`, `in_process`, `offer` o `accepted`, nombrando `appliedAt` con los demás); verificar con tests, incluidos la etapa con `applied`, `null` con cualquier estado, `appliedAt` con `offer` (válida) y con `interested` (400).
 - [ ] 1.4 [backend] `updateApplicationRequestSchema` (`notes?`, `visibility?`, al menos uno), `applicationListQuerySchema` y `groupTrackersQuerySchema` (`linkIds` separada por comas, deduplicada, 1–50); verificar con tests, incluidos 51 ids y ninguno.

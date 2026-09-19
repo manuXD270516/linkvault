@@ -1,5 +1,10 @@
 ## Context
 
+> **Ventana autónoma autorizada (2026-09-19, ~3 h de ausencia del autor).** Tras cerrar `groups-ownership-join-limit`
+> (#18, #19), el autor autorizó avanzar este change sin él tanto como alcance el tiempo (apply, QA, smoke y PR), con
+> merge squash solo con CI en verde y fusión manual (nunca `--auto`); decisiones no documentadas → opción recomendada
+> con constancia aquí; cambio de alcance o irreversible → parar e informar. Smoke solo local con mock `synth`.
+
 `groups` dejó `GroupsFacade` (`isMember`, `membershipOf`, `memberIdsOf`, `getGroupsOf`) como única entrada de otros
 módulos y `GroupDeletionHooks` para la cascada del borrado (ADR-021 §6). `groups-ownership-join-limit`, que se entrega
 antes que este change, añade la transferencia de propiedad y el límite del join; este change no usa nada de eso, pero
