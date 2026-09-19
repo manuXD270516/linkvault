@@ -36,7 +36,7 @@
 - [x] 5.2 [frontend] Textos del propietario en el detalle: "Para salir, nombra propietario a otro miembro", "Eres el único miembro: para irte, borra el grupo" y la confirmación de borrado que **empieza** por "Si solo quieres irte, nombra propietario a otro miembro y sal del grupo." con más de un miembro; verificar con TestBed: "Detalle como owner", "Owner solo en su grupo", "Borrado informado" y "Borrado de un grupo en el que estás solo".
 - [x] 5.3 [frontend] El diálogo y la página de unirse delegan `too_many_attempts` en `RequestError` tal cual (`@@error.tooManyAttempts` con `Retry-After`, `@@error.tooManyAttemptsLater` sin él), sin claves i18n nuevas y conservando el código; verificar con "Demasiados intentos al unirse" y "Demasiados intentos sin tiempo de espera".
 - [x] 5.4 [frontend] Marcar los textos nuevos de grupos y traducirlos en `messages.en.xlf` con la tabla de D3 (los dos de demasiados intentos ya existen y no se tocan), comprobando que ningún texto en español dice "owner"; verificar con "Traducciones completas" de `web/groups`.
-- [ ] 5.5 [frontend] Ampliar `apps/web-e2e/src/groups.spec.ts`: el propietario nombra propietario a un segundo usuario, sale, y el grupo sigue con sus links para el nuevo propietario; verificar con `pnpm nx e2e web-e2e`.
+- [x] 5.5 [frontend] Ampliar `apps/web-e2e/src/groups.spec.ts`: el propietario nombra propietario a un segundo usuario, sale, y el grupo sigue con sus links para el nuevo propietario; verificar con `pnpm nx e2e web-e2e`.
 
 ## 6. Cierre
 
