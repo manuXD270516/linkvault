@@ -94,8 +94,11 @@ export const apiErrorCodeSchema = z.enum([
   'group_full',
   // 409: el usuario ya pertenece al máximo de grupos.
   'too_many_groups',
-  // 409: el owner no puede salir de su grupo ni ser expulsado (no hay transferencia de propiedad).
+  // 409: el owner no puede salir de su grupo ni ser expulsado mientras lo sea; para irse, primero nombra owner a otro
+  // miembro (`POST /api/groups/:id/owner`).
   'owner_cannot_leave',
+  // 409: el owner se nombra owner a sí mismo al transferir la propiedad. Sin texto de UI: el SPA no ofrece ese camino.
+  'already_owner',
   // 400: la URL guardada no es `http(s)`, no tiene host o pasa del máximo de caracteres.
   'invalid_url',
   // 400: el texto de la importación pasa del máximo de caracteres.

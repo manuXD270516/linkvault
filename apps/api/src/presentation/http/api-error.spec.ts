@@ -25,6 +25,7 @@ describe('API_ERROR_STATUS and API_ERROR_MESSAGES', () => {
     ['not_a_job_posting', 422],
     ['extraction_unavailable', 503],
     ['ai_quota_exceeded', 429],
+    ['already_owner', 409],
   ] as const)('answers %s with %i', (code, status) => {
     expect(API_ERROR_STATUS[code]).toBe(status);
     expect(API_ERROR_MESSAGES[code]).not.toBe('');
