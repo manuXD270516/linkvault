@@ -755,9 +755,10 @@ Cada campo del preview guarda de dónde salió, y hay tres orígenes con **un so
 - Pegar sustituye lo leído de la página y lo pegado antes, **nunca un campo escrito a mano**. Y solo escribe los campos
   que trae con valor: si el texto no dice la empresa, se queda la que había.
 - Escribir a mano sustituye cualquier cosa, y es lo único que puede vaciar un campo.
-- Pegar conserva el motivo del último fallo de lectura, salvo `not_a_job`, que el propio pegado desmiente: con
-  `robots_disallowed` o `blocked` la tarjeta queda completa sin volver a ofrecer un reintento que el sitio ya negó, y
-  deshacer el pegado devuelve el link al fallo que tenía.
+- Pegar conserva el motivo del último fallo de lectura, salvo `not_a_job`, que el propio pegado desmiente y se cambia
+  por `no_data` con la misma fecha: con `robots_disallowed` o `blocked` la tarjeta queda completa sin volver a ofrecer
+  un reintento que el sitio ya negó, y deshacer el pegado devuelve el link a `failed` con un motivo, nunca a un
+  `pending` sin lectura en curso.
 - "Deshacer lo que pegó <nombre>" deshace todo ese gesto, incluidos el título y la empresa tecleados en el mismo
   diálogo.
 

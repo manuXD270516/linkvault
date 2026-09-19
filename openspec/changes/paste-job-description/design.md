@@ -157,8 +157,9 @@ pegar no consume el presupuesto con el que se leen los links propios.
   `manual` si además hay algún campo escrito a mano (la misma prioridad que ya usa el worker). El worker aplica la misma
   regla: una lectura fallida sobre un link con campos pegados **no** lo devuelve a `failed`.
 - **Pegar conserva el motivo del último fallo**, salvo `not_a_job`, que es lo único que un pegado reconocido como
-  oferta desmiente. Un motivo que no se puede reintentar no se vuelve reintentable, y deshacer el pegado devuelve el
-  link al fallo que tenía —con un motivo pasajero, reintentable— en vez de a un `pending` sin trabajo detrás.
+  oferta desmiente: ese se cambia por `no_data` con la misma fecha, porque la lectura ocurrió y de la página no salió
+  ninguna oferta. Un motivo que no se puede reintentar no se vuelve reintentable, y deshacer el pegado devuelve el
+  link a `failed` con un motivo —pasajero o `no_data`, reintentable— en vez de a un `pending` sin trabajo detrás.
 - **Deshacer un pegado es deshacer todo lo de ese gesto**: los campos con origen `pasted` y los que se tecleen en el
   mismo diálogo, que comparten autor y fecha. Si solo se deshiciera lo pegado, un link de LinkedIn completado con su
   cabecera escrita aparte seguiría en `manual` tras deshacer.

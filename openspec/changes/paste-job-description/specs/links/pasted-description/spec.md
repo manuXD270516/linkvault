@@ -55,8 +55,9 @@ código `link_not_found`.
 
 Tras pegar, el estado SHALL derivarse de los campos: `manual` si hay algún campo escrito a mano, `enriched` si están
 título y empresa, y `partial` si no. El motivo del último fallo de lectura SHALL conservarse, salvo que diga que lo
-compartido no era una oferta, que es justo lo que un pegado reconocido como oferta desmiente: así pegar no ofrece un
-reintento inútil sobre una bolsa que prohíbe o bloquea, y deshacer el pegado devuelve el link al fallo que tenía.
+compartido no era una oferta, que es justo lo que un pegado reconocido como oferta desmiente: ese SHALL cambiarse por
+el de una página leída sin datos, que se puede reintentar. Así pegar no ofrece un reintento inútil sobre una bolsa que
+prohíbe o bloquea, y deshacer el pegado nunca deja el link esperando una lectura que nadie va a hacer.
 
 #### Scenario: Estado tras completar con título y empresa
 
@@ -68,6 +69,13 @@ reintento inútil sobre una bolsa que prohíbe o bloquea, y deshacer el pegado d
 - **GIVEN** un link en `failed` porque su lectura agotó el tiempo
 - **WHEN** alguien lo completa pegando su texto y después se deshace ese pegado
 - **THEN** el link SHALL volver a `failed` con el motivo de tiempo agotado
+- **AND** SHALL poder reintentarse su lectura
+
+#### Scenario: Pegar sobre algo que parecía no ser una oferta y deshacer
+
+- **GIVEN** un link en `failed` porque su página no parecía una oferta
+- **WHEN** alguien lo completa pegando el texto de la oferta y después se deshace ese pegado
+- **THEN** el link SHALL volver a `failed` con el motivo de una página leída sin datos, no con "no era una oferta"
 - **AND** SHALL poder reintentarse su lectura
 
 #### Scenario: El motivo de la bolsa se conserva
