@@ -6,7 +6,7 @@ import type {
   AttemptLimiter,
 } from '../application/ports/attempt-limiter.port';
 import { ATTEMPT_WINDOW_MS } from '../domain/attempt-limits';
-import { ipLimitGroup } from '../domain/client-ip';
+import { ipLimitGroup } from '../../../infrastructure/limits/client-ip';
 
 // Límite de intentos de `auth` (D7 de auth-users, ADR-020 §5) sobre el contador por ventana fija de
 // `infrastructure/limits`, que es plataforma y lo comparte con `links` (D13 de link-enrichment). Lo que queda aquí es

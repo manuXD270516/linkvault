@@ -1,7 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { getConnectionToken } from '@nestjs/mongoose';
 import {
-  mongo,
   type ClientSession,
   type Connection,
   type Model,
@@ -13,7 +12,10 @@ import { GroupDeletionHooks } from '../application/group-deletion-hooks';
 import type {
   AddMemberInput,
   CreateGroupInput,
+  DeleteGroupResult,
   GroupRepository,
+  RemoveMemberResult,
+  TransferOwnershipResult,
   UserGroup,
 } from '../application/ports/group-repository.port';
 import {
@@ -25,12 +27,15 @@ import {
 import { createGroup, type Group } from '../domain/group';
 import type { Membership } from '../domain/membership';
 import {
+  duplicateKeyIs,
   GROUP_MEMBER_MODEL_NAME,
   GROUP_MODEL_NAME,
   GROUPS_COLLECTION,
   groupMemberSchema,
   groupSchema,
   toGroupObjectId,
+  INVITE_KEY,
+  MEMBERSHIP_KEY,
   toUserObjectId,
   type GroupDocument,
   type GroupMemberDocument,
@@ -41,9 +46,9 @@ import {
 //
 // - El grupo y la membresía `owner` se escriben en una transacción: nunca queda un grupo sin owner con código válido.
 // - La unicidad del código es del índice; el reintento vive aquí (el generador es puro y no consulta nada).
-// - Un identificador mal formado no llega a Mongo (guarda de `group.schemas`): responde `null`/`false`, nunca CastError.
-
-const DUPLICATE_KEY = 11_000;
+// - Un identificador mal formado no llega a Mongo (guarda de `group.schemas`): responde `null` o un resultado negativo,
+//   nunca CastError.
+// - Las claves duplicadas se reconocen por el `keyPattern` completo del índice (`duplicateKeyIs`, ADR-025 §4).
 
 function modelOf<T>(
   connection: Connection,
@@ -56,18 +61,16 @@ function modelOf<T>(
   );
 }
 
-/** Campos del índice único que rechazó la escritura; vacío si el error no es una clave duplicada. */
-function duplicateKeyFields(error: unknown): string[] {
-  if (
-    !(error instanceof mongo.MongoServerError) ||
-    error.code !== DUPLICATE_KEY
-  ) {
-    return [];
+/**
+ * Centinela de `transferOwnership`: el elegido no es `member` del grupo. Se lanza dentro de la transacción para abortarla
+ * y deshacer la degradación del owner, y nunca sale del repositorio.
+ */
+class TargetNotMember extends Error {
+  override readonly name = 'TargetNotMember';
+
+  constructor() {
+    super('The ownership target is not a member of the group');
   }
-  const pattern: unknown = error['keyPattern'];
-  return typeof pattern === 'object' && pattern !== null
-    ? Object.keys(pattern)
-    : [];
 }
 
 @Injectable()
@@ -128,7 +131,7 @@ export class MongoGroupRepository implements GroupRepository {
           return toGroup(group.toObject());
         });
       } catch (error) {
-        if (!duplicateKeyFields(error).includes('inviteCode')) {
+        if (!duplicateKeyIs(error, INVITE_KEY)) {
           throw error;
         }
       }
@@ -243,8 +246,9 @@ export class MongoGroupRepository implements GroupRepository {
       });
       return toMembership(created.toObject());
     } catch (error) {
-      // Carrera con otra unión: el índice único rechazó la segunda, así que ya era miembro (D5).
-      if (duplicateKeyFields(error).includes('groupId')) {
+      // Carrera con otra unión: el índice único de membresía rechazó la segunda, así que ya era miembro (D5). Solo ese
+      // índice: una violación de `OWNER_KEY` es un fallo de programación y sube como 500 (ADR-025 §4).
+      if (duplicateKeyIs(error, MEMBERSHIP_KEY)) {
         const existing = await this.findMembership(input.groupId, input.userId);
         if (existing !== null) {
           return existing;
@@ -254,14 +258,71 @@ export class MongoGroupRepository implements GroupRepository {
     }
   }
 
-  async removeMember(groupId: string, userId: string): Promise<boolean> {
+  /**
+   * Degradar y promover en una transacción, cada paso condicionado por rol y en este orden (ADR-025 §1 y §2): el índice
+   * `one_owner_per_group` se comprueba por sentencia, así que promover primero chocaría con él. Si el paso 1 no modifica
+   * nada, quien pide ya no es owner y no se ha escrito nada. Si el paso 2 no modifica nada, se **lanza** el centinela
+   * `TargetNotMember` para que `withTransaction` aborte y deshaga el paso 1; devolver un valor confirmaría la transacción
+   * con el grupo sin owner. El centinela se traduce fuera de la transacción.
+   */
+  async transferOwnership(
+    groupId: string,
+    fromUserId: string,
+    toUserId: string,
+  ): Promise<TransferOwnershipResult> {
+    const from = this.toMembershipIds(groupId, fromUserId);
+    if (from === null) {
+      return 'not_owner';
+    }
+    const to = this.toMembershipIds(groupId, toUserId);
+    if (to === null || fromUserId === toUserId) {
+      return 'target_not_member';
+    }
+    try {
+      return await this.withTransaction(async (session) => {
+        const demoted = await this.members
+          .updateOne({ ...from, role: 'owner' }, { $set: { role: 'member' } })
+          .session(session)
+          .exec();
+        if (demoted.modifiedCount !== 1) {
+          return 'not_owner';
+        }
+        const promoted = await this.members
+          .updateOne({ ...to, role: 'member' }, { $set: { role: 'owner' } })
+          .session(session)
+          .exec();
+        if (promoted.modifiedCount !== 1) {
+          throw new TargetNotMember();
+        }
+        return 'transferred';
+      });
+    } catch (error) {
+      if (error instanceof TargetNotMember) {
+        return 'target_not_member';
+      }
+      throw error;
+    }
+  }
+
+  async removeMember(
+    groupId: string,
+    userId: string,
+  ): Promise<RemoveMemberResult> {
     const ids = this.toMembershipIds(groupId, userId);
     if (ids === null) {
-      return false;
+      return 'not_member';
     }
-    // No exige que el grupo exista: una membresía huérfana también se suelta y libera la plaza (D6).
-    const result = await this.members.deleteOne(ids).exec();
-    return result.deletedCount === 1;
+    // No exige que el grupo exista: una membresía huérfana también se suelta y libera la plaza (D6). Solo borra una
+    // membresía `member`: si quien sale o es expulsado acaba de recibir la propiedad, no se toca (ADR-025 §3).
+    const result = await this.members
+      .deleteOne({ ...ids, role: 'member' })
+      .exec();
+    if (result.deletedCount === 1) {
+      return 'removed';
+    }
+    // No borró nada: se relee para distinguir "ahora es owner" de "no existe".
+    const current = await this.members.findOne(ids).lean().exec();
+    return current?.role === 'owner' ? 'now_owner' : 'not_member';
   }
 
   async rename(
@@ -301,7 +362,7 @@ export class MongoGroupRepository implements GroupRepository {
           .exec();
         return document ? toGroup(document) : null;
       } catch (error) {
-        if (!duplicateKeyFields(error).includes('inviteCode')) {
+        if (!duplicateKeyIs(error, INVITE_KEY)) {
           throw error;
         }
       }
@@ -311,26 +372,51 @@ export class MongoGroupRepository implements GroupRepository {
 
   /**
    * Grupo, membresías y lo que otros módulos cuelguen de él, en la misma transacción: nadie queda mirando un grupo a
-   * medio borrar (D6) ni deja relaciones huérfanas (D7b). Los hooks corren **después** de confirmar que el grupo existía,
-   * así que un borrado que no encuentra nada no ejecuta ninguno, y **antes** de terminar la transacción, así que si uno
-   * falla no se borra tampoco el grupo.
+   * medio borrar (D6) ni deja relaciones huérfanas (D7b).
+   *
+   * Lo primero es borrar la membresía `owner` de quien pide (ADR-025 §3): ser propietario se comprueba **al escribir**,
+   * así que quien acaba de transferir en otra pestaña no borra el grupo del nuevo owner. Si no hay nada que borrar, se
+   * relee el grupo para distinguir `not_owner` de `not_found`, y no se ha escrito nada. Los hooks corren **después** de
+   * eso, así que un borrado rechazado no ejecuta ninguno, y **antes** de terminar la transacción, así que si uno falla no
+   * se borra tampoco el grupo ni la membresía `owner`.
    */
-  async deleteGroup(groupId: string): Promise<boolean> {
+  async deleteGroup(
+    groupId: string,
+    ownerId: string,
+  ): Promise<DeleteGroupResult> {
     const id = toGroupObjectId(groupId);
     if (id === null) {
-      return false;
+      return 'not_found';
     }
+    const owner = toUserObjectId(ownerId);
     return await this.withTransaction(async (session) => {
+      const owned =
+        owner === null
+          ? 0
+          : (
+              await this.members
+                .deleteOne({ groupId: id, userId: owner, role: 'owner' })
+                .session(session)
+                .exec()
+            ).deletedCount;
+      if (owned !== 1) {
+        const exists = await this.groups
+          .exists({ _id: id })
+          .session(session)
+          .exec();
+        return exists === null ? 'not_found' : 'not_owner';
+      }
       const deleted = await this.groups
         .deleteOne({ _id: id })
         .session(session)
         .exec();
       if (deleted.deletedCount !== 1) {
-        return false;
+        // Membresía `owner` huérfana (su grupo ya no estaba): se suelta, como cualquier huérfana (D6).
+        return 'not_found';
       }
       await this.members.deleteMany({ groupId: id }).session(session).exec();
       await this.deletionHooks.runAll(groupId, session);
-      return true;
+      return 'deleted';
     });
   }
 

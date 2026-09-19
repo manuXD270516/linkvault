@@ -10,6 +10,7 @@ import {
   inviteCodeResponseSchema,
   joinGroupRequestSchema,
   renameGroupRequestSchema,
+  transferOwnershipRequestSchema,
 } from './group.schema';
 
 describe('groupNameSchema through the request bodies', () => {
@@ -79,6 +80,26 @@ describe('joinGroupRequestSchema', () => {
 
   it('exposes the sanity limit of the received code', () => {
     expect(INVITE_CODE_INPUT_MAX_LENGTH).toBe(64);
+  });
+});
+
+describe('transferOwnershipRequestSchema', () => {
+  it('carries the chosen member', () => {
+    expect(
+      transferOwnershipRequestSchema.parse({
+        userId: '66e9a0000000000000000002',
+      }),
+    ).toEqual({ userId: '66e9a0000000000000000002' });
+  });
+
+  it.each([
+    [{}, false],
+    [{ userId: '' }, false],
+    [{ userId: 42 }, false],
+    // El formato del identificador lo juzga el caso de uso (`member_not_found`), no el contrato HTTP.
+    [{ userId: 'not-an-id' }, true],
+  ])('body %j is valid: %s', (body, valid) => {
+    expect(transferOwnershipRequestSchema.safeParse(body).success).toBe(valid);
   });
 });
 

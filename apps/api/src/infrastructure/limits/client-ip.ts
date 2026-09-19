@@ -1,6 +1,9 @@
 // Agrupación de la IP del cliente para los límites de intentos (spec auth/credentials, ADR-020 §5): una IPv4 cuenta por
 // sí misma y una IPv6 por su prefijo /64, porque un cliente IPv6 suele disponer de todo un /64. Las IPv6 que representan
 // una IPv4 (`::ffff:a.b.c.d`) cuentan como esa IPv4. Pura: sin `node:net`.
+//
+// Es plataforma, como el contador (ADR-025 §8): la usan `auth` (login y registro) y `groups` (unirse por código), y
+// `groups` no puede importar `auth` (ADR-020 §6).
 
 const IPV4 =
   /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/;

@@ -48,6 +48,17 @@ export const joinGroupRequestSchema = z.object({
 export type JoinGroupRequest = z.infer<typeof joinGroupRequestSchema>;
 
 /**
+ * Cuerpo de `POST /api/groups/:id/owner`: el miembro que pasa a ser `owner`. El formato del identificador NO se valida
+ * aquí: un `userId` mal formado responde `member_not_found` (404), igual que uno que no es miembro del grupo.
+ */
+export const transferOwnershipRequestSchema = z.object({
+  userId: z.string().min(1),
+});
+export type TransferOwnershipRequest = z.infer<
+  typeof transferOwnershipRequestSchema
+>;
+
+/**
  * Grupo en la lista del usuario y en la respuesta de unión. Estricto a propósito: esta forma NUNCA lleva el código de
  * invitación, tampoco cuando el rol resuelto es `owner`.
  */

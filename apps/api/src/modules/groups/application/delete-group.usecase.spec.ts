@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GroupNotFound, OwnerRoleRequired } from '../domain/errors';
 import type { Group } from '../domain/group';
 import { CreateGroup } from './create-group.usecase';
@@ -107,5 +107,35 @@ describe('DeleteGroup', () => {
     // El grupo borrado no deja ninguna membresía atrás.
     await expect(ownersOf(third.id)).resolves.toBe(0);
     await expect(repository.listMembers(third.id)).resolves.toEqual([]);
+  });
+});
+
+describe('DeleteGroup when the role changes between the read and the write', () => {
+  it('answers forbidden when the owner transferred the group before the write', async () => {
+    const group = await groupOfAnaWithBeto();
+    // Ana transfirió en otra pestaña: el repositorio no encuentra su membresía `owner` y no borra nada.
+    vi.spyOn(repository, 'deleteGroup').mockResolvedValueOnce('not_owner');
+
+    await expect(deleteGroup.execute(ANA, group.id)).rejects.toBeInstanceOf(
+      OwnerRoleRequired,
+    );
+  });
+
+  it('answers GroupNotFound when another deletion won', async () => {
+    const group = await groupOfAnaWithBeto();
+    vi.spyOn(repository, 'deleteGroup').mockResolvedValueOnce('not_found');
+
+    await expect(deleteGroup.execute(ANA, group.id)).rejects.toBeInstanceOf(
+      GroupNotFound,
+    );
+  });
+
+  it('asks the repository to delete as the requester', async () => {
+    const group = await groupOfAnaWithBeto();
+    const writes = vi.spyOn(repository, 'deleteGroup');
+
+    await deleteGroup.execute(ANA, group.id);
+
+    expect(writes).toHaveBeenCalledWith(group.id, ANA);
   });
 });

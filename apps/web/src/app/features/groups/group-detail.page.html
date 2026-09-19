@@ -6,6 +6,12 @@
 <ng-template #deleteMessage>
   @let count = memberCount();
   @let offers = linksTotal();
+  @if (count > 1) {
+    <!-- Con más miembros, antes de decir qué se borra, se propone la salida que no destruye el grupo (D3). -->
+    <ng-container i18n="@@groups.detail.deleteLeaveHint"
+      >Si solo quieres irte, nombra propietario a otro miembro y sal del grupo.</ng-container
+    >&ngsp;
+  }
   <ng-container i18n="@@groups.detail.deleteMessage"
     >{count, plural, =1 {{offers, plural, =0 {Se borrará solo para ti. No se puede deshacer.} =1 {Se
     borrará solo para ti y se perderá 1 oferta compartida aquí (las que estén en otros grupos siguen
@@ -121,6 +127,15 @@
                 mat-button
                 type="button"
                 [disabled]="working()"
+                (click)="transferOwnership(member)"
+                i18n="@@groups.detail.transfer"
+              >
+                Nombrar propietario
+              </button>
+              <button
+                mat-button
+                type="button"
+                [disabled]="working()"
                 (click)="removeMember(member)"
                 i18n="@@groups.detail.removeMember"
               >
@@ -149,6 +164,18 @@
     </section>
 
     @if (isOwner()) {
+      <!-- El propietario no puede salir: donde el miembro ve "Salir", se le dice cómo irse. -->
+      <p data-testid="owner-leave-hint">
+        @if (memberCount() > 1) {
+          <ng-container i18n="@@groups.detail.ownerLeaveHint"
+            >Para salir, nombra propietario a otro miembro</ng-container
+          >
+        } @else {
+          <ng-container i18n="@@groups.detail.ownerAloneHint"
+            >Eres el único miembro: para irte, borra el grupo</ng-container
+          >
+        }
+      </p>
       <button
         mat-stroked-button
         type="button"

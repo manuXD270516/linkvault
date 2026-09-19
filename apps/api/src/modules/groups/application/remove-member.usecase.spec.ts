@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   GroupNotFound,
   MemberNotFound,
@@ -15,6 +15,7 @@ import {
   StubInviteCodeGenerator,
 } from './testing/groups-test-doubles';
 import { InMemoryGroupRepository } from './testing/in-memory-group.repository';
+import { InMemoryJoinAttemptLimiter } from './testing/in-memory-join-attempt-limiter';
 
 const ANA = '66e9a0000000000000000001';
 const BETO = '66e9a0000000000000000002';
@@ -62,7 +63,11 @@ describe('RemoveMember', () => {
     await expect(repository.listMembers(group.id)).resolves.toHaveLength(2);
     // Con el código vigente puede volver a entrar: por eso la UI ofrece regenerarlo.
     await expect(
-      new JoinByCode(repository, clock).execute(BETO, group.inviteCode),
+      new JoinByCode(
+        repository,
+        clock,
+        new InMemoryJoinAttemptLimiter(),
+      ).execute(BETO, group.inviteCode, '203.0.113.7'),
     ).resolves.toMatchObject({ id: group.id, role: 'member' });
   });
 
@@ -108,5 +113,26 @@ describe('RemoveMember', () => {
     await expect(
       removeMember.execute(ANA, '66e9a00000000000000000ff', BETO),
     ).rejects.toBeInstanceOf(GroupNotFound);
+  });
+});
+
+describe('RemoveMember when the role changes between the read and the write', () => {
+  it('Expulsar a quien acaba de recibir la propiedad', async () => {
+    const group = await groupOfAnaWithTwo();
+    // Ana leyó a Beto como `member`, pero entre medias le cedió la propiedad: quien expulsaba ya no es owner.
+    vi.spyOn(repository, 'removeMember').mockResolvedValueOnce('now_owner');
+
+    await expect(
+      removeMember.execute(ANA, group.id, BETO),
+    ).rejects.toBeInstanceOf(OwnerRoleRequired);
+  });
+
+  it('answers MemberNotFound when the membership was already gone', async () => {
+    const group = await groupOfAnaWithTwo();
+    vi.spyOn(repository, 'removeMember').mockResolvedValueOnce('not_member');
+
+    await expect(
+      removeMember.execute(ANA, group.id, BETO),
+    ).rejects.toBeInstanceOf(MemberNotFound);
   });
 });

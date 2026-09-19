@@ -1,6 +1,6 @@
 // Membresía y roles (D1 y D2 de groups). La membresía es la única fuente de la propiedad del grupo: cada grupo tiene
-// exactamente una con rol `owner`, y ninguna operación puede borrarla (ni salir ni expulsar), porque hoy no existe la
-// transferencia de propiedad: el owner que quiere irse borra el grupo.
+// exactamente una con rol `owner`, y ninguna operación puede borrarla (ni salir ni expulsar). El owner que quiere irse
+// primero nombra owner a otro miembro (transferencia de propiedad, D1 de groups-ownership-join-limit) y después sale.
 
 /** Roles dentro de un grupo. Mismo conjunto que `groupRoleSchema` de `@linkvault/shared` (lo comprueba un test). */
 export const GROUP_ROLES = ['owner', 'member'] as const;
@@ -40,6 +40,19 @@ export function canRemoveMembers(role: GroupRole): boolean {
 /** El owner NO puede salir de su grupo: recibe `OwnerCannotLeave` y sigue siendo miembro (spec groups/membership). */
 export function canLeaveGroup(role: GroupRole): boolean {
   return !isOwner(role);
+}
+
+/** Transferir la propiedad es del owner; un miembro recibe `Forbidden` (spec groups/membership). */
+export function canTransferOwnership(role: GroupRole): boolean {
+  return isOwner(role);
+}
+
+/**
+ * El destino de una transferencia es otro miembro: el owner que se nombra a sí mismo recibe `AlreadyOwner`. Que el
+ * destino sea miembro del grupo lo decide el repositorio al escribir, condicionado por rol.
+ */
+export function isOtherMember(fromUserId: string, toUserId: string): boolean {
+  return fromUserId !== toUserId;
 }
 
 /** La membresía `owner` nunca se elimina, tampoco si el owner se expulsa a sí mismo. */

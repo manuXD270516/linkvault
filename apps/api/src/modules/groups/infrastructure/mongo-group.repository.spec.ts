@@ -228,6 +228,37 @@ describe('members', () => {
     ).resolves.toBe(1);
   });
 
+  it('does not take a violation of the owner index for an existing membership', async () => {
+    const group = await createGroupOf(OWNER, 'Índice de owner');
+    await repository.addMember({
+      groupId: group.id,
+      userId: MEMBER,
+      now: later,
+    });
+    // Un 11000 real del índice `one_owner_per_group`: una segunda membresía `owner` en el mismo grupo.
+    let ownerViolation: unknown;
+    try {
+      await connection.collection(GROUP_MEMBERS_COLLECTION).insertOne({
+        groupId: new mongoose.Types.ObjectId(group.id),
+        userId: new mongoose.Types.ObjectId(),
+        role: 'owner',
+        joinedAt: later,
+      });
+    } catch (error) {
+      ownerViolation = error;
+    }
+    expect(ownerViolation).toBeInstanceOf(mongoose.mongo.MongoServerError);
+    const members = connection.model<GroupMemberDocument>(
+      GROUP_MEMBER_MODEL_NAME,
+    );
+    vi.spyOn(members, 'create').mockRejectedValueOnce(ownerViolation);
+
+    // `MEMBER` ya es miembro: con "el keyPattern incluye groupId" se habría devuelto su membresía como si nada.
+    await expect(
+      repository.addMember({ groupId: group.id, userId: MEMBER, now: later }),
+    ).rejects.toBe(ownerViolation);
+  });
+
   it('lists the members by joinedAt ascending, the owner first', async () => {
     const group = await createGroupOf(OWNER, 'Orden de miembros');
     await repository.addMember({
@@ -464,7 +495,9 @@ describe('delete', () => {
       now: later,
     });
 
-    await expect(repository.deleteGroup(group.id)).resolves.toBe(true);
+    await expect(repository.deleteGroup(group.id, OWNER)).resolves.toBe(
+      'deleted',
+    );
 
     await expect(repository.findById(group.id)).resolves.toBeNull();
     await expect(
@@ -481,8 +514,62 @@ describe('delete', () => {
   it.each([
     ['an unknown group', new mongoose.Types.ObjectId().toHexString()],
     ['a malformed id', MALFORMED],
-  ])('reports false when deleting %s', async (_case, groupId) => {
-    await expect(repository.deleteGroup(groupId)).resolves.toBe(false);
+  ])('reports not_found when deleting %s', async (_case, groupId) => {
+    await expect(repository.deleteGroup(groupId, OWNER)).resolves.toBe(
+      'not_found',
+    );
+  });
+
+  it.each([
+    ['a member', 'member'],
+    ['a stranger', 'stranger'],
+    ['a malformed user id', 'malformed'],
+  ] as const)(
+    'answers not_owner without deleting anything or running hooks when %s asks',
+    async (_case, who) => {
+      let runs = 0;
+      const { hooks, repository } = withHooks();
+      hooks.register({
+        deleteRelationsOf: () => {
+          runs += 1;
+          return Promise.resolve();
+        },
+      });
+      const user = newUserId();
+      const group = await createGroupOf(OWNER, 'Borrado ajeno');
+      await repository.addMember({
+        groupId: group.id,
+        userId: user,
+        now: later,
+      });
+      const asking =
+        who === 'member' ? user : who === 'stranger' ? STRANGER : MALFORMED;
+
+      await expect(repository.deleteGroup(group.id, asking)).resolves.toBe(
+        'not_owner',
+      );
+
+      expect(runs).toBe(0);
+      await expect(repository.findById(group.id)).resolves.not.toBeNull();
+      await expect(repository.listMembers(group.id)).resolves.toHaveLength(2);
+    },
+  );
+
+  it('answers not_owner to the former owner after a transfer, and the new owner can delete', async () => {
+    const user = newUserId();
+    const group = await createGroupOf(OWNER, 'Borrado tras transferir');
+    await repository.addMember({ groupId: group.id, userId: user, now: later });
+    await repository.transferOwnership(group.id, OWNER, user);
+
+    await expect(repository.deleteGroup(group.id, OWNER)).resolves.toBe(
+      'not_owner',
+    );
+    await expect(
+      repository.findMembership(group.id, user),
+    ).resolves.toMatchObject({ role: 'owner' });
+    await expect(repository.deleteGroup(group.id, user)).resolves.toBe(
+      'deleted',
+    );
   });
 
   it('runs the registered deletion hooks inside the transaction (D7b)', async () => {
@@ -496,7 +583,9 @@ describe('delete', () => {
     });
     const group = await createGroupOf(OWNER, 'Con hooks');
 
-    await expect(repository.deleteGroup(group.id)).resolves.toBe(true);
+    await expect(repository.deleteGroup(group.id, OWNER)).resolves.toBe(
+      'deleted',
+    );
 
     expect(calls.map((call) => call.groupId)).toEqual([group.id]);
     // La sesión es la de la transacción del borrado: el hook escribe con ella o no escribe nada.
@@ -514,9 +603,14 @@ describe('delete', () => {
     });
 
     await expect(
-      repository.deleteGroup(new mongoose.Types.ObjectId().toHexString()),
-    ).resolves.toBe(false);
-    await expect(repository.deleteGroup(MALFORMED)).resolves.toBe(false);
+      repository.deleteGroup(
+        new mongoose.Types.ObjectId().toHexString(),
+        OWNER,
+      ),
+    ).resolves.toBe('not_found');
+    await expect(repository.deleteGroup(MALFORMED, OWNER)).resolves.toBe(
+      'not_found',
+    );
 
     expect(runs).toBe(0);
   });
@@ -528,12 +622,16 @@ describe('delete', () => {
     });
     const group = await createGroupOf(OWNER, 'Hook que falla');
 
-    await expect(repository.deleteGroup(group.id)).rejects.toThrow(
+    await expect(repository.deleteGroup(group.id, OWNER)).rejects.toThrow(
       'the hook failed',
     );
 
-    // Ni el grupo ni sus membresías se pierden si la limpieza de otro módulo no pudo hacerse.
+    // Ni el grupo ni sus membresías (tampoco la `owner`, la primera en borrarse) se pierden si la limpieza de otro
+    // módulo no pudo hacerse.
     await expect(repository.findById(group.id)).resolves.not.toBeNull();
+    await expect(
+      repository.findMembership(group.id, OWNER),
+    ).resolves.toMatchObject({ role: 'owner' });
     await expect(
       connection
         .collection(GROUP_MEMBERS_COLLECTION)
@@ -572,7 +670,9 @@ describe('orphan memberships', () => {
     });
     await dropGroupDocument(doomed.id);
 
-    await expect(repository.removeMember(doomed.id, user)).resolves.toBe(true);
+    await expect(repository.removeMember(doomed.id, user)).resolves.toBe(
+      'removed',
+    );
 
     await expect(repository.countGroupsOfUser(user)).resolves.toBe(0);
     await expect(
@@ -583,25 +683,152 @@ describe('orphan memberships', () => {
   });
 });
 
+describe('transferOwnership', () => {
+  /** Rol de cada miembro, leído de la colección y no del repositorio. */
+  async function rolesOf(groupId: string): Promise<Record<string, string>> {
+    const rows = await connection
+      .collection<GroupMemberDocument>(GROUP_MEMBERS_COLLECTION)
+      .find({ groupId: new mongoose.Types.ObjectId(groupId) })
+      .toArray();
+    return Object.fromEntries(
+      rows.map((row) => [row.userId.toHexString(), row.role]),
+    );
+  }
+
+  it('makes the target the owner and the owner a member, keeping both joinedAt', async () => {
+    const user = newUserId();
+    const group = await createGroupOf(OWNER, 'Transferencia');
+    await repository.addMember({ groupId: group.id, userId: user, now: later });
+
+    await expect(
+      repository.transferOwnership(group.id, OWNER, user),
+    ).resolves.toBe('transferred');
+
+    await expect(repository.listMembers(group.id)).resolves.toEqual([
+      { groupId: group.id, userId: OWNER, role: 'member', joinedAt: now },
+      { groupId: group.id, userId: user, role: 'owner', joinedAt: later },
+    ]);
+  });
+
+  it('answers not_owner without changes when the one asking is not the owner', async () => {
+    const user = newUserId();
+    const other = newUserId();
+    const group = await createGroupOf(OWNER, 'Transferencia ajena');
+    await repository.addMember({ groupId: group.id, userId: user, now: later });
+    await repository.addMember({
+      groupId: group.id,
+      userId: other,
+      now: later,
+    });
+    const before = await rolesOf(group.id);
+
+    await expect(
+      repository.transferOwnership(group.id, user, other),
+    ).resolves.toBe('not_owner');
+    await expect(
+      repository.transferOwnership(group.id, MALFORMED, other),
+    ).resolves.toBe('not_owner');
+    await expect(
+      repository.transferOwnership(MALFORMED, OWNER, other),
+    ).resolves.toBe('not_owner');
+
+    await expect(rolesOf(group.id)).resolves.toEqual(before);
+  });
+
+  it('undoes the demotion when the target is not a member, so the group keeps its owner', async () => {
+    const group = await createGroupOf(OWNER, 'Destino ausente');
+    const members = connection.model<GroupMemberDocument>(
+      GROUP_MEMBER_MODEL_NAME,
+    );
+    const updates = vi.spyOn(members, 'updateOne');
+
+    await expect(
+      repository.transferOwnership(group.id, OWNER, STRANGER),
+    ).resolves.toBe('target_not_member');
+
+    // Los dos pasos corrieron: el primero degradó al owner dentro de la transacción y el centinela lo deshizo.
+    expect(updates).toHaveBeenCalledTimes(2);
+    await expect(rolesOf(group.id)).resolves.toEqual({ [OWNER]: 'owner' });
+  });
+
+  it('does not promote a member of another group', async () => {
+    const user = newUserId();
+    const group = await createGroupOf(OWNER, 'Grupo propio');
+    const other = await createGroupOf(STRANGER, 'Grupo ajeno');
+    await repository.addMember({ groupId: other.id, userId: user, now: later });
+
+    await expect(
+      repository.transferOwnership(group.id, OWNER, user),
+    ).resolves.toBe('target_not_member');
+
+    await expect(rolesOf(group.id)).resolves.toEqual({ [OWNER]: 'owner' });
+    await expect(rolesOf(other.id)).resolves.toEqual({
+      [STRANGER]: 'owner',
+      [user]: 'member',
+    });
+  });
+
+  it.each([
+    ['a malformed user id', MALFORMED],
+    ['the owner himself', OWNER],
+  ])('answers target_not_member for %s', async (_case, target) => {
+    const group = await createGroupOf(OWNER, 'Destino inválido');
+
+    await expect(
+      repository.transferOwnership(group.id, OWNER, target),
+    ).resolves.toBe('target_not_member');
+    await expect(rolesOf(group.id)).resolves.toEqual({ [OWNER]: 'owner' });
+  });
+});
+
 describe('removeMember', () => {
   it('removes an existing membership once', async () => {
     const user = newUserId();
     const group = await createGroupOf(OWNER, 'Expulsión');
     await repository.addMember({ groupId: group.id, userId: user, now: later });
 
-    await expect(repository.removeMember(group.id, user)).resolves.toBe(true);
-    await expect(repository.removeMember(group.id, user)).resolves.toBe(false);
+    await expect(repository.removeMember(group.id, user)).resolves.toBe(
+      'removed',
+    );
+    await expect(repository.removeMember(group.id, user)).resolves.toBe(
+      'not_member',
+    );
     await expect(repository.findMembership(group.id, user)).resolves.toBeNull();
   });
 
-  it('reports false for a malformed group id or user id', async () => {
+  it('does not remove a member who has just become the owner', async () => {
+    const user = newUserId();
+    const group = await createGroupOf(OWNER, 'Recién propietario');
+    await repository.addMember({ groupId: group.id, userId: user, now: later });
+    await repository.transferOwnership(group.id, OWNER, user);
+
+    await expect(repository.removeMember(group.id, user)).resolves.toBe(
+      'now_owner',
+    );
+
+    // No se borró nada: el grupo sigue con sus dos membresías y su owner.
+    await expect(repository.listMembers(group.id)).resolves.toEqual([
+      { groupId: group.id, userId: OWNER, role: 'member', joinedAt: now },
+      { groupId: group.id, userId: user, role: 'owner', joinedAt: later },
+    ]);
+  });
+
+  it('answers not_member for someone who is not in the group', async () => {
+    const group = await createGroupOf(OWNER, 'Sin ese miembro');
+
+    await expect(repository.removeMember(group.id, STRANGER)).resolves.toBe(
+      'not_member',
+    );
+  });
+
+  it('reports not_member for a malformed group id or user id', async () => {
     const group = await createGroupOf(OWNER, 'Expulsión mal formada');
 
     await expect(repository.removeMember(group.id, MALFORMED)).resolves.toBe(
-      false,
+      'not_member',
     );
     await expect(repository.removeMember(MALFORMED, OWNER)).resolves.toBe(
-      false,
+      'not_member',
     );
   });
 });

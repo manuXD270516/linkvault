@@ -146,6 +146,23 @@ describe('GroupsApi', () => {
     await expect(result).resolves.toBeUndefined();
   });
 
+  it('transfers the ownership to another member', async () => {
+    const asMember: GroupDetail = {
+      id: 'g1',
+      name: 'Backend Bolivia',
+      role: 'member',
+      memberCount: 2,
+      createdAt: '2026-09-17T10:00:00.000Z',
+    };
+    const result = api.transferOwnership('g1', 'u2');
+
+    const request = expectRequest('POST', '/api/groups/g1/owner');
+    expect(request.request.body).toEqual({ userId: 'u2' });
+    request.flush(asMember);
+
+    await expect(result).resolves.toEqual(asMember);
+  });
+
   it('propagates the API error without swallowing it', async () => {
     const result = api.joinGroup('ABCD2345');
 

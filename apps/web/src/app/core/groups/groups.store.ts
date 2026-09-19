@@ -75,6 +75,16 @@ export const GroupsStore = signalStore(
         await load();
       },
 
+      /**
+       * Nombra propietario a otro miembro y devuelve el detalle ya como miembro; la lista se recarga porque cambia el
+       * rol del usuario en ese grupo.
+       */
+      async transferOwnership(groupId: string, userId: string): Promise<GroupDetail> {
+        const group = await api.transferOwnership(groupId, userId);
+        await load();
+        return group;
+      },
+
       /** Olvida un grupo al que el usuario ya no pertenece (404 del detalle), sin pedir la lista otra vez. */
       forget(groupId: string): void {
         patchState(store, { groups: store.groups().filter((group) => group.id !== groupId) });

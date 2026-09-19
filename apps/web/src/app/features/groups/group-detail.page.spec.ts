@@ -108,6 +108,27 @@ describe('GroupDetailPage', () => {
     );
   }
 
+  /** Botones de la fila de un miembro, por su nombre. */
+  function rowButtons(name: string): (string | undefined)[] {
+    const row = Array.from(page().querySelectorAll('[data-testid="members"] li')).find(
+      (item) => item.querySelector('span')?.textContent?.trim() === name,
+    );
+    if (!row) {
+      throw new Error(`Member "${name}" not listed`);
+    }
+    return Array.from(row.querySelectorAll('button')).map((button) => button.textContent?.trim());
+  }
+
+  /** Mensaje de la confirmación abierta, sin título ni botones. */
+  function dialogMessage(): string {
+    return (
+      dialog()
+        .querySelector('mat-dialog-content p')
+        ?.textContent?.replace(/\s+/g, ' ')
+        .trim() ?? ''
+    );
+  }
+
   function buttonTexts(): (string | undefined)[] {
     return Array.from(page().querySelectorAll('button')).map((button) => button.textContent?.trim());
   }
@@ -180,9 +201,22 @@ describe('GroupDetailPage', () => {
       'Copiar invitación',
       'Renombrar',
       'Regenerar el código',
+      'Nombrar propietario',
       'Expulsar',
       'Borrar el grupo',
     ]);
+    // El propietario no puede salir: en lugar de "Salir" se le dice cómo irse.
+    expect(text()).toContain('Para salir, nombra propietario a otro miembro');
+    expect(text()).not.toContain('Eres el único miembro');
+  });
+
+  it('Owner solo en su grupo', async () => {
+    await openDetail({ ...ownerDetail, memberCount: 1 }, [members[0]]);
+
+    expect(text()).toContain('Eres el único miembro: para irte, borra el grupo');
+    expect(text()).not.toContain('Para salir, nombra propietario a otro miembro');
+    expect(buttonTexts()).not.toContain('Nombrar propietario');
+    expect(buttonTexts()).not.toContain('Salir del grupo');
   });
 
   it('Detalle como miembro', async () => {
@@ -396,10 +430,8 @@ describe('GroupDetailPage', () => {
 
     await act('Borrar el grupo');
 
-    // Sin ofertas, el mensaje se queda en la parte de los miembros.
-    expect(dialog().textContent?.replace(/\s+/g, ' ')).toContain(
-      'Se borrará solo para ti. No se puede deshacer.',
-    );
+    // Sin ofertas, el mensaje se queda en la parte de los miembros; solo, no hay a quién nombrar propietario.
+    expect(dialogMessage()).toBe('Se borrará solo para ti. No se puede deshacer.');
   });
 
   it('cuenta una sola oferta en singular', async () => {
@@ -418,8 +450,9 @@ describe('GroupDetailPage', () => {
 
     await act('Borrar el grupo');
 
-    expect(dialog().textContent?.replace(/\s+/g, ' ')).toContain(
-      'Se borrará para los 3 miembros y se perderán las 37 ofertas compartidas aquí (las que estén en otros grupos siguen ahí). No se puede deshacer.',
+    // Con más de un miembro, la confirmación empieza proponiendo irse sin borrar.
+    expect(dialogMessage()).toBe(
+      'Si solo quieres irte, nombra propietario a otro miembro y sal del grupo. Se borrará para los 3 miembros y se perderán las 37 ofertas compartidas aquí (las que estén en otros grupos siguen ahí). No se puede deshacer.',
     );
 
     await answer('Borrar');
@@ -431,5 +464,69 @@ describe('GroupDetailPage', () => {
 
     await vi.waitFor(() => expect(router.url).toBe('/grupos'));
     await flushGroupsList(http, []);
+  });
+
+  it('Nombrar propietario sobre los demás', async () => {
+    const carla: GroupMember = {
+      userId: 'u3',
+      displayName: 'Carla',
+      role: 'member',
+      joinedAt: '2026-09-18T12:00:00.000Z',
+    };
+    await openDetail({ ...ownerDetail, memberCount: 3 }, [...members, carla]);
+
+    expect(rowButtons('Beto')).toContain('Nombrar propietario');
+    expect(rowButtons('Carla')).toContain('Nombrar propietario');
+    expect(rowButtons('Ana')).toEqual([]);
+  });
+
+  it('Nombrar propietario y salir', async () => {
+    await openDetail(ownerDetail);
+
+    buttonWithText(page(), 'Nombrar propietario').click();
+    await settle();
+    await harness.fixture.whenStable();
+    expect(dialog().textContent?.replace(/\s+/g, ' ')).toContain(
+      '«Beto» tendrá el rol de propietario de «Backend Bolivia»: podrá renombrarlo, expulsar miembros y borrarlo. Tú seguirás como miembro y no podrás deshacerlo.',
+    );
+    await answer('Nombrar propietario');
+
+    const request = await awaitRequest('POST', '/api/groups/g1/owner');
+    expect(request.request.body).toEqual({ userId: 'u2' });
+    // La API responde el detalle visto por quien pide, que ya es miembro: sin código.
+    request.flush(memberDetail);
+    // El store recarga la lista, porque cambia el rol del usuario en el grupo.
+    await flushGroupsList(http, []);
+    (await awaitRequest('GET', '/api/groups/g1/members')).flush([
+      { ...members[0], role: 'member' },
+      { ...members[1], role: 'owner' },
+    ] satisfies GroupMember[]);
+    await settle();
+    await harness.fixture.whenStable();
+
+    expect(router.url).toBe('/grupos/g1');
+    expect(memberRows()).toEqual([
+      ['Ana', 'Miembro', 'Desde el 10/09/2026'],
+      ['Beto', 'Propietario', 'Desde el 17/09/2026'],
+    ]);
+    expect(page().querySelector('[data-testid="invite-code"]')).toBeNull();
+    expect(buttonTexts()).toEqual(['Guardar', 'Pegar un chat', 'Salir del grupo']);
+  });
+
+  it('Cancelar la transferencia', async () => {
+    await openDetail(ownerDetail);
+
+    buttonWithText(page(), 'Nombrar propietario').click();
+    await settle();
+    await harness.fixture.whenStable();
+    await answer('Cancelar');
+    await settle();
+
+    http.expectNone({ method: 'POST', url: '/api/groups/g1/owner' });
+    expect(page().querySelector('[data-testid="invite-code"]')?.textContent?.trim()).toBe(
+      'ABCD2345',
+    );
+    expect(buttonTexts()).toContain('Borrar el grupo');
+    expect(buttonTexts()).not.toContain('Salir del grupo');
   });
 });

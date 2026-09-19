@@ -219,6 +219,7 @@ Orden y notas específicas:
 | 5 | `groups` | Invitación por código; roles owner/member. `/` pasa a ser la lista de grupos con estado vacío (sustituye el saludo de `auth-users`). |
 | 6 | `job-links` | ADR-008, 009. Canonicalizadores para LinkedIn, Computrabajo, Indeed, Trabajopolis, Get on Board. Import desde texto (B1). "Ya está en Grupo X" (B6). |
 | 7 | `link-enrichment` | ADR-003, 010 y **ADR-022** (cierra las decisiones del change). Un host a la vez con mutex en Redis, `extract-job` vía `runTask`, SSE, backfill por el outbox. Cómo operarlo: Paso 6 bis. |
+| 7b | `groups-ownership-join-limit` | Fuera de §6, antes de `applications-tracking`: transferencia de propiedad del grupo y límite de intentos del join (**ADR-025**). Cómo operarlo: Paso 6 quater. |
 | 8 | `applications-tracking` | ADR-004, 015. Kanban + timeline. |
 | 9 | `group-comments` | Planos, sin hilos. |
 | 10 | `public-preview-share` | ADR-013. |
@@ -226,7 +227,7 @@ Orden y notas específicas:
 | 12 | `cv-match-suggestions` | §4.8 y 4.12. Evaluator-optimizer acotado, `evidence` obligatoria, `ai_feedback`. Controles de IA del perfil diferidos desde `auth-users`: consentimiento con texto honesto, `consentedAt` y versión del texto, "Idioma de los análisis de IA" y redacción del nombre. |
 | 13 | `study-roadmap` | Catálogo curado `resources.seed.json` primero. |
 | 14 | `ai-byok` | libsodium vault. |
-| 15 | `deploy-prod` | compose prod + Traefik + docs de alternativas. Heredado de `auth-users` (ADR-020): `trustProxy`, reseteo manual de contraseña por operador documentado, aviso de privacidad y borrado de cuenta. Heredado de `link-enrichment` (ADR-022): elegir proveedor de objetos (el cliente habla S3) y crear allí el bucket de snapshots con su expiración a 30 días, fijar las `ENRICH_*` por entorno y decidir dónde queda encendido el relay del outbox, que sigue siendo de una sola instancia. Heredado de `paste-job-description` (ADR-023): fijar `PASTE_EXTRACTION_TIMEOUT_MS` y la cuota de `extract-pasted-job` en `AI_QUOTAS` por entorno, y copiar los prompts también en la imagen de `api` (`AI_PROMPTS_DIR=dist/apps/api/assets/ai/prompts` si no arranca desde la raíz). |
+| 15 | `deploy-prod` | compose prod + Traefik + docs de alternativas. Heredado de `auth-users` (ADR-020): `trustProxy`, reseteo manual de contraseña por operador documentado, aviso de privacidad y borrado de cuenta. Heredado de `link-enrichment` (ADR-022): elegir proveedor de objetos (el cliente habla S3) y crear allí el bucket de snapshots con su expiración a 30 días, fijar las `ENRICH_*` por entorno y decidir dónde queda encendido el relay del outbox, que sigue siendo de una sola instancia. Heredado de `paste-job-description` (ADR-023): fijar `PASTE_EXTRACTION_TIMEOUT_MS` y la cuota de `extract-pasted-job` en `AI_QUOTAS` por entorno, y copiar los prompts también en la imagen de `api` (`AI_PROMPTS_DIR=dist/apps/api/assets/ai/prompts` si no arranca desde la raíz). Heredado de `groups-ownership-join-limit` (ADR-025): `trustProxy` también por el contador de IP del join, y la consulta de "un owner por grupo" antes del primer despliegue (Paso 6 quater). |
 | 16 | `auth-email-recovery` | Fuera de §6: verificación de email y recuperación de contraseña, diferidas desde `auth-users` (ADR-020). Alcance y orden por decidir al crearlo. |
 
 **Paralelizar front y back (changes 4–8):** en `/opsx:apply` pide:
@@ -304,6 +305,118 @@ producto, los códigos y la precedencia están en el [README](../README.md#pegar
   en `failed` por `robots_disallowed`: ese guardado sube `previewVersion`, lo pasa a `pending` y escribe en el outbox.
   No hay backfill para los que ya están así, y `api:backfill-enrichment --status=failed` sigue sin tocarlos.
 
+## Paso 6 quater — Operar la propiedad de los grupos y el límite del join
+
+Desde `groups-ownership-join-limit`, el owner de un grupo puede nombrar propietario a otro miembro
+(`POST /api/groups/:id/owner`) y `POST /api/groups/join` cuenta los códigos incorrectos. El detalle para quien usa el
+producto está en el [README](../README.md#roles) (roles y transferencia) y en [Límites](../README.md#límites); las
+decisiones, en [ADR-025](adr/ADR-025.md). Aquí, lo que hay que tener presente al operar y al probar a mano. Los comandos
+usan el Mongo y el Redis del compose local; en otro entorno, cambia la URI o el host por los suyos.
+
+**Transferencia y el índice `one_owner_per_group`.**
+
+- **Qué garantiza cada pieza.** La transferencia degrada al owner y promueve al elegido en **una transacción** (por eso
+  Mongo tiene que ser replica set, ADR-017): nunca queda un grupo sin owner. El índice único parcial
+  `one_owner_per_group` de `group_members` (`{ groupId: 1 }` con `partialFilterExpression: { role: 'owner' }`) impide
+  que haya dos. Sin variables nuevas y sin datos que rellenar.
+- **Antes de desplegar**, comprueba que ningún grupo tiene más de una membresía `owner`, porque con duplicados el índice
+  no se puede construir. Debe devolver `[]`:
+
+  ```bash
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'db.group_members.aggregate([{ $match: { role: "owner" } }, { $group: { _id: "$groupId", owners: { $push: { userId: "$userId", joinedAt: "$joinedAt" } }, count: { $sum: 1 } } }, { $match: { count: { $gt: 1 } } }]).toArray()'
+  ```
+
+- **Al arrancar**, `api` construye los índices de `group_members` (`autoIndex` de Mongoose) y `GroupsModule` espera a
+  que terminen **en segundo plano**: la espera **no bloquea el arranque** (ADR-025 §5), porque `api` arranca sin
+  esperar a MongoDB. Si la construcción falla, `GroupsModule` registra un `error` en cuanto ocurre, sin ids de grupos
+  ni de usuarios:
+
+  ```text
+  Could not build the index one_owner_per_group of group_members: MongoServerError 11000 DuplicateKey
+  ```
+
+  `api` sigue sirviendo y `/health` sigue en `200`: la transacción sigue impidiendo grupos sin owner, pero nada impide
+  que haya dos hasta que el índice exista. El motivo `11000 DuplicateKey` son owners duplicados; cualquier otro (por
+  ejemplo, Mongo cortado a mitad de la construcción) se resuelve reiniciando `api` con Mongo sano. Si `api` se apaga
+  antes de terminar la construcción, no se registra nada.
+- **Resolver los duplicados.** La consulta de arriba lista cada grupo con sus owners y su `joinedAt`. Decide quién se
+  queda (por defecto, el de `joinedAt` más antiguo, que es quien creó el grupo) y degrada a los demás a `member`, grupo
+  por grupo, sin borrar ninguna membresía:
+
+  ```bash
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'db.group_members.updateMany({ groupId: ObjectId("<groupId>"), role: "owner", userId: { $ne: ObjectId("<userId que se queda>") } }, { $set: { role: "member" } })'
+  ```
+
+  Repite la consulta hasta que devuelva `[]` y reinicia `api`, que vuelve a construir el índice al arrancar.
+- **Después de desplegar (o de resolver)**, comprueba que el índice existe con su filtro parcial. Debe mostrar
+  `unique: true`, `key: { groupId: 1 }` y `partialFilterExpression: { role: 'owner' }`; `[]` significa que no se ha
+  construido (busca el `error` de arriba en el log de `api`):
+
+  ```bash
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'db.group_members.getIndexes().filter((i) => i.name === "one_owner_per_group")'
+  ```
+
+- **Un `500` al escribir en `group_members` con `11000` sobre `{ groupId: 1 }`** es una violación de
+  `one_owner_per_group`: un fallo de programación (ADR-025 §4), no un caso previsto. Toda escritura que cambie roles o
+  borre membresías debe condicionarse al rol.
+
+**Límite de intentos del join.**
+
+- **Claves y umbrales.** El adaptador (`CounterJoinAttemptLimiter`, funciones `joinUserKey` y `joinIpKey`) escribe dos
+  contadores de ventana fija de **15 min** en Redis:
+  - `groups:join:user:<userId>`: **10** códigos incorrectos por usuario. `<userId>` es el `_id` hexadecimal del usuario.
+  - `groups:join:ip:<grupo de IP>`: **100** por IP. El grupo es el de `ipLimitGroup`
+    (`apps/api/src/infrastructure/limits/client-ip.ts`): una IPv4 tal cual (`203.0.113.7`), una IPv4 mapeada
+    (`::ffff:203.0.113.7`) como esa IPv4, y una IPv6 por su prefijo /64 con los cuatro primeros grupos en minúscula, sin
+    ceros a la izquierda y sin comprimir, seguidos de `::/64` (`2001:db8::1` → `2001:db8:0:0::/64`;
+    `2001:0DB8:ABCD:0012::ff` → `2001:db8:abcd:12::/64`).
+
+  El valor es el número de intentos contados en la ventana y el `TTL` lo que le queda. Al pasar del umbral responde
+  `429 too_many_attempts` con `Retry-After`. Si Redis no responde, falla abierto y el contador avisa una vez por racha
+  (`Attempt counter store unavailable`); el adaptador no registra nada.
+- **Mirar un contador:**
+
+  ```bash
+  docker compose exec redis redis-cli get groups:join:user:<userId>
+  docker compose exec redis redis-cli ttl groups:join:user:<userId>
+  ```
+
+- **Liberar a un usuario o una IP** antes de que pase la ventana. `DEL` devuelve `1` si había contador y `0` si no; la
+  clave de una IPv6 va entre comillas:
+
+  ```bash
+  docker compose exec redis redis-cli del groups:join:user:<userId>
+  docker compose exec redis redis-cli del groups:join:ip:203.0.113.7
+  docker compose exec redis redis-cli del "groups:join:ip:2001:db8:abcd:12::/64"
+  ```
+
+  En local, para borrarlos todos: `docker compose exec redis sh -c "redis-cli --scan --pattern 'groups:join:*' | xargs -r redis-cli del"`.
+  Nunca en un entorno compartido: ahí se borra solo la clave de quien se libera.
+- **Localizar las cuentas que agotan una IP** (riesgo aceptado en ADR-025: con 10 cuentas se pueden gastar los 100
+  intentos de una IP en cada ventana). Ni Redis ni Mongo guardan qué usuario usó qué IP, así que se cruzan dos fuentes:
+  1. Los contadores de usuario con valores altos en la ventana actual (valor, segundos que le quedan y clave, de mayor a
+     menor). Un usuario cuya ventana empezó hace `900 - TTL` segundos empezó a fallar entonces:
+
+     ```bash
+     docker compose exec redis sh -c "redis-cli --scan --pattern 'groups:join:user:*' | while read -r k; do echo \"\$(redis-cli get \"\$k\") \$(redis-cli ttl \"\$k\") \$k\"; done | sort -rn | awk '\$1 >= 5'"
+     ```
+
+  2. El log de peticiones de `api` (pino-http, una línea JSON por petición): las de `POST /api/groups/join` desde esa IP
+     (`req.remoteAddress`; para una IPv6, las de su /64) con `res.statusCode` `404` (código incorrecto) o `429`. El log
+     no lleva el usuario (la cabecera `Authorization` se redacta), así que el cruce es por la hora: los usuarios del
+     paso 1 cuya ventana empezó cuando empezaron los fallos desde esa IP. Con `jq`, sobre el log guardado en un archivo:
+
+     ```bash
+     jq -c 'select(.req.method == "POST" and .req.url == "/api/groups/join" and (.req.remoteAddress == "203.0.113.7" or .req.remoteAddress == "::ffff:203.0.113.7")) | {time, status: .res.statusCode}' api.log
+     ```
+
+  Para ver de quién es un `<userId>`: `db.users.find({ _id: ObjectId("<userId>") }, { displayName: 1, createdAt: 1 })`.
+  Hoy no hay forma de suspender una cuenta desde la API: la salida inmediata es liberar la IP con `DEL`, y si el abuso
+  se repite, anótalo para `deploy-prod` (umbrales configurables por variable de entorno, mejora futura de ADR-025).
+- **Sin `trustProxy`**, detrás de un proxy todas las peticiones llegan con la IP del proxy y el contador de IP es global:
+  100 códigos incorrectos de cualquiera bloquean a todos. Configurarlo es requisito de salida a producción de
+  `deploy-prod`. En local y en las pruebas no hay proxy.
+
 ## Paso 7 — Definition of Done (pégalo en cada PR)
 
 - [ ] Change archivado; spec delta mergeada en `openspec/specs/`
@@ -329,6 +442,8 @@ producto, los códigos y la precedencia están en el [README](../README.md#pegar
 | `POST /api/links/:id/pasted` responde `503 extraction_unavailable` siempre | Por orden: ¿`curl http://localhost:3000/health` da `200`? Con Redis caído el contador de pegados falla cerrado y responde `503` sin llamar a la IA. ¿`AI_CHAIN=none`? Entonces toda lectura degrada. ¿Ollama arriba y con el modelo? `curl http://localhost:11434/api/tags` debe listar `OLLAMA_MODEL` (si no, `ollama pull qwen2.5:7b`). ¿El plazo? Un modelo en CPU puede pasar de los 20 s de `PASTE_EXTRACTION_TIMEOUT_MS`: súbelo (hasta 120 000) y reinicia `api`; `OLLAMA_TIMEOUT_MS` también corta. ¿La cadena solo tiene `openrouter` y quien pega no dio su consentimiento? Responde `503` para siempre hasta que exista `ai_consent_required` (ADR-023). Tras varios fallos seguidos el circuit breaker del proceso deja de llamar a ese proveedor unos 30 s. El ledger dice qué pasó, sin el texto: `docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval "db.ai_usage.find({task:'extract-pasted-job'},{_id:0,outcome:1,reason:1,providerId:1,latencyMs:1,at:1}).sort({at:-1}).limit(5)"` (`degraded` con `no_providers`: ningún proveedor elegible; con `providers_failed`: fallaron o se agotó el plazo). Un `503` no gasta pegados |
 | `POST /api/links/:id/pasted` responde `429` | Mira el código. `ai_quota_exceeded` ("vuelve mañana", `Retry-After` de 24 h): quien pega agotó su cuota diaria de `extract-pasted-job` en `AI_QUOTAS`, que cuenta sus lecturas con éxito de las últimas 24 h en `ai_usage` y es independiente de la de `extract-job`. En local, sube o quita esa entrada de `AI_QUOTAS` y reinicia `api`; en un entorno compartido se ajusta la cuota del entorno, nunca el ledger. `too_many_attempts` ("espera un poco"): más de 10 pegados en 15 min; en local, `docker compose exec redis redis-cli del links:paste:<userId>`. Nunca en un entorno compartido |
 | El worker avisa de que no pudo guardar el snapshot | MinIO caído o sin bucket: `docker compose up -d --wait` lo crea con su regla de 30 días. El enriquecimiento no falla por eso; lo que se pierde es la copia para el golden real |
+| `api` registra `Could not build the index one_owner_per_group of group_members: …` | Hay datos antiguos con dos owners en un grupo (`11000 DuplicateKey`) y el índice no existe; `api` sigue sirviendo. Lista los grupos afectados, degrada a `member` a los owners sobrantes, reinicia `api` y comprueba el índice con `getIndexes()` (Paso 6 quater). Otro motivo: reinicia `api` con Mongo sano |
+| `POST /api/groups/join` responde `429` | Más de 10 códigos incorrectos del usuario o más de 100 desde su IP (IPv6 por /64) en 15 min; `Retry-After` dice cuánto falta. En local: `docker compose exec redis redis-cli del groups:join:user:<userId>` o `del groups:join:ip:<grupo de IP>`. Si una IP se agota una y otra vez, localiza las cuentas (Paso 6 quater). Si le pasa a todos a la vez detrás de un proxy, falta `trustProxy` |
 | Login o registro responden `429` en pruebas locales o en `/lv:smoke` | Contadores de intentos de la ventana de 15 min en Redis. En local: `docker compose exec redis sh -c "redis-cli --scan --pattern 'auth:*' \| xargs -r redis-cli del"`. Nunca en un entorno compartido |
 | `POST /api/auth/*` responde `403` o `415` | Falta `X-Requested-With: linkvault` o el cuerpo no es `application/json` (defensa CSRF, ADR-020) |
 | La sesión no se restaura al recargar el SPA | Abre el SPA en `http://localhost:4200` (el proxy mantiene `/api` en el mismo origen); la cookie `lv_refresh` solo viaja a `/api/auth` |

@@ -1,5 +1,5 @@
 import { ATTEMPT_WINDOW_MS } from '../../domain/attempt-limits';
-import { ipLimitGroup } from '../../domain/client-ip';
+import { ipLimitGroup } from '../../../../infrastructure/limits/client-ip';
 import type { Clock } from '../../domain/clock';
 import type {
   AttemptDecision,

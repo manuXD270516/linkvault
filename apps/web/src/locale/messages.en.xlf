@@ -189,6 +189,22 @@
         <source> Expulsar </source>
         <target>Remove</target>
       </trans-unit>
+      <trans-unit id="groups.detail.transfer" datatype="html">
+        <source> Nombrar propietario </source>
+        <target>Make owner</target>
+      </trans-unit>
+      <trans-unit id="groups.detail.ownerLeaveHint" datatype="html">
+        <source>Para salir, nombra propietario a otro miembro</source>
+        <target>To leave, make another member the owner</target>
+      </trans-unit>
+      <trans-unit id="groups.detail.ownerAloneHint" datatype="html">
+        <source>Eres el único miembro: para irte, borra el grupo</source>
+        <target>You are the only member: to leave, delete the group</target>
+      </trans-unit>
+      <trans-unit id="groups.detail.deleteLeaveHint" datatype="html">
+        <source>Si solo quieres irte, nombra propietario a otro miembro y sal del grupo.</source>
+        <target>If you only want to leave, make another member the owner and leave the group.</target>
+      </trans-unit>
       <trans-unit id="groups.detail.rotateAfterRemoval" datatype="html">
         <source> Regenerar el código para que no pueda volver a entrar </source>
         <target>Regenerate the code so they cannot join again</target>
@@ -252,6 +268,18 @@
       <trans-unit id="groups.detail.removeMemberConfirm" datatype="html">
         <source>Expulsar</source>
         <target>Remove</target>
+      </trans-unit>
+      <trans-unit id="groups.detail.transferTitle" datatype="html">
+        <source>Nombrar propietario</source>
+        <target>Make owner</target>
+      </trans-unit>
+      <trans-unit id="groups.detail.transferMessage" datatype="html">
+        <source>«<x id="NAME" equiv-text="member.displayName"/>» tendrá el rol de propietario de «<x id="GROUP" equiv-text="current.name"/>»: podrá renombrarlo, expulsar miembros y borrarlo. Tú seguirás como miembro y no podrás deshacerlo.</source>
+        <target>"<x id="NAME" equiv-text="member.displayName"/>" will be the owner of "<x id="GROUP" equiv-text="current.name"/>": they will be able to rename it, remove members and delete it. You will stay as a member and cannot undo this.</target>
+      </trans-unit>
+      <trans-unit id="groups.detail.transferConfirm" datatype="html">
+        <source>Nombrar propietario</source>
+        <target>Make owner</target>
       </trans-unit>
       <trans-unit id="groups.list.title" datatype="html">
         <source>Tus grupos</source>

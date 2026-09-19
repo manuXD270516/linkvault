@@ -1,6 +1,11 @@
 import type { GroupSummary } from '@linkvault/shared';
 import { Inject, Injectable } from '@nestjs/common';
-import { GroupFull, InvalidInviteCode, TooManyGroups } from '../domain/errors';
+import {
+  GroupFull,
+  InvalidInviteCode,
+  TooManyGroups,
+  TooManyJoinAttempts,
+} from '../domain/errors';
 import { isValidInviteCode, normalizeInviteCode } from '../domain/invite-code';
 import { hasReachedGroupLimit, isGroupFull } from '../domain/limits';
 import { toGroupSummary } from './group.mapper';
@@ -9,6 +14,10 @@ import {
   GROUP_REPOSITORY,
   type GroupRepository,
 } from './ports/group-repository.port';
+import {
+  JOIN_ATTEMPT_LIMITER,
+  type JoinAttemptLimiter,
+} from './ports/join-attempt-limiter.port';
 
 /**
  * `POST /api/groups/join` (spec groups/membership). El código se normaliza y su formato lo juzga el dominio: uno mal
@@ -18,15 +27,44 @@ import {
  * Unirse es idempotente (D5): si ya era miembro devuelve el grupo con su rol actual sin escribir, incluso si está en el
  * tope de 20 grupos, así que el owner que pega su propio código recibe `owner`. La respuesta nunca lleva el código de
  * invitación, para lo cual basta con que el mapeo sea `toGroupSummary`.
+ *
+ * Límite de intentos (ADR-025 §6 y §7): el intento se consume **antes** de resolver el código, por usuario y por IP, y
+ * si se rechaza responde `too_many_attempts` sin mirar el código. Solo cuenta un código incorrecto (desconocido o mal
+ * formado): en cualquier otro desenlace —unirse, ya ser miembro, `group_full`, `too_many_groups` o un error inesperado—
+ * el `finally` devuelve el intento, una sola vez. Un código válido no pone a cero nada.
  */
 @Injectable()
 export class JoinByCode {
   constructor(
     @Inject(GROUP_REPOSITORY) private readonly groups: GroupRepository,
     @Inject(GROUPS_CLOCK) private readonly clock: Clock,
+    @Inject(JOIN_ATTEMPT_LIMITER) private readonly limiter: JoinAttemptLimiter,
   ) {}
 
-  async execute(userId: string, code: string): Promise<GroupSummary> {
+  /** `ip` es la del cliente tal como llegó en la petición; el limitador la agrupa. */
+  async execute(
+    userId: string,
+    code: string,
+    ip: string,
+  ): Promise<GroupSummary> {
+    const attempt = await this.limiter.consume(userId, ip);
+    if (attempt.rejected) {
+      throw new TooManyJoinAttempts(attempt.retryAfterSeconds);
+    }
+    let wrongCode = false;
+    try {
+      return await this.join(userId, code);
+    } catch (error) {
+      wrongCode = error instanceof InvalidInviteCode;
+      throw error;
+    } finally {
+      if (!wrongCode) {
+        await this.limiter.giveBack(attempt);
+      }
+    }
+  }
+
+  private async join(userId: string, code: string): Promise<GroupSummary> {
     const inviteCode = normalizeInviteCode(code);
     if (!isValidInviteCode(inviteCode)) {
       throw new InvalidInviteCode();

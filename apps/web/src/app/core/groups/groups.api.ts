@@ -8,6 +8,7 @@ import type {
   InviteCodeResponse,
   JoinGroupRequest,
   RenameGroupRequest,
+  TransferOwnershipRequest,
 } from '@linkvault/shared';
 import { firstValueFrom } from 'rxjs';
 
@@ -78,6 +79,15 @@ export class GroupsApi {
     await firstValueFrom(
       this.http.delete<null>(`${groupUrl(groupId)}/members/${encodeURIComponent(userId)}`),
     );
+  }
+
+  /**
+   * Nombra propietario a otro miembro (D1). La respuesta es el detalle visto por quien pide, que ya es miembro: sin
+   * `inviteCode`.
+   */
+  transferOwnership(groupId: string, userId: string): Promise<GroupDetail> {
+    const body: TransferOwnershipRequest = { userId };
+    return firstValueFrom(this.http.post<GroupDetail>(`${groupUrl(groupId)}/owner`, body));
   }
 }
 

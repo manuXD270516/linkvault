@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   hasReachedGroupLimit,
   isGroupFull,
+  JOIN_ATTEMPT_WINDOW_MS,
+  JOIN_ATTEMPTS_PER_IP,
+  JOIN_ATTEMPTS_PER_USER,
   MAX_GROUPS_PER_USER,
   MAX_MEMBERS_PER_GROUP,
 } from './limits';
@@ -29,5 +32,11 @@ describe('group limits', () => {
     [MAX_GROUPS_PER_USER + 1, true],
   ])('a user in %i groups reached the limit: %s', (groupCount, reached) => {
     expect(hasReachedGroupLimit(groupCount)).toBe(reached);
+  });
+
+  it('allows 10 wrong codes per user and 100 per IP every 15 minutes', () => {
+    expect(JOIN_ATTEMPTS_PER_USER).toBe(10);
+    expect(JOIN_ATTEMPTS_PER_IP).toBe(100);
+    expect(JOIN_ATTEMPT_WINDOW_MS).toBe(900_000);
   });
 });

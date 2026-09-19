@@ -4,12 +4,17 @@ import mongoose, { mongo, type Connection } from 'mongoose';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { GROUP_ROLES } from '../domain/membership';
 import {
+  duplicateKeyIs,
   GROUP_MEMBER_MODEL_NAME,
   GROUP_MEMBERS_COLLECTION,
   GROUP_MODEL_NAME,
   GROUPS_COLLECTION,
   groupMemberSchema,
   groupSchema,
+  INVITE_KEY,
+  MEMBERSHIP_KEY,
+  ONE_OWNER_PER_GROUP_INDEX,
+  OWNER_KEY,
   toGroupObjectId,
   toUserObjectId,
   type GroupDocument,
@@ -24,6 +29,16 @@ let connection: Connection;
 const now = new Date('2026-09-17T10:00:00.000Z');
 const GROUP_ID = new mongoose.Types.ObjectId();
 const USER_ID = new mongoose.Types.ObjectId();
+
+/** Error con el que falla la escritura, o `undefined` si no falló. */
+async function writeError(write: Promise<unknown>): Promise<unknown> {
+  try {
+    await write;
+    return undefined;
+  } catch (error) {
+    return error;
+  }
+}
 
 /** Código del error del driver, o `undefined` si la escritura no falló. `11000` es la clave duplicada. */
 async function writeErrorCode(
@@ -160,6 +175,142 @@ describe('group_members collection', () => {
 
   it('accepts only the roles of the domain', () => {
     expect(groupMemberSchema.path('role').options['enum']).toEqual(GROUP_ROLES);
+  });
+});
+
+describe('one owner per group', () => {
+  it('declares the partial unique index with its explicit name', async () => {
+    const indexes = await connection
+      .collection(GROUP_MEMBERS_COLLECTION)
+      .indexes();
+
+    expect(indexes).toContainEqual(
+      expect.objectContaining({
+        name: ONE_OWNER_PER_GROUP_INDEX,
+        key: { groupId: 1 },
+        unique: true,
+        partialFilterExpression: { role: 'owner' },
+      }),
+    );
+  });
+
+  it('rejects a second owner membership in the same group', async () => {
+    const model = connection.model<GroupMemberDocument>(
+      GROUP_MEMBER_MODEL_NAME,
+    );
+    const groupId = new mongoose.Types.ObjectId();
+    await model.create({
+      groupId,
+      userId: new mongoose.Types.ObjectId(),
+      role: 'owner',
+      joinedAt: now,
+    });
+
+    const error = await writeError(
+      model.create({
+        groupId,
+        userId: new mongoose.Types.ObjectId(),
+        role: 'owner',
+        joinedAt: now,
+      }),
+    );
+
+    expect(duplicateKeyIs(error, OWNER_KEY)).toBe(true);
+    // Comparte el campo `groupId` con el de membresía, pero no es él: el `keyPattern` completo los distingue.
+    expect(duplicateKeyIs(error, MEMBERSHIP_KEY)).toBe(false);
+    expect(
+      await connection
+        .collection(GROUP_MEMBERS_COLLECTION)
+        .countDocuments({ groupId, role: 'owner' }),
+    ).toBe(1);
+  });
+
+  it('accepts many members and one owner in each group', async () => {
+    const model = connection.model<GroupMemberDocument>(
+      GROUP_MEMBER_MODEL_NAME,
+    );
+    const first = new mongoose.Types.ObjectId();
+    const second = new mongoose.Types.ObjectId();
+
+    await expect(
+      model.insertMany([
+        { groupId: first, userId: USER_ID, role: 'owner', joinedAt: now },
+        {
+          groupId: first,
+          userId: new mongoose.Types.ObjectId(),
+          role: 'member',
+          joinedAt: now,
+        },
+        {
+          groupId: first,
+          userId: new mongoose.Types.ObjectId(),
+          role: 'member',
+          joinedAt: now,
+        },
+        { groupId: second, userId: USER_ID, role: 'owner', joinedAt: now },
+      ]),
+    ).resolves.toHaveLength(4);
+  });
+});
+
+describe('duplicateKeyIs', () => {
+  it('recognizes the membership index by its whole key pattern', async () => {
+    const model = connection.model<GroupMemberDocument>(
+      GROUP_MEMBER_MODEL_NAME,
+    );
+    const groupId = new mongoose.Types.ObjectId();
+    const userId = new mongoose.Types.ObjectId();
+    await model.create({ groupId, userId, role: 'member', joinedAt: now });
+
+    const error = await writeError(
+      model.create({ groupId, userId, role: 'member', joinedAt: now }),
+    );
+
+    expect(duplicateKeyIs(error, MEMBERSHIP_KEY)).toBe(true);
+    expect(duplicateKeyIs(error, OWNER_KEY)).toBe(false);
+    expect(duplicateKeyIs(error, INVITE_KEY)).toBe(false);
+  });
+
+  it('recognizes the invite code index', async () => {
+    const model = connection.model<GroupDocument>(GROUP_MODEL_NAME);
+    const code = 'Q2R3S4T5';
+    await model.create({
+      name: 'Uno',
+      inviteCode: code,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const error = await writeError(
+      model.create({
+        name: 'Dos',
+        inviteCode: code,
+        createdAt: now,
+        updatedAt: now,
+      }),
+    );
+
+    expect(duplicateKeyIs(error, INVITE_KEY)).toBe(true);
+    expect(duplicateKeyIs(error, OWNER_KEY)).toBe(false);
+  });
+
+  it.each([
+    ['no error', undefined],
+    ['a plain error', new Error('E11000 duplicate key error')],
+    ['another server error', new mongo.MongoServerError({ code: 112 })],
+    [
+      'a duplicate key without keyPattern',
+      new mongo.MongoServerError({ code: 11_000 }),
+    ],
+    [
+      'a pattern with more fields',
+      new mongo.MongoServerError({
+        code: 11_000,
+        keyPattern: { groupId: 1, role: 1 },
+      }),
+    ],
+  ])('is false for %s', (_case, error) => {
+    expect(duplicateKeyIs(error, OWNER_KEY)).toBe(false);
   });
 });
 
