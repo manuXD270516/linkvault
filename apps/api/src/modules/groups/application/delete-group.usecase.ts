@@ -11,6 +11,9 @@ import {
  * `DELETE /api/groups/:id` (spec groups/group-management): solo el owner borra, y el borrado es real (hoy no cuelga nada
  * del grupo). El grupo y todas sus membresías se van en una transacción, así que después el grupo no aparece en la lista
  * de nadie y su código de invitación deja de servir.
+ *
+ * Ser propietario se vuelve a comprobar al escribir (ADR-025 §3): si quien pide transfirió el grupo entre la lectura y
+ * la escritura, el repositorio no borra nada (`not_owner`) y recibe `forbidden`.
  */
 @Injectable()
 export class DeleteGroup {
@@ -28,9 +31,14 @@ export class DeleteGroup {
       throw new OwnerRoleRequired();
     }
     const deleted = await this.groups.deleteGroup(group.id, userId);
-    if (deleted !== 'deleted') {
-      // Otro borrado ganó la carrera; para quien pregunta, el grupo ya no existe.
-      throw new GroupNotFound();
+    switch (deleted) {
+      case 'deleted':
+        return;
+      case 'not_owner':
+        throw new OwnerRoleRequired();
+      case 'not_found':
+        // Otro borrado ganó la carrera; para quien pregunta, el grupo ya no existe.
+        throw new GroupNotFound();
     }
   }
 }

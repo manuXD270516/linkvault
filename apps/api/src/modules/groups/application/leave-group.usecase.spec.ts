@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GroupNotFound, OwnerCannotLeave } from '../domain/errors';
 import { CreateGroup } from './create-group.usecase';
 import { LeaveGroup } from './leave-group.usecase';
@@ -93,6 +93,27 @@ describe('LeaveGroup', () => {
   it('is not idempotent: leaving twice answers GroupNotFound', async () => {
     const group = await groupOfAnaWithBeto();
     await leaveGroup.execute(BETO, group.id);
+
+    await expect(leaveGroup.execute(BETO, group.id)).rejects.toBeInstanceOf(
+      GroupNotFound,
+    );
+  });
+});
+
+describe('LeaveGroup when the role changes between the read and the write', () => {
+  it('Salir justo después de recibir la propiedad', async () => {
+    const group = await groupOfAnaWithBeto();
+    // Beto se leyó como `member`, pero al escribir ya es `owner`: el repositorio no borra y dice `now_owner`.
+    vi.spyOn(repository, 'removeMember').mockResolvedValueOnce('now_owner');
+
+    await expect(leaveGroup.execute(BETO, group.id)).rejects.toBeInstanceOf(
+      OwnerCannotLeave,
+    );
+  });
+
+  it('answers GroupNotFound when the membership was already gone', async () => {
+    const group = await groupOfAnaWithBeto();
+    vi.spyOn(repository, 'removeMember').mockResolvedValueOnce('not_member');
 
     await expect(leaveGroup.execute(BETO, group.id)).rejects.toBeInstanceOf(
       GroupNotFound,

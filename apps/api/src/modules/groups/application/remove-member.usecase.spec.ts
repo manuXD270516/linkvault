@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   GroupNotFound,
   MemberNotFound,
@@ -108,5 +108,26 @@ describe('RemoveMember', () => {
     await expect(
       removeMember.execute(ANA, '66e9a00000000000000000ff', BETO),
     ).rejects.toBeInstanceOf(GroupNotFound);
+  });
+});
+
+describe('RemoveMember when the role changes between the read and the write', () => {
+  it('Expulsar a quien acaba de recibir la propiedad', async () => {
+    const group = await groupOfAnaWithTwo();
+    // Ana leyó a Beto como `member`, pero entre medias le cedió la propiedad: quien expulsaba ya no es owner.
+    vi.spyOn(repository, 'removeMember').mockResolvedValueOnce('now_owner');
+
+    await expect(
+      removeMember.execute(ANA, group.id, BETO),
+    ).rejects.toBeInstanceOf(OwnerRoleRequired);
+  });
+
+  it('answers MemberNotFound when the membership was already gone', async () => {
+    const group = await groupOfAnaWithTwo();
+    vi.spyOn(repository, 'removeMember').mockResolvedValueOnce('not_member');
+
+    await expect(
+      removeMember.execute(ANA, group.id, BETO),
+    ).rejects.toBeInstanceOf(MemberNotFound);
   });
 });

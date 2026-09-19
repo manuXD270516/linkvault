@@ -15,11 +15,11 @@
 
 ## 3. Casos de uso y endpoint de la transferencia
 
-- [ ] 3.1 [backend] Caso de uso `TransferOwnership` con el orden de errores de D1 (`group_not_found` → `forbidden` → `already_owner` → `member_not_found`); verificar con unitarios sobre el repositorio en memoria: "El owner nombra a otro", "Un miembro no puede transferir", "Transferir a quien no es miembro" y "Transferirse a sí mismo".
-- [ ] 3.2 [backend] `LeaveGroup` traduce `now_owner` a `owner_cannot_leave`, `RemoveMember` a `forbidden`, y `DeleteGroup` traduce `not_owner` a `forbidden`; verificar con unitarios con el doble del repositorio devolviendo cada resultado: "Salir justo después de recibir la propiedad" (`now_owner` → `409`), "Expulsar a quien acaba de recibir la propiedad" (`now_owner` → `403`) y el `403` del borrado.
-- [ ] 3.3 [backend] `POST /api/groups/:id/owner` en `GroupsController` con su pipe zod, respondiendo `GroupDetail` sin `inviteCode`; verificar por HTTP los cuatro escenarios de 3.1.
-- [ ] 3.3b [backend] Escenarios de lectura posterior a una transferencia por HTTP: "El nuevo owner ve el código y el anterior no", "El nuevo owner puede expulsar al anterior" y "El antiguo owner sale tras transferir"; verificar con la suite de integración de `api`.
-- [ ] 3.4 [backend] Pruebas de concurrencia por HTTP con peticiones realmente simultáneas, N = 10 repeticiones fijas, afirmando solo invariantes (un único owner o grupo borrado; nunca dos `2xx` contradictorios): "Dos transferencias a la vez", "Transferir mientras el elegido se va" y "Borrar mientras se transfiere"; verificar con la suite de integración de `api`.
+- [x] 3.1 [backend] Caso de uso `TransferOwnership` con el orden de errores de D1 (`group_not_found` → `forbidden` → `already_owner` → `member_not_found`); verificar con unitarios sobre el repositorio en memoria: "El owner nombra a otro", "Un miembro no puede transferir", "Transferir a quien no es miembro" y "Transferirse a sí mismo".
+- [x] 3.2 [backend] `LeaveGroup` traduce `now_owner` a `owner_cannot_leave`, `RemoveMember` a `forbidden`, y `DeleteGroup` traduce `not_owner` a `forbidden`; verificar con unitarios con el doble del repositorio devolviendo cada resultado: "Salir justo después de recibir la propiedad" (`now_owner` → `409`), "Expulsar a quien acaba de recibir la propiedad" (`now_owner` → `403`) y el `403` del borrado.
+- [x] 3.3 [backend] `POST /api/groups/:id/owner` en `GroupsController` con su pipe zod, respondiendo `GroupDetail` sin `inviteCode`; verificar por HTTP los cuatro escenarios de 3.1.
+- [x] 3.3b [backend] Escenarios de lectura posterior a una transferencia por HTTP: "El nuevo owner ve el código y el anterior no", "El nuevo owner puede expulsar al anterior" y "El antiguo owner sale tras transferir"; verificar con la suite de integración de `api`.
+- [x] 3.4 [backend] Pruebas de concurrencia por HTTP con peticiones realmente simultáneas, N = 10 repeticiones fijas, afirmando solo invariantes (un único owner o grupo borrado; nunca dos `2xx` contradictorios): "Dos transferencias a la vez", "Transferir mientras el elegido se va" y "Borrar mientras se transfiere"; verificar con la suite de integración de `api`.
 
 ## 4. Límite de intentos del join
 

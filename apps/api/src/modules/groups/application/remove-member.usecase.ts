@@ -16,6 +16,9 @@ import {
  * puede eliminar, así que el owner sobre sí mismo recibe `owner_cannot_leave` y el grupo conserva su única membresía
  * `owner`. Un usuario que no es miembro, o un `:userId` mal formado, dan `member_not_found`. El expulsado puede volver a
  * entrar con el código vigente: por eso, tras expulsar, la UI ofrece regenerarlo.
+ *
+ * Si el expulsado recibe la propiedad entre la lectura y la escritura, el repositorio no lo borra (`now_owner`) y quien
+ * expulsaba recibe `forbidden`: acaba de ceder la propiedad a ese mismo miembro, así que ya no es owner (ADR-025 §3).
  */
 @Injectable()
 export class RemoveMember {
@@ -44,9 +47,14 @@ export class RemoveMember {
       throw new OwnerCannotLeave();
     }
     const removed = await this.groups.removeMember(group.id, memberId);
-    if (removed !== 'removed') {
-      // Otra petición la soltó antes; para quien pregunta, ya no es miembro.
-      throw new MemberNotFound();
+    switch (removed) {
+      case 'removed':
+        return;
+      case 'now_owner':
+        throw new OwnerRoleRequired();
+      case 'not_member':
+        // Otra petición la soltó antes; para quien pregunta, ya no es miembro.
+        throw new MemberNotFound();
     }
   }
 }

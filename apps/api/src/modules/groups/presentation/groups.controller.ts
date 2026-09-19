@@ -2,6 +2,7 @@ import {
   createGroupRequestSchema,
   joinGroupRequestSchema,
   renameGroupRequestSchema,
+  transferOwnershipRequestSchema,
   type CreateGroupRequest,
   type GroupDetail,
   type GroupMember,
@@ -9,6 +10,7 @@ import {
   type InviteCodeResponse,
   type JoinGroupRequest,
   type RenameGroupRequest,
+  type TransferOwnershipRequest,
 } from '@linkvault/shared';
 import {
   Body,
@@ -34,6 +36,7 @@ import { ListMyGroups } from '../application/list-my-groups.usecase';
 import { RemoveMember } from '../application/remove-member.usecase';
 import { RenameGroup } from '../application/rename-group.usecase';
 import { RotateInviteCode } from '../application/rotate-invite-code.usecase';
+import { TransferOwnership } from '../application/transfer-ownership.usecase';
 
 /**
  * Grupos y membresías (specs groups/group-management y groups/membership). Todas las rutas exigen access token: el guard
@@ -55,6 +58,7 @@ export class GroupsController {
     private readonly listMembers: ListMembers,
     private readonly leaveGroup: LeaveGroup,
     private readonly removeMember: RemoveMember,
+    private readonly transferOwnership: TransferOwnership,
   ) {}
 
   @Post()
@@ -116,6 +120,21 @@ export class GroupsController {
     @Param('id') groupId: string,
   ): Promise<InviteCodeResponse> {
     return this.rotateInviteCode.execute(user.userId, groupId);
+  }
+
+  /**
+   * Nombra owner a otro miembro. Responde el detalle visto por quien pide, que ya es `member` (sin código). `userId` no
+   * se valida por formato en el pipe: uno mal formado responde `member_not_found`, como uno que no es miembro.
+   */
+  @Post(':id/owner')
+  @HttpCode(HttpStatus.OK)
+  transferOwner(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') groupId: string,
+    @Body(new ZodValidationPipe(transferOwnershipRequestSchema))
+    body: TransferOwnershipRequest,
+  ): Promise<GroupDetail> {
+    return this.transferOwnership.execute(user.userId, groupId, body.userId);
   }
 
   @Get(':id/members')

@@ -24,6 +24,7 @@ import { INVITE_CODE_GENERATOR } from '../application/ports/invite-code-generato
 import { RemoveMember } from '../application/remove-member.usecase';
 import { RenameGroup } from '../application/rename-group.usecase';
 import { RotateInviteCode } from '../application/rotate-invite-code.usecase';
+import { TransferOwnership } from '../application/transfer-ownership.usecase';
 import {
   GROUP_MEMBER_MODEL_NAME,
   GROUP_MEMBERS_COLLECTION,
@@ -70,6 +71,7 @@ import { GroupsController } from './groups.controller';
     ListMembers,
     LeaveGroup,
     RemoveMember,
+    TransferOwnership,
     GroupsFacade,
     GroupDeletionHooks,
   ],
