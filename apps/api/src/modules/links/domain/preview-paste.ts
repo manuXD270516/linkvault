@@ -153,24 +153,31 @@ function writeByHand(
 }
 
 /**
- * Motivos que un pegado desmiente (D6): solo `not_a_job`. Un pegado que llega a escribirse es uno que la IA reconoció
- * como oferta, y dice lo contrario de "lo compartido no era una oferta".
+ * Motivos que un pegado corrige en vez de conservar (D6), con el motivo que los sustituye. Solo `not_a_job`: un pegado
+ * que llega a escribirse es uno que la IA reconoció como oferta, y desmiente "lo compartido no era una oferta". Lo que
+ * no desmiente es que la lectura ocurrió y de la página no salió ninguna oferta: eso es `no_data`.
  */
-const REASONS_REFUTED_BY_PASTE: readonly EnrichmentFailureReason[] = [
-  'not_a_job',
-];
+const REASONS_CORRECTED_BY_PASTE: Partial<
+  Record<EnrichmentFailureReason, EnrichmentFailureReason>
+> = {
+  not_a_job: 'no_data',
+};
 
 /**
- * El motivo de fallo que sobrevive a un pegado: el del último fallo, salvo el que el pegado desmiente. Pegar no
- * convierte en legible lo que la bolsa prohibió o bloqueó —borrarlo volvería a ofrecer un reintento inútil—, y un
- * fallo pasajero se conserva para que deshacer el pegado devuelva el link a `failed` con su motivo, reintentable, y no
- * a un `pending` que nadie va a resolver.
+ * El motivo de fallo que sobrevive a un pegado. **Pegar nunca borra el motivo**: un link que se leyó y falló sigue
+ * habiéndose leído, y si deshacer el pegado lo deja sin campos tiene que volver a `failed`, no a un `pending` sin
+ * ningún trabajo detrás. `not_a_job` se cambia por `no_data` —reintentable— conservando su `at`; los demás se conservan
+ * tal cual: pegar no convierte en legible lo que la bolsa prohibió o bloqueó —ofrecer reintentarlo sería inútil—, y un
+ * fallo pasajero sigue siendo reintentable. Sin fallo previo no hay nada que conservar.
  */
 export function failureKeptAfterPaste(
   lastError: LastEnrichmentError | undefined,
 ): LastEnrichmentError | undefined {
-  return lastError !== undefined &&
-    !REASONS_REFUTED_BY_PASTE.includes(lastError.reason)
+  if (lastError === undefined) {
+    return undefined;
+  }
+  const corrected = REASONS_CORRECTED_BY_PASTE[lastError.reason];
+  return corrected === undefined
     ? lastError
-    : undefined;
+    : { reason: corrected, at: lastError.at };
 }

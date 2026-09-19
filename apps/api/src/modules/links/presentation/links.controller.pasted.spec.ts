@@ -446,6 +446,44 @@ describe('pasting a description, read by the AI of the suite in replay', () => {
     expect(retried.json<JobLinkSummary>().previewStatus).toBe('pending');
   });
 
+  it('Pegar y deshacer sobre not_a_job', async () => {
+    // Otra persona del grupo: Beto ya gasta en esta suite los diez pegados de su ventana.
+    const eva = await fx.http.authenticated('Eva');
+    await fx.http.join(eva, fx.group);
+    const linkId = await sharedLink(fx, undefined, 'not_a_job');
+    const failedAt = READ_AT.toISOString();
+
+    const pasted = await paste(fx, eva, linkId, {
+      text: pastedGoldenInput('linkedin-app-sin-cabecera').text,
+    });
+
+    // El pegado desmiente que no fuera una oferta, no que la página no diera datos.
+    expect(pasted.statusCode).toBe(200);
+    expect(pasted.json<JobLinkSummary>().lastEnrichmentError).toEqual({
+      reason: 'no_data',
+      at: failedAt,
+    });
+    expect(
+      (await storedLink(fx, linkId))?.['lastEnrichmentError'],
+    ).toMatchObject({ reason: 'no_data', at: failedAt });
+
+    const undone = await undoPasted(linkId, pasted.json<JobLinkSummary>());
+    expect(undone.statusCode).toBe(200);
+    const summary = undone.json<JobLinkSummary>();
+    expect(summary.previewStatus).toBe('failed');
+    expect(summary.lastEnrichmentError?.reason).toBe('no_data');
+    expect(summary.preview?.title).toBeUndefined();
+
+    // Y se puede reintentar su lectura: la tarjeta no se queda en "Sin vista previa todavía".
+    const retried = await fx.http.request(
+      'POST',
+      `/api/links/${linkId}/enrich`,
+      { authorization: eva.authorization },
+    );
+    expect(retried.statusCode).toBe(202);
+    expect(retried.json<JobLinkSummary>().previewStatus).toBe('pending');
+  });
+
   it('Texto con datos de contacto', async () => {
     // El caso sembrado del golden es exactamente este texto sin su email ni su teléfono.
     const input = pastedGoldenInput('sembrado-contacto-reclutador');

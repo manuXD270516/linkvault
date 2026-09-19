@@ -343,9 +343,13 @@ describe('failureKeptAfterPaste', () => {
     },
   );
 
-  it('drops not_a_job, which a paste recognised as a job posting refutes', () => {
+  it('turns not_a_job into no_data and keeps when it happened: the read did occur and gave no job posting', () => {
     expect(
       failureKeptAfterPaste({ reason: 'not_a_job', at: READ_AT }),
-    ).toBeUndefined();
+    ).toEqual({ reason: 'no_data', at: READ_AT });
+  });
+
+  it('keeps nothing when the link had not failed', () => {
+    expect(failureKeptAfterPaste(undefined)).toBeUndefined();
   });
 });

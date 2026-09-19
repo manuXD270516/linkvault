@@ -350,6 +350,20 @@ describe('LinkCard: lo que se dice del estado', () => {
     expect(action('complete')).toBeNull();
   });
 
+  /**
+   * Pegar conserva el motivo del último fallo de lectura. Con título y empresa la oferta ya se lee sola: el fallo
+   * guardado, aunque sea reintentable, no debe ofrecer releerla ni decir que no se pudo leer.
+   */
+  it('offers no retry on a complete card that keeps an old retryable failure', async () => {
+    await render({
+      ...enriched,
+      lastEnrichmentError: { reason: 'timeout', at: '2026-09-18T10:00:00.000Z' },
+    });
+
+    expect(host().querySelector('[data-testid="link-status"]')).toBeNull();
+    expect(action('retry')).toBeNull();
+  });
+
   /** Un link de antes de este change no trae `previewRequestedAt`: vale la fecha en que se guardó. */
   it('falls back to when the link was saved', async () => {
     await render(bare);

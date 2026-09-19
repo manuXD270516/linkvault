@@ -1,4 +1,8 @@
-import type { JobPreview } from '@linkvault/shared';
+import type {
+  EnrichmentFailureReason,
+  JobLinkSummary,
+  JobPreview,
+} from '@linkvault/shared';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   AiQuotaExceeded,
@@ -380,13 +384,23 @@ describe('PasteDescription: what is written', () => {
     expect(summary.lastEnrichmentError?.reason).toBe('robots_disallowed');
   });
 
-  it('Pegar y deshacer sobre un fallo pasajero', async () => {
+  /**
+   * Link en `failed` por `reason`, compartido en el grupo, con lo necesario para deshacer lo pegado —el `PATCH` con
+   * `revert`— y pedir otra vez su lectura —`POST /enrich`—.
+   */
+  async function failedLinkToUndo(reason: EnrichmentFailureReason): Promise<{
+    linkId: string;
+    failedAt: string;
+    undoPasted: (pasted: JobLinkSummary) => Promise<JobLinkSummary>;
+    retry: () => Promise<JobLinkSummary>;
+    outbox: InMemoryOutbox;
+  }> {
     const failedAt = clock.now().toISOString();
     const link = links.seed({
       ...jobLinkDraft(LINKEDIN_JOB, { createdBy: ANA, now: clock.now() }),
       previewStatus: 'failed',
       previewVersion: 2,
-      lastEnrichmentError: { reason: 'timeout', at: failedAt },
+      lastEnrichmentError: { reason, at: failedAt },
     });
     await share(link.id);
     const membership = new InMemoryGroupMembership()
@@ -415,52 +429,84 @@ describe('PasteDescription: what is written', () => {
       directory,
       clock,
     );
+    return {
+      linkId: link.id,
+      failedAt,
+      undoPasted: async (pasted) => {
+        const pastedFields = Object.entries(pasted.previewSources ?? {})
+          .filter(([, entry]) => entry?.source === 'pasted')
+          .map(([field]) => field);
+        expect(pastedFields.length).toBeGreaterThan(0);
+        return await updatePreview.execute(BETO, link.id, {
+          revert: pastedFields,
+        });
+      },
+      retry: () => requestEnrichment.execute(BETO, link.id),
+      outbox,
+    };
+  }
 
-    const pasted = await pasteDescription.execute(BETO, link.id, {
+  it('Pegar y deshacer sobre un fallo pasajero', async () => {
+    const { linkId, failedAt, undoPasted, retry, outbox } =
+      await failedLinkToUndo('timeout');
+
+    const pasted = await pasteDescription.execute(BETO, linkId, {
       text: PASTED_TEXT,
     });
-    // Pegar conserva el motivo: lo único que un pegado desmiente es que no fuera una oferta.
+    // Pegar conserva el motivo: un fallo pasajero sigue siéndolo.
     expect(pasted.previewStatus).toBe('partial');
     expect(pasted.lastEnrichmentError).toEqual({
       reason: 'timeout',
       at: failedAt,
     });
 
-    const pastedFields = Object.entries(pasted.previewSources ?? {})
-      .filter(([, entry]) => entry?.source === 'pasted')
-      .map(([field]) => field);
-    const undone = await updatePreview.execute(BETO, link.id, {
-      revert: pastedFields,
-    });
+    const undone = await undoPasted(pasted);
 
     expect(undone.previewStatus).toBe('failed');
     expect(undone.lastEnrichmentError?.reason).toBe('timeout');
     expect(undone.preview?.title).toBeUndefined();
 
     // Y se puede reintentar su lectura: nada queda en `pending` sin trabajo detrás.
-    const retried = await requestEnrichment.execute(BETO, link.id);
+    const retried = await retry();
     expect(retried.previewStatus).toBe('pending');
     expect(retried.lastEnrichmentError).toBeUndefined();
     expect(outbox.size).toBe(1);
   });
 
-  it('forgets not_a_job, which a paste recognised as a job posting refutes', async () => {
-    const link = links.seed({
-      ...jobLinkDraft(LINKEDIN_JOB, { createdBy: ANA, now: clock.now() }),
-      previewStatus: 'failed',
-      previewVersion: 2,
-      lastEnrichmentError: {
-        reason: 'not_a_job',
-        at: clock.now().toISOString(),
-      },
-    });
-    await share(link.id);
+  it('Pegar y deshacer sobre not_a_job', async () => {
+    const { linkId, failedAt, undoPasted, retry, outbox } =
+      await failedLinkToUndo('not_a_job');
 
-    const summary = await pasteDescription.execute(BETO, link.id, {
+    const pasted = await pasteDescription.execute(BETO, linkId, {
       text: PASTED_TEXT,
     });
+    // El pegado desmiente que no fuera una oferta, no que la página no diera datos: el motivo pasa a `no_data`, con el
+    // momento de la lectura que falló.
+    expect(pasted.previewStatus).toBe('partial');
+    expect(pasted.lastEnrichmentError).toEqual({
+      reason: 'no_data',
+      at: failedAt,
+    });
+    expect((await links.findById(linkId))?.lastEnrichmentError).toEqual({
+      reason: 'no_data',
+      at: failedAt,
+    });
 
-    expect(summary.lastEnrichmentError).toBeUndefined();
+    const undone = await undoPasted(pasted);
+
+    // Sin campos, el link vuelve a `failed` —no a un `pending` sin ningún job detrás—.
+    expect(undone.previewStatus).toBe('failed');
+    expect(undone.lastEnrichmentError).toEqual({
+      reason: 'no_data',
+      at: failedAt,
+    });
+    expect(undone.preview?.title).toBeUndefined();
+
+    // Y `no_data` se puede reintentar.
+    const retried = await retry();
+    expect(retried.previewStatus).toBe('pending');
+    expect(retried.lastEnrichmentError).toBeUndefined();
+    expect(outbox.size).toBe(1);
   });
 
   it('Título precargado sin tocar no se vuelve manual', async () => {
