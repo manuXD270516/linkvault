@@ -332,3 +332,24 @@ Convergió con 0 P0 y 0 V0.
 | critic 5 + business 3 | Un texto nuevo para el `429` duplicaba lo que ya dice `RequestError` | Resuelto con lo existente: `@@error.tooManyAttempts` y `@@error.tooManyAttemptsLater`, sin claves nuevas (D3, spec `web/groups`, 5.3) | Mismo mensaje neutro que el login, ya traducido |
 | critic 6 | El objetivo prometía no castigar a quien comparte IP, y agotar la IP bloquea a todos | Aceptado: objetivo reescrito con el riesgo explícito (Goals) | No prometer lo que no se cumple |
 | business 5 | `trustProxy` figuraba como mejora | Aceptado: requisito de salida a producción de `deploy-prod` (Risks, ADR-025) | Sin él, el contador de IP es global |
+
+## Decisiones de implementación
+
+Decisiones que el diseño no fijaba, tomadas durante el apply de backend en la ventana autónoma con la opción más
+conservadora y coherente con D1, D2 y ADR-025.
+
+- **`transferOwnershipRequestSchema` no valida el formato de `userId`** (1.1): solo exige una cadena no vacía. Un id mal
+  formado tiene que responder `404 member_not_found` (spec), no el `400 validation_error` del pipe.
+- **La regla "el destino es otro miembro" es `isOtherMember(from, to)`** en `membership.ts` (1.2). Los repositorios
+  también la aplican: `transferOwnership(g, a, a)` devuelve `target_not_member` sin escribir. Sin esa guarda, en Mongo el
+  paso 1 degradaría al owner y el paso 2 lo volvería a promover, confirmando una transacción sin efecto.
+- **`deleteGroup` distingue `not_found` de `not_owner` releyendo el grupo** dentro de la transacción cuando la membresía
+  `owner` de quien pide no se pudo borrar (2.5). Así un segundo borrado del mismo owner sigue respondiendo `404`, como
+  antes, y no `403`. Una membresía `owner` huérfana (sin grupo), que no debería existir, se suelta y responde
+  `not_found`, igual que cualquier huérfana (D6).
+- **La espera a `GroupMember.init()` no retiene `onModuleInit`** (2.6): corre en segundo plano y se expone como
+  `GroupsModule.indexesReady` para las pruebas. Mongoose no construye índices hasta que la conexión se abre, y
+  bloquear el arranque rompía el requisito ya vigente de arrancar sin MongoDB ni Redis (`startup-without-dependencies`,
+  `health-live`). El `error` se registra igual en cuanto la construcción falla; si la app se apaga antes, no se
+  registra nada. El motivo es el nombre, el código y el `codeName` del error (`MongoServerError 11000 DuplicateKey`), sin
+  su mensaje, que lleva el `groupId` duplicado.

@@ -28,7 +28,7 @@ export class LeaveGroup {
       throw new OwnerCannotLeave();
     }
     const removed = await this.groups.removeMember(groupId, userId);
-    if (!removed) {
+    if (removed !== 'removed') {
       // Otra petición la soltó antes; para quien pregunta, ya no es miembro.
       throw new GroupNotFound();
     }

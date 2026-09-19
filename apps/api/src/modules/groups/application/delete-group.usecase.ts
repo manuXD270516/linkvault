@@ -27,8 +27,8 @@ export class DeleteGroup {
     if (!canDeleteGroup(membership.role)) {
       throw new OwnerRoleRequired();
     }
-    const deleted = await this.groups.deleteGroup(group.id);
-    if (!deleted) {
+    const deleted = await this.groups.deleteGroup(group.id, userId);
+    if (deleted !== 'deleted') {
       // Otro borrado ganó la carrera; para quien pregunta, el grupo ya no existe.
       throw new GroupNotFound();
     }

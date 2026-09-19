@@ -9,7 +9,10 @@ import { createMembership, type Membership } from '../../domain/membership';
 import type {
   AddMemberInput,
   CreateGroupInput,
+  DeleteGroupResult,
   GroupRepository,
+  RemoveMemberResult,
+  TransferOwnershipResult,
   UserGroup,
 } from '../ports/group-repository.port';
 import {
@@ -143,19 +146,44 @@ export class InMemoryGroupRepository implements GroupRepository {
     return Promise.resolve(structuredClone(membership));
   }
 
-  removeMember(groupId: string, userId: string): Promise<boolean> {
-    if (!isGroupId(groupId) || !isUserId(userId)) {
-      return Promise.resolve(false);
+  /**
+   * Mismas escrituras condicionadas por rol que el adaptador de Mongo: degradar exige que `from` sea `owner` y promover
+   * que `to` sea `member`. Se comprueba todo antes de escribir, el equivalente en memoria de la transacción que deshace
+   * el primer paso si el segundo no encuentra al elegido (ADR-025 §1).
+   */
+  transferOwnership(
+    groupId: string,
+    fromUserId: string,
+    toUserId: string,
+  ): Promise<TransferOwnershipResult> {
+    const from = this.indexOfMembership(groupId, fromUserId, 'owner');
+    if (from === -1) {
+      return Promise.resolve('not_owner');
     }
-    const index = this.memberships.findIndex(
-      (membership) =>
-        membership.groupId === groupId && membership.userId === userId,
-    );
-    if (index === -1) {
-      return Promise.resolve(false);
+    const to =
+      fromUserId === toUserId
+        ? -1
+        : this.indexOfMembership(groupId, toUserId, 'member');
+    if (to === -1) {
+      return Promise.resolve('target_not_member');
+    }
+    this.setRole(from, 'member');
+    this.setRole(to, 'owner');
+    return Promise.resolve('transferred');
+  }
+
+  /** Solo borra una membresía `member`; si es `owner`, no la toca y dice `now_owner` (ADR-025 §3). */
+  removeMember(groupId: string, userId: string): Promise<RemoveMemberResult> {
+    const index = this.indexOfMembership(groupId, userId);
+    const membership = this.memberships[index];
+    if (membership === undefined) {
+      return Promise.resolve('not_member');
+    }
+    if (membership.role === 'owner') {
+      return Promise.resolve('now_owner');
     }
     this.memberships.splice(index, 1);
-    return Promise.resolve(true);
+    return Promise.resolve('removed');
   }
 
   rename(groupId: string, name: string, now: Date): Promise<Group | null> {
@@ -168,17 +196,50 @@ export class InMemoryGroupRepository implements GroupRepository {
     );
   }
 
-  deleteGroup(groupId: string): Promise<boolean> {
-    if (!isGroupId(groupId) || !this.groups.delete(groupId)) {
-      return Promise.resolve(false);
+  /**
+   * Borra el grupo solo si `ownerId` es su owner al escribir (ADR-025 §3). Sin la membresía `owner` de quien pide,
+   * distingue el grupo que no existe (`not_found`) del que es de otro (`not_owner`), sin borrar nada.
+   */
+  deleteGroup(groupId: string, ownerId: string): Promise<DeleteGroupResult> {
+    if (!isGroupId(groupId) || !this.groups.has(groupId)) {
+      return Promise.resolve('not_found');
     }
+    if (this.indexOfMembership(groupId, ownerId, 'owner') === -1) {
+      return Promise.resolve('not_owner');
+    }
+    this.groups.delete(groupId);
     // Borrado en cascada: el equivalente en memoria de la transacción de borrado (D6).
     for (let index = this.memberships.length - 1; index >= 0; index -= 1) {
       if (this.memberships[index]?.groupId === groupId) {
         this.memberships.splice(index, 1);
       }
     }
-    return Promise.resolve(true);
+    return Promise.resolve('deleted');
+  }
+
+  /** Posición de la membresía, con el rol pedido si se indica; -1 si no está o algún id está mal formado. */
+  private indexOfMembership(
+    groupId: string,
+    userId: string,
+    role?: Membership['role'],
+  ): number {
+    if (!isGroupId(groupId) || !isUserId(userId)) {
+      return -1;
+    }
+    return this.memberships.findIndex(
+      (membership) =>
+        membership.groupId === groupId &&
+        membership.userId === userId &&
+        (role === undefined || membership.role === role),
+    );
+  }
+
+  /** Cambia el rol sin tocar `joinedAt`: las membresías son inmutables, así que se sustituye la entrada. */
+  private setRole(index: number, role: Membership['role']): void {
+    const membership = this.memberships[index];
+    if (membership !== undefined) {
+      this.memberships[index] = { ...membership, role };
+    }
   }
 
   private update(

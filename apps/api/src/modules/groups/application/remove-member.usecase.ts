@@ -44,7 +44,7 @@ export class RemoveMember {
       throw new OwnerCannotLeave();
     }
     const removed = await this.groups.removeMember(group.id, memberId);
-    if (!removed) {
+    if (removed !== 'removed') {
       // Otra petición la soltó antes; para quien pregunta, ya no es miembro.
       throw new MemberNotFound();
     }
