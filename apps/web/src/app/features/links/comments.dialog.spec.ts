@@ -1,4 +1,5 @@
 import { BreakpointObserver, type BreakpointState } from '@angular/cdk/layout';
+import { HttpEventType } from '@angular/common/http';
 import { HttpTestingController, type TestRequest } from '@angular/common/http/testing';
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
@@ -9,6 +10,7 @@ import type {
   CommentsSummary,
   CreateCommentResponse,
   GroupLinkComment,
+  GroupLinkCommentsMessage,
   JobLinkSummary,
   LinkPage,
 } from '@linkvault/shared';
@@ -21,6 +23,7 @@ import {
   verifyNoPendingRequests,
 } from '../../../testing/auth-testing';
 import { SessionStore } from '../../core/auth/session.store';
+import { EventsChannel } from '../../core/events/events.channel';
 import { LinksStore } from '../../core/links/links.store';
 import { type VisualViewportLike, VISUAL_VIEWPORT } from './comments.dialog';
 import { LinkList } from './link-list.component';
@@ -500,6 +503,280 @@ describe('CommentsDialog', () => {
 
       await vi.waitFor(() => expect(dialog()).toBeNull());
       expect(document.body.textContent).toContain('Esta oferta ya no está en el grupo');
+    });
+  });
+
+  describe('borrar', () => {
+    const beto = { ...testUser, id: 'u-Beto', displayName: 'Beto' };
+    const carla = { ...testUser, id: 'u-Carla', displayName: 'Carla' };
+    /** El 2 es de Beto; el 1, de Ana. */
+    const thread = [commentNumber(2, 'Beto'), commentNumber(1, 'Ana')];
+
+    async function openAs(user: typeof testUser, owner = false): Promise<void> {
+      await setUp([{ ...link, comments: summaryOf(2, thread) }], user);
+      fixture.componentInstance.canModerate.set(owner);
+      await fixture.whenStable();
+      await openThread({ items: thread, total: 2 });
+    }
+
+    function deleteButtonOf(text: string): HTMLButtonElement | null {
+      const row = Array.from(openedDialog().querySelectorAll('[data-testid="thread-comment"]')).find((item) =>
+        item.textContent?.includes(text),
+      );
+      if (!row) {
+        throw new Error(`Comment "${text}" not in the thread`);
+      }
+      return row.querySelector<HTMLButtonElement>('[data-testid="comment-delete"]');
+    }
+
+    function confirmation(): HTMLElement {
+      const confirm = document.body.querySelector<HTMLElement>('lv-confirm-dialog');
+      if (!confirm) {
+        throw new Error('No confirmation');
+      }
+      return confirm;
+    }
+
+    async function clickDelete(text: string): Promise<void> {
+      const button = deleteButtonOf(text);
+      if (!button) {
+        throw new Error(`"${text}" offers no delete`);
+      }
+      button.click();
+      await refresh();
+    }
+
+    async function answer(label: 'Borrar' | 'Cancelar'): Promise<void> {
+      const button = Array.from(confirmation().querySelectorAll('button')).find(
+        (element) => element.textContent?.trim() === label,
+      );
+      button?.click();
+      await refresh();
+    }
+
+    it('Borrar el propio', async () => {
+      await openAs(beto);
+
+      await clickDelete('Comentario 2');
+      expect(confirmation().textContent).toContain('¿Borrar tu comentario? No se puede deshacer.');
+      await answer('Borrar');
+
+      const request = await awaitRequest(`${THREAD}/c2`, 'DELETE');
+      expect(deleteButtonOf('Comentario 1')).toBeNull();
+      request.flush({ comments: { ...summaryOf(1, [commentNumber(1, 'Ana')]), revision: 3 } });
+      await refresh();
+
+      expect(threadTexts()).toEqual(['Comentario 1']);
+      expect(cardTexts()).toEqual(['Comentario 1']);
+      expect(cardAction()).toBe('Responder');
+    });
+
+    it('El propietario borra lo ajeno', async () => {
+      await openAs(testUser, true);
+
+      await clickDelete('Comentario 2');
+      expect(confirmation().textContent).toContain(
+        '¿Borrar el comentario de Beto? Desaparecerá para todo el grupo y no se puede deshacer.',
+      );
+      await answer('Borrar');
+      (await awaitRequest(`${THREAD}/c2`, 'DELETE')).flush({
+        comments: { ...summaryOf(1, [commentNumber(1, 'Ana')]), revision: 3 },
+      });
+      await refresh();
+
+      expect(threadTexts()).toEqual(['Comentario 1']);
+      expect(openedDialog().textContent).not.toContain('Beto');
+    });
+
+    it('Lo ajeno no se borra sin ser propietario', async () => {
+      await openAs(carla);
+
+      expect(deleteButtonOf('Comentario 2')).toBeNull();
+      expect(deleteButtonOf('Comentario 1')).toBeNull();
+    });
+
+    it('lets the owner delete anything, and a member only their own', async () => {
+      await openAs(testUser, true);
+      expect(deleteButtonOf('Comentario 2')).not.toBeNull();
+      expect(deleteButtonOf('Comentario 1')).not.toBeNull();
+    });
+
+    it('Ya estaba borrado', async () => {
+      await openAs(beto);
+
+      await clickDelete('Comentario 2');
+      await answer('Borrar');
+      (await awaitRequest(`${THREAD}/c2`, 'DELETE')).flush(
+        { code: 'comment_not_found', message: 'Not found' },
+        { status: 404, statusText: 'Not Found' },
+      );
+      await refresh();
+
+      expect(threadTexts()).toEqual(['Comentario 1']);
+      expect(openedDialog().querySelector('[role="alert"]')).toBeNull();
+      expect(dialog()).not.toBeNull();
+    });
+
+    it('Cancelar el borrado', async () => {
+      await openAs(beto);
+
+      await clickDelete('Comentario 2');
+      await answer('Cancelar');
+
+      // La confirmación responde al terminar de cerrarse.
+      await vi.waitFor(async () => {
+        await refresh();
+        expect(deleteButtonOf('Comentario 2')?.disabled).toBe(false);
+      });
+      http.expectNone({ method: 'DELETE', url: `${THREAD}/c2` });
+      expect(threadTexts()).toEqual(['Comentario 1', 'Comentario 2']);
+    });
+
+    it('keeps the delete buttons disabled while deleting', async () => {
+      await openAs(testUser, true);
+
+      await clickDelete('Comentario 2');
+      await answer('Borrar');
+      const request = await awaitRequest(`${THREAD}/c2`, 'DELETE');
+
+      expect(deleteButtonOf('Comentario 2')?.disabled).toBe(true);
+      expect(deleteButtonOf('Comentario 1')?.disabled).toBe(true);
+      request.flush({ comments: { ...summaryOf(1, [commentNumber(1, 'Ana')]), revision: 3 } });
+      await refresh();
+      expect(deleteButtonOf('Comentario 1')?.disabled).toBe(false);
+    });
+
+    it('shows any other failure without dropping the comment', async () => {
+      await openAs(beto);
+
+      await clickDelete('Comentario 2');
+      await answer('Borrar');
+      (await awaitRequest(`${THREAD}/c2`, 'DELETE')).flush(
+        { code: 'forbidden', message: 'Forbidden' },
+        { status: 403, statusText: 'Forbidden' },
+      );
+      await refresh();
+
+      expect(threadTexts()).toEqual(['Comentario 1', 'Comentario 2']);
+      expect(openedDialog().querySelector('[role="alert"]')?.textContent).toContain('Algo salió mal');
+    });
+  });
+
+  describe('en vivo', () => {
+    const two = [commentNumber(2), commentNumber(1)];
+    let events: TestRequest;
+    let received = '';
+
+    /** Abre el canal como lo hace el detalle del grupo y deja listo el hilo de un link con dos comentarios. */
+    async function openLive(): Promise<void> {
+      await setUp([{ ...link, comments: summaryOf(2, two) }]);
+      TestBed.inject(EventsChannel).connect();
+      events = http.expectOne('/api/events');
+      received = '';
+      await openThread({ items: two, total: 2 });
+    }
+
+    /** Llega un aviso por el canal: `partialText` es todo lo recibido hasta ahora, como en el navegador. */
+    async function notice(message: GroupLinkCommentsMessage): Promise<void> {
+      received += `event: group-link.comments\ndata: ${JSON.stringify(message)}\n\n`;
+      events.event({ type: HttpEventType.DownloadProgress, loaded: received.length, partialText: received });
+      await refresh();
+    }
+
+    function created(comment: GroupLinkComment, latest: GroupLinkComment[], count: number): GroupLinkCommentsMessage {
+      return {
+        groupId: 'g1',
+        linkId: 'l1',
+        change: 'created',
+        commentId: comment.id,
+        comments: summaryOf(count, latest),
+      };
+    }
+
+    it('Con el hilo abierto', async () => {
+      await openLive();
+      const fromBeto = { ...commentNumber(3), text: 'Lo vi en LinkedIn' };
+
+      await notice(created(fromBeto, [fromBeto, commentNumber(2)], 3));
+      // El mismo aviso repetido (reconexión) no lo duplica.
+      await notice(created(fromBeto, [fromBeto, commentNumber(2)], 3));
+
+      expect(threadTexts()).toEqual(['Comentario 1', 'Comentario 2', 'Lo vi en LinkedIn']);
+      expect(cardAction()).toBe('Ver los 3 comentarios');
+      expect(cardTexts().at(-1)).toBe('Lo vi en LinkedIn');
+    });
+
+    it('Mi propio comentario, una vez', async () => {
+      await openLive();
+      const own = { ...commentNumber(3, 'Ana'), text: 'Ya cerró' };
+
+      await write('Ya cerró');
+      postButton().click();
+      (await awaitRequest(THREAD, 'POST')).flush(
+        { comment: own, comments: summaryOf(3, [own, commentNumber(2)]) } satisfies CreateCommentResponse,
+        { status: 201, statusText: 'Created' },
+      );
+      await refresh();
+      await notice(created(own, [own, commentNumber(2)], 3));
+
+      expect(threadTexts()).toEqual(['Comentario 1', 'Comentario 2', 'Ya cerró']);
+    });
+
+    it('shows your own comment once when its notice beats the response', async () => {
+      await openLive();
+      const own = { ...commentNumber(3, 'Ana'), text: 'Ya cerró' };
+
+      await write('Ya cerró');
+      postButton().click();
+      const request = await awaitRequest(THREAD, 'POST');
+      await notice(created(own, [own, commentNumber(2)], 3));
+      request.flush({ comment: own, comments: summaryOf(3, [own, commentNumber(2)]) });
+      await refresh();
+
+      expect(threadTexts()).toEqual(['Comentario 1', 'Comentario 2', 'Ya cerró']);
+    });
+
+    it('Varios a la vez', async () => {
+      await openLive();
+      // Llegaron el 3, el 4 y el 5 casi a la vez: el aviso del 3 ya trae como últimos al 5 y al 4.
+      await notice(created(commentNumber(3), [commentNumber(5), commentNumber(4)], 5));
+
+      expect(threadTexts()).toEqual(['Comentario 1', 'Comentario 2']);
+      const newer = inDialog<HTMLButtonElement>('comments-newer');
+      expect(newer?.textContent?.trim()).toBe('Ver comentarios nuevos');
+
+      newer?.click();
+      (await awaitRequest(`${THREAD}?limit=20`)).flush({ items: newestFirst(1, 5), total: 5 } satisfies CommentPage);
+      await refresh();
+
+      expect(threadTexts()).toEqual([1, 2, 3, 4, 5].map((n) => `Comentario ${n}`));
+      expect(inDialog('comments-newer')).toBeNull();
+    });
+
+    it('Borrado que llega mientras miras', async () => {
+      await openLive();
+
+      await notice({
+        groupId: 'g1',
+        linkId: 'l1',
+        change: 'deleted',
+        commentId: 'c2',
+        comments: { ...summaryOf(1, [commentNumber(1)]), revision: 3 },
+      });
+
+      expect(threadTexts()).toEqual(['Comentario 1']);
+      expect(cardTexts()).toEqual(['Comentario 1']);
+    });
+
+    it('ignores the notices of another link or another group', async () => {
+      await openLive();
+      const other = commentNumber(3);
+
+      await notice({ ...created(other, [other], 1), linkId: 'l9' });
+      await notice({ ...created(other, [other], 1), groupId: 'g9' });
+
+      expect(threadTexts()).toEqual(['Comentario 1', 'Comentario 2']);
+      expect(inDialog('comments-newer')).toBeNull();
     });
   });
 });

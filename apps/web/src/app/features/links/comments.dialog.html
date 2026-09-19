@@ -52,9 +52,37 @@
           </span>
           <!-- Texto plano: la interpolación escapa, así que nada de lo escrito se interpreta como HTML. -->
           <p class="m-0 whitespace-pre-line break-words" data-testid="comment-text">{{ comment.text }}</p>
+          @if (canDelete(comment)) {
+            <div>
+              <button
+                mat-button
+                type="button"
+                [disabled]="deletingId() !== null"
+                (click)="remove(comment)"
+                data-testid="comment-delete"
+                i18n="@@comments.delete"
+              >
+                Borrar
+              </button>
+            </div>
+          }
         </li>
       }
     </ul>
+
+    @if (newAvailable()) {
+      <div class="flex justify-center">
+        <button
+          mat-stroked-button
+          type="button"
+          (click)="loadNewer()"
+          data-testid="comments-newer"
+          i18n="@@comments.dialog.newer"
+        >
+          Ver comentarios nuevos
+        </button>
+      </div>
+    }
 
     @if (failure(); as currentFailure) {
       <lv-request-error [failure]="currentFailure" />

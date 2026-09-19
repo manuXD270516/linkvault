@@ -1,5 +1,6 @@
 import { BreakpointObserver, Breakpoints } from '@angular/cdk/layout';
 import { TextFieldModule } from '@angular/cdk/text-field';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -14,19 +15,28 @@ import {
   viewChild,
 } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
-import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
+import {
+  MAT_DIALOG_DATA,
+  MatDialog,
+  MatDialogModule,
+  MatDialogRef,
+} from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import {
   COMMENT_TEXT_MAX_LENGTH,
   type CommentPage,
   type GroupLinkComment,
+  type GroupLinkCommentsMessage,
   commentTextLength,
   normalizeCommentText,
 } from '@linkvault/shared';
 import { type RequestFailure, hasApiErrorCode, toRequestFailure } from '../../core/api/api-error';
 import { LinksApi } from '../../core/links/links.api';
+import { SessionStore } from '../../core/auth/session.store';
+import { EventsChannel } from '../../core/events/events.channel';
 import { LinksStore } from '../../core/links/links.store';
+import { confirmWith } from '../../shared/ui/confirm.dialog';
 import { RequestError } from '../../shared/ui/request-error';
 import { CommentAgo } from './comment-ago.component';
 
@@ -94,6 +104,8 @@ export type CommentsDialogResult = 'gone' | undefined;
 export class CommentsDialog {
   private readonly api = inject(LinksApi);
   private readonly store = inject(LinksStore);
+  private readonly session = inject(SessionStore);
+  private readonly dialog = inject(MatDialog);
   private readonly dialogRef =
     inject<MatDialogRef<CommentsDialog, CommentsDialogResult>>(MatDialogRef);
   private readonly injector = inject(Injector);
@@ -139,6 +151,8 @@ export class CommentsDialog {
   protected readonly maxLength = COMMENT_TEXT_MAX_LENGTH;
   protected readonly tooLong = computed(() => this.draftLength() > COMMENT_TEXT_MAX_LENGTH);
   protected readonly posting = signal(false);
+  /** El comentario que se está borrando (o cuya confirmación está abierta); `null` si ninguno. */
+  protected readonly deletingId = signal<string | null>(null);
   protected readonly canPost = computed(
     () => this.draftLength() > 0 && !this.tooLong() && !this.posting(),
   );
@@ -154,10 +168,47 @@ export class CommentsDialog {
       : { kind: 'failed' };
   });
 
+  /** `true` si llegaron comentarios que el aviso no traía (varios a la vez): se ofrece "Ver comentarios nuevos". */
+  protected readonly newAvailable = signal(false);
+
   constructor() {
     this.followBreakpoint();
     this.followVisualViewport();
+    inject(EventsChannel)
+      .groupLinkComments.pipe(takeUntilDestroyed())
+      .subscribe((message) => this.applyNotice(message));
     void this.loadFirstPage();
+  }
+
+  /** Vuelve a pedir la primera página cuando llegaron más comentarios de los que traía el aviso. */
+  protected async loadNewer(): Promise<void> {
+    this.newAvailable.set(false);
+    await this.loadFirstPage();
+  }
+
+  /**
+   * Aviso en vivo de este link en este grupo (spec "Comentarios en vivo"). Un alta que viene en el resumen se añade,
+   * sin repetir la que ya estuviera (la propia llega también por la respuesta); una que no viene ofrece "Ver comentarios
+   * nuevos"; un borrado se quita. La tarjeta la actualiza `LinksStore` con el mismo aviso.
+   */
+  private applyNotice(message: GroupLinkCommentsMessage): void {
+    if (message.groupId !== this.data.groupId || message.linkId !== this.data.linkId) {
+      return;
+    }
+    if (message.change === 'deleted') {
+      this.dropComment(message.commentId);
+      return;
+    }
+    if (this.comments().some((comment) => comment.id === message.commentId)) {
+      return;
+    }
+    const fresh = message.comments.latest.find((comment) => comment.id === message.commentId);
+    if (fresh === undefined) {
+      this.newAvailable.set(true);
+      return;
+    }
+    this.comments.set(mergeChronologically(this.comments(), [fresh]));
+    this.scrollToEnd();
   }
 
   protected onDraft(event: Event): void {
@@ -200,6 +251,50 @@ export class CommentsDialog {
     } finally {
       this.posting.set(false);
     }
+  }
+
+  /** "Borrar" se ofrece en lo propio y, al propietario del grupo, en todo (D4 de group-comments). */
+  protected canDelete(comment: GroupLinkComment): boolean {
+    return this.data.canModerate || this.isMine(comment);
+  }
+
+  /**
+   * Borra un comentario tras confirmarlo, con un texto distinto si es ajeno: desaparece para todo el grupo. Mientras la
+   * confirmación está abierta o la petición en curso, los botones de borrar no responden. Un `404 comment_not_found` ya
+   * es lo pedido (se borró en otra pestaña) y se trata como éxito; la tarjeta toma el resumen de la respuesta.
+   */
+  protected async remove(comment: GroupLinkComment): Promise<void> {
+    if (this.deletingId() !== null) {
+      return;
+    }
+    this.deletingId.set(comment.id);
+    try {
+      const confirmed = await confirmWith(this.dialog, {
+        title: $localize`:@@comments.delete.title:Borrar el comentario`,
+        message: this.isMine(comment)
+          ? $localize`:@@comments.delete.own:¿Borrar tu comentario? No se puede deshacer.`
+          : $localize`:@@comments.delete.other:¿Borrar el comentario de ${comment.author.displayName}:NAME:? Desaparecerá para todo el grupo y no se puede deshacer.`,
+        confirmLabel: $localize`:@@comments.delete.confirm:Borrar`,
+      });
+      if (!confirmed) {
+        return;
+      }
+      this.failure.set(null);
+      await this.store.deleteComment(this.data.groupId, this.data.linkId, comment.id);
+      this.dropComment(comment.id);
+    } catch (error: unknown) {
+      this.fail(error);
+    } finally {
+      this.deletingId.set(null);
+    }
+  }
+
+  private isMine(comment: GroupLinkComment): boolean {
+    return comment.author.userId === this.session.user()?.id;
+  }
+
+  private dropComment(commentId: string): void {
+    this.comments.set(this.comments().filter((comment) => comment.id !== commentId));
   }
 
   /** Pantalla completa por debajo de `sm`, y el tamaño normal por encima; sigue al giro del móvil. */
@@ -299,13 +394,22 @@ function chronological(page: CommentPage): GroupLinkComment[] {
   return [...page.items].reverse();
 }
 
-/** Une dos tramos cronológicos del hilo sin repetir ningún comentario (por `id`). */
+/**
+ * Une dos tramos del hilo sin repetir ningún comentario (por `id`) y en orden cronológico, con el mismo desempate que
+ * la API (`createdAt` y después `id`): da igual que un aviso en vivo llegue antes o después de la respuesta propia.
+ */
 function mergeChronologically(
-  earlier: readonly GroupLinkComment[],
-  later: readonly GroupLinkComment[],
+  first: readonly GroupLinkComment[],
+  second: readonly GroupLinkComment[],
 ): GroupLinkComment[] {
-  const seen = new Set(later.map((comment) => comment.id));
-  return [...earlier.filter((comment) => !seen.has(comment.id)), ...later];
+  const byId = new Map<string, GroupLinkComment>();
+  for (const comment of [...first, ...second]) {
+    byId.set(comment.id, comment);
+  }
+  return [...byId.values()].sort(
+    (a, b) =>
+      a.createdAt.localeCompare(b.createdAt) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+  );
 }
 
 function isGone(error: unknown): boolean {
