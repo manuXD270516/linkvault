@@ -242,6 +242,7 @@ describe('api error contract', () => {
       'invalid_url',
       'text_too_long',
       'link_not_found',
+      'comment_not_found',
       'preview_field_unknown',
       'enrichment_not_retryable',
       'not_a_job_posting',

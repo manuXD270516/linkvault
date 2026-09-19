@@ -1,6 +1,12 @@
 import { z } from 'zod';
 import { groupNameSchema } from './group.schema';
 import {
+  commentsSummarySchema,
+  shareNoteSchema,
+  shareNoteTextSchema,
+} from './group-link-comment.schema';
+import { linkSharerSchema } from './link-sharer.schema';
+import {
   lastEnrichmentErrorSchema,
   resolvedPreviewSourcesSchema,
   storedPreviewSchema,
@@ -70,11 +76,32 @@ const identifierInputSchema = z
   .min(1)
   .max(LINK_IDENTIFIER_INPUT_MAX_LENGTH);
 
-/** Cuerpo de `POST /api/links`. Sin `groupId` el link queda solo en la lista privada de quien lo guarda. */
-export const saveLinkRequestSchema = z.object({
-  url: z.string().trim().min(1).max(LINK_URL_INPUT_MAX_LENGTH),
-  groupId: identifierInputSchema.optional(),
-});
+/**
+ * Cuerpo de `POST /api/links`. Sin `groupId` el link queda solo en la lista privada de quien lo guarda.
+ *
+ * `note` es la nota de quien comparte (D3 de group-comments). Se normaliza **primero**: una nota que queda vacía equivale
+ * a no enviarla, también sin `groupId`, y sale del cuerpo ya validado. Con texto, exige `groupId` y nombra `note` si
+ * falta: en la lista privada no hay nadie a quien dejarle una nota.
+ */
+export const saveLinkRequestSchema = z
+  .object({
+    url: z.string().trim().min(1).max(LINK_URL_INPUT_MAX_LENGTH),
+    groupId: identifierInputSchema.optional(),
+    // Vacía tras normalizar → `undefined`, como si no se hubiera enviado. Sigue siendo un `z.object` (con `shape`) porque
+    // el SPA valida sus campos uno a uno.
+    note: shareNoteTextSchema
+      .transform((note) => (note.length === 0 ? undefined : note))
+      .optional(),
+  })
+  .superRefine((request, context) => {
+    if (request.note !== undefined && request.groupId === undefined) {
+      context.addIssue({
+        code: 'custom',
+        path: ['note'],
+        message: 'A note needs a group',
+      });
+    }
+  });
 export type SaveLinkRequest = z.infer<typeof saveLinkRequestSchema>;
 
 /**
@@ -87,12 +114,8 @@ export const importLinksRequestSchema = z.object({
 });
 export type ImportLinksRequest = z.infer<typeof importLinksRequestSchema>;
 
-/** Quién compartió un link en un grupo. Estricto: el email nunca sale de `users`. */
-export const linkSharerSchema = z.strictObject({
-  userId: z.string().min(1),
-  displayName: z.string().min(1),
-});
-export type LinkSharer = z.infer<typeof linkSharerSchema>;
+// Quién compartió un link en un grupo: vive en `link-sharer.schema.ts` para que lo usen también los comentarios.
+export { linkSharerSchema, type LinkSharer } from './link-sharer.schema';
 
 /**
  * Link tal y como lo ven las listas y las respuestas de guardado. `normalizedUrl` es solo identidad: lo que el SPA abre
@@ -123,6 +146,10 @@ export const jobLinkSummarySchema = z.strictObject({
   previewRequestedAt: z.iso.datetime().optional(),
   sharedBy: linkSharerSchema.optional(),
   sharedAt: z.iso.datetime(),
+  // Solo en el listado de un grupo (D7 de group-comments): la nota de quien lo compartió, si la tiene, y el resumen de
+  // sus comentarios en ese grupo. La lista privada no los lleva nunca.
+  note: shareNoteSchema.optional(),
+  comments: commentsSummarySchema.optional(),
 });
 export type JobLinkSummary = z.infer<typeof jobLinkSummarySchema>;
 

@@ -105,6 +105,9 @@ export const apiErrorCodeSchema = z.enum([
   'text_too_long',
   // 404: el link no está en ese grupo ni en esa lista privada.
   'link_not_found',
+  // 404: el comentario no existe, ya se borró, es de otro link o de otro grupo, o su `:commentId` no tiene formato de
+  // identificador (mismo cuerpo).
+  'comment_not_found',
   // 400: la edición del preview nombra un campo que no existe en el schema del preview.
   'preview_field_unknown',
   // 409: se pide releer una oferta que la bolsa prohíbe leer, que nos bloquea o que no era una oferta.
@@ -116,9 +119,9 @@ export const apiErrorCodeSchema = z.enum([
   // 429, con `Retry-After`: quien pega agotó su cuota diaria de IA. Distinto de `too_many_attempts`, cuya ventana es de
   // minutos: decir "inténtalo en un rato" sería mentira cuando hay que esperar al día siguiente.
   'ai_quota_exceeded',
-  // 404: la postulaci�n no existe, es de otra persona o su `:id` no tiene formato de identificador (mismo cuerpo).
+  // 404: la postulación no existe, es de otra persona o su `:id` no tiene formato de identificador (mismo cuerpo).
   'application_not_found',
-  // 409: el estado o la etapa cambiaron desde otra pesta�a desde que se pint� (`version` distinta).
+  // 409: el estado o la etapa cambiaron desde otra pestaña desde que se pintó (`version` distinta).
   'application_conflict',
   // 500
   'internal_error',

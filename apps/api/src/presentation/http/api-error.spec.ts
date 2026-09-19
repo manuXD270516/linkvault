@@ -28,6 +28,7 @@ describe('API_ERROR_STATUS and API_ERROR_MESSAGES', () => {
     ['already_owner', 409],
     ['application_not_found', 404],
     ['application_conflict', 409],
+    ['comment_not_found', 404],
   ] as const)('answers %s with %i', (code, status) => {
     expect(API_ERROR_STATUS[code]).toBe(status);
     expect(API_ERROR_MESSAGES[code]).not.toBe('');

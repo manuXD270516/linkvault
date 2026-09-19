@@ -623,3 +623,15 @@ Convergió con 0 P0 y 0 V0. Solo retoques.
 | business 4 | "Responder" sin ningún comentario no tenía sentido | Aceptado: "Comentar" con 0, "Responder" con 1 o 2, "Ver los N comentarios" con más; recuperado "Tarjeta sin comentarios" | No se responde a nadie |
 | business 5 | Quitar una nota ajena no decía que desaparece para todos | Aceptado: "¿Quitar la nota de {nombre}? Desaparecerá para todo el grupo y no se puede deshacer." | Igual que el borrado de un comentario ajeno |
 | business 6 y 7 | — | Sin cambios | — |
+
+## Decisiones de implementación
+
+Decisiones tomadas al implementar que el diseño no fijaba. Se eligió lo más conservador y coherente con D1–D12.
+
+| # | Tarea | Decisión | Motivo |
+|---|-------|----------|--------|
+| I1 | 1.2 | `normalizeCommentText` quita también el tabulador (es C0) y DEL (U+007F, categoría `Cc` como C0 y C1). | D5 dice "C0 y C1 salvo `\n`"; DEL tampoco se ve. |
+| I2 | 1.3, 1.5 | Cotas de cordura antes de normalizar: 5000 caracteres para un comentario y 2800 para una nota (diez veces el límite). | Mismo patrón que la URL y el texto importado: no recorrer cadenas arbitrarias. |
+| I3 | 1.4 | `linkSharerSchema` pasa a `schemas/link-sharer.schema.ts` y `link.schema.ts` lo reexporta. | Los contratos de comentarios lo usan y `link.schema.ts` usa el resumen de comentarios: sin moverlo habría un import circular. |
+| I4 | 1.5 | `saveLinkRequestSchema` sigue siendo un `z.object` (el SPA usa `.shape.url`): una nota vacía tras normalizar sale como `note: undefined`, y la regla "con texto exige `groupId`" es un `superRefine` que nombra `note`. | Equivale a "no enviada" sin romper al SPA. |
+| I5 | 1.7 | Al añadir `comment_not_found` se corrigen dos comentarios de `auth.schema.ts` que `applications-tracking` dejó en Latin-1 (el archivo pasa a ser UTF-8 entero). | Un archivo con dos codificaciones no se puede editar sin romperlo. |
