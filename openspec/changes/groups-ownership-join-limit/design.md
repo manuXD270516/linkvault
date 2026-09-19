@@ -1,5 +1,12 @@
 ## Context
 
+> **Ventana autónoma autorizada (2026-09-19, ~3 h de ausencia del autor).** Autorizó ejecutar sin él el ciclo completo
+> de este change (debate → apply → QA → smoke → PR → merge → archivo) y seguir con `applications-tracking` hasta donde
+> llegue el tiempo. Los PRs de la ventana se fusionan con squash **solo con el CI en verde**, esperando a que termine y
+> fusionando a mano (nunca `gh pr merge --auto`, que en este repo fusiona al instante). Ante una decisión no
+> documentada se elige la opción recomendada y se deja constancia aquí o en el ADR. Si cambia el alcance o es
+> irreversible, ese change se detiene y se deja informe. Smoke solo local, con `AI_CHAIN=mock` en modo `synth`.
+
 `groups` dejó la propiedad del grupo **solo** en la membresía (`group_members.role`, sin `ownerId` en `groups`), el
 owner sin forma de irse salvo borrando, `GroupsFacade` como única entrada de otros módulos y `GroupDeletionHooks` para la
 cascada del borrado (ADR-021 §6), que `MongoGroupRepository.deleteGroup` ejecuta dentro de su transacción. El borrado,
