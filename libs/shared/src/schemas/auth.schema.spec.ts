@@ -250,8 +250,17 @@ describe('api error contract', () => {
       'ai_quota_exceeded',
       'application_not_found',
       'application_conflict',
+      'cv_not_found',
+      'unsupported_file_type',
+      'file_too_large',
+      'too_many_cvs',
       'internal_error',
     ]);
+  });
+
+  it('keeps unsupported_media_type apart from unsupported_file_type', () => {
+    expect(apiErrorCodeSchema.options).toContain('unsupported_media_type');
+    expect(apiErrorCodeSchema.options).toContain('unsupported_file_type');
   });
 
   it('accepts an error body with field names', () => {

@@ -34,6 +34,10 @@ export const API_ERROR_STATUS: Readonly<Record<ApiErrorCode, number>> = {
   ai_quota_exceeded: 429,
   application_not_found: 404,
   application_conflict: 409,
+  cv_not_found: 404,
+  unsupported_file_type: 415,
+  file_too_large: 413,
+  too_many_cvs: 409,
 };
 
 /**
@@ -70,6 +74,10 @@ export const API_ERROR_MESSAGES: Readonly<Record<ApiErrorCode, string>> = {
   ai_quota_exceeded: "You reached today's reading limit, come back tomorrow",
   application_not_found: 'Application not found',
   application_conflict: 'The application changed in another tab',
+  cv_not_found: 'CV not found',
+  unsupported_file_type: 'Only PDF or DOCX files are accepted',
+  file_too_large: 'That file is too large',
+  too_many_cvs: 'Too many stored CVs',
 };
 
 /** Cuerpo `{ code, message, fields? }`. `fields` solo nombra campos y se omite si está vacío. */
