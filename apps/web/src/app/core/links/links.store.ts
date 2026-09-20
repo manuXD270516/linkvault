@@ -9,6 +9,7 @@ import type {
   LinkPage,
   PastedDescriptionRequest,
   PreviewFieldName,
+  PublicShare,
   SaveLinkResponse,
   UpdatePreviewRequest,
 } from '@linkvault/shared';
@@ -390,6 +391,34 @@ export const LinksStore = signalStore(
         }
       },
 
+      /**
+       * Enciende el enlace público de un link del grupo y deja la tarjeta con el enlace que respondió la API, sin
+       * recargar la lista. El error viaja a la lista, que traduce el `403` y recarga ante un `404`.
+       */
+      async publish(groupId: string, linkId: string): Promise<PublicShare> {
+        const publicShare = await api.publishGroupLink(groupId, linkId);
+        if (groupIdOf(store.scope()) === groupId) {
+          updateItem(linkId, (item) => ({ ...item, publicShare }));
+        }
+        return publicShare;
+      },
+
+      /**
+       * Apaga el enlace público y lo **borra explícitamente** de la tarjeta, con la misma operación con la que se quita
+       * la nota (critic 14). "Conservar si no viene" es lo que hace `replace`, y no sirve aquí: sin el borrado, la
+       * tarjeta seguiría diciendo "Enlace público" hasta recargar.
+       */
+      async unpublish(groupId: string, linkId: string): Promise<void> {
+        await api.unpublishGroupLink(groupId, linkId);
+        if (groupIdOf(store.scope()) === groupId) {
+          updateItem(linkId, (item) => {
+            const withoutShare = { ...item };
+            delete withoutShare.publicShare;
+            return withoutShare;
+          });
+        }
+      },
+
       /** Quita la nota de un link del grupo; la tarjeta deja de mostrarla sin recargar la lista. */
       async removeNote(groupId: string, linkId: string): Promise<void> {
         await api.removeNote(groupId, linkId);
@@ -463,13 +492,17 @@ function readingOf(page: LinkPage): ReadingProgress | null {
 }
 
 /**
- * La tarjeta nueva con la nota y los comentarios de la anterior cuando no los trae (critic 1 de group-comments): el
- * aviso `link.enriched`, la corrección del preview y el pegado responden con el link sin su contexto de grupo, y
- * sustituir la tarjeta tal cual borraría de la pantalla lo que el grupo escribió. Si los trae, manda el resumen más
- * nuevo.
+ * La tarjeta nueva con la nota, los comentarios y el enlace público de la anterior cuando no los trae (critic 1 de
+ * group-comments y ADR-026 F3): el aviso `link.enriched`, la corrección del preview y el pegado responden con el link
+ * sin su contexto de grupo, y sustituir la tarjeta tal cual borraría de la pantalla lo que el grupo escribió. Si los
+ * trae, manda el resumen más nuevo.
+ *
+ * Conservar el enlace público NO es lo mismo que quitarlo: despublicar lo borra explícitamente (`unpublish`), porque
+ * aquí un link sin `publicShare` solo significa "esta respuesta no lo traía".
  */
 function keepGroupContext(current: JobLinkSummary, incoming: JobLinkSummary): JobLinkSummary {
   const note = incoming.note ?? current.note;
+  const publicShare = incoming.publicShare ?? current.publicShare;
   const comments =
     incoming.comments === undefined || !isNewerSummary(current.comments, incoming.comments)
       ? current.comments
@@ -477,6 +510,7 @@ function keepGroupContext(current: JobLinkSummary, incoming: JobLinkSummary): Jo
   return {
     ...incoming,
     ...(note === undefined ? {} : { note }),
+    ...(publicShare === undefined ? {} : { publicShare }),
     ...(comments === undefined ? {} : { comments }),
   };
 }

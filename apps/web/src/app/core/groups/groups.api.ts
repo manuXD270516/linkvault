@@ -5,10 +5,12 @@ import type {
   GroupDetail,
   GroupMember,
   GroupSummary,
+  GroupVisibility,
   InviteCodeResponse,
   JoinGroupRequest,
   RenameGroupRequest,
   TransferOwnershipRequest,
+  UpdateGroupSettingsRequest,
 } from '@linkvault/shared';
 import { firstValueFrom } from 'rxjs';
 
@@ -49,6 +51,15 @@ export class GroupsApi {
   renameGroup(groupId: string, name: string): Promise<GroupDetail> {
     const body: RenameGroupRequest = { name };
     return firstValueFrom(this.http.patch<GroupDetail>(groupUrl(groupId), body));
+  }
+
+  /**
+   * Cambia la visibilidad por defecto de los links que **entren** en el grupo (D3 de public-preview-share): solo el
+   * `owner`, y ningún link ya compartido cambia. Responde el detalle con el ajuste nuevo.
+   */
+  updateSettings(groupId: string, defaultVisibility: GroupVisibility): Promise<GroupDetail> {
+    const body: UpdateGroupSettingsRequest = { defaultVisibility };
+    return firstValueFrom(this.http.patch<GroupDetail>(`${groupUrl(groupId)}/settings`, body));
   }
 
   async deleteGroup(groupId: string): Promise<void> {

@@ -8,6 +8,7 @@ import type {
   ImportLinksResponse,
   JobLinkSummary,
   LinkPage,
+  PublicShare,
   SaveLinkResponse,
 } from '@linkvault/shared';
 import {
@@ -281,6 +282,52 @@ describe('LinksApi', () => {
       expectRequest('DELETE', '/api/groups/g%201/links/l%2F1/comments/c%3F1').flush({ comments: summary });
 
       await expect(result).resolves.toEqual({ comments: summary });
+    });
+
+    it('publishes the public link of a group link', async () => {
+      const share: PublicShare = {
+        slug: 'k3m9qrtv2xyz',
+        url: 'http://localhost:3000/p/k3m9qrtv2xyz',
+        publishedAt: '2026-09-19T10:00:00.000Z',
+      };
+      const result = api.publishGroupLink('g1', 'l1');
+
+      expectRequest('PUT', '/api/groups/g1/links/l1/public').flush(share);
+
+      await expect(result).resolves.toEqual(share);
+    });
+
+    it('unpublishes the public link of a group link', async () => {
+      const result = api.unpublishGroupLink('g1', 'l1');
+
+      expectRequest('DELETE', '/api/groups/g1/links/l1/public').flush(null, {
+        status: 204,
+        statusText: 'No Content',
+      });
+
+      await expect(result).resolves.toBeUndefined();
+    });
+
+    it('escapes the identifiers of the public link path', async () => {
+      const result = api.unpublishGroupLink('g 1', 'l/1');
+
+      expectRequest('DELETE', '/api/groups/g%201/links/l%2F1/public').flush(null, {
+        status: 204,
+        statusText: 'No Content',
+      });
+
+      await expect(result).resolves.toBeUndefined();
+    });
+
+    it('propagates the 403 of someone who cannot flip the switch', async () => {
+      const result = api.publishGroupLink('g1', 'l1');
+
+      expectRequest('PUT', '/api/groups/g1/links/l1/public').flush(
+        { code: 'forbidden', message: 'Forbidden' },
+        { status: 403, statusText: 'Forbidden' },
+      );
+
+      await expect(result).rejects.toMatchObject({ status: 403 });
     });
 
     it('propagates comment_not_found to the caller', async () => {

@@ -74,9 +74,9 @@
 
 ## 7. Frontend
 
-- [ ] 7.1 [frontend] `core/public/public-preview.api.ts`: `preview(slug)` sobre `/api/public/previews/:slug` marcando `SKIP_BEARER`, solo con tipos de `@linkvault/shared`; verificar con `HttpTestingController` (sin `Authorization`, `200`, `404` y `429`).
-- [ ] 7.2 [frontend] `core/links/links.api.ts`: `publishGroupLink` y `unpublishGroupLink`; `core/groups/groups.api.ts`: `updateSettings`; verificar con `HttpTestingController`.
-- [ ] 7.3 [frontend] `LinksStore`: `publicShare` en los items del grupo, aplicado tras publicar, **borrado explícitamente** tras despublicar y conservado en `replace` cuando el link nuevo no lo trae; verificar con TestBed: "La lectura de la oferta no borra el enlace", "Publicar actualiza la tarjeta" y "Despublicar apaga la tarjeta".
+- [x] 7.1 [frontend] `core/public/public-preview.api.ts`: `preview(slug)` sobre `/api/public/previews/:slug` marcando `SKIP_BEARER`, solo con tipos de `@linkvault/shared`; verificar con `HttpTestingController` (sin `Authorization`, `200`, `404` y `429`).
+- [x] 7.2 [frontend] `core/links/links.api.ts`: `publishGroupLink` y `unpublishGroupLink`; `core/groups/groups.api.ts`: `updateSettings`; verificar con `HttpTestingController`.
+- [x] 7.3 [frontend] `LinksStore`: `publicShare` en los items del grupo, aplicado tras publicar, **borrado explícitamente** tras despublicar y conservado en `replace` cuando el link nuevo no lo trae; verificar con TestBed: "La lectura de la oferta no borra el enlace", "Publicar actualiza la tarjeta" y "Despublicar apaga la tarjeta".
 - [ ] 7.4 [frontend] Ruta `/oferta/:slug` sin guard, perezosa, en `app.routes.ts`, y `features/public/public-preview.page.ts` con los datos de la oferta y "Ver la oferta original" (`rel="noopener noreferrer"`, omitido si no hay URL); verificar con "Oferta pública con datos", "Oferta pública sin preview" y "La vista pública no pide la sesión".
 - [ ] 7.5 [frontend] `session-restore.ts`: el `provideAppInitializer` NO restaura sesión cuando el `pathname` de arranque es una ruta pública, y `authGuard`/`guestGuard` siguen llamando a `restore()`; verificar con "La oferta pública no espera a la sesión", "La sesión se resuelve en el guard, no en el botón" y con los escenarios existentes de `web/auth` en verde.
 - [ ] 7.6 [frontend] Estado `404` de la vista pública ("Este enlace ya no está disponible" + "Pídeselo de nuevo a quien te lo envió", sin CTA de guardar) y `noindex` con `Disallow: /oferta/` en `apps/web/public/robots.txt`; verificar con "Enlace que ya no está" y "La vista pública no se indexa".

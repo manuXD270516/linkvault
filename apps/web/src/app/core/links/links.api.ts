@@ -11,6 +11,7 @@ import type {
   JobLinkSummary,
   LinkPage,
   PastedDescriptionRequest,
+  PublicShare,
   SaveLinkRequest,
   SaveLinkResponse,
   UpdatePreviewRequest,
@@ -135,6 +136,21 @@ export class LinksApi {
     );
   }
 
+  /**
+   * Enciende el enlace público de un link del grupo y responde con él ya compuesto (D2 de public-preview-share). Es
+   * idempotente: un link ya publicado responde el mismo enlace, sin crear otro.
+   */
+  publishGroupLink(groupId: string, linkId: string): Promise<PublicShare> {
+    return firstValueFrom(
+      this.http.put<PublicShare>(publicShareUrl(groupId, linkId), null),
+    );
+  }
+
+  /** Apaga el enlace público (`204`): el `slug` se quema y volver a publicar creará uno nuevo. */
+  async unpublishGroupLink(groupId: string, linkId: string): Promise<void> {
+    await firstValueFrom(this.http.delete<null>(publicShareUrl(groupId, linkId)));
+  }
+
   /** Quita la nota de quien compartió el link (`204`); no hay forma de editarla. */
   async removeNote(groupId: string, linkId: string): Promise<void> {
     await firstValueFrom(
@@ -155,4 +171,8 @@ function groupLinksUrl(groupId: string): string {
 
 function commentsUrl(groupId: string, linkId: string): string {
   return `${groupLinksUrl(groupId)}/${encodeURIComponent(linkId)}/comments`;
+}
+
+function publicShareUrl(groupId: string, linkId: string): string {
+  return `${groupLinksUrl(groupId)}/${encodeURIComponent(linkId)}/public`;
 }
