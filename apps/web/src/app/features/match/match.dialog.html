@@ -1,0 +1,473 @@
+<h2 mat-dialog-title i18n="@@match.dialog.title">Tu encaje con esta oferta</h2>
+
+<mat-dialog-content class="flex flex-col gap-4">
+  <p class="m-0 font-medium" data-testid="match-job-title">{{ jobTitle }}</p>
+
+  @if (cvFileName(); as fileName) {
+    <p class="m-0 text-sm" data-testid="match-cv-name">
+      <ng-container i18n="@@match.dialog.cvFile">CV: {{ fileName }}</ng-container>
+    </p>
+  } @else if (!loading()) {
+    <p class="m-0 text-sm" data-testid="match-cv-name" i18n="@@match.dialog.noCvFile">
+      Ningún CV marcado
+    </p>
+  }
+
+  <!-- Por dónde sale el CV: solo con permiso conocido; nunca las dos líneas a la vez. -->
+  @if (consent() === 'current') {
+    <p class="m-0 text-sm" data-testid="match-routing" i18n="@@match.dialog.routingExternal">
+      Se analizará con IA externa (OpenRouter).
+    </p>
+  } @else if (consent() === 'outdated') {
+    <p class="m-0 text-sm" data-testid="match-routing" i18n="@@match.dialog.routingInternal">
+      Se analizará dentro de LinkVault, sin salir hacia ningún proveedor externo. Si aquí no hay IA disponible, el
+      análisis será básico y sin sugerencias.
+    </p>
+  }
+
+  @switch (phase()) {
+    @case ('consent_checking') {
+      <p class="m-0" role="status" data-testid="match-consent-checking" i18n="@@match.dialog.consentChecking">
+        Comprobando el permiso…
+      </p>
+    }
+
+    @case ('consent_unknown') {
+      <p class="m-0" role="alert" data-testid="match-consent-unknown" i18n="@@match.dialog.consentUnknown">
+        No pudimos comprobar si diste permiso para analizar tu CV con IA externa.
+      </p>
+      <div class="flex flex-wrap gap-2">
+        <button
+          mat-flat-button
+          color="primary"
+          type="button"
+          (click)="retryConsent()"
+          data-testid="match-retry-consent"
+          i18n="@@match.dialog.retryConsent"
+        >
+          Comprobar de nuevo
+        </button>
+        <button
+          mat-button
+          type="button"
+          (click)="changeCv()"
+          data-testid="match-change-cv"
+          i18n="@@match.dialog.changeCv"
+        >
+          Cambiar de CV
+        </button>
+      </div>
+    }
+
+    @case ('loading') {
+      <p class="m-0" role="status" i18n="@@match.dialog.loading">Cargando…</p>
+    }
+
+    @case ('idle') {
+      <div class="flex flex-wrap gap-2">
+        <button
+          mat-flat-button
+          color="primary"
+          type="button"
+          (click)="analyze()"
+          [disabled]="!canAnalyze()"
+          [attr.aria-busy]="requesting() || null"
+          data-testid="match-analyze"
+          i18n="@@match.dialog.analyze"
+        >
+          Analizar
+        </button>
+        <button
+          mat-button
+          type="button"
+          (click)="changeCv()"
+          data-testid="match-change-cv"
+          i18n="@@match.dialog.changeCv"
+        >
+          Cambiar de CV
+        </button>
+        @if (consent() === 'outdated') {
+          <button
+            mat-button
+            type="button"
+            (click)="giveConsent()"
+            data-testid="match-give-consent"
+            i18n="@@match.dialog.giveConsent"
+          >
+            Dar permiso
+          </button>
+        }
+      </div>
+    }
+
+    @case ('running') {
+      @if (showStepList()) {
+        <ol class="m-0 flex list-none flex-col gap-1 p-0" data-testid="match-steps">
+          @for (progress of progressSteps; track progress) {
+            @if (isStepVisible(progress)) {
+              <li
+                class="flex items-center gap-2 text-sm"
+                [attr.data-step]="progress"
+                [attr.data-done]="isStepDone(progress) || null"
+                [attr.data-current]="isStepCurrent(progress) || null"
+              >
+                @if (isStepDone(progress)) {
+                  <span aria-hidden="true">✓</span>
+                } @else if (isStepCurrent(progress)) {
+                  <span aria-hidden="true">…</span>
+                }
+                <span>{{ stepLabel(progress) }}</span>
+              </li>
+            }
+          }
+        </ol>
+      } @else {
+        <p class="m-0" role="status" data-testid="match-waiting" i18n="@@match.dialog.waiting">
+          Estamos analizando tu encaje…
+        </p>
+      }
+    }
+
+    @case ('stalled') {
+      <p class="m-0" role="status" data-testid="match-stalled" i18n="@@match.dialog.stalled">
+        Sigue en proceso. Vuelve en un momento.
+      </p>
+      <button
+        mat-flat-button
+        color="primary"
+        type="button"
+        (click)="refresh()"
+        data-testid="match-refresh"
+        i18n="@@match.dialog.refresh"
+      >
+        Actualizar
+      </button>
+    }
+
+    @case ('job_not_ready') {
+      <p class="m-0" role="alert" data-testid="match-job-not-ready" i18n="@@match.dialog.jobNotReady">
+        Todavía no hemos leído esta oferta, así que no hay con qué comparar tu CV.
+      </p>
+      <button
+        mat-flat-button
+        color="primary"
+        type="button"
+        (click)="pasteDescription()"
+        data-testid="match-paste-description"
+        i18n="@@match.dialog.pasteDescription"
+      >
+        Pegar la descripción
+      </button>
+    }
+
+    @case ('no_cv') {
+      <p class="m-0" role="status" data-testid="match-no-cv" i18n="@@match.dialog.noCv">
+        Necesitas un CV guardado para analizar tu encaje.
+      </p>
+      <button
+        mat-flat-button
+        color="primary"
+        type="button"
+        (click)="uploadCv()"
+        data-testid="match-upload-cv"
+        i18n="@@match.dialog.uploadCv"
+      >
+        Subir mi CV
+      </button>
+    }
+
+    @case ('cv_not_ready') {
+      <p class="m-0" role="status" data-testid="match-cv-not-ready" i18n="@@match.dialog.cvNotReady">
+        Estamos leyendo tu CV. Inténtalo en un momento.
+      </p>
+      <button
+        mat-flat-button
+        color="primary"
+        type="button"
+        (click)="analyze()"
+        data-testid="match-retry"
+        i18n="@@match.dialog.retry"
+      >
+        Reintentar
+      </button>
+    }
+
+    @case ('cv_not_readable') {
+      <p class="m-0" role="status" data-testid="match-cv-not-readable" i18n="@@match.dialog.cvNotReadable">
+        Tu CV no se pudo leer, así que no podemos compararlo.
+      </p>
+      <button
+        mat-flat-button
+        color="primary"
+        type="button"
+        (click)="changeCv()"
+        data-testid="match-go-my-cv"
+        i18n="@@match.dialog.goMyCv"
+      >
+        Ir a Mi CV
+      </button>
+    }
+
+    @case ('rate_limit') {
+      @if (matchProblem(); as problem) {
+        @if (problem.kind === 'rate_limit') {
+          <p class="m-0" role="alert" data-testid="match-rate-limit">
+            <ng-container i18n="@@match.dialog.rateLimit"
+              >Pediste muchos análisis seguidos. Podrás pedir otro a partir de
+              {{ problem.phrase }}.</ng-container
+            >
+          </p>
+        }
+      }
+    }
+
+    @case ('server_error') {
+      <p class="m-0" role="alert" data-testid="match-server-error" i18n="@@match.dialog.serverError">
+        No pudimos analizar ahora.
+      </p>
+      <button
+        mat-flat-button
+        color="primary"
+        type="button"
+        (click)="analyze()"
+        data-testid="match-retry"
+        i18n="@@match.dialog.retry"
+      >
+        Reintentar
+      </button>
+    }
+
+    @case ('report') {
+      @if (report(); as report) {
+        @if (stale()) {
+          <p class="m-0" role="status" data-testid="match-stale" i18n="@@match.dialog.stale">
+            Esta oferta cambió desde tu análisis
+          </p>
+          <button
+            mat-button
+            type="button"
+            (click)="analyze()"
+            data-testid="match-reanalyze"
+            i18n="@@match.dialog.reanalyze"
+          >
+            Volver a analizar
+          </button>
+        }
+
+        @if (cvChanged()) {
+          <p class="m-0" role="status" data-testid="match-cv-changed">
+            @if (analyzedCvFileName(); as otherName) {
+              <ng-container i18n="@@match.dialog.cvChangedNamed"
+                >Lo analizaste con otro CV ({{ otherName }})</ng-container
+              >
+            } @else {
+              <ng-container i18n="@@match.dialog.cvChanged">Lo analizaste con otro CV</ng-container>
+            }
+          </p>
+          <button
+            mat-button
+            type="button"
+            (click)="analyze()"
+            data-testid="match-reanalyze"
+            i18n="@@match.dialog.reanalyze"
+          >
+            Volver a analizar
+          </button>
+        }
+
+        @if (isDegraded(report)) {
+          <h3 class="m-0 text-base font-medium" data-testid="match-degraded-title" i18n="@@match.dialog.degradedTitle">
+            Análisis básico
+          </h3>
+          <p class="m-0 text-sm" data-testid="match-degraded-body" i18n="@@match.dialog.degradedBody">
+            Comparamos las habilidades de la oferta con las de tu CV, sin sugerencias.
+          </p>
+
+          @if (degradedReason() === 'consent_required' || consentRequired()) {
+            <p class="m-0" role="status" data-testid="match-consent-needed" i18n="@@match.dialog.consentNeeded">
+              Para analizar tu CV con IA necesitamos tu permiso.
+            </p>
+            <p
+              class="m-0 text-sm"
+              data-testid="match-consent-summary"
+              i18n="@@match.dialog.consentSummary"
+            >
+              Se envía el texto de tu CV con tu email, tus teléfonos, tu dirección, tu documento de identidad y las URL
+              sustituidos por marcadores, y también tu nombre salvo que lo desactives en Perfil; el resto del CV se
+              envía tal cual. El texto completo y el interruptor están en Perfil.
+            </p>
+            <button
+              mat-button
+              type="button"
+              (click)="giveConsent()"
+              data-testid="match-give-consent"
+              i18n="@@match.dialog.giveConsent"
+            >
+              Dar permiso
+            </button>
+          } @else if (degradedReason() === 'quota_exceeded') {
+            <p class="m-0" role="status" data-testid="match-ai-quota">
+              @if (quotaRetryPhrase(); as phrase) {
+                <ng-container i18n="@@match.dialog.aiQuota"
+                  >Alcanzaste tu límite de análisis con IA por hoy. Volverás a tener análisis completos a partir de
+                  {{ phrase }}.</ng-container
+                >
+              }
+            </p>
+          } @else {
+            <p class="m-0" role="status" data-testid="match-ai-unavailable" i18n="@@match.dialog.aiUnavailable">
+              El análisis con IA no está disponible ahora.
+            </p>
+            @if (showRetryForDegraded()) {
+              <button
+                mat-button
+                type="button"
+                (click)="analyze()"
+                data-testid="match-retry"
+                i18n="@@match.dialog.retry"
+              >
+                Reintentar
+              </button>
+            }
+          }
+        }
+
+        <lv-match-badge [score]="report.score" [degraded]="report.degraded" />
+
+        <section data-testid="match-matched-skills">
+          <h3 class="m-0 mb-1 text-base font-medium" i18n="@@match.dialog.matchedTitle">Habilidades que coinciden</h3>
+          @if (report.matchedSkills.length === 0) {
+            <p class="m-0 text-sm" i18n="@@match.dialog.matchedEmpty">
+              Ninguna de las habilidades que pide esta oferta está en tu CV
+            </p>
+          } @else {
+            <ul class="m-0 list-disc pl-5">
+              @for (skill of report.matchedSkills; track skill) {
+                <li>{{ skill }}</li>
+              }
+            </ul>
+          }
+        </section>
+
+        <section data-testid="match-missing-skills">
+          <h3 class="m-0 mb-1 text-base font-medium" i18n="@@match.dialog.missingTitle">Habilidades que faltan</h3>
+          @if (report.missingSkills.length === 0) {
+            <p class="m-0 text-sm" i18n="@@match.dialog.missingEmpty">
+              Tienes todas las habilidades que pide esta oferta
+            </p>
+          } @else {
+            @if (mustMissing().length > 0) {
+              <h4 class="m-0 mt-2 text-sm font-medium" i18n="@@match.dialog.mustLabel">Imprescindible</h4>
+              <ul class="m-0 list-disc pl-5" data-testid="match-missing-must">
+                @for (skill of mustMissing(); track skill.name) {
+                  <li>{{ skill.name }}</li>
+                }
+              </ul>
+            }
+            @if (niceMissing().length > 0) {
+              <h4 class="m-0 mt-2 text-sm font-medium" i18n="@@match.dialog.niceLabel">Suma puntos</h4>
+              <ul class="m-0 list-disc pl-5" data-testid="match-missing-nice">
+                @for (skill of niceMissing(); track skill.name) {
+                  <li>{{ skill.name }}</li>
+                }
+              </ul>
+            }
+          }
+        </section>
+
+        @if (!report.degraded && sortedSuggestions().length > 0) {
+          <section data-testid="match-suggestions">
+            <p class="m-0 text-sm" role="note" data-testid="match-ai-warning" i18n="@@match.dialog.aiWarning">
+              Estas propuestas las redactó una IA a partir de tu CV y de la oferta. Revísalas: solo tú sabes qué es
+              cierto.
+            </p>
+            <p class="m-0 text-sm" data-testid="match-apply-yourself" i18n="@@match.dialog.applyYourself">
+              Por ahora los cambios los aplicas tú en tu CV.
+            </p>
+
+            <ul class="m-0 mt-2 flex list-none flex-col gap-4 p-0">
+              @for (suggestion of visibleSuggestions(); track suggestionKey(suggestion, $index); let i = $index) {
+                <li class="flex flex-col gap-1 border-t border-(--mat-sys-outline-variant) pt-3" data-testid="match-suggestion">
+                  <p class="m-0 text-sm font-medium" data-testid="match-suggestion-section">{{ suggestion.section }}</p>
+                  <p class="m-0 whitespace-pre-wrap" data-testid="match-suggestion-after">{{ suggestion.after }}</p>
+                  <p class="m-0 text-sm" data-testid="match-suggestion-reason">{{ suggestion.reason }}</p>
+
+                  <p class="m-0 text-sm font-medium" i18n="@@match.dialog.evidenceJob">Lo pide la oferta</p>
+                  <p class="m-0 text-sm" data-testid="match-suggestion-job">{{ suggestion.evidence.jobRequirement }}</p>
+
+                  <p class="m-0 text-sm font-medium" i18n="@@match.dialog.evidenceCv">En tu CV dice</p>
+                  @if (suggestion.evidence.cvFragment; as fragment) {
+                    <p class="m-0 text-sm" data-testid="match-suggestion-cv">{{ fragment }}</p>
+                  } @else {
+                    <p class="m-0 text-sm" data-testid="match-suggestion-cv-missing" i18n="@@match.dialog.evidenceCvMissing">
+                      Esto no aparece en tu CV
+                    </p>
+                  }
+
+                  <div class="flex items-center gap-2">
+                    <button
+                      mat-stroked-button
+                      type="button"
+                      (click)="copySuggestion(suggestion, i)"
+                      data-testid="match-suggestion-copy"
+                      i18n="@@match.dialog.copy"
+                    >
+                      Copiar
+                    </button>
+                    @if (isCopied(suggestion, i)) {
+                      <span class="text-sm" role="status" i18n="@@match.dialog.copied">Copiado</span>
+                    }
+                  </div>
+                </li>
+              }
+            </ul>
+
+            @if (remainingSuggestions() > 0) {
+              <button
+                mat-button
+                type="button"
+                class="mt-2"
+                (click)="expandSuggestions()"
+                data-testid="match-suggestions-more"
+              >
+                <ng-container i18n="@@match.dialog.suggestionsMore"
+                  >Ver las {{ remainingSuggestions() }} restantes</ng-container
+                >
+              </button>
+            }
+          </section>
+        }
+
+        <!-- Sin reanálisis voluntario cuando nada cambió (design Q1); salidas de CV / permiso sí. -->
+        <div class="flex flex-wrap gap-2">
+          <button
+            mat-button
+            type="button"
+            (click)="changeCv()"
+            data-testid="match-change-cv"
+            i18n="@@match.dialog.changeCv"
+          >
+            Cambiar de CV
+          </button>
+          @if (consent() === 'outdated' && degradedReason() !== 'consent_required' && !consentRequired()) {
+            <button
+              mat-button
+              type="button"
+              (click)="giveConsent()"
+              data-testid="match-give-consent"
+              i18n="@@match.dialog.giveConsent"
+            >
+              Dar permiso
+            </button>
+          }
+        </div>
+      }
+    }
+  }
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button type="button" mat-dialog-close data-testid="match-close" i18n="@@match.dialog.close">
+    Cerrar
+  </button>
+</mat-dialog-actions>

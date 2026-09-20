@@ -2797,6 +2797,192 @@
           <context context-type="linenumber">32,34</context>
         </context-group>
       </trans-unit>
+      <trans-unit id="match.card.action" datatype="html">
+        <source>Analizar mi encaje</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.title" datatype="html">
+        <source>Tu encaje con esta oferta</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.cvFile" datatype="html">
+        <source>CV: <x id="INTERPOLATION" equiv-text="{{ fileName }}"/></source>
+      </trans-unit>
+      <trans-unit id="match.dialog.noCvFile" datatype="html">
+        <source>Ningún CV marcado</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.routingExternal" datatype="html">
+        <source>Se analizará con IA externa (OpenRouter).</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.routingInternal" datatype="html">
+        <source>Se analizará dentro de LinkVault, sin salir hacia ningún proveedor externo. Si aquí no hay IA disponible, el análisis será básico y sin sugerencias.</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.consentChecking" datatype="html">
+        <source>Comprobando el permiso…</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.consentUnknown" datatype="html">
+        <source>No pudimos comprobar si diste permiso para analizar tu CV con IA externa.</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.retryConsent" datatype="html">
+        <source>Comprobar de nuevo</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.changeCv" datatype="html">
+        <source>Cambiar de CV</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.loading" datatype="html">
+        <source>Cargando…</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.analyze" datatype="html">
+        <source>Analizar</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.giveConsent" datatype="html">
+        <source>Dar permiso</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.waiting" datatype="html">
+        <source>Estamos analizando tu encaje…</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.stalled" datatype="html">
+        <source>Sigue en proceso. Vuelve en un momento.</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.refresh" datatype="html">
+        <source>Actualizar</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.jobNotReady" datatype="html">
+        <source>Todavía no hemos leído esta oferta, así que no hay con qué comparar tu CV.</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.pasteDescription" datatype="html">
+        <source>Pegar la descripción</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.noCv" datatype="html">
+        <source>Necesitas un CV guardado para analizar tu encaje.</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.uploadCv" datatype="html">
+        <source>Subir mi CV</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.cvNotReady" datatype="html">
+        <source>Estamos leyendo tu CV. Inténtalo en un momento.</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.retry" datatype="html">
+        <source>Reintentar</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.cvNotReadable" datatype="html">
+        <source>Tu CV no se pudo leer, así que no podemos compararlo.</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.goMyCv" datatype="html">
+        <source>Ir a Mi CV</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.rateLimit" datatype="html">
+        <source>Pediste muchos análisis seguidos. Podrás pedir otro a partir de <x id="INTERPOLATION" equiv-text="{{ problem.phrase }}"/>.</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.serverError" datatype="html">
+        <source>No pudimos analizar ahora.</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.stale" datatype="html">
+        <source>Esta oferta cambió desde tu análisis</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.reanalyze" datatype="html">
+        <source>Volver a analizar</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.cvChangedNamed" datatype="html">
+        <source>Lo analizaste con otro CV (<x id="INTERPOLATION" equiv-text="{{ otherName }}"/>)</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.cvChanged" datatype="html">
+        <source>Lo analizaste con otro CV</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.degradedTitle" datatype="html">
+        <source>Análisis básico</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.degradedBody" datatype="html">
+        <source>Comparamos las habilidades de la oferta con las de tu CV, sin sugerencias.</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.consentNeeded" datatype="html">
+        <source>Para analizar tu CV con IA necesitamos tu permiso.</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.consentSummary" datatype="html">
+        <source>Se envía el texto de tu CV con tu email, tus teléfonos, tu dirección, tu documento de identidad y las URL sustituidos por marcadores, y también tu nombre salvo que lo desactives en Perfil; el resto del CV se envía tal cual. El texto completo y el interruptor están en Perfil.</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.aiQuota" datatype="html">
+        <source>Alcanzaste tu límite de análisis con IA por hoy. Volverás a tener análisis completos a partir de <x id="INTERPOLATION" equiv-text="{{ phrase }}"/>.</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.aiUnavailable" datatype="html">
+        <source>El análisis con IA no está disponible ahora.</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.matchedTitle" datatype="html">
+        <source>Habilidades que coinciden</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.matchedEmpty" datatype="html">
+        <source>Ninguna de las habilidades que pide esta oferta está en tu CV</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.missingTitle" datatype="html">
+        <source>Habilidades que faltan</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.missingEmpty" datatype="html">
+        <source>Tienes todas las habilidades que pide esta oferta</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.mustLabel" datatype="html">
+        <source>Imprescindible</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.niceLabel" datatype="html">
+        <source>Suma puntos</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.aiWarning" datatype="html">
+        <source>Estas propuestas las redactó una IA a partir de tu CV y de la oferta. Revísalas: solo tú sabes qué es cierto.</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.applyYourself" datatype="html">
+        <source>Por ahora los cambios los aplicas tú en tu CV.</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.evidenceJob" datatype="html">
+        <source>Lo pide la oferta</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.evidenceCv" datatype="html">
+        <source>En tu CV dice</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.evidenceCvMissing" datatype="html">
+        <source>Esto no aparece en tu CV</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.copy" datatype="html">
+        <source>Copiar</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.copied" datatype="html">
+        <source>Copiado</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.suggestionsMore" datatype="html">
+        <source>Ver las <x id="INTERPOLATION" equiv-text="{{ remainingSuggestions() }}"/> restantes</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.close" datatype="html">
+        <source>Cerrar</source>
+      </trans-unit>
+      <trans-unit id="match.badge.high" datatype="html">
+        <source>Encaje alto</source>
+      </trans-unit>
+      <trans-unit id="match.badge.mid" datatype="html">
+        <source>Encaje medio</source>
+      </trans-unit>
+      <trans-unit id="match.badge.low" datatype="html">
+        <source>Encaje bajo</source>
+      </trans-unit>
+      <trans-unit id="match.badge.degraded" datatype="html">
+        <source>Encaje aproximado — comparamos listas de habilidades</source>
+      </trans-unit>
+      <trans-unit id="match.badge.explainer" datatype="html">
+        <source>Cuánto de lo que pide esta oferta ya aparece en tu CV.</source>
+      </trans-unit>
+      <trans-unit id="match.step.readingJob" datatype="html">
+        <source>Leyendo la oferta</source>
+      </trans-unit>
+      <trans-unit id="match.step.comparingCv" datatype="html">
+        <source>Comparando con tu CV</source>
+      </trans-unit>
+      <trans-unit id="match.step.draftingSuggestions" datatype="html">
+        <source>Redactando sugerencias</source>
+      </trans-unit>
+      <trans-unit id="match.retryAt.today" datatype="html">
+        <source>las <x id="TIME" equiv-text="time"/></source>
+      </trans-unit>
+      <trans-unit id="match.retryAt.tomorrow" datatype="html">
+        <source>mañana a las <x id="TIME" equiv-text="time"/></source>
+      </trans-unit>
+      <trans-unit id="match.retryAt.later" datatype="html">
+        <source>el <x id="DATE" equiv-text="day"/> a las <x id="TIME" equiv-text="time"/></source>
+      </trans-unit>
     </body>
   </file>
 </xliff>
