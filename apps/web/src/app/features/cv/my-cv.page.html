@@ -26,6 +26,10 @@
     <p class="m-0" role="status" data-testid="cv-loading" i18n="@@cv.loading">Cargando tus CV…</p>
   }
 
+  @if (goneNotice()) {
+    <p class="m-0" role="alert" data-testid="cv-gone" i18n="@@cv.gone">Este CV ya no está</p>
+  }
+
   @for (item of items(); track item.id) {
     <lv-cv-card
       [cv]="item"

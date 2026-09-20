@@ -1,9 +1,16 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
+import { MatDialog } from '@angular/material/dialog';
 import type { CvDocument } from '@linkvault/shared';
+import { firstValueFrom } from 'rxjs';
 import { CvStore } from '../../core/cv/cv.store';
 import { RequestError } from '../../shared/ui/request-error';
 import { CvCard } from './cv-card.component';
+import {
+  CvTextPreviewDialog,
+  type CvTextPreviewDialogData,
+  type CvTextPreviewResult,
+} from './cv-text-preview.dialog';
 import { CvUpload } from './cv-upload.component';
 
 /**
@@ -24,6 +31,7 @@ import { CvUpload } from './cv-upload.component';
 })
 export class MyCvPage {
   private readonly store = inject(CvStore);
+  private readonly dialog = inject(MatDialog);
 
   protected readonly items = this.store.items;
   protected readonly loading = this.store.loading;
@@ -36,6 +44,8 @@ export class MyCvPage {
 
   /** `true` mientras hay una acción en curso: marcar o eliminar no se pueden pulsar dos veces. */
   protected readonly busy = signal(false);
+  /** `true` tras intentar ver el texto de un CV que ya no está; se borra en cuanto se vuelve a mirar otro. */
+  protected readonly goneNotice = signal(false);
 
   constructor() {
     void this.store.load();
@@ -64,8 +74,23 @@ export class MyCvPage {
     }
   }
 
+  /**
+   * Abre la vista previa del texto. Si el CV ya no existe —lo borraron en otra pestaña—, el diálogo se cierra, se dice
+   * "Este CV ya no está" y la lista se recarga.
+   */
   protected viewText(item: CvDocument): void {
-    void item;
+    this.goneNotice.set(false);
+    const dialogRef = this.dialog.open<
+      CvTextPreviewDialog,
+      CvTextPreviewDialogData,
+      CvTextPreviewResult
+    >(CvTextPreviewDialog, { data: { cvId: item.id }, width: 'min(640px, 95vw)' });
+    void firstValueFrom(dialogRef.afterClosed()).then((result) => {
+      if (result === 'gone') {
+        this.goneNotice.set(true);
+        void this.store.refresh();
+      }
+    });
   }
 
   protected remove(item: CvDocument): void {

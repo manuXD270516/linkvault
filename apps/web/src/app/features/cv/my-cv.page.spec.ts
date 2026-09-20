@@ -1,6 +1,7 @@
 import { HttpEventType } from '@angular/common/http';
 import { HttpTestingController } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
+import { MatDialog } from '@angular/material/dialog';
 import { By } from '@angular/platform-browser';
 import { Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
@@ -49,6 +50,7 @@ describe('MyCvPage', () => {
 
   afterEach(() => {
     stopPolling();
+    TestBed.inject(MatDialog).closeAll();
     verifyNoPendingRequests(http);
   });
 
@@ -270,6 +272,40 @@ describe('MyCvPage', () => {
 
     expect(defaultNames()).toEqual(['CV_backend.pdf']);
     expect(page().querySelector('[data-testid="cv-default-useless"]')).toBeNull();
+  });
+
+  it('No se ofrece sin texto', async () => {
+    await open([
+      cvDocument({ id: 'cv2', version: 2, extraction: { status: 'pending', textChars: 0 } }),
+      cvDocument({
+        id: 'cv1',
+        isDefault: false,
+        extraction: { status: 'failed', failureReason: 'no_text', textChars: 0 },
+      }),
+    ]);
+
+    expect(page().querySelectorAll('[data-testid="cv-view-text"]')).toHaveLength(0);
+    stopPolling();
+  });
+
+  it('el diálogo del CV borrado en otra pestaña lo dice y recarga la lista', async () => {
+    await open([cvDocument()]);
+
+    await click('[data-testid="cv-view-text"]', 0);
+    const { body, options } = apiError('cv_not_found', 404);
+    http.expectOne({ method: 'GET', url: '/api/cv/cv1/text-preview' }).flush(body, options);
+    await settle();
+    await harness.fixture.whenStable();
+    await settle();
+
+    // El diálogo se cierra solo y la lista se vuelve a pedir; el aviso se queda en la pantalla.
+    const reload = await vi.waitFor(() => http.expectOne({ method: 'GET', url: '/api/cv' }));
+    reload.flush({ items: [] });
+    await settle();
+    await harness.fixture.whenStable();
+
+    expect(text()).toContain('Este CV ya no está');
+    expect(page().querySelectorAll('[data-testid="cv-card"]')).toHaveLength(0);
   });
 
   it('La lista no carga', async () => {
