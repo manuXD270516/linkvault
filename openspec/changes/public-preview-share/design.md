@@ -271,13 +271,12 @@ compensa: obliga a admitir `script-src 'unsafe-inline'` en la CSP —que es just
 `default-src 'none'` de verdad y desaparece una clase entera de error. Los bots no siguen el `refresh`: leen las
 etiquetas del `<head>`, que están antes del `<body>` y no dependen de nada.
 
-**Qué pasa al pulsar "atrás" no se afirma aquí: se mide.** Los navegadores tratan un `<meta refresh>` con retardo `0`
-como una sustitución de la entrada del historial, pero el comportamiento varía entre motores y entre versiones, y este
-diseño no está en condiciones de prometerlo. Por eso entra un e2e (tarea 8.3) que abre `<origen de la API>/p/<slug>`,
-espera a acabar en `/oferta/:slug` y ejecuta `goBack()`, y **este párrafo se reescribe con lo que ese test observe**. Si
-resultara que el retroceso vuelve a `/p/:slug` y salta otra vez —un bucle del que solo se sale manteniendo pulsado
-"atrás"—, se anota como riesgo real en Risks y se decide entonces si compensa recuperar el `<script>` con un `nonce`.
-Mientras tanto, el enlace visible de respaldo cubre a quien tenga el `refresh` desactivado.
+**Qué pasa al pulsar "atrás", medido (2026-09-19, Chromium de Playwright).** El `<meta refresh>` con retardo `0`
+**sustituye** la entrada del historial: tras el salto quedan dos entradas (la anterior y `/oferta/<slug>`), y "atrás"
+sale de la vista sin volver a `/p/:slug`. No hay bucle de retroceso, así que no hace falta recuperar el `<script>` con
+un `nonce`. Lo comprueba el e2e de la tarea 8.3, que abre `<origen de la API>/p/<slug>`, espera a acabar en
+`/oferta/:slug`, ejecuta `goBack()` y exige que la URL deje de moverse y que se pueda seguir navegando. El enlace
+visible de respaldo cubre además a quien tenga el `refresh` desactivado.
 
 Por qué no se distingue (es la pregunta que abría este change):
 
