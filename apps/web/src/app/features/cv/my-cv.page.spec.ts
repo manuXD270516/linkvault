@@ -63,6 +63,28 @@ describe('MyCvPage', () => {
     return file;
   }
 
+  /** Los nombres de los CV que llevan la línea de la marca; debería haber como mucho uno. */
+  function defaultNames(): string[] {
+    return Array.from(page().querySelectorAll('[data-testid="cv-card"]'))
+      .filter((card) => card.querySelector('[data-testid="cv-default-line"]') !== null)
+      .map((card) => card.querySelector('[data-testid="cv-name"]')?.textContent?.split('·')[0].trim() ?? '');
+  }
+
+  /** Pulsa un botón de la pantalla; con `card` se busca dentro de la tarjeta que ocupa esa posición. */
+  async function click(selector: string, card?: number): Promise<void> {
+    const scope =
+      card === undefined
+        ? page()
+        : (page().querySelectorAll('[data-testid="cv-card"]')[card] as HTMLElement | undefined);
+    const button = scope?.querySelector<HTMLButtonElement>(selector);
+    if (!button) {
+      throw new Error(`Button "${selector}" not rendered`);
+    }
+    button.click();
+    await settle();
+    await harness.fixture.whenStable();
+  }
+
   /** Elige un archivo en el selector de la pantalla, como haría el sistema operativo. */
   async function choose(file: File): Promise<void> {
     const input = page().querySelector<HTMLInputElement>('[data-testid="cv-file-input"]');
@@ -150,6 +172,104 @@ describe('MyCvPage', () => {
 
     expect(page().querySelector('[data-testid="cv-upload-progress"]')).toBeNull();
     expect(http.match({ method: 'POST', url: '/api/cv' })).toHaveLength(0);
+  });
+
+  it('Tres CV guardados', async () => {
+    await open([
+      cvDocument({ id: 'cv3', fileName: 'CV_2026.pdf', version: 3, uploadedAt: '2026-09-12T10:00:00.000Z' }),
+      cvDocument({
+        id: 'cv2',
+        fileName: 'CV_backend.docx',
+        fileType: 'docx',
+        version: 2,
+        isDefault: false,
+        uploadedAt: '2026-08-30T10:00:00.000Z',
+      }),
+      cvDocument({
+        id: 'cv1',
+        fileName: 'CV_viejo.pdf',
+        version: 1,
+        isDefault: false,
+        uploadedAt: '2026-07-01T10:00:00.000Z',
+      }),
+    ]);
+
+    const names = Array.from(page().querySelectorAll('[data-testid="cv-name"]')).map((element) =>
+      element.textContent?.replace(/\s+/g, ' ').trim(),
+    );
+    expect(names).toEqual([
+      'CV_2026.pdf · 312 KB · 12/09/2026',
+      'CV_backend.docx · 312 KB · 30/08/2026',
+      'CV_viejo.pdf · 312 KB · 01/07/2026',
+    ]);
+    // Ni número de versión ni recuento de caracteres.
+    expect(text()).not.toContain('8.412');
+    expect(text()).not.toContain('versión');
+  });
+
+  it('La marca explica su consecuencia', async () => {
+    await open([cvDocument()]);
+
+    const card = page().querySelector('[data-testid="cv-card"]');
+    const children = Array.from(card?.children ?? []).map((child) => child.getAttribute('data-testid'));
+    const line = card?.querySelector('[data-testid="cv-default-line"]');
+    expect(line?.textContent?.trim()).toBe('Este es el CV que compararemos con las vacantes');
+    // Bajo el nombre del archivo, como una línea de texto y no como un distintivo de dos palabras.
+    expect(children.indexOf('cv-default-line')).toBe(children.indexOf('cv-name') + 1);
+    expect(text()).not.toContain('Por defecto');
+  });
+
+  it('Cambiar de CV', async () => {
+    const newest = cvDocument({ id: 'cv2', fileName: 'CV_nuevo.pdf', version: 2 });
+    const older = cvDocument({ id: 'cv1', isDefault: false });
+    await open([newest, older]);
+    expect(defaultNames()).toEqual(['CV_nuevo.pdf']);
+
+    await click('[data-testid="cv-use-this"]', 1);
+
+    http.expectOne({ method: 'PUT', url: '/api/cv/cv1/default' }).flush({
+      items: [{ ...newest, isDefault: false }, { ...older, isDefault: true }],
+    });
+    await settle();
+    await harness.fixture.whenStable();
+
+    expect(defaultNames()).toEqual(['CV_backend.pdf']);
+  });
+
+  it('La API falla al marcar', async () => {
+    const newest = cvDocument({ id: 'cv2', fileName: 'CV_nuevo.pdf', version: 2 });
+    await open([newest, cvDocument({ id: 'cv1', isDefault: false })]);
+
+    await click('[data-testid="cv-use-this"]', 1);
+    const { body, options } = apiError('internal_error', 500);
+    http.expectOne({ method: 'PUT', url: '/api/cv/cv1/default' }).flush(body, options);
+    await settle();
+    await harness.fixture.whenStable();
+
+    expect(defaultNames()).toEqual(['CV_nuevo.pdf']);
+    expect(text()).toContain('Algo salió mal');
+  });
+
+  it('marca con una sola acción el CV que sí se leyó', async () => {
+    const broken = cvDocument({
+      id: 'cv2',
+      fileName: 'CV_escaneado.pdf',
+      version: 2,
+      extraction: { status: 'failed', failureReason: 'no_text', textChars: 0 },
+    });
+    const readable = cvDocument({ id: 'cv1', isDefault: false });
+    await open([broken, readable]);
+
+    await click('[data-testid="cv-use-extracted"]', 0);
+
+    http.expectOne({ method: 'PUT', url: '/api/cv/cv1/default' }).flush({
+      items: [{ ...broken, isDefault: false }, { ...readable, isDefault: true }],
+    });
+    await settle();
+    await harness.fixture.whenStable();
+
+    expect(defaultNames()).toEqual(['CV_backend.pdf']);
+    expect(page().querySelector('[data-testid="cv-default-useless"]')).toBeNull();
   });
 
   it('La lista no carga', async () => {

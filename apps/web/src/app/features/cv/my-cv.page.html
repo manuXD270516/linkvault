@@ -26,6 +26,22 @@
     <p class="m-0" role="status" data-testid="cv-loading" i18n="@@cv.loading">Cargando tus CV…</p>
   }
 
+  @for (item of items(); track item.id) {
+    <lv-cv-card
+      [cv]="item"
+      [hasOtherExtracted]="hasOtherExtracted(item)"
+      [busy]="busy()"
+      (useThis)="useThis(item)"
+      (useExtracted)="useExtracted()"
+      (viewText)="viewText(item)"
+      (remove)="remove(item)"
+    />
+  }
+
+  @if (actionFailure(); as currentFailure) {
+    <lv-request-error [failure]="currentFailure" />
+  }
+
   @if (failure(); as currentFailure) {
     <div class="flex flex-col gap-2" data-testid="cv-list-error">
       <lv-request-error [failure]="currentFailure" />
