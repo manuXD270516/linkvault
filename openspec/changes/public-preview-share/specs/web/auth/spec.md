@@ -109,8 +109,9 @@ máximo 10 segundos; si responde `200`, SHALL restaurar la sesión sin pedir cre
 SHALL continuar sin sesión, cancelar los reintentos pendientes y NO SHALL llamar a logout.
 
 En una ruta pública (`/oferta/:slug`) NO SHALL intentarse la restauración al arrancar: la página SHALL pintarse sin
-esperar a la API de sesión, y la sesión SHALL resolverse solo cuando haga falta, al pulsar el CTA. Quien llega desde un
-chat, sin cookie de refresh, NO SHALL ver "Conectando…" ni esperar ningún tiempo de espera antes de ver la oferta.
+esperar a la API de sesión. Quien llega desde un chat, sin cookie de refresh, NO SHALL ver "Conectando…" ni esperar
+ningún tiempo de espera antes de ver la oferta. La sesión SHALL resolverse al navegar fuera de esa ruta, en el guard
+que corresponda, y NO SHALL resolverse dentro del gesto de pulsar el CTA.
 
 #### Scenario: Recarga con sesión
 
@@ -132,9 +133,10 @@ chat, sin cookie de refresh, NO SHALL ver "Conectando…" ni esperar ningún tie
 - **THEN** NO SHALL llamarse al refresh al arrancar
 - **AND** la oferta SHALL verse sin pasar por "Conectando…"
 
-#### Scenario: La sesión se resuelve al pulsar el CTA
+#### Scenario: La sesión se resuelve en el guard, no en el botón
 
 - **GIVEN** un usuario con cookie de refresh válida que abre `/oferta/:slug`
 - **WHEN** pulsa "Guardar en LinkVault"
-- **THEN** el SPA SHALL resolver la sesión en ese momento
-- **AND** SHALL navegar a `/mis-links` con ese `import`, sin pasar por `/registro`
+- **THEN** el SPA SHALL navegar a `/registro?import=<slug>` sin esperar a ninguna petición
+- **AND** el guard de invitado SHALL restaurar la sesión y llevarlo a `/mis-links` con ese `import`, sin que llegue a
+  verse el registro

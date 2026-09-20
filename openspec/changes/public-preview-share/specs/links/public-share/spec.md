@@ -8,7 +8,9 @@ caracteres del alfabeto `23456789abcdefghjkmnpqrstvwxyz`, generado al azar y ún
 exacta: un `slug` con otra caja o con un carácter fuera del alfabeto SHALL tratarse como inexistente.
 
 La unicidad SHALL estar garantizada por un índice. Cuando la generación choque con un `slug` existente, SHALL
-reintentarse con otro hasta 5 veces antes de responder `500`.
+generarse otro y volver a intentarse, y SHALL responderse `500` solo si los intentos se agotan. Publicar desde el
+interruptor SHALL reintentar hasta 5 veces; publicar al compartir un link SHALL reintentar junto con la escritura
+completa del alta, con los intentos que esa escritura ya tiene, porque una colisión aborta su transacción.
 
 El enlace público pertenece a la relación entre el link y **ese** grupo: el mismo link en otro grupo SHALL tener su
 propio interruptor y su propio `slug`, y la lista privada NO SHALL tener enlace público.
@@ -39,6 +41,19 @@ propio interruptor y su propio `slug`, y la lista privada NO SHALL tener enlace 
 - **WHEN** quien lo compartió y el `owner` lo publican a la vez
 - **THEN** las dos respuestas SHALL traer el mismo `slug`
 - **AND** SHALL existir un solo enlace público para esa relación
+
+#### Scenario: Slug repetido al publicar
+
+- **GIVEN** un generador que devuelve un `slug` ya usado antes de devolver uno libre
+- **WHEN** quien compartió un link lo publica
+- **THEN** la respuesta SHALL ser `200` con el `slug` libre
+
+#### Scenario: Slug repetido al compartir
+
+- **GIVEN** un generador que devuelve un `slug` ya usado antes de devolver uno libre
+- **WHEN** un miembro guarda una URL en un grupo que comparte en público
+- **THEN** la respuesta SHALL ser `201` con un enlace público de `slug` libre
+- **AND** SHALL existir una sola relación para ese link y ese grupo
 
 ### Requirement: Publicar y despublicar
 
@@ -163,17 +178,23 @@ momento ni después.
 
 - las etiquetas Open Graph y Twitter de la oferta;
 - `<html lang="es">` y `<meta name="robots" content="noindex">`;
-- un redirect a la vista pública del SPA con `<meta http-equiv="refresh">`, un `location.replace` y un enlace visible de
+- un redirect a la vista pública del SPA con `<meta http-equiv="refresh" content="0; …">` y un enlace visible de
   respaldo;
 - el CTA "Guardar en LinkVault" y, bajo él, "Guarda aquí las ofertas que te pasan por WhatsApp y no las pierdas.".
+
+El documento NO SHALL contener ninguna etiqueta `<script>` ni ejecutar JavaScript.
 
 SHALL devolverse **la misma respuesta a todo el mundo**: NO SHALL mirarse el `User-Agent` ni el `Accept`, y la respuesta
 NO SHALL llevar `Vary`. Todo valor que entre en el HTML SHALL escaparse, y la URL de la oferta original SHALL admitirse
 solo si es `http` o `https`.
 
 Las respuestas `200`, `404` y `429` de esta ruta SHALL llevar `Referrer-Policy: no-referrer`,
-`X-Content-Type-Options: nosniff` y una `Content-Security-Policy` que solo permita el origen propio y el del SPA para
-imágenes, y que no permita scripts externos ni `eval`.
+`X-Content-Type-Options: nosniff` y una `Content-Security-Policy` cuyo `default-src` sea `'none'`, sin ninguna
+excepción para scripts ni para imágenes.
+
+La petición SHALL resolverse en este orden: primero el formato del `slug`, después el consumo de los contadores y solo
+al final las lecturas. Un `slug` mal formado NO SHALL consumir ningún contador, y una petición rechazada por el límite
+NO SHALL hacer ninguna lectura.
 
 Esta ruta NUNCA SHALL responder `application/json`, tampoco ante un error inesperado, tampoco cuando el `slug` falta
 (`/p/`) o llega con segmentos de más (`/p/a/b`).
@@ -225,7 +246,19 @@ Cada petición SHALL dejar en el log estructurado `{ slug, status }` y nada más
 
 - **WHEN** se piden una página que existe, una de un `slug` quemado y una que supera el límite
 - **THEN** las tres SHALL llevar `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff` y una
-  `Content-Security-Policy` sin scripts externos ni `eval`
+  `Content-Security-Policy` con `default-src 'none'`, sin excepción para scripts ni para imágenes
+
+#### Scenario: La página no ejecuta JavaScript
+
+- **WHEN** se pide una página pública
+- **THEN** el documento NO SHALL contener ninguna etiqueta `<script>`
+- **AND** el salto a la vista del SPA SHALL hacerse con `<meta http-equiv="refresh" content="0; …">`
+
+#### Scenario: Un slug mal formado no gasta la ventana
+
+- **WHEN** se piden 100 páginas con `slug` mal formados y después una con un `slug` válido
+- **THEN** las 100 SHALL ser `404`
+- **AND** la última SHALL ser `200`
 
 #### Scenario: El log no dice quién pidió
 
@@ -278,8 +311,10 @@ La página pública y el endpoint público SHALL exponer únicamente: la platafo
 título, la empresa, la ubicación, la modalidad, el nivel, el salario, la fecha de publicación y la de cierre.
 
 La URL de la oferta original SHALL publicarse **saneada**: solo `http` o `https`, sin usuario ni contraseña embebidos y
-sin fragmento. Una URL que no sea `http(s)` NO SHALL publicarse y la página SHALL mostrarse sin enlace a la oferta
-original.
+sin los parámetros de campaña y seguimiento que ya descarta la normalización de URL (spec `links/job-link`), de la misma
+lista cerrada. SHALL **conservar el fragmento**, porque hay bolsas que ponen la ruta de la oferta en él y quitarlo
+llevaría a la portada. El resto de parámetros SHALL conservarse: son los que identifican la vacante. Una URL que no sea
+`http(s)` NO SHALL publicarse y la página SHALL mostrarse sin enlace a la oferta original.
 
 NO SHALL exponer, en ningún caso: el resumen (`summary`), las habilidades, los idiomas, la procedencia por campo, el
 estado ni la versión del preview, el motivo del último fallo, quién compartió el link, cuándo se compartió, el grupo o
@@ -300,12 +335,20 @@ Un preview cuyos campos escribió o pegó una persona SHALL publicarse igual, si
 - **WHEN** se pide su página pública
 - **THEN** la respuesta NO SHALL contener "Backend Bolivia", ni "Ana", ni la nota, ni ningún comentario
 
-#### Scenario: URL original con credenciales
+#### Scenario: URL original con credenciales y rastro
 
-- **GIVEN** un link publicado cuyo `displayUrl` es `https://ana:secreto@bolsa.example/ofertas/42#seccion`
+- **GIVEN** un link publicado cuyo `displayUrl` es
+  `https://ana:secreto@bolsa.example/ofertas?jk=42&utm_source=mail&mc_eid=ana%40example.com#detalle`
 - **WHEN** se piden su página pública y su endpoint público
-- **THEN** el enlace a la oferta original SHALL ser `https://bolsa.example/ofertas/42`
-- **AND** ninguna respuesta SHALL contener `ana`, `secreto` ni `#seccion`
+- **THEN** el enlace a la oferta original SHALL ser `https://bolsa.example/ofertas?jk=42#detalle`
+- **AND** ninguna respuesta SHALL contener `ana`, `secreto`, `utm_source` ni `mc_eid`
+
+#### Scenario: URL original que no se puede publicar
+
+- **GIVEN** un link publicado cuyo `displayUrl` no es `http` ni `https`
+- **WHEN** se pide su página pública
+- **THEN** la respuesta SHALL ser `200` con la oferta
+- **AND** NO SHALL mostrarse ningún enlace a la oferta original
 
 #### Scenario: Preview escrito a mano
 
@@ -371,12 +414,14 @@ guardar ningún dato de quien visita y sin ninguna escritura.
 ### Requirement: Límite global de las rutas públicas
 
 `GET /p/:slug` y `GET /api/public/previews/:slug` SHALL tener cada uno un contador **global de la ruta** por ventana de
-tiempo, con umbrales altos, que NO SHALL distinguir clientes: no SHALL usarse la dirección de origen, ni ninguna
-cabecera que envíe el cliente, ni ningún identificador derivado de ellas.
+tiempo, con umbrales altos, y `GET /p/:slug` SHALL tener además un contador **por `slug`**, con un umbral menor. Ningún
+contador SHALL distinguir clientes: no SHALL usarse la dirección de origen, ni ninguna cabecera que envíe el cliente, ni
+ningún identificador derivado de ellas. El `slug` es parte de la ruta, no del cliente.
 
-El contador SHALL consumirse **antes** de cualquier lectura, de modo que superar el límite no cueste ninguna consulta.
-Al superarse, `/p/:slug` SHALL responder `429` **en HTML** con `Retry-After`, y el endpoint JSON `429` con código
-`too_many_attempts` y `Retry-After`. Los dos contadores SHALL ser independientes: agotar uno NO SHALL afectar al otro.
+Los contadores SHALL consumirse **antes** de cualquier lectura, de modo que superar el límite no cueste ninguna
+consulta. Al superarse cualquiera de ellos, `/p/:slug` SHALL responder `429` **en HTML** con `Retry-After`, y el
+endpoint JSON `429` con código `too_many_attempts` y `Retry-After`. Los contadores SHALL ser independientes: agotar uno
+NO SHALL afectar a los demás, y agotar el de un `slug` NO SHALL impedir servir otro.
 
 Los contadores SHALL fallar abiertos: si el almacén de contadores no responde, las dos rutas SHALL servirse
 normalmente.
@@ -394,11 +439,18 @@ normalmente.
 - **WHEN** el SPA pide el preview de un `slug`
 - **THEN** la respuesta SHALL ser `429` con código `too_many_attempts` y `Retry-After`
 
-#### Scenario: Los dos contadores son independientes
+#### Scenario: Los contadores son independientes
 
 - **GIVEN** el contador de la página pública agotado
 - **WHEN** el SPA pide el preview de un `slug`
 - **THEN** la respuesta SHALL ser `200`
+
+#### Scenario: Un enlace agota solo lo suyo
+
+- **GIVEN** dos enlaces públicos A y B, con el contador de A agotado
+- **WHEN** se piden las páginas de A y de B
+- **THEN** la de A SHALL ser `429` y la de B SHALL ser `200`
+- **AND** el `429` de A NO SHALL hacer ninguna lectura
 
 #### Scenario: El contador no responde
 

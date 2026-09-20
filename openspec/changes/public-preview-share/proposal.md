@@ -34,16 +34,20 @@ comentarios. De la herencia del manifiesto, el `slug` de grupo **no hace falta**
   **Nunca** `summary`, habilidades, idiomas, procedencia por campo, quién la compartió, a qué grupo pertenece,
   comentarios, notas ni postulaciones (ADR-026, ADR-023 §2).
 - **Vista pública en el SPA**: ruta `/oferta/:slug` sin sesión, que lee `GET /api/public/previews/:slug` y ofrece el CTA
-  "Guardar en LinkVault". Sin sesión lleva a `/registro?import=<slug>`; con sesión, a `/mis-links?import=<slug>`, que
-  guarda la oferta **en la lista privada** y dice si ya la tenías.
-- **Límite y coste**: un contador **global por ruta** —uno para `/p/:slug` y otro para el endpoint JSON— con umbrales
-  altos, sin mirar la dirección de origen ni ninguna cabecera del cliente, consumido **antes** de leer, que **falla
-  abierto** y responde `429` en HTML (o `too_many_attempts` en el JSON) con `Retry-After`. La petición hace **dos
-  lecturas indexadas y ninguna escritura**: ni enriquecimiento, ni IA, ni outbox, ni avisos, ni nombres. Los límites
-  por IP y la configuración del proxy siguen siendo de `deploy-prod`: este change **no** toca `trustProxy`.
-- **Cabeceras y saneado**: `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff` y una CSP restrictiva en
-  las tres respuestas de `/p/:slug`; el `displayUrl` se publica sin credenciales ni fragmento; `noindex` también en la
-  ruta pública del SPA, con `Disallow: /oferta/` en su `robots.txt`.
+  "Guardar en LinkVault", que navega siempre a `/registro?import=<slug>` sin esperar a nada; con sesión, el guard de
+  invitado desvía a `/mis-links?import=<slug>`, que guarda la oferta **en la lista privada** y dice si ya la tenías. Un
+  `404` dice que el enlace ya no está; un `429` o un `5xx` dicen que es una avería nuestra, con "Reintentar" y sin
+  quitar el CTA.
+- **Límite y coste**: contadores **globales de ruta** —uno para `/p/:slug`, otro para el endpoint JSON— más uno **por
+  `slug`**, sin mirar la dirección de origen ni ninguna cabecera del cliente; se consumen tras validar el formato del
+  `slug` y **antes** de leer, **fallan abiertos** y responden `429` en HTML (o `too_many_attempts` en el JSON) con
+  `Retry-After`. La petición hace **dos lecturas indexadas y ninguna escritura**: ni enriquecimiento, ni IA, ni outbox,
+  ni avisos, ni nombres. Los límites por IP y la configuración del proxy siguen siendo de `deploy-prod`: este change
+  **no** toca `trustProxy`.
+- **Cabeceras y saneado**: la página **no ejecuta JavaScript** (el salto va solo con `meta refresh`), y lleva
+  `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff` y una CSP con `default-src 'none'` en sus tres
+  respuestas; el `displayUrl` se publica sin credenciales ni parámetros de campaña, conservando el fragmento; `noindex`
+  también en la ruta pública del SPA, con `Disallow: /oferta/` en su `robots.txt`.
 - **Interruptor en el SPA**: en la tarjeta del grupo, con el aviso "Cualquiera con este enlace podrá ver la oferta sin
   entrar en LinkVault…" y "Copiar enlace". Textos en ES y EN.
 
@@ -85,8 +89,8 @@ comentarios. De la herencia del manifiesto, el `slug` de grupo **no hace falta**
   - `apps/api/src/modules/groups/`: `settings.defaultVisibility`, su `PATCH` y `GroupsFacade`.
   - `apps/api/src/app/create-app.ts` (excluir la ruta `p/:slug` del prefijo) y
     `apps/api/src/infrastructure/mongo/duplicate-key.ts` (`duplicateKeyIs` compartido).
-  - `libs/shared/src/`: contratos del slug, del preview público y de los ajustes del grupo, y `linkLabel` movido desde
-    el SPA.
+  - `libs/shared/src/`: contratos del slug, del preview público y de los ajustes del grupo, `linkLabel` movido desde el
+    SPA y la lista cerrada de parámetros de campaña que hoy vive en el dominio de `links`.
   - SPA: `core/links/`, `core/public/`, `features/public/`, `features/links/`, `features/groups/`, `features/auth/`,
     `app.routes.ts`, `auth.guards.ts`, `session-restore.ts`, `public/assets/` y `messages.*.xlf`.
 - **API**:
@@ -116,5 +120,6 @@ comentarios. De la herencia del manifiesto, el `slug` de grupo **no hace falta**
   - imagen OG generada por oferta (una imagen de marca fija);
   - SSR de Angular (ADR-013);
   - métricas de adquisición, contador de visitas y analítica de la página;
+  - caché en proceso del HTML por `slug`;
   - i18n de la página servida por la API (va en español, como el preview);
   - caducidad del enlace público y enlaces con contraseña.

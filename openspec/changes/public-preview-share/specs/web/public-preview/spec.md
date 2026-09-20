@@ -10,8 +10,8 @@ NO SHALL mostrar quién compartió la oferta, a qué grupo pertenece, la nota, l
 resumen, las habilidades ni el origen de ningún campo. Mientras la persona no tenga sesión, la página NO SHALL pedir a
 la API nada más que el preview público.
 
-Un `slug` inexistente o despublicado SHALL mostrar "Este enlace ya no está disponible" y "Pídeselo de nuevo a quien te
-lo envió", con las acciones de entrar y registrarse, y SIN el CTA de guardar.
+Un `slug` inexistente o despublicado (`404`) SHALL mostrar "Este enlace ya no está disponible" y "Pídeselo de nuevo a
+quien te lo envió", con las acciones de entrar y registrarse, y SIN el CTA de guardar.
 
 La ruta `/oferta/:slug` NO SHALL indexarse: el SPA SHALL marcarla con `noindex` mientras esté abierta y su `robots.txt`
 SHALL incluir `Disallow: /oferta/`. Es la misma regla que la página servida por la API: la oferta es de la bolsa que la
@@ -43,6 +43,42 @@ publicó y LinkVault no la duplica en los buscadores.
 - **THEN** el documento SHALL llevar `noindex`
 - **AND** el `robots.txt` del SPA SHALL incluir `Disallow: /oferta/`
 
+### Requirement: Una avería no es un enlace muerto
+
+Cuando el preview público no se pueda cargar por un motivo que **no** sea `404` —un `429` por el límite, un `5xx` o un
+fallo de red—, la vista pública SHALL mostrar "Ahora mismo no podemos mostrar esta oferta. Inténtalo en un momento."
+con una acción "Reintentar" que vuelve a pedirlo, y SHALL **conservar** el CTA "Guardar en LinkVault", que funciona
+igual porque no depende del preview para navegar.
+
+NO SHALL decirse en ese caso que el enlace ya no está disponible: el enlace existe y decir lo contrario haría que la
+persona lo descartara y se perdiera el alta. Solo el `404` significa "ya no está".
+
+#### Scenario: Límite alcanzado
+
+- **GIVEN** el preview público respondiendo `429`
+- **WHEN** alguien sin sesión abre `/oferta/:slug`
+- **THEN** SHALL ver "Ahora mismo no podemos mostrar esta oferta. Inténtalo en un momento." y "Reintentar"
+- **AND** SHALL seguir viendo "Guardar en LinkVault"
+- **AND** NO SHALL ver "Este enlace ya no está disponible"
+
+#### Scenario: Error del servidor
+
+- **GIVEN** el preview público respondiendo `500`
+- **WHEN** alguien abre `/oferta/:slug`
+- **THEN** SHALL ver el mismo mensaje con "Reintentar" y el CTA
+
+#### Scenario: Reintentar funciona
+
+- **GIVEN** la vista pública mostrando ese mensaje tras un `429`
+- **WHEN** la persona pulsa "Reintentar" y la API responde `200`
+- **THEN** SHALL ver la oferta con sus datos
+
+#### Scenario: Guardar pese a la avería
+
+- **GIVEN** la vista pública mostrando ese mensaje
+- **WHEN** la persona pulsa "Guardar en LinkVault"
+- **THEN** SHALL llegar a `/registro` con `import` igual a ese `slug`
+
 #### Scenario: La vista pública no pide la sesión
 
 - **GIVEN** un navegador sin sesión
@@ -55,12 +91,13 @@ publicó y LinkVault no la duplica en los buscadores.
 La vista pública SHALL ofrecer "Guardar en LinkVault" como acción principal, con la línea "Guarda aquí las ofertas que
 te pasan por WhatsApp y no las pierdas." debajo, para que quien no conoce LinkVault sepa qué gana al pulsar.
 
-- Sin sesión SHALL navegar a `/registro?import=<slug>`, y las páginas de registro y de login SHALL conservar ese
-  parámetro en el enlace que llevan la una a la otra.
+- SHALL navegar **siempre** a `/registro?import=<slug>`, haya sesión o no, **sin consultar la sesión ni esperar a
+  ninguna petición**: el botón SHALL responder al instante aunque la API esté lenta o caída.
+- Quien abra `/registro?import=<slug>` teniendo sesión SHALL ser llevado a `/mis-links?import=<slug>`, no al inicio: es
+  el guard de invitado, que ya restaura la sesión, quien lo decide.
+- Las páginas de registro y de login SHALL conservar ese parámetro en el enlace que llevan la una a la otra.
 - Tras registrarse o entrar con un `import` que tiene forma de `slug`, el SPA SHALL navegar a
   `/mis-links?import=<slug>`; con cualquier otra forma SHALL ignorarlo y navegar al inicio.
-- Con sesión, el CTA SHALL navegar directamente a `/mis-links?import=<slug>`.
-- Quien abra `/registro?import=<slug>` teniendo sesión SHALL ser llevado a `/mis-links?import=<slug>`, no al inicio.
 
 #### Scenario: Sin cuenta
 
@@ -89,7 +126,13 @@ te pasan por WhatsApp y no las pierdas." debajo, para que quien no conoce LinkVa
 
 - **GIVEN** alguien con sesión en `/oferta/:slug`
 - **WHEN** pulsa "Guardar en LinkVault"
-- **THEN** SHALL llegar a `/mis-links` con ese `import`
+- **THEN** SHALL llegar a `/mis-links` con ese `import`, pasando por `/registro?import=<slug>` sin verlo
+
+#### Scenario: El CTA no espera a la API
+
+- **GIVEN** alguien en `/oferta/:slug` con la API de sesión sin responder
+- **WHEN** pulsa "Guardar en LinkVault"
+- **THEN** la navegación a `/registro?import=<slug>` SHALL ocurrir sin esperar a ninguna petición
 
 #### Scenario: Registro con sesión abierta
 

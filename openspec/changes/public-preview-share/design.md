@@ -69,6 +69,11 @@ Motivación y alcance: proposal.md; comportamiento: las specs; decisiones no tri
 - **SSR de Angular** (ADR-013).
 - **Límites por dirección IP y configuración del proxy** (`trustProxy`). Siguen siendo de `deploy-prod` (ADR-020), y
   activarlos a ciegas debilitaría los límites de `auth` y `groups` (D8).
+- **Caché del HTML en proceso por `slug`.** Sería la forma de que un bucle sobre un enlace costara cero lecturas en vez
+  de las acotadas por el contador. Se deja fuera porque añade una segunda verdad —una copia del HTML que puede quedar
+  viva después de despublicar, justo lo que D2 promete que muere— y porque con varias instancias de `api` cada una
+  tendría la suya. Si el contador por `slug` no basta, es la siguiente palanca, y entonces habrá que decidir cómo se
+  invalida al despublicar.
 - **Métricas de adquisición**: contador de visitas, de importaciones desde la página o atribución por slug. Cambiaría el
   "ninguna escritura" de D7 y pide su propio diseño. Lo que sí entra es el log estructurado `{ slug, status }` de las
   dos rutas públicas (D4), que no escribe nada en la base.
@@ -107,9 +112,11 @@ Estructura dentro de `links` (clean architecture, puertos por token):
   - `public-slug.ts`: `PUBLIC_SLUG_ALPHABET`, `PUBLIC_SLUG_LENGTH` y el patrón;
   - errores `PublicShareForbidden` (`forbidden`), `PublicShareNotFound` (`link_not_found`) y
     `PublicSlugExhausted` (interno, `internal_error`);
-  - `limits.ts` gana `PUBLIC_PAGE_VIEWS` y `PUBLIC_PREVIEW_VIEWS`.
+  - `limits.ts` gana `PUBLIC_PAGE_VIEWS`, `PUBLIC_PREVIEW_VIEWS` y `PUBLIC_PAGE_VIEWS_PER_SLUG`.
 - **`application/`**:
-  - puerto `PUBLIC_SLUG_GENERATOR` (`next(): string`), con su doble determinista en `testing/`;
+  - puerto `PUBLIC_SLUG_GENERATOR` (`next(): string`), con su doble determinista en `testing/`. Lo consume el
+    **repositorio**, no los casos de uso (D2): vive aquí porque los dos adaptadores —Mongo y el de memoria— lo
+    comparten, igual que `INVITE_CODE_GENERATOR` en `groups`;
   - casos de uso `PublishGroupLink`, `UnpublishGroupLink` y `GetPublicPreview`;
   - cambian `SaveLink`, `ImportLinks` y `ListGroupLinks`.
 - **`infrastructure/`**: `random-public-slug.generator.ts`, `publicShare` en `link.schemas.ts` con su índice, y
@@ -134,12 +141,28 @@ intenta guardar y, si choca con ese índice, genera otro slug y reintenta hasta 
 `PublicSlugExhausted` (`500`). Es el patrón de `groups` con el código de invitación, y es lo único que cierra la carrera
 de dos publicaciones simultáneas. Los tres índices actuales de `group_links` **no se tocan**.
 
-**El reintento vive en el repositorio**, junto a `share`, y no en el caso de uso. Un `E11000` no es un concepto de
-aplicación: quien sabe qué índice rechazó la escritura es quien la hizo. El adaptador distingue la clave del slug
-(`PUBLIC_SLUG_KEY`) de la de la relación (`GROUP_LINK_KEY`) con `duplicateKeyIs`: un choque del slug se reintenta con
-otro, y uno de `(groupId, linkId)` —que en `share` significa "ya estaba compartido"— se resuelve como siempre, sin
-reintentar. Confundirlos haría que compartir dos veces a la vez generara cinco slugs inútiles antes de rendirse. El
-caso de uso solo ve `AddedPublicShare | null` o `PublicSlugExhausted`.
+**El reintento vive en el repositorio**, no en el caso de uso: un `E11000` no es un concepto de aplicación, y quien sabe
+qué índice rechazó la escritura es quien la hizo. `PUBLIC_SLUG_GENERATOR` se inyecta en **`MongoGroupLinkRepository`** —y
+en su gemelo en memoria—, no en los casos de uso, que solo ven `AddedPublicShare | null` o `PublicSlugExhausted`.
+
+Pero **los dos caminos que escriben un slug son distintos y no se pueden tratar igual**:
+
+| Camino | Dónde ocurre | Qué hace ante un choque del índice del slug |
+|--------|--------------|---------------------------------------------|
+| **`publish(groupId, linkId, publishedBy)`** | `updateOne` suelto, **fuera de transacción** | Bucle propio de hasta **5** intentos: genera otro slug y vuelve a intentar. Nada más está a medias, así que reintentar ahí dentro es correcto y barato. |
+| **`share({ …, publish: true }, session)`** | **dentro** de la transacción de `withResolvedLink` | **No reintenta por dentro.** Un `E11000` aborta la transacción: seguir escribiendo sobre esa sesión es ilegal, y un bucle interno haría cuatro escrituras muertas antes de fallar igual. El error sube, y `withResolvedLink` **reintenta la transacción entera**, que en el intento siguiente pide un slug nuevo. |
+
+`duplicateKeyIs` distingue la clave del slug (`PUBLIC_SLUG_KEY`) de la de la relación (`GROUP_LINK_KEY`), que en `share`
+significa "ya estaba compartido" y se resuelve sin reintentar nada.
+
+**`MAX_RESOLVE_ATTEMPTS` sube de 2 a 3.** Hoy vale 2 y su comentario lo justifica así: "el segundo intento ya encuentra
+el documento que ganó la carrera". Con el índice del slug esa razón deja de ser la única: un segundo intento ya no
+"encuentra" nada, sino que **sortea otro slug**. Son dos motivos de reintento con naturalezas distintas —uno converge
+porque el documento ya existe, el otro porque el azar no se repite— y pueden encadenarse en la misma petición. Con 3
+intentos, que una alta legítima acabe en `500` exige que coincidan una carrera de dedupe y una colisión de 59 bits;
+con 2, bastaría con que coincidieran una vez. El comentario se reescribe para decir las dos razones. Es la elección
+conservadora: un intento de más cuesta una transacción abortada en un caso que no se va a dar, y uno de menos cuesta un
+`500` a quien solo quería guardar un link.
 
 **Publicar** (`PUT /api/groups/:id/links/:linkId/public`), en este orden:
 
@@ -215,22 +238,36 @@ Motivos: la URL se pega en un chat y tiene que ser corta; y `/api/...` es, por c
 
 El `exclude` se declara como **`p/:slug`**, no como `'p'`. `setGlobalPrefix` compara rutas, no prefijos de cadena: con
 `'p'` la única ruta excluida sería `/p` —que no existe— y `/p/<slug>` acabaría bajo `/api/p/<slug>`, es decir, el
-enlace repartido por WhatsApp respondería `404` de la API en formato JSON. Un test de integración pide `/p/<slug>` al
-puerto de la API y comprueba que responde HTML.
+enlace repartido por WhatsApp respondería `404` de la API en formato JSON. Las formas raras se excluyen igual, y el
+comodín se escribe **`p/{*splat}`**: Nest 11 va sobre `path-to-regexp` 8, donde el `*` suelto ya no es un comodín
+válido y `'p/*'` lanzaría al arrancar. Las tres entradas del `exclude` son `p`, `p/:slug` y `p/{*splat}`, con la misma
+forma en el controlador. Un test de integración pide `/p/<slug>` al puerto de la API y comprueba que responde HTML.
+
+**Orden dentro del controlador**, y es deliberado (D8):
+
+1. **Formato del slug.** Si no pasa `isValidPublicSlug`, `404` en HTML. No cuesta ni el contador.
+2. **Contador.** Si la ventana está agotada, `429` en HTML. No cuesta ninguna lectura.
+3. **Lecturas.** Las dos de D7.
+
+Validar el formato antes de contar evita que una ráfaga de basura (`/p/../../etc/passwd`) consuma la ventana de los
+enlaces buenos; contar antes de leer es lo que hace que el tope sirva de algo.
 
 **Una sola respuesta para todo el mundo.** No se mira el `User-Agent` ni el `Accept`. Bots y personas reciben el **mismo
 `200`** con el mismo HTML; lo que separa a unos de otros es que el navegador ejecuta el redirect y el bot no:
 
 ```
 <meta http-equiv="refresh" content="0; url=https://…/oferta/<slug>">
-<script>location.replace("https://…/oferta/<slug>")</script>
 <a href="https://…/oferta/<slug>">Ver la oferta en LinkVault</a>
 ```
 
-El `<meta refresh>` cubre al navegador sin JavaScript; `location.replace` no deja entrada en el historial, así que
-"atrás" no vuelve a la página que redirige; y el enlace visible cubre a quien tiene los dos desactivados. Los bots no
-corren JavaScript ni siguen el `refresh`: leen las etiquetas del `<head>`, que están antes del `<body>` y no dependen de
-nada.
+**Sin JavaScript.** El primer borrador añadía un `<script>location.replace(…)</script>` para no dejar entrada en el
+historial. No compensa: obliga a admitir `script-src 'unsafe-inline'` en la CSP —que es justo la directiva que querríamos
+en `'none'`—, y obliga a serializar la URL dentro de un `<script>`, con su propia superficie de `</script>` y su función
+`scriptJson`. Con solo el `<meta refresh>` en `0`, todos los navegadores saltan igual, la CSP puede decir
+`script-src 'none'` de verdad y desaparece una clase entera de error. Lo que se pierde es que "atrás" vuelve a `/p/:slug`
+y salta otra vez; a cambio, quien llegue ahí verá el enlace visible, que sigue estando para quien tenga el `refresh`
+desactivado. Los bots no siguen el `refresh`: leen las etiquetas del `<head>`, que están antes del `<body>` y no
+dependen de nada.
 
 Por qué no se distingue (es la pregunta que abría este change):
 
@@ -247,9 +284,8 @@ plantillas: añadir Mustache o Handlebars a `api` por una página sería una dep
 de escapado que mantener; Mustache ya se usa en `libs/ai` para los prompts, donde **no** se escapa HTML, y mezclar los
 dos usos invita a un error. El escapado lo hace `escapeHtml(text)`, que sustituye `& < > " '` por sus entidades y se
 aplica **a todo** valor que entra en el HTML, esté en un texto o en un atributo; la URL de la oferta original pasa
-además por `safeHttpUrl(url)`, que solo deja `http:` y `https:` (un `javascript:` guardado como `displayUrl` no llegaría
-a existir, pero el enlace público no es sitio para confiar en eso). El JSON del `location.replace` se serializa con
-`JSON.stringify` y después se escapa `<` como `<`, para que un `</script>` no pueda cerrar el bloque.
+además por `publicHttpUrl(url)` (D6), que solo deja `http:` y `https:` y quita lo que no debe publicarse. Sin
+`<script>` no hay nada que serializar dentro de un bloque de JavaScript: es una función menos y una superficie menos.
 
 **Cabeceras y forma.** `Content-Type: text/html; charset=utf-8`, `<!doctype html>`, `<html lang="es">`,
 `<meta charset="utf-8">`, `<meta name="viewport">`, `<meta name="robots" content="noindex">`, CSS mínimo en línea y
@@ -261,12 +297,13 @@ Las **tres** respuestas de la ruta (`200`, `404` y `429`) llevan además:
   `Referer` con el slug dentro, y ese slug es la llave de una página que cualquiera puede abrir. Acabaría en los logs
   de un tercero.
 - `X-Content-Type-Options: nosniff`, para que ningún navegador reinterprete el cuerpo como otra cosa.
-- `Content-Security-Policy: default-src 'none'; img-src ${WEB_BASE_URL} data:; style-src 'unsafe-inline';
-  script-src 'unsafe-inline'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'`. El `script-src` y el
-  `style-src` admiten lo inline porque el redirect y el CSS de la página lo son, y **no** admiten ningún origen
-  externo ni `eval`. Es defensa en profundidad sobre el escapado: si algún día un valor se colara sin escapar, no
-  podría cargar nada de fuera. Un `nonce` sería más estricto pero obligaría a generar uno por petición y a renunciar
-  a cachear la respuesta.
+- `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; form-action 'none'; base-uri 'none';
+  frame-ancestors 'none'`. **`script-src` no aparece**, así que lo cubre `default-src 'none'`: la página no ejecuta ni
+  una línea de JavaScript. Tampoco aparece `img-src`: la página **no pinta ninguna imagen** —`og:image` es una etiqueta
+  del `<head>` que descarga el crawler del chat desde su propio servidor, no el navegador de quien abre la página—, así
+  que `default-src 'none'` la cubre también y no hay que nombrar el origen del SPA. El único hueco es el `style-src`
+  inline del CSS mínimo. Es defensa en profundidad sobre el escapado: si algún día un valor se colara sin escapar, no
+  podría ejecutar nada ni traerse nada de fuera.
 
 **El log.** Cada petición deja `{ slug, status }` en el log estructurado y nada más: sin dirección de origen, sin
 `User-Agent` y sin referente. Es lo que permite contar cuántas páginas se sirven y cuántas acaban en `404` sin guardar
@@ -348,10 +385,28 @@ una etiqueta que los chats muestran y cachean.
 
 **El `displayUrl` sale saneado.** Es la URL tal y como la escribió una persona y nunca se normalizó (ADR-021: es
 inmutable a propósito), así que puede llevar credenciales embebidas —`https://ana:secreto@bolsa.example/…`, que algunos
-sistemas generan— y un fragmento con lo que el navegador tuviera. La función pura `publicHttpUrl(url)` de `libs/shared`
-devuelve la URL sin `username`, sin `password` y sin `hash`, y `null` si el esquema no es `http(s)`; con `null`, la
-página se pinta **sin** enlace a la oferta original en vez de con un enlace que no se puede confiar. No se toca el
-`displayUrl` guardado: esto es solo lo que se publica.
+sistemas generan— y, sobre todo, **parámetros de seguimiento**: una URL copiada del correo de una bolsa suele arrastrar
+`utm_*`, `mc_eid` o `trk`, y un `mc_eid` es un identificador de suscriptor que a veces lleva el email dentro. Publicarla
+tal cual sería repartir a cualquiera un rastro de quien recibió esa oferta.
+
+La función pura `publicHttpUrl(url)` de `libs/shared` devuelve:
+
+- `null` si el esquema no es `http(s)`;
+- si no, la URL **sin `username` ni `password`** y **sin los parámetros de campaña y seguimiento** de la lista cerrada
+  que ya usa `normalizeUrl` —el prefijo `utm_` más `gclid`, `fbclid`, `mc_cid`, `mc_eid`, `igshid`, `ref`, `trk`,
+  `trkcampaign`—, que **sube a `libs/shared` junto con la función** para que no haya dos listas que puedan separarse;
+- **conservando el fragmento**. El primer borrador lo quitaba. Es un error: hay bolsas que ponen la ruta de la oferta en
+  el `#`, y quitarlo manda a la portada, es decir, rompe el enlace, que es lo único que la página pública promete. Lo
+  que el fragmento podía filtrar —el slug en un `Referer`— ya lo tapa `Referrer-Policy: no-referrer` (D4), y además el
+  navegador nunca envía el fragmento al servidor.
+
+Con `null`, la página se pinta **sin** enlace a la oferta original, en vez de con uno del que no se puede fiar. No se
+toca el `displayUrl` guardado: esto es solo lo que se publica.
+
+**Residuo aceptado:** la lista es cerrada, así que un parámetro de seguimiento que no esté en ella se publica. No se
+puede arreglar quitando "todo lo desconocido": `jk`, `currentJobId` y compañía **son** la vacante, y sin ellos el
+enlace lleva a una búsqueda vacía. Es el mismo compromiso que ya asumió `normalizeUrl` (spec `links/job-link`), y
+ampliar la lista es ampliarla en un solo sitio.
 
 **No sale, nunca:**
 
@@ -420,6 +475,14 @@ los límites por IP de `auth` y `groups` siguen exactamente como están y este c
 |-------|------|--------|
 | `links:public-page` | `GET /p/:slug` | `PUBLIC_PAGE_VIEWS = 6000` por `LINK_LIMIT_WINDOW_MS` (15 min) |
 | `links:public-preview` | `GET /api/public/previews/:slug` | `PUBLIC_PREVIEW_VIEWS = 6000` por la misma ventana |
+| `links:public-page:<slug>` | `GET /p/:slug`, por enlace | `PUBLIC_PAGE_VIEWS_PER_SLUG = 2000` por la misma ventana |
+
+**El contador por `slug`** se consume junto al global, en la misma petición, y se pasa el primero que hable: si el del
+slug rechaza, `429` sin tocar el global. Un `slug` es un dato **del recurso**, no del cliente: lo lleva la ruta, no una
+cabecera, así que no hay nada que falsificar y no reintroduce `trustProxy` por la puerta de atrás. Lo que compra es que
+el caso realista de abuso —un bucle sobre **un** enlace— se coma su propia ventana y no la de todos los demás. El
+umbral es del orden de un tercio del global: bastante por encima de lo que puede recibir un enlace pegado en un grupo
+de WhatsApp, y bastante por debajo como para que un enlace no agote el tope de los demás.
 
 Propiedades, todas buscadas:
 
@@ -436,16 +499,18 @@ Propiedades, todas buscadas:
   "Demasiadas peticiones. Inténtalo en un momento."; el endpoint JSON responde `429 too_many_attempts` con
   `Retry-After`. El controlador los devuelve; no lanza.
 
-**Lo que este límite es y lo que no.** Es un tope de coste para que un bucle no nos haga escanear Mongo, no un control
-de abuso por cliente: un atacante decidido puede agotar la ventana y dejar la página con `429` para todos durante unos
-minutos. Con un umbral de 6000 cada 15 min —muy por encima de cualquier tráfico real de este producto— eso exige un
-esfuerzo sostenido, y el daño es que unas tarjetas de WhatsApp salgan sin previsualización, no que se pierda nada.
-Queda en Risks. El día que haya proxy, `deploy-prod` puede añadir el límite por IP donde corresponde, delante.
+**Lo que este límite es y lo que no.** Es un tope de **coste** —que un bucle no nos haga leer Mongo sin fin—, no un
+control de abuso por cliente. Y conviene no engañarse con el número: 6000 cada 15 min son unas **6,7 peticiones por
+segundo**, que un bucle casero con `curl` alcanza en menos de un minuto. Es decir, cualquiera puede dejar la página en
+`429` si se lo propone; lo que se consigue con estos contadores es que hacerlo **no cueste lecturas** y que el daño
+quede acotado a un enlace cuando el bucle va contra un enlace. El daño máximo es que unas tarjetas de WhatsApp salgan
+sin previsualización durante la ventana —y eso, con la caché de los chats, dura más que la ventana (Risks)—; no se
+pierde ni se expone nada. El control por cliente exige un proxy configurado, que es de `deploy-prod`.
 
-**Alternativas descartadas:** límite por IP aquí (arrastra `TRUST_PROXY` y debilita `auth` y `groups`); límite por slug
-(un bot cambia de slug, y el slug popular es el que queremos servir); fallar cerrado; no poner ningún límite (la página
-sin sesión es la única puerta abierta de la API); un solo contador para las dos rutas (una avalancha de bots apagaría
-la vista del SPA).
+**Alternativas descartadas:** límite por IP aquí (arrastra `TRUST_PROXY` y debilita `auth` y `groups`); **solo** por
+slug (un bot que recorre slugs inexistentes no lo tocaría); fallar cerrado; no poner ningún límite (la página sin
+sesión es la única puerta abierta de la API); un solo contador para las dos rutas (una avalancha de bots apagaría la
+vista del SPA).
 
 ### D9 — El CTA "Guardar en LinkVault" y `?import=<slug>`
 
@@ -472,14 +537,17 @@ ruta no llegan los bots de las tarjetas: los que leen OG piden `/p/:slug`, que n
 
 **El recorrido completo:**
 
-1. **Sin sesión.** "Guardar en LinkVault" → `/registro?import=<slug>`. La página de registro conserva el parámetro en su
-   enlace "¿Ya tienes cuenta?" hacia `/login`, y `/login` lo conserva hacia `/registro`.
-2. **Tras registrarse o entrar** con un `import` que tiene forma de slug, el SPA navega a **`/mis-links?import=<slug>`**.
+1. **"Guardar en LinkVault" navega siempre a `/registro?import=<slug>`**, haya sesión o no, y **sin esperar a nada**: no
+   consulta la sesión, no dispara un refresh y no se bloquea. Es una navegación del router y punto. Quien ya tiene
+   sesión no llega a ver el registro, porque **`guestGuard` ya restaura la sesión** antes de decidir y lo desvía a
+   `/mis-links?import=<slug>`. Así la sesión se resuelve donde siempre se ha resuelto —en el guard— y el botón responde
+   al instante también con la API lenta. El borrador anterior hacía que el CTA preguntara por la sesión y eligiera
+   destino: eso metía una espera de hasta 10 s **dentro del clic**, justo en el gesto que convierte.
+2. La página de registro conserva el parámetro en su enlace "¿Ya tienes cuenta?" hacia `/login`, y `/login` lo conserva
+   hacia `/registro`.
+3. **Tras registrarse o entrar** con un `import` que tiene forma de slug, el SPA navega a **`/mis-links?import=<slug>`**.
    Un `import` con cualquier otra forma se ignora y se navega al inicio, como hace `safeReturnUrl` con un `returnUrl`
    ajeno.
-3. **Con sesión**, el CTA de `/oferta/:slug` navega directamente a `/mis-links?import=<slug>`. Y si alguien con sesión
-   abre `/registro?import=<slug>`, `guestGuard` le lleva a `/mis-links?import=<slug>` en vez de al inicio, para no
-   perder el gesto.
 4. **`/mis-links` con `import`** hace, una sola vez: pide el preview público (ya cacheado por el navegador), llama a
    `POST /api/links { url: displayUrl }` **sin `groupId`**, quita el parámetro de la URL con `replaceUrl` —para que
    recargar no vuelva a guardar— y muestra el resultado. Si falla, el mensaje trae **"Reintentar"**: la persona ya está
@@ -587,7 +655,13 @@ que usan varios módulos, sin que ninguno dependa de otro. No cambia ningún com
   - CTA principal "Guardar en LinkVault", con "Guarda aquí las ofertas que te pasan por WhatsApp y no las pierdas."
     debajo —quien llega no conoce el producto y un botón sin promesa no se pulsa— y, después, "Entrar" para quien ya
     tiene cuenta;
-  - `404` → "Este enlace ya no está disponible" y "Pídeselo de nuevo a quien te lo envió", sin CTA de guardar;
+  - **dos estados de fallo distintos**, porque no significan lo mismo:
+    - `404` → "Este enlace ya no está disponible" y "Pídeselo de nuevo a quien te lo envió", **sin** CTA de guardar: no
+      hay nada que guardar y la única salida es pedir otro enlace;
+    - `429` y `5xx` → "Ahora mismo no podemos mostrar esta oferta. Inténtalo en un momento." con "Reintentar" y
+      **conservando** "Guardar en LinkVault": el enlace existe, es nuestra avería, y decirle a alguien que su oferta ya
+      no está porque se agotó una ventana de 15 minutos sería mentirle y perder el alta. El CTA funciona igual, porque
+      no depende del preview para navegar; la importación que viene después vuelve a intentar la lectura;
   - **nunca** pide nada más a la API: ni la sesión, ni la lista de grupos.
 - **Interruptor** en `LinkCard`, solo en contexto de grupo, en el menú donde ya viven "Quitar la nota" y "Quitar":
   - apagado, para quien compartió el link y para el `owner`: "Compartir con un enlace público";
@@ -627,8 +701,8 @@ que usan varios módulos, sin que ninguno dependa de otro. No cambia ningún com
 | Todavía estamos leyendo la oferta: si lo envías ahora, la tarjeta saldrá sin datos | We're still reading the job: if you send it now, the preview will be empty |
 | Solo quien compartió la oferta o el propietario del grupo puede cambiar esto | Only the person who shared the job or the group owner can change this |
 | Ver la oferta original | View the original posting |
-| Esta oferta se compartió desde LinkVault | This job was shared from LinkVault |
 | Este enlace ya no está disponible | This link is no longer available |
+| Ahora mismo no podemos mostrar esta oferta. Inténtalo en un momento. | We can't show this job right now. Try again in a moment. |
 | Entrar | Log in |
 | Guardada en «Solo para mí». Compártela en un grupo cuando quieras. | Saved to "Just for me". Share it with a group whenever you like. |
 | Ya la tenías guardada | You already had it saved |
@@ -638,7 +712,7 @@ que usan varios módulos, sin que ninguno dependa de otro. No cambia ningún com
 | Copiar enlace / Enlace copiado | Copy link / Link copied |
 | Cualquiera con este enlace podrá ver la oferta sin entrar en LinkVault. No se verá el grupo, ni tu nombre, ni los comentarios. Puedes dejar de compartirlo cuando quieras. | Anyone with this link can see the job without signing in to LinkVault. The group, your name and the comments stay hidden. You can stop sharing whenever you like. |
 | El enlace dejará de funcionar para todo el mundo, también para quien ya lo tenga. Si vuelves a activarlo, se creará un enlace nuevo. Las vistas previas ya enviadas en un chat pueden seguir viéndose ahí. | The link will stop working for everyone, including people who already have it. Turning it back on creates a new link. Previews already sent in a chat may still be visible there. |
-| Los links nuevos se comparten con un enlace público | New links get a public link |
+| Los links nuevos se comparten con un enlace público | New links are shared with a public link |
 | Solo afecta a lo que se guarde a partir de ahora; los links que ya están no cambian. | It only affects what gets saved from now on; links already here don't change. |
 | Su enlace público dejará de funcionar. | Its public link will stop working. |
 
@@ -648,24 +722,29 @@ test comprueba el literal.
 ### D13 — Pruebas
 
 - **Dominio y casos de uso.** Unitarios con repositorios en memoria: `mayPublish` (quien compartió, owner, otro
-  miembro), el orden de comprobaciones de publicar y despublicar, la idempotencia, el reintento por colisión de slug,
-  que el ajuste del grupo solo se aplica al crear la relación, y que `GetPublicPreview` no llama a ningún puerto más que
-  a los dos repositorios.
+  miembro), el orden de comprobaciones de publicar y despublicar, la idempotencia, que el ajuste del grupo solo se
+  aplica al crear la relación, y que `GetPublicPreview` no llama a ningún puerto más que a los dos repositorios. El
+  reintento de slug **no** se prueba aquí: vive en el repositorio (D2).
 - **Plantilla HTML.** Unitarios tabulares: un título con `</title><script>`, comillas en la empresa, un `displayUrl` con
-  `javascript:`, con credenciales y con fragmento, un preview vacío, cortes de 100 y 200 code points, el orden de la
-  descripción con el salario antes que la modalidad, y que el cuerpo lleva el redirect, el enlace de respaldo y la
-  línea bajo el CTA.
-- **`publicHttpUrl`.** Tabla: `http`, `https`, con usuario y contraseña, con fragmento, con los dos, `javascript:`,
-  `ftp:` y una cadena que no es una URL.
+  `javascript:` y otro con credenciales, un preview vacío, cortes de 100 y 200 code points, el orden de la descripción
+  con el salario antes que la modalidad, que el cuerpo lleva el `meta refresh`, el enlace de respaldo y la línea bajo el
+  CTA, y que el documento **no contiene ninguna etiqueta `<script>`**.
+- **`publicHttpUrl`.** Tabla: `http`, `https`, con usuario y contraseña, con `utm_*`, con `mc_eid` que lleva un email
+  dentro, con parámetros de verdad (`jk`, `currentJobId`) que **no** se tocan, con fragmento que **se conserva**,
+  `javascript:`, `ftp:` y una cadena que no es una URL.
 - **Integración** (`createApp` con `inject` sobre `mongodb-memory-server` en replica set):
   - `/p/:slug` con `200` y sus cabeceras (`Cache-Control`, `Referrer-Policy`, `nosniff`, CSP y sin `Vary`), con `404`
     en HTML para un slug inexistente, uno quemado, uno mal formado, `/p/` y `/p/a/b`, y que **ninguna** respuesta de esa
     ruta es `application/json`;
   - las dos lecturas y ninguna escritura, con un espía sobre el driver y con el outbox vacío;
-  - el `429` en HTML sin ninguna lectura, el `429` del endpoint JSON, que los dos contadores son independientes y que
-    cambiar `X-Forwarded-For` no cambia de contador; el contador caído deja pasar los dos;
+  - el `429` en HTML sin ninguna lectura, el `429` del endpoint JSON, el `429` por agotar el contador **de un solo
+    slug** mientras otro slug sigue respondiendo `200`, que los contadores son independientes y que cambiar
+    `X-Forwarded-For` no cambia de contador; el contador caído deja pasar los dos;
+  - el orden de D4: un slug mal formado responde `404` **sin consumir** el contador;
   - que el log de las dos rutas lleva `{ slug, status }` y nada de quien pide;
   - publicar, despublicar, volver a publicar (slug distinto) y dos publicaciones concurrentes (un solo slug vivo);
+  - el reintento de `publish` con un generador que repite el primer valor, y el de `share({ publish: true })`, donde la
+    colisión aborta la transacción y `withResolvedLink` la repite entera con un slug nuevo;
   - guardar e importar en un grupo con la visibilidad encendida y apagada;
   - cambiar `defaultVisibility` y comprobar que **ningún** link existente cambia;
   - que la respuesta pública no contiene `summary`, `skills`, `previewSources`, `sharedBy` ni nada del grupo, con un
@@ -673,10 +752,11 @@ test comprueba el literal.
   - que `duplicateKeyIs`, ya en infraestructura compartida, sigue distinguiendo los índices de `groups` y de
     `applications` con sus tests de siempre.
 - **Web.** TestBed con `HttpTestingController`: la API pública sin `Authorization`, la página con y sin datos, el `404`,
-  el CTA con y sin sesión, `guestGuard` con `import`, la precedencia `import` sobre `returnUrl`, el inicializador que no
-  restaura sesión en una ruta pública, `/mis-links?import=` con su "Reintentar", el interruptor con sus confirmaciones y
-  su aviso de oferta sin leer, el `403` con su texto, y el store que conserva `publicShare` al sustituir una tarjeta y
-  lo borra al despublicar.
+  **el `429` y el `5xx` con "Reintentar" y el CTA intacto**, que el CTA navega a `/registro?import=` sin consultar la
+  sesión, `guestGuard` con `import`, la precedencia `import` sobre `returnUrl`, el inicializador que no restaura sesión
+  en una ruta pública, `/mis-links?import=` con su "Reintentar", el interruptor con sus confirmaciones y su aviso de
+  oferta sin leer, el `403` con su texto, y el store que conserva `publicShare` al sustituir una tarjeta y lo borra al
+  despublicar.
 - **E2E Playwright** en `apps/web-e2e/src/public-share.spec.ts`, con la franja `public: 4` en `JOB_ID_SLOTS` y
   `resetRegisterLimit()` como el resto. La petición a `/p/:slug` va **al origen de la API**, no al del SPA: en el e2e
   son dos orígenes distintos y pedirla al del SPA devolvería el `index.html` de Angular y el test pasaría sin probar
@@ -692,10 +772,11 @@ test comprueba el literal.
   la alternativa era publicar para todos desde un solo grupo.
 - **Un preview `manual` o `pasted` se publica con lo que alguien escribió** en los campos cortos (D6). Sin `summary`, el
   riesgo se reduce a un campo de una línea, y el interruptor lo apaga.
-- **El límite global se puede agotar a propósito** (D8): un atacante sostenido deja `/p/:slug` en `429` para todos unos
-  minutos y las tarjetas de WhatsApp salen sin previsualización. No se pierde ni se expone nada, el umbral está muy por
-  encima del tráfico real y el `429` no cuesta ninguna lectura. El límite por cliente exige un proxy configurado, que
-  es de `deploy-prod`.
+- **El límite se puede agotar a propósito** (D8): 6000 cada 15 min son 6,7 req/s, al alcance de un bucle casero, así que
+  cualquiera puede dejar `/p/:slug` en `429` un rato. No se pierde ni se expone nada y el `429` no cuesta lecturas, pero
+  **el daño sobrevive a la ventana**: si el bot pilla el minuto en que alguien pega el enlace en un chat, esa
+  conversación se queda con la tarjeta vacía cacheada durante días, y ni despublicar ni volver a enviar el mismo enlace
+  la arreglan. Lo acota el contador por `slug` y, de verdad, un límite por cliente delante, que es de `deploy-prod`.
 - **Mientras no haya proxy configurado, los límites por IP siguen siendo los que ya existen** en `auth` y `groups`, con
   el comportamiento de hoy. Este change **no** activa `trustProxy` precisamente para no convertir `request.ip` en un
   dato que manda el cliente, que debilitaría esos límites de login, registro y unión a un grupo.
@@ -778,3 +859,23 @@ Critic: 3 P0. Business: 3 V0. Tras aplicar esta tabla no queda ningún P0/V0 abi
 | business 8 | El CTA no decía qué gana quien no conoce LinkVault | Aceptado: "Guarda aquí las ofertas que te pasan por WhatsApp y no las pierdas." (D12) | Un botón sin promesa no se pulsa |
 | business 9 | El `404` no daba salida y el `403` parecía un fallo | Aceptado: "Pídeselo de nuevo a quien te lo envió" y "Solo quien compartió la oferta o el propietario del grupo puede cambiar esto" (D4, D12) | Cada callejón sin salida tiene que decir qué hacer |
 | business 10 | — | Sin cambios | — |
+
+## Debate (iteración 2)
+
+Critic: 2 P0. Business: 1 V0. Tras aplicar esta tabla no queda ningún P0/V0 abierto.
+
+| # | Hallazgo | Decisión | Motivo |
+|---|----------|----------|--------|
+| critic N1 (P0) + business 2 | La vista pública trataba cualquier fallo como "el enlace ya no está": un `429` o un `5xx` le decían a alguien que su oferta había desaparecido, y se perdía el alta | Aceptado: estado propio para `429` y `5xx` —"Ahora mismo no podemos mostrar esta oferta. Inténtalo en un momento." con "Reintentar" y **conservando** el CTA—; solo el `404` dice que ya no está. Requisito y escenarios propios, y textos ES/EN (D12) | Una avería nuestra no puede sonar a enlace muerto, y el CTA no depende del preview para navegar |
+| critic N2 (P0) | El bucle de 5 reintentos de slug también corría **dentro** de la transacción del alta: tras un `E11000` la sesión está abortada, así que serían cuatro escrituras muertas antes de fallar igual | Aceptado: `publish()` es un `updateOne` suelto y ahí va el bucle; `share({ publish: true })` **no** reintenta por dentro y deja que `withResolvedLink` repita la transacción entera. `MAX_RESOLVE_ATTEMPTS` sube de 2 a 3 y su comentario pasa a decir las **dos** razones de reintento (D2, tareas 3.6 y 3.7). La spec deja de prometer "5 reintentos" en el alta | Un reintento dentro de una transacción abortada no reintenta nada; y el 2 se justificaba con una razón que el índice nuevo deja incompleta |
+| business 1 (V0) | El CTA consultaba la sesión antes de elegir destino: con la API lenta, hasta 10 s de espera dentro del clic que convierte | Aceptado: navega **siempre** a `/registro?import=<slug>` y es `guestGuard`, que ya restaura la sesión, quien desvía a `/mis-links?import=` (D9, spec, tarea 7.7) | La sesión se resuelve donde siempre: en el guard |
+| critic N3 | El `<script>` del redirect obligaba a `script-src 'unsafe-inline'` y traía la superficie de `</script>` | Aceptado: solo `<meta http-equiv="refresh" content="0; …">`; desaparecen el `<script>`, `scriptJson` y su test, y `script-src` pasa a estar cubierto por `default-src 'none'` (D4, tarea 6.1) | Una CSP que dice `'none'` de verdad vale más que no repetir una entrada del historial |
+| critic N4 | `img-src ${WEB_BASE_URL} data:` sin que la página pinte ninguna imagen | Aceptado: se quita la directiva y la cubre `default-src 'none'`; `og:image` lo descarga el crawler desde su servidor, no el navegador (D4) | Una excepción que no hace falta es una excepción de más |
+| critic N5 | El `displayUrl` se publicaba con sus parámetros de seguimiento, y un `mc_eid` puede llevar un email dentro | Aceptado: `publicHttpUrl` quita también los parámetros de campaña de la lista cerrada de `normalizeUrl`, que **sube a `libs/shared`** con la función; residuo escrito: los desconocidos no se pueden quitar sin romper el enlace (D6, tarea 1.4) | Publicar la URL tal cual repartía el rastro de quien recibió la oferta |
+| critic N6 (a) y (b) | "6000 está muy por encima de cualquier tráfico real" era falso —son 6,7 req/s— y un bucle sobre un solo enlace agotaba la ventana de todos | Aceptado: se corrige la afirmación y entra un **segundo contador por `slug`** (2000 por ventana), que es un dato del recurso y no del cliente. La caché en proceso del HTML queda en Non-Goals con su razón (D8) | El tope acota el coste, no al atacante; acotar el daño a un enlace sí está en nuestra mano sin tocar `trustProxy` |
+| critic N7 | `'p/*'` no es un comodín válido en Nest 11 (`path-to-regexp` 8) y habría roto el arranque | Aceptado: `p/{*splat}` en el controlador y en el `exclude` (D4, tarea 5.3) | Un error de arranque, no de comportamiento |
+| critic N8 | El contador se consumía antes de mirar el formato del slug | Aceptado: formato → contador → lecturas, con escenario (D4) | Una ráfaga de basura no debe gastar la ventana de los enlaces buenos |
+| critic N9 | Tres incoherencias internas: el proposal aún anunciaba `TRUST_PROXY`, D4 hablaba de `safeHttpUrl` y `PUBLIC_SLUG_GENERATOR` figuraba en los casos de uso | Aceptado: corregidas las tres; el generador se inyecta en el repositorio (D2, D4, proposal) | Un diseño que se contradice se implementa mal |
+| business 3 | Quitar el fragmento rompe las bolsas que ponen la ruta en el `#` | Aceptado: `publicHttpUrl` **conserva** el fragmento; la fuga del slug ya la tapa `Referrer-Policy: no-referrer`, y el navegador no envía el fragmento al servidor (D6) | Romper el enlace es peor que un riesgo que ya está tapado |
+| business 4 | El daño de un `429` parecía durar lo que la ventana | Aceptado: en Risks, que el chat cachea la ausencia de tarjeta y el daño sobrevive a la ventana (D8, Risks) | Lo que se cachea en un chat no se puede rehacer |
+| business 5 | Textos huérfanos o mal traducidos | Aceptado: fuera "Esta oferta se compartió desde LinkVault", que ya no tiene destino, y "New links **are shared with** a public link" (D12) | Una tabla de textos es un contrato con `messages.en.xlf` |
