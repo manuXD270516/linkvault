@@ -91,6 +91,7 @@ import {
   UnsupportedCvFile,
 } from '../../modules/cv/domain/errors';
 import {
+  ConsentTextOutdated,
   EmailAlreadyRegistered,
   InvalidDisplayName,
   InvalidProfileChanges,
@@ -110,6 +111,7 @@ const THROWN: Record<string, () => unknown> = {
   'password-policy': () =>
     new PasswordPolicyViolation('newPassword', 'too_short'),
   'email-already-registered': () => new EmailAlreadyRegistered(),
+  'consent-text-outdated': () => new ConsentTextOutdated(),
   'invalid-profile-field': () => new InvalidProfileChanges('outputLanguage'),
   'invalid-profile-empty': () => new InvalidProfileChanges(),
   'invalid-display-name': () => new InvalidDisplayName(),
@@ -355,6 +357,7 @@ describe('ApiExceptionFilter', () => {
     ['user-not-found', 401, 'unauthorized', undefined],
     ['email-taken', 409, 'email_taken', undefined],
     ['email-already-registered', 409, 'email_taken', undefined],
+    ['consent-text-outdated', 409, 'consent_text_outdated', undefined],
     ['refresh-conflict', 409, 'refresh_conflict', undefined],
     ['password-policy', 400, 'validation_error', ['newPassword']],
     ['invalid-profile-field', 400, 'validation_error', ['outputLanguage']],

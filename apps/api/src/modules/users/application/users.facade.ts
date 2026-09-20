@@ -1,7 +1,12 @@
-import type { UserProfile } from '@linkvault/shared';
+import {
+  AI_CONSENT_TEXT_VERSION,
+  isAiConsentCurrent,
+  type UserProfile,
+} from '@linkvault/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import { UserNotFound } from '../domain/errors';
 import { createUser, normalizeEmail } from '../domain/user';
+import type { OutputLanguage } from '../domain/user-profile';
 import { USERS_CLOCK, type Clock } from './ports/clock.port';
 import {
   USER_REPOSITORY,
@@ -28,6 +33,18 @@ export interface UserAuthState {
 export interface UserAiConsent {
   /** Permiso para enviar sus datos a proveedores de IA externos. */
   readonly externalProviders: boolean;
+}
+
+/**
+ * Contexto de IA efectivo: el consentimiento ya cruzado con `isAiConsentCurrent`, más idioma, redacción y el nombre
+ * para el `PiiRedactor`. Nadie fuera de `users` interpreta la vigencia del consentimiento.
+ */
+export interface UserEffectiveAiContext {
+  readonly aiConsent: UserAiConsent;
+  readonly outputLanguage: OutputLanguage;
+  readonly redactName: boolean;
+  /** Nombre visible, para redactar ante proveedores externos cuando `redactName` está activo. */
+  readonly personName: string;
 }
 
 export interface CreateUserWithPassword {
@@ -89,12 +106,39 @@ export class UsersFacade {
   /**
    * Consentimiento de IA de un usuario (D2 de paste-job-description): `links` lo necesita para leer lo que pega, que es
    * un dato personal suyo, y no puede leer el perfil entero ni el dominio de `users` (ADR-020 §6). Un usuario que no
-   * existe no ha consentido nada: responde sin permiso, que es el valor seguro.
+   * existe no ha consentido nada: responde sin permiso, que es el valor seguro. La vigencia se interpreta aquí —activo
+   * y sobre el texto actual— para que nadie fuera de `users` mienta tras un cambio de texto (D4).
    */
   async aiConsentOf(userId: string): Promise<UserAiConsent> {
+    const context = await this.effectiveAiContextOf(userId);
+    return { externalProviders: context.aiConsent.externalProviders };
+  }
+
+  /**
+   * Contexto de IA efectivo de una persona: consentimiento ya cruzado con `isAiConsentCurrent`, idioma, `redactName` y
+   * el nombre para la redacción. Un usuario inexistente responde sin permiso y con los valores seguros de fábrica.
+   */
+  async effectiveAiContextOf(userId: string): Promise<UserEffectiveAiContext> {
     const user = await this.users.findById(userId);
+    if (!user) {
+      return {
+        aiConsent: { externalProviders: false },
+        outputLanguage: 'es',
+        redactName: true,
+        personName: '',
+      };
+    }
     return {
-      externalProviders: user?.profile.aiConsent.externalProviders ?? false,
+      aiConsent: {
+        externalProviders: isAiConsentCurrent({
+          externalProviders: user.profile.aiConsent.externalProviders,
+          textVersion: user.profile.aiConsent.textVersion,
+          currentTextVersion: AI_CONSENT_TEXT_VERSION,
+        }),
+      },
+      outputLanguage: user.profile.outputLanguage,
+      redactName: user.profile.redactName,
+      personName: user.profile.displayName,
     };
   }
 

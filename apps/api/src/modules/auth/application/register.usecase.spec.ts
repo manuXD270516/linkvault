@@ -46,7 +46,7 @@ describe('Register', () => {
       displayName: 'Ana',
       aiConsent: { externalProviders: false },
       outputLanguage: 'es',
-      redactName: false,
+      redactName: true,
     });
     expect(session.expiresIn).toBe(900);
     expect(await harness.signer.verify(session.accessToken)).toMatchObject({

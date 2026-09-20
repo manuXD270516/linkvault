@@ -89,7 +89,7 @@ export class InMemoryUserAccounts implements UserAccounts {
         currentTextVersion: AI_CONSENT_TEXT_VERSION,
       },
       outputLanguage: 'es',
-      redactName: false,
+      redactName: true,
       createdAt: now.toISOString(),
     };
     this.accounts.set(profile.id, {

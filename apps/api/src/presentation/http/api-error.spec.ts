@@ -33,6 +33,12 @@ describe('API_ERROR_STATUS and API_ERROR_MESSAGES', () => {
     ['unsupported_file_type', 415],
     ['file_too_large', 413],
     ['too_many_cvs', 409],
+    ['consent_text_outdated', 409],
+    ['analysis_not_found', 404],
+    ['no_cv', 409],
+    ['cv_not_ready', 409],
+    ['cv_not_readable', 409],
+    ['job_not_ready', 409],
   ] as const)('answers %s with %i', (code, status) => {
     expect(API_ERROR_STATUS[code]).toBe(status);
     expect(API_ERROR_MESSAGES[code]).not.toBe('');

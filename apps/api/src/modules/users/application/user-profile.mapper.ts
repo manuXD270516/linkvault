@@ -6,8 +6,7 @@ import type { User } from '../domain/user';
  * Perfil público del usuario (contrato `userProfileSchema`). Lista cerrada de campos: el hash de la contraseña y
  * `passwordChangedAt` nunca salen del módulo por esta vía.
  *
- * `consentedAt` / `textVersion` se rellenan en el change `cv-match-suggestions` (tarea 7.x) desde el dominio; hasta
- * entonces salen nulos. `currentTextVersion` es siempre la vigente del contrato compartido.
+ * `currentTextVersion` es siempre la vigente del contrato compartido, aunque el usuario haya aceptado otra.
  */
 export function toUserProfile(user: User): UserProfile {
   return {
@@ -16,8 +15,8 @@ export function toUserProfile(user: User): UserProfile {
     displayName: user.profile.displayName,
     aiConsent: {
       externalProviders: user.profile.aiConsent.externalProviders,
-      consentedAt: null,
-      textVersion: null,
+      consentedAt: user.profile.aiConsent.consentedAt?.toISOString() ?? null,
+      textVersion: user.profile.aiConsent.textVersion,
       currentTextVersion: AI_CONSENT_TEXT_VERSION,
     },
     outputLanguage: user.profile.outputLanguage,

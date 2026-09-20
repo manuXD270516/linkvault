@@ -62,7 +62,8 @@ export function createUser(params: {
 
 /**
  * Valida un conjunto no vacío de cambios de perfil y devuelve solo los campos enviados, con `displayName` normalizado.
- * Defensa en profundidad: el contrato HTTP ya rechaza campos desconocidos y valores inválidos.
+ * Defensa en profundidad: el contrato HTTP ya rechaza campos desconocidos y valores inválidos. El consentimiento llega
+ * ya estampado por `UpdateMyProfile` (activo con fecha/versión, o revocado con nulos).
  */
 export function normalizeProfileChanges(
   changes: ProfileChanges,
@@ -74,12 +75,35 @@ export function normalizeProfileChanges(
     normalized.displayName = normalizeDisplayName(changes.displayName);
   }
   if (changes.aiConsent !== undefined) {
-    if (typeof changes.aiConsent.externalProviders !== 'boolean') {
+    const consent = changes.aiConsent;
+    if (typeof consent.externalProviders !== 'boolean') {
       throw new InvalidProfileChanges('aiConsent');
     }
-    normalized.aiConsent = {
-      externalProviders: changes.aiConsent.externalProviders,
-    };
+    if (consent.externalProviders) {
+      if (
+        typeof consent.textVersion !== 'string' ||
+        consent.textVersion.length < 1
+      ) {
+        throw new InvalidProfileChanges('textVersion');
+      }
+      if (!(consent.consentedAt instanceof Date)) {
+        throw new InvalidProfileChanges('aiConsent');
+      }
+      normalized.aiConsent = {
+        externalProviders: true,
+        consentedAt: consent.consentedAt,
+        textVersion: consent.textVersion,
+      };
+    } else {
+      if (consent.consentedAt !== null || consent.textVersion !== null) {
+        throw new InvalidProfileChanges('aiConsent');
+      }
+      normalized.aiConsent = {
+        externalProviders: false,
+        consentedAt: null,
+        textVersion: null,
+      };
+    }
   }
   if (changes.outputLanguage !== undefined) {
     if (!OUTPUT_LANGUAGES.includes(changes.outputLanguage)) {

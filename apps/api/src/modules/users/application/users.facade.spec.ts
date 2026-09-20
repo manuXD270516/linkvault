@@ -1,3 +1,4 @@
+import { AI_CONSENT_TEXT_VERSION } from '@linkvault/shared';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { EmailAlreadyRegistered, UserNotFound } from '../domain/errors';
 import type { Clock } from './ports/clock.port';
@@ -14,6 +15,7 @@ class FixedClock implements Clock {
 
 const registeredAt = new Date('2026-09-17T10:00:00.000Z');
 const changedAt = new Date('2026-09-20T08:15:30.250Z');
+const consentedAt = new Date('2026-09-20T12:00:00.000Z');
 
 describe('UsersFacade', () => {
   let repository: InMemoryUserRepository;
@@ -42,16 +44,38 @@ describe('UsersFacade', () => {
           externalProviders: false,
           consentedAt: null,
           textVersion: null,
-          currentTextVersion: '2026-09-20',
+          currentTextVersion: AI_CONSENT_TEXT_VERSION,
         },
         outputLanguage: 'es',
-        redactName: false,
+        redactName: true,
         createdAt: '2026-09-17T10:00:00.000Z',
       });
       expect(await repository.findById(profile.id)).toMatchObject({
         passwordHash: '$argon2id$hash',
         passwordChangedAt: registeredAt,
         createdAt: registeredAt,
+        profile: {
+          aiConsent: {
+            externalProviders: false,
+            consentedAt: null,
+            textVersion: null,
+          },
+          redactName: true,
+        },
+      });
+    });
+
+    it('Sin fecha ni versión de consentimiento', async () => {
+      const profile = await facade.createWithPassword({
+        email: 'ana@example.com',
+        passwordHash: '$argon2id$hash',
+        displayName: 'Ana',
+      });
+
+      expect(profile.aiConsent.consentedAt).toBeNull();
+      expect(profile.aiConsent.textVersion).toBeNull();
+      expect(await facade.effectiveAiContextOf(profile.id)).toMatchObject({
+        aiConsent: { externalProviders: false },
       });
     });
 
@@ -158,10 +182,34 @@ describe('UsersFacade', () => {
     it('returns null for an unknown user', async () => {
       expect(await facade.getProfile('missing')).toBeNull();
     });
+
+    it('Consentimiento aceptado sobre un texto anterior', async () => {
+      const created = await facade.createWithPassword({
+        email: 'ana@example.com',
+        passwordHash: '$argon2id$hash',
+        displayName: 'Ana',
+      });
+      await repository.updateProfile(created.id, {
+        aiConsent: {
+          externalProviders: true,
+          consentedAt,
+          textVersion: '2026-01-01',
+        },
+      });
+
+      const profile = await facade.getProfile(created.id);
+
+      expect(profile?.aiConsent).toEqual({
+        externalProviders: true,
+        consentedAt: consentedAt.toISOString(),
+        textVersion: '2026-01-01',
+        currentTextVersion: AI_CONSENT_TEXT_VERSION,
+      });
+    });
   });
 
   describe('aiConsentOf', () => {
-    it('reads the consent from the profile of that user', async () => {
+    it('reads the effective consent from the profile of that user', async () => {
       const { id } = await facade.createWithPassword({
         email: 'ana@example.com',
         passwordHash: '$argon2id$hash',
@@ -173,7 +221,11 @@ describe('UsersFacade', () => {
       });
 
       await repository.updateProfile(id, {
-        aiConsent: { externalProviders: true },
+        aiConsent: {
+          externalProviders: true,
+          consentedAt,
+          textVersion: AI_CONSENT_TEXT_VERSION,
+        },
       });
 
       expect(await facade.aiConsentOf(id)).toEqual({ externalProviders: true });
@@ -183,6 +235,90 @@ describe('UsersFacade', () => {
       expect(await facade.aiConsentOf('missing')).toEqual({
         externalProviders: false,
       });
+    });
+  });
+
+  describe('effectiveAiContextOf', () => {
+    it('vigente', async () => {
+      const { id } = await facade.createWithPassword({
+        email: 'ana@example.com',
+        passwordHash: '$argon2id$hash',
+        displayName: 'Ana María',
+      });
+      await repository.updateProfile(id, {
+        aiConsent: {
+          externalProviders: true,
+          consentedAt,
+          textVersion: AI_CONSENT_TEXT_VERSION,
+        },
+        outputLanguage: 'en',
+        redactName: false,
+      });
+
+      expect(await facade.effectiveAiContextOf(id)).toEqual({
+        aiConsent: { externalProviders: true },
+        outputLanguage: 'en',
+        redactName: false,
+        personName: 'Ana María',
+      });
+    });
+
+    it('sobre una versión anterior', async () => {
+      const { id } = await facade.createWithPassword({
+        email: 'ana@example.com',
+        passwordHash: '$argon2id$hash',
+        displayName: 'Ana',
+      });
+      await repository.updateProfile(id, {
+        aiConsent: {
+          externalProviders: true,
+          consentedAt,
+          textVersion: '2026-01-01',
+        },
+      });
+
+      expect(await facade.effectiveAiContextOf(id)).toEqual({
+        aiConsent: { externalProviders: false },
+        outputLanguage: 'es',
+        redactName: true,
+        personName: 'Ana',
+      });
+    });
+
+    it('nunca dado', async () => {
+      const { id } = await facade.createWithPassword({
+        email: 'ana@example.com',
+        passwordHash: '$argon2id$hash',
+        displayName: 'Ana',
+      });
+
+      expect(await facade.effectiveAiContextOf(id)).toEqual({
+        aiConsent: { externalProviders: false },
+        outputLanguage: 'es',
+        redactName: true,
+        personName: 'Ana',
+      });
+    });
+
+    it('El nombre no viaja por defecto', async () => {
+      const { id } = await facade.createWithPassword({
+        email: 'ana@example.com',
+        passwordHash: '$argon2id$hash',
+        displayName: 'Ana',
+      });
+      await repository.updateProfile(id, {
+        aiConsent: {
+          externalProviders: true,
+          consentedAt,
+          textVersion: AI_CONSENT_TEXT_VERSION,
+        },
+      });
+
+      const context = await facade.effectiveAiContextOf(id);
+
+      expect(context.redactName).toBe(true);
+      expect(context.personName).toBe('Ana');
+      expect(context.aiConsent.externalProviders).toBe(true);
     });
   });
 
