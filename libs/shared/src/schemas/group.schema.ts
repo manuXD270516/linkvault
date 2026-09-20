@@ -41,6 +41,25 @@ export const renameGroupRequestSchema = z.object({
 });
 export type RenameGroupRequest = z.infer<typeof renameGroupRequestSchema>;
 
+/**
+ * Visibilidad por defecto de los links que **entran** en el grupo (D3 de public-preview-share, ADR-027 §7). Un enum y no
+ * un booleano: deja sitio a un tercer valor —"solo con enlace y con contraseña"— sin migrar nada.
+ */
+export const groupVisibilitySchema = z.enum(['public', 'private']);
+export type GroupVisibility = z.infer<typeof groupVisibilitySchema>;
+
+/**
+ * Cuerpo de `PATCH /api/groups/:id/settings`. Ruta propia en vez de ampliar `PATCH /api/groups/:id`, que hoy exige
+ * `name`: hacer `name` opcional debilitaría el renombrado y obligaría a un "al menos un campo" en un contrato bien
+ * probado.
+ */
+export const updateGroupSettingsRequestSchema = z.object({
+  defaultVisibility: groupVisibilitySchema,
+});
+export type UpdateGroupSettingsRequest = z.infer<
+  typeof updateGroupSettingsRequestSchema
+>;
+
 /** Cuerpo de `POST /api/groups/join`. */
 export const joinGroupRequestSchema = z.object({
   code: inviteCodeSchema,
@@ -71,7 +90,11 @@ export const groupSummarySchema = z.strictObject({
 });
 export type GroupSummary = z.infer<typeof groupSummarySchema>;
 
-/** Detalle de un grupo. `inviteCode` solo viaja cuando el rol resuelto es `owner`. */
+/**
+ * Detalle de un grupo. `inviteCode` solo viaja cuando el rol resuelto es `owner`; `defaultVisibility` viaja para
+ * **cualquier miembro**, porque quien comparte un link tiene derecho a saber si va a nacer público (D3). Un grupo
+ * guardado sin el ajuste se lee como `public`, así que el campo nunca falta en la respuesta.
+ */
 export const groupDetailSchema = z.strictObject({
   id: z.string().min(1),
   name: groupNameSchema,
@@ -79,6 +102,7 @@ export const groupDetailSchema = z.strictObject({
   memberCount: z.number().int().nonnegative(),
   createdAt: z.iso.datetime(),
   inviteCode: z.string().min(1).optional(),
+  defaultVisibility: groupVisibilitySchema,
 });
 export type GroupDetail = z.infer<typeof groupDetailSchema>;
 

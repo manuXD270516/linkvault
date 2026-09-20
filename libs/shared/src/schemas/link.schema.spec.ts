@@ -15,6 +15,7 @@ import {
   listLinksQuerySchema,
   platformSchema,
   previewStatusSchema,
+  publicShareSchema,
   saveLinkRequestSchema,
   saveLinkResponseSchema,
   shareOutcomeSchema,
@@ -461,6 +462,41 @@ describe('listLinksQuerySchema', () => {
   it('exposes the page limits', () => {
     expect(LINK_PAGE_DEFAULT_LIMIT).toBe(20);
     expect(LINK_PAGE_MAX_LIMIT).toBe(50);
+  });
+});
+
+describe('publicShareSchema en jobLinkSummarySchema', () => {
+  const share = {
+    slug: 'k7m2p9r4t6vw',
+    url: 'https://linkvault.example/p/k7m2p9r4t6vw',
+    publishedAt: '2026-09-19T10:00:00.000Z',
+  } as const;
+
+  it('el listado de un grupo acepta el enlace público', () => {
+    const published = { ...summary, publicShare: share };
+
+    expect(jobLinkSummarySchema.parse(published)).toEqual(published);
+  });
+
+  it('un link sin publicar no lo lleva', () => {
+    expect(jobLinkSummarySchema.parse(summary)).not.toHaveProperty(
+      'publicShare',
+    );
+  });
+
+  it('rechaza un slug mal formado', () => {
+    expect(
+      jobLinkSummarySchema.safeParse({
+        ...summary,
+        publicShare: { ...share, slug: 'NO-ES-UN-SLUG' },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('no dice quién lo publicó', () => {
+    expect(
+      publicShareSchema.safeParse({ ...share, publishedBy: 'u1' }).success,
+    ).toBe(false);
   });
 });
 

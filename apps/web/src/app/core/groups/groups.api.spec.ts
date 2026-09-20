@@ -15,6 +15,7 @@ const detail: GroupDetail = {
   role: 'owner',
   memberCount: 1,
   createdAt: '2026-09-17T10:00:00.000Z',
+  defaultVisibility: 'public',
   inviteCode: 'ABCD2345',
 };
 
@@ -153,6 +154,7 @@ describe('GroupsApi', () => {
       role: 'member',
       memberCount: 2,
       createdAt: '2026-09-17T10:00:00.000Z',
+      defaultVisibility: 'public',
     };
     const result = api.transferOwnership('g1', 'u2');
 

@@ -25,6 +25,7 @@ const ownerDetail: GroupDetail = {
   role: 'owner',
   memberCount: 2,
   createdAt: '2026-09-10T12:00:00.000Z',
+  defaultVisibility: 'public',
   inviteCode: 'ABCD2345',
 };
 
@@ -34,6 +35,7 @@ const memberDetail: GroupDetail = {
   role: 'member',
   memberCount: 2,
   createdAt: '2026-09-10T12:00:00.000Z',
+  defaultVisibility: 'public',
 };
 
 const linkOfBeto: JobLinkSummary = {

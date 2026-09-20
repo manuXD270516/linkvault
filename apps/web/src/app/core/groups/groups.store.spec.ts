@@ -32,6 +32,7 @@ const created: GroupDetail = {
   role: 'owner',
   memberCount: 1,
   createdAt: '2026-09-17T11:00:00.000Z',
+  defaultVisibility: 'public',
   inviteCode: 'ABCD2345',
 };
 
@@ -146,6 +147,7 @@ describe('GroupsStore', () => {
       role: 'member',
       memberCount: 3,
       createdAt: '2026-09-17T10:00:00.000Z',
+      defaultVisibility: 'public',
     };
     const transferring = store.transferOwnership('g1', 'u2');
 
