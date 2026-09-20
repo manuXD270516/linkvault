@@ -56,12 +56,12 @@
 
 ## 5. Casos de uso de `cv` en `api`
 
-- [ ] 5.1 [backend] `UploadCv` en el orden de D7 (puerta → contador → recuento → identificador y subida → transacción con el evento); verificar con unitarios de "Primera subida", "Segunda subida se lleva la marca", "El evento se escribe con el documento" y "La transacción falla: no queda documento".
-- [ ] 5.2 [backend] `UploadCv`, ramas que no guardan: tipo no admitido y tamaño (sin consumir el de subidas, **consumiendo el de rechazos**), tope de 5 y almacén caído (**devolviendo el intento de subida**); verificar con unitarios de cada rama, del consumo y la devolución en cada una, y de que once subidas aceptadas con borrados intercalados acaban en `429`.
-- [ ] 5.3 [backend] `ListMyCvs`: orden de más reciente a más antiguo y mapeo por **lista explícita de campos** (nunca `...document`); verificar con unitarios de tres CV, lista vacía y "el texto no viaja".
-- [ ] 5.4 [backend] `SetDefaultCv`: idempotente, `CvNotFound` para lo ajeno o inexistente, devuelve la lista actualizada; verificar con unitarios de "Volver a la anterior", "Marcar el que ya lo es", "Marcar uno en failed" y "El CV de otra persona".
-- [ ] 5.5 [backend] `DeleteCv`: borra, promueve, escribe el evento y devuelve la lista; verificar con unitarios de "Borrar el marcado", "Borrar el último", "Borrar dos veces" y "El evento queda pendiente".
-- [ ] 5.6 [backend] `GetCvTextPreview`: comprueba propiedad, consume su contador, pide el prefijo al repositorio y devuelve `{ status, text, chars, complete }`, con texto vacío y su `status` si el CV no está `extracted`; verificar con unitarios de "Ver lo leído", "Un CV corto se ve entero", "Justo 2.000 caracteres", "Todavía no hay texto", "Un CV que no se pudo leer" y "El CV de otra persona".
+- [x] 5.1 [backend] `UploadCv` en el orden de D7 (puerta → contador → recuento → identificador y subida → transacción con el evento); verificar con unitarios de "Primera subida", "Segunda subida se lleva la marca", "El evento se escribe con el documento" y "La transacción falla: no queda documento".
+- [x] 5.2 [backend] `UploadCv`, ramas que no guardan: tipo no admitido y tamaño (sin consumir el de subidas, **consumiendo el de rechazos**), tope de 5 y almacén caído (**devolviendo el intento de subida**); verificar con unitarios de cada rama, del consumo y la devolución en cada una, y de que once subidas aceptadas con borrados intercalados acaban en `429`.
+- [x] 5.3 [backend] `ListMyCvs`: orden de más reciente a más antiguo y mapeo por **lista explícita de campos** (nunca `...document`); verificar con unitarios de tres CV, lista vacía y "el texto no viaja".
+- [x] 5.4 [backend] `SetDefaultCv`: idempotente, `CvNotFound` para lo ajeno o inexistente, devuelve la lista actualizada; verificar con unitarios de "Volver a la anterior", "Marcar el que ya lo es", "Marcar uno en failed" y "El CV de otra persona".
+- [x] 5.5 [backend] `DeleteCv`: borra, promueve, escribe el evento y devuelve la lista; verificar con unitarios de "Borrar el marcado", "Borrar el último", "Borrar dos veces" y "El evento queda pendiente".
+- [x] 5.6 [backend] `GetCvTextPreview`: comprueba propiedad, consume su contador, pide el prefijo al repositorio y devuelve `{ status, text, chars, complete }`, con texto vacío y su `status` si el CV no está `extracted`; verificar con unitarios de "Ver lo leído", "Un CV corto se ve entero", "Justo 2.000 caracteres", "Todavía no hay texto", "Un CV que no se pudo leer" y "El CV de otra persona".
 
 ## 6. HTTP en `api`
 
