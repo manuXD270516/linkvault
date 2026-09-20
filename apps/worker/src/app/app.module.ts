@@ -8,6 +8,7 @@ import { BullmqConnectionModule } from '../infrastructure/queue/bullmq-connectio
 import { RedisHealthModule } from '../infrastructure/redis/redis-health.module';
 import { CvModule } from '../modules/cv/cv.module';
 import { EnrichmentModule } from '../modules/enrichment/enrichment.module';
+import { MatchModule } from '../modules/match/match.module';
 import { HealthModule } from '../presentation/http/health.module';
 
 @Module({})
@@ -40,6 +41,8 @@ export class AppModule {
         // `CvModule` recibe la configuración por la misma razón que `EnrichmentModule`: es quien decide, con ella, si
         // registra sus dos `Worker`. En los tests no los registra, y así la suite no abre ninguna conexión a Redis.
         CvModule.register(config),
+        // `MatchModule` importa el mismo `aiModule` para resolver `RUN_TASK` y registra `analyze-match` fuera de test.
+        MatchModule.register(config, aiModule),
         HealthModule,
       ],
     };
