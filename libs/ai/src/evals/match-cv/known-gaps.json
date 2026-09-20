@@ -1,0 +1,7 @@
+{
+  "bare-id-without-keyword": {
+    "type": "id",
+    "reason": "Un documento de identidad escrito sin palabra clave (CI, DNI, cédula) ni extensión departamental se escapa al detector conservador; redactar todo número de 7–8 dígitos destruiría salarios, códigos e identificadores de oferta, y la sobre-redacción daña el análisis sin que se note.",
+    "decision": "ADR-030 § riesgos aceptados; change cv-match-suggestions (D8 / D9)"
+  }
+}

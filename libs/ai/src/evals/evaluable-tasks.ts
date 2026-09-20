@@ -14,6 +14,11 @@ import {
   type ExtractPastedJobOutput,
 } from '../tasks/extract-pasted-job.task';
 import {
+  matchCvTask,
+  type MatchCvInput,
+  type MatchCvOutput,
+} from '../tasks/match-cv.task';
+import {
   CLASSIFY_SKILLS_CASE_COLUMNS,
   CLASSIFY_SKILLS_METRICS,
   classifySkillsExpectedSchema,
@@ -36,6 +41,12 @@ import {
   extractPastedJobExpectedSchema,
   type ExtractPastedJobExpected,
 } from './extract-pasted-job/metrics';
+import {
+  MATCH_CV_CASE_COLUMNS,
+  MATCH_CV_METRICS,
+  matchCvExpectedSchema,
+  type MatchCvExpected,
+} from './match-cv/metrics';
 
 // Registro de tareas evaluables (D1 y D4 de ai-eval-harness, ADR-019 §2). `--all` evalúa estas tareas, en este orden.
 // Toda tarea registrada tiene golden set y viceversa (lo comprueba un test del CLI).
@@ -73,10 +84,23 @@ export const extractPastedJobEvaluable: EvaluableTask<
   caseColumns: EXTRACT_PASTED_JOB_CASE_COLUMNS,
 };
 
+export const matchCvEvaluable: EvaluableTask<
+  MatchCvInput,
+  MatchCvOutput,
+  MatchCvExpected
+> = {
+  task: matchCvTask,
+  expectedSchema: matchCvExpectedSchema,
+  metrics: MATCH_CV_METRICS,
+  caseColumns: MATCH_CV_CASE_COLUMNS,
+  personalCvGolden: true,
+};
+
 export const EVALUABLE_TASKS: readonly AnyEvaluableTask[] = [
   eraseEvaluableTask(classifySkillsEvaluable),
   eraseEvaluableTask(extractJobEvaluable),
   eraseEvaluableTask(extractPastedJobEvaluable),
+  eraseEvaluableTask(matchCvEvaluable),
 ];
 
 /** Tarea evaluable por nombre, o `undefined` si no está registrada. */

@@ -1,5 +1,4 @@
 import {
-  MATCH_CV_FRAGMENT_MAX_CHARS,
   MATCH_SUGGESTIONS_MAX,
   matchReportCoreSchema,
   type MatchReportCore,
@@ -109,18 +108,15 @@ export const matchCvTask: AiTask<MatchCvInput, MatchCvOutput> = {
 };
 
 /**
- * Fragmento literal del CV para la evidencia: una frase que mencione la skill (si aparece como alias fallido no
- * debería, porque es missing) o `null`. Para missing skills el fragmento es `null` salvo que el rng elija citar
- * otra frase del CV como contexto de sección — aquí solo devolvemos `null` o un trozo corto del CV sin inventar.
+ * Fragmento literal del CV para la evidencia. En `synth` siempre `null`: copiar el inicio del CV metería PII en
+ * fixtures de tareas `personal` (6.15: la grabación rechaza salidas que el redactor externo cambiaría).
  */
 function pickCvFragment(
-  cvText: string,
+  _cvText: string,
   _skillName: string,
   rng: Rng,
 ): string | null {
-  const collapsed = cvText.replace(/\s+/gu, ' ').trim();
-  if (collapsed.length === 0) return null;
-  // Determinista: a veces null, a veces el inicio del CV (contexto de sección), nunca texto inventado.
-  if (rng() < 0.5) return null;
-  return collapsed.slice(0, MATCH_CV_FRAGMENT_MAX_CHARS);
+  // Consume el RNG para no desplazar muestras futuras si se amplía `sample`.
+  rng();
+  return null;
 }

@@ -1,6 +1,6 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -11,7 +11,7 @@ import { classifySkillsEvaluable } from '../evaluable-tasks';
 import { parseGolden } from '../golden.schema';
 import { composeEvalRunTask } from '../runner/compose-run-task';
 import { StderrAiLogger } from '../runner/eval-ports';
-import { fixturePath, recordFixtures } from './record-fixtures';
+import { PersonalTaskUpstreamRejected, recordFixtures } from './record-fixtures';
 
 // Tarea 4.3: "Upstream externo con datos personales" y "Upstream externo sin permiso explícito" (requisito "Grabación de
 // fixtures con un proveedor real", D7 de ai-eval-harness) con `composeEvalRunTask` real (`AI_CHAIN=openrouter`) contra
@@ -136,47 +136,24 @@ describe('recordFixtures against a local OpenRouter', () => {
     });
   }
 
-  it('Upstream externo con datos personales: sends the marker and records the output with the email reinjected', async () => {
+  it('Upstream externo con datos personales', async () => {
     const composed = compose(true);
     if (!composed.ok) throw new Error(composed.error.kind);
     const { runTask, ledger } = composed.value;
 
-    const summary = await recordFixtures({
-      evaluable: classifySkillsEvaluable,
-      cases: [PERSONAL_CASE],
-      runTask: runTask.execute,
-      ledger,
-      fixturesDir,
-      upstream: 'openrouter',
-      overwrite: false,
-    });
-
-    expect(summary).toEqual({
-      recorded: ['es-email'],
-      skipped: [],
-      failed: [],
-    });
-    expect(openRouter.bodies).toHaveLength(1);
-    expect(userMessageOf(openRouter.bodies[0])).toContain('[EMAIL_1]');
-    expect(openRouter.bodies[0]).not.toContain(EMAIL);
-
-    const raw = await readFile(
-      fixturePath(fixturesDir, 'classify-skills', PERSONAL_CASE.key),
-      'utf8',
-    );
-    expect(JSON.parse(raw)).toEqual({
-      source: `recorded:openrouter:${MODEL}`,
-      text: JSON.stringify({
-        skills: [
-          { name: 'TypeScript', category: 'language' },
-          { name: EMAIL, category: 'other' },
-        ],
+    await expect(
+      recordFixtures({
+        evaluable: classifySkillsEvaluable,
+        cases: [PERSONAL_CASE],
+        runTask: runTask.execute,
+        ledger,
+        fixturesDir,
+        upstream: 'openrouter',
+        overwrite: false,
       }),
-      model: MODEL,
-      usage: { inputTokens: 420, outputTokens: 38 },
-    });
-    expect(raw).not.toContain('[EMAIL_1]');
-    expect(raw).not.toContain(API_KEY);
+    ).rejects.toBeInstanceOf(PersonalTaskUpstreamRejected);
+    expect(openRouter.bodies).toEqual([]);
+    expect(await readdir(fixturesDir)).toEqual([]);
   });
 
   it('Upstream externo sin permiso explícito: fails with external_not_allowed without contacting the upstream', async () => {

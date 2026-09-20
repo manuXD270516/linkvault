@@ -19,7 +19,7 @@ import {
   NullCircuitBreaker,
   StderrAiLogger,
 } from '../runner/eval-ports';
-import { fixturePath, recordFixtures } from './record-fixtures';
+import { fixturePath, recordFixtures, PersonalTaskUpstreamRejected } from './record-fixtures';
 
 // Tarea 4.1: escritura de fixtures en `success`, `overwrite` y casos no grabados (D7 de ai-eval-harness), con un
 // upstream falso en memoria.
@@ -60,7 +60,7 @@ const VALID_TEXT = JSON.stringify({
 
 /** Upstream falso: responde según el texto del mensaje de usuario y guarda las claves recibidas. */
 class FakeUpstream implements LlmProvider {
-  readonly id = 'ollama';
+  readonly id: 'mock' | 'ollama' | 'openrouter';
   readonly capabilities = {
     jsonMode: true,
     toolUse: false,
@@ -71,7 +71,12 @@ class FakeUpstream implements LlmProvider {
   };
   readonly keys: string[] = [];
 
-  constructor(private readonly reply: (req: CompletionRequest) => string) {}
+  constructor(
+    private readonly reply: (req: CompletionRequest) => string,
+    id: 'mock' | 'ollama' | 'openrouter' = 'mock',
+  ) {
+    this.id = id;
+  }
 
   complete(req: CompletionRequest): Promise<CompletionResult> {
     this.keys.push(req.trace?.key ?? '');
@@ -127,7 +132,7 @@ describe('recordFixtures with an in-memory upstream', () => {
       runTask,
       ledger,
       fixturesDir,
-      upstream: 'ollama',
+      upstream: 'mock',
       overwrite: false,
     });
 
@@ -139,7 +144,7 @@ describe('recordFixtures with an in-memory upstream', () => {
     expect(upstream.keys).toEqual([FIRST.key, SECOND.key]);
     const fixture = JSON.parse(await readFile(pathOf(FIRST), 'utf8')) as unknown;
     expect(fixture).toEqual({
-      source: 'recorded:ollama:qwen2.5:7b',
+      source: 'recorded:mock:qwen2.5:7b',
       text: VALID_TEXT,
       model: 'qwen2.5:7b',
       usage: { inputTokens: 200, outputTokens: 25 },
@@ -162,7 +167,7 @@ describe('recordFixtures with an in-memory upstream', () => {
       runTask,
       ledger,
       fixturesDir,
-      upstream: 'ollama',
+      upstream: 'mock',
       overwrite: false,
     });
 
@@ -187,14 +192,14 @@ describe('recordFixtures with an in-memory upstream', () => {
       runTask,
       ledger,
       fixturesDir,
-      upstream: 'ollama',
+      upstream: 'mock',
       overwrite: true,
     });
 
     expect(summary.recorded).toEqual(['es-01']);
     expect(upstream.keys).toEqual([FIRST.key]);
     expect(await readFile(pathOf(FIRST), 'utf8')).toContain(
-      'recorded:ollama:qwen2.5:7b',
+      'recorded:mock:qwen2.5:7b',
     );
   });
 
@@ -211,7 +216,7 @@ describe('recordFixtures with an in-memory upstream', () => {
       runTask,
       ledger,
       fixturesDir,
-      upstream: 'ollama',
+      upstream: 'mock',
       overwrite: false,
     });
 
@@ -230,6 +235,77 @@ describe('recordFixtures with an in-memory upstream', () => {
   });
 
   it('does not record a success coming from a provider other than the upstream', async () => {
+    const upstream = new FakeUpstream(() => VALID_TEXT, 'ollama');
+    const { runTask, ledger } = composeWith(upstream);
+
+    await expect(
+      recordFixtures({
+        evaluable: classifySkillsEvaluable,
+        cases: [FIRST],
+        runTask,
+        ledger,
+        fixturesDir,
+        upstream: 'openrouter',
+        overwrite: false,
+      }),
+    ).rejects.toBeInstanceOf(PersonalTaskUpstreamRejected);
+  });
+
+  it('Grabar una tarea personal contra un proveedor real', async () => {
+    const upstream = new FakeUpstream(() => VALID_TEXT, 'ollama');
+    const { runTask, ledger } = composeWith(upstream);
+
+    await expect(
+      recordFixtures({
+        evaluable: classifySkillsEvaluable,
+        cases: [FIRST],
+        runTask,
+        ledger,
+        fixturesDir,
+        upstream: 'ollama',
+        overwrite: false,
+      }),
+    ).rejects.toMatchObject({
+      name: 'PersonalTaskUpstreamRejected',
+      taskName: 'classify-skills',
+      sensitivity: 'personal',
+    });
+    expect(upstream.keys).toEqual([]);
+    await expect(readFile(pathOf(FIRST), 'utf8')).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+  });
+
+  it('Fixture de una tarea personal con PII dentro', async () => {
+    const dirty = JSON.stringify({
+      skills: [
+        { name: 'TypeScript', category: 'language' },
+        { name: 'dirty@example.bo', category: 'other' },
+      ],
+    });
+    const upstream = new FakeUpstream(() => dirty);
+    const { runTask, ledger } = composeWith(upstream);
+
+    const summary = await recordFixtures({
+      evaluable: classifySkillsEvaluable,
+      cases: [FIRST],
+      runTask,
+      ledger,
+      fixturesDir,
+      upstream: 'mock',
+      overwrite: true,
+    });
+
+    expect(summary.recorded).toEqual([]);
+    expect(summary.failed[0]?.id).toBe('es-01');
+    expect(summary.failed[0]?.reason).toContain('email');
+    expect(summary.failed[0]?.reason).not.toContain('dirty@');
+    await expect(readFile(pathOf(FIRST), 'utf8')).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+  });
+
+  it('Fixture de una tarea personal ya limpio', async () => {
     const upstream = new FakeUpstream(() => VALID_TEXT);
     const { runTask, ledger } = composeWith(upstream);
 
@@ -239,19 +315,29 @@ describe('recordFixtures with an in-memory upstream', () => {
       runTask,
       ledger,
       fixturesDir,
-      upstream: 'openrouter',
-      overwrite: false,
+      upstream: 'mock',
+      overwrite: true,
     });
 
-    expect(summary.recorded).toEqual([]);
-    expect(summary.failed).toEqual([
-      {
-        id: 'es-01',
-        reason: 'success from provider ollama, expected upstream openrouter',
-      },
-    ]);
-    await expect(readFile(pathOf(FIRST), 'utf8')).rejects.toMatchObject({
-      code: 'ENOENT',
-    });
+    expect(summary.recorded).toEqual(['es-01']);
+    expect(summary.failed).toEqual([]);
+  });
+
+  it('Upstream externo con datos personales', async () => {
+    const upstream = new FakeUpstream(() => VALID_TEXT, 'openrouter');
+    const { runTask, ledger } = composeWith(upstream);
+
+    await expect(
+      recordFixtures({
+        evaluable: classifySkillsEvaluable,
+        cases: [FIRST],
+        runTask,
+        ledger,
+        fixturesDir,
+        upstream: 'openrouter',
+        overwrite: false,
+      }),
+    ).rejects.toBeInstanceOf(PersonalTaskUpstreamRejected);
+    expect(upstream.keys).toEqual([]);
   });
 });

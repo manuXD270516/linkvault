@@ -27,10 +27,15 @@ import {
 export interface ComposeEvalRunTaskOptions {
   /** Entorno de partida (el CLI pasa `process.env`). No se lee ningún `.env`. */
   env: AiEnv;
-  /** Único proveedor de la cadena. El mock va siempre en `replay`. */
+  /** Único proveedor de la cadena. El mock va en `replay` salvo que se pida `synth` al grabar. */
   provider: AiProviderId;
   /** Permiso explícito para proveedores con `capabilities.external` (`--allow-external`). */
   allowExternal: boolean;
+  /**
+   * Modo del mock. Por defecto `replay` (evaluación). Al grabar fixtures con `--upstream=mock` se pasa `synth`
+   * para que el mock produzca la salida que se escribe a disco.
+   */
+  mockMode?: 'replay' | 'synth';
   /** `--ollama-url`: sustituye a `OLLAMA_URL`. */
   ollamaUrl?: string;
   /** `--timeout-ms`: sustituye al plazo del proveedor elegido (`OLLAMA_TIMEOUT_MS` u `OPENROUTER_TIMEOUT_MS`). */
@@ -77,7 +82,9 @@ export function evalEnv(options: ComposeEvalRunTaskOptions): AiEnv {
     ...env,
     NODE_ENV: nodeEnv === undefined || nodeEnv === '' ? 'development' : nodeEnv,
     AI_CHAIN: provider,
-    ...(provider === 'mock' ? { AI_MOCK_MODE: 'replay' } : {}),
+    ...(provider === 'mock'
+      ? { AI_MOCK_MODE: options.mockMode ?? 'replay' }
+      : {}),
     ...(ollamaUrl === undefined ? {} : { OLLAMA_URL: ollamaUrl }),
     ...(timeoutMs === undefined || timeoutVariable === undefined
       ? {}

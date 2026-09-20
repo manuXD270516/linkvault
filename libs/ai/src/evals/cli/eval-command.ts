@@ -16,8 +16,14 @@ import {
   GOLDEN_FILE_NAME,
   loadGolden,
 } from '../golden.schema';
+import {
+  crossCheckKnownGaps,
+  formatKnownGapIssues,
+  loadKnownGaps,
+} from '../known-gaps';
 import { computeMetrics } from '../metrics/aggregate';
 import type { MetricValue } from '../metrics/metric';
+import { computeRedactionMetrics } from '../metrics/redaction-metrics';
 import {
   buildBaseline,
   checkOrUpdateBaseline,
@@ -70,6 +76,7 @@ export interface EvalCommandOptions {
 interface LoadedTask {
   evaluable: AnyEvaluableTask;
   cases: readonly GoldenCase<unknown, unknown>[];
+  unusedKnownGaps: readonly string[];
 }
 
 export async function runEvalCommand(
@@ -94,17 +101,35 @@ export async function runEvalCommand(
   const evalsDir = resolve(io.cwd, args.evalsDir);
   const reportsDir = resolve(io.cwd, args.reportsDir);
 
-  // Golden sets inválidos: código 2 antes de ejecutar ningún caso de ninguna tarea.
+  // Golden sets inválidos / huecos conocidos: código 2 antes de ejecutar ningún caso de ninguna tarea.
   const loaded: LoadedTask[] = [];
   let goldenInvalid = false;
   for (const evaluable of selected.tasks) {
     const golden = await loadGolden(evaluable, evalsDir);
-    if (golden.ok) {
-      loaded.push({ evaluable, cases: golden.cases });
-    } else {
+    if (!golden.ok) {
       goldenInvalid = true;
       io.stderr(formatGoldenIssues(evaluable.task.name, golden.issues));
+      continue;
     }
+
+    let unusedKnownGaps: readonly string[] = [];
+    if (evaluable.personalCvGolden === true) {
+      const gaps = await loadKnownGaps(evalsDir, evaluable.task.name);
+      if (!gaps.ok) {
+        goldenInvalid = true;
+        io.stderr(formatKnownGapIssues(evaluable.task.name, gaps.issues));
+        continue;
+      }
+      const cross = crossCheckKnownGaps(golden.cases, gaps.gaps);
+      if (cross.issues.length > 0) {
+        goldenInvalid = true;
+        io.stderr(formatKnownGapIssues(evaluable.task.name, cross.issues));
+        continue;
+      }
+      unusedKnownGaps = cross.unused;
+    }
+
+    loaded.push({ evaluable, cases: golden.cases, unusedKnownGaps });
   }
   if (goldenInvalid) return EXIT_CODES.usage;
 
@@ -142,7 +167,7 @@ export async function runEvalCommand(
 }
 
 async function evaluateTask(
-  { evaluable, cases }: LoadedTask,
+  { evaluable, cases, unusedKnownGaps }: LoadedTask,
   args: EvalArgs,
   composition: EvalRunTaskComposition,
   paths: { io: CliIo; evalsDir: string; reportsDir: string },
@@ -167,7 +192,11 @@ async function evaluateTask(
     throw error;
   }
 
-  const metrics = computeMetrics(evaluable, results);
+  const redaction = computeRedactionMetrics(cases);
+  const metrics: MetricValue[] = [
+    ...computeMetrics(evaluable, results),
+    ...(redaction?.metrics ?? []),
+  ];
   let exitCode: ExitCode = EXIT_CODES.success;
   let baselineColumn: Readonly<Record<string, number>> | null | undefined;
   const baselineMessages: string[] = [];
@@ -185,6 +214,7 @@ async function evaluateTask(
       current,
       metrics,
       update: args.updateBaseline,
+      piiLeakCaseIds: redaction?.leakCaseIds,
     });
     switch (check.status) {
       case 'updated':
@@ -204,8 +234,7 @@ async function evaluateTask(
           taskName,
           check.problems,
         )) {
-          io.stderr(`${message}
-`);
+          io.stderr(`${message}\n`);
         }
         break;
     }
@@ -219,6 +248,8 @@ async function evaluateTask(
     metrics,
     ...(baselineColumn === undefined ? {} : { baseline: baselineColumn }),
     results,
+    ...(redaction == null ? {} : { redaction }),
+    ...(unusedKnownGaps.length === 0 ? {} : { unusedKnownGaps }),
   });
   const reportPath = await writeReport(
     paths.reportsDir,

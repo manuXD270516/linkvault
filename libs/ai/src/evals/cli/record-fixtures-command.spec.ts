@@ -102,6 +102,15 @@ describe('runRecordFixturesCommand', () => {
   function argv(...extra: string[]): string[] {
     return [
       `--task=${TASK}`,
+      '--upstream=mock',
+      `--evals-dir=${evalsDir}`,
+      ...extra,
+    ];
+  }
+
+  function ollamaArgv(...extra: string[]): string[] {
+    return [
+      `--task=${TASK}`,
       '--upstream=ollama',
       `--ollama-url=${ollamaUrl}`,
       '--timeout-ms=5000',
@@ -128,7 +137,7 @@ describe('runRecordFixturesCommand', () => {
     const unknown = captureIo({ NODE_ENV: 'test' });
     await expect(
       runRecordFixturesCommand(
-        ['--task=no-existe', '--upstream=ollama', `--evals-dir=${evalsDir}`],
+        ['--task=no-existe', '--upstream=mock', `--evals-dir=${evalsDir}`],
         unknown,
       ),
     ).resolves.toBe(EXIT_CODES.usage);
@@ -150,24 +159,30 @@ describe('runRecordFixturesCommand', () => {
         external,
       ),
     ).resolves.toBe(EXIT_CODES.usage);
-    expect(external.err.join('')).toContain('--allow-external');
+    // Personal se rechaza antes; el mensaje nombra la sensibilidad.
+    expect(external.err.join('')).toMatch(/personal|allow-external/u);
     expect(requests).toBe(0);
   });
 
-  it('exits with code 1 listing the cases that could not be recorded', async () => {
+  it('Grabar una tarea personal contra un proveedor real', async () => {
+    const io = captureIo({ NODE_ENV: 'test', AI_FIXTURES_DIR: fixturesDir });
+
+    await expect(runRecordFixturesCommand(ollamaArgv(), io)).resolves.toBe(
+      EXIT_CODES.usage,
+    );
+    expect(io.err.join('')).toContain('personal');
+    expect(requests).toBe(0);
+  });
+
+  it('Grabar una tarea personal contra el mock', async () => {
     const io = captureIo({ NODE_ENV: 'test', AI_FIXTURES_DIR: fixturesDir });
 
     await expect(runRecordFixturesCommand(argv(), io)).resolves.toBe(
-      EXIT_CODES.regression,
+      EXIT_CODES.success,
     );
-
-    const out = io.out.join('');
-    expect(out).toContain(
-      'classify-skills [ollama]: 0 recorded, 0 skipped, 2 failed',
-    );
-    expect(out).toContain('failed es-01: degraded (providers_failed)');
-    expect(out).toContain('failed en-01: degraded (providers_failed)');
-    expect(requests).toBeGreaterThan(0);
+    expect(io.out.join('')).toContain('classify-skills [mock]');
+    expect(io.out.join('')).toContain('recorded');
+    expect(requests).toBe(0);
   });
 
   it('skips cases with an existing fixture without contacting the upstream', async () => {

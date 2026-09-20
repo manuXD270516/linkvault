@@ -1,6 +1,6 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -11,23 +11,17 @@ import { classifySkillsEvaluable } from '../evaluable-tasks';
 import { parseGolden } from '../golden.schema';
 import { composeEvalRunTask } from '../runner/compose-run-task';
 import { StderrAiLogger } from '../runner/eval-ports';
-import { caseContext } from '../runner/run-cases';
-import { fixturePath, recordFixtures } from './record-fixtures';
+import {
+  PersonalTaskUpstreamRejected,
+  recordFixtures,
+} from './record-fixtures';
 
-// Tarea 4.2: "Grabar y reproducir" (requisito "Grabación de fixtures con un proveedor real", D7 de ai-eval-harness) con
-// `composeEvalRunTask` real (`AI_CHAIN=ollama`) contra un servidor node:http local que imita `POST /api/chat` de Ollama.
+// Tras 6.14, grabar una tarea `personal` contra Ollama se rechaza antes de contactar al proveedor.
 
 const WORKSPACE_ROOT = resolve(import.meta.dirname, '../../../../..');
 const TASKS: readonly AnyAiTask[] = [
   classifySkillsTask as unknown as AnyAiTask,
 ];
-const MODEL = 'qwen2.5:7b';
-const OUTPUT = {
-  skills: [
-    { name: 'TypeScript', category: 'language' },
-    { name: 'Docker', category: 'tool' },
-  ],
-};
 
 type SkillsCase = GoldenCase<{ text: string }, { skills: string[] }>;
 
@@ -45,56 +39,40 @@ const CASE = goldenCase({
   tags: ['placeholder'],
 });
 
-interface LocalOllama {
-  baseUrl: string;
-  requests: { method: string; url: string }[];
-  close(): Promise<void>;
-}
+class FakeOllama {
+  readonly requests: { method?: string; url?: string }[] = [];
+  private server: Server | null = null;
+  baseUrl = '';
 
-async function startOllama(): Promise<LocalOllama> {
-  const requests: { method: string; url: string }[] = [];
-  const server: Server = createServer((req, res) => {
-    req.resume();
-    req.on('end', () => {
-      requests.push({ method: req.method ?? '', url: req.url ?? '' });
-      if (req.method !== 'POST' || req.url !== '/api/chat') {
-        res.writeHead(404).end();
-        return;
-      }
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(
-        JSON.stringify({
-          model: MODEL,
-          message: { role: 'assistant', content: JSON.stringify(OUTPUT) },
-          done: true,
-          prompt_eval_count: 310,
-          eval_count: 42,
-        }),
-      );
+  async listen(): Promise<void> {
+    this.server = createServer((req, res) => {
+      this.requests.push({ method: req.method, url: req.url });
+      res.statusCode = 500;
+      res.end('should not be contacted');
     });
-  });
-  await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
-  const { port } = server.address() as AddressInfo;
-  return {
-    baseUrl: `http://127.0.0.1:${String(port)}`,
-    requests,
-    close: () =>
-      new Promise<void>((done) => {
-        server.closeAllConnections();
-        server.close(() => done());
-      }),
-  };
+    await new Promise<void>((done) =>
+      this.server!.listen(0, '127.0.0.1', done),
+    );
+    const { port } = this.server.address() as AddressInfo;
+    this.baseUrl = `http://127.0.0.1:${String(port)}`;
+  }
+
+  async close(): Promise<void> {
+    await new Promise<void>((done, fail) =>
+      this.server?.close((error) => (error ? fail(error) : done())),
+    );
+  }
 }
 
-const silentLogger = new StderrAiLogger(() => undefined);
-
-describe('recordFixtures against a local Ollama', () => {
+describe('recordFixtures against ollama (personal tasks)', () => {
   let fixturesDir: string;
-  let ollama: LocalOllama;
+  let ollama: FakeOllama;
+  const silentLogger = new StderrAiLogger(() => undefined);
 
   beforeEach(async () => {
-    fixturesDir = await mkdtemp(join(tmpdir(), 'lv-eval-record-ollama-'));
-    ollama = await startOllama();
+    fixturesDir = await mkdtemp(join(tmpdir(), 'lv-record-ollama-'));
+    ollama = new FakeOllama();
+    await ollama.listen();
   });
 
   afterEach(async () => {
@@ -102,64 +80,29 @@ describe('recordFixtures against a local Ollama', () => {
     await rm(fixturesDir, { recursive: true, force: true });
   });
 
-  function compose(provider: 'ollama' | 'mock') {
+  it('Grabar una tarea personal contra un proveedor real', async () => {
     const composed = composeEvalRunTask({
       env: { NODE_ENV: 'test', AI_FIXTURES_DIR: fixturesDir },
-      provider,
+      provider: 'ollama',
       allowExternal: false,
-      ...(provider === 'ollama' ? { ollamaUrl: ollama.baseUrl } : {}),
+      ollamaUrl: ollama.baseUrl,
       tasks: TASKS,
       cwd: WORKSPACE_ROOT,
       logger: silentLogger,
     });
     if (!composed.ok) throw new Error(composed.error.kind);
-    return composed.value;
-  }
 
-  it('Grabar y reproducir: the replay returns the recorded output without contacting Ollama', async () => {
-    const recording = compose('ollama');
-
-    const summary = await recordFixtures({
-      evaluable: classifySkillsEvaluable,
-      cases: [CASE],
-      runTask: recording.runTask.execute,
-      ledger: recording.ledger,
-      fixturesDir,
-      upstream: 'ollama',
-      overwrite: false,
-    });
-
-    expect(summary).toEqual({ recorded: ['es-01'], skipped: [], failed: [] });
-    expect(ollama.requests).toEqual([{ method: 'POST', url: '/api/chat' }]);
-    const fixture = JSON.parse(
-      await readFile(
-        fixturePath(fixturesDir, 'classify-skills', CASE.key),
-        'utf8',
-      ),
-    ) as unknown;
-    expect(fixture).toEqual({
-      source: `recorded:ollama:${MODEL}`,
-      text: JSON.stringify(OUTPUT),
-      model: MODEL,
-      usage: { inputTokens: 310, outputTokens: 42 },
-    });
-
-    const replay = compose('mock');
-    expect(replay.config.mock?.mode).toBe('replay');
-    const result = await replay.runTask.execute(
-      classifySkillsTask,
-      CASE.input,
-      caseContext(CASE),
-    );
-
-    expect(result).toEqual({
-      status: 'success',
-      output: OUTPUT,
-      providerId: 'mock',
-      model: MODEL,
-      promptVersion: 'v1',
-      cached: false,
-    });
-    expect(ollama.requests).toHaveLength(1);
+    await expect(
+      recordFixtures({
+        evaluable: classifySkillsEvaluable,
+        cases: [CASE],
+        runTask: composed.value.runTask.execute,
+        ledger: composed.value.ledger,
+        fixturesDir,
+        upstream: 'ollama',
+        overwrite: false,
+      }),
+    ).rejects.toBeInstanceOf(PersonalTaskUpstreamRejected);
+    expect(ollama.requests).toEqual([]);
   });
 });

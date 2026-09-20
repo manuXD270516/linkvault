@@ -1,0 +1,9 @@
+{
+  "source": "recorded:mock:mock-synth",
+  "text": "{\"score\":88,\"matchedSkills\":[\"Node.js\",\"TypeScript\",\"NestJS\",\"PostgreSQL\"],\"missingSkills\":[{\"name\":\"Kafka\",\"importance\":\"nice\"}],\"suggestions\":[{\"section\":\"skills\",\"after\":\"Incluir experiencia con Kafka.\",\"reason\":\"La vacante valora Kafka y no aparece en el CV.\",\"evidence\":{\"jobRequirement\":\"Kafka\",\"importance\":\"nice\",\"cvFragment\":null}}]}",
+  "model": "mock-synth",
+  "usage": {
+    "inputTokens": 0,
+    "outputTokens": 0
+  }
+}

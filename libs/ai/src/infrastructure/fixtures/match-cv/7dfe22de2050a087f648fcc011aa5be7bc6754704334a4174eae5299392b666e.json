@@ -1,0 +1,9 @@
+{
+  "source": "recorded:mock:mock-synth",
+  "text": "{\"score\":100,\"matchedSkills\":[\"Python\",\"SQL\"],\"missingSkills\":[],\"suggestions\":[]}",
+  "model": "mock-synth",
+  "usage": {
+    "inputTokens": 0,
+    "outputTokens": 0
+  }
+}

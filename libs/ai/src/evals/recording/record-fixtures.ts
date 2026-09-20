@@ -1,22 +1,19 @@
 import { access, mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { PiiRedactor } from '../../application/pii-redactor';
 import type { RunTaskFn } from '../../application/run-task.usecase';
 import type { AiResult } from '../../domain/ai-result';
 import { AiProgrammingError } from '../../domain/errors';
 import type { UsageRecord } from '../../domain/ports/usage-ledger.port';
-import type { AiProviderId } from '../../infrastructure/config/ai-config.schema';
 import type { MockFixture } from '../../infrastructure/providers/mock-deterministic.provider';
+import type { RecordingUpstream } from '../cli/args';
 import type { EvaluableTask, GoldenCase } from '../evaluable-task';
 import type { EvalUsageLedger } from '../runner/eval-ports';
 import { caseContext, EvalCaseProgrammingError } from '../runner/run-cases';
 
-// Grabación de fixtures con un proveedor real (D7 de ai-eval-harness, ADR-019 §5; requisito "Grabación de fixtures con
-// un proveedor real"). Ejecuta cada caso del golden con el `RunTask` compuesto para el upstream y el contexto por defecto
-// del corredor, y solo en `success` escribe `<fixturesDir>/<task>/<key>.json` con la salida validada y reinyectada. La
-// redacción hacia upstreams externos la aplica `runTask`. Nunca escribe el input ni el prompt.
-
-/** Proveedor real contra el que se graba: cualquiera salvo el mock. */
-export type RecordingUpstream = Exclude<AiProviderId, 'mock'>;
+// Grabación de fixtures (D7 de ai-eval-harness, ADR-019 §5; cv-match-suggestions 6.14–6.15). Ejecuta cada caso del
+// golden con el `RunTask` compuesto para el upstream. Una tarea `personal` solo se graba contra el mock; lo escrito a
+// disco debe quedar limpio frente al redactor externo (sin valores reinyectados que el detector capturaría).
 
 export interface RecordFixturesOptions<I, O, E> {
   evaluable: EvaluableTask<I, O, E>;
@@ -47,6 +44,21 @@ export interface RecordFixturesSummary {
   failed: readonly RecordingFailure[];
 }
 
+/** Rechazo temprano: tarea `personal` contra un upstream que no es el mock (código 2). */
+export class PersonalTaskUpstreamRejected extends Error {
+  override readonly name = 'PersonalTaskUpstreamRejected';
+
+  constructor(
+    readonly taskName: string,
+    readonly sensitivity: string,
+    readonly upstream: string,
+  ) {
+    super(
+      `task ${taskName} is ${sensitivity}: recording against upstream ${upstream} is not allowed (use --upstream=mock)`,
+    );
+  }
+}
+
 /** Ruta del fixture de replay de un caso (la misma que lee `MockDeterministicProvider`). */
 export function fixturePath(
   fixturesDir: string,
@@ -59,6 +71,7 @@ export function fixturePath(
 /**
  * Graba en secuencia y en orden de archivo. Lanza `EvalCaseProgrammingError` si un caso provoca un `AiProgrammingError`
  * (se detiene la grabación); cualquier otro resultado distinto de `success` se lista en `failed` sin escribir nada.
+ * Lanza `PersonalTaskUpstreamRejected` antes de contactar a nadie si la tarea es `personal` y el upstream no es mock.
  */
 export async function recordFixtures<I, O, E>(
   options: RecordFixturesOptions<I, O, E>,
@@ -66,9 +79,19 @@ export async function recordFixtures<I, O, E>(
   const { evaluable, runTask, ledger, fixturesDir, upstream, overwrite } =
     options;
   const { task } = evaluable;
+
+  if (task.dataSensitivity === 'personal' && upstream !== 'mock') {
+    throw new PersonalTaskUpstreamRejected(
+      task.name,
+      task.dataSensitivity,
+      upstream,
+    );
+  }
+
   const recorded: string[] = [];
   const skipped: string[] = [];
   const failed: RecordingFailure[] = [];
+  const redactor = new PiiRedactor();
 
   for (const goldenCase of options.cases) {
     const path = fixturePath(fixturesDir, task.name, goldenCase.key);
@@ -92,7 +115,6 @@ export async function recordFixtures<I, O, E>(
       }
       throw error;
     }
-    // `runTask` registra de forma síncrona antes de resolver: aquí ya están todos los registros de la clave.
     const records = ledger.take(goldenCase.key);
     const outcomes = records.map((entry) => entry.outcome).join(', ');
 
@@ -111,6 +133,17 @@ export async function recordFixtures<I, O, E>(
       continue;
     }
 
+    if (task.dataSensitivity === 'personal') {
+      const dirty = personalFixturePiiTypes(result.output, redactor);
+      if (dirty.length > 0) {
+        failed.push({
+          id: goldenCase.id,
+          reason: `personal fixture would retain pii type ${dirty[0] ?? 'unknown'} after external redaction`,
+        });
+        continue;
+      }
+    }
+
     const usage = successUsage(records);
     const fixture: MockFixture = {
       source: `recorded:${upstream}:${result.model}`,
@@ -124,6 +157,36 @@ export async function recordFixtures<I, O, E>(
   }
 
   return { recorded, skipped, failed };
+}
+
+/**
+ * Tipos de PII que el redactor externo sustituiría en la salida (marcadores emitidos). Vacío = limpio para disco.
+ * Nunca expone el valor.
+ */
+export function personalFixturePiiTypes(
+  output: unknown,
+  redactor: PiiRedactor = new PiiRedactor(),
+): readonly string[] {
+  const { emittedMarkers, value } = redactor.redact(output, {
+    redactName: true,
+  });
+  if (stableJson(value) === stableJson(output) && emittedMarkers.size === 0) {
+    return [];
+  }
+  const types = new Set<string>();
+  for (const marker of emittedMarkers) {
+    const match = /^\[([A-Z]+)_/u.exec(marker);
+    if (match?.[1] !== undefined) types.add(match[1].toLowerCase());
+  }
+  // Si cambió el valor sin emitir (p. ej. comparación), reportar un tipo genérico no expuesto.
+  if (types.size === 0 && stableJson(value) !== stableJson(output)) {
+    types.add('unknown');
+  }
+  return [...types].sort();
+}
+
+function stableJson(value: unknown): string {
+  return JSON.stringify(value);
 }
 
 /** Tokens del registro `success`: los de la respuesta (con su reparación, si la hubo) que produjo la salida grabada. */
