@@ -15,6 +15,7 @@ import {
 } from '../../domain/analysis';
 import { readAnalysis } from '../../domain/expiry';
 import { isCvId, isLinkId, isUserId } from '../../domain/identifier';
+import type { MatchAiConsent } from '../ports/ai-consent.port';
 import type {
   AnalysisRepository,
   CreateRunningAnalysisInput,
@@ -24,6 +25,7 @@ import type {
 import type { MatchClock } from '../ports/clock.port';
 import type { MatchCvReader, MatchCvSummary } from '../ports/cv-reader.port';
 import type { MatchJobReader, MatchJobSummary } from '../ports/job-reader.port';
+import type { MatchAnalysisSettings } from '../ports/match-settings.port';
 
 // Dobles de los puertos de `match` para los tests de casos de uso (tarea 8.7). No son adaptadores de producción.
 //
@@ -43,9 +45,20 @@ export class MovableMatchClock implements MatchClock {
 
 export class InMemoryMatchCvReader implements MatchCvReader {
   private readonly byUser = new Map<string, MatchCvSummary[]>();
+  /**
+   * Lecturas del **texto** del CV en el almacén. El caso de uso de la API nunca debe abrirlas (el worker sí). Los
+   * tests de degradado vigente comprueban que este contador sigue en cero.
+   */
+  textOpenCount = 0;
 
   seed(userId: string, cvs: readonly MatchCvSummary[]): void {
     this.byUser.set(userId, [...cvs]);
+  }
+
+  /** Simula abrir el texto del CV: el caso de uso de pedir análisis no debe llamarlo. */
+  openText(_cvId: string): string {
+    this.textOpenCount += 1;
+    return 'cv-text-should-not-be-read-by-request';
   }
 
   defaultOf(userId: string): Promise<MatchCvSummary | null> {
@@ -114,6 +127,15 @@ export class StubProviderEligibility implements ProviderEligibility {
   }
 }
 
+/** Consentimiento efectivo sustituible para los tests de vigencia del degradado. */
+export class StubMatchAiConsent implements MatchAiConsent {
+  constructor(public externalProviders = false) {}
+
+  externalProvidersOf(_userId: string): Promise<boolean> {
+    return Promise.resolve(this.externalProviders);
+  }
+}
+
 /**
  * Repositorio en memoria con las mismas reglas de lectura que el de Mongo: vencimiento solo al leer, cuota derivada,
  * y el evento de alta observable porque sale de la misma "transacción" lógica.
@@ -124,6 +146,8 @@ export class InMemoryAnalysisRepository implements AnalysisRepository {
   private sequence = 0;
   /** Con algo distinto de `undefined`, `createRunning` lanza ese error y no deja documento ni evento. */
   createFailure: Error | undefined;
+  /** Con algo distinto de `undefined`, `countForQuota` lanza ese error (fallo abierto en el caso de uso). */
+  countFailure: Error | undefined;
 
   nextId(): string {
     this.sequence += 1;
@@ -274,6 +298,9 @@ export class InMemoryAnalysisRepository implements AnalysisRepository {
     maxAgeMs: number,
     now: Date,
   ): Promise<QuotaCount> {
+    if (this.countFailure !== undefined) {
+      return Promise.reject(this.countFailure);
+    }
     if (!isUserId(userId)) {
       return Promise.resolve({ count: 0 });
     }
@@ -376,5 +403,13 @@ export function sampleDegradedReport(
       : {}),
   };
 }
+
+/** Ajustes por defecto de los unitarios de casos de uso (alineados con `apiTestConfig`). */
+export const TEST_MATCH_SETTINGS: MatchAnalysisSettings = {
+  maxAgeMs: 120_000,
+  quotaWindowMs: 86_400_000,
+  analysesPerUser: 10,
+  promptVersion: 'v1',
+};
 
 export { MATCH_REQUESTED_EVENT_TYPE };

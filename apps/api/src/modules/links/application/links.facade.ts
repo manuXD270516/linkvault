@@ -68,6 +68,30 @@ export class LinksFacade {
     return await this.links.cardsOf(linkIds);
   }
 
+  /**
+   * Lo que `match` necesita de una oferta: `previewVersion` y si hay título o texto con los que comparar. `null` si no
+   * existe o el id está mal formado. No aplica el permiso: quien llama comprueba `canRead` antes.
+   */
+  async matchJobSummaryOf(linkId: string): Promise<{
+    readonly id: string;
+    readonly previewVersion: number;
+    readonly title?: string;
+    readonly description?: string;
+  } | null> {
+    const link = await this.links.findById(linkId);
+    if (link === null) {
+      return null;
+    }
+    const title = link.preview?.title;
+    const description = link.preview?.summary;
+    return {
+      id: link.id,
+      previewVersion: link.previewVersion,
+      ...(title === undefined ? {} : { title }),
+      ...(description === undefined ? {} : { description }),
+    };
+  }
+
   /** De esos links, cuáles están compartidos ahora en el grupo, en una sola consulta. */
   async linkIdsSharedIn(
     groupId: string,
