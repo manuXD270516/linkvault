@@ -541,6 +541,57 @@ describe('GroupsController', () => {
     });
 
     /**
+     * El caso simple del escenario de `groups/group-management`: dos publicados, uno sin publicar y un solo paso a
+     * `private`. El de `links/public-share`, más abajo, lo lleva más lejos (cinco links y la vuelta a `public`).
+     */
+    it('Cambiar el ajuste no toca los links', async () => {
+      const ana = await authenticated();
+      const group = await createGroup(ana, 'Dos y uno');
+      const saved = [];
+      for (let index = 0; index < 3; index += 1) {
+        const response = await request('POST', '/api/links', {
+          authorization: ana.authorization,
+          body: {
+            url: `https://empresa.example/careers/dos-y-uno-${index}`,
+            groupId: group.id,
+          },
+        });
+        expect(response.statusCode).toBe(201);
+        saved.push(
+          response.json<{
+            link: { id: string; publicShare?: { slug: string } };
+          }>().link,
+        );
+      }
+      const [first, second, third] = saved;
+      const slugs = [first?.publicShare?.slug, second?.publicShare?.slug];
+      await request(
+        'DELETE',
+        `/api/groups/${group.id}/links/${third?.id ?? ''}/public`,
+        { authorization: ana.authorization },
+      );
+
+      const changed = await request(
+        'PATCH',
+        `/api/groups/${group.id}/settings`,
+        { authorization: ana.authorization, body: { defaultVisibility: 'private' } },
+      );
+
+      expect(changed.statusCode).toBe(200);
+      const items = (
+        await request('GET', `/api/groups/${group.id}/links`, {
+          authorization: ana.authorization,
+        })
+      ).json<{ items: { id: string; publicShare?: { slug: string } }[] }>()
+        .items;
+      const slugOf = (linkId: string | undefined) =>
+        items.find((item) => item.id === linkId)?.publicShare?.slug;
+      expect([slugOf(first?.id), slugOf(second?.id)]).toEqual(slugs);
+      expect(slugs.every((slug) => typeof slug === 'string')).toBe(true);
+      expect(slugOf(third?.id)).toBeUndefined();
+    });
+
+    /**
      * Cambiar el ajuste NO escribe en ningún link (ADR-027 §7): apagarlo y despublicar cien enlaces ya repartidos por
      * WhatsApp, o encenderlo y publicar de golpe lo que un grupo llevaba meses guardando, son daños irreversibles
      * hechos por un clic. Por eso el grupo llega con links de los dos tipos y el ajuste se apaga **y se vuelve a
