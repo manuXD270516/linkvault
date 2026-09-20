@@ -1,0 +1,133 @@
+<section class="mx-auto flex max-w-2xl flex-col gap-6 p-6">
+  @switch (status()) {
+    @case ('loading') {
+      <p role="status" data-testid="public-loading" i18n="@@public.loading">Cargando la oferta…</p>
+    }
+    @case ('ready') {
+      <article class="flex flex-col gap-2" data-testid="public-preview">
+        <h1 class="text-2xl font-medium" data-testid="public-headline">{{ headline() }}</h1>
+
+        @if (company(); as name) {
+          <p class="m-0 text-lg" data-testid="public-company">{{ name }}</p>
+        }
+
+        <p class="m-0 flex flex-wrap gap-x-3 gap-y-1 text-sm">
+          @if (location(); as place) {
+            <span data-testid="public-location">{{ place }}</span>
+          }
+          @if (modality(); as modalityText) {
+            <span data-testid="public-modality">{{ modalityText }}</span>
+          }
+          @if (seniority(); as seniorityText) {
+            <span data-testid="public-seniority">{{ seniorityText }}</span>
+          }
+        </p>
+
+        <p class="m-0 flex flex-wrap gap-x-3 gap-y-1 text-sm">
+          @if (salary(); as salaryText) {
+            <span class="font-medium" data-testid="public-salary">{{ salaryText }}</span>
+          }
+          @let days = daysSincePosted();
+          @if (days !== null) {
+            <span data-testid="public-posted" i18n="@@links.card.postedAgo"
+              >{days, plural, =0 {Publicada hoy} =1 {Publicada ayer} other {Publicada hace {{ days }}
+              días}}</span
+            >
+          }
+          @if (expiresAt(); as closing) {
+            <span data-testid="public-expires" i18n="@@links.card.closesAt"
+              >Cierra el {{ closing | date: 'dd/MM/yyyy' }}</span
+            >
+          }
+          @if (platform(); as platformText) {
+            <span data-testid="public-platform">{{ platformText }}</span>
+          }
+        </p>
+
+        <!-- `noreferrer` además de `noopener`: sin él, el slug —que es la llave de la página— viajaría a la bolsa. -->
+        @if (originalUrl(); as url) {
+          <p class="m-0">
+            <a
+              [href]="url"
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid="public-original"
+              i18n="@@public.viewOriginal"
+              >Ver la oferta original</a
+            >
+          </p>
+        }
+      </article>
+    }
+    @case ('unavailable') {
+      <!--
+        Un `429` o un `5xx` NO son un enlace muerto (critic N1, iteración 2): el enlace existe y la avería es nuestra.
+        Decirle a alguien que su oferta ya no está porque se agotó una ventana de 15 minutos sería mentirle y perder el
+        alta, así que aquí se conserva el CTA, que no depende del preview para navegar.
+      -->
+      <div class="flex flex-col gap-3" data-testid="public-unavailable">
+        <p class="m-0" role="alert" i18n="@@public.unavailable">
+          Ahora mismo no podemos mostrar esta oferta. Inténtalo en un momento.
+        </p>
+        <p class="m-0">
+          <button
+            mat-stroked-button
+            type="button"
+            (click)="load()"
+            data-testid="public-retry"
+            i18n="@@public.retry"
+          >
+            Reintentar
+          </button>
+        </p>
+      </div>
+    }
+    @case ('gone') {
+      <!--
+        El enlace se despublicó o nunca existió: no hay nada que guardar, así que aquí NO se ofrece el CTA. La única
+        salida es pedir otro enlace, y se dice (business 9).
+      -->
+      <div class="flex flex-col gap-3" data-testid="public-gone">
+        <h1 class="text-2xl font-medium" role="alert" i18n="@@public.gone">
+          Este enlace ya no está disponible
+        </h1>
+        <p class="m-0" i18n="@@public.goneHint">Pídeselo de nuevo a quien te lo envió</p>
+        <p class="m-0 flex flex-wrap gap-3">
+          <a mat-flat-button routerLink="/registro" data-testid="public-register" i18n="@@register.submit"
+            >Crear cuenta</a
+          >
+          <a mat-button routerLink="/login" data-testid="public-login" i18n="@@login.submit">Entrar</a>
+        </p>
+      </div>
+    }
+  }
+
+  <!--
+    El CTA se conserva en todo menos en el `404`: no depende del preview para navegar, y en una avería nuestra es lo
+    único que todavía convierte. Con el enlace quemado no hay nada que guardar y desaparece.
+  -->
+  @if (status() !== 'gone') {
+    <div class="flex flex-col gap-2" data-testid="public-cta">
+      <div>
+        <button
+          mat-flat-button
+          type="button"
+          [disabled]="saving()"
+          [attr.aria-busy]="saving() ? 'true' : null"
+          (click)="save()"
+          data-testid="public-save"
+          i18n="@@public.save"
+        >
+          Guardar en LinkVault
+        </button>
+      </div>
+      <!-- Quien llega desde un chat no conoce el producto, y un botón sin promesa no se pulsa (business 8). -->
+      <p class="m-0 text-sm" data-testid="public-save-hint" i18n="@@public.savePitch">
+        Guarda aquí las ofertas que te pasan por WhatsApp y no las pierdas.
+      </p>
+      <p class="m-0 text-sm">
+        <a routerLink="/login" data-testid="public-login" i18n="@@login.submit">Entrar</a>
+      </p>
+    </div>
+  }
+</section>

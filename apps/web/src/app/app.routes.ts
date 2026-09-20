@@ -2,8 +2,18 @@ import { Route } from '@angular/router';
 import { authGuard, guestGuard } from './core/auth/auth.guards';
 import { HOME_ROUTE } from './core/navigation/home-route';
 
-/** Rutas visibles en español salvo `/login` (D11 de auth-users). Todas exigen sesión salvo `/login` y `/registro`. */
+/**
+ * Rutas visibles en español salvo `/login` (D11 de auth-users). Todas exigen sesión salvo `/login`, `/registro` y la
+ * vista pública de una oferta (`/oferta/:slug`), que se abre con sesión y sin ella.
+ */
 export const appRoutes: Route[] = [
+  {
+    // Sin guard a propósito (D9 de public-preview-share): quien llega desde un chat no tiene cuenta, y esta ruta es la
+    // primera impresión del producto. Es distinta de `/p/:slug`, que sirve la API, para poder repartirlas por path.
+    path: 'oferta/:slug',
+    loadComponent: () =>
+      import('./features/public/public-preview.page').then((m) => m.PublicPreviewPage),
+  },
   {
     path: 'login',
     canActivate: [guestGuard],

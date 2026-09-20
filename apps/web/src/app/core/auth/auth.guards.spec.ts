@@ -13,7 +13,11 @@ import { authGuard, guestGuard } from './auth.guards';
 import { authInterceptor } from './auth.interceptor';
 import { REFRESH_LOCKS } from './refresh-coordination';
 import { safeReturnUrl } from './return-url';
-import { SESSION_RESTORE_TIMEOUT_MS, provideSessionRestore } from './session-restore';
+import {
+  SESSION_RESTORE_TIMEOUT_MS,
+  isPublicPath,
+  provideSessionRestore,
+} from './session-restore';
 import { SessionStore } from './session.store';
 
 const user: UserProfile = {
@@ -36,6 +40,12 @@ class ProfileStub {}
 
 @Component({ selector: 'lv-login-stub', template: 'login' })
 class LoginStub {}
+
+@Component({ selector: 'lv-public-stub', template: 'oferta' })
+class PublicStub {}
+
+@Component({ selector: 'lv-my-links-stub', template: 'mis links' })
+class MyLinksStub {}
 
 function settle(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
@@ -208,6 +218,77 @@ describe('session restore and guards', () => {
       await router.navigateByUrl(safeReturnUrl(requested));
 
       expect(router.url).toBe(HOME_ROUTE);
+    }
+  });
+});
+
+describe('la ruta pública no restaura la sesión al arrancar', () => {
+  let http: HttpTestingController;
+  let router: Router;
+  let store: SessionStore;
+
+  beforeEach(() => {
+    history.replaceState({}, '', '/oferta/k3m9qrtv2xyz');
+    TestBed.configureTestingModule({
+      providers: [
+        provideZonelessChangeDetection(),
+        provideHttpClient(withInterceptors([authInterceptor])),
+        provideHttpClientTesting(),
+        provideRouter([
+          { path: 'oferta/:slug', component: PublicStub },
+          { path: 'grupos', component: GroupsStub, canActivate: [authGuard] },
+          { path: 'mis-links', component: MyLinksStub, canActivate: [authGuard] },
+          { path: 'registro', component: LoginStub, canActivate: [guestGuard] },
+        ]),
+        provideSessionRestore(),
+        { provide: REFRESH_LOCKS, useValue: null },
+      ],
+    });
+    http = TestBed.inject(HttpTestingController);
+    router = TestBed.inject(Router);
+    store = TestBed.inject(SessionStore);
+  });
+
+  afterEach(() => {
+    history.replaceState({}, '', '/');
+    http.verify();
+  });
+
+  it('La oferta pública no espera a la sesión', async () => {
+    const harness = await RouterTestingHarness.create();
+
+    await harness.navigateByUrl('/oferta/k3m9qrtv2xyz');
+    await settle();
+
+    expect(router.url).toBe('/oferta/k3m9qrtv2xyz');
+    expect(harness.routeNativeElement?.textContent).toContain('oferta');
+    // Ni un refresh al arrancar ni ninguna otra petición: la página se pinta sin pasar por "Conectando…".
+    http.expectNone('/api/auth/refresh');
+    expect(store.status()).toBe('unknown');
+  });
+
+  it('La sesión se resuelve en el guard, no en el botón', async () => {
+    const harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl('/oferta/k3m9qrtv2xyz');
+    await settle();
+    http.expectNone('/api/auth/refresh');
+
+    // Lo que hace el CTA: una navegación del router y punto, sin consultar la sesión.
+    const navigation = harness.navigateByUrl('/registro?import=k3m9qrtv2xyz');
+    await settle();
+    http.expectOne('/api/auth/refresh').flush(session);
+    await navigation;
+
+    expect(store.status()).toBe('authenticated');
+  });
+});
+
+describe('isPublicPath', () => {
+  it('only treats the public job view as public', () => {
+    expect(isPublicPath('/oferta/k3m9qrtv2xyz')).toBe(true);
+    expect(isPublicPath('/oferta/')).toBe(true);
+    for (const pathname of ['/', '/oferta', '/ofertas/algo', '/mis-links', '/login', '/grupos/1']) {
+      expect(isPublicPath(pathname)).toBe(false);
     }
   });
 });

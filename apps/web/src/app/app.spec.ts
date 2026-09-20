@@ -30,4 +30,20 @@ describe('App', () => {
 
     expect(host.querySelector('[role="status"]')).toBeNull();
   });
+
+  it('never shows "Conectando…" when the SPA starts on the public job view', async () => {
+    // En una ruta pública no se restaura la sesión al arrancar (D9), así que `unknown` no es una espera que contar.
+    history.replaceState({}, '', '/oferta/k3m9qrtv2xyz');
+    try {
+      const fixture = TestBed.createComponent(App);
+      await fixture.whenStable();
+      const host = fixture.nativeElement as HTMLElement;
+
+      expect(TestBed.inject(SessionStore).status()).toBe('unknown');
+      expect(host.querySelector('[role="status"]')).toBeNull();
+      expect(host.querySelector('router-outlet')).not.toBeNull();
+    } finally {
+      history.replaceState({}, '', '/');
+    }
+  });
 });
