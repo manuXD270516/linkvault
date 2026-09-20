@@ -21,12 +21,11 @@ import { LinksFacadeMatchJobReader } from '../infrastructure/links-facade-match-
 import { MongoAnalysisRepository } from '../infrastructure/mongo-analysis.repository';
 import { SystemMatchClock } from '../infrastructure/system-clock';
 import { UsersFacadeMatchAiConsent } from '../infrastructure/users-facade-match-ai-consent';
+import { MatchController } from './match.controller';
 
 /**
- * Módulo `match` (casos de uso del grupo 9). Sin controlador HTTP todavía (grupo 10).
- *
- * `LinksModule` y `AiModule` llegan por `register(...)` —los mismos objetos que construye `AppModule`— para no
- * duplicar instancias. El HTTP se cablea en el grupo 10.
+ * Módulo `match` (casos de uso + HTTP). `LinksModule` y `AiModule` llegan por `register(...)` —los mismos objetos que
+ * construye `AppModule`— para no duplicar instancias ni perder `RUN_TASK` / `PROVIDER_ELIGIBILITY`.
  */
 @Module({})
 export class MatchModule {
@@ -37,6 +36,7 @@ export class MatchModule {
     return {
       module: MatchModule,
       imports: [OutboxModule, CvModule, UsersModule, linksModule, aiModule],
+      controllers: [MatchController],
       providers: [
         { provide: ANALYSIS_REPOSITORY, useClass: MongoAnalysisRepository },
         { provide: MATCH_JOB_READER, useClass: LinksFacadeMatchJobReader },

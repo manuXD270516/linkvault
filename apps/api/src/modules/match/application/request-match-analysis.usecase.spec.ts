@@ -322,6 +322,8 @@ describe('RequestMatchAnalysis — reuse without enqueue (9.5)', () => {
       outcome: 'reused',
       analysis: done,
       report: done.report,
+      currentPreviewVersion: 2,
+      defaultCvId: CV_DEFAULT,
     });
     expect(analyses.appendedEvents()).toHaveLength(0);
   });

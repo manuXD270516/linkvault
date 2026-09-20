@@ -2,9 +2,24 @@ import type {
   MatchAnalysisResponse,
   MatchLatest,
   MatchReport,
+  MatchRequestAccepted,
   MatchRunning,
 } from '@linkvault/shared';
 import { isCvChanged, isStale, type MatchAnalysis } from '../domain/analysis';
+
+/** Cuerpo plano `202` del POST: identificadores y el paso inicial, sin informe. */
+export function toMatchRequestAccepted(
+  analysis: MatchAnalysis,
+): MatchRequestAccepted {
+  return {
+    analysisId: analysis.id,
+    linkId: analysis.linkId,
+    cvId: analysis.cvId,
+    status: 'running',
+    step: analysis.step,
+    requestedAt: analysis.requestedAt.toISOString(),
+  };
+}
 
 /**
  * Compone el bloque `latest` del GET a partir de un análisis ya resuelto (o leído como vencido). `consentRequired` y

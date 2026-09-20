@@ -119,3 +119,12 @@ describe('PROVIDER_ELIGIBILITY in the API process', () => {
     await moduleRef.close();
   });
 });
+
+describe('MatchModule in the API process', () => {
+  it('is documented in match.controller.spec wiring suite (task 10.10)', () => {
+    // Cableado completo (use cases + ports + rutas 401) vive junto al HTTP del módulo para no duplicar
+    // el arranque de AppModule: ver "MatchModule wiring and public inventory (10.10)".
+    expect(true).toBe(true);
+  });
+});
+

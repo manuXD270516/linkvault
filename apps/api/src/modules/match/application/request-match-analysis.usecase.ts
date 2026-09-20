@@ -47,6 +47,9 @@ export type RequestMatchAnalysisResult =
       readonly outcome: 'reused';
       readonly analysis: MatchAnalysis;
       readonly report: MatchReport;
+      /** Para `stale` / `cvChanged` del cuerpo `200` (`MatchLatest`). */
+      readonly currentPreviewVersion: number;
+      readonly defaultCvId: string | null;
     };
 
 /**
@@ -110,10 +113,13 @@ export class RequestMatchAnalysis {
       promptVersion,
     );
     if (reusable !== null && reusable.report !== undefined) {
+      const defaultCv = await this.cvs.defaultOf(userId);
       return {
         outcome: 'reused',
         analysis: reusable,
         report: reusable.report,
+        currentPreviewVersion: job.previewVersion,
+        defaultCvId: defaultCv?.id ?? null,
       };
     }
 
@@ -151,10 +157,13 @@ export class RequestMatchAnalysis {
           now,
         })
       ) {
+        const defaultCv = await this.cvs.defaultOf(userId);
         return {
           outcome: 'reused',
           analysis: degraded.analysis,
           report: degraded.report,
+          currentPreviewVersion: job.previewVersion,
+          defaultCvId: defaultCv?.id ?? null,
         };
       }
     }

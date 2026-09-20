@@ -11,6 +11,7 @@ import { AuthModule } from '../modules/auth/presentation/auth.module';
 import { CvModule } from '../modules/cv/presentation/cv.module';
 import { GroupsModule } from '../modules/groups/presentation/groups.module';
 import { LinksModule } from '../modules/links/presentation/links.module';
+import { MatchModule } from '../modules/match/presentation/match.module';
 import { UsersModule } from '../modules/users/presentation/users.module';
 import { EventsModule } from '../presentation/http/events.module';
 import { HealthModule } from '../presentation/http/health.module';
@@ -32,8 +33,9 @@ export class AppModule {
     const aiModule = AiModule.forRootAsync({
       useFactory: () => ({ config: ai, redisUrl: config.REDIS_URL }),
     });
-    // Igual con `LinksModule`: `ApplicationsModule` recibe este mismo objeto para usar `LinksFacade`. Importar la clase a
-    // secas crearía una segunda instancia de `LinksModule` sin `RUN_TASK` (D1 de applications-tracking).
+    // Igual con `LinksModule`: `ApplicationsModule` y `MatchModule` reciben este mismo objeto para usar `LinksFacade`.
+    // Importar la clase a secas crearía una segunda instancia de `LinksModule` sin `RUN_TASK` (D1 de
+    // applications-tracking).
     const linksModule = LinksModule.register(aiModule);
 
     return {
@@ -52,6 +54,7 @@ export class AppModule {
         linksModule,
         ApplicationsModule.register(linksModule),
         CvModule,
+        MatchModule.register(linksModule, aiModule),
         ...(config.OUTBOX_RELAY_ENABLED ? [OutboxRelayModule] : []),
       ],
     };

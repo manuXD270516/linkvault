@@ -36,6 +36,10 @@ import {
   TooManyCvAttempts,
 } from '../../modules/cv/domain/errors';
 import {
+  MatchError,
+  TooManyAnalysisAttempts,
+} from '../../modules/match/domain/errors';
+import {
   ConsentTextOutdated,
   EmailAlreadyRegistered,
   InvalidProfileChanges,
@@ -84,6 +88,10 @@ interface ApiErrorReply {
  *   413, `too_many_cvs` → 409); `InvalidCvUpload` va antes porque es un `validation_error` que nombra el campo `file`
  *   —y es adonde va a parar **todo** error del parser de multipart sin fila propia, para que ninguno salga como 500—, y
  *   `TooManyCvAttempts` (429) porque lleva su `Retry-After`.
+ * - Errores de dominio de `match`, por su `code` (`analysis_not_found` → 404, `no_cv` → 409, `cv_not_ready` → 409,
+ *   `cv_not_readable` → 409, `job_not_ready` → 409); `TooManyAnalysisAttempts` (429) va antes porque lleva su
+ *   `Retry-After`. Los `link_not_found` / `cv_not_found` del análisis los lanzan los módulos `links` y `cv`, no
+ *   `MatchError`.
  * - `HttpException` 400 (JSON mal formado, que Nest convierte desde Fastify) → `validation_error` sin campos, y 415 →
  *   `unsupported_media_type`, cuyo mensaje es genérico desde que lo comparten dos rutas con formatos distintos. El
  *   resto de `HttpException` (404 de ruta desconocida, 503 de la salud) conserva la respuesta de Nest.
@@ -196,6 +204,14 @@ export class ApiExceptionFilter extends BaseExceptionFilter {
       });
     }
     if (exception instanceof CvError) {
+      return reply(exception.code);
+    }
+    if (exception instanceof TooManyAnalysisAttempts) {
+      return reply(exception.code, [], {
+        'Retry-After': String(exception.retryAfterSeconds),
+      });
+    }
+    if (exception instanceof MatchError) {
       return reply(exception.code);
     }
     if (exception instanceof HttpException) {
