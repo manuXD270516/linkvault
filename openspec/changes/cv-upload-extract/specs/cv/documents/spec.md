@@ -98,12 +98,13 @@ pero que ningún extractor puede leer SHALL resolverse en la extracción, con su
 - **THEN** la respuesta SHALL ser `415` con código `unsupported_file_type`
 - **AND** NO SHALL llamarse al almacén de objetos
 
-#### Scenario: El archivo inválido se corta al empezar
+#### Scenario: El archivo inválido no se acumula
 
 - **GIVEN** un archivo de 5 MiB que no es PDF ni DOCX
 - **WHEN** Ana lo sube
 - **THEN** la respuesta SHALL ser `415` con código `unsupported_file_type`
-- **AND** la API NO SHALL haber leído el archivo entero
+- **AND** la API NO SHALL haber acumulado más de un trozo del archivo en memoria
+- **AND** la respuesta SHALL llegar al cliente aunque este haya terminado de enviarlo
 
 #### Scenario: Extensión que no corresponde al contenido
 
@@ -165,6 +166,7 @@ compartido, no una variable de entorno, y el SPA SHALL poder anunciarlo sin preg
 - **WHEN** Ana lo sube
 - **THEN** la respuesta SHALL ser `413` con código `file_too_large`
 - **AND** el flujo SHALL cortarse al superar el límite, sin leer el archivo entero y sin llamar al almacén
+- **AND** SHALL consumirse un rechazo
 
 ### Requirement: Cada subida es una versión nueva
 
@@ -441,7 +443,7 @@ escribe y la de la vista previa.
 - **WHEN** se pide el listado
 - **THEN** la consulta a la base NO SHALL traer el campo del texto extraído
 
-### Requirement: Límite de subidas y vistas previas por persona
+### Requirement: Límites de subidas, rechazos y vistas previas por persona
 
 La API SHALL contar por persona, en una ventana fija de 15 minutos y con el contador de plataforma, **tres cosas
 distintas**: las subidas aceptadas (10), las vistas previas (60) y los **archivos rechazados en la puerta** (30).
@@ -452,7 +454,8 @@ Los tres contadores SHALL **fallar abiertos**: si el contador no responde, la pe
 En la subida, el intento de subida SHALL consumirse **solo cuando el archivo ya ha pasado la comprobación de tipo y
 tamaño** —un `413` o un `415` NO SHALL consumirlo— y SHALL devolverse si la petición falla después de consumirlo y antes
 de quedar guardada. Un archivo rechazado en la puerta SHALL consumir, en su lugar, el contador de rechazos, que NO SHALL
-devolverse nunca.
+devolverse nunca. **Tanto el rechazo por tipo (`415`) como el rechazo por tamaño (`413`) SHALL consumirlo**: el segundo
+es el único que llega a leer el archivo hasta el tope antes de rechazarlo.
 
 #### Scenario: Once subidas
 
@@ -464,6 +467,12 @@ devolverse nunca.
 
 - **WHEN** Ana envía treinta y un archivos que no son PDF ni DOCX en la misma ventana
 - **THEN** los treinta primeros SHALL recibir `415` con código `unsupported_file_type`
+- **AND** el siguiente SHALL recibir `429` con código `too_many_attempts` y `Retry-After`
+
+#### Scenario: Ráfaga de archivos enormes
+
+- **WHEN** Ana envía treinta y un archivos de 6 MiB en la misma ventana
+- **THEN** los treinta primeros SHALL recibir `413` con código `file_too_large`
 - **AND** el siguiente SHALL recibir `429` con código `too_many_attempts` y `Retry-After`
 
 #### Scenario: Los rechazos no gastan subidas

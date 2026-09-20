@@ -54,9 +54,9 @@ quién puede leerlo y qué pasa cuando alguien quiere borrarlo**, y dejarlo escr
 - **SPA**: `/mi-cv`, con sesión y carga diferida, en la barra de navegación. Subir con barra de progreso, listar los CV
   guardados **identificados por su nombre y su fecha**, "Usar este" —bajo el nombre del marcado se lee "Este es el CV
   que compararemos con las vacantes"—, "Ver lo que leímos", "Eliminar" con confirmación, sondeo mientras alguno esté
-  `pending` y una línea honesta con lo que el producto hace hoy: **"Tu CV solo lo ves tú y hoy no lo lee ninguna IA.
-  Cuando analicemos vacantes, saldrá de LinkVault solo si tú lo autorizas en Ajustes."** Cada estado termina en una
-  acción, y un CV marcado que no se pudo leer avisa de la consecuencia y ofrece la salida. Textos en ES y EN.
+  `pending` y una línea honesta con lo que el producto hace hoy: **"Tu CV solo lo ves tú y hoy no lo lee ninguna IA. No
+  saldrá de LinkVault sin tu autorización."** —sin nombrar ninguna pantalla que todavía no existe—. Cada estado termina
+  en una acción, y un CV marcado que no se pudo leer avisa de la consecuencia y ofrece la salida. Textos en ES y EN.
 
 ## Capabilities
 

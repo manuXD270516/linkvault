@@ -6,9 +6,10 @@
 nombre "Mi CV". SHALL mostrar los CV guardados y las acciones de subir, marcar, ver lo leído y eliminar. En la pantalla
 SHALL decirse "CV guardado"; el número de versión NO SHALL usarse para identificarlos.
 
-SHALL mostrar siempre, junto a la subida, la línea **"Tu CV solo lo ves tú y hoy no lo lee ninguna IA. Cuando
-analicemos vacantes, saldrá de LinkVault solo si tú lo autorizas en Ajustes."** Ese texto NO SHALL prometer que se
-pedirá permiso en el momento del análisis: la autorización es un ajuste del perfil que la persona cambia ella misma.
+SHALL mostrar siempre, junto a la subida, la línea **"Tu CV solo lo ves tú y hoy no lo lee ninguna IA. No saldrá de
+LinkVault sin tu autorización."** Ese texto NO SHALL prometer que se pedirá permiso en el momento del análisis —la
+autorización es una preferencia del perfil, no una pregunta— ni SHALL nombrar ninguna pantalla o control que todavía no
+exista.
 
 Sin ningún CV SHALL mostrar "Sube tu CV y LinkVault podrá comparar tus habilidades con cada vacante." junto al botón de
 subir. Mientras se carga la lista SHALL mostrar un estado de carga, y si la petición falla, el error con "Reintentar".
@@ -233,7 +234,8 @@ Cuando la petición falla, el diálogo NO SHALL quedarse en blanco:
 
 Mientras algún CV esté `pending`, el SPA SHALL volver a pedir la lista cada 2 segundos durante como mucho 60 segundos, y
 SHALL detener el sondeo en cuanto ninguno lo esté o al salir de la pantalla. Agotado ese tiempo sin resolverse, SHALL
-mostrar "Sigue en proceso" con un botón "Actualizar".
+mostrar **"Sigue en proceso. Si sigue así en unos minutos, elimínalo y vuelve a subirlo."** con un botón "Actualizar",
+que SHALL pedir la lista y **reanudar otra ventana de sondeo de 60 segundos**.
 
 #### Scenario: La lectura termina
 
@@ -251,7 +253,14 @@ mostrar "Sigue en proceso" con un botón "Actualizar".
 
 - **GIVEN** un CV que sigue `pending` tras 60 segundos
 - **WHEN** vence el tiempo
-- **THEN** SHALL verse "Sigue en proceso" con "Actualizar", y el sondeo SHALL haberse detenido
+- **THEN** SHALL verse el aviso con la salida de eliminarlo y volver a subirlo, junto a "Actualizar"
+- **AND** el sondeo SHALL haberse detenido
+
+#### Scenario: Actualizar reanuda la espera
+
+- **GIVEN** el aviso de "Sigue en proceso" con el sondeo detenido
+- **WHEN** Ana pulsa "Actualizar" y el CV sigue `pending`
+- **THEN** SHALL pedirse la lista y SHALL reanudarse el sondeo durante otros 60 segundos
 
 #### Scenario: Salir de la pantalla
 

@@ -154,10 +154,18 @@ huele los bytes (`sniffCvFileType`) vive en `libs/shared`, es pura y la comparte
 
 **Se decide con el primer trozo, no con el archivo entero.** El tope de bytes que hay que mirar ya está escrito en la
 propia regla: `%PDF-` tiene que aparecer **en el primer kilobyte**. Así que el controlador husmea **el primer chunk del
-stream**, y si el tipo no cuadra **destruye el stream** y responde `415` sin seguir leyendo. Acumular 5 MiB de un
-archivo que ya sabemos que no vale es trabajo y memoria regalados, y con el flujo cortado la conexión se cierra en
-cuanto el cliente deja de escribir. Solo cuando el primer chunk dice "esto es un PDF" o "esto es un DOCX" se acumula el
-resto hasta el tope (D2, opción A).
+stream** y, si el tipo no cuadra, deja de acumular: lo que llegue después se **descarta sobre la marcha**. Solo cuando
+el primer chunk dice "esto es un PDF" o "esto es un DOCX" se acumula el resto hasta el tope (D2, opción A).
+
+**Drenar y descartar, no destruir**, y es una elección:
+
+| Qué hacer con el resto del cuerpo | A favor | En contra |
+|-----------------------------------|---------|-----------|
+| **Drenar y tirar cada chunk** | La memoria queda **plana** —un chunk cada vez, no 5 MiB—, que es el objetivo de todo esto; y el cliente termina de subir, así que **recibe el `415`** y puede explicárselo a la persona. | Se sigue gastando ancho de banda de entrada hasta que el cliente acaba. |
+| Destruir el stream | Ahorra ese ancho de banda. | Cortar la conexión mientras el cliente escribe puede hacer que **la respuesta no le llegue**: el navegador ve un error de red y la persona, "algo falló", en vez de "solo aceptamos PDF o DOCX". |
+
+**Gana drenar.** Lo que este cambio persigue es no tener megabytes en memoria, no ahorrar tráfico; y un `415` que no
+llega no sirve de nada. El ancho de banda lo acota, por arriba, el `fileSize` del plugin.
 
 **Los errores del parser también son nuestros.** `@fastify/multipart` lanza errores con `code` propio, y si llegan al
 filtro global salen como `500 internal_error`: un archivo demasiado grande le diría a la persona que la avería es
@@ -178,6 +186,12 @@ nuestra. Se traducen **antes**, en el controlador, y la traducción es **por def
 El defecto existe porque la lista de códigos del plugin es suya y puede crecer con una versión menor: una rama nueva no
 puede convertirse en un `500` por no haberla previsto. La última fila no la cubre ninguna traducción porque **no hay
 error**, y es justo el caso que más se da con un formulario mal montado.
+
+**Dónde se envuelve la traducción importa.** Como el cuerpo se lee a mano, chunk a chunk (arriba), el error de tamaño
+—`FST_REQ_FILE_TOO_LARGE`— **no sale de `request.file()`**: lo lanza el bucle que consume el stream, cuando el plugin
+corta al superar `fileSize`. Envolver solo la llamada que obtiene la parte dejaría esa rama fuera y la convertiría en un
+`500`, que es exactamente lo que esta decisión existe para evitar. Se envuelven **la obtención de la parte y el bucle de
+lectura**, con la misma traducción.
 
 El `415` de `FST_INVALID_MULTIPART_CONTENT_TYPE` **no** es `unsupported_file_type`: una cosa es "el cuerpo de la
 petición no es multipart" y otra "el archivo no es PDF ni DOCX", y el SPA las explica distinto. Eso sí, el mensaje fijo
@@ -334,10 +348,12 @@ guardado, cortados en el último salto de línea o espacio anterior al límite.
   puede decir cuál de los dos es sin pedir además el listado. Y como el schema es **estricto**, añadirlo después sería
   romper el contrato: entra ahora o no entra.
 - **`complete` no se puede calcular con el prefijo.** Un texto de exactamente 2.000 caracteres y uno de 50.000 dan el
-  mismo trozo. Se resuelve trayendo también la **longitud guardada**: la consulta proyecta `extraction.textChars` (que
-  ya se guarda) junto al prefijo, y `complete` es `chars === textChars`. Como alternativa equivalente vale proyectar
-  `CV_TEXT_PREVIEW_CHARS + 1` caracteres y mirar si sobra uno; se prefiere `textChars` porque es un número que ya
-  existe y así **deja de ser un campo sin consumidor dentro del servidor**.
+  mismo trozo. Se resuelve **midiendo el texto en la misma consulta**: junto al prefijo (`$substrCP`) se proyecta
+  `$strLenCP` del campo, y `complete` es `chars === longitud`. Cuesta lo mismo, **no trae el campo** y —lo que decide
+  entre las dos opciones— **no puede desfasarse**: leer `extraction.textChars` sería fiarse de un número escrito en
+  otro momento por otro proceso, y el día que alguien recorte el texto por otro camino, `complete` mentiría sin que
+  nada fallara. `textChars` se sigue proyectando porque es lo que el listado enseña, y una integración de la tarea 7.8
+  afirma la invariante `textChars === $strLenCP(extractedText)` tras cada extracción.
 - Solo para su dueña, con **el mismo `404 cv_not_found`** que el resto: un `:id` ajeno, inexistente o mal formado
   responden lo mismo. Distinguir "no existe" de "no es tuyo" le diría a un extraño que ese identificador existe. El
   caso realista no es un ataque: es **borrarlo en otra pestaña** y pulsar "Ver lo que leímos" en esta, y por eso el SPA
@@ -361,9 +377,11 @@ lector es el worker.
 
 ### D7 — El alta, paso a paso, y por qué el objeto va antes que la transacción
 
-1. leer la parte y pasar la puerta: **primer chunk**, extensión y veto del `Content-Type` (D2). Si no cuadra, se
-   destruye el stream, se consume `cv:reject` y se responde `415` sin leer más; si cuadra, se acumula el resto hasta el
-   tope;
+1. leer la parte y pasar la puerta: **primer chunk**, extensión y veto del `Content-Type` (D2). Si no cuadra, se deja de
+   acumular —el resto se drena y se tira—, se consume `cv:reject` y se responde `415`; si cuadra, se acumula el resto
+   hasta el tope. **Un `413` también consume `cv:reject`**: es la única rama que llega a leer megabytes antes de
+   rechazar, así que es la que más falta hace contar; sin eso, una ráfaga de archivos de 6 MiB no tendría techo
+   ninguno;
 2. contador de subidas (`consume`, D5), ya con un archivo admisible en la mano;
 3. contar los CV de la persona (camino rápido de D3);
 4. pedir el identificador al repositorio (`nextId()`), componer `cvFileKey(userId, cvId)` y **subir el objeto**;
@@ -442,7 +460,10 @@ malformado puede tener a un parser dando vueltas. Vencido, el resultado es `fail
 persona es indistinguible de un archivo roto, y lo es.
 
 **Mientras tanto, el SPA sondea.** `GET /api/cv` cada 2 s mientras alguna versión esté `pending`, hasta 60 s, y después
-deja un "Sigue en proceso · Actualizar". Alternativa descartada por ahora: un evento SSE `cv.extracted` por el canal
+deja **"Sigue en proceso. Si sigue así en unos minutos, elimínalo y vuelve a subirlo."** con un botón "Actualizar" que
+**reanuda otra ventana de 60 s**. El texto dice esa segunda frase porque el caso real en que un `pending` no se resuelve
+—worker parado, relay apagado, cola atascada— **no se arregla solo**, y sin salida la persona se queda mirando un
+"Sigue en proceso" eterno; borrar y volver a subir crea un evento nuevo, que es exactamente el remedio. Alternativa descartada por ahora: un evento SSE `cv.extracted` por el canal
 autenticado que ya existe. Es barato y encaja, pero exige que el worker publique en Redis y la API reparta (el camino de
 `RedisEnrichmentNotifier`), y lo que se gana es adelantar un par de segundos un aviso en una pantalla que la persona
 está mirando. Entra cuando haya algo largo que anunciar, que es el análisis.
@@ -638,14 +659,20 @@ Ruta `/mi-cv`, con `authGuard`, perezosa, en la barra de navegación junto a "Mi
   **además** avisa cuando es el marcado: "Pasará a usarse tu CV más reciente".
 - **Estado vacío**: "Sube tu CV y LinkVault podrá comparar tus habilidades con cada vacante." Es la promesa que explica
   por qué existe esta pantalla antes de que `cv-match-suggestions` la cumpla.
-- **Una línea de privacidad, siempre visible**: **"Tu CV solo lo ves tú y hoy no lo lee ninguna IA. Cuando analicemos
-  vacantes, saldrá de LinkVault solo si tú lo autorizas en Ajustes."** La primera versión decía "te pediremos permiso
-  antes", y eso el producto **no lo hace**: el consentimiento es una bandera del perfil
-  (`aiConsent.externalProviders`, `false` por defecto, ADR-018 §11) que la pasarela **lee sin preguntar nada** en el
-  momento de ejecutar, y con un proveedor local no hay permiso que pedir porque el CV no sale de nuestra
-  infraestructura. La frase nueva dice justo eso y nada más: hoy ninguna IA lo lee (cierto: no hay `runTask` en este
-  change), y mañana saldrá solo con la autorización que la persona da **ella misma en Ajustes**. Una promesa que el
-  siguiente change tendría que romper es peor que no ponerla.
+- **Una línea de privacidad, siempre visible**: **"Tu CV solo lo ves tú y hoy no lo lee ninguna IA. No saldrá de
+  LinkVault sin tu autorización."** Llegar a esas dos frases costó dos correcciones, y las dos enseñan lo mismo:
+  - la primera versión decía "te pediremos permiso antes", y eso el producto **no lo hace**. El consentimiento es una
+    bandera del perfil (`aiConsent.externalProviders`, `false` por defecto, ADR-018 §11) que la pasarela **lee sin
+    preguntar nada**, y con un proveedor local no hay permiso que pedir porque el CV no sale de nuestra
+    infraestructura;
+  - la segunda mandaba a **"Ajustes"**, y esa pantalla **no existe**: la ruta del SPA es `/perfil`, se llama "Perfil",
+    y el control de consentimiento está **deliberadamente ausente** hasta `cv-match-suggestions` —ADR-020 lo difirió
+    hasta poder explicar qué se envía y qué se redacta, y hay un test que falla si aparece—. Una frase que manda a un
+    sitio inexistente es peor que no decir nada: convierte una promesa en un callejón.
+
+  Lo que queda dice **solo lo que hoy es verdad y se puede comprobar**: ninguna IA lo lee (no hay `runTask` en este
+  change) y no saldrá sin autorización, sin prometer dónde ni cómo se da esa autorización. Quien pone el control en
+  Perfil y completa la frase es `cv-match-suggestions`, y así queda anotado en su `scope` del manifiesto.
 - **Errores**: `413` → "Ese archivo pesa más de 5 MB"; `415 unsupported_file_type` → "Solo aceptamos PDF o DOCX";
   `409 too_many_cvs` → **"Guardamos hasta 5 CV. Elimina uno para subir otro; si alguno no se pudo leer, empieza por
   ese."**; `429` → el mensaje de límite que ya existe, con su espera.
@@ -678,11 +705,15 @@ Textos en ES y EN, marcados y traducidos en `messages.en.xlf` en el mismo commit
   indexada sobre como mucho 5 documentos.
 - **Sin antivirus** (Non-Goals): un archivo malicioso guardado no lo descarga nadie —no hay descarga— y solo lo abre
   nuestro parser, dentro del plazo y con la concurrencia acotada de D9.
-- **Una ráfaga de archivos inválidos tenía techo cero** hasta la iteración 2: como un rechazo no consume el contador de
-  subidas (para no cobrarle a quien se equivoca una vez), nada acotaba a quien mandara basura en bucle salvo el ancho de
-  banda. Lo cierra el contador de rechazos de D5, que además cuesta menos que antes porque el tipo se decide con el
-  primer chunk y el flujo se destruye ahí mismo (D2). Queda el residuo de siempre: sin proxy configurado, los tres
-  contadores son por persona autenticada, no por cliente.
+- **El tráfico de subida que una persona puede provocar, con los tres contadores puestos**, sale de sumar sus tres
+  caminos en una ventana de 15 minutos: 10 subidas válidas de hasta 5 MiB (50 MiB) más 30 rechazos, de los cuales los
+  caros son los `413`, que leen hasta el tope antes de cortar (~150 MiB); los `415` se cortan en el primer chunk y no
+  llegan ni a un mega. **Lo caro no es el multicuenta** —crear cuentas cuesta su propio límite de registro y cada una
+  aporta unos 19 MiB por ventana si solo manda basura barata—, sino **el camino aceptado**: las subidas válidas y los
+  `413`. Es tráfico de entrada acotado y sin coste de almacenamiento, y se acepta a sabiendas.
+- **El techo real por cliente sigue esperando al proxy.** Los tres contadores son **por persona autenticada**: acotan a
+  quien tiene sesión, no a quien tiene mil. Poner un **límite por IP y un tope de cuerpo en el proxy** —delante, sin
+  activar `trustProxy` a ciegas (ADR-020 §5, ADR-027 §6)— es de `deploy-prod`, y así queda anotado en su `scope`.
 - **Sin descarga, quien pierda su archivo original no lo recupera** (D6). Lo compensa, a medias, la vista previa del
   texto; si alguien lo pide, vuelve como una ruta servida por la API y nunca como una URL prefirmada.
 
@@ -756,7 +787,7 @@ Critic: 1 P0. Business: 6 V0. Tras aplicar esta tabla no queda ningún P0/V0 abi
 | business 11 | El `409` no decía por dónde empezar a borrar | Aceptado: "…si alguno no se pudo leer, empieza por ese." (D13) | Elegir cuál borrar es justo la decisión que bloquea |
 | business 12 | La entrega no tiene recompensa propia hasta el análisis | Anotado en Risks, con la consecuencia: **no** se abren entradas desde links ni postulaciones hasta que exista el análisis | Una entrada que promete lo que no hay gasta la confianza que este change necesita |
 | business 13 | ¿5 MiB, PDF y DOCX? | Sin cambios | Son los números de `docs/design.md` §4.8 |
-| business 14 | `truncated` expuesto y `refund` con tres ramas | Aceptado: `truncated` se queda en Mongo, el consumo se mueve detrás de la puerta (D1, D5) y el e2e del archivo rechazado desaparece: lo cubre el test de componente (tarea 8.10) | Menos superficie y menos ramas que olvidar |
+| business 14 | `truncated` expuesto y `refund` con tres ramas | Aceptado: `truncated` se queda en Mongo, el consumo se mueve detrás de la puerta (D1, D5) y el e2e del archivo rechazado desaparece: lo cubre el test de componente (tarea 8.11) | Menos superficie y menos ramas que olvidar |
 
 ## Debate (iteración 2)
 
@@ -764,7 +795,7 @@ Critic: 0 P0 (1 P1). Business: 1 V0. Tras aplicar esta tabla no queda ningún P0
 
 | # | Hallazgo | Decisión | Motivo |
 |---|----------|----------|--------|
-| business 1 (V0) | La línea de privacidad prometía "te pediremos permiso antes", y el producto **no pregunta**: el consentimiento es una bandera del perfil (`aiConsent.externalProviders`, `false` por defecto) que la pasarela lee sin preguntar, y con un proveedor local no hay permiso que pedir | Aceptado: "Tu CV solo lo ves tú y hoy no lo lee ninguna IA. Cuando analicemos vacantes, saldrá de LinkVault solo si tú lo autorizas en Ajustes." (D13), y se revisa que nadie repita la frase vieja | Una promesa que el change siguiente tendría que romper es peor que no ponerla |
+| business 1 (V0) | La línea de privacidad prometía "te pediremos permiso antes", y el producto **no pregunta**: el consentimiento es una bandera del perfil (`aiConsent.externalProviders`, `false` por defecto) que la pasarela lee sin preguntar, y con un proveedor local no hay permiso que pedir | Aceptado: se reescribe la línea (D13) y se revisa que nadie repita la frase vieja. **Su segunda mitad se corrigió otra vez en la iteración 3**, porque mandaba a una pantalla que no existe | Una promesa que el change siguiente tendría que romper es peor que no ponerla |
 | critic 1 (P1) | Se acumulaban hasta 5 MiB de un archivo que ya se sabía inválido, y un rechazo no gastaba contador, así que una ráfaga de basura no tenía techo | Aceptado, en dos partes: **husmeo del primer chunk** con destrucción del stream y `415` inmediato (D2, D7), y contador propio de rechazos `cv:reject:<userId>` (30 por ventana, fallo abierto, `consume` en la rama de error y **sin devoluciones**) (D5). En Risks, que antes no había techo | El tope de bytes que hay que mirar ya lo fija la propia regla del `%PDF-`; y un techo que no cobra al que se equivoca una vez sí puede existir |
 | critic 2 | La traducción de los errores del parser era una lista cerrada: un `code` nuevo del plugin acabaría en `500` | Aceptado: traducción **por defecto** (`FST_*` → `400 validation_error` nombrando `file`) con las filas conocidas encima, más `FST_FIELDS_LIMIT`, `FST_PROTO_VIOLATION` y el caso de "sin parte `file`", que no lanza nada; y se justifica la holgura de `parts` (D2) | La lista de códigos es del plugin y crece con una versión menor |
 | critic 3 + business 9 (parte) | `complete` no se puede calcular teniendo solo el prefijo: 2.000 y 50.000 caracteres dan el mismo trozo | Aceptado: la consulta proyecta también `extraction.textChars` y `complete` es `chars === textChars` (alternativa equivalente: pedir `CV_TEXT_PREVIEW_CHARS + 1`) (D6, tarea 4.9) | Un campo que miente es peor que no tenerlo |
@@ -784,6 +815,17 @@ Critic: 0 P0 (1 P1). Business: 1 V0. Tras aplicar esta tabla no queda ningún P0
 
 ## Debate (iteración 3)
 
-Pendiente: este change queda **solo planificado**. Antes de `/opsx:apply` hay que volver a convocar a `critic` y
-`business` sobre esta versión, actuar como `reflect` e iterar hasta que no quede ningún P0/V0 abierto, registrando la
-tabla de cada iteración aquí y lo no trivial en **ADR-028**, como en `public-preview-share` y `group-comments`.
+Critic: 0 P0 (2 P1). Business: 1 V0, que es el mismo punto que el P1 número 2 de critic. Convergido: no queda ningún
+P0/V0 abierto y las decisiones no triviales quedan recogidas en **ADR-028**.
+
+| # | Hallazgo | Decisión | Motivo |
+|---|----------|----------|--------|
+| business 1 (V0) + critic 2 (P1) | La línea de privacidad mandaba a **"Ajustes"**, una pantalla que no existe: la ruta es `/perfil`, se llama "Perfil", y el control de consentimiento está **deliberadamente ausente** hasta `cv-match-suggestions` (ADR-020), con un test que falla si aparece | Aceptado: la línea queda en "Tu CV solo lo ves tú y hoy no lo lee ninguna IA. No saldrá de LinkVault sin tu autorización.", sin puntero, en los cuatro archivos donde estaba replicada; la tarea 8.3 verifica que el texto **no nombra ninguna pantalla que no exista**, y el `scope` de `cv-match-suggestions` recoge que ese change pone el control en Perfil y completa la frase (D13, tareas 8.3 y 9.3) | Una frase que manda a un sitio inexistente convierte una promesa en un callejón |
+| critic 1 (P1) | El `413` es la única rama que llega a leer megabytes y **no consumía el contador de rechazos**: una ráfaga de archivos de 6 MiB no tenía techo | Aceptado: el `413` consume `cv:reject`, con el escenario "Ráfaga de archivos enormes" (31 de 6 MiB → 30 `413` y un `429`). Y, como el cuerpo se lee a mano, se anota que el error de tamaño **sale del bucle**, así que la traducción envuelve el bucle y no solo `request.file()` (D2, D7, specs, tareas 6.2 y 6.6) | El contador tiene que contar justo la rama cara, y una traducción que no cubre el bucle devuelve el `500` que queríamos evitar |
+| critic 3 | La tarea 1.8 se quedó en la versión vieja: pedía que `cvTextPreview` devolviera `complete`, que ya no puede calcular | Aceptado: `cvTextPreview(text)` → `{ text, chars }`, `complete` se calcula **solo** en el repositorio, y la fila de verificación del límite dice su valor esperado (tarea 1.8) | Una tarea que contradice al diseño se implementa dos veces |
+| critic 4 | `complete` se apoyaba en `extraction.textChars`, un número escrito antes por otro proceso | Aceptado: la longitud se mide **en la misma consulta** con `$strLenCP`; `textChars` se sigue proyectando porque es lo que enseña el listado, y la tarea 7.8 afirma la invariante `textChars === $strLenCP(extractedText)` (D6, tareas 4.9 y 7.8) | Mismo coste, no trae el campo y no puede desfasarse |
+| critic 5 | El punto de Risks sobre el multicuenta daba a entender que ese era el coste, y el número no salía | Aceptado: se reescribe con los tres caminos sumados —50 MiB de subidas válidas y ~150 MiB de `413`, frente a ~19 MiB por cuenta de basura barata— y se separa el techo por cliente, que va al `scope` de `deploy-prod` junto al **límite por IP y el tope de cuerpo en el proxy** (Risks, tarea 9.3) | Un riesgo con el número equivocado lleva a proteger lo que no toca |
+| critic 6 | No estaba decidido si el resto del cuerpo se drena o se destruye | Aceptado: **drenar y descartar**, con su tabla. Destruir ahorraría ancho de banda pero puede costar que el `415` no llegue al cliente. Y la verificación de 6.5 mide **"no se acumula más de un chunk"**, que es lo que se promete, y no "no se lee más" (D2, tarea 6.5) | El objetivo es la memoria plana, no el ahorro de tráfico; y un `415` que no llega no sirve |
+| critic 7 | Tres referencias rotas por la renumeración de la iteración 2 | Aceptado: la tarea del test de componente pasa a ser la 8.11, el RUNBOOK habla de **tres** contadores y el requisito de límites cambia de título para nombrar los rechazos (tareas 8.11 y 9.5, spec `cv/documents`) | Una referencia rota se lee como una tarea que falta |
+| business 6 | Un `pending` que nadie resuelve —worker parado, relay apagado— no tenía salida | Aceptado: "Sigue en proceso. Si sigue así en unos minutos, elimínalo y vuelve a subirlo." (D8, D13, spec `web/cv`) | Borrar y volver a subir crea un evento nuevo, que es el único remedio que la persona tiene en la mano |
+| business 8 | No estaba escrito qué hace "Actualizar" con el sondeo | Aceptado: **reanuda otra ventana de 60 s**, y queda en la tarea del store (8.2) con su escenario | Un botón que solo pide una vez deja a la persona pulsando |
