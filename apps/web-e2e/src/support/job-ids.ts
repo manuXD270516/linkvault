@@ -10,6 +10,7 @@ export const JOB_ID_SLOTS = {
   applications: 2,
   comments: 3,
   public: 4,
+  match: 5,
 } as const;
 
 export function jobIdBase(slot: (typeof JOB_ID_SLOTS)[keyof typeof JOB_ID_SLOTS]): number {
