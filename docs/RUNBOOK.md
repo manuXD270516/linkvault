@@ -615,6 +615,159 @@ usan el Mongo y el Redis del compose local; en otro entorno, cambia la URI o el 
   comentario, es un fallo grave de privacidad, no una curiosidad. El texto solo sale por SSE, hacia los miembros de ese
   grupo. Un aviso perdido no rompe nada: no hay outbox a propósito, y la tarjeta se pone al día en la siguiente lectura.
 
+## Paso 6 septies — Operar los enlaces públicos
+
+Desde `public-preview-share`, un link compartido en un grupo puede tener un **enlace público**:
+`<origen de la API>/p/<slug>`, una página HTML sin sesión que sirve la propia `api`, y
+`GET /api/public/previews/:slug` para la vista `/oferta/:slug` del SPA. Qué se ve, quién lo enciende, los endpoints y los límites están en el
+[README](../README.md#enlaces-públicos-de-una-oferta); las decisiones, en [ADR-027](adr/ADR-027.md). Aquí, lo que hay que
+tener presente al operar. Los comandos usan el Mongo y el Redis del compose local; en otro entorno, cambia la URI o el
+host por los suyos.
+
+- **Dos variables nuevas y obligatorias**, `PUBLIC_PAGE_BASE_URL` y `WEB_BASE_URL` (absolutas, `http(s)`, sin barra
+  final): un `.env` ya existente tiene que copiarlas de `.env.example` o **`api` no arranca**. En producción pueden
+  apuntar al mismo origen. No entra ninguna variable de proxy: los límites de estas rutas no miran la IP y este change
+  **no** activa `trustProxy` a propósito (lo decide `deploy-prod`).
+- **Sin colección nueva y sin backfill.** `group_links` gana `publicShare?` y `groups`, `settings.defaultVisibility`;
+  `api` construye el índice del slug al arrancar (`autoIndex` de Mongoose). Ningún link ya compartido se publica solo, y
+  un grupo sin `settings` se lee `public`, lo que solo afecta a lo que se comparta **después**. Para volver a la versión
+  anterior basta con desplegarla: ignora los campos, y las URLs `/p/<slug>` repartidas dejan de responder.
+- **Un slug es una llave, trátalo como tal.** Quien lo tiene abre la página sin cuenta. No lo pegues en un ticket ni en
+  un chat de soporte, y si se filtró uno que no debía, despublícalo (abajo): despublicar lo **quema**, y volver a
+  publicar genera otro. `publicShare.publishedBy` es trazabilidad interna y no sale en ninguna respuesta.
+- **Comprobar el índice.** `group_links` debe listar, además de `_id_`, los tres de siempre (`groupId_1_linkId_1` con
+  `unique: true`, `groupId_1_sharedAt_-1__id_-1` y `linkId_1`) y el nuevo `public_share_slug`, **único y parcial**:
+
+  ```bash
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'printjson(db.group_links.getIndexes().map((i) => ({ name: i.name, key: i.key, unique: i.unique, partial: i.partialFilterExpression })))'
+  ```
+
+  Sin `public_share_slug`, `api` todavía no ha arrancado con este change contra esa base (o falló la construcción: busca
+  el error en su log y reinícialo con Mongo sano). Mientras falte, la página sigue respondiendo pero recorre la
+  colección entera **y nada garantiza que dos relaciones no acaben con el mismo slug**. Que la página lo usa se ve con
+  `explain`, que debe mostrar un `IXSCAN` sobre `public_share_slug` con `isPartial: true`:
+
+  ```bash
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'printjson(db.group_links.find({ "publicShare.slug": "<slug>" }).explain().queryPlanner.winningPlan)'
+  ```
+
+- **Qué hay publicado ahora mismo** (solo lectura): cuántas relaciones tienen enlace público y cómo se reparten por
+  grupo. Ninguna consulta de aquí lee el contenido de la oferta:
+
+  ```bash
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'printjson({ published: db.group_links.countDocuments({ "publicShare.slug": { $exists: true } }), relations: db.group_links.countDocuments({}) })'
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'printjson(db.group_links.aggregate([{ $match: { "publicShare.slug": { $exists: true } } }, { $group: { _id: "$groupId", published: { $sum: 1 } } }, { $sort: { published: -1 } }]).toArray())'
+  ```
+
+- **Retirar con urgencia un enlace concreto.** Es lo que hay que hacer cuando alguien avisa de que una oferta publicada
+  no debía serlo y no se puede esperar a que su dueño la apague desde el SPA. Primero, **solo lectura**, de qué relación
+  es (por si hay que avisar a quien la compartió):
+
+  ```bash
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'printjson(db.group_links.findOne({ "publicShare.slug": "<slug>" }, { groupId: 1, linkId: 1, sharedBy: 1, "publicShare.publishedBy": 1, "publicShare.publishedAt": 1 }))'
+  ```
+
+  Y después el `$unset`, que es exactamente lo que hace "Dejar de compartir" (`DELETE .../public`): una escritura, sin
+  transacción y sin nada más que ajustar. Imprime `1` si lo retiró y `0` si ese slug ya no existía:
+
+  ```bash
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'print(db.group_links.updateOne({ "publicShare.slug": "<slug>" }, { $unset: { publicShare: 1 } }).modifiedCount + " public link burned")'
+  ```
+
+  Comprueba que la página ya no responde (debe dar `404 text/html`, nunca JSON), y recuerda que la caché de `60 s` del
+  `200` puede tardar ese minuto en cualquier proxy que haya por delante:
+
+  ```bash
+  curl -s -o /dev/null -w '%{http_code} %{content_type}\n' "http://localhost:3000/p/<slug>"
+  ```
+
+  El slug queda **quemado**: si el dueño vuelve a publicar, será otro. Un retirado a mano **no avisa a nadie**: las
+  pantallas abiertas siguen mostrando la marca "Enlace público" hasta que recarguen la lista. Y lo que ya se pintó en un
+  chat no se puede borrar: WhatsApp guarda su tarjeta días.
+
+- **Despublicar un grupo entero.** No hay ninguna ruta que lo haga (queda fuera del alcance a propósito). Mira primero
+  qué se va a retirar y después escríbelo:
+
+  ```bash
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'printjson(db.group_links.find({ groupId: ObjectId("<groupId>"), "publicShare.slug": { $exists: true } }, { _id: 0, linkId: 1, "publicShare.slug": 1, "publicShare.publishedAt": 1 }).toArray())'
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'print(db.group_links.updateMany({ groupId: ObjectId("<groupId>"), "publicShare.slug": { $exists: true } }, { $unset: { publicShare: 1 } }).modifiedCount + " public links burned")'
+  ```
+
+  Esto **no** cambia el ajuste del grupo: si `defaultVisibility` sigue en `public`, el siguiente link que entre nacerá
+  publicado otra vez. Lo correcto es apagarlo antes con `PATCH /api/groups/:id/settings` (lo hace el owner desde
+  `/grupos/:id`); a mano, y solo si no hay quien lo haga desde el producto:
+
+  ```bash
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'printjson(db.groups.findOne({ _id: ObjectId("<groupId>") }, { name: 1, "settings.defaultVisibility": 1 }))'
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'print(db.groups.updateOne({ _id: ObjectId("<groupId>") }, { $set: { "settings.defaultVisibility": "private" } }).modifiedCount + " group setting changed")'
+  ```
+
+- **Los enlaces que publicó una persona.** Hoy no existe el borrado de cuenta: `deploy-prod` hereda de ADR-027
+  despublicar (`$unset publicShare`) lo que esa persona publicó, además de lo que decida sobre sus
+  `group_link_comments` (ADR-026) y sus postulaciones (ADR-024). Hasta entonces, una petición de borrado se atiende a
+  mano. Su `_id` sale por su email normalizado, como en el paso anterior:
+
+  ```bash
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'printjson(db.group_links.countDocuments({ "publicShare.publishedBy": ObjectId("<userId>") }))'
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'print(db.group_links.updateMany({ "publicShare.publishedBy": ObjectId("<userId>") }, { $unset: { publicShare: 1 } }).modifiedCount + " public links burned")'
+  ```
+
+- **Los tres contadores.** `CounterLinkLimiter` escribe ventanas fijas de **15 min** en Redis: `links:public-page`
+  (**6000** peticiones a `/p/:slug`, todas juntas), `links:public-preview` (**6000** a
+  `GET /api/public/previews/:slug`) y `links:public-page:<slug>` (**2000** de **ese** enlace). El valor es lo contado en
+  la ventana y el `TTL`, lo que le queda. Ninguna clave depende de nada que envíe el cliente: no hay `trustProxy` ni
+  falta.
+
+  ```bash
+  docker compose exec redis redis-cli get links:public-page
+  docker compose exec redis redis-cli ttl links:public-page
+  docker compose exec redis redis-cli get links:public-page:<slug>
+  ```
+
+  Liberar uno antes de que pase la ventana (`DEL` devuelve `1` si había contador y `0` si no). Es lo que hay que hacer
+  si un bucle dejó la página en `429` y hace falta que las tarjetas vuelvan **ya**; tenlo en cuenta: si quien lo agotó
+  sigue ahí, el contador se llena otra vez:
+
+  ```bash
+  docker compose exec redis redis-cli del links:public-page
+  docker compose exec redis redis-cli del links:public-page:<slug>
+  ```
+
+  Nunca borres el patrón entero en un entorno compartido. En local, para ver cuáles están cerca del tope (valor,
+  segundos que le quedan y clave, de mayor a menor):
+
+  ```bash
+  docker compose exec redis sh -c "redis-cli --scan --pattern 'links:public-*' | while read -r k; do echo \"\$(redis-cli get \"\$k\") \$(redis-cli ttl \"\$k\") \$k\"; done | sort -rn"
+  ```
+
+  Los dos globales son **independientes** y el del slug **devuelve** su intento al global cuando rechaza, así que un
+  enlace castigado no gasta el tope de los demás. Los tres **fallan abiertos**: con Redis caído se sirve igual, porque
+  lo que se permite de más son dos lecturas indexadas por petición.
+
+- **Comprobar las dos URLs públicas de un entorno.** `PUBLIC_PAGE_BASE_URL` es el origen que sirve la página y el valor
+  que va en `og:url`; `WEB_BASE_URL`, el del SPA, adonde salta el `<meta refresh>` y de donde cuelga la imagen fija de
+  la tarjeta (`/assets/og-default.png`). Si están mal, la tarjeta del chat apunta a un sitio que no existe **aunque la
+  página responda `200`**:
+
+  ```bash
+  curl -s "http://localhost:3000/p/<slug>" | grep -o '<meta property="og:\(url\|image\)" content="[^"]*"'
+  curl -s -o /dev/null -w '%{http_code}\n' http://localhost:4200/assets/og-default.png
+  ```
+
+  Las cabeceras de las tres respuestas (`200`, `404` y `429`) deben traer siempre `referrer-policy: no-referrer`,
+  `x-content-type-options: nosniff`, la CSP con `default-src 'none'` y `content-type: text/html`. **Si alguna vez esa
+  ruta responde `application/json`, es un fallo**: el controlador devuelve sus errores en HTML justamente para que el
+  filtro global no intervenga.
+
+  ```bash
+  curl -s -D - -o /dev/null "http://localhost:3000/p/<slug>"
+  ```
+
+- **Lo que el log puede y no puede decir.** De las dos rutas públicas se registra `{ slug, status }` y nada más: sirve
+  para contar páginas servidas y `404`, no para saber quién las abrió. Si aparece ahí una dirección de origen, un
+  `User-Agent` o un referente, es un fallo de privacidad, no una curiosidad: el log automático de petición está apagado
+  para `/p/*` y `/api/public/*`, y la línea propia se escribe fuera del logger de la petición.
+
 ## Paso 7 — Definition of Done (pégalo en cada PR)
 
 - [ ] Change archivado; spec delta mergeada en `openspec/specs/`
