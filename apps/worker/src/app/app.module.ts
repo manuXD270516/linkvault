@@ -6,6 +6,7 @@ import { AppLoggerModule } from '../infrastructure/logging/app-logger.module';
 import { MongoPersistenceModule } from '../infrastructure/persistence/mongo-persistence.module';
 import { BullmqConnectionModule } from '../infrastructure/queue/bullmq-connection.module';
 import { RedisHealthModule } from '../infrastructure/redis/redis-health.module';
+import { CvModule } from '../modules/cv/cv.module';
 import { EnrichmentModule } from '../modules/enrichment/enrichment.module';
 import { HealthModule } from '../presentation/http/health.module';
 
@@ -36,6 +37,9 @@ export class AppModule {
         BullmqConnectionModule,
         aiModule,
         EnrichmentModule.register(config, aiModule),
+        // `CvModule` recibe la configuración por la misma razón que `EnrichmentModule`: es quien decide, con ella, si
+        // registra sus dos `Worker`. En los tests no los registra, y así la suite no abre ninguna conexión a Redis.
+        CvModule.register(config),
         HealthModule,
       ],
     };
