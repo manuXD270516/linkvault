@@ -1,6 +1,62 @@
 <section class="mx-auto flex max-w-2xl flex-col gap-6 p-6">
   <h1 class="text-2xl font-medium" i18n="@@links.mine.title">Solo para mí</h1>
 
+  <!-- Resultado de importar una oferta pública (`?import=<slug>`). La lista privada se sigue viendo en todos los casos. -->
+  @if (importOutcome(); as outcome) {
+    <div class="flex flex-col gap-2" data-testid="import-outcome">
+      @switch (outcome) {
+        @case ('saved') {
+          <p class="m-0" role="status" i18n="@@links.import.saved">
+            Guardada en «Solo para mí». Compártela en un grupo cuando quieras.
+          </p>
+        }
+        @case ('already') {
+          <p class="m-0" role="status" i18n="@@links.import.already">Ya la tenías guardada</p>
+        }
+        @case ('gone') {
+          <p class="m-0" role="alert" i18n="@@links.import.gone">Ese enlace ya no está disponible</p>
+        }
+        @case ('unreadable') {
+          <p class="m-0" role="alert" i18n="@@links.import.unreadable">
+            No pudimos leer la oferta ahora
+          </p>
+          <div>
+            <button
+              mat-stroked-button
+              type="button"
+              (click)="importPublicLink()"
+              data-testid="import-retry"
+              i18n="@@public.retry"
+            >
+              Reintentar
+            </button>
+          </div>
+        }
+        @case ('saveFailed') {
+          <p class="m-0" role="alert" i18n="@@links.import.saveFailed">
+            No pudimos guardar esta oferta. Inténtalo de nuevo.
+          </p>
+          <div>
+            <button
+              mat-stroked-button
+              type="button"
+              (click)="saveImported()"
+              data-testid="import-retry"
+              i18n="@@public.retry"
+            >
+              Reintentar
+            </button>
+          </div>
+        }
+      }
+      @if (importGroups(); as groups) {
+        <p class="m-0" role="status" data-testid="import-already-in-groups" i18n="@@links.import.alreadyInGroups">
+          Ya la tienes en: {{ groups }}
+        </p>
+      }
+    </div>
+  }
+
   @if (scopeReady()) {
     <lv-save-link-form />
 

@@ -47,10 +47,17 @@ describe('RegisterPage', () => {
     return host().querySelector<HTMLInputElement>('input[formControlName="email"]');
   }
 
-  /** Responde a la primera página de la lista privada, que `/mis-links` pide al entrar. */
+  /**
+   * Responde a lo que `/mis-links?import=<slug>` pide al entrar: la primera página de la lista privada y el preview
+   * público de la oferta, que aquí se responde con un `404` porque lo que se prueba es adónde se navega, no la
+   * importación, que tiene sus propios tests.
+   */
   async function flushMyLinks(): Promise<void> {
     const list = await vi.waitFor(() => http.expectOne('/api/links/mine?limit=20'));
     list.flush({ items: [], total: 0 });
+    const preview = await vi.waitFor(() => http.expectOne(`/api/public/previews/${SLUG}`));
+    const { body, options } = apiError('link_not_found', 404);
+    preview.flush(body, options);
     await settle();
   }
 

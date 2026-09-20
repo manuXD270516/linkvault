@@ -181,8 +181,12 @@ describe('LoginPage', () => {
     http.expectOne('/api/auth/login').flush(sessionWith('token-1'));
 
     await vi.waitFor(() => expect(router.url).toBe(`/mis-links?import=${SLUG}`));
+    // La importación que sigue tiene sus propios tests: aquí solo importa adónde se navegó.
     const list = await vi.waitFor(() => http.expectOne('/api/links/mine?limit=20'));
     list.flush({ items: [], total: 0 });
+    const preview = await vi.waitFor(() => http.expectOne(`/api/public/previews/${SLUG}`));
+    const { body, options } = apiError('link_not_found', 404);
+    preview.flush(body, options);
     await settle();
   });
 

@@ -41,6 +41,9 @@ class ProfileStub {}
 @Component({ selector: 'lv-login-stub', template: 'login' })
 class LoginStub {}
 
+@Component({ selector: 'lv-register-stub', template: 'registro' })
+class RegisterStub {}
+
 @Component({ selector: 'lv-public-stub', template: 'oferta' })
 class PublicStub {}
 
@@ -78,7 +81,7 @@ describe('session restore and guards', () => {
           { path: 'perfil', component: ProfileStub, canActivate: [authGuard] },
           { path: 'mis-links', component: MyLinksStub, canActivate: [authGuard] },
           { path: 'login', component: LoginStub, canActivate: [guestGuard] },
-          { path: 'registro', component: LoginStub, canActivate: [guestGuard] },
+          { path: 'registro', component: RegisterStub, canActivate: [guestGuard] },
         ]),
         provideSessionRestore(),
         { provide: REFRESH_LOCKS, useValue: null },
@@ -264,7 +267,7 @@ describe('la ruta pública no restaura la sesión al arrancar', () => {
           { path: 'oferta/:slug', component: PublicStub },
           { path: 'grupos', component: GroupsStub, canActivate: [authGuard] },
           { path: 'mis-links', component: MyLinksStub, canActivate: [authGuard] },
-          { path: 'registro', component: LoginStub, canActivate: [guestGuard] },
+          { path: 'registro', component: RegisterStub, canActivate: [guestGuard] },
         ]),
         provideSessionRestore(),
         { provide: REFRESH_LOCKS, useValue: null },

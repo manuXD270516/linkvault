@@ -305,8 +305,13 @@ describe('PublicPreviewPage', () => {
     list.flush({ items: [], total: 0 });
     await settle();
 
-    // Pasa por `/registro?import=` sin verlo: `guestGuard` lo desvía.
+    // Pasa por `/registro?import=` sin verlo: `guestGuard` lo desvía. Lo que sigue (leer el preview y guardar) es la
+    // importación de `/mis-links`, que tiene sus propios tests.
     expect(TestBed.inject(Router).url).toBe(`/mis-links?import=${SLUG}`);
+    const importPreview = await vi.waitFor(() => http.expectOne(PREVIEW_URL));
+    const { body, options } = apiError('link_not_found', 404);
+    importPreview.flush(body, options);
+    await settle();
   });
 
   it('Doble pulsación del CTA', async () => {
