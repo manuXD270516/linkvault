@@ -37,7 +37,7 @@ function chainIds(
     ctx: { aiConsent: { externalProviders: true } },
     openIds: new Set(),
     ...overrides,
-  }).map((p) => p.id);
+  }).providers.map((p) => p.id);
 }
 
 describe('satisfies', () => {

@@ -1,7 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type { AiTask } from '../domain/task';
 import { InvalidTaskRegistration, TaskRegistry } from './task-registry';
+import { AI_TASKS } from '../ai.module';
+import { dataSensitivityOf } from '../domain/task';
 
 // Requisito "Punto de entrada único" (specs/ai/task-execution) y D2 de ai-gateway-core.
 
@@ -21,6 +23,8 @@ function task(
     requires: { jsonMode: true },
     temperature: 0,
     budget: { maxTokens: 256, maxAttempts: 2 },
+    dataSensitivity: 'personal',
+    cacheable: false,
     sample: (input) => ({ skills: input.text.split(' ') }),
     ...overrides,
   };
@@ -85,5 +89,64 @@ describe('TaskRegistry', () => {
       () =>
         new TaskRegistry([task({ budget: { maxTokens: 256, maxAttempts } })]),
     ).toThrow(InvalidTaskRegistration);
+  });
+
+  it('Tarea personal declarada cacheable', () => {
+    const execute = vi.fn();
+    expect(() =>
+      new TaskRegistry([
+        task({
+          name: 'match-cv',
+          dataSensitivity: 'personal',
+          cacheable: true,
+        }),
+      ]),
+    ).toThrow(/match-cv/);
+    expect(() =>
+      new TaskRegistry([
+        task({
+          name: 'match-cv',
+          dataSensitivity: 'personal',
+          cacheable: true,
+        }),
+      ]),
+    ).toThrow(InvalidTaskRegistration);
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it('rejects a task that omits cacheable', () => {
+    const incomplete = {
+      ...task(),
+      cacheable: undefined as unknown as boolean,
+    };
+    expect(() => new TaskRegistry([incomplete])).toThrow(
+      /cacheable must be declared/,
+    );
+  });
+
+  it('accepts a public cacheable task', () => {
+    const registry = new TaskRegistry([
+      task({
+        name: 'extract-job',
+        dataSensitivity: 'public',
+        cacheable: true,
+      }),
+    ]);
+    expect(registry.get('extract-job')?.cacheable).toBe(true);
+  });
+
+  it('every registered AI_TASKS entry declares cacheable explicitly', () => {
+    // Arranque real: si alguna personal fuera cacheable, el constructor lanzaría.
+    const registry = new TaskRegistry(AI_TASKS);
+    for (const registered of registry.list()) {
+      expect(typeof registered.cacheable).toBe('boolean');
+      if (dataSensitivityOf(registered) === 'personal') {
+        expect(registered.cacheable).toBe(false);
+      }
+    }
+    expect(registry.get('extract-job')?.cacheable).toBe(true);
+    expect(registry.get('classify-skills')?.cacheable).toBe(false);
+    expect(registry.get('extract-pasted-job')?.cacheable).toBe(false);
+    expect(registry.get('match-cv')?.cacheable).toBe(false);
   });
 });

@@ -182,6 +182,7 @@ export const extractJobTask: AiTask<ExtractJobInput, ExtractJobOutput> = {
   // Un preview completo con sus skills y su resumen cabe de sobra; 2 intentos = una reparación por proveedor.
   budget: { maxTokens: 1_536, maxAttempts: 2 },
   dataSensitivity: 'public',
+  cacheable: true,
   sample: sampleExtractJob,
 };
 

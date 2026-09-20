@@ -59,7 +59,9 @@ describe('EvalUsageLedger', () => {
 describe('AllowAllQuotaPolicy', () => {
   it('always allows', async () => {
     const quota: QuotaPolicy = new AllowAllQuotaPolicy();
-    await expect(quota.allows('user', 'classify-skills')).resolves.toBe(true);
+    await expect(quota.allows('user', 'classify-skills')).resolves.toEqual({
+      allowed: true,
+    });
   });
 });
 

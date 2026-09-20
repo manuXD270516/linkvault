@@ -49,7 +49,7 @@ function chainIds(
     ctx: { aiConsent: { externalProviders: true } },
     providers,
     openIds: breaker.openIds(),
-  }).map((p) => p.id);
+  }).providers.map((p) => p.id);
 }
 
 function failTimes(

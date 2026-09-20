@@ -1,4 +1,4 @@
-import type { AiTask, AiTaskName } from '../domain/task';
+import { dataSensitivityOf, type AiTask, type AiTaskName } from '../domain/task';
 
 // Registro de tareas de IA (D2 de ai-gateway-core, requisito "Punto de entrada único" de task-execution).
 // Lo usan AiModule al arrancar y el modo synth del mock para encontrar `task.sample`.
@@ -26,7 +26,10 @@ export class TaskRegistry {
     for (const task of tasks) this.register(task);
   }
 
-  /** Lanza `InvalidTaskRegistration` si el nombre ya existe o `budget.maxAttempts` no es 1 ni 2. */
+  /**
+   * Lanza `InvalidTaskRegistration` si el nombre ya existe, `budget.maxAttempts` no es 1 ni 2, falta `cacheable`,
+   * o una tarea `personal` se declara cacheable.
+   */
   register(task: AnyAiTask): void {
     if (this.tasks.has(task.name)) {
       throw new InvalidTaskRegistration(
@@ -38,6 +41,19 @@ export class TaskRegistry {
       throw new InvalidTaskRegistration(
         task.name,
         `budget.maxAttempts must be 1 or 2, got ${String(task.budget.maxAttempts)}`,
+      );
+    }
+    if (typeof task.cacheable !== 'boolean') {
+      throw new InvalidTaskRegistration(
+        task.name,
+        'cacheable must be declared explicitly as a boolean',
+      );
+    }
+    // Una personal cacheable escribiría texto de CV (y valores reinyectados) en Redis compartido.
+    if (task.cacheable && dataSensitivityOf(task) === 'personal') {
+      throw new InvalidTaskRegistration(
+        task.name,
+        'a personal task cannot be cacheable',
       );
     }
     this.tasks.set(task.name, task);

@@ -1,6 +1,9 @@
 import type { AiLogFields, AiLogger } from '../../domain/ports/ai-logger.port';
 import type { CircuitBreaker } from '../../domain/ports/circuit-breaker.port';
-import type { QuotaPolicy } from '../../domain/ports/quota-policy.port';
+import type {
+  QuotaDecision,
+  QuotaPolicy,
+} from '../../domain/ports/quota-policy.port';
 import type {
   UsageLedger,
   UsageRecord,
@@ -39,8 +42,8 @@ export class EvalUsageLedger implements UsageLedger {
 
 /** Cuota que siempre permite: la evaluación no tiene usuario ni límites. */
 export class AllowAllQuotaPolicy implements QuotaPolicy {
-  allows(): Promise<boolean> {
-    return Promise.resolve(true);
+  allows(): Promise<QuotaDecision> {
+    return Promise.resolve({ allowed: true });
   }
 }
 

@@ -165,6 +165,7 @@ describe('extract-pasted-job schemas', () => {
       promptVersion: 'v1',
       temperature: 0,
       dataSensitivity: 'personal',
+      cacheable: false,
       requires: { jsonMode: true },
       budget: { maxAttempts: 2 },
     });

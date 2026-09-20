@@ -249,6 +249,29 @@ describe('MongoUsageLedger', () => {
     ).resolves.toBe(2);
   });
 
+  it('returns the oldest success within the window', async () => {
+    const ledger = new MongoUsageLedger(connection);
+    const since = new Date(at.getTime() - 24 * 60 * 60 * 1000);
+    const userId = 'oldest-user';
+    const older = new Date(at.getTime() - 60_000);
+    const newer = at;
+
+    await ledger.record(attempt('success', { userId, at: newer }));
+    await ledger.record(attempt('success', { userId, at: older }));
+    await ledger.record(
+      attempt('success', { userId, at: new Date(since.getTime() - 1) }),
+    );
+
+    await expect(
+      ledger.oldestSuccessSince({
+        userId,
+        task: 'classify-skills',
+        since,
+        maxTimeMS: 300,
+      }),
+    ).resolves.toEqual(older);
+  });
+
   it('rejects a write immediately when the connection is not open instead of buffering it', async () => {
     const closed = mongoose.createConnection();
     const ledger = new MongoUsageLedger(closed);

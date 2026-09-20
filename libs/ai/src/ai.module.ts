@@ -41,6 +41,7 @@ import { InMemoryCircuitBreaker } from './infrastructure/resilience/in-memory-ci
 import { classifySkillsTask } from './tasks/classify-skills.task';
 import { extractJobTask } from './tasks/extract-job.task';
 import { extractPastedJobTask } from './tasks/extract-pasted-job.task';
+import { matchCvTask } from './tasks/match-cv.task';
 
 // `AiModule` (D8, D9 y D12 de ai-gateway-core). Compone runTask con sus adaptadores a partir de una configuración ya
 // validada por `parseAiConfig`: no lee `process.env`. Usa la conexión Mongoose por defecto de la app
@@ -60,13 +61,14 @@ export interface AiModuleAsyncOptions {
 }
 
 /**
- * Tareas registradas: `classify-skills` (D13 de ai-gateway-core), `extract-job` (D7 de link-enrichment) y
- * `extract-pasted-job` (D2 de paste-job-description).
+ * Tareas registradas: `classify-skills`, `extract-job`, `extract-pasted-job` y `match-cv`
+ * (cv-match-suggestions).
  */
 export const AI_TASKS: readonly AnyAiTask[] = [
   classifySkillsTask as unknown as AnyAiTask,
   extractJobTask as unknown as AnyAiTask,
   extractPastedJobTask as unknown as AnyAiTask,
+  matchCvTask as unknown as AnyAiTask,
 ];
 
 const AI_TASK_REGISTRY = Symbol('AI_TASK_REGISTRY');

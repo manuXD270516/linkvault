@@ -21,6 +21,14 @@ import {
 
 // Tarea 11.3, escenario "Entrada de caché" (specs/ai/data-protection, D8): runTask con RedisResultCache real contra
 // el doble RESP de @linkvault/testing y un proveedor falso que no es el mock, para que la caché se use.
+// Usa una variante pública/cacheable: `classify-skills` real es personal y no escribe en la caché compartida.
+
+/** Variante pública cacheable con el mismo schema (la tarea real es personal). */
+const cacheableTask = {
+  ...classifySkillsTask,
+  dataSensitivity: 'public' as const,
+  cacheable: true,
+};
 
 const INPUT = {
   text: 'Ana Pérez, ana.perez@example.com: backend con TypeScript y NestJS',
@@ -98,7 +106,7 @@ describe('runTask with the Redis result cache', () => {
     });
     const ctx = { aiConsent: { externalProviders: false } };
 
-    const first = await runTask.execute(classifySkillsTask, INPUT, ctx);
+    const first = await runTask.execute(cacheableTask, INPUT, ctx);
     expect(first).toMatchObject({ status: 'success', cached: false });
 
     // Lectura directa de la entrada con un cliente ioredis independiente.
@@ -140,7 +148,7 @@ describe('runTask with the Redis result cache', () => {
     }
 
     // La segunda ejecución se sirve desde Redis sin contactar al proveedor.
-    const second = await runTask.execute(classifySkillsTask, INPUT, ctx);
+    const second = await runTask.execute(cacheableTask, INPUT, ctx);
     expect(second).toEqual({
       status: 'success',
       output: OUTPUT,
@@ -169,8 +177,8 @@ describe('runTask with the Redis result cache', () => {
     const writer = await startRunTaskProcess(double.url, writerProvider);
     const reader = await startRunTaskProcess(double.url, readerProvider);
 
-    const first = await writer.execute(classifySkillsTask, INPUT, ctx);
-    const second = await reader.execute(classifySkillsTask, INPUT, ctx);
+    const first = await writer.execute(cacheableTask, INPUT, ctx);
+    const second = await reader.execute(cacheableTask, INPUT, ctx);
 
     expect(first).toMatchObject({ status: 'success', cached: false });
     expect(writerProvider.calls).toBe(1);

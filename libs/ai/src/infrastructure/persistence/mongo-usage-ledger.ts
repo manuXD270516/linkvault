@@ -24,6 +24,11 @@ export interface SuccessCountQuery {
 
 export interface SuccessCounter {
   countSuccessesSince(query: SuccessCountQuery): Promise<number>;
+  /**
+   * Instantáneo del `success` más antiguo dentro de la ventana, o `null` si no hay ninguno.
+   * Misma `maxTimeMS` y mismo fallo abierto que el conteo.
+   */
+  oldestSuccessSince(query: SuccessCountQuery): Promise<Date | null>;
 }
 
 export class MongoUsageLedger implements UsageLedger, SuccessCounter {
@@ -32,7 +37,8 @@ export class MongoUsageLedger implements UsageLedger, SuccessCounter {
   constructor(connection: Connection) {
     this.model =
       (connection.models[AI_USAGE_MODEL_NAME] as
-        Model<AiUsageDocument> | undefined) ??
+        | Model<AiUsageDocument>
+        | undefined) ??
       connection.model<AiUsageDocument>(AI_USAGE_MODEL_NAME, aiUsageSchema);
   }
 
@@ -66,5 +72,21 @@ export class MongoUsageLedger implements UsageLedger, SuccessCounter {
       })
       .maxTimeMS(query.maxTimeMS)
       .exec();
+  }
+
+  async oldestSuccessSince(query: SuccessCountQuery): Promise<Date | null> {
+    const document = await this.model
+      .findOne({
+        userId: query.userId,
+        task: query.task,
+        outcome: 'success',
+        at: { $gte: query.since },
+      })
+      .sort({ at: 1 })
+      .select({ at: 1 })
+      .maxTimeMS(query.maxTimeMS)
+      .lean()
+      .exec();
+    return document?.at ?? null;
   }
 }

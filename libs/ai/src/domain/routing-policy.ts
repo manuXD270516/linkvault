@@ -5,7 +5,8 @@ import type {
 import type { RunContext } from './run-context';
 import { dataSensitivityOf, type AiTask } from './task';
 
-// Política de routing pura (design-v0.2 §4.4, ADR-014, ADR-018 §7, §8 y §11, D2 y D10 de ai-gateway-core).
+// Política de routing pura (design-v0.2 §4.4, ADR-014, ADR-018 §7, §8 y §11, D2 y D10 de ai-gateway-core;
+// `consentWouldEnable` de cv-match-suggestions / ADR-030).
 // Sin red ni almacenamiento: recibe los proveedores de AI_CHAIN en su orden y una instantánea de circuitos abiertos.
 
 const BYOK_PREFIX = 'byok:';
@@ -39,11 +40,36 @@ export interface ChainRequest {
 }
 
 /**
- * Cadena de proveedores elegibles y ordenados. Filtra por capacidades, circuitos abiertos y, solo en tareas
- * `personal` sin consentimiento, proveedores externos. Orden (ADR-018 §8): BYOK → menor coste de salida →
- * local antes que externo → mayor contexto → orden en AI_CHAIN.
+ * Resultado de componer la cadena. `consentWouldEnable` es un hecho puro: la política NO decide el motivo de
+ * degradación; eso lo hace `runTask` (tarea 3.5). La tarea 4.1 completa los escenarios de `ai/provider-routing`.
  */
-export function buildChain(request: ChainRequest): LlmProvider[] {
+export interface ChainResult {
+  providers: LlmProvider[];
+  /**
+   * `true` solo si la tarea es `personal`, el contexto llega sin consentimiento y la cadena hipotética (con el
+   * permiso supuesto) contiene al menos un proveedor que la cadena real no contiene.
+   */
+  consentWouldEnable: boolean;
+}
+
+/**
+ * Cadena de proveedores elegibles y ordenados, más el hecho de si conceder el consentimiento habría habilitado
+ * a alguien. Filtra por capacidades, circuitos abiertos y, solo en tareas `personal` sin consentimiento,
+ * proveedores externos. Orden (ADR-018 §8): BYOK → menor coste de salida → local antes que externo → mayor
+ * contexto → orden en AI_CHAIN.
+ */
+export function buildChain(request: ChainRequest): ChainResult {
+  const providers = selectEligible(request);
+  return {
+    providers,
+    consentWouldEnable: computeConsentWouldEnable(request, providers),
+  };
+}
+
+/**
+ * Selección pura de elegibles. Extraída para poder componer la cadena hipotética con el mismo filtrado.
+ */
+function selectEligible(request: ChainRequest): LlmProvider[] {
   const { task, ctx, providers, openIds } = request;
   const blockExternal =
     dataSensitivityOf(task) === 'personal' && !ctx.aiConsent.externalProviders;
@@ -61,6 +87,25 @@ export function buildChain(request: ChainRequest): LlmProvider[] {
         compareProviders(a.provider, b.provider) || a.chainIndex - b.chainIndex,
     )
     .map(({ provider }) => provider);
+}
+
+/**
+ * Segunda cadena hipotética con consentimiento supuesto y todo lo demás igual. `true` solo cuando esa cadena
+ * añade al menos un proveedor que la real no tiene.
+ */
+function computeConsentWouldEnable(
+  request: ChainRequest,
+  real: readonly LlmProvider[],
+): boolean {
+  if (dataSensitivityOf(request.task) !== 'personal') return false;
+  if (request.ctx.aiConsent.externalProviders) return false;
+
+  const hypothetical = selectEligible({
+    ...request,
+    ctx: { aiConsent: { externalProviders: true } },
+  });
+  const realIds = new Set(real.map((p) => p.id));
+  return hypothetical.some((provider) => !realIds.has(provider.id));
 }
 
 function compareProviders(a: LlmProvider, b: LlmProvider): number {

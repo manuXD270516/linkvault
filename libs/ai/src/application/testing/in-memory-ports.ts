@@ -7,7 +7,10 @@ import type {
   PromptView,
   RenderedPrompt,
 } from '../../domain/ports/prompt-registry.port';
-import type { QuotaPolicy } from '../../domain/ports/quota-policy.port';
+import type {
+  QuotaDecision,
+  QuotaPolicy,
+} from '../../domain/ports/quota-policy.port';
 import type {
   CachedResult,
   ResultCache,
@@ -70,10 +73,10 @@ export class InMemoryQuotaPolicy implements QuotaPolicy {
     private readonly decide: (
       userId: string,
       task: AiTaskName,
-    ) => Promise<boolean> = () => Promise.resolve(true),
+    ) => Promise<QuotaDecision> = () => Promise.resolve({ allowed: true }),
   ) {}
 
-  allows(userId: string, task: AiTaskName): Promise<boolean> {
+  allows(userId: string, task: AiTaskName): Promise<QuotaDecision> {
     this.calls.push({ userId, task });
     return this.decide(userId, task);
   }

@@ -135,21 +135,35 @@ export class RunTask {
     if (cached !== null) return cached;
 
     // Cuota por usuario y tarea, una vez antes de la cadena (D9, ADR-018 §9). Sin usuario no hay cuota.
-    if (
-      ctx.userId !== undefined &&
-      !(await this.quotaAllows(ctx.userId, task))
-    ) {
-      return this.degrade(task, parsedInput, 'quota_exceeded', execution);
+    // Precedencia: `quota_exceeded` gana a los demás motivos (cv-match-suggestions 3.5).
+    if (ctx.userId !== undefined) {
+      const quota = await this.quotaDecision(ctx.userId, task);
+      if (!quota.allowed) {
+        return this.degrade(
+          task,
+          parsedInput,
+          'quota_exceeded',
+          execution,
+          quota.retryAt,
+        );
+      }
     }
 
-    const chain = buildChain({
+    const { providers: chain, consentWouldEnable } = buildChain({
       task,
       ctx,
       providers: this.deps.providers,
       openIds: this.deps.breaker.openIds(),
     });
     if (chain.length === 0) {
-      return this.degrade(task, parsedInput, 'no_providers', execution);
+      // Con cadena vacía: consentimiento solo si la política dice que el permiso habría cambiado algo.
+      // `runTask` NO recalcula `consentWouldEnable` por su cuenta.
+      return this.degrade(
+        task,
+        parsedInput,
+        consentWouldEnable ? 'consent_required' : 'no_providers',
+        execution,
+      );
     }
 
     let attempted = 0;
@@ -170,7 +184,7 @@ export class RunTask {
       }
       if (outcome.kind !== 'skipped') attempted++;
       if (outcome.kind === 'success') {
-        // Solo se guardan éxitos (ADR-018 §6): nunca `degraded`.
+        // Solo se guardan éxitos (ADR-018 §6): nunca `degraded`. Y solo si la tarea es cacheable.
         await this.writeCache(execution, {
           output: outcome.output,
           providerId: provider.id,
@@ -188,6 +202,7 @@ export class RunTask {
       }
     }
     // Si ningún proveedor llegó a contactarse (todos sin permiso del breaker), no hubo proveedores disponibles.
+    // `providers_failed` solo cuando hubo al menos un intento, aunque conceder el permiso hubiera añadido a otro.
     return this.degrade(
       task,
       parsedInput,
@@ -197,13 +212,15 @@ export class RunTask {
   };
 
   /**
-   * Lectura de caché antes de la cadena. Un fallo del almacén, una entrada de otra versión de prompt o una salida que
-   * ya no cumple el schema cuentan como ausencia.
+   * Lectura de caché antes de la cadena. Una tarea no cacheable nunca lee. Un fallo del almacén, una entrada de otra
+   * versión de prompt o una salida que ya no cumple el schema cuentan como ausencia.
    */
   private async readCache<I, O>(
     task: AiTask<I, O>,
     key: string,
   ): Promise<AiSuccess<O> | null> {
+    if (!task.cacheable) return null;
+
     let entry: CachedResult | null;
     try {
       entry = await this.cache.get(key);
@@ -235,10 +252,12 @@ export class RunTask {
   }
 
   /** Falla abierta: si la política no puede decidir, se permite la ejecución (ADR-018 §9). */
-  private async quotaAllows(
+  private async quotaDecision(
     userId: string,
     task: AiTask<unknown, unknown>,
-  ): Promise<boolean> {
+  ): Promise<
+    { allowed: true } | { allowed: false; retryAt: Date }
+  > {
     try {
       return await this.deps.quota.allows(userId, task.name);
     } catch (error) {
@@ -246,7 +265,7 @@ export class RunTask {
         task: task.name,
         error: error instanceof Error ? error.name : 'unknown',
       });
-      return true;
+      return { allowed: true };
     }
   }
 
@@ -254,6 +273,8 @@ export class RunTask {
     execution: Execution,
     entry: CachedResult,
   ): Promise<void> {
+    if (!execution.task.cacheable) return;
+
     try {
       await this.cache.set(execution.key, entry);
     } catch (error) {
@@ -467,6 +488,7 @@ export class RunTask {
     parsedInput: I,
     reason: DegradedReason,
     execution: Execution,
+    retryAt?: Date,
   ): AiDegraded<O> {
     this.record(execution, reason === 'quota_exceeded' ? 'quota' : 'degraded', {
       provider: null,
@@ -475,7 +497,14 @@ export class RunTask {
       latencyMs: 0,
       reason: reason === 'quota_exceeded' ? undefined : reason,
     });
-    if (task.degrade === undefined) return { status: 'degraded', reason };
+    const retryField =
+      reason === 'quota_exceeded' && retryAt !== undefined
+        ? { aiQuotaRetryAt: retryAt.toISOString() }
+        : {};
+
+    if (task.degrade === undefined) {
+      return { status: 'degraded', reason, ...retryField };
+    }
 
     const parsed = task.outputSchema.safeParse(task.degrade(parsedInput));
     if (!parsed.success) {
@@ -486,7 +515,12 @@ export class RunTask {
         ),
       );
     }
-    return { status: 'degraded', reason, output: parsed.data };
+    return {
+      status: 'degraded',
+      reason,
+      output: parsed.data,
+      ...retryField,
+    };
   }
 
   private record(

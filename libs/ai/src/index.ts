@@ -20,7 +20,10 @@ export type {
   PromptView,
   RenderedPrompt,
 } from './domain/ports/prompt-registry.port';
-export type { QuotaPolicy } from './domain/ports/quota-policy.port';
+export type {
+  QuotaDecision,
+  QuotaPolicy,
+} from './domain/ports/quota-policy.port';
 export type {
   CachedResult,
   ResultCache,
@@ -70,6 +73,14 @@ export {
   type ExtractPastedJobInput,
   type ExtractPastedJobOutput,
 } from './tasks/extract-pasted-job.task';
+export {
+  matchCvTask,
+  MATCH_CV_CV_TEXT_MAX_LENGTH,
+  MATCH_CV_JOB_TEXT_MAX_LENGTH,
+  MATCH_CV_TITLE_MAX_LENGTH,
+  type MatchCvInput,
+  type MatchCvOutput,
+} from './tasks/match-cv.task';
 export {
   formatAiConfigProblems,
   parseAiConfig,

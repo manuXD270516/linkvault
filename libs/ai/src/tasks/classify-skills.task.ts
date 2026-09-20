@@ -127,5 +127,6 @@ export const classifySkillsTask: AiTask<
   temperature: 0,
   budget: { maxTokens: 1_024, maxAttempts: 2 },
   dataSensitivity: 'personal',
+  cacheable: false,
   sample: sampleClassifySkills,
 };
