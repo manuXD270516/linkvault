@@ -3,7 +3,7 @@ import type {
   NewGroupLinkComment,
 } from '../../domain/group-link-comment';
 import type { LinkCursor } from './link-listing';
-import type { TransactionSession } from './transaction-session';
+import type { TransactionSession } from '../../../../infrastructure/outbox/transaction-session';
 
 // Puerto de los comentarios de un link en un grupo (D2 de group-comments, ADR-026 §2). Se inyecta con
 // `{ provide: GROUP_LINK_COMMENT_REPOSITORY, useClass: MongoGroupLinkCommentRepository }`. Solo tipos y el token.

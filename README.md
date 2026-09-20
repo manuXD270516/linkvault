@@ -30,7 +30,9 @@ son obligatorias y **el worker no arranca sin ellas** (ver [Variables del enriqu
 Si es de antes de pegar descripciones, cópiale además `PASTE_EXTRACTION_TIMEOUT_MS` y la sección `--- IA ---` entera:
 **`api` ya no arranca sin ellas** (ver [La IA que ejecuta `api`](#la-ia-que-ejecuta-api)). Y si es de antes de los
 enlaces públicos, `PUBLIC_PAGE_BASE_URL` y `WEB_BASE_URL`, obligatorias por el mismo motivo (ver
-[Variables de las URLs públicas](#variables-de-las-urls-públicas)).
+[Variables de las URLs públicas](#variables-de-las-urls-públicas)). Y si es de antes de los CV, **las cinco `S3_*`
+—incluida `S3_BUCKET`— pasan a ser obligatorias también en `api`**, y el worker añade `CV_EXTRACTION_TIMEOUT_MS` y
+`CV_EXTRACT_CONCURRENCY` (ver [Mi CV](#mi-cv)).
 
 Arranca cada app en su propia terminal:
 
@@ -1395,6 +1397,168 @@ curl -s -H "$T" -H "$J" http://localhost:3000/api/links \
 
 Ninguna de las dos rutas públicas lleva `Authorization`, y el `404` es el mismo para un slug inventado
 (`curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3000/p/22222222222x`) que para uno quemado.
+
+## Mi CV
+
+Cada persona puede guardar **hasta 5 CV** en PDF o DOCX (≤ 5 MiB), y LinkVault **lee su texto** para que
+`cv-match-suggestions` pueda compararlo después con cada vacante ([ADR-006](docs/adr/ADR-006.md),
+[ADR-009](docs/adr/ADR-009.md), [ADR-028](docs/adr/ADR-028.md)). Es el dato más personal que guarda el producto, así que
+lo primero es qué se hace con él. Cómo operarlo: [RUNBOOK, Paso 6 octies](docs/RUNBOOK.md#paso-6-octies--operar-los-cv).
+
+### Qué se guarda, dónde y quién lo ve
+
+| Dato | Dónde | Quién lo ve |
+| ---- | ----- | ----------- |
+| Los **bytes del archivo** | MinIO, bucket de CV (`S3_BUCKET`, por defecto `cvs`), clave `<userId>/<cvId>` | **Nadie por HTTP.** El único que los lee es el worker, para extraer el texto. |
+| `fileName` (saneado), `fileType`, `sizeBytes`, `version`, `isDefault`, `uploadedAt` | `cv_documents` | Su dueño, en su listado. |
+| `extraction`: `status`, `failureReason?`, `textChars`, `extractedAt?` | `cv_documents` | Su dueño, en su listado. |
+| `extractedText` | `cv_documents` | Su dueño, **solo los primeros 2.000 caracteres** y solo por la vista previa. |
+| `truncated` (el texto se recortó a 200.000 caracteres) y `fileKey` | `cv_documents` | **Nadie**: son detalles de cómo guardamos, no salen en ninguna respuesta. |
+
+- **No hay descarga, y no es un olvido.** No existe `GET /api/cv/:id/file` ni ningún botón "Descargar", ni una URL
+  prefirmada de MinIO: una ruta que devuelve el CV entero es la mayor superficie de salida de datos de todo esto, y el
+  archivo lo acaba de subir la persona desde su dispositivo. Para saber "cuál de estos tres subí" están el **nombre y la
+  fecha** de la tarjeta y la **vista previa del texto**.
+- **La clave del objeto no dice nada**: `<userId>/<cvId>`, sin el nombre del archivo y sin extensión, para que no acabe
+  en el listado de un bucket, en un mensaje de error del SDK ni en una traza. El prefijo por usuario existe para poder
+  borrar de una vez todo lo de una persona.
+- **El bucket es privado, sin política anónima y sin regla de expiración**: un CV no caduca solo. El cifrado en reposo y
+  la política de retención **no entran aquí** y los hereda `deploy-prod` (desviación explícita de `docs/design.md` §8,
+  anotada en ADR-028).
+- **Nada del CV en los logs**: ni el texto, ni el nombre del archivo, ni sus bytes, ni el mensaje de error de un parser
+  o del SDK de S3. Las líneas llevan `cvId`, estado, motivo, tamaño, caracteres y duración.
+- **Ninguna IA toca el CV en este change**: ni resumen, ni habilidades, ni `fitScore`. La primera vez que el texto salga
+  de nuestra infraestructura será en `cv-match-suggestions`, con su consentimiento y su redacción de datos personales.
+
+### Endpoints
+
+Las cinco exigen access token y operan **solo** sobre los CV de quien pide. Un `:id` de otra persona, inexistente o mal
+formado responde el mismo `404 cv_not_found`, con el mismo cuerpo en los tres casos.
+
+| Método y ruta | Respuesta |
+| ------------- | --------- |
+| `POST /api/cv` (`multipart/form-data`, una parte `file`) | `201` con el CV (`id`, `fileName`, `fileType`, `sizeBytes`, `version`, `isDefault`, `uploadedAt`, `extraction`). |
+| `GET /api/cv` | `200` con `items`, del más reciente al más antiguo. Sin paginación: el máximo son 5. |
+| `GET /api/cv/:id/text-preview` | `200` con `{ status, text, chars, complete }` y `Cache-Control: private, no-store`. |
+| `PUT /api/cv/:id/default` | `200` con la lista actualizada; idempotente si ese CV ya lo era. |
+| `DELETE /api/cv/:id` | `200` con la lista actualizada; el archivo se borra después, por la cola. |
+
+- **El tipo lo deciden los bytes y la extensión**, que tienen que coincidir: `%PDF-` dentro del primer kilobyte o
+  `PK\x03\x04` al principio, y `.pdf` o `.docx`. El `Content-Type` de la parte **solo veta**: si nombra un tipo conocido
+  que contradice, `415 unsupported_file_type`; si es `application/octet-stream`, `text/plain` o falta, no estorba
+  (rechazarlo sería rechazar un CV por culpa del navegador de quien lo sube). La decisión se toma **con el primer trozo
+  que llega**; lo que no cuadra se descarta sobre la marcha sin acumular el archivo.
+- **Códigos:** `415 unsupported_file_type` (no es PDF ni DOCX), `413 file_too_large` (más de 5 MiB),
+  `409 too_many_cvs` (ya hay 5 guardados; no se borra ninguno solo), `404 cv_not_found`, `429 too_many_attempts` con
+  `Retry-After`, y `415 unsupported_media_type` cuando el cuerpo **no es multipart**, que es otra cosa. Ningún error del
+  parser de multipart sale como `500`.
+- **Cada subida es una versión nueva** (`version` correlativo por persona) y **los números no se reutilizan**: con 1, 2
+  y 3, borrar la 3 hace que la siguiente sea la 4. Un CV guardado no se modifica nunca.
+- **Siempre hay exactamente un CV marcado** mientras quede alguno: la subida más reciente se lleva la marca, `PUT …
+  /default` la mueve a mano, y borrar el marcado promueve al más reciente de los que quedan. La marca dice "este quiero
+  usar", no "este se pudo leer": un CV en `failed` puede estar marcado, y la pantalla avisa de la consecuencia.
+- **La vista previa** devuelve los primeros 2.000 caracteres cortados en un límite de palabra, con `status` (para
+  distinguir un CV que todavía se está leyendo de uno que no se pudo leer) y `complete` (si con eso ya está todo el
+  texto guardado). Un CV que aún no está `extracted` responde `200` con texto vacío y su `status`, no un error. Es la
+  **única** ruta que lee el texto, y lee solo ese prefijo. Existe porque un PDF a dos columnas se extrae entrelazando las
+  dos: `textChars` sale alto, el estado es `extracted` y lo guardado no sirve para nada; así se ve en dos segundos.
+
+### Estados de la lectura
+
+La extracción la hace el worker en su cola `extract-cv` (`pdf-parse` para PDF, `mammoth` para DOCX), a partir del evento
+`CvUploaded.v1` que el alta escribe en `outbox_events` **dentro de su transacción**. Un archivo ilegible o sin texto
+**no es un error del job**: es un resultado, y se enseña.
+
+| Estado | Cuándo | Qué dice la pantalla |
+| ------ | ------ | -------------------- |
+| `pending` | Desde el `201` hasta que el worker escribe | "Estamos leyendo tu CV…" |
+| `extracted` | Texto útil: al menos 100 caracteres tras normalizar | "Listo · tu CV se leyó bien", con "Ver lo que leímos" |
+| `failed` · `unreadable_file` | El parser no pudo abrirlo: corrupto, cifrado, un ZIP que no es DOCX, o venció el plazo | "No pudimos abrir este archivo. Si tiene contraseña, quítasela y vuelve a subirlo." |
+| `failed` · `no_text` | Se abrió, pero no hay texto: un escaneo o imágenes | "Este archivo no tiene texto…", con el consejo según el formato (PDF o DOCX) |
+| `failed` · `internal_error` | Un fallo nuestro que agotó los tres intentos, o el archivo no estaba en el almacén | "No pudimos leerlo ahora. Vuelve a subirlo en un rato." |
+
+- **Nunca se queda en `pending` para siempre:** agotados los reintentos, el consumidor lo deja en `failed` con
+  `internal_error`. El SPA sondea la lista cada 2 s mientras alguno esté `pending`, hasta 60 s, y después ofrece
+  "Actualizar", que reanuda otra ventana.
+- **El texto se guarda normalizado** (`\r\n` → `\n`, sin caracteres de control, sin líneas en blanco repetidas) y
+  **acotado a 200.000 caracteres**; si sobra, se recorta y se marca en la base, marca que no sale en ninguna respuesta.
+- **Un `failed` no borra nada**: el documento y el archivo siguen ahí, se puede marcar por defecto y eliminar como
+  cualquier otro. El remedio es volver a subirlo, que crea otra versión; no hay "reintentar la lectura".
+- **Eliminar se lleva el archivo**: el borrado escribe `CvDeleted.v1` en la misma transacción y el worker borra el objeto
+  desde la cola `delete-cv-file`. Borrar un objeto que ya no está es un acierto, así que repetirlo es inofensivo.
+
+### Los tres contadores
+
+Ventana fija de 15 min por persona, con el contador de plataforma; superado el tope, `429 too_many_attempts` con
+`Retry-After`. **Los tres fallan abiertos**: con Redis caído, quien quiere subir su CV lo sube.
+
+| Clave en Redis | Ruta | Tope | Devolución |
+| -------------- | ---- | ---- | ---------- |
+| `cv:upload:<userId>` | `POST /api/cv` | 10 | **Sí**, si la subida falla después de consumirlo y antes de quedar guardada (`409`, almacén caído, transacción que no confirma). |
+| `cv:text-preview:<userId>` | `GET /api/cv/:id/text-preview` | 60 | No hace falta: solo se consume al leer. |
+| `cv:reject:<userId>` | `POST /api/cv`, **solo al rechazar en la puerta** | 30 | **Nunca**: un rechazo ocurrió. |
+
+- **El de subidas no se toca hasta pasar la puerta:** un `413` o un `415` no lo consumen, así que equivocarse de archivo
+  no cuesta una subida. Lo que sí cuentan esos dos es el **contador de rechazos**, que es lo que pone techo a una ráfaga
+  de basura; el `413` lo consume también porque es el único camino que llega a leer megabytes antes de rechazar.
+- **El tope duro de almacenamiento no lo pone el contador**, sino el máximo de 5 CV: sin contador, una persona puede
+  subir y borrar en bucle, que gasta tráfico pero no acumula nada.
+- El techo **por cliente** (límite por IP y tope de cuerpo en el proxy) es de `deploy-prod`: estos tres cuentan por
+  persona autenticada.
+
+### Colecciones, bucket y variables
+
+`api` construye los índices al arrancar (`autoIndex` de Mongoose). Cómo comprobarlos:
+[RUNBOOK](docs/RUNBOOK.md#paso-6-octies--operar-los-cv).
+
+| Colección | Índices | Para qué |
+| --------- | ------- | -------- |
+| `cv_documents` | único `(userId, version)`; único **parcial** `(userId, isDefault)` sobre `isDefault: true`; `(userId, uploadedAt)` | La correlatividad de las versiones, la invariante de "un solo marcado" y el listado. |
+| `cv_version_counters` | solo `_id` | Un documento por persona (`_id` = `userId`, `next`) con el **próximo** número de versión, para que no se reutilice el de un CV borrado. Se borra con el último CV de esa persona. |
+
+- **Sin backfill ni migración:** no existe ningún CV previo. Volver atrás es desplegar la versión anterior; los
+  documentos y los objetos se quedan como están.
+- **El bucket se llama `cvs`, no `cv`:** S3 —y MinIO con él— exige entre 3 y 63 caracteres en el nombre de un bucket. Lo
+  crea el `docker-compose` de forma idempotente, privado y sin regla de expiración, en una comprobación **independiente**
+  de la del bucket de snapshots (con un volumen que ya existía, si colgara de ella no se crearía nunca).
+- **Variables**: las cinco `S3_*` pasan a ser **obligatorias también en `api`** (incluida `S3_BUCKET`, que hasta ahora no
+  leía nadie), y `worker` añade `CV_EXTRACTION_TIMEOUT_MS` (30 s por defecto, de 1 s a 120 s) y `CV_EXTRACT_CONCURRENCY`
+  (1 por defecto, de 1 a 4). Un `.env` anterior a esta función **no las tiene y los procesos no arrancan**.
+
+### Rutas del SPA
+
+| Ruta | Contenido |
+| ---- | --------- |
+| `/mi-cv` | "Mi CV" en la barra de navegación: subir con progreso, las tarjetas de los CV guardados con su estado, "Usar este", "Ver lo que leímos" y "Eliminar". |
+
+La pantalla habla de **"CV guardado"** y los identifica por **nombre y fecha**, no por número de versión ni por
+caracteres leídos. Bajo el marcado se lee "Este es el CV que compararemos con las vacantes", y siempre está visible la
+línea de privacidad: **"Tu CV solo lo ves tú y hoy no lo lee ninguna IA. No saldrá de LinkVault sin tu autorización."**
+No promete un permiso que el producto no pide ni nombra ninguna pantalla que todavía no existe; quien pone el control de
+consentimiento en Perfil y completa esa frase es `cv-match-suggestions`.
+
+### Probar los CV en local
+
+Con la API y el worker en marcha y un access token obtenido como en [Probar en local](#probar-en-local):
+
+```bash
+T='Authorization: Bearer <accessToken>'
+
+curl -s -H "$T" -F 'file=@CV_backend.pdf' http://localhost:3000/api/cv     # 201 con version 1, isDefault true y extraction.status pending
+curl -s -H "$T" http://localhost:3000/api/cv                               # la lista; en unos segundos, extracted
+CV_ID=...                                                                  # el id de la respuesta
+curl -s -H "$T" "http://localhost:3000/api/cv/$CV_ID/text-preview"         # { status, text, chars, complete }
+curl -s -H "$T" -X PUT "http://localhost:3000/api/cv/$CV_ID/default"       # 200 con la lista actualizada
+curl -s -H "$T" -X DELETE "http://localhost:3000/api/cv/$CV_ID"            # 200: el archivo lo borra el worker
+
+curl -s -H "$T" -F 'file=@notas.odt' http://localhost:3000/api/cv          # 415 unsupported_file_type
+curl -s -H "$T" -H 'Content-Type: application/json' -d '{}' \
+  http://localhost:3000/api/cv                                             # 415 unsupported_media_type: no es multipart
+```
+
+Ninguna ruta devuelve el archivo: si alguna vez aparece una, hay que añadir en el mismo commit
+`res.headers["content-disposition"]` y cualquier campo `fileName` a la lista de redacción del logger, porque `pino`
+redacta **rutas declaradas** y no adivina.
 
 ## Calidad
 

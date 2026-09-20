@@ -1,5 +1,5 @@
 import type { LinkListPage, LinkListQuery } from './link-listing';
-import type { TransactionSession } from './transaction-session';
+import type { TransactionSession } from '../../../../infrastructure/outbox/transaction-session';
 
 // Puerto de la lista privada (`user_links`, D1 de job-links): lo que alguien guarda **sin** grupo. Guardar en un grupo NO
 // crea entrada privada. Mismas operaciones que la relación con un grupo, con el índice único `(userId, linkId)`.

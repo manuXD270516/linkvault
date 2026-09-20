@@ -1,0 +1,51 @@
+<h2 mat-dialog-title i18n="@@cv.preview.title">Lo que leímos de tu CV</h2>
+
+<mat-dialog-content class="flex flex-col gap-3">
+  <!-- El consejo vale para los dos formatos: quien subió un DOCX no puede "subir el PDF original". -->
+  <p class="m-0 text-sm" i18n="@@cv.preview.heading">
+    Así leímos tu CV. Si ves el texto desordenado, vuelve a exportarlo desde tu editor y súbelo otra
+    vez.
+  </p>
+
+  @if (loading()) {
+    <p class="m-0" role="status" data-testid="cv-preview-loading" i18n="@@cv.preview.loading">
+      Cargando lo que leímos…
+    </p>
+  }
+
+  @if (text(); as preview) {
+    <pre
+      class="m-0 max-h-80 overflow-auto rounded border p-3 text-sm whitespace-pre-wrap"
+      data-testid="cv-preview-text"
+      >{{ preview }}</pre
+    >
+  }
+
+  @if (error(); as currentError) {
+    <div class="flex flex-col gap-2" data-testid="cv-preview-error">
+      @if (currentError.kind === 'tooMany') {
+        <lv-request-error [failure]="currentError.failure" />
+      } @else {
+        <p class="m-0 text-(--mat-sys-error)" role="alert" i18n="@@cv.preview.failed">
+          No pudimos mostrarlo ahora
+        </p>
+      }
+      <div>
+        <button
+          mat-stroked-button
+          type="button"
+          (click)="load()"
+          data-testid="cv-preview-retry"
+          i18n="@@cv.retry"
+        >
+          Reintentar
+        </button>
+      </div>
+    </div>
+  }
+</mat-dialog-content>
+
+<!-- Ni copiar, ni descargar, ni compartir: el texto es para mirarlo, y al cerrar no queda nada en la pantalla. -->
+<mat-dialog-actions>
+  <button mat-button type="button" mat-dialog-close i18n="@@cv.preview.close">Cerrar</button>
+</mat-dialog-actions>

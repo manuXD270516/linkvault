@@ -31,6 +31,11 @@ import {
   AiQuotaExceeded,
 } from '../../modules/links/domain/errors';
 import {
+  CvError,
+  InvalidCvUpload,
+  TooManyCvAttempts,
+} from '../../modules/cv/domain/errors';
+import {
   EmailAlreadyRegistered,
   InvalidProfileChanges,
   UserNotFound,
@@ -73,9 +78,13 @@ interface ApiErrorReply {
  *   `link_not_found` → 404, `group_not_found` → 404); `InvalidApplicationField` va antes porque es un
  *   `validation_error` que nombra su campo: `InvalidAppliedAt` (`appliedAt`, la fecha futura que solo el dominio puede
  *   juzgar con su reloj) y las defensas de la etapa (`stageLabel`) y de las notas (`notes`).
+ * - Errores de dominio de `cv`, por su `code` (`cv_not_found` → 404, `unsupported_file_type` → 415, `file_too_large` →
+ *   413, `too_many_cvs` → 409); `InvalidCvUpload` va antes porque es un `validation_error` que nombra el campo `file`
+ *   —y es adonde va a parar **todo** error del parser de multipart sin fila propia, para que ninguno salga como 500—, y
+ *   `TooManyCvAttempts` (429) porque lleva su `Retry-After`.
  * - `HttpException` 400 (JSON mal formado, que Nest convierte desde Fastify) → `validation_error` sin campos, y 415 →
- *   `unsupported_media_type`. El resto de `HttpException` (404 de ruta desconocida, 503 de la salud) conserva la
- *   respuesta de Nest.
+ *   `unsupported_media_type`, cuyo mensaje es genérico desde que lo comparten dos rutas con formatos distintos. El
+ *   resto de `HttpException` (404 de ruta desconocida, 503 de la salud) conserva la respuesta de Nest.
  * - Cualquier otro error → 500 `internal_error`, sin detalles en la respuesta. El log lleva el nombre del error y los marcos
  *   de la pila, sin el mensaje: el mensaje de un error ajeno puede incluir datos del usuario (p. ej. la clave duplicada de Mongo
  *   lleva el email).
@@ -171,6 +180,17 @@ export class ApiExceptionFilter extends BaseExceptionFilter {
       return reply('validation_error', [exception.field]);
     }
     if (exception instanceof ApplicationsError) {
+      return reply(exception.code);
+    }
+    if (exception instanceof InvalidCvUpload) {
+      return reply('validation_error', [exception.field]);
+    }
+    if (exception instanceof TooManyCvAttempts) {
+      return reply(exception.code, [], {
+        'Retry-After': String(exception.retryAfterSeconds),
+      });
+    }
+    if (exception instanceof CvError) {
       return reply(exception.code);
     }
     if (exception instanceof HttpException) {

@@ -17,7 +17,7 @@ import type {
   SharedGroupLink,
 } from '../ports/group-link-repository.port';
 import type { LinkListPage, LinkListQuery } from '../ports/link-listing';
-import type { TransactionSession } from '../ports/transaction-session';
+import type { TransactionSession } from '../../../../infrastructure/outbox/transaction-session';
 import type { InMemoryJobLinkRepository } from './in-memory-job-link.repository';
 import { InMemoryGroupLinkCommentRepository } from './in-memory-group-link-comment.repository';
 import { pageOf, type StoredRelation } from './in-memory-pagination';

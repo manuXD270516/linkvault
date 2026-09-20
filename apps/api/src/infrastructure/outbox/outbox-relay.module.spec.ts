@@ -1,5 +1,9 @@
 import { createServer, type Server, type Socket } from 'node:net';
-import { ENRICH_LINK_QUEUE } from '@linkvault/shared';
+import {
+  DELETE_CV_FILE_QUEUE,
+  ENRICH_LINK_QUEUE,
+  EXTRACT_CV_QUEUE,
+} from '@linkvault/shared';
 import { getQueueToken } from '@nestjs/bullmq';
 import { UnknownElementException } from '@nestjs/core/errors/exceptions/unknown-element.exception';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
@@ -13,9 +17,11 @@ import { apiTestAiConfig, apiTestConfig } from '../../test-support/test-config';
 import { AppConfigModule } from '../config/app-config.module';
 import { MongoPersistenceModule } from '../persistence/mongo-persistence.module';
 import {
-  ENRICH_LINK_JOB_OPTIONS,
-  EnrichLinkQueueErrorLog,
-} from './enrich-link-queue';
+  OUTBOX_JOB_OPTIONS,
+  OutboxQueueErrorLog,
+  outboxQueueErrorLogToken,
+} from './outbox-queues';
+import { OUTBOX_QUEUES } from './outbox-routes';
 import { OutboxRelay } from './outbox-relay';
 import { OutboxRelayModule } from './outbox-relay.module';
 
@@ -125,10 +131,17 @@ describe('outbox relay module', () => {
     }).compile();
 
     expect(optionalGet(moduleRef, Queue)).toBeUndefined();
-    expect(
-      optionalGet(moduleRef, getQueueToken(ENRICH_LINK_QUEUE)),
-    ).toBeUndefined();
-    expect(optionalGet(moduleRef, EnrichLinkQueueErrorLog)).toBeUndefined();
+    // Ninguna de las tres: ni la del enriquecimiento, ni la de la lectura del CV, ni la del borrado de su archivo.
+    for (const name of [
+      ENRICH_LINK_QUEUE,
+      EXTRACT_CV_QUEUE,
+      DELETE_CV_FILE_QUEUE,
+    ]) {
+      expect(optionalGet(moduleRef, getQueueToken(name))).toBeUndefined();
+      expect(
+        optionalGet(moduleRef, outboxQueueErrorLogToken(name)),
+      ).toBeUndefined();
+    }
     expect(optionalGet(moduleRef, SchedulerRegistry)).toBeUndefined();
     expect(optionalGet(moduleRef, OutboxRelay)).toBeUndefined();
   });
@@ -151,9 +164,11 @@ describe('outbox relay module', () => {
     expect(traffic).not.toMatch(/\$4\r\ninfo\r\n/);
   });
 
-  it('attaches an error listener to the queue and brings its own scheduler', async () => {
-    const queue = new FakeQueue();
-    moduleRef = await Test.createTestingModule({
+  it('registers the three queues with their error listener and brings its own scheduler', async () => {
+    const queues = new Map(
+      OUTBOX_QUEUES.map((name) => [name, new FakeQueue()] as const),
+    );
+    let builder = Test.createTestingModule({
       imports: [
         AppConfigModule.forRoot(
           await apiTestConfig({ OUTBOX_RELAY_ENABLED: true }),
@@ -162,22 +177,30 @@ describe('outbox relay module', () => {
         MongoPersistenceModule,
         OutboxRelayModule,
       ],
-    })
-      .overrideProvider(getQueueToken(ENRICH_LINK_QUEUE))
-      .useValue(queue)
-      .compile();
+    });
+    for (const [name, queue] of queues) {
+      builder = builder.overrideProvider(getQueueToken(name)).useValue(queue);
+    }
+    moduleRef = await builder.compile();
 
-    expect(moduleRef.get(EnrichLinkQueueErrorLog)).toBeDefined();
-    expect(queue.errorListeners).toHaveLength(1);
+    expect([...queues.keys()]).toEqual([
+      ENRICH_LINK_QUEUE,
+      EXTRACT_CV_QUEUE,
+      DELETE_CV_FILE_QUEUE,
+    ]);
+    for (const [name, queue] of queues) {
+      expect(moduleRef.get(outboxQueueErrorLogToken(name))).toBeDefined();
+      expect(queue.errorListeners).toHaveLength(1);
+    }
     expect(moduleRef.get(SchedulerRegistry, { strict: false })).toBeDefined();
     expect(moduleRef.get(OutboxRelay)).toBeInstanceOf(OutboxRelay);
   });
 
   it('keeps the queue retention of D6 and retries what throws', () => {
-    // Los reintentos solo cubren lo que revienta: una bolsa que bloquea o una página que no es oferta son resultados
-    // que el consumidor guarda con su motivo y no gastan intentos. Sin `attempts`, BullMQ haría uno solo y un corte de
-    // Mongo de un segundo dejaría el link en `failed` con "reintentos agotados" sin haber reintentado nada.
-    expect(ENRICH_LINK_JOB_OPTIONS).toEqual({
+    // Los reintentos solo cubren lo que revienta: una bolsa que bloquea, una página que no es oferta o un PDF cifrado
+    // son resultados que el consumidor guarda con su motivo y no gastan intentos. Sin `attempts`, BullMQ haría uno solo
+    // y un corte de Mongo de un segundo dejaría el agregado en `failed` sin haber reintentado nada.
+    expect(OUTBOX_JOB_OPTIONS).toEqual({
       attempts: 3,
       backoff: { type: 'exponential', delay: 5_000 },
       removeOnComplete: { age: 86_400, count: 1_000 },
@@ -189,13 +212,13 @@ describe('outbox relay module', () => {
     const queue = new FakeQueue();
     const messages: string[] = [];
 
-    new EnrichLinkQueueErrorLog(queue, {
+    new OutboxQueueErrorLog(EXTRACT_CV_QUEUE, queue, {
       debug: (message) => messages.push(message),
     });
     for (const listener of queue.errorListeners) {
       listener(new Error('connect ECONNREFUSED'));
     }
 
-    expect(messages).toEqual(['enrich-link queue error: connect ECONNREFUSED']);
+    expect(messages).toEqual(['extract-cv queue error: connect ECONNREFUSED']);
   });
 });

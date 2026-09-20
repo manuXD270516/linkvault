@@ -72,17 +72,21 @@ function providerTokens(dynamic: DynamicModule): unknown[] {
 
 describe('Consumidor de enrich-link', () => {
   it('exists, and in exactly one place', () => {
-    // `new Worker(` es cómo se construye un consumidor de BullMQ a pelo, que es lo que el módulo hace para poder
-    // configurar `concurrency` y `lockDuration` desde la configuración.
-    expect(sourcesMatching(/new Worker\(/)).toEqual([
-      join(
-        'modules',
-        'enrichment',
-        'infrastructure',
-        'queue',
-        'enrich-link.consumer.ts',
-      ),
-    ]);
+    // `new Worker(` es cómo se construye un consumidor de BullMQ a pelo, que es lo que los módulos hacen para poder
+    // configurar `concurrency` y `lockDuration` desde la configuración. Desde `cv-upload-extract` hay dos sitios: el
+    // de `enrichment` y la fábrica que comparten los dos consumidores de `cv`, y ninguno más.
+    expect(sourcesMatching(/new Worker\(/).sort()).toEqual(
+      [
+        join(
+          'modules',
+          'enrichment',
+          'infrastructure',
+          'queue',
+          'enrich-link.consumer.ts',
+        ),
+        join('modules', 'cv', 'infrastructure', 'queue', 'worker-factory.ts'),
+      ].sort(),
+    );
     expect(sourcesMatching(/ENRICH_LINK_QUEUE/)).toContain(
       join(
         'modules',

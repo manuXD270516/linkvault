@@ -122,9 +122,13 @@ const DOMAIN_RESTRICTED_PATTERNS = [
   // `cheerio` y `robots-parser` (link-enrichment, ADR-022): el dominio recibe un `PageContent` ya parseado y una
   // decisión de robots ya tomada, nunca el parser. Así la cadena de extracción se prueba sin HTML ni red y el parser
   // se puede cambiar sin tocarla.
+  //
+  // `pdf-parse` y `mammoth` (cv-upload-extract, ADR-028): lo mismo con los documentos. El dominio de `cv` recibe el
+  // texto ya extraído y solo decide el estado; abrir un archivo es trabajo de `infrastructure/`, y que la regla lo
+  // impida es lo que evita que un parser de archivos hostiles acabe en una función pura por comodidad.
   {
     regex:
-      '^(?:mongoose|mongodb|bullmq|ioredis|fastify|minio|pino|nestjs-pino|cheerio|robots-parser)(?:/.*)?$',
+      '^(?:mongoose|mongodb|bullmq|ioredis|fastify|minio|pino|nestjs-pino|cheerio|robots-parser|pdf-parse|mammoth)(?:/.*)?$',
     message:
       'La capa de dominio no importa infraestructura: mueve este uso a infrastructure/ y expón un port.',
   },

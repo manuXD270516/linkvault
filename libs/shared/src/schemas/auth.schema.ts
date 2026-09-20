@@ -80,7 +80,10 @@ export const apiErrorCodeSchema = z.enum([
   'csrf_header_missing',
   // 401: access token ausente, inválido, caducado o anterior al último cambio de contraseña.
   'unauthorized',
-  // 415: cuerpo que no es `application/json`.
+  // 415: el cuerpo no tiene el formato que esa ruta acepta. Lo comparten ya dos formatos distintos —JSON en casi
+  // todas y `multipart/form-data` en la subida del CV—, así que su mensaje es genérico y el SPA traduce el código.
+  // NO es lo mismo que `unsupported_file_type`: una cosa es "el cuerpo de la petición no es lo que esta ruta lee" y
+  // otra "el archivo no es PDF ni DOCX", y la pantalla las explica distinto.
   'unsupported_media_type',
   // 404: el grupo no existe, quien pregunta no es miembro o el `:id` no tiene formato de identificador (mismo cuerpo).
   'group_not_found',
@@ -123,6 +126,14 @@ export const apiErrorCodeSchema = z.enum([
   'application_not_found',
   // 409: el estado o la etapa cambiaron desde otra pestaña desde que se pintó (`version` distinta).
   'application_conflict',
+  // 404: el CV no existe, es de otra persona o su `:id` no tiene formato de identificador (mismo cuerpo en los tres).
+  'cv_not_found',
+  // 415: el archivo subido no es PDF ni DOCX, o sus bytes, su extensión y su `Content-Type` no apuntan al mismo tipo.
+  'unsupported_file_type',
+  // 413: el archivo pasa de `CV_MAX_FILE_BYTES`. No se guarda nada, ni siquiera a medias.
+  'file_too_large',
+  // 409: ya hay `MAX_CV_DOCUMENTS` CV guardados. Nada se borra solo: la persona elige cuál quitar.
+  'too_many_cvs',
   // 500
   'internal_error',
 ]);

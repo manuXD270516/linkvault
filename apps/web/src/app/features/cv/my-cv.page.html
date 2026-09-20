@@ -1,0 +1,89 @@
+<section class="mx-auto flex max-w-2xl flex-col gap-6 p-6">
+  <h1 class="text-2xl font-medium" i18n="@@cv.title">Mi CV</h1>
+
+  <lv-cv-upload
+    [uploading]="uploading()"
+    [percent]="uploadPercent()"
+    [failure]="uploadFailure()"
+    (chosen)="upload($event)"
+  />
+
+  @if (isEmpty()) {
+    <p class="m-0" data-testid="cv-empty" i18n="@@cv.empty">
+      Sube tu CV y LinkVault podrá comparar tus habilidades con cada vacante.
+    </p>
+  }
+
+  <!--
+    La promesa va donde se pide el dato y siempre visible: sin desplazarse y sin abrir nada. No promete que se pedirá
+    permiso —el consentimiento es una preferencia del perfil que la pasarela lee sin preguntar— ni manda a ninguna
+    pantalla que todavía no exista (D13, ADR-028 §11).
+  -->
+  <p class="m-0 text-sm" data-testid="cv-privacy" i18n="@@cv.privacy">
+    Tu CV solo lo ves tú y hoy no lo lee ninguna IA. No saldrá de LinkVault sin tu autorización.
+  </p>
+
+  @if (loading() && !loaded()) {
+    <p class="m-0" role="status" data-testid="cv-loading" i18n="@@cv.loading">Cargando tus CV…</p>
+  }
+
+  @if (stalled()) {
+    <!--
+      Un `pending` que no se resuelve —worker parado, relay apagado— no se arregla solo, así que la salida está en la
+      mano de la persona: borrarlo y volver a subirlo crea un evento nuevo. "Actualizar" da otros 60 s de espera.
+    -->
+    <div class="flex flex-col gap-2" data-testid="cv-stalled">
+      <p class="m-0" role="status" i18n="@@cv.stalled">
+        Sigue en proceso. Si sigue así en unos minutos, elimínalo y vuelve a subirlo.
+      </p>
+      <div>
+        <button
+          mat-stroked-button
+          type="button"
+          (click)="retry()"
+          data-testid="cv-stalled-refresh"
+          i18n="@@cv.refresh"
+        >
+          Actualizar
+        </button>
+      </div>
+    </div>
+  }
+
+  @if (goneNotice()) {
+    <p class="m-0" role="alert" data-testid="cv-gone" i18n="@@cv.gone">Este CV ya no está</p>
+  }
+
+  @for (item of items(); track item.id) {
+    <lv-cv-card
+      [cv]="item"
+      [hasOtherExtracted]="hasOtherExtracted(item)"
+      [busy]="busy()"
+      (useThis)="useThis(item)"
+      (useExtracted)="useExtracted()"
+      (viewText)="viewText(item)"
+      (remove)="remove(item)"
+    />
+  }
+
+  @if (actionFailure(); as currentFailure) {
+    <lv-request-error [failure]="currentFailure" />
+  }
+
+  @if (failure(); as currentFailure) {
+    <div class="flex flex-col gap-2" data-testid="cv-list-error">
+      <lv-request-error [failure]="currentFailure" />
+      <div>
+        <button
+          mat-stroked-button
+          type="button"
+          (click)="retry()"
+          data-testid="cv-list-retry"
+          i18n="@@cv.retry"
+        >
+          Reintentar
+        </button>
+      </div>
+    </div>
+  }
+</section>

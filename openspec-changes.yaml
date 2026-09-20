@@ -169,11 +169,26 @@ changes:
       Lo que este change NO hace y deja a `deploy-prod`: fijar PUBLIC_PAGE_BASE_URL y WEB_BASE_URL por entorno, configurar el
       proxy y sus límites por cliente, y despublicar los enlaces de quien borre su cuenta (ver el scope de `deploy-prod`).
   - name: cv-upload-extract
-    adrs: [006, 009]
+    adrs: [006, 009, 028]
     agents: [backend-dev, frontend-dev]
     scope: |
-      POST /cv multipart (PDF/DOCX ≤ 5 MB) a MinIO, cv_documents con versiones e isDefault, worker extract-cv (pdf-parse, mammoth).
-      Frontend: subir, listar, marcar por defecto.
+      POST /api/cv multipart (PDF/DOCX ≤ 5 MiB) al bucket de CV de MinIO (`S3_BUCKET`, por defecto `cvs`: S3 exige
+      nombres de 3 a 63 caracteres), clave `<userId>/<cvId>` sin nombre ni extensión; `cv_documents` con versiones,
+      isDefault y el texto extraído, más `cv_version_counters` (un entero por persona) para que un número de versión no
+      se reutilice tras un borrado. Worker: colas propias `extract-cv` (pdf-parse fijado a ^1.1.1, mammoth) y
+      `delete-cv-file`, las dos por outbox (ADR-009) y el relay enrutando por tipo de evento.
+      Decisión humana del 2026-09-20: **no hay ninguna ruta que devuelva los bytes** —ni servida por la API ni
+      prefirmada— y **sí hay vista previa del texto**, `GET /api/cv/:id/text-preview` con `{ status, text, chars,
+      complete }` y los primeros 2.000 caracteres, que es la única señal honesta de que un PDF a dos columnas se leyó
+      entrelazado. Hasta 5 CV (la sexta subida, `409 too_many_cvs`), un solo marcado por índice único parcial con
+      promoción al borrarlo, y tres contadores por persona que fallan abiertos (10 subidas, 60 vistas previas, 30
+      rechazos). Frontend: `/mi-cv` para subir, listar, marcar por defecto, ver lo que leímos y eliminar, con la línea
+      de privacidad honesta. Decisiones no triviales en ADR-028.
+      Lo que este change NO hace y deja a `deploy-prod`: el cifrado en reposo y la política de retención del bucket
+      (desviación explícita de docs/design.md §8), el borrado de cuenta con sus objetos, la recogida de objetos
+      huérfanos, el aviso de privacidad sobre el CV y el límite por IP y el tope de cuerpo en el proxy (ver el scope de
+      `deploy-prod`). El control de consentimiento que completa la frase de privacidad de `/mi-cv` es de
+      `cv-match-suggestions`.
   - name: cv-match-suggestions
     adrs: [014, 018, 020]
     agents: [ai-engineer, backend-dev, frontend-dev]
@@ -189,6 +204,13 @@ changes:
       PATCH /api/users/me): consentimiento de proveedores externos con texto honesto (qué dato se envía, a quién, qué se
       redacta y que es revocable), guardando `consentedAt` y la versión del texto aceptado; idioma de salida con la etiqueta
       "Idioma de los análisis de IA" (`outputLanguage`); y redacción del nombre propio (`redactName`).
+      Heredado de `cv-upload-extract` (ADR-028): ese control de consentimiento va en **Perfil** (`/perfil`, no existe
+      ninguna pantalla "Ajustes") y **completa la línea de privacidad de `/mi-cv`**, que hoy dice solo lo que se puede
+      comprobar —"Tu CV solo lo ves tú y hoy no lo lee ninguna IA. No saldrá de LinkVault sin tu autorización."— sin
+      nombrar ninguna pantalla ni control que todavía no exista. Este es el primer change en que un CV sale de nuestra
+      infraestructura, así que es también el que cierra la línea de privacidad completa: dónde se da la autorización, qué
+      se envía y qué se redacta. Si quiere avisar en vivo del final de la extracción, el evento `cv.extracted` va por el
+      canal SSE que ya existe.
   - name: study-roadmap
     adrs: [014]
     agents: [ai-engineer, frontend-dev]
@@ -226,6 +248,22 @@ changes:
       proxy, y activar `trustProxy` exige decidir a la vez en qué proxy se confía (es la misma herencia de auth-users, ADR-020).
       Y el borrado de cuenta debe despublicar (`$unset publicShare`) las relaciones que esa persona publicó, además de lo que
       decida sobre sus `group_link_comments`: su enlace público sigue sirviendo la oferta a cualquiera mientras exista.
+      Heredado de `cv-upload-extract` (ADR-028), que guarda el dato más personal del producto:
+      (a) el borrado de cuenta debe llevarse sus CV **y sus objetos** —`deleteMany` de `cv_documents` y de
+      `cv_version_counters`, más `mc rm --recursive <bucket>/<userId>/`—; el prefijo por usuario de la clave existe justo
+      para eso;
+      (b) **desviación explícita de docs/design.md §8**: el bucket de CV no tiene **cifrado en reposo** ni **política de
+      retención**, que aquel documento daba por mitigación de "datos sensibles en CV"; aquí se decide la gestión de
+      claves del proveedor y el ciclo de vida del bucket, que en local no lleva ninguna regla de expiración a propósito
+      (un CV no caduca solo);
+      (c) el **aviso de privacidad** debe decir qué se guarda de un CV y por cuánto tiempo;
+      (d) la **recogida de objetos huérfanos** (los deja una transacción abortada tras subir o un `CvDeleted.v1` agotado
+      a las 24 h), hoy manual y en dos pasos con revisión humana en el RUNBOOK;
+      (e) el **límite por IP y el tope de cuerpo en el proxy**: los tres contadores de CV son por persona autenticada, y
+      el camino caro —subidas válidas y `413`, que leen hasta el tope antes de rechazar— solo se acota delante, sin
+      activar `trustProxy` a ciegas (misma herencia de ADR-020 §5 y ADR-027 §6).
+      Además, las dos colas nuevas (`extract-cv` y `delete-cv-file`) entran en lo que hay que vigilar, con su retención y
+      su panel.
   - name: auth-email-recovery
     adrs: [012, 020]
     agents: [backend-dev, frontend-dev]

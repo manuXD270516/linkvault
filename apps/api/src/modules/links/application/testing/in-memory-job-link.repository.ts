@@ -15,7 +15,7 @@ import type {
   PastedPreviewWrite,
   ResolvedJobLink,
 } from '../ports/job-link-repository.port';
-import type { TransactionSession } from '../ports/transaction-session';
+import type { TransactionSession } from '../../../../infrastructure/outbox/transaction-session';
 import { IN_MEMORY_SESSION } from './links-test-doubles';
 
 // Repositorio de vacantes en memoria para tests de application (D10 de job-links). No es un adaptador de producción: el

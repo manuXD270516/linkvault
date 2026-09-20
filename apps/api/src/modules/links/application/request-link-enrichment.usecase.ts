@@ -30,7 +30,7 @@ import {
   LINK_USER_DIRECTORY,
   type LinkUserDirectory,
 } from './ports/link-user-directory.port';
-import { OUTBOX, type Outbox } from './ports/outbox.port';
+import { OUTBOX, type Outbox } from '../../../infrastructure/outbox/outbox.port';
 import {
   USER_LINK_REPOSITORY,
   type UserLinkRepository,

@@ -1,0 +1,117 @@
+<article class="flex flex-col gap-2 rounded-lg border p-4" data-testid="cv-card">
+  <!-- Nombre y fecha: así reconoce la persona cuál es cuál. El número de versión se queda en el contrato. -->
+  <p class="m-0 font-medium" data-testid="cv-name">
+    {{ cv().fileName }} · {{ sizeLabel() }} · {{ cv().uploadedAt | date: 'dd/MM/yyyy' }}
+  </p>
+
+  @if (cv().isDefault) {
+    <!-- La marca dice su consecuencia, y por eso es una línea y no un distintivo de dos palabras (D13). -->
+    <p class="m-0 text-sm" data-testid="cv-default-line" i18n="@@cv.defaultLine">
+      Este es el CV que compararemos con las vacantes
+    </p>
+  }
+
+  <p class="m-0 text-sm" data-testid="cv-status">
+    @switch (extraction().status) {
+      @case ('pending') {
+        <ng-container i18n="@@cv.status.pending">Estamos leyendo tu CV…</ng-container>
+      }
+      @case ('extracted') {
+        <ng-container i18n="@@cv.status.extracted">Listo · tu CV se leyó bien</ng-container>
+      }
+      @default {
+        @switch (extraction().failureReason) {
+          @case ('no_text') {
+            <ng-container i18n="@@cv.status.noText"
+              >Este archivo no tiene texto: parece un escaneo o una imagen.</ng-container
+            >
+          }
+          @case ('internal_error') {
+            <ng-container i18n="@@cv.status.internalError"
+              >No pudimos leerlo ahora. Vuelve a subirlo en un rato.</ng-container
+            >
+          }
+          @default {
+            <ng-container i18n="@@cv.status.unreadable"
+              >No pudimos abrir este archivo. Si tiene contraseña, quítasela y vuelve a
+              subirlo.</ng-container
+            >
+          }
+        }
+      }
+    }
+  </p>
+
+  <!-- El consejo del archivo sin texto depende del formato: "sube el PDF original" no le sirve a quien subió un DOCX. -->
+  @if (extraction().failureReason === 'no_text') {
+    <p class="m-0 text-sm" data-testid="cv-advice">
+      @if (isPdf()) {
+        <ng-container i18n="@@cv.advice.pdf"
+          >Sube el PDF original (no una foto ni un escaneo) o vuelve a exportarlo desde tu
+          editor</ng-container
+        >
+      } @else {
+        <ng-container i18n="@@cv.advice.docx"
+          >Vuelve a exportarlo desde tu editor y súbelo otra vez</ng-container
+        >
+      }
+    </p>
+  }
+
+  @if (warnsUseless()) {
+    <!-- La consecuencia, no el diagnóstico: eso ya lo dijo el estado (business 13 de la iteración 2). -->
+    <p class="m-0 text-sm" role="alert" data-testid="cv-default-useless" i18n="@@cv.defaultUseless">
+      No servirá para analizar vacantes
+    </p>
+    @if (hasOtherExtracted()) {
+      <div>
+        <button
+          mat-stroked-button
+          type="button"
+          [disabled]="busy()"
+          (click)="useExtracted.emit()"
+          data-testid="cv-use-extracted"
+          i18n="@@cv.useExtracted"
+        >
+          Usar el que sí se leyó
+        </button>
+      </div>
+    }
+  }
+
+  <div class="flex flex-wrap gap-2">
+    @if (!cv().isDefault) {
+      <button
+        mat-stroked-button
+        type="button"
+        [disabled]="busy()"
+        (click)="useThis.emit()"
+        data-testid="cv-use-this"
+        i18n="@@cv.useThis"
+      >
+        Usar este
+      </button>
+    }
+    @if (isExtracted()) {
+      <button
+        mat-stroked-button
+        type="button"
+        (click)="viewText.emit()"
+        data-testid="cv-view-text"
+        i18n="@@cv.viewText"
+      >
+        Ver lo que leímos
+      </button>
+    }
+    <button
+      mat-stroked-button
+      type="button"
+      [disabled]="busy()"
+      (click)="remove.emit()"
+      data-testid="cv-remove"
+      i18n="@@cv.remove"
+    >
+      Eliminar
+    </button>
+  </div>
+</article>

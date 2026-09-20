@@ -1,5 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import { linkCreatedEvent, linkCreatedJobId } from '@linkvault/shared';
+import {
+  DELETE_CV_FILE_QUEUE,
+  ENRICH_LINK_QUEUE,
+  EXTRACT_CV_QUEUE,
+  cvDeletedEvent,
+  cvUploadedEvent,
+  linkCreatedEvent,
+  linkCreatedJobId,
+} from '@linkvault/shared';
 import { getMongoTestUri } from '@linkvault/testing';
 import mongoose, { type ClientSession, type Connection } from 'mongoose';
 import {
@@ -41,6 +49,7 @@ let connection: Connection;
 let clock: MovableOutboxClock;
 let outbox: MongoOutbox;
 let queue: FakeJobQueue;
+let cvQueues: ReadonlyMap<string, FakeJobQueue>;
 let relay: OutboxRelay;
 let scheduler: RecordingScheduler;
 let log: RecordingLog;
@@ -109,11 +118,17 @@ beforeEach(() => {
   clock = new MovableOutboxClock(now);
   outbox = new MongoOutbox(connection, clock);
   queue = new FakeJobQueue();
+  cvQueues = new Map([
+    [EXTRACT_CV_QUEUE, new FakeJobQueue()],
+    [DELETE_CV_FILE_QUEUE, new FakeJobQueue()],
+  ]);
   scheduler = new RecordingScheduler();
   log = new RecordingLog();
   relay = new OutboxRelay(
     outbox,
-    new BullmqOutboxPublisher(queue),
+    new BullmqOutboxPublisher(
+      new Map<string, JobQueue>([[ENRICH_LINK_QUEUE, queue], ...cvQueues]),
+    ),
     clock,
     INTERVAL_MS,
     scheduler,
@@ -156,6 +171,21 @@ function newLinkId(): string {
   return new mongoose.Types.ObjectId().toHexString();
 }
 
+/** Escribe cualquier evento pendiente, como lo haría el alta que lo produce: dentro de una transacción. */
+async function appendEvent(event: {
+  type: string;
+  payload: Record<string, unknown>;
+}) {
+  const session = await connection.startSession();
+  try {
+    await session.withTransaction((active: ClientSession) =>
+      outbox.append(event, active),
+    );
+  } finally {
+    await session.endSession();
+  }
+}
+
 describe('OutboxRelay', () => {
   it('Publicación correcta', async () => {
     const linkId = newLinkId();
@@ -172,6 +202,53 @@ describe('OutboxRelay', () => {
     });
     const [event] = await storedEvents();
     expect(event?.publishedAt).toEqual(now);
+    expect(event?.failedAt).toBeNull();
+  });
+
+  it('Cada evento a su cola', async () => {
+    const linkId = newLinkId();
+    const cvId = new mongoose.Types.ObjectId().toHexString();
+    const userId = new mongoose.Types.ObjectId().toHexString();
+    await appendLinkCreated(linkId);
+    await appendEvent(cvUploadedEvent({ cvId, userId }));
+    await appendEvent(cvDeletedEvent({ cvId, userId }));
+
+    await relay.publishPending();
+
+    expect([...queue.jobs.keys()]).toEqual([`enrich:${linkId}:1`]);
+    expect([...(cvQueues.get(EXTRACT_CV_QUEUE)?.jobs.keys() ?? [])]).toEqual([
+      `cv:${cvId}:extract`,
+    ]);
+    expect([
+      ...(cvQueues.get(DELETE_CV_FILE_QUEUE)?.jobs.keys() ?? []),
+    ]).toEqual([`cv:${cvId}:delete`]);
+    const events = await storedEvents();
+    expect(events.map((event) => event.publishedAt)).toEqual([now, now, now]);
+  });
+
+  it('Tipo desconocido', async () => {
+    await appendEvent({ type: 'SomethingElse.v1', payload: { id: 'x' } });
+
+    await relay.publishPending();
+
+    expect(queue.added).toBe(0);
+    for (const cvQueue of cvQueues.values()) {
+      expect(cvQueue.added).toBe(0);
+    }
+    const [event] = await storedEvents();
+    expect(event?.publishedAt).toBeNull();
+    expect(event?.failedAt).toBeNull();
+  });
+
+  it('Contenido que no cumple su contrato', async () => {
+    // Un `CvUploaded.v1` sin su `userId`: el schema del contrato lo rechaza antes de tocar la cola.
+    await appendEvent({ type: 'CvUploaded.v1', payload: { cvId: 'c1' } });
+
+    await relay.publishPending();
+
+    expect(cvQueues.get(EXTRACT_CV_QUEUE)?.added).toBe(0);
+    const [event] = await storedEvents();
+    expect(event?.publishedAt).toBeNull();
     expect(event?.failedAt).toBeNull();
   });
 
@@ -313,6 +390,31 @@ describe('OutboxRelay', () => {
     expect(published?.publishedAt).toEqual(clock.now());
   });
 
+  it('warns the first time an event cannot be published, and only the first time', async () => {
+    // Antes todo iba a `debug`, y un `jobId` que la cola rechaza —o un tipo desconocido, o un payload que no cumple su
+    // schema— se quedaba reintentando **en silencio** durante 24 h. El aviso es uno por evento, no por vuelta.
+    await appendLinkCreated(newLinkId());
+    queue.down = true;
+
+    await relay.publishPending();
+    clock.advanceBy(60_000);
+    await relay.publishPending();
+
+    expect(log.warnings).toHaveLength(1);
+    expect(log.warnings[0]).toContain('LinkCreated.v1');
+    expect(log.warnings[0]).toContain('Connection is closed');
+    expect(log.debugs.join('')).toContain('could not be published');
+  });
+
+  it('warns about an event of a type it cannot publish, instead of hiding it', async () => {
+    await appendEvent({ type: 'SomethingElse.v1', payload: { id: 'x' } });
+
+    await relay.publishPending();
+
+    expect(log.warnings).toHaveLength(1);
+    expect(log.warnings[0]).toContain('Unknown outbox event type');
+  });
+
   it('Corte largo de la cola', async () => {
     await appendLinkCreated(newLinkId());
     queue.down = true;
@@ -355,9 +457,11 @@ describe('OutboxRelay', () => {
     const eventId = failed?._id.toHexString() ?? '';
     expect(failed?.failedAt).toEqual(clock.now());
     expect(failed?.publishedAt).toBeNull();
-    expect(log.warnings).toHaveLength(1);
-    expect(log.warnings[0]).toContain(eventId);
-    expect(log.warnings[0]).not.toContain(linkId);
+    // Dos avisos: el del primer fallo, que es lo que hace visible un evento que no se puede publicar, y el de darlo
+    // por agotado. Ninguno de los dos nombra nada del usuario.
+    expect(log.warnings).toHaveLength(2);
+    expect(log.warnings.at(-1)).toContain(eventId);
+    expect(log.warnings.join('')).not.toContain(linkId);
 
     // Agotado es definitivo: aunque la cola vuelva, el relay ya no lo toma.
     queue.down = false;

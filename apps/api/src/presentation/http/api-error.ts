@@ -34,6 +34,10 @@ export const API_ERROR_STATUS: Readonly<Record<ApiErrorCode, number>> = {
   ai_quota_exceeded: 429,
   application_not_found: 404,
   application_conflict: 409,
+  cv_not_found: 404,
+  unsupported_file_type: 415,
+  file_too_large: 413,
+  too_many_cvs: 409,
 };
 
 /**
@@ -48,7 +52,10 @@ export const API_ERROR_MESSAGES: Readonly<Record<ApiErrorCode, string>> = {
   csrf_header_missing: 'Missing X-Requested-With header',
   email_taken: 'Email already registered',
   refresh_conflict: 'Refresh token was just rotated',
-  unsupported_media_type: 'Request body must be application/json',
+  // Genérico a propósito: hasta `cv-upload-extract` este código solo lo daba una ruta que espera JSON, pero ahora lo
+  // comparten dos formatos —JSON en casi todas y `multipart/form-data` en la subida del CV— y el mensaje no puede
+  // mentirle a ninguna de las dos. El SPA traduce el código, no el mensaje.
+  unsupported_media_type: 'Unsupported request body format',
   too_many_attempts: 'Too many attempts',
   internal_error: 'Internal server error',
   group_not_found: 'Group not found',
@@ -70,6 +77,13 @@ export const API_ERROR_MESSAGES: Readonly<Record<ApiErrorCode, string>> = {
   ai_quota_exceeded: "You reached today's reading limit, come back tomorrow",
   application_not_found: 'Application not found',
   application_conflict: 'The application changed in another tab',
+  // El CV no existe, es de otra persona o su `:id` está mal formado: el mismo cuerpo en los tres casos.
+  cv_not_found: 'CV not found',
+  // El archivo no es PDF ni DOCX. NO es `unsupported_media_type`: eso es "el cuerpo de la petición no es lo que esta
+  // ruta lee", y la pantalla explica las dos cosas distinto.
+  unsupported_file_type: 'Only PDF or DOCX files are accepted',
+  file_too_large: 'That file is too large',
+  too_many_cvs: 'Too many stored CVs',
 };
 
 /** Cuerpo `{ code, message, fields? }`. `fields` solo nombra campos y se omite si está vacío. */

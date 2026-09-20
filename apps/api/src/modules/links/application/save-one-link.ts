@@ -16,8 +16,8 @@ import type {
   JobLinkRepository,
   ResolvedJobLink,
 } from './ports/job-link-repository.port';
-import type { Outbox } from './ports/outbox.port';
-import type { TransactionSession } from './ports/transaction-session';
+import type { Outbox } from '../../../infrastructure/outbox/outbox.port';
+import type { TransactionSession } from '../../../infrastructure/outbox/transaction-session';
 import type { UserLinkRepository } from './ports/user-link-repository.port';
 
 // Paso común de guardar un link, que comparten `save-link` y `import-links` (D3, D4 y D6 de job-links): la vacante, su

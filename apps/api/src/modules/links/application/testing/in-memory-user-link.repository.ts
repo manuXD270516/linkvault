@@ -1,6 +1,6 @@
 import { isLinkId, isUserId } from '../../domain/identifier';
 import type { LinkListPage, LinkListQuery } from '../ports/link-listing';
-import type { TransactionSession } from '../ports/transaction-session';
+import type { TransactionSession } from '../../../../infrastructure/outbox/transaction-session';
 import type {
   SavedUserLink,
   SaveForUserInput,

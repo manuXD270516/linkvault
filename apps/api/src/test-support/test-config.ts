@@ -44,6 +44,14 @@ export async function apiTestConfig(
     // Los mismos orígenes que `.env.example`: los tests de la página pública comprueban que `og:url` sale de aquí.
     PUBLIC_PAGE_BASE_URL: 'http://localhost:3000',
     WEB_BASE_URL: 'http://localhost:4200',
+    // Almacenamiento de objetos: apunta a un puerto cerrado, como Mongo y Redis. Ningún test de `api` escribe de
+    // verdad en él —`CV_FILE_STORE` es un puerto con doble (ADR-028, "Pruebas")—, y que el endpoint no responda es
+    // justo lo que hace ruidoso cualquier olvido de sustituirlo.
+    S3_ENDPOINT: `http://127.0.0.1:${await closedPort()}`,
+    S3_REGION: 'us-east-1',
+    S3_ACCESS_KEY: 'test-access-key',
+    S3_SECRET_KEY: 'test-secret-key',
+    S3_BUCKET: 'cvs',
     ...overrides,
   };
 }

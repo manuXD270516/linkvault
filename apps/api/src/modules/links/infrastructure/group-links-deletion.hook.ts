@@ -3,7 +3,7 @@ import {
   GROUP_LINK_REPOSITORY,
   type GroupLinkRepository,
 } from '../application/ports/group-link-repository.port';
-import type { TransactionSession } from '../application/ports/transaction-session';
+import type { TransactionSession } from '../../../infrastructure/outbox/transaction-session';
 
 /**
  * Limpieza de `links` cuando se borra un grupo (D7b de job-links): se borran sus `GroupLink` y **nunca** los `JobLink`,

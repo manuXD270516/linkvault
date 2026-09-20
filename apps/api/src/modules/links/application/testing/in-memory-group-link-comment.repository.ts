@@ -8,7 +8,7 @@ import type {
   CommentPageSlice,
   GroupLinkCommentRepository,
 } from '../ports/group-link-comment-repository.port';
-import type { TransactionSession } from '../ports/transaction-session';
+import type { TransactionSession } from '../../../../infrastructure/outbox/transaction-session';
 
 // Comentarios en memoria para tests de application (D12 de group-comments). No es un adaptador de producción: el real es
 // `MongoGroupLinkCommentRepository`. Como él, no toca contadores ni abre transacciones —eso es de

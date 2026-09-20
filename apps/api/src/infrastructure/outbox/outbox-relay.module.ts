@@ -1,4 +1,3 @@
-import { ENRICH_LINK_QUEUE } from '@linkvault/shared';
 import { BullModule, getQueueToken } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { ScheduleModule, SchedulerRegistry } from '@nestjs/schedule';
@@ -9,10 +8,12 @@ import {
   type JobQueue,
 } from './bullmq-outbox-publisher';
 import {
-  ENRICH_LINK_JOB_OPTIONS,
-  EnrichLinkQueueErrorLog,
+  OUTBOX_JOB_OPTIONS,
+  OutboxQueueErrorLog,
+  outboxQueueErrorLogToken,
   type QueueErrorSource,
-} from './enrich-link-queue';
+} from './outbox-queues';
+import { OUTBOX_QUEUES } from './outbox-routes';
 import { MongoOutbox } from './mongo-outbox';
 import { OUTBOX_CLOCK, type OutboxClock } from './outbox-clock.port';
 import {
@@ -23,9 +24,10 @@ import { OutboxRelay } from './outbox-relay';
 import { OutboxModule } from './outbox.module';
 
 /**
- * Relay del outbox (D6 de job-links, ADR-009). Todo lo que necesita —el planificador de `@nestjs/schedule` y la cola de
- * BullMQ— vive dentro de este módulo, porque `AppModule` solo lo importa con `OUTBOX_RELAY_ENABLED=true`: apagado,
- * `api` no crea ninguna `Queue` ni abre conexión a Redis por esta vía y los eventos esperan en `outbox_events`.
+ * Relay del outbox (D6 de job-links, ADR-009). Todo lo que necesita —el planificador de `@nestjs/schedule` y las colas
+ * de BullMQ— vive dentro de este módulo, porque `AppModule` solo lo importa con `OUTBOX_RELAY_ENABLED=true`: apagado,
+ * `api` no crea **ninguna** `Queue` ni abre conexión a Redis por esta vía, y los eventos de los tres tipos esperan en
+ * `outbox_events`.
  *
  * La conexión falla rápido en lugar de encolar comandos (`enableOfflineQueue: false`): con Redis caído, publicar
  * rechaza en el acto y el evento se reintenta con espera creciente, en vez de dejar al relay esperando para siempre.
@@ -45,22 +47,29 @@ import { OutboxModule } from './outbox.module';
         },
       }),
     }),
-    BullModule.registerQueue({
-      name: ENRICH_LINK_QUEUE,
-      defaultJobOptions: ENRICH_LINK_JOB_OPTIONS,
-    }),
+    // Una cola por tipo de evento (D11 de cv-upload-extract): la lista la da la tabla de enrutado, así que añadir un
+    // evento nuevo no obliga a acordarse de registrar su cola aquí.
+    ...OUTBOX_QUEUES.map((name) =>
+      BullModule.registerQueue({
+        name,
+        defaultJobOptions: OUTBOX_JOB_OPTIONS,
+      }),
+    ),
   ],
   providers: [
-    {
-      provide: EnrichLinkQueueErrorLog,
-      inject: [getQueueToken(ENRICH_LINK_QUEUE)],
+    ...OUTBOX_QUEUES.map((name) => ({
+      provide: outboxQueueErrorLogToken(name),
+      inject: [getQueueToken(name)],
       useFactory: (queue: QueueErrorSource) =>
-        new EnrichLinkQueueErrorLog(queue),
-    },
+        new OutboxQueueErrorLog(name, queue),
+    })),
     {
       provide: OUTBOX_PUBLISHER,
-      inject: [getQueueToken(ENRICH_LINK_QUEUE)],
-      useFactory: (queue: JobQueue) => new BullmqOutboxPublisher(queue),
+      inject: OUTBOX_QUEUES.map((name) => getQueueToken(name)),
+      useFactory: (...queues: JobQueue[]) =>
+        new BullmqOutboxPublisher(
+          new Map(OUTBOX_QUEUES.map((name, index) => [name, queues[index]])),
+        ),
     },
     {
       provide: OutboxRelay,
