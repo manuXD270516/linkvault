@@ -12,7 +12,7 @@ import type {
   PastedPreviewWrite,
   ResolvedJobLink,
 } from '../application/ports/job-link-repository.port';
-import type { TransactionSession } from '../application/ports/transaction-session';
+import type { TransactionSession } from '../../../infrastructure/outbox/transaction-session';
 import {
   MAX_ORIGINAL_URLS,
   type JobLink,

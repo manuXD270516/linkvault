@@ -16,7 +16,7 @@ import type {
   CommentPageSlice,
   GroupLinkCommentRepository,
 } from '../application/ports/group-link-comment-repository.port';
-import type { TransactionSession } from '../application/ports/transaction-session';
+import type { TransactionSession } from '../../../infrastructure/outbox/transaction-session';
 import {
   GROUP_LINK_COMMENT_MODEL_NAME,
   groupLinkCommentSchema,

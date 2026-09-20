@@ -27,7 +27,7 @@ import {
   type LinkUserDirectory,
 } from './ports/link-user-directory.port';
 import { LINKS_CLOCK, type Clock } from './ports/clock.port';
-import { OUTBOX, type Outbox } from './ports/outbox.port';
+import { OUTBOX, type Outbox } from '../../../infrastructure/outbox/outbox.port';
 import { PUBLIC_URLS, type PublicUrls } from './ports/public-urls.port';
 import { toPublicShareView } from './public-share.mapper';
 import {

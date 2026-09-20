@@ -4,8 +4,8 @@ import { Types, type ClientSession, type Connection, type Model } from 'mongoose
 import type {
   Outbox,
   OutboxEvent,
-} from '../../modules/links/application/ports/outbox.port';
-import type { TransactionSession } from '../../modules/links/application/ports/transaction-session';
+} from './outbox.port';
+import type { TransactionSession } from './transaction-session';
 import { OUTBOX_CLOCK, type OutboxClock } from './outbox-clock.port';
 import {
   OUTBOX_EVENT_MODEL_NAME,

@@ -3,7 +3,7 @@ import { getMongoTestUri } from '@linkvault/testing';
 import mongoose, { mongo, type Connection } from 'mongoose';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { NewGroupLinkComment } from '../domain/group-link-comment';
-import type { TransactionSession } from '../application/ports/transaction-session';
+import type { TransactionSession } from '../../../infrastructure/outbox/transaction-session';
 import { jobLinkDraft } from '../application/testing/link-fixtures';
 import {
   GROUP_LINK_COMMENT_MODEL_NAME,

@@ -7,7 +7,7 @@ import type {
   StoredPreview,
 } from '@linkvault/shared';
 import type { JobLink, NewJobLink } from '../../domain/job-link';
-import type { TransactionSession } from './transaction-session';
+import type { TransactionSession } from '../../../../infrastructure/outbox/transaction-session';
 
 // Puerto de persistencia de la vacante canónica (D1 y D3 de job-links). Se inyecta con
 // `{ provide: JOB_LINK_REPOSITORY, useClass: MongoJobLinkRepository }`. Solo tipos y el token.

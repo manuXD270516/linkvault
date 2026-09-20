@@ -5,7 +5,7 @@ import type {
 import type { PublicShare } from '../../domain/public-share';
 import type { ShareNote } from '../../domain/share-note';
 import type { LinkListPage, LinkListQuery } from './link-listing';
-import type { TransactionSession } from './transaction-session';
+import type { TransactionSession } from '../../../../infrastructure/outbox/transaction-session';
 
 // Puerto de la relación entre un grupo y una vacante (D1 y D4 de job-links). Un link puede estar en varios grupos y un
 // grupo tiene cada link una sola vez, garantizado por el índice único `(groupId, linkId)`. Solo tipos y el token.

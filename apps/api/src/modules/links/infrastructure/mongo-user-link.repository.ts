@@ -5,7 +5,7 @@ import type {
   LinkListPage,
   LinkListQuery,
 } from '../application/ports/link-listing';
-import type { TransactionSession } from '../application/ports/transaction-session';
+import type { TransactionSession } from '../../../infrastructure/outbox/transaction-session';
 import type {
   SavedUserLink,
   SaveForUserInput,

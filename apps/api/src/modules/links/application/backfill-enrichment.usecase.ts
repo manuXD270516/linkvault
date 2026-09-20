@@ -10,7 +10,7 @@ import {
   JOB_LINK_REPOSITORY,
   type JobLinkRepository,
 } from './ports/job-link-repository.port';
-import { OUTBOX, type Outbox } from './ports/outbox.port';
+import { OUTBOX, type Outbox } from '../../../infrastructure/outbox/outbox.port';
 
 /**
  * Reencolado de links sin preview (spec links/enrichment, D10 de link-enrichment). Es un comando manual: **no** se

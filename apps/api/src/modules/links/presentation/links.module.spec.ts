@@ -42,7 +42,7 @@ import { GROUP_LINK_REPOSITORY } from '../application/ports/group-link-repositor
 import { GROUP_MEMBERSHIP } from '../application/ports/group-membership.port';
 import { JOB_LINK_REPOSITORY } from '../application/ports/job-link-repository.port';
 import { LINK_USER_DIRECTORY } from '../application/ports/link-user-directory.port';
-import { OUTBOX } from '../application/ports/outbox.port';
+import { OUTBOX } from '../../../infrastructure/outbox/outbox.port';
 import { PASTED_EXTRACTION } from '../application/ports/pasted-extraction.port';
 import { USER_LINK_REPOSITORY } from '../application/ports/user-link-repository.port';
 import { RemoveGroupLink } from '../application/remove-group-link.usecase';

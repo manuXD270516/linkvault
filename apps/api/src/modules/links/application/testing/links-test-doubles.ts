@@ -24,14 +24,14 @@ import type {
   LinkUserDirectory,
 } from '../ports/link-user-directory.port';
 import type { LinkEnrichedPublisher } from '../ports/link-enriched-publisher.port';
-import type { Outbox, OutboxEvent } from '../ports/outbox.port';
+import type { Outbox, OutboxEvent } from '../../../../infrastructure/outbox/outbox.port';
 import type { PublicUrls } from '../ports/public-urls.port';
 import type {
   PastedExtraction,
   PastedExtractionPort,
   PastedExtractionRequest,
 } from '../ports/pasted-extraction.port';
-import type { TransactionSession } from '../ports/transaction-session';
+import type { TransactionSession } from '../../../../infrastructure/outbox/transaction-session';
 
 // Dobles en memoria de los puertos pequeños de `links` para tests de application (D10 de job-links). No son adaptadores
 // de producción: los reales viven en infrastructure. Ninguno emula el rollback de una transacción —para eso están los

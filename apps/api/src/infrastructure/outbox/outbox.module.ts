@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { OUTBOX } from '../../modules/links/application/ports/outbox.port';
+import { OUTBOX } from './outbox.port';
 import { MongoOutbox } from './mongo-outbox';
 import { OUTBOX_CLOCK } from './outbox-clock.port';
 import { SystemOutboxClock } from './system-outbox-clock';
