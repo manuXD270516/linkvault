@@ -142,6 +142,33 @@ describe('DELETE /api/cv/:id', () => {
     ).resolves.toBe(1);
   });
 
+  it('El almacén no responde al borrar: se borra igual y el evento queda pendiente', async () => {
+    // Borrar no habla con el almacén —el puerto de `api` ni siquiera tiene un método para hacerlo—, y esa es justo la
+    // promesa: con MinIO caído la persona ve su CV borrado, y el archivo se lo lleva el consumidor de la cola cuando
+    // el almacén vuelva.
+    const person = await http.authenticated();
+    const saved = await http.uploadPdf(person);
+    http.files.failure = new Error('Connection refused');
+    try {
+      const response = await http.request('DELETE', `/api/cv/${saved.id}`, {
+        authorization: person.authorization,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({ items: [] });
+      await expect(http.list(person)).resolves.toEqual([]);
+      await expect(
+        http.connection.collection('outbox_events').countDocuments({
+          type: 'CvDeleted.v1',
+          'payload.cvId': saved.id,
+          publishedAt: null,
+        }),
+      ).resolves.toBe(1);
+    } finally {
+      http.files.failure = undefined;
+    }
+  });
+
   it('Borrar dos veces', async () => {
     const person = await http.authenticated();
     const only = await http.uploadPdf(person);

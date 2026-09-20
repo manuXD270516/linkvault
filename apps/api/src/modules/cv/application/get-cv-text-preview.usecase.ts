@@ -20,8 +20,11 @@ import {
  * "todavía no hay texto" no es un fallo que el SPA deba traducir, y el `status` es lo único que distingue un `pending`
  * de un `failed`, que si no darían exactamente la misma respuesta vacía.
  *
- * La propiedad se comprueba antes de gastar el contador, pero el contador se consume antes de leer el texto: es la
- * única ruta que lo toca.
+ * **El contador se consume antes de resolver la propiedad**, y el orden es deliberado: lo que acota la ventana es
+ * *pedir* vistas previas, no acertar con el identificador. Cobrar solo cuando el CV existe y es de quien pide dejaría
+ * gratis la ráfaga de identificadores ajenos o inventados, que es justo la que hay que frenar, y un intento que no
+ * cuesta nada se repite sin fin. El precio —gastar la ventana con identificadores malos deja sin vistas previas las
+ * buenas— se asume. Esta es la única ruta que toca ese contador.
  */
 @Injectable()
 export class GetCvTextPreview {

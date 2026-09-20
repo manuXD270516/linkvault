@@ -8,6 +8,8 @@ import {
   type CvTestApp,
   type TestPerson,
 } from '../../../test-support/cv-test-app';
+import { UnsupportedCvFile } from '../domain/errors';
+import { readCvPart, type MultipartRequest } from './cv.controller';
 
 // `POST /api/cv` por HTTP (tarea 6.5): la puerta del tipo, decidida con el primer trozo, y los errores del parser de
 // multipart, **ninguno de los cuales puede acabar en 500**.
@@ -113,7 +115,9 @@ describe('POST /api/cv', () => {
   });
 
   it('El archivo inválido no se acumula, y la respuesta llega igual', async () => {
-    // 5 MiB de algo que no es PDF ni DOCX: el primer trozo basta para saberlo, y el resto se drena y se tira.
+    // 5 MiB de algo que no es PDF ni DOCX: el primer trozo basta para saberlo, y el resto se drena y se tira. Que la
+    // respuesta llegue se comprueba aquí; **cuánto se acumula**, en `lo que la subida se queda en memoria`, que mide
+    // los bytes que el bucle retiene.
     const junk = new Uint8Array(CV_MAX_FILE_BYTES);
     junk.set(new TextEncoder().encode('NOPE'), 0);
 
@@ -239,5 +243,109 @@ describe('POST /api/cv', () => {
     for (const response of responses) {
       expect(response.statusCode).not.toBe(500);
     }
+  });
+});
+
+// Cuánto se queda el controlador de un envío que no vale. El `415` se comprueba por HTTP ahí arriba; aquí se llama a
+// `readCvPart` con una parte de mentira, que es lo único que permite **medir** lo retenido en vez de suponerlo.
+
+const CHUNK_BYTES = 64 * 1024;
+
+/**
+ * Trozo que avisa cuando lo acumulan.
+ *
+ * El bucle de `readCvPart` hace exactamente dos cosas con un trozo que se queda: meterlo en la lista y sumar su
+ * `byteLength`. La puerta del tipo (`resolveCvFileType`) mira `length` y los índices, nunca `byteLength`, así que
+ * **leer `byteLength` es, en ese bucle, quedarse el trozo**: contar esas lecturas mide los bytes retenidos, no los
+ * enviados.
+ */
+class RetentionMeter {
+  /** Trozos que el controlador llegó a acumular. */
+  chunks = 0;
+  /** Bytes acumulados, sumados como los suma el bucle. */
+  bytes = 0;
+
+  watch(chunk: Uint8Array): Uint8Array {
+    return new Proxy(chunk, {
+      get: (target, property): unknown => {
+        if (property === 'byteLength') {
+          this.chunks += 1;
+          this.bytes += target.byteLength;
+        }
+        // Con el propio `target` como receptor: un `Uint8Array` lee sus índices por ranuras internas, y el proxy no
+        // las tiene.
+        return Reflect.get(target, property, target) as unknown;
+      },
+    });
+  }
+}
+
+/** El contenido partido en trozos de 64 KiB, como llega un cuerpo multipart de verdad, y todos vigilados. */
+function watchedChunks(
+  content: Uint8Array,
+  meter: RetentionMeter,
+): Uint8Array[] {
+  const chunks: Uint8Array[] = [];
+  for (let offset = 0; offset < content.byteLength; offset += CHUNK_BYTES) {
+    chunks.push(meter.watch(content.subarray(offset, offset + CHUNK_BYTES)));
+  }
+  return chunks;
+}
+
+/** Trozos que el controlador llegó a leer del cuerpo, retenidos o no. */
+interface Delivery {
+  count: number;
+}
+
+/** Petición con una sola parte de archivo, que entrega esos trozos y nada más. */
+function requestOf(
+  fileName: string,
+  chunks: readonly Uint8Array[],
+  delivery: Delivery = { count: 0 },
+): MultipartRequest {
+  async function* stream(): AsyncGenerator<Uint8Array> {
+    for (const chunk of chunks) {
+      delivery.count += 1;
+      yield chunk;
+    }
+  }
+  return {
+    file: () => Promise.resolve({ filename: fileName, file: stream() }),
+  };
+}
+
+describe('what the upload keeps in memory', () => {
+  it('El archivo inválido no se acumula: retiene como mucho el primer trozo, no los 5 MiB del envío', async () => {
+    const meter = new RetentionMeter();
+    const delivery: Delivery = { count: 0 };
+    const junk = new Uint8Array(CV_MAX_FILE_BYTES);
+    junk.set(new TextEncoder().encode('NOPE'), 0);
+    const sent = watchedChunks(junk, meter);
+
+    await expect(
+      readCvPart(requestOf('CV.pdf', sent, delivery)),
+    ).rejects.toBeInstanceOf(UnsupportedCvFile);
+
+    // El envío llega en muchos trozos y el controlador los lee todos —hay que drenar el cuerpo para que el `415` le
+    // llegue a quien subió—, pero deja de quedárselos en cuanto el primero descalifica el archivo.
+    expect(sent.length).toBeGreaterThan(64);
+    expect(delivery.count).toBe(sent.length);
+    expect(meter.chunks).toBeLessThanOrEqual(1);
+    expect(meter.bytes).toBeLessThanOrEqual(CHUNK_BYTES);
+  });
+
+  it('measures what it claims: the same 5 MiB, in a valid PDF, are kept whole', async () => {
+    // El control del instrumento. Sin él, cambiar `chunk.byteLength` por `chunk.length` en el bucle dejaría el medidor
+    // a cero y el test de arriba pasaría sin medir nada.
+    const meter = new RetentionMeter();
+    const sent = watchedChunks(pdfBytes(CV_MAX_FILE_BYTES), meter);
+
+    const accepted = await readCvPart(requestOf('CV.pdf', sent));
+
+    expect(accepted.bytes.byteLength).toBe(CV_MAX_FILE_BYTES);
+    expect(meter.chunks).toBeGreaterThanOrEqual(sent.length);
+    // `>=` y no `===` porque el juntado final vuelve a recorrer los trozos retenidos: lo que importa es que los 5 MiB
+    // se acumularon, no cuántas veces se miró la lista.
+    expect(meter.bytes).toBeGreaterThanOrEqual(CV_MAX_FILE_BYTES);
   });
 });

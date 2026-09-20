@@ -4,14 +4,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type {
   AttemptOutcome,
   FixedWindowCounter,
-  WindowLimit,
 } from '../../../infrastructure/limits/fixed-window-counter';
 import { InMemoryFixedWindowCounter } from '../../../infrastructure/limits/testing/in-memory-fixed-window-counter';
 import {
   createCvTestApp,
   pdfBytes,
   type CvTestApp,
-  type TestPerson,
 } from '../../../test-support/cv-test-app';
 import {
   CV_REJECTS_PER_USER,
@@ -23,7 +21,7 @@ import {
 
 /** Contador que no responde nunca: las tres claves fallan **abiertas**. */
 class DeadCounter implements FixedWindowCounter {
-  consume(_key: string, _limit: WindowLimit): Promise<AttemptOutcome | null> {
+  consume(): Promise<AttemptOutcome | null> {
     return Promise.resolve(null);
   }
 

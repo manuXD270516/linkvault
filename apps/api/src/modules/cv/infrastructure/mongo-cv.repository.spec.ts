@@ -180,7 +180,12 @@ describe('MongoCvRepository.insertAsDefault', () => {
     expect(fourth.version).toBe(4);
   });
 
-  it('writes the CV and its event in the same transaction', async () => {
+  it('Cola caída al subir: writes the CV and its event in the same transaction, with no queue in the way', async () => {
+    // El escenario se cumple aquí y no en un test propio: el alta no toca Redis, así que el evento queda escrito pase
+    // lo que pase con la cola. De hecho en los tests de `api` la cola **ya está caída** —`REDIS_URL` apunta a un
+    // puerto cerrado y el relay va apagado (`apiTestConfig`)—, así que el `201` con la cola caída es exactamente lo
+    // que comprueba `cv-upload.controller.spec` ("Primera subida"). Que el evento se publique cuando la cola vuelva,
+    // sin que nadie vuelva a subir nada, es `outbox-relay.spec` ("Reintento tras un fallo de la cola").
     const saved = await upload(ANA);
 
     const events = await pendingEvents();

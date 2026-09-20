@@ -1,5 +1,6 @@
 import {
   DELETE_CV_FILE_QUEUE,
+  ENRICH_LINK_QUEUE,
   EXTRACT_CV_QUEUE,
   cvFileKey,
 } from '@linkvault/shared';
@@ -99,11 +100,15 @@ function extractConsumer(
 }
 
 describe('ExtractCvConsumer', () => {
-  it('registers its own queue with the concurrency and lock of the configuration', () => {
+  it('Un CV lento no para los links: registers its own queue, with the concurrency and lock of the configuration', () => {
+    // El escenario se cumple aquí y no en un test propio: los links tienen su cola y su consumidor
+    // (`enrich-link.consumer.spec`), así que un CV que tarde solo ocupa la concurrencia de `extract-cv`. Que sean dos
+    // colas distintas es lo único que hay que sostener, y es lo que se afirma.
     extractConsumer({ kind: 'text', text: GOOD_TEXT }, 45_000).onModuleInit();
 
     expect(registered).toHaveLength(1);
     expect(registered[0]?.queueName).toBe(EXTRACT_CV_QUEUE);
+    expect(registered[0]?.queueName).not.toBe(ENRICH_LINK_QUEUE);
     expect(registered[0]?.options.concurrency).toBe(1);
     expect(registered[0]?.options.lockDuration).toBe(
       45_000 + CV_LOCK_DURATION_MARGIN_MS,
