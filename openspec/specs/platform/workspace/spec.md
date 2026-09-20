@@ -63,7 +63,7 @@ La lista prohibida SHALL ser cerrada e incluir al menos `@anthropic-ai/*`, `open
 
 Ningún archivo bajo una carpeta `domain/` de cualquier proyecto SHALL importar paquetes de infraestructura. La lista
 prohibida SHALL ser cerrada e incluir al menos `@nestjs/*`, `mongoose`, `mongodb`, `bullmq`, `ioredis`, `fastify`,
-`@fastify/*`, `@aws-sdk/*`, `minio`, `pino` y `nestjs-pino`. Además, ningún archivo bajo
+`@fastify/*`, `@aws-sdk/*`, `minio`, `pdf-parse`, `mammoth`, `pino` y `nestjs-pino`. Además, ningún archivo bajo
 `apps/api/src/modules/<módulo>/{domain,application,infrastructure}/` SHALL importar código de otro módulo de
 `apps/api/src/modules/`, salvo, **solo desde `application/` e `infrastructure/`**, su facade de aplicación
 (`**/application/*.facade`), sus errores de dominio (`**/domain/errors`) y sus dobles de test
@@ -79,10 +79,22 @@ SHALL ser detectado por el lint.
 - **WHEN** ese archivo importa `@nestjs/common`, `mongoose` o `bullmq`
 - **THEN** el lint SHALL fallar
 
+#### Scenario: El dominio importa un extractor de documentos
+
+- **GIVEN** un archivo bajo una carpeta `domain/` de `apps/worker`
+- **WHEN** ese archivo importa `pdf-parse` o `mammoth`
+- **THEN** el lint SHALL fallar
+
 #### Scenario: La infraestructura importa el framework
 
 - **GIVEN** un archivo bajo una carpeta `infrastructure/` del mismo módulo
 - **WHEN** ese archivo importa `@nestjs/common`, `mongoose` o `bullmq`
+- **THEN** el lint SHALL pasar
+
+#### Scenario: La infraestructura importa un extractor de documentos
+
+- **GIVEN** un archivo bajo `apps/worker/src/modules/cv/infrastructure/`
+- **WHEN** ese archivo importa `pdf-parse` o `mammoth`
 - **THEN** el lint SHALL pasar
 
 #### Scenario: El dominio importa otro módulo
