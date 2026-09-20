@@ -6,7 +6,7 @@
 
 ## 1. Contratos en `libs/shared`
 
-- [ ] 1.1 [infra] Rebasar `change/public-preview-share` sobre `main` y comprobarlo con `git merge-base --is-ancestor main HEAD` antes de tocar `link.schema.ts`, `group.schema.ts`, `api-config.schema.ts`, `.env.example` o `messages.*.xlf`.
+- [x] 1.1 [infra] Rebasar `change/public-preview-share` sobre `main` y comprobarlo con `git merge-base --is-ancestor main HEAD` antes de tocar `link.schema.ts`, `group.schema.ts`, `api-config.schema.ts`, `.env.example` o `messages.*.xlf`.
 - [ ] 1.2 [backend] `libs/shared/src/links/public-slug.ts`: `PUBLIC_SLUG_ALPHABET` (`23456789abcdefghjkmnpqrstvwxyz`), `PUBLIC_SLUG_LENGTH = 12`, `publicSlugSchema` con el patrón exacto e `isValidPublicSlug`, exportados desde `index.ts`; verificar con una tabla (slug válido, con mayúsculas, con `0`/`l`/`o`, de 11 y de 13, vacío y con `/`).
 - [ ] 1.3 [backend] Mover `linkLabel(url)` y sus auxiliares de `apps/web/src/app/features/links/link-preview.ts` a `libs/shared/src/links/link-label.ts` **sin cambiar su comportamiento**, con sus tests, y reexportarlo desde donde estaba para no tocar a quien lo usa; verificar con los tests de `link-preview.spec.ts` en verde y `pnpm nx run-many -t typecheck -p shared web`.
 - [ ] 1.4 [backend] Subir a `libs/shared/src/links/campaign-params.ts` la lista cerrada de parámetros de campaña y el prefijo `utm_` que hoy viven en `apps/api/.../links/domain/url.ts`, y hacer que `normalizeUrl` la importe de ahí; verificar con los tests existentes de `url.spec.ts` en verde.
