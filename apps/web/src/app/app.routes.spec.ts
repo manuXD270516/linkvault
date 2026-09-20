@@ -20,6 +20,7 @@ import { SessionStore } from './core/auth/session.store';
 import { HOME_ROUTE } from './core/navigation/home-route';
 import { LoginPage } from './features/auth/login.page';
 import { RegisterPage } from './features/auth/register.page';
+import { MyCvPage } from './features/cv/my-cv.page';
 import { GroupDetailPage } from './features/groups/group-detail.page';
 import { GroupsListPage } from './features/groups/groups-list.page';
 import { JoinGroupPage } from './features/groups/join-group.page';
@@ -60,9 +61,9 @@ describe('appRoutes', () => {
       ...(shell.children ?? []),
     ].filter((route) => route.redirectTo === undefined && route.loadChildren === undefined);
 
-    // /oferta/:slug, login, registro, el shell y sus cinco páginas: /grupos, /grupos/:id, /unirse, /mis-links y
-    // /perfil. El tablero de /postulaciones tiene su propio archivo de rutas ("Ruta diferida").
-    expect(pages).toHaveLength(9);
+    // /oferta/:slug, login, registro, el shell y sus seis páginas: /grupos, /grupos/:id, /unirse, /mis-links, /mi-cv
+    // y /perfil. El tablero de /postulaciones tiene su propio archivo de rutas ("Ruta diferida").
+    expect(pages).toHaveLength(10);
     for (const route of pages) {
       expect(route.component).toBeUndefined();
       expect(route.loadComponent).toBeTypeOf('function');
@@ -85,7 +86,15 @@ describe('appRoutes', () => {
     expect(shell.canActivate).toEqual([authGuard]);
     // La vista pública no lleva ningún guard: se abre con sesión y sin ella (spec web/auth).
     expect(routeAt('oferta/:slug').canActivate).toBeUndefined();
-    for (const path of ['grupos', 'grupos/:id', 'unirse', 'mis-links', 'postulaciones', 'perfil']) {
+    for (const path of [
+      'grupos',
+      'grupos/:id',
+      'unirse',
+      'mis-links',
+      'mi-cv',
+      'postulaciones',
+      'perfil',
+    ]) {
       expect(routeAt(path, shell.children).canActivate).toBeUndefined();
     }
   });
@@ -153,6 +162,18 @@ describe('appRoutes', () => {
       request.flush({ items: [], total: 0 });
 
       expect(harness.fixture.debugElement.query(By.directive(MyLinksPage))).not.toBeNull();
+    });
+
+    it('shows my CV inside the shell with a session', async () => {
+      store.setSession(session);
+      const harness = await RouterTestingHarness.create();
+
+      await harness.navigateByUrl('/mi-cv', Shell);
+      // La lista de CV se pide al entrar (8.3); aquí solo interesa la ruta.
+      const request = await vi.waitFor(() => http.expectOne({ method: 'GET', url: '/api/cv' }));
+      request.flush({ items: [] });
+
+      expect(harness.fixture.debugElement.query(By.directive(MyCvPage))).not.toBeNull();
     });
 
     it('Ruta diferida', async () => {

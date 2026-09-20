@@ -57,6 +57,10 @@ export const appRoutes: Route[] = [
           import('./features/applications/applications.routes').then((m) => m.APPLICATIONS_ROUTES),
       },
       {
+        path: 'mi-cv',
+        loadComponent: () => import('./features/cv/my-cv.page').then((m) => m.MyCvPage),
+      },
+      {
         path: 'perfil',
         loadComponent: () =>
           import('./features/profile/profile.page').then((m) => m.ProfilePage),

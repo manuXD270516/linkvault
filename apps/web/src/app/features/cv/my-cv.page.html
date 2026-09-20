@@ -1,0 +1,45 @@
+<section class="mx-auto flex max-w-2xl flex-col gap-6 p-6">
+  <h1 class="text-2xl font-medium" i18n="@@cv.title">Mi CV</h1>
+
+  <lv-cv-upload
+    [uploading]="uploading()"
+    [percent]="uploadPercent()"
+    (chosen)="upload($event)"
+  />
+
+  @if (isEmpty()) {
+    <p class="m-0" data-testid="cv-empty" i18n="@@cv.empty">
+      Sube tu CV y LinkVault podrá comparar tus habilidades con cada vacante.
+    </p>
+  }
+
+  <!--
+    La promesa va donde se pide el dato y siempre visible: sin desplazarse y sin abrir nada. No promete que se pedirá
+    permiso —el consentimiento es una preferencia del perfil que la pasarela lee sin preguntar— ni manda a ninguna
+    pantalla que todavía no exista (D13, ADR-028 §11).
+  -->
+  <p class="m-0 text-sm" data-testid="cv-privacy" i18n="@@cv.privacy">
+    Tu CV solo lo ves tú y hoy no lo lee ninguna IA. No saldrá de LinkVault sin tu autorización.
+  </p>
+
+  @if (loading() && !loaded()) {
+    <p class="m-0" role="status" data-testid="cv-loading" i18n="@@cv.loading">Cargando tus CV…</p>
+  }
+
+  @if (failure(); as currentFailure) {
+    <div class="flex flex-col gap-2" data-testid="cv-list-error">
+      <lv-request-error [failure]="currentFailure" />
+      <div>
+        <button
+          mat-stroked-button
+          type="button"
+          (click)="retry()"
+          data-testid="cv-list-retry"
+          i18n="@@cv.retry"
+        >
+          Reintentar
+        </button>
+      </div>
+    </div>
+  }
+</section>

@@ -1,0 +1,55 @@
+<!--
+  La zona para soltar rodea al botón y es la vía secundaria: quien no sepa que se puede soltar un archivo ve el botón
+  igual de claro (D13).
+-->
+<div
+  class="flex flex-col items-start gap-2 rounded-lg border border-dashed p-4"
+  [class.border-(--mat-sys-primary)]="dragging()"
+  data-testid="cv-dropzone"
+  (dragover)="onDragOver($event)"
+  (dragleave)="onDragLeave()"
+  (drop)="onDrop($event)"
+>
+  <input
+    #fileInput
+    class="hidden"
+    type="file"
+    [accept]="accept"
+    [disabled]="uploading()"
+    data-testid="cv-file-input"
+    (change)="onSelected($event)"
+  />
+
+  <button
+    mat-flat-button
+    type="button"
+    [disabled]="uploading()"
+    [attr.aria-busy]="uploading()"
+    (click)="choose()"
+    data-testid="cv-upload-button"
+    i18n="@@cv.upload"
+  >
+    Subir CV
+  </button>
+
+  <p class="m-0 text-sm" i18n="@@cv.uploadHint">
+    O suelta aquí tu CV en PDF o DOCX, de hasta 5 MB
+  </p>
+
+  @if (uploading()) {
+    <div class="flex w-full flex-col gap-1" data-testid="cv-upload-progress">
+      <mat-progress-bar [mode]="progressMode()" [value]="percent() ?? 0" />
+      <p class="m-0 text-sm" role="status" i18n="@@cv.uploading">Subiendo tu CV…</p>
+    </div>
+  }
+
+  @if (localProblem(); as problem) {
+    <p class="m-0 text-(--mat-sys-error)" role="alert" data-testid="cv-upload-error">
+      @if (problem === 'type') {
+        <ng-container i18n="@@cv.error.unsupportedType">Solo aceptamos PDF o DOCX</ng-container>
+      } @else {
+        <ng-container i18n="@@cv.error.tooLarge">Ese archivo pesa más de 5 MB</ng-container>
+      }
+    </p>
+  }
+</div>
