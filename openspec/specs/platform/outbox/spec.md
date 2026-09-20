@@ -40,12 +40,47 @@ un tope de 5 minutos), de modo que un corte de la cola de minutos u horas NO SHA
 sin conseguir publicarlo SHALL marcarse como `failed` y registrarse un aviso con el identificador del evento, sin datos
 del usuario.
 
+**Cada tipo de evento SHALL tener su propia cola.** El relay SHALL resolver, a partir del `type` del evento, su cola, el
+schema con el que se valida su contenido y la función que calcula su `jobId`, todo declarado en el contrato compartido
+de ese evento. Un evento cuyo contenido no cumple su schema NO SHALL encolarse. Un evento de un tipo **desconocido** NO
+SHALL publicarse en ninguna cola ni descartarse en silencio: SHALL quedar pendiente y terminar marcado como `failed` con
+su aviso, como cualquier otro que no se pudo publicar.
+
+Con el relay apagado por configuración, NO SHALL crearse ninguna cola ni ninguna conexión a Redis por esa vía, y los
+eventos de todos los tipos SHALL esperar en `outbox_events`.
+
+**La primera vez que un evento no se puede publicar SHALL registrarse un aviso** con su identificador, su tipo y el
+motivo, y los reintentos siguientes de ese mismo evento NO SHALL repetirlo. Sin eso, un error nuestro —un `jobId` que la
+cola rechaza, un tipo desconocido o un payload que no valida— quedaría invisible hasta el aviso de las 24 horas, y un
+corte de la cola llenaría el registro con una línea por vuelta.
+
 #### Scenario: Publicación correcta
 
 - **GIVEN** un evento pendiente
 - **WHEN** corre el relay
 - **THEN** la cola SHALL recibir un job con el `jobId` determinista del evento
 - **AND** el evento SHALL quedar marcado como publicado
+
+#### Scenario: Cada evento a su cola
+
+- **GIVEN** un evento de alta de link, uno de CV subido y uno de CV borrado, los tres pendientes
+- **WHEN** corre el relay
+- **THEN** cada uno SHALL publicarse en la cola de su tipo, con el `jobId` de su contrato
+- **AND** ninguno SHALL aparecer en la cola de otro tipo
+
+#### Scenario: Tipo desconocido
+
+- **GIVEN** un evento pendiente con un `type` que el relay no conoce
+- **WHEN** corre el relay
+- **THEN** NO SHALL publicarse en ninguna cola
+- **AND** SHALL seguir pendiente hasta agotarse a las 24 horas, con su aviso
+
+#### Scenario: Contenido que no cumple su contrato
+
+- **GIVEN** un evento pendiente cuyo payload no valida contra el schema de su tipo
+- **WHEN** corre el relay
+- **THEN** NO SHALL encolarse ningún job
+- **AND** el evento SHALL seguir pendiente
 
 #### Scenario: Reintento tras un fallo de la cola
 
@@ -84,8 +119,9 @@ de cada cola SHALL documentar y probar esa idempotencia.
 
 El trabajo publicado en la cola SHALL consumirse exactamente una vez en efecto: el consumidor SHALL ser idempotente por
 sí mismo, de modo que un evento republicado tras expirar la retención de la cola NO SHALL duplicar su efecto. Un job que
-falla SHALL reintentarse según la política de la cola y, agotados los reintentos, SHALL quedar registrado como fallido
-sin que el link se quede sin explicación. Ningún consumidor SHALL descartar trabajo en silencio.
+falla SHALL reintentarse según la política de su cola y, agotados los reintentos, SHALL quedar registrado como fallido
+sin que el agregado al que sirve se quede sin explicación: ni un link en `pending` para siempre, ni un CV "en lectura"
+eterno. Ningún consumidor SHALL descartar trabajo en silencio.
 
 #### Scenario: Cola sin consumidor
 
@@ -111,4 +147,5 @@ sin que el link se quede sin explicación. Ningún consumidor SHALL descartar tr
 - **GIVEN** un job cuyo procesamiento falla siempre
 - **WHEN** se agotan sus reintentos
 - **THEN** SHALL quedar registrado como fallido
-- **AND** el link SHALL quedar con un estado que explique que no se pudo enriquecer
+- **AND** el agregado al que sirve SHALL quedar con un estado que explique que no se pudo procesar
+
