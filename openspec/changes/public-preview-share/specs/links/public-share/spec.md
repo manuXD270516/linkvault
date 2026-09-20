@@ -419,7 +419,9 @@ contador SHALL distinguir clientes: no SHALL usarse la dirección de origen, ni 
 ningún identificador derivado de ellas. El `slug` es parte de la ruta, no del cliente.
 
 Los contadores SHALL consumirse **antes** de cualquier lectura, de modo que superar el límite no cueste ninguna
-consulta. Al superarse cualquiera de ellos, `/p/:slug` SHALL responder `429` **en HTML** con `Retry-After`, y el
+consulta. En `/p/:slug` SHALL consumirse primero el global y después el del `slug`; si el del `slug` rechaza, el intento
+SHALL devolverse al global, de modo que las peticiones contra un enlace agotado NO SHALL consumir el tope de los demás
+enlaces. Al superarse cualquiera de ellos, `/p/:slug` SHALL responder `429` **en HTML** con `Retry-After`, y el
 endpoint JSON `429` con código `too_many_attempts` y `Retry-After`. Los contadores SHALL ser independientes: agotar uno
 NO SHALL afectar a los demás, y agotar el de un `slug` NO SHALL impedir servir otro.
 
@@ -451,6 +453,13 @@ normalmente.
 - **WHEN** se piden las páginas de A y de B
 - **THEN** la de A SHALL ser `429` y la de B SHALL ser `200`
 - **AND** el `429` de A NO SHALL hacer ninguna lectura
+
+#### Scenario: El 429 de un enlace no gasta el contador global
+
+- **GIVEN** un enlace público A con su contador agotado y el contador global a la mitad
+- **WHEN** se piden 100 veces la página de A
+- **THEN** las 100 SHALL ser `429`
+- **AND** el contador global SHALL quedarse como estaba
 
 #### Scenario: El contador no responde
 

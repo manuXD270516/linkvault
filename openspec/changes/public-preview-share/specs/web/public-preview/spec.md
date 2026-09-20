@@ -37,11 +37,39 @@ publicó y LinkVault no la duplica en los buscadores.
 - **THEN** SHALL ver "Este enlace ya no está disponible" y "Pídeselo de nuevo a quien te lo envió"
 - **AND** NO SHALL ver "Guardar en LinkVault"
 
+#### Scenario: La vista pública no pide la sesión
+
+- **GIVEN** un navegador sin sesión
+- **WHEN** abre `/oferta/:slug`
+- **THEN** la única petición a la API SHALL ser la del preview público
+- **AND** esa petición NO SHALL llevar `Authorization`
+
 #### Scenario: La vista pública no se indexa
 
 - **WHEN** se abre `/oferta/:slug`
 - **THEN** el documento SHALL llevar `noindex`
 - **AND** el `robots.txt` del SPA SHALL incluir `Disallow: /oferta/`
+
+### Requirement: Tarjeta de respaldo del SPA
+
+El `index.html` del SPA SHALL llevar un juego mínimo de etiquetas Open Graph por defecto: `og:site_name`, un
+`og:title` de marca, una `og:description` de marca y la **misma imagen** que usa la página pública de la API. Así, un
+bot que siga el redirect de `/p/:slug` y acabe en el SPA compone una tarjeta genérica de LinkVault en lugar de una
+vacía.
+
+Estas etiquetas NO SHALL contener datos de ninguna oferta ni de ninguna persona: son fijas y las mismas para todas las
+rutas del SPA.
+
+#### Scenario: Tarjeta genérica en vez de tarjeta vacía
+
+- **WHEN** se pide el `index.html` del SPA
+- **THEN** SHALL contener `og:site_name`, `og:title`, `og:description` y `og:image`
+- **AND** `og:image` SHALL ser la misma imagen que usa la página pública de la API
+
+#### Scenario: La tarjeta de respaldo no dice nada de nadie
+
+- **WHEN** se inspeccionan esas etiquetas
+- **THEN** NO SHALL contener ningún título de oferta, empresa, nombre de persona ni `slug`
 
 ### Requirement: Una avería no es un enlace muerto
 
@@ -79,13 +107,6 @@ persona lo descartara y se perdiera el alta. Solo el `404` significa "ya no est�
 - **WHEN** la persona pulsa "Guardar en LinkVault"
 - **THEN** SHALL llegar a `/registro` con `import` igual a ese `slug`
 
-#### Scenario: La vista pública no pide la sesión
-
-- **GIVEN** un navegador sin sesión
-- **WHEN** abre `/oferta/:slug`
-- **THEN** la única petición a la API SHALL ser la del preview público
-- **AND** esa petición NO SHALL llevar `Authorization`
-
 ### Requirement: Guardar en LinkVault desde la vista pública
 
 La vista pública SHALL ofrecer "Guardar en LinkVault" como acción principal, con la línea "Guarda aquí las ofertas que
@@ -93,6 +114,9 @@ te pasan por WhatsApp y no las pierdas." debajo, para que quien no conoce LinkVa
 
 - SHALL navegar **siempre** a `/registro?import=<slug>`, haya sesión o no, **sin consultar la sesión ni esperar a
   ninguna petición**: el botón SHALL responder al instante aunque la API esté lenta o caída.
+- Mientras la navegación esté en curso SHALL mostrarse en estado de pendiente y NO SHALL aceptar una segunda pulsación,
+  para que quien no vea un cambio inmediato —porque el guard está restaurando la sesión— no lo pulse dos veces. El
+  destino NO SHALL depender de ese estado.
 - Quien abra `/registro?import=<slug>` teniendo sesión SHALL ser llevado a `/mis-links?import=<slug>`, no al inicio: es
   el guard de invitado, que ya restaura la sesión, quien lo decide.
 - Las páginas de registro y de login SHALL conservar ese parámetro en el enlace que llevan la una a la otra.
@@ -134,6 +158,13 @@ te pasan por WhatsApp y no las pierdas." debajo, para que quien no conoce LinkVa
 - **WHEN** pulsa "Guardar en LinkVault"
 - **THEN** la navegación a `/registro?import=<slug>` SHALL ocurrir sin esperar a ninguna petición
 
+#### Scenario: Doble pulsación del CTA
+
+- **GIVEN** alguien en `/oferta/:slug` con el guard de invitado restaurando la sesión
+- **WHEN** pulsa "Guardar en LinkVault" dos veces seguidas
+- **THEN** el botón SHALL verse en estado de pendiente tras la primera
+- **AND** SHALL acabar en `/mis-links` con ese `import` una sola vez
+
 #### Scenario: Registro con sesión abierta
 
 - **GIVEN** alguien con sesión
@@ -148,13 +179,21 @@ te pasan por WhatsApp y no las pierdas." debajo, para que quien no conoce LinkVa
 
 ### Requirement: La oferta importada cae en la lista privada
 
-`/mis-links` con `import=<slug>` SHALL guardar esa oferta **sin grupo**, una sola vez por navegación, y SHALL quitar el
-parámetro de la URL sin dejar entrada en el historial, de modo que recargar la página NO SHALL volver a guardarla.
+`/mis-links` con `import=<slug>` SHALL pedir el preview público de ese `slug`, una sola vez por navegación, y actuar
+según lo que reciba:
 
-Al terminar SHALL mostrar "Guardada en «Solo para mí». Compártela en un grupo cuando quieras." y la oferta en la lista.
-Si ya la tenía SHALL decir "Ya la tenías guardada", y si la tiene en algún grupo suyo SHALL decir en cuáles. Si el
-guardado falla SHALL decirlo sin perder la lista y SHALL ofrecer "Reintentar", que vuelve a intentarlo sin obligar a
-volver al enlace público.
+- **`200`**: SHALL guardar esa oferta **sin grupo**, SHALL quitar el parámetro de la URL sin dejar entrada en el
+  historial —de modo que recargar la página NO SHALL volver a guardarla— y SHALL mostrar "Guardada en «Solo para mí».
+  Compártela en un grupo cuando quieras." con la oferta en la lista. Si ya la tenía SHALL decir "Ya la tenías
+  guardada", y si la tiene en algún grupo suyo SHALL decir en cuáles. Si el guardado falla SHALL decirlo sin perder la
+  lista y SHALL ofrecer "Reintentar".
+- **`404`**: SHALL mostrar "Ese enlace ya no está disponible", NO SHALL ofrecer "Reintentar" y SHALL quitar el
+  parámetro de la URL.
+- **`429`, `5xx` o fallo de red**: SHALL mostrar "No pudimos leer la oferta ahora" con "Reintentar" y SHALL
+  **conservar** el parámetro `import` hasta que haya un intento que llegue a la API, de modo que recargar la página
+  vuelva a intentarlo.
+
+En todos los casos la lista privada SHALL seguir viéndose.
 
 #### Scenario: Oferta guardada
 
@@ -185,12 +224,22 @@ volver al enlace público.
 #### Scenario: Enlace despublicado entre medias
 
 - **GIVEN** alguien que abrió la vista pública antes de que se despublicara
-- **WHEN** pulsa "Guardar en LinkVault" y llega a `/mis-links?import=<slug>`
-- **THEN** la oferta SHALL guardarse igual en su lista privada
+- **WHEN** pulsa "Guardar en LinkVault" y llega a `/mis-links?import=<slug>`, donde el preview responde `404`
+- **THEN** SHALL ver "Ese enlace ya no está disponible" sin "Reintentar"
+- **AND** la URL SHALL quedarse sin el parámetro `import`
+- **AND** NO SHALL guardarse ninguna oferta
+
+#### Scenario: La oferta no se pudo leer ahora
+
+- **GIVEN** alguien que llega a `/mis-links?import=<slug>` y el preview responde `429`
+- **WHEN** ve el mensaje
+- **THEN** SHALL ver "No pudimos leer la oferta ahora" con "Reintentar"
+- **AND** la URL SHALL conservar el parámetro `import`
 
 #### Scenario: El guardado falla
 
-- **GIVEN** alguien que llega a `/mis-links?import=<slug>` y la API responde con un error
+- **GIVEN** alguien que llega a `/mis-links?import=<slug>`, el preview responde `200` y el guardado responde con un
+  error
 - **WHEN** ve el mensaje
 - **THEN** SHALL poder pulsar "Reintentar" y guardar la oferta sin volver al enlace público
 - **AND** su lista privada SHALL seguir viéndose

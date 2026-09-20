@@ -74,7 +74,7 @@ comentarios. De la herencia del manifiesto, el `slug` de grupo **no hace falta**
   autenticadas y de invitado" (tercera ruta pública y destino del `guestGuard` con `import`) y "Restauración de la
   sesión al cargar" (en una ruta pública no se restaura sesión al arrancar).
 - `platform/local-environment`: cambian "Web y API comparten origen en desarrollo" (`/p/:slug` fuera del prefijo) y
-  "Configuración por entorno documentada" (`PUBLIC_PAGE_BASE_URL`, `WEB_BASE_URL` y `TRUST_PROXY`).
+  "Configuración por entorno documentada" (`PUBLIC_PAGE_BASE_URL` y `WEB_BASE_URL`).
 - `web/groups`: cambia "Detalle del grupo" (el interruptor de visibilidad por defecto, solo para el `owner`).
 - `web/links`: cambian "Guardar un link desde el SPA" (la confirmación ofrece "Copiar enlace" y dice el alcance cuando
   el link nace publicado) y "Quitar un link desde el SPA" (la confirmación avisa de que el enlace público dejará de

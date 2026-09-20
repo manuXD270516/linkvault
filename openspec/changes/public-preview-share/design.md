@@ -152,8 +152,12 @@ Pero **los dos caminos que escriben un slug son distintos y no se pueden tratar 
 | **`publish(groupId, linkId, publishedBy)`** | `updateOne` suelto, **fuera de transacción** | Bucle propio de hasta **5** intentos: genera otro slug y vuelve a intentar. Nada más está a medias, así que reintentar ahí dentro es correcto y barato. |
 | **`share({ …, publish: true }, session)`** | **dentro** de la transacción de `withResolvedLink` | **No reintenta por dentro.** Un `E11000` aborta la transacción: seguir escribiendo sobre esa sesión es ilegal, y un bucle interno haría cuatro escrituras muertas antes de fallar igual. El error sube, y `withResolvedLink` **reintenta la transacción entera**, que en el intento siguiente pide un slug nuevo. |
 
-`duplicateKeyIs` distingue la clave del slug (`PUBLIC_SLUG_KEY`) de la de la relación (`GROUP_LINK_KEY`), que en `share`
-significa "ya estaba compartido" y se resuelve sin reintentar nada.
+`duplicateKeyIs` distingue la clave del slug (`PUBLIC_SLUG_KEY`) de la de la relación (`GROUP_LINK_KEY`). **Dentro de
+`share` no se reintenta ninguna de las dos**: un choque de `GROUP_LINK_KEY` significa que otra petición compartió el
+mismo link en el mismo grupo un instante antes, y lo resuelve el reintento de la transacción entera de
+`withResolvedLink` —que es exactamente lo que ya hace hoy, desde `job-links`—, porque en el segundo intento la relación
+ya existe y `share` devuelve `created: false`. Lo único que cambia es que ahora hay **dos** claves que pueden disparar
+ese reintento, no una.
 
 **`MAX_RESOLVE_ATTEMPTS` sube de 2 a 3.** Hoy vale 2 y su comentario lo justifica así: "el segundo intento ya encuentra
 el documento que ganó la carrera". Con el índice del slug esa razón deja de ser la única: un segundo intento ya no
@@ -260,14 +264,20 @@ enlaces buenos; contar antes de leer es lo que hace que el tope sirva de algo.
 <a href="https://…/oferta/<slug>">Ver la oferta en LinkVault</a>
 ```
 
-**Sin JavaScript.** El primer borrador añadía un `<script>location.replace(…)</script>` para no dejar entrada en el
-historial. No compensa: obliga a admitir `script-src 'unsafe-inline'` en la CSP —que es justo la directiva que querríamos
-en `'none'`—, y obliga a serializar la URL dentro de un `<script>`, con su propia superficie de `</script>` y su función
+**Sin JavaScript.** El primer borrador añadía un `<script>location.replace(…)</script>` para controlar el historial. No
+compensa: obliga a admitir `script-src 'unsafe-inline'` en la CSP —que es justo la directiva que querríamos en
+`'none'`—, y obliga a serializar la URL dentro de un `<script>`, con su propia superficie de `</script>` y su función
 `scriptJson`. Con solo el `<meta refresh>` en `0`, todos los navegadores saltan igual, la CSP puede decir
-`script-src 'none'` de verdad y desaparece una clase entera de error. Lo que se pierde es que "atrás" vuelve a `/p/:slug`
-y salta otra vez; a cambio, quien llegue ahí verá el enlace visible, que sigue estando para quien tenga el `refresh`
-desactivado. Los bots no siguen el `refresh`: leen las etiquetas del `<head>`, que están antes del `<body>` y no
-dependen de nada.
+`default-src 'none'` de verdad y desaparece una clase entera de error. Los bots no siguen el `refresh`: leen las
+etiquetas del `<head>`, que están antes del `<body>` y no dependen de nada.
+
+**Qué pasa al pulsar "atrás" no se afirma aquí: se mide.** Los navegadores tratan un `<meta refresh>` con retardo `0`
+como una sustitución de la entrada del historial, pero el comportamiento varía entre motores y entre versiones, y este
+diseño no está en condiciones de prometerlo. Por eso entra un e2e (tarea 8.3) que abre `<origen de la API>/p/<slug>`,
+espera a acabar en `/oferta/:slug` y ejecuta `goBack()`, y **este párrafo se reescribe con lo que ese test observe**. Si
+resultara que el retroceso vuelve a `/p/:slug` y salta otra vez —un bucle del que solo se sale manteniendo pulsado
+"atrás"—, se anota como riesgo real en Risks y se decide entonces si compensa recuperar el `<script>` con un `nonce`.
+Mientras tanto, el enlace visible de respaldo cubre a quien tenga el `refresh` desactivado.
 
 Por qué no se distingue (es la pregunta que abría este change):
 
@@ -373,6 +383,13 @@ logotipo de la empresa desde la bolsa sería volver a pedirle la página, que es
 build de Angular copia tal cual a la raíz, y de donde sale también el `robots.txt`—, no en la API: la API no sirve
 estáticos hoy y añadirle `@fastify/static` y una copia de assets en su webpack por un PNG no se paga.
 
+**La misma imagen sirve de respaldo en el SPA.** Un bot que **sí** siga el `<meta refresh>` —los hay— acaba pidiendo
+`/oferta/:slug` al SPA, cuyo `index.html` no tiene hoy ninguna etiqueta Open Graph: compondría una tarjeta **vacía**,
+que es peor que la que este change entrega. Por eso el `index.html` gana un juego mínimo y fijo (`og:site_name`,
+`og:title` y `og:description` de marca, y esa misma `og:image`). Son etiquetas de marca, iguales para todas las rutas,
+sin un solo dato de ninguna oferta ni de ninguna persona: no hay que renderizarlas por petición ni pueden filtrar nada.
+El resultado peor posible pasa de "enlace pelado" a "tarjeta de LinkVault".
+
 `og:url` sale de **configuración**, nunca de la cabecera `Host` de la petición: un `Host` falsificado acabaría dentro de
 una etiqueta que los chats muestran y cachean.
 
@@ -471,18 +488,31 @@ los límites por IP de `auth` y `groups` siguen exactamente como están y este c
 
 **Lo que entra en su lugar.** Dos contadores **globales de ruta**, sobre el `FIXED_WINDOW_COUNTER` de plataforma:
 
-| Clave | Ruta | Umbral |
-|-------|------|--------|
-| `links:public-page` | `GET /p/:slug` | `PUBLIC_PAGE_VIEWS = 6000` por `LINK_LIMIT_WINDOW_MS` (15 min) |
-| `links:public-preview` | `GET /api/public/previews/:slug` | `PUBLIC_PREVIEW_VIEWS = 6000` por la misma ventana |
-| `links:public-page:<slug>` | `GET /p/:slug`, por enlace | `PUBLIC_PAGE_VIEWS_PER_SLUG = 2000` por la misma ventana |
+| Discriminante de `LinkLimitKey` | Clave | Ruta | Umbral |
+|---------------------------------|-------|------|--------|
+| `public-page` | `links:public-page` | `GET /p/:slug` | `PUBLIC_PAGE_VIEWS = 6000` por `LINK_LIMIT_WINDOW_MS` (15 min) |
+| `public-preview` | `links:public-preview` | `GET /api/public/previews/:slug` | `PUBLIC_PREVIEW_VIEWS = 6000` por la misma ventana |
+| `public-page-slug` | `links:public-page:<slug>` | `GET /p/:slug`, por enlace | `PUBLIC_PAGE_VIEWS_PER_SLUG = 2000` por la misma ventana |
 
-**El contador por `slug`** se consume junto al global, en la misma petición, y se pasa el primero que hable: si el del
-slug rechaza, `429` sin tocar el global. Un `slug` es un dato **del recurso**, no del cliente: lo lleva la ruta, no una
-cabecera, así que no hay nada que falsificar y no reintroduce `trustProxy` por la puerta de atrás. Lo que compra es que
-el caso realista de abuso —un bucle sobre **un** enlace— se coma su propia ventana y no la de todos los demás. El
-umbral es del orden de un tercio del global: bastante por encima de lo que puede recibir un enlace pegado en un grupo
-de WhatsApp, y bastante por debajo como para que un enlace no agote el tope de los demás.
+Cada contador tiene su **propio discriminante** en `LinkLimitKey`, como el resto de miembros de esa unión
+(`enrich-link`, `import`, `paste-description`, `comment`). El del slug es `{ kind: 'public-page-slug', slug }`, no un
+`public-page` con un campo opcional: `nameOf`, `limitOf` y `failureDecisionOf` son `switch` exhaustivos sobre `kind`, y
+un miembro con un campo que a veces está obligaría a ramificar dentro de cada uno de los tres.
+
+**El contador por `slug`** es un dato **del recurso**, no del cliente: lo lleva la ruta, no una cabecera, así que no hay
+nada que falsificar y no reintroduce `trustProxy` por la puerta de atrás. Lo que compra es que el caso realista de
+abuso —un bucle sobre **un** enlace— se coma su propia ventana y no la de todos los demás. El umbral es del orden de un
+tercio del global: bastante por encima de lo que puede recibir un enlace pegado en un grupo de WhatsApp, y bastante por
+debajo como para que un enlace no agote el tope de los demás.
+
+**El orden entre los dos, y el `refund`.** Se consume **primero el global** y después el del `slug`. Si el del `slug`
+rechaza, se **devuelve el intento al global** (`refund`, que el `LINK_LIMITER` ya tiene) antes de responder `429`. Si
+no se devolviera, el bucle contra un solo enlace seguiría vaciando el contador global aunque todas sus peticiones
+acabaran en `429`: en unos minutos habría apagado la página **entera**, que es justo lo que el contador por `slug`
+venía a evitar. Con la devolución, un enlace castigado no le cuesta nada a los demás. El orden inverso —primero el del
+slug— evitaría el `refund`, pero dejaría el contador global sin ver las peticiones que el del slug rechaza, y entonces
+un atacante que rotara entre slugs inexistentes no tocaría ningún tope. Se acepta el coste de una operación más en
+Redis en el camino del `429`, que es el camino raro.
 
 Propiedades, todas buscadas:
 
@@ -526,9 +556,9 @@ todos los casos.
 chat no tiene cookie de refresh, así que pagaría "Conectando…" y una llamada inútil antes de ver la oferta —y con la
 API lenta, hasta diez segundos mirando una pantalla vacía, justo en la primera impresión que este change existe para
 cuidar—. El inicializador pasa a **no restaurar** cuando el `location.pathname` de arranque es una ruta pública
-(`/oferta/…`), y la sesión se resuelve **cuando hace falta**, al pulsar el CTA: ahí sí se espera al refresh, porque el
-destino depende de si hay sesión. `authGuard` y `guestGuard` siguen llamando a `restore()` como hasta ahora, así que
-navegar desde la vista pública a cualquier otra ruta se comporta igual que siempre.
+(`/oferta/…`). La sesión se resuelve donde siempre: en el guard de la ruta a la que se navega después. `authGuard` y
+`guestGuard` siguen llamando a `restore()` como hasta ahora, así que salir de la vista pública hacia cualquier otra
+ruta se comporta igual que siempre.
 
 **La ruta pública no se indexa.** El `<meta name="robots" content="noindex">` se pone y se quita con la vista, y
 `apps/web/public/robots.txt` añade `Disallow: /oferta/`. Es la misma razón que en la página de la API: la oferta es de
@@ -548,10 +578,19 @@ ruta no llegan los bots de las tarjetas: los que leen OG piden `/p/:slug`, que n
 3. **Tras registrarse o entrar** con un `import` que tiene forma de slug, el SPA navega a **`/mis-links?import=<slug>`**.
    Un `import` con cualquier otra forma se ignora y se navega al inicio, como hace `safeReturnUrl` con un `returnUrl`
    ajeno.
-4. **`/mis-links` con `import`** hace, una sola vez: pide el preview público (ya cacheado por el navegador), llama a
-   `POST /api/links { url: displayUrl }` **sin `groupId`**, quita el parámetro de la URL con `replaceUrl` —para que
-   recargar no vuelva a guardar— y muestra el resultado. Si falla, el mensaje trae **"Reintentar"**: la persona ya está
-   en `/mis-links` y sin ese botón tendría que volver al chat a buscar el enlace.
+4. **`/mis-links` con `import`** hace, una sola vez: pide el preview público (normalmente ya cacheado por el navegador)
+   y, con lo que reciba, sigue uno de **tres desenlaces**, que hay que distinguir porque el guardado necesita el
+   `displayUrl` y solo el preview lo tiene:
+
+   | Respuesta del preview | Qué hace |
+   |-----------------------|----------|
+   | `200` | Llama a `POST /api/links { url: displayUrl }` **sin `groupId`**, quita el parámetro con `replaceUrl` y muestra el resultado (guardada, "Ya la tenías guardada", `alreadyInGroups`). Si el guardado falla, "No pudimos guardar esta oferta. Inténtalo de nuevo." con **"Reintentar"**. |
+   | `404` | "Ese enlace ya no está disponible", **sin "Reintentar"** —no hay nada a lo que volver— y quitando el parámetro, para que recargar no repita el intento. |
+   | `429`, `5xx` o fallo de red | "No pudimos leer la oferta ahora" con **"Reintentar"**, y **conservando `import` en la URL** hasta que haya un intento real: si se borrara, recargar perdería la oferta, que es justo lo que no puede pasar cuando la culpa es nuestra. |
+
+   El borrador anterior decía que con el enlace despublicado "la importación funciona igual porque el SPA ya tiene el
+   `displayUrl`". No es cierto: la vista pública y `/mis-links` son navegaciones distintas y no comparten estado, así
+   que aquí se vuelve a pedir el preview y un `404` deja sin URL que guardar.
 
 **Precedencia entre `import` y `returnUrl`.** Pueden llegar juntos: alguien sin sesión abre `/perfil`, va a `/login` con
 `returnUrl`, y desde otra pestaña pega un enlace público y pulsa el CTA, que añade `import`. **Gana `import`**, porque
@@ -702,7 +741,9 @@ que usan varios módulos, sin que ninguno dependa de otro. No cambia ningún com
 | Solo quien compartió la oferta o el propietario del grupo puede cambiar esto | Only the person who shared the job or the group owner can change this |
 | Ver la oferta original | View the original posting |
 | Este enlace ya no está disponible | This link is no longer available |
+| Ese enlace ya no está disponible | That link is no longer available |
 | Ahora mismo no podemos mostrar esta oferta. Inténtalo en un momento. | We can't show this job right now. Try again in a moment. |
+| No pudimos leer la oferta ahora | We couldn't read the job right now |
 | Entrar | Log in |
 | Guardada en «Solo para mí». Compártela en un grupo cuando quieras. | Saved to "Just for me". Share it with a group whenever you like. |
 | Ya la tenías guardada | You already had it saved |
@@ -879,3 +920,19 @@ Critic: 2 P0. Business: 1 V0. Tras aplicar esta tabla no queda ningún P0/V0 abi
 | business 3 | Quitar el fragmento rompe las bolsas que ponen la ruta en el `#` | Aceptado: `publicHttpUrl` **conserva** el fragmento; la fuga del slug ya la tapa `Referrer-Policy: no-referrer`, y el navegador no envía el fragmento al servidor (D6) | Romper el enlace es peor que un riesgo que ya está tapado |
 | business 4 | El daño de un `429` parecía durar lo que la ventana | Aceptado: en Risks, que el chat cachea la ausencia de tarjeta y el daño sobrevive a la ventana (D8, Risks) | Lo que se cachea en un chat no se puede rehacer |
 | business 5 | Textos huérfanos o mal traducidos | Aceptado: fuera "Esta oferta se compartió desde LinkVault", que ya no tiene destino, y "New links **are shared with** a public link" (D12) | Una tabla de textos es un contrato con `messages.en.xlf` |
+
+## Debate (iteración 3)
+
+Convergió con 0 P0 y 0 V0. Solo retoques.
+
+| # | Hallazgo | Decisión | Motivo |
+|---|----------|----------|--------|
+| critic I1 | El contador por `slug` no decía en qué orden se consumía; con el global primero y sin devolución, un bucle contra un enlace agotado seguía vaciando el tope de todos | Aceptado: primero el global, después el del `slug`, y `refund` al global si el del `slug` rechaza; escenario "El 429 de un enlace no gasta el contador global" (D8) | Si no, el contador por enlace no protegía de nada |
+| critic I2 + business 4 | El diseño **afirmaba** qué pasa al pulsar "atrás" tras un `<meta refresh>`, que varía entre motores | Aceptado: e2e que abre `/p/<slug>`, espera a `/oferta/:slug` y prueba `goBack()` (tarea 8.3); el párrafo de D4 se reescribe con lo observado, y si hay bucle se anota como riesgo real | Un diseño no promete lo que no ha medido |
+| critic I3 | `/mis-links?import=` no distinguía los desenlaces del preview, y el escenario "se guarda igual" era inejecutable: la vista pública y `/mis-links` son navegaciones distintas y no comparten el `displayUrl` | Aceptado: tres desenlaces (`200` guarda; `404` "Ese enlace ya no está disponible" sin reintento y sin parámetro; `429`/`5xx`/red "No pudimos leer la oferta ahora" con reintento y **conservando** `import`), y el escenario sustituido (D9, spec) | Un escenario que no se puede ejecutar no prueba nada |
+| critic I4 | El contador por `slug` iba como un `public-page` con campo opcional | Aceptado: discriminante propio `kind: 'public-page-slug'` (D8, tarea 6.8) | Los `switch` sobre `kind` son exhaustivos y no deben ramificar por dentro |
+| critic I5 | Un bot que **sí** sigue el `refresh` llega al SPA, cuyo `index.html` no tiene ninguna etiqueta OG: tarjeta vacía | Aceptado: juego mínimo y fijo de OG de marca en el `index.html`, con la misma imagen; requisito y tarea propios (D5) | El peor caso pasa de "enlace pelado" a "tarjeta de LinkVault" |
+| critic I6 | No estaba escrito qué pasa con un choque de `GROUP_LINK_KEY` dentro de `share` | Aceptado: tampoco se reintenta por dentro; lo resuelve el reintento de la transacción entera, que es lo que ya hace `withResolvedLink` (D2) | Ahora hay dos claves que disparan el mismo reintento, no una |
+| critic I7 | El proposal aún anunciaba `TRUST_PROXY` y un escenario estaba bajo el requisito equivocado | Aceptado: las dos ediciones (proposal, spec `web/public-preview`) | Coherencia |
+| business 2 | D9 decía "al pulsar el CTA: ahí sí se espera al refresh", que contradecía la spec y `web/auth` | Aceptado: frase borrada; la sesión se resuelve en el guard (D9) | Una contradicción en el diseño se implementa dos veces |
+| business 3 | Con el guard restaurando la sesión, el CTA no daba señal y se pulsaba dos veces | Aceptado: estado de pendiente mientras la navegación está en curso, sin cambiar el destino (tarea 7.8, spec) | Un botón que no responde se vuelve a pulsar |
