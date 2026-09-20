@@ -41,6 +41,6 @@ describe('userSchema', () => {
     const schemaPath = userSchema.path(path);
     expect(schemaPath).toBeDefined();
     expect(schemaPath.isRequired).not.toBe(true);
-    expect(schemaPath.options.default).toBe(value);
+    expect(schemaPath.options['default']).toBe(value);
   });
 });
