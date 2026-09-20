@@ -3,8 +3,8 @@ import { getMongoTestUri } from '@linkvault/testing';
 import mongoose, { mongo, type Connection, type Schema } from 'mongoose';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { GROUP_ROLES } from '../domain/membership';
+import { duplicateKeyIs } from '../../../infrastructure/mongo/duplicate-key';
 import {
-  duplicateKeyIs,
   GROUP_MEMBER_MODEL_NAME,
   GROUP_MEMBERS_COLLECTION,
   GROUP_MODEL_NAME,
@@ -368,24 +368,6 @@ describe('duplicateKeyIs', () => {
     expect(duplicateKeyIs(error, OWNER_KEY)).toBe(false);
   });
 
-  it.each([
-    ['no error', undefined],
-    ['a plain error', new Error('E11000 duplicate key error')],
-    ['another server error', new mongo.MongoServerError({ code: 112 })],
-    [
-      'a duplicate key without keyPattern',
-      new mongo.MongoServerError({ code: 11_000 }),
-    ],
-    [
-      'a pattern with more fields',
-      new mongo.MongoServerError({
-        code: 11_000,
-        keyPattern: { groupId: 1, role: 1 },
-      }),
-    ],
-  ])('is false for %s', (_case, error) => {
-    expect(duplicateKeyIs(error, OWNER_KEY)).toBe(false);
-  });
 });
 
 describe('format guard', () => {

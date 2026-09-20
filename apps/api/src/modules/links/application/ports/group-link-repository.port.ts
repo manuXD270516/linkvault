@@ -2,6 +2,7 @@ import type {
   GroupLinkComment,
   NewGroupLinkComment,
 } from '../../domain/group-link-comment';
+import type { PublicShare } from '../../domain/public-share';
 import type { ShareNote } from '../../domain/share-note';
 import type { LinkListPage, LinkListQuery } from './link-listing';
 import type { TransactionSession } from './transaction-session';
@@ -23,6 +24,8 @@ export interface GroupLink {
   readonly commentCount: number;
   /** Revisión del resumen de comentarios: sube con cada alta y cada borrado, nunca baja mientras dure la relación. */
   readonly commentsRevision: number;
+  /** Enlace público de esta relación, si está publicada (D1 de public-preview-share). */
+  readonly publicShare?: PublicShare;
 }
 
 /**
@@ -54,6 +57,12 @@ export interface ShareInGroupInput {
   readonly sharedAt: Date;
   /** Nota de quien comparte. Solo se guarda si la relación es nueva: la del primero no cambia. */
   readonly note?: ShareNote;
+  /**
+   * Si la relación **nueva** nace publicada, según la visibilidad por defecto del grupo (D3 de public-preview-share).
+   * El slug lo sortea el repositorio. Si la relación ya estaba, NO se publica ni se despublica nada: el enlace del
+   * primero no cambia.
+   */
+  readonly publish?: boolean;
 }
 
 export interface GroupLinkRepository {
@@ -67,6 +76,31 @@ export interface GroupLinkRepository {
   ): Promise<SharedGroupLink>;
   /** Relación concreta; `null` si el link no está en ese grupo o algún id está mal formado. */
   find(groupId: string, linkId: string): Promise<GroupLink | null>;
+  /**
+   * Publica la relación y devuelve su enlace público (D2 de public-preview-share). **Idempotente**: si ya estaba
+   * publicada devuelve el mismo enlace, sin generar otro, así que dos pestañas no dejan dos enlaces vivos. `null` si la
+   * relación no existe o algún id está mal formado.
+   *
+   * El slug lo sortea el repositorio con `PUBLIC_SLUG_GENERATOR` y su unicidad la garantiza el índice único parcial: si
+   * choca, sortea otro y reintenta, y lanza `PublicSlugExhausted` al agotar los intentos. Quien llama solo ve el enlace,
+   * el `null` o ese error.
+   */
+  publish(
+    groupId: string,
+    linkId: string,
+    publishedBy: string,
+    now: Date,
+  ): Promise<PublicShare | null>;
+  /**
+   * Quita el enlace público de la relación, lo tuviera o no, y **quema** el slug: volver a publicar generará otro.
+   * `false` solo si la relación no existe.
+   */
+  unpublish(groupId: string, linkId: string): Promise<boolean>;
+  /**
+   * Relación publicada con ese slug, o `null` si ninguna lo tiene. Es la **primera** de las dos únicas lecturas de la
+   * página pública (D7), por el índice único parcial. La comparación es exacta: un slug con otra caja no existe.
+   */
+  findByPublicSlug(slug: string): Promise<GroupLink | null>;
   /**
    * Grupos donde está ese link, con quién lo compartió y cuándo. Una sola consulta por el índice `{ linkId: 1 }`: es la
    * mitad del reparto de un aviso de enriquecimiento (D9 de link-enrichment).

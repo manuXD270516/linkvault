@@ -247,6 +247,37 @@ export class NoteRemovalForbidden extends LinksError {
   }
 }
 
+// Enlace público de un link compartido (D2 de public-preview-share). Ninguno lleva el slug ni la URL: pueden acabar en
+// un log, y el slug es la llave de una página que cualquiera puede abrir.
+
+/**
+ * Quien pide es miembro del grupo pero no compartió el link ni es `owner` (403), **esté o no publicado**. El mismo
+ * criterio que `NoteRemovalForbidden`: la respuesta no le dice a quien no puede tocarlo si el link estaba publicado.
+ */
+export class PublicShareForbidden extends LinksError {
+  override readonly name = 'PublicShareForbidden';
+  readonly code = 'forbidden';
+
+  constructor() {
+    super(
+      'Only the member who shared the link or the group owner can change its public link',
+    );
+  }
+}
+
+/**
+ * El link no está en ese grupo, su `:linkId` no tiene formato de identificador, o la relación desapareció entre la
+ * comprobación y la escritura (404 `link_not_found`).
+ */
+export class PublicShareNotFound extends LinksError {
+  override readonly name = 'PublicShareNotFound';
+  readonly code = 'link_not_found';
+
+  constructor() {
+    super('Link not found');
+  }
+}
+
 /**
  * Quien pide no es miembro del grupo, el grupo no existe o su `:id` está mal formado (404 `group_not_found`, el mismo
  * cuerpo que da `groups`). Propio de `links` para que los casos de uso de comentarios no importen el dominio de

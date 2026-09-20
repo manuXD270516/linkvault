@@ -2,7 +2,17 @@ import { randomUUID } from 'node:crypto';
 import { getMongoTestUri } from '@linkvault/testing';
 import mongoose, { type Connection } from 'mongoose';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import {
+  ConstantPublicSlugGenerator,
+  StubPublicSlugGenerator,
+} from '../application/testing/stub-public-slug.generator';
 import { jobLinkDraft } from '../application/testing/link-fixtures';
+import {
+  MAX_PUBLIC_SLUG_ATTEMPTS,
+  PublicSlugExhausted,
+} from '../domain/public-share';
+import { isValidPublicSlug } from '../domain/public-slug';
+import type { PublicSlugGenerator } from '../application/ports/public-slug-generator.port';
 import {
   GROUP_LINK_MODEL_NAME,
   GROUP_LINKS_COLLECTION,
@@ -20,6 +30,7 @@ import { MongoJobLinkRepository } from './mongo-job-link.repository';
 let connection: Connection;
 let links: MongoJobLinkRepository;
 let groupLinks: MongoGroupLinkRepository;
+let slugs: StubPublicSlugGenerator;
 
 const ANA = new mongoose.Types.ObjectId().toHexString();
 const BETO = new mongoose.Types.ObjectId().toHexString();
@@ -29,6 +40,8 @@ const JOB_PAGE = 'https://www.linkedin.com/jobs/view/3811111111/';
 const SEARCH_PAGE =
   'https://www.linkedin.com/jobs/search/?currentJobId=3811111111';
 const OTHER_JOB = 'https://www.linkedin.com/jobs/view/3822222222/';
+/** Slug libre que ningún otro escenario de este archivo usa. */
+const FREE_SLUG = 'k7m2p9r4t6vw';
 const now = new Date('2026-09-17T10:00:00.000Z');
 const later = new Date('2026-09-17T11:00:00.000Z');
 
@@ -38,16 +51,33 @@ function shareLink(
   groupId: string,
   sharedBy: string,
   sharedAt = now,
+  options: { publish?: boolean; repository?: MongoGroupLinkRepository } = {},
 ) {
+  const repository = options.repository ?? groupLinks;
   return links.withResolvedLink(
     jobLinkDraft(url, { createdBy: sharedBy, now: sharedAt }),
     async (resolved, session) => {
-      const shared = await groupLinks.share(
-        { groupId, linkId: resolved.link.id, sharedBy, sharedAt },
+      const shared = await repository.share(
+        {
+          groupId,
+          linkId: resolved.link.id,
+          sharedBy,
+          sharedAt,
+          ...(options.publish === undefined ? {} : { publish: options.publish }),
+        },
         session,
       );
       return { linkId: resolved.link.id, ...shared };
     },
+  );
+}
+
+/** Otro adaptador sobre la misma conexión, con su propio generador de slugs. */
+function repositoryWith(generator: PublicSlugGenerator) {
+  return new MongoGroupLinkRepository(
+    connection,
+    new MongoGroupLinkCommentRepository(connection),
+    generator,
   );
 }
 
@@ -56,9 +86,11 @@ beforeAll(async () => {
     .createConnection(getMongoTestUri(), { dbName: `links-${randomUUID()}` })
     .asPromise();
   links = new MongoJobLinkRepository(connection);
+  slugs = new StubPublicSlugGenerator();
   groupLinks = new MongoGroupLinkRepository(
     connection,
     new MongoGroupLinkCommentRepository(connection),
+    slugs,
   );
   await connection.model(JOB_LINK_MODEL_NAME).init();
   await connection.model(GROUP_LINK_MODEL_NAME).init();
@@ -270,5 +302,308 @@ describe('linkIdsIn', () => {
       .explain('queryPlanner');
 
     expect(JSON.stringify(plan)).toContain('"groupId":1,"linkId":1');
+  });
+});
+
+// Enlace público de una relación (tareas 3.6 a 3.11 de public-preview-share). El slug lo sortea el repositorio y su
+// unicidad la garantiza el índice único parcial: aquí se prueban los dos caminos de escritura y sus reintentos.
+describe('publish y unpublish', () => {
+  it('Publicar', async () => {
+    const shared = await shareLink(JOB_PAGE, BACKEND, ANA);
+
+    const published = await groupLinks.publish(
+      BACKEND,
+      shared.linkId,
+      ANA,
+      later,
+    );
+
+    expect(published).not.toBeNull();
+    expect(isValidPublicSlug(published?.slug ?? '')).toBe(true);
+    expect(published?.publishedBy).toBe(ANA);
+    expect(published?.publishedAt).toEqual(later);
+    await expect(
+      groupLinks.find(BACKEND, shared.linkId),
+    ).resolves.toMatchObject({ publicShare: published });
+  });
+
+  it('Publicar dos veces no cambia el enlace', async () => {
+    const shared = await shareLink(JOB_PAGE, BACKEND, ANA);
+    const first = await groupLinks.publish(BACKEND, shared.linkId, ANA, later);
+
+    const second = await groupLinks.publish(BACKEND, shared.linkId, BETO, now);
+
+    expect(second).toEqual(first);
+  });
+
+  it('Despublicar quema el enlace', async () => {
+    const shared = await shareLink(JOB_PAGE, BACKEND, ANA);
+    const first = await groupLinks.publish(BACKEND, shared.linkId, ANA, later);
+
+    await expect(groupLinks.unpublish(BACKEND, shared.linkId)).resolves.toBe(
+      true,
+    );
+
+    await expect(
+      groupLinks.findByPublicSlug(first?.slug ?? ''),
+    ).resolves.toBeNull();
+    const again = await groupLinks.publish(BACKEND, shared.linkId, ANA, later);
+    expect(again?.slug).not.toBe(first?.slug);
+  });
+
+  it('Despublicar lo que no estaba publicado', async () => {
+    const shared = await shareLink(JOB_PAGE, BACKEND, ANA);
+
+    await expect(groupLinks.unpublish(BACKEND, shared.linkId)).resolves.toBe(
+      true,
+    );
+    await expect(
+      groupLinks.find(BACKEND, shared.linkId),
+    ).resolves.not.toHaveProperty('publicShare');
+  });
+
+  it.each([
+    [
+      'una relación inexistente',
+      () => new mongoose.Types.ObjectId().toHexString(),
+    ],
+    ['un identificador mal formado', () => 'no-es-un-id'],
+  ])('Publicar sobre %s', async (_case, of) => {
+    await expect(
+      groupLinks.publish(BACKEND, of(), ANA, later),
+    ).resolves.toBeNull();
+    await expect(groupLinks.unpublish(BACKEND, of())).resolves.toBe(false);
+  });
+
+  it('Slug repetido al publicar', async () => {
+    const taken = await shareLink(JOB_PAGE, BACKEND, ANA);
+    const other = await shareLink(OTHER_JOB, FRONTEND, ANA);
+    const first = await groupLinks.publish(BACKEND, taken.linkId, ANA, later);
+    const repeating = repositoryWith(
+      new StubPublicSlugGenerator([first?.slug ?? '', FREE_SLUG]),
+    );
+
+    const published = await repeating.publish(
+      FRONTEND,
+      other.linkId,
+      ANA,
+      later,
+    );
+
+    expect(published?.slug).toBe(FREE_SLUG);
+  });
+
+  it('Un generador que siempre repite agota los intentos', async () => {
+    const taken = await shareLink(JOB_PAGE, BACKEND, ANA);
+    const other = await shareLink(OTHER_JOB, FRONTEND, ANA);
+    const first = await groupLinks.publish(BACKEND, taken.linkId, ANA, later);
+    const constant = new ConstantPublicSlugGenerator(first?.slug ?? '');
+
+    await expect(
+      repositoryWith(constant).publish(FRONTEND, other.linkId, ANA, later),
+    ).rejects.toBeInstanceOf(PublicSlugExhausted);
+    expect(constant.calls).toBe(MAX_PUBLIC_SLUG_ATTEMPTS);
+  });
+
+  it('Dos publicaciones a la vez dejan un solo slug vivo', async () => {
+    const shared = await shareLink(JOB_PAGE, BACKEND, ANA);
+
+    const [first, second] = await Promise.all([
+      groupLinks.publish(BACKEND, shared.linkId, ANA, later),
+      groupLinks.publish(BACKEND, shared.linkId, BETO, later),
+    ]);
+
+    expect(first).toEqual(second);
+    expect(
+      await connection
+        .collection(GROUP_LINKS_COLLECTION)
+        .countDocuments({ 'publicShare.slug': { $exists: true } }),
+    ).toBe(1);
+  });
+});
+
+describe('share con publish', () => {
+  it('Guardar en un grupo que comparte en público', async () => {
+    const shared = await shareLink(JOB_PAGE, BACKEND, ANA, now, {
+      publish: true,
+    });
+
+    expect(shared.created).toBe(true);
+    expect(isValidPublicSlug(shared.relation.publicShare?.slug ?? '')).toBe(
+      true,
+    );
+    expect(shared.relation.publicShare?.publishedBy).toBe(ANA);
+  });
+
+  it('El enlace público del primero se queda', async () => {
+    const first = await shareLink(JOB_PAGE, BACKEND, ANA, now, {
+      publish: true,
+    });
+    await groupLinks.unpublish(BACKEND, first.linkId);
+
+    const second = await shareLink(SEARCH_PAGE, BACKEND, BETO, later, {
+      publish: true,
+    });
+
+    expect(second.created).toBe(false);
+    expect(second.relation.publicShare).toBeUndefined();
+  });
+
+  it('Slug repetido al compartir', async () => {
+    const taken = await shareLink(JOB_PAGE, BACKEND, ANA, now, {
+      publish: true,
+    });
+    const busy = taken.relation.publicShare?.slug ?? '';
+    // El primer intento de la transacción choca con el índice del slug; `withResolvedLink` la repite entera y el
+    // segundo sortea otro slug. Dentro de `share` no se reintenta: la sesión ya está abortada.
+    const repeating = repositoryWith(
+      new StubPublicSlugGenerator([busy, FREE_SLUG]),
+    );
+
+    const shared = await shareLink(OTHER_JOB, FRONTEND, ANA, later, {
+      publish: true,
+      repository: repeating,
+    });
+
+    expect(shared.relation.publicShare?.slug).toBe(FREE_SLUG);
+    expect(await groupLinks.countByGroup(FRONTEND)).toBe(1);
+    await expect(groupLinks.findByPublicSlug(busy)).resolves.toMatchObject({
+      linkId: taken.linkId,
+    });
+  });
+});
+
+describe('findByPublicSlug', () => {
+  it('encuentra la relación publicada por el índice del slug', async () => {
+    const shared = await shareLink(JOB_PAGE, BACKEND, ANA);
+    const published = await groupLinks.publish(
+      BACKEND,
+      shared.linkId,
+      ANA,
+      later,
+    );
+
+    const found = await groupLinks.findByPublicSlug(published?.slug ?? '');
+
+    expect(found?.linkId).toBe(shared.linkId);
+    expect(found?.groupId).toBe(BACKEND);
+  });
+
+  it.each([
+    ['uno inexistente', 'zzzzzzzzzzzz'],
+    ['uno mal formado', 'NO-ES-UN-SLUG'],
+  ])('responde null con %s', async (_case, slug) => {
+    await expect(groupLinks.findByPublicSlug(slug)).resolves.toBeNull();
+  });
+
+  it('Slug con otra caja', async () => {
+    const shared = await shareLink(JOB_PAGE, BACKEND, ANA);
+    const published = await groupLinks.publish(
+      BACKEND,
+      shared.linkId,
+      ANA,
+      later,
+    );
+
+    await expect(
+      groupLinks.findByPublicSlug((published?.slug ?? '').toUpperCase()),
+    ).resolves.toBeNull();
+  });
+
+  it('va por el índice único parcial, sin recorrer la colección', async () => {
+    const shared = await shareLink(JOB_PAGE, BACKEND, ANA);
+    const published = await groupLinks.publish(
+      BACKEND,
+      shared.linkId,
+      ANA,
+      later,
+    );
+    const plan: unknown = await connection
+      .collection(GROUP_LINKS_COLLECTION)
+      .find({ 'publicShare.slug': published?.slug })
+      .explain('queryPlanner');
+
+    expect(JSON.stringify(plan)).toContain('"publicShare.slug":1');
+    expect(JSON.stringify(plan)).not.toContain('COLLSCAN');
+  });
+});
+
+describe('el enlace público en los listados', () => {
+  it('Enlace público en el listado del grupo', async () => {
+    const published = await shareLink(JOB_PAGE, BACKEND, ANA);
+    await shareLink(OTHER_JOB, BACKEND, ANA, later);
+    const share = await groupLinks.publish(
+      BACKEND,
+      published.linkId,
+      ANA,
+      later,
+    );
+
+    const page = await groupLinks.listByGroup(BACKEND, { limit: 20 });
+
+    const listed = page.items.find((item) => item.link.id === published.linkId);
+    const unpublished = page.items.find(
+      (item) => item.link.id !== published.linkId,
+    );
+    expect(listed?.inGroup?.publicShare).toEqual(share);
+    expect(unpublished?.inGroup?.publicShare).toBeUndefined();
+  });
+});
+
+describe('el enlace público vive con la relación', () => {
+  it('Quitar quema el enlace público', async () => {
+    const shared = await shareLink(JOB_PAGE, BACKEND, ANA);
+    const published = await groupLinks.publish(
+      BACKEND,
+      shared.linkId,
+      ANA,
+      later,
+    );
+
+    await expect(
+      groupLinks.removeWithComments(BACKEND, shared.linkId),
+    ).resolves.toBe(true);
+
+    await expect(
+      groupLinks.findByPublicSlug(published?.slug ?? ''),
+    ).resolves.toBeNull();
+  });
+
+  it('El grupo se borra', async () => {
+    const first = await shareLink(JOB_PAGE, BACKEND, ANA);
+    const second = await shareLink(OTHER_JOB, BACKEND, ANA, later);
+    const one = await groupLinks.publish(BACKEND, first.linkId, ANA, later);
+    const two = await groupLinks.publish(BACKEND, second.linkId, ANA, later);
+
+    const session = await connection.startSession();
+    try {
+      await session.withTransaction(() =>
+        groupLinks.deleteByGroup(BACKEND, session),
+      );
+    } finally {
+      await session.endSession();
+    }
+
+    await expect(
+      groupLinks.findByPublicSlug(one?.slug ?? ''),
+    ).resolves.toBeNull();
+    await expect(
+      groupLinks.findByPublicSlug(two?.slug ?? ''),
+    ).resolves.toBeNull();
+  });
+
+  it('Volver a compartir no resucita el enlace', async () => {
+    const first = await shareLink(JOB_PAGE, BACKEND, ANA, now, {
+      publish: true,
+    });
+    const burnt = first.relation.publicShare?.slug ?? '';
+    await groupLinks.removeWithComments(BACKEND, first.linkId);
+
+    const again = await shareLink(JOB_PAGE, BACKEND, BETO, later, {
+      publish: true,
+    });
+
+    expect(again.relation.publicShare?.slug).not.toBe(burnt);
+    await expect(groupLinks.findByPublicSlug(burnt)).resolves.toBeNull();
   });
 });

@@ -4,6 +4,8 @@ import { InMemoryGroupLinkRepository } from './in-memory-group-link.repository';
 import { InMemoryJobLinkRepository } from './in-memory-job-link.repository';
 import { jobLinkDraft, objectId } from './link-fixtures';
 import { IN_MEMORY_SESSION } from './links-test-doubles';
+import { isValidPublicSlug } from '../../domain/public-slug';
+import { StubPublicSlugGenerator } from './stub-public-slug.generator';
 
 const ANA = objectId(1);
 const BETO = objectId(2);
@@ -363,5 +365,148 @@ describe('linkIdsIn', () => {
     expect(await groupLinks.linkIdsIn('no-es-un-id', [link.id])).toEqual(
       new Set(),
     );
+  });
+});
+
+// El doble se comporta igual que `MongoGroupLinkRepository` con el enlace público (tarea 3.5 de public-preview-share):
+// el slug lo sortea el repositorio, publicar es idempotente y despublicar lo quema.
+describe('el enlace público', () => {
+  it('publica con un slug del formato del dominio', async () => {
+    await share(BACKEND, link.id, ANA);
+
+    const published = await groupLinks.publish(BACKEND, link.id, ANA, later);
+
+    expect(isValidPublicSlug(published?.slug ?? '')).toBe(true);
+    expect(published?.publishedBy).toBe(ANA);
+    expect(published?.publishedAt).toEqual(later);
+  });
+
+  it('publicar dos veces devuelve el mismo enlace', async () => {
+    await share(BACKEND, link.id, ANA);
+    const first = await groupLinks.publish(BACKEND, link.id, ANA, later);
+
+    expect(await groupLinks.publish(BACKEND, link.id, BETO, now)).toEqual(
+      first,
+    );
+  });
+
+  it('despublicar quema el slug y volver a publicar da otro', async () => {
+    await share(BACKEND, link.id, ANA);
+    const first = await groupLinks.publish(BACKEND, link.id, ANA, later);
+
+    expect(await groupLinks.unpublish(BACKEND, link.id)).toBe(true);
+    expect(await groupLinks.findByPublicSlug(first?.slug ?? '')).toBeNull();
+    const again = await groupLinks.publish(BACKEND, link.id, ANA, later);
+    expect(again?.slug).not.toBe(first?.slug);
+  });
+
+  it('responde null sobre una relación que no existe', async () => {
+    expect(await groupLinks.publish(BACKEND, link.id, ANA, later)).toBeNull();
+    expect(await groupLinks.unpublish(BACKEND, link.id)).toBe(false);
+  });
+
+  it('encuentra la relación por su slug, con la caja exacta', async () => {
+    const repository = new InMemoryGroupLinkRepository(
+      links,
+      undefined,
+      // Un slug con letras: uno de solo dígitos no distinguiría una comparación sensible a mayúsculas de una que no.
+      new StubPublicSlugGenerator(['k7m2p9r4t6vw']),
+    );
+    await repository.share(
+      { groupId: BACKEND, linkId: link.id, sharedBy: ANA, sharedAt: now },
+      IN_MEMORY_SESSION,
+    );
+    await repository.publish(BACKEND, link.id, ANA, later);
+
+    expect((await repository.findByPublicSlug('k7m2p9r4t6vw'))?.linkId).toBe(
+      link.id,
+    );
+    expect(await repository.findByPublicSlug('K7M2P9R4T6VW')).toBeNull();
+  });
+
+  it('sortea otro slug cuando el generador repite uno ya usado', async () => {
+    const slugs = new StubPublicSlugGenerator(['aaaaaaaaaaaa', 'aaaaaaaaaaaa', 'bbbbbbbbbbbb']);
+    const repository = new InMemoryGroupLinkRepository(
+      links,
+      undefined,
+      slugs,
+    );
+    await repository.share(
+      { groupId: BACKEND, linkId: link.id, sharedBy: ANA, sharedAt: now },
+      IN_MEMORY_SESSION,
+    );
+    await repository.share(
+      { groupId: FRONTEND, linkId: other.id, sharedBy: ANA, sharedAt: now },
+      IN_MEMORY_SESSION,
+    );
+
+    const first = await repository.publish(BACKEND, link.id, ANA, later);
+    const second = await repository.publish(FRONTEND, other.id, ANA, later);
+
+    expect(first?.slug).toBe('aaaaaaaaaaaa');
+    expect(second?.slug).toBe('bbbbbbbbbbbb');
+  });
+
+  it('nace publicado cuando el grupo comparte en público, solo si la relación es nueva', async () => {
+    const first = await groupLinks.share(
+      {
+        groupId: BACKEND,
+        linkId: link.id,
+        sharedBy: ANA,
+        sharedAt: now,
+        publish: true,
+      },
+      IN_MEMORY_SESSION,
+    );
+    await groupLinks.unpublish(BACKEND, link.id);
+
+    const second = await groupLinks.share(
+      {
+        groupId: BACKEND,
+        linkId: link.id,
+        sharedBy: BETO,
+        sharedAt: later,
+        publish: true,
+      },
+      IN_MEMORY_SESSION,
+    );
+
+    expect(isValidPublicSlug(first.relation.publicShare?.slug ?? '')).toBe(
+      true,
+    );
+    expect(second.created).toBe(false);
+    expect(second.relation.publicShare).toBeUndefined();
+  });
+
+  it('viaja en el listado del grupo sin una lectura más', async () => {
+    await share(BACKEND, link.id, ANA);
+    await share(BACKEND, other.id, ANA, later);
+    const published = await groupLinks.publish(BACKEND, link.id, ANA, later);
+    const before = groupLinks.listByGroupCalls;
+
+    const page = await groupLinks.listByGroup(BACKEND, { limit: 20 });
+
+    expect(groupLinks.listByGroupCalls).toBe(before + 1);
+    expect(
+      page.items.find((item) => item.link.id === link.id)?.inGroup
+        ?.publicShare,
+    ).toEqual(published);
+    expect(
+      page.items.find((item) => item.link.id === other.id)?.inGroup
+        ?.publicShare,
+    ).toBeUndefined();
+  });
+
+  it('se lo lleva la relación al quitar el link y al borrar el grupo', async () => {
+    await share(BACKEND, link.id, ANA);
+    await share(FRONTEND, other.id, ANA);
+    const one = await groupLinks.publish(BACKEND, link.id, ANA, later);
+    const two = await groupLinks.publish(FRONTEND, other.id, ANA, later);
+
+    await groupLinks.removeWithComments(BACKEND, link.id);
+    await groupLinks.deleteByGroup(FRONTEND, IN_MEMORY_SESSION);
+
+    expect(await groupLinks.findByPublicSlug(one?.slug ?? '')).toBeNull();
+    expect(await groupLinks.findByPublicSlug(two?.slug ?? '')).toBeNull();
   });
 });

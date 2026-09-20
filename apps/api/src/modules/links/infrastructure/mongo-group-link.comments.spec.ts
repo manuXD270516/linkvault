@@ -15,6 +15,7 @@ import {
   JOB_LINK_MODEL_NAME,
   JOB_LINKS_COLLECTION,
 } from './link.schemas';
+import { StubPublicSlugGenerator } from '../application/testing/stub-public-slug.generator';
 import { MongoGroupLinkCommentRepository } from './mongo-group-link-comment.repository';
 import { MongoGroupLinkRepository } from './mongo-group-link.repository';
 import { MongoJobLinkRepository } from './mongo-job-link.repository';
@@ -100,7 +101,11 @@ beforeAll(async () => {
     .asPromise();
   links = new MongoJobLinkRepository(connection);
   comments = new MongoGroupLinkCommentRepository(connection);
-  groupLinks = new PausableGroupLinkRepository(connection, comments);
+  groupLinks = new PausableGroupLinkRepository(
+    connection,
+    comments,
+    new StubPublicSlugGenerator(),
+  );
   await connection.model(JOB_LINK_MODEL_NAME).init();
   await connection.model(GROUP_LINK_MODEL_NAME).init();
   await connection.model(GROUP_LINK_COMMENT_MODEL_NAME).init();
@@ -357,6 +362,7 @@ describe('removeWithComments and deleteByGroup (2.9)', () => {
     const failing = new MongoGroupLinkRepository(
       connection,
       new FailingCommentDeletions(connection),
+      new StubPublicSlugGenerator(),
     );
 
     await expect(failing.removeWithComments(BACKEND, linkId)).rejects.toThrow(
@@ -392,6 +398,7 @@ describe('removeWithComments and deleteByGroup (2.9)', () => {
     const failing = new MongoGroupLinkRepository(
       connection,
       new FailingCommentDeletions(connection),
+      new StubPublicSlugGenerator(),
     );
     const session = await connection.startSession();
 

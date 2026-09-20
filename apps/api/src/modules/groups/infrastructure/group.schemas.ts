@@ -1,5 +1,5 @@
 import { groupVisibilitySchema } from '@linkvault/shared';
-import { mongo, Schema, Types } from 'mongoose';
+import { Schema, Types } from 'mongoose';
 import type { GroupVisibility } from '../domain/group';
 import { isGroupId, isUserId } from '../domain/identifier';
 import { GROUP_ROLES } from '../domain/membership';
@@ -29,8 +29,6 @@ export const OWNER_KEY: Readonly<Record<string, 1>> = { groupId: 1 };
 
 /** Nombre explícito del índice de owner, para reconocerlo en `getIndexes()`, en el log de arranque y en el RUNBOOK. */
 export const ONE_OWNER_PER_GROUP_INDEX = 'one_owner_per_group';
-
-const DUPLICATE_KEY = 11_000;
 
 export interface GroupDocument {
   _id: Types.ObjectId;
@@ -123,35 +121,4 @@ export function toGroupObjectId(groupId: string): Types.ObjectId | null {
 
 export function toUserObjectId(userId: string): Types.ObjectId | null {
   return isUserId(userId) ? new Types.ObjectId(userId) : null;
-}
-
-/**
- * `true` si `error` es una clave duplicada del índice cuyo `keyPattern` es exactamente `pattern` (mismos campos, en el
- * mismo orden y con el mismo sentido). No se parsea `errmsg`, que no es contrato (ADR-025 §4).
- */
-export function duplicateKeyIs(
-  error: unknown,
-  pattern: Readonly<Record<string, 1 | -1>>,
-): boolean {
-  if (
-    !(error instanceof mongo.MongoServerError) ||
-    error.code !== DUPLICATE_KEY
-  ) {
-    return false;
-  }
-  const actual: unknown = error['keyPattern'];
-  if (typeof actual !== 'object' || actual === null) {
-    return false;
-  }
-  const actualEntries = Object.entries(actual);
-  const expectedEntries = Object.entries(pattern);
-  return (
-    actualEntries.length === expectedEntries.length &&
-    expectedEntries.every(([field, direction], index) => {
-      const entry = actualEntries[index];
-      return (
-        entry !== undefined && entry[0] === field && entry[1] === direction
-      );
-    })
-  );
 }

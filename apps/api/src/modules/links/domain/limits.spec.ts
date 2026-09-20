@@ -7,8 +7,12 @@ import {
   assertUrlWithinLimit,
   isImportTextTooLong,
   isUrlTooLong,
+  LINK_LIMIT_WINDOW_MS,
   MAX_IMPORT_TEXT_LENGTH,
   MAX_URL_LENGTH,
+  PUBLIC_PAGE_VIEWS,
+  PUBLIC_PAGE_VIEWS_PER_SLUG,
+  PUBLIC_PREVIEW_VIEWS,
 } from './limits';
 
 const longUrl = `https://example.com/${'a'.repeat(MAX_URL_LENGTH)}`;
@@ -66,5 +70,18 @@ describe('both limits measure code points, like zod', () => {
 describe('comment limit', () => {
   it('allows 30 comments per person in the window', () => {
     expect(COMMENTS_PER_USER).toBe(30);
+  });
+});
+
+describe('public route limits', () => {
+  it('cuenta por ruta y no por cliente, con el tope del enlace por debajo del global', () => {
+    expect(PUBLIC_PAGE_VIEWS).toBe(6000);
+    expect(PUBLIC_PREVIEW_VIEWS).toBe(6000);
+    expect(PUBLIC_PAGE_VIEWS_PER_SLUG).toBe(2000);
+    expect(PUBLIC_PAGE_VIEWS_PER_SLUG).toBeLessThan(PUBLIC_PAGE_VIEWS);
+  });
+
+  it('comparte la ventana de los demás límites de links', () => {
+    expect(LINK_LIMIT_WINDOW_MS).toBe(15 * 60 * 1000);
   });
 });

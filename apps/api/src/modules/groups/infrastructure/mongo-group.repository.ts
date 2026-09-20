@@ -8,6 +8,7 @@ import {
   type Schema,
   type Types,
 } from 'mongoose';
+import { duplicateKeyIs } from '../../../infrastructure/mongo/duplicate-key';
 import { GroupDeletionHooks } from '../application/group-deletion-hooks';
 import type {
   AddMemberInput,
@@ -32,7 +33,6 @@ import {
 } from '../domain/group';
 import type { Membership } from '../domain/membership';
 import {
-  duplicateKeyIs,
   GROUP_MEMBER_MODEL_NAME,
   GROUP_MODEL_NAME,
   GROUPS_COLLECTION,

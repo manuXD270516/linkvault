@@ -1,11 +1,21 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { getConnectionToken } from '@nestjs/mongoose';
 import type { ClientSession, Connection, Model, Types } from 'mongoose';
+import { duplicateKeyIs } from '../../../infrastructure/mongo/duplicate-key';
 import type { NewGroupLinkComment } from '../domain/group-link-comment';
+import {
+  MAX_PUBLIC_SLUG_ATTEMPTS,
+  PublicSlugExhausted,
+  type PublicShare,
+} from '../domain/public-share';
 import {
   GROUP_LINK_COMMENT_REPOSITORY,
   type GroupLinkCommentRepository,
 } from '../application/ports/group-link-comment-repository.port';
+import {
+  PUBLIC_SLUG_GENERATOR,
+  type PublicSlugGenerator,
+} from '../application/ports/public-slug-generator.port';
 import type {
   AddedComment,
   CommentsCounters,
@@ -21,8 +31,10 @@ import type {
 import type { TransactionSession } from '../application/ports/transaction-session';
 import { listLinkPage } from './link-page.query';
 import {
+  GROUP_LINK_KEY,
   GROUP_LINK_MODEL_NAME,
   groupLinkSchema,
+  PUBLIC_SLUG_KEY,
   toGroupObjectId,
   toLinkObjectId,
   toUserObjectId,
@@ -58,6 +70,9 @@ export class MongoGroupLinkRepository implements GroupLinkRepository {
     @Inject(getConnectionToken()) private readonly connection: Connection,
     @Inject(GROUP_LINK_COMMENT_REPOSITORY)
     private readonly comments: GroupLinkCommentRepository,
+    // El generador de slugs se inyecta **aquí** y no en los casos de uso (D2 de public-preview-share): un `E11000` no
+    // es un concepto de aplicación, y quien sabe qué índice rechazó la escritura es quien la hizo.
+    @Inject(PUBLIC_SLUG_GENERATOR) private readonly slugs: PublicSlugGenerator,
   ) {
     this.groupLinks = modelOf<GroupLinkDocument>(
       connection,
@@ -94,6 +109,20 @@ export class MongoGroupLinkRepository implements GroupLinkRepository {
                     createdAt: input.note.createdAt,
                   },
                 }),
+            // El enlace público también va con el alta y solo con ella (D3): si la relación ya estaba, el enlace del
+            // primero no cambia. **Sin bucle de reintento aquí dentro**: se escribe dentro de la transacción de
+            // `withResolvedLink`, y tras un `E11000` la sesión está abortada, así que reintentar sobre ella sería
+            // ilegal y solo haría escrituras muertas. El error sube y se repite la transacción entera, que pide un
+            // slug nuevo (D2, critic N2 de la iteración 2).
+            ...(input.publish === true
+              ? {
+                  publicShare: {
+                    slug: this.slugs.next(),
+                    publishedBy: sharedBy,
+                    publishedAt: input.sharedAt,
+                  },
+                }
+              : {}),
             commentCount: 0,
             commentsRevision: 0,
           },
@@ -125,6 +154,85 @@ export class MongoGroupLinkRepository implements GroupLinkRepository {
       return null;
     }
     const document = await this.groupLinks.findOne(ids).lean().exec();
+    return document ? toGroupLink(document) : null;
+  }
+
+  /**
+   * Publica la relación (D2 de public-preview-share). `updateOne` **suelto, fuera de transacción**: nada más está a
+   * medias, así que aquí sí vive el bucle de hasta cinco intentos, que sortea otro slug cuando el índice único parcial
+   * rechaza el anterior.
+   *
+   * La escritura va condicionada a que **no** exista ya `publicShare`, así que es idempotente frente a dos pestañas: si
+   * no modifica nada, se relee. Si la relación está publicada, se devuelve el slug que ganó; si ya no existe, `null`.
+   */
+  async publish(
+    groupId: string,
+    linkId: string,
+    publishedBy: string,
+    now: Date,
+  ): Promise<PublicShare | null> {
+    const ids = toRelationFilter(groupId, linkId);
+    const author = toUserObjectId(publishedBy);
+    if (ids === null || author === null) {
+      return null;
+    }
+    for (let attempt = 0; attempt < MAX_PUBLIC_SLUG_ATTEMPTS; attempt += 1) {
+      const publicShare = {
+        slug: this.slugs.next(),
+        publishedBy: author,
+        publishedAt: now,
+      };
+      try {
+        const result = await this.groupLinks
+          .updateOne(
+            { ...ids, publicShare: { $exists: false } },
+            { $set: { publicShare } },
+          )
+          .exec();
+        if (result.modifiedCount === 1) {
+          return toPublicShare(publicShare);
+        }
+      } catch (error) {
+        // Solo se reintenta el choque del slug. Un choque de la relación no puede ocurrir aquí —no se crea ninguna—,
+        // y cualquier otro fallo sale tal cual.
+        if (!duplicateKeyIs(error, PUBLIC_SLUG_KEY)) {
+          throw error;
+        }
+        continue;
+      }
+      // No modificó nada: o la publicó otra pestaña, o la relación ya no está.
+      const existing = await this.groupLinks.findOne(ids).lean().exec();
+      if (existing === null) {
+        return null;
+      }
+      if (existing.publicShare !== undefined) {
+        return toPublicShare(existing.publicShare);
+      }
+    }
+    throw new PublicSlugExhausted();
+  }
+
+  /** Quema el slug con un `$unset`, estuviera publicada o no; `false` solo si la relación no existe. */
+  async unpublish(groupId: string, linkId: string): Promise<boolean> {
+    const ids = toRelationFilter(groupId, linkId);
+    if (ids === null) {
+      return false;
+    }
+    const result = await this.groupLinks
+      .updateOne(ids, { $unset: { publicShare: 1 } })
+      .exec();
+    return result.matchedCount === 1;
+  }
+
+  /**
+   * Relación publicada con ese slug, por el índice único parcial: la primera de las dos lecturas de la página pública
+   * (D7). No se normaliza el slug: la comparación es exacta y sensible a mayúsculas (D2).
+   */
+  async findByPublicSlug(slug: string): Promise<GroupLink | null> {
+    const document = await this.groupLinks
+      .findOne({ 'publicShare.slug': slug })
+      .lean()
+      .exec();
     return document ? toGroupLink(document) : null;
   }
 
@@ -343,6 +451,20 @@ function toGroupLink(document: GroupLinkDocument): GroupLink {
     // Un documento anterior a group-comments no tiene los contadores: se leen como 0.
     commentCount: document.commentCount ?? 0,
     commentsRevision: document.commentsRevision ?? 0,
+    ...(document.publicShare === undefined || document.publicShare === null
+      ? {}
+      : { publicShare: toPublicShare(document.publicShare) }),
+  };
+}
+
+/** El enlace público tal y como lo ve la aplicación: `publishedBy` en hexadecimal, no un `ObjectId`. */
+function toPublicShare(
+  stored: NonNullable<GroupLinkDocument['publicShare']>,
+): PublicShare {
+  return {
+    slug: stored.slug,
+    publishedBy: stored.publishedBy.toHexString(),
+    publishedAt: stored.publishedAt,
   };
 }
 

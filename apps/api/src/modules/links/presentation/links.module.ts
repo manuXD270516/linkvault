@@ -41,6 +41,7 @@ import {
   type LinkUserDirectory,
 } from '../application/ports/link-user-directory.port';
 import { PASTED_EXTRACTION } from '../application/ports/pasted-extraction.port';
+import { PUBLIC_SLUG_GENERATOR } from '../application/ports/public-slug-generator.port';
 import { LINK_ENRICHED_PUBLISHER } from '../application/ports/link-enriched-publisher.port';
 import { PasteDescription } from '../application/paste-description.usecase';
 import { PostGroupLinkComment } from '../application/post-group-link-comment.usecase';
@@ -66,6 +67,7 @@ import { MongoGroupLinkCommentRepository } from '../infrastructure/mongo-group-l
 import { MongoGroupLinkRepository } from '../infrastructure/mongo-group-link.repository';
 import { MongoJobLinkRepository } from '../infrastructure/mongo-job-link.repository';
 import { MongoUserLinkRepository } from '../infrastructure/mongo-user-link.repository';
+import { RandomPublicSlugGenerator } from '../infrastructure/random-public-slug.generator';
 import { RunTaskPastedExtraction } from '../infrastructure/run-task-pasted-extraction';
 import { RedisCommentNotices } from '../infrastructure/redis-comment-notices';
 import { RedisCommentsChangedPublisher } from '../infrastructure/redis-comments-changed-publisher';
@@ -123,6 +125,7 @@ import { LinksController } from './links.controller';
     { provide: GROUP_MEMBERSHIP, useClass: GroupsFacadeMembership },
     { provide: LINK_USER_DIRECTORY, useClass: UsersFacadeLinkDirectory },
     { provide: LINK_LIMITER, useClass: CounterLinkLimiter },
+    { provide: PUBLIC_SLUG_GENERATOR, useClass: RandomPublicSlugGenerator },
     { provide: ENRICHMENT_BROADCASTER, useClass: EventStreamBroadcaster },
     { provide: COMMENTS_BROADCASTER, useClass: EventStreamCommentsBroadcaster },
     {

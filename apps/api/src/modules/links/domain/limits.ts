@@ -85,3 +85,24 @@ export const AI_QUOTA_RETRY_AFTER_SECONDS = 24 * 60 * 60;
  * persona porque un script cambia de destino; borrar no cuenta.
  */
 export const COMMENTS_PER_USER = 30;
+
+// Rutas públicas (D8 de public-preview-share, ADR-027 §6). Son contadores **globales de ruta**: la clave es fija y no
+// entra en ella la dirección de origen, ni ninguna cabecera, ni nada derivado de ellas. No hay nada que falsificar y no
+// hacen falta ni `trustProxy` ni ninguna variable de configuración.
+//
+// Lo que acotan es el **coste** —que un bucle no nos haga leer Mongo sin fin—, no el abuso por cliente: 6000 cada 15
+// min son unas 6,7 peticiones por segundo, al alcance de un bucle casero. El control por cliente exige un proxy
+// configurado, que es de `deploy-prod` (ADR-020).
+
+/** Páginas públicas que se sirven en la ventana, en total. */
+export const PUBLIC_PAGE_VIEWS = 6000;
+
+/** Previews públicos que sirve el endpoint del SPA en la ventana, en total. Independiente del de la página. */
+export const PUBLIC_PREVIEW_VIEWS = 6000;
+
+/**
+ * Páginas de **un mismo enlace** en la ventana. Del orden de un tercio del global: bastante por encima de lo que recibe
+ * un enlace pegado en un grupo de WhatsApp y bastante por debajo como para que un bucle contra un enlace no agote el
+ * tope de los demás. Es un dato del recurso, no del cliente: lo lleva la ruta, no una cabecera.
+ */
+export const PUBLIC_PAGE_VIEWS_PER_SLUG = 2000;

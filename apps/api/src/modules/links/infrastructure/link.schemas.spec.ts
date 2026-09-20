@@ -3,9 +3,13 @@ import { platformSchema, previewStatusSchema } from '@linkvault/shared';
 import { getMongoTestUri } from '@linkvault/testing';
 import mongoose, { mongo, type Connection } from 'mongoose';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { duplicateKeyIs } from '../../../infrastructure/mongo/duplicate-key';
 import {
+  GROUP_LINK_KEY,
   GROUP_LINK_MODEL_NAME,
   GROUP_LINKS_COLLECTION,
+  PUBLIC_SLUG_INDEX,
+  PUBLIC_SLUG_KEY,
   JOB_LINK_MODEL_NAME,
   JOB_LINKS_COLLECTION,
   USER_LINK_MODEL_NAME,
@@ -30,6 +34,16 @@ const now = new Date('2026-09-17T10:00:00.000Z');
 const GROUP_ID = new mongoose.Types.ObjectId();
 const USER_ID = new mongoose.Types.ObjectId();
 const LINK_ID = new mongoose.Types.ObjectId();
+
+/** Error con el que falla la escritura, o `undefined` si no falló. */
+async function writeError(write: Promise<unknown>): Promise<unknown> {
+  try {
+    await write;
+    return undefined;
+  } catch (error) {
+    return error;
+  }
+}
 
 /** Código del error del driver, o `undefined` si la escritura no falló. `11000` es la clave duplicada. */
 async function writeErrorCode(
@@ -183,7 +197,8 @@ describe('job_links collection', () => {
 });
 
 describe('group_links collection', () => {
-  it('keeps exactly its three indexes: group-comments adds none', async () => {
+  // Los tres índices anteriores NO cambian; `public-preview-share` añade **uno solo**, el del slug (D11).
+  it('keeps its three indexes and adds only the public slug one', async () => {
     const indexes = await connection
       .collection(GROUP_LINKS_COLLECTION)
       .indexes();
@@ -193,6 +208,7 @@ describe('group_links collection', () => {
       { groupId: 1, linkId: 1 },
       { groupId: 1, sharedAt: -1, _id: -1 },
       { linkId: 1 },
+      { 'publicShare.slug': 1 },
     ]);
   });
 
@@ -290,6 +306,120 @@ describe('group_links collection', () => {
         }),
       ),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe('el enlace público de una relación', () => {
+  const PUBLISHED_SLUG = 'k7m2p9r4t6vw';
+
+  it('declara el índice único parcial del slug con su nombre explícito', async () => {
+    const indexes = await connection
+      .collection(GROUP_LINKS_COLLECTION)
+      .indexes();
+
+    expect(indexes).toContainEqual(
+      expect.objectContaining({
+        name: PUBLIC_SLUG_INDEX,
+        key: { 'publicShare.slug': 1 },
+        unique: true,
+        partialFilterExpression: { 'publicShare.slug': { $exists: true } },
+      }),
+    );
+  });
+
+  it('guarda el slug, quién publicó y cuándo', async () => {
+    const model = connection.model<GroupLinkDocument>(GROUP_LINK_MODEL_NAME);
+    const created = await model.create({
+      groupId: new mongoose.Types.ObjectId(),
+      linkId: LINK_ID,
+      sharedBy: USER_ID,
+      sharedAt: now,
+      publicShare: {
+        slug: PUBLISHED_SLUG,
+        publishedBy: USER_ID,
+        publishedAt: now,
+      },
+    });
+    const raw = await connection
+      .collection(GROUP_LINKS_COLLECTION)
+      .findOne({ _id: created._id });
+
+    expect(raw?.['publicShare']).toEqual({
+      slug: PUBLISHED_SLUG,
+      publishedBy: USER_ID,
+      publishedAt: now,
+    });
+  });
+
+  it('rechaza dos relaciones con el mismo slug', async () => {
+    const model = connection.model<GroupLinkDocument>(GROUP_LINK_MODEL_NAME);
+
+    await expect(
+      writeErrorCode(
+        model.create({
+          groupId: new mongoose.Types.ObjectId(),
+          linkId: new mongoose.Types.ObjectId(),
+          sharedBy: USER_ID,
+          sharedAt: now,
+          publicShare: {
+            slug: PUBLISHED_SLUG,
+            publishedBy: USER_ID,
+            publishedAt: now,
+          },
+        }),
+      ),
+    ).resolves.toBe(11_000);
+  });
+
+  // Parcial: la inmensa mayoría de las relaciones no están publicadas, y un único a secas las haría chocar en `null`.
+  it('acepta muchas relaciones sin publicar', async () => {
+    const model = connection.model<GroupLinkDocument>(GROUP_LINK_MODEL_NAME);
+
+    await expect(
+      model.insertMany([
+        {
+          groupId: new mongoose.Types.ObjectId(),
+          linkId: new mongoose.Types.ObjectId(),
+          sharedBy: USER_ID,
+          sharedAt: now,
+        },
+        {
+          groupId: new mongoose.Types.ObjectId(),
+          linkId: new mongoose.Types.ObjectId(),
+          sharedBy: USER_ID,
+          sharedAt: now,
+        },
+      ]),
+    ).resolves.toHaveLength(2);
+  });
+
+  it('distingue sus dos claves únicas con duplicateKeyIs', async () => {
+    const model = connection.model<GroupLinkDocument>(GROUP_LINK_MODEL_NAME);
+    const groupId = new mongoose.Types.ObjectId();
+    const linkId = new mongoose.Types.ObjectId();
+    await model.create({ groupId, linkId, sharedBy: USER_ID, sharedAt: now });
+
+    const relationError = await writeError(
+      model.create({ groupId, linkId, sharedBy: USER_ID, sharedAt: now }),
+    );
+    const slugError = await writeError(
+      model.create({
+        groupId: new mongoose.Types.ObjectId(),
+        linkId: new mongoose.Types.ObjectId(),
+        sharedBy: USER_ID,
+        sharedAt: now,
+        publicShare: {
+          slug: PUBLISHED_SLUG,
+          publishedBy: USER_ID,
+          publishedAt: now,
+        },
+      }),
+    );
+
+    expect(duplicateKeyIs(relationError, GROUP_LINK_KEY)).toBe(true);
+    expect(duplicateKeyIs(relationError, PUBLIC_SLUG_KEY)).toBe(false);
+    expect(duplicateKeyIs(slugError, PUBLIC_SLUG_KEY)).toBe(true);
+    expect(duplicateKeyIs(slugError, GROUP_LINK_KEY)).toBe(false);
   });
 });
 

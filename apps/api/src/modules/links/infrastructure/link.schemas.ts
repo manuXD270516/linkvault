@@ -30,6 +30,22 @@ export const GROUP_LINKS_COLLECTION = 'group_links';
 export const USER_LINK_MODEL_NAME = 'UserLink';
 export const USER_LINKS_COLLECTION = 'user_links';
 
+/**
+ * `keyPattern` de los dos índices únicos de `group_links`, con los que `duplicateKeyIs` reconoce cuál rechazó una
+ * escritura (ADR-025 §4). Hacen falta los dos porque `share({ publish: true })` puede chocar con cualquiera de ellos y
+ * el repositorio los trata distinto (D2 de public-preview-share).
+ */
+export const GROUP_LINK_KEY: Readonly<Record<string, 1>> = {
+  groupId: 1,
+  linkId: 1,
+};
+export const PUBLIC_SLUG_KEY: Readonly<Record<string, 1>> = {
+  'publicShare.slug': 1,
+};
+
+/** Nombre explícito del índice del slug, para reconocerlo en `getIndexes()` y en el RUNBOOK. */
+export const PUBLIC_SLUG_INDEX = 'public_share_slug';
+
 export interface JobLinkDocument {
   _id: Types.ObjectId;
   /** Solo identidad: no se abre ni se descarga. */
@@ -80,6 +96,12 @@ export interface GroupLinkDocument {
    */
   commentCount?: number;
   commentsRevision?: number;
+  /**
+   * Enlace público de este link en este grupo (D1 de public-preview-share). Ausente mientras no esté publicado, y
+   * también en cualquier relación anterior al change: **no hay backfill**, así que ningún link ya compartido se publica
+   * solo. Despublicar lo borra entero con un `$unset`, de modo que el slug se quema.
+   */
+  publicShare?: { slug: string; publishedBy: Types.ObjectId; publishedAt: Date };
 }
 
 export interface UserLinkDocument {
@@ -163,12 +185,23 @@ export const groupLinkSchema = new Schema<GroupLinkDocument>(
     },
     commentCount: { type: Number, required: false, default: 0 },
     commentsRevision: { type: Number, required: false, default: 0 },
+    publicShare: {
+      type: new Schema(
+        {
+          slug: { type: String, required: true },
+          publishedBy: { type: Schema.Types.ObjectId, required: true },
+          publishedAt: { type: Date, required: true },
+        },
+        { _id: false, versionKey: false, strict: true },
+      ),
+      required: false,
+    },
   },
   { ...schemaOptions, collection: GROUP_LINKS_COLLECTION },
 );
 
 // Un grupo tiene cada link una sola vez: compartir dos veces no duplica ni cambia quién lo compartió (D4).
-groupLinkSchema.index({ groupId: 1, linkId: 1 }, { unique: true });
+groupLinkSchema.index({ ...GROUP_LINK_KEY }, { unique: true });
 // Listado paginado del grupo. El `_id` desempata: sin él, 50 links guardados en el mismo instante se repetirían o se
 // saltarían al pasar de página (D8).
 groupLinkSchema.index({ groupId: 1, sharedAt: -1, _id: -1 });
@@ -176,6 +209,18 @@ groupLinkSchema.index({ groupId: 1, sharedAt: -1, _id: -1 });
 // llevan el link en segunda posición, así que no sirven para buscar por link solo; sin este, cada aviso de una
 // importación de 50 links sería un escaneo completo de la colección.
 groupLinkSchema.index({ linkId: 1 });
+// Único **parcial** sobre el slug del enlace público (D2 de public-preview-share): es lo que garantiza la unicidad y lo
+// único que cierra la carrera de dos publicaciones simultáneas, sin ninguna consulta previa. Parcial porque la inmensa
+// mayoría de las relaciones no tienen `publicShare`, y un índice único a secas las haría chocar todas en `null`.
+// Resuelve además la página pública con un solo `findOne`. Los tres índices anteriores NO se tocan.
+groupLinkSchema.index(
+  { ...PUBLIC_SLUG_KEY },
+  {
+    unique: true,
+    partialFilterExpression: { 'publicShare.slug': { $exists: true } },
+    name: PUBLIC_SLUG_INDEX,
+  },
+);
 
 export const userLinkSchema = new Schema<UserLinkDocument>(
   {
