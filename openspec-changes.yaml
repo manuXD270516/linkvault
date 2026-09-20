@@ -193,9 +193,17 @@ changes:
     adrs: [014, 018, 020]
     agents: [ai-engineer, backend-dev, frontend-dev]
     scope: |
-      docs/design-v0.2.md §4.7, §4.8, §4.12: tareas match-cv y critique-suggestions, evaluator-optimizer acotado (máx 2, juez distinto
-      si hay ≥2 proveedores), MatchReport con evidence obligatoria, RuleBasedMatcher degradado, ai_analyses, Application.fitScore,
-      ai_feedback ("no me convence"), SSE analysis.step. Frontend: diff aceptar/rechazar, badge de fit.
+      **Partido en dos por decisión humana (2026-09-20): este change entrega el análisis y toda la privacidad; el bucle de
+      juez y la revisión humana de las sugerencias van en `cv-suggestions-review`.** Motivo: el scope original acumulaba
+      trabajo diferido de otros tres changes y habría sido el PR más grande del proyecto, con la superficie de privacidad
+      y la de calidad del modelo abiertas a la vez. Se registra en ADR-029.
+
+      Proveedores decididos por el autor: **Ollama local y OpenRouter limitado a modelos `:free` con
+      `data_collection: "deny"`** (ADR-018 §12), detrás del consentimiento explícito y con el CV pasado por el
+      `PiiRedactor`. **BYOK queda fuera**: sigue en su propio change `ai-byok`.
+
+      docs/design-v0.2.md §4.7 y §4.12: tarea match-cv, MatchReport con evidence obligatoria, RuleBasedMatcher degradado,
+      ai_analyses, Application.fitScore, SSE analysis.step. Frontend: badge de fit y el informe en pantalla.
       PiiRedactor: detectores de dirección postal y documento de identidad (CI con extensión departamental, DNI, cédula), afinados
       con CVs reales anonimizados (diferidos desde ai-gateway-core, ADR-018). Métricas de redacción en el eval harness
       (skills ocultadas por la redacción y PII anotada que no se redacta) sobre ese golden de CVs, para medir la sobre-redacción
@@ -211,6 +219,20 @@ changes:
       infraestructura, así que es también el que cierra la línea de privacidad completa: dónde se da la autorización, qué
       se envía y qué se redacta. Si quiere avisar en vivo del final de la extracción, el evento `cv.extracted` va por el
       canal SSE que ya existe.
+  - name: cv-suggestions-review
+    adrs: [014, 018, 019, 029]
+    agents: [ai-engineer, backend-dev, frontend-dev]
+    scope: |
+      Segunda mitad de `cv-match-suggestions` (ADR-029): sube la calidad de las sugerencias sin volver a tocar la
+      privacidad, que aquel change ya cerró.
+      docs/design-v0.2.md §4.8: tarea `critique-suggestions` y evaluator-optimizer acotado (máx 2 iteraciones, para si
+      el score del juez ≥ 0.8, si Δ < 0.05 o si se agota el budget; juez distinto del generador si hay ≥2 proveedores,
+      que con Ollama y OpenRouter ya se cumple), guardando `judgeScore` y `judgeModel` con el informe.
+      `ai_feedback` ("no me convence") y su export a `candidates.jsonl` para revisión humana antes de entrar al golden
+      (design §4.11). Frontend: diff aceptar/rechazar de cada sugerencia sobre el CV, y los pasos del bucle por el SSE
+      `analysis.step` que `cv-match-suggestions` ya emite.
+      Métricas del eval harness para el bucle: correlación del `score` con etiquetas humanas (1–5) y coste por vuelta,
+      para que una iteración de más se vea en el reporte y no solo en la factura.
   - name: study-roadmap
     adrs: [014]
     agents: [ai-engineer, frontend-dev]
