@@ -87,6 +87,29 @@ describe('MyCvPage', () => {
     await harness.fixture.whenStable();
   }
 
+  /** Mensaje de la confirmación abierta, sin título ni botones. */
+  function dialogMessage(): string {
+    const container = document.body.querySelector<HTMLElement>('mat-dialog-container');
+    if (!container) {
+      throw new Error('Dialog not opened');
+    }
+    return container.querySelector('mat-dialog-content p')?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+  }
+
+  /** Pulsa un botón de la confirmación abierta. */
+  async function answer(label: string): Promise<void> {
+    const container = document.body.querySelector<HTMLElement>('mat-dialog-container');
+    const button = Array.from(container?.querySelectorAll('button') ?? []).find(
+      (candidate) => candidate.textContent?.trim() === label,
+    );
+    if (!button) {
+      throw new Error(`Button "${label}" not in the dialog`);
+    }
+    button.click();
+    await settle();
+    await harness.fixture.whenStable();
+  }
+
   /** Elige un archivo en el selector de la pantalla, como haría el sistema operativo. */
   async function choose(file: File): Promise<void> {
     const input = page().querySelector<HTMLInputElement>('[data-testid="cv-file-input"]');
@@ -306,6 +329,164 @@ describe('MyCvPage', () => {
 
     expect(text()).toContain('Este CV ya no está');
     expect(page().querySelectorAll('[data-testid="cv-card"]')).toHaveLength(0);
+  });
+
+  it('Eliminar un CV', async () => {
+    const newest = cvDocument({ id: 'cv2', fileName: 'CV_nuevo.pdf', version: 2 });
+    await open([newest, cvDocument({ id: 'cv1', isDefault: false })]);
+
+    await click('[data-testid="cv-remove"]', 1);
+
+    expect(dialogMessage()).toBe(
+      '¿Eliminar CV_backend.pdf? El archivo se borra y no se puede recuperar.',
+    );
+    await answer('Eliminar');
+
+    const request = await vi.waitFor(() => http.expectOne({ method: 'DELETE', url: '/api/cv/cv1' }));
+    request.flush({ items: [newest] });
+    await settle();
+    await harness.fixture.whenStable();
+
+    expect(page().querySelectorAll('[data-testid="cv-card"]')).toHaveLength(1);
+  });
+
+  it('Eliminar el marcado', async () => {
+    const newest = cvDocument({ id: 'cv2', fileName: 'CV_nuevo.pdf', version: 2 });
+    const older = cvDocument({ id: 'cv1', isDefault: false });
+    await open([newest, older]);
+
+    await click('[data-testid="cv-remove"]', 0);
+
+    expect(dialogMessage()).toBe(
+      '¿Eliminar CV_nuevo.pdf? El archivo se borra y no se puede recuperar. Pasará a usarse tu CV más reciente.',
+    );
+    await answer('Eliminar');
+
+    const request = await vi.waitFor(() => http.expectOne({ method: 'DELETE', url: '/api/cv/cv2' }));
+    request.flush({ items: [{ ...older, isDefault: true }] });
+    await settle();
+    await harness.fixture.whenStable();
+
+    expect(defaultNames()).toEqual(['CV_backend.pdf']);
+  });
+
+  it('Cancelar el borrado', async () => {
+    await open([cvDocument()]);
+
+    await click('[data-testid="cv-remove"]', 0);
+    await answer('Cancelar');
+    await settle();
+
+    expect(page().querySelectorAll('[data-testid="cv-card"]')).toHaveLength(1);
+    http.expectNone({ method: 'DELETE', url: '/api/cv/cv1' });
+  });
+
+  it('La API rechaza lo que el SPA dejó pasar', async () => {
+    await open([cvDocument()]);
+
+    // El archivo pasa la comprobación local: tiene extensión `.pdf` y pesa menos de 5 MB.
+    await choose(pdf('CV_falso.pdf', 1024));
+    const { body, options } = apiError('unsupported_file_type', 415);
+    http.expectOne({ method: 'POST', url: '/api/cv' }).flush(body, options);
+    await settle();
+    await harness.fixture.whenStable();
+
+    expect(text()).toContain('Solo aceptamos PDF o DOCX');
+    expect(page().querySelectorAll('[data-testid="cv-card"]')).toHaveLength(1);
+  });
+
+  it('el tamaño lo puede decir también la API', async () => {
+    await open([]);
+
+    await choose(pdf('CV_grande.pdf', 1024));
+    const { body, options } = apiError('file_too_large', 413);
+    http.expectOne({ method: 'POST', url: '/api/cv' }).flush(body, options);
+    await settle();
+    await harness.fixture.whenStable();
+
+    expect(text()).toContain('Ese archivo pesa más de 5 MB');
+  });
+
+  it('Tope de CV guardados', async () => {
+    await open([cvDocument()]);
+
+    await choose(pdf('CV_sexto.pdf', 1024));
+    const { body, options } = apiError('too_many_cvs', 409);
+    http.expectOne({ method: 'POST', url: '/api/cv' }).flush(body, options);
+    await settle();
+    await harness.fixture.whenStable();
+
+    expect(text()).toContain(
+      'Guardamos hasta 5 CV. Elimina uno para subir otro; si alguno no se pudo leer, empieza por ese.',
+    );
+  });
+
+  it('Límite alcanzado', async () => {
+    await open([cvDocument()]);
+
+    await choose(pdf('CV_backend.pdf', 1024));
+    const { body, options } = apiError('too_many_attempts', 429, { 'Retry-After': '900' });
+    http.expectOne({ method: 'POST', url: '/api/cv' }).flush(body, options);
+    await settle();
+    await harness.fixture.whenStable();
+
+    expect(text()).toContain('Demasiados intentos. Vuelve a intentarlo en 15 minutos');
+    expect(page().querySelectorAll('[data-testid="cv-card"]')).toHaveLength(1);
+  });
+
+  it('Archivo que no admitimos, detectado en el SPA', async () => {
+    await open([]);
+
+    const odt = new File([''], 'CV_Ana.odt', { type: 'application/vnd.oasis.opendocument.text' });
+    await choose(odt);
+
+    expect(text()).toContain('Solo aceptamos PDF o DOCX');
+    http.expectNone({ method: 'POST', url: '/api/cv' });
+  });
+
+  it('Archivo demasiado grande, detectado en el SPA', async () => {
+    await open([]);
+
+    await choose(pdf('CV_enorme.pdf', 7 * 1024 * 1024));
+
+    expect(text()).toContain('Ese archivo pesa más de 5 MB');
+    http.expectNone({ method: 'POST', url: '/api/cv' });
+  });
+
+  it('Se acabó la paciencia', async () => {
+    const reading = cvDocument({ extraction: { status: 'pending', textChars: 0 } });
+
+    // El reloj falso se instala antes de entrar: solo captura los temporizadores creados después.
+    vi.useFakeTimers();
+    try {
+      await harness.navigateByUrl('/mi-cv', Shell);
+      const first = await vi.waitFor(() => http.expectOne({ method: 'GET', url: '/api/cv' }));
+      first.flush({ items: [reading] });
+      await vi.advanceTimersByTimeAsync(0);
+
+      // Se agota la ventana de sondeo —30 vueltas de 2 s— sin que la lectura termine.
+      for (let poll = 0; poll < 30; poll += 1) {
+        await vi.advanceTimersByTimeAsync(2_000);
+        http.expectOne({ method: 'GET', url: '/api/cv' }).flush({ items: [reading] });
+        await vi.advanceTimersByTimeAsync(0);
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+    await settle();
+    await harness.fixture.whenStable();
+
+    expect(text()).toContain(
+      'Sigue en proceso. Si sigue así en unos minutos, elimínalo y vuelve a subirlo.',
+    );
+
+    // "Actualizar" vuelve a pedir la lista y reanuda la espera.
+    await click('[data-testid="cv-stalled-refresh"]');
+    http.expectOne({ method: 'GET', url: '/api/cv' }).flush({ items: [cvDocument()] });
+    await settle();
+    await harness.fixture.whenStable();
+
+    expect(text()).not.toContain('Sigue en proceso');
   });
 
   it('La lista no carga', async () => {

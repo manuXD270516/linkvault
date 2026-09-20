@@ -4,6 +4,7 @@
   <lv-cv-upload
     [uploading]="uploading()"
     [percent]="uploadPercent()"
+    [failure]="uploadFailure()"
     (chosen)="upload($event)"
   />
 
@@ -24,6 +25,29 @@
 
   @if (loading() && !loaded()) {
     <p class="m-0" role="status" data-testid="cv-loading" i18n="@@cv.loading">Cargando tus CV…</p>
+  }
+
+  @if (stalled()) {
+    <!--
+      Un `pending` que no se resuelve —worker parado, relay apagado— no se arregla solo, así que la salida está en la
+      mano de la persona: borrarlo y volver a subirlo crea un evento nuevo. "Actualizar" da otros 60 s de espera.
+    -->
+    <div class="flex flex-col gap-2" data-testid="cv-stalled">
+      <p class="m-0" role="status" i18n="@@cv.stalled">
+        Sigue en proceso. Si sigue así en unos minutos, elimínalo y vuelve a subirlo.
+      </p>
+      <div>
+        <button
+          mat-stroked-button
+          type="button"
+          (click)="retry()"
+          data-testid="cv-stalled-refresh"
+          i18n="@@cv.refresh"
+        >
+          Actualizar
+        </button>
+      </div>
+    </div>
   }
 
   @if (goneNotice()) {

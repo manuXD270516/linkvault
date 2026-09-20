@@ -11,6 +11,8 @@ import {
 import { MatButtonModule } from '@angular/material/button';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { CV_FILE_TYPES, CV_MAX_FILE_BYTES } from '@linkvault/shared';
+import { type RequestFailure, isApiFailure } from '../../core/api/api-error';
+import { RequestError } from '../../shared/ui/request-error';
 
 /**
  * Lo que el selector de archivos acepta: las **extensiones y los MIME** de los dos formatos. Con los MIME, el selector
@@ -27,6 +29,13 @@ const CV_EXTENSIONS = Object.values(CV_FILE_TYPES).map((type) => type.extension)
 export type CvLocalProblem = 'type' | 'size';
 
 /**
+ * Lo que se dice cuando la subida no sale. `type` y `size` los dice también la comprobación local, con el mismo texto:
+ * a la persona le da igual quién se dio cuenta. `tooMany` es el tope de CV guardados y `request` es todo lo demás,
+ * que explica `lv-request-error` (el límite con su espera, sin conexión y el genérico).
+ */
+export type CvUploadProblem = CvLocalProblem | 'tooMany' | 'request';
+
+/**
  * Subida del CV (D13, spec web/cv "Subir el CV con progreso"). El **botón es la vía principal** y soltar el archivo es
  * la alternativa: soltar es un gesto que mucha gente no descubre, así que no puede ser la única entrada.
  *
@@ -35,7 +44,7 @@ export type CvLocalProblem = 'type' | 'size';
  */
 @Component({
   selector: 'lv-cv-upload',
-  imports: [MatButtonModule, MatProgressBarModule],
+  imports: [MatButtonModule, MatProgressBarModule, RequestError],
   templateUrl: './cv-upload.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -44,6 +53,8 @@ export class CvUpload {
   readonly uploading = input(false);
   /** Porcentaje subido, o `null` mientras no se sepa; con `null` la barra va en indeterminado. */
   readonly percent = input<number | null>(null);
+  /** Lo que respondió la API al último intento; manda sobre la comprobación local. */
+  readonly failure = input<RequestFailure | null>(null);
 
   /** El archivo elegido, ya pasadas las comprobaciones locales. */
   readonly chosen = output<File>();
@@ -55,6 +66,28 @@ export class CvUpload {
   protected readonly progressMode = computed(() =>
     this.percent() === null ? 'indeterminate' : 'determinate',
   );
+
+  /**
+   * Qué se dice: primero lo que encontró la comprobación local —que es de este intento— y, si no hay nada, lo que
+   * respondió la API. Un `415` o un `413` se muestran igual aunque la comprobación local hubiera pasado.
+   */
+  protected readonly problem = computed((): CvUploadProblem | null => {
+    const local = this.localProblem();
+    if (local !== null) {
+      return local;
+    }
+    const failure = this.failure();
+    if (failure === null) {
+      return null;
+    }
+    if (isApiFailure(failure, 415, 'unsupported_file_type')) {
+      return 'type';
+    }
+    if (isApiFailure(failure, 413, 'file_too_large')) {
+      return 'size';
+    }
+    return isApiFailure(failure, 409, 'too_many_cvs') ? 'tooMany' : 'request';
+  });
 
   private readonly fileInput = viewChild.required<ElementRef<HTMLInputElement>>('fileInput');
 

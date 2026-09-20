@@ -4,6 +4,7 @@ import { MatDialog } from '@angular/material/dialog';
 import type { CvDocument } from '@linkvault/shared';
 import { firstValueFrom } from 'rxjs';
 import { CvStore } from '../../core/cv/cv.store';
+import { confirmWith } from '../../shared/ui/confirm.dialog';
 import { RequestError } from '../../shared/ui/request-error';
 import { CvCard } from './cv-card.component';
 import {
@@ -40,7 +41,9 @@ export class MyCvPage {
   protected readonly failure = this.store.failure;
   protected readonly uploading = this.store.uploading;
   protected readonly uploadPercent = this.store.uploadPercent;
+  protected readonly uploadFailure = this.store.uploadFailure;
   protected readonly actionFailure = this.store.actionFailure;
+  protected readonly stalled = this.store.stalled;
 
   /** `true` mientras hay una acción en curso: marcar o eliminar no se pueden pulsar dos veces. */
   protected readonly busy = signal(false);
@@ -93,8 +96,23 @@ export class MyCvPage {
     });
   }
 
+  /**
+   * Elimina el CV tras confirmarlo. La confirmación **nombra el archivo** —es lo que la persona reconoce— y avisa de
+   * que el archivo se borra y no se puede recuperar; si es el marcado, añade a quién pasará la marca.
+   */
   protected remove(item: CvDocument): void {
-    void this.run(() => this.store.remove(item.id));
+    void this.run(async () => {
+      const confirmed = await confirmWith(this.dialog, {
+        title: $localize`:@@cv.delete.title:Eliminar este CV`,
+        message: item.isDefault
+          ? $localize`:@@cv.delete.messageDefault:¿Eliminar ${item.fileName}:NAME:? El archivo se borra y no se puede recuperar. Pasará a usarse tu CV más reciente.`
+          : $localize`:@@cv.delete.message:¿Eliminar ${item.fileName}:NAME:? El archivo se borra y no se puede recuperar.`,
+        confirmLabel: $localize`:@@cv.delete.confirm:Eliminar`,
+      });
+      if (confirmed) {
+        await this.store.remove(item.id);
+      }
+    });
   }
 
   /** Mientras una acción está en curso, las demás no responden. */

@@ -43,13 +43,32 @@
     </div>
   }
 
-  @if (localProblem(); as problem) {
-    <p class="m-0 text-(--mat-sys-error)" role="alert" data-testid="cv-upload-error">
-      @if (problem === 'type') {
-        <ng-container i18n="@@cv.error.unsupportedType">Solo aceptamos PDF o DOCX</ng-container>
-      } @else {
-        <ng-container i18n="@@cv.error.tooLarge">Ese archivo pesa más de 5 MB</ng-container>
+  @if (problem(); as currentProblem) {
+    <div data-testid="cv-upload-error">
+      @switch (currentProblem) {
+        @case ('type') {
+          <p class="m-0 text-(--mat-sys-error)" role="alert" i18n="@@cv.error.unsupportedType">
+            Solo aceptamos PDF o DOCX
+          </p>
+        }
+        @case ('size') {
+          <p class="m-0 text-(--mat-sys-error)" role="alert" i18n="@@cv.error.tooLarge">
+            Ese archivo pesa más de 5 MB
+          </p>
+        }
+        @case ('tooMany') {
+          <!-- Elegir cuál borrar es justo la decisión que bloquea, así que se dice por dónde empezar. -->
+          <p class="m-0 text-(--mat-sys-error)" role="alert" i18n="@@cv.error.tooManyCvs">
+            Guardamos hasta 5 CV. Elimina uno para subir otro; si alguno no se pudo leer, empieza por
+            ese.
+          </p>
+        }
+        @default {
+          @if (failure(); as currentFailure) {
+            <lv-request-error [failure]="currentFailure" />
+          }
+        }
       }
-    </p>
+    </div>
   }
 </div>
