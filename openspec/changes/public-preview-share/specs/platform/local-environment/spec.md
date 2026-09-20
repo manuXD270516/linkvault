@@ -38,15 +38,13 @@ el entorno local y seguros por defecto. La selección de proveedores de IA SHALL
 `AI_MOCK_MODE`; la variable `AI_PROVIDER` NO SHALL usarse. Ningún secreto real SHALL estar versionado.
 
 Las URLs públicas de la página (`PUBLIC_PAGE_BASE_URL`) y del SPA (`WEB_BASE_URL`) SHALL declararse como variables, con
-los valores del entorno local, y NO SHALL deducirse de la cabecera `Host` de una petición. `TRUST_PROXY` SHALL valer
-`false` por defecto, porque activarla sin un proxy delante permite falsificar la dirección de origen.
+los valores del entorno local, y NO SHALL deducirse de la cabecera `Host` de una petición.
 
 #### Scenario: Valores por defecto seguros
 
 - **WHEN** se inspecciona `.env.example`
 - **THEN** `FEATURE_HEADLESS_EXTRACTION` SHALL valer `false`
 - **AND** `AI_CHAIN` SHALL valer `mock`
-- **AND** `TRUST_PROXY` SHALL valer `false`
 - **AND** NO SHALL contener ninguna clave de API real ni la variable `AI_PROVIDER`
 
 #### Scenario: URLs públicas declaradas

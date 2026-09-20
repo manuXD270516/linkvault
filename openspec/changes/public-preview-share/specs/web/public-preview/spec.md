@@ -10,8 +10,12 @@ NO SHALL mostrar quién compartió la oferta, a qué grupo pertenece, la nota, l
 resumen, las habilidades ni el origen de ningún campo. Mientras la persona no tenga sesión, la página NO SHALL pedir a
 la API nada más que el preview público.
 
-Un `slug` inexistente o despublicado SHALL mostrar "Este enlace ya no está disponible" con las acciones de entrar y
-registrarse, y SIN el CTA de guardar.
+Un `slug` inexistente o despublicado SHALL mostrar "Este enlace ya no está disponible" y "Pídeselo de nuevo a quien te
+lo envió", con las acciones de entrar y registrarse, y SIN el CTA de guardar.
+
+La ruta `/oferta/:slug` NO SHALL indexarse: el SPA SHALL marcarla con `noindex` mientras esté abierta y su `robots.txt`
+SHALL incluir `Disallow: /oferta/`. Es la misma regla que la página servida por la API: la oferta es de la bolsa que la
+publicó y LinkVault no la duplica en los buscadores.
 
 #### Scenario: Oferta pública con datos
 
@@ -30,8 +34,14 @@ registrarse, y SIN el CTA de guardar.
 
 - **GIVEN** un `slug` despublicado
 - **WHEN** alguien lo abre
-- **THEN** SHALL ver "Este enlace ya no está disponible"
+- **THEN** SHALL ver "Este enlace ya no está disponible" y "Pídeselo de nuevo a quien te lo envió"
 - **AND** NO SHALL ver "Guardar en LinkVault"
+
+#### Scenario: La vista pública no se indexa
+
+- **WHEN** se abre `/oferta/:slug`
+- **THEN** el documento SHALL llevar `noindex`
+- **AND** el `robots.txt` del SPA SHALL incluir `Disallow: /oferta/`
 
 #### Scenario: La vista pública no pide la sesión
 
@@ -42,7 +52,8 @@ registrarse, y SIN el CTA de guardar.
 
 ### Requirement: Guardar en LinkVault desde la vista pública
 
-La vista pública SHALL ofrecer "Guardar en LinkVault" como acción principal.
+La vista pública SHALL ofrecer "Guardar en LinkVault" como acción principal, con la línea "Guarda aquí las ofertas que
+te pasan por WhatsApp y no las pierdas." debajo, para que quien no conoce LinkVault sepa qué gana al pulsar.
 
 - Sin sesión SHALL navegar a `/registro?import=<slug>`, y las páginas de registro y de login SHALL conservar ese
   parámetro en el enlace que llevan la una a la otra.
@@ -56,6 +67,11 @@ La vista pública SHALL ofrecer "Guardar en LinkVault" como acción principal.
 - **GIVEN** alguien sin sesión en `/oferta/:slug`
 - **WHEN** pulsa "Guardar en LinkVault"
 - **THEN** SHALL llegar a `/registro` con `import` igual a ese `slug`
+
+#### Scenario: El CTA dice para qué sirve
+
+- **WHEN** alguien sin cuenta abre `/oferta/:slug`
+- **THEN** bajo "Guardar en LinkVault" SHALL ver "Guarda aquí las ofertas que te pasan por WhatsApp y no las pierdas."
 
 #### Scenario: Del registro al login sin perder la oferta
 
@@ -94,7 +110,8 @@ parámetro de la URL sin dejar entrada en el historial, de modo que recargar la 
 
 Al terminar SHALL mostrar "Guardada en «Solo para mí». Compártela en un grupo cuando quieras." y la oferta en la lista.
 Si ya la tenía SHALL decir "Ya la tenías guardada", y si la tiene en algún grupo suyo SHALL decir en cuáles. Si el
-guardado falla SHALL decirlo sin perder la lista.
+guardado falla SHALL decirlo sin perder la lista y SHALL ofrecer "Reintentar", que vuelve a intentarlo sin obligar a
+volver al enlace público.
 
 #### Scenario: Oferta guardada
 
@@ -128,6 +145,13 @@ guardado falla SHALL decirlo sin perder la lista.
 - **WHEN** pulsa "Guardar en LinkVault" y llega a `/mis-links?import=<slug>`
 - **THEN** la oferta SHALL guardarse igual en su lista privada
 
+#### Scenario: El guardado falla
+
+- **GIVEN** alguien que llega a `/mis-links?import=<slug>` y la API responde con un error
+- **WHEN** ve el mensaje
+- **THEN** SHALL poder pulsar "Reintentar" y guardar la oferta sin volver al enlace público
+- **AND** su lista privada SHALL seguir viéndose
+
 ### Requirement: Interruptor del enlace público en la tarjeta del grupo
 
 En `/grupos/:id`, la tarjeta de un link publicado SHALL mostrar a **cualquier miembro** una marca "Enlace público".
@@ -142,8 +166,14 @@ quieras." Apagarlo SHALL confirmar con "El enlace dejará de funcionar para todo
 tenga. Si vuelves a activarlo, se creará un enlace nuevo. Las vistas previas ya enviadas en un chat pueden seguir
 viéndose ahí."
 
-La tarjeta SHALL actualizarse sin recargar. Un `403` SHALL mostrar "No puedes cambiar esto" sin cambiar la tarjeta, y un
-`404` SHALL volver a pedir la lista. En `/mis-links` las tarjetas NO SHALL mostrar ni la marca ni el interruptor.
+"Copiar enlace" SHALL avisar, cuando la oferta todavía no se ha leído, con "Todavía estamos leyendo la oferta: si lo
+envías ahora, la tarjeta saldrá sin datos", y SHALL dejar copiar igualmente.
+
+La tarjeta SHALL actualizarse sin recargar: al publicar SHALL mostrar el enlace devuelto y al despublicar SHALL
+**borrar explícitamente** el enlace de la tarjeta, como ya hace al quitar la nota, sin esperar a recargar la lista. Un
+`403` SHALL mostrar "Solo quien compartió la oferta o el propietario del grupo puede cambiar esto" sin cambiar la
+tarjeta, y un `404` SHALL volver a pedir la lista. En `/mis-links` las tarjetas NO SHALL mostrar ni la marca ni el
+interruptor.
 
 #### Scenario: Compartir con un enlace público
 
@@ -190,6 +220,27 @@ La tarjeta SHALL actualizarse sin recargar. Un `403` SHALL mostrar "No puedes ca
 - **WHEN** pulsa "Copiar enlace"
 - **THEN** lo copiado SHALL ser una URL absoluta que contiene `/p/` y el `slug`
 - **AND** SHALL verse "Enlace copiado"
+
+#### Scenario: Copiar el enlace de una oferta sin leer
+
+- **GIVEN** un link publicado cuya lectura aún no terminó
+- **WHEN** quien lo compartió pulsa "Copiar enlace"
+- **THEN** SHALL verse "Todavía estamos leyendo la oferta: si lo envías ahora, la tarjeta saldrá sin datos"
+- **AND** el enlace SHALL copiarse igualmente
+
+#### Scenario: La tarjeta se apaga sin recargar
+
+- **GIVEN** un link publicado
+- **WHEN** quien lo compartió deja de compartirlo y confirma
+- **THEN** la tarjeta SHALL dejar de mostrar "Enlace público" y "Copiar enlace" en el momento
+- **AND** NO SHALL hacer falta volver a pedir la lista para verlo
+
+#### Scenario: Sin permiso para cambiarlo
+
+- **GIVEN** un miembro que deja de ser owner desde otra pestaña
+- **WHEN** intenta apagar el enlace y la API responde `403`
+- **THEN** SHALL ver "Solo quien compartió la oferta o el propietario del grupo puede cambiar esto"
+- **AND** la tarjeta NO SHALL cambiar
 
 ### Requirement: La tarjeta conserva su enlace público al actualizarse
 

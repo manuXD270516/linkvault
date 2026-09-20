@@ -36,9 +36,14 @@ comentarios. De la herencia del manifiesto, el `slug` de grupo **no hace falta**
 - **Vista pública en el SPA**: ruta `/oferta/:slug` sin sesión, que lee `GET /api/public/previews/:slug` y ofrece el CTA
   "Guardar en LinkVault". Sin sesión lleva a `/registro?import=<slug>`; con sesión, a `/mis-links?import=<slug>`, que
   guarda la oferta **en la lista privada** y dice si ya la tenías.
-- **Límite y coste**: 300 peticiones a `/p/:slug` por IP (hasheada) cada 15 min con el contador de plataforma, que
-  **falla abierto** y responde `429` en HTML con `Retry-After`. La petición hace **dos lecturas indexadas y ninguna
-  escritura**: ni enriquecimiento, ni IA, ni outbox, ni avisos, ni nombres.
+- **Límite y coste**: un contador **global por ruta** —uno para `/p/:slug` y otro para el endpoint JSON— con umbrales
+  altos, sin mirar la dirección de origen ni ninguna cabecera del cliente, consumido **antes** de leer, que **falla
+  abierto** y responde `429` en HTML (o `too_many_attempts` en el JSON) con `Retry-After`. La petición hace **dos
+  lecturas indexadas y ninguna escritura**: ni enriquecimiento, ni IA, ni outbox, ni avisos, ni nombres. Los límites
+  por IP y la configuración del proxy siguen siendo de `deploy-prod`: este change **no** toca `trustProxy`.
+- **Cabeceras y saneado**: `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff` y una CSP restrictiva en
+  las tres respuestas de `/p/:slug`; el `displayUrl` se publica sin credenciales ni fragmento; `noindex` también en la
+  ruta pública del SPA, con `Disallow: /oferta/` en su `robots.txt`.
 - **Interruptor en el SPA**: en la tarjeta del grupo, con el aviso "Cualquiera con este enlace podrá ver la oferta sin
   entrar en LinkVault…" y "Copiar enlace". Textos en ES y EN.
 
@@ -48,7 +53,7 @@ comentarios. De la herencia del manifiesto, el `slug` de grupo **no hace falta**
 
 - `links/public-share`: el enlace público por link compartido, quién lo enciende y lo apaga, la visibilidad por defecto
   del grupo al compartir, la página `/p/:slug` con sus etiquetas OG, qué no sale nunca, el `404` del enlace quemado, el
-  endpoint público para el SPA, el límite por IP y el ciclo de vida del enlace con la relación.
+  endpoint público para el SPA, el límite global de las dos rutas y el ciclo de vida del enlace con la relación.
 - `web/public-preview`: la vista pública `/oferta/:slug`, el CTA "Guardar en LinkVault" con y sin sesión, la importación
   desde `?import=<slug>`, el interruptor de la tarjeta con su aviso y sus textos.
 
@@ -61,10 +66,14 @@ comentarios. De la herencia del manifiesto, el `slug` de grupo **no hace falta**
 - `groups/group-management`: cambia "Detalle de un grupo" (devuelve `defaultVisibility`) y se añade el requisito
   "Visibilidad por defecto de los links del grupo".
 - `auth/sessions`: cambia "Rutas protegidas por defecto" (el prefijo `/api/public/*` no exige sesión).
+- `web/auth`: cambian "Registro y login" (el `import` viaja entre las dos páginas y gana a la ruta pedida), "Rutas
+  autenticadas y de invitado" (tercera ruta pública y destino del `guestGuard` con `import`) y "Restauración de la
+  sesión al cargar" (en una ruta pública no se restaura sesión al arrancar).
 - `platform/local-environment`: cambian "Web y API comparten origen en desarrollo" (`/p/:slug` fuera del prefijo) y
   "Configuración por entorno documentada" (`PUBLIC_PAGE_BASE_URL`, `WEB_BASE_URL` y `TRUST_PROXY`).
 - `web/groups`: cambia "Detalle del grupo" (el interruptor de visibilidad por defecto, solo para el `owner`).
-- `web/links`: cambia "Quitar un link desde el SPA" (la confirmación avisa de que el enlace público dejará de
+- `web/links`: cambian "Guardar un link desde el SPA" (la confirmación ofrece "Copiar enlace" y dice el alcance cuando
+  el link nace publicado) y "Quitar un link desde el SPA" (la confirmación avisa de que el enlace público dejará de
   funcionar).
 
 ## Impact
@@ -74,11 +83,12 @@ comentarios. De la herencia del manifiesto, el `slug` de grupo **no hace falta**
     leer la página, plantilla HTML con su escapado, controladores `/p/:slug` y `/api/public/previews/:slug`, `share` con
     `publicShare`, y el mapeo del listado.
   - `apps/api/src/modules/groups/`: `settings.defaultVisibility`, su `PATCH` y `GroupsFacade`.
-  - `apps/api/src/app/create-app.ts` (excluir `/p` del prefijo) y `main.ts`/`FastifyAdapter` (`trustProxy`).
+  - `apps/api/src/app/create-app.ts` (excluir la ruta `p/:slug` del prefijo) y
+    `apps/api/src/infrastructure/mongo/duplicate-key.ts` (`duplicateKeyIs` compartido).
   - `libs/shared/src/`: contratos del slug, del preview público y de los ajustes del grupo, y `linkLabel` movido desde
     el SPA.
-  - SPA: `core/links/`, `core/public/`, `features/public/`, `features/links/`, `features/groups/`, `app.routes.ts`,
-    `auth.guards.ts` y `messages.*.xlf`.
+  - SPA: `core/links/`, `core/public/`, `features/public/`, `features/links/`, `features/groups/`, `features/auth/`,
+    `app.routes.ts`, `auth.guards.ts`, `session-restore.ts`, `public/assets/` y `messages.*.xlf`.
 - **API**:
   - nuevos: `GET /p/:slug` (HTML, fuera de `/api`), `GET /api/public/previews/:slug` (sin sesión),
     `PUT|DELETE /api/groups/:id/links/:linkId/public` y `PATCH /api/groups/:id/settings`;
@@ -90,15 +100,17 @@ comentarios. De la herencia del manifiesto, el `slug` de grupo **no hace falta**
   - `groups` suma `settings?.defaultVisibility`, sin índices nuevos;
   - **sin backfill**: un grupo sin `settings` se lee como `public` y una relación sin `publicShare` como no publicada,
     así que ningún link ya compartido se publica solo.
-- **Configuración**: `PUBLIC_PAGE_BASE_URL`, `WEB_BASE_URL` y `TRUST_PROXY`, obligatorias como el resto, en
-  `.env.example` y en el RUNBOOK. `deploy-prod` hereda fijarlas y poner `TRUST_PROXY=true` tras el proxy.
+- **Configuración**: `PUBLIC_PAGE_BASE_URL` y `WEB_BASE_URL`, obligatorias como el resto, en `.env.example` y en el
+  RUNBOOK. `deploy-prod` hereda fijarlas y, si algún día quiere límites por IP, configurar el proxy y `trustProxy`,
+  que **no** entran aquí (ADR-020).
 - **ADRs**: implementa ADR-013; cumple ADR-026 (nada de comentarios ni notas en la página) y ADR-023 §2 (`summary`
   fuera); respeta ADR-010 (la procedencia por campo no sale) y ADR-009 (nada se encola). Las decisiones no triviales se
   registran en **ADR-027**.
 - **Manifiesto** (`openspec-changes.yaml`): `public-preview-share` pasa a `adrs: [013, 027]`; la herencia del `slug` de
-  grupo queda **resuelta sin crearlo** y `deploy-prod` hereda las tres variables nuevas y que el borrado de cuenta
-  despublique los enlaces de esa persona.
+  grupo queda **resuelta sin crearlo** y `deploy-prod` hereda las dos variables nuevas, el proxy con sus límites por IP
+  y que el borrado de cuenta despublique los enlaces de esa persona.
 - **Fuera de alcance**:
+  - límites por IP y configuración del proxy (`trustProxy`), que siguen siendo de `deploy-prod`;
   - publicar un link de la lista privada (design-v0.2 §5.5: `sharePublic` false para los privados);
   - `slug` de grupo, páginas públicas de grupo y cualquier índice en buscadores (la página va con `noindex`);
   - imagen OG generada por oferta (una imagen de marca fija);

@@ -165,13 +165,21 @@ momento ni después.
 - `<html lang="es">` y `<meta name="robots" content="noindex">`;
 - un redirect a la vista pública del SPA con `<meta http-equiv="refresh">`, un `location.replace` y un enlace visible de
   respaldo;
-- el CTA "Guardar en LinkVault".
+- el CTA "Guardar en LinkVault" y, bajo él, "Guarda aquí las ofertas que te pasan por WhatsApp y no las pierdas.".
 
 SHALL devolverse **la misma respuesta a todo el mundo**: NO SHALL mirarse el `User-Agent` ni el `Accept`, y la respuesta
 NO SHALL llevar `Vary`. Todo valor que entre en el HTML SHALL escaparse, y la URL de la oferta original SHALL admitirse
 solo si es `http` o `https`.
 
-Esta ruta NUNCA SHALL responder `application/json`, tampoco ante un error inesperado.
+Las respuestas `200`, `404` y `429` de esta ruta SHALL llevar `Referrer-Policy: no-referrer`,
+`X-Content-Type-Options: nosniff` y una `Content-Security-Policy` que solo permita el origen propio y el del SPA para
+imágenes, y que no permita scripts externos ni `eval`.
+
+Esta ruta NUNCA SHALL responder `application/json`, tampoco ante un error inesperado, tampoco cuando el `slug` falta
+(`/p/`) o llega con segmentos de más (`/p/a/b`).
+
+Cada petición SHALL dejar en el log estructurado `{ slug, status }` y nada más: ni la dirección de origen, ni el
+`User-Agent`, ni el referente, ni ningún dato de la oferta.
 
 #### Scenario: Un bot pide la página
 
@@ -209,8 +217,21 @@ Esta ruta NUNCA SHALL responder `application/json`, tampoco ante un error inespe
 
 #### Scenario: La página nunca devuelve JSON
 
-- **WHEN** se pide `/p/:slug` con un `slug` válido, con uno inexistente y con uno mal formado
+- **WHEN** se pide `/p/:slug` con un `slug` válido, con uno inexistente, con uno mal formado, sin `slug` (`/p/`) y con
+  segmentos de más (`/p/a/b`)
 - **THEN** ninguna respuesta SHALL tener `Content-Type` `application/json`
+
+#### Scenario: Cabeceras de seguridad
+
+- **WHEN** se piden una página que existe, una de un `slug` quemado y una que supera el límite
+- **THEN** las tres SHALL llevar `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff` y una
+  `Content-Security-Policy` sin scripts externos ni `eval`
+
+#### Scenario: El log no dice quién pidió
+
+- **WHEN** se pide una página pública
+- **THEN** el log SHALL contener el `slug` y el código de respuesta
+- **AND** NO SHALL contener la dirección de origen, el `User-Agent` ni el referente
 
 ### Requirement: Etiquetas Open Graph de la oferta
 
@@ -219,17 +240,20 @@ de la propia página, `og:title`, `og:description`, `og:image` con una imagen fi
 `twitter:card` `summary_large_image` con su título y su descripción.
 
 `og:title` SHALL ser el título del preview o, si no lo hay, la etiqueta legible derivada de la URL, cortado a 100 code
-points. `og:description` SHALL componerse con los campos publicables que existan —empresa, ubicación, modalidad, nivel,
-salario y cuándo cierra— unidos por un separador, cortado a 200 code points; si no hay ninguno, SHALL usarse un texto de
-respaldo. Los cortes SHALL hacerse en un límite de palabra y terminar con puntos suspensivos.
+points. `og:description` SHALL componerse con los campos publicables que existan, **en este orden**: empresa,
+ubicación, salario, modalidad, nivel y cuándo cierra, unidos por un separador y cortado a 200 code points; si no hay
+ninguno, SHALL usarse un texto de respaldo. El salario va antes que la modalidad y el nivel porque es lo que más
+decide si alguien abre la oferta y lo primero que se pierde cuando una app recorta la descripción. Los cortes SHALL
+hacerse en un límite de palabra y terminar con puntos suspensivos.
 
 `og:url` SHALL construirse con la URL pública configurada, NUNCA con la cabecera `Host` de la petición.
 
 #### Scenario: Descripción con los datos de la oferta
 
-- **GIVEN** una oferta con empresa, ubicación remota y salario
+- **GIVEN** una oferta con empresa, ubicación, salario, modalidad remota y nivel senior
 - **WHEN** se pide su página pública
-- **THEN** `og:description` SHALL nombrar la empresa, la ubicación, la modalidad y el salario
+- **THEN** `og:description` SHALL nombrar la empresa, la ubicación, el salario, la modalidad y el nivel
+- **AND** el salario SHALL aparecer antes que la modalidad y que el nivel
 
 #### Scenario: Descripción de respaldo
 
@@ -253,6 +277,10 @@ respaldo. Los cortes SHALL hacerse en un límite de palabra y terminar con punto
 La página pública y el endpoint público SHALL exponer únicamente: la plataforma, la URL de la oferta original, el
 título, la empresa, la ubicación, la modalidad, el nivel, el salario, la fecha de publicación y la de cierre.
 
+La URL de la oferta original SHALL publicarse **saneada**: solo `http` o `https`, sin usuario ni contraseña embebidos y
+sin fragmento. Una URL que no sea `http(s)` NO SHALL publicarse y la página SHALL mostrarse sin enlace a la oferta
+original.
+
 NO SHALL exponer, en ningún caso: el resumen (`summary`), las habilidades, los idiomas, la procedencia por campo, el
 estado ni la versión del preview, el motivo del último fallo, quién compartió el link, cuándo se compartió, el grupo o
 su nombre, la nota, los comentarios, ninguna postulación, ni el identificador interno del link o de la relación.
@@ -272,6 +300,13 @@ Un preview cuyos campos escribió o pegó una persona SHALL publicarse igual, si
 - **WHEN** se pide su página pública
 - **THEN** la respuesta NO SHALL contener "Backend Bolivia", ni "Ana", ni la nota, ni ningún comentario
 
+#### Scenario: URL original con credenciales
+
+- **GIVEN** un link publicado cuyo `displayUrl` es `https://ana:secreto@bolsa.example/ofertas/42#seccion`
+- **WHEN** se piden su página pública y su endpoint público
+- **THEN** el enlace a la oferta original SHALL ser `https://bolsa.example/ofertas/42`
+- **AND** ninguna respuesta SHALL contener `ana`, `secreto` ni `#seccion`
+
 #### Scenario: Preview escrito a mano
 
 - **GIVEN** una oferta publicada cuyo título y empresa escribió Ana a mano
@@ -282,15 +317,15 @@ Un preview cuyos campos escribió o pegó una persona SHALL publicarse igual, si
 ### Requirement: Enlace inexistente, quemado o mal formado
 
 Un `slug` que no existe, uno que se despublicó, uno cuyo link se quitó del grupo, uno cuyo grupo se borró y uno con
-formato inválido SHALL responder todos `404`, con **el mismo cuerpo HTML**: una página útil que dice que el enlace ya no
-está disponible, con un enlace a LinkVault, sin etiquetas Open Graph y sin redirect. NO SHALL responderse con un cuerpo
-JSON.
+formato inválido SHALL responder todos `404`, con **el mismo cuerpo HTML**: una página útil que dice "Este enlace ya no
+está disponible" y "Pídeselo de nuevo a quien te lo envió", con un enlace a LinkVault, sin etiquetas Open Graph y sin
+redirect. NO SHALL responderse con un cuerpo JSON.
 
 #### Scenario: Enlace que ya no está
 
 - **WHEN** se pide `/p/` con un `slug` inexistente, con uno despublicado y con `no-es-un-slug`
 - **THEN** las tres respuestas SHALL ser `404` de tipo `text/html` con cuerpos idénticos
-- **AND** SHALL decir que el enlace ya no está disponible
+- **AND** SHALL decir que el enlace ya no está disponible y que se lo pida de nuevo a quien se lo envió
 
 #### Scenario: El link sale del grupo
 
@@ -312,6 +347,10 @@ exactamente los campos publicables. Un `slug` inexistente, quemado o mal formado
 
 Solo las rutas bajo `/api/public/` SHALL poder responder sin `Authorization`, además de las de sesión.
 
+Cada petición SHALL dejar en el log estructurado `{ slug, status }`, como la página, y nada más. Con eso y con el log
+que `POST /api/links` ya deja, SHALL poder contarse cuántas páginas públicas se sirven y cuántas altas las siguen, sin
+guardar ningún dato de quien visita y sin ninguna escritura.
+
 #### Scenario: Preview público sin sesión
 
 - **GIVEN** un enlace público de una oferta enriquecida
@@ -323,29 +362,55 @@ Solo las rutas bajo `/api/public/` SHALL poder responder sin `Authorization`, ad
 - **WHEN** se pide el preview de un `slug` despublicado y de uno mal formado
 - **THEN** ambas respuestas SHALL ser `404` con código `link_not_found` y cuerpos idénticos
 
-### Requirement: Límite de peticiones a la página pública
+#### Scenario: El endpoint público también se registra
 
-`GET /p/:slug` SHALL contar las peticiones por dirección IP en una ventana de tiempo, con la IP guardada solo como
-hash y nunca en claro ni en los logs. Al superarse el límite SHALL responder `429` **en HTML**, con la cabecera
-`Retry-After`. El contador SHALL fallar abierto: si el almacén de contadores no responde, la página SHALL servirse
-normalmente. Las peticiones a `GET /api/public/previews/:slug` NO SHALL contar contra este límite.
+- **WHEN** se pide el preview de un `slug`
+- **THEN** el log SHALL contener ese `slug` y el código de respuesta
+- **AND** NO SHALL contener ningún dato de quien pidió
 
-#### Scenario: Ventana agotada
+### Requirement: Límite global de las rutas públicas
 
-- **GIVEN** una IP que ya agotó su ventana
-- **WHEN** vuelve a pedir una página pública
+`GET /p/:slug` y `GET /api/public/previews/:slug` SHALL tener cada uno un contador **global de la ruta** por ventana de
+tiempo, con umbrales altos, que NO SHALL distinguir clientes: no SHALL usarse la dirección de origen, ni ninguna
+cabecera que envíe el cliente, ni ningún identificador derivado de ellas.
+
+El contador SHALL consumirse **antes** de cualquier lectura, de modo que superar el límite no cueste ninguna consulta.
+Al superarse, `/p/:slug` SHALL responder `429` **en HTML** con `Retry-After`, y el endpoint JSON `429` con código
+`too_many_attempts` y `Retry-After`. Los dos contadores SHALL ser independientes: agotar uno NO SHALL afectar al otro.
+
+Los contadores SHALL fallar abiertos: si el almacén de contadores no responde, las dos rutas SHALL servirse
+normalmente.
+
+#### Scenario: Ventana agotada en la página
+
+- **GIVEN** el contador de la página pública agotado
+- **WHEN** alguien pide una página pública
 - **THEN** la respuesta SHALL ser `429` de tipo `text/html` con `Retry-After`
+- **AND** NO SHALL hacerse ninguna lectura en la base de datos
+
+#### Scenario: Ventana agotada en el endpoint
+
+- **GIVEN** el contador del endpoint público agotado
+- **WHEN** el SPA pide el preview de un `slug`
+- **THEN** la respuesta SHALL ser `429` con código `too_many_attempts` y `Retry-After`
+
+#### Scenario: Los dos contadores son independientes
+
+- **GIVEN** el contador de la página pública agotado
+- **WHEN** el SPA pide el preview de un `slug`
+- **THEN** la respuesta SHALL ser `200`
 
 #### Scenario: El contador no responde
 
 - **GIVEN** el almacén de contadores caído
-- **WHEN** se pide una página pública
-- **THEN** la respuesta SHALL ser `200` con la oferta
+- **WHEN** se piden la página pública y el preview
+- **THEN** las dos respuestas SHALL ser `200` con la oferta
 
-#### Scenario: La IP no se guarda
+#### Scenario: El límite no depende de quién pide
 
-- **WHEN** se piden varias páginas públicas desde la misma IP
-- **THEN** ni el almacén de contadores ni los logs SHALL contener esa IP en claro
+- **WHEN** se piden páginas públicas con cabeceras `X-Forwarded-For` distintas
+- **THEN** todas SHALL contar contra el mismo contador
+- **AND** ninguna clave de contador SHALL derivarse de una cabecera de la petición
 
 ### Requirement: La página pública no dispara trabajo
 

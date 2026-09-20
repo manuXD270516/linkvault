@@ -1,5 +1,64 @@
 ## MODIFIED Requirements
 
+### Requirement: Guardar un link desde el SPA
+
+El detalle del grupo y la vista privada SHALL ofrecer guardar un link pegando su URL. Al guardarlo, la lista SHALL
+actualizarse sin recargar. `invalid_url` SHALL mostrar "Eso no parece un enlace de una oferta". Si la respuesta
+trae `alreadyInGroups`, SHALL mostrarse "Ya lo tienes en: <grupos>"; solo cuando `shared` es `already_there` SHALL
+mostrarse "Ya estaba aquí, lo compartió <nombre>".
+
+Cuando el link nazca con enlace público —porque el grupo comparte en público—, la confirmación SHALL decirlo en una
+línea, "Cualquiera con este enlace verá la oferta; no se verá el grupo ni tu nombre", y SHALL ofrecer "Copiar enlace"
+sobre el enlace que ya viene en la respuesta, sin pedir nada más a la API. Si la oferta todavía no se ha leído, copiar
+SHALL avisar con "Todavía estamos leyendo la oferta: si lo envías ahora, la tarjeta saldrá sin datos" y SHALL dejar
+copiar igualmente. Cuando el link no nazca publicado, NO SHALL mostrarse ni esa línea ni "Copiar enlace".
+
+#### Scenario: Link guardado
+
+- **GIVEN** un miembro en el detalle del grupo
+- **WHEN** guarda una URL válida
+- **THEN** el link SHALL aparecer en la lista sin recargar
+
+#### Scenario: URL inválida
+
+- **WHEN** la API responde `400` con `invalid_url`
+- **THEN** SHALL mostrarse "Eso no parece un enlace de una oferta" y conservarse lo escrito
+
+#### Scenario: Aviso de link repetido
+
+- **WHEN** la respuesta trae `alreadyInGroups` con "Backend Bolivia"
+- **THEN** SHALL mostrarse "Ya lo tienes en: Backend Bolivia"
+
+#### Scenario: El link ya estaba en este grupo
+
+- **WHEN** la respuesta trae `shared` `already_there`
+- **THEN** SHALL mostrarse "Ya estaba aquí, lo compartió Ana"
+
+#### Scenario: Vacante conocida compartida por primera vez
+
+- **WHEN** la respuesta trae `created` `false` y `shared` `created`
+- **THEN** el link SHALL aparecer en la lista y NO SHALL mostrarse ningún aviso de que ya estaba
+
+#### Scenario: Guardado en un grupo que comparte en público
+
+- **GIVEN** un miembro de un grupo con la visibilidad por defecto encendida
+- **WHEN** guarda una URL válida
+- **THEN** SHALL ver "Cualquiera con este enlace verá la oferta; no se verá el grupo ni tu nombre" y "Copiar enlace"
+- **AND** lo copiado SHALL ser la URL pública que trajo la respuesta, sin otra petición a la API
+
+#### Scenario: Guardado en un grupo que no comparte en público
+
+- **GIVEN** un miembro de un grupo con la visibilidad por defecto apagada
+- **WHEN** guarda una URL válida
+- **THEN** NO SHALL ver "Copiar enlace" ni ninguna línea sobre el enlace público
+
+#### Scenario: Copiar el enlace de una oferta recién guardada
+
+- **GIVEN** un link recién guardado en un grupo que comparte en público, todavía sin leer
+- **WHEN** el miembro pulsa "Copiar enlace"
+- **THEN** SHALL ver "Todavía estamos leyendo la oferta: si lo envías ahora, la tarjeta saldrá sin datos"
+- **AND** el enlace SHALL copiarse igualmente
+
 ### Requirement: Quitar un link desde el SPA
 
 Cada link SHALL ofrecer quitarlo a quien lo compartió y al `owner` del grupo, con una confirmación que diga "Se quita de
