@@ -11,9 +11,14 @@ import type { Connection } from 'mongoose';
 import {
   AI_CACHE_REDIS_CLIENT,
   AI_MODULE_OPTIONS,
+  PROVIDER_ELIGIBILITY,
   RUN_TASK,
 } from './ai.tokens';
 import { NullResultCache } from './application/null-result-cache';
+import {
+  DefaultProviderEligibility,
+  type ProviderEligibility,
+} from './application/provider-eligibility';
 import { RunTask, type RunTaskFn } from './application/run-task.usecase';
 import { TaskRegistry, type AnyAiTask } from './application/task-registry';
 import type { AiLogger } from './domain/ports/ai-logger.port';
@@ -38,14 +43,16 @@ import {
 } from './infrastructure/providers/provider-registry';
 import { ConfigQuotaPolicy } from './infrastructure/quota/config-quota-policy';
 import { InMemoryCircuitBreaker } from './infrastructure/resilience/in-memory-circuit-breaker';
+import { RedisCircuitBreaker } from './infrastructure/resilience/redis-circuit-breaker';
 import { classifySkillsTask } from './tasks/classify-skills.task';
 import { extractJobTask } from './tasks/extract-job.task';
 import { extractPastedJobTask } from './tasks/extract-pasted-job.task';
 import { matchCvTask } from './tasks/match-cv.task';
 
-// `AiModule` (D8, D9 y D12 de ai-gateway-core). Compone runTask con sus adaptadores a partir de una configuración ya
-// validada por `parseAiConfig`: no lee `process.env`. Usa la conexión Mongoose por defecto de la app
-// (`getConnectionToken()`), así que quien lo importa debe registrar `MongooseModule.forRoot*`. Exporta solo `RUN_TASK`.
+// `AiModule` (D8, D9 y D12 de ai-gateway-core; elegibilidad y breaker compartido de cv-match-suggestions).
+// Compone runTask con sus adaptadores a partir de una configuración ya validada por `parseAiConfig`: no lee
+// `process.env`. Usa la conexión Mongoose por defecto de la app (`getConnectionToken()`), así que quien lo importa
+// debe registrar `MongooseModule.forRoot*`. Exporta `RUN_TASK` y `PROVIDER_ELIGIBILITY`.
 
 export interface AiModuleOptions {
   /** Resultado `ok` de `parseAiConfig`. */
@@ -183,10 +190,25 @@ export class AiModule {
           }),
       },
       {
+        // Breaker compartido cuando hay Redis de caché (cadena sin mock); InMemory si no (tests / sin Redis).
         provide: AI_CIRCUIT_BREAKER,
-        inject: [AI_CLOCK],
-        useFactory: (clock: Clock): CircuitBreaker =>
-          new InMemoryCircuitBreaker(clock),
+        inject: [AI_CLOCK, AI_CACHE_REDIS_CLIENT],
+        useFactory: (
+          clock: Clock,
+          redis: Redis | null,
+        ): CircuitBreaker =>
+          redis === null
+            ? new InMemoryCircuitBreaker(clock)
+            : new RedisCircuitBreaker(redis, clock),
+      },
+      {
+        provide: PROVIDER_ELIGIBILITY,
+        inject: [AI_PROVIDERS, AI_CIRCUIT_BREAKER],
+        useFactory: (
+          built: BuiltProviders,
+          breaker: CircuitBreaker,
+        ): ProviderEligibility =>
+          new DefaultProviderEligibility(built.providers, breaker),
       },
       {
         provide: RUN_TASK,
@@ -230,7 +252,7 @@ export class AiModule {
       module: AiModule,
       imports: options.imports ?? [],
       providers,
-      exports: [RUN_TASK],
+      exports: [RUN_TASK, PROVIDER_ELIGIBILITY],
     };
   }
 }

@@ -49,24 +49,28 @@ export class AllowAllQuotaPolicy implements QuotaPolicy {
 
 /** Breaker que nunca abre: cada caso contacta al proveedor aunque los anteriores hayan fallado. */
 export class NullCircuitBreaker implements CircuitBreaker {
-  openIds(): ReadonlySet<string> {
-    return new Set();
+  openIds(): Promise<ReadonlySet<string>> {
+    return Promise.resolve(new Set());
   }
 
-  tryAcquire(): boolean {
-    return true;
+  snapshotOpenIds(): Promise<ReadonlySet<string> | null> {
+    return Promise.resolve(new Set());
   }
 
-  recordSuccess(): void {
-    // Sin estado.
+  tryAcquire(): Promise<boolean> {
+    return Promise.resolve(true);
   }
 
-  recordFailure(): void {
-    // Sin estado.
+  recordSuccess(): Promise<void> {
+    return Promise.resolve();
   }
 
-  release(): void {
-    // Sin estado.
+  recordFailure(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  release(): Promise<void> {
+    return Promise.resolve();
   }
 }
 

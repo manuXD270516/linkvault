@@ -4,10 +4,11 @@ import type {
   CompletionResult,
 } from '../domain/ports/llm-provider.port';
 import { extractJson } from './json-extraction';
+import { findInventedPiiMarkers } from './pii-redactor';
 
 // Pipeline de salida estructurada para UN proveedor (D3 de ai-gateway-core, design-v0.2 §4.3):
-// completar → extracción tolerante → validación zod → como máximo una reparación (si maxAttempts = 2).
-// No captura errores del proveedor: los decide runTask (fallback, FixtureMissing, breaker).
+// completar → extracción tolerante → validación zod → marcadores inventados (D10) → como máximo una reparación
+// (si maxAttempts = 2). No captura errores del proveedor: los decide runTask (fallback, FixtureMissing, breaker).
 
 export interface StructuredOutputRequest<O> {
   /** Llamada al proveedor; runTask la envuelve (breaker, plazos). */
@@ -16,6 +17,11 @@ export interface StructuredOutputRequest<O> {
   outputSchema: ZodType<O>;
   /** 1: sin reparación; 2: una reparación. */
   maxAttempts: number;
+  /**
+   * Marcadores emitidos en esta ejecución. Un marcador PII en la salida que no esté aquí la invalida (D10):
+   * reparación, proveedor siguiente o degradación; nunca se devuelve ni se persiste.
+   */
+  emittedMarkers?: ReadonlySet<string>;
 }
 
 export interface CompletionUsage {
@@ -61,7 +67,11 @@ export async function runStructuredOutput<O>(
   const usage: CompletionUsage = { inputTokens: 0, outputTokens: 0 };
 
   const first = await call(params.complete, params.request, usage);
-  const firstValidation = validate(first.text, params.outputSchema);
+  const firstValidation = validate(
+    first.text,
+    params.outputSchema,
+    params.emittedMarkers,
+  );
   if (firstValidation.ok) {
     return valid(firstValidation.output, first.model, usage, 0);
   }
@@ -78,7 +88,11 @@ export async function runStructuredOutput<O>(
     ),
   };
   const second = await call(params.complete, repairRequest, usage);
-  const secondValidation = validate(second.text, params.outputSchema);
+  const secondValidation = validate(
+    second.text,
+    params.outputSchema,
+    params.emittedMarkers,
+  );
   return secondValidation.ok
     ? valid(secondValidation.output, second.model, usage, 1)
     : invalid(secondValidation.issues, second.model, usage, 1);
@@ -100,21 +114,34 @@ async function call(
   return result;
 }
 
-function validate<O>(text: string, schema: ZodType<O>): Validation<O> {
+function validate<O>(
+  text: string,
+  schema: ZodType<O>,
+  emittedMarkers?: ReadonlySet<string>,
+): Validation<O> {
   const extraction = extractJson(text);
   if (!extraction.ok) {
     const message = 'La respuesta no contiene un objeto JSON.';
     return { ok: false, issues: [message], feedback: message };
   }
   const parsed = schema.safeParse(extraction.value);
-  if (parsed.success) return { ok: true, output: parsed.data };
-  return {
-    ok: false,
-    issues: parsed.error.issues.map(
-      (issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`,
-    ),
-    feedback: z.prettifyError(parsed.error),
-  };
+  if (!parsed.success) {
+    return {
+      ok: false,
+      issues: parsed.error.issues.map(
+        (issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`,
+      ),
+      feedback: z.prettifyError(parsed.error),
+    };
+  }
+  if (emittedMarkers !== undefined) {
+    const invented = findInventedPiiMarkers(parsed.data, emittedMarkers);
+    if (invented.length > 0) {
+      const message = `La respuesta contiene marcadores PII no emitidos: ${invented.join(', ')}.`;
+      return { ok: false, issues: [message], feedback: message };
+    }
+  }
+  return { ok: true, output: parsed.data };
 }
 
 /** Mensaje `user` compuesto de la reparación (D3): original, salida inválida y errores de validación. */

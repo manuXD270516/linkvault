@@ -110,27 +110,34 @@ export class RecordingNullCircuitBreaker implements CircuitBreaker {
   readonly successes: string[] = [];
   readonly failures: string[] = [];
 
-  openIds(): ReadonlySet<string> {
-    return new Set();
+  openIds(): Promise<ReadonlySet<string>> {
+    return Promise.resolve(new Set());
   }
 
-  tryAcquire(providerId: string): boolean {
+  snapshotOpenIds(): Promise<ReadonlySet<string> | null> {
+    return Promise.resolve(new Set());
+  }
+
+  tryAcquire(providerId: string): Promise<boolean> {
     this.acquired.push(providerId);
-    return true;
+    return Promise.resolve(true);
   }
 
-  recordSuccess(providerId: string): void {
+  recordSuccess(providerId: string): Promise<void> {
     this.successes.push(providerId);
+    return Promise.resolve();
   }
 
-  recordFailure(providerId: string): void {
+  recordFailure(providerId: string): Promise<void> {
     this.failures.push(providerId);
+    return Promise.resolve();
   }
 
   readonly released: string[] = [];
 
-  release(providerId: string): void {
+  release(providerId: string): Promise<void> {
     this.released.push(providerId);
+    return Promise.resolve();
   }
 }
 

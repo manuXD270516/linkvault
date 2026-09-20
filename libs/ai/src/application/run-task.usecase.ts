@@ -153,7 +153,7 @@ export class RunTask {
       task,
       ctx,
       providers: this.deps.providers,
-      openIds: this.deps.breaker.openIds(),
+      openIds: await this.deps.breaker.openIds(),
     });
     if (chain.length === 0) {
       // Con cadena vacía: consentimiento solo si la política dice que el permiso habría cambiado algo.
@@ -328,7 +328,7 @@ export class RunTask {
         },
       };
       // Justo antes de completar (D10): en half-open concede un único permiso; si no hay permiso, se salta sin registro.
-      if (!this.deps.breaker.tryAcquire(provider.id)) {
+      if (!(await this.deps.breaker.tryAcquire(provider.id))) {
         this.deps.logger.debug('AI provider skipped: circuit open', {
           task: task.name,
           providerId: provider.id,
@@ -344,6 +344,8 @@ export class RunTask {
         request,
         outputSchema: task.outputSchema,
         maxAttempts: task.budget.maxAttempts,
+        // D10: un marcador inventado invalida la salida (reparación → siguiente proveedor → degradación).
+        emittedMarkers: redaction?.emittedMarkers,
       });
       const base = {
         provider,
@@ -352,7 +354,7 @@ export class RunTask {
         latencyMs: latency(),
       };
       // Cualquier respuesta, válida o no según el schema, cuenta como disponibilidad (ADR-018 §7).
-      this.deps.breaker.recordSuccess(provider.id);
+      await this.deps.breaker.recordSuccess(provider.id);
       if (result.status === 'valid') {
         this.record(execution, 'success', base);
         const output = redaction
@@ -369,7 +371,7 @@ export class RunTask {
       // InvalidFixture, SynthUnsupported): no son fallos del proveedor y deben hacer fallar el test o el arranque que los
       // provoca (D2, D4). Antes se devuelve el permiso de half-open si se había tomado (D10).
       if (cause instanceof AiProgrammingError) {
-        if (acquired) this.deps.breaker.release(provider.id);
+        if (acquired) await this.deps.breaker.release(provider.id);
         // Un fixture que falta se anota antes de propagar el error: el test falla igual, pero deja dicho qué grabar.
         if (cause instanceof FixtureMissing) {
           this.recordPendingFixture(
@@ -393,10 +395,10 @@ export class RunTask {
       }
       // Cancelación del llamador: ni `provider_error` ni fallo en el breaker; se devuelve el permiso de half-open.
       if (execution.ctx.signal?.aborted) {
-        this.deps.breaker.release(provider.id);
+        await this.deps.breaker.release(provider.id);
         return { kind: 'cancelled' };
       }
-      this.deps.breaker.recordFailure(provider.id);
+      await this.deps.breaker.recordFailure(provider.id);
       this.record(execution, 'provider_error', {
         provider,
         model: null,

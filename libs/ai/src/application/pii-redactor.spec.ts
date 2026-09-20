@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { PiiRedactor } from './pii-redactor';
+import {
+  REDACTED_DATA_TYPE_IDS,
+} from '@linkvault/shared';
+import {
+  DETECTED_PII_KINDS,
+  findInventedPiiMarkers,
+  PII_KINDS,
+  PiiRedactor,
+} from './pii-redactor';
 
-// Escenarios de specs/ai/data-protection/spec.md y D11 de ai-gateway-core.
+// Escenarios de specs/ai/data-protection/spec.md, D8/D10 de cv-match-suggestions y D11 de ai-gateway-core.
 
 const redactor = new PiiRedactor();
 
@@ -318,12 +326,13 @@ describe('PiiRedactor: person name', () => {
     expect(redactor.redact('Ana, Anabel y Mariana', options).value).toBe(
       '[NAME_1], Anabel y Mariana',
     );
+    // El apellido suelto "Smith" sí se sustituye si pasa las exclusiones (5.11); "J.R." no encaja en "JxRx".
     expect(
       redactor.redact('J.R. Smith y JxRx Smith', {
         redactName: true,
         personName: 'J.R. Smith',
       }).value,
-    ).toBe('[NAME_1] y JxRx Smith');
+    ).toBe('[NAME_1] y JxRx [NAME_1]');
   });
 });
 
@@ -331,19 +340,23 @@ describe('PiiRedactor: reinjection', () => {
   it('Marcador en la salida', () => {
     const redaction = redactor.redact(
       {
-        text: 'Ana Pérez · ana@example.com · +591 71234567 · github.com/anaperez',
+        text: 'Ana Pérez · ana@example.com · +591 71234567 · github.com/anaperez · Av. Ballivián 1234 · CI: 4567890 LP',
       },
       { redactName: true, personName: 'Ana Pérez' },
     );
+    expect(redaction.value).toEqual({
+      text: '[NAME_1] · [EMAIL_1] · [PHONE_1] · [URL_1] · [ADDRESS_1] · CI: [ID_1]',
+    });
     const output = {
-      summary: 'Perfil de [NAME_1] ([EMAIL_1])',
+      summary: 'Perfil de [NAME_1] ([EMAIL_1]) en [ADDRESS_1] doc [ID_1]',
       contacts: [{ phone: '[PHONE_1]', links: ['[URL_1]', 'sin marcador'] }],
       score: 7,
       tags: null,
     };
 
     expect(redaction.reinject(output)).toEqual({
-      summary: 'Perfil de Ana Pérez (ana@example.com)',
+      summary:
+        'Perfil de Ana Pérez (ana@example.com) en Av. Ballivián 1234 doc 4567890 LP',
       contacts: [
         {
           phone: '+591 71234567',
@@ -392,13 +405,291 @@ describe('PiiRedactor: reinjection', () => {
     // El redactor no guarda estado entre ejecuciones.
     expect(Object.keys(redactor)).toEqual([]);
     expect(JSON.stringify(redactor)).toBe('{}');
-    // El resultado solo expone el valor redactado y la función de reinyección; el mapa vive en su cierre.
-    expect(Object.keys(redaction).sort()).toEqual(['reinject', 'value']);
+    // El resultado solo expone el valor redactado, los marcadores emitidos (sin valores) y la reinyección.
+    expect(Object.keys(redaction).sort()).toEqual([
+      'emittedMarkers',
+      'reinject',
+      'value',
+    ]);
     expect(JSON.stringify(redaction)).not.toContain(email);
+    expect([...redaction.emittedMarkers]).toEqual(['[EMAIL_1]']);
     // Otra ejecución no puede resolver los marcadores de la anterior.
     expect(redactor.redact({ text: 'otro texto' }).reinject('[EMAIL_1]')).toBe(
       '[EMAIL_1]',
     );
+  });
+
+  it('Nombre redactado dentro de una sugerencia', () => {
+    const redaction = redactor.redact(
+      { cvText: 'Ana Paz Flores · ana@example.com' },
+      { redactName: true, personName: 'Ana Paz Flores' },
+    );
+    const output = {
+      suggestions: [
+        {
+          after: 'Experiencia de [NAME_1] en [EMAIL_1]',
+          reason: 'encaje',
+        },
+      ],
+    };
+
+    expect(redaction.reinject(output)).toEqual({
+      suggestions: [
+        {
+          after: 'Experiencia de Ana Paz Flores en ana@example.com',
+          reason: 'encaje',
+        },
+      ],
+    });
+    expect(JSON.stringify(redaction.reinject(output))).not.toContain('[NAME_1]');
+  });
+
+  it('discards the marker map when the caller throws after redact', () => {
+    const email = 'ana@example.com';
+    let redaction: ReturnType<typeof redactor.redact<{ text: string }>> | undefined;
+    try {
+      redaction = redactor.redact({ text: email });
+      throw new Error('boom');
+    } catch {
+      expect(redaction).toBeDefined();
+      expect(JSON.stringify(redaction)).not.toContain(email);
+      expect(Object.keys(redaction!).sort()).toEqual([
+        'emittedMarkers',
+        'reinject',
+        'value',
+      ]);
+    }
+  });
+});
+
+describe('PiiRedactor: canonical kinds', () => {
+  it('derives PiiKind from the shared canonical list', () => {
+    expect(PII_KINDS).toEqual(
+      REDACTED_DATA_TYPE_IDS.map((id) => id.toUpperCase()),
+    );
+  });
+
+  it('covers every canonical redacted type with a detector', () => {
+    // Añadir un tipo a la lista canónica sin tocar el redactor rompe este test.
+    expect([...DETECTED_PII_KINDS].sort()).toEqual([...PII_KINDS].sort());
+  });
+
+  it('numbers ADDRESS and ID independently and does not re-redact markers', () => {
+    const { value, emittedMarkers } = redactor.redact(
+      'Av. Ballivián 1234 · CI: 4567890 LP',
+    );
+
+    expect(value).toBe('[ADDRESS_1] · CI: [ID_1]');
+    expect(emittedMarkers).toEqual(new Set(['[ADDRESS_1]', '[ID_1]']));
+
+    // Un marcador ya presente en el input no se vuelve a redactar ni a renumerar.
+    const again = redactor.redact(
+      'resto [ADDRESS_1] y [ID_1] sin reescritura',
+    ).value;
+    expect(again).toBe('resto [ADDRESS_1] y [ID_1] sin reescritura');
+  });
+});
+
+describe('PiiRedactor: address', () => {
+  it('Dirección en el encabezado de un CV', () => {
+    expect(redactText('Av. Ballivián 1234, Zona Sur, La Paz')).toBe(
+      '[ADDRESS_1]',
+    );
+  });
+
+  it.each([
+    ['AV BALLIVIAN 1234', '[ADDRESS_1]'],
+    ['Calle', 'Calle'],
+    ['textoCalle 12', 'textoCalle 12'],
+    ['Calle sin numero', 'Calle sin numero'],
+  ])('table case %s', (text, expected) => {
+    expect(redactText(text)).toBe(expected);
+  });
+
+  it('Indicador numérico en prosa', () => {
+    expect(redactText('Zona de influencia: 4 departamentos')).toBe(
+      'Zona de influencia: 4 departamentos',
+    );
+    expect(redactText('N° de empleados a cargo: 12')).toBe(
+      'N° de empleados a cargo: 12',
+    );
+    expect(redactText('Torre de control de calidad')).toBe(
+      'Torre de control de calidad',
+    );
+    expect(redactText('Av. Ballivián 1234, Zona 12')).toBe('[ADDRESS_1]');
+  });
+
+  it('handles #450 inside an address and rejects C# / F# / spaced hash', () => {
+    expect(redactText('Calle Falsa #450')).toBe('[ADDRESS_1]');
+    expect(redactText('#450')).toBe('[ADDRESS_1]');
+    expect(redactText('C#')).toBe('C#');
+    expect(redactText('F#')).toBe('F#');
+    expect(redactText('# 450')).toBe('# 450');
+  });
+
+  it('La dirección termina en el separador', () => {
+    expect(redactText('Calle 21 de Calacoto 500 — Desarrollador Senior')).toBe(
+      '[ADDRESS_1] — Desarrollador Senior',
+    );
+    expect(redactText('Calle 21 de Calacoto 500 | Desarrollador Senior')).toBe(
+      '[ADDRESS_1] | Desarrollador Senior',
+    );
+    expect(
+      redactText('Calle 21 de Calacoto 500\tDesarrollador Senior'),
+    ).toBe('[ADDRESS_1]\tDesarrollador Senior');
+    expect(redactText('Av. Ballivián 1234, Zona Sur, La Paz')).toBe(
+      '[ADDRESS_1]',
+    );
+  });
+
+  it('Un lenguaje de programación no es una dirección', () => {
+    const line =
+      'Lenguajes: C#, C/C++, F#, .NET 8, Python 3.11, Km de código en producción';
+    const redacted = redactText(line);
+
+    expect(redacted).toBe(line);
+    expect(redacted).toContain('C#');
+    expect(redacted).toContain('C/C++');
+    expect(redacted).toContain('F#');
+    expect(redacted).toContain('.NET');
+  });
+
+  it('Una ciudad no es una dirección', () => {
+    expect(redactText('La Paz, Bolivia')).toBe('La Paz, Bolivia');
+    expect(redactText('Santa Cruz')).toBe('Santa Cruz');
+    expect(redactText('disponible para remoto desde Cochabamba')).toBe(
+      'disponible para remoto desde Cochabamba',
+    );
+  });
+
+  it('does not fire an address indicator inside an already emitted URL marker', () => {
+    const { value } = redactor.redact(
+      'Ver https://maps.example.com/Calle-12 y luego otra cosa',
+    );
+
+    expect(value).toContain('[URL_1]');
+    expect(value).not.toContain('[ADDRESS_');
+    expect(value).not.toContain('maps.example.com');
+  });
+});
+
+describe('PiiRedactor: identity document', () => {
+  it('CI boliviano con extensión departamental', () => {
+    const redacted = redactText('CI 4567890 LP y control 1234567-1E');
+
+    expect(redacted).toMatch(/\[ID_1\].*\[ID_2\]/);
+    expect(redacted).not.toContain('4567890');
+    expect(redacted).not.toContain('1234567-1E');
+  });
+
+  it('Documento con palabra clave', () => {
+    expect(redactText('DNI: 45.678.901')).toBe('DNI: [ID_1]');
+    expect(redactText('Cédula de identidad 8901234')).toBe(
+      'Cédula de identidad [ID_1]',
+    );
+    expect(redactText('Pasaporte AB123456')).toBe('Pasaporte [ID_1]');
+  });
+
+  it('does not redact when the keyword is too far or has no number', () => {
+    const far =
+      'CI' + 'x'.repeat(40) + '71234567';
+    expect(redactText(far)).toBe(far);
+    expect(redactText('CI sin número cerca')).toBe('CI sin número cerca');
+  });
+
+  it('Número suelto que no es documento', () => {
+    expect(redactText('Gestioné un presupuesto de 850000')).toBe(
+      'Gestioné un presupuesto de 850000',
+    );
+    expect(redactText('ISO 27001')).toBe('ISO 27001');
+    expect(redactText('Promoción 2019')).toBe('Promoción 2019');
+  });
+
+  it('Número que parece documento y teléfono a la vez', () => {
+    const redacted = redactText('CI 71234567');
+
+    expect(redacted).toBe('CI [ID_1]');
+    expect(redacted).not.toContain('71234567');
+    expect(redacted).not.toContain('[PHONE_');
+  });
+});
+
+describe('PiiRedactor: name precision', () => {
+  it('Límite de palabra', () => {
+    const options = { redactName: true, personName: 'Ana Paz Flores' };
+
+    expect(redactor.redact('Pazos', options).value).toBe('Pazos');
+    expect(redactor.redact('Capaz de liderar', options).value).toBe(
+      'Capaz de liderar',
+    );
+    expect(redactor.redact('Floresta Urbana', options).value).toBe(
+      'Floresta Urbana',
+    );
+    expect(redactor.redact('Cruzada comercial', options).value).toBe(
+      'Cruzada comercial',
+    );
+  });
+
+  it('El apellido coincide con la ciudad', () => {
+    const options = { redactName: true, personName: 'Ana Paz Flores' };
+    const header = redactor.redact('Ana Paz Flores', options).value;
+    const location = redactor.redact(
+      'La Paz, Bolivia — disponible para remoto',
+      options,
+    ).value;
+
+    expect(header).toBe('[NAME_1]');
+    expect(location).toBe('La Paz, Bolivia — disponible para remoto');
+    expect(location).not.toContain('[NAME_');
+  });
+
+  it('Santa Cruz sigue siendo Santa Cruz', () => {
+    const options = { redactName: true, personName: 'Beto Cruz Vargas' };
+    const text =
+      'Santa Cruz de la Sierra y traslado a Santa Cruz en 2021';
+
+    expect(redactor.redact(text, options).value).toBe(text);
+  });
+
+  it('El apellido dentro del nombre del empleador', () => {
+    const options = { redactName: true, personName: 'Ana Paz Flores' };
+    const text =
+      'Constructora Flores S.R.L. — Jefa de proyecto y Banco Los Andes S.A.';
+    const redacted = redactor.redact(text, options).value;
+
+    expect(redacted).toContain('Constructora Flores S.R.L.');
+    expect(redacted).toContain('Banco Los Andes S.A.');
+    expect(redacted).toContain('Flores');
+  });
+
+  it('La palabra corriente en minúscula', () => {
+    const options = { redactName: true, personName: 'Luis Campos Cruz' };
+
+    expect(
+      redactor.redact('normalicé 40 campos del formulario', options).value,
+    ).toBe('normalicé 40 campos del formulario');
+    expect(
+      redactor.redact('validación cruz de inventarios', options).value,
+    ).toBe('validación cruz de inventarios');
+  });
+
+  it('La dirección con el apellido dentro se sigue redactando', () => {
+    const options = { redactName: true, personName: 'Ana Paz Flores' };
+    const redacted = redactor.redact('Av. Las Flores 220, Zona Sur', options)
+      .value;
+
+    expect(redacted).toBe('[ADDRESS_1]');
+  });
+});
+
+describe('findInventedPiiMarkers', () => {
+  it('is observable outside the pipeline module', () => {
+    const invented = findInventedPiiMarkers(
+      { after: 'pega [ADDRESS_3] aquí' },
+      new Set(['[EMAIL_1]', '[PHONE_1]']),
+    );
+
+    expect(invented).toEqual(['[ADDRESS_3]']);
   });
 });
 

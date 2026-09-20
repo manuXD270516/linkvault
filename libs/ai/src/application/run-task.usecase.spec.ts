@@ -552,7 +552,7 @@ describe('RunTask: errors that propagate instead of degrading', () => {
   it('leaves the half-open permit available when rendering raises InvalidPrompt', async () => {
     const clock = new ManualClock();
     const breaker = new InMemoryCircuitBreaker(clock);
-    for (let i = 0; i < 5; i++) breaker.recordFailure('ollama');
+    for (let i = 0; i < 5; i++) await breaker.recordFailure('ollama');
     clock.advance(30_000);
     const provider = new FakeLlmProvider('ollama', [VALID]);
     const broken = harness([provider], {
@@ -565,7 +565,7 @@ describe('RunTask: errors that propagate instead of degrading', () => {
       broken.runTask.execute(classifySkillsTask, INPUT, CONSENT),
     ).rejects.toBeInstanceOf(InvalidPrompt);
 
-    expect(breaker.openIds().size).toBe(0);
+    expect((await breaker.openIds()).size).toBe(0);
     const healthy = harness([provider], { clock, breaker });
     await expect(
       healthy.runTask.execute(classifySkillsTask, INPUT, CONSENT),
@@ -575,7 +575,7 @@ describe('RunTask: errors that propagate instead of degrading', () => {
   it('returns the half-open permit when a programming error is raised after acquiring it', async () => {
     const clock = new ManualClock();
     const breaker = new InMemoryCircuitBreaker(clock);
-    for (let i = 0; i < 5; i++) breaker.recordFailure('ollama');
+    for (let i = 0; i < 5; i++) await breaker.recordFailure('ollama');
     clock.advance(30_000);
     const provider = new FakeLlmProvider('ollama', [
       new InvalidPrompt('classify-skills', 'v1', 'broken'),
@@ -587,8 +587,8 @@ describe('RunTask: errors that propagate instead of degrading', () => {
       runTask.execute(classifySkillsTask, INPUT, CONSENT),
     ).rejects.toBeInstanceOf(InvalidPrompt);
 
-    expect(breaker.tryAcquire('ollama')).toBe(true);
-    breaker.release('ollama');
+    expect(await breaker.tryAcquire('ollama')).toBe(true);
+    await breaker.release('ollama');
     await expect(
       runTask.execute(classifySkillsTask, INPUT, CONSENT),
     ).resolves.toMatchObject({ status: 'success', providerId: 'ollama' });
@@ -975,6 +975,81 @@ describe('RunTask: data protection', () => {
     // Una tarea personal no escribe la salida reinyectada en la caché compartida.
     expect(deps.cache.sets).toBe(0);
     expect(deps.cache.entries.size).toBe(0);
+  });
+
+  it('Marcador inventado por el proveedor', async () => {
+    const invented =
+      '{"skills":[{"name":"[ADDRESS_3]","category":"other"}]}';
+    const fixed = '{"skills":[{"name":"TypeScript","category":"language"}]}';
+    const external = new FakeLlmProvider('openrouter', [invented, fixed], {
+      capabilities: { external: true },
+    });
+    const { runTask } = harness([external]);
+
+    const result = await runTask.execute(
+      classifySkillsTask,
+      PERSONAL_INPUT,
+      CONSENT,
+    );
+
+    expect(result).toMatchObject({
+      status: 'success',
+      output: { skills: [{ name: 'TypeScript', category: 'language' }] },
+    });
+    expect(external.calls).toBe(2);
+    expect(JSON.stringify(result)).not.toContain('[ADDRESS_3]');
+  });
+
+  it('El proveedor insiste con el marcador inventado', async () => {
+    const invented =
+      '{"skills":[{"name":"[ADDRESS_3]","category":"other"}]}';
+    const first = new FakeLlmProvider('openrouter', [invented, invented], {
+      capabilities: { external: true, costPer1kOut: 0 },
+    });
+    const second = new FakeLlmProvider(
+      'openrouter-b',
+      ['{"skills":[{"name":"TypeScript","category":"language"}]}'],
+      { capabilities: { external: true, costPer1kOut: 0.01 } },
+    );
+    const { runTask } = harness([first, second]);
+
+    const result = await runTask.execute(
+      classifySkillsTask,
+      PERSONAL_INPUT,
+      CONSENT,
+    );
+
+    expect(result).toMatchObject({
+      status: 'success',
+      providerId: 'openrouter-b',
+    });
+    expect(first.calls).toBe(2);
+    expect(second.calls).toBe(1);
+    expect(JSON.stringify(result)).not.toContain('[ADDRESS_3]');
+  });
+
+  it('Un marcador inventado nunca llega al usuario ni al disco', async () => {
+    const invented =
+      '{"skills":[{"name":"[ADDRESS_3]","category":"other"}]}';
+    const external = new FakeLlmProvider('openrouter', [invented, invented], {
+      capabilities: { external: true },
+    });
+    const { runTask, deps } = harness([external]);
+
+    const result = await runTask.execute(
+      classifySkillsTask,
+      PERSONAL_INPUT,
+      CONSENT,
+    );
+
+    expect(result).toEqual({ status: 'degraded', reason: 'providers_failed' });
+    expect(JSON.stringify(result)).not.toContain('[ADDRESS_3]');
+    expect(deps.cache.sets).toBe(0);
+    expect(
+      deps.ledger.records.every(
+        (record) => !JSON.stringify(record).includes('[ADDRESS_3]'),
+      ),
+    ).toBe(true);
   });
 
   it('redacts per provider: the local fallback receives the original input', async () => {
@@ -1408,7 +1483,7 @@ describe('RunTask: circuit breaker integration', () => {
   it('Recuperación en half-open', async () => {
     const clock = new ManualClock();
     const breaker = new InMemoryCircuitBreaker(clock);
-    for (let i = 0; i < 5; i++) breaker.recordFailure('ollama');
+    for (let i = 0; i < 5; i++) await breaker.recordFailure('ollama');
     const provider = new FakeLlmProvider('ollama', [VALID]);
     const { runTask } = harness([provider], { clock, breaker });
 
@@ -1422,13 +1497,13 @@ describe('RunTask: circuit breaker integration', () => {
     });
 
     expect(result).toMatchObject({ status: 'success', providerId: 'ollama' });
-    expect(breaker.openIds().size).toBe(0);
+    expect((await breaker.openIds()).size).toBe(0);
   });
 
   it('Permiso de prueba no usado', async () => {
     const clock = new ManualClock();
     const breaker = new InMemoryCircuitBreaker(clock);
-    for (let i = 0; i < 5; i++) breaker.recordFailure('openrouter');
+    for (let i = 0; i < 5; i++) await breaker.recordFailure('openrouter');
     clock.advance(30_000);
     const local = new FakeLlmProvider('ollama', [VALID]);
     const halfOpen = new FakeLlmProvider('openrouter', [VALID], {
@@ -1455,10 +1530,10 @@ describe('RunTask: circuit breaker integration', () => {
   it('skips a provider without a breaker permit and reports no_providers when none was contacted', async () => {
     const clock = new ManualClock();
     const breaker = new InMemoryCircuitBreaker(clock);
-    for (let i = 0; i < 5; i++) breaker.recordFailure('ollama');
+    for (let i = 0; i < 5; i++) await breaker.recordFailure('ollama');
     clock.advance(30_000);
     // Otro proceso lógico ya tomó el permiso de prueba.
-    expect(breaker.tryAcquire('ollama')).toBe(true);
+    expect(await breaker.tryAcquire('ollama')).toBe(true);
     const provider = new FakeLlmProvider('ollama', [VALID]);
     const { runTask, deps } = harness([provider], { clock, breaker });
 
@@ -1573,7 +1648,7 @@ describe('RunTask: deadlines and cancellation (real timers)', () => {
   it('returns the half-open permit of a cancelled probe to a real breaker', async () => {
     const clock = new ManualClock();
     const breaker = new InMemoryCircuitBreaker(clock);
-    for (let i = 0; i < 5; i++) breaker.recordFailure('ollama');
+    for (let i = 0; i < 5; i++) await breaker.recordFailure('ollama');
     clock.advance(30_000);
     const controller = new AbortController();
     const provider = new FakeLlmProvider('ollama', [neverResolves, VALID]);

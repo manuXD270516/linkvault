@@ -4,6 +4,12 @@
 /** `RunTaskFn`: único punto de entrada del módulo de IA (ADR-014). */
 export const RUN_TASK = Symbol('RUN_TASK');
 
+/**
+ * Consulta de elegibilidad de solo lectura (`ProviderEligibility`). Exportada para que `api` pueda
+ * decidir si reutilizar un análisis degradado sin ejecutar la tarea (cv-match-suggestions 4.4).
+ */
+export const PROVIDER_ELIGIBILITY = Symbol('PROVIDER_ELIGIBILITY');
+
 /** `AiModuleOptions` resueltas por `forRootAsync`. */
 export const AI_MODULE_OPTIONS = Symbol('AI_MODULE_OPTIONS');
 

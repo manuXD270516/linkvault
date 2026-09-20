@@ -114,4 +114,48 @@ describe('runStructuredOutput', () => {
       usage: { inputTokens: 7, outputTokens: 2 },
     });
   });
+
+  it('Marcador inventado por el proveedor', async () => {
+    const invented =
+      '{"skills":[{"name":"pega [ADDRESS_3] aquí"}]}';
+    const provider = new FakeLlmProvider('p', [invented, VALID]);
+
+    const result = await runStructuredOutput({
+      complete: (req) => provider.complete(req),
+      request,
+      outputSchema,
+      maxAttempts: 2,
+      emittedMarkers: new Set(['[EMAIL_1]', '[PHONE_1]']),
+    });
+
+    expect(result).toMatchObject({
+      status: 'valid',
+      output: { skills: [{ name: 'TypeScript' }] },
+      repairs: 1,
+    });
+    expect(provider.calls).toBe(2);
+    expect(provider.requests[1]?.user).toContain('ADDRESS_3');
+  });
+
+  it('rejects an invented marker after a failed repair', async () => {
+    const invented =
+      '{"skills":[{"name":"pega [ADDRESS_3] aquí"}]}';
+    const provider = new FakeLlmProvider('p', [invented, invented]);
+
+    const result = await runStructuredOutput({
+      complete: (req) => provider.complete(req),
+      request,
+      outputSchema,
+      maxAttempts: 2,
+      emittedMarkers: new Set(['[EMAIL_1]', '[PHONE_1]']),
+    });
+
+    expect(result.status).toBe('invalid');
+    expect(result.repairs).toBe(1);
+    if (result.status === 'invalid') {
+      expect(result.issues.some((issue) => issue.includes('ADDRESS_3'))).toBe(
+        true,
+      );
+    }
+  });
 });

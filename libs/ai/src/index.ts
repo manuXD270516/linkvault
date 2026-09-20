@@ -55,8 +55,13 @@ export {
   type AiModuleAsyncOptions,
   type AiModuleOptions,
 } from './ai.module';
-export { RUN_TASK } from './ai.tokens';
+export { PROVIDER_ELIGIBILITY, RUN_TASK } from './ai.tokens';
 export type { RunTaskFn } from './application/run-task.usecase';
+export type {
+  ProviderEligibility,
+  ProviderEligibilityQuery,
+  ProviderEligibilityResult,
+} from './application/provider-eligibility';
 export {
   classifySkillsTask,
   type ClassifySkillsInput,

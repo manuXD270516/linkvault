@@ -1,9 +1,35 @@
 // Redacción de datos personales para proveedores externos (D11 de ai-gateway-core, ADR-018 §11 y §13,
-// specs/ai/data-protection). Detectores, en este orden: email, URL, teléfono y nombre opcional.
-// Cada valor distinto recibe un marcador estable por tipo (`[EMAIL_1]`, `[URL_1]`…). El mapa marcador→valor vive solo
-// en el cierre de una redacción: el redactor no guarda estado y el objeto devuelto no lo expone.
+// ADR-030 §10/§14, D8/D10 de cv-match-suggestions, specs/ai/data-protection). Detectores, en este orden:
+// email, URL, documento, dirección, teléfono y nombre opcional. El documento va antes del teléfono para que un
+// fragmento que cumpla ambas reglas se redacte una sola vez como `[ID_n]`. Cada valor distinto recibe un marcador
+// estable por tipo. El mapa marcador→valor vive solo en el cierre de una redacción: el redactor no guarda estado y
+// el objeto devuelto no expone los valores.
 
-export type PiiKind = 'EMAIL' | 'URL' | 'PHONE' | 'NAME';
+import {
+  REDACTED_DATA_TYPE_IDS,
+  type RedactedDataTypeId,
+} from '@linkvault/shared';
+
+/** `PiiKind` derivado de la lista canónica de `@linkvault/shared` (tarea 1.3 / 5.1). */
+export type PiiKind = Uppercase<RedactedDataTypeId>;
+
+/** Kinds que el redactor reconoce en marcadores; se deriva de la lista canónica. */
+export const PII_KINDS: readonly PiiKind[] = REDACTED_DATA_TYPE_IDS.map(
+  (id) => id.toUpperCase() as PiiKind,
+);
+
+/**
+ * Kinds para los que este archivo implementa un detector. Añadir un tipo a la lista canónica sin tocar el redactor
+ * debe romper el test que compara este conjunto con `PII_KINDS`.
+ */
+export const DETECTED_PII_KINDS = [
+  'EMAIL',
+  'URL',
+  'PHONE',
+  'ADDRESS',
+  'ID',
+  'NAME',
+] as const satisfies readonly PiiKind[];
 
 export interface RedactionOptions {
   redactName?: boolean;
@@ -13,6 +39,8 @@ export interface RedactionOptions {
 export interface Redaction<T> {
   /** Copia del input con los strings redactados; las claves de objeto no se tocan. */
   readonly value: T;
+  /** Marcadores emitidos en esta redacción (sin valores). */
+  readonly emittedMarkers: ReadonlySet<string>;
   /**
    * Copia de `output` con los marcadores de esta redacción sustituidos por sus valores en cualquier string, a
    * cualquier profundidad. Los marcadores desconocidos se dejan tal cual.
@@ -42,9 +70,34 @@ class MarkerTable {
   valueOf(marker: string): string | undefined {
     return this.valueByMarker.get(marker);
   }
+
+  emitted(): ReadonlySet<string> {
+    return new Set(this.valueByMarker.keys());
+  }
 }
 
-const MARKER_PATTERN = /\[(?:EMAIL|URL|PHONE|NAME)_\d+\]/g;
+/** Forma de marcador PII reconocida para reinyección, exclusiones y detección de inventados. */
+export const MARKER_PATTERN = new RegExp(
+  `\\[(?:${PII_KINDS.join('|')})_\\d+\\]`,
+  'g',
+);
+
+/**
+ * Marcadores con forma PII presentes en `value` que no están en `emitted`. Observable desde fuera del módulo
+ * (D10 / tarea 5.16): la comprobación no depende de en qué capa se invoque.
+ */
+export function findInventedPiiMarkers(
+  value: unknown,
+  emitted: ReadonlySet<string>,
+): readonly string[] {
+  const invented = new Set<string>();
+  visitStrings(value, (text) => {
+    for (const match of text.matchAll(MARKER_PATTERN)) {
+      if (!emitted.has(match[0])) invented.add(match[0]);
+    }
+  });
+  return [...invented];
+}
 
 type Detector = (text: string, markers: MarkerTable) => string;
 
@@ -360,11 +413,12 @@ function decodeMaskIndex(encoded: string): number {
  */
 function withExclusionsMasked(
   text: string,
+  patterns: readonly RegExp[],
   detect: (masked: string) => string,
 ): string {
   if (text.includes(MASK_OPEN)) return detect(text);
   const excluded: string[] = [];
-  const masked = PHONE_EXCLUSION_PATTERNS.reduce(
+  const masked = patterns.reduce(
     (current, pattern) =>
       current.replace(pattern, (match) => {
         excluded.push(match);
@@ -380,7 +434,7 @@ function withExclusionsMasked(
 
 /** Teléfonos, en orden: móvil boliviano, internacional con `+` y local LatAm, con las exclusiones enmascaradas. */
 const detectPhones: Detector = (text, markers) =>
-  withExclusionsMasked(text, (masked) =>
+  withExclusionsMasked(text, PHONE_EXCLUSION_PATTERNS, (masked) =>
     [
       detectBolivianMobiles,
       detectInternationalNumbers,
@@ -388,30 +442,459 @@ const detectPhones: Detector = (text, markers) =>
     ].reduce((current, detect) => detect(current, markers), masked),
   );
 
+// --- Documento de identidad (D8; antes del teléfono) -----------------------------------------------
+
+const BO_DEPT_EXT = 'LP|CB|SC|OR|PT|TJ|CH|BE|PD';
+/** 5–10 dígitos, con o sin puntos de millar (`4567890`, `45.678.901`). */
+const ID_DIGITS = String.raw`(?:\d{1,3}(?:\.\d{3}){1,3}|\d{5,10})`;
+
 /**
- * Nombre propio, solo con `redactName: true` y un `personName` no vacío: coincidencia de palabras completas, sin
- * distinguir mayúsculas y con cualquier espacio entre las partes. Todas las variantes comparten `[NAME_1]` y se
- * reinyectan con la forma de su primera aparición.
+ * Rama de extensión: dígitos seguidos de extensión departamental boliviana o de guion y control alfanumérico.
+ * No forma parte de una palabra o número más largos.
+ */
+const ID_EXTENSION_PATTERN = new RegExp(
+  String.raw`(?<![\p{L}\p{N}])(${ID_DIGITS})(?:\p{Zs}+(?:${BO_DEPT_EXT})|-[\p{L}\p{N}]+)(?![\p{L}\p{N}])`,
+  'giu',
+);
+
+/**
+ * Palabras clave de documento, las más largas primero para no cortar `cédula de identidad` en `cédula`.
+ * Misma línea y a no más de 30 caracteres por delante del número.
+ */
+const ID_KEYWORD_PATTERN = new RegExp(
+  [
+    String.raw`c[eé]dula\p{Zs}+de\p{Zs}+identidad`,
+    String.raw`documento\p{Zs}+de\p{Zs}+identidad`,
+    String.raw`pasaporte`,
+    String.raw`c[eé]dula`,
+    String.raw`carnet`,
+    String.raw`carn[eé]`,
+    String.raw`C\.I\.`,
+    String.raw`CI`,
+    String.raw`DNI`,
+  ].join('|'),
+  'giu',
+);
+
+const ID_KEYWORD_GAP = 30;
+const PASSPORT_ALNUM = /[A-Za-z0-9]{6,10}/;
+
+const detectIds: Detector = (text, markers) =>
+  withExclusionsMasked(text, [MARKER_PATTERN], (masked) => {
+    const afterExtension = masked.replace(ID_EXTENSION_PATTERN, (id) =>
+      markers.markerFor('ID', id),
+    );
+    return redactIdsByKeyword(afterExtension, markers);
+  });
+
+function redactIdsByKeyword(text: string, markers: MarkerTable): string {
+  let result = '';
+  let cursor = 0;
+
+  for (const keyword of text.matchAll(ID_KEYWORD_PATTERN)) {
+    const keywordStart = keyword.index;
+    const keywordEnd = keywordStart + keyword[0].length;
+    if (keywordStart < cursor) continue;
+
+    const lineEnd = text.indexOf('\n', keywordEnd);
+    const lineLimit = lineEnd === -1 ? text.length : lineEnd;
+    const windowEnd = Math.min(keywordEnd + ID_KEYWORD_GAP, lineLimit);
+    const window = text.slice(keywordEnd, windowEnd);
+    const number = idNumberAfterKeyword(window, keyword[0]);
+    if (number === undefined) continue;
+
+    const numberStart = keywordEnd + number.offset;
+    const numberEnd = numberStart + number.value.length;
+    result += text.slice(cursor, numberStart) + markers.markerFor('ID', number.value);
+    cursor = numberEnd;
+  }
+
+  return result + text.slice(cursor);
+}
+
+/** Número (o pasaporte alfanumérico) tras la palabra clave, con `:` y espacios opcionales. */
+function idNumberAfterKeyword(
+  window: string,
+  keyword: string,
+): { value: string; offset: number } | undefined {
+  const prefix = window.match(/^[^\S\n]*:?[^\S\n]*/);
+  const offset = prefix?.[0].length ?? 0;
+  const rest = window.slice(offset);
+  const digits = rest.match(new RegExp(String.raw`^${ID_DIGITS}`));
+  if (digits) return { value: digits[0], offset };
+
+  if (/^pasaporte$/iu.test(keyword.trim())) {
+    const alnum = rest.match(PASSPORT_ALNUM);
+    if (alnum && alnum.index === 0) return { value: alnum[0], offset };
+  }
+  return undefined;
+}
+
+// --- Dirección postal (D8) -------------------------------------------------------------------------
+
+/** Separadores fuertes que cortan el fragmento de dirección (no el fin de línea). */
+const ADDRESS_STRONG_SEP = /[|·—–\t]/;
+
+/** Precedido de inicio de línea o separador (espacio, coma, `;`, `:`, tab, separador fuerte). */
+function isAddressBoundaryBefore(text: string, index: number): boolean {
+  if (index === 0) return true;
+  const prev = text[index - 1];
+  return prev !== undefined && /[\s,;:\t|·—–]/.test(prev);
+}
+
+/** Tras el indicador: separador, no letra ni símbolo pegado (`C/` exige espacio; `C/C++` no cuenta). */
+function isAddressBoundaryAfter(text: string, index: number): boolean {
+  const next = text[index];
+  return next !== undefined && /[\s,;:\t|·—–]/.test(next);
+}
+
+interface AddressIndicator {
+  readonly pattern: RegExp;
+  readonly numeric: boolean;
+}
+
+/** Indicadores de vía (dígito en cualquier punto del fragmento). El punto de abreviatura es opcional. */
+const STREET_INDICATORS: readonly AddressIndicator[] = [
+  { pattern: /Calle/iu, numeric: false },
+  { pattern: /C\//iu, numeric: false },
+  { pattern: /Avenida/iu, numeric: false },
+  { pattern: /Av\.?/iu, numeric: false },
+  { pattern: /Pasaje/iu, numeric: false },
+  { pattern: /Psje\.?/iu, numeric: false },
+  { pattern: /Camino/iu, numeric: false },
+  { pattern: /Carretera/iu, numeric: false },
+  { pattern: /Urbanizaci[oó]n/iu, numeric: false },
+  { pattern: /Condominio/iu, numeric: false },
+  { pattern: /Edificio/iu, numeric: false },
+];
+
+/**
+ * Indicadores numéricos: el dígito ha de ser lo primero que los siga, separado como mucho por un espacio, un punto
+ * de abreviatura o dos puntos (D8).
+ */
+const NUMERIC_INDICATORS: readonly AddressIndicator[] = [
+  { pattern: /Km/iu, numeric: true },
+  { pattern: /Zona/iu, numeric: true },
+  { pattern: /Barrio/iu, numeric: true },
+  { pattern: /Manzana/iu, numeric: true },
+  { pattern: /Mz/iu, numeric: true },
+  { pattern: /Torre/iu, numeric: true },
+  { pattern: /Nro\.?/iu, numeric: true },
+  { pattern: /N°/iu, numeric: true },
+  { pattern: /Piso/iu, numeric: true },
+  { pattern: /Depto\.?/iu, numeric: true },
+];
+
+/** `#` solo cuenta como `#` + dígitos inmediatos, no como indicador suelto (`C#` / `F#` no disparan). */
+const HASH_ADDRESS_PATTERN = /#\d+/g;
+
+const ALL_ADDRESS_INDICATORS: readonly AddressIndicator[] = [
+  ...STREET_INDICATORS,
+  ...NUMERIC_INDICATORS,
+];
+
+const detectAddresses: Detector = (text, markers) =>
+  withExclusionsMasked(text, [MARKER_PATTERN], (masked) =>
+    masked
+      .split(/(\n)/)
+      .map((part) => (part === '\n' ? part : redactAddressesInLine(part, markers)))
+      .join(''),
+  );
+
+function redactAddressesInLine(line: string, markers: MarkerTable): string {
+  let result = '';
+  let cursor = 0;
+
+  while (cursor < line.length) {
+    const next = nextAddressStart(line, cursor);
+    if (next === undefined) {
+      result += line.slice(cursor);
+      break;
+    }
+    const fragEnd = addressFragmentEnd(line, next.start);
+    let fragment = line.slice(next.start, fragEnd);
+    // Conservar el espacio delante del separador fuerte (`500 — cargo` → `[ADDRESS_1] — cargo`).
+    const withoutTrailingSpace = fragment.replace(/\s+$/u, '');
+    fragment = withoutTrailingSpace;
+    if (!/\d/.test(fragment)) {
+      result += line.slice(cursor, next.start + 1);
+      cursor = next.start + 1;
+      continue;
+    }
+    if (next.numeric && !numericDigitFollows(line, next.start + next.length)) {
+      result += line.slice(cursor, next.start + 1);
+      cursor = next.start + 1;
+      continue;
+    }
+    result +=
+      line.slice(cursor, next.start) + markers.markerFor('ADDRESS', fragment);
+    cursor = next.start + fragment.length;
+  }
+
+  return result;
+}
+
+interface AddressStart {
+  start: number;
+  length: number;
+  numeric: boolean;
+}
+
+/** Primer indicador o `#digits` válido a partir de `from`. */
+function nextAddressStart(line: string, from: number): AddressStart | undefined {
+  let best: AddressStart | undefined;
+
+  for (const indicator of ALL_ADDRESS_INDICATORS) {
+    indicator.pattern.lastIndex = 0;
+    const slice = line.slice(from);
+    const flags = indicator.pattern.flags.includes('g')
+      ? indicator.pattern.flags
+      : `${indicator.pattern.flags}g`;
+    const global = new RegExp(indicator.pattern.source, flags);
+    for (const match of slice.matchAll(global)) {
+      const start = from + (match.index ?? 0);
+      const length = match[0].length;
+      if (!isAddressBoundaryBefore(line, start)) continue;
+      if (!isAddressBoundaryAfter(line, start + length)) continue;
+      if (best === undefined || start < best.start) {
+        best = { start, length, numeric: indicator.numeric };
+      }
+      break;
+    }
+  }
+
+  HASH_ADDRESS_PATTERN.lastIndex = 0;
+  const hashSlice = line.slice(from);
+  for (const match of hashSlice.matchAll(HASH_ADDRESS_PATTERN)) {
+    const start = from + (match.index ?? 0);
+    if (!isAddressBoundaryBefore(line, start)) continue;
+    const candidate: AddressStart = {
+      start,
+      length: match[0].length,
+      numeric: false,
+    };
+    if (best === undefined || start < best.start) best = candidate;
+    break;
+  }
+
+  return best;
+}
+
+function addressFragmentEnd(line: string, from: number): number {
+  for (let i = from; i < line.length; i++) {
+    if (ADDRESS_STRONG_SEP.test(line[i] ?? '')) return i;
+  }
+  return line.length;
+}
+
+/** Tras un indicador numérico: dígito separado como mucho por espacio, punto de abreviatura o `:`. */
+function numericDigitFollows(text: string, afterIndicator: number): boolean {
+  return /^(?:[.:]|\p{Zs}){0,2}\d/u.test(text.slice(afterIndicator));
+}
+
+// --- Nombre propio (ADR-030 §14) -------------------------------------------------------------------
+
+/**
+ * Partículas de topónimo: un fragmento precedido inmediatamente de una de ellas no se sustituye. Cuando un apellido
+ * coincide con una ciudad prevalece la ciudad (ADR-030 §14): el nombre no aporta señal de encaje y la ubicación sí.
+ */
+const TOPONYM_PARTICLES = [
+  'La',
+  'Las',
+  'El',
+  'Los',
+  'San',
+  'Santa',
+  'Villa',
+  'Puerto',
+] as const;
+
+/** Lista cerrada de ciudades y departamentos reconocidos; un fragmento que forme parte de uno no se sustituye. */
+const TOPONYMS = [
+  'La Paz',
+  'El Alto',
+  'Santa Cruz de la Sierra',
+  'Santa Cruz',
+  'Cochabamba',
+  'Oruro',
+  'Potosí',
+  'Tarija',
+  'Sucre',
+  'Chuquisaca',
+  'Beni',
+  'Trinidad',
+  'Pando',
+  'Cobija',
+  'Montero',
+] as const;
+
+const ORG_DESIGNATORS = [
+  'S\\.A\\.',
+  'SA',
+  'S\\.R\\.L\\.',
+  'SRL',
+  'Ltda\\.',
+  'S\\.A\\.S\\.',
+  'Inc\\.',
+  'LLC',
+  '&\\s*C[ií]a\\.',
+] as const;
+
+const ORG_WORDS = [
+  'Banco',
+  'Constructora',
+  'Consultora',
+  'Cooperativa',
+  'Empresa',
+  'Grupo',
+  'Fundación',
+  'Universidad',
+  'Colegio',
+  'Instituto',
+  'Clínica',
+  'Hospital',
+  'Ministerio',
+  'Agencia',
+  'Editorial',
+] as const;
+
+/**
+ * Palabras corrientes en minúscula: ante la duda entre redactar un fragmento del nombre y conservar una de ellas,
+ * no se redacta. Solo afecta al detector de nombre.
+ */
+const COMMON_LOWERCASE_WORDS: ReadonlySet<string> = new Set([
+  'paz',
+  'cruz',
+  'flores',
+  'campos',
+  'torres',
+  'luna',
+  'rosa',
+  'león',
+  'prado',
+  'castillo',
+  'nieves',
+  'mar',
+]);
+
+const ORG_DESIGNATOR_PATTERN = new RegExp(
+  ORG_DESIGNATORS.map((d) => `(?:${d})`).join('|'),
+  'iu',
+);
+
+/**
+ * Nombre propio, solo con `redactName: true` y un `personName` no vacío: el nombre completo se sustituye siempre; un
+ * fragmento suelto solo si pasa las exclusiones de topónimo, organización y palabra corriente (ADR-030 §14).
  */
 function nameDetector(options: RedactionOptions): Detector | undefined {
   const parts = options.personName?.trim().split(/\s+/).filter(Boolean) ?? [];
   if (options.redactName !== true || parts.length === 0) return undefined;
-  const pattern = new RegExp(
+  const identity = parts.join(' ').toLocaleLowerCase();
+  const fullPattern = new RegExp(
     `(?<![\\p{L}\\p{N}])${parts.map(escapeRegExp).join('\\s+')}(?![\\p{L}\\p{N}])`,
     'giu',
   );
-  const identity = parts.join(' ').toLocaleLowerCase();
-  return (text, markers) =>
-    text.replace(pattern, (name) => markers.markerFor('NAME', name, identity));
+  const partPatterns = parts.map(
+    (part) =>
+      new RegExp(
+        `(?<![\\p{L}\\p{N}])${escapeRegExp(part)}(?![\\p{L}\\p{N}])`,
+        'giu',
+      ),
+  );
+
+  return (text, markers) => {
+    let current = withExclusionsMasked(text, [MARKER_PATTERN], (masked) =>
+      masked.replace(fullPattern, (name) =>
+        markers.markerFor('NAME', name, identity),
+      ),
+    );
+
+    for (const pattern of partPatterns) {
+      current = withExclusionsMasked(current, [MARKER_PATTERN], (masked) =>
+        masked.replace(pattern, (match, offset: number) => {
+          if (isExcludedNameFragment(masked, offset, match)) return match;
+          return markers.markerFor('NAME', match, identity);
+        }),
+      );
+    }
+    return current;
+  };
+}
+
+/**
+ * Desempate declarado (ADR-030 §14): ante la duda entre redactar un fragmento del nombre y conservar un topónimo, un
+ * empleador o una palabra corriente, no se redacta.
+ */
+function isExcludedNameFragment(
+  text: string,
+  start: number,
+  match: string,
+): boolean {
+  const end = start + match.length;
+  if (
+    COMMON_LOWERCASE_WORDS.has(match) &&
+    match === match.toLocaleLowerCase()
+  ) {
+    return true;
+  }
+  if (isToponymContext(text, start, end)) return true;
+  if (isOrganizationContext(text, start, end)) return true;
+  return false;
+}
+
+function isToponymContext(text: string, start: number, end: number): boolean {
+  const before = text.slice(0, start);
+  for (const particle of TOPONYM_PARTICLES) {
+    if (new RegExp(`${escapeRegExp(particle)}\\s+$`, 'iu').test(before)) {
+      return true;
+    }
+  }
+  for (const toponym of TOPONYMS) {
+    const pattern = new RegExp(escapeRegExp(toponym), 'giu');
+    for (const hit of text.matchAll(pattern)) {
+      const hitStart = hit.index ?? 0;
+      const hitEnd = hitStart + hit[0].length;
+      if (hitStart <= start && hitEnd >= end) return true;
+    }
+  }
+  return false;
+}
+
+function isOrganizationContext(
+  text: string,
+  start: number,
+  end: number,
+): boolean {
+  const lineStart = text.lastIndexOf('\n', start - 1) + 1;
+  const newline = text.indexOf('\n', end);
+  const lineEnd = newline === -1 ? text.length : newline;
+  const line = text.slice(lineStart, lineEnd);
+  const localStart = start - lineStart;
+
+  if (ORG_DESIGNATOR_PATTERN.test(line)) return true;
+
+  for (const word of ORG_WORDS) {
+    const pattern = new RegExp(
+      `(?<![\\p{L}\\p{N}])${escapeRegExp(word)}(?![\\p{L}\\p{N}])`,
+      'giu',
+    );
+    for (const hit of line.matchAll(pattern)) {
+      if ((hit.index ?? 0) < localStart) return true;
+    }
+  }
+  return false;
 }
 
 function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/** Documento antes que teléfono; dirección tras URL; nombre al final y solo con interruptor. */
 const BASE_DETECTORS: readonly Detector[] = [
   detectEmails,
   detectUrls,
+  detectIds,
+  detectAddresses,
   detectPhones,
 ];
 
@@ -430,9 +913,12 @@ export class PiiRedactor {
         MARKER_PATTERN,
         (marker) => markers.valueOf(marker) ?? marker,
       );
+    // La tabla se rellena al redactar: hay que emitir el set después de `mapStrings`.
+    const value = mapStrings(input, redactText);
 
     return {
-      value: mapStrings(input, redactText),
+      value,
+      emittedMarkers: markers.emitted(),
       reinject: (output) => mapStrings(output, reinjectText),
     };
   }
@@ -459,6 +945,20 @@ function mapUnknown(
     );
   }
   return value;
+}
+
+function visitStrings(value: unknown, visit: (text: string) => void): void {
+  if (typeof value === 'string') {
+    visit(value);
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) visitStrings(item, visit);
+    return;
+  }
+  if (isPlainObject(value)) {
+    for (const item of Object.values(value)) visitStrings(item, visit);
+  }
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

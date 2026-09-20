@@ -216,6 +216,101 @@ describe('buildChain', () => {
   it('returns an empty chain when nothing is eligible', () => {
     expect(chainIds({ providers: [] })).toEqual([]);
   });
+
+  // Escenarios de consentWouldEnable (cv-match-suggestions / specs/ai/provider-routing).
+
+  it('El permiso habría habilitado al único proveedor', () => {
+    const result = buildChain({
+      task: { requires: {}, dataSensitivity: 'personal' },
+      ctx: { aiConsent: { externalProviders: false } },
+      providers: [provider('openrouter', { external: true })],
+      openIds: new Set(),
+    });
+
+    expect(result.providers).toEqual([]);
+    expect(result.consentWouldEnable).toBe(true);
+  });
+
+  it('No hay ningún proveedor externo configurado', () => {
+    const result = buildChain({
+      task: { requires: {}, dataSensitivity: 'personal' },
+      ctx: { aiConsent: { externalProviders: false } },
+      providers: [provider('ollama'), provider('mock')],
+      openIds: new Set(),
+    });
+
+    expect(result.consentWouldEnable).toBe(false);
+  });
+
+  it('El único externo tampoco cumple las capacidades', () => {
+    const result = buildChain({
+      task: { requires: { jsonMode: true }, dataSensitivity: 'personal' },
+      ctx: { aiConsent: { externalProviders: false } },
+      providers: [provider('openrouter', { external: true, jsonMode: false })],
+      openIds: new Set(),
+    });
+
+    expect(result.providers).toEqual([]);
+    expect(result.consentWouldEnable).toBe(false);
+  });
+
+  it('El único externo tiene el circuito abierto', () => {
+    const result = buildChain({
+      task: { requires: {}, dataSensitivity: 'personal' },
+      ctx: { aiConsent: { externalProviders: false } },
+      providers: [provider('openrouter', { external: true })],
+      openIds: new Set(['openrouter']),
+    });
+
+    expect(result.consentWouldEnable).toBe(false);
+  });
+
+  it('Con el consentimiento dado la pregunta no se plantea', () => {
+    const result = buildChain({
+      task: { requires: {}, dataSensitivity: 'personal' },
+      ctx: { aiConsent: { externalProviders: true } },
+      providers: [
+        provider('openrouter', { external: true }),
+        provider('ollama'),
+      ],
+      openIds: new Set(['openrouter', 'ollama']),
+    });
+
+    expect(result.providers).toEqual([]);
+    expect(result.consentWouldEnable).toBe(false);
+  });
+
+  it('El permiso habría añadido un externo a una cadena que no está vacía', () => {
+    const result = buildChain({
+      task: { requires: {}, dataSensitivity: 'personal' },
+      ctx: { aiConsent: { externalProviders: false } },
+      providers: [
+        provider('ollama'),
+        provider('openrouter', { external: true }),
+      ],
+      openIds: new Set(),
+    });
+
+    expect(result.providers.map((p) => p.id)).toEqual(['ollama']);
+    expect(result.consentWouldEnable).toBe(true);
+  });
+
+  it('does not decide the degradation reason', () => {
+    // La política solo expone el hecho; el motivo lo fija runTask (ai/task-execution).
+    const result = buildChain({
+      task: { requires: {}, dataSensitivity: 'personal' },
+      ctx: { aiConsent: { externalProviders: false } },
+      providers: [provider('openrouter', { external: true })],
+      openIds: new Set(),
+    });
+
+    expect(result).toEqual({
+      providers: [],
+      consentWouldEnable: true,
+    });
+    expect(result).not.toHaveProperty('reason');
+    expect(result).not.toHaveProperty('degradedReason');
+  });
 });
 
 describe('dataSensitivityOf', () => {
