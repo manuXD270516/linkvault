@@ -111,10 +111,23 @@ export class OutboxRelay implements OnModuleInit {
   ): Promise<void> {
     const now = this.clock.now();
     const attempts = event.attempts + 1;
-    // El detalle del fallo va al nivel de depuración: el aviso de arriba solo nombra el evento y su tipo.
-    this.writer.debug(
-      `Outbox event ${event.id} could not be published: ${messageOf(error)}`,
-    );
+    if (event.attempts === 0) {
+      // **La primera vez que un evento falla, se avisa.** Antes todo el detalle iba a `debug`, y eso escondía durante
+      // 24 h los fallos que no son un corte pasajero sino un error nuestro —un `jobId` que la cola rechaza, un tipo
+      // que el publicador no conoce, un payload que no cumple su schema—: el trabajo no se hacía, el agregado se
+      // quedaba esperando y no se veía **nada**. Aquí llegó a costar un e2e.
+      //
+      // Es una línea **por evento**, no por vuelta: un corte de Redis avisa una vez de cada evento pendiente y se
+      // calla; los reintentos siguientes van a `debug` como siempre. El mensaje del error es el de la cola o el del
+      // schema, y el payload del outbox solo lleva identificadores (ADR-009).
+      this.writer.warn(
+        `Outbox event ${event.id} (${event.type}) could not be published: ${messageOf(error)}`,
+      );
+    } else {
+      this.writer.debug(
+        `Outbox event ${event.id} could not be published: ${messageOf(error)}`,
+      );
+    }
     if (now.getTime() - event.createdAt.getTime() >= OUTBOX_EVENT_MAX_AGE_MS) {
       await this.outbox.markFailed(event.id, attempts, now);
       this.writer.warn(

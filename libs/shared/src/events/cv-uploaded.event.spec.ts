@@ -60,7 +60,7 @@ describe('cvUploadedEvent', () => {
 describe('cvUploadedJobId', () => {
   it('is deterministic for the same CV', () => {
     expect(cvUploadedJobId(payload)).toBe(
-      'extract-cv:66e9a0000000000000000001',
+      'cv:66e9a0000000000000000001:extract',
     );
     expect(cvUploadedJobId(payload)).toBe(cvUploadedJobId({ ...payload }));
   });

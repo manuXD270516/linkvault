@@ -35,7 +35,12 @@ export function cvUploadedEvent(payload: CvUploadedPayload): CvUploadedEvent {
 /**
  * `jobId` determinista: republicar el mismo evento deja un solo job mientras la cola lo recuerda. La idempotencia de
  * verdad no es esta sino la del consumidor, que escribe condicionado al estado `pending` (D8).
+ *
+ * **Tres segmentos, y no es cosmética**: BullMQ rechaza con `Custom Id cannot contain :` cualquier `jobId` que lleve
+ * dos puntos y no tenga exactamente tres partes. Un `extract-cv:<cvId>` se veía perfecto en los unitarios —que usan
+ * una cola doble— y fallaba siempre contra Redis, dejando el CV en `pending` para siempre. Lo comprueba un test de
+ * contrato sobre la tabla de enrutado, que recorre todos los tipos.
  */
 export function cvUploadedJobId(payload: CvUploadedPayload): string {
-  return `${EXTRACT_CV_QUEUE}:${payload.cvId}`;
+  return `cv:${payload.cvId}:extract`;
 }

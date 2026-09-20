@@ -33,7 +33,12 @@ export function cvDeletedEvent(payload: CvDeletedPayload): CvDeletedEvent {
   return { type: CV_DELETED_EVENT_TYPE, payload };
 }
 
-/** `jobId` determinista: dos borrados del mismo CV son un solo trabajo mientras la cola lo recuerde. */
+/**
+ * `jobId` determinista: dos borrados del mismo CV son un solo trabajo mientras la cola lo recuerde.
+ *
+ * **Tres segmentos**, como el de la extracción y por la misma razón: BullMQ rechaza un `jobId` con dos puntos que no
+ * tenga exactamente tres partes, y ese rechazo solo se ve contra Redis.
+ */
 export function cvDeletedJobId(payload: CvDeletedPayload): string {
-  return `${DELETE_CV_FILE_QUEUE}:${payload.cvId}`;
+  return `cv:${payload.cvId}:delete`;
 }

@@ -217,11 +217,11 @@ describe('OutboxRelay', () => {
 
     expect([...queue.jobs.keys()]).toEqual([`enrich:${linkId}:1`]);
     expect([...(cvQueues.get(EXTRACT_CV_QUEUE)?.jobs.keys() ?? [])]).toEqual([
-      `extract-cv:${cvId}`,
+      `cv:${cvId}:extract`,
     ]);
     expect([
       ...(cvQueues.get(DELETE_CV_FILE_QUEUE)?.jobs.keys() ?? []),
-    ]).toEqual([`delete-cv-file:${cvId}`]);
+    ]).toEqual([`cv:${cvId}:delete`]);
     const events = await storedEvents();
     expect(events.map((event) => event.publishedAt)).toEqual([now, now, now]);
   });
@@ -390,6 +390,31 @@ describe('OutboxRelay', () => {
     expect(published?.publishedAt).toEqual(clock.now());
   });
 
+  it('warns the first time an event cannot be published, and only the first time', async () => {
+    // Antes todo iba a `debug`, y un `jobId` que la cola rechaza —o un tipo desconocido, o un payload que no cumple su
+    // schema— se quedaba reintentando **en silencio** durante 24 h. El aviso es uno por evento, no por vuelta.
+    await appendLinkCreated(newLinkId());
+    queue.down = true;
+
+    await relay.publishPending();
+    clock.advanceBy(60_000);
+    await relay.publishPending();
+
+    expect(log.warnings).toHaveLength(1);
+    expect(log.warnings[0]).toContain('LinkCreated.v1');
+    expect(log.warnings[0]).toContain('Connection is closed');
+    expect(log.debugs.join('')).toContain('could not be published');
+  });
+
+  it('warns about an event of a type it cannot publish, instead of hiding it', async () => {
+    await appendEvent({ type: 'SomethingElse.v1', payload: { id: 'x' } });
+
+    await relay.publishPending();
+
+    expect(log.warnings).toHaveLength(1);
+    expect(log.warnings[0]).toContain('Unknown outbox event type');
+  });
+
   it('Corte largo de la cola', async () => {
     await appendLinkCreated(newLinkId());
     queue.down = true;
@@ -432,9 +457,11 @@ describe('OutboxRelay', () => {
     const eventId = failed?._id.toHexString() ?? '';
     expect(failed?.failedAt).toEqual(clock.now());
     expect(failed?.publishedAt).toBeNull();
-    expect(log.warnings).toHaveLength(1);
-    expect(log.warnings[0]).toContain(eventId);
-    expect(log.warnings[0]).not.toContain(linkId);
+    // Dos avisos: el del primer fallo, que es lo que hace visible un evento que no se puede publicar, y el de darlo
+    // por agotado. Ninguno de los dos nombra nada del usuario.
+    expect(log.warnings).toHaveLength(2);
+    expect(log.warnings.at(-1)).toContain(eventId);
+    expect(log.warnings.join('')).not.toContain(linkId);
 
     // Agotado es definitivo: aunque la cola vuelva, el relay ya no lo toma.
     queue.down = false;

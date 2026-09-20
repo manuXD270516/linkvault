@@ -55,7 +55,7 @@ describe('cvDeletedEvent', () => {
 describe('cvDeletedJobId', () => {
   it('is deterministic for the same CV', () => {
     expect(cvDeletedJobId(payload)).toBe(
-      'delete-cv-file:66e9a0000000000000000001',
+      'cv:66e9a0000000000000000001:delete',
     );
   });
 });

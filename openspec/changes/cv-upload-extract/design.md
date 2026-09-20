@@ -67,7 +67,7 @@ Motivación y alcance: proposal.md; comportamiento: las specs; decisiones no tri
   que la lectura sirve (D6); ni el texto completo, ni una descarga, ni un botón de copiar.
 - **OCR.** Un PDF escaneado no tiene capa de texto; se dice y ya (D8).
 - **Compartir un CV.** No hay ninguna ruta pública, ni por grupo, ni por enlace. El CV es de una persona y de nadie más.
-- **Caducidad automática y borrado de cuenta.** El bucket `cv` **no** lleva regla de expiración: borrar el CV de alguien
+- **Caducidad automática y borrado de cuenta.** El bucket de CV (`cvs`) **no** lleva regla de expiración: borrar el CV de alguien
   porque lleve un año sin entrar sería destruir datos por un temporizador. El borrado de cuenta no existe todavía y lo
   hereda `deploy-prod` (Open Questions).
 - **Aviso en vivo del final de la extracción.** El canal SSE existe y sería barato, pero la extracción tarda segundos y
@@ -88,7 +88,7 @@ El reparto es el de design.md §5, con una condición añadida: **el texto extra
 
 | Dato | Dónde | Quién lo ve |
 |------|-------|-------------|
-| Bytes del archivo | MinIO, bucket `cv`, clave `<userId>/<cvId>` | **nadie por HTTP** (decisión humana 1); los lee el worker para extraer el texto |
+| Bytes del archivo | MinIO, bucket de CV (`S3_BUCKET`, por defecto `cvs`), clave `<userId>/<cvId>` | **nadie por HTTP** (decisión humana 1); los lee el worker para extraer el texto |
 | `fileName`, `fileType`, `sizeBytes`, `version`, `isDefault`, `uploadedAt` | `cv_documents` | su dueño, en el listado |
 | `extraction` (`status`, `failureReason?`, `textChars`, `extractedAt?`) | `cv_documents` | su dueño, en el listado |
 | `truncated` | `cv_documents` | **nadie**: es un detalle de cómo guardamos, no una noticia para quien subió el CV; vive en Mongo para quien consuma el texto |
@@ -233,7 +233,9 @@ de CPU indeterminada.
 ### D3 — Versiones: qué es una, cuántas se guardan y qué pasa con la sexta
 
 **Una versión es una subida.** El binario es inmutable: nada edita un CV ya subido. `version` es un entero correlativo
-**por persona** (1, 2, 3…), calculado dentro de la transacción como `max(version) + 1` y protegido por el índice único
+**por persona** (1, 2, 3…), pedido dentro de la transacción al contador de esa persona (`cv_version_counters`, un
+documento con un solo entero que se sube con `$inc`; ver Decisiones de implementación 3, que corrige el `max(version) + 1`
+de este párrafo porque reutilizaba el número de un CV borrado) y protegido por el índice único
 `(userId, version)`; si dos subidas simultáneas piden el mismo número, una choca, y **la transacción entera se reintenta**
 hasta 3 veces, exactamente como `withResolvedLink` en `links`. El número no se reutiliza al borrar: borrar la v3 deja
 1, 2, 4, y así "la v4" siempre quiere decir lo mismo para siempre.
@@ -371,7 +373,7 @@ caracteres —`textChars` alto, estado `extracted`, todo verde— y es ilegible 
 primera persona que lo descubriría sería la que recibiera un análisis absurdo en `cv-match-suggestions`, y ni siquiera
 sabría por qué. Con ella, lo ve en dos segundos y sube otro archivo.
 
-**El bucket `cv` es privado y no lleva política ni regla de expiración.** El `docker-compose` lo crea así y el RUNBOOK
+**El bucket de CV es privado y no lleva política ni regla de expiración.** El `docker-compose` lo crea así y el RUNBOOK
 dice cómo comprobarlo (`mc anonymous get`). Con la descarga fuera, **nadie** llega a los bytes por HTTP: el único
 lector es el worker.
 
@@ -585,9 +587,17 @@ contador genérico), no cuando es de la plataforma. Una comprobación de la tare
 
 ```
 { _id, userId, fileKey, fileName, fileType: 'pdf'|'docx', sizeBytes, version, isDefault, uploadedAt,
-  extraction: { status: 'pending'|'extracted'|'failed', failureReason?, textChars, truncated, extractedAt? },
-  extractedText? }
+  extraction: { status: 'pending'|'extracted'|'failed', failureReason?, textChars, extractedAt? },
+  extractedText?, truncated? }
 ```
+
+`truncated` se guarda **junto a `extractedText` y fuera de `extraction`**: es un detalle de cómo guardamos ese campo, no
+un estado que la persona vea, y dentro del subdocumento habría quedado en la parte del documento que sí viaja en las
+respuestas. Los dos son opcionales: un CV recién subido no tiene ninguno.
+
+Y una colección auxiliar, `cv_version_counters` (Decisiones de implementación 3): un documento por persona
+(`_id` = `userId`, `next`), sin más índices que su `_id`, que se sube con `$inc` dentro de la transacción del alta y se
+borra con el último CV de esa persona.
 
 | Índice | Para qué |
 |--------|----------|
@@ -719,8 +729,8 @@ Textos en ES y EN, marcados y traducidos en `messages.en.xlf` en el mismo commit
 
 ## Migration Plan
 
-1. Desplegar con las `S3_*` presentes también en `api` (sin ellas el proceso **no arranca**) y con el bucket `cv`
-   creado y privado. En local lo crea el `docker-compose`; en producción lo crea `deploy-prod`.
+1. Desplegar con las `S3_*` presentes también en `api` (sin ellas el proceso **no arranca**) y con el bucket de CV
+   (`S3_BUCKET`, por defecto `cvs`: S3 exige de 3 a 63 caracteres, ver Decisiones de implementación 1) creado y privado. En local lo crea el `docker-compose`; en producción lo crea `deploy-prod`.
 2. `autoIndex` crea los tres índices de `cv_documents` al arrancar: la colección está vacía, así que tarda milisegundos.
 3. **Sin backfill ni migración de datos**: no existe ningún CV previo.
 4. Las dos colas nuevas se crean solas al publicarse el primer evento. Con el relay apagado, los eventos esperan.
@@ -887,3 +897,6 @@ Lo que el diseño no dejaba escrito y hubo que elegir al construirlo. Todas se t
 | 10 | Las funciones que generan los fixtures no podían vivir en `tools/cv-fixtures/`: la regla de límites de módulos de Nx prohíbe que un proyecto importe por ruta relativa algo de fuera de él, y quien las necesita son los tests del worker | Las funciones viven en `apps/worker/src/modules/cv/infrastructure/extractors/fixtures/cv-fixtures.ts`; `tools/cv-fixtures/make-fixtures.ts` se queda como el **script que las escribe en disco**, con el README al lado | La alternativa era una librería Nx nueva para cinco funciones puras de test |
 | 11 | `pdf-parse` tiene una versión 2 que es otra librería (ESM, con sus propios tipos, y `pdfjs-dist` + `@napi-rs/canvas` detrás, unos 25 MB) | Se fija **`pdf-parse@^1.1.1`** con `@types/pdf-parse`, que es la que tiene el `lib/pdf-parse.js` del que habla D9 | Es lo que el diseño describe, y evita meter una dependencia nativa grande en el árbol del worker sin haberlo decidido |
 | 12 | El consumidor de `delete-cv-file` no tenía escrito qué hacer al agotar los reintentos | Solo se registra el aviso: **no se escribe nada en la base** | Aquí no hay ningún agregado que se quede sin explicación. Lo que queda es un objeto huérfano —invisible para la persona y para la API— y de eso se encarga el barrido en dos pasos del RUNBOOK |
+| 13 | El `jobId` de los dos eventos de CV era `<cola>:<cvId>`, y **BullMQ lo rechaza**: si un `jobId` contiene `:`, exige **exactamente tres segmentos** (`Custom Id cannot contain :`, `Job.addJob` de bullmq 6.3.6). `enrich:<linkId>:<version>` tiene tres y por eso `links` nunca lo vio | Los dos pasan a **`cv:<cvId>:extract`** y **`cv:<cvId>:delete`**, siguiendo la convención que ya usaba `links`, y siguen siendo deterministas | Lo destapó el e2e: ningún evento de CV llegaba a su cola, el relay reintentaba y el CV se quedaba en `pending` para siempre. Decisión del coordinador |
+| 14 | Ningún test ejecutaba la validación de BullMQ, porque **todos publican contra una cola doble** | Dos redes: un **test de contrato** en `outbox-routes.spec.ts` que replica las dos reglas de `Job.addJob` (con `:`, tres segmentos; nunca un entero) recorriendo **todas** las rutas de la tabla, de modo que un evento nuevo con un `jobId` mal formado falla en CI; y un **paso local** (`bullmq-job-id.local.spec.ts`, con `OUTBOX_REDIS_LOCAL=1`) que lo comprueba contra el Redis del compose sobre una cola de sonda, para que la regla replicada no se desfase de la de verdad | Un doble que no valida nada convierte un contrato en una suposición. El de contrato se probó reintroduciendo el `jobId` viejo: falla |
+| 15 | El relay registraba **todo** fallo de publicación en `debug`, así que un error nuestro —un `jobId` que la cola rechaza, un tipo desconocido, un payload que no valida— no se veía hasta el aviso de las 24 h | **La primera vez que un evento falla se avisa con `warn`** (identificador, tipo y motivo); los reintentos siguientes siguen en `debug`, y el aviso de darlo por agotado no cambia | Es una línea **por evento y no por vuelta**: un corte de Redis avisa una vez de cada pendiente y se calla, mientras que un fallo permanente se ve en el primer arranque. El payload del outbox solo lleva identificadores (ADR-009), así que el mensaje no expone nada |

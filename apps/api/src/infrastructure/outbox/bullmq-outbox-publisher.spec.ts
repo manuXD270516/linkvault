@@ -71,7 +71,7 @@ describe('BullmqOutboxPublisher', () => {
     );
 
     expect(added()).toEqual([
-      { queue: EXTRACT_CV_QUEUE, jobId: 'extract-cv:c1' },
+      { queue: EXTRACT_CV_QUEUE, jobId: 'cv:c1:extract' },
     ]);
   });
 
@@ -79,7 +79,7 @@ describe('BullmqOutboxPublisher', () => {
     await publisher.publish(event('CvDeleted.v1', { cvId: 'c1', userId: 'u1' }));
 
     expect(added()).toEqual([
-      { queue: DELETE_CV_FILE_QUEUE, jobId: 'delete-cv-file:c1' },
+      { queue: DELETE_CV_FILE_QUEUE, jobId: 'cv:c1:delete' },
     ]);
   });
 
