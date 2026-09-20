@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import type { AiConsent, SessionResponse, UserProfile } from '@linkvault/shared';
+import { AI_CONSENT_TEXT_VERSION } from '@linkvault/shared';
 import { authInterceptor } from './auth.interceptor';
 import { REFRESH_LOCKS } from './refresh-coordination';
 import { SessionStore } from './session.store';
@@ -11,7 +12,7 @@ const baseConsent: AiConsent = {
   externalProviders: false,
   consentedAt: null,
   textVersion: null,
-  currentTextVersion: '2026-09-20',
+  currentTextVersion: AI_CONSENT_TEXT_VERSION,
 };
 
 function userWith(aiConsent: AiConsent): UserProfile {
@@ -21,7 +22,7 @@ function userWith(aiConsent: AiConsent): UserProfile {
     displayName: 'Ana',
     aiConsent,
     outputLanguage: 'es',
-    redactName: false,
+    redactName: true,
     createdAt: '2026-09-17T10:00:00.000Z',
   };
 }
@@ -100,8 +101,8 @@ describe('SessionStore', () => {
         {
           externalProviders: true,
           consentedAt: '2026-09-18T10:00:00.000Z',
-          textVersion: '2026-09-20',
-          currentTextVersion: '2026-09-20',
+          textVersion: AI_CONSENT_TEXT_VERSION,
+          currentTextVersion: AI_CONSENT_TEXT_VERSION,
         },
         'current',
       ],
@@ -111,7 +112,7 @@ describe('SessionStore', () => {
           externalProviders: false,
           consentedAt: null,
           textVersion: null,
-          currentTextVersion: '2026-09-20',
+          currentTextVersion: AI_CONSENT_TEXT_VERSION,
         },
         'outdated',
       ],
@@ -121,7 +122,7 @@ describe('SessionStore', () => {
           externalProviders: true,
           consentedAt: '2026-09-18T10:00:00.000Z',
           textVersion: '2026-01-01',
-          currentTextVersion: '2026-09-20',
+          currentTextVersion: AI_CONSENT_TEXT_VERSION,
         },
         'outdated',
       ],
@@ -144,7 +145,7 @@ describe('SessionStore', () => {
         externalProviders: true,
         consentedAt: '2026-09-18T10:00:00.000Z',
         textVersion: '2026-01-01',
-        currentTextVersion: '2026-09-20',
+        currentTextVersion: AI_CONSENT_TEXT_VERSION,
       };
       store.setSession({ ...session, user: userWith(mismatched) }, 0);
 
@@ -177,8 +178,8 @@ describe('SessionStore', () => {
         userWith({
           externalProviders: true,
           consentedAt: '2026-09-18T10:00:00.000Z',
-          textVersion: '2026-09-20',
-          currentTextVersion: '2026-09-20',
+          textVersion: AI_CONSENT_TEXT_VERSION,
+          currentTextVersion: AI_CONSENT_TEXT_VERSION,
         }),
       );
       await reloading;

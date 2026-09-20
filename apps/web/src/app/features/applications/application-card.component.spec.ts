@@ -66,6 +66,25 @@ describe('ApplicationCard', () => {
     expect(part(host, 'application-shared')).toBe('Compartida con tus grupos');
   });
 
+  it('El encaje de un análisis completo', async () => {
+    const host = await render(applicationWith({ fitScore: 78, fitScoreDegraded: false }));
+    expect(part(host, 'match-badge-score')).toBe('78');
+    expect(part(host, 'match-badge-label')).toBeTruthy();
+  });
+
+  it('El encaje de un análisis básico no enseña número', async () => {
+    const host = await render(applicationWith({ fitScoreDegraded: true }));
+    expect(part(host, 'match-badge')).not.toBeNull();
+    expect(part(host, 'match-badge-score')).toBeNull();
+    expect(host.textContent).not.toContain('41');
+  });
+
+  it('Sin análisis no hay badge en el tablero', async () => {
+    const host = await render(applicationWith());
+    expect(host.querySelector('[data-testid="match-badge"]')).toBeNull();
+    expect(host.textContent).not.toMatch(/\b0\b/);
+  });
+
   it('names the closing in "Cerradas"', async () => {
     const host = await render(applicationWith({ status: 'withdrawn' }));
 

@@ -12,6 +12,11 @@ describe('AI_CONSENT_TEXT_VERSION', () => {
   it('tiene la forma fechada YYYY-MM-DD', () => {
     expect(AI_CONSENT_TEXT_VERSION).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
+
+  it('la versión anterior del placeholder ya no es la vigente', () => {
+    // 16.7: el texto honesto sube de versión; un consentimiento sobre el placeholder no debe seguir valiendo.
+    expect(AI_CONSENT_TEXT_VERSION).not.toBe('2026-09-20');
+  });
 });
 
 describe('AI_CONSENT_TEXT_SHA256', () => {

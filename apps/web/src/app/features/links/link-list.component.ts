@@ -24,10 +24,14 @@ import {
 import { ApplicationsStore } from '../../core/applications/applications.store';
 import { SessionStore } from '../../core/auth/session.store';
 import { LinksStore } from '../../core/links/links.store';
+import { MatchBusyRegistry } from '../../core/match/match-busy.registry';
+import { MatchReopenStore } from '../../core/match/match-reopen.store';
 import { ApplicationMoves } from '../applications/application-moves';
 import { ShareInvitation } from '../applications/share-invitation';
 import { confirmWith } from '../../shared/ui/confirm.dialog';
 import { RequestError } from '../../shared/ui/request-error';
+import type { MatchDialogData } from '../match/match.dialog';
+import { openMatchDialog } from '../match/open-match-dialog';
 import {
   COMMENTS_DIALOG_SIZE,
   CommentsDialog,
@@ -78,6 +82,8 @@ export class LinkList {
   private readonly applications = inject(ApplicationsStore);
   private readonly moves = inject(ApplicationMoves);
   private readonly invitation = inject(ShareInvitation);
+  private readonly matchBusy = inject(MatchBusyRegistry);
+  private readonly matchReopen = inject(MatchReopenStore);
 
   /** Links cuyo estado ya se pidió desde esta lista: cada página y cada link añadido se piden una sola vez. */
   private readonly requested = new Set<string>();
@@ -151,6 +157,44 @@ export class LinkList {
     inject(DestroyRef).onDestroy(() =>
       document.removeEventListener('visibilitychange', onVisibilityChange),
     );
+
+    // Tras volver de `/mi-cv` o `/perfil`, la lista se remonta: si quedó un diálogo pendiente y el link sigue aquí,
+    // se reabre **sin** pedir análisis.
+    effect(() => {
+      const links = this.links();
+      const pending = this.matchReopen.peek();
+      if (pending === null || !links.some((item) => item.id === pending.linkId)) {
+        return;
+      }
+      const data = this.matchReopen.consume();
+      if (data !== null) {
+        untracked(() => void this.openMatchDialog(data));
+      }
+    });
+  }
+
+  protected isMatchBusy(link: JobLinkSummary): boolean {
+    return this.matchBusy.isBusy(link.id);
+  }
+
+  /**
+   * Abre el diálogo de encaje sobre la lista. **No** pide análisis al abrirse. Si la persona va a cambiar de CV o a dar
+   * permiso, se recuerda el diálogo para reabrirlo al volver.
+   */
+  protected async openMatch(link: JobLinkSummary): Promise<void> {
+    await this.openMatchDialog({
+      linkId: link.id,
+      jobTitle: link.preview?.title?.trim() || linkLabel(link.displayUrl),
+      link,
+    });
+  }
+
+  private async openMatchDialog(data: MatchDialogData): Promise<void> {
+    const ref = openMatchDialog(this.dialog, data);
+    const result = await firstValueFrom(ref.afterClosed());
+    if (result?.kind === 'change-cv' || result?.kind === 'give-consent') {
+      this.matchReopen.remember(data);
+    }
   }
 
   protected own(link: JobLinkSummary): Application | null {

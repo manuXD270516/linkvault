@@ -1610,7 +1610,7 @@
       </trans-unit>
       <trans-unit id="match.dialog.consentSummary" datatype="html">
         <source>Se envía el texto de tu CV con tu email, tus teléfonos, tu dirección, tu documento de identidad y las URL sustituidos por marcadores, y también tu nombre salvo que lo desactives en Perfil; el resto del CV se envía tal cual. El texto completo y el interruptor están en Perfil.</source>
-        <target>Your CV text is sent with your email, phone numbers, address, identity document and URLs replaced by markers, and also your name unless you turn that off in Profile; the rest of the CV is sent as is. The full text and the switch are in Profile.</target>
+        <target>Your CV text is sent with your email, phone numbers, address, identity document and URLs replaced by placeholders, and also your name unless you turn that off in Profile; the rest of the CV is sent as-is. The full text and the toggle are in Profile.</target>
       </trans-unit>
       <trans-unit id="match.dialog.aiQuota" datatype="html">
         <source>Alcanzaste tu límite de análisis con IA por hoy. Volverás a tener análisis completos a partir de <x id="INTERPOLATION" equiv-text="{{ phrase }}"/>.</source>
@@ -1723,6 +1723,78 @@
       <trans-unit id="match.retryAt.later" datatype="html">
         <source>el <x id="DATE" equiv-text="day"/> a las <x id="TIME" equiv-text="time"/></source>
         <target><x id="DATE" equiv-text="day"/> at <x id="TIME" equiv-text="time"/></target>
+      </trans-unit>
+          <trans-unit id="profile.ai.title" datatype="html">
+        <source>IA y privacidad</source>
+        <target>AI and privacy</target>
+      </trans-unit>
+          <trans-unit id="profile.ai.consentLabel" datatype="html">
+        <source>Permitir que un proveedor de IA externo analice mi CV</source>
+        <target>Allow an external AI provider to analyze my CV</target>
+      </trans-unit>
+          <trans-unit id="profile.ai.consentText" datatype="html">
+        <source>Con este permiso, el texto de tu CV sale de LinkVault hacia un proveedor de IA externo (hoy OpenRouter) y lo que se envía puede identificarte. Se envían el texto de tu CV y la descripción de la oferta. Antes de enviarlo sustituimos tu email, tus teléfonos, tu dirección, tu documento de identidad y las URL por marcadores, y también tu nombre, salvo que lo desactives más abajo. El resto de tu CV —tu experiencia, tus estudios, las empresas y las fechas— se envía tal cual y puede identificarte. Elegimos proveedores que se comprometen a no usar lo enviado para entrenar sus modelos, pero no podemos comprobarlo. Puedes quitar este permiso cuando quieras. Sin este permiso, tu CV se analiza dentro de LinkVault y, si aquí no hay IA disponible, recibes un análisis básico, sin sugerencias.</source>
+        <target>With this permission, the text of your CV leaves LinkVault for an external AI provider (today OpenRouter), and what is sent can identify you. We send the text of your CV and the job description. Before sending, we replace your email, phone numbers, address, identity document and URLs with placeholders, and also your name unless you turn that off below. The rest of your CV —your experience, education, employers and dates— is sent as-is and can identify you. We choose providers that commit not to use what is sent to train their models, but we cannot verify that. You can withdraw this permission anytime. Without this permission, your CV is analyzed inside LinkVault and, if no AI is available here, you get a basic analysis with no suggestions.</target>
+      </trans-unit>
+          <trans-unit id="profile.ai.consentOutdated" datatype="html">
+        <source>El texto del permiso cambió y ese permiso ya no está en vigor. Léelo y acéptalo de nuevo si quieres seguir enviando tu CV a un proveedor externo.</source>
+        <target>The permission text changed and that permission is no longer in force. Read it and accept it again if you still want to send your CV to an external provider.</target>
+      </trans-unit>
+          <trans-unit id="profile.ai.consentGranted" datatype="html">
+        <source>Concedido el <x id="INTERPOLATION" equiv-text="{{ meta.consentedAt | date: 'dd/MM/yyyy HH:mm' }}"/> · versión <x id="INTERPOLATION_1" equiv-text="{{ meta.textVersion }}"/></source>
+        <target>Granted on <x id="INTERPOLATION" equiv-text="{{ meta.consentedAt | date: 'dd/MM/yyyy HH:mm' }}"/> · version <x id="INTERPOLATION_1" equiv-text="{{ meta.textVersion }}"/></target>
+      </trans-unit>
+          <trans-unit id="profile.ai.consentRevoked" datatype="html">
+        <source>Permiso retirado. Tus próximos análisis no saldrán de LinkVault. No borra los análisis que ya hiciste; para eso, elimina el CV con el que se hicieron. Lo que ya se envió a un proveedor externo no se puede recuperar.</source>
+        <target>Permission withdrawn. Your next analyses will not leave LinkVault. It does not delete the analyses you already made; for that, delete the CV you used for them. What was already sent to an external provider cannot be recovered.</target>
+      </trans-unit>
+          <trans-unit id="profile.ai.outputLanguage" datatype="html">
+        <source>Idioma de los análisis de IA</source>
+        <target>AI analysis language</target>
+      </trans-unit>
+          <trans-unit id="profile.ai.language.es" datatype="html">
+        <source>Español</source>
+        <target>Spanish</target>
+      </trans-unit>
+          <trans-unit id="profile.ai.language.en" datatype="html">
+        <source>Inglés</source>
+        <target>English</target>
+      </trans-unit>
+          <trans-unit id="profile.ai.outputLanguageHint" datatype="html">
+        <source>No cambia el idioma de la interfaz.</source>
+        <target>Does not change the interface language.</target>
+      </trans-unit>
+          <trans-unit id="profile.ai.redactNameLabel" datatype="html">
+        <source>Ocultar mi nombre a los proveedores externos</source>
+        <target>Hide my name from external providers</target>
+      </trans-unit>
+          <trans-unit id="profile.ai.redactNameHint" datatype="html">
+        <source>Sustituimos tu nombre por un marcador antes de enviar el texto.</source>
+        <target>We replace your name with a placeholder before sending the text.</target>
+      </trans-unit>
+          <trans-unit id="profile.ai.redactNameEffect" datatype="html">
+        <source>Solo tiene efecto cuando se usa un proveedor externo.</source>
+        <target>Only takes effect when an external provider is used.</target>
+      </trans-unit>
+          <trans-unit id="cv.privacy.v2" datatype="html">
+        <source>Tu CV solo lo ves tú y no sale de LinkVault sin tu permiso. En <x id="START_LINK" ctype="x-a" equiv-text="&lt;a routerLink=&quot;/perfil&quot; data-testid=&quot;cv-privacy-profile-link&quot;>"/>Perfil<x id="CLOSE_LINK" ctype="x-a" equiv-text="&lt;/a>"/> decides si un proveedor de IA externo puede analizarlo: antes de enviárselo sustituimos tu email, tus teléfonos, tu dirección, tu documento de identidad y las URL por marcadores, y también tu nombre, salvo que lo desactives allí.</source>
+        <target>Your CV is only visible to you and does not leave LinkVault without your permission. In <x id="START_LINK" ctype="x-a" equiv-text="&lt;a routerLink=&quot;/perfil&quot; data-testid=&quot;cv-privacy-profile-link&quot;>"/>Profile<x id="CLOSE_LINK" ctype="x-a" equiv-text="&lt;/a>"/> you decide whether an external AI provider may analyze it: before sending it we replace your email, phone numbers, address, identity document and URLs with placeholders, and also your name unless you turn that off there.</target>
+      </trans-unit>
+          <trans-unit id="cv.privacy.status.none" datatype="html">
+        <source>Ahora mismo no has dado ese permiso, así que tu CV no sale de LinkVault.</source>
+        <target>Right now you have not given that permission, so your CV does not leave LinkVault.</target>
+      </trans-unit>
+          <trans-unit id="cv.privacy.status.current" datatype="html">
+        <source>Ahora mismo ese permiso está activo: al analizar una oferta, tu CV redactado sale de LinkVault hacia el proveedor externo.</source>
+        <target>Right now that permission is active: when you analyze a job, your redacted CV leaves LinkVault for the external provider.</target>
+      </trans-unit>
+          <trans-unit id="cv.privacy.status.outdated" datatype="html">
+        <source>Diste este permiso, pero el texto cambió: ahora mismo tu CV no sale de LinkVault. Revísalo en Perfil.</source>
+        <target>You gave this permission, but the text changed: right now your CV does not leave LinkVault. Review it in Profile.</target>
+      </trans-unit>
+          <trans-unit id="cv.delete.analyses" datatype="html">
+        <source>También se borrarán los <x id="COUNT" equiv-text="analyses"/> análisis de encaje que hiciste con este CV.</source>
+        <target>The <x id="COUNT" equiv-text="analyses"/> fit analyses you made with this CV will also be deleted.</target>
       </trans-unit>
     </body>
   </file>

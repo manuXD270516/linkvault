@@ -252,6 +252,18 @@
       Quitar
     </button>
   }
+  @if (offersMatch()) {
+    <button
+      mat-button
+      type="button"
+      [disabled]="busy() || matchBusy()"
+      [attr.aria-busy]="matchBusy() || null"
+      (click)="analyzeMatch.emit()"
+      data-testid="link-analyze-match"
+    >
+      {{ matchActionLabel }}
+    </button>
+  }
 </span>
 
 <!--

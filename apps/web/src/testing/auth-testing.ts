@@ -3,13 +3,14 @@ import { type HttpTestingController, provideHttpClientTesting } from '@angular/c
 import { type EnvironmentProviders, type Provider, provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import type {
-  GroupDetail,
-  GroupMember,
-  GroupSummary,
-  JobLinkSummary,
-  SessionResponse,
-  UserProfile,
+import {
+  AI_CONSENT_TEXT_VERSION,
+  type GroupDetail,
+  type GroupMember,
+  type GroupSummary,
+  type JobLinkSummary,
+  type SessionResponse,
+  type UserProfile,
 } from '@linkvault/shared';
 import { appRoutes } from '../app/app.routes';
 import { authInterceptor } from '../app/core/auth/auth.interceptor';
@@ -26,10 +27,11 @@ export const testUser: UserProfile = {
     externalProviders: false,
     consentedAt: null,
     textVersion: null,
-    currentTextVersion: '2026-09-20',
+    currentTextVersion: AI_CONSENT_TEXT_VERSION,
   },
   outputLanguage: 'es',
-  redactName: false,
+  /** `redactName` nace activado (ADR-030 §10). */
+  redactName: true,
   createdAt: '2026-09-17T10:00:00.000Z',
 };
 

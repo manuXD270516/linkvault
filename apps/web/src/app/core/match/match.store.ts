@@ -14,6 +14,7 @@ import {
 import { patchState, signalStore, withComputed, withHooks, withMethods, withState } from '@ngrx/signals';
 import { type RequestFailure, toRequestFailure } from '../api/api-error';
 import { MatchApi } from './match.api';
+import { MatchBusyRegistry } from './match-busy.registry';
 
 /** Cada cuánto se pregunta el estado mientras el análisis corre (spec web/cv-match). */
 export const MATCH_POLL_INTERVAL_MS = 3_000;
@@ -125,7 +126,7 @@ export const MatchStore = signalStore(
       return MATCH_PROGRESS_STEPS.filter((progress) => isMatchStepPending(progress, current));
     }),
   })),
-  withMethods((store, api = inject(MatchApi)) => {
+  withMethods((store, api = inject(MatchApi), busy = inject(MatchBusyRegistry)) => {
     let timer: ReturnType<typeof setInterval> | null = null;
     /**
      * Instantáneo en el que se agota la ventana abierta, o `null` mientras no haya `maxAgeMs` (se sigue preguntando
@@ -140,15 +141,21 @@ export const MatchStore = signalStore(
       }
     };
 
+    const syncBusy = (linkId: string, running: MatchRunningView | null): void => {
+      busy.setBusy(linkId, running !== null);
+    };
+
     const applyResponse = (
       latest: MatchLatest | null | undefined,
       running: MatchRunningView | null | undefined,
       linkId: string,
     ): void => {
+      const blocks = applyBlocks(latest, running);
       patchState(store, {
         linkId,
-        ...applyBlocks(latest, running),
+        ...blocks,
       });
+      syncBusy(linkId, blocks.running);
     };
 
     /**
@@ -233,20 +240,23 @@ export const MatchStore = signalStore(
           return;
         }
         patchState(store, { requesting: true, failure: null, stalled: false });
+        busy.setBusy(linkId, true);
         try {
           const result = await api.request(linkId, cvId);
           if (result.status === 'running') {
             const accepted = result as MatchRequestAccepted;
             // Conserva `latest` (y su informe); solo pone el bloque en curso. Sin `maxAgeMs` hasta el GET.
+            const runningView: MatchRunningView = {
+              analysisId: accepted.analysisId,
+              cvId: accepted.cvId,
+              status: 'running',
+              step: accepted.step,
+              requestedAt: accepted.requestedAt,
+            };
             patchState(store, {
-              ...applyBlocks(store.latest(), {
-                analysisId: accepted.analysisId,
-                cvId: accepted.cvId,
-                status: 'running',
-                step: accepted.step,
-                requestedAt: accepted.requestedAt,
-              }),
+              ...applyBlocks(store.latest(), runningView),
             });
+            syncBusy(linkId, runningView);
             openWindow(undefined);
             await fetchStatus(linkId, true);
             openWindow(store.running()?.maxAgeMs);
@@ -256,12 +266,16 @@ export const MatchStore = signalStore(
               ...applyBlocks(reused, null),
               stalled: false,
             });
+            syncBusy(linkId, null);
             stopPolling();
             windowEndsAt = null;
           }
         } catch (error: unknown) {
           // El informe anterior permanece; solo se anota el fallo de la petición.
           patchState(store, { failure: toRequestFailure(error) });
+          if (store.running() === null) {
+            busy.setBusy(linkId, false);
+          }
         } finally {
           patchState(store, { requesting: false });
         }

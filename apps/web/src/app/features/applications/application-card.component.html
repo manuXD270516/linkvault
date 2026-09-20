@@ -17,6 +17,9 @@
   @if (stage(); as stageText) {
     <span class="text-sm" data-testid="application-stage">{{ stageText }}</span>
   }
+  @if (fitBadge(); as badge) {
+    <lv-match-badge [score]="badge.score" [degraded]="badge.degraded" />
+  }
   @if (application().appliedAt; as appliedAt) {
     <lv-applied-ago class="text-sm" [appliedAt]="appliedAt" />
   }

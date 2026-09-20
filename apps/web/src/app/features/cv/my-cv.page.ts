@@ -1,8 +1,10 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialog } from '@angular/material/dialog';
-import type { CvDocument } from '@linkvault/shared';
+import { RouterLink } from '@angular/router';
+import { isAiConsentCurrent, type CvDocument } from '@linkvault/shared';
 import { firstValueFrom } from 'rxjs';
+import { SessionStore } from '../../core/auth/session.store';
 import { CvStore } from '../../core/cv/cv.store';
 import { confirmWith } from '../../shared/ui/confirm.dialog';
 import { RequestError } from '../../shared/ui/request-error';
@@ -15,23 +17,19 @@ import {
 import { CvUpload } from './cv-upload.component';
 
 /**
- * `/mi-cv` (D13, spec web/cv): los CV guardados de la persona, con subir, marcar cuál se comparará con las vacantes,
- * ver lo que se leyó y eliminar.
- *
- * La pantalla **no ofrece descargar** el archivo, porque la API no tiene ninguna ruta que lo devuelva (ADR-028 §5), y
- * dice "CV guardado" en todas partes: el número de versión vive en el contrato y en la base, no aquí.
- *
- * El store lo provee la página y no la raíz, para que salir de la pantalla se lleve el sondeo de las lecturas.
+ * `/mi-cv` (D13, ADR-030 §12, spec web/cv): CV guardados, privacidad honesta atada a la vigencia del permiso, y
+ * borrado que nombra cuántos análisis se llevan.
  */
 @Component({
   selector: 'lv-my-cv-page',
-  imports: [CvCard, CvUpload, MatButtonModule, RequestError],
+  imports: [CvCard, CvUpload, MatButtonModule, RequestError, RouterLink],
   providers: [CvStore],
   templateUrl: './my-cv.page.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class MyCvPage {
   private readonly store = inject(CvStore);
+  private readonly session = inject(SessionStore);
   private readonly dialog = inject(MatDialog);
 
   protected readonly items = this.store.items;
@@ -45,21 +43,45 @@ export class MyCvPage {
   protected readonly actionFailure = this.store.actionFailure;
   protected readonly stalled = this.store.stalled;
 
-  /** `true` mientras hay una acción en curso: marcar o eliminar no se pueden pulsar dos veces. */
   protected readonly busy = signal(false);
-  /** `true` tras intentar ver el texto de un CV que ya no está; se borra en cuanto se vuelve a mirar otro. */
   protected readonly goneNotice = signal(false);
+
+  /**
+   * Estado del permiso para la frase adicional: solo con perfil cargado (`ready`). Nunca dos frases a la vez.
+   * - `none`: sin permiso (nunca dado o retirado)
+   * - `current`: vigente
+   * - `outdated`: dado sobre texto anterior
+   * - `unknown`: aún no se conoce → solo la línea base
+   */
+  protected readonly consentPhrase = computed((): 'none' | 'current' | 'outdated' | 'unknown' => {
+    if (this.session.consentLoadStatus() !== 'ready') {
+      return 'unknown';
+    }
+    const profile = this.session.user();
+    if (profile === null) {
+      return 'unknown';
+    }
+    if (isAiConsentCurrent(profile.aiConsent)) {
+      return 'current';
+    }
+    if (
+      profile.aiConsent.externalProviders &&
+      profile.aiConsent.textVersion !== null &&
+      profile.aiConsent.textVersion !== profile.aiConsent.currentTextVersion
+    ) {
+      return 'outdated';
+    }
+    return 'none';
+  });
 
   constructor() {
     void this.store.load();
   }
 
-  /** El archivo ya pasó las comprobaciones locales; lo que diga la API manda igual. */
   protected upload(file: File): void {
     void this.store.upload(file);
   }
 
-  /** El aviso del marcado en `failed` solo ofrece su acción si hay otro CV que sí se pudo leer. */
   protected hasOtherExtracted(item: CvDocument): boolean {
     const extracted = this.store.newestExtracted();
     return extracted !== null && extracted.id !== item.id;
@@ -69,7 +91,6 @@ export class MyCvPage {
     void this.run(() => this.store.setDefault(item.id));
   }
 
-  /** "Usar el que sí se leyó": marca el más reciente de los que tienen texto. */
   protected useExtracted(): void {
     const extracted = this.store.newestExtracted();
     if (extracted !== null) {
@@ -77,10 +98,6 @@ export class MyCvPage {
     }
   }
 
-  /**
-   * Abre la vista previa del texto. Si el CV ya no existe —lo borraron en otra pestaña—, el diálogo se cierra, se dice
-   * "Este CV ya no está" y la lista se recarga.
-   */
   protected viewText(item: CvDocument): void {
     this.goneNotice.set(false);
     const dialogRef = this.dialog.open<
@@ -96,17 +113,19 @@ export class MyCvPage {
     });
   }
 
-  /**
-   * Elimina el CV tras confirmarlo. La confirmación **nombra el archivo** —es lo que la persona reconoce— y avisa de
-   * que el archivo se borra y no se puede recuperar; si es el marcado, añade a quién pasará la marca.
-   */
   protected remove(item: CvDocument): void {
     void this.run(async () => {
+      const analyses = item.matchAnalysesCount;
+      const analysesLine =
+        analyses > 0
+          ? $localize`:@@cv.delete.analyses:También se borrarán los ${analyses}:COUNT: análisis de encaje que hiciste con este CV.`
+          : '';
+      const base = item.isDefault
+        ? $localize`:@@cv.delete.messageDefault:¿Eliminar ${item.fileName}:NAME:? El archivo se borra y no se puede recuperar. Pasará a usarse tu CV más reciente.`
+        : $localize`:@@cv.delete.message:¿Eliminar ${item.fileName}:NAME:? El archivo se borra y no se puede recuperar.`;
       const confirmed = await confirmWith(this.dialog, {
         title: $localize`:@@cv.delete.title:Eliminar este CV`,
-        message: item.isDefault
-          ? $localize`:@@cv.delete.messageDefault:¿Eliminar ${item.fileName}:NAME:? El archivo se borra y no se puede recuperar. Pasará a usarse tu CV más reciente.`
-          : $localize`:@@cv.delete.message:¿Eliminar ${item.fileName}:NAME:? El archivo se borra y no se puede recuperar.`,
+        message: analysesLine === '' ? base : `${base} ${analysesLine}`,
         confirmLabel: $localize`:@@cv.delete.confirm:Eliminar`,
       });
       if (confirmed) {
@@ -115,7 +134,6 @@ export class MyCvPage {
     });
   }
 
-  /** Mientras una acción está en curso, las demás no responden. */
   private async run(action: () => Promise<void>): Promise<void> {
     if (this.busy()) {
       return;
@@ -128,7 +146,6 @@ export class MyCvPage {
     }
   }
 
-  /** "Reintentar" de la lista, que además reanuda la ventana de sondeo si alguna lectura sigue en curso. */
   protected retry(): void {
     void this.store.refresh();
   }

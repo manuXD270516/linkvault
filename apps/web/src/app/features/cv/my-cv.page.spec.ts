@@ -5,12 +5,13 @@ import { MatDialog } from '@angular/material/dialog';
 import { By } from '@angular/platform-browser';
 import { Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import type { CvDocument } from '@linkvault/shared';
+import { AI_CONSENT_TEXT_VERSION, type CvDocument } from '@linkvault/shared';
 import {
   apiError,
   providePageTesting,
   sessionWith,
   settle,
+  testUser,
   verifyNoPendingRequests,
 } from '../../../testing/auth-testing';
 import { SessionStore } from '../../core/auth/session.store';
@@ -19,9 +20,9 @@ import { Shell } from '../../layout/shell/shell';
 import { LoginPage } from '../auth/login.page';
 import { MyCvPage } from './my-cv.page';
 
-/** El texto exacto de la línea de privacidad (D13). Si cambia una coma, cambia la promesa. */
+/** Línea base de privacidad (ADR-030 §12, id nuevo). */
 const PRIVACY_LINE =
-  'Tu CV solo lo ves tú y hoy no lo lee ninguna IA. No saldrá de LinkVault sin tu autorización.';
+  'Tu CV solo lo ves tú y no sale de LinkVault sin tu permiso. En Perfil decides si un proveedor de IA externo puede analizarlo: antes de enviárselo sustituimos tu email, tus teléfonos, tu dirección, tu documento de identidad y las URL por marcadores, y también tu nombre, salvo que lo desactives allí.';
 
 export function cvDocument(overrides: Partial<CvDocument> = {}): CvDocument {
   return {
@@ -157,20 +158,85 @@ describe('MyCvPage', () => {
     await open([]);
 
     const privacy = page().querySelector('[data-testid="cv-privacy"]');
-    // Está en la página, no dentro de un diálogo, un acordeón ni un `details`: se lee sin abrir nada.
     expect(privacy?.textContent?.replace(/\s+/g, ' ').trim()).toBe(PRIVACY_LINE);
     expect(privacy?.closest('details, dialog, [hidden]')).toBeNull();
   });
 
-  it('la línea de privacidad no promete un permiso ni nombra una pantalla que no existe', async () => {
+  it('La autorización tiene dónde darse', async () => {
     await open([]);
+    const link = page().querySelector<HTMLAnchorElement>('[data-testid="cv-privacy-profile-link"]');
+    expect(link?.getAttribute('href')).toBe('/perfil');
+  });
 
+  it('La línea del nombre dice lo que el sistema hace', async () => {
+    await open([]);
     const privacy = page().querySelector('[data-testid="cv-privacy"]')?.textContent ?? '';
-    // Ni "te pediremos permiso" (el consentimiento es una preferencia que la pasarela lee sin preguntar) ni "Ajustes",
-    // que es una pantalla que no existe; el control del perfil llega con `cv-match-suggestions` (ADR-028 §11).
-    for (const forbidden of ['permiso', 'Ajustes', 'ajustes', 'Configuración', 'consentimiento']) {
-      expect.soft(privacy).not.toContain(forbidden);
-    }
+    expect(privacy).toMatch(/salvo que lo desactives/);
+    expect(privacy).not.toMatch(/si lo activas/);
+  });
+
+  it('Sin permiso, la línea lo dice', async () => {
+    await open([]);
+    expect(page().querySelector('[data-testid="cv-privacy-status"]')?.textContent).toContain(
+      'Ahora mismo no has dado ese permiso, así que tu CV no sale de LinkVault.',
+    );
+  });
+
+  it('Con el permiso vigente, la línea dice la consecuencia', async () => {
+    TestBed.inject(SessionStore).setUser({
+      ...testUser,
+      aiConsent: {
+        externalProviders: true,
+        consentedAt: '2026-09-21T12:00:00.000Z',
+        textVersion: AI_CONSENT_TEXT_VERSION,
+        currentTextVersion: AI_CONSENT_TEXT_VERSION,
+      },
+    });
+    await open([]);
+    expect(page().querySelector('[data-testid="cv-privacy-status"]')?.textContent).toContain(
+      'tu CV redactado sale de LinkVault hacia el proveedor externo',
+    );
+  });
+
+  it('Con el permiso caducado, las dos pantallas dicen lo mismo', async () => {
+    TestBed.inject(SessionStore).setUser({
+      ...testUser,
+      aiConsent: {
+        externalProviders: true,
+        consentedAt: '2026-01-01T00:00:00.000Z',
+        textVersion: '2026-01-01',
+        currentTextVersion: AI_CONSENT_TEXT_VERSION,
+      },
+    });
+    await open([]);
+    const status = page().querySelector('[data-testid="cv-privacy-status"]')?.textContent ?? '';
+    expect(status).toContain('Diste este permiso, pero el texto cambió');
+    expect(status).not.toMatch(/está activo/);
+  });
+
+  it('Sin conocer el permiso no se afirma nada', async () => {
+    const store = TestBed.inject(SessionStore);
+    store.setSession(sessionWith('token-1'));
+    const reload = store.reloadConsent();
+    await settle();
+    http
+      .expectOne('/api/users/me')
+      .flush({ code: 'internal_error' }, { status: 500, statusText: 'Error' });
+    await reload;
+    expect(store.consentIsCurrent()).toBe('unknown');
+
+    await harness.navigateByUrl('/mi-cv', Shell);
+    const list = await vi.waitFor(() => http.expectOne({ method: 'GET', url: '/api/cv' }));
+    list.flush({ items: [] });
+    await settle();
+    expect(page().querySelector('[data-testid="cv-privacy"]')).not.toBeNull();
+    expect(page().querySelector('[data-testid="cv-privacy-status"]')).toBeNull();
+  });
+
+  it('La línea no promete lo que no hacemos', async () => {
+    await open([]);
+    const privacy = page().querySelector('[data-testid="cv-privacy"]')?.textContent ?? '';
+    expect(privacy).not.toMatch(/te pediremos permiso|anónim|cifrado|caduca solo/i);
   });
 
   it('Ruta con sesión', async () => {
@@ -349,6 +415,22 @@ describe('MyCvPage', () => {
     await harness.fixture.whenStable();
 
     expect(page().querySelectorAll('[data-testid="cv-card"]')).toHaveLength(1);
+  });
+
+  it('Borrar el CV se lleva sus análisis y lo dice', async () => {
+    await open([cvDocument({ matchAnalysesCount: 3 })]);
+    await click('[data-testid="cv-remove"]', 0);
+    expect(dialogMessage()).toContain(
+      'También se borrarán los 3 análisis de encaje que hiciste con este CV.',
+    );
+    await answer('Cancelar');
+  });
+
+  it('Un CV sin análisis no anuncia ninguno', async () => {
+    await open([cvDocument({ matchAnalysesCount: 0 })]);
+    await click('[data-testid="cv-remove"]', 0);
+    expect(dialogMessage()).not.toMatch(/análisis de encaje/);
+    await answer('Cancelar');
   });
 
   it('Eliminar el marcado', async () => {
