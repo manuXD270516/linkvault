@@ -190,7 +190,7 @@ changes:
       `deploy-prod`). El control de consentimiento que completa la frase de privacidad de `/mi-cv` es de
       `cv-match-suggestions`.
   - name: cv-match-suggestions
-    adrs: [014, 018, 020]
+    adrs: [014, 018, 020, 029, 030]
     agents: [ai-engineer, backend-dev, frontend-dev]
     scope: |
       **Partido en dos por decisión humana (2026-09-20): este change entrega el análisis y toda la privacidad; el bucle de
@@ -203,8 +203,9 @@ changes:
       `PiiRedactor`. **BYOK queda fuera**: sigue en su propio change `ai-byok`.
 
       docs/design-v0.2.md §4.7 y §4.12: tarea match-cv, MatchReport con evidence obligatoria, RuleBasedMatcher degradado,
-      ai_analyses, Application.fitScore derivado en lectura, y el paso alcanzado que la pantalla consulta mientras dura
-      el análisis. **El aviso en vivo por SSE se difiere a `cv-suggestions-review`** (ADR-030 §9).
+      ai_analyses, Application.fitScore **derivado al leer** (nadie lo escribe; ADR-030 §5), y el paso alcanzado que se
+      guarda con el análisis y se **devuelve al consultarlo** (sondeo; ADR-030 §9). **El aviso en vivo por SSE
+      `analysis.step` se difiere a `cv-suggestions-review`**.
       Frontend: badge de fit y el informe en pantalla.
       PiiRedactor: detectores de dirección postal y documento de identidad (CI con extensión departamental, DNI, cédula), afinados
       con CVs reales anonimizados (diferidos desde ai-gateway-core, ADR-018). Métricas de redacción en el eval harness
@@ -214,13 +215,13 @@ changes:
       PATCH /api/users/me): consentimiento de proveedores externos con texto honesto (qué dato se envía, a quién, qué se
       redacta y que es revocable), guardando `consentedAt` y la versión del texto aceptado; idioma de salida con la etiqueta
       "Idioma de los análisis de IA" (`outputLanguage`); y redacción del nombre propio (`redactName`).
-      Heredado de `cv-upload-extract` (ADR-028): ese control de consentimiento va en **Perfil** (`/perfil`, no existe
-      ninguna pantalla "Ajustes") y **completa la línea de privacidad de `/mi-cv`**, que hoy dice solo lo que se puede
-      comprobar —"Tu CV solo lo ves tú y hoy no lo lee ninguna IA. No saldrá de LinkVault sin tu autorización."— sin
-      nombrar ninguna pantalla ni control que todavía no exista. Este es el primer change en que un CV sale de nuestra
-      infraestructura, así que es también el que cierra la línea de privacidad completa: dónde se da la autorización, qué
-      se envía y qué se redacta. Si quiere avisar en vivo del final de la extracción, el evento `cv.extracted` va por el
-      canal SSE que ya existe.
+      Heredado de `cv-upload-extract` (ADR-028): el control de consentimiento va en **Perfil** (`/perfil`, no existe
+      ninguna pantalla "Ajustes") y **sustituye la promesa antigua de `/mi-cv`** —"Tu CV solo lo ves tú y hoy no lo lee
+      ninguna IA. No saldrá de LinkVault sin tu autorización."—, que este change **desmiente** al ser el primero en que
+      un CV puede salir de nuestra infraestructura. La línea nueva nombra dónde se autoriza, qué se envía y qué se
+      redacta, con un identificador de traducción nuevo (ADR-030 §12). Si quiere avisar en vivo del final de la
+      extracción, el evento `cv.extracted` va por el canal SSE que ya existe (eso no es el progreso del análisis de
+      encaje).
   - name: cv-suggestions-review
     adrs: [014, 018, 019, 029]
     agents: [ai-engineer, backend-dev, frontend-dev]
@@ -291,6 +292,13 @@ changes:
       activar `trustProxy` a ciegas (misma herencia de ADR-020 §5 y ADR-027 §6).
       Además, las dos colas nuevas (`extract-cv` y `delete-cv-file`) entran en lo que hay que vigilar, con su retención y
       su panel.
+      Heredado de `cv-match-suggestions` (ADR-029, ADR-030):
+      (a) la **clave de OpenRouter** (`OPENROUTER_API_KEY`) y el **modelo `:free` concreto** (`OPENROUTER_MODEL`) fijados
+      por entorno, con `data_collection: "deny"` (ADR-018 §12);
+      (b) el **aviso de privacidad** actualizado: qué se analiza (texto del CV + descripción de la oferta), qué sale de
+      LinkVault y bajo qué permiso (`aiConsent.externalProviders` + versión del texto);
+      (c) el borrado de cuenta debe borrar también los `ai_analyses` de esa persona (además de CV, postulaciones, etc.);
+      (d) la cola `analyze-match` entra entre las que hay que vigilar, con su retención y su panel.
   - name: auth-email-recovery
     adrs: [012, 020]
     agents: [backend-dev, frontend-dev]

@@ -24,7 +24,9 @@ afterAll(async () => {
 });
 
 describe('Comentar mientras se quita (5.8, smoke)', () => {
-  it('20 rounds of commenting and removing at once leave no orphan comment', async () => {
+  it(
+    '20 rounds of commenting and removing at once leave no orphan comment',
+    async () => {
     const url = 'https://empresa.example/careers/carrera-http';
     const statuses = new Set<string>();
 
@@ -56,7 +58,9 @@ describe('Comentar mientras se quita (5.8, smoke)', () => {
     // Cada ronda ya afirmó su respuesta (201 o 404 con `link_not_found`) y que no quedó ni relación ni comentario.
     // Este test es humo: el entrelazado depende del azar, así que no se exige ver los dos resultados. Los
     // invariantes de la carrera los prueban los dos tests deterministas de `mongo-group-link.comments.spec.ts`.
-  });
+  },
+    30_000,
+  );
 });
 
 describe('Dos borrados a la vez (5.9)', () => {

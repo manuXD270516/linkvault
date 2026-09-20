@@ -72,7 +72,7 @@
 | B2 | **Aceptado**, cierra G1 | `Application.visibility` default `private`. |
 | B3 | **Adaptado** | Critic objeta *scope creep*. Reflect: comentarios **planos** (texto, autor, fecha), sin hilos ni reacciones. `GroupLinkComment`. |
 | B4 | **Diferido a F2** | Necesita notificaciones. Se deja el evento `ApplicationStale` diseñado. |
-| B5 | **Aceptado en F2** | Depende de `cv-match`. Se reserva `Application.fitScore?`. |
+| B5 | **Aceptado en F2** (`cv-match-suggestions`) | `Application.fitScore` / `fitScoreDegraded` se **derivan al leer** del último análisis; nadie los escribe (ADR-030 §5). |
 | B6 | **Aceptado en MVP** | Es una consulta barata sobre `group_links` por `linkId`. |
 | B9 | **Aceptado en MVP** | El schema `JobPreview` incluye `salary{min,max,currency,period}` y `modality`. |
 | B10, B11 | **Diferidos** | F2/F3. |
@@ -87,7 +87,7 @@
 ### 3.1 🧪 Critic sobre el diseño IA propuesto en §4 (borrador)
 - **C15 (P1):** "Routing por tarea" está bien, pero falta distinguir **capacidad** de **política**: no todo proveedor soporta JSON mode, tool use o contexto largo. → Cada adaptador declara `capabilities`; la política de routing filtra por capacidades antes de elegir.
 - **C16 (P1):** Prompts en Markdown con front-matter: ¿cómo se inyectan variables sin romper el determinismo? → Plantillas con **Mustache** (sin lógica), variables tipadas por zod (`inputSchema`), y `canonicalJSON(input)` para el hash.
-- **C17 (P1):** Streaming: la UI querrá ver las sugerencias de CV en tiempo real, pero salidas estructuradas + streaming es incómodo. → MVP **sin** streaming para tareas estructuradas; progreso por etapas vía SSE (`analysis.step: extracting|matching|critiquing|done`). Streaming solo para texto libre (F3).
+- **C17 (P1):** Streaming: la UI querrá ver las sugerencias de CV en tiempo real, pero salidas estructuradas + streaming es incómodo. → MVP **sin** streaming para tareas estructuradas; el paso alcanzado se **guarda con el análisis** y se **devuelve al consultarlo** (sondeo; ADR-030 §9). El aviso en vivo por SSE `analysis.step` se difiere a `cv-suggestions-review`. Streaming de texto libre solo en F3.
 - **C18 (P1):** Embeddings: se listó `EmbeddingProvider` pero ninguna tarea del MVP los usa. → **Se elimina del MVP** (YAGNI). Se reintroduce en F2 para búsqueda semántica y caché semántico.
 - **C19 (P1):** El evaluador de CV usando **el mismo modelo** que el generador sesga la crítica. → Política: el evaluador usa otro modelo si hay ≥ 2 disponibles; si no, mismo modelo con temperatura 0 y prompt adversarial. Registrar `judgeModel`.
 
@@ -466,15 +466,16 @@ sequenceDiagram
   W->>A: POST /cv (multipart) → MinIO → tx cv_documents + outbox(CvUploaded)
   K->>K: extract-cv (pdf-parse / mammoth) → extractedText, version
   U->>W: "Analizar contra esta vacante"
-  W->>A: POST /analyses {cvId, linkId} → outbox(AnalysisRequested)
-  A-->>W: 202 + SSE analysis.step
-  K->>AI: runTask(match-cv) con evaluator-optimizer acotado
-  AI-->>K: MatchReport + judgeScore | DegradedResult
-  K->>A: ai_analyses; Application.fitScore  ← B5
+  W->>A: POST /links/:linkId/match {cvId?} → outbox(MatchRequested.v1)
+  A-->>W: 202 Accepted (analysisId)
+  W->>A: GET /links/:linkId/match (sondeo; paso en running/latest)  ← ADR-030 §9
+  K->>AI: runTask(match-cv)
+  AI-->>K: MatchReport | DegradedResult
+  K->>A: ai_analyses (paso + informe); fitScore se deriva al leer  ← B5, ADR-030 §5
+  Note over K,AI: critique-suggestions + judgeScore → cv-suggestions-review
   K->>AI: runTask(build-roadmap) sobre missingSkills + catálogo curado
   AI-->>K: Roadmap (verified=true si viene del catálogo)
-  K-->>W: SSE analysis.done
-  U->>W: acepta/rechaza sugerencias · "no me convence" → ai_feedback  ← B14
+  U->>W: acepta/rechaza sugerencias · "no me convence" → ai_feedback  ← B14 (cv-suggestions-review)
 ```
 
 ---
@@ -494,7 +495,7 @@ sequenceDiagram
 | 9 | `group-comments` | comentarios planos |
 | 10 | `public-preview-share` | servido por la API, CTA de importación |
 | 11 | `cv-upload-extract` | sin cambios |
-| 12 | `cv-match-suggestions` | evaluator-optimizer acotado, evidence obligatoria, feedback, degradación por reglas |
+| 12 | `cv-match-suggestions` | `match-cv`, evidence, degradación por reglas, consentimiento; `fitScore` derivado; progreso por sondeo (SSE diferido) |
 | 13 | `study-roadmap` | catálogo curado + `verified` |
 | 14 | `ai-byok` | vault libsodium, UI de claves, proveedores `byok:*` |
 | 15 | `deploy-prod` | sin cambios |

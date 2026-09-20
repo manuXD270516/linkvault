@@ -2,6 +2,7 @@ import {
   type AiTask,
   FixtureMissing,
   type LlmProvider,
+  matchCvTask,
   type ProviderCapabilities,
 } from '@linkvault/ai';
 import { describe, expect, it } from 'vitest';
@@ -58,8 +59,7 @@ describe('@linkvault/ai contracts', () => {
     );
   });
 
-  it('exports matchCvTask as a personal non-cacheable task', async () => {
-    const { matchCvTask } = await import('@linkvault/ai');
+  it('exports matchCvTask as a personal non-cacheable task', () => {
     expect(matchCvTask.name).toBe('match-cv');
     expect(matchCvTask.dataSensitivity).toBe('personal');
     expect(matchCvTask.cacheable).toBe(false);

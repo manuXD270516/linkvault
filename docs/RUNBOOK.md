@@ -224,7 +224,7 @@ Orden y notas específicas:
 | 9 | `group-comments` | Planos, sin hilos. |
 | 10 | `public-preview-share` | ADR-013. |
 | 11 | `cv-upload-extract` | MinIO, pdf-parse, mammoth. |
-| 12 | `cv-match-suggestions` | §4.8 y 4.12. Evaluator-optimizer acotado, `evidence` obligatoria, `ai_feedback`. Controles de IA del perfil diferidos desde `auth-users`: consentimiento con texto honesto, `consentedAt` y versión del texto, "Idioma de los análisis de IA" y redacción del nombre. |
+| 12 | `cv-match-suggestions` | §4.7 y 4.12 (el bucle de juez §4.8 va en `cv-suggestions-review`). `match-cv`, `ai_analyses`, `fitScore` derivado, consentimiento con versión `2026-09-21`, sin SSE de progreso. Cómo operarlo: Paso 6 nonies. ADR-029/030. |
 | 13 | `study-roadmap` | Catálogo curado `resources.seed.json` primero. |
 | 14 | `ai-byok` | libsodium vault. |
 | 15 | `deploy-prod` | compose prod + Traefik + docs de alternativas. Heredado de `auth-users` (ADR-020): `trustProxy`, reseteo manual de contraseña por operador documentado, aviso de privacidad y borrado de cuenta. Heredado de `link-enrichment` (ADR-022): elegir proveedor de objetos (el cliente habla S3) y crear allí el bucket de snapshots con su expiración a 30 días, fijar las `ENRICH_*` por entorno y decidir dónde queda encendido el relay del outbox, que sigue siendo de una sola instancia. Heredado de `paste-job-description` (ADR-023): fijar `PASTE_EXTRACTION_TIMEOUT_MS` y la cuota de `extract-pasted-job` en `AI_QUOTAS` por entorno, y copiar los prompts también en la imagen de `api` (`AI_PROMPTS_DIR=dist/apps/api/assets/ai/prompts` si no arranca desde la raíz). Heredado de `groups-ownership-join-limit` (ADR-025): `trustProxy` también por el contador de IP del join, y la consulta de "un owner por grupo" antes del primer despliegue (Paso 6 quater). Heredado de `applications-tracking` (ADR-024): el borrado de cuenta tiene que borrar en cascada las `applications` y los `application_events` de esa persona; hasta entonces, a mano (Paso 6 quinquies). |
@@ -429,7 +429,10 @@ al operar y al probar a mano. Los comandos usan el Mongo del compose local; en o
   que nacen vacías. `api` construye sus índices al arrancar (`autoIndex` de Mongoose). El alta, el cambio de estado y
   "Dejar de seguir" usan transacciones, así que Mongo tiene que ser replica set (ADR-017), como siempre.
 - **Las notas y la etapa son privadas.** Al depurar, no las leas ni las copies a un ticket o a un log: proyecta solo los
-  campos que necesites (ver más abajo). El grupo nunca las recibe, y la API tampoco devuelve nunca `fitScore`.
+  campos que necesites (ver más abajo). El grupo nunca las recibe. La API **sí puede devolver `fitScore` /
+  `fitScoreDegraded`**: se **derivan al leer** del último análisis de encaje de quien pide (ADR-030 §5); **nunca se
+  escriben** en `applications` y **el informe completo no viaja** con la postulación —solo la puntuación (o la marca
+  de análisis básico). Cómo operarlo: [Paso 6 nonies](#paso-6-nonies--operar-los-análisis-de-encaje).
 - **Comprobar los índices.** Debe listar, además de `_id_`, `userId_1_linkId_1` con `unique: true`,
   `userId_1_updatedAt_-1__id_-1` y `linkId_1_visibility_1_userId_1` en `applications`, y `applicationId_1_at_1__id_1`
   en `application_events`:
@@ -949,6 +952,94 @@ necesitas saber "de quién es este CV", basta con su `userId`.
   **automatización del barrido** de huérfanos si alguna vez pesa, el **aviso de privacidad** que diga qué se guarda de un
   CV y por cuánto tiempo, y el **límite por IP y el tope de cuerpo en el proxy**, que es el único techo por cliente (los
   tres contadores cuentan por persona autenticada). Las dos colas nuevas también entran en lo que hay que vigilar.
+
+## Paso 6 nonies — Operar los análisis de encaje
+
+Desde `cv-match-suggestions`, cada persona puede pedir un análisis de su CV contra una oferta
+(`POST /api/links/:linkId/match`) y consultar el resultado (`GET /api/links/:linkId/match`). El progreso **no** llega
+por SSE: el paso alcanzado se guarda en `ai_analyses` y el SPA lo **sondea** (ADR-030 §9). Decisiones:
+[ADR-029](adr/ADR-029.md), [ADR-030](adr/ADR-030.md). Los comandos usan el compose local.
+
+**Antes de tocar nada:** no leas ni copies el informe (`report`), los `cvFragment` de evidencia ni el texto del CV. Las
+consultas de abajo proyectan solo metadatos.
+
+- **Variables.** `api` y `worker` leen `MATCH_ANALYSIS_MAX_AGE_MS` (mismo valor en ambos), `MATCH_ANALYSIS_TIMEOUT_MS`,
+  `MATCH_ANALYSES_PER_USER`, `MATCH_QUOTA_WINDOW_MS`; el worker además `MATCH_ANALYSIS_CONCURRENCY`. Relación de plazos
+  (ADR-030 §7): `MAX_AGE` tiene que ser **mayor** que `TIMEOUT` contando entregas y margen —cada proceso lo comprueba al
+  arrancar con `assertAnalysisDeadlines` y nombra las dos variables si falla. Copiar el bloque de `.env.example` si el
+  arranque se queja.
+
+- **La cola `analyze-match`.** Prefijo BullMQ `bull:`. Estado:
+
+  ```bash
+  docker compose exec redis sh -c "echo \"analyze-match wait=\$(redis-cli llen bull:analyze-match:wait) active=\$(redis-cli llen bull:analyze-match:active) delayed=\$(redis-cli zcard bull:analyze-match:delayed) failed=\$(redis-cli zcard bull:analyze-match:failed)\""
+  ```
+
+  Vaciarla solo en local (pierdes trabajos en curso; esos análisis quedan `running` hasta que el `GET` los lea
+  vencidos):
+
+  ```bash
+  docker compose exec redis sh -c "redis-cli del bull:analyze-match:wait bull:analyze-match:active bull:analyze-match:delayed bull:analyze-match:failed"
+  ```
+
+  La cola va **sin reintento a ciegas** (`attempts: 1`): un reintento volvería a enviar el CV (ADR-030 §6).
+
+- **La cuota se cuenta del historial; no hay contador que liberar** (ADR-030 §8). Ocupan sitio los análisis de la
+  ventana (`MATCH_QUOTA_WINDOW_MS`) con informe **no degradado**, más los `running` que aún no vencieron. Un fallo
+  interno, un vencimiento o un degradado **no** "devuelven" nada: no existe clave Redis ni campo a resetear. Para ver
+  cuántos análisis tiene una persona (sin leer el informe):
+
+  ```bash
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'db.ai_analyses.countDocuments({ userId: ObjectId("<userId>") })'
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'printjson(db.ai_analyses.find({ userId: ObjectId("<userId>") }, { linkId: 1, status: 1, step: 1, requestedAt: 1, finishedAt: 1, degradedReason: 1 }).sort({ requestedAt: -1 }).limit(20).toArray())'
+  ```
+
+- **Versión vigente del texto de consentimiento.** Constante compartida `AI_CONSENT_TEXT_VERSION` en
+  `libs/shared` (`ai-consent-text.ts`): hoy **`2026-09-21`**. El perfil responde `aiConsent.currentTextVersion`; un
+  permiso solo cuenta si `textVersion === currentTextVersion`. Comprobar sin leer el texto del CV:
+
+  ```bash
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'db.users.findOne({ email: "<email>" }, { "aiConsent.externalProviders": 1, "aiConsent.textVersion": 1, "aiConsent.consentedAt": 1 })'
+  ```
+
+- **Borrar `ai_analyses` al borrar una cuenta.** Hoy el borrado de cuenta lo hereda `deploy-prod`. A mano, en la misma
+  transacción que el resto de datos de esa persona:
+
+  ```bash
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'const s = db.getMongo().startSession(); s.withTransaction(() => { const d = s.getDatabase("linkvault"); const u = ObjectId("<userId>"); printjson({ analyses: d.ai_analyses.deleteMany({ userId: u }).deletedCount }); }); s.endSession()'
+  ```
+
+  Borrar un CV ya cascada sus análisis en la misma transacción (ADR-030 §4); no hace falta un paso aparte por CV.
+
+- **OpenRouter y modelos `:free` (ADR-029).** Si el modelo de `OPENROUTER_MODEL` deja de servir o deja de aceptar
+  `data_collection: "deny"`, el proveedor falla, el circuit breaker abre y la degradación puede quedar **permanente y
+  silenciosa** mientras `/perfil` sigue afirmando que el CV va a OpenRouter. Cambio: otro modelo `:free` que acepte
+  `deny`, reiniciar `api`/`worker`, y verificar con la pasada de la [tarea 17.8](#pasada-manual-openrouter-tarea-178)
+  (puerta humana pendiente).
+
+### Pasada manual OpenRouter (tarea 17.8) — pendiente
+
+**Puerta del change: no marcar 17.8 ni archivar sin esta pasada.** Requiere clave real y un humano.
+
+Qué debe verificar quien la ejecute:
+
+1. Consentimiento dado en `/perfil` con la versión vigente (`2026-09-21`).
+2. CV de prueba **anonimizado** (datos inventados, no un CV real de nadie).
+3. Un análisis real con `AI_CHAIN` que incluya `openrouter` (Ollama apagado o fuera de la cadena si quieres forzar el
+   externo).
+4. En lo enviado al proveedor: marcadores `[EMAIL_n]`, `[PHONE_n]`, `[ADDRESS_n]`, `[ID_n]`, `[NAME_n]` y **ninguno** de
+   los valores originales.
+5. Que el modelo de `OPENROUTER_MODEL` **acepte** `provider.data_collection: "deny"` (lo manda
+   `libs/ai/src/infrastructure/providers/openrouter.provider.ts`; ADR-018 §12).
+
+**Síntoma si el modelo no acepta `deny`:** el proveedor falla → el breaker abre → degradación permanente y silenciosa
+mientras `/perfil` sigue diciendo que el CV va a OpenRouter.
+
+**Dónde anotar el resultado:** sustituye este párrafo por la fecha ISO, el modelo concreto usado, y un resumen de la
+salida (sin pegar texto de CV). Hasta entonces el modelo en `.env.example`
+(`meta-llama/llama-3.3-70b-instruct:free`) es el candidato de la tarea 2.1, **no** una pasada confirmada.
+
+_Estado: **no ejecutada** — pendiente de humano + API key._
 
 ## Paso 7 — Definition of Done (pégalo en cada PR)
 
