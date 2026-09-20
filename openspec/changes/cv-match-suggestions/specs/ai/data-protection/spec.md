@@ -106,7 +106,7 @@ NO SHALL incluir el cuerpo de la respuesta.
 
 #### Scenario: Entrada de caché
 
-- **GIVEN** una tarea `public`, la única cuyo resultado puede cachearse
+- **GIVEN** una tarea `public` con el resultado declarado cacheable
 - **WHEN** se guarda una salida en la caché
 - **THEN** la entrada SHALL contener solo la salida, el proveedor, el modelo y la versión de prompt
 

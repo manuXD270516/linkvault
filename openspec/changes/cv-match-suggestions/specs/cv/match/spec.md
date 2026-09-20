@@ -83,13 +83,18 @@ fuera de la petición HTTP: la respuesta NO SHALL esperar a que termine.
 
 `GET /api/links/:linkId/match` SHALL devolver `200` con el análisis vigente de quien llama sobre esa oferta: su
 `analysisId`, `linkId`, `cvId`, `status` (`running`, `done` o `failed`), el **último paso alcanzado**, `requestedAt`,
-`analyzedAt` cuando terminó, `stale`, `cvChanged`, `consentRequired` y el informe cuando `status` es `done`.
+`analyzedAt` cuando terminó, `stale`, `cvChanged`, `consentRequired`, **cuándo se podrá volver a intentar** cuando el
+informe degradó por cuota de IA agotada, y el informe cuando `status` es `done`.
 
 - **El análisis vigente** SHALL ser el más reciente de quien llama sobre esa oferta, **con el CV que fuera**; si no
   existe ninguno, la respuesta SHALL ser `404` con código `analysis_not_found`, que NO SHALL confundirse con
   `link_not_found`.
 - `consentRequired` SHALL devolverse **tal como quedó guardado al ejecutar el análisis**, sin recalcularse al leer: lo
   que ese informe explica es la situación de permiso que hubo cuando se produjo, no la de ahora.
+- **Cuándo se podrá volver a intentar** SHALL devolverse **solo cuando el análisis degradó porque la cuota de IA se
+  agotó**, y SHALL ser el momento que quedó guardado con el análisis, sin recalcularse al leer. En cualquier otro caso
+  —informe completo, degradado por otro motivo, `running` o `failed`— NO SHALL venir. Sin él en esta respuesta, la
+  pantalla que tiene que decir a qué hora se puede volver no tendría de dónde sacar esa hora.
 - Un análisis SHALL marcarse `cvChanged` `true` cuando se hizo con un CV que ya no es el que se usaría hoy —porque se
   marcó otro por defecto—, para que nadie lea como actual un informe hecho con otro CV. SHALL seguir devolviéndose
   entero.
@@ -143,6 +148,13 @@ fuera de la petición HTTP: la respuesta NO SHALL esperar a que termine.
 - **WHEN** su ejecución termina después y quiere guardar un informe
 - **THEN** el `GET` SHALL seguir devolviendo `failed` con código `internal_error`
 - **AND** Ana NO SHALL ver convertirse en un análisis terminado lo que le presentamos como avería
+
+#### Scenario: La consulta trae la hora de vuelta de un degradado por cuota de IA
+
+- **GIVEN** un análisis `done` degradado porque la cuota de IA se agotó
+- **WHEN** Ana llama a `GET /api/links/<id>/match`
+- **THEN** la respuesta SHALL incluir cuándo se podrá volver a intentar, tal como quedó guardado
+- **AND** la respuesta de un análisis degradado por otro motivo NO SHALL incluirlo
 
 #### Scenario: La oferta cambió después del análisis
 

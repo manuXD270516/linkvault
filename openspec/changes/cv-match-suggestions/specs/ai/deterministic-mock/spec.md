@@ -12,10 +12,22 @@ ir redactado y NO SHALL guardar la salida con los valores reinyectados: reponer 
 directorio de fixtures el email, el teléfono, la dirección, el documento y el nombre reales que la redacción protege frente al
 proveedor.
 
-Como `personal` es la sensibilidad por defecto y hay ya más de una tarea declarada así, este endurecimiento SHALL aplicarse
-**también a los fixtures grabados antes de esta decisión**: un fixture de una tarea `personal` cuyo origen declarado no sea el
-mock SHALL considerarse inválido, SHALL volver a grabarse contra el mock o retirarse, y una comprobación automatizada SHALL
-fallar nombrando el fixture y su tarea mientras siga existiendo.
+Como `personal` es la sensibilidad por defecto y hay ya más de una tarea declarada así, este endurecimiento SHALL venir
+acompañado de una comprobación automatizada sobre **los fixtures escritos antes de esta decisión**. Lo que esa comprobación
+protege es que **ningún dato personal real llegue al disco**, no el trámite de cómo se escribió el archivo:
+
+- Un fixture de una tarea `personal` con el **origen escrito a mano** SHALL ser válido: sus valores se inventaron, no son de
+  nadie, y «volver a grabarlo contra el mock» no significaría nada.
+- Un fixture de una tarea `personal` cuyo origen declarado sea un **proveedor externo** SHALL considerarse inválido, SHALL
+  retirarse o sustituirse por uno escrito a mano o grabado contra el mock, y la comprobación SHALL fallar nombrando el fixture
+  y su tarea mientras siga existiendo: es el único origen que pudo sacar el input de la máquina y dejar en el repositorio lo
+  que volvió.
+- Un fixture de una tarea `personal` con origen de **mock o de un proveedor local** NO SHALL invalidarse por su origen. El
+  endurecimiento del grabador mira hacia delante y NO SHALL dejar en rojo, sin que nadie cambie nada, fixtures ya escritos y
+  limpios.
+- Sea cual sea su origen, un fixture de una tarea `personal` cuyo contenido cambie al aplicarle la redacción de proveedor
+  externo SHALL considerarse inválido, porque eso es exactamente un dato personal en el disco; la comprobación SHALL fallar
+  nombrando el fixture, su tarea y el `type` de lo que encontró, nunca el valor.
 
 Un fixture existente NO SHALL sobrescribirse
 salvo con `--overwrite`. Un upstream externo SHALL exigir `--allow-external`. El comando SHALL terminar con código 1 si algún
@@ -53,10 +65,26 @@ aplicaciones SHALL seguir rechazando `AI_MOCK_MODE=record`.
 
 #### Scenario: Un fixture personal grabado con la regla anterior
 
-- **GIVEN** un fixture de una tarea `personal` cuyo origen declarado es un proveedor real
+- **GIVEN** un fixture de una tarea `personal` cuyo origen declarado es un proveedor externo
 - **WHEN** se ejecuta la comprobación automatizada de los fixtures
 - **THEN** SHALL fallar nombrando el fixture y su tarea
-- **AND** SHALL indicar que debe volver a grabarse contra el mock o retirarse
+- **AND** SHALL indicar que debe retirarse o sustituirse por uno escrito a mano o grabado contra el mock
+
+#### Scenario: Un fixture personal escrito a mano sigue valiendo
+
+- **GIVEN** los fixtures ya escritos de `classify-skills` y `extract-pasted-job`, ambas tareas `personal`, con origen escrito a
+  mano o de un proveedor local, y ningún valor que la redacción de proveedor externo sustituiría
+- **WHEN** se ejecuta la comprobación automatizada de los fixtures
+- **THEN** SHALL pasar sin nombrar ninguno de ellos
+- **AND** la comprobación NO SHALL exigir regrabar contra el mock un fixture cuyos valores se inventaron
+
+#### Scenario: Un fixture personal con un dato personal dentro
+
+- **GIVEN** un fixture de una tarea `personal`, con el origen que sea, cuyo contenido cambia al aplicarle la redacción de
+  proveedor externo
+- **WHEN** se ejecuta la comprobación automatizada de los fixtures
+- **THEN** SHALL fallar nombrando el fixture, su tarea y el `type` encontrado
+- **AND** el mensaje NO SHALL contener el valor
 
 #### Scenario: Upstream externo sin permiso explícito
 

@@ -13,12 +13,12 @@ métricas de redacción:
 - `redaction_skill_loss`, **bloqueante** y mejor cuanto más cerca de 0: proporción de las skills anotadas del caso cuyo
   texto deja de aparecer en el input redactado (sobre-redacción, la que hace perder señal de encaje).
 - `pii_leak_rate`, **bloqueante** y con suelo duro en 0: sobre las anotaciones de PII del caso **que no llevan la marca
-  `known-gap`**, la proporción que sigue apareciendo literalmente en el input redactado (falso negativo del redactor, el
-  que hace salir un dato personal que el detector debería haber capturado). Las anotaciones marcadas `known-gap` NO SHALL
+  `knownGap`**, la proporción que sigue apareciendo literalmente en el input redactado (falso negativo del redactor, el
+  que hace salir un dato personal que el detector debería haber capturado). Las anotaciones marcadas `knownGap` NO SHALL
   entrar ni en su numerador ni en su denominador, de modo que un hueco conocido y aceptado NO SHALL hacer que esta métrica
   sea distinta de 0.
 - `pii_known_gap_rate`, **informativa**: sobre **todas** las anotaciones de PII del caso, la proporción marcada
-  `known-gap` que sigue apareciendo literalmente en el input redactado. Mide cuánta de la PII anotada sale por un hueco
+  `knownGap` que sigue apareciendo literalmente en el input redactado. Mide cuánta de la PII anotada sale por un hueco
   que se aceptó a sabiendas; bajar a 0 significa que el hueco se cerró y que su marca puede retirarse.
 
 Las tres SHALL calcularse aplicando la redacción como si el proveedor fuera `external`, con independencia del proveedor con el
@@ -56,14 +56,14 @@ el texto del CV, y junto a `pii_known_gap_rate` SHALL listar los identificadores
 
 #### Scenario: PII anotada que sobrevive a la redacción
 
-- **GIVEN** un caso con cuatro valores de PII anotados sin marca `known-gap` —email, teléfono, dirección y documento— de los que el documento sigue apareciendo literal en el input redactado
+- **GIVEN** un caso con cuatro valores de PII anotados sin marca `knownGap` —email, teléfono, dirección y documento— de los que el documento sigue apareciendo literal en el input redactado
 - **WHEN** se calculan las métricas de redacción
 - **THEN** `pii_leak_rate` SHALL valer 0.25 para ese caso
 - **AND** el reporte SHALL nombrar el `id` del caso y el tipo `id`, nunca el valor
 
 #### Scenario: Hueco conocido anotado que no rompe el suelo duro
 
-- **GIVEN** un caso con cuatro valores de PII anotados, de los que el documento es un CI escrito desnudo marcado `known-gap` con su identificador, y los otros tres se redactan
+- **GIVEN** un caso con cuatro valores de PII anotados, de los que el documento es un CI escrito desnudo marcado `knownGap` con su identificador, y los otros tres se redactan
 - **WHEN** se calculan las métricas de redacción
 - **THEN** `pii_leak_rate` SHALL valer 0 para ese caso, porque su denominador son los tres valores sin marca
 - **AND** `pii_known_gap_rate` SHALL valer 0.25
@@ -71,7 +71,7 @@ el texto del CV, y junto a `pii_known_gap_rate` SHALL listar los identificadores
 
 #### Scenario: Hueco conocido que deja de filtrarse
 
-- **GIVEN** un caso con un único valor marcado `known-gap` y un detector nuevo que ya lo captura
+- **GIVEN** un caso con un único valor marcado `knownGap` y un detector nuevo que ya lo captura
 - **WHEN** se calculan las métricas de redacción
 - **THEN** `pii_known_gap_rate` SHALL valer 0 para ese caso
 - **AND** el reporte SHALL señalar que ese hueco conocido ya no se observa
@@ -145,7 +145,7 @@ NO SHALL compararse ni modificarse la línea base.
 
 #### Scenario: El golden con un hueco conocido deja el CI verde
 
-- **GIVEN** el golden de `match-cv` con un CI escrito desnudo anotado como PII y marcado `known-gap` con un identificador declarado, y la línea base al día
+- **GIVEN** el golden de `match-cv` con un CI escrito desnudo anotado como PII y marcado `knownGap` con un identificador declarado, y la línea base al día
 - **WHEN** CI ejecuta la evaluación en replay
 - **THEN** `pii_leak_rate` SHALL valer 0 y el corredor SHALL terminar con código 0
 - **AND** el reporte SHALL seguir mostrando `pii_known_gap_rate` distinto de 0 con el identificador del hueco
@@ -208,7 +208,7 @@ declarado que ningún caso del golden usa SHALL reportarse como retirable, sin h
 
 #### Scenario: El corredor no puede silenciar una fuga por su cuenta
 
-- **GIVEN** un caso con una fuga de PII anotada sin marca `known-gap`
+- **GIVEN** un caso con una fuga de PII anotada sin marca `knownGap`
 - **WHEN** se ejecuta el corredor con `--provider=mock --update-baseline`
 - **THEN** SHALL terminar con código 1 por `pii_leak_rate`
 - **AND** la declaración de huecos conocidos NO SHALL modificarse
@@ -223,9 +223,11 @@ declarado que ningún caso del golden usa SHALL reportarse como retirable, sin h
 ### Requirement: Fixtures de una tarea con datos personales
 
 Grabar fixtures de una tarea `personal` contra un upstream que no sea el mock determinista SHALL rechazarse con código 2,
-antes de contactar a ningún proveedor, nombrando la tarea y su sensibilidad: el grabador escribe a disco la salida con los
-valores ya repuestos, de modo que grabar un CV real contra un proveedor real dejaría nombres, direcciones y documentos en el
-directorio de fixtures. Además, lo que se escriba a disco para una tarea `personal` SHALL estar redactado: antes de escribir
+antes de contactar a ningún proveedor, nombrando la tarea y su sensibilidad: el grabador **reponía** en el fixture los
+valores redactados, de modo que grabar un CV real contra un proveedor real habría dejado nombres, direcciones y documentos
+en el directorio de fixtures. La regla normativa sobre qué origen puede tener un fixture y qué se escribe en él vive en la
+capacidad del mock determinista; aquí se exige solo el rechazo del corredor, para que las dos no puedan divergir.
+Además, lo que se escriba a disco para una tarea `personal` SHALL estar redactado: antes de escribir
 un fixture de una tarea `personal`, el corredor SHALL aplicarle la redacción de proveedor externo y, si la redacción cambia
 algo, NO SHALL escribir el fixture y SHALL terminar con código 1 nombrando el `id` del caso y el `type` de lo que habría
 quedado en disco, nunca el valor. Esta comprobación SHALL aplicarse también con `--overwrite`.

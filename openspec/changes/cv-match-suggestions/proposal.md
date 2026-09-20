@@ -45,7 +45,7 @@ sugerencias van en `cv-suggestions-review`.
 - `cv/match`: el análisis de encaje entre un CV y una oferta — quién puede pedirlo, qué CV usa, el `MatchReport` con su
   evidencia obligatoria, la degradación honesta, qué se guarda en `ai_analyses`, la cuota por persona y tarea, y qué no
   sale nunca en la respuesta.
-- `web/cv-match`: la pantalla del análisis — pedirlo desde una oferta, seguir sus pasos en vivo, leer el informe, el
+- `web/cv-match`: la pantalla del análisis — pedirlo desde una oferta, seguir sus pasos mientras dura, leer el informe, el
   badge de fit, y qué se ve cuando está degradado o cuando falta el consentimiento.
 
 ### Modified Capabilities

@@ -41,14 +41,15 @@ Ver `proposal.md` §Why. Lo que condiciona el diseño, que no está ahí:
 
 ### D1. El análisis es asíncrono: `POST` → `202`, y el resultado se pide con un `GET`
 
-Un `match-cv` con dos modelos encadenados tarda decenas de segundos: mantener la petición HTTP abierta ata el resultado
-a que el navegador siga vivo. Se acepta el trabajo con `202`, se cuenta el progreso por SSE y **el resultado se pide con
-un `GET` propio**.
+Un `match-cv` tarda decenas de segundos: mantener la petición HTTP abierta ata el resultado a que el navegador siga
+vivo. Se acepta el trabajo con `202`, el análisis deja escrito el paso que alcanza y **tanto el progreso como el
+resultado se piden con un `GET` propio** (ver D12).
 
-*Alternativa descartada:* devolver el informe en la respuesta del `POST`. Además de la espera, dejaba la pantalla sin
-salida cuando el canal SSE se cae — que es justo cuando más falta hace poder preguntar "¿y entonces?".
+*Alternativa descartada:* devolver el informe en la respuesta del `POST`. Además de la espera, ata el resultado a que
+esa petición concreta sobreviva.
 
-*Alternativa descartada:* solo SSE, sin `GET`. Un evento perdido sería un resultado perdido.
+*Alternativa descartada:* contar el progreso por un canal de avisos sin `GET`. Un evento perdido sería un resultado
+perdido, y deja la pantalla sin nada que preguntar justo cuando más falta hace.
 
 ### D2. El trabajo corre en el worker, disparado por outbox
 
@@ -161,8 +162,8 @@ Se deriva al responder, del último análisis de esa persona sobre ese link. Eso
 ventana de desincronización, las puntuaciones huérfanas al borrar un CV y el `409` que le habría llegado a quien tuviera
 la pantalla abierta. *Coste:* una lectura más al componer la postulación.
 
-Sigue al **último** análisis, no al mejor, y **nunca viaja sin `fitScoreDegraded`**. Ausencia es **campo ausente, nunca
-`0`**: "todavía no lo analizaste" y "no encajas nada" no pueden verse igual.
+Sigue al **último** análisis, no al mejor, y **nunca viaja sin `fitScoreDegraded`**. La ausencia se representa como
+campo ausente o nulo y **nunca como `0`**: "todavía no lo analizaste" y "no encajas nada" no pueden verse igual.
 
 ### D12. La espera se pregunta, no se escucha
 
