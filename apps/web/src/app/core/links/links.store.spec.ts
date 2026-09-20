@@ -7,6 +7,7 @@ import type {
   GroupLinkCommentsMessage,
   JobLinkSummary,
   LinkPage,
+  PublicShare,
 } from '@linkvault/shared';
 import {
   providePageTesting,
@@ -88,6 +89,13 @@ function readLinkWith(id: string, sharedBy = 'Ana'): JobLinkSummary {
   };
 }
 const MINE_PAGE = '/api/links/mine?limit=20';
+
+/** El enlace público tal y como lo devuelven el listado del grupo y `PUT .../public`. */
+const share: PublicShare = {
+  slug: 'k3m9qrtv2xyz',
+  url: 'http://localhost:3000/p/k3m9qrtv2xyz',
+  publishedAt: '2026-09-19T10:00:00.000Z',
+};
 
 describe('LinksStore', () => {
   let store: LinksStore;
@@ -838,6 +846,91 @@ describe('LinksStore', () => {
       http.expectNone(GROUP_PAGE);
       expect(store.items()[0]?.note).toBeUndefined();
       expect(store.items()[0]?.comments?.count).toBe(2);
+    });
+  });
+
+  describe('public link', () => {
+    const PUBLIC_URL = '/api/groups/g1/links/l1/public';
+
+    function linkPublished(id: string): JobLinkSummary {
+      return { ...linkWithContext(id), publicShare: share };
+    }
+
+    it('Publicar actualiza la tarjeta', async () => {
+      await openGroup({ items: [linkWithContext('l1')], total: 1 });
+
+      const publishing = store.publish('g1', 'l1');
+      http.expectOne({ method: 'PUT', url: PUBLIC_URL }).flush(share);
+
+      await expect(publishing).resolves.toEqual(share);
+      await settle();
+      http.expectNone(GROUP_PAGE);
+      expect(store.items()[0]?.publicShare).toEqual(share);
+      expect(store.items()[0]?.note).toBeDefined();
+    });
+
+    it('Despublicar apaga la tarjeta', async () => {
+      await openGroup({ items: [linkPublished('l1')], total: 1 });
+
+      const unpublishing = store.unpublish('g1', 'l1');
+      http
+        .expectOne({ method: 'DELETE', url: PUBLIC_URL })
+        .flush(null, { status: 204, statusText: 'No Content' });
+      await unpublishing;
+
+      await settle();
+      http.expectNone(GROUP_PAGE);
+      expect(store.items()[0]?.publicShare).toBeUndefined();
+      expect(store.items()[0]?.comments?.count).toBe(2);
+    });
+
+    it('La lectura de la oferta no borra el enlace', async () => {
+      await openGroup({ items: [linkPublished('l1')], total: 1 });
+
+      // El aviso `link.enriched` responde el link sin su contexto de grupo: ni nota, ni comentarios, ni enlace público.
+      store.applyEnriched({
+        ...linkWith('l1'),
+        previewStatus: 'enriched',
+        preview: { title: 'Backend Node.js' },
+      });
+
+      expect(store.items()[0]?.preview?.title).toBe('Backend Node.js');
+      expect(store.items()[0]?.publicShare).toEqual(share);
+    });
+
+    it('keeps the incoming public link when the new version brings one', async () => {
+      await openGroup({ items: [linkPublished('l1')], total: 1 });
+      const other = { ...share, slug: 'zzzz9999abcd', url: 'http://localhost:3000/p/zzzz9999abcd' };
+
+      store.replace({ ...linkWith('l1'), publicShare: other });
+
+      expect(store.items()[0]?.publicShare).toEqual(other);
+    });
+
+    it('ignores a public link change of a group that is no longer open', async () => {
+      await openGroup({ items: [linkWithContext('l1')], total: 1 });
+      const publishing = store.publish('g1', 'l1');
+      const request = http.expectOne({ method: 'PUT', url: PUBLIC_URL });
+
+      const opening = store.open(GROUP_B);
+      http.expectOne(OTHER_GROUP_PAGE).flush({ items: [linkWithContext('l1')], total: 1 });
+      await opening;
+      request.flush(share);
+      await publishing;
+
+      expect(store.items()[0]?.publicShare).toBeUndefined();
+    });
+
+    it('propagates the 403 without changing the card', async () => {
+      await openGroup({ items: [linkPublished('l1')], total: 1 });
+
+      const unpublishing = store.unpublish('g1', 'l1');
+      http
+        .expectOne({ method: 'DELETE', url: PUBLIC_URL })
+        .flush({ code: 'forbidden', message: 'Forbidden' }, { status: 403, statusText: 'Forbidden' });
+
+      await expect(unpublishing).rejects.toMatchObject({ status: 403 });
+      expect(store.items()[0]?.publicShare).toEqual(share);
     });
   });
 });

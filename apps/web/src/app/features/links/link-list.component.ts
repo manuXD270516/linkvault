@@ -42,6 +42,9 @@ import { PasteDescriptionDialog, type PasteDescriptionDialogData } from './paste
 /** Cuánto se ve "Esta oferta ya no está en el grupo" tras cerrarse el hilo. */
 const GONE_NOTICE_MS = 6000;
 
+/** Cuánto se ve el aviso de haber copiado el enlace público, o el de que la oferta todavía se está leyendo. */
+const COPY_NOTICE_MS = 6000;
+
 /** De qué lista son los links: la de un grupo o la privada. Solo cambia el texto del estado vacío. */
 export type LinkListScope = 'group' | 'mine';
 
@@ -90,6 +93,8 @@ export class LinkList {
   protected readonly failure = signal<RequestFailure | null>(null);
   /** Comentarios del link que se va a quitar del grupo; lo lee el mensaje de la confirmación, que pluraliza. */
   protected readonly removingCommentCount = signal(0);
+  /** `true` si el link que se va a quitar tiene enlace público: lo que se destruye se nombra antes de destruirlo. */
+  protected readonly removingPublished = signal(false);
   /** El mensaje de quitar en un grupo vive en plantilla: un ICU no se puede escribir en TypeScript. */
   private readonly removeGroupMessage = viewChild.required<TemplateRef<unknown>>('removeGroupMessage');
 
@@ -99,6 +104,14 @@ export class LinkList {
    */
   protected readonly notRetryable = computed(() =>
     isApiFailure(this.failure(), 409, 'enrichment_not_retryable'),
+  );
+
+  /**
+   * `true` si el último gesto sobre el enlace público lo negó la API. Se dice **quién sí puede** cambiarlo, para que
+   * nadie lo lea como un fallo nuestro (business 9): el rol pudo cambiar en otra pestaña.
+   */
+  protected readonly publicShareForbidden = computed(() =>
+    isApiFailure(this.failure(), 403, 'forbidden'),
   );
 
   constructor() {
@@ -358,6 +371,100 @@ export class LinkList {
     }
   }
 
+  /**
+   * Quién puede encender y apagar el enlace público: en un grupo, quien compartió el link y el propietario (ADR-027
+   * §2). La **marca** de que está publicado la ve cualquier miembro, y eso lo decide la tarjeta.
+   */
+  protected canPublish(link: JobLinkSummary): boolean {
+    return this.scope() === 'group' && this.isSharerOrOwner(link);
+  }
+
+  /**
+   * Enciende el enlace público tras una confirmación que dice el alcance: quien lo pulsa está a punto de repartir una
+   * URL que cualquiera puede abrir, y lo que no se ve —el grupo, su nombre, los comentarios— importa tanto como lo que
+   * sí. La tarjeta se actualiza sin recargar la lista.
+   */
+  protected async publish(link: JobLinkSummary): Promise<void> {
+    const groupId = this.groupId();
+    if (groupId === null || this.working()) {
+      return;
+    }
+    const confirmed = await confirmWith(this.dialog, {
+      title: $localize`:@@links.public.shareTitle:Compartir con un enlace público`,
+      message: $localize`:@@links.public.shareMessage:Cualquiera con este enlace podrá ver la oferta sin entrar en LinkVault. No se verá el grupo, ni tu nombre, ni los comentarios. Puedes dejar de compartirlo cuando quieras.`,
+      confirmLabel: $localize`:@@links.public.shareConfirm:Compartir`,
+    });
+    if (!confirmed) {
+      return;
+    }
+    await this.runPublicShare(() => this.store.publish(groupId, link.id));
+  }
+
+  /**
+   * Apaga el enlace público tras confirmarlo. El texto dice lo que de verdad pasa: el enlace muere para todo el mundo,
+   * volver a encenderlo crea otro distinto, y la tarjeta que un chat ya pintó puede seguir viéndose ahí.
+   */
+  protected async unpublish(link: JobLinkSummary): Promise<void> {
+    const groupId = this.groupId();
+    if (groupId === null || this.working()) {
+      return;
+    }
+    const confirmed = await confirmWith(this.dialog, {
+      title: $localize`:@@links.public.stopTitle:Dejar de compartir`,
+      message: $localize`:@@links.public.stopMessage:El enlace dejará de funcionar para todo el mundo, también para quien ya lo tenga. Si vuelves a activarlo, se creará un enlace nuevo. Las vistas previas ya enviadas en un chat pueden seguir viéndose ahí.`,
+      confirmLabel: $localize`:@@links.public.stopConfirm:Dejar de compartir`,
+    });
+    if (!confirmed) {
+      return;
+    }
+    await this.runPublicShare(() => this.store.unpublish(groupId, link.id));
+  }
+
+  /** Ejecuta el gesto del interruptor: un `403` se explica con sus palabras y un `404` vuelve a pedir la lista. */
+  private async runPublicShare(action: () => Promise<unknown>): Promise<void> {
+    this.working.set(true);
+    this.failure.set(null);
+    try {
+      await action();
+    } catch (error: unknown) {
+      this.failure.set(toRequestFailure(error));
+      // La oferta ya no está en el grupo: la lista se vuelve a pedir para no seguir enseñándola.
+      if (hasApiErrorCode(error, 404, 'link_not_found')) {
+        void this.store.reload();
+      }
+    } finally {
+      this.working.set(false);
+    }
+  }
+
+  /**
+   * Copia la URL pública. Si la oferta todavía no se ha leído, **avisa y copia igualmente** (business 2): se comparte y
+   * se reparte en el mismo minuto, y una tarjeta sin datos en WhatsApp no se puede rehacer porque el chat la cachea.
+   * Avisar sin bloquear respeta que la persona sepa lo que hace.
+   */
+  protected async copyPublicLink(link: JobLinkSummary): Promise<void> {
+    const share = link.publicShare;
+    if (share === undefined) {
+      return;
+    }
+    this.failure.set(null);
+    try {
+      await navigator.clipboard.writeText(share.url);
+    } catch {
+      this.failure.set({ kind: 'unknown' });
+      return;
+    }
+    this.notice(
+      link.previewStatus === 'pending'
+        ? $localize`:@@links.public.copyUnread:Todavía estamos leyendo la oferta: si lo envías ahora, la tarjeta saldrá sin datos`
+        : $localize`:@@links.public.copied:Enlace copiado`,
+    );
+  }
+
+  private notice(message: string): void {
+    this.snackBar.open(message, undefined, { duration: COPY_NOTICE_MS, politeness: 'assertive' });
+  }
+
   private isSharerOrOwner(link: JobLinkSummary): boolean {
     const userId = this.session.user()?.id;
     return this.canModerate() || (userId !== undefined && link.sharedBy?.userId === userId);
@@ -370,6 +477,7 @@ export class LinkList {
    */
   protected async remove(link: JobLinkSummary): Promise<void> {
     this.removingCommentCount.set(link.comments?.count ?? 0);
+    this.removingPublished.set(this.scope() === 'group' && link.publicShare !== undefined);
     const confirmed = await confirmWith(this.dialog, {
       title: $localize`:@@links.list.removeTitle:Quitar el enlace`,
       message:

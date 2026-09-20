@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { GroupNotFound } from '../../groups/domain/errors';
 import { InvalidUrl } from '../domain/errors';
+import { isValidPublicSlug } from '../domain/public-slug';
 import { SaveLink } from './save-link.usecase';
 import { InMemoryGroupLinkRepository } from './testing/in-memory-group-link.repository';
 import { InMemoryJobLinkRepository } from './testing/in-memory-job-link.repository';
@@ -12,6 +13,7 @@ import {
   InMemoryLinkUserDirectory,
   InMemoryOutbox,
   MovableClock,
+  TestPublicUrls,
 } from './testing/links-test-doubles';
 
 // `POST /api/links` (tarea 5.1 de job-links) con los dobles en memoria de sus puertos.
@@ -35,6 +37,9 @@ let membership: InMemoryGroupMembership;
 let directory: InMemoryLinkUserDirectory;
 let saveLink: SaveLink;
 
+/** Las URLs públicas de un test: los mismos orígenes que `.env.example`. */
+const urls = new TestPublicUrls();
+
 beforeEach(() => {
   clock = new MovableClock();
   links = new InMemoryJobLinkRepository();
@@ -54,9 +59,11 @@ beforeEach(() => {
     outbox,
     membership,
     directory,
+    urls,
     clock,
   );
 });
+
 
 describe('SaveLink', () => {
   it('Guardar en un grupo', async () => {
@@ -332,5 +339,63 @@ describe('rescue through the history of urls', () => {
     expect(response.link.id).toBe(link.id);
     expect(response.link.previewStatus).toBe('failed');
     expect(outbox.size).toBe(0);
+  });
+});
+
+// Visibilidad por defecto del grupo al guardar (tarea 4.3 de public-preview-share, D3). Solo alcanza a la relación
+// **nueva**: un link que ya estaba en el grupo no cambia su estado público.
+describe('SaveLink y la visibilidad por defecto del grupo', () => {
+  it('Guardar en un grupo que comparte en público', async () => {
+    const response = await saveLink.execute(ANA, {
+      url: JOB_PAGE,
+      groupId: BACKEND,
+    });
+
+    const share = response.link.publicShare;
+    expect(share).toBeDefined();
+    expect(isValidPublicSlug(share?.slug ?? '')).toBe(true);
+    expect(share?.url).toBe(`http://localhost:3000/p/${share?.slug ?? ''}`);
+  });
+
+  it('Guardar en un grupo que no comparte en público', async () => {
+    membership.withDefaultVisibility(BACKEND, 'private');
+
+    const response = await saveLink.execute(ANA, {
+      url: JOB_PAGE,
+      groupId: BACKEND,
+    });
+
+    expect(response.link.publicShare).toBeUndefined();
+  });
+
+  it('Guardar en privado NO crea ningún enlace público', async () => {
+    const response = await saveLink.execute(ANA, { url: JOB_PAGE });
+
+    expect(response.link.publicShare).toBeUndefined();
+  });
+
+  it('El link que ya estaba no cambia', async () => {
+    const first = await saveLink.execute(ANA, {
+      url: JOB_PAGE,
+      groupId: BACKEND,
+    });
+    await groupLinks.unpublish(BACKEND, first.link.id);
+
+    const second = await saveLink.execute(BETO, {
+      url: SEARCH_PAGE,
+      groupId: BACKEND,
+    });
+
+    expect(second.shared).toBe('already_there');
+    expect(second.link.publicShare).toBeUndefined();
+  });
+
+  it('no cuesta ninguna lectura más saber si nace publicado', async () => {
+    const before = membership.groupsOfCalls;
+
+    await saveLink.execute(ANA, { url: JOB_PAGE, groupId: BACKEND });
+
+    expect(membership.groupsOfCalls).toBe(before + 1);
+    expect(membership.membershipOfCalls).toBe(0);
   });
 });

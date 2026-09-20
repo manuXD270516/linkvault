@@ -1,13 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { getConnectionToken } from '@nestjs/mongoose';
 import {
-  mongo,
   type ClientSession,
   type Connection,
   type Model,
   type Schema,
   type Types,
 } from 'mongoose';
+import { duplicateKeyIs } from '../../../infrastructure/mongo/duplicate-key';
 import type {
   ApplicationRepository,
   SharedApplication,
@@ -50,8 +50,6 @@ import {
 // - Un identificador mal formado no llega a Mongo: responde `null`, `false` o nada, nunca CastError.
 // - Ningún `$set` escribe `fitScore` (D9).
 
-const DUPLICATE_KEY = 11_000;
-
 /** Intentos de la transacción de alta: el segundo solo si la relectura tras el choque no encontró nada (D5). */
 export const MAX_TRACK_ATTEMPTS = 2;
 
@@ -63,37 +61,6 @@ function modelOf<T>(
   return (
     (connection.models[name] as Model<T> | undefined) ??
     connection.model<T>(name, schema)
-  );
-}
-
-/**
- * `true` si `error` es una clave duplicada del índice cuyo `keyPattern` es exactamente `pattern`. No se parsea
- * `errmsg`, que no es contrato (mismo criterio que `groups`, ADR-025 §4).
- */
-export function duplicateKeyIs(
-  error: unknown,
-  pattern: Readonly<Record<string, 1 | -1>>,
-): boolean {
-  if (
-    !(error instanceof mongo.MongoServerError) ||
-    error.code !== DUPLICATE_KEY
-  ) {
-    return false;
-  }
-  const actual: unknown = error['keyPattern'];
-  if (typeof actual !== 'object' || actual === null) {
-    return false;
-  }
-  const actualEntries = Object.entries(actual);
-  const expectedEntries = Object.entries(pattern);
-  return (
-    actualEntries.length === expectedEntries.length &&
-    expectedEntries.every(([field, direction], index) => {
-      const entry = actualEntries[index];
-      return (
-        entry !== undefined && entry[0] === field && entry[1] === direction
-      );
-    })
   );
 }
 

@@ -70,6 +70,8 @@ import {
   InvalidCursor,
   InvalidShareNote,
   NoteRemovalForbidden,
+  PublicShareForbidden,
+  PublicShareNotFound,
   InvalidUrl,
   LinkNotFound,
   LinkRemovalForbidden,
@@ -131,6 +133,8 @@ const THROWN: Record<string, () => unknown> = {
   'comment-deletion-forbidden': () => new CommentDeletionForbidden(),
   'note-removal-forbidden': () => new NoteRemovalForbidden(),
   'comments-group-not-found': () => new CommentsGroupNotFound(),
+  'public-share-forbidden': () => new PublicShareForbidden(),
+  'public-share-not-found': () => new PublicShareNotFound(),
   'application-not-found': () => new ApplicationNotFound(),
   'application-conflict': () => new ApplicationConflict(),
   'tracked-link-not-found': () => new TrackedLinkNotFound(),
@@ -367,6 +371,9 @@ describe('ApiExceptionFilter', () => {
     ['comment-deletion-forbidden', 403, 'forbidden', undefined],
     ['note-removal-forbidden', 403, 'forbidden', undefined],
     ['comments-group-not-found', 404, 'group_not_found', undefined],
+    // Enlace público: sin código nuevo, los de siempre (D10 de public-preview-share).
+    ['public-share-forbidden', 403, 'forbidden', undefined],
+    ['public-share-not-found', 404, 'link_not_found', undefined],
     // Errores de `applications`: la fecha futura nombra `appliedAt` (tiene su rama antes de la genérica).
     ['invalid-applied-at', 400, 'validation_error', ['appliedAt']],
     ['invalid-stage-label', 400, 'validation_error', ['stageLabel']],

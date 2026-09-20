@@ -72,9 +72,14 @@ export interface LinksTestApp {
   /** Usuario nuevo con su access token. */
   authenticated(displayName?: string): Promise<TestMember>;
   request(
-    method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+    method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
     url: string,
-    options?: { authorization?: string; body?: unknown },
+    options?: {
+      authorization?: string;
+      body?: unknown;
+      /** Cabeceras extra de la petición: las usan los tests que comprueban que la respuesta NO depende de ellas. */
+      headers?: Record<string, string>;
+    },
   ): Promise<InjectResponse>;
   /** Grupo recién creado por su owner, por HTTP. */
   createGroup(owner: TestMember, name?: string): Promise<GroupDetail>;
@@ -165,6 +170,7 @@ export async function createLinksTestApp(
         ...(options.body === undefined
           ? {}
           : { 'content-type': 'application/json' }),
+        ...(options.headers ?? {}),
       },
       ...(options.body === undefined
         ? {}

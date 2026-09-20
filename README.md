@@ -28,7 +28,9 @@ docker compose up -d --wait        # mongo (replica set rs0), redis y minio, esp
 Si ya tenías un `.env` de antes del enriquecimiento de links, cópiale de `.env.example` las variables `ENRICH_*` y `S3_*`:
 son obligatorias y **el worker no arranca sin ellas** (ver [Variables del enriquecimiento](#variables-del-enriquecimiento)).
 Si es de antes de pegar descripciones, cópiale además `PASTE_EXTRACTION_TIMEOUT_MS` y la sección `--- IA ---` entera:
-**`api` ya no arranca sin ellas** (ver [La IA que ejecuta `api`](#la-ia-que-ejecuta-api)).
+**`api` ya no arranca sin ellas** (ver [La IA que ejecuta `api`](#la-ia-que-ejecuta-api)). Y si es de antes de los
+enlaces públicos, `PUBLIC_PAGE_BASE_URL` y `WEB_BASE_URL`, obligatorias por el mismo motivo (ver
+[Variables de las URLs públicas](#variables-de-las-urls-públicas)).
 
 Arranca cada app en su propia terminal:
 
@@ -198,9 +200,15 @@ Todas las rutas exigen access token (`Authorization: Bearer`); sin él responden
 | `DELETE /api/groups/:id/members/me`      | miembro           | `204` al salir; el owner recibe `409 owner_cannot_leave`.                |
 | `DELETE /api/groups/:id/members/:userId` | owner             | `204` al expulsar; la membresía `owner` no se puede eliminar.            |
 | `POST /api/groups/:id/owner`             | owner             | `200` con el detalle visto ya como miembro, sin `inviteCode`.            |
+| `PATCH /api/groups/:id/settings`         | owner             | `200` con el detalle; cambia `defaultVisibility` de los links nuevos.    |
 
 La lista ordena por `joinedAt` descendente y descarta las membresías cuyo grupo ya no existe. `memberCount` sale de una
 sola agregación, no de un conteo por grupo.
+
+`GET /api/groups/:id` devuelve además `defaultVisibility`, el ajuste que decide si los links **nuevos** del grupo nacen
+con un enlace público (`public` por defecto). Lo ve cualquier miembro —quien comparte tiene derecho a saber si su link
+nacerá público— y solo lo cambia el owner, con `PATCH /api/groups/:id/settings`: está en
+[Enlaces públicos de una oferta](#enlaces-públicos-de-una-oferta). `GET /api/groups` no lo lleva.
 
 **Privacidad.** Quien no es miembro no distingue un grupo ajeno de uno inexistente: el grupo ajeno, un id que no existe y
 un id con otro formato responden `404 group_not_found` con el mismo cuerpo. Un miembro que no es owner ya sabe que el
@@ -339,12 +347,16 @@ Todas las rutas exigen access token (`Authorization: Bearer`); sin él responden
 | `DELETE /api/links/mine/:linkId`       | quien lo guardó   | `204`; quita solo la entrada privada.                                              |
 | `GET /api/groups/:id/links`            | miembro           | `200` con los links del grupo, cada uno con `sharedBy` (`userId` y `displayName`). |
 | `DELETE /api/groups/:id/links/:linkId` | autor u owner     | `204`; otro miembro recibe `403 forbidden`.                                        |
+| `PUT /api/groups/:id/links/:linkId/public`    | autor u owner | `200` con el enlace público de la oferta; ver [Enlaces públicos](#enlaces-públicos-de-una-oferta). |
+| `DELETE /api/groups/:id/links/:linkId/public` | autor u owner | `204`; el enlace público deja de funcionar para siempre.                       |
 
 `POST /api/links` y `POST /api/links/import` aceptan `groupId`: con él el link se comparte en ese grupo; sin él queda en
 la lista privada de quien lo guarda. Compartir en un grupo **no** crea además entrada privada (ADR-021 §5). `POST
 /api/links` acepta además `note`, la nota de quien comparte, y `GET /api/groups/:id/links` devuelve esa nota y el
 resumen de comentarios de cada tarjeta: los dos están en
-[Comentarios y notas en los grupos](#comentarios-y-notas-en-los-grupos), con las rutas del hilo.
+[Comentarios y notas en los grupos](#comentarios-y-notas-en-los-grupos), con las rutas del hilo. Esa misma respuesta
+trae el **enlace público** de la tarjeta cuando lo tiene, y `POST /api/links` lo devuelve si el grupo comparte en
+público: [Enlaces públicos de una oferta](#enlaces-públicos-de-una-oferta).
 
 `created` dice si la vacante no existía en LinkVault y `shared` (`created` o `already_there`), si la relación con el
 destino es nueva: son cosas distintas, y el SPA solo avisa "ya estaba aquí" con la segunda, nombrando a quien la compartió
@@ -1182,6 +1194,207 @@ Con el `curl -sN` de la última línea abierto en otra terminal, cada alta y cad
 ```bash
 docker compose exec redis redis-cli subscribe events:group-link.comments
 ```
+
+## Enlaces públicos de una oferta
+
+Una oferta compartida en un grupo puede tener además un **enlace público**: una URL corta que se pega en un chat y que
+cualquiera abre sin cuenta, con la oferta puesta —título, empresa, dónde y cuánto— en lugar de una URL pelada
+([ADR-013](docs/adr/ADR-013.md), [ADR-027](docs/adr/ADR-027.md)). La sirve la **API**, no el SPA, en HTML sin SSR y sin
+JavaScript, para que los bots de WhatsApp y compañía compongan su tarjeta. Cómo operarlo:
+[RUNBOOK, Paso 6 septies](docs/RUNBOOK.md#paso-6-septies--operar-los-enlaces-públicos).
+
+El enlace vive en la **relación link-grupo**, no en la vacante: quitar el link del grupo o borrar el grupo se lo llevan,
+y la misma oferta publicada en dos grupos tiene dos enlaces independientes. No hay enlaces públicos de la lista privada.
+
+### Para quien usa el producto
+
+- **La URL es `<origen de la API>/p/<slug>`**, con un `slug` opaco de 12 caracteres del alfabeto
+  `23456789abcdefghjkmnpqrstvwxyz` (Crockford sin `0`, `1`, `i`, `l`, `o` ni `u`), en minúscula y **sensible a
+  mayúsculas**: un slug con otra caja es un slug que no existe. No lleva dentro nada de la oferta, ni del grupo, ni
+  ningún identificador interno.
+- **Qué se ve:** el título (o una etiqueta derivada de la URL si la oferta aún no se ha leído), empresa, ubicación,
+  salario, modalidad, nivel, fecha de publicación y de cierre, y "Ver la oferta original".
+- **Qué no se ve nunca:** el resumen, las habilidades, los idiomas, quién escribió o pegó cada dato, el estado del
+  preview o su motivo de fallo, **quién compartió la oferta**, **el grupo y su nombre**, la nota, los comentarios,
+  ninguna postulación y ningún identificador interno. Un enlace público no dice a qué grupo pertenece.
+- **La URL de la oferta original sale saneada:** sin usuario ni contraseña embebidos y sin los parámetros de campaña y
+  seguimiento (`utm_*`, `gclid`, `fbclid`, `mc_cid`, `mc_eid`, `igshid`, `ref`, `trk`, `trkcampaign`), que pueden
+  arrastrar el rastro de quien recibió esa oferta por correo. **El fragmento (`#…`) se conserva**, porque hay bolsas que
+  ponen ahí la ruta de la vacante. Si la URL guardada no es `http(s)`, la página se pinta sin ese enlace. Lo guardado no
+  se toca: esto es solo lo que se publica.
+- **Quién lo enciende y lo apaga:** **quien compartió el link o el propietario del grupo**, en el menú de la tarjeta
+  ("Compartir con un enlace público", "Copiar enlace", "Dejar de compartir"), igual que la nota y los comentarios.
+  Cualquier **miembro** ve la marca "Enlace público" y puede copiar la URL —ya es pública—, pero no toca el interruptor.
+- **Despublicar quema el slug:** esa URL responde `404` para siempre, y volver a publicar genera **otra**. Lo que un
+  chat ya pintó no se borra: WhatsApp guarda su tarjeta días, así que despublicar mata la página, no la vista previa que
+  ya se envió. El texto del interruptor lo dice.
+- **Publicar es idempotente:** dos pestañas no dejan dos enlaces vivos; la segunda recibe el mismo `slug`.
+- **Visibilidad por defecto del grupo.** `defaultVisibility` es `public`: **los links nuevos de un grupo nacen con su
+  enlace público**, tanto al guardarlos uno a uno como al importar un chat. El propietario la apaga en `/grupos/:id`
+  ("Los links nuevos se comparten con un enlace público"). Cambiarla **no toca ningún link ya compartido** —ni publica
+  ni despublica— y cada link conserva su interruptor; un grupo anterior a esta función, sin el ajuste guardado, se lee
+  como `public`. Al guardar en un grupo que comparte en público, la confirmación lo dice y ofrece "Copiar enlace".
+- **Copiar el enlace de una oferta que aún no se ha leído** avisa ("Todavía estamos leyendo la oferta: si lo envías
+  ahora, la tarjeta saldrá sin datos") y **deja copiar**: la página mejora sola cuando llegue el enriquecimiento, pero
+  la tarjeta que ya se pegó en un chat no se rehace.
+- **Quien recibe el enlace sin cuenta** ve la oferta y un botón "Guardar en LinkVault", que lleva a
+  `/registro?import=<slug>`; tras registrarse o entrar, la oferta se guarda en su **lista privada** ("Solo para mí"),
+  nunca en un grupo.
+
+### Las dos URLs públicas
+
+| Ruta                                  | Qué sirve                                                                                     |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `GET /p/:slug`                        | La página HTML que lee el bot del chat. **Fuera del prefijo `/api`** y sin sesión.            |
+| `GET /api/public/previews/:slug`      | Los datos de la oferta en JSON, sin sesión, para la vista `/oferta/:slug` del SPA.            |
+
+- **La misma respuesta para todo el mundo:** no se mira el `User-Agent` ni el `Accept` y no hay `Vary`. Lo que separa a
+  un bot de una persona es que el navegador ejecuta el `<meta http-equiv="refresh" content="0; …">` hacia
+  `/oferta/:slug` y el bot no. No hay **ninguna** etiqueta `<script>`: la página no ejecuta JavaScript y lleva además un
+  enlace visible de respaldo ("Ver la oferta en LinkVault").
+- **Etiquetas Open Graph** con `og:url` desde la configuración (nunca desde la cabecera `Host`, que es falsificable),
+  título cortado a 100 code points y descripción a 200, en el orden empresa · ubicación · **salario** · modalidad ·
+  nivel · cierre —el salario delante porque es lo que decide si alguien abre la oferta y lo primero que cada app
+  recorta—. La imagen es fija, de marca: `<WEB_BASE_URL>/assets/og-default.png` (1200×630). El `index.html` del SPA lleva
+  su propio juego de OG de marca, para que un bot que **sí** siga el `refresh` componga una tarjeta genérica y no una
+  vacía.
+- **Cabeceras** de las tres respuestas (`200`, `404` y `429`): `Referrer-Policy: no-referrer` —sin ella el slug, que es
+  la llave de la página, viajaría a la bolsa dentro del `Referer`—, `X-Content-Type-Options: nosniff` y
+  `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; form-action 'none'; base-uri 'none';
+  frame-ancestors 'none'`. Siempre `text/html; charset=utf-8`: **esa ruta nunca responde JSON**, tampoco en `/p/`, en
+  `/p/a/b` ni ante un error inesperado. La página va con `noindex` y **sin** `Disallow` en `robots.txt`, porque
+  bloquearía también a los bots de las tarjetas; la vista `/oferta/:slug` del SPA sí lleva `Disallow: /oferta/`.
+- **Caché:** `200` con `Cache-Control: public, max-age=60` (suficiente para absorber a los bots que piden la misma URL,
+  poco para que despublicar se note); `404` y `429`, `no-store`.
+- **Coste:** dos lecturas indexadas y **ninguna escritura**. No pide el enriquecimiento del link aunque esté sin leer,
+  no llama a la IA, no escribe en el outbox y no reparte avisos. Un bot que pida mil veces la página no genera ni una
+  petición a la bolsa.
+- **Log:** cada petición de las dos rutas deja `{ slug, status }` y **nada más** —ni dirección de origen, ni
+  `User-Agent`, ni referente—, y el log automático de petición está apagado para ellas.
+- **Un `404` es idéntico** para un slug inexistente, uno quemado, uno mal formado, uno cuyo link salió del grupo y uno
+  cuyo grupo se borró: "Este enlace ya no está disponible" y "Pídeselo de nuevo a quien te lo envió" en la página,
+  `404 link_not_found` en el JSON.
+
+### Endpoints del interruptor
+
+Estas dos rutas exigen access token; las dos públicas de arriba, no.
+
+| Método y ruta                                  | Quién                    | Respuesta                                                            |
+| ---------------------------------------------- | ------------------------ | ---------------------------------------------------------------------- |
+| `PUT /api/groups/:id/links/:linkId/public`     | quien compartió u owner  | `200` con `{ slug, url, publishedAt }`; publicar dos veces, el mismo. |
+| `DELETE /api/groups/:id/links/:linkId/public`  | quien compartió u owner  | `204`, estuviera publicado o no.                                     |
+| `PATCH /api/groups/:id/settings`               | owner                    | `200` con el detalle del grupo, ya con `defaultVisibility`.          |
+
+El orden de comprobaciones es pertenencia → relación → permiso, así que un no miembro recibe `404 group_not_found`, un
+link que no está en el grupo `404 link_not_found` y otro miembro `403 forbidden` **esté o no publicado**: la respuesta no
+le revela a quien no puede tocarlo si el enlace existía. `GET /api/groups/:id/links` trae `publicShare` (`slug`, `url`
+absoluta y `publishedAt`) de cada tarjeta publicada, sin una lectura más; `GET /api/links/mine` **no** lo lleva.
+`POST /api/links` y `POST /api/links/import` lo devuelven cuando el grupo comparte en público y la relación es nueva.
+`PATCH /api/groups/:id/settings` recibe `{ "defaultVisibility": "public" | "private" }`; otro valor responde
+`400 validation_error` nombrando `defaultVisibility`, y un miembro que no es owner, `403 forbidden`.
+
+### Variables de las URLs públicas
+
+Las dos son **obligatorias**: `api` no arranca sin ellas, así que un `.env` anterior a esta función tiene que copiarlas
+de `.env.example`. Absolutas, `http(s)` y **sin barra final**. Nunca se deducen de la cabecera `Host` de una petición:
+acabarían dentro de una etiqueta que los chats muestran y cachean.
+
+| Variable               | `.env.example`          | Para qué                                                                             |
+| ---------------------- | ----------------------- | -------------------------------------------------------------------------------------- |
+| `PUBLIC_PAGE_BASE_URL` | `http://localhost:3000` | Origen que sirve `/p/:slug`: la URL que se pega en un chat y el valor de `og:url`.    |
+| `WEB_BASE_URL`         | `http://localhost:4200` | Origen del SPA: el destino del redirect (`/oferta/:slug`) y la imagen fija de la OG. |
+
+En producción pueden apuntar al mismo origen. En desarrollo son distintos a propósito: la página la sirve `api` en el
+3000 y la vista pública, `web` en el 4200.
+
+### Límites de las rutas públicas
+
+Son un tope de **coste** —que un bucle no nos haga leer Mongo sin fin—, no un control por cliente: **ninguna clave
+depende de nada que envíe quien pide**, así que no hay nada que falsificar y no hace falta `trustProxy` (que sigue
+siendo de `deploy-prod`, y activarlo a ciegas debilitaría los límites de login, registro y unirse a un grupo).
+
+| Contador en Redis           | Ruta                               | Tope por ventana de 15 min |
+| --------------------------- | ---------------------------------- | -------------------------- |
+| `links:public-page`         | `GET /p/:slug`, todas juntas       | 6000                       |
+| `links:public-preview`      | `GET /api/public/previews/:slug`   | 6000                       |
+| `links:public-page:<slug>`  | `GET /p/:slug`, de **ese** enlace  | 2000                       |
+
+- **El orden es formato del slug → contador global → contador del slug → lecturas.** Un slug mal formado responde `404`
+  sin gastar ni el contador, y superar el tope no cuesta **ninguna** lectura.
+- **Si el contador del slug rechaza, el intento se devuelve al global**, para que un bucle contra un enlace agotado no
+  vacíe el tope de todos los demás.
+- **Los dos globales son independientes:** una avalancha contra la página no deja sin ver la oferta a quien ya está en
+  `/oferta/:slug`.
+- **Fallan abiertos:** si Redis no responde se sirve igual, porque lo que se permite de más son dos lecturas indexadas.
+- **Cuando se agotan:** `/p/:slug` responde `429` **en HTML** con `Retry-After` y "Demasiadas peticiones. Inténtalo en un
+  momento."; el endpoint JSON, `429 too_many_attempts` con `Retry-After`, y la vista del SPA dice "Ahora mismo no
+  podemos mostrar esta oferta. Inténtalo en un momento." con "Reintentar" **sin perder** el botón de guardar. La
+  ventana es fija: o se espera a que pase, o se libera el contador en Redis
+  ([RUNBOOK](docs/RUNBOOK.md#paso-6-septies--operar-los-enlaces-públicos)). Lo que no se arregla es la tarjeta que un
+  chat cacheó vacía mientras duraba el `429`.
+
+### Índice y campos nuevos
+
+`api` construye el índice al arrancar (`autoIndex` de Mongoose). Cómo comprobarlo:
+[RUNBOOK](docs/RUNBOOK.md#paso-6-septies--operar-los-enlaces-públicos).
+
+| Colección     | Índice                                                              | Para qué                                                   |
+| ------------- | ------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `group_links` | `public_share_slug`: `{ 'publicShare.slug': 1 }`, único **parcial** | Resolver la página con un `findOne` y garantizar el slug. |
+
+- Es el **único** índice que añade esta función, y los tres de `group_links` no cambian
+  (`groupId_1_linkId_1` único, `groupId_1_sharedAt_-1__id_-1` y `linkId_1`). Es **parcial**
+  (`partialFilterExpression: { 'publicShare.slug': { $exists: true } }`) porque casi ninguna relación está publicada y
+  un índice único a secas las haría chocar a todas.
+- `group_links` gana `publicShare?` (`slug`, `publishedBy`, `publishedAt`) y `groups`, `settings.defaultVisibility`
+  (`public` | `private`), sin índices. `publishedBy` es solo trazabilidad interna: **no sale en ninguna respuesta**.
+- **No hay backfill ni migración.** Ningún link ya compartido se publica: se compartió cuando "compartir en el grupo"
+  significaba "lo ven los miembros". Un grupo sin `settings` se lee `public`, y eso solo afecta a lo que entre después.
+- La unicidad la garantiza el índice, no una consulta previa: publicar reintenta hasta 5 veces con otro slug si choca, y
+  el alta que nace publicada deja que se reintente la transacción entera (por eso `MAX_RESOLVE_ATTEMPTS` es 3).
+- Volver a la versión anterior es desplegarla: ignora los campos, y `/p/:slug` deja de existir, con lo que las URLs
+  repartidas dejan de responder.
+
+### Rutas del SPA
+
+| Ruta            | Contenido                                                                                                              |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `/oferta/:slug` | Vista pública de la oferta, **sin sesión y sin guard**, con "Ver la oferta original" y el CTA "Guardar en LinkVault". |
+| `/mis-links`    | Con `?import=<slug>` guarda esa oferta en la lista privada, una sola vez, y quita el parámetro de la URL.              |
+
+Al arrancar en `/oferta/…` el SPA **no restaura la sesión**: quien llega desde un chat no tiene cookie y no debe esperar
+a "Conectando…". La sesión se resuelve donde siempre, en el guard de la ruta a la que se navegue después. El CTA navega
+siempre a `/registro?import=<slug>` sin consultar la sesión; `guestGuard` desvía a `/mis-links?import=<slug>` a quien ya
+la tenga, y el `import` se valida como slug y **gana** al `returnUrl`.
+
+### Probar los enlaces públicos en local
+
+Con la API en marcha, un access token obtenido como en [Probar en local](#probar-en-local) y un link compartido en un
+grupo del que seas miembro:
+
+```bash
+T='Authorization: Bearer <accessToken>'
+J='Content-Type: application/json'
+GROUP_ID=...   # un grupo del que seas miembro
+LINK_ID=...    # un link compartido en ese grupo
+
+curl -s -H "$T" -X PUT "http://localhost:3000/api/groups/$GROUP_ID/links/$LINK_ID/public"        # 200 con slug, url y publishedAt
+SLUG=...       # el slug de la respuesta
+curl -s -i "http://localhost:3000/p/$SLUG" | head -20                                            # 200 text/html con sus cabeceras
+curl -s "http://localhost:3000/p/$SLUG" | grep -o '<meta property="og:[a-z:]*" content="[^"]*"'  # las etiquetas de la tarjeta
+curl -s "http://localhost:3000/api/public/previews/$SLUG"                                        # el JSON de la vista del SPA
+curl -s -H "$T" "http://localhost:3000/api/groups/$GROUP_ID/links?limit=20"                      # publicShare en la tarjeta
+curl -s -i -H "$T" -X DELETE "http://localhost:3000/api/groups/$GROUP_ID/links/$LINK_ID/public"  # 204: el slug se quema
+curl -s -o /dev/null -w '%{http_code} %{content_type}\n' "http://localhost:3000/p/$SLUG"         # 404 text/html, para siempre
+
+curl -s -H "$T" -H "$J" -X PATCH "http://localhost:3000/api/groups/$GROUP_ID/settings" \
+  -d '{"defaultVisibility":"private"}'                                                           # los links nuevos ya no nacen públicos
+curl -s -H "$T" -H "$J" http://localhost:3000/api/links \
+  -d "{\"url\":\"https://example.com/vacante-nueva\",\"groupId\":\"$GROUP_ID\"}"                 # 201 sin publicShare
+```
+
+Ninguna de las dos rutas públicas lleva `Authorization`, y el `404` es el mismo para un slug inventado
+(`curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3000/p/22222222222x`) que para uno quemado.
 
 ## Calidad
 

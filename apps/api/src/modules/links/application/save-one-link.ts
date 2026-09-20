@@ -8,6 +8,7 @@ import {
   type NewJobLink,
 } from '../domain/job-link';
 import { isUrlTooLong } from '../domain/limits';
+import type { PublicShare } from '../domain/public-share';
 import type { ShareNote } from '../domain/share-note';
 import { normalizeUrl, toDisplayUrl } from '../domain/url';
 import type { GroupLinkRepository } from './ports/group-link-repository.port';
@@ -46,6 +47,8 @@ export interface SavedLink {
   readonly sharedAt: Date;
   /** Nota de la relación con el grupo: la de quien la compartió primero, si la dejó. Nunca en la lista privada. */
   readonly note?: ShareNote;
+  /** Enlace público de la relación con el grupo, si lo tiene. Nunca en la lista privada (D1). */
+  readonly publicShare?: PublicShare;
 }
 
 /**
@@ -98,10 +101,15 @@ export async function saveOneLink(
     groupId?: string;
     /** Nota de quien comparte (D3 de group-comments): solo con grupo y solo se guarda si la relación es nueva. */
     note?: ShareNote;
+    /**
+     * Si la relación **nueva** con el grupo nace publicada, según la visibilidad por defecto del grupo (D3 de
+     * public-preview-share). Sin grupo no se usa: un link privado no se puede publicar.
+     */
+    publish?: boolean;
     now: Date;
   },
 ): Promise<SavedLink> {
-  const { groupId, userId, now, note } = params;
+  const { groupId, userId, now, note, publish } = params;
   return await writers.links.withResolvedLink(
     params.draft,
     async (resolved, session) => {
@@ -123,6 +131,7 @@ export async function saveOneLink(
                 groupId,
                 now,
                 ...(note === undefined ? {} : { note }),
+                ...(publish === undefined ? {} : { publish }),
               },
               session,
             );
@@ -185,6 +194,7 @@ async function shareInGroup(
     groupId: string;
     now: Date;
     note?: ShareNote;
+    publish?: boolean;
   },
   session: TransactionSession,
 ): Promise<Omit<SavedLink, 'link' | 'created'>> {
@@ -195,6 +205,7 @@ async function shareInGroup(
       sharedBy: params.userId,
       sharedAt: params.now,
       ...(params.note === undefined ? {} : { note: params.note }),
+      ...(params.publish === undefined ? {} : { publish: params.publish }),
     },
     session,
   );
@@ -203,6 +214,10 @@ async function shareInGroup(
     sharedBy: relation.sharedBy,
     sharedAt: relation.sharedAt,
     ...(relation.note === undefined ? {} : { note: relation.note }),
+    // El enlace público de la relación, lo estrene esta alta o lo tuviera ya el primero que la compartió.
+    ...(relation.publicShare === undefined
+      ? {}
+      : { publicShare: relation.publicShare }),
   };
 }
 

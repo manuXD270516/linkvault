@@ -64,6 +64,27 @@
       }
     </section>
 
+    <!--
+      Visibilidad por defecto de los links que entren (D3). Solo el owner la cambia; cualquier miembro la ve en el
+      detalle, pero el interruptor es suyo. Mirar hacia adelante se dice explícitamente: nada de lo ya compartido cambia.
+    -->
+    @if (isOwner()) {
+      <section class="flex flex-col gap-1" data-testid="group-default-visibility">
+        <mat-slide-toggle
+          [checked]="sharesPublicly()"
+          [disabled]="working()"
+          (change)="togglePublicDefault()"
+          data-testid="group-public-toggle"
+          i18n="@@groups.detail.publicDefault"
+        >
+          Los links nuevos se comparten con un enlace público
+        </mat-slide-toggle>
+        <p class="m-0 text-sm" i18n="@@groups.detail.publicDefaultHint">
+          Solo afecta a lo que se guarde a partir de ahora; los links que ya están no cambian.
+        </p>
+      </section>
+    }
+
     @if (isOwner() && currentGroup.inviteCode; as inviteCode) {
       <section class="flex flex-col gap-2">
         <h2 class="text-xl font-medium" i18n="@@groups.detail.inviteTitle">Código de invitación</h2>

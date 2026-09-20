@@ -22,7 +22,20 @@ export type LinkLimitKey =
    * Comentarios que publica una persona, en todos sus grupos (D6 de group-comments). Falla abierto: lo que se permite de
    * más es escribir en nuestra base y repartir a 50 conexiones como mucho. Borrar no cuenta.
    */
-  | { readonly kind: 'comment'; readonly userId: string };
+  | { readonly kind: 'comment'; readonly userId: string }
+  /**
+   * Páginas públicas servidas, **en total** (D8 de public-preview-share). Contador global de ruta: la clave es fija y
+   * no entra en ella la dirección de origen, ni ninguna cabecera, ni nada derivado de ellas. Falla abierto.
+   */
+  | { readonly kind: 'public-page' }
+  /** Previews públicos servidos al SPA, en total. Independiente del de la página: agotar uno no cierra el otro. */
+  | { readonly kind: 'public-preview' }
+  /**
+   * Páginas de **un mismo enlace**. El `slug` es un dato del recurso, no del cliente: lo lleva la ruta, así que no hay
+   * nada que falsificar. Es un discriminante propio y no un `public-page` con un campo opcional, porque `nameOf`,
+   * `limitOf` y `failureDecisionOf` son `switch` exhaustivos y no deben ramificar por dentro.
+   */
+  | { readonly kind: 'public-page-slug'; readonly slug: string };
 
 export interface LinkLimitDecision {
   readonly allowed: boolean;

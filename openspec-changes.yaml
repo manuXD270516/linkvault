@@ -148,20 +148,26 @@ changes:
       Decisión humana del 2026-09-19: de esos campos solo entra `comment` (la nota de quien comparte); `tags` y `pinned` quedan
       fuera hasta que un uso los pida, y `settings.defaultVisibility` pasa a `public-preview-share`.
   - name: public-preview-share
-    adrs: [013]
+    adrs: [013, 027]
     agents: [backend-dev, frontend-dev]
     scope: |
-      GET /p/:slug en la API: HTML con OG tags desde el preview y redirect a la SPA para humanos; sharePublic por link.
-      Frontend: vista pública del preview y CTA "Guardar en LinkVault" con ?import=<slug>.
-      Heredado de `groups` (D1 de su design.md): el `slug` de grupo de docs/design.md no se creó, porque nada lo usaba. Si este
-      change lo necesita para las URLs públicas, lo añade él: campo `slug` en la colección `groups` con índice único, generación
-      a partir del nombre con desambiguación y backfill de los grupos ya existentes (migración, no valor por defecto), teniendo en
-      cuenta que el nombre del grupo no es único y que el slug no debe filtrar nada que el código de invitación ya protege.
+      GET /p/:slug en la API: HTML con OG tags desde el preview y redirect a la SPA para humanos; enlace público por link
+      (`group_links.publicShare`, slug opaco de 12 caracteres que se quema al despublicar).
+      Frontend: vista pública del preview en /oferta/:slug y CTA "Guardar en LinkVault" con ?import=<slug>.
+      Heredado de `groups` (D1 de su design.md): el `slug` de grupo de docs/design.md. **Resuelto sin crearlo** (ADR-027 §1):
+      la única URL pública que nace aquí identifica un link compartido, no un grupo, y la decisión humana del 2026-09-19 pide
+      que sea opaca —un slug derivado del nombre del grupo diría a qué grupo pertenece, que es justo lo que la página no debe
+      filtrar—. Ni campo `slug` en `groups`, ni índice, ni backfill: la herencia queda cerrada y ningún change posterior la
+      arrastra.
       Decisión humana del 2026-09-19 (group-comments): `settings.defaultVisibility` del grupo sale de `group-comments` y entra
       aquí, donde significa "los links de este grupo se comparten públicamente por defecto: sí/no" (docs/design-v0.2.md §5.5,
-      `sharePublic` true por defecto en los links de grupo). Decidir su valor por defecto, quién lo cambia (el owner), si aplica
-      solo a los links que se compartan después o también a los existentes, y cómo convive con el `sharePublic` de cada link.
-      Heredado de `group-comments` (ADR-026): la página pública `/p/:slug` NO expone comentarios ni notas de grupo.
+      `sharePublic` true por defecto en los links de grupo). **Resuelto** (ADR-027 §7): `public` por defecto —y un grupo sin el
+      campo se lee `public`—, lo cambia el owner con PATCH /api/groups/:id/settings, aplica **solo** a las relaciones nuevas
+      (guardar e importar) y no escribe en ningún link ya compartido, que conserva su propio interruptor.
+      Heredado de `group-comments` (ADR-026): la página pública `/p/:slug` NO expone comentarios ni notas de grupo. Cumplido:
+      el contrato público es un `strictObject` con solo los campos de la vacante y el mapeo va por lista explícita.
+      Lo que este change NO hace y deja a `deploy-prod`: fijar PUBLIC_PAGE_BASE_URL y WEB_BASE_URL por entorno, configurar el
+      proxy y sus límites por cliente, y despublicar los enlaces de quien borre su cuenta (ver el scope de `deploy-prod`).
   - name: cv-upload-extract
     adrs: [006, 009]
     agents: [backend-dev, frontend-dev]
@@ -212,6 +218,14 @@ changes:
       Heredado de `applications-tracking` (ADR-024): el borrado de cuenta debe borrar en cascada sus `applications` y sus
       `application_events`, que guardan notas y etapas privadas.
       Heredado de `group-comments` (ADR-026): el borrado de cuenta borra o anonimiza sus `group_link_comments` (ADR-026).
+      Heredado de `public-preview-share` (ADR-027): fijar por entorno las dos variables nuevas y obligatorias de `api`,
+      PUBLIC_PAGE_BASE_URL (origen que sirve /p/:slug) y WEB_BASE_URL (origen del SPA y de la imagen OG), que en producción
+      pueden ser el mismo; sin ellas el proceso no arranca. Los límites de las rutas públicas son globales de ruta y por slug,
+      sin IP: este change NO activa `trustProxy` a propósito, porque convertiría `request.ip` en un dato del cliente y
+      debilitaría los límites de login, registro y unión a un grupo. Si se quieren límites por cliente, van **delante**, en el
+      proxy, y activar `trustProxy` exige decidir a la vez en qué proxy se confía (es la misma herencia de auth-users, ADR-020).
+      Y el borrado de cuenta debe despublicar (`$unset publicShare`) las relaciones que esa persona publicó, además de lo que
+      decida sobre sus `group_link_comments`: su enlace público sigue sirviendo la oferta a cualquiera mientras exista.
   - name: auth-email-recovery
     adrs: [012, 020]
     agents: [backend-dev, frontend-dev]

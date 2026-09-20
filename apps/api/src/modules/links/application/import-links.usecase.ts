@@ -18,6 +18,7 @@ import {
 import {
   GROUP_MEMBERSHIP,
   type GroupMembership,
+  type UserGroup,
 } from './ports/group-membership.port';
 import {
   JOB_LINK_REPOSITORY,
@@ -29,6 +30,8 @@ import {
 } from './ports/link-user-directory.port';
 import { LINK_LIMITER, type LinkLimiter } from './ports/link-limiter.port';
 import { OUTBOX, type Outbox } from './ports/outbox.port';
+import { PUBLIC_URLS, type PublicUrls } from './ports/public-urls.port';
+import { toPublicShareView } from './public-share.mapper';
 import {
   USER_LINK_REPOSITORY,
   type UserLinkRepository,
@@ -61,6 +64,7 @@ export class ImportLinks {
     @Inject(GROUP_MEMBERSHIP) private readonly membership: GroupMembership,
     @Inject(LINK_USER_DIRECTORY) private readonly directory: LinkUserDirectory,
     @Inject(LINK_LIMITER) private readonly limiter: LinkLimiter,
+    @Inject(PUBLIC_URLS) private readonly urls: PublicUrls,
     @Inject(LINKS_CLOCK) private readonly clock: Clock,
   ) {}
 
@@ -74,12 +78,16 @@ export class ImportLinks {
     }
     assertImportTextWithinLimit(request.text);
     const groupId = request.groupId;
-    if (
-      groupId !== undefined &&
-      (await this.membership.membershipOf(groupId, userId)) === null
-    ) {
+    // `groupsOf` en vez de `membershipOf`: da a la vez la pertenencia y la visibilidad por defecto del grupo en **una
+    // sola lectura**, igual que en `SaveLink` (D3 de public-preview-share). El resto del comportamiento no cambia.
+    const destination =
+      groupId === undefined
+        ? undefined
+        : groupOf(await this.membership.groupsOf(userId), groupId);
+    if (groupId !== undefined && destination === undefined) {
       throw new GroupNotFound();
     }
+    const publish = destination?.defaultVisibility === 'public';
 
     const extracted = extractUrls(request.text);
     const drafts = this.draftsOf(extracted.urls, userId);
@@ -100,6 +108,10 @@ export class ImportLinks {
           draft,
           userId,
           ...(groupId === undefined ? {} : { groupId }),
+          // La visibilidad por defecto se aplica a **cada relación nueva** (D3): los 50 links de un chat entran igual
+          // que uno suelto. Es lo contrario que la nota, y a propósito: la nota se escribe para un link y la
+          // visibilidad es una política del grupo sobre todo lo que entra.
+          ...(publish ? { publish: true } : {}),
           now: this.clock.now(),
         });
         saved.push(link);
@@ -163,6 +175,9 @@ export class ImportLinks {
         ...(inGroup
           ? { sharedBy: toLinkSharer(entry.sharedBy, names.get(entry.sharedBy)) }
           : {}),
+        ...(inGroup && entry.publicShare !== undefined
+          ? { publicShare: toPublicShareView(entry.publicShare, this.urls) }
+          : {}),
       }),
     );
   }
@@ -175,4 +190,12 @@ export class ImportLinks {
       outbox: this.outbox,
     };
   }
+}
+
+/** El grupo de destino entre los del usuario, o `undefined` si no es miembro: el mismo 404 que si no existiera. */
+function groupOf(
+  groups: readonly UserGroup[],
+  groupId: string,
+): UserGroup | undefined {
+  return groups.find((group) => group.groupId === groupId);
 }

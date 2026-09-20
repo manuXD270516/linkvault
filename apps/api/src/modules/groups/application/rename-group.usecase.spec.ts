@@ -56,6 +56,7 @@ describe('RenameGroup', () => {
       memberCount: 2,
       createdAt: '2026-09-17T10:00:00.000Z',
       inviteCode: group.inviteCode,
+      defaultVisibility: 'public',
     });
     await expect(getGroup.execute(BETO, group.id)).resolves.toMatchObject({
       name: 'Backend LatAm',

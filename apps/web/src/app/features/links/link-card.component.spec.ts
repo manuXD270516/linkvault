@@ -541,3 +541,102 @@ describe('LinkCard: lo pegado', () => {
     expect(host().querySelector('[data-testid="link-paste"]')).not.toBeNull();
   });
 });
+
+describe('LinkCard: el enlace público', () => {
+  let fixture: ComponentFixture<LinkCard>;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({ providers: providePageTesting() });
+    fixture = TestBed.createComponent(LinkCard);
+  });
+
+  async function render(link: JobLinkSummary): Promise<void> {
+    fixture.componentRef.setInput('link', link);
+    await fixture.whenStable();
+  }
+
+  function host(): HTMLElement {
+    return fixture.nativeElement as HTMLElement;
+  }
+
+  function text(): string {
+    return host().textContent?.replace(/\s+/g, ' ').trim() ?? '';
+  }
+
+  const published: JobLinkSummary = {
+    ...enriched,
+    publicShare: {
+      slug: 'k3m9qrtv2xyz',
+      url: 'http://localhost:3000/p/k3m9qrtv2xyz',
+      publishedAt: '2026-09-19T10:00:00.000Z',
+    },
+  };
+
+  /** Pinta la tarjeta en el contexto que toca: un grupo, y con o sin permiso para tocar el interruptor. */
+  async function renderIn(
+    link: JobLinkSummary,
+    { groupView = true, canPublish = false } = {},
+  ): Promise<void> {
+    fixture.componentRef.setInput('groupView', groupView);
+    fixture.componentRef.setInput('canPublish', canPublish);
+    await render(link);
+  }
+
+  it('offers the switch to whoever shared the job or the group owner', async () => {
+    await renderIn(enriched, { canPublish: true });
+
+    expect(text()).toContain('Compartir con un enlace público');
+    expect(host().querySelector('[data-testid="link-public-mark"]')).toBeNull();
+    expect(host().querySelector('[data-testid="link-public-copy"]')).toBeNull();
+  });
+
+  it('shows the mark and the actions once it is published', async () => {
+    await renderIn(published, { canPublish: true });
+
+    expect(text()).toContain('Enlace público');
+    expect(text()).toContain('Copiar enlace');
+    expect(text()).toContain('Dejar de compartir');
+    expect(host().querySelector('[data-testid="link-public-on"]')).toBeNull();
+  });
+
+  it('Miembro que solo mira', async () => {
+    await renderIn(published, { canPublish: false });
+
+    expect(text()).toContain('Enlace público');
+    expect(text()).not.toContain('Dejar de compartir');
+    expect(text()).not.toContain('Copiar enlace');
+    expect(text()).not.toContain('Compartir con un enlace público');
+  });
+
+  it('Sin enlace público en la lista privada', async () => {
+    await renderIn(published, { groupView: false, canPublish: true });
+
+    expect(text()).not.toContain('Enlace público');
+    expect(text()).not.toContain('Compartir con un enlace público');
+    expect(text()).not.toContain('Copiar enlace');
+  });
+
+  it('emits the three public link gestures upwards', async () => {
+    const gestures: string[] = [];
+    fixture.componentInstance.publish.subscribe(() => gestures.push('publish'));
+    fixture.componentInstance.unpublish.subscribe(() => gestures.push('unpublish'));
+    fixture.componentInstance.copyPublicLink.subscribe(() => gestures.push('copy'));
+
+    await renderIn(enriched, { canPublish: true });
+    host().querySelector<HTMLButtonElement>('[data-testid="link-public-on"]')?.click();
+
+    await renderIn(published, { canPublish: true });
+    host().querySelector<HTMLButtonElement>('[data-testid="link-public-copy"]')?.click();
+    host().querySelector<HTMLButtonElement>('[data-testid="link-public-off"]')?.click();
+
+    expect(gestures).toEqual(['publish', 'copy', 'unpublish']);
+  });
+
+  it('disables the public link actions while the list is busy', async () => {
+    fixture.componentRef.setInput('busy', true);
+    await renderIn(published, { canPublish: true });
+
+    expect(host().querySelector<HTMLButtonElement>('[data-testid="link-public-copy"]')?.disabled).toBe(true);
+    expect(host().querySelector<HTMLButtonElement>('[data-testid="link-public-off"]')?.disabled).toBe(true);
+  });
+});

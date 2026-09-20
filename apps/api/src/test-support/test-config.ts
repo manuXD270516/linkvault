@@ -41,6 +41,9 @@ export async function apiTestConfig(
     OUTBOX_RELAY_INTERVAL_MS: 1000,
     // El mismo plazo de `.env.example`: en los tests `runTask` es el mock en `replay` o un doble, y responde al instante.
     PASTE_EXTRACTION_TIMEOUT_MS: 20_000,
+    // Los mismos orígenes que `.env.example`: los tests de la página pública comprueban que `og:url` sale de aquí.
+    PUBLIC_PAGE_BASE_URL: 'http://localhost:3000',
+    WEB_BASE_URL: 'http://localhost:4200',
     ...overrides,
   };
 }

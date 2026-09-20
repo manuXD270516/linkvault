@@ -8,6 +8,7 @@ import {
   type Schema,
   type Types,
 } from 'mongoose';
+import { duplicateKeyIs } from '../../../infrastructure/mongo/duplicate-key';
 import { GroupDeletionHooks } from '../application/group-deletion-hooks';
 import type {
   AddMemberInput,
@@ -24,10 +25,14 @@ import {
   MAX_INVITE_CODE_ATTEMPTS,
   type InviteCodeGenerator,
 } from '../application/ports/invite-code-generator.port';
-import { createGroup, type Group } from '../domain/group';
+import {
+  createGroup,
+  visibilityOf,
+  type Group,
+  type GroupVisibility,
+} from '../domain/group';
 import type { Membership } from '../domain/membership';
 import {
-  duplicateKeyIs,
   GROUP_MEMBER_MODEL_NAME,
   GROUP_MODEL_NAME,
   GROUPS_COLLECTION,
@@ -345,6 +350,30 @@ export class MongoGroupRepository implements GroupRepository {
     return document ? toGroup(document) : null;
   }
 
+  /**
+   * Escribe la visibilidad por defecto del grupo (D3 de public-preview-share). Toca **solo** el documento del grupo: no
+   * escribe en ningún link, ni publica, ni despublica, ni sube ninguna revisión.
+   */
+  async updateSettings(
+    groupId: string,
+    defaultVisibility: GroupVisibility,
+    now: Date,
+  ): Promise<Group | null> {
+    const id = toGroupObjectId(groupId);
+    if (id === null) {
+      return null;
+    }
+    const document = await this.groups
+      .findByIdAndUpdate(
+        id,
+        { $set: { settings: { defaultVisibility }, updatedAt: now } },
+        { returnDocument: 'after', runValidators: true },
+      )
+      .lean()
+      .exec();
+    return document ? toGroup(document) : null;
+  }
+
   async rotateInviteCode(groupId: string, now: Date): Promise<Group | null> {
     const id = toGroupObjectId(groupId);
     if (id === null) {
@@ -469,6 +498,8 @@ function toGroup(document: GroupDocument): Group {
     id: document._id.toHexString(),
     name: document.name,
     inviteCode: document.inviteCode,
+    // Un grupo anterior al ajuste no tiene `settings` y se lee como público (D3): no hay backfill.
+    defaultVisibility: visibilityOf(document.settings?.defaultVisibility),
     createdAt: document.createdAt,
     updatedAt: document.updatedAt,
   };

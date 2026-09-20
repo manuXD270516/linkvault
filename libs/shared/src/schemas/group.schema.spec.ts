@@ -6,11 +6,13 @@ import {
   groupMemberSchema,
   groupRoleSchema,
   groupSummarySchema,
+  groupVisibilitySchema,
   INVITE_CODE_INPUT_MAX_LENGTH,
   inviteCodeResponseSchema,
   joinGroupRequestSchema,
   renameGroupRequestSchema,
   transferOwnershipRequestSchema,
+  updateGroupSettingsRequestSchema,
 } from './group.schema';
 
 describe('groupNameSchema through the request bodies', () => {
@@ -130,6 +132,46 @@ describe('groupSummarySchema', () => {
   });
 });
 
+describe('groupVisibilitySchema y updateGroupSettingsRequestSchema', () => {
+  it('admite exactamente los dos valores', () => {
+    expect(groupVisibilitySchema.options).toEqual(['public', 'private']);
+  });
+
+  it('acepta el cuerpo del ajuste', () => {
+    expect(
+      updateGroupSettingsRequestSchema.parse({ defaultVisibility: 'private' }),
+    ).toEqual({ defaultVisibility: 'private' });
+  });
+
+  it('rechaza un valor inválido nombrando defaultVisibility', () => {
+    const result = updateGroupSettingsRequestSchema.safeParse({
+      defaultVisibility: 'todos',
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.map((issue) => issue.path[0])).toEqual([
+      'defaultVisibility',
+    ]);
+  });
+
+  it('exige el campo', () => {
+    expect(updateGroupSettingsRequestSchema.safeParse({}).success).toBe(false);
+  });
+
+  it('no se cuela en el resumen de la lista de grupos', () => {
+    expect(
+      groupSummarySchema.safeParse({
+        id: '66e9a0000000000000000001',
+        name: 'Backend Bolivia',
+        role: 'member',
+        memberCount: 3,
+        joinedAt: '2026-09-17T10:00:00.000Z',
+        defaultVisibility: 'public',
+      }).success,
+    ).toBe(false);
+  });
+});
+
 describe('groupDetailSchema', () => {
   const detail = {
     id: '66e9a0000000000000000001',
@@ -137,7 +179,18 @@ describe('groupDetailSchema', () => {
     role: 'owner',
     memberCount: 1,
     createdAt: '2026-09-17T10:00:00.000Z',
+    defaultVisibility: 'public',
   } as const;
+
+  it('exige la visibilidad por defecto', () => {
+    const { defaultVisibility: _omitted, ...withoutVisibility } = detail;
+
+    expect(groupDetailSchema.safeParse(withoutVisibility).success).toBe(false);
+    expect(
+      groupDetailSchema.safeParse({ ...detail, defaultVisibility: 'todos' })
+        .success,
+    ).toBe(false);
+  });
 
   it('accepts a detail with the invite code', () => {
     const withCode = { ...detail, inviteCode: 'A2B3C4D5' };

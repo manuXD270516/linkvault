@@ -1,4 +1,5 @@
 import type { JobLink } from '../../domain/job-link';
+import type { PublicShare } from '../../domain/public-share';
 
 // Forma común de los dos listados paginados (D8 de job-links): los links de un grupo y la lista privada. El orden es por
 // fecha y, a igualdad, por el `_id` de la relación, ambos descendentes; sin ese desempate, importar 50 links en el mismo
@@ -38,6 +39,11 @@ export interface ListedGroupRelation {
   readonly note?: { readonly text: string; readonly createdAt: Date };
   readonly commentCount: number;
   readonly commentsRevision: number;
+  /**
+   * Enlace público de la relación, si lo tiene (D1 de public-preview-share). Viaja en la **misma** consulta que la
+   * nota y los contadores: pintar el interruptor no cuesta ninguna lectura más.
+   */
+  readonly publicShare?: PublicShare;
 }
 
 /** Página de un listado. `nextCursor` solo viaja cuando hay más filas detrás. */

@@ -13,9 +13,10 @@ import { emailSchema, registerRequestSchema } from '@linkvault/shared';
 import { type RequestFailure, isApiFailure, toRequestFailure } from '../../core/api/api-error';
 import { AuthApi } from '../../core/auth/auth.api';
 import { safeReturnUrl } from '../../core/auth/return-url';
+import { importSlug } from '../../core/public/import-slug';
 import { zodValidator } from '../../shared/forms/zod-validator';
 import { RequestError } from '../../shared/ui/request-error';
-import { returnUrlQueryParams } from './auth-navigation';
+import { afterAuthUrl, authLinkQueryParams } from './auth-navigation';
 
 @Component({
   selector: 'lv-register-page',
@@ -33,9 +34,10 @@ import { returnUrlQueryParams } from './auth-navigation';
 export class RegisterPage {
   private readonly authApi = inject(AuthApi);
   private readonly router = inject(Router);
-  private readonly returnUrl = safeReturnUrl(
-    inject(ActivatedRoute).snapshot.queryParamMap.get('returnUrl'),
-  );
+  private readonly query = inject(ActivatedRoute).snapshot.queryParamMap;
+  private readonly returnUrl = safeReturnUrl(this.query.get('returnUrl'));
+  /** La oferta pública desde la que se llegó, si el `import` tiene forma de slug (D9). */
+  private readonly importSlug = importSlug(this.query.get('import'));
 
   protected readonly form = inject(NonNullableFormBuilder).group(
     {
@@ -51,7 +53,7 @@ export class RegisterPage {
   protected readonly emailTaken = computed(() => isApiFailure(this.failure(), 409, 'email_taken'));
   /** Email con el que se intentó el registro; viaja a `/login` por `state`, nunca en la URL. */
   protected readonly attemptedEmail = signal('');
-  protected readonly returnQueryParams = returnUrlQueryParams(this.returnUrl);
+  protected readonly returnQueryParams = authLinkQueryParams(this.returnUrl, this.importSlug);
 
   protected async submit(): Promise<void> {
     if (this.form.invalid) {
@@ -64,7 +66,7 @@ export class RegisterPage {
     this.attemptedEmail.set(body.email);
     try {
       await this.authApi.register(body);
-      await this.router.navigateByUrl(this.returnUrl);
+      await this.router.navigateByUrl(afterAuthUrl(this.importSlug, this.returnUrl));
     } catch (error: unknown) {
       this.failure.set(toRequestFailure(error));
     } finally {

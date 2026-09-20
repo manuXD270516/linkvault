@@ -2,6 +2,7 @@ import type {
   GroupLinkCommentsChangedPayload,
   GroupLinkCommentsMessage,
   GroupRole,
+  GroupVisibility,
   JobLinkSummary,
   LinkEnrichedPayload,
 } from '@linkvault/shared';
@@ -24,6 +25,7 @@ import type {
 } from '../ports/link-user-directory.port';
 import type { LinkEnrichedPublisher } from '../ports/link-enriched-publisher.port';
 import type { Outbox, OutboxEvent } from '../ports/outbox.port';
+import type { PublicUrls } from '../ports/public-urls.port';
 import type {
   PastedExtraction,
   PastedExtractionPort,
@@ -80,16 +82,55 @@ export class InMemoryOutbox implements Outbox {
   }
 }
 
+/**
+ * URLs públicas de un test (D5 de public-preview-share): los mismos orígenes que `.env.example`, para que un test pueda
+ * comprobar la URL entera sin levantar la configuración.
+ */
+export class TestPublicUrls implements PublicUrls {
+  constructor(
+    private readonly pageBaseUrl = 'http://localhost:3000',
+    readonly webBaseUrl = 'http://localhost:4200',
+  ) {}
+
+  pageUrlOf(slug: string): string {
+    return `${this.pageBaseUrl}/p/${slug}`;
+  }
+
+  webUrlOf(slug: string): string {
+    return `${this.webBaseUrl}/oferta/${slug}`;
+  }
+}
+
 /** Pertenencia en memoria: se declara quién está en qué grupo y con qué rol. Un id desconocido no es miembro de nada. */
 export class InMemoryGroupMembership implements GroupMembership {
-  private readonly groups = new Map<string, { name: string }>();
+  private readonly groups = new Map<
+    string,
+    { name: string; defaultVisibility: GroupVisibility }
+  >();
   private readonly roles = new Map<string, GroupRole>();
   /** Cuántas veces se preguntó por los grupos del usuario: lo usa el test que descarta el N+1 de `alreadyInGroups`. */
   groupsOfCalls = 0;
 
-  /** Declara el nombre de un grupo, para `alreadyInGroups`. */
-  withGroup(groupId: string, name: string): this {
-    this.groups.set(groupId, { name });
+  /** Declara el nombre de un grupo, para `alreadyInGroups`, y si lo que entra en él nace publicado (D3). */
+  withGroup(
+    groupId: string,
+    name: string,
+    defaultVisibility: GroupVisibility = 'public',
+  ): this {
+    this.groups.set(groupId, { name, defaultVisibility });
+    return this;
+  }
+
+  /** Cambia la visibilidad por defecto de un grupo ya declarado, como hace el owner con su ajuste. */
+  withDefaultVisibility(
+    groupId: string,
+    defaultVisibility: GroupVisibility,
+  ): this {
+    const group = this.groups.get(groupId);
+    this.groups.set(groupId, {
+      name: group?.name ?? 'Backend Bolivia',
+      defaultVisibility,
+    });
     return this;
   }
 
@@ -146,10 +187,12 @@ export class InMemoryGroupMembership implements GroupMembership {
       if (member !== userId || groupId === undefined) {
         continue;
       }
+      const group = this.groups.get(groupId);
       groups.push({
         groupId,
-        name: this.groups.get(groupId)?.name ?? '',
+        name: group?.name ?? '',
         role,
+        defaultVisibility: group?.defaultVisibility ?? 'public',
       });
     }
     return Promise.resolve(groups);
@@ -281,6 +324,12 @@ function nameOfLimit(key: LinkLimitKey): string {
       return `paste-description:${key.userId}`;
     case 'comment':
       return `comment:${key.userId}`;
+    case 'public-page':
+      return 'public-page';
+    case 'public-preview':
+      return 'public-preview';
+    case 'public-page-slug':
+      return `public-page:${key.slug}`;
   }
 }
 

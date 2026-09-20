@@ -14,6 +14,7 @@ import {
   USER_LINKS_COLLECTION,
   jobLinkSchema,
 } from './link.schemas';
+import { StubPublicSlugGenerator } from '../application/testing/stub-public-slug.generator';
 import { MongoGroupLinkCommentRepository } from './mongo-group-link-comment.repository';
 import { MongoGroupLinkRepository } from './mongo-group-link.repository';
 import { MongoUserLinkRepository } from './mongo-user-link.repository';
@@ -110,6 +111,7 @@ beforeAll(async () => {
   groupLinks = new MongoGroupLinkRepository(
     connection,
     new MongoGroupLinkCommentRepository(connection),
+    new StubPublicSlugGenerator(),
   );
   userLinks = new MongoUserLinkRepository(connection);
   // Los dos repositorios registran sus modelos; el de las vacantes se registra aquí, porque aquí no se guardan por su

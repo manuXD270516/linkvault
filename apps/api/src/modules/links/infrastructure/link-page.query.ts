@@ -25,6 +25,8 @@ interface ListedRow {
   note?: { text: string; createdAt: Date };
   commentCount?: number;
   commentsRevision?: number;
+  /** Solo en un grupo (D1 de public-preview-share): el enlace público de la relación, si lo tiene. */
+  publicShare?: { slug: string; publishedBy: Types.ObjectId; publishedAt: Date };
   link: JobLinkDocument;
 }
 
@@ -61,7 +63,15 @@ export async function listLinkPage<D>(
           date: `$${dateField}`,
           link: 1,
           ...(withSharer
-            ? { sharedBy: 1, note: 1, commentCount: 1, commentsRevision: 1 }
+            ? {
+                sharedBy: 1,
+                note: 1,
+                commentCount: 1,
+                commentsRevision: 1,
+                // En la **misma** consulta de la relación: el interruptor del listado no cuesta una lectura más. La
+                // lista privada no lo proyecta, porque un link privado no se puede publicar.
+                publicShare: 1,
+              }
             : {}),
         },
       },
@@ -85,6 +95,15 @@ export async function listLinkPage<D>(
             // Un documento anterior a group-comments no tiene los contadores: se leen como 0.
             commentCount: row.commentCount ?? 0,
             commentsRevision: row.commentsRevision ?? 0,
+            ...(row.publicShare === undefined
+              ? {}
+              : {
+                  publicShare: {
+                    slug: row.publicShare.slug,
+                    publishedBy: row.publicShare.publishedBy.toHexString(),
+                    publishedAt: row.publicShare.publishedAt,
+                  },
+                }),
           },
         }
       : {}),

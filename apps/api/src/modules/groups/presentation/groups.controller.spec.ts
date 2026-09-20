@@ -193,7 +193,7 @@ describe('GroupsController', () => {
     });
   });
 
-  describe('the ten routes are wired', () => {
+  describe('the eleven routes are wired', () => {
     it('answers every path with the endpoint and not with the 404 of an unknown route', async () => {
       const ana = await authenticated();
       const group = await createGroup(ana, 'Rutas');
@@ -205,6 +205,10 @@ describe('GroupsController', () => {
         await request('PATCH', `/api/groups/${group.id}`, {
           authorization,
           body: { name: 'Rutas 2' },
+        }),
+        await request('PATCH', `/api/groups/${group.id}/settings`, {
+          authorization,
+          body: { defaultVisibility: 'private' },
         }),
         await request('POST', `/api/groups/${group.id}/invite-code`, {
           authorization,
@@ -250,6 +254,7 @@ describe('GroupsController', () => {
         memberCount: 1,
         createdAt: expect.any(String),
         inviteCode: expect.any(String),
+        defaultVisibility: 'public',
       });
       expect(isValidInviteCode(inviteCodeOf(group))).toBe(true);
       const members = await request('GET', `/api/groups/${group.id}/members`, {
@@ -364,6 +369,7 @@ describe('GroupsController', () => {
         role: 'member',
         memberCount: 2,
         createdAt: group.createdAt,
+        defaultVisibility: 'public',
       });
       expect(response.body).not.toContain(inviteCodeOf(group));
     });
@@ -449,6 +455,208 @@ describe('GroupsController', () => {
         code: 'validation_error',
         fields: ['name'],
       });
+    });
+  });
+
+  describe('PATCH /api/groups/:id/settings', () => {
+    it('El owner apaga la visibilidad por defecto', async () => {
+      const ana = await authenticated();
+      const group = await createGroup(ana, 'Ajuste del owner');
+
+      const response = await request(
+        'PATCH',
+        `/api/groups/${group.id}/settings`,
+        { authorization: ana.authorization, body: { defaultVisibility: 'private' } },
+      );
+
+      expect(response.statusCode).toBe(200);
+      const detail = groupDetailSchema.parse(response.json());
+      expect(detail.defaultVisibility).toBe('private');
+      const reread = await request('GET', `/api/groups/${group.id}`, {
+        authorization: ana.authorization,
+      });
+      expect(reread.json()).toMatchObject({ defaultVisibility: 'private' });
+    });
+
+    it('Un miembro no cambia el ajuste', async () => {
+      const ana = await authenticated();
+      const beto = await authenticated('Beto');
+      const group = await createGroup(ana, 'Ajuste ajeno');
+      await joinWith(beto, inviteCodeOf(group));
+
+      const response = await request(
+        'PATCH',
+        `/api/groups/${group.id}/settings`,
+        { authorization: beto.authorization, body: { defaultVisibility: 'private' } },
+      );
+
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toMatchObject({ code: 'forbidden' });
+      const reread = await request('GET', `/api/groups/${group.id}`, {
+        authorization: beto.authorization,
+      });
+      expect(reread.json()).toMatchObject({ defaultVisibility: 'public' });
+    });
+
+    it('Grupo nuevo', async () => {
+      const ana = await authenticated();
+      const group = await createGroup(ana, 'Grupo nuevo');
+
+      expect(group.defaultVisibility).toBe('public');
+    });
+
+    it('Valor inválido', async () => {
+      const ana = await authenticated();
+      const group = await createGroup(ana, 'Valor inválido');
+
+      const response = await request(
+        'PATCH',
+        `/api/groups/${group.id}/settings`,
+        { authorization: ana.authorization, body: { defaultVisibility: 'todos' } },
+      );
+
+      expect(response.statusCode).toBe(400);
+      const body = apiErrorResponseSchema.parse(response.json());
+      expect(body.code).toBe('validation_error');
+      expect(body.fields).toEqual(['defaultVisibility']);
+    });
+
+    it.each([
+      ['un grupo ajeno', (groupId: string) => groupId],
+      ['uno inexistente', () => new mongoose.Types.ObjectId().toHexString()],
+      ['un identificador mal formado', () => MALFORMED_ID],
+    ])('Quien no es miembro recibe 404 con %s', async (_case, of) => {
+      const ana = await authenticated();
+      const carla = await authenticated('Carla');
+      const group = await createGroup(ana, 'Ajuste de otro');
+
+      const response = await request(
+        'PATCH',
+        `/api/groups/${of(group.id)}/settings`,
+        { authorization: carla.authorization, body: { defaultVisibility: 'private' } },
+      );
+
+      expect(response.statusCode).toBe(404);
+      expect(response.json()).toMatchObject({ code: 'group_not_found' });
+    });
+
+    /**
+     * El caso simple del escenario de `groups/group-management`: dos publicados, uno sin publicar y un solo paso a
+     * `private`. El de `links/public-share`, más abajo, lo lleva más lejos (cinco links y la vuelta a `public`).
+     */
+    it('Cambiar el ajuste no toca los links', async () => {
+      const ana = await authenticated();
+      const group = await createGroup(ana, 'Dos y uno');
+      const saved = [];
+      for (let index = 0; index < 3; index += 1) {
+        const response = await request('POST', '/api/links', {
+          authorization: ana.authorization,
+          body: {
+            url: `https://empresa.example/careers/dos-y-uno-${index}`,
+            groupId: group.id,
+          },
+        });
+        expect(response.statusCode).toBe(201);
+        saved.push(
+          response.json<{
+            link: { id: string; publicShare?: { slug: string } };
+          }>().link,
+        );
+      }
+      const [first, second, third] = saved;
+      const slugs = [first?.publicShare?.slug, second?.publicShare?.slug];
+      await request(
+        'DELETE',
+        `/api/groups/${group.id}/links/${third?.id ?? ''}/public`,
+        { authorization: ana.authorization },
+      );
+
+      const changed = await request(
+        'PATCH',
+        `/api/groups/${group.id}/settings`,
+        { authorization: ana.authorization, body: { defaultVisibility: 'private' } },
+      );
+
+      expect(changed.statusCode).toBe(200);
+      const items = (
+        await request('GET', `/api/groups/${group.id}/links`, {
+          authorization: ana.authorization,
+        })
+      ).json<{ items: { id: string; publicShare?: { slug: string } }[] }>()
+        .items;
+      const slugOf = (linkId: string | undefined) =>
+        items.find((item) => item.id === linkId)?.publicShare?.slug;
+      expect([slugOf(first?.id), slugOf(second?.id)]).toEqual(slugs);
+      expect(slugs.every((slug) => typeof slug === 'string')).toBe(true);
+      expect(slugOf(third?.id)).toBeUndefined();
+    });
+
+    /**
+     * Cambiar el ajuste NO escribe en ningún link (ADR-027 §7): apagarlo y despublicar cien enlaces ya repartidos por
+     * WhatsApp, o encenderlo y publicar de golpe lo que un grupo llevaba meses guardando, son daños irreversibles
+     * hechos por un clic. Por eso el grupo llega con links de los dos tipos y el ajuste se apaga **y se vuelve a
+     * encender**: un grupo recién creado y vacío no probaría nada.
+     */
+    it('Cambiar el ajuste no toca lo compartido', async () => {
+      const ana = await authenticated();
+      const group = await createGroup(ana, 'Sin tocar links');
+      const published: string[] = [];
+      const unpublished: string[] = [];
+      for (let index = 0; index < 5; index += 1) {
+        const saved = await request('POST', '/api/links', {
+          authorization: ana.authorization,
+          body: {
+            url: `https://empresa.example/careers/ajuste-${index}`,
+            groupId: group.id,
+          },
+        });
+        expect(saved.statusCode).toBe(201);
+        const link = saved.json<{
+          link: { id: string; publicShare?: { slug: string } };
+        }>().link;
+        // Los tres primeros se quedan publicados; los dos últimos se apagan a mano.
+        if (index < 3) {
+          published.push(link.publicShare?.slug ?? '');
+        } else {
+          unpublished.push(link.id);
+          const off = await request(
+            'DELETE',
+            `/api/groups/${group.id}/links/${link.id}/public`,
+            { authorization: ana.authorization },
+          );
+          expect(off.statusCode).toBe(204);
+        }
+      }
+      expect(published.filter((slug) => slug.length > 0)).toHaveLength(3);
+
+      for (const defaultVisibility of ['private', 'public'] as const) {
+        const changed = await request(
+          'PATCH',
+          `/api/groups/${group.id}/settings`,
+          { authorization: ana.authorization, body: { defaultVisibility } },
+        );
+        expect(changed.statusCode).toBe(200);
+      }
+
+      const list = await request('GET', `/api/groups/${group.id}/links`, {
+        authorization: ana.authorization,
+      });
+      const items = list.json<{
+        items: { id: string; publicShare?: { slug: string } }[];
+      }>().items;
+      // Los tres siguen publicados con el MISMO slug…
+      expect(
+        items
+          .map((item) => item.publicShare?.slug)
+          .filter((slug): slug is string => slug !== undefined)
+          .sort(),
+      ).toEqual([...published].sort());
+      // …y los dos que se apagaron siguen sin enlace.
+      for (const linkId of unpublished) {
+        expect(
+          items.find((item) => item.id === linkId)?.publicShare,
+        ).toBeUndefined();
+      }
     });
   });
 

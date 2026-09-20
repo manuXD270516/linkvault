@@ -25,6 +25,7 @@ const created: GroupDetail = {
   role: 'owner',
   memberCount: 1,
   createdAt: '2026-09-17T11:00:00.000Z',
+  defaultVisibility: 'public',
   inviteCode: 'ABCD2345',
 };
 

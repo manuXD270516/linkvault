@@ -28,6 +28,8 @@ import {
 } from './ports/link-user-directory.port';
 import { LINKS_CLOCK, type Clock } from './ports/clock.port';
 import { OUTBOX, type Outbox } from './ports/outbox.port';
+import { PUBLIC_URLS, type PublicUrls } from './ports/public-urls.port';
+import { toPublicShareView } from './public-share.mapper';
 import {
   USER_LINK_REPOSITORY,
   type UserLinkRepository,
@@ -60,6 +62,7 @@ export class SaveLink {
     @Inject(OUTBOX) private readonly outbox: Outbox,
     @Inject(GROUP_MEMBERSHIP) private readonly membership: GroupMembership,
     @Inject(LINK_USER_DIRECTORY) private readonly directory: LinkUserDirectory,
+    @Inject(PUBLIC_URLS) private readonly urls: PublicUrls,
     @Inject(LINKS_CLOCK) private readonly clock: Clock,
   ) {}
 
@@ -74,7 +77,9 @@ export class SaveLink {
     }
     const draft = requireDraft(request.url, userId, this.clock.now());
     const myGroups = await this.membership.groupsOf(userId);
-    if (groupId !== undefined && !isMemberOf(myGroups, groupId)) {
+    const destination =
+      groupId === undefined ? undefined : groupOf(myGroups, groupId);
+    if (groupId !== undefined && destination === undefined) {
       throw new GroupNotFound();
     }
     const saved = await saveOneLink(this.writers(), {
@@ -82,6 +87,10 @@ export class SaveLink {
       userId,
       ...(groupId === undefined ? {} : { groupId }),
       ...(note === null ? {} : { note }),
+      // La visibilidad por defecto del grupo llega en la lectura que `alreadyInGroups` ya hacía, así que saber si el
+      // link nace publicado NO cuesta ninguna consulta más (D3). Solo alcanza a la relación **nueva**: si el link ya
+      // estaba en el grupo, el repositorio no toca su enlace público.
+      ...(destination?.defaultVisibility === 'public' ? { publish: true } : {}),
       now: this.clock.now(),
     });
     return await this.toResponse(saved, myGroups, groupId);
@@ -119,6 +128,11 @@ export class SaveLink {
         ...(sharer === undefined ? {} : { sharedBy: sharer }),
         ...(inGroup && saved.note !== undefined
           ? { note: toShareNoteView(saved.note) }
+          : {}),
+        // El enlace público viaja en la respuesta del alta (D12): es el momento en que alguien va a pegarlo en un chat,
+        // y así el SPA ofrece "Copiar enlace" sin una segunda petición. Nunca sin grupo.
+        ...(inGroup && saved.publicShare !== undefined
+          ? { publicShare: toPublicShareView(saved.publicShare, this.urls) }
           : {}),
       }),
       created: saved.created,
@@ -158,6 +172,10 @@ export class SaveLink {
   }
 }
 
-function isMemberOf(groups: readonly UserGroup[], groupId: string): boolean {
-  return groups.some((group) => group.groupId === groupId);
+/** El grupo de destino entre los del usuario, o `undefined` si no es miembro: el mismo 404 que si no existiera. */
+function groupOf(
+  groups: readonly UserGroup[],
+  groupId: string,
+): UserGroup | undefined {
+  return groups.find((group) => group.groupId === groupId);
 }

@@ -52,13 +52,17 @@ function routeAt(path: string, routes: Route[] | undefined = appRoutes): Route {
 describe('appRoutes', () => {
   it('loads every page lazily', () => {
     const shell = routeAt('');
-    const pages = [routeAt('login'), routeAt('registro'), shell, ...(shell.children ?? [])].filter(
-      (route) => route.redirectTo === undefined && route.loadChildren === undefined,
-    );
+    const pages = [
+      routeAt('oferta/:slug'),
+      routeAt('login'),
+      routeAt('registro'),
+      shell,
+      ...(shell.children ?? []),
+    ].filter((route) => route.redirectTo === undefined && route.loadChildren === undefined);
 
-    // login, registro, el shell y sus cinco páginas: /grupos, /grupos/:id, /unirse, /mis-links y /perfil. El tablero
-    // de /postulaciones tiene su propio archivo de rutas ("Ruta diferida").
-    expect(pages).toHaveLength(8);
+    // /oferta/:slug, login, registro, el shell y sus cinco páginas: /grupos, /grupos/:id, /unirse, /mis-links y
+    // /perfil. El tablero de /postulaciones tiene su propio archivo de rutas ("Ruta diferida").
+    expect(pages).toHaveLength(9);
     for (const route of pages) {
       expect(route.component).toBeUndefined();
       expect(route.loadComponent).toBeTypeOf('function');
@@ -79,6 +83,8 @@ describe('appRoutes', () => {
     expect(routeAt('login').canActivate).toEqual([guestGuard]);
     expect(routeAt('registro').canActivate).toEqual([guestGuard]);
     expect(shell.canActivate).toEqual([authGuard]);
+    // La vista pública no lleva ningún guard: se abre con sesión y sin ella (spec web/auth).
+    expect(routeAt('oferta/:slug').canActivate).toBeUndefined();
     for (const path of ['grupos', 'grupos/:id', 'unirse', 'mis-links', 'postulaciones', 'perfil']) {
       expect(routeAt(path, shell.children).canActivate).toBeUndefined();
     }
@@ -129,6 +135,7 @@ describe('appRoutes', () => {
         role: 'member',
         memberCount: 1,
         createdAt: '2026-09-17T12:00:00.000Z',
+        defaultVisibility: 'public',
       });
       expect(harness.fixture.debugElement.query(By.directive(GroupDetailPage))).not.toBeNull();
 

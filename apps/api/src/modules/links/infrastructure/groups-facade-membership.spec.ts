@@ -59,8 +59,8 @@ describe('groupsOf', () => {
     });
 
     expect(await membership.groupsOf(ANA)).toEqual([
-      { groupId: other.id, name: 'Frontend LatAm', role: 'member' },
-      { groupId: own.id, name: 'Backend Bolivia', role: 'owner' },
+      { groupId: other.id, name: 'Frontend LatAm', role: 'member', defaultVisibility: 'public' },
+      { groupId: own.id, name: 'Backend Bolivia', role: 'owner', defaultVisibility: 'public' },
     ]);
   });
 
@@ -73,13 +73,29 @@ describe('groupsOf', () => {
     });
 
     expect(await membership.groupsOf(ANA)).toEqual([
-      { groupId: own.id, name: 'Backend Bolivia', role: 'owner' },
+      { groupId: own.id, name: 'Backend Bolivia', role: 'owner', defaultVisibility: 'public' },
     ]);
   });
 
   it('answers an empty list for a user without groups and for a malformed id', async () => {
     expect(await membership.groupsOf(BETO)).toEqual([]);
     expect(await membership.groupsOf('no-es-un-id')).toEqual([]);
+  });
+
+  // El ajuste viaja en la misma lectura que la pertenencia (D3 de public-preview-share): guardar o importar saben si
+  // el link nacerá publicado sin una consulta más.
+  it('carries the default visibility of each group', async () => {
+    const own = await createGroupOf(ANA, 'Backend Bolivia');
+    await groups.updateSettings(own.id, 'private', clock.now());
+
+    expect(await membership.groupsOf(ANA)).toEqual([
+      {
+        groupId: own.id,
+        name: 'Backend Bolivia',
+        role: 'owner',
+        defaultVisibility: 'private',
+      },
+    ]);
   });
 
   it('carries nothing else of the group: no invite code', async () => {

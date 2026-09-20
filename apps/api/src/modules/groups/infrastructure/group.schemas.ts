@@ -1,4 +1,6 @@
-import { mongo, Schema, Types } from 'mongoose';
+import { groupVisibilitySchema } from '@linkvault/shared';
+import { Schema, Types } from 'mongoose';
+import type { GroupVisibility } from '../domain/group';
 import { isGroupId, isUserId } from '../domain/identifier';
 import { GROUP_ROLES } from '../domain/membership';
 
@@ -28,13 +30,16 @@ export const OWNER_KEY: Readonly<Record<string, 1>> = { groupId: 1 };
 /** Nombre explícito del índice de owner, para reconocerlo en `getIndexes()`, en el log de arranque y en el RUNBOOK. */
 export const ONE_OWNER_PER_GROUP_INDEX = 'one_owner_per_group';
 
-const DUPLICATE_KEY = 11_000;
-
 export interface GroupDocument {
   _id: Types.ObjectId;
   name: string;
   /** Único entre todos los grupos; siempre normalizado (mayúsculas, sin espacios). */
   inviteCode: string;
+  /**
+   * Ajustes del grupo (D3 de public-preview-share). Ausente en los grupos anteriores al ajuste, que se leen
+   * `DEFAULT_GROUP_VISIBILITY`: no hay backfill y no hace falta ningún índice, porque nadie busca por él.
+   */
+  settings?: { defaultVisibility: GroupVisibility };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -57,6 +62,19 @@ export const groupSchema = new Schema<GroupDocument>(
   {
     name: { type: String, required: true },
     inviteCode: { type: String, required: true },
+    settings: {
+      type: new Schema(
+        {
+          defaultVisibility: {
+            type: String,
+            required: true,
+            enum: [...groupVisibilitySchema.options],
+          },
+        },
+        { _id: false, versionKey: false, strict: true },
+      ),
+      required: false,
+    },
     createdAt: { type: Date, required: true },
     updatedAt: { type: Date, required: true },
   },
@@ -103,35 +121,4 @@ export function toGroupObjectId(groupId: string): Types.ObjectId | null {
 
 export function toUserObjectId(userId: string): Types.ObjectId | null {
   return isUserId(userId) ? new Types.ObjectId(userId) : null;
-}
-
-/**
- * `true` si `error` es una clave duplicada del índice cuyo `keyPattern` es exactamente `pattern` (mismos campos, en el
- * mismo orden y con el mismo sentido). No se parsea `errmsg`, que no es contrato (ADR-025 §4).
- */
-export function duplicateKeyIs(
-  error: unknown,
-  pattern: Readonly<Record<string, 1 | -1>>,
-): boolean {
-  if (
-    !(error instanceof mongo.MongoServerError) ||
-    error.code !== DUPLICATE_KEY
-  ) {
-    return false;
-  }
-  const actual: unknown = error['keyPattern'];
-  if (typeof actual !== 'object' || actual === null) {
-    return false;
-  }
-  const actualEntries = Object.entries(actual);
-  const expectedEntries = Object.entries(pattern);
-  return (
-    actualEntries.length === expectedEntries.length &&
-    expectedEntries.every(([field, direction], index) => {
-      const entry = actualEntries[index];
-      return (
-        entry !== undefined && entry[0] === field && entry[1] === direction
-      );
-    })
-  );
 }

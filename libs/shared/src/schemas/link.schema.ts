@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { publicSlugSchema } from '../links/public-slug';
 import { groupNameSchema } from './group.schema';
 import {
   commentsSummarySchema,
@@ -118,6 +119,18 @@ export type ImportLinksRequest = z.infer<typeof importLinksRequestSchema>;
 export { linkSharerSchema, type LinkSharer } from './link-sharer.schema';
 
 /**
+ * Enlace público de un link compartido en un grupo (D10 de public-preview-share). `url` es la URL absoluta de la página
+ * pública, ya compuesta con `PUBLIC_PAGE_BASE_URL`: el SPA la copia al portapapeles tal cual, sin saber de qué está
+ * hecha. `publishedBy` NO viaja: quién encendió el interruptor no se enseña, ni en el listado ni en la página.
+ */
+export const publicShareSchema = z.strictObject({
+  slug: publicSlugSchema,
+  url: z.string().min(1),
+  publishedAt: z.iso.datetime(),
+});
+export type PublicShare = z.infer<typeof publicShareSchema>;
+
+/**
  * Link tal y como lo ven las listas y las respuestas de guardado. `normalizedUrl` es solo identidad: lo que el SPA abre
  * es `displayUrl`, la primera URL que escribió una persona (D2). `sharedBy` falta en la lista privada, donde no hay con
  * quién compartir; `sharedAt` lleva ahí la fecha de guardado, para que la lista del SPA sea la misma en ambas vistas.
@@ -150,6 +163,9 @@ export const jobLinkSummarySchema = z.strictObject({
   // sus comentarios en ese grupo. La lista privada no los lleva nunca.
   note: shareNoteSchema.optional(),
   comments: commentsSummarySchema.optional(),
+  // También solo en el listado de un grupo y en la respuesta de guardar en uno (D10 de public-preview-share): su enlace
+  // público, si lo tiene. La lista privada NO lo lleva nunca: no se puede publicar un link privado.
+  publicShare: publicShareSchema.optional(),
 });
 export type JobLinkSummary = z.infer<typeof jobLinkSummarySchema>;
 

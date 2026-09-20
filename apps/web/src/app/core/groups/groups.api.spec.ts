@@ -15,6 +15,7 @@ const detail: GroupDetail = {
   role: 'owner',
   memberCount: 1,
   createdAt: '2026-09-17T10:00:00.000Z',
+  defaultVisibility: 'public',
   inviteCode: 'ABCD2345',
 };
 
@@ -153,6 +154,7 @@ describe('GroupsApi', () => {
       role: 'member',
       memberCount: 2,
       createdAt: '2026-09-17T10:00:00.000Z',
+      defaultVisibility: 'public',
     };
     const result = api.transferOwnership('g1', 'u2');
 
@@ -161,6 +163,28 @@ describe('GroupsApi', () => {
     request.flush(asMember);
 
     await expect(result).resolves.toEqual(asMember);
+  });
+
+  it('changes the default visibility of the group', async () => {
+    const asPrivate: GroupDetail = { ...detail, defaultVisibility: 'private' };
+    const result = api.updateSettings('g1', 'private');
+
+    const request = expectRequest('PATCH', '/api/groups/g1/settings');
+    expect(request.request.body).toEqual({ defaultVisibility: 'private' });
+    request.flush(asPrivate);
+
+    await expect(result).resolves.toEqual(asPrivate);
+  });
+
+  it('propagates the 403 of a member who tries to change the settings', async () => {
+    const result = api.updateSettings('g1', 'private');
+
+    expectRequest('PATCH', '/api/groups/g1/settings').flush(
+      { code: 'forbidden', message: 'Forbidden' },
+      { status: 403, statusText: 'Forbidden' },
+    );
+
+    await expect(result).rejects.toMatchObject({ status: 403 });
   });
 
   it('propagates the API error without swallowing it', async () => {

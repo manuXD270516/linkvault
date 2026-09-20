@@ -1,8 +1,10 @@
 import {
   createGroup,
   renameGroup,
+  withDefaultVisibility,
   withInviteCode,
   type Group,
+  type GroupVisibility,
 } from '../../domain/group';
 import { isGroupId, isUserId } from '../../domain/identifier';
 import { createMembership, type Membership } from '../../domain/membership';
@@ -189,6 +191,18 @@ export class InMemoryGroupRepository implements GroupRepository {
   rename(groupId: string, name: string, now: Date): Promise<Group | null> {
     return this.update(groupId, (group) => renameGroup(group, name, now));
   }
+
+  /** Igual que el adaptador de Mongo: cambia el ajuste del grupo y nada más (D3 de public-preview-share). */
+  updateSettings(
+    groupId: string,
+    defaultVisibility: GroupVisibility,
+    now: Date,
+  ): Promise<Group | null> {
+    return this.update(groupId, (group) =>
+      withDefaultVisibility(group, defaultVisibility, now),
+    );
+  }
+
 
   async rotateInviteCode(groupId: string, now: Date): Promise<Group | null> {
     return await this.update(groupId, (group) =>

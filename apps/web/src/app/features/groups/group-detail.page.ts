@@ -13,6 +13,7 @@ import {
 } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialog } from '@angular/material/dialog';
+import { MatSlideToggle, MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import type { GroupDetail, GroupMember } from '@linkvault/shared';
 import { firstValueFrom } from 'rxjs';
@@ -45,6 +46,7 @@ import { RenameGroupDialog, type RenameGroupDialogData } from './rename-group.di
     DatePipe,
     LinkList,
     MatButtonModule,
+    MatSlideToggleModule,
     RequestError,
     RouterLink,
     SaveLinkForm,
@@ -67,6 +69,11 @@ export class GroupDetailPage {
   protected readonly working = signal(false);
   protected readonly isOwner = computed(() => this.group()?.role === 'owner');
   protected readonly memberCount = computed(() => this.group()?.memberCount ?? 0);
+  /**
+   * `true` si los links que **entren** en el grupo nacen con enlace público (D3). Un grupo guardado sin el ajuste se
+   * lee como `public`, así que el campo nunca falta en la respuesta.
+   */
+  protected readonly sharesPublicly = computed(() => this.group()?.defaultVisibility === 'public');
   /** Mensaje de invitación cuando no hay portapapeles: se muestra seleccionado para copiarlo a mano. */
   protected readonly invitationToCopy = signal('');
   protected readonly invitationCopied = signal(false);
@@ -93,6 +100,8 @@ export class GroupDetailPage {
   private destroyed = false;
 
   private readonly invitationField = viewChild<ElementRef<HTMLTextAreaElement>>('invitationField');
+  /** El interruptor de la visibilidad por defecto: lleva su propio estado y hay que devolvérselo si la API falla. */
+  private readonly publicToggle = viewChild(MatSlideToggle);
   private readonly deleteMessage = viewChild.required<TemplateRef<unknown>>('deleteMessage');
 
   constructor() {
@@ -227,6 +236,27 @@ export class GroupDetailPage {
       this.invitationCopied.set(true);
     } catch {
       this.invitationToCopy.set(message);
+    }
+  }
+
+  /**
+   * Cambia la visibilidad por defecto del grupo (solo el `owner`). No se pide confirmación porque **no destruye
+   * nada**: solo decide cómo nacerán los links que se guarden a partir de ahora, y ningún link ya compartido cambia.
+   * El interruptor se pinta desde el detalle, así que si la API falla se queda exactamente como estaba.
+   */
+  protected async togglePublicDefault(): Promise<void> {
+    const current = this.group();
+    if (!current || this.working()) {
+      return;
+    }
+    const next = current.defaultVisibility === 'public' ? 'private' : 'public';
+    await this.run(async () => {
+      this.group.set(await this.api.updateSettings(this.groupId, next));
+    });
+    // Manda el grupo, no el gesto: si la API falló, el interruptor vuelve a donde estaba.
+    const toggle = this.publicToggle();
+    if (toggle) {
+      toggle.checked = this.sharesPublicly();
     }
   }
 

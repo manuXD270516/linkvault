@@ -7,6 +7,7 @@ const group: Group = {
   id: '66e9a0000000000000000001',
   name: 'Backend Bolivia',
   inviteCode: 'A2B3C4D5',
+  defaultVisibility: 'public',
   createdAt: new Date('2026-09-17T10:00:00.000Z'),
   updatedAt: new Date('2026-09-18T12:00:00.000Z'),
 };
@@ -46,6 +47,7 @@ describe('toGroupDetail', () => {
       memberCount: 2,
       createdAt: '2026-09-17T10:00:00.000Z',
       inviteCode: 'A2B3C4D5',
+      defaultVisibility: 'public',
     });
     expect(groupDetailSchema.parse(detail)).toEqual(detail);
   });
@@ -63,5 +65,18 @@ describe('toGroupDetail', () => {
     expect(
       toGroupDetail(group, 'owner', 2, { includeInviteCode: false }),
     ).not.toHaveProperty('inviteCode');
+  });
+
+  // La visibilidad por defecto viaja para cualquier miembro (D3 de public-preview-share): quien comparte tiene derecho
+  // a saber si su link nacerá público. El resumen de la lista NO la lleva: ahí no se comparte nada.
+  it('carries the default visibility for any member', () => {
+    expect(
+      toGroupDetail({ ...group, defaultVisibility: 'private' }, 'member', 2, {
+        includeInviteCode: false,
+      }).defaultVisibility,
+    ).toBe('private');
+    expect(toGroupSummary(group, 'owner', 1, joinedAt)).not.toHaveProperty(
+      'defaultVisibility',
+    );
   });
 });

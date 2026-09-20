@@ -51,51 +51,14 @@ const PLATFORM_NAMES: Record<Exclude<Platform, 'generic'>, string> = {
   getonboard: 'Get on Board',
 };
 
-/** Extensión de fichero al final del último segmento (`.html`, `.aspx`…): ruido para la etiqueta. */
-const FILE_EXTENSION = /\.[a-z0-9]{1,5}$/i;
-
 /** Milisegundos de un día, para contar cuántos van desde que se publicó la oferta. */
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Etiqueta legible de un link: el último segmento del path des-slugificado (sin guiones ni extensión) o, si el path no
- * tiene segmentos, el dominio sin `www.`. Se deriva de `displayUrl`, la URL tal como la escribió una persona, porque la
- * normalizada pierde el slug con el puesto y la empresa. Una cadena que no es una URL se muestra tal cual.
- *
- * Solo se usa cuando el preview no trae título: en cuanto la oferta se pudo leer, la tarjeta dice su título de verdad.
+ * Etiqueta legible de un link sin título. Vive en `@linkvault/shared` (D10 de public-preview-share), porque la usan a la
+ * vez la tarjeta y la plantilla de la página pública de la API; se reexporta desde aquí para no tocar a quien la usa.
  */
-export function linkLabel(url: string): string {
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return url;
-  }
-  const host = parsed.hostname.replace(/^www\./, '');
-  const lastSegment = parsed.pathname.split('/').filter((segment) => segment.length > 0).at(-1);
-  if (lastSegment === undefined) {
-    return host;
-  }
-  const label = deslugify(lastSegment);
-  return label.length === 0 ? host : label;
-}
-
-function deslugify(segment: string): string {
-  return decodeSegment(segment)
-    .replace(FILE_EXTENSION, '')
-    .replace(/[-_+]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function decodeSegment(segment: string): string {
-  try {
-    return decodeURIComponent(segment);
-  } catch {
-    // Un porcentaje suelto no se puede decodificar: se muestra el segmento tal cual.
-    return segment;
-  }
-}
+export { linkLabel } from '@linkvault/shared';
 
 export function platformName(platform: Platform): string {
   return platform === 'generic' ? $localize`:@@links.platform.generic:Otra web` : PLATFORM_NAMES[platform];

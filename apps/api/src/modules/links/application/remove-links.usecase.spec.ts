@@ -13,6 +13,7 @@ import {
   InMemoryLinkUserDirectory,
   InMemoryOutbox,
   MovableClock,
+  TestPublicUrls,
 } from './testing/links-test-doubles';
 
 // `DELETE /api/groups/:id/links/:linkId` y `DELETE /api/links/mine/:linkId` (tarea 5.5 de job-links).
@@ -32,6 +33,9 @@ let saveLink: SaveLink;
 let removeGroupLink: RemoveGroupLink;
 let removeMyLink: RemoveMyLink;
 
+/** Las URLs públicas de un test: los mismos orígenes que `.env.example`. */
+const urls = new TestPublicUrls();
+
 beforeEach(() => {
   links = new InMemoryJobLinkRepository();
   groupLinks = new InMemoryGroupLinkRepository(links);
@@ -47,11 +51,13 @@ beforeEach(() => {
     new InMemoryOutbox(),
     membership,
     new InMemoryLinkUserDirectory().set(ANA, 'Ana').set(BETO, 'Beto'),
+    urls,
     new MovableClock(),
   );
   removeGroupLink = new RemoveGroupLink(groupLinks, membership);
   removeMyLink = new RemoveMyLink(userLinks);
 });
+
 
 describe('RemoveGroupLink', () => {
   it('Quitar lo que no era una oferta', async () => {

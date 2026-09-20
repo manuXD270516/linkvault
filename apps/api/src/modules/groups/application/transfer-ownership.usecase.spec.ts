@@ -85,6 +85,7 @@ describe('TransferOwnership', () => {
       role: 'member',
       memberCount: 3,
       createdAt: '2026-09-17T10:00:00.000Z',
+      defaultVisibility: 'public',
     });
     await expect(rolesOf(group.id)).resolves.toEqual([
       ['Ana', 'member', '2026-09-17T10:00:00.000Z'],

@@ -41,8 +41,20 @@ import { modelOf } from './model-of';
 
 const DUPLICATE_KEY = 11_000;
 
-/** Intentos de la transacción entera: el segundo ya encuentra el documento que ganó la carrera. */
-export const MAX_RESOLVE_ATTEMPTS = 2;
+/**
+ * Intentos de la transacción entera. Son **tres** porque hay **dos** razones de reintento con naturalezas distintas, y
+ * pueden encadenarse en la misma petición (D2 de public-preview-share, ADR-027 §2):
+ *
+ * - una **carrera de dedupe**: otra petición creó la misma vacante o la misma relación un instante antes. Converge
+ *   porque el intento siguiente ya **encuentra** el documento que ganó;
+ * - una **colisión del slug** del enlace público, cuando el grupo comparte en público: `share` no reintenta por dentro
+ *   —tras el `E11000` la sesión está abortada— y converge porque el intento siguiente **sortea otro slug**.
+ *
+ * Con tres intentos, que un alta legítima acabe en `500` exige que coincidan una carrera de dedupe y una colisión de 59
+ * bits; con dos, bastaría con que coincidieran una vez. Un intento de más cuesta una transacción abortada en un caso
+ * que no se va a dar; uno de menos, un `500` a quien solo quería guardar un link.
+ */
+export const MAX_RESOLVE_ATTEMPTS = 3;
 
 /** Campos del índice único que rechazó la escritura; vacío si el error no es una clave duplicada. */
 function duplicateKeyFields(error: unknown): string[] {
@@ -84,8 +96,9 @@ export class MongoJobLinkRepository implements JobLinkRepository {
           return await work(resolved, session);
         });
       } catch (error) {
-        // Solo se reintenta la carrera de dos escrituras simultáneas (la vacante o su relación con el destino, que
-        // también tiene un índice único); cualquier otro fallo sale tal cual.
+        // Se reintenta cualquier clave duplicada de esta transacción: la vacante, su relación con el destino y, desde
+        // `public-preview-share`, el slug del enlace público que la relación nueva pudo estrenar. Las tres abortan la
+        // transacción y se resuelven repitiéndola entera; cualquier otro fallo sale tal cual.
         if (duplicateKeyFields(error).length === 0) {
           throw error;
         }

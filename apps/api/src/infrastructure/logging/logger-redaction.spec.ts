@@ -12,7 +12,12 @@ import {
   PinoLogger,
 } from 'nestjs-pino';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { buildLoggerParams, stripReferer } from './logger-params';
+import {
+  buildLoggerParams,
+  isPublicRouteLog,
+  isPublicRouteRequest,
+  stripReferer,
+} from './logger-params';
 
 const SECRETS = {
   authorization: 'Bearer header-authorization-s3cr3t',
@@ -242,5 +247,47 @@ describe('log redaction', () => {
     const headers = requestHeaders('visible');
     expect(headers).toBeDefined();
     expect(headers).not.toHaveProperty('referer');
+  });
+});
+
+// Rutas públicas (D4 de public-preview-share): su línea automática de petición se apaga, porque llevaría la dirección
+// de origen, el `User-Agent` y el referente de quien abre una página que cualquiera puede abrir. De ellas se registra
+// solo `{ slug, status }`, que escribe `PublicRouteLogger` sobre el logger raíz.
+describe('el log automático de las rutas públicas', () => {
+  it.each([
+    ['/p', true],
+    ['/p/k7m2p9r4t6vw', true],
+    ['/p/a/b', true],
+    ['/p/k7m2p9r4t6vw?utm_source=wa', true],
+    ['/api/public/previews/k7m2p9r4t6vw', true],
+    ['/api/links', false],
+    ['/api/groups/1/links', false],
+    ['/health', false],
+    ['/', false],
+    ['/perfil', false],
+    [undefined, false],
+  ])('ignora %s: %s', (url, expected) => {
+    expect(isPublicRouteLog(url)).toBe(expected);
+  });
+
+  it('mira la URL que pidió el cliente, no la que queda tras el punto de montaje', () => {
+    expect(
+      isPublicRouteRequest({ url: '/', originalUrl: '/p/k7m2p9r4t6vw' } as {
+        url?: string;
+      }),
+    ).toBe(true);
+    expect(
+      isPublicRouteRequest({ url: '/', originalUrl: '/api/links' } as {
+        url?: string;
+      }),
+    ).toBe(false);
+    expect(isPublicRouteRequest({ url: '/p/k7m2p9r4t6vw' })).toBe(true);
+  });
+
+  it('declara el ignore en los parámetros del logger', () => {
+    const params = buildLoggerParams({ LOG_LEVEL: 'info' });
+    const options = params.pinoHttp as { autoLogging?: unknown };
+
+    expect(options.autoLogging).toEqual({ ignore: isPublicRouteRequest });
   });
 });

@@ -1,6 +1,13 @@
 import type { NewGroupLinkComment } from '../../domain/group-link-comment';
 import { isGroupId, isLinkId } from '../../domain/identifier';
+import {
+  MAX_PUBLIC_SLUG_ATTEMPTS,
+  PublicSlugExhausted,
+  type PublicShare,
+} from '../../domain/public-share';
 import type { ShareNote } from '../../domain/share-note';
+import type { PublicSlugGenerator } from '../ports/public-slug-generator.port';
+import { StubPublicSlugGenerator } from './stub-public-slug.generator';
 import type {
   AddedComment,
   CommentsCounters,
@@ -30,6 +37,7 @@ interface StoredGroupLink extends StoredRelation {
   note?: ShareNote;
   commentCount: number;
   commentsRevision: number;
+  publicShare?: PublicShare;
 }
 
 /** Sesión de mentira de las transacciones de este doble. */
@@ -52,6 +60,11 @@ export class InMemoryGroupLinkRepository implements GroupLinkRepository {
   constructor(
     private readonly links: InMemoryJobLinkRepository,
     readonly comments: InMemoryGroupLinkCommentRepository = new InMemoryGroupLinkCommentRepository(),
+    /**
+     * El generador de slugs lo consume el **repositorio**, no los casos de uso (D2 de public-preview-share), igual que
+     * en el adaptador de Mongo: un choque de slug no es un concepto de aplicación.
+     */
+    private readonly slugs: PublicSlugGenerator = new StubPublicSlugGenerator(),
   ) {}
 
   /** Cuántas relaciones hay en total; lo usan los tests del borrado en cascada. */
@@ -77,6 +90,17 @@ export class InMemoryGroupLinkRepository implements GroupLinkRepository {
       ...(input.note === undefined ? {} : { note: input.note }),
       commentCount: 0,
       commentsRevision: 0,
+      // La visibilidad por defecto del grupo solo alcanza a la relación **nueva** (D3): el enlace del primero, arriba,
+      // no se toca. Como en Mongo, aquí NO se reintenta el slug: la colisión sube y la resuelve quien repita el alta.
+      ...(input.publish === true
+        ? {
+            publicShare: {
+              slug: this.freeSlugOrThrow(1),
+              publishedBy: input.sharedBy,
+              publishedAt: input.sharedAt,
+            },
+          }
+        : {}),
     };
     this.relations.push(relation);
     return Promise.resolve({ relation: toGroupLink(relation), created: true });
@@ -116,6 +140,10 @@ export class InMemoryGroupLinkRepository implements GroupLinkRepository {
         ...(relation.note === undefined ? {} : { note: relation.note }),
         commentCount: relation.commentCount,
         commentsRevision: relation.commentsRevision,
+        // Viaja en la misma consulta de la relación: el listado NO cuesta una lectura más por pintar el interruptor.
+        ...(relation.publicShare === undefined
+          ? {}
+          : { publicShare: { ...relation.publicShare } }),
       }),
     );
   }
@@ -213,6 +241,50 @@ export class InMemoryGroupLinkRepository implements GroupLinkRepository {
     return countersOf(relation);
   }
 
+  /** Mismo comportamiento que el adaptador de Mongo: idempotente y con el slug sorteado aquí dentro (D2). */
+  publish(
+    groupId: string,
+    linkId: string,
+    publishedBy: string,
+    now: Date,
+  ): Promise<PublicShare | null> {
+    const relation = this.relationOf(groupId, linkId);
+    if (relation === undefined) {
+      return Promise.resolve(null);
+    }
+    if (relation.publicShare !== undefined) {
+      return Promise.resolve({ ...relation.publicShare });
+    }
+    relation.publicShare = {
+      slug: this.freeSlugOrThrow(MAX_PUBLIC_SLUG_ATTEMPTS),
+      publishedBy,
+      publishedAt: now,
+    };
+    return Promise.resolve({ ...relation.publicShare });
+  }
+
+  /** Quema el slug: volver a publicar genera otro y la URL vieja deja de existir. */
+  unpublish(groupId: string, linkId: string): Promise<boolean> {
+    const relation = this.relationOf(groupId, linkId);
+    if (relation === undefined) {
+      return Promise.resolve(false);
+    }
+    delete relation.publicShare;
+    return Promise.resolve(true);
+  }
+
+  /** Cuántas veces se buscó por slug: lo usa el test de las dos lecturas de la página pública (D7). */
+  findByPublicSlugCalls = 0;
+
+  findByPublicSlug(slug: string): Promise<GroupLink | null> {
+    this.findByPublicSlugCalls += 1;
+    const relation = this.relations.find(
+      // Comparación exacta y sensible a mayúsculas: un slug con otra caja es un slug que no existe (D2).
+      (candidate) => candidate.publicShare?.slug === slug,
+    );
+    return Promise.resolve(relation ? toGroupLink(relation) : null);
+  }
+
   clearNote(groupId: string, linkId: string): Promise<boolean> {
     const relation = this.relationOf(groupId, linkId);
     if (relation === undefined) {
@@ -252,6 +324,23 @@ export class InMemoryGroupLinkRepository implements GroupLinkRepository {
     return deleted;
   }
 
+  /**
+   * Slug libre entre los ya usados, con el mismo número de intentos que el adaptador de Mongo. Aquí la unicidad se
+   * comprueba en memoria; allí la garantiza el índice único parcial y el choque llega como un `E11000`.
+   */
+  private freeSlugOrThrow(attempts: number): string {
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      const slug = this.slugs.next();
+      const taken = this.relations.some(
+        (relation) => relation.publicShare?.slug === slug,
+      );
+      if (!taken) {
+        return slug;
+      }
+    }
+    throw new PublicSlugExhausted();
+  }
+
   private nextRelationId(): string {
     const id = this.nextId.toString(16).padStart(24, '0');
     this.nextId += 1;
@@ -268,6 +357,9 @@ function toGroupLink(relation: StoredGroupLink): GroupLink {
     ...(relation.note === undefined ? {} : { note: relation.note }),
     commentCount: relation.commentCount,
     commentsRevision: relation.commentsRevision,
+    ...(relation.publicShare === undefined
+      ? {}
+      : { publicShare: { ...relation.publicShare } }),
   };
 }
 

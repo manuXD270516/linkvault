@@ -59,6 +59,37 @@
       Ya estaba aquí, lo compartió {{ name }}
     </p>
   }
+  <!--
+    El link nació con enlace público porque el grupo comparte en público (D3). Se dice aquí y solo aquí: es el momento
+    en que la persona está a punto de pegar algo en el chat, y el único en que enterarse del alcance sirve de algo.
+  -->
+  @if (publicShare(); as share) {
+    <p class="m-0 text-sm" role="status" data-testid="save-link-public" i18n="@@links.save.publicScope">
+      Cualquiera con este enlace verá la oferta; no se verá el grupo ni tu nombre
+    </p>
+    <div>
+      <button
+        mat-stroked-button
+        type="button"
+        (click)="copyPublicLink()"
+        data-testid="save-link-copy-public"
+        i18n="@@links.public.copy"
+      >
+        Copiar enlace
+      </button>
+    </div>
+    @if (savedUnread()) {
+      <p class="m-0 text-sm" role="status" data-testid="save-link-public-unread" i18n="@@links.public.copyUnread">
+        Todavía estamos leyendo la oferta: si lo envías ahora, la tarjeta saldrá sin datos
+      </p>
+    }
+    @if (linkCopied()) {
+      <p class="m-0 text-sm" role="status" data-testid="save-link-copied" i18n="@@links.public.copied">
+        Enlace copiado
+      </p>
+    }
+  }
+
   @if (noteDiscarded()) {
     <p role="status" data-testid="save-link-note-discarded" i18n="@@comments.note.discarded">
       Tu nota no se añadió porque la oferta ya estaba en el grupo.

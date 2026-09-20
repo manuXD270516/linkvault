@@ -18,6 +18,8 @@ import {
   LinksError,
   NotAJobPosting,
   PreviewFieldUnknown,
+  PublicShareForbidden,
+  PublicShareNotFound,
   TextTooLong,
   TooManyLinkAttempts,
 } from './errors';
@@ -40,6 +42,8 @@ const errors = [
   new CommentDeletionForbidden(),
   new NoteRemovalForbidden(),
   new CommentsGroupNotFound(),
+  new PublicShareForbidden(),
+  new PublicShareNotFound(),
 ];
 
 describe('links domain errors', () => {
@@ -91,6 +95,8 @@ describe('links domain errors', () => {
       'CommentDeletionForbidden',
       'NoteRemovalForbidden',
       'CommentsGroupNotFound',
+      'PublicShareForbidden',
+      'PublicShareNotFound',
     ]);
   });
 
@@ -113,6 +119,12 @@ describe('links domain errors', () => {
     expect(new InvalidShareNote()).toBeInstanceOf(InvalidLinkField);
     expect(new InvalidCommentText().field).toBe('text');
     expect(new InvalidShareNote().field).toBe('note');
+  });
+
+  it('el enlace público responde forbidden y link_not_found, sin códigos nuevos', () => {
+    expect(new PublicShareForbidden().code).toBe('forbidden');
+    expect(new PublicShareNotFound().code).toBe('link_not_found');
+    expect(new PublicShareNotFound().message).toBe(new LinkNotFound().message);
   });
 
   it('carries no url, imported text or cursor in the message', () => {

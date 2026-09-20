@@ -1,0 +1,5 @@
+# La vista pública de una oferta no se indexa (ADR-027 §4): la oferta es de la bolsa que la publicó y LinkVault no la
+# duplica en los buscadores. Los bots que componen las tarjetas de los chats NO piden esta ruta, sino `/p/:slug`, que
+# sirve la api y que a propósito no se desautoriza aquí: hacerlo dejaría los enlaces repartidos sin tarjeta.
+User-agent: *
+Disallow: /oferta/

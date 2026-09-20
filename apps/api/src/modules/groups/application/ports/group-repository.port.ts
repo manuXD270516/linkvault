@@ -1,4 +1,4 @@
-import type { Group } from '../../domain/group';
+import type { Group, GroupVisibility } from '../../domain/group';
 import type { GroupRole, Membership } from '../../domain/membership';
 
 // Puerto de persistencia de grupos y membresías (D1 de groups). Se inyecta con
@@ -94,6 +94,15 @@ export interface GroupRepository {
   removeMember(groupId: string, userId: string): Promise<RemoveMemberResult>;
   /** Grupo renombrado; `null` si no existe o el id está mal formado. */
   rename(groupId: string, name: string, now: Date): Promise<Group | null>;
+  /**
+   * Grupo con otra visibilidad por defecto (D3 de public-preview-share); `null` si no existe o el id está mal formado.
+   * Escribe **solo** el documento del grupo: cambiar el ajuste no publica ni despublica ningún link ya compartido.
+   */
+  updateSettings(
+    groupId: string,
+    defaultVisibility: GroupVisibility,
+    now: Date,
+  ): Promise<Group | null>;
   /** Grupo con un código nuevo, con el mismo reintento que `create`; `null` si no existe. */
   rotateInviteCode(groupId: string, now: Date): Promise<Group | null>;
   /**

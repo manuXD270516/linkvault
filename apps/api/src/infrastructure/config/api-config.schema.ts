@@ -3,6 +3,15 @@ import { z } from 'zod';
 const port = z.coerce.number().int().min(1).max(65_535);
 
 /**
+ * URL pública absoluta, `http(s)` y **sin barra final** (D5 de public-preview-share, ADR-027 §4). Se declara y no se
+ * deduce de la cabecera `Host`: un `Host` falsificado acabaría dentro de una etiqueta Open Graph que los chats muestran
+ * y cachean. Sin barra final para que componer `${base}/p/<slug>` no dé nunca un `//`.
+ */
+const publicBaseUrl = z
+  .string()
+  .regex(/^https?:\/\/[^\s/]+(\/[^\s?#]*[^\s/?#])?$/);
+
+/**
  * Secreto de firma de ejemplo de `.env.example` (D9 de auth-users). Sirve en desarrollo; con `NODE_ENV=production` el
  * arranque lo rechaza. El test de configuración comprueba que `.env.example` usa exactamente este valor.
  */
@@ -63,6 +72,11 @@ export const apiConfigSchema = z
       .int()
       .min(1_000)
       .max(120_000),
+    // Origen desde el que se sirve la página pública `/p/:slug`: es lo que se pega en un chat y lo que va en `og:url`.
+    PUBLIC_PAGE_BASE_URL: publicBaseUrl,
+    // Origen del SPA: la vista pública `/oferta/:slug` a la que salta la página y la imagen fija de las tarjetas. En
+    // producción pueden apuntar al mismo origen; se declaran las dos porque hoy se sirven aparte.
+    WEB_BASE_URL: publicBaseUrl,
   })
   // Cada issue lleva `path` con la variable: `parseEnv` descarta los issues que no nombran ninguna.
   .superRefine((config, ctx) => {
