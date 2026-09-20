@@ -125,6 +125,11 @@ Si no es owner, SHALL mostrar la acción de salir y ninguna acción de owner. En
 mostrar "Ese grupo no existe o ya no perteneces a él" con un enlace a `/grupos`, y SHALL quitar ese grupo de la lista
 guardada.
 
+Si el usuario es `owner`, SHALL mostrar además un interruptor "Los links nuevos se comparten con un enlace público" con
+el estado actual del grupo y la aclaración "Solo afecta a lo que se guarde a partir de ahora; los links que ya están no
+cambian.". Cambiarlo SHALL llamar a la API y reflejarse sin recargar; un error SHALL dejar el interruptor como estaba.
+Quien no es owner NO SHALL ver ese interruptor.
+
 #### Scenario: Detalle como owner
 
 - **GIVEN** el owner de un grupo con dos miembros
@@ -170,6 +175,19 @@ guardada.
 - **GIVEN** un usuario que no es miembro
 - **WHEN** abre `/grupos/:id` de ese grupo
 - **THEN** SHALL ver "Ese grupo no existe o ya no perteneces a él" con un enlace a `/grupos`
+
+#### Scenario: El owner apaga los enlaces públicos por defecto
+
+- **GIVEN** el owner de un grupo con el interruptor encendido
+- **WHEN** lo apaga
+- **THEN** SHALL verse apagado sin recargar
+- **AND** SHALL seguir viéndose "Solo afecta a lo que se guarde a partir de ahora; los links que ya están no cambian."
+
+#### Scenario: Un miembro no ve el interruptor
+
+- **GIVEN** un miembro que no es owner
+- **WHEN** abre el detalle
+- **THEN** NO SHALL ver el interruptor de los enlaces públicos por defecto
 
 ### Requirement: Acciones del detalle
 
