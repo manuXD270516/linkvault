@@ -41,7 +41,7 @@ export interface ChainRequest {
 
 /**
  * Resultado de componer la cadena. `consentWouldEnable` es un hecho puro: la política NO decide el motivo de
- * degradación; eso lo hace `runTask` (tarea 3.5). La tarea 4.1 completa los escenarios de `ai/provider-routing`.
+ * degradación; eso lo hace `runTask` (tarea 3.5).
  */
 export interface ChainResult {
   providers: LlmProvider[];

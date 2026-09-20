@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import {
   AiModule,
+  parseAiConfig,
   PROVIDER_ELIGIBILITY,
   type ProviderEligibility,
 } from '@linkvault/ai';
@@ -10,7 +13,6 @@ import { getConnectionToken } from '@nestjs/mongoose';
 import { Test } from '@nestjs/testing';
 import mongoose, { type Connection } from 'mongoose';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { workerTestAiConfig } from '../test-support/test-config';
 
 // Sonda de infraestructura de tests: ProbeConsumer recibe ProbeDependency por constructor sin @Inject,
 // así que Nest solo puede resolverla si el transformador emitió design:paramtypes.
@@ -37,6 +39,38 @@ function mongoConnectionModule(conn: Connection) {
   })
   class TestMongoConnectionModule {}
   return TestMongoConnectionModule;
+}
+
+function workspaceRoot(): string {
+  let dir = process.cwd();
+  while (!existsSync(join(dir, 'nx.json'))) {
+    const parent = dirname(dir);
+    if (parent === dir) {
+      throw new Error('workspaceRoot: nx.json not found above the test cwd');
+    }
+    dir = parent;
+  }
+  return dir;
+}
+
+function eligibilityAiConfig() {
+  const root = workspaceRoot();
+  const result = parseAiConfig(
+    {
+      NODE_ENV: 'test',
+      AI_CHAIN: 'mock',
+      AI_MOCK_MODE: 'replay',
+      AI_PROMPTS_DIR: join(root, 'libs/ai/src/infrastructure/prompts'),
+      AI_FIXTURES_DIR: join(root, 'libs/ai/src/infrastructure/fixtures'),
+    },
+    { cwd: root },
+  );
+  if (!result.ok) {
+    throw new Error(
+      `eligibilityAiConfig: invalid AI configuration (${result.problems.map((p) => p.variable).join(', ')})`,
+    );
+  }
+  return result.config;
 }
 
 describe('Nest dependency injection under Vitest', () => {
@@ -77,7 +111,7 @@ describe('PROVIDER_ELIGIBILITY in the worker process', () => {
         mongoConnectionModule(connection),
         AiModule.forRootAsync({
           useFactory: () => ({
-            config: workerTestAiConfig(),
+            config: eligibilityAiConfig(),
             redisUrl: 'redis://127.0.0.1:1',
           }),
         }),

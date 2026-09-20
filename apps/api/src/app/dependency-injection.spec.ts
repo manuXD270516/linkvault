@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
+import { join } from 'node:path';
 import {
   AiModule,
+  parseAiConfig,
   PROVIDER_ELIGIBILITY,
   type ProviderEligibility,
 } from '@linkvault/ai';
@@ -10,7 +12,7 @@ import { getConnectionToken } from '@nestjs/mongoose';
 import { Test } from '@nestjs/testing';
 import mongoose, { type Connection } from 'mongoose';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { apiTestAiConfig } from '../test-support/test-config';
+import { workspaceRoot } from '../test-support/test-config';
 
 // Sonda de infraestructura de tests: ProbeConsumer recibe ProbeDependency por constructor sin @Inject,
 // así que Nest solo puede resolverla si el transformador emitió design:paramtypes.
@@ -37,6 +39,26 @@ function mongoConnectionModule(conn: Connection) {
   })
   class TestMongoConnectionModule {}
   return TestMongoConnectionModule;
+}
+
+function eligibilityAiConfig() {
+  const root = workspaceRoot();
+  const result = parseAiConfig(
+    {
+      NODE_ENV: 'test',
+      AI_CHAIN: 'mock',
+      AI_MOCK_MODE: 'replay',
+      AI_PROMPTS_DIR: join(root, 'libs/ai/src/infrastructure/prompts'),
+      AI_FIXTURES_DIR: join(root, 'libs/ai/src/infrastructure/fixtures'),
+    },
+    { cwd: root },
+  );
+  if (!result.ok) {
+    throw new Error(
+      `eligibilityAiConfig: invalid AI configuration (${result.problems.map((p) => p.variable).join(', ')})`,
+    );
+  }
+  return result.config;
 }
 
 describe('Nest dependency injection under Vitest', () => {
@@ -77,7 +99,7 @@ describe('PROVIDER_ELIGIBILITY in the API process', () => {
         mongoConnectionModule(connection),
         AiModule.forRootAsync({
           useFactory: () => ({
-            config: apiTestAiConfig(),
+            config: eligibilityAiConfig(),
             redisUrl: 'redis://127.0.0.1:1',
           }),
         }),
