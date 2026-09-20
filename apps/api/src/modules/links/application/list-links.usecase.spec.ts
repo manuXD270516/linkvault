@@ -20,6 +20,7 @@ import {
   InMemoryLinkUserDirectory,
   InMemoryOutbox,
   MovableClock,
+  TestPublicUrls,
 } from './testing/links-test-doubles';
 
 // `GET /api/groups/:id/links` y `GET /api/links/mine` (tarea 5.4 de job-links) con los dobles en memoria.
@@ -41,6 +42,9 @@ let saveLink: SaveLink;
 let listGroupLinks: ListGroupLinks;
 let listMyLinks: ListMyLinks;
 
+/** Las URLs públicas de un test: los mismos orígenes que `.env.example`. */
+const urls = new TestPublicUrls();
+
 beforeEach(() => {
   clock = new MovableClock();
   links = new InMemoryJobLinkRepository();
@@ -58,6 +62,7 @@ beforeEach(() => {
     new InMemoryOutbox(),
     membership,
     directory,
+    urls,
     clock,
   );
   listGroupLinks = new ListGroupLinks(
@@ -65,9 +70,11 @@ beforeEach(() => {
     groupLinks.comments,
     membership,
     directory,
+    urls,
   );
   listMyLinks = new ListMyLinks(userLinks, directory);
 });
+
 
 describe('ListGroupLinks', () => {
   it('Miembro ve los links del grupo', async () => {
@@ -149,6 +156,7 @@ describe('ListGroupLinks', () => {
       groupLinks.comments,
       new InMemoryGroupMembership().withMember(BACKEND, ANA),
       directory,
+      urls,
     );
 
     const page = await listGroupLinks.execute(ANA, BACKEND, { limit: 20 });

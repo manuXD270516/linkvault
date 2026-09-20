@@ -26,6 +26,8 @@ import {
   LINK_USER_DIRECTORY,
   type LinkUserDirectory,
 } from './ports/link-user-directory.port';
+import { PUBLIC_URLS, type PublicUrls } from './ports/public-urls.port';
+import { toPublicShareView } from './public-share.mapper';
 
 /**
  * `GET /api/groups/:id/links` (spec links/sharing): los links del grupo para sus miembros, del más reciente al más
@@ -52,6 +54,7 @@ export class ListGroupLinks {
     private readonly comments: GroupLinkCommentRepository,
     @Inject(GROUP_MEMBERSHIP) private readonly membership: GroupMembership,
     @Inject(LINK_USER_DIRECTORY) private readonly directory: LinkUserDirectory,
+    @Inject(PUBLIC_URLS) private readonly urls: PublicUrls,
   ) {}
 
   async execute(
@@ -81,7 +84,13 @@ export class ListGroupLinks {
     ]);
     return {
       items: page.items.map((item) =>
-        toGroupItem(item, latest.get(item.link.id) ?? [], names, members),
+        toGroupItem(
+          item,
+          latest.get(item.link.id) ?? [],
+          names,
+          members,
+          this.urls,
+        ),
       ),
       total,
       ...(page.nextCursor === undefined
@@ -97,6 +106,7 @@ function toGroupItem(
   latest: readonly GroupLinkComment[],
   names: Map<string, string>,
   members: ReadonlySet<string>,
+  urls: PublicUrls,
 ): LinkPage['items'][number] {
   const inGroup = item.inGroup ?? { commentCount: 0, commentsRevision: 0 };
   return toJobLinkSummary(item.link, {
@@ -108,6 +118,11 @@ function toGroupItem(
     ...(inGroup.note === undefined
       ? {}
       : { note: toShareNoteView(inGroup.note) }),
+    // Viene en la misma consulta de la relación (D1): el interruptor NO cuesta una lectura más, ni con 2 links ni con
+    // 20. Solo se mapea la URL, que se compone con la configuración.
+    ...(inGroup.publicShare === undefined
+      ? {}
+      : { publicShare: toPublicShareView(inGroup.publicShare, urls) }),
     comments: toCommentsSummary(
       {
         count: inGroup.commentCount,

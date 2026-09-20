@@ -9,6 +9,7 @@ import {
   InMemoryLinkUserDirectory,
   InMemoryOutbox,
   MovableClock,
+  TestPublicUrls,
 } from './testing/links-test-doubles';
 
 // Aviso "ya lo tienes en otro grupo" de `POST /api/links` (tarea 5.2 de job-links). Los grupos del usuario se resuelven
@@ -28,6 +29,9 @@ let groupLinks: InMemoryGroupLinkRepository;
 let membership: InMemoryGroupMembership;
 let saveLink: SaveLink;
 
+/** Las URLs públicas de un test: los mismos orígenes que `.env.example`. */
+const urls = new TestPublicUrls();
+
 beforeEach(() => {
   links = new InMemoryJobLinkRepository();
   groupLinks = new InMemoryGroupLinkRepository(links);
@@ -42,9 +46,11 @@ beforeEach(() => {
     new InMemoryOutbox(),
     membership,
     new InMemoryLinkUserDirectory().set(ANA, 'Ana').set(BETO, 'Beto'),
+    urls,
     new MovableClock(),
   );
 });
+
 
 describe('alreadyInGroups', () => {
   it('El link ya estaba en otro grupo propio', async () => {

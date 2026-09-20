@@ -41,13 +41,13 @@
 
 ## 4. Casos de uso en `links`
 
-- [ ] 4.1 [backend] `PublishGroupLink` en el orden de D2 (pertenencia → relación → permiso → publicar, idempotente); verificar con unitarios de "Quien compartió publica", "El propietario publica un link ajeno", "Otro miembro no publica", "Publicar dos veces no cambia el enlace", "Extraño no toca el interruptor" y "Relación que desaparece".
-- [ ] 4.2 [backend] `UnpublishGroupLink` con el mismo orden y `204` estuviera publicado o no; verificar con unitarios de "Despublicar quema el enlace", "Despublicar lo que no estaba publicado" y "Sin permiso aunque ya esté publicado".
-- [ ] 4.3 [backend] `SaveLink` aplica `defaultVisibility` del grupo solo al crear la relación, delegando el slug y su reintento en el repositorio; verificar con unitarios de "Guardar en un grupo que comparte en público", "Guardar en un grupo que no comparte en público" y "El enlace público del primero se queda".
-- [ ] 4.4 [backend] `ImportLinks` cambia `membershipOf` por `groupsOf` sin cambiar ningún otro comportamiento; verificar con los unitarios existentes de importación en verde y con el conteo de llamadas a los puertos con 3 y 50 URLs.
-- [ ] 4.5 [backend] `ImportLinks` aplica la visibilidad por defecto a cada relación nueva; verificar con unitarios de "Importar hereda la visibilidad", "Importar en un grupo privado" y "Cada link importado tiene su propio slug".
-- [ ] 4.6 [backend] `ListGroupLinks` mapea `publicShare` con su URL absoluta, sin lecturas nuevas; verificar con los unitarios "Enlace público en el listado" y "El listado no cuesta más lecturas" (páginas de 2 y de 20).
-- [ ] 4.7 [backend] `GetPublicPreview(slug)`: dos lecturas y ninguna escritura, mapeo por lista explícita de campos (nunca `...preview`), `displayUrl` pasado por `publicHttpUrl` (omitido si da `null`) y `null` para un `slug` inexistente, quemado o mal formado; verificar con unitarios de "Preview público", "Slug quemado", "Slug mal formado", "URL original con credenciales y rastro", "URL original que no se puede publicar" y "No llama a ningún otro puerto".
+- [x] 4.1 [backend] `PublishGroupLink` en el orden de D2 (pertenencia → relación → permiso → publicar, idempotente); verificar con unitarios de "Quien compartió publica", "El propietario publica un link ajeno", "Otro miembro no publica", "Publicar dos veces no cambia el enlace", "Extraño no toca el interruptor" y "Relación que desaparece".
+- [x] 4.2 [backend] `UnpublishGroupLink` con el mismo orden y `204` estuviera publicado o no; verificar con unitarios de "Despublicar quema el enlace", "Despublicar lo que no estaba publicado" y "Sin permiso aunque ya esté publicado".
+- [x] 4.3 [backend] `SaveLink` aplica `defaultVisibility` del grupo solo al crear la relación, delegando el slug y su reintento en el repositorio; verificar con unitarios de "Guardar en un grupo que comparte en público", "Guardar en un grupo que no comparte en público" y "El enlace público del primero se queda".
+- [x] 4.4 [backend] `ImportLinks` cambia `membershipOf` por `groupsOf` sin cambiar ningún otro comportamiento; verificar con los unitarios existentes de importación en verde y con el conteo de llamadas a los puertos con 3 y 50 URLs.
+- [x] 4.5 [backend] `ImportLinks` aplica la visibilidad por defecto a cada relación nueva; verificar con unitarios de "Importar hereda la visibilidad", "Importar en un grupo privado" y "Cada link importado tiene su propio slug".
+- [x] 4.6 [backend] `ListGroupLinks` mapea `publicShare` con su URL absoluta, sin lecturas nuevas; verificar con los unitarios "Enlace público en el listado" y "El listado no cuesta más lecturas" (páginas de 2 y de 20).
+- [x] 4.7 [backend] `GetPublicPreview(slug)`: dos lecturas y ninguna escritura, mapeo por lista explícita de campos (nunca `...preview`), `displayUrl` pasado por `publicHttpUrl` (omitido si da `null`) y `null` para un `slug` inexistente, quemado o mal formado; verificar con unitarios de "Preview público", "Slug quemado", "Slug mal formado", "URL original con credenciales y rastro", "URL original que no se puede publicar" y "No llama a ningún otro puerto".
 
 ## 5. Configuración y arranque
 

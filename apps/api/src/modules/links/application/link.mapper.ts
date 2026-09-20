@@ -6,6 +6,7 @@ import {
   type LinkSharer,
   type PreviewFieldName,
   type PreviewSources,
+  type PublicShare as PublicShareView,
   type ResolvedPreviewSources,
   type ShareNote,
 } from '@linkvault/shared';
@@ -42,6 +43,11 @@ export interface SummaryContext {
   readonly note?: ShareNote;
   /** Resumen de sus comentarios en el grupo; solo en el listado de un grupo (D7 de group-comments). */
   readonly comments?: CommentsSummary;
+  /**
+   * Enlace público de la relación con el grupo, si lo tiene (D1 de public-preview-share). Solo en el listado de un
+   * grupo y en la respuesta de guardar en uno: la lista privada NO lo lleva nunca.
+   */
+  readonly publicShare?: PublicShareView;
 }
 
 /** Link con cómo llegó a la lista. `sharedBy` falta en la lista privada, donde no hay con quién compartir. */
@@ -73,6 +79,9 @@ export function toJobLinkSummary(
     sharedAt: options.sharedAt.toISOString(),
     ...(options.note === undefined ? {} : { note: options.note }),
     ...(options.comments === undefined ? {} : { comments: options.comments }),
+    ...(options.publicShare === undefined
+      ? {}
+      : { publicShare: options.publicShare }),
   };
 }
 

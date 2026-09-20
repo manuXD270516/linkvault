@@ -44,7 +44,11 @@ export class InMemoryJobLinkRepository implements JobLinkRepository {
     return await work(this.resolve(draft), IN_MEMORY_SESSION);
   }
 
+  /** Cuántas veces se leyó una vacante por su id: lo usa el test de las dos lecturas de la página pública (D7). */
+  findByIdCalls = 0;
+
   findById(linkId: string): Promise<JobLink | null> {
+    this.findByIdCalls += 1;
     if (!isLinkId(linkId)) {
       return Promise.resolve(null);
     }

@@ -20,6 +20,7 @@ import { BackfillEnrichment } from '../application/backfill-enrichment.usecase';
 import { DeleteGroupLinkComment } from '../application/delete-group-link-comment.usecase';
 import { DeliverCommentsChanged } from '../application/deliver-comments-changed.usecase';
 import { DeliverLinkEnriched } from '../application/deliver-link-enriched.usecase';
+import { GetPublicPreview } from '../application/get-public-preview.usecase';
 import { ImportLinks } from '../application/import-links.usecase';
 import { ListGroupLinkComments } from '../application/list-group-link-comments.usecase';
 import { ListGroupLinks } from '../application/list-group-links.usecase';
@@ -42,9 +43,12 @@ import {
 } from '../application/ports/link-user-directory.port';
 import { PASTED_EXTRACTION } from '../application/ports/pasted-extraction.port';
 import { PUBLIC_SLUG_GENERATOR } from '../application/ports/public-slug-generator.port';
+import { PUBLIC_URLS } from '../application/ports/public-urls.port';
 import { LINK_ENRICHED_PUBLISHER } from '../application/ports/link-enriched-publisher.port';
 import { PasteDescription } from '../application/paste-description.usecase';
 import { PostGroupLinkComment } from '../application/post-group-link-comment.usecase';
+import { PublishGroupLink } from '../application/publish-group-link.usecase';
+import { UnpublishGroupLink } from '../application/unpublish-group-link.usecase';
 import { USER_LINK_REPOSITORY } from '../application/ports/user-link-repository.port';
 import { RemoveGroupLink } from '../application/remove-group-link.usecase';
 import { RemoveMyLink } from '../application/remove-my-link.usecase';
@@ -67,6 +71,7 @@ import { MongoGroupLinkCommentRepository } from '../infrastructure/mongo-group-l
 import { MongoGroupLinkRepository } from '../infrastructure/mongo-group-link.repository';
 import { MongoJobLinkRepository } from '../infrastructure/mongo-job-link.repository';
 import { MongoUserLinkRepository } from '../infrastructure/mongo-user-link.repository';
+import { ConfigPublicUrls } from '../infrastructure/config-public-urls';
 import { RandomPublicSlugGenerator } from '../infrastructure/random-public-slug.generator';
 import { RunTaskPastedExtraction } from '../infrastructure/run-task-pasted-extraction';
 import { RedisCommentNotices } from '../infrastructure/redis-comment-notices';
@@ -126,6 +131,13 @@ import { LinksController } from './links.controller';
     { provide: LINK_USER_DIRECTORY, useClass: UsersFacadeLinkDirectory },
     { provide: LINK_LIMITER, useClass: CounterLinkLimiter },
     { provide: PUBLIC_SLUG_GENERATOR, useClass: RandomPublicSlugGenerator },
+    {
+      // Las dos URLs públicas salen de configuración, nunca de la cabecera `Host` de una petición (D5).
+      provide: PUBLIC_URLS,
+      inject: [APP_CONFIG],
+      useFactory: (config: ApiConfig) =>
+        new ConfigPublicUrls(config.PUBLIC_PAGE_BASE_URL, config.WEB_BASE_URL),
+    },
     { provide: ENRICHMENT_BROADCASTER, useClass: EventStreamBroadcaster },
     { provide: COMMENTS_BROADCASTER, useClass: EventStreamCommentsBroadcaster },
     {
@@ -197,6 +209,9 @@ import { LinksController } from './links.controller';
     DeleteGroupLinkComment,
     ListGroupLinkComments,
     RemoveShareNote,
+    PublishGroupLink,
+    UnpublishGroupLink,
+    GetPublicPreview,
     DeliverCommentsChanged,
     CommentsChangedSubscription,
     BackfillEnrichment,

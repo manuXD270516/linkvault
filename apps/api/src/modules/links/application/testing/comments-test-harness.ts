@@ -16,6 +16,7 @@ import {
   InMemoryLinkUserDirectory,
   InMemoryOutbox,
   MovableClock,
+  TestPublicUrls,
 } from './links-test-doubles';
 
 // Arnés de los casos de uso de comentarios y notas (grupo 3 de group-comments): los dobles en memoria cableados como en
@@ -46,6 +47,7 @@ export class CommentsHarness {
     .set(CARLA, 'Carla')
     .set(STRANGER, 'Extraño');
   readonly limiter = new InMemoryLinkLimiter();
+  readonly urls = new TestPublicUrls();
   readonly publisher = new InMemoryCommentsChangedPublisher();
 
   readonly post = new PostGroupLinkComment(
@@ -75,6 +77,7 @@ export class CommentsHarness {
     this.comments,
     this.membership,
     this.directory,
+    this.urls,
   );
   readonly removeNote = new RemoveShareNote(this.groupLinks, this.membership);
   readonly removeGroupLink = new RemoveGroupLink(
@@ -88,6 +91,7 @@ export class CommentsHarness {
     new InMemoryOutbox(),
     this.membership,
     this.directory,
+    this.urls,
     this.clock,
   );
 

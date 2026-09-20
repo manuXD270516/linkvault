@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GroupNotFound } from '../../groups/domain/errors';
 import { TextTooLong, TooManyLinkAttempts } from '../domain/errors';
 import { MAX_IMPORT_TEXT_LENGTH, MAX_LINKS_PER_IMPORT } from '../domain/limits';
+import { isValidPublicSlug } from '../domain/public-slug';
 import { ImportLinks } from './import-links.usecase';
 import { SaveLink } from './save-link.usecase';
 import { InMemoryGroupLinkRepository } from './testing/in-memory-group-link.repository';
@@ -15,6 +16,7 @@ import {
   InMemoryLinkUserDirectory,
   InMemoryOutbox,
   MovableClock,
+  TestPublicUrls,
 } from './testing/links-test-doubles';
 
 // `POST /api/links/import` (tarea 5.3 de job-links) con los dobles en memoria de sus puertos.
@@ -40,6 +42,9 @@ let limiter: InMemoryLinkLimiter;
 let importLinks: ImportLinks;
 let saveLink: SaveLink;
 
+/** Las URLs públicas de un test: los mismos orígenes que `.env.example`. */
+const urls = new TestPublicUrls();
+
 beforeEach(() => {
   clock = new MovableClock();
   links = new InMemoryJobLinkRepository();
@@ -62,6 +67,7 @@ beforeEach(() => {
     membership,
     directory,
     limiter,
+    urls,
     clock,
   );
   saveLink = new SaveLink(
@@ -71,6 +77,7 @@ beforeEach(() => {
     outbox,
     membership,
     directory,
+    urls,
     clock,
   );
 });
@@ -105,6 +112,7 @@ function chatWith(count: number): string {
 afterEach(() => {
   vi.restoreAllMocks();
 });
+
 
 describe('ImportLinks', () => {
   it('Importar un chat', async () => {
@@ -355,4 +363,70 @@ describe('import limit per user', () => {
     // Ni siquiera se preguntó al contador: guardar un link suelto es otra operación y otro coste.
     expect(limiter.consumed).toEqual([]);
   });
+});
+
+// Visibilidad por defecto del grupo al importar (tareas 4.4 y 4.5 de public-preview-share, D3). Los 50 links de un chat
+// entran igual que uno suelto: es una política del grupo sobre todo lo que entra, al revés que la nota.
+describe('ImportLinks y la visibilidad por defecto del grupo', () => {
+  const THREE_URLS = `Mira estas: ${JOB_PAGE} ${COMPUTRABAJO} ${CAREERS}`;
+
+  it('Importar hereda la visibilidad', async () => {
+    const response = await importLinks.execute(ANA, {
+      text: THREE_URLS,
+      groupId: BACKEND,
+    });
+
+    expect(response.created).toBe(3);
+    const slugs = response.links.map((link) => link.publicShare?.slug);
+    expect(slugs.every((slug) => isValidPublicSlug(slug ?? ''))).toBe(true);
+    // Cada link importado tiene su propio slug.
+    expect(new Set(slugs).size).toBe(3);
+  });
+
+  it('Importar en un grupo privado', async () => {
+    membership.withDefaultVisibility(BACKEND, 'private');
+
+    const response = await importLinks.execute(ANA, {
+      text: THREE_URLS,
+      groupId: BACKEND,
+    });
+
+    expect(response.created).toBe(3);
+    expect(
+      response.links.every((link) => link.publicShare === undefined),
+    ).toBe(true);
+  });
+
+  it('Importar sin grupo no crea ningún enlace público', async () => {
+    const response = await importLinks.execute(ANA, { text: THREE_URLS });
+
+    expect(
+      response.links.every((link) => link.publicShare === undefined),
+    ).toBe(true);
+  });
+
+  // `groupsOf` en vez de `membershipOf` da la pertenencia y el ajuste en una sola lectura, cueste 3 URLs o 50.
+  it.each([3, 50])(
+    'pregunta por los grupos una sola vez con %s URLs',
+    async (count) => {
+      const text = Array.from(
+        { length: count },
+        (_value, index) =>
+          `https://www.linkedin.com/jobs/view/391${String(index).padStart(7, '0')}/`,
+      ).join(' ');
+      const before = {
+        groupsOf: membership.groupsOfCalls,
+        membershipOf: membership.membershipOfCalls,
+      };
+
+      const response = await importLinks.execute(ANA, {
+        text,
+        groupId: BACKEND,
+      });
+
+      expect(response.created).toBe(count);
+      expect(membership.groupsOfCalls).toBe(before.groupsOf + 1);
+      expect(membership.membershipOfCalls).toBe(before.membershipOf);
+    },
+  );
 });

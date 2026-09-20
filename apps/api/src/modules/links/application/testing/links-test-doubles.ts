@@ -25,6 +25,7 @@ import type {
 } from '../ports/link-user-directory.port';
 import type { LinkEnrichedPublisher } from '../ports/link-enriched-publisher.port';
 import type { Outbox, OutboxEvent } from '../ports/outbox.port';
+import type { PublicUrls } from '../ports/public-urls.port';
 import type {
   PastedExtraction,
   PastedExtractionPort,
@@ -78,6 +79,25 @@ export class InMemoryOutbox implements Outbox {
   append(event: OutboxEvent, session: TransactionSession): Promise<void> {
     this.events.push({ event, session });
     return Promise.resolve();
+  }
+}
+
+/**
+ * URLs públicas de un test (D5 de public-preview-share): los mismos orígenes que `.env.example`, para que un test pueda
+ * comprobar la URL entera sin levantar la configuración.
+ */
+export class TestPublicUrls implements PublicUrls {
+  constructor(
+    private readonly pageBaseUrl = 'http://localhost:3000',
+    readonly webBaseUrl = 'http://localhost:4200',
+  ) {}
+
+  pageUrlOf(slug: string): string {
+    return `${this.pageBaseUrl}/p/${slug}`;
+  }
+
+  webUrlOf(slug: string): string {
+    return `${this.webBaseUrl}/oferta/${slug}`;
   }
 }
 

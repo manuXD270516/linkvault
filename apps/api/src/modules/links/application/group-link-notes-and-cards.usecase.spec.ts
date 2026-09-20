@@ -15,18 +15,25 @@ import {
   FRONTEND,
   STRANGER,
 } from './testing/comments-test-harness';
-import { InMemoryOutbox } from './testing/links-test-doubles';
+import {
+  InMemoryOutbox,
+  TestPublicUrls,
+} from './testing/links-test-doubles';
 
 // La tarjeta del grupo (tareas 3.5 y 3.6), la nota al compartir (3.7), quitar la nota (3.8) y quitar un link con sus
 // comentarios (3.9) de group-comments, con los dobles en memoria.
 
 let harness: CommentsHarness;
 
+/** Las URLs públicas de un test: los mismos orígenes que `.env.example`. */
+const urls = new TestPublicUrls();
+
 beforeEach(() => {
   harness = new CommentsHarness();
 });
 
 const url = (index: number) => `https://empresa.example/careers/${index}`;
+
 
 describe('ListGroupLinks with notes and comments (3.5)', () => {
   it('Tarjeta con tres comentarios: count 3 and the two newest, newest first', async () => {
@@ -266,6 +273,7 @@ describe('SaveLink with a note (3.7)', () => {
       harness.membership,
       harness.directory,
       harness.limiter,
+      urls,
       harness.clock,
     );
     const request = {
