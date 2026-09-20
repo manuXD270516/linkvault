@@ -161,15 +161,18 @@ describe('worker configuration', () => {
       S3_ENDPOINT: 'http://localhost:9000',
       S3_REGION: 'us-east-1',
       S3_SNAPSHOTS_BUCKET: 'snapshots',
+      S3_BUCKET: 'cvs',
+      CV_EXTRACTION_TIMEOUT_MS: 30_000,
+      CV_EXTRACT_CONCURRENCY: 1,
     });
   });
 
-  it('requires the object storage variables it reads, and only those', () => {
+  it('requires the object storage variables, the CV bucket included', () => {
     const result = parseEnv(workerConfigSchema, {
       ...readEnvExample(),
       S3_ENDPOINT: undefined,
       S3_SNAPSHOTS_BUCKET: undefined,
-      // El bucket de CVs no lo lee nadie todavía: su ausencia no impide arrancar.
+      // Desde `cv-upload-extract` el worker lee el archivo del CV y lo borra: su bucket también es obligatorio.
       S3_BUCKET: undefined,
     });
 
@@ -178,7 +181,41 @@ describe('worker configuration', () => {
       invalid: [
         { name: 'S3_ENDPOINT', reason: 'missing' },
         { name: 'S3_SNAPSHOTS_BUCKET', reason: 'missing' },
+        { name: 'S3_BUCKET', reason: 'missing' },
       ],
+    });
+  });
+
+  it('requires the CV extraction variables', () => {
+    const result = parseEnv(workerConfigSchema, {
+      ...readEnvExample(),
+      CV_EXTRACTION_TIMEOUT_MS: undefined,
+      CV_EXTRACT_CONCURRENCY: undefined,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      invalid: [
+        { name: 'CV_EXTRACTION_TIMEOUT_MS', reason: 'missing' },
+        { name: 'CV_EXTRACT_CONCURRENCY', reason: 'missing' },
+      ],
+    });
+  });
+
+  it.each([
+    ['CV_EXTRACTION_TIMEOUT_MS', '999'],
+    ['CV_EXTRACTION_TIMEOUT_MS', '120001'],
+    ['CV_EXTRACT_CONCURRENCY', '0'],
+    ['CV_EXTRACT_CONCURRENCY', '5'],
+  ])('rejects %s=%s naming the variable', (name, value) => {
+    const result = parseEnv(workerConfigSchema, {
+      ...readEnvExample(),
+      [name]: value,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      invalid: [{ name, reason: 'invalid' }],
     });
   });
 

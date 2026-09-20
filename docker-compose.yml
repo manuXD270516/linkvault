@@ -75,16 +75,25 @@ services:
       - '${MINIO_CONSOLE_PORT:-9001}:9001'
     volumes:
       - minio-data:/data
-    # El healthcheck crea el bucket de snapshots (D12 de link-enrichment, ADR-022) de forma idempotente y solo da
-    # "healthy" con el bucket y su regla de expiración puestos, igual que el de mongo con el replica set:
-    # - la comprobación normal es un `ilm rule ls`, que solo lee; falla tanto si el bucket no existe como si no
-    #   tiene configuración de ciclo de vida, y solo entonces se crea el bucket y se importa la regla.
+    # El healthcheck crea **los dos buckets** de forma idempotente y solo da "healthy" con los dos puestos, igual que
+    # el de mongo con el replica set:
+    # - snapshots (D12 de link-enrichment, ADR-022): la comprobación normal es un `ilm rule ls`, que solo lee; falla
+    #   tanto si el bucket no existe como si no tiene configuración de ciclo de vida, y solo entonces se crea el
+    #   bucket y se importa la regla.
     # - `mb --ignore-existing` no falla con el bucket ya creado e `ilm rule import` **reemplaza** la configuración
     #   entera, así que repetirlo deja una sola regla; `ilm rule add` acumularía una por arranque.
     # - la expiración a 30 días no es decorativa: el bucket guarda páginas completas y su razón de ser es poder
     #   construir después el golden real sin volver a pedirle nada al sitio, que no necesita historia infinita.
+    # - cv (D6 de cv-upload-extract, ADR-028 §1): **sin** regla de expiración —un CV no caduca solo, y borrarlo por
+    #   un temporizador sería destruir datos de una persona— y **sin** política anónima, que es la que abriría los
+    #   bytes del dato más personal del producto a cualquiera con la URL. `mb` crea el bucket privado por defecto,
+    #   así que no hay nada que poner: lo que hace falta es no ponerlo. El nombre por defecto es `cvs` y no `cv`
+    #   porque S3 (y MinIO con él) exige entre 3 y 63 caracteres.
+    # - las dos comprobaciones son **conjunciones independientes**, no una sola cadena: con un volumen que ya tenía
+    #   el bucket de snapshots, la primera pasa y, si colgara de ella, el de CV no llegaría a crearse nunca. Quien ya
+    #   tenía el proyecto levantado no vería el bucket nuevo y lo descubriría con un `500` al subir su CV.
     # - se hace aquí y no en un contenedor de un solo uso porque `docker compose up -d --wait` da por fallido un
-    #   servicio que termina, aunque termine bien, y entonces `--wait` no garantizaría que el bucket ya existe.
+    #   servicio que termina, aunque termine bien, y entonces `--wait` no garantizaría que los buckets ya existen.
     healthcheck:
       test:
         - CMD-SHELL
@@ -93,7 +102,9 @@ services:
           { mc ilm rule ls admin/${S3_SNAPSHOTS_BUCKET:-snapshots} > /dev/null 2>&1 ||
           { mc mb --ignore-existing admin/${S3_SNAPSHOTS_BUCKET:-snapshots} &&
           echo '{"Rules":[{"ID":"expire-snapshots-30d","Status":"Enabled","Expiration":{"Days":30},"Filter":{}}]}'
-          | mc ilm rule import admin/${S3_SNAPSHOTS_BUCKET:-snapshots}; }; }
+          | mc ilm rule import admin/${S3_SNAPSHOTS_BUCKET:-snapshots}; }; } &&
+          { mc ls admin/${S3_BUCKET:-cvs} > /dev/null 2>&1 ||
+          mc mb --ignore-existing admin/${S3_BUCKET:-cvs}; }
       interval: 5s
       timeout: 5s
       retries: 10

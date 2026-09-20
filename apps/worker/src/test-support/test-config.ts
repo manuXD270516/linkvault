@@ -50,6 +50,11 @@ export async function workerTestConfig(
     S3_ACCESS_KEY: 'test-access-key',
     S3_SECRET_KEY: 'test-secret-key',
     S3_SNAPSHOTS_BUCKET: 'snapshots',
+    S3_BUCKET: 'cvs',
+    // Lectura del CV: el plazo se acorta porque en los tests los extractores son dobles y nadie debe esperar de
+    // verdad; la concurrencia es la de `.env.example`.
+    CV_EXTRACTION_TIMEOUT_MS: 1_000,
+    CV_EXTRACT_CONCURRENCY: 1,
     ...overrides,
   };
 }

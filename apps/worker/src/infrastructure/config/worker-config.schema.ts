@@ -6,8 +6,8 @@ const positiveInt = z.coerce.number().int();
 /**
  * Configuración de `worker` (D8 de bootstrap-monorepo). Igual que la de `api` salvo el puerto: el worker
  * solo escucha en `WORKER_HEALTH_PORT` para exponer su salud (D9). Todas obligatorias salvo `APP_VERSION`.
- * El worker es quien lee las `S3_*` que usa (las del snapshot, D12 de link-enrichment); `S3_BUCKET`, el de los CVs,
- * sigue solo en `.env.example` hasta que el módulo `cv` lo lea.
+ * El worker lee **todas** las `S3_*`: las del snapshot del enriquecimiento (D12 de link-enrichment) y `S3_BUCKET`,
+ * el de los CV, desde que el módulo `cv` lee el archivo para extraer su texto y lo borra (ADR-028 §7 y §8).
  */
 export const workerConfigSchema = z
   .object({
@@ -67,7 +67,7 @@ export const workerConfigSchema = z
     ENRICH_MAX_DEFERRALS: positiveInt.min(1).max(10_000),
     // --- Almacenamiento de objetos (D12 de link-enrichment, ADR-022) ---
     // Endpoint compatible con S3: MinIO en local y cualquier proveedor S3 en producción, que es lo que permite a
-    // `deploy-prod` cambiar de proveedor sin tocar código. `S3_BUCKET` (CVs) no se valida: nadie lo lee todavía.
+    // `deploy-prod` cambiar de proveedor sin tocar código.
     S3_ENDPOINT: z.string().regex(/^https?:\/\/\S+$/),
     // MinIO la ignora, pero la firma de la petición la exige.
     S3_REGION: z.string().min(1),
@@ -75,6 +75,17 @@ export const workerConfigSchema = z
     S3_SECRET_KEY: z.string().min(1),
     // Bucket de las copias comprimidas de la página descargada, con expiración a 30 días (la crea `minio-init`).
     S3_SNAPSHOTS_BUCKET: z.string().min(1),
+    // Bucket de los CV, privado y sin expiración. El worker es el **único** lector de esos bytes (ADR-028 §5) y
+    // quien los borra desde `delete-cv-file`. S3 exige de 3 a 63 caracteres en el nombre.
+    S3_BUCKET: z.string().min(3).max(63),
+    // --- Lectura del CV (D9 de cv-upload-extract, ADR-028 §7) ---
+    // Plazo de la extracción entera: un PDF malformado puede tener a un parser dando vueltas. Vencido, el CV queda
+    // en `failed` con `unreadable_file`. Por debajo de un segundo ningún PDF real da tiempo a abrirse; por encima de
+    // dos minutos el `lockDuration` del consumidor pasaría de lo razonable y un CV "en lectura" duraría demasiado.
+    CV_EXTRACTION_TIMEOUT_MS: positiveInt.min(1_000).max(120_000),
+    // Extracciones a la vez. El parseo es trabajo de CPU en el hilo principal: con 1, un PDF pesado retrasa al
+    // siguiente CV y no a todo el worker. El tope de 4 existe para que subirlo sea una decisión y no un descuido.
+    CV_EXTRACT_CONCURRENCY: positiveInt.min(1).max(4),
   })
   // Cada issue lleva `path` con la variable: `parseEnv` descarta los issues que no nombran ninguna.
   .superRefine((config, ctx) => {

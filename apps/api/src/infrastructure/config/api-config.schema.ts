@@ -20,8 +20,7 @@ export const AUTH_JWT_SECRET_EXAMPLE =
 
 /**
  * Configuración de `api` (D8 de bootstrap-monorepo). Todas obligatorias salvo `APP_VERSION`, que inyecta el
- * build y tiene como respaldo la versión de `package.json` (D9). Las variables de MinIO (`S3_*`) están en
- * `.env.example` pero no se validan hasta que algún código las lea. La configuración de IA (`AI_*`, `OLLAMA_*`,
+ * build y tiene como respaldo la versión de `package.json` (D9). La configuración de IA (`AI_*`, `OLLAMA_*`,
  * `OPENROUTER_*`) no se valida aquí sino con `parseAiConfig` de `@linkvault/ai` en `loadApiConfigOrExit`, igual que
  * en el worker (D1 de paste-job-description).
  */
@@ -77,6 +76,17 @@ export const apiConfigSchema = z
     // Origen del SPA: la vista pública `/oferta/:slug` a la que salta la página y la imagen fija de las tarjetas. En
     // producción pueden apuntar al mismo origen; se declaran las dos porque hoy se sirven aparte.
     WEB_BASE_URL: publicBaseUrl,
+    // --- Almacenamiento de objetos (ADR-006, ADR-028 §1) ---
+    // `api` sube el archivo del CV y nada más: no lo lee, no lo borra y no emite ninguna URL para alcanzarlo. Las
+    // cinco son obligatorias porque sin ellas la subida respondería `500` en la primera petición, y un proceso que
+    // arranca sabiendo que no puede cumplir su trabajo es peor que uno que se niega a arrancar (Migration Plan).
+    S3_ENDPOINT: z.string().regex(/^https?:\/\/\S+$/),
+    // MinIO la ignora, pero la firma de la petición la exige.
+    S3_REGION: z.string().min(1),
+    S3_ACCESS_KEY: z.string().min(1),
+    S3_SECRET_KEY: z.string().min(1),
+    // Bucket de los CV, privado y sin expiración (lo crea `docker compose`). S3 exige de 3 a 63 caracteres.
+    S3_BUCKET: z.string().min(3).max(63),
   })
   // Cada issue lleva `path` con la variable: `parseEnv` descarta los issues que no nombran ninguna.
   .superRefine((config, ctx) => {

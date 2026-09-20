@@ -133,6 +133,42 @@ describe('api configuration', () => {
     expect(example['WEB_BASE_URL']).toBe('http://localhost:4200');
   });
 
+  // El bucket de CV es obligatorio para la API (spec `platform/local-environment`): sin él la subida respondería
+  // `500` en la primera petición, así que el proceso se niega a arrancar nombrando la variable y sin su valor.
+  it.each([
+    'S3_ENDPOINT',
+    'S3_REGION',
+    'S3_ACCESS_KEY',
+    'S3_SECRET_KEY',
+    'S3_BUCKET',
+  ])('refuses to start without %s', (name) => {
+    const result = parseEnv(apiConfigSchema, {
+      ...readEnvExample(),
+      [name]: undefined,
+    });
+
+    expect(result).toEqual({ ok: false, invalid: [{ name, reason: 'missing' }] });
+  });
+
+  it('rejects a CV bucket name that S3 would not accept', () => {
+    const result = parseEnv(apiConfigSchema, {
+      ...readEnvExample(),
+      S3_BUCKET: 'cv',
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      invalid: [{ name: 'S3_BUCKET', reason: 'invalid' }],
+    });
+  });
+
+  it('takes the object storage settings from .env.example', () => {
+    const example = readEnvExample();
+
+    expect(example['S3_ENDPOINT']).toBe('http://localhost:9000');
+    expect(example['S3_BUCKET']).toBe('cvs');
+  });
+
   it('exits with code 1 naming AI_CHAIN and the unknown provider in a single line', () => {
     const exit = vi.spyOn(process, 'exit').mockImplementation((code) => {
       throw new ProcessExit(code);
