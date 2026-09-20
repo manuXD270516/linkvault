@@ -28,6 +28,7 @@ import type {
   OutboxEvent,
 } from '../../../infrastructure/outbox/outbox.port';
 import type { TransactionSession } from '../../../infrastructure/outbox/transaction-session';
+import { CvDeletionHooks } from '../application/cv-deletion-hooks';
 import type { NewCvDocument } from '../application/ports/cv-repository.port';
 import { TooManyCvDocuments } from '../domain/errors';
 import {
@@ -53,6 +54,7 @@ import {
 let connection: Connection;
 let repository: MongoCvRepository;
 let outbox: RecordingOutbox;
+let deletionHooks: CvDeletionHooks;
 
 const now = new Date('2026-09-12T10:00:00.000Z');
 const ANA = new mongoose.Types.ObjectId().toHexString();
@@ -103,7 +105,8 @@ beforeAll(async () => {
 
 beforeEach(() => {
   outbox = new RecordingOutbox(connection);
-  repository = new MongoCvRepository(connection, outbox);
+  deletionHooks = new CvDeletionHooks();
+  repository = new MongoCvRepository(connection, outbox, deletionHooks);
 });
 
 afterEach(async () => {
@@ -376,6 +379,60 @@ describe('MongoCvRepository.remove', () => {
     const events = await pendingEvents();
     expect(events.map((event) => event.type)).toEqual(['CvDeleted.v1']);
     expect(events[0]?.payload).toEqual({ cvId: saved.id, userId: ANA });
+  });
+
+  it('runs registered deletion hooks inside the transaction with the session', async () => {
+    const saved = await upload(ANA);
+    const calls: { cvId: string; userId: string; session: unknown }[] = [];
+    deletionHooks.register({
+      deleteRelationsOf: (cvId, userId, session) => {
+        calls.push({ cvId, userId, session });
+        return Promise.resolve();
+      },
+    });
+
+    await expect(repository.remove(saved.id, ANA)).resolves.toBe(true);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.cvId).toBe(saved.id);
+    expect(calls[0]?.userId).toBe(ANA);
+    expect(calls[0]?.session).toBeInstanceOf(mongoose.mongo.ClientSession);
+  });
+
+  it('does not run hooks when the CV was not there', async () => {
+    let runs = 0;
+    deletionHooks.register({
+      deleteRelationsOf: () => {
+        runs += 1;
+        return Promise.resolve();
+      },
+    });
+
+    await expect(
+      repository.remove(new mongoose.Types.ObjectId().toHexString(), ANA),
+    ).resolves.toBe(false);
+    await expect(repository.remove('no-es-un-id', ANA)).resolves.toBe(false);
+
+    expect(runs).toBe(0);
+  });
+
+  it('undoes the whole deletion when a hook fails', async () => {
+    const saved = await upload(ANA);
+    deletionHooks.register({
+      deleteRelationsOf: () => Promise.reject(new Error('the hook failed')),
+    });
+
+    await expect(repository.remove(saved.id, ANA)).rejects.toThrow(
+      'the hook failed',
+    );
+
+    await expect(repository.findOwned(saved.id, ANA)).resolves.not.toBeNull();
+    await expect(
+      connection.collection(OUTBOX_EVENTS_COLLECTION).countDocuments({
+        type: 'CvDeleted.v1',
+        'payload.cvId': saved.id,
+      }),
+    ).resolves.toBe(0);
   });
 });
 

@@ -1,3 +1,4 @@
+import { ApplicationFitScores } from '../application-fit-scores';
 import { ChangeApplicationStatus } from '../change-application-status.usecase';
 import { GetApplicationTimeline } from '../get-application-timeline.usecase';
 import { ListGroupTrackers } from '../list-group-trackers.usecase';
@@ -22,6 +23,7 @@ export interface ApplicationsHarness {
   readonly links: InMemoryApplicationLinks;
   readonly groups: InMemoryApplicationGroups;
   readonly directory: InMemoryApplicationUserDirectory;
+  readonly fitScores: ApplicationFitScores;
   readonly trackLink: TrackLink;
   readonly changeStatus: ChangeApplicationStatus;
   readonly update: UpdateApplication;
@@ -37,18 +39,25 @@ export function applicationsHarness(): ApplicationsHarness {
   const links = new InMemoryApplicationLinks();
   const groups = new InMemoryApplicationGroups();
   const directory = new InMemoryApplicationUserDirectory();
+  const fitScores = new ApplicationFitScores();
   return {
     clock,
     repository,
     links,
     groups,
     directory,
-    trackLink: new TrackLink(repository, links, clock),
-    changeStatus: new ChangeApplicationStatus(repository, links, clock),
-    update: new UpdateApplication(repository, links, clock),
+    fitScores,
+    trackLink: new TrackLink(repository, links, clock, fitScores),
+    changeStatus: new ChangeApplicationStatus(
+      repository,
+      links,
+      clock,
+      fitScores,
+    ),
+    update: new UpdateApplication(repository, links, clock, fitScores),
     timeline: new GetApplicationTimeline(repository),
     untrack: new UntrackApplication(repository),
-    listMine: new ListMyApplications(repository, links),
+    listMine: new ListMyApplications(repository, links, fitScores),
     trackers: new ListGroupTrackers(groups, links, repository, directory),
   };
 }

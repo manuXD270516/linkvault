@@ -1,6 +1,7 @@
 import { CV_TEXT_PREVIEW_CHARS } from '@linkvault/shared';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { CvNotFound, TooManyCvAttempts } from '../domain/errors';
+import { CvAnalysisCounts } from './cv-analysis-counts';
 import { DeleteCv } from './delete-cv.usecase';
 import { GetCvTextPreview } from './get-cv-text-preview.usecase';
 import { ListMyCvs } from './list-my-cvs.usecase';
@@ -22,6 +23,7 @@ const BETO = '66e9a0000000000000000b01';
 let repository: InMemoryCvRepository;
 let limiter: InMemoryCvLimiter;
 let clock: MovableClock;
+let analysisCounts: CvAnalysisCounts;
 let upload: UploadCv;
 let list: ListMyCvs;
 let setDefault: SetDefaultCv;
@@ -32,10 +34,11 @@ beforeEach(() => {
   repository = new InMemoryCvRepository();
   limiter = new InMemoryCvLimiter();
   clock = new MovableClock();
+  analysisCounts = new CvAnalysisCounts();
   upload = new UploadCv(repository, new InMemoryCvFileStore(), limiter, clock);
-  list = new ListMyCvs(repository);
-  setDefault = new SetDefaultCv(repository);
-  remove = new DeleteCv(repository);
+  list = new ListMyCvs(repository, analysisCounts);
+  setDefault = new SetDefaultCv(repository, analysisCounts);
+  remove = new DeleteCv(repository, analysisCounts);
   preview = new GetCvTextPreview(repository, limiter);
 });
 

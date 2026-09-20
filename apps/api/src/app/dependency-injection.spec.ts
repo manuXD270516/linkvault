@@ -121,9 +121,9 @@ describe('PROVIDER_ELIGIBILITY in the API process', () => {
 });
 
 describe('MatchModule in the API process', () => {
-  it('is documented in match.controller.spec wiring suite (task 10.10)', () => {
-    // Cableado completo (use cases + ports + rutas 401) vive junto al HTTP del módulo para no duplicar
-    // el arranque de AppModule: ver "MatchModule wiring and public inventory (10.10)".
+  it('is documented in match.controller.spec wiring suite (task 10.10 / 11.4)', () => {
+    // Cableado completo (use cases + ports + registros de CvDeletionHooks / CvAnalysisCounts + rutas 401)
+    // vive junto al HTTP del módulo: ver "MatchModule wiring and public inventory (10.10)".
     expect(true).toBe(true);
   });
 });

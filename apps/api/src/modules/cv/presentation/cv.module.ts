@@ -3,6 +3,8 @@ import type { ApiConfig } from '../../../infrastructure/config/api-config.schema
 import { APP_CONFIG } from '../../../infrastructure/config/app-config.module';
 import { LimitsModule } from '../../../infrastructure/limits/limits.module';
 import { OutboxModule } from '../../../infrastructure/outbox/outbox.module';
+import { CvAnalysisCounts } from '../application/cv-analysis-counts';
+import { CvDeletionHooks } from '../application/cv-deletion-hooks';
 import { DeleteCv } from '../application/delete-cv.usecase';
 import { GetCvTextPreview } from '../application/get-cv-text-preview.usecase';
 import { ListMyCvs } from '../application/list-my-cvs.usecase';
@@ -27,9 +29,11 @@ import { CvController } from './cv.controller';
  * `MongooseModule.forRoot*`.
  *
  * No depende de ningún otro módulo de dominio. Exporta `CvFacade` para que `match` lea metadatos (estado de
- * extracción, marca por defecto) sin el texto: el texto del CV lo leerá el worker. Lo que sí toma de plataforma son dos
- * contratos compartidos: el **outbox** (`OUTBOX`, el mismo token que usa `links`) y el **contador de ventana fija**,
- * sobre el que `cv` declara su propio puerto con sus tres claves.
+ * extracción, marca por defecto) sin el texto: el texto del CV lo leerá el worker. También exporta `CvDeletionHooks` y
+ * `CvAnalysisCounts` para que `match` registre la purga atómica y el recuento en su `onModuleInit` (ADR-030 §4) sin que
+ * `cv` importe a nadie. Lo que sí toma de plataforma son dos contratos compartidos: el **outbox** (`OUTBOX`, el mismo
+ * token que usa `links`) y el **contador de ventana fija**, sobre el que `cv` declara su propio puerto con sus tres
+ * claves.
  *
  * **`@linkvault/ai` no entra aquí, y eso es una regla, no un olvido**: este change no manda ningún CV a ninguna IA, y
  * un test de imports lo comprueba.
@@ -55,6 +59,8 @@ import { CvController } from './cv.controller';
           }),
         ),
     },
+    CvDeletionHooks,
+    CvAnalysisCounts,
     CvFacade,
     UploadCv,
     ListMyCvs,
@@ -62,6 +68,6 @@ import { CvController } from './cv.controller';
     DeleteCv,
     GetCvTextPreview,
   ],
-  exports: [CvFacade],
+  exports: [CvFacade, CvDeletionHooks, CvAnalysisCounts],
 })
 export class CvModule {}

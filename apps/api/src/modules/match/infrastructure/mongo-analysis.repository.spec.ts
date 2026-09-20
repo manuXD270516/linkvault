@@ -594,3 +594,69 @@ describe('MongoAnalysisRepository.removeByCv / countByCv', () => {
     expect(counts.get(CV)).toBe(1);
   });
 });
+
+describe('MongoAnalysisRepository.findLatestDoneFitScores', () => {
+  it('sigue al último, no al mejor', async () => {
+    await seedDone({
+      finishedAt: new Date(NOW.getTime() + 1_000),
+      report: fullReport({ score: 90 }),
+    });
+    await seedDone({
+      finishedAt: new Date(NOW.getTime() + 5_000),
+      report: fullReport({ score: 55 }),
+    });
+
+    const scores = await repository.findLatestDoneFitScores(ANA, [
+      LINK,
+      OTHER_LINK,
+    ]);
+
+    expect(scores.get(LINK)).toEqual({ score: 55, degraded: false });
+    expect(scores.has(OTHER_LINK)).toBe(false);
+  });
+
+  it('Un análisis fallido no borra la puntuación anterior', async () => {
+    await seedDone({
+      finishedAt: new Date(NOW.getTime() + 1_000),
+      report: fullReport({ score: 78 }),
+    });
+    await seedFailed(new Date(NOW.getTime() + 10_000));
+    await createRunning({ requestedAt: new Date(NOW.getTime() + 11_000) });
+
+    const scores = await repository.findLatestDoneFitScores(ANA, [LINK]);
+
+    expect(scores.get(LINK)).toEqual({ score: 78, degraded: false });
+  });
+
+  it('marks a degraded latest without dropping the raw score from the map', async () => {
+    await seedDone({
+      finishedAt: new Date(NOW.getTime() + 1_000),
+      report: fullReport({ score: 78 }),
+    });
+    await seedDone({
+      finishedAt: new Date(NOW.getTime() + 5_000),
+      degraded: true,
+      degradedReason: 'no_providers',
+      report: fullReport({
+        score: 41,
+        degraded: true,
+        degradedReason: 'no_providers',
+      }),
+    });
+
+    const scores = await repository.findLatestDoneFitScores(ANA, [LINK]);
+
+    expect(scores.get(LINK)).toEqual({ score: 41, degraded: true });
+  });
+
+  it('ignores another person on the same link', async () => {
+    await seedDone({
+      finishedAt: new Date(NOW.getTime() + 1_000),
+      report: fullReport({ score: 78 }),
+    });
+
+    await expect(
+      repository.findLatestDoneFitScores(BETO, [LINK]),
+    ).resolves.toEqual(new Map());
+  });
+});

@@ -317,10 +317,10 @@ describe('changeStatus', () => {
     ).toThrow(InvalidStageLabel);
   });
 
-  it('keeps notes, visibility, fitScore and the creation date of the application', () => {
+  it('keeps notes, visibility and the creation date; never writes a score', () => {
     const change = changed(
       changeStatus(
-        existing({ notes: 'nota', visibility: 'group', fitScore: 80 }),
+        existing({ notes: 'nota', visibility: 'group' }),
         { status: 'applied' },
         NOW,
       ),
@@ -329,10 +329,11 @@ describe('changeStatus', () => {
     expect(change.next).toMatchObject({
       notes: 'nota',
       visibility: 'group',
-      fitScore: 80,
       createdAt: CREATED,
     });
+    expect(change.next).not.toHaveProperty('fitScore');
     expect(change.write).not.toHaveProperty('fitScore');
+    expect(change.write).not.toHaveProperty('fitScoreDegraded');
   });
 });
 
@@ -347,6 +348,20 @@ describe('editApplication', () => {
       notes: 'Piden inglés C1; escribir a RR. HH. el lunes',
       updatedAt: NOW,
     });
+  });
+
+  it('never writes a fit score', () => {
+    const write = editApplication(
+      { notes: 'x', visibility: 'group' },
+      NOW,
+    );
+    expect(write).not.toHaveProperty('fitScore');
+    expect(write).not.toHaveProperty('fitScoreDegraded');
+    expect(Object.keys(write).sort()).toEqual([
+      'notes',
+      'updatedAt',
+      'visibility',
+    ]);
   });
 
   it('Una nota no es un avance: no toca la versión ni statusChangedAt', () => {

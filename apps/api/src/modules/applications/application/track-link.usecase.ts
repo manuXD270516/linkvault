@@ -2,6 +2,7 @@ import type { TrackLinkRequest, TrackLinkResponse } from '@linkvault/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import { startTracking } from '../domain/application.entity';
 import { TrackedLinkNotFound } from '../domain/errors';
+import { ApplicationFitScores } from './application-fit-scores';
 import { respondWithCard } from './respond-with-card';
 import {
   APPLICATION_LINKS,
@@ -26,6 +27,7 @@ export class TrackLink {
     private readonly applications: ApplicationRepository,
     @Inject(APPLICATION_LINKS) private readonly links: ApplicationLinks,
     @Inject(APPLICATIONS_CLOCK) private readonly clock: Clock,
+    private readonly fitScores: ApplicationFitScores,
   ) {}
 
   async execute(
@@ -49,7 +51,11 @@ export class TrackLink {
     });
     const { application, created } = await this.applications.create(tracking);
     return {
-      application: await respondWithCard(this.links, application),
+      application: await respondWithCard(
+        this.links,
+        this.fitScores,
+        application,
+      ),
       created,
     };
   }

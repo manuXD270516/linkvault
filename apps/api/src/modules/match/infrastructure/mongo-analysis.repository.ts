@@ -11,6 +11,7 @@ import {
 import { OUTBOX, type Outbox } from '../../../infrastructure/outbox/outbox.port';
 import type { TransactionSession } from '../../../infrastructure/outbox/transaction-session';
 import type {
+  AnalysisFitScore,
   AnalysisRepository,
   CreateRunningAnalysisInput,
   QuotaCount,
@@ -360,6 +361,59 @@ export class MongoAnalysisRepository implements AnalysisRepository {
       counts.set(row._id.toHexString(), row.count);
     }
     return counts;
+  }
+
+  async findLatestDoneFitScores(
+    userId: string,
+    linkIds: readonly string[],
+  ): Promise<ReadonlyMap<string, AnalysisFitScore>> {
+    const scores = new Map<string, AnalysisFitScore>();
+    if (linkIds.length === 0) {
+      return scores;
+    }
+    const owner = toUserObjectId(userId);
+    if (owner === null) {
+      return scores;
+    }
+    const links = linkIds
+      .map((id) => toLinkObjectId(id))
+      .filter((id): id is Types.ObjectId => id !== null);
+    if (links.length === 0) {
+      return scores;
+    }
+
+    const rows = await this.analyses
+      .aggregate<{
+        _id: Types.ObjectId;
+        score: number;
+        degraded: boolean | null;
+      }>([
+        {
+          $match: {
+            userId: owner,
+            linkId: { $in: links },
+            status: 'done',
+            'report.score': { $type: 'number' },
+          },
+        },
+        { $sort: { finishedAt: -1 } },
+        {
+          $group: {
+            _id: '$linkId',
+            score: { $first: '$report.score' },
+            degraded: { $first: '$degraded' },
+          },
+        },
+      ])
+      .exec();
+
+    for (const row of rows) {
+      scores.set(row._id.toHexString(), {
+        score: row.score,
+        degraded: row.degraded === true,
+      });
+    }
+    return scores;
   }
 
   private async withTransaction<T>(

@@ -23,7 +23,10 @@ import {
   type MatchTestApp,
   type TestPerson,
 } from '../../../test-support/match-test-app';
+import { ApplicationFitScores } from '../../applications/application/application-fit-scores';
 import { LinksModule } from '../../links/presentation/links.module';
+import { CvAnalysisCounts } from '../../cv/application/cv-analysis-counts';
+import { CvDeletionHooks } from '../../cv/application/cv-deletion-hooks';
 import { ANALYSIS_REPOSITORY } from '../application/ports/analysis-repository.port';
 import { MATCH_AI_CONSENT } from '../application/ports/ai-consent.port';
 import { MATCH_CLOCK } from '../application/ports/clock.port';
@@ -938,6 +941,21 @@ describe('MatchModule wiring and public inventory (10.10)', () => {
     expect(app.get(MATCH_CLOCK, { strict: false })).toBeInstanceOf(
       SystemMatchClock,
     );
+  });
+
+  it('registers CV deletion purge, analysis-count and fit-score readers on init', async () => {
+    const hooks = app.get(CvDeletionHooks, { strict: false });
+    const counts = app.get(CvAnalysisCounts, { strict: false });
+    const fitScores = app.get(ApplicationFitScores, { strict: false });
+    expect(hooks.size).toBeGreaterThanOrEqual(1);
+    // El lector real está cableado: un userId mal formado no revienta y devuelve mapa (no el default silencioso a medias).
+    await expect(
+      counts.countsByCv('66e9a0000000000000000a01'),
+    ).resolves.toBeInstanceOf(Map);
+    expect(fitScores.registered).toBe(true);
+    await expect(
+      fitScores.scoresFor('66e9a0000000000000000a01', []),
+    ).resolves.toEqual(new Map());
   });
 
   it('shares the one LinksModule that AppModule builds', () => {

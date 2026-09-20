@@ -16,6 +16,7 @@ import {
 } from 'mongoose';
 import { duplicateKeyIs } from '../../../infrastructure/mongo/duplicate-key';
 import { OUTBOX, type Outbox } from '../../../infrastructure/outbox/outbox.port';
+import { CvDeletionHooks } from '../application/cv-deletion-hooks';
 import type {
   CvRepository,
   CvTextPreviewRead,
@@ -96,6 +97,7 @@ export class MongoCvRepository implements CvRepository {
   constructor(
     @Inject(getConnectionToken()) private readonly connection: Connection,
     @Inject(OUTBOX) private readonly outbox: Outbox,
+    private readonly deletionHooks: CvDeletionHooks,
   ) {
     this.cvs = modelOf(connection, CV_DOCUMENT_MODEL_NAME, cvDocumentSchema);
     this.counters = modelOf(
@@ -278,6 +280,10 @@ export class MongoCvRepository implements CvRepository {
         // Sin CV no hay historia de versiones que respetar: la numeración de esa persona vuelve a empezar en 1.
         await this.counters.deleteOne({ _id: userId }).session(session).exec();
       }
+      // ADR-030 §4: los análisis (con texto literal del CV) se purgan **aquí**, en la misma transacción. Un oyente
+      // in-process de `cv.deleted` sería un dual-write: si el proceso muere entre el commit y el oyente, los análisis
+      // sobrevivirían sin reintento ni rastro.
+      await this.deletionHooks.runAll(cvId, userId, session);
       await this.outbox.append(cvDeletedEvent({ cvId, userId }), session);
       return true;
     });

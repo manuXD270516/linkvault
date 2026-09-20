@@ -5,6 +5,7 @@ import type {
 import { Inject, Injectable } from '@nestjs/common';
 import { editApplication } from '../domain/application.entity';
 import { ApplicationNotFound } from '../domain/errors';
+import { ApplicationFitScores } from './application-fit-scores';
 import { respondWithCard } from './respond-with-card';
 import {
   APPLICATION_LINKS,
@@ -28,6 +29,7 @@ export class UpdateApplication {
     private readonly applications: ApplicationRepository,
     @Inject(APPLICATION_LINKS) private readonly links: ApplicationLinks,
     @Inject(APPLICATIONS_CLOCK) private readonly clock: Clock,
+    private readonly fitScores: ApplicationFitScores,
   ) {}
 
   async execute(
@@ -52,6 +54,6 @@ export class UpdateApplication {
     if (updated === null) {
       throw new ApplicationNotFound();
     }
-    return await respondWithCard(this.links, updated);
+    return await respondWithCard(this.links, this.fitScores, updated);
   }
 }

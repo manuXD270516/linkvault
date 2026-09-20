@@ -7,7 +7,10 @@ import type { CvDocumentEntity } from '../domain/cv-document';
 //
 // Un `...document` aquí aguantaría hoy y se rompería el día que la colección gane un campo.
 
-export function toCvResponse(document: CvDocumentEntity): CvDocumentResponse {
+export function toCvResponse(
+  document: CvDocumentEntity,
+  matchAnalysesCount = 0,
+): CvDocumentResponse {
   return {
     id: document.id,
     fileName: document.fileName,
@@ -26,7 +29,17 @@ export function toCvResponse(document: CvDocumentEntity): CvDocumentResponse {
         ? {}
         : { extractedAt: document.extraction.extractedAt.toISOString() }),
     },
-    // Contador real en la tarea 11.5; hasta entonces el contrato exige el campo presente (≥ 0).
-    matchAnalysesCount: 0,
+    // `0` es legítimo: el campo siempre viaja; del análisis solo sale cuántos son (tarea 11.5).
+    matchAnalysesCount,
   };
+}
+
+/** Aplica el recuento por CV; ausente en el mapa → `0`. */
+export function toCvResponses(
+  documents: readonly CvDocumentEntity[],
+  countsByCv: ReadonlyMap<string, number>,
+): CvDocumentResponse[] {
+  return documents.map((document) =>
+    toCvResponse(document, countsByCv.get(document.id) ?? 0),
+  );
 }

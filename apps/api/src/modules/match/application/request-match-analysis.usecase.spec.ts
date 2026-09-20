@@ -622,6 +622,7 @@ describe('RequestMatchAnalysis — derived quota (9.9)', () => {
       'countForQuota',
       'removeByCv',
       'countByCv',
+      'findLatestDoneFitScores',
     ] as const satisfies readonly (keyof AnalysisRepository)[];
     expect(portKeys).not.toContain('increment');
   });

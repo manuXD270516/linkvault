@@ -90,7 +90,7 @@ export interface SeededOffer {
   readonly previewVersion: number;
 }
 
-﻿export interface MatchTestApp {
+export interface MatchTestApp {
   readonly app: NestFastifyApplication;
   readonly connection: Connection;
   readonly files: InMemoryCvFileStore;
@@ -235,7 +235,7 @@ export async function createMatchTestApp(
     strict: false,
   });
 
-﻿  const request: MatchTestApp['request'] = (method, url, requestOptions = {}) =>
+  const request: MatchTestApp['request'] = (method, url, requestOptions = {}) =>
     app.inject({
       method,
       url,
@@ -370,7 +370,7 @@ export async function createMatchTestApp(
     return { linkId: linkId.toHexString(), previewVersion };
   };
 
-﻿  const shareInGroup: MatchTestApp['shareInGroup'] = async (
+  const shareInGroup: MatchTestApp['shareInGroup'] = async (
     owner,
     member,
     linkId,

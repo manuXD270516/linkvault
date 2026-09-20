@@ -48,7 +48,7 @@ import {
 // - Dejar de seguir: `deleteOne({ _id, userId })` y `deleteMany({ applicationId })` en una transacción, sin tocar los
 //   eventos si no se borró nada.
 // - Un identificador mal formado no llega a Mongo: responde `null`, `false` o nada, nunca CastError.
-// - Ningún `$set` escribe `fitScore` (D9).
+// - Ningún `$set` escribe puntuación: `fitScore` no vive en el documento (D11).
 
 /** Intentos de la transacción de alta: el segundo solo si la relectura tras el choque no encontró nada (D5). */
 export const MAX_TRACK_ATTEMPTS = 2;
@@ -421,9 +421,6 @@ export function toApplication(document: ApplicationDocument): Application {
       ? {}
       : { appliedAt: document.appliedAt }),
     statusChangedAt: document.statusChangedAt,
-    ...(typeof document.fitScore === 'number'
-      ? { fitScore: document.fitScore }
-      : {}),
     version: document.version,
     createdAt: document.createdAt,
     updatedAt: document.updatedAt,

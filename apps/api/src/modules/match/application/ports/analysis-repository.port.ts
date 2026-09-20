@@ -32,6 +32,12 @@ export interface QuotaCount {
   readonly oldest?: QuotaOldest;
 }
 
+/** Score + marca del último `done` por link (D11: deriva `fitScore` al leer). */
+export interface AnalysisFitScore {
+  readonly score: number;
+  readonly degraded: boolean;
+}
+
 /** Degradado reutilizable: lo guardado basta para decidir vigencia en 9.6. */
 export interface ReusableDegradedAnalysis {
   readonly analysis: MatchAnalysis;
@@ -120,4 +126,13 @@ export interface AnalysisRepository {
    * Recuento por `cvId` de los análisis de esa persona, **sin traer ningún documento**. Incluye los que no terminaron.
    */
   countByCv(userId: string): Promise<ReadonlyMap<string, number>>;
+
+  /**
+   * Por lote: para cada `linkId`, el `score` y la marca de degradado del **último** análisis `done` por `finishedAt`.
+   * Los `failed`, `running` y vencidos no cuentan. Un link sin `done` no aparece en el mapa.
+   */
+  findLatestDoneFitScores(
+    userId: string,
+    linkIds: readonly string[],
+  ): Promise<ReadonlyMap<string, AnalysisFitScore>>;
 }

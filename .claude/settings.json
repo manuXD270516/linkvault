@@ -1,4 +1,4 @@
-{
+﻿{
   "permissions": {
     "allow": [
       "Bash(pnpm *)", "Bash(npx *)", "Bash(node *)", "Bash(tsx *)",
@@ -19,7 +19,7 @@
   "hooks": {
     "PreToolUse": [
       { "matcher": "Edit|Write|MultiEdit",
-        "hooks": [{ "type": "command", "command": "bash .claude/hooks/require-openspec-change.sh" }] }
+        "hooks": [{ "type": "command", "command": "node .claude/hooks/require-openspec-change.mjs" }] }
     ],
     "Stop": [
       { "hooks": [{ "type": "command", "command": "openspec validate --all 2>&1 | tail -n 10 || true" }] }

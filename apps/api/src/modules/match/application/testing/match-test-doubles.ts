@@ -17,6 +17,7 @@ import { readAnalysis } from '../../domain/expiry';
 import { isCvId, isLinkId, isUserId } from '../../domain/identifier';
 import type { MatchAiConsent } from '../ports/ai-consent.port';
 import type {
+  AnalysisFitScore,
   AnalysisRepository,
   CreateRunningAnalysisInput,
   QuotaCount,
@@ -370,6 +371,46 @@ export class InMemoryAnalysisRepository implements AnalysisRepository {
       counts.set(analysis.cvId, (counts.get(analysis.cvId) ?? 0) + 1);
     }
     return Promise.resolve(counts);
+  }
+
+  findLatestDoneFitScores(
+    userId: string,
+    linkIds: readonly string[],
+  ): Promise<ReadonlyMap<string, AnalysisFitScore>> {
+    const scores = new Map<string, AnalysisFitScore>();
+    if (!isUserId(userId) || linkIds.length === 0) {
+      return Promise.resolve(scores);
+    }
+    const wanted = new Set(linkIds.filter((id) => isLinkId(id)));
+    const latest = new Map<string, MatchAnalysis>();
+    for (const analysis of this.documents.values()) {
+      if (
+        analysis.userId !== userId ||
+        analysis.status !== 'done' ||
+        analysis.report === undefined ||
+        analysis.finishedAt === undefined ||
+        !wanted.has(analysis.linkId)
+      ) {
+        continue;
+      }
+      const previous = latest.get(analysis.linkId);
+      if (
+        previous === undefined ||
+        (previous.finishedAt?.getTime() ?? 0) < analysis.finishedAt.getTime()
+      ) {
+        latest.set(analysis.linkId, analysis);
+      }
+    }
+    for (const [linkId, analysis] of latest) {
+      if (analysis.report === undefined) {
+        continue;
+      }
+      scores.set(linkId, {
+        score: analysis.report.score,
+        degraded: analysis.degraded === true,
+      });
+    }
+    return Promise.resolve(scores);
   }
 }
 
