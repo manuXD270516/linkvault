@@ -1,5 +1,6 @@
 import { createServer, type Server, type Socket } from 'node:net';
 import {
+  ANALYZE_MATCH_QUEUE,
   DELETE_CV_FILE_QUEUE,
   ENRICH_LINK_QUEUE,
   EXTRACT_CV_QUEUE,
@@ -17,8 +18,10 @@ import { apiTestAiConfig, apiTestConfig } from '../../test-support/test-config';
 import { AppConfigModule } from '../config/app-config.module';
 import { MongoPersistenceModule } from '../persistence/mongo-persistence.module';
 import {
+  ANALYZE_MATCH_JOB_OPTIONS,
   OUTBOX_JOB_OPTIONS,
   OutboxQueueErrorLog,
+  outboxJobOptionsFor,
   outboxQueueErrorLogToken,
 } from './outbox-queues';
 import { OUTBOX_QUEUES } from './outbox-routes';
@@ -131,11 +134,12 @@ describe('outbox relay module', () => {
     }).compile();
 
     expect(optionalGet(moduleRef, Queue)).toBeUndefined();
-    // Ninguna de las tres: ni la del enriquecimiento, ni la de la lectura del CV, ni la del borrado de su archivo.
+    // Ninguna de las colas registradas: enriquecimiento, lectura del CV, borrado de su archivo ni análisis.
     for (const name of [
       ENRICH_LINK_QUEUE,
       EXTRACT_CV_QUEUE,
       DELETE_CV_FILE_QUEUE,
+      ANALYZE_MATCH_QUEUE,
     ]) {
       expect(optionalGet(moduleRef, getQueueToken(name))).toBeUndefined();
       expect(
@@ -164,7 +168,7 @@ describe('outbox relay module', () => {
     expect(traffic).not.toMatch(/\$4\r\ninfo\r\n/);
   });
 
-  it('registers the three queues with their error listener and brings its own scheduler', async () => {
+  it('registers every queue with its error listener and brings its own scheduler', async () => {
     const queues = new Map(
       OUTBOX_QUEUES.map((name) => [name, new FakeQueue()] as const),
     );
@@ -187,6 +191,7 @@ describe('outbox relay module', () => {
       ENRICH_LINK_QUEUE,
       EXTRACT_CV_QUEUE,
       DELETE_CV_FILE_QUEUE,
+      ANALYZE_MATCH_QUEUE,
     ]);
     for (const [name, queue] of queues) {
       expect(moduleRef.get(outboxQueueErrorLogToken(name))).toBeDefined();
@@ -206,6 +211,31 @@ describe('outbox relay module', () => {
       removeOnComplete: { age: 86_400, count: 1_000 },
       removeOnFail: { age: 604_800 },
     });
+  });
+
+  it('registers analyze-match without blind retries', () => {
+    // ADR-030 §6: reejecutar el análisis entero multiplicaría los envíos del CV a un proveedor externo.
+    expect(ANALYZE_MATCH_JOB_OPTIONS).toEqual({
+      attempts: 1,
+      removeOnComplete: { age: 86_400, count: 1_000 },
+      removeOnFail: { age: 604_800 },
+    });
+    expect(ANALYZE_MATCH_JOB_OPTIONS.attempts).toBe(1);
+    expect(ANALYZE_MATCH_JOB_OPTIONS).not.toHaveProperty('backoff');
+    expect(outboxJobOptionsFor(ANALYZE_MATCH_QUEUE)).toBe(
+      ANALYZE_MATCH_JOB_OPTIONS,
+    );
+  });
+
+  it('keeps the other queues on the D6 retry options', () => {
+    for (const name of [
+      ENRICH_LINK_QUEUE,
+      EXTRACT_CV_QUEUE,
+      DELETE_CV_FILE_QUEUE,
+    ]) {
+      expect(outboxJobOptionsFor(name)).toBe(OUTBOX_JOB_OPTIONS);
+      expect(outboxJobOptionsFor(name).attempts).toBe(3);
+    }
   });
 
   it('logs queue errors instead of letting them reach the process', () => {

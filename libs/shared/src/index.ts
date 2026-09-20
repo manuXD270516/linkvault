@@ -27,6 +27,7 @@ export * from './links/campaign-params';
 export * from './links/link-label';
 export * from './links/public-http-url';
 export * from './links/public-slug';
+export * from './match/analysis-deadlines';
 export * from './match/match-steps';
 export * from './preview/precedence';
 export * from './preview/preview-draft';

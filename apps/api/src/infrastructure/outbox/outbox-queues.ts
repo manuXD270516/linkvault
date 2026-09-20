@@ -1,14 +1,16 @@
+import { ANALYZE_MATCH_QUEUE } from '@linkvault/shared';
 import { Logger } from '@nestjs/common';
 import type { DefaultJobOptions } from 'bullmq';
 
-// Colas del outbox tal y como las registra `api` (D6 de job-links, D11 de cv-upload-extract). Aquí solo viven su
-// configuración y el listener de errores; quién publica en cada una lo decide la tabla de `outbox-routes`, y quién
-// consume vive en `apps/worker`: `api` no procesa ninguna de estas colas ni monta ninguna `Queue` fuera de aquí.
+// Colas del outbox tal y como las registra `api` (D6 de job-links, D11 de cv-upload-extract, D2 de
+// cv-match-suggestions). Aquí solo viven su configuración y el listener de errores; quién publica en cada una lo
+// decide la tabla de `outbox-routes`, y quién consume vive en `apps/worker`: `api` no procesa ninguna de estas colas
+// ni monta ninguna `Queue` fuera de aquí.
 
 /**
- * Retención y reintentos de D6, **los mismos para las tres colas**: un job completado se olvida al día (o al llegar a
- * 1000) y uno fallido, a la semana. Mientras el job vive, el `jobId` determinista evita duplicados; pasada la
- * retención, la garantía es la idempotencia del consumidor.
+ * Retención y reintentos de D6 para las colas que **sí** reintentan lo que revienta (enriquecimiento, extracción y
+ * borrado de CV): un job completado se olvida al día (o al llegar a 1000) y uno fallido, a la semana. Mientras el job
+ * vive, el `jobId` determinista evita duplicados; pasada la retención, la garantía es la idempotencia del consumidor.
  *
  * Los reintentos son para lo que revienta, no para lo que sale mal: que una bolsa nos bloquee, que la página no sea
  * una oferta o que un PDF esté cifrado son **resultados**, se guardan con su motivo y el job termina bien. Aquí solo
@@ -22,6 +24,25 @@ export const OUTBOX_JOB_OPTIONS: DefaultJobOptions = {
   removeOnComplete: { age: 86_400, count: 1_000 },
   removeOnFail: { age: 604_800 },
 };
+
+/**
+ * Opciones de `analyze-match`: **sin reintento a ciegas** (`attempts: 1`, ADR-030 §6). Reejecutar el análisis entero
+ * multiplicaría los envíos del CV a un proveedor externo y consumiría cuota por cada entrega. La retención es la
+ * misma que el resto: el `jobId` determinista evita duplicados mientras el job vive; pasada la retención, manda la
+ * idempotencia del consumidor (escritura condicionada a `running` y al plazo).
+ */
+export const ANALYZE_MATCH_JOB_OPTIONS: DefaultJobOptions = {
+  attempts: 1,
+  removeOnComplete: { age: 86_400, count: 1_000 },
+  removeOnFail: { age: 604_800 },
+};
+
+/** Opciones por cola: `analyze-match` no reintenta; el resto conserva los reintentos de D6. */
+export function outboxJobOptionsFor(queue: string): DefaultJobOptions {
+  return queue === ANALYZE_MATCH_QUEUE
+    ? ANALYZE_MATCH_JOB_OPTIONS
+    : OUTBOX_JOB_OPTIONS;
+}
 
 /** Token del listener de errores de una cola: uno por cola, para que Nest cree los tres y no se pisen. */
 export function outboxQueueErrorLogToken(queue: string): string {

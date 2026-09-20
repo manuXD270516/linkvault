@@ -72,7 +72,7 @@ describe('api configuration', () => {
       nodeEnv: 'development',
       chain: ['mock'],
       mock: { mode: 'synth' },
-      quotas: {},
+      quotas: { 'match-cv': 10 },
     });
     expect(config).toMatchObject({
       NODE_ENV: 'development',
@@ -89,6 +89,10 @@ describe('api configuration', () => {
       PASTE_EXTRACTION_TIMEOUT_MS: 20_000,
       PUBLIC_PAGE_BASE_URL: 'http://localhost:3000',
       WEB_BASE_URL: 'http://localhost:4200',
+      MATCH_ANALYSES_PER_USER: 10,
+      MATCH_QUOTA_WINDOW_MS: 86_400_000,
+      MATCH_ANALYSIS_MAX_AGE_MS: 120_000,
+      MATCH_ANALYSIS_TIMEOUT_MS: 60_000,
     });
   });
 
@@ -387,6 +391,14 @@ describe('api configuration', () => {
     ['PASTE_EXTRACTION_TIMEOUT_MS', '999'],
     ['PASTE_EXTRACTION_TIMEOUT_MS', '120001'],
     ['PASTE_EXTRACTION_TIMEOUT_MS', '20000.5'],
+    ['MATCH_ANALYSES_PER_USER', '0'],
+    ['MATCH_ANALYSES_PER_USER', '1001'],
+    ['MATCH_QUOTA_WINDOW_MS', '59999'],
+    ['MATCH_QUOTA_WINDOW_MS', '604800001'],
+    ['MATCH_ANALYSIS_MAX_AGE_MS', '999'],
+    ['MATCH_ANALYSIS_MAX_AGE_MS', '600001'],
+    ['MATCH_ANALYSIS_TIMEOUT_MS', '999'],
+    ['MATCH_ANALYSIS_TIMEOUT_MS', '300001'],
   ])('rejects %s=%s naming the variable', (name, value) => {
     const result = parseEnv(apiConfigSchema, {
       ...readEnvExample(),
@@ -447,5 +459,29 @@ describe('api configuration', () => {
     expect(raw).not.toMatch(/(^|[^A-Za-z0-9])sk-/m);
     expect(raw).not.toContain('sk-ant-');
     expect(raw).not.toContain('AKIA');
+  });
+
+  it('refuses to start when MATCH_ANALYSIS_MAX_AGE_MS is not greater than the worker timeout', () => {
+    const exit = vi.spyOn(process, 'exit').mockImplementation((code) => {
+      throw new ProcessExit(code);
+    });
+    const stderr = vi
+      .spyOn(process.stderr, 'write')
+      .mockImplementation(() => true);
+
+    expect(() =>
+      loadApiConfigOrExit({
+        ...readEnvExample(),
+        MATCH_ANALYSIS_MAX_AGE_MS: '30000',
+        MATCH_ANALYSIS_TIMEOUT_MS: '60000',
+      }),
+    ).toThrow(ProcessExit);
+
+    expect(exit).toHaveBeenCalledWith(1);
+    const output = stderr.mock.calls.map(([chunk]) => String(chunk)).join('');
+    expect(output).toContain('MATCH_ANALYSIS_MAX_AGE_MS');
+    expect(output).toContain('MATCH_ANALYSIS_TIMEOUT_MS');
+    expect(output).toContain('30000');
+    expect(output).toContain('60000');
   });
 });

@@ -1,10 +1,12 @@
 import {
+  ANALYZE_MATCH_QUEUE,
   CV_DELETED_EVENT_TYPE,
   CV_UPLOADED_EVENT_TYPE,
   DELETE_CV_FILE_QUEUE,
   ENRICH_LINK_QUEUE,
   EXTRACT_CV_QUEUE,
   LINK_CREATED_EVENT_TYPE,
+  MATCH_REQUESTED_EVENT_TYPE,
 } from '@linkvault/shared';
 import { describe, expect, it } from 'vitest';
 import {
@@ -20,6 +22,7 @@ describe('the outbox routing table', () => {
         LINK_CREATED_EVENT_TYPE,
         CV_UPLOADED_EVENT_TYPE,
         CV_DELETED_EVENT_TYPE,
+        MATCH_REQUESTED_EVENT_TYPE,
       ].sort(),
     );
   });
@@ -31,13 +34,19 @@ describe('the outbox routing table', () => {
       ENRICH_LINK_QUEUE,
       EXTRACT_CV_QUEUE,
       DELETE_CV_FILE_QUEUE,
+      ANALYZE_MATCH_QUEUE,
     ]);
     expect(new Set(queues).size).toBe(queues.length);
   });
 
   it('lists the queues the relay has to register', () => {
     expect([...OUTBOX_QUEUES].sort()).toEqual(
-      [ENRICH_LINK_QUEUE, EXTRACT_CV_QUEUE, DELETE_CV_FILE_QUEUE].sort(),
+      [
+        ENRICH_LINK_QUEUE,
+        EXTRACT_CV_QUEUE,
+        DELETE_CV_FILE_QUEUE,
+        ANALYZE_MATCH_QUEUE,
+      ].sort(),
     );
   });
 
@@ -60,6 +69,17 @@ describe('the outbox routing table', () => {
       data: { cvId: 'c1', userId: 'u1' },
       jobId: 'cv:c1:delete',
     });
+    expect(
+      outboxRouteOf(MATCH_REQUESTED_EVENT_TYPE)?.job({
+        analysisId: 'a1',
+        userId: 'u1',
+        linkId: 'l1',
+        cvId: 'c1',
+      }),
+    ).toEqual({
+      data: { analysisId: 'a1', userId: 'u1', linkId: 'l1', cvId: 'c1' },
+      jobId: 'match:a1:analyze',
+    });
   });
 
   it('throws when the payload does not meet its schema', () => {
@@ -71,6 +91,13 @@ describe('the outbox routing table', () => {
         cvId: 'c1',
         userId: 'u1',
         fileName: 'CV_Ana_Perez.pdf',
+      }),
+    ).toThrow();
+    expect(() =>
+      outboxRouteOf(MATCH_REQUESTED_EVENT_TYPE)?.job({
+        analysisId: 'a1',
+        userId: 'u1',
+        linkId: 'l1',
       }),
     ).toThrow();
   });
@@ -90,25 +117,42 @@ describe('the outbox routing table', () => {
 //
 // La regla se replica aquí, sobre **todas** las rutas de la tabla, para que un evento nuevo con un `jobId` mal formado
 // falle en CI y no en producción.
+//
+// La cobertura compara las claves de `payloads` con las de `OUTBOX_ROUTES` (no la longitud de una lista derivada de
+// esa misma tabla, que nunca fallaría). Una ruta ausente de `payloads` falla **nombrando la ruta** antes de derivar
+// ningún `jobId`, para no enmascarar el olvido con un `ZodError` de `?? {}`.
 describe('the jobId of every route, against the rules of BullMQ', () => {
   /** Un payload plausible por tipo: lo que importa es la **forma** del `jobId`, no su contenido. */
   const payloads: Readonly<Record<string, Record<string, unknown>>> = {
     [LINK_CREATED_EVENT_TYPE]: { linkId: 'l1', previewVersion: 1 },
     [CV_UPLOADED_EVENT_TYPE]: { cvId: 'c1', userId: 'u1' },
     [CV_DELETED_EVENT_TYPE]: { cvId: 'c1', userId: 'u1' },
+    [MATCH_REQUESTED_EVENT_TYPE]: {
+      analysisId: 'a1',
+      userId: 'u1',
+      linkId: 'l1',
+      cvId: 'c1',
+    },
   };
 
-  const jobIds = Object.entries(OUTBOX_ROUTES).map(
-    ([type, route]) => [type, route.job(payloads[type] ?? {}).jobId] as const,
-  );
-
   it('covers every route, so a new event cannot slip past this check', () => {
-    expect(jobIds).toHaveLength(Object.keys(OUTBOX_ROUTES).length);
+    expect(Object.keys(payloads).sort()).toEqual(
+      Object.keys(OUTBOX_ROUTES).sort(),
+    );
   });
 
-  it.each(jobIds)(
+  function jobIdOf(type: string): string {
+    const payload = payloads[type];
+    expect(payload, `missing payload for outbox route ${type}`).toBeDefined();
+    const route = OUTBOX_ROUTES[type];
+    expect(route, `missing outbox route ${type}`).toBeDefined();
+    return route!.job(payload!).jobId;
+  }
+
+  it.each(Object.keys(OUTBOX_ROUTES))(
     '%s: with a colon, it has exactly three segments',
-    (_type, jobId) => {
+    (type) => {
+      const jobId = jobIdOf(type);
       // `Job.addJob`: `jobId.includes(':') && jobId.split(':').length !== 3` → `Custom Id cannot contain :`.
       if (jobId.includes(':')) {
         expect(jobId.split(':')).toHaveLength(3);
@@ -116,18 +160,23 @@ describe('the jobId of every route, against the rules of BullMQ', () => {
     },
   );
 
-  it.each(jobIds)('%s: it is not a plain integer', (_type, jobId) => {
-    // `Job.addJob`: `${parseInt(jobId, 10)} === jobId` → `Custom Id cannot be integers`.
-    expect(String(Number.parseInt(jobId, 10))).not.toBe(jobId);
-  });
+  it.each(Object.keys(OUTBOX_ROUTES))(
+    '%s: it is not a plain integer',
+    (type) => {
+      const jobId = jobIdOf(type);
+      // `Job.addJob`: `${parseInt(jobId, 10)} === jobId` → `Custom Id cannot be integers`.
+      expect(String(Number.parseInt(jobId, 10))).not.toBe(jobId);
+    },
+  );
 
-  it.each(jobIds)('%s: it is not empty and carries its identifier', (
-    _type,
-    jobId,
-  ) => {
-    expect(jobId.length).toBeGreaterThan(0);
-    expect(jobId).toContain('1');
-  });
+  it.each(Object.keys(OUTBOX_ROUTES))(
+    '%s: it is not empty and carries its identifier',
+    (type) => {
+      const jobId = jobIdOf(type);
+      expect(jobId.length).toBeGreaterThan(0);
+      expect(jobId).toContain('1');
+    },
+  );
 
   it('gives a different jobId to each type of the same CV', () => {
     const extract = outboxRouteOf(CV_UPLOADED_EVENT_TYPE)?.job({
@@ -143,8 +192,9 @@ describe('the jobId of every route, against the rules of BullMQ', () => {
   });
 
   it('keeps the jobId deterministic: the same event republished is the same job', () => {
-    for (const [type, jobId] of jobIds) {
-      expect(OUTBOX_ROUTES[type]?.job(payloads[type] ?? {}).jobId).toBe(jobId);
+    for (const type of Object.keys(OUTBOX_ROUTES)) {
+      const jobId = jobIdOf(type);
+      expect(OUTBOX_ROUTES[type]?.job(payloads[type]!).jobId).toBe(jobId);
     }
   });
 });

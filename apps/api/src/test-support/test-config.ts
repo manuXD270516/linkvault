@@ -52,6 +52,11 @@ export async function apiTestConfig(
     S3_ACCESS_KEY: 'test-access-key',
     S3_SECRET_KEY: 'test-secret-key',
     S3_BUCKET: 'cvs',
+    // Análisis de encaje: los mismos valores de `.env.example` (holgados respecto al plazo del worker).
+    MATCH_ANALYSES_PER_USER: 10,
+    MATCH_QUOTA_WINDOW_MS: 86_400_000,
+    MATCH_ANALYSIS_MAX_AGE_MS: 120_000,
+    MATCH_ANALYSIS_TIMEOUT_MS: 60_000,
     ...overrides,
   };
 }

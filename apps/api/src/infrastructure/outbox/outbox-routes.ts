@@ -1,24 +1,28 @@
 import {
+  ANALYZE_MATCH_QUEUE,
   CV_DELETED_EVENT_TYPE,
   CV_UPLOADED_EVENT_TYPE,
   DELETE_CV_FILE_QUEUE,
   ENRICH_LINK_QUEUE,
   EXTRACT_CV_QUEUE,
   LINK_CREATED_EVENT_TYPE,
+  MATCH_REQUESTED_EVENT_TYPE,
   cvDeletedJobId,
   cvDeletedPayloadSchema,
   cvUploadedJobId,
   cvUploadedPayloadSchema,
   linkCreatedJobId,
   linkCreatedPayloadSchema,
+  matchRequestedJobId,
+  matchRequestedPayloadSchema,
 } from '@linkvault/shared';
 import type { ZodType } from 'zod';
 
-// Enrutado del relay por tipo de evento (D11 de cv-upload-extract, ADR-028 §9). Hasta `cv-upload-extract` el
-// publicador conocía **un** tipo y una cola; con tres hace falta un mapa.
+// Enrutado del relay por tipo de evento (D11 de cv-upload-extract, ADR-028 §9; D2 de cv-match-suggestions).
+// Hasta `cv-upload-extract` el publicador conocía **un** tipo y una cola; con varios hace falta un mapa.
 //
-// Se eligió una tabla que el publicador consulta, y no un publicador por cola con un enrutador delante (tres providers
-// casi iguales para tres tablas de una fila) ni la cola guardada en el documento del outbox (cambiaría el contrato de
+// Se eligió una tabla que el publicador consulta, y no un publicador por cola con un enrutador delante (providers
+// casi iguales para tablas de una fila) ni la cola guardada en el documento del outbox (cambiaría el contrato de
 // `outbox_events`, obligaría a migrar los pendientes y repartiría el conocimiento entre quien escribe y quien publica).
 // Añadir un evento es **una entrada aquí**, y las tres cosas que la entrada nombra —schema, cola y `jobId`— salen del
 // contrato de `libs/shared`, nunca de una constante repetida.
@@ -58,7 +62,7 @@ function route<T extends Record<string, unknown>>(
   };
 }
 
-/** Tabla `type → { schema, queue, jobId }`, con los tres tipos que hoy pasan por el outbox. */
+/** Tabla `type → { schema, queue, jobId }`, con los tipos que hoy pasan por el outbox. */
 export const OUTBOX_ROUTES: Readonly<Record<string, OutboxRoute>> = {
   [LINK_CREATED_EVENT_TYPE]: route(
     ENRICH_LINK_QUEUE,
@@ -74,6 +78,11 @@ export const OUTBOX_ROUTES: Readonly<Record<string, OutboxRoute>> = {
     DELETE_CV_FILE_QUEUE,
     cvDeletedPayloadSchema,
     cvDeletedJobId,
+  ),
+  [MATCH_REQUESTED_EVENT_TYPE]: route(
+    ANALYZE_MATCH_QUEUE,
+    matchRequestedPayloadSchema,
+    matchRequestedJobId,
   ),
 };
 
