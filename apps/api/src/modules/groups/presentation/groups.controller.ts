@@ -3,6 +3,7 @@ import {
   joinGroupRequestSchema,
   renameGroupRequestSchema,
   transferOwnershipRequestSchema,
+  updateGroupSettingsRequestSchema,
   type CreateGroupRequest,
   type GroupDetail,
   type GroupMember,
@@ -11,6 +12,7 @@ import {
   type JoinGroupRequest,
   type RenameGroupRequest,
   type TransferOwnershipRequest,
+  type UpdateGroupSettingsRequest,
 } from '@linkvault/shared';
 import {
   Body,
@@ -38,6 +40,7 @@ import { RemoveMember } from '../application/remove-member.usecase';
 import { RenameGroup } from '../application/rename-group.usecase';
 import { RotateInviteCode } from '../application/rotate-invite-code.usecase';
 import { TransferOwnership } from '../application/transfer-ownership.usecase';
+import { UpdateGroupSettings } from '../application/update-group-settings.usecase';
 
 /** Lo que el controlador lee de la petición de Fastify. */
 export interface GroupsHttpRequest {
@@ -66,6 +69,7 @@ export class GroupsController {
     private readonly leaveGroup: LeaveGroup,
     private readonly removeMember: RemoveMember,
     private readonly transferOwnership: TransferOwnership,
+    private readonly updateGroupSettings: UpdateGroupSettings,
   ) {}
 
   @Post()
@@ -110,6 +114,24 @@ export class GroupsController {
     body: RenameGroupRequest,
   ): Promise<GroupDetail> {
     return this.renameGroup.execute(user.userId, groupId, body.name);
+  }
+
+  /**
+   * Visibilidad por defecto de los links del grupo (D3 de public-preview-share). Ruta propia en vez de ampliar
+   * `PATCH /api/groups/:id`, que exige `name`: hacer `name` opcional debilitaría el renombrado.
+   */
+  @Patch(':id/settings')
+  updateSettingsOf(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') groupId: string,
+    @Body(new ZodValidationPipe(updateGroupSettingsRequestSchema))
+    body: UpdateGroupSettingsRequest,
+  ): Promise<GroupDetail> {
+    return this.updateGroupSettings.execute(
+      user.userId,
+      groupId,
+      body.defaultVisibility,
+    );
   }
 
   @Delete(':id')

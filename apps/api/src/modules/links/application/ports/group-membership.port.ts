@@ -1,4 +1,4 @@
-import type { GroupRole } from '@linkvault/shared';
+import type { GroupRole, GroupVisibility } from '@linkvault/shared';
 
 // Puerto de pertenencia a grupos (D1 de job-links). `links` NO lee las colecciones de `groups`: el adaptador de
 // producción va sobre `GroupsFacade`, su única entrada pública. El nombre es distinto del `GROUP_MEMBER_DIRECTORY` de
@@ -6,11 +6,19 @@ import type { GroupRole } from '@linkvault/shared';
 
 export const GROUP_MEMBERSHIP = Symbol('GROUP_MEMBERSHIP');
 
-/** Grupo del usuario con lo que `links` necesita: identificarlo, nombrarlo en `alreadyInGroups` y juzgar el rol. */
+/**
+ * Grupo del usuario con lo que `links` necesita: identificarlo, nombrarlo en `alreadyInGroups`, juzgar el rol y saber
+ * si un link que entra nace publicado (D3 de public-preview-share).
+ */
 export interface UserGroup {
   readonly groupId: string;
   readonly name: string;
   readonly role: GroupRole;
+  /**
+   * Visibilidad por defecto del grupo. Llega en la misma lectura que la pertenencia, así que guardar o importar no
+   * cuestan ninguna consulta más por saberlo.
+   */
+  readonly defaultVisibility: GroupVisibility;
 }
 
 export interface GroupMembership {

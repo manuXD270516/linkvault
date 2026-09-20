@@ -38,6 +38,9 @@ export function toGroupDetail(
     role,
     memberCount,
     createdAt: group.createdAt.toISOString(),
+    // Viaja para **cualquier** miembro, no solo para el owner: quien comparte un link tiene derecho a saber si va a
+    // nacer publicado (D3 de public-preview-share). La lista de grupos NO lo lleva: ahí no se comparte nada.
+    defaultVisibility: group.defaultVisibility,
   };
   return options.includeInviteCode && isOwner(role)
     ? { ...detail, inviteCode: group.inviteCode }

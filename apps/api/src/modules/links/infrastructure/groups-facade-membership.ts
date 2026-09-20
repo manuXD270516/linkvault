@@ -40,6 +40,7 @@ export class GroupsFacadeMembership implements GroupMembership {
       groupId: group.groupId,
       name: group.name,
       role: group.role,
+      defaultVisibility: group.defaultVisibility,
     }));
   }
 }

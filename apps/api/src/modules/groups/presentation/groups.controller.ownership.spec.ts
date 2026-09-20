@@ -203,6 +203,7 @@ describe('GroupsController ownership transfer', () => {
         role: 'member',
         memberCount: 3,
         createdAt: group.createdAt,
+        defaultVisibility: 'public',
       });
       expect('inviteCode' in detail).toBe(false);
       const after = await membersOf(group.id, ana);

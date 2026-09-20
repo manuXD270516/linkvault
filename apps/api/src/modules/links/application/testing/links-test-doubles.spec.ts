@@ -82,10 +82,35 @@ describe('InMemoryGroupMembership', () => {
       .withMember(FRONTEND, BETO);
 
     expect(await membership.groupsOf(ANA)).toEqual([
-      { groupId: BACKEND, name: 'Backend Bolivia', role: 'owner' },
-      { groupId: FRONTEND, name: 'Frontend LatAm', role: 'member' },
+      {
+        groupId: BACKEND,
+        name: 'Backend Bolivia',
+        role: 'owner',
+        defaultVisibility: 'public',
+      },
+      {
+        groupId: FRONTEND,
+        name: 'Frontend LatAm',
+        role: 'member',
+        defaultVisibility: 'public',
+      },
     ]);
     expect(await membership.groupsOf(objectId(99))).toEqual([]);
+  });
+
+  it('carries the default visibility declared for each group', async () => {
+    const membership = new InMemoryGroupMembership()
+      .withGroup(FRONTEND, 'Frontend LatAm', 'private')
+      .withMember(FRONTEND, ANA, 'owner');
+
+    expect(await membership.groupsOf(ANA)).toEqual([
+      {
+        groupId: FRONTEND,
+        name: 'Frontend LatAm',
+        role: 'owner',
+        defaultVisibility: 'private',
+      },
+    ]);
   });
 
   it('counts how many times the groups of a user were asked for', async () => {

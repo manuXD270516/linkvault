@@ -1,4 +1,6 @@
+import { groupVisibilitySchema } from '@linkvault/shared';
 import { mongo, Schema, Types } from 'mongoose';
+import type { GroupVisibility } from '../domain/group';
 import { isGroupId, isUserId } from '../domain/identifier';
 import { GROUP_ROLES } from '../domain/membership';
 
@@ -35,6 +37,11 @@ export interface GroupDocument {
   name: string;
   /** Único entre todos los grupos; siempre normalizado (mayúsculas, sin espacios). */
   inviteCode: string;
+  /**
+   * Ajustes del grupo (D3 de public-preview-share). Ausente en los grupos anteriores al ajuste, que se leen
+   * `DEFAULT_GROUP_VISIBILITY`: no hay backfill y no hace falta ningún índice, porque nadie busca por él.
+   */
+  settings?: { defaultVisibility: GroupVisibility };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -57,6 +64,19 @@ export const groupSchema = new Schema<GroupDocument>(
   {
     name: { type: String, required: true },
     inviteCode: { type: String, required: true },
+    settings: {
+      type: new Schema(
+        {
+          defaultVisibility: {
+            type: String,
+            required: true,
+            enum: [...groupVisibilitySchema.options],
+          },
+        },
+        { _id: false, versionKey: false, strict: true },
+      ),
+      required: false,
+    },
     createdAt: { type: Date, required: true },
     updatedAt: { type: Date, required: true },
   },

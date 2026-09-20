@@ -48,6 +48,7 @@ describe('GetGroup', () => {
       memberCount: 2,
       createdAt: '2026-09-17T10:00:00.000Z',
       inviteCode: group.inviteCode,
+      defaultVisibility: 'public',
     });
     expect(groupDetailSchema.parse(detail)).toEqual(detail);
   });
@@ -63,8 +64,19 @@ describe('GetGroup', () => {
       role: 'member',
       memberCount: 2,
       createdAt: '2026-09-17T10:00:00.000Z',
+      defaultVisibility: 'public',
     });
     expect(detail).not.toHaveProperty('inviteCode');
+  });
+
+  it('Grupo anterior al ajuste', async () => {
+    const group = await groupOfAnaWithBeto();
+
+    // Un grupo guardado antes del ajuste no tiene `settings`, y el repositorio lo lee como `public` (D3): la respuesta
+    // nunca se queda sin el campo y ninguno de sus links ya compartidos se publica por ello.
+    await expect(getGroup.execute(BETO, group.id)).resolves.toMatchObject({
+      defaultVisibility: 'public',
+    });
   });
 
   it('Grupo ajeno indistinguible de uno inexistente', async () => {

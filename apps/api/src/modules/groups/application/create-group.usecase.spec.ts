@@ -33,6 +33,7 @@ describe('CreateGroup', () => {
       memberCount: 1,
       createdAt: '2026-09-17T10:00:00.000Z',
       inviteCode: expect.stringMatching(/^[0-9A-Z]{8}$/),
+      defaultVisibility: 'public',
     });
     expect(groupDetailSchema.parse(detail)).toEqual(detail);
     await expect(

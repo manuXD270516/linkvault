@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import type { GroupVisibility } from '../domain/group';
 import type { GroupRole } from '../domain/membership';
 import {
   GROUP_REPOSITORY,
@@ -9,12 +10,18 @@ import {
 // link de un grupo; ningún archivo de dominio, aplicación o infraestructura de otro módulo lee las colecciones de
 // `groups` (lo comprueba el lint). Solo lecturas: crear, unirse o expulsar pasa por la API, no por aquí.
 
-/** Grupo del usuario visto desde fuera del módulo: el identificador, el nombre y el rol, nada más. */
+/** Grupo del usuario visto desde fuera del módulo: el identificador, el nombre, el rol y el ajuste, nada más. */
 export interface UserGroupRef {
   readonly groupId: string;
   /** Lo necesita `links` para decir "ya lo tienes en Backend Bolivia" sin leer la colección de grupos. */
   readonly name: string;
   readonly role: GroupRole;
+  /**
+   * Si un link que entra en el grupo nace publicado (D3 de public-preview-share). Viaja aquí porque `links` ya pide los
+   * grupos del usuario para `alreadyInGroups`: así lo obtiene **sin una lectura más**, y sigue sin leer las colecciones
+   * de `groups`.
+   */
+  readonly defaultVisibility: GroupVisibility;
 }
 
 @Injectable()
@@ -56,6 +63,7 @@ export class GroupsFacade {
       groupId: membership.group.id,
       name: membership.group.name,
       role: membership.role,
+      defaultVisibility: membership.group.defaultVisibility,
     }));
   }
 }

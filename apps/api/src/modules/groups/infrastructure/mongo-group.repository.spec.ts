@@ -101,6 +101,7 @@ describe('create', () => {
       id: expect.stringMatching(/^[0-9a-f]{24}$/),
       name: 'Backend Bolivia',
       inviteCode: expect.stringMatching(/^[0-9A-Z]{8}$/),
+      defaultVisibility: 'public',
       createdAt: now,
       updatedAt: now,
     });
@@ -414,6 +415,55 @@ describe('rename and rotate', () => {
     await expect(repository.rename(groupId, 'Otro', later)).resolves.toBeNull();
     await expect(
       repository.rotateInviteCode(groupId, later),
+    ).resolves.toBeNull();
+  });
+});
+
+describe('updateSettings', () => {
+  it('escribe la visibilidad por defecto y la relee', async () => {
+    const group = await createGroupOf(OWNER, 'Con ajuste');
+    expect(group.defaultVisibility).toBe('public');
+
+    const updated = await repository.updateSettings(group.id, 'private', later);
+
+    expect(updated).toEqual({
+      ...group,
+      defaultVisibility: 'private',
+      updatedAt: later,
+    });
+    await expect(repository.findById(group.id)).resolves.toEqual(updated);
+  });
+
+  it('lee como público un documento guardado sin settings', async () => {
+    const group = await createGroupOf(OWNER, 'Anterior al ajuste');
+    await connection
+      .collection(GROUPS_COLLECTION)
+      .updateOne(
+        { _id: new mongoose.Types.ObjectId(group.id) },
+        { $unset: { settings: 1 } },
+      );
+
+    await expect(repository.findById(group.id)).resolves.toMatchObject({
+      defaultVisibility: 'public',
+    });
+  });
+
+  it('no toca el nombre ni el código al cambiar el ajuste', async () => {
+    const group = await createGroupOf(OWNER, 'Solo el ajuste');
+
+    const updated = await repository.updateSettings(group.id, 'private', later);
+
+    expect(updated?.name).toBe(group.name);
+    expect(updated?.inviteCode).toBe(group.inviteCode);
+    expect(updated?.createdAt).toEqual(group.createdAt);
+  });
+
+  it.each([
+    ['un grupo que no existe', new mongoose.Types.ObjectId().toHexString()],
+    ['un identificador mal formado', MALFORMED],
+  ])('devuelve null con %s', async (_case, groupId) => {
+    await expect(
+      repository.updateSettings(groupId, 'private', later),
     ).resolves.toBeNull();
   });
 });

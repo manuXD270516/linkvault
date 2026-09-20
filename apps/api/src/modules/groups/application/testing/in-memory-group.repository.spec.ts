@@ -35,6 +35,7 @@ describe('create', () => {
       id: expect.stringMatching(/^[0-9a-f]{24}$/),
       name: 'Backend Bolivia',
       inviteCode: sequentialInviteCode(0),
+      defaultVisibility: 'public',
       createdAt: now,
       updatedAt: now,
     });

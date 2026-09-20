@@ -193,7 +193,7 @@ describe('GroupsController', () => {
     });
   });
 
-  describe('the ten routes are wired', () => {
+  describe('the eleven routes are wired', () => {
     it('answers every path with the endpoint and not with the 404 of an unknown route', async () => {
       const ana = await authenticated();
       const group = await createGroup(ana, 'Rutas');
@@ -205,6 +205,10 @@ describe('GroupsController', () => {
         await request('PATCH', `/api/groups/${group.id}`, {
           authorization,
           body: { name: 'Rutas 2' },
+        }),
+        await request('PATCH', `/api/groups/${group.id}/settings`, {
+          authorization,
+          body: { defaultVisibility: 'private' },
         }),
         await request('POST', `/api/groups/${group.id}/invite-code`, {
           authorization,
@@ -250,6 +254,7 @@ describe('GroupsController', () => {
         memberCount: 1,
         createdAt: expect.any(String),
         inviteCode: expect.any(String),
+        defaultVisibility: 'public',
       });
       expect(isValidInviteCode(inviteCodeOf(group))).toBe(true);
       const members = await request('GET', `/api/groups/${group.id}/members`, {
@@ -364,6 +369,7 @@ describe('GroupsController', () => {
         role: 'member',
         memberCount: 2,
         createdAt: group.createdAt,
+        defaultVisibility: 'public',
       });
       expect(response.body).not.toContain(inviteCodeOf(group));
     });
@@ -449,6 +455,107 @@ describe('GroupsController', () => {
         code: 'validation_error',
         fields: ['name'],
       });
+    });
+  });
+
+  describe('PATCH /api/groups/:id/settings', () => {
+    it('El owner apaga la visibilidad por defecto', async () => {
+      const ana = await authenticated();
+      const group = await createGroup(ana, 'Ajuste del owner');
+
+      const response = await request(
+        'PATCH',
+        `/api/groups/${group.id}/settings`,
+        { authorization: ana.authorization, body: { defaultVisibility: 'private' } },
+      );
+
+      expect(response.statusCode).toBe(200);
+      const detail = groupDetailSchema.parse(response.json());
+      expect(detail.defaultVisibility).toBe('private');
+      const reread = await request('GET', `/api/groups/${group.id}`, {
+        authorization: ana.authorization,
+      });
+      expect(reread.json()).toMatchObject({ defaultVisibility: 'private' });
+    });
+
+    it('Un miembro no cambia el ajuste', async () => {
+      const ana = await authenticated();
+      const beto = await authenticated('Beto');
+      const group = await createGroup(ana, 'Ajuste ajeno');
+      await joinWith(beto, inviteCodeOf(group));
+
+      const response = await request(
+        'PATCH',
+        `/api/groups/${group.id}/settings`,
+        { authorization: beto.authorization, body: { defaultVisibility: 'private' } },
+      );
+
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toMatchObject({ code: 'forbidden' });
+      const reread = await request('GET', `/api/groups/${group.id}`, {
+        authorization: beto.authorization,
+      });
+      expect(reread.json()).toMatchObject({ defaultVisibility: 'public' });
+    });
+
+    it('Grupo nuevo', async () => {
+      const ana = await authenticated();
+      const group = await createGroup(ana, 'Grupo nuevo');
+
+      expect(group.defaultVisibility).toBe('public');
+    });
+
+    it('Valor inválido', async () => {
+      const ana = await authenticated();
+      const group = await createGroup(ana, 'Valor inválido');
+
+      const response = await request(
+        'PATCH',
+        `/api/groups/${group.id}/settings`,
+        { authorization: ana.authorization, body: { defaultVisibility: 'todos' } },
+      );
+
+      expect(response.statusCode).toBe(400);
+      const body = apiErrorResponseSchema.parse(response.json());
+      expect(body.code).toBe('validation_error');
+      expect(body.fields).toEqual(['defaultVisibility']);
+    });
+
+    it.each([
+      ['un grupo ajeno', (groupId: string) => groupId],
+      ['uno inexistente', () => new mongoose.Types.ObjectId().toHexString()],
+      ['un identificador mal formado', () => MALFORMED_ID],
+    ])('Quien no es miembro recibe 404 con %s', async (_case, of) => {
+      const ana = await authenticated();
+      const carla = await authenticated('Carla');
+      const group = await createGroup(ana, 'Ajuste de otro');
+
+      const response = await request(
+        'PATCH',
+        `/api/groups/${of(group.id)}/settings`,
+        { authorization: carla.authorization, body: { defaultVisibility: 'private' } },
+      );
+
+      expect(response.statusCode).toBe(404);
+      expect(response.json()).toMatchObject({ code: 'group_not_found' });
+    });
+
+    it('Cambiar el ajuste no toca los links', async () => {
+      const ana = await authenticated();
+      const group = await createGroup(ana, 'Sin tocar links');
+      const before = await request('GET', `/api/groups/${group.id}/links`, {
+        authorization: ana.authorization,
+      });
+
+      await request('PATCH', `/api/groups/${group.id}/settings`, {
+        authorization: ana.authorization,
+        body: { defaultVisibility: 'private' },
+      });
+
+      const after = await request('GET', `/api/groups/${group.id}/links`, {
+        authorization: ana.authorization,
+      });
+      expect(after.json()).toEqual(before.json());
     });
   });
 

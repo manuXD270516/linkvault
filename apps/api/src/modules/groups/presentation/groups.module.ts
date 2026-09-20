@@ -27,6 +27,7 @@ import { RemoveMember } from '../application/remove-member.usecase';
 import { RenameGroup } from '../application/rename-group.usecase';
 import { RotateInviteCode } from '../application/rotate-invite-code.usecase';
 import { TransferOwnership } from '../application/transfer-ownership.usecase';
+import { UpdateGroupSettings } from '../application/update-group-settings.usecase';
 import {
   GROUP_MEMBER_MODEL_NAME,
   GROUP_MEMBERS_COLLECTION,
@@ -77,6 +78,7 @@ import { GroupsController } from './groups.controller';
     LeaveGroup,
     RemoveMember,
     TransferOwnership,
+    UpdateGroupSettings,
     GroupsFacade,
     GroupDeletionHooks,
   ],

@@ -51,8 +51,8 @@ describe('GroupsFacade', () => {
     });
 
     await expect(facade.getGroupsOf(ANA)).resolves.toEqual([
-      { groupId: other.id, name: 'De Beto', role: 'member' },
-      { groupId: own.id, name: 'De Ana', role: 'owner' },
+      { groupId: other.id, name: 'De Beto', role: 'member', defaultVisibility: 'public' },
+      { groupId: own.id, name: 'De Ana', role: 'owner', defaultVisibility: 'public' },
     ]);
   });
 
@@ -65,7 +65,7 @@ describe('GroupsFacade', () => {
     });
 
     await expect(facade.getGroupsOf(ANA)).resolves.toEqual([
-      { groupId: own.id, name: 'Vivo', role: 'owner' },
+      { groupId: own.id, name: 'Vivo', role: 'owner', defaultVisibility: 'public' },
     ]);
   });
 

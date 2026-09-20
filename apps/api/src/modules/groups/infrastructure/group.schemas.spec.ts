@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { getMongoTestUri } from '@linkvault/testing';
-import mongoose, { mongo, type Connection } from 'mongoose';
+import mongoose, { mongo, type Connection, type Schema } from 'mongoose';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { GROUP_ROLES } from '../domain/membership';
 import {
@@ -121,6 +121,80 @@ describe('groups collection', () => {
       createdAt: now,
       updatedAt: now,
     });
+  });
+});
+
+describe('group settings', () => {
+  it('guarda y relee la visibilidad por defecto', async () => {
+    const model = connection.model<GroupDocument>(GROUP_MODEL_NAME);
+    const created = await model.create({
+      name: 'Con ajuste',
+      inviteCode: 'S1S2S3S4',
+      settings: { defaultVisibility: 'private' },
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const raw = await connection
+      .collection(GROUPS_COLLECTION)
+      .findOne({ _id: created._id });
+
+    expect(raw).toEqual({
+      _id: created._id,
+      name: 'Con ajuste',
+      inviteCode: 'S1S2S3S4',
+      settings: { defaultVisibility: 'private' },
+      createdAt: now,
+      updatedAt: now,
+    });
+  });
+
+  it('acepta solo los dos valores del contrato', () => {
+    const settings = groupSchema.path('settings') as unknown as {
+      schema: Schema;
+    };
+
+    expect(
+      settings.schema.path('defaultVisibility').options['enum'],
+    ).toEqual(['public', 'private']);
+  });
+
+  it('deja el campo fuera cuando el grupo nunca miró el ajuste', async () => {
+    const model = connection.model<GroupDocument>(GROUP_MODEL_NAME);
+    const created = await model.create({
+      name: 'Sin ajuste',
+      inviteCode: 'S5S6S7S8',
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const raw = await connection
+      .collection(GROUPS_COLLECTION)
+      .findOne({ _id: created._id });
+
+    expect(raw).not.toHaveProperty('settings');
+  });
+
+  // Este change NO añade ningún índice a `groups` ni a `group_members` (D11): nadie busca por el ajuste.
+  it('no añade ningún índice', async () => {
+    const groupIndexes = await connection
+      .collection(GROUPS_COLLECTION)
+      .indexes();
+    const memberIndexes = await connection
+      .collection(GROUP_MEMBERS_COLLECTION)
+      .indexes();
+
+    expect(groupIndexes.map((index) => index.key)).toEqual([
+      { _id: 1 },
+      { inviteCode: 1 },
+    ]);
+    expect(memberIndexes.map((index) => index.key)).toEqual([
+      { _id: 1 },
+      { groupId: 1, userId: 1 },
+      { groupId: 1 },
+      { userId: 1, joinedAt: -1 },
+      { groupId: 1, joinedAt: 1 },
+    ]);
   });
 });
 

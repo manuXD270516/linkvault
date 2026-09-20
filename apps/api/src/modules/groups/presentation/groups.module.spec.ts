@@ -72,7 +72,12 @@ describe('GroupsModule', () => {
 
     await expect(groups.isMember(group.id, ana.id)).resolves.toBe(true);
     await expect(groups.getGroupsOf(ana.id)).resolves.toEqual([
-      { groupId: group.id, name: 'Cableado', role: 'owner' },
+      {
+        groupId: group.id,
+        name: 'Cableado',
+        role: 'owner',
+        defaultVisibility: 'public',
+      },
     ]);
     await expect(groups.membershipOf(group.id, ana.id)).resolves.toBe('owner');
   });

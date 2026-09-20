@@ -2,6 +2,7 @@ import type {
   GroupLinkCommentsChangedPayload,
   GroupLinkCommentsMessage,
   GroupRole,
+  GroupVisibility,
   JobLinkSummary,
   LinkEnrichedPayload,
 } from '@linkvault/shared';
@@ -82,14 +83,34 @@ export class InMemoryOutbox implements Outbox {
 
 /** Pertenencia en memoria: se declara quién está en qué grupo y con qué rol. Un id desconocido no es miembro de nada. */
 export class InMemoryGroupMembership implements GroupMembership {
-  private readonly groups = new Map<string, { name: string }>();
+  private readonly groups = new Map<
+    string,
+    { name: string; defaultVisibility: GroupVisibility }
+  >();
   private readonly roles = new Map<string, GroupRole>();
   /** Cuántas veces se preguntó por los grupos del usuario: lo usa el test que descarta el N+1 de `alreadyInGroups`. */
   groupsOfCalls = 0;
 
-  /** Declara el nombre de un grupo, para `alreadyInGroups`. */
-  withGroup(groupId: string, name: string): this {
-    this.groups.set(groupId, { name });
+  /** Declara el nombre de un grupo, para `alreadyInGroups`, y si lo que entra en él nace publicado (D3). */
+  withGroup(
+    groupId: string,
+    name: string,
+    defaultVisibility: GroupVisibility = 'public',
+  ): this {
+    this.groups.set(groupId, { name, defaultVisibility });
+    return this;
+  }
+
+  /** Cambia la visibilidad por defecto de un grupo ya declarado, como hace el owner con su ajuste. */
+  withDefaultVisibility(
+    groupId: string,
+    defaultVisibility: GroupVisibility,
+  ): this {
+    const group = this.groups.get(groupId);
+    this.groups.set(groupId, {
+      name: group?.name ?? 'Backend Bolivia',
+      defaultVisibility,
+    });
     return this;
   }
 
@@ -146,10 +167,12 @@ export class InMemoryGroupMembership implements GroupMembership {
       if (member !== userId || groupId === undefined) {
         continue;
       }
+      const group = this.groups.get(groupId);
       groups.push({
         groupId,
-        name: this.groups.get(groupId)?.name ?? '',
+        name: group?.name ?? '',
         role,
+        defaultVisibility: group?.defaultVisibility ?? 'public',
       });
     }
     return Promise.resolve(groups);
