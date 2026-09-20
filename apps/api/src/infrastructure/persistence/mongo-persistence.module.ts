@@ -22,7 +22,7 @@ class MongoConnectionRetryModule {}
       imports: [MongoConnectionRetryModule],
       inject: [APP_CONFIG, MongoInitialConnectRetry],
       useFactory: (config: ApiConfig, retry: MongoInitialConnectRetry) => {
-        const connectOptions = buildMongooseConnectOptions();
+        const connectOptions = buildMongooseConnectOptions(config.NODE_ENV);
         return {
           ...connectOptions,
           uri: config.MONGO_URI,

@@ -15,6 +15,9 @@ import {
   LINK_LIMIT_WINDOW_MS,
   PASTE_UNAVAILABLE_RETRY_AFTER_SECONDS,
   PASTES_PER_USER,
+  PUBLIC_PAGE_VIEWS,
+  PUBLIC_PAGE_VIEWS_PER_SLUG,
+  PUBLIC_PREVIEW_VIEWS,
 } from '../domain/limits';
 
 // Adaptador de LINK_LIMITER sobre el contador por ventana fija de `infrastructure/limits` (D13). `links` pone el nombre
@@ -30,9 +33,14 @@ import {
 //   paste-job-description).
 // - `comment` **falla abierto**, como la importación (D6 de group-comments): lo que se permite de más es escribir en
 //   nuestra base y repartir un aviso a los miembros de un grupo.
+// - las **tres claves públicas** fallan abiertas (D8 de public-preview-share): con el contador caído, lo que se permite
+//   de más son dos lecturas indexadas por petición; negarlo dejaría sin tarjeta todos los enlaces repartidos por
+//   WhatsApp mientras durase la avería, que es justo el daño que este change existe para evitar.
 //
 // El nombre del contador lleva un identificador interno, que no es un dato personal: el del link en la relectura y el
 // del usuario (`userId`) en la importación y el pegado, que se cuentan por persona. Nunca la URL, el email ni el texto.
+// Las claves públicas son **fijas** o llevan el `slug`, que es parte de la ruta: ninguna se deriva de una cabecera de la
+// petición, así que no hay nada que falsificar y no hace falta `trustProxy`.
 
 /** Segundos que se anuncian cuando el contador no responde y el límite falla cerrado. */
 const CLOSED_RETRY_AFTER_SECONDS = Math.ceil(LINK_LIMIT_WINDOW_MS / 1000);
@@ -70,6 +78,12 @@ function nameOf(key: LinkLimitKey): string {
       return `links:paste:${key.userId}`;
     case 'comment':
       return `links:comment:${key.userId}`;
+    case 'public-page':
+      return 'links:public-page';
+    case 'public-preview':
+      return 'links:public-preview';
+    case 'public-page-slug':
+      return `links:public-page:${key.slug}`;
   }
 }
 
@@ -83,6 +97,12 @@ function limitOf(key: LinkLimitKey): number {
       return PASTES_PER_USER;
     case 'comment':
       return COMMENTS_PER_USER;
+    case 'public-page':
+      return PUBLIC_PAGE_VIEWS;
+    case 'public-preview':
+      return PUBLIC_PREVIEW_VIEWS;
+    case 'public-page-slug':
+      return PUBLIC_PAGE_VIEWS_PER_SLUG;
   }
 }
 
@@ -96,6 +116,9 @@ function failureDecisionOf(key: LinkLimitKey): LinkLimitDecision {
       };
     case 'import':
     case 'comment':
+    case 'public-page':
+    case 'public-preview':
+    case 'public-page-slug':
       return { allowed: true, retryAfterSeconds: 0 };
     case 'paste-description':
       return {

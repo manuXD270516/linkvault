@@ -11,6 +11,9 @@ import {
   IMPORTS_PER_USER,
   LINK_LIMIT_WINDOW_MS,
   PASTES_PER_USER,
+  PUBLIC_PAGE_VIEWS,
+  PUBLIC_PAGE_VIEWS_PER_SLUG,
+  PUBLIC_PREVIEW_VIEWS,
 } from '../domain/limits';
 
 // Política de fallo de los dos límites de `links` (tarea 6.4 y D13). Es lo único que este adaptador decide y es
@@ -197,6 +200,93 @@ describe('CounterLinkLimiter', () => {
         limiter.refund({ kind: 'comment', userId: USER_ID }),
       ).resolves.toBeUndefined();
       expect(counter.givenBack).toEqual([`links:comment:${USER_ID}`]);
+    });
+  });
+});
+
+// Contadores de las rutas públicas (tarea 6.8 de public-preview-share, D8). Son globales de ruta: ninguna clave lleva
+// nada del cliente, así que no hay `trustProxy` que valga ni nada que falsificar.
+describe('los contadores de las rutas públicas', () => {
+  const SLUG = 'k7m2p9r4t6vw';
+
+  it.each([
+    [
+      { kind: 'public-page' } as const,
+      'links:public-page',
+      PUBLIC_PAGE_VIEWS,
+    ],
+    [
+      { kind: 'public-preview' } as const,
+      'links:public-preview',
+      PUBLIC_PREVIEW_VIEWS,
+    ],
+    [
+      { kind: 'public-page-slug', slug: SLUG } as const,
+      `links:public-page:${SLUG}`,
+      PUBLIC_PAGE_VIEWS_PER_SLUG,
+    ],
+  ])('cuenta %j bajo %s', async (key, name, limit) => {
+    const counter = new CounterDouble(ALLOWED);
+    const limiter = new CounterLinkLimiter(counter);
+
+    expect(await limiter.consume(key)).toEqual(ALLOWED);
+    expect(counter.asked).toEqual([
+      { key: name, limit: { limit, windowMs: LINK_LIMIT_WINDOW_MS } },
+    ]);
+  });
+
+  it('el tope de un enlace está por debajo del global', () => {
+    expect(PUBLIC_PAGE_VIEWS_PER_SLUG).toBeLessThan(PUBLIC_PAGE_VIEWS);
+  });
+
+  it.each([
+    [{ kind: 'public-page' } as const],
+    [{ kind: 'public-preview' } as const],
+    [{ kind: 'public-page-slug', slug: SLUG } as const],
+  ])('El contador no responde: %j pasa igual', async (key) => {
+    const limiter = new CounterLinkLimiter(new CounterDouble(null));
+
+    expect(await limiter.consume(key)).toEqual({
+      allowed: true,
+      retryAfterSeconds: 0,
+    });
+  });
+
+  it('responde la ventana agotada del contador', async () => {
+    const limiter = new CounterLinkLimiter(
+      new CounterDouble({ allowed: false, retryAfterSeconds: 300 }),
+    );
+
+    expect(await limiter.consume({ kind: 'public-page' })).toEqual({
+      allowed: false,
+      retryAfterSeconds: 300,
+    });
+  });
+
+  it('devuelve el intento al contador global cuando el del enlace rechaza', async () => {
+    const counter = new CounterDouble(ALLOWED);
+    const limiter = new CounterLinkLimiter(counter);
+
+    await limiter.refund({ kind: 'public-page' });
+
+    expect(counter.givenBack).toEqual(['links:public-page']);
+  });
+
+  it('ninguna clave depende de una cabecera de la petición', () => {
+    const counter = new CounterDouble(ALLOWED);
+    const limiter = new CounterLinkLimiter(counter);
+
+    return Promise.all([
+      limiter.consume({ kind: 'public-page' }),
+      limiter.consume({ kind: 'public-preview' }),
+      limiter.consume({ kind: 'public-page-slug', slug: SLUG }),
+    ]).then(() => {
+      // Las claves solo pueden llevar lo que hay en la ruta: dos de ellas son constantes y la tercera, el slug.
+      expect(counter.asked.map((entry) => entry.key)).toEqual([
+        'links:public-page',
+        'links:public-preview',
+        `links:public-page:${SLUG}`,
+      ]);
     });
   });
 });

@@ -324,6 +324,12 @@ function nameOfLimit(key: LinkLimitKey): string {
       return `paste-description:${key.userId}`;
     case 'comment':
       return `comment:${key.userId}`;
+    case 'public-page':
+      return 'public-page';
+    case 'public-preview':
+      return 'public-preview';
+    case 'public-page-slug':
+      return `public-page:${key.slug}`;
   }
 }
 

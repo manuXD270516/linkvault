@@ -5,7 +5,7 @@ import { apiTestAiConfig, apiTestConfig } from '../../test-support/test-config';
 
 describeHealthContract({
   service: 'api',
-  mongooseConnectOptions: buildMongooseConnectOptions(),
+  mongooseConnectOptions: buildMongooseConnectOptions('test'),
   async start({ mongoUri, redisUrl }) {
     const app = await createApp(
       await apiTestConfig({ MONGO_URI: mongoUri, REDIS_URL: redisUrl }),

@@ -56,6 +56,35 @@ export function censorLogValue(value: unknown, path: readonly unknown[]): unknow
   return isReferer ? stripReferer(value) : REDACTED;
 }
 
+/**
+ * Rutas públicas cuyo log automático de petición se apaga (D4 de public-preview-share): la página `/p/:slug` y las
+ * lecturas sin sesión de `/api/public/`. De ellas se registra **solo** `{ slug, status }`, que escribe su controlador;
+ * la línea automática de `pino-http` lleva además la dirección de origen, el `User-Agent` y el referente de quien
+ * visita, y la spec dice que de una página pública no se guarda ningún dato de quien la abre.
+ *
+ * Se apaga por ruta y no por completo: del resto de la API, ese log es la única traza de cada petición.
+ */
+export function isPublicRouteLog(url: string | undefined): boolean {
+  const path = (url ?? '').split(/[?#]/, 1)[0] ?? '';
+  return (
+    path === '/p' || path.startsWith('/p/') || path.startsWith('/api/public/')
+  );
+}
+
+/**
+ * La ruta que hay que mirar es `originalUrl`, no `url`: el middleware va montado por ruta, así que para cuando llega
+ * aquí `url` es lo que queda **después** del punto de montaje (`/`) y no dice nada. `originalUrl` es la que pidió el
+ * cliente.
+ */
+export function isPublicRouteRequest(request: {
+  url?: string | undefined;
+}): boolean {
+  const original = (request as { originalUrl?: unknown }).originalUrl;
+  return isPublicRouteLog(
+    typeof original === 'string' ? original : request.url,
+  );
+}
+
 /** Parámetros de `nestjs-pino`. `destination` solo se pasa en tests, para capturar la salida. */
 export function buildLoggerParams(
   config: Pick<ApiConfig, 'LOG_LEVEL'>,
@@ -64,6 +93,7 @@ export function buildLoggerParams(
   const options: Options = {
     level: config.LOG_LEVEL,
     redact: { paths: [...LOG_REDACT_PATHS], censor: censorLogValue },
+    autoLogging: { ignore: isPublicRouteRequest },
   };
   return { pinoHttp: destination ? [options, destination] : options };
 }

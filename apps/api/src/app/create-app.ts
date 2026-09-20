@@ -19,8 +19,12 @@ export const API_GLOBAL_PREFIX = 'api';
  *
  * `setGlobalPrefix` compara **rutas**, no prefijos de cadena: con `'p'` a secas la única ruta excluida sería `/p` —que
  * no existe— y `/p/<slug>` acabaría bajo `/api/p/<slug>`, es decir, el enlace repartido por WhatsApp respondería el
- * `404` JSON de la API. Por eso van las tres formas, las mismas que declara el controlador, y el comodín se escribe
- * `p/{*splat}`: Nest 11 va sobre `path-to-regexp` 8, donde `'p/*'` no es un comodín válido y **lanza al arrancar**.
+ * `404` JSON de la API. Por eso van las tres formas, las mismas que declara el controlador.
+ *
+ * El comodín se escribe **`p/{*splat}`**, la forma de Nest 11 sobre `path-to-regexp` 8, que es quien resuelve este
+ * `exclude`. En el **controlador** va como `p/*`, porque las rutas de un controlador las registra el router de Fastify,
+ * que rechaza `{*splat}` con "Wildcard must be the last character in the route" y **no arranca**. Son dos routers
+ * distintos y cada uno quiere su sintaxis; un test de integración comprueba que la combinación sirve la página.
  */
 export const PUBLIC_PAGE_ROUTES = ['p', 'p/:slug', 'p/{*splat}'] as const;
 

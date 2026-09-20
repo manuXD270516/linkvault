@@ -65,7 +65,10 @@ interface ApiErrorReply {
  *   dice cuál es, y el SPA traduce el código. `InvalidLinkField` (group-comments) va antes que la genérica porque es un
  *   `validation_error` que nombra su campo: `InvalidCommentText` (`text`) e `InvalidShareNote` (`note`). Por la genérica
  *   salen `CommentNotFound` → 404 `comment_not_found`, `CommentDeletionForbidden` y `NoteRemovalForbidden` → 403
- *   `forbidden`, y `CommentsGroupNotFound` → 404 `group_not_found`, con el mismo cuerpo que da `groups`.
+ *   `forbidden`, `CommentsGroupNotFound` → 404 `group_not_found`, con el mismo cuerpo que da `groups`, y los del
+ *   enlace público: `PublicShareForbidden` → 403 `forbidden` y `PublicShareNotFound` → 404 `link_not_found`, con el
+ *   mismo cuerpo que `LinkNotFound`. `GET /p/:slug` **no pasa por este filtro**: su controlador devuelve la respuesta
+ *   con su código en vez de lanzar, porque esa ruta nunca responde JSON (D4 de public-preview-share).
  * - Errores de dominio de `applications`, por su `code` (`application_not_found` → 404, `application_conflict` → 409,
  *   `link_not_found` → 404, `group_not_found` → 404); `InvalidApplicationField` va antes porque es un
  *   `validation_error` que nombra su campo: `InvalidAppliedAt` (`appliedAt`, la fecha futura que solo el dominio puede

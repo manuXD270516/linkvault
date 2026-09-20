@@ -12,6 +12,7 @@ import {
   RedisSubscriberConnection,
 } from '../../../infrastructure/redis/redis-subscriber-client';
 import { APP_CONFIG } from '../../../infrastructure/config/app-config.module';
+import { PublicRouteLogger } from '../../../infrastructure/logging/public-route-logger';
 import type { ApiConfig } from '../../../infrastructure/config/api-config.schema';
 import { GroupDeletionHooks } from '../../groups/application/group-deletion-hooks';
 import { GroupsModule } from '../../groups/presentation/groups.module';
@@ -82,6 +83,8 @@ import { UsersFacadeLinkDirectory } from '../infrastructure/users-facade-link-di
 import { GroupLinkCommentsController } from './group-link-comments.controller';
 import { GroupLinksController } from './group-links.controller';
 import { LinksController } from './links.controller';
+import { PublicPageController } from './public-page.controller';
+import { PublicPreviewsController } from './public-previews.controller';
 
 /**
  * Módulo `links` (D1 de job-links). Usa la conexión Mongoose por defecto de la app (`getConnectionToken()`), así que
@@ -118,6 +121,9 @@ import { LinksController } from './links.controller';
     LinksController,
     GroupLinksController,
     GroupLinkCommentsController,
+    // Fuera del prefijo `/api` (su `exclude` vive en `create-app`) y sin sesión, las dos.
+    PublicPageController,
+    PublicPreviewsController,
   ],
   providers: [
     { provide: JOB_LINK_REPOSITORY, useClass: MongoJobLinkRepository },
@@ -194,6 +200,7 @@ import { LinksController } from './links.controller';
       useFactory: (client: Redis) => new RedisCommentsChangedPublisher(client),
     },
     { provide: LINKS_CLOCK, useClass: SystemClock },
+    PublicRouteLogger,
     SaveLink,
     PasteDescription,
     ImportLinks,
