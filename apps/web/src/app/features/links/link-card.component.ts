@@ -51,6 +51,11 @@ export class LinkCard {
   readonly groupView = input(false);
   /** `true` si quien mira puede quitar la nota: quien compartió el link o el propietario del grupo. */
   readonly canRemoveNote = input(false);
+  /**
+   * `true` si quien mira puede encender y apagar el enlace público: quien compartió el link o el propietario del grupo
+   * (ADR-027 §2). La **marca** de que está publicado la ve cualquier miembro; el interruptor, solo esos dos.
+   */
+  readonly canPublish = input(false);
 
   readonly remove = output<void>();
   /** Completar la oferta a mano: quien la abre es `LinkList`, que sabe recargar la lista al guardar. */
@@ -67,6 +72,12 @@ export class LinkCard {
   readonly openComments = output<void>();
   /** Quitar la nota; la confirmación (propia o ajena) la pide `LinkList`, que sabe quién mira. */
   readonly removeNote = output<void>();
+  /** Encender el enlace público; la confirmación que dice el alcance la pide `LinkList`. */
+  readonly publish = output<void>();
+  /** Apagarlo; su confirmación avisa de que el enlace deja de funcionar para quien ya lo tenga. */
+  readonly unpublish = output<void>();
+  /** Copiar la URL pública al portapapeles; el aviso de "todavía estamos leyendo la oferta" lo da `LinkList`. */
+  readonly copyPublicLink = output<void>();
 
   private readonly locale = inject(LOCALE_ID);
 
@@ -84,6 +95,17 @@ export class LinkCard {
 
   /** La nota de quien compartió, solo en el grupo. */
   protected readonly shareNote = computed(() => (this.groupView() ? (this.link().note ?? null) : null));
+
+  /**
+   * El enlace público del link, solo en el grupo: la lista privada no lo lleva nunca, porque un link privado no se
+   * puede publicar (ADR-027 §1).
+   */
+  protected readonly publicShare = computed(() =>
+    this.groupView() ? (this.link().publicShare ?? null) : null,
+  );
+
+  /** `true` si aquí se puede ofrecer encender el enlace: en un grupo, a quien compartió el link y al propietario. */
+  protected readonly offersPublish = computed(() => this.groupView() && this.canPublish());
 
   /** Cuántos comentarios tiene el link en el grupo: del contador que trae, no de los que se ven. */
   protected readonly commentCount = computed(() => this.link().comments?.count ?? 0);

@@ -45,6 +45,10 @@
           [trackers]="trackersOf(link)"
           [groupView]="scope() === 'group'"
           [canRemoveNote]="canRemoveNote(link)"
+          [canPublish]="canPublish(link)"
+          (publish)="publish(link)"
+          (unpublish)="unpublish(link)"
+          (copyPublicLink)="copyPublicLink(link)"
           (removeNote)="removeNote(link)"
           (openComments)="openComments(link)"
           (track)="trackGesture(link, $event)"
@@ -69,6 +73,10 @@
   @if (notRetryable()) {
     <p role="alert" i18n="@@links.retry.notRetryable">
       Esta oferta no se puede volver a leer automáticamente. Complétala a mano.
+    </p>
+  } @else if (publicShareForbidden()) {
+    <p role="alert" data-testid="link-public-forbidden" i18n="@@links.public.forbidden">
+      Solo quien compartió la oferta o el propietario del grupo puede cambiar esto
     </p>
   } @else {
     <lv-request-error [failure]="currentFailure" />

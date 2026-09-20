@@ -200,6 +200,46 @@
       Reintentar
     </button>
   }
+  <!--
+    Enlace público (spec web/public-preview). La marca la ve cualquier miembro del grupo: ya es pública y no dice a qué
+    grupo pertenece. El interruptor solo lo ven quien compartió el link y el propietario.
+  -->
+  @if (publicShare(); as share) {
+    <span data-testid="link-public-mark" i18n="@@links.public.mark">Enlace público</span>
+    @if (offersPublish()) {
+      <button
+        mat-button
+        type="button"
+        [disabled]="busy()"
+        (click)="copyPublicLink.emit()"
+        data-testid="link-public-copy"
+        i18n="@@links.public.copy"
+      >
+        Copiar enlace
+      </button>
+      <button
+        mat-button
+        type="button"
+        [disabled]="busy()"
+        (click)="unpublish.emit()"
+        data-testid="link-public-off"
+        i18n="@@links.public.stop"
+      >
+        Dejar de compartir
+      </button>
+    }
+  } @else if (offersPublish()) {
+    <button
+      mat-button
+      type="button"
+      [disabled]="busy()"
+      (click)="publish.emit()"
+      data-testid="link-public-on"
+      i18n="@@links.public.share"
+    >
+      Compartir con un enlace público
+    </button>
+  }
   @if (canRemove()) {
     <button
       mat-button
