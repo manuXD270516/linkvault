@@ -93,6 +93,8 @@ export class LinkList {
   protected readonly failure = signal<RequestFailure | null>(null);
   /** Comentarios del link que se va a quitar del grupo; lo lee el mensaje de la confirmación, que pluraliza. */
   protected readonly removingCommentCount = signal(0);
+  /** `true` si el link que se va a quitar tiene enlace público: lo que se destruye se nombra antes de destruirlo. */
+  protected readonly removingPublished = signal(false);
   /** El mensaje de quitar en un grupo vive en plantilla: un ICU no se puede escribir en TypeScript. */
   private readonly removeGroupMessage = viewChild.required<TemplateRef<unknown>>('removeGroupMessage');
 
@@ -475,6 +477,7 @@ export class LinkList {
    */
   protected async remove(link: JobLinkSummary): Promise<void> {
     this.removingCommentCount.set(link.comments?.count ?? 0);
+    this.removingPublished.set(this.scope() === 'group' && link.publicShare !== undefined);
     const confirmed = await confirmWith(this.dialog, {
       title: $localize`:@@links.list.removeTitle:Quitar el enlace`,
       message:

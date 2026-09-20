@@ -4,6 +4,7 @@ import { NonNullableFormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
+import type { PublicShare } from '@linkvault/shared';
 import {
   SHARE_NOTE_MAX_LENGTH,
   commentTextLength,
@@ -53,6 +54,15 @@ export class SaveLinkForm {
   protected readonly sharedByName = signal<string | null>(null);
   /** `true` si la oferta ya estaba en el grupo y la nota escrita no se añadió. */
   protected readonly noteDiscarded = signal(false);
+  /**
+   * El enlace público con el que nació el link, cuando el grupo comparte en público. Viene **en la respuesta** de
+   * guardar (business 1), así que decir el alcance y ofrecer copiarlo no cuesta ninguna petición más. Este es el único
+   * momento en que enterarse sirve de algo: la persona está a punto de pegar algo en el chat.
+   */
+  protected readonly publicShare = signal<PublicShare | null>(null);
+  /** `true` si la oferta recién guardada todavía no se ha leído: copiar su enlace avisa, pero copia igual. */
+  protected readonly savedUnread = signal(false);
+  protected readonly linkCopied = signal(false);
   protected readonly invalidUrl = computed(() =>
     isApiFailure(this.failure(), 400, 'invalid_url'),
   );
@@ -79,6 +89,8 @@ export class SaveLinkForm {
     this.alreadyInGroups.set(null);
     this.sharedByName.set(null);
     this.noteDiscarded.set(false);
+    this.publicShare.set(null);
+    this.linkCopied.set(false);
     const { url, note } = this.form.getRawValue();
     const withNote = this.inGroup() && normalizeCommentText(note).length > 0;
     try {
@@ -92,11 +104,28 @@ export class SaveLinkForm {
       const groups = response.alreadyInGroups.map((group) => group.name);
       this.alreadyInGroups.set(groups.length > 0 ? groups.join(', ') : null);
       this.sharedByName.set(alreadyThere ? (response.sharedBy?.displayName ?? null) : null);
+      this.publicShare.set(response.link.publicShare ?? null);
+      this.savedUnread.set(response.link.previewStatus === 'pending');
     } catch (error: unknown) {
       // El campo conserva lo escrito: con `invalid_url` el usuario tiene que corregir esa misma URL.
       this.failure.set(toRequestFailure(error));
     } finally {
       this.submitting.set(false);
+    }
+  }
+
+  /** Copia el enlace público que ya trajo la respuesta: sin otra petición a la API. */
+  protected async copyPublicLink(): Promise<void> {
+    const share = this.publicShare();
+    if (share === null) {
+      return;
+    }
+    this.failure.set(null);
+    try {
+      await navigator.clipboard.writeText(share.url);
+      this.linkCopied.set(true);
+    } catch {
+      this.failure.set({ kind: 'unknown' });
     }
   }
 }

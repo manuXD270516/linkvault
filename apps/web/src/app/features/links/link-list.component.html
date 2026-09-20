@@ -10,6 +10,12 @@
     quita de este grupo junto con sus {{ comments }} comentarios; la oferta sigue disponible en otros
     grupos.}}</ng-container
   >
+  <!-- Lo que se destruye se nombra antes de destruirlo, igual que los comentarios que se van con el link. -->
+  @if (removingPublished()) {
+    &ngsp;<ng-container i18n="@@links.public.removeWarning"
+      >Su enlace público dejará de funcionar.</ng-container
+    >
+  }
 </ng-template>
 
 @if (reading(); as progress) {

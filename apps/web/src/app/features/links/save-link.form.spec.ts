@@ -192,6 +192,81 @@ describe('SaveLinkForm', () => {
     http.expectNone({ method: 'POST', url: '/api/links' });
   });
 
+  describe('el enlace público del grupo', () => {
+    const share = {
+      slug: 'k3m9qrtv2xyz',
+      url: 'http://localhost:3000/p/k3m9qrtv2xyz',
+      publishedAt: '2026-09-19T10:00:00.000Z',
+    };
+
+    /** Portapapeles falso; jsdom no trae uno. */
+    function stubClipboard(writeText = vi.fn().mockResolvedValue(undefined)): typeof writeText {
+      Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+      return writeText;
+    }
+
+    it('Guardado en un grupo que comparte en público', async () => {
+      const request = await save();
+      request.flush(
+        { ...saved, link: { ...link, publicShare: share } } satisfies SaveLinkResponse,
+        { status: 201, statusText: 'Created' },
+      );
+      await flushReload([{ ...link, publicShare: share }]);
+
+      expect(text()).toContain(
+        'Cualquiera con este enlace verá la oferta; no se verá el grupo ni tu nombre',
+      );
+      expect(host().querySelector('[data-testid="save-link-copy-public"]')).not.toBeNull();
+    });
+
+    it('Guardado en un grupo que no comparte en público', async () => {
+      const request = await save();
+      request.flush(saved, { status: 201, statusText: 'Created' });
+      await flushReload([link]);
+
+      expect(text()).not.toContain('Cualquiera con este enlace verá la oferta');
+      expect(host().querySelector('[data-testid="save-link-copy-public"]')).toBeNull();
+    });
+
+    it('Copiar el enlace de una oferta recién guardada', async () => {
+      const writeText = stubClipboard();
+      const request = await save();
+      request.flush(
+        { ...saved, link: { ...link, publicShare: share } } satisfies SaveLinkResponse,
+        { status: 201, statusText: 'Created' },
+      );
+      await flushReload([{ ...link, publicShare: share }]);
+
+      // La oferta todavía está en `pending`: se avisa y se copia igualmente.
+      expect(text()).toContain(
+        'Todavía estamos leyendo la oferta: si lo envías ahora, la tarjeta saldrá sin datos',
+      );
+      host().querySelector<HTMLButtonElement>('[data-testid="save-link-copy-public"]')?.click();
+      await settle();
+      await fixture.whenStable();
+
+      expect(writeText).toHaveBeenCalledWith(share.url);
+      expect(text()).toContain('Enlace copiado');
+      // El enlace venía en la respuesta: copiarlo no cuesta ninguna petición más.
+      http.expectNone({ method: 'GET', url: `/api/public/previews/${share.slug}` });
+      http.expectNone({ method: 'PUT', url: '/api/groups/g1/links/l1/public' });
+    });
+
+    it('does not warn about an unread job when the preview is already there', async () => {
+      stubClipboard();
+      const read: JobLinkSummary = { ...link, previewStatus: 'enriched', publicShare: share };
+      const request = await save();
+      request.flush({ ...saved, link: read } satisfies SaveLinkResponse, {
+        status: 201,
+        statusText: 'Created',
+      });
+      await flushReload([read]);
+
+      expect(text()).not.toContain('Todavía estamos leyendo la oferta');
+      expect(text()).toContain('Cualquiera con este enlace verá la oferta');
+    });
+  });
+
   describe('nota para el grupo', () => {
     function noteField(): HTMLTextAreaElement | null {
       return host().querySelector<HTMLTextAreaElement>('[data-testid="save-link-note"]');

@@ -132,8 +132,14 @@ describe('GroupDetailPage', () => {
     );
   }
 
+  /**
+   * Botones de la pantalla. El interruptor de la visibilidad por defecto queda fuera: Material lo pinta como un
+   * `button[role="switch"]` sin texto propio, y tiene sus propios tests.
+   */
   function buttonTexts(): (string | undefined)[] {
-    return Array.from(page().querySelectorAll('button')).map((button) => button.textContent?.trim());
+    return Array.from(page().querySelectorAll('button'))
+      .filter((button) => button.getAttribute('role') !== 'switch')
+      .map((button) => button.textContent?.trim());
   }
 
   /** El diálogo de confirmación se abre en el overlay. */
@@ -618,5 +624,70 @@ describe('GroupDetailPage', () => {
     );
     expect(buttonTexts()).toContain('Borrar el grupo');
     expect(buttonTexts()).not.toContain('Salir del grupo');
+  });
+
+  describe('los enlaces públicos por defecto', () => {
+    function toggle(): HTMLButtonElement | null {
+      return page().querySelector<HTMLButtonElement>(
+        '[data-testid="group-public-toggle"] button[role="switch"]',
+      );
+    }
+
+    it('El owner apaga los enlaces públicos por defecto', async () => {
+      await openDetail(ownerDetail);
+      expect(toggle()?.getAttribute('aria-checked')).toBe('true');
+
+      toggle()?.click();
+      await settle();
+      const request = await awaitRequest('PATCH', '/api/groups/g1/settings');
+      expect(request.request.body).toEqual({ defaultVisibility: 'private' });
+      request.flush({ ...ownerDetail, defaultVisibility: 'private' } satisfies GroupDetail);
+      await settle();
+      await harness.fixture.whenStable();
+
+      expect(toggle()?.getAttribute('aria-checked')).toBe('false');
+      expect(text()).toContain(
+        'Solo afecta a lo que se guarde a partir de ahora; los links que ya están no cambian.',
+      );
+    });
+
+    it('turns it back on without reloading the group', async () => {
+      await openDetail({ ...ownerDetail, defaultVisibility: 'private' });
+      expect(toggle()?.getAttribute('aria-checked')).toBe('false');
+
+      toggle()?.click();
+      await settle();
+      const request = await awaitRequest('PATCH', '/api/groups/g1/settings');
+      expect(request.request.body).toEqual({ defaultVisibility: 'public' });
+      request.flush(ownerDetail);
+      await settle();
+      await harness.fixture.whenStable();
+
+      expect(toggle()?.getAttribute('aria-checked')).toBe('true');
+      http.expectNone({ method: 'GET', url: '/api/groups/g1' });
+    });
+
+    it('leaves the switch as it was when the API fails', async () => {
+      await openDetail(ownerDetail);
+
+      toggle()?.click();
+      await settle();
+      (await awaitRequest('PATCH', '/api/groups/g1/settings')).flush(
+        { code: 'forbidden', message: 'Forbidden' },
+        { status: 403, statusText: 'Forbidden' },
+      );
+      await settle();
+      await harness.fixture.whenStable();
+
+      expect(toggle()?.getAttribute('aria-checked')).toBe('true');
+      expect(text()).toContain('Algo salió mal. Inténtalo de nuevo');
+    });
+
+    it('Un miembro no ve el interruptor', async () => {
+      await openDetail(memberDetail);
+
+      expect(page().querySelector('[data-testid="group-default-visibility"]')).toBeNull();
+      expect(text()).not.toContain('Los links nuevos se comparten con un enlace público');
+    });
   });
 });

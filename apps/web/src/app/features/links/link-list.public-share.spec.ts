@@ -288,6 +288,26 @@ describe('LinkList: el enlace público', () => {
     expect(action('analista de datos', 'link-public-copy')).toBeNull();
   });
 
+  it('Quitar un link publicado', async () => {
+    await setUp([{ ...ofAna, publicShare: share }]);
+
+    await click('Ingeniera de datos', 'link-remove');
+
+    const message = dialog().textContent ?? '';
+    expect(message).toContain('Se quita de este grupo; la oferta sigue disponible en otros grupos.');
+    expect(message).toContain('Su enlace público dejará de funcionar.');
+    await confirm('Cancelar');
+  });
+
+  it('never mentions a public link when the link has none', async () => {
+    await setUp([ofAna]);
+
+    await click('Ingeniera de datos', 'link-remove');
+
+    expect(dialog().textContent).not.toContain('Su enlace público dejará de funcionar.');
+    await confirm('Cancelar');
+  });
+
   it('says something went wrong when the clipboard refuses', async () => {
     stubClipboard(vi.fn().mockRejectedValue(new Error('denied')));
     await setUp([{ ...ofAna, publicShare: share }]);
