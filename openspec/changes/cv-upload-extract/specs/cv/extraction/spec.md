@@ -29,6 +29,9 @@ sí mismo y no por el `jobId` de la cola:
 
 - un CV que ya no existe SHALL completar el job sin error y sin escribir nada;
 - un CV cuyo estado ya no es `pending` SHALL completar el job sin error y sin volver a leer el archivo;
+- un CV cuyo **objeto no existe** en el almacén SHALL completar el job **sin reintentos**, dejándolo en `failed` con
+  motivo `internal_error`: un objeto que no está no aparece al siguiente intento. Esto SHALL distinguirse de que el
+  almacén no responda, que sí es transitorio;
 - la escritura del resultado SHALL ir condicionada a que el CV siga en `pending`, y si no modifica nada el job SHALL
   completarse sin reintento.
 
@@ -47,6 +50,19 @@ aviso con su identificador; NO SHALL quedar en `pending` indefinidamente.
 - **GIVEN** un evento pendiente cuyo CV ya se borró
 - **WHEN** el worker lo consume
 - **THEN** el job SHALL completarse sin error y sin escribir nada
+
+#### Scenario: El objeto no está
+
+- **GIVEN** un CV cuyo archivo no existe en el almacén
+- **WHEN** el worker consume su evento
+- **THEN** el CV SHALL quedar en `failed` con motivo `internal_error`
+- **AND** el job SHALL completarse sin reintentos
+
+#### Scenario: El almacén no responde
+
+- **GIVEN** el almacén de objetos devolviendo un error de servicio
+- **WHEN** el worker consume el evento
+- **THEN** el job SHALL fallar y reintentarse según la política de la cola
 
 #### Scenario: Dos ejecuciones a la vez
 
@@ -67,9 +83,9 @@ El worker SHALL extraer el texto del PDF con `pdf-parse` y el del DOCX con `mamm
 `\r\n` y `\r` pasan a `\n`, se quitan los caracteres de control salvo `\n` y `\t`, se colapsan las líneas en blanco
 repetidas y se recortan los extremos.
 
-El texto guardado SHALL tener como mucho 200.000 caracteres; si sobra, SHALL recortarse y marcarse `truncated` `true`.
-`textChars` SHALL contar los caracteres guardados. El texto SHALL guardarse en el documento del CV y NO SHALL devolverse
-por ninguna ruta.
+El texto guardado SHALL tener como mucho 200.000 caracteres; si sobra, SHALL recortarse y marcarse como recortado **en
+la base de datos**, marca que NO SHALL salir en ninguna respuesta. `textChars` SHALL contar los caracteres guardados. El
+texto SHALL guardarse en el documento del CV y de él SHALL salir únicamente la vista previa.
 
 #### Scenario: PDF con texto
 
@@ -87,7 +103,8 @@ por ninguna ruta.
 
 - **GIVEN** un archivo cuyo texto supera los 200.000 caracteres
 - **WHEN** el worker lo lee
-- **THEN** SHALL guardarse exactamente 200.000 caracteres y `truncated` SHALL ser `true`
+- **THEN** SHALL guardarse exactamente 200.000 caracteres y el documento SHALL quedar marcado como recortado
+- **AND** esa marca NO SHALL aparecer en el listado de la persona
 
 #### Scenario: Saltos y caracteres de control
 
@@ -161,15 +178,15 @@ se dé por `stalled` ni se reentregue.
 
 ### Requirement: Un fallo de lectura no destruye el CV
 
-Un CV en `failed` SHALL conservar su documento y su archivo, y SHALL poder descargarse, marcarse por defecto y
-eliminarse como cualquier otro. NO SHALL borrarse ni reemplazarse solo. El remedio SHALL ser volver a subir el archivo,
-que crea otra versión.
+Un CV en `failed` SHALL conservar su documento y su archivo, y SHALL poder marcarse por defecto y eliminarse como
+cualquier otro. NO SHALL borrarse ni reemplazarse solo. El remedio SHALL ser volver a subir el archivo, que crea otra
+versión.
 
 #### Scenario: Después de un fallo
 
 - **GIVEN** un CV en `failed` con motivo `no_text`
-- **WHEN** su dueña lo descarga
-- **THEN** SHALL recibir los mismos bytes que subió
+- **WHEN** su dueña lo marca por defecto
+- **THEN** la respuesta SHALL ser `200` y ese CV SHALL quedar marcado
 
 #### Scenario: Volver a subirlo
 

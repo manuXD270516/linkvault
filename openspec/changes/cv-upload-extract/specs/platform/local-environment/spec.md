@@ -8,7 +8,8 @@ esa definición: se ejecutan en el host.
 
 MinIO SHALL quedar saludable solo con **sus dos buckets** creados de forma idempotente: el de los snapshots del
 enriquecimiento, con su regla de expiración, y el de los **CV**, **sin** regla de expiración —un CV no caduca solo— y
-**sin** ninguna política de acceso anónimo.
+**sin** ninguna política de acceso anónimo. La comprobación de cada bucket SHALL ser **independiente** de la del otro,
+de modo que un entorno que ya tenía el de snapshots creado SHALL crear igualmente el de CV.
 
 #### Scenario: Arranque en limpio
 
@@ -22,6 +23,12 @@ enriquecimiento, con su regla de expiración, y el de los **CV**, **sin** regla 
 - **WHEN** la infraestructura queda saludable
 - **THEN** SHALL existir el bucket de snapshots y el de CV
 - **AND** repetir el arranque NO SHALL duplicar ni cambiar su configuración
+
+#### Scenario: Volumen que ya existía
+
+- **GIVEN** un volumen de MinIO con el bucket de snapshots ya creado y sin el de CV
+- **WHEN** se levanta la infraestructura y se espera a que esté saludable
+- **THEN** SHALL existir también el bucket de CV
 
 #### Scenario: El bucket de CV no es público ni caduca
 

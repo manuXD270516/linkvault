@@ -13,10 +13,13 @@ quién puede leerlo y qué pasa cuando alguien quiere borrarlo**, y dejarlo escr
 
 ## What Changes
 
-- **Subida** (`POST /api/cv`, multipart): un archivo por petición, PDF o DOCX, **5 MiB** como máximo. El tipo se
-  comprueba con **los primeros bytes del archivo** (`%PDF-`, `PK\x03\x04`), además del `Content-Type` y de la extensión;
-  los tres tienen que decir lo mismo. Lo que no cuadra recibe `415 unsupported_file_type` y **no se guarda en ningún
-  sitio**; lo que pasa de 5 MiB, `413 file_too_large`, sin dejar un archivo a medias en MinIO.
+- **Subida** (`POST /api/cv`, multipart): un archivo por petición, PDF o DOCX, **5 MiB** como máximo. La autoridad sobre
+  el tipo son **los primeros bytes del archivo** (`%PDF-` dentro del primer kilobyte, `PK\x03\x04`) y la **extensión**;
+  el `Content-Type` solo descalifica si **contradice** a los dos, así que un `application/octet-stream` o su ausencia no
+  estorban. Lo que no cuadra recibe `415 unsupported_file_type` y **no se guarda en ningún sitio**; lo que pasa de
+  5 MiB, `413 file_too_large`, sin dejar un archivo a medias en MinIO. Los errores del parser de multipart
+  (`FST_REQ_FILE_TOO_LARGE`, `FST_FILES_LIMIT`, `FST_PARTS_LIMIT`, `FST_INVALID_MULTIPART_CONTENT_TYPE`) se traducen a
+  errores de dominio antes del filtro: ninguno sale como `500`.
 - **Dónde vive cada cosa**: el **binario** en MinIO (bucket `cv`, privado, clave `<userId>/<cvId>` sin nombre ni
   extensión); los **metadatos y el texto extraído** en `cv_documents`. Ningún endpoint devuelve el texto y **ninguna
   lectura lo proyecta** salvo la que lo escribe: el listado trae estado, número de caracteres y poco más.
@@ -34,28 +37,33 @@ quién puede leerlo y qué pasa cuando alguien quiere borrarlo**, y dejarlo escr
 - **Borrado que se lleva el archivo**: `DELETE /api/cv/:id` borra el documento y escribe `CvDeleted.v1` en la misma
   transacción; el worker borra el objeto de MinIO (`delete-cv-file`), y borrar un objeto que ya no está es un acierto.
   Así el binario no sobrevive al documento ni depende de que la petición HTTP llegue viva hasta MinIO.
-- **Descargar** (`GET /api/cv/:id/file`): lo sirve **la API**, autenticado y solo a su dueño, con `Content-Disposition:
-  attachment` y `Cache-Control: private, no-store`. **No hay URLs prefirmadas ni bucket público**: una URL de MinIO que
-  funciona sin sesión acabaría en el historial del navegador, en un proxy o en un chat.
-- **Límites por persona** con el contador de plataforma (`FIXED_WINDOW_COUNTER`): 10 subidas y 30 descargas por ventana
-  de 15 min, con `429 too_many_attempts` y `Retry-After`. Fallan **abiertos**, porque el tope duro de almacenamiento no
-  lo pone el contador sino el máximo de 5 documentos.
+- **Ver lo que leímos** (`GET /api/cv/:id/text-preview`): los primeros ~2.000 caracteres del texto extraído, solo a su
+  dueña y con el mismo `404` que el resto. Es la única forma de descubrir que un PDF a dos columnas se leyó entrelazado,
+  que hoy nadie detecta porque `textChars` parece un éxito. **Los bytes del archivo no salen**: este change **no**
+  incluye descarga (ver Fuera de alcance).
+- **Límites por persona** con el contador de plataforma (`FIXED_WINDOW_COUNTER`): 10 subidas y 60 vistas previas por
+  ventana de 15 min, con `429 too_many_attempts` y `Retry-After`. Fallan **abiertos**, porque el tope duro de
+  almacenamiento no lo pone el contador sino el máximo de 5 documentos.
 - **Nada del CV en los logs**: ni el texto, ni el nombre del archivo, ni sus bytes. Las líneas llevan `cvId`, estado,
   motivo y tamaño; el resto lo tapa la redacción de pino, con su test.
-- **SPA**: `/mi-cv`, con sesión y carga diferida, en la barra de navegación. Subir con barra de progreso, listar las
-  versiones con su estado, "Usar este", "Descargar", "Eliminar" con confirmación, y sondeo mientras alguna esté
-  `pending`. Textos en ES y EN.
+- **SPA**: `/mi-cv`, con sesión y carga diferida, en la barra de navegación. Subir con barra de progreso, listar los CV
+  guardados **identificados por su nombre y su fecha**, "Usar este" (que dice su consecuencia: "Este usaremos para
+  comparar con las vacantes"), "Ver lo que leímos", "Eliminar" con confirmación, sondeo mientras alguno esté `pending` y
+  una línea que promete lo que este change ya cumple: "Tu CV solo lo ves tú. No sale de LinkVault; cuando analicemos
+  vacantes te pediremos permiso antes." Cada estado termina en una acción, y un CV marcado que no se pudo leer lo avisa
+  en línea. Textos en ES y EN.
 
 ## Capabilities
 
 ### New Capabilities
 
 - `cv/documents`: la subida y su validación real, los límites de tamaño y de tipo, las versiones, `isDefault`, el
-  listado, la descarga, el borrado con su evento, los límites por persona y qué ve y qué no ve cada endpoint.
+  listado, la vista previa del texto, el borrado con su evento, los límites por persona y qué ve y qué no ve cada
+  endpoint.
 - `cv/extraction`: el consumidor de `extract-cv`, su idempotencia, los estados y motivos de fallo, el tope y la
   normalización del texto, el plazo de la extracción, el consumidor de `delete-cv-file` y la prohibición de IA.
-- `web/cv`: la pantalla `/mi-cv`, la subida con progreso, el listado con estados, marcar por defecto, descargar,
-  eliminar y los textos ES/EN.
+- `web/cv`: la pantalla `/mi-cv`, la subida con progreso, el listado con estados y sus acciones, marcar por defecto con
+  su consecuencia, ver lo que leímos, eliminar, la promesa de privacidad y los textos ES/EN.
 
 ### Modified Capabilities
 
@@ -73,13 +81,15 @@ quién puede leerlo y qué pasa cuando alguien quiere borrarlo**, y dejarlo escr
 - **Código**:
   - `apps/api/src/modules/cv/` completo (dominio, casos de uso, repositorio Mongo, almacén S3, controlador) y
     `create-app.ts` (registro de `@fastify/multipart` con sus límites);
-  - `apps/api/src/infrastructure/outbox/` (enrutado por tipo de evento y registro de las dos colas nuevas);
+  - `apps/api/src/infrastructure/outbox/` (enrutado por tipo de evento, registro de las dos colas nuevas y **subida del
+    puerto `OUTBOX` y de `TransactionSession`** desde `links/application/ports/` a plataforma, con los 17 archivos de
+    `links` que los importan);
   - `apps/api/src/presentation/http/api-error.ts` y el filtro global (cuatro códigos nuevos);
   - `apps/worker/src/modules/cv/` completo (extractores, repositorio, consumidores) y su configuración;
   - `libs/shared/src/cv/`, `libs/shared/src/schemas/cv.schema.ts` y `libs/shared/src/events/cv-*.event.ts`;
   - SPA: `core/cv/`, `features/cv/`, `app.routes.ts`, la barra de navegación y `messages.*.xlf`.
-- **API**: nuevos `POST /api/cv`, `GET /api/cv`, `PUT /api/cv/:id/default`, `DELETE /api/cv/:id` y
-  `GET /api/cv/:id/file`. Ninguna ruta existente cambia.
+- **API**: nuevos `POST /api/cv`, `GET /api/cv`, `GET /api/cv/:id/text-preview`, `PUT /api/cv/:id/default` y
+  `DELETE /api/cv/:id`. Ninguna ruta existente cambia, y **ninguna devuelve los bytes del archivo**.
 - **Datos**: colección nueva `cv_documents` con tres índices —único `(userId, version)`, único **parcial**
   `(userId, isDefault)` sobre `isDefault: true` y el del listado `(userId, uploadedAt)`—. Sin backfill: no hay ningún
   documento previo.
@@ -92,11 +102,15 @@ quién puede leerlo y qué pasa cuando alguien quiere borrarlo**, y dejarlo escr
   documento de identidad sigue diferida a `cv-match-suggestions`, que es el primer change que manda un CV fuera) y
   ADR-020 §5 (el contador de plataforma y su política de fallo). Las decisiones no triviales se registran en **ADR-028**.
 - **Manifiesto** (`openspec-changes.yaml`): `cv-upload-extract` pasa a `adrs: [006, 009, 028]`; `deploy-prod` hereda
-  borrar el CV y su objeto al borrar la cuenta, el aviso de privacidad que diga cuánto se guarda un CV y la recogida de
-  objetos huérfanos.
+  borrar el CV y su objeto al borrar la cuenta, el aviso de privacidad que diga cuánto se guarda un CV, la recogida de
+  objetos huérfanos y, **desviación explícita de `docs/design.md` §8**, el **cifrado en reposo** del bucket de CV y su
+  **política de retención**.
 - **Fuera de alcance**:
   - cualquier llamada a IA sobre el CV (es `cv-match-suggestions`, orden 12) y el `fitScore`;
-  - ver, editar o descargar el **texto extraído**; OCR de PDFs escaneados;
+  - **descargar el archivo original** (`GET /api/cv/:id/file`) y cualquier botón de "Descargar": es la mayor superficie
+    de salida de datos del change y la persona acaba de subir ese archivo desde su dispositivo. Candidato para cuando
+    alguien lo pida;
+  - editar el texto extraído o verlo entero (la vista previa son los primeros ~2.000 caracteres); OCR de PDFs escaneados;
   - compartir un CV con un grupo o con cualquier tercero;
   - caducidad automática de los CVs y borrado de cuenta (`deploy-prod`);
   - aviso en vivo por SSE del final de la extracción (el SPA sondea);

@@ -3,91 +3,129 @@
 ### Requirement: Subir un CV
 
 `POST /api/cv` SHALL aceptar un cuerpo `multipart/form-data` con **una sola parte de archivo** llamada `file` y, si el
-archivo es admisible, guardar sus bytes en el almacén de objetos y crear un documento de CV de quien pide. SHALL
-responder `201` con `id`, `fileName`, `fileType`, `sizeBytes`, `version`, `isDefault`, `uploadedAt` y `extraction`
-(`status` `pending`, `textChars` 0 y `truncated` `false`).
+archivo es admisible, guardar sus bytes en el almacén de objetos y crear un CV de quien pide. SHALL responder `201` con
+`id`, `fileName`, `fileType`, `sizeBytes`, `version`, `isDefault`, `uploadedAt` y `extraction` (`status` `pending`,
+`textChars` 0).
 
-- La respuesta NO SHALL incluir el texto extraído, la clave del objeto ni ningún dato de otra persona.
-- El nombre del archivo SHALL guardarse saneado: sin rutas, sin caracteres de control ni de cambio de dirección del
-  texto, recortado a 120 code points conservando su extensión y, si queda vacío, sustituido por `cv.pdf` o `cv.docx`
-  según el tipo detectado.
-- Una petición sin parte `file`, con más de una parte de archivo o con un cuerpo que no es `multipart/form-data` SHALL
-  recibir `400` con código `validation_error` nombrando `file`, y NO SHALL guardar nada.
-- Mientras la subida no termine bien, NO SHALL quedar ningún documento de CV ni ningún objeto referenciado por uno.
+- La respuesta NO SHALL incluir el texto extraído, la marca de texto recortado, la clave del objeto ni ningún dato de
+  otra persona.
+- El nombre del archivo SHALL guardarse saneado: sin rutas, sin caracteres de control, sin los de cambio de dirección
+  del texto, **sin comillas dobles, barras invertidas ni `;`**, recortado a 120 code points conservando su extensión y,
+  si queda vacío, sustituido por `cv.pdf` o `cv.docx` según el tipo detectado.
+- Los errores del parser de multipart SHALL traducirse antes de llegar al filtro global: un archivo que supera el
+  límite SHALL responder `413 file_too_large`; más de una parte de archivo o más partes de las admitidas, `400
+  validation_error` nombrando `file`; un cuerpo que no es multipart, `415 unsupported_media_type`. **Ninguno SHALL
+  responder `500`.**
+- Mientras la subida no termine bien, NO SHALL quedar ningún CV guardado ni ningún objeto referenciado por uno.
 
 #### Scenario: Primera subida
 
 - **GIVEN** Ana con sesión y sin ningún CV
 - **WHEN** sube `CV_backend.pdf` de 312 KB
 - **THEN** la respuesta SHALL ser `201` con `version` 1, `isDefault` `true` y `extraction.status` `pending`
-- **AND** el objeto SHALL existir en el bucket de CVs con la clave derivada de su identificador
+- **AND** el almacén de objetos SHALL recibir los bytes con la clave derivada del identificador del CV
 
 #### Scenario: Petición sin archivo
 
 - **WHEN** Ana llama a `POST /api/cv` con un cuerpo multipart sin parte `file`
 - **THEN** la respuesta SHALL ser `400` con código `validation_error` nombrando `file`
-- **AND** NO SHALL guardarse ningún documento ni ningún objeto
+- **AND** NO SHALL guardarse ningún CV y NO SHALL llamarse al almacén de objetos
 
 #### Scenario: Dos archivos en la misma petición
 
 - **WHEN** Ana envía dos partes de archivo en la misma petición
 - **THEN** la respuesta SHALL ser `400` con código `validation_error` nombrando `file`
-- **AND** NO SHALL guardarse ningún documento ni ningún objeto
+- **AND** NO SHALL guardarse ningún CV
+
+#### Scenario: Cuerpo que no es multipart
+
+- **WHEN** Ana llama a `POST /api/cv` con un cuerpo JSON
+- **THEN** la respuesta SHALL ser `415` con código `unsupported_media_type`
+- **AND** NO SHALL ser `500`
 
 #### Scenario: Nombre de archivo con ruta y caracteres raros
 
-- **WHEN** Ana sube un archivo llamado `../../etc/CV‮fdp.pdf`
-- **THEN** el `fileName` guardado SHALL ser `CVfdp.pdf` (sin ruta y sin el carácter de cambio de dirección)
+- **WHEN** Ana sube un archivo llamado `../../etc/CV"a;b\\c‮fdp.pdf`
+- **THEN** el `fileName` guardado NO SHALL contener rutas, comillas, `;`, barras invertidas ni el carácter de cambio de
+  dirección
 - **AND** la clave del objeto NO SHALL contener ninguna parte de ese nombre
 
-### Requirement: El tipo del archivo se comprueba con sus bytes
+#### Scenario: El almacén no responde al subir
 
-La API SHALL aceptar únicamente PDF y DOCX, y SHALL decidir el tipo comprobando **tres cosas que tienen que coincidir**:
-el `Content-Type` de la parte, la extensión del nombre y los **primeros bytes del contenido** (`%PDF-` para PDF,
-`PK\x03\x04` para DOCX). Si alguna falta o contradice a las otras, la respuesta SHALL ser `415` con código
-`unsupported_file_type` y NO SHALL guardarse ni el objeto ni el documento.
+- **GIVEN** el almacén de objetos devolviendo error
+- **WHEN** Ana sube un CV válido
+- **THEN** la respuesta SHALL ser `500` con código `internal_error`
+- **AND** NO SHALL quedar ningún CV guardado ni ningún evento pendiente
+- **AND** el intento SHALL devolverse al contador, de modo que la siguiente subida válida SHALL aceptarse
 
-La API NO SHALL descomprimir ni interpretar el contenido más allá de esos primeros bytes; un archivo que pasa la puerta
+### Requirement: El tipo del archivo lo deciden sus bytes
+
+La API SHALL aceptar únicamente PDF y DOCX. La **autoridad** sobre el tipo SHALL ser la combinación de los **primeros
+bytes del contenido** (`%PDF-` dentro del primer kilobyte para PDF, `PK\x03\x04` al principio para DOCX) y la
+**extensión del nombre**, que tienen que coincidir. El `Content-Type` de la parte **solo SHALL descalificar**: si nombra
+un tipo conocido que contradice a los otros dos, la respuesta SHALL ser `415 unsupported_file_type`; si es
+`application/octet-stream`, está vacío o falta, NO SHALL impedir la subida.
+
+Cuando el tipo no se puede determinar o las autoridades no coinciden, la respuesta SHALL ser `415` con código
+`unsupported_file_type` y NO SHALL guardarse ni el objeto ni el CV.
+
+La API NO SHALL descomprimir ni interpretar el contenido más allá de esa comprobación; un archivo que pasa la puerta
 pero que ningún extractor puede leer SHALL resolverse en la extracción, con su estado de fallo.
 
 #### Scenario: Ejecutable renombrado
 
 - **WHEN** Ana sube un archivo llamado `CV.pdf` con `Content-Type: application/pdf` cuyo contenido empieza por `MZ`
 - **THEN** la respuesta SHALL ser `415` con código `unsupported_file_type`
-- **AND** NO SHALL guardarse ningún objeto ni ningún documento
+- **AND** NO SHALL llamarse al almacén de objetos
 
 #### Scenario: Extensión que no corresponde al contenido
 
 - **WHEN** Ana sube un PDF válido con el nombre `CV.docx` y `Content-Type` de DOCX
 - **THEN** la respuesta SHALL ser `415` con código `unsupported_file_type`
 
+#### Scenario: PDF enviado como octet-stream
+
+- **WHEN** Ana sube un PDF válido llamado `CV.pdf` con `Content-Type: application/octet-stream`
+- **THEN** la respuesta SHALL ser `201` con `fileType` `pdf`
+
+#### Scenario: DOCX sin Content-Type útil
+
+- **WHEN** Ana sube un DOCX válido llamado `CV.docx` sin cabecera `Content-Type` en su parte
+- **THEN** la respuesta SHALL ser `201` con `fileType` `docx`
+
+#### Scenario: Content-Type que contradice
+
+- **WHEN** Ana sube un PDF válido llamado `CV.pdf` con `Content-Type: image/png`
+- **THEN** la respuesta SHALL ser `415` con código `unsupported_file_type`
+
+#### Scenario: PDF con basura por delante
+
+- **GIVEN** un PDF cuya firma `%PDF-` aparece tras unos bytes iniciales, dentro del primer kilobyte
+- **WHEN** Ana lo sube
+- **THEN** la respuesta SHALL ser `201` con `fileType` `pdf`
+
 #### Scenario: Tipo declarado que no admitimos
 
 - **WHEN** Ana sube un `CV.odt` con `Content-Type: application/vnd.oasis.opendocument.text`
 - **THEN** la respuesta SHALL ser `415` con código `unsupported_file_type`
 
-#### Scenario: DOCX válido
-
-- **WHEN** Ana sube un DOCX real, con su `Content-Type` y su extensión
-- **THEN** la respuesta SHALL ser `201` con `fileType` `docx`
-
 #### Scenario: Un ZIP que no es un DOCX
 
-- **WHEN** Ana sube un `.zip` renombrado a `.docx` con el `Content-Type` de DOCX
+- **WHEN** Ana sube un `.zip` renombrado a `.docx`
 - **THEN** la respuesta SHALL ser `201`
 - **AND** la extracción SHALL terminar en `failed` con motivo `unreadable_file`
 
 ### Requirement: Tamaño máximo del archivo
 
-Un archivo de más de 5 MiB SHALL recibir `413` con código `file_too_large`, y NO SHALL quedar ningún objeto, ni entero
-ni a medias, ni ningún documento. El tope SHALL ser una constante del contrato compartido, no una variable de entorno, y
-el SPA SHALL poder anunciarlo sin preguntar a la API.
+Un archivo de más de 5 MiB SHALL recibir `413` con código `file_too_large`, el flujo SHALL cortarse en cuanto se supere
+el límite y NO SHALL llamarse al almacén de objetos ni guardarse ningún CV. El tope SHALL ser una constante del contrato
+compartido, no una variable de entorno, y el SPA SHALL poder anunciarlo sin preguntar a la API.
 
 #### Scenario: Archivo de 6 MB
 
 - **WHEN** Ana sube un PDF de 6 MiB
 - **THEN** la respuesta SHALL ser `413` con código `file_too_large`
-- **AND** NO SHALL existir ningún objeto en el bucket para esa petición
+- **AND** NO SHALL llamarse al almacén de objetos
 
 #### Scenario: Archivo justo en el límite
 
@@ -99,16 +137,16 @@ el SPA SHALL poder anunciarlo sin preguntar a la API.
 - **GIVEN** un archivo de 500 MB
 - **WHEN** Ana lo sube
 - **THEN** la respuesta SHALL ser `413` con código `file_too_large`
-- **AND** la API NO SHALL haber acumulado en memoria más de lo que cabe en el límite
+- **AND** el flujo SHALL cortarse al superar el límite, sin leer el archivo entero y sin llamar al almacén
 
 ### Requirement: Cada subida es una versión nueva
 
-Cada subida SHALL crear un documento nuevo con un `version` entero, correlativo **por persona** y creciente, calculado
-dentro de la transacción del alta y protegido por un índice único `(userId, version)`. Un CV ya guardado NO SHALL
-modificarse nunca: ni sus bytes, ni su nombre, ni su versión. Los números NO SHALL reutilizarse al borrar.
+Cada subida SHALL crear un CV nuevo con un `version` entero, correlativo **por persona** y creciente, calculado dentro
+de la transacción del alta y protegido por un índice único `(userId, version)`. Un CV ya guardado NO SHALL modificarse
+nunca: ni sus bytes, ni su nombre, ni su versión. Los números NO SHALL reutilizarse al borrar.
 
 Una persona SHALL poder guardar como mucho 5 CV a la vez. La subida que superaría ese máximo SHALL recibir `409` con
-código `too_many_cvs` y NO SHALL borrar ninguno de los guardados.
+código `too_many_cvs`, NO SHALL borrar ninguno de los guardados y SHALL devolver el intento al contador.
 
 #### Scenario: Segunda subida
 
@@ -146,6 +184,8 @@ Mientras una persona tenga al menos un CV, SHALL haber exactamente uno con `isDe
   SHALL responder `200` con la lista actualizada, también si ese CV ya lo era.
 - Borrar el CV marcado SHALL promover, en la misma transacción, al **más reciente de los que quedan**; si no queda
   ninguno, no SHALL quedar ninguno marcado.
+- Dos subidas simultáneas de la misma persona SHALL resolverse reintentando la transacción, NO SHALL dejar dos marcados
+  y NO SHALL responder `500`.
 - El estado de la extracción NO SHALL decidir la marca: un CV `pending` o `failed` puede ser el de por defecto.
 
 #### Scenario: La subida nueva manda
@@ -183,14 +223,21 @@ Mientras una persona tenga al menos un CV, SHALL haber exactamente uno con `isDe
 - **WHEN** dos peticiones marcan por defecto dos CV distintos a la vez
 - **THEN** SHALL quedar exactamente uno marcado
 
+#### Scenario: Dos subidas a la vez se disputan la marca
+
+- **GIVEN** Ana con un CV guardado
+- **WHEN** dos subidas llegan a la vez y las dos quieren la marca
+- **THEN** ninguna SHALL responder `500`
+- **AND** SHALL quedar exactamente un CV marcado
+
 ### Requirement: Listado de mis CV
 
 `GET /api/cv` SHALL devolver `200` con `items`: los CV de quien pide, del más reciente al más antiguo, cada uno con
 `id`, `fileName`, `fileType`, `sizeBytes`, `version`, `isDefault`, `uploadedAt` y `extraction` (`status`,
-`failureReason?`, `textChars`, `truncated`, `extractedAt?`). Sin CV, `items` SHALL ser una lista vacía.
+`failureReason?`, `textChars`, `extractedAt?`). Sin CV, `items` SHALL ser una lista vacía.
 
-El listado NO SHALL incluir el texto extraído, la clave del objeto ni ningún CV de otra persona, y NO SHALL exigir
-paginación: el máximo es 5.
+El listado NO SHALL incluir el texto extraído, la marca de texto recortado, la clave del objeto ni ningún CV de otra
+persona, y NO SHALL exigir paginación: el máximo es 5.
 
 #### Scenario: Lista con tres versiones
 
@@ -210,37 +257,52 @@ paginación: el máximo es 5.
 - **WHEN** Beto pide su lista
 - **THEN** SHALL recibir solo el suyo
 
-### Requirement: Descargar mi CV
+### Requirement: Ver lo que leímos de un CV
 
-`GET /api/cv/:id/file` SHALL devolver el archivo original a su dueño con sesión, con `Content-Type` según su tipo,
-`Content-Disposition: attachment` y el nombre saneado, `Cache-Control: private, no-store`,
-`X-Content-Type-Options: nosniff` y `Referrer-Policy: no-referrer`.
+`GET /api/cv/:id/text-preview` SHALL devolver `200` con `{ text, chars, complete }` a la dueña del CV, donde `text` son
+los **primeros 2.000 caracteres** del texto extraído, cortados en el último salto de línea o espacio anterior al
+límite, `chars` los caracteres devueltos y `complete` si con eso ya está todo el texto guardado.
 
-NO SHALL existir ninguna otra forma de llegar a los bytes: el almacén de objetos NO SHALL ser público ni SHALL emitirse
-ninguna URL firmada que funcione sin sesión. La respuesta NO SHALL usar `inline`.
+- Un CV que todavía no está `extracted` SHALL responder `200` con `text` vacío, `chars` 0 y `complete` `false`, NO
+  SHALL responder un código de error.
+- La respuesta SHALL llevar `Cache-Control: private, no-store`.
+- La consulta SHALL traer **solo ese prefijo** del texto, nunca el campo entero.
+- Esta SHALL ser la única ruta que devuelva texto de un CV, y NO SHALL existir ninguna que devuelva sus bytes.
 
-#### Scenario: Ana descarga su CV
+#### Scenario: Ver lo leído
 
-- **GIVEN** Ana con un CV guardado
-- **WHEN** descarga ese CV
-- **THEN** la respuesta SHALL ser `200` con los mismos bytes que subió
-- **AND** SHALL llevar `Content-Disposition: attachment` y `Cache-Control: private, no-store`
+- **GIVEN** un CV de Ana con 8.412 caracteres extraídos
+- **WHEN** pide su vista previa
+- **THEN** SHALL recibir `200` con 2.000 caracteres como mucho, cortados en un límite de palabra, y `complete` `false`
 
-#### Scenario: Sin sesión no se descarga
+#### Scenario: Un CV corto se ve entero
 
-- **WHEN** se pide ese mismo archivo sin `Authorization`
-- **THEN** la respuesta SHALL ser `401` con código `unauthorized`
+- **GIVEN** un CV con 900 caracteres extraídos
+- **WHEN** su dueña pide la vista previa
+- **THEN** SHALL recibir los 900 caracteres y `complete` `true`
 
-#### Scenario: El bucket no es público
+#### Scenario: Todavía no hay texto
 
-- **GIVEN** la clave del objeto de un CV
-- **WHEN** se pide directamente al almacén de objetos sin credenciales
-- **THEN** SHALL denegarse el acceso
+- **GIVEN** un CV recién subido, en `pending`
+- **WHEN** su dueña pide la vista previa
+- **THEN** la respuesta SHALL ser `200` con `text` vacío y `chars` 0
+
+#### Scenario: La vista previa de otra persona
+
+- **GIVEN** un CV de Ana
+- **WHEN** Beto pide su vista previa
+- **THEN** la respuesta SHALL ser `404` con código `cv_not_found`
+
+#### Scenario: La consulta no se trae el CV entero
+
+- **GIVEN** un CV con el texto recortado a 200.000 caracteres
+- **WHEN** se pide su vista previa
+- **THEN** la consulta a la base SHALL pedir solo el prefijo, no el campo completo
 
 ### Requirement: Eliminar un CV se lleva su archivo
 
-`DELETE /api/cv/:id` SHALL borrar el documento de quien pide, promover el nuevo por defecto si hacía falta y escribir el
-evento de borrado en `outbox_events`, todo en la misma transacción, y SHALL responder `200` con la lista actualizada.
+`DELETE /api/cv/:id` SHALL borrar el CV de quien pide, promover el nuevo por defecto si hacía falta y escribir el evento
+de borrado en `outbox_events`, todo en la misma transacción, y SHALL responder `200` con la lista actualizada.
 
 El borrado del objeto SHALL hacerse a partir de ese evento y NO SHALL depender de que la petición HTTP llegue viva hasta
 el almacén. Borrar un CV ya borrado o de otra persona SHALL responder `404` con código `cv_not_found`.
@@ -251,14 +313,13 @@ el almacén. Borrar un CV ya borrado o de otra persona SHALL responder `404` con
 - **WHEN** borra el más antiguo
 - **THEN** la respuesta SHALL ser `200` con un solo elemento
 - **AND** SHALL quedar un evento de borrado pendiente en `outbox_events`
-- **AND** el objeto SHALL desaparecer del bucket en cuanto el worker consuma el evento
 
 #### Scenario: El almacén no responde al borrar
 
 - **GIVEN** el almacén de objetos caído
 - **WHEN** Ana borra un CV
 - **THEN** la respuesta SHALL ser `200`
-- **AND** el evento SHALL quedar pendiente y el objeto SHALL borrarse cuando el almacén vuelva
+- **AND** el evento SHALL quedar pendiente para que el archivo se borre cuando el almacén vuelva
 
 #### Scenario: Borrar dos veces
 
@@ -274,14 +335,19 @@ casos**. Ningún CV SHALL compartirse con un grupo, con otra persona ni por ning
 #### Scenario: El CV de otra persona
 
 - **GIVEN** Ana con un CV y Beto con sesión
-- **WHEN** Beto pide, marca por defecto, descarga y borra el CV de Ana
-- **THEN** las cuatro respuestas SHALL ser `404` con código `cv_not_found`
+- **WHEN** Beto pide su vista previa, lo marca por defecto y lo borra
+- **THEN** las tres respuestas SHALL ser `404` con código `cv_not_found`
 - **AND** el CV de Ana SHALL seguir intacto
 
 #### Scenario: Identificador mal formado
 
-- **WHEN** Ana pide `GET /api/cv/no-es-un-id/file`
+- **WHEN** Ana pide `GET /api/cv/no-es-un-id/text-preview`
 - **THEN** la respuesta SHALL ser `404` con código `cv_not_found`, con el mismo cuerpo que un CV inexistente
+
+#### Scenario: Sin sesión no hay nada
+
+- **WHEN** se piden el listado y una vista previa sin `Authorization`
+- **THEN** las dos respuestas SHALL ser `401` con código `unauthorized`
 
 #### Scenario: Nada de CV en lo público
 
@@ -289,40 +355,43 @@ casos**. Ningún CV SHALL compartirse con un grupo, con otra persona ni por ning
 - **WHEN** se listan las que no exigen access token
 - **THEN** ninguna SHALL ser de `/api/cv`
 
-### Requirement: El texto del CV no sale por ninguna respuesta
+### Requirement: Los bytes del CV no salen de la API
 
-Ninguna respuesta de la API SHALL incluir el texto extraído de un CV ni un fragmento suyo. El contrato del documento de
-CV SHALL ser un objeto estricto con exactamente los campos del listado, y toda lectura del repositorio SHALL proyectar
-fuera el texto salvo la única que lo escribe y, en el futuro, la que lo consuma dentro del servidor.
+Ninguna ruta SHALL devolver el archivo original de un CV, ni entero ni por partes, ni SHALL emitirse ninguna URL firmada
+que permita alcanzarlo sin sesión. El almacén de objetos NO SHALL exponerse públicamente: el único lector de los bytes
+SHALL ser el proceso que extrae su texto.
 
-La persona SHALL poder saber si se leyó y cuánto: `extraction.status`, `textChars` y `truncated`.
+Del texto extraído SHALL salir únicamente la vista previa; el contrato del CV SHALL ser un objeto estricto con
+exactamente los campos del listado, y toda lectura del repositorio SHALL proyectar fuera el texto salvo la que lo
+escribe y la de la vista previa.
 
-#### Scenario: El texto no viaja
+#### Scenario: No hay ruta de descarga
+
+- **GIVEN** las rutas registradas por la API
+- **WHEN** se buscan las que devuelven el archivo de un CV
+- **THEN** NO SHALL existir ninguna
+
+#### Scenario: El texto completo no viaja
 
 - **GIVEN** un CV con texto ya extraído
 - **WHEN** se piden el listado, la subida y el marcado por defecto
 - **THEN** ninguna respuesta SHALL contener texto del CV
-- **AND** el contrato SHALL rechazar un objeto que incluya `extractedText` o `fileKey`
-
-#### Scenario: Cuánto se leyó
-
-- **GIVEN** un CV cuyo texto tiene 8.412 caracteres
-- **WHEN** Ana pide su lista
-- **THEN** SHALL ver `extraction.status` `extracted` y `textChars` 8412
+- **AND** el contrato SHALL rechazar un objeto que incluya `extractedText`, `truncated` o `fileKey`
 
 #### Scenario: El listado no arrastra el texto
 
 - **WHEN** se pide el listado
 - **THEN** la consulta a la base NO SHALL traer el campo del texto extraído
 
-### Requirement: Límite de subidas y descargas por persona
+### Requirement: Límite de subidas y vistas previas por persona
 
-`POST /api/cv` y `GET /api/cv/:id/file` SHALL contar sus intentos por persona en una ventana fija de 15 minutos, con el
-contador de plataforma: 10 subidas y 30 descargas. Superado el tope, la respuesta SHALL ser `429` con código
+`POST /api/cv` y `GET /api/cv/:id/text-preview` SHALL contar sus intentos por persona en una ventana fija de 15 minutos,
+con el contador de plataforma: 10 subidas y 60 vistas previas. Superado el tope, la respuesta SHALL ser `429` con código
 `too_many_attempts` y cabecera `Retry-After`.
 
-Los dos contadores SHALL **fallar abiertos**: si el contador no responde, la petición sigue. El intento SHALL consumirse
-antes de leer el archivo y SHALL devolverse cuando la petición termina en `413`, `415` o `409 too_many_cvs`.
+Los dos contadores SHALL **fallar abiertos**: si el contador no responde, la petición sigue. En la subida, el intento
+SHALL consumirse **solo cuando el archivo ya ha pasado la comprobación de tipo y tamaño** —un `413` o un `415` NO SHALL
+consumir nada— y SHALL devolverse si la petición falla después de consumirlo y antes de quedar guardada.
 
 #### Scenario: Once subidas
 
@@ -332,8 +401,14 @@ antes de leer el archivo y SHALL devolverse cuando la petición termina en `413`
 #### Scenario: Un archivo rechazado no gasta intento
 
 - **GIVEN** Ana con nueve subidas hechas en la ventana
-- **WHEN** la décima es un `.odt` que recibe `415`
-- **THEN** la siguiente subida válida SHALL aceptarse
+- **WHEN** la décima es un `.odt` que recibe `415` y la siguiente un PDF válido
+- **THEN** el PDF SHALL aceptarse
+
+#### Scenario: Un tope de versiones alcanzado no gasta intento
+
+- **GIVEN** Ana con 5 CV guardados
+- **WHEN** intenta subir otro y recibe `409 too_many_cvs`
+- **THEN** el intento SHALL devolverse al contador
 
 #### Scenario: Contador caído
 
@@ -343,7 +418,7 @@ antes de leer el archivo y SHALL devolverse cuando la petición termina en `413`
 
 #### Scenario: Los contadores son independientes
 
-- **GIVEN** Ana con su ventana de descargas agotada
+- **GIVEN** Ana con su ventana de vistas previas agotada
 - **WHEN** sube un CV
 - **THEN** la subida SHALL aceptarse
 
@@ -364,6 +439,9 @@ Ni el texto extraído, ni el nombre del archivo, ni sus bytes, ni el mensaje de 
 objetos SHALL escribirse en ningún registro, en ningún nivel, ni en `api` ni en `worker`. Lo que SHALL poder registrarse
 es el identificador del CV, el estado, el motivo del fallo, el tamaño en bytes, el número de caracteres y la duración.
 
+Si en el futuro alguna respuesta llevara el nombre del archivo en una cabecera, esa cabecera SHALL añadirse a la lista
+de redacción declarada en el mismo cambio que la introduzca.
+
 #### Scenario: Una subida no deja rastro del archivo
 
 - **GIVEN** el registro capturado a nivel `debug`
@@ -374,5 +452,5 @@ es el identificador del CV, el estado, el motivo del fallo, el tamaño en bytes,
 #### Scenario: Un fallo del almacén no filtra la clave
 
 - **GIVEN** el almacén de objetos devolviendo un error con la clave dentro del mensaje
-- **WHEN** falla una descarga
+- **WHEN** falla una subida
 - **THEN** el registro SHALL nombrar el tipo del error y NO SHALL incluir su mensaje ni la clave
