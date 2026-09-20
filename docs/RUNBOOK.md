@@ -768,6 +768,188 @@ host por los suyos.
   `User-Agent` o un referente, es un fallo de privacidad, no una curiosidad: el log automático de petición está apagado
   para `/p/*` y `/api/public/*`, y la línea propia se escribe fuera del logger de la petición.
 
+## Paso 6 octies — Operar los CV
+
+Desde `cv-upload-extract`, cada persona guarda hasta 5 CV: los **bytes** van al bucket de CV de MinIO y los metadatos y
+el **texto extraído**, a `cv_documents`. Qué se guarda, quién lo ve, los endpoints, los estados y los límites están en el
+[README](../README.md#mi-cv); las decisiones, en [ADR-028](adr/ADR-028.md). Aquí, lo que hay que tener presente al
+operar. Los comandos usan el Mongo, el Redis y el MinIO del compose local; en otro entorno, cambia la URI o el host.
+
+**Antes de tocar nada, la regla de este paso:** ni el texto de un CV, ni el nombre de su archivo, ni sus bytes salen de
+aquí. Ninguna consulta de abajo los lee, y ninguna debería: no los pegues en un ticket ni en un chat de soporte. Si
+necesitas saber "de quién es este CV", basta con su `userId`.
+
+- **Variables nuevas y obligatorias.** `api` pasa a exigir las cinco `S3_*`, incluida `S3_BUCKET` (hasta ahora no la
+  leía nadie), y `worker` añade `CV_EXTRACTION_TIMEOUT_MS` y `CV_EXTRACT_CONCURRENCY`. **Un `.env` anterior no las tiene
+  y los procesos no arrancan**: cópialas de `.env.example`.
+- **Los dos buckets, y que el de CV no sea público.** `docker compose up -d --wait` crea `snapshots` (con su regla de
+  expiración a 30 días) y el de CV, **`cvs`** por defecto —no `cv`: S3 exige entre 3 y 63 caracteres—, privado, sin
+  política anónima y **sin** regla de expiración. Las dos comprobaciones del healthcheck son independientes, así que un
+  volumen que ya tenía el de snapshots crea igualmente el de CV:
+
+  ```bash
+  docker compose exec minio mc ls admin/
+  docker compose exec minio mc anonymous get admin/cvs   # debe decir: Access permission ... is `private`
+  docker compose exec minio mc ilm rule ls admin/cvs     # debe fallar con "lifecycle configuration does not exist"
+  ```
+
+  Si `mc anonymous get` dijera `download`, `public` o `upload`, **los CV de todo el mundo son alcanzables con la URL**:
+  quítalo con `mc anonymous set none admin/cvs` y averigua quién lo puso. Y si el `ilm rule ls` listara una regla, algo
+  le puso caducidad a un dato que no caduca solo.
+
+- **Comprobar el almacén a mano.** Los tests de `api` hablan con un **doble** del almacén a propósito, así que lo único
+  que prueba que MinIO responde con la configuración de este entorno es hacerlo. Sube, lista y borra un objeto de
+  prueba bajo un prefijo inventado (nunca bajo el de una persona real):
+
+  ```bash
+  docker compose exec minio sh -c 'printf "%%PDF-prueba" > /tmp/cv-probe.bin && mc cp /tmp/cv-probe.bin admin/cvs/probe/0001'
+  docker compose exec minio mc ls --recursive admin/cvs/probe/
+  docker compose exec minio mc rm --recursive --force admin/cvs/probe/
+  ```
+
+  De punta a punta, lo que hay que ver tras subir un CV desde `/mi-cv` es un objeto con la clave `<userId>/<cvId>`, **sin
+  el nombre del archivo y sin extensión**. Si alguna clave llevara un nombre dentro, es un fallo de privacidad.
+
+- **Los índices.** `cv_documents` debe listar, además de `_id_`, `userId_1_version_1` (**único**),
+  `userId_1_isDefault_1` (**único y parcial** sobre `isDefault: true`) y `userId_1_uploadedAt_-1`;
+  `cv_version_counters` **solo** `_id_`:
+
+  ```bash
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'printjson(db.cv_documents.getIndexes().map((i) => ({ name: i.name, key: i.key, unique: i.unique, partial: i.partialFilterExpression })))'
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'printjson(db.cv_version_counters.getIndexes().map((i) => i.name))'
+  ```
+
+  Sin el parcial de `isDefault`, nada impide que una persona acabe con dos CV marcados; sin el de `version`, dos subidas
+  simultáneas pueden repetir número. Si falta alguno, `api` no ha arrancado con este change contra esa base o falló la
+  construcción: mira su log y reinícialo con Mongo sano.
+
+- **`cv_version_counters`, la colección que sorprende.** Es un documento por persona (`_id` = `userId` en hexadecimal,
+  `next` = **próxima** versión a entregar) y existe porque los números de versión **no se reutilizan**: con las versiones
+  1, 2 y 3, borrar la 3 y calcular `max(version) + 1` volvería a dar 3, y "la v3" no puede querer decir dos cosas en la
+  misma cuenta. Se sube con `$inc` dentro de la transacción del alta y **se borra con el último CV de esa persona**, así
+  que un `next` alto junto a una persona sin CV es la señal de que algo no borró bien:
+
+  ```bash
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'printjson(db.cv_version_counters.aggregate([{ $lookup: { from: "cv_documents", let: { u: { $toObjectId: "$_id" } }, pipeline: [{ $match: { $expr: { $eq: ["$userId", "$$u"] } } }, { $count: "n" }], as: "cvs" } }, { $match: { cvs: { $size: 0 } } }]).toArray())'
+  ```
+
+  Un contador huérfano no rompe nada —la siguiente subida de esa persona seguiría numerando desde ahí— y borrarlo solo
+  hace que su numeración vuelva a empezar en 1. No lo borres "por limpiar" si esa persona tiene CV.
+
+- **Cómo va la lectura de los CV.** Reparto por estado y motivo, y los que llevan demasiado tiempo en `pending` (el
+  síntoma de un worker parado, un relay apagado o una cola atascada). Ninguna de las dos lee el texto:
+
+  ```bash
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'printjson(db.cv_documents.aggregate([{ $group: { _id: { status: "$extraction.status", reason: "$extraction.failureReason" }, n: { $sum: 1 } } }, { $sort: { n: -1 } }]).toArray())'
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'printjson(db.cv_documents.find({ "extraction.status": "pending", uploadedAt: { $lt: new Date(Date.now() - 600000) } }, { _id: 1, userId: 1, uploadedAt: 1 }).sort({ uploadedAt: 1 }).toArray())'
+  ```
+
+  Si hay `pending` viejos, mira si su evento sigue esperando en el outbox: `publishedAt: null` con `attempts` creciendo
+  es el relay intentando publicar y fallando; `attempts: 0` con el relay apagado (`OUTBOX_RELAY_ENABLED=false`) es lo
+  esperado, y se resuelve solo al encenderlo. **El motivo está en el log de `api`**: el primer fallo de cada evento se
+  avisa con `warn` (identificador, tipo y motivo) y los reintentos siguientes van a `debug`, así que busca ese primer
+  aviso y no la última vuelta.
+
+  ```bash
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'printjson(db.outbox_events.find({ type: { $in: ["CvUploaded.v1", "CvDeleted.v1"] }, publishedAt: null, failedAt: null }, { type: 1, attempts: 1, createdAt: 1, nextAttemptAt: 1 }).sort({ createdAt: 1 }).toArray())'
+  ```
+
+  **No hay reencolado para los CV** (el `backfill-enrichment` es de links y no los toca): lo que la persona tiene en la
+  mano es eliminar ese CV y volver a subirlo, que escribe un evento nuevo, y es justo lo que dice el aviso de "Sigue en
+  proceso" de la pantalla.
+
+- **Las dos colas.** `extract-cv` (lectura del archivo) y `delete-cv-file` (borrado del objeto), las dos de BullMQ con
+  el prefijo `bull:`. Cuántos trabajos hay en cada estado:
+
+  ```bash
+  docker compose exec redis sh -c "for q in extract-cv delete-cv-file; do echo \"\$q wait=\$(redis-cli llen bull:\$q:wait) active=\$(redis-cli llen bull:\$q:active) delayed=\$(redis-cli zcard bull:\$q:delayed) failed=\$(redis-cli zcard bull:\$q:failed)\"; done"
+  ```
+
+  Vaciar una cola entera es **perder trabajos**, así que solo en local y sabiendo qué se pierde: vaciar `extract-cv`
+  deja esos CV en `pending` para siempre (el remedio es que su dueño los borre y los vuelva a subir), y vaciar
+  `delete-cv-file` deja **objetos huérfanos**, que es el barrido de más abajo.
+
+  ```bash
+  docker compose exec redis sh -c "redis-cli --scan --pattern 'bull:extract-cv:*' | xargs -r redis-cli del"
+  docker compose exec redis sh -c "redis-cli --scan --pattern 'bull:delete-cv-file:*' | xargs -r redis-cli del"
+  ```
+
+- **Los tres contadores.** Ventanas fijas de **15 min** por persona: `cv:upload:<userId>` (**10** subidas),
+  `cv:text-preview:<userId>` (**60** vistas previas) y `cv:reject:<userId>` (**30** archivos rechazados en la puerta,
+  que se consume tanto en el `415` como en el `413` y **nunca se devuelve**). El valor es lo contado y el `TTL`, lo que
+  le queda:
+
+  ```bash
+  docker compose exec redis redis-cli get cv:upload:<userId>
+  docker compose exec redis redis-cli ttl cv:upload:<userId>
+  docker compose exec redis sh -c "redis-cli --scan --pattern 'cv:*' | while read -r k; do echo \"\$(redis-cli get \"\$k\") \$(redis-cli ttl \"\$k\") \$k\"; done | sort -rn"
+  ```
+
+  Liberar uno antes de que pase la ventana (`DEL` devuelve `1` si había contador y `0` si no). Es lo que hay que hacer
+  cuando alguien se quedó fuera por una ráfaga de pruebas y necesita subir su CV **ya**:
+
+  ```bash
+  docker compose exec redis redis-cli del cv:upload:<userId>
+  docker compose exec redis redis-cli del cv:text-preview:<userId>
+  docker compose exec redis redis-cli del cv:reject:<userId>
+  ```
+
+  Nunca borres el patrón entero en un entorno compartido. Los tres son **independientes** y los tres **fallan
+  abiertos**: con Redis caído se sube y se mira igual, porque el tope duro no lo pone el contador sino el máximo de 5 CV
+  por persona.
+
+- **Objetos huérfanos: dos pasos, con revisión humana en medio.** Aparecen cuando una transacción del alta aborta
+  después de subir el objeto, o cuando un `CvDeleted.v1` se agota a las 24 h. Son invisibles para la persona y para la
+  API, y **no hay barrido automático a propósito**: un script que borra objetos comparándolos con la base es justo el
+  que, mal escrito, borra los CV de todo el mundo.
+
+  Paso 1, **solo lectura**: las claves del bucket menos las que `cv_documents` referencia.
+
+  ```bash
+  docker compose exec -T minio mc find admin/cvs --print "{}" | sed 's|^admin/cvs/||' | sort > /tmp/cv-objects.txt
+  docker compose exec -T mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'db.cv_documents.distinct("fileKey").forEach((k) => print(k))' | sort > /tmp/cv-referenced.txt
+  comm -23 /tmp/cv-objects.txt /tmp/cv-referenced.txt
+  ```
+
+  Paso 2, **después de mirar esa lista con ojos humanos**: si está vacía, no hay nada que hacer. Si no, comprueba que
+  ninguna clave corresponde a un CV recién subido (una subida en curso todavía no tiene documento: espera unos segundos
+  y repite el paso 1) y borra **una a una** las que sobran, nunca en bucle sobre el archivo entero:
+
+  ```bash
+  docker compose exec minio mc rm admin/cvs/<userId>/<cvId>
+  ```
+
+  El `-T` de `docker compose exec` no es decorativo: sin él la salida llega con retornos de carro y la comparación
+  miente.
+
+- **Borrar a mano todo lo de una persona.** Hoy no existe el borrado de cuenta: `deploy-prod` lo hereda (ADR-028), y
+  hasta entonces una petición se atiende así. Primero, **solo lectura**, qué se va a borrar:
+
+  ```bash
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'printjson(db.cv_documents.find({ userId: ObjectId("<userId>") }, { _id: 1, fileKey: 1, version: 1, isDefault: 1, "extraction.status": 1 }).toArray())'
+  docker compose exec minio mc ls --recursive admin/cvs/<userId>/
+  ```
+
+  Y después, **el objeto primero y el documento después**. Es el orden contrario al del alta, y por la misma razón: si
+  algo se queda a medias, lo que sobra debe ser un objeto que ningún documento nombra —invisible— y no un CV que la
+  persona sigue viendo en su lista y cuyo archivo ya no existe.
+
+  ```bash
+  docker compose exec minio mc rm --recursive --force admin/cvs/<userId>/
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'print(db.cv_documents.deleteMany({ userId: ObjectId("<userId>") }).deletedCount + " cv documents deleted"); print(db.cv_version_counters.deleteOne({ _id: "<userId>" }).deletedCount + " version counter deleted");'
+  ```
+
+  El `<userId>` va como `ObjectId(...)` en `cv_documents` y como **cadena hexadecimal** en `cv_version_counters`: es su
+  `_id`. Un borrado a mano **no avisa a nadie** ni encola nada: no escribe `CvDeleted.v1`, así que el objeto tienes que
+  borrarlo tú, que es lo que hace la primera línea.
+
+- **Qué hereda `deploy-prod`** (ADR-028 y el `scope` del manifiesto), para no darlo por hecho aquí: el **cifrado en
+  reposo** y la **política de retención** del bucket —desviación explícita de `docs/design.md` §8: en local el bucket
+  guarda los archivos tal cual y nada caduca—, el **borrado de cuenta** con sus objetos y sus contadores, la
+  **automatización del barrido** de huérfanos si alguna vez pesa, el **aviso de privacidad** que diga qué se guarda de un
+  CV y por cuánto tiempo, y el **límite por IP y el tope de cuerpo en el proxy**, que es el único techo por cliente (los
+  tres contadores cuentan por persona autenticada). Las dos colas nuevas también entran en lo que hay que vigilar.
+
 ## Paso 7 — Definition of Done (pégalo en cada PR)
 
 - [ ] Change archivado; spec delta mergeada en `openspec/specs/`

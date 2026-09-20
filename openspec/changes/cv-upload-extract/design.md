@@ -415,7 +415,7 @@ es quien lo persiste, y su doble en memoria devuelve identificadores determinist
 ### D8 — La extracción: idempotencia, resultados y fallos
 
 **El evento.** `CvUploaded.v1` con payload `{ cvId, userId }` —solo identificadores, como `LinkCreated.v1`: ni el nombre
-del archivo, ni el tipo, ni el tamaño—, cola `extract-cv`, `jobId` determinista `extract-cv:<cvId>`. La clave del objeto
+del archivo, ni el tipo, ni el tamaño—, cola `extract-cv`, `jobId` determinista `cv:<cvId>:extract` (Decisiones de implementación 13: BullMQ rechaza un `jobId` con `:` que no se parta en tres segmentos). La clave del objeto
 la compone el worker con la misma función pura `cvFileKey` de `libs/shared`, para que no haya dos formas de nombrar el
 mismo archivo.
 
@@ -471,7 +471,7 @@ autenticado que ya existe. Es barato y encaja, pero exige que el worker publique
 está mirando. Entra cuando haya algo largo que anunciar, que es el análisis.
 
 **El borrado del binario, por la misma cañería.** `DELETE /api/cv/:id` borra el documento, promueve el nuevo por defecto
-si hacía falta y escribe `CvDeleted.v1` (`{ cvId, userId }`, cola `delete-cv-file`, `jobId` `delete-cv-file:<cvId>`), todo
+si hacía falta y escribe `CvDeleted.v1` (`{ cvId, userId }`, cola `delete-cv-file`, `jobId` `cv:<cvId>:delete`, ver Decisiones de implementación 13), todo
 en la misma transacción. El worker borra el objeto; borrar un objeto que ya no está es un acierto en S3, así que el
 consumidor es idempotente por naturaleza.
 
@@ -806,7 +806,7 @@ Critic: 0 P0 (1 P1). Business: 1 V0. Tras aplicar esta tabla no queda ningún P0
 | # | Hallazgo | Decisión | Motivo |
 |---|----------|----------|--------|
 | business 1 (V0) | La línea de privacidad prometía "te pediremos permiso antes", y el producto **no pregunta**: el consentimiento es una bandera del perfil (`aiConsent.externalProviders`, `false` por defecto) que la pasarela lee sin preguntar, y con un proveedor local no hay permiso que pedir | Aceptado: se reescribe la línea (D13) y se revisa que nadie repita la frase vieja. **Su segunda mitad se corrigió otra vez en la iteración 3**, porque mandaba a una pantalla que no existe | Una promesa que el change siguiente tendría que romper es peor que no ponerla |
-| critic 1 (P1) | Se acumulaban hasta 5 MiB de un archivo que ya se sabía inválido, y un rechazo no gastaba contador, así que una ráfaga de basura no tenía techo | Aceptado, en dos partes: **husmeo del primer chunk** con destrucción del stream y `415` inmediato (D2, D7), y contador propio de rechazos `cv:reject:<userId>` (30 por ventana, fallo abierto, `consume` en la rama de error y **sin devoluciones**) (D5). En Risks, que antes no había techo | El tope de bytes que hay que mirar ya lo fija la propia regla del `%PDF-`; y un techo que no cobra al que se equivoca una vez sí puede existir |
+| critic 1 (P1) | Se acumulaban hasta 5 MiB de un archivo que ya se sabía inválido, y un rechazo no gastaba contador, así que una ráfaga de basura no tenía techo | Aceptado, en dos partes: **husmeo del primer chunk** con destrucción del stream y `415` inmediato (D2, D7; **la iteración 3 lo corrige a drenar y descartar**, ver critic 6 de esa tabla), y contador propio de rechazos `cv:reject:<userId>` (30 por ventana, fallo abierto, `consume` en la rama de error y **sin devoluciones**) (D5). En Risks, que antes no había techo | El tope de bytes que hay que mirar ya lo fija la propia regla del `%PDF-`; y un techo que no cobra al que se equivoca una vez sí puede existir |
 | critic 2 | La traducción de los errores del parser era una lista cerrada: un `code` nuevo del plugin acabaría en `500` | Aceptado: traducción **por defecto** (`FST_*` → `400 validation_error` nombrando `file`) con las filas conocidas encima, más `FST_FIELDS_LIMIT`, `FST_PROTO_VIOLATION` y el caso de "sin parte `file`", que no lanza nada; y se justifica la holgura de `parts` (D2) | La lista de códigos es del plugin y crece con una versión menor |
 | critic 3 + business 9 (parte) | `complete` no se puede calcular teniendo solo el prefijo: 2.000 y 50.000 caracteres dan el mismo trozo | Aceptado: la consulta proyecta también `extraction.textChars` y `complete` es `chars === textChars` (alternativa equivalente: pedir `CV_TEXT_PREVIEW_CHARS + 1`) (D6, tarea 4.9) | Un campo que miente es peor que no tenerlo |
 | business 9 + critic 10 | Un `pending` y un `failed` devolvían la **misma** respuesta vacía, y el schema es estricto, así que añadir el estado después rompería contrato | Aceptado: el cuerpo pasa a `{ status, text, chars, complete }`, y con ello `textChars` gana consumidor dentro del servidor, con su escenario (D6, specs, tareas 1.10 y 4.9) | Entra ahora o no entra |

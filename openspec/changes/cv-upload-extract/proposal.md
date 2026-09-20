@@ -22,7 +22,7 @@ quién puede leerlo y qué pasa cuando alguien quiere borrarlo**, y dejarlo escr
   sabemos que no vale. Los errores del parser de multipart se traducen a errores de dominio antes del filtro **por
   defecto** —cualquier `code` que empiece por `FST_` acaba en `400 validation_error` nombrando `file`—, con sus filas
   conocidas encima: ninguno sale como `500`.
-- **Dónde vive cada cosa**: el **binario** en MinIO (bucket `cv`, privado, clave `<userId>/<cvId>` sin nombre ni
+- **Dónde vive cada cosa**: el **binario** en MinIO (bucket de CV —`S3_BUCKET`, por defecto `cvs`—, privado, clave `<userId>/<cvId>` sin nombre ni
   extensión); los **metadatos y el texto extraído** en `cv_documents`. Las únicas dos lecturas que proyectan el texto
   son **la que lo escribe** y **la de la vista previa**, que trae solo su prefijo; el listado trae estado, número de
   caracteres y poco más.
@@ -76,7 +76,7 @@ quién puede leerlo y qué pasa cuando alguien quiere borrarlo**, y dejarlo escr
   `extract-cv`, `delete-cv-file`) con el `jobId` determinista de su contrato, y un tipo desconocido no envenena la
   cola— y "El trabajo encolado no se pierde", que deja de hablar solo de links.
 - `platform/local-environment`: cambian "Infraestructura con un comando" (MinIO arranca con **sus dos buckets**,
-  `snapshots` y `cv`, creados de forma idempotente; el de CVs **sin** regla de expiración y sin política pública) y
+  `snapshots` y el de CV, creados de forma idempotente; el de CVs **sin** regla de expiración y sin política pública) y
   "Configuración por entorno documentada" (las `S3_*`, incluida `S3_BUCKET`, pasan a validarse en `api` y `worker`).
 - `platform/workspace`: cambia "Aislamiento de la capa de dominio", que añade `pdf-parse` y `mammoth` a la lista cerrada
   de paquetes que ninguna carpeta `domain/` puede importar.
@@ -96,9 +96,11 @@ quién puede leerlo y qué pasa cuando alguien quiere borrarlo**, y dejarlo escr
 - **API**: nuevos `POST /api/cv`, `GET /api/cv`, `GET /api/cv/:id/text-preview`, `PUT /api/cv/:id/default` y
   `DELETE /api/cv/:id`. Ninguna ruta existente cambia, y **ninguna devuelve los bytes del archivo**.
 - **Datos**: colección nueva `cv_documents` con tres índices —único `(userId, version)`, único **parcial**
-  `(userId, isDefault)` sobre `isDefault: true` y el del listado `(userId, uploadedAt)`—. Sin backfill: no hay ningún
-  documento previo.
-- **Infraestructura**: bucket `cv` en el `docker-compose` (privado, sin expiración) y las `S3_*` validadas por las dos
+  `(userId, isDefault)` sobre `isDefault: true` y el del listado `(userId, uploadedAt)`—, más `cv_version_counters` (un
+  documento por persona con el próximo número de versión, para que no se reutilice el de un CV borrado). Sin backfill:
+  no hay ningún documento previo.
+- **Infraestructura**: bucket de CV en el `docker-compose` (privado, sin expiración; se llama `cvs` porque S3 exige de
+  3 a 63 caracteres) y las `S3_*` validadas por las dos
   apps. Dependencias nuevas: `@fastify/multipart` (api), `pdf-parse` y `mammoth` (worker).
 - **Configuración**: `S3_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY`, `S3_SECRET_KEY` y `S3_BUCKET` obligatorias en `api`
   (hoy solo las lee el worker, y `S3_BUCKET` no la lee nadie), más `CV_EXTRACTION_TIMEOUT_MS` y

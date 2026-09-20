@@ -18,6 +18,11 @@ su aviso, como cualquier otro que no se pudo publicar.
 Con el relay apagado por configuración, NO SHALL crearse ninguna cola ni ninguna conexión a Redis por esa vía, y los
 eventos de todos los tipos SHALL esperar en `outbox_events`.
 
+**La primera vez que un evento no se puede publicar SHALL registrarse un aviso** con su identificador, su tipo y el
+motivo, y los reintentos siguientes de ese mismo evento NO SHALL repetirlo. Sin eso, un error nuestro —un `jobId` que la
+cola rechaza, un tipo desconocido o un payload que no valida— quedaría invisible hasta el aviso de las 24 horas, y un
+corte de la cola llenaría el registro con una línea por vuelta.
+
 #### Scenario: Publicación correcta
 
 - **GIVEN** un evento pendiente
