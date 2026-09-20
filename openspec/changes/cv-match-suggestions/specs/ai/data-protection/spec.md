@@ -44,6 +44,93 @@ SHALL recibir el input sin redactar.
 - **THEN** el prompt enviado SHALL contener `[EMAIL_1]`, `[PHONE_1]`, `[ADDRESS_1]` e `[ID_1]`
 - **AND** NO SHALL contener ninguno de los cuatro valores originales
 
+### Requirement: Nombre propio configurable
+
+El nombre propio de una persona SHALL mantenerse sin redactar salvo que el contexto indique `redactName: true` junto con el
+nombre, en cuyo caso ese nombre SHALL sustituirse por `[NAME_1]` en tareas `personal` enviadas a proveedores externos.
+
+Ese interruptor nace activado, de modo que el detector de nombre se aplica **a todo el mundo por defecto** y una coincidencia
+de más no es una rareza sino el caso corriente. En Bolivia `Paz`, `Cruz`, `Flores`, `Campos` y `Vargas` son apellidos
+corrientes **y a la vez ciudades, nombres de empresa y palabras comunes**: sustituirlos donde no nombran a la persona
+destruye la señal de ubicación —que decide remoto o presencial— y la del empleador, y lo hace **sin que se note**, porque el
+informe sale igual, solo que peor. Por eso el detector SHALL cumplir estas reglas de precisión:
+
+1. **Límites de palabra.** Toda coincidencia SHALL empezar y terminar en límite de palabra, sin distinguir mayúsculas de
+   minúsculas. `Paz` NO SHALL coincidir dentro de `Pazos`, `Capaz` ni `Cruzada`, y `Flores` NO SHALL coincidir dentro de
+   `Floresta`.
+2. **El nombre completo siempre; los fragmentos, solo si pasan las exclusiones.** El nombre tal como lo declara el contexto
+   SHALL sustituirse en cada aparición completa. Un **fragmento suelto** del nombre (un nombre de pila o un apellido por
+   separado) SHALL sustituirse solo si no cae en ninguna de las tres exclusiones siguientes.
+3. **Topónimo.** Un fragmento que forme parte de un topónimo NO SHALL sustituirse: ni cuando va precedido inmediatamente de
+   una partícula de topónimo (`La`, `Las`, `El`, `Los`, `San`, `Santa`, `Villa`, `Puerto`), ni cuando forma parte de un
+   topónimo de la lista cerrada de ciudades y departamentos que el sistema reconoce (`La Paz`, `El Alto`, `Santa Cruz`,
+   `Santa Cruz de la Sierra`, `Cochabamba`, `Oruro`, `Potosí`, `Tarija`, `Sucre`, `Chuquisaca`, `Beni`, `Trinidad`,
+   `Pando`, `Cobija`, `Montero`).
+4. **Nombre de organización.** Un fragmento que caiga dentro del nombre de una organización NO SHALL sustituirse. SHALL
+   considerarse nombre de organización el fragmento de la misma línea que lleve un designador societario (`S.A.`, `SA`,
+   `S.R.L.`, `SRL`, `Ltda.`, `S.A.S.`, `Inc.`, `LLC`, `& Cía.`) o que vaya encabezado por una palabra de organización
+   (`Banco`, `Constructora`, `Consultora`, `Cooperativa`, `Empresa`, `Grupo`, `Fundación`, `Universidad`, `Colegio`,
+   `Instituto`, `Clínica`, `Hospital`, `Ministerio`, `Agencia`, `Editorial`).
+5. **Palabra corriente.** Un fragmento escrito **en minúscula** que coincida con una palabra corriente del idioma NO SHALL
+   sustituirse: `paz`, `cruz`, `flores`, `campos`, `torres`, `luna`, `rosa`, `león`, `prado`, `castillo`, `nieves`, `mar`.
+
+**Desempate declarado: cuando un apellido coincide con una ciudad, prevalece la ciudad.** Esa aparición NO SHALL
+sustituirse, aunque eso deje el apellido visible ahí. La razón es asimétrica y deliberada: el nombre **no aporta ninguna
+señal de encaje**, así que perderlo no cuesta nada y conservarlo en un topónimo cuesta poco; la ubicación sí la aporta, y
+perderla estropea el análisis en silencio. La aparición que de verdad identifica —el nombre completo, en el encabezado del
+CV— queda cubierta por la regla 2. La misma preferencia SHALL aplicarse a los otros dos casos: ante la duda entre redactar
+un fragmento del nombre y conservar un topónimo, el nombre de un empleador o una palabra corriente, NO SHALL redactarse.
+
+Estas exclusiones SHALL aplicarse **solo al detector de nombre**. Los demás detectores (email, teléfono, URL, dirección y
+documento) NO SHALL verse afectados: una dirección que contenga el apellido de la persona SHALL seguir sustituyéndose por
+`[ADDRESS_n]` según sus propias reglas.
+
+#### Scenario: Redacción de nombre activada
+
+- **GIVEN** un contexto con `redactName: true` y el nombre de la persona
+- **WHEN** se redacta un input que contiene ese nombre para un proveedor externo
+- **THEN** el prompt enviado SHALL contener `[NAME_1]` en lugar del nombre
+
+#### Scenario: El apellido coincide con la ciudad
+
+- **GIVEN** un contexto con `redactName: true` y el nombre `Ana Paz Flores`, y un CV cuyo encabezado dice `Ana Paz Flores` y cuya línea de ubicación dice `La Paz, Bolivia — disponible para remoto`
+- **WHEN** se redacta para un proveedor externo
+- **THEN** el encabezado SHALL contener `[NAME_1]`
+- **AND** la línea de ubicación SHALL seguir diciendo `La Paz, Bolivia` sin ningún marcador
+
+#### Scenario: Santa Cruz sigue siendo Santa Cruz
+
+- **GIVEN** un contexto con `redactName: true` y el nombre `Beto Cruz Vargas`, y un CV que menciona `Santa Cruz de la Sierra` y `traslado a Santa Cruz en 2021`
+- **WHEN** se redacta para un proveedor externo
+- **THEN** las dos menciones SHALL permanecer sin cambios
+- **AND** NO SHALL aparecer ningún `[NAME_n]` en ellas
+
+#### Scenario: El apellido dentro del nombre del empleador
+
+- **GIVEN** un contexto con `redactName: true` y el nombre `Ana Paz Flores`, y un CV con la experiencia `Constructora Flores S.R.L. — Jefa de proyecto` y `Banco Los Andes S.A.`
+- **WHEN** se redacta para un proveedor externo
+- **THEN** `Constructora Flores S.R.L.` SHALL permanecer sin cambios, porque perder el empleador destruye la señal de experiencia
+- **AND** el input enviado SHALL seguir conteniendo `Flores` dentro de ese nombre de empresa
+
+#### Scenario: Límite de palabra
+
+- **GIVEN** un contexto con `redactName: true` y el nombre `Ana Paz Flores`, y un input con `Pazos`, `Capaz de liderar`, `Floresta Urbana` y `Cruzada comercial`
+- **WHEN** se redacta para un proveedor externo
+- **THEN** esos cuatro textos SHALL permanecer sin cambios
+
+#### Scenario: La palabra corriente en minúscula
+
+- **GIVEN** un contexto con `redactName: true` y el nombre `Luis Campos Cruz`, y un input con `normalicé 40 campos del formulario` y `validación cruz de inventarios`
+- **WHEN** se redacta para un proveedor externo
+- **THEN** esos textos SHALL permanecer sin cambios
+
+#### Scenario: La dirección con el apellido dentro se sigue redactando
+
+- **GIVEN** un contexto con `redactName: true` y el nombre `Ana Paz Flores`, y una línea `Av. Las Flores 220, Zona Sur`
+- **WHEN** se redacta para un proveedor externo
+- **THEN** la línea SHALL sustituirse por `[ADDRESS_1]` según las reglas de dirección
+- **AND** NO SHALL quedar ningún fragmento suelto de la línea en el input enviado
+
 ### Requirement: Reinyección en la salida
 
 Los marcadores presentes en cualquier texto de la salida validada SHALL sustituirse por sus valores originales antes de
@@ -294,6 +381,23 @@ palabras ni equivalentes referidas a lo que sale hacia el proveedor; la comproba
 Enumerar únicamente lo que se sustituye, sin los cuatro puntos anteriores, NO SHALL considerarse texto válido: el silencio
 sobre el resto del CV invita a deducir un anonimato que no existe.
 
+Y la enumeración SHALL ser **una sola en todo el producto**. **Toda** enumeración de lo que se sustituye que el producto
+muestre —en cualquier pantalla, diálogo, aviso o ayuda, y en cualquier idioma publicado— SHALL listar exactamente los mismos
+tipos, sin omitir ninguno ni añadir otros. Tres pantallas con tres listas distintas no describen tres redacciones distintas:
+describen una sola, dos veces mal, y quien lee no puede saber cuál de las tres está leyendo. Reglas:
+
+- La lista canónica SHALL **derivarse de los tipos que el redactor sustituye** para proveedores externos, no escribirse a
+  mano en cada pantalla. Añadir un detector nuevo sin actualizar una enumeración SHALL hacer fallar la comprobación.
+- Si un tipo se sustituye solo cuando un interruptor está activado —el caso del nombre propio—, toda enumeración SHALL
+  nombrarlo igualmente y SHALL decir en qué estado nace el interruptor. Callarlo porque «depende» deja a la persona
+  creyendo que su nombre viaja cuando no viaja, o al revés.
+- La comprobación automatizada SHALL recorrer un **inventario declarado** de todas las enumeraciones que el producto
+  publica, y SHALL fallar nombrando la pantalla y el tipo que falta o que sobra. Cubrir solo una de ellas NO SHALL bastar:
+  una comprobación que mira una pantalla y deja dos sin mirar da por buenas justo las que se desvían.
+
+Los textos concretos de cada pantalla los fijan las capacidades de `web/*`; esta capacidad fija la obligación y la
+comprobación que la sostiene.
+
 #### Scenario: Texto que solo enumera lo que se sustituye
 
 - **GIVEN** un texto de consentimiento que dice qué se sustituye y no dice nada del resto del CV
@@ -312,6 +416,32 @@ sobre el resto del CV invita a deducir un anonimato que no existe.
 - **GIVEN** un texto que enumera lo sustituido, advierte de que el resto del CV se envía tal cual y puede identificar a la persona, dice que no puede comprobarse qué hace el proveedor con lo enviado y explica cómo se revoca
 - **WHEN** se ejecuta la comprobación automatizada del texto
 - **THEN** SHALL pasar
+
+#### Scenario: Una pantalla enumera de menos
+
+- **GIVEN** el texto de consentimiento que nombra la URL entre lo sustituido y otra pantalla que enumera lo mismo sin nombrarla
+- **WHEN** se ejecuta la comprobación automatizada
+- **THEN** SHALL fallar nombrando la pantalla que la omite y el tipo `url`
+
+#### Scenario: Una enumeración calla el nombre propio
+
+- **GIVEN** una enumeración que no nombra el nombre propio, pese a que el interruptor que lo sustituye nace activado
+- **WHEN** se ejecuta la comprobación automatizada
+- **THEN** SHALL fallar nombrando la pantalla y el tipo `name`
+- **AND** SHALL exigir que la enumeración diga en qué estado nace el interruptor
+
+#### Scenario: Un detector nuevo que las pantallas no nombran
+
+- **GIVEN** el redactor con un tipo nuevo entre los que sustituye y una sola de las enumeraciones publicadas actualizada
+- **WHEN** se ejecuta la comprobación automatizada
+- **THEN** SHALL fallar nombrando cada pantalla que no lo lista
+- **AND** NO SHALL bastar con que la enumeración del texto de consentimiento esté al día
+
+#### Scenario: Una traducción que enumera distinto
+
+- **GIVEN** una enumeración cuya versión en español lista los seis tipos y cuya traducción inglesa lista cinco
+- **WHEN** se ejecuta la comprobación automatizada
+- **THEN** SHALL fallar nombrando el idioma, la pantalla y el tipo que falta
 
 ### Requirement: Efecto de la revocación del consentimiento
 

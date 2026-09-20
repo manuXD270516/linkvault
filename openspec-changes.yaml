@@ -203,7 +203,9 @@ changes:
       `PiiRedactor`. **BYOK queda fuera**: sigue en su propio change `ai-byok`.
 
       docs/design-v0.2.md §4.7 y §4.12: tarea match-cv, MatchReport con evidence obligatoria, RuleBasedMatcher degradado,
-      ai_analyses, Application.fitScore, SSE analysis.step. Frontend: badge de fit y el informe en pantalla.
+      ai_analyses, Application.fitScore derivado en lectura, y el paso alcanzado que la pantalla consulta mientras dura
+      el análisis. **El aviso en vivo por SSE se difiere a `cv-suggestions-review`** (ADR-030 §9).
+      Frontend: badge de fit y el informe en pantalla.
       PiiRedactor: detectores de dirección postal y documento de identidad (CI con extensión departamental, DNI, cédula), afinados
       con CVs reales anonimizados (diferidos desde ai-gateway-core, ADR-018). Métricas de redacción en el eval harness
       (skills ocultadas por la redacción y PII anotada que no se redacta) sobre ese golden de CVs, para medir la sobre-redacción
@@ -229,8 +231,11 @@ changes:
       el score del juez ≥ 0.8, si Δ < 0.05 o si se agota el budget; juez distinto del generador si hay ≥2 proveedores,
       que con Ollama y OpenRouter ya se cumple), guardando `judgeScore` y `judgeModel` con el informe.
       `ai_feedback` ("no me convence") y su export a `candidates.jsonl` para revisión humana antes de entrar al golden
-      (design §4.11). Frontend: diff aceptar/rechazar de cada sugerencia sobre el CV, y los pasos del bucle por el SSE
-      `analysis.step` que `cv-match-suggestions` ya emite.
+      (design §4.11). Frontend: diff aceptar/rechazar de cada sugerencia sobre el CV.
+      **Aquí entra el aviso en vivo por SSE `analysis.step`**, diferido desde `cv-match-suggestions` (ADR-030 §9): allí
+      había tres mecanismos para contar una espera de cuarenta segundos, y el bucle de juez —con más pasos y más
+      espera— es donde un canal se justifica. Incluye publicar el paso, repartirlo solo a su dueño y que el mensaje no
+      lleve nada del CV ni del informe.
       Métricas del eval harness para el bucle: correlación del `score` con etiquetas humanas (1–5) y coste por vuelta,
       para que una iteración de más se vea en el reporte y no solo en la factura.
   - name: study-roadmap

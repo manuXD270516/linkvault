@@ -186,11 +186,38 @@ fallido pero seguía "en curso": volver a pedirlo devolvía el mismo y fallaba o
 (*critic 9*). El plazo de la API es mayor que el del worker con sus reintentos, un vencido no se reutiliza y un
 resultado que llega tarde no sobrescribe lo que la persona ya vio.
 
-### D12-ter. Solo consume cuota el análisis que entrega un informe
+### D12-ter. La cuota se **cuenta**, no se lleva apuntada
 
-Se le cobraban a la persona **nuestras** averías: un fallo interno o un vencimiento gastaban intento. Peor, un degradado
-por cuota de IA agotada no se reutilizaba, así que cada reintento quemaba un intento más de la cuota de la API mientras
-la de IA seguía agotada, hasta gastar el día entero en informes básicos (*iteración 1, critic 10*).
+Se le cobraban a la persona **nuestras** averías: un fallo interno o un vencimiento gastaban intento (*iteración 1,
+critic 10*). El arreglo —devolver el intento— resultó **inejecutable**: el desenlace ocurre en el worker, el
+vencimiento se deriva al leer sin efecto secundario, y el contador con su devolución vivía en la API. **Nadie devolvía
+nada** (*iteración 2, critic 1*).
+
+Así que la cuota deja de guardarse y se **deriva**, igual que `fitScore`: es el número de análisis de la persona en la
+ventana que entregaron un informe no degradado, contados del historial. Sin contador que reconciliar, sin devolución que
+perderse, sin dos verdades que puedan discrepar.
+
+Que la misma medicina cure dos veces sugiere que el problema no era el campo, sino **la costumbre de guardar lo que se
+puede calcular**.
+
+*Añadido al derivarla:* un análisis **en curso** ocupa sitio mientras corre y lo suelta en cuanto degrada, falla o
+vence. Sin eso, nada acotaba una ráfaga: se podían lanzar tantos análisis como ofertas visibles —cada uno con su envío
+del CV— antes de que ninguno llegara a contar.
+
+### D12-quater. Un degradado no se re-ejecuta mientras su motivo siga vigente
+
+Derivar la cuota la dejó sin acotar nada: un degradado no cuenta, un degradado se reejecutaba siempre y la pantalla
+ofrecía "Reintentar". Bucle **infinito y gratis**, leyendo el CV del almacén y encolando trabajo en cada vuelta
+(*iteración 2, critic 9 y business 2*).
+
+Mientras el motivo siga vigente —la hora de vuelta de la cuota de IA no ha llegado, o sigue sin haber proveedor
+elegible— volver a pedirlo devuelve **ese mismo informe**, sin encolar nada. Un cambio de oferta, de CV o de prompt
+manda sobre esta regla.
+
+*Consecuencia que obliga a algo:* saber si hay proveedor elegible tiene que poder responderse **desde el proceso que
+atiende la petición**, sin ejecutar la tarea ni contactar a nadie — lo que exige que el estado de los circuitos sea
+compartido y no memoria local del worker. Si esa consulta no responde, el motivo se trata como **no vigente** y se
+ejecuta: mejor gastar una ejecución que no sale fuera que dejar a alguien con un botón muerto.
 
 ### D13. Un diálogo, no una ruta nueva
 
@@ -230,7 +257,13 @@ traducciones.
 - **Sobre-redacción que empeora el análisis sin que se note** → `redaction_skill_loss` con línea base.
 - **Reutilizar un análisis `done` puede devolver algo viejo** si la oferta o el CV cambiaron → se marcan `stale` y
   `cvChanged` y la pantalla lo dice. Ver Q1.
-- **Una espera larga sin canal** → sondeo cada 3 s hasta 90 s y luego un botón "Actualizar"; nunca una rueda infinita.
+- **Una espera larga sin canal** → sondeo periódico y luego un botón "Actualizar"; nunca una rueda infinita. La ventana
+  **se deriva del plazo que la API publica**, no de una constante del SPA: con un proveedor local lento, un número fijo
+  hacía que *todo* análisis terminara mostrando el aviso de paciencia agotada. Regla reutilizable: **la espera del
+  cliente se deriva del plazo del servidor**, o acaban discrepando.
+- **Un escritor en vuelo podía resucitar lo purgado** → las escrituras de resultado y de paso solo actualizan un
+  documento existente y **nunca lo crean**. Sin eso teníamos una purga transaccional impecable y un worker devolviendo
+  el fragmento del CV a la vida justo después (*iteración 2, critic 6*).
 
 ## Open Questions
 

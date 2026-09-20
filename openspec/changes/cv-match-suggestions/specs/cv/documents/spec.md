@@ -81,3 +81,51 @@ persona, y NO SHALL exigir paginación: el máximo es 5.
 - **WHEN** marca el otro por defecto y después borra uno
 - **THEN** cada CV de las listas devueltas SHALL traer su `matchAnalysesCount`
 - **AND** un CV recién subido SHALL traerlo con valor `0`
+
+### Requirement: Eliminar un CV se lleva su archivo
+
+`DELETE /api/cv/:id` SHALL borrar el CV de quien pide, **eliminar en la misma operación todos los análisis de encaje
+hechos con él**, promover el nuevo por defecto si hacía falta y escribir el evento de borrado en `outbox_events`, todo en
+la misma transacción, y SHALL responder `200` con la lista actualizada.
+
+El borrado del objeto SHALL hacerse a partir de ese evento y NO SHALL depender de que la petición HTTP llegue viva hasta
+el almacén. Borrar un CV ya borrado o de otra persona SHALL responder `404` con código `cv_not_found`.
+
+La eliminación de los análisis SHALL llevarse también **sus fragmentos de texto del CV**, SHALL ocurrir **dentro de la
+misma transacción** que borra el CV y **NO SHALL delegarse a ningún paso posterior** —ni a un evento in-process, ni a
+una limpieza diferida—: es la única vía que el producto ofrece para que ese texto desaparezca, y un resto que sobreviva
+no tendría quién lo recogiera. Al terminar, o han desaparecido el CV y todos sus análisis, o no ha desaparecido ninguno
+de los dos; **NO SHALL existir ningún instante observable** en que el CV ya no esté y sus análisis sigan guardados.
+
+#### Scenario: Eliminar
+
+- **GIVEN** Ana con dos CV
+- **WHEN** borra el más antiguo
+- **THEN** la respuesta SHALL ser `200` con un solo elemento
+- **AND** SHALL quedar un evento de borrado pendiente en `outbox_events`
+
+#### Scenario: El almacén no responde al borrar
+
+- **GIVEN** el almacén de objetos caído
+- **WHEN** Ana borra un CV
+- **THEN** la respuesta SHALL ser `200`
+- **AND** el evento SHALL quedar pendiente para que el archivo se borre cuando el almacén vuelva
+
+#### Scenario: Borrar dos veces
+
+- **WHEN** Ana borra el mismo CV dos veces
+- **THEN** la segunda respuesta SHALL ser `404` con código `cv_not_found`
+
+#### Scenario: El borrado se lleva los análisis del CV
+
+- **GIVEN** Ana con un CV y tres análisis de encaje hechos con él
+- **WHEN** borra ese CV
+- **THEN** los tres análisis SHALL haber desaparecido al responder, en la misma operación
+- **AND** ningún fragmento de texto de ese CV SHALL seguir guardado
+
+#### Scenario: El borrado falla a mitad
+
+- **GIVEN** Ana borrando un CV con análisis hechos con él y un fallo antes de confirmar
+- **WHEN** se mira lo guardado
+- **THEN** SHALL seguir estando el CV con todos sus análisis
+- **AND** NO SHALL verse nunca el CV eliminado con sus análisis todavía guardados

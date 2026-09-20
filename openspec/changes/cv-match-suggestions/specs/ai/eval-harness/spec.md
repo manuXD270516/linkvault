@@ -10,8 +10,11 @@ de skill normalizado (minúsculas, espacios colapsados, sin puntuación final) y
 `success`. Para toda tarea `personal` cuyo golden set traiga anotaciones de redacción, el reporte SHALL incluir además tres
 métricas de redacción:
 
-- `redaction_skill_loss`, **bloqueante** y mejor cuanto más cerca de 0: proporción de las skills anotadas del caso cuyo
-  texto deja de aparecer en el input redactado (sobre-redacción, la que hace perder señal de encaje).
+- `redaction_skill_loss`, **bloqueante** y mejor cuanto más cerca de 0: proporción de los **términos anotados en `skills`**
+  del caso cuyo texto deja de aparecer en el input redactado (sobre-redacción, la que hace perder señal de encaje). Esos
+  términos NO SHALL limitarse a habilidades y tecnologías: SHALL incluir también los **topónimos** y los **nombres de
+  empleador** que el análisis necesita, porque la sobre-redacción del nombre propio se lleva por delante exactamente eso y
+  de otro modo no se mediría. La métrica conserva su nombre, que ya está en la línea base, y cuenta todo lo anotado.
 - `pii_leak_rate`, **bloqueante** y con suelo duro en 0: sobre las anotaciones de PII del caso **que no llevan la marca
   `knownGap`**, la proporción que sigue apareciendo literalmente en el input redactado (falso negativo del redactor, el
   que hace salir un dato personal que el detector debería haber capturado). Las anotaciones marcadas `knownGap` NO SHALL
@@ -22,7 +25,9 @@ métricas de redacción:
   que se aceptó a sabiendas; bajar a 0 significa que el hueco se cerró y que su marca puede retirarse.
 
 Las tres SHALL calcularse aplicando la redacción como si el proveedor fuera `external`, con independencia del proveedor con el
-que se ejecute la evaluación, sin contactar a ningún proveedor para obtenerlas y contando también los casos degradados. Las
+que se ejecute la evaluación, sin contactar a ningún proveedor para obtenerlas y contando también los casos degradados. Para
+una tarea que redacta el nombre propio SHALL calcularse además **con `redactName` activado** y con el nombre que el caso
+declara: es el estado de fábrica, y medirlas con el interruptor apagado mediría una configuración que casi nadie tiene. Las
 tres SHALL agregarse como media de los casos anotados, y un caso sin anotaciones computables para una métrica NO SHALL entrar
 en su media. El reporte SHALL nombrar los `id` de los casos en que cada una es distinta de 0, sin incluir el valor de PII ni
 el texto del CV, y junto a `pii_known_gap_rate` SHALL listar los identificadores de los huecos conocidos observados con el
@@ -53,6 +58,20 @@ el texto del CV, y junto a `pii_known_gap_rate` SHALL listar los identificadores
 - **WHEN** se calculan las métricas de redacción
 - **THEN** `redaction_skill_loss` SHALL valer 0 para ese caso
 - **AND** el reporte NO SHALL nombrar ese caso entre los de pérdida de skills
+
+#### Scenario: Sobre-redacción del apellido que también es una ciudad
+
+- **GIVEN** un caso del golden de `match-cv` con el nombre declarado `Ana Paz Flores` y con `La Paz` y `Constructora Flores S.R.L.` anotados en `skills`, y un detector de nombre que sustituye `Paz` y `Flores` dentro de esos dos textos
+- **WHEN** se calculan las métricas de redacción con `redactName` activado
+- **THEN** `redaction_skill_loss` SHALL valer 1 para ese caso
+- **AND** el reporte SHALL nombrar el `id` del caso sin incluir su texto
+
+#### Scenario: El detector preciso no pierde la ciudad ni el empleador
+
+- **GIVEN** el mismo caso y un detector de nombre que respeta los topónimos y los nombres de organización
+- **WHEN** se calculan las métricas de redacción con `redactName` activado
+- **THEN** `redaction_skill_loss` SHALL valer 0 para ese caso
+- **AND** `pii_leak_rate` SHALL valer 0, porque el nombre completo del encabezado sí se sustituyó
 
 #### Scenario: PII anotada que sobrevive a la redacción
 
@@ -164,6 +183,21 @@ aparezca literalmente en su `input`, y un caso cuya marca `knownGap` use un iden
 huecos conocidos de la tarea, nombrando en todos los casos la línea y el `id`; al nombrar una anotación incoherente SHALL
 indicar su `type` y su posición en la lista, nunca el valor.
 
+La lista `skills` SHALL entenderse como **todo término que la redacción no debe ocultar**, no solo habilidades: entran en
+ella los topónimos de la ubicación y los nombres de empleador, que es lo que la sobre-redacción del nombre propio destruye.
+
+Un caso que anote PII de `type` `name` SHALL declarar además el **nombre que el contexto de redacción usa**, sin el cual la
+redacción de nombre no puede aplicarse y la métrica mediría cero por construcción; el corredor SHALL rechazarlo con código 2
+nombrando la línea y el `id`, nunca el nombre.
+
+Y el golden de una tarea que redacta el nombre propio SHALL incluir **al menos un caso de colisión de nombre**, etiquetado
+`name-collision` en `tags`, en el que un apellido de la persona coincida con un **topónimo** y otro con el nombre de una
+**empresa**, con esos dos textos anotados en `skills` y con el nombre completo anotado en `pii` con `type: name`. El
+corredor SHALL terminar con código 2, antes de ejecutar ningún caso, si el golden de esa tarea no trae ninguno, nombrando la
+tarea y la etiqueta que falta. Sin ese caso, `redaction_skill_loss` seguiría mirando solo habilidades y la sobre-redacción
+del nombre —la que le ocurre a todo el mundo, porque el interruptor nace activado— sería **invisible**: el daño no aparece
+en ninguna métrica, el informe sale igual y solo se nota en que encaja peor.
+
 #### Scenario: Golden de CVs con anotaciones
 
 - **GIVEN** el golden set de `match-cv` con casos etiquetados `anonymized` y con `pii` y `skills` anotados
@@ -182,6 +216,25 @@ indicar su `type` y su posición en la lista, nunca el valor.
 - **WHEN** se ejecuta el corredor
 - **THEN** SHALL terminar con código 2 nombrando la línea, el `id`, el `type` y la posición de la anotación
 - **AND** el mensaje NO SHALL contener el valor anotado
+
+#### Scenario: Golden sin caso de colisión de nombre
+
+- **GIVEN** el golden de `match-cv` sin ningún caso etiquetado `name-collision`
+- **WHEN** se ejecuta el corredor con `--provider=mock`
+- **THEN** SHALL terminar con código 2 antes de ejecutar ningún caso, nombrando la tarea y la etiqueta que falta
+
+#### Scenario: Caso de colisión de nombre completo
+
+- **GIVEN** un caso etiquetado `name-collision` con el nombre declarado `Ana Paz Flores`, con `La Paz` y `Constructora Flores S.R.L.` en `skills` y con el nombre completo en `pii` con `type: name`
+- **WHEN** se ejecuta el corredor con `--provider=mock`
+- **THEN** el caso SHALL aceptarse y entrar en las medias de `redaction_skill_loss` y de `pii_leak_rate`
+
+#### Scenario: Anotación de nombre sin el nombre declarado
+
+- **GIVEN** un caso con una anotación `pii` de `type: name` y sin el nombre que el contexto de redacción usa
+- **WHEN** se ejecuta el corredor
+- **THEN** SHALL terminar con código 2 nombrando la línea y el `id`
+- **AND** el mensaje NO SHALL contener el nombre
 
 #### Scenario: Marca de hueco conocido sin declarar
 

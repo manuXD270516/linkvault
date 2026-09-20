@@ -8,8 +8,13 @@ SHALL decirse "CV guardado"; el número de versión NO SHALL usarse para identif
 
 SHALL mostrar siempre, junto a la subida, la línea **"Tu CV solo lo ves tú y no sale de LinkVault sin tu permiso. En
 Perfil decides si un proveedor de IA externo puede analizarlo: antes de enviárselo sustituimos tu email, tus teléfonos,
-tu dirección y tu documento de identidad por marcadores, y también tu nombre si lo activas allí."**, donde "Perfil"
-SHALL ser un enlace a `/perfil`.
+tu dirección, tu documento de identidad y las URL por marcadores, y también tu nombre, salvo que lo desactives
+allí."**, donde "Perfil" SHALL ser un enlace a `/perfil`.
+
+Esa enumeración SHALL decir **lo que el sistema hace hoy**: `redactName` nace activado, así que la línea NO SHALL
+condicionar la sustitución del nombre a que alguien la active, y SHALL ser la misma, dato por dato, que la de `/perfil`
+y la del resumen del diálogo de encaje. Una frase que promete de menos es tan falsa como una que promete de más, y
+estaba justo en la línea que obligamos a re-versionar por prometer de más.
 
 A esa línea base SHALL añadirse una frase de estado que diga **qué pasa hoy con el CV**, atada a la **vigencia** del
 consentimiento —dado y sobre la versión vigente del texto— y **no a que el interruptor esté encendido**, con estos
@@ -17,9 +22,14 @@ tres estados y nunca dos a la vez:
 
 - **sin permiso** (nunca dado, o retirado): **"Ahora mismo no has dado ese permiso, así que tu CV no sale de
   LinkVault."**;
-- **permiso vigente** (dado sobre el texto vigente): **"Ahora mismo ese permiso está activo."**;
+- **permiso vigente** (dado sobre el texto vigente): **"Ahora mismo ese permiso está activo: al analizar una oferta,
+  tu CV redactado sale de LinkVault hacia el proveedor externo."**;
 - **permiso caducado** (dado sobre una versión anterior del texto): **"Diste este permiso, pero el texto cambió: ahora
   mismo tu CV no sale de LinkVault. Revísalo en Perfil."**
+
+De los tres estados, los dos inofensivos dicen que el CV no sale de LinkVault; el vigente es el único con consecuencia
+y por eso SHALL decirla, no limitarse a declarar el permiso activo: quien lo lea tiene que saber, sin abrir nada, que
+su CV redactado sale hacia un tercero cada vez que analice una oferta.
 
 Con el permiso caducado, la pantalla NO SHALL decir que el permiso está activo, porque un consentimiento sobre una
 versión anterior no autoriza ningún envío y lo que `/mi-cv` y `/perfil` dicen del mismo permiso SHALL coincidir.
@@ -52,12 +62,19 @@ subir. Mientras se carga la lista SHALL mostrar un estado de carga, y si la peti
 - **WHEN** sigue el enlace "Perfil" de la línea de privacidad
 - **THEN** SHALL llegar a `/perfil`, donde está el control del permiso
 
-#### Scenario: Con el permiso vigente, la línea lo dice
+#### Scenario: Con el permiso vigente, la línea dice la consecuencia
 
 - **GIVEN** Ana con el consentimiento dado sobre la versión vigente del texto
 - **WHEN** abre `/mi-cv`
-- **THEN** SHALL leer "Ahora mismo ese permiso está activo."
+- **THEN** SHALL leer "Ahora mismo ese permiso está activo: al analizar una oferta, tu CV redactado sale de LinkVault
+  hacia el proveedor externo."
 - **AND** SHALL seguir viendo dónde cambiarlo
+
+#### Scenario: La línea del nombre dice lo que el sistema hace
+
+- **WHEN** Ana lee la línea de privacidad sin haber tocado nunca sus preferencias de IA
+- **THEN** SHALL leer que su nombre se sustituye salvo que lo desactive en Perfil
+- **AND** NO SHALL leer que su nombre solo se sustituye si lo activa allí
 
 #### Scenario: Sin permiso, la línea lo dice
 
@@ -155,6 +172,13 @@ SHALL existir además una comprobación automática, que forma parte de las que 
 texto original ni ninguna de sus traducciones** afirman que ninguna IA lee el CV, que el CV no sale nunca de LinkVault
 sin matices, ni ninguna otra promesa que este change ya no cumple.
 
+Esa comprobación NO SHALL limitarse a las promesas excesivas: SHALL cubrir también las **afirmaciones equivocadas**,
+que hasta ahora se le escapaban por no prometer de más. En concreto SHALL fallar cuando el texto describa un valor por
+defecto o un comportamiento distinto del que el sistema tiene —como decir que el nombre se sustituye solo si se activa
+cuando `redactName` nace activado— y cuando la enumeración de qué se sustituye no coincida, dato por dato, con la de
+`/perfil` y la del resumen del diálogo de encaje. SHALL contrastarlas con esas fuentes, no con una lista copiada a
+mano, para que cambiar un valor por defecto rompa la comprobación en vez de dejar la frase mintiendo.
+
 #### Scenario: Traducciones completas
 
 - **WHEN** se revisan los textos de `/mi-cv`
@@ -179,3 +203,12 @@ sin matices, ni ninguna otra promesa que este change ya no cumple.
 - **WHEN** corre la comprobación de los textos de `/mi-cv`
 - **THEN** SHALL fallar nombrando esa unidad de traducción
 - **AND** SHALL fallar igual si esa promesa está en el texto original
+
+#### Scenario: Una afirmación equivocada también rompe la comprobación
+
+- **GIVEN** la línea de privacidad diciendo que el nombre se sustituye "si lo activas en Perfil" mientras `redactName`
+  nace activado
+- **WHEN** corre la comprobación de los textos de `/mi-cv`
+- **THEN** SHALL fallar nombrando esa unidad de traducción, aunque la frase no prometa de más
+- **AND** SHALL fallar igual si la enumeración de qué se sustituye omite un dato que `/perfil` o el resumen del diálogo
+  de encaje sí nombran
