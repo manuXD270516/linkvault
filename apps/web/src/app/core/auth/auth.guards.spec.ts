@@ -76,7 +76,9 @@ describe('session restore and guards', () => {
           { path: '', pathMatch: 'full', redirectTo: HOME_ROUTE },
           { path: 'grupos', component: GroupsStub, canActivate: [authGuard] },
           { path: 'perfil', component: ProfileStub, canActivate: [authGuard] },
+          { path: 'mis-links', component: MyLinksStub, canActivate: [authGuard] },
           { path: 'login', component: LoginStub, canActivate: [guestGuard] },
+          { path: 'registro', component: LoginStub, canActivate: [guestGuard] },
         ]),
         provideSessionRestore(),
         { provide: REFRESH_LOCKS, useValue: null },
@@ -192,6 +194,30 @@ describe('session restore and guards', () => {
 
     expect(router.url).toBe(HOME_ROUTE);
     expect(harness.routeNativeElement?.textContent).toContain('grupos');
+  });
+
+  it('Página de invitado con sesión y con import', async () => {
+    start();
+    const harness = await RouterTestingHarness.create();
+    const navigation = harness.navigateByUrl('/registro?import=k3m9qrtv2xyz');
+    await settle();
+
+    http.expectOne('/api/auth/refresh').flush(session);
+    await navigation;
+
+    expect(router.url).toBe('/mis-links?import=k3m9qrtv2xyz');
+  });
+
+  it('ignores an import that is not a slug and goes to the home route', async () => {
+    start();
+    const harness = await RouterTestingHarness.create();
+    const navigation = harness.navigateByUrl('/registro?import=..%2Fotra-cosa');
+    await settle();
+
+    http.expectOne('/api/auth/refresh').flush(session);
+    await navigation;
+
+    expect(router.url).toBe(HOME_ROUTE);
   });
 
   it('Ruta de retorno externa', async () => {

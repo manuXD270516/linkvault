@@ -16,6 +16,9 @@ import { SessionStore } from '../../core/auth/session.store';
 import { LoginPage } from './login.page';
 import { RegisterPage } from './register.page';
 
+/** Un slug público bien formado, el que llega por `?import=` desde una oferta pública. */
+const SLUG = 'k3m9qrtv2xyz';
+
 describe('RegisterPage', () => {
   let http: HttpTestingController;
   let router: Router;
@@ -42,6 +45,13 @@ describe('RegisterPage', () => {
 
   function emailInput(): HTMLInputElement | null {
     return host().querySelector<HTMLInputElement>('input[formControlName="email"]');
+  }
+
+  /** Responde a la primera página de la lista privada, que `/mis-links` pide al entrar. */
+  async function flushMyLinks(): Promise<void> {
+    const list = await vi.waitFor(() => http.expectOne('/api/links/mine?limit=20'));
+    list.flush({ items: [], total: 0 });
+    await settle();
   }
 
   async function register(displayName: string, email: string, password: string): Promise<void> {
@@ -105,6 +115,46 @@ describe('RegisterPage', () => {
 
     await vi.waitFor(() => expect(router.url).toBe('/grupos'));
     await flushGroupsList(http);
+  });
+
+  it('El import viaja entre registro y login', async () => {
+    await harness.navigateByUrl(`/registro?import=${SLUG}`, RegisterPage);
+
+    const links = Array.from(host().querySelectorAll<HTMLAnchorElement>('a[href^="/login"]'));
+    expect(links.map((link) => link.getAttribute('href'))).toEqual([`/login?import=${SLUG}`]);
+  });
+
+  it('keeps both the return route and the import in the link to the login page', async () => {
+    await harness.navigateByUrl(`/registro?returnUrl=%2Fperfil&import=${SLUG}`, RegisterPage);
+
+    const link = host().querySelector<HTMLAnchorElement>('a[href^="/login"]');
+    expect(link?.getAttribute('href')).toBe(`/login?returnUrl=%2Fperfil&import=${SLUG}`);
+  });
+
+  it('Con cuenta recién creada', async () => {
+    await harness.navigateByUrl(`/registro?import=${SLUG}`, RegisterPage);
+
+    await register('Ana', 'ana@example.com', 'contraseña-larga');
+    http
+      .expectOne('/api/auth/register')
+      .flush(sessionWith('token-1'), { status: 201, statusText: 'Created' });
+
+    await vi.waitFor(() => expect(router.url).toBe(`/mis-links?import=${SLUG}`));
+    await flushMyLinks();
+  });
+
+  it('Import inventado', async () => {
+    await harness.navigateByUrl('/registro?import=..%2Fotra-cosa', RegisterPage);
+
+    await register('Ana', 'ana@example.com', 'contraseña-larga');
+    http
+      .expectOne('/api/auth/register')
+      .flush(sessionWith('token-1'), { status: 201, statusText: 'Created' });
+
+    await vi.waitFor(() => expect(router.url).toBe('/grupos'));
+    await flushGroupsList(http);
+    // Nada se guarda: el `import` se ignoró antes de navegar.
+    http.expectNone('/api/links');
   });
 
   it('Email ya registrado', async () => {

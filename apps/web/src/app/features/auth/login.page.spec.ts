@@ -15,6 +15,9 @@ import {
 import { SessionStore } from '../../core/auth/session.store';
 import { LoginPage } from './login.page';
 
+/** Un slug público bien formado, el que llega por `?import=` desde una oferta pública. */
+const SLUG = 'k3m9qrtv2xyz';
+
 describe('LoginPage', () => {
   let http: HttpTestingController;
   let router: Router;
@@ -169,6 +172,34 @@ describe('LoginPage', () => {
 
     const link = host().querySelector<HTMLAnchorElement>('a[href^="/registro"]');
     expect(link?.getAttribute('href')).toBe('/registro');
+  });
+
+  it('El import gana a la ruta pedida', async () => {
+    await harness.navigateByUrl(`/login?returnUrl=%2Fperfil&import=${SLUG}`, LoginPage);
+
+    await submitCredentials('ana@example.com', 'contraseña-larga');
+    http.expectOne('/api/auth/login').flush(sessionWith('token-1'));
+
+    await vi.waitFor(() => expect(router.url).toBe(`/mis-links?import=${SLUG}`));
+    const list = await vi.waitFor(() => http.expectOne('/api/links/mine?limit=20'));
+    list.flush({ items: [], total: 0 });
+    await settle();
+  });
+
+  it('keeps the import in the link to the registration page', async () => {
+    await harness.navigateByUrl(`/login?import=${SLUG}`, LoginPage);
+
+    const link = host().querySelector<HTMLAnchorElement>('a[href^="/registro"]');
+    expect(link?.getAttribute('href')).toBe(`/registro?import=${SLUG}`);
+  });
+
+  it('ignores an import that is not a slug and honours the requested route', async () => {
+    await harness.navigateByUrl('/login?returnUrl=%2Fperfil&import=..%2Fotra-cosa', LoginPage);
+
+    await submitCredentials('ana@example.com', 'contraseña-larga');
+    http.expectOne('/api/auth/login').flush(sessionWith('token-1'));
+
+    await vi.waitFor(() => expect(router.url).toBe('/perfil'));
   });
 
   it('Almacenamiento limpio tras el login', async () => {
