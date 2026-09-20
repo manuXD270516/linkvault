@@ -829,3 +829,41 @@ P0/V0 abierto y las decisiones no triviales quedan recogidas en **ADR-028**.
 | critic 7 | Tres referencias rotas por la renumeración de la iteración 2 | Aceptado: la tarea del test de componente pasa a ser la 8.11, el RUNBOOK habla de **tres** contadores y el requisito de límites cambia de título para nombrar los rechazos (tareas 8.11 y 9.5, spec `cv/documents`) | Una referencia rota se lee como una tarea que falta |
 | business 6 | Un `pending` que nadie resuelve —worker parado, relay apagado— no tenía salida | Aceptado: "Sigue en proceso. Si sigue así en unos minutos, elimínalo y vuelve a subirlo." (D8, D13, spec `web/cv`) | Borrar y volver a subir crea un evento nuevo, que es el único remedio que la persona tiene en la mano |
 | business 8 | No estaba escrito qué hace "Actualizar" con el sondeo | Aceptado: **reanuda otra ventana de 60 s**, y queda en la tarea del store (8.2) con su escenario | Un botón que solo pide una vez deja a la persona pulsando |
+
+## Decisiones de implementación (frontend)
+
+Lo que el grupo 8 tuvo que decidir y no estaba escrito. En cada caso se eligió la opción más conservadora: ninguna
+añade superficie ni promete nada que la API no cumpla hoy.
+
+1. **`CvStore` no es `providedIn: 'root'`; lo provee `MyCvPage`.** La spec pide que salir de la pantalla detenga el
+   sondeo, y un store de raíz sobrevive a la navegación. Proveerlo en la página hace que el `onDestroy` del store sea
+   exactamente "salir de `/mi-cv`". El test lo comprueba mirando que no quede ningún temporizador vivo tras destruir el
+   inyector, no solo que no salgan peticiones: sin esa comprobación el test pasaba igual con el sondeo suelto.
+2. **La ventana de sondeo se cuenta en vueltas (30 de 2 s), no con el reloj.** Así la ventana significa lo mismo aunque
+   una respuesta tarde, y el test no depende de que el reloj falso finja también `Date.now()`.
+3. **Un fallo de una vuelta del sondeo no se enseña ni corta la ventana**: la lista sigue con lo que ya tenía y la
+   vuelta siguiente lo reintenta. Un error transitorio de fondo no puede borrar de la pantalla lo que la persona está
+   mirando; si el CV no se resuelve, el aviso de "Sigue en proceso" aparece igual al agotarse la ventana.
+4. **La fecha se pinta con `dd/MM/yyyy`**, como el resto del SPA (`link-card`, `group-detail`), y el tamaño como
+   `312 KB` / `4.5 MB`. Las unidades no se traducen porque se escriben igual en los dos idiomas.
+5. **Una vista previa que llega vacía se trata como fallo genérico** ("No pudimos mostrarlo ahora" con "Reintentar").
+   Solo ocurre en una carrera —el CV dejó de estar `extracted` entre que se pintó la lista y se pulsó—, y un diálogo en
+   blanco es justo lo que la iteración 2 prohibió.
+6. **El "Este CV ya no está" del `404` lo pinta la página**, no el diálogo: el diálogo se cierra devolviendo `gone`, y
+   quien lo abrió muestra el aviso y recarga la lista. Un mensaje dentro de algo que se está cerrando no se lee.
+7. **El texto de la vista previa se puede seleccionar.** No hay botón de copiar, descargar ni compartir, pero no se
+   bloquea la selección del navegador: hacerlo no impide sacar el texto —basta con mirar la pantalla— y sí rompe a
+   quien usa un lector.
+8. **`complete` no se enseña.** D13 no lo pide y decir "esto es solo el principio" no cambia ninguna decisión de quien
+   mira: lo que se comprueba ahí es si el texto se leyó ordenado.
+9. **El SPA no se adelanta al tope de 5 CV**: no deshabilita el botón de subir al llegar a cinco, deja que la API
+   responda `409` y muestra su mensaje. La lista que se ve puede estar vieja (otra pestaña), y la autoridad es la API.
+10. **La subida nueva apaga la marca de las demás en local**, sin volver a pedir la lista: es lo que la API acaba de
+    hacer (D4), y pedirla otra vez para enterarse sería una petición de más en el momento de más espera.
+11. **Un `404` al eliminar es el resultado pedido** —lo borraron en otra pestaña—: no se muestra error, se recarga la
+    lista.
+12. **Marcar y eliminar comparten un `busy` de la página**, que incluye el tiempo en que la confirmación está abierta:
+    dos gestos a la vez sobre la misma lista no pueden salir los dos.
+13. **Los textos que nombran números —"5 MB", "hasta 5 CV"— se escriben literales** en su unidad de traducción, en vez
+    de interpolar la constante: un ICU por un número fijo complica la traducción sin ganar nada. Lo que sí hay es un
+    test que falla si `CV_MAX_FILE_BYTES` deja de ser 5 MiB, que es la forma de que el texto no mienta.
