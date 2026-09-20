@@ -131,6 +131,25 @@ describe('RegisterPage', () => {
     expect(links.map((link) => link.getAttribute('href'))).toEqual([`/login?import=${SLUG}`]);
   });
 
+  it('Del registro al login sin perder la oferta', async () => {
+    await harness.navigateByUrl(`/registro?import=${SLUG}`, RegisterPage);
+
+    // El escenario habla de **pulsar** "¿Ya tienes cuenta?", no de mirar su `href`: se sigue el enlace de verdad.
+    host().querySelector<HTMLAnchorElement>('a[href^="/login"]')?.click();
+
+    await vi.waitFor(() => expect(router.url).toBe(`/login?import=${SLUG}`));
+  });
+
+  it('Registro con sesión abierta', async () => {
+    TestBed.inject(SessionStore).setSession(sessionWith('token-1'));
+
+    await harness.navigateByUrl(`/registro?import=${SLUG}`);
+
+    // No llega a verse el registro: `guestGuard` lo desvía a la lista privada, y no al inicio.
+    await vi.waitFor(() => expect(router.url).toBe(`/mis-links?import=${SLUG}`));
+    await flushMyLinks();
+  });
+
   it('keeps both the return route and the import in the link to the login page', async () => {
     await harness.navigateByUrl(`/registro?returnUrl=%2Fperfil&import=${SLUG}`, RegisterPage);
 
