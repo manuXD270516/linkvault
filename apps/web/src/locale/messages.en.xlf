@@ -1204,6 +1204,130 @@
         <source> Tu nota no se añadió porque la oferta ya estaba en el grupo. </source>
         <target>Your note wasn't added because the job was already in the group.</target>
       </trans-unit>
+      <trans-unit id="groups.detail.publicDefault" datatype="html">
+        <source> Los links nuevos se comparten con un enlace público </source>
+        <target>New links are shared with a public link</target>
+      </trans-unit>
+      <trans-unit id="groups.detail.publicDefaultHint" datatype="html">
+        <source> Solo afecta a lo que se guarde a partir de ahora; los links que ya están no cambian. </source>
+        <target>It only affects what gets saved from now on; links already here don't change.</target>
+      </trans-unit>
+      <trans-unit id="links.public.mark" datatype="html">
+        <source>Enlace público</source>
+        <target>Public link</target>
+      </trans-unit>
+      <trans-unit id="links.public.copy" datatype="html">
+        <source> Copiar enlace </source>
+        <target>Copy link</target>
+      </trans-unit>
+      <trans-unit id="links.public.stop" datatype="html">
+        <source> Dejar de compartir </source>
+        <target>Stop sharing</target>
+      </trans-unit>
+      <trans-unit id="links.public.share" datatype="html">
+        <source> Compartir con un enlace público </source>
+        <target>Share with a public link</target>
+      </trans-unit>
+      <trans-unit id="links.public.removeWarning" datatype="html">
+        <source>Su enlace público dejará de funcionar.</source>
+        <target>Its public link will stop working.</target>
+      </trans-unit>
+      <trans-unit id="links.public.forbidden" datatype="html">
+        <source> Solo quien compartió la oferta o el propietario del grupo puede cambiar esto </source>
+        <target>Only the person who shared the job or the group owner can change this</target>
+      </trans-unit>
+      <trans-unit id="links.public.shareTitle" datatype="html">
+        <source>Compartir con un enlace público</source>
+        <target>Share with a public link</target>
+      </trans-unit>
+      <trans-unit id="links.public.shareMessage" datatype="html">
+        <source>Cualquiera con este enlace podrá ver la oferta sin entrar en LinkVault. No se verá el grupo, ni tu nombre, ni los comentarios. Puedes dejar de compartirlo cuando quieras.</source>
+        <target>Anyone with this link can see the job without signing in to LinkVault. The group, your name and the comments stay hidden. You can stop sharing whenever you like.</target>
+      </trans-unit>
+      <trans-unit id="links.public.shareConfirm" datatype="html">
+        <source>Compartir</source>
+        <target>Share</target>
+      </trans-unit>
+      <trans-unit id="links.public.stopTitle" datatype="html">
+        <source>Dejar de compartir</source>
+        <target>Stop sharing</target>
+      </trans-unit>
+      <trans-unit id="links.public.stopMessage" datatype="html">
+        <source>El enlace dejará de funcionar para todo el mundo, también para quien ya lo tenga. Si vuelves a activarlo, se creará un enlace nuevo. Las vistas previas ya enviadas en un chat pueden seguir viéndose ahí.</source>
+        <target>The link will stop working for everyone, including people who already have it. Turning it back on creates a new link. Previews already sent in a chat may still be visible there.</target>
+      </trans-unit>
+      <trans-unit id="links.public.stopConfirm" datatype="html">
+        <source>Dejar de compartir</source>
+        <target>Stop sharing</target>
+      </trans-unit>
+      <trans-unit id="links.public.copyUnread" datatype="html">
+        <source>Todavía estamos leyendo la oferta: si lo envías ahora, la tarjeta saldrá sin datos</source>
+        <target>We're still reading the job: if you send it now, the preview will be empty</target>
+      </trans-unit>
+      <trans-unit id="links.public.copied" datatype="html">
+        <source>Enlace copiado</source>
+        <target>Link copied</target>
+      </trans-unit>
+      <trans-unit id="links.import.saved" datatype="html">
+        <source> Guardada en «Solo para mí». Compártela en un grupo cuando quieras. </source>
+        <target>Saved to "Just for me". Share it with a group whenever you like.</target>
+      </trans-unit>
+      <trans-unit id="links.import.already" datatype="html">
+        <source>Ya la tenías guardada</source>
+        <target>You already had it saved</target>
+      </trans-unit>
+      <trans-unit id="links.import.gone" datatype="html">
+        <source>Ese enlace ya no está disponible</source>
+        <target>That link is no longer available</target>
+      </trans-unit>
+      <trans-unit id="links.import.unreadable" datatype="html">
+        <source> No pudimos leer la oferta ahora </source>
+        <target>We couldn't read the job right now</target>
+      </trans-unit>
+      <trans-unit id="links.import.saveFailed" datatype="html">
+        <source> No pudimos guardar esta oferta. Inténtalo de nuevo. </source>
+        <target>We couldn't save this job. Please try again.</target>
+      </trans-unit>
+      <trans-unit id="links.import.alreadyInGroups" datatype="html">
+        <source> Ya la tienes en: <x id="INTERPOLATION" equiv-text="{{ groups }}"/> </source>
+        <target>You already have it in: <x id="INTERPOLATION" equiv-text="{{ groups }}"/></target>
+      </trans-unit>
+      <trans-unit id="links.save.publicScope" datatype="html">
+        <source> Cualquiera con este enlace verá la oferta; no se verá el grupo ni tu nombre </source>
+        <target>Anyone with this link can see the job; the group and your name stay hidden</target>
+      </trans-unit>
+      <trans-unit id="public.retry" datatype="html">
+        <source> Reintentar </source>
+        <target>Try again</target>
+      </trans-unit>
+      <trans-unit id="public.loading" datatype="html">
+        <source>Cargando la oferta…</source>
+        <target>Loading the job…</target>
+      </trans-unit>
+      <trans-unit id="public.viewOriginal" datatype="html">
+        <source>Ver la oferta original</source>
+        <target>View the original posting</target>
+      </trans-unit>
+      <trans-unit id="public.unavailable" datatype="html">
+        <source> Ahora mismo no podemos mostrar esta oferta. Inténtalo en un momento. </source>
+        <target>We can't show this job right now. Try again in a moment.</target>
+      </trans-unit>
+      <trans-unit id="public.gone" datatype="html">
+        <source> Este enlace ya no está disponible </source>
+        <target>This link is no longer available</target>
+      </trans-unit>
+      <trans-unit id="public.goneHint" datatype="html">
+        <source>Pídeselo de nuevo a quien te lo envió</source>
+        <target>Ask whoever sent it to you for a new one</target>
+      </trans-unit>
+      <trans-unit id="public.save" datatype="html">
+        <source> Guardar en LinkVault </source>
+        <target>Save to LinkVault</target>
+      </trans-unit>
+      <trans-unit id="public.savePitch" datatype="html">
+        <source> Guarda aquí las ofertas que te pasan por WhatsApp y no las pierdas. </source>
+        <target>Keep the jobs people send you on WhatsApp, so you don't lose them.</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

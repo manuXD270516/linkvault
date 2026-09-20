@@ -93,7 +93,7 @@
 - [x] 7.17 [frontend] Confirmación de quitar un link con la frase "Su enlace público dejará de funcionar." cuando lo tiene; verificar con "Quitar un link publicado" y los escenarios existentes de `web/links`.
 - [x] 7.18 [frontend] Imagen `apps/web/public/assets/og-default.png` (1200×630, marca LinkVault); verificar con el test de la plantilla que apunta a `WEB_BASE_URL/assets/og-default.png` y comprobando que el build de `web` la copia a la raíz.
 - [x] 7.19 [frontend] Juego mínimo y fijo de etiquetas Open Graph de marca en `apps/web/src/index.html` (`og:site_name`, `og:title`, `og:description` y la imagen de 7.18), sin ningún dato de oferta ni de persona; verificar con "Tarjeta genérica en vez de tarjeta vacía" y "La tarjeta de respaldo no dice nada de nadie".
-- [ ] 7.20 [frontend] Tras 1.1, marcar todos los textos de D12 y traducirlos en `messages.en.xlf`; verificar con "Traducciones completas".
+- [x] 7.20 [frontend] Tras 1.1, marcar todos los textos de D12 y traducirlos en `messages.en.xlf`; verificar con "Traducciones completas".
 
 ## 8. Cierre
 
