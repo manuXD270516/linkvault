@@ -87,7 +87,50 @@ describe('api configuration', () => {
       OUTBOX_RELAY_ENABLED: true,
       OUTBOX_RELAY_INTERVAL_MS: 1000,
       PASTE_EXTRACTION_TIMEOUT_MS: 20_000,
+      PUBLIC_PAGE_BASE_URL: 'http://localhost:3000',
+      WEB_BASE_URL: 'http://localhost:4200',
     });
+  });
+
+  // URLs públicas declaradas (spec platform/local-environment): obligatorias, absolutas y sin barra final.
+  it.each(['PUBLIC_PAGE_BASE_URL', 'WEB_BASE_URL'])(
+    'requires %s',
+    (name) => {
+      expect(
+        parseEnv(apiConfigSchema, { ...readEnvExample(), [name]: undefined }),
+      ).toEqual({ ok: false, invalid: [{ name, reason: 'missing' }] });
+    },
+  );
+
+  it.each([
+    ['PUBLIC_PAGE_BASE_URL', 'http://localhost:3000/'],
+    ['PUBLIC_PAGE_BASE_URL', 'localhost:3000'],
+    ['PUBLIC_PAGE_BASE_URL', 'ftp://localhost:3000'],
+    ['PUBLIC_PAGE_BASE_URL', '/p'],
+    ['WEB_BASE_URL', 'http://localhost:4200/'],
+    ['WEB_BASE_URL', 'javascript:alert(1)'],
+    ['WEB_BASE_URL', 'http://localhost:4200/oferta?x=1'],
+  ])('rejects %s=%s naming the variable', (name, value) => {
+    expect(
+      parseEnv(apiConfigSchema, { ...readEnvExample(), [name]: value }),
+    ).toEqual({ ok: false, invalid: [{ name, reason: 'invalid' }] });
+  });
+
+  it.each([
+    ['PUBLIC_PAGE_BASE_URL', 'https://linkvault.example'],
+    ['PUBLIC_PAGE_BASE_URL', 'https://linkvault.example/app'],
+    ['WEB_BASE_URL', 'https://linkvault.example'],
+  ])('accepts %s=%s', (name, value) => {
+    expect(
+      parseEnv(apiConfigSchema, { ...readEnvExample(), [name]: value }).ok,
+    ).toBe(true);
+  });
+
+  it('declares both public URLs in .env.example', () => {
+    const example = readEnvExample();
+
+    expect(example['PUBLIC_PAGE_BASE_URL']).toBe('http://localhost:3000');
+    expect(example['WEB_BASE_URL']).toBe('http://localhost:4200');
   });
 
   it('exits with code 1 naming AI_CHAIN and the unknown provider in a single line', () => {

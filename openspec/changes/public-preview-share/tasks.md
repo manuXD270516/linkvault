@@ -51,9 +51,9 @@
 
 ## 5. Configuración y arranque
 
-- [ ] 5.1 [infra] Tras 1.1, `api-config.schema.ts`: `PUBLIC_PAGE_BASE_URL` y `WEB_BASE_URL` (URL `http(s)` absoluta y sin barra final), obligatorias; verificar con los tests de configuración de "Variable obligatoria ausente" y "El ejemplo de configuración es suficiente".
-- [ ] 5.2 [infra] `.env.example` con las dos variables y sus valores locales (`http://localhost:3000` y `http://localhost:4200`), sin ninguna variable de proxy; verificar con "Valores por defecto seguros" y "URLs públicas declaradas".
-- [ ] 5.3 [backend] `create-app.ts`: `exclude` del prefijo con `p`, `p/:slug` y **`p/{*splat}`** (la forma de comodín de Nest 11 sobre `path-to-regexp` 8; `'p/*'` lanza al arrancar), no con `'p'` a secas; verificar con integración de "Página pública fuera del prefijo", de que `/api/p/<slug>` NO responde la página y de que la app arranca sin errores de ruta.
+- [x] 5.1 [infra] Tras 1.1, `api-config.schema.ts`: `PUBLIC_PAGE_BASE_URL` y `WEB_BASE_URL` (URL `http(s)` absoluta y sin barra final), obligatorias; verificar con los tests de configuración de "Variable obligatoria ausente" y "El ejemplo de configuración es suficiente".
+- [x] 5.2 [infra] `.env.example` con las dos variables y sus valores locales (`http://localhost:3000` y `http://localhost:4200`), sin ninguna variable de proxy; verificar con "Valores por defecto seguros" y "URLs públicas declaradas".
+- [x] 5.3 [backend] `create-app.ts`: `exclude` del prefijo con `p`, `p/:slug` y **`p/{*splat}`** (la forma de comodín de Nest 11 sobre `path-to-regexp` 8; `'p/*'` lanza al arrancar), no con `'p'` a secas; verificar con integración de "Página pública fuera del prefijo", de que `/api/p/<slug>` NO responde la página y de que la app arranca sin errores de ruta.
 
 ## 6. La página pública en la API
 
