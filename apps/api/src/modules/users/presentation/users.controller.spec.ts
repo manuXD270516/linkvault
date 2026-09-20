@@ -116,7 +116,12 @@ describe('UsersController', () => {
         id: profile.id,
         email: profile.email,
         displayName: 'Ana',
-        aiConsent: { externalProviders: false },
+        aiConsent: {
+          externalProviders: false,
+          consentedAt: null,
+          textVersion: null,
+          currentTextVersion: '2026-09-20',
+        },
         outputLanguage: 'es',
         redactName: false,
         createdAt: profile.createdAt,

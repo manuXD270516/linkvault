@@ -134,6 +134,19 @@ export const apiErrorCodeSchema = z.enum([
   'file_too_large',
   // 409: ya hay `MAX_CV_DOCUMENTS` CV guardados. Nada se borra solo: la persona elige cuál quitar.
   'too_many_cvs',
+  // 404: no hay ningún análisis resuelto ni en curso de quien pregunta sobre esa oferta. NO es `link_not_found`: la
+  // oferta puede verse y aun así no haber pedido (ni heredado) ningún análisis; el SPA traduce los dos códigos distinto.
+  'analysis_not_found',
+  // 409: quien pide el análisis no tiene ningún CV guardado.
+  'no_cv',
+  // 409: el CV elegido todavía se está leyendo (`pending`); reintentar no ayuda hasta que termine la extracción.
+  'cv_not_ready',
+  // 409: el CV elegido no se pudo leer (`failed`); la salida es subir otro o completar a mano, no reintentar el análisis.
+  'cv_not_readable',
+  // 409: la oferta no tiene título ni texto de vacante todavía; hay que completar la oferta, no reintentar a ciegas.
+  'job_not_ready',
+  // 409: se activa el consentimiento con una `textVersion` que ya no es la vigente; el perfil no se modifica (D5).
+  'consent_text_outdated',
   // 500
   'internal_error',
 ]);

@@ -38,7 +38,12 @@ describe('UsersFacade', () => {
         id: expect.any(String),
         email: 'ana@example.com',
         displayName: 'Ana',
-        aiConsent: { externalProviders: false },
+        aiConsent: {
+          externalProviders: false,
+          consentedAt: null,
+          textVersion: null,
+          currentTextVersion: '2026-09-20',
+        },
         outputLanguage: 'es',
         redactName: false,
         createdAt: '2026-09-17T10:00:00.000Z',

@@ -26,5 +26,7 @@ export function toCvResponse(document: CvDocumentEntity): CvDocumentResponse {
         ? {}
         : { extractedAt: document.extraction.extractedAt.toISOString() }),
     },
+    // Contador real en la tarea 11.5; hasta entonces el contrato exige el campo presente (≥ 0).
+    matchAnalysesCount: 0,
   };
 }

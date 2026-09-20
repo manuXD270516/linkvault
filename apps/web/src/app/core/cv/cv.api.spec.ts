@@ -21,6 +21,7 @@ const saved: CvDocument = {
   isDefault: true,
   uploadedAt: '2026-09-12T10:00:00.000Z',
   extraction: { status: 'pending', textChars: 0 },
+  matchAnalysesCount: 0,
 };
 
 function pdf(name = 'CV_backend.pdf'): File {

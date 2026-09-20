@@ -1,4 +1,5 @@
 import type { UserProfile } from '@linkvault/shared';
+import { AI_CONSENT_TEXT_VERSION } from '@linkvault/shared';
 import type { Clock } from '../../domain/clock';
 import { EmailTaken, InvalidAccessToken } from '../../domain/errors';
 import type { RefreshSessionPolicy } from '../../domain/refresh-session';
@@ -81,7 +82,12 @@ export class InMemoryUserAccounts implements UserAccounts {
       id: `user-${this.nextId++}`,
       email: normalize(input.email),
       displayName: input.displayName.trim(),
-      aiConsent: { externalProviders: false },
+      aiConsent: {
+        externalProviders: false,
+        consentedAt: null,
+        textVersion: null,
+        currentTextVersion: AI_CONSENT_TEXT_VERSION,
+      },
       outputLanguage: 'es',
       redactName: false,
       createdAt: now.toISOString(),

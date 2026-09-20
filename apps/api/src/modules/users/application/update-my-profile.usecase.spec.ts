@@ -32,7 +32,12 @@ describe('UpdateMyProfile', () => {
       aiConsent: { externalProviders: true },
     });
 
-    expect(profile.aiConsent).toEqual({ externalProviders: true });
+    expect(profile.aiConsent).toEqual({
+      externalProviders: true,
+      consentedAt: null,
+      textVersion: null,
+      currentTextVersion: '2026-09-20',
+    });
     expect(profile.outputLanguage).toBe('es');
   });
 
@@ -46,7 +51,12 @@ describe('UpdateMyProfile', () => {
       id: user.id,
       email: 'ana@example.com',
       displayName: 'Ana María',
-      aiConsent: { externalProviders: false },
+      aiConsent: {
+        externalProviders: false,
+        consentedAt: null,
+        textVersion: null,
+        currentTextVersion: '2026-09-20',
+      },
       outputLanguage: 'en',
       redactName: false,
       createdAt: '2026-09-17T10:00:00.000Z',

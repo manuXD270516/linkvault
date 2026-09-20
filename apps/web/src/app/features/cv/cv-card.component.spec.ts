@@ -13,6 +13,7 @@ function cv(overrides: Partial<CvDocument> = {}): CvDocument {
     isDefault: false,
     uploadedAt: '2026-09-12T10:00:00.000Z',
     extraction: { status: 'extracted', textChars: 8_412, extractedAt: '2026-09-12T10:00:05.000Z' },
+    matchAnalysesCount: 0,
     ...overrides,
   };
 }

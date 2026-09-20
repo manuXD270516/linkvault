@@ -17,6 +17,7 @@ const document = {
   isDefault: true,
   uploadedAt: '2026-09-12T10:00:00.000Z',
   extraction: { status: 'pending', textChars: 0 },
+  matchAnalysesCount: 0,
 } as const;
 
 describe('cvExtractionStatusSchema', () => {
@@ -101,6 +102,31 @@ describe('cvDocumentSchema', () => {
       });
 
       expect(result.success).toBe(false);
+    },
+  );
+
+  it.each([
+    ['0', { ...document, matchAnalysesCount: 0 }, true],
+    ['3', { ...document, matchAnalysesCount: 3 }, true],
+    [
+      'ausente',
+      Object.fromEntries(
+        Object.entries(document).filter(([key]) => key !== 'matchAnalysesCount'),
+      ),
+      false,
+    ],
+    ['null', { ...document, matchAnalysesCount: null }, false],
+    ['negativo', { ...document, matchAnalysesCount: -1 }, false],
+  ] as const)('matchAnalysesCount %s → válido: %s', (_label, value, valid) => {
+    expect(cvDocumentSchema.safeParse(value).success).toBe(valid);
+  });
+
+  it.each(['score', 'suggestions', 'matchedSkills', 'cvFragment'])(
+    'el listado no admite %s del análisis',
+    (field) => {
+      expect(
+        cvDocumentSchema.safeParse({ ...document, [field]: 'x' }).success,
+      ).toBe(false);
     },
   );
 

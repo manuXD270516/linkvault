@@ -20,6 +20,7 @@ function cv(overrides: Partial<CvDocument> = {}): CvDocument {
     isDefault: true,
     uploadedAt: '2026-09-12T10:00:00.000Z',
     extraction: { status: 'pending', textChars: 0 },
+    matchAnalysesCount: 0,
     ...overrides,
   };
 }

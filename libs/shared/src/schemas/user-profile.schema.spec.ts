@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { AI_CONSENT_TEXT_VERSION } from '../consent/ai-consent-text';
 import {
   DISPLAY_NAME_MAX_LENGTH,
+  isAiConsentCurrent,
   outputLanguageSchema,
   updateProfileRequestSchema,
   userProfileSchema,
@@ -11,7 +13,12 @@ describe('userProfileSchema', () => {
     id: '66e9a0000000000000000001',
     email: 'ana@example.com',
     displayName: 'Ana',
-    aiConsent: { externalProviders: false },
+    aiConsent: {
+      externalProviders: false,
+      consentedAt: null,
+      textVersion: null,
+      currentTextVersion: AI_CONSENT_TEXT_VERSION,
+    },
     outputLanguage: 'es',
     redactName: false,
     createdAt: '2026-09-17T10:00:00.000Z',
@@ -29,6 +36,61 @@ describe('userProfileSchema', () => {
       ).toBe(false);
     },
   );
+
+  it('sigue siendo estricto en aiConsent', () => {
+    expect(
+      userProfileSchema.safeParse({
+        ...profile,
+        aiConsent: {
+          ...profile.aiConsent,
+          extra: true,
+        },
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe('isAiConsentCurrent', () => {
+  it.each([
+    [
+      'activo y vigente',
+      {
+        externalProviders: true,
+        textVersion: '2026-09-20',
+        currentTextVersion: '2026-09-20',
+      },
+      true,
+    ],
+    [
+      'activo sobre versión anterior',
+      {
+        externalProviders: true,
+        textVersion: '2026-09-20',
+        currentTextVersion: '2026-11-02',
+      },
+      false,
+    ],
+    [
+      'inactivo con fecha',
+      {
+        externalProviders: false,
+        textVersion: '2026-09-20',
+        currentTextVersion: '2026-09-20',
+      },
+      false,
+    ],
+    [
+      'recién registrado',
+      {
+        externalProviders: false,
+        textVersion: null,
+        currentTextVersion: AI_CONSENT_TEXT_VERSION,
+      },
+      false,
+    ],
+  ] as const)('%s → %s', (_label, consent, expected) => {
+    expect(isAiConsentCurrent(consent)).toBe(expected);
+  });
 });
 
 describe('outputLanguageSchema', () => {
@@ -67,17 +129,62 @@ describe('updateProfileRequestSchema', () => {
     ]);
   });
 
-  it('accepts a partial update and keeps only the sent fields', () => {
-    expect(
-      updateProfileRequestSchema.parse({
-        aiConsent: { externalProviders: true },
-      }),
-    ).toEqual({ aiConsent: { externalProviders: true } });
+  it.each([
+    [
+      'activar con versión',
+      {
+        aiConsent: {
+          externalProviders: true,
+          textVersion: AI_CONSENT_TEXT_VERSION,
+        },
+      },
+      true,
+    ],
+    [
+      'activar sin versión',
+      { aiConsent: { externalProviders: true } },
+      false,
+    ],
+    [
+      'revocar sin versión',
+      { aiConsent: { externalProviders: false } },
+      true,
+    ],
+    [
+      'revocar con versión',
+      {
+        aiConsent: {
+          externalProviders: false,
+          textVersion: AI_CONSENT_TEXT_VERSION,
+        },
+      },
+      true,
+    ],
+    [
+      'consentedAt enviado',
+      {
+        aiConsent: {
+          externalProviders: true,
+          textVersion: AI_CONSENT_TEXT_VERSION,
+          consentedAt: '2026-09-20T10:00:00.000Z',
+        },
+      },
+      false,
+    ],
+    ['cuerpo vacío', {}, false],
+  ] as const)('%s → válido: %s', (_label, body, valid) => {
+    expect(updateProfileRequestSchema.safeParse(body).success).toBe(valid);
   });
 
-  it('rejects an aiConsent without externalProviders', () => {
+  it('rejects currentTextVersion as unknown on the update body', () => {
     expect(
-      updateProfileRequestSchema.safeParse({ aiConsent: {} }).success,
+      updateProfileRequestSchema.safeParse({
+        aiConsent: {
+          externalProviders: true,
+          textVersion: AI_CONSENT_TEXT_VERSION,
+          currentTextVersion: AI_CONSENT_TEXT_VERSION,
+        },
+      }).success,
     ).toBe(false);
   });
 

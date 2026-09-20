@@ -38,6 +38,12 @@ export const API_ERROR_STATUS: Readonly<Record<ApiErrorCode, number>> = {
   unsupported_file_type: 415,
   file_too_large: 413,
   too_many_cvs: 409,
+  analysis_not_found: 404,
+  no_cv: 409,
+  cv_not_ready: 409,
+  cv_not_readable: 409,
+  job_not_ready: 409,
+  consent_text_outdated: 409,
 };
 
 /**
@@ -84,6 +90,12 @@ export const API_ERROR_MESSAGES: Readonly<Record<ApiErrorCode, string>> = {
   unsupported_file_type: 'Only PDF or DOCX files are accepted',
   file_too_large: 'That file is too large',
   too_many_cvs: 'Too many stored CVs',
+  analysis_not_found: 'Analysis not found',
+  no_cv: 'Upload a CV before analysing a job',
+  cv_not_ready: 'That CV is still being read',
+  cv_not_readable: 'That CV could not be read',
+  job_not_ready: 'That job has no description yet',
+  consent_text_outdated: 'The consent text changed; read it again',
 };
 
 /** Cuerpo `{ code, message, fields? }`. `fields` solo nombra campos y se omite si está vacío. */

@@ -17,11 +17,56 @@ export const displayNameSchema = z
 export const outputLanguageSchema = z.enum(['es', 'en']);
 export type OutputLanguage = z.infer<typeof outputLanguageSchema>;
 
-/** Consentimiento para enviar datos a proveedores de IA externos; `false` por defecto. */
+/**
+ * Consentimiento tal y como sale en `GET /api/users/me` (D4, D5). `currentTextVersion` es siempre la vigente; el
+ * cliente detecta solo si `textVersion` ya no coincide. `consentedAt` y `textVersion` son `null` hasta la primera
+ * aceptación vigente.
+ */
 export const aiConsentSchema = z.strictObject({
   externalProviders: z.boolean(),
+  consentedAt: z.iso.datetime().nullable(),
+  textVersion: z.string().min(1).nullable(),
+  currentTextVersion: z.string().min(1),
 });
 export type AiConsent = z.infer<typeof aiConsentSchema>;
+
+/**
+ * Vigente = activo **y** sobre el texto actual. Api, worker y web comparten esta función en vez de reimplementarla
+ * (un SPA que mire solo `externalProviders` mentiría tras un cambio de texto).
+ */
+export function isAiConsentCurrent(
+  aiConsent: Pick<
+    AiConsent,
+    'externalProviders' | 'textVersion' | 'currentTextVersion'
+  >,
+): boolean {
+  return (
+    aiConsent.externalProviders &&
+    aiConsent.textVersion === aiConsent.currentTextVersion
+  );
+}
+
+/**
+ * Cuerpo de `aiConsent` en `PATCH /api/users/me`. Activar exige `textVersion`; revocar no. `consentedAt` y
+ * `currentTextVersion` son desconocidos aquí: el servidor los escribe, el cliente no los manda (D5).
+ */
+export const updateAiConsentRequestSchema = z
+  .strictObject({
+    externalProviders: z.boolean(),
+    textVersion: z.string().min(1).optional(),
+  })
+  .superRefine((body, ctx) => {
+    if (body.externalProviders === true && body.textVersion === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['textVersion'],
+        message: 'textVersion is required when enabling external providers',
+      });
+    }
+  });
+export type UpdateAiConsentRequest = z.infer<
+  typeof updateAiConsentRequestSchema
+>;
 
 /**
  * Cuerpo de `GET /api/users/me` y perfil de las respuestas de sesión. Estricto a propósito: el perfil no expone nada
@@ -40,12 +85,12 @@ export type UserProfile = z.infer<typeof userProfileSchema>;
 
 /**
  * Cuerpo de `PATCH /api/users/me`: subconjunto no vacío de los campos editables. Un campo desconocido (incluidos
- * `email` y `password`) invalida la petición.
+ * `email`, `password`, `consentedAt` y `currentTextVersion`) invalida la petición.
  */
 export const updateProfileRequestSchema = z
   .strictObject({
     displayName: displayNameSchema.optional(),
-    aiConsent: aiConsentSchema.optional(),
+    aiConsent: updateAiConsentRequestSchema.optional(),
     outputLanguage: outputLanguageSchema.optional(),
     redactName: z.boolean().optional(),
   })
