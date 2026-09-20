@@ -31,7 +31,10 @@ sugerencias van en `cv-suggestions-review`.
   ocultadas por la redacción* (sobre-redacción) y *PII anotada que no se redacta* (falso negativo)—, que son exactamente
   los dos errores que ADR-018 aceptó sin cuantificar.
 - **`Application.fitScore` deja de estar reservado** y se rellena con el `score` del último análisis de esa oferta.
-- **En vivo**: el SSE existente gana `analysis.step`, para que una espera de decenas de segundos muestre en qué va.
+- **La espera se ve por dentro**, preguntando: el análisis devuelve el paso alcanzado, y la pantalla lo consulta mientras
+  dura. El aviso en vivo por SSE **se difiere a `cv-suggestions-review`** (ADR-030): había tres mecanismos para contar
+  una espera de unos cuarenta segundos, y el canal era además una superficie nueva por la que algo del CV podría
+  escaparse.
 - **La línea de privacidad de `/mi-cv` se completa**: ya puede nombrar dónde se autoriza y qué se redacta, porque por fin
   existen.
 
@@ -51,10 +54,16 @@ sugerencias van en `cv-suggestions-review`.
   versión del texto aceptado, y se define qué ocurre con los análisis ya hechos cuando se revoca.
 - `ai/eval-harness`: dos métricas nuevas de redacción sobre el golden de CVs, con su línea base.
 - `users/profile`: `aiConsent` gana `consentedAt` y `textVersion`; activar y revocar quedan definidos.
-- `applications/tracking`: "Puntuación de encaje reservada" pasa a ser una puntuación que se calcula y se muestra.
-- `platform/realtime`: aviso `analysis.step` por el canal autenticado, sin datos del CV.
+- `applications/tracking`: "Puntuación de encaje reservada" pasa a ser una puntuación **derivada en lectura** del último
+  análisis, sin que nadie la escriba ni tenga que limpiarla.
+- `ai/task-execution`: la caché de resultados se acota a las tareas cuyo resultado puede cachearse; el de una tarea
+  `personal` nunca lo es.
+- `ai/deterministic-mock`: grabar fixtures de una tarea `personal` contra un upstream real pasa a rechazarse.
+- `cv/documents`: cada CV del listado trae cuántos análisis de encaje se borrarían con él.
 - `web/auth`: `/perfil` suma los tres controles de IA con su texto honesto.
-- `web/cv`: la línea de privacidad de `/mi-cv` se completa nombrando dónde se autoriza y qué se redacta.
+- `web/cv`: la línea de privacidad de `/mi-cv` se completa, con sus tres estados, y la confirmación de borrado dice qué
+  se lleva por delante.
+- `web/applications`: la tarjeta de `/postulaciones` muestra el encaje con la misma regla que el resto.
 
 ## Impact
 
@@ -64,7 +73,8 @@ sugerencias van en `cv-suggestions-review`.
 - **`libs/shared`**: `MatchReport` y el contrato del análisis.
 - **`apps/api`**: módulo `ai-analysis` (o ampliación del existente) con el endpoint, la cuota y `ai_analyses`; `users`
   gana los campos de consentimiento; `applications` consume el `fitScore`.
-- **`apps/worker`**: el análisis corre fuera de la petición HTTP, con su evento de outbox y su paso por SSE.
+- **`apps/worker`**: el análisis corre fuera de la petición HTTP, disparado por outbox, y va dejando escrito el paso que
+  alcanza para que la pantalla pueda preguntarlo.
 - **`apps/web`**: la pantalla del análisis, el badge en las listas y los controles de `/perfil`.
 - **Operación**: `deploy-prod` hereda la clave de OpenRouter, el aviso de privacidad actualizado y qué hacer con
   `ai_analyses` al borrar una cuenta.

@@ -3,12 +3,22 @@
 ### Requirement: Perfil por defecto
 
 Todo usuario nuevo SHALL tener `aiConsent.externalProviders = false`, `aiConsent.consentedAt = null`,
-`aiConsent.textVersion = null`, `outputLanguage = "es"` y `redactName = false`.
+`aiConsent.textVersion = null`, `outputLanguage = "es"` y `redactName = true`.
+
+`redactName` SHALL nacer en `true` porque el nombre propio **no aporta ninguna señal de encaje** y, sin embargo, es el
+dato que más identifica a una persona ante un proveedor externo: el valor por defecto SHALL ser el que menos envía, y
+enviarlo SHALL requerir que su dueño lo decida.
 
 #### Scenario: Perfil tras el registro
 
 - **WHEN** un usuario se registra
-- **THEN** su perfil SHALL tener `aiConsent.externalProviders` `false`, `outputLanguage` `es` y `redactName` `false`
+- **THEN** su perfil SHALL tener `aiConsent.externalProviders` `false`, `outputLanguage` `es` y `redactName` `true`
+
+#### Scenario: El nombre no viaja por defecto
+
+- **GIVEN** un usuario recién registrado que después da su consentimiento y nunca tocó `redactName`
+- **WHEN** una tarea de IA prepara su CV para un proveedor externo
+- **THEN** su nombre SHALL ir sustituido por un marcador
 
 #### Scenario: Sin fecha ni versión de consentimiento
 

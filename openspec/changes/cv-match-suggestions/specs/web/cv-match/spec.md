@@ -1,19 +1,29 @@
 ## Purpose
 
 La pantalla donde una persona descubre si encaja en una oferta y qué le falta. Enseña el informe con la evidencia de
-cada sugerencia a la vista, dice con todas las letras cuándo el análisis fue básico y cuándo hace falta su permiso, y
-distingue siempre un problema nuestro de un encaje bajo, que es un resultado y no un error.
+cada sugerencia a la vista, dice antes de empezar por dónde va a salir su CV, dice con todas las letras cuándo el
+análisis fue básico y cuándo hace falta su permiso, y distingue siempre un problema nuestro de un encaje bajo, que es
+un resultado y no un error.
 
 ## ADDED Requirements
 
 ### Requirement: Pedir el análisis desde la oferta
 
 Cada oferta que una persona puede ver —en `/grupos/:id` y en `/mis-links`— SHALL ofrecer la acción **"Analizar mi
-encaje"**, que SHALL abrir un diálogo titulado **"Tu encaje con esta oferta"** con el nombre de la vacante y SHALL
-pedir el análisis al abrirse.
+encaje"**, que SHALL abrir un diálogo titulado **"Tu encaje con esta oferta"** con el nombre de la vacante. Abrir el
+diálogo **NO SHALL pedir ningún análisis**: el diálogo SHALL enseñar primero qué va a pasar y SHALL esperar a que la
+persona lo pida con la acción **"Analizar"**.
 
-- El diálogo SHALL decir, antes de empezar, **con qué CV se va a analizar**, nombrándolo por su archivo, y SHALL
-  ofrecer "Cambiar de CV", que lleva a `/mi-cv`.
+- Antes de empezar, y siempre, el diálogo SHALL decir **con qué CV se va a analizar**, nombrándolo por su archivo, y
+  **por dónde va a salir ese CV**, con una de estas dos líneas y nunca las dos: con el permiso vigente, **"Se analizará
+  con IA externa (OpenRouter)."**; sin permiso vigente, **"Se analizará dentro de LinkVault."**
+- Mientras el SPA no conozca el estado del permiso, NO SHALL mostrar ninguna de las dos líneas ni SHALL ofrecer
+  "Analizar" afirmando por dónde saldrá: SHALL esperar a saberlo.
+- El diálogo SHALL ofrecer **"Cambiar de CV"**, que lleva a `/mi-cv`, y, sin permiso vigente, **"Dar permiso"**, que
+  lleva a `/perfil`. Volver de cualquiera de las dos SHALL devolver a la oferta con el diálogo abierto mostrando el
+  estado ya actualizado, y **NO SHALL disparar ningún análisis** por sí solo.
+- Sin permiso vigente, el diálogo SHALL poder analizar igualmente: "Dar permiso" SHALL ser una salida, nunca un
+  requisito para pulsar "Analizar".
 - Mientras el análisis está en marcha, la acción NO SHALL aceptar una segunda petición y SHALL quedar deshabilitada con
   `aria-busy`.
 - Si la oferta todavía no se ha leído y la API responde `job_not_ready`, el diálogo SHALL mostrar **"Todavía no hemos
@@ -22,17 +32,44 @@ pedir el análisis al abrirse.
 - Cerrar el diálogo NO SHALL cancelar el análisis: al volver a abrirlo SHALL verse su estado actual.
 - El análisis SHALL ser privado: la tarjeta de la oferta NO SHALL mostrar el encaje de ningún otro miembro del grupo.
 
-#### Scenario: Empezar el análisis
+#### Scenario: Abrir el diálogo no manda nada a ningún sitio
 
 - **GIVEN** Ana con un CV leído y una oferta ya leída en su grupo
 - **WHEN** pulsa "Analizar mi encaje"
 - **THEN** SHALL abrirse el diálogo con el nombre de la vacante y el del CV que se usará
-- **AND** el análisis SHALL quedar pedido sin que Ana tenga que pulsar nada más
+- **AND** NO SHALL pedirse ningún análisis hasta que Ana pulse "Analizar"
+
+#### Scenario: Con el permiso vigente se dice que sale fuera
+
+- **GIVEN** Ana con el consentimiento vigente para proveedores externos
+- **WHEN** abre el diálogo de una oferta
+- **THEN** SHALL leer "Se analizará con IA externa (OpenRouter)." antes de pulsar nada
+
+#### Scenario: Sin permiso se dice que se queda dentro
+
+- **GIVEN** Ana sin consentimiento vigente
+- **WHEN** abre el diálogo de una oferta
+- **THEN** SHALL leer "Se analizará dentro de LinkVault." y SHALL ver "Dar permiso"
+- **AND** SHALL poder pulsar "Analizar" sin dar el permiso
+
+#### Scenario: Volver de Perfil no dispara nada
+
+- **GIVEN** Ana en el diálogo, que pulsa "Dar permiso" y activa el consentimiento en `/perfil`
+- **WHEN** vuelve a la oferta
+- **THEN** el diálogo SHALL reabrirse mostrando "Se analizará con IA externa (OpenRouter)."
+- **AND** NO SHALL haberse pedido ningún análisis
+
+#### Scenario: Volver de Mi CV no dispara nada
+
+- **GIVEN** Ana en el diálogo, que pulsa "Cambiar de CV" y marca otro CV en `/mi-cv`
+- **WHEN** vuelve a la oferta
+- **THEN** el diálogo SHALL reabrirse nombrando el CV recién marcado
+- **AND** NO SHALL haberse pedido ningún análisis
 
 #### Scenario: La oferta no se ha leído
 
 - **GIVEN** una oferta sin título ni descripción
-- **WHEN** Ana pulsa "Analizar mi encaje"
+- **WHEN** Ana pulsa "Analizar"
 - **THEN** SHALL ver que no hay con qué comparar su CV
 - **AND** SHALL poder pegar la descripción desde ahí mismo
 
@@ -50,30 +87,32 @@ pedir el análisis al abrirse.
 
 ### Requirement: La espera se ve por dentro
 
-Un análisis tarda decenas de segundos, así que el diálogo NO SHALL mostrar solo un girador sin texto: SHALL mostrar el
-paso en curso conforme llega por el canal de eventos, con los nombres **"Leyendo la oferta"**, **"Comparando con tu
-CV"** y **"Redactando sugerencias"**, y SHALL marcar como hechos los pasos ya pasados.
+Un análisis tarda decenas de segundos, así que el diálogo NO SHALL mostrar solo un girador sin texto: SHALL **preguntar
+a la API el estado del análisis cada 3 segundos durante como mucho 90 segundos** y SHALL mostrar el paso que devuelva
+esa consulta, con los nombres **"Leyendo la oferta"**, **"Comparando con tu CV"** y **"Redactando sugerencias"**,
+marcando como hechos los pasos ya pasados.
 
-- Si el canal de eventos no está disponible o no llega ningún paso, el diálogo NO SHALL quedarse en blanco: SHALL
-  mostrar **"Estamos analizando tu encaje…"** y SHALL preguntar el estado del análisis cada 3 segundos durante como
-  mucho 90 segundos.
-- Agotado ese tiempo sin resultado, SHALL mostrar **"Sigue en proceso. Vuelve en un momento."** con el botón
+- El sondeo SHALL ser **la única vía** por la que esta pantalla cuenta la espera: el diálogo NO SHALL depender de
+  ningún canal de eventos en vivo para avanzar, y su comportamiento NO SHALL cambiar según haya uno abierto o no.
+- Mientras la consulta no devuelva ningún paso, el diálogo NO SHALL quedarse en blanco: SHALL mostrar **"Estamos
+  analizando tu encaje…"**.
+- Agotados los 90 segundos sin resultado, SHALL mostrar **"Sigue en proceso. Vuelve en un momento."** con el botón
   **"Actualizar"**, que pregunta otra vez y reanuda otra ventana de espera.
 - El sondeo SHALL detenerse en cuanto el análisis termina o el diálogo se cierra.
 - Un paso que el análisis se salta —redactar sugerencias, cuando el análisis termina siendo básico— NO SHALL quedar en
   pantalla como pendiente para siempre.
 - Ningún paso mostrado SHALL contener texto del CV ni de la oferta.
 
-#### Scenario: Los pasos en vivo
+#### Scenario: Los pasos conforme avanza
 
-- **GIVEN** Ana con el diálogo abierto y el canal de eventos funcionando
-- **WHEN** llegan los avisos de progreso del análisis
+- **GIVEN** Ana con el análisis pedido
+- **WHEN** las consultas de estado devuelven pasos sucesivos
 - **THEN** SHALL ver el paso en curso y los anteriores marcados como hechos
 
-#### Scenario: El canal se cae
+#### Scenario: Todavía no hay paso que mostrar
 
-- **GIVEN** el canal de eventos que no se puede abrir
-- **WHEN** Ana pide el análisis
+- **GIVEN** un análisis recién pedido cuya consulta aún no devuelve ningún paso
+- **WHEN** Ana mira el diálogo
 - **THEN** SHALL ver "Estamos analizando tu encaje…" y ningún error en pantalla
 - **AND** el informe SHALL aparecer igualmente cuando el análisis termine
 
@@ -104,8 +143,8 @@ CV"** y **"Redactando sugerencias"**, y SHALL marcar como hechos los pasos ya pa
 
 ### Requirement: El informe en pantalla
 
-Terminado el análisis, el diálogo SHALL mostrar, en este orden: el badge de encaje con su puntuación, las habilidades
-que coinciden, las que faltan y las sugerencias.
+Terminado el análisis, el diálogo SHALL mostrar, en este orden: el badge de encaje, las habilidades que coinciden, las
+que faltan y las sugerencias.
 
 - Las habilidades que faltan SHALL mostrarse separando **lo imprescindible de lo deseable**, con los rótulos
   "Imprescindible" y "Suma puntos", nunca con los nombres internos.
@@ -121,7 +160,7 @@ que coinciden, las que faltan y las sugerencias.
 
 - **GIVEN** un análisis terminado con coincidencias, huecos y sugerencias
 - **WHEN** Ana lo mira
-- **THEN** SHALL ver la puntuación, las habilidades que coinciden, las que faltan y las sugerencias
+- **THEN** SHALL ver el badge de encaje, las habilidades que coinciden, las que faltan y las sugerencias
 
 #### Scenario: Lo imprescindible se distingue
 
@@ -158,6 +197,15 @@ Cada sugerencia SHALL mostrarse con la sección del CV a la que se refiere, el t
 evidencia a la vista, sin abrir ni desplegar nada**: el requisito de la oferta que la motiva, bajo el rótulo **"Lo pide
 la oferta"**, y el fragmento del CV al que se refiere, bajo **"En tu CV dice"**.
 
+- Encima del bloque de sugerencias SHALL leerse siempre la advertencia **"Estas propuestas las redactó una IA a partir
+  de tu CV y de la oferta. Revísalas: solo tú sabes qué es cierto."**
+- Junto a esa advertencia SHALL leerse qué puede hacer hoy con ellas: **"Por ahora los cambios los aplicas tú en tu
+  CV."**
+- Cada sugerencia SHALL ofrecer **"Copiar"**, que pone su texto propuesto en el portapapeles y SHALL confirmarlo.
+  "Copiar" NO SHALL modificar el CV, NO SHALL guardar nada en el análisis y NO SHALL presentarse como aceptar la
+  sugerencia.
+- Las sugerencias SHALL ordenarse por la **importancia del requisito que atacan**, primero las de un requisito
+  imprescindible y después las de uno deseable, y las primeras SHALL verse sin desplazar el diálogo.
 - Cuando la sugerencia no se refiere a nada que esté hoy en el CV, en lugar del fragmento SHALL mostrarse **"Esto no
   aparece en tu CV"**.
 - Ninguna sugerencia SHALL mostrarse sin su requisito de la oferta.
@@ -176,6 +224,27 @@ la oferta"**, y el fragmento del CV al que se refiere, bajo **"En tu CV dice"**.
 - **THEN** SHALL ver "Esto no aparece en tu CV" en lugar del fragmento
 - **AND** SHALL seguir viendo qué requisito de la oferta la motiva
 
+#### Scenario: Queda claro quién lo escribió
+
+- **GIVEN** un informe con sugerencias en pantalla
+- **WHEN** Ana mira el bloque de sugerencias
+- **THEN** SHALL leer, encima de todas, que las redactó una IA a partir de su CV y de la oferta y que debe revisarlas
+- **AND** SHALL leer que por ahora los cambios los aplica ella en su CV
+
+#### Scenario: Copiar una sugerencia
+
+- **GIVEN** una sugerencia con su texto propuesto
+- **WHEN** Ana pulsa "Copiar"
+- **THEN** el texto propuesto SHALL quedar en el portapapeles y SHALL confirmarse
+- **AND** ni su CV ni el análisis SHALL cambiar
+
+#### Scenario: Lo más importante va primero
+
+- **GIVEN** un informe con sugerencias de requisitos imprescindibles y de requisitos deseables
+- **WHEN** Ana lo abre
+- **THEN** las primeras sugerencias SHALL ser las de los requisitos imprescindibles
+- **AND** SHALL verse sin desplazar el diálogo
+
 #### Scenario: Todas a la vista
 
 - **GIVEN** un informe con doce sugerencias
@@ -184,31 +253,49 @@ la oferta"**, y el fragmento del CV al que se refiere, bajo **"En tu CV dice"**.
 
 ### Requirement: El badge de encaje
 
-La puntuación SHALL mostrarse como un badge con **el número siempre visible** y una etiqueta que lo explique: **"Encaje
-alto"** a partir de 75, **"Encaje medio"** entre 50 y 74, y **"Encaje bajo"** por debajo de 50.
+La puntuación SHALL mostrarse como un badge con **el número visible** y una etiqueta que lo explique: **"Encaje
+alto"** a partir de 75, **"Encaje medio"** entre 50 y 74, y **"Te falta bastante para esta oferta"** por debajo de 50.
+El rótulo del tramo bajo SHALL hablar del hueco con la oferta y **NO SHALL calificar a la persona**.
 
+- Bajo el badge SHALL leerse siempre la línea fija **"Cuánto de lo que pide esta oferta ya aparece en tu CV."**, para
+  que nadie tenga que adivinar qué mide el número.
+- En un análisis básico el badge SHALL mostrar **solo la etiqueta "Encaje aproximado — comparamos listas de
+  habilidades"** y **NO SHALL mostrar ningún número**, ni en el diálogo ni en la tarjeta: ese número sale de un cruce
+  por diccionario y no está ganado.
 - El badge SHALL verse en el diálogo y también en la **tarjeta de la oferta** una vez analizada, para que la lista se
-  pueda recorrer de un vistazo.
-- En un análisis básico la etiqueta SHALL ser **"Encaje aproximado"**, nunca una de las tres anteriores.
+  pueda recorrer de un vistazo, con la misma regla: etiqueta y número en el análisis completo, solo etiqueta en el
+  básico.
 - El badge NO SHALL apoyarse solo en el color: su etiqueta SHALL decir lo mismo en texto.
 - La tarjeta SHALL mostrar el badge solo del análisis propio; sin análisis, NO SHALL mostrar ningún badge.
 
 #### Scenario: Encaje alto
 
-- **GIVEN** un informe con puntuación 82
+- **GIVEN** un informe completo con puntuación 82
 - **WHEN** Ana lo mira
 - **THEN** SHALL ver el número 82 y la etiqueta "Encaje alto"
 
-#### Scenario: Encaje bajo
+#### Scenario: El tramo bajo habla del hueco, no de la persona
 
-- **GIVEN** un informe con puntuación 31
+- **GIVEN** un informe completo con puntuación 31
 - **WHEN** Ana lo mira
-- **THEN** SHALL ver el número 31 y la etiqueta "Encaje bajo"
+- **THEN** SHALL ver el número 31 y la etiqueta "Te falta bastante para esta oferta"
 - **AND** NO SHALL verse ningún mensaje de error
+
+#### Scenario: El badge dice qué mide
+
+- **WHEN** Ana mira el badge de cualquier informe
+- **THEN** SHALL leer bajo él "Cuánto de lo que pide esta oferta ya aparece en tu CV."
+
+#### Scenario: Un análisis básico no enseña número
+
+- **GIVEN** un informe degradado con puntuación 64
+- **WHEN** Ana lo mira en el diálogo y después mira la tarjeta de esa oferta
+- **THEN** en los dos SHALL ver "Encaje aproximado — comparamos listas de habilidades"
+- **AND** en ninguno SHALL ver el número 64
 
 #### Scenario: El badge llega a la tarjeta
 
-- **GIVEN** un análisis terminado de una oferta de su grupo
+- **GIVEN** un análisis completo terminado de una oferta de su grupo
 - **WHEN** Ana vuelve a la lista
 - **THEN** la tarjeta de esa oferta SHALL mostrar su badge con el número
 
@@ -231,10 +318,13 @@ falta, sin disfrazarlo de análisis completo.
 - SHALL decir que se comparó lista de habilidades contra lista de habilidades, con **"Comparamos las habilidades de la
   oferta con las de tu CV, sin sugerencias."**
 - El motivo SHALL nombrarse con palabras distintas según cuál sea: los proveedores caídos o ausentes, **"El análisis
-  con IA no está disponible ahora."**; el límite diario de IA, **"Alcanzaste tu límite de análisis con IA por hoy."**
-- SHALL ofrecer **"Reintentar"** cuando el motivo puede pasarse solo, y el mensaje del límite SHALL decir cuándo se
-  podrá de nuevo.
-- NO SHALL mostrarse ninguna sección de sugerencias vacía ni ningún hueco donde deberían estar.
+  con IA no está disponible ahora."**; el límite diario de IA, **"Alcanzaste tu límite de análisis con IA por hoy.
+  Volverás a tener análisis completos a partir de las <hora>."**, con la hora que devuelve la API.
+- SHALL ofrecer **"Reintentar"** cuando el motivo puede pasarse solo.
+- El mensaje del límite diario de IA SHALL distinguirse del mensaje de límite de la API que rechaza la petición, y
+  ninguno de los dos SHALL confundirse con una avería.
+- NO SHALL mostrarse ninguna sección de sugerencias vacía ni ningún hueco donde deberían estar, y tampoco la
+  advertencia de que las redactó una IA, porque no hay ninguna.
 
 #### Scenario: La IA no está disponible
 
@@ -247,28 +337,31 @@ falta, sin disfrazarlo de análisis completo.
 
 - **GIVEN** un informe degradado por el límite diario de IA
 - **WHEN** Ana lo mira
-- **THEN** SHALL ver el mensaje del límite con cuándo podrá volver a analizar
+- **THEN** SHALL ver "Alcanzaste tu límite de análisis con IA por hoy. Volverás a tener análisis completos a partir de
+  las <hora>." con la hora que devuelve la API
 
 #### Scenario: Un básico no se disfraza
 
 - **GIVEN** un informe degradado con puntuación 64
 - **WHEN** Ana lo mira
-- **THEN** el badge SHALL decir "Encaje aproximado" y NO SHALL decir "Encaje medio"
+- **THEN** el badge SHALL decir "Encaje aproximado — comparamos listas de habilidades"
+- **AND** NO SHALL decir "Encaje medio" ni mostrar el número
 
 ### Requirement: Falta tu permiso
 
 Cuando el informe venga degradado porque falta el consentimiento para proveedores de IA externos, el diálogo SHALL
 decirlo con **"Para analizar tu CV con IA necesitamos tu permiso."**, SHALL explicar en una línea qué implica —"Se
-envía el texto de tu CV con tu email, tus teléfonos, tu dirección y tu documento sustituidos por marcadores. El texto
-completo y el interruptor están en Perfil."— y SHALL ofrecer **"Dar permiso"**, que lleva a `/perfil`.
+envía el texto de tu CV con tu email, tus teléfonos, tu dirección y tu documento sustituidos por marcadores; el resto
+del CV se envía tal cual. El texto completo y el interruptor están en Perfil."— y SHALL ofrecer **"Dar permiso"**, que
+lleva a `/perfil`.
 
 - El resumen NO SHALL prometer nada que el texto de `/perfil` no diga, en particular que lo enviado vaya anónimo o que
   el proveedor externo no lo conserve.
-
 - Bajo ese aviso SHALL verse igualmente el análisis básico que sí se pudo hacer, con su cruce de habilidades.
 - El aviso NO SHALL aparecer cuando la degradación tiene otro motivo.
 - Este aviso NO SHALL pedir el permiso en el propio diálogo: la autorización es una preferencia del perfil.
-- Vuelto desde `/perfil`, "Analizar mi encaje" SHALL seguir disponible en la oferta para pedirlo otra vez.
+- Vuelto desde `/perfil`, el diálogo SHALL reabrirse sobre la oferta mostrando el estado actualizado y SHALL esperar a
+  que Ana pulse "Analizar", sin pedir nada por su cuenta.
 
 #### Scenario: Sin permiso
 
@@ -276,6 +369,12 @@ completo y el interruptor están en Perfil."— y SHALL ofrecer **"Dar permiso"*
 - **WHEN** abre el diálogo
 - **THEN** SHALL ver el aviso del permiso, qué implica darlo y la acción que lleva a `/perfil`
 - **AND** SHALL ver debajo el cruce de habilidades del análisis básico
+
+#### Scenario: El resumen no sugiere anonimato
+
+- **WHEN** se revisa el resumen de qué implica dar el permiso
+- **THEN** SHALL decir que el resto del CV se envía tal cual
+- **AND** NO SHALL decir que lo enviado va anónimo ni que el proveedor externo no lo conserva
 
 #### Scenario: Ir a dar el permiso
 
@@ -308,7 +407,7 @@ Ninguno de estos tres SHALL presentarse como una avería, y ninguno SHALL dejar 
 #### Scenario: Sin CV
 
 - **GIVEN** Beto sin ningún CV guardado
-- **WHEN** pulsa "Analizar mi encaje"
+- **WHEN** pulsa "Analizar"
 - **THEN** SHALL ver que necesita un CV guardado y la acción que lleva a `/mi-cv`
 
 #### Scenario: El CV se está leyendo
@@ -328,18 +427,32 @@ Ninguno de estos tres SHALL presentarse como una avería, y ninguno SHALL dejar 
 
 Los fallos SHALL mostrarse como fallos nuestros y **nunca** como un resultado del análisis:
 
-- `429`: el mensaje de límite con la espera que devuelve la API y la acción de reintentar cuando pase;
+- `429` de la API, que rechaza la petición antes de encolar nada: **"Pediste muchos análisis seguidos. Podrás pedir
+  otro a partir de las <hora>."**, con la hora calculada a partir de la espera que devuelve la API y la acción de
+  reintentar cuando pase;
 - un `5xx`, un fallo de red o un análisis terminado en fallo interno: **"No pudimos analizar ahora."** con
   **"Reintentar"**.
+
+El mensaje del `429` SHALL distinguirse del mensaje del límite diario de IA de un análisis básico —uno dice que no se
+aceptó la petición, el otro que el análisis salió sin IA— y los dos SHALL distinguirse de **"No pudimos analizar
+ahora."**, que es una avería nuestra.
 
 Un informe con puntuación baja NO SHALL mostrarse como error, NO SHALL llevar icono ni color de error y NO SHALL
 ofrecer "Reintentar" como si algo hubiera fallado. Ningún mensaje de error SHALL contener texto del CV.
 
-#### Scenario: Límite de análisis alcanzado
+#### Scenario: Límite de peticiones de la API
 
 - **GIVEN** la API respondiendo `429` con su espera
 - **WHEN** Ana pide un análisis
-- **THEN** SHALL ver el mensaje de límite con la espera y la opción de reintentar después
+- **THEN** SHALL ver "Pediste muchos análisis seguidos. Podrás pedir otro a partir de las <hora>." con esa hora
+- **AND** SHALL poder reintentar cuando pase
+
+#### Scenario: Los dos límites no se confunden
+
+- **GIVEN** un `429` de la API en una oferta y un informe degradado por el límite diario de IA en otra
+- **WHEN** Ana mira los dos mensajes
+- **THEN** SHALL ser textos distintos, cada uno con su hora de vuelta
+- **AND** ninguno SHALL decir "No pudimos analizar ahora."
 
 #### Scenario: Avería del servidor
 
@@ -368,21 +481,24 @@ ofrecer "Reintentar" como si algo hubiera fallado. Ningún mensaje de error SHAL
 
 ### Requirement: Lo que esta pantalla todavía no hace
 
-El diálogo SHALL limitarse a **leer** el informe. NO SHALL ofrecer aplicar una sugerencia al CV, aceptarla, rechazarla,
-puntuarla, descargarla ni compartir el informe, porque ninguna de esas vías existe todavía, y NO SHALL nombrar ninguna
-pantalla ni control que no exista.
+El diálogo SHALL limitarse a **leer** el informe y a dejar copiar el texto de una sugerencia. NO SHALL ofrecer aplicar
+una sugerencia al CV, aceptarla, rechazarla ni puntuarla, porque ninguna de esas vías existe todavía, NO SHALL ofrecer
+descargar el informe ni compartirlo, y NO SHALL nombrar ninguna pantalla ni control que no exista.
 
 #### Scenario: Sin acciones que no existen
 
 - **GIVEN** un informe con sugerencias en pantalla
 - **WHEN** Ana revisa las acciones del diálogo y de cada sugerencia
 - **THEN** NO SHALL encontrar aplicar, aceptar, rechazar, puntuar, descargar ni compartir
+- **AND** SHALL encontrar "Copiar" en cada sugerencia
 
 ### Requirement: Textos del análisis en español e inglés
 
-Todos los textos de esta pantalla —la acción de la tarjeta, el título del diálogo, los pasos de la espera, los rótulos
-del informe y de la evidencia, las etiquetas del badge, los avisos de análisis básico, de permiso y de CV, y los
-mensajes de error— SHALL estar marcados para traducción y traducidos al inglés, con el español como idioma por defecto.
+Todos los textos de esta pantalla —la acción de la tarjeta, el título del diálogo, la línea de por dónde va a salir el
+CV, los pasos de la espera, los rótulos del informe y de la evidencia, la advertencia de que las sugerencias las
+redactó una IA, la acción de copiar, las etiquetas del badge con su línea de qué mide, los avisos de análisis básico,
+de permiso y de CV, y los mensajes de error— SHALL estar marcados para traducción y traducidos al inglés, con el
+español como idioma por defecto.
 
 #### Scenario: Traducciones completas
 

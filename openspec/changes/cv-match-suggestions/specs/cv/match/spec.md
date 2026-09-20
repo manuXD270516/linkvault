@@ -82,20 +82,26 @@ fuera de la petición HTTP: la respuesta NO SHALL esperar a que termine.
 ### Requirement: Consultar el análisis de una oferta
 
 `GET /api/links/:linkId/match` SHALL devolver `200` con el análisis vigente de quien llama sobre esa oferta: su
-`analysisId`, `linkId`, `cvId`, `status` (`running`, `done` o `failed`), `requestedAt`, `analyzedAt` cuando terminó,
-`stale`, `cvChanged`, y el informe cuando `status` es `done`.
+`analysisId`, `linkId`, `cvId`, `status` (`running`, `done` o `failed`), el **último paso alcanzado**, `requestedAt`,
+`analyzedAt` cuando terminó, `stale`, `cvChanged`, `consentRequired` y el informe cuando `status` es `done`.
 
 - **El análisis vigente** SHALL ser el más reciente de quien llama sobre esa oferta, **con el CV que fuera**; si no
   existe ninguno, la respuesta SHALL ser `404` con código `analysis_not_found`, que NO SHALL confundirse con
   `link_not_found`.
+- `consentRequired` SHALL devolverse **tal como quedó guardado al ejecutar el análisis**, sin recalcularse al leer: lo
+  que ese informe explica es la situación de permiso que hubo cuando se produjo, no la de ahora.
 - Un análisis SHALL marcarse `cvChanged` `true` cuando se hizo con un CV que ya no es el que se usaría hoy —porque se
   marcó otro por defecto—, para que nadie lea como actual un informe hecho con otro CV. SHALL seguir devolviéndose
   entero.
 - Un análisis que no pudo completarse por un fallo de la plataforma —el texto del CV ilegible en el almacén, el trabajo
   perdido— SHALL quedar en `status` `failed` con código `internal_error`, y NO SHALL quedarse en `running` para
-  siempre: pasado su plazo máximo SHALL darse por fallido.
-- Un análisis SHALL marcarse `stale` `true` cuando la oferta cambió después de hacerlo, es decir cuando su
-  `previewVersion` ya no es la que se analizó. Un análisis `stale` SHALL seguir devolviéndose entero.
+  siempre: **pasado su plazo máximo SHALL darse por vencido y leerse `failed`**.
+- Ese plazo máximo SHALL ser **mayor que el plazo del trabajo que ejecuta el análisis**, contando todas las entregas que
+  ese trabajo pueda tener. Ningún análisis SHALL poder darse por vencido mientras su ejecución todavía estuviera a
+  tiempo de terminar: el vencimiento describe un trabajo que ya no va a volver, no uno que aún trabaja.
+- Un análisis dado por vencido SHALL ser **terminal**: un resultado que llegue después NO SHALL cambiar lo que devuelve
+  el `GET`, ni convertir en `done` algo que quien lo pidió ya leyó como avería. La única salida SHALL ser pedir un
+  análisis nuevo.
 - La respuesta SHALL llevar `Cache-Control: private, no-store`.
 - Una oferta que quien llama no puede ver SHALL responder `404` con código `link_not_found`, aunque exista un análisis
   suyo anterior sobre ella.
@@ -124,6 +130,20 @@ fuera de la petición HTTP: la respuesta NO SHALL esperar a que termine.
 - **WHEN** Ana lo consulta
 - **THEN** la respuesta SHALL ser `200` con `status` `failed` y código `internal_error`
 
+#### Scenario: El plazo de la consulta no adelanta al del trabajo
+
+- **GIVEN** un análisis cuya ejecución sigue dentro del plazo que tiene para terminar
+- **WHEN** Ana lo consulta
+- **THEN** la respuesta SHALL ser `200` con `status` `running`
+- **AND** NO SHALL leerse como vencido mientras su ejecución siga a tiempo
+
+#### Scenario: Un resultado que llega tarde
+
+- **GIVEN** un análisis que Ana ya leyó como `failed` por vencimiento
+- **WHEN** su ejecución termina después y quiere guardar un informe
+- **THEN** el `GET` SHALL seguir devolviendo `failed` con código `internal_error`
+- **AND** Ana NO SHALL ver convertirse en un análisis terminado lo que le presentamos como avería
+
 #### Scenario: La oferta cambió después del análisis
 
 - **GIVEN** un análisis terminado y una oferta que después se completó pegando su descripción
@@ -136,44 +156,90 @@ fuera de la petición HTTP: la respuesta NO SHALL esperar a que termine.
 - **WHEN** consulta el análisis de esa oferta
 - **THEN** la respuesta SHALL ser `200` con ese análisis, su `cvId` y `cvChanged` `true`
 
-### Requirement: Los pasos que anuncia un análisis
+### Requirement: El paso alcanzado por un análisis
 
-El análisis SHALL declarar un **conjunto cerrado de pasos** y SHALL anunciar cada uno al alcanzarlo, para que una
-espera de decenas de segundos se pueda contar: `reading-job` (se prepara la vacante), `comparing-cv` (se compara con el
-CV), `drafting-suggestions` (se redactan las sugerencias) y uno final, que SHALL ser `done` con informe completo,
-`done-degraded` con informe básico o `failed` cuando no se pudo terminar.
+El análisis SHALL declarar un **conjunto cerrado de pasos** y SHALL dejar constancia del último que alcanzó, de modo
+que el `GET` del análisis lo devuelva junto a su `status` y una espera de decenas de segundos se pueda contar:
+`reading-job` (se prepara la vacante), `comparing-cv` (se compara con el CV), `drafting-suggestions` (se redactan las
+sugerencias) y uno final, que SHALL ser `done` con informe completo, `done-degraded` con informe básico o `failed`
+cuando no se pudo terminar.
 
-- Los pasos SHALL anunciarse en ese orden y **cada análisis SHALL terminar siempre en uno de los tres finales**,
-  también cuando falla.
-- Un análisis degradado NO SHALL anunciar `drafting-suggestions`, porque no redacta ninguna: saltarse un paso SHALL ser
-  parte del contrato y no un aviso perdido.
-- Ningún paso SHALL llevar el informe, el `score`, ninguna sugerencia ni nada del texto del CV o de la oferta: quien lo
-  recibe SHALL pedir el resultado a la API.
-- Un paso que nadie escucha NO SHALL retrasar ni hacer fallar el análisis.
+- Los pasos SHALL alcanzarse en ese orden y **cada análisis SHALL terminar siempre en uno de los tres finales**, también
+  cuando falla. El paso devuelto NO SHALL retroceder.
+- Un análisis degradado NO SHALL alcanzar `drafting-suggestions`, porque no redacta ninguna: saltarse ese paso SHALL ser
+  parte del contrato y no un aviso perdido, de modo que quien lo muestre pueda darlo por no pendiente.
+- El paso SHALL viajar **solo** como paso: NO SHALL llevar el informe, el `score`, ninguna sugerencia ni nada del texto
+  del CV o de la oferta. Quien quiera el resultado SHALL pedirlo a la API.
+- El paso SHALL poder conocerse **preguntando por el análisis**, sin depender de ningún canal de avisos: contar la
+  espera NO SHALL exigir haber estado escuchando en el momento exacto en que el paso ocurrió.
+- Preguntar por el paso NO SHALL ejecutar nada, NO SHALL consumir intento y NO SHALL retrasar ni hacer fallar el
+  análisis, por seguido que se pregunte.
 
 #### Scenario: Un análisis completo cuenta sus pasos
 
 - **GIVEN** un análisis de Ana que termina con informe completo
-- **WHEN** se recorren sus pasos anunciados
-- **THEN** SHALL ser `reading-job`, `comparing-cv`, `drafting-suggestions` y `done`, en ese orden
+- **WHEN** se consulta el análisis a lo largo de su ejecución
+- **THEN** los pasos alcanzados SHALL ser `reading-job`, `comparing-cv`, `drafting-suggestions` y `done`, en ese orden
 
 #### Scenario: Un análisis básico se salta las sugerencias
 
 - **GIVEN** un análisis que degrada porque no hay proveedores
-- **WHEN** se recorren sus pasos anunciados
+- **WHEN** se consultan sus pasos alcanzados
 - **THEN** NO SHALL incluir `drafting-suggestions`
 - **AND** el último SHALL ser `done-degraded`
 
 #### Scenario: Un análisis que no se pudo terminar
 
 - **GIVEN** un análisis que falla por un error de la plataforma
-- **WHEN** se recorren sus pasos anunciados
-- **THEN** el último SHALL ser `failed`
+- **WHEN** se consulta su paso alcanzado
+- **THEN** SHALL ser `failed`
 
-#### Scenario: Los pasos no llevan el informe
+#### Scenario: El paso no lleva el informe
 
-- **WHEN** se inspecciona cualquier paso anunciado
+- **WHEN** se inspecciona el paso que devuelve cualquier consulta
 - **THEN** NO SHALL contener el `score`, ninguna sugerencia ni ningún texto del CV o de la oferta
+
+#### Scenario: La espera se pregunta, no se escucha
+
+- **GIVEN** Ana que abre la pantalla del análisis cuando ya iba por `comparing-cv`
+- **WHEN** consulta el análisis
+- **THEN** SHALL ver ese paso alcanzado sin haber estado escuchando nada antes
+
+### Requirement: Un análisis pedido, una sola ejecución
+
+Un análisis pedido SHALL **ejecutarse una sola vez**. El trabajo que lo resuelve NO SHALL reintentarse a ciegas: un
+análisis que no se puede completar degrada o termina en fallo, y nunca vuelve a empezar por su cuenta. Así queda
+garantizado que **un análisis pedido produce como mucho un envío del CV a un proveedor externo** y como mucho un consumo
+de cuota de IA.
+
+- Al empezar cada intento, la ejecución SHALL **releer el estado guardado del análisis** y SHALL abandonar sin hacer
+  nada si ya está resuelto —`done` o `failed`— o si su plazo ya venció. Entregar el mismo trabajo tres veces SHALL dar
+  exactamente el mismo resultado que entregarlo una.
+- La garantía SHALL ser observable sobre el proveedor: para un mismo `analysisId`, el número de veces que el texto del
+  CV llega a un proveedor externo NO SHALL crecer con el número de entregas del trabajo.
+- Un análisis cuyo trabajo no vuelve NO SHALL quedarse en `running` para siempre: SHALL terminar en `failed` con código
+  `internal_error`, y su salida SHALL ser pedir un análisis nuevo, no repetir el mismo.
+
+#### Scenario: El mismo trabajo entregado tres veces
+
+- **GIVEN** un análisis de Ana ya resuelto en `done`
+- **WHEN** su trabajo se entrega dos veces más
+- **THEN** ningún proveedor SHALL recibir una petición nueva
+- **AND** el análisis guardado NO SHALL cambiar
+
+#### Scenario: Un fallo no multiplica los envíos
+
+- **GIVEN** un análisis que sale hacia un proveedor externo y cuya ejecución termina mal
+- **WHEN** se cuenta cuántas veces salió el CV hacia ese proveedor
+- **THEN** SHALL haber salido como mucho una vez
+- **AND** el análisis SHALL haber degradado o terminado en `failed`, nunca vuelto a empezar
+
+#### Scenario: El trabajo que no vuelve
+
+- **GIVEN** un análisis en `running` cuyo trabajo se perdió
+- **WHEN** vence su plazo
+- **THEN** SHALL leerse `failed` con código `internal_error`
+- **AND** NO SHALL quedarse en `running`
 
 ### Requirement: El informe de encaje y su evidencia obligatoria
 
@@ -237,8 +303,13 @@ dueño del grupo ni de quien compartió la oferta.
 - Con consentimiento, un proveedor externo SHALL recibir el input **pasado por la redacción de datos personales**,
   nunca el texto original.
 - Un análisis que degrada por falta de consentimiento NO SHALL fallar en silencio: SHALL devolverse con su marca de
-  degradado y SHALL llevar `consentRequired` `true`, que SHALL ser `true` **solo** cuando dar el consentimiento habría
-  hecho elegible a algún proveedor. Así se distingue "te falta autorizarlo" de "la IA no está disponible".
+  degradado, con el **`degradedReason` propio de la falta de consentimiento** y con `consentRequired` `true`.
+- Los dos SHALL darse **solo cuando dar el consentimiento habría hecho elegible a algún proveedor**. Si no hay ningún
+  proveedor externo configurado, conceder el permiso no habría cambiado nada: el motivo SHALL ser el de que no hay
+  proveedores y `consentRequired` SHALL ser `false`. Así se distingue "te falta autorizarlo" —que tiene arreglo y es
+  suyo— de "la IA no está disponible", que no lo tiene.
+- `consentRequired` SHALL quedar **guardado junto al análisis**, no derivarse en la lectura: el permiso puede cambiar
+  después y, sin guardarlo, el motivo real por el que ese informe salió básico sería irrecuperable.
 - El consentimiento SHALL comprobarse en el momento de ejecutar, no en el de pedir: uno retirado entre la petición y la
   ejecución SHALL impedir igualmente el envío a un proveedor externo.
 
@@ -253,8 +324,15 @@ dueño del grupo ni de quien compartió la oferta.
 
 - **GIVEN** Ana sin consentimiento y solo proveedores externos configurados
 - **WHEN** pide el análisis
-- **THEN** el informe SHALL venir degradado con `consentRequired` `true`
+- **THEN** el informe SHALL venir degradado con el motivo de que faltaba el consentimiento y `consentRequired` `true`
 - **AND** ningún proveedor SHALL recibir ninguna petición
+
+#### Scenario: Faltar el permiso no explica una avería ajena
+
+- **GIVEN** un entorno sin ningún proveedor externo configurado y Ana sin consentimiento
+- **WHEN** pide el análisis
+- **THEN** el motivo SHALL ser el de que no hay proveedores, no el de la falta de consentimiento
+- **AND** `consentRequired` SHALL ser `false`, porque darlo no habría hecho elegible a nadie
 
 #### Scenario: Con consentimiento hacia un proveedor externo
 
@@ -270,6 +348,13 @@ dueño del grupo ni de quien compartió la oferta.
 - **THEN** ningún proveedor externo SHALL recibir nada
 - **AND** el resultado SHALL ser el que corresponda a no tener consentimiento
 
+#### Scenario: El motivo del informe no cambia al cambiar el permiso
+
+- **GIVEN** un análisis guardado con `consentRequired` `true`
+- **WHEN** Ana da el consentimiento y vuelve a consultar ese mismo análisis
+- **THEN** SHALL seguir devolviéndose con `consentRequired` `true`, tal como se guardó
+- **AND** la forma de tener un informe completo SHALL ser pedir un análisis nuevo
+
 #### Scenario: El consentimiento es el de quien pide
 
 - **GIVEN** una oferta de un grupo donde Ana tiene consentimiento y Beto no
@@ -278,14 +363,21 @@ dueño del grupo ni de quien compartió la oferta.
 
 ### Requirement: Degradación honesta, nunca silencio
 
-Cuando no hay proveedor que produzca un informe válido —porque la cadena está vacía, porque todos fallaron o porque la
-cuota de IA se agotó—, el análisis NO SHALL fallar: SHALL terminar en `done` con un informe marcado `degraded` `true`,
-su `degradedReason` y **sin ninguna sugerencia**.
+Cuando no hay proveedor que produzca un informe válido —porque la cadena está vacía, porque todos fallaron, porque la
+cuota de IA se agotó o porque faltaba el consentimiento—, el análisis NO SHALL fallar: SHALL terminar en `done` con un
+informe marcado `degraded` `true`, su `degradedReason` y **sin ninguna sugerencia**.
 
+- `degradedReason` SHALL venir de un **conjunto cerrado** que distinga, como mínimo, esas cuatro situaciones: no hay
+  ningún proveedor elegible, todos los proveedores fallaron, la cuota de IA se agotó y **faltaba el consentimiento**.
+  Cada una tiene una salida distinta para quien la lee —esperar, reintentar, volver más tarde o dar el permiso—, y un
+  motivo que las confunda le ofrece la salida equivocada.
 - El informe degradado SHALL calcularse cruzando por diccionario las habilidades de la vacante con las del CV, y SHALL
   traer `score`, `matchedSkills` y `missingSkills` obtenidos así.
 - `suggestions` SHALL ser una lista vacía. Un informe con `degraded` `true` y alguna sugerencia NO SHALL guardarse ni
   devolverse.
+- **Cuando el motivo es que la cuota de IA se agotó**, el informe SHALL llevar además **cuándo se podrá volver a
+  intentar**. Sin ese dato la pantalla solo puede invitar a reintentar en el vacío, que es la manera más rápida de
+  gastar la cuota que ya está agotada. Ese momento SHALL guardarse con el análisis y devolverse tal cual en el `GET`.
 - `degradedReason` SHALL decir cuál de los motivos fue, de forma que el SPA pueda explicarlo con palabras distintas y
   ofrecer la salida que corresponde.
 - Un informe degradado NO SHALL presentarse ni guardarse como un análisis completo, y NO SHALL reutilizarse en una
@@ -311,17 +403,27 @@ su `degradedReason` y **sin ninguna sugerencia**.
 - **WHEN** se valida antes de guardarlo
 - **THEN** SHALL rechazarse y NO SHALL devolverse
 
-#### Scenario: El motivo distingue los casos
+#### Scenario: El motivo distingue los cuatro casos
 
-- **GIVEN** un degradado por falta de consentimiento y otro por caída de los proveedores
-- **WHEN** se consultan los dos informes
-- **THEN** sus `degradedReason` SHALL ser distintos
+- **GIVEN** un degradado por falta de consentimiento, otro por caída de los proveedores, otro por cadena vacía y otro
+  por cuota de IA agotada
+- **WHEN** se consultan los cuatro informes
+- **THEN** sus `degradedReason` SHALL ser distintos entre sí
+- **AND** el de falta de consentimiento SHALL poder distinguirse del de que no hay proveedores
+
+#### Scenario: La cuota de IA agotada dice cuándo volver
+
+- **GIVEN** un análisis que degrada porque la cuota de IA se agotó
+- **WHEN** Ana consulta el informe
+- **THEN** SHALL traer cuándo se podrá volver a intentar
+- **AND** ese momento SHALL ser el que quedó guardado con el análisis, sin recalcularse al leer
 
 ### Requirement: Qué se guarda de un análisis y qué no sale nunca
 
 Cada análisis terminado SHALL guardarse con quien lo pidió, la oferta, el CV usado, la `previewVersion` analizada de la
-oferta, la versión del prompt, el proveedor y el modelo que lo resolvieron, el estado, el informe validado, `degraded`
-con su motivo, la marca de si salió a un proveedor externo, la fecha y la duración.
+oferta, la versión del prompt, el proveedor y el modelo que lo resolvieron, el estado, el último paso alcanzado, el
+informe validado, `degraded` con su motivo, `consentRequired`, cuándo se podrá volver a intentar si degradó por cuota de
+IA agotada, la marca de si salió a un proveedor externo, la fecha y la duración.
 
 - **NO SHALL guardarse** el texto del CV, el texto de la oferta, el prompt renderizado, ninguna credencial ni ningún
   dato de otra persona. El único texto del CV que queda guardado SHALL ser el `cvFragment` de cada evidencia, acotado a
@@ -331,8 +433,9 @@ con su motivo, la marca de si salió a un proveedor externo, la fecha y la durac
 - **Ningún registro**, en ningún nivel ni en ningún proceso, SHALL contener texto del CV, texto del informe, el prompt
   renderizado ni credenciales. SHALL poder registrarse el identificador del análisis, el de la oferta, el del CV, el
   proveedor, el estado, el motivo de degradación, la duración y el recuento de sugerencias.
-- Terminado un análisis, su `score` y su marca de degradado SHALL quedar disponibles como puntuación de encaje de la
-  postulación de esa persona sobre esa oferta, cuando exista.
+- El análisis SHALL ser la **única fuente** de la puntuación de encaje de la postulación de esa persona sobre esa
+  oferta: su `score` y su marca de degradado SHALL quedar legibles para ella y **nadie SHALL copiarlos** a la
+  postulación.
 
 #### Scenario: Lo guardado no lleva el CV
 
@@ -340,6 +443,13 @@ con su motivo, la marca de si salió a un proveedor externo, la fecha y la durac
 - **WHEN** se mira lo guardado
 - **THEN** NO SHALL contener el texto del CV ni el de la oferta ni el prompt enviado
 - **AND** el único texto del CV SHALL ser el fragmento de cada evidencia
+
+#### Scenario: Lo guardado explica por qué salió básico
+
+- **GIVEN** un análisis que degradó por falta de consentimiento
+- **WHEN** se mira lo guardado
+- **THEN** SHALL incluir su `degradedReason` y su `consentRequired`
+- **AND** el `GET` SHALL devolverlos sin volver a mirar el perfil de quien lo pidió
 
 #### Scenario: Los registros no filtran el CV
 
@@ -361,15 +471,21 @@ con su motivo, la marca de si salió a un proveedor externo, la fecha y la durac
 
 ### Requirement: Cuota de análisis por persona
 
-La API SHALL limitar cuántos análisis puede pedir cada persona por tarea en una ventana de 24 horas, con un límite
-definido por configuración. Superado el límite, `POST /api/links/:linkId/match` SHALL responder `429` con código
-`too_many_attempts` y cabecera `Retry-After`, sin encolar trabajo ni contactar a ningún proveedor.
+La API SHALL limitar cuántos análisis puede pedir cada persona por tarea en una ventana **configurable, de 24 horas por
+defecto**, con un límite también definido por configuración. Superado el límite,
+`POST /api/links/:linkId/match` SHALL responder `429` con código `too_many_attempts` y cabecera `Retry-After`, sin
+encolar trabajo ni contactar a ningún proveedor.
 
 - El contador SHALL **fallar abierto**: si no puede consultarse, la petición SHALL seguir adelante.
 - El intento SHALL consumirse **solo cuando el análisis queda pedido**: un `404`, un `409` o un `400` NO SHALL
   consumirlo.
-- Un análisis que termina degradado por falta de IA —cadena vacía o proveedores caídos— SHALL devolver el intento al
-  contador: no se cobra a la persona lo que no llegó a analizarse.
+- El intento SHALL **devolverse siempre que el análisis no llegue a entregar un informe completo**, y eso incluye el
+  fallo interno, el vencimiento, la degradación por falta de IA —cadena vacía o proveedores caídos—, la degradación por
+  cuota de IA agotada y la degradación por falta de consentimiento. Esta cuota existe para acotar el uso de la IA: no se
+  le cobra a nadie una avería nuestra, ni un permiso que todavía no dio, ni un límite que no es el suyo.
+- En consecuencia, **solo consume intento el análisis que termina con un informe no degradado**.
+- La devolución del intento por cuota de IA agotada SHALL evitar el bucle en el que cada reintento quema un intento de
+  esta cuota mientras la de IA sigue agotada: el informe dice cuándo volver y esta cuota no se gasta entretanto.
 - Una petición que devuelve un análisis ya hecho sin volver a ejecutarlo NO SHALL consumir intento.
 
 #### Scenario: Límite alcanzado
@@ -378,6 +494,13 @@ definido por configuración. Superado el límite, `POST /api/links/:linkId/match
 - **WHEN** pide otro análisis
 - **THEN** la respuesta SHALL ser `429` con código `too_many_attempts` y `Retry-After`
 - **AND** NO SHALL quedar ningún análisis pedido
+
+#### Scenario: La ventana se configura
+
+- **GIVEN** una configuración que no declara el tamaño de la ventana
+- **WHEN** arranca la API
+- **THEN** la ventana SHALL ser de 24 horas
+- **AND** una configuración que declare otro tamaño SHALL usarse en su lugar
 
 #### Scenario: Contador caído
 
@@ -397,18 +520,49 @@ definido por configuración. Superado el límite, `POST /api/links/:linkId/match
 - **WHEN** vuelve a pedirlo
 - **THEN** el intento SHALL estar disponible otra vez
 
+#### Scenario: Una avería no se le cobra a quien la sufre
+
+- **GIVEN** Ana con dos análisis pedidos, uno que terminó en `failed` con `internal_error` y otro que venció sin
+  resultado
+- **WHEN** se consulta su contador
+- **THEN** ninguno de los dos SHALL haber consumido intento
+
+#### Scenario: Falta el permiso y no cuesta intento
+
+- **GIVEN** un análisis de Ana que degradó porque faltaba su consentimiento
+- **WHEN** Ana da el permiso y pide el análisis otra vez
+- **THEN** el intento anterior SHALL estar disponible
+- **AND** la petición nueva SHALL aceptarse
+
+#### Scenario: La cuota de IA agotada no quema la de análisis
+
+- **GIVEN** un análisis que degradó porque la cuota de IA se agotó
+- **WHEN** se consulta el contador de análisis de Ana
+- **THEN** ese análisis NO SHALL haber consumido intento
+- **AND** reintentar mientras la cuota de IA siga agotada NO SHALL ir gastando los intentos de esta cuota
+
 ### Requirement: Repetir el análisis
 
-Pedir dos veces el análisis de la misma oferta SHALL comportarse de forma previsible y sin gastar trabajo de más.
+Pedir dos veces el análisis de la misma oferta SHALL comportarse de forma previsible y sin gastar trabajo de más. Para
+cada estado posible del análisis existente SHALL estar dicho si se reutiliza o se ejecuta uno nuevo, de modo que la
+pantalla nunca pueda ofrecer un gesto que no hace nada.
 
-- Mientras haya un análisis en `running` de la misma persona, la misma oferta y el mismo CV, un `POST` nuevo SHALL
-  responder `202` con **el mismo `analysisId`**, NO SHALL encolar un segundo trabajo y NO SHALL consumir otro intento.
-- Si ya existe un análisis `done` **no degradado** de esa persona, esa oferta y ese CV, hecho con la misma
-  `previewVersion` de la oferta y la misma versión de prompt, el `POST` SHALL responder `200` con ese análisis, sin
-  ejecutar nada y sin consumir intento.
-- Si el análisis existente está **degradado**, si la oferta cambió (`previewVersion` distinta) o si la versión del
-  prompt cambió, el `POST` SHALL ejecutar un análisis nuevo.
-- Si el CV cambia —porque se marca otro por defecto o se sube uno nuevo—, el `POST` siguiente SHALL ejecutar un
+- **En curso y dentro de su plazo**: mientras haya un análisis en `running` de la misma persona, la misma oferta y el
+  mismo CV, un `POST` nuevo SHALL responder `202` con **el mismo `analysisId`**, NO SHALL encolar un segundo trabajo y
+  NO SHALL consumir otro intento.
+- **Completo y no degradado**, con el mismo CV, la misma `previewVersion` de la oferta y la misma versión de prompt: el
+  `POST` SHALL responder `200` con ese análisis, sin ejecutar nada y sin consumir intento. **No SHALL existir ninguna
+  forma de forzar un reanálisis cuando nada cambió**: repetir el mismo análisis sobre los mismos datos devolvería el
+  mismo informe gastando cuota, así que la respuesta es el informe que ya hay.
+- **Degradado**, sea cual sea su motivo: el `POST` SHALL ejecutar un análisis nuevo. Un informe básico es una respuesta
+  honesta, no un resultado que valga la pena conservar cuando se puede volver a intentar.
+- **Vencido**: un análisis que se dio por vencido NO SHALL considerarse reutilizable en ningún caso. El `POST` SHALL
+  ejecutar uno nuevo, nunca devolver el vencido: devolverlo dejaría a quien pulsa "Reintentar" en un bucle que siempre
+  responde lo mismo.
+- **Fallido**: un análisis en `failed` SHALL comportarse igual que uno vencido y el `POST` SHALL ejecutar uno nuevo.
+- **Cuando cambió algo**: si la oferta cambió (`previewVersion` distinta) o si la versión del prompt cambió, el `POST`
+  SHALL ejecutar un análisis nuevo.
+- **Cuando cambió el CV** —porque se marca otro por defecto o se sube uno nuevo—, el `POST` siguiente SHALL ejecutar un
   análisis nuevo con el CV nuevo y SHALL guardarlo aparte; el análisis anterior NO SHALL modificarse y SHALL seguir
   consultándose hasta que el nuevo termine, marcado con que se hizo con otro CV.
 
@@ -425,10 +579,24 @@ Pedir dos veces el análisis de la misma oferta SHALL comportarse de forma previ
 - **WHEN** Ana lo pide de nuevo sin que nada haya cambiado
 - **THEN** la respuesta SHALL ser `200` con ese mismo análisis
 - **AND** ningún proveedor SHALL recibir una petición
+- **AND** NO SHALL existir ninguna forma de pedir que se rehaga igualmente
 
 #### Scenario: Reintentar un análisis degradado
 
 - **GIVEN** un análisis `done` degradado de Ana sobre esa oferta
+- **WHEN** Ana lo pide otra vez
+- **THEN** SHALL ejecutarse un análisis nuevo
+
+#### Scenario: Volver a pedir un análisis vencido
+
+- **GIVEN** un análisis de Ana que se dio por vencido y que ella leyó como `failed`
+- **WHEN** Ana lo pide otra vez
+- **THEN** SHALL ejecutarse un análisis nuevo con su propio `analysisId`
+- **AND** la respuesta NO SHALL ser el análisis vencido otra vez
+
+#### Scenario: Volver a pedir un análisis fallido
+
+- **GIVEN** un análisis de Ana en `failed` con código `internal_error`
 - **WHEN** Ana lo pide otra vez
 - **THEN** SHALL ejecutarse un análisis nuevo
 
@@ -455,6 +623,13 @@ Retirar el consentimiento SHALL tener efecto **sobre lo que todavía no ha salid
   lo pida le quitaría algo suyo. SHALL seguir consultándose y mostrando su marca de si salieron a un proveedor externo.
 - La vía para que esos análisis desaparezcan SHALL ser **borrar el CV con el que se hicieron**: al eliminar un CV,
   SHALL eliminarse también los análisis hechos con él, incluidos sus fragmentos de evidencia.
+- Ese borrado SHALL ser **atómico**: al terminar, o han desaparecido el CV y todos sus análisis, o no ha desaparecido
+  ninguno de los dos. **NO SHALL existir ningún instante observable** —ni por un fallo a mitad, ni por una caída del
+  proceso, ni por un reinicio— en el que el CV ya no esté y sus análisis, con sus fragmentos de texto del CV, sigan
+  guardados. Es la única vía de borrado que el producto ofrece: un resto que sobreviva no tendría quién lo recogiera.
+- Un borrado que falla a mitad SHALL dejarlo todo como estaba —el CV consultable y sus análisis también— y volver a
+  intentarlo SHALL poder completarlo. Una eliminación **no SHALL depender de que un segundo paso posterior llegue a
+  ejecutarse**.
 - Revocar el consentimiento NO SHALL borrar ningún CV ni ninguna postulación, y NO SHALL dejar ninguna operación a
   medias.
 
@@ -477,6 +652,20 @@ Retirar el consentimiento SHALL tener efecto **sobre lo que todavía no ha salid
 - **WHEN** elimina ese CV
 - **THEN** los tres análisis SHALL eliminarse
 - **AND** consultarlos SHALL responder `404` con código `analysis_not_found`
+
+#### Scenario: O se borra todo o no se borra nada
+
+- **GIVEN** Ana borrando un CV con análisis hechos con él, y un fallo a mitad del borrado
+- **WHEN** se mira lo guardado después del fallo
+- **THEN** SHALL verse el CV con todos sus análisis, o ni el CV ni ninguno de sus análisis
+- **AND** NO SHALL verse nunca el CV eliminado con sus análisis todavía guardados
+
+#### Scenario: El borrado no queda a la espera de un segundo paso
+
+- **GIVEN** Ana borrando un CV y el proceso cayéndose justo después de que el borrado quede confirmado
+- **WHEN** se consultan sus análisis al volver el servicio
+- **THEN** NO SHALL quedar ninguno de los análisis de ese CV
+- **AND** ningún fragmento de texto de ese CV SHALL seguir guardado
 
 #### Scenario: Borrar un CV no toca los análisis de otro
 

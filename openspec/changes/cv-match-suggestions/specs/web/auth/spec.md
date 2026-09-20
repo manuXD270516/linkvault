@@ -18,24 +18,31 @@ mostrar ni enviar texto del CV.
 
 1. **Consentimiento para proveedores externos** (`aiConsent.externalProviders`): un interruptor rotulado "Permitir que
    un proveedor de IA externo analice mi CV", acompañado siempre —sin desplegar nada— del texto honesto, que SHALL
-   decir las cuatro cosas: **qué se envía** ("el texto de tu CV y la descripción de la oferta"), **a quién** (el
+   decir las seis cosas: **qué se envía** ("el texto de tu CV y la descripción de la oferta"), **a quién** (el
    proveedor externo que lo recibiría, hoy OpenRouter), **qué se sustituye antes de enviarlo** (email, teléfonos,
-   dirección, documento de identidad y URL, por marcadores) y **que se puede quitar cuando quieras**. SHALL añadir qué
-   pasa sin él: "Sin este permiso, tu CV se analiza dentro de LinkVault o recibes un análisis básico." El texto NO SHALL
-   prometer nada que LinkVault no pueda comprobar, en particular que el proveedor externo no conserve lo enviado, ni que
-   lo enviado vaya anónimo, ni que se pedirá permiso en el momento del análisis.
+   dirección, documento de identidad y URL, por marcadores), **qué pasa con el resto** ("El resto de tu CV —tu
+   experiencia, tus estudios, las empresas y las fechas— se envía tal cual y puede identificarte."), **qué sabemos y
+   qué no del proveedor** ("Elegimos proveedores que se comprometen a no usar lo enviado para entrenar sus modelos,
+   pero no podemos comprobarlo.") y **que se puede quitar cuando quieras**. SHALL añadir qué pasa sin él: "Sin este
+   permiso, tu CV se analiza dentro de LinkVault o recibes un análisis básico." El texto NO SHALL prometer nada que
+   LinkVault no pueda comprobar, en particular que el proveedor externo no conserve lo enviado, ni que se pedirá
+   permiso en el momento del análisis; y **SHALL quedar prohibida cualquier formulación que sugiera que lo enviado va
+   anónimo o que no se puede saber de quién es**, incluida la de presentar la sustitución de datos como si bastara para
+   anonimizar el CV.
    - **Activar** SHALL enviar, junto al valor, la **versión del texto que el SPA mostró**, y NUNCA una versión que no
      mostró. Con el permiso activo, la pantalla SHALL mostrar la fecha en que se concedió y la versión aceptada. Si el
      perfil devuelve una versión distinta de la mostrada, el SPA NO SHALL cambiar el estado del interruptor por su
      cuenta.
    - **Revocar** SHALL poder hacerse en cualquier momento, en un clic, y SHALL confirmar con "Permiso retirado. Tus
-     próximos análisis no saldrán de LinkVault." NO SHALL afirmar que se borra lo ya enviado a un tercero.
+     próximos análisis no saldrán de LinkVault. No borra los análisis que ya hiciste; para eso, elimina el CV con el
+     que se hicieron." NO SHALL afirmar que se borra lo ya enviado a un tercero.
 2. **Idioma de los análisis de IA** (`outputLanguage`): un selector con exactamente esa etiqueta, con "Español" e
    "Inglés" como opciones. Cambiarlo NO SHALL cambiar el idioma de la interfaz, y la pantalla SHALL decirlo.
 3. **Redacción del nombre propio** (`redactName`): un interruptor rotulado "Ocultar mi nombre a los proveedores
-   externos", con el texto "Sustituimos tu nombre por un marcador antes de enviar el texto." SHALL seguir visible y
-   editable aunque el consentimiento esté desactivado, indicando que solo tiene efecto cuando se usa un proveedor
-   externo.
+   externos", con el texto "Sustituimos tu nombre por un marcador antes de enviar el texto." SHALL **venir activado**
+   —es el valor por defecto de todo perfil— y desactivarlo SHALL ser una decisión explícita de su dueño, nunca el
+   estado en que se lo encuentra. SHALL seguir visible y editable aunque el consentimiento esté desactivado, indicando
+   que solo tiene efecto cuando se usa un proveedor externo.
 
 #### Scenario: Guardar el nombre
 
@@ -69,6 +76,21 @@ mostrar ni enviar texto del CV.
   quitarlo cuando quiera
 - **AND** SHALL leer qué ocurre si no lo da
 
+#### Scenario: El texto dice qué pasa con el resto del CV
+
+- **GIVEN** Ana en `/perfil` leyendo el texto del consentimiento
+- **WHEN** llega a lo que no se sustituye
+- **THEN** SHALL leer que el resto de su CV —experiencia, estudios, empresas y fechas— se envía tal cual y puede
+  identificarla
+- **AND** SHALL leer que elegimos proveedores que se comprometen a no usar lo enviado para entrenar sus modelos, pero
+  que no podemos comprobarlo
+
+#### Scenario: El texto no sugiere anonimato
+
+- **WHEN** se revisa el texto del consentimiento en español y en inglés
+- **THEN** NO SHALL decir ni dar a entender que lo enviado va anónimo, que no se puede saber de quién es o que
+  sustituir esos datos basta para anonimizar el CV
+
 #### Scenario: Dar el permiso deja constancia
 
 - **GIVEN** Ana con `aiConsent.externalProviders` `false`
@@ -81,8 +103,15 @@ mostrar ni enviar texto del CV.
 - **GIVEN** Ana con el consentimiento activo
 - **WHEN** desactiva el interruptor
 - **THEN** NO SHALL pedirse ninguna confirmación y SHALL verse "Permiso retirado. Tus próximos análisis no saldrán de
-  LinkVault."
+  LinkVault. No borra los análisis que ya hiciste; para eso, elimina el CV con el que se hicieron."
 - **AND** el mensaje NO SHALL decir que se borra lo ya enviado
+
+#### Scenario: Revocar dice qué no borra
+
+- **GIVEN** Ana con el consentimiento activo y análisis ya hechos
+- **WHEN** lo retira
+- **THEN** el mensaje SHALL decirle que sus análisis anteriores siguen ahí
+- **AND** SHALL nombrarle la vía que sí los borra: eliminar el CV con el que se hicieron
 
 #### Scenario: El texto cambió después de aceptarlo
 
@@ -102,11 +131,17 @@ mostrar ni enviar texto del CV.
 - **THEN** el SPA SHALL enviar solo `outputLanguage`
 - **AND** la interfaz SHALL seguir en español
 
+#### Scenario: El nombre viene oculto de fábrica
+
+- **GIVEN** Ana que acaba de registrarse y nunca tocó estos controles
+- **WHEN** abre `/perfil`
+- **THEN** el interruptor de ocultar su nombre SHALL verse activado
+
 #### Scenario: Ocultar el nombre sin haber dado el permiso
 
 - **GIVEN** Ana con el consentimiento desactivado
 - **WHEN** mira el control de ocultar su nombre
-- **THEN** SHALL poder activarlo
+- **THEN** SHALL poder desactivarlo y volver a activarlo
 - **AND** SHALL leer que solo tiene efecto cuando se usa un proveedor externo
 
 #### Scenario: La API falla al guardar un control de IA

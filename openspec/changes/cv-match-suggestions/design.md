@@ -112,13 +112,35 @@ superficie de datos personales.
 un número puede ser un salario— y el daño no se ve, porque el informe sale igual, solo que peor. Por eso la
 sobre-redacción se mide, no se estima.
 
-*Coste asumido y medido:* un CI escrito desnudo se escapa. Es la razón de que exista la métrica de fuga.
+Un indicador solo cuenta si va precedido de inicio de línea o separador y seguido de dígitos: sin esa condición, `C#`,
+`C/C++` y `.NET` se redactaban como si fueran direcciones, y `Zona` o `N°` disparaban en prosa corriente. **Un lenguaje
+de programación no es una dirección** — y las specs llegaron a consagrar la pérdida de `C/C++` como resultado esperado,
+que es la forma en que un defecto se convierte en comportamiento oficial (*iteración 1, critic 15*).
 
-### D9. Las dos métricas de redacción no se tratan igual
+*Coste asumido y medido:* un documento escrito sin ninguna palabra clave ni extensión se escapa. Queda **declarado como
+hueco conocido**, con su motivo y su decisión humana, no como un número que el CI pueda ir subiendo.
+
+### D9. Las tres métricas de redacción no se tratan igual
 
 `pii_leak_rate > 0` es **suelo duro**: rompe el CI incluso con `--update-baseline`. `redaction_skill_loss` admite línea
 base ajustable a propósito. No son lo mismo: una fuga es un dato personal que salió; la sobre-redacción es calidad que
 se negocia. Darles el mismo trato convertiría la fuga en negociable.
+
+La primera versión, sin embargo, **no podía estar verde nunca**: exigía meter en el golden el documento desnudo que D8
+asume que se escapa, y a la vez que cualquier fuga rompiera el CI (*iteración 1, critic 2*). Los huecos aceptados se
+declaran **aparte**, quedan fuera del suelo duro y se cuentan en una tercera métrica informativa que los lista. Y
+ninguna opción del corredor puede crear o ampliar esa declaración: sacar una fuga del suelo duro exige una decisión
+humana escrita, nunca un `--update-baseline`.
+
+### D9-bis. El resultado de una tarea `personal` no se cachea
+
+La caché de `libs/ai` guarda lo que `runTask` devuelve, y eso está **ya reinyectado**: la entrada habría quedado días
+con el `cvFragment` y con el nombre, la dirección y el documento reales, en una caché compartida que nadie borra al
+borrar el CV (*iteración 1, critic 1*). Contradecía de frente a D7.
+
+Una tarea declara si es cacheable y una `personal` nunca lo es; declararla cacheable impide arrancar. Se descartó
+cachear con clave por usuario, TTL corto y borrado en cascada: más piezas y más sitios donde olvidarse, para ahorrar una
+ejecución que se pide una vez por oferta.
 
 Se calculan **siempre como si el proveedor fuera externo y sin contactar a nadie**, para que corran en cada PR con el
 mock.
@@ -129,26 +151,71 @@ La redacción protege frente al proveedor, no frente al dueño del dato: en `sug
 dirección y documento. Un marcador que el modelo no devuelve convierte la salida en inválida — devolver `[ADDRESS_3]`
 dentro de un texto que la persona va a pegar en su CV es peor que reintentar.
 
-### D11. `fitScore` es derivado y no es un cambio de estado
+### D11. `fitScore` se deriva al leer; nadie lo escribe
 
-Sigue al **último** análisis, no al mejor, y **nunca viaja sin `fitScoreDegraded`**. Actualizarlo no sube `version`, no
-toca `statusChangedAt` y no escribe historial: si lo hiciera, un análisis que termina mientras alguien tiene la pantalla
-abierta le devolvería un `409` por algo que no hizo.
+La primera versión lo **escribía** en la postulación al terminar el análisis, y esa escritura no tenía camino: el
+análisis acaba en el worker, la escritura vivía en la API y no existía ningún evento que las uniera. La promesa no podía
+ejecutarse (*iteración 1, critic 5*).
 
-Ausencia es **campo ausente, nunca `0`**: "todavía no lo analizaste" y "no encajas nada" no pueden verse igual.
+Se deriva al responder, del último análisis de esa persona sobre ese link. Eso elimina de un golpe el dual-write, la
+ventana de desincronización, las puntuaciones huérfanas al borrar un CV y el `409` que le habría llegado a quien tuviera
+la pantalla abierta. *Coste:* una lectura más al componer la postulación.
 
-### D12. El SSE lleva el paso y nada más
+Sigue al **último** análisis, no al mejor, y **nunca viaja sin `fitScoreDegraded`**. Ausencia es **campo ausente, nunca
+`0`**: "todavía no lo analizaste" y "no encajas nada" no pueden verse igual.
 
-`analysis.step` lleva identificador, link, paso y momento. **Ni informe, ni skills, ni `score`, ni fragmentos.** El
-último paso dice que terminó y quien lo recibe pide el resultado a la API. Así el CV queda fuera del canal *por
-construcción*, no por cuidado al redactar cada evento.
+### D12. La espera se pregunta, no se escucha
 
-Se reparte por el canal compartido para que llegue a todas las instancias de la API, no solo a la que corre el análisis.
+El análisis deja escrito el paso que alcanza y el `GET` lo devuelve; la pantalla lo consulta mientras dura. **El aviso
+en vivo por SSE se difiere a `cv-suggestions-review`** (ADR-030 §9).
+
+El diseño del evento era correcto —llevaba el paso y nada más, dejando el CV fuera del canal por construcción— pero
+había **tres** mecanismos para contar una espera de unos cuarenta segundos: el canal, un sondeo de respaldo obligatorio
+y un botón de actualizar. El sondeo solo cumple la promesa, y quitar el canal elimina una superficie nueva por la que
+algo del CV podría escaparse. El bucle de juez del change siguiente tiene más pasos y ahí sí lo justifica.
+
+### D12-bis. Un análisis pedido, un solo envío, y el vencido es terminal
+
+La cola reintentaba tres veces y cada reintento reejecutaba el análisis entero: hasta **tres envíos del CV** a un
+proveedor externo por un único análisis pedido (*iteración 1, critic 8*). La propiedad que se exige es observable: el
+número de veces que el CV llega a un proveedor externo no crece con el número de entregas del trabajo.
+
+Y los dos plazos —el de la API y el del worker— no estaban relacionados, así que un análisis vencido se leía como
+fallido pero seguía "en curso": volver a pedirlo devolvía el mismo y fallaba otra vez, con un botón que no hacía nada
+(*critic 9*). El plazo de la API es mayor que el del worker con sus reintentos, un vencido no se reutiliza y un
+resultado que llega tarde no sobrescribe lo que la persona ya vio.
+
+### D12-ter. Solo consume cuota el análisis que entrega un informe
+
+Se le cobraban a la persona **nuestras** averías: un fallo interno o un vencimiento gastaban intento. Peor, un degradado
+por cuota de IA agotada no se reutilizaba, así que cada reintento quemaba un intento más de la cuota de la API mientras
+la de IA seguía agotada, hasta gastar el día entero en informes básicos (*iteración 1, critic 10*).
 
 ### D13. Un diálogo, no una ruta nueva
 
 El SPA no tiene detalle de oferta —los links se abren en pestaña nueva—, así que el análisis vive en un diálogo sobre la
 lista. Inventar `/ofertas/:id` habría prometido una pantalla que no existe.
+
+### D14. La pantalla no envía nada sin que se lo pidan, y lo que enseña se puede usar
+
+El diálogo disparaba el análisis **al abrirse**: un clic en una tarjeta mandaba el CV a un tercero sin anunciarlo, y sin
+permiso gastaba un intento de cuota que jamás podía funcionar (*iteración 1, business 3*). En un change cuya tesis es
+que la persona decide cuándo sale su CV, la pantalla lo enviaba sin preguntar. Ahora dice antes con qué CV y **por dónde
+va a salir**, y espera.
+
+Y las sugerencias dejan de ser un escaparate: se **copian**, se ordenan por la importancia del requisito que atacan y
+llevan encima que **las redactó una IA y hay que revisarlas**. ADR-029 justificó el corte en dos diciendo que esta mitad
+entrega valor sola; sin poder usar lo que se enseña, no era verdad (*business 4 y 5*).
+
+### D15. Una promesa desmentida obliga a un identificador de traducción nuevo
+
+La línea de privacidad de `/mi-cv` tiene un identificador estable. Cambiar el texto español conservándolo habría dejado
+la traducción inglesa diciendo *"today no AI reads it"* mientras el CV viaja a OpenRouter, y los escenarios que la
+verificaban eran todos del lado español (*iteración 1, critic 6*).
+
+Regla que el proyecto hereda: **una traducción heredada es una promesa que sobrevive a su desmentido.** Cambiar el
+contenido de una frase que promete algo obliga a un identificador nuevo, con una comprobación que mira original y
+traducciones.
 
 ## Risks / Trade-offs
 
@@ -166,11 +233,20 @@ lista. Inventar `/ofertas/:id` habría prometido una pantalla que no existe.
 
 ## Open Questions
 
-- **Q1. ¿Hace falta un reanálisis voluntario?** Hoy un análisis `done` no degradado se reutiliza y no existe "forzar
-  rehacer". Si el debate lo quiere, hace falta un gesto explícito en el contrato y en la pantalla, más una decisión sobre
-  si consume cuota. *Se puede responder sin tocar el resto del diseño.*
-- **Q2. Umbrales del badge (75 / 50).** Inventados, sin respaldo en ningún ADR. Cambiarlos no toca el contrato.
-- **Q3. Tamaño de la ventana de cuota** (24 h por configuración) y su valor por defecto.
+- **Q1 — cerrada en el debate con un "no".** No hay reanálisis voluntario cuando nada cambió: un análisis completo se
+  reutiliza. Era una decisión disfrazada de pregunta, y dejarla abierta habría puesto en pantalla un botón que no hacía
+  nada. El contrato de repetir el análisis cubre ahora **todos** los estados —en curso, completo, degradado, vencido y
+  fallido— diciendo en cada uno si se reutiliza o se ejecuta uno nuevo, para que la pantalla no pueda ofrecer un gesto
+  muerto.
+- **Q2. Umbrales del badge (75 / 50).** Siguen inventados y sin respaldo. Moverlos no cambia ningún contrato, así que se
+  quedan como están hasta que haya datos reales.
+- **Q3 — cerrada.** La ventana de cuota es **configurable, 24 horas por defecto**. Estaba fijada como 24 h en la spec y
+  configurable en las tareas, que es peor que cualquiera de las dos.
+- **Q4 (nueva, va a la implementación).** Qué modelo `:free` concreto entra y **dónde se comprueba
+  `data_collection: "deny"`**, que ADR-018 §12 exige y hoy nadie verifica: todo el change corre contra el mock. Si el
+  modelo elegido no tiene endpoint que acepte esa opción, el proveedor falla, el breaker abre y la degradación es
+  **permanente y silenciosa** mientras `/perfil` afirma que el CV va a OpenRouter. Se cierra con una pasada manual real
+  anotada en el RUNBOOK, no con un valor por defecto elegido a ciegas.
 
 **No** son preguntas abiertas, porque cambiarlas movería las specs: si un análisis degradado puntúa `fitScore` (sí, con
 su marca), qué pasa con los análisis hechos al revocar (se conservan; la vía de borrado es borrar el CV) y si un

@@ -2,27 +2,36 @@
 
 ### Requirement: Puntuación de encaje reservada
 
-La postulación SHALL tener un campo opcional `fitScore` (entero de 0 a 100) que refleja el **`score` del último análisis
-de encaje** —el más reciente por fecha de finalización— de esa persona sobre ese link, y un campo `fitScoreDegraded`
-(booleano) que dice si ese número viene de un análisis degradado. `fitScore` SHALL derivarse siempre del análisis: la
-postulación NO SHALL tener una puntuación propia que se edite a mano ni por ninguna otra operación.
+La postulación SHALL exponer un `fitScore` (entero de 0 a 100) y un `fitScoreDegraded` (booleano) **derivados en el
+momento de responder** del último análisis de encaje —el más reciente por fecha de finalización— de esa persona sobre
+ese link: `fitScore` es su `score` y `fitScoreDegraded` dice si ese número viene de un análisis degradado. La
+postulación **NO SHALL guardar ninguna puntuación propia**: ninguna operación SHALL escribirla, ninguna SHALL editarla a
+mano y ninguna SHALL tener que borrarla.
 
-- **Sin ningún análisis** de esa persona sobre ese link, la postulación SHALL quedar **sin `fitScore`** y sin
-  `fitScoreDegraded`. La ausencia SHALL representarse como campo ausente o nulo, **nunca como `0`**: "todavía no lo
+- **Derivar al leer, no copiar**, es lo que hace imposible la desincronización: no existe ningún instante en el que la
+  postulación diga una puntuación y el análisis diga otra, porque solo hay un número y vive en el análisis. Terminar un
+  análisis NO SHALL escribir nada en la postulación, y entre terminarlo y verlo NO SHALL haber ninguna ventana en la que
+  la respuesta esté atrasada.
+- **Sin ningún análisis** de esa persona sobre ese link, la postulación SHALL responder **sin `fitScore` y sin
+  `fitScoreDegraded`**. La ausencia SHALL representarse como campo ausente o nulo, **nunca como `0`**: "todavía no lo
   analizaste" y "no encajas nada" no pueden verse igual.
+- **Si deja de quedar ningún análisis** —porque se borró el CV con el que se hicieron—, la postulación SHALL volver a
+  responder sin `fitScore` ni `fitScoreDegraded` **sin que ninguna operación tenga que limpiarla**: al no haber de dónde
+  derivarla, deja de haberla. Ningún proceso SHALL quedar encargado de ir a borrar puntuaciones huérfanas.
 - **Un análisis degradado también puntúa**, y lo dice: su `score` SHALL rellenar `fitScore` con `fitScoreDegraded`
   `true`. Quien recibe la puntuación SHALL poder distinguir siempre las dos procedencias, y ninguna respuesta SHALL
   entregar `fitScore` sin `fitScoreDegraded`.
-- **Rehacer el análisis SHALL sustituir la puntuación** por la del análisis nuevo, aunque sea más baja o aunque pase de
+- **Rehacer el análisis SHALL cambiar la puntuación** por la del análisis nuevo, aunque sea más baja o aunque pase de
   completa a degradada. `fitScore` sigue al último análisis, no al mejor.
-- **Seguir una oferta ya analizada** SHALL crear la postulación con la puntuación del último análisis que ya existía, sin
-  pedir uno nuevo. Si deja de quedar ningún análisis de esa persona sobre ese link, la postulación SHALL quedar otra vez
-  sin `fitScore` ni `fitScoreDegraded`.
-- **Actualizar la puntuación NO es un cambio de estado**: NO SHALL subir `version`, NO SHALL tocar `statusChangedAt` y
-  NO SHALL escribir ningún evento de historial, de modo que un análisis que termina mientras alguien tiene la pantalla
-  abierta nunca SHALL provocar un `409 application_conflict`.
+- **Seguir una oferta ya analizada** SHALL responder desde el primer momento con la puntuación del último análisis que
+  ya existía, sin pedir uno nuevo y sin copiar nada a la postulación recién creada.
+- **La puntuación NO es un cambio de estado**: aparecer, cambiar o desaparecer NO SHALL subir `version`, NO SHALL tocar
+  `statusChangedAt` y NO SHALL escribir ningún evento de historial, de modo que un análisis que termina mientras alguien
+  tiene la pantalla abierta nunca SHALL provocar un `409 application_conflict`.
 - La postulación SHALL llevar **solo el número y su procedencia**: NO SHALL incluir el informe, sus `suggestions`, sus
   `matchedSkills` ni `missingSkills`, ningún fragmento del CV ni ningún dato del proveedor que lo produjo.
+- Solo SHALL derivarse de los análisis **de su dueño**: el análisis de otra persona sobre el mismo link NO SHALL puntuar
+  nunca una postulación ajena.
 
 Toda respuesta de la API que devuelva una postulación SHALL incluir `fitScore` y `fitScoreDegraded` cuando los haya,
 junto a los demás campos de la postulación.
@@ -30,8 +39,9 @@ junto a los demás campos de la postulación.
 #### Scenario: La puntuación aparece tras el análisis
 
 - **GIVEN** una postulación de Ana sobre una oferta, sin puntuación
-- **WHEN** termina un análisis de encaje de Ana sobre esa oferta con `score` 78 y sin degradación
-- **THEN** su postulación SHALL tener `fitScore` 78 y `fitScoreDegraded` `false`
+- **WHEN** termina un análisis de encaje de Ana sobre esa oferta con `score` 78 y sin degradación y Ana consulta su
+  postulación
+- **THEN** la respuesta SHALL traer `fitScore` 78 y `fitScoreDegraded` `false`
 
 #### Scenario: La respuesta no lleva la puntuación
 
@@ -40,23 +50,37 @@ junto a los demás campos de la postulación.
 - **THEN** la representación NO SHALL contener `fitScore` ni `fitScoreDegraded`
 - **AND** NO SHALL contener `fitScore` con valor `0`
 
+#### Scenario: Nadie escribe la puntuación
+
+- **GIVEN** una postulación de Ana sobre una oferta
+- **WHEN** termina un análisis de encaje de Ana sobre esa oferta
+- **THEN** el documento guardado de la postulación NO SHALL haber cambiado
+- **AND** su `version`, su `statusChangedAt` y su historial SHALL ser los mismos que antes del análisis
+
 #### Scenario: Un análisis básico puntúa y lo dice
 
 - **GIVEN** Ana sin consentimiento para proveedores externos y con el proveedor local caído
 - **WHEN** termina un análisis degradado con `score` 41 sobre una oferta que sigue
-- **THEN** su postulación SHALL tener `fitScore` 41 y `fitScoreDegraded` `true`
+- **THEN** su postulación SHALL responder con `fitScore` 41 y `fitScoreDegraded` `true`
 
 #### Scenario: Rehacer el análisis manda
 
-- **GIVEN** una postulación con `fitScore` 78 procedente de un análisis completo
+- **GIVEN** una postulación cuyo `fitScore` 78 procede de un análisis completo
 - **WHEN** Ana vuelve a analizar esa oferta y el análisis nuevo devuelve `score` 63
-- **THEN** su postulación SHALL tener `fitScore` 63
+- **THEN** su postulación SHALL responder con `fitScore` 63
 
 #### Scenario: Seguir una oferta ya analizada
 
 - **GIVEN** Ana con un análisis terminado sobre una oferta que todavía no sigue
 - **WHEN** pide seguirla con `status` `interested`
 - **THEN** la respuesta SHALL ser `201` con el `fitScore` de ese análisis
+
+#### Scenario: Sin análisis, sin nada que limpiar
+
+- **GIVEN** una postulación de Ana que responde con `fitScore` 78 derivado de su único análisis sobre ese link
+- **WHEN** Ana borra el CV con el que se hizo y sus análisis desaparecen
+- **THEN** la postulación SHALL responder otra vez sin `fitScore` ni `fitScoreDegraded`
+- **AND** su `version` SHALL ser la misma, sin que ninguna operación haya tenido que tocarla
 
 #### Scenario: La puntuación no pisa a las pestañas abiertas
 
@@ -71,3 +95,9 @@ junto a los demás campos de la postulación.
 - **WHEN** se consulta la postulación de esa oferta
 - **THEN** la respuesta SHALL contener `fitScore` y `fitScoreDegraded`
 - **AND** NO SHALL contener ninguna sugerencia, ninguna lista de skills ni ningún fragmento del CV
+
+#### Scenario: La puntuación no se hereda de otra persona
+
+- **GIVEN** Ana y Beto siguiendo el mismo link, con un análisis terminado solo de Ana
+- **WHEN** Beto consulta su postulación
+- **THEN** NO SHALL traer `fitScore` ni `fitScoreDegraded`
