@@ -45,8 +45,19 @@ export const CV_FILE_TYPES: Readonly<Record<CvFileType, CvFileTypeDefinition>> =
     },
   };
 
-/** `Content-Type` que no dice nada útil y por tanto no puede vetar nada. */
-const NEUTRAL_CONTENT_TYPES = new Set(['', 'application/octet-stream']);
+/**
+ * `Content-Type` que no dice nada útil y por tanto no puede vetar nada.
+ *
+ * `text/plain` está en la lista porque es lo que el parser de multipart **inventa** cuando una parte llega sin su
+ * cabecera `Content-Type` (es el valor por defecto de RFC 7578), y desde fuera no se distingue de un `text/plain`
+ * escrito a mano. Tratarlo como veto rechazaría el DOCX de cualquiera cuyo cliente omita la cabecera, que es justo el
+ * escenario "DOCX sin Content-Type útil". Lo que decide sigue siendo la pareja bytes + extensión.
+ */
+const NEUTRAL_CONTENT_TYPES = new Set([
+  '',
+  'application/octet-stream',
+  'text/plain',
+]);
 
 /**
  * Tipo que dicen los bytes, o `undefined` si no son de ninguno de los dos. Mira como mucho el primer kilobyte para el

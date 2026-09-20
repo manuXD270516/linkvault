@@ -122,6 +122,16 @@ describe('resolveCvFileType', () => {
       resolveCvFileType({ contentType: '', fileName: 'CV.pdf', bytes: pdf }),
     ).toBe('pdf');
   });
+
+  it('acepta el text/plain que el parser inventa cuando la parte no trae cabecera', () => {
+    expect(
+      resolveCvFileType({
+        contentType: 'text/plain',
+        fileName: 'CV.docx',
+        bytes: docx,
+      }),
+    ).toBe('docx');
+  });
 });
 
 describe('CV_FILE_TYPES', () => {

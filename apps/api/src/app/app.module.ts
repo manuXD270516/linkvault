@@ -8,6 +8,7 @@ import { MongoPersistenceModule } from '../infrastructure/persistence/mongo-pers
 import { RedisHealthModule } from '../infrastructure/redis/redis-health.module';
 import { ApplicationsModule } from '../modules/applications/presentation/applications.module';
 import { AuthModule } from '../modules/auth/presentation/auth.module';
+import { CvModule } from '../modules/cv/presentation/cv.module';
 import { GroupsModule } from '../modules/groups/presentation/groups.module';
 import { LinksModule } from '../modules/links/presentation/links.module';
 import { UsersModule } from '../modules/users/presentation/users.module';
@@ -50,6 +51,7 @@ export class AppModule {
         aiModule,
         linksModule,
         ApplicationsModule.register(linksModule),
+        CvModule,
         ...(config.OUTBOX_RELAY_ENABLED ? [OutboxRelayModule] : []),
       ],
     };

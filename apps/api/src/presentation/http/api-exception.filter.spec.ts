@@ -83,6 +83,14 @@ import {
   AiQuotaExceeded,
 } from '../../modules/links/domain/errors';
 import {
+  CvFileTooLarge,
+  CvNotFound,
+  InvalidCvUpload,
+  TooManyCvAttempts,
+  TooManyCvDocuments,
+  UnsupportedCvFile,
+} from '../../modules/cv/domain/errors';
+import {
   EmailAlreadyRegistered,
   InvalidDisplayName,
   InvalidProfileChanges,
@@ -142,6 +150,12 @@ const THROWN: Record<string, () => unknown> = {
   'invalid-applied-at': () => new InvalidAppliedAt(),
   'invalid-stage-label': () => new InvalidStageLabel(),
   'invalid-notes': () => new InvalidNotes(),
+  'cv-not-found': () => new CvNotFound(),
+  'unsupported-cv-file': () => new UnsupportedCvFile(),
+  'cv-file-too-large': () => new CvFileTooLarge(),
+  'too-many-cvs': () => new TooManyCvDocuments(),
+  'invalid-cv-upload': () => new InvalidCvUpload(),
+  'too-many-cv-attempts': () => new TooManyCvAttempts(742),
   unknown: () =>
     new Error(
       `E11000 duplicate key error dup key: { email: "${SECRET_EMAIL}" }`,
@@ -502,6 +516,44 @@ describe('ApiExceptionFilter', () => {
     const [message, frames] = logged.mock.calls[0] ?? [];
     expect(message).toBe('Unhandled Error');
     expect(frames).toMatch(/^\s+at /);
+  });
+
+  it.each([
+    ['cv-not-found', 404, 'cv_not_found'],
+    ['unsupported-cv-file', 415, 'unsupported_file_type'],
+    ['cv-file-too-large', 413, 'file_too_large'],
+    ['too-many-cvs', 409, 'too_many_cvs'],
+  ] as const)('answers %s with %i %s', async (name, status, code) => {
+    const response = await get(name);
+
+    expect(response.statusCode).toBe(status);
+    expect(apiErrorResponseSchema.parse(response.json())).toEqual({
+      code,
+      message: expect.any(String),
+    });
+  });
+
+  it('answers an invalid CV upload with 400 validation_error naming file', async () => {
+    const response = await get('invalid-cv-upload');
+
+    expect(response.statusCode).toBe(400);
+    expect(apiErrorResponseSchema.parse(response.json())).toEqual({
+      code: 'validation_error',
+      message: expect.any(String),
+      fields: ['file'],
+    });
+  });
+
+  it('answers a spent CV window with 429 and its Retry-After', async () => {
+    const response = await get('too-many-cv-attempts');
+
+    expect(response.statusCode).toBe(429);
+    expect(response.json()).toEqual({
+      code: 'too_many_attempts',
+      message: expect.any(String),
+    });
+    // Sin su rama propia, la genérica de `CvError` respondería el mismo código sin la cabecera.
+    expect(response.headers['retry-after']).toBe('742');
   });
 
   it('keeps the Nest response of other HTTP exceptions (unknown route, health 503)', async () => {

@@ -29,9 +29,27 @@ describe('API_ERROR_STATUS and API_ERROR_MESSAGES', () => {
     ['application_not_found', 404],
     ['application_conflict', 409],
     ['comment_not_found', 404],
+    ['cv_not_found', 404],
+    ['unsupported_file_type', 415],
+    ['file_too_large', 413],
+    ['too_many_cvs', 409],
   ] as const)('answers %s with %i', (code, status) => {
     expect(API_ERROR_STATUS[code]).toBe(status);
     expect(API_ERROR_MESSAGES[code]).not.toBe('');
+  });
+
+  it('keeps the unsupported media type message generic, now that two formats share it', () => {
+    // `POST /api/cv` acepta `multipart/form-data` y el resto JSON: el mensaje no puede decir que el cuerpo deba ser
+    // JSON sin mentirle a una de las dos.
+    expect(API_ERROR_MESSAGES.unsupported_media_type).not.toMatch(/json/i);
+    expect(API_ERROR_STATUS.unsupported_media_type).toBe(415);
+  });
+
+  it('keeps the unsupported file type apart from the unsupported body format', () => {
+    expect(API_ERROR_MESSAGES.unsupported_file_type).toMatch(/PDF/);
+    expect(API_ERROR_MESSAGES.unsupported_file_type).not.toBe(
+      API_ERROR_MESSAGES.unsupported_media_type,
+    );
   });
 
   it('names the unknown field of a preview edit without leaking its value', () => {
