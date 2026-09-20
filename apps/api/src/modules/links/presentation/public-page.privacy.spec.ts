@@ -153,6 +153,38 @@ describe('la página pública no filtra nada', () => {
     }
   });
 
+  /**
+   * El slug es **opaco** (decisión humana 1, ADR-027 §2): nada del contenido entra en él. Se comprueba aquí porque es
+   * donde el título, la empresa y el nombre del grupo son reconocibles.
+   */
+  it('Enlace público opaco', async () => {
+    expect(share.slug).toHaveLength(12);
+    expect(share.slug).toMatch(/^[23456789abcdefghjkmnpqrstvwxyz]{12}$/);
+    for (const secret of [
+      'backend',
+      'senior',
+      'acme',
+      'bolivia',
+      'lapaz',
+      linkId,
+      group.id,
+      ana.userId,
+    ]) {
+      expect(share.slug).not.toContain(secret.toLowerCase());
+    }
+  });
+
+  it('Preview escrito a mano', async () => {
+    // `title` lo escribió Ana (`previewSources.title.source === 'manual'`): el valor se publica igual, sin decir
+    // quién lo puso.
+    for (const body of await publicBodies()) {
+      expect(body).toContain('Backend Senior');
+      expect(body).not.toContain('manual');
+      expect(body).not.toContain('Ana');
+      expect(body).not.toContain(ana.userId);
+    }
+  });
+
   it('sí sale la vacante', async () => {
     const [page, preview] = await publicBodies();
 

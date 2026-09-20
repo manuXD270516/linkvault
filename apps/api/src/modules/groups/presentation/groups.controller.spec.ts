@@ -540,22 +540,72 @@ describe('GroupsController', () => {
       expect(response.json()).toMatchObject({ code: 'group_not_found' });
     });
 
-    it('Cambiar el ajuste no toca los links', async () => {
+    /**
+     * Cambiar el ajuste NO escribe en ningún link (ADR-027 §7): apagarlo y despublicar cien enlaces ya repartidos por
+     * WhatsApp, o encenderlo y publicar de golpe lo que un grupo llevaba meses guardando, son daños irreversibles
+     * hechos por un clic. Por eso el grupo llega con links de los dos tipos y el ajuste se apaga **y se vuelve a
+     * encender**: un grupo recién creado y vacío no probaría nada.
+     */
+    it('Cambiar el ajuste no toca lo compartido', async () => {
       const ana = await authenticated();
       const group = await createGroup(ana, 'Sin tocar links');
-      const before = await request('GET', `/api/groups/${group.id}/links`, {
-        authorization: ana.authorization,
-      });
+      const published: string[] = [];
+      const unpublished: string[] = [];
+      for (let index = 0; index < 5; index += 1) {
+        const saved = await request('POST', '/api/links', {
+          authorization: ana.authorization,
+          body: {
+            url: `https://empresa.example/careers/ajuste-${index}`,
+            groupId: group.id,
+          },
+        });
+        expect(saved.statusCode).toBe(201);
+        const link = saved.json<{
+          link: { id: string; publicShare?: { slug: string } };
+        }>().link;
+        // Los tres primeros se quedan publicados; los dos últimos se apagan a mano.
+        if (index < 3) {
+          published.push(link.publicShare?.slug ?? '');
+        } else {
+          unpublished.push(link.id);
+          const off = await request(
+            'DELETE',
+            `/api/groups/${group.id}/links/${link.id}/public`,
+            { authorization: ana.authorization },
+          );
+          expect(off.statusCode).toBe(204);
+        }
+      }
+      expect(published.filter((slug) => slug.length > 0)).toHaveLength(3);
 
-      await request('PATCH', `/api/groups/${group.id}/settings`, {
-        authorization: ana.authorization,
-        body: { defaultVisibility: 'private' },
-      });
+      for (const defaultVisibility of ['private', 'public'] as const) {
+        const changed = await request(
+          'PATCH',
+          `/api/groups/${group.id}/settings`,
+          { authorization: ana.authorization, body: { defaultVisibility } },
+        );
+        expect(changed.statusCode).toBe(200);
+      }
 
-      const after = await request('GET', `/api/groups/${group.id}/links`, {
+      const list = await request('GET', `/api/groups/${group.id}/links`, {
         authorization: ana.authorization,
       });
-      expect(after.json()).toEqual(before.json());
+      const items = list.json<{
+        items: { id: string; publicShare?: { slug: string } }[];
+      }>().items;
+      // Los tres siguen publicados con el MISMO slug…
+      expect(
+        items
+          .map((item) => item.publicShare?.slug)
+          .filter((slug): slug is string => slug !== undefined)
+          .sort(),
+      ).toEqual([...published].sort());
+      // …y los dos que se apagaron siguen sin enlace.
+      for (const linkId of unpublished) {
+        expect(
+          items.find((item) => item.id === linkId)?.publicShare,
+        ).toBeUndefined();
+      }
     });
   });
 

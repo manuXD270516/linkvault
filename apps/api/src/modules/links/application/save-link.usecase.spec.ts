@@ -374,7 +374,7 @@ describe('SaveLink y la visibilidad por defecto del grupo', () => {
     expect(response.link.publicShare).toBeUndefined();
   });
 
-  it('El enlace público del primero se queda', async () => {
+  it('El link que ya estaba no cambia', async () => {
     const first = await saveLink.execute(ANA, {
       url: JOB_PAGE,
       groupId: BACKEND,

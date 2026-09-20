@@ -83,6 +83,38 @@ describe('la página pública', () => {
     expect(response.body).toContain('<meta property="og:description"');
   });
 
+  it('Una persona pide la página', async () => {
+    const share = await published(ana, 'https://empresa.example/careers/human');
+
+    const response = await page(share.slug, { 'user-agent': BROWSER_AGENT });
+
+    expect(response.statusCode).toBe(200);
+    // El salto al SPA y el enlace visible de respaldo, para quien tenga el `refresh` desactivado.
+    expect(response.body).toContain(
+      `<meta http-equiv="refresh" content="0; url=http://localhost:4200/oferta/${share.slug}">`,
+    );
+    expect(response.body).toContain(
+      `<a href="http://localhost:4200/oferta/${share.slug}">Ver la oferta en LinkVault</a>`,
+    );
+  });
+
+  it('El link sale del grupo', async () => {
+    const saved = await save(ana, 'https://empresa.example/careers/removed');
+    const share = saved.link.publicShare;
+    expect(share).toBeDefined();
+
+    const removed = await http.request(
+      'DELETE',
+      `/api/groups/${group.id}/links/${saved.link.id}`,
+      { authorization: ana.authorization },
+    );
+
+    expect(removed.statusCode).toBe(204);
+    await expect(page(share?.slug ?? '')).resolves.toMatchObject({
+      statusCode: 404,
+    });
+  });
+
   it('La respuesta no depende de quién pide', async () => {
     const share = await published(ana, OTHER_JOB);
 

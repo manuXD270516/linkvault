@@ -71,7 +71,7 @@ describe('publicPageHtml: el <head>', () => {
     expect(html).not.toContain('evil.example');
   });
 
-  it('escapa todo valor que entra en una etiqueta', () => {
+  it('Título con HTML dentro', () => {
     const html = publicPageHtml(
       { ...full, title: '</title><script>alert(1)</script>', company: 'A"B' },
       urls,

@@ -405,6 +405,41 @@ describe('publish y unpublish', () => {
     expect(constant.calls).toBe(MAX_PUBLIC_SLUG_ATTEMPTS);
   });
 
+  /**
+   * El enlace público pertenece a la **relación**, no a la vacante (D1): la misma oferta compartida en dos grupos
+   * tiene dos interruptores independientes, y apagar uno no toca al otro.
+   */
+  it('Dos grupos, dos enlaces', async () => {
+    const inA = await shareLink(JOB_PAGE, BACKEND, ANA);
+    const inB = await shareLink(SEARCH_PAGE, FRONTEND, BETO, later);
+    // La misma vacante: una sola `JobLink` y dos relaciones.
+    expect(inB.linkId).toBe(inA.linkId);
+
+    const a = await groupLinks.publish(BACKEND, inA.linkId, ANA, later);
+    const b = await groupLinks.publish(FRONTEND, inB.linkId, BETO, later);
+
+    expect(a?.slug).not.toBe(b?.slug);
+    await expect(
+      groupLinks.findByPublicSlug(a?.slug ?? ''),
+    ).resolves.toMatchObject({ groupId: BACKEND });
+    await expect(
+      groupLinks.findByPublicSlug(b?.slug ?? ''),
+    ).resolves.toMatchObject({ groupId: FRONTEND });
+
+    // Despublicar el de A no afecta al de B.
+    await groupLinks.unpublish(BACKEND, inA.linkId);
+
+    await expect(
+      groupLinks.findByPublicSlug(a?.slug ?? ''),
+    ).resolves.toBeNull();
+    await expect(
+      groupLinks.findByPublicSlug(b?.slug ?? ''),
+    ).resolves.toMatchObject({ groupId: FRONTEND });
+    await expect(
+      groupLinks.find(FRONTEND, inB.linkId),
+    ).resolves.toMatchObject({ publicShare: b });
+  });
+
   it('Dos publicaciones a la vez dejan un solo slug vivo', async () => {
     const shared = await shareLink(JOB_PAGE, BACKEND, ANA);
 
