@@ -152,19 +152,44 @@ porque lo pone el cliente: navegadores antiguos, aplicaciones móviles y cualqui
 para un PDF perfectamente válido, y rechazarlo sería rechazar el CV de alguien por culpa de su navegador. La función que
 huele los bytes (`sniffCvFileType`) vive en `libs/shared`, es pura y la comparten la API y sus tests.
 
+**Se decide con el primer trozo, no con el archivo entero.** El tope de bytes que hay que mirar ya está escrito en la
+propia regla: `%PDF-` tiene que aparecer **en el primer kilobyte**. Así que el controlador husmea **el primer chunk del
+stream**, y si el tipo no cuadra **destruye el stream** y responde `415` sin seguir leyendo. Acumular 5 MiB de un
+archivo que ya sabemos que no vale es trabajo y memoria regalados, y con el flujo cortado la conexión se cierra en
+cuanto el cliente deja de escribir. Solo cuando el primer chunk dice "esto es un PDF" o "esto es un DOCX" se acumula el
+resto hasta el tope (D2, opción A).
+
 **Los errores del parser también son nuestros.** `@fastify/multipart` lanza errores con `code` propio, y si llegan al
 filtro global salen como `500 internal_error`: un archivo demasiado grande le diría a la persona que la avería es
-nuestra. Se traducen **antes**, en el controlador, a errores de dominio:
+nuestra. Se traducen **antes**, en el controlador, y la traducción es **por defecto**: cualquier `code` que empiece por
+`FST_` acaba en `400 validation_error` nombrando `file`. Encima de esa red van las filas conocidas:
 
 | Error del plugin | Error de dominio | Respuesta |
 |------------------|------------------|-----------|
 | `FST_REQ_FILE_TOO_LARGE` | `CvFileTooLarge` | `413 file_too_large` |
 | `FST_FILES_LIMIT` | `InvalidCvUpload('file')` | `400 validation_error` nombrando `file` |
 | `FST_PARTS_LIMIT` | `InvalidCvUpload('file')` | `400 validation_error` nombrando `file` |
+| `FST_FIELDS_LIMIT` | `InvalidCvUpload('file')` | `400 validation_error` nombrando `file` |
+| `FST_PROTO_VIOLATION` | `InvalidCvUpload('file')` | `400 validation_error` nombrando `file` |
+| cualquier otro `FST_*` | `InvalidCvUpload('file')` | `400 validation_error` nombrando `file` |
 | `FST_INVALID_MULTIPART_CONTENT_TYPE` | — | `415 unsupported_media_type`, el código que ya existe para "el cuerpo no es lo que esta ruta acepta" |
+| **no hay parte `file`** (no lanza nada: `request.file()` devuelve `undefined`) | `InvalidCvUpload('file')` | `400 validation_error` nombrando `file` |
 
-El `415` de esa última fila **no** es `unsupported_file_type`: una cosa es "el cuerpo de la petición no es multipart" y
-otra "el archivo no es PDF ni DOCX", y el SPA las explica distinto.
+El defecto existe porque la lista de códigos del plugin es suya y puede crecer con una versión menor: una rama nueva no
+puede convertirse en un `500` por no haberla previsto. La última fila no la cubre ninguna traducción porque **no hay
+error**, y es justo el caso que más se da con un formulario mal montado.
+
+El `415` de `FST_INVALID_MULTIPART_CONTENT_TYPE` **no** es `unsupported_file_type`: una cosa es "el cuerpo de la
+petición no es multipart" y otra "el archivo no es PDF ni DOCX", y el SPA las explica distinto. Eso sí, el mensaje fijo
+de `unsupported_media_type` (`"Request body must be application/json"`) **deja de ser verdad** en cuanto existe una ruta
+que acepta multipart: pasa a ser genérico —"el cuerpo no tiene el formato que esta ruta acepta"— porque el código lo
+comparten ya dos rutas con formatos distintos y el SPA traduce el código, no el mensaje.
+
+**La holgura de `parts`.** `files: 1`, `fields: 0` y `parts: 2`. Con `fields: 0`, cualquier campo de texto dispara
+`FST_FIELDS_LIMIT`, que es el error más fácil de provocar desde un formulario que añade un campo oculto; por eso está
+en la tabla y por eso el SPA envía **solo** la parte del archivo. `parts: 2` deja una parte de margen sobre la única
+esperada: no sirve para colar nada (los otros dos límites cortan antes y con mejor mensaje) y evita que un cliente que
+manda un epílogo raro acabe en un error que no dice nada.
 
 **El residuo aceptado, dicho en voz alta:** `PK\x03\x04` identifica un ZIP, no un DOCX. Un `.xlsx` renombrado pasa la
 puerta. Mirar dentro del ZIP para exigir `word/document.xml` obligaría a descomprimir en la API —es decir, a abrir un
@@ -253,6 +278,12 @@ el dominio de `cv` no importa el de `links` ni el de `auth`).
 |-------|------|--------|-------|
 | `cv:upload:<userId>` | `POST /api/cv` | `CV_UPLOADS_PER_USER = 10` por 15 min | **abierto** |
 | `cv:text-preview:<userId>` | `GET /api/cv/:id/text-preview` | `CV_TEXT_PREVIEWS_PER_USER = 60` por 15 min | **abierto** |
+| `cv:reject:<userId>` | `POST /api/cv`, **solo al rechazar en la puerta** | `CV_REJECTS_PER_USER = 30` por 15 min | **abierto** |
+
+**Por qué el de la vista previa también falla abierto**, y no por inercia: esa ruta **solo lee lo suyo**, como mucho
+cinco documentos de una persona y un prefijo de 2.000 caracteres, sin IA, sin red hacia fuera y sin escrituras. Lo que
+se permite de más cuando Redis no responde es que alguien mire su propio CV muchas veces; negárselo sería impedirle
+comprobar si su CV sirve por una avería nuestra.
 
 Los dos **fallan abiertos**: con Redis caído, quien quiere subir su CV lo sube. Es defendible aquí y no lo sería en un
 endpoint que descarga de un sitio ajeno, porque **el tope duro de almacenamiento no lo pone el contador sino el máximo
@@ -262,9 +293,14 @@ nada. La ventana es la misma de `auth` y `links` (15 min), para no inventar una 
 **Cuándo se consume y cuándo se devuelve.** El primer borrador consumía antes de leer la parte y devolvía el intento en
 tres ramas distintas; tres caminos de `giveBack` son tres sitios donde olvidarse de uno. Queda así:
 
-- **No se consume hasta pasar la puerta**: un `413` o un `415` no llegan a tocar el contador, así que no hay nada que
-  devolver. Lo que se gasta leyendo esos bytes ya lo acota el `fileSize` del plugin, que corta el flujo en cuanto se
-  pasa.
+- **No se consume el de subidas hasta pasar la puerta**: un `413` o un `415` no llegan a tocar `cv:upload`, así que no
+  hay nada que devolver. Lo que se gasta leyendo esos bytes lo acotan el husmeo del primer chunk (D2) y el `fileSize`
+  del plugin.
+- **Un rechazo sí cuenta, pero en su propio contador**: la rama de error consume `cv:reject` y **nunca devuelve nada**,
+  así que no reintroduce ninguna `giveBack`. Es lo que pone techo a una ráfaga de archivos inválidos —el agujero que
+  dejaba abierto "no cobrar la basura"— sin cobrarle una subida a quien se equivoca de archivo una vez: treinta
+  rechazos en quince minutos no los hace nadie sin querer. Agotado, la respuesta es `429` con su espera, igual que los
+  otros dos.
 - **Se consume justo después**, antes de contar los CV guardados y de subir nada.
 - **Se devuelve** (`giveBack`) si la petición falla **después de consumir y antes de confirmar la transacción**:
   `409 too_many_cvs`, el almacén de objetos que no responde o una transacción que no confirma. En esos casos no queda
@@ -290,14 +326,26 @@ el CV por **su nombre y su fecha** (D13) y la vista previa enseña **qué se ley
 descarga, se implementa como b y **no** como a, con lo que D10 deja escrito sobre los registros.
 
 **La vista previa del texto** (decisión humana 2): `GET /api/cv/:id/text-preview` devuelve
-`{ text, chars, complete }`, donde `text` son los primeros `CV_TEXT_PREVIEW_CHARS = 2000` caracteres del texto guardado,
-cortados en el último salto de línea o espacio anterior al límite, y `complete` dice si con eso ya está todo.
+`{ status, text, chars, complete }`, donde `text` son los primeros `CV_TEXT_PREVIEW_CHARS = 2000` caracteres del texto
+guardado, cortados en el último salto de línea o espacio anterior al límite.
 
+- **`status` va en el cuerpo** y repite el estado de la extracción (`pending`, `extracted`, `failed`). Sin él, un CV que
+  todavía se está leyendo y uno que no se pudo leer devuelven **exactamente la misma respuesta vacía**, y quien llama no
+  puede decir cuál de los dos es sin pedir además el listado. Y como el schema es **estricto**, añadirlo después sería
+  romper el contrato: entra ahora o no entra.
+- **`complete` no se puede calcular con el prefijo.** Un texto de exactamente 2.000 caracteres y uno de 50.000 dan el
+  mismo trozo. Se resuelve trayendo también la **longitud guardada**: la consulta proyecta `extraction.textChars` (que
+  ya se guarda) junto al prefijo, y `complete` es `chars === textChars`. Como alternativa equivalente vale proyectar
+  `CV_TEXT_PREVIEW_CHARS + 1` caracteres y mirar si sobra uno; se prefiere `textChars` porque es un número que ya
+  existe y así **deja de ser un campo sin consumidor dentro del servidor**.
 - Solo para su dueña, con **el mismo `404 cv_not_found`** que el resto: un `:id` ajeno, inexistente o mal formado
-  responden lo mismo. Distinguir "no existe" de "no es tuyo" le diría a un extraño que ese identificador existe.
-- Un CV que todavía no está `extracted` responde **`200` con `text` vacío y `chars` 0**, no un código de error: el
-  estado ya lo cuenta el listado, y "todavía no hay texto" no es un fallo que el SPA deba traducir. La pantalla no
-  ofrece el botón mientras no esté `extracted`.
+  responden lo mismo. Distinguir "no existe" de "no es tuyo" le diría a un extraño que ese identificador existe. El
+  caso realista no es un ataque: es **borrarlo en otra pestaña** y pulsar "Ver lo que leímos" en esta, y por eso el SPA
+  lo traduce a "Este CV ya no está" y recarga la lista (D13).
+- Un CV que todavía no está `extracted` responde **`200` con `text` vacío, `chars` 0 y su `status`**, no un código de
+  error: "todavía no hay texto" no es un fallo que el SPA deba traducir. La pantalla no ofrece el botón mientras no
+  esté `extracted`.
+- Superado el contador, `429 too_many_attempts` con `Retry-After`, que el SPA muestra con su espera (D13).
 - Es la **única** ruta que lee `extractedText`, y lee **solo ese prefijo** (`$substrCP` en la proyección, no el campo
   entero): así ni siquiera se trae a memoria el CV completo para devolver dos mil caracteres.
 - No se cachea (`Cache-Control: private, no-store`) y tiene su propia clave de contador (D5).
@@ -313,16 +361,23 @@ lector es el worker.
 
 ### D7 — El alta, paso a paso, y por qué el objeto va antes que la transacción
 
-1. leer la parte y pasar la puerta: bytes, extensión y veto del `Content-Type` (D2), acumulando hasta el tope;
-2. contador (`consume`, D5), ya con un archivo admisible en la mano;
+1. leer la parte y pasar la puerta: **primer chunk**, extensión y veto del `Content-Type` (D2). Si no cuadra, se
+   destruye el stream, se consume `cv:reject` y se responde `415` sin leer más; si cuadra, se acumula el resto hasta el
+   tope;
+2. contador de subidas (`consume`, D5), ya con un archivo admisible en la mano;
 3. contar los CV de la persona (camino rápido de D3);
 4. pedir el identificador al repositorio (`nextId()`), componer `cvFileKey(userId, cvId)` y **subir el objeto**;
 5. **transacción**: recontar, calcular `version`, apagar el `isDefault` anterior, insertar el documento y `append` del
    evento `CvUploaded.v1` en `outbox_events`;
 6. `201` con el documento.
 
-Cualquier fallo entre el paso 2 y el final del 5 **devuelve el intento** al contador (D5). Si el almacén de objetos no
-responde en el paso 4, la respuesta es `500` y no queda ni documento, ni evento, ni intento gastado.
+Cualquier fallo entre el paso 2 y el final del 5 **devuelve el intento** al contador de subidas (D5). Si el almacén de
+objetos no responde en el paso 4, la respuesta es `500` y no queda ni documento, ni evento, ni intento gastado. El
+contador de rechazos del paso 1 **nunca se devuelve**: un rechazo ocurrió.
+
+El puerto del almacén en `api` es `CV_FILE_STORE` con **un solo método, `put`**. No tiene `get`: aquí nadie lee bytes
+—la descarga no existe (D6) y quien lee el archivo para extraer su texto es el worker, con su propio puerto—. Dejar un
+`get` "por si acaso" sería dejar la puerta montada y esperando a que alguien la use.
 
 **Por qué el objeto va antes:**
 
@@ -367,7 +422,7 @@ que la persona no puede resolver.
 | `pending` | desde el `201` hasta que el worker escribe | "Estamos leyendo tu CV…" |
 | `extracted` | texto útil (≥ `CV_MIN_TEXT_CHARS = 100` caracteres tras normalizar) | "Listo · 8.412 caracteres leídos" |
 | `failed` / `unreadable_file` | el parser no pudo abrirlo: corrupto, cifrado, o un ZIP que no es un DOCX | "No pudimos abrir este archivo. Puede estar dañado o protegido con contraseña." |
-| `failed` / `no_text` | se abrió, pero no hay texto: un PDF escaneado, imágenes | "Este archivo no tiene texto: parece un escaneo o una imagen. Sube el PDF original o expórtalo desde tu editor." |
+| `failed` / `no_text` | se abrió, pero no hay texto: un PDF escaneado, imágenes | "Este archivo no tiene texto: parece un escaneo o una imagen.", más el consejo según el formato (D13): con un PDF, "Sube el PDF original (no una foto ni un escaneo) o vuelve a exportarlo desde tu editor"; con un DOCX, "Vuelve a exportarlo desde tu editor y súbelo otra vez" |
 | `failed` / `internal_error` | se agotaron los reintentos por un fallo nuestro | "No pudimos leerlo ahora. Vuelve a subirlo en un rato." |
 
 Un `failed` **no borra nada**: el documento y el archivo siguen ahí, y el CV se puede marcar por defecto y eliminar
@@ -492,8 +547,16 @@ se descarta: dos tokens para un único adaptador significa que cualquier cambio 
 que un test puede sustituir uno y no el otro. Se mueven `outbox.port.ts` y `transaction-session.ts` a
 `apps/api/src/infrastructure/outbox/` y **los dos módulos usan el mismo token `OUTBOX`**, exactamente como ya se hizo
 con `FIXED_WINDOW_COUNTER` cuando `links` necesitó el contador de `auth` (ADR-020 §6) y con `duplicateKeyIs` en
-ADR-027 §10. Son **17 archivos de `links`** los que cambian de import, sin tocar su comportamiento, y el `typecheck` de
-`api` los detecta todos.
+ADR-027 §10. Cambian de import unos **21 archivos de `links` y 3 de plataforma**, sin tocar su comportamiento; la lista
+exacta no se escribe aquí porque la da el `typecheck` de `api` en cuanto se mueven los dos archivos, y una lista a mano
+envejece en el primer rebase.
+
+**La convención que esto fija**, y que se escribe en ADR-028 para no volver a discutirla en el change siguiente: los
+**contratos de plataforma** —contador de ventana, outbox, sesión de transacción— viven en `apps/api/src/infrastructure/`
+y los consumen `application/` e `infrastructure/` de los módulos; **nunca `domain/`**, que no conoce ni framework ni
+transporte. Un módulo declara puerto propio solo cuando el contrato es **suyo** (`CV_REPOSITORY`, `CV_LIMITER` sobre el
+contador genérico), no cuando es de la plataforma. Una comprobación de la tarea 3.1 verifica que ningún archivo bajo un
+`domain/` importa los dos archivos movidos.
 
 ### D12 — Datos, índices y objetos huérfanos
 
@@ -547,30 +610,42 @@ Ruta `/mi-cv`, con `authGuard`, perezosa, en la barra de navegación junto a "Mi
   (`CV_backend.pdf · 312 KB · 12 sep 2026`) y **no por su número**, que no significa nada para quien la mira. El chip de
   estado (D8) y las acciones "Usar este" (ausente en el que ya lo es), "Ver lo que leímos" (solo con estado
   `extracted`) y "Eliminar".
-- **La marca dice su consecuencia**: donde está la marca se lee **"Este usaremos para comparar con las vacantes"**, y el
-  botón que la mueve es "Usar este". "Por defecto" no explica nada; esto sí, y es lo único que conecta esta pantalla con
-  la razón de subir un CV.
-- **Un CV marcado que no se pudo leer lo avisa en línea**: si el CV con la marca está `failed`, bajo él aparece
-  **"No pudimos leer este CV: no servirá para analizar vacantes"** y, si hay otro en `extracted`, la acción **"Usar el
-  que sí se leyó"**, que lo marca de un clic. Sin ese aviso, la persona se va con la sensación de que todo está bien y
-  se entera semanas después.
+- **La marca dice su consecuencia**, y lo dice **bajo el nombre del CV, como una línea de texto, no como un chip**:
+  **"Este es el CV que compararemos con las vacantes"**. Un chip obliga a caber en dos palabras ("Por defecto"), que es
+  justo lo que no explica nada; una línea cabe, se lee de corrido y no compite con el nombre del archivo. El botón que
+  la mueve sigue siendo "Usar este".
+- **Un CV marcado que no se pudo leer avisa de la consecuencia, no del diagnóstico**: el chip de estado ya dice que no
+  se pudo leer, así que repetirlo en el aviso gasta la línea. Bajo el marcado en `failed` se lee **"No servirá para
+  analizar vacantes"** y, si hay otro en `extracted`, la acción **"Usar el que sí se leyó"**, que lo marca de un clic.
+  Sin eso, la persona se va con la sensación de que todo está bien y se entera semanas después.
 - **Cada estado termina en una acción** (D8): "Listo · tu CV se leyó bien" con "Ver lo que leímos"; el protegido con
-  contraseña dice **"Quítale la contraseña y vuelve a subirlo"**; el escaneado, "Sube el PDF original o expórtalo desde
-  tu editor"; el fallo nuestro, "Vuelve a subirlo en un rato". **`textChars` no se enseña**: un número de caracteres no
-  le dice nada a nadie y compite con la única señal que sí importa, que es ver el texto.
+  contraseña dice **"Quítale la contraseña y vuelve a subirlo"**; el fallo nuestro, "Vuelve a subirlo en un rato". El
+  del archivo sin texto **depende del formato**, porque "sube el PDF original" no le sirve a quien subió un DOCX: con
+  `fileType` `pdf`, "Sube el PDF original (no una foto ni un escaneo) o vuelve a exportarlo desde tu editor"; con
+  `docx`, "Vuelve a exportarlo desde tu editor y súbelo otra vez". **`textChars` no se enseña**: un número de caracteres
+  no le dice nada a nadie y compite con la única señal que sí importa, que es ver el texto.
 - **Marcar por defecto**: sin confirmación —no destruye nada— y con vuelta atrás si la API falla, como el interruptor de
   `defaultVisibility` (ADR-027 §7).
 - **"Ver lo que leímos"**: abre un diálogo con el texto de la vista previa (D6) en un bloque desplazable, con el aviso
-  "Así leímos tu CV. Si ves el texto desordenado, prueba a subir el PDF original." **Sin copiar ni descargar**: ni botón
-  de copiar, ni selección exportada, ni enlace. Es para mirar, no para sacar.
+  **"Así leímos tu CV. Si ves el texto desordenado, vuelve a exportarlo desde tu editor y súbelo otra vez."** —que vale
+  para los dos formatos, a diferencia de "sube el PDF original"—. **Sin copiar ni descargar**: ni botón de copiar, ni
+  selección exportada, ni enlace. Es para mirar, no para sacar.
+- **Cuando la vista previa falla**, el diálogo lo dice y no se queda en blanco: un `404` es **"Este CV ya no está"**
+  —el caso normal es haberlo borrado en otra pestaña—, y entonces el diálogo se cierra y la lista se recarga; un `429`
+  muestra el mensaje de límite con su espera y deja "Reintentar"; un `5xx` o un fallo de red, "No pudimos mostrarlo
+  ahora" con "Reintentar".
 - **Eliminar**: con confirmación que dice el nombre y avisa de que "el archivo se borra y no se puede recuperar", y que
   **además** avisa cuando es el marcado: "Pasará a usarse tu CV más reciente".
 - **Estado vacío**: "Sube tu CV y LinkVault podrá comparar tus habilidades con cada vacante." Es la promesa que explica
   por qué existe esta pantalla antes de que `cv-match-suggestions` la cumpla.
-- **Una línea de privacidad, siempre visible**: **"Tu CV solo lo ves tú. No sale de LinkVault; cuando analicemos
-  vacantes te pediremos permiso antes."** No es una promesa de futuro: es exactamente lo que este change garantiza (sin
-  rutas públicas, sin IA, con el consentimiento que ADR-018 §11 exigirá en el siguiente) y es lo que una persona
-  necesita leer antes de soltar su vida laboral en una caja ajena.
+- **Una línea de privacidad, siempre visible**: **"Tu CV solo lo ves tú y hoy no lo lee ninguna IA. Cuando analicemos
+  vacantes, saldrá de LinkVault solo si tú lo autorizas en Ajustes."** La primera versión decía "te pediremos permiso
+  antes", y eso el producto **no lo hace**: el consentimiento es una bandera del perfil
+  (`aiConsent.externalProviders`, `false` por defecto, ADR-018 §11) que la pasarela **lee sin preguntar nada** en el
+  momento de ejecutar, y con un proveedor local no hay permiso que pedir porque el CV no sale de nuestra
+  infraestructura. La frase nueva dice justo eso y nada más: hoy ninguna IA lo lee (cierto: no hay `runTask` en este
+  change), y mañana saldrá solo con la autorización que la persona da **ella misma en Ajustes**. Una promesa que el
+  siguiente change tendría que romper es peor que no ponerla.
 - **Errores**: `413` → "Ese archivo pesa más de 5 MB"; `415 unsupported_file_type` → "Solo aceptamos PDF o DOCX";
   `409 too_many_cvs` → **"Guardamos hasta 5 CV. Elimina uno para subir otro; si alguno no se pudo leer, empieza por
   ese."**; `429` → el mensaje de límite que ya existe, con su espera.
@@ -603,8 +678,11 @@ Textos en ES y EN, marcados y traducidos en `messages.en.xlf` en el mismo commit
   indexada sobre como mucho 5 documentos.
 - **Sin antivirus** (Non-Goals): un archivo malicioso guardado no lo descarga nadie —no hay descarga— y solo lo abre
   nuestro parser, dentro del plazo y con la concurrencia acotada de D9.
-- **El contador ya no cobra la basura** (D5): quien manda archivos inválidos en bucle no gasta ventana, solo ancho de
-  banda acotado por el tope del plugin. Se prefiere a cobrarle un intento a quien se equivoca de archivo.
+- **Una ráfaga de archivos inválidos tenía techo cero** hasta la iteración 2: como un rechazo no consume el contador de
+  subidas (para no cobrarle a quien se equivoca una vez), nada acotaba a quien mandara basura en bucle salvo el ancho de
+  banda. Lo cierra el contador de rechazos de D5, que además cuesta menos que antes porque el tipo se decide con el
+  primer chunk y el flujo se destruye ahí mismo (D2). Queda el residuo de siempre: sin proxy configurado, los tres
+  contadores son por persona autenticada, no por cliente.
 - **Sin descarga, quien pierda su archivo original no lo recupera** (D6). Lo compensa, a medias, la vista previa del
   texto; si alguien lo pide, vuelve como una ruta servida por la API y nunca como una URL prefirmada.
 
@@ -669,7 +747,7 @@ Critic: 1 P0. Business: 6 V0. Tras aplicar esta tabla no queda ningún P0/V0 abi
 | critic 15 | Tareas de más de 1 h (4.5, 6.3, 7.3) y fixtures sin decidir | Aceptado: partidas (4.5/4.6, 6.5/6.6, 7.3/7.4); los fixtures se generan por script salvo el PDF cifrado, que se commitea con su comando anotado (D9); y entra el `cv-test-app` como tarea propia (6.4) | Tareas verificables en menos de una hora y ningún CV real en el repo |
 | business 1 (V0) | "Por defecto" no decía para qué servía la marca | Aceptado: "Este usaremos para comparar con las vacantes" (D13) | Es lo único que conecta la pantalla con la razón de subir un CV |
 | business 2 (V0) | Un CV marcado en `failed` se veía como si todo estuviera bien | Aceptado: aviso en línea y "Usar el que sí se leyó" cuando hay otro `extracted` (D13) | Enterarse semanas después, con un análisis vacío, es el peor desenlace |
-| business 4 (V0) | Nadie decía qué se hace con el CV justo donde se pide | Aceptado: "Tu CV solo lo ves tú. No sale de LinkVault; cuando analicemos vacantes te pediremos permiso antes." (D13) | Es exactamente lo que este change garantiza, y lo que hace falta leer antes de soltar tu vida laboral |
+| business 4 (V0) | Nadie decía qué se hace con el CV justo donde se pide | Aceptado: una línea de privacidad siempre visible (D13). **Su texto se corrigió en la iteración 2**, porque el primero prometía un permiso que el producto no pide | Es lo que hace falta leer antes de soltar tu vida laboral |
 | business 5 (V0) | Los estados describían el problema y no la salida | Aceptado: cada estado termina en una acción, el protegido dice que le quiten la contraseña, y `textChars` deja de enseñarse (D13) | Un diagnóstico sin remedio deja a la persona parada |
 | business 6 (V0) | El cifrado en reposo y la retención de `docs/design.md` §8 desaparecían sin decirlo | Aceptado: desviación explícita en Risks y en ADR-028, y herencia de `deploy-prod` (tareas 9.3 y 9.4) | Una mitigación que se cae en silencio es una mitigación que nadie echa de menos |
 | business 8 | La tarjeta se identificaba por número de versión | Aceptado: nombre y fecha; "versión" se queda en el contrato (D13) | Nadie piensa en "la versión 3 de mi CV" |
@@ -681,6 +759,30 @@ Critic: 1 P0. Business: 6 V0. Tras aplicar esta tabla no queda ningún P0/V0 abi
 | business 14 | `truncated` expuesto y `refund` con tres ramas | Aceptado: `truncated` se queda en Mongo, el consumo se mueve detrás de la puerta (D1, D5) y el e2e del archivo rechazado desaparece: lo cubre el test de componente (tarea 8.10) | Menos superficie y menos ramas que olvidar |
 
 ## Debate (iteración 2)
+
+Critic: 0 P0 (1 P1). Business: 1 V0. Tras aplicar esta tabla no queda ningún P0/V0 abierto.
+
+| # | Hallazgo | Decisión | Motivo |
+|---|----------|----------|--------|
+| business 1 (V0) | La línea de privacidad prometía "te pediremos permiso antes", y el producto **no pregunta**: el consentimiento es una bandera del perfil (`aiConsent.externalProviders`, `false` por defecto) que la pasarela lee sin preguntar, y con un proveedor local no hay permiso que pedir | Aceptado: "Tu CV solo lo ves tú y hoy no lo lee ninguna IA. Cuando analicemos vacantes, saldrá de LinkVault solo si tú lo autorizas en Ajustes." (D13), y se revisa que nadie repita la frase vieja | Una promesa que el change siguiente tendría que romper es peor que no ponerla |
+| critic 1 (P1) | Se acumulaban hasta 5 MiB de un archivo que ya se sabía inválido, y un rechazo no gastaba contador, así que una ráfaga de basura no tenía techo | Aceptado, en dos partes: **husmeo del primer chunk** con destrucción del stream y `415` inmediato (D2, D7), y contador propio de rechazos `cv:reject:<userId>` (30 por ventana, fallo abierto, `consume` en la rama de error y **sin devoluciones**) (D5). En Risks, que antes no había techo | El tope de bytes que hay que mirar ya lo fija la propia regla del `%PDF-`; y un techo que no cobra al que se equivoca una vez sí puede existir |
+| critic 2 | La traducción de los errores del parser era una lista cerrada: un `code` nuevo del plugin acabaría en `500` | Aceptado: traducción **por defecto** (`FST_*` → `400 validation_error` nombrando `file`) con las filas conocidas encima, más `FST_FIELDS_LIMIT`, `FST_PROTO_VIOLATION` y el caso de "sin parte `file`", que no lanza nada; y se justifica la holgura de `parts` (D2) | La lista de códigos es del plugin y crece con una versión menor |
+| critic 3 + business 9 (parte) | `complete` no se puede calcular teniendo solo el prefijo: 2.000 y 50.000 caracteres dan el mismo trozo | Aceptado: la consulta proyecta también `extraction.textChars` y `complete` es `chars === textChars` (alternativa equivalente: pedir `CV_TEXT_PREVIEW_CHARS + 1`) (D6, tarea 4.9) | Un campo que miente es peor que no tenerlo |
+| business 9 + critic 10 | Un `pending` y un `failed` devolvían la **misma** respuesta vacía, y el schema es estricto, así que añadir el estado después rompería contrato | Aceptado: el cuerpo pasa a `{ status, text, chars, complete }`, y con ello `textChars` gana consumidor dentro del servidor, con su escenario (D6, specs, tareas 1.10 y 4.9) | Entra ahora o no entra |
+| business 10 | Nadie decía qué pasa si la vista previa falla | Aceptado: `404` → "Este CV ya no está" (caso normal: borrado en otra pestaña), cierra el diálogo y recarga la lista; `429` con su espera y "Reintentar"; `5xx` o red, "No pudimos mostrarlo ahora" (D6, D13, specs) | Un diálogo en blanco no se puede interpretar |
+| business 11 | "Este usaremos para comparar con las vacantes" iba como chip | Aceptado: línea bajo el nombre, no chip (D13) | Un chip obliga a caber en dos palabras, que es justo lo que no explica nada |
+| business 12 | "Sube el PDF original" no le sirve a quien subió un DOCX, ni en el estado ni en el encabezado del diálogo | Aceptado: el texto del archivo sin texto depende de `fileType`, y el del diálogo pasa a "vuelve a exportarlo desde tu editor y súbelo otra vez", que vale para los dos (D13) | Un consejo que no aplica se lee como ruido |
+| business 13 | El aviso del marcado en `failed` repetía el diagnóstico del chip | Aceptado: "No servirá para analizar vacantes" y la acción, sin repetir "no pudimos leerlo" (D13) | La línea se gasta en lo que el chip ya dijo |
+| business 14 | Aviso formal de privacidad | Sin cambios: lo hereda `deploy-prod` (tareas 9.3 y 9.4) | No es de este change y ya está anotado |
+| critic 4 | `CV_FILE_STORE` tenía `get` sin que nadie lo usara | Aceptado: se queda solo con `put`; leer bytes es del puerto del worker (D7, tarea 4.4) | Con la descarga fuera, un `get` es dejar la puerta montada |
+| critic 5 | El escenario "Once subidas" era inejecutable: con el máximo de 5 y la devolución en `409` nunca se llega al `429` | Aceptado: el escenario intercala borrados, y el consumo del contador se prueba además en el caso de uso con el doble (specs, tarea 6.6) | Un escenario que no se puede ejecutar no prueba nada |
+| critic 6 | El movimiento del puerto no dejaba escrita la convención | Aceptado: se mantiene y se escribe en ADR-028 —los contratos de plataforma viven en `infrastructure/` y los consumen `application/` e `infrastructure/`, nunca `domain/`—, con la comprobación en la tarea 3.1 (D11) | Sin regla escrita, el change siguiente vuelve a discutirlo |
+| critic 7 | "17 archivos" era un número inventado y envejece | Aceptado: "unos 21 de `links` y 3 de plataforma", y la lista la da el `typecheck` (D11, proposal, tarea 3.1) | Una lista a mano caduca en el primer rebase |
+| critic 8 | Dos frases del proposal quedaron falsas tras la iteración 1 | Aceptado: "ninguna lectura proyecta el texto" pasa a nombrar las **dos** que sí lo hacen, y lo de pino pasa a decir que redacta **por rutas declaradas** y que lo que garantiza el silencio es no escribirlo (proposal) | Un proposal que se contradice con el diseño se implementa dos veces |
+| critic 9 | El fallo abierto del contador de la vista previa se justificaba por inercia | Aceptado: justificación propia —solo lee lo suyo, como mucho 5 documentos y un prefijo, sin IA ni red ni escrituras— (D5) | Cada política de fallo se decide por su caso, no por copia |
+| critic 11 | El mensaje de `unsupported_media_type` decía que el cuerpo debe ser JSON, y ya no es verdad | Aceptado: mensaje genérico, porque el código lo comparten dos rutas con formatos distintos (D2, tarea 6.1) | El SPA traduce el código, pero el mensaje no puede mentir |
+
+## Debate (iteración 3)
 
 Pendiente: este change queda **solo planificado**. Antes de `/opsx:apply` hay que volver a convocar a `critic` y
 `business` sobre esta versión, actuar como `reflect` e iterar hasta que no quede ningún P0/V0 abierto, registrando la

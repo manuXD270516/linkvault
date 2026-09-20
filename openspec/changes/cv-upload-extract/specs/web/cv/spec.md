@@ -6,8 +6,9 @@
 nombre "Mi CV". SHALL mostrar los CV guardados y las acciones de subir, marcar, ver lo leído y eliminar. En la pantalla
 SHALL decirse "CV guardado"; el número de versión NO SHALL usarse para identificarlos.
 
-SHALL mostrar siempre, junto a la subida, la línea **"Tu CV solo lo ves tú. No sale de LinkVault; cuando analicemos
-vacantes te pediremos permiso antes."**
+SHALL mostrar siempre, junto a la subida, la línea **"Tu CV solo lo ves tú y hoy no lo lee ninguna IA. Cuando
+analicemos vacantes, saldrá de LinkVault solo si tú lo autorizas en Ajustes."** Ese texto NO SHALL prometer que se
+pedirá permiso en el momento del análisis: la autorización es un ajuste del perfil que la persona cambia ella misma.
 
 Sin ningún CV SHALL mostrar "Sube tu CV y LinkVault podrá comparar tus habilidades con cada vacante." junto al botón de
 subir. Mientras se carga la lista SHALL mostrar un estado de carga, y si la petición falla, el error con "Reintentar".
@@ -99,8 +100,9 @@ Cada estado SHALL terminar en una acción o en una explicación de qué hacer:
 - `pending`: "Estamos leyendo tu CV…";
 - `extracted`: "Listo · tu CV se leyó bien", con la acción "Ver lo que leímos";
 - `failed` con `unreadable_file`: "No pudimos abrir este archivo. Si tiene contraseña, quítasela y vuelve a subirlo.";
-- `failed` con `no_text`: "Este archivo no tiene texto: parece un escaneo o una imagen. Sube el PDF original o
-  expórtalo desde tu editor.";
+- `failed` con `no_text`: "Este archivo no tiene texto: parece un escaneo o una imagen.", seguido del consejo que
+  corresponde a su formato: con un PDF, "Sube el PDF original (no una foto ni un escaneo) o vuelve a exportarlo desde
+  tu editor"; con un DOCX, "Vuelve a exportarlo desde tu editor y súbelo otra vez";
 - `failed` con `internal_error`: "No pudimos leerlo ahora. Vuelve a subirlo en un rato.".
 
 El número de caracteres leídos NO SHALL mostrarse, y el texto del CV NO SHALL aparecer en la lista.
@@ -114,9 +116,16 @@ El número de caracteres leídos NO SHALL mostrarse, y el texto del CV NO SHALL 
 
 #### Scenario: Un CV que no se pudo leer
 
-- **GIVEN** un CV en `failed` con motivo `no_text`
+- **GIVEN** un CV en PDF en `failed` con motivo `no_text`
 - **WHEN** Ana lo mira
-- **THEN** SHALL ver el mensaje del escaneo con lo que puede hacer, y la acción de eliminar
+- **THEN** SHALL ver el mensaje del escaneo con el consejo para un PDF, y la acción de eliminar
+
+#### Scenario: Un DOCX sin texto
+
+- **GIVEN** un CV en DOCX en `failed` con motivo `no_text`
+- **WHEN** Ana lo mira
+- **THEN** el consejo SHALL decirle que lo exporte otra vez desde su editor y lo suba de nuevo
+- **AND** NO SHALL pedirle que suba "el PDF original"
 
 #### Scenario: Un CV protegido con contraseña
 
@@ -126,13 +135,13 @@ El número de caracteres leídos NO SHALL mostrarse, y el texto del CV NO SHALL 
 
 ### Requirement: La marca dice para qué sirve
 
-El CV marcado SHALL identificarse con el texto **"Este usaremos para comparar con las vacantes"**, y la acción que
-mueve la marca SHALL llamarse "Usar este" y aparecer solo en los que no la tienen. Llamar a la API NO SHALL pedir
-confirmación: no destruye nada. La marca SHALL moverse al responder, y si la API falla SHALL volver donde estaba con el
-mensaje de error.
+El CV marcado SHALL identificarse con el texto **"Este es el CV que compararemos con las vacantes"**, mostrado como una
+**línea bajo el nombre del archivo**, no como un distintivo corto. La acción que mueve la marca SHALL llamarse "Usar
+este" y aparecer solo en los que no la tienen. Llamar a la API NO SHALL pedir confirmación: no destruye nada. La marca
+SHALL moverse al responder, y si la API falla SHALL volver donde estaba con el mensaje de error.
 
-Si el CV marcado está `failed`, bajo él SHALL verse **"No pudimos leer este CV: no servirá para analizar vacantes"** y,
-si hay otro CV en `extracted`, la acción **"Usar el que sí se leyó"**, que lo marca en un clic.
+Si el CV marcado está `failed`, bajo él SHALL verse **"No servirá para analizar vacantes"** —sin repetir el diagnóstico
+que ya da su estado— y, si hay otro CV en `extracted`, la acción **"Usar el que sí se leyó"**, que lo marca en un clic.
 
 #### Scenario: Cambiar de CV
 
@@ -143,7 +152,13 @@ si hay otro CV en `extracted`, la acción **"Usar el que sí se leyó"**, que lo
 #### Scenario: La marca explica su consecuencia
 
 - **WHEN** Ana mira el CV marcado
-- **THEN** SHALL leer que ese es el que se usará para comparar con las vacantes
+- **THEN** SHALL leer, bajo el nombre del archivo, que ese es el CV que se comparará con las vacantes
+
+#### Scenario: El aviso no repite el diagnóstico
+
+- **GIVEN** Ana con el CV marcado en `failed`
+- **WHEN** lee el aviso
+- **THEN** SHALL decir la consecuencia y la salida, y NO SHALL repetir que no se pudo leer
 
 #### Scenario: El marcado no se pudo leer
 
@@ -167,10 +182,16 @@ si hay otro CV en `extracted`, la acción **"Usar el que sí se leyó"**, que lo
 ### Requirement: Ver lo que leímos
 
 La acción "Ver lo que leímos" SHALL aparecer solo en los CV `extracted` y SHALL abrir un diálogo con la vista previa del
-texto, desplazable, encabezado por "Así leímos tu CV. Si ves el texto desordenado, prueba a subir el PDF original."
+texto, desplazable, encabezado por **"Así leímos tu CV. Si ves el texto desordenado, vuelve a exportarlo desde tu editor
+y súbelo otra vez."**, consejo que SHALL valer para los dos formatos.
 
 El diálogo NO SHALL ofrecer copiar, descargar ni compartir ese texto, y el texto NO SHALL quedar en la pantalla al
 cerrarlo.
+
+Cuando la petición falla, el diálogo NO SHALL quedarse en blanco:
+- `404` SHALL mostrar "Este CV ya no está", cerrar el diálogo y recargar la lista;
+- `429` SHALL mostrar el mensaje de límite con su espera y ofrecer "Reintentar";
+- un `5xx` o un fallo de red SHALL mostrar "No pudimos mostrarlo ahora" con "Reintentar".
 
 #### Scenario: Mirar lo leído
 
@@ -188,6 +209,25 @@ cerrarlo.
 - **GIVEN** un CV en `pending` y otro en `failed`
 - **WHEN** Ana los mira
 - **THEN** ninguno SHALL ofrecer "Ver lo que leímos"
+
+#### Scenario: El CV se borró en otra pestaña
+
+- **GIVEN** un CV borrado desde otra pestaña después de pintar la lista
+- **WHEN** Ana pulsa "Ver lo que leímos" y la API responde `404`
+- **THEN** SHALL ver "Este CV ya no está"
+- **AND** el diálogo SHALL cerrarse y la lista SHALL recargarse
+
+#### Scenario: Límite de vistas previas
+
+- **GIVEN** la API respondiendo `429` con `Retry-After`
+- **WHEN** Ana pulsa "Ver lo que leímos"
+- **THEN** SHALL ver el mensaje de límite con su espera y la opción de reintentar
+
+#### Scenario: Avería al mostrar lo leído
+
+- **GIVEN** la API devolviendo `500`
+- **WHEN** Ana pulsa "Ver lo que leímos"
+- **THEN** SHALL ver "No pudimos mostrarlo ahora" con "Reintentar"
 
 ### Requirement: Mientras se lee, la pantalla se actualiza sola
 

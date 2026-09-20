@@ -17,12 +17,15 @@ quién puede leerlo y qué pasa cuando alguien quiere borrarlo**, y dejarlo escr
   el tipo son **los primeros bytes del archivo** (`%PDF-` dentro del primer kilobyte, `PK\x03\x04`) y la **extensión**;
   el `Content-Type` solo descalifica si **contradice** a los dos, así que un `application/octet-stream` o su ausencia no
   estorban. Lo que no cuadra recibe `415 unsupported_file_type` y **no se guarda en ningún sitio**; lo que pasa de
-  5 MiB, `413 file_too_large`, sin dejar un archivo a medias en MinIO. Los errores del parser de multipart
-  (`FST_REQ_FILE_TOO_LARGE`, `FST_FILES_LIMIT`, `FST_PARTS_LIMIT`, `FST_INVALID_MULTIPART_CONTENT_TYPE`) se traducen a
-  errores de dominio antes del filtro: ninguno sale como `500`.
+  5 MiB, `413 file_too_large`, sin dejar un archivo a medias en MinIO. El tipo se decide **con el primer trozo que
+  llega**: en cuanto se sabe que no es PDF ni DOCX se corta el flujo y se responde, sin acumular 5 MiB de algo que ya
+  sabemos que no vale. Los errores del parser de multipart se traducen a errores de dominio antes del filtro **por
+  defecto** —cualquier `code` que empiece por `FST_` acaba en `400 validation_error` nombrando `file`—, con sus filas
+  conocidas encima: ninguno sale como `500`.
 - **Dónde vive cada cosa**: el **binario** en MinIO (bucket `cv`, privado, clave `<userId>/<cvId>` sin nombre ni
-  extensión); los **metadatos y el texto extraído** en `cv_documents`. Ningún endpoint devuelve el texto y **ninguna
-  lectura lo proyecta** salvo la que lo escribe: el listado trae estado, número de caracteres y poco más.
+  extensión); los **metadatos y el texto extraído** en `cv_documents`. Las únicas dos lecturas que proyectan el texto
+  son **la que lo escribe** y **la de la vista previa**, que trae solo su prefijo; el listado trae estado, número de
+  caracteres y poco más.
 - **Versiones**: cada subida es una **versión nueva** (`version` correlativo por persona, nunca reutilizado), nunca una
   edición de la anterior. Se guardan **hasta 5**; la sexta recibe `409 too_many_cvs` y pide borrar una. Nada se borra
   solo.
@@ -37,21 +40,23 @@ quién puede leerlo y qué pasa cuando alguien quiere borrarlo**, y dejarlo escr
 - **Borrado que se lleva el archivo**: `DELETE /api/cv/:id` borra el documento y escribe `CvDeleted.v1` en la misma
   transacción; el worker borra el objeto de MinIO (`delete-cv-file`), y borrar un objeto que ya no está es un acierto.
   Así el binario no sobrevive al documento ni depende de que la petición HTTP llegue viva hasta MinIO.
-- **Ver lo que leímos** (`GET /api/cv/:id/text-preview`): los primeros ~2.000 caracteres del texto extraído, solo a su
-  dueña y con el mismo `404` que el resto. Es la única forma de descubrir que un PDF a dos columnas se leyó entrelazado,
-  que hoy nadie detecta porque `textChars` parece un éxito. **Los bytes del archivo no salen**: este change **no**
-  incluye descarga (ver Fuera de alcance).
-- **Límites por persona** con el contador de plataforma (`FIXED_WINDOW_COUNTER`): 10 subidas y 60 vistas previas por
-  ventana de 15 min, con `429 too_many_attempts` y `Retry-After`. Fallan **abiertos**, porque el tope duro de
-  almacenamiento no lo pone el contador sino el máximo de 5 documentos.
+- **Ver lo que leímos** (`GET /api/cv/:id/text-preview`): `{ status, text, chars, complete }`, con los primeros ~2.000
+  caracteres del texto extraído, solo a su dueña, con el mismo `404` que el resto y su `429` con espera. Es la única
+  forma de descubrir que un PDF a dos columnas se leyó entrelazado, que hoy nadie detecta porque `textChars` parece un
+  éxito. **Los bytes del archivo no salen**: este change **no** incluye descarga (ver Fuera de alcance).
+- **Límites por persona** con el contador de plataforma (`FIXED_WINDOW_COUNTER`), en ventana de 15 min y con
+  `429 too_many_attempts` y `Retry-After`: 10 subidas, 60 vistas previas y **30 rechazos** (`cv:reject:<userId>`, que se
+  cuenta solo cuando un archivo se rechaza en la puerta, de modo que una ráfaga de basura tenga techo sin cobrarle nada
+  a quien se equivoca una vez). Los tres fallan **abiertos**.
 - **Nada del CV en los logs**: ni el texto, ni el nombre del archivo, ni sus bytes. Las líneas llevan `cvId`, estado,
-  motivo y tamaño; el resto lo tapa la redacción de pino, con su test.
+  motivo y tamaño. La redacción de pino tapa **rutas declaradas**, no adivina: por eso lo que garantiza que no se
+  escapen es que nada de eso se escriba, con un test que captura los registros de una subida y lo comprueba.
 - **SPA**: `/mi-cv`, con sesión y carga diferida, en la barra de navegación. Subir con barra de progreso, listar los CV
-  guardados **identificados por su nombre y su fecha**, "Usar este" (que dice su consecuencia: "Este usaremos para
-  comparar con las vacantes"), "Ver lo que leímos", "Eliminar" con confirmación, sondeo mientras alguno esté `pending` y
-  una línea que promete lo que este change ya cumple: "Tu CV solo lo ves tú. No sale de LinkVault; cuando analicemos
-  vacantes te pediremos permiso antes." Cada estado termina en una acción, y un CV marcado que no se pudo leer lo avisa
-  en línea. Textos en ES y EN.
+  guardados **identificados por su nombre y su fecha**, "Usar este" —bajo el nombre del marcado se lee "Este es el CV
+  que compararemos con las vacantes"—, "Ver lo que leímos", "Eliminar" con confirmación, sondeo mientras alguno esté
+  `pending` y una línea honesta con lo que el producto hace hoy: **"Tu CV solo lo ves tú y hoy no lo lee ninguna IA.
+  Cuando analicemos vacantes, saldrá de LinkVault solo si tú lo autorizas en Ajustes."** Cada estado termina en una
+  acción, y un CV marcado que no se pudo leer avisa de la consecuencia y ofrece la salida. Textos en ES y EN.
 
 ## Capabilities
 
@@ -82,8 +87,8 @@ quién puede leerlo y qué pasa cuando alguien quiere borrarlo**, y dejarlo escr
   - `apps/api/src/modules/cv/` completo (dominio, casos de uso, repositorio Mongo, almacén S3, controlador) y
     `create-app.ts` (registro de `@fastify/multipart` con sus límites);
   - `apps/api/src/infrastructure/outbox/` (enrutado por tipo de evento, registro de las dos colas nuevas y **subida del
-    puerto `OUTBOX` y de `TransactionSession`** desde `links/application/ports/` a plataforma, con los 17 archivos de
-    `links` que los importan);
+    puerto `OUTBOX` y de `TransactionSession`** desde `links/application/ports/` a plataforma: unos **21 archivos de
+    `links` y 3 de plataforma**, cuya lista exacta la da el `typecheck`);
   - `apps/api/src/presentation/http/api-error.ts` y el filtro global (cuatro códigos nuevos);
   - `apps/worker/src/modules/cv/` completo (extractores, repositorio, consumidores) y su configuración;
   - `libs/shared/src/cv/`, `libs/shared/src/schemas/cv.schema.ts` y `libs/shared/src/events/cv-*.event.ts`;

@@ -12,10 +12,13 @@ archivo es admisible, guardar sus bytes en el almacén de objetos y crear un CV 
 - El nombre del archivo SHALL guardarse saneado: sin rutas, sin caracteres de control, sin los de cambio de dirección
   del texto, **sin comillas dobles, barras invertidas ni `;`**, recortado a 120 code points conservando su extensión y,
   si queda vacío, sustituido por `cv.pdf` o `cv.docx` según el tipo detectado.
-- Los errores del parser de multipart SHALL traducirse antes de llegar al filtro global: un archivo que supera el
-  límite SHALL responder `413 file_too_large`; más de una parte de archivo o más partes de las admitidas, `400
-  validation_error` nombrando `file`; un cuerpo que no es multipart, `415 unsupported_media_type`. **Ninguno SHALL
-  responder `500`.**
+- Los errores del parser de multipart SHALL traducirse antes de llegar al filtro global, **por defecto**: cualquier
+  error del parser SHALL responder `400 validation_error` nombrando `file`, salvo los casos declarados: un archivo que
+  supera el límite SHALL responder `413 file_too_large` y un cuerpo que no es multipart, `415
+  unsupported_media_type`. Una petición multipart **sin parte `file`**, que no produce ningún error del parser, SHALL
+  responder también `400 validation_error` nombrando `file`. **Ninguno SHALL responder `500`.**
+- El mensaje del código `unsupported_media_type` SHALL ser genérico, sin afirmar que el cuerpo deba ser JSON: lo
+  comparten rutas que aceptan formatos distintos.
 - Mientras la subida no termine bien, NO SHALL quedar ningún CV guardado ni ningún objeto referenciado por uno.
 
 #### Scenario: Primera subida
@@ -41,6 +44,20 @@ archivo es admisible, guardar sus bytes en el almacén de objetos y crear un CV 
 
 - **WHEN** Ana llama a `POST /api/cv` con un cuerpo JSON
 - **THEN** la respuesta SHALL ser `415` con código `unsupported_media_type`
+- **AND** NO SHALL ser `500`
+- **AND** el mensaje NO SHALL decir que el cuerpo deba ser JSON
+
+#### Scenario: Un campo de más en el formulario
+
+- **WHEN** Ana envía la parte `file` junto a un campo de texto
+- **THEN** la respuesta SHALL ser `400` con código `validation_error` nombrando `file`
+- **AND** NO SHALL ser `500`
+
+#### Scenario: Un error del parser que no conocemos
+
+- **GIVEN** el parser de multipart fallando con un código que la API no tiene declarado
+- **WHEN** Ana sube un archivo
+- **THEN** la respuesta SHALL ser `400` con código `validation_error` nombrando `file`
 - **AND** NO SHALL ser `500`
 
 #### Scenario: Nombre de archivo con ruta y caracteres raros
@@ -69,6 +86,9 @@ un tipo conocido que contradice a los otros dos, la respuesta SHALL ser `415 uns
 Cuando el tipo no se puede determinar o las autoridades no coinciden, la respuesta SHALL ser `415` con código
 `unsupported_file_type` y NO SHALL guardarse ni el objeto ni el CV.
 
+La decisión SHALL tomarse con el **primer trozo del archivo que llega**, no con el archivo completo: en cuanto se sabe
+que no es admisible, el flujo SHALL cortarse y la respuesta SHALL emitirse sin leer el resto.
+
 La API NO SHALL descomprimir ni interpretar el contenido más allá de esa comprobación; un archivo que pasa la puerta
 pero que ningún extractor puede leer SHALL resolverse en la extracción, con su estado de fallo.
 
@@ -77,6 +97,13 @@ pero que ningún extractor puede leer SHALL resolverse en la extracción, con su
 - **WHEN** Ana sube un archivo llamado `CV.pdf` con `Content-Type: application/pdf` cuyo contenido empieza por `MZ`
 - **THEN** la respuesta SHALL ser `415` con código `unsupported_file_type`
 - **AND** NO SHALL llamarse al almacén de objetos
+
+#### Scenario: El archivo inválido se corta al empezar
+
+- **GIVEN** un archivo de 5 MiB que no es PDF ni DOCX
+- **WHEN** Ana lo sube
+- **THEN** la respuesta SHALL ser `415` con código `unsupported_file_type`
+- **AND** la API NO SHALL haber leído el archivo entero
 
 #### Scenario: Extensión que no corresponde al contenido
 
@@ -259,12 +286,17 @@ persona, y NO SHALL exigir paginación: el máximo es 5.
 
 ### Requirement: Ver lo que leímos de un CV
 
-`GET /api/cv/:id/text-preview` SHALL devolver `200` con `{ text, chars, complete }` a la dueña del CV, donde `text` son
-los **primeros 2.000 caracteres** del texto extraído, cortados en el último salto de línea o espacio anterior al
-límite, `chars` los caracteres devueltos y `complete` si con eso ya está todo el texto guardado.
+`GET /api/cv/:id/text-preview` SHALL devolver `200` con `{ status, text, chars, complete }` a la dueña del CV, donde
+`status` es el estado de la extracción de ese CV, `text` los **primeros 2.000 caracteres** del texto extraído, cortados
+en el último salto de línea o espacio anterior al límite, `chars` los caracteres devueltos y `complete` si con eso ya
+está todo el texto guardado.
 
-- Un CV que todavía no está `extracted` SHALL responder `200` con `text` vacío, `chars` 0 y `complete` `false`, NO
-  SHALL responder un código de error.
+- `complete` SHALL calcularse comparando lo devuelto con la **longitud del texto guardado**, NO SHALL deducirse del
+  prefijo: un texto de exactamente 2.000 caracteres y uno de 50.000 devuelven el mismo trozo.
+- Un CV que todavía no está `extracted` SHALL responder `200` con su `status`, `text` vacío, `chars` 0 y `complete`
+  `false`; NO SHALL responder un código de error.
+- Un CV inexistente, de otra persona o con un `:id` mal formado SHALL responder `404` con código `cv_not_found`.
+- Superado el límite de vistas previas, la respuesta SHALL ser `429` con código `too_many_attempts` y `Retry-After`.
 - La respuesta SHALL llevar `Cache-Control: private, no-store`.
 - La consulta SHALL traer **solo ese prefijo** del texto, nunca el campo entero.
 - Esta SHALL ser la única ruta que devuelva texto de un CV, y NO SHALL existir ninguna que devuelva sus bytes.
@@ -281,11 +313,37 @@ límite, `chars` los caracteres devueltos y `complete` si con eso ya está todo 
 - **WHEN** su dueña pide la vista previa
 - **THEN** SHALL recibir los 900 caracteres y `complete` `true`
 
+#### Scenario: Justo 2.000 caracteres
+
+- **GIVEN** un CV cuyo texto guardado tiene exactamente 2.000 caracteres
+- **WHEN** su dueña pide la vista previa
+- **THEN** `complete` SHALL ser `true`
+- **AND** con un texto de 50.000 caracteres, que devuelve el mismo tamaño de trozo, SHALL ser `false`
+
 #### Scenario: Todavía no hay texto
 
 - **GIVEN** un CV recién subido, en `pending`
 - **WHEN** su dueña pide la vista previa
-- **THEN** la respuesta SHALL ser `200` con `text` vacío y `chars` 0
+- **THEN** la respuesta SHALL ser `200` con `status` `pending`, `text` vacío y `chars` 0
+
+#### Scenario: Un CV que no se pudo leer
+
+- **GIVEN** un CV en `failed`
+- **WHEN** su dueña pide la vista previa
+- **THEN** la respuesta SHALL ser `200` con `status` `failed` y `text` vacío
+- **AND** SHALL distinguirse de la respuesta de un CV en `pending`
+
+#### Scenario: CV borrado en otra pestaña
+
+- **GIVEN** un CV que se borró después de pintar la lista
+- **WHEN** su dueña pide su vista previa
+- **THEN** la respuesta SHALL ser `404` con código `cv_not_found`
+
+#### Scenario: Demasiadas vistas previas
+
+- **GIVEN** Ana con su ventana de vistas previas agotada
+- **WHEN** pide otra
+- **THEN** la respuesta SHALL ser `429` con código `too_many_attempts` y `Retry-After`
 
 #### Scenario: La vista previa de otra persona
 
@@ -385,18 +443,40 @@ escribe y la de la vista previa.
 
 ### Requirement: Límite de subidas y vistas previas por persona
 
-`POST /api/cv` y `GET /api/cv/:id/text-preview` SHALL contar sus intentos por persona en una ventana fija de 15 minutos,
-con el contador de plataforma: 10 subidas y 60 vistas previas. Superado el tope, la respuesta SHALL ser `429` con código
-`too_many_attempts` y cabecera `Retry-After`.
+La API SHALL contar por persona, en una ventana fija de 15 minutos y con el contador de plataforma, **tres cosas
+distintas**: las subidas aceptadas (10), las vistas previas (60) y los **archivos rechazados en la puerta** (30).
+Superado cualquiera de los topes, la respuesta SHALL ser `429` con código `too_many_attempts` y cabecera `Retry-After`.
 
-Los dos contadores SHALL **fallar abiertos**: si el contador no responde, la petición sigue. En la subida, el intento
-SHALL consumirse **solo cuando el archivo ya ha pasado la comprobación de tipo y tamaño** —un `413` o un `415` NO SHALL
-consumir nada— y SHALL devolverse si la petición falla después de consumirlo y antes de quedar guardada.
+Los tres contadores SHALL **fallar abiertos**: si el contador no responde, la petición sigue.
+
+En la subida, el intento de subida SHALL consumirse **solo cuando el archivo ya ha pasado la comprobación de tipo y
+tamaño** —un `413` o un `415` NO SHALL consumirlo— y SHALL devolverse si la petición falla después de consumirlo y antes
+de quedar guardada. Un archivo rechazado en la puerta SHALL consumir, en su lugar, el contador de rechazos, que NO SHALL
+devolverse nunca.
 
 #### Scenario: Once subidas
 
-- **WHEN** Ana hace once subidas válidas en la misma ventana
+- **GIVEN** Ana subiendo y borrando alternadamente para no chocar con el máximo de 5 CV
+- **WHEN** completa once subidas aceptadas en la misma ventana
 - **THEN** la undécima SHALL recibir `429` con código `too_many_attempts` y `Retry-After`
+
+#### Scenario: Ráfaga de archivos inválidos
+
+- **WHEN** Ana envía treinta y un archivos que no son PDF ni DOCX en la misma ventana
+- **THEN** los treinta primeros SHALL recibir `415` con código `unsupported_file_type`
+- **AND** el siguiente SHALL recibir `429` con código `too_many_attempts` y `Retry-After`
+
+#### Scenario: Los rechazos no gastan subidas
+
+- **GIVEN** Ana con treinta rechazos ya contados en la ventana
+- **WHEN** sube un PDF válido
+- **THEN** la respuesta SHALL ser `201`
+
+#### Scenario: Un rechazo no se devuelve
+
+- **GIVEN** Ana con un archivo rechazado en la ventana
+- **WHEN** vuelve a intentarlo con otro archivo inválido
+- **THEN** SHALL contarse un segundo rechazo
 
 #### Scenario: Un archivo rechazado no gasta intento
 
@@ -421,6 +501,12 @@ consumir nada— y SHALL devolverse si la petición falla después de consumirlo
 - **GIVEN** Ana con su ventana de vistas previas agotada
 - **WHEN** sube un CV
 - **THEN** la subida SHALL aceptarse
+
+#### Scenario: El contador de vistas previas caído
+
+- **GIVEN** el contador de intentos sin responder
+- **WHEN** Ana pide la vista previa de su CV
+- **THEN** SHALL recibir `200` con su texto
 
 ### Requirement: Multipart solo en la subida de CV
 
