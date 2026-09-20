@@ -4,7 +4,6 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type {
   AttemptOutcome,
   FixedWindowCounter,
-  WindowLimit,
 } from '../../../infrastructure/limits/fixed-window-counter';
 import {
   createCvTestApp,
@@ -19,7 +18,7 @@ import {
 
 /** Contador con la ventana de vistas previas agotada, para el `429` con su espera. */
 class SpentPreviewCounter implements FixedWindowCounter {
-  consume(key: string, _limit: WindowLimit): Promise<AttemptOutcome | null> {
+  consume(key: string): Promise<AttemptOutcome | null> {
     return Promise.resolve(
       key.startsWith('cv:text-preview:')
         ? { allowed: false, retryAfterSeconds: 742 }
