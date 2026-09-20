@@ -489,6 +489,20 @@ describe('MyCvPage', () => {
     expect(text()).not.toContain('Sigue en proceso');
   });
 
+  it('ninguna acción de la pantalla se llama "Descargar"', async () => {
+    await open([cvDocument(), cvDocument({ id: 'cv0', version: 0 + 1, isDefault: false })]);
+
+    const labels = Array.from(page().querySelectorAll('button, a')).map(
+      (element) => element.textContent?.trim() ?? '',
+    );
+    expect(labels.length).toBeGreaterThan(0);
+    for (const label of labels) {
+      // La API no expone los bytes del archivo, así que la pantalla no puede ofrecer sacarlos de aquí.
+      expect.soft(label).not.toMatch(/descargar|download|compartir|abrir el archivo/i);
+    }
+    expect(page().querySelectorAll('[download]')).toHaveLength(0);
+  });
+
   it('La lista no carga', async () => {
     await harness.navigateByUrl('/mi-cv', Shell);
     const request = await vi.waitFor(() => http.expectOne({ method: 'GET', url: '/api/cv' }));

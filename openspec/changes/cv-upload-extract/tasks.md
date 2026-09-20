@@ -106,7 +106,7 @@
 - [x] 8.9 [frontend] Desenlaces de fallo del diálogo: `404` → "Este CV ya no está", cierra y recarga la lista; `429` → mensaje de límite con su espera y "Reintentar"; `5xx` o red → "No pudimos mostrarlo ahora" con "Reintentar"; verificar con "El CV se borró en otra pestaña", "Límite de vistas previas" y "Avería al mostrar lo leído".
 - [x] 8.10 [frontend] Acción "Eliminar" con confirmación que nombra el archivo, avisa de que no se puede recuperar y añade el aviso de la promoción cuando es el marcado; verificar con "Eliminar un CV", "Eliminar el marcado" y "Cancelar el borrado".
 - [x] 8.11 [frontend] Mensajes de error de la subida y de la lista (`413`, `415`, `409 too_many_cvs` con "empieza por ese", `429` con espera y `500`), aviso de "Sigue en proceso" con su salida y carga de la lista con "Reintentar"; verificar con "La API rechaza lo que el SPA dejó pasar", "Tope de CV guardados", "Límite alcanzado" y "La lista no carga". Incluir aquí el caso del archivo no admitido, que **no necesita e2e propio**.
-- [ ] 8.12 [frontend] Tras 1.1, marcar todos los textos de esta pantalla —incluidas la línea de privacidad, la línea de la marca y los textos de estado por formato— y traducirlos en `messages.en.xlf`; verificar con "Traducciones completas" y con un test de que ninguna acción de la pantalla se llama "Descargar".
+- [x] 8.12 [frontend] Tras 1.1, marcar todos los textos de esta pantalla —incluidas la línea de privacidad, la línea de la marca y los textos de estado por formato— y traducirlos en `messages.en.xlf`; verificar con "Traducciones completas" y con un test de que ninguna acción de la pantalla se llama "Descargar".
 
 ## 9. Cierre
 

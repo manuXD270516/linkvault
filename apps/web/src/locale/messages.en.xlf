@@ -1328,6 +1328,154 @@
         <source> Guarda aquí las ofertas que te pasan por WhatsApp y no las pierdas. </source>
         <target>Keep the jobs people send you on WhatsApp, so you don't lose them.</target>
       </trans-unit>
+      <trans-unit id="cv.title" datatype="html">
+        <source>Mi CV</source>
+        <target>My CV</target>
+      </trans-unit>
+      <trans-unit id="cv.empty" datatype="html">
+        <source> Sube tu CV y LinkVault podrá comparar tus habilidades con cada vacante. </source>
+        <target>Upload your CV and LinkVault will be able to compare your skills with every job post.</target>
+      </trans-unit>
+      <trans-unit id="cv.privacy" datatype="html">
+        <source> Tu CV solo lo ves tú y hoy no lo lee ninguna IA. No saldrá de LinkVault sin tu autorización. </source>
+        <target>Only you see your CV and today no AI reads it. It will not leave LinkVault without your authorization.</target>
+      </trans-unit>
+      <trans-unit id="cv.loading" datatype="html">
+        <source>Cargando tus CV…</source>
+        <target>Loading your CVs…</target>
+      </trans-unit>
+      <trans-unit id="cv.retry" datatype="html">
+        <source> Reintentar </source>
+        <target>Try again</target>
+      </trans-unit>
+      <trans-unit id="cv.refresh" datatype="html">
+        <source> Actualizar </source>
+        <target>Refresh</target>
+      </trans-unit>
+      <trans-unit id="cv.stalled" datatype="html">
+        <source> Sigue en proceso. Si sigue así en unos minutos, elimínalo y vuelve a subirlo. </source>
+        <target>Still in progress. If it stays like this in a few minutes, delete it and upload it again.</target>
+      </trans-unit>
+      <trans-unit id="cv.gone" datatype="html">
+        <source>Este CV ya no está</source>
+        <target>This CV is no longer here</target>
+      </trans-unit>
+      <trans-unit id="cv.upload" datatype="html">
+        <source> Subir CV </source>
+        <target>Upload CV</target>
+      </trans-unit>
+      <trans-unit id="cv.uploadHint" datatype="html">
+        <source> O suelta aquí tu CV en PDF o DOCX, de hasta 5 MB </source>
+        <target>Or drop your CV here, in PDF or DOCX and up to 5 MB</target>
+      </trans-unit>
+      <trans-unit id="cv.uploading" datatype="html">
+        <source>Subiendo tu CV…</source>
+        <target>Uploading your CV…</target>
+      </trans-unit>
+      <trans-unit id="cv.error.unsupportedType" datatype="html">
+        <source> Solo aceptamos PDF o DOCX </source>
+        <target>We only accept PDF or DOCX</target>
+      </trans-unit>
+      <trans-unit id="cv.error.tooLarge" datatype="html">
+        <source> Ese archivo pesa más de 5 MB </source>
+        <target>That file is larger than 5 MB</target>
+      </trans-unit>
+      <trans-unit id="cv.error.tooManyCvs" datatype="html">
+        <source> Guardamos hasta 5 CV. Elimina uno para subir otro; si alguno no se pudo leer, empieza por ese. </source>
+        <target>We keep up to 5 CVs. Delete one to upload another; if any of them could not be read, start with that one.</target>
+      </trans-unit>
+      <trans-unit id="cv.defaultLine" datatype="html">
+        <source> Este es el CV que compararemos con las vacantes </source>
+        <target>This is the CV we will compare with job posts</target>
+      </trans-unit>
+      <trans-unit id="cv.defaultUseless" datatype="html">
+        <source> No servirá para analizar vacantes </source>
+        <target>It will not work to analyze job posts</target>
+      </trans-unit>
+      <trans-unit id="cv.useExtracted" datatype="html">
+        <source> Usar el que sí se leyó </source>
+        <target>Use the one we could read</target>
+      </trans-unit>
+      <trans-unit id="cv.useThis" datatype="html">
+        <source> Usar este </source>
+        <target>Use this one</target>
+      </trans-unit>
+      <trans-unit id="cv.viewText" datatype="html">
+        <source> Ver lo que leímos </source>
+        <target>See what we read</target>
+      </trans-unit>
+      <trans-unit id="cv.remove" datatype="html">
+        <source> Eliminar </source>
+        <target>Delete</target>
+      </trans-unit>
+      <trans-unit id="cv.status.pending" datatype="html">
+        <source>Estamos leyendo tu CV…</source>
+        <target>We are reading your CV…</target>
+      </trans-unit>
+      <trans-unit id="cv.status.extracted" datatype="html">
+        <source>Listo · tu CV se leyó bien</source>
+        <target>Done · we read your CV just fine</target>
+      </trans-unit>
+      <trans-unit id="cv.status.noText" datatype="html">
+        <source>Este archivo no tiene texto: parece un escaneo o una imagen.</source>
+        <target>This file has no text: it looks like a scan or an image.</target>
+      </trans-unit>
+      <trans-unit id="cv.status.internalError" datatype="html">
+        <source>No pudimos leerlo ahora. Vuelve a subirlo en un rato.</source>
+        <target>We could not read it now. Upload it again in a while.</target>
+      </trans-unit>
+      <trans-unit id="cv.status.unreadable" datatype="html">
+        <source>No pudimos abrir este archivo. Si tiene contraseña, quítasela y vuelve a subirlo.</source>
+        <target>We could not open this file. If it has a password, remove it and upload it again.</target>
+      </trans-unit>
+      <trans-unit id="cv.advice.pdf" datatype="html">
+        <source>Sube el PDF original (no una foto ni un escaneo) o vuelve a exportarlo desde tu editor</source>
+        <target>Upload the original PDF (not a photo or a scan) or export it again from your editor</target>
+      </trans-unit>
+      <trans-unit id="cv.advice.docx" datatype="html">
+        <source>Vuelve a exportarlo desde tu editor y súbelo otra vez</source>
+        <target>Export it again from your editor and upload it once more</target>
+      </trans-unit>
+      <trans-unit id="cv.preview.title" datatype="html">
+        <source>Lo que leímos de tu CV</source>
+        <target>What we read from your CV</target>
+      </trans-unit>
+      <trans-unit id="cv.preview.heading" datatype="html">
+        <source> Así leímos tu CV. Si ves el texto desordenado, vuelve a exportarlo desde tu editor y súbelo otra vez. </source>
+        <target>This is how we read your CV. If the text looks scrambled, export it again from your editor and upload it once more.</target>
+      </trans-unit>
+      <trans-unit id="cv.preview.loading" datatype="html">
+        <source> Cargando lo que leímos… </source>
+        <target>Loading what we read…</target>
+      </trans-unit>
+      <trans-unit id="cv.preview.failed" datatype="html">
+        <source> No pudimos mostrarlo ahora </source>
+        <target>We could not show it now</target>
+      </trans-unit>
+      <trans-unit id="cv.preview.close" datatype="html">
+        <source>Cerrar</source>
+        <target>Close</target>
+      </trans-unit>
+      <trans-unit id="cv.delete.title" datatype="html">
+        <source>Eliminar este CV</source>
+        <target>Delete this CV</target>
+      </trans-unit>
+      <trans-unit id="cv.delete.message" datatype="html">
+        <source>¿Eliminar <x id="NAME" equiv-text="item.fileName"/>? El archivo se borra y no se puede recuperar.</source>
+        <target>Delete <x id="NAME" equiv-text="item.fileName"/>? The file is deleted and cannot be recovered.</target>
+      </trans-unit>
+      <trans-unit id="cv.delete.messageDefault" datatype="html">
+        <source>¿Eliminar <x id="NAME" equiv-text="item.fileName"/>? El archivo se borra y no se puede recuperar. Pasará a usarse tu CV más reciente.</source>
+        <target>Delete <x id="NAME" equiv-text="item.fileName"/>? The file is deleted and cannot be recovered. Your most recent CV will be used instead.</target>
+      </trans-unit>
+      <trans-unit id="cv.delete.confirm" datatype="html">
+        <source>Eliminar</source>
+        <target>Delete</target>
+      </trans-unit>
+      <trans-unit id="shell.myCv" datatype="html">
+        <source>Mi CV</source>
+        <target>My CV</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>
