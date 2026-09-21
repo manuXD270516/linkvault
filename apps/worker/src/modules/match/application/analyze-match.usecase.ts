@@ -24,6 +24,7 @@ import type { AiContextReader } from './ports/ai-context-reader.port';
 import type { Clock } from './ports/clock.port';
 import type { CvTextReader } from './ports/cv-text-reader.port';
 import type { JobReader } from './ports/job-reader.port';
+import type { RoadmapJobPublisher } from './ports/roadmap-job-publisher.port';
 import type { MatchAnalysis } from '../domain/analysis';
 import { isRunningExpired } from '../domain/expiry';
 
@@ -76,6 +77,7 @@ export class AnalyzeMatchUseCase {
     private readonly clock: Clock,
     private readonly options: AnalyzeMatchOptions,
     private readonly stepNotifier: AnalysisStepNotifier,
+    private readonly roadmapJobs: RoadmapJobPublisher | null = null,
   ) {}
 
   async execute(payload: MatchRequestedPayload): Promise<AnalyzeMatchResult> {
@@ -343,6 +345,7 @@ export class AnalyzeMatchUseCase {
     this.logger.debug(
       `analysis ${analysis.id}: done provider=${candidate.providerId} durationMs=${String(durationMs)}`,
     );
+    await this.maybeEnqueueRoadmap(analysis, report.data);
     return { kind: 'done' };
   }
 
@@ -478,6 +481,32 @@ export class AnalyzeMatchUseCase {
     } catch (error) {
       this.logger.warn(
         `analysis ${analysis.id}: announceStep(${step}) failed (${error instanceof Error ? error.name : 'unknown'})`,
+      );
+    }
+  }
+
+  /**
+   * Auto-enqueue roadmap (study-roadmap / opción A): tras `done` no degradado con ≥1 missingSkill,
+   * encola BullMQ sin llamar a `build-roadmap` aquí. Fallo al encolar no tumba el análisis.
+   */
+  private async maybeEnqueueRoadmap(
+    analysis: MatchAnalysis,
+    report: MatchReport,
+  ): Promise<void> {
+    if (this.roadmapJobs === null) {
+      return;
+    }
+    if (report.degraded || report.missingSkills.length === 0) {
+      return;
+    }
+    try {
+      await this.roadmapJobs.enqueue({
+        analysisId: analysis.id,
+        userId: analysis.userId,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `analysis ${analysis.id}: roadmap enqueue failed (${error instanceof Error ? error.name : 'unknown'})`,
       );
     }
   }

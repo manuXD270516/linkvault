@@ -6,7 +6,7 @@ import { AI_CONSENT_TEXT_VERSION } from '@linkvault/shared';
 import { JOB_ID_SLOTS, jobIdBase } from './support/job-ids';
 import { resetRegisterLimit } from './support/register-limit';
 
-const SCREENSHOT_DIR = join(workspaceRoot, 'reports', 'smoke', 'cv-suggestions-review');
+const SCREENSHOT_DIR = join(workspaceRoot, 'reports', 'smoke', 'study-roadmap');
 
 /**
  * Base de `api`, para escribir en `job_links` / `cv_documents` lo que el worker habría dejado listo para el análisis.
@@ -399,8 +399,25 @@ test('match flow: analyze from the card, see steps, report, suggestions and copy
         fullPage: true,
       });
 
-      await dialog.getByTestId('match-close').click();
-      await expect(matchDialog(page)).toHaveCount(0, { timeout: LIVE_TIMEOUT });
+      await expect(dialog.getByTestId('match-open-roadmap')).toBeVisible({
+        timeout: LIVE_TIMEOUT,
+      });
+      await dialog.getByTestId('match-open-roadmap').click();
+      await expect(page).toHaveURL(/\/plan\//, { timeout: LIVE_TIMEOUT });
+      await expect(page.getByRole('heading', { name: 'Plan de estudio' })).toBeVisible({
+        timeout: LIVE_TIMEOUT,
+      });
+      await expect(page.getByTestId('roadmap-weeks')).toBeVisible({
+        timeout: ANALYSIS_TIMEOUT,
+      });
+      await expect(page.getByTestId('roadmap-export')).toBeVisible({ timeout: LIVE_TIMEOUT });
+      await page.screenshot({
+        path: join(SCREENSHOT_DIR, 'plan-estudio.png'),
+        fullPage: true,
+      });
+
+      await page.goto(groupUrl);
+      await expect(offerRow(page)).toBeVisible({ timeout: LIVE_TIMEOUT });
     });
 
     expect(pageErrors).toEqual([]);

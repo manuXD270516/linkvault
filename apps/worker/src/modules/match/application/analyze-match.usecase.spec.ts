@@ -1093,3 +1093,97 @@ describe('sample helpers', () => {
     expect(matchCvTask.name).toBe('match-cv');
   });
 });
+
+describe('AnalyzeMatchUseCase auto-enqueue roadmap', () => {
+  it('encola roadmap tras done no degradado con missingSkills', async () => {
+    const enqueued: { analysisId: string; userId: string }[] = [];
+    const publisher = {
+      enqueue: async (payload: { analysisId: string; userId: string }) => {
+        enqueued.push(payload);
+      },
+    };
+    const withPublisher = new AnalyzeMatchUseCase(
+      analyses,
+      cvs,
+      jobs,
+      aiContext,
+      spy.fn,
+      clock,
+      { timeoutMs: 60_000, maxAgeMs: 120_000 },
+      steps,
+      publisher,
+    );
+
+    const result = await withPublisher.execute(PAYLOAD);
+
+    expect(result).toEqual({ kind: 'done' });
+    expect(enqueued).toEqual([
+      { analysisId: ANALYSIS_ID, userId: USER_ID },
+    ]);
+    expect(spy.calls.every((c) => c.taskName !== 'build-roadmap')).toBe(true);
+  });
+
+  it('no encola cuando el informe no tiene missingSkills', async () => {
+    const enqueued: unknown[] = [];
+    spy.setResult({
+      status: 'success',
+      output: { ...CORE, missingSkills: [] },
+      providerId: 'mock',
+      model: 'mock-model',
+      promptVersion: 'v1',
+      cached: false,
+    });
+    const withPublisher = new AnalyzeMatchUseCase(
+      analyses,
+      cvs,
+      jobs,
+      aiContext,
+      spy.fn,
+      clock,
+      { timeoutMs: 60_000, maxAgeMs: 120_000 },
+      steps,
+      {
+        enqueue: async (p) => {
+          enqueued.push(p);
+        },
+      },
+    );
+
+    await withPublisher.execute(PAYLOAD);
+
+    expect(enqueued).toEqual([]);
+  });
+
+  it('no encola cuando el resultado es degradado', async () => {
+    const enqueued: unknown[] = [];
+    spy.setResult({
+      status: 'degraded',
+      reason: 'no_providers',
+      output: {
+        score: 40,
+        matchedSkills: [],
+        missingSkills: [{ name: 'NestJS', importance: 'must' }],
+        suggestions: [],
+      },
+    });
+    const withPublisher = new AnalyzeMatchUseCase(
+      analyses,
+      cvs,
+      jobs,
+      aiContext,
+      spy.fn,
+      clock,
+      { timeoutMs: 60_000, maxAgeMs: 120_000 },
+      steps,
+      {
+        enqueue: async (p) => {
+          enqueued.push(p);
+        },
+      },
+    );
+
+    await withPublisher.execute(PAYLOAD);
+
+    expect(enqueued).toEqual([]);
+  });
+});

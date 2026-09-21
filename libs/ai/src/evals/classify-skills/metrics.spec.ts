@@ -143,6 +143,7 @@ describe('evaluable task registry', () => {
       'extract-pasted-job',
       'match-cv',
       'critique-suggestions',
+      'build-roadmap',
     ]);
     expect(findEvaluableTask('classify-skills')).toBe(EVALUABLE_TASKS[0]);
     expect(findEvaluableTask('no-existe')).toBeUndefined();

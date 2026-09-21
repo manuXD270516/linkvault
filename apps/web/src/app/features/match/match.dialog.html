@@ -372,6 +372,19 @@
           }
         </section>
 
+        @if (showRoadmapCta()) {
+          <button
+            mat-flat-button
+            color="primary"
+            type="button"
+            (click)="openRoadmap()"
+            data-testid="match-open-roadmap"
+            i18n="@@match.dialog.openRoadmap"
+          >
+            Ver plan de estudio
+          </button>
+        }
+
         @if (!report.degraded && sortedSuggestions().length > 0) {
           <section data-testid="match-suggestions">
             <p class="m-0 text-sm" role="note" data-testid="match-ai-warning" i18n="@@match.dialog.aiWarning">

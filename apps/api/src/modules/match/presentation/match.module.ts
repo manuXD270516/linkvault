@@ -17,6 +17,8 @@ import { CvModule } from '../../cv/presentation/cv.module';
 import { UsersModule } from '../../users/presentation/users.module';
 import { DeliverAnalysisStep } from '../application/deliver-analysis-step.usecase';
 import { GetMatchAnalysis } from '../application/get-match-analysis.usecase';
+import { GetRoadmapMarkdown } from '../application/get-roadmap-markdown.usecase';
+import { GetRoadmap } from '../application/get-roadmap.usecase';
 import { ANALYSIS_REPOSITORY } from '../application/ports/analysis-repository.port';
 import { ANALYSIS_STEP_BROADCASTER } from '../application/ports/analysis-step-broadcaster.port';
 import { ANALYSIS_STEP_NOTICES } from '../application/ports/analysis-step-notices.port';
@@ -28,9 +30,11 @@ import {
   MATCH_ANALYSIS_SETTINGS,
   type MatchAnalysisSettings,
 } from '../application/ports/match-settings.port';
+import { ROADMAP_REPOSITORY } from '../application/ports/roadmap-repository.port';
 import { SUGGESTION_FEEDBACK_REPOSITORY } from '../application/ports/suggestion-feedback-repository.port';
 import { RecordSuggestionFeedback } from '../application/record-suggestion-feedback.usecase';
 import { RequestMatchAnalysis } from '../application/request-match-analysis.usecase';
+import { RequestRoadmap } from '../application/request-roadmap.usecase';
 import { AnalysisStepSubscription } from '../infrastructure/analysis-step.subscription';
 import { CvAnalysesDeletionHook } from '../infrastructure/cv-analyses-deletion.hook';
 import { CvFacadeMatchCvReader } from '../infrastructure/cv-facade-match-cv-reader';
@@ -39,11 +43,13 @@ import { LinksFacadeMatchJobReader } from '../infrastructure/links-facade-match-
 import { MatchCvAnalysisCountReader } from '../infrastructure/match-cv-analysis-count-reader';
 import { MatchFitScoreReader } from '../infrastructure/match-fit-score-reader';
 import { MongoAnalysisRepository } from '../infrastructure/mongo-analysis.repository';
+import { MongoRoadmapRepository } from '../infrastructure/mongo-roadmap.repository';
 import { MongoSuggestionFeedbackRepository } from '../infrastructure/mongo-suggestion-feedback.repository';
 import { RedisAnalysisStepNotices } from '../infrastructure/redis-analysis-step-notices';
 import { SystemMatchClock } from '../infrastructure/system-clock';
 import { UsersFacadeMatchAiConsent } from '../infrastructure/users-facade-match-ai-consent';
 import { MatchController } from './match.controller';
+import { RoadmapController } from './roadmap.controller';
 import { SuggestionFeedbackController } from './suggestion-feedback.controller';
 
 /**
@@ -71,9 +77,14 @@ export class MatchModule implements OnModuleInit {
         aiModule,
         applicationsModule,
       ],
-      controllers: [MatchController, SuggestionFeedbackController],
+      controllers: [
+        MatchController,
+        SuggestionFeedbackController,
+        RoadmapController,
+      ],
       providers: [
         { provide: ANALYSIS_REPOSITORY, useClass: MongoAnalysisRepository },
+        { provide: ROADMAP_REPOSITORY, useClass: MongoRoadmapRepository },
         {
           provide: SUGGESTION_FEEDBACK_REPOSITORY,
           useClass: MongoSuggestionFeedbackRepository,
@@ -111,8 +122,16 @@ export class MatchModule implements OnModuleInit {
         RequestMatchAnalysis,
         GetMatchAnalysis,
         RecordSuggestionFeedback,
+        RequestRoadmap,
+        GetRoadmap,
+        GetRoadmapMarkdown,
       ],
-      exports: [RequestMatchAnalysis, GetMatchAnalysis, ANALYSIS_REPOSITORY],
+      exports: [
+        RequestMatchAnalysis,
+        GetMatchAnalysis,
+        ANALYSIS_REPOSITORY,
+        ROADMAP_REPOSITORY,
+      ],
     };
   }
 

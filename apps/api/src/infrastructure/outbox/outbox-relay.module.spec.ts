@@ -1,6 +1,7 @@
 import { createServer, type Server, type Socket } from 'node:net';
 import {
   ANALYZE_MATCH_QUEUE,
+  BUILD_ROADMAP_QUEUE,
   DELETE_CV_FILE_QUEUE,
   ENRICH_LINK_QUEUE,
   EXTRACT_CV_QUEUE,
@@ -140,6 +141,7 @@ describe('outbox relay module', () => {
       EXTRACT_CV_QUEUE,
       DELETE_CV_FILE_QUEUE,
       ANALYZE_MATCH_QUEUE,
+      BUILD_ROADMAP_QUEUE,
     ]) {
       expect(optionalGet(moduleRef, getQueueToken(name))).toBeUndefined();
       expect(
@@ -192,6 +194,7 @@ describe('outbox relay module', () => {
       EXTRACT_CV_QUEUE,
       DELETE_CV_FILE_QUEUE,
       ANALYZE_MATCH_QUEUE,
+      BUILD_ROADMAP_QUEUE,
     ]);
     for (const [name, queue] of queues) {
       expect(moduleRef.get(outboxQueueErrorLogToken(name))).toBeDefined();
@@ -213,8 +216,8 @@ describe('outbox relay module', () => {
     });
   });
 
-  it('registers analyze-match without blind retries', () => {
-    // ADR-030 §6: reejecutar el análisis entero multiplicaría los envíos del CV a un proveedor externo.
+  it('registers analyze-match and build-roadmap without blind retries', () => {
+    // ADR-030 §6 / study-roadmap: reejecutar multiplicaría envíos a un externo y cuota.
     expect(ANALYZE_MATCH_JOB_OPTIONS).toEqual({
       attempts: 1,
       removeOnComplete: { age: 86_400, count: 1_000 },
@@ -223,6 +226,9 @@ describe('outbox relay module', () => {
     expect(ANALYZE_MATCH_JOB_OPTIONS.attempts).toBe(1);
     expect(ANALYZE_MATCH_JOB_OPTIONS).not.toHaveProperty('backoff');
     expect(outboxJobOptionsFor(ANALYZE_MATCH_QUEUE)).toBe(
+      ANALYZE_MATCH_JOB_OPTIONS,
+    );
+    expect(outboxJobOptionsFor(BUILD_ROADMAP_QUEUE)).toBe(
       ANALYZE_MATCH_JOB_OPTIONS,
     );
   });

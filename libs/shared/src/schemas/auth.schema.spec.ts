@@ -264,6 +264,7 @@ describe('api error contract', () => {
       'cv_not_ready',
       'cv_not_readable',
       'job_not_ready',
+      'roadmap_not_eligible',
       'consent_text_outdated',
       'internal_error',
     ]);

@@ -343,6 +343,25 @@ export class MongoAnalysisRepository implements AnalysisRepository {
     return result.deletedCount;
   }
 
+  async findIdsByCv(
+    userId: string,
+    cvId: string,
+    session: TransactionSession,
+  ): Promise<readonly string[]> {
+    const owner = toUserObjectId(userId);
+    const cv = toCvObjectId(cvId);
+    if (owner === null || cv === null) {
+      return [];
+    }
+    const documents = await this.analyses
+      .find({ userId: owner, cvId: cv })
+      .select({ _id: 1 })
+      .session(session as ClientSession)
+      .lean()
+      .exec();
+    return documents.map((doc) => doc._id.toHexString());
+  }
+
   async countByCv(userId: string): Promise<ReadonlyMap<string, number>> {
     const owner = toUserObjectId(userId);
     const counts = new Map<string, number>();

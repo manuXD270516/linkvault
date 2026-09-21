@@ -11,6 +11,7 @@ export type MatchErrorCode =
   | 'cv_not_ready'
   | 'cv_not_readable'
   | 'job_not_ready'
+  | 'roadmap_not_eligible'
   | 'too_many_attempts';
 
 export abstract class MatchError extends Error {
@@ -80,5 +81,17 @@ export class TooManyAnalysisAttempts extends MatchError {
 
   constructor(readonly retryAfterSeconds: number) {
     super('Too many analysis attempts');
+  }
+}
+
+/**
+ * El análisis existe pero no admite roadmap: degradado, fallido, en curso o sin `missingSkills` (409).
+ */
+export class RoadmapNotEligible extends MatchError {
+  override readonly name = 'RoadmapNotEligible';
+  readonly code = 'roadmap_not_eligible';
+
+  constructor() {
+    super('That analysis cannot produce a study roadmap');
   }
 }

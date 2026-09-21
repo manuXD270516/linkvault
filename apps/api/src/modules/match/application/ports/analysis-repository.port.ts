@@ -123,6 +123,15 @@ export interface AnalysisRepository {
   ): Promise<number>;
 
   /**
+   * Ids de análisis de ese CV (cascada roadmap, study-roadmap). Misma sesión que el borrado.
+   */
+  findIdsByCv(
+    userId: string,
+    cvId: string,
+    session: TransactionSession,
+  ): Promise<readonly string[]>;
+
+  /**
    * Recuento por `cvId` de los análisis de esa persona, **sin traer ningún documento**. Incluye los que no terminaron.
    */
   countByCv(userId: string): Promise<ReadonlyMap<string, number>>;

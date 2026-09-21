@@ -1,4 +1,9 @@
 import {
+  buildRoadmapTask,
+  type BuildRoadmapInput,
+  type BuildRoadmapOutput,
+} from '../tasks/build-roadmap.task';
+import {
   classifySkillsTask,
   type ClassifySkillsInput,
   type ClassifySkillsOutput,
@@ -23,6 +28,12 @@ import {
   type MatchCvInput,
   type MatchCvOutput,
 } from '../tasks/match-cv.task';
+import {
+  BUILD_ROADMAP_CASE_COLUMNS,
+  BUILD_ROADMAP_METRICS,
+  buildRoadmapExpectedSchema,
+  type BuildRoadmapExpected,
+} from './build-roadmap/metrics';
 import {
   CLASSIFY_SKILLS_CASE_COLUMNS,
   CLASSIFY_SKILLS_METRICS,
@@ -118,12 +129,24 @@ export const critiqueSuggestionsEvaluable: EvaluableTask<
   caseColumns: CRITIQUE_SUGGESTIONS_CASE_COLUMNS,
 };
 
+export const buildRoadmapEvaluable: EvaluableTask<
+  BuildRoadmapInput,
+  BuildRoadmapOutput,
+  BuildRoadmapExpected
+> = {
+  task: buildRoadmapTask,
+  expectedSchema: buildRoadmapExpectedSchema,
+  metrics: BUILD_ROADMAP_METRICS,
+  caseColumns: BUILD_ROADMAP_CASE_COLUMNS,
+};
+
 export const EVALUABLE_TASKS: readonly AnyEvaluableTask[] = [
   eraseEvaluableTask(classifySkillsEvaluable),
   eraseEvaluableTask(extractJobEvaluable),
   eraseEvaluableTask(extractPastedJobEvaluable),
   eraseEvaluableTask(matchCvEvaluable),
   eraseEvaluableTask(critiqueSuggestionsEvaluable),
+  eraseEvaluableTask(buildRoadmapEvaluable),
 ];
 
 /** Tarea evaluable por nombre, o `undefined` si no está registrada. */

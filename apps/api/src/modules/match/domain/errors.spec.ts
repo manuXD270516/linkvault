@@ -7,6 +7,7 @@ import {
   JobNotReady,
   MatchError,
   NoCv,
+  RoadmapNotEligible,
   TooManyAnalysisAttempts,
 } from './errors';
 
@@ -17,6 +18,7 @@ describe('the domain errors of match', () => {
     new CvNotReady(),
     new CvNotReadable(),
     new JobNotReady(),
+    new RoadmapNotEligible(),
     new TooManyAnalysisAttempts(900),
   ];
 
@@ -33,6 +35,7 @@ describe('the domain errors of match', () => {
     expect(new CvNotReady().code).toBe('cv_not_ready');
     expect(new CvNotReadable().code).toBe('cv_not_readable');
     expect(new JobNotReady().code).toBe('job_not_ready');
+    expect(new RoadmapNotEligible().code).toBe('roadmap_not_eligible');
     expect(new TooManyAnalysisAttempts(60).code).toBe('too_many_attempts');
   });
 

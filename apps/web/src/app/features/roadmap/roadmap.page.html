@@ -1,0 +1,150 @@
+<section class="mx-auto flex max-w-2xl flex-col gap-6 p-6">
+  <div class="flex flex-wrap items-start justify-between gap-3">
+    <h1 class="m-0 text-2xl font-medium" i18n="@@roadmap.title">Plan de estudio</h1>
+    @if (isReady()) {
+      <button
+        mat-stroked-button
+        type="button"
+        (click)="exportMarkdown()"
+        [disabled]="exporting()"
+        [attr.aria-busy]="exporting() || null"
+        data-testid="roadmap-export"
+        i18n="@@roadmap.export"
+      >
+        Exportar Markdown
+      </button>
+    }
+  </div>
+
+  @if (loading() || requesting()) {
+    <p class="m-0" role="status" data-testid="roadmap-loading" i18n="@@roadmap.loading">
+      Cargando tu plan…
+    </p>
+  } @else if (failure(); as fail) {
+    @if (notEligible()) {
+      <p class="m-0" role="alert" data-testid="roadmap-not-eligible" i18n="@@roadmap.notEligible">
+        Este análisis no admite un plan de estudio.
+      </p>
+    } @else if (notFound()) {
+      <p class="m-0" role="alert" data-testid="roadmap-not-found" i18n="@@roadmap.notFound">
+        No encontramos este análisis.
+      </p>
+    } @else {
+      <lv-request-error [failure]="fail" />
+    }
+    <a mat-button routerLink="/mis-links" data-testid="roadmap-back" i18n="@@roadmap.back"
+      >Volver a mis links</a
+    >
+  } @else if (isGenerating()) {
+    <p class="m-0" role="status" data-testid="roadmap-generating" i18n="@@roadmap.generating">
+      Estamos preparando tu plan de estudio…
+    </p>
+  } @else if (isFailed()) {
+    <p class="m-0" role="alert" data-testid="roadmap-failed" i18n="@@roadmap.failed">
+      No pudimos generar el plan. Inténtalo más tarde desde el análisis de encaje.
+    </p>
+    <a mat-button routerLink="/mis-links" data-testid="roadmap-back" i18n="@@roadmap.back"
+      >Volver a mis links</a
+    >
+  } @else if (isReady()) {
+    @if (exportFailure(); as exportFail) {
+      <lv-request-error [failure]="exportFail" />
+    }
+
+    @if (weekGroups().length === 0) {
+      <p class="m-0" role="status" data-testid="roadmap-empty" i18n="@@roadmap.empty">
+        El plan no tiene ítems.
+      </p>
+    } @else {
+      <div class="flex flex-col gap-8" data-testid="roadmap-weeks">
+        @for (group of weekGroups(); track group.weeks) {
+          <section [attr.data-weeks]="group.weeks" data-testid="roadmap-week">
+            <h2 class="m-0 mb-3 text-lg font-medium">
+              @if (group.weeks === 1) {
+                <ng-container i18n="@@roadmap.week.one">1 semana</ng-container>
+              } @else {
+                <ng-container i18n="@@roadmap.week.many"
+                  >{{ group.weeks }} semanas</ng-container
+                >
+              }
+            </h2>
+
+            <ul class="m-0 flex list-none flex-col gap-4 p-0">
+              @for (item of group.items; track trackItem(item)) {
+                <li
+                  class="flex flex-col gap-2 border-t border-(--mat-sys-outline-variant) pt-3"
+                  data-testid="roadmap-item"
+                >
+                  <div class="flex flex-wrap items-baseline gap-2">
+                    <h3 class="m-0 text-base font-medium" data-testid="roadmap-item-skill">
+                      {{ item.skill }}
+                    </h3>
+                    <span class="text-sm" data-testid="roadmap-item-priority">
+                      <ng-container i18n="@@roadmap.priority"
+                        >Prioridad {{ item.priority }}</ng-container
+                      >
+                    </span>
+                  </div>
+
+                  <ul class="m-0 flex list-none flex-col gap-2 p-0" data-testid="roadmap-resources">
+                    @for (resource of item.resources; track resource.title + resource.provider) {
+                      <li
+                        [class]="
+                          resource.verified
+                            ? 'flex flex-col gap-1 rounded-md px-3 py-2 bg-(--mat-sys-surface-container-low)'
+                            : 'flex flex-col gap-1 rounded-md px-3 py-2 opacity-80 border border-dashed border-(--mat-sys-outline-variant)'
+                        "
+                        [attr.data-verified]="resource.verified"
+                        data-testid="roadmap-resource"
+                      >
+                        <div class="flex flex-wrap items-center gap-2">
+                          @if (resource.url; as url) {
+                            <a
+                              class="font-medium underline-offset-2 hover:underline"
+                              [href]="url"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              data-testid="roadmap-resource-title"
+                              >{{ resource.title }}</a
+                            >
+                          } @else {
+                            <span class="font-medium" data-testid="roadmap-resource-title">{{
+                              resource.title
+                            }}</span>
+                          }
+                          @if (resource.verified) {
+                            <span
+                              class="rounded px-1.5 py-0.5 text-xs font-medium bg-(--mat-sys-secondary-container) text-(--mat-sys-on-secondary-container)"
+                              data-testid="roadmap-resource-verified"
+                              i18n="@@roadmap.verified"
+                              >Verificado</span
+                            >
+                          } @else {
+                            <span
+                              class="rounded px-1.5 py-0.5 text-xs font-medium text-(--mat-sys-on-surface-variant)"
+                              data-testid="roadmap-resource-unverified"
+                              i18n="@@roadmap.unverified"
+                              >Sin verificar</span
+                            >
+                          }
+                        </div>
+                        <p class="m-0 text-sm text-(--mat-sys-on-surface-variant)">
+                          {{ resourceTypeLabel(resource.type) }} · {{ resource.provider }}
+                          @if (resource.free) {
+                            <span i18n="@@roadmap.free"> · Gratis</span>
+                          } @else {
+                            <span i18n="@@roadmap.paid"> · De pago</span>
+                          }
+                        </p>
+                      </li>
+                    }
+                  </ul>
+                </li>
+              }
+            </ul>
+          </section>
+        }
+      </div>
+    }
+  }
+</section>

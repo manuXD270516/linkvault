@@ -135,6 +135,22 @@ export class MatchDialog {
     return report?.missingSkills.filter((skill) => skill.importance === 'nice') ?? [];
   });
 
+  /**
+   * CTA al plan de estudio: informe completo no degradado con `missingSkills` (spec web/roadmap).
+   * Sin skills faltantes no se ofrece CTA vacío.
+   */
+  protected readonly showRoadmapCta = computed((): boolean => {
+    const report = this.report();
+    const analysisId = this.latest()?.analysisId;
+    return (
+      report !== null &&
+      !report.degraded &&
+      report.missingSkills.length > 0 &&
+      analysisId !== undefined &&
+      analysisId.length > 0
+    );
+  });
+
   protected readonly sortedSuggestions = computed((): MatchSuggestion[] => {
     const report = this.report();
     if (report === null || report.degraded) {
@@ -335,6 +351,16 @@ export class MatchDialog {
   protected uploadCv(): void {
     void this.router.navigate(['/mi-cv']);
     this.dialogRef.close({ kind: 'change-cv' });
+  }
+
+  /** Abre el plan de estudio del análisis actual y cierra el diálogo. */
+  protected openRoadmap(): void {
+    const analysisId = this.latest()?.analysisId;
+    if (analysisId === undefined || analysisId.length === 0) {
+      return;
+    }
+    void this.router.navigate(['/plan', analysisId]);
+    this.dialogRef.close();
   }
 
   protected pasteDescription(): void {

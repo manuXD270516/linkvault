@@ -1336,10 +1336,6 @@
         <source> Sube tu CV y LinkVault podrá comparar tus habilidades con cada vacante. </source>
         <target>Upload your CV and LinkVault will be able to compare your skills with every job post.</target>
       </trans-unit>
-      <trans-unit id="cv.privacy" datatype="html">
-        <source> Tu CV solo lo ves tú y hoy no lo lee ninguna IA. No saldrá de LinkVault sin tu autorización. </source>
-        <target>Only you see your CV and today no AI reads it. It will not leave LinkVault without your authorization.</target>
-      </trans-unit>
       <trans-unit id="cv.loading" datatype="html">
         <source>Cargando tus CV…</source>
         <target>Loading your CVs…</target>
@@ -1811,6 +1807,94 @@
           <trans-unit id="cv.delete.analyses" datatype="html">
         <source>También se borrarán los <x id="COUNT" equiv-text="analyses"/> análisis de encaje que hiciste con este CV.</source>
         <target>The <x id="COUNT" equiv-text="analyses"/> fit analyses you made with this CV will also be deleted.</target>
+      </trans-unit>
+      <trans-unit id="match.dialog.openRoadmap" datatype="html">
+        <source> Ver plan de estudio </source>
+        <target>View study plan</target>
+      </trans-unit>
+      <trans-unit id="roadmap.resource.course" datatype="html">
+        <source>Curso</source>
+        <target>Course</target>
+      </trans-unit>
+      <trans-unit id="roadmap.resource.post" datatype="html">
+        <source>Artículo</source>
+        <target>Article</target>
+      </trans-unit>
+      <trans-unit id="roadmap.resource.book" datatype="html">
+        <source>Libro</source>
+        <target>Book</target>
+      </trans-unit>
+      <trans-unit id="roadmap.resource.doc" datatype="html">
+        <source>Documentación</source>
+        <target>Documentation</target>
+      </trans-unit>
+      <trans-unit id="roadmap.resource.video" datatype="html">
+        <source>Vídeo</source>
+        <target>Video</target>
+      </trans-unit>
+      <trans-unit id="roadmap.title" datatype="html">
+        <source>Plan de estudio</source>
+        <target>Study plan</target>
+      </trans-unit>
+      <trans-unit id="roadmap.export" datatype="html">
+        <source> Exportar Markdown </source>
+        <target>Export Markdown</target>
+      </trans-unit>
+      <trans-unit id="roadmap.loading" datatype="html">
+        <source> Cargando tu plan… </source>
+        <target>Loading your plan…</target>
+      </trans-unit>
+      <trans-unit id="roadmap.notEligible" datatype="html">
+        <source> Este análisis no admite un plan de estudio. </source>
+        <target>This analysis cannot produce a study plan.</target>
+      </trans-unit>
+      <trans-unit id="roadmap.notFound" datatype="html">
+        <source> No encontramos este análisis. </source>
+        <target>We could not find this analysis.</target>
+      </trans-unit>
+      <trans-unit id="roadmap.back" datatype="html">
+        <source>Volver a mis links</source>
+        <target>Back to my links</target>
+      </trans-unit>
+      <trans-unit id="roadmap.generating" datatype="html">
+        <source> Estamos preparando tu plan de estudio… </source>
+        <target>We are preparing your study plan…</target>
+      </trans-unit>
+      <trans-unit id="roadmap.failed" datatype="html">
+        <source> No pudimos generar el plan. Inténtalo más tarde desde el análisis de encaje. </source>
+        <target>We could not generate the plan. Try again later from the fit analysis.</target>
+      </trans-unit>
+      <trans-unit id="roadmap.empty" datatype="html">
+        <source> El plan no tiene ítems. </source>
+        <target>The plan has no items.</target>
+      </trans-unit>
+      <trans-unit id="roadmap.week.one" datatype="html">
+        <source>1 semana</source>
+        <target>1 week</target>
+      </trans-unit>
+      <trans-unit id="roadmap.week.many" datatype="html">
+        <source><x id="INTERPOLATION" equiv-text="{{ group.weeks }}"/> semanas</source>
+        <target><x id="INTERPOLATION" equiv-text="{{ group.weeks }}"/> weeks</target>
+      </trans-unit>
+      <trans-unit id="roadmap.priority" datatype="html">
+        <source>Prioridad <x id="INTERPOLATION" equiv-text="{{ item.priority }}"/></source>
+        <target>Priority <x id="INTERPOLATION" equiv-text="{{ item.priority }}"/></target>
+      </trans-unit>
+      <trans-unit id="roadmap.verified" datatype="html">
+        <source>Verificado</source>
+        <target>Verified</target>
+      </trans-unit>
+      <trans-unit id="roadmap.unverified" datatype="html">
+        <source>Sin verificar</source>
+        <target>Unverified</target>
+      </trans-unit>
+      <trans-unit id="roadmap.free" datatype="html">
+        <source> · Gratis</source>
+        <target> · Free</target>
+      </trans-unit>
+      <trans-unit id="roadmap.paid" datatype="html">
+        <source> · De pago</source>
+        <target> · Paid</target>
       </trans-unit>
     </body>
   </file>
