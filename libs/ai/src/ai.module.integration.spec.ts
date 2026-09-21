@@ -202,8 +202,14 @@ describe('AiModule integration', () => {
     const runTask = app.get<RunTaskFn>(RUN_TASK);
     const input = { text: 'Backend con TypeScript y NestJS' };
     const key = keyOf(input);
+    // La tarea real es personal/no cacheable; esta variante pública prueba la caché Redis.
+    const cacheableTask = {
+      ...classifySkillsTask,
+      dataSensitivity: 'public' as const,
+      cacheable: true,
+    };
 
-    const first = await runTask(classifySkillsTask, input, CTX);
+    const first = await runTask(cacheableTask, input, CTX);
     expect(first).toMatchObject({
       status: 'success',
       output: OUTPUT,
@@ -239,7 +245,7 @@ describe('AiModule integration', () => {
       promptVersion: 'v1',
     });
 
-    const second = await runTask(classifySkillsTask, input, CTX);
+    const second = await runTask(cacheableTask, input, CTX);
     expect(second).toEqual({ ...first, cached: true });
     expect(ollama.requests).toEqual(['POST /api/chat']);
 

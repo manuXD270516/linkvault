@@ -34,17 +34,17 @@ export interface Application {
   readonly appliedAt?: Date;
   readonly statusChangedAt: Date;
   /**
-   * Puntuación de encaje (0–100) reservada para `cv-match-suggestions` (D9). En este change nada la escribe y ninguna
-   * respuesta la lleva: no hay método de este módulo que la cambie.
+   * La postulación **no guarda ninguna puntuación** (D11 / ADR-030 §5): `fitScore` / `fitScoreDegraded` se derivan al
+   * responder del último análisis `done` de esa persona sobre ese link. Ninguna operación de este módulo escribe,
+   * edita ni borra una puntuación.
    */
-  readonly fitScore?: number;
   readonly version: number;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 }
 
 /** Postulación aún no guardada: el repositorio le asigna el id. */
-export type NewApplication = Omit<Application, 'id' | 'fitScore'>;
+export type NewApplication = Omit<Application, 'id'>;
 
 /** Alta de una postulación con su primer evento, que se escriben juntos. */
 export interface StartedTracking {
@@ -208,9 +208,6 @@ export function withoutStageAndDate(
     visibility: application.visibility,
     notes: application.notes,
     statusChangedAt: application.statusChangedAt,
-    ...(application.fitScore === undefined
-      ? {}
-      : { fitScore: application.fitScore }),
     version: application.version,
     createdAt: application.createdAt,
     updatedAt: application.updatedAt,

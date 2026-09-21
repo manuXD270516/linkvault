@@ -15,6 +15,8 @@ import {
   evaluableTaskNames,
   extractJobEvaluable,
   extractPastedJobEvaluable,
+  findEvaluableTask,
+  matchCvEvaluable,
 } from '../evaluable-tasks';
 import { goldenPath, loadGolden } from '../golden.schema';
 import { EXIT_CODES } from './args';
@@ -33,6 +35,7 @@ const REAL_EVALS_DIR = join(WORKSPACE_ROOT, 'libs/ai/src/evals');
 const TASK = 'classify-skills';
 const OTHER_TASK = 'extract-job';
 const PASTED_TASK = 'extract-pasted-job';
+const MATCH_TASK = 'match-cv';
 
 /** Golden mínimo de la tercera: una conversación pegada que no es una vacante. */
 const PASTED_GOLDEN = [
@@ -41,6 +44,32 @@ const PASTED_GOLDEN = [
     input: { text: '¿Vienes el sábado? Sí, llevo la torta.' },
     expected: { isJobPosting: false },
     tags: ['placeholder'],
+  },
+];
+
+/** Golden mínimo de match-cv: anonimizado + colisión de nombre (personalCvGolden). */
+const MATCH_GOLDEN = [
+  {
+    id: 'cv-01',
+    input: {
+      job: {
+        title: 'Dev',
+        text: 'TypeScript.',
+        skills: [{ name: 'TypeScript', importance: 'must' }],
+      },
+      cv: {
+        text: 'Ana Paz Flores\nLa Paz\nConstructora Flores S.R.L.\nTypeScript',
+      },
+    },
+    expected: {
+      matchedSkills: ['TypeScript'],
+      missingSkills: [],
+      score: 100,
+    },
+    tags: ['anonymized', 'name-collision'],
+    personName: 'Ana Paz Flores',
+    pii: [{ type: 'name', value: 'Ana Paz Flores' }],
+    skills: ['La Paz', 'Constructora Flores S.R.L.', 'TypeScript'],
   },
 ];
 
@@ -120,6 +149,16 @@ describe('runEvalCommand', () => {
       goldenPath(evalsDir, PASTED_TASK),
       `${PASTED_GOLDEN.map((line) => JSON.stringify(line)).join('\n')}\n`,
     );
+    await mkdir(join(evalsDir, MATCH_TASK), { recursive: true });
+    await mkdir(join(fixturesDir, MATCH_TASK), { recursive: true });
+    await writeFile(
+      goldenPath(evalsDir, MATCH_TASK),
+      `${MATCH_GOLDEN.map((line) => JSON.stringify(line)).join('\n')}\n`,
+    );
+    await writeFile(
+      join(evalsDir, MATCH_TASK, 'known-gaps.json'),
+      '{}\n',
+    );
   });
 
   // "Fixture ausente en replay" espera el error a propósito: este archivo queda fuera del registro de pendientes (4.6).
@@ -160,11 +199,14 @@ describe('runEvalCommand', () => {
     await writeOtherFixtures();
   }
 
-  /** Fixtures de la segunda y la tercera tarea: una página y un texto pegado que no son una vacante. */
+  /** Fixtures de extract-job, extract-pasted-job y match-cv. */
   async function writeOtherFixtures() {
     const pages = await loadGolden(extractJobEvaluable, evalsDir);
     const pasted = await loadGolden(extractPastedJobEvaluable, evalsDir);
-    if (!pages.ok || !pasted.ok) throw new Error('invalid test golden');
+    const match = await loadGolden(matchCvEvaluable, evalsDir);
+    if (!pages.ok || !pasted.ok || !match.ok) {
+      throw new Error('invalid test golden');
+    }
     const notAJob = JSON.stringify({
       source: 'handwritten',
       text: JSON.stringify({ isJobPosting: false, preview: null }),
@@ -181,6 +223,23 @@ describe('runEvalCommand', () => {
       await writeFile(
         join(fixturesDir, PASTED_TASK, `${goldenCase.key}.json`),
         notAJob,
+      );
+    }
+    const matchOutput = JSON.stringify({
+      source: 'handwritten',
+      text: JSON.stringify({
+        score: 100,
+        matchedSkills: ['TypeScript'],
+        missingSkills: [],
+        suggestions: [],
+      }),
+      model: 'fixture-model',
+      usage: { inputTokens: 0, outputTokens: 0 },
+    });
+    for (const goldenCase of match.cases) {
+      await writeFile(
+        join(fixturesDir, MATCH_TASK, `${goldenCase.key}.json`),
+        matchOutput,
       );
     }
   }
@@ -288,6 +347,7 @@ describe('runEvalCommand', () => {
     expect(update.out.join('')).toContain('classify-skills [mock]');
     expect(update.out.join('')).toContain('extract-job [mock]');
     expect(update.out.join('')).toContain('extract-pasted-job [mock]');
+    expect(update.out.join('')).toContain('match-cv [mock]');
 
     const check = captureIo(env);
     await expect(
@@ -452,16 +512,21 @@ describe('Coherencia entre registro y golden sets', () => {
   });
 
   it('detects registered tasks without golden set and golden sets without registered task', async () => {
-    // `match-cv` es un nombre de tarea de IA que todavía no es evaluable: su golden sobraría.
+    // Nombre inventado: ya no vale `match-cv` porque ahora sí es evaluable.
     await mkdir(join(evalsDir, 'metrics'));
-    await mkdir(join(evalsDir, 'match-cv'));
-    await writeFile(join(evalsDir, 'match-cv', 'golden.jsonl'), '');
+    await mkdir(join(evalsDir, 'future-task'));
+    await writeFile(join(evalsDir, 'future-task', 'golden.jsonl'), '');
     await writeFile(join(evalsDir, 'golden.jsonl'), '');
 
-    await expect(goldenTaskDirs(evalsDir)).resolves.toEqual(['match-cv']);
+    await expect(goldenTaskDirs(evalsDir)).resolves.toEqual(['future-task']);
     await expect(registryCoherence(evalsDir)).resolves.toEqual({
-      withoutGolden: ['classify-skills', 'extract-job', 'extract-pasted-job'],
-      unregistered: ['match-cv'],
+      withoutGolden: [
+        'classify-skills',
+        'extract-job',
+        'extract-pasted-job',
+        'match-cv',
+      ],
+      unregistered: ['future-task'],
     });
   });
 
@@ -481,5 +546,10 @@ describe('Coherencia entre registro y golden sets', () => {
       withoutGolden: [],
       unregistered: [],
     });
+  });
+
+  it('findEvaluableTask finds match-cv', () => {
+    expect(findEvaluableTask('match-cv')?.task.name).toBe('match-cv');
+    expect(evaluableTaskNames()).toContain('match-cv');
   });
 });

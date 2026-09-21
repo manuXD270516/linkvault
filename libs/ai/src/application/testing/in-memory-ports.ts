@@ -7,7 +7,10 @@ import type {
   PromptView,
   RenderedPrompt,
 } from '../../domain/ports/prompt-registry.port';
-import type { QuotaPolicy } from '../../domain/ports/quota-policy.port';
+import type {
+  QuotaDecision,
+  QuotaPolicy,
+} from '../../domain/ports/quota-policy.port';
 import type {
   CachedResult,
   ResultCache,
@@ -70,10 +73,10 @@ export class InMemoryQuotaPolicy implements QuotaPolicy {
     private readonly decide: (
       userId: string,
       task: AiTaskName,
-    ) => Promise<boolean> = () => Promise.resolve(true),
+    ) => Promise<QuotaDecision> = () => Promise.resolve({ allowed: true }),
   ) {}
 
-  allows(userId: string, task: AiTaskName): Promise<boolean> {
+  allows(userId: string, task: AiTaskName): Promise<QuotaDecision> {
     this.calls.push({ userId, task });
     return this.decide(userId, task);
   }
@@ -107,27 +110,34 @@ export class RecordingNullCircuitBreaker implements CircuitBreaker {
   readonly successes: string[] = [];
   readonly failures: string[] = [];
 
-  openIds(): ReadonlySet<string> {
-    return new Set();
+  openIds(): Promise<ReadonlySet<string>> {
+    return Promise.resolve(new Set());
   }
 
-  tryAcquire(providerId: string): boolean {
+  snapshotOpenIds(): Promise<ReadonlySet<string> | null> {
+    return Promise.resolve(new Set());
+  }
+
+  tryAcquire(providerId: string): Promise<boolean> {
     this.acquired.push(providerId);
-    return true;
+    return Promise.resolve(true);
   }
 
-  recordSuccess(providerId: string): void {
+  recordSuccess(providerId: string): Promise<void> {
     this.successes.push(providerId);
+    return Promise.resolve();
   }
 
-  recordFailure(providerId: string): void {
+  recordFailure(providerId: string): Promise<void> {
     this.failures.push(providerId);
+    return Promise.resolve();
   }
 
   readonly released: string[] = [];
 
-  release(providerId: string): void {
+  release(providerId: string): Promise<void> {
     this.released.push(providerId);
+    return Promise.resolve();
   }
 }
 

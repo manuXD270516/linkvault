@@ -6,6 +6,7 @@ import {
 import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import type { SessionResponse, UserProfile } from '@linkvault/shared';
+import { AI_CONSENT_TEXT_VERSION } from '@linkvault/shared';
 import { AuthApi, SKIP_BEARER } from './auth.api';
 import { SessionStore } from './session.store';
 
@@ -13,9 +14,14 @@ const user: UserProfile = {
   id: 'u1',
   email: 'ana@example.com',
   displayName: 'Ana',
-  aiConsent: { externalProviders: false },
+  aiConsent: {
+    externalProviders: false,
+    consentedAt: null,
+    textVersion: null,
+    currentTextVersion: AI_CONSENT_TEXT_VERSION,
+  },
   outputLanguage: 'es',
-  redactName: false,
+  redactName: true,
   createdAt: '2026-09-17T10:00:00.000Z',
 };
 
@@ -168,5 +174,87 @@ describe('AuthApi', () => {
 
     await expect(result).resolves.toMatchObject({ displayName: 'Ana María' });
     expect(store.user()?.displayName).toBe('Ana María');
+  });
+
+  it('activa el consentimiento con la versión mostrada', async () => {
+    store.setSession(session);
+    const result = api.updateProfile({
+      aiConsent: { externalProviders: true, textVersion: AI_CONSENT_TEXT_VERSION },
+    });
+
+    const req = http.expectOne('/api/users/me');
+    expect(req.request.method).toBe('PATCH');
+    expect(req.request.body).toEqual({
+      aiConsent: { externalProviders: true, textVersion: AI_CONSENT_TEXT_VERSION },
+    });
+    req.flush({
+      ...user,
+      aiConsent: {
+        externalProviders: true,
+        consentedAt: '2026-09-21T12:00:00.000Z',
+        textVersion: AI_CONSENT_TEXT_VERSION,
+        currentTextVersion: AI_CONSENT_TEXT_VERSION,
+      },
+    });
+
+    await expect(result).resolves.toMatchObject({
+      aiConsent: {
+        externalProviders: true,
+        textVersion: AI_CONSENT_TEXT_VERSION,
+        consentedAt: '2026-09-21T12:00:00.000Z',
+        currentTextVersion: AI_CONSENT_TEXT_VERSION,
+      },
+    });
+  });
+
+  it('propaga 409 consent_text_outdated', async () => {
+    store.setSession(session);
+    const result = api.updateProfile({
+      aiConsent: { externalProviders: true, textVersion: '2026-01-01' },
+    });
+
+    http
+      .expectOne('/api/users/me')
+      .flush(
+        { code: 'consent_text_outdated', message: 'outdated' },
+        { status: 409, statusText: 'Conflict' },
+      );
+
+    await expect(result).rejects.toMatchObject({
+      status: 409,
+      error: { code: 'consent_text_outdated' },
+    });
+  });
+
+  it('revoca el consentimiento sin versión', async () => {
+    store.setSession(session);
+    const result = api.updateProfile({ aiConsent: { externalProviders: false } });
+
+    const req = http.expectOne('/api/users/me');
+    expect(req.request.body).toEqual({ aiConsent: { externalProviders: false } });
+    req.flush({
+      ...user,
+      aiConsent: {
+        externalProviders: false,
+        consentedAt: null,
+        textVersion: null,
+        currentTextVersion: AI_CONSENT_TEXT_VERSION,
+      },
+    });
+
+    await expect(result).resolves.toMatchObject({
+      aiConsent: { externalProviders: false, textVersion: null, consentedAt: null },
+    });
+  });
+
+  it('propaga 500 al actualizar el perfil', async () => {
+    store.setSession(session);
+    const result = api.updateProfile({ redactName: false });
+
+    http
+      .expectOne('/api/users/me')
+      .flush({ code: 'internal_error', message: 'boom' }, { status: 500, statusText: 'Error' });
+
+    await expect(result).rejects.toMatchObject({ status: 500 });
   });
 });

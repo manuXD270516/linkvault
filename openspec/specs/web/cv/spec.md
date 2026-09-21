@@ -14,10 +14,40 @@ nombrar pantallas que todavía no existen.
 nombre "Mi CV". SHALL mostrar los CV guardados y las acciones de subir, marcar, ver lo leído y eliminar. En la pantalla
 SHALL decirse "CV guardado"; el número de versión NO SHALL usarse para identificarlos.
 
-SHALL mostrar siempre, junto a la subida, la línea **"Tu CV solo lo ves tú y hoy no lo lee ninguna IA. No saldrá de
-LinkVault sin tu autorización."** Ese texto NO SHALL prometer que se pedirá permiso en el momento del análisis —la
-autorización es una preferencia del perfil, no una pregunta— ni SHALL nombrar ninguna pantalla o control que todavía no
-exista.
+SHALL mostrar siempre, junto a la subida, la línea **"Tu CV solo lo ves tú y no sale de LinkVault sin tu permiso. En
+Perfil decides si un proveedor de IA externo puede analizarlo: antes de enviárselo sustituimos tu email, tus teléfonos,
+tu dirección, tu documento de identidad y las URL por marcadores, y también tu nombre, salvo que lo desactives
+allí."**, donde "Perfil" SHALL ser un enlace a `/perfil`.
+
+Esa enumeración SHALL decir **lo que el sistema hace hoy**: `redactName` nace activado, así que la línea NO SHALL
+condicionar la sustitución del nombre a que alguien la active, y SHALL ser la misma, dato por dato, que la de `/perfil`
+y la del resumen del diálogo de encaje. Una frase que promete de menos es tan falsa como una que promete de más, y
+estaba justo en la línea que obligamos a re-versionar por prometer de más.
+
+A esa línea base SHALL añadirse una frase de estado que diga **qué pasa hoy con el CV**, atada a la **vigencia** del
+consentimiento —dado y sobre la versión vigente del texto— y **no a que el interruptor esté encendido**, con estos
+tres estados y nunca dos a la vez:
+
+- **sin permiso** (nunca dado, o retirado): **"Ahora mismo no has dado ese permiso, así que tu CV no sale de
+  LinkVault."**;
+- **permiso vigente** (dado sobre el texto vigente): **"Ahora mismo ese permiso está activo: al analizar una oferta,
+  tu CV redactado sale de LinkVault hacia el proveedor externo."**;
+- **permiso caducado** (dado sobre una versión anterior del texto): **"Diste este permiso, pero el texto cambió: ahora
+  mismo tu CV no sale de LinkVault. Revísalo en Perfil."**
+
+De los tres estados, los dos inofensivos dicen que el CV no sale de LinkVault; el vigente es el único con consecuencia
+y por eso SHALL decirla, no limitarse a declarar el permiso activo: quien lo lea tiene que saber, sin abrir nada, que
+su CV redactado sale hacia un tercero cada vez que analice una oferta.
+
+Con el permiso caducado, la pantalla NO SHALL decir que el permiso está activo, porque un consentimiento sobre una
+versión anterior no autoriza ningún envío y lo que `/mi-cv` y `/perfil` dicen del mismo permiso SHALL coincidir.
+Mientras el SPA no conozca el estado del permiso —porque no lo ha cargado o porque su petición falló— SHALL mostrar
+solo la línea base y NO SHALL afirmar que el permiso está activo, que está caducado ni que no lo está.
+
+Ese texto NO SHALL prometer que se pedirá permiso en el momento del análisis —la autorización es una preferencia del
+perfil, no una pregunta— ni SHALL nombrar ninguna pantalla o control que todavía no exista. Tampoco SHALL prometer nada
+que LinkVault no entregue hoy: que el proveedor externo no conserve lo enviado, que lo enviado sea anónimo, que el
+archivo esté cifrado en reposo, que se borre solo pasado un tiempo, ni que el análisis se revise a mano.
 
 Sin ningún CV SHALL mostrar "Sube tu CV y LinkVault podrá comparar tus habilidades con cada vacante." junto al botón de
 subir. Mientras se carga la lista SHALL mostrar un estado de carga, y si la petición falla, el error con "Reintentar".
@@ -33,6 +63,53 @@ subir. Mientras se carga la lista SHALL mostrar un estado de carga, y si la peti
 
 - **WHEN** Ana abre `/mi-cv`
 - **THEN** la línea de privacidad SHALL verse sin desplazarse ni abrir nada
+
+#### Scenario: La autorización tiene dónde darse
+
+- **GIVEN** Ana en `/mi-cv`
+- **WHEN** sigue el enlace "Perfil" de la línea de privacidad
+- **THEN** SHALL llegar a `/perfil`, donde está el control del permiso
+
+#### Scenario: Con el permiso vigente, la línea dice la consecuencia
+
+- **GIVEN** Ana con el consentimiento dado sobre la versión vigente del texto
+- **WHEN** abre `/mi-cv`
+- **THEN** SHALL leer "Ahora mismo ese permiso está activo: al analizar una oferta, tu CV redactado sale de LinkVault
+  hacia el proveedor externo."
+- **AND** SHALL seguir viendo dónde cambiarlo
+
+#### Scenario: La línea del nombre dice lo que el sistema hace
+
+- **WHEN** Ana lee la línea de privacidad sin haber tocado nunca sus preferencias de IA
+- **THEN** SHALL leer que su nombre se sustituye salvo que lo desactive en Perfil
+- **AND** NO SHALL leer que su nombre solo se sustituye si lo activa allí
+
+#### Scenario: Sin permiso, la línea lo dice
+
+- **GIVEN** Ana que nunca dio el permiso
+- **WHEN** abre `/mi-cv`
+- **THEN** SHALL leer "Ahora mismo no has dado ese permiso, así que tu CV no sale de LinkVault."
+
+#### Scenario: Con el permiso caducado, las dos pantallas dicen lo mismo
+
+- **GIVEN** Ana con el consentimiento dado sobre una versión anterior del texto
+- **WHEN** abre `/mi-cv`
+- **THEN** SHALL leer "Diste este permiso, pero el texto cambió: ahora mismo tu CV no sale de LinkVault. Revísalo en
+  Perfil."
+- **AND** NO SHALL leer que ese permiso está activo, igual que en `/perfil`
+
+#### Scenario: Sin conocer el permiso no se afirma nada
+
+- **GIVEN** la API devolviendo `500` al pedir el perfil
+- **WHEN** Ana abre `/mi-cv`
+- **THEN** SHALL ver la línea base de privacidad
+- **AND** NO SHALL leer que el permiso está activo, que está caducado ni que no lo dio
+
+#### Scenario: La línea no promete lo que no hacemos
+
+- **WHEN** se revisa el texto de la línea de privacidad
+- **THEN** NO SHALL decir que se pedirá permiso al analizar, que el proveedor externo no guarda nada, que el envío es
+  anónimo, que el archivo está cifrado ni que caduca solo
 
 #### Scenario: Ruta con sesión
 
@@ -282,6 +359,11 @@ que SHALL pedir la lista y **reanudar otra ventana de sondeo de 60 segundos**.
 recuperar"; si es el marcado, SHALL añadir "Pasará a usarse tu CV más reciente". Confirmado, el CV SHALL desaparecer de
 la lista sin recargar; cancelado, NO SHALL ocurrir nada.
 
+Cuando ese CV tenga análisis de encaje hechos con él, la confirmación SHALL decir además que **también se borrarán**,
+**diciendo cuántos**: "También se borrarán los N análisis de encaje que hiciste con este CV." Sin ningún análisis, esa
+frase NO SHALL mostrarse. El recuento SHALL ser el de los análisis de quien borra sobre ese CV, y borrar un CV NO
+SHALL anunciar los análisis de otro.
+
 #### Scenario: Eliminar un CV
 
 - **GIVEN** Ana con dos CV
@@ -294,6 +376,18 @@ la lista sin recargar; cancelado, NO SHALL ocurrir nada.
 - **WHEN** elimina el marcado
 - **THEN** la confirmación SHALL avisar de que pasará a usarse su CV más reciente
 - **AND** tras confirmar, el otro SHALL quedar marcado
+
+#### Scenario: Borrar el CV se lleva sus análisis y lo dice
+
+- **GIVEN** Ana con un CV y tres análisis de encaje hechos con él
+- **WHEN** pulsa "Eliminar" en ese CV
+- **THEN** la confirmación SHALL decir que también se borrarán los 3 análisis de encaje hechos con ese CV
+
+#### Scenario: Un CV sin análisis no anuncia ninguno
+
+- **GIVEN** Ana con un CV que nunca usó para analizar ninguna oferta
+- **WHEN** pulsa "Eliminar" en ese CV
+- **THEN** la confirmación NO SHALL mencionar ningún análisis de encaje
 
 #### Scenario: Cancelar el borrado
 
@@ -313,11 +407,56 @@ API no expone ninguna ruta que lo devuelva.
 
 ### Requirement: Textos de mi CV en español e inglés
 
-Todos los textos de esta pantalla —bienvenida, línea de privacidad, estados de la lectura, acciones, avisos,
-confirmaciones y errores— SHALL estar marcados para traducción y traducidos al inglés, con el español como idioma por
-defecto.
+Todos los textos de esta pantalla —bienvenida, línea de privacidad con sus tres frases de estado, estados de la
+lectura, acciones, avisos, confirmaciones y errores— SHALL estar marcados para traducción y traducidos al inglés, con
+el español como idioma por defecto. La línea de privacidad SHALL traducirse **entera, con su enlace a `/perfil` dentro
+de la misma unidad**, y NO SHALL componerse concatenando trozos ni insertando el enlace por fuera del texto traducido.
+
+Cambiar el **contenido** de la línea de privacidad o de cualquiera de sus frases de estado SHALL obligar a un
+**identificador de traducción nuevo**, de modo que la traducción vieja NO SHALL poder heredarse: reutilizar el
+identificador dejaría vivo un `target` en inglés que promete lo que el español ya no promete.
+
+SHALL existir además una comprobación automática, que forma parte de las que corren en cada cambio, de que **ni el
+texto original ni ninguna de sus traducciones** afirman que ninguna IA lee el CV, que el CV no sale nunca de LinkVault
+sin matices, ni ninguna otra promesa que este change ya no cumple.
+
+Esa comprobación NO SHALL limitarse a las promesas excesivas: SHALL cubrir también las **afirmaciones equivocadas**,
+que hasta ahora se le escapaban por no prometer de más. En concreto SHALL fallar cuando el texto describa un valor por
+defecto o un comportamiento distinto del que el sistema tiene —como decir que el nombre se sustituye solo si se activa
+cuando `redactName` nace activado— y cuando la enumeración de qué se sustituye no coincida, dato por dato, con la de
+`/perfil` y la del resumen del diálogo de encaje. SHALL contrastarlas con esas fuentes, no con una lista copiada a
+mano, para que cambiar un valor por defecto rompa la comprobación en vez de dejar la frase mintiendo.
 
 #### Scenario: Traducciones completas
 
 - **WHEN** se revisan los textos de `/mi-cv`
 - **THEN** cada uno SHALL tener su unidad de traducción con su versión en inglés
+
+#### Scenario: El enlace viaja dentro del texto
+
+- **WHEN** se revisa la unidad de traducción de la línea de privacidad
+- **THEN** el enlace a `/perfil` SHALL formar parte de esa unidad
+- **AND** la versión en inglés SHALL poder colocarlo en otra posición de la frase
+
+#### Scenario: Cambiar el texto obliga a un identificador nuevo
+
+- **GIVEN** la línea de privacidad con su identificador de traducción actual
+- **WHEN** se cambia su contenido
+- **THEN** SHALL publicarse con un identificador nuevo
+- **AND** la traducción anterior NO SHALL heredarse para el texto nuevo
+
+#### Scenario: La promesa vieja no sobrevive en inglés
+
+- **GIVEN** una traducción al inglés que dice que ninguna IA lee el CV
+- **WHEN** corre la comprobación de los textos de `/mi-cv`
+- **THEN** SHALL fallar nombrando esa unidad de traducción
+- **AND** SHALL fallar igual si esa promesa está en el texto original
+
+#### Scenario: Una afirmación equivocada también rompe la comprobación
+
+- **GIVEN** la línea de privacidad diciendo que el nombre se sustituye "si lo activas en Perfil" mientras `redactName`
+  nace activado
+- **WHEN** corre la comprobación de los textos de `/mi-cv`
+- **THEN** SHALL fallar nombrando esa unidad de traducción, aunque la frase no prometa de más
+- **AND** SHALL fallar igual si la enumeración de qué se sustituye omite un dato que `/perfil` o el resumen del diálogo
+  de encaje sí nombran

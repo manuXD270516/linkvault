@@ -84,6 +84,18 @@ describe('the cv module and AI', () => {
   });
 });
 
+describe('the cv module and match', () => {
+  it('no file imports the match module (dependency is match → cv)', () => {
+    const importsMatch =
+      /(?:^|\n)\s*(?:import|export)[^\n;]*from\s*['"][^'"]*modules\/match[^'"]*['"]|require\(\s*['"][^'"]*modules\/match[^'"]*['"]/;
+    const offenders = filesUnder(join(import.meta.dirname, '..')).filter(
+      (file) => importsMatch.test(readFileSync(file, 'utf8')),
+    );
+
+    expect(offenders).toEqual([]);
+  });
+});
+
 function filesUnder(dir: string): string[] {
   const found: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {

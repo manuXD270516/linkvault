@@ -112,6 +112,7 @@ describe('extract-job schemas', () => {
       promptVersion: 'v1',
       temperature: 0,
       dataSensitivity: 'public',
+      cacheable: true,
       requires: { jsonMode: true },
       budget: { maxAttempts: 2 },
     });

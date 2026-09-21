@@ -55,6 +55,10 @@ export async function workerTestConfig(
     // verdad; la concurrencia es la de `.env.example`.
     CV_EXTRACTION_TIMEOUT_MS: 1_000,
     CV_EXTRACT_CONCURRENCY: 1,
+    // Análisis de encaje: plazos holgados como en `.env.example`; concurrencia 1.
+    MATCH_ANALYSIS_TIMEOUT_MS: 60_000,
+    MATCH_ANALYSIS_CONCURRENCY: 1,
+    MATCH_ANALYSIS_MAX_AGE_MS: 120_000,
     ...overrides,
   };
 }

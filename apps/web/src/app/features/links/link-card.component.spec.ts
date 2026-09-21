@@ -165,6 +165,31 @@ describe('LinkCard', () => {
     expect(anchor?.getAttribute('target')).toBe('_blank');
     expect(anchor?.getAttribute('rel')).toBe('noopener noreferrer');
   });
+
+  it('Analizar el encaje desde la tarjeta', async () => {
+    await render(enriched);
+    const button = host().querySelector<HTMLButtonElement>('[data-testid="link-analyze-match"]');
+    expect(button?.textContent?.trim()).toBe('Analizar mi encaje');
+    expect(host().querySelector('[data-testid="match-badge"]')).toBeNull();
+  });
+
+  it('Lo que no es una oferta no se analiza', async () => {
+    await render({
+      ...bare,
+      previewStatus: 'failed',
+      lastEnrichmentError: { reason: 'not_a_job', at: '2026-09-18T11:00:00.000Z' },
+    });
+    expect(host().querySelector('[data-testid="link-analyze-match"]')).toBeNull();
+  });
+
+  it('queda deshabilitada con aria-busy mientras el análisis corre', async () => {
+    fixture.componentRef.setInput('link', enriched);
+    fixture.componentRef.setInput('matchBusy', true);
+    await fixture.whenStable();
+    const button = host().querySelector<HTMLButtonElement>('[data-testid="link-analyze-match"]');
+    expect(button?.disabled).toBe(true);
+    expect(button?.getAttribute('aria-busy')).toBe('true');
+  });
 });
 
 /**

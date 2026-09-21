@@ -40,27 +40,27 @@ function provider(id: string): LlmProvider {
   };
 }
 
-function chainIds(
+async function chainIds(
   breaker: InMemoryCircuitBreaker,
   providers: readonly LlmProvider[],
-): string[] {
+): Promise<string[]> {
   return buildChain({
     task: { requires: {} },
     ctx: { aiConsent: { externalProviders: true } },
     providers,
-    openIds: breaker.openIds(),
-  }).map((p) => p.id);
+    openIds: await breaker.openIds(),
+  }).providers.map((p) => p.id);
 }
 
-function failTimes(
+async function failTimes(
   breaker: InMemoryCircuitBreaker,
   id: string,
   times: number,
   clock?: FakeClock,
   stepMs = 0,
-): void {
+): Promise<void> {
   for (let i = 0; i < times; i++) {
-    breaker.recordFailure(id);
+    await breaker.recordFailure(id);
     if (clock) clock.advance(stepMs);
   }
 }
@@ -69,174 +69,178 @@ describe('InMemoryCircuitBreaker', () => {
   const ollama = provider('ollama');
   const openrouter = provider('openrouter');
 
-  it('Apertura tras fallos repetidos', () => {
+  it('Apertura tras fallos repetidos', async () => {
     const clock = new FakeClock();
     const breaker = new InMemoryCircuitBreaker(clock);
 
-    failTimes(breaker, 'ollama', 4, clock, 10_000);
-    expect(chainIds(breaker, [ollama, openrouter])).toEqual([
+    await failTimes(breaker, 'ollama', 4, clock, 10_000);
+    expect(await chainIds(breaker, [ollama, openrouter])).toEqual([
       'ollama',
       'openrouter',
     ]);
 
-    breaker.recordFailure('ollama');
+    await breaker.recordFailure('ollama');
 
-    expect(breaker.openIds()).toEqual(new Set(['ollama']));
-    expect(chainIds(breaker, [ollama, openrouter])).toEqual(['openrouter']);
-    expect(breaker.tryAcquire('ollama')).toBe(false);
-    expect(breaker.tryAcquire('openrouter')).toBe(true);
+    expect(await breaker.openIds()).toEqual(new Set(['ollama']));
+    expect(await chainIds(breaker, [ollama, openrouter])).toEqual([
+      'openrouter',
+    ]);
+    expect(await breaker.tryAcquire('ollama')).toBe(false);
+    expect(await breaker.tryAcquire('openrouter')).toBe(true);
   });
 
-  it('does not open when the 5 failures are spread over more than 60 seconds', () => {
+  it('does not open when the 5 failures are spread over more than 60 seconds', async () => {
     const clock = new FakeClock();
     const breaker = new InMemoryCircuitBreaker(clock);
 
-    failTimes(breaker, 'ollama', 5, clock, 15_000);
+    await failTimes(breaker, 'ollama', 5, clock, 15_000);
 
-    expect(breaker.openIds().size).toBe(0);
-    expect(breaker.tryAcquire('ollama')).toBe(true);
+    expect((await breaker.openIds()).size).toBe(0);
+    expect(await breaker.tryAcquire('ollama')).toBe(true);
   });
 
-  it('stays open for 30 seconds and then admits a probe', () => {
+  it('stays open for 30 seconds and then admits a probe', async () => {
     const clock = new FakeClock();
     const breaker = new InMemoryCircuitBreaker(clock);
-    failTimes(breaker, 'ollama', 5);
+    await failTimes(breaker, 'ollama', 5);
 
     clock.advance(29_999);
-    expect(breaker.openIds().has('ollama')).toBe(true);
-    expect(breaker.tryAcquire('ollama')).toBe(false);
+    expect((await breaker.openIds()).has('ollama')).toBe(true);
+    expect(await breaker.tryAcquire('ollama')).toBe(false);
 
     clock.advance(1);
-    expect(breaker.openIds().has('ollama')).toBe(false);
-    expect(chainIds(breaker, [ollama])).toEqual(['ollama']);
+    expect((await breaker.openIds()).has('ollama')).toBe(false);
+    expect(await chainIds(breaker, [ollama])).toEqual(['ollama']);
   });
 
-  it('Recuperación en half-open', () => {
+  it('Recuperación en half-open', async () => {
     const clock = new FakeClock();
     const breaker = new InMemoryCircuitBreaker(clock);
-    failTimes(breaker, 'ollama', 5);
+    await failTimes(breaker, 'ollama', 5);
     clock.advance(30_001);
 
-    expect(breaker.tryAcquire('ollama')).toBe(true);
-    breaker.recordSuccess('ollama');
+    expect(await breaker.tryAcquire('ollama')).toBe(true);
+    await breaker.recordSuccess('ollama');
 
-    expect(breaker.openIds().size).toBe(0);
-    expect(chainIds(breaker, [ollama, openrouter])).toContain('ollama');
-    expect(breaker.tryAcquire('ollama')).toBe(true);
-    expect(breaker.tryAcquire('ollama')).toBe(true);
+    expect((await breaker.openIds()).size).toBe(0);
+    expect(await chainIds(breaker, [ollama, openrouter])).toContain('ollama');
+    expect(await breaker.tryAcquire('ollama')).toBe(true);
+    expect(await breaker.tryAcquire('ollama')).toBe(true);
 
     // Cerrado de nuevo con la ventana vacía: hacen falta otros 5 errores para reabrir.
-    failTimes(breaker, 'ollama', 4);
-    expect(breaker.openIds().size).toBe(0);
+    await failTimes(breaker, 'ollama', 4);
+    expect((await breaker.openIds()).size).toBe(0);
   });
 
-  it('grants a single probe permit while a probe is in flight', () => {
+  it('grants a single probe permit while a probe is in flight', async () => {
     const clock = new FakeClock();
     const breaker = new InMemoryCircuitBreaker(clock);
-    failTimes(breaker, 'ollama', 5);
+    await failTimes(breaker, 'ollama', 5);
     clock.advance(30_000);
 
-    expect(breaker.tryAcquire('ollama')).toBe(true);
-    expect(breaker.tryAcquire('ollama')).toBe(false);
-    expect(breaker.openIds().has('ollama')).toBe(true);
+    expect(await breaker.tryAcquire('ollama')).toBe(true);
+    expect(await breaker.tryAcquire('ollama')).toBe(false);
+    expect((await breaker.openIds()).has('ollama')).toBe(true);
   });
 
-  it('reopens when the half-open probe fails', () => {
+  it('reopens when the half-open probe fails', async () => {
     const clock = new FakeClock();
     const breaker = new InMemoryCircuitBreaker(clock);
-    failTimes(breaker, 'ollama', 5);
+    await failTimes(breaker, 'ollama', 5);
     clock.advance(30_000);
 
-    expect(breaker.tryAcquire('ollama')).toBe(true);
-    breaker.recordFailure('ollama');
+    expect(await breaker.tryAcquire('ollama')).toBe(true);
+    await breaker.recordFailure('ollama');
 
-    expect(breaker.openIds()).toEqual(new Set(['ollama']));
-    expect(chainIds(breaker, [ollama, openrouter])).toEqual(['openrouter']);
+    expect(await breaker.openIds()).toEqual(new Set(['ollama']));
+    expect(await chainIds(breaker, [ollama, openrouter])).toEqual([
+      'openrouter',
+    ]);
 
     clock.advance(29_999);
-    expect(breaker.tryAcquire('ollama')).toBe(false);
+    expect(await breaker.tryAcquire('ollama')).toBe(false);
     clock.advance(1);
-    expect(breaker.tryAcquire('ollama')).toBe(true);
+    expect(await breaker.tryAcquire('ollama')).toBe(true);
   });
 
-  it('Permiso de prueba no usado', () => {
+  it('Permiso de prueba no usado', async () => {
     const clock = new FakeClock();
     const breaker = new InMemoryCircuitBreaker(clock);
-    failTimes(breaker, 'ollama', 5);
+    await failTimes(breaker, 'ollama', 5);
     clock.advance(30_000);
 
     // Ejecución resuelta por un proveedor anterior en la cadena: nunca se llama a tryAcquire('ollama').
-    expect(chainIds(breaker, [openrouter, ollama])).toContain('ollama');
-    expect(breaker.tryAcquire('openrouter')).toBe(true);
-    breaker.recordSuccess('openrouter');
+    expect(await chainIds(breaker, [openrouter, ollama])).toContain('ollama');
+    expect(await breaker.tryAcquire('openrouter')).toBe(true);
+    await breaker.recordSuccess('openrouter');
 
     clock.advance(60_000);
-    expect(breaker.openIds().has('ollama')).toBe(false);
-    expect(chainIds(breaker, [openrouter, ollama])).toContain('ollama');
-    expect(breaker.tryAcquire('ollama')).toBe(true);
+    expect((await breaker.openIds()).has('ollama')).toBe(false);
+    expect(await chainIds(breaker, [openrouter, ollama])).toContain('ollama');
+    expect(await breaker.tryAcquire('ollama')).toBe(true);
   });
 
-  it('release returns a granted half-open permit so a new tryAcquire gets it again', () => {
+  it('release returns a granted half-open permit so a new tryAcquire gets it again', async () => {
     const clock = new FakeClock();
     const breaker = new InMemoryCircuitBreaker(clock);
-    failTimes(breaker, 'ollama', 5);
+    await failTimes(breaker, 'ollama', 5);
     clock.advance(30_000);
 
-    expect(breaker.tryAcquire('ollama')).toBe(true);
-    expect(breaker.tryAcquire('ollama')).toBe(false);
+    expect(await breaker.tryAcquire('ollama')).toBe(true);
+    expect(await breaker.tryAcquire('ollama')).toBe(false);
 
-    breaker.release('ollama');
+    await breaker.release('ollama');
 
-    expect(breaker.openIds().has('ollama')).toBe(false);
-    expect(breaker.tryAcquire('ollama')).toBe(true);
+    expect((await breaker.openIds()).has('ollama')).toBe(false);
+    expect(await breaker.tryAcquire('ollama')).toBe(true);
     // Sigue en half-open: un fallo de la nueva prueba reabre.
-    breaker.recordFailure('ollama');
-    expect(breaker.openIds()).toEqual(new Set(['ollama']));
+    await breaker.recordFailure('ollama');
+    expect(await breaker.openIds()).toEqual(new Set(['ollama']));
   });
 
-  it('release without a granted permit does nothing', () => {
+  it('release without a granted permit does nothing', async () => {
     const clock = new FakeClock();
     const breaker = new InMemoryCircuitBreaker(clock);
 
     // Cerrado: no toca la ventana de errores.
-    failTimes(breaker, 'ollama', 4);
-    breaker.release('ollama');
-    breaker.release('unknown');
-    breaker.recordFailure('ollama');
-    expect(breaker.openIds()).toEqual(new Set(['ollama']));
+    await failTimes(breaker, 'ollama', 4);
+    await breaker.release('ollama');
+    await breaker.release('unknown');
+    await breaker.recordFailure('ollama');
+    expect(await breaker.openIds()).toEqual(new Set(['ollama']));
 
     // Abierto sin estar listo para prueba: sigue abierto.
     clock.advance(10_000);
-    breaker.release('ollama');
-    expect(breaker.openIds()).toEqual(new Set(['ollama']));
-    expect(breaker.tryAcquire('ollama')).toBe(false);
+    await breaker.release('ollama');
+    expect(await breaker.openIds()).toEqual(new Set(['ollama']));
+    expect(await breaker.tryAcquire('ollama')).toBe(false);
 
     // Half-open sin permiso tomado: el permiso sigue siendo único.
     clock.advance(20_000);
-    breaker.release('ollama');
-    expect(breaker.tryAcquire('ollama')).toBe(true);
-    expect(breaker.tryAcquire('ollama')).toBe(false);
+    await breaker.release('ollama');
+    expect(await breaker.tryAcquire('ollama')).toBe(true);
+    expect(await breaker.tryAcquire('ollama')).toBe(false);
   });
 
-  it('ignores a late failure from a request started before the circuit opened', () => {
+  it('ignores a late failure from a request started before the circuit opened', async () => {
     const clock = new FakeClock();
     const breaker = new InMemoryCircuitBreaker(clock);
-    failTimes(breaker, 'ollama', 5);
+    await failTimes(breaker, 'ollama', 5);
 
     clock.advance(20_000);
-    breaker.recordFailure('ollama');
+    await breaker.recordFailure('ollama');
     clock.advance(10_000);
 
-    expect(breaker.tryAcquire('ollama')).toBe(true);
+    expect(await breaker.tryAcquire('ollama')).toBe(true);
   });
 
-  it('keeps circuits independent per provider', () => {
+  it('keeps circuits independent per provider', async () => {
     const clock = new FakeClock();
     const breaker = new InMemoryCircuitBreaker(clock);
-    failTimes(breaker, 'ollama', 5);
-    failTimes(breaker, 'openrouter', 4);
+    await failTimes(breaker, 'ollama', 5);
+    await failTimes(breaker, 'openrouter', 4);
 
-    expect(breaker.openIds()).toEqual(new Set(['ollama']));
-    expect(breaker.tryAcquire('openrouter')).toBe(true);
+    expect(await breaker.openIds()).toEqual(new Set(['ollama']));
+    expect(await breaker.tryAcquire('openrouter')).toBe(true);
   });
 });

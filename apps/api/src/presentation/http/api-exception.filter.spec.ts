@@ -91,6 +91,15 @@ import {
   UnsupportedCvFile,
 } from '../../modules/cv/domain/errors';
 import {
+  AnalysisNotFound,
+  CvNotReadable,
+  CvNotReady,
+  JobNotReady,
+  NoCv,
+  TooManyAnalysisAttempts,
+} from '../../modules/match/domain/errors';
+import {
+  ConsentTextOutdated,
   EmailAlreadyRegistered,
   InvalidDisplayName,
   InvalidProfileChanges,
@@ -110,6 +119,7 @@ const THROWN: Record<string, () => unknown> = {
   'password-policy': () =>
     new PasswordPolicyViolation('newPassword', 'too_short'),
   'email-already-registered': () => new EmailAlreadyRegistered(),
+  'consent-text-outdated': () => new ConsentTextOutdated(),
   'invalid-profile-field': () => new InvalidProfileChanges('outputLanguage'),
   'invalid-profile-empty': () => new InvalidProfileChanges(),
   'invalid-display-name': () => new InvalidDisplayName(),
@@ -156,6 +166,12 @@ const THROWN: Record<string, () => unknown> = {
   'too-many-cvs': () => new TooManyCvDocuments(),
   'invalid-cv-upload': () => new InvalidCvUpload(),
   'too-many-cv-attempts': () => new TooManyCvAttempts(742),
+  'analysis-not-found': () => new AnalysisNotFound(),
+  'no-cv': () => new NoCv(),
+  'cv-not-ready': () => new CvNotReady(),
+  'cv-not-readable': () => new CvNotReadable(),
+  'job-not-ready': () => new JobNotReady(),
+  'too-many-analysis-attempts': () => new TooManyAnalysisAttempts(321),
   unknown: () =>
     new Error(
       `E11000 duplicate key error dup key: { email: "${SECRET_EMAIL}" }`,
@@ -355,6 +371,7 @@ describe('ApiExceptionFilter', () => {
     ['user-not-found', 401, 'unauthorized', undefined],
     ['email-taken', 409, 'email_taken', undefined],
     ['email-already-registered', 409, 'email_taken', undefined],
+    ['consent-text-outdated', 409, 'consent_text_outdated', undefined],
     ['refresh-conflict', 409, 'refresh_conflict', undefined],
     ['password-policy', 400, 'validation_error', ['newPassword']],
     ['invalid-profile-field', 400, 'validation_error', ['outputLanguage']],
@@ -554,6 +571,33 @@ describe('ApiExceptionFilter', () => {
     });
     // Sin su rama propia, la genérica de `CvError` respondería el mismo código sin la cabecera.
     expect(response.headers['retry-after']).toBe('742');
+  });
+
+  it.each([
+    ['analysis-not-found', 404, 'analysis_not_found'],
+    ['no-cv', 409, 'no_cv'],
+    ['cv-not-ready', 409, 'cv_not_ready'],
+    ['cv-not-readable', 409, 'cv_not_readable'],
+    ['job-not-ready', 409, 'job_not_ready'],
+  ] as const)('answers match %s with %i %s', async (name, status, code) => {
+    const response = await get(name);
+
+    expect(response.statusCode).toBe(status);
+    expect(apiErrorResponseSchema.parse(response.json())).toEqual({
+      code,
+      message: expect.any(String),
+    });
+  });
+
+  it('answers a spent match window with 429 and its Retry-After', async () => {
+    const response = await get('too-many-analysis-attempts');
+
+    expect(response.statusCode).toBe(429);
+    expect(response.json()).toEqual({
+      code: 'too_many_attempts',
+      message: expect.any(String),
+    });
+    expect(response.headers['retry-after']).toBe('321');
   });
 
   it('keeps the Nest response of other HTTP exceptions (unknown route, health 503)', async () => {

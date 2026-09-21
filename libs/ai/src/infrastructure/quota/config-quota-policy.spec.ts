@@ -17,18 +17,33 @@ import { ConfigQuotaPolicy, QUOTA_WINDOW_MS } from './config-quota-policy';
 
 // Requisito "Cuotas diarias por usuario y tarea" (specs/ai/usage-accounting) y D9 de ai-gateway-core, contra el
 // MongoMemoryReplSet del preset de @linkvault/testing y contadores falsos para los fallos.
+// `retryAt` de cv-match-suggestions 3.4.
 
 const NOW = Date.parse('2026-09-17T10:00:00.000Z');
 const clock: Clock = { now: () => NOW };
 
 class RecordingCounter implements SuccessCounter {
-  readonly queries: SuccessCountQuery[] = [];
+  readonly countQueries: SuccessCountQuery[] = [];
+  readonly oldestQueries: SuccessCountQuery[] = [];
 
-  constructor(private readonly count: () => Promise<number>) {}
+  constructor(
+    private readonly count: () => Promise<number>,
+    private readonly oldest: () => Promise<Date | null> = () =>
+      Promise.resolve(null),
+  ) {}
 
   countSuccessesSince(query: SuccessCountQuery): Promise<number> {
-    this.queries.push(query);
+    this.countQueries.push(query);
     return this.count();
+  }
+
+  oldestSuccessSince(query: SuccessCountQuery): Promise<Date | null> {
+    this.oldestQueries.push(query);
+    return this.oldest();
+  }
+
+  get queries(): SuccessCountQuery[] {
+    return this.countQueries;
   }
 }
 
@@ -73,8 +88,9 @@ function usage(
 describe('ConfigQuotaPolicy', () => {
   it('Límite alcanzado', async () => {
     const userId = 'quota-reached';
+    const oldestMsAgo = QUOTA_WINDOW_MS - 1_000;
     await ledger.record(usage(userId, 'success', 60_000));
-    await ledger.record(usage(userId, 'success', QUOTA_WINDOW_MS - 1_000));
+    await ledger.record(usage(userId, 'success', oldestMsAgo));
     const logger = new InMemoryAiLogger();
     const policy = new ConfigQuotaPolicy({
       limits: { 'classify-skills': 2 },
@@ -83,7 +99,10 @@ describe('ConfigQuotaPolicy', () => {
       logger,
     });
 
-    await expect(policy.allows(userId, 'classify-skills')).resolves.toBe(false);
+    await expect(policy.allows(userId, 'classify-skills')).resolves.toEqual({
+      allowed: false,
+      retryAt: new Date(NOW - oldestMsAgo + QUOTA_WINDOW_MS),
+    });
     expect(logger.warnings).toEqual([]);
   });
 
@@ -101,7 +120,9 @@ describe('ConfigQuotaPolicy', () => {
       logger: new InMemoryAiLogger(),
     });
 
-    await expect(policy.allows(userId, 'classify-skills')).resolves.toBe(true);
+    await expect(policy.allows(userId, 'classify-skills')).resolves.toEqual({
+      allowed: true,
+    });
   });
 
   it('does not count for a task without a configured limit', async () => {
@@ -113,10 +134,11 @@ describe('ConfigQuotaPolicy', () => {
       logger: new InMemoryAiLogger(),
     });
 
-    await expect(policy.allows('any-user', 'classify-skills')).resolves.toBe(
-      true,
-    );
+    await expect(policy.allows('any-user', 'classify-skills')).resolves.toEqual({
+      allowed: true,
+    });
     expect(counter.queries).toEqual([]);
+    expect(counter.oldestQueries).toEqual([]);
   });
 
   it('queries the last 24 hours with maxTimeMS 300', async () => {
@@ -138,6 +160,7 @@ describe('ConfigQuotaPolicy', () => {
         maxTimeMS: 300,
       },
     ]);
+    expect(counter.oldestQueries).toEqual([]);
   });
 
   it('Conteo no disponible', async () => {
@@ -151,9 +174,9 @@ describe('ConfigQuotaPolicy', () => {
       logger,
     });
 
-    await expect(policy.allows('user-1', 'classify-skills')).resolves.toBe(
-      true,
-    );
+    await expect(policy.allows('user-1', 'classify-skills')).resolves.toEqual({
+      allowed: true,
+    });
     expect(logger.warnings).toHaveLength(1);
     expect(logger.warnings[0]?.fields).toEqual({
       task: 'classify-skills',
@@ -171,14 +194,32 @@ describe('ConfigQuotaPolicy', () => {
     });
 
     const started = Date.now();
-    await expect(policy.allows('user-1', 'classify-skills')).resolves.toBe(
-      true,
-    );
+    await expect(policy.allows('user-1', 'classify-skills')).resolves.toEqual({
+      allowed: true,
+    });
     const elapsed = Date.now() - started;
 
     expect(elapsed).toBeGreaterThanOrEqual(250);
     expect(elapsed).toBeLessThan(1_000);
     expect(logger.warnings).toHaveLength(1);
     expect(logger.warnings[0]?.fields).toMatchObject({ timeoutMs: 300 });
+  });
+
+  it('allows when the oldest-success query fails after the limit is reached', async () => {
+    const logger = new InMemoryAiLogger();
+    const policy = new ConfigQuotaPolicy({
+      limits: { 'classify-skills': 1 },
+      counter: new RecordingCounter(
+        () => Promise.resolve(2),
+        () => Promise.reject(new Error('oldest failed')),
+      ),
+      clock,
+      logger,
+    });
+
+    await expect(policy.allows('user-1', 'classify-skills')).resolves.toEqual({
+      allowed: true,
+    });
+    expect(logger.warnings[0]?.message).toMatch(/oldest-success failed/);
   });
 });

@@ -137,4 +137,28 @@ describe('LinksFacade', () => {
       facade.linkIdsSharedIn('no-es-un-id', [groupLink.id]),
     ).resolves.toEqual(new Set());
   });
+
+  it('matchJobSummaryOf exposes previewVersion, title and summary as description', async () => {
+    const withPreview = links.seed({
+      ...jobLinkDraft('https://www.linkedin.com/jobs/view/3855555555/'),
+      previewStatus: 'enriched',
+      previewVersion: 4,
+      preview: {
+        title: 'Backend Engineer',
+        summary: 'Texto de la vacante',
+      },
+    });
+    await userLinks.save(
+      { userId: ANA, linkId: withPreview.id, savedAt: now },
+      IN_MEMORY_SESSION,
+    );
+
+    await expect(facade.matchJobSummaryOf(withPreview.id)).resolves.toEqual({
+      id: withPreview.id,
+      previewVersion: 4,
+      title: 'Backend Engineer',
+      description: 'Texto de la vacante',
+    });
+    await expect(facade.matchJobSummaryOf('no-es-un-id')).resolves.toBeNull();
+  });
 });

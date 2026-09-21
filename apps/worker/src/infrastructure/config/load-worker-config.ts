@@ -4,6 +4,11 @@ import {
   parseAiConfig,
 } from '@linkvault/ai';
 import {
+  MATCH_ANALYSIS_DEADLINE_MARGIN_MS,
+  MATCH_ANALYSIS_DELIVERIES,
+  assertAnalysisDeadlines,
+} from '@linkvault/shared';
+import {
   formatInvalidVariables,
   type InvalidVariable,
   parseEnv,
@@ -21,6 +26,10 @@ export interface LoadedWorkerConfig {
  * Ejecuta siempre el schema del worker y `parseAiConfig` para informar de todos los problemas a la vez. Si algo
  * falla, escribe por stderr una sola línea con variables, motivo y detalle (todavía no hay logger y `console` está
  * prohibido), nunca valores, y termina con código 1.
+ *
+ * Tras validar, comprueba que `MATCH_ANALYSIS_MAX_AGE_MS` sea mayor que `MATCH_ANALYSIS_TIMEOUT_MS` contando
+ * entregas y margen (ADR-030 §7): una pareja invertida impide arrancar. Api y worker han de recibir el **mismo**
+ * `MATCH_ANALYSIS_MAX_AGE_MS`.
  */
 export function loadWorkerConfigOrExit(
   env: Readonly<Record<string, string | undefined>>,
@@ -28,6 +37,26 @@ export function loadWorkerConfigOrExit(
   const worker = parseEnv(workerConfigSchema, env);
   const ai = parseAiConfig(env);
   if (worker.ok && ai.ok) {
+    try {
+      assertAnalysisDeadlines({
+        maxAgeMs: worker.config.MATCH_ANALYSIS_MAX_AGE_MS,
+        timeoutMs: worker.config.MATCH_ANALYSIS_TIMEOUT_MS,
+        deliveries: MATCH_ANALYSIS_DELIVERIES,
+        marginMs: MATCH_ANALYSIS_DEADLINE_MARGIN_MS,
+      });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      process.stderr.write(
+        formatInvalidVariables('worker', [
+          {
+            name: 'MATCH_ANALYSIS_MAX_AGE_MS',
+            reason: 'invalid',
+            detail,
+          },
+        ]),
+      );
+      return process.exit(1);
+    }
     return { config: worker.config, ai: ai.config };
   }
 

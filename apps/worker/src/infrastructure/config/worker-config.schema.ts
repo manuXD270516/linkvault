@@ -86,6 +86,16 @@ export const workerConfigSchema = z
     // Extracciones a la vez. El parseo es trabajo de CPU en el hilo principal: con 1, un PDF pesado retrasa al
     // siguiente CV y no a todo el worker. El tope de 4 existe para que subirlo sea una decisión y no un descuido.
     CV_EXTRACT_CONCURRENCY: positiveInt.min(1).max(4),
+    // --- Análisis de encaje (cv-match-suggestions, ADR-030) ---
+    // Plazo de una ejecución de `match-cv` en el worker, en milisegundos. Es el `ctx.signal` de `runTask` y el
+    // tope del job; vencido, el análisis queda `failed` con `internal_error`.
+    MATCH_ANALYSIS_TIMEOUT_MS: positiveInt.min(1_000).max(300_000),
+    // Análisis a la vez en el proceso. El tope de 4 existe para que subirlo sea una decisión y no un descuido.
+    MATCH_ANALYSIS_CONCURRENCY: positiveInt.min(1).max(4),
+    // Plazo tras el cual un `running` se considera vencido al escribir el resultado. **Ha de ser el mismo valor
+    // que recibe `api`**: la escritura condicionada a "no vencido" vive aquí, no en la API. Quien comprueba la
+    // pareja con `MATCH_ANALYSIS_TIMEOUT_MS` es `assertAnalysisDeadlines` en el arranque de cada proceso.
+    MATCH_ANALYSIS_MAX_AGE_MS: positiveInt.min(1_000).max(600_000),
   })
   // Cada issue lleva `path` con la variable: `parseEnv` descarta los issues que no nombran ninguna.
   .superRefine((config, ctx) => {

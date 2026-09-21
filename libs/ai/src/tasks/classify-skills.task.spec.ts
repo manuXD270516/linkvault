@@ -81,6 +81,7 @@ describe('classify-skills schemas', () => {
       name: 'classify-skills',
       promptVersion: 'v1',
       dataSensitivity: 'personal',
+      cacheable: false,
       requires: { jsonMode: true, maxContextTokens: 8_000 },
       temperature: 0,
       budget: { maxTokens: 1_024, maxAttempts: 2 },

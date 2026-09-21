@@ -4,6 +4,7 @@ import type { Clock } from '../../domain/ports/clock.port';
 // Circuit breaker en memoria por proceso y por proveedor (D10 de ai-gateway-core, ADR-018 §7).
 // Cerrado: ventana deslizante de marcas de error. Abierto: sin peticiones hasta `halfOpenAfterMs`. Half-open: un único
 // permiso de prueba que se toma con `tryAcquire` justo antes de `complete()`; si nadie lo toma, sigue disponible.
+// Se conserva para tests y para la ejecución sin Redis (cv-match-suggestions 4.2).
 
 export interface InMemoryCircuitBreakerOptions {
   /** Errores de proveedor dentro de la ventana que abren el circuito. Por defecto 5. */
@@ -44,32 +45,36 @@ export class InMemoryCircuitBreaker implements CircuitBreaker {
       options.halfOpenAfterMs ?? DEFAULT_HALF_OPEN_AFTER_MS;
   }
 
-  openIds(): ReadonlySet<string> {
-    const now = this.clock.now();
-    const ids = new Set<string>();
-    for (const [id, circuit] of this.circuits) {
-      if (circuit.openedAt !== null && !this.admitsProbe(circuit, now)) {
-        ids.add(id);
-      }
+  openIds(): Promise<ReadonlySet<string>> {
+    return Promise.resolve(this.computeOpenIds());
+  }
+
+  snapshotOpenIds(): Promise<ReadonlySet<string> | null> {
+    return Promise.resolve(this.computeOpenIds());
+  }
+
+  tryAcquire(providerId: string): Promise<boolean> {
+    const circuit = this.circuits.get(providerId);
+    if (circuit === undefined || circuit.openedAt === null) {
+      return Promise.resolve(true);
     }
-    return ids;
-  }
-
-  tryAcquire(providerId: string): boolean {
-    const circuit = this.circuits.get(providerId);
-    if (circuit === undefined || circuit.openedAt === null) return true;
-    if (!this.admitsProbe(circuit, this.clock.now())) return false;
+    if (!this.admitsProbe(circuit, this.clock.now())) {
+      return Promise.resolve(false);
+    }
     circuit.probeInFlight = true;
-    return true;
+    return Promise.resolve(true);
   }
 
-  recordSuccess(providerId: string): void {
+  recordSuccess(providerId: string): Promise<void> {
     const circuit = this.circuits.get(providerId);
-    if (circuit === undefined || circuit.openedAt === null) return;
+    if (circuit === undefined || circuit.openedAt === null) {
+      return Promise.resolve();
+    }
     this.circuits.delete(providerId);
+    return Promise.resolve();
   }
 
-  recordFailure(providerId: string): void {
+  recordFailure(providerId: string): Promise<void> {
     const now = this.clock.now();
     const circuit = this.circuitOf(providerId);
 
@@ -79,7 +84,7 @@ export class InMemoryCircuitBreaker implements CircuitBreaker {
         circuit.openedAt = now;
         circuit.probeInFlight = false;
       }
-      return;
+      return Promise.resolve();
     }
 
     circuit.failures = circuit.failures.filter(
@@ -91,13 +96,28 @@ export class InMemoryCircuitBreaker implements CircuitBreaker {
       circuit.openedAt = now;
       circuit.probeInFlight = false;
     }
+    return Promise.resolve();
   }
 
-  release(providerId: string): void {
+  release(providerId: string): Promise<void> {
     const circuit = this.circuits.get(providerId);
-    if (circuit === undefined || circuit.openedAt === null) return;
+    if (circuit === undefined || circuit.openedAt === null) {
+      return Promise.resolve();
+    }
     // Devuelve el permiso sin reabrir ni contar un error: el circuito sigue en half-open.
     circuit.probeInFlight = false;
+    return Promise.resolve();
+  }
+
+  private computeOpenIds(): ReadonlySet<string> {
+    const now = this.clock.now();
+    const ids = new Set<string>();
+    for (const [id, circuit] of this.circuits) {
+      if (circuit.openedAt !== null && !this.admitsProbe(circuit, now)) {
+        ids.add(id);
+      }
+    }
+    return ids;
   }
 
   private admitsProbe(circuit: ProviderCircuit, now: number): boolean {

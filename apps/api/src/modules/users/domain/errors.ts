@@ -39,3 +39,16 @@ export class InvalidDisplayName extends InvalidProfileChanges {
     super('displayName');
   }
 }
+
+/**
+ * La `textVersion` enviada al activar el consentimiento no es la vigente. El perfil no se modifica (D5): el cliente debe
+ * mostrar el texto actual y pedir una nueva aceptación.
+ */
+export class ConsentTextOutdated extends Error {
+  override readonly name = 'ConsentTextOutdated';
+  readonly code = 'consent_text_outdated' as const;
+
+  constructor() {
+    super('The consent text changed; read it again');
+  }
+}

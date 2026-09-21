@@ -44,13 +44,14 @@ describe('UsersModule', () => {
     });
     const updated = await moduleRef
       .get(UpdateMyProfile)
-      .execute(created.id, { redactName: true });
+      .execute(created.id, { redactName: false });
 
     expect(created.email).toBe('modulo@example.com');
+    expect(created.redactName).toBe(true);
     expect(await moduleRef.get(GetMyProfile).execute(created.id)).toEqual(
       updated,
     );
-    expect(updated.redactName).toBe(true);
+    expect(updated.redactName).toBe(false);
     expect(await facade.getAuthState(created.id)).toEqual({
       userId: created.id,
       passwordChangedAt: new Date(created.createdAt),

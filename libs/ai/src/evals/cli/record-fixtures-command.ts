@@ -13,6 +13,7 @@ import { formatGoldenIssues, loadGolden } from '../golden.schema';
 import { pendingCases, type PendingSkip } from '../recording/pending-cases';
 import {
   recordFixtures,
+  PersonalTaskUpstreamRejected,
   type RecordFixturesSummary,
 } from '../recording/record-fixtures';
 import { composeEvalRunTask } from '../runner/compose-run-task';
@@ -102,6 +103,10 @@ export async function runRecordFixturesCommand(
       overwrite: args.overwrite,
     });
   } catch (error) {
+    if (error instanceof PersonalTaskUpstreamRejected) {
+      io.stderr(`[ai:record-fixtures] ${error.message}\n`);
+      return EXIT_CODES.usage;
+    }
     if (error instanceof EvalCaseProgrammingError) {
       io.stderr(`[ai:record-fixtures] ${error.message}\n`);
       return EXIT_CODES.programming;
@@ -223,6 +228,7 @@ function composeUpstream(
     env: io.env,
     provider: args.upstream,
     allowExternal: args.allowExternal,
+    ...(args.upstream === 'mock' ? { mockMode: 'synth' as const } : {}),
     ...(args.ollamaUrl === undefined ? {} : { ollamaUrl: args.ollamaUrl }),
     ...(args.timeoutMs === undefined ? {} : { timeoutMs: args.timeoutMs }),
     tasks: registry.map((e) => e.task),

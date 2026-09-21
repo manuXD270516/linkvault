@@ -109,7 +109,9 @@ describe('UploadCv, the path that saves', () => {
       'isDefault',
       'uploadedAt',
       'extraction',
+      'matchAnalysesCount',
     ]);
+    expect(saved.matchAnalysesCount).toBe(0);
   });
 });
 

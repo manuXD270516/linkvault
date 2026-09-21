@@ -3,6 +3,11 @@ import {
   type AiConfigProblem,
   parseAiConfig,
 } from '@linkvault/ai';
+import {
+  MATCH_ANALYSIS_DEADLINE_MARGIN_MS,
+  MATCH_ANALYSIS_DELIVERIES,
+  assertAnalysisDeadlines,
+} from '@linkvault/shared';
 import { apiConfigSchema, type ApiConfig } from './api-config.schema';
 import {
   formatInvalidVariables,
@@ -25,6 +30,9 @@ export interface LoadedApiConfig {
  * duplicar las reglas de IA y para informar de todos los problemas a la vez. Si algo falla, escribe por stderr una sola
  * línea con variables, motivo y detalle (todavía no hay logger y `console` está prohibido), nunca valores, y termina
  * con código 1.
+ *
+ * Tras validar, comprueba que `MATCH_ANALYSIS_MAX_AGE_MS` sea mayor que `MATCH_ANALYSIS_TIMEOUT_MS` contando
+ * entregas y margen (ADR-030 §7): una pareja invertida impide arrancar.
  */
 export function loadApiConfigOrExit(
   env: Readonly<Record<string, string | undefined>>,
@@ -32,6 +40,26 @@ export function loadApiConfigOrExit(
   const api = parseEnv(apiConfigSchema, env);
   const ai = parseAiConfig(env);
   if (api.ok && ai.ok) {
+    try {
+      assertAnalysisDeadlines({
+        maxAgeMs: api.config.MATCH_ANALYSIS_MAX_AGE_MS,
+        timeoutMs: api.config.MATCH_ANALYSIS_TIMEOUT_MS,
+        deliveries: MATCH_ANALYSIS_DELIVERIES,
+        marginMs: MATCH_ANALYSIS_DEADLINE_MARGIN_MS,
+      });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      process.stderr.write(
+        formatInvalidVariables('api', [
+          {
+            name: 'MATCH_ANALYSIS_MAX_AGE_MS',
+            reason: 'invalid',
+            detail,
+          },
+        ]),
+      );
+      return process.exit(1);
+    }
     return { config: api.config, ai: ai.config };
   }
 

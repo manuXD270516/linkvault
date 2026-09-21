@@ -164,6 +164,9 @@ describe('worker configuration', () => {
       S3_BUCKET: 'cvs',
       CV_EXTRACTION_TIMEOUT_MS: 30_000,
       CV_EXTRACT_CONCURRENCY: 1,
+      MATCH_ANALYSIS_TIMEOUT_MS: 60_000,
+      MATCH_ANALYSIS_CONCURRENCY: 1,
+      MATCH_ANALYSIS_MAX_AGE_MS: 120_000,
     });
   });
 
@@ -207,6 +210,12 @@ describe('worker configuration', () => {
     ['CV_EXTRACTION_TIMEOUT_MS', '120001'],
     ['CV_EXTRACT_CONCURRENCY', '0'],
     ['CV_EXTRACT_CONCURRENCY', '5'],
+    ['MATCH_ANALYSIS_TIMEOUT_MS', '999'],
+    ['MATCH_ANALYSIS_TIMEOUT_MS', '300001'],
+    ['MATCH_ANALYSIS_CONCURRENCY', '0'],
+    ['MATCH_ANALYSIS_CONCURRENCY', '5'],
+    ['MATCH_ANALYSIS_MAX_AGE_MS', '999'],
+    ['MATCH_ANALYSIS_MAX_AGE_MS', '600001'],
   ])('rejects %s=%s naming the variable', (name, value) => {
     const result = parseEnv(workerConfigSchema, {
       ...readEnvExample(),
@@ -217,6 +226,30 @@ describe('worker configuration', () => {
       ok: false,
       invalid: [{ name, reason: 'invalid' }],
     });
+  });
+
+  it('refuses to start when MATCH_ANALYSIS_MAX_AGE_MS is not greater than the worker timeout', () => {
+    const exit = vi.spyOn(process, 'exit').mockImplementation((code) => {
+      throw new ProcessExit(code);
+    });
+    const stderr = vi
+      .spyOn(process.stderr, 'write')
+      .mockImplementation(() => true);
+
+    expect(() =>
+      loadWorkerConfigOrExit({
+        ...readEnvExample(),
+        MATCH_ANALYSIS_MAX_AGE_MS: '30000',
+        MATCH_ANALYSIS_TIMEOUT_MS: '60000',
+      }),
+    ).toThrow(ProcessExit);
+
+    expect(exit).toHaveBeenCalledWith(1);
+    const output = stderr.mock.calls.map(([chunk]) => String(chunk)).join('');
+    expect(output).toContain('MATCH_ANALYSIS_MAX_AGE_MS');
+    expect(output).toContain('MATCH_ANALYSIS_TIMEOUT_MS');
+    expect(output).toContain('30000');
+    expect(output).toContain('60000');
   });
 
   it('requires the enrichment variables', () => {

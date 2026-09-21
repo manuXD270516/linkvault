@@ -9,7 +9,8 @@ import { getMongoTestUri } from '@linkvault/testing';
 import mongoose, { type Connection } from 'mongoose';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AiModule } from './ai.module';
-import { RUN_TASK } from './ai.tokens';
+import { PROVIDER_ELIGIBILITY, RUN_TASK } from './ai.tokens';
+import type { ProviderEligibility } from './application/provider-eligibility';
 import type { RunTaskFn } from './application/run-task.usecase';
 import type { AiConfig } from './infrastructure/config/ai-config.schema';
 import { parseAiConfig } from './infrastructure/config/parse-ai-config';
@@ -82,6 +83,14 @@ describe('AiModule', () => {
 
     const runTask = moduleRef.get<RunTaskFn>(RUN_TASK);
     expect(typeof runTask).toBe('function');
+
+    const eligibility = moduleRef.get<ProviderEligibility>(PROVIDER_ELIGIBILITY);
+    await expect(
+      eligibility.hasEligibleProvider({
+        task: { requires: {} },
+        aiConsent: { externalProviders: false },
+      }),
+    ).resolves.toMatchObject({ status: 'ready', hasEligible: true });
 
     const result = await runTask(
       classifySkillsTask,

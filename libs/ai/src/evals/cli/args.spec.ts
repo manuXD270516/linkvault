@@ -174,7 +174,7 @@ describe('parseRecordFixturesArgs', () => {
       '--pending-file requires --from-pending',
     ],
     [['--task=a'], '--upstream is required'],
-    [['--task=a', '--upstream=mock'], '--upstream must be one of'],
+    [['--task=a', '--upstream=gemini'], '--upstream must be one of'],
     [['--task=a', '--upstream=ollama', '--reports-dir=x'], 'unknown flag'],
     [['--task=a', '--upstream=ollama', '--timeout-ms=-1'], 'positive integer'],
   ])('rejects %j', (argv, expected) => {

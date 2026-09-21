@@ -59,19 +59,21 @@ describe('EvalUsageLedger', () => {
 describe('AllowAllQuotaPolicy', () => {
   it('always allows', async () => {
     const quota: QuotaPolicy = new AllowAllQuotaPolicy();
-    await expect(quota.allows('user', 'classify-skills')).resolves.toBe(true);
+    await expect(quota.allows('user', 'classify-skills')).resolves.toEqual({
+      allowed: true,
+    });
   });
 });
 
 describe('NullCircuitBreaker', () => {
-  it('never opens, even after failures', () => {
+  it('never opens, even after failures', async () => {
     const breaker: CircuitBreaker = new NullCircuitBreaker();
-    for (let i = 0; i < 10; i++) breaker.recordFailure('ollama');
-    breaker.recordSuccess('ollama');
-    breaker.release('ollama');
+    for (let i = 0; i < 10; i++) await breaker.recordFailure('ollama');
+    await breaker.recordSuccess('ollama');
+    await breaker.release('ollama');
 
-    expect(breaker.openIds().size).toBe(0);
-    expect(breaker.tryAcquire('ollama')).toBe(true);
+    expect((await breaker.openIds()).size).toBe(0);
+    expect(await breaker.tryAcquire('ollama')).toBe(true);
   });
 });
 

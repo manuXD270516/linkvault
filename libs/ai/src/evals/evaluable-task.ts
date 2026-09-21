@@ -11,6 +11,23 @@ import type { AiTask } from '../domain/task';
 export type MetricDirection = 'higher' | 'lower';
 
 /** Caso del golden set ya validado (D4). */
+/** Tipo de PII anotado en el golden (alineado con `PiiKind` en minúsculas). */
+export type GoldenPiiType =
+  | 'email'
+  | 'phone'
+  | 'url'
+  | 'name'
+  | 'address'
+  | 'id';
+
+/** Anotación de un valor de PII presente en el `input` del caso. */
+export interface GoldenPiiAnnotation {
+  type: GoldenPiiType;
+  value: string;
+  /** Identificador del hueco conocido declarado fuera del golden (`known-gaps.json`). */
+  knownGap?: string;
+}
+
 export interface GoldenCase<I, E> {
   /** Número de línea (desde 1) en `golden.jsonl`. */
   line: number;
@@ -23,6 +40,15 @@ export interface GoldenCase<I, E> {
   outputLanguage?: OutputLanguage;
   /** Clave de ejecución del caso (ADR-018 §3), con `outputLanguage` del caso o `es`. */
   key: string;
+  /** Valores de PII inventados presentes en el input (métricas de redacción). */
+  pii?: readonly GoldenPiiAnnotation[];
+  /**
+   * Términos que la redacción no debe ocultar: habilidades, topónimos y nombres de empleador
+   * (`redaction_skill_loss`).
+   */
+  skills?: readonly string[];
+  /** Nombre que el contexto de redacción usa cuando el caso anota PII de `type: name`. */
+  personName?: string;
 }
 
 /** Uso acumulado de todos los registros del ledger de la clave del caso (D3). */
@@ -65,6 +91,11 @@ export interface EvaluableTask<I, O, E> {
   metrics: readonly TaskMetric<I, O, E>[];
   /** Columnas del reporte por caso tras las genéricas (id, tags, estado, latencia). */
   caseColumns?: readonly CaseColumn<I, O, E>[];
+  /**
+   * Golden de CVs personales (ADR-030 §2/§14): exige `anonymized` en cada caso, al menos un
+   * `name-collision` y cruza marcas `knownGap` con `known-gaps.json`.
+   */
+  personalCvGolden?: boolean;
 }
 
 export type AnyEvaluableTask = EvaluableTask<unknown, unknown, unknown>;

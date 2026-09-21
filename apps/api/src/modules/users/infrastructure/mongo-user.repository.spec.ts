@@ -54,9 +54,13 @@ describe('MongoUserRepository', () => {
       passwordChangedAt: now,
       profile: {
         displayName: 'Ana',
-        aiConsent: { externalProviders: false },
+        aiConsent: {
+          externalProviders: false,
+          consentedAt: null,
+          textVersion: null,
+        },
         outputLanguage: 'es',
-        redactName: false,
+        redactName: true,
       },
       createdAt: now,
     });
@@ -75,9 +79,13 @@ describe('MongoUserRepository', () => {
       passwordHash: HASH,
       passwordChangedAt: now,
       displayName: 'Ana',
-      aiConsent: { externalProviders: false },
+      aiConsent: {
+        externalProviders: false,
+        consentedAt: null,
+        textVersion: null,
+      },
       outputLanguage: 'es',
-      redactName: false,
+      redactName: true,
       createdAt: now,
     });
   });
@@ -153,9 +161,14 @@ describe('MongoUserRepository', () => {
 
   it('updates only the sent profile fields', async () => {
     const created = await repository.create(newUser('parcial@example.com'));
+    const consentedAt = new Date('2026-09-20T12:00:00.000Z');
 
     const consent = await repository.updateProfile(created.id, {
-      aiConsent: { externalProviders: true },
+      aiConsent: {
+        externalProviders: true,
+        consentedAt,
+        textVersion: '2026-09-20',
+      },
     });
     const language = await repository.updateProfile(created.id, {
       outputLanguage: 'en',
@@ -164,15 +177,23 @@ describe('MongoUserRepository', () => {
 
     expect(consent?.profile).toEqual({
       ...created.profile,
-      aiConsent: { externalProviders: true },
+      aiConsent: {
+        externalProviders: true,
+        consentedAt,
+        textVersion: '2026-09-20',
+      },
     });
     expect(language).toEqual({
       ...created,
       profile: {
         displayName: 'Ana María',
-        aiConsent: { externalProviders: true },
+        aiConsent: {
+          externalProviders: true,
+          consentedAt,
+          textVersion: '2026-09-20',
+        },
         outputLanguage: 'en',
-        redactName: false,
+        redactName: true,
       },
     });
     expect(await repository.findById(created.id)).toEqual(language);

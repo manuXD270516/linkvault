@@ -410,10 +410,40 @@ describe('response schemas', () => {
     ).toBe(true);
   });
 
-  it('never carries the fit score', () => {
+  it.each([
+    [
+      'fitScore con marca en falso',
+      { ...application, fitScore: 78, fitScoreDegraded: false },
+      true,
+    ],
+    [
+      'fitScoreDegraded true a solas',
+      { ...application, fitScoreDegraded: true },
+      true,
+    ],
+    [
+      'fitScore con marca en cierto',
+      { ...application, fitScore: 41, fitScoreDegraded: true },
+      false,
+    ],
+    ['fitScore solo', { ...application, fitScore: 78 }, false],
+    ['ninguno de los dos', application, true],
+  ] as const)('%s → válido: %s', (_label, value, valid) => {
+    expect(applicationSchema.safeParse(value).success).toBe(valid);
+  });
+
+  it('representa la ausencia como campo ausente, nunca como 0', () => {
+    const parsed = applicationSchema.parse(application);
+
+    expect(parsed).not.toHaveProperty('fitScore');
+    expect(parsed).not.toHaveProperty('fitScoreDegraded');
     expect(
-      applicationSchema.safeParse({ ...application, fitScore: 80 }).success,
-    ).toBe(false);
+      applicationSchema.safeParse({
+        ...application,
+        fitScore: 0,
+        fitScoreDegraded: false,
+      }).success,
+    ).toBe(true);
   });
 
   it('requires statusChangedAt', () => {

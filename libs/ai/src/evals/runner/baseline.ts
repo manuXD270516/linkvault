@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { z } from 'zod';
 import { canonicalJSON } from '../../application/canonical-json';
 import type { GoldenCase } from '../evaluable-task';
+import { PII_LEAK_RATE } from '../metrics/redaction-metrics';
 import type { MetricValue } from '../metrics/metric';
 
 // Línea base estricta en replay (D5 de ai-eval-harness, ADR-019 §4, requisito "Línea base estricta en replay"): versión
@@ -35,6 +36,7 @@ export type BaselineProblem =
   | { kind: 'prompt_changed'; baseline: string; current: string }
   | { kind: 'golden_changed' }
   | { kind: 'schema_validity_below_one'; current: number }
+  | { kind: 'pii_leak_hard_floor'; current: number; caseIds: readonly string[] }
   | {
       kind: 'worsened' | 'improved';
       metric: string;
@@ -240,13 +242,33 @@ export type BaselineCheck =
 /**
  * Paso de línea base de una evaluación en replay: con `update` reescribe la línea base con el resultado actual; si no,
  * la compara. El CLI traduce `differs` a código 1.
+ *
+ * `pii_leak_rate > 0` es suelo duro (ADR-030 §2): falla también con `--update-baseline` y no reescribe nada.
+ * `pii_known_gap_rate` es informativa y no entra en `buildBaseline` (solo métricas `blocking`).
  */
 export async function checkOrUpdateBaseline(options: {
   evalsDir: string;
   current: Baseline;
   metrics: readonly MetricValue[];
   update: boolean;
+  /** `id` de casos con fuga; acompaña el mensaje del suelo duro. */
+  piiLeakCaseIds?: readonly string[];
 }): Promise<BaselineCheck> {
+  const leak = options.current.metrics[PII_LEAK_RATE];
+  if (leak !== undefined && leak > METRIC_TOLERANCE) {
+    return {
+      status: 'differs',
+      stored: await readBaseline(options.evalsDir, options.current.task),
+      problems: [
+        {
+          kind: 'pii_leak_hard_floor',
+          current: leak,
+          caseIds: options.piiLeakCaseIds ?? [],
+        },
+      ],
+    };
+  }
+
   if (options.update) {
     return {
       status: 'updated',
@@ -295,6 +317,13 @@ function describeProblem(taskName: string, problem: BaselineProblem): string {
       return `[${taskName}] El golden cambió: su hash no coincide con el de la línea base`;
     case 'schema_validity_below_one':
       return `[${taskName}] schema_validity_rate vale ${String(problem.current)} y en replay debe valer 1`;
+    case 'pii_leak_hard_floor': {
+      const ids =
+        problem.caseIds.length === 0
+          ? ''
+          : ` (casos: ${problem.caseIds.join(', ')})`;
+      return `[${taskName}] ${PII_LEAK_RATE} vale ${String(problem.current)} y el suelo duro exige 0${ids}; no se actualiza la línea base`;
+    }
     case 'worsened':
       return `[${taskName}] ${problem.metric} empeoró: actual ${String(problem.current)}, línea base ${String(problem.baseline)}`;
     case 'improved':

@@ -198,7 +198,12 @@ describe('sessionResponseSchema', () => {
       id: '66e9a0000000000000000001',
       email: 'ana@example.com',
       displayName: 'Ana',
-      aiConsent: { externalProviders: false },
+      aiConsent: {
+        externalProviders: false,
+        consentedAt: null,
+        textVersion: null,
+        currentTextVersion: '2026-09-20',
+      },
       outputLanguage: 'es',
       redactName: false,
       createdAt: '2026-09-17T10:00:00.000Z',
@@ -254,8 +259,19 @@ describe('api error contract', () => {
       'unsupported_file_type',
       'file_too_large',
       'too_many_cvs',
+      'analysis_not_found',
+      'no_cv',
+      'cv_not_ready',
+      'cv_not_readable',
+      'job_not_ready',
+      'consent_text_outdated',
       'internal_error',
     ]);
+  });
+
+  it('keeps analysis_not_found apart from link_not_found', () => {
+    expect(apiErrorCodeSchema.options).toContain('analysis_not_found');
+    expect(apiErrorCodeSchema.options).toContain('link_not_found');
   });
 
   it('keeps unsupported_media_type apart from unsupported_file_type', () => {

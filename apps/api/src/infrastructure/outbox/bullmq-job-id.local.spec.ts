@@ -2,6 +2,7 @@ import {
   CV_DELETED_EVENT_TYPE,
   CV_UPLOADED_EVENT_TYPE,
   LINK_CREATED_EVENT_TYPE,
+  MATCH_REQUESTED_EVENT_TYPE,
 } from '@linkvault/shared';
 import { Queue } from 'bullmq';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -19,7 +20,8 @@ import { OUTBOX_ROUTES } from './outbox-routes';
 //   docker compose up -d --wait
 //   OUTBOX_REDIS_LOCAL=1 pnpm nx run api:test -- bullmq-job-id.local
 //
-// Usa una cola de sonda propia y la borra al terminar: no toca `enrich-link`, `extract-cv` ni `delete-cv-file`.
+// Usa una cola de sonda propia y la borra al terminar: no toca `enrich-link`, `extract-cv`, `delete-cv-file` ni
+// `analyze-match`.
 
 const enabled = process.env['OUTBOX_REDIS_LOCAL'] === '1';
 const redisUrl = process.env['REDIS_URL'] ?? 'redis://localhost:6379';
@@ -29,6 +31,12 @@ const payloads: Readonly<Record<string, Record<string, unknown>>> = {
   [LINK_CREATED_EVENT_TYPE]: { linkId: 'l1', previewVersion: 1 },
   [CV_UPLOADED_EVENT_TYPE]: { cvId: 'c1', userId: 'u1' },
   [CV_DELETED_EVENT_TYPE]: { cvId: 'c1', userId: 'u1' },
+  [MATCH_REQUESTED_EVENT_TYPE]: {
+    analysisId: 'a1',
+    userId: 'u1',
+    linkId: 'l1',
+    cvId: 'c1',
+  },
 };
 
 let queue: Queue | undefined;

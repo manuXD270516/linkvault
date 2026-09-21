@@ -46,6 +46,7 @@
           [link]="link"
           [canRemove]="canRemove(link)"
           [busy]="working()"
+          [matchBusy]="isMatchBusy(link)"
           [application]="own(link)"
           [alreadyTracked]="alreadyTracked().has(link.id)"
           [trackers]="trackersOf(link)"
@@ -63,6 +64,7 @@
           (pasteDescription)="pasteDescription(link)"
           (undoPaste)="undoPaste(link, $event)"
           (remove)="remove(link)"
+          (analyzeMatch)="openMatch(link)"
         />
       </li>
     }

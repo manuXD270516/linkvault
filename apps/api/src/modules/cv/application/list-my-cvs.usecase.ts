@@ -1,6 +1,7 @@
 import type { CvListResponse } from '@linkvault/shared';
 import { Inject, Injectable } from '@nestjs/common';
-import { toCvResponse } from './cv.mapper';
+import { CvAnalysisCounts } from './cv-analysis-counts';
+import { toCvResponses } from './cv.mapper';
 import {
   CV_REPOSITORY,
   type CvRepository,
@@ -11,16 +12,18 @@ import {
  * Sin paginación, porque el máximo son cinco.
  *
  * El mapeo va por **lista explícita de campos** (`toCvResponse`): ni el texto, ni la marca de recorte, ni la clave del
- * objeto, ni el `userId` del dueño.
+ * objeto, ni el `userId` del dueño. `matchAnalysesCount` llega del registro que `match` cablea al arrancar.
  */
 @Injectable()
 export class ListMyCvs {
   constructor(
     @Inject(CV_REPOSITORY) private readonly repository: CvRepository,
+    private readonly analysisCounts: CvAnalysisCounts,
   ) {}
 
   async execute(userId: string): Promise<CvListResponse> {
     const documents = await this.repository.listByUser(userId);
-    return { items: documents.map(toCvResponse) };
+    const counts = await this.analysisCounts.countsByCv(userId);
+    return { items: toCvResponses(documents, counts) };
   }
 }

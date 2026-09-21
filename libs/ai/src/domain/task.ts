@@ -35,6 +35,11 @@ export interface AiTask<I, O> {
   budget: { maxTokens: number; maxAttempts: number };
   /** `personal` si no se declara (ADR-018 §11). */
   dataSensitivity?: DataSensitivity;
+  /**
+   * Si el resultado puede guardarse en la caché compartida. Una tarea `personal` NUNCA puede serlo: declararla
+   * cacheable es un error de programación que impide el arranque (ADR-030 §cache).
+   */
+  cacheable: boolean;
   /** Salida honesta cuando la cadena se agota o está vacía; se valida contra `outputSchema`. */
   degrade?(input: I): O;
   /** Muestra determinista para el modo `synth` del mock; sin ella, `synth` lanza `SynthUnsupported`. */

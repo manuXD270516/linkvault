@@ -15,23 +15,42 @@
   }
 
   <!--
-    La promesa va donde se pide el dato y siempre visible: sin desplazarse y sin abrir nada. No promete que se pedirá
-    permiso —el consentimiento es una preferencia del perfil que la pasarela lee sin preguntar— ni manda a ninguna
-    pantalla que todavía no exista (D13, ADR-028 §11).
+    Línea nueva (ADR-030 §12): identificador `cv.privacy.v2` porque el contenido promete otra cosa. El enlace a
+    `/perfil` viaja dentro de la misma unidad. La frase de estado es aparte y nunca dos a la vez.
   -->
-  <p class="m-0 text-sm" data-testid="cv-privacy" i18n="@@cv.privacy">
-    Tu CV solo lo ves tú y hoy no lo lee ninguna IA. No saldrá de LinkVault sin tu autorización.
-  </p>
+  <div class="flex flex-col gap-1 text-sm" data-testid="cv-privacy-block">
+    <p class="m-0" data-testid="cv-privacy" i18n="@@cv.privacy.v2"
+      >Tu CV solo lo ves tú y no sale de LinkVault sin tu permiso. En
+      <a routerLink="/perfil" data-testid="cv-privacy-profile-link">Perfil</a>
+      decides si un proveedor de IA externo puede analizarlo: antes de enviárselo sustituimos tu email, tus teléfonos,
+      tu dirección, tu documento de identidad y las URL por marcadores, y también tu nombre, salvo que lo desactives
+      allí.</p
+    >
+    @switch (consentPhrase()) {
+      @case ('none') {
+        <p class="m-0" data-testid="cv-privacy-status" i18n="@@cv.privacy.status.none">
+          Ahora mismo no has dado ese permiso, así que tu CV no sale de LinkVault.
+        </p>
+      }
+      @case ('current') {
+        <p class="m-0" data-testid="cv-privacy-status" i18n="@@cv.privacy.status.current">
+          Ahora mismo ese permiso está activo: al analizar una oferta, tu CV redactado sale de LinkVault hacia el
+          proveedor externo.
+        </p>
+      }
+      @case ('outdated') {
+        <p class="m-0" data-testid="cv-privacy-status" i18n="@@cv.privacy.status.outdated">
+          Diste este permiso, pero el texto cambió: ahora mismo tu CV no sale de LinkVault. Revísalo en Perfil.
+        </p>
+      }
+    }
+  </div>
 
   @if (loading() && !loaded()) {
     <p class="m-0" role="status" data-testid="cv-loading" i18n="@@cv.loading">Cargando tus CV…</p>
   }
 
   @if (stalled()) {
-    <!--
-      Un `pending` que no se resuelve —worker parado, relay apagado— no se arregla solo, así que la salida está en la
-      mano de la persona: borrarlo y volver a subirlo crea un evento nuevo. "Actualizar" da otros 60 s de espera.
-    -->
     <div class="flex flex-col gap-2" data-testid="cv-stalled">
       <p class="m-0" role="status" i18n="@@cv.stalled">
         Sigue en proceso. Si sigue así en unos minutos, elimínalo y vuelve a subirlo.

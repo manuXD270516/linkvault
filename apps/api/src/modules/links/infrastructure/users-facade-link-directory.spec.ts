@@ -1,3 +1,4 @@
+import { AI_CONSENT_TEXT_VERSION } from '@linkvault/shared';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { InMemoryUserRepository } from '../../users/application/testing/in-memory-user.repository';
 import { UsersFacade } from '../../users/application/users.facade';
@@ -68,7 +69,11 @@ describe('UsersFacadeLinkDirectory', () => {
     const ana = await register('ana@example.com', 'Ana');
     const beto = await register('beto@example.com', 'Beto');
     await repository.updateProfile(beto, {
-      aiConsent: { externalProviders: true },
+      aiConsent: {
+        externalProviders: true,
+        consentedAt: new Date('2026-09-20T12:00:00.000Z'),
+        textVersion: AI_CONSENT_TEXT_VERSION,
+      },
     });
 
     expect(await directory.aiConsentOf(ana)).toEqual({

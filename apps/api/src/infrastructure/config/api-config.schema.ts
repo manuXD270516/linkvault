@@ -87,6 +87,32 @@ export const apiConfigSchema = z
     S3_SECRET_KEY: z.string().min(1),
     // Bucket de los CV, privado y sin expiración (lo crea `docker compose`). S3 exige de 3 a 63 caracteres.
     S3_BUCKET: z.string().min(3).max(63),
+    // --- Análisis de encaje (cv-match-suggestions, ADR-030) ---
+    // Cuántos análisis con informe **no** degradado caben en la ventana por persona. La cuota se deriva del
+    // historial (ADR-030 §8); este número es el tope, no un contador.
+    MATCH_ANALYSES_PER_USER: z.coerce.number().int().min(1).max(1_000),
+    // Ventana de esa cuota, en milisegundos (Q3 del diseño: 24 h por defecto).
+    MATCH_QUOTA_WINDOW_MS: z.coerce
+      .number()
+      .int()
+      .min(60_000)
+      .max(604_800_000),
+    // Plazo tras el cual un `running` se **lee** `failed`, deja de ocupar sitio en la cuota y es el que la API
+    // **publica** en el bloque `running`. Ha de ser el **mismo** valor que recibe el worker: la escritura
+    // condicionada a "no vencido" vive allí. `assertAnalysisDeadlines` (arranque) exige que sea mayor que
+    // `MATCH_ANALYSIS_TIMEOUT_MS` contando entregas y margen.
+    MATCH_ANALYSIS_MAX_AGE_MS: z.coerce
+      .number()
+      .int()
+      .min(1_000)
+      .max(600_000),
+    // Plazo del trabajo en el worker. `api` no lo aplica a la ejecución, pero lo valida al arrancar junto a
+    // `MATCH_ANALYSIS_MAX_AGE_MS` para rechazar una pareja invertida antes de aceptar tráfico.
+    MATCH_ANALYSIS_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .min(1_000)
+      .max(300_000),
   })
   // Cada issue lleva `path` con la variable: `parseEnv` descarta los issues que no nombran ninguna.
   .superRefine((config, ctx) => {

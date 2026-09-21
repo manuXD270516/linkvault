@@ -5,6 +5,7 @@ import { RouterLink } from '@angular/router';
 import type { Application, GroupTracker, JobLinkSummary, PreviewFieldName } from '@linkvault/shared';
 import { statusLabel } from '../applications/application-status.labels';
 import { TrackerAvatars } from '../applications/tracker-avatars.component';
+import { matchCardActionLabel } from '../match/match-labels';
 import { CommentAgo } from './comment-ago.component';
 import {
   daysSince,
@@ -78,6 +79,13 @@ export class LinkCard {
   readonly unpublish = output<void>();
   /** Copiar la URL pública al portapapeles; el aviso de "todavía estamos leyendo la oferta" lo da `LinkList`. */
   readonly copyPublicLink = output<void>();
+  /**
+   * `true` mientras un análisis de encaje de esta oferta corre (aunque el diálogo esté cerrado). Deshabilita la acción
+   * con `aria-busy` (spec web/cv-match).
+   */
+  readonly matchBusy = input(false);
+  /** Abrir el diálogo de encaje; `LinkList` lo abre sin pedir análisis. */
+  readonly analyzeMatch = output<void>();
 
   private readonly locale = inject(LOCALE_ID);
 
@@ -152,11 +160,16 @@ export class LinkCard {
    */
   protected readonly status = computed(() => linkCardStatus(this.link(), new Date()));
 
+  /** "Analizar mi encaje" salvo cuando lo compartido no era una oferta. */
+  protected readonly offersMatch = computed(() => !this.status().notAnOffer);
+
   /**
    * El último pegado que sigue a la vista, para ofrecer "Deshacer lo que pegó Ana": una persona puede pegar la oferta
    * equivocada en un link compartido, y devolverlo campo a campo sería pedir a las demás que adivinaran cuáles tocó.
    */
   protected readonly lastPaste = computed(() => latestPaste(this.sources()));
+
+  protected readonly matchActionLabel = matchCardActionLabel();
 
   /**
    * Quién escribió ese dato, cuando no fue la página: "Escrito por Ana", "Descripción pegada por Beto" o "Deducido por

@@ -128,4 +128,97 @@
       Cambiar contraseña
     </button>
   </form>
+
+  <!--
+    IA y privacidad (spec web/auth, ADR-030 §10): el texto del consentimiento es una sola unidad, siempre a la vista.
+    La primera frase dice que el CV sale y puede identificar; el resto viaja en la misma unidad.
+  -->
+  <section class="flex flex-col gap-4" data-testid="profile-ai">
+    <h2 class="text-xl font-medium" i18n="@@profile.ai.title">IA y privacidad</h2>
+
+    <div class="flex flex-col gap-2">
+      <mat-slide-toggle
+        [checked]="consentToggleOn()"
+        [disabled]="consentSaving()"
+        (change)="onConsentToggle($event)"
+        data-testid="profile-ai-consent"
+        i18n="@@profile.ai.consentLabel"
+      >
+        Permitir que un proveedor de IA externo analice mi CV
+      </mat-slide-toggle>
+
+      <p
+        class="m-0 text-sm"
+        data-testid="profile-ai-consent-text"
+        i18n="@@profile.ai.consentText"
+        >Con este permiso, el texto de tu CV sale de LinkVault hacia un proveedor de IA externo (hoy OpenRouter) y lo que se envía puede identificarte. Se envían el texto de tu CV y la descripción de la oferta. Antes de enviarlo sustituimos tu email, tus teléfonos, tu dirección, tu documento de identidad y las URL por marcadores, y también tu nombre, salvo que lo desactives más abajo. El resto de tu CV —tu experiencia, tus estudios, las empresas y las fechas— se envía tal cual y puede identificarte. Elegimos proveedores que se comprometen a no usar lo enviado para entrenar sus modelos, pero no podemos comprobarlo. Puedes quitar este permiso cuando quieras. Sin este permiso, tu CV se analiza dentro de LinkVault y, si aquí no hay IA disponible, recibes un análisis básico, sin sugerencias.</p
+      >
+
+      @if (consentOutdated()) {
+        <p class="m-0" role="status" data-testid="profile-ai-consent-outdated" i18n="@@profile.ai.consentOutdated">
+          El texto del permiso cambió y ese permiso ya no está en vigor. Léelo y acéptalo de nuevo si quieres seguir
+          enviando tu CV a un proveedor externo.
+        </p>
+      }
+
+      @if (consentGrantedMeta(); as meta) {
+        <p class="m-0 text-sm" data-testid="profile-ai-consent-meta">
+          <ng-container i18n="@@profile.ai.consentGranted"
+            >Concedido el {{ meta.consentedAt | date: 'dd/MM/yyyy HH:mm' }} · versión
+            {{ meta.textVersion }}</ng-container
+          >
+        </p>
+      }
+
+      @if (consentRevokedNotice()) {
+        <p
+          class="m-0"
+          role="status"
+          data-testid="profile-ai-consent-revoked"
+          i18n="@@profile.ai.consentRevoked"
+          >Permiso retirado. Tus próximos análisis no saldrán de LinkVault. No borra los análisis que ya hiciste; para eso, elimina el CV con el que se hicieron. Lo que ya se envió a un proveedor externo no se puede recuperar.</p
+        >
+      }
+    </div>
+
+    <div class="flex flex-col gap-1">
+      <mat-form-field>
+        <mat-label i18n="@@profile.ai.outputLanguage">Idioma de los análisis de IA</mat-label>
+        <mat-select
+          [value]="user()?.outputLanguage ?? 'es'"
+          [disabled]="languageSaving()"
+          (valueChange)="onOutputLanguage($event)"
+          data-testid="profile-ai-language"
+        >
+          <mat-option value="es" i18n="@@profile.ai.language.es">Español</mat-option>
+          <mat-option value="en" i18n="@@profile.ai.language.en">Inglés</mat-option>
+        </mat-select>
+      </mat-form-field>
+      <p class="m-0 text-sm" i18n="@@profile.ai.outputLanguageHint">
+        No cambia el idioma de la interfaz.
+      </p>
+    </div>
+
+    <div class="flex flex-col gap-1">
+      <mat-slide-toggle
+        [checked]="user()?.redactName ?? true"
+        [disabled]="redactSaving()"
+        (change)="onRedactNameToggle($event)"
+        data-testid="profile-ai-redact-name"
+        i18n="@@profile.ai.redactNameLabel"
+      >
+        Ocultar mi nombre a los proveedores externos
+      </mat-slide-toggle>
+      <p class="m-0 text-sm" i18n="@@profile.ai.redactNameHint">
+        Sustituimos tu nombre por un marcador antes de enviar el texto.
+      </p>
+      <p class="m-0 text-sm" i18n="@@profile.ai.redactNameEffect">
+        Solo tiene efecto cuando se usa un proveedor externo.
+      </p>
+    </div>
+
+    @if (aiFailure(); as currentFailure) {
+      <lv-request-error [failure]="currentFailure" />
+    }
+  </section>
 </section>

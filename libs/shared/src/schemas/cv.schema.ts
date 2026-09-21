@@ -71,6 +71,9 @@ export const cvFileTypeSchema = z.enum(CV_FILE_TYPE_VALUES);
  * Un CV guardado, tal y como lo devuelven el alta, el listado y el marcado por defecto. Estricto: cualquier campo de
  * más —`extractedText`, la marca de recorte, `fileKey`, `userId`— no valida, y ese fallo es el que avisa de que alguien
  * cambió un mapeo por un `...document`.
+ *
+ * `matchAnalysesCount` es obligatorio y no nulo: `0` es un valor legítimo (un CV sin análisis). Del análisis solo
+ * viaja cuántos son; nunca el informe, las sugerencias ni los fragmentos.
  */
 export const cvDocumentSchema = z.strictObject({
   id: z.string().min(1),
@@ -83,6 +86,8 @@ export const cvDocumentSchema = z.strictObject({
   isDefault: z.boolean(),
   uploadedAt: z.iso.datetime(),
   extraction: cvExtractionSchema,
+  /** Análisis de encaje de quien consulta hechos con este CV; desaparecen al borrarlo. */
+  matchAnalysesCount: z.number().int().min(0),
 });
 export type CvDocument = z.infer<typeof cvDocumentSchema>;
 

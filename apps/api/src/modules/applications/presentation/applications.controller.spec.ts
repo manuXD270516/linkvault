@@ -14,7 +14,12 @@ import {
   type ApplicationsTestApp,
 } from '../../../test-support/applications-test-app';
 import type { TestMember } from '../../../test-support/links-test-app';
-import { APPLICATION_EVENTS_COLLECTION } from '../infrastructure/application.schemas';
+import { sampleReport } from '../../match/application/testing/match-test-doubles';
+import { AI_ANALYSES_COLLECTION } from '../../match/infrastructure/analysis.schemas';
+import {
+  APPLICATION_EVENTS_COLLECTION,
+  APPLICATIONS_COLLECTION,
+} from '../infrastructure/application.schemas';
 
 // Endpoints de las postulaciones propias por HTTP (tareas 5.9 y 5.10 de applications-tracking), contra la app real y el
 // MongoMemoryReplSet del preset de @linkvault/testing.
@@ -661,5 +666,259 @@ describe('applications endpoints', () => {
         version: 1,
       });
     });
+  });
+});
+
+describe('applications fitScore derived on read (12.4–12.5)', () => {
+  let http: ApplicationsTestApp;
+  let ana: TestMember;
+  let beto: TestMember;
+
+  beforeAll(async () => {
+    http = await createApplicationsTestApp(
+      'applications-fit-score',
+      getMongoTestUri(),
+    );
+    ana = await http.authenticated('Ana');
+    beto = await http.authenticated('Beto');
+  });
+
+  afterAll(async () => {
+    await http.close();
+  });
+
+  async function privateLink(member = ana): Promise<string> {
+    return (await http.save(member, jobUrl())).link.id;
+  }
+
+  async function seedDoneAnalysis(params: {
+    userId: string;
+    linkId: string;
+    score: number;
+    degraded?: boolean;
+    finishedAt: Date;
+  }): Promise<void> {
+    const report = sampleReport({
+      score: params.score,
+      ...(params.degraded === true
+        ? { degraded: true, degradedReason: 'no_providers' as const }
+        : {}),
+    });
+    await http.connection.collection(AI_ANALYSES_COLLECTION).insertOne({
+      _id: new mongoose.Types.ObjectId(),
+      userId: new mongoose.Types.ObjectId(params.userId),
+      linkId: new mongoose.Types.ObjectId(params.linkId),
+      cvId: new mongoose.Types.ObjectId(),
+      status: 'done',
+      step: params.degraded === true ? 'done-degraded' : 'done',
+      previewVersion: 1,
+      promptVersion: 'v1',
+      report,
+      degraded: params.degraded === true,
+      ...(params.degraded === true
+        ? { degradedReason: 'no_providers' }
+        : {}),
+      consentRequired: false,
+      wentExternal: false,
+      requestedAt: new Date(params.finishedAt.getTime() - 1_000),
+      finishedAt: params.finishedAt,
+      durationMs: 1_000,
+    });
+  }
+
+  it('La puntuación aparece tras el análisis', async () => {
+    const linkId = await privateLink();
+    const tracked = await http.track(ana, linkId);
+    expect(tracked.application).not.toHaveProperty('fitScore');
+
+    await seedDoneAnalysis({
+      userId: ana.userId,
+      linkId,
+      score: 78,
+      finishedAt: new Date('2026-09-20T12:00:00.000Z'),
+    });
+
+    const [listed] = await http.mine(ana, [linkId]);
+    expect(listed).toMatchObject({ fitScore: 78, fitScoreDegraded: false });
+  });
+
+  it('Rehacer el análisis manda', async () => {
+    const linkId = await privateLink();
+    await http.track(ana, linkId);
+    await seedDoneAnalysis({
+      userId: ana.userId,
+      linkId,
+      score: 78,
+      finishedAt: new Date('2026-09-20T12:00:00.000Z'),
+    });
+    await seedDoneAnalysis({
+      userId: ana.userId,
+      linkId,
+      score: 63,
+      finishedAt: new Date('2026-09-20T13:00:00.000Z'),
+    });
+
+    const [listed] = await http.mine(ana, [linkId]);
+    expect(listed).toMatchObject({ fitScore: 63, fitScoreDegraded: false });
+  });
+
+  it('El análisis nuevo sale básico y el número anterior desaparece', async () => {
+    const linkId = await privateLink();
+    await http.track(ana, linkId);
+    await seedDoneAnalysis({
+      userId: ana.userId,
+      linkId,
+      score: 78,
+      finishedAt: new Date('2026-09-20T12:00:00.000Z'),
+    });
+    await seedDoneAnalysis({
+      userId: ana.userId,
+      linkId,
+      score: 41,
+      degraded: true,
+      finishedAt: new Date('2026-09-20T13:00:00.000Z'),
+    });
+
+    const [listed] = await http.mine(ana, [linkId]);
+    expect(listed?.fitScoreDegraded).toBe(true);
+    expect(listed).not.toHaveProperty('fitScore');
+    expect(JSON.stringify(listed)).not.toContain('41');
+    expect(JSON.stringify(listed)).not.toContain('78');
+  });
+
+  it('Seguir una oferta ya analizada', async () => {
+    const linkId = await privateLink();
+    await seedDoneAnalysis({
+      userId: ana.userId,
+      linkId,
+      score: 81,
+      finishedAt: new Date('2026-09-20T12:00:00.000Z'),
+    });
+
+    const response = await http.trackRaw(ana, {
+      linkId,
+      status: 'interested',
+    });
+    expect(response.statusCode).toBe(201);
+    const body = trackLinkResponseSchema.parse(response.json());
+    expect(body.application).toMatchObject({
+      fitScore: 81,
+      fitScoreDegraded: false,
+    });
+  });
+
+  it('La puntuación no se hereda de otra persona', async () => {
+    const group = await http.createGroup(ana, 'Fit score isolation');
+    await http.join(beto, group);
+    const linkId = (await http.save(ana, jobUrl(), group)).link.id;
+    await http.track(ana, linkId);
+    await http.track(beto, linkId);
+    await seedDoneAnalysis({
+      userId: ana.userId,
+      linkId,
+      score: 78,
+      finishedAt: new Date('2026-09-20T12:00:00.000Z'),
+    });
+
+    const [betoApp] = await http.mine(beto, [linkId]);
+    expect(betoApp).not.toHaveProperty('fitScore');
+    expect(betoApp).not.toHaveProperty('fitScoreDegraded');
+  });
+
+  it('Nadie escribe la puntuación', async () => {
+    const linkId = await privateLink();
+    const tracked = await http.track(ana, linkId);
+    const before = await http.connection
+      .collection(APPLICATIONS_COLLECTION)
+      .findOne({
+        _id: new mongoose.Types.ObjectId(tracked.application.id),
+      });
+
+    await seedDoneAnalysis({
+      userId: ana.userId,
+      linkId,
+      score: 78,
+      finishedAt: new Date('2026-09-20T12:00:00.000Z'),
+    });
+
+    const after = await http.connection
+      .collection(APPLICATIONS_COLLECTION)
+      .findOne({
+        _id: new mongoose.Types.ObjectId(tracked.application.id),
+      });
+    expect(after).toEqual(before);
+    expect(after).not.toHaveProperty('fitScore');
+    expect(after?.['version']).toBe(1);
+  });
+
+  it('La puntuación no pisa a las pestañas abiertas', async () => {
+    const linkId = await privateLink();
+    const tracked = await http.track(ana, linkId);
+    await seedDoneAnalysis({
+      userId: ana.userId,
+      linkId,
+      score: 78,
+      finishedAt: new Date('2026-09-20T12:00:00.000Z'),
+    });
+
+    const response = await http.request(
+      'PATCH',
+      `/api/applications/${tracked.application.id}/status`,
+      {
+        authorization: ana.authorization,
+        body: { status: 'applied', version: 1 },
+      },
+    );
+    expect(response.statusCode).toBe(200);
+    const body = applicationSchema.parse(response.json());
+    expect(body.version).toBe(2);
+    expect(body).toMatchObject({ fitScore: 78, fitScoreDegraded: false });
+
+    const events = applicationTimelineResponseSchema.parse(
+      (
+        await http.request(
+          'GET',
+          `/api/applications/${tracked.application.id}/events`,
+          { authorization: ana.authorization },
+        )
+      ).json(),
+    );
+    expect(events.items).toHaveLength(2);
+    expect(events.items[1]?.to).toBe('applied');
+  });
+
+  it('Sin análisis, sin nada que limpiar', async () => {
+    const linkId = await privateLink();
+    const tracked = await http.track(ana, linkId);
+    const cvId = new mongoose.Types.ObjectId();
+    await http.connection.collection(AI_ANALYSES_COLLECTION).insertOne({
+      _id: new mongoose.Types.ObjectId(),
+      userId: new mongoose.Types.ObjectId(ana.userId),
+      linkId: new mongoose.Types.ObjectId(linkId),
+      cvId,
+      status: 'done',
+      step: 'done',
+      previewVersion: 1,
+      promptVersion: 'v1',
+      report: sampleReport({ score: 78 }),
+      degraded: false,
+      consentRequired: false,
+      wentExternal: false,
+      requestedAt: new Date('2026-09-20T11:59:00.000Z'),
+      finishedAt: new Date('2026-09-20T12:00:00.000Z'),
+      durationMs: 1_000,
+    });
+
+    const [withScore] = await http.mine(ana, [linkId]);
+    expect(withScore).toMatchObject({ fitScore: 78, fitScoreDegraded: false });
+
+    await http.connection
+      .collection(AI_ANALYSES_COLLECTION)
+      .deleteMany({ cvId });
+
+    const [without] = await http.mine(ana, [linkId]);
+    expect(without).not.toHaveProperty('fitScore');
+    expect(without).not.toHaveProperty('fitScoreDegraded');
+    expect(without?.version).toBe(tracked.application.version);
   });
 });

@@ -8,8 +8,8 @@ import {
   type JobQueue,
 } from './bullmq-outbox-publisher';
 import {
-  OUTBOX_JOB_OPTIONS,
   OutboxQueueErrorLog,
+  outboxJobOptionsFor,
   outboxQueueErrorLogToken,
   type QueueErrorSource,
 } from './outbox-queues';
@@ -26,12 +26,15 @@ import { OutboxModule } from './outbox.module';
 /**
  * Relay del outbox (D6 de job-links, ADR-009). Todo lo que necesita —el planificador de `@nestjs/schedule` y las colas
  * de BullMQ— vive dentro de este módulo, porque `AppModule` solo lo importa con `OUTBOX_RELAY_ENABLED=true`: apagado,
- * `api` no crea **ninguna** `Queue` ni abre conexión a Redis por esta vía, y los eventos de los tres tipos esperan en
- * `outbox_events`.
+ * `api` no crea **ninguna** `Queue` ni abre conexión a Redis por esta vía, y los eventos de los tipos registrados
+ * esperan en `outbox_events`.
  *
  * La conexión falla rápido en lugar de encolar comandos (`enableOfflineQueue: false`): con Redis caído, publicar
  * rechaza en el acto y el evento se reintenta con espera creciente, en vez de dejar al relay esperando para siempre.
  * `maxRetriesPerRequest: null` es lo que BullMQ espera de sus conexiones.
+ *
+ * `analyze-match` se registra con `attempts: 1` (ADR-030 §6): reejecutar el análisis entero multiplicaría los envíos
+ * del CV a un proveedor externo. El resto de colas conserva los reintentos de D6.
  */
 @Module({
   imports: [
@@ -48,11 +51,11 @@ import { OutboxModule } from './outbox.module';
       }),
     }),
     // Una cola por tipo de evento (D11 de cv-upload-extract): la lista la da la tabla de enrutado, así que añadir un
-    // evento nuevo no obliga a acordarse de registrar su cola aquí.
+    // evento nuevo no obliga a acordarse de registrar su cola aquí. Las opciones salen de `outboxJobOptionsFor`.
     ...OUTBOX_QUEUES.map((name) =>
       BullModule.registerQueue({
         name,
-        defaultJobOptions: OUTBOX_JOB_OPTIONS,
+        defaultJobOptions: outboxJobOptionsFor(name),
       }),
     ),
   ],

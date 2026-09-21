@@ -106,6 +106,7 @@ export const extractPastedJobTask: AiTask<
   temperature: 0,
   budget: { maxTokens: 1_536, maxAttempts: 2 },
   dataSensitivity: 'personal',
+  cacheable: false,
   sample: sampleExtractPastedJob,
 };
 

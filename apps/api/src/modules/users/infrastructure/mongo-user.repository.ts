@@ -37,6 +37,8 @@ export class MongoUserRepository implements UserRepository {
         displayName: user.profile.displayName,
         aiConsent: {
           externalProviders: user.profile.aiConsent.externalProviders,
+          consentedAt: user.profile.aiConsent.consentedAt,
+          textVersion: user.profile.aiConsent.textVersion,
         },
         outputLanguage: user.profile.outputLanguage,
         redactName: user.profile.redactName,
@@ -124,12 +126,14 @@ export class MongoUserRepository implements UserRepository {
 
 /** `$set` solo de los campos presentes: una actualización parcial nunca pisa los demás. */
 function toProfileUpdate(changes: ProfileChanges): UpdateQuery<UserDocument> {
-  const set: Record<string, string | boolean> = {};
+  const set: Record<string, string | boolean | Date | null> = {};
   if (changes.displayName !== undefined) {
     set['displayName'] = changes.displayName;
   }
   if (changes.aiConsent !== undefined) {
     set['aiConsent.externalProviders'] = changes.aiConsent.externalProviders;
+    set['aiConsent.consentedAt'] = changes.aiConsent.consentedAt;
+    set['aiConsent.textVersion'] = changes.aiConsent.textVersion;
   }
   if (changes.outputLanguage !== undefined) {
     set['outputLanguage'] = changes.outputLanguage;
@@ -148,7 +152,11 @@ function toUser(document: UserDocument): User {
     passwordChangedAt: document.passwordChangedAt,
     profile: {
       displayName: document.displayName,
-      aiConsent: { externalProviders: document.aiConsent.externalProviders },
+      aiConsent: {
+        externalProviders: document.aiConsent.externalProviders,
+        consentedAt: document.aiConsent.consentedAt ?? null,
+        textVersion: document.aiConsent.textVersion ?? null,
+      },
       outputLanguage: document.outputLanguage,
       redactName: document.redactName,
     },

@@ -35,8 +35,10 @@ export interface ApplicationDocument {
   notes: string;
   appliedAt?: Date;
   statusChangedAt: Date;
-  /** Reservado para `cv-match-suggestions` (D9): este change no lo escribe nunca. */
-  fitScore?: number;
+  /**
+   * Sin campo de puntuación (D11 / ADR-030 §5): `fitScore` / `fitScoreDegraded` se derivan al leer del análisis, nunca
+   * se persisten aquí.
+   */
   version: number;
   createdAt: Date;
   updatedAt: Date;
@@ -74,7 +76,6 @@ export const applicationSchema = new Schema<ApplicationDocument>(
     notes: { type: String, default: '' },
     appliedAt: { type: Date },
     statusChangedAt: { type: Date, required: true },
-    fitScore: { type: Number, min: 0, max: 100 },
     version: { type: Number, required: true, min: 1 },
     createdAt: { type: Date, required: true },
     updatedAt: { type: Date, required: true },

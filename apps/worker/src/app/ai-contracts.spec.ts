@@ -2,6 +2,7 @@ import {
   type AiTask,
   FixtureMissing,
   type LlmProvider,
+  matchCvTask,
   type ProviderCapabilities,
 } from '@linkvault/ai';
 import { describe, expect, it } from 'vitest';
@@ -43,6 +44,8 @@ const classifySkills: AiTask<
   requires: { jsonMode: true },
   temperature: 0,
   budget: { maxTokens: 512, maxAttempts: 2 },
+  dataSensitivity: 'personal',
+  cacheable: false,
 };
 
 describe('@linkvault/ai contracts', () => {
@@ -54,6 +57,13 @@ describe('@linkvault/ai contracts', () => {
     expect(classifySkills.outputSchema.safeParse({ skills: [1] }).success).toBe(
       false,
     );
+  });
+
+  it('exports matchCvTask as a personal non-cacheable task', () => {
+    expect(matchCvTask.name).toBe('match-cv');
+    expect(matchCvTask.dataSensitivity).toBe('personal');
+    expect(matchCvTask.cacheable).toBe(false);
+    expect(matchCvTask.promptVersion).toBe('v1');
   });
 
   it('accepts an object that satisfies LlmProvider with mock capabilities', async () => {

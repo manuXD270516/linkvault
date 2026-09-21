@@ -1,7 +1,8 @@
 import type { CvListResponse } from '@linkvault/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import { CvNotFound } from '../domain/errors';
-import { toCvResponse } from './cv.mapper';
+import { CvAnalysisCounts } from './cv-analysis-counts';
+import { toCvResponses } from './cv.mapper';
 import {
   CV_REPOSITORY,
   type CvRepository,
@@ -21,6 +22,7 @@ import {
 export class SetDefaultCv {
   constructor(
     @Inject(CV_REPOSITORY) private readonly repository: CvRepository,
+    private readonly analysisCounts: CvAnalysisCounts,
   ) {}
 
   async execute(cvId: string, userId: string): Promise<CvListResponse> {
@@ -29,6 +31,7 @@ export class SetDefaultCv {
       throw new CvNotFound();
     }
     const documents = await this.repository.listByUser(userId);
-    return { items: documents.map(toCvResponse) };
+    const counts = await this.analysisCounts.countsByCv(userId);
+    return { items: toCvResponses(documents, counts) };
   }
 }

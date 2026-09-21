@@ -224,23 +224,50 @@ export type ApplicationLinkCard = z.infer<typeof applicationLinkCardSchema>;
 
 /**
  * Postulación propia tal y como la ve su dueño en todas las respuestas (alta, cambios, tablero), con la ficha de su
- * link. Estricta: `fitScore` está reservado en el modelo y NUNCA sale por la API en este change (D9).
+ * link. `fitScore` / `fitScoreDegraded` se **derivan al leer** del último análisis `done` (D11): nadie los persiste en
+ * la postulación. `fitScore` nunca viaja sin la marca, y nunca junto a `fitScoreDegraded: true` —un análisis básico
+ * entrega la marca y ningún número—. La ausencia es campo ausente, nunca `0`.
  * `updatedAt` cambia con todo y ordena el tablero; `statusChangedAt` solo con el estado o la etapa.
  */
-export const applicationSchema = z.strictObject({
-  id: z.string().min(1),
-  linkId: z.string().min(1),
-  status: applicationStatusSchema,
-  stageLabel: stageLabelSchema.optional(),
-  visibility: applicationVisibilitySchema,
-  notes: applicationNotesSchema,
-  appliedAt: z.iso.datetime().optional(),
-  statusChangedAt: z.iso.datetime(),
-  version: z.number().int().positive(),
-  createdAt: z.iso.datetime(),
-  updatedAt: z.iso.datetime(),
-  link: applicationLinkCardSchema,
-});
+export const applicationSchema = z
+  .strictObject({
+    id: z.string().min(1),
+    linkId: z.string().min(1),
+    status: applicationStatusSchema,
+    stageLabel: stageLabelSchema.optional(),
+    visibility: applicationVisibilitySchema,
+    notes: applicationNotesSchema,
+    appliedAt: z.iso.datetime().optional(),
+    statusChangedAt: z.iso.datetime(),
+    version: z.number().int().positive(),
+    createdAt: z.iso.datetime(),
+    updatedAt: z.iso.datetime(),
+    link: applicationLinkCardSchema,
+    fitScore: z.number().int().min(0).max(100).optional(),
+    fitScoreDegraded: z.boolean().optional(),
+  })
+  .superRefine((application, ctx) => {
+    if (
+      application.fitScore !== undefined &&
+      application.fitScoreDegraded === undefined
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['fitScoreDegraded'],
+        message: 'fitScore never travels without fitScoreDegraded',
+      });
+    }
+    if (
+      application.fitScore !== undefined &&
+      application.fitScoreDegraded === true
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['fitScore'],
+        message: 'A degraded analysis publishes the flag and no score',
+      });
+    }
+  });
 export type Application = z.infer<typeof applicationSchema>;
 
 /** Respuesta de `POST /api/applications` (`201`): `created` `false` si ya la seguía, con la postulación intacta. */

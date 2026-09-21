@@ -112,9 +112,10 @@ Cuentas con email y contraseña (Argon2id) y sesión según [ADR-012](docs/adr/A
 5. **Cambio de contraseña.** `POST /api/auth/password` (`currentPassword`, `newPassword`, con access token) responde `204` y
    revoca las demás sesiones del usuario; la sesión actual sigue abierta tras un refresh.
 
-Perfil propio: `GET /api/users/me` y `PATCH /api/users/me` (`displayName`, `aiConsent.externalProviders`, `outputLanguage`,
-`redactName`). El SPA solo muestra el email, el nombre y el cambio de contraseña; los controles de IA llegan con
-`cv-match-suggestions`.
+Perfil propio: `GET /api/users/me` y `PATCH /api/users/me` (`displayName`, `aiConsent` con `externalProviders` /
+`textVersion` / `consentedAt`, `outputLanguage`, `redactName`). En el SPA, `/perfil` incluye el permiso de proveedores
+externos (texto versión `2026-09-21`), el idioma de los análisis y la redacción del nombre. Ver
+[Análisis de encaje](#análisis-de-encaje-cv-y-oferta).
 
 **Protecciones.** Todo `POST /api/auth/*` exige la cabecera `X-Requested-With: linkvault` (si falta, `403`) y, si lleva
 cuerpo, `Content-Type: application/json` (si no, `415`). Los intentos se cuentan en Redis por ventanas fijas de 15 minutos:
@@ -128,7 +129,7 @@ cuerpo, `Content-Type: application/json` (si no, `415`). Los intentos se cuentan
 | `/login`    | Sin sesión | Login. Con sesión redirige a `/grupos`.                              |
 | `/registro` | Sin sesión | Registro. Con sesión redirige a `/grupos`.                           |
 | `/`         | Con sesión | Redirige a `/grupos`, la pantalla de inicio (ver [Grupos](#grupos)). |
-| `/perfil`   | Con sesión | Email (solo lectura), nombre y cambio de contraseña.                 |
+| `/perfil`   | Con sesión | Email, nombre, cambio de contraseña, permiso de IA externa, idioma de análisis y redacción del nombre. |
 
 Sin sesión, una ruta autenticada lleva a `/login?returnUrl=<ruta>` y, tras entrar, vuelve a ella. Al cargar, el SPA muestra
 "Conectando…" e intenta restaurar la sesión con la cookie durante como máximo 10 segundos.
@@ -1018,8 +1019,10 @@ Dos colecciones nuevas en MongoDB. Ninguna guarda un `groupId`: la visibilidad e
 | `applications`       | `{ linkId: 1, visibility: 1, userId: 1 }` | Los estados compartidos de una página de tarjetas, en una sola consulta.              |
 | `application_events` | `{ applicationId: 1, at: 1, _id: 1 }`     | El historial en orden y su borrado entero al dejar de seguir.                         |
 
-`application_events` repite el `userId` para filtrar el historial por dueña sin leer la postulación. `fitScore` existe
-en el modelo, reservado para `cv-match-suggestions`: nadie lo escribe y la API nunca lo devuelve.
+`application_events` repite el `userId` para filtrar el historial por dueña sin leer la postulación. `fitScore` /
+`fitScoreDegraded` **no viven en el documento**: se **derivan al leer** del último análisis de encaje de quien pide
+([ADR-030](docs/adr/ADR-030.md) §5). Un análisis básico solo aporta la marca; el informe no viaja con la postulación.
+Ver [Análisis de encaje](#análisis-de-encaje-cv-y-oferta).
 
 ### Probar las postulaciones en local
 
@@ -1427,8 +1430,9 @@ lo primero es qué se hace con él. Cómo operarlo: [RUNBOOK, Paso 6 octies](doc
   anotada en ADR-028).
 - **Nada del CV en los logs**: ni el texto, ni el nombre del archivo, ni sus bytes, ni el mensaje de error de un parser
   o del SDK de S3. Las líneas llevan `cvId`, estado, motivo, tamaño, caracteres y duración.
-- **Ninguna IA toca el CV en este change**: ni resumen, ni habilidades, ni `fitScore`. La primera vez que el texto salga
-  de nuestra infraestructura será en `cv-match-suggestions`, con su consentimiento y su redacción de datos personales.
+- **La extracción no usa IA.** La primera vez que el texto puede salir de nuestra infraestructura es al **analizar el
+  encaje** contra una oferta, y solo con el permiso de `/perfil` y la redacción de datos personales. Detalle:
+  [Análisis de encaje](#análisis-de-encaje-cv-y-oferta).
 
 ### Endpoints
 
@@ -1533,9 +1537,9 @@ Ventana fija de 15 min por persona, con el contador de plataforma; superado el t
 
 La pantalla habla de **"CV guardado"** y los identifica por **nombre y fecha**, no por número de versión ni por
 caracteres leídos. Bajo el marcado se lee "Este es el CV que compararemos con las vacantes", y siempre está visible la
-línea de privacidad: **"Tu CV solo lo ves tú y hoy no lo lee ninguna IA. No saldrá de LinkVault sin tu autorización."**
-No promete un permiso que el producto no pide ni nombra ninguna pantalla que todavía no existe; quien pone el control de
-consentimiento en Perfil y completa esa frase es `cv-match-suggestions`.
+línea de privacidad actualizada: el CV solo lo ve su dueño y **no sale de LinkVault sin permiso**; en **Perfil** se
+decide si un proveedor externo puede analizarlo, y qué se sustituye antes de enviarlo. Detalle del permiso y de qué
+sale: [Análisis de encaje](#análisis-de-encaje-cv-y-oferta).
 
 ### Probar los CV en local
 
@@ -1559,6 +1563,45 @@ curl -s -H "$T" -H 'Content-Type: application/json' -d '{}' \
 Ninguna ruta devuelve el archivo: si alguna vez aparece una, hay que añadir en el mismo commit
 `res.headers["content-disposition"]` y cualquier campo `fileName` a la lista de redacción del logger, porque `pino`
 redacta **rutas declaradas** y no adivina.
+
+## Análisis de encaje (CV y oferta)
+
+Con un CV leído y una oferta guardada, la persona puede pedir un **análisis de encaje** desde la tarjeta
+([ADR-029](docs/adr/ADR-029.md), [ADR-030](docs/adr/ADR-030.md)). Cómo operarlo:
+[RUNBOOK, Paso 6 nonies](docs/RUNBOOK.md#paso-6-nonies--operar-los-análisis-de-encaje).
+
+### Qué se analiza, qué sale y bajo qué permiso
+
+| Qué | Detalle |
+| --- | ------- |
+| **Se analiza** | El texto del CV marcado (o el elegido en el diálogo) y la descripción / preview de la oferta. |
+| **Qué sale de LinkVault** | Solo si hay permiso vigente en `/perfil` (`aiConsent.externalProviders` y `textVersion` = versión actual del texto, hoy `2026-09-21`): el texto del CV y de la oferta, **después** de sustituir email, teléfonos, dirección, documento, URL y (por defecto) el nombre por marcadores. El resto del CV —experiencia, estudios, empresas, fechas— **viaja tal cual** y puede identificar. Sin permiso, el análisis se intenta dentro de LinkVault (Ollama) o degrada a un análisis básico por reglas, sin sugerencias. |
+| **Qué no promete el producto** | Anonimato; que el proveedor no use lo enviado (elegimos quien se compromete a no entrenar, pero **no podemos comprobarlo**); aviso en vivo por SSE del progreso del análisis (eso llega en `cv-suggestions-review`; aquí el SPA **sondea** `GET /api/links/:linkId/match`). |
+| **Qué ve la persona** | Diálogo "Tu encaje…": no dispara nada al abrirse; badge, sugerencias con evidencia y copiar. En postulaciones, `fitScore` / `fitScoreDegraded` **derivados al leer** del último análisis; el informe no viaja con la postulación. |
+| **Proveedores** | Ollama local y OpenRouter limitado a modelos `:free` con `data_collection: "deny"`. BYOK no entra aquí. |
+
+Endpoints (sesión requerida, solo sobre links que la persona ve):
+
+| Método y ruta | Respuesta |
+| ------------- | --------- |
+| `POST /api/links/:linkId/match` | `202` con el análisis en curso (o reutilización según reglas de cuota / degradado vigente). |
+| `GET /api/links/:linkId/match` | `200` con bloques `latest?` y/o `running?` (paso, plazos, informe solo en `done`). |
+
+### Probar el encaje en local (mock)
+
+Con `AI_CHAIN=mock` y `AI_MOCK_MODE=replay`, consentimiento opcional según el caso, y un CV `extracted`:
+
+```bash
+T='Authorization: Bearer <accessToken>'
+J='Content-Type: application/json'
+LINK_ID=...
+
+curl -s -H "$T" -H "$J" -X POST "http://localhost:3000/api/links/$LINK_ID/match" -d '{}'
+curl -s -H "$T" "http://localhost:3000/api/links/$LINK_ID/match"
+```
+
+La pasada real contra OpenRouter (marcadores + `data_collection: deny`) es la **tarea 17.8** del change: puerta humana
+documentada en el RUNBOOK; el change no se archiva sin ella.
 
 ## Calidad
 

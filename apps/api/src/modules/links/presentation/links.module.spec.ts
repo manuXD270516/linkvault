@@ -2,8 +2,10 @@ import { randomUUID } from 'node:crypto';
 import {
   AiModule,
   parseAiConfig,
+  PROVIDER_ELIGIBILITY,
   RUN_TASK,
   type AiConfig,
+  type ProviderEligibility,
 } from '@linkvault/ai';
 import { apiErrorResponseSchema } from '@linkvault/shared';
 import { getMongoTestUri } from '@linkvault/testing';
@@ -147,6 +149,19 @@ describe('LinksModule', () => {
       RunTaskPastedExtraction,
     );
     expect(typeof app.get(RUN_TASK, { strict: false })).toBe('function');
+  });
+
+  it('resolves PROVIDER_ELIGIBILITY in the API process that serves the POST', async () => {
+    // Quien atiende el POST del análisis consulta la elegibilidad sin ejecutar la tarea (ADR-030 §8).
+    const eligibility = app.get<ProviderEligibility>(PROVIDER_ELIGIBILITY, {
+      strict: false,
+    });
+    await expect(
+      eligibility.hasEligibleProvider({
+        task: { requires: {} },
+        aiConsent: { externalProviders: false },
+      }),
+    ).resolves.toMatchObject({ status: 'ready' });
   });
 
   it('runs AI with the mock in replay, so the suite opens no new connection for it', async () => {

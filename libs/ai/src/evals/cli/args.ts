@@ -41,8 +41,11 @@ export interface EvalArgs {
   reportsDir: string;
 }
 
-/** Proveedores reales desde los que se puede grabar (D7). */
-export const RECORDING_UPSTREAMS = ['ollama', 'openrouter'] as const;
+/**
+ * Upstreams desde los que se puede grabar (D7 + cv-match-suggestions 6.14/6.18). `mock` es el único permitido
+ * para tareas `personal`; ollama/openrouter siguen para tareas `public`.
+ */
+export const RECORDING_UPSTREAMS = ['mock', 'ollama', 'openrouter'] as const;
 export type RecordingUpstream = (typeof RECORDING_UPSTREAMS)[number];
 
 export interface RecordFixturesArgs {
@@ -93,7 +96,7 @@ export const EVAL_USAGE =
 
 export const RECORD_FIXTURES_USAGE =
   'Usage: nx run ai:record-fixtures (--task=<task> | --from-pending [--task=<task>]) ' +
-  '--upstream=<ollama|openrouter> [--pending-file=<file>] [--overwrite] [--allow-external] ' +
+  '--upstream=<mock|ollama|openrouter> [--pending-file=<file>] [--overwrite] [--allow-external] ' +
   '[--ollama-url=<url>] [--timeout-ms=<ms>] [--evals-dir=<dir>]';
 
 export function parseEvalArgs(argv: readonly string[]): ParseResult<EvalArgs> {

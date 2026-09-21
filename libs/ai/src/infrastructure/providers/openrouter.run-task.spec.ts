@@ -209,9 +209,12 @@ describe('data protection end to end with OpenRouter', () => {
 
   it('control: with the redactor neutralised the same assertions would fail', async () => {
     // Contraprueba sin código de producción: se sustituye la redacción por la identidad solo en este test.
+    // `emittedMarkers` incluye el marcador del fixture para no disparar la invalidación de inventados (D10);
+    // lo que se neutraliza es la sustitución del input y la reinyección.
     vi.spyOn(PiiRedactor.prototype, 'redact').mockImplementation(
       (input: unknown) => ({
         value: input,
+        emittedMarkers: new Set(['[EMAIL_1]']),
         reinject: <O>(output: O): O => output,
       }),
     );

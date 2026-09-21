@@ -2,6 +2,12 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { CaseResult, EvaluableTask } from '../evaluable-task';
 import type { MetricValue } from '../metrics/metric';
+import {
+  PII_KNOWN_GAP_RATE,
+  PII_LEAK_RATE,
+  REDACTION_SKILL_LOSS,
+  type RedactionMetricsResult,
+} from '../metrics/redaction-metrics';
 
 // Reporte Markdown de una evaluación (D6 de ai-eval-harness, requisito "Corredor de evaluación"): cabecera, métricas con
 // tipo y línea base, y una fila por caso. Nunca incluye inputs ni salidas completas. `renderReport` es pura; la
@@ -22,7 +28,12 @@ export interface EvalReportData<I, O, E> {
    */
   baseline?: Readonly<Record<string, number>> | null;
   results: readonly CaseResult<I, O, E>[];
+  /** Detalle de métricas de redacción (ids con valor ≠ 0 y huecos observados); nunca valores de PII. */
+  redaction?: RedactionMetricsResult;
+  /** Identificadores de huecos conocidos declarados que ningún caso usa (retirables). */
+  unusedKnownGaps?: readonly string[];
 }
+
 
 /** Modelos distintos de los casos `success`, en orden de aparición; si no hay, el configurado o `—`. */
 export function reportModel(
@@ -92,6 +103,42 @@ export function renderReport<I, O, E>(data: EvalReportData<I, O, E>): string {
           ? [baselineValue === undefined ? '—' : formatNumber(baselineValue)]
           : []),
       ]),
+    );
+  }
+
+  if (data.redaction !== undefined) {
+    lines.push('', '### Redacción', '');
+    if (data.redaction.skillLossCaseIds.length > 0) {
+      lines.push(
+        `- \`${REDACTION_SKILL_LOSS}\` ≠ 0 en: ${data.redaction.skillLossCaseIds.map((id) => `\`${id}\``).join(', ')}`,
+      );
+    }
+    if (data.redaction.leakCaseIds.length > 0) {
+      lines.push(
+        `- \`${PII_LEAK_RATE}\` ≠ 0 en: ${data.redaction.leakCaseIds.map((id) => `\`${id}\``).join(', ')}`,
+      );
+    }
+    if (data.redaction.observedGaps.length > 0) {
+      const listed = data.redaction.observedGaps
+        .map((g) => `\`${g.gapId}\` (caso \`${g.caseId}\`)`)
+        .join(', ');
+      lines.push(`- \`${PII_KNOWN_GAP_RATE}\` huecos observados: ${listed}`);
+    }
+    if (data.redaction.closedGaps.length > 0) {
+      const listed = data.redaction.closedGaps
+        .map((g) => `\`${g.gapId}\` (caso \`${g.caseId}\`)`)
+        .join(', ');
+      lines.push(
+        `- Huecos conocidos que ya no se observan (retirar marca): ${listed}`,
+      );
+    }
+  }
+
+  if (data.unusedKnownGaps !== undefined && data.unusedKnownGaps.length > 0) {
+    lines.push(
+      '',
+      `- Huecos conocidos retirables (declarados, sin uso en el golden): ${data.unusedKnownGaps.map((id) => `\`${id}\``).join(', ')}`,
+      '',
     );
   }
 

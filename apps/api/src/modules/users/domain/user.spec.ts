@@ -89,10 +89,37 @@ describe('createUser', () => {
 
     expect(user.profile).toEqual({
       displayName: 'Ana',
-      aiConsent: { externalProviders: false },
+      aiConsent: {
+        externalProviders: false,
+        consentedAt: null,
+        textVersion: null,
+      },
       outputLanguage: 'es',
-      redactName: false,
+      redactName: true,
     });
+  });
+
+  it('El nombre no viaja por defecto', () => {
+    const user = createUser({
+      email: 'ana@example.com',
+      passwordHash: HASH,
+      displayName: 'Ana',
+      now,
+    });
+
+    expect(user.profile.redactName).toBe(true);
+  });
+
+  it('Sin fecha ni versión de consentimiento', () => {
+    const user = createUser({
+      email: 'ana@example.com',
+      passwordHash: HASH,
+      displayName: 'Ana',
+      now,
+    });
+
+    expect(user.profile.aiConsent.consentedAt).toBeNull();
+    expect(user.profile.aiConsent.textVersion).toBeNull();
   });
 
   it('normalizes the email and the display name', () => {
@@ -135,9 +162,13 @@ describe('createUser', () => {
 describe('profile changes', () => {
   const profile: Profile = {
     displayName: 'Ana',
-    aiConsent: { externalProviders: false },
+    aiConsent: {
+      externalProviders: false,
+      consentedAt: null,
+      textVersion: null,
+    },
     outputLanguage: 'es',
-    redactName: false,
+    redactName: true,
   };
 
   it('offers the same output languages as the shared contract', () => {
@@ -168,8 +199,22 @@ describe('profile changes', () => {
   });
 
   it('applies only the sent fields', () => {
+    const consentedAt = new Date('2026-09-20T12:00:00.000Z');
     expect(
-      applyProfileChanges(profile, { aiConsent: { externalProviders: true } }),
-    ).toEqual({ ...profile, aiConsent: { externalProviders: true } });
+      applyProfileChanges(profile, {
+        aiConsent: {
+          externalProviders: true,
+          consentedAt,
+          textVersion: '2026-09-20',
+        },
+      }),
+    ).toEqual({
+      ...profile,
+      aiConsent: {
+        externalProviders: true,
+        consentedAt,
+        textVersion: '2026-09-20',
+      },
+    });
   });
 });

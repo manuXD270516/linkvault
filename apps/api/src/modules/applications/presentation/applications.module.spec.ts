@@ -14,6 +14,7 @@ import {
 } from '../../../test-support/test-config';
 import { LinksModule } from '../../links/presentation/links.module';
 import { ChangeApplicationStatus } from '../application/change-application-status.usecase';
+import { ApplicationFitScores } from '../application/application-fit-scores';
 import { GetApplicationTimeline } from '../application/get-application-timeline.usecase';
 import { ListGroupTrackers } from '../application/list-group-trackers.usecase';
 import { ListMyApplications } from '../application/list-my-applications.usecase';
@@ -74,6 +75,12 @@ describe('ApplicationsModule', () => {
     ]) {
       expect(app.get(useCase, { strict: false })).toBeInstanceOf(useCase);
     }
+  });
+
+  it('exports ApplicationFitScores for match to register on init', () => {
+    expect(app.get(ApplicationFitScores, { strict: false })).toBeInstanceOf(
+      ApplicationFitScores,
+    );
   });
 
   it.each([

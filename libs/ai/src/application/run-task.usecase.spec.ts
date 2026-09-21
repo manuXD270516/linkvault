@@ -357,6 +357,104 @@ describe('RunTask: fallback and typed degradation', () => {
   });
 });
 
+describe('RunTask: degraded reason precedence', () => {
+  it('Faltaba el consentimiento y el permiso era la diferencia', async () => {
+    const external = new FakeLlmProvider('openrouter', [VALID], {
+      capabilities: { external: true },
+    });
+    const { runTask } = harness([external]);
+
+    const result = await runTask.execute(classifySkillsTask, INPUT, {
+      aiConsent: { externalProviders: false },
+    });
+
+    expect(result).toEqual({
+      status: 'degraded',
+      reason: 'consent_required',
+    });
+    expect(external.calls).toBe(0);
+  });
+
+  it('Faltaba el consentimiento pero no habría cambiado nada', async () => {
+    const local = new FakeLlmProvider('ollama', [VALID], {
+      capabilities: { jsonMode: false },
+    });
+    const { runTask } = harness([local]);
+
+    const result = await runTask.execute(classifySkillsTask, INPUT, {
+      aiConsent: { externalProviders: false },
+    });
+
+    expect(result).toEqual({ status: 'degraded', reason: 'no_providers' });
+    expect(local.calls).toBe(0);
+  });
+
+  it('Sin consentimiento, con un proveedor local que falla', async () => {
+    const local = new FakeLlmProvider('ollama', [new Error('down')]);
+    const external = new FakeLlmProvider('openrouter', [VALID], {
+      capabilities: { external: true },
+    });
+    const { runTask } = harness([local, external]);
+
+    const result = await runTask.execute(classifySkillsTask, INPUT, {
+      aiConsent: { externalProviders: false },
+    });
+
+    expect(result).toEqual({
+      status: 'degraded',
+      reason: 'providers_failed',
+    });
+    expect(local.calls).toBe(1);
+    expect(external.calls).toBe(0);
+  });
+
+  it('Los cuatro motivos se distinguen entre sí', async () => {
+    const reasons = new Set([
+      'no_providers',
+      'providers_failed',
+      'quota_exceeded',
+      'consent_required',
+    ]);
+    expect(reasons.size).toBe(4);
+    expect(reasons.has('consent_required')).toBe(true);
+    expect(reasons.has('no_providers')).toBe(true);
+  });
+
+  it('El instante de vuelta no acompaña a otro motivo', async () => {
+    const { runTask: empty } = harness([]);
+    const noProviders = await empty.execute(classifySkillsTask, INPUT, CONSENT);
+
+    const failing = new FakeLlmProvider('ollama', [new Error('down')]);
+    const { runTask: failRun } = harness([failing]);
+    const providersFailed = await failRun.execute(
+      classifySkillsTask,
+      INPUT,
+      CONSENT,
+    );
+
+    const external = new FakeLlmProvider('openrouter', [VALID], {
+      capabilities: { external: true },
+    });
+    const { runTask: consentRun } = harness([external]);
+    const consentRequired = await consentRun.execute(classifySkillsTask, INPUT, {
+      aiConsent: { externalProviders: false },
+    });
+
+    expect(noProviders).toEqual({ status: 'degraded', reason: 'no_providers' });
+    expect(providersFailed).toEqual({
+      status: 'degraded',
+      reason: 'providers_failed',
+    });
+    expect(consentRequired).toEqual({
+      status: 'degraded',
+      reason: 'consent_required',
+    });
+    expect(noProviders).not.toHaveProperty('aiQuotaRetryAt');
+    expect(providersFailed).not.toHaveProperty('aiQuotaRetryAt');
+    expect(consentRequired).not.toHaveProperty('aiQuotaRetryAt');
+  });
+});
+
 describe('RunTask: errors that propagate instead of degrading', () => {
   it('Fixture ausente en CI', async () => {
     const key = executionKey({
@@ -454,7 +552,7 @@ describe('RunTask: errors that propagate instead of degrading', () => {
   it('leaves the half-open permit available when rendering raises InvalidPrompt', async () => {
     const clock = new ManualClock();
     const breaker = new InMemoryCircuitBreaker(clock);
-    for (let i = 0; i < 5; i++) breaker.recordFailure('ollama');
+    for (let i = 0; i < 5; i++) await breaker.recordFailure('ollama');
     clock.advance(30_000);
     const provider = new FakeLlmProvider('ollama', [VALID]);
     const broken = harness([provider], {
@@ -467,7 +565,7 @@ describe('RunTask: errors that propagate instead of degrading', () => {
       broken.runTask.execute(classifySkillsTask, INPUT, CONSENT),
     ).rejects.toBeInstanceOf(InvalidPrompt);
 
-    expect(breaker.openIds().size).toBe(0);
+    expect((await breaker.openIds()).size).toBe(0);
     const healthy = harness([provider], { clock, breaker });
     await expect(
       healthy.runTask.execute(classifySkillsTask, INPUT, CONSENT),
@@ -477,7 +575,7 @@ describe('RunTask: errors that propagate instead of degrading', () => {
   it('returns the half-open permit when a programming error is raised after acquiring it', async () => {
     const clock = new ManualClock();
     const breaker = new InMemoryCircuitBreaker(clock);
-    for (let i = 0; i < 5; i++) breaker.recordFailure('ollama');
+    for (let i = 0; i < 5; i++) await breaker.recordFailure('ollama');
     clock.advance(30_000);
     const provider = new FakeLlmProvider('ollama', [
       new InvalidPrompt('classify-skills', 'v1', 'broken'),
@@ -489,8 +587,8 @@ describe('RunTask: errors that propagate instead of degrading', () => {
       runTask.execute(classifySkillsTask, INPUT, CONSENT),
     ).rejects.toBeInstanceOf(InvalidPrompt);
 
-    expect(breaker.tryAcquire('ollama')).toBe(true);
-    breaker.release('ollama');
+    expect(await breaker.tryAcquire('ollama')).toBe(true);
+    await breaker.release('ollama');
     await expect(
       runTask.execute(classifySkillsTask, INPUT, CONSENT),
     ).resolves.toMatchObject({ status: 'success', providerId: 'ollama' });
@@ -536,12 +634,25 @@ describe('RunTask: errors that propagate instead of degrading', () => {
 });
 
 describe('RunTask: result cache', () => {
+  /**
+   * Variante pública y cacheable de classify-skills: la tarea real es `personal` y no cacheable; estos
+   * escenarios prueban la caché de resultados de tareas `public` (como `extract-job`).
+   */
+  const cacheableTask: AiTask<
+    { text: string },
+    ClassifySkillsOutput
+  > = {
+    ...classifySkillsTask,
+    dataSensitivity: 'public',
+    cacheable: true,
+  };
+
   /** Variante de classify-skills con dos claves de input para probar el orden de claves. */
   const twoKeyTask: AiTask<
     { text: string; source: string },
     ClassifySkillsOutput
   > = {
-    ...classifySkillsTask,
+    ...cacheableTask,
     inputSchema: z.object({ text: z.string().min(1), source: z.string() }),
   };
 
@@ -580,12 +691,8 @@ describe('RunTask: result cache', () => {
     const first = harness([firstProvider], { cache: sharedCache });
     const second = harness([secondProvider], { cache: sharedCache });
 
-    await first.runTask.execute(classifySkillsTask, INPUT, CONSENT);
-    const result = await second.runTask.execute(
-      classifySkillsTask,
-      INPUT,
-      CONSENT,
-    );
+    await first.runTask.execute(cacheableTask, INPUT, CONSENT);
+    const result = await second.runTask.execute(cacheableTask, INPUT, CONSENT);
 
     expect(result).toMatchObject({ status: 'success', cached: true });
     expect(secondProvider.calls).toBe(0);
@@ -596,7 +703,7 @@ describe('RunTask: result cache', () => {
       new FakeLlmProvider('ollama', [VALID], { model: 'qwen' }),
     ]);
 
-    await runTask.execute(classifySkillsTask, INPUT, CONSENT);
+    await runTask.execute(cacheableTask, INPUT, CONSENT);
 
     expect([...deps.cache.entries.values()]).toEqual([
       {
@@ -611,12 +718,12 @@ describe('RunTask: result cache', () => {
   it('Nueva versión de prompt', async () => {
     const cache = new InMemoryResultCache();
     const v1 = harness([new FakeLlmProvider('ollama', [VALID])], { cache });
-    await v1.runTask.execute(classifySkillsTask, INPUT, CONSENT);
+    await v1.runTask.execute(cacheableTask, INPUT, CONSENT);
     const provider = new FakeLlmProvider('ollama', [VALID]);
     const v2 = harness([provider], { cache });
 
     const result = await v2.runTask.execute(
-      { ...classifySkillsTask, promptVersion: 'v2' },
+      { ...cacheableTask, promptVersion: 'v2' },
       INPUT,
       CONSENT,
     );
@@ -633,11 +740,11 @@ describe('RunTask: result cache', () => {
     const provider = new FakeLlmProvider('ollama', [VALID]);
     const { runTask } = harness([provider]);
 
-    await runTask.execute(classifySkillsTask, INPUT, {
+    await runTask.execute(cacheableTask, INPUT, {
       ...CONSENT,
       outputLanguage: 'es',
     });
-    const result = await runTask.execute(classifySkillsTask, INPUT, {
+    const result = await runTask.execute(cacheableTask, INPUT, {
       ...CONSENT,
       outputLanguage: 'en',
     });
@@ -653,8 +760,8 @@ describe('RunTask: result cache', () => {
       new FakeLlmProvider('ollama', [VALID]),
     ]);
 
-    await runTask.execute(classifySkillsTask, INPUT, CONSENT);
-    await runTask.execute(classifySkillsTask, INPUT, CONSENT);
+    await runTask.execute(cacheableTask, INPUT, CONSENT);
+    await runTask.execute(cacheableTask, INPUT, CONSENT);
 
     expect(deps.cache.gets).toBe(0);
     expect(deps.cache.sets).toBe(0);
@@ -668,7 +775,7 @@ describe('RunTask: result cache', () => {
       { cache },
     );
 
-    const result = await runTask.execute(classifySkillsTask, INPUT, CONSENT);
+    const result = await runTask.execute(cacheableTask, INPUT, CONSENT);
 
     expect(result).toMatchObject({ status: 'success', cached: false });
     expect(cache.gets).toBe(1);
@@ -685,7 +792,7 @@ describe('RunTask: result cache', () => {
     ]);
 
     await runTask.execute(
-      { ...classifySkillsTask, degrade: () => ({ skills: [] }) },
+      { ...cacheableTask, degrade: () => ({ skills: [] }) },
       INPUT,
       CONSENT,
     );
@@ -709,10 +816,48 @@ describe('RunTask: result cache', () => {
       promptVersion: 'v1',
     });
 
+    const result = await runTask.execute(cacheableTask, INPUT, CONSENT);
+
+    expect(result).toMatchObject({ status: 'success', cached: false });
+    expect(provider.calls).toBe(1);
+  });
+
+  it('Dos ejecuciones idénticas de una tarea personal', async () => {
+    const provider = new FakeLlmProvider('ollama', [VALID, VALID]);
+    const { runTask, deps } = harness([provider]);
+
+    const first = await runTask.execute(classifySkillsTask, INPUT, CONSENT);
+    const second = await runTask.execute(classifySkillsTask, INPUT, CONSENT);
+
+    expect(first).toMatchObject({ status: 'success', cached: false });
+    expect(second).toMatchObject({ status: 'success', cached: false });
+    expect(provider.calls).toBe(2);
+    expect(deps.cache.gets).toBe(0);
+    expect(deps.cache.sets).toBe(0);
+  });
+
+  it('Una tarea personal nunca se devuelve cacheada', async () => {
+    const provider = new FakeLlmProvider('ollama', [VALID]);
+    const { runTask, deps } = harness([provider]);
+    // Entrada preexistente: aunque hubiera algo en el almacén, no se lee.
+    const key = executionKey({
+      taskName: 'classify-skills',
+      promptVersion: 'v1',
+      outputLanguage: 'es',
+      input: INPUT,
+    });
+    deps.cache.entries.set(key, {
+      output: VALID_OUTPUT,
+      providerId: 'ollama',
+      model: 'cached-model',
+      promptVersion: 'v1',
+    });
+
     const result = await runTask.execute(classifySkillsTask, INPUT, CONSENT);
 
     expect(result).toMatchObject({ status: 'success', cached: false });
     expect(provider.calls).toBe(1);
+    expect(deps.cache.gets).toBe(0);
   });
 });
 
@@ -824,11 +969,87 @@ describe('RunTask: data protection', () => {
     expect(result).toMatchObject({
       status: 'success',
       output: { skills: [{ name: 'ana@example.com', category: 'other' }] },
+      cached: false,
     });
     expect(JSON.stringify(result)).not.toContain('[EMAIL_1]');
-    expect([...deps.cache.entries.values()][0]?.output).toEqual({
-      skills: [{ name: 'ana@example.com', category: 'other' }],
+    // Una tarea personal no escribe la salida reinyectada en la caché compartida.
+    expect(deps.cache.sets).toBe(0);
+    expect(deps.cache.entries.size).toBe(0);
+  });
+
+  it('Marcador inventado por el proveedor', async () => {
+    const invented =
+      '{"skills":[{"name":"[ADDRESS_3]","category":"other"}]}';
+    const fixed = '{"skills":[{"name":"TypeScript","category":"language"}]}';
+    const external = new FakeLlmProvider('openrouter', [invented, fixed], {
+      capabilities: { external: true },
     });
+    const { runTask } = harness([external]);
+
+    const result = await runTask.execute(
+      classifySkillsTask,
+      PERSONAL_INPUT,
+      CONSENT,
+    );
+
+    expect(result).toMatchObject({
+      status: 'success',
+      output: { skills: [{ name: 'TypeScript', category: 'language' }] },
+    });
+    expect(external.calls).toBe(2);
+    expect(JSON.stringify(result)).not.toContain('[ADDRESS_3]');
+  });
+
+  it('El proveedor insiste con el marcador inventado', async () => {
+    const invented =
+      '{"skills":[{"name":"[ADDRESS_3]","category":"other"}]}';
+    const first = new FakeLlmProvider('openrouter', [invented, invented], {
+      capabilities: { external: true, costPer1kOut: 0 },
+    });
+    const second = new FakeLlmProvider(
+      'openrouter-b',
+      ['{"skills":[{"name":"TypeScript","category":"language"}]}'],
+      { capabilities: { external: true, costPer1kOut: 0.01 } },
+    );
+    const { runTask } = harness([first, second]);
+
+    const result = await runTask.execute(
+      classifySkillsTask,
+      PERSONAL_INPUT,
+      CONSENT,
+    );
+
+    expect(result).toMatchObject({
+      status: 'success',
+      providerId: 'openrouter-b',
+    });
+    expect(first.calls).toBe(2);
+    expect(second.calls).toBe(1);
+    expect(JSON.stringify(result)).not.toContain('[ADDRESS_3]');
+  });
+
+  it('Un marcador inventado nunca llega al usuario ni al disco', async () => {
+    const invented =
+      '{"skills":[{"name":"[ADDRESS_3]","category":"other"}]}';
+    const external = new FakeLlmProvider('openrouter', [invented, invented], {
+      capabilities: { external: true },
+    });
+    const { runTask, deps } = harness([external]);
+
+    const result = await runTask.execute(
+      classifySkillsTask,
+      PERSONAL_INPUT,
+      CONSENT,
+    );
+
+    expect(result).toEqual({ status: 'degraded', reason: 'providers_failed' });
+    expect(JSON.stringify(result)).not.toContain('[ADDRESS_3]');
+    expect(deps.cache.sets).toBe(0);
+    expect(
+      deps.ledger.records.every(
+        (record) => !JSON.stringify(record).includes('[ADDRESS_3]'),
+      ),
+    ).toBe(true);
   });
 
   it('redacts per provider: the local fallback receives the original input', async () => {
@@ -972,10 +1193,15 @@ describe('RunTask: usage ledger', () => {
   });
 
   it('records nothing for a cache hit', async () => {
+    const cacheableTask = {
+      ...classifySkillsTask,
+      dataSensitivity: 'public' as const,
+      cacheable: true,
+    };
     const { runTask, deps } = harness([new FakeLlmProvider('ollama', [VALID])]);
 
-    await runTask.execute(classifySkillsTask, INPUT, CONSENT);
-    await runTask.execute(classifySkillsTask, INPUT, CONSENT);
+    await runTask.execute(cacheableTask, INPUT, CONSENT);
+    await runTask.execute(cacheableTask, INPUT, CONSENT);
 
     expect(deps.ledger.records).toHaveLength(1);
   });
@@ -1060,16 +1286,21 @@ describe('RunTask: quotas', () => {
   ): InMemoryQuotaPolicy {
     return new InMemoryQuotaPolicy((userId, task) => {
       const limit = limits[task];
-      if (limit === undefined) return Promise.resolve(true);
+      if (limit === undefined) return Promise.resolve({ allowed: true });
       const since = clock.now() - 24 * 60 * 60 * 1000;
-      const used = ledger.records.filter(
+      const successes = ledger.records.filter(
         (r) =>
           r.userId === userId &&
           r.task === task &&
           r.outcome === 'success' &&
           r.at.getTime() >= since,
-      ).length;
-      return Promise.resolve(used < limit);
+      );
+      if (successes.length < limit) return Promise.resolve({ allowed: true });
+      const oldest = Math.min(...successes.map((r) => r.at.getTime()));
+      return Promise.resolve({
+        allowed: false,
+        retryAt: new Date(oldest + 24 * 60 * 60 * 1000),
+      });
     });
   }
 
@@ -1085,7 +1316,11 @@ describe('RunTask: quotas', () => {
 
     const result = await runTask.execute(classifySkillsTask, INPUT, USER_CTX);
 
-    expect(result).toEqual({ status: 'degraded', reason: 'quota_exceeded' });
+    expect(result).toMatchObject({
+      status: 'degraded',
+      reason: 'quota_exceeded',
+      aiQuotaRetryAt: expect.any(String),
+    });
     expect(provider.calls).toBe(2);
     const newRecords = ledger.records.slice(recordsBefore);
     expect(newRecords).toHaveLength(1);
@@ -1102,8 +1337,33 @@ describe('RunTask: quotas', () => {
     expect(newRecords[0]).not.toHaveProperty('reason');
   });
 
+  it('La cuota agotada dice cuándo volver', async () => {
+    const oldestAt = Date.parse('2026-09-17T08:00:00.000Z');
+    const clock = new ManualClock(Date.parse('2026-09-17T10:00:00.000Z'));
+    const retryAt = new Date(oldestAt + 24 * 60 * 60 * 1000);
+    const quota = new InMemoryQuotaPolicy(() =>
+      Promise.resolve({ allowed: false, retryAt }),
+    );
+    const provider = new FakeLlmProvider('ollama', [VALID]);
+    const { runTask } = harness([provider], { quota, clock });
+
+    const result = await runTask.execute(classifySkillsTask, INPUT, USER_CTX);
+
+    expect(result).toEqual({
+      status: 'degraded',
+      reason: 'quota_exceeded',
+      aiQuotaRetryAt: retryAt.toISOString(),
+    });
+    expect(provider.calls).toBe(0);
+  });
+
   it('includes the validated degrade output when the quota is exceeded', async () => {
-    const quota = new InMemoryQuotaPolicy(() => Promise.resolve(false));
+    const quota = new InMemoryQuotaPolicy(() =>
+      Promise.resolve({
+        allowed: false,
+        retryAt: new Date('2026-09-18T10:00:00.000Z'),
+      }),
+    );
     const { runTask } = harness([new FakeLlmProvider('ollama', [VALID])], {
       quota,
     });
@@ -1118,11 +1378,17 @@ describe('RunTask: quotas', () => {
       status: 'degraded',
       reason: 'quota_exceeded',
       output: { skills: [] },
+      aiQuotaRetryAt: '2026-09-18T10:00:00.000Z',
     });
   });
 
   it('Ejecución sin usuario', async () => {
-    const quota = new InMemoryQuotaPolicy(() => Promise.resolve(false));
+    const quota = new InMemoryQuotaPolicy(() =>
+      Promise.resolve({
+        allowed: false,
+        retryAt: new Date('2026-09-18T10:00:00.000Z'),
+      }),
+    );
     const provider = new FakeLlmProvider('ollama', [VALID]);
     const { runTask } = harness([provider], { quota });
 
@@ -1217,7 +1483,7 @@ describe('RunTask: circuit breaker integration', () => {
   it('Recuperación en half-open', async () => {
     const clock = new ManualClock();
     const breaker = new InMemoryCircuitBreaker(clock);
-    for (let i = 0; i < 5; i++) breaker.recordFailure('ollama');
+    for (let i = 0; i < 5; i++) await breaker.recordFailure('ollama');
     const provider = new FakeLlmProvider('ollama', [VALID]);
     const { runTask } = harness([provider], { clock, breaker });
 
@@ -1231,13 +1497,13 @@ describe('RunTask: circuit breaker integration', () => {
     });
 
     expect(result).toMatchObject({ status: 'success', providerId: 'ollama' });
-    expect(breaker.openIds().size).toBe(0);
+    expect((await breaker.openIds()).size).toBe(0);
   });
 
   it('Permiso de prueba no usado', async () => {
     const clock = new ManualClock();
     const breaker = new InMemoryCircuitBreaker(clock);
-    for (let i = 0; i < 5; i++) breaker.recordFailure('openrouter');
+    for (let i = 0; i < 5; i++) await breaker.recordFailure('openrouter');
     clock.advance(30_000);
     const local = new FakeLlmProvider('ollama', [VALID]);
     const halfOpen = new FakeLlmProvider('openrouter', [VALID], {
@@ -1264,10 +1530,10 @@ describe('RunTask: circuit breaker integration', () => {
   it('skips a provider without a breaker permit and reports no_providers when none was contacted', async () => {
     const clock = new ManualClock();
     const breaker = new InMemoryCircuitBreaker(clock);
-    for (let i = 0; i < 5; i++) breaker.recordFailure('ollama');
+    for (let i = 0; i < 5; i++) await breaker.recordFailure('ollama');
     clock.advance(30_000);
     // Otro proceso lógico ya tomó el permiso de prueba.
-    expect(breaker.tryAcquire('ollama')).toBe(true);
+    expect(await breaker.tryAcquire('ollama')).toBe(true);
     const provider = new FakeLlmProvider('ollama', [VALID]);
     const { runTask, deps } = harness([provider], { clock, breaker });
 
@@ -1382,7 +1648,7 @@ describe('RunTask: deadlines and cancellation (real timers)', () => {
   it('returns the half-open permit of a cancelled probe to a real breaker', async () => {
     const clock = new ManualClock();
     const breaker = new InMemoryCircuitBreaker(clock);
-    for (let i = 0; i < 5; i++) breaker.recordFailure('ollama');
+    for (let i = 0; i < 5; i++) await breaker.recordFailure('ollama');
     clock.advance(30_000);
     const controller = new AbortController();
     const provider = new FakeLlmProvider('ollama', [neverResolves, VALID]);

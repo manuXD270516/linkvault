@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import {
+  AI_CONSENT_TEXT_VERSION,
   apiErrorResponseSchema,
   userProfileSchema,
   type UserProfile,
@@ -116,13 +117,43 @@ describe('UsersController', () => {
         id: profile.id,
         email: profile.email,
         displayName: 'Ana',
-        aiConsent: { externalProviders: false },
+        aiConsent: {
+          externalProviders: false,
+          consentedAt: null,
+          textVersion: null,
+          currentTextVersion: AI_CONSENT_TEXT_VERSION,
+        },
         outputLanguage: 'es',
-        redactName: false,
+        redactName: true,
         createdAt: profile.createdAt,
       });
       expect(response.body).not.toContain('argon2id');
       expect(response.body).not.toContain('passwordChangedAt');
+    });
+
+    it('Consentimiento aceptado sobre un texto anterior', async () => {
+      const { profile, authorization } = await authenticatedUser();
+      const connection = app.get<Connection>(getConnectionToken());
+      await connection.model(USER_MODEL_NAME).updateOne(
+        { _id: profile.id },
+        {
+          $set: {
+            'aiConsent.externalProviders': true,
+            'aiConsent.consentedAt': new Date('2026-09-01T00:00:00.000Z'),
+            'aiConsent.textVersion': '2026-01-01',
+          },
+        },
+      );
+
+      const response = await getMe(authorization);
+
+      expect(response.statusCode).toBe(200);
+      expect(userProfileSchema.parse(response.json()).aiConsent).toEqual({
+        externalProviders: true,
+        consentedAt: '2026-09-01T00:00:00.000Z',
+        textVersion: '2026-01-01',
+        currentTextVersion: AI_CONSENT_TEXT_VERSION,
+      });
     });
 
     it('answers 401 unauthorized without a token', async () => {
@@ -140,21 +171,104 @@ describe('UsersController', () => {
       const { authorization } = await authenticatedUser();
 
       const response = await patchMe(authorization, {
-        aiConsent: { externalProviders: true },
+        aiConsent: {
+          externalProviders: true,
+          textVersion: AI_CONSENT_TEXT_VERSION,
+        },
       });
 
       expect(response.statusCode).toBe(200);
       const body = userProfileSchema.parse(response.json());
       expect(body.aiConsent.externalProviders).toBe(true);
+      expect(body.aiConsent.textVersion).toBe(AI_CONSENT_TEXT_VERSION);
+      expect(body.aiConsent.consentedAt).toEqual(expect.any(String));
       expect(body.outputLanguage).toBe('es');
       expect(
         userProfileSchema.parse((await getMe(authorization)).json()),
       ).toEqual(body);
     });
 
+    it('Activar sin decir qué texto se aceptó', async () => {
+      const { profile, authorization } = await authenticatedUser();
+
+      const response = await patchMe(authorization, {
+        aiConsent: { externalProviders: true },
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(apiErrorResponseSchema.parse(response.json())).toMatchObject({
+        code: 'validation_error',
+        fields: ['aiConsent.textVersion'],
+      });
+      expect((await getMe(authorization)).json()).toEqual(profile);
+    });
+
+    it('Activar sobre un texto que ya caducó', async () => {
+      const { profile, authorization } = await authenticatedUser();
+
+      const response = await patchMe(authorization, {
+        aiConsent: {
+          externalProviders: true,
+          textVersion: '2026-01-01',
+        },
+      });
+
+      expect(response.statusCode).toBe(409);
+      expect(apiErrorResponseSchema.parse(response.json())).toMatchObject({
+        code: 'consent_text_outdated',
+      });
+      expect((await getMe(authorization)).json()).toEqual(profile);
+    });
+
+    it('Revocar el consentimiento', async () => {
+      const { authorization } = await authenticatedUser();
+      await patchMe(authorization, {
+        aiConsent: {
+          externalProviders: true,
+          textVersion: AI_CONSENT_TEXT_VERSION,
+        },
+      });
+
+      const response = await patchMe(authorization, {
+        aiConsent: { externalProviders: false },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = userProfileSchema.parse(response.json());
+      expect(body.aiConsent).toEqual({
+        externalProviders: false,
+        consentedAt: null,
+        textVersion: null,
+        currentTextVersion: AI_CONSENT_TEXT_VERSION,
+      });
+    });
+
+    it('rejects consentedAt or currentTextVersion in the body', async () => {
+      const { profile, authorization } = await authenticatedUser();
+
+      const withDate = await patchMe(authorization, {
+        aiConsent: {
+          externalProviders: true,
+          textVersion: AI_CONSENT_TEXT_VERSION,
+          consentedAt: '2026-09-20T12:00:00.000Z',
+        },
+      });
+      const withCurrent = await patchMe(authorization, {
+        aiConsent: {
+          externalProviders: true,
+          textVersion: AI_CONSENT_TEXT_VERSION,
+          currentTextVersion: AI_CONSENT_TEXT_VERSION,
+        },
+      });
+
+      expect(withDate.statusCode).toBe(400);
+      expect(withCurrent.statusCode).toBe(400);
+      expect((await getMe(authorization)).json()).toEqual(profile);
+    });
+
     it('applies only the sent fields and trims displayName', async () => {
       const { profile, authorization } = await authenticatedUser();
-      await patchMe(authorization, { redactName: true });
+      await patchMe(authorization, { redactName: false });
 
       const response = await patchMe(authorization, {
         displayName: '  Ana María ',
@@ -166,7 +280,7 @@ describe('UsersController', () => {
         ...profile,
         displayName: 'Ana María',
         outputLanguage: 'en',
-        redactName: true,
+        redactName: false,
       });
     });
 
@@ -226,7 +340,7 @@ describe('UsersController', () => {
     });
 
     it('answers 401 unauthorized without a token', async () => {
-      const response = await patchMe(undefined, { redactName: true });
+      const response = await patchMe(undefined, { redactName: false });
 
       expect(response.statusCode).toBe(401);
       expect(response.json()).toMatchObject({ code: 'unauthorized' });

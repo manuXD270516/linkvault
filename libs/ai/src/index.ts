@@ -20,7 +20,10 @@ export type {
   PromptView,
   RenderedPrompt,
 } from './domain/ports/prompt-registry.port';
-export type { QuotaPolicy } from './domain/ports/quota-policy.port';
+export type {
+  QuotaDecision,
+  QuotaPolicy,
+} from './domain/ports/quota-policy.port';
 export type {
   CachedResult,
   ResultCache,
@@ -52,8 +55,13 @@ export {
   type AiModuleAsyncOptions,
   type AiModuleOptions,
 } from './ai.module';
-export { RUN_TASK } from './ai.tokens';
+export { PROVIDER_ELIGIBILITY, RUN_TASK } from './ai.tokens';
 export type { RunTaskFn } from './application/run-task.usecase';
+export type {
+  ProviderEligibility,
+  ProviderEligibilityQuery,
+  ProviderEligibilityResult,
+} from './application/provider-eligibility';
 export {
   classifySkillsTask,
   type ClassifySkillsInput,
@@ -70,6 +78,14 @@ export {
   type ExtractPastedJobInput,
   type ExtractPastedJobOutput,
 } from './tasks/extract-pasted-job.task';
+export {
+  matchCvTask,
+  MATCH_CV_CV_TEXT_MAX_LENGTH,
+  MATCH_CV_JOB_TEXT_MAX_LENGTH,
+  MATCH_CV_TITLE_MAX_LENGTH,
+  type MatchCvInput,
+  type MatchCvOutput,
+} from './tasks/match-cv.task';
 export {
   formatAiConfigProblems,
   parseAiConfig,

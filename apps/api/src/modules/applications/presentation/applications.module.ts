@@ -1,6 +1,7 @@
 import { type DynamicModule, Module } from '@nestjs/common';
 import { GroupsModule } from '../../groups/presentation/groups.module';
 import { UsersModule } from '../../users/presentation/users.module';
+import { ApplicationFitScores } from '../application/application-fit-scores';
 import { ChangeApplicationStatus } from '../application/change-application-status.usecase';
 import { GetApplicationTimeline } from '../application/get-application-timeline.usecase';
 import { ListGroupTrackers } from '../application/list-group-trackers.usecase';
@@ -25,9 +26,10 @@ import { GroupApplicationsController } from './group-applications.controller';
  * Módulo `applications` (D1 de applications-tracking). Usa la conexión Mongoose por defecto de la app, así que quien lo
  * importa debe registrar `MongooseModule.forRoot*`.
  *
- * Depende de `links`, `groups` y `users`, siempre por sus fachadas y detrás de puertos propios; nadie depende de él. No
- * exporta nada, no encola nada (ADR-009 no aplica) y no registra ningún hook de borrado de grupo: una postulación no
- * guarda nada que cuelgue de un grupo y su visibilidad allí se deriva en cada lectura (ADR-024 §6).
+ * Depende de `links`, `groups` y `users`, siempre por sus fachadas y detrás de puertos propios; nadie depende de él salvo
+ * el registro de `ApplicationFitScores` (D11): `match` se registra en su `onModuleInit` y este módulo no importa a
+ * `match`. No encola nada (ADR-009 no aplica) y no registra ningún hook de borrado de grupo: una postulación no guarda
+ * nada que cuelgue de un grupo y su visibilidad allí se deriva en cada lectura (ADR-024 §6).
  *
  * `LinksModule` le llega por `register(linksModule)` y no importando la clase: `AppModule` lo construye una sola vez
  * con `LinksModule.register(aiModule)` y le pasa **el mismo objeto**, así que Nest lo instancia una vez. Importar la
@@ -45,6 +47,7 @@ import { GroupApplicationsController } from './group-applications.controller';
       useClass: UsersFacadeApplicationDirectory,
     },
     { provide: APPLICATIONS_CLOCK, useClass: SystemClock },
+    ApplicationFitScores,
     TrackLink,
     ListMyApplications,
     ChangeApplicationStatus,
@@ -53,6 +56,7 @@ import { GroupApplicationsController } from './group-applications.controller';
     UntrackApplication,
     ListGroupTrackers,
   ],
+  exports: [ApplicationFitScores],
 })
 export class ApplicationsModule {
   /** `ApplicationsModule` con la instancia de `LinksModule` que construye `AppModule`, que exporta `LinksFacade`. */

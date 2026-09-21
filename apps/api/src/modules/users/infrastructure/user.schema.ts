@@ -15,7 +15,11 @@ export interface UserDocument {
   passwordHash: string;
   passwordChangedAt: Date;
   displayName: string;
-  aiConsent: { externalProviders: boolean };
+  aiConsent: {
+    externalProviders: boolean;
+    consentedAt: Date | null;
+    textVersion: string | null;
+  };
   outputLanguage: (typeof OUTPUT_LANGUAGES)[number];
   redactName: boolean;
   createdAt: Date;
@@ -29,7 +33,11 @@ export const userSchema = new Schema<UserDocument>(
     displayName: { type: String, required: true },
     aiConsent: {
       type: new Schema(
-        { externalProviders: { type: Boolean, required: true } },
+        {
+          externalProviders: { type: Boolean, required: true },
+          consentedAt: { type: Date, default: null },
+          textVersion: { type: String, default: null },
+        },
         { _id: false },
       ),
       required: true,

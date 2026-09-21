@@ -267,6 +267,8 @@ function fakeTask(withSample: boolean): AiTask<FakeInput, FakeOutput> {
     requires: { jsonMode: true },
     temperature: 0,
     budget: { maxTokens: 256, maxAttempts: 2 },
+    dataSensitivity: 'personal',
+    cacheable: false,
     ...(withSample
       ? {
           sample: (input: FakeInput, rng: () => number): FakeOutput => ({
