@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-09-21
+# Solo endurece un assert de Vitest: ningún requisito de aplicaciones/fitScore cambia.
+skip_specs: true
