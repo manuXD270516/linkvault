@@ -81,6 +81,10 @@ const reportSchema = new Schema(
     degraded: { type: Boolean, required: true },
     degradedReason: { type: String, enum: MATCH_DEGRADED_REASONS },
     aiQuotaRetryAt: { type: String },
+    /** Score del juez 0–1 (cv-suggestions-review). Opcional: informes previos no lo llevan. */
+    judgeScore: { type: Number, min: 0, max: 1 },
+    /** Modelo/proveedor del juez que produjo `judgeScore`. */
+    judgeModel: { type: String },
   },
   { _id: false },
 );
