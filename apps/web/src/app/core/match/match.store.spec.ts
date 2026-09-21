@@ -163,6 +163,8 @@ describe('MatchStore', () => {
       'reading-job',
       'comparing-cv',
       'drafting-suggestions',
+      'critiquing-suggestions',
+      'revising-suggestions',
     ]);
     expect(store.pendingSteps()).toEqual([]);
     expect(store.stalled()).toBe(false);

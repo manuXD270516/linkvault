@@ -73,13 +73,19 @@ export type MatchDegradedReason = z.infer<typeof matchDegradedReasonSchema>;
 
 /**
  * Informe completo tal y como se guarda y se devuelve. `degraded: true` exige sugerencias vacías y motivo; la hora de
- * vuelta solo acompaña a la cuota de IA agotada.
+ * vuelta solo acompaña a la cuota de IA agotada. `judgeScore` / `judgeModel` son opcionales (cv-suggestions-review):
+ * un informe viejo o uno cuyo juez no respondió los omite y sigue validando. No van en `matchReportCoreSchema`: el
+ * generador `match-cv` no los produce.
  */
 export const matchReportSchema = matchReportCoreSchema
   .extend({
     degraded: z.boolean(),
     degradedReason: matchDegradedReasonSchema.optional(),
     aiQuotaRetryAt: z.iso.datetime().optional(),
+    /** Score del juez en [0, 1] de la iteración del informe guardado. Ausente si no hubo crítica válida. */
+    judgeScore: z.number().min(0).max(1).optional(),
+    /** Modelo (o proveedor) que emitió ese `judgeScore`. No vacío cuando viene. */
+    judgeModel: z.string().min(1).optional(),
   })
   .superRefine((report, ctx) => {
     if (report.degraded) {

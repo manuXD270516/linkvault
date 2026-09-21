@@ -1,9 +1,9 @@
 ## 1. Contrato
 
-- [ ] 1.1 [ai] Declarar la salida de `critique-suggestions` (score 0–1 e issues) y el input sin `cvFragment`/`before` en `libs/shared`; verificar con tests de schema.
-- [ ] 1.2 [backend] Añadir `judgeScore` y `judgeModel` opcionales al informe y al GET; verificar informes viejos sin ellos.
-- [ ] 1.3 [backend] Definir `analysis.step` (analysisId, linkId, paso) y los pasos `critiquing-suggestions` / `revising-suggestions`; verificar que un payload con campos de más no valida.
-- [ ] 1.4 [infra] Escribir ADR-031 (hasta dos envíos del CV en una ejecución; juez sin PII reinyectada) y referenciarlo desde design.md.
+- [x] 1.1 [ai] Declarar la salida de `critique-suggestions` (score 0–1 e issues) y el input sin `cvFragment`/`before` en `libs/shared`; verificar con tests de schema.
+- [x] 1.2 [backend] Añadir `judgeScore` y `judgeModel` opcionales al informe y al GET; verificar informes viejos sin ellos.
+- [x] 1.3 [backend] Definir `analysis.step` (analysisId, linkId, paso) y los pasos `critiquing-suggestions` / `revising-suggestions`; verificar que un payload con campos de más no valida.
+- [x] 1.4 [infra] Escribir ADR-031 (hasta dos envíos del CV en una ejecución; juez sin PII reinyectada) y referenciarlo desde design.md.
 
 ## 2. Juez
 

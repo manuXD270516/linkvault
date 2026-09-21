@@ -14,7 +14,8 @@ import {
 export const FULL_ANALYSIS_STEPS: readonly MatchStep[] = MATCH_FULL_SEQUENCE;
 
 /**
- * Secuencia degradada: se salta `drafting-suggestions` por contrato y termina en `done-degraded`.
+ * Secuencia degradada: se salta `drafting-suggestions` y los pasos del juez por contrato y termina en
+ * `done-degraded`.
  */
 export const DEGRADED_ANALYSIS_STEPS: readonly MatchStep[] =
   MATCH_DEGRADED_SEQUENCE;

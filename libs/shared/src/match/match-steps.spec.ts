@@ -17,6 +17,8 @@ describe('matchStepSchema', () => {
       'reading-job',
       'comparing-cv',
       'drafting-suggestions',
+      'critiquing-suggestions',
+      'revising-suggestions',
       'done',
       'done-degraded',
       'failed',
@@ -51,17 +53,21 @@ describe('secuencias canónicas', () => {
       'reading-job',
       'comparing-cv',
       'drafting-suggestions',
+      'critiquing-suggestions',
+      'revising-suggestions',
       'done',
     ]);
   });
 
-  it('declara la secuencia degradada saltándose drafting-suggestions por contrato', () => {
+  it('declara la secuencia degradada saltándose drafting y el juez por contrato', () => {
     expect(MATCH_DEGRADED_SEQUENCE).toEqual([
       'reading-job',
       'comparing-cv',
       'done-degraded',
     ]);
     expect(MATCH_DEGRADED_SEQUENCE).not.toContain('drafting-suggestions');
+    expect(MATCH_DEGRADED_SEQUENCE).not.toContain('critiquing-suggestions');
+    expect(MATCH_DEGRADED_SEQUENCE).not.toContain('revising-suggestions');
   });
 });
 
@@ -70,21 +76,27 @@ describe('orden declarado', () => {
     expect(matchStepOrder('reading-job')).toBe(0);
     expect(matchStepOrder('comparing-cv')).toBe(1);
     expect(matchStepOrder('drafting-suggestions')).toBe(2);
+    expect(matchStepOrder('critiquing-suggestions')).toBe(3);
+    expect(matchStepOrder('revising-suggestions')).toBe(4);
   });
 
   it('pone los tres finales al mismo tope', () => {
-    expect(matchStepOrder('done')).toBe(3);
-    expect(matchStepOrder('done-degraded')).toBe(3);
-    expect(matchStepOrder('failed')).toBe(3);
+    expect(matchStepOrder('done')).toBe(5);
+    expect(matchStepOrder('done-degraded')).toBe(5);
+    expect(matchStepOrder('failed')).toBe(5);
   });
 
   it.each([
     ['reading-job', 'comparing-cv', false],
     ['comparing-cv', 'drafting-suggestions', false],
+    ['drafting-suggestions', 'critiquing-suggestions', false],
+    ['critiquing-suggestions', 'revising-suggestions', false],
     ['comparing-cv', 'done-degraded', false],
-    ['drafting-suggestions', 'done', false],
+    ['revising-suggestions', 'done', false],
     ['comparing-cv', 'reading-job', true],
     ['drafting-suggestions', 'comparing-cv', true],
+    ['critiquing-suggestions', 'drafting-suggestions', true],
+    ['revising-suggestions', 'critiquing-suggestions', true],
     ['done', 'comparing-cv', true],
     ['done-degraded', 'done', true],
     ['failed', 'reading-job', true],

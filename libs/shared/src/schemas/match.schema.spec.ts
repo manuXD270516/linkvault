@@ -206,6 +206,30 @@ describe('matchReportSchema', () => {
       ).success,
     ).toBe(false);
   });
+
+  it('acepta informes viejos sin judgeScore ni judgeModel', () => {
+    const parsed = matchReportSchema.parse(fullReport());
+    expect(parsed).not.toHaveProperty('judgeScore');
+    expect(parsed).not.toHaveProperty('judgeModel');
+  });
+
+  it('acepta judgeScore y judgeModel opcionales del bucle de juez', () => {
+    expect(
+      matchReportSchema.parse(
+        fullReport({ judgeScore: 0.85, judgeModel: 'ollama/llama3.2' }),
+      ),
+    ).toMatchObject({ judgeScore: 0.85, judgeModel: 'ollama/llama3.2' });
+  });
+
+  it.each([
+    ['judgeScore 1.1', fullReport({ judgeScore: 1.1 }), false],
+    ['judgeScore -0.01', fullReport({ judgeScore: -0.01 }), false],
+    ['judgeModel vacío', fullReport({ judgeModel: '' }), false],
+    ['solo judgeScore', fullReport({ judgeScore: 0.8 }), true],
+    ['solo judgeModel', fullReport({ judgeModel: 'mock' }), true],
+  ] as const)('%s → válido: %s', (_label, value, valid) => {
+    expect(matchReportSchema.safeParse(value).success).toBe(valid);
+  });
 });
 
 describe('requestMatchRequestSchema', () => {

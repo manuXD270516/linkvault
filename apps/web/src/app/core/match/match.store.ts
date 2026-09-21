@@ -64,15 +64,15 @@ const initialState: MatchState = {
 };
 
 /**
- * Pasos de progreso ya hechos a partir del paso actual. Con `done-degraded`, `drafting-suggestions` no queda pendiente:
- * se saltó por contrato y no se marca como hecho ni como a la espera.
+ * Pasos de progreso ya hechos a partir del paso actual. Con `done-degraded`, `drafting-suggestions` y los pasos del
+ * juez no quedan pendientes: se saltaron por contrato y no se marcan como hechos ni como a la espera.
  */
 export function completedMatchSteps(step: MatchStep): MatchProgressStep[] {
   if (step === 'done') {
     return [...MATCH_PROGRESS_STEPS];
   }
   if (step === 'done-degraded') {
-    // `drafting-suggestions` se saltó: hecho lo anterior, y ese paso no queda pendiente.
+    // Drafting y juez se saltaron: hecho lo anterior, y esos pasos no quedan pendientes.
     return ['reading-job', 'comparing-cv'];
   }
   if (step === 'failed') {

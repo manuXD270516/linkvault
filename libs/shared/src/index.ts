@@ -1,3 +1,4 @@
+export * from './events/analysis-step.event';
 export * from './events/application-stale.event';
 export * from './events/cv-deleted.event';
 export * from './events/cv-uploaded.event';
@@ -7,6 +8,7 @@ export * from './events/link-enriched.event';
 export * from './events/match-requested.event';
 export * from './schemas/application.schema';
 export * from './schemas/auth.schema';
+export * from './schemas/critique-suggestions.schema';
 export * from './schemas/cv.schema';
 export * from './schemas/group.schema';
 export * from './schemas/group-link-comment.schema';
