@@ -1,0 +1,10 @@
+{
+  "task": "build-roadmap",
+  "promptVersion": "v1",
+  "goldenSha256": "800e62f74b65ef1af9282e97562519d30c3623b30a105e9f56ad3dd85812fc35",
+  "metrics": {
+    "degraded_rate": 0,
+    "schema_validity_rate": 1,
+    "verified_mark_accuracy": 1
+  }
+}

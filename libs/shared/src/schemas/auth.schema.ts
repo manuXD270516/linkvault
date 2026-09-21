@@ -145,6 +145,8 @@ export const apiErrorCodeSchema = z.enum([
   'cv_not_readable',
   // 409: la oferta no tiene título ni texto de vacante todavía; hay que completar la oferta, no reintentar a ciegas.
   'job_not_ready',
+  // 409: el análisis no admite roadmap (degradado, fallido o sin `missingSkills` útiles).
+  'roadmap_not_eligible',
   // 409: se activa el consentimiento con una `textVersion` que ya no es la vigente; el perfil no se modifica (D5).
   'consent_text_outdated',
   // 500

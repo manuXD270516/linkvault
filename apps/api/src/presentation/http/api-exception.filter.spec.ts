@@ -96,6 +96,7 @@ import {
   CvNotReady,
   JobNotReady,
   NoCv,
+  RoadmapNotEligible,
   TooManyAnalysisAttempts,
 } from '../../modules/match/domain/errors';
 import {
@@ -171,6 +172,7 @@ const THROWN: Record<string, () => unknown> = {
   'cv-not-ready': () => new CvNotReady(),
   'cv-not-readable': () => new CvNotReadable(),
   'job-not-ready': () => new JobNotReady(),
+  'roadmap-not-eligible': () => new RoadmapNotEligible(),
   'too-many-analysis-attempts': () => new TooManyAnalysisAttempts(321),
   unknown: () =>
     new Error(
@@ -579,6 +581,7 @@ describe('ApiExceptionFilter', () => {
     ['cv-not-ready', 409, 'cv_not_ready'],
     ['cv-not-readable', 409, 'cv_not_readable'],
     ['job-not-ready', 409, 'job_not_ready'],
+    ['roadmap-not-eligible', 409, 'roadmap_not_eligible'],
   ] as const)('answers match %s with %i %s', async (name, status, code) => {
     const response = await get(name);
 

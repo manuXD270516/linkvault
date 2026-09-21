@@ -95,6 +95,18 @@ export {
   type CritiqueSourceReport,
 } from './tasks/critique-suggestions.task';
 export {
+  buildRoadmapFromCatalogOnly,
+  buildRoadmapTask,
+  sampleBuildRoadmap,
+  type BuildRoadmapInput,
+  type BuildRoadmapOutput,
+} from './tasks/build-roadmap.task';
+export {
+  isCatalogHit,
+  searchCatalog,
+  type CatalogResource,
+} from './infrastructure/catalog/search-catalog';
+export {
   formatAiConfigProblems,
   parseAiConfig,
   type AiEnv,

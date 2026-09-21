@@ -943,4 +943,46 @@ describe('MatchDialog', () => {
     await flushOpen({ linkId: LINK_ID, latest: latestDone() });
     expect(dialog().querySelector('[data-testid="match-badge"]')).not.toBeNull();
   });
+
+  it('CTA al plan de estudio con skills faltantes', async () => {
+    const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+
+    await openDialog();
+    await flushOpen({ linkId: LINK_ID, latest: latestDone() });
+
+    expect(dialog().querySelector('[data-testid="match-open-roadmap"]')).not.toBeNull();
+    click('match-open-roadmap');
+    await settle();
+
+    expect(navigate).toHaveBeenCalledWith(['/plan', 'a1']);
+  });
+
+  it('Sin CTA si no faltan skills', async () => {
+    await openDialog();
+    await flushOpen({
+      linkId: LINK_ID,
+      latest: latestDone({
+        report: report({ missingSkills: [], suggestions: [] }),
+      }),
+    });
+
+    expect(dialog().querySelector('[data-testid="match-open-roadmap"]')).toBeNull();
+  });
+
+  it('Sin CTA en análisis degradado', async () => {
+    await openDialog();
+    await flushOpen({
+      linkId: LINK_ID,
+      latest: latestDone({
+        step: 'done-degraded',
+        report: report({
+          suggestions: [],
+          degraded: true,
+          degradedReason: 'no_providers',
+        }),
+      }),
+    });
+
+    expect(dialog().querySelector('[data-testid="match-open-roadmap"]')).toBeNull();
+  });
 });

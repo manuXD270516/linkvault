@@ -61,6 +61,11 @@ export const appRoutes: Route[] = [
         loadComponent: () => import('./features/cv/my-cv.page').then((m) => m.MyCvPage),
       },
       {
+        path: 'plan/:analysisId',
+        loadComponent: () =>
+          import('./features/roadmap/roadmap.page').then((m) => m.RoadmapPage),
+      },
+      {
         path: 'perfil',
         loadComponent: () =>
           import('./features/profile/profile.page').then((m) => m.ProfilePage),

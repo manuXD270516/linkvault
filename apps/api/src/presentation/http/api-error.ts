@@ -43,6 +43,7 @@ export const API_ERROR_STATUS: Readonly<Record<ApiErrorCode, number>> = {
   cv_not_ready: 409,
   cv_not_readable: 409,
   job_not_ready: 409,
+  roadmap_not_eligible: 409,
   consent_text_outdated: 409,
 };
 
@@ -95,6 +96,8 @@ export const API_ERROR_MESSAGES: Readonly<Record<ApiErrorCode, string>> = {
   cv_not_ready: 'That CV is still being read',
   cv_not_readable: 'That CV could not be read',
   job_not_ready: 'That job has no description yet',
+  roadmap_not_eligible:
+    'That analysis cannot produce a study roadmap',
   consent_text_outdated: 'The consent text changed; read it again',
 };
 

@@ -10,6 +10,7 @@ import {
 } from '../../application/pending-fixtures';
 import type { AiEnv } from '../../infrastructure/config/parse-ai-config';
 import {
+  buildRoadmapEvaluable,
   classifySkillsEvaluable,
   critiqueSuggestionsEvaluable,
   EVALUABLE_TASKS,
@@ -38,6 +39,7 @@ const OTHER_TASK = 'extract-job';
 const PASTED_TASK = 'extract-pasted-job';
 const MATCH_TASK = 'match-cv';
 const CRITIQUE_TASK = 'critique-suggestions';
+const ROADMAP_TASK = 'build-roadmap';
 
 /** Golden mínimo de critique-suggestions (cv-suggestions-review 5.1). */
 const CRITIQUE_GOLDEN = [
@@ -72,6 +74,40 @@ const CRITIQUE_GOLDEN = [
     expected: {
       score: 0.5,
       issues: ['Las sugerencias son demasiado genéricas.'],
+    },
+    tags: ['placeholder'],
+  },
+];
+
+/** Golden mínimo de build-roadmap (study-roadmap 2.1). */
+const ROADMAP_GOLDEN = [
+  {
+    id: 'roadmap-01',
+    input: {
+      missingSkills: [{ name: 'Kafka', importance: 'must' }],
+      job: {
+        title: 'Backend',
+        skills: [{ name: 'Kafka', importance: 'must' }],
+      },
+    },
+    expected: {
+      items: [
+        {
+          skill: 'Kafka',
+          priority: 1,
+          estimatedWeeks: 2,
+          resources: [
+            {
+              type: 'doc',
+              title: 'Apache Kafka Documentation',
+              url: 'https://kafka.apache.org/documentation/',
+              provider: 'kafka.apache.org',
+              free: true,
+              verified: true,
+            },
+          ],
+        },
+      ],
     },
     tags: ['placeholder'],
   },
@@ -205,6 +241,12 @@ describe('runEvalCommand', () => {
       goldenPath(evalsDir, CRITIQUE_TASK),
       `${CRITIQUE_GOLDEN.map((line) => JSON.stringify(line)).join('\n')}\n`,
     );
+    await mkdir(join(evalsDir, ROADMAP_TASK), { recursive: true });
+    await mkdir(join(fixturesDir, ROADMAP_TASK), { recursive: true });
+    await writeFile(
+      goldenPath(evalsDir, ROADMAP_TASK),
+      `${ROADMAP_GOLDEN.map((line) => JSON.stringify(line)).join('\n')}\n`,
+    );
   });
 
   // "Fixture ausente en replay" espera el error a propósito: este archivo queda fuera del registro de pendientes (4.6).
@@ -245,13 +287,20 @@ describe('runEvalCommand', () => {
     await writeOtherFixtures();
   }
 
-  /** Fixtures de extract-job, extract-pasted-job, match-cv y critique-suggestions. */
+  /** Fixtures de extract-job, extract-pasted-job, match-cv, critique-suggestions y build-roadmap. */
   async function writeOtherFixtures() {
     const pages = await loadGolden(extractJobEvaluable, evalsDir);
     const pasted = await loadGolden(extractPastedJobEvaluable, evalsDir);
     const match = await loadGolden(matchCvEvaluable, evalsDir);
     const critique = await loadGolden(critiqueSuggestionsEvaluable, evalsDir);
-    if (!pages.ok || !pasted.ok || !match.ok || !critique.ok) {
+    const roadmap = await loadGolden(buildRoadmapEvaluable, evalsDir);
+    if (
+      !pages.ok ||
+      !pasted.ok ||
+      !match.ok ||
+      !critique.ok ||
+      !roadmap.ok
+    ) {
       throw new Error('invalid test golden');
     }
     const notAJob = JSON.stringify({
@@ -292,6 +341,17 @@ describe('runEvalCommand', () => {
     for (const goldenCase of critique.cases) {
       await writeFile(
         join(fixturesDir, CRITIQUE_TASK, `${goldenCase.key}.json`),
+        JSON.stringify({
+          source: 'handwritten',
+          text: JSON.stringify(goldenCase.expected),
+          model: 'fixture-model',
+          usage: { inputTokens: 0, outputTokens: 0 },
+        }),
+      );
+    }
+    for (const goldenCase of roadmap.cases) {
+      await writeFile(
+        join(fixturesDir, ROADMAP_TASK, `${goldenCase.key}.json`),
         JSON.stringify({
           source: 'handwritten',
           text: JSON.stringify(goldenCase.expected),
@@ -406,6 +466,7 @@ describe('runEvalCommand', () => {
     expect(update.out.join('')).toContain('extract-job [mock]');
     expect(update.out.join('')).toContain('extract-pasted-job [mock]');
     expect(update.out.join('')).toContain('match-cv [mock]');
+    expect(update.out.join('')).toContain('build-roadmap [mock]');
 
     const check = captureIo(env);
     await expect(
@@ -579,6 +640,7 @@ describe('Coherencia entre registro y golden sets', () => {
     await expect(goldenTaskDirs(evalsDir)).resolves.toEqual(['future-task']);
     await expect(registryCoherence(evalsDir)).resolves.toEqual({
       withoutGolden: [
+        'build-roadmap',
         'classify-skills',
         'critique-suggestions',
         'extract-job',
@@ -607,12 +669,14 @@ describe('Coherencia entre registro y golden sets', () => {
     });
   });
 
-  it('findEvaluableTask finds match-cv and critique-suggestions', () => {
+  it('findEvaluableTask finds match-cv, critique-suggestions and build-roadmap', () => {
     expect(findEvaluableTask('match-cv')?.task.name).toBe('match-cv');
     expect(findEvaluableTask('critique-suggestions')?.task.name).toBe(
       'critique-suggestions',
     );
+    expect(findEvaluableTask('build-roadmap')?.task.name).toBe('build-roadmap');
     expect(evaluableTaskNames()).toContain('match-cv');
     expect(evaluableTaskNames()).toContain('critique-suggestions');
+    expect(evaluableTaskNames()).toContain('build-roadmap');
   });
 });

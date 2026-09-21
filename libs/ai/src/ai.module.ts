@@ -44,6 +44,7 @@ import {
 import { ConfigQuotaPolicy } from './infrastructure/quota/config-quota-policy';
 import { InMemoryCircuitBreaker } from './infrastructure/resilience/in-memory-circuit-breaker';
 import { RedisCircuitBreaker } from './infrastructure/resilience/redis-circuit-breaker';
+import { buildRoadmapTask } from './tasks/build-roadmap.task';
 import { classifySkillsTask } from './tasks/classify-skills.task';
 import { critiqueSuggestionsTask } from './tasks/critique-suggestions.task';
 import { extractJobTask } from './tasks/extract-job.task';
@@ -69,8 +70,8 @@ export interface AiModuleAsyncOptions {
 }
 
 /**
- * Tareas registradas: `classify-skills`, `extract-job`, `extract-pasted-job`, `match-cv` y
- * `critique-suggestions` (cv-suggestions-review).
+ * Tareas registradas: `classify-skills`, `extract-job`, `extract-pasted-job`, `match-cv`,
+ * `critique-suggestions` y `build-roadmap` (study-roadmap).
  */
 export const AI_TASKS: readonly AnyAiTask[] = [
   classifySkillsTask as unknown as AnyAiTask,
@@ -78,6 +79,7 @@ export const AI_TASKS: readonly AnyAiTask[] = [
   extractPastedJobTask as unknown as AnyAiTask,
   matchCvTask as unknown as AnyAiTask,
   critiqueSuggestionsTask as unknown as AnyAiTask,
+  buildRoadmapTask as unknown as AnyAiTask,
 ];
 
 const AI_TASK_REGISTRY = Symbol('AI_TASK_REGISTRY');

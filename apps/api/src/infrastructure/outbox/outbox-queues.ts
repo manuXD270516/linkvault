@@ -1,11 +1,11 @@
-import { ANALYZE_MATCH_QUEUE } from '@linkvault/shared';
+import { ANALYZE_MATCH_QUEUE, BUILD_ROADMAP_QUEUE } from '@linkvault/shared';
 import { Logger } from '@nestjs/common';
 import type { DefaultJobOptions } from 'bullmq';
 
 // Colas del outbox tal y como las registra `api` (D6 de job-links, D11 de cv-upload-extract, D2 de
-// cv-match-suggestions). Aquí solo viven su configuración y el listener de errores; quién publica en cada una lo
-// decide la tabla de `outbox-routes`, y quién consume vive en `apps/worker`: `api` no procesa ninguna de estas colas
-// ni monta ninguna `Queue` fuera de aquí.
+// cv-match-suggestions; study-roadmap). Aquí solo viven su configuración y el listener de errores; quién publica
+// en cada una lo decide la tabla de `outbox-routes`, y quién consume vive en `apps/worker`: `api` no procesa ninguna
+// de estas colas ni monta ninguna `Queue` fuera de aquí.
 
 /**
  * Retención y reintentos de D6 para las colas que **sí** reintentan lo que revienta (enriquecimiento, extracción y
@@ -26,10 +26,10 @@ export const OUTBOX_JOB_OPTIONS: DefaultJobOptions = {
 };
 
 /**
- * Opciones de `analyze-match`: **sin reintento a ciegas** (`attempts: 1`, ADR-030 §6). Reejecutar el análisis entero
- * multiplicaría los envíos del CV a un proveedor externo y consumiría cuota por cada entrega. La retención es la
+ * Opciones de `analyze-match` y `build-roadmap`: **sin reintento a ciegas** (`attempts: 1`, ADR-030 §6 /
+ * study-roadmap). Reejecutar multiplicaría envíos a un proveedor externo y consumiría cuota. La retención es la
  * misma que el resto: el `jobId` determinista evita duplicados mientras el job vive; pasada la retención, manda la
- * idempotencia del consumidor (escritura condicionada a `running` y al plazo).
+ * idempotencia del consumidor (claim `generating` / escritura condicionada).
  */
 export const ANALYZE_MATCH_JOB_OPTIONS: DefaultJobOptions = {
   attempts: 1,
@@ -37,9 +37,14 @@ export const ANALYZE_MATCH_JOB_OPTIONS: DefaultJobOptions = {
   removeOnFail: { age: 604_800 },
 };
 
-/** Opciones por cola: `analyze-match` no reintenta; el resto conserva los reintentos de D6. */
+const NO_BLIND_RETRY_QUEUES = new Set<string>([
+  ANALYZE_MATCH_QUEUE,
+  BUILD_ROADMAP_QUEUE,
+]);
+
+/** Opciones por cola: análisis y roadmap no reintentan; el resto conserva los reintentos de D6. */
 export function outboxJobOptionsFor(queue: string): DefaultJobOptions {
-  return queue === ANALYZE_MATCH_QUEUE
+  return NO_BLIND_RETRY_QUEUES.has(queue)
     ? ANALYZE_MATCH_JOB_OPTIONS
     : OUTBOX_JOB_OPTIONS;
 }

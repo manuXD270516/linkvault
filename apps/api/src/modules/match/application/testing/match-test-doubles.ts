@@ -359,6 +359,23 @@ export class InMemoryAnalysisRepository implements AnalysisRepository {
     return Promise.resolve(removed);
   }
 
+  findIdsByCv(
+    userId: string,
+    cvId: string,
+    _session: TransactionSession,
+  ): Promise<readonly string[]> {
+    if (!isUserId(userId) || !isCvId(cvId)) {
+      return Promise.resolve([]);
+    }
+    const ids: string[] = [];
+    for (const analysis of this.documents.values()) {
+      if (analysis.userId === userId && analysis.cvId === cvId) {
+        ids.push(analysis.id);
+      }
+    }
+    return Promise.resolve(ids);
+  }
+
   countByCv(userId: string): Promise<ReadonlyMap<string, number>> {
     const counts = new Map<string, number>();
     if (!isUserId(userId)) {

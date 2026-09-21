@@ -1,5 +1,6 @@
 import {
   ANALYZE_MATCH_QUEUE,
+  BUILD_ROADMAP_QUEUE,
   CV_DELETED_EVENT_TYPE,
   CV_UPLOADED_EVENT_TYPE,
   DELETE_CV_FILE_QUEUE,
@@ -7,6 +8,7 @@ import {
   EXTRACT_CV_QUEUE,
   LINK_CREATED_EVENT_TYPE,
   MATCH_REQUESTED_EVENT_TYPE,
+  ROADMAP_REQUESTED_EVENT_TYPE,
 } from '@linkvault/shared';
 import { describe, expect, it } from 'vitest';
 import {
@@ -23,6 +25,7 @@ describe('the outbox routing table', () => {
         CV_UPLOADED_EVENT_TYPE,
         CV_DELETED_EVENT_TYPE,
         MATCH_REQUESTED_EVENT_TYPE,
+        ROADMAP_REQUESTED_EVENT_TYPE,
       ].sort(),
     );
   });
@@ -35,6 +38,7 @@ describe('the outbox routing table', () => {
       EXTRACT_CV_QUEUE,
       DELETE_CV_FILE_QUEUE,
       ANALYZE_MATCH_QUEUE,
+      BUILD_ROADMAP_QUEUE,
     ]);
     expect(new Set(queues).size).toBe(queues.length);
   });
@@ -46,6 +50,7 @@ describe('the outbox routing table', () => {
         EXTRACT_CV_QUEUE,
         DELETE_CV_FILE_QUEUE,
         ANALYZE_MATCH_QUEUE,
+        BUILD_ROADMAP_QUEUE,
       ].sort(),
     );
   });
@@ -80,6 +85,15 @@ describe('the outbox routing table', () => {
       data: { analysisId: 'a1', userId: 'u1', linkId: 'l1', cvId: 'c1' },
       jobId: 'match:a1:analyze',
     });
+    expect(
+      outboxRouteOf(ROADMAP_REQUESTED_EVENT_TYPE)?.job({
+        analysisId: 'a1',
+        userId: 'u1',
+      }),
+    ).toEqual({
+      data: { analysisId: 'a1', userId: 'u1' },
+      jobId: 'roadmap:a1:build',
+    });
   });
 
   it('throws when the payload does not meet its schema', () => {
@@ -99,6 +113,9 @@ describe('the outbox routing table', () => {
         userId: 'u1',
         linkId: 'l1',
       }),
+    ).toThrow();
+    expect(() =>
+      outboxRouteOf(ROADMAP_REQUESTED_EVENT_TYPE)?.job({ analysisId: 'a1' }),
     ).toThrow();
   });
 
@@ -132,6 +149,10 @@ describe('the jobId of every route, against the rules of BullMQ', () => {
       userId: 'u1',
       linkId: 'l1',
       cvId: 'c1',
+    },
+    [ROADMAP_REQUESTED_EVENT_TYPE]: {
+      analysisId: 'a1',
+      userId: 'u1',
     },
   };
 

@@ -26,6 +26,7 @@ import { GroupsListPage } from './features/groups/groups-list.page';
 import { JoinGroupPage } from './features/groups/join-group.page';
 import { MyLinksPage } from './features/links/my-links.page';
 import { ProfilePage } from './features/profile/profile.page';
+import { RoadmapPage } from './features/roadmap/roadmap.page';
 import { Shell } from './layout/shell/shell';
 
 const session: SessionResponse = {
@@ -66,9 +67,10 @@ describe('appRoutes', () => {
       ...(shell.children ?? []),
     ].filter((route) => route.redirectTo === undefined && route.loadChildren === undefined);
 
-    // /oferta/:slug, login, registro, el shell y sus seis páginas: /grupos, /grupos/:id, /unirse, /mis-links, /mi-cv
-    // y /perfil. El tablero de /postulaciones tiene su propio archivo de rutas ("Ruta diferida").
-    expect(pages).toHaveLength(10);
+    // /oferta/:slug, login, registro, el shell y sus siete páginas: /grupos, /grupos/:id, /unirse, /mis-links,
+    // /mi-cv, /plan/:analysisId y /perfil. El tablero de /postulaciones tiene su propio archivo de rutas
+    // ("Ruta diferida").
+    expect(pages).toHaveLength(11);
     for (const route of pages) {
       expect(route.component).toBeUndefined();
       expect(route.loadComponent).toBeTypeOf('function');
@@ -97,6 +99,7 @@ describe('appRoutes', () => {
       'unirse',
       'mis-links',
       'mi-cv',
+      'plan/:analysisId',
       'postulaciones',
       'perfil',
     ]) {
@@ -179,6 +182,41 @@ describe('appRoutes', () => {
       request.flush({ items: [] });
 
       expect(harness.fixture.debugElement.query(By.directive(MyCvPage))).not.toBeNull();
+    });
+
+    it('shows the study roadmap inside the shell with a session', async () => {
+      store.setSession(session);
+      const harness = await RouterTestingHarness.create();
+
+      await harness.navigateByUrl('/plan/a1', Shell);
+      const request = await vi.waitFor(() =>
+        http.expectOne({ method: 'GET', url: '/api/analyses/a1/roadmap' }),
+      );
+      request.flush({
+        roadmapId: 'r1',
+        analysisId: 'a1',
+        status: 'ready',
+        items: [
+          {
+            skill: 'Kubernetes',
+            priority: 1,
+            estimatedWeeks: 2,
+            resources: [
+              {
+                type: 'course',
+                title: 'K8s 101',
+                url: 'https://example.com/k8s',
+                provider: 'Catalog',
+                free: true,
+                verified: true,
+              },
+            ],
+          },
+        ],
+      });
+
+      expect(harness.fixture.debugElement.query(By.directive(RoadmapPage))).not.toBeNull();
+      expect(router.url).toBe('/plan/a1');
     });
 
     it('Ruta diferida', async () => {

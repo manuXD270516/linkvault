@@ -1,0 +1,519 @@
+{
+  "TypeScript": [
+    {
+      "type": "doc",
+      "title": "The TypeScript Handbook",
+      "url": "https://www.typescriptlang.org/docs/handbook/intro.html",
+      "provider": "typescriptlang.org",
+      "free": true
+    },
+    {
+      "type": "doc",
+      "title": "TypeScript Deep Dive",
+      "url": "https://basarat.gitbook.io/typescript/",
+      "provider": "basarat.gitbook.io",
+      "free": true
+    }
+  ],
+  "Node.js": [
+    {
+      "type": "doc",
+      "title": "Node.js Documentation",
+      "url": "https://nodejs.org/docs/latest/api/",
+      "provider": "nodejs.org",
+      "free": true
+    },
+    {
+      "type": "course",
+      "title": "Introduction to Node.js",
+      "url": "https://nodejs.org/en/learn/getting-started/introduction-to-nodejs",
+      "provider": "nodejs.org",
+      "free": true
+    }
+  ],
+  "NestJS": [
+    {
+      "type": "doc",
+      "title": "NestJS Documentation",
+      "url": "https://docs.nestjs.com/",
+      "provider": "docs.nestjs.com",
+      "free": true
+    },
+    {
+      "type": "course",
+      "title": "NestJS Fundamentals (Official courses overview)",
+      "url": "https://courses.nestjs.com/",
+      "provider": "courses.nestjs.com",
+      "free": false
+    }
+  ],
+  "PostgreSQL": [
+    {
+      "type": "doc",
+      "title": "PostgreSQL Official Documentation",
+      "url": "https://www.postgresql.org/docs/current/",
+      "provider": "postgresql.org",
+      "free": true
+    },
+    {
+      "type": "doc",
+      "title": "PostgreSQL Tutorial",
+      "url": "https://www.postgresqltutorial.com/",
+      "provider": "postgresqltutorial.com",
+      "free": true
+    }
+  ],
+  "Redis": [
+    {
+      "type": "doc",
+      "title": "Redis Documentation",
+      "url": "https://redis.io/docs/latest/",
+      "provider": "redis.io",
+      "free": true
+    },
+    {
+      "type": "doc",
+      "title": "Redis University (free courses)",
+      "url": "https://university.redis.io/",
+      "provider": "university.redis.io",
+      "free": true
+    }
+  ],
+  "Kafka": [
+    {
+      "type": "doc",
+      "title": "Apache Kafka Documentation",
+      "url": "https://kafka.apache.org/documentation/",
+      "provider": "kafka.apache.org",
+      "free": true
+    },
+    {
+      "type": "doc",
+      "title": "Kafka Introduction",
+      "url": "https://kafka.apache.org/intro",
+      "provider": "kafka.apache.org",
+      "free": true
+    }
+  ],
+  "Docker": [
+    {
+      "type": "doc",
+      "title": "Docker Documentation",
+      "url": "https://docs.docker.com/",
+      "provider": "docs.docker.com",
+      "free": true
+    },
+    {
+      "type": "doc",
+      "title": "Docker Get Started",
+      "url": "https://docs.docker.com/get-started/",
+      "provider": "docs.docker.com",
+      "free": true
+    }
+  ],
+  "Kubernetes": [
+    {
+      "type": "doc",
+      "title": "Kubernetes Documentation",
+      "url": "https://kubernetes.io/docs/home/",
+      "provider": "kubernetes.io",
+      "free": true
+    },
+    {
+      "type": "doc",
+      "title": "Kubernetes Tutorials",
+      "url": "https://kubernetes.io/docs/tutorials/",
+      "provider": "kubernetes.io",
+      "free": true
+    }
+  ],
+  "React": [
+    {
+      "type": "doc",
+      "title": "React Documentation",
+      "url": "https://react.dev/learn",
+      "provider": "react.dev",
+      "free": true
+    },
+    {
+      "type": "doc",
+      "title": "React Quick Start",
+      "url": "https://react.dev/learn/quick-start",
+      "provider": "react.dev",
+      "free": true
+    }
+  ],
+  "Angular": [
+    {
+      "type": "doc",
+      "title": "Angular Documentation",
+      "url": "https://angular.dev/overview",
+      "provider": "angular.dev",
+      "free": true
+    },
+    {
+      "type": "doc",
+      "title": "Angular Tutorials",
+      "url": "https://angular.dev/tutorials",
+      "provider": "angular.dev",
+      "free": true
+    }
+  ],
+  "Python": [
+    {
+      "type": "doc",
+      "title": "The Python Tutorial",
+      "url": "https://docs.python.org/3/tutorial/",
+      "provider": "docs.python.org",
+      "free": true
+    },
+    {
+      "type": "doc",
+      "title": "Python Documentation",
+      "url": "https://docs.python.org/3/",
+      "provider": "docs.python.org",
+      "free": true
+    }
+  ],
+  "Go": [
+    {
+      "type": "doc",
+      "title": "A Tour of Go",
+      "url": "https://go.dev/tour/",
+      "provider": "go.dev",
+      "free": true
+    },
+    {
+      "type": "doc",
+      "title": "Go Documentation",
+      "url": "https://go.dev/doc/",
+      "provider": "go.dev",
+      "free": true
+    }
+  ],
+  "AWS": [
+    {
+      "type": "doc",
+      "title": "AWS Documentation",
+      "url": "https://docs.aws.amazon.com/",
+      "provider": "docs.aws.amazon.com",
+      "free": true
+    },
+    {
+      "type": "course",
+      "title": "AWS Skill Builder (free digital training)",
+      "url": "https://skillbuilder.aws/",
+      "provider": "skillbuilder.aws",
+      "free": true
+    }
+  ],
+  "C#": [
+    {
+      "type": "doc",
+      "title": "C# documentation",
+      "url": "https://learn.microsoft.com/dotnet/csharp/",
+      "provider": "learn.microsoft.com",
+      "free": true
+    }
+  ],
+  ".NET": [
+    {
+      "type": "doc",
+      "title": ".NET documentation",
+      "url": "https://learn.microsoft.com/dotnet/",
+      "provider": "learn.microsoft.com",
+      "free": true
+    }
+  ],
+  "SQL": [
+    {
+      "type": "doc",
+      "title": "SQL Tutorial (W3Schools)",
+      "url": "https://www.w3schools.com/sql/",
+      "provider": "w3schools.com",
+      "free": true
+    },
+    {
+      "type": "doc",
+      "title": "PostgreSQL SQL Commands",
+      "url": "https://www.postgresql.org/docs/current/sql-commands.html",
+      "provider": "postgresql.org",
+      "free": true
+    }
+  ],
+  "MongoDB": [
+    {
+      "type": "doc",
+      "title": "MongoDB Manual",
+      "url": "https://www.mongodb.com/docs/manual/",
+      "provider": "mongodb.com",
+      "free": true
+    },
+    {
+      "type": "course",
+      "title": "MongoDB University",
+      "url": "https://learn.mongodb.com/",
+      "provider": "learn.mongodb.com",
+      "free": true
+    }
+  ],
+  "GraphQL": [
+    {
+      "type": "doc",
+      "title": "GraphQL Learn",
+      "url": "https://graphql.org/learn/",
+      "provider": "graphql.org",
+      "free": true
+    }
+  ],
+  "Java": [
+    {
+      "type": "doc",
+      "title": "Java Documentation",
+      "url": "https://docs.oracle.com/en/java/",
+      "provider": "docs.oracle.com",
+      "free": true
+    }
+  ],
+  "Spring": [
+    {
+      "type": "doc",
+      "title": "Spring Guides",
+      "url": "https://spring.io/guides",
+      "provider": "spring.io",
+      "free": true
+    }
+  ],
+  "Vue": [
+    {
+      "type": "doc",
+      "title": "Vue.js Guide",
+      "url": "https://vuejs.org/guide/introduction.html",
+      "provider": "vuejs.org",
+      "free": true
+    }
+  ],
+  "Next.js": [
+    {
+      "type": "doc",
+      "title": "Next.js Documentation",
+      "url": "https://nextjs.org/docs",
+      "provider": "nextjs.org",
+      "free": true
+    }
+  ],
+  "Express": [
+    {
+      "type": "doc",
+      "title": "Express.js Guide",
+      "url": "https://expressjs.com/en/guide/routing.html",
+      "provider": "expressjs.com",
+      "free": true
+    }
+  ],
+  "Prisma": [
+    {
+      "type": "doc",
+      "title": "Prisma Docs",
+      "url": "https://www.prisma.io/docs",
+      "provider": "prisma.io",
+      "free": true
+    }
+  ],
+  "Elasticsearch": [
+    {
+      "type": "doc",
+      "title": "Elasticsearch Guide",
+      "url": "https://www.elastic.co/guide/en/elasticsearch/reference/current/index.html",
+      "provider": "elastic.co",
+      "free": true
+    }
+  ],
+  "Terraform": [
+    {
+      "type": "doc",
+      "title": "Terraform Documentation",
+      "url": "https://developer.hashicorp.com/terraform/docs",
+      "provider": "developer.hashicorp.com",
+      "free": true
+    }
+  ],
+  "GCP": [
+    {
+      "type": "doc",
+      "title": "Google Cloud Documentation",
+      "url": "https://cloud.google.com/docs",
+      "provider": "cloud.google.com",
+      "free": true
+    }
+  ],
+  "Azure": [
+    {
+      "type": "doc",
+      "title": "Azure Documentation",
+      "url": "https://learn.microsoft.com/azure/",
+      "provider": "learn.microsoft.com",
+      "free": true
+    }
+  ],
+  "RabbitMQ": [
+    {
+      "type": "doc",
+      "title": "RabbitMQ Tutorials",
+      "url": "https://www.rabbitmq.com/tutorials",
+      "provider": "rabbitmq.com",
+      "free": true
+    }
+  ],
+  "Git": [
+    {
+      "type": "doc",
+      "title": "Pro Git Book",
+      "url": "https://git-scm.com/book/en/v2",
+      "provider": "git-scm.com",
+      "free": true
+    },
+    {
+      "type": "book",
+      "title": "Pro Git (HTML)",
+      "url": "https://git-scm.com/book/en/v2",
+      "provider": "git-scm.com",
+      "free": true
+    }
+  ],
+  "Linux": [
+    {
+      "type": "doc",
+      "title": "The Linux Command Line (online book index)",
+      "url": "https://linuxcommand.org/tlcl.php",
+      "provider": "linuxcommand.org",
+      "free": true
+    }
+  ],
+  "Rust": [
+    {
+      "type": "book",
+      "title": "The Rust Programming Language",
+      "url": "https://doc.rust-lang.org/book/",
+      "provider": "doc.rust-lang.org",
+      "free": true
+    }
+  ],
+  "HTML": [
+    {
+      "type": "doc",
+      "title": "MDN HTML",
+      "url": "https://developer.mozilla.org/docs/Web/HTML",
+      "provider": "developer.mozilla.org",
+      "free": true
+    }
+  ],
+  "CSS": [
+    {
+      "type": "doc",
+      "title": "MDN CSS",
+      "url": "https://developer.mozilla.org/docs/Web/CSS",
+      "provider": "developer.mozilla.org",
+      "free": true
+    }
+  ],
+  "Jest": [
+    {
+      "type": "doc",
+      "title": "Jest Documentation",
+      "url": "https://jestjs.io/docs/getting-started",
+      "provider": "jestjs.io",
+      "free": true
+    }
+  ],
+  "Vitest": [
+    {
+      "type": "doc",
+      "title": "Vitest Documentation",
+      "url": "https://vitest.dev/guide/",
+      "provider": "vitest.dev",
+      "free": true
+    }
+  ],
+  "Tailwind": [
+    {
+      "type": "doc",
+      "title": "Tailwind CSS Documentation",
+      "url": "https://tailwindcss.com/docs",
+      "provider": "tailwindcss.com",
+      "free": true
+    }
+  ],
+  "gRPC": [
+    {
+      "type": "doc",
+      "title": "gRPC Documentation",
+      "url": "https://grpc.io/docs/",
+      "provider": "grpc.io",
+      "free": true
+    }
+  ],
+  "F#": [
+    {
+      "type": "doc",
+      "title": "F# documentation",
+      "url": "https://learn.microsoft.com/dotnet/fsharp/",
+      "provider": "learn.microsoft.com",
+      "free": true
+    }
+  ],
+  "C/C++": [
+    {
+      "type": "doc",
+      "title": "C++ Reference",
+      "url": "https://en.cppreference.com/w/",
+      "provider": "cppreference.com",
+      "free": true
+    }
+  ],
+  "Django": [
+    {
+      "type": "doc",
+      "title": "Django Documentation",
+      "url": "https://docs.djangoproject.com/en/stable/",
+      "provider": "docs.djangoproject.com",
+      "free": true
+    }
+  ],
+  "FastAPI": [
+    {
+      "type": "doc",
+      "title": "FastAPI Documentation",
+      "url": "https://fastapi.tiangolo.com/",
+      "provider": "fastapi.tiangolo.com",
+      "free": true
+    }
+  ],
+  "Flutter": [
+    {
+      "type": "doc",
+      "title": "Flutter Documentation",
+      "url": "https://docs.flutter.dev/",
+      "provider": "docs.flutter.dev",
+      "free": true
+    }
+  ],
+  "Kotlin": [
+    {
+      "type": "doc",
+      "title": "Kotlin Docs",
+      "url": "https://kotlinlang.org/docs/home.html",
+      "provider": "kotlinlang.org",
+      "free": true
+    }
+  ],
+  "Swift": [
+    {
+      "type": "doc",
+      "title": "Swift.org Documentation",
+      "url": "https://www.swift.org/documentation/",
+      "provider": "swift.org",
+      "free": true
+    }
+  ]
+}

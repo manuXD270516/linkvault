@@ -225,7 +225,7 @@ Orden y notas específicas:
 | 10 | `public-preview-share` | ADR-013. |
 | 11 | `cv-upload-extract` | MinIO, pdf-parse, mammoth. |
 | 12 | `cv-match-suggestions` | §4.7 y 4.12 (el bucle de juez §4.8 va en `cv-suggestions-review`). `match-cv`, `ai_analyses`, `fitScore` derivado, consentimiento con versión `2026-09-21`, sin SSE de progreso. Cómo operarlo: Paso 6 nonies. ADR-029/030. |
-| 13 | `study-roadmap` | Catálogo curado `resources.seed.json` primero. |
+| 13 | `study-roadmap` | Catálogo curado `resources.seed.json` primero. Cómo operarlo: Paso 6 decies. |
 | 14 | `ai-byok` | libsodium vault. |
 | 15 | `deploy-prod` | compose prod + Traefik + docs de alternativas. Heredado de `auth-users` (ADR-020): `trustProxy`, reseteo manual de contraseña por operador documentado, aviso de privacidad y borrado de cuenta. Heredado de `link-enrichment` (ADR-022): elegir proveedor de objetos (el cliente habla S3) y crear allí el bucket de snapshots con su expiración a 30 días, fijar las `ENRICH_*` por entorno y decidir dónde queda encendido el relay del outbox, que sigue siendo de una sola instancia. Heredado de `paste-job-description` (ADR-023): fijar `PASTE_EXTRACTION_TIMEOUT_MS` y la cuota de `extract-pasted-job` en `AI_QUOTAS` por entorno, y copiar los prompts también en la imagen de `api` (`AI_PROMPTS_DIR=dist/apps/api/assets/ai/prompts` si no arranca desde la raíz). Heredado de `groups-ownership-join-limit` (ADR-025): `trustProxy` también por el contador de IP del join, y la consulta de "un owner por grupo" antes del primer despliegue (Paso 6 quater). Heredado de `applications-tracking` (ADR-024): el borrado de cuenta tiene que borrar en cascada las `applications` y los `application_events` de esa persona; hasta entonces, a mano (Paso 6 quinquies). |
 | 16 | `auth-email-recovery` | Fuera de §6: verificación de email y recuperación de contraseña, diferidas desde `auth-users` (ADR-020). Alcance y orden por decidir al crearlo. |
@@ -1045,6 +1045,19 @@ degradación permanente y silenciosa mientras `/perfil` sigue diciendo que el CV
 **Notas de la pasada:** `meta-llama/llama-3.3-70b-instruct:free` ya no existe (`404`). Varios `:free` populares
 (Qwen/Gemma) estaban en rate-limit upstream; otros (Nemotron, Liquid) aceptan la petición sin `deny` pero **no**
 tienen endpoint compatible con la política de datos.
+
+## Paso 6 decies — Operar el roadmap de estudio
+
+Desde `study-roadmap`, tras un análisis de encaje `done` no degradado con `missingSkills`, se puede pedir un plan de
+estudio. El catálogo curado vive en `libs/ai/src/infrastructure/catalog/resources.seed.json` (hits → `verified: true`).
+
+- **Endpoints.** `POST/GET /api/analyses/:analysisId/roadmap` (claim `generating` → `ready`/`failed`; ownership);
+  export `GET /api/analyses/:analysisId/roadmap.md` (solo si `ready`).
+- **Auto-enqueue.** Al completar un match no degradado con skills faltantes, el outbox encola `RoadmapRequested.v1`
+  (`jobId=roadmap:{analysisId}`) en la misma unidad de commit; el consumer de `analyze-match` **no** llama a
+  `build-roadmap`.
+- **Cuota.** `build-roadmap=10` en `AI_QUOTAS` (ledger diario por usuario), independiente de `match-cv`. La auto y el
+  POST respetan la misma cuota; vacía = sin límite.
 
 ## Paso 7 — Definition of Done (pégalo en cada PR)
 

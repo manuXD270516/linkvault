@@ -1,5 +1,6 @@
 import {
   ANALYZE_MATCH_QUEUE,
+  BUILD_ROADMAP_QUEUE,
   CV_DELETED_EVENT_TYPE,
   CV_UPLOADED_EVENT_TYPE,
   DELETE_CV_FILE_QUEUE,
@@ -7,6 +8,7 @@ import {
   EXTRACT_CV_QUEUE,
   LINK_CREATED_EVENT_TYPE,
   MATCH_REQUESTED_EVENT_TYPE,
+  ROADMAP_REQUESTED_EVENT_TYPE,
   cvDeletedJobId,
   cvDeletedPayloadSchema,
   cvUploadedJobId,
@@ -15,11 +17,13 @@ import {
   linkCreatedPayloadSchema,
   matchRequestedJobId,
   matchRequestedPayloadSchema,
+  roadmapRequestedJobId,
+  roadmapRequestedPayloadSchema,
 } from '@linkvault/shared';
 import type { ZodType } from 'zod';
 
-// Enrutado del relay por tipo de evento (D11 de cv-upload-extract, ADR-028 §9; D2 de cv-match-suggestions).
-// Hasta `cv-upload-extract` el publicador conocía **un** tipo y una cola; con varios hace falta un mapa.
+// Enrutado del relay por tipo de evento (D11 de cv-upload-extract, ADR-028 §9; D2 de cv-match-suggestions;
+// study-roadmap: RoadmapRequested.v1 → build-roadmap).
 //
 // Se eligió una tabla que el publicador consulta, y no un publicador por cola con un enrutador delante (providers
 // casi iguales para tablas de una fila) ni la cola guardada en el documento del outbox (cambiaría el contrato de
@@ -83,6 +87,11 @@ export const OUTBOX_ROUTES: Readonly<Record<string, OutboxRoute>> = {
     ANALYZE_MATCH_QUEUE,
     matchRequestedPayloadSchema,
     matchRequestedJobId,
+  ),
+  [ROADMAP_REQUESTED_EVENT_TYPE]: route(
+    BUILD_ROADMAP_QUEUE,
+    roadmapRequestedPayloadSchema,
+    roadmapRequestedJobId,
   ),
 };
 
