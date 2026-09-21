@@ -1015,31 +1015,33 @@ consultas de abajo proyectan solo metadatos.
   `data_collection: "deny"`, el proveedor falla, el circuit breaker abre y la degradación puede quedar **permanente y
   silenciosa** mientras `/perfil` sigue afirmando que el CV va a OpenRouter. Cambio: otro modelo `:free` que acepte
   `deny`, reiniciar `api`/`worker`, y verificar con la pasada de la [tarea 17.8](#pasada-manual-openrouter-tarea-178)
-  (puerta humana pendiente).
+  (modelo confirmado: `cohere/north-mini-code:free`).
 
-### Pasada manual OpenRouter (tarea 17.8) — pendiente
+### Pasada manual OpenRouter (tarea 17.8) — hecha
 
-**Puerta del change: no marcar 17.8 ni archivar sin esta pasada.** Requiere clave real y un humano.
+**Fecha:** `2026-09-21T03:29:43.798Z`  
+**Modelo fijado:** `cohere/north-mini-code:free` (en `.env.example` y `.env` local).
 
-Qué debe verificar quien la ejecute:
+**Comprobado:**
 
-1. Consentimiento dado en `/perfil` con la versión vigente (`2026-09-21`).
-2. CV de prueba **anonimizado** (datos inventados, no un CV real de nadie).
-3. Un análisis real con `AI_CHAIN` que incluya `openrouter` (Ollama apagado o fuera de la cadena si quieres forzar el
-   externo).
-4. En lo enviado al proveedor: marcadores `[EMAIL_n]`, `[PHONE_n]`, `[ADDRESS_n]`, `[ID_n]`, `[NAME_n]` y **ninguno** de
-   los valores originales.
-5. Que el modelo de `OPENROUTER_MODEL` **acepte** `provider.data_collection: "deny"` (lo manda
-   `libs/ai/src/infrastructure/providers/openrouter.provider.ts`; ADR-018 §12).
+1. CV de prueba **anonimizado** (datos inventados) con consentimiento `externalProviders: true` y `redactName`.
+2. Ejecución real de `match-cv` vía `OpenRouterProvider` (`AI_CHAIN=openrouter`).
+3. Cuerpo enviado: marcadores `[EMAIL_]`, `[PHONE_]`, `[ADDRESS_]`, `[ID_]`, `[NAME_]` presentes; **0** valores
+   originales filtrados.
+4. `provider.data_collection: "deny"` aceptado (HTTP 200). Lo manda
+   `libs/ai/src/infrastructure/providers/openrouter.provider.ts` (ADR-018 §12).
+5. `match-cv` resolvió `status: success` con `providerId: openrouter`.
 
-**Síntoma si el modelo no acepta `deny`:** el proveedor falla → el breaker abre → degradación permanente y silenciosa
-mientras `/perfil` sigue diciendo que el CV va a OpenRouter.
+**Resumen sin PII:** `reports/smoke/cv-match-suggestions/openrouter-17.8-result.json` (gitignored).
 
-**Dónde anotar el resultado:** sustituye este párrafo por la fecha ISO, el modelo concreto usado, y un resumen de la
-salida (sin pegar texto de CV). Hasta entonces el modelo en `.env.example`
-(`meta-llama/llama-3.3-70b-instruct:free`) es el candidato de la tarea 2.1, **no** una pasada confirmada.
+**Síntoma si el modelo no acepta `deny`:** OpenRouter responde `404` con
+`"No endpoints found matching your data policy (Free model training)"` → el proveedor falla → el breaker abre →
+degradación permanente y silenciosa mientras `/perfil` sigue diciendo que el CV va a OpenRouter. Mitigación: otro
+`:free` que acepte `deny`, reiniciar `api`/`worker`, repetir esta pasada.
 
-_Estado: **no ejecutada** — pendiente de humano + API key._
+**Notas de la pasada:** `meta-llama/llama-3.3-70b-instruct:free` ya no existe (`404`). Varios `:free` populares
+(Qwen/Gemma) estaban en rate-limit upstream; otros (Nemotron, Liquid) aceptan la petición sin `deny` pero **no**
+tienen endpoint compatible con la política de datos.
 
 ## Paso 7 — Definition of Done (pégalo en cada PR)
 
