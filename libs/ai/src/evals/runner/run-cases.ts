@@ -61,6 +61,7 @@ export async function runCases<I, O, E>(
   const results: CaseResult<I, O, E>[] = [];
 
   for (const goldenCase of options.cases) {
+    ledger.drain();
     const startedAt = clock.now();
     let result: AiResult<O>;
     try {
@@ -70,7 +71,7 @@ export async function runCases<I, O, E>(
         caseContext(goldenCase),
       );
     } catch (error) {
-      ledger.take(goldenCase.key);
+      ledger.drain();
       if (error instanceof AiProgrammingError) {
         throw new EvalCaseProgrammingError(
           evaluable.task.name,
@@ -83,12 +84,12 @@ export async function runCases<I, O, E>(
     }
     const latencyMs = clock.now() - startedAt;
 
-    // `runTask` registra de forma síncrona antes de resolver: aquí ya están todos los registros de la clave.
+    // `runTask` registra de forma síncrona antes de resolver: aquí ya están todos los registros del caso.
     results.push({
       goldenCase,
       result,
       latencyMs,
-      usage: sumUsage(ledger.take(goldenCase.key)),
+      usage: sumUsage(ledger.drain()),
     });
   }
   return results;
@@ -122,5 +123,11 @@ function sumUsage(records: ReturnType<EvalUsageLedger['take']>): CaseUsage {
     outputTokens: records.reduce((sum, r) => sum + r.outputTokens, 0),
     estCost: records.reduce((sum, r) => sum + r.estCost, 0),
     outcomes: records.map((r) => r.outcome),
+    rounds: records.map((r, index) => ({
+      round: index,
+      task: r.task,
+      estCost: r.estCost,
+      latencyMs: r.latencyMs,
+    })),
   };
 }

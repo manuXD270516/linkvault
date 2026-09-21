@@ -181,6 +181,37 @@ describe('renderReport', () => {
     expect(markdown).toContain('- Modelo: a\\|b');
     expect(markdown).toContain('| ci\\|cd github |');
   });
+
+  it('distinguishes cost of each judge-loop round', () => {
+    const results = fixedResults(['judge-loop']);
+    results[0]!.usage = {
+      ...results[0]!.usage,
+      estCost: 0.03,
+      rounds: [
+        { round: 0, task: 'match-cv', estCost: 0.01, latencyMs: 100 },
+        { round: 1, task: 'critique-suggestions', estCost: 0.005, latencyMs: 50 },
+        { round: 2, task: 'match-cv', estCost: 0.015, latencyMs: 120 },
+      ],
+    };
+    const markdown = renderReport({
+      evaluable: classifySkillsEvaluable,
+      providerId: 'mock',
+      model: 'm',
+      generatedAt: GENERATED_AT,
+      metrics: [],
+      results,
+      roundCosts: [
+        { round: 0, task: 'match-cv', estCost: 0.01 },
+        { round: 1, task: 'critique-suggestions', estCost: 0.005 },
+        { round: 2, task: 'match-cv', estCost: 0.015 },
+      ],
+    });
+
+    expect(markdown).toContain('## Coste por vuelta');
+    expect(markdown).toContain('| 0 | `match-cv` | 0.01 |');
+    expect(markdown).toContain('| 1 | `critique-suggestions` | 0.005 |');
+    expect(markdown).toContain('| 2 | `match-cv` | 0.015 |');
+  });
 });
 
 describe('reportModel and formatNumber', () => {

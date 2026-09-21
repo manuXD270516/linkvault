@@ -49,6 +49,20 @@ export interface GoldenCase<I, E> {
   skills?: readonly string[];
   /** Nombre que el contexto de redacción usa cuando el caso anota PII de `type: name`. */
   personName?: string;
+  /**
+   * Etiqueta humana 1–5 del encaje (cv-suggestions-review / design §4.11). Ausente = el caso no entra
+   * en `score_label_correlation`.
+   */
+  humanLabel?: 1 | 2 | 3 | 4 | 5;
+}
+
+/** Coste de una vuelta del bucle (generador, juez, revisión…), en orden de escritura del ledger. */
+export interface RoundCost {
+  /** Índice desde 0. */
+  round: number;
+  task: string;
+  estCost: number;
+  latencyMs: number;
 }
 
 /** Uso acumulado de todos los registros del ledger de la clave del caso (D3). */
@@ -58,6 +72,8 @@ export interface CaseUsage {
   estCost: number;
   /** Resultados de cada registro, en orden de escritura (p. ej. `provider_error`, `degraded`). */
   outcomes: readonly UsageOutcome[];
+  /** Una entrada por registro del ledger (vuelta del bucle o intento). */
+  rounds: readonly RoundCost[];
 }
 
 /** Resultado de ejecutar un caso con `runTask`. */

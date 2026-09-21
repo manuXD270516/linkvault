@@ -1,18 +1,25 @@
 import {
+  critiqueSuggestionsTask,
   matchCvTask,
+  toCritiqueSuggestionsInput,
   type AiResult,
+  type AiSuccess,
+  type CritiqueSuggestionsOutput,
   type MatchCvInput,
   type MatchCvOutput,
   type RunContext,
   type RunTaskFn,
 } from '@linkvault/ai';
 import {
+  analysisStepEvent,
   matchReportSchema,
   type MatchRequestedPayload,
   type MatchReport,
+  type MatchStep,
 } from '@linkvault/shared';
 import { Logger } from '@nestjs/common';
 import type { AnalysisRepository } from './ports/analysis-repository.port';
+import type { AnalysisStepNotifier } from './ports/analysis-step-notifier.port';
 import type { AiContextReader } from './ports/ai-context-reader.port';
 import type { Clock } from './ports/clock.port';
 import type { CvTextReader } from './ports/cv-text-reader.port';
@@ -20,10 +27,12 @@ import type { JobReader } from './ports/job-reader.port';
 import type { MatchAnalysis } from '../domain/analysis';
 import { isRunningExpired } from '../domain/expiry';
 
-// Ejecución del análisis de encaje (tareas 13.6–13.12, D3, D12-bis, ADR-030 §6–§7).
+// Ejecución del análisis de encaje (tareas 13.6–13.12, D3, D12-bis, ADR-030 §6–§7;
+// bucle de juez cv-suggestions-review / ADR-031).
 //
 // Relee al empezar y abandona si ya terminó, venció o se borró. Lee el consentimiento **justo antes** de
 // `runTask`. Los pasos se anotan best-effort: un fallo al guardar el paso no tumba el análisis.
+// Tras un primer `match-cv` no degradado: como máximo una crítica y una revisión.
 
 export type AnalyzeMatchResult =
   | { readonly kind: 'done' }
@@ -39,6 +48,22 @@ export interface AnalyzeMatchOptions {
 /** Proveedores locales conocidos: el CV no “sale” hacia ellos. */
 const LOCAL_PROVIDER_IDS = new Set(['mock', 'ollama']);
 
+/** Umbral del juez: a partir de aquí no se pide revisión. */
+const JUDGE_ACCEPT_SCORE = 0.8;
+
+/** Mejora mínima del score entero del informe para aceptar la revisión. */
+const MIN_SCORE_IMPROVEMENT = 1;
+
+interface JudgeCandidate {
+  readonly report: MatchCvOutput;
+  readonly providerId: string;
+  readonly model: string;
+  readonly promptVersion: string;
+  readonly judgeScore?: number;
+  readonly judgeModel?: string;
+  readonly wentExternal: boolean;
+}
+
 export class AnalyzeMatchUseCase {
   private readonly logger = new Logger(AnalyzeMatchUseCase.name);
 
@@ -50,6 +75,7 @@ export class AnalyzeMatchUseCase {
     private readonly runTask: RunTaskFn,
     private readonly clock: Clock,
     private readonly options: AnalyzeMatchOptions,
+    private readonly stepNotifier: AnalysisStepNotifier,
   ) {}
 
   async execute(payload: MatchRequestedPayload): Promise<AnalyzeMatchResult> {
@@ -66,14 +92,14 @@ export class AnalyzeMatchUseCase {
       return { kind: 'abandoned' };
     }
 
-    await this.safeRecordStep(analysis.id, 'reading-job');
+    await this.safeRecordStep(analysis, 'reading-job');
 
     const job = await this.jobs.read(payload.linkId);
     if (job === null) {
       return await this.markFailed(analysis);
     }
 
-    await this.safeRecordStep(analysis.id, 'comparing-cv');
+    await this.safeRecordStep(analysis, 'comparing-cv');
 
     const cv = await this.cvText.read(payload.cvId, payload.userId);
     if (cv.kind === 'missing' || cv.kind === 'unreadable') {
@@ -100,10 +126,15 @@ export class AnalyzeMatchUseCase {
       personName: context.personName,
       signal,
     };
+    // ADR-031: match-cv difiere la reinyección; el juez ve marcadores y el informe persistido sí reinyecta.
+    const matchCtx: RunContext = {
+      ...runContext,
+      deferPiiReinjection: true,
+    };
 
     let aiResult: AiResult<MatchCvOutput>;
     try {
-      aiResult = await this.runTask(matchCvTask, input, runContext);
+      aiResult = await this.runTask(matchCvTask, input, matchCtx);
     } catch (error) {
       // Plazo agotado: fallar el análisis. Cualquier otro error se propaga para que
       // `onJobFailed` (attempts: 1) deje el análisis en `failed` sin reintentar a ciegas.
@@ -117,7 +148,23 @@ export class AnalyzeMatchUseCase {
       return await this.markFailed(analysis);
     }
 
-    return await this.persistResult(analysis, job.previewVersion, aiResult);
+    if (aiResult.status !== 'success') {
+      return await this.persistDegraded(
+        analysis,
+        job.previewVersion,
+        aiResult,
+      );
+    }
+
+    return await this.runJudgeLoop(
+      analysis,
+      job.previewVersion,
+      input,
+      runContext,
+      matchCtx,
+      signal,
+      aiResult,
+    );
   }
 
   /**
@@ -135,7 +182,171 @@ export class AnalyzeMatchUseCase {
     await this.markFailed(analysis);
   }
 
-  private async persistResult(
+  /**
+   * Bucle MVP: máx. 1 crítica + 1 revisión. Informes degradados no entran aquí.
+   * Fallo del juez / cuota a mitad → `done` con el mejor informe ya obtenido (sin `judgeScore` si no hubo crítica).
+   */
+  private async runJudgeLoop(
+    analysis: MatchAnalysis,
+    previewVersion: number,
+    input: MatchCvInput,
+    runContext: RunContext,
+    matchCtx: RunContext,
+    signal: AbortSignal,
+    first: AiSuccess<MatchCvOutput>,
+  ): Promise<AnalyzeMatchResult> {
+    await this.safeRecordStep(analysis, 'drafting-suggestions');
+
+    let best: JudgeCandidate = {
+      report: userFacingMatchReport(first),
+      providerId: first.providerId,
+      model: first.model,
+      promptVersion: first.promptVersion,
+      wentExternal: isExternalProvider(first.providerId),
+    };
+
+    await this.safeRecordStep(analysis, 'critiquing-suggestions');
+
+    const critiqueCtx: RunContext = {
+      ...runContext,
+      // Soft-exclude en routing: si solo hay un elegible, se ignora y se reutiliza el generador.
+      excludeProviderIds: [first.providerId],
+    };
+
+    let critiqueResult: AiResult<CritiqueSuggestionsOutput>;
+    try {
+      // `first.output` conserva marcadores cuando hubo defer + redacción (ADR-031).
+      critiqueResult = await this.runTask(
+        critiqueSuggestionsTask,
+        toCritiqueSuggestionsInput(input.job, first.output),
+        critiqueCtx,
+      );
+    } catch (error) {
+      if (signal.aborted) {
+        return await this.markFailed(analysis);
+      }
+      // FixtureMissing / errores de programación del mock: el juez no respondió → done sin judgeScore (2.4).
+      this.logger.warn(
+        `analysis ${analysis.id}: critique-suggestions failed (${error instanceof Error ? error.name : 'unknown'}); keeping generator report`,
+      );
+      return await this.persistSuccess(analysis, previewVersion, best);
+    }
+
+    if (signal.aborted) {
+      return await this.markFailed(analysis);
+    }
+
+    if (critiqueResult.status !== 'success') {
+      // Juez falló o cuota: guardar el informe del generador sin judgeScore.
+      return await this.persistSuccess(analysis, previewVersion, best);
+    }
+
+    best = {
+      ...best,
+      judgeScore: critiqueResult.output.score,
+      judgeModel: critiqueResult.model,
+    };
+
+    if (critiqueResult.output.score >= JUDGE_ACCEPT_SCORE) {
+      return await this.persistSuccess(analysis, previewVersion, best);
+    }
+
+    await this.safeRecordStep(analysis, 'revising-suggestions');
+
+    let revision: AiResult<MatchCvOutput>;
+    try {
+      revision = await this.runTask(matchCvTask, input, matchCtx);
+    } catch (error) {
+      if (signal.aborted) {
+        return await this.markFailed(analysis);
+      }
+      this.logger.warn(
+        `analysis ${analysis.id}: revision match-cv failed (${error instanceof Error ? error.name : 'unknown'}); keeping best so far`,
+      );
+      return await this.persistSuccess(analysis, previewVersion, best);
+    }
+
+    if (signal.aborted) {
+      return await this.markFailed(analysis);
+    }
+
+    if (revision.status !== 'success') {
+      // Cuota / fallo a mitad: conservar el mejor (r0 + judge).
+      return await this.persistSuccess(analysis, previewVersion, best);
+    }
+
+    const revisedReport = userFacingMatchReport(revision);
+    const improved =
+      revisedReport.score - best.report.score >= MIN_SCORE_IMPROVEMENT;
+    if (!improved) {
+      return await this.persistSuccess(analysis, previewVersion, best);
+    }
+
+    // Mejor informe de la revisión: sin judgeScore propio (máx. una crítica, de la iteración de r0).
+    const revised: JudgeCandidate = {
+      report: revisedReport,
+      providerId: revision.providerId,
+      model: revision.model,
+      promptVersion: revision.promptVersion,
+      wentExternal:
+        best.wentExternal || isExternalProvider(revision.providerId),
+    };
+    return await this.persistSuccess(
+      analysis,
+      previewVersion,
+      pickBestCandidate(best, revised),
+    );
+  }
+
+  private async persistSuccess(
+    analysis: MatchAnalysis,
+    previewVersion: number,
+    candidate: JudgeCandidate,
+  ): Promise<AnalyzeMatchResult> {
+    const finishedAt = this.clock.now();
+    const durationMs = Math.max(
+      0,
+      finishedAt.getTime() - analysis.requestedAt.getTime(),
+    );
+
+    const report = matchReportSchema.safeParse({
+      ...candidate.report,
+      degraded: false,
+      ...(candidate.judgeScore !== undefined
+        ? { judgeScore: candidate.judgeScore }
+        : {}),
+      ...(candidate.judgeModel !== undefined
+        ? { judgeModel: candidate.judgeModel }
+        : {}),
+    });
+    if (!report.success) {
+      return await this.markFailed(analysis);
+    }
+
+    const written = await this.analyses.complete(analysis.id, {
+      step: 'done',
+      report: report.data,
+      provider: candidate.providerId,
+      model: candidate.model,
+      promptVersion: candidate.promptVersion,
+      previewVersion,
+      degraded: false,
+      consentRequired: false,
+      wentExternal: candidate.wentExternal,
+      finishedAt,
+      durationMs,
+    });
+    if (!written) {
+      return await this.afterUnwrittenComplete(analysis);
+    }
+    await this.announceStep(analysis, 'done');
+    this.logger.debug(
+      `analysis ${analysis.id}: done provider=${candidate.providerId} durationMs=${String(durationMs)}`,
+    );
+    return { kind: 'done' };
+  }
+
+  private async persistDegraded(
     analysis: MatchAnalysis,
     previewVersion: number,
     aiResult: AiResult<MatchCvOutput>,
@@ -147,34 +358,7 @@ export class AnalyzeMatchUseCase {
     );
 
     if (aiResult.status === 'success') {
-      await this.safeRecordStep(analysis.id, 'drafting-suggestions');
-      const report = matchReportSchema.safeParse({
-        ...aiResult.output,
-        degraded: false,
-      });
-      if (!report.success) {
-        return await this.markFailed(analysis);
-      }
-      const written = await this.analyses.complete(analysis.id, {
-        step: 'done',
-        report: report.data,
-        provider: aiResult.providerId,
-        model: aiResult.model,
-        promptVersion: aiResult.promptVersion,
-        previewVersion,
-        degraded: false,
-        consentRequired: false,
-        wentExternal: isExternalProvider(aiResult.providerId),
-        finishedAt,
-        durationMs,
-      });
-      if (!written) {
-        return await this.afterUnwrittenComplete(analysis);
-      }
-      this.logger.debug(
-        `analysis ${analysis.id}: done provider=${aiResult.providerId} durationMs=${String(durationMs)}`,
-      );
-      return { kind: 'done' };
+      return await this.markFailed(analysis);
     }
 
     const consentRequired = aiResult.reason === 'consent_required';
@@ -224,6 +408,7 @@ export class AnalyzeMatchUseCase {
     if (!written) {
       return await this.afterUnwrittenComplete(analysis);
     }
+    await this.announceStep(analysis, 'done-degraded');
     this.logger.debug(
       `analysis ${analysis.id}: degraded reason=${aiResult.reason} durationMs=${String(durationMs)}`,
     );
@@ -247,7 +432,7 @@ export class AnalyzeMatchUseCase {
       0,
       finishedAt.getTime() - analysis.requestedAt.getTime(),
     );
-    await this.safeRecordStep(analysis.id, 'failed');
+    await this.safeRecordStep(analysis, 'failed');
     await this.analyses.fail(analysis.id, {
       failureCode: 'internal_error',
       finishedAt,
@@ -257,15 +442,42 @@ export class AnalyzeMatchUseCase {
     return { kind: 'failed' };
   }
 
+  /**
+   * Persiste el paso y avisa por Redis. Un fallo al guardar o al publicar no tumba el análisis: el sondeo sigue
+   * bastando y el estado verdadero está en Mongo.
+   */
   private async safeRecordStep(
-    analysisId: string,
-    step: Parameters<AnalysisRepository['recordStep']>[1],
+    analysis: Pick<MatchAnalysis, 'id' | 'userId' | 'linkId'>,
+    step: MatchStep,
   ): Promise<void> {
     try {
-      await this.analyses.recordStep(analysisId, step);
+      await this.analyses.recordStep(analysis.id, step);
     } catch (error) {
       this.logger.warn(
-        `analysis ${analysisId}: recordStep(${step}) failed (${error instanceof Error ? error.name : 'unknown'})`,
+        `analysis ${analysis.id}: recordStep(${step}) failed (${error instanceof Error ? error.name : 'unknown'})`,
+      );
+      return;
+    }
+    await this.announceStep(analysis, step);
+  }
+
+  /** Aviso best-effort: el notificador no lanza, pero se captura por si un doble de test sí lo hace. */
+  private async announceStep(
+    analysis: Pick<MatchAnalysis, 'id' | 'userId' | 'linkId'>,
+    step: MatchStep,
+  ): Promise<void> {
+    try {
+      await this.stepNotifier.publish(
+        analysisStepEvent({
+          analysisId: analysis.id,
+          linkId: analysis.linkId,
+          step,
+          userId: analysis.userId,
+        }),
+      );
+    } catch (error) {
+      this.logger.warn(
+        `analysis ${analysis.id}: announceStep(${step}) failed (${error instanceof Error ? error.name : 'unknown'})`,
       );
     }
   }
@@ -273,4 +485,26 @@ export class AnalyzeMatchUseCase {
 
 function isExternalProvider(providerId: string): boolean {
   return !LOCAL_PROVIDER_IDS.has(providerId);
+}
+
+/** Informe listo para persistir/GET: reinyectado cuando `deferPiiReinjection` aportó la copia. */
+function userFacingMatchReport(
+  result: AiSuccess<MatchCvOutput>,
+): MatchCvOutput {
+  return result.reinjectedOutput ?? result.output;
+}
+
+/**
+ * Mejor par: mayor `score` del informe; empate → mayor `judgeScore` (ausente cuenta como peor que cualquier score).
+ */
+function pickBestCandidate(
+  a: JudgeCandidate,
+  b: JudgeCandidate,
+): JudgeCandidate {
+  if (b.report.score !== a.report.score) {
+    return b.report.score > a.report.score ? b : a;
+  }
+  const judgeA = a.judgeScore ?? Number.NEGATIVE_INFINITY;
+  const judgeB = b.judgeScore ?? Number.NEGATIVE_INFINITY;
+  return judgeB > judgeA ? b : a;
 }

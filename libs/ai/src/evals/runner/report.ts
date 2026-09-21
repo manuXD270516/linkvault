@@ -32,6 +32,10 @@ export interface EvalReportData<I, O, E> {
   redaction?: RedactionMetricsResult;
   /** Identificadores de huecos conocidos declarados que ningún caso usa (retirables). */
   unusedKnownGaps?: readonly string[];
+  /**
+   * Coste medio por vuelta del bucle (cv-suggestions-review). Si hay más de una vuelta, el reporte las distingue.
+   */
+  roundCosts?: readonly { round: number; task: string; estCost: number }[];
 }
 
 
@@ -140,6 +144,24 @@ export function renderReport<I, O, E>(data: EvalReportData<I, O, E>): string {
       `- Huecos conocidos retirables (declarados, sin uso en el golden): ${data.unusedKnownGaps.map((id) => `\`${id}\``).join(', ')}`,
       '',
     );
+  }
+
+  if (data.roundCosts !== undefined && data.roundCosts.length > 0) {
+    lines.push('', '## Coste por vuelta', '');
+    lines.push(
+      row(['Vuelta', 'Tarea', 'Coste estimado']),
+      separator(3),
+    );
+    for (const entry of data.roundCosts) {
+      lines.push(
+        row([
+          String(entry.round),
+          `\`${entry.task}\``,
+          formatNumber(entry.estCost),
+        ]),
+      );
+    }
+    lines.push('');
   }
 
   const columns = evaluable.caseColumns ?? [];

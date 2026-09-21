@@ -1,16 +1,20 @@
 import { z } from 'zod';
 
-// Conjunto cerrado de pasos del análisis de encaje (ADR-030 §9, D12). **Única definición**: api, worker y web
-// importan de aquí; repetir la lista en cada capa acabaría con tres pantallas que cuentan la espera distinto.
+// Conjunto cerrado de pasos del análisis de encaje (ADR-030 §9, D12; cv-suggestions-review §5). **Única definición**:
+// api, worker y web importan de aquí; repetir la lista en cada capa acabaría con tres pantallas que cuentan la espera
+// distinto.
 //
-// Un análisis degradado se salta `drafting-suggestions` **por contrato**: no redacta ninguna sugerencia, así que ese
-// paso no está pendiente y quien lo muestre puede darlo por no aplicable sin adivinar.
+// Un análisis degradado se salta `drafting-suggestions` **y** los pasos del juez (`critiquing-suggestions`,
+// `revising-suggestions`) **por contrato**: no redacta ni critica sugerencias, así que esos pasos no están pendientes
+// y quien los muestre puede darlos por no aplicables sin adivinar.
 
 /** Pasos de progreso, en el orden en que se alcanzan. */
 export const MATCH_PROGRESS_STEPS = [
   'reading-job',
   'comparing-cv',
   'drafting-suggestions',
+  'critiquing-suggestions',
+  'revising-suggestions',
 ] as const;
 
 /**
@@ -31,17 +35,19 @@ export type MatchStep = z.infer<typeof matchStepSchema>;
 export type MatchFinalStep = (typeof MATCH_FINAL_STEPS)[number];
 export type MatchProgressStep = (typeof MATCH_PROGRESS_STEPS)[number];
 
-/** Secuencia completa: con sugerencias hasta `done`. */
+/** Secuencia completa: con sugerencias y bucle de juez hasta `done`. */
 export const MATCH_FULL_SEQUENCE = [
   'reading-job',
   'comparing-cv',
   'drafting-suggestions',
+  'critiquing-suggestions',
+  'revising-suggestions',
   'done',
 ] as const satisfies readonly MatchStep[];
 
 /**
- * Secuencia degradada: se salta `drafting-suggestions` por contrato y termina en `done-degraded`.
- * Quien muestre el progreso no debe esperar ese paso intermedio.
+ * Secuencia degradada: se salta `drafting-suggestions` y los pasos del juez por contrato y termina en
+ * `done-degraded`. Quien muestre el progreso no debe esperar esos pasos intermedios.
  */
 export const MATCH_DEGRADED_SEQUENCE = [
   'reading-job',
@@ -54,9 +60,11 @@ const MATCH_STEP_ORDER: Readonly<Record<MatchStep, number>> = {
   'reading-job': 0,
   'comparing-cv': 1,
   'drafting-suggestions': 2,
-  done: 3,
-  'done-degraded': 3,
-  failed: 3,
+  'critiquing-suggestions': 3,
+  'revising-suggestions': 4,
+  done: 5,
+  'done-degraded': 5,
+  failed: 5,
 };
 
 /** `true` si el paso es uno de los tres finales. */
@@ -64,7 +72,7 @@ export function isMatchFinalStep(step: MatchStep): step is MatchFinalStep {
   return (MATCH_FINAL_STEPS as readonly string[]).includes(step);
 }
 
-/** Índice de orden del paso (0…3). Los tres finales valen 3. */
+/** Índice de orden del paso (0…5). Los tres finales valen 5. */
 export function matchStepOrder(step: MatchStep): number {
   return MATCH_STEP_ORDER[step];
 }

@@ -2,6 +2,7 @@ import {
   RUN_TASK,
   type RunTaskFn,
 } from '@linkvault/ai';
+import type { Redis } from 'ioredis';
 import { type DynamicModule, Module, type Type } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { APP_CONFIG } from '../../infrastructure/config/app-config.module';
@@ -11,6 +12,10 @@ import {
   ANALYSIS_REPOSITORY,
   type AnalysisRepository,
 } from './application/ports/analysis-repository.port';
+import {
+  ANALYSIS_STEP_NOTIFIER,
+  type AnalysisStepNotifier,
+} from './application/ports/analysis-step-notifier.port';
 import {
   AI_CONTEXT_READER,
   type AiContextReader,
@@ -32,13 +37,20 @@ import { MongoAiContextReader } from './infrastructure/persistence/mongo-ai-cont
 import { MongoAnalysisRepository } from './infrastructure/persistence/mongo-analysis.repository';
 import { MongoCvTextReader } from './infrastructure/persistence/mongo-cv-text.reader';
 import { MongoJobReader } from './infrastructure/persistence/mongo-job.reader';
+import { RedisAnalysisStepNotifier } from './infrastructure/notifications/redis-analysis-step-notifier';
 import { AnalyzeMatchConsumer } from './infrastructure/queue/analyze-match.consumer';
+import {
+  MATCH_REDIS,
+  MatchRedisConnection,
+  createMatchRedisClient,
+} from './infrastructure/redis/match-redis.client';
 import { SystemClock } from './infrastructure/system-clock';
 
 // Módulo `match` del worker (tarea 13.14): ejecución de `match-cv` sobre la cola `analyze-match`.
 //
 // **El consumidor no se registra en los tests** (`NODE_ENV=test`): un `Worker` abre Redis al crearse.
 // `aiModule` es el mismo DynamicModule que importa `AppModule`: `RUN_TASK` solo se resuelve si se importa aquí.
+// Publica `analysis.step` por Redis (cv-suggestions-review): best-effort, sin tumbar el análisis.
 
 @Module({})
 export class MatchModule {
@@ -63,6 +75,18 @@ export class MatchModule {
         { provide: JOB_READER, useClass: MongoJobReader },
         { provide: AI_CONTEXT_READER, useClass: MongoAiContextReader },
         {
+          provide: MATCH_REDIS,
+          inject: [APP_CONFIG],
+          useFactory: (worker: WorkerConfig) =>
+            createMatchRedisClient(worker.REDIS_URL),
+        },
+        MatchRedisConnection,
+        {
+          provide: ANALYSIS_STEP_NOTIFIER,
+          inject: [MATCH_REDIS],
+          useFactory: (redis: Redis) => new RedisAnalysisStepNotifier(redis),
+        },
+        {
           provide: AnalyzeMatchUseCase,
           inject: [
             ANALYSIS_REPOSITORY,
@@ -72,6 +96,7 @@ export class MatchModule {
             RUN_TASK,
             MATCH_CLOCK,
             APP_CONFIG,
+            ANALYSIS_STEP_NOTIFIER,
           ],
           useFactory: (
             analyses: AnalysisRepository,
@@ -81,6 +106,7 @@ export class MatchModule {
             runTask: RunTaskFn,
             clock: Clock,
             worker: WorkerConfig,
+            stepNotifier: AnalysisStepNotifier,
           ) =>
             new AnalyzeMatchUseCase(
               analyses,
@@ -93,6 +119,7 @@ export class MatchModule {
                 timeoutMs: worker.MATCH_ANALYSIS_TIMEOUT_MS,
                 maxAgeMs: worker.MATCH_ANALYSIS_MAX_AGE_MS,
               },
+              stepNotifier,
             ),
         },
         ...(consumersEnabled

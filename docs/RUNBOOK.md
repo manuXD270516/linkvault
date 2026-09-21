@@ -246,6 +246,7 @@ Antes de que arranquen, fija el contrato en libs/shared (schemas zod + endpoints
 - **No edites `CLAUDE.md` a mano en caliente:** pídele a Claude Code `# <regla nueva>` (la tecla `#` agrega a CLAUDE.md) para que quede consistente.
 - **Cuando el hook bloquee una edición**, es correcto: crea el change o marca la tarea dentro del change activo.
 - **Fixtures del mock:** la grabación es un comando (ADR-019). Para los casos del golden de una tarea evaluable, `pnpm nx run ai:record-fixtures --task=<t> --upstream=ollama --ollama-url=http://localhost:11434 --timeout-ms=300000` graba los que falten (OpenRouter solo con `--upstream=openrouter --allow-external`); revisa el JSON y comprueba replay con `pnpm nx run ai:eval --task=<t> --provider=mock`. Si cambian las métricas, `--update-baseline` en el mismo commit que los fixtures.
+- **Feedback → candidatos (B14):** `pnpm nx run ai:export-feedback-candidates --from-json=<dump.json>` o con `MONGO_URI` / `--mongo-uri` lee la colección `ai_feedback` y escribe `libs/ai/src/evals/match-cv/candidates.jsonl` (o `--out=`). **No modifica** `golden.jsonl` de `match-cv` ni de `critique-suggestions`; la promoción al golden es manual tras revisión.
   > **Fixtures pendientes (desde `link-enrichment`): ya no se escriben a mano.** Cuando un test en replay pide una ejecución cuyo fixture no existe, `runTask` la anota en `tmp/ai-pending-fixtures.jsonl` (o donde diga `AI_PENDING_FIXTURES_FILE`) con la tarea, la versión del prompt, el idioma de salida y la clave que falta. Para grabarlas: `pnpm nx run ai:record-fixtures --from-pending --upstream=ollama --ollama-url=http://localhost:11434`, con `--task=<t>` para filtrar por tarea y `--pending-file=<archivo>` para leer otro registro (ese flag solo vale con `--from-pending`). El registro solo se escribe durante los tests, nunca en producción, y un test que espera la ausencia del fixture lo apaga con `AI_PENDING_FIXTURES=off`. Lo que no se puede grabar (tareas `personal`, que nunca llevan su entrada, o entradas obsoletas) se lista con su motivo y no hace fallar el comando. `AI_MOCK_MODE=record` sigue rechazándose al arrancar e indica usar `nx run ai:record-fixtures`.
 
 ## Paso 6 bis — Operar el enriquecimiento de links
@@ -966,8 +967,10 @@ consultas de abajo proyectan solo metadatos.
 - **Variables.** `api` y `worker` leen `MATCH_ANALYSIS_MAX_AGE_MS` (mismo valor en ambos), `MATCH_ANALYSIS_TIMEOUT_MS`,
   `MATCH_ANALYSES_PER_USER`, `MATCH_QUOTA_WINDOW_MS`; el worker además `MATCH_ANALYSIS_CONCURRENCY`. Relación de plazos
   (ADR-030 §7): `MAX_AGE` tiene que ser **mayor** que `TIMEOUT` contando entregas y margen —cada proceso lo comprueba al
-  arrancar con `assertAnalysisDeadlines` y nombra las dos variables si falla. Copiar el bloque de `.env.example` si el
-  arranque se queja.
+  arrancar con `assertAnalysisDeadlines` y nombra las dos variables si falla. Valores recomendados en `.env.example`
+  (`TIMEOUT=120000`, `MAX_AGE=240000`): ×2 respecto a cv-match-suggestions para absorber hasta ~3 llamadas IA del bucle
+  de crítica (cv-suggestions-review / ADR-031); medir y ajustar con el eval. Un `.env` anterior con `60000`/`120000`
+  sigue validando, pero puede cortar análisis con revisión. Copiar el bloque de `.env.example` si el arranque se queja.
 
 - **La cola `analyze-match`.** Prefijo BullMQ `bull:`. Estado:
 

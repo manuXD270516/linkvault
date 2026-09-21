@@ -90,7 +90,13 @@ interface Execution {
 }
 
 type AttemptOutcome<O> =
-  | { kind: 'success'; output: O; model: string }
+  | {
+      kind: 'success';
+      output: O;
+      /** Presente solo con `deferPiiReinjection` y redacción: copia lista para el usuario. */
+      reinjectedOutput?: O;
+      model: string;
+    }
   | { kind: 'schema_error' }
   | { kind: 'provider_error' }
   | { kind: 'skipped' }
@@ -185,8 +191,9 @@ export class RunTask {
       if (outcome.kind !== 'skipped') attempted++;
       if (outcome.kind === 'success') {
         // Solo se guardan éxitos (ADR-018 §6): nunca `degraded`. Y solo si la tarea es cacheable.
+        // La caché guarda siempre la copia lista para el usuario (reinyectada si aplica).
         await this.writeCache(execution, {
-          output: outcome.output,
+          output: outcome.reinjectedOutput ?? outcome.output,
           providerId: provider.id,
           model: outcome.model,
           promptVersion: task.promptVersion,
@@ -194,6 +201,9 @@ export class RunTask {
         return {
           status: 'success',
           output: outcome.output,
+          ...(outcome.reinjectedOutput !== undefined
+            ? { reinjectedOutput: outcome.reinjectedOutput }
+            : {}),
           providerId: provider.id,
           model: outcome.model,
           promptVersion: task.promptVersion,
@@ -357,10 +367,20 @@ export class RunTask {
       await this.deps.breaker.recordSuccess(provider.id);
       if (result.status === 'valid') {
         this.record(execution, 'success', base);
-        const output = redaction
-          ? redaction.reinject(result.output)
-          : result.output;
-        return { kind: 'success', output, model: result.model };
+        if (redaction === undefined) {
+          return { kind: 'success', output: result.output, model: result.model };
+        }
+        const reinjected = redaction.reinject(result.output);
+        // ADR-031: el juez necesita marcadores; la reinyección es para persistir/GET (D10).
+        if (execution.ctx.deferPiiReinjection === true) {
+          return {
+            kind: 'success',
+            output: result.output,
+            reinjectedOutput: reinjected,
+            model: result.model,
+          };
+        }
+        return { kind: 'success', output: reinjected, model: result.model };
       }
       this.record(execution, 'schema_error', base);
       return { kind: 'schema_error' };

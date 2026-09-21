@@ -44,6 +44,16 @@
           "TSX_TSCONFIG_PATH": "libs/ai/tsconfig.lib.json"
         }
       }
+    },
+    "export-feedback-candidates": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node --import tsx libs/ai/src/evals/cli/export-feedback-candidates.ts",
+        "cwd": ".",
+        "env": {
+          "TSX_TSCONFIG_PATH": "libs/ai/tsconfig.lib.json"
+        }
+      }
     }
   }
 }

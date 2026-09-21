@@ -95,6 +95,41 @@ describe('MongoAnalysisRepository.complete / fail', () => {
     expect((await repository.findById(id))?.status).toBe('done');
   });
 
+  it('persiste judgeScore y judgeModel en el informe (cv-suggestions-review)', async () => {
+    const id = await insertRunning();
+    const report = {
+      ...sampleReport(),
+      judgeScore: 0.85,
+      judgeModel: 'mock:critique',
+    };
+    const written = await repository.complete(id, {
+      step: 'done',
+      report,
+      provider: 'mock',
+      model: 'm',
+      promptVersion: 'v1',
+      previewVersion: 1,
+      degraded: false,
+      consentRequired: false,
+      wentExternal: false,
+      finishedAt: clock.now(),
+      durationMs: 10,
+    });
+    expect(written).toBe(true);
+    const loaded = await repository.findById(id);
+    expect(loaded?.report).toMatchObject({
+      judgeScore: 0.85,
+      judgeModel: 'mock:critique',
+    });
+    const raw = await connection
+      .collection(AI_ANALYSES_COLLECTION)
+      .findOne({ _id: new mongoose.Types.ObjectId(id) });
+    expect(raw?.['report']).toMatchObject({
+      judgeScore: 0.85,
+      judgeModel: 'mock:critique',
+    });
+  });
+
   it('losing the race does not overwrite a finished analysis', async () => {
     const id = await insertRunning();
     await repository.complete(id, {

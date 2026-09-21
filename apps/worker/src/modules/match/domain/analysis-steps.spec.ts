@@ -15,19 +15,23 @@ describe('analysis-steps', () => {
       'reading-job',
       'comparing-cv',
       'drafting-suggestions',
+      'critiquing-suggestions',
+      'revising-suggestions',
       'done',
     ]);
     assertSequenceEndsWithFinal(FULL_ANALYSIS_STEPS);
     expect(stepsForOutcome('full')).toEqual(FULL_ANALYSIS_STEPS);
   });
 
-  it('Un análisis básico se salta las sugerencias', () => {
+  it('Un análisis básico se salta las sugerencias y el juez', () => {
     expect(DEGRADED_ANALYSIS_STEPS).toEqual([
       'reading-job',
       'comparing-cv',
       'done-degraded',
     ]);
     expect(DEGRADED_ANALYSIS_STEPS).not.toContain('drafting-suggestions');
+    expect(DEGRADED_ANALYSIS_STEPS).not.toContain('critiquing-suggestions');
+    expect(DEGRADED_ANALYSIS_STEPS).not.toContain('revising-suggestions');
     expect(DEGRADED_ANALYSIS_STEPS.at(-1)).toBe('done-degraded');
     assertSequenceEndsWithFinal(DEGRADED_ANALYSIS_STEPS);
   });

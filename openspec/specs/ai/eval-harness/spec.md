@@ -397,3 +397,19 @@ quedado en disco, nunca el valor. Esta comprobación SHALL aplicarse también co
 - **GIVEN** una grabación de `match-cv` contra el mock cuya salida no contiene nada que la redacción de proveedor externo sustituiría
 - **WHEN** el corredor escribe el fixture
 - **THEN** el fixture SHALL escribirse tal cual y el comando SHALL terminar con código 0
+
+### Requirement: Calidad del bucle de encaje
+
+El eval de `match-cv` SHALL poder medir la correlación entre el `score` del informe y etiquetas humanas de 1 a 5, y el coste por vuelta del bucle de juez. Una vuelta de más SHALL verse en el reporte como coste, no solo como latencia. El reporte con el proveedor mock SHALL seguir siendo el que corre en CI.
+
+#### Scenario: El coste de la segunda vuelta se ve
+
+- **GIVEN** un caso del golden que usa dos vueltas de juez
+- **WHEN** se corre el eval
+- **THEN** el reporte SHALL distinguir el coste de cada vuelta
+
+#### Scenario: CI no llama a un proveedor de pago
+
+- **WHEN** el eval corre en CI
+- **THEN** SHALL usar el mock en replay
+- **AND** NO SHALL requerir una clave de proveedor externo

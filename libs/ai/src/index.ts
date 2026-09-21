@@ -87,6 +87,14 @@ export {
   type MatchCvOutput,
 } from './tasks/match-cv.task';
 export {
+  critiqueSuggestionsTask,
+  toCritiqueSuggestionsInput,
+  type CritiqueSuggestionsInput,
+  type CritiqueSuggestionsOutput,
+  type CritiqueSourceJob,
+  type CritiqueSourceReport,
+} from './tasks/critique-suggestions.task';
+export {
   formatAiConfigProblems,
   parseAiConfig,
   type AiEnv,

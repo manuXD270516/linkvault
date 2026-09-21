@@ -135,4 +135,10 @@ export interface AnalysisRepository {
     userId: string,
     linkIds: readonly string[],
   ): Promise<ReadonlyMap<string, AnalysisFitScore>>;
+
+  /**
+   * Lee un análisis por id (feedback «no me convence»). `null` si no existe o el id está mal formado.
+   * No deriva vencimiento: el feedback solo aplica a informes `done` con sugerencias.
+   */
+  findById(analysisId: string): Promise<MatchAnalysis | null>;
 }

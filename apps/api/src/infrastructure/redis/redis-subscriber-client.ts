@@ -6,6 +6,29 @@ import { redisRetryDelay } from './redis-health-client';
 export const REDIS_SUBSCRIBER_CLIENT = Symbol('REDIS_SUBSCRIBER_CLIENT');
 
 /**
+ * Lo que un adaptador de avisos necesita de un cliente Redis suscriptor. Se declara aquí, y no como un `Pick` de
+ * `Redis`, para dejar dicho exactamente qué se usa y para que un doble de test no tenga que fingir las 450
+ * propiedades de ioredis. Lo usan enriquecimiento, comentarios y `analysis.step`.
+ */
+export interface RedisSubscriber {
+  /** Estado de la conexión tal y como lo publica ioredis; `wait` es "creada y todavía sin conectar" (`lazyConnect`). */
+  readonly status: string;
+  connect(): Promise<unknown>;
+  subscribe(channel: string): Promise<unknown>;
+  unsubscribe(channel: string): Promise<unknown>;
+  on(
+    event: 'message',
+    listener: (channel: string, message: string) => void,
+  ): unknown;
+  on(event: 'ready', listener: () => void): unknown;
+  off(
+    event: 'message',
+    listener: (channel: string, message: string) => void,
+  ): unknown;
+  off(event: 'ready', listener: () => void): unknown;
+}
+
+/**
  * Lo que se espera por un intento de conexión antes de darlo por perdido y volver a intentarlo. Un Redis caído contesta
  * que no en el acto, pero uno inalcanzable no contesta nada, y con el tope de diez segundos de ioredis el canal tardaría
  * eso en reengancharse. El arranque de `api` no depende de esto: no espera a que la conexión llegue.

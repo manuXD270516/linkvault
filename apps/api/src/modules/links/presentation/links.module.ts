@@ -100,8 +100,8 @@ import { PublicPreviewsController } from './public-previews.controller';
  * NO monta ninguna `Queue`: reintentar y reencolar van por el outbox (D10 de link-enrichment), así que la suite de
  * integración de `api` sigue sin necesitar Redis para escribir en la cola.
  *
- * Sí abre una conexión de Redis en **modo suscripción** para los avisos de enriquecimiento y de comentarios, una sola por
- * proceso y compartida por los dos canales (D9 de link-enrichment y de group-comments).
+ * Sí abre una conexión de Redis en **modo suscripción** para los avisos de enriquecimiento, de comentarios y de
+ * paso de análisis (`analysis.step`), una sola por proceso y compartida por los tres canales.
  * Si Redis no está, la suscripción avisa una vez y `api` sigue sirviendo peticiones: lo único que se pierde es que una
  * pantalla abierta se entere sola, y se recupera sola cuando Redis vuelve.
  *
@@ -164,8 +164,8 @@ import { PublicPreviewsController } from './public-previews.controller';
         new RedisEnrichmentNotices(client),
     },
     {
-      // El **mismo** cliente suscriptor que los avisos de enriquecimiento: una conexión en modo suscripción por proceso,
-      // con los dos canales. Cada adaptador filtra los mensajes de su canal.
+      // El **mismo** cliente suscriptor que los avisos de enriquecimiento y de `analysis.step`: una conexión en modo
+      // suscripción por proceso, con los tres canales. Cada adaptador filtra los mensajes de su canal.
       provide: COMMENT_NOTICES,
       inject: [REDIS_SUBSCRIBER_CLIENT],
       useFactory: (client: RedisSubscriber) => new RedisCommentNotices(client),
@@ -225,7 +225,7 @@ import { PublicPreviewsController } from './public-previews.controller';
     GroupLinksDeletionHook,
     LinksFacade,
   ],
-  exports: [LinksFacade],
+  exports: [LinksFacade, REDIS_SUBSCRIBER_CLIENT],
 })
 export class LinksModule implements OnModuleInit {
   /**

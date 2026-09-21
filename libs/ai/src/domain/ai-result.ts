@@ -12,7 +12,16 @@ export type DegradedReason =
 
 export interface AiSuccess<O> {
   status: 'success';
+  /**
+   * Salida validada. Con `RunContext.deferPiiReinjection` y redacción activa conserva marcadores PII;
+   * sin defer (o sin redacción) es la copia lista para el usuario (reinyectada si aplica).
+   */
   output: O;
+  /**
+   * Copia con marcadores reinyectados. Solo presente cuando `deferPiiReinjection` y hubo redacción
+   * (personal → external). Usar al persistir / GET; el juez debe ver `output`.
+   */
+  reinjectedOutput?: O;
   providerId: string;
   model: string;
   promptVersion: string;

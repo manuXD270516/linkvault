@@ -8,6 +8,7 @@ import {
 import type {
   AnyEvaluableTask,
   CaseResult,
+  EvaluableTask,
   GoldenCase,
 } from '../evaluable-task';
 import { EVALUABLE_TASKS } from '../evaluable-tasks';
@@ -24,6 +25,8 @@ import {
 import { computeMetrics } from '../metrics/aggregate';
 import type { MetricValue } from '../metrics/metric';
 import { computeRedactionMetrics } from '../metrics/redaction-metrics';
+import { meanCostByRound } from '../match-cv/metrics';
+import { runMatchCvCases } from '../match-cv/run-with-judge-loop';
 import {
   buildBaseline,
   checkOrUpdateBaseline,
@@ -51,6 +54,8 @@ import {
   type EvalArgs,
   type ExitCode,
 } from './args';
+import type { MatchCvInput, MatchCvOutput } from '../../tasks/match-cv.task';
+import type { MatchCvExpected } from '../match-cv/metrics';
 
 // Comando `nx run ai:eval` (D2, D3, D5 y D6 de ai-eval-harness; requisito "Corredor de evaluación"). Sin efectos sobre
 // el proceso: recibe entorno, directorio de trabajo y salidas, y devuelve el código de salida. `eval.ts` lo conecta a
@@ -177,13 +182,27 @@ async function evaluateTask(
 
   let results: CaseResult<unknown, unknown, unknown>[];
   try {
-    results = await runCases({
-      evaluable,
-      cases,
-      runTask: composition.runTask.execute,
-      ledger: composition.ledger,
-      clock: composition.clock,
-    });
+    if (evaluable.task.name === 'match-cv') {
+      results = (await runMatchCvCases({
+        evaluable: evaluable as EvaluableTask<
+          MatchCvInput,
+          MatchCvOutput,
+          MatchCvExpected
+        >,
+        cases: cases as readonly GoldenCase<MatchCvInput, MatchCvExpected>[],
+        runTask: composition.runTask.execute,
+        ledger: composition.ledger,
+        clock: composition.clock,
+      })) as CaseResult<unknown, unknown, unknown>[];
+    } else {
+      results = await runCases({
+        evaluable,
+        cases,
+        runTask: composition.runTask.execute,
+        ledger: composition.ledger,
+        clock: composition.clock,
+      });
+    }
   } catch (error) {
     if (error instanceof EvalCaseProgrammingError) {
       io.stderr(`[ai:eval] ${error.message}\n`);
@@ -197,6 +216,7 @@ async function evaluateTask(
     ...computeMetrics(evaluable, results),
     ...(redaction?.metrics ?? []),
   ];
+  const roundCosts = meanCostByRound(results);
   let exitCode: ExitCode = EXIT_CODES.success;
   let baselineColumn: Readonly<Record<string, number>> | null | undefined;
   const baselineMessages: string[] = [];
@@ -250,6 +270,7 @@ async function evaluateTask(
     results,
     ...(redaction == null ? {} : { redaction }),
     ...(unusedKnownGaps.length === 0 ? {} : { unusedKnownGaps }),
+    ...(roundCosts.length === 0 ? {} : { roundCosts }),
   });
   const reportPath = await writeReport(
     paths.reportsDir,

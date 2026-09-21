@@ -14,7 +14,7 @@ import {
   type MatchAnalysis,
 } from '../../domain/analysis';
 import { readAnalysis } from '../../domain/expiry';
-import { isCvId, isLinkId, isUserId } from '../../domain/identifier';
+import { isAnalysisId, isCvId, isLinkId, isUserId } from '../../domain/identifier';
 import type { MatchAiConsent } from '../ports/ai-consent.port';
 import type {
   AnalysisFitScore,
@@ -411,6 +411,13 @@ export class InMemoryAnalysisRepository implements AnalysisRepository {
       });
     }
     return Promise.resolve(scores);
+  }
+
+  findById(analysisId: string): Promise<MatchAnalysis | null> {
+    if (!isAnalysisId(analysisId)) {
+      return Promise.resolve(null);
+    }
+    return Promise.resolve(this.documents.get(analysisId) ?? null);
   }
 }
 

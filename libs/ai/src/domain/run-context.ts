@@ -22,6 +22,17 @@ export interface RunContext {
   personName?: string;
   /** Plazo total de la ejecución. */
   signal?: AbortSignal;
+  /**
+   * Proveedores a omitir de la cadena si queda al menos otro elegible (cv-suggestions-review / C19): el juez no
+   * debe repetir al generador cuando hay dos opciones. Si excluir vaciara la cadena, se ignoran.
+   */
+  excludeProviderIds?: readonly string[];
+  /**
+   * Si true y hubo redacción hacia un proveedor externo: `output` conserva marcadores y la copia reinyectada
+   * va en `reinjectedOutput` (ADR-031 / D10). El llamador reinyecta solo al persistir o responder al usuario.
+   * Por defecto false: `output` ya viene reinyectado (comportamiento histórico).
+   */
+  deferPiiReinjection?: boolean;
 }
 
 /** Idioma de salida efectivo de una ejecución: el del contexto o `es`. */

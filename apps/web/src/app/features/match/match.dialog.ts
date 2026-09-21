@@ -87,6 +87,10 @@ export class MatchDialog {
 
   /** Confirmación breve tras "Copiar"; no se persiste. */
   protected readonly copiedId = signal<string | null>(null);
+  /** Índices del informe final ya marcados «no me convence» en esta sesión del diálogo. */
+  protected readonly notConvincedIndexes = signal<ReadonlySet<number>>(new Set());
+  /** Índice en vuelo de «no me convence», o `null`. */
+  protected readonly notConvincedPending = signal<number | null>(null);
   /** `true` tras "Ver las N restantes": enseña todas sin reordenar ni pedir de nuevo. */
   protected readonly suggestionsExpanded = signal(false);
 
@@ -305,6 +309,8 @@ export class MatchDialog {
     }
     this.suggestionsExpanded.set(false);
     this.copiedId.set(null);
+    this.notConvincedIndexes.set(new Set());
+    this.notConvincedPending.set(null);
     await this.match.request();
   }
 
@@ -345,6 +351,15 @@ export class MatchDialog {
     return `${suggestion.section}:${index}:${suggestion.after.slice(0, 24)}`;
   }
 
+  /** Índice en `report.suggestions` (informe final), no el de la lista ordenada en pantalla. */
+  protected suggestionReportIndex(suggestion: MatchSuggestion): number {
+    const report = this.report();
+    if (report === null) {
+      return -1;
+    }
+    return report.suggestions.indexOf(suggestion);
+  }
+
   protected async copySuggestion(suggestion: MatchSuggestion, index: number): Promise<void> {
     const key = this.suggestionKey(suggestion, index);
     try {
@@ -357,6 +372,32 @@ export class MatchDialog {
 
   protected isCopied(suggestion: MatchSuggestion, index: number): boolean {
     return this.copiedId() === this.suggestionKey(suggestion, index);
+  }
+
+  protected isNotConvinced(suggestion: MatchSuggestion): boolean {
+    const index = this.suggestionReportIndex(suggestion);
+    return index >= 0 && this.notConvincedIndexes().has(index);
+  }
+
+  protected isNotConvincedPending(suggestion: MatchSuggestion): boolean {
+    const index = this.suggestionReportIndex(suggestion);
+    return index >= 0 && this.notConvincedPending() === index;
+  }
+
+  protected async markNotConvinced(suggestion: MatchSuggestion): Promise<void> {
+    const index = this.suggestionReportIndex(suggestion);
+    if (index < 0 || this.isNotConvinced(suggestion) || this.isNotConvincedPending(suggestion)) {
+      return;
+    }
+    this.notConvincedPending.set(index);
+    try {
+      await this.match.submitFeedback(index);
+      this.notConvincedIndexes.update((current) => new Set([...current, index]));
+    } catch {
+      // Sin toast: el botón sigue disponible para reintentar; el informe no cambia.
+    } finally {
+      this.notConvincedPending.set(null);
+    }
   }
 
   protected isDegraded(report: MatchReport): boolean {

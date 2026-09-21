@@ -191,6 +191,7 @@ describe('evaluable task registry', () => {
       'extract-job',
       'extract-pasted-job',
       'match-cv',
+      'critique-suggestions',
     ]);
     expect(findEvaluableTask('extract-job')).toBe(EVALUABLE_TASKS[1]);
     expect(extractJobEvaluable.expectedSchema).toBe(extractJobExpectedSchema);

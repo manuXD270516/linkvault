@@ -32,7 +32,7 @@ export function satisfies(
 
 export interface ChainRequest {
   task: Pick<AiTask<unknown, unknown>, 'requires' | 'dataSensitivity'>;
-  ctx: Pick<RunContext, 'aiConsent'>;
+  ctx: Pick<RunContext, 'aiConsent' | 'excludeProviderIds'>;
   /** Universo configurado, en el orden de AI_CHAIN (último desempate). */
   providers: readonly LlmProvider[];
   /** Circuitos abiertos que aún no admiten prueba (`CircuitBreaker.openIds()`). */
@@ -74,7 +74,7 @@ function selectEligible(request: ChainRequest): LlmProvider[] {
   const blockExternal =
     dataSensitivityOf(task) === 'personal' && !ctx.aiConsent.externalProviders;
 
-  return providers
+  const eligible = providers
     .map((provider, chainIndex) => ({ provider, chainIndex }))
     .filter(
       ({ provider }) =>
@@ -87,6 +87,17 @@ function selectEligible(request: ChainRequest): LlmProvider[] {
         compareProviders(a.provider, b.provider) || a.chainIndex - b.chainIndex,
     )
     .map(({ provider }) => provider);
+
+  // C19 / juez distinto: excluir solo si queda al menos un elegible; si no, se usa el mismo.
+  const excluded = ctx.excludeProviderIds;
+  if (excluded === undefined || excluded.length === 0) {
+    return eligible;
+  }
+  const excludedIds = new Set(excluded);
+  const withoutExcluded = eligible.filter(
+    (provider) => !excludedIds.has(provider.id),
+  );
+  return withoutExcluded.length > 0 ? withoutExcluded : eligible;
 }
 
 /**

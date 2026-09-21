@@ -1,7 +1,7 @@
 {
   "task": "match-cv",
   "promptVersion": "v1",
-  "goldenSha256": "5590d3dd8a585de925e25cfd29ef3bbaabfcbed86884381944cae171770ea413",
+  "goldenSha256": "6b1af525a1a9115e4006e598b6a0a1cddf56b91b7e7e18abcf7d77561d447c78",
   "metrics": {
     "degraded_rate": 0,
     "matched_skills_precision": 1,
@@ -10,6 +10,7 @@
     "pii_leak_rate": 0,
     "redaction_skill_loss": 0,
     "schema_validity_rate": 1,
+    "score_label_correlation": 1,
     "score_mae": 0
   }
 }

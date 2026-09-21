@@ -45,6 +45,7 @@ import { ConfigQuotaPolicy } from './infrastructure/quota/config-quota-policy';
 import { InMemoryCircuitBreaker } from './infrastructure/resilience/in-memory-circuit-breaker';
 import { RedisCircuitBreaker } from './infrastructure/resilience/redis-circuit-breaker';
 import { classifySkillsTask } from './tasks/classify-skills.task';
+import { critiqueSuggestionsTask } from './tasks/critique-suggestions.task';
 import { extractJobTask } from './tasks/extract-job.task';
 import { extractPastedJobTask } from './tasks/extract-pasted-job.task';
 import { matchCvTask } from './tasks/match-cv.task';
@@ -68,14 +69,15 @@ export interface AiModuleAsyncOptions {
 }
 
 /**
- * Tareas registradas: `classify-skills`, `extract-job`, `extract-pasted-job` y `match-cv`
- * (cv-match-suggestions).
+ * Tareas registradas: `classify-skills`, `extract-job`, `extract-pasted-job`, `match-cv` y
+ * `critique-suggestions` (cv-suggestions-review).
  */
 export const AI_TASKS: readonly AnyAiTask[] = [
   classifySkillsTask as unknown as AnyAiTask,
   extractJobTask as unknown as AnyAiTask,
   extractPastedJobTask as unknown as AnyAiTask,
   matchCvTask as unknown as AnyAiTask,
+  critiqueSuggestionsTask as unknown as AnyAiTask,
 ];
 
 const AI_TASK_REGISTRY = Symbol('AI_TASK_REGISTRY');

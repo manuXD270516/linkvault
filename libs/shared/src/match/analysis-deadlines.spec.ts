@@ -8,9 +8,10 @@ import {
 describe('assertAnalysisDeadlines', () => {
   it.each([
     {
+      // Valores de `.env.example` (×2 cv-suggestions-review): holgados frente a timeout + margen.
       name: 'holgado',
-      maxAgeMs: 120_000,
-      timeoutMs: 60_000,
+      maxAgeMs: 240_000,
+      timeoutMs: 120_000,
       deliveries: 1,
       marginMs: 15_000,
       ok: true,

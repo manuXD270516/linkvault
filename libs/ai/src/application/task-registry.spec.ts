@@ -148,5 +148,6 @@ describe('TaskRegistry', () => {
     expect(registry.get('classify-skills')?.cacheable).toBe(false);
     expect(registry.get('extract-pasted-job')?.cacheable).toBe(false);
     expect(registry.get('match-cv')?.cacheable).toBe(false);
+    expect(registry.get('critique-suggestions')?.cacheable).toBe(false);
   });
 });

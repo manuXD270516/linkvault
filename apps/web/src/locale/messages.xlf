@@ -2941,6 +2941,12 @@
       <trans-unit id="match.dialog.copy" datatype="html">
         <source>Copiar</source>
       </trans-unit>
+      <trans-unit id="match.dialog.notConvinced" datatype="html">
+        <source>No me convence</source>
+      </trans-unit>
+      <trans-unit id="match.dialog.notConvincedMarked" datatype="html">
+        <source>Marcada</source>
+      </trans-unit>
       <trans-unit id="match.dialog.copied" datatype="html">
         <source>Copiado</source>
       </trans-unit>
@@ -2973,6 +2979,12 @@
       </trans-unit>
       <trans-unit id="match.step.draftingSuggestions" datatype="html">
         <source>Redactando sugerencias</source>
+      </trans-unit>
+      <trans-unit id="match.step.critiquingSuggestions" datatype="html">
+        <source>Revisando sugerencias…</source>
+      </trans-unit>
+      <trans-unit id="match.step.revisingSuggestions" datatype="html">
+        <source>Mejorando sugerencias…</source>
       </trans-unit>
       <trans-unit id="match.retryAt.today" datatype="html">
         <source>las <x id="TIME" equiv-text="time"/></source>

@@ -11,6 +11,7 @@ import {
 import type { AiEnv } from '../../infrastructure/config/parse-ai-config';
 import {
   classifySkillsEvaluable,
+  critiqueSuggestionsEvaluable,
   EVALUABLE_TASKS,
   evaluableTaskNames,
   extractJobEvaluable,
@@ -36,6 +37,45 @@ const TASK = 'classify-skills';
 const OTHER_TASK = 'extract-job';
 const PASTED_TASK = 'extract-pasted-job';
 const MATCH_TASK = 'match-cv';
+const CRITIQUE_TASK = 'critique-suggestions';
+
+/** Golden mínimo de critique-suggestions (cv-suggestions-review 5.1). */
+const CRITIQUE_GOLDEN = [
+  {
+    id: 'critique-01',
+    input: {
+      job: {
+        title: 'Dev',
+        text: 'TypeScript y NestJS.',
+        skills: [
+          { name: 'TypeScript', importance: 'must' },
+          { name: 'NestJS', importance: 'must' },
+        ],
+      },
+      report: {
+        score: 70,
+        matchedSkills: ['TypeScript'],
+        missingSkills: [{ name: 'NestJS', importance: 'must' }],
+        suggestions: [
+          {
+            section: 'skills',
+            after: 'Incluir NestJS.',
+            reason: 'Lo pide la vacante.',
+            evidence: {
+              jobRequirement: 'NestJS',
+              importance: 'must',
+            },
+          },
+        ],
+      },
+    },
+    expected: {
+      score: 0.5,
+      issues: ['Las sugerencias son demasiado genéricas.'],
+    },
+    tags: ['placeholder'],
+  },
+];
 
 /** Golden mínimo de la tercera: una conversación pegada que no es una vacante. */
 const PASTED_GOLDEN = [
@@ -159,6 +199,12 @@ describe('runEvalCommand', () => {
       join(evalsDir, MATCH_TASK, 'known-gaps.json'),
       '{}\n',
     );
+    await mkdir(join(evalsDir, CRITIQUE_TASK), { recursive: true });
+    await mkdir(join(fixturesDir, CRITIQUE_TASK), { recursive: true });
+    await writeFile(
+      goldenPath(evalsDir, CRITIQUE_TASK),
+      `${CRITIQUE_GOLDEN.map((line) => JSON.stringify(line)).join('\n')}\n`,
+    );
   });
 
   // "Fixture ausente en replay" espera el error a propósito: este archivo queda fuera del registro de pendientes (4.6).
@@ -199,12 +245,13 @@ describe('runEvalCommand', () => {
     await writeOtherFixtures();
   }
 
-  /** Fixtures de extract-job, extract-pasted-job y match-cv. */
+  /** Fixtures de extract-job, extract-pasted-job, match-cv y critique-suggestions. */
   async function writeOtherFixtures() {
     const pages = await loadGolden(extractJobEvaluable, evalsDir);
     const pasted = await loadGolden(extractPastedJobEvaluable, evalsDir);
     const match = await loadGolden(matchCvEvaluable, evalsDir);
-    if (!pages.ok || !pasted.ok || !match.ok) {
+    const critique = await loadGolden(critiqueSuggestionsEvaluable, evalsDir);
+    if (!pages.ok || !pasted.ok || !match.ok || !critique.ok) {
       throw new Error('invalid test golden');
     }
     const notAJob = JSON.stringify({
@@ -240,6 +287,17 @@ describe('runEvalCommand', () => {
       await writeFile(
         join(fixturesDir, MATCH_TASK, `${goldenCase.key}.json`),
         matchOutput,
+      );
+    }
+    for (const goldenCase of critique.cases) {
+      await writeFile(
+        join(fixturesDir, CRITIQUE_TASK, `${goldenCase.key}.json`),
+        JSON.stringify({
+          source: 'handwritten',
+          text: JSON.stringify(goldenCase.expected),
+          model: 'fixture-model',
+          usage: { inputTokens: 0, outputTokens: 0 },
+        }),
       );
     }
   }
@@ -522,6 +580,7 @@ describe('Coherencia entre registro y golden sets', () => {
     await expect(registryCoherence(evalsDir)).resolves.toEqual({
       withoutGolden: [
         'classify-skills',
+        'critique-suggestions',
         'extract-job',
         'extract-pasted-job',
         'match-cv',
@@ -548,8 +607,12 @@ describe('Coherencia entre registro y golden sets', () => {
     });
   });
 
-  it('findEvaluableTask finds match-cv', () => {
+  it('findEvaluableTask finds match-cv and critique-suggestions', () => {
     expect(findEvaluableTask('match-cv')?.task.name).toBe('match-cv');
+    expect(findEvaluableTask('critique-suggestions')?.task.name).toBe(
+      'critique-suggestions',
+    );
     expect(evaluableTaskNames()).toContain('match-cv');
+    expect(evaluableTaskNames()).toContain('critique-suggestions');
   });
 });
