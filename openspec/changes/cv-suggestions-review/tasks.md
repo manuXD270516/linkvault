@@ -29,4 +29,4 @@
 ## 5. Eval y cierre
 
 - [x] 5.1 [ai] Reporte de eval: correlación score/etiqueta 1–5 y coste por vuelta; verificar con mock.
-- [ ] 5.2 [infra] `pnpm nx affected -t lint,typecheck,test --base=main` y `openspec validate --all` en verde.
+- [x] 5.2 [infra] `pnpm nx affected -t lint,typecheck,test --base=main` y `openspec validate --all` en verde.
