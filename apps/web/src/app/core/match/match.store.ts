@@ -12,7 +12,11 @@ import {
   matchStepOrder,
 } from '@linkvault/shared';
 import { patchState, signalStore, withComputed, withHooks, withMethods, withState } from '@ngrx/signals';
-import { type RequestFailure, toRequestFailure } from '../api/api-error';
+import {
+  hasApiErrorCode,
+  type RequestFailure,
+  toRequestFailure,
+} from '../api/api-error';
 import { MatchApi } from './match.api';
 import { MatchBusyRegistry } from './match-busy.registry';
 
@@ -208,7 +212,10 @@ export const MatchStore = signalStore(
         const response = await api.get(linkId);
         applyResponse(response.latest, response.running, response.linkId);
       } catch (error: unknown) {
-        if (!silent) {
+        // Nunca se pidió análisis de esta oferta: estado vacío, no avería (spec cv/match).
+        if (hasApiErrorCode(error, 404, 'analysis_not_found')) {
+          applyResponse(null, null, linkId);
+        } else if (!silent) {
           patchState(store, { failure: toRequestFailure(error) });
         }
       } finally {

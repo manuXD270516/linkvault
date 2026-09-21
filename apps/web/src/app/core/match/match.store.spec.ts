@@ -186,6 +186,36 @@ describe('MatchStore', () => {
     expect(store.isRunning()).toBe(false);
   });
 
+  it('analysis_not_found al abrir es estado vacío, no avería', async () => {
+    const loading = store.load(LINK);
+    const { body, options } = apiError('analysis_not_found', 404);
+    http.expectOne({ method: 'GET', url: MATCH_URL }).flush(body, options);
+    await loading;
+
+    expect(store.loading()).toBe(false);
+    expect(store.failure()).toBeNull();
+    expect(store.report()).toBeNull();
+    expect(store.latest()).toBeNull();
+    expect(store.running()).toBeNull();
+    expect(store.isRunning()).toBe(false);
+    expect(store.linkId()).toBe(LINK);
+  });
+
+  it('link_not_found al abrir sí es avería', async () => {
+    const loading = store.load(LINK);
+    const { body, options } = apiError('link_not_found', 404);
+    http.expectOne({ method: 'GET', url: MATCH_URL }).flush(body, options);
+    await loading;
+
+    expect(store.failure()).toEqual({
+      kind: 'api',
+      status: 404,
+      code: 'link_not_found',
+      retryAfterMinutes: null,
+    });
+    expect(store.report()).toBeNull();
+  });
+
   it('un paso que no llega porque no toca no queda pendiente', async () => {
     await openWith(response({ latest: latestDegraded }));
 

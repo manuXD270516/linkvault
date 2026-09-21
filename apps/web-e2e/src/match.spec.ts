@@ -429,7 +429,7 @@ test('match consent: grant on profile, see status on mi-cv, revoke and delete wi
     });
 
     await test.step('17.2 she grants consent on /perfil and sees date and version', async () => {
-      await page.getByRole('link', { name: 'Perfil' }).click();
+      await page.locator('mat-toolbar').getByRole('link', { name: 'Perfil' }).click();
       await expect(page).toHaveURL(/\/perfil$/);
       await expect(page.getByTestId('profile-ai-consent-text')).toBeVisible();
 
@@ -464,7 +464,8 @@ test('match consent: grant on profile, see status on mi-cv, revoke and delete wi
     });
 
     await test.step('17.2 she revokes and reads the full withdrawal message', async () => {
-      await page.getByRole('link', { name: 'Perfil' }).click();
+      // En /mi-cv hay otro enlace "Perfil" (aviso de privacidad); el de la barra es el canónico.
+      await page.locator('mat-toolbar').getByRole('link', { name: 'Perfil' }).click();
       await expect(page).toHaveURL(/\/perfil$/);
 
       const patched = page.waitForResponse(
