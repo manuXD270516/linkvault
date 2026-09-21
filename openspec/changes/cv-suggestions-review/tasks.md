@@ -7,17 +7,17 @@
 
 ## 2. Juez
 
-- [ ] 2.1 [ai] Prompt versionado `critique-suggestions` y tarea no cacheable; verificar rechazo si se declara cacheable.
-- [ ] 2.2 [ai] Bucle en el worker: máx. 1 crítica + 1 revisión; parada a judgeScore ≥ 0.8 o Δ score entero < 1; se guarda el mejor par; verificar los cortes.
-- [ ] 2.3 [ai] El juez no recibe CV/PII reinyectada y, con dos proveedores, no repite al generador; verificar input y proveedor.
-- [ ] 2.4 [ai] Si el juez falla o hay `quota_exceeded` a mitad, `done` con el mejor informe ya obtenido (sin `judgeScore` si no hubo crítica válida).
+- [x] 2.1 [ai] Prompt versionado `critique-suggestions` y tarea no cacheable; verificar rechazo si se declara cacheable.
+- [x] 2.2 [ai] Bucle en el worker: máx. 1 crítica + 1 revisión; parada a judgeScore ≥ 0.8 o Δ score entero < 1; se guarda el mejor par; verificar los cortes.
+- [x] 2.3 [ai] El juez no recibe CV/PII reinyectada y, con dos proveedores, no repite al generador; verificar input y proveedor.
+- [x] 2.4 [ai] Si el juez falla o hay `quota_exceeded` a mitad, `done` con el mejor informe ya obtenido (sin `judgeScore` si no hubo crítica válida).
 
 ## 3. Progreso en vivo
 
 - [ ] 3.1 [backend] Publicar `analysis.step` al cambiar de paso (incluidos los del bucle), sin bloquear si no hay suscriptores; verificar payload cerrado.
 - [ ] 3.2 [backend] Repartir solo al `userId` del análisis; verificar Ana/Beto.
 - [ ] 3.3 [frontend] Diálogo: rótulos de los pasos nuevos; SSE adelanta el paso de su análisis; sin canal el sondeo basta. Verificar store.
-- [ ] 3.4 [infra] Subir `MATCH_ANALYSIS_TIMEOUT_MS` / `MAX_AGE` (factor ×2 inicial) en `.env.example` y RUNBOOK.
+- [x] 3.4 [infra] Subir `MATCH_ANALYSIS_TIMEOUT_MS` / `MAX_AGE` (factor ×2 inicial) en `.env.example` y RUNBOOK.
 
 ## 4. Feedback
 

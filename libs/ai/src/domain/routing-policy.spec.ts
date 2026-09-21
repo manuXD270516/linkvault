@@ -160,6 +160,31 @@ describe('buildChain', () => {
     expect(ids).toEqual(['mock']);
   });
 
+  it('Dos proveedores: el juez no repite al generador', () => {
+    const ids = chainIds({
+      providers: [provider('ollama'), provider('openrouter', { external: true })],
+      ctx: {
+        aiConsent: { externalProviders: true },
+        excludeProviderIds: ['ollama'],
+      },
+    });
+
+    expect(ids).toEqual(['openrouter']);
+    expect(ids).not.toContain('ollama');
+  });
+
+  it('keeps the only eligible provider when exclude would empty the chain', () => {
+    const ids = chainIds({
+      providers: [provider('ollama')],
+      ctx: {
+        aiConsent: { externalProviders: false },
+        excludeProviderIds: ['ollama'],
+      },
+    });
+
+    expect(ids).toEqual(['ollama']);
+  });
+
   it('Proveedor gratuito antes que uno de pago', () => {
     const ids = chainIds({
       providers: [

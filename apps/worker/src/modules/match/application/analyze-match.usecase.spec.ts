@@ -1,5 +1,7 @@
 import type {
   AiResult,
+  AiTask,
+  CritiqueSuggestionsOutput,
   MatchCvInput,
   MatchCvOutput,
   RunContext,
@@ -49,16 +51,42 @@ const CORE: MatchCvOutput = {
   ],
 };
 
+const CRITIQUE_ACCEPT: AiResult<CritiqueSuggestionsOutput> = {
+  status: 'success',
+  output: { score: 0.85, issues: [] },
+  providerId: 'mock',
+  model: 'judge-model',
+  promptVersion: 'v1',
+  cached: false,
+};
+
+const CRITIQUE_REJECT: AiResult<CritiqueSuggestionsOutput> = {
+  status: 'success',
+  output: { score: 0.4, issues: ['Sugerencias genéricas.'] },
+  providerId: 'openrouter',
+  model: 'judge-other',
+  promptVersion: 'v1',
+  cached: false,
+};
+
+interface RunTaskCall {
+  readonly taskName: string;
+  readonly input: unknown;
+  readonly ctx: RunContext;
+}
+
 interface RunTaskSpy {
   readonly fn: RunTaskFn;
-  readonly calls: { input: MatchCvInput; ctx: RunContext }[];
+  readonly calls: RunTaskCall[];
   readonly externalSends: number;
   setResult: (result: AiResult<MatchCvOutput>) => void;
+  setCritiqueResult: (result: AiResult<CritiqueSuggestionsOutput>) => void;
   setImpl: (
     impl: (
-      input: MatchCvInput,
+      task: AiTask<unknown, unknown>,
+      input: unknown,
       ctx: RunContext,
-    ) => Promise<AiResult<MatchCvOutput>>,
+    ) => Promise<AiResult<unknown>>,
   ) => void;
 }
 
@@ -72,27 +100,32 @@ function runTaskSpy(
     cached: false,
   },
 ): RunTaskSpy {
-  const calls: { input: MatchCvInput; ctx: RunContext }[] = [];
+  const calls: RunTaskCall[] = [];
   let externalSends = 0;
-  let result = initial;
+  let matchResult = initial;
+  let critiqueResult: AiResult<CritiqueSuggestionsOutput> = CRITIQUE_ACCEPT;
   let impl:
     | ((
-        input: MatchCvInput,
+        task: AiTask<unknown, unknown>,
+        input: unknown,
         ctx: RunContext,
-      ) => Promise<AiResult<MatchCvOutput>>)
+      ) => Promise<AiResult<unknown>>)
     | null = null;
 
-  const fn: RunTaskFn = (async (_task, input, ctx) => {
-    calls.push({ input: input as MatchCvInput, ctx });
+  const fn: RunTaskFn = (async (task, input, ctx) => {
+    calls.push({ taskName: task.name, input, ctx });
     if (impl !== null) {
-      return await impl(input as MatchCvInput, ctx);
+      return await impl(task, input, ctx);
     }
-    if (ctx.aiConsent.externalProviders && result.status === 'success') {
-      if (result.providerId === 'openrouter') {
+    if (task.name === 'critique-suggestions') {
+      return critiqueResult;
+    }
+    if (ctx.aiConsent.externalProviders && matchResult.status === 'success') {
+      if (matchResult.providerId === 'openrouter') {
         externalSends += 1;
       }
     }
-    return result;
+    return matchResult;
   }) as RunTaskFn;
 
   return {
@@ -106,7 +139,10 @@ function runTaskSpy(
       return fn;
     },
     setResult(next) {
-      result = next;
+      matchResult = next;
+    },
+    setCritiqueResult(next) {
+      critiqueResult = next;
     },
     setImpl(next) {
       impl = next;
@@ -166,8 +202,8 @@ describe('AnalyzeMatchUseCase re-read (D12-bis)', () => {
 
   it('Un fallo no multiplica los envíos', async () => {
     let sends = 0;
-    spy.setImpl(async (_input, ctx) => {
-      if (ctx.aiConsent.externalProviders) {
+    spy.setImpl(async (task, _input, ctx) => {
+      if (task.name === 'match-cv' && ctx.aiConsent.externalProviders) {
         sends += 1;
       }
       throw new Error('provider blew up');
@@ -208,7 +244,10 @@ describe('AnalyzeMatchUseCase happy path', () => {
     const result = await useCase.execute(PAYLOAD);
 
     expect(result).toEqual({ kind: 'done' });
-    expect(spy.calls).toHaveLength(1);
+    expect(spy.calls.map((c) => c.taskName)).toEqual([
+      'match-cv',
+      'critique-suggestions',
+    ]);
     expect(spy.calls[0]?.ctx).toMatchObject({
       userId: USER_ID,
       aiConsent: { externalProviders: false },
@@ -216,7 +255,9 @@ describe('AnalyzeMatchUseCase happy path', () => {
       redactName: true,
       personName: 'Ana',
     });
-    expect(spy.calls[0]?.input.cv.text).toContain('TypeScript');
+    expect((spy.calls[0]?.input as MatchCvInput).cv.text).toContain(
+      'TypeScript',
+    );
     const saved = await analyses.findById(ANALYSIS_ID);
     expect(saved).toMatchObject({
       status: 'done',
@@ -226,6 +267,8 @@ describe('AnalyzeMatchUseCase happy path', () => {
       consentRequired: false,
     });
     expect(saved?.report?.score).toBe(70);
+    expect(saved?.report?.judgeScore).toBe(0.85);
+    expect(saved?.report?.judgeModel).toBe('judge-model');
     expect(saved?.finishedAt).toBeDefined();
     expect(saved?.durationMs).toBeDefined();
   });
@@ -244,6 +287,7 @@ describe('AnalyzeMatchUseCase happy path', () => {
     await useCase.execute(PAYLOAD);
 
     expect(spy.calls[0]?.ctx.aiConsent.externalProviders).toBe(true);
+    expect(spy.calls[1]?.ctx.excludeProviderIds).toEqual(['openrouter']);
     expect((await analyses.findById(ANALYSIS_ID))?.wentExternal).toBe(true);
   });
 });
@@ -456,7 +500,7 @@ describe('AnalyzeMatchUseCase consentRequired', () => {
       }),
     );
     cvs.with(CV_ID, beto);
-    spy.setImpl(async (_input, ctx) => {
+    spy.setImpl(async (_task, _input, ctx) => {
       expect(ctx.userId).toBe(beto);
       expect(ctx.aiConsent.externalProviders).toBe(false);
       return {
@@ -479,7 +523,7 @@ describe('AnalyzeMatchUseCase consent revocation window', () => {
   it('Consentimiento retirado entre la petición y la ejecución', async () => {
     aiContext.with(USER_ID, { aiConsent: { externalProviders: false } });
     let externalHits = 0;
-    spy.setImpl(async (_input, ctx) => {
+    spy.setImpl(async (_task, _input, ctx) => {
       if (ctx.aiConsent.externalProviders) {
         externalHits += 1;
         return {
@@ -613,6 +657,283 @@ describe('AnalyzeMatchUseCase failure cuts', () => {
     const calls = spy.calls.length;
     await useCase.execute(PAYLOAD);
     expect(spy.calls.length).toBe(calls);
+  });
+});
+
+describe('AnalyzeMatchUseCase judge loop', () => {
+  it('Se para al llegar al umbral', async () => {
+    spy.setCritiqueResult(CRITIQUE_ACCEPT);
+
+    await useCase.execute(PAYLOAD);
+
+    expect(spy.calls.map((c) => c.taskName)).toEqual([
+      'match-cv',
+      'critique-suggestions',
+    ]);
+    const saved = await analyses.findById(ANALYSIS_ID);
+    expect(saved?.status).toBe('done');
+    expect(saved?.report?.judgeScore).toBe(0.85);
+    expect(saved?.report?.judgeModel).toBe('judge-model');
+    expect(saved?.step).toBe('done');
+  });
+
+  it('Se guarda el mejor, no el último', async () => {
+    spy.setCritiqueResult(CRITIQUE_REJECT);
+    let matchCalls = 0;
+    spy.setImpl(async (task, input, ctx) => {
+      if (task.name === 'critique-suggestions') {
+        expect(JSON.stringify(input)).not.toContain('cvFragment');
+        expect(ctx.excludeProviderIds).toEqual(['mock']);
+        return CRITIQUE_REJECT;
+      }
+      matchCalls += 1;
+      if (matchCalls === 1) {
+        return {
+          status: 'success',
+          output: { ...CORE, score: 70 },
+          providerId: 'mock',
+          model: 'gen-1',
+          promptVersion: 'v1',
+          cached: false,
+        };
+      }
+      return {
+        status: 'success',
+        output: { ...CORE, score: 60 },
+        providerId: 'mock',
+        model: 'gen-2',
+        promptVersion: 'v1',
+        cached: false,
+      };
+    });
+
+    await useCase.execute(PAYLOAD);
+
+    expect(matchCalls).toBe(2);
+    const saved = await analyses.findById(ANALYSIS_ID);
+    expect(saved?.report?.score).toBe(70);
+    expect(saved?.report?.judgeScore).toBe(0.4);
+    expect(saved?.report?.judgeModel).toBe('judge-other');
+    expect(saved?.model).toBe('gen-1');
+  });
+
+  it('El juez no ve fragmentos del CV', async () => {
+    const withFragment: MatchCvOutput = {
+      ...CORE,
+      suggestions: [
+        {
+          section: 'skills',
+          after: 'Incluir NestJS. Escribir a [EMAIL_1].',
+          reason: 'La vacante lo pide.',
+          evidence: {
+            jobRequirement: 'NestJS',
+            importance: 'must',
+            cvFragment: 'ana@example.com — Nest',
+          },
+        },
+      ],
+    };
+    spy.setImpl(async (task, input) => {
+      if (task.name === 'critique-suggestions') {
+        const serialized = JSON.stringify(input);
+        expect(serialized).not.toContain('ana@example.com');
+        expect(serialized).not.toContain('cvFragment');
+        expect(serialized).toContain('[EMAIL_1]');
+        return CRITIQUE_ACCEPT;
+      }
+      return {
+        status: 'success',
+        output: withFragment,
+        providerId: 'mock',
+        model: 'm',
+        promptVersion: 'v1',
+        cached: false,
+      };
+    });
+
+    await useCase.execute(PAYLOAD);
+    expect((await analyses.findById(ANALYSIS_ID))?.status).toBe('done');
+  });
+
+  it('Dos proveedores: el juez excluye al generador', async () => {
+    spy.setResult({
+      status: 'success',
+      output: CORE,
+      providerId: 'ollama',
+      model: 'llama',
+      promptVersion: 'v1',
+      cached: false,
+    });
+    spy.setCritiqueResult({
+      ...CRITIQUE_ACCEPT,
+      providerId: 'openrouter',
+      model: 'other',
+    });
+
+    await useCase.execute(PAYLOAD);
+
+    const critiqueCall = spy.calls.find(
+      (c) => c.taskName === 'critique-suggestions',
+    );
+    expect(critiqueCall?.ctx.excludeProviderIds).toEqual(['ollama']);
+  });
+
+  it('El juez no está', async () => {
+    spy.setCritiqueResult({
+      status: 'degraded',
+      reason: 'providers_failed',
+    });
+
+    await useCase.execute(PAYLOAD);
+
+    const saved = await analyses.findById(ANALYSIS_ID);
+    expect(saved?.status).toBe('done');
+    expect(saved?.report?.score).toBe(70);
+    expect(saved?.report?.judgeScore).toBeUndefined();
+    expect(saved?.report?.judgeModel).toBeUndefined();
+    expect(spy.calls.map((c) => c.taskName)).toEqual([
+      'match-cv',
+      'critique-suggestions',
+    ]);
+  });
+
+  it('quota_exceeded mid-loop keeps the best report done', async () => {
+    spy.setCritiqueResult({
+      status: 'degraded',
+      reason: 'quota_exceeded',
+      aiQuotaRetryAt: '2026-09-21T12:00:00.000Z',
+    });
+
+    await useCase.execute(PAYLOAD);
+
+    const saved = await analyses.findById(ANALYSIS_ID);
+    expect(saved?.status).toBe('done');
+    expect(saved?.degraded).toBe(false);
+    expect(saved?.report?.judgeScore).toBeUndefined();
+    expect(saved?.step).not.toBe('running' as never);
+  });
+
+  it('quota_exceeded on revision keeps generator report with judgeScore', async () => {
+    spy.setCritiqueResult(CRITIQUE_REJECT);
+    let matchCalls = 0;
+    spy.setImpl(async (task) => {
+      if (task.name === 'critique-suggestions') {
+        return CRITIQUE_REJECT;
+      }
+      matchCalls += 1;
+      if (matchCalls === 1) {
+        return {
+          status: 'success',
+          output: CORE,
+          providerId: 'mock',
+          model: 'gen',
+          promptVersion: 'v1',
+          cached: false,
+        };
+      }
+      return {
+        status: 'degraded',
+        reason: 'quota_exceeded',
+        aiQuotaRetryAt: '2026-09-21T12:00:00.000Z',
+        output: {
+          score: 10,
+          matchedSkills: [],
+          missingSkills: [],
+          suggestions: [],
+        },
+      };
+    });
+
+    await useCase.execute(PAYLOAD);
+
+    const saved = await analyses.findById(ANALYSIS_ID);
+    expect(saved?.status).toBe('done');
+    expect(saved?.report?.score).toBe(70);
+    expect(saved?.report?.judgeScore).toBe(0.4);
+  });
+
+  it('revises when judge score is below threshold and keeps improved report', async () => {
+    spy.setCritiqueResult(CRITIQUE_REJECT);
+    let matchCalls = 0;
+    spy.setImpl(async (task) => {
+      if (task.name === 'critique-suggestions') {
+        return CRITIQUE_REJECT;
+      }
+      matchCalls += 1;
+      if (matchCalls === 1) {
+        return {
+          status: 'success',
+          output: { ...CORE, score: 70 },
+          providerId: 'mock',
+          model: 'gen-1',
+          promptVersion: 'v1',
+          cached: false,
+        };
+      }
+      return {
+        status: 'success',
+        output: { ...CORE, score: 72 },
+        providerId: 'mock',
+        model: 'gen-2',
+        promptVersion: 'v1',
+        cached: false,
+      };
+    });
+
+    await useCase.execute(PAYLOAD);
+
+    const saved = await analyses.findById(ANALYSIS_ID);
+    expect(matchCalls).toBe(2);
+    expect(saved?.report?.score).toBe(72);
+    expect(saved?.report?.judgeScore).toBeUndefined();
+    expect(saved?.model).toBe('gen-2');
+  });
+
+  it('skips judge loop for degraded first reports', async () => {
+    spy.setResult({
+      status: 'degraded',
+      reason: 'no_providers',
+      output: {
+        score: 40,
+        matchedSkills: [],
+        missingSkills: [],
+        suggestions: [],
+      },
+    });
+
+    await useCase.execute(PAYLOAD);
+
+    expect(spy.calls.map((c) => c.taskName)).toEqual(['match-cv']);
+    expect((await analyses.findById(ANALYSIS_ID))?.step).toBe('done-degraded');
+  });
+
+  it('Las revisiones no pasan de dos envíos del CV', async () => {
+    aiContext.with(USER_ID, { aiConsent: { externalProviders: true } });
+    spy.setCritiqueResult(CRITIQUE_REJECT);
+    let externalMatchSends = 0;
+    spy.setImpl(async (task, _input, ctx) => {
+      if (task.name === 'critique-suggestions') {
+        return CRITIQUE_REJECT;
+      }
+      if (ctx.aiConsent.externalProviders) {
+        externalMatchSends += 1;
+      }
+      return {
+        status: 'success',
+        output: { ...CORE, score: externalMatchSends === 1 ? 70 : 71 },
+        providerId: 'openrouter',
+        model: 'x',
+        promptVersion: 'v1',
+        cached: false,
+      };
+    });
+
+    await useCase.execute(PAYLOAD);
+
+    expect(externalMatchSends).toBe(2);
+    expect(
+      spy.calls.filter((c) => c.taskName === 'critique-suggestions'),
+    ).toHaveLength(1);
   });
 });
 

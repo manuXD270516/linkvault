@@ -22,6 +22,11 @@ export interface RunContext {
   personName?: string;
   /** Plazo total de la ejecución. */
   signal?: AbortSignal;
+  /**
+   * Proveedores a omitir de la cadena si queda al menos otro elegible (cv-suggestions-review / C19): el juez no
+   * debe repetir al generador cuando hay dos opciones. Si excluir vaciara la cadena, se ignoran.
+   */
+  excludeProviderIds?: readonly string[];
 }
 
 /** Idioma de salida efectivo de una ejecución: el del contexto o `es`. */

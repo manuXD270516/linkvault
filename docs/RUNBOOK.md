@@ -966,8 +966,10 @@ consultas de abajo proyectan solo metadatos.
 - **Variables.** `api` y `worker` leen `MATCH_ANALYSIS_MAX_AGE_MS` (mismo valor en ambos), `MATCH_ANALYSIS_TIMEOUT_MS`,
   `MATCH_ANALYSES_PER_USER`, `MATCH_QUOTA_WINDOW_MS`; el worker además `MATCH_ANALYSIS_CONCURRENCY`. Relación de plazos
   (ADR-030 §7): `MAX_AGE` tiene que ser **mayor** que `TIMEOUT` contando entregas y margen —cada proceso lo comprueba al
-  arrancar con `assertAnalysisDeadlines` y nombra las dos variables si falla. Copiar el bloque de `.env.example` si el
-  arranque se queja.
+  arrancar con `assertAnalysisDeadlines` y nombra las dos variables si falla. Valores recomendados en `.env.example`
+  (`TIMEOUT=120000`, `MAX_AGE=240000`): ×2 respecto a cv-match-suggestions para absorber hasta ~3 llamadas IA del bucle
+  de crítica (cv-suggestions-review / ADR-031); medir y ajustar con el eval. Un `.env` anterior con `60000`/`120000`
+  sigue validando, pero puede cortar análisis con revisión. Copiar el bloque de `.env.example` si el arranque se queja.
 
 - **La cola `analyze-match`.** Prefijo BullMQ `bull:`. Estado:
 

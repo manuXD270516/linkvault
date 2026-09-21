@@ -91,8 +91,8 @@ describe('api configuration', () => {
       WEB_BASE_URL: 'http://localhost:4200',
       MATCH_ANALYSES_PER_USER: 10,
       MATCH_QUOTA_WINDOW_MS: 86_400_000,
-      MATCH_ANALYSIS_MAX_AGE_MS: 120_000,
-      MATCH_ANALYSIS_TIMEOUT_MS: 60_000,
+      MATCH_ANALYSIS_MAX_AGE_MS: 240_000,
+      MATCH_ANALYSIS_TIMEOUT_MS: 120_000,
     });
   });
 

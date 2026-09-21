@@ -99,9 +99,20 @@ function consumer(timeoutMs = 60_000): AnalyzeMatchConsumer {
     new InMemoryAiContextReader().with(USER_ID, {
       aiConsent: { externalProviders: true },
     }),
-    (async (_task, _input, ctx) => {
-      if (ctx.aiConsent.externalProviders) {
+    (async (task, _input, ctx) => {
+      if (task.name === 'match-cv' && ctx.aiConsent.externalProviders) {
+        // Solo el generador cuenta como envío del CV (ADR-031: el juez no).
         externalSends += 1;
+      }
+      if (task.name === 'critique-suggestions') {
+        return {
+          status: 'success',
+          output: { score: 0.9, issues: [] },
+          providerId: 'ollama',
+          model: 'judge',
+          promptVersion: 'v1',
+          cached: false,
+        };
       }
       return {
         status: 'success',
@@ -186,7 +197,7 @@ describe('AnalyzeMatchConsumer', () => {
     expect(saved?.failureCode).toBe('internal_error');
   });
 
-  it('ADR-030 §6: external sends do not grow with redeliveries of the same analysisId', async () => {
+  it('ADR-030 §6 / ADR-031: CV external sends do not grow with redeliveries of the same analysisId', async () => {
     const c = consumer();
     c.onModuleInit();
     await c.handle(jobOf(PAYLOAD));
