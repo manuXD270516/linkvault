@@ -920,6 +920,32 @@ describe('AnalyzeMatchUseCase judge loop', () => {
     ]);
   });
 
+  it('FixtureMissing del juez deja done con el informe del generador', async () => {
+    class FixtureMissing extends Error {
+      override readonly name = 'FixtureMissing';
+    }
+    spy.setImpl(async (task) => {
+      if (task.name === 'critique-suggestions') {
+        throw new FixtureMissing('missing-critique-key');
+      }
+      return {
+        status: 'success',
+        output: CORE,
+        providerId: 'mock',
+        model: 'gen',
+        promptVersion: 'v1',
+        cached: false,
+      };
+    });
+
+    await useCase.execute(PAYLOAD);
+
+    const saved = await analyses.findById(ANALYSIS_ID);
+    expect(saved?.status).toBe('done');
+    expect(saved?.report?.score).toBe(70);
+    expect(saved?.report?.judgeScore).toBeUndefined();
+  });
+
   it('quota_exceeded mid-loop keeps the best report done', async () => {
     spy.setCritiqueResult({
       status: 'degraded',

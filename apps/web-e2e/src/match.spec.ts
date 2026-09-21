@@ -6,7 +6,7 @@ import { AI_CONSENT_TEXT_VERSION } from '@linkvault/shared';
 import { JOB_ID_SLOTS, jobIdBase } from './support/job-ids';
 import { resetRegisterLimit } from './support/register-limit';
 
-const SCREENSHOT_DIR = join(workspaceRoot, 'reports', 'smoke', 'cv-match-suggestions');
+const SCREENSHOT_DIR = join(workspaceRoot, 'reports', 'smoke', 'cv-suggestions-review');
 
 /**
  * Base de `api`, para escribir en `job_links` / `cv_documents` lo que el worker habría dejado listo para el análisis.
@@ -64,7 +64,8 @@ const FIRST_SUGGESTION_AFTER = 'Incluir experiencia con TypeScript en servicios 
 const SIXTH_SUGGESTION_AFTER = 'Incluir Kubernetes para orquestacion de servicios.';
 
 const LIVE_TIMEOUT = 15_000;
-const ANALYSIS_TIMEOUT = 60_000;
+/** Incluye bucle de juez (hasta 3 runTask); mock es rápido pero dejamos margen. */
+const ANALYSIS_TIMEOUT = 120_000;
 
 const CV_LINES = [
   ...MATCH_CV_TEXT.split('\n'),
@@ -378,6 +379,25 @@ test('match flow: analyze from the card, see steps, report, suggestions and copy
       const copied = await page.evaluate(() => navigator.clipboard.readText());
       expect(copied).toBe(FIRST_SUGGESTION_AFTER);
       await page.screenshot({ path: join(SCREENSHOT_DIR, 'sugerencias-copiar.png'), fullPage: true });
+
+      const feedbackPosted = page.waitForResponse(
+        (response) =>
+          response.request().method() === 'POST' &&
+          /\/api\/analyses\/[^/]+\/suggestion-feedback$/.test(
+            new URL(response.url()).pathname,
+          ) &&
+          response.status() === 201,
+        { timeout: LIVE_TIMEOUT },
+      );
+      await dialog.getByTestId('match-suggestion-not-convinced').first().click();
+      await feedbackPosted;
+      await expect(
+        dialog.getByTestId('match-suggestion-not-convinced-marked').first(),
+      ).toBeVisible({ timeout: LIVE_TIMEOUT });
+      await page.screenshot({
+        path: join(SCREENSHOT_DIR, 'sugerencias-no-me-convence.png'),
+        fullPage: true,
+      });
 
       await dialog.getByTestId('match-close').click();
       await expect(matchDialog(page)).toHaveCount(0, { timeout: LIVE_TIMEOUT });

@@ -225,7 +225,11 @@ export class AnalyzeMatchUseCase {
       if (signal.aborted) {
         return await this.markFailed(analysis);
       }
-      throw error;
+      // FixtureMissing / errores de programación del mock: el juez no respondió → done sin judgeScore (2.4).
+      this.logger.warn(
+        `analysis ${analysis.id}: critique-suggestions failed (${error instanceof Error ? error.name : 'unknown'}); keeping generator report`,
+      );
+      return await this.persistSuccess(analysis, previewVersion, best);
     }
 
     if (signal.aborted) {
@@ -256,7 +260,10 @@ export class AnalyzeMatchUseCase {
       if (signal.aborted) {
         return await this.markFailed(analysis);
       }
-      throw error;
+      this.logger.warn(
+        `analysis ${analysis.id}: revision match-cv failed (${error instanceof Error ? error.name : 'unknown'}); keeping best so far`,
+      );
+      return await this.persistSuccess(analysis, previewVersion, best);
     }
 
     if (signal.aborted) {
