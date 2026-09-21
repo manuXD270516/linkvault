@@ -272,3 +272,28 @@ export const matchAnalysisResponseSchema = z.strictObject({
   running: matchRunningSchema.optional(),
 });
 export type MatchAnalysisResponse = z.infer<typeof matchAnalysisResponseSchema>;
+
+/**
+ * Cuerpo de `POST /api/analyses/:analysisId/suggestion-feedback` («no me convence»).
+ * Solo el índice en el informe final; un campo desconocido invalida.
+ */
+export const recordSuggestionFeedbackRequestSchema = z.strictObject({
+  suggestionIndex: z.number().int().nonnegative(),
+});
+export type RecordSuggestionFeedbackRequest = z.infer<
+  typeof recordSuggestionFeedbackRequestSchema
+>;
+
+/**
+ * Respuesta `201` al marcar «no me convence»: identificadores y hash corto del `after`, sin el texto.
+ */
+export const suggestionFeedbackAcceptedSchema = z.strictObject({
+  feedbackId: z.string().min(1),
+  analysisId: z.string().min(1),
+  suggestionIndex: z.number().int().nonnegative(),
+  afterHash: z.string().min(1),
+  createdAt: z.iso.datetime(),
+});
+export type SuggestionFeedbackAccepted = z.infer<
+  typeof suggestionFeedbackAcceptedSchema
+>;

@@ -1,10 +1,14 @@
 import { HttpClient, HttpEventType } from '@angular/common/http';
 import { DestroyRef, Injectable, InjectionToken, inject, signal } from '@angular/core';
 import {
+  ANALYSIS_STEP_EVENT_NAME,
   GROUP_LINK_COMMENTS_EVENT_NAME,
-  type GroupLinkCommentsMessage,
   LINK_ENRICHED_EVENT_NAME,
+  MATCH_STEPS,
+  type AnalysisStepMessage,
+  type GroupLinkCommentsMessage,
   type LinkEnrichedMessage,
+  type MatchStep,
 } from '@linkvault/shared';
 import { Observable, Subject, type Subscription } from 'rxjs';
 
@@ -40,6 +44,7 @@ export class EventsChannel {
   private readonly http = inject(HttpClient);
   private readonly enriched = new Subject<LinkEnrichedMessage>();
   private readonly comments = new Subject<GroupLinkCommentsMessage>();
+  private readonly analysisSteps = new Subject<AnalysisStepMessage>();
 
   private subscription: Subscription | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -62,6 +67,12 @@ export class EventsChannel {
    * miembros actuales de ese grupo, con el resumen de la tarjeta ya actualizado.
    */
   readonly groupLinkComments: Observable<GroupLinkCommentsMessage> = this.comments.asObservable();
+
+  /**
+   * Avisos de paso de un análisis de encaje (cv-suggestions-review). Solo llegan al dueño; el diálogo filtra por
+   * `analysisId`. El sondeo sigue bastando si el canal no está.
+   */
+  readonly analysisStep: Observable<AnalysisStepMessage> = this.analysisSteps.asObservable();
 
   constructor() {
     // Apagado al destruirse el inyector: sin esto, una reconexión programada seguiría viva tras cerrar la aplicación.
@@ -176,6 +187,11 @@ export class EventsChannel {
       if (message !== null) {
         this.comments.next(message);
       }
+    } else if (name === ANALYSIS_STEP_EVENT_NAME) {
+      const message = parseAnalysisStepMessage(data.join('\n'));
+      if (message !== null) {
+        this.analysisSteps.next(message);
+      }
     }
   }
 }
@@ -256,4 +272,26 @@ function parseCommentsMessage(data: string): GroupLinkCommentsMessage | null {
     latest.length <= 2 &&
     latest.every(isComment);
   return valid ? (parsed as GroupLinkCommentsMessage) : null;
+}
+
+function isMatchStep(value: unknown): value is MatchStep {
+  return typeof value === 'string' && (MATCH_STEPS as readonly string[]).includes(value);
+}
+
+/**
+ * Lee el aviso de paso de análisis sin zod (mismo motivo que `parseMessage`): solo `analysisId`, `linkId` y un paso
+ * del conjunto cerrado. Un campo de más o un paso desconocido se descarta; el sondeo sigue siendo la verdad.
+ */
+function parseAnalysisStepMessage(data: string): AnalysisStepMessage | null {
+  const parsed = parseJson(data);
+  if (!isRecord(parsed)) {
+    return null;
+  }
+  const keys = Object.keys(parsed);
+  const valid =
+    keys.length === 3 &&
+    isNonEmptyString(parsed['analysisId']) &&
+    isNonEmptyString(parsed['linkId']) &&
+    isMatchStep(parsed['step']);
+  return valid ? (parsed as AnalysisStepMessage) : null;
 }

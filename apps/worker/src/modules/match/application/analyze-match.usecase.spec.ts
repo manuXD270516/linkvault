@@ -8,8 +8,10 @@ import type {
   RunTaskFn,
 } from '@linkvault/ai';
 import { matchCvTask } from '@linkvault/ai';
+import type { AnalysisStepEvent } from '@linkvault/shared';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { AnalyzeMatchUseCase } from './analyze-match.usecase';
+import type { AnalysisStepNotifier } from './ports/analysis-step-notifier.port';
 import {
   ANALYSIS_ID,
   CV_ID,
@@ -156,7 +158,40 @@ let jobs: InMemoryJobReader;
 let aiContext: InMemoryAiContextReader;
 let clock: MovableClock;
 let spy: RunTaskSpy;
+let steps: RecordingStepNotifier;
 let useCase: AnalyzeMatchUseCase;
+
+/** Doble del publicador: apunta qué se avisó y puede fallar a propósito. */
+class RecordingStepNotifier implements AnalysisStepNotifier {
+  readonly published: AnalysisStepEvent[] = [];
+  failWith: Error | null = null;
+
+  publish(event: AnalysisStepEvent): Promise<void> {
+    if (this.failWith !== null) {
+      return Promise.reject(this.failWith);
+    }
+    this.published.push(event);
+    return Promise.resolve();
+  }
+}
+
+function buildUseCase(
+  overrides: {
+    cvs?: InMemoryCvTextReader;
+    options?: { timeoutMs: number; maxAgeMs: number };
+  } = {},
+): AnalyzeMatchUseCase {
+  return new AnalyzeMatchUseCase(
+    analyses,
+    overrides.cvs ?? cvs,
+    jobs,
+    aiContext,
+    spy.fn,
+    clock,
+    overrides.options ?? { timeoutMs: 60_000, maxAgeMs: 120_000 },
+    steps,
+  );
+}
 
 beforeEach(() => {
   clock = new MovableClock();
@@ -167,15 +202,8 @@ beforeEach(() => {
   jobs = new InMemoryJobReader().with(sampleJob());
   aiContext = new InMemoryAiContextReader();
   spy = runTaskSpy();
-  useCase = new AnalyzeMatchUseCase(
-    analyses,
-    cvs,
-    jobs,
-    aiContext,
-    spy.fn,
-    clock,
-    { timeoutMs: 60_000, maxAgeMs: 120_000 },
-  );
+  steps = new RecordingStepNotifier();
+  useCase = buildUseCase();
   analyses.seed(
     sampleRunningAnalysis({
       id: ANALYSIS_ID,
@@ -327,6 +355,63 @@ describe('AnalyzeMatchUseCase steps', () => {
 
   it('keeps completing when recordStep throws', async () => {
     analyses.recordStepError = new Error('step store down');
+    const result = await useCase.execute(PAYLOAD);
+    expect(result).toEqual({ kind: 'done' });
+    expect((await analyses.findById(ANALYSIS_ID))?.status).toBe('done');
+  });
+
+  it('publishes a closed analysis.step payload on every step change', async () => {
+    spy.setCritiqueResult(CRITIQUE_REJECT);
+    spy.setImpl(async (task) => {
+      if (task.name === 'critique-suggestions') {
+        return CRITIQUE_REJECT;
+      }
+      return {
+        status: 'success',
+        output: { ...CORE, score: 72 },
+        providerId: 'mock',
+        model: 'mock-model',
+        promptVersion: 'v1',
+        cached: false,
+      };
+    });
+
+    await useCase.execute(PAYLOAD);
+
+    const stepNames = steps.published.map((e) => e.payload.step);
+    expect(stepNames).toEqual(
+      expect.arrayContaining([
+        'reading-job',
+        'comparing-cv',
+        'drafting-suggestions',
+        'critiquing-suggestions',
+        'revising-suggestions',
+        'done',
+      ]),
+    );
+    for (const event of steps.published) {
+      expect(event.type).toBe('AnalysisStep.v1');
+      expect(Object.keys(event.payload).sort()).toEqual([
+        'analysisId',
+        'linkId',
+        'step',
+        'userId',
+      ]);
+      expect(event.payload).toMatchObject({
+        analysisId: ANALYSIS_ID,
+        linkId: LINK_ID,
+        userId: USER_ID,
+      });
+      const raw = JSON.stringify(event);
+      expect(raw).not.toContain('Incluir NestJS');
+      expect(raw).not.toContain('cvFragment');
+      expect(raw).not.toContain('judgeScore');
+      expect(raw).not.toMatch(/"suggestions"/);
+    }
+  });
+
+  it('keeps completing when the step notifier throws', async () => {
+    steps.failWith = new Error('redis down');
     const result = await useCase.execute(PAYLOAD);
     expect(result).toEqual({ kind: 'done' });
     expect((await analyses.findById(ANALYSIS_ID))?.status).toBe('done');
@@ -592,15 +677,7 @@ describe('AnalyzeMatchUseCase failure cuts', () => {
 
   it('CV borrado antes de leerse', async () => {
     cvs = new InMemoryCvTextReader();
-    useCase = new AnalyzeMatchUseCase(
-      analyses,
-      cvs,
-      jobs,
-      aiContext,
-      spy.fn,
-      clock,
-      { timeoutMs: 60_000, maxAgeMs: 120_000 },
-    );
+    useCase = buildUseCase({ cvs });
     await useCase.execute(PAYLOAD);
     const saved = await analyses.findById(ANALYSIS_ID);
     expect(saved?.status).toBe('failed');
@@ -616,15 +693,7 @@ describe('AnalyzeMatchUseCase failure cuts', () => {
   });
 
   it('MATCH_ANALYSIS_TIMEOUT_MS leaves failed with internal_error', async () => {
-    useCase = new AnalyzeMatchUseCase(
-      analyses,
-      cvs,
-      jobs,
-      aiContext,
-      spy.fn,
-      clock,
-      { timeoutMs: 1, maxAgeMs: 120_000 },
-    );
+    useCase = buildUseCase({ options: { timeoutMs: 1, maxAgeMs: 120_000 } });
     spy.setImpl(async () => {
       await new Promise((r) => setTimeout(r, 20));
       return {
@@ -753,6 +822,60 @@ describe('AnalyzeMatchUseCase judge loop', () => {
 
     await useCase.execute(PAYLOAD);
     expect((await analyses.findById(ANALYSIS_ID))?.status).toBe('done');
+  });
+
+  it('Informe con email reinyectado en after no lo envía al juez', async () => {
+    const email = 'ana@example.com';
+    const marked: MatchCvOutput = {
+      ...CORE,
+      suggestions: [
+        {
+          section: 'skills',
+          after: 'Incluir NestJS. Escribir a [EMAIL_1].',
+          reason: 'La vacante lo pide.',
+          evidence: {
+            jobRequirement: 'NestJS',
+            importance: 'must',
+            cvFragment: `${email} — Nest`,
+          },
+        },
+      ],
+    };
+    const reinjected: MatchCvOutput = {
+      ...marked,
+      suggestions: [
+        {
+          ...marked.suggestions[0]!,
+          after: `Incluir NestJS. Escribir a ${email}.`,
+        },
+      ],
+    };
+
+    spy.setImpl(async (task, input, ctx) => {
+      if (task.name === 'critique-suggestions') {
+        const serialized = JSON.stringify(input);
+        expect(serialized).not.toContain(email);
+        expect(serialized).toContain('[EMAIL_1]');
+        return CRITIQUE_ACCEPT;
+      }
+      expect(ctx.deferPiiReinjection).toBe(true);
+      return {
+        status: 'success',
+        output: marked,
+        reinjectedOutput: reinjected,
+        providerId: 'openrouter',
+        model: 'ext-model',
+        promptVersion: 'v1',
+        cached: false,
+      };
+    });
+
+    await useCase.execute(PAYLOAD);
+
+    const saved = await analyses.findById(ANALYSIS_ID);
+    expect(saved?.status).toBe('done');
+    expect(saved?.report?.suggestions[0]?.after).toContain(email);
+    expect(saved?.report?.suggestions[0]?.after).not.toContain('[EMAIL_1]');
   });
 
   it('Dos proveedores: el juez excluye al generador', async () => {

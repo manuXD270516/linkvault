@@ -11,12 +11,15 @@ import {
   type RunTaskFn,
 } from '@linkvault/ai';
 import {
+  analysisStepEvent,
   matchReportSchema,
   type MatchRequestedPayload,
   type MatchReport,
+  type MatchStep,
 } from '@linkvault/shared';
 import { Logger } from '@nestjs/common';
 import type { AnalysisRepository } from './ports/analysis-repository.port';
+import type { AnalysisStepNotifier } from './ports/analysis-step-notifier.port';
 import type { AiContextReader } from './ports/ai-context-reader.port';
 import type { Clock } from './ports/clock.port';
 import type { CvTextReader } from './ports/cv-text-reader.port';
@@ -72,6 +75,7 @@ export class AnalyzeMatchUseCase {
     private readonly runTask: RunTaskFn,
     private readonly clock: Clock,
     private readonly options: AnalyzeMatchOptions,
+    private readonly stepNotifier: AnalysisStepNotifier,
   ) {}
 
   async execute(payload: MatchRequestedPayload): Promise<AnalyzeMatchResult> {
@@ -88,14 +92,14 @@ export class AnalyzeMatchUseCase {
       return { kind: 'abandoned' };
     }
 
-    await this.safeRecordStep(analysis.id, 'reading-job');
+    await this.safeRecordStep(analysis, 'reading-job');
 
     const job = await this.jobs.read(payload.linkId);
     if (job === null) {
       return await this.markFailed(analysis);
     }
 
-    await this.safeRecordStep(analysis.id, 'comparing-cv');
+    await this.safeRecordStep(analysis, 'comparing-cv');
 
     const cv = await this.cvText.read(payload.cvId, payload.userId);
     if (cv.kind === 'missing' || cv.kind === 'unreadable') {
@@ -122,10 +126,15 @@ export class AnalyzeMatchUseCase {
       personName: context.personName,
       signal,
     };
+    // ADR-031: match-cv difiere la reinyección; el juez ve marcadores y el informe persistido sí reinyecta.
+    const matchCtx: RunContext = {
+      ...runContext,
+      deferPiiReinjection: true,
+    };
 
     let aiResult: AiResult<MatchCvOutput>;
     try {
-      aiResult = await this.runTask(matchCvTask, input, runContext);
+      aiResult = await this.runTask(matchCvTask, input, matchCtx);
     } catch (error) {
       // Plazo agotado: fallar el análisis. Cualquier otro error se propaga para que
       // `onJobFailed` (attempts: 1) deje el análisis en `failed` sin reintentar a ciegas.
@@ -152,6 +161,7 @@ export class AnalyzeMatchUseCase {
       job.previewVersion,
       input,
       runContext,
+      matchCtx,
       signal,
       aiResult,
     );
@@ -181,21 +191,21 @@ export class AnalyzeMatchUseCase {
     previewVersion: number,
     input: MatchCvInput,
     runContext: RunContext,
+    matchCtx: RunContext,
     signal: AbortSignal,
     first: AiSuccess<MatchCvOutput>,
   ): Promise<AnalyzeMatchResult> {
-    await this.safeRecordStep(analysis.id, 'drafting-suggestions');
+    await this.safeRecordStep(analysis, 'drafting-suggestions');
 
     let best: JudgeCandidate = {
-      report: first.output,
+      report: userFacingMatchReport(first),
       providerId: first.providerId,
       model: first.model,
       promptVersion: first.promptVersion,
       wentExternal: isExternalProvider(first.providerId),
     };
 
-    await this.safeRecordStep(analysis.id, 'critiquing-suggestions');
-    // TODO(task 3.1): publicar `analysis.step` (critiquing-suggestions) al canal Redis/SSE si existe el puerto.
+    await this.safeRecordStep(analysis, 'critiquing-suggestions');
 
     const critiqueCtx: RunContext = {
       ...runContext,
@@ -205,6 +215,7 @@ export class AnalyzeMatchUseCase {
 
     let critiqueResult: AiResult<CritiqueSuggestionsOutput>;
     try {
+      // `first.output` conserva marcadores cuando hubo defer + redacción (ADR-031).
       critiqueResult = await this.runTask(
         critiqueSuggestionsTask,
         toCritiqueSuggestionsInput(input.job, first.output),
@@ -236,12 +247,11 @@ export class AnalyzeMatchUseCase {
       return await this.persistSuccess(analysis, previewVersion, best);
     }
 
-    await this.safeRecordStep(analysis.id, 'revising-suggestions');
-    // TODO(task 3.1): publicar `analysis.step` (revising-suggestions) al canal Redis/SSE si existe el puerto.
+    await this.safeRecordStep(analysis, 'revising-suggestions');
 
     let revision: AiResult<MatchCvOutput>;
     try {
-      revision = await this.runTask(matchCvTask, input, runContext);
+      revision = await this.runTask(matchCvTask, input, matchCtx);
     } catch (error) {
       if (signal.aborted) {
         return await this.markFailed(analysis);
@@ -258,15 +268,16 @@ export class AnalyzeMatchUseCase {
       return await this.persistSuccess(analysis, previewVersion, best);
     }
 
+    const revisedReport = userFacingMatchReport(revision);
     const improved =
-      revision.output.score - first.output.score >= MIN_SCORE_IMPROVEMENT;
+      revisedReport.score - best.report.score >= MIN_SCORE_IMPROVEMENT;
     if (!improved) {
       return await this.persistSuccess(analysis, previewVersion, best);
     }
 
     // Mejor informe de la revisión: sin judgeScore propio (máx. una crítica, de la iteración de r0).
     const revised: JudgeCandidate = {
-      report: revision.output,
+      report: revisedReport,
       providerId: revision.providerId,
       model: revision.model,
       promptVersion: revision.promptVersion,
@@ -321,6 +332,7 @@ export class AnalyzeMatchUseCase {
     if (!written) {
       return await this.afterUnwrittenComplete(analysis);
     }
+    await this.announceStep(analysis, 'done');
     this.logger.debug(
       `analysis ${analysis.id}: done provider=${candidate.providerId} durationMs=${String(durationMs)}`,
     );
@@ -389,6 +401,7 @@ export class AnalyzeMatchUseCase {
     if (!written) {
       return await this.afterUnwrittenComplete(analysis);
     }
+    await this.announceStep(analysis, 'done-degraded');
     this.logger.debug(
       `analysis ${analysis.id}: degraded reason=${aiResult.reason} durationMs=${String(durationMs)}`,
     );
@@ -412,7 +425,7 @@ export class AnalyzeMatchUseCase {
       0,
       finishedAt.getTime() - analysis.requestedAt.getTime(),
     );
-    await this.safeRecordStep(analysis.id, 'failed');
+    await this.safeRecordStep(analysis, 'failed');
     await this.analyses.fail(analysis.id, {
       failureCode: 'internal_error',
       finishedAt,
@@ -422,16 +435,42 @@ export class AnalyzeMatchUseCase {
     return { kind: 'failed' };
   }
 
+  /**
+   * Persiste el paso y avisa por Redis. Un fallo al guardar o al publicar no tumba el análisis: el sondeo sigue
+   * bastando y el estado verdadero está en Mongo.
+   */
   private async safeRecordStep(
-    analysisId: string,
-    step: Parameters<AnalysisRepository['recordStep']>[1],
+    analysis: Pick<MatchAnalysis, 'id' | 'userId' | 'linkId'>,
+    step: MatchStep,
   ): Promise<void> {
     try {
-      await this.analyses.recordStep(analysisId, step);
-      // TODO(task 3.1): publicar `analysis.step` al canal Redis/SSE cuando exista el puerto; no bloquear si no hay suscriptores.
+      await this.analyses.recordStep(analysis.id, step);
     } catch (error) {
       this.logger.warn(
-        `analysis ${analysisId}: recordStep(${step}) failed (${error instanceof Error ? error.name : 'unknown'})`,
+        `analysis ${analysis.id}: recordStep(${step}) failed (${error instanceof Error ? error.name : 'unknown'})`,
+      );
+      return;
+    }
+    await this.announceStep(analysis, step);
+  }
+
+  /** Aviso best-effort: el notificador no lanza, pero se captura por si un doble de test sí lo hace. */
+  private async announceStep(
+    analysis: Pick<MatchAnalysis, 'id' | 'userId' | 'linkId'>,
+    step: MatchStep,
+  ): Promise<void> {
+    try {
+      await this.stepNotifier.publish(
+        analysisStepEvent({
+          analysisId: analysis.id,
+          linkId: analysis.linkId,
+          step,
+          userId: analysis.userId,
+        }),
+      );
+    } catch (error) {
+      this.logger.warn(
+        `analysis ${analysis.id}: announceStep(${step}) failed (${error instanceof Error ? error.name : 'unknown'})`,
       );
     }
   }
@@ -439,6 +478,13 @@ export class AnalyzeMatchUseCase {
 
 function isExternalProvider(providerId: string): boolean {
   return !LOCAL_PROVIDER_IDS.has(providerId);
+}
+
+/** Informe listo para persistir/GET: reinyectado cuando `deferPiiReinjection` aportó la copia. */
+function userFacingMatchReport(
+  result: AiSuccess<MatchCvOutput>,
+): MatchCvOutput {
+  return result.reinjectedOutput ?? result.output;
 }
 
 /**

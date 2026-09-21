@@ -38,8 +38,28 @@ export class MatchApi {
   get(linkId: string): Promise<MatchAnalysisResponse> {
     return firstValueFrom(this.http.get<MatchAnalysisResponse>(matchUrl(linkId)));
   }
+
+  /**
+   * Marca «no me convence» sobre una sugerencia del informe (spec cv/suggestion-feedback).
+   * El servidor guarda índice + hash de `after`; el SPA solo manda el índice en el informe final.
+   *
+   * `POST /api/analyses/:analysisId/suggestion-feedback` con `{ suggestionIndex }`.
+   */
+  submitFeedback(
+    _linkId: string,
+    analysisId: string,
+    suggestionIndex: number,
+  ): Promise<void> {
+    return firstValueFrom(
+      this.http.post<void>(feedbackUrl(analysisId), { suggestionIndex }),
+    );
+  }
 }
 
 function matchUrl(linkId: string): string {
   return `${LINKS_URL}/${encodeURIComponent(linkId)}/match`;
+}
+
+function feedbackUrl(analysisId: string): string {
+  return `/api/analyses/${encodeURIComponent(analysisId)}/suggestion-feedback`;
 }

@@ -1,4 +1,5 @@
-import { HttpTestingController } from '@angular/common/http/testing';
+import { HttpEventType } from '@angular/common/http';
+import { HttpTestingController, type TestRequest } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import type {
   MatchAnalysisResponse,
@@ -329,5 +330,108 @@ describe('MatchStore', () => {
     expect(eventsRequest.cancelled).toBe(false);
 
     channel.disconnect();
+  });
+
+  describe('analysis.step (SSE)', () => {
+    function sse(name: string, data: unknown): string {
+      return `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`;
+    }
+
+    function push(request: TestRequest, body: string): void {
+      request.event({
+        type: HttpEventType.DownloadProgress,
+        loaded: body.length,
+        partialText: body,
+      });
+    }
+
+    it('adelanta el paso de su análisis sin esperar al sondeo', async () => {
+      const channel = TestBed.inject(EventsChannel);
+      channel.connect();
+      const eventsRequest = http.expectOne({ method: 'GET', url: '/api/events' });
+
+      await openWith(
+        response({
+          running: running({ analysisId: 'a2', step: 'drafting-suggestions' }),
+        }),
+      );
+      expect(store.step()).toBe('drafting-suggestions');
+
+      push(
+        eventsRequest,
+        sse('analysis.step', {
+          analysisId: 'a2',
+          linkId: LINK,
+          step: 'critiquing-suggestions',
+        }),
+      );
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(store.step()).toBe('critiquing-suggestions');
+      expect(store.completedSteps()).toEqual([
+        'reading-job',
+        'comparing-cv',
+        'drafting-suggestions',
+      ]);
+      http.expectNone({ method: 'GET', url: MATCH_URL });
+
+      channel.disconnect();
+    });
+
+    it('el aviso de otro análisis no entra', async () => {
+      const channel = TestBed.inject(EventsChannel);
+      channel.connect();
+      const eventsRequest = http.expectOne({ method: 'GET', url: '/api/events' });
+
+      await openWith(
+        response({
+          running: running({ analysisId: 'a2', step: 'comparing-cv' }),
+        }),
+      );
+
+      push(
+        eventsRequest,
+        sse('analysis.step', {
+          analysisId: 'otro',
+          linkId: LINK,
+          step: 'revising-suggestions',
+        }),
+      );
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(store.step()).toBe('comparing-cv');
+
+      channel.disconnect();
+    });
+
+    it('sin canal el sondeo basta para mostrar el paso', async () => {
+      await openWith(
+        response({
+          running: running({ analysisId: 'a2', step: 'drafting-suggestions' }),
+        }),
+      );
+
+      await nextPoll(
+        response({
+          running: running({ analysisId: 'a2', step: 'revising-suggestions' }),
+        }),
+      );
+
+      expect(store.step()).toBe('revising-suggestions');
+      expect(store.completedSteps()).toContain('critiquing-suggestions');
+    });
+  });
+
+  it('envía feedback «no me convence» al análisis del informe', async () => {
+    await openWith(response({ latest: latestDone }));
+
+    const submitting = store.submitFeedback(0);
+    const request = http.expectOne({
+      method: 'POST',
+      url: `/api/analyses/a1/suggestion-feedback`,
+    });
+    expect(request.request.body).toEqual({ suggestionIndex: 0 });
+    request.flush(null, { status: 204, statusText: 'No Content' });
+    await submitting;
   });
 });

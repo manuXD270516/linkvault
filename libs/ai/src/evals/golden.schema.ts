@@ -47,6 +47,14 @@ export const goldenLineSchema = z.strictObject({
   pii: z.array(goldenPiiAnnotationSchema).optional(),
   skills: z.array(z.string().min(1)).optional(),
   personName: z.string().min(1).optional(),
+  /** Etiqueta humana 1–5 para correlación con el score del informe (match-cv). */
+  humanLabel: z.union([
+    z.literal(1),
+    z.literal(2),
+    z.literal(3),
+    z.literal(4),
+    z.literal(5),
+  ]).optional(),
 });
 
 export interface GoldenIssue {
@@ -133,6 +141,7 @@ export function parseGolden<I, O, E>(
       outputLanguage: outputLanguageOf({ outputLanguage }),
       input: input.data,
     });
+    const humanLabel = shape.data.humanLabel;
     const goldenCase: GoldenCase<I, E> = {
       line,
       id,
@@ -144,6 +153,7 @@ export function parseGolden<I, O, E>(
       ...(pii === undefined ? {} : { pii }),
       ...(skills === undefined ? {} : { skills }),
       ...(personName === undefined ? {} : { personName }),
+      ...(humanLabel === undefined ? {} : { humanLabel }),
     };
 
     const sameKey = caseByKey.get(key);

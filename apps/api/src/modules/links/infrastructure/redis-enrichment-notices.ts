@@ -4,6 +4,7 @@ import {
   type LinkEnrichedPayload,
 } from '@linkvault/shared';
 import { Logger } from '@nestjs/common';
+import type { RedisSubscriber } from '../../../infrastructure/redis/redis-subscriber-client';
 import type { EnrichmentNotices } from '../application/ports/enrichment-notices.port';
 
 // Adaptador ENRICHMENT_NOTICES sobre un canal de Redis (D9). Necesita **su propia conexión**: un cliente en modo
@@ -16,27 +17,8 @@ import type { EnrichmentNotices } from '../application/ports/enrichment-notices.
 // Lo que llega por el canal se valida contra el contrato antes de tocar nada: por ahí puede aparecer cualquier cosa, y
 // un mensaje que no cumple se descarta con un aviso sin cuerpo. Nunca se registra el contenido del mensaje.
 
-/**
- * Lo que el adaptador necesita de un cliente Redis suscriptor. Se declara aquí, y no como un `Pick` de `Redis`, para
- * dejar dicho exactamente qué se usa y para que un doble de test no tenga que fingir las 450 propiedades de ioredis.
- */
-export interface RedisSubscriber {
-  /** Estado de la conexión tal y como lo publica ioredis; `wait` es "creada y todavía sin conectar" (`lazyConnect`). */
-  readonly status: string;
-  connect(): Promise<unknown>;
-  subscribe(channel: string): Promise<unknown>;
-  unsubscribe(channel: string): Promise<unknown>;
-  on(
-    event: 'message',
-    listener: (channel: string, message: string) => void,
-  ): unknown;
-  on(event: 'ready', listener: () => void): unknown;
-  off(
-    event: 'message',
-    listener: (channel: string, message: string) => void,
-  ): unknown;
-  off(event: 'ready', listener: () => void): unknown;
-}
+/** Reexportado para tests y adaptadores hermanos que ya importaban el tipo desde aquí. */
+export type { RedisSubscriber };
 
 /** Lo que el adaptador necesita de un logger; `Logger` de Nest lo cumple. */
 export interface EnrichmentNoticesLogger {

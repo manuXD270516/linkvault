@@ -1,0 +1,10 @@
+{
+  "task": "critique-suggestions",
+  "promptVersion": "v1",
+  "goldenSha256": "2176c2e0863e6c99959e4d2ca5de83b9cb7a698e94b139d07665e24ae235c428",
+  "metrics": {
+    "degraded_rate": 0,
+    "judge_score_mae": 0,
+    "schema_validity_rate": 1
+  }
+}

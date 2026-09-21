@@ -14,18 +14,19 @@
 
 ## 3. Progreso en vivo
 
-- [ ] 3.1 [backend] Publicar `analysis.step` al cambiar de paso (incluidos los del bucle), sin bloquear si no hay suscriptores; verificar payload cerrado.
-- [ ] 3.2 [backend] Repartir solo al `userId` del análisis; verificar Ana/Beto.
-- [ ] 3.3 [frontend] Diálogo: rótulos de los pasos nuevos; SSE adelanta el paso de su análisis; sin canal el sondeo basta. Verificar store.
+- [x] 3.1 [backend] Publicar `analysis.step` al cambiar de paso (incluidos los del bucle), sin bloquear si no hay suscriptores; verificar payload cerrado.
+- [x] 3.2 [backend] Repartir solo al `userId` del análisis; verificar Ana/Beto.
+- [x] 3.3 [frontend] Diálogo: rótulos de los pasos nuevos; SSE adelanta el paso de su análisis; sin canal el sondeo basta. Verificar store.
 - [x] 3.4 [infra] Subir `MATCH_ANALYSIS_TIMEOUT_MS` / `MAX_AGE` (factor ×2 inicial) en `.env.example` y RUNBOOK.
 
 ## 4. Feedback
 
-- [ ] 4.1 [backend] Persistir «no me convence» con índice + hash de `after`, solo análisis propio; verificar el caso ajeno.
-- [ ] 4.2 [frontend] Acción «no me convence» junto a Copiar; sin aceptar/rechazar; i18n ES/EN.
-- [ ] 4.3 [infra] Export a `candidates.jsonl` sin tocar golden; verificar que los golden no cambian.
+- [x] 4.1 [backend] Persistir «no me convence» con índice + hash de `after`, solo análisis propio; verificar el caso ajeno.
+- [x] 4.2 [frontend] Acción «no me convence» junto a Copiar; sin aceptar/rechazar; i18n ES/EN.
+- [x] 4.3 [infra] Export a `candidates.jsonl` sin tocar golden; verificar que los golden no cambian.
+  <!-- CLI `nx run ai:export-feedback-candidates` → `libs/ai/src/evals/match-cv/candidates.jsonl`; la API solo persiste (4.1). -->
 
 ## 5. Eval y cierre
 
-- [ ] 5.1 [ai] Reporte de eval: correlación score/etiqueta 1–5 y coste por vuelta; verificar con mock.
+- [x] 5.1 [ai] Reporte de eval: correlación score/etiqueta 1–5 y coste por vuelta; verificar con mock.
 - [ ] 5.2 [infra] `pnpm nx affected -t lint,typecheck,test --base=main` y `openspec validate --all` en verde.

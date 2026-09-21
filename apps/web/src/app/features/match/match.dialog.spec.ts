@@ -612,6 +612,33 @@ describe('MatchDialog', () => {
     http.expectNone((req) => req.url.includes('/api/cv'));
   });
 
+  it('No me convence junto a Copiar', async () => {
+    await openDialog();
+    await flushOpen({ linkId: LINK_ID, latest: latestDone() });
+
+    expect(dialog().querySelector('[data-testid="match-suggestion-not-convinced"]')).not.toBeNull();
+    expect(dialog().querySelector('[data-testid="match-suggestion-copy"]')).not.toBeNull();
+    expect(text()).not.toMatch(/aceptar|rechazar|aplicar/i);
+
+    click('match-suggestion-not-convinced');
+    await settle();
+    const request = http.expectOne({
+      method: 'POST',
+      url: `/api/analyses/a1/suggestion-feedback`,
+    });
+    expect(request.request.body).toEqual({ suggestionIndex: 0 });
+    request.flush(null, { status: 204, statusText: 'No Content' });
+    await settle();
+    TestBed.tick();
+    await settle();
+
+    expect(dialog().querySelector('[data-testid="match-suggestion-not-convinced-marked"]')).not.toBeNull();
+    expect(
+      (dialog().querySelector('[data-testid="match-suggestion-not-convinced"]') as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
+
   it('Doce sugerencias no caen todas de golpe', async () => {
     const suggestions = Array.from({ length: 12 }, (_, i) =>
       suggestion({

@@ -38,6 +38,16 @@ export class EvalUsageLedger implements UsageLedger {
     }
     return taken;
   }
+
+  /**
+   * Retira todos los registros pendientes (p. ej. un caso del bucle juez con varias claves de ejecución).
+   * Orden de escritura.
+   */
+  drain(): UsageRecord[] {
+    const taken = [...this.records];
+    this.records.length = 0;
+    return taken;
+  }
 }
 
 /** Cuota que siempre permite: la evaluación no tiene usuario ni límites. */

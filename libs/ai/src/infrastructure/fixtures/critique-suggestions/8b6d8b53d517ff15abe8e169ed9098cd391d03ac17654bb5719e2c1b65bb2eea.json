@@ -1,0 +1,9 @@
+{
+  "source": "recorded:mock:mock-synth",
+  "text": "{\"score\":0.45,\"issues\":[\"La sugerencia sobre NestJS no ancla bien el requisito must.\"]}",
+  "model": "mock-synth",
+  "usage": {
+    "inputTokens": 0,
+    "outputTokens": 0
+  }
+}

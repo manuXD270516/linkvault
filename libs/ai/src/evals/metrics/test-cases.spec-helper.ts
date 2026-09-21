@@ -33,6 +33,14 @@ export function testCaseResult<I, O, E>(
       outputTokens: 0,
       estCost: options.estCost ?? 0,
       outcomes: [options.result.status === 'success' ? 'success' : 'degraded'],
+      rounds: [
+        {
+          round: 0,
+          task: 'test',
+          estCost: options.estCost ?? 0,
+          latencyMs: options.latencyMs ?? 0,
+        },
+      ],
     },
   };
 }

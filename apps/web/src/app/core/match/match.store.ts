@@ -1,6 +1,7 @@
-import { computed, inject } from '@angular/core';
+import { DestroyRef, computed, inject } from '@angular/core';
 import {
   MATCH_PROGRESS_STEPS,
+  type AnalysisStepMessage,
   type MatchFailureCode,
   type MatchLatest,
   type MatchProgressStep,
@@ -9,6 +10,7 @@ import {
   type MatchRunning,
   type MatchStep,
   isMatchFinalStep,
+  isMatchStepRegression,
   matchStepOrder,
 } from '@linkvault/shared';
 import { patchState, signalStore, withComputed, withHooks, withMethods, withState } from '@ngrx/signals';
@@ -17,6 +19,7 @@ import {
   type RequestFailure,
   toRequestFailure,
 } from '../api/api-error';
+import { EventsChannel } from '../events/events.channel';
 import { MatchApi } from './match.api';
 import { MatchBusyRegistry } from './match-busy.registry';
 
@@ -301,11 +304,50 @@ export const MatchStore = signalStore(
         openWindow(store.running()?.maxAgeMs);
       },
 
+      /**
+       * Adelanta el paso mostrado al recibir `analysis.step` de **este** análisis. Otro análisis no entra. Un
+       * retroceso se ignora. Sin canal, el sondeo basta igual (spec web/cv-match).
+       */
+      applyAnalysisStep(message: AnalysisStepMessage): void {
+        const running = store.running();
+        const linkId = store.linkId();
+        if (running === null || linkId === null) {
+          return;
+        }
+        if (message.analysisId !== running.analysisId || message.linkId !== linkId) {
+          return;
+        }
+        if (isMatchStepRegression(running.step, message.step)) {
+          return;
+        }
+        const nextRunning: MatchRunningView = { ...running, step: message.step };
+        patchState(store, applyBlocks(store.latest(), nextRunning));
+      },
+
+      /**
+       * Marca «no me convence» sobre una sugerencia del informe final (índice en `report.suggestions`).
+       * Ruta: `POST /api/analyses/:analysisId/suggestion-feedback`.
+       */
+      async submitFeedback(suggestionIndex: number): Promise<void> {
+        const linkId = store.linkId();
+        const analysisId = store.latest()?.analysisId;
+        if (linkId === null || analysisId === undefined) {
+          return;
+        }
+        await api.submitFeedback(linkId, analysisId, suggestionIndex);
+      },
+
       /** Detiene el sondeo: lo llama el hook al destruirse el diálogo y los tests que no quieren relojes vivos. */
       stopPolling,
     };
   }),
   withHooks({
+    onInit(store, channel = inject(EventsChannel), destroyRef = inject(DestroyRef)) {
+      const subscription = channel.analysisStep.subscribe((message) => {
+        store.applyAnalysisStep(message);
+      });
+      destroyRef.onDestroy(() => subscription.unsubscribe());
+    },
     onDestroy(store) {
       store.stopPolling();
     },

@@ -149,4 +149,17 @@ describe('MatchApi', () => {
 
     await expect(result).rejects.toMatchObject({ status: 429 });
   });
+
+  it('posts suggestion feedback for an analysis', async () => {
+    const result = api.submitFeedback('l1', 'a1', 2);
+
+    const request = expectRequest(
+      'POST',
+      '/api/analyses/a1/suggestion-feedback',
+    );
+    expect(request.request.body).toEqual({ suggestionIndex: 2 });
+    request.flush(null, { status: 204, statusText: 'No Content' });
+
+    await expect(result).resolves.toBeNull();
+  });
 });

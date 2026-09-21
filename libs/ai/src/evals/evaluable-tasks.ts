@@ -4,6 +4,11 @@ import {
   type ClassifySkillsOutput,
 } from '../tasks/classify-skills.task';
 import {
+  critiqueSuggestionsTask,
+  type CritiqueSuggestionsInput,
+  type CritiqueSuggestionsOutput,
+} from '../tasks/critique-suggestions.task';
+import {
   extractJobTask,
   type ExtractJobInput,
   type ExtractJobOutput,
@@ -24,6 +29,12 @@ import {
   classifySkillsExpectedSchema,
   type ClassifySkillsExpected,
 } from './classify-skills/metrics';
+import {
+  CRITIQUE_SUGGESTIONS_CASE_COLUMNS,
+  CRITIQUE_SUGGESTIONS_METRICS,
+  critiqueSuggestionsExpectedSchema,
+  type CritiqueSuggestionsExpected,
+} from './critique-suggestions/metrics';
 import {
   eraseEvaluableTask,
   type AnyEvaluableTask,
@@ -96,11 +107,23 @@ export const matchCvEvaluable: EvaluableTask<
   personalCvGolden: true,
 };
 
+export const critiqueSuggestionsEvaluable: EvaluableTask<
+  CritiqueSuggestionsInput,
+  CritiqueSuggestionsOutput,
+  CritiqueSuggestionsExpected
+> = {
+  task: critiqueSuggestionsTask,
+  expectedSchema: critiqueSuggestionsExpectedSchema,
+  metrics: CRITIQUE_SUGGESTIONS_METRICS,
+  caseColumns: CRITIQUE_SUGGESTIONS_CASE_COLUMNS,
+};
+
 export const EVALUABLE_TASKS: readonly AnyEvaluableTask[] = [
   eraseEvaluableTask(classifySkillsEvaluable),
   eraseEvaluableTask(extractJobEvaluable),
   eraseEvaluableTask(extractPastedJobEvaluable),
   eraseEvaluableTask(matchCvEvaluable),
+  eraseEvaluableTask(critiqueSuggestionsEvaluable),
 ];
 
 /** Tarea evaluable por nombre, o `undefined` si no está registrada. */

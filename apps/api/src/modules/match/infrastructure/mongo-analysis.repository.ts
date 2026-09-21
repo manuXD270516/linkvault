@@ -416,6 +416,18 @@ export class MongoAnalysisRepository implements AnalysisRepository {
     return scores;
   }
 
+  async findById(analysisId: string): Promise<MatchAnalysis | null> {
+    const id = toAnalysisObjectId(analysisId);
+    if (id === null) {
+      return null;
+    }
+    const document = await this.analyses.findById(id).lean().exec();
+    if (document === null) {
+      return null;
+    }
+    return toEntity(document);
+  }
+
   private async withTransaction<T>(
     work: (session: ClientSession) => Promise<T>,
   ): Promise<T> {

@@ -1,7 +1,12 @@
 import { HttpEventType } from '@angular/common/http';
 import { HttpTestingController, type TestRequest } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import type { GroupLinkCommentsMessage, JobLinkSummary, LinkEnrichedMessage } from '@linkvault/shared';
+import type {
+  AnalysisStepMessage,
+  GroupLinkCommentsMessage,
+  JobLinkSummary,
+  LinkEnrichedMessage,
+} from '@linkvault/shared';
 import { providePageTesting, sessionWith, settle } from '../../../testing/auth-testing';
 import { SessionStore } from '../auth/session.store';
 import { EVENTS_FIRST_RETRY_DELAY_MS, EventsChannel } from './events.channel';
@@ -235,6 +240,48 @@ describe('EventsChannel', () => {
 
       expect(comments).toEqual([]);
       expect(received).toEqual([]);
+    });
+  });
+
+  describe('analysis.step', () => {
+    let steps: AnalysisStepMessage[];
+
+    const stepMessage: AnalysisStepMessage = {
+      analysisId: 'a1',
+      linkId: 'l1',
+      step: 'critiquing-suggestions',
+    };
+
+    beforeEach(() => {
+      steps = [];
+      channel.analysisStep.subscribe((message) => steps.push(message));
+    });
+
+    it('dispatches a valid analysis step notice', async () => {
+      const request = openChannel();
+      push(request, sse('analysis.step', stepMessage));
+      await settle();
+
+      expect(steps).toEqual([stepMessage]);
+      expect(received).toEqual([]);
+    });
+
+    it('discards a malformed or oversized analysis step notice', async () => {
+      const request = openChannel();
+      const malformed: unknown[] = [
+        { ...stepMessage, step: 'not-a-step' },
+        { ...stepMessage, analysisId: '' },
+        { ...stepMessage, score: 0.9 },
+        { analysisId: 'a1', linkId: 'l1' },
+      ];
+      push(
+        request,
+        'event: analysis.step\ndata: no-es-json\n\n' +
+          malformed.map((data) => sse('analysis.step', data)).join(''),
+      );
+      await settle();
+
+      expect(steps).toEqual([]);
     });
   });
 });

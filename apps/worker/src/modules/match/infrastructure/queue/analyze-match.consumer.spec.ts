@@ -130,6 +130,7 @@ function consumer(timeoutMs = 60_000): AnalyzeMatchConsumer {
     }) as RunTaskFn,
     clock,
     { timeoutMs, maxAgeMs: 120_000 },
+    { publish: async () => undefined },
   );
   return new AnalyzeMatchConsumer(
     useCase,
@@ -178,6 +179,7 @@ describe('AnalyzeMatchConsumer', () => {
       }) as RunTaskFn,
       clock,
       { timeoutMs: 60_000, maxAgeMs: 120_000 },
+      { publish: async () => undefined },
     );
     const c = new AnalyzeMatchConsumer(
       useCase,

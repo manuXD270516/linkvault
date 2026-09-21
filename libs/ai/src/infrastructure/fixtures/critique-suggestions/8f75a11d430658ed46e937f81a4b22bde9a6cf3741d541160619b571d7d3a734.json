@@ -1,0 +1,9 @@
+{
+  "source": "recorded:mock:mock-synth",
+  "text": "{\"score\":0.2,\"issues\":[\"El informe no aporta sugerencias accionables.\"]}",
+  "model": "mock-synth",
+  "usage": {
+    "inputTokens": 0,
+    "outputTokens": 0
+  }
+}

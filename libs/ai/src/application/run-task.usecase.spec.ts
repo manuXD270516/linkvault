@@ -977,6 +977,31 @@ describe('RunTask: data protection', () => {
     expect(deps.cache.entries.size).toBe(0);
   });
 
+  it('deferPiiReinjection: output keeps markers and reinjectedOutput restores values', async () => {
+    const external = new FakeLlmProvider(
+      'openrouter',
+      ['{"skills":[{"name":"[EMAIL_1]","category":"other"}]}'],
+      { capabilities: { external: true } },
+    );
+    const { runTask } = harness([external]);
+
+    const result = await runTask.execute(classifySkillsTask, PERSONAL_INPUT, {
+      ...CONSENT,
+      deferPiiReinjection: true,
+    });
+
+    expect(result).toMatchObject({
+      status: 'success',
+      output: { skills: [{ name: '[EMAIL_1]', category: 'other' }] },
+      reinjectedOutput: {
+        skills: [{ name: 'ana@example.com', category: 'other' }],
+      },
+      cached: false,
+    });
+    if (result.status !== 'success') throw new Error('expected success');
+    expect(JSON.stringify(result.output)).not.toContain('ana@example.com');
+  });
+
   it('Marcador inventado por el proveedor', async () => {
     const invented =
       '{"skills":[{"name":"[ADDRESS_3]","category":"other"}]}';
