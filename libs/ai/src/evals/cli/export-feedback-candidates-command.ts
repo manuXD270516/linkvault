@@ -100,7 +100,7 @@ async function loadFeedbackDocs(
 
   const uri =
     args.mongoUri ??
-    (typeof io.env.MONGO_URI === 'string' ? io.env.MONGO_URI : undefined);
+    (typeof io.env['MONGO_URI'] === 'string' ? io.env['MONGO_URI'] : undefined);
   if (uri === undefined || uri === '') {
     throw new Error(
       'provide --from-json=<file> or --mongo-uri / MONGO_URI to read ai_feedback',

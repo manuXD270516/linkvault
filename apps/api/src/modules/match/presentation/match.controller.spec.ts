@@ -553,7 +553,7 @@ describe('match HTTP — POST reuse (10.6)', () => {
       { _id: new http.connection.base.Types.ObjectId(analysisId) },
       {
         $set: {
-          requestedAt: new Date(http.clock.now().getTime() - 200_000),
+          requestedAt: new Date(http.clock.now().getTime() - 300_000),
         },
       },
     );
@@ -655,7 +655,7 @@ describe('match HTTP — GET (10.7)', () => {
     expect(got.statusCode).toBe(200);
     const body = matchAnalysisResponseSchema.parse(analysisBody(got));
     expect(body.running?.analysisId).toBe(acceptedBody(posted).analysisId);
-    expect(body.running?.maxAgeMs).toBe(120_000);
+    expect(body.running?.maxAgeMs).toBe(240_000);
     expect(body.latest).toBeUndefined();
     expect(body.running).not.toHaveProperty('consentRequired');
     expect(body.running).not.toHaveProperty('report');

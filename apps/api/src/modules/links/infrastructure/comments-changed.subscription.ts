@@ -45,7 +45,8 @@ export class CommentsChangedSubscription
     const unsubscribe = this.unsubscribe;
     this.unsubscribe = undefined;
     if (unsubscribe !== undefined) {
-      await unsubscribe().catch(() => undefined);
+      // No await: con Redis en hang, `UNSUBSCRIBE` no contesta y tumbaría el cierre (health-contract).
+      void unsubscribe().catch(() => undefined);
     }
   }
 }
