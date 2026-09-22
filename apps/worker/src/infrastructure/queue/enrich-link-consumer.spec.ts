@@ -74,7 +74,7 @@ describe('Consumidor de enrich-link', () => {
   it('exists, and in exactly one place', () => {
     // `new Worker(` es cómo se construye un consumidor de BullMQ a pelo, que es lo que los módulos hacen para poder
     // configurar `concurrency` y `lockDuration` desde la configuración. Sitios actuales: `enrichment`, la fábrica
-    // compartida de `cv`, y la fábrica de `match` (analyze-match); ninguno más.
+    // compartida de `cv`, la fábrica de `match` (analyze-match), y `notifications` (notify-fanout); ninguno más.
     expect(sourcesMatching(/new Worker\(/).sort()).toEqual(
       [
         join(
@@ -91,6 +91,13 @@ describe('Consumidor de enrich-link', () => {
           'infrastructure',
           'queue',
           'worker-factory.ts',
+        ),
+        join(
+          'modules',
+          'notifications',
+          'infrastructure',
+          'queue',
+          'notify-fanout.consumer.ts',
         ),
       ].sort(),
     );

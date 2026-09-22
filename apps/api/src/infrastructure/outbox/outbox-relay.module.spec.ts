@@ -5,6 +5,7 @@ import {
   DELETE_CV_FILE_QUEUE,
   ENRICH_LINK_QUEUE,
   EXTRACT_CV_QUEUE,
+  NOTIFY_FANOUT_QUEUE,
 } from '@linkvault/shared';
 import { getQueueToken } from '@nestjs/bullmq';
 import { UnknownElementException } from '@nestjs/core/errors/exceptions/unknown-element.exception';
@@ -195,6 +196,7 @@ describe('outbox relay module', () => {
       DELETE_CV_FILE_QUEUE,
       ANALYZE_MATCH_QUEUE,
       BUILD_ROADMAP_QUEUE,
+      NOTIFY_FANOUT_QUEUE,
     ]);
     for (const [name, queue] of queues) {
       expect(moduleRef.get(outboxQueueErrorLogToken(name))).toBeDefined();

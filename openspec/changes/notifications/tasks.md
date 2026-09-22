@@ -33,4 +33,4 @@
 ## 6. Docs, plan y cierre
 
 - [x] 6.1 [infra] ADR-035 + enmendar referencia ADR-024 (stale/avisos) + fila 17 `design-v0.2.md` §6; verificar archivos.
-- [ ] 6.2 [infra] `pnpm nx affected -t lint,typecheck,test` con `AI_CHAIN=mock AI_MOCK_MODE=replay` y `openspec validate notifications`; verificar verde.
+- [x] 6.2 [infra] `pnpm nx affected -t lint,typecheck,test` con `AI_CHAIN=mock AI_MOCK_MODE=replay` y `openspec validate notifications`; verificar verde.
