@@ -63,6 +63,20 @@ docker compose --profile ai-local up -d --wait   # añade ollama en http://local
 No descarga modelos. En desarrollo, `.env.example` usa el mock con `AI_CHAIN=mock` y `AI_MOCK_MODE=synth`; los tests y CI fuerzan `AI_CHAIN=mock` y `AI_MOCK_MODE=replay`. `AI_CHAIN=none` desactiva la IA (las tareas degradan).
 La IA la ejecutan **dos procesos**: el worker (lectura de páginas) y `api` (descripciones pegadas). Un `api` o un worker compilado que no arranque desde la raíz del workspace necesita `AI_PROMPTS_DIR=dist/apps/<api|worker>/assets/ai/prompts` (o la ruta absoluta equivalente).
 
+### Búsqueda con Meilisearch (opcional, profile search)
+
+```bash
+docker compose --profile search up -d --wait   # añade meilisearch en http://localhost:7700
+```
+
+No arranca con `docker compose up` por defecto (mismo patrón que `ai-local`). Variables en `.env.example`:
+`FEATURE_SEARCH`, `MEILI_HOST`, `MEILI_MASTER_KEY`, `MEILI_INDEX`, `AI_EMBED_CHAIN`, `AI_EMBED_MODEL`,
+`SEARCH_SEMANTIC_RATIO`, `SEARCH_BACKFILL_RATE`. Con `FEATURE_SEARCH=false`, api/worker no exigen Meili.
+
+En local el puerto se publica para `nx serve` en el host (`MEILI_HOST=http://localhost:7700`). En la red
+compose el hostname es `meilisearch` (`http://meilisearch:7700`). En producción Meili es **solo red interna**
+(VPC / red internal de compose): no exponer el puerto ni la master key a Internet.
+
 ### MongoDB
 
 MongoDB corre siempre como replica set de un nodo (`rs0`). Su healthcheck lo inicializa en el primer arranque, y el
@@ -78,8 +92,8 @@ Desde el host hace falta `directConnection=true`: el replica set anuncia `mongo:
 ### Puertos ocupados por otro proyecto
 
 Los puertos publicados en el host se configuran con `MONGO_PORT`, `REDIS_PORT`, `MINIO_PORT`, `MINIO_CONSOLE_PORT`,
-`MAILPIT_SMTP_PORT`, `MAILPIT_UI_PORT` y `OLLAMA_PORT`. Docker Compose los lee del `.env`. Si otro proyecto ya usa el
-6379, por ejemplo, pon en tu `.env`:
+`MAILPIT_SMTP_PORT`, `MAILPIT_UI_PORT`, `OLLAMA_PORT` y `MEILI_PORT`. Docker Compose los lee del `.env`. Si otro
+proyecto ya usa el 6379, por ejemplo, pon en tu `.env`:
 
 ```dotenv
 REDIS_PORT=6380

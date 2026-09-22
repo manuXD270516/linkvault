@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { AppConfigModule } from '../../infrastructure/config/app-config.module';
 import { MongoPersistenceModule } from '../../infrastructure/persistence/mongo-persistence.module';
 import { workerTestConfig } from '../../test-support/test-config';
+import { StubSearchIndexModule } from '../../test-support/stub-search-index.module';
 import { DeleteCvFileUseCase } from './application/delete-cv-file.usecase';
 import { ExtractCvUseCase } from './application/extract-cv.usecase';
 import { CV_CLOCK } from './application/ports/clock.port';
@@ -35,7 +36,9 @@ async function compile(): Promise<TestingModule> {
       AppConfigModule.forRoot(config),
       // La conexión de Mongoose es perezosa: el módulo la necesita para su modelo, no para conectar.
       MongoPersistenceModule,
-      CvModule.register(config),
+      CvModule.register(config, {
+        module: StubSearchIndexModule,
+      }),
     ],
   }).compile();
 }

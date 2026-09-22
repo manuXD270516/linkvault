@@ -137,6 +137,12 @@ describe('comment notices over a real connection', () => {
       harness.limiter,
       new RedisCommentsChangedPublisher(publishing, new SilentLogger()),
       harness.clock,
+      {
+        startSession: async () => ({
+          withTransaction: async (fn: () => Promise<void>) => fn(),
+          endSession: async () => undefined,
+        }),
+      } as never,
     );
     const linkId = await harness.shared(BACKEND, ANA);
 

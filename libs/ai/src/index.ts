@@ -8,6 +8,17 @@ export type { AiLogFields, AiLogger } from './domain/ports/ai-logger.port';
 export type { CircuitBreaker } from './domain/ports/circuit-breaker.port';
 export type { Clock } from './domain/ports/clock.port';
 export type {
+  EmbeddingCapabilities,
+  EmbeddingProvider,
+  EmbedRequest,
+  EmbedResult,
+  EmbedTrace,
+} from './domain/ports/embedding-provider.port';
+export {
+  EMBED_OPERATION,
+  MOCK_EMBEDDING_DIMENSIONS,
+} from './domain/ports/embedding-provider.port';
+export type {
   CompletionRequest,
   CompletionResult,
   CompletionTrace,
@@ -38,7 +49,13 @@ export type {
   OutputLanguage,
   RunContext,
 } from './domain/run-context';
-export type { AiTask, AiTaskName, DataSensitivity, Rng } from './domain/task';
+export type {
+  AiLedgerTask,
+  AiTask,
+  AiTaskName,
+  DataSensitivity,
+  Rng,
+} from './domain/task';
 export {
   AiProgrammingError,
   FixtureMissing,
@@ -55,8 +72,21 @@ export {
   type AiModuleAsyncOptions,
   type AiModuleOptions,
 } from './ai.module';
-export { PROVIDER_ELIGIBILITY, RUN_TASK, SECRET_VAULT, USER_AI_KEYS_REPOSITORY } from './ai.tokens';
+export {
+  EMBED_TEXTS,
+  PROVIDER_ELIGIBILITY,
+  RUN_TASK,
+  SECRET_VAULT,
+  USER_AI_KEYS_REPOSITORY,
+} from './ai.tokens';
 export type { RunTaskFn } from './application/run-task.usecase';
+export type {
+  EmbedTextsFn,
+  EmbedTextsResult,
+  EmbedTextsSuccess,
+  EmbedTextsDegraded,
+} from './application/embed-texts.usecase';
+export { EMBED_PROMPT_VERSION } from './application/embed-texts.usecase';
 export type {
   ProviderEligibility,
   ProviderEligibilityQuery,

@@ -31,6 +31,12 @@ export async function workerTestConfig(
     REDIS_URL: `redis://127.0.0.1:${await closedPort()}`,
     AI_CHAIN: 'mock',
     FEATURE_HEADLESS_EXTRACTION: false,
+    FEATURE_SEARCH: false,
+    MEILI_HOST: '',
+    MEILI_MASTER_KEY: '',
+    MEILI_INDEX: 'lv_content',
+    SEARCH_SEMANTIC_RATIO: 0.5,
+    SEARCH_BACKFILL_RATE: 5,
     LOG_LEVEL: 'silent',
     // Enriquecimiento: los mismos valores de `.env.example`, salvo las esperas, que se acortan porque en los tests
     // `PAGE_FETCHER`, `ROBOTS` y `HOST_MUTEX` son dobles y nadie debe quedarse esperando de verdad.

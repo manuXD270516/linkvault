@@ -4,7 +4,7 @@ import type {
   QuotaDecision,
   QuotaPolicy,
 } from '../../domain/ports/quota-policy.port';
-import type { AiTaskName } from '../../domain/task';
+import type { AiLedgerTask } from '../../domain/task';
 import type { SuccessCounter } from '../persistence/mongo-usage-ledger';
 
 // Cuotas diarias por usuario y tarea desde `AI_QUOTAS` (D9 de ai-gateway-core, ADR-018 §9 y §10). Cuenta los `success`
@@ -16,7 +16,7 @@ export const QUOTA_WINDOW_MS = 24 * 60 * 60 * 1000;
 export const DEFAULT_QUOTA_COUNT_TIMEOUT_MS = 300;
 
 /** Límites diarios ya validados por la configuración; una tarea ausente no tiene límite. */
-export type QuotaLimits = Readonly<Partial<Record<AiTaskName, number>>>;
+export type QuotaLimits = Readonly<Partial<Record<AiLedgerTask, number>>>;
 
 export interface ConfigQuotaPolicyOptions {
   limits: QuotaLimits;
@@ -36,7 +36,7 @@ export class ConfigQuotaPolicy implements QuotaPolicy {
     this.timeoutMs = options.countTimeoutMs ?? DEFAULT_QUOTA_COUNT_TIMEOUT_MS;
   }
 
-  async allows(userId: string, task: AiTaskName): Promise<QuotaDecision> {
+  async allows(userId: string, task: AiLedgerTask): Promise<QuotaDecision> {
     const limit = this.options.limits[task];
     if (limit === undefined) return { allowed: true };
 
@@ -81,7 +81,7 @@ export class ConfigQuotaPolicy implements QuotaPolicy {
    */
   private async withTimeout<T>(
     run: () => Promise<T>,
-    task: AiTaskName,
+    task: AiLedgerTask,
     timeoutMessage: string,
     failureMessage: string,
   ): Promise<T | null> {

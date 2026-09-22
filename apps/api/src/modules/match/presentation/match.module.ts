@@ -13,7 +13,6 @@ import type { RedisSubscriber } from '../../../infrastructure/redis/redis-subscr
 import { ApplicationFitScores } from '../../applications/application/application-fit-scores';
 import { CvAnalysisCounts } from '../../cv/application/cv-analysis-counts';
 import { CvDeletionHooks } from '../../cv/application/cv-deletion-hooks';
-import { CvModule } from '../../cv/presentation/cv.module';
 import { UsersModule } from '../../users/presentation/users.module';
 import { DeliverAnalysisStep } from '../application/deliver-analysis-step.usecase';
 import { GetMatchAnalysis } from '../application/get-match-analysis.usecase';
@@ -65,17 +64,20 @@ export class MatchModule implements OnModuleInit {
     linksModule: DynamicModule,
     aiModule: DynamicModule,
     applicationsModule: DynamicModule,
+    cvModule: DynamicModule,
+    searchModule?: DynamicModule,
   ): DynamicModule {
     return {
       module: MatchModule,
       imports: [
         OutboxModule,
-        CvModule,
+        cvModule,
         UsersModule,
         RealtimeModule,
         linksModule,
         aiModule,
         applicationsModule,
+        ...(searchModule === undefined ? [] : [searchModule]),
       ],
       controllers: [
         MatchController,

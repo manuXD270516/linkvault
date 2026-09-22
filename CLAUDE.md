@@ -24,7 +24,7 @@ Antes de cualquier tarea lee, en este orden: `docs/design-v0.2.md` (decisiones v
 - Auth: access token en memoria, refresh en cookie httpOnly con rotación, Argon2id (ADR-012).
 
 ## Módulo IA (`libs/ai`) — reglas duras
-- Único punto de entrada: `runTask(task, input, ctx)`. Prohibido importar SDKs de proveedores fuera de `libs/ai/infrastructure/providers` (lint `no-restricted-imports`).
+- Dos entradas de aplicación: `runTask(task, input, ctx)` para LLM/estructurado; **`embedTexts(texts, ctx)`** para embeddings (ADR-036). Prohibido importar SDKs de proveedores fuera de `libs/ai/infrastructure/providers` (lint `no-restricted-imports`).
 - Cada proveedor declara `capabilities`; el routing filtra por capacidades, consentimiento, cuota y circuit breaker (ADR-014).
 - Salidas estructuradas: `temperature 0`, zod, un repair prompt, luego siguiente proveedor, luego degradación honesta (`RuleBasedMatcher`).
 - Mock determinista con modos `replay` (CI) y `synth` (dev); fixtures reales con `nx run ai:record-fixtures` (ADR-019). `synth` prohibido en producción. Clave según ADR-018 §3.

@@ -23,6 +23,7 @@ import type {
 import type { Outbox } from '../../../infrastructure/outbox/outbox.port';
 import type { TransactionSession } from '../../../infrastructure/outbox/transaction-session';
 import type { UserLinkRepository } from './ports/user-link-repository.port';
+import type { SearchFacade } from '../../search/application/search.facade';
 
 // Paso común de guardar un link, que comparten `save-link` y `import-links` (D3, D4 y D6 de job-links): la vacante, su
 // relación con el destino y el evento del outbox se escriben en la misma transacción, o no se escribe nada. El evento
@@ -37,6 +38,8 @@ export interface LinkWriters {
   readonly groupLinks: GroupLinkRepository;
   readonly userLinks: UserLinkRepository;
   readonly outbox: Outbox;
+  /** Ausente o deshabilitado → no escribe Search* (FEATURE_SEARCH=false). */
+  readonly search?: SearchFacade;
 }
 
 /** Resultado de guardar una URL en un destino. */
@@ -157,6 +160,39 @@ export async function saveOneLink(
             linkId: link.id,
             actorUserId: userId,
           }),
+          session,
+        );
+        if (writers.search !== undefined) {
+          await writers.search.upsert(
+            {
+              docType: 'job_preview',
+              aggregateId: link.id,
+              reason: 'group_link_shared',
+              fingerprint: `share:${link.id}:${groupId}:${link.previewVersion}`,
+            },
+            session,
+          );
+          if (shared.note !== undefined) {
+            await writers.search.upsert(
+              {
+                docType: 'group_link_note',
+                aggregateId: `${groupId}_${link.id}`,
+                reason: 'note_upsert',
+                fingerprint: `note:${groupId}:${link.id}:${shared.note.text}`,
+              },
+              session,
+            );
+          }
+        }
+      }
+      if (resolved.created && writers.search !== undefined) {
+        await writers.search.upsert(
+          {
+            docType: 'job_preview',
+            aggregateId: link.id,
+            reason: 'preview_created',
+            fingerprint: `preview:${link.id}:${link.previewVersion}`,
+          },
           session,
         );
       }

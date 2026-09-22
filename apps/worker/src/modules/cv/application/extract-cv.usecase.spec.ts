@@ -28,6 +28,11 @@ beforeEach(() => {
   clock = new MovableClock();
 });
 
+const noopSearch = {
+  upsert: async () => undefined,
+  delete: async () => undefined,
+};
+
 function useCaseWith(
   extractor: ConstructorParameters<typeof StubExtractor>[0],
   timeoutMs = 1000,
@@ -38,6 +43,7 @@ function useCaseWith(
     extractorsOf(new StubExtractor(extractor)),
     clock,
     { timeoutMs },
+    noopSearch,
   );
 }
 

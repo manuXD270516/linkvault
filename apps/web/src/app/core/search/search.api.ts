@@ -1,0 +1,42 @@
+import { HttpClient, HttpParams } from '@angular/common/http';
+import { Injectable, inject } from '@angular/core';
+import type { SearchQueryParams, SearchResponse } from '@linkvault/shared';
+import { firstValueFrom } from 'rxjs';
+
+const SEARCH_URL = '/api/search';
+
+/**
+ * Límite por defecto de hits. Repite `SEARCH_LIMIT_DEFAULT` de shared en lugar de importarlo: el módulo de
+ * `@linkvault/shared` que lo define arrastra zod, y `core/` solo importa tipos.
+ */
+export const SEARCH_PAGE_SIZE = 20;
+
+/**
+ * Parámetros que envía la SPA V0. **Sin** `mode`: la API usa hybrid por defecto (D8 / S13).
+ * Solo filtros `docType` y `groupId` (S12).
+ */
+export type SearchRequest = Pick<SearchQueryParams, 'q' | 'docType' | 'groupId' | 'limit' | 'offset'>;
+
+/**
+ * Llamadas a `GET /api/search`. El Bearer lo pone `authInterceptor`. Solo importa tipos de
+ * `@linkvault/shared`.
+ */
+@Injectable({ providedIn: 'root' })
+export class SearchApi {
+  private readonly http = inject(HttpClient);
+
+  search(request: SearchRequest): Promise<SearchResponse> {
+    let params = new HttpParams().set('q', request.q);
+    if (request.docType !== undefined) {
+      params = params.set('docType', request.docType);
+    }
+    if (request.groupId !== undefined) {
+      params = params.set('groupId', request.groupId);
+    }
+    params = params.set('limit', String(request.limit ?? SEARCH_PAGE_SIZE));
+    if (request.offset !== undefined) {
+      params = params.set('offset', String(request.offset));
+    }
+    return firstValueFrom(this.http.get<SearchResponse>(SEARCH_URL, { params }));
+  }
+}

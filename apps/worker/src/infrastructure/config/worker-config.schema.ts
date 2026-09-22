@@ -25,6 +25,20 @@ export const workerConfigSchema = z
     FEATURE_HEADLESS_EXTRACTION: z
       .enum(['true', 'false'])
       .transform((value) => value === 'true'),
+    FEATURE_SEARCH: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
+    MEILI_HOST: z
+      .string()
+      .default('')
+      .refine((value) => value === '' || /^https?:\/\/\S+$/.test(value), {
+        message: 'MEILI_HOST must be empty or an http(s) URL',
+      }),
+    MEILI_MASTER_KEY: z.string().default(''),
+    MEILI_INDEX: z.string().min(1).default('lv_content'),
+    SEARCH_SEMANTIC_RATIO: z.coerce.number().min(0).max(1).default(0.5),
+    SEARCH_BACKFILL_RATE: z.coerce.number().int().min(1).max(1_000).default(5),
     LOG_LEVEL: z.enum([
       'fatal',
       'error',

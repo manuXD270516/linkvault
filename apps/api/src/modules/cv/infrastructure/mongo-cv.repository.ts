@@ -5,7 +5,7 @@ import {
   cvTextPreview,
   cvUploadedEvent,
 } from '@linkvault/shared';
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { getConnectionToken } from '@nestjs/mongoose';
 import {
   Types,
@@ -16,6 +16,7 @@ import {
 } from 'mongoose';
 import { duplicateKeyIs } from '../../../infrastructure/mongo/duplicate-key';
 import { OUTBOX, type Outbox } from '../../../infrastructure/outbox/outbox.port';
+import { SearchFacade } from '../../search/application/search.facade';
 import { CvDeletionHooks } from '../application/cv-deletion-hooks';
 import type {
   CvRepository,
@@ -98,6 +99,7 @@ export class MongoCvRepository implements CvRepository {
     @Inject(getConnectionToken()) private readonly connection: Connection,
     @Inject(OUTBOX) private readonly outbox: Outbox,
     private readonly deletionHooks: CvDeletionHooks,
+    @Optional() private readonly search?: SearchFacade,
   ) {
     this.cvs = modelOf(connection, CV_DOCUMENT_MODEL_NAME, cvDocumentSchema);
     this.counters = modelOf(
@@ -169,6 +171,17 @@ export class MongoCvRepository implements CvRepository {
             cvUploadedEvent({ cvId: document.id, userId: document.userId }),
             session,
           );
+          if (this.search !== undefined) {
+            await this.search.upsert(
+              {
+                docType: 'cv',
+                aggregateId: document.id,
+                reason: 'cv_upsert',
+                fingerprint: `cv:${document.id}:${document.fileName}`,
+              },
+              session,
+            );
+          }
           return toEntity(created.toObject());
         });
       } catch (error) {
@@ -285,6 +298,16 @@ export class MongoCvRepository implements CvRepository {
       // sobrevivirían sin reintento ni rastro.
       await this.deletionHooks.runAll(cvId, userId, session);
       await this.outbox.append(cvDeletedEvent({ cvId, userId }), session);
+      if (this.search !== undefined) {
+        await this.search.delete(
+          {
+            docType: 'cv',
+            aggregateId: cvId,
+            reason: 'aggregate_deleted',
+          },
+          session,
+        );
+      }
       return true;
     });
   }

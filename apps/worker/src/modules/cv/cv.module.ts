@@ -17,6 +17,10 @@ import {
   CV_TEXT_EXTRACTORS,
   type CvTextExtractors,
 } from './application/ports/cv-text-extractors.port';
+import {
+  SEARCH_INDEX_JOB_PUBLISHER,
+  type SearchIndexJobPublisher,
+} from '../search/application/ports/search-index-job-publisher.port';
 import { DocxTextExtractor } from './infrastructure/extractors/docx-text.extractor';
 import { PdfTextExtractor } from './infrastructure/extractors/pdf-text.extractor';
 import {
@@ -44,7 +48,14 @@ import { SystemClock } from './infrastructure/system-clock';
 
 @Module({})
 export class CvModule {
-  static register(config: WorkerConfig): DynamicModule {
+  /**
+   * `searchModule` aporta `SEARCH_INDEX_JOB_PUBLISHER` (SearchUpsert tras extracción).
+   * Mismo objeto DynamicModule que importa `AppModule`.
+   */
+  static register(
+    config: WorkerConfig,
+    searchModule: DynamicModule,
+  ): DynamicModule {
     // `NODE_ENV=test` es lo único que apaga los consumidores: es la diferencia entre "el proceso existe para consumir"
     // y "la suite no habla con Redis".
     const consumersEnabled = config.NODE_ENV !== 'test';
@@ -52,6 +63,7 @@ export class CvModule {
     return {
       module: CvModule,
       imports: [
+        searchModule,
         MongooseModule.forFeature([
           { name: CV_DOCUMENT_MODEL_NAME, schema: cvDocumentSchema },
         ]),
@@ -83,17 +95,30 @@ export class CvModule {
         },
         {
           provide: ExtractCvUseCase,
-          inject: [CV_REPOSITORY, CV_FILE_READER, CV_TEXT_EXTRACTORS, CV_CLOCK, APP_CONFIG],
+          inject: [
+            CV_REPOSITORY,
+            CV_FILE_READER,
+            CV_TEXT_EXTRACTORS,
+            CV_CLOCK,
+            APP_CONFIG,
+            SEARCH_INDEX_JOB_PUBLISHER,
+          ],
           useFactory: (
             repository: CvRepository,
             files: CvFileReader,
             extractors: CvTextExtractors,
             clock: Clock,
             worker: WorkerConfig,
+            searchIndex: SearchIndexJobPublisher,
           ) =>
-            new ExtractCvUseCase(repository, files, extractors, clock, {
-              timeoutMs: worker.CV_EXTRACTION_TIMEOUT_MS,
-            }),
+            new ExtractCvUseCase(
+              repository,
+              files,
+              extractors,
+              clock,
+              { timeoutMs: worker.CV_EXTRACTION_TIMEOUT_MS },
+              searchIndex,
+            ),
         },
         {
           provide: DeleteCvFileUseCase,

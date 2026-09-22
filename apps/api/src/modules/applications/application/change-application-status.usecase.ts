@@ -5,7 +5,7 @@ import type {
 import {
   applicationStatusNotifyEvent,
 } from '@linkvault/shared';
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { OUTBOX, type Outbox } from '../../../infrastructure/outbox/outbox.port';
 import type { TransactionSession } from '../../../infrastructure/outbox/transaction-session';
 import { changeStatus } from '../domain/application.entity';
@@ -29,6 +29,7 @@ import {
   type ApplicationRepository,
 } from './ports/application-repository.port';
 import { APPLICATIONS_CLOCK, type Clock } from './ports/clock.port';
+import { SearchFacade } from '../../search/application/search.facade';
 
 /**
  * `PATCH /api/applications/:id/status` (spec applications/tracking + notifications ADR-035), en el orden de D5:
@@ -51,6 +52,7 @@ export class ChangeApplicationStatus {
     @Inject(APPLICATIONS_CLOCK) private readonly clock: Clock,
     @Inject(OUTBOX) private readonly outbox: Outbox,
     private readonly fitScores: ApplicationFitScores,
+    @Optional() private readonly search?: SearchFacade,
   ) {}
 
   async execute(
@@ -92,23 +94,34 @@ export class ChangeApplicationStatus {
       userId,
       change.write,
       change.event,
-      shouldNotify
-        ? async (session: TransactionSession) => {
-            await this.outbox.append(
-              applicationStatusNotifyEvent({
-                applicationId: current.id,
-                linkId: current.linkId,
-                actorUserId: userId,
-                status: change.next.status,
-                statusChangedAt: change.next.statusChangedAt.toISOString(),
-                ...(request.groupId === undefined
-                  ? {}
-                  : { groupId: request.groupId }),
-              }),
-              session,
-            );
-          }
-        : undefined,
+      async (session: TransactionSession) => {
+        if (shouldNotify) {
+          await this.outbox.append(
+            applicationStatusNotifyEvent({
+              applicationId: current.id,
+              linkId: current.linkId,
+              actorUserId: userId,
+              status: change.next.status,
+              statusChangedAt: change.next.statusChangedAt.toISOString(),
+              ...(request.groupId === undefined
+                ? {}
+                : { groupId: request.groupId }),
+            }),
+            session,
+          );
+        }
+        if (this.search !== undefined) {
+          await this.search.upsert(
+            {
+              docType: 'application',
+              aggregateId: current.id,
+              reason: 'application_upsert',
+              fingerprint: `app:${current.id}:${change.next.status}:${change.next.version}`,
+            },
+            session,
+          );
+        }
+      },
     );
     if (!written) {
       const reread = await this.applications.findOwned(current.id, userId);

@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { AppConfigModule } from '../../infrastructure/config/app-config.module';
 import { MongoPersistenceModule } from '../../infrastructure/persistence/mongo-persistence.module';
 import { workerTestConfig } from '../../test-support/test-config';
+import { StubSearchIndexModule } from '../../test-support/stub-search-index.module';
 import { AnalyzeMatchUseCase } from './application/analyze-match.usecase';
 import { ANALYSIS_REPOSITORY } from './application/ports/analysis-repository.port';
 import { AI_CONTEXT_READER } from './application/ports/ai-context-reader.port';
@@ -62,7 +63,9 @@ async function compile(): Promise<TestingModule> {
     imports: [
       AppConfigModule.forRoot(config),
       MongoPersistenceModule,
-      MatchModule.register(config, aiModule),
+      MatchModule.register(config, aiModule, {
+        module: StubSearchIndexModule,
+      }),
     ],
   }).compile();
 }

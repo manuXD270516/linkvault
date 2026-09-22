@@ -62,7 +62,16 @@ import { GroupApplicationsController } from './group-applications.controller';
 })
 export class ApplicationsModule {
   /** `ApplicationsModule` con la instancia de `LinksModule` que construye `AppModule`, que exporta `LinksFacade`. */
-  static register(linksModule: DynamicModule): DynamicModule {
-    return { module: ApplicationsModule, imports: [linksModule] };
+  static register(
+    linksModule: DynamicModule,
+    searchModule?: DynamicModule,
+  ): DynamicModule {
+    return {
+      module: ApplicationsModule,
+      imports: [
+        linksModule,
+        ...(searchModule === undefined ? [] : [searchModule]),
+      ],
+    };
   }
 }

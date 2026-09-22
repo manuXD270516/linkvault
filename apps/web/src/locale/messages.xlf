@@ -4141,6 +4141,170 @@
           <context context-type="linenumber">136,137</context>
         </context-group>
       </trans-unit>
+      <trans-unit id="search.title" datatype="html">
+        <source>Buscar</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">2,3</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.intro" datatype="html">
+        <source> Encuentra vacantes, postulaciones, comentarios, notas, CVs y planes de estudio que puedas ver. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">4,7</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.query.label" datatype="html">
+        <source>Consulta</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">9,11</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.query.placeholder" datatype="html">
+        <source>Título, empresa, nota…</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">19,23</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.filter.docType" datatype="html">
+        <source>Tipo</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">25,27</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.filter.docType.all" datatype="html">
+        <source>Todos los tipos</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">31,32</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.docType.job_preview" datatype="html">
+        <source>Vacante</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">36,38</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">137,139</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.docType.application" datatype="html">
+        <source>Postulación</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">39,41</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">140,142</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.docType.group_comment" datatype="html">
+        <source>Comentario</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">42,44</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">143,145</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.docType.group_link_note" datatype="html">
+        <source>Nota de grupo</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">45,47</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">146,148</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.docType.cv" datatype="html">
+        <source>CV</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">48,49</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">149,150</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.docType.roadmap" datatype="html">
+        <source>Plan de estudio</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">51,53</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">152,154</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.filter.group" datatype="html">
+        <source>Grupo</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">60,62</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.filter.group.all" datatype="html">
+        <source>Todos tus grupos</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">66,67</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.submit" datatype="html">
+        <source> Buscar </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">83,85</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.emptyQuery" datatype="html">
+        <source> Escribe algo para buscar. No listamos todo el índice. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">90,94</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.degraded" datatype="html">
+        <source> La búsqueda semántica no está disponible ahora; mostramos coincidencias por texto. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">101,105</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.unavailable" datatype="html">
+        <source> La búsqueda no está disponible en este momento. Inténtalo más tarde. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">107,109</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.loading" datatype="html">
+        <source>Buscando…</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">114,117</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.empty" datatype="html">
+        <source> No hay resultados para esta consulta. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">119,123</context>
+        </context-group>
+      </trans-unit>
       <trans-unit id="emailVerify.banner.message" datatype="html">
         <source> Tu email aún no está verificado. Revisa tu bandeja o reenvía el correo de verificación. </source>
         <context-group purpose="location">
@@ -4169,39 +4333,46 @@
           <context context-type="linenumber">2,3</context>
         </context-group>
       </trans-unit>
+      <trans-unit id="shell.search" datatype="html">
+        <source>Buscar</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/layout/shell/shell.html</context>
+          <context context-type="linenumber">4,5</context>
+        </context-group>
+      </trans-unit>
       <trans-unit id="shell.applications" datatype="html">
         <source>Postulaciones</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/layout/shell/shell.html</context>
-          <context context-type="linenumber">4,5</context>
+          <context context-type="linenumber">5,6</context>
         </context-group>
       </trans-unit>
       <trans-unit id="shell.myLinks" datatype="html">
         <source>Solo para mí</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/layout/shell/shell.html</context>
-          <context context-type="linenumber">5,6</context>
+          <context context-type="linenumber">6,7</context>
         </context-group>
       </trans-unit>
       <trans-unit id="shell.myCv" datatype="html">
         <source>Mi CV</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/layout/shell/shell.html</context>
-          <context context-type="linenumber">6,7</context>
+          <context context-type="linenumber">7,8</context>
         </context-group>
       </trans-unit>
       <trans-unit id="shell.profile" datatype="html">
         <source>Perfil</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/layout/shell/shell.html</context>
-          <context context-type="linenumber">7,9</context>
+          <context context-type="linenumber">8,10</context>
         </context-group>
       </trans-unit>
       <trans-unit id="shell.logout" datatype="html">
         <source> Cerrar sesión </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/layout/shell/shell.html</context>
-          <context context-type="linenumber">15,17</context>
+          <context context-type="linenumber">16,18</context>
         </context-group>
       </trans-unit>
       <trans-unit id="error.tooManyAttempts" datatype="html">

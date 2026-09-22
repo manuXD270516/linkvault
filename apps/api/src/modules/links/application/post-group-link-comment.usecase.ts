@@ -2,7 +2,10 @@ import type {
   CreateCommentRequest,
   CreateCommentResponse,
 } from '@linkvault/shared';
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
+import { getConnectionToken } from '@nestjs/mongoose';
+import type { Connection } from 'mongoose';
+import { SearchFacade } from '../../search/application/search.facade';
 import {
   CommentsGroupNotFound,
   LinkNotFound,
@@ -42,6 +45,7 @@ import {
  * 4. `addComment`, que abre y cierra la transacción dentro; ante **cualquier** error, incluido el `null` de una relación
  *    que ya no existe (`link_not_found`), se devuelve el intento;
  * 5. con éxito, `void publish` después y fuera de la transacción: la respuesta no espera al aviso.
+ * 6. SearchUpsert `group_comment` vía SearchFacade si FEATURE_SEARCH (misma red de seguridad que unshare).
  *
  * Nunca registra el texto del comentario.
  */
@@ -58,6 +62,8 @@ export class PostGroupLinkComment {
     @Inject(COMMENTS_CHANGED_PUBLISHER)
     private readonly publisher: CommentsChangedPublisher,
     @Inject(LINKS_CLOCK) private readonly clock: Clock,
+    @Inject(getConnectionToken()) private readonly connection: Connection,
+    @Optional() private readonly search?: SearchFacade,
   ) {}
 
   async execute(
@@ -93,6 +99,8 @@ export class PostGroupLinkComment {
       })
       .catch(() => undefined);
 
+    await this.emitSearchUpsert(added.comment.id, added.comment.text);
+
     const latest =
       (await this.comments.latestByLinks(groupId, [linkId])).get(linkId) ?? [];
     const names = await this.directory.displayNamesOf(
@@ -118,6 +126,32 @@ export class PostGroupLinkComment {
     } catch (error) {
       await this.limiter.refund(key);
       throw error;
+    }
+  }
+
+  private async emitSearchUpsert(
+    commentId: string,
+    text: string,
+  ): Promise<void> {
+    if (this.search?.enabled !== true) {
+      return;
+    }
+    const search = this.search;
+    const session = await this.connection.startSession();
+    try {
+      await session.withTransaction(async () => {
+        await search.upsert(
+          {
+            docType: 'group_comment',
+            aggregateId: commentId,
+            reason: 'comment_upsert',
+            fingerprint: `comment:${commentId}:${text.length}`,
+          },
+          session,
+        );
+      });
+    } finally {
+      await session.endSession();
     }
   }
 }

@@ -13,6 +13,12 @@ export type AiTaskName =
   | 'build-roadmap'
   | 'classify-skills';
 
+/**
+ * Identificador de operación en ledger/cuota: tareas LLM o `embed` (ADR-036).
+ * `embed` no es una `AiTask` ni pasa por `runTask`.
+ */
+export type AiLedgerTask = AiTaskName | 'embed';
+
 /** `personal`: redacción de PII y consentimiento para proveedores externos. `public`: contenido público. */
 export type DataSensitivity = 'personal' | 'public';
 

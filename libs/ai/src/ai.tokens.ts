@@ -1,8 +1,11 @@
-// Tokens de inyección del módulo de IA (D12 de ai-gateway-core). Separados de `ai.module.ts` para que quien solo
-// inyecta `runTask` no dependa del grafo de proveedores.
+// Tokens de inyección del módulo de IA (D12 de ai-gateway-core; ADR-036). Separados de `ai.module.ts` para que quien
+// solo inyecta `runTask` / `embedTexts` no dependa del grafo de proveedores.
 
-/** `RunTaskFn`: único punto de entrada del módulo de IA (ADR-014). */
+/** `RunTaskFn`: punto de entrada LLM del módulo de IA (ADR-014). */
 export const RUN_TASK = Symbol('RUN_TASK');
+
+/** `EmbedTextsFn`: única puerta de embeddings (ADR-036). */
+export const EMBED_TEXTS = Symbol('EMBED_TEXTS');
 
 /**
  * Consulta de elegibilidad de solo lectura (`ProviderEligibility`). Exportada para que `api` pueda

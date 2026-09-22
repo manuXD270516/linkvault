@@ -233,8 +233,14 @@ export class LinksModule implements OnModuleInit {
    * objeto que importa `AppModule`, construido una vez: `AiModule` no es global y `RUN_TASK` solo es visible para quien
    * lo importa. Lo demás del módulo sigue en su decorador; Nest suma las dos partes.
    */
-  static register(aiModule: DynamicModule): DynamicModule {
-    return { module: LinksModule, imports: [aiModule] };
+  static register(
+    aiModule: DynamicModule,
+    searchModule?: DynamicModule,
+  ): DynamicModule {
+    return {
+      module: LinksModule,
+      imports: [aiModule, ...(searchModule === undefined ? [] : [searchModule])],
+    };
   }
 
   constructor(

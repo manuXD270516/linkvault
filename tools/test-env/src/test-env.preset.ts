@@ -7,6 +7,7 @@ import { defineConfig } from 'vitest/config';
 export const TEST_ENV = {
   AI_CHAIN: 'mock',
   AI_MOCK_MODE: 'replay',
+  AI_EMBED_CHAIN: 'mock',
 } as const;
 
 /**

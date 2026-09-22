@@ -3,7 +3,7 @@ import type {
   SaveLinkRequest,
   SaveLinkResponse,
 } from '@linkvault/shared';
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { GroupNotFound } from '../../groups/domain/errors';
 import { InvalidShareNote } from '../domain/errors';
 import { createShareNote } from '../domain/share-note';
@@ -35,6 +35,7 @@ import {
   type UserLinkRepository,
 } from './ports/user-link-repository.port';
 import { requireDraft, saveOneLink, type SavedLink } from './save-one-link';
+import { SearchFacade } from '../../search/application/search.facade';
 
 /**
  * `POST /api/links` (spec links/sharing). Con `groupId` el link queda compartido en ese grupo; sin él, solo en la lista
@@ -64,6 +65,7 @@ export class SaveLink {
     @Inject(LINK_USER_DIRECTORY) private readonly directory: LinkUserDirectory,
     @Inject(PUBLIC_URLS) private readonly urls: PublicUrls,
     @Inject(LINKS_CLOCK) private readonly clock: Clock,
+    @Optional() private readonly search?: SearchFacade,
   ) {}
 
   async execute(
@@ -102,6 +104,7 @@ export class SaveLink {
       groupLinks: this.groupLinks,
       userLinks: this.userLinks,
       outbox: this.outbox,
+      ...(this.search === undefined ? {} : { search: this.search }),
     };
   }
 

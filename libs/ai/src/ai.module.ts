@@ -12,11 +12,13 @@ import {
   AI_CACHE_REDIS_CLIENT,
   AI_MODULE_OPTIONS,
   BYOK_PROVIDER_FACTORY,
+  EMBED_TEXTS,
   PROVIDER_ELIGIBILITY,
   RUN_TASK,
   SECRET_VAULT,
   USER_AI_KEYS_REPOSITORY,
 } from './ai.tokens';
+import { EmbedTexts, type EmbedTextsFn } from './application/embed-texts.usecase';
 import { NullResultCache } from './application/null-result-cache';
 import {
   DefaultProviderEligibility,
@@ -45,6 +47,7 @@ import {
 } from './infrastructure/persistence/redis-result-cache.client';
 import { FilePromptRegistry } from './infrastructure/prompt-registry/file-prompt-registry';
 import { ByokProviderFactory } from './infrastructure/providers/byok-provider.factory';
+import { buildEmbeddingProviders } from './infrastructure/providers/embedding-provider-registry';
 import {
   buildProviders,
   type BuiltProviders,
@@ -59,10 +62,10 @@ import { extractJobTask } from './tasks/extract-job.task';
 import { extractPastedJobTask } from './tasks/extract-pasted-job.task';
 import { matchCvTask } from './tasks/match-cv.task';
 
-// `AiModule` (D8, D9 y D12 de ai-gateway-core; elegibilidad y breaker compartido de cv-match-suggestions).
-// Compone runTask con sus adaptadores a partir de una configuración ya validada por `parseAiConfig`: no lee
-// `process.env`. Usa la conexión Mongoose por defecto de la app (`getConnectionToken()`), así que quien lo importa
-// debe registrar `MongooseModule.forRoot*`. Exporta `RUN_TASK` y `PROVIDER_ELIGIBILITY`.
+// `AiModule` (D8, D9 y D12 de ai-gateway-core; elegibilidad y breaker compartido de cv-match-suggestions; ADR-036).
+// Compone runTask y embedTexts con sus adaptadores a partir de una configuración ya validada por `parseAiConfig`: no
+// lee `process.env`. Usa la conexión Mongoose por defecto de la app (`getConnectionToken()`), así que quien lo importa
+// debe registrar `MongooseModule.forRoot*`. Exporta `RUN_TASK`, `EMBED_TEXTS` y `PROVIDER_ELIGIBILITY`.
 
 export interface AiModuleOptions {
   /** Resultado `ok` de `parseAiConfig`. */
@@ -93,6 +96,7 @@ export const AI_TASKS: readonly AnyAiTask[] = [
 const AI_TASK_REGISTRY = Symbol('AI_TASK_REGISTRY');
 const AI_PROMPT_REGISTRY = Symbol('AI_PROMPT_REGISTRY');
 const AI_PROVIDERS = Symbol('AI_PROVIDERS');
+const AI_EMBED_PROVIDERS = Symbol('AI_EMBED_PROVIDERS');
 const AI_CLOCK = Symbol('AI_CLOCK');
 const AI_LOGGER = Symbol('AI_LOGGER');
 const AI_CACHE_REDIS_CONNECTION = Symbol('AI_CACHE_REDIS_CONNECTION');
@@ -161,6 +165,12 @@ export class AiModule {
           { config }: AiModuleOptions,
           tasks: TaskRegistry,
         ): BuiltProviders => buildProviders(config, { tasks }),
+      },
+      {
+        provide: AI_EMBED_PROVIDERS,
+        inject: [AI_MODULE_OPTIONS],
+        useFactory: ({ config }: AiModuleOptions) =>
+          buildEmbeddingProviders(config),
       },
       { provide: AI_CLOCK, useValue: systemClock },
       { provide: AI_LOGGER, useFactory: (): AiLogger => new NestAiLogger() },
@@ -315,6 +325,34 @@ export class AiModule {
             logger,
           }).execute,
       },
+      {
+        provide: EMBED_TEXTS,
+        inject: [
+          AI_EMBED_PROVIDERS,
+          AI_USAGE_LEDGER,
+          AI_QUOTA_POLICY,
+          AI_CIRCUIT_BREAKER,
+          AI_CLOCK,
+          AI_LOGGER,
+        ],
+        useFactory: (
+          built: ReturnType<typeof buildEmbeddingProviders>,
+          ledger: MongoUsageLedger,
+          quota: QuotaPolicy,
+          breaker: CircuitBreaker,
+          clock: Clock,
+          logger: AiLogger,
+        ): EmbedTextsFn =>
+          new EmbedTexts({
+            providers: built.providers,
+            providerTimeoutsMs: built.timeoutsMs,
+            ledger,
+            quota,
+            breaker,
+            clock,
+            logger,
+          }).execute,
+      },
     ];
 
     return {
@@ -323,6 +361,7 @@ export class AiModule {
       providers,
       exports: [
         RUN_TASK,
+        EMBED_TEXTS,
         PROVIDER_ELIGIBILITY,
         SECRET_VAULT,
         USER_AI_KEYS_REPOSITORY,

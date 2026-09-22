@@ -91,6 +91,7 @@ function extractConsumer(
     extractorsOf(new StubExtractor(extractor)),
     clock,
     { timeoutMs },
+    { upsert: async () => undefined, delete: async () => undefined },
   );
   return new ExtractCvConsumer(
     useCase,

@@ -12,6 +12,9 @@ import {
   MATCH_REQUESTED_EVENT_TYPE,
   NOTIFY_FANOUT_QUEUE,
   ROADMAP_REQUESTED_EVENT_TYPE,
+  SEARCH_DELETE_EVENT_TYPE,
+  SEARCH_INDEX_QUEUE,
+  SEARCH_UPSERT_EVENT_TYPE,
 } from '@linkvault/shared';
 import { describe, expect, it } from 'vitest';
 import {
@@ -31,6 +34,8 @@ describe('the outbox routing table', () => {
         ROADMAP_REQUESTED_EVENT_TYPE,
         GROUP_LINK_ADDED_EVENT_TYPE,
         APPLICATION_STATUS_NOTIFY_EVENT_TYPE,
+        SEARCH_UPSERT_EVENT_TYPE,
+        SEARCH_DELETE_EVENT_TYPE,
       ].sort(),
     );
   });
@@ -44,6 +49,15 @@ describe('the outbox routing table', () => {
     );
   });
 
+  it('routes search index types to the search-index queue', () => {
+    expect(OUTBOX_ROUTES[SEARCH_UPSERT_EVENT_TYPE]?.queue).toBe(
+      SEARCH_INDEX_QUEUE,
+    );
+    expect(OUTBOX_ROUTES[SEARCH_DELETE_EVENT_TYPE]?.queue).toBe(
+      SEARCH_INDEX_QUEUE,
+    );
+  });
+
   it('lists the queues the relay has to register', () => {
     expect([...OUTBOX_QUEUES].sort()).toEqual(
       [
@@ -53,6 +67,7 @@ describe('the outbox routing table', () => {
         ANALYZE_MATCH_QUEUE,
         BUILD_ROADMAP_QUEUE,
         NOTIFY_FANOUT_QUEUE,
+        SEARCH_INDEX_QUEUE,
       ].sort(),
     );
   });
@@ -124,6 +139,36 @@ describe('the outbox routing table', () => {
       },
       jobId: 'notify:asn:a1_applied_union_2026-09-22T120000.000Z',
     });
+    expect(
+      outboxRouteOf(SEARCH_UPSERT_EVENT_TYPE)?.job({
+        docType: 'job_preview',
+        aggregateId: 'l1',
+        reason: 'preview_updated',
+        contentHash: 'abcdef0123456789',
+      }),
+    ).toEqual({
+      data: {
+        docType: 'job_preview',
+        aggregateId: 'l1',
+        reason: 'preview_updated',
+        contentHash: 'abcdef0123456789',
+      },
+      jobId: 'search:job_preview_l1:abcdef0123456789',
+    });
+    expect(
+      outboxRouteOf(SEARCH_DELETE_EVENT_TYPE)?.job({
+        docType: 'cv',
+        aggregateId: 'c1',
+        reason: 'aggregate_deleted',
+      }),
+    ).toEqual({
+      data: {
+        docType: 'cv',
+        aggregateId: 'c1',
+        reason: 'aggregate_deleted',
+      },
+      jobId: 'search:cv_c1:del',
+    });
   });
 
   it('throws when the payload does not meet its schema', () => {
@@ -185,6 +230,17 @@ describe('the jobId of every route, against the rules of BullMQ', () => {
       actorUserId: 'u1',
       status: 'applied',
       statusChangedAt: '2026-09-22T12:00:00.000Z',
+    },
+    [SEARCH_UPSERT_EVENT_TYPE]: {
+      docType: 'job_preview',
+      aggregateId: 'l1',
+      reason: 'preview_updated',
+      contentHash: 'abcdef0123456789',
+    },
+    [SEARCH_DELETE_EVENT_TYPE]: {
+      docType: 'cv',
+      aggregateId: 'c1',
+      reason: 'aggregate_deleted',
     },
   };
 

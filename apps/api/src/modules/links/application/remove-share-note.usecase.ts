@@ -1,4 +1,7 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
+import { getConnectionToken } from '@nestjs/mongoose';
+import type { Connection } from 'mongoose';
+import { SearchFacade } from '../../search/application/search.facade';
 import {
   CommentsGroupNotFound,
   LinkNotFound,
@@ -22,6 +25,7 @@ import {
  * 2. relación: un link que no está en el grupo, `link_not_found`;
  * 3. permiso: quien no compartió el link y no es `owner`, `forbidden`, **haya o no nota**;
  * 4. `clearNote`: `204` la hubiera o no; si la relación desapareció entretanto, `link_not_found`.
+ * 5. SearchDelete `group_link_note` si FEATURE_SEARCH (el índice no debe conservar la nota).
  */
 @Injectable()
 export class RemoveShareNote {
@@ -29,6 +33,8 @@ export class RemoveShareNote {
     @Inject(GROUP_LINK_REPOSITORY)
     private readonly groupLinks: GroupLinkRepository,
     @Inject(GROUP_MEMBERSHIP) private readonly membership: GroupMembership,
+    @Inject(getConnectionToken()) private readonly connection: Connection,
+    @Optional() private readonly search?: SearchFacade,
   ) {}
 
   async execute(
@@ -49,6 +55,32 @@ export class RemoveShareNote {
     }
     if (!(await this.groupLinks.clearNote(groupId, linkId))) {
       throw new LinkNotFound();
+    }
+    await this.emitSearchDelete(groupId, linkId);
+  }
+
+  private async emitSearchDelete(
+    groupId: string,
+    linkId: string,
+  ): Promise<void> {
+    if (this.search?.enabled !== true) {
+      return;
+    }
+    const search = this.search;
+    const session = await this.connection.startSession();
+    try {
+      await session.withTransaction(async () => {
+        await search.delete(
+          {
+            docType: 'group_link_note',
+            aggregateId: `${groupId}_${linkId}`,
+            reason: 'aggregate_deleted',
+          },
+          session,
+        );
+      });
+    } finally {
+      await session.endSession();
     }
   }
 }

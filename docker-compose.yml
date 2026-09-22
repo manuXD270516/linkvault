@@ -1,15 +1,17 @@
-# Infraestructura local de LinkVault (ADR-017, D6 de bootstrap-monorepo; ADR-034 correo).
+# Infraestructura local de LinkVault (ADR-017, D6 de bootstrap-monorepo; ADR-034 correo; search ADR-006 F2).
 # Solo infraestructura: api, worker y web se ejecutan en el host con `pnpm nx serve`.
 #
 #   docker compose up -d --wait                         # mongo, redis, minio, mailpit
 #   docker compose --profile ai-local up -d --wait      # + ollama
+#   docker compose --profile search up -d --wait        # + meilisearch
 #
 # Puertos del host configurables (MONGO_PORT, REDIS_PORT, MINIO_PORT, MINIO_CONSOLE_PORT,
-# MAILPIT_SMTP_PORT, MAILPIT_UI_PORT, OLLAMA_PORT) por si otro proyecto ya los ocupa;
+# MAILPIT_SMTP_PORT, MAILPIT_UI_PORT, OLLAMA_PORT, MEILI_PORT) por si otro proyecto ya los ocupa;
 # por defecto, los estándar.
 # URI desde el host:        mongodb://localhost:27017/linkvault?directConnection=true
 # URI desde un contenedor:  mongodb://mongo:27017/linkvault?replicaSet=rs0
 # Mailpit UI (smoke local): http://localhost:8025  · SMTP: localhost:1025
+# Meili (solo con profile search): http://localhost:7700  · en red compose: http://meilisearch:7700
 name: linkvault
 
 services:
@@ -139,8 +141,32 @@ services:
       - ollama-data:/root/.ollama
     restart: unless-stopped
 
+  # Búsqueda híbrida (change search / ADR-006 F2, ADR-036). No arranca sin profile `search`.
+  # En local el puerto se publica para `nx serve` en el host; en producción Meili MUST quedar en
+  # red interna (VPC / compose internal) — no exponer el puerto ni la master key a Internet (RUNBOOK).
+  meilisearch:
+    image: getmeili/meilisearch:v1.14
+    profiles: ['search']
+    environment:
+      MEILI_ENV: development
+      # Solo desarrollo; no uses este valor fuera de local. Producción: secreto propio, nunca en repo.
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-dev-only-meili-master-key-change-me}
+    ports:
+      - '${MEILI_PORT:-7700}:7700'
+    volumes:
+      - meili-data:/meili_data
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:7700/health']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+      start_interval: 1s
+    restart: unless-stopped
+
 volumes:
   mongo-data:
   redis-data:
   minio-data:
   ollama-data:
+  meili-data:

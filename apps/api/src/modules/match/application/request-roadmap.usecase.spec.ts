@@ -179,7 +179,7 @@ describe('cascade delete roadmaps with analyses', () => {
     const ids = await analyses.findIdsByCv(ANA, CV_ID, {} as never);
     expect(ids).toEqual([ANALYSIS_ID]);
     const removed = await roadmaps.removeByAnalysisIds(ids, {} as never);
-    expect(removed).toBe(1);
+    expect(removed).toEqual([expect.any(String)]);
     expect(roadmaps.documents.size).toBe(0);
   });
 });

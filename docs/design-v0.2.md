@@ -501,6 +501,7 @@ sequenceDiagram
 | 15 | `auth-email-recovery` | puerto Mailer (Resend/Mailpit/captura), verify + reset, `emailVerified`, resend autenticado; **ADR-034** |
 | 16 | `deploy-prod` | compose prod + Traefik + GHCR CD; borrado de cuenta; `/metrics`; **ADR-033** |
 | 17 | `notifications` | email + web push; nuevo link / estado grupo / ApplicationStale; prefs opt-out; **ADR-035** |
+| 18 | `search` | Meilisearch (compose profile `search`); índice híbrido full-text + embeddings; ACL; SPA `/buscar`; **ADR-036** (enmienda ADR-016) |
 
 ---
 

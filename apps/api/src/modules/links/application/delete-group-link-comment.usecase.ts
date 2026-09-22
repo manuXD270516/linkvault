@@ -1,5 +1,8 @@
 import type { DeleteCommentResponse } from '@linkvault/shared';
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
+import { getConnectionToken } from '@nestjs/mongoose';
+import type { Connection } from 'mongoose';
+import { SearchFacade } from '../../search/application/search.facade';
 import {
   CommentDeletionForbidden,
   CommentNotFound,
@@ -36,6 +39,7 @@ import {
  * 3. permiso: su autor o el `owner` (decisión humana 5); otro miembro recibe `forbidden`, porque ya ve el comentario;
  * 4. `removeComment`: si otro borrado se adelantó (`null`), `comment_not_found` **sin aviso**; si no, `200` con el
  *    resumen nuevo y `void publish`.
+ * 5. SearchDelete `group_comment` vía SearchFacade si FEATURE_SEARCH.
  *
  * El rol se lee antes de la transacción: la ventana de un owner que acaba de transferir la propiedad está aceptada por
  * escrito (D6), como en el resto de permisos por rol de `links`.
@@ -51,6 +55,8 @@ export class DeleteGroupLinkComment {
     @Inject(LINK_USER_DIRECTORY) private readonly directory: LinkUserDirectory,
     @Inject(COMMENTS_CHANGED_PUBLISHER)
     private readonly publisher: CommentsChangedPublisher,
+    @Inject(getConnectionToken()) private readonly connection: Connection,
+    @Optional() private readonly search?: SearchFacade,
   ) {}
 
   async execute(
@@ -84,6 +90,8 @@ export class DeleteGroupLinkComment {
       .publish({ groupId, linkId, commentId, change: 'deleted' })
       .catch(() => undefined);
 
+    await this.emitSearchDelete(commentId);
+
     const members = new Set(await this.membership.memberIdsOf([groupId]));
     const latest =
       (await this.comments.latestByLinks(groupId, [linkId])).get(linkId) ?? [];
@@ -94,5 +102,27 @@ export class DeleteGroupLinkComment {
     return {
       comments: toCommentsSummary(counters, latest, names, members),
     };
+  }
+
+  private async emitSearchDelete(commentId: string): Promise<void> {
+    if (this.search?.enabled !== true) {
+      return;
+    }
+    const search = this.search;
+    const session = await this.connection.startSession();
+    try {
+      await session.withTransaction(async () => {
+        await search.delete(
+          {
+            docType: 'group_comment',
+            aggregateId: commentId,
+            reason: 'aggregate_deleted',
+          },
+          session,
+        );
+      });
+    } finally {
+      await session.endSession();
+    }
   }
 }

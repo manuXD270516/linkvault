@@ -229,6 +229,7 @@ describe('BuildRoadmapUseCase', () => {
       runTask,
       new FakeClock(),
       { timeoutMs: 30_000 },
+      { upsert: async () => undefined, delete: async () => undefined },
     );
     analyses.doc = doneWithMissing();
   });
@@ -277,6 +278,7 @@ describe('BuildRoadmapUseCase', () => {
       degradedRun,
       new FakeClock(),
       { timeoutMs: 30_000 },
+      { upsert: async () => undefined, delete: async () => undefined },
     );
     const result = await useCase.execute(PAYLOAD);
     expect(result.kind).toBe('failed');

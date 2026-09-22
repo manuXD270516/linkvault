@@ -1,0 +1,176 @@
+<section class="mx-auto flex max-w-2xl flex-col gap-6 p-6" data-testid="search-page">
+  <h1 class="text-2xl font-medium" i18n="@@search.title">Buscar</h1>
+  <p class="m-0 text-(--mat-sys-on-surface-variant)" i18n="@@search.intro">
+    Encuentra vacantes, postulaciones, comentarios, notas, CVs y planes de estudio que puedas ver.
+  </p>
+
+  <form class="flex flex-col gap-4" (ngSubmit)="submit()" data-testid="search-form">
+    <mat-form-field appearance="outline" class="w-full">
+      <mat-label i18n="@@search.query.label">Consulta</mat-label>
+      <input
+        matInput
+        name="q"
+        type="search"
+        autocomplete="off"
+        [ngModel]="queryDraft()"
+        (ngModelChange)="onQueryDraft($event)"
+        data-testid="search-query"
+        i18n-placeholder="@@search.query.placeholder"
+        placeholder="Título, empresa, nota…"
+      />
+    </mat-form-field>
+
+    <div class="flex flex-col gap-4 sm:flex-row">
+      <mat-form-field appearance="outline" class="w-full sm:flex-1">
+        <mat-label i18n="@@search.filter.docType">Tipo</mat-label>
+        <mat-select
+          [value]="docType() ?? ''"
+          (selectionChange)="onDocTypeChange($event.value)"
+          data-testid="search-doc-type"
+        >
+          <mat-option value="" i18n="@@search.filter.docType.all">Todos los tipos</mat-option>
+          @for (type of docTypes; track type) {
+            <mat-option [value]="type">
+              @switch (type) {
+                @case ('job_preview') {
+                  <ng-container i18n="@@search.docType.job_preview">Vacante</ng-container>
+                }
+                @case ('application') {
+                  <ng-container i18n="@@search.docType.application">Postulación</ng-container>
+                }
+                @case ('group_comment') {
+                  <ng-container i18n="@@search.docType.group_comment">Comentario</ng-container>
+                }
+                @case ('group_link_note') {
+                  <ng-container i18n="@@search.docType.group_link_note">Nota de grupo</ng-container>
+                }
+                @case ('cv') {
+                  <ng-container i18n="@@search.docType.cv">CV</ng-container>
+                }
+                @case ('roadmap') {
+                  <ng-container i18n="@@search.docType.roadmap">Plan de estudio</ng-container>
+                }
+              }
+            </mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="w-full sm:flex-1">
+        <mat-label i18n="@@search.filter.group">Grupo</mat-label>
+        <mat-select
+          [value]="groupId() ?? ''"
+          (selectionChange)="onGroupChange($event.value)"
+          data-testid="search-group"
+        >
+          <mat-option value="" i18n="@@search.filter.group.all">Todos tus grupos</mat-option>
+          @for (group of groupOptions(); track group.id) {
+            <mat-option [value]="group.id">{{ group.name }}</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+    </div>
+
+    <div>
+      <button
+        mat-flat-button
+        color="primary"
+        type="submit"
+        [disabled]="loading()"
+        data-testid="search-submit"
+        i18n="@@search.submit"
+      >
+        Buscar
+      </button>
+    </div>
+  </form>
+
+  @if (emptyDraft()) {
+    <p class="m-0" role="alert" data-testid="search-empty-query" i18n="@@search.emptyQuery">
+      Escribe algo para buscar. No listamos todo el índice.
+    </p>
+  }
+
+  @if (degraded()) {
+    <p
+      class="m-0 rounded border border-(--mat-sys-outline-variant) p-3 text-sm"
+      role="status"
+      data-testid="search-degraded"
+      i18n="@@search.degraded"
+    >
+      La búsqueda semántica no está disponible ahora; mostramos coincidencias por texto.
+    </p>
+  }
+
+  @if (unavailable()) {
+    <p class="m-0 text-(--mat-sys-error)" role="alert" data-testid="search-unavailable" i18n="@@search.unavailable">
+      La búsqueda no está disponible en este momento. Inténtalo más tarde.
+    </p>
+  } @else if (failure(); as currentFailure) {
+    <lv-request-error [failure]="currentFailure" />
+  }
+
+  @if (loading()) {
+    <p class="m-0" role="status" data-testid="search-loading" i18n="@@search.loading">Buscando…</p>
+  }
+
+  @if (isEmpty()) {
+    <p class="m-0" data-testid="search-empty" i18n="@@search.empty">
+      No hay resultados para esta consulta.
+    </p>
+  }
+
+  @if (hits().length > 0) {
+    <ul class="m-0 flex list-none flex-col gap-3 p-0" data-testid="search-results">
+      @for (hit of hits(); track hit.id) {
+        <li
+          class="flex flex-col gap-1 border-b border-(--mat-sys-outline-variant) pb-3"
+          [attr.data-testid]="'search-hit-' + hit.docType"
+        >
+          <div class="flex flex-wrap items-baseline gap-2">
+            <span
+              class="text-xs font-medium uppercase tracking-wide text-(--mat-sys-on-surface-variant)"
+              data-testid="search-hit-type"
+            >
+              @switch (hit.docType) {
+                @case ('job_preview') {
+                  <ng-container i18n="@@search.docType.job_preview">Vacante</ng-container>
+                }
+                @case ('application') {
+                  <ng-container i18n="@@search.docType.application">Postulación</ng-container>
+                }
+                @case ('group_comment') {
+                  <ng-container i18n="@@search.docType.group_comment">Comentario</ng-container>
+                }
+                @case ('group_link_note') {
+                  <ng-container i18n="@@search.docType.group_link_note">Nota de grupo</ng-container>
+                }
+                @case ('cv') {
+                  <ng-container i18n="@@search.docType.cv">CV</ng-container>
+                }
+                @case ('roadmap') {
+                  <ng-container i18n="@@search.docType.roadmap">Plan de estudio</ng-container>
+                }
+              }
+            </span>
+            @if (routeFor(hit); as href) {
+              <a
+                class="text-lg font-medium"
+                [routerLink]="href"
+                data-testid="search-hit-link"
+                >{{ hit.title || hit.snippet || hit.id }}</a
+              >
+            } @else {
+              <span class="text-lg font-medium" data-testid="search-hit-title">{{
+                hit.title || hit.snippet || hit.id
+              }}</span>
+            }
+          </div>
+          @if (hit.snippet) {
+            <p class="m-0 text-sm text-(--mat-sys-on-surface-variant)">{{ hit.snippet }}</p>
+          }
+        </li>
+      }
+    </ul>
+  }
+</section>

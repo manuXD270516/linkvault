@@ -28,6 +28,7 @@ import { MyLinksPage } from './features/links/my-links.page';
 import { ProfilePage } from './features/profile/profile.page';
 import { NotificationsPage } from './features/notifications/notifications.page';
 import { RoadmapPage } from './features/roadmap/roadmap.page';
+import { SearchPage } from './features/search/search.page';
 import { Shell } from './layout/shell/shell';
 
 const session: SessionResponse = {
@@ -109,6 +110,7 @@ describe('appRoutes', () => {
       'mi-cv',
       'plan/:analysisId',
       'postulaciones',
+      'buscar',
       'perfil',
       'notificaciones',
     ]) {
@@ -228,7 +230,7 @@ describe('appRoutes', () => {
       expect(router.url).toBe('/plan/a1');
     });
 
-    it('Ruta diferida', async () => {
+    it('Ruta diferida de postulaciones', async () => {
       const board = routeAt('postulaciones', routeAt('').children);
       expect(board.component).toBeUndefined();
       expect(board.loadComponent).toBeUndefined();
@@ -251,6 +253,31 @@ describe('appRoutes', () => {
       expect(router.url).toBe('/postulaciones');
       await vi.waitFor(() =>
         expect(harness.routeNativeElement?.textContent).toContain('Aquí verás las ofertas que sigues'),
+      );
+    });
+
+    it('Ruta diferida de buscar', async () => {
+      const search = routeAt('buscar', routeAt('').children);
+      expect(search.component).toBeUndefined();
+      expect(search.loadComponent).toBeUndefined();
+      expect(search.loadChildren).toBeTypeOf('function');
+
+      store.setSession(session);
+      const harness = await RouterTestingHarness.create();
+      await harness.navigateByUrl('/grupos', Shell);
+      http.expectOne('/api/groups').flush([]);
+      const loaded = (): unknown =>
+        Reflect.get(routeAt('buscar', routeAt('', router.config).children), '_loadedRoutes');
+      expect(loaded()).toBeUndefined();
+
+      await harness.navigateByUrl('/buscar', Shell);
+      http.expectOne('/api/groups').flush([]);
+
+      expect(loaded()).toBeDefined();
+      expect(harness.fixture.debugElement.query(By.directive(SearchPage))).not.toBeNull();
+      expect(router.url).toBe('/buscar');
+      await vi.waitFor(() =>
+        expect(harness.routeNativeElement?.textContent).toContain('Encuentra vacantes'),
       );
     });
 

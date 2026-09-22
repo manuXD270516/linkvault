@@ -81,6 +81,7 @@ function useCaseFor(
       { pdf: new PdfTextExtractor(), docx: new DocxTextExtractor() },
       new MovableClock(),
       { timeoutMs: 30_000 },
+      { upsert: async () => undefined, delete: async () => undefined },
     ),
   };
 }
