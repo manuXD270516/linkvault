@@ -94,15 +94,20 @@ export class SearchContent {
         ? 'fulltext'
         : mode;
 
-    const result = await this.meili.search({
-      q,
-      filter,
-      limit,
-      offset,
-      mode: effectiveMode,
-      semanticRatio: this.config.SEARCH_SEMANTIC_RATIO,
-      ...(vector === undefined ? {} : { vector }),
-    });
+    let result;
+    try {
+      result = await this.meili.search({
+        q,
+        filter,
+        limit,
+        offset,
+        mode: effectiveMode,
+        semanticRatio: this.config.SEARCH_SEMANTIC_RATIO,
+        ...(vector === undefined ? {} : { vector }),
+      });
+    } catch {
+      throw new SearchUnavailable();
+    }
 
     const hits: SearchHit[] = result.hits.map((hit) => ({
       id: hit.id,

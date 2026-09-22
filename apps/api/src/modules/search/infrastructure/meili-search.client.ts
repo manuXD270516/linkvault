@@ -41,6 +41,9 @@ const SEARCHABLE = [
 
 const SORTABLE = ['updatedAt'] as const;
 
+/** Dimensión alineada al mock de embeddings (ADR-036). */
+const EMBEDDING_DIMENSIONS = 768;
+
 const DISPLAYED = [
   ...FILTERABLE,
   ...SEARCHABLE,
@@ -62,6 +65,8 @@ export class MeiliSearchClientAdapter implements MeiliSearchClient {
   private readonly client: MeiliSearch | null;
   private readonly indexUid: string;
   readonly configured: boolean;
+
+  private ensurePromise: Promise<void> | null = null;
 
   constructor(options: MeiliClientOptions) {
     this.indexUid = options.indexUid;
@@ -85,6 +90,20 @@ export class MeiliSearchClientAdapter implements MeiliSearchClient {
   }
 
   async ensureIndex(): Promise<void> {
+    if (this.ensurePromise !== null) {
+      await this.ensurePromise;
+      return;
+    }
+    this.ensurePromise = this.createAndConfigureIndex();
+    try {
+      await this.ensurePromise;
+    } catch (error) {
+      this.ensurePromise = null;
+      throw error;
+    }
+  }
+
+  private async createAndConfigureIndex(): Promise<void> {
     const client = this.requireClient();
     try {
       await client.createIndex(this.indexUid, { primaryKey: 'id' });
@@ -98,10 +117,18 @@ export class MeiliSearchClientAdapter implements MeiliSearchClient {
       sortableAttributes: [...SORTABLE],
       displayedAttributes: [...DISPLAYED],
     });
+    // Vectores userProvided (ADR-036 / D3): sin esto hybrid+vector → MeiliSearchApiError 500.
+    await index.updateEmbedders({
+      default: {
+        source: 'userProvided',
+        dimensions: EMBEDDING_DIMENSIONS,
+      },
+    });
   }
 
   async upsert(documents: readonly SearchIndexDocument[]): Promise<void> {
     if (documents.length === 0) return;
+    await this.ensureIndex();
     const index = this.requireClient().index(this.indexUid);
     const task = await index.addDocuments([...documents], { primaryKey: 'id' });
     await this.requireClient().tasks.waitForTask(task.taskUid);
@@ -109,18 +136,21 @@ export class MeiliSearchClientAdapter implements MeiliSearchClient {
 
   async delete(ids: readonly string[]): Promise<void> {
     if (ids.length === 0) return;
+    await this.ensureIndex();
     const index = this.requireClient().index(this.indexUid);
     const task = await index.deleteDocuments([...ids]);
     await this.requireClient().tasks.waitForTask(task.taskUid);
   }
 
   async deleteByFilter(filter: string): Promise<void> {
+    await this.ensureIndex();
     const index = this.requireClient().index(this.indexUid);
     const task = await index.deleteDocuments({ filter });
     await this.requireClient().tasks.waitForTask(task.taskUid);
   }
 
   async search(query: MeiliSearchQuery): Promise<MeiliSearchResult> {
+    await this.ensureIndex();
     const index = this.requireClient().index(this.indexUid);
     const hybrid =
       query.mode === 'fulltext'
