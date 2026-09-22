@@ -1,4 +1,8 @@
-import { linkCreatedEvent, type ShareOutcome } from '@linkvault/shared';
+import {
+  groupLinkAddedEvent,
+  linkCreatedEvent,
+  type ShareOutcome,
+} from '@linkvault/shared';
 import { canonicalize } from '../domain/canonicalizers/registry';
 import { InvalidUrl } from '../domain/errors';
 import {
@@ -141,6 +145,17 @@ export async function saveOneLink(
           linkCreatedEvent({
             linkId: link.id,
             previewVersion: link.previewVersion,
+          }),
+          session,
+        );
+      }
+      if (groupId !== undefined && shared.shared === 'created') {
+        // Relación nueva link↔grupo → fan-out de notificación (ADR-035).
+        await writers.outbox.append(
+          groupLinkAddedEvent({
+            groupId,
+            linkId: link.id,
+            actorUserId: userId,
           }),
           session,
         );

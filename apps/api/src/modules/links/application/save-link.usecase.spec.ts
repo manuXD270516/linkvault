@@ -98,6 +98,14 @@ describe('SaveLink', () => {
         type: 'LinkCreated.v1',
         payload: { linkId: response.link.id, previewVersion: 1 },
       },
+      {
+        type: 'GroupLinkAdded.v1',
+        payload: {
+          groupId: BACKEND,
+          linkId: response.link.id,
+          actorUserId: ANA,
+        },
+      },
     ]);
     expect(outbox.allWrittenWith(groupLinks.lastSession ?? {})).toBe(true);
   });
@@ -113,8 +121,8 @@ describe('SaveLink', () => {
     expect(response.created).toBe(false);
     expect(response.shared).toBe('created');
     expect(links.size).toBe(1);
-    // La vacante ya estaba enriquecida (o en cola): no hace falta un segundo evento.
-    expect(outbox.size).toBe(1);
+    // LinkCreated del primer alta + GroupLinkAdded por cada relación nueva (Beto en STRANGERS, Ana en BACKEND).
+    expect(outbox.size).toBe(3);
     expect(response.alreadyInGroups).toEqual([]);
   });
 
@@ -238,7 +246,8 @@ describe('SaveLink', () => {
 
     expect(other.link.id).not.toBe(first.link.id);
     expect(links.size).toBe(2);
-    expect(outbox.size).toBe(2);
+    // 2 × LinkCreated + 2 × GroupLinkAdded
+    expect(outbox.size).toBe(4);
   });
 });
 
@@ -292,6 +301,14 @@ describe('rescue through the history of urls', () => {
         type: 'LinkCreated.v1',
         payload: { linkId, previewVersion: 3 },
       }),
+      expect.objectContaining({
+        type: 'GroupLinkAdded.v1',
+        payload: {
+          groupId: BACKEND,
+          linkId,
+          actorUserId: BETO,
+        },
+      }),
     ]);
     expect(outbox.allWrittenWith(IN_MEMORY_SESSION)).toBe(true);
   });
@@ -306,7 +323,9 @@ describe('rescue through the history of urls', () => {
 
     expect(response.link.previewStatus).toBe('failed');
     expect((await links.findById(linkId))?.previewVersion).toBe(2);
-    expect(outbox.size).toBe(0);
+    // Solo GroupLinkAdded (relación nueva); sin LinkCreated porque no hubo rescate.
+    expect(outbox.size).toBe(1);
+    expect(outbox.appended[0]?.type).toBe('GroupLinkAdded.v1');
   });
 
   it('a new url of another host asks for nothing, because the reading would not try it', async () => {
@@ -320,7 +339,8 @@ describe('rescue through the history of urls', () => {
     expect(response.link.id).toBe(linkId);
     expect(response.link.previewStatus).toBe('failed');
     expect(response.link.lastEnrichmentError?.reason).toBe('robots_disallowed');
-    expect(outbox.size).toBe(0);
+    expect(outbox.size).toBe(1);
+    expect(outbox.appended[0]?.type).toBe('GroupLinkAdded.v1');
   });
 
   it('a new url of a link that failed for another reason asks for nothing', async () => {
@@ -338,7 +358,8 @@ describe('rescue through the history of urls', () => {
 
     expect(response.link.id).toBe(link.id);
     expect(response.link.previewStatus).toBe('failed');
-    expect(outbox.size).toBe(0);
+    expect(outbox.size).toBe(1);
+    expect(outbox.appended[0]?.type).toBe('GroupLinkAdded.v1');
   });
 });
 

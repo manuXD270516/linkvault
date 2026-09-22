@@ -79,6 +79,7 @@ export class InMemoryApplicationRepository implements ApplicationRepository {
     userId: string,
     write: StatusWrite,
     event: NewApplicationEvent,
+    sideEffects?: (session: object) => Promise<void>,
   ): Promise<boolean> {
     const application = this.owned(applicationId, userId);
     // Misma condición que el adaptador real: sin postulación o con otra versión no se escribe nada, tampoco el evento.
@@ -101,6 +102,9 @@ export class InMemoryApplicationRepository implements ApplicationRepository {
     };
     this.applications.set(updated.id, updated);
     this.appendEvent(updated, event);
+    if (sideEffects !== undefined) {
+      return sideEffects({}).then(() => true);
+    }
     return Promise.resolve(true);
   }
 

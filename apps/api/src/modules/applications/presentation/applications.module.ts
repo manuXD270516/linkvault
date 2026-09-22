@@ -1,4 +1,5 @@
 import { type DynamicModule, Module } from '@nestjs/common';
+import { OutboxModule } from '../../../infrastructure/outbox/outbox.module';
 import { GroupsModule } from '../../groups/presentation/groups.module';
 import { UsersModule } from '../../users/presentation/users.module';
 import { ApplicationFitScores } from '../application/application-fit-scores';
@@ -28,7 +29,8 @@ import { GroupApplicationsController } from './group-applications.controller';
  *
  * Depende de `links`, `groups` y `users`, siempre por sus fachadas y detrás de puertos propios; nadie depende de él salvo
  * el registro de `ApplicationFitScores` (D11): `match` se registra en su `onModuleInit` y este módulo no importa a
- * `match`. No encola nada (ADR-009 no aplica) y no registra ningún hook de borrado de grupo: una postulación no guarda
+ * `match`. Encola `ApplicationStatusNotify.v1` vía outbox (ADR-009 / ADR-035) al cambiar status canónico con
+ * `visibility=group`. No registra ningún hook de borrado de grupo: una postulación no guarda
  * nada que cuelgue de un grupo y su visibilidad allí se deriva en cada lectura (ADR-024 §6).
  *
  * `LinksModule` le llega por `register(linksModule)` y no importando la clase: `AppModule` lo construye una sola vez
@@ -36,7 +38,7 @@ import { GroupApplicationsController } from './group-applications.controller';
  * clase a secas crearía una segunda instancia sin `RUN_TASK` y la app no arrancaría (ADR-023 §1).
  */
 @Module({
-  imports: [GroupsModule, UsersModule],
+  imports: [GroupsModule, UsersModule, OutboxModule],
   controllers: [ApplicationsController, GroupApplicationsController],
   providers: [
     { provide: APPLICATION_REPOSITORY, useClass: MongoApplicationRepository },

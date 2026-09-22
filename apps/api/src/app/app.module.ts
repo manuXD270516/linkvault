@@ -16,6 +16,7 @@ import { CvModule } from '../modules/cv/presentation/cv.module';
 import { GroupsModule } from '../modules/groups/presentation/groups.module';
 import { LinksModule } from '../modules/links/presentation/links.module';
 import { MatchModule } from '../modules/match/presentation/match.module';
+import { NotificationsModule } from '../modules/notifications/presentation/notifications.module';
 import { DeleteAccount } from '../modules/users/application/delete-account.usecase';
 import { ACCOUNT_DELETION_CASCADE } from '../modules/users/application/ports/account-deletion-cascade.port';
 import { CV_USER_PREFIX_DELETER } from '../modules/users/application/ports/cv-user-prefix-deleter.port';
@@ -77,6 +78,7 @@ export class AppModule {
         aiModule,
         linksModule,
         applicationsModule,
+        NotificationsModule,
         CvModule,
         MatchModule.register(linksModule, aiModule, applicationsModule),
         ...(config.OUTBOX_RELAY_ENABLED ? [OutboxRelayModule] : []),

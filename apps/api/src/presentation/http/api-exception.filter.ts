@@ -48,6 +48,11 @@ import {
   SoleOwnerWithMembers,
   UserNotFound,
 } from '../../modules/users/domain/errors';
+import {
+  NotificationsError,
+  InvalidNotificationField,
+  VapidUnavailable,
+} from '../../modules/notifications/domain/errors';
 import { API_ERROR_STATUS, apiErrorBody } from './api-error';
 import { RequestValidationError } from './zod-validation.pipe';
 
@@ -153,6 +158,15 @@ export class ApiExceptionFilter extends BaseExceptionFilter {
       return reply(exception.code);
     }
     if (exception instanceof AiVaultUnavailable) {
+      return reply(exception.code);
+    }
+    if (exception instanceof VapidUnavailable) {
+      return reply(exception.code);
+    }
+    if (exception instanceof InvalidNotificationField) {
+      return reply('validation_error', [exception.field]);
+    }
+    if (exception instanceof NotificationsError) {
       return reply(exception.code);
     }
     if (exception instanceof InvalidAccountPassword) {

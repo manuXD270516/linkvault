@@ -142,6 +142,7 @@ export class MongoApplicationRepository implements ApplicationRepository {
     userId: string,
     write: StatusWrite,
     event: NewApplicationEvent,
+    sideEffects?: (session: ClientSession) => Promise<void>,
   ): Promise<boolean> {
     const ids = ownedIds(applicationId, userId);
     if (ids === null) {
@@ -177,6 +178,9 @@ export class MongoApplicationRepository implements ApplicationRepository {
         return false;
       }
       await this.insertEvent(ids._id, ids.userId, event, session);
+      if (sideEffects !== undefined) {
+        await sideEffects(session);
+      }
       return true;
     });
   }
