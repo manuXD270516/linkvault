@@ -6,23 +6,23 @@
 
 ## 2. Preferencias y push (API)
 
-- [ ] 2.1 [backend] Repo + use cases de preferencias (defaults ON, `notifyOwnActions`, `applicationStatusGroupId` nullable con validación de membresía); verificar unit tests.
-- [ ] 2.2 [backend] HTTP GET/PATCH `/api/notifications/preferences`; verificar 200/401 y rechazo vía `/users/me`.
-- [ ] 2.3 [backend] Subs push POST/DELETE-by-endpoint + GET vapid (`200` o `503`); verificar idempotencia y 401.
-- [ ] 2.4 [backend] Cascada de cuenta borra prefs + subs + ledger de entregas; verificar cascade spec.
+- [x] 2.1 [backend] Repo + use cases de preferencias (defaults ON, `notifyOwnActions`, `applicationStatusGroupId` nullable con validación de membresía); verificar unit tests.
+- [x] 2.2 [backend] HTTP GET/PATCH `/api/notifications/preferences`; verificar 200/401 y rechazo vía `/users/me`.
+- [x] 2.3 [backend] Subs push POST/DELETE-by-endpoint + GET vapid (`200` o `503`); verificar idempotencia y 401.
+- [x] 2.4 [backend] Cascada de cuenta borra prefs + subs + ledger de entregas; verificar cascade spec.
 
 ## 3. Despacho (worker)
 
-- [ ] 3.1 [backend] Consumer único: expandir fan-out con membership **actual**, opt-out, `notifyOwnActions`, alcance D8; verificar unit tests.
-- [ ] 3.2 [backend] Ledger `notification_deliveries` (claim antes de enviar); verificar que re-proceso no duplica envío.
-- [ ] 3.3 [backend] WebPushSender VAPID + purge 410/404 por endpoint; verificar mock.
-- [ ] 3.4 [backend] Entrega email (Mailer + `outputLanguage`) y push; fallo de un canal no bloquea el otro; verificar CapturingMailer.
+- [x] 3.1 [backend] Consumer único: expandir fan-out con membership **actual**, opt-out, `notifyOwnActions`, alcance D8; verificar unit tests.
+- [x] 3.2 [backend] Ledger `notification_deliveries` (claim antes de enviar); verificar que re-proceso no duplica envío.
+- [x] 3.3 [backend] WebPushSender VAPID + purge 410/404 por endpoint; verificar mock.
+- [x] 3.4 [backend] Entrega email (Mailer + `outputLanguage`) y push; fallo de un canal no bloquea el otro; verificar CapturingMailer.
 
 ## 4. Disparadores de producto
 
-- [ ] 4.1 [backend] `POST /api/links` e **import**: relación nueva → outbox `GroupLinkAdded.v1` en la misma txn; verificar tests sharing/import + outbox.
-- [ ] 4.2 [backend] Cambio de **status** canónico con `visibility=group` → outbox (`groupId?` validado link∈grupo∧miembro); stage-only y private no encolan; verificar applications specs.
-- [ ] 4.3 [backend] Detector stale worker: `!isClosedStatus`, 10d, claim con lease + `Queue.add` (sin outbox) + aviso dueño; verificar tests detector/ledger.
+- [x] 4.1 [backend] `POST /api/links` e **import**: relación nueva → outbox `GroupLinkAdded.v1` en la misma txn; verificar tests sharing/import + outbox.
+- [x] 4.2 [backend] Cambio de **status** canónico con `visibility=group` → outbox (`groupId?` validado link∈grupo∧miembro); stage-only y private no encolan; verificar applications specs.
+- [x] 4.3 [backend] Detector stale worker: `!isClosedStatus`, 10d, claim con lease + `Queue.add` (sin outbox) + aviso dueño; verificar tests detector/ledger.
 
 ## 5. Frontend
 
