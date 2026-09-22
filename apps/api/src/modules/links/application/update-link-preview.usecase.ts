@@ -1,5 +1,5 @@
 import type { JobLinkSummary, UpdatePreviewRequest } from '@linkvault/shared';
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { LinkNotFound } from '../domain/errors';
 import type { JobLink } from '../domain/job-link';
 import { applyManualEdit } from '../domain/preview-edit';
@@ -31,6 +31,9 @@ import {
   USER_LINK_REPOSITORY,
   type UserLinkRepository,
 } from './ports/user-link-repository.port';
+import { getConnectionToken } from '@nestjs/mongoose';
+import type { Connection } from 'mongoose';
+import { SearchFacade } from '../../search/application/search.facade';
 
 /**
  * `PATCH /api/links/:id/preview` (spec links/enrichment): corregir a mano lo que la extracción leyó mal, o devolver un
@@ -65,6 +68,8 @@ export class UpdateLinkPreview {
     @Inject(LINKS_CLOCK) private readonly clock: Clock,
     @Inject(LINK_ENRICHED_PUBLISHER)
     private readonly publisher: LinkEnrichedPublisher,
+    @Inject(getConnectionToken()) private readonly connection: Connection,
+    @Optional() private readonly search?: SearchFacade,
   ) {}
 
   async execute(
@@ -102,6 +107,7 @@ export class UpdateLinkPreview {
       );
       if (written !== null) {
         this.announce(written);
+        await this.emitSearch(written);
         return await this.toSummary(readable, written);
       }
       // Otra escritura ganó: se vuelve a leer y la corrección se aplica sobre lo que hay ahora.
@@ -127,6 +133,27 @@ export class UpdateLinkPreview {
       })
       // El puerto promete no lanzar; esto es por si un adaptador lo incumple, que no tumbe el proceso.
       .catch(() => undefined);
+  }
+
+  private async emitSearch(link: JobLink): Promise<void> {
+    if (this.search?.enabled !== true) return;
+    const search = this.search;
+    const session = await this.connection.startSession();
+    try {
+      await session.withTransaction(async () => {
+        await search.upsert(
+          {
+            docType: 'job_preview',
+            aggregateId: link.id,
+            reason: 'preview_updated',
+            fingerprint: `preview:${link.id}:${link.previewVersion}:${link.preview?.title ?? ''}`,
+          },
+          session,
+        );
+      });
+    } finally {
+      await session.endSession();
+    }
   }
 
   private readers() {

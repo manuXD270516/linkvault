@@ -1,6 +1,9 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
+import { getConnectionToken } from '@nestjs/mongoose';
+import type { Connection } from 'mongoose';
 import { GroupNotFound } from '../../groups/domain/errors';
 import { LinkNotFound, LinkRemovalForbidden } from '../domain/errors';
+import { SearchFacade } from '../../search/application/search.facade';
 import {
   GROUP_LINK_REPOSITORY,
   type GroupLinkRepository,
@@ -11,12 +14,7 @@ import {
 } from './ports/group-membership.port';
 
 /**
- * `DELETE /api/groups/:id/links/:linkId` (spec links/sharing): quitar del grupo lo que no era una oferta. Lo puede hacer
- * quien lo compartió y el `owner`, que limpia su grupo; otro miembro recibe `forbidden`, porque ya sabe que el link
- * existe y no hay nada que ocultarle. Quien no es miembro recibe `group_not_found`, como si el grupo no existiera.
- *
- * Solo se borra la **relación**: el `JobLink` sigue disponible en los demás grupos y en las listas privadas, así que la
- * limpieza de un grupo nunca hace desaparecer la oferta de otro.
+ * `DELETE /api/groups/:id/links/:linkId` (spec links/sharing) + Search* outbox si FEATURE_SEARCH (C1).
  */
 @Injectable()
 export class RemoveGroupLink {
@@ -24,6 +22,8 @@ export class RemoveGroupLink {
     @Inject(GROUP_LINK_REPOSITORY)
     private readonly groupLinks: GroupLinkRepository,
     @Inject(GROUP_MEMBERSHIP) private readonly membership: GroupMembership,
+    @Inject(getConnectionToken()) private readonly connection: Connection,
+    @Optional() private readonly search?: SearchFacade,
   ) {}
 
   async execute(
@@ -43,8 +43,35 @@ export class RemoveGroupLink {
       throw new LinkRemovalForbidden();
     }
     if (!(await this.groupLinks.removeWithComments(groupId, linkId))) {
-      // Otra petición se le adelantó: para quien pide, el link ya no está en el grupo.
       throw new LinkNotFound();
+    }
+    if (this.search?.enabled !== true) {
+      return;
+    }
+    const search = this.search;
+    const session = await this.connection.startSession();
+    try {
+      await session.withTransaction(async () => {
+        await search.upsert(
+          {
+            docType: 'job_preview',
+            aggregateId: linkId,
+            reason: 'group_link_unshared',
+            fingerprint: `unshare:${linkId}:${groupId}:${Date.now()}`,
+          },
+          session,
+        );
+        await search.delete(
+          {
+            docType: 'group_link_note',
+            aggregateId: `${groupId}_${linkId}`,
+            reason: 'group_link_removed',
+          },
+          session,
+        );
+      });
+    } finally {
+      await session.endSession();
     }
   }
 }

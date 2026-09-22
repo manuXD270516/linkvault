@@ -10,6 +10,7 @@ import {
   type Connection,
 } from 'mongoose';
 import { GroupsFacade } from '../../groups/application/groups.facade';
+import { SearchFacade } from '../../search/application/search.facade';
 import { SoleOwnerWithMembers } from '../domain/errors';
 import type { AccountDeletionCascade } from '../application/ports/account-deletion-cascade.port';
 import {
@@ -21,11 +22,8 @@ import {
   type UserRepository,
 } from '../application/ports/user-repository.port';
 
-// Cascada de borrado de cuenta (D4/D11, ADR-033): una txn multi-documento sobre el replica set, reutilizando
-// `GroupsFacade.detachUserInSession` → `deleteGroupInSession` + `GroupDeletionHooks`. Tras el commit, S3 `userId/`.
-//
-// Los nombres de colección son literales a propósito: `users/infrastructure` no puede importar schemas de otros
-// módulos (límites entre bounded contexts); coinciden con las constantes de cada dueño.
+// Cascada de borrado de cuenta (D4/D11, ADR-033 + search D9): purge Meili **antes** del commit Mongo
+// cuando FEATURE_SEARCH=true; si Meili falla → SearchPurgeFailed y cuenta intacta.
 
 const AUTH_SESSIONS_COLLECTION = 'auth_sessions';
 const REFRESH_TOKENS_COLLECTION = 'refresh_tokens';
@@ -57,12 +55,19 @@ export class MongoAccountDeletionCascade implements AccountDeletionCascade {
     private readonly keys: UserAiKeysRepository,
     @Inject(CV_USER_PREFIX_DELETER)
     private readonly cvFiles: CvUserPrefixDeleter,
+    private readonly search: SearchFacade,
   ) {}
 
   async execute(userId: string): Promise<void> {
     if (await this.groups.ownershipBlocksAccountDeletion(userId)) {
       throw new SoleOwnerWithMembers();
     }
+
+    // D9: grupos que la cascada va a borrar (owner único = todos los owned tras el bloqueo).
+    const ownedGroupIds = (await this.groups.getGroupsOf(userId))
+      .filter((m) => m.role === 'owner')
+      .map((m) => m.groupId);
+    await this.search.purgeUser(userId, ownedGroupIds);
 
     const session = await this.connection.startSession();
     try {

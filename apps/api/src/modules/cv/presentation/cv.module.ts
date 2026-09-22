@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { type DynamicModule, Module } from '@nestjs/common';
 import type { ApiConfig } from '../../../infrastructure/config/api-config.schema';
 import { APP_CONFIG } from '../../../infrastructure/config/app-config.module';
 import { LimitsModule } from '../../../infrastructure/limits/limits.module';
@@ -70,4 +70,11 @@ import { CvController } from './cv.controller';
   ],
   exports: [CvFacade, CvDeletionHooks, CvAnalysisCounts],
 })
-export class CvModule {}
+export class CvModule {
+  static register(searchModule?: DynamicModule): DynamicModule {
+    return {
+      module: CvModule,
+      imports: searchModule === undefined ? [] : [searchModule],
+    };
+  }
+}

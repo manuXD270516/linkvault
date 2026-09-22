@@ -49,6 +49,9 @@ export const API_ERROR_STATUS: Readonly<Record<ApiErrorCode, number>> = {
   consent_text_outdated: 409,
   vault_unavailable: 503,
   vapid_unavailable: 503,
+  empty_query: 400,
+  search_unavailable: 503,
+  search_purge_failed: 503,
 };
 
 /**
@@ -108,6 +111,9 @@ export const API_ERROR_MESSAGES: Readonly<Record<ApiErrorCode, string>> = {
   consent_text_outdated: 'The consent text changed; read it again',
   vault_unavailable: 'AI key vault is not available',
   vapid_unavailable: 'Web push is not configured',
+  empty_query: 'Search query is empty',
+  search_unavailable: 'Search is unavailable',
+  search_purge_failed: 'Search index purge failed',
 };
 
 /** Cuerpo `{ code, message, fields? }`. `fields` solo nombra campos y se omite si está vacío. */

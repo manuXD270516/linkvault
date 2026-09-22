@@ -54,8 +54,18 @@ beforeEach(() => {
     directory,
     clock,
     publisher,
+    noopConnection(),
   );
 });
+
+function noopConnection(): never {
+  return {
+    startSession: async () => ({
+      withTransaction: async (fn: () => Promise<unknown>) => fn(),
+      endSession: async () => undefined,
+    }),
+  } as never;
+}
 
 /** Link ya leído y compartido en el grupo por Ana. */
 async function sharedLink(): Promise<string> {

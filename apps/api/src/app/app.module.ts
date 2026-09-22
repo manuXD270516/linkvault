@@ -17,6 +17,7 @@ import { GroupsModule } from '../modules/groups/presentation/groups.module';
 import { LinksModule } from '../modules/links/presentation/links.module';
 import { MatchModule } from '../modules/match/presentation/match.module';
 import { NotificationsModule } from '../modules/notifications/presentation/notifications.module';
+import { SearchModule } from '../modules/search/presentation/search.module';
 import { DeleteAccount } from '../modules/users/application/delete-account.usecase';
 import { ACCOUNT_DELETION_CASCADE } from '../modules/users/application/ports/account-deletion-cascade.port';
 import { CV_USER_PREFIX_DELETER } from '../modules/users/application/ports/cv-user-prefix-deleter.port';
@@ -52,13 +53,17 @@ export class AppModule {
     const aiModule = AiModule.forRootAsync({
       useFactory: () => ({ config: ai, redisUrl: config.REDIS_URL }),
     });
+    const searchModule = SearchModule.register();
     // Igual con `LinksModule`: `ApplicationsModule` y `MatchModule` reciben este mismo objeto para usar `LinksFacade`.
     // Importar la clase a secas crearía una segunda instancia de `LinksModule` sin `RUN_TASK` (D1 de
     // applications-tracking).
-    const linksModule = LinksModule.register(aiModule);
+    const linksModule = LinksModule.register(aiModule, searchModule);
     // `MatchModule` registra el lector de puntuaciones en `ApplicationFitScores`: mismo objeto DynamicModule para no
     // duplicar el módulo de postulaciones.
-    const applicationsModule = ApplicationsModule.register(linksModule);
+    const applicationsModule = ApplicationsModule.register(
+      linksModule,
+      searchModule,
+    );
 
     return {
       module: AppModule,
@@ -76,10 +81,11 @@ export class AppModule {
         AuthModule,
         GroupsModule,
         aiModule,
+        searchModule,
         linksModule,
         applicationsModule,
         NotificationsModule,
-        CvModule,
+        CvModule.register(searchModule),
         MatchModule.register(linksModule, aiModule, applicationsModule),
         ...(config.OUTBOX_RELAY_ENABLED ? [OutboxRelayModule] : []),
       ],

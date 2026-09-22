@@ -417,6 +417,12 @@ describe('PasteDescription: what is written', () => {
       directory,
       clock,
       publisher,
+      {
+        startSession: async () => ({
+          withTransaction: async (fn: () => Promise<unknown>) => fn(),
+          endSession: async () => undefined,
+        }),
+      } as never,
     );
     const outbox = new InMemoryOutbox();
     const requestEnrichment = new RequestLinkEnrichment(

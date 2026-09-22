@@ -40,6 +40,9 @@ import {
   TooManyAnalysisAttempts,
 } from '../../modules/match/domain/errors';
 import {
+  SearchError,
+} from '../../modules/search/domain/errors';
+import {
   AiVaultUnavailable,
   ConsentTextOutdated,
   EmailAlreadyRegistered,
@@ -239,6 +242,9 @@ export class ApiExceptionFilter extends BaseExceptionFilter {
       });
     }
     if (exception instanceof MatchError) {
+      return reply(exception.code);
+    }
+    if (exception instanceof SearchError) {
       return reply(exception.code);
     }
     if (exception instanceof HttpException) {

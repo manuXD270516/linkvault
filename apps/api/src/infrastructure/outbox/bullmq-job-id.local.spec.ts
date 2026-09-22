@@ -6,6 +6,8 @@ import {
   LINK_CREATED_EVENT_TYPE,
   MATCH_REQUESTED_EVENT_TYPE,
   ROADMAP_REQUESTED_EVENT_TYPE,
+  SEARCH_DELETE_EVENT_TYPE,
+  SEARCH_UPSERT_EVENT_TYPE,
 } from '@linkvault/shared';
 import { Queue } from 'bullmq';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -55,6 +57,17 @@ const payloads: Readonly<Record<string, Record<string, unknown>>> = {
     actorUserId: 'u1',
     status: 'applied',
     statusChangedAt: '2026-09-22T12:00:00.000Z',
+  },
+  [SEARCH_UPSERT_EVENT_TYPE]: {
+    docType: 'job_preview',
+    aggregateId: 'l1',
+    reason: 'preview_updated',
+    contentHash: 'abcdef0123456789',
+  },
+  [SEARCH_DELETE_EVENT_TYPE]: {
+    docType: 'cv',
+    aggregateId: 'c1',
+    reason: 'aggregate_deleted',
   },
 };
 

@@ -12,6 +12,9 @@ import {
   MATCH_REQUESTED_EVENT_TYPE,
   NOTIFY_FANOUT_QUEUE,
   ROADMAP_REQUESTED_EVENT_TYPE,
+  SEARCH_DELETE_EVENT_TYPE,
+  SEARCH_INDEX_QUEUE,
+  SEARCH_UPSERT_EVENT_TYPE,
   applicationStatusNotifyJobId,
   applicationStatusNotifyPayloadSchema,
   cvDeletedJobId,
@@ -26,6 +29,10 @@ import {
   matchRequestedPayloadSchema,
   roadmapRequestedJobId,
   roadmapRequestedPayloadSchema,
+  searchDeleteJobId,
+  searchDeletePayloadSchema,
+  searchUpsertJobId,
+  searchUpsertPayloadSchema,
 } from '@linkvault/shared';
 import type { ZodType } from 'zod';
 
@@ -109,6 +116,16 @@ export const OUTBOX_ROUTES: Readonly<Record<string, OutboxRoute>> = {
     NOTIFY_FANOUT_QUEUE,
     applicationStatusNotifyPayloadSchema,
     applicationStatusNotifyJobId,
+  ),
+  [SEARCH_UPSERT_EVENT_TYPE]: route(
+    SEARCH_INDEX_QUEUE,
+    searchUpsertPayloadSchema,
+    searchUpsertJobId,
+  ),
+  [SEARCH_DELETE_EVENT_TYPE]: route(
+    SEARCH_INDEX_QUEUE,
+    searchDeletePayloadSchema,
+    searchDeleteJobId,
   ),
 };
 

@@ -54,7 +54,16 @@ beforeEach(() => {
     urls,
     new MovableClock(),
   );
-  removeGroupLink = new RemoveGroupLink(groupLinks, membership);
+  removeGroupLink = new RemoveGroupLink(
+    groupLinks,
+    membership,
+    {
+      startSession: async () => ({
+        withTransaction: async (fn: () => Promise<unknown>) => fn(),
+        endSession: async () => undefined,
+      }),
+    } as never,
+  );
   removeMyLink = new RemoveMyLink(userLinks);
 });
 

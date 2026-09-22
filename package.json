@@ -90,6 +90,7 @@
     "ioredis": "6.0.0",
     "jose": "^6.2.12",
     "mammoth": "^1.12.3",
+    "meilisearch": "^0.54.0",
     "mongoose": "^9.10.1",
     "mustache": "^4.2.0",
     "nestjs-pino": "^5.2.0",

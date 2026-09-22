@@ -17,26 +17,26 @@
 
 ## 4. Shared events and Meili client
 
-- [ ] 4.1 [backend] Declarar eventos `SearchUpsert.v1` / `SearchDelete.v1` (zod + `jobId` = content hash) en `libs/shared` y registrar cola `search-index` en el outbox catalog; verify: test del schema + typecheck shared.
-- [ ] 4.2 [backend] Cliente Meilisearch (infrastructure) create-index/settings + upsert/delete/delete-by-filter por primary key; verify: test de integración contra Meili en compose profile o testcontainer/skip documentado.
+- [x] 4.1 [backend] Declarar eventos `SearchUpsert.v1` / `SearchDelete.v1` (zod + `jobId` = content hash) en `libs/shared` y registrar cola `search-index` en el outbox catalog; verify: test del schema + typecheck shared.
+- [x] 4.2 [backend] Cliente Meilisearch (infrastructure) create-index/settings + upsert/delete/delete-by-filter por primary key; verify: test de integración contra Meili en compose profile o testcontainer/skip documentado.
 
 ## 5. Indexer workers
 
-- [ ] 5.1 [backend] Consumer `search-index`: si `FEATURE_SEARCH=false` o Meili no configurado → ack no-op; else carga agregado, recalcula ACL (`groupIds`/`visibilityScope`) desde Mongo, embed opcional vía `embedTexts`, upsert/delete idempotente + `embedModelId`/`embeddingDim`; verify: tests repos in-memory + Meili fake.
-- [ ] 5.2 [backend] Emitters outbox **solo si `FEATURE_SEARCH=true`** desde: preview create/update, application, comment, note, cv, roadmap, **share GroupLink**, **unshare**, **delete GroupLink**, **GroupDeletionHooks** (sin llamar Meili en la txn). Checklist verify:
-  - [ ] mutación con flag on → fila Search* en `outbox_events`
-  - [ ] mutación con flag off → **0** filas Search* en outbox
-  - [ ] share → tras worker, miembro ve hit; unshare → hit desaparece
-- [ ] 5.3 [backend] Comando/job de backfill + re-embed (rate `SEARCH_BACKFILL_RATE`, default local conservador); verify: dry-run o test que encola N upserts desde fixtures Mongo sin saturar.
+- [x] 5.1 [backend] Consumer `search-index`: si `FEATURE_SEARCH=false` o Meili no configurado → ack no-op; else carga agregado, recalcula ACL (`groupIds`/`visibilityScope`) desde Mongo, embed opcional vía `embedTexts`, upsert/delete idempotente + `embedModelId`/`embeddingDim`; verify: tests repos in-memory + Meili fake.
+- [x] 5.2 [backend] Emitters outbox **solo si `FEATURE_SEARCH=true`** desde: preview create/update, application, comment, note, cv, roadmap, **share GroupLink**, **unshare**, **delete GroupLink**, **GroupDeletionHooks** (sin llamar Meili en la txn). Checklist verify:
+  - [x] mutación con flag on → fila Search* en `outbox_events`
+  - [x] mutación con flag off → **0** filas Search* en outbox
+  - [x] share → tras worker, miembro ve hit; unshare → hit desaparece
+- [x] 5.3 [backend] Comando/job de backfill + re-embed (rate `SEARCH_BACKFILL_RATE`, default local conservador); verify: dry-run o test que encola N upserts desde fixtures Mongo sin saturar.
 
 ## 6. HTTP search API
 
-- [ ] 6.1 [backend] `GET /api/search` autenticado: ACL server-side con `visibilityScope` en rama grupo, `mode` opcional (default hybrid), filtros `docType`/`groupId`, `q` vacío → `400 empty_query`, `limit`>50 → clamp 50, `FEATURE_SEARCH=false` o Meili down → `503 search_unavailable`; verify: tests A/B + grupo cruzado (sin fugas).
-- [ ] 6.2 [backend] Degradación `degraded` cuando faltan embeddings; query embed vía `embedTexts` con sensibilidad `personal`; verify: test embed chain mock fallido → fulltext + flag.
+- [x] 6.1 [backend] `GET /api/search` autenticado: ACL server-side con `visibilityScope` en rama grupo, `mode` opcional (default hybrid), filtros `docType`/`groupId`, `q` vacío → `400 empty_query`, `limit`>50 → clamp 50, `FEATURE_SEARCH=false` o Meili down → `503 search_unavailable`; verify: tests A/B + grupo cruzado (sin fugas).
+- [x] 6.2 [backend] Degradación `degraded` cuando faltan embeddings; query embed vía `embedTexts` con sensibilidad `personal`; verify: test embed chain mock fallido → fulltext + flag.
 
 ## 7. Account deletion cascade
 
-- [ ] 7.1 [backend] Con `FEATURE_SEARCH=true`: delete-by-filter Meili **antes** del commit Mongo; Meili down → `503 search_purge_failed` y cuenta intacta (sin 204). Con flag false: skip Meili. Verify: (a) Meili down → Ana sigue en Mongo; (b) tras `204`, Luis **no** encuentra el comentario de Ana; (c) flag off no llama Meili.
+- [x] 7.1 [backend] Con `FEATURE_SEARCH=true`: delete-by-filter Meili **antes** del commit Mongo; Meili down → `503 search_purge_failed` y cuenta intacta (sin 204). Con flag false: skip Meili. Verify: (a) Meili down → Ana sigue en Mongo; (b) tras `204`, Luis **no** encuentra el comentario de Ana; (c) flag off no llama Meili.
 
 ## 8. Web SPA
 

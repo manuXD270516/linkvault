@@ -83,6 +83,7 @@ export class CommentsHarness {
   readonly removeGroupLink = new RemoveGroupLink(
     this.groupLinks,
     this.membership,
+    { startSession: async () => ({ withTransaction: async (fn: () => Promise<void>) => fn(), endSession: async () => undefined }) } as never,
   );
   readonly saveLink = new SaveLink(
     this.links,
