@@ -4,7 +4,8 @@
 
 El orquestador de producción (compose y Traefik / healthchecks de contenedor documentados) SHALL usar `GET /health/live`
 como comprobación de **liveness** y `GET /health` como comprobación de **readiness** para los servicios `api` y
-`worker`. NO SHALL tratar como listo para tráfico un contenedor cuya readiness (`/health`) falle, aunque liveness
+`worker`. El `HEALTHCHECK` embebido en las imágenes SHALL cubrir solo liveness; compose (u orquestador) SHALL poseer la
+readiness. NO SHALL tratar como listo para tráfico un contenedor cuya readiness (`/health`) falle, aunque liveness
 responda 200.
 
 #### Scenario: Liveness del contenedor de api

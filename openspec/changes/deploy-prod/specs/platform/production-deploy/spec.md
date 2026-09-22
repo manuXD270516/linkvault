@@ -115,15 +115,17 @@ URL NO SHALL filtrarse a terceros vía Referer.
 ### Requirement: Imágenes multi-stage publicables
 
 El repositorio SHALL incluir Dockerfiles multi-stage para `api`, `worker` y `web` que produzcan imágenes publicables en
-**GHCR**. Las imágenes de `api` y `worker` SHALL incluir healthchecks HTTP que usen `GET /health/live` para liveness
-y `GET /health` para readiness. La imagen de `api` SHALL incluir los prompts de IA en la ruta documentada para
-`AI_PROMPTS_DIR`.
+**GHCR**. Las imágenes de `api` y `worker` SHALL declarar un `HEALTHCHECK` de imagen sobre `GET /health/live`
+(**liveness** únicamente). La **readiness** (`GET /health`) SHALL ser responsabilidad del orquestador (p. ej. el
+`healthcheck` de servicio en `docker-compose.prod.yml`), no del `HEALTHCHECK` embebido en la imagen. La imagen de `api`
+SHALL incluir los prompts de IA en la ruta documentada para `AI_PROMPTS_DIR`.
 
 #### Scenario: Build de imágenes
 
 - **WHEN** se construyen las tres imágenes con los Dockerfiles del repositorio
 - **THEN** el build SHALL terminar con éxito sin secretos embebidos en capas
-- **AND** las imágenes de `api` y `worker` SHALL declarar healthchecks sobre `/health/live` y `/health`
+- **AND** las imágenes de `api` y `worker` SHALL declarar `HEALTHCHECK` sobre `/health/live` (liveness)
+- **AND** el compose / orquestador de producción SHALL usar `/health` para readiness
 
 #### Scenario: Prompts en la imagen de api
 

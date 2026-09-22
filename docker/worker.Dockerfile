@@ -32,6 +32,7 @@ ENV NODE_ENV=production
 ENV AI_PROMPTS_DIR=/app/assets/ai/prompts
 EXPOSE 3001
 
+# Liveness only in the image; compose readiness uses GET /health (platform/runtime-health).
 HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.WORKER_HEALTH_PORT||3001)+'/health/live').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 

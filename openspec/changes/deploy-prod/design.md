@@ -11,7 +11,7 @@ despliegue se inventaría a mano y los datos personales no tendrían ciclo de vi
 **Goals**
 
 - Compose de producción reproducible (api, worker ≥1 réplica, web, mongo `rs0`, redis, object store, Traefik + Let's Encrypt).
-- Imágenes multi-stage publicables (GHCR) con healthchecks `/health/live` y `/health`.
+- Imágenes multi-stage publicables (GHCR): HEALTHCHECK de imagen = liveness (`/health/live`); compose posee readiness (`/health`).
 - CD: staging tras verify en `main`; prod al publicar tag `v*` (semver); mecanismo cerrado en D10 (sin dry-run como aceptación).
 - Observabilidad mínima (`GET /metrics` Prometheus, pino redactado); ACL de métricas/health en el borde.
 - Borrado de cuenta con cascada atómica (incl. extras D11) y regla de ownership; aviso `/privacidad` y UI de peligro en el SPA.
@@ -31,8 +31,9 @@ despliegue se inventaría a mano y los datos personales no tendrían ciclo de vi
 ### D1 — Imágenes multi-stage + compose.prod
 
 Dockerfiles multi-stage para `api`, `worker` y `web`. `docker-compose.prod.yml` levanta el stack completo con MinIO como
-object store S3-compatible por defecto. Healthchecks de contenedor alineados con `platform/runtime-health`. Prompts de
-IA embebidos en la imagen de `api`; `AI_PROMPTS_DIR` apunta a esa ruta.
+object store S3-compatible por defecto. El `HEALTHCHECK` de la imagen comprueba solo liveness (`GET /health/live`); la
+readiness (`GET /health`) la define el `healthcheck` del servicio en compose (alineado con `platform/runtime-health`).
+Prompts de IA embebidos en la imagen de `api`; `AI_PROMPTS_DIR` apunta a esa ruta.
 
 ### D2 — Traefik, trustProxy y logs sin query
 

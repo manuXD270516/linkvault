@@ -330,7 +330,7 @@ Convenciones: standalone, `inject()`, `input()/output()` signals, `@if/@for`, zo
 ## 5. Despliegue y CI/CD
 
 ### 5.1 Contenedores
-- `docker/api.Dockerfile`, `docker/worker.Dockerfile`, `docker/web.Dockerfile` — multi-stage, `node:22-alpine`, usuario no root, `HEALTHCHECK`.
+- `docker/api.Dockerfile`, `docker/worker.Dockerfile`, `docker/web.Dockerfile` — multi-stage, `node:22-alpine`, usuario no root; HEALTHCHECK de imagen = liveness (`/health/live`), readiness en compose.prod (`/health`).
 - `docker-compose.yml` (dev): web, api, worker, mongo, redis, minio, ollama (perfil `ai-local`), meilisearch (perfil `search`).
 - `docker-compose.prod.yml`: + Traefik con Let's Encrypt, réplicas del worker.
 
