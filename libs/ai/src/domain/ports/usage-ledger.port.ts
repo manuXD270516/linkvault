@@ -1,5 +1,5 @@
 import type { DegradedReason } from '../ai-result';
-import type { AiTaskName } from '../task';
+import type { AiLedgerTask } from '../task';
 
 // Ledger de uso de IA (design-v0.2 §4, D9 de ai-gateway-core). Solo tipos. Nunca guarda input, salida ni prompt.
 
@@ -8,7 +8,8 @@ export type UsageOutcome =
 
 export interface UsageRecord {
   userId?: string;
-  task: AiTaskName;
+  /** Tarea LLM o `embed` (ADR-036). */
+  task: AiLedgerTask;
   /** `null` en registros `quota` y `degraded`. */
   providerId: string | null;
   model: string | null;

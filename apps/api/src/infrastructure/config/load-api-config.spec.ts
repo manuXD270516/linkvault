@@ -246,7 +246,7 @@ describe('api configuration', () => {
       String(chunk),
     );
     expect(missingMode).toContain(
-      'AI_MOCK_MODE (missing: required when AI_CHAIN includes mock',
+      'AI_MOCK_MODE (missing: required when AI_CHAIN or AI_EMBED_CHAIN includes mock',
     );
     expect(mockInProduction).toContain(
       'AI_CHAIN (invalid: mock is not allowed with NODE_ENV=production)',

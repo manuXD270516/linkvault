@@ -1,5 +1,5 @@
 import type { Connection, Model } from 'mongoose';
-import type { AiTaskName } from '../../domain/task';
+import type { AiLedgerTask } from '../../domain/task';
 import type {
   UsageLedger,
   UsageRecord,
@@ -16,7 +16,7 @@ import {
 
 export interface SuccessCountQuery {
   userId: string;
-  task: AiTaskName;
+  task: AiLedgerTask;
   since: Date;
   /** Límite de ejecución en el servidor; no acota la selección de servidor del driver. */
   maxTimeMS: number;

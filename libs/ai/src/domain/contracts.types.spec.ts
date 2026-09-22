@@ -1,10 +1,16 @@
+import { createHash } from 'node:crypto';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import type { AiResult } from './ai-result';
+import {
+  MOCK_EMBEDDING_DIMENSIONS,
+  type EmbeddingCapabilities,
+  type EmbeddingProvider,
+} from './ports/embedding-provider.port';
 import type { CompletionRequest } from './ports/llm-provider.port';
 import type { RunContext } from './run-context';
 
-// Test de tipos de la tarea 1.2 (D2, D4). Lo comprueba `pnpm nx typecheck ai` (incluye tsconfig.spec.json):
-// si una directiva `@ts-expect-error` deja de ser necesaria, el typecheck falla.
+// Test de tipos de la tarea 1.2 (D2, D4) y 3.1 (EmbeddingProvider, ADR-036).
+// Lo comprueba `pnpm nx typecheck ai` (incluye tsconfig.spec.json).
 
 interface Output {
   skills: string[];
@@ -65,5 +71,31 @@ describe('domain contracts (types)', () => {
       | undefined
     >();
     expect(req.trace?.key).toBe('abc');
+  });
+
+  it('declares EmbeddingProvider with embeddings capability and fixed mock dimensions', () => {
+    const capabilities: EmbeddingCapabilities = {
+      embeddings: true,
+      dimensions: MOCK_EMBEDDING_DIMENSIONS,
+      external: false,
+      costPer1kTokens: 0,
+    };
+    const provider: EmbeddingProvider = {
+      id: 'mock',
+      capabilities,
+      embed: () =>
+        Promise.resolve({
+          vectors: [[0]],
+          model: 'mock-embed',
+          dimensions: MOCK_EMBEDDING_DIMENSIONS,
+          usage: { inputTokens: 0 },
+          latencyMs: 0,
+        }),
+      healthy: () => Promise.resolve(true),
+    };
+
+    expect(provider.capabilities.dimensions).toBe(768);
+    expect(provider.capabilities.embeddings).toBe(true);
+    expect(createHash('sha256').update('x').digest('hex').length).toBe(64);
   });
 });

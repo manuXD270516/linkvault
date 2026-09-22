@@ -1,5 +1,5 @@
 import { isAbsolute, resolve } from 'node:path';
-import type { AiTaskName } from '../../domain/task';
+import type { AiLedgerTask } from '../../domain/task';
 import type { QuotaLimits } from '../quota/config-quota-policy';
 import { decodeVaultKeyFromBase64 } from '../crypto/libsodium-secret-vault';
 import {
@@ -25,9 +25,9 @@ import {
   type OpenRouterProviderConfig,
 } from './ai-config.schema';
 
-// Valida la configuración de IA antes de crear Nest (D12 de ai-gateway-core, ADR-018 §2). Lee solo sus variables; una
-// cadena vacía cuenta como ausente. Devuelve todos los problemas a la vez, sin valores recibidos: los `detail` llevan
-// identificadores de `AI_CHAIN` o de tareas, o textos fijos, y nunca la credencial.
+// Valida la configuración de IA antes de crear Nest (D12 de ai-gateway-core, ADR-018 §2; ADR-036). Lee solo sus
+// variables; una cadena vacía cuenta como ausente. Devuelve todos los problemas a la vez, sin valores recibidos: los
+// `detail` llevan identificadores de `AI_CHAIN` / `AI_EMBED_CHAIN` o de tareas, o textos fijos, y nunca la credencial.
 
 export type AiEnv = Readonly<Record<string, string | undefined>>;
 
@@ -52,11 +52,29 @@ export function parseAiConfig(
   ].filter((value): value is string => value !== undefined);
 
   const nodeEnv = parseNodeEnv(reader, problems);
-  const chain = parseChain(reader, problems, secrets);
+  const chain = parseChain(reader, problems, secrets, 'AI_CHAIN', true);
+  const embedChain = parseChain(
+    reader,
+    problems,
+    secrets,
+    'AI_EMBED_CHAIN',
+    false,
+  );
 
   if (chain !== null && nodeEnv === 'production' && chain.includes('mock')) {
     problems.push({
       variable: 'AI_CHAIN',
+      problem: 'invalid',
+      detail: 'mock is not allowed with NODE_ENV=production',
+    });
+  }
+  if (
+    embedChain !== null &&
+    nodeEnv === 'production' &&
+    embedChain.includes('mock')
+  ) {
+    problems.push({
+      variable: 'AI_EMBED_CHAIN',
       problem: 'invalid',
       detail: 'mock is not allowed with NODE_ENV=production',
     });
@@ -76,23 +94,54 @@ export function parseAiConfig(
   const vaultKey = parseVaultKey(reader, problems, nodeEnv);
   const byok = parseByok(reader, problems, nodeEnv);
 
-  const mock = chain?.includes('mock')
-    ? parseMock(reader, problems, cwd)
-    : undefined;
-  const ollama = chain?.includes('ollama')
-    ? parseOllama(reader, problems)
-    : undefined;
-  const openrouter = chain?.includes('openrouter')
-    ? parseOpenRouter(reader, problems, nodeEnv)
+  const needsMock =
+    (chain?.includes('mock') ?? false) ||
+    (embedChain?.includes('mock') ?? false);
+  const needsOllama =
+    (chain?.includes('ollama') ?? false) ||
+    (embedChain?.includes('ollama') ?? false);
+  const needsOpenrouter =
+    (chain?.includes('openrouter') ?? false) ||
+    (embedChain?.includes('openrouter') ?? false);
+
+  const mock = needsMock ? parseMock(reader, problems, cwd) : undefined;
+  const ollama = needsOllama ? parseOllama(reader, problems) : undefined;
+  const openrouter = needsOpenrouter
+    ? parseOpenRouter(reader, problems, nodeEnv, chain?.includes('openrouter') ?? false)
     : undefined;
 
-  if (problems.length > 0 || nodeEnv === null || chain === null || byok === null) {
+  const embedModel =
+    reader.get('AI_EMBED_MODEL') ?? AI_CONFIG_DEFAULTS.AI_EMBED_MODEL;
+  const embedDimensions = positiveInt(
+    reader,
+    problems,
+    'AI_EMBED_DIMENSIONS',
+    AI_CONFIG_DEFAULTS.AI_EMBED_DIMENSIONS,
+  );
+  const embedTimeoutMs = positiveInt(
+    reader,
+    problems,
+    'AI_EMBED_TIMEOUT_MS',
+    AI_CONFIG_DEFAULTS.AI_EMBED_TIMEOUT_MS,
+  );
+
+  if (
+    problems.length > 0 ||
+    nodeEnv === null ||
+    chain === null ||
+    embedChain === null ||
+    byok === null
+  ) {
     return { ok: false, problems };
   }
 
   const config: AiConfig = {
     nodeEnv,
     chain,
+    embedChain,
+    embedModel,
+    embedDimensions,
+    embedTimeoutMs,
     promptsDir,
     cacheTtlSeconds,
     quotas,
@@ -152,11 +201,14 @@ function parseChain(
   reader: EnvReader,
   problems: AiConfigProblem[],
   secrets: readonly string[],
+  variable: 'AI_CHAIN' | 'AI_EMBED_CHAIN',
+  required: boolean,
 ): AiProviderId[] | null {
-  const value = reader.get('AI_CHAIN');
+  const value = reader.get(variable);
   if (value === undefined) {
+    if (!required) return [];
     problems.push({
-      variable: 'AI_CHAIN',
+      variable,
       problem: 'missing',
       detail: `expected "${AI_CHAIN_NONE}" or a comma-separated list of ${KNOWN_PROVIDER_IDS.join(', ')}`,
     });
@@ -171,21 +223,21 @@ function parseChain(
     if (id === AI_CHAIN_NONE) {
       valid = false;
       problems.push({
-        variable: 'AI_CHAIN',
+        variable,
         problem: 'invalid',
         detail: `"${AI_CHAIN_NONE}" cannot be combined with other providers`,
       });
     } else if (!isOneOf(KNOWN_PROVIDER_IDS, id)) {
       valid = false;
       problems.push({
-        variable: 'AI_CHAIN',
+        variable,
         problem: 'invalid',
         detail: `unknown provider ${echoIdentifier(id, secrets)}`,
       });
     } else if (chain.includes(id)) {
       valid = false;
       problems.push({
-        variable: 'AI_CHAIN',
+        variable,
         problem: 'invalid',
         detail: `duplicated provider ${id}`,
       });
@@ -210,7 +262,7 @@ function parseMock(
     problems.push({
       variable: 'AI_MOCK_MODE',
       problem: 'missing',
-      detail: `required when AI_CHAIN includes mock: ${MOCK_MODES.join(' or ')}`,
+      detail: `required when AI_CHAIN or AI_EMBED_CHAIN includes mock: ${MOCK_MODES.join(' or ')}`,
     });
     return undefined;
   }
@@ -268,6 +320,8 @@ function parseOpenRouter(
   reader: EnvReader,
   problems: AiConfigProblem[],
   nodeEnv: AiNodeEnv | null,
+  /** Si openrouter está en AI_CHAIN LLM: exige modelo `:free`. Solo en embed: basta la API key. */
+  requireFreeLlmModel: boolean,
 ): OpenRouterProviderConfig | undefined {
   const before = problems.length;
 
@@ -276,23 +330,28 @@ function parseOpenRouter(
     problems.push({
       variable: 'OPENROUTER_API_KEY',
       problem: 'missing',
-      detail: 'required when AI_CHAIN includes openrouter',
+      detail: 'required when AI_CHAIN or AI_EMBED_CHAIN includes openrouter',
     });
   }
 
-  const model = reader.get('OPENROUTER_MODEL');
-  if (model === undefined) {
-    problems.push({
-      variable: 'OPENROUTER_MODEL',
-      problem: 'missing',
-      detail: 'required when AI_CHAIN includes openrouter; must end with :free',
-    });
-  } else if (!model.endsWith(':free')) {
-    problems.push({
-      variable: 'OPENROUTER_MODEL',
-      problem: 'invalid',
-      detail: 'only free models are allowed: must end with :free',
-    });
+  let model = reader.get('OPENROUTER_MODEL');
+  if (requireFreeLlmModel) {
+    if (model === undefined) {
+      problems.push({
+        variable: 'OPENROUTER_MODEL',
+        problem: 'missing',
+        detail: 'required when AI_CHAIN includes openrouter; must end with :free',
+      });
+    } else if (!model.endsWith(':free')) {
+      problems.push({
+        variable: 'OPENROUTER_MODEL',
+        problem: 'invalid',
+        detail: 'only free models are allowed: must end with :free',
+      });
+    }
+  } else {
+    // Solo embed: placeholder LLM model no se usa; se rellena para tipar el bloque.
+    model = model ?? 'unused-for-embed-only';
   }
 
   const baseUrl = url(
@@ -340,7 +399,7 @@ function parseQuotas(
   const value = reader.get('AI_QUOTAS');
   if (value === undefined) return {};
 
-  const quotas: Partial<Record<AiTaskName, number>> = {};
+  const quotas: Partial<Record<AiLedgerTask, number>> = {};
   for (const raw of value.split(',')) {
     const entry = raw.trim();
     const match = /^([a-z0-9-]+)=(\d+)$/.exec(entry);

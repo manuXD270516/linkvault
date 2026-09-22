@@ -19,7 +19,7 @@ import type {
   UsageLedger,
   UsageRecord,
 } from '../../domain/ports/usage-ledger.port';
-import type { AiTaskName } from '../../domain/task';
+import type { AiLedgerTask } from '../../domain/task';
 
 // Implementaciones en memoria de los puertos de runTask para tests de application (sin Mongo, Redis ni archivos).
 // No son adaptadores de producción: los reales viven en infrastructure (grupos 6–10).
@@ -67,16 +67,16 @@ export class InMemoryUsageLedger implements UsageLedger {
 
 /** Cuota por tarea sobre un contador de éxitos en memoria, o una función arbitraria. */
 export class InMemoryQuotaPolicy implements QuotaPolicy {
-  readonly calls: { userId: string; task: AiTaskName }[] = [];
+  readonly calls: { userId: string; task: AiLedgerTask }[] = [];
 
   constructor(
     private readonly decide: (
       userId: string,
-      task: AiTaskName,
+      task: AiLedgerTask,
     ) => Promise<QuotaDecision> = () => Promise.resolve({ allowed: true }),
   ) {}
 
-  allows(userId: string, task: AiTaskName): Promise<QuotaDecision> {
+  allows(userId: string, task: AiLedgerTask): Promise<QuotaDecision> {
     this.calls.push({ userId, task });
     return this.decide(userId, task);
   }

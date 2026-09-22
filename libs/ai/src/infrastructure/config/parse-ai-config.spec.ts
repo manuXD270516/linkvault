@@ -52,6 +52,10 @@ describe('parseAiConfig', () => {
     expect(config({ NODE_ENV: 'development', AI_CHAIN: 'none' })).toEqual({
       nodeEnv: 'development',
       chain: [],
+      embedChain: [],
+      embedModel: 'nomic-embed-text',
+      embedDimensions: 768,
+      embedTimeoutMs: 30_000,
       promptsDir: resolve(CWD, AI_CONFIG_DEFAULTS.AI_PROMPTS_DIR),
       cacheTtlSeconds: 604_800,
       quotas: {},
@@ -71,6 +75,10 @@ describe('parseAiConfig', () => {
     ).toEqual({
       nodeEnv: 'development',
       chain: ['mock', 'ollama', 'openrouter'],
+      embedChain: [],
+      embedModel: 'nomic-embed-text',
+      embedDimensions: 768,
+      embedTimeoutMs: 30_000,
       promptsDir: resolve(CWD, 'libs/ai/src/infrastructure/prompts'),
       cacheTtlSeconds: 604_800,
       quotas: {},
@@ -182,6 +190,39 @@ describe('parseAiConfig', () => {
         AI_FIXTURES_DIR: 'fixtures/ai',
       }).mock?.fixturesDir,
     ).toBe(resolve(CWD, 'fixtures/ai'));
+  });
+
+  it('accepts AI_EMBED_CHAIN independently of AI_CHAIN', () => {
+    const parsed = config({
+      NODE_ENV: 'test',
+      AI_CHAIN: 'none',
+      AI_EMBED_CHAIN: 'mock,ollama',
+      AI_MOCK_MODE: 'replay',
+      AI_EMBED_MODEL: 'nomic-embed-text',
+      AI_EMBED_DIMENSIONS: '768',
+    });
+    expect(parsed.chain).toEqual([]);
+    expect(parsed.embedChain).toEqual(['mock', 'ollama']);
+    expect(parsed.embedModel).toBe('nomic-embed-text');
+    expect(parsed.mock?.mode).toBe('replay');
+    expect(parsed.ollama?.baseUrl).toBe('http://localhost:11434');
+  });
+
+  it('rejects mock on AI_EMBED_CHAIN in production', () => {
+    expect(
+      problems({
+        NODE_ENV: 'production',
+        AI_CHAIN: 'none',
+        AI_VAULT_KEY: VAULT_KEY_B64,
+        AI_EMBED_CHAIN: 'mock',
+        AI_MOCK_MODE: 'replay',
+      }),
+    ).toContainEqual(
+      expect.objectContaining({
+        variable: 'AI_EMBED_CHAIN',
+        detail: expect.stringContaining('mock'),
+      }),
+    );
   });
 
   it('accepts a quota for extract-pasted-job, separate from the one of extract-job', () => {

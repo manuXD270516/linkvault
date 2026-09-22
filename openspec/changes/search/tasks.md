@@ -10,10 +10,10 @@
 
 ## 3. Embeddings (libs/ai)
 
-- [ ] 3.1 [ai] Añadir puerto `EmbeddingProvider` + tipos de capacidades/dimensión en `libs/ai/domain`; verify: test unitario de tipos o compile del port; `nx run ai:typecheck` OK.
-- [ ] 3.2 [ai] Implementar `MockEmbeddingProvider` determinista (replay/synth) y registrar en la cadena `AI_EMBED_CHAIN`; verify: test Vitest “mismo input → mismo vector”.
-- [ ] 3.3 [ai] Implementar adaptador Ollama embeddings bajo `infrastructure/providers`; OpenRouter (u otro remoto) **opcional** solo si se añade a `AI_EMBED_CHAIN` (V0 default: mock+ollama); verify: lint `no-restricted-imports` y test de adapter Ollama con HTTP mock.
-- [ ] 3.4 [ai] Exponer **`embedTexts`** (única puerta app de embeddings; **no** vía `runTask`) con PII `personal`, consentimiento del dueño en indexación, ledger y breaker; verify: tests de redacción a external, consent owner, ledger en fallo/éxito, y que search no importa SDKs.
+- [x] 3.1 [ai] Añadir puerto `EmbeddingProvider` + tipos de capacidades/dimensión en `libs/ai/domain`; verify: test unitario de tipos o compile del port; `nx run ai:typecheck` OK.
+- [x] 3.2 [ai] Implementar `MockEmbeddingProvider` determinista (replay/synth) y registrar en la cadena `AI_EMBED_CHAIN`; verify: test Vitest “mismo input → mismo vector”.
+- [x] 3.3 [ai] Implementar adaptador Ollama embeddings bajo `infrastructure/providers`; OpenRouter (u otro remoto) **opcional** solo si se añade a `AI_EMBED_CHAIN` (V0 default: mock+ollama); verify: lint `no-restricted-imports` y test de adapter Ollama con HTTP mock.
+- [x] 3.4 [ai] Exponer **`embedTexts`** (única puerta app de embeddings; **no** vía `runTask`) con PII `personal`, consentimiento del dueño en indexación, ledger y breaker; verify: tests de redacción a external, consent owner, ledger en fallo/éxito, y que search no importa SDKs.
 
 ## 4. Shared events and Meili client
 

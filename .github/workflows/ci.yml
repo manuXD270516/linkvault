@@ -90,6 +90,7 @@ jobs:
         env:
           AI_CHAIN: mock
           AI_MOCK_MODE: replay
+          AI_EMBED_CHAIN: mock
         run: pnpm nx affected -t test
 
       # Eval harness en replay contra la línea base (D10 de ai-eval-harness, ADR-019): falla si una métrica bloqueante,
@@ -100,6 +101,7 @@ jobs:
           NODE_ENV: test
           AI_CHAIN: mock
           AI_MOCK_MODE: replay
+          AI_EMBED_CHAIN: mock
         run: pnpm nx affected -t eval-ci
 
       - name: Build
