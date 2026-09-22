@@ -208,6 +208,64 @@ describe('OpenRouterProvider', () => {
     });
   });
 
+  it('plataforma always denies data collection by default', async () => {
+    const server = await startServer((_req, res) =>
+      json(res, 200, { choices: [{ message: { content: '{}' } }] }),
+    );
+    const provider = new OpenRouterProvider(
+      options({ baseUrl: server.baseUrl }),
+    );
+
+    await provider.complete({ system: 's', user: 'u', responseFormat: 'json' });
+
+    expect(provider.id).toBe('openrouter');
+    expect(server.received[0]?.body).toMatchObject({
+      provider: { data_collection: 'deny' },
+    });
+  });
+
+  it('BYOK free model keeps deny when dataCollection is deny', async () => {
+    const server = await startServer((_req, res) =>
+      json(res, 200, { choices: [{ message: { content: '{}' } }] }),
+    );
+    const provider = new OpenRouterProvider(
+      options({
+        baseUrl: server.baseUrl,
+        id: 'byok:ana:openrouter',
+        model: 'meta-llama/llama-3.3-70b-instruct:free',
+        dataCollection: 'deny',
+      }),
+    );
+
+    await provider.complete({ system: 's', user: 'u' });
+
+    expect(provider.id).toBe('byok:ana:openrouter');
+    expect(server.received[0]?.body).toMatchObject({
+      model: 'meta-llama/llama-3.3-70b-instruct:free',
+      provider: { data_collection: 'deny' },
+    });
+  });
+
+  it('BYOK paid model omits data_collection when dataCollection is omit', async () => {
+    const server = await startServer((_req, res) =>
+      json(res, 200, { choices: [{ message: { content: '{}' } }] }),
+    );
+    const provider = new OpenRouterProvider(
+      options({
+        baseUrl: server.baseUrl,
+        id: 'byok:ana:openrouter',
+        model: 'anthropic/claude-sonnet-4',
+        dataCollection: 'omit',
+      }),
+    );
+
+    await provider.complete({ system: 's', user: 'u' });
+
+    const body = server.received[0]?.body as Record<string, unknown>;
+    expect(body['model']).toBe('anthropic/claude-sonnet-4');
+    expect(body).not.toHaveProperty('provider');
+  });
+
   it('Error de la API', async () => {
     const server = await startServer((req, res) =>
       json(res, 400, {

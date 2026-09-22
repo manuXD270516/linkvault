@@ -7,35 +7,19 @@ import type {
   ProviderCapabilities,
 } from '../../domain/ports/llm-provider.port';
 
-// Proveedor externo OpenRouter por HTTP con `fetch` nativo, sin SDK (D6 de ai-gateway-core, ADR-018 §12).
-// Solo modelos `:free` (lo valida la configuración), con `data_collection: "deny"`. La credencial viaja únicamente en
-// la cabecera `Authorization`; los errores nunca llevan cuerpo, petición, cabeceras ni credencial, tampoco en `cause`.
+// Proveedor OpenAI por HTTP con `fetch` nativo, sin SDK (ADR-032). Credencial solo en Authorization.
 
-export const OPENROUTER_PROVIDER_ID = 'openrouter';
+export const OPENAI_PROVIDER_ID = 'openai';
 
-/** Plazo de `healthy()`: una consulta de salud nunca debe quedarse colgada. */
 const HEALTH_TIMEOUT_MS = 5_000;
 
-export interface OpenRouterProviderOptions {
-  /** p. ej. `https://openrouter.ai/api/v1`. */
+export interface OpenAIProviderOptions {
   baseUrl: string;
   apiKey: string;
-  /** Identificador de modelo; la plataforma exige `:free`, BYOK no. */
   model: string;
   maxContextTokens: number;
-  /** Cabecera `HTTP-Referer` (atribución de la app en OpenRouter). */
-  referer: string;
-  /** Cabecera `X-Title`. */
-  title: string;
-  /**
-   * Id efectivo. Por defecto `openrouter` (plataforma). BYOK usa `byok:<userId>:openrouter`.
-   */
+  /** Id efectivo (`openai` o `byok:<userId>:openai`). */
   id?: string;
-  /**
-   * `deny`: fuerza `provider.data_collection = "deny"` (plataforma y BYOK `:free`).
-   * `omit`: no envía `data_collection` (BYOK de pago, ADR-032 D6).
-   */
-  dataCollection?: 'deny' | 'omit';
 }
 
 const chatCompletionSchema = z.object({
@@ -51,25 +35,18 @@ const chatCompletionSchema = z.object({
     .optional(),
 });
 
-export class OpenRouterProvider implements LlmProvider {
+export class OpenAIProvider implements LlmProvider {
   readonly id: string;
   readonly capabilities: ProviderCapabilities;
-  // Campo privado de ES: no aparece en JSON.stringify ni en util.inspect del proveedor.
   readonly #apiKey: string;
   private readonly baseUrl: string;
   private readonly model: string;
-  private readonly referer: string;
-  private readonly title: string;
-  private readonly dataCollection: 'deny' | 'omit';
 
-  constructor(options: OpenRouterProviderOptions) {
-    this.id = options.id ?? OPENROUTER_PROVIDER_ID;
+  constructor(options: OpenAIProviderOptions) {
+    this.id = options.id ?? OPENAI_PROVIDER_ID;
     this.#apiKey = options.apiKey;
     this.baseUrl = options.baseUrl.replace(/\/+$/, '');
     this.model = options.model;
-    this.referer = options.referer;
-    this.title = options.title;
-    this.dataCollection = options.dataCollection ?? 'deny';
     this.capabilities = {
       jsonMode: true,
       toolUse: false,
@@ -96,9 +73,6 @@ export class OpenRouterProvider implements LlmProvider {
       ...(req.responseFormat === 'json'
         ? { response_format: { type: 'json_object' } }
         : {}),
-      ...(this.dataCollection === 'deny'
-        ? { provider: { data_collection: 'deny' } }
-        : {}),
     };
 
     const startedAt = performance.now();
@@ -109,8 +83,6 @@ export class OpenRouterProvider implements LlmProvider {
         headers: {
           Authorization: `Bearer ${this.#apiKey}`,
           'Content-Type': 'application/json',
-          'HTTP-Referer': this.referer,
-          'X-Title': this.title,
         },
         body: JSON.stringify(body),
         signal: req.signal,
@@ -128,12 +100,10 @@ export class OpenRouterProvider implements LlmProvider {
     try {
       payload = await response.json();
     } catch {
-      // El mensaje de JSON.parse cita el cuerpo: nunca se propaga.
       throw this.failure(req.signal);
     }
     const latencyMs = Math.round(performance.now() - startedAt);
 
-    // OpenRouter puede responder 200 con `{ error }` en lugar de `choices`.
     const parsed = chatCompletionSchema.safeParse(payload);
     if (!parsed.success) throw new ProviderUnavailable(this.id);
     const [choice] = parsed.data.choices;
@@ -150,11 +120,11 @@ export class OpenRouterProvider implements LlmProvider {
     };
   }
 
-  /** Comprueba que la API responde a `GET /models`, sin credencial ni coste. */
   async healthy(): Promise<boolean> {
     try {
       const response = await fetch(`${this.baseUrl}/models`, {
         method: 'GET',
+        headers: { Authorization: `Bearer ${this.#apiKey}` },
         signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS),
       });
       await discardBody(response);
@@ -164,7 +134,6 @@ export class OpenRouterProvider implements LlmProvider {
     }
   }
 
-  /** Una cancelación se propaga como tal (quien llama distingue su plazo); el resto, como proveedor no disponible. */
   private failure(signal: AbortSignal | undefined): unknown {
     return signal?.aborted ? signal.reason : new ProviderUnavailable(this.id);
   }
@@ -174,6 +143,6 @@ async function discardBody(response: Response): Promise<void> {
   try {
     await response.body?.cancel();
   } catch {
-    // El cuerpo no interesa; un error al descartarlo no cambia el resultado.
+    // El cuerpo no interesa.
   }
 }

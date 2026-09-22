@@ -38,6 +38,8 @@ import {
   type RunContext,
 } from '../domain/run-context';
 import { dataSensitivityOf, type AiTask } from '../domain/task';
+import type { ByokProvidersSource } from '../infrastructure/providers/byok-provider.factory';
+import { isByokProviderId } from '../infrastructure/providers/byok-provider.factory';
 import { executionKey } from './execution-key';
 import {
   pendingFixtureLogFrom,
@@ -54,8 +56,13 @@ import {
 // Punto de entrada único del módulo de IA (design-v0.2 §4.3, ADR-014, ADR-018; D2, D3, D4 y D9 de ai-gateway-core).
 
 export interface RunTaskDeps {
-  /** Proveedores configurados, en el orden de AI_CHAIN. */
+  /** Proveedores de plataforma (`AI_CHAIN`), en ese orden. */
   providers: readonly LlmProvider[];
+  /**
+   * Factory de proveedores BYOK del usuario del contexto. Sin declarar, no se inyectan BYOK
+   * (tests que solo ejercitan la cadena de plataforma).
+   */
+  byokFactory?: ByokProvidersSource;
   prompts: PromptRegistry;
   cache: ResultCache;
   ledger: UsageLedger;
@@ -65,7 +72,7 @@ export interface RunTaskDeps {
   logger: AiLogger;
   /**
    * Plazo por petición de cada proveedor en ms (`OLLAMA_TIMEOUT_MS`, `OPENROUTER_TIMEOUT_MS`); los ausentes usan
-   * `DEFAULT_PROVIDER_TIMEOUT_MS`.
+   * `DEFAULT_PROVIDER_TIMEOUT_MS`. También admite ids `byok:*` si el llamador los registra.
    */
   providerTimeoutsMs?: Readonly<Record<string, number>>;
   /**
@@ -140,26 +147,43 @@ export class RunTask {
     const cached = await this.readCache(task, key);
     if (cached !== null) return cached;
 
-    // Cuota por usuario y tarea, una vez antes de la cadena (D9, ADR-018 §9). Sin usuario no hay cuota.
-    // Precedencia: `quota_exceeded` gana a los demás motivos (cv-match-suggestions 3.5).
+    const byokProviders = await this.resolveByokProviders(ctx.userId);
+    const openIds = await this.deps.breaker.openIds();
+
+    // Cuota de plataforma (success no-byok). Si está agotada y hay BYOK elegible → cadena solo BYOK (D7).
+    // Si está agotada sin BYOK elegible → `quota_exceeded` antes de contactar a nadie.
+    let restrictToByok = false;
     if (ctx.userId !== undefined) {
       const quota = await this.quotaDecision(ctx.userId, task);
       if (!quota.allowed) {
-        return this.degrade(
+        const byokOnly = buildChain({
           task,
-          parsedInput,
-          'quota_exceeded',
-          execution,
-          quota.retryAt,
-        );
+          ctx,
+          providers: byokProviders,
+          openIds,
+        });
+        if (byokOnly.providers.length === 0) {
+          return this.degrade(
+            task,
+            parsedInput,
+            'quota_exceeded',
+            execution,
+            quota.retryAt,
+          );
+        }
+        restrictToByok = true;
       }
     }
+
+    const universe = restrictToByok
+      ? byokProviders
+      : [...byokProviders, ...this.deps.providers];
 
     const { providers: chain, consentWouldEnable } = buildChain({
       task,
       ctx,
-      providers: this.deps.providers,
-      openIds: await this.deps.breaker.openIds(),
+      providers: universe,
+      openIds,
     });
     if (chain.length === 0) {
       // Con cadena vacía: consentimiento solo si la política dice que el permiso habría cambiado algo.
@@ -276,6 +300,22 @@ export class RunTask {
         error: error instanceof Error ? error.name : 'unknown',
       });
       return { allowed: true };
+    }
+  }
+
+  private async resolveByokProviders(
+    userId: string | undefined,
+  ): Promise<readonly LlmProvider[]> {
+    if (this.deps.byokFactory === undefined || userId === undefined) {
+      return [];
+    }
+    try {
+      return await this.deps.byokFactory.providersFor(userId);
+    } catch (error) {
+      this.deps.logger.warn('BYOK provider resolution failed', {
+        error: error instanceof Error ? error.name : 'unknown',
+      });
+      return [];
     }
   }
 
@@ -472,9 +512,16 @@ export class RunTask {
   }
 
   private timeoutFor(providerId: string): number {
-    return (
-      this.deps.providerTimeoutsMs?.[providerId] ?? DEFAULT_PROVIDER_TIMEOUT_MS
-    );
+    const configured = this.deps.providerTimeoutsMs?.[providerId];
+    if (configured !== undefined) return configured;
+    if (isByokProviderId(providerId)) {
+      const vendor = providerId.split(':')[2];
+      if (vendor !== undefined) {
+        const byVendor = this.deps.providerTimeoutsMs?.[vendor];
+        if (byVendor !== undefined) return byVendor;
+      }
+    }
+    return DEFAULT_PROVIDER_TIMEOUT_MS;
   }
 
   /**

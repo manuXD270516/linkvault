@@ -15,3 +15,12 @@ export const AI_MODULE_OPTIONS = Symbol('AI_MODULE_OPTIONS');
 
 /** Cliente ioredis de la caché de IA, o `null` si la cadena incluye el mock. Interno: no se exporta desde index.ts. */
 export const AI_CACHE_REDIS_CLIENT = Symbol('AI_CACHE_REDIS_CLIENT');
+
+/** Puerto `SecretVault` (BYOK). Exportado para el HTTP thin de api. */
+export const SECRET_VAULT = Symbol('SECRET_VAULT');
+
+/** Repositorio `user_ai_keys`. Exportado para el HTTP thin y el borrado de cuenta. */
+export const USER_AI_KEYS_REPOSITORY = Symbol('USER_AI_KEYS_REPOSITORY');
+
+/** Factory de proveedores `byok:*`. Interno al módulo salvo tests. */
+export const BYOK_PROVIDER_FACTORY = Symbol('BYOK_PROVIDER_FACTORY');

@@ -8,6 +8,7 @@ import {
   type AiConfigProblem,
   type AiConfigResult,
 } from './ai-config.schema';
+import { defaultByokConfig } from './default-byok-config';
 import {
   formatAiConfigProblems,
   parseAiConfig,
@@ -19,6 +20,7 @@ import {
 
 const CWD = resolve('/workspace/linkvault');
 const API_KEY = 'sk-or-v1-0a1b2c3d4e5f60718293a4b5c6d7e8f9-secret';
+const VAULT_KEY_B64 = Buffer.alloc(32, 7).toString('base64');
 
 function parse(env: AiEnv): AiConfigResult {
   return parseAiConfig(env, { cwd: CWD });
@@ -53,6 +55,7 @@ describe('parseAiConfig', () => {
       promptsDir: resolve(CWD, AI_CONFIG_DEFAULTS.AI_PROMPTS_DIR),
       cacheTtlSeconds: 604_800,
       quotas: {},
+      byok: defaultByokConfig(),
     });
   });
 
@@ -71,6 +74,7 @@ describe('parseAiConfig', () => {
       promptsDir: resolve(CWD, 'libs/ai/src/infrastructure/prompts'),
       cacheTtlSeconds: 604_800,
       quotas: {},
+      byok: defaultByokConfig(),
       mock: {
         mode: 'synth',
         fixturesDir: resolve(CWD, 'libs/ai/src/infrastructure/fixtures'),
@@ -93,11 +97,50 @@ describe('parseAiConfig', () => {
     });
   });
 
+  it('requires AI_VAULT_KEY in production and accepts a 32-byte base64 key', () => {
+    expect(
+      problems({
+        NODE_ENV: 'production',
+        AI_CHAIN: 'none',
+      }).some((p) => p.variable === 'AI_VAULT_KEY' && p.problem === 'missing'),
+    ).toBe(true);
+
+    const parsed = config({
+      NODE_ENV: 'production',
+      AI_CHAIN: 'none',
+      AI_VAULT_KEY: VAULT_KEY_B64,
+    });
+    expect(parsed.vaultKey).toEqual(new Uint8Array(32).fill(7));
+  });
+
+  it('rejects an AI_VAULT_KEY that is not 32 decoded bytes without echoing it', () => {
+    const shortKey = Buffer.from('too-short').toString('base64');
+    const found = problems({
+      NODE_ENV: 'development',
+      AI_CHAIN: 'none',
+      AI_VAULT_KEY: shortKey,
+    });
+    expect(found.some((p) => p.variable === 'AI_VAULT_KEY')).toBe(true);
+    expect(allText(found)).not.toContain(shortKey);
+  });
+
+  it('reads BYOK_*_MODEL overrides', () => {
+    const parsed = config({
+      NODE_ENV: 'development',
+      AI_CHAIN: 'none',
+      BYOK_OPENAI_MODEL: 'gpt-4o',
+      BYOK_OPENROUTER_MODEL: 'anthropic/claude-sonnet-4',
+    });
+    expect(parsed.byok.openaiModel).toBe('gpt-4o');
+    expect(parsed.byok.openrouterModel).toBe('anthropic/claude-sonnet-4');
+  });
+
   it('reads explicit values, keeps the AI_CHAIN order and resolves relative dirs against cwd', () => {
     const absolute = resolve('/opt/prompts');
     const parsed = config({
       NODE_ENV: 'production',
       AI_CHAIN: 'openrouter,ollama',
+      AI_VAULT_KEY: VAULT_KEY_B64,
       AI_PROMPTS_DIR: absolute,
       AI_CACHE_TTL_SECONDS: '60',
       AI_QUOTAS: 'classify-skills=100,extract-job=200',
@@ -218,6 +261,7 @@ describe('parseAiConfig', () => {
     const found = problems({
       NODE_ENV: 'production',
       AI_CHAIN: 'mock,openrouter',
+      AI_VAULT_KEY: VAULT_KEY_B64,
       AI_MOCK_MODE: 'replay',
       OPENROUTER_API_KEY: API_KEY,
       OPENROUTER_MODEL: 'meta-llama/llama-3.3-70b-instruct:free',
@@ -237,6 +281,7 @@ describe('parseAiConfig', () => {
     const found = problems({
       NODE_ENV: 'production',
       AI_CHAIN: 'mock',
+      AI_VAULT_KEY: VAULT_KEY_B64,
       AI_MOCK_MODE: 'synth',
     });
 
@@ -254,6 +299,7 @@ describe('parseAiConfig', () => {
         parse({
           NODE_ENV: 'production',
           AI_CHAIN: 'ollama',
+          AI_VAULT_KEY: VAULT_KEY_B64,
           AI_MOCK_MODE: mode,
         }).ok,
       ).toBe(true);
@@ -316,14 +362,24 @@ describe('parseAiConfig', () => {
       OPENROUTER_BASE_URL: 'http://127.0.0.1:4010/api/v1',
     };
 
-    for (const nodeEnv of ['development', 'production']) {
-      expect(problems({ ...env, NODE_ENV: nodeEnv })).toEqual([
-        expect.objectContaining({
-          variable: 'OPENROUTER_BASE_URL',
-          problem: 'invalid',
-        }),
-      ]);
-    }
+    expect(problems({ ...env, NODE_ENV: 'development' })).toEqual([
+      expect.objectContaining({
+        variable: 'OPENROUTER_BASE_URL',
+        problem: 'invalid',
+      }),
+    ]);
+    expect(
+      problems({
+        ...env,
+        NODE_ENV: 'production',
+        AI_VAULT_KEY: VAULT_KEY_B64,
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        variable: 'OPENROUTER_BASE_URL',
+        problem: 'invalid',
+      }),
+    ]);
     expect(config({ ...env, NODE_ENV: 'test' }).openrouter?.baseUrl).toBe(
       'http://127.0.0.1:4010/api/v1',
     );

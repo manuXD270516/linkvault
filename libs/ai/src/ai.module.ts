@@ -11,8 +11,11 @@ import type { Connection } from 'mongoose';
 import {
   AI_CACHE_REDIS_CLIENT,
   AI_MODULE_OPTIONS,
+  BYOK_PROVIDER_FACTORY,
   PROVIDER_ELIGIBILITY,
   RUN_TASK,
+  SECRET_VAULT,
+  USER_AI_KEYS_REPOSITORY,
 } from './ai.tokens';
 import { NullResultCache } from './application/null-result-cache';
 import {
@@ -27,16 +30,21 @@ import type { Clock } from './domain/ports/clock.port';
 import type { PromptRegistry } from './domain/ports/prompt-registry.port';
 import type { QuotaPolicy } from './domain/ports/quota-policy.port';
 import type { ResultCache } from './domain/ports/result-cache.port';
+import type { SecretVault } from './domain/ports/secret-vault.port';
+import type { UserAiKeysRepository } from './domain/ports/user-ai-keys.repository.port';
 import { MOCK_PROVIDER_ID } from './domain/provider-ids';
 import type { AiConfig } from './infrastructure/config/ai-config.schema';
+import { LibsodiumSecretVault } from './infrastructure/crypto/libsodium-secret-vault';
 import { NestAiLogger } from './infrastructure/logging/nest-ai-logger';
 import { MongoUsageLedger } from './infrastructure/persistence/mongo-usage-ledger';
+import { MongoUserAiKeysRepository } from './infrastructure/persistence/mongo-user-ai-keys.repository';
 import { RedisResultCache } from './infrastructure/persistence/redis-result-cache';
 import {
   AiCacheRedisConnection,
   createAiCacheRedisClient,
 } from './infrastructure/persistence/redis-result-cache.client';
 import { FilePromptRegistry } from './infrastructure/prompt-registry/file-prompt-registry';
+import { ByokProviderFactory } from './infrastructure/providers/byok-provider.factory';
 import {
   buildProviders,
   type BuiltProviders,
@@ -99,6 +107,20 @@ function usesRealCache(config: AiConfig): boolean {
   return !config.chain.includes(MOCK_PROVIDER_ID);
 }
 
+/** Plazos por id de plataforma y por vendor BYOK (reutilizados vía `timeoutFor`). */
+function providerTimeoutsMs(
+  built: BuiltProviders,
+  config: AiConfig,
+): Record<string, number> {
+  return {
+    ...built.timeoutsMs,
+    anthropic: config.byok.anthropicTimeoutMs,
+    openai: config.byok.openaiTimeoutMs,
+    openrouter:
+      built.timeoutsMs['openrouter'] ?? config.byok.openrouterTimeoutMs,
+  };
+}
+
 @Module({})
 export class AiModule {
   static forRootAsync(options: AiModuleAsyncOptions): DynamicModule {
@@ -142,6 +164,39 @@ export class AiModule {
       },
       { provide: AI_CLOCK, useValue: systemClock },
       { provide: AI_LOGGER, useFactory: (): AiLogger => new NestAiLogger() },
+      {
+        provide: SECRET_VAULT,
+        inject: [AI_MODULE_OPTIONS],
+        useFactory: ({ config }: AiModuleOptions): SecretVault =>
+          new LibsodiumSecretVault({ vaultKey: config.vaultKey }),
+      },
+      {
+        provide: USER_AI_KEYS_REPOSITORY,
+        inject: [getConnectionToken()],
+        useFactory: (connection: Connection): UserAiKeysRepository =>
+          new MongoUserAiKeysRepository(connection),
+      },
+      {
+        provide: BYOK_PROVIDER_FACTORY,
+        inject: [
+          USER_AI_KEYS_REPOSITORY,
+          SECRET_VAULT,
+          AI_MODULE_OPTIONS,
+          AI_LOGGER,
+        ],
+        useFactory: (
+          keys: UserAiKeysRepository,
+          vault: SecretVault,
+          { config }: AiModuleOptions,
+          logger: AiLogger,
+        ): ByokProviderFactory =>
+          new ByokProviderFactory({
+            keys,
+            vault,
+            config: config.byok,
+            logger,
+          }),
+      },
       {
         provide: AI_CACHE_REDIS_CLIENT,
         inject: [AI_MODULE_OPTIONS],
@@ -207,12 +262,17 @@ export class AiModule {
       },
       {
         provide: PROVIDER_ELIGIBILITY,
-        inject: [AI_PROVIDERS, AI_CIRCUIT_BREAKER],
+        inject: [AI_PROVIDERS, AI_CIRCUIT_BREAKER, BYOK_PROVIDER_FACTORY],
         useFactory: (
           built: BuiltProviders,
           breaker: CircuitBreaker,
+          byokFactory: ByokProviderFactory,
         ): ProviderEligibility =>
-          new DefaultProviderEligibility(built.providers, breaker),
+          new DefaultProviderEligibility({
+            platformProviders: built.providers,
+            breaker,
+            byokFactory,
+          }),
       },
       {
         provide: RUN_TASK,
@@ -225,6 +285,8 @@ export class AiModule {
           AI_CIRCUIT_BREAKER,
           AI_CLOCK,
           AI_LOGGER,
+          BYOK_PROVIDER_FACTORY,
+          AI_MODULE_OPTIONS,
           // Garantiza que la conexión de Redis (y sus hooks) se instancia junto a runTask.
           AI_CACHE_REDIS_CONNECTION,
         ],
@@ -237,10 +299,13 @@ export class AiModule {
           breaker: CircuitBreaker,
           clock: Clock,
           logger: AiLogger,
+          byokFactory: ByokProviderFactory,
+          { config }: AiModuleOptions,
         ): RunTaskFn =>
           new RunTask({
             providers: built.providers,
-            providerTimeoutsMs: built.timeoutsMs,
+            providerTimeoutsMs: providerTimeoutsMs(built, config),
+            byokFactory,
             prompts,
             cache,
             ledger,
@@ -256,7 +321,12 @@ export class AiModule {
       module: AiModule,
       imports: options.imports ?? [],
       providers,
-      exports: [RUN_TASK, PROVIDER_ELIGIBILITY],
+      exports: [
+        RUN_TASK,
+        PROVIDER_ELIGIBILITY,
+        SECRET_VAULT,
+        USER_AI_KEYS_REPOSITORY,
+      ],
     };
   }
 }

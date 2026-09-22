@@ -1,6 +1,7 @@
 import { isAbsolute, resolve } from 'node:path';
 import type { AiTaskName } from '../../domain/task';
 import type { QuotaLimits } from '../quota/config-quota-policy';
+import { decodeVaultKeyFromBase64 } from '../crypto/libsodium-secret-vault';
 import {
   AI_CHAIN_NONE,
   AI_CONFIG_DEFAULTS,
@@ -18,6 +19,7 @@ import {
   type AiMockMode,
   type AiNodeEnv,
   type AiProviderId,
+  type ByokProviderConfig,
   type MockProviderConfig,
   type OllamaProviderConfig,
   type OpenRouterProviderConfig,
@@ -44,9 +46,10 @@ export function parseAiConfig(
   const cwd = options.cwd ?? process.cwd();
   const reader = new EnvReader(env);
   const problems: AiConfigProblem[] = [];
-  const secrets = [reader.get('OPENROUTER_API_KEY')].filter(
-    (value): value is string => value !== undefined,
-  );
+  const secrets = [
+    reader.get('OPENROUTER_API_KEY'),
+    reader.get('AI_VAULT_KEY'),
+  ].filter((value): value is string => value !== undefined);
 
   const nodeEnv = parseNodeEnv(reader, problems);
   const chain = parseChain(reader, problems, secrets);
@@ -70,6 +73,8 @@ export function parseAiConfig(
     AI_CONFIG_DEFAULTS.AI_CACHE_TTL_SECONDS,
   );
   const quotas = parseQuotas(reader, problems);
+  const vaultKey = parseVaultKey(reader, problems, nodeEnv);
+  const byok = parseByok(reader, problems, nodeEnv);
 
   const mock = chain?.includes('mock')
     ? parseMock(reader, problems, cwd)
@@ -81,7 +86,7 @@ export function parseAiConfig(
     ? parseOpenRouter(reader, problems, nodeEnv)
     : undefined;
 
-  if (problems.length > 0 || nodeEnv === null || chain === null) {
+  if (problems.length > 0 || nodeEnv === null || chain === null || byok === null) {
     return { ok: false, problems };
   }
 
@@ -91,6 +96,8 @@ export function parseAiConfig(
     promptsDir,
     cacheTtlSeconds,
     quotas,
+    byok,
+    ...(vaultKey !== undefined ? { vaultKey } : {}),
     ...(mock ? { mock } : {}),
     ...(ollama ? { ollama } : {}),
     ...(openrouter ? { openrouter } : {}),
@@ -365,6 +372,114 @@ function parseQuotas(
     quotas[task] = Number.parseInt(limit, 10);
   }
   return quotas;
+}
+
+/**
+ * `AI_VAULT_KEY` en base64 → 32 bytes. Obligatoria en producción; fuera de prod, opcional
+ * (sin clave → vault unavailable para encrypt, ADR-032 D4).
+ */
+function parseVaultKey(
+  reader: EnvReader,
+  problems: AiConfigProblem[],
+  nodeEnv: AiNodeEnv | null,
+): Uint8Array | undefined {
+  const raw = reader.get('AI_VAULT_KEY');
+  if (raw === undefined) {
+    if (nodeEnv === 'production') {
+      problems.push({
+        variable: 'AI_VAULT_KEY',
+        problem: 'missing',
+        detail: 'required in production: 32-byte key encoded as base64',
+      });
+    }
+    return undefined;
+  }
+  const decoded = decodeVaultKeyFromBase64(raw);
+  if (decoded === undefined) {
+    problems.push({
+      variable: 'AI_VAULT_KEY',
+      problem: 'invalid',
+      detail: 'expected base64 encoding of exactly 32 bytes',
+    });
+    return undefined;
+  }
+  return decoded;
+}
+
+function parseByok(
+  reader: EnvReader,
+  problems: AiConfigProblem[],
+  nodeEnv: AiNodeEnv | null,
+): ByokProviderConfig | null {
+  const before = problems.length;
+  const config: ByokProviderConfig = {
+    anthropicBaseUrl: url(
+      reader,
+      problems,
+      'BYOK_ANTHROPIC_BASE_URL',
+      AI_CONFIG_DEFAULTS.BYOK_ANTHROPIC_BASE_URL,
+      nodeEnv !== 'test',
+    ),
+    anthropicModel:
+      reader.get('BYOK_ANTHROPIC_MODEL') ??
+      AI_CONFIG_DEFAULTS.BYOK_ANTHROPIC_MODEL,
+    anthropicMaxContextTokens: positiveInt(
+      reader,
+      problems,
+      'BYOK_ANTHROPIC_MAX_CONTEXT_TOKENS',
+      AI_CONFIG_DEFAULTS.BYOK_ANTHROPIC_MAX_CONTEXT_TOKENS,
+    ),
+    anthropicTimeoutMs: positiveInt(
+      reader,
+      problems,
+      'BYOK_ANTHROPIC_TIMEOUT_MS',
+      AI_CONFIG_DEFAULTS.BYOK_ANTHROPIC_TIMEOUT_MS,
+    ),
+    openaiBaseUrl: url(
+      reader,
+      problems,
+      'BYOK_OPENAI_BASE_URL',
+      AI_CONFIG_DEFAULTS.BYOK_OPENAI_BASE_URL,
+      nodeEnv !== 'test',
+    ),
+    openaiModel:
+      reader.get('BYOK_OPENAI_MODEL') ?? AI_CONFIG_DEFAULTS.BYOK_OPENAI_MODEL,
+    openaiMaxContextTokens: positiveInt(
+      reader,
+      problems,
+      'BYOK_OPENAI_MAX_CONTEXT_TOKENS',
+      AI_CONFIG_DEFAULTS.BYOK_OPENAI_MAX_CONTEXT_TOKENS,
+    ),
+    openaiTimeoutMs: positiveInt(
+      reader,
+      problems,
+      'BYOK_OPENAI_TIMEOUT_MS',
+      AI_CONFIG_DEFAULTS.BYOK_OPENAI_TIMEOUT_MS,
+    ),
+    openrouterBaseUrl: url(
+      reader,
+      problems,
+      'BYOK_OPENROUTER_BASE_URL',
+      AI_CONFIG_DEFAULTS.BYOK_OPENROUTER_BASE_URL,
+      nodeEnv !== 'test',
+    ),
+    openrouterModel:
+      reader.get('BYOK_OPENROUTER_MODEL') ??
+      AI_CONFIG_DEFAULTS.BYOK_OPENROUTER_MODEL,
+    openrouterMaxContextTokens: positiveInt(
+      reader,
+      problems,
+      'BYOK_OPENROUTER_MAX_CONTEXT_TOKENS',
+      AI_CONFIG_DEFAULTS.BYOK_OPENROUTER_MAX_CONTEXT_TOKENS,
+    ),
+    openrouterTimeoutMs: positiveInt(
+      reader,
+      problems,
+      'BYOK_OPENROUTER_TIMEOUT_MS',
+      AI_CONFIG_DEFAULTS.BYOK_OPENROUTER_TIMEOUT_MS,
+    ),
+  };
+  return problems.length === before ? config : null;
 }
 
 function positiveInt(

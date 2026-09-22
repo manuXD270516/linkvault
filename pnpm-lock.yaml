@@ -223,6 +223,9 @@ importers:
       '@ngrx/signals':
         specifier: ^22.0.1
         version: 22.0.1(@angular/core@22.1.6(@angular/compiler@22.1.6)(rxjs@7.8.1))(rxjs@7.8.1)
+      '@noble/ciphers':
+        specifier: ^2.4.0
+        version: 2.4.0
       '@node-rs/argon2':
         specifier: ^2.2.1
         version: 2.2.1
@@ -2595,6 +2598,10 @@ packages:
     peerDependenciesMeta:
       rxjs:
         optional: true
+
+  '@noble/ciphers@2.4.0':
+    resolution: {integrity: sha512-AnjFn0Jv92laAkvMrghlFZq4qQCIN/4DxFV/eooqtC2YTjB7kBeLMS2T9KJX4Dn+ZVXLOwK0lSgqDtx9gvxtiw==}
+    engines: {node: '>= 20.19.0'}
 
   '@noble/hashes@1.4.0':
     resolution: {integrity: sha512-V1JJ1WTRUqHHrOSh597hURcMqVKVGL/ea3kv0gSnEdsEZ0/+VyPghM1lMNGc00z7CIQorSvbKpuJkxvuHbvdbg==}
@@ -11261,6 +11268,8 @@ snapshots:
       tslib: 2.8.1
     optionalDependencies:
       rxjs: 7.8.1
+
+  '@noble/ciphers@2.4.0': {}
 
   '@noble/hashes@1.4.0': {}
 

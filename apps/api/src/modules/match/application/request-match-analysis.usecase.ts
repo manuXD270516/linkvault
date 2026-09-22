@@ -138,6 +138,7 @@ export class RequestMatchAnalysis {
           dataSensitivity: matchCvTask.dataSensitivity,
         },
         aiConsent: { externalProviders },
+        userId,
       });
 
       if (

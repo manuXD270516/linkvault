@@ -7,6 +7,7 @@ export * from './events/link-created.event';
 export * from './events/link-enriched.event';
 export * from './events/match-requested.event';
 export * from './events/roadmap-requested.event';
+export * from './schemas/ai-byok.schema';
 export * from './schemas/application.schema';
 export * from './schemas/auth.schema';
 export * from './schemas/critique-suggestions.schema';

@@ -123,4 +123,59 @@ describe('DefaultProviderEligibility', () => {
       expect(p.healthy).not.toHaveBeenCalled();
     }
   });
+
+  it('includes BYOK of the userId and ignores another user keys (D11)', async () => {
+    const platform = provider('ollama');
+    const anaByok = provider('byok:ana:openai', { external: true });
+    const eligibility = new DefaultProviderEligibility({
+      platformProviders: [platform],
+      breaker: breakerWith(new Set()),
+      byokFactory: {
+        providersFor: async (userId) =>
+          userId === 'ana' ? [anaByok] : [],
+      },
+    });
+
+    await expect(
+      eligibility.hasEligibleProvider({
+        task: { requires: {}, dataSensitivity: 'personal' },
+        aiConsent: { externalProviders: true },
+        userId: 'ana',
+      }),
+    ).resolves.toMatchObject({ status: 'ready', hasEligible: true });
+
+    await expect(
+      eligibility.hasEligibleProvider({
+        task: { requires: {}, dataSensitivity: 'personal' },
+        aiConsent: { externalProviders: true },
+        userId: 'beto',
+      }),
+    ).resolves.toMatchObject({ status: 'ready', hasEligible: true });
+
+    expect(anaByok.complete).not.toHaveBeenCalled();
+  });
+
+  it('reports hasEligible via BYOK alone when AI_CHAIN is empty (match vigencia D11)', async () => {
+    const anaByok = provider('byok:ana:openai', { external: true });
+    const eligibility = new DefaultProviderEligibility({
+      platformProviders: [],
+      breaker: breakerWith(new Set()),
+      byokFactory: {
+        providersFor: async (userId) =>
+          userId === 'ana' ? [anaByok] : [],
+      },
+    });
+
+    await expect(
+      eligibility.hasEligibleProvider({
+        task: { requires: { jsonMode: true }, dataSensitivity: 'personal' },
+        aiConsent: { externalProviders: true },
+        userId: 'ana',
+      }),
+    ).resolves.toEqual({
+      status: 'ready',
+      hasEligible: true,
+      consentWouldEnable: false,
+    });
+  });
 });

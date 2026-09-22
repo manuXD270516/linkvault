@@ -1318,7 +1318,8 @@ describe('RunTask: quotas', () => {
           r.userId === userId &&
           r.task === task &&
           r.outcome === 'success' &&
-          r.at.getTime() >= since,
+          r.at.getTime() >= since &&
+          !(typeof r.providerId === 'string' && r.providerId.startsWith('byok:')),
       );
       if (successes.length < limit) return Promise.resolve({ allowed: true });
       const oldest = Math.min(...successes.map((r) => r.at.getTime()));
@@ -1454,6 +1455,120 @@ describe('RunTask: quotas', () => {
     expect(deps.logger.warnings.map((w) => w.message)).toContain(
       'AI quota check failed, allowing execution',
     );
+  });
+});
+
+describe('RunTask: BYOK routing and platform quota', () => {
+  const USER_CTX: RunContext = { ...CONSENT, userId: 'ana' };
+
+  function stubByok(providers: readonly LlmProvider[]) {
+    return {
+      providersFor: (userId: string | undefined) =>
+        Promise.resolve(userId === 'ana' ? [...providers] : []),
+    };
+  }
+
+  it('prefers BYOK over platform when both are eligible', async () => {
+    const byok = new FakeLlmProvider('byok:ana:openai', [VALID], {
+      capabilities: { external: true },
+    });
+    const platform = new FakeLlmProvider('openrouter', [VALID], {
+      capabilities: { external: true },
+    });
+    const { runTask } = harness([platform], {
+      byokFactory: stubByok([byok]),
+    });
+
+    const result = await runTask.execute(classifySkillsTask, INPUT, USER_CTX);
+
+    expect(result).toMatchObject({
+      status: 'success',
+      providerId: 'byok:ana:openai',
+    });
+    expect(byok.calls).toBe(1);
+    expect(platform.calls).toBe(0);
+  });
+
+  it('does not inject another user BYOK into Ana chain', async () => {
+    const beto = new FakeLlmProvider('byok:beto:openai', [VALID], {
+      capabilities: { external: true },
+    });
+    const platform = new FakeLlmProvider('ollama', [VALID]);
+    const { runTask } = harness([platform], {
+      byokFactory: {
+        providersFor: (userId) =>
+          Promise.resolve(userId === 'beto' ? [beto] : []),
+      },
+    });
+
+    const result = await runTask.execute(classifySkillsTask, INPUT, USER_CTX);
+
+    expect(result).toMatchObject({ status: 'success', providerId: 'ollama' });
+    expect(beto.calls).toBe(0);
+  });
+
+  it('with platform quota exhausted uses only BYOK', async () => {
+    const byok = new FakeLlmProvider('byok:ana:openai', [VALID], {
+      capabilities: { external: true },
+    });
+    const platform = new FakeLlmProvider('openrouter', [VALID], {
+      capabilities: { external: true },
+    });
+    const quota = new InMemoryQuotaPolicy(() =>
+      Promise.resolve({
+        allowed: false,
+        retryAt: new Date('2026-09-18T10:00:00.000Z'),
+      }),
+    );
+    const { runTask } = harness([platform], {
+      byokFactory: stubByok([byok]),
+      quota,
+    });
+
+    const result = await runTask.execute(classifySkillsTask, INPUT, USER_CTX);
+
+    expect(result).toMatchObject({
+      status: 'success',
+      providerId: 'byok:ana:openai',
+    });
+    expect(platform.calls).toBe(0);
+  });
+
+  it('degrades quota_exceeded when platform quota is exhausted without BYOK', async () => {
+    const platform = new FakeLlmProvider('ollama', [VALID]);
+    const quota = new InMemoryQuotaPolicy(() =>
+      Promise.resolve({
+        allowed: false,
+        retryAt: new Date('2026-09-18T10:00:00.000Z'),
+      }),
+    );
+    const { runTask } = harness([platform], { quota });
+
+    await expect(
+      runTask.execute(classifySkillsTask, INPUT, USER_CTX),
+    ).resolves.toMatchObject({
+      status: 'degraded',
+      reason: 'quota_exceeded',
+    });
+    expect(platform.calls).toBe(0);
+  });
+
+  it('does not use BYOK without consent on a personal task', async () => {
+    const byok = new FakeLlmProvider('byok:ana:openai', [VALID], {
+      capabilities: { external: true },
+    });
+    const platform = new FakeLlmProvider('ollama', [VALID]);
+    const { runTask } = harness([platform], {
+      byokFactory: stubByok([byok]),
+    });
+
+    const result = await runTask.execute(classifySkillsTask, INPUT, {
+      userId: 'ana',
+      aiConsent: { externalProviders: false },
+    });
+
+    expect(result).toMatchObject({ status: 'success', providerId: 'ollama' });
+    expect(byok.calls).toBe(0);
   });
 });
 

@@ -1,15 +1,15 @@
 ## 1. Vault y persistencia
 
-- [ ] 1.1 [ai] Puerto `SecretVault` + `LibsodiumSecretVault` con `AI_VAULT_KEY` (obligatoria en prod); tests round-trip y fallo con clave corta.
-- [ ] 1.2 [ai] Colección `user_ai_keys` + repo Mongo en `libs/ai` (índice único userId+vendor); `deleteAllKeysForUser(userId, session)` para la misma txn del borrado de cuenta; sin EventEmitter. Tests de repo.
+- [x] 1.1 [ai] Puerto `SecretVault` + `LibsodiumSecretVault` con `AI_VAULT_KEY` (obligatoria en prod); tests round-trip y fallo con clave corta.
+- [x] 1.2 [ai] Colección `user_ai_keys` + repo Mongo en `libs/ai` (índice único userId+vendor); `deleteAllKeysForUser(userId, session)` para la misma txn del borrado de cuenta; sin EventEmitter. Tests de repo.
 - [ ] 1.3 [backend] Controller `GET/PUT/DELETE /api/users/me/ai-keys[/:vendor]`; zod min length 16; `503 vault_unavailable` sin vault en no-prod; nunca plaintext.
 
 ## 2. Proveedores y routing
 
-- [ ] 2.1 [ai] `AnthropicProvider` y `OpenAIProvider` (external, jsonMode); tests con HTTP double.
-- [ ] 2.2 [ai] `OpenRouterProvider` parametrizable (`id`, `dataCollection: deny|omit`); BYOK factory: modelos env; deny solo si modelo `:free`; tests plataforma always deny + BYOK free/pago.
-- [ ] 2.3 [ai] `ByokProviderFactory` + `RunTask` concatenan BYOK; con cuota no-BYOK agotada cadena **solo** byok; elegibilidad previa incluye BYOK del userId; spec «otra persona no entra».
-- [ ] 2.4 [ai] Cuota ledger: contar solo success no-`byok:`; `MATCH_ANALYSES_PER_USER` intacta; tests ConfigQuotaPolicy/runTask + match vigencia tras upsert clave (D11).
+- [x] 2.1 [ai] `AnthropicProvider` y `OpenAIProvider` (external, jsonMode); tests con HTTP double.
+- [x] 2.2 [ai] `OpenRouterProvider` parametrizable (`id`, `dataCollection: deny|omit`); BYOK factory: modelos env; deny solo si modelo `:free`; tests plataforma always deny + BYOK free/pago.
+- [x] 2.3 [ai] `ByokProviderFactory` + `RunTask` concatenan BYOK; con cuota no-BYOK agotada cadena **solo** byok; elegibilidad previa incluye BYOK del userId; spec «otra persona no entra».
+- [x] 2.4 [ai] Cuota ledger: contar solo success no-`byok:`; `MATCH_ANALYSES_PER_USER` intacta; tests ConfigQuotaPolicy/runTask + match vigencia tras upsert clave (D11).
 
 ## 3. Config, logs y docs
 

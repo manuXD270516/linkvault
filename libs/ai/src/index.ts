@@ -55,13 +55,32 @@ export {
   type AiModuleAsyncOptions,
   type AiModuleOptions,
 } from './ai.module';
-export { PROVIDER_ELIGIBILITY, RUN_TASK } from './ai.tokens';
+export { PROVIDER_ELIGIBILITY, RUN_TASK, SECRET_VAULT, USER_AI_KEYS_REPOSITORY } from './ai.tokens';
 export type { RunTaskFn } from './application/run-task.usecase';
 export type {
   ProviderEligibility,
   ProviderEligibilityQuery,
   ProviderEligibilityResult,
 } from './application/provider-eligibility';
+export type { SecretVault } from './domain/ports/secret-vault.port';
+export {
+  SecretTooShort,
+  VaultDecryptFailed,
+  VaultUnavailable,
+} from './domain/ports/secret-vault.port';
+export type {
+  UpsertUserAiKeyInput,
+  UserAiKeyRecord,
+  UserAiKeysRepository,
+  UserAiKeysWriteSession,
+  UserAiKeyView,
+} from './domain/ports/user-ai-keys.repository.port';
+export {
+  byokProviderId,
+  isByokProviderId,
+} from './infrastructure/providers/byok-provider.factory';
+export { LibsodiumSecretVault } from './infrastructure/crypto/libsodium-secret-vault';
+export { keyHintOf } from './infrastructure/crypto/key-hint';
 export {
   classifySkillsTask,
   type ClassifySkillsInput,
