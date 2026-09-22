@@ -61,7 +61,7 @@ export const CV_MULTIPART_LIMITS = {
  */
 export async function configureApp(app: NestFastifyApplication): Promise<void> {
   app.setGlobalPrefix(API_GLOBAL_PREFIX, {
-    exclude: ['health', 'health/live', ...PUBLIC_PAGE_ROUTES],
+    exclude: ['health', 'health/live', 'metrics', ...PUBLIC_PAGE_ROUTES],
   });
   await app.register(fastifyCookie);
   await app.register(fastifyMultipart, { limits: { ...CV_MULTIPART_LIMITS } });
@@ -76,7 +76,7 @@ export async function createApp(
 ): Promise<NestFastifyApplication> {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule.register(config, ai),
-    new FastifyAdapter(),
+    new FastifyAdapter({ trustProxy: config.TRUST_PROXY === true }),
     { bufferLogs: true },
   );
   app.useLogger(app.get(Logger));

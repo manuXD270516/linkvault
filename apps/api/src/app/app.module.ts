@@ -16,6 +16,7 @@ import { AiKeysModule } from '../modules/users/presentation/ai-keys.module';
 import { UsersModule } from '../modules/users/presentation/users.module';
 import { EventsModule } from '../presentation/http/events.module';
 import { HealthModule } from '../presentation/http/health.module';
+import { MetricsModule } from '../presentation/http/metrics.module';
 
 @Module({})
 export class AppModule {
@@ -50,6 +51,7 @@ export class AppModule {
         MongoPersistenceModule,
         RedisHealthModule,
         HealthModule,
+        MetricsModule,
         EventsModule,
         UsersModule,
         AiKeysModule.register(aiModule),

@@ -57,6 +57,8 @@ export async function apiTestConfig(
     MATCH_QUOTA_WINDOW_MS: 86_400_000,
     MATCH_ANALYSIS_MAX_AGE_MS: 240_000,
     MATCH_ANALYSIS_TIMEOUT_MS: 120_000,
+    // D12: sin proxy de confianza en tests salvo override explícito.
+    TRUST_PROXY: false,
     ...overrides,
   };
 }

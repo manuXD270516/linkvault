@@ -72,7 +72,7 @@ export async function createAuthTestApp(
     .useValue(clock)
     .compile();
   const app = moduleRef.createNestApplication<NestFastifyApplication>(
-    new FastifyAdapter(),
+    new FastifyAdapter({ trustProxy: config.TRUST_PROXY === true }),
     { logger: false },
   );
   await configureApp(app);
