@@ -25,11 +25,13 @@ export type GroupTrackersByLink = Record<string, GroupTracker[]>;
 /**
  * Cambio de estado pedido por la UI. `stageLabel` omitido conserva la etapa si ya estaba en `in_process`, `null` la
  * borra; `appliedAt` se omite con "Hoy" (manda el reloj del servidor) y lleva la medianoche local de otro día (D3).
+ * `groupId` opcional: contexto de la vista de grupo (change notifications, D8).
  */
 export interface StatusChange {
   status: ApplicationStatus;
   stageLabel?: string | null;
   appliedAt?: string;
+  groupId?: string;
 }
 
 /** Lo que basta de una postulación para operar sobre ella: el id capturado en el gesto y el link que la pinta. */

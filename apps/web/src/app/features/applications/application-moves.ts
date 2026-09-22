@@ -52,13 +52,24 @@ export class ApplicationMoves {
     return askAppliedDate(this.dialog);
   }
 
-  async move(application: Application, target: ApplicationStatus): Promise<MoveOutcome> {
+  /**
+   * @param groupId Contexto de la vista de grupo: viaja en el PATCH de estado para acotar el fan-out de aviso.
+   */
+  async move(
+    application: Application,
+    target: ApplicationStatus,
+    groupId?: string | null,
+  ): Promise<MoveOutcome> {
     const change = await this.ask(application, target);
     if (change === null) {
       return { kind: 'cancelled' };
     }
+    const payload: StatusChange =
+      groupId !== undefined && groupId !== null && groupId !== ''
+        ? { ...change, groupId }
+        : change;
     try {
-      const moved = await this.store.changeStatus(application, change);
+      const moved = await this.store.changeStatus(application, payload);
       return moved === null ? { kind: 'gone' } : { kind: 'moved', application: moved };
     } catch (error: unknown) {
       return isApplicationConflict(error)

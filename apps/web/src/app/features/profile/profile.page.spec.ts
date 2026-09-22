@@ -519,6 +519,14 @@ describe('ProfilePage', () => {
       expect(host().querySelector('[data-testid="profile-danger"]')).not.toBeNull();
     });
 
+    it('enlaza a preferencias de notificación', () => {
+      const link = host().querySelector<HTMLAnchorElement>(
+        '[data-testid="profile-notifications-link"]',
+      );
+      expect(link?.getAttribute('href')).toBe('/notificaciones');
+      expect(host().querySelector('[data-testid="profile-notifications"]')).not.toBeNull();
+    });
+
     it('Borrado exitoso desde el perfil', async () => {
       buttonWithText(host(), 'Borrar mi cuenta').click();
       await settle();

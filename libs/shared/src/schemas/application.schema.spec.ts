@@ -224,6 +224,15 @@ describe('changeApplicationStatusRequestSchema', () => {
     expect(changeApplicationStatusRequestSchema.parse(base)).toEqual(base);
   });
 
+  it('accepts an optional groupId from a group view', () => {
+    expect(
+      changeApplicationStatusRequestSchema.parse({ ...base, groupId: 'g1' }),
+    ).toEqual({ ...base, groupId: 'g1' });
+    expect(changeApplicationStatusRequestSchema.parse(base)).not.toHaveProperty(
+      'groupId',
+    );
+  });
+
   it('names version when it is missing or not a positive integer', () => {
     expect(
       fieldsOf(

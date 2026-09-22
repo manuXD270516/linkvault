@@ -26,9 +26,9 @@
 
 ## 5. Frontend
 
-- [ ] 5.1 [frontend] UI preferencias (tipos, notifyOwnActions, selector opcional de `applicationStatusGroupId`) + i18n + enlace perfil; verificar tests.
-- [ ] 5.2 [frontend] Service Worker + flujo push (VAPID, POST/DELETE endpoint); permiso denegado no bloquea email; verificar tests/harness.
-- [ ] 5.3 [frontend] Al cambiar estado desde vista de grupo, enviar `groupId` en el request; verificar test del cliente API.
+- [x] 5.1 [frontend] UI preferencias (tipos, notifyOwnActions, selector opcional de `applicationStatusGroupId`) + i18n + enlace perfil; verificar tests.
+- [x] 5.2 [frontend] Service Worker + flujo push (VAPID, POST/DELETE endpoint); permiso denegado no bloquea email; verificar tests/harness.
+- [x] 5.3 [frontend] Al cambiar estado desde vista de grupo, enviar `groupId` en el request; verificar test del cliente API.
 
 ## 6. Docs, plan y cierre
 

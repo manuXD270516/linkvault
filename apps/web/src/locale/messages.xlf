@@ -3285,6 +3285,185 @@
           <context context-type="linenumber">501,503</context>
         </context-group>
       </trans-unit>
+      <trans-unit id="notifications.back" datatype="html">
+        <source>← Volver al perfil</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/notifications/notifications.page.html</context>
+          <context context-type="linenumber">5,8</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="notifications.title" datatype="html">
+        <source>Notificaciones</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/notifications/notifications.page.html</context>
+          <context context-type="linenumber">8,9</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="notifications.intro" datatype="html">
+        <source> Elige qué avisos quieres recibir por email. El push del navegador es opcional. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/notifications/notifications.page.html</context>
+          <context context-type="linenumber">10,14</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="notifications.loading" datatype="html">
+        <source>Cargando preferencias…</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/notifications/notifications.page.html</context>
+          <context context-type="linenumber">15,18</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="notifications.emailTitle" datatype="html">
+        <source>Avisos por email</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/notifications/notifications.page.html</context>
+          <context context-type="linenumber">24,27</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="notifications.pref.groupNewLink" datatype="html">
+        <source> Nuevo link en un grupo </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/notifications/notifications.page.html</context>
+          <context context-type="linenumber">31,34</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="notifications.pref.applicationStatusGroup" datatype="html">
+        <source> Cambio de estado de postulación en el grupo </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/notifications/notifications.page.html</context>
+          <context context-type="linenumber">39,42</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="notifications.pref.applicationStale" datatype="html">
+        <source> Postulación estancada </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/notifications/notifications.page.html</context>
+          <context context-type="linenumber">47,50</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="notifications.pref.notifyOwnActions" datatype="html">
+        <source> Avisarme también de mis propias acciones </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/notifications/notifications.page.html</context>
+          <context context-type="linenumber">55,58</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="notifications.pref.statusGroup" datatype="html">
+        <source>Grupo para avisos de estado</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/notifications/notifications.page.html</context>
+          <context context-type="linenumber">59,61</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="notifications.pref.statusGroupAll" datatype="html">
+        <source>Todos mis grupos (unión del link)</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/notifications/notifications.page.html</context>
+          <context context-type="linenumber">65,67</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="notifications.pref.statusGroupHint" datatype="html">
+        <source> Opcional. Si eliges un grupo, solo avisamos cambios acotados a ese grupo (salvo que el cambio venga desde la vista de otro grupo). </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/notifications/notifications.page.html</context>
+          <context context-type="linenumber">72,75</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="notifications.saved" datatype="html">
+        <source> Preferencias guardadas </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/notifications/notifications.page.html</context>
+          <context context-type="linenumber">79,82</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="notifications.save" datatype="html">
+        <source> Guardar preferencias </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/notifications/notifications.page.html</context>
+          <context context-type="linenumber">93,95</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="notifications.push.title" datatype="html">
+        <source>Push del navegador</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/notifications/notifications.page.html</context>
+          <context context-type="linenumber">99,100</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="notifications.push.intro" datatype="html">
+        <source> Opcional. Si el navegador no lo permite o deniegas el permiso, los avisos por email siguen funcionando. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/notifications/notifications.page.html</context>
+          <context context-type="linenumber">101,105</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="notifications.push.unsupported" datatype="html">
+        <source> Este navegador no admite notificaciones push. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/notifications/notifications.page.html</context>
+          <context context-type="linenumber">107,110</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/notifications/notifications.page.html</context>
+          <context context-type="linenumber">168,171</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="notifications.push.on" datatype="html">
+        <source>Push activado en este dispositivo</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/notifications/notifications.page.html</context>
+          <context context-type="linenumber">112,114</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="notifications.push.off" datatype="html">
+        <source>Push desactivado en este dispositivo</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/notifications/notifications.page.html</context>
+          <context context-type="linenumber">114,117</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="notifications.push.enable" datatype="html">
+        <source> Activar push </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/notifications/notifications.page.html</context>
+          <context context-type="linenumber">128,130</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="notifications.push.disable" datatype="html">
+        <source> Desactivar push </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/notifications/notifications.page.html</context>
+          <context context-type="linenumber">139,141</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="notifications.push.denied" datatype="html">
+        <source> No diste permiso de notificaciones. Puedes seguir editando los avisos por email. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/notifications/notifications.page.html</context>
+          <context context-type="linenumber">153,155</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="notifications.push.vapidUnavailable" datatype="html">
+        <source> El push no está disponible ahora. Los avisos por email siguen activos. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/notifications/notifications.page.html</context>
+          <context context-type="linenumber">163,166</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="notifications.push.enabled" datatype="html">
+        <source> Push activado </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/notifications/notifications.page.html</context>
+          <context context-type="linenumber">173,175</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="notifications.push.disabled" datatype="html">
+        <source> Push desactivado </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/notifications/notifications.page.html</context>
+          <context context-type="linenumber">178,180</context>
+        </context-group>
+      </trans-unit>
       <trans-unit id="privacy.title" datatype="html">
         <source>Aviso de privacidad</source>
         <context-group purpose="location">
@@ -3692,32 +3871,53 @@
           <context context-type="linenumber">344,345</context>
         </context-group>
       </trans-unit>
+      <trans-unit id="profile.notifications.title" datatype="html">
+        <source>Notificaciones</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+          <context context-type="linenumber">354,355</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="profile.notifications.intro" datatype="html">
+        <source> Elige qué avisos quieres por email y, si quieres, el push del navegador. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+          <context context-type="linenumber">356,360</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="profile.notifications.link" datatype="html">
+        <source> Gestionar notificaciones </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+          <context context-type="linenumber">365,368</context>
+        </context-group>
+      </trans-unit>
       <trans-unit id="profile.danger.title" datatype="html">
         <source>Zona de peligro</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">356,357</context>
+          <context context-type="linenumber">374,375</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.privacyLink" datatype="html">
         <source> Detalle de almacenamiento del CV, retención, IA y borrado en el <x id="START_LINK" ctype="x-a" equiv-text="&lt;a routerLink=&quot;/privacidad&quot; data-testid=&quot;profile-privacy-link&quot;&gt;"/>aviso de privacidad<x id="CLOSE_LINK" ctype="x-a" equiv-text="&lt;/a&gt;"/>. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">358,361</context>
+          <context context-type="linenumber">376,379</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.delete.intro" datatype="html">
         <source> Borrar la cuenta elimina tus datos personales de LinkVault. Esta acción no se puede deshacer. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">362,365</context>
+          <context context-type="linenumber">380,383</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.delete.open" datatype="html">
         <source> Borrar mi cuenta </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">373,375</context>
+          <context context-type="linenumber">391,393</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.byok.revokeTitle" datatype="html">

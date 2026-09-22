@@ -148,6 +148,7 @@ export type TrackLinkRequest = z.infer<typeof trackLinkRequestSchema>;
 /**
  * Cuerpo de `PATCH /api/applications/:id/status`. `version` es la que pintó quien pide: protege el estado y la etapa
  * frente a otra pestaña (ADR-024 §4). Pedir el mismo estado y la misma etapa responde `200` sin mirarla.
+ * `groupId` opcional: contexto UI de un grupo que acota el fan-out de aviso (change notifications, D8).
  */
 export const changeApplicationStatusRequestSchema = z
   .object({
@@ -155,6 +156,7 @@ export const changeApplicationStatusRequestSchema = z
     stageLabel: stageLabelInputSchema,
     appliedAt: appliedAtInputSchema.optional(),
     version: z.number().int().positive(),
+    groupId: identifierInputSchema.optional(),
   })
   .superRefine(checkStatusRules);
 export type ChangeApplicationStatusRequest = z.infer<
