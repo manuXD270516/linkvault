@@ -65,6 +65,7 @@ export class MatchModule implements OnModuleInit {
     aiModule: DynamicModule,
     applicationsModule: DynamicModule,
     cvModule: DynamicModule,
+    searchModule?: DynamicModule,
   ): DynamicModule {
     return {
       module: MatchModule,
@@ -76,6 +77,7 @@ export class MatchModule implements OnModuleInit {
         linksModule,
         aiModule,
         applicationsModule,
+        ...(searchModule === undefined ? [] : [searchModule]),
       ],
       controllers: [
         MatchController,

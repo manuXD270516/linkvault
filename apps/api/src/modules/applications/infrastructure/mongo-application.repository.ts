@@ -84,7 +84,13 @@ export class MongoApplicationRepository implements ApplicationRepository {
     );
   }
 
-  async create(tracking: StartedTracking): Promise<TrackResult> {
+  async create(
+    tracking: StartedTracking,
+    sideEffects?: (
+      session: ClientSession,
+      application: Application,
+    ) => Promise<void>,
+  ): Promise<TrackResult> {
     const userId = toUserObjectId(tracking.application.userId);
     const linkId = toLinkObjectId(tracking.application.linkId);
     if (userId === null || linkId === null) {
@@ -103,8 +109,12 @@ export class MongoApplicationRepository implements ApplicationRepository {
             throw new Error('The application insert returned no document');
           }
           await this.insertEvent(document._id, userId, tracking.event, session);
+          const application = toApplication(document.toObject());
+          if (sideEffects !== undefined) {
+            await sideEffects(session, application);
+          }
           return {
-            application: toApplication(document.toObject()),
+            application,
             created: true,
           };
         });
@@ -189,32 +199,49 @@ export class MongoApplicationRepository implements ApplicationRepository {
     applicationId: string,
     userId: string,
     write: EditWrite,
+    sideEffects?: (
+      session: ClientSession,
+      application: Application,
+    ) => Promise<void>,
   ): Promise<Application | null> {
     const ids = ownedIds(applicationId, userId);
     if (ids === null) {
       return null;
     }
     // Última escritura gana: sin condición de versión, sin `$inc` y sin tocar `statusChangedAt` (D5).
-    const updated = await this.applications
-      .findOneAndUpdate(
-        ids,
-        {
-          $set: {
-            ...(write.notes === undefined ? {} : { notes: write.notes }),
-            ...(write.visibility === undefined
-              ? {}
-              : { visibility: write.visibility }),
-            updatedAt: write.updatedAt,
+    return await this.withTransaction(async (session) => {
+      const updated = await this.applications
+        .findOneAndUpdate(
+          ids,
+          {
+            $set: {
+              ...(write.notes === undefined ? {} : { notes: write.notes }),
+              ...(write.visibility === undefined
+                ? {}
+                : { visibility: write.visibility }),
+              updatedAt: write.updatedAt,
+            },
           },
-        },
-        { returnDocument: 'after' },
-      )
-      .lean()
-      .exec();
-    return updated === null ? null : toApplication(updated);
+          { returnDocument: 'after', session },
+        )
+        .lean()
+        .exec();
+      if (updated === null) {
+        return null;
+      }
+      const application = toApplication(updated);
+      if (sideEffects !== undefined) {
+        await sideEffects(session, application);
+      }
+      return application;
+    });
   }
 
-  async delete(applicationId: string, userId: string): Promise<boolean> {
+  async delete(
+    applicationId: string,
+    userId: string,
+    sideEffects?: (session: ClientSession) => Promise<void>,
+  ): Promise<boolean> {
     const ids = ownedIds(applicationId, userId);
     if (ids === null) {
       return false;
@@ -231,6 +258,9 @@ export class MongoApplicationRepository implements ApplicationRepository {
         .deleteMany({ applicationId: ids._id })
         .session(session)
         .exec();
+      if (sideEffects !== undefined) {
+        await sideEffects(session);
+      }
       return true;
     });
   }

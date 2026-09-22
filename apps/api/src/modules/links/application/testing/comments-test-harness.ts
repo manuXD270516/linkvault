@@ -58,6 +58,12 @@ export class CommentsHarness {
     this.limiter,
     this.publisher,
     this.clock,
+    {
+      startSession: async () => ({
+        withTransaction: async (fn: () => Promise<void>) => fn(),
+        endSession: async () => undefined,
+      }),
+    } as never,
   );
   readonly remove = new DeleteGroupLinkComment(
     this.groupLinks,
@@ -65,6 +71,12 @@ export class CommentsHarness {
     this.membership,
     this.directory,
     this.publisher,
+    {
+      startSession: async () => ({
+        withTransaction: async (fn: () => Promise<void>) => fn(),
+        endSession: async () => undefined,
+      }),
+    } as never,
   );
   readonly thread = new ListGroupLinkComments(
     this.groupLinks,
@@ -79,7 +91,16 @@ export class CommentsHarness {
     this.directory,
     this.urls,
   );
-  readonly removeNote = new RemoveShareNote(this.groupLinks, this.membership);
+  readonly removeNote = new RemoveShareNote(
+    this.groupLinks,
+    this.membership,
+    {
+      startSession: async () => ({
+        withTransaction: async (fn: () => Promise<void>) => fn(),
+        endSession: async () => undefined,
+      }),
+    } as never,
+  );
   readonly removeGroupLink = new RemoveGroupLink(
     this.groupLinks,
     this.membership,

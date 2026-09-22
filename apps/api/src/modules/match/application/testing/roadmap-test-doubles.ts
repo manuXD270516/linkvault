@@ -56,16 +56,16 @@ export class InMemoryRoadmapRepository implements RoadmapRepository {
   removeByAnalysisIds(
     analysisIds: readonly string[],
     _session: TransactionSession,
-  ): Promise<number> {
+  ): Promise<readonly string[]> {
     const wanted = new Set(analysisIds);
-    let removed = 0;
+    const deleted: string[] = [];
     for (const [id, doc] of this.documents) {
       if (wanted.has(doc.analysisId)) {
         this.documents.delete(id);
-        removed += 1;
+        deleted.push(id);
       }
     }
-    return Promise.resolve(removed);
+    return Promise.resolve(deleted);
   }
 
   seedReady(

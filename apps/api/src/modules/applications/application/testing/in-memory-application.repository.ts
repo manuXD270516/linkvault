@@ -42,7 +42,13 @@ export class InMemoryApplicationRepository implements ApplicationRepository {
     return this.events.map((event) => structuredClone(event));
   }
 
-  create(tracking: StartedTracking): Promise<TrackResult> {
+  create(
+    tracking: StartedTracking,
+    sideEffects?: (
+      session: object,
+      application: Application,
+    ) => Promise<void>,
+  ): Promise<TrackResult> {
     const existing = [...this.applications.values()].find(
       (application) =>
         application.userId === tracking.application.userId &&
@@ -60,10 +66,14 @@ export class InMemoryApplicationRepository implements ApplicationRepository {
     };
     this.applications.set(application.id, application);
     this.appendEvent(application, tracking.event);
-    return Promise.resolve({
+    const result = {
       application: structuredClone(application),
-      created: true,
-    });
+      created: true as const,
+    };
+    if (sideEffects === undefined) {
+      return Promise.resolve(result);
+    }
+    return sideEffects({}, application).then(() => result);
   }
 
   findOwned(
@@ -112,6 +122,10 @@ export class InMemoryApplicationRepository implements ApplicationRepository {
     applicationId: string,
     userId: string,
     write: EditWrite,
+    sideEffects?: (
+      session: object,
+      application: Application,
+    ) => Promise<void>,
   ): Promise<Application | null> {
     const application = this.owned(applicationId, userId);
     if (application === undefined) {
@@ -126,10 +140,17 @@ export class InMemoryApplicationRepository implements ApplicationRepository {
       updatedAt: write.updatedAt,
     };
     this.applications.set(updated.id, updated);
-    return Promise.resolve(structuredClone(updated));
+    if (sideEffects === undefined) {
+      return Promise.resolve(structuredClone(updated));
+    }
+    return sideEffects({}, updated).then(() => structuredClone(updated));
   }
 
-  delete(applicationId: string, userId: string): Promise<boolean> {
+  delete(
+    applicationId: string,
+    userId: string,
+    sideEffects?: (session: object) => Promise<void>,
+  ): Promise<boolean> {
     const application = this.owned(applicationId, userId);
     if (application === undefined) {
       return Promise.resolve(false);
@@ -140,7 +161,10 @@ export class InMemoryApplicationRepository implements ApplicationRepository {
         this.events.splice(index, 1);
       }
     }
-    return Promise.resolve(true);
+    if (sideEffects === undefined) {
+      return Promise.resolve(true);
+    }
+    return sideEffects({}).then(() => true);
   }
 
   listByUser(

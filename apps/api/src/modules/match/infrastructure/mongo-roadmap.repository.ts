@@ -110,21 +110,30 @@ export class MongoRoadmapRepository implements RoadmapRepository {
   async removeByAnalysisIds(
     analysisIds: readonly string[],
     session: TransactionSession,
-  ): Promise<number> {
+  ): Promise<readonly string[]> {
     if (analysisIds.length === 0) {
-      return 0;
+      return [];
     }
     const ids = analysisIds
       .map((aid) => toAnalysisObjectId(aid))
       .filter((oid): oid is Types.ObjectId => oid !== null);
     if (ids.length === 0) {
-      return 0;
+      return [];
     }
-    const result = await this.roadmaps
+    const docs = await this.roadmaps
+      .find({ analysisId: { $in: ids } }, { _id: 1 })
+      .session(session as ClientSession)
+      .lean()
+      .exec();
+    const deletedIds = docs.map((d) => d._id.toHexString());
+    if (deletedIds.length === 0) {
+      return [];
+    }
+    await this.roadmaps
       .deleteMany({ analysisId: { $in: ids } })
       .session(session as ClientSession)
       .exec();
-    return result.deletedCount;
+    return deletedIds;
   }
 
   private async withTransaction<T>(

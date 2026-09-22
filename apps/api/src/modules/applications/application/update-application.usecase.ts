@@ -2,7 +2,8 @@ import type {
   Application as ApplicationResponse,
   UpdateApplicationRequest,
 } from '@linkvault/shared';
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
+import { SearchFacade } from '../../search/application/search.facade';
 import { editApplication } from '../domain/application.entity';
 import { ApplicationNotFound } from '../domain/errors';
 import { ApplicationFitScores } from './application-fit-scores';
@@ -20,7 +21,7 @@ import { APPLICATIONS_CLOCK, type Clock } from './ports/clock.port';
 /**
  * `PATCH /api/applications/:id` (specs applications/tracking "Notas privadas" y applications/group-visibility "Un
  * interruptor para compartir el estado"): notas y visibilidad, última escritura gana, sin evento, sin versión y sin
- * tocar `statusChangedAt`. Solo exige ser el dueño, vea o no el link todavía (ADR-024 §5).
+ * tocar `statusChangedAt`. Solo exige ser el dueño, vea o no el link todavía (ADR-024 §5). SearchUpsert si FEATURE_SEARCH.
  */
 @Injectable()
 export class UpdateApplication {
@@ -30,6 +31,7 @@ export class UpdateApplication {
     @Inject(APPLICATION_LINKS) private readonly links: ApplicationLinks,
     @Inject(APPLICATIONS_CLOCK) private readonly clock: Clock,
     private readonly fitScores: ApplicationFitScores,
+    @Optional() private readonly search?: SearchFacade,
   ) {}
 
   async execute(
@@ -50,6 +52,19 @@ export class UpdateApplication {
       applicationId,
       userId,
       write,
+      this.search === undefined
+        ? undefined
+        : async (session, application) => {
+            await this.search?.upsert(
+              {
+                docType: 'application',
+                aggregateId: application.id,
+                reason: 'application_upsert',
+                fingerprint: `app:${application.id}:${application.notes ?? ''}:${application.visibility}:${application.updatedAt.toISOString()}`,
+              },
+              session,
+            );
+          },
     );
     if (updated === null) {
       throw new ApplicationNotFound();

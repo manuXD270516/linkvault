@@ -39,8 +39,15 @@ export interface ApplicationRepository {
    * Postulación y primer evento en una transacción. Si ya existía una de esa persona para ese link (índice único
    * `(userId, linkId)`), la devuelve intacta con `created` `false` y no escribe ningún evento. Si al releerla ya no existe
    * —otra pestaña acaba de dejar de seguirla—, repite la transacción una vez (D5).
+   * `sideEffects` solo corre cuando `created` es true, en la misma sesión tras el evento de dominio.
    */
-  create(tracking: StartedTracking): Promise<TrackResult>;
+  create(
+    tracking: StartedTracking,
+    sideEffects?: (
+      session: TransactionSession,
+      application: Application,
+    ) => Promise<void>,
+  ): Promise<TrackResult>;
 
   /** Postulación de esa persona; `null` si no existe, es de otra o algún id está mal formado. */
   findOwned(applicationId: string, userId: string): Promise<Application | null>;
@@ -61,19 +68,27 @@ export interface ApplicationRepository {
 
   /**
    * Notas y visibilidad, última escritura gana: no toca `version` ni `statusChangedAt` ni escribe evento. `null` si no
-   * existe o es de otra persona.
+   * existe o es de otra persona. `sideEffects` corre en la misma sesión tras el `$set` (p. ej. SearchUpsert).
    */
   update(
     applicationId: string,
     userId: string,
     write: EditWrite,
+    sideEffects?: (
+      session: TransactionSession,
+      application: Application,
+    ) => Promise<void>,
   ): Promise<Application | null>;
 
   /**
    * Borra la postulación de esa persona y todos sus eventos en una transacción (dejar de seguir). `false` si no borró
-   * nada, y entonces no toca ningún evento.
+   * nada, y entonces no toca ningún evento. `sideEffects` corre en la misma sesión tras el borrado (p. ej. SearchDelete).
    */
-  delete(applicationId: string, userId: string): Promise<boolean>;
+  delete(
+    applicationId: string,
+    userId: string,
+    sideEffects?: (session: TransactionSession) => Promise<void>,
+  ): Promise<boolean>;
 
   /**
    * Postulaciones de esa persona, de la cambiada más recientemente a la más antigua (`updatedAt`, `_id`). Con

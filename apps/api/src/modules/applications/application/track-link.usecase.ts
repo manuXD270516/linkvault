@@ -1,5 +1,6 @@
 import type { TrackLinkRequest, TrackLinkResponse } from '@linkvault/shared';
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
+import { SearchFacade } from '../../search/application/search.facade';
 import { startTracking } from '../domain/application.entity';
 import { TrackedLinkNotFound } from '../domain/errors';
 import { ApplicationFitScores } from './application-fit-scores';
@@ -18,7 +19,7 @@ import { APPLICATIONS_CLOCK, type Clock } from './ports/clock.port';
  * `POST /api/applications` (spec applications/tracking, "Seguir una oferta"). Solo se sigue lo que se ve: un link que
  * no está en la lista privada ni en un grupo de quien pide, uno que no existe o uno mal formado responden el mismo
  * `404 link_not_found` (D4). La fecha de postulación se valida con el reloj del servidor (D3). Si ya la seguía, responde
- * la existente intacta con `created: false`.
+ * la existente intacta con `created: false`. SearchUpsert en la misma txn si FEATURE_SEARCH y el alta es nueva.
  */
 @Injectable()
 export class TrackLink {
@@ -28,6 +29,7 @@ export class TrackLink {
     @Inject(APPLICATION_LINKS) private readonly links: ApplicationLinks,
     @Inject(APPLICATIONS_CLOCK) private readonly clock: Clock,
     private readonly fitScores: ApplicationFitScores,
+    @Optional() private readonly search?: SearchFacade,
   ) {}
 
   async execute(
@@ -49,7 +51,22 @@ export class TrackLink {
         : { appliedAt: new Date(request.appliedAt) }),
       now: this.clock.now(),
     });
-    const { application, created } = await this.applications.create(tracking);
+    const { application, created } = await this.applications.create(
+      tracking,
+      this.search === undefined
+        ? undefined
+        : async (session, createdApp) => {
+            await this.search?.upsert(
+              {
+                docType: 'application',
+                aggregateId: createdApp.id,
+                reason: 'application_upsert',
+                fingerprint: `app:${createdApp.id}:${createdApp.status}:${createdApp.version}`,
+              },
+              session,
+            );
+          },
+    );
     return {
       application: await respondWithCard(
         this.links,

@@ -115,7 +115,10 @@ export class BackfillSearch {
         options.userId === undefined ? {} : { userId: options.userId };
       const rows = await this.connection
         .collection('roadmaps')
-        .find(filter, { projection: { _id: 1 }, limit: limit - out.length })
+        .find(
+          { ...filter, status: 'ready' },
+          { projection: { _id: 1 }, limit: limit - out.length },
+        )
         .toArray();
       for (const row of rows) {
         out.push({
@@ -123,6 +126,49 @@ export class BackfillSearch {
           aggregateId: String(row._id),
           reason,
           fingerprint: `backfill:roadmap:${String(row._id)}:${Date.now()}`,
+        });
+        if (out.length >= limit) return out;
+      }
+    }
+    if (include(options.docType, 'group_comment')) {
+      const rows = await this.connection
+        .collection('group_link_comments')
+        .find(
+          options.userId === undefined
+            ? {}
+            : { authorId: options.userId },
+          { projection: { _id: 1 }, limit: limit - out.length },
+        )
+        .toArray();
+      for (const row of rows) {
+        out.push({
+          docType: 'group_comment',
+          aggregateId: String(row._id),
+          reason,
+          fingerprint: `backfill:group_comment:${String(row._id)}:${Date.now()}`,
+        });
+        if (out.length >= limit) return out;
+      }
+    }
+    if (include(options.docType, 'group_link_note')) {
+      const filter =
+        options.userId === undefined
+          ? { 'note.text': { $exists: true } }
+          : { 'note.authorId': options.userId };
+      const rows = await this.connection
+        .collection('group_links')
+        .find(filter, {
+          projection: { groupId: 1, linkId: 1 },
+          limit: limit - out.length,
+        })
+        .toArray();
+      for (const row of rows) {
+        const aggregateId = `${String(row['groupId'])}_${String(row['linkId'])}`;
+        out.push({
+          docType: 'group_link_note',
+          aggregateId,
+          reason,
+          fingerprint: `backfill:group_link_note:${aggregateId}:${Date.now()}`,
         });
         if (out.length >= limit) return out;
       }

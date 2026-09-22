@@ -30,11 +30,12 @@ export interface RoadmapRepository {
 
   /**
    * Borra roadmaps de esos `analysisId` **dentro** de la sesión (cascada al borrar CV/análisis).
+   * Devuelve los `_id` borrados (para SearchDelete).
    */
   removeByAnalysisIds(
     analysisIds: readonly string[],
     session: TransactionSession,
-  ): Promise<number>;
+  ): Promise<readonly string[]>;
 
   /** Solo tests / worker: marca ready. La API no completa roadmaps. */
   markReady?(
