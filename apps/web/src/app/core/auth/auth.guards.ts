@@ -19,8 +19,11 @@ export const authGuard: CanActivateFn = async (_route, state) => {
 };
 
 /**
- * Páginas de invitado (`/login`, `/registro`): con sesión redirige al inicio, salvo cuando llevan un `import` con forma
- * de slug, que lleva a `/mis-links?import=<slug>` (D9 de public-preview-share).
+ * Páginas de invitado estricto (`/login`, `/registro`): con sesión redirige al inicio, salvo cuando llevan un `import`
+ * con forma de slug, que lleva a `/mis-links?import=<slug>` (D9 de public-preview-share).
+ *
+ * No aplica a `/recuperar-contrasena`, `/restablecer-contrasena` ni `/verificar-email`: esas rutas son de invitado
+ * ampliadas (spec web/auth) y deben permanecer usables con sesión sin forzar redirección a `/grupos`.
  *
  * Aquí es donde se resuelve la sesión de quien pulsa "Guardar en LinkVault" en una oferta pública: el CTA navega
  * siempre a `/registro?import=<slug>` sin preguntar nada, y quien ya tiene cuenta no llega a ver el registro.

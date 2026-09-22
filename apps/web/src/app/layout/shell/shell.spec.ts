@@ -17,6 +17,7 @@ const session: SessionResponse = {
     id: 'u1',
     email: 'ana@example.com',
     displayName: 'Ana',
+    emailVerified: true,
     aiConsent: {
     externalProviders: false,
     consentedAt: null,

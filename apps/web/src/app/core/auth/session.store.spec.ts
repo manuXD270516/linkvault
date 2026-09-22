@@ -20,6 +20,7 @@ function userWith(aiConsent: AiConsent): UserProfile {
     id: 'u1',
     email: 'ana@example.com',
     displayName: 'Ana',
+    emailVerified: true,
     aiConsent,
     outputLanguage: 'es',
     redactName: true,
@@ -60,9 +61,18 @@ describe('SessionStore', () => {
 
     expect(store.status()).toBe('authenticated');
     expect(store.isAuthenticated()).toBe(true);
+    expect(store.needsEmailVerification()).toBe(false);
     expect(store.accessToken()).toBe('token-1');
     expect(store.expiresAt()).toBe(1_000 + 900_000);
     expect(store.user()).toEqual(user);
+  });
+
+  it('marks needsEmailVerification while emailVerified is false', () => {
+    store.setSession({ ...session, user: { ...user, emailVerified: false } }, 0);
+
+    expect(store.needsEmailVerification()).toBe(true);
+    store.setUser({ ...user, emailVerified: true });
+    expect(store.needsEmailVerification()).toBe(false);
   });
 
   it('replaces the user without touching the token', () => {

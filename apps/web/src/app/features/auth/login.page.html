@@ -36,6 +36,10 @@
       }
     </mat-form-field>
 
+    <p>
+      <a routerLink="/recuperar-contrasena" i18n="@@login.forgotPassword">Olvidé mi contraseña</a>
+    </p>
+
     @if (failure(); as currentFailure) {
       @if (invalidCredentials()) {
         <p class="text-(--mat-sys-error)" role="alert" i18n="@@login.invalidCredentials">

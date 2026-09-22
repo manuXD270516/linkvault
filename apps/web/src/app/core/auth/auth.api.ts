@@ -6,13 +6,17 @@ import {
 } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import type {
+  AuthEmailAckResponse,
   ChangePasswordRequest,
   DeleteAccountRequest,
+  ForgotPasswordRequest,
   LoginRequest,
   RegisterRequest,
+  ResetPasswordRequest,
   SessionResponse,
   UpdateProfileRequest,
   UserProfile,
+  VerifyEmailRequest,
 } from '@linkvault/shared';
 import { Observable } from 'rxjs';
 import { hasApiErrorCode } from '../api/api-error';
@@ -97,6 +101,46 @@ export class AuthApi {
   /** `204` sin sesión nueva: el access token actual deja de valer y la petición siguiente renueva (D11). */
   async changePassword(body: ChangePasswordRequest): Promise<void> {
     await this.send(this.http.post<null>(`${AUTH_URL}/password`, body, authPostOptions(false)));
+  }
+
+  /**
+   * Solicita el correo de recuperación. La API responde siempre `200` genérico (anti-enumeración); no inicia sesión.
+   */
+  async forgotPassword(body: ForgotPasswordRequest): Promise<AuthEmailAckResponse> {
+    return this.send(
+      this.http.post<AuthEmailAckResponse>(
+        `${AUTH_URL}/forgot-password`,
+        body,
+        authPostOptions(true),
+      ),
+    );
+  }
+
+  /** Restablece la contraseña con el token del enlace. `204`; no inicia sesión. */
+  async resetPassword(body: ResetPasswordRequest): Promise<void> {
+    await this.send(
+      this.http.post<null>(`${AUTH_URL}/reset-password`, body, authPostOptions(true)),
+    );
+  }
+
+  /** Consume el token de verificación. `204`. Si hay sesión, el llamante debe refrescar el perfil. */
+  async verifyEmail(body: VerifyEmailRequest): Promise<void> {
+    await this.send(
+      this.http.post<null>(`${AUTH_URL}/verify-email`, body, authPostOptions(true)),
+    );
+  }
+
+  /**
+   * Reenvía el correo de verificación para la sesión actual (cuerpo vacío). Siempre `200` genérico salvo 401/429.
+   */
+  async resendVerifyEmail(): Promise<AuthEmailAckResponse> {
+    return this.send(
+      this.http.post<AuthEmailAckResponse>(
+        `${AUTH_URL}/verify-email/resend`,
+        null,
+        authPostOptions(false),
+      ),
+    );
   }
 
   async getProfile(): Promise<UserProfile> {

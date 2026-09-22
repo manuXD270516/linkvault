@@ -451,15 +451,44 @@
           <context context-type="linenumber">70</context>
         </context-group>
       </trans-unit>
-      <trans-unit id="login.title" datatype="html">
-        <source>Iniciar sesión</source>
+      <trans-unit id="forgotPassword.title" datatype="html">
+        <source>Recuperar contraseña</source>
         <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/auth/login.page.html</context>
-          <context context-type="linenumber">2,4</context>
+          <context context-type="sourcefile">apps/web/src/app/features/auth/forgot-password.page.html</context>
+          <context context-type="linenumber">2,5</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="forgotPassword.sent" datatype="html">
+        <source> Si existe una cuenta con ese email, te hemos enviado instrucciones para restablecer la contraseña. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/forgot-password.page.html</context>
+          <context context-type="linenumber">6,9</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="forgotPassword.backToLogin" datatype="html">
+        <source>Volver a iniciar sesión</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/forgot-password.page.html</context>
+          <context context-type="linenumber">9,12</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/forgot-password.page.html</context>
+          <context context-type="linenumber">35,39</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="forgotPassword.intro" datatype="html">
+        <source> Escribe el email de tu cuenta y te enviaremos un enlace para elegir una contraseña nueva. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/forgot-password.page.html</context>
+          <context context-type="linenumber">13,16</context>
         </context-group>
       </trans-unit>
       <trans-unit id="auth.email" datatype="html">
         <source>Email</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/forgot-password.page.html</context>
+          <context context-type="linenumber">18,19</context>
+        </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/auth/login.page.html</context>
           <context context-type="linenumber">6,7</context>
@@ -476,12 +505,30 @@
       <trans-unit id="auth.emailInvalid" datatype="html">
         <source>Introduce un email válido</source>
         <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/forgot-password.page.html</context>
+          <context context-type="linenumber">21,23</context>
+        </context-group>
+        <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/auth/login.page.html</context>
           <context context-type="linenumber">9,11</context>
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/auth/register.page.html</context>
           <context context-type="linenumber">19,21</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="forgotPassword.submit" datatype="html">
+        <source> Enviar instrucciones </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/forgot-password.page.html</context>
+          <context context-type="linenumber">30,33</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="login.title" datatype="html">
+        <source>Iniciar sesión</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/login.page.html</context>
+          <context context-type="linenumber">2,4</context>
         </context-group>
       </trans-unit>
       <trans-unit id="auth.password" datatype="html">
@@ -504,6 +551,10 @@
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/auth/register.page.html</context>
           <context context-type="linenumber">39,40</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/reset-password.page.html</context>
+          <context context-type="linenumber">38,39</context>
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/delete-account.dialog.html</context>
@@ -529,6 +580,10 @@
           <context context-type="linenumber">41,43</context>
         </context-group>
         <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/reset-password.page.html</context>
+          <context context-type="linenumber">40,42</context>
+        </context-group>
+        <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/delete-account.dialog.html</context>
           <context context-type="linenumber">31,33</context>
         </context-group>
@@ -548,18 +603,25 @@
           <context context-type="linenumber">35,37</context>
         </context-group>
       </trans-unit>
+      <trans-unit id="login.forgotPassword" datatype="html">
+        <source>Olvidé mi contraseña</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/login.page.html</context>
+          <context context-type="linenumber">40,43</context>
+        </context-group>
+      </trans-unit>
       <trans-unit id="login.invalidCredentials" datatype="html">
         <source> Email o contraseña incorrectos </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/auth/login.page.html</context>
-          <context context-type="linenumber">42,45</context>
+          <context context-type="linenumber">46,49</context>
         </context-group>
       </trans-unit>
       <trans-unit id="login.submit" datatype="html">
         <source> Entrar </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/auth/login.page.html</context>
-          <context context-type="linenumber">50,52</context>
+          <context context-type="linenumber">54,56</context>
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/public/public-preview.page.html</context>
@@ -574,7 +636,7 @@
         <source> ¿No tienes cuenta? <x id="START_LINK" ctype="x-a" equiv-text="&lt;a routerLink=&quot;/registro&quot; [queryParams]=&quot;returnQueryParams&quot;&gt;"/>Crear cuenta<x id="CLOSE_LINK" ctype="x-a" equiv-text="&lt;/a&gt;"/></source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/auth/login.page.html</context>
-          <context context-type="linenumber">55,57</context>
+          <context context-type="linenumber">59,61</context>
         </context-group>
       </trans-unit>
       <trans-unit id="register.title" datatype="html">
@@ -605,6 +667,10 @@
           <context context-type="linenumber">44,45</context>
         </context-group>
         <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/reset-password.page.html</context>
+          <context context-type="linenumber">43,44</context>
+        </context-group>
+        <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
           <context context-type="linenumber">90,91</context>
         </context-group>
@@ -614,6 +680,10 @@
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/auth/register.page.html</context>
           <context context-type="linenumber">47,50</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/reset-password.page.html</context>
+          <context context-type="linenumber">46,49</context>
         </context-group>
       </trans-unit>
       <trans-unit id="register.passwordIsEmail" datatype="html">
@@ -655,6 +725,105 @@
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/auth/register.page.html</context>
           <context context-type="linenumber">81,83</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="resetPassword.title" datatype="html">
+        <source>Restablecer contraseña</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/reset-password.page.html</context>
+          <context context-type="linenumber">2,5</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="resetPassword.success" datatype="html">
+        <source> Tu contraseña se ha actualizado. Ya puedes iniciar sesión con la nueva. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/reset-password.page.html</context>
+          <context context-type="linenumber">6,9</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="resetPassword.goToLogin" datatype="html">
+        <source>Ir a iniciar sesión</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/reset-password.page.html</context>
+          <context context-type="linenumber">9,11</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="emailAuth.invalidToken" datatype="html">
+        <source> Este enlace no es válido o ha caducado. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/reset-password.page.html</context>
+          <context context-type="linenumber">13,16</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/verify-email.page.html</context>
+          <context context-type="linenumber">22,24</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="resetPassword.requestAgain" datatype="html">
+        <source>Solicitar un enlace nuevo</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/reset-password.page.html</context>
+          <context context-type="linenumber">17,21</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="resetPassword.newPassword" datatype="html">
+        <source>Nueva contraseña</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/reset-password.page.html</context>
+          <context context-type="linenumber">23,25</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="resetPassword.submit" datatype="html">
+        <source> Guardar contraseña </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/reset-password.page.html</context>
+          <context context-type="linenumber">58,60</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="emailVerify.title" datatype="html">
+        <source>Verificar email</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/verify-email.page.html</context>
+          <context context-type="linenumber">2,5</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="emailVerify.loading" datatype="html">
+        <source>Comprobando el enlace…</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/verify-email.page.html</context>
+          <context context-type="linenumber">6,8</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="emailVerify.success" datatype="html">
+        <source>Email verificado</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/verify-email.page.html</context>
+          <context context-type="linenumber">9,10</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="emailVerify.goToLogin" datatype="html">
+        <source>Ir a iniciar sesión</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/verify-email.page.html</context>
+          <context context-type="linenumber">12,15</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/verify-email.page.html</context>
+          <context context-type="linenumber">29,33</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="emailVerify.goToApp" datatype="html">
+        <source>Ir a la aplicación</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/verify-email.page.html</context>
+          <context context-type="linenumber">16,20</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="emailVerify.invalidHintGuest" datatype="html">
+        <source> Inicia sesión y usa el aviso de la aplicación para solicitar un correo nuevo. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/verify-email.page.html</context>
+          <context context-type="linenumber">26,29</context>
         </context-group>
       </trans-unit>
       <trans-unit id="cv.defaultLine" datatype="html">
@@ -3770,6 +3939,27 @@
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/roadmap/roadmap.page.html</context>
           <context context-type="linenumber">136,137</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="emailVerify.banner.message" datatype="html">
+        <source> Tu email aún no está verificado. Revisa tu bandeja o reenvía el correo de verificación. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/layout/shell/email-unverified-banner.ts</context>
+          <context context-type="linenumber">23,25</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="emailVerify.banner.resend" datatype="html">
+        <source> Reenviar correo </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/layout/shell/email-unverified-banner.ts</context>
+          <context context-type="linenumber">33,35</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="emailVerify.banner.resent" datatype="html">
+        <source> Si procede, te hemos enviado un correo de verificación. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/layout/shell/email-unverified-banner.ts</context>
+          <context context-type="linenumber">37,39</context>
         </context-group>
       </trans-unit>
       <trans-unit id="shell.brand" datatype="html">

@@ -41,10 +41,10 @@
 
 ## 7. Frontend
 
-- [ ] 7.1 [frontend] Modelo de sesión/perfil con `emailVerified`; banner de no verificado + acción resend autenticado (**sin** enlace de ayuda); verificar “Banner tras el registro”, “Reenviar desde el aviso”, “Aviso desaparece al verificar”.
-- [ ] 7.2 [frontend] Páginas `/recuperar-contrasena`, `/restablecer-contrasena`, `/verificar-email` (guest, token en query → POST); verificar escenarios de `web/email-auth` con `HttpTestingController`.
-- [ ] 7.3 [frontend] Enlace “Olvidé mi contraseña” en `/login` y guards/rutas de invitado ampliadas; verificar “Desde login se llega a recuperar” y “Recuperar contraseña sin sesión”.
-- [ ] 7.4 [frontend] i18n ES/EN de banner + páginas email-auth; verificar “Traducciones de email-auth” / targets en `messages.en.xlf`.
+- [x] 7.1 [frontend] Modelo de sesión/perfil con `emailVerified`; banner de no verificado + acción resend autenticado (**sin** enlace de ayuda); verificar “Banner tras el registro”, “Reenviar desde el aviso”, “Aviso desaparece al verificar”.
+- [x] 7.2 [frontend] Páginas `/recuperar-contrasena`, `/restablecer-contrasena`, `/verificar-email` (guest, token en query → POST); verificar escenarios de `web/email-auth` con `HttpTestingController`.
+- [x] 7.3 [frontend] Enlace “Olvidé mi contraseña” en `/login` y guards/rutas de invitado ampliadas; verificar “Desde login se llega a recuperar” y “Recuperar contraseña sin sesión”.
+- [x] 7.4 [frontend] i18n ES/EN de banner + páginas email-auth; verificar “Traducciones de email-auth” / targets en `messages.en.xlf`.
 
 ## 8. Cierre
 
