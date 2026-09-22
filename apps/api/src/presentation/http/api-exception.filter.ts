@@ -64,10 +64,11 @@ interface ApiErrorReply {
  *   schema (`text_too_long` del texto pegado).
  * - Errores de dominio de `auth` por su `code`, con `Retry-After` en `TooManyAttempts`.
  * - Errores de dominio de `users`: `EmailAlreadyRegistered` → 409 `email_taken`; `ConsentTextOutdated` → 409
- *   `consent_text_outdated`; `InvalidProfileChanges` → 400 `validation_error` con su campo; `UserNotFound` → 401
- *   `unauthorized`, porque el único usuario que una petición puede buscar es el de su access token (no hay rutas sobre
- *   otros usuarios): si no existe, el token no identifica a nadie, como exige "Rutas protegidas por defecto", y un 404
- *   invitaría al SPA a tratarlo como un recurso ausente y no como sesión.
+ *   `consent_text_outdated`; `InvalidAccountPassword` → 401 `invalid_credentials` (mismo cuerpo que login);
+ *   `SoleOwnerWithMembers` → 409 `sole_owner_with_members`; `InvalidProfileChanges` → 400 `validation_error` con su
+ *   campo; `UserNotFound` → 401 `unauthorized`, porque el único usuario que una petición puede buscar es el de su
+ *   access token (no hay rutas sobre otros usuarios): si no existe, el token no identifica a nadie, como exige "Rutas
+ *   protegidas por defecto", y un 404 invitaría al SPA a tratarlo como un recurso ausente y no como sesión.
  * - Errores de dominio de `groups`: cada uno lleva su `code` (`group_not_found` → 404, `member_not_found` → 404,
  *   `forbidden` → 403, `invalid_invite_code` → 404, `group_full` → 409, `too_many_groups` → 409, `owner_cannot_leave` →
  *   409, `already_owner` → 409), así que basta un `instanceof GroupsError`; `InvalidGroupName` va antes porque además
