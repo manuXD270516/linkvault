@@ -521,6 +521,31 @@ describe('DELETE /api/users/me account deletion cascade', () => {
       key: `usage-${ana.id}`,
       at: NOW,
     });
+    await db().collection('notification_preferences').insertOne({
+      userId: anaOid,
+      groupNewLink: false,
+      applicationStatusGroup: true,
+      applicationStale: true,
+      notifyOwnActions: true,
+      applicationStatusGroupId: null,
+      updatedAt: NOW,
+    });
+    await db().collection('push_subscriptions').insertOne({
+      userId: anaOid,
+      endpoint: 'https://push.example/ana',
+      p256dh: 'pk',
+      auth: 'ak',
+      createdAt: NOW,
+    });
+    await db().collection('notification_deliveries').insertOne({
+      type: 'group_new_link',
+      aggregateKey: 'g:l',
+      userId: anaOid,
+      channel: 'email',
+      status: 'completed',
+      claimedAt: NOW,
+      updatedAt: NOW,
+    });
     cvFiles.withKey(`${ana.id}/cv.pdf`);
 
     const response = await deleteMe(authorization, PASSWORD);
@@ -551,6 +576,21 @@ describe('DELETE /api/users/me account deletion cascade', () => {
     await expect(
       db().collection(AUTH_EMAIL_TOKENS_COLLECTION).countDocuments({
         userId: ana.id,
+      }),
+    ).resolves.toBe(0);
+    await expect(
+      db().collection('notification_preferences').countDocuments({
+        userId: anaOid,
+      }),
+    ).resolves.toBe(0);
+    await expect(
+      db().collection('push_subscriptions').countDocuments({
+        userId: anaOid,
+      }),
+    ).resolves.toBe(0);
+    await expect(
+      db().collection('notification_deliveries').countDocuments({
+        userId: anaOid,
       }),
     ).resolves.toBe(0);
     await expect(

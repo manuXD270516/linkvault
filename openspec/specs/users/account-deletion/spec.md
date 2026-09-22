@@ -46,6 +46,8 @@ menos:
 - el documento de usuario;
 - todas sus sesiones (refresh / sesiones activas);
 - tokens de email pendientes (`auth_email_tokens` o colección equivalente de verificación y reset) de esa persona;
+- preferencias de notificación, suscripciones web push y filas de ledger de entregas (`notification_deliveries` o
+  equivalente) de esa persona;
 - membresías: ver regla de ownership más abajo; el borrado de grupos permitidos SHALL reutilizar `GroupDeletionHooks`
   con la sesión Mongo de la txn inyectada (un solo camino);
 - postulaciones (`applications`) y sus eventos asociados;
@@ -71,11 +73,12 @@ forma indefinida); el comportamiento SHALL documentarse en design/RUNBOOK.
 #### Scenario: Cascada completa en una txn
 
 - **GIVEN** Ana con sesión, membresía, postulación, comentario, nota en un link que compartió, `user_links`, CV en S3,
-  análisis, filas en `ai_usage`, clave BYOK, roadmap, feedback y tokens de email pendientes
+  análisis, filas en `ai_usage`, clave BYOK, roadmap, feedback, tokens de email pendientes, preferencias de
+  notificación, suscripción push y filas de ledger de entregas
 - **WHEN** borra la cuenta con contraseña correcta
 - **THEN** tras el `204` NO SHALL quedar documento de usuario, sesión, membresía de Ana, postulación/eventos,
   comentarios de Ana, `user_links` de Ana, CV/contadores, `ai_analyses`, filas `ai_usage`, `user_ai_keys`, roadmap,
-  `ai_feedback` ni tokens de email de Ana
+  `ai_feedback`, tokens de email, preferencias de notificación, suscripciones push ni ledger de entregas de Ana
 - **AND** el prefijo de objetos `userId/` de Ana en el bucket de CV SHALL quedar vacío
 - **AND** las `group_links` donde Ana era `sharedBy` NO SHALL conservar `note`
 

@@ -59,6 +59,15 @@ export async function workerTestConfig(
     MATCH_ANALYSIS_TIMEOUT_MS: 120_000,
     MATCH_ANALYSIS_CONCURRENCY: 1,
     MATCH_ANALYSIS_MAX_AGE_MS: 240_000,
+    WEB_BASE_URL: 'http://localhost:4200',
+    MAIL_PROVIDER: 'capture',
+    MAIL_FROM: 'LinkVault <noreply@example.com>',
+    MAIL_SMTP_HOST: 'localhost',
+    MAIL_SMTP_PORT: 1025,
+    RESEND_API_KEY: undefined,
+    VAPID_PUBLIC_KEY: '',
+    VAPID_PRIVATE_KEY: '',
+    VAPID_SUBJECT: '',
     ...overrides,
   };
 }

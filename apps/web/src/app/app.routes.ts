@@ -93,6 +93,12 @@ export const appRoutes: Route[] = [
         loadComponent: () =>
           import('./features/profile/profile.page').then((m) => m.ProfilePage),
       },
+      {
+        // Preferencias email + Web Push (spec web/notifications); enlace desde `/perfil` (spec web/auth).
+        path: 'notificaciones',
+        loadComponent: () =>
+          import('./features/notifications/notifications.page').then((m) => m.NotificationsPage),
+      },
     ],
   },
   { path: '**', redirectTo: HOME_ROUTE },

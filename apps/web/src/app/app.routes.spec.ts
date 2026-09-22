@@ -26,6 +26,7 @@ import { GroupsListPage } from './features/groups/groups-list.page';
 import { JoinGroupPage } from './features/groups/join-group.page';
 import { MyLinksPage } from './features/links/my-links.page';
 import { ProfilePage } from './features/profile/profile.page';
+import { NotificationsPage } from './features/notifications/notifications.page';
 import { RoadmapPage } from './features/roadmap/roadmap.page';
 import { Shell } from './layout/shell/shell';
 
@@ -71,10 +72,10 @@ describe('appRoutes', () => {
       ...(shell.children ?? []),
     ].filter((route) => route.redirectTo === undefined && route.loadChildren === undefined);
 
-    // /oferta/:slug, login, registro, las tres de email-auth, el shell y sus siete páginas: /grupos, /grupos/:id,
-    // /unirse, /mis-links, /mi-cv, /plan/:analysisId y /perfil. El tablero de /postulaciones tiene su propio archivo
-    // de rutas ("Ruta diferida").
-    expect(pages).toHaveLength(14);
+    // /oferta/:slug, login, registro, las tres de email-auth, el shell y sus páginas: /grupos, /grupos/:id,
+    // /unirse, /mis-links, /mi-cv, /plan/:analysisId, /perfil y /notificaciones. El tablero de /postulaciones tiene
+    // su propio archivo de rutas ("Ruta diferida").
+    expect(pages).toHaveLength(15);
     for (const route of pages) {
       expect(route.component).toBeUndefined();
       expect(route.loadComponent).toBeTypeOf('function');
@@ -109,6 +110,7 @@ describe('appRoutes', () => {
       'plan/:analysisId',
       'postulaciones',
       'perfil',
+      'notificaciones',
     ]) {
       expect(routeAt(path, shell.children).canActivate).toBeUndefined();
     }
@@ -260,6 +262,24 @@ describe('appRoutes', () => {
 
       expect(harness.fixture.debugElement.query(By.directive(ProfilePage))).not.toBeNull();
       expect(harness.routeNativeElement?.textContent).toContain('Cerrar sesión');
+    });
+
+    it('shows the notifications page inside the shell with a session', async () => {
+      store.setSession(session);
+      const harness = await RouterTestingHarness.create();
+
+      await harness.navigateByUrl('/notificaciones', Shell);
+      http.expectOne('/api/notifications/preferences').flush({
+        groupNewLink: true,
+        applicationStatusGroup: true,
+        applicationStale: true,
+        notifyOwnActions: true,
+        applicationStatusGroupId: null,
+      });
+      http.expectOne('/api/groups').flush([]);
+
+      expect(harness.fixture.debugElement.query(By.directive(NotificationsPage))).not.toBeNull();
+      expect(harness.routeNativeElement?.textContent).toContain('Notificaciones');
     });
 
     it('redirects a protected route without a session to /login with the requested route', async () => {

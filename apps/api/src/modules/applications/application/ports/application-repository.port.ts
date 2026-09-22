@@ -9,6 +9,7 @@ import type {
   NewApplicationEvent,
 } from '../../domain/application-event';
 import type { ApplicationStatus } from '../../domain/application-status';
+import type { TransactionSession } from '../../../../infrastructure/outbox/transaction-session';
 
 // Puerto de persistencia de las postulaciones y su historial (D2 y D5 de applications-tracking). Se inyecta con
 // `{ provide: APPLICATION_REPOSITORY, useClass: MongoApplicationRepository }`. Solo tipos y el token.
@@ -48,12 +49,14 @@ export interface ApplicationRepository {
    * Cambio de estado **condicionado** por `_id`, `userId` y `write.expectedVersion`, que sube `version` en 1. El evento
    * se escribe en la misma transacción y **solo si** la escritura modificó la postulación: nunca queda un evento de un
    * cambio que no ocurrió. `false` si no casó nada (ya no existe o la versión cambió): quien llama relee y decide.
+   * `sideEffects` corre en la misma sesión tras el evento de dominio (p. ej. outbox de notificaciones).
    */
   changeStatus(
     applicationId: string,
     userId: string,
     write: StatusWrite,
     event: NewApplicationEvent,
+    sideEffects?: (session: TransactionSession) => Promise<void>,
   ): Promise<boolean>;
 
   /**

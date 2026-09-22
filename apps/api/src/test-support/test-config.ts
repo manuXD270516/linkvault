@@ -67,6 +67,9 @@ export async function apiTestConfig(
     RESEND_API_KEY: undefined,
     AUTH_VERIFY_TOKEN_TTL_HOURS: 24,
     AUTH_RESET_TOKEN_TTL_SECONDS: 3600,
+    VAPID_PUBLIC_KEY: '',
+    VAPID_PRIVATE_KEY: '',
+    VAPID_SUBJECT: '',
     ...overrides,
   };
 }

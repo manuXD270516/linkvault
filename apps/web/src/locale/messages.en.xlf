@@ -2144,6 +2144,118 @@
         <source>Algo salió mal. Inténtalo de nuevo</source>
         <target>Something went wrong. Please try again</target>
       </trans-unit>
+      <trans-unit id="notifications.back" datatype="html">
+        <source>← Volver al perfil</source>
+        <target>← Back to profile</target>
+      </trans-unit>
+      <trans-unit id="notifications.title" datatype="html">
+        <source>Notificaciones</source>
+        <target>Notifications</target>
+      </trans-unit>
+      <trans-unit id="notifications.intro" datatype="html">
+        <source> Elige qué avisos quieres recibir por email. El push del navegador es opcional. </source>
+        <target>Choose which alerts you want by email. Browser push is optional.</target>
+      </trans-unit>
+      <trans-unit id="notifications.loading" datatype="html">
+        <source>Cargando preferencias…</source>
+        <target>Loading preferences…</target>
+      </trans-unit>
+      <trans-unit id="notifications.emailTitle" datatype="html">
+        <source>Avisos por email</source>
+        <target>Email alerts</target>
+      </trans-unit>
+      <trans-unit id="notifications.pref.groupNewLink" datatype="html">
+        <source> Nuevo link en un grupo </source>
+        <target>New link in a group</target>
+      </trans-unit>
+      <trans-unit id="notifications.pref.applicationStatusGroup" datatype="html">
+        <source> Cambio de estado de postulación en el grupo </source>
+        <target>Application status change in the group</target>
+      </trans-unit>
+      <trans-unit id="notifications.pref.applicationStale" datatype="html">
+        <source> Postulación estancada </source>
+        <target>Stale application</target>
+      </trans-unit>
+      <trans-unit id="notifications.pref.notifyOwnActions" datatype="html">
+        <source> Avisarme también de mis propias acciones </source>
+        <target>Also notify me about my own actions</target>
+      </trans-unit>
+      <trans-unit id="notifications.pref.statusGroup" datatype="html">
+        <source>Grupo para avisos de estado</source>
+        <target>Group for status alerts</target>
+      </trans-unit>
+      <trans-unit id="notifications.pref.statusGroupAll" datatype="html">
+        <source>Todos mis grupos (unión del link)</source>
+        <target>All my groups (link union)</target>
+      </trans-unit>
+      <trans-unit id="notifications.pref.statusGroupHint" datatype="html">
+        <source> Opcional. Si eliges un grupo, solo avisamos cambios acotados a ese grupo (salvo que el cambio venga desde la vista de otro grupo). </source>
+        <target>Optional. If you pick a group, we only notify about changes scoped to that group (unless the change comes from another group’s view).</target>
+      </trans-unit>
+      <trans-unit id="notifications.saved" datatype="html">
+        <source> Preferencias guardadas </source>
+        <target>Preferences saved</target>
+      </trans-unit>
+      <trans-unit id="notifications.save" datatype="html">
+        <source> Guardar preferencias </source>
+        <target>Save preferences</target>
+      </trans-unit>
+      <trans-unit id="notifications.push.title" datatype="html">
+        <source>Push del navegador</source>
+        <target>Browser push</target>
+      </trans-unit>
+      <trans-unit id="notifications.push.intro" datatype="html">
+        <source> Opcional. Si el navegador no lo permite o deniegas el permiso, los avisos por email siguen funcionando. </source>
+        <target>Optional. If the browser does not allow it or you deny permission, email alerts still work.</target>
+      </trans-unit>
+      <trans-unit id="notifications.push.unsupported" datatype="html">
+        <source> Este navegador no admite notificaciones push. </source>
+        <target>This browser does not support push notifications.</target>
+      </trans-unit>
+      <trans-unit id="notifications.push.on" datatype="html">
+        <source>Push activado en este dispositivo</source>
+        <target>Push enabled on this device</target>
+      </trans-unit>
+      <trans-unit id="notifications.push.off" datatype="html">
+        <source>Push desactivado en este dispositivo</source>
+        <target>Push disabled on this device</target>
+      </trans-unit>
+      <trans-unit id="notifications.push.enable" datatype="html">
+        <source> Activar push </source>
+        <target>Enable push</target>
+      </trans-unit>
+      <trans-unit id="notifications.push.disable" datatype="html">
+        <source> Desactivar push </source>
+        <target>Disable push</target>
+      </trans-unit>
+      <trans-unit id="notifications.push.denied" datatype="html">
+        <source> No diste permiso de notificaciones. Puedes seguir editando los avisos por email. </source>
+        <target>You did not allow notifications. You can still edit email alerts.</target>
+      </trans-unit>
+      <trans-unit id="notifications.push.vapidUnavailable" datatype="html">
+        <source> El push no está disponible ahora. Los avisos por email siguen activos. </source>
+        <target>Push is unavailable right now. Email alerts remain active.</target>
+      </trans-unit>
+      <trans-unit id="notifications.push.enabled" datatype="html">
+        <source> Push activado </source>
+        <target>Push enabled</target>
+      </trans-unit>
+      <trans-unit id="notifications.push.disabled" datatype="html">
+        <source> Push desactivado </source>
+        <target>Push disabled</target>
+      </trans-unit>
+      <trans-unit id="profile.notifications.title" datatype="html">
+        <source>Notificaciones</source>
+        <target>Notifications</target>
+      </trans-unit>
+      <trans-unit id="profile.notifications.intro" datatype="html">
+        <source> Elige qué avisos quieres por email y, si quieres, el push del navegador. </source>
+        <target>Choose which alerts you want by email and, if you want, browser push.</target>
+      </trans-unit>
+      <trans-unit id="profile.notifications.link" datatype="html">
+        <source> Gestionar notificaciones </source>
+        <target>Manage notifications</target>
+      </trans-unit>
     </body>
   </file>
 </xliff>

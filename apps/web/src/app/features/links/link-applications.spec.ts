@@ -211,7 +211,7 @@ describe('LinkList with applications', () => {
       const request = await vi.waitFor(() =>
         http.expectOne({ method: 'PATCH', url: '/api/applications/a-l1/status' }),
       );
-      expect(request.request.body).toEqual({ status: 'applied', version: 2 });
+      expect(request.request.body).toEqual({ status: 'applied', version: 2, groupId: 'g1' });
       request.flush(applicationWith({ status: 'applied', appliedAt: new Date().toISOString(), version: 3 }));
       await refresh();
 

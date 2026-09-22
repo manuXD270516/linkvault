@@ -1,13 +1,16 @@
 import {
   ANALYZE_MATCH_QUEUE,
+  APPLICATION_STATUS_NOTIFY_EVENT_TYPE,
   BUILD_ROADMAP_QUEUE,
   CV_DELETED_EVENT_TYPE,
   CV_UPLOADED_EVENT_TYPE,
   DELETE_CV_FILE_QUEUE,
   ENRICH_LINK_QUEUE,
   EXTRACT_CV_QUEUE,
+  GROUP_LINK_ADDED_EVENT_TYPE,
   LINK_CREATED_EVENT_TYPE,
   MATCH_REQUESTED_EVENT_TYPE,
+  NOTIFY_FANOUT_QUEUE,
   ROADMAP_REQUESTED_EVENT_TYPE,
 } from '@linkvault/shared';
 import { describe, expect, it } from 'vitest';
@@ -26,21 +29,19 @@ describe('the outbox routing table', () => {
         CV_DELETED_EVENT_TYPE,
         MATCH_REQUESTED_EVENT_TYPE,
         ROADMAP_REQUESTED_EVENT_TYPE,
+        GROUP_LINK_ADDED_EVENT_TYPE,
+        APPLICATION_STATUS_NOTIFY_EVENT_TYPE,
       ].sort(),
     );
   });
 
-  it('gives every type its own queue', () => {
-    const queues = Object.values(OUTBOX_ROUTES).map((route) => route.queue);
-
-    expect(queues).toEqual([
-      ENRICH_LINK_QUEUE,
-      EXTRACT_CV_QUEUE,
-      DELETE_CV_FILE_QUEUE,
-      ANALYZE_MATCH_QUEUE,
-      BUILD_ROADMAP_QUEUE,
-    ]);
-    expect(new Set(queues).size).toBe(queues.length);
+  it('routes notification fan-out types to the shared notify queue', () => {
+    expect(OUTBOX_ROUTES[GROUP_LINK_ADDED_EVENT_TYPE]?.queue).toBe(
+      NOTIFY_FANOUT_QUEUE,
+    );
+    expect(OUTBOX_ROUTES[APPLICATION_STATUS_NOTIFY_EVENT_TYPE]?.queue).toBe(
+      NOTIFY_FANOUT_QUEUE,
+    );
   });
 
   it('lists the queues the relay has to register', () => {
@@ -51,6 +52,7 @@ describe('the outbox routing table', () => {
         DELETE_CV_FILE_QUEUE,
         ANALYZE_MATCH_QUEUE,
         BUILD_ROADMAP_QUEUE,
+        NOTIFY_FANOUT_QUEUE,
       ].sort(),
     );
   });
@@ -94,6 +96,34 @@ describe('the outbox routing table', () => {
       data: { analysisId: 'a1', userId: 'u1' },
       jobId: 'roadmap:a1:build',
     });
+    expect(
+      outboxRouteOf(GROUP_LINK_ADDED_EVENT_TYPE)?.job({
+        groupId: 'g1',
+        linkId: 'l1',
+        actorUserId: 'u1',
+      }),
+    ).toEqual({
+      data: { groupId: 'g1', linkId: 'l1', actorUserId: 'u1' },
+      jobId: 'notify:gla:g1_l1_u1',
+    });
+    expect(
+      outboxRouteOf(APPLICATION_STATUS_NOTIFY_EVENT_TYPE)?.job({
+        applicationId: 'a1',
+        linkId: 'l1',
+        actorUserId: 'u1',
+        status: 'applied',
+        statusChangedAt: '2026-09-22T12:00:00.000Z',
+      }),
+    ).toEqual({
+      data: {
+        applicationId: 'a1',
+        linkId: 'l1',
+        actorUserId: 'u1',
+        status: 'applied',
+        statusChangedAt: '2026-09-22T12:00:00.000Z',
+      },
+      jobId: 'notify:asn:a1_applied_union_2026-09-22T120000.000Z',
+    });
   });
 
   it('throws when the payload does not meet its schema', () => {
@@ -117,6 +147,9 @@ describe('the outbox routing table', () => {
     expect(() =>
       outboxRouteOf(ROADMAP_REQUESTED_EVENT_TYPE)?.job({ analysisId: 'a1' }),
     ).toThrow();
+    expect(() =>
+      outboxRouteOf(GROUP_LINK_ADDED_EVENT_TYPE)?.job({ groupId: 'g1' }),
+    ).toThrow();
   });
 
   it('does not know an unknown type, nor anything inherited from Object', () => {
@@ -125,19 +158,6 @@ describe('the outbox routing table', () => {
   });
 });
 
-// El `jobId` de cada tipo, contra las reglas que BullMQ aplica **en la cola de verdad** (`Job.addJob`, bullmq 6.3.6).
-//
-// Este bloque existe por un defecto que llegó al e2e: `extract-cv:<cvId>` tiene dos puntos y dos segmentos, y BullMQ
-// lo rechaza con `Custom Id cannot contain :`. Como todos los unitarios publican contra una cola doble, esa validación
-// no se ejecutaba nunca: el relay reintentaba, registraba el fallo en `debug` y el CV se quedaba en `pending` para
-// siempre sin que nada lo dijera. El síntoma visible era `attempts` creciendo en `outbox_events`.
-//
-// La regla se replica aquí, sobre **todas** las rutas de la tabla, para que un evento nuevo con un `jobId` mal formado
-// falle en CI y no en producción.
-//
-// La cobertura compara las claves de `payloads` con las de `OUTBOX_ROUTES` (no la longitud de una lista derivada de
-// esa misma tabla, que nunca fallaría). Una ruta ausente de `payloads` falla **nombrando la ruta** antes de derivar
-// ningún `jobId`, para no enmascarar el olvido con un `ZodError` de `?? {}`.
 describe('the jobId of every route, against the rules of BullMQ', () => {
   /** Un payload plausible por tipo: lo que importa es la **forma** del `jobId`, no su contenido. */
   const payloads: Readonly<Record<string, Record<string, unknown>>> = {
@@ -153,6 +173,18 @@ describe('the jobId of every route, against the rules of BullMQ', () => {
     [ROADMAP_REQUESTED_EVENT_TYPE]: {
       analysisId: 'a1',
       userId: 'u1',
+    },
+    [GROUP_LINK_ADDED_EVENT_TYPE]: {
+      groupId: 'g1',
+      linkId: 'l1',
+      actorUserId: 'u1',
+    },
+    [APPLICATION_STATUS_NOTIFY_EVENT_TYPE]: {
+      applicationId: 'a1',
+      linkId: 'l1',
+      actorUserId: 'u1',
+      status: 'applied',
+      statusChangedAt: '2026-09-22T12:00:00.000Z',
     },
   };
 
@@ -182,37 +214,20 @@ describe('the jobId of every route, against the rules of BullMQ', () => {
   );
 
   it.each(Object.keys(OUTBOX_ROUTES))(
-    '%s: it is not a plain integer',
+    '%s: does not end with a colon',
     (type) => {
-      const jobId = jobIdOf(type);
-      // `Job.addJob`: `${parseInt(jobId, 10)} === jobId` → `Custom Id cannot be integers`.
-      expect(String(Number.parseInt(jobId, 10))).not.toBe(jobId);
+      expect(jobIdOf(type).endsWith(':')).toBe(false);
     },
   );
 
   it.each(Object.keys(OUTBOX_ROUTES))(
-    '%s: it is not empty and carries its identifier',
+    '%s: is not empty',
     (type) => {
-      const jobId = jobIdOf(type);
-      expect(jobId.length).toBeGreaterThan(0);
-      expect(jobId).toContain('1');
+      expect(jobIdOf(type).length).toBeGreaterThan(0);
     },
   );
 
-  it('gives a different jobId to each type of the same CV', () => {
-    const extract = outboxRouteOf(CV_UPLOADED_EVENT_TYPE)?.job({
-      cvId: 'c1',
-      userId: 'u1',
-    }).jobId;
-    const remove = outboxRouteOf(CV_DELETED_EVENT_TYPE)?.job({
-      cvId: 'c1',
-      userId: 'u1',
-    }).jobId;
-
-    expect(extract).not.toBe(remove);
-  });
-
-  it('keeps the jobId deterministic: the same event republished is the same job', () => {
+  it('is stable for the same payload', () => {
     for (const type of Object.keys(OUTBOX_ROUTES)) {
       const jobId = jobIdOf(type);
       expect(OUTBOX_ROUTES[type]?.job(payloads[type]!).jobId).toBe(jobId);

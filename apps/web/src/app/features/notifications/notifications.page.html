@@ -1,0 +1,189 @@
+<section class="mx-auto flex max-w-md flex-col gap-6 p-6" data-testid="notifications-page">
+  <div class="flex flex-col gap-2">
+    <p class="m-0">
+      <a routerLink="/perfil" data-testid="notifications-back" i18n="@@notifications.back"
+        >← Volver al perfil</a
+      >
+    </p>
+    <h1 class="text-2xl font-medium" i18n="@@notifications.title">Notificaciones</h1>
+    <p class="m-0 text-sm" i18n="@@notifications.intro">
+      Elige qué avisos quieres recibir por email. El push del navegador es opcional.
+    </p>
+  </div>
+
+  @if (loading() && !loaded()) {
+    <p role="status" i18n="@@notifications.loading">Cargando preferencias…</p>
+  }
+
+  @if (failure(); as loadFailure) {
+    <lv-request-error [failure]="loadFailure" />
+  }
+
+  @if (formReady()) {
+    <form class="flex flex-col gap-4" [formGroup]="form" (ngSubmit)="save()" novalidate>
+      <h2 class="m-0 text-xl font-medium" i18n="@@notifications.emailTitle">Avisos por email</h2>
+
+      <mat-slide-toggle
+        formControlName="groupNewLink"
+        data-testid="pref-group-new-link"
+        i18n="@@notifications.pref.groupNewLink"
+      >
+        Nuevo link en un grupo
+      </mat-slide-toggle>
+
+      <mat-slide-toggle
+        formControlName="applicationStatusGroup"
+        data-testid="pref-application-status"
+        i18n="@@notifications.pref.applicationStatusGroup"
+      >
+        Cambio de estado de postulación en el grupo
+      </mat-slide-toggle>
+
+      <mat-slide-toggle
+        formControlName="applicationStale"
+        data-testid="pref-application-stale"
+        i18n="@@notifications.pref.applicationStale"
+      >
+        Postulación estancada
+      </mat-slide-toggle>
+
+      <mat-slide-toggle
+        formControlName="notifyOwnActions"
+        data-testid="pref-notify-own"
+        i18n="@@notifications.pref.notifyOwnActions"
+      >
+        Avisarme también de mis propias acciones
+      </mat-slide-toggle>
+
+      <mat-form-field>
+        <mat-label i18n="@@notifications.pref.statusGroup">Grupo para avisos de estado</mat-label>
+        <mat-select
+          formControlName="applicationStatusGroupId"
+          data-testid="pref-status-group"
+        >
+          <mat-option [value]="null" i18n="@@notifications.pref.statusGroupAll"
+            >Todos mis grupos (unión del link)</mat-option
+          >
+          @for (group of groupOptions(); track group.id) {
+            <mat-option [value]="group.id">{{ group.name }}</mat-option>
+          }
+        </mat-select>
+        <mat-hint i18n="@@notifications.pref.statusGroupHint">
+          Opcional. Si eliges un grupo, solo avisamos cambios acotados a ese grupo (salvo que el
+          cambio venga desde la vista de otro grupo).
+        </mat-hint>
+      </mat-form-field>
+
+      @if (saved()) {
+        <p role="status" data-testid="notifications-saved" i18n="@@notifications.saved">
+          Preferencias guardadas
+        </p>
+      }
+      @if (saveFailure(); as currentSaveFailure) {
+        <lv-request-error [failure]="currentSaveFailure" />
+      }
+
+      <button
+        mat-flat-button
+        type="submit"
+        [disabled]="saving()"
+        data-testid="notifications-save"
+        i18n="@@notifications.save"
+      >
+        Guardar preferencias
+      </button>
+    </form>
+  }
+
+  <section class="flex flex-col gap-3 border-t border-(--mat-sys-outline-variant) pt-6" data-testid="notifications-push">
+    <h2 class="m-0 text-xl font-medium" i18n="@@notifications.push.title">Push del navegador</h2>
+    <p class="m-0 text-sm" i18n="@@notifications.push.intro">
+      Opcional. Si el navegador no lo permite o deniegas el permiso, los avisos por email siguen
+      funcionando.
+    </p>
+
+    @if (!pushSupported) {
+      <p role="status" data-testid="push-unsupported" i18n="@@notifications.push.unsupported">
+        Este navegador no admite notificaciones push.
+      </p>
+    } @else {
+      <p class="m-0 text-sm" data-testid="push-status">
+        @if (pushSubscribed()) {
+          <ng-container i18n="@@notifications.push.on">Push activado en este dispositivo</ng-container>
+        } @else {
+          <ng-container i18n="@@notifications.push.off">Push desactivado en este dispositivo</ng-container>
+        }
+      </p>
+
+      <div class="flex flex-wrap gap-2">
+        @if (!pushSubscribed()) {
+          <button
+            mat-flat-button
+            type="button"
+            [disabled]="pushBusy()"
+            data-testid="push-enable"
+            (click)="togglePush(true)"
+            i18n="@@notifications.push.enable"
+          >
+            Activar push
+          </button>
+        } @else {
+          <button
+            mat-stroked-button
+            type="button"
+            [disabled]="pushBusy()"
+            data-testid="push-disable"
+            (click)="togglePush(false)"
+            i18n="@@notifications.push.disable"
+          >
+            Desactivar push
+          </button>
+        }
+      </div>
+
+      @if (pushNotice(); as notice) {
+        @switch (notice) {
+          @case ('denied') {
+            <p
+              class="m-0"
+              role="status"
+              data-testid="push-denied"
+              i18n="@@notifications.push.denied"
+            >
+              No diste permiso de notificaciones. Puedes seguir editando los avisos por email.
+            </p>
+          }
+          @case ('vapid_unavailable') {
+            <p
+              class="m-0"
+              role="status"
+              data-testid="push-vapid-unavailable"
+              i18n="@@notifications.push.vapidUnavailable"
+            >
+              El push no está disponible ahora. Los avisos por email siguen activos.
+            </p>
+          }
+          @case ('unsupported') {
+            <p role="status" i18n="@@notifications.push.unsupported">
+              Este navegador no admite notificaciones push.
+            </p>
+          }
+          @case ('enabled') {
+            <p role="status" data-testid="push-enabled" i18n="@@notifications.push.enabled">
+              Push activado
+            </p>
+          }
+          @case ('disabled') {
+            <p role="status" data-testid="push-disabled" i18n="@@notifications.push.disabled">
+              Push desactivado
+            </p>
+          }
+        }
+      }
+
+      @if (pushFailure(); as currentPushFailure) {
+        <lv-request-error [failure]="currentPushFailure" />
+      }
+    }
+  </section>
+</section>

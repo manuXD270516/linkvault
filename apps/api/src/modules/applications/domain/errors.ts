@@ -70,7 +70,7 @@ export class TrackersGroupNotFound extends ApplicationsError {
  */
 export abstract class InvalidApplicationField extends ApplicationsError {
   readonly code = 'validation_error';
-  abstract readonly field: 'appliedAt' | 'stageLabel' | 'notes';
+  abstract readonly field: 'appliedAt' | 'stageLabel' | 'notes' | 'groupId';
 }
 
 /**
@@ -103,5 +103,17 @@ export class InvalidNotes extends InvalidApplicationField {
 
   constructor() {
     super('Invalid notes');
+  }
+}
+
+/**
+ * `groupId` de aviso rechazado: el link no está en ese grupo o el actor no es miembro (ADR-035 D8).
+ */
+export class InvalidNotifyGroupId extends InvalidApplicationField {
+  override readonly name = 'InvalidNotifyGroupId';
+  readonly field = 'groupId';
+
+  constructor() {
+    super('Invalid notification groupId');
   }
 }

@@ -130,6 +130,10 @@ export const apiConfigSchema = z
     AUTH_VERIFY_TOKEN_TTL_HOURS: z.coerce.number().int().min(1).max(168),
     // TTL del token de reset (segundos). Producto: 1 h fijo.
     AUTH_RESET_TOKEN_TTL_SECONDS: z.coerce.number().int().min(60).max(86_400),
+    // --- Web Push VAPID (notifications, ADR-035). Vacío = push deshabilitado (GET vapid → 503). ---
+    VAPID_PUBLIC_KEY: z.string().optional().default(''),
+    VAPID_PRIVATE_KEY: z.string().optional().default(''),
+    VAPID_SUBJECT: z.string().optional().default(''),
   })
   // Cada issue lleva `path` con la variable: `parseEnv` descarta los issues que no nombran ninguna.
   .superRefine((config, ctx) => {

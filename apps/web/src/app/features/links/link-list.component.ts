@@ -248,7 +248,7 @@ export class LinkList {
   private async markApplied(link: JobLinkSummary, current: Application): Promise<void> {
     this.working.set(true);
     try {
-      const outcome = await this.moves.move(current, 'applied');
+      const outcome = await this.moves.move(current, 'applied', this.groupId());
       if (outcome.kind === 'moved') {
         this.setAlreadyTracked(link.id, false);
         this.invite(outcome.application, 'applied');

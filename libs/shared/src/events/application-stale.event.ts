@@ -1,12 +1,8 @@
 import { z } from 'zod';
 import { applicationStatusSchema } from '../schemas/application.schema';
 
-// Evento de integración de una postulación estancada (D9 de applications-tracking, ADR-024 §10). Solo está modelado:
-// en este change no tiene productor, ni canal, ni consumidor, y nadie recibe por él ningún aviso. El change de F2 que
-// lo produzca decidirá si viaja por el outbox o por un cron del worker. Va versionado en el propio `type`, como
-// `LinkCreated.v1`.
-//
-// No lleva etapa, notas ni historial: solo lo necesario para decidir y dirigir un aviso a su dueño.
+// Evento de integración de una postulación estancada (ADR-024 §10; productor en change `notifications`, ADR-035).
+// El worker lo detecta con claim + cola (sin outbox). Solo lo necesario para dirigir un aviso al dueño.
 
 /** Tipo versionado del evento. */
 export const APPLICATION_STALE_EVENT_TYPE = 'ApplicationStale.v1';
@@ -42,4 +38,14 @@ export function applicationStaleEvent(
   payload: ApplicationStalePayload,
 ): ApplicationStaleEvent {
   return { type: APPLICATION_STALE_EVENT_TYPE, payload };
+}
+
+/**
+ * jobId determinista para `Queue.add` desde el detector (sin outbox).
+ * Incluye `lastChangedAt` para no colisionar tras un nuevo cambio de estado.
+ */
+export function applicationStaleJobId(
+  payload: ApplicationStalePayload,
+): string {
+  return `notify:stale:${payload.applicationId}_${payload.lastChangedAt}`;
 }

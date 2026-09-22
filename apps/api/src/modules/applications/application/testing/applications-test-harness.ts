@@ -6,6 +6,7 @@ import { ListMyApplications } from '../list-my-applications.usecase';
 import { TrackLink } from '../track-link.usecase';
 import { UntrackApplication } from '../untrack-application.usecase';
 import { UpdateApplication } from '../update-application.usecase';
+import { InMemoryOutbox } from '../../../links/application/testing/links-test-doubles';
 import {
   InMemoryApplicationGroups,
   InMemoryApplicationLinks,
@@ -24,6 +25,7 @@ export interface ApplicationsHarness {
   readonly groups: InMemoryApplicationGroups;
   readonly directory: InMemoryApplicationUserDirectory;
   readonly fitScores: ApplicationFitScores;
+  readonly outbox: InMemoryOutbox;
   readonly trackLink: TrackLink;
   readonly changeStatus: ChangeApplicationStatus;
   readonly update: UpdateApplication;
@@ -40,6 +42,7 @@ export function applicationsHarness(): ApplicationsHarness {
   const groups = new InMemoryApplicationGroups();
   const directory = new InMemoryApplicationUserDirectory();
   const fitScores = new ApplicationFitScores();
+  const outbox = new InMemoryOutbox();
   return {
     clock,
     repository,
@@ -47,11 +50,14 @@ export function applicationsHarness(): ApplicationsHarness {
     groups,
     directory,
     fitScores,
+    outbox,
     trackLink: new TrackLink(repository, links, clock, fitScores),
     changeStatus: new ChangeApplicationStatus(
       repository,
       links,
+      groups,
       clock,
+      outbox,
       fitScores,
     ),
     update: new UpdateApplication(repository, links, clock, fitScores),

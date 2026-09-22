@@ -78,6 +78,52 @@ describe('mail templates (plain text)', () => {
     expect(rendered.text).not.toMatch(/<html/i);
   });
 
+  it('group-new-link en español incluye grupo, título y actionUrl sin HTML', () => {
+    const actionUrl = 'http://localhost:4200/grupos/g1';
+    const rendered = renderMail('group-new-link', 'es', {
+      displayName: 'Ana',
+      groupName: 'Cohorte BO',
+      linkTitle: 'Backend mid',
+      actionUrl,
+    });
+
+    expect(rendered.subject).toMatch(/Nuevo link/i);
+    expect(rendered.text).toContain('Cohorte BO');
+    expect(rendered.text).toContain('Backend mid');
+    expect(rendered.text).toContain(actionUrl);
+    expect(rendered.text).not.toMatch(/stageLabel|notas|<html/i);
+  });
+
+  it('application-status en inglés usa statusLabel y actionUrl sin etapa ni notas', () => {
+    const actionUrl = 'http://localhost:4200/grupos/g1';
+    const rendered = renderMail('application-status', 'en', {
+      displayName: 'Ana',
+      groupName: 'Cohorte BO',
+      linkTitle: 'Backend mid',
+      statusLabel: 'Applied',
+      actionUrl,
+    });
+
+    expect(rendered.subject).toMatch(/Application update/i);
+    expect(rendered.text).toContain('Applied');
+    expect(rendered.text).toContain(actionUrl);
+    expect(rendered.text).not.toMatch(/stageLabel|notes|<html|<body/i);
+  });
+
+  it('application-stale en español es texto plano con deep link', () => {
+    const actionUrl = 'http://localhost:4200/mis-links';
+    const rendered = renderMail('application-stale', 'es', {
+      displayName: 'Ana',
+      linkTitle: 'Backend mid',
+      actionUrl,
+    });
+
+    expect(rendered.subject).toMatch(/sin cambios/i);
+    expect(rendered.text).toContain('Backend mid');
+    expect(rendered.text).toContain(actionUrl);
+    expect(rendered.text).not.toMatch(/stageLabel|notas|<html/i);
+  });
+
   it('expiresInHuman formatea horas y minutos', () => {
     expect(expiresInHuman('es', 3600)).toBe('1 hora');
     expect(expiresInHuman('en', 86_400)).toBe('24 hours');

@@ -289,8 +289,9 @@ describe('ImportLinks', () => {
     });
 
     expect(response.created).toBe(2);
-    // La vacante de `CAREERS` ya existía: solo se encola la nueva.
-    expect(outbox.size).toBe(2);
+    // CAREERS ya existía (1 LinkCreated de Beto + 1 GroupLinkAdded Beto + 1 GroupLinkAdded Ana)
+    // + JOB_PAGE nueva (1 LinkCreated + 1 GroupLinkAdded Ana) = 5
+    expect(outbox.size).toBe(5);
   });
 
   it('imports into the private list when there is no group', async () => {

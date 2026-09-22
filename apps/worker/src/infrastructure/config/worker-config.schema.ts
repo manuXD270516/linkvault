@@ -96,6 +96,18 @@ export const workerConfigSchema = z
     // que recibe `api`**: la escritura condicionada a "no vencido" vive aquí, no en la API. Quien comprueba la
     // pareja con `MATCH_ANALYSIS_TIMEOUT_MS` es `assertAnalysisDeadlines` en el arranque de cada proceso.
     MATCH_ANALYSIS_MAX_AGE_MS: positiveInt.min(1_000).max(600_000),
+    // --- Notificaciones de producto (ADR-035) ---
+    WEB_BASE_URL: z
+      .string()
+      .regex(/^https?:\/\/[^\s/]+(\/[^\s?#]*[^\s/?#])?$/),
+    MAIL_PROVIDER: z.enum(['smtp', 'resend', 'capture']),
+    MAIL_FROM: z.string().min(1),
+    MAIL_SMTP_HOST: z.string().min(1).optional(),
+    MAIL_SMTP_PORT: port.optional(),
+    RESEND_API_KEY: z.string().optional(),
+    VAPID_PUBLIC_KEY: z.string().optional().default(''),
+    VAPID_PRIVATE_KEY: z.string().optional().default(''),
+    VAPID_SUBJECT: z.string().optional().default(''),
   })
   // Cada issue lleva `path` con la variable: `parseEnv` descarta los issues que no nombran ninguna.
   .superRefine((config, ctx) => {

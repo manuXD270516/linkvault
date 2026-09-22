@@ -349,6 +349,24 @@
     }
   </section>
 
+  <!-- Preferencias de aviso (spec web/auth + web/notifications): no las bloquea el banner de verificación. -->
+  <section class="flex flex-col gap-2 border-t border-(--mat-sys-outline-variant) pt-6" data-testid="profile-notifications">
+    <h2 class="text-xl font-medium" i18n="@@profile.notifications.title">Notificaciones</h2>
+    <p class="m-0 text-sm" i18n="@@profile.notifications.intro">
+      Elige qué avisos quieres por email y, si quieres, el push del navegador.
+    </p>
+    <div>
+      <a
+        mat-stroked-button
+        routerLink="/notificaciones"
+        data-testid="profile-notifications-link"
+        i18n="@@profile.notifications.link"
+      >
+        Gestionar notificaciones
+      </a>
+    </div>
+  </section>
+
   <!--
     Zona de peligro (spec web/privacy): enlace al aviso público y borrado con confirmación + contraseña.
   -->

@@ -1160,6 +1160,29 @@ al dominio.
 - Reset: `AUTH_RESET_TOKEN_TTL_SECONDS=3600` (1 h de producto).
 - En Mongo solo el hash del token; el valor en claro solo viaja en el email y en la query del SPA.
 
+### Web Push VAPID (notifications / ADR-035)
+
+El canal web push usa un par de claves VAPID documentado en `.env.example`:
+
+| Variable | Rol |
+|---|---|
+| `VAPID_PUBLIC_KEY` | Clave pública (SPA / `GET` vapid; también firma en el worker) |
+| `VAPID_PRIVATE_KEY` | Clave privada (solo servidor; nunca en el SPA ni en git) |
+| `VAPID_SUBJECT` | Contacto VAPID: `mailto:` o URL (p. ej. `mailto:ops@tu-dominio`) |
+
+**Generar un par** (local o staging; no reutilizar el de prod en otro entorno):
+
+```bash
+npx web-push generate-vapid-keys
+```
+
+Copia `Public Key` → `VAPID_PUBLIC_KEY` y `Private Key` → `VAPID_PRIVATE_KEY`. En local, un par de desarrollo
+es suficiente: api/worker no deben fallar el arranque solo por usar claves de prueba; el email de producto sigue
+comprobándose en Mailpit. Sin claves usables en un entorno, el push falla en soft (email sigue; ver ADR-035).
+
+Nunca versionar la privada real. Rotación: generar un par nuevo, desplegar env, y pedir a las personas que vuelvan a
+suscribirse (los endpoints firmados con el par anterior dejan de ser válidos).
+
 ---
 
 ## Paso 6 duodecies — Operar producción (deploy-prod / ADR-033)

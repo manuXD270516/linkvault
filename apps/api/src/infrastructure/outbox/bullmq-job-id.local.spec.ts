@@ -1,8 +1,11 @@
 import {
+  APPLICATION_STATUS_NOTIFY_EVENT_TYPE,
   CV_DELETED_EVENT_TYPE,
   CV_UPLOADED_EVENT_TYPE,
+  GROUP_LINK_ADDED_EVENT_TYPE,
   LINK_CREATED_EVENT_TYPE,
   MATCH_REQUESTED_EVENT_TYPE,
+  ROADMAP_REQUESTED_EVENT_TYPE,
 } from '@linkvault/shared';
 import { Queue } from 'bullmq';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -36,6 +39,22 @@ const payloads: Readonly<Record<string, Record<string, unknown>>> = {
     userId: 'u1',
     linkId: 'l1',
     cvId: 'c1',
+  },
+  [ROADMAP_REQUESTED_EVENT_TYPE]: {
+    analysisId: 'a1',
+    userId: 'u1',
+  },
+  [GROUP_LINK_ADDED_EVENT_TYPE]: {
+    groupId: 'g1',
+    linkId: 'l1',
+    actorUserId: 'u1',
+  },
+  [APPLICATION_STATUS_NOTIFY_EVENT_TYPE]: {
+    applicationId: 'a1',
+    linkId: 'l1',
+    actorUserId: 'u1',
+    status: 'applied',
+    statusChangedAt: '2026-09-22T12:00:00.000Z',
   },
 };
 
@@ -78,5 +97,5 @@ describe.skipIf(!enabled)('the jobId of every route, against a real BullMQ', () 
     await expect(
       queue.add('probe', {}, { jobId: 'extract-cv:c1' }),
     ).rejects.toThrow(/Custom Id cannot contain :/);
-  }, 30_000);
+  });
 });
