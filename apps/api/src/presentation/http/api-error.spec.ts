@@ -34,6 +34,7 @@ describe('API_ERROR_STATUS and API_ERROR_MESSAGES', () => {
     ['file_too_large', 413],
     ['too_many_cvs', 409],
     ['consent_text_outdated', 409],
+    ['vault_unavailable', 503],
     ['analysis_not_found', 404],
     ['no_cv', 409],
     ['cv_not_ready', 409],

@@ -58,6 +58,7 @@ describe('DefaultProviderEligibility', () => {
     ).resolves.toEqual({
       status: 'ready',
       hasEligible: true,
+      hasEligibleByok: false,
       consentWouldEnable: false,
     });
     expect(ollama.complete).not.toHaveBeenCalled();
@@ -79,6 +80,7 @@ describe('DefaultProviderEligibility', () => {
     ).resolves.toEqual({
       status: 'ready',
       hasEligible: false,
+      hasEligibleByok: false,
       consentWouldEnable: true,
     });
     expect(openrouter.complete).not.toHaveBeenCalled();
@@ -142,7 +144,12 @@ describe('DefaultProviderEligibility', () => {
         aiConsent: { externalProviders: true },
         userId: 'ana',
       }),
-    ).resolves.toMatchObject({ status: 'ready', hasEligible: true });
+    ).resolves.toEqual({
+      status: 'ready',
+      hasEligible: true,
+      hasEligibleByok: true,
+      consentWouldEnable: false,
+    });
 
     await expect(
       eligibility.hasEligibleProvider({
@@ -150,7 +157,12 @@ describe('DefaultProviderEligibility', () => {
         aiConsent: { externalProviders: true },
         userId: 'beto',
       }),
-    ).resolves.toMatchObject({ status: 'ready', hasEligible: true });
+    ).resolves.toEqual({
+      status: 'ready',
+      hasEligible: true,
+      hasEligibleByok: false,
+      consentWouldEnable: false,
+    });
 
     expect(anaByok.complete).not.toHaveBeenCalled();
   });
@@ -175,6 +187,7 @@ describe('DefaultProviderEligibility', () => {
     ).resolves.toEqual({
       status: 'ready',
       hasEligible: true,
+      hasEligibleByok: true,
       consentWouldEnable: false,
     });
   });

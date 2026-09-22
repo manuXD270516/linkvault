@@ -154,6 +154,7 @@ export class RequestMatchAnalysis {
               : {
                   status: 'ready',
                   hasEligible: eligibility.hasEligible,
+                  hasEligibleByok: eligibility.hasEligibleByok,
                 },
           now,
         })

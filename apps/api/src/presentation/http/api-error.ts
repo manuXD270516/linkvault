@@ -45,6 +45,7 @@ export const API_ERROR_STATUS: Readonly<Record<ApiErrorCode, number>> = {
   job_not_ready: 409,
   roadmap_not_eligible: 409,
   consent_text_outdated: 409,
+  vault_unavailable: 503,
 };
 
 /**
@@ -99,6 +100,7 @@ export const API_ERROR_MESSAGES: Readonly<Record<ApiErrorCode, string>> = {
   roadmap_not_eligible:
     'That analysis cannot produce a study roadmap',
   consent_text_outdated: 'The consent text changed; read it again',
+  vault_unavailable: 'AI key vault is not available',
 };
 
 /** Cuerpo `{ code, message, fields? }`. `fields` solo nombra campos y se omite si está vacío. */

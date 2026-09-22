@@ -2,7 +2,7 @@
 
 - [x] 1.1 [ai] Puerto `SecretVault` + `LibsodiumSecretVault` con `AI_VAULT_KEY` (obligatoria en prod); tests round-trip y fallo con clave corta.
 - [x] 1.2 [ai] Colección `user_ai_keys` + repo Mongo en `libs/ai` (índice único userId+vendor); `deleteAllKeysForUser(userId, session)` para la misma txn del borrado de cuenta; sin EventEmitter. Tests de repo.
-- [ ] 1.3 [backend] Controller `GET/PUT/DELETE /api/users/me/ai-keys[/:vendor]`; zod min length 16; `503 vault_unavailable` sin vault en no-prod; nunca plaintext.
+- [x] 1.3 [backend] Controller `GET/PUT/DELETE /api/users/me/ai-keys[/:vendor]`; zod min length 16; `503 vault_unavailable` sin vault en no-prod; nunca plaintext.
 
 ## 2. Proveedores y routing
 

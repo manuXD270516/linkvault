@@ -19,11 +19,15 @@ export type ProviderEligibilityQuery = {
 /**
  * `ready`: se pudo obtener la instantánea. `unavailable`: Redis (u otro almacén) no respondió —
  * distinto de «no hay ninguno».
+ *
+ * `hasEligibleByok`: hay ≥1 proveedor `byok:*` elegible del `userId` (ADR-032 D11 / vigencia
+ * `quota_exceeded` en match). Independiente de si la cadena de plataforma también es elegible.
  */
 export type ProviderEligibilityResult =
   | {
       status: 'ready';
       hasEligible: boolean;
+      hasEligibleByok: boolean;
       consentWouldEnable: boolean;
     }
   | { status: 'unavailable' };
@@ -82,9 +86,17 @@ export class DefaultProviderEligibility implements ProviderEligibility {
       openIds,
     });
 
+    const byokChain = buildChain({
+      task: query.task,
+      ctx: { aiConsent: query.aiConsent },
+      providers: byok,
+      openIds,
+    });
+
     return {
       status: 'ready',
       hasEligible: providers.length > 0,
+      hasEligibleByok: byokChain.providers.length > 0,
       consentWouldEnable,
     };
   }

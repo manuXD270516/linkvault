@@ -40,6 +40,7 @@ import {
   TooManyAnalysisAttempts,
 } from '../../modules/match/domain/errors';
 import {
+  AiVaultUnavailable,
   ConsentTextOutdated,
   EmailAlreadyRegistered,
   InvalidProfileChanges,
@@ -146,6 +147,9 @@ export class ApiExceptionFilter extends BaseExceptionFilter {
       return reply('email_taken');
     }
     if (exception instanceof ConsentTextOutdated) {
+      return reply(exception.code);
+    }
+    if (exception instanceof AiVaultUnavailable) {
       return reply(exception.code);
     }
     if (exception instanceof InvalidProfileChanges) {

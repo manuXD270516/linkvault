@@ -81,6 +81,7 @@ export {
 } from './infrastructure/providers/byok-provider.factory';
 export { LibsodiumSecretVault } from './infrastructure/crypto/libsodium-secret-vault';
 export { keyHintOf } from './infrastructure/crypto/key-hint';
+export { InMemoryUserAiKeysRepository } from './application/testing/in-memory-user-ai-keys.repository';
 export {
   classifySkillsTask,
   type ClassifySkillsInput,
