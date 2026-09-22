@@ -11,6 +11,9 @@ const SENSITIVE_FIELDS = [
   'apiKey',
   'accessToken',
   'refreshToken',
+  'AI_VAULT_KEY',
+  'ciphertext',
+  'vaultKey',
 ] as const;
 
 /**

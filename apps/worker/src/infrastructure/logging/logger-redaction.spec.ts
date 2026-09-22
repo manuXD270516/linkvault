@@ -28,6 +28,9 @@ const SECRETS = {
   nestedCapitalAuthorization: 'Bearer nested-capital-authorization-s3cr3t',
   inviteCode: 'INV1T3S3CR3T',
   inviteFragment: 'fragment-s3cr3t',
+  vaultKeyEnv: 'ai-vault-key-env-s3cr3t',
+  ciphertext: 'vault-ciphertext-s3cr3t',
+  vaultKeyBytes: 'vault-key-bytes-s3cr3t',
 } as const;
 
 /** Peticiones con `referer` (escenarios de "Logs sin secretos"), identificadas por `x-probe`. */
@@ -60,6 +63,9 @@ const DEPTHS = [
   'apiKey',
   'accessToken',
   'refreshToken',
+  'AI_VAULT_KEY',
+  'ciphertext',
+  'vaultKey',
 ].flatMap((field) => [
   { field, depth: 0, value: { [field]: `${field}-depth0-s3cr3t` } },
   { field, depth: 1, value: { a: { [field]: `${field}-depth1-s3cr3t` } } },
@@ -111,6 +117,15 @@ class LogProbeController {
         user: { passwordHash: SECRETS.passwordHash },
       },
       'password change',
+    );
+    // Material del vault BYOK (ADR-032 D10): nunca AI_VAULT_KEY, ciphertext ni vaultKey en claro.
+    this.logger.info(
+      {
+        AI_VAULT_KEY: SECRETS.vaultKeyEnv,
+        row: { ciphertext: SECRETS.ciphertext },
+        crypto: { vault: { vaultKey: SECRETS.vaultKeyBytes } },
+      },
+      'byok vault',
     );
     for (const { value } of DEPTHS) {
       this.logger.info(value, 'depth matrix');
@@ -253,6 +268,13 @@ describe('log redaction', () => {
     expect(output()).not.toContain(SECRETS.currentPassword);
     expect(output()).not.toContain(SECRETS.newPassword);
     expect(output()).not.toContain(SECRETS.passwordHash);
+  });
+
+  it('redacts AI_VAULT_KEY, ciphertext and vaultKey (BYOK vault material)', () => {
+    expect(output()).toContain('byok vault');
+    expect(output()).not.toContain(SECRETS.vaultKeyEnv);
+    expect(output()).not.toContain(SECRETS.ciphertext);
+    expect(output()).not.toContain(SECRETS.vaultKeyBytes);
   });
 
   it.each(DEPTHS)('redacts $field at depth $depth', ({ field, depth }) => {

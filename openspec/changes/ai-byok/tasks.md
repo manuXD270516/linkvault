@@ -13,8 +13,8 @@
 
 ## 3. Config, logs y docs
 
-- [ ] 3.1 [infra] `.env.example` + parse: `AI_VAULT_KEY` prod, `BYOK_*_MODEL`; redactor `apiKey`/`authorization`/`AI_VAULT_KEY`/`ciphertext`/`vaultKey` en api y worker.
-- [ ] 3.2 [infra] RUNBOOK: operar BYOK, rotación vault, breaker por userId, privacidad.
+- [x] 3.1 [infra] `.env.example` + parse: `AI_VAULT_KEY` prod, `BYOK_*_MODEL`; redactor `apiKey`/`authorization`/`AI_VAULT_KEY`/`ciphertext`/`vaultKey` en api y worker.
+- [x] 3.2 [infra] RUNBOOK: operar BYOK, rotación vault, breaker por userId, privacidad.
 
 ## 4. Frontend
 
