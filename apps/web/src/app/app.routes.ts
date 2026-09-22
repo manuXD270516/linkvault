@@ -3,8 +3,8 @@ import { authGuard, guestGuard } from './core/auth/auth.guards';
 import { HOME_ROUTE } from './core/navigation/home-route';
 
 /**
- * Rutas visibles en español salvo `/login` (D11 de auth-users). Todas exigen sesión salvo `/login`, `/registro` y la
- * vista pública de una oferta (`/oferta/:slug`), que se abre con sesión y sin ella.
+ * Rutas visibles en español salvo `/login` (D11 de auth-users). Todas exigen sesión salvo `/login`, `/registro`,
+ * `/privacidad` y la vista pública de una oferta (`/oferta/:slug`), que se abre con sesión y sin ella.
  */
 export const appRoutes: Route[] = [
   {
@@ -13,6 +13,12 @@ export const appRoutes: Route[] = [
     path: 'oferta/:slug',
     loadComponent: () =>
       import('./features/public/public-preview.page').then((m) => m.PublicPreviewPage),
+  },
+  {
+    // Público (spec web/privacy): aviso de CV, retención, IA/BYOK y borrado; sin sesión ni guestGuard.
+    path: 'privacidad',
+    loadComponent: () =>
+      import('./features/privacy/privacy.page').then((m) => m.PrivacyPage),
   },
   {
     path: 'login',

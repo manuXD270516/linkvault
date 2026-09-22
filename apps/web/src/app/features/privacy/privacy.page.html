@@ -1,0 +1,48 @@
+<article class="mx-auto flex max-w-2xl flex-col gap-6 p-6" data-testid="privacy-notice">
+  <h1 class="text-2xl font-medium" i18n="@@privacy.title">Aviso de privacidad</h1>
+
+  <section class="flex flex-col gap-2" data-testid="privacy-cv">
+    <h2 class="text-xl font-medium" i18n="@@privacy.cv.title">Tu CV</h2>
+    <p class="m-0" i18n="@@privacy.cv.storage">
+      Cuando subes un CV, LinkVault lo guarda en un almacén de objetos (compatible con S3) asociado a tu
+      cuenta. Solo tú puedes verlo y gestionarlo desde Mi CV; no lo compartimos con otros usuarios.
+    </p>
+    <p class="m-0" i18n="@@privacy.cv.encryption">
+      En el entorno de producción el bucket de CV usa cifrado en reposo del proveedor (SSE-S3 o equivalente).
+    </p>
+    <p class="m-0" i18n="@@privacy.cv.retention">
+      No hay caducidad automática del archivo: el CV permanece hasta que lo eliminas en Mi CV o borras tu
+      cuenta. No prometemos que un CV caduque solo al cabo de N días.
+    </p>
+  </section>
+
+  <section class="flex flex-col gap-2" data-testid="privacy-ai">
+    <h2 class="text-xl font-medium" i18n="@@privacy.ai.title">IA, OpenRouter y tus claves (BYOK)</h2>
+    <p class="m-0" i18n="@@privacy.ai.body">
+      El análisis de encaje con un proveedor externo solo ocurre si das permiso en Perfil. Ese permiso es una
+      preferencia tuya (no una pregunta en el momento del análisis). Antes de enviar el CV sustituimos datos
+      identificables por marcadores según tus preferencias; el resto del texto puede enviarse tal cual. Puedes
+      usar la cadena por defecto de LinkVault u opcionalmente guardar tu propia clave (BYOK) de Anthropic,
+      OpenAI u OpenRouter. OpenRouter puede enrutar a otros proveedores: el destino real depende de esa
+      plataforma. No afirmamos que el proveedor externo no conserve lo enviado ni que el envío sea anónimo.
+      Puedes retirar el permiso o revocar una clave cuando quieras desde Perfil.
+    </p>
+  </section>
+
+  <section class="flex flex-col gap-2" data-testid="privacy-deletion">
+    <h2 class="text-xl font-medium" i18n="@@privacy.deletion.title">Borrar tu cuenta</h2>
+    <p class="m-0" i18n="@@privacy.deletion.body">
+      Desde Perfil, en la zona de peligro, puedes borrar tu cuenta. Te pediremos confirmación y tu
+      contraseña. Al completarse se eliminan tu usuario, sesiones, CV, claves de IA, análisis y el resto de
+      datos personales asociados. Si eres el único propietario de un grupo con otros miembros, deberás
+      transferir la propiedad o abandonar ese grupo antes. Tras el borrado se cierra la sesión y vuelves a
+      la pantalla de inicio de sesión.
+    </p>
+  </section>
+
+  <p class="m-0">
+    <a mat-button routerLink="/login" data-testid="privacy-login-link" i18n="@@privacy.login"
+      >Ir a iniciar sesión</a
+    >
+  </p>
+</article>

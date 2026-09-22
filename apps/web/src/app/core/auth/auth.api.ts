@@ -7,6 +7,7 @@ import {
 import { Injectable, inject } from '@angular/core';
 import type {
   ChangePasswordRequest,
+  DeleteAccountRequest,
   LoginRequest,
   RegisterRequest,
   SessionResponse,
@@ -108,6 +109,15 @@ export class AuthApi {
     const user = await this.send(this.http.patch<UserProfile>(USERS_ME_URL, body));
     this.session.setUser(user);
     return user;
+  }
+
+  /**
+   * Borrado de cuenta (`DELETE /api/users/me`, spec users/account-deletion). Tras `204` limpia la sesión
+   * local (el servidor ya invalidó refresh/sesiones); no llama a logout.
+   */
+  async deleteAccount(body: DeleteAccountRequest): Promise<void> {
+    await this.send(this.http.delete<null>(USERS_ME_URL, { body }));
+    this.session.clear();
   }
 
   private async runRefresh(signal?: AbortSignal): Promise<SessionResponse> {

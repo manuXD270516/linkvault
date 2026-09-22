@@ -511,4 +511,67 @@ describe('ProfilePage', () => {
       );
     });
   });
+
+  describe('Zona de peligro', () => {
+    it('enlaza al aviso de privacidad', () => {
+      const link = host().querySelector<HTMLAnchorElement>('[data-testid="profile-privacy-link"]');
+      expect(link?.getAttribute('href')).toBe('/privacidad');
+      expect(host().querySelector('[data-testid="profile-danger"]')).not.toBeNull();
+    });
+
+    it('Borrado exitoso desde el perfil', async () => {
+      buttonWithText(host(), 'Borrar mi cuenta').click();
+      await settle();
+      await harness.fixture.whenStable();
+
+      typeInto(dialog(), '[data-testid="profile-delete-password"]', 'contraseña-correcta');
+      dialog().querySelector<HTMLButtonElement>('[data-testid="profile-delete-confirm"]')?.click();
+      await settle();
+
+      const req = http.expectOne({ method: 'DELETE', url: '/api/users/me' });
+      expect(req.request.body).toEqual({ password: 'contraseña-correcta' });
+      req.flush(null, { status: 204, statusText: 'No Content' });
+
+      await vi.waitFor(() => expect(router.url).toBe('/login'));
+      expect(store.status()).toBe('anonymous');
+      expect(document.body.querySelector('mat-dialog-container')).toBeNull();
+    });
+
+    it('Contraseña incorrecta en el flujo', async () => {
+      buttonWithText(host(), 'Borrar mi cuenta').click();
+      await settle();
+      await harness.fixture.whenStable();
+
+      typeInto(dialog(), '[data-testid="profile-delete-password"]', 'mala');
+      dialog().querySelector<HTMLButtonElement>('[data-testid="profile-delete-confirm"]')?.click();
+      await settle();
+
+      const { body, options } = apiError('invalid_credentials', 401);
+      http.expectOne({ method: 'DELETE', url: '/api/users/me' }).flush(body, options);
+
+      await vi.waitFor(() => expect(dialog().textContent).toMatch(/contraseña no es correcta/i));
+      expect(router.url).toBe('/perfil');
+      expect(store.status()).toBe('authenticated');
+      http.expectNone('/api/auth/refresh');
+    });
+
+    it('Owner bloqueante', async () => {
+      buttonWithText(host(), 'Borrar mi cuenta').click();
+      await settle();
+      await harness.fixture.whenStable();
+
+      typeInto(dialog(), '[data-testid="profile-delete-password"]', 'contraseña-correcta');
+      dialog().querySelector<HTMLButtonElement>('[data-testid="profile-delete-confirm"]')?.click();
+      await settle();
+
+      const { body, options } = apiError('sole_owner_with_members', 409);
+      http.expectOne({ method: 'DELETE', url: '/api/users/me' }).flush(body, options);
+
+      await vi.waitFor(() =>
+        expect(dialog().textContent).toMatch(/único propietario|otros miembros/i),
+      );
+      expect(router.url).toBe('/perfil');
+      expect(store.status()).toBe('authenticated');
+    });
+  });
 });
