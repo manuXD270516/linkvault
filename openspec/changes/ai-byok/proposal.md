@@ -4,12 +4,13 @@ Hoy la cadena de IA depende de Ollama local y del free tier de OpenRouter. Quien
 
 ## What Changes
 
-- Vault libsodium `secretbox` con `AI_VAULT_KEY`: cifrar/descifrar solo en memoria del proceso que ejecuta `runTask` (api o worker).
+- Vault libsodium `secretbox` con `AI_VAULT_KEY`: cifrar/descifrar solo en memoria del proceso que ejecuta `runTask` (api o worker). En **producción** la clave es obligatoria al arrancar.
 - Colección `user_ai_keys`: una fila por `(userId, vendor)` ∈ {`anthropic`,`openai`,`openrouter`}; ciphertext + nonce + `keyHint` (últimos 4) + timestamps. Nunca plaintext en DB ni en respuestas HTTP.
-- HTTP autenticado: listar vendors configurados (hints), upsert clave, revocar. Cascada al borrar cuenta.
-- Proveedores `AnthropicProvider` y `OpenAIProvider` en `libs/ai/infrastructure/providers`; OpenRouter reutiliza el existente con clave del usuario. Ids `byok:<userId>:<vendor>`, `external: true`, prioridad 0 en routing.
-- Al ejecutar `runTask` con `userId`, el registry inyecta los BYOK elegibles del dueño **antes** de la cadena de plataforma; consentimiento externo sigue aplicando.
-- Cuota de plataforma: un `success` cuyo `providerId` empieza por `byok:` **no** cuenta contra `AI_QUOTAS` (el costo es del usuario). El ledger sí registra el intento.
+- HTTP autenticado: listar vendors configurados (hints), upsert clave, revocar. Cascada al borrar cuenta. Revocar consentimiento **no** borra las claves.
+- Proveedores `AnthropicProvider` y `OpenAIProvider`; OpenRouter BYOK reutiliza el existente con clave del usuario. Ids `byok:<userId>:<vendor>`, `external: true`, prioridad 0. Modelos fijos por env (`BYOK_*_MODEL`).
+- OpenRouter BYOK **híbrido**: si el modelo termina en `:free`, se envía `data_collection: "deny"` (igual que la plataforma); si no, no se fuerza esa política (contrato del usuario con OpenRouter).
+- Al ejecutar `runTask` con `userId`, se inyectan los BYOK elegibles delante de la cadena de plataforma; consentimiento externo sigue aplicando.
+- Cuota de plataforma: solo cuentan `success` cuyo `providerId` **no** empieza por `byok:`; con cuota de plataforma agotada aún se permite la ejecución si hay BYOK elegible.
 - Redactor pino: nunca loguear `apiKey` / `authorization` / ciphertext descifrado.
 - SPA `/perfil`: sección de claves BYOK (añadir / rotar / revocar) con aviso de que el CV puede salir a ese vendor si hay consentimiento.
 
@@ -24,19 +25,18 @@ Hoy la cadena de IA depende de Ollama local y del free tier de OpenRouter. Quien
 
 - `ai/provider-routing`: escenarios BYOK reales (no solo orden teórico).
 - `ai/usage-accounting`: success vía BYOK no consume cuota de plataforma.
-- `users/profile` / borrado de cuenta: cascada de claves (si el borrado ya está en deploy-prod, documentar el hook aquí).
+- `users/profile` / borrado de cuenta: cascada de claves (si el borrado aún no existe, documentar el hook).
 - `ai/data-protection`: claves de usuario como secreto (nunca en logs ni respuestas).
 
 ## Impact
 
 - `libs/ai`, `libs/shared`, `apps/api`, `apps/worker`, `apps/web`.
-- ADRs: **014** (BYOK), **018** (orden cadena / cuotas), consentimiento externo existente.
-- Nuevo ADR si hace falta concretar modelo por vendor, forma de `AI_VAULT_KEY` y colección.
-- **Fuera de alcance:** BYOK como único proveedor de plataforma; marketplace de modelos; compartir claves entre usuarios; cifrado client-side; Anthropic/OpenAI de plataforma sin BYOK.
+- ADRs: **014** (BYOK), **018** (orden cadena / cuotas), consentimiento externo; **ADR-032** para decisiones de este change.
+- **Fuera de alcance:** picker de modelo en UI; marketplace; compartir claves; cifrado client-side; Anthropic/OpenAI de plataforma sin BYOK; re-encrypt al rotar `AI_VAULT_KEY`.
 
-## Open questions (para debate / aprobación)
+## Decisions locked (humano)
 
-1. ¿Modelos por vendor fijos en env (`BYOK_ANTHROPIC_MODEL`, …) o el usuario elige modelo al guardar la clave?
-2. ¿`AI_VAULT_KEY` obligatoria siempre al arrancar, o solo si existe al menos una clave / `FEATURE_BYOK=true`?
-3. ¿Revocar consentimiento externo deja las claves cifradas o las borra?
-4. ¿OpenRouter BYOK permite cualquier modelo o solo los que el usuario pague (sin forzar `:free` / `data_collection`)?
+1. Modelos por env (`BYOK_*_MODEL`), sin picker — **A**
+2. `AI_VAULT_KEY` obligatoria en producción al arrancar — **A**
+3. Revocar consentimiento deja las claves cifradas — **A**
+4. OpenRouter BYOK híbrido (`:free` → `data_collection: deny`; resto sin forzar) — **C**

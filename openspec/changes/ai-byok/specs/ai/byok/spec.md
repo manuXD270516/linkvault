@@ -39,6 +39,22 @@ Cuando `runTask` recibe un `userId` con consentimiento externo vigente y al meno
 - **WHEN** ejecuta una tarea personal
 - **THEN** ningún proveedor `byok:` SHALL recibir la petición
 
+### Requirement: OpenRouter BYOK y data_collection
+
+Cuando el proveedor BYOK es OpenRouter y el modelo configurado (`BYOK_OPENROUTER_MODEL`) termina en `:free`, la petición SHALL incluir `provider.data_collection = "deny"`. Si el modelo no termina en `:free`, la petición NO SHALL forzar `data_collection` ni restringir el modelo a `:free`.
+
+#### Scenario: Modelo free con deny
+
+- **GIVEN** BYOK OpenRouter de Ana y `BYOK_OPENROUTER_MODEL` terminado en `:free`
+- **WHEN** ese provider completa una petición
+- **THEN** el cuerpo enviado a OpenRouter SHALL llevar `data_collection: "deny"`
+
+#### Scenario: Modelo de pago sin forzar deny
+
+- **GIVEN** BYOK OpenRouter de Ana y `BYOK_OPENROUTER_MODEL` sin sufijo `:free`
+- **WHEN** ese provider completa una petición
+- **THEN** la petición NO SHALL exigir `data_collection: "deny"` por política de LinkVault
+
 ### Requirement: Cascada al borrar la cuenta
 
 Al borrar la cuenta de una persona, el sistema SHALL borrar todas sus filas de `user_ai_keys`.
