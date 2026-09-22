@@ -49,4 +49,4 @@
 ## 8. Cierre
 
 - [x] 8.1 [infra] Actualizar README (Mailpit local, CapturingMailer en CI, variables MAIL_*, flujos verify/reset) y referencia ADR-034; verificar que docs y `.env.example` coinciden con el schema.
-- [ ] 8.2 [infra] `pnpm nx affected -t lint,typecheck,test` (y build si aplica) con `AI_CHAIN=mock AI_MOCK_MODE=replay` y `openspec validate auth-email-recovery`; verificar verde.
+- [x] 8.2 [infra] `pnpm nx affected -t lint,typecheck,test` (y build si aplica) con `AI_CHAIN=mock AI_MOCK_MODE=replay` y `openspec validate auth-email-recovery`; verificar verde.

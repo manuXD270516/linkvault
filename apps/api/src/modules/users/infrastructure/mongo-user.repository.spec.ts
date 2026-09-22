@@ -52,6 +52,7 @@ describe('MongoUserRepository', () => {
       email: 'alta@example.com',
       passwordHash: HASH,
       passwordChangedAt: now,
+      emailVerified: false,
       profile: {
         displayName: 'Ana',
         aiConsent: {
@@ -78,6 +79,7 @@ describe('MongoUserRepository', () => {
       email: 'guardado@example.com',
       passwordHash: HASH,
       passwordChangedAt: now,
+      emailVerified: false,
       displayName: 'Ana',
       aiConsent: {
         externalProviders: false,

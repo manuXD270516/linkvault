@@ -60,9 +60,10 @@ describe('MongoEmailTokenRepository', () => {
       .findOne({ tokenHash });
     expect(stored).toMatchObject({ userId: 'user-ana', purpose: 'reset_password' });
     expect(JSON.stringify(stored)).not.toContain(plain);
-    expect(stored!.expiresAt.getTime() - stored!.createdAt.getTime()).toBe(
-      3600_000,
-    );
+    expect(
+      (stored!['expiresAt'] as Date).getTime() -
+        (stored!['createdAt'] as Date).getTime(),
+    ).toBe(3600_000);
 
     let marked = false;
     const first = await repository.consume(
