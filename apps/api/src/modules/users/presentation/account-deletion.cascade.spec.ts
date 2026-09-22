@@ -11,7 +11,7 @@ import {
 } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
 import { Types, type Connection } from 'mongoose';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { AppModule } from '../../../app/app.module';
 import { configureApp } from '../../../app/create-app';
 import {
@@ -51,8 +51,8 @@ import { InMemoryCvUserPrefixDeleter } from '../application/testing/in-memory-cv
 
 // Cascada de `DELETE /api/users/me` (tarea 5.2 de deploy-prod) sobre AppModule + MongoMemoryReplSet: user_links,
 // note unset, commentCount/`commentsRevision`, publicShare, applications, sesiones, AI, 409 sole_owner_with_members,
-// 401 password/sesión y 204 del camino feliz. El deleter de S3 se sustituye para no esperar al puerto cerrado del
-// test-config.
+// 401 password/sesión, rollback mid-txn + reintento, y 204 del camino feliz. El deleter de S3 se sustituye para no
+// esperar al puerto cerrado del test-config.
 
 const PASSWORD = 'correct-horse-battery';
 const AI_USAGE_COLLECTION = 'ai_usage';
@@ -253,6 +253,94 @@ describe('DELETE /api/users/me account deletion cascade', () => {
     const response = await deleteMe(undefined, PASSWORD);
 
     expect(response.statusCode).toBe(401);
+  });
+
+  it('rolls back mid-txn failure and allows retry', async () => {
+    // Fuerza fallo tras `deletePersonalData` (último paso de la txn = users.delete) para verificar
+    // que un abort no deja residuos parciales y que un reintento posterior completa el wipe.
+    const ana = await createUser('Ana Mid Txn');
+    const anaOid = new Types.ObjectId(ana.id);
+    const linkOid = new Types.ObjectId();
+    const sessionId = randomUUID();
+    const auth = await authorizationFor(ana.id);
+
+    await db().collection(AUTH_SESSIONS_COLLECTION).insertOne({
+      _id: sessionId,
+      userId: ana.id,
+      createdAt: NOW,
+      expiresAt: SESSION_EXPIRES,
+      revokedAt: null,
+    } as never);
+    await db().collection(USER_LINKS_COLLECTION).insertOne({
+      userId: anaOid,
+      linkId: linkOid,
+      savedAt: NOW,
+    });
+    await db().collection(AI_USAGE_COLLECTION).insertOne({
+      userId: ana.id,
+      task: 'classify-skills',
+      providerId: 'mock',
+      model: 'mock',
+      inputTokens: 1,
+      outputTokens: 1,
+      estCost: 0,
+      latencyMs: 1,
+      outcome: 'success',
+      promptVersion: 'v1',
+      key: `usage-mid-${ana.id}`,
+      at: NOW,
+    });
+    cvFiles.withKey(`${ana.id}/cv.pdf`);
+
+    const deleteSpy = vi
+      .spyOn(userRepo, 'delete')
+      .mockRejectedValueOnce(new Error('forced mid-txn failure'));
+
+    const failed = await deleteMe(auth.authorization, PASSWORD);
+    expect(failed.statusCode).toBeGreaterThanOrEqual(500);
+    expect(deleteSpy).toHaveBeenCalled();
+    deleteSpy.mockRestore();
+
+    await expect(userRepo.findById(ana.id)).resolves.toMatchObject({
+      id: ana.id,
+    });
+    await expect(
+      db()
+        .collection(USER_LINKS_COLLECTION)
+        .countDocuments({ userId: anaOid }),
+    ).resolves.toBe(1);
+    await expect(
+      db().collection(AUTH_SESSIONS_COLLECTION).countDocuments({
+        userId: ana.id,
+      }),
+    ).resolves.toBe(1);
+    await expect(
+      db()
+        .collection(AI_USAGE_COLLECTION)
+        .countDocuments({ userId: ana.id }),
+    ).resolves.toBe(1);
+    expect([...cvFiles.keys]).toContain(`${ana.id}/cv.pdf`);
+
+    const retried = await deleteMe(auth.authorization, PASSWORD);
+    expect(retried.statusCode).toBe(204);
+    await expect(userRepo.findById(ana.id)).resolves.toBeNull();
+    await expect(
+      db()
+        .collection(USER_LINKS_COLLECTION)
+        .countDocuments({ userId: anaOid }),
+    ).resolves.toBe(0);
+    await expect(
+      db().collection(AUTH_SESSIONS_COLLECTION).countDocuments({
+        userId: ana.id,
+      }),
+    ).resolves.toBe(0);
+    await expect(
+      db()
+        .collection(AI_USAGE_COLLECTION)
+        .countDocuments({ userId: ana.id }),
+    ).resolves.toBe(0);
+    expect(cvFiles.deletedPrefixes).toContain(ana.id);
+    expect([...cvFiles.keys]).not.toContain(`${ana.id}/cv.pdf`);
   });
 
   it('returns 204 and cascades personal data', async () => {
