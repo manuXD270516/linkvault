@@ -215,6 +215,14 @@ export class InMemoryGroupRepository implements GroupRepository {
    * distingue el grupo que no existe (`not_found`) del que es de otro (`not_owner`), sin borrar nada.
    */
   deleteGroup(groupId: string, ownerId: string): Promise<DeleteGroupResult> {
+    return this.deleteGroupInSession(groupId, ownerId, {});
+  }
+
+  deleteGroupInSession(
+    groupId: string,
+    ownerId: string,
+    _session: object,
+  ): Promise<DeleteGroupResult> {
     if (!isGroupId(groupId) || !this.groups.has(groupId)) {
       return Promise.resolve('not_found');
     }
@@ -222,13 +230,24 @@ export class InMemoryGroupRepository implements GroupRepository {
       return Promise.resolve('not_owner');
     }
     this.groups.delete(groupId);
-    // Borrado en cascada: el equivalente en memoria de la transacción de borrado (D6).
     for (let index = this.memberships.length - 1; index >= 0; index -= 1) {
       if (this.memberships[index]?.groupId === groupId) {
         this.memberships.splice(index, 1);
       }
     }
     return Promise.resolve('deleted');
+  }
+
+  removeMembershipInSession(
+    groupId: string,
+    userId: string,
+    _session: object,
+  ): Promise<void> {
+    const index = this.indexOfMembership(groupId, userId);
+    if (index !== -1) {
+      this.memberships.splice(index, 1);
+    }
+    return Promise.resolve();
   }
 
   /** Posición de la membresía, con el rol pedido si se indica; -1 si no está o algún id está mal formado. */

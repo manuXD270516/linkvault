@@ -98,3 +98,12 @@ export const updateProfileRequestSchema = z
     message: 'At least one field is required',
   });
 export type UpdateProfileRequest = z.infer<typeof updateProfileRequestSchema>;
+
+/**
+ * Cuerpo de `DELETE /api/users/me` (spec users/account-deletion). Misma política que login: no exige longitud mínima
+ * de contraseña nueva, para que una incorrecta responda `invalid_credentials` y no `400`.
+ */
+export const deleteAccountRequestSchema = z.object({
+  password: z.string().min(1).max(128),
+});
+export type DeleteAccountRequest = z.infer<typeof deleteAccountRequestSchema>;

@@ -84,4 +84,8 @@ export class InMemoryUserRepository implements UserRepository {
     });
     return Promise.resolve(true);
   }
+
+  delete(id: string, _session?: object): Promise<boolean> {
+    return Promise.resolve(this.users.delete(id));
+  }
 }

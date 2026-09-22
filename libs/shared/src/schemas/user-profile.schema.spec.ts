@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { AI_CONSENT_TEXT_VERSION } from '../consent/ai-consent-text';
 import {
   DISPLAY_NAME_MAX_LENGTH,
+  deleteAccountRequestSchema,
   isAiConsentCurrent,
   outputLanguageSchema,
   updateProfileRequestSchema,
@@ -201,5 +202,19 @@ describe('updateProfileRequestSchema', () => {
 
   it('exposes the displayName limit', () => {
     expect(DISPLAY_NAME_MAX_LENGTH).toBe(60);
+  });
+});
+
+describe('deleteAccountRequestSchema', () => {
+  it('accepts a presented password', () => {
+    expect(deleteAccountRequestSchema.parse({ password: 'x' })).toEqual({
+      password: 'x',
+    });
+  });
+
+  it('rejects an empty password', () => {
+    expect(
+      deleteAccountRequestSchema.safeParse({ password: '' }).success,
+    ).toBe(false);
   });
 });

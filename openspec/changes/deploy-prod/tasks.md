@@ -27,7 +27,7 @@
 ## 5. Borrado de cuenta
 
 - [x] 5.1 [backend] `DeleteAccount` + `DELETE /api/users/me` `{ password }`; 204 / **401** password / 409 owner; reusa `GroupDeletionHooks` con sesión Mongo; unitarios.
-- [ ] 5.2 [backend] Cascada txn: user, sessions, memberships (grupo si owner solo), applications+events, comments+`commentCount`/`commentsRevision`, `$unset note`/`publicShare`, `user_links`, cv+S3, ai_analyses, **ai_usage**, keys, roadmaps, feedback; integración.
+- [x] 5.2 [backend] Cascada txn: user, sessions, memberships (grupo si owner solo), applications+events, comments+`commentCount`/`commentsRevision`, `$unset note`/`publicShare`, `user_links`, cv+S3, ai_analyses, **ai_usage**, keys, roadmaps, feedback; integración.
 - [x] 5.3 [backend] Consumers BullMQ con `userId`: si el usuario ya no existe, **ack** (no reintentar); tests por cola afectada o justificación documentada si ya es no-op/`attempts:1`.
 - [x] 5.4 [frontend] Ruta pública `/privacidad` (CV, retención, IA/OpenRouter/BYOK, borrado); i18n ES/EN; tests.
 - [x] 5.5 [frontend] `/perfil`: peligro + password → API → logout `/login`; enlace `/privacidad`; tests.

@@ -11,8 +11,7 @@ import { GetMyProfile } from '../application/get-my-profile.usecase';
 import { UpdateMyProfile } from '../application/update-my-profile.usecase';
 
 /**
- * Perfil propio (spec users/profile). Protegido por el guard global: solo existe el usuario del access token, no hay forma
- * de consultar ni editar otro perfil. Las respuestas son el contrato `userProfileSchema`, sin hash ni `passwordChangedAt`.
+ * Perfil propio (spec users/profile). Protegido por el guard global: solo existe el usuario del access token.
  */
 @Controller('users')
 export class UsersController {
@@ -26,7 +25,6 @@ export class UsersController {
     return this.getMyProfile.execute(user.userId);
   }
 
-  /** Subconjunto no vacío de campos editables; un campo desconocido (incluidos `email` y `password`) responde 400. */
   @Patch('me')
   update(
     @CurrentUser() user: AuthenticatedUser,

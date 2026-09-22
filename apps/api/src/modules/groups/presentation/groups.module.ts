@@ -4,6 +4,7 @@ import {
   Logger,
   Module,
   type OnModuleInit,
+  forwardRef,
 } from '@nestjs/common';
 import { getConnectionToken } from '@nestjs/mongoose';
 import { mongo, type Connection } from 'mongoose';
@@ -59,7 +60,7 @@ import { GroupsController } from './groups.controller';
  * no se registra nada: no es un índice que falló.
  */
 @Module({
-  imports: [UsersModule, LimitsModule],
+  imports: [forwardRef(() => UsersModule), LimitsModule],
   controllers: [GroupsController],
   providers: [
     { provide: GROUP_REPOSITORY, useClass: MongoGroupRepository },

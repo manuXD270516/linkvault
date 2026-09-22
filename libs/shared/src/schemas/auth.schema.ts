@@ -102,6 +102,8 @@ export const apiErrorCodeSchema = z.enum([
   'owner_cannot_leave',
   // 409: el owner se nombra owner a sí mismo al transferir la propiedad. Sin texto de UI: el SPA no ofrece ese camino.
   'already_owner',
+  // 409: borrado de cuenta bloqueado porque la persona es el único owner de un grupo con otros miembros.
+  'sole_owner_with_members',
   // 400: la URL guardada no es `http(s)`, no tiene host o pasa del máximo de caracteres.
   'invalid_url',
   // 400: el texto de la importación pasa del máximo de caracteres.

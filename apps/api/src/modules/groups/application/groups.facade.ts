@@ -66,4 +66,51 @@ export class GroupsFacade {
       defaultVisibility: membership.group.defaultVisibility,
     }));
   }
+
+  /**
+   * `true` si el usuario es único owner de algún grupo con otros miembros (bloqueo del borrado de cuenta, D4).
+   */
+  async ownershipBlocksAccountDeletion(userId: string): Promise<boolean> {
+    for (const membership of await this.getGroupsOf(userId)) {
+      if (membership.role !== 'owner') {
+        continue;
+      }
+      const members = await this.memberIdsOf(membership.groupId);
+      if (members.length > 1) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Dentro de la txn del borrado de cuenta: borra grupos de los que es único miembro (vía
+   * `deleteGroupInSession` + `GroupDeletionHooks`) y suelta el resto de membresías.
+   */
+  async detachUserInSession(
+    userId: string,
+    session: object,
+  ): Promise<void> {
+    const memberships = await this.getGroupsOf(userId);
+    for (const membership of memberships) {
+      if (membership.role === 'owner') {
+        const result = await this.groups.deleteGroupInSession(
+          membership.groupId,
+          userId,
+          session,
+        );
+        if (result !== 'deleted') {
+          throw new Error(
+            `Account deletion expected to delete owned group "${membership.groupId}" (${result})`,
+          );
+        }
+        continue;
+      }
+      await this.groups.removeMembershipInSession(
+        membership.groupId,
+        userId,
+        session,
+      );
+    }
+  }
 }

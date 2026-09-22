@@ -43,7 +43,9 @@ import {
   AiVaultUnavailable,
   ConsentTextOutdated,
   EmailAlreadyRegistered,
+  InvalidAccountPassword,
   InvalidProfileChanges,
+  SoleOwnerWithMembers,
   UserNotFound,
 } from '../../modules/users/domain/errors';
 import { API_ERROR_STATUS, apiErrorBody } from './api-error';
@@ -150,6 +152,12 @@ export class ApiExceptionFilter extends BaseExceptionFilter {
       return reply(exception.code);
     }
     if (exception instanceof AiVaultUnavailable) {
+      return reply(exception.code);
+    }
+    if (exception instanceof InvalidAccountPassword) {
+      return reply(exception.code);
+    }
+    if (exception instanceof SoleOwnerWithMembers) {
       return reply(exception.code);
     }
     if (exception instanceof InvalidProfileChanges) {

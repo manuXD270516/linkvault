@@ -110,4 +110,23 @@ export interface GroupRepository {
    * momento de escribir (ADR-025 §3).
    */
   deleteGroup(groupId: string, ownerId: string): Promise<DeleteGroupResult>;
+  /**
+   * Misma cascada que `deleteGroup`, pero dentro de una sesión ya abierta (borrado de cuenta, D11 / ADR-033). Quien
+   * llama es dueño del commit; si este método falla, la txn entera se deshace.
+   */
+  deleteGroupInSession(
+    groupId: string,
+    ownerId: string,
+    session: object,
+  ): Promise<DeleteGroupResult>;
+  /**
+   * Borra la membresía del usuario en el grupo dentro de una sesión ya abierta (borrado de cuenta). No exige rol
+   * `member`: al borrar la cuenta también se suelta una membresía `owner` de un grupo que se acaba de vaciar por otro
+   * camino; en la práctica el caso de uso solo llama esto para roles `member`.
+   */
+  removeMembershipInSession(
+    groupId: string,
+    userId: string,
+    session: object,
+  ): Promise<void>;
 }

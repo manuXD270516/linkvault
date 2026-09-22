@@ -25,4 +25,6 @@ export interface UserRepository {
     passwordHash: string,
     changedAt: Date,
   ): Promise<boolean>;
+  /** Borra el documento del usuario; `false` si no existía o el id está mal formado. */
+  delete(id: string, session?: object): Promise<boolean>;
 }
