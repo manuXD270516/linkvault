@@ -52,3 +52,15 @@ export class ConsentTextOutdated extends Error {
     super('The consent text changed; read it again');
   }
 }
+
+/**
+ * Vault BYOK no disponible fuera de producción (ADR-032 D4). El PUT de claves responde 503 `vault_unavailable`.
+ */
+export class AiVaultUnavailable extends Error {
+  override readonly name = 'AiVaultUnavailable';
+  readonly code = 'vault_unavailable' as const;
+
+  constructor() {
+    super('AI vault is not configured');
+  }
+}

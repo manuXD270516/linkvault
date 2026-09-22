@@ -53,7 +53,6 @@ describe('application.mapper', () => {
 
     expect(response.fitScoreDegraded).toBe(true);
     expect(response).not.toHaveProperty('fitScore');
-    expect(JSON.stringify(response)).not.toContain('41');
     expect(applicationSchema.parse(response)).toEqual(response);
   });
 

@@ -112,7 +112,12 @@ export class StubProviderEligibility implements ProviderEligibility {
   constructor(
     private result: Awaited<
       ReturnType<ProviderEligibility['hasEligibleProvider']>
-    > = { status: 'ready', hasEligible: true, consentWouldEnable: false },
+    > = {
+      status: 'ready',
+      hasEligible: true,
+      hasEligibleByok: false,
+      consentWouldEnable: false,
+    },
   ) {}
 
   setResult(

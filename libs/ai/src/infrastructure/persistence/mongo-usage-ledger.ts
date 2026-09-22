@@ -69,6 +69,8 @@ export class MongoUsageLedger implements UsageLedger, SuccessCounter {
         task: query.task,
         outcome: 'success',
         at: { $gte: query.since },
+        // Cuota de plataforma: los success BYOK no cuentan (ADR-032 D7).
+        providerId: { $not: { $regex: /^byok:/ } },
       })
       .maxTimeMS(query.maxTimeMS)
       .exec();
@@ -81,6 +83,7 @@ export class MongoUsageLedger implements UsageLedger, SuccessCounter {
         task: query.task,
         outcome: 'success',
         at: { $gte: query.since },
+        providerId: { $not: { $regex: /^byok:/ } },
       })
       .sort({ at: 1 })
       .select({ at: 1 })

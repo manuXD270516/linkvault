@@ -356,6 +356,7 @@ describe('RequestMatchAnalysis — degraded still current (9.6)', () => {
     eligibility.setResult({
       status: 'ready',
       hasEligible: false,
+      hasEligibleByok: false,
       consentWouldEnable: true,
     });
     const degraded = seedDegraded('consent_required');
@@ -376,6 +377,7 @@ describe('RequestMatchAnalysis — degraded still current (9.6)', () => {
     eligibility.setResult({
       status: 'ready',
       hasEligible: false,
+      hasEligibleByok: false,
       consentWouldEnable: false,
     });
     const degraded = seedDegraded('no_providers');
@@ -398,12 +400,28 @@ describe('RequestMatchAnalysis — degraded no longer current (9.7)', () => {
     expect(analyses.appendedEvents()).toHaveLength(1);
   });
 
+  it('Reintentar tras guardar una clave BYOK (D11)', async () => {
+    const retryAt = new Date(clock.now().getTime() + 60_000);
+    seedDegraded('quota_exceeded', { aiQuotaRetryAt: retryAt });
+    consent.externalProviders = true;
+    eligibility.setResult({
+      status: 'ready',
+      hasEligible: true,
+      hasEligibleByok: true,
+      consentWouldEnable: false,
+    });
+    const result = await request.execute(ANA, LINK);
+    expect(result.outcome).toBe('accepted');
+    expect(analyses.appendedEvents()).toHaveLength(1);
+  });
+
   it('Reintentar después de dar el permiso', async () => {
     seedDegraded('consent_required');
     consent.externalProviders = true;
     eligibility.setResult({
       status: 'ready',
       hasEligible: true,
+      hasEligibleByok: false,
       consentWouldEnable: false,
     });
     const result = await request.execute(ANA, LINK);
@@ -416,6 +434,7 @@ describe('RequestMatchAnalysis — degraded no longer current (9.7)', () => {
     eligibility.setResult({
       status: 'ready',
       hasEligible: true,
+      hasEligibleByok: false,
       consentWouldEnable: false,
     });
     const result = await request.execute(ANA, LINK);
@@ -427,6 +446,7 @@ describe('RequestMatchAnalysis — degraded no longer current (9.7)', () => {
     eligibility.setResult({
       status: 'ready',
       hasEligible: true,
+      hasEligibleByok: false,
       consentWouldEnable: false,
     });
     const result = await request.execute(ANA, LINK);
@@ -512,6 +532,7 @@ describe('RequestMatchAnalysis — precedence and new runs (9.8)', () => {
     eligibility.setResult({
       status: 'ready',
       hasEligible: false,
+      hasEligibleByok: false,
       consentWouldEnable: false,
     });
     seedDegraded('no_providers', { previewVersion: 1 });
@@ -793,3 +814,4 @@ describe('GetMatchAnalysis (9.10)', () => {
     );
   });
 });
+

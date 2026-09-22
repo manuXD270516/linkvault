@@ -1,9 +1,10 @@
 import { HttpTestingController } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
+import { MatDialog } from '@angular/material/dialog';
 import { By } from '@angular/platform-browser';
 import { Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { AI_CONSENT_TEXT_VERSION } from '@linkvault/shared';
+import { AI_CONSENT_TEXT_VERSION, type AiKeyView } from '@linkvault/shared';
 import {
   apiError,
   buttonWithText,
@@ -15,8 +16,21 @@ import {
   verifyNoPendingRequests,
 } from '../../../testing/auth-testing';
 import { SessionStore } from '../../core/auth/session.store';
+import { AiKeysStore } from '../../core/ai-keys/ai-keys.store';
 import { Shell } from '../../layout/shell/shell';
 import { ProfilePage } from './profile.page';
+
+const openaiKey: AiKeyView = {
+  vendor: 'openai',
+  keyHint: 'sk12',
+  updatedAt: '2026-09-21T12:00:00.000Z',
+};
+
+const anthropicKey: AiKeyView = {
+  vendor: 'anthropic',
+  keyHint: 'an34',
+  updatedAt: '2026-09-21T12:00:00.000Z',
+};
 
 describe('ProfilePage', () => {
   let http: HttpTestingController;
@@ -33,9 +47,29 @@ describe('ProfilePage', () => {
     harness = await RouterTestingHarness.create();
     await harness.navigateByUrl('/perfil', Shell);
     expect(harness.fixture.debugElement.query(By.directive(ProfilePage))).not.toBeNull();
+    await flushAiKeys([]);
   });
 
-  afterEach(() => verifyNoPendingRequests(http));
+  afterEach(() => {
+    TestBed.inject(MatDialog).closeAll();
+    verifyNoPendingRequests(http);
+  });
+
+  async function flushAiKeys(keys: AiKeyView[]): Promise<void> {
+    const request = await vi.waitFor(() =>
+      http.expectOne({ method: 'GET', url: '/api/users/me/ai-keys' }),
+    );
+    request.flush({ keys });
+    await settle();
+    await harness.fixture.whenStable();
+  }
+
+  /** Vuelve a pedir el listado del store de la página (p. ej. para precargar un hint). */
+  async function reloadAiKeys(keys: AiKeyView[]): Promise<void> {
+    const page = harness.fixture.debugElement.query(By.directive(ProfilePage));
+    void page.injector.get(AiKeysStore).load();
+    await flushAiKeys(keys);
+  }
 
   function host(): HTMLElement {
     return harness.routeNativeElement as HTMLElement;
@@ -47,6 +81,27 @@ describe('ProfilePage', () => {
 
   function input(name: string): HTMLInputElement | null {
     return host().querySelector<HTMLInputElement>(`input[formControlName="${name}"]`);
+  }
+
+  function byokKeyInput(vendor: string): HTMLInputElement {
+    const el = host().querySelector<HTMLInputElement>(`[data-testid="profile-byok-key-${vendor}"]`);
+    if (!el) {
+      throw new Error(`BYOK key input missing for ${vendor}`);
+    }
+    return el;
+  }
+
+  function dialog(): HTMLElement {
+    const container = document.body.querySelector<HTMLElement>('mat-dialog-container');
+    if (!container) {
+      throw new Error('Dialog not opened');
+    }
+    return container;
+  }
+
+  async function answerConfirm(label: string): Promise<void> {
+    buttonWithText(dialog(), label).click();
+    await settle();
   }
 
   async function submitPasswordChange(currentPassword: string, newPassword: string): Promise<void> {
@@ -364,6 +419,96 @@ describe('ProfilePage', () => {
       const request = http.expectOne('/api/users/me');
       expect(request.request.body).toEqual({ redactName: false });
       request.flush({ ...testUser, redactName: false });
+    });
+  });
+
+  describe('Claves BYOK', () => {
+    it('muestra el aviso de destino con el nombre del vendor', () => {
+      expect(host().querySelector('[data-testid="profile-byok"]')).not.toBeNull();
+      const openai = host().querySelector('[data-testid="profile-byok-destination-openai"]');
+      expect(openai?.textContent).toMatch(/OpenAI/);
+      expect(openai?.textContent).toMatch(/puede salir hacia/);
+      const anthropic = host().querySelector('[data-testid="profile-byok-destination-anthropic"]');
+      expect(anthropic?.textContent).toMatch(/Anthropic/);
+    });
+
+    it('OpenRouter avisa que no se fuerza data_collection: deny si el modelo no es :free', () => {
+      const notice = host().querySelector(
+        '[data-testid="profile-byok-openrouter-data-collection"]',
+      );
+      expect(notice?.textContent).toMatch(/data_collection:\s*deny/);
+      expect(notice?.textContent).toMatch(/:free/);
+      expect(
+        host().querySelector('[data-testid="profile-byok-destination-openrouter"]')?.textContent,
+      ).toMatch(/OpenRouter/);
+    });
+
+    it('Guarda OpenAI y muestra el hint sin dejar la clave en el campo', async () => {
+      const pasted = 'sk-live-openai-key-16';
+      typeInto(host(), '[data-testid="profile-byok-key-openai"]', pasted);
+      host().querySelector<HTMLButtonElement>('[data-testid="profile-byok-save-openai"]')?.click();
+      await settle();
+
+      const put = http.expectOne({ method: 'PUT', url: '/api/users/me/ai-keys/openai' });
+      expect(put.request.body).toEqual({ apiKey: pasted });
+      expect(put.request.headers.get('Authorization')).toBe('Bearer token-1');
+      put.flush(openaiKey);
+      await settle();
+      const list = http.expectOne({ method: 'GET', url: '/api/users/me/ai-keys' });
+      list.flush({ keys: [openaiKey] });
+      await settle();
+      await harness.fixture.whenStable();
+
+      expect(host().querySelector('[data-testid="profile-byok-status-openai"]')?.textContent).toMatch(
+        /Configurada/,
+      );
+      expect(host().querySelector('[data-testid="profile-byok-hint-openai"]')?.textContent).toContain(
+        'sk12',
+      );
+      expect(byokKeyInput('openai').value).toBe('');
+      expect(byokKeyInput('openai').type).toBe('password');
+    });
+
+    it('Revoca Anthropic tras confirmar', async () => {
+      await reloadAiKeys([anthropicKey]);
+
+      expect(
+        host().querySelector('[data-testid="profile-byok-status-anthropic"]')?.textContent,
+      ).toMatch(/Configurada/);
+      host()
+        .querySelector<HTMLButtonElement>('[data-testid="profile-byok-revoke-anthropic"]')
+        ?.click();
+      await settle();
+      await harness.fixture.whenStable();
+
+      expect(dialog().textContent).toMatch(/Anthropic/);
+      await answerConfirm('Revocar');
+
+      const del = await vi.waitFor(() =>
+        http.expectOne({ method: 'DELETE', url: '/api/users/me/ai-keys/anthropic' }),
+      );
+      del.flush(null, { status: 204, statusText: 'No Content' });
+      await settle();
+      http.expectOne({ method: 'GET', url: '/api/users/me/ai-keys' }).flush({ keys: [] });
+      await settle();
+      await harness.fixture.whenStable();
+
+      expect(
+        host().querySelector('[data-testid="profile-byok-status-anthropic"]')?.textContent,
+      ).toMatch(/Sin configurar/);
+      expect(host().querySelector('[data-testid="profile-byok-revoke-anthropic"]')).toBeNull();
+    });
+
+    it('Con hint y consentimiento off dice que las claves no se usan', async () => {
+      await reloadAiKeys([openaiKey]);
+
+      expect(store.user()?.aiConsent.externalProviders).toBe(false);
+      const notice = host().querySelector('[data-testid="profile-byok-consent-off"]');
+      expect(notice?.textContent).toMatch(/no se usan/);
+      expect(notice?.textContent).toMatch(/no las borró/);
+      expect(host().querySelector('[data-testid="profile-byok-hint-openai"]')?.textContent).toContain(
+        'sk12',
+      );
     });
   });
 });

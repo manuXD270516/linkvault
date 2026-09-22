@@ -12,9 +12,15 @@ export type MatchConsentSnapshot = {
 /**
  * Resultado de la consulta de elegibilidad (4.3). `unavailable` no es "no hay ninguno": es que no se pudo saber, y
  * entonces el motivo se trata como **no vigente** (mejor gastar una ejecución que no sale fuera que un botón muerto).
+ *
+ * `hasEligibleByok`: BYOK elegible del userId (ADR-032 D11). Solo afecta a `quota_exceeded`.
  */
 export type MatchEligibilitySnapshot =
-  | { readonly status: 'ready'; readonly hasEligible: boolean }
+  | {
+      readonly status: 'ready';
+      readonly hasEligible: boolean;
+      readonly hasEligibleByok?: boolean;
+    }
   | { readonly status: 'unavailable' };
 
 export type DegradedReasonVigenciaInput = {
@@ -28,11 +34,11 @@ export type DegradedReasonVigenciaInput = {
 /**
  * `true` si el motivo del degradado **sigue vigente** y el `POST` debe devolver ese mismo informe sin encolar.
  *
- * - Cuota de IA: vigente mientras `aiQuotaRetryAt` no haya llegado.
+ * - Cuota de IA: vigente mientras `aiQuotaRetryAt` no haya llegado **y** no haya BYOK elegible (D11).
  * - Falta de consentimiento: vigente mientras quien pide **sigue sin** permiso externo.
  * - Sin proveedores: vigente mientras **sigue sin** haber ninguno elegible.
  * - `providers_failed`: **nunca** vigente.
- * - Elegibilidad que no se pudo consultar: **no** vigente (salvo la cuota, que no la necesita).
+ * - Elegibilidad que no se pudo consultar: **no** vigente (salvo la cuota de plataforma sin BYOK).
  */
 export function isDegradedReasonCurrent(
   input: DegradedReasonVigenciaInput,
@@ -44,9 +50,19 @@ export function isDegradedReasonCurrent(
   }
 
   if (degradedReason === 'quota_exceeded') {
-    return (
-      aiQuotaRetryAt !== undefined && now.getTime() < aiQuotaRetryAt.getTime()
-    );
+    const retryStillOpen =
+      aiQuotaRetryAt !== undefined && now.getTime() < aiQuotaRetryAt.getTime();
+    if (!retryStillOpen) {
+      return false;
+    }
+    // D11: con BYOK elegible el degradado por cuota de plataforma ya no bloquea un análisis nuevo.
+    if (
+      eligibility.status === 'ready' &&
+      eligibility.hasEligibleByok === true
+    ) {
+      return false;
+    }
+    return true;
   }
 
   if (eligibility.status === 'unavailable') {

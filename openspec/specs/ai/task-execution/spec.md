@@ -115,7 +115,10 @@ le devolvía el mismo motivo que a quien no tiene ninguna IA configurada, y quie
 - Con la cadena vacía y `consentWouldEnable` en falso, el motivo SHALL ser `no_providers`.
 
 Los cuatro motivos SHALL ser **mutuamente excluyentes y deterministas** para una misma ejecución, con esta precedencia:
-`quota_exceeded` primero —la cuota se comprueba antes de componer la cadena—; después, con la cadena vacía, el de falta de
+primero se evalúa la cuota de plataforma (conteo de `success` no-`byok:` según `ai/usage-accounting`); `quota_exceeded`
+**solo** si ese tope está alcanzado **y** no hay ningún BYOK elegible —en ese caso se comprueba **antes** de componer la
+cadena y no se contacta a ningún proveedor—; si el tope está alcanzado **y** hay BYOK elegible, `runTask` SHALL componer
+una cadena **restringida a esos `byok:*`** y continuar (no degradar por cuota); después, con la cadena vacía, el de falta de
 consentimiento si procede y `no_providers` en otro caso; y `providers_failed` solo cuando hubo al menos un intento.
 
 **Cuando el motivo es `quota_exceeded`**, el resultado degradado SHALL incluir además el **instante en que se podrá volver a
@@ -177,10 +180,17 @@ que es la manera más rápida de gastar una cuota que ya está agotada.
 
 #### Scenario: La cuota agotada dice cuándo volver
 
-- **GIVEN** un usuario que alcanzó el límite diario de una tarea
+- **GIVEN** un usuario que alcanzó el límite diario de una tarea **sin** BYOK elegible
 - **WHEN** se ejecuta `runTask`
 - **THEN** SHALL devolver `status: "degraded"` con motivo `quota_exceeded` y con el instante en que se podrá volver a intentar
 - **AND** ese instante SHALL ser aquel en que la ejecución contada más antigua sale de la ventana
+
+#### Scenario: Cuota de plataforma agotada con BYOK elegible
+
+- **GIVEN** un usuario que alcanzó el límite diario de `success` no-BYOK y tiene al menos un BYOK elegible
+- **WHEN** se ejecuta `runTask`
+- **THEN** NO SHALL degradar con `quota_exceeded`
+- **AND** la cadena de esa ejecución SHALL restringirse a proveedores `byok:*`
 
 #### Scenario: El instante de vuelta no acompaña a otro motivo
 

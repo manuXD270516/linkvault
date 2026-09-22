@@ -20,13 +20,22 @@ export interface OpenRouterProviderOptions {
   /** p. ej. `https://openrouter.ai/api/v1`. */
   baseUrl: string;
   apiKey: string;
-  /** Identificador terminado en `:free`. */
+  /** Identificador de modelo; la plataforma exige `:free`, BYOK no. */
   model: string;
   maxContextTokens: number;
   /** Cabecera `HTTP-Referer` (atribución de la app en OpenRouter). */
   referer: string;
   /** Cabecera `X-Title`. */
   title: string;
+  /**
+   * Id efectivo. Por defecto `openrouter` (plataforma). BYOK usa `byok:<userId>:openrouter`.
+   */
+  id?: string;
+  /**
+   * `deny`: fuerza `provider.data_collection = "deny"` (plataforma y BYOK `:free`).
+   * `omit`: no envía `data_collection` (BYOK de pago, ADR-032 D6).
+   */
+  dataCollection?: 'deny' | 'omit';
 }
 
 const chatCompletionSchema = z.object({
@@ -43,7 +52,7 @@ const chatCompletionSchema = z.object({
 });
 
 export class OpenRouterProvider implements LlmProvider {
-  readonly id = OPENROUTER_PROVIDER_ID;
+  readonly id: string;
   readonly capabilities: ProviderCapabilities;
   // Campo privado de ES: no aparece en JSON.stringify ni en util.inspect del proveedor.
   readonly #apiKey: string;
@@ -51,13 +60,16 @@ export class OpenRouterProvider implements LlmProvider {
   private readonly model: string;
   private readonly referer: string;
   private readonly title: string;
+  private readonly dataCollection: 'deny' | 'omit';
 
   constructor(options: OpenRouterProviderOptions) {
+    this.id = options.id ?? OPENROUTER_PROVIDER_ID;
     this.#apiKey = options.apiKey;
     this.baseUrl = options.baseUrl.replace(/\/+$/, '');
     this.model = options.model;
     this.referer = options.referer;
     this.title = options.title;
+    this.dataCollection = options.dataCollection ?? 'deny';
     this.capabilities = {
       jsonMode: true,
       toolUse: false,
@@ -84,7 +96,9 @@ export class OpenRouterProvider implements LlmProvider {
       ...(req.responseFormat === 'json'
         ? { response_format: { type: 'json_object' } }
         : {}),
-      provider: { data_collection: 'deny' },
+      ...(this.dataCollection === 'deny'
+        ? { provider: { data_collection: 'deny' } }
+        : {}),
     };
 
     const startedAt = performance.now();

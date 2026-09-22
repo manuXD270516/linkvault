@@ -398,6 +398,7 @@ describe('match HTTP — POST reuse (10.6)', () => {
     http.eligibility.setResult({
       status: 'ready',
       hasEligible: false,
+      hasEligibleByok: false,
       consentWouldEnable: true,
     });
     const offer = await http.seedOffer(ana, { slug: 'consent-current' });
@@ -417,6 +418,7 @@ describe('match HTTP — POST reuse (10.6)', () => {
     http.eligibility.setResult({
       status: 'ready',
       hasEligible: true,
+      hasEligibleByok: false,
       consentWouldEnable: false,
     });
   });
@@ -425,6 +427,7 @@ describe('match HTTP — POST reuse (10.6)', () => {
     http.eligibility.setResult({
       status: 'ready',
       hasEligible: false,
+      hasEligibleByok: false,
       consentWouldEnable: false,
     });
     const offer = await http.seedOffer(ana, { slug: 'circuit-open' });
@@ -440,6 +443,7 @@ describe('match HTTP — POST reuse (10.6)', () => {
     http.eligibility.setResult({
       status: 'ready',
       hasEligible: true,
+      hasEligibleByok: false,
       consentWouldEnable: false,
     });
   });
@@ -463,6 +467,7 @@ describe('match HTTP — POST reuse (10.6)', () => {
     http.eligibility.setResult({
       status: 'ready',
       hasEligible: false,
+      hasEligibleByok: false,
       consentWouldEnable: true,
     });
     const offer = await http.seedOffer(ana, { slug: 'consent-then' });
@@ -477,6 +482,7 @@ describe('match HTTP — POST reuse (10.6)', () => {
     http.eligibility.setResult({
       status: 'ready',
       hasEligible: true,
+      hasEligibleByok: false,
       consentWouldEnable: false,
     });
     const again = await http.requestMatch(ana, offer.linkId);
@@ -488,6 +494,7 @@ describe('match HTTP — POST reuse (10.6)', () => {
     http.eligibility.setResult({
       status: 'ready',
       hasEligible: false,
+      hasEligibleByok: false,
       consentWouldEnable: false,
     });
     const offer = await http.seedOffer(ana, { slug: 'circuit-closed' });
@@ -500,6 +507,7 @@ describe('match HTTP — POST reuse (10.6)', () => {
     http.eligibility.setResult({
       status: 'ready',
       hasEligible: true,
+      hasEligibleByok: false,
       consentWouldEnable: false,
     });
     const again = await http.requestMatch(ana, offer.linkId);
@@ -518,6 +526,7 @@ describe('match HTTP — POST reuse (10.6)', () => {
     http.eligibility.setResult({
       status: 'ready',
       hasEligible: true,
+      hasEligibleByok: false,
       consentWouldEnable: false,
     });
     const again = await http.requestMatch(ana, offer.linkId);
@@ -540,6 +549,7 @@ describe('match HTTP — POST reuse (10.6)', () => {
     http.eligibility.setResult({
       status: 'ready',
       hasEligible: true,
+      hasEligibleByok: false,
       consentWouldEnable: false,
     });
   });
@@ -996,3 +1006,4 @@ describe('MatchModule wiring and public inventory (10.10)', () => {
     expect(JSON.stringify(matchProbe.json())).not.toMatch(/analysis|score|cvFragment/i);
   });
 });
+

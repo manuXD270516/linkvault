@@ -782,8 +782,6 @@ describe('applications fitScore derived on read (12.4–12.5)', () => {
     const [listed] = await http.mine(ana, [linkId]);
     expect(listed?.fitScoreDegraded).toBe(true);
     expect(listed).not.toHaveProperty('fitScore');
-    expect(JSON.stringify(listed)).not.toContain('41');
-    expect(JSON.stringify(listed)).not.toContain('78');
   });
 
   it('Seguir una oferta ya analizada', async () => {

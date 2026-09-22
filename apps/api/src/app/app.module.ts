@@ -12,6 +12,7 @@ import { CvModule } from '../modules/cv/presentation/cv.module';
 import { GroupsModule } from '../modules/groups/presentation/groups.module';
 import { LinksModule } from '../modules/links/presentation/links.module';
 import { MatchModule } from '../modules/match/presentation/match.module';
+import { AiKeysModule } from '../modules/users/presentation/ai-keys.module';
 import { UsersModule } from '../modules/users/presentation/users.module';
 import { EventsModule } from '../presentation/http/events.module';
 import { HealthModule } from '../presentation/http/health.module';
@@ -51,6 +52,7 @@ export class AppModule {
         HealthModule,
         EventsModule,
         UsersModule,
+        AiKeysModule.register(aiModule),
         AuthModule,
         GroupsModule,
         aiModule,

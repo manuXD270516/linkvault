@@ -226,7 +226,7 @@ Orden y notas específicas:
 | 11 | `cv-upload-extract` | MinIO, pdf-parse, mammoth. |
 | 12 | `cv-match-suggestions` | §4.7 y 4.12 (el bucle de juez §4.8 va en `cv-suggestions-review`). `match-cv`, `ai_analyses`, `fitScore` derivado, consentimiento con versión `2026-09-21`, sin SSE de progreso. Cómo operarlo: Paso 6 nonies. ADR-029/030. |
 | 13 | `study-roadmap` | Catálogo curado `resources.seed.json` primero. Cómo operarlo: Paso 6 decies. |
-| 14 | `ai-byok` | libsodium vault. |
+| 14 | `ai-byok` | Vault libsodium + claves por persona (Anthropic/OpenAI/OpenRouter). Cómo operarlo: Paso 6 undecies. ADR-032. |
 | 15 | `deploy-prod` | compose prod + Traefik + docs de alternativas. Heredado de `auth-users` (ADR-020): `trustProxy`, reseteo manual de contraseña por operador documentado, aviso de privacidad y borrado de cuenta. Heredado de `link-enrichment` (ADR-022): elegir proveedor de objetos (el cliente habla S3) y crear allí el bucket de snapshots con su expiración a 30 días, fijar las `ENRICH_*` por entorno y decidir dónde queda encendido el relay del outbox, que sigue siendo de una sola instancia. Heredado de `paste-job-description` (ADR-023): fijar `PASTE_EXTRACTION_TIMEOUT_MS` y la cuota de `extract-pasted-job` en `AI_QUOTAS` por entorno, y copiar los prompts también en la imagen de `api` (`AI_PROMPTS_DIR=dist/apps/api/assets/ai/prompts` si no arranca desde la raíz). Heredado de `groups-ownership-join-limit` (ADR-025): `trustProxy` también por el contador de IP del join, y la consulta de "un owner por grupo" antes del primer despliegue (Paso 6 quater). Heredado de `applications-tracking` (ADR-024): el borrado de cuenta tiene que borrar en cascada las `applications` y los `application_events` de esa persona; hasta entonces, a mano (Paso 6 quinquies). |
 | 16 | `auth-email-recovery` | Fuera de §6: verificación de email y recuperación de contraseña, diferidas desde `auth-users` (ADR-020). Alcance y orden por decidir al crearlo. |
 
@@ -1058,6 +1058,47 @@ estudio. El catálogo curado vive en `libs/ai/src/infrastructure/catalog/resourc
   `build-roadmap`.
 - **Cuota.** `build-roadmap=10` en `AI_QUOTAS` (ledger diario por usuario), independiente de `match-cv`. La auto y el
   POST respetan la misma cuota; vacía = sin límite.
+
+## Paso 6 undecies — Operar BYOK (claves de la persona)
+
+Desde `ai-byok`, quien ya paga Anthropic, OpenAI u OpenRouter puede guardar **su** clave en `/perfil` y el routing
+prioriza `byok:<userId>:<vendor>` antes de la cadena de plataforma. Decisiones en ADR-032; aquí solo operación.
+
+- **`AI_VAULT_KEY` (obligatoria en producción).** 32 bytes aleatorios en base64; la leen `api` y `worker` al arrancar
+  (`parseAiConfig`). Sin ella válida en prod el proceso no arranca. Fuera de prod, sin vault el `PUT` de claves responde
+  `503 vault_unavailable`. Generar y fijar (mismo valor en ambos procesos):
+
+  ```bash
+  node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+  ```
+
+  Copia el resultado a `AI_VAULT_KEY` en el secreto del despliegue (nunca en git ni en logs). Reinicia `api` y `worker`.
+
+- **Rotación de la vault key.** No hay re-encrypt: las filas cifradas con la clave anterior quedan ilegibles. Procedimiento:
+  1. Avisa a quien tenga claves (o borra todas las filas de `user_ai_keys` si el entorno es controlado).
+  2. Genera una clave nueva, sustituye `AI_VAULT_KEY`, reinicia `api`/`worker`.
+  3. Cada persona **revoca** (DELETE) y **vuelve a pegar** su clave en `/perfil`.
+
+  ```bash
+  docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'db.user_ai_keys.countDocuments({})'
+  ```
+
+- **Modelos y plazos.** Fijos por env (`BYOK_ANTHROPIC_MODEL`, `BYOK_OPENAI_MODEL`, `BYOK_OPENROUTER_MODEL` y
+  `BYOK_*_TIMEOUT_MS`); sin picker. OpenRouter BYOK: si el modelo termina en `:free` se fuerza `data_collection: deny`;
+  si no, no se fuerza deny. No listes BYOK en `AI_CHAIN`.
+
+- **Privacidad.** La clave en claro solo vive en memoria al cifrar (PUT) o al construir el provider de esa ejecución.
+  Logs: redactor de api/worker cubre `apiKey`, `authorization`, `AI_VAULT_KEY`, `ciphertext`, `vaultKey`. Respuestas HTTP
+  de gestión: solo `vendor`, `keyHint`, `updatedAt`. Con consentimiento externo apagado, las claves pueden seguir
+  guardadas pero **no se usan**. Al borrar la cuenta se borran las filas de `user_ai_keys` en la misma transacción.
+
+- **Circuit breaker por `byok:<userId>:<vendor>`.** Cada proveedor BYOK tiene su propio breaker (id con userId y vendor).
+  Fallos de la clave de Ana no abren el de Beto ni el de OpenRouter de plataforma. Si el breaker de una persona abre,
+  solo ella degrada o cae a la cadena de plataforma (si aún tiene cuota); tras ~30 s el breaker permite reintentar.
+  No hay reset manual por clave Redis: esperar o reiniciar el proceso.
+
+- **Cuota de plataforma.** Los `success` con proveedor `byok:*` **no** cuentan en el ledger de cuota de plataforma.
+  Con cuota de plataforma agotada la cadena efectiva puede ser solo BYOK; sin BYOK elegible, degradación honesta.
 
 ## Paso 7 — Definition of Done (pégalo en cada PR)
 

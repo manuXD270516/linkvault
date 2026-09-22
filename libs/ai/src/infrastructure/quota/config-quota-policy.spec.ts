@@ -222,4 +222,22 @@ describe('ConfigQuotaPolicy', () => {
     });
     expect(logger.warnings[0]?.message).toMatch(/oldest-success failed/);
   });
+
+  it('does not count BYOK successes toward the platform quota', async () => {
+    const userId = 'quota-byok';
+    await ledger.record({
+      ...usage(userId, 'success', 30_000),
+      providerId: 'byok:ana:openai',
+    });
+    const policy = new ConfigQuotaPolicy({
+      limits: { 'classify-skills': 1 },
+      counter: ledger,
+      clock,
+      logger: new InMemoryAiLogger(),
+    });
+
+    await expect(policy.allows(userId, 'classify-skills')).resolves.toEqual({
+      allowed: true,
+    });
+  });
 });

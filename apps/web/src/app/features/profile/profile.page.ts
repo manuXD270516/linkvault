@@ -16,26 +16,41 @@ import {
   type ValidatorFn,
 } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
+import { MatDialog } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { type MatSlideToggleChange, MatSlideToggleModule } from '@angular/material/slide-toggle';
 import {
+  AI_BYOK_API_KEY_MIN_LENGTH,
   AI_CONSENT_TEXT_VERSION,
+  AI_VENDORS,
+  type AiVendor,
   changePasswordRequestSchema,
   displayNameSchema,
   isAiConsentCurrent,
   type OutputLanguage,
   type UserProfile,
+  upsertAiKeyRequestSchema,
 } from '@linkvault/shared';
 import { type RequestFailure, isApiFailure, toRequestFailure } from '../../core/api/api-error';
+import { AiKeysStore } from '../../core/ai-keys/ai-keys.store';
 import { AuthApi } from '../../core/auth/auth.api';
 import { SessionStore } from '../../core/auth/session.store';
 import { zodValidator } from '../../shared/forms/zod-validator';
+import { confirmWith } from '../../shared/ui/confirm.dialog';
 import { RequestError } from '../../shared/ui/request-error';
 
+/** Etiquetas visibles de cada vendor (nombres de marca, sin i18n). */
+const VENDOR_LABELS: Record<AiVendor, string> = {
+  anthropic: 'Anthropic',
+  openai: 'OpenAI',
+  openrouter: 'OpenRouter',
+};
+
 /**
- * Perfil: email en lectura, `displayName`, cambio de contraseña y sección "IA y privacidad" (spec web/auth, ADR-030).
+ * Perfil: email en lectura, `displayName`, cambio de contraseña, sección "IA y privacidad" (spec web/auth,
+ * ADR-030) y claves BYOK (spec web/byok, ADR-032).
  *
  * Cada control de IA se guarda solo con su campo. Activar el consentimiento envía la versión del texto que el SPA
  * muestra (`AI_CONSENT_TEXT_VERSION`), nunca otra.
@@ -52,12 +67,15 @@ import { RequestError } from '../../shared/ui/request-error';
     ReactiveFormsModule,
     RequestError,
   ],
+  providers: [AiKeysStore],
   templateUrl: './profile.page.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ProfilePage {
   private readonly authApi = inject(AuthApi);
   private readonly session = inject(SessionStore);
+  private readonly aiKeys = inject(AiKeysStore);
+  private readonly dialog = inject(MatDialog);
   private readonly formBuilder = inject(NonNullableFormBuilder);
   private readonly passwordFormDirective = viewChild.required<FormGroupDirective>('passwordFormRef');
 
@@ -122,6 +140,74 @@ export class ProfilePage {
   protected readonly aiFailure = signal<RequestFailure | null>(null);
   protected readonly languageSaving = signal(false);
   protected readonly redactSaving = signal(false);
+
+  /** Filas BYOK: un formulario por vendor con aviso de destino (D12). */
+  protected readonly byokVendors = AI_VENDORS.map((vendor) => ({
+    vendor,
+    label: VENDOR_LABELS[vendor],
+  }));
+  protected readonly keyDrafts = this.formBuilder.group({
+    anthropic: ['', zodValidator(upsertAiKeyRequestSchema.shape.apiKey)],
+    openai: ['', zodValidator(upsertAiKeyRequestSchema.shape.apiKey)],
+    openrouter: ['', zodValidator(upsertAiKeyRequestSchema.shape.apiKey)],
+  });
+  protected readonly byokKeys = this.aiKeys.keys;
+  protected readonly byokLoading = this.aiKeys.loading;
+  protected readonly byokLoaded = this.aiKeys.loaded;
+  protected readonly byokFailure = this.aiKeys.failure;
+  protected readonly byokActionFailure = this.aiKeys.actionFailure;
+  protected readonly byokSavingVendor = this.aiKeys.savingVendor;
+  protected readonly byokRevokingVendor = this.aiKeys.revokingVendor;
+  protected readonly byokKeyByVendor = this.aiKeys.keyByVendor;
+  /** Claves guardadas con consentimiento off: se ven pero no se usan (D12). */
+  protected readonly byokKeysInactive = computed(
+    () => this.aiKeys.hasAnyKey() && !this.consentToggleOn(),
+  );
+  protected readonly apiKeyMinLength = AI_BYOK_API_KEY_MIN_LENGTH;
+
+  constructor() {
+    void this.aiKeys.load();
+  }
+
+  protected keyFor(vendor: AiVendor) {
+    return this.byokKeyByVendor().get(vendor);
+  }
+
+  protected draftControl(vendor: AiVendor) {
+    return this.keyDrafts.controls[vendor];
+  }
+
+  protected async saveKey(vendor: AiVendor): Promise<void> {
+    const control = this.draftControl(vendor);
+    if (control.invalid) {
+      control.markAsTouched();
+      return;
+    }
+    try {
+      await this.aiKeys.upsert(vendor, upsertAiKeyRequestSchema.parse({ apiKey: control.value }));
+      control.reset('');
+    } catch {
+      // El store ya dejó `actionFailure`.
+    }
+  }
+
+  protected async revokeKey(vendor: AiVendor): Promise<void> {
+    const label = VENDOR_LABELS[vendor];
+    const confirmed = await confirmWith(this.dialog, {
+      title: $localize`:@@profile.byok.revokeTitle:Revocar clave de ${label}:VENDOR:`,
+      message: $localize`:@@profile.byok.revokeMessage:Se borrará la clave de ${label}:VENDOR: guardada en LinkVault. No se puede deshacer.`,
+      confirmLabel: $localize`:@@profile.byok.revokeConfirm:Revocar`,
+    });
+    if (!confirmed) {
+      return;
+    }
+    try {
+      await this.aiKeys.revoke(vendor);
+      this.draftControl(vendor).reset('');
+    } catch {
+      // El store ya dejó `actionFailure`.
+    }
+  }
 
   protected async saveName(): Promise<void> {
     if (this.nameForm.invalid) {

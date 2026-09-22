@@ -38,6 +38,18 @@ export const AI_CONFIG_DEFAULTS = {
   OPENROUTER_BASE_URL: 'https://openrouter.ai/api/v1',
   OPENROUTER_MAX_CONTEXT_TOKENS: 32_000,
   OPENROUTER_TIMEOUT_MS: 30_000,
+  BYOK_ANTHROPIC_BASE_URL: 'https://api.anthropic.com',
+  BYOK_ANTHROPIC_MODEL: 'claude-sonnet-4-20250514',
+  BYOK_ANTHROPIC_MAX_CONTEXT_TOKENS: 200_000,
+  BYOK_ANTHROPIC_TIMEOUT_MS: 60_000,
+  BYOK_OPENAI_BASE_URL: 'https://api.openai.com/v1',
+  BYOK_OPENAI_MODEL: 'gpt-4o-mini',
+  BYOK_OPENAI_MAX_CONTEXT_TOKENS: 128_000,
+  BYOK_OPENAI_TIMEOUT_MS: 60_000,
+  BYOK_OPENROUTER_BASE_URL: 'https://openrouter.ai/api/v1',
+  BYOK_OPENROUTER_MODEL: 'meta-llama/llama-3.3-70b-instruct:free',
+  BYOK_OPENROUTER_MAX_CONTEXT_TOKENS: 32_000,
+  BYOK_OPENROUTER_TIMEOUT_MS: 30_000,
 } as const;
 
 /**
@@ -71,6 +83,22 @@ export interface OpenRouterProviderConfig {
   title: string;
 }
 
+/** Modelos y plazos de proveedores construidos desde claves BYOK (ADR-032 D3). */
+export interface ByokProviderConfig {
+  anthropicBaseUrl: string;
+  anthropicModel: string;
+  anthropicMaxContextTokens: number;
+  anthropicTimeoutMs: number;
+  openaiBaseUrl: string;
+  openaiModel: string;
+  openaiMaxContextTokens: number;
+  openaiTimeoutMs: number;
+  openrouterBaseUrl: string;
+  openrouterModel: string;
+  openrouterMaxContextTokens: number;
+  openrouterTimeoutMs: number;
+}
+
 /** Configuración validada. Cada bloque de proveedor existe si y solo si ese proveedor está en `chain`. */
 export interface AiConfig {
   nodeEnv: AiNodeEnv;
@@ -80,6 +108,13 @@ export interface AiConfig {
   promptsDir: string;
   cacheTtlSeconds: number;
   quotas: QuotaLimits;
+  /**
+   * Clave de vault (32 bytes) o `undefined` si no hay / es inválida.
+   * En producción `parseAiConfig` exige una clave válida.
+   */
+  vaultKey?: Uint8Array;
+  /** Siempre presente: modelos BYOK con defaults (ADR-032 D3). */
+  byok: ByokProviderConfig;
   mock?: MockProviderConfig;
   ollama?: OllamaProviderConfig;
   openrouter?: OpenRouterProviderConfig;

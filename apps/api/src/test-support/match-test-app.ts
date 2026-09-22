@@ -176,6 +176,7 @@ export async function createMatchTestApp(
     new StubProviderEligibility({
       status: 'ready',
       hasEligible: true,
+      hasEligibleByok: false,
       consentWouldEnable: false,
     });
   const clock = options.clock ?? new MovableMatchClock(NOW);

@@ -149,6 +149,8 @@ export const apiErrorCodeSchema = z.enum([
   'roadmap_not_eligible',
   // 409: se activa el consentimiento con una `textVersion` que ya no es la vigente; el perfil no se modifica (D5).
   'consent_text_outdated',
+  // 503: fuera de producción sin `AI_VAULT_KEY` válida; no se puede cifrar una clave BYOK (ADR-032 D4).
+  'vault_unavailable',
   // 500
   'internal_error',
 ]);
