@@ -107,20 +107,24 @@ export function verifyNoPendingRequests(http: HttpTestingController): void {
 }
 
 /**
- * Responde vacío a las peticiones de estados de postulaciones que la lista de links hace sola al pintar una página
- * (estado propio y, en un grupo, estados compartidos). Son de fondo, como el canal de eventos: los tests que no tratan
- * de postulaciones no tienen por qué responderlas, y los que sí las responden antes de llegar aquí.
+ * Responde vacío a las peticiones de fondo que las pantallas disparan solas al pintar (estados de postulaciones
+ * y listado BYOK del perfil). Los tests que no las ejercitan no tienen por qué responderlas a mano.
  */
 export function flushPendingApplicationStates(http: HttpTestingController): void {
   const pending = http.match(
     (request) =>
       request.method === 'GET' &&
-      ((request.url === '/api/applications' && request.params.has('linkIds')) ||
+      (request.url === '/api/users/me/ai-keys' ||
+        (request.url === '/api/applications' && request.params.has('linkIds')) ||
         /^\/api\/groups\/[^/]+\/applications$/.test(request.url)),
   );
-  for (const request of pending) {
-    if (!request.cancelled) {
-      request.flush({ items: [] });
+  for (const pendingRequest of pending) {
+    if (!pendingRequest.cancelled) {
+      if (pendingRequest.request.url === '/api/users/me/ai-keys') {
+        pendingRequest.flush({ keys: [] });
+      } else {
+        pendingRequest.flush({ items: [] });
+      }
     }
   }
 }

@@ -23,5 +23,5 @@
 
 ## 5. Verificación
 
-- [ ] 5.1 [ai] `pnpm nx affected -t lint,typecheck,test` con `AI_CHAIN=mock AI_MOCK_MODE=replay`.
-- [ ] 5.2 [ai] ADR-032 (D1–D12) escrito; marcar al cerrar apply.
+- [x] 5.1 [ai] `pnpm nx affected -t lint,typecheck,test` con `AI_CHAIN=mock AI_MOCK_MODE=replay`.
+- [x] 5.2 [ai] ADR-032 (D1–D12) escrito; marcar al cerrar apply.
