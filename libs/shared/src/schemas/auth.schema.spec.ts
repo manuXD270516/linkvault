@@ -244,6 +244,7 @@ describe('api error contract', () => {
       'too_many_groups',
       'owner_cannot_leave',
       'already_owner',
+      'sole_owner_with_members',
       'invalid_url',
       'text_too_long',
       'link_not_found',

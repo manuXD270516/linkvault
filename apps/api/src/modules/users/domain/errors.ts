@@ -64,3 +64,29 @@ export class AiVaultUnavailable extends Error {
     super('AI vault is not configured');
   }
 }
+
+/**
+ * Contraseña incorrecta al confirmar el borrado de cuenta (401 `invalid_credentials`, mismo cuerpo que login).
+ */
+export class InvalidAccountPassword extends Error {
+  override readonly name = 'InvalidAccountPassword';
+  readonly code = 'invalid_credentials' as const;
+
+  constructor() {
+    super('Invalid email or password');
+  }
+}
+
+/**
+ * Borrado de cuenta bloqueado: único owner de un grupo con otros miembros (409 `sole_owner_with_members`).
+ */
+export class SoleOwnerWithMembers extends Error {
+  override readonly name = 'SoleOwnerWithMembers';
+  readonly code = 'sole_owner_with_members' as const;
+
+  constructor() {
+    super(
+      'Transfer ownership or remove other members before deleting your account',
+    );
+  }
+}

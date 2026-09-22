@@ -113,6 +113,11 @@ export const apiConfigSchema = z
       .int()
       .min(1_000)
       .max(300_000),
+    // Detrás de Traefik en compose.prod (D12 / ADR-033). Ausente → false (sin confiar en X-Forwarded-For).
+    TRUST_PROXY: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
   })
   // Cada issue lleva `path` con la variable: `parseEnv` descarta los issues que no nombran ninguna.
   .superRefine((config, ctx) => {

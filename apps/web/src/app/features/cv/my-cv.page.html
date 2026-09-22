@@ -16,7 +16,8 @@
 
   <!--
     Línea nueva (ADR-030 §12): identificador `cv.privacy.v2` porque el contenido promete otra cosa. El enlace a
-    `/perfil` viaja dentro de la misma unidad. La frase de estado es aparte y nunca dos a la vez.
+    `/perfil` viaja dentro de la misma unidad. La frase de estado es aparte y nunca dos a la vez. Almacenamiento y
+    retención no viven en la línea corta: remiten a `/privacidad` (`cv.privacy.storage`, deploy-prod).
   -->
   <div class="flex flex-col gap-1 text-sm" data-testid="cv-privacy-block">
     <p class="m-0" data-testid="cv-privacy" i18n="@@cv.privacy.v2"
@@ -44,6 +45,10 @@
         </p>
       }
     }
+    <p class="m-0" data-testid="cv-privacy-storage" i18n="@@cv.privacy.storage"
+      >Sobre el almacenamiento y la retención de tu CV, consulta el
+      <a routerLink="/privacidad" data-testid="cv-privacy-notice-link">aviso de privacidad</a>.</p
+    >
   </div>
 
   @if (loading() && !loaded()) {

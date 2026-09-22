@@ -417,36 +417,63 @@ export class MongoGroupRepository implements GroupRepository {
     if (id === null) {
       return 'not_found';
     }
+    return await this.withTransaction(async (session) =>
+      this.deleteGroupInSession(groupId, ownerId, session),
+    );
+  }
+
+  async deleteGroupInSession(
+    groupId: string,
+    ownerId: string,
+    session: object,
+  ): Promise<DeleteGroupResult> {
+    const id = toGroupObjectId(groupId);
+    if (id === null) {
+      return 'not_found';
+    }
     const owner = toUserObjectId(ownerId);
-    return await this.withTransaction(async (session) => {
-      const owned =
-        owner === null
-          ? 0
-          : (
-              await this.members
-                .deleteOne({ groupId: id, userId: owner, role: 'owner' })
-                .session(session)
-                .exec()
-            ).deletedCount;
-      if (owned !== 1) {
-        const exists = await this.groups
-          .exists({ _id: id })
-          .session(session)
-          .exec();
-        return exists === null ? 'not_found' : 'not_owner';
-      }
-      const deleted = await this.groups
-        .deleteOne({ _id: id })
-        .session(session)
+    const mongoSession = session as ClientSession;
+    const owned =
+      owner === null
+        ? 0
+        : (
+            await this.members
+              .deleteOne({ groupId: id, userId: owner, role: 'owner' })
+              .session(mongoSession)
+              .exec()
+          ).deletedCount;
+    if (owned !== 1) {
+      const exists = await this.groups
+        .exists({ _id: id })
+        .session(mongoSession)
         .exec();
-      if (deleted.deletedCount !== 1) {
-        // Membresía `owner` huérfana (su grupo ya no estaba): se suelta, como cualquier huérfana (D6).
-        return 'not_found';
-      }
-      await this.members.deleteMany({ groupId: id }).session(session).exec();
-      await this.deletionHooks.runAll(groupId, session);
-      return 'deleted';
-    });
+      return exists === null ? 'not_found' : 'not_owner';
+    }
+    const deleted = await this.groups
+      .deleteOne({ _id: id })
+      .session(mongoSession)
+      .exec();
+    if (deleted.deletedCount !== 1) {
+      return 'not_found';
+    }
+    await this.members.deleteMany({ groupId: id }).session(mongoSession).exec();
+    await this.deletionHooks.runAll(groupId, session);
+    return 'deleted';
+  }
+
+  async removeMembershipInSession(
+    groupId: string,
+    userId: string,
+    session: object,
+  ): Promise<void> {
+    const ids = this.toMembershipIds(groupId, userId);
+    if (ids === null) {
+      return;
+    }
+    await this.members
+      .deleteOne({ groupId: ids.groupId, userId: ids.userId })
+      .session(session as ClientSession)
+      .exec();
   }
 
   /** `null` si alguno de los dos identificadores no tiene el formato esperado. */

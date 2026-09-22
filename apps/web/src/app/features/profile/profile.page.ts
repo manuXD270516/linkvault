@@ -21,6 +21,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { type MatSlideToggleChange, MatSlideToggleModule } from '@angular/material/slide-toggle';
+import { Router, RouterLink } from '@angular/router';
 import {
   AI_BYOK_API_KEY_MIN_LENGTH,
   AI_CONSENT_TEXT_VERSION,
@@ -40,6 +41,7 @@ import { SessionStore } from '../../core/auth/session.store';
 import { zodValidator } from '../../shared/forms/zod-validator';
 import { confirmWith } from '../../shared/ui/confirm.dialog';
 import { RequestError } from '../../shared/ui/request-error';
+import { confirmDeleteAccount } from './delete-account.dialog';
 
 /** Etiquetas visibles de cada vendor (nombres de marca, sin i18n). */
 const VENDOR_LABELS: Record<AiVendor, string> = {
@@ -50,7 +52,7 @@ const VENDOR_LABELS: Record<AiVendor, string> = {
 
 /**
  * Perfil: email en lectura, `displayName`, cambio de contraseña, sección "IA y privacidad" (spec web/auth,
- * ADR-030) y claves BYOK (spec web/byok, ADR-032).
+ * ADR-030), claves BYOK (spec web/byok, ADR-032) y zona de peligro para borrar la cuenta (spec web/privacy).
  *
  * Cada control de IA se guarda solo con su campo. Activar el consentimiento envía la versión del texto que el SPA
  * muestra (`AI_CONSENT_TEXT_VERSION`), nunca otra.
@@ -66,6 +68,7 @@ const VENDOR_LABELS: Record<AiVendor, string> = {
     MatSlideToggleModule,
     ReactiveFormsModule,
     RequestError,
+    RouterLink,
   ],
   providers: [AiKeysStore],
   templateUrl: './profile.page.html',
@@ -76,6 +79,7 @@ export class ProfilePage {
   private readonly session = inject(SessionStore);
   private readonly aiKeys = inject(AiKeysStore);
   private readonly dialog = inject(MatDialog);
+  private readonly router = inject(Router);
   private readonly formBuilder = inject(NonNullableFormBuilder);
   private readonly passwordFormDirective = viewChild.required<FormGroupDirective>('passwordFormRef');
 
@@ -318,6 +322,14 @@ export class ProfilePage {
       this.aiFailure.set(toRequestFailure(error));
     } finally {
       this.redactSaving.set(false);
+    }
+  }
+
+  /** Zona de peligro: diálogo con confirmación + contraseña; tras 204 navega a `/login` sin sesión. */
+  protected async deleteAccount(): Promise<void> {
+    const deleted = await confirmDeleteAccount(this.dialog);
+    if (deleted) {
+      await this.router.navigateByUrl('/login');
     }
   }
 

@@ -26,6 +26,7 @@ describe('API_ERROR_STATUS and API_ERROR_MESSAGES', () => {
     ['extraction_unavailable', 503],
     ['ai_quota_exceeded', 429],
     ['already_owner', 409],
+    ['sole_owner_with_members', 409],
     ['application_not_found', 404],
     ['application_conflict', 409],
     ['comment_not_found', 404],

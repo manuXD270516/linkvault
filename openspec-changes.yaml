@@ -252,53 +252,28 @@ changes:
       Vault libsodium secretbox con AI_VAULT_KEY, claves por vendor (anthropic, openai, openrouter), proveedores byok:<userId>:<vendor>
       con prioridad 0 en routing, AnthropicProvider y OpenAIProvider, revocación, redactor pino. Frontend: gestión de claves en perfil.
   - name: deploy-prod
-    adrs: [001, 009, 020]
+    adrs: [001, 009, 020, 033]
     agents: [devops]
     scope: |
-      docker-compose.prod.yml con Traefik + Let's Encrypt, réplicas del worker, healthchecks, CD a staging en main y prod por tag,
-      infra/README.md con alternativas (VPS, Fly/Railway/Render, k3s+Helm, Cloud Run), observabilidad mínima (/metrics, pino, OTel opcional).
-      Heredado de auth-users (ADR-020): `trustProxy` de api y cabecera de IP real detrás de Traefik, para que los límites de
-      intentos cuenten por IP del cliente y no del proxy; reseteo manual de contraseña por un operador, documentado (no hay
-      recuperación por email hasta auth-email-recovery); aviso de privacidad; y borrado de cuenta.
-      Heredado de `groups` (Risks de su design.md): los logs de acceso (Traefik y cualquier otro proxy o CDN delante del SPA) NO
-      deben registrar las query strings de las rutas del SPA, incluidas /login y /registro. El enlace de invitación es
-      /unirse?codigo=<código> y, aunque la página borra el código de la URL en cuanto lo lee, antes del login viaja además en el
-      returnUrl de esas dos rutas; registrarlo dejaría códigos de invitación en claro en los logs. Revisar también Referrer-Policy
-      para que el código no salga hacia terceros.
-      Heredado de `applications-tracking` (ADR-024): el borrado de cuenta debe borrar en cascada sus `applications` y sus
-      `application_events`, que guardan notas y etapas privadas.
-      Heredado de `group-comments` (ADR-026): el borrado de cuenta borra o anonimiza sus `group_link_comments` (ADR-026).
-      Heredado de `public-preview-share` (ADR-027): fijar por entorno las dos variables nuevas y obligatorias de `api`,
-      PUBLIC_PAGE_BASE_URL (origen que sirve /p/:slug) y WEB_BASE_URL (origen del SPA y de la imagen OG), que en producción
-      pueden ser el mismo; sin ellas el proceso no arranca. Los límites de las rutas públicas son globales de ruta y por slug,
-      sin IP: este change NO activa `trustProxy` a propósito, porque convertiría `request.ip` en un dato del cliente y
-      debilitaría los límites de login, registro y unión a un grupo. Si se quieren límites por cliente, van **delante**, en el
-      proxy, y activar `trustProxy` exige decidir a la vez en qué proxy se confía (es la misma herencia de auth-users, ADR-020).
-      Y el borrado de cuenta debe despublicar (`$unset publicShare`) las relaciones que esa persona publicó, además de lo que
-      decida sobre sus `group_link_comments`: su enlace público sigue sirviendo la oferta a cualquiera mientras exista.
-      Heredado de `cv-upload-extract` (ADR-028), que guarda el dato más personal del producto:
-      (a) el borrado de cuenta debe llevarse sus CV **y sus objetos** —`deleteMany` de `cv_documents` y de
-      `cv_version_counters`, más `mc rm --recursive <bucket>/<userId>/`—; el prefijo por usuario de la clave existe justo
-      para eso;
-      (b) **desviación explícita de docs/design.md §8**: el bucket de CV no tiene **cifrado en reposo** ni **política de
-      retención**, que aquel documento daba por mitigación de "datos sensibles en CV"; aquí se decide la gestión de
-      claves del proveedor y el ciclo de vida del bucket, que en local no lleva ninguna regla de expiración a propósito
-      (un CV no caduca solo);
-      (c) el **aviso de privacidad** debe decir qué se guarda de un CV y por cuánto tiempo;
-      (d) la **recogida de objetos huérfanos** (los deja una transacción abortada tras subir o un `CvDeleted.v1` agotado
-      a las 24 h), hoy manual y en dos pasos con revisión humana en el RUNBOOK;
-      (e) el **límite por IP y el tope de cuerpo en el proxy**: los tres contadores de CV son por persona autenticada, y
-      el camino caro —subidas válidas y `413`, que leen hasta el tope antes de rechazar— solo se acota delante, sin
-      activar `trustProxy` a ciegas (misma herencia de ADR-020 §5 y ADR-027 §6).
-      Además, las dos colas nuevas (`extract-cv` y `delete-cv-file`) entran en lo que hay que vigilar, con su retención y
-      su panel.
-      Heredado de `cv-match-suggestions` (ADR-029, ADR-030):
-      (a) la **clave de OpenRouter** (`OPENROUTER_API_KEY`) y el **modelo `:free` concreto** (`OPENROUTER_MODEL`) fijados
-      por entorno, con `data_collection: "deny"` (ADR-018 §12);
-      (b) el **aviso de privacidad** actualizado: qué se analiza (texto del CV + descripción de la oferta), qué sale de
-      LinkVault y bajo qué permiso (`aiConsent.externalProviders` + versión del texto);
-      (c) el borrado de cuenta debe borrar también los `ai_analyses` de esa persona (además de CV, postulaciones, etc.);
-      (d) la cola `analyze-match` entra entre las que hay que vigilar, con su retención y su panel.
+      Decisiones D1–D14 (ADR-033). Camino canónico: docker-compose.prod.yml + Traefik + Let's Encrypt, imágenes multi-stage
+      en GHCR, réplicas del worker, healthchecks, OUTBOX_RELAY en exactamente una api. CD: staging en main y prod en tag v*
+      (verify → build/push GHCR → ssh/compose pull+up; smoke /health; dry-run NO es aceptación). Staging y prod = dos
+      targets compose (hosts placeholder). Observabilidad mínima: GET /metrics (Prometheus) + pino; **sin OTel** en este
+      change. Traefik: rutas /p/ y /api/ → api, else → web; /metrics y /health* no públicos (red interna/ACL); rate limit
+      por IP y clientMaxBodySize ≤ 5 MiB + multipart en POST /api/cv; Referrer-Policy en SPA (esp. /unirse); access logs
+      sin query en /login, /registro, /unirse. TRUST_PROXY=true solo en compose.prod detrás de Traefik.
+      infra/README: operar compose+Traefik; una línea “otros hosts no soportados en este change”.
+      Borrado de cuenta DELETE /api/users/me (password; 401 si incorrecto): cascada atómica con user, sessions, memberships
+      (409 sole owner con miembros; borrar grupo si owner solo vía GroupDeletionHooks + sesión Mongo), applications+events,
+      group_link_comments (borrar + commentCount/commentsRevision como RUNBOOK), $unset note donde sharedBy, $unset
+      publicShare de lo publicado, user_links deleteMany, cv_documents+contadores+objetos userId/, ai_analyses, ai_usage
+      DELETE, user_ai_keys, roadmaps, ai_feedback; consumers BullMQ ack si user gone. Aviso /privacidad + UI peligro.
+      Object store: MinIO; CV SSE-S3 sin lifecycle de borrado; snapshots 30d; GC huérfanos documentado.
+      Env prod: PUBLIC_PAGE_BASE_URL, WEB_BASE_URL, ENRICH_*, PASTE_*, AI_*, OPENROUTER_*, AI_VAULT_KEY, AI_PROMPTS_DIR.
+      Herencias cerradas aquí: ADR-020 (trustProxy, reseteo password operador, privacidad, borrado); groups (logs sin
+      query + Referrer-Policy); ADR-024 (applications cascade); ADR-026 (comments borrar + contadores); ADR-027 (URLs
+      públicas + límites en borde + despublicar); ADR-028 (CV objetos, SSE/retención, aviso, huérfanos, límite IP/cuerpo
+      proxy); ADR-029/030 (OpenRouter env, aviso IA, ai_analyses); ADR-032 (BYOK keys en cascada).
   - name: auth-email-recovery
     adrs: [012, 020]
     agents: [backend-dev, frontend-dev]

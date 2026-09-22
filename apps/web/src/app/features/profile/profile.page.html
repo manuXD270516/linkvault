@@ -348,4 +348,30 @@
       </div>
     }
   </section>
+
+  <!--
+    Zona de peligro (spec web/privacy): enlace al aviso público y borrado con confirmación + contraseña.
+  -->
+  <section class="flex flex-col gap-4 border-t border-(--mat-sys-outline-variant) pt-6" data-testid="profile-danger">
+    <h2 class="text-xl font-medium" i18n="@@profile.danger.title">Zona de peligro</h2>
+    <p class="m-0 text-sm" i18n="@@profile.privacyLink">
+      Detalle de almacenamiento del CV, retención, IA y borrado en el
+      <a routerLink="/privacidad" data-testid="profile-privacy-link">aviso de privacidad</a>.
+    </p>
+    <p class="m-0 text-sm" i18n="@@profile.delete.intro">
+      Borrar la cuenta elimina tus datos personales de LinkVault. Esta acción no se puede deshacer.
+    </p>
+    <div>
+      <button
+        mat-stroked-button
+        color="warn"
+        type="button"
+        data-testid="profile-delete-open"
+        (click)="deleteAccount()"
+        i18n="@@profile.delete.open"
+      >
+        Borrar mi cuenta
+      </button>
+    </div>
+  </section>
 </section>

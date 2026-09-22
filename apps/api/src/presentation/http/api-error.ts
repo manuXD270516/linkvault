@@ -23,6 +23,7 @@ export const API_ERROR_STATUS: Readonly<Record<ApiErrorCode, number>> = {
   too_many_groups: 409,
   owner_cannot_leave: 409,
   already_owner: 409,
+  sole_owner_with_members: 409,
   invalid_url: 400,
   text_too_long: 400,
   link_not_found: 404,
@@ -74,6 +75,8 @@ export const API_ERROR_MESSAGES: Readonly<Record<ApiErrorCode, string>> = {
   too_many_groups: 'Too many groups',
   owner_cannot_leave: 'The owner cannot leave the group',
   already_owner: 'You already own this group',
+  sole_owner_with_members:
+    'Transfer ownership or remove other members before deleting your account',
   invalid_url: 'That does not look like a job link',
   text_too_long: 'Text is too long',
   link_not_found: 'Link not found',

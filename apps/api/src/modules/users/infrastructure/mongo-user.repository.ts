@@ -122,6 +122,21 @@ export class MongoUserRepository implements UserRepository {
       .exec();
     return result.matchedCount === 1;
   }
+
+  async delete(id: string, session?: object): Promise<boolean> {
+    if (!isObjectIdHex(id)) {
+      return false;
+    }
+    const result = await this.model
+      .deleteOne(
+        { _id: id },
+        session === undefined
+          ? undefined
+          : { session: session as import('mongoose').ClientSession },
+      )
+      .exec();
+    return result.deletedCount === 1;
+  }
 }
 
 /** `$set` solo de los campos presentes: una actualización parcial nunca pisa los demás. */

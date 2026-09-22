@@ -1,0 +1,78 @@
+<h2 mat-dialog-title i18n="@@profile.delete.title">Borrar tu cuenta</h2>
+
+<form [formGroup]="form" (ngSubmit)="submit()">
+  <mat-dialog-content class="flex flex-col gap-3">
+    <p class="m-0" i18n="@@profile.delete.warning">
+      Se eliminarán tu cuenta, tus CV, claves de IA, análisis y el resto de datos personales. No se puede
+      deshacer. Si eres el único propietario de un grupo con otras personas, tendrás que transferir la
+      propiedad o salir del grupo antes.
+    </p>
+
+    <mat-form-field class="w-full">
+      <mat-label i18n="@@profile.delete.password">Contraseña actual</mat-label>
+      <input
+        matInput
+        [type]="passwordVisible() ? 'text' : 'password'"
+        formControlName="password"
+        autocomplete="current-password"
+        data-testid="profile-delete-password"
+      />
+      <button
+        mat-button
+        matSuffix
+        type="button"
+        data-testid="profile-delete-toggle-password"
+        [attr.aria-pressed]="passwordVisible()"
+        (click)="passwordVisible.set(!passwordVisible())"
+      >
+        @if (passwordVisible()) {
+          <ng-container i18n="@@auth.hidePassword">Ocultar</ng-container>
+        } @else {
+          <ng-container i18n="@@auth.showPassword">Mostrar</ng-container>
+        }
+      </button>
+      @if (form.controls.password.touched && form.controls.password.invalid) {
+        <mat-error i18n="@@profile.delete.passwordRequired">Introduce tu contraseña</mat-error>
+      }
+    </mat-form-field>
+
+    @if (wrongPassword()) {
+      <p class="m-0 text-(--mat-sys-error)" role="alert" i18n="@@profile.delete.wrongPassword">
+        La contraseña no es correcta
+      </p>
+    }
+    @if (soleOwner()) {
+      <p class="m-0 text-(--mat-sys-error)" role="alert" i18n="@@profile.delete.soleOwner">
+        Eres el único propietario de un grupo con otros miembros. Transfiere la propiedad o abandona el
+        grupo antes de borrar la cuenta.
+      </p>
+    }
+    @if (failure(); as currentFailure) {
+      @if (!wrongPassword() && !soleOwner()) {
+        <lv-request-error [failure]="currentFailure" />
+      }
+    }
+  </mat-dialog-content>
+
+  <mat-dialog-actions>
+    <button
+      mat-button
+      type="button"
+      [mat-dialog-close]="false"
+      [disabled]="saving()"
+      i18n="@@confirm.cancel"
+    >
+      Cancelar
+    </button>
+    <button
+      mat-flat-button
+      color="warn"
+      type="submit"
+      [disabled]="saving()"
+      data-testid="profile-delete-confirm"
+      i18n="@@profile.delete.confirm"
+    >
+      Borrar cuenta
+    </button>
+  </mat-dialog-actions>
+</form>

@@ -257,4 +257,37 @@ describe('AuthApi', () => {
 
     await expect(result).rejects.toMatchObject({ status: 500 });
   });
+
+  it('borra la cuenta y limpia la sesión local tras 204', async () => {
+    store.setSession(session);
+    const result = api.deleteAccount({ password: 'contraseña-correcta' });
+
+    const req = http.expectOne({ method: 'DELETE', url: '/api/users/me' });
+    expect(req.request.body).toEqual({ password: 'contraseña-correcta' });
+    expect(req.request.context.get(SKIP_BEARER)).toBe(false);
+    req.flush(null, { status: 204, statusText: 'No Content' });
+
+    await expect(result).resolves.toBeUndefined();
+    expect(store.status()).toBe('anonymous');
+    expect(store.accessToken()).toBeNull();
+  });
+
+  it('propaga 401 invalid_credentials sin limpiar la sesión', async () => {
+    store.setSession(session);
+    const result = api.deleteAccount({ password: 'mala' });
+
+    http
+      .expectOne({ method: 'DELETE', url: '/api/users/me' })
+      .flush(
+        { code: 'invalid_credentials', message: 'Invalid email or password' },
+        { status: 401, statusText: 'Unauthorized' },
+      );
+
+    await expect(result).rejects.toMatchObject({
+      status: 401,
+      error: { code: 'invalid_credentials' },
+    });
+    expect(store.status()).toBe('authenticated');
+    expect(store.accessToken()).toBe('token-1');
+  });
 });

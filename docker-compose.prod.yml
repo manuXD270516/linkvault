@@ -1,0 +1,287 @@
+# Producción canónica de LinkVault (ADR-033): api, worker, web, mongo rs0, redis, MinIO, Traefik+LE.
+# Arranque: ver infra/README.md. No publicar /metrics ni /health* en el entrypoint público.
+#
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod config
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait
+#
+# OUTBOX_RELAY_ENABLED=true solo en el servicio `api` (exactamente una instancia con relay).
+# TRUST_PROXY=true solo aquí (detrás de Traefik); ausente en docker-compose.yml local.
+name: linkvault-prod
+
+networks:
+  edge:
+    driver: bridge
+  internal:
+    driver: bridge
+    internal: true
+
+volumes:
+  mongo-data:
+  redis-data:
+  minio-data:
+  traefik-letsencrypt:
+  traefik-logs:
+
+services:
+  traefik:
+    image: traefik:v3.3.5
+    restart: unless-stopped
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:?set PUBLIC_HOST to the public DNS name}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL for Let's Encrypt}
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./infra/traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro
+      - traefik-letsencrypt:/letsencrypt
+      - traefik-logs:/var/log/traefik
+    command:
+      - --providers.file.filename=/etc/traefik/dynamic.yml
+      - --providers.file.watch=true
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+      # Access logs: JSON + drop RequestURI so query strings (invite codes) never hit disk
+      # (infra/traefik/access-log-no-query.md). RequestPath stays (path without query).
+      - --accesslog=true
+      - --accesslog.format=json
+      - --accesslog.filepath=/var/log/traefik/access.log
+      - --accesslog.fields.defaultmode=keep
+      - --accesslog.fields.names.RequestURI=drop
+      - --api.dashboard=false
+      - --ping=true
+    networks:
+      - edge
+      - internal
+    healthcheck:
+      test: ['CMD', 'traefik', 'healthcheck', '--ping']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+
+  mongo:
+    image: mongo:7.0.43
+    hostname: mongo
+    restart: unless-stopped
+    command: ['--replSet', 'rs0', '--bind_ip_all']
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - internal
+    healthcheck:
+      test:
+        - CMD
+        - mongosh
+        - --quiet
+        - --eval
+        - >-
+          try { rs.status(); } catch (e) {
+            if (e.codeName === 'NotYetInitialized' || e.code === 94) {
+              rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'mongo:27017' }] });
+            } else { throw e; }
+          }
+          quit(db.hello().isWritablePrimary ? 0 : 1);
+      interval: 5s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+      start_interval: 2s
+
+  redis:
+    image: redis:7.4.11
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes:
+      - redis-data:/data
+    networks:
+      - internal
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    restart: unless-stopped
+    command: ['server', '/data', '--console-address', ':9001']
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:?}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?}
+      # Required for `mc encrypt set sse-s3` on the CV bucket (ADR-033 D5).
+      # Format: <key-name>:<base64 of 32 raw bytes>. Generate: see infra/README.md.
+      MINIO_KMS_SECRET_KEY: ${MINIO_KMS_SECRET_KEY:?}
+      MC_HOST_admin: http://${S3_ACCESS_KEY}:${S3_SECRET_KEY}@localhost:9000
+      S3_BUCKET: ${S3_BUCKET:-cvs}
+      S3_SNAPSHOTS_BUCKET: ${S3_SNAPSHOTS_BUCKET:-snapshots}
+    volumes:
+      - minio-data:/data
+      - ./infra/minio/ensure-buckets.sh:/ensure-buckets.sh:ro
+    networks:
+      - internal
+    healthcheck:
+      test: ['CMD-SHELL', 'sh /ensure-buckets.sh']
+      interval: 10s
+      timeout: 15s
+      retries: 12
+      start_period: 20s
+      start_interval: 3s
+
+  api:
+    image: ${API_IMAGE:-ghcr.io/linkvault/linkvault-api}:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      API_PORT: 3000
+      MONGO_URI: mongodb://mongo:27017/linkvault?replicaSet=rs0
+      REDIS_URL: redis://redis:6379
+      # Exactamente una api con relay (ADR-033 D8). No dupliques este servicio con true.
+      OUTBOX_RELAY_ENABLED: 'true'
+      OUTBOX_RELAY_INTERVAL_MS: ${OUTBOX_RELAY_INTERVAL_MS:-1000}
+      # Solo compose.prod detrás de Traefik (ADR-033 D12). Ausente en compose local.
+      TRUST_PROXY: 'true'
+      AI_PROMPTS_DIR: /app/assets/ai/prompts
+      PUBLIC_PAGE_BASE_URL: ${PUBLIC_PAGE_BASE_URL:?}
+      WEB_BASE_URL: ${WEB_BASE_URL:?}
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:?}
+      AUTH_ACCESS_TOKEN_TTL_SECONDS: ${AUTH_ACCESS_TOKEN_TTL_SECONDS:-900}
+      AUTH_REFRESH_TTL_DAYS: ${AUTH_REFRESH_TTL_DAYS:-30}
+      AUTH_REFRESH_MAX_DAYS: ${AUTH_REFRESH_MAX_DAYS:-90}
+      PASTE_EXTRACTION_TIMEOUT_MS: ${PASTE_EXTRACTION_TIMEOUT_MS:-20000}
+      AI_CHAIN: ${AI_CHAIN:?}
+      AI_VAULT_KEY: ${AI_VAULT_KEY:?}
+      AI_CACHE_TTL_SECONDS: ${AI_CACHE_TTL_SECONDS:-604800}
+      AI_QUOTAS: ${AI_QUOTAS:-}
+      OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-}
+      OPENROUTER_MAX_CONTEXT_TOKENS: ${OPENROUTER_MAX_CONTEXT_TOKENS:-32000}
+      OPENROUTER_TIMEOUT_MS: ${OPENROUTER_TIMEOUT_MS:-30000}
+      OLLAMA_URL: ${OLLAMA_URL:-}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-}
+      BYOK_ANTHROPIC_MODEL: ${BYOK_ANTHROPIC_MODEL:-claude-sonnet-4-20250514}
+      BYOK_OPENAI_MODEL: ${BYOK_OPENAI_MODEL:-gpt-4o-mini}
+      BYOK_OPENROUTER_MODEL: ${BYOK_OPENROUTER_MODEL:-meta-llama/llama-3.3-70b-instruct:free}
+      MATCH_ANALYSES_PER_USER: ${MATCH_ANALYSES_PER_USER:-10}
+      MATCH_QUOTA_WINDOW_MS: ${MATCH_QUOTA_WINDOW_MS:-86400000}
+      MATCH_ANALYSIS_MAX_AGE_MS: ${MATCH_ANALYSIS_MAX_AGE_MS:-240000}
+      MATCH_ANALYSIS_TIMEOUT_MS: ${MATCH_ANALYSIS_TIMEOUT_MS:-120000}
+      S3_ENDPOINT: http://minio:9000
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?}
+      S3_BUCKET: ${S3_BUCKET:-cvs}
+      S3_SNAPSHOTS_BUCKET: ${S3_SNAPSHOTS_BUCKET:-snapshots}
+      FEATURE_HEADLESS_EXTRACTION: ${FEATURE_HEADLESS_EXTRACTION:-false}
+    networks:
+      - internal
+    # Readiness for compose --wait; image HEALTHCHECK is liveness (/health/live).
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/health').then(async (r)=>{const t=await r.text(); if(!r.ok) process.exit(1); const j=JSON.parse(t); process.exit(j.status==='up'&&j.checks?.mongo?.status==='up'&&j.checks?.redis?.status==='up'?0:1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+
+  worker:
+    image: ${WORKER_IMAGE:-ghcr.io/linkvault/linkvault-worker}:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    # Scale without touching other services: docker compose … up -d --scale worker=2
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      WORKER_HEALTH_PORT: 3001
+      MONGO_URI: mongodb://mongo:27017/linkvault?replicaSet=rs0
+      REDIS_URL: redis://redis:6379
+      AI_PROMPTS_DIR: /app/assets/ai/prompts
+      AI_CHAIN: ${AI_CHAIN:?}
+      AI_VAULT_KEY: ${AI_VAULT_KEY:?}
+      AI_CACHE_TTL_SECONDS: ${AI_CACHE_TTL_SECONDS:-604800}
+      AI_QUOTAS: ${AI_QUOTAS:-}
+      OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-}
+      OPENROUTER_MAX_CONTEXT_TOKENS: ${OPENROUTER_MAX_CONTEXT_TOKENS:-32000}
+      OPENROUTER_TIMEOUT_MS: ${OPENROUTER_TIMEOUT_MS:-30000}
+      OLLAMA_URL: ${OLLAMA_URL:-}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-}
+      BYOK_ANTHROPIC_MODEL: ${BYOK_ANTHROPIC_MODEL:-claude-sonnet-4-20250514}
+      BYOK_OPENAI_MODEL: ${BYOK_OPENAI_MODEL:-gpt-4o-mini}
+      BYOK_OPENROUTER_MODEL: ${BYOK_OPENROUTER_MODEL:-meta-llama/llama-3.3-70b-instruct:free}
+      ENRICH_FETCH_TIMEOUT_MS: ${ENRICH_FETCH_TIMEOUT_MS:-10000}
+      ENRICH_MAX_BYTES: ${ENRICH_MAX_BYTES:-2097152}
+      ENRICH_DOMAIN_DELAY_MS: ${ENRICH_DOMAIN_DELAY_MS:-2000}
+      ENRICH_DEADLINE_MS: ${ENRICH_DEADLINE_MS:-45000}
+      ENRICH_ROBOTS_TTL_SECONDS: ${ENRICH_ROBOTS_TTL_SECONDS:-43200}
+      ENRICH_USER_AGENT: ${ENRICH_USER_AGENT:?}
+      ENRICH_CONCURRENCY: ${ENRICH_CONCURRENCY:-4}
+      ENRICH_MAX_DEFERRALS: ${ENRICH_MAX_DEFERRALS:-600}
+      MATCH_ANALYSES_PER_USER: ${MATCH_ANALYSES_PER_USER:-10}
+      MATCH_QUOTA_WINDOW_MS: ${MATCH_QUOTA_WINDOW_MS:-86400000}
+      MATCH_ANALYSIS_MAX_AGE_MS: ${MATCH_ANALYSIS_MAX_AGE_MS:-240000}
+      MATCH_ANALYSIS_TIMEOUT_MS: ${MATCH_ANALYSIS_TIMEOUT_MS:-120000}
+      MATCH_ANALYSIS_CONCURRENCY: ${MATCH_ANALYSIS_CONCURRENCY:-1}
+      CV_EXTRACTION_TIMEOUT_MS: ${CV_EXTRACTION_TIMEOUT_MS:-30000}
+      CV_EXTRACT_CONCURRENCY: ${CV_EXTRACT_CONCURRENCY:-1}
+      S3_ENDPOINT: http://minio:9000
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?}
+      S3_BUCKET: ${S3_BUCKET:-cvs}
+      S3_SNAPSHOTS_BUCKET: ${S3_SNAPSHOTS_BUCKET:-snapshots}
+      FEATURE_HEADLESS_EXTRACTION: ${FEATURE_HEADLESS_EXTRACTION:-false}
+    networks:
+      - internal
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3001/health').then(async (r)=>{const t=await r.text(); if(!r.ok) process.exit(1); JSON.parse(t); process.exit(0)}).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+
+  web:
+    image: ${WEB_IMAGE:-ghcr.io/linkvault/linkvault-web}:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    networks:
+      - internal
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1/']
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 10s

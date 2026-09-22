@@ -227,7 +227,7 @@ Orden y notas específicas:
 | 12 | `cv-match-suggestions` | §4.7 y 4.12 (el bucle de juez §4.8 va en `cv-suggestions-review`). `match-cv`, `ai_analyses`, `fitScore` derivado, consentimiento con versión `2026-09-21`, sin SSE de progreso. Cómo operarlo: Paso 6 nonies. ADR-029/030. |
 | 13 | `study-roadmap` | Catálogo curado `resources.seed.json` primero. Cómo operarlo: Paso 6 decies. |
 | 14 | `ai-byok` | Vault libsodium + claves por persona (Anthropic/OpenAI/OpenRouter). Cómo operarlo: Paso 6 undecies. ADR-032. |
-| 15 | `deploy-prod` | compose prod + Traefik + docs de alternativas. Heredado de `auth-users` (ADR-020): `trustProxy`, reseteo manual de contraseña por operador documentado, aviso de privacidad y borrado de cuenta. Heredado de `link-enrichment` (ADR-022): elegir proveedor de objetos (el cliente habla S3) y crear allí el bucket de snapshots con su expiración a 30 días, fijar las `ENRICH_*` por entorno y decidir dónde queda encendido el relay del outbox, que sigue siendo de una sola instancia. Heredado de `paste-job-description` (ADR-023): fijar `PASTE_EXTRACTION_TIMEOUT_MS` y la cuota de `extract-pasted-job` en `AI_QUOTAS` por entorno, y copiar los prompts también en la imagen de `api` (`AI_PROMPTS_DIR=dist/apps/api/assets/ai/prompts` si no arranca desde la raíz). Heredado de `groups-ownership-join-limit` (ADR-025): `trustProxy` también por el contador de IP del join, y la consulta de "un owner por grupo" antes del primer despliegue (Paso 6 quater). Heredado de `applications-tracking` (ADR-024): el borrado de cuenta tiene que borrar en cascada las `applications` y los `application_events` de esa persona; hasta entonces, a mano (Paso 6 quinquies). |
+| 15 | `deploy-prod` | compose prod + Traefik + GHCR CD (ADR-033). Camino canónico: [`infra/README.md`](../infra/README.md). Operación: **Paso 6 duodecies** (reseteo password Argon2id + revocar sesiones, GC huérfanos, un owner, relay único, ack BullMQ si user gone). Herencias cerradas en ADR-033 / scope del manifiesto. |
 | 16 | `auth-email-recovery` | Fuera de §6: verificación de email y recuperación de contraseña, diferidas desde `auth-users` (ADR-020). Alcance y orden por decidir al crearlo. |
 
 **Paralelizar front y back (changes 4–8):** en `/opsx:apply` pide:
@@ -1099,6 +1099,77 @@ prioriza `byok:<userId>:<vendor>` antes de la cadena de plataforma. Decisiones e
 
 - **Cuota de plataforma.** Los `success` con proveedor `byok:*` **no** cuentan en el ledger de cuota de plataforma.
   Con cuota de plataforma agotada la cadena efectiva puede ser solo BYOK; sin BYOK elegible, degradación honesta.
+
+## Paso 6 duodecies — Operar producción (deploy-prod / ADR-033)
+
+Camino canónico: `docker-compose.prod.yml` + Traefik + Let's Encrypt. Procedimiento de arranque, secrets CD y buckets:
+[`infra/README.md`](../infra/README.md). Aquí solo operaciones de operador que no caben en el README.
+
+### Reseteo manual de contraseña (operador)
+
+No hay recuperación por email todavía (`auth-email-recovery`). Para desbloquear a alguien que perdió la contraseña:
+
+1. Genera un hash **Argon2id** con los mismos parámetros que la app (`memoryCost=19456`, `timeCost=2`, `parallelism=1`,
+   algoritmo Argon2id — ADR-012 / `ARGON2_OPTIONS` en api):
+
+   ```bash
+   node -e "const {hash}=require('@node-rs/argon2'); hash(process.argv[1],{algorithm:2,memoryCost:19456,timeCost:2,parallelism:1}).then(console.log)" 'NuevaClaveTemporal!'
+   ```
+
+2. Sustituye `passwordHash` en `users` y **revoca todas las sesiones** de esa persona (access + refresh dejan de valer):
+
+   ```bash
+   docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T mongo \
+     mongosh "mongodb://mongo:27017/linkvault?replicaSet=rs0" --quiet --eval '
+       const email = "<email>".toLowerCase();
+       const passwordHash = "<pegado del paso 1>";
+       const u = db.users.findOne({ email }, { _id: 1 });
+       if (!u) { throw new Error("user not found"); }
+       db.users.updateOne({ _id: u._id }, { $set: { passwordHash } });
+       const now = new Date();
+       print(db.auth_sessions.updateMany({ userId: u._id.toString(), revokedAt: null }, { $set: { revokedAt: now } }).modifiedCount + " sessions revoked");
+     '
+   ```
+
+3. Comunica la contraseña temporal por un canal fuera de banda y pide cambio inmediato en `/perfil`.
+
+### Un owner por grupo (antes del primer deploy con datos)
+
+Misma consulta que el Paso 6 quater; con compose prod usa el servicio `mongo` de `docker-compose.prod.yml`. Si hay
+duplicados, degrada a `member` los sobrantes **antes** de que el índice `one_owner_per_group` se cree en arranque.
+
+### Relay del outbox: exactamente una api
+
+`OUTBOX_RELAY_ENABLED=true` solo en el servicio `api` del compose prod. Checklist:
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T api \
+  node -e "console.log('OUTBOX_RELAY_ENABLED='+(process.env.OUTBOX_RELAY_ENABLED||''))"
+```
+
+No hagas `--scale api=2` mientras esa variable siga en `true` en todas las réplicas (doble publicación a BullMQ).
+
+### GC de objetos huérfanos (CV)
+
+Sin job automático (ADR-033 D5). Procedimiento: Paso 6 octies (objetos huérfanos), adaptando el compose a
+`docker-compose.prod.yml` y el alias MinIO del contenedor prod. Revisión humana entre listar y borrar.
+
+### Jobs BullMQ tras borrado de cuenta (ack si user gone)
+
+Si un job en vuelo lleva un `userId` cuya fila en `users` ya no existe (cuenta borrada), el consumer **debe hacer ack**
+(completar sin reintentar). Reintentar indefinidamente no recupera datos. Colas típicas: `extract-cv`, `delete-cv-file`,
+`analyze-match`, `build-roadmap`, enrich atribuido a persona. Si ves `failed` creciendo tras un borrado masivo, revisa
+que el consumer de esa cola implemente el ack (cambio `deploy-prod` / ADR-033 D11); no reencoles a mano esos jobs.
+
+### Smoke de readiness (nunca Traefik público)
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T api \
+  node -e "fetch('http://127.0.0.1:3000/health').then(async r=>{const t=await r.text();console.log(t);const j=JSON.parse(t);if(!r.ok||j.status!=='up')process.exit(1)}).catch(e=>{console.error(e);process.exit(1)})"
+```
+
+`GET https://$PUBLIC_HOST/health` **no** es smoke válido: Traefik no expone `/health*` ni `/metrics` al entrypoint
+público (van a 404 del SPA o no enrutan a api).
 
 ## Paso 7 — Definition of Done (pégalo en cada PR)
 

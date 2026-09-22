@@ -103,8 +103,10 @@ import {
   AiVaultUnavailable,
   ConsentTextOutdated,
   EmailAlreadyRegistered,
+  InvalidAccountPassword,
   InvalidDisplayName,
   InvalidProfileChanges,
+  SoleOwnerWithMembers,
   UserNotFound,
 } from '../../modules/users/domain/errors';
 import { ZodValidationPipe } from './zod-validation.pipe';
@@ -123,6 +125,8 @@ const THROWN: Record<string, () => unknown> = {
   'email-already-registered': () => new EmailAlreadyRegistered(),
   'consent-text-outdated': () => new ConsentTextOutdated(),
   'vault-unavailable': () => new AiVaultUnavailable(),
+  'invalid-account-password': () => new InvalidAccountPassword(),
+  'sole-owner-with-members': () => new SoleOwnerWithMembers(),
   'invalid-profile-field': () => new InvalidProfileChanges('outputLanguage'),
   'invalid-profile-empty': () => new InvalidProfileChanges(),
   'invalid-display-name': () => new InvalidDisplayName(),
@@ -377,6 +381,8 @@ describe('ApiExceptionFilter', () => {
     ['email-already-registered', 409, 'email_taken', undefined],
     ['consent-text-outdated', 409, 'consent_text_outdated', undefined],
     ['vault-unavailable', 503, 'vault_unavailable', undefined],
+    ['invalid-account-password', 401, 'invalid_credentials', undefined],
+    ['sole-owner-with-members', 409, 'sole_owner_with_members', undefined],
     ['refresh-conflict', 409, 'refresh_conflict', undefined],
     ['password-policy', 400, 'validation_error', ['newPassword']],
     ['invalid-profile-field', 400, 'validation_error', ['outputLanguage']],

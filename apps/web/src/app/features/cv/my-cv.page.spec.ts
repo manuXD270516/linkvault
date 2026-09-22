@@ -168,6 +168,21 @@ describe('MyCvPage', () => {
     expect(link?.getAttribute('href')).toBe('/perfil');
   });
 
+  it('Enlace a /privacidad visible en /mi-cv', async () => {
+    await open([]);
+    const link = page().querySelector<HTMLAnchorElement>('[data-testid="cv-privacy-notice-link"]');
+    expect(link?.getAttribute('href')).toBe('/privacidad');
+    expect(page().querySelector('[data-testid="cv-privacy-storage"]')?.textContent).toMatch(
+      /almacenamiento|retención/i,
+    );
+  });
+
+  it('La línea no inventa cifrado ni caducidad en el texto corto', async () => {
+    await open([]);
+    const short = page().querySelector('[data-testid="cv-privacy"]')?.textContent ?? '';
+    expect(short).not.toMatch(/cifrado|SSE|caduca/i);
+  });
+
   it('La línea del nombre dice lo que el sistema hace', async () => {
     await open([]);
     const privacy = page().querySelector('[data-testid="cv-privacy"]')?.textContent ?? '';

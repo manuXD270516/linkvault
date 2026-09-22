@@ -1,0 +1,26 @@
+# Build context for docker/*.Dockerfile — keep lean; never bake secrets.
+# Do NOT ignore libs/ai prompts (*.md) or source trees under apps/libs/tools.
+.git
+.github
+.claude
+.cursor
+.idea
+.vscode
+**/node_modules
+**/dist
+**/coverage
+**/tmp
+**/reports
+**/.nx
+.env
+.env.*
+!.env.example
+openspec
+docs
+apps/web-e2e
+docker-compose.yml
+docker-compose.prod.yml
+infra
+*.log
+.DS_Store
+Thumbs.db
