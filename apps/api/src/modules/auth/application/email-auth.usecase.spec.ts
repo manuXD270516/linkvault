@@ -103,6 +103,14 @@ describe('email verification and password recovery', () => {
     expect(harness.mailer.messages).toHaveLength(0);
   });
 
+  it('Fallo de envío no tumba el registro', async () => {
+    harness.mailer.failSendWith = new Error('smtp down');
+    const session = await registerAna();
+    expect(session.user.emailVerified).toBe(false);
+    expect(session.accessToken).toBeTruthy();
+    expect(harness.mailer.messages).toHaveLength(0);
+  });
+
   it('Verificación correcta e invalid_token al reusar', async () => {
     await registerAna();
     const token = tokenFromMail('email-verification');
@@ -123,6 +131,16 @@ describe('email verification and password recovery', () => {
     await expect(
       verifyEmail.execute({ token: 'not-a-real-token' }),
     ).rejects.toBeInstanceOf(InvalidEmailToken);
+  });
+
+  it('Token de verificación caducado', async () => {
+    await registerAna();
+    const token = tokenFromMail('email-verification');
+    harness.clock.advance(24 * 3600_000 + 1);
+
+    await expect(verifyEmail.execute({ token })).rejects.toBeInstanceOf(
+      InvalidEmailToken,
+    );
   });
 
   it('Resend autenticado ignora email ajeno', async () => {

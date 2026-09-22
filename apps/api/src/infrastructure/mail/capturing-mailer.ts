@@ -6,8 +6,13 @@ import type { Mailer, MailMessage } from './mailer.port';
  */
 export class CapturingMailer implements Mailer {
   readonly messages: MailMessage[] = [];
+  /** Si se asigna, `send` rechaza con este error (tests de fallo de envío). */
+  failSendWith: Error | null = null;
 
   send(message: MailMessage): Promise<void> {
+    if (this.failSendWith) {
+      return Promise.reject(this.failSendWith);
+    }
     this.messages.push({
       to: message.to,
       templateId: message.templateId,

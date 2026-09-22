@@ -68,6 +68,8 @@ describe('Login', () => {
     });
 
     expect(session.user.email).toBe('ana@example.com');
+    // createWithPassword deja emailVerified=false; el login no gatea (ADR-034).
+    expect(session.user.emailVerified).toBe(false);
     expect(session.expiresIn).toBe(900);
     expect(
       await harness.sessions.findRefreshToken(
@@ -77,6 +79,24 @@ describe('Login', () => {
     expect(await harness.signer.verify(session.accessToken)).toMatchObject({
       userId: session.user.id,
     });
+  });
+
+  it('Login de cuenta no verificada tras registro', async () => {
+    await register.execute({
+      email: 'bruno@example.com',
+      password: PASSWORD,
+      displayName: 'Bruno',
+      ip: IP,
+    });
+
+    const session = await login.execute({
+      email: 'bruno@example.com',
+      password: PASSWORD,
+      ip: '203.0.113.8',
+    });
+
+    expect(session.user.emailVerified).toBe(false);
+    expect(session.accessToken).toBeTruthy();
   });
 
   it('opens a new session on every login', async () => {
