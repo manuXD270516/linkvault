@@ -41,5 +41,5 @@
 ## 7. Cierre
 
 - [x] 7.1 [infra] Actualizar scope `deploy-prod` en `openspec-changes.yaml` a D1–D14 + decisiones del debate.
-- [ ] 7.2 [infra] `pnpm nx affected -t lint,typecheck,test` con `AI_CHAIN=mock AI_MOCK_MODE=replay` en verde.
-- [ ] 7.3 [infra] Confirmar **ADR-033** (D1–D14) y referencias RUNBOOK fila 15 / design-v0.2 al cerrar apply.
+- [x] 7.2 [infra] `pnpm nx affected -t lint,typecheck,test` con `AI_CHAIN=mock AI_MOCK_MODE=replay` en verde.
+- [x] 7.3 [infra] Confirmar **ADR-033** (D1–D14) y referencias RUNBOOK fila 15 / design-v0.2 al cerrar apply.
