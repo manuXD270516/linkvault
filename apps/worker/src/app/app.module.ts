@@ -10,6 +10,7 @@ import { CvModule } from '../modules/cv/cv.module';
 import { EnrichmentModule } from '../modules/enrichment/enrichment.module';
 import { MatchModule } from '../modules/match/match.module';
 import { NotificationsModule } from '../modules/notifications/notifications.module';
+import { SearchModule } from '../modules/search/search.module';
 import { HealthModule } from '../presentation/http/health.module';
 
 @Module({})
@@ -45,6 +46,7 @@ export class AppModule {
         // `MatchModule` importa el mismo `aiModule` para resolver `RUN_TASK` y registra `analyze-match` fuera de test.
         MatchModule.register(config, aiModule),
         NotificationsModule.register(config),
+        SearchModule.register(config),
         HealthModule,
       ],
     };
