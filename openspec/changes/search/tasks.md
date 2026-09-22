@@ -1,12 +1,12 @@
 ## 1. Docs and ADR
 
-- [ ] 1.1 [infra] Confirmar `docs/adr/ADR-036.md` (Accepted) con entrada `embedTexts` (no `runTask`), enmienda corta en `docs/adr/ADR-014.md`, fila 18 en `docs/design-v0.2.md` §6 + entrada `search` en `openspec-changes.yaml`; verify: `rg "embedTexts|ADR-036|search" docs/adr/ADR-014.md docs/adr/ADR-036.md docs/design-v0.2.md openspec-changes.yaml CLAUDE.md` muestra dual entry LLM vs embed.
-- [ ] 1.2 [infra] Actualizar RUNBOOK/README con `docker compose --profile search up`, variables `MEILI_*` / `FEATURE_SEARCH`, y nota **Meili solo red interna** (no exponer a Internet); verify: `rg "profile search|MEILI_HOST|red interna|internal" docs/RUNBOOK.md README.md`.
+- [x] 1.1 [infra] Confirmar `docs/adr/ADR-036.md` (Accepted) con entrada `embedTexts` (no `runTask`), enmienda corta en `docs/adr/ADR-014.md`, fila 18 en `docs/design-v0.2.md` §6 + entrada `search` en `openspec-changes.yaml`; verify: `rg "embedTexts|ADR-036|search" docs/adr/ADR-014.md docs/adr/ADR-036.md docs/design-v0.2.md openspec-changes.yaml CLAUDE.md` muestra dual entry LLM vs embed.
+- [x] 1.2 [infra] Actualizar RUNBOOK/README con `docker compose --profile search up`, variables `MEILI_*` / `FEATURE_SEARCH`, y nota **Meili solo red interna** (no exponer a Internet); verify: `rg "profile search|MEILI_HOST|red interna|internal" docs/RUNBOOK.md README.md`.
 
 ## 2. Compose and env
 
-- [ ] 2.1 [infra] Añadir servicio Meilisearch al `docker-compose.yml` bajo profile `search` (healthcheck, volumen, puerto en red compose); verify: `docker compose --profile search config` lista el servicio y sin profile no aparece.
-- [ ] 2.2 [infra] Extender `.env.example` con `FEATURE_SEARCH`, `MEILI_HOST`, `MEILI_MASTER_KEY`, `MEILI_INDEX`, `AI_EMBED_CHAIN`, `AI_EMBED_MODEL`, `SEARCH_SEMANTIC_RATIO`, `SEARCH_BACKFILL_RATE`; verify: `rg "MEILI_|AI_EMBED_|FEATURE_SEARCH|SEARCH_BACKFILL" .env.example` cubre D11.
+- [x] 2.1 [infra] Añadir servicio Meilisearch al `docker-compose.yml` bajo profile `search` (healthcheck, volumen, puerto en red compose); verify: `docker compose --profile search config` lista el servicio y sin profile no aparece.
+- [x] 2.2 [infra] Extender `.env.example` con `FEATURE_SEARCH`, `MEILI_HOST`, `MEILI_MASTER_KEY`, `MEILI_INDEX`, `AI_EMBED_CHAIN`, `AI_EMBED_MODEL`, `SEARCH_SEMANTIC_RATIO`, `SEARCH_BACKFILL_RATE`; verify: `rg "MEILI_|AI_EMBED_|FEATURE_SEARCH|SEARCH_BACKFILL" .env.example` cubre D11.
 
 ## 3. Embeddings (libs/ai)
 

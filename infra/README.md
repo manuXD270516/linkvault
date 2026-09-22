@@ -57,6 +57,10 @@ Copia `.env.example` → `.env.prod` (o `.env.staging`) y rellena. Obligatorias 
 
 `TRUST_PROXY=true` lo pone **solo** `docker-compose.prod.yml` (detrás de Traefik). No lo actives en el compose local ni en tests genéricos.
 
+Cuando se active búsqueda (`FEATURE_SEARCH`): Meilisearch es **solo red interna** — no publicar su puerto en el
+entrypoint público ni exponer `MEILI_MASTER_KEY`. En local el perfil `search` publica 7700 para `nx serve`; en prod
+debe vivir en la red private/internal junto a api/worker (ver [RUNBOOK Paso 6 quattuordecies](../docs/RUNBOOK.md#paso-6-quattuordecies--meilisearch-perfil-search--adr-006-f2)).
+
 Generar `MINIO_KMS_SECRET_KEY` (SSE-S3 del bucket de CV):
 
 ```bash

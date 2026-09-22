@@ -1185,6 +1185,27 @@ suscribirse (los endpoints firmados con el par anterior dejan de ser válidos).
 
 ---
 
+## Paso 6 quattuordecies — Meilisearch (perfil `search` / ADR-006 F2)
+
+Búsqueda híbrida (change `search`, ADR-036). Meilisearch **no** arranca con el compose por defecto.
+
+```bash
+docker compose --profile search up -d --wait
+```
+
+Variables (ver `.env.example`): `FEATURE_SEARCH`, `MEILI_HOST`, `MEILI_MASTER_KEY`, `MEILI_INDEX`,
+`AI_EMBED_CHAIN`, `AI_EMBED_MODEL`, `SEARCH_SEMANTIC_RATIO`, `SEARCH_BACKFILL_RATE`.
+
+- Local / host (`nx serve`): `MEILI_HOST=http://localhost:7700` (puerto `MEILI_PORT`, default 7700).
+- Contenedor en la red compose: `MEILI_HOST=http://meilisearch:7700`.
+- Con `FEATURE_SEARCH=false`, api/worker arrancan sin exigir Meili.
+
+**Red interna (prod):** Meilisearch MUST quedar en red interna (VPC / red `internal` de compose). No exponer el
+puerto ni la master key a Internet; solo api/worker en la misma red privada deben alcanzarlo. En local el puerto se
+publica solo para desarrollo en el host.
+
+---
+
 ## Paso 6 duodecies — Operar producción (deploy-prod / ADR-033)
 
 Camino canónico: `docker-compose.prod.yml` + Traefik + Let's Encrypt. Procedimiento de arranque, secrets CD y buckets:
