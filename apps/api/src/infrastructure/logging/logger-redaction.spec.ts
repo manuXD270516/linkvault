@@ -69,6 +69,10 @@ const DEPTHS = [
   'AI_VAULT_KEY',
   'ciphertext',
   'vaultKey',
+  'token',
+  'RESEND_API_KEY',
+  'actionUrl',
+  'text',
 ].flatMap((field) => [
   { field, depth: 0, value: { [field]: `${field}-depth0-s3cr3t` } },
   { field, depth: 1, value: { a: { [field]: `${field}-depth1-s3cr3t` } } },

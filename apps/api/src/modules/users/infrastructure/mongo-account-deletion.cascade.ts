@@ -29,6 +29,7 @@ import {
 
 const AUTH_SESSIONS_COLLECTION = 'auth_sessions';
 const REFRESH_TOKENS_COLLECTION = 'refresh_tokens';
+const AUTH_EMAIL_TOKENS_COLLECTION = 'auth_email_tokens';
 const GROUP_LINK_COMMENTS_COLLECTION = 'group_link_comments';
 const GROUP_LINKS_COLLECTION = 'group_links';
 const USER_LINKS_COLLECTION = 'user_links';
@@ -101,6 +102,9 @@ export class MongoAccountDeletionCascade implements AccountDeletionCascade {
       .deleteMany({ userId }, { session });
     await this.connection
       .collection(REFRESH_TOKENS_COLLECTION)
+      .deleteMany({ userId }, { session });
+    await this.connection
+      .collection(AUTH_EMAIL_TOKENS_COLLECTION)
       .deleteMany({ userId }, { session });
 
     await this.deleteCommentsAndUpdateCounts(userOid, session);

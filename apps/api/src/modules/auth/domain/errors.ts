@@ -10,7 +10,8 @@ export type AuthErrorCode =
   | 'invalid_refresh'
   | 'refresh_conflict'
   | 'unauthorized'
-  | 'validation_error';
+  | 'validation_error'
+  | 'invalid_token';
 
 export abstract class AuthError extends Error {
   abstract readonly code: AuthErrorCode;
@@ -85,6 +86,16 @@ export class InvalidAccessToken extends AuthError {
 
   constructor() {
     super('Invalid access token');
+  }
+}
+
+/** Token de verificación o reset ausente, inválido, usado o caducado (400; mismo cuerpo). */
+export class InvalidEmailToken extends AuthError {
+  override readonly name = 'InvalidEmailToken';
+  readonly code = 'invalid_token';
+
+  constructor() {
+    super('Invalid or expired token');
   }
 }
 

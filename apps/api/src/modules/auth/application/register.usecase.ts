@@ -1,7 +1,8 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { REGISTRATIONS_PER_IP } from '../domain/attempt-limits';
 import { TooManyAttempts } from '../domain/errors';
 import { assertPasswordPolicy } from '../domain/password-policy';
+import { AuthEmailSender } from './auth-email-sender';
 import { type IssuedSession, SessionOpener } from './issued-session';
 import {
   ATTEMPT_LIMITER,
@@ -12,6 +13,7 @@ import {
   type PasswordHasher,
 } from './ports/password-hasher.port';
 import { USER_ACCOUNTS, type UserAccounts } from './ports/user-accounts.port';
+import type { MailLocale } from '../../../infrastructure/mail/mailer.port';
 
 export interface RegisterInput {
   /** Tal como llega; se normaliza al guardarlo. */
@@ -23,17 +25,19 @@ export interface RegisterInput {
 }
 
 /**
- * `POST /api/auth/register` (spec auth/credentials). Cuenta el intento por IP, aplica la política, crea el usuario con el
- * perfil por defecto en una escritura y abre la sesión en otra. Si la sesión falla, el error se propaga (500) y el usuario
- * ya existe: un reintento recibe `email_taken` y un login funciona (D1).
+ * `POST /api/auth/register` (spec auth/credentials + email-verification). Tras crear usuario y abrir sesión,
+ * intenta emitir verify + correo; fallo de mail o de persistencia del token → 201 + warning (ADR-034 D3/D11).
  */
 @Injectable()
 export class Register {
+  private readonly logger = new Logger(Register.name);
+
   constructor(
     @Inject(USER_ACCOUNTS) private readonly accounts: UserAccounts,
     @Inject(PASSWORD_HASHER) private readonly hasher: PasswordHasher,
     @Inject(ATTEMPT_LIMITER) private readonly limiter: AttemptLimiter,
     private readonly sessionOpener: SessionOpener,
+    private readonly emailSender: AuthEmailSender,
   ) {}
 
   async execute(input: RegisterInput): Promise<IssuedSession> {
@@ -55,6 +59,24 @@ export class Register {
       passwordHash: await this.hasher.hash(input.password),
       displayName: input.displayName,
     });
-    return this.sessionOpener.open(user);
+    const session = await this.sessionOpener.open(user);
+
+    try {
+      await this.emailSender.issueAndSend({
+        userId: user.id,
+        email: user.email,
+        displayName: user.displayName,
+        locale: user.outputLanguage as MailLocale,
+        purpose: 'verify_email',
+      });
+    } catch (error: unknown) {
+      this.logger.warn(
+        `Post-register verification email failed: ${
+          error instanceof Error ? error.name : 'unknown'
+        }`,
+      );
+    }
+
+    return session;
   }
 }

@@ -6,6 +6,7 @@ import type { ApiErrorCode, ApiErrorResponse } from '@linkvault/shared';
  */
 export const API_ERROR_STATUS: Readonly<Record<ApiErrorCode, number>> = {
   validation_error: 400,
+  invalid_token: 400,
   invalid_credentials: 401,
   invalid_refresh: 401,
   unauthorized: 401,
@@ -55,6 +56,7 @@ export const API_ERROR_STATUS: Readonly<Record<ApiErrorCode, number>> = {
  */
 export const API_ERROR_MESSAGES: Readonly<Record<ApiErrorCode, string>> = {
   validation_error: 'Invalid request',
+  invalid_token: 'Invalid or expired token',
   invalid_credentials: 'Invalid email or password',
   invalid_refresh: 'Invalid refresh token',
   unauthorized: 'Authentication required',

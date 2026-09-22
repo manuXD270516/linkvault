@@ -25,6 +25,7 @@ describe('GetMyProfile', () => {
       id: user.id,
       email: 'ana@example.com',
       displayName: 'Ana',
+      emailVerified: false,
       aiConsent: {
         externalProviders: false,
         consentedAt: null,

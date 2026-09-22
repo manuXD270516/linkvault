@@ -14,6 +14,7 @@ describe('userProfileSchema', () => {
     id: '66e9a0000000000000000001',
     email: 'ana@example.com',
     displayName: 'Ana',
+    emailVerified: true,
     aiConsent: {
       externalProviders: false,
       consentedAt: null,
@@ -105,7 +106,7 @@ describe('updateProfileRequestSchema', () => {
     expect(updateProfileRequestSchema.safeParse({}).success).toBe(false);
   });
 
-  it.each([{ email: 'otro@example.com' }, { password: 'new-password-123' }])(
+  it.each([{ email: 'otro@example.com' }, { password: 'new-password-123' }, { emailVerified: true }])(
     'rejects the non-editable field in %j',
     (body) => {
       expect(updateProfileRequestSchema.safeParse(body).success).toBe(false);

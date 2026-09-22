@@ -40,6 +40,7 @@ describe('UsersFacade', () => {
         id: expect.any(String),
         email: 'ana@example.com',
         displayName: 'Ana',
+        emailVerified: false,
         aiConsent: {
           externalProviders: false,
           consentedAt: null,
@@ -54,6 +55,7 @@ describe('UsersFacade', () => {
         passwordHash: '$argon2id$hash',
         passwordChangedAt: registeredAt,
         createdAt: registeredAt,
+        emailVerified: false,
         profile: {
           aiConsent: {
             externalProviders: false,

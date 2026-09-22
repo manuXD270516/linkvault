@@ -52,6 +52,31 @@ export const changePasswordRequestSchema = z.object({
 });
 export type ChangePasswordRequest = z.infer<typeof changePasswordRequestSchema>;
 
+/** Cuerpo de `POST /api/auth/forgot-password` (anti-enumeración: siempre 200 genérico tras el límite). */
+export const forgotPasswordRequestSchema = z.object({
+  email: emailSchema,
+});
+export type ForgotPasswordRequest = z.infer<typeof forgotPasswordRequestSchema>;
+
+/** Respuesta genérica de forgot-password y verify-email/resend (mismo cuerpo exista o no la cuenta). */
+export const authEmailAckResponseSchema = z.strictObject({
+  message: z.string().min(1),
+});
+export type AuthEmailAckResponse = z.infer<typeof authEmailAckResponseSchema>;
+
+/** Cuerpo de `POST /api/auth/reset-password`. */
+export const resetPasswordRequestSchema = z.object({
+  token: z.string().min(1),
+  newPassword: passwordSchema,
+});
+export type ResetPasswordRequest = z.infer<typeof resetPasswordRequestSchema>;
+
+/** Cuerpo de `POST /api/auth/verify-email`. */
+export const verifyEmailRequestSchema = z.object({
+  token: z.string().min(1),
+});
+export type VerifyEmailRequest = z.infer<typeof verifyEmailRequestSchema>;
+
 /** Cuerpo de las respuestas que inician o renuevan sesión (registro, login, refresh). */
 export const sessionResponseSchema = z.strictObject({
   accessToken: z.string().min(1),
@@ -80,6 +105,8 @@ export const apiErrorCodeSchema = z.enum([
   'csrf_header_missing',
   // 401: access token ausente, inválido, caducado o anterior al último cambio de contraseña.
   'unauthorized',
+  // 400: token de verificación o reset ausente, inválido, usado o caducado (mismo cuerpo; ADR-034).
+  'invalid_token',
   // 415: el cuerpo no tiene el formato que esa ruta acepta. Lo comparten ya dos formatos distintos —JSON en casi
   // todas y `multipart/form-data` en la subida del CV—, así que su mensaje es genérico y el SPA traduce el código.
   // NO es lo mismo que `unsupported_file_type`: una cosa es "el cuerpo de la petición no es lo que esta ruta lee" y

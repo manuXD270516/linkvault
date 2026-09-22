@@ -35,6 +35,7 @@ describe('Register', () => {
       harness.hasher,
       harness.limiter,
       harness.sessionOpener,
+      harness.emailSender,
     );
   });
 
@@ -44,6 +45,7 @@ describe('Register', () => {
     expect(session.user).toMatchObject({
       email: 'ana@example.com',
       displayName: 'Ana',
+      emailVerified: false,
       aiConsent: { externalProviders: false },
       outputLanguage: 'es',
       redactName: true,
@@ -63,6 +65,9 @@ describe('Register', () => {
       await harness.accounts.findCredentialsByEmail('ana@example.com');
     expect(credentials?.passwordHash).toBe(
       'fake-argon2id$correct-horse-battery',
+    );
+    expect(harness.mailer.lastTo('ana@example.com')?.templateId).toBe(
+      'email-verification',
     );
   });
 

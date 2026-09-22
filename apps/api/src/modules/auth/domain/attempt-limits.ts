@@ -11,3 +11,15 @@ export const LOGIN_ATTEMPTS_PER_IP = 50;
 
 /** Registros por IP del cliente, correctos o no. */
 export const REGISTRATIONS_PER_IP = 10;
+
+/** Solicitudes forgot-password por email normalizado (HMAC en Redis). */
+export const FORGOT_PASSWORD_ATTEMPTS_PER_EMAIL = 3;
+
+/** Solicitudes forgot-password por IP (IPv6 agrupada por /64). */
+export const FORGOT_PASSWORD_ATTEMPTS_PER_IP = 20;
+
+/** Reenvíos de verificación autenticados por email de la sesión. */
+export const VERIFY_RESEND_ATTEMPTS_PER_EMAIL = 3;
+
+/** Reenvíos de verificación autenticados por IP. */
+export const VERIFY_RESEND_ATTEMPTS_PER_IP = 20;

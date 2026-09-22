@@ -8,7 +8,13 @@ export type AttemptKey =
   | { readonly kind: 'login-email'; readonly email: string }
   /** IP del cliente tal como llega en la petición. */
   | { readonly kind: 'login-ip'; readonly ip: string }
-  | { readonly kind: 'register-ip'; readonly ip: string };
+  | { readonly kind: 'register-ip'; readonly ip: string }
+  /** Forgot-password por email (HMAC) o IP; sin límite en el consumo del token. */
+  | { readonly kind: 'forgot-email'; readonly email: string }
+  | { readonly kind: 'forgot-ip'; readonly ip: string }
+  /** Resend de verificación autenticado (email de la sesión o IP). */
+  | { readonly kind: 'verify-resend-email'; readonly email: string }
+  | { readonly kind: 'verify-resend-ip'; readonly ip: string };
 
 export interface AttemptDecision {
   readonly allowed: boolean;

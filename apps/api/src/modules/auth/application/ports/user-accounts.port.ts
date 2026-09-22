@@ -29,7 +29,13 @@ export interface UserAccounts {
   /** Alta en una sola escritura con el perfil por defecto. Rechaza con `EmailTaken` si el email ya existe. */
   createWithPassword(account: NewAccount): Promise<UserProfile>;
   /** Sustituye el hash y fija `passwordChangedAt` al instante actual. */
-  setPasswordHash(userId: string, passwordHash: string): Promise<void>;
+  setPasswordHash(
+    userId: string,
+    passwordHash: string,
+    session?: object,
+  ): Promise<void>;
+  /** Marca el email verificado (UsersFacade; auth no escribe `users`). */
+  markEmailVerified(userId: string, session?: object): Promise<void>;
   getAuthState(userId: string): Promise<AccountAuthState | null>;
   getProfile(userId: string): Promise<UserProfile | null>;
 }

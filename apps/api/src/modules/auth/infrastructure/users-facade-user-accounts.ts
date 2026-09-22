@@ -33,8 +33,16 @@ export class UsersFacadeUserAccounts implements UserAccounts {
     }
   }
 
-  setPasswordHash(userId: string, passwordHash: string): Promise<void> {
-    return this.users.setPasswordHash(userId, passwordHash);
+  setPasswordHash(
+    userId: string,
+    passwordHash: string,
+    session?: object,
+  ): Promise<void> {
+    return this.users.setPasswordHash(userId, passwordHash, session);
+  }
+
+  markEmailVerified(userId: string, session?: object): Promise<void> {
+    return this.users.markEmailVerified(userId, session);
   }
 
   getAuthState(userId: string): Promise<AccountAuthState | null> {

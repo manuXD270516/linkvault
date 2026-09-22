@@ -1,11 +1,18 @@
 import {
   changePasswordRequestSchema,
+  forgotPasswordRequestSchema,
   loginRequestSchema,
   registerRequestSchema,
+  resetPasswordRequestSchema,
+  verifyEmailRequestSchema,
+  type AuthEmailAckResponse,
   type ChangePasswordRequest,
+  type ForgotPasswordRequest,
   type LoginRequest,
   type RegisterRequest,
+  type ResetPasswordRequest,
   type SessionResponse,
+  type VerifyEmailRequest,
 } from '@linkvault/shared';
 import {
   Body,
@@ -24,12 +31,16 @@ import { CurrentUser } from '../../../presentation/http/auth-context/current-use
 import { Public } from '../../../presentation/http/auth-context/public.decorator';
 import { ZodValidationPipe } from '../../../presentation/http/zod-validation.pipe';
 import { ChangePassword } from '../application/change-password.usecase';
+import { ForgotPassword } from '../application/forgot-password.usecase';
 import type { IssuedSession } from '../application/issued-session';
 import { Login } from '../application/login.usecase';
 import { Logout } from '../application/logout.usecase';
 import { CLOCK } from '../application/ports/clock.port';
 import { RefreshSession } from '../application/refresh-session.usecase';
 import { Register } from '../application/register.usecase';
+import { ResendVerificationEmail } from '../application/resend-verification-email.usecase';
+import { ResetPassword } from '../application/reset-password.usecase';
+import { VerifyEmail } from '../application/verify-email.usecase';
 import type { Clock } from '../domain/clock';
 import { InvalidRefresh } from '../domain/errors';
 import {
@@ -48,9 +59,9 @@ export interface AuthHttpRequest extends RefreshCookieRequest {
 }
 
 /**
- * Endpoints de `/api/auth` (specs auth/credentials y auth/sessions). El hook de cabeceras de `configureApp` ya exigió
- * `X-Requested-With` y JSON; el filtro global traduce los errores de dominio. Las respuestas de sesión llevan
- * `{ accessToken, expiresIn, user }` y el refresh token solo en la cookie `lv_refresh`.
+ * Endpoints de `/api/auth` (specs auth/credentials, sessions, email-verification, password-recovery).
+ * CSRF vía `X-Requested-With` ya exigido por el hook. Rutas `@Public()`: register, login, refresh, logout,
+ * forgot-password, reset-password, verify-email. **No** pública: verify-email/resend.
  */
 @Controller('auth')
 export class AuthController {
@@ -62,6 +73,10 @@ export class AuthController {
     private readonly refreshSession: RefreshSession,
     private readonly logout: Logout,
     private readonly changePassword: ChangePassword,
+    private readonly forgotPassword: ForgotPassword,
+    private readonly resetPassword: ResetPassword,
+    private readonly verifyEmail: VerifyEmail,
+    private readonly resendVerificationEmail: ResendVerificationEmail,
     @Inject(CLOCK) private readonly clock: Clock,
     @Inject(APP_CONFIG) config: ApiConfig,
   ) {
@@ -149,6 +164,53 @@ export class AuthController {
       sessionId: user.sessionId,
       currentPassword: body.currentPassword,
       newPassword: body.newPassword,
+    });
+  }
+
+  @Public()
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  async forgotUserPassword(
+    @Body(new ZodValidationPipe(forgotPasswordRequestSchema))
+    body: ForgotPasswordRequest,
+    @Req() request: AuthHttpRequest,
+  ): Promise<AuthEmailAckResponse> {
+    return this.forgotPassword.execute({ email: body.email, ip: request.ip });
+  }
+
+  @Public()
+  @Post('reset-password')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async resetUserPassword(
+    @Body(new ZodValidationPipe(resetPasswordRequestSchema))
+    body: ResetPasswordRequest,
+  ): Promise<void> {
+    await this.resetPassword.execute({
+      token: body.token,
+      newPassword: body.newPassword,
+    });
+  }
+
+  @Public()
+  @Post('verify-email')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async verifyUserEmail(
+    @Body(new ZodValidationPipe(verifyEmailRequestSchema))
+    body: VerifyEmailRequest,
+  ): Promise<void> {
+    await this.verifyEmail.execute({ token: body.token });
+  }
+
+  /** Solo autenticado: el email del body (si viene) se ignora; destinatario = sesión. */
+  @Post('verify-email/resend')
+  @HttpCode(HttpStatus.OK)
+  async resendVerification(
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: AuthHttpRequest,
+  ): Promise<AuthEmailAckResponse> {
+    return this.resendVerificationEmail.execute({
+      userId: user.userId,
+      ip: request.ip,
     });
   }
 

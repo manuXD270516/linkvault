@@ -58,6 +58,7 @@ const PASSWORD = 'correct-horse-battery';
 const AI_USAGE_COLLECTION = 'ai_usage';
 const AUTH_SESSIONS_COLLECTION = 'auth_sessions';
 const REFRESH_TOKENS_COLLECTION = 'refresh_tokens';
+const AUTH_EMAIL_TOKENS_COLLECTION = 'auth_email_tokens';
 const APPLICATIONS_COLLECTION = 'applications';
 const APPLICATION_EVENTS_COLLECTION = 'application_events';
 const AI_ANALYSES_COLLECTION = 'ai_analyses';
@@ -387,6 +388,14 @@ describe('DELETE /api/users/me account deletion cascade', () => {
       rotatedAt: null,
       replacedByHash: null,
     });
+    await db().collection(AUTH_EMAIL_TOKENS_COLLECTION).insertOne({
+      tokenHash: `email-hash-${ana.id}`,
+      userId: ana.id,
+      purpose: 'verify_email',
+      expiresAt: SESSION_EXPIRES,
+      usedAt: null,
+      createdAt: NOW,
+    });
 
     await db().collection(USER_LINKS_COLLECTION).insertOne({
       userId: anaOid,
@@ -536,6 +545,11 @@ describe('DELETE /api/users/me account deletion cascade', () => {
     ).resolves.toBe(0);
     await expect(
       db().collection(REFRESH_TOKENS_COLLECTION).countDocuments({
+        userId: ana.id,
+      }),
+    ).resolves.toBe(0);
+    await expect(
+      db().collection(AUTH_EMAIL_TOKENS_COLLECTION).countDocuments({
         userId: ana.id,
       }),
     ).resolves.toBe(0);

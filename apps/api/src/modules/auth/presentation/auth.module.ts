@@ -9,8 +9,11 @@ import {
   type FixedWindowCounter,
 } from '../../../infrastructure/limits/fixed-window-counter';
 import { LimitsModule } from '../../../infrastructure/limits/limits.module';
+import { MailModule } from '../../../infrastructure/mail/mail.module';
 import { UsersModule } from '../../users/presentation/users.module';
+import { AuthEmailSender } from '../application/auth-email-sender';
 import { ChangePassword } from '../application/change-password.usecase';
+import { ForgotPassword } from '../application/forgot-password.usecase';
 import { SessionOpener } from '../application/issued-session';
 import { Login } from '../application/login.usecase';
 import { Logout } from '../application/logout.usecase';
@@ -18,15 +21,20 @@ import { ACCESS_TOKEN_SIGNER } from '../application/ports/access-token-signer.po
 import { ATTEMPT_LIMITER } from '../application/ports/attempt-limiter.port';
 import { AUTH_SECURITY_LOG } from '../application/ports/auth-security-log.port';
 import { CLOCK } from '../application/ports/clock.port';
+import { EMAIL_TOKEN_REPOSITORY } from '../application/ports/email-token-repository.port';
 import { PASSWORD_HASHER } from '../application/ports/password-hasher.port';
 import { SESSION_REPOSITORY } from '../application/ports/session-repository.port';
 import { USER_ACCOUNTS } from '../application/ports/user-accounts.port';
 import { RefreshSession } from '../application/refresh-session.usecase';
 import { Register } from '../application/register.usecase';
+import { ResendVerificationEmail } from '../application/resend-verification-email.usecase';
+import { ResetPassword } from '../application/reset-password.usecase';
+import { VerifyEmail } from '../application/verify-email.usecase';
 import type { Clock } from '../domain/clock';
 import { RefreshSessionPolicy } from '../domain/refresh-session';
 import { Argon2PasswordHasher } from '../infrastructure/argon2-password-hasher';
 import { JoseAccessTokenSigner } from '../infrastructure/jose-access-token-signer';
+import { MongoEmailTokenRepository } from '../infrastructure/mongo-email-token.repository';
 import { MongoSessionRepository } from '../infrastructure/mongo-session.repository';
 import { NestAuthSecurityLog } from '../infrastructure/nest-auth-security-log';
 import { RedisAttemptLimiter } from '../infrastructure/redis-attempt-limiter';
@@ -36,13 +44,10 @@ import { AccessTokenGuard } from './access-token.guard';
 import { AuthController } from './auth.controller';
 
 /**
- * Módulo `auth` (D1 de auth-users): endpoints de `/api/auth`, use cases, adaptadores de sus puertos y el guard global de
- * access token. Necesita `AppConfigModule` (global) y la conexión Mongoose por defecto; el límite de intentos lo cuenta
- * con el contador por ventana fija de `infrastructure/limits`, que es plataforma y comparte con `links` (D13 de
- * link-enrichment): `auth` pone el nombre de cada contador y qué hacer si no responde, no la conexión.
+ * Módulo `auth` (D1 de auth-users + ADR-034): endpoints de `/api/auth`, use cases, adaptadores y el guard global.
  */
 @Module({
-  imports: [UsersModule, LimitsModule],
+  imports: [UsersModule, LimitsModule, MailModule],
   controllers: [AuthController],
   providers: [
     { provide: CLOCK, useClass: SystemClock },
@@ -61,7 +66,6 @@ import { AuthController } from './auth.controller';
     { provide: USER_ACCOUNTS, useClass: UsersFacadeUserAccounts },
     {
       provide: PASSWORD_HASHER,
-      // El hash ficticio se calcula al crear el adaptador, una vez por arranque (D6).
       useFactory: () => new Argon2PasswordHasher(),
     },
     {
@@ -78,6 +82,12 @@ import { AuthController } from './auth.controller';
         ),
     },
     {
+      provide: EMAIL_TOKEN_REPOSITORY,
+      inject: [getConnectionToken(), CLOCK],
+      useFactory: (connection: Connection, clock: Clock) =>
+        new MongoEmailTokenRepository(connection, clock),
+    },
+    {
       provide: ATTEMPT_LIMITER,
       inject: [FIXED_WINDOW_COUNTER, APP_CONFIG],
       useFactory: (counter: FixedWindowCounter, config: ApiConfig) =>
@@ -85,12 +95,18 @@ import { AuthController } from './auth.controller';
     },
     { provide: AUTH_SECURITY_LOG, useFactory: () => new NestAuthSecurityLog() },
     SessionOpener,
+    AuthEmailSender,
     Register,
     Login,
     RefreshSession,
     Logout,
     ChangePassword,
+    ForgotPassword,
+    ResetPassword,
+    VerifyEmail,
+    ResendVerificationEmail,
     { provide: APP_GUARD, useClass: AccessTokenGuard },
   ],
+  exports: [EMAIL_TOKEN_REPOSITORY],
 })
 export class AuthModule {}

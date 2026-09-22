@@ -72,6 +72,7 @@ export class InMemoryUserRepository implements UserRepository {
     id: string,
     passwordHash: string,
     changedAt: Date,
+    _session?: object,
   ): Promise<boolean> {
     const user = this.users.get(id);
     if (!user) {
@@ -82,6 +83,15 @@ export class InMemoryUserRepository implements UserRepository {
       passwordHash,
       passwordChangedAt: new Date(changedAt),
     });
+    return Promise.resolve(true);
+  }
+
+  markEmailVerified(id: string, _session?: object): Promise<boolean> {
+    const user = this.users.get(id);
+    if (!user) {
+      return Promise.resolve(false);
+    }
+    this.users.set(id, { ...user, emailVerified: true });
     return Promise.resolve(true);
   }
 

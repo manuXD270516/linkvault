@@ -82,6 +82,7 @@ export class InMemoryUserAccounts implements UserAccounts {
       id: `user-${this.nextId++}`,
       email: normalize(input.email),
       displayName: input.displayName.trim(),
+      emailVerified: false,
       aiConsent: {
         externalProviders: false,
         consentedAt: null,
@@ -100,13 +101,26 @@ export class InMemoryUserAccounts implements UserAccounts {
     return Promise.resolve(structuredClone(profile));
   }
 
-  setPasswordHash(userId: string, passwordHash: string): Promise<void> {
+  setPasswordHash(
+    userId: string,
+    passwordHash: string,
+    _session?: object,
+  ): Promise<void> {
     const account = this.accounts.get(userId);
     if (!account) {
       return Promise.reject(new Error(`User "${userId}" not found`));
     }
     account.passwordHash = passwordHash;
     account.passwordChangedAt = this.clock.now();
+    return Promise.resolve();
+  }
+
+  markEmailVerified(userId: string, _session?: object): Promise<void> {
+    const account = this.accounts.get(userId);
+    if (!account) {
+      return Promise.reject(new Error(`User "${userId}" not found`));
+    }
+    account.profile = { ...account.profile, emailVerified: true };
     return Promise.resolve();
   }
 
@@ -279,6 +293,20 @@ export class InMemorySessionRepository implements SessionRepository {
         sessionId !== keepSessionId &&
         session.revokedAt === null
       ) {
+        session.revokedAt = this.clock.now();
+        revoked++;
+      }
+    }
+    return Promise.resolve(revoked);
+  }
+
+  revokeAllUserSessions(userId: string): Promise<number> {
+    if (this.failRevokeWith) {
+      return Promise.reject(this.failRevokeWith);
+    }
+    let revoked = 0;
+    for (const session of this.sessions.values()) {
+      if (session.userId === userId && session.revokedAt === null) {
         session.revokedAt = this.clock.now();
         revoked++;
       }

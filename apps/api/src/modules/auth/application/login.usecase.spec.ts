@@ -33,6 +33,7 @@ describe('Login', () => {
       harness.hasher,
       harness.limiter,
       harness.sessionOpener,
+      harness.emailSender,
     );
     await harness.accounts.createWithPassword({
       email: 'ana@example.com',

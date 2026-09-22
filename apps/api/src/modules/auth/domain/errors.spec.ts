@@ -5,6 +5,7 @@ import {
   EmailTaken,
   InvalidAccessToken,
   InvalidCredentials,
+  InvalidEmailToken,
   InvalidRefresh,
   PasswordPolicyViolation,
   RefreshConflict,
@@ -19,6 +20,7 @@ describe('auth domain errors', () => {
     [new InvalidRefresh('unknown_token'), 'invalid_refresh'],
     [new RefreshConflict(), 'refresh_conflict'],
     [new InvalidAccessToken(), 'unauthorized'],
+    [new InvalidEmailToken(), 'invalid_token'],
     [
       new PasswordPolicyViolation('newPassword', 'too_short'),
       'validation_error',
@@ -36,6 +38,7 @@ describe('auth domain errors', () => {
       new InvalidRefresh('missing_token'),
       new RefreshConflict(),
       new InvalidAccessToken(),
+      new InvalidEmailToken(),
       new PasswordPolicyViolation('password', 'too_long'),
     ].map((error) => error.code);
 

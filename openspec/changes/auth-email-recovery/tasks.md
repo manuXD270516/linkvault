@@ -7,37 +7,37 @@
 
 ## 2. Puerto Mailer y plantillas
 
-- [ ] 2.1 [backend] Puerto `Mailer` + tipos de plantilla `email-verification` / `password-reset` (locale, variables); verificar con test de contrato del puerto (mock) sin SDKs en application.
-- [ ] 2.2 [backend] `CapturingMailer` para tests/CI (almacena to, templateId, locale, actionUrl); verificar que un envío queda consultable y no hace red.
-- [ ] 2.3 [backend] `SmtpMailer` hacia Mailpit y cableado `MAIL_PROVIDER=smtp`; verificar que el adaptador SMTP se construye con host/puerto del env (smoke Mailpit solo local).
-- [ ] 2.4 [backend] `ResendMailer` con `MAIL_PROVIDER=resend`; verificar unitario con HTTP mock (asunto/cuerpo plano, From, error de API) sin loguear la API key.
-- [ ] 2.5 [backend] Plantillas ES/EN **solo texto plano** (sin HTML) para verify y reset; verificar snapshot o asserts de cadenas clave y que `actionUrl` usa `WEB_BASE_URL`.
+- [x] 2.1 [backend] Puerto `Mailer` + tipos de plantilla `email-verification` / `password-reset` (locale, variables); verificar con test de contrato del puerto (mock) sin SDKs en application.
+- [x] 2.2 [backend] `CapturingMailer` para tests/CI (almacena to, templateId, locale, actionUrl); verificar que un envío queda consultable y no hace red.
+- [x] 2.3 [backend] `SmtpMailer` hacia Mailpit y cableado `MAIL_PROVIDER=smtp`; verificar que el adaptador SMTP se construye con host/puerto del env (smoke Mailpit solo local).
+- [x] 2.4 [backend] `ResendMailer` con `MAIL_PROVIDER=resend`; verificar unitario con HTTP mock (asunto/cuerpo plano, From, error de API) sin loguear la API key.
+- [x] 2.5 [backend] Plantillas ES/EN **solo texto plano** (sin HTML) para verify y reset; verificar snapshot o asserts de cadenas clave y que `actionUrl` usa `WEB_BASE_URL`.
 
 ## 3. Tokens y dominio auth
 
-- [ ] 3.1 [backend] Colección/repositorio de `auth_email_tokens` (hash SHA-256, purpose, TTL, invalidar previos, un solo uso; consume en txn Mongo con el efecto de negocio); verificar integración Mongo: emit, consume, reuse → inválido, caducidad reset 1 h.
-- [ ] 3.2 [backend] Límites Redis **solo** forgot/resend (3/email, 20/IP, fail-open); sin límite Redis en consume verify/reset; verificar unitarios de cupo, `Retry-After` y fallo abierto sin email en logs.
-- [ ] 3.3 [backend] Añadir `revokeAllUserSessions(userId)` al puerto `SessionRepository` + implementación Mongo e in-memory; verificar que revoca todas las activas del usuario y no toca las de otros.
+- [x] 3.1 [backend] Colección/repositorio de `auth_email_tokens` (hash SHA-256, purpose, TTL, invalidar previos, un solo uso; consume en txn Mongo con el efecto de negocio); verificar integración Mongo: emit, consume, reuse → inválido, caducidad reset 1 h.
+- [x] 3.2 [backend] Límites Redis **solo** forgot/resend (3/email, 20/IP, fail-open); sin límite Redis en consume verify/reset; verificar unitarios de cupo, `Retry-After` y fallo abierto sin email en logs.
+- [x] 3.3 [backend] Añadir `revokeAllUserSessions(userId)` al puerto `SessionRepository` + implementación Mongo e in-memory; verificar que revoca todas las activas del usuario y no toca las de otros.
 
 ## 4. Perfil emailVerified
 
-- [ ] 4.1 [backend] Campo `emailVerified` en entidad/schema users, default registro `false`, default lectura/migración cuentas previas `true`; **`UsersFacade`** expone lectura + `markEmailVerified` (auth no escribe `users` directo); verificar “Registro nuevo sin verificar”, “Cuentas previas siguen verificadas”.
-- [ ] 4.2 [backend] Exponer `emailVerified` en `UserProfile` / sesión iniciada; PATCH rechaza el campo; verificar “Consulta correcta” y “No se puede marcar a mano” + schema zod en `libs/shared`.
-- [ ] 4.3 [backend] Añadir `invalid_token` a `apiErrorCodeSchema` (+ status/mensajes en el filtro); verificar que el schema y el filtro aceptan el código en verify/reset.
+- [x] 4.1 [backend] Campo `emailVerified` en entidad/schema users, default registro `false`, default lectura/migración cuentas previas `true`; **`UsersFacade`** expone lectura + `markEmailVerified` (auth no escribe `users` directo); verificar “Registro nuevo sin verificar”, “Cuentas previas siguen verificadas”.
+- [x] 4.2 [backend] Exponer `emailVerified` en `UserProfile` / sesión iniciada; PATCH rechaza el campo; verificar “Consulta correcta” y “No se puede marcar a mano” + schema zod en `libs/shared`.
+- [x] 4.3 [backend] Añadir `invalid_token` a `apiErrorCodeSchema` (+ status/mensajes en el filtro); verificar que el schema y el filtro aceptan el código en verify/reset.
 
 ## 5. Casos de uso verificación y recuperación
 
-- [ ] 5.1 [backend] Tras `register`, emitir verify + enviar correo (fallo mail **o** fallo al persistir token → 201 + warning); verificar escenarios de registro con CapturingMailer y doble de repositorio que falla.
-- [ ] 5.2 [backend] `verify-email` (consume token + `markEmailVerified` en **una txn** Mongo → 204 / `invalid_token`); verificar escenarios de `auth/email-verification`.
-- [ ] 5.3 [backend] `verify-email/resend` **solo autenticado** (cuerpo vacío; ignora `email` ajeno; siempre 200 genérico salvo 401/429); verificar anti-abuso de email ajeno, “Límite de reenvíos” y 401 sin sesión.
-- [ ] 5.4 [backend] `forgot-password` (siempre 200, token 1 h, envío); verificar cuenta existente / inexistente / 429 con CapturingMailer.
-- [ ] 5.5 [backend] `reset-password`: política → **`revokeAllUserSessions` primero** → `setPasswordHash` → consumir token (txn) → `AttemptLimiter.reset(login-email)`; verificar “Reset correcto…”, “Orden revocar antes del hash”, “Reset limpia el límite de login…” y “Contraseña nueva inválida no consume el token”.
+- [x] 5.1 [backend] Tras `register`, emitir verify + enviar correo (fallo mail **o** fallo al persistir token → 201 + warning); verificar escenarios de registro con CapturingMailer y doble de repositorio que falla.
+- [x] 5.2 [backend] `verify-email` (consume token + `markEmailVerified` en **una txn** Mongo → 204 / `invalid_token`); verificar escenarios de `auth/email-verification`.
+- [x] 5.3 [backend] `verify-email/resend` **solo autenticado** (cuerpo vacío; ignora `email` ajeno; siempre 200 genérico salvo 401/429); verificar anti-abuso de email ajeno, “Límite de reenvíos” y 401 sin sesión.
+- [x] 5.4 [backend] `forgot-password` (siempre 200, token 1 h, envío); verificar cuenta existente / inexistente / 429 con CapturingMailer.
+- [x] 5.5 [backend] `reset-password`: política → **`revokeAllUserSessions` primero** → `setPasswordHash` → consumir token (txn) → `AttemptLimiter.reset(login-email)`; verificar “Reset correcto…”, “Orden revocar antes del hash”, “Reset limpia el límite de login…” y “Contraseña nueva inválida no consume el token”.
 
 ## 6. Presentación API y cascada
 
-- [ ] 6.1 [backend] Endpoints en `AuthController` + CSRF; `@Public()` solo forgot/reset/verify-email (**no** resend); actualizar lista de rutas públicas; verificar escenarios de `auth/sessions` e integración HTTP.
-- [ ] 6.2 [backend] Cascada de borrado elimina `auth_email_tokens` del userId en la misma txn; verificar escenario de cascada con tokens pendientes.
-- [ ] 6.3 [backend] Redacción de logs: no token en claro ni cuerpos de correo; verificar test de redacción / filtro.
+- [x] 6.1 [backend] Endpoints en `AuthController` + CSRF; `@Public()` solo forgot/reset/verify-email (**no** resend); actualizar lista de rutas públicas; verificar escenarios de `auth/sessions` e integración HTTP.
+- [x] 6.2 [backend] Cascada de borrado elimina `auth_email_tokens` del userId en la misma txn; verificar escenario de cascada con tokens pendientes.
+- [x] 6.3 [backend] Redacción de logs: no token en claro ni cuerpos de correo; verificar test de redacción / filtro.
 
 ## 7. Frontend
 

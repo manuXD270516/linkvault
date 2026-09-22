@@ -14,6 +14,8 @@ export interface UserDocument {
   email: string;
   passwordHash: string;
   passwordChangedAt: Date;
+  /** Ausente en documentos previos al change → lectura como `true` (ADR-034 D7). */
+  emailVerified?: boolean;
   displayName: string;
   aiConsent: {
     externalProviders: boolean;
@@ -30,6 +32,7 @@ export const userSchema = new Schema<UserDocument>(
     email: { type: String, required: true },
     passwordHash: { type: String, required: true },
     passwordChangedAt: { type: Date, required: true },
+    emailVerified: { type: Boolean, required: false },
     displayName: { type: String, required: true },
     aiConsent: {
       type: new Schema(

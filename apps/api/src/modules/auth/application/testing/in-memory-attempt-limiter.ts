@@ -24,6 +24,14 @@ function counterName(key: AttemptKey): string {
       return `login-ip:${ipLimitGroup(key.ip)}`;
     case 'register-ip':
       return `register-ip:${ipLimitGroup(key.ip)}`;
+    case 'forgot-email':
+      return `forgot-email:${key.email}`;
+    case 'forgot-ip':
+      return `forgot-ip:${ipLimitGroup(key.ip)}`;
+    case 'verify-resend-email':
+      return `verify-resend-email:${key.email}`;
+    case 'verify-resend-ip':
+      return `verify-resend-ip:${ipLimitGroup(key.ip)}`;
   }
 }
 
