@@ -53,7 +53,7 @@ export class AppModule {
     const aiModule = AiModule.forRootAsync({
       useFactory: () => ({ config: ai, redisUrl: config.REDIS_URL }),
     });
-    const searchModule = SearchModule.register();
+    const searchModule = SearchModule.register(aiModule);
     // Igual con `LinksModule`: `ApplicationsModule` y `MatchModule` reciben este mismo objeto para usar `LinksFacade`.
     // Importar la clase a secas crearía una segunda instancia de `LinksModule` sin `RUN_TASK` (D1 de
     // applications-tracking).
@@ -64,6 +64,9 @@ export class AppModule {
       linksModule,
       searchModule,
     );
+    // Mismo objeto DynamicModule para MatchModule: importar `CvModule` a secas + `register`
+    // duplica POST /api/cv (controllers del @Module estático se registran dos veces).
+    const cvModule = CvModule.register(searchModule);
 
     return {
       module: AppModule,
@@ -85,8 +88,8 @@ export class AppModule {
         linksModule,
         applicationsModule,
         NotificationsModule,
-        CvModule.register(searchModule),
-        MatchModule.register(linksModule, aiModule, applicationsModule),
+        cvModule,
+        MatchModule.register(linksModule, aiModule, applicationsModule, cvModule),
         ...(config.OUTBOX_RELAY_ENABLED ? [OutboxRelayModule] : []),
       ],
       controllers: [AccountDeletionController],

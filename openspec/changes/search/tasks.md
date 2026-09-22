@@ -45,4 +45,4 @@
 
 ## 9. Quality gate
 
-- [ ] 9.1 [infra] `pnpm nx affected -t lint,typecheck,test` en verde con `AI_CHAIN=mock`, `AI_EMBED_CHAIN=mock`; verify: comando exit 0 en la rama del change. Cubrir al menos la lista D12 (ACL, share/unshare, flag off outbox=0, purge pre-204, empty_query, clamp, embedTexts, degraded).
+- [x] 9.1 [infra] `pnpm nx affected -t lint,typecheck,test` en verde con `AI_CHAIN=mock`, `AI_EMBED_CHAIN=mock`; verify: comando exit 0 en la rama del change. Cubrir al menos la lista D12 (ACL, share/unshare, flag off outbox=0, purge pre-204, empty_query, clamp, embedTexts, degraded).

@@ -46,7 +46,7 @@ export class AppModule {
         // `MatchModule` importa el mismo `aiModule` para resolver `RUN_TASK` y registra `analyze-match` fuera de test.
         MatchModule.register(config, aiModule),
         NotificationsModule.register(config),
-        SearchModule.register(config),
+        SearchModule.register(config, aiModule),
         HealthModule,
       ],
     };

@@ -1,6 +1,6 @@
 /**
  * Puerto de embeddings para search (ADR-036). Envuelve `embedTexts` de libs/ai.
- * Mientras el change `ai` aterriza en paralelo, los tests usan un stub/fake.
+ * En tests unitarios se inyecta stub; en runtime `adaptEmbedTexts(EMBED_TEXTS)`.
  */
 
 export const SEARCH_EMBED_TEXTS = Symbol('SEARCH_EMBED_TEXTS');
