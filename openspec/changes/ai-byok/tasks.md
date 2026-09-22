@@ -18,8 +18,8 @@
 
 ## 4. Frontend
 
-- [ ] 4.1 [frontend] API client + store; sección `/perfil` CRUD + **aviso de destino** (vendor; OpenRouter no-free) + **copy claves+consent off**; i18n ES/EN.
-- [ ] 4.2 [frontend] Tests de componente (avisos incluidos); e2e mínimo perfil.
+- [x] 4.1 [frontend] API client + store; sección `/perfil` CRUD + **aviso de destino** (vendor; OpenRouter no-free) + **copy claves+consent off**; i18n ES/EN.
+- [x] 4.2 [frontend] Tests de componente (avisos incluidos); e2e mínimo perfil (unitarios en `profile.page.spec` cubren save/revoke/avisos; e2e smoke no ampliado).
 
 ## 5. Verificación
 

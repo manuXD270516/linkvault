@@ -221,4 +221,131 @@
       <lv-request-error [failure]="currentFailure" />
     }
   </section>
+
+  <!--
+    Claves BYOK (spec web/byok, D12): un bloque por vendor con aviso de destino nombrado;
+    OpenRouter añade la nota de data_collection cuando el modelo de entorno no es :free (MVP: siempre).
+  -->
+  <section class="flex flex-col gap-4" data-testid="profile-byok">
+    <h2 class="text-xl font-medium" i18n="@@profile.byok.title">Tus claves de IA</h2>
+    <p class="m-0 text-sm" i18n="@@profile.byok.intro">
+      Usa tu propia clave de Anthropic, OpenAI u OpenRouter. LinkVault la guarda cifrada y solo muestra un hint.
+    </p>
+
+    @if (byokKeysInactive()) {
+      <p
+        class="m-0"
+        role="status"
+        data-testid="profile-byok-consent-off"
+        i18n="@@profile.byok.keysInactive"
+        >Tienes claves guardadas, pero no se usan mientras el permiso de IA externa esté desactivado. Retirar el permiso no las borró.</p
+      >
+    }
+
+    @if (byokFailure(); as listFailure) {
+      <lv-request-error [failure]="listFailure" />
+    }
+    @if (byokActionFailure(); as actionFailure) {
+      <lv-request-error [failure]="actionFailure" />
+    }
+
+    @for (row of byokVendors; track row.vendor) {
+      @let vendor = row.vendor;
+      @let label = row.label;
+      @let configured = keyFor(vendor);
+      @let draft = draftControl(vendor);
+      <div
+        class="flex flex-col gap-2 border-t border-(--mat-sys-outline-variant) pt-4"
+        [attr.data-testid]="'profile-byok-vendor-' + vendor"
+      >
+        <h3 class="m-0 text-lg font-medium">{{ label }}</h3>
+
+        <p
+          class="m-0 text-sm"
+          [attr.data-testid]="'profile-byok-status-' + vendor"
+        >
+          @if (configured; as key) {
+            <ng-container i18n="@@profile.byok.configured"
+              >Configurada · hint …{{ key.keyHint }}</ng-container
+            >
+          } @else {
+            <ng-container i18n="@@profile.byok.missing">Sin configurar</ng-container>
+          }
+        </p>
+
+        @if (configured; as key) {
+          <p
+            class="m-0 text-sm"
+            [attr.data-testid]="'profile-byok-hint-' + vendor"
+            i18n="@@profile.byok.hint"
+            >Últimos caracteres: …{{ key.keyHint }}</p
+          >
+        }
+
+        <p
+          class="m-0 text-sm"
+          [attr.data-testid]="'profile-byok-destination-' + vendor"
+          i18n="@@profile.byok.destination"
+          >Con el permiso de IA externa vigente, el texto de tu CV y de la oferta puede salir hacia
+          {{ label }}.</p
+        >
+
+        @if (vendor === 'openrouter') {
+          <p
+            class="m-0 text-sm"
+            data-testid="profile-byok-openrouter-data-collection"
+            i18n="@@profile.byok.openrouterDataCollection"
+            >Si el modelo configurado no es :free, LinkVault no fuerza data_collection: deny.</p
+          >
+        }
+
+        <mat-form-field>
+          <mat-label i18n="@@profile.byok.apiKeyLabel">Clave de API</mat-label>
+          <input
+            matInput
+            type="password"
+            [formControl]="draft"
+            autocomplete="off"
+            spellcheck="false"
+            [attr.data-testid]="'profile-byok-key-' + vendor"
+          />
+          <mat-hint i18n="@@profile.byok.apiKeyHint">Mínimo {{ apiKeyMinLength }} caracteres</mat-hint>
+          @if (draft.invalid && draft.touched) {
+            <mat-error i18n="@@profile.byok.apiKeyInvalid"
+              >La clave debe tener al menos {{ apiKeyMinLength }} caracteres</mat-error
+            >
+          }
+        </mat-form-field>
+
+        <div class="flex flex-wrap gap-2">
+          <button
+            mat-flat-button
+            type="button"
+            [disabled]="byokSavingVendor() === vendor"
+            [attr.data-testid]="'profile-byok-save-' + vendor"
+            (click)="saveKey(vendor)"
+          >
+            @if (configured) {
+              <ng-container i18n="@@profile.byok.rotate">Rotar clave</ng-container>
+            } @else {
+              <ng-container i18n="@@profile.byok.save">Guardar clave</ng-container>
+            }
+          </button>
+
+          @if (configured) {
+            <button
+              mat-button
+              type="button"
+              [disabled]="byokRevokingVendor() === vendor"
+              [attr.data-testid]="'profile-byok-revoke-' + vendor"
+              (click)="revokeKey(vendor)"
+              i18n="@@profile.byok.revoke"
+            >
+              Revocar
+            </button>
+          }
+        </div>
+      </div>
+    }
+  </section>
 </section>

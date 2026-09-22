@@ -3287,6 +3287,108 @@
           <context context-type="linenumber">216,220</context>
         </context-group>
       </trans-unit>
+      <trans-unit id="profile.byok.title" datatype="html">
+        <source>Tus claves de IA</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="profile.byok.intro" datatype="html">
+        <source> Usa tu propia clave de Anthropic, OpenAI u OpenRouter. LinkVault la guarda cifrada y solo muestra un hint. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="profile.byok.keysInactive" datatype="html">
+        <source>Tienes claves guardadas, pero no se usan mientras el permiso de IA externa esté desactivado. Retirar el permiso no las borró.</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="profile.byok.configured" datatype="html">
+        <source>Configurada · hint …<x id="INTERPOLATION" equiv-text="{{ key.keyHint }}"/></source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="profile.byok.missing" datatype="html">
+        <source>Sin configurar</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="profile.byok.hint" datatype="html">
+        <source>Últimos caracteres: …<x id="INTERPOLATION" equiv-text="{{ key.keyHint }}"/></source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="profile.byok.destination" datatype="html">
+        <source> Con el permiso de IA externa vigente, el texto de tu CV y de la oferta puede salir hacia <x id="INTERPOLATION" equiv-text="{{ label }}"/>. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="profile.byok.openrouterDataCollection" datatype="html">
+        <source>Si el modelo configurado no es :free, LinkVault no fuerza data_collection: deny.</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="profile.byok.apiKeyLabel" datatype="html">
+        <source>Clave de API</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="profile.byok.apiKeyHint" datatype="html">
+        <source>Mínimo <x id="INTERPOLATION" equiv-text="{{ apiKeyMinLength }}"/> caracteres</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="profile.byok.apiKeyInvalid" datatype="html">
+        <source>La clave debe tener al menos <x id="INTERPOLATION" equiv-text="{{ apiKeyMinLength }}"/> caracteres</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="profile.byok.rotate" datatype="html">
+        <source>Rotar clave</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="profile.byok.save" datatype="html">
+        <source>Guardar clave</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="profile.byok.revoke" datatype="html">
+        <source> Revocar </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="profile.byok.revokeTitle" datatype="html">
+        <source>Revocar clave de <x id="VENDOR" equiv-text="label"/></source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.ts</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="profile.byok.revokeMessage" datatype="html">
+        <source>Se borrará la clave de <x id="VENDOR" equiv-text="label"/> guardada en LinkVault. No se puede deshacer.</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.ts</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="profile.byok.revokeConfirm" datatype="html">
+        <source>Revocar</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.ts</context>
+        </context-group>
+      </trans-unit>
       <trans-unit id="public.loading" datatype="html">
         <source>Cargando la oferta…</source>
         <context-group purpose="location">

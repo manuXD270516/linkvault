@@ -1788,6 +1788,74 @@
         <source>Solo tiene efecto cuando se usa un proveedor externo.</source>
         <target>Only takes effect when an external provider is used.</target>
       </trans-unit>
+          <trans-unit id="profile.byok.title" datatype="html">
+        <source>Tus claves de IA</source>
+        <target>Your AI keys</target>
+      </trans-unit>
+          <trans-unit id="profile.byok.intro" datatype="html">
+        <source>Usa tu propia clave de Anthropic, OpenAI u OpenRouter. LinkVault la guarda cifrada y solo muestra un hint.</source>
+        <target>Use your own Anthropic, OpenAI or OpenRouter key. LinkVault stores it encrypted and only shows a hint.</target>
+      </trans-unit>
+          <trans-unit id="profile.byok.keysInactive" datatype="html">
+        <source>Tienes claves guardadas, pero no se usan mientras el permiso de IA externa esté desactivado. Retirar el permiso no las borró.</source>
+        <target>You have keys saved, but they are not used while external AI permission is off. Withdrawing the permission did not delete them.</target>
+      </trans-unit>
+          <trans-unit id="profile.byok.configured" datatype="html">
+        <source>Configurada · hint …<x id="INTERPOLATION" equiv-text="{{ key.keyHint }}"/></source>
+        <target>Configured · hint …<x id="INTERPOLATION" equiv-text="{{ key.keyHint }}"/></target>
+      </trans-unit>
+          <trans-unit id="profile.byok.missing" datatype="html">
+        <source>Sin configurar</source>
+        <target>Not configured</target>
+      </trans-unit>
+          <trans-unit id="profile.byok.hint" datatype="html">
+        <source>Últimos caracteres: …<x id="INTERPOLATION" equiv-text="{{ key.keyHint }}"/></source>
+        <target>Last characters: …<x id="INTERPOLATION" equiv-text="{{ key.keyHint }}"/></target>
+      </trans-unit>
+          <trans-unit id="profile.byok.destination" datatype="html">
+        <source>Con el permiso de IA externa vigente, el texto de tu CV y de la oferta puede salir hacia <x id="INTERPOLATION" equiv-text="{{ label }}"/>.</source>
+        <target>With external AI permission in force, text from your CV and the job may leave toward <x id="INTERPOLATION" equiv-text="{{ label }}"/>.</target>
+      </trans-unit>
+          <trans-unit id="profile.byok.openrouterDataCollection" datatype="html">
+        <source>Si el modelo configurado no es :free, LinkVault no fuerza data_collection: deny.</source>
+        <target>If the configured model is not :free, LinkVault does not force data_collection: deny.</target>
+      </trans-unit>
+          <trans-unit id="profile.byok.apiKeyLabel" datatype="html">
+        <source>Clave de API</source>
+        <target>API key</target>
+      </trans-unit>
+          <trans-unit id="profile.byok.apiKeyHint" datatype="html">
+        <source>Mínimo <x id="INTERPOLATION" equiv-text="{{ apiKeyMinLength }}"/> caracteres</source>
+        <target>Minimum <x id="INTERPOLATION" equiv-text="{{ apiKeyMinLength }}"/> characters</target>
+      </trans-unit>
+          <trans-unit id="profile.byok.apiKeyInvalid" datatype="html">
+        <source>La clave debe tener al menos <x id="INTERPOLATION" equiv-text="{{ apiKeyMinLength }}"/> caracteres</source>
+        <target>The key must be at least <x id="INTERPOLATION" equiv-text="{{ apiKeyMinLength }}"/> characters</target>
+      </trans-unit>
+          <trans-unit id="profile.byok.rotate" datatype="html">
+        <source>Rotar clave</source>
+        <target>Rotate key</target>
+      </trans-unit>
+          <trans-unit id="profile.byok.save" datatype="html">
+        <source>Guardar clave</source>
+        <target>Save key</target>
+      </trans-unit>
+          <trans-unit id="profile.byok.revoke" datatype="html">
+        <source>Revocar</source>
+        <target>Revoke</target>
+      </trans-unit>
+          <trans-unit id="profile.byok.revokeTitle" datatype="html">
+        <source>Revocar clave de <x id="VENDOR" equiv-text="label"/></source>
+        <target>Revoke <x id="VENDOR" equiv-text="label"/> key</target>
+      </trans-unit>
+          <trans-unit id="profile.byok.revokeMessage" datatype="html">
+        <source>Se borrará la clave de <x id="VENDOR" equiv-text="label"/> guardada en LinkVault. No se puede deshacer.</source>
+        <target>The <x id="VENDOR" equiv-text="label"/> key stored in LinkVault will be deleted. This cannot be undone.</target>
+      </trans-unit>
+          <trans-unit id="profile.byok.revokeConfirm" datatype="html">
+        <source>Revocar</source>
+        <target>Revoke</target>
+      </trans-unit>
           <trans-unit id="cv.privacy.v2" datatype="html">
         <source>Tu CV solo lo ves tú y no sale de LinkVault sin tu permiso. En <x id="START_LINK" ctype="x-a" equiv-text="&lt;a routerLink=&quot;/perfil&quot; data-testid=&quot;cv-privacy-profile-link&quot;>"/>Perfil<x id="CLOSE_LINK" ctype="x-a" equiv-text="&lt;/a>"/> decides si un proveedor de IA externo puede analizarlo: antes de enviárselo sustituimos tu email, tus teléfonos, tu dirección, tu documento de identidad y las URL por marcadores, y también tu nombre, salvo que lo desactives allí.</source>
         <target>Your CV is only visible to you and does not leave LinkVault without your permission. In <x id="START_LINK" ctype="x-a" equiv-text="&lt;a routerLink=&quot;/perfil&quot; data-testid=&quot;cv-privacy-profile-link&quot;>"/>Profile<x id="CLOSE_LINK" ctype="x-a" equiv-text="&lt;/a>"/> you decide whether an external AI provider may analyze it: before sending it we replace your email, phone numbers, address, identity document and URLs with placeholders, and also your name unless you turn that off there.</target>
