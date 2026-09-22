@@ -178,7 +178,8 @@ export class ProcessNotifyFanOut {
       recipients = uniqueIds(recipients);
     }
 
-    const aggregateKey = `${payload.applicationId}:${payload.status}:${payload.groupId ?? 'union'}`;
+    // D6: statusChangedAt (no status) so reopen applied→X→applied still notifies.
+    const aggregateKey = `${payload.applicationId}:${payload.statusChangedAt}:${payload.groupId ?? 'union'}`;
     const linkTitle = await this.links.titleOf(payload.linkId);
     const actionUrl = `${this.webBaseUrl}/postulaciones`;
     await this.deliverToMany({

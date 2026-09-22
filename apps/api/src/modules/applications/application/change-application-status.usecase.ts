@@ -100,6 +100,7 @@ export class ChangeApplicationStatus {
                 linkId: current.linkId,
                 actorUserId: userId,
                 status: change.next.status,
+                statusChangedAt: change.next.statusChangedAt.toISOString(),
                 ...(request.groupId === undefined
                   ? {}
                   : { groupId: request.groupId }),

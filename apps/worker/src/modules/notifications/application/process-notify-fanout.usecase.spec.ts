@@ -22,9 +22,16 @@ import type {
 
 const ANA = '66e9a00000000000000000a1';
 const BETO = '66e9a00000000000000000b2';
+const CARLOS = '66e9a00000000000000000c3';
 const GROUP = '66e9a00000000000000000g1';
+const GROUP2 = '66e9a00000000000000000g2';
+const OTHER_GROUP = '66e9a00000000000000000g9';
 const LINK = '66e9a00000000000000000l1';
+const APP = '66e9a00000000000000000ap';
 const NOW = new Date('2026-09-22T12:00:00.000Z');
+const AT1 = '2026-09-22T12:00:00.000Z';
+const AT2 = '2026-09-22T13:00:00.000Z';
+const AT3 = '2026-09-22T14:00:00.000Z';
 
 class MemPrefs implements NotifyPreferencesReader {
   readonly map = new Map<string, NotificationPreferences>();
@@ -64,6 +71,13 @@ class MemUsers implements NotifyUserDirectory {
       emailVerified: true,
       outputLanguage: 'en',
     },
+    {
+      userId: CARLOS,
+      email: 'carlos@example.com',
+      displayName: 'Carlos',
+      emailVerified: true,
+      outputLanguage: 'es',
+    },
   ];
   profilesOf(userIds: readonly string[]): Promise<NotifyUserProfile[]> {
     return Promise.resolve(
@@ -87,12 +101,14 @@ class MemPush implements NotifyPushSubscriptions {
 class MemLedger implements NotifyDeliveryLedger {
   completed = new Set<string>();
   claims = 0;
+  keys: NotifyDeliveryKey[] = [];
   private keyOf(k: NotifyDeliveryKey): string {
     return `${k.type}|${k.aggregateKey}|${k.userId}|${k.channel}`;
   }
   claim(
     key: NotifyDeliveryKey,
   ): Promise<'claimed' | 'already_done' | 'in_flight'> {
+    this.keys.push(key);
     if (this.completed.has(this.keyOf(key))) {
       return Promise.resolve('already_done');
     }
@@ -172,6 +188,15 @@ function build(overrides: {
   return { useCase, prefs, groups, users, pushSubs, ledger, mailer, push };
 }
 
+function withTwoGroups(): MemGroups {
+  const groups = new MemGroups();
+  groups.members.set(GROUP, [ANA, BETO]);
+  groups.members.set(GROUP2, [ANA, CARLOS]);
+  groups.linkGroups.set(LINK, [GROUP, GROUP2]);
+  groups.names.set(GROUP2, 'Frontend');
+  return groups;
+}
+
 describe('ProcessNotifyFanOut group_new_link', () => {
   it('incluye al autor por defecto y envía email a ambos', async () => {
     const { useCase, mailer } = build();
@@ -198,6 +223,34 @@ describe('ProcessNotifyFanOut group_new_link', () => {
       payload: { groupId: GROUP, linkId: LINK, actorUserId: ANA },
     });
     expect(mailer.sent.map((m) => m.to)).toEqual(['beto@example.com']);
+  });
+
+  it('opt-out groupNewLink=false no entrega email ni push', async () => {
+    const prefs = new MemPrefs();
+    prefs.map.set(ANA, {
+      ...DEFAULT_NOTIFICATION_PREFERENCES,
+      groupNewLink: false,
+    });
+    prefs.map.set(BETO, {
+      ...DEFAULT_NOTIFICATION_PREFERENCES,
+      groupNewLink: false,
+    });
+    const pushSubs = new MemPush();
+    pushSubs.byUser.set(ANA, [
+      {
+        userId: ANA,
+        endpoint: 'https://push.example/a',
+        p256dh: 'p',
+        auth: 'a',
+      },
+    ]);
+    const { useCase, mailer, push } = build({ prefs, pushSubs });
+    await useCase.execute({
+      type: 'GroupLinkAdded.v1',
+      payload: { groupId: GROUP, linkId: LINK, actorUserId: ANA },
+    });
+    expect(mailer.sent).toHaveLength(0);
+    expect(push.sent).toHaveLength(0);
   });
 
   it('no envía email si no verificado; push sí', async () => {
@@ -265,7 +318,7 @@ describe('ProcessNotifyFanOut application_stale', () => {
     await useCase.execute({
       type: 'ApplicationStale.v1',
       payload: {
-        applicationId: '66e9a00000000000000000ap',
+        applicationId: APP,
         userId: ANA,
         linkId: LINK,
         status: 'applied',
@@ -276,18 +329,50 @@ describe('ProcessNotifyFanOut application_stale', () => {
     expect(mailer.sent.map((m) => m.to)).toEqual(['ana@example.com']);
     expect(mailer.sent[0]?.templateId).toBe('application-stale');
   });
+
+  it('opt-out applicationStale=false no entrega', async () => {
+    const prefs = new MemPrefs();
+    prefs.map.set(ANA, {
+      ...DEFAULT_NOTIFICATION_PREFERENCES,
+      applicationStale: false,
+    });
+    const pushSubs = new MemPush();
+    pushSubs.byUser.set(ANA, [
+      {
+        userId: ANA,
+        endpoint: 'https://push.example/a',
+        p256dh: 'p',
+        auth: 'a',
+      },
+    ]);
+    const { useCase, mailer, push } = build({ prefs, pushSubs });
+    await useCase.execute({
+      type: 'ApplicationStale.v1',
+      payload: {
+        applicationId: APP,
+        userId: ANA,
+        linkId: LINK,
+        status: 'applied',
+        lastChangedAt: '2026-09-01T00:00:00.000Z',
+        staleAfterDays: 10,
+      },
+    });
+    expect(mailer.sent).toHaveLength(0);
+    expect(push.sent).toHaveLength(0);
+  });
 });
 
 describe('ProcessNotifyFanOut application_status_group', () => {
-  it('avanisa a la unión de miembros', async () => {
+  it('avisa a la unión de miembros', async () => {
     const { useCase, mailer } = build();
     await useCase.execute({
       type: 'ApplicationStatusNotify.v1',
       payload: {
-        applicationId: '66e9a00000000000000000ap',
+        applicationId: APP,
         linkId: LINK,
         actorUserId: ANA,
         status: 'in_process',
+        statusChangedAt: AT1,
       },
     });
     expect(mailer.sent.map((m) => m.to).sort()).toEqual([
@@ -295,5 +380,124 @@ describe('ProcessNotifyFanOut application_status_group', () => {
       'beto@example.com',
     ]);
     expect(JSON.stringify(mailer.sent)).not.toContain('stageLabel');
+  });
+
+  it('payload.groupId acota solo a miembros de ese grupo (D8)', async () => {
+    const groups = withTwoGroups();
+    const { useCase, mailer } = build({ groups });
+    await useCase.execute({
+      type: 'ApplicationStatusNotify.v1',
+      payload: {
+        applicationId: APP,
+        linkId: LINK,
+        actorUserId: ANA,
+        status: 'applied',
+        statusChangedAt: AT1,
+        groupId: GROUP,
+      },
+    });
+    expect(mailer.sent.map((m) => m.to).sort()).toEqual([
+      'ana@example.com',
+      'beto@example.com',
+    ]);
+    expect(mailer.sent.map((m) => m.to)).not.toContain('carlos@example.com');
+  });
+
+  it('prefs.applicationStatusGroupId acota a ese grupo ∩ link (D8)', async () => {
+    const groups = withTwoGroups();
+    const prefs = new MemPrefs();
+    prefs.map.set(BETO, {
+      ...DEFAULT_NOTIFICATION_PREFERENCES,
+      applicationStatusGroupId: GROUP2,
+    });
+    prefs.map.set(CARLOS, {
+      ...DEFAULT_NOTIFICATION_PREFERENCES,
+      applicationStatusGroupId: GROUP2,
+    });
+    const { useCase, mailer } = build({ groups, prefs });
+    await useCase.execute({
+      type: 'ApplicationStatusNotify.v1',
+      payload: {
+        applicationId: APP,
+        linkId: LINK,
+        actorUserId: ANA,
+        status: 'applied',
+        statusChangedAt: AT1,
+      },
+    });
+    // BETO pref wants GROUP2 but is not a member → excluded.
+    // CARLOS pref GROUP2 and is member → included.
+    // ANA defaults (union) → included.
+    expect(mailer.sent.map((m) => m.to).sort()).toEqual([
+      'ana@example.com',
+      'carlos@example.com',
+    ]);
+  });
+
+  it('pref group no está en grupos del link → 0 destinatarios con esa pref (D8)', async () => {
+    const prefs = new MemPrefs();
+    prefs.map.set(ANA, {
+      ...DEFAULT_NOTIFICATION_PREFERENCES,
+      applicationStatusGroupId: OTHER_GROUP,
+    });
+    prefs.map.set(BETO, {
+      ...DEFAULT_NOTIFICATION_PREFERENCES,
+      applicationStatusGroupId: OTHER_GROUP,
+    });
+    const { useCase, mailer } = build({ prefs });
+    await useCase.execute({
+      type: 'ApplicationStatusNotify.v1',
+      payload: {
+        applicationId: APP,
+        linkId: LINK,
+        actorUserId: ANA,
+        status: 'applied',
+        statusChangedAt: AT1,
+      },
+    });
+    expect(mailer.sent).toHaveLength(0);
+  });
+
+  it('reopen applied→in_process→applied no suprime el segundo aviso (D6)', async () => {
+    const { useCase, mailer, ledger } = build();
+    const base = {
+      type: 'ApplicationStatusNotify.v1' as const,
+      payload: {
+        applicationId: APP,
+        linkId: LINK,
+        actorUserId: ANA,
+        status: 'applied' as const,
+        statusChangedAt: AT1,
+      },
+    };
+    await useCase.execute(base);
+    await useCase.execute({
+      ...base,
+      payload: {
+        ...base.payload,
+        status: 'in_process',
+        statusChangedAt: AT2,
+      },
+    });
+    const beforeReopen = mailer.sent.length;
+    await useCase.execute({
+      ...base,
+      payload: {
+        ...base.payload,
+        status: 'applied',
+        statusChangedAt: AT3,
+      },
+    });
+    expect(mailer.sent.length).toBeGreaterThan(beforeReopen);
+    const aggregateKeys = [
+      ...new Set(
+        ledger.keys
+          .filter((k) => k.type === 'application_status_group')
+          .map((k) => k.aggregateKey),
+      ),
+    ];
+    expect(aggregateKeys).toContain(`${APP}:${AT1}:union`);
+    expect(aggregateKeys).toContain(`${APP}:${AT3}:union`);
+    expect(aggregateKeys).toHaveLength(3);
   });
 });

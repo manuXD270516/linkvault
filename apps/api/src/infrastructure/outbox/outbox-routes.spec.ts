@@ -112,6 +112,7 @@ describe('the outbox routing table', () => {
         linkId: 'l1',
         actorUserId: 'u1',
         status: 'applied',
+        statusChangedAt: '2026-09-22T12:00:00.000Z',
       }),
     ).toEqual({
       data: {
@@ -119,8 +120,9 @@ describe('the outbox routing table', () => {
         linkId: 'l1',
         actorUserId: 'u1',
         status: 'applied',
+        statusChangedAt: '2026-09-22T12:00:00.000Z',
       },
-      jobId: 'notify:asn:a1_applied_union',
+      jobId: 'notify:asn:a1_applied_union_2026-09-22T120000.000Z',
     });
   });
 
@@ -182,6 +184,7 @@ describe('the jobId of every route, against the rules of BullMQ', () => {
       linkId: 'l1',
       actorUserId: 'u1',
       status: 'applied',
+      statusChangedAt: '2026-09-22T12:00:00.000Z',
     },
   };
 

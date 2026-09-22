@@ -54,6 +54,7 @@ const payloads: Readonly<Record<string, Record<string, unknown>>> = {
     linkId: 'l1',
     actorUserId: 'u1',
     status: 'applied',
+    statusChangedAt: '2026-09-22T12:00:00.000Z',
   },
 };
 
