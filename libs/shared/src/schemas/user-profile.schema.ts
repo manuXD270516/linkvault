@@ -76,6 +76,8 @@ export const userProfileSchema = z.strictObject({
   id: z.string().min(1),
   email: z.email(),
   displayName: displayNameSchema,
+  /** `false` tras el registro hasta verificar; cuentas antiguas sin el campo se leen como `true`. */
+  emailVerified: z.boolean(),
   aiConsent: aiConsentSchema,
   outputLanguage: outputLanguageSchema,
   redactName: z.boolean(),

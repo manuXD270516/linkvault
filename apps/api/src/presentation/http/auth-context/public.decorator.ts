@@ -1,7 +1,8 @@
 import { SetMetadata } from '@nestjs/common';
 
-// Rutas públicas (D3 de auth-users). Toda ruta exige access token salvo las marcadas con `@Public()`: register, login,
-// refresh, logout y la salud. Se puede poner en el controlador o en un método.
+// Rutas públicas (D3 de auth-users + ADR-034). Toda ruta exige access token salvo las marcadas con `@Public()`:
+// register, login, refresh, logout, forgot-password, reset-password, verify-email y la salud.
+// `verify-email/resend` NO es pública.
 
 export const IS_PUBLIC_KEY = 'linkvault:isPublic';
 

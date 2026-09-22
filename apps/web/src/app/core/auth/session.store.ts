@@ -56,6 +56,15 @@ export const SessionStore = signalStore(
   withComputed(({ status, user, consentLoadStatus }) => ({
     isAuthenticated: computed(() => status() === 'authenticated'),
     /**
+     * `true` mientras la sesión autenticada tenga `emailVerified` en `false` (banner de verificación, ADR-034).
+     */
+    needsEmailVerification: computed(() => {
+      const profile = user();
+      return (
+        status() === 'authenticated' && profile !== null && profile.emailVerified === false
+      );
+    }),
+    /**
      * Tres valores: vigente, no vigente o desconocido. No muta `externalProviders` cuando las versiones difieren —solo
      * reporta `outdated`.
      */

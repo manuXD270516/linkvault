@@ -32,6 +32,7 @@ const PROFILE_FIELDS = [
   'createdAt',
   'displayName',
   'email',
+  'emailVerified',
   'id',
   'outputLanguage',
   'redactName',
@@ -116,6 +117,7 @@ describe('UsersController', () => {
       expect(userProfileSchema.parse(body)).toEqual({
         id: profile.id,
         email: profile.email,
+        emailVerified: false,
         displayName: 'Ana',
         aiConsent: {
           externalProviders: false,

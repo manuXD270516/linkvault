@@ -13,6 +13,7 @@ export function toUserProfile(user: User): UserProfile {
     id: user.id,
     email: user.email,
     displayName: user.profile.displayName,
+    emailVerified: user.emailVerified,
     aiConsent: {
       externalProviders: user.profile.aiConsent.externalProviders,
       consentedAt: user.profile.aiConsent.consentedAt?.toISOString() ?? null,

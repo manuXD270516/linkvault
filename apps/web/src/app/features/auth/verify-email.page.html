@@ -1,0 +1,39 @@
+<section class="mx-auto flex max-w-sm flex-col gap-4 p-6">
+  <h1 class="text-2xl font-medium" i18n="@@emailVerify.title">Verificar email</h1>
+
+  @switch (phase()) {
+    @case ('loading') {
+      <p i18n="@@emailVerify.loading">Comprobando el enlace…</p>
+    }
+    @case ('success') {
+      <p role="status" i18n="@@emailVerify.success">Email verificado</p>
+      @if (!session.isAuthenticated()) {
+        <p>
+          <a routerLink="/login" i18n="@@emailVerify.goToLogin">Ir a iniciar sesión</a>
+        </p>
+      } @else {
+        <p>
+          <a routerLink="/grupos" i18n="@@emailVerify.goToApp">Ir a la aplicación</a>
+        </p>
+      }
+    }
+    @case ('invalid') {
+      <p class="text-(--mat-sys-error)" role="alert" i18n="@@emailAuth.invalidToken">
+        Este enlace no es válido o ha caducado.
+      </p>
+      @if (!session.isAuthenticated()) {
+        <p i18n="@@emailVerify.invalidHintGuest">
+          Inicia sesión y usa el aviso de la aplicación para solicitar un correo nuevo.
+        </p>
+        <p>
+          <a routerLink="/login" i18n="@@emailVerify.goToLogin">Ir a iniciar sesión</a>
+        </p>
+      }
+    }
+    @default {
+      @if (failure(); as currentFailure) {
+        <lv-request-error [failure]="currentFailure" />
+      }
+    }
+  }
+</section>

@@ -22,6 +22,10 @@ export interface User {
    * instante dejan de valer (D3).
    */
   readonly passwordChangedAt: Date;
+  /**
+   * Verificación del buzón (ADR-034). Registro nuevo → `false`; documentos antiguos sin el campo se leen como `true`.
+   */
+  readonly emailVerified: boolean;
   readonly profile: Profile;
   readonly createdAt: Date;
 }
@@ -55,6 +59,7 @@ export function createUser(params: {
     email: normalizeEmail(params.email),
     passwordHash: params.passwordHash,
     passwordChangedAt: params.now,
+    emailVerified: false,
     profile: defaultProfile(normalizeDisplayName(params.displayName)),
     createdAt: params.now,
   };

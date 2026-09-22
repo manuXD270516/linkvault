@@ -3,11 +3,12 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { Router, RouterLink, RouterOutlet } from '@angular/router';
 import { AuthApi } from '../../core/auth/auth.api';
+import { EmailUnverifiedBanner } from './email-unverified-banner';
 
 /** Marco de las rutas autenticadas: barra con enlace al perfil y botón de cerrar sesión. */
 @Component({
   selector: 'lv-shell',
-  imports: [MatButtonModule, MatToolbarModule, RouterLink, RouterOutlet],
+  imports: [EmailUnverifiedBanner, MatButtonModule, MatToolbarModule, RouterLink, RouterOutlet],
   templateUrl: './shell.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })

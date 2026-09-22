@@ -6,6 +6,7 @@ import {
   AppConfigModule,
 } from '../infrastructure/config/app-config.module';
 import { AppLoggerModule } from '../infrastructure/logging/app-logger.module';
+import { MailModule } from '../infrastructure/mail/mail.module';
 import { OutboxRelayModule } from '../infrastructure/outbox/outbox-relay.module';
 import { MongoPersistenceModule } from '../infrastructure/persistence/mongo-persistence.module';
 import { RedisHealthModule } from '../infrastructure/redis/redis-health.module';
@@ -63,6 +64,7 @@ export class AppModule {
       imports: [
         AppConfigModule.forRoot(config),
         AppLoggerModule,
+        MailModule,
         MongoPersistenceModule,
         RedisHealthModule,
         HealthModule,

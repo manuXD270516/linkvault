@@ -34,6 +34,7 @@ export class MongoUserRepository implements UserRepository {
         email: user.email,
         passwordHash: user.passwordHash,
         passwordChangedAt: user.passwordChangedAt,
+        emailVerified: user.emailVerified,
         displayName: user.profile.displayName,
         aiConsent: {
           externalProviders: user.profile.aiConsent.externalProviders,
@@ -110,6 +111,7 @@ export class MongoUserRepository implements UserRepository {
     id: string,
     passwordHash: string,
     changedAt: Date,
+    session?: object,
   ): Promise<boolean> {
     if (!isObjectIdHex(id)) {
       return false;
@@ -118,6 +120,25 @@ export class MongoUserRepository implements UserRepository {
       .updateOne(
         { _id: id },
         { $set: { passwordHash, passwordChangedAt: changedAt } },
+        session === undefined
+          ? undefined
+          : { session: session as import('mongoose').ClientSession },
+      )
+      .exec();
+    return result.matchedCount === 1;
+  }
+
+  async markEmailVerified(id: string, session?: object): Promise<boolean> {
+    if (!isObjectIdHex(id)) {
+      return false;
+    }
+    const result = await this.model
+      .updateOne(
+        { _id: id },
+        { $set: { emailVerified: true } },
+        session === undefined
+          ? undefined
+          : { session: session as import('mongoose').ClientSession },
       )
       .exec();
     return result.matchedCount === 1;
@@ -165,6 +186,8 @@ function toUser(document: UserDocument): User {
     email: document.email,
     passwordHash: document.passwordHash,
     passwordChangedAt: document.passwordChangedAt,
+    // Cuentas previas sin el campo → verificadas (ADR-034 D7).
+    emailVerified: document.emailVerified ?? true,
     profile: {
       displayName: document.displayName,
       aiConsent: {

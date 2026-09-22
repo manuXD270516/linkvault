@@ -259,18 +259,31 @@ describe('la página pública', () => {
     expect(burnt.body).toBe(malformed.body);
   });
 
-  // "Lo público se limita a su prefijo" (spec auth/sessions): sin `Authorization` solo responden register, login,
-  // refresh, logout, lo que cuelga de `/api/public/`, la salud y `/p/:slug`. Todo lo demás, `401`.
+  // "Lo público se limita a su prefijo" (spec auth/sessions): sin `Authorization` responden
+  // register/login/refresh/logout, forgot/reset/verify-email, `/api/public/*`, salud y `/p/:slug`.
+  // `verify-email/resend` y el resto exigen sesión → 401.
   it('Lo público se limita a su prefijo', async () => {
     const share = await published(ana, 'https://empresa.example/careers/scope');
 
-    const open = await Promise.all(
+    const openGets = await Promise.all(
       [
         `/p/${share.slug}`,
         `/api/public/previews/${share.slug}`,
         '/health',
         '/health/live',
       ].map((url) => http.request('GET', url)),
+    );
+    const openPosts = await Promise.all(
+      [
+        '/api/auth/forgot-password',
+        '/api/auth/reset-password',
+        '/api/auth/verify-email',
+      ].map((url) =>
+        http.request('POST', url, {
+          body: {},
+          headers: { 'x-requested-with': 'linkvault' },
+        }),
+      ),
     );
     const guarded = await Promise.all(
       [
@@ -282,6 +295,7 @@ describe('la página pública', () => {
         ['GET', '/api/applications'],
         ['GET', '/api/events'],
         ['POST', '/api/links'],
+        ['POST', '/api/auth/verify-email/resend'],
         ['PUT', `/api/groups/${group.id}/links/x/public`],
         ['DELETE', `/api/groups/${group.id}/links/x/public`],
         ['PATCH', `/api/groups/${group.id}/settings`],
@@ -289,11 +303,17 @@ describe('la página pública', () => {
         http.request(
           method as 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
           url ?? '',
+          method === 'POST' && url === '/api/auth/verify-email/resend'
+            ? {
+                body: {},
+                headers: { 'x-requested-with': 'linkvault' },
+              }
+            : undefined,
         ),
       ),
     );
 
-    for (const response of open) {
+    for (const response of [...openGets, ...openPosts]) {
       expect(response.statusCode).not.toBe(401);
     }
     for (const response of guarded) {

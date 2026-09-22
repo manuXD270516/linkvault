@@ -198,6 +198,7 @@ describe('sessionResponseSchema', () => {
       id: '66e9a0000000000000000001',
       email: 'ana@example.com',
       displayName: 'Ana',
+      emailVerified: true,
       aiConsent: {
         externalProviders: false,
         consentedAt: null,
@@ -235,6 +236,7 @@ describe('api error contract', () => {
       'refresh_conflict',
       'csrf_header_missing',
       'unauthorized',
+      'invalid_token',
       'unsupported_media_type',
       'group_not_found',
       'member_not_found',

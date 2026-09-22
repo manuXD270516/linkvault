@@ -24,7 +24,13 @@ export interface UserRepository {
     id: string,
     passwordHash: string,
     changedAt: Date,
+    session?: object,
   ): Promise<boolean>;
+  /**
+   * Marca el email como verificado. `false` si el usuario no existe.
+   * `session` opaca para la txn del consumo del token (ADR-034 D14).
+   */
+  markEmailVerified(id: string, session?: object): Promise<boolean>;
   /** Borra el documento del usuario; `false` si no existía o el id está mal formado. */
   delete(id: string, session?: object): Promise<boolean>;
 }

@@ -14,6 +14,7 @@ const user: UserProfile = {
   id: 'u1',
   email: 'ana@example.com',
   displayName: 'Ana',
+  emailVerified: true,
   aiConsent: {
     externalProviders: false,
     consentedAt: null,
@@ -146,6 +147,52 @@ describe('AuthApi', () => {
 
     await expect(result).resolves.toBeUndefined();
     expect(store.accessToken()).toBe('token-1');
+  });
+
+  it('requests a password reset without storing a session', async () => {
+    const result = api.forgotPassword({ email: 'ana@example.com' });
+
+    const req = http.expectOne('/api/auth/forgot-password');
+    expectAuthPost(req.request, true);
+    expect(req.request.body).toEqual({ email: 'ana@example.com' });
+    req.flush({ message: 'ok' });
+
+    await expect(result).resolves.toEqual({ message: 'ok' });
+    expect(store.accessToken()).toBeNull();
+  });
+
+  it('resets the password with the CSRF header and without a Bearer token', async () => {
+    const result = api.resetPassword({ token: 't1', newPassword: 'contraseña-nueva' });
+
+    const req = http.expectOne('/api/auth/reset-password');
+    expectAuthPost(req.request, true);
+    expect(req.request.body).toEqual({ token: 't1', newPassword: 'contraseña-nueva' });
+    req.flush(null, { status: 204, statusText: 'No Content' });
+
+    await expect(result).resolves.toBeUndefined();
+  });
+
+  it('verifies the email with the CSRF header and without a Bearer token', async () => {
+    const result = api.verifyEmail({ token: 't1' });
+
+    const req = http.expectOne('/api/auth/verify-email');
+    expectAuthPost(req.request, true);
+    expect(req.request.body).toEqual({ token: 't1' });
+    req.flush(null, { status: 204, statusText: 'No Content' });
+
+    await expect(result).resolves.toBeUndefined();
+  });
+
+  it('resends the verification email for the current session', async () => {
+    store.setSession(session);
+    const result = api.resendVerifyEmail();
+
+    const req = http.expectOne('/api/auth/verify-email/resend');
+    expectAuthPost(req.request, false);
+    expect(req.request.body).toBeNull();
+    req.flush({ message: 'ok' });
+
+    await expect(result).resolves.toEqual({ message: 'ok' });
   });
 
   it('loads the profile into the store', async () => {

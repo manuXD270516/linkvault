@@ -498,7 +498,8 @@ sequenceDiagram
 | 12 | `cv-match-suggestions` | `match-cv`, evidence, degradación por reglas, consentimiento; `fitScore` derivado; progreso por sondeo (SSE diferido) |
 | 13 | `study-roadmap` | catálogo curado + `verified` |
 | 14 | `ai-byok` | vault libsodium, UI de claves, proveedores `byok:*` |
-| 15 | `deploy-prod` | compose prod + Traefik + GHCR CD; borrado de cuenta; `/metrics`; **ADR-033** |
+| 15 | `auth-email-recovery` | puerto Mailer (Resend/Mailpit/captura), verify + reset, `emailVerified`, resend autenticado; **ADR-034** |
+| 16 | `deploy-prod` | compose prod + Traefik + GHCR CD; borrado de cuenta; `/metrics`; **ADR-033** |
 
 ---
 

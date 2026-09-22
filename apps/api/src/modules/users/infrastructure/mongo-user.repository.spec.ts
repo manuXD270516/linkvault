@@ -52,6 +52,7 @@ describe('MongoUserRepository', () => {
       email: 'alta@example.com',
       passwordHash: HASH,
       passwordChangedAt: now,
+      emailVerified: false,
       profile: {
         displayName: 'Ana',
         aiConsent: {
@@ -78,6 +79,7 @@ describe('MongoUserRepository', () => {
       email: 'guardado@example.com',
       passwordHash: HASH,
       passwordChangedAt: now,
+      emailVerified: false,
       displayName: 'Ana',
       aiConsent: {
         externalProviders: false,
@@ -95,6 +97,26 @@ describe('MongoUserRepository', () => {
 
     expect(await repository.findByEmail('busca@example.com')).toEqual(created);
     expect(await repository.findById(created.id)).toEqual(created);
+  });
+
+  it('Cuentas previas sin emailVerified se leen como verificadas', async () => {
+    const inserted = await connection.collection(USERS_COLLECTION).insertOne({
+      email: 'legacy@example.com',
+      passwordHash: HASH,
+      passwordChangedAt: now,
+      displayName: 'Legacy',
+      aiConsent: {
+        externalProviders: false,
+        consentedAt: null,
+        textVersion: null,
+      },
+      outputLanguage: 'es',
+      redactName: true,
+      createdAt: now,
+    });
+
+    const found = await repository.findById(inserted.insertedId.toHexString());
+    expect(found?.emailVerified).toBe(true);
   });
 
   it('returns null for an unknown email, an unknown id and a malformed id', async () => {

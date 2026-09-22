@@ -93,7 +93,36 @@ describe('api configuration', () => {
       MATCH_QUOTA_WINDOW_MS: 86_400_000,
       MATCH_ANALYSIS_MAX_AGE_MS: 240_000,
       MATCH_ANALYSIS_TIMEOUT_MS: 120_000,
+      MAIL_PROVIDER: 'smtp',
+      MAIL_FROM: 'LinkVault <noreply@example.com>',
+      MAIL_SMTP_HOST: 'localhost',
+      MAIL_SMTP_PORT: 1025,
+      AUTH_VERIFY_TOKEN_TTL_HOURS: 24,
+      AUTH_RESET_TOKEN_TTL_SECONDS: 3600,
     });
+  });
+
+  it('Resend sin clave', () => {
+    const result = parseEnv(apiConfigSchema, {
+      ...readEnvExample(),
+      MAIL_PROVIDER: 'resend',
+      RESEND_API_KEY: undefined,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      invalid: [{ name: 'RESEND_API_KEY', reason: 'missing' }],
+    });
+  });
+
+  it('ejemplo local arranca con smtp', () => {
+    const result = parseEnv(apiConfigSchema, readEnvExample());
+    expect(result.ok).toBe(true);
+  });
+
+  it('.env.example no tiene clave real de Resend', () => {
+    const example = readEnvExample();
+    expect(example['RESEND_API_KEY'] ?? '').toBe('');
   });
 
   // URLs públicas declaradas (spec platform/local-environment): obligatorias, absolutas y sin barra final.

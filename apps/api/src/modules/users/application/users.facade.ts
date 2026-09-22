@@ -79,12 +79,28 @@ export class UsersFacade {
   }
 
   /** Sustituye el hash y fija `passwordChangedAt` al instante actual. Rechaza con `UserNotFound` si no existe. */
-  async setPasswordHash(userId: string, passwordHash: string): Promise<void> {
+  async setPasswordHash(
+    userId: string,
+    passwordHash: string,
+    session?: object,
+  ): Promise<void> {
     const updated = await this.users.setPasswordHash(
       userId,
       passwordHash,
       this.clock.now(),
+      session,
     );
+    if (!updated) {
+      throw new UserNotFound(userId);
+    }
+  }
+
+  /**
+   * Marca el email como verificado (ADR-034 D7). Dueño del campo: auth no escribe `users` directo.
+   * `session` opaca para la txn del consumo del token.
+   */
+  async markEmailVerified(userId: string, session?: object): Promise<void> {
+    const updated = await this.users.markEmailVerified(userId, session);
     if (!updated) {
       throw new UserNotFound(userId);
     }

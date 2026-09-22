@@ -36,6 +36,7 @@ const session: SessionResponse = {
     id: 'u1',
     email: 'ana@example.com',
     displayName: 'Ana',
+    emailVerified: true,
     aiConsent: {
     externalProviders: false,
     consentedAt: null,
@@ -63,14 +64,17 @@ describe('appRoutes', () => {
       routeAt('oferta/:slug'),
       routeAt('login'),
       routeAt('registro'),
+      routeAt('recuperar-contrasena'),
+      routeAt('restablecer-contrasena'),
+      routeAt('verificar-email'),
       shell,
       ...(shell.children ?? []),
     ].filter((route) => route.redirectTo === undefined && route.loadChildren === undefined);
 
-    // /oferta/:slug, login, registro, el shell y sus siete páginas: /grupos, /grupos/:id, /unirse, /mis-links,
-    // /mi-cv, /plan/:analysisId y /perfil. El tablero de /postulaciones tiene su propio archivo de rutas
-    // ("Ruta diferida").
-    expect(pages).toHaveLength(11);
+    // /oferta/:slug, login, registro, las tres de email-auth, el shell y sus siete páginas: /grupos, /grupos/:id,
+    // /unirse, /mis-links, /mi-cv, /plan/:analysisId y /perfil. El tablero de /postulaciones tiene su propio archivo
+    // de rutas ("Ruta diferida").
+    expect(pages).toHaveLength(14);
     for (const route of pages) {
       expect(route.component).toBeUndefined();
       expect(route.loadComponent).toBeTypeOf('function');
@@ -91,8 +95,11 @@ describe('appRoutes', () => {
     expect(routeAt('login').canActivate).toEqual([guestGuard]);
     expect(routeAt('registro').canActivate).toEqual([guestGuard]);
     expect(shell.canActivate).toEqual([authGuard]);
-    // La vista pública no lleva ningún guard: se abre con sesión y sin ella (spec web/auth).
+    // La vista pública y las de email-auth no llevan guestGuard: se abren con sesión y sin ella (spec web/auth).
     expect(routeAt('oferta/:slug').canActivate).toBeUndefined();
+    for (const path of ['recuperar-contrasena', 'restablecer-contrasena', 'verificar-email']) {
+      expect(routeAt(path).canActivate).toBeUndefined();
+    }
     for (const path of [
       'grupos',
       'grupos/:id',

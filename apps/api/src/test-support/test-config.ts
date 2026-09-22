@@ -59,6 +59,14 @@ export async function apiTestConfig(
     MATCH_ANALYSIS_TIMEOUT_MS: 120_000,
     // D12: sin proxy de confianza en tests salvo override explícito.
     TRUST_PROXY: false,
+    // Correo: CapturingMailer en tests (sin red / sin Mailpit).
+    MAIL_PROVIDER: 'capture',
+    MAIL_FROM: 'LinkVault <noreply@example.com>',
+    MAIL_SMTP_HOST: 'localhost',
+    MAIL_SMTP_PORT: 1025,
+    RESEND_API_KEY: undefined,
+    AUTH_VERIFY_TOKEN_TTL_HOURS: 24,
+    AUTH_RESET_TOKEN_TTL_SECONDS: 3600,
     ...overrides,
   };
 }

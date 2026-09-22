@@ -4,7 +4,8 @@ import { HOME_ROUTE } from './core/navigation/home-route';
 
 /**
  * Rutas visibles en español salvo `/login` (D11 de auth-users). Todas exigen sesión salvo `/login`, `/registro`,
- * `/privacidad` y la vista pública de una oferta (`/oferta/:slug`), que se abre con sesión y sin ella.
+ * `/recuperar-contrasena`, `/restablecer-contrasena`, `/verificar-email`, `/privacidad` y la vista pública de una oferta
+ * (`/oferta/:slug`). Las de email-auth se abren con sesión y sin ella (sin guestGuard: no redirigen a `/grupos`).
  */
 export const appRoutes: Route[] = [
   {
@@ -30,6 +31,22 @@ export const appRoutes: Route[] = [
     canActivate: [guestGuard],
     loadComponent: () =>
       import('./features/auth/register.page').then((m) => m.RegisterPage),
+  },
+  {
+    // Sin guestGuard: usables con sesión (p. ej. verificar estando logueado) sin redirigir a `/grupos` (ADR-034).
+    path: 'recuperar-contrasena',
+    loadComponent: () =>
+      import('./features/auth/forgot-password.page').then((m) => m.ForgotPasswordPage),
+  },
+  {
+    path: 'restablecer-contrasena',
+    loadComponent: () =>
+      import('./features/auth/reset-password.page').then((m) => m.ResetPasswordPage),
+  },
+  {
+    path: 'verificar-email',
+    loadComponent: () =>
+      import('./features/auth/verify-email.page').then((m) => m.VerifyEmailPage),
   },
   {
     path: '',

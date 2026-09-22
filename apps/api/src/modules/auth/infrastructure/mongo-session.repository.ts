@@ -122,6 +122,16 @@ export class MongoSessionRepository implements SessionRepository {
     return result.modifiedCount;
   }
 
+  async revokeAllUserSessions(userId: string): Promise<number> {
+    const result = await this.sessions
+      .updateMany(
+        { userId, revokedAt: null },
+        { $set: { revokedAt: this.clock.now() } },
+      )
+      .exec();
+    return result.modifiedCount;
+  }
+
   /**
    * Rotación (D4). Dentro de `withTransaction`, que reintenta ante `WriteConflict`: de dos rotaciones concurrentes, la
    * perdedora relee el token ya marcado y devuelve `conflict`. El callback devuelve el resultado en lugar de lanzar, para

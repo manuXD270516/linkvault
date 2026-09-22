@@ -64,6 +64,11 @@ export interface SessionRepository {
     userId: string,
     keepSessionId: string,
   ): Promise<number>;
+  /**
+   * Revoca **todas** las sesiones activas del usuario (reset de contraseña público; ADR-034 D8).
+   * Devuelve cuántas revocó.
+   */
+  revokeAllUserSessions(userId: string): Promise<number>;
   /** Rotación atómica del refresh token presentado (D4). Nunca lanza para señalar reuso. */
   rotate(input: RotateRefreshToken): Promise<RotationResult>;
 }

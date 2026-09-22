@@ -154,6 +154,7 @@ describe('UpdateMyProfile', () => {
       id: user.id,
       email: 'ana@example.com',
       displayName: 'Ana María',
+      emailVerified: false,
       aiConsent: {
         externalProviders: false,
         consentedAt: null,

@@ -33,6 +33,14 @@ export function attemptKeyName(key: AttemptKey, secret: string): string {
       return `auth:login:ip:${ipLimitGroup(key.ip)}`;
     case 'register-ip':
       return `auth:register:ip:${ipLimitGroup(key.ip)}`;
+    case 'forgot-email':
+      return `auth:forgot:email:${emailDigest(key.email, secret)}`;
+    case 'forgot-ip':
+      return `auth:forgot:ip:${ipLimitGroup(key.ip)}`;
+    case 'verify-resend-email':
+      return `auth:verify-resend:email:${emailDigest(key.email, secret)}`;
+    case 'verify-resend-ip':
+      return `auth:verify-resend:ip:${ipLimitGroup(key.ip)}`;
   }
 }
 
