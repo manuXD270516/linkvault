@@ -11,19 +11,22 @@ máquina contra esa infraestructura sin configuración manual.
 ### Requirement: Infraestructura con un comando
 
 El repositorio SHALL incluir una definición de contenedores que, con un solo comando y sin perfiles, levante MongoDB,
-Redis y MinIO y espere a que los tres estén saludables. Las aplicaciones `api`, `worker` y `web` NO SHALL formar parte de
-esa definición: se ejecutan en el host.
+Redis, MinIO y **Mailpit** y espere a que los cuatro estén saludables. Las aplicaciones `api`, `worker` y `web` NO
+SHALL formar parte de esa definición: se ejecutan en el host.
 
 MinIO SHALL quedar saludable solo con **sus dos buckets** creados de forma idempotente: el de los snapshots del
 enriquecimiento, con su regla de expiración, y el de los **CV**, **sin** regla de expiración —un CV no caduca solo— y
 **sin** ninguna política de acceso anónimo. La comprobación de cada bucket SHALL ser **independiente** de la del otro,
 de modo que un entorno que ya tenía el de snapshots creado SHALL crear igualmente el de CV.
 
+Mailpit SHALL exponer SMTP para que `api` envíe correo en local y una UI de captura en el puerto documentado (por
+defecto UI `8025`, SMTP `1025`, configurables).
+
 #### Scenario: Arranque en limpio
 
 - **GIVEN** un equipo sin volúmenes previos del proyecto
 - **WHEN** se ejecuta el comando de arranque documentado en el README con espera de salud
-- **THEN** el comando SHALL terminar con éxito con MongoDB, Redis y MinIO saludables
+- **THEN** el comando SHALL terminar con éxito con MongoDB, Redis, MinIO y Mailpit saludables
 - **AND** NO SHALL haber ningún contenedor de `api`, `worker` ni `web`
 
 #### Scenario: Los dos buckets existen
@@ -49,6 +52,12 @@ de modo que un entorno que ya tenía el de snapshots creado SHALL crear igualmen
 - **GIVEN** la infraestructura saludable y un `.env` copiado de `.env.example`
 - **WHEN** se arrancan `api` y `worker` en el host con el comando documentado
 - **THEN** `GET /health` de ambos SHALL responder 200
+
+#### Scenario: Mailpit recibe correo local
+
+- **GIVEN** la infraestructura saludable y `api` con `MAIL_PROVIDER=smtp` hacia Mailpit
+- **WHEN** se dispara un correo de verificación en desarrollo
+- **THEN** el mensaje SHALL aparecer en la UI de Mailpit en el puerto documentado
 
 ### Requirement: MongoDB siempre como replica set
 
@@ -135,6 +144,10 @@ que necesita para los CV, incluida `S3_BUCKET`. El plazo y la concurrencia de la
 (`CV_EXTRACTION_TIMEOUT_MS`, `CV_EXTRACT_CONCURRENCY`) SHALL ser variables de `worker` con valores locales en el
 ejemplo.
 
+Las variables de correo (`MAIL_PROVIDER`, `MAIL_FROM`, SMTP hacia Mailpit y `RESEND_API_KEY` placeholder) SHALL
+declararse para el entorno local con `MAIL_PROVIDER=smtp` (o el valor documentado hacia Mailpit) y sin clave real de
+Resend.
+
 #### Scenario: Valores por defecto seguros
 
 - **WHEN** se inspecciona `.env.example`
@@ -158,3 +171,8 @@ ejemplo.
 - **WHEN** se inspecciona `.env.example`
 - **THEN** SHALL incluir `CV_EXTRACTION_TIMEOUT_MS` y `CV_EXTRACT_CONCURRENCY` con valores válidos para el entorno local
 
+#### Scenario: Correo local documentado
+
+- **WHEN** se inspecciona `.env.example`
+- **THEN** SHALL incluir `MAIL_PROVIDER`, `MAIL_FROM` y la configuración SMTP de Mailpit
+- **AND** `RESEND_API_KEY` SHALL estar vacía o comentada como placeholder
