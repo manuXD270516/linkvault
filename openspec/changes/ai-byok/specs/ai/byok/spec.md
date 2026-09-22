@@ -6,7 +6,7 @@ Permite a cada persona guardar claves de Anthropic, OpenAI u OpenRouter cifradas
 
 ### Requirement: Guardar y revocar una clave por vendor
 
-Una persona autenticada SHALL poder guardar exactamente una clave por vendor (`anthropic`, `openai`, `openrouter`) vía `PUT /api/users/me/ai-keys/:vendor` con cuerpo `{ apiKey }`. El sistema SHALL cifrarla con libsodium secretbox y `AI_VAULT_KEY` antes de persistirla y SHALL responder `200` solo con `vendor`, `keyHint` (últimos 4 caracteres de la clave en claro) y `updatedAt`. `GET /api/users/me/ai-keys` SHALL listar solo esas vistas. `DELETE /api/users/me/ai-keys/:vendor` SHALL borrar la fila. Ninguna respuesta ni el ledger SHALL incluir la clave en claro ni el ciphertext.
+Una persona autenticada SHALL poder guardar exactamente una clave por vendor (`anthropic`, `openai`, `openrouter`) vía `PUT /api/users/me/ai-keys/:vendor` con cuerpo `{ apiKey }` (longitud mínima 16). El sistema SHALL cifrarla con libsodium secretbox y `AI_VAULT_KEY` antes de persistirla y SHALL responder `200` solo con `vendor`, `keyHint` (últimos 4 caracteres) y `updatedAt`. `GET /api/users/me/ai-keys` SHALL listar solo esas vistas. `DELETE /api/users/me/ai-keys/:vendor` SHALL borrar la fila. Ninguna respuesta ni el ledger SHALL incluir la clave en claro ni el ciphertext. Sin vault disponible fuera de producción, PUT SHALL responder `503` con código `vault_unavailable`.
 
 #### Scenario: Upsert y listado
 
@@ -22,13 +22,19 @@ Una persona autenticada SHALL poder guardar exactamente una clave por vendor (`a
 - **THEN** GET ya no SHALL listar Anthropic
 - **AND** las siguientes ejecuciones NO SHALL inyectar `byok:<ana>:anthropic`
 
+#### Scenario: Vault no disponible en desarrollo
+
+- **GIVEN** entorno no productivo sin `AI_VAULT_KEY` válida
+- **WHEN** Ana hace PUT
+- **THEN** SHALL responderse `503` con código `vault_unavailable`
+
 ### Requirement: Inyección BYOK en runTask
 
-Cuando `runTask` recibe un `userId` con consentimiento externo vigente y al menos una clave descifrable, el sistema SHALL añadir proveedores `byok:<userId>:<vendor>` (`external: true`) delante de la cadena de plataforma. Sin consentimiento o sin claves, NO SHALL inyectar BYOK. Un fallo al descifrar o al llamar al vendor SHALL registrarse como `provider_error` y continuar con el siguiente proveedor.
+Cuando `runTask` recibe un `userId` con consentimiento externo vigente y al menos una clave descifrable, el sistema SHALL añadir proveedores `byok:<userId>:<vendor>` (`external: true`) al universo de la ejecución (delante en el orden de routing). Sin consentimiento o sin claves, NO SHALL inyectar BYOK. Un fallo al descifrar o al llamar al vendor SHALL registrarse como `provider_error` y continuar con el siguiente proveedor **elegible de esa cadena** (si la cuota de plataforma está agotada, la cadena solo tiene BYOK).
 
 #### Scenario: BYOK gana a la plataforma
 
-- **GIVEN** Ana con clave OpenRouter, consentimiento vigente, y `AI_CHAIN` con openrouter de plataforma
+- **GIVEN** Ana con clave OpenRouter, consentimiento vigente, cuota de plataforma no agotada, y `AI_CHAIN` con openrouter de plataforma
 - **WHEN** ejecuta una tarea personal
 - **THEN** el primer intento SHALL usar `byok:<ana>:openrouter` si es elegible
 - **AND** el ledger del success SHALL llevar ese `providerId`
@@ -57,7 +63,7 @@ Cuando el proveedor BYOK es OpenRouter y el modelo configurado (`BYOK_OPENROUTER
 
 ### Requirement: Cascada al borrar la cuenta
 
-Al borrar la cuenta de una persona, el sistema SHALL borrar todas sus filas de `user_ai_keys`.
+Al borrar la cuenta de una persona, el sistema SHALL borrar todas sus filas de `user_ai_keys` en la misma unidad de commit que el resto del borrado, vía el puerto del vault (sin evento in-process post-commit).
 
 #### Scenario: Borrado
 

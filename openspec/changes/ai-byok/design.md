@@ -4,74 +4,87 @@ El routing ya ordena `byok:` primero (`routing-policy.ts`). No existe `secret-va
 
 ## Goals / Non-Goals
 
-**Goals:** guardar claves cifradas, usarlas en `runTask`, UI de perfil, no gastar cuota de plataforma, no filtrar secretos.
+**Goals:** guardar claves cifradas, usarlas en `runTask`, UI de perfil con avisos honestos, no gastar cuota de plataforma en BYOK, no filtrar secretos.
 
-**Non-goals:** facturación, elección de modelo en UI, proveedores de plataforma Anthropic/OpenAI sin BYOK, exportar la clave, re-encrypt al rotar la vault key.
+**Non-goals:** facturación, picker de modelo, Anthropic/OpenAI de plataforma sin BYOK, exportar la clave, re-encrypt al rotar la vault key.
 
-## Decisions (cerradas)
+## Decisions (cerradas — humano + reflect)
 
 ### D1 — Almacén
 
-Colección Mongo `user_ai_keys` con índice único `(userId, vendor)`. Campos: `ciphertext`, `nonce`, `keyHint` (4 chars), `createdAt`, `updatedAt`. No embebido en `users`.
+Colección Mongo `user_ai_keys`, índice único `(userId, vendor)`. Puerto + implementación en **`libs/ai`** (compartida por api y worker). HTTP thin en el módulo users de api.
 
 ### D2 — Cifrado
 
-libsodium `crypto_secretbox_easy` con `AI_VAULT_KEY` (32 bytes, base64 en env). Descifrado solo al construir el `LlmProvider` para esa ejecución; la clave en claro no se cachea en Redis.
+libsodium `crypto_secretbox_easy` con `AI_VAULT_KEY` (32 bytes, base64). Descifrado solo al construir el provider de esa ejecución.
 
-### D3 — Modelos (**A**)
+### D3 — Modelos (**1A**)
 
-Modelos fijos por env: `BYOK_ANTHROPIC_MODEL`, `BYOK_OPENAI_MODEL`, `BYOK_OPENROUTER_MODEL`. Sin picker en MVP.
+`BYOK_ANTHROPIC_MODEL`, `BYOK_OPENAI_MODEL`, `BYOK_OPENROUTER_MODEL`. Sin picker.
 
-### D4 — Arranque de `AI_VAULT_KEY` (**A**)
+### D4 — `AI_VAULT_KEY` (**2A**)
 
-En **producción** (`NODE_ENV=production`) `AI_VAULT_KEY` es **obligatoria** al arrancar api y worker (parse config falla si falta o no decodifica a 32 bytes). En desarrollo local: valor de ejemplo en `.env.example`. Rotación = revocar claves de usuario y volver a pegar (sin re-encrypt).
+Obligatoria en **producción** al arrancar api y worker. Fuera de prod: sin vault → `PUT` responde `503 vault_unavailable`; GET vacío OK.
 
-### D5 — Consentimiento vs claves (**A**)
+### D5 — Consentimiento vs claves (**3A**)
 
-Revocar `aiConsent` **no** borra las claves; solo impide elegir proveedores `external` (incluidos `byok:*`). Borrar cuenta sí borra `user_ai_keys`.
+Revocar consent **no** borra claves. Borrar cuenta borra `user_ai_keys` en la **misma txn** vía puerto (cuando exista delete-account); hasta entonces solo el puerto + test de repo, **sin** EventEmitter.
 
-### D6 — OpenRouter BYOK (**C** híbrido)
+### D6 — OpenRouter BYOK (**4C**)
 
-- Si `BYOK_OPENROUTER_MODEL` termina en `:free`, el provider BYOK **SHALL** enviar `provider: { data_collection: "deny" }` (misma política que la OpenRouter de plataforma).
-- Si el modelo **no** termina en `:free`, **NO** se fuerza `:free` ni `data_collection: deny`: aplica el contrato del usuario con OpenRouter.
-- Anthropic/OpenAI BYOK no usan ese header (APIs propias).
-- El consentimiento externo sigue siendo requisito para cualquier `byok:*`.
+`:free` → `data_collection: "deny"`; sin `:free` → no forzar. `OpenRouterProvider` acepta `id` y `dataCollection: 'deny' | 'omit'`.
 
-Implementación: parametrizar `OpenRouterProvider` (o un wrapper BYOK) con `dataCollection: 'deny' | 'omit'` según el sufijo del modelo, en lugar de hardcodear siempre `deny`.
+### D7 — Cuota ledger (**B** + endurecido reflect)
 
-### D7 — Cuota (**B**)
+- Conteo de `AI_QUOTAS`: solo `success` con `providerId` que **no** empiece por `byok:`.
+- Si conteo ≥ límite **y** hay ≥1 BYOK elegible: la cadena de esa ejecución SHALL ser **solo** `byok:*` (sin fallback a plataforma). Si no hay BYOK → `quota_exceeded`.
+- **`MATCH_ANALYSES_PER_USER` no se exime** por BYOK (cuota de producto distinta).
 
-Contar solo `success` cuyo `providerId` **no** empieza por `byok:`. Si ese conteo ≥ límite y hay BYOK elegible (consent + clave + capabilities), la ejecución continúa; si no hay BYOK, `quota_exceeded`.
+### D8 — Universo de proveedores
 
-### D8 — Inyección en registry
-
-`buildProviders` sigue leyendo `AI_CHAIN` de plataforma. `ByokProviderFactory.resolve(userId)` añade 0–3 providers al frente. No van en `AI_CHAIN`.
+Universo efectivo = proveedores de `AI_CHAIN` ∪ `byok:<ctx.userId>:*` del vault. BYOK no se lista en `AI_CHAIN`. Spec `provider-routing` **MODIFIED**.
 
 ### D9 — HTTP
 
-- `GET /api/users/me/ai-keys` → `[{ vendor, keyHint, updatedAt }]`
-- `PUT /api/users/me/ai-keys/:vendor` body `{ apiKey: string }`
-- `DELETE /api/users/me/ai-keys/:vendor`
-
-Fuera de `PATCH /users/me`.
+`GET/PUT/DELETE /api/users/me/ai-keys…` como antes. `apiKey` min length 16.
 
 ### D10 — Redactor
 
-Redactor pino para `apiKey`, `authorization`, `AI_VAULT_KEY`, ciphertext.
+Paths: `apiKey`, `authorization`, `AI_VAULT_KEY`, `ciphertext`, `vaultKey` (api y worker).
+
+### D11 — Vigencia `quota_exceeded` en match (reflect / P0)
+
+Un degradado por `quota_exceeded` **NO** se considera vigente si, en el momento del POST, hay ≥1 BYOK elegible (consent vigente + clave descifrable + caps). Así “Reintentar” / nuevo POST no queda bloqueado tras pegar una clave. `ProviderEligibility` SHALL poder considerar BYOK del `userId` sin ejecutar la tarea.
+
+### D12 — UI avisos (V0 business)
+
+En `/perfil`, junto al formulario BYOK: aviso que nombra el vendor y que, con consentimiento, el CV puede salir ahí (y si OpenRouter no-`:free`, sin `data_collection: deny` de LinkVault). Con hint + consentimiento off: copy de que las claves siguen guardadas pero **no se usan**.
 
 ## Risks / Trade-offs
 
 | Riesgo | Mitigación |
 |---|---|
-| Rotación de `AI_VAULT_KEY` deja claves ilegibles | RUNBOOK: revocar y volver a pegar |
-| Modelo OpenRouter de pago sin `data_collection` | Decisión C consciente; consentimiento + aviso en UI |
-| Clave mala / vendor caído | `provider_error` → siguiente en cadena |
-| Worker sin la misma vault key | Misma env que api; prod no arranca sin ella |
+| Rotación vault | RUNBOOK: revocar y re-pegar |
+| BYOK caído con cuota ok | Cadena normal (plataforma); con cuota agotada solo BYOK |
+| Circuit breaker por userId | Documentar en RUNBOOK; opcional agregar por vendor después |
 
 ## Migration
 
-Ninguna. Colección nueva. `.env.example` + RUNBOOK + ADR-032.
+Colección nueva. `.env.example` + RUNBOOK + **ADR-032**.
 
-## CONVERGENCIA
+## CONVERGENCIA (reflect)
 
-Decisiones humanas 1A / 2A / 3A / 4C aplicadas. Pendiente debate critic/business antes de apply.
+| Id | Origen | Decisión | Motivo |
+|---|---|---|---|
+| P0-chain | critic | Aceptado → D8 | Spec base contradecía BYOK |
+| P0-quota-count | critic | Aceptado → D7 | |
+| P0-no-platform-fallback | critic | Aceptado → D7 | |
+| P0-match-vigencia | critic | Aceptado → D11 | |
+| P0-wiring | critic | Aceptado → D1 libs/ai | |
+| P0-task-execution | critic it2 | Aceptado → MODIFIED task-execution | Alineado a D7 |
+| P0-consentWouldEnable | critic it2 | Aceptado → MODIFIED filtrado | Universo efectivo |
+| V0-aviso | business | Aceptado → D12 + escenarios (incl. OpenRouter no-free) | |
+| V0-copy-consent | business | Aceptado → D12 | |
+| P1-* relevantes | critic | Aceptados/adaptados en D5–D10 | Ver ADR-032 |
+
+**P0 abiertos: 0 · V0 abiertos: 0**

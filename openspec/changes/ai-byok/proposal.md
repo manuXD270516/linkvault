@@ -23,20 +23,22 @@ Hoy la cadena de IA depende de Ollama local y del free tier de OpenRouter. Quien
 
 ### Modified Capabilities
 
-- `ai/provider-routing`: escenarios BYOK reales (no solo orden teórico).
-- `ai/usage-accounting`: success vía BYOK no consume cuota de plataforma.
-- `users/profile` / borrado de cuenta: cascada de claves (si el borrado aún no existe, documentar el hook).
-- `ai/data-protection`: claves de usuario como secreto (nunca en logs ni respuestas).
+- `ai/provider-routing`: universo `AI_CHAIN` ∪ BYOK; `consentWouldEnable` sobre universo efectivo.
+- `ai/usage-accounting` + `ai/task-execution`: cuota no-BYOK; cadena solo BYOK si tope; `quota_exceeded` solo sin BYOK.
+- `cv/match`: vigencia de degradado por cuota cede si hay BYOK elegible.
+- `ai/data-protection`: secretos BYOK fuera de logs.
+- Borrado de cuenta: cascada de claves (puerto en libs/ai).
 
 ## Impact
 
 - `libs/ai`, `libs/shared`, `apps/api`, `apps/worker`, `apps/web`.
-- ADRs: **014** (BYOK), **018** (orden cadena / cuotas), consentimiento externo; **ADR-032** para decisiones de este change.
+- ADRs: **014**, **018**, **029/030** (OpenRouter plataforma); **ADR-032** (este change).
 - **Fuera de alcance:** picker de modelo en UI; marketplace; compartir claves; cifrado client-side; Anthropic/OpenAI de plataforma sin BYOK; re-encrypt al rotar `AI_VAULT_KEY`.
 
-## Decisions locked (humano)
+## Decisions locked (humano + reflect)
 
-1. Modelos por env (`BYOK_*_MODEL`), sin picker — **A**
-2. `AI_VAULT_KEY` obligatoria en producción al arrancar — **A**
-3. Revocar consentimiento deja las claves cifradas — **A**
-4. OpenRouter BYOK híbrido (`:free` → `data_collection: deny`; resto sin forzar) — **C**
+1. Modelos por env — **A**
+2. `AI_VAULT_KEY` obligatoria en prod — **A**
+3. Revocar consentimiento deja claves — **A**
+4. OpenRouter BYOK híbrido — **C**
+5. Reflect: cadena solo BYOK si cuota plataforma agotada; vigencia match; vault en `libs/ai`; avisos UI (ver design D7–D12 / ADR-032)
