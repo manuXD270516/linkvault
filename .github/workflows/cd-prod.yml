@@ -1,0 +1,240 @@
+# CD producción: tag v* (semver) → verify → GHCR → ssh/compose pull+up → smoke interno (ADR-033 D3/D10).
+# Push a main NO despliega prod. Dry-run NO cuenta como éxito.
+name: cd-prod
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing semver tag to deploy (e.g. v1.2.3); required for manual runs'
+        required: true
+        type: string
+
+concurrency:
+  group: cd-prod
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+  packages: write
+
+env:
+  NX_DAEMON: 'false'
+  REGISTRY: ghcr.io
+
+jobs:
+  verify:
+    name: verify (lint, specs, typecheck, test, build)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      - name: Assert semver tag
+        shell: bash
+        run: |
+          ref="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
+          case "$ref" in
+            v[0-9]*.[0-9]*.[0-9]*) echo "tag=$ref" ;;
+            *) echo "::error::Prod deploy requires semver tag vMAJOR.MINOR.PATCH (got: $ref)"; exit 1 ;;
+          esac
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Read MONGOMS_VERSION
+        id: mongoms
+        shell: bash
+        run: |
+          version="$(sed -nE "s/^export const MONGOMS_VERSION = '([^']+)';$/\1/p" tools/testing/src/testing.preset.ts)"
+          if [ -z "$version" ]; then
+            echo "::error file=tools/testing/src/testing.preset.ts::MONGOMS_VERSION not found"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Cache MongoDB binaries
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/mongodb-binaries
+          key: mongodb-binaries-${{ runner.os }}-${{ runner.arch }}-${{ steps.mongoms.outputs.version }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Derive affected base and head
+        uses: nrwl/nx-set-shas@v5
+        with:
+          main-branch-name: main
+
+      - name: Lint
+        run: pnpm nx affected -t lint
+
+      - name: Validate OpenSpec specs
+        run: pnpm exec openspec validate --all --no-interactive
+
+      - name: Typecheck
+        run: pnpm nx affected -t typecheck
+
+      - name: Test
+        env:
+          AI_CHAIN: mock
+          AI_MOCK_MODE: replay
+        run: pnpm nx affected -t test
+
+      - name: Eval (replay)
+        env:
+          NODE_ENV: test
+          AI_CHAIN: mock
+          AI_MOCK_MODE: replay
+        run: pnpm nx affected -t eval-ci
+
+      - name: Build
+        run: pnpm nx affected -t build
+
+  build-push:
+    name: build and push GHCR
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      - name: Image tag
+        id: meta
+        shell: bash
+        run: |
+          tag="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          owner="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          echo "owner=$owner" >> "$GITHUB_OUTPUT"
+
+      - name: Login GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push api
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/api.Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-api:${{ steps.meta.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-api:latest
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+
+      - name: Build and push worker
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/worker.Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-worker:${{ steps.meta.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-worker:latest
+          cache-from: type=gha,scope=worker
+          cache-to: type=gha,mode=max,scope=worker
+
+      - name: Build and push web
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/web.Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-web:${{ steps.meta.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-web:latest
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+
+  deploy-prod:
+    name: deploy prod (compose pull+up + internal smoke)
+    needs: build-push
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: production
+    steps:
+      - name: Require prod deploy secrets
+        shell: bash
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
+          PROD_SSH_USER: ${{ secrets.PROD_SSH_USER }}
+          PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+          PROD_COMPOSE_DIR: ${{ secrets.PROD_COMPOSE_DIR }}
+        run: |
+          missing=()
+          [ -z "$PROD_HOST" ] && missing+=(PROD_HOST)
+          [ -z "$PROD_SSH_USER" ] && missing+=(PROD_SSH_USER)
+          [ -z "$PROD_SSH_KEY" ] && missing+=(PROD_SSH_KEY)
+          [ -z "$PROD_COMPOSE_DIR" ] && missing+=(PROD_COMPOSE_DIR)
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Missing required secrets for prod deploy: ${missing[*]}"
+            echo "Documented in infra/README.md. A dry-run is NOT an accepted CD outcome (ADR-033 D10)."
+            exit 1
+          fi
+
+      - name: SSH compose pull+up prod
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_SSH_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd "${{ secrets.PROD_COMPOSE_DIR }}"
+            OWNER="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+            export IMAGE_TAG="${{ needs.build-push.outputs.image_tag }}"
+            export API_IMAGE="ghcr.io/${OWNER}/linkvault-api"
+            export WORKER_IMAGE="ghcr.io/${OWNER}/linkvault-worker"
+            export WEB_IMAGE="ghcr.io/${OWNER}/linkvault-web"
+            if [ -n "${{ secrets.GHCR_READ_TOKEN }}" ]; then
+              echo "${{ secrets.GHCR_READ_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+            fi
+            docker compose -f docker-compose.prod.yml --env-file .env.prod pull
+            docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait
+
+      - name: Smoke GET /health against api (Docker network, not Traefik)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_SSH_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd "${{ secrets.PROD_COMPOSE_DIR }}"
+            body="$(docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T api \
+              node -e "fetch('http://127.0.0.1:3000/health').then(async r=>{const t=await r.text(); if(!r.ok){console.error(t);process.exit(1)}; console.log(t); const j=JSON.parse(t); if(j.status!=='up'||!j.checks||!j.checks.mongo||!j.checks.redis){process.exit(1)}}).catch(e=>{console.error(e);process.exit(1)})")"
+            echo "$body"
+            echo "$body" | grep -q '"status":"up"'
+            echo "$body" | grep -q '"mongo"'
+            echo "$body" | grep -q '"redis"'
+            case "$body" in
+              *'<html'*|*'<!DOCTYPE'*) echo "::error::Smoke returned HTML (SPA); must hit api internally"; exit 1 ;;
+            esac

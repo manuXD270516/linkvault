@@ -1,0 +1,221 @@
+# CD staging: main → verify → GHCR → ssh/compose pull+up → smoke interno (ADR-033 D3/D10).
+# Dry-run NO cuenta como éxito. Secrets obligatorios; si faltan, el job de deploy falla.
+name: cd-staging
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: cd-staging
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+  packages: write
+
+env:
+  NX_DAEMON: 'false'
+  REGISTRY: ghcr.io
+
+jobs:
+  verify:
+    name: verify (lint, specs, typecheck, test, build)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Read MONGOMS_VERSION
+        id: mongoms
+        shell: bash
+        run: |
+          version="$(sed -nE "s/^export const MONGOMS_VERSION = '([^']+)';$/\1/p" tools/testing/src/testing.preset.ts)"
+          if [ -z "$version" ]; then
+            echo "::error file=tools/testing/src/testing.preset.ts::MONGOMS_VERSION not found"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Cache MongoDB binaries
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/mongodb-binaries
+          key: mongodb-binaries-${{ runner.os }}-${{ runner.arch }}-${{ steps.mongoms.outputs.version }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Derive affected base and head
+        uses: nrwl/nx-set-shas@v5
+        with:
+          main-branch-name: main
+
+      - name: Lint
+        run: pnpm nx affected -t lint
+
+      - name: Validate OpenSpec specs
+        run: pnpm exec openspec validate --all --no-interactive
+
+      - name: Typecheck
+        run: pnpm nx affected -t typecheck
+
+      - name: Test
+        env:
+          AI_CHAIN: mock
+          AI_MOCK_MODE: replay
+        run: pnpm nx affected -t test
+
+      - name: Eval (replay)
+        env:
+          NODE_ENV: test
+          AI_CHAIN: mock
+          AI_MOCK_MODE: replay
+        run: pnpm nx affected -t eval-ci
+
+      - name: Build
+        run: pnpm nx affected -t build
+
+  build-push:
+    name: build and push GHCR
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Image tag
+        id: meta
+        shell: bash
+        run: |
+          tag="sha-${GITHUB_SHA::12}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          owner="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          echo "owner=$owner" >> "$GITHUB_OUTPUT"
+
+      - name: Login GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push api
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/api.Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-api:${{ steps.meta.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-api:staging
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+
+      - name: Build and push worker
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/worker.Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-worker:${{ steps.meta.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-worker:staging
+          cache-from: type=gha,scope=worker
+          cache-to: type=gha,mode=max,scope=worker
+
+      - name: Build and push web
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/web.Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-web:${{ steps.meta.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-web:staging
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+
+  deploy-staging:
+    name: deploy staging (compose pull+up + internal smoke)
+    needs: build-push
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Require staging deploy secrets
+        shell: bash
+        env:
+          STAGING_HOST: ${{ secrets.STAGING_HOST }}
+          STAGING_SSH_USER: ${{ secrets.STAGING_SSH_USER }}
+          STAGING_SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+          STAGING_COMPOSE_DIR: ${{ secrets.STAGING_COMPOSE_DIR }}
+        run: |
+          missing=()
+          [ -z "$STAGING_HOST" ] && missing+=(STAGING_HOST)
+          [ -z "$STAGING_SSH_USER" ] && missing+=(STAGING_SSH_USER)
+          [ -z "$STAGING_SSH_KEY" ] && missing+=(STAGING_SSH_KEY)
+          [ -z "$STAGING_COMPOSE_DIR" ] && missing+=(STAGING_COMPOSE_DIR)
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Missing required secrets for staging deploy: ${missing[*]}"
+            echo "Documented in infra/README.md. A dry-run is NOT an accepted CD outcome (ADR-033 D10)."
+            exit 1
+          fi
+
+      - name: SSH compose pull+up staging
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_SSH_USER }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd "${{ secrets.STAGING_COMPOSE_DIR }}"
+            OWNER="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+            export IMAGE_TAG="${{ needs.build-push.outputs.image_tag }}"
+            export API_IMAGE="ghcr.io/${OWNER}/linkvault-api"
+            export WORKER_IMAGE="ghcr.io/${OWNER}/linkvault-worker"
+            export WEB_IMAGE="ghcr.io/${OWNER}/linkvault-web"
+            if [ -n "${{ secrets.GHCR_READ_TOKEN }}" ]; then
+              echo "${{ secrets.GHCR_READ_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+            fi
+            docker compose -f docker-compose.prod.yml --env-file .env.staging pull
+            docker compose -f docker-compose.prod.yml --env-file .env.staging up -d --wait
+
+      - name: Smoke GET /health against api (Docker network, not Traefik)
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_SSH_USER }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd "${{ secrets.STAGING_COMPOSE_DIR }}"
+            body="$(docker compose -f docker-compose.prod.yml --env-file .env.staging exec -T api \
+              node -e "fetch('http://127.0.0.1:3000/health').then(async r=>{const t=await r.text(); if(!r.ok){console.error(t);process.exit(1)}; console.log(t); const j=JSON.parse(t); if(j.status!=='up'||!j.checks||!j.checks.mongo||!j.checks.redis){process.exit(1)}}).catch(e=>{console.error(e);process.exit(1)})")"
+            echo "$body"
+            echo "$body" | grep -q '"status":"up"'
+            echo "$body" | grep -q '"mongo"'
+            echo "$body" | grep -q '"redis"'
+            case "$body" in
+              *'<html'*|*'<!DOCTYPE'*) echo "::error::Smoke returned HTML (SPA); must hit api internally"; exit 1 ;;
+            esac
