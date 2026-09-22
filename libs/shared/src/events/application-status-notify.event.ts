@@ -32,9 +32,13 @@ export function applicationStatusNotifyEvent(
   return { type: APPLICATION_STATUS_NOTIFY_EVENT_TYPE, payload };
 }
 
+/**
+ * jobId determinista (3 segmentos con `:` — regla BullMQ).
+ * Alcance: `groupId` del evento o `union`.
+ */
 export function applicationStatusNotifyJobId(
   payload: ApplicationStatusNotifyPayload,
 ): string {
   const scope = payload.groupId ?? 'union';
-  return `notify:app-status:${payload.applicationId}:${payload.status}:${scope}`;
+  return `notify:asn:${payload.applicationId}_${payload.status}_${scope}`;
 }

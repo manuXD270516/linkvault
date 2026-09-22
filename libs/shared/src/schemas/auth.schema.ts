@@ -180,6 +180,8 @@ export const apiErrorCodeSchema = z.enum([
   'consent_text_outdated',
   // 503: fuera de producción sin `AI_VAULT_KEY` válida; no se puede cifrar una clave BYOK (ADR-032 D4).
   'vault_unavailable',
+  // 503: faltan claves VAPID de web push; el SPA no puede suscribirse (ADR-035).
+  'vapid_unavailable',
   // 500
   'internal_error',
 ]);

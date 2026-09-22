@@ -270,6 +270,7 @@ describe('api error contract', () => {
       'roadmap_not_eligible',
       'consent_text_outdated',
       'vault_unavailable',
+      'vapid_unavailable',
       'internal_error',
     ]);
   });

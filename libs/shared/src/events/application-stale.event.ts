@@ -39,3 +39,13 @@ export function applicationStaleEvent(
 ): ApplicationStaleEvent {
   return { type: APPLICATION_STALE_EVENT_TYPE, payload };
 }
+
+/**
+ * jobId determinista para `Queue.add` desde el detector (sin outbox).
+ * Incluye `lastChangedAt` para no colisionar tras un nuevo cambio de estado.
+ */
+export function applicationStaleJobId(
+  payload: ApplicationStalePayload,
+): string {
+  return `notify:stale:${payload.applicationId}_${payload.lastChangedAt}`;
+}

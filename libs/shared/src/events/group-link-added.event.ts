@@ -28,7 +28,10 @@ export function groupLinkAddedEvent(
   return { type: GROUP_LINK_ADDED_EVENT_TYPE, payload };
 }
 
-/** jobId determinista mientras el job vive en la cola. */
+/**
+ * jobId determinista mientras el job vive en la cola.
+ * BullMQ exige exactamente 3 segmentos si hay `:` (`Custom Id cannot contain :`).
+ */
 export function groupLinkAddedJobId(payload: GroupLinkAddedPayload): string {
-  return `notify:group-link:${payload.groupId}:${payload.linkId}:${payload.actorUserId}`;
+  return `notify:gla:${payload.groupId}_${payload.linkId}_${payload.actorUserId}`;
 }

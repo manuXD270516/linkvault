@@ -24,7 +24,8 @@ describe('GroupLinkAdded.v1', () => {
     expect(groupLinkAddedEventSchema.parse(event).type).toBe(
       GROUP_LINK_ADDED_EVENT_TYPE,
     );
-    expect(groupLinkAddedJobId(payload)).toContain('notify:group-link:');
+    expect(groupLinkAddedJobId(payload)).toBe('notify:gla:g1_l1_u1');
+    expect(groupLinkAddedJobId(payload).split(':')).toHaveLength(3);
   });
 
   it('rechaza payload incompleto', () => {
@@ -50,7 +51,9 @@ describe('ApplicationStatusNotify.v1', () => {
     expect(applicationStatusNotifyEventSchema.parse(event).type).toBe(
       APPLICATION_STATUS_NOTIFY_EVENT_TYPE,
     );
-    expect(applicationStatusNotifyJobId(payload)).toContain('union');
+    expect(applicationStatusNotifyJobId(payload)).toBe(
+      'notify:asn:a1_applied_union',
+    );
   });
 
   it('acepta con groupId', () => {
@@ -60,6 +63,8 @@ describe('ApplicationStatusNotify.v1', () => {
         applicationStatusNotifyEvent(withGroup),
       ).payload.groupId,
     ).toBe('g1');
-    expect(applicationStatusNotifyJobId(withGroup)).toContain(':g1');
+    expect(applicationStatusNotifyJobId(withGroup)).toBe(
+      'notify:asn:a1_applied_g1',
+    );
   });
 });
