@@ -45,9 +45,11 @@ Mientras el SPA no conozca el estado del permiso —porque no lo ha cargado o po
 solo la línea base y NO SHALL afirmar que el permiso está activo, que está caducado ni que no lo está.
 
 Ese texto NO SHALL prometer que se pedirá permiso en el momento del análisis —la autorización es una preferencia del
-perfil, no una pregunta— ni SHALL nombrar ninguna pantalla o control que todavía no exista. Tampoco SHALL prometer nada
-que LinkVault no entregue hoy: que el proveedor externo no conserve lo enviado, que lo enviado sea anónimo, que el
-archivo esté cifrado en reposo, que se borre solo pasado un tiempo, ni que el análisis se revise a mano.
+perfil, no una pregunta— ni SHALL nombrar ninguna pantalla o control que todavía no exista. Tampoco SHALL inventar
+afirmaciones falsas: que el proveedor externo no conserve lo enviado, que lo enviado sea anónimo, ni que el análisis se
+revise a mano. La línea corta NO SHALL inventar detalles de cifrado en reposo ni de retención/caducidad del archivo;
+para almacenamiento y retención SHALL incluir un enlace a `/privacidad`, donde esos detalles MAY afirmarse cuando la
+configuración de producción los tenga (ver `web/privacy` y `cv/documents`).
 
 Sin ningún CV SHALL mostrar "Sube tu CV y LinkVault podrá comparar tus habilidades con cada vacante." junto al botón de
 subir. Mientras se carga la lista SHALL mostrar un estado de carga, y si la petición falla, el error con "Reintentar".
@@ -107,9 +109,19 @@ subir. Mientras se carga la lista SHALL mostrar un estado de carga, y si la peti
 
 #### Scenario: La línea no promete lo que no hacemos
 
-- **WHEN** se revisa el texto de la línea de privacidad
-- **THEN** NO SHALL decir que se pedirá permiso al analizar, que el proveedor externo no guarda nada, que el envío es
-  anónimo, que el archivo está cifrado ni que caduca solo
+- **WHEN** se revisa el texto de la línea corta de privacidad en `/mi-cv`
+- **THEN** NO SHALL decir que se pedirá permiso al analizar, que el proveedor externo no guarda nada ni que el envío es
+  anónimo
+- **AND** NO SHALL inventar en esa línea corta que el archivo está cifrado ni que caduca solo; esos detalles, cuando
+  apliquen en prod, viven en `/privacidad`
+- **AND** la pantalla SHALL ofrecer un enlace a `/privacidad` para almacenamiento y retención
+
+#### Scenario: Enlace a /privacidad visible en /mi-cv
+
+- **GIVEN** Ana en `/mi-cv`
+- **WHEN** busca información de almacenamiento o retención del CV
+- **THEN** SHALL ver un enlace visible a `/privacidad`
+- **AND** al seguirlo SHALL llegar a `/privacidad`
 
 #### Scenario: Ruta con sesión
 
