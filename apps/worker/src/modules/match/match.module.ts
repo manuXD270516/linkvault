@@ -39,6 +39,10 @@ import {
   type RoadmapRepository,
 } from './application/ports/roadmap-repository.port';
 import {
+  SEARCH_INDEX_JOB_PUBLISHER,
+  type SearchIndexJobPublisher,
+} from '../search/application/ports/search-index-job-publisher.port';
+import {
   ANALYSIS_MODEL_NAME,
   analysisSchema,
 } from './infrastructure/persistence/analysis.schemas';
@@ -72,6 +76,7 @@ export class MatchModule {
   static register(
     config: WorkerConfig,
     aiModule: DynamicModule,
+    searchModule: DynamicModule,
   ): DynamicModule {
     const consumersEnabled = config.NODE_ENV !== 'test';
 
@@ -79,6 +84,7 @@ export class MatchModule {
       module: MatchModule,
       imports: [
         aiModule,
+        searchModule,
         MongooseModule.forFeature([
           { name: ANALYSIS_MODEL_NAME, schema: analysisSchema },
           { name: ROADMAP_MODEL_NAME, schema: roadmapSchema },
@@ -164,6 +170,7 @@ export class MatchModule {
             RUN_TASK,
             MATCH_CLOCK,
             APP_CONFIG,
+            SEARCH_INDEX_JOB_PUBLISHER,
           ],
           useFactory: (
             analyses: AnalysisRepository,
@@ -173,6 +180,7 @@ export class MatchModule {
             runTask: RunTaskFn,
             clock: Clock,
             worker: WorkerConfig,
+            searchIndex: SearchIndexJobPublisher,
           ) =>
             new BuildRoadmapUseCase(
               analyses,
@@ -182,6 +190,7 @@ export class MatchModule {
               runTask,
               clock,
               { timeoutMs: worker.MATCH_ANALYSIS_TIMEOUT_MS },
+              searchIndex,
             ),
         },
         ...(consumersEnabled

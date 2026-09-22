@@ -8,19 +8,42 @@ import { MEILI_SEARCH_CLIENT } from './application/ports/meili-search-client.por
 import { SEARCH_AGGREGATE_LOADER } from './application/ports/search-aggregate-loader.port';
 import { SEARCH_AI_CONSENT } from './application/ports/search-ai-consent.port';
 import { SEARCH_EMBED_TEXTS } from './application/ports/search-embed-texts.port';
+import {
+  SEARCH_INDEX_JOB_PUBLISHER,
+  type SearchIndexJobPublisher,
+} from './application/ports/search-index-job-publisher.port';
 import { adaptEmbedTexts } from './infrastructure/adapt-embed-texts';
 import { MeiliSearchClientAdapter } from './infrastructure/meili-search.client';
 import { MongoSearchAggregateLoader } from './infrastructure/mongo-search-aggregate.loader';
 import { MongoSearchAiConsent } from './infrastructure/mongo-search-ai-consent';
+import {
+  BullmqSearchIndexJobPublisher,
+  NoopSearchIndexJobPublisher,
+} from './infrastructure/queue/bullmq-search-index-job-publisher';
 import { SearchIndexConsumer } from './infrastructure/queue/search-index.consumer';
 
 @Module({})
 export class SearchModule {
   /**
    * `aiModule` es el mismo DynamicModule de `AppModule` para resolver `EMBED_TEXTS` (ADR-036).
+   * Exporta `SEARCH_INDEX_JOB_PUBLISHER` para que cv/match encolen SearchUpsert tras mutaciones propias.
    */
   static register(config: WorkerConfig, aiModule: DynamicModule): DynamicModule {
+    const publishersEnabled =
+      config.NODE_ENV !== 'test' && config.FEATURE_SEARCH;
+
     const providers = [
+      {
+        provide: SEARCH_INDEX_JOB_PUBLISHER,
+        inject: [APP_CONFIG],
+        useFactory: (cfg: WorkerConfig): SearchIndexJobPublisher =>
+          publishersEnabled
+            ? new BullmqSearchIndexJobPublisher(
+                cfg.REDIS_URL,
+                cfg.FEATURE_SEARCH,
+              )
+            : new NoopSearchIndexJobPublisher(),
+      },
       {
         provide: MEILI_SEARCH_CLIENT,
         inject: [APP_CONFIG],
@@ -61,6 +84,7 @@ export class SearchModule {
       module: SearchModule,
       imports: [aiModule],
       providers,
+      exports: [SEARCH_INDEX_JOB_PUBLISHER],
     };
   }
 }

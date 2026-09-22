@@ -202,9 +202,10 @@ export class MongoSearchAggregateLoader implements SearchAggregateLoader {
     });
     if (cv === null) return null;
     const extraction = (cv['extraction'] ?? {}) as {
-      text?: string;
       skills?: string[];
     };
+    const extractedText =
+      typeof cv['extractedText'] === 'string' ? cv['extractedText'] : undefined;
     return {
       id: searchDocumentId('cv', cvId),
       docType: 'cv',
@@ -214,7 +215,7 @@ export class MongoSearchAggregateLoader implements SearchAggregateLoader {
       updatedAt: dateMs(cv['uploadedAt']),
       embeddingStatus: 'missing',
       cvId,
-      ...(typeof extraction.text === 'string' ? { text: extraction.text } : {}),
+      ...(extractedText === undefined ? {} : { text: extractedText }),
       ...(Array.isArray(extraction.skills)
         ? { skills: extraction.skills }
         : {}),
@@ -231,11 +232,20 @@ export class MongoSearchAggregateLoader implements SearchAggregateLoader {
       _id: oid,
     });
     if (roadmap === null) return null;
-    const steps = Array.isArray(roadmap['steps'])
-      ? (roadmap['steps'] as { title?: string; detail?: string }[])
+    if (roadmap['status'] !== 'ready') return null;
+    const items = Array.isArray(roadmap['items'])
+      ? (roadmap['items'] as {
+          skill?: string;
+          resources?: { title?: string; provider?: string }[];
+        }[])
       : [];
-    const stepsText = steps
-      .map((s) => [s.title, s.detail].filter(Boolean).join(': '))
+    const stepsText = items
+      .map((item) => {
+        const resources = (item.resources ?? [])
+          .map((r) => [r.title, r.provider].filter(Boolean).join(' '))
+          .join('; ');
+        return [item.skill, resources].filter(Boolean).join(': ');
+      })
       .join('\n');
     return {
       id: searchDocumentId('roadmap', roadmapId),
@@ -250,7 +260,7 @@ export class MongoSearchAggregateLoader implements SearchAggregateLoader {
         roadmap['analysisId'] === undefined
           ? undefined
           : String(roadmap['analysisId']),
-      title: String(roadmap['title'] ?? 'Roadmap'),
+      title: items[0]?.skill ?? 'Roadmap',
       ...(stepsText.length > 0 ? { stepsText } : {}),
     };
   }

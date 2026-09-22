@@ -5,6 +5,7 @@ import {
 } from '@linkvault/shared';
 import { Logger } from '@nestjs/common';
 import { outcomeOfExtractedText } from '../domain/extraction-outcome';
+import type { SearchIndexJobPublisher } from '../../search/application/ports/search-index-job-publisher.port';
 import type { Clock } from './ports/clock.port';
 import type { CvFileReader } from './ports/cv-file-reader.port';
 import type { CvRepository } from './ports/cv-repository.port';
@@ -19,6 +20,8 @@ import type { CvTextExtractors } from './ports/cv-text-extractors.port';
 //
 // Lo que sí se reintenta es lo que revienta: Mongo o el almacén sin responder. Eso **lanza**, y la cola aplica su
 // política de tres intentos con espera creciente.
+//
+// Tras `extracted`, encola SearchUpsert (FEATURE_SEARCH) para reindexar con el texto (el upload solo indexó vacío).
 
 /** Cómo terminó el trabajo. Ninguno de estos es un error del job. */
 export type ExtractCvResult =
@@ -47,6 +50,7 @@ export class ExtractCvUseCase {
     private readonly extractors: CvTextExtractors,
     private readonly clock: Clock,
     private readonly options: ExtractCvOptions,
+    private readonly searchIndex: SearchIndexJobPublisher,
   ) {}
 
   async execute(payload: CvUploadedPayload): Promise<ExtractCvResult> {
@@ -92,9 +96,16 @@ export class ExtractCvUseCase {
       extractedAt: this.clock.now(),
     });
     // 4. La escritura va condicionada al estado `pending`: si no modificó nada, ganó otra ejecución.
-    return written
-      ? { kind: 'extracted', chars: outcome.chars }
-      : { kind: 'lost_race' };
+    if (!written) {
+      return { kind: 'lost_race' };
+    }
+    await this.searchIndex.upsert({
+      docType: 'cv',
+      aggregateId: cv.id,
+      reason: 'cv_upsert',
+      fingerprint: `cv:${cv.id}:extracted:${outcome.chars}`,
+    });
+    return { kind: 'extracted', chars: outcome.chars };
   }
 
   /**

@@ -10,6 +10,7 @@ import {
   type RoadmapRequestedPayload,
 } from '@linkvault/shared';
 import { Logger } from '@nestjs/common';
+import type { SearchIndexJobPublisher } from '../../search/application/ports/search-index-job-publisher.port';
 import type { AnalysisRepository } from './ports/analysis-repository.port';
 import type { AiContextReader } from './ports/ai-context-reader.port';
 import type { Clock } from './ports/clock.port';
@@ -18,6 +19,7 @@ import type { RoadmapRepository } from './ports/roadmap-repository.port';
 
 // Ejecución de `build-roadmap` (study-roadmap 2.3): claim → consent → catálogo o runTask → ready/failed.
 // No regenera si el claim ya está listo/fallido. Duplicate claim → no LLM.
+// Tras `ready`, encola SearchUpsert si FEATURE_SEARCH (publisher no-op cuando flag off).
 
 export type BuildRoadmapResult =
   | { readonly kind: 'ready' }
@@ -39,6 +41,7 @@ export class BuildRoadmapUseCase {
     private readonly runTask: RunTaskFn,
     private readonly clock: Clock,
     private readonly options: BuildRoadmapOptions,
+    private readonly searchIndex: SearchIndexJobPublisher,
   ) {}
 
   async execute(payload: RoadmapRequestedPayload): Promise<BuildRoadmapResult> {
@@ -100,7 +103,11 @@ export class BuildRoadmapUseCase {
         catalogOnly.items,
         this.clock.now(),
       );
-      return written ? { kind: 'ready' } : { kind: 'abandoned' };
+      if (!written) {
+        return { kind: 'abandoned' };
+      }
+      await this.emitSearchUpsert(payload.analysisId);
+      return { kind: 'ready' };
     }
 
     // Re-leer consentimiento justo antes de runTask (design §5).
@@ -140,7 +147,11 @@ export class BuildRoadmapUseCase {
         result.output.items,
         this.clock.now(),
       );
-      return written ? { kind: 'ready' } : { kind: 'abandoned' };
+      if (!written) {
+        return { kind: 'abandoned' };
+      }
+      await this.emitSearchUpsert(payload.analysisId);
+      return { kind: 'ready' };
     } catch (error) {
       if (signal.aborted) {
         await this.roadmaps.markFailed(payload.analysisId, this.clock.now());
@@ -160,5 +171,18 @@ export class BuildRoadmapUseCase {
       return;
     }
     await this.roadmaps.markFailed(payload.analysisId, this.clock.now());
+  }
+
+  private async emitSearchUpsert(analysisId: string): Promise<void> {
+    const roadmap = await this.roadmaps.findByAnalysisId(analysisId);
+    if (roadmap === null || roadmap.status !== 'ready') {
+      return;
+    }
+    await this.searchIndex.upsert({
+      docType: 'roadmap',
+      aggregateId: roadmap.id,
+      reason: 'roadmap_upsert',
+      fingerprint: `roadmap:${roadmap.id}:ready:${roadmap.updatedAt.toISOString()}`,
+    });
   }
 }
