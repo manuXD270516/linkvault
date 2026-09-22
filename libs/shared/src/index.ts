@@ -1,7 +1,9 @@
 export * from './events/analysis-step.event';
 export * from './events/application-stale.event';
+export * from './events/application-status-notify.event';
 export * from './events/cv-deleted.event';
 export * from './events/cv-uploaded.event';
+export * from './events/group-link-added.event';
 export * from './events/group-link-comments.event';
 export * from './events/link-created.event';
 export * from './events/link-enriched.event';
@@ -17,6 +19,7 @@ export * from './schemas/group-link-comment.schema';
 export * from './schemas/health.schema';
 export * from './schemas/link.schema';
 export * from './schemas/match.schema';
+export * from './schemas/notifications.schema';
 export * from './schemas/pasted-description.schema';
 export * from './schemas/preview.schema';
 export * from './schemas/public-preview.schema';

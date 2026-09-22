@@ -1,0 +1,65 @@
+import { describe, expect, it } from 'vitest';
+import {
+  GROUP_LINK_ADDED_EVENT_TYPE,
+  groupLinkAddedEvent,
+  groupLinkAddedEventSchema,
+  groupLinkAddedJobId,
+} from './group-link-added.event';
+import {
+  APPLICATION_STATUS_NOTIFY_EVENT_TYPE,
+  applicationStatusNotifyEvent,
+  applicationStatusNotifyEventSchema,
+  applicationStatusNotifyJobId,
+} from './application-status-notify.event';
+
+describe('GroupLinkAdded.v1', () => {
+  const payload = {
+    groupId: 'g1',
+    linkId: 'l1',
+    actorUserId: 'u1',
+  };
+
+  it('acepta el contrato', () => {
+    const event = groupLinkAddedEvent(payload);
+    expect(groupLinkAddedEventSchema.parse(event).type).toBe(
+      GROUP_LINK_ADDED_EVENT_TYPE,
+    );
+    expect(groupLinkAddedJobId(payload)).toContain('notify:group-link:');
+  });
+
+  it('rechaza payload incompleto', () => {
+    expect(
+      groupLinkAddedEventSchema.safeParse({
+        type: GROUP_LINK_ADDED_EVENT_TYPE,
+        payload: { groupId: 'g1' },
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe('ApplicationStatusNotify.v1', () => {
+  const payload = {
+    applicationId: 'a1',
+    linkId: 'l1',
+    actorUserId: 'u1',
+    status: 'applied' as const,
+  };
+
+  it('acepta sin groupId', () => {
+    const event = applicationStatusNotifyEvent(payload);
+    expect(applicationStatusNotifyEventSchema.parse(event).type).toBe(
+      APPLICATION_STATUS_NOTIFY_EVENT_TYPE,
+    );
+    expect(applicationStatusNotifyJobId(payload)).toContain('union');
+  });
+
+  it('acepta con groupId', () => {
+    const withGroup = { ...payload, groupId: 'g1' };
+    expect(
+      applicationStatusNotifyEventSchema.parse(
+        applicationStatusNotifyEvent(withGroup),
+      ).payload.groupId,
+    ).toBe('g1');
+    expect(applicationStatusNotifyJobId(withGroup)).toContain(':g1');
+  });
+});
