@@ -40,8 +40,8 @@
 
 ## 8. Web SPA
 
-- [ ] 8.1 [frontend] Ruta lazy `/buscar`, nav, store/servicio HTTP search (siempre hybrid; **sin** query `mode` desde UI); verify: test de ruta/guard o harness mínimo.
-- [ ] 8.2 [frontend] UI resultados tipados, filtros **solo** `docType` + `groupId` (no modality/status, no toggle de modo), vacío/error/`degraded`, i18n ES/EN; verify: strings en `messages.*.xlf` y test de render básico.
+- [x] 8.1 [frontend] Ruta lazy `/buscar`, nav, store/servicio HTTP search (siempre hybrid; **sin** query `mode` desde UI); verify: test de ruta/guard o harness mínimo.
+- [x] 8.2 [frontend] UI resultados tipados, filtros **solo** `docType` + `groupId` (no modality/status, no toggle de modo), vacío/error/`degraded`, i18n ES/EN; verify: strings en `messages.*.xlf` y test de render básico.
 
 ## 9. Quality gate
 

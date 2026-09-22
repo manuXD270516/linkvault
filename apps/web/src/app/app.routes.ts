@@ -80,6 +80,11 @@ export const appRoutes: Route[] = [
           import('./features/applications/applications.routes').then((m) => m.APPLICATIONS_ROUTES),
       },
       {
+        path: 'buscar',
+        loadChildren: () =>
+          import('./features/search/search.routes').then((m) => m.SEARCH_ROUTES),
+      },
+      {
         path: 'mi-cv',
         loadComponent: () => import('./features/cv/my-cv.page').then((m) => m.MyCvPage),
       },

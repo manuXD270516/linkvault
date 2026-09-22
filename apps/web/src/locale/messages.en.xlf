@@ -2104,9 +2104,93 @@
         <source>LinkVault</source>
         <target>LinkVault</target>
       </trans-unit>
+      <trans-unit id="shell.search" datatype="html">
+        <source>Buscar</source>
+        <target>Search</target>
+      </trans-unit>
       <trans-unit id="shell.applications" datatype="html">
         <source>Postulaciones</source>
         <target>Applications</target>
+      </trans-unit>
+      <trans-unit id="search.title" datatype="html">
+        <source>Buscar</source>
+        <target>Search</target>
+      </trans-unit>
+      <trans-unit id="search.intro" datatype="html">
+        <source> Encuentra vacantes, postulaciones, comentarios, notas, CVs y planes de estudio que puedas ver. </source>
+        <target>Find job posts, applications, comments, notes, CVs and study plans you can see.</target>
+      </trans-unit>
+      <trans-unit id="search.query.label" datatype="html">
+        <source>Consulta</source>
+        <target>Query</target>
+      </trans-unit>
+      <trans-unit id="search.query.placeholder" datatype="html">
+        <source>Título, empresa, nota…</source>
+        <target>Title, company, note…</target>
+      </trans-unit>
+      <trans-unit id="search.filter.docType" datatype="html">
+        <source>Tipo</source>
+        <target>Type</target>
+      </trans-unit>
+      <trans-unit id="search.filter.docType.all" datatype="html">
+        <source>Todos los tipos</source>
+        <target>All types</target>
+      </trans-unit>
+      <trans-unit id="search.filter.group" datatype="html">
+        <source>Grupo</source>
+        <target>Group</target>
+      </trans-unit>
+      <trans-unit id="search.filter.group.all" datatype="html">
+        <source>Todos tus grupos</source>
+        <target>All your groups</target>
+      </trans-unit>
+      <trans-unit id="search.docType.job_preview" datatype="html">
+        <source>Vacante</source>
+        <target>Job post</target>
+      </trans-unit>
+      <trans-unit id="search.docType.application" datatype="html">
+        <source>Postulación</source>
+        <target>Application</target>
+      </trans-unit>
+      <trans-unit id="search.docType.group_comment" datatype="html">
+        <source>Comentario</source>
+        <target>Comment</target>
+      </trans-unit>
+      <trans-unit id="search.docType.group_link_note" datatype="html">
+        <source>Nota de grupo</source>
+        <target>Group note</target>
+      </trans-unit>
+      <trans-unit id="search.docType.cv" datatype="html">
+        <source>CV</source>
+        <target>CV</target>
+      </trans-unit>
+      <trans-unit id="search.docType.roadmap" datatype="html">
+        <source>Plan de estudio</source>
+        <target>Study plan</target>
+      </trans-unit>
+      <trans-unit id="search.submit" datatype="html">
+        <source> Buscar </source>
+        <target>Search</target>
+      </trans-unit>
+      <trans-unit id="search.emptyQuery" datatype="html">
+        <source> Escribe algo para buscar. No listamos todo el índice. </source>
+        <target>Type something to search. We do not list the whole index.</target>
+      </trans-unit>
+      <trans-unit id="search.degraded" datatype="html">
+        <source> La búsqueda semántica no está disponible ahora; mostramos coincidencias por texto. </source>
+        <target>Semantic search is unavailable right now; showing text matches.</target>
+      </trans-unit>
+      <trans-unit id="search.unavailable" datatype="html">
+        <source> La búsqueda no está disponible en este momento. Inténtalo más tarde. </source>
+        <target>Search is unavailable right now. Try again later.</target>
+      </trans-unit>
+      <trans-unit id="search.loading" datatype="html">
+        <source>Buscando…</source>
+        <target>Searching…</target>
+      </trans-unit>
+      <trans-unit id="search.empty" datatype="html">
+        <source> No hay resultados para esta consulta. </source>
+        <target>No results for this query.</target>
       </trans-unit>
       <trans-unit id="shell.myLinks" datatype="html">
         <source>Solo para mí</source>

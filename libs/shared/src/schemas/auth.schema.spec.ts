@@ -271,6 +271,9 @@ describe('api error contract', () => {
       'consent_text_outdated',
       'vault_unavailable',
       'vapid_unavailable',
+      'empty_query',
+      'search_unavailable',
+      'search_purge_failed',
       'internal_error',
     ]);
   });

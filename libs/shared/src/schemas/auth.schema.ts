@@ -182,6 +182,12 @@ export const apiErrorCodeSchema = z.enum([
   'vault_unavailable',
   // 503: faltan claves VAPID de web push; el SPA no puede suscribirse (ADR-035).
   'vapid_unavailable',
+  // 400: `GET /api/search` con `q` ausente o solo espacios (C7 / change search).
+  'empty_query',
+  // 503: `FEATURE_SEARCH=false` o Meilisearch no disponible (D1 / change search).
+  'search_unavailable',
+  // 503: purge Meili falló antes del borrado de cuenta; Mongo intacto (D9 / change search).
+  'search_purge_failed',
   // 500
   'internal_error',
 ]);

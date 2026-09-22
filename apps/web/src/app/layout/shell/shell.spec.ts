@@ -99,6 +99,14 @@ describe('Shell', () => {
     expect(host.querySelector('a[href="/postulaciones"]')?.textContent).toContain('Postulaciones');
   });
 
+  it('shows a link to search', async () => {
+    const fixture = TestBed.createComponent(Shell);
+    await fixture.whenStable();
+    const host = fixture.nativeElement as HTMLElement;
+
+    expect(host.querySelector('a[href="/buscar"]')?.textContent).toContain('Buscar');
+  });
+
   it('logs out and navigates to /login', async () => {
     const fixture = TestBed.createComponent(Shell);
     await fixture.whenStable();
