@@ -1,0 +1,79 @@
+# Traefik dynamic config for LinkVault prod (ADR-033 D2/D7/D9/D13).
+# Mounted read-only into the Traefik container. Hosts come from env substitution via
+# Traefik's Go template (`{{ env "PUBLIC_HOST" }}`) when file provider watch is on —
+# compose sets PUBLIC_HOST / ACME email via TRAEFIK_* env on the traefik service.
+#
+# Routing (D9):
+#   /p/*, /api/*  → api
+#   everything else → web
+#   /metrics and /health* are NOT registered on the public entrypoint (internal Docker only).
+#
+# CV upload (D7): POST /api/cv → 10 req / 15 min per IP + body ≤ 6 MiB.
+# SPA (D13): Referrer-Policy: no-referrer (invite codes must not leak via Referer).
+
+http:
+  middlewares:
+    spa-referrer-policy:
+      headers:
+        customResponseHeaders:
+          Referrer-Policy: "no-referrer"
+
+    cv-upload-ratelimit:
+      rateLimit:
+        # 10 requests per 15 minutes per client IP (sourceCriterion defaults to remote addr;
+        # Traefik is the only trusted proxy — api uses TRUST_PROXY=true behind it).
+        average: 10
+        period: 15m
+        burst: 10
+
+    cv-upload-body-limit:
+      buffering:
+        # 5 MiB file + multipart overhead → proxy ceiling 6 MiB (ADR-033 D7 / ADR-028).
+        maxRequestBodyBytes: 6291456
+
+  routers:
+    # Higher priority than the generic /api router so middlewares only bind to CV upload.
+    api-cv-upload:
+      entryPoints:
+        - websecure
+      rule: 'Host(`{{ env "PUBLIC_HOST" }}`) && Method(`POST`) && Path(`/api/cv`)'
+      priority: 200
+      middlewares:
+        - cv-upload-ratelimit
+        - cv-upload-body-limit
+      service: api
+      tls:
+        certResolver: letsencrypt
+
+    api:
+      entryPoints:
+        - websecure
+      rule: 'Host(`{{ env "PUBLIC_HOST" }}`) && (PathPrefix(`/api/`) || PathPrefix(`/p/`))'
+      priority: 100
+      service: api
+      tls:
+        certResolver: letsencrypt
+
+    web:
+      entryPoints:
+        - websecure
+      rule: 'Host(`{{ env "PUBLIC_HOST" }}`)'
+      priority: 1
+      middlewares:
+        - spa-referrer-policy
+      service: web
+      tls:
+        certResolver: letsencrypt
+
+  services:
+    api:
+      loadBalancer:
+        servers:
+          - url: "http://api:3000"
+        passHostHeader: true
+
+    web:
+      loadBalancer:
+        servers:
+          - url: "http://web:80"
+        passHostHeader: true
