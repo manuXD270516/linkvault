@@ -10,7 +10,7 @@ Cuando el conteo de no-BYOK alcanza el límite:
 
 Las ejecuciones sin usuario y las tareas sin límite NO SHALL estar sujetas a cuota. Si el conteo no puede completarse, la cuota SHALL permitir la ejecución. Esta regla **no** modifica la cuota de análisis de producto (`MATCH_ANALYSES_PER_USER`), que sigue aplicando con independencia de BYOK.
 
-#### Scenario: Límite alcanzado sin BYOK
+#### Scenario: Límite alcanzado
 
 - **GIVEN** un límite de 2 ejecuciones diarias de `classify-skills` y un usuario con 2 `success` no-BYOK en las últimas 24 horas, sin claves BYOK
 - **WHEN** ese usuario ejecuta `classify-skills`
