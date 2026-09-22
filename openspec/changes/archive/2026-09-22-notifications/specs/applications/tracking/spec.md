@@ -1,3 +1,8 @@
+## RENAMED Requirements
+
+- FROM: `### Requirement: Postulación estancada, solo modelada`
+- TO: `### Requirement: Postulación estancada con productor`
+
 ## MODIFIED Requirements
 
 ### Requirement: Postulación estancada con productor
