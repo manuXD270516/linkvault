@@ -281,3 +281,14 @@ changes:
       Diferido desde auth-users (fuera de su alcance por no haber infraestructura de email, ADR-020): verificación del email de
       la cuenta y recuperación de contraseña por email. Alcance, proveedor de correo y orden en la secuencia por decidir al
       crear el change.
+  - name: search
+    adrs: [006, 009, 014, 016, 036]
+    agents: [devops, backend-dev, frontend-dev, ai-engineer]
+    scope: |
+      Fila 18 design-v0.2 §6 / design.md F2. Meilisearch como motor primario (docker-compose profile `search`, no Mongo text
+      index). Índice unificado de lo que la persona puede ver: JobLink previews (title/company/description/skills/location/
+      modality/salary), applications (status/stageLabel/notes), group comments, group-link notes, CV texto/skills (owner),
+      roadmaps (owner). Sync asíncrono outbox → BullMQ (ADR-009); ACL en query (privado propio + grupos miembro).
+      Reintroducir EmbeddingProvider (C18; ADR-036 enmienda ADR-016): mock + ollama/openrouter; vectores en Meili; hybrid
+      search. API GET /api/search + SPA /buscar. Purga Meili en borrado de cuenta. Fuera: B10 digest, discovery F3,
+      browser extension, caché semántico LLM.
