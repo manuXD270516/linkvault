@@ -155,4 +155,18 @@ describe('SearchContent', () => {
     expect(result.hits.length).toBeGreaterThan(0);
     expect(meili.searchCalls[0]?.mode).toBe('fulltext');
   });
+
+  it('throws SearchUnavailable when Meili is unhealthy', async () => {
+    const meili = new InMemoryMeiliSearchClient();
+    meili.healthyFlag = false;
+    const useCase = new SearchContent(
+      config(),
+      meili,
+      membership,
+      createStubEmbedTexts(),
+    );
+    await expect(
+      useCase.execute('ana', { q: 'remoto' }),
+    ).rejects.toBeInstanceOf(SearchUnavailable);
+  });
 });
