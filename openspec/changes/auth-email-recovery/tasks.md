@@ -1,9 +1,9 @@
 ## 1. Infraestructura y configuración
 
-- [ ] 1.1 [infra] Añadir servicio Mailpit a `docker-compose.yml` (SMTP + UI, healthcheck, puertos configurables) y documentar el comando de arranque en README; verificar con `docker compose up -d --wait` que Mailpit queda healthy junto a mongo/redis/minio (smoke local; CI no depende de Mailpit).
-- [ ] 1.2 [infra] Variables `MAIL_*`, `RESEND_API_KEY`, TTL de tokens de verify/reset en `.env.example` y `apiConfigSchema` (smtp local por defecto; resend exige clave); verificar tests de config “Resend sin clave”, “ejemplo local arranca” y que `.env.example` no tiene clave real.
-- [ ] 1.3 [infra] Sección RUNBOOK: SPF/DKIM/DMARC + From placeholder + reseteo manual como fallback del flujo email; verificar que el RUNBOOK menciona `auth/password-recovery` como camino normal y DNS no bloquea local.
-- [ ] 1.4 [infra] Fila `auth-email-recovery` en `docs/design-v0.2.md` §6 (orden antes de `deploy-prod`) y ADR-034 alineado al design; verificar referencias cruzadas.
+- [x] 1.1 [infra] Añadir servicio Mailpit a `docker-compose.yml` (SMTP + UI, healthcheck, puertos configurables) y documentar el comando de arranque en README; verificar con `docker compose up -d --wait` que Mailpit queda healthy junto a mongo/redis/minio (smoke local; CI no depende de Mailpit).
+- [x] 1.2 [infra] Variables `MAIL_*`, `RESEND_API_KEY`, TTL de tokens de verify/reset en `.env.example` y `apiConfigSchema` (smtp local por defecto; resend exige clave); verificar tests de config “Resend sin clave”, “ejemplo local arranca” y que `.env.example` no tiene clave real.
+- [x] 1.3 [infra] Sección RUNBOOK: SPF/DKIM/DMARC + From placeholder + reseteo manual como fallback del flujo email; verificar que el RUNBOOK menciona `auth/password-recovery` como camino normal y DNS no bloquea local.
+- [x] 1.4 [infra] Fila `auth-email-recovery` en `docs/design-v0.2.md` §6 (orden antes de `deploy-prod`) y ADR-034 alineado al design; verificar referencias cruzadas.
 
 ## 2. Puerto Mailer y plantillas
 
@@ -48,5 +48,5 @@
 
 ## 8. Cierre
 
-- [ ] 8.1 [infra] Actualizar README (Mailpit local, CapturingMailer en CI, variables MAIL_*, flujos verify/reset) y referencia ADR-034; verificar que docs y `.env.example` coinciden con el schema.
+- [x] 8.1 [infra] Actualizar README (Mailpit local, CapturingMailer en CI, variables MAIL_*, flujos verify/reset) y referencia ADR-034; verificar que docs y `.env.example` coinciden con el schema.
 - [ ] 8.2 [infra] `pnpm nx affected -t lint,typecheck,test` (y build si aplica) con `AI_CHAIN=mock AI_MOCK_MODE=replay` y `openspec validate auth-email-recovery`; verificar verde.

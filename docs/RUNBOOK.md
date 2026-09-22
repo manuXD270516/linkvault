@@ -227,8 +227,8 @@ Orden y notas específicas:
 | 12 | `cv-match-suggestions` | §4.7 y 4.12 (el bucle de juez §4.8 va en `cv-suggestions-review`). `match-cv`, `ai_analyses`, `fitScore` derivado, consentimiento con versión `2026-09-21`, sin SSE de progreso. Cómo operarlo: Paso 6 nonies. ADR-029/030. |
 | 13 | `study-roadmap` | Catálogo curado `resources.seed.json` primero. Cómo operarlo: Paso 6 decies. |
 | 14 | `ai-byok` | Vault libsodium + claves por persona (Anthropic/OpenAI/OpenRouter). Cómo operarlo: Paso 6 undecies. ADR-032. |
-| 15 | `deploy-prod` | compose prod + Traefik + GHCR CD (ADR-033). Camino canónico: [`infra/README.md`](../infra/README.md). Operación: **Paso 6 duodecies** (reseteo password Argon2id + revocar sesiones, GC huérfanos, un owner, relay único, ack BullMQ si user gone). Herencias cerradas en ADR-033 / scope del manifiesto. |
-| 16 | `auth-email-recovery` | Fuera de §6: verificación de email y recuperación de contraseña, diferidas desde `auth-users` (ADR-020). Alcance y orden por decidir al crearlo. |
+| 15 | `auth-email-recovery` | Mailer (Resend/Mailpit/captura), verify + reset, `emailVerified`; **ADR-034**. DNS SPF/DKIM: Paso 6 terdecies. |
+| 16 | `deploy-prod` | compose prod + Traefik + GHCR CD (ADR-033). Camino canónico: [`infra/README.md`](../infra/README.md). Operación: **Paso 6 duodecies** (reseteo password Argon2id como **fallback** si falla el email — Paso 6 terdecies; GC huérfanos, un owner, relay único, ack BullMQ si user gone). |
 
 **Paralelizar front y back (changes 4–8):** en `/opsx:apply` pide:
 ```
@@ -1100,6 +1100,68 @@ prioriza `byok:<userId>:<vendor>` antes de la cadena de plataforma. Decisiones e
 - **Cuota de plataforma.** Los `success` con proveedor `byok:*` **no** cuentan en el ledger de cuota de plataforma.
   Con cuota de plataforma agotada la cadena efectiva puede ser solo BYOK; sin BYOK elegible, degradación honesta.
 
+## Paso 6 terdecies — Correo transaccional (verify + reset / ADR-034)
+
+Desde `auth-email-recovery`, `api` envía correo de verificación y de recuperación de contraseña vía el puerto Mailer
+([ADR-034](adr/ADR-034.md)). Comportamiento normativo: specs `platform/email`, `auth/email-verification`,
+`auth/password-recovery`. Aquí solo operación y DNS.
+
+### Camino normal vs fallback de operador
+
+- **Camino normal (producto):** forgot → email con enlace → SPA `/restablecer-contrasena` → `POST /api/auth/reset-password`
+  (spec `auth/password-recovery`). Verificación: banner + resend autenticado, o enlace del correo a
+  `/verificar-email`.
+- **Fallback de operador:** el [reseteo manual Argon2id](#reseteo-manual-de-contraseña-operador) del Paso 6 duodecies
+  sigue disponible si el proveedor de correo está caído, la persona no tiene acceso al buzón, o hace falta desbloquear
+  sin esperar al email. No sustituye al flujo email en condiciones normales.
+
+### Local: Mailpit (sin DNS)
+
+`docker compose up -d --wait` levanta Mailpit junto a mongo/redis/minio. Con `.env` de `.env.example`
+(`MAIL_PROVIDER=smtp`, `MAIL_SMTP_HOST=localhost`, `MAIL_SMTP_PORT=1025`):
+
+- SMTP: `localhost:1025` (o `MAILPIT_SMTP_PORT` / `MAIL_SMTP_PORT` si los cambiaste).
+- UI de captura: http://localhost:8025 (o el puerto de `MAILPIT_UI_PORT`).
+
+**No hace falta SPF/DKIM/DMARC en local.** Sin registros DNS el change se valida y se fusiona igual; solo afecta a
+staging/prod con Resend.
+
+Tests y CI usan `MAIL_PROVIDER=capture` (`CapturingMailer`); el pipeline **no** depende de Mailpit.
+
+### Staging/prod: Resend + DNS del From
+
+Variables (ver `.env.example` y, cuando exista, `apiConfigSchema`):
+
+| Variable | Rol |
+|---|---|
+| `MAIL_PROVIDER=resend` | Adaptador HTTP Resend |
+| `MAIL_FROM` | Remitente visible, p. ej. `LinkVault <noreply@tu-dominio>` (placeholder en `.env.example`: `noreply@example.com`) |
+| `RESEND_API_KEY` | Obligatoria con `resend`; vacía en local |
+| `WEB_BASE_URL` | Base de los enlaces del SPA en el correo |
+
+**Antes de confiar en la entrega en un dominio real**, publica en el DNS del dominio del From (panel del registrador o
+del DNS que use Resend):
+
+1. **SPF** — registro TXT en el apex (o el host que indique Resend) que autorice a Resend a enviar por ese dominio.
+   Usa el `include:` documentado por Resend para tu dominio verificado; no copies un SPF de otro proveedor a ciegas.
+2. **DKIM** — los CNAME (o TXT) que Resend muestra al verificar el dominio; sin ellos muchos receptores marcan spam o
+   rechazan.
+3. **DMARC** (recomendado): TXT en `_dmarc.<dominio>`, p. ej. empezar en monitor
+   `v=DMARC1; p=none; rua=mailto:dmarc@tu-dominio` y endurecer (`quarantine` / `reject`) cuando SPF+DKIM estén
+   alineados.
+
+Sin SPF/DKIM el proveedor puede rechazar el envío o degradar la reputación; **eso no bloquea** el desarrollo local ni
+el merge del change. Checklist de deploy: dominio verificado en Resend + registros publicados + `MAIL_FROM` alineado
+al dominio.
+
+### Tokens y TTLs (referencia ops)
+
+- Verify: `AUTH_VERIFY_TOKEN_TTL_HOURS` (default 24).
+- Reset: `AUTH_RESET_TOKEN_TTL_SECONDS=3600` (1 h de producto).
+- En Mongo solo el hash del token; el valor en claro solo viaja en el email y en la query del SPA.
+
+---
+
 ## Paso 6 duodecies — Operar producción (deploy-prod / ADR-033)
 
 Camino canónico: `docker-compose.prod.yml` + Traefik + Let's Encrypt. Procedimiento de arranque, secrets CD y buckets:
@@ -1107,7 +1169,8 @@ Camino canónico: `docker-compose.prod.yml` + Traefik + Let's Encrypt. Procedimi
 
 ### Reseteo manual de contraseña (operador)
 
-No hay recuperación por email todavía (`auth-email-recovery`). Para desbloquear a alguien que perdió la contraseña:
+**Fallback** cuando el flujo email de `auth/password-recovery` no es viable (Resend caído, buzón inaccesible,
+incidente). En condiciones normales la persona usa forgot-password → enlace → reset. Para desbloquear a mano:
 
 1. Genera un hash **Argon2id** con los mismos parámetros que la app (`memoryCost=19456`, `timeCost=2`, `parallelism=1`,
    algoritmo Argon2id — ADR-012 / `ARGON2_OPTIONS` en api):
@@ -1288,10 +1351,10 @@ Tras `make setup` y `claude`:
 /lv:run cv-match-suggestions
 /lv:run study-roadmap
 /lv:run ai-byok
+/lv:run auth-email-recovery      # §6 orden 15; ADR-034 (antes de deploy-prod)
 /lv:run deploy-prod
-/lv:run auth-email-recovery      ← fuera de §6; revisa su alcance antes (ver tabla del Paso 5)
 ```
-O simplemente `/lv:run next` quince veces: cada uno lee el manifiesto, salta lo archivado y toma el siguiente. Entre changes usa `/clear`.
+O simplemente `/lv:run next` dieciséis veces: cada uno lee el manifiesto, salta lo archivado y toma el siguiente. Entre changes usa `/clear`.
 
 Si un `/lv:run` termina en `RUN: FALLO <etapa>`, lee el motivo, corrige (o dime) y relanza la etapa suelta: `/lv:<etapa> <change>`, luego `/lv:run <change>` retoma desde ahí porque cada etapa es idempotente (las ya hechas se detectan por archivos/logs).
 

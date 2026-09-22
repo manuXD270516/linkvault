@@ -1,8 +1,8 @@
 # LinkVault
 
 Monorepo Nx (pnpm) con `api` (NestJS + Fastify), `worker` (NestJS + BullMQ), `web` (Angular 22 zoneless) y las
-librerías `shared` y `ai`. En desarrollo, Docker solo levanta la infraestructura (MongoDB, Redis, MinIO) y las apps
-corren en el host ([ADR-017](docs/adr/ADR-017.md)).
+librerías `shared` y `ai`. En desarrollo, Docker solo levanta la infraestructura (MongoDB, Redis, MinIO, Mailpit) y las
+apps corren en el host ([ADR-017](docs/adr/ADR-017.md), correo local [ADR-034](docs/adr/ADR-034.md)).
 
 - Reglas del proyecto y flujo con Claude Code: [CLAUDE.md](CLAUDE.md)
 - Flujo de trabajo por changes de OpenSpec: [docs/RUNBOOK.md](docs/RUNBOOK.md)
@@ -22,7 +22,7 @@ corren en el host ([ADR-017](docs/adr/ADR-017.md)).
 ```bash
 pnpm install
 cp .env.example .env
-docker compose up -d --wait        # mongo (replica set rs0), redis y minio, esperando a que estén sanos
+docker compose up -d --wait        # mongo (replica set rs0), redis, minio y mailpit, esperando a que estén sanos
 ```
 
 Si ya tenías un `.env` de antes del enriquecimiento de links, cópiale de `.env.example` las variables `ENRICH_*` y `S3_*`:
@@ -32,7 +32,9 @@ Si es de antes de pegar descripciones, cópiale además `PASTE_EXTRACTION_TIMEOU
 enlaces públicos, `PUBLIC_PAGE_BASE_URL` y `WEB_BASE_URL`, obligatorias por el mismo motivo (ver
 [Variables de las URLs públicas](#variables-de-las-urls-públicas)). Y si es de antes de los CV, **las cinco `S3_*`
 —incluida `S3_BUCKET`— pasan a ser obligatorias también en `api`**, y el worker añade `CV_EXTRACTION_TIMEOUT_MS` y
-`CV_EXTRACT_CONCURRENCY` (ver [Mi CV](#mi-cv)).
+`CV_EXTRACT_CONCURRENCY` (ver [Mi CV](#mi-cv)). Y si es de antes del correo transaccional, cópiale el bloque
+`MAIL_*` / `RESEND_API_KEY` / `AUTH_VERIFY_TOKEN_TTL_HOURS` / `AUTH_RESET_TOKEN_TTL_SECONDS` (ver
+[Correo transaccional](#correo-transaccional)).
 
 Arranca cada app en su propia terminal:
 
@@ -75,21 +77,23 @@ Desde el host hace falta `directConnection=true`: el replica set anuncia `mongo:
 
 ### Puertos ocupados por otro proyecto
 
-Los puertos publicados en el host se configuran con `MONGO_PORT`, `REDIS_PORT`, `MINIO_PORT`, `MINIO_CONSOLE_PORT` y
-`OLLAMA_PORT`. Docker Compose los lee del `.env`. Si otro proyecto ya usa el 6379, por ejemplo, pon en tu `.env`:
+Los puertos publicados en el host se configuran con `MONGO_PORT`, `REDIS_PORT`, `MINIO_PORT`, `MINIO_CONSOLE_PORT`,
+`MAILPIT_SMTP_PORT`, `MAILPIT_UI_PORT` y `OLLAMA_PORT`. Docker Compose los lee del `.env`. Si otro proyecto ya usa el
+6379, por ejemplo, pon en tu `.env`:
 
 ```dotenv
 REDIS_PORT=6380
 REDIS_URL=redis://localhost:6380
 ```
 
-La URL de la app (`REDIS_URL`, `MONGO_URI`) debe apuntar al mismo puerto que publicas.
+La URL de la app (`REDIS_URL`, `MONGO_URI`, `MAIL_SMTP_PORT` si cambias el SMTP de Mailpit) debe apuntar al mismo puerto
+que publicas.
 
 ## Autenticación
 
 Cuentas con email y contraseña (Argon2id) y sesión según [ADR-012](docs/adr/ADR-012.md) y
-[ADR-020](docs/adr/ADR-020.md). No hay verificación de email ni recuperación de contraseña: llegan en un change posterior
-(`auth-email-recovery` en `openspec-changes.yaml`).
+[ADR-020](docs/adr/ADR-020.md). Verificación de email y recuperación de contraseña: [ADR-034](docs/adr/ADR-034.md)
+(change `auth-email-recovery`). Infra local: [Correo transaccional](#correo-transaccional).
 
 ### Flujo
 
@@ -111,6 +115,14 @@ Cuentas con email y contraseña (Argon2id) y sesión según [ADR-012](docs/adr/A
    token ya emitido sigue valiendo hasta que caduca (15 min con `.env.example`).
 5. **Cambio de contraseña.** `POST /api/auth/password` (`currentPassword`, `newPassword`, con access token) responde `204` y
    revoca las demás sesiones del usuario; la sesión actual sigue abierta tras un refresh.
+6. **Verificación de email (ADR-034).** Tras el registro se emite un correo con enlace a
+   `{WEB_BASE_URL}/verificar-email?token=…`. El SPA hace `POST /api/auth/verify-email` `{ token }` (público).
+   `POST /api/auth/verify-email/resend` es **solo autenticado** (cuerpo vacío). Login y refresh **no** exigen
+   `emailVerified`; el perfil/sesión lo exponen para el banner del SPA.
+7. **Recuperación de contraseña (ADR-034).** `POST /api/auth/forgot-password` `{ email }` (público, anti-enumeración:
+   siempre `200` genérico). Enlace a `{WEB_BASE_URL}/restablecer-contrasena?token=…` →
+   `POST /api/auth/reset-password` `{ token, newPassword }`. Al aceptar: revoca **todas** las sesiones, luego el hash
+   (mismo orden que change-password). Fallback de operador: [RUNBOOK](docs/RUNBOOK.md#reseteo-manual-de-contraseña-operador).
 
 Perfil propio: `GET /api/users/me` y `PATCH /api/users/me` (`displayName`, `aiConsent` con `externalProviders` /
 `textVersion` / `consentedAt`, `outputLanguage`, `redactName`). En el SPA, `/perfil` incluye el permiso de proveedores
@@ -124,12 +136,15 @@ cuerpo, `Content-Type: application/json` (si no, `415`). Los intentos se cuentan
 
 ### Rutas del SPA
 
-| Ruta        | Acceso     | Contenido                                                            |
-| ----------- | ---------- | -------------------------------------------------------------------- |
-| `/login`    | Sin sesión | Login. Con sesión redirige a `/grupos`.                              |
-| `/registro` | Sin sesión | Registro. Con sesión redirige a `/grupos`.                           |
-| `/`         | Con sesión | Redirige a `/grupos`, la pantalla de inicio (ver [Grupos](#grupos)). |
-| `/perfil`   | Con sesión | Email, nombre, cambio de contraseña, permiso de IA externa, idioma de análisis y redacción del nombre. |
+| Ruta                       | Acceso     | Contenido                                                                              |
+| -------------------------- | ---------- | -------------------------------------------------------------------------------------- |
+| `/login`                   | Sin sesión | Login. Enlace a recuperar contraseña. Con sesión redirige a `/grupos`.                 |
+| `/registro`                | Sin sesión | Registro. Con sesión redirige a `/grupos`.                                             |
+| `/recuperar-contrasena`    | Sin sesión | Forgot-password (pide email).                                                          |
+| `/restablecer-contrasena`  | Sin sesión | Lee `token` de la query y llama a reset-password.                                      |
+| `/verificar-email`         | Sin sesión | Lee `token` de la query y llama a verify-email.                                        |
+| `/`                        | Con sesión | Redirige a `/grupos`, la pantalla de inicio (ver [Grupos](#grupos)).                   |
+| `/perfil`                  | Con sesión | Email, nombre, cambio de contraseña, permiso de IA externa, idioma de análisis y redacción del nombre. |
 
 Sin sesión, una ruta autenticada lleva a `/login?returnUrl=<ruta>` y, tras entrar, vuelve a ella. Al cargar, el SPA muestra
 "Conectando…" e intenta restaurar la sesión con la cookie durante como máximo 10 segundos.
@@ -145,15 +160,44 @@ Sin sesión, una ruta autenticada lleva a `/login?returnUrl=<ruta>` y, tras entr
 | `AUTH_ACCESS_TOKEN_TTL_SECONDS` | `900`                                      | Vida del access token, de 60 a 3600 segundos.                                         |
 | `AUTH_REFRESH_TTL_DAYS`         | `30`                                       | Caducidad deslizante del refresh token, de 1 a 90 días.                               |
 | `AUTH_REFRESH_MAX_DAYS`         | `90`                                       | Máximo absoluto de una sesión, hasta 365 días y no menor que `AUTH_REFRESH_TTL_DAYS`. |
+| `AUTH_VERIFY_TOKEN_TTL_HOURS`   | `24`                                       | Caducidad del token de verificación de email (horas).                                 |
+| `AUTH_RESET_TOKEN_TTL_SECONDS`  | `3600`                                     | Caducidad del token de reset (1 h de producto).                                       |
 
 El secreto firma los access tokens y las claves de los contadores de intentos: cambiarlo invalida los access tokens emitidos
 y reinicia esos contadores. En producción usa un valor propio, por ejemplo 48 bytes aleatorios en base64url.
+
+### Correo transaccional
+
+Puerto Mailer con adaptadores por entorno ([ADR-034](docs/adr/ADR-034.md)):
+
+| Entorno | Adaptador | Cómo |
+|---|---|---|
+| Local | SMTP → **Mailpit** | `MAIL_PROVIDER=smtp` + `MAIL_SMTP_HOST`/`MAIL_SMTP_PORT` (defaults de `.env.example`) |
+| Tests / CI | **CapturingMailer** | `MAIL_PROVIDER=capture` (o DI de test); **sin** Mailpit ni red en el pipeline |
+| Staging / prod | **Resend** | `MAIL_PROVIDER=resend` + `RESEND_API_KEY` + `MAIL_FROM` |
+
+Smoke local tras `docker compose up -d --wait`: UI de Mailpit en http://localhost:8025 (SMTP `localhost:1025`).
+DNS SPF/DKIM/DMARC del From: [RUNBOOK Paso 6 terdecies](docs/RUNBOOK.md#paso-6-terdecies--correo-transaccional-verify--reset--adr-034)
+(no bloquea local ni el merge).
+
+| Variable | `.env.example` | Regla |
+|---|---|---|
+| `MAIL_PROVIDER` | `smtp` | `smtp` \| `resend` \| `capture` |
+| `MAIL_FROM` | `LinkVault <noreply@example.com>` | Remitente placeholder; en prod alineado al dominio verificado |
+| `MAIL_SMTP_HOST` | `localhost` | Obligatoria con `smtp` (Mailpit) |
+| `MAIL_SMTP_PORT` | `1025` | Puerto SMTP de Mailpit en el host |
+| `RESEND_API_KEY` | *(vacía)* | Obligatoria solo con `MAIL_PROVIDER=resend`; nunca una clave real en git |
+| `MAILPIT_SMTP_PORT` / `MAILPIT_UI_PORT` | `1025` / `8025` | Solo compose: puertos publicados en el host |
+
+La validación Nest de estas variables vive en `apiConfigSchema` (tarea backend del change); `.env.example` documenta el
+contrato local.
 
 ### Probar en local
 
 Con la infraestructura y las apps en marcha (ver [Puesta en marcha](#puesta-en-marcha)), abre http://localhost:4200: el
 proxy de `web` reenvía `/api` a la API en el mismo origen, así que la cookie funciona sin CORS. Crea una cuenta en
-`/registro`, recarga en `/perfil` para comprobar que la sesión se restaura y cierra sesión desde la barra.
+`/registro`, recarga en `/perfil` para comprobar que la sesión se restaura y cierra sesión desde la barra. Los correos
+de verificación/reset aparecen en Mailpit (http://localhost:8025) cuando el adaptador SMTP está cableado.
 
 Contra la API directamente, con un archivo de cookies de `curl` (contiene el refresh token: bórralo al terminar):
 

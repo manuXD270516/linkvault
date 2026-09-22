@@ -51,6 +51,9 @@ Copia `.env.example` → `.env.prod` (o `.env.staging`) y rellena. Obligatorias 
 - `ENRICH_*` (worker), `PASTE_EXTRACTION_TIMEOUT_MS`, `ENRICH_USER_AGENT`
 - `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `MINIO_KMS_SECRET_KEY`
 - `AI_PROMPTS_DIR` en la imagen de api/worker ya apunta a `/app/assets/ai/prompts` (compose lo fija)
+- Correo (ADR-034): `MAIL_PROVIDER=resend`, `MAIL_FROM` (dominio real), `RESEND_API_KEY`; TTLs
+  `AUTH_VERIFY_TOKEN_TTL_HOURS` / `AUTH_RESET_TOKEN_TTL_SECONDS`. DNS SPF/DKIM/DMARC: [RUNBOOK Paso 6 terdecies](../docs/RUNBOOK.md#paso-6-terdecies--correo-transaccional-verify--reset--adr-034).
+  Local usa Mailpit; CI usa `CapturingMailer` (`MAIL_PROVIDER=capture`), no Mailpit.
 
 `TRUST_PROXY=true` lo pone **solo** `docker-compose.prod.yml` (detrás de Traefik). No lo actives en el compose local ni en tests genéricos.
 

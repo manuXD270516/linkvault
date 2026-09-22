@@ -1,13 +1,15 @@
-# Infraestructura local de LinkVault (ADR-017, D6 de bootstrap-monorepo).
+# Infraestructura local de LinkVault (ADR-017, D6 de bootstrap-monorepo; ADR-034 correo).
 # Solo infraestructura: api, worker y web se ejecutan en el host con `pnpm nx serve`.
 #
-#   docker compose up -d --wait                         # mongo, redis, minio
+#   docker compose up -d --wait                         # mongo, redis, minio, mailpit
 #   docker compose --profile ai-local up -d --wait      # + ollama
 #
-# Puertos del host configurables (MONGO_PORT, REDIS_PORT, MINIO_PORT, MINIO_CONSOLE_PORT, OLLAMA_PORT)
-# por si otro proyecto ya los ocupa; por defecto, los estándar.
+# Puertos del host configurables (MONGO_PORT, REDIS_PORT, MINIO_PORT, MINIO_CONSOLE_PORT,
+# MAILPIT_SMTP_PORT, MAILPIT_UI_PORT, OLLAMA_PORT) por si otro proyecto ya los ocupa;
+# por defecto, los estándar.
 # URI desde el host:        mongodb://localhost:27017/linkvault?directConnection=true
 # URI desde un contenedor:  mongodb://mongo:27017/linkvault?replicaSet=rs0
+# Mailpit UI (smoke local): http://localhost:8025  · SMTP: localhost:1025
 name: linkvault
 
 services:
@@ -109,6 +111,22 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
+      start_interval: 1s
+    restart: unless-stopped
+
+  # Captura SMTP local para correo transaccional (ADR-034). Sin perfil: mismo arranque que mongo/redis/minio.
+  # CI y tests unitarios/integración usan CapturingMailer (`MAIL_PROVIDER=capture`); no dependen de este servicio.
+  mailpit:
+    image: axllent/mailpit:v1.27.7
+    ports:
+      - '${MAILPIT_SMTP_PORT:-1025}:1025'
+      - '${MAILPIT_UI_PORT:-8025}:8025'
+    healthcheck:
+      test: ['CMD', '/mailpit', 'readyz']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
       start_interval: 1s
     restart: unless-stopped
 
