@@ -1,8 +1,8 @@
 ## 1. Contratos compartidos e infra
 
 - [x] 1.1 [shared] Eventos `GroupLinkAdded.v1` y `ApplicationStatusNotify.v1` (status canónico + `groupId?`) + schemas zod/`jobId` fan-out; verificar tests shared.
-- [ ] 1.2 [infra] `VAPID_*` en `.env.example` + RUNBOOK de generación; verificar las tres variables documentadas.
-- [ ] 1.3 [infra] Plantillas Mailer `group-new-link`, `application-status`, `application-stale` ES/EN texto plano **sin** stageLabel/notas; verificar `mailer.spec`.
+- [x] 1.2 [infra] `VAPID_*` en `.env.example` + RUNBOOK de generación; verificar las tres variables documentadas.
+- [x] 1.3 [infra] Plantillas Mailer `group-new-link`, `application-status`, `application-stale` ES/EN texto plano **sin** stageLabel/notas; verificar `mailer.spec`.
 
 ## 2. Preferencias y push (API)
 
@@ -32,5 +32,5 @@
 
 ## 6. Docs, plan y cierre
 
-- [ ] 6.1 [infra] ADR-035 + enmendar referencia ADR-024 (stale/avisos) + fila 17 `design-v0.2.md` §6; verificar archivos.
+- [x] 6.1 [infra] ADR-035 + enmendar referencia ADR-024 (stale/avisos) + fila 17 `design-v0.2.md` §6; verificar archivos.
 - [ ] 6.2 [infra] `pnpm nx affected -t lint,typecheck,test` con `AI_CHAIN=mock AI_MOCK_MODE=replay` y `openspec validate notifications`; verificar verde.
