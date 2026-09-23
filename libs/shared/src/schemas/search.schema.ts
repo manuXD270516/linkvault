@@ -75,6 +75,11 @@ export type SearchResponse = z.infer<typeof searchResponseSchema>;
  * - `modality` → Meili `modality = "…"`
  * - `applicationStatus` → Meili atributo de documento `status` (no renombrar el campo del índice)
  * - `salaryCurrency` → Meili `salaryCurrency = "…"` (pass-through)
+ * - `openOnly` → Meili `closedAt IS NULL` cuando es `true` (ausente/`false` = no filtrar cierre)
+ *
+ * Querystring: los booleanos llegan como strings `"true"`/`"false"`. Parseamos con
+ * `z.enum(['true','false']).transform(...)` — **nunca** `z.coerce.boolean()` (la string
+ * `"false"` sería truthy y pasaría el filtro).
  */
 export const searchQueryParamsSchema = z.strictObject({
   q: z.string().default(''),
@@ -87,5 +92,13 @@ export const searchQueryParamsSchema = z.strictObject({
   /** Query param; el filtro Meili usa el atributo `status`. */
   applicationStatus: applicationStatusSchema.optional(),
   salaryCurrency: z.string().trim().min(1).max(16).optional(),
+  /**
+   * Solo `"true"` | `"false"` en HTTP; tipado como `boolean` tras el transform.
+   * Ausente = no filtrar por cierre.
+   */
+  openOnly: z
+    .enum(['true', 'false'])
+    .transform((v) => v === 'true')
+    .optional(),
 });
 export type SearchQueryParams = z.infer<typeof searchQueryParamsSchema>;

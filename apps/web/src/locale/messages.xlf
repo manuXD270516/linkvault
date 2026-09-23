@@ -4424,6 +4424,13 @@
           <context context-type="linenumber">163</context>
         </context-group>
       </trans-unit>
+      <trans-unit id="search.filter.openOnly" datatype="html">
+        <source> Solo abiertas </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">174</context>
+        </context-group>
+      </trans-unit>
       <trans-unit id="search.submit" datatype="html">
         <source> Buscar </source>
         <context-group purpose="location">

@@ -343,4 +343,76 @@ describe('SearchContent', () => {
     expect(meili.searchCalls[0]?.filter).toContain('ownerUserId = "ana"');
     expect(meili.searchCalls[0]?.filter).toContain('status = "applied"');
   });
+
+  it('openOnly excludes closed previews and keeps open ones', async () => {
+    const meili = new InMemoryMeiliSearchClient();
+    await meili.upsert([
+      {
+        id: 'job_preview:open',
+        docType: 'job_preview',
+        ownerUserId: 'ana',
+        groupIds: [],
+        visibilityScope: 'owner',
+        updatedAt: 1,
+        embeddingStatus: 'missing',
+        title: 'Nest abierto',
+        linkId: 'l-open',
+        // abierto: sin clave closedAt
+      },
+      {
+        id: 'job_preview:closed',
+        docType: 'job_preview',
+        ownerUserId: 'ana',
+        groupIds: [],
+        visibilityScope: 'owner',
+        updatedAt: 1,
+        embeddingStatus: 'missing',
+        title: 'Nest cerrado',
+        linkId: 'l-closed',
+        closedAt: '2026-09-01T12:00:00.000Z',
+      },
+    ]);
+    const useCase = new SearchContent(
+      config(),
+      meili,
+      membership,
+      createStubEmbedTexts(),
+    );
+    const withOpenOnly = await useCase.execute('ana', {
+      q: 'Nest',
+      openOnly: true,
+    });
+    expect(withOpenOnly.hits.map((h) => h.id)).toEqual(['job_preview:open']);
+    expect(meili.searchCalls[0]?.filter).toContain('closedAt IS NULL');
+
+    const without = await useCase.execute('ana', { q: 'Nest' });
+    expect(without.hits.map((h) => h.id).sort()).toEqual([
+      'job_preview:closed',
+      'job_preview:open',
+    ]);
+
+    const withFalse = await useCase.execute('ana', {
+      q: 'Nest',
+      openOnly: false,
+    });
+    expect(withFalse.hits.map((h) => h.id).sort()).toEqual([
+      'job_preview:closed',
+      'job_preview:open',
+    ]);
+    expect(meili.searchCalls[2]?.filter).not.toContain('closedAt');
+  });
+
+  it('rejects empty query even when openOnly is true', async () => {
+    const meili = new InMemoryMeiliSearchClient();
+    const useCase = new SearchContent(
+      config(),
+      meili,
+      membership,
+      createStubEmbedTexts(),
+    );
+    await expect(
+      useCase.execute('ana', { q: '  ', openOnly: true }),
+    ).rejects.toBeInstanceOf(EmptySearchQuery);
+    expect(meili.searchCalls).toHaveLength(0);
+  });
 });

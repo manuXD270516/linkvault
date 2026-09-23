@@ -316,3 +316,11 @@ changes:
       Fila 21 / B10. Digest email semanal por miembro×grupo sobre group_links.sharedAt en semana ISO W−1; tipo
       group_weekly_digest (opt-out, default ON); solo email; pie con link a prefs; FEATURE_GROUP_DIGEST; enmienda ADR-035.
       Fuera: push, consolidar multi-grupo, status en el mail, IA, opt-out por grupo.
+  - name: search-open-only
+    adrs: [006]
+    agents: [backend-dev, frontend-dev]
+    scope: |
+      Fila 22. GET /api/search + SPA /buscar: query openOnly (true|false; ausente=no filtrar) AND Meili
+      closedAt IS NULL cuando true. Parseo z.enum transform (nunca coerce.boolean). D3b bidireccional con
+      applicationStatus (fuerza job_preview). Reutiliza closedAt filterable de freshness. Fuera: solo cerradas
+      como producto, B11, ranking, reindex.

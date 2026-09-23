@@ -43,17 +43,18 @@ aviso breve no bloqueante. Estados vacíos y de error (`503`, red) SHALL tener c
 ### Requirement: Filtros LatAm en UI
 
 La UI de búsqueda SHALL permitir filtrar por **tipo de documento** (`docType`), **grupo** propio
-(`groupId`), **modalidad** (`modality`), **estado de postulación** (`applicationStatus`) y
-**moneda de salario** (`salaryCurrency` con opciones V0: cualquiera / BOB / USD), con opción
-“cualquiera” en cada uno. NO SHALL ofrecer selector de grupos ajenos. NO SHALL exponer toggle de
-modo `hybrid|fulltext|semantic` (siempre hybrid por defecto). La query vacía NO SHALL disparar un
-listado completo del índice (alineado al contrato de la API: `400 empty_query`), aunque haya
-filtros LatAm seleccionados. Copy i18n ES/EN.
+(`groupId`), **modalidad** (`modality`), **estado de postulación** (`applicationStatus`),
+**moneda de salario** (`salaryCurrency` con opciones V0: cualquiera / BOB / USD) y **solo
+abiertas** (`openOnly`, default desactivado), con opción “cualquiera” donde aplique. NO SHALL
+ofrecer selector de grupos ajenos. NO SHALL exponer toggle de modo `hybrid|fulltext|semantic`
+(siempre hybrid por defecto). La query vacía NO SHALL disparar un listado completo del índice
+(alineado al contrato de la API: `400 empty_query`), aunque haya filtros seleccionados. Copy i18n
+ES/EN.
 
-**Compatibilidad (D3b):** si el usuario activa `modality` o `salaryCurrency`, la UI SHALL forzar
-`docType=job_preview` y limpiar `applicationStatus`. Si activa `applicationStatus`, SHALL forzar
-`docType=application` y limpiar modality/currency. NO SHALL enviar a la API modality/currency
-junto con `applicationStatus`.
+**Compatibilidad (D3b):** si el usuario activa `modality`, `salaryCurrency` u `openOnly`, la UI
+SHALL forzar `docType=job_preview` y limpiar `applicationStatus`. Si activa `applicationStatus`,
+SHALL forzar `docType=application` y limpiar modality/currency/`openOnly`. NO SHALL enviar a la
+API modality/currency/`openOnly=true` junto con `applicationStatus`.
 
 #### Scenario: Filtro por tipo
 
@@ -71,12 +72,25 @@ junto con `applicationStatus`.
 - **AND** NO SHALL incluir `applicationStatus`
 - **AND** NO SHALL existir control de modo hybrid/fulltext/semantic
 
+#### Scenario: Solo abiertas en la petición
+
+- **GIVEN** Ana activa “Solo abiertas”
+- **WHEN** envía una búsqueda con texto no vacío
+- **THEN** la petición SHALL incluir `openOnly=true` y `docType=job_preview`
+- **AND** NO SHALL incluir `applicationStatus`
+
+#### Scenario: Desactivado no envía openOnly true
+
+- **GIVEN** Ana deja “Solo abiertas” desactivado
+- **WHEN** busca con texto
+- **THEN** la petición NO SHALL enviar `openOnly=true`
+
 #### Scenario: applicationStatus implica tipo application
 
 - **GIVEN** Ana elige estado `applied`
 - **WHEN** envía una búsqueda con texto no vacío
 - **THEN** la petición SHALL incluir `applicationStatus=applied` y `docType=application`
-- **AND** NO SHALL incluir `modality` ni `salaryCurrency`
+- **AND** NO SHALL incluir `modality` ni `salaryCurrency` ni `openOnly=true`
 
 #### Scenario: Sin toggle de modo
 

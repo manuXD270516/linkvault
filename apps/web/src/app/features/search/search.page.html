@@ -169,6 +169,15 @@
       </mat-form-field>
     </div>
 
+    <mat-slide-toggle
+      [checked]="openOnly()"
+      (change)="onOpenOnlyChange($event.checked)"
+      data-testid="search-open-only"
+      i18n="@@search.filter.openOnly"
+    >
+      Solo abiertas
+    </mat-slide-toggle>
+
     <div>
       <button
         mat-flat-button

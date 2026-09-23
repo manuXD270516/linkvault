@@ -14,16 +14,19 @@ estable y ACL que impide ver resultados ajenos.
 (enum de modalidad del preview), **`applicationStatus`** (estado canónico de postulación; el
 servidor SHALL traducirlo al filtro Meili sobre el atributo de documento **`status`**), y
 **`salaryCurrency`** (string no vacío; pass-through al atributo Meili `salaryCurrency`), y
+**`openOnly`** (query `true`|`false`; ausente = no filtrar; cuando `true`, AND Meili
+`closedAt IS NULL`), y
 `mode=hybrid|fulltext|semantic` (default `hybrid`; el parámetro existe para tests/debug — la SPA
 no lo expone como toggle). Respuesta SHALL incluir hits con `id`, `docType`, snippet/highlights
 seguros, score y enlace o identificadores para navegar al recurso en la SPA. Sin sesión: `401`.
 Con `FEATURE_SEARCH=false` o Meilisearch no disponible: `503` con código estable
 `search_unavailable`. Un valor de `modality` o `applicationStatus` fuera del enum documentado
 SHALL responder `400` con código `validation_error` nombrando el campo. `salaryCurrency` vacío o
-solo espacios SHALL responder `400` `validation_error` nombrando `salaryCurrency`.
+solo espacios SHALL responder `400` `validation_error` nombrando `salaryCurrency`. Un valor de
+`openOnly` distinto de `true`/`false` SHALL responder `400` `validation_error` nombrando
+`openOnly`.
 
 #### Scenario: Búsqueda con sesión
-
 - **GIVEN** Ana autenticada, `FEATURE_SEARCH=true`, Meili saludable, con contenido indexado que coincide con
   "remoto Nest"
 - **WHEN** llama `GET /api/search?q=remoto%20Nest`
@@ -48,6 +51,12 @@ solo espacios SHALL responder `400` `validation_error` nombrando `salaryCurrency
 - **GIVEN** Ana autenticada
 - **WHEN** busca con `modality=hibrido`
 - **THEN** SHALL responder `400` con código `validation_error` nombrando `modality`
+
+#### Scenario: openOnly inválido
+
+- **GIVEN** Ana autenticada
+- **WHEN** busca con `openOnly=maybe`
+- **THEN** SHALL responder `400` con código `validation_error` nombrando `openOnly`
 
 ### Requirement: ACL en el filtro de consulta
 
@@ -113,13 +122,14 @@ vectores listos, SHALL degradar a full-text y señalarlo en la respuesta (`degra
 
 ### Requirement: Filtros y ranking estables
 
-Los filtros (`docType`, `groupId`, `modality`, `applicationStatus`→`status`, `salaryCurrency`)
-SHALL combinar (AND) con el filtro ACL. El orden de hits SHALL ser estable para la misma query,
-modo, filtros y conjunto de documentos (desempate por id). `limit` máximo es **50**; valores
-mayores SHALL **clamparse a 50** (no `400`). Queries vacías (`q` ausente o solo espacios) SHALL
-rechazarse con **`400`** y código estable `empty_query`, **aunque** vengan filtros LatAm. Un
-AND entre filtros de tipos distintos (p. ej. `modality` + `applicationStatus` sin docs que
-tengan ambos campos) MAY devolver cero hits; eso NO es error de API.
+Los filtros (`docType`, `groupId`, `modality`, `applicationStatus`→`status`, `salaryCurrency`,
+**`openOnly`→`closedAt IS NULL`**) SHALL combinar (AND) con el filtro ACL. El orden de hits SHALL
+ser estable para la misma query, modo, filtros y conjunto de documentos (desempate por id).
+`limit` máximo es **50**; valores mayores SHALL **clamparse a 50** (no `400`). Queries vacías
+(`q` ausente o solo espacios) SHALL rechazarse con **`400`** y código estable `empty_query`,
+**aunque** vengan filtros LatAm u `openOnly`. Un AND entre filtros de tipos distintos (p. ej.
+`modality` + `applicationStatus` sin docs que tengan ambos campos) MAY devolver cero hits; eso
+NO es error de API.
 
 #### Scenario: Límite de página clampeado
 
@@ -134,6 +144,12 @@ tengan ambos campos) MAY devolver cero hits; eso NO es error de API.
 - **WHEN** busca con `q` vacío y `modality=remote`
 - **THEN** SHALL responder `400` con código `empty_query`
 - **AND** NO SHALL listar el índice solo por filtros
+
+#### Scenario: Query vacía con openOnly
+
+- **GIVEN** Ana autenticada
+- **WHEN** busca con `q` vacío y `openOnly=true`
+- **THEN** SHALL responder `400` con código `empty_query`
 
 #### Scenario: Filtro por modality
 
@@ -154,6 +170,20 @@ tengan ambos campos) MAY devolver cero hits; eso NO es error de API.
 - **GIVEN** un preview indexado con `salaryCurrency` `USD` y otro `BOB`
 - **WHEN** Ana busca con `salaryCurrency=USD` y un `q` compartido
 - **THEN** el hit en `BOB` NO SHALL aparecer
+
+#### Scenario: openOnly excluye cerradas
+
+- **GIVEN** Ana autenticada, un `job_preview` abierto (sin `closedAt`) y otro cerrado (`closedAt`
+  presente), ambos matchean el texto
+- **WHEN** busca con `openOnly=true` y ese `q`
+- **THEN** el hit cerrado NO SHALL aparecer
+- **AND** el abierto MAY aparecer
+
+#### Scenario: openOnly ausente no filtra cierre
+
+- **GIVEN** los mismos dos previews
+- **WHEN** busca sin `openOnly` (o `openOnly=false`)
+- **THEN** ambos MAY aparecer si matchean el texto
 
 #### Scenario: ACL no se amplía con filtros LatAm
 

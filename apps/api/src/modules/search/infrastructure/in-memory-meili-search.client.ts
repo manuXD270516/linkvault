@@ -128,7 +128,24 @@ function matchesSearchFilter(doc: SearchIndexDocument, filter: string): boolean 
   if (!matchesEqualityFilters(doc, filter)) {
     return false;
   }
+  if (!matchesIsNullFilters(doc, filter)) {
+    return false;
+  }
   return matchesAclFilter(doc, filter);
+}
+
+/**
+ * `attr IS NULL` del builder openOnly: en este fake equivale a clave ausente
+ * (`doc.closedAt === undefined`), alineado al loader que nunca escribe `null`.
+ */
+function matchesIsNullFilters(
+  doc: SearchIndexDocument,
+  filter: string,
+): boolean {
+  if (!/\bclosedAt\s+IS\s+NULL\b/i.test(filter)) {
+    return true;
+  }
+  return doc.closedAt === undefined;
 }
 
 /** Igualdades AND del builder (docType / modality / status / salaryCurrency). */

@@ -15,8 +15,8 @@ import { ZodValidationPipe } from '../../../presentation/http/zod-validation.pip
 import { SearchContent } from '../application/search-content.usecase';
 
 /**
- * `GET /api/search` (D7; filtros LatAm D1). Sesión obligatoria (guard global).
- * SPA V0 no envía `mode`; sí puede enviar modality / applicationStatus / salaryCurrency.
+ * `GET /api/search` (D7; filtros LatAm D1 + openOnly). Sesión obligatoria (guard global).
+ * SPA V0 no envía `mode`; sí puede enviar modality / applicationStatus / salaryCurrency / openOnly.
  */
 @Controller('search')
 export class SearchController {
@@ -42,6 +42,7 @@ export class SearchController {
       ...(query.salaryCurrency === undefined
         ? {}
         : { salaryCurrency: query.salaryCurrency }),
+      ...(query.openOnly === undefined ? {} : { openOnly: query.openOnly }),
     });
     return searchResponseSchema.parse(result);
   }

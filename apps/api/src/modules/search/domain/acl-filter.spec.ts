@@ -54,4 +54,27 @@ describe('buildSearchAclFilter', () => {
       /modality = "remote" AND status = "applied" AND salaryCurrency = "USD"$/,
     );
   });
+
+  it('ANDs closedAt IS NULL when openOnly is true', () => {
+    const filter = buildSearchAclFilter({
+      userId: 'ana',
+      memberGroupIds: [],
+      openOnly: true,
+    });
+    expect(filter).toContain('ownerUserId = "ana"');
+    expect(filter).toMatch(/closedAt IS NULL$/);
+  });
+
+  it('does not add closedAt clause when openOnly is false or absent', () => {
+    expect(
+      buildSearchAclFilter({
+        userId: 'ana',
+        memberGroupIds: [],
+        openOnly: false,
+      }),
+    ).not.toContain('closedAt');
+    expect(
+      buildSearchAclFilter({ userId: 'ana', memberGroupIds: [] }),
+    ).not.toContain('closedAt');
+  });
 });

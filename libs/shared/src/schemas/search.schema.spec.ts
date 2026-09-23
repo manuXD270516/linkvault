@@ -92,4 +92,38 @@ describe('searchQueryParamsSchema', () => {
       searchQueryParamsSchema.parse({ q: 'a', limit: '20', offset: '5' }),
     ).toEqual({ q: 'a', limit: 20, offset: 5 });
   });
+
+  it('parses openOnly true/false from query strings and omits when absent', () => {
+    expect(searchQueryParamsSchema.parse({ q: 'x', openOnly: 'true' })).toEqual(
+      {
+        q: 'x',
+        openOnly: true,
+      },
+    );
+    expect(
+      searchQueryParamsSchema.parse({ q: 'x', openOnly: 'false' }),
+    ).toEqual({
+      q: 'x',
+      openOnly: false,
+    });
+    expect(searchQueryParamsSchema.parse({ q: 'x' })).toEqual({ q: 'x' });
+    expect(
+      Object.prototype.hasOwnProperty.call(
+        searchQueryParamsSchema.parse({ q: 'x' }),
+        'openOnly',
+      ),
+    ).toBe(false);
+  });
+
+  it('rejects invalid openOnly naming the field (never coerce.boolean)', () => {
+    expect(
+      issuePaths(
+        searchQueryParamsSchema.safeParse({ q: 'x', openOnly: 'maybe' }),
+      ),
+    ).toEqual(['openOnly']);
+    // Si usáramos coerce.boolean, "false" sería truthy — el enum lo parsea a false.
+    expect(
+      searchQueryParamsSchema.parse({ q: 'x', openOnly: 'false' }).openOnly,
+    ).toBe(false);
+  });
 });

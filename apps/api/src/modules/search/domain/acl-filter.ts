@@ -10,8 +10,9 @@
  *
  * CV y roadmap solo por owner (impuesto además si se pide docType).
  *
- * Filtros LatAm (search-latam-filters D1) se AND al ACL: modality, status
- * (desde query `applicationStatus`), salaryCurrency.
+ * Filtros LatAm + openOnly (AND al ACL): modality, status (desde query
+ * `applicationStatus`), salaryCurrency; cuando `openOnly`, `closedAt IS NULL`
+ * (atributo omitido por el loader = abierto; el loader nunca escribe `null`).
  */
 export function buildSearchAclFilter(input: {
   readonly userId: string;
@@ -22,6 +23,8 @@ export function buildSearchAclFilter(input: {
   /** Atributo Meili `status` (mapeado desde query param `applicationStatus`). */
   readonly status?: string;
   readonly salaryCurrency?: string;
+  /** Cuando true, AND `closedAt IS NULL` (vacantes abiertas). */
+  readonly openOnly?: boolean;
 }): string {
   const ownerBranch = `(ownerUserId = "${escapeMeili(
     input.userId,
@@ -56,15 +59,16 @@ export function buildSearchAclFilter(input: {
     filter = `(${acl}) AND docType = "${escapeMeili(input.docType)}"`;
   }
 
-  return appendLatAmFilters(filter, input);
+  return appendOptionalFilters(filter, input);
 }
 
-function appendLatAmFilters(
+function appendOptionalFilters(
   base: string,
   input: {
     readonly modality?: string;
     readonly status?: string;
     readonly salaryCurrency?: string;
+    readonly openOnly?: boolean;
   },
 ): string {
   const clauses: string[] = [base];
@@ -76,6 +80,10 @@ function appendLatAmFilters(
   }
   if (input.salaryCurrency !== undefined) {
     clauses.push(`salaryCurrency = "${escapeMeili(input.salaryCurrency)}"`);
+  }
+  // openOnly: Meili `closedAt IS NULL` cubre atributo omitido (loader no escribe null).
+  if (input.openOnly === true) {
+    clauses.push('closedAt IS NULL');
   }
   return clauses.length === 1 ? clauses[0]! : clauses.join(' AND ');
 }
