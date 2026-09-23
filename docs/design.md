@@ -119,7 +119,7 @@ Se simuló una mesa de diseño con roles especializados. Cada tema se debatió, 
 | F2 | `roadmap` | Plan de estudio con recursos (cursos, posts, libros, docs) |
 | F2 | `search` | Búsqueda full-text (Meilisearch) y filtros |
 | F2 | `notifications` | Email/web push |
-| **F3** | discovery | Buscar vacantes en bolsas (APIs/adapters) sin scraping agresivo — **ADR-043** / change job-discovery (Get on Board + Remote OK; sin boards robots-blocked). F3 construcción cerró con demo-seed (ADR-042); discovery es post-v1 fila 29. |
+| **F3** | `discovery` | Buscar vacantes en bolsas (APIs/adapters) sin scraping agresivo — **ADR-043** / change `job-discovery` (Get on Board + Remote OK; sin boards robots-blocked). F3 construcción cerró con `demo-seed` (ADR-042); discovery es post-v1 fila 29. |
 | F3 | `extension` | Extensión de navegador |
 | F3 | `analytics` | Métricas personales/grupo (funnel de postulaciones) |
 
