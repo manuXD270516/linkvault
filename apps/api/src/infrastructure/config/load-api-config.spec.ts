@@ -123,6 +123,33 @@ describe('api configuration', () => {
     expect(result.ok).toBe(true);
   });
 
+  it('EXTENSION_CORS_ORIGINS acepta chrome-extension y moz-extension', () => {
+    const result = parseEnv(apiConfigSchema, {
+      ...readEnvExample(),
+      EXTENSION_CORS_ORIGINS:
+        'chrome-extension://abcdefghijklmnopqrstuvwxyz123456,moz-extension://12345678-1234-1234-1234-123456789abc',
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.config.EXTENSION_CORS_ORIGINS).toEqual([
+        'chrome-extension://abcdefghijklmnopqrstuvwxyz123456',
+        'moz-extension://12345678-1234-1234-1234-123456789abc',
+      ]);
+    }
+  });
+
+  it('EXTENSION_CORS_ORIGINS rechaza https y esquemas ajenos', () => {
+    expect(
+      parseEnv(apiConfigSchema, {
+        ...readEnvExample(),
+        EXTENSION_CORS_ORIGINS: 'https://evil.example',
+      }),
+    ).toEqual({
+      ok: false,
+      invalid: [{ name: 'EXTENSION_CORS_ORIGINS', reason: 'invalid' }],
+    });
+  });
+
   it('.env.example no tiene clave real de Resend', () => {
     const example = readEnvExample();
     expect(example['RESEND_API_KEY'] ?? '').toBe('');

@@ -394,3 +394,10 @@ changes:
       Fila 32. parseSalaryText (shared) + enrich post-chain cuando ambos extremos null; no-op manual/pasted;
       source auto + extractor parse-salary-text; backfill two-step Mongo luego api:backfill-search.
       Fuera: normalizar period en filtro, LLM primario, UI SPA, dual-write Meili.
+  - name: extension-firefox-web-store
+    adrs: [047, 038]
+    agents: [backend-dev, frontend-dev, devops]
+    scope: |
+      Fila 33. Build Firefox MV3 (FF≥121) apps/extension outDir separado; gecko id; CORS moz+chrome con
+      validación de esquema; RUNBOOK unpacked ambos + checklist CWS/AMO (manual; listing live fuera DoD).
+      Fuera: Safari, publish CI, scraping DOM, changes de auth extensión.

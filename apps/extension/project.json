@@ -24,6 +24,25 @@
         }
       }
     },
+    "build-firefox": {
+      "executor": "nx:run-commands",
+      "outputs": ["{workspaceRoot}/dist/apps/extension-firefox"],
+      "cache": true,
+      "inputs": ["production", "^production"],
+      "options": {
+        "command": "vite build --mode firefox",
+        "cwd": "apps/extension"
+      }
+    },
+    "lint-firefox": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build-firefox"],
+      "cache": false,
+      "options": {
+        "command": "node apps/extension/scripts/lint-firefox-manifest.mjs",
+        "cwd": "."
+      }
+    },
     "typecheck": {
       "options": {
         "commands": [

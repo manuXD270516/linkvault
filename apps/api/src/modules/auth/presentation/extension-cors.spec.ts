@@ -5,9 +5,11 @@ import {
   type AuthTestApp,
 } from '../../../test-support/auth-test-app';
 
-// CORS allowlist de extensión (ADR-038 / task 2.3): default vacío = off; origen allowlisted recibe ACAO.
+// CORS allowlist de extensión (ADR-038 / ADR-047): default vacío = off; origen allowlisted recibe ACAO.
 
 const ALLOWED = 'chrome-extension://abcdefghijklmnopqrstuvwxyz123456';
+const ALLOWED_MOZ =
+  'moz-extension://12345678-1234-1234-1234-123456789abc';
 const OTHER = 'chrome-extension://otherid0123456789abcdefghijklmnop';
 
 describe('EXTENSION_CORS_ORIGINS', () => {
@@ -19,7 +21,7 @@ describe('EXTENSION_CORS_ORIGINS', () => {
     harness = await createAuthTestApp({
       mongoUri: getMongoTestUri(),
       redisUrl: redis.url,
-      config: { EXTENSION_CORS_ORIGINS: [ALLOWED] },
+      config: { EXTENSION_CORS_ORIGINS: [ALLOWED, ALLOWED_MOZ] },
     });
   });
 
@@ -43,6 +45,22 @@ describe('EXTENSION_CORS_ORIGINS', () => {
     expect(response.statusCode).toBe(204);
     expect(response.headers['access-control-allow-origin']).toBe(ALLOWED);
     expect(response.headers['access-control-allow-methods']).toMatch(/POST/i);
+  });
+
+  it('preflight moz-extension allowlisted OK', async () => {
+    const response = await harness.app.inject({
+      method: 'OPTIONS',
+      url: '/api/auth/extension/login',
+      headers: {
+        origin: ALLOWED_MOZ,
+        'access-control-request-method': 'POST',
+        'access-control-request-headers':
+          'authorization,content-type,x-requested-with',
+      },
+    });
+
+    expect(response.statusCode).toBe(204);
+    expect(response.headers['access-control-allow-origin']).toBe(ALLOWED_MOZ);
   });
 
   it('otro origen sin ACAO', async () => {

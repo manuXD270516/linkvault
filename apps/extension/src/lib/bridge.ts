@@ -1,3 +1,4 @@
+import { getBrowser } from './browser-api';
 import type { ExtensionMessage, ExtensionMessageResult } from './messaging';
 import type { ExtensionSession } from './storage';
 import type { GroupListItem, SaveLinkApiResponse } from './api';
@@ -5,7 +6,9 @@ import type { GroupListItem, SaveLinkApiResponse } from './api';
 export async function sendExtensionMessage(
   message: ExtensionMessage,
 ): Promise<ExtensionMessageResult> {
-  return (await chrome.runtime.sendMessage(message)) as ExtensionMessageResult;
+  return (await getBrowser().runtime.sendMessage(
+    message,
+  )) as ExtensionMessageResult;
 }
 
 export async function getSession(): Promise<ExtensionSession | null> {

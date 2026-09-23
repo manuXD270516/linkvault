@@ -2,8 +2,9 @@
 declare const __EXTENSION_API_BASE_URL__: string;
 
 /**
- * Subconjunto de `chrome.*` que usa la extensión. Sin `@types/chrome` en el monorepo:
- * tipamos solo lo necesario para MV3.
+ * Subconjunto de APIs WebExtension (`chrome` / `browser`) que usa la extensión.
+ * Sin `@types/chrome` en el monorepo: tipamos solo lo necesario para MV3.
+ * En runtime usar `getBrowser()` (`browser ?? chrome`).
  */
 declare namespace chrome {
   namespace storage {

@@ -158,8 +158,9 @@ export const apiConfigSchema = z
     VAPID_PRIVATE_KEY: z.string().optional().default(''),
     VAPID_SUBJECT: z.string().optional().default(''),
     /**
-     * Orígenes CORS de la extensión Chromium (ADR-038): CSV de `chrome-extension://…`.
-     * Vacío (default) = CORS off. Allowlist acota orígenes página/web; la defensa real es auth + client.
+     * Orígenes CORS de la extensión (ADR-038 / ADR-047): CSV de `chrome-extension://…`
+     * y/o `moz-extension://…`. Vacío (default) = CORS off. Allowlist acota orígenes página/web;
+     * la defensa real es auth + client.
      */
     EXTENSION_CORS_ORIGINS: z
       .string()
@@ -173,6 +174,17 @@ export const apiConfigSchema = z
   })
   // Cada issue lleva `path` con la variable: `parseEnv` descarta los issues que no nombran ninguna.
   .superRefine((config, ctx) => {
+    for (const origin of config.EXTENSION_CORS_ORIGINS) {
+      if (!isExtensionCorsOrigin(origin)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['EXTENSION_CORS_ORIGINS'],
+          message:
+            'EXTENSION_CORS_ORIGINS entries must be chrome-extension:// or moz-extension:// URLs',
+        });
+        break;
+      }
+    }
     if (config.AUTH_REFRESH_MAX_DAYS < config.AUTH_REFRESH_TTL_DAYS) {
       ctx.addIssue({
         code: 'custom',
@@ -219,3 +231,15 @@ export const apiConfigSchema = z
   });
 
 export type ApiConfig = z.output<typeof apiConfigSchema>;
+
+/** Allowlist CORS de extensión: solo chrome-extension / moz-extension (ADR-047). */
+function isExtensionCorsOrigin(origin: string): boolean {
+  try {
+    const url = new URL(origin);
+    return (
+      url.protocol === 'chrome-extension:' || url.protocol === 'moz-extension:'
+    );
+  } catch {
+    return false;
+  }
+}
