@@ -88,6 +88,11 @@ export class LinkCard {
   readonly matchBusy = input(false);
   /** Abrir el diálogo de encaje; `LinkList` lo abre sin pedir análisis. */
   readonly analyzeMatch = output<void>();
+  /**
+   * Reabrir una vacante cerrada por frescura (ADR-041). Solo se ofrece con `closedAt`; `LinkList` llama al API y, si
+   * pide `expiresAt`, abre el diálogo de fecha.
+   */
+  readonly reopen = output<void>();
 
   private readonly locale = inject(LOCALE_ID);
 

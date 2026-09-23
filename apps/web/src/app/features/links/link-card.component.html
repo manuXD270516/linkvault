@@ -207,6 +207,18 @@
       Reintentar
     </button>
   }
+  @if (isClosed()) {
+    <button
+      mat-button
+      type="button"
+      [disabled]="busy()"
+      (click)="reopen.emit()"
+      data-testid="link-reopen"
+      i18n="@@links.card.reopen"
+    >
+      Reabrir
+    </button>
+  }
   <!--
     Enlace público (spec web/public-preview). La marca la ve cualquier miembro del grupo: ya es pública y no dice a qué
     grupo pertenece. El interruptor solo lo ven quien compartió el link y el propietario.

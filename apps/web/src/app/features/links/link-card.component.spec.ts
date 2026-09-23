@@ -89,6 +89,43 @@ describe('LinkCard', () => {
     },
   );
 
+  /** Reabrir (ADR-041): solo con `closedAt`; quien puede ver/editar el preview lo ve en la tarjeta. */
+  it('ofrece Reabrir cuando la oferta está cerrada', async () => {
+    const closed: JobLinkSummary = {
+      ...enriched,
+      closedAt: '2026-09-22T12:00:00.000Z',
+      closedReason: 'recheck',
+    };
+    await render(closed);
+
+    const reopen = host().querySelector<HTMLButtonElement>('[data-testid="link-reopen"]');
+    expect(reopen?.textContent?.trim()).toBe('Reabrir');
+
+    const emitted: string[] = [];
+    fixture.componentInstance.reopen.subscribe(() => emitted.push('reopen'));
+    reopen?.click();
+    expect(emitted).toEqual(['reopen']);
+  });
+
+  it('no ofrece Reabrir si la oferta está abierta', async () => {
+    await render(enriched);
+    expect(host().querySelector('[data-testid="link-reopen"]')).toBeNull();
+  });
+
+  it('deshabilita Reabrir mientras la lista está ocupada', async () => {
+    fixture.componentRef.setInput('link', {
+      ...enriched,
+      closedAt: '2026-09-22T12:00:00.000Z',
+      closedReason: 'calendar',
+    } satisfies JobLinkSummary);
+    fixture.componentRef.setInput('busy', true);
+    await fixture.whenStable();
+
+    expect(host().querySelector<HTMLButtonElement>('[data-testid="link-reopen"]')?.disabled).toBe(
+      true,
+    );
+  });
+
   it('falls back to the label derived from the URL while there is no preview', async () => {
     await render(bare);
 

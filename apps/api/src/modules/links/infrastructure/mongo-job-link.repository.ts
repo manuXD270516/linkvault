@@ -10,6 +10,7 @@ import type {
   JobLinkRepository,
   ManualPreviewWrite,
   PastedPreviewWrite,
+  ReopenLinkWrite,
   ResolvedJobLink,
 } from '../application/ports/job-link-repository.port';
 import type { TransactionSession } from '../../../infrastructure/outbox/transaction-session';
@@ -224,6 +225,40 @@ export class MongoJobLinkRepository implements JobLinkRepository {
           ...(changes.lastEnrichmentError === undefined
             ? { $unset: { lastEnrichmentError: '' } }
             : {}),
+        },
+        { returnDocument: 'after' },
+      )
+      .lean()
+      .exec();
+    return updated === null ? null : toJobLink(updated);
+  }
+
+  async reopen(
+    linkId: string,
+    changes: ReopenLinkWrite,
+  ): Promise<JobLink | null> {
+    const id = toLinkObjectId(linkId);
+    if (id === null) {
+      return null;
+    }
+    const previewWrite = changes.preview;
+    const updated = await this.links
+      .findOneAndUpdate(
+        { _id: id, closedAt: { $exists: true } },
+        {
+          $unset: { closedAt: '', closedReason: '' },
+          $set: {
+            lastFreshnessCheckAt: changes.now,
+            updatedAt: changes.now,
+            ...(previewWrite === undefined
+              ? {}
+              : {
+                  preview: previewWrite.preview,
+                  previewSources: previewWrite.previewSources,
+                  previewStatus: previewWrite.previewStatus,
+                }),
+          },
+          ...(previewWrite === undefined ? {} : { $inc: { previewVersion: 1 } }),
         },
         { returnDocument: 'after' },
       )

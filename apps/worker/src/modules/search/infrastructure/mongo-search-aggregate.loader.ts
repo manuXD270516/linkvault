@@ -111,11 +111,8 @@ export class MongoSearchAggregateLoader implements SearchAggregateLoader {
       // Siempre escribir null|number para que Meili merge limpie extremos previos (ADR-040).
       salaryMin,
       salaryMax,
-      ...(link['closedAt'] instanceof Date
-        ? { closedAt: (link['closedAt'] as Date).toISOString() }
-        : typeof link['closedAt'] === 'string'
-          ? { closedAt: link['closedAt'] }
-          : {}),
+      // Abierto ⇒ null (clear Meili merge, ADR-041); cerrado ⇒ ISO.
+      closedAt: closedAtFromLink(link),
     };
   }
 
@@ -280,6 +277,23 @@ export class MongoSearchAggregateLoader implements SearchAggregateLoader {
 function scopeForPreview(groupIds: readonly string[]): SearchVisibilityScope {
   if (groupIds.length === 0) return 'owner';
   return 'owner_and_groups';
+}
+
+/**
+ * `closedAt` del JobLink → campo Meili (ADR-041). Abierto ⇒ `null` (clear merge);
+ * cerrado ⇒ ISO datetime.
+ */
+export function closedAtFromLink(
+  link: Readonly<Record<string, unknown>>,
+): string | null {
+  const value = link['closedAt'];
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  if (typeof value === 'string') {
+    return value;
+  }
+  return null;
 }
 
 /**

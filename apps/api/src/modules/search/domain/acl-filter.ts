@@ -12,7 +12,7 @@
  *
  * Filtros LatAm + openOnly + rango salarial (AND al ACL): modality, status
  * (desde query `applicationStatus`), salaryCurrency; cuando `openOnly`,
- * `closedAt IS NULL` (atributo omitido por el loader = abierto); `minSalary`/
+ * `closedAt IS NULL` (atributo `null` o omitido = abierto; ADR-041); `minSalary`/
  * `maxSalary` → solape D1 / ADR-040 sobre `salaryMin`/`salaryMax`.
  */
 export function buildSearchAclFilter(input: {
@@ -88,7 +88,7 @@ function appendOptionalFilters(
   if (input.salaryCurrency !== undefined) {
     clauses.push(`salaryCurrency = "${escapeMeili(input.salaryCurrency)}"`);
   }
-  // openOnly: Meili `closedAt IS NULL` cubre atributo omitido (loader no escribe null).
+  // openOnly: Meili `closedAt IS NULL` (null u omitido = abierto, ADR-041).
   if (input.openOnly === true) {
     clauses.push('closedAt IS NULL');
   }

@@ -13,6 +13,8 @@ import type {
   LinkPage,
   PastedDescriptionRequest,
   PublicShare,
+  ReopenLinkRequest,
+  ReopenLinkResponse,
   SaveLinkRequest,
   SaveLinkResponse,
   SetKnowSomeoneRequest,
@@ -100,6 +102,19 @@ export class LinksApi {
   enrich(linkId: string): Promise<EnrichLinkResponse> {
     return firstValueFrom(
       this.http.post<EnrichLinkResponse>(`${LINKS_URL}/${encodeURIComponent(linkId)}/enrich`, {}),
+    );
+  }
+
+  /**
+   * Reabre una vacante cerrada por frescura (ADR-041). Body opcional: `expiresAt` date-only o `null` para quitar
+   * caducidad. Responde el summary ya abierto (sin `closedAt`).
+   */
+  reopen(linkId: string, body: ReopenLinkRequest = {}): Promise<ReopenLinkResponse> {
+    return firstValueFrom(
+      this.http.post<ReopenLinkResponse>(
+        `${LINKS_URL}/${encodeURIComponent(linkId)}/reopen`,
+        body,
+      ),
     );
   }
 

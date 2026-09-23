@@ -1200,6 +1200,38 @@
         <source> Reintentar </source>
         <target>Try again</target>
       </trans-unit>
+      <trans-unit id="links.card.reopen" datatype="html">
+        <source> Reabrir </source>
+        <target>Reopen</target>
+      </trans-unit>
+      <trans-unit id="links.reopen.expiresTitle" datatype="html">
+        <source>Elige cuándo cierra</source>
+        <target>Choose a closing date</target>
+      </trans-unit>
+      <trans-unit id="links.reopen.expiresExplanation" datatype="html">
+        <source> Para reabrirla hace falta una fecha de cierre futura o quitar la caducidad </source>
+        <target>To reopen it you need a future closing date or to clear the expiry</target>
+      </trans-unit>
+      <trans-unit id="links.reopen.appsNote" datatype="html">
+        <source> Las postulaciones que ya marcamos como caducadas no se reabren solas </source>
+        <target>Applications we already marked as expired are not reopened automatically</target>
+      </trans-unit>
+      <trans-unit id="links.reopen.cancel" datatype="html">
+        <source> Cancelar </source>
+        <target>Cancel</target>
+      </trans-unit>
+      <trans-unit id="links.reopen.clearExpires" datatype="html">
+        <source> Sin fecha de cierre </source>
+        <target>No closing date</target>
+      </trans-unit>
+      <trans-unit id="links.reopen.confirm" datatype="html">
+        <source> Reabrir </source>
+        <target>Reopen</target>
+      </trans-unit>
+      <trans-unit id="links.reopen.done" datatype="html">
+        <source>Oferta marcada como abierta. Las postulaciones caducadas no cambian solas.</source>
+        <target>Offer marked as open. Expired applications do not change on their own.</target>
+      </trans-unit>
       <trans-unit id="links.public.mark" datatype="html">
         <source>Enlace público</source>
         <target>Public link</target>

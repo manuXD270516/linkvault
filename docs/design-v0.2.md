@@ -510,6 +510,7 @@ sequenceDiagram
 | 24 | `browser-extension` | F3/G5: extensión Chromium MV3; auth `/api/auth/extension/*` (refresh en body); CTA Guardar privado por defecto; CORS allowlist; **ADR-038** (enmienda ADR-012) |
 | 25 | `application-analytics` | F3 analytics: funnel personal on-read (conteos ADR-024 + stale 10d cap 20); SPA insights; **ADR-039**; grupo/dwell diferidos |
 | 26 | `search-salary-range` | Filtro `minSalary`/`maxSalary` + Meili `salaryMin`/`salaryMax` (solape D1); SPA rango + D3b; **ADR-040** |
+| 27 | `job-link-reopen` | Reabrir vacante tras falso positivo freshness; calendar/`expiresAt` date-only; Meili `closedAt: null`; SPA; **ADR-041** |
 
 ---
 

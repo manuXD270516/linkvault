@@ -719,6 +719,63 @@ describe('LinksStore', () => {
       expect(card?.comments?.count).toBe(2);
     });
 
+    /**
+     * Reopen vía SSE (ADR-041): el aviso trae el summary **sin** `closedAt`. `applyEnriched` reemplaza la tarjeta
+     * entera, así el badge desaparece sin refetch.
+     */
+    it('quita closedAt cuando el aviso SSE lo omite tras reopen', async () => {
+      await openGroup({
+        items: [
+          {
+            ...linkWithContext('l1'),
+            closedAt: '2026-09-22T12:00:00.000Z',
+            closedReason: 'calendar',
+          },
+        ],
+        total: 1,
+      });
+
+      store.applyEnriched({
+        ...linkWith('l1'),
+        previewStatus: 'enriched',
+        previewVersion: 3,
+        preview: { title: 'Backend Engineer', company: 'Acme', expiresAt: '2099-01-15' },
+      });
+
+      const [card] = store.items();
+      expect(card?.closedAt).toBeUndefined();
+      expect(card?.closedReason).toBeUndefined();
+      expect(card?.preview?.expiresAt).toBe('2099-01-15');
+      expect(card?.note?.text).toBe('Esta es la que te dije');
+    });
+
+    it('reopen actualiza la tarjeta sin closedAt', async () => {
+      await openGroup({
+        items: [
+          {
+            ...linkWithContext('l1'),
+            closedAt: '2026-09-22T12:00:00.000Z',
+            closedReason: 'recheck',
+          },
+        ],
+        total: 1,
+      });
+
+      const reopening = store.reopen('l1');
+      http.expectOne({ method: 'POST', url: '/api/links/l1/reopen' }).flush({
+        ...linkWith('l1'),
+        previewStatus: 'enriched',
+        previewVersion: 2,
+        preview: { title: 'Backend Engineer' },
+      } satisfies JobLinkSummary);
+      await reopening;
+
+      const [card] = store.items();
+      expect(card?.closedAt).toBeUndefined();
+      expect(card?.preview?.title).toBe('Backend Engineer');
+      expect(card?.comments?.count).toBe(2);
+    });
+
     it('Corregir el preview no borra los comentarios', async () => {
       await openGroup({ items: [linkWithContext('l1')], total: 1 });
 

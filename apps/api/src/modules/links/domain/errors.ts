@@ -212,6 +212,19 @@ export class InvalidShareNote extends InvalidLinkField {
 }
 
 /**
+ * Reopen con trampa de calendario / `expiresAt` pasado (ADR-041): hace falta un `expiresAt` futuro o `null` en el
+ * body (400 nombrando `expiresAt`).
+ */
+export class InvalidExpiresAt extends InvalidLinkField {
+  override readonly name = 'InvalidExpiresAt';
+  readonly field = 'expiresAt';
+
+  constructor() {
+    super('A future expiresAt or null is required to reopen');
+  }
+}
+
+/**
  * El comentario no existe, ya se borró, es de otro link o de otro grupo, o su `:commentId` no tiene formato de
  * identificador (404). Los cinco casos responden lo mismo.
  */

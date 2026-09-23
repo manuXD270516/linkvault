@@ -14,6 +14,27 @@ export function hasApiErrorCode(error: unknown, status: number, code: ApiErrorCo
 }
 
 /**
+ * `true` si la respuesta nombra ese campo en `fields` (p. ej. reopen calendar → `400 validation_error` + `expiresAt`).
+ * Sin `fields` o sin ese nombre → `false`.
+ */
+export function namesApiErrorField(
+  error: unknown,
+  status: number,
+  code: ApiErrorCode,
+  field: string,
+): boolean {
+  if (!hasApiErrorCode(error, status, code)) {
+    return false;
+  }
+  const body: unknown = (error as HttpErrorResponse).error;
+  if (typeof body !== 'object' || body === null || !('fields' in body)) {
+    return false;
+  }
+  const fields = body.fields;
+  return Array.isArray(fields) && fields.includes(field);
+}
+
+/**
  * Fallo de una petición tal como lo muestran los formularios. El SPA traduce el código, nunca el `message` de la API.
  * - `api`: respuesta con estado HTTP; `code` si el cuerpo trae uno y `retryAfterMinutes` si hay `Retry-After`.
  * - `offline`: la petición no llegó a la API (estado 0).

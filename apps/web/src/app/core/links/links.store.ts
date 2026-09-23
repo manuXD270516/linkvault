@@ -11,6 +11,7 @@ import type {
   PastedDescriptionRequest,
   PreviewFieldName,
   PublicShare,
+  ReopenLinkRequest,
   SaveLinkResponse,
   UpdatePreviewRequest,
 } from '@linkvault/shared';
@@ -351,6 +352,17 @@ export const LinksStore = signalStore(
       async retryEnrichment(linkId: string): Promise<JobLinkSummary> {
         const scope = store.scope();
         const link = await api.enrich(linkId);
+        replaceIfStillOn(scope, link);
+        return link;
+      },
+
+      /**
+       * Reabre una vacante cerrada (ADR-041). La tarjeta queda con el summary que respondió la API (sin `closedAt`).
+       * Body opcional: `expiresAt` date-only o `null` para quitar caducidad cuando calendar lo pide.
+       */
+      async reopen(linkId: string, body: ReopenLinkRequest = {}): Promise<JobLinkSummary> {
+        const scope = store.scope();
+        const link = await api.reopen(linkId, body);
         replaceIfStillOn(scope, link);
         return link;
       },

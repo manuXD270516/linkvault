@@ -2,6 +2,7 @@ import {
   importLinksRequestSchema,
   listLinksQuerySchema,
   pastedDescriptionRequestSchema,
+  reopenLinkRequestSchema,
   saveLinkRequestSchema,
   updatePreviewRequestSchema,
   type EnrichLinkResponse,
@@ -11,6 +12,8 @@ import {
   type LinkPage,
   type ListLinksQuery,
   type PastedDescriptionRequest,
+  type ReopenLinkRequest,
+  type ReopenLinkResponse,
   type SaveLinkRequest,
   type SaveLinkResponse,
   type UpdatePreviewRequest,
@@ -40,6 +43,7 @@ import { ImportLinks } from '../application/import-links.usecase';
 import { ListMyLinks } from '../application/list-my-links.usecase';
 import { PasteDescription } from '../application/paste-description.usecase';
 import { RemoveMyLink } from '../application/remove-my-link.usecase';
+import { ReopenJobLink } from '../application/reopen-job-link.usecase';
 import { RequestLinkEnrichment } from '../application/request-link-enrichment.usecase';
 import { SaveLink } from '../application/save-link.usecase';
 import { UpdateLinkPreview } from '../application/update-link-preview.usecase';
@@ -62,6 +66,7 @@ export class LinksController {
     private readonly updateLinkPreview: UpdateLinkPreview,
     private readonly requestLinkEnrichment: RequestLinkEnrichment,
     private readonly pasteDescription: PasteDescription,
+    private readonly reopenJobLink: ReopenJobLink,
   ) {}
 
   @Post()
@@ -105,6 +110,21 @@ export class LinksController {
     body: UpdatePreviewRequest,
   ): Promise<UpdatePreviewResponse> {
     return this.updateLinkPreview.execute(user.userId, linkId, body);
+  }
+
+  /**
+   * Reabrir una vacante cerrada por frescura (ADR-041). Body opcional con `expiresAt` date-only o `null`. Idempotente
+   * si ya estaba abierta.
+   */
+  @Post(':linkId/reopen')
+  @HttpCode(HttpStatus.OK)
+  reopen(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('linkId') linkId: string,
+    @Body(new ZodValidationPipe(reopenLinkRequestSchema))
+    body: ReopenLinkRequest,
+  ): Promise<ReopenLinkResponse> {
+    return this.reopenJobLink.execute(user.userId, linkId, body);
   }
 
   /**

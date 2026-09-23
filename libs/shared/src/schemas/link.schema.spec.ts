@@ -16,6 +16,7 @@ import {
   platformSchema,
   previewStatusSchema,
   publicShareSchema,
+  reopenLinkRequestSchema,
   saveLinkRequestSchema,
   saveLinkResponseSchema,
   shareOutcomeSchema,
@@ -533,6 +534,45 @@ describe('publicShareSchema en jobLinkSummarySchema', () => {
   it('no dice quién lo publicó', () => {
     expect(
       publicShareSchema.safeParse({ ...share, publishedBy: 'u1' }).success,
+    ).toBe(false);
+  });
+});
+
+describe('reopenLinkRequestSchema', () => {
+  it('accepts an empty body', () => {
+    expect(reopenLinkRequestSchema.parse({})).toEqual({});
+    expect(reopenLinkRequestSchema.parse(undefined)).toEqual({});
+    expect(reopenLinkRequestSchema.parse(null)).toEqual({});
+  });
+
+  it('accepts YYYY-MM-DD expiresAt or null', () => {
+    expect(
+      reopenLinkRequestSchema.parse({ expiresAt: '2026-10-01' }),
+    ).toEqual({ expiresAt: '2026-10-01' });
+    expect(reopenLinkRequestSchema.parse({ expiresAt: null })).toEqual({
+      expiresAt: null,
+    });
+  });
+
+  it('rejects bad dates', () => {
+    expect(
+      reopenLinkRequestSchema.safeParse({ expiresAt: '2026-13-01' }).success,
+    ).toBe(false);
+    expect(
+      reopenLinkRequestSchema.safeParse({ expiresAt: '01/10/2026' }).success,
+    ).toBe(false);
+    expect(
+      reopenLinkRequestSchema.safeParse({ expiresAt: '2026-10-01T00:00:00Z' })
+        .success,
+    ).toBe(false);
+    expect(
+      reopenLinkRequestSchema.safeParse({ expiresAt: '' }).success,
+    ).toBe(false);
+  });
+
+  it('rejects unknown keys', () => {
+    expect(
+      reopenLinkRequestSchema.safeParse({ expiresAt: null, extra: 1 }).success,
     ).toBe(false);
   });
 });

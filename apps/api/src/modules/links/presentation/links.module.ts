@@ -54,6 +54,7 @@ import { USER_LINK_REPOSITORY } from '../application/ports/user-link-repository.
 import { RemoveGroupLink } from '../application/remove-group-link.usecase';
 import { RemoveMyLink } from '../application/remove-my-link.usecase';
 import { RemoveShareNote } from '../application/remove-share-note.usecase';
+import { ReopenJobLink } from '../application/reopen-job-link.usecase';
 import { RequestLinkEnrichment } from '../application/request-link-enrichment.usecase';
 import { SaveLink } from '../application/save-link.usecase';
 import { SetKnowSomeone } from '../application/set-know-someone.usecase';
@@ -210,6 +211,7 @@ import { PublicPreviewsController } from './public-previews.controller';
     RemoveGroupLink,
     RemoveMyLink,
     UpdateLinkPreview,
+    ReopenJobLink,
     RequestLinkEnrichment,
     DeliverLinkEnriched,
     LinkEnrichedSubscription,

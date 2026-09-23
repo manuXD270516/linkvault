@@ -363,4 +363,37 @@ describe('LinksApi', () => {
       await expect(result).rejects.toMatchObject({ status: 404 });
     });
   });
+
+  it('reopens a closed link without body', async () => {
+    const open: JobLinkSummary = { ...link, previewStatus: 'enriched', previewVersion: 2 };
+    const result = api.reopen('l1');
+
+    const request = expectRequest('POST', '/api/links/l1/reopen');
+    expect(request.request.body).toEqual({});
+    request.flush(open);
+
+    await expect(result).resolves.toEqual(open);
+  });
+
+  it('reopens with a future expiresAt or null', async () => {
+    const withDate = api.reopen('l1', { expiresAt: '2099-01-15' });
+    const dateReq = expectRequest('POST', '/api/links/l1/reopen');
+    expect(dateReq.request.body).toEqual({ expiresAt: '2099-01-15' });
+    dateReq.flush(link);
+    await expect(withDate).resolves.toEqual(link);
+
+    const cleared = api.reopen('l1', { expiresAt: null });
+    const clearReq = expectRequest('POST', '/api/links/l1/reopen');
+    expect(clearReq.request.body).toEqual({ expiresAt: null });
+    clearReq.flush(link);
+    await expect(cleared).resolves.toEqual(link);
+  });
+
+  it('escapes the link id on reopen', async () => {
+    const result = api.reopen('l/1', {});
+
+    expectRequest('POST', '/api/links/l%2F1/reopen').flush(link);
+
+    await expect(result).resolves.toEqual(link);
+  });
 });
