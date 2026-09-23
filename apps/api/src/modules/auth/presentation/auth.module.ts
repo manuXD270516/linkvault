@@ -42,13 +42,15 @@ import { SystemClock } from '../infrastructure/system-clock';
 import { UsersFacadeUserAccounts } from '../infrastructure/users-facade-user-accounts';
 import { AccessTokenGuard } from './access-token.guard';
 import { AuthController } from './auth.controller';
+import { ExtensionAuthController } from './extension-auth.controller';
 
 /**
- * Módulo `auth` (D1 de auth-users + ADR-034): endpoints de `/api/auth`, use cases, adaptadores y el guard global.
+ * Módulo `auth` (D1 de auth-users + ADR-034 + ADR-038): endpoints de `/api/auth` (SPA + extensión), use cases,
+ * adaptadores y el guard global.
  */
 @Module({
   imports: [UsersModule, LimitsModule, MailModule],
-  controllers: [AuthController],
+  controllers: [AuthController, ExtensionAuthController],
   providers: [
     { provide: CLOCK, useClass: SystemClock },
     {

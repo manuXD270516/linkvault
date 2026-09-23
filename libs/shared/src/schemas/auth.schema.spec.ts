@@ -3,6 +3,8 @@ import {
   apiErrorCodeSchema,
   apiErrorResponseSchema,
   changePasswordRequestSchema,
+  extensionRefreshRequestSchema,
+  extensionSessionResponseSchema,
   loginRequestSchema,
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
@@ -221,6 +223,52 @@ describe('sessionResponseSchema', () => {
         ...session,
         user: { ...session.user, passwordHash: '$argon2id$v=19$...' },
       }).success,
+    ).toBe(false);
+  });
+});
+
+describe('extensionSessionResponseSchema', () => {
+  const session = {
+    accessToken: 'header.payload.signature',
+    expiresIn: 900,
+    refreshToken: 'opaque-refresh-token',
+    user: {
+      id: '66e9a0000000000000000001',
+      email: 'ana@example.com',
+      displayName: 'Ana',
+      emailVerified: true,
+      aiConsent: {
+        externalProviders: false,
+        consentedAt: null,
+        textVersion: null,
+        currentTextVersion: '2026-09-20',
+      },
+      outputLanguage: 'es',
+      redactName: false,
+      createdAt: '2026-09-17T10:00:00.000Z',
+    },
+  } as const;
+
+  it('accepts access, profile and refreshToken in the body', () => {
+    expect(extensionSessionResponseSchema.parse(session)).toEqual(session);
+  });
+
+  it('rejects a body without refreshToken', () => {
+    const { refreshToken: _omit, ...without } = session;
+    expect(extensionSessionResponseSchema.safeParse(without).success).toBe(
+      false,
+    );
+  });
+});
+
+describe('extensionRefreshRequestSchema', () => {
+  it('requires a non-empty refreshToken', () => {
+    expect(
+      extensionRefreshRequestSchema.parse({ refreshToken: 'r1' }),
+    ).toEqual({ refreshToken: 'r1' });
+    expect(extensionRefreshRequestSchema.safeParse({}).success).toBe(false);
+    expect(
+      extensionRefreshRequestSchema.safeParse({ refreshToken: '' }).success,
     ).toBe(false);
   });
 });

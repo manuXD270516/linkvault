@@ -507,6 +507,7 @@ sequenceDiagram
 | 21 | `group-weekly-digest` | B10: digest email semanal por grupo (semana ISO W−1, `group_links.sharedAt`); opt-out; enmienda **ADR-035** |
 | 22 | `search-open-only` | Filtro SPA/API `openOnly` → Meili `closedAt IS NULL`; D3b con `job_preview` ↔ `applicationStatus` |
 | 23 | `know-someone-flag` | B11: flag «conozco a alguien ahí» por miembro en `group_links.knowSomeoneUserIds`; PUT atómico; badge en card de grupo |
+| 24 | `browser-extension` | F3/G5: extensión Chromium MV3; auth `/api/auth/extension/*` (refresh en body); CTA Guardar privado por defecto; CORS allowlist; **ADR-038** (enmienda ADR-012) |
 
 ---
 

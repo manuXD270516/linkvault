@@ -138,7 +138,9 @@ export async function createLinksTestApp(
     { bufferLogs: true },
   );
   app.useLogger(app.get(Logger));
-  await configureApp(app);
+  await configureApp(app, {
+    extensionCorsOrigins: config.EXTENSION_CORS_ORIGINS,
+  });
   await app.init();
   await app.getHttpAdapter().getInstance().ready();
   const connection = app.get<Connection>(getConnectionToken());

@@ -101,6 +101,9 @@ verificar la contraseña. Un login correcto SHALL poner a cero el contador de su
 disponible, las peticiones SHALL procesarse sin límite y SHALL registrarse un aviso sin el email al empezar cada racha de
 fallos del almacén.
 
+`POST /api/auth/login` y `POST /api/auth/extension/login` SHALL compartir los mismos contadores de email e IP (un fallo
+en uno cuenta para el otro).
+
 #### Scenario: Demasiados fallos por email
 
 - **GIVEN** 5 logins fallidos para `ana@example.com` en la ventana actual
@@ -135,6 +138,12 @@ fallos del almacén.
 - **WHEN** se hace login con credenciales correctas dos veces
 - **THEN** ambas respuestas SHALL ser `200`
 - **AND** SHALL registrarse un solo aviso, que no contiene el email
+
+#### Scenario: Extension login comparte límite por email
+
+- **GIVEN** 5 fallos en `POST /api/auth/login` para `ana@example.com`
+- **WHEN** se llama a `POST /api/auth/extension/login` para el mismo email
+- **THEN** la respuesta SHALL ser `429` con código `too_many_attempts` y `Retry-After` > 0
 
 ### Requirement: Cambio de contraseña
 

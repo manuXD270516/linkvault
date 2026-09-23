@@ -79,6 +79,21 @@ describe('Login', () => {
     expect(await harness.signer.verify(session.accessToken)).toMatchObject({
       userId: session.user.id,
     });
+    expect(harness.sessions.clientOf(
+      (await harness.signer.verify(session.accessToken)).sessionId,
+    )).toBe('web');
+  });
+
+  it('abre sesión client=extension cuando se pide', async () => {
+    const session = await login.execute({
+      email: 'ana@example.com',
+      password: PASSWORD,
+      ip: IP,
+      client: 'extension',
+    });
+
+    const verified = await harness.signer.verify(session.accessToken);
+    expect(harness.sessions.clientOf(verified.sessionId)).toBe('extension');
   });
 
   it('Login de cuenta no verificada tras registro', async () => {

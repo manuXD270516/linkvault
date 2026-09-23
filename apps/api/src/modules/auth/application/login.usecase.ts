@@ -4,6 +4,7 @@ import {
   LOGIN_ATTEMPTS_PER_IP,
 } from '../domain/attempt-limits';
 import { InvalidCredentials, TooManyAttempts } from '../domain/errors';
+import type { SessionClient } from '../domain/session-client';
 import { type IssuedSession, SessionOpener } from './issued-session';
 import {
   ATTEMPT_LIMITER,
@@ -21,13 +22,19 @@ export interface LoginInput {
   readonly password: string;
   /** IP del cliente (`request.ip`). */
   readonly ip: string;
+  /**
+   * Cliente de la sesión (ADR-038). Web y extensión comparten contadores de intentos;
+   * el default `web` mantiene el contrato SPA.
+   */
+  readonly client?: SessionClient;
 }
 
 /**
- * `POST /api/auth/login` (spec auth/credentials). Cuenta el intento por email normalizado y por IP **antes** de verificar;
- * superado cualquiera de los dos límites responde `too_many_attempts` sin verificar. Email inexistente y contraseña
- * incorrecta dan el mismo `InvalidCredentials` y ambos verifican un hash Argon2id. Un login correcto reinicia el contador
- * del email y descuenta el intento de la IP.
+ * `POST /api/auth/login` y `POST /api/auth/extension/login` (spec auth/credentials + ADR-038).
+ * Cuenta el intento por email normalizado y por IP **antes** de verificar; superado cualquiera de los dos límites
+ * responde `too_many_attempts` sin verificar. Email inexistente y contraseña incorrecta dan el mismo
+ * `InvalidCredentials` y ambos verifican un hash Argon2id. Un login correcto reinicia el contador del email y
+ * descuenta el intento de la IP. Contadores compartidos entre web y extensión.
  */
 @Injectable()
 export class Login {
@@ -69,6 +76,6 @@ export class Login {
       // La cuenta desapareció entre la verificación y la sesión: se trata como credenciales inválidas.
       throw new InvalidCredentials();
     }
-    return this.sessionOpener.open(user);
+    return this.sessionOpener.open(user, input.client ?? 'web');
   }
 }

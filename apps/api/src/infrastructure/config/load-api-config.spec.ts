@@ -99,6 +99,7 @@ describe('api configuration', () => {
       MAIL_SMTP_PORT: 1025,
       AUTH_VERIFY_TOKEN_TTL_HOURS: 24,
       AUTH_RESET_TOKEN_TTL_SECONDS: 3600,
+      EXTENSION_CORS_ORIGINS: [],
     });
   });
 

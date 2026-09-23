@@ -61,7 +61,8 @@ export interface AuthHttpRequest extends RefreshCookieRequest {
 /**
  * Endpoints de `/api/auth` (specs auth/credentials, sessions, email-verification, password-recovery).
  * CSRF vía `X-Requested-With` ya exigido por el hook. Rutas `@Public()`: register, login, refresh, logout,
- * forgot-password, reset-password, verify-email. **No** pública: verify-email/resend.
+ * forgot-password, reset-password, verify-email, extension/login, extension/refresh, extension/logout.
+ * **No** pública: verify-email/resend. Extensión: ver `ExtensionAuthController` (ADR-038).
  */
 @Controller('auth')
 export class AuthController {
@@ -122,6 +123,7 @@ export class AuthController {
     try {
       session = await this.refreshSession.execute({
         refreshToken: readRefreshCookie(request),
+        expectedClient: 'web',
       });
     } catch (error) {
       if (error instanceof InvalidRefresh) {

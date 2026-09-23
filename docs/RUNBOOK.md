@@ -1224,6 +1224,38 @@ Variables (ver `.env.example`): `FEATURE_LINK_FRESHNESS`, `LINK_FRESHNESS_INTERV
 
 ---
 
+## Paso 6 quindecies — Extensión Chromium (browser-extension / ADR-038)
+
+Guardar la URL de la pestaña activa sin scrapear el DOM (G5). Auth propia:
+`POST /api/auth/extension/{login,refresh,logout}` (refresh en body; **no** cookie `lv_refresh`).
+
+### Build y carga unpacked
+
+```bash
+pnpm nx build extension
+```
+
+Salida loadable: `dist/apps/extension/`.
+
+1. Chrome/Edge → `chrome://extensions` → Modo desarrollador → **Load unpacked** → elegir
+   `dist/apps/extension`.
+2. Copia el **Extension ID** (p. ej. `abcdefghijklmnopqrstuvwxyz123456`).
+3. En `.env` de la API (host):
+
+```bash
+EXTENSION_CORS_ORIGINS=chrome-extension://abcdefghijklmnopqrstuvwxyz123456
+```
+
+4. Reinicia `pnpm nx serve api`. Vacío = CORS off (default en `.env.example`).
+
+Base URL del build: `EXTENSION_API_BASE_URL` (default `http://localhost:3000` en dev). El popup
+envía `X-Requested-With: linkvault` en las rutas de auth extensión.
+
+**Nota:** con `host_permissions` al origen API, Chromium puede omitir CORS; la allowlist acota
+orígenes web. La defensa real es auth + rate-limit + `client=extension` (ADR-038).
+
+---
+
 ## Paso 6 duodecies — Operar producción (deploy-prod / ADR-033)
 
 Camino canónico: `docker-compose.prod.yml` + Traefik + Let's Encrypt. Procedimiento de arranque, secrets CD y buckets:

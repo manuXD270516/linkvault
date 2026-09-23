@@ -1,0 +1,98 @@
+{
+  "extName": {
+    "message": "LinkVault",
+    "description": "Nombre de la extensión"
+  },
+  "extDescription": {
+    "message": "Guarda la oferta de la pestaña activa en LinkVault.",
+    "description": "Descripción de la extensión"
+  },
+  "loginTitle": {
+    "message": "Inicia sesión",
+    "description": "Título del formulario de login"
+  },
+  "emailLabel": {
+    "message": "Correo",
+    "description": "Etiqueta del campo email"
+  },
+  "passwordLabel": {
+    "message": "Contraseña",
+    "description": "Etiqueta del campo contraseña"
+  },
+  "loginSubmit": {
+    "message": "Entrar",
+    "description": "Botón de login"
+  },
+  "logout": {
+    "message": "Cerrar sesión",
+    "description": "Botón de logout"
+  },
+  "tabUrlLabel": {
+    "message": "URL de esta pestaña",
+    "description": "Etiqueta de la URL candidata"
+  },
+  "noTabUrl": {
+    "message": "Esta pestaña no tiene una URL que se pueda guardar.",
+    "description": "Cuando la pestaña activa no es http(s)"
+  },
+  "destinationLabel": {
+    "message": "Destino",
+    "description": "Etiqueta del selector de destino"
+  },
+  "destinationPrivate": {
+    "message": "Lista privada",
+    "description": "Opción por defecto: sin grupo"
+  },
+  "destinationGroupHint": {
+    "message": "Grupo (opcional)",
+    "description": "Ayuda del selector de grupo"
+  },
+  "saveCta": {
+    "message": "Guardar",
+    "description": "CTA primario de guardado"
+  },
+  "saveSuccess": {
+    "message": "Guardado en LinkVault",
+    "description": "Éxito sin prometer preview enriquecido"
+  },
+  "saveAlreadyThere": {
+    "message": "Ya lo tenías guardado aquí",
+    "description": "shared=already_there sin sharer"
+  },
+  "saveAlreadyThereNamed": {
+    "message": "Ya estaba aquí, lo compartió $NAME$",
+    "description": "shared=already_there con sharer",
+    "placeholders": {
+      "NAME": {
+        "content": "$1",
+        "example": "Ana"
+      }
+    }
+  },
+  "saveAlreadyInGroups": {
+    "message": "Ya lo tienes en: $GROUPS$",
+    "description": "alreadyInGroups en la respuesta",
+    "placeholders": {
+      "GROUPS": {
+        "content": "$1",
+        "example": "Equipo, Amigos"
+      }
+    }
+  },
+  "saveError": {
+    "message": "No se pudo guardar. Inténtalo de nuevo.",
+    "description": "Error genérico al guardar"
+  },
+  "loginError": {
+    "message": "No se pudo iniciar sesión. Revisa el correo y la contraseña.",
+    "description": "Error de login"
+  },
+  "sessionExpired": {
+    "message": "La sesión caducó. Vuelve a iniciar sesión.",
+    "description": "Tras agotar reintentos de refresh"
+  },
+  "loading": {
+    "message": "Un momento…",
+    "description": "Estado de carga"
+  }
+}

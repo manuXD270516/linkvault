@@ -1,4 +1,5 @@
 import { Schema } from 'mongoose';
+import type { SessionClient } from '../domain/session-client';
 
 // Colecciones del módulo `auth` (D4 de auth-users). Los índices TTL sobre `expiresAt` solo limpian: la validez se
 // comprueba en código (`RefreshSessionPolicy`), porque el monitor TTL de Mongo corre cada 60 s. `bufferCommands: false`:
@@ -17,6 +18,11 @@ export interface AuthSessionDocument {
   /** Máximo absoluto: `createdAt + AUTH_REFRESH_MAX_DAYS`. */
   expiresAt: Date;
   revokedAt: Date | null;
+  /**
+   * Cliente que abrió la familia (ADR-038). Ausente en documentos legacy ≡ `web`
+   * (`resolveSessionClient`).
+   */
+  client?: SessionClient;
 }
 
 export interface RefreshTokenDocument {
@@ -43,6 +49,7 @@ export const authSessionSchema = new Schema<AuthSessionDocument>(
     createdAt: { type: Date, required: true },
     expiresAt: { type: Date, required: true },
     revokedAt: { type: Date, default: null },
+    client: { type: String, enum: ['web', 'extension'], required: false },
   },
   { ...schemaOptions, collection: AUTH_SESSIONS_COLLECTION },
 );

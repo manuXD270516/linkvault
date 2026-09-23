@@ -75,7 +75,9 @@ export async function createAuthTestApp(
     new FastifyAdapter({ trustProxy: config.TRUST_PROXY === true }),
     { logger: false },
   );
-  await configureApp(app);
+  await configureApp(app, {
+    extensionCorsOrigins: config.EXTENSION_CORS_ORIGINS,
+  });
   await app.init();
   await app.getHttpAdapter().getInstance().ready();
 

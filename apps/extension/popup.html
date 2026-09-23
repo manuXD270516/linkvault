@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LinkVault</title>
+    <link rel="stylesheet" href="/src/popup/popup.css" />
+  </head>
+  <body>
+    <main class="popup">
+      <header class="popup__header">
+        <h1 class="popup__brand" data-i18n="extName">LinkVault</h1>
+        <button type="button" id="logout-btn" class="linkish hidden" data-i18n="logout">
+          Cerrar sesión
+        </button>
+      </header>
+
+      <section id="login-view" class="panel hidden" aria-labelledby="login-title">
+        <h2 id="login-title" data-i18n="loginTitle">Inicia sesión</h2>
+        <form id="login-form" class="stack" autocomplete="on">
+          <label class="field">
+            <span data-i18n="emailLabel">Correo</span>
+            <input
+              id="email"
+              name="email"
+              type="email"
+              required
+              autocomplete="username"
+            />
+          </label>
+          <label class="field">
+            <span data-i18n="passwordLabel">Contraseña</span>
+            <input
+              id="password"
+              name="password"
+              type="password"
+              required
+              autocomplete="current-password"
+            />
+          </label>
+          <button type="submit" id="login-submit" class="primary" data-i18n="loginSubmit">
+            Entrar
+          </button>
+        </form>
+        <p id="login-error" class="status status--error" role="alert" hidden></p>
+      </section>
+
+      <section id="save-view" class="panel hidden" aria-labelledby="tab-url-label">
+        <p id="tab-url-label" class="label" data-i18n="tabUrlLabel">URL de esta pestaña</p>
+        <p id="tab-url" class="url"></p>
+        <p id="no-url" class="status status--error" role="alert" hidden data-i18n="noTabUrl">
+          Esta pestaña no tiene una URL que se pueda guardar.
+        </p>
+
+        <details id="destination-details" class="destination">
+          <summary data-i18n="destinationGroupHint">Grupo (opcional)</summary>
+          <label class="field">
+            <span data-i18n="destinationLabel">Destino</span>
+            <select id="destination" name="destination">
+              <option value="" data-i18n="destinationPrivate">Lista privada</option>
+            </select>
+          </label>
+        </details>
+
+        <button type="button" id="save-btn" class="primary" data-i18n="saveCta" disabled>
+          Guardar
+        </button>
+        <p id="save-status" class="status" role="status" hidden></p>
+        <p id="save-error" class="status status--error" role="alert" hidden></p>
+      </section>
+
+      <p id="global-loading" class="status" hidden data-i18n="loading">Un momento…</p>
+    </main>
+    <script type="module" src="/src/popup/popup.ts"></script>
+  </body>
+</html>
