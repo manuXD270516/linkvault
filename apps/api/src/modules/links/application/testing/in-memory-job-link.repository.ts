@@ -13,6 +13,7 @@ import type {
   JobLinkRepository,
   ManualPreviewWrite,
   PastedPreviewWrite,
+  ReopenLinkWrite,
   ResolvedJobLink,
 } from '../ports/job-link-repository.port';
 import type { TransactionSession } from '../../../../infrastructure/outbox/transaction-session';
@@ -157,6 +158,34 @@ export class InMemoryJobLinkRepository implements JobLinkRepository {
         : { lastEnrichmentError: changes.lastEnrichmentError }),
       previewVersion: link.previewVersion + 1,
       updatedAt: changes.now,
+    };
+    this.links.set(link.id, updated);
+    return Promise.resolve(structuredClone(updated));
+  }
+
+  reopen(linkId: string, changes: ReopenLinkWrite): Promise<JobLink | null> {
+    const link = isLinkId(linkId) ? this.links.get(linkId) : undefined;
+    if (link === undefined || link.closedAt === undefined) {
+      return Promise.resolve(null);
+    }
+    const {
+      closedAt: _closedAt,
+      closedReason: _closedReason,
+      ...rest
+    } = link;
+    const previewWrite = changes.preview;
+    const updated: JobLink = {
+      ...rest,
+      lastFreshnessCheckAt: changes.now,
+      updatedAt: changes.now,
+      ...(previewWrite === undefined
+        ? {}
+        : {
+            preview: previewWrite.preview,
+            previewSources: previewWrite.previewSources,
+            previewStatus: previewWrite.previewStatus,
+            previewVersion: link.previewVersion + 1,
+          }),
     };
     this.links.set(link.id, updated);
     return Promise.resolve(structuredClone(updated));

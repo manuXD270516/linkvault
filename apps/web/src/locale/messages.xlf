@@ -2330,6 +2330,62 @@
           <context context-type="linenumber">207,211</context>
         </context-group>
       </trans-unit>
+      <trans-unit id="links.card.reopen" datatype="html">
+        <source> Reabrir </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
+          <context context-type="linenumber">219,223</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.reopen.expiresTitle" datatype="html">
+        <source>Elige cuándo cierra</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/reopen-expires.dialog.html</context>
+          <context context-type="linenumber">1,1</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.reopen.expiresExplanation" datatype="html">
+        <source> Para reabrirla hace falta una fecha de cierre futura o quitar la caducidad </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/reopen-expires.dialog.html</context>
+          <context context-type="linenumber">4,6</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.reopen.appsNote" datatype="html">
+        <source> Las postulaciones que ya marcamos como caducadas no se reabren solas </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/reopen-expires.dialog.html</context>
+          <context context-type="linenumber">8,10</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.reopen.cancel" datatype="html">
+        <source> Cancelar </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/reopen-expires.dialog.html</context>
+          <context context-type="linenumber">31,33</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.reopen.clearExpires" datatype="html">
+        <source> Sin fecha de cierre </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/reopen-expires.dialog.html</context>
+          <context context-type="linenumber">40,43</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.reopen.confirm" datatype="html">
+        <source> Reabrir </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/reopen-expires.dialog.html</context>
+          <context context-type="linenumber">50,53</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.reopen.done" datatype="html">
+        <source>Oferta marcada como abierta. Las postulaciones caducadas no cambian solas.</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-list.component.ts</context>
+          <context context-type="linenumber">390,390</context>
+        </context-group>
+      </trans-unit>
       <trans-unit id="links.public.mark" datatype="html">
         <source>Enlace público</source>
         <context-group purpose="location">

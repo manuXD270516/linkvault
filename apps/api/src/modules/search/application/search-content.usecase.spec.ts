@@ -360,6 +360,18 @@ describe('SearchContent', () => {
         // abierto: sin clave closedAt
       },
       {
+        id: 'job_preview:open-null',
+        docType: 'job_preview',
+        ownerUserId: 'ana',
+        groupIds: [],
+        visibilityScope: 'owner',
+        updatedAt: 1,
+        embeddingStatus: 'missing',
+        title: 'Nest null',
+        linkId: 'l-open-null',
+        closedAt: null,
+      },
+      {
         id: 'job_preview:closed',
         docType: 'job_preview',
         ownerUserId: 'ana',
@@ -382,13 +394,17 @@ describe('SearchContent', () => {
       q: 'Nest',
       openOnly: true,
     });
-    expect(withOpenOnly.hits.map((h) => h.id)).toEqual(['job_preview:open']);
+    expect(withOpenOnly.hits.map((h) => h.id).sort()).toEqual([
+      'job_preview:open',
+      'job_preview:open-null',
+    ]);
     expect(meili.searchCalls[0]?.filter).toContain('closedAt IS NULL');
 
     const without = await useCase.execute('ana', { q: 'Nest' });
     expect(without.hits.map((h) => h.id).sort()).toEqual([
       'job_preview:closed',
       'job_preview:open',
+      'job_preview:open-null',
     ]);
 
     const withFalse = await useCase.execute('ana', {
@@ -398,6 +414,7 @@ describe('SearchContent', () => {
     expect(withFalse.hits.map((h) => h.id).sort()).toEqual([
       'job_preview:closed',
       'job_preview:open',
+      'job_preview:open-null',
     ]);
     expect(meili.searchCalls[2]?.filter).not.toContain('closedAt');
   });

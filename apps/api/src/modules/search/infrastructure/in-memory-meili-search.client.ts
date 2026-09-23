@@ -138,8 +138,8 @@ function matchesSearchFilter(doc: SearchIndexDocument, filter: string): boolean 
 }
 
 /**
- * `attr IS NULL` del builder openOnly: en este fake equivale a clave ausente
- * (`doc.closedAt === undefined`), alineado al loader que nunca escribe `null`.
+ * `attr IS NULL` del builder openOnly: trata `null` y `undefined` como ausente
+ * (loader escribe `closedAt: null` al abrir — ADR-041).
  * (Los IS NULL de salaryMin/Max se evalúan en `matchesSalaryRangeFilters`.)
  */
 function matchesIsNullFilters(
@@ -149,7 +149,7 @@ function matchesIsNullFilters(
   if (!/\bclosedAt\s+IS\s+NULL\b/i.test(filter)) {
     return true;
   }
-  return doc.closedAt === undefined;
+  return doc.closedAt === undefined || doc.closedAt === null;
 }
 
 /**

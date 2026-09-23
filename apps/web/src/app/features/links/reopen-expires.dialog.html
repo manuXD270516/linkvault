@@ -1,0 +1,54 @@
+<h2 mat-dialog-title i18n="@@links.reopen.expiresTitle">Elige cuándo cierra</h2>
+
+<mat-dialog-content>
+  <p i18n="@@links.reopen.expiresExplanation">
+    Para reabrirla hace falta una fecha de cierre futura o quitar la caducidad
+  </p>
+  <!-- D4: no afirmar que las postulaciones expired se reabrieron. -->
+  <p class="text-sm" data-testid="reopen-apps-note" i18n="@@links.reopen.appsNote">
+    Las postulaciones que ya marcamos como caducadas no se reabren solas
+  </p>
+
+  <mat-form-field class="w-full">
+    <mat-label i18n="@@links.field.expiresAt">Cierra el</mat-label>
+    <input
+      matInput
+      type="date"
+      [min]="today"
+      [value]="expiresAt()"
+      (input)="onExpiresAt($event)"
+      [readonly]="submitting()"
+      data-testid="reopen-expires-at"
+    />
+  </mat-form-field>
+
+  @if (failure(); as currentFailure) {
+    <lv-request-error [failure]="currentFailure" />
+  }
+</mat-dialog-content>
+
+<mat-dialog-actions>
+  <button mat-button type="button" mat-dialog-close [disabled]="submitting()" i18n="@@links.reopen.cancel">
+    Cancelar
+  </button>
+  <button
+    mat-button
+    type="button"
+    [disabled]="submitting()"
+    (click)="clearExpires()"
+    data-testid="reopen-clear-expires"
+    i18n="@@links.reopen.clearExpires"
+  >
+    Sin fecha de cierre
+  </button>
+  <button
+    mat-flat-button
+    type="button"
+    [disabled]="!canSubmitDate()"
+    (click)="submitDate()"
+    data-testid="reopen-confirm"
+    i18n="@@links.reopen.confirm"
+  >
+    Reabrir
+  </button>
+</mat-dialog-actions>

@@ -133,6 +133,25 @@ describe('La tarjeta se actualiza sola', () => {
     expect(text()).toContain('Acme');
   });
 
+  /** Reopen en vivo (ADR-041): el aviso omite `closedAt` y el badge desaparece sin refetch. */
+  it('Badge desaparece al aviso SSE tras reopen', async () => {
+    await open([
+      {
+        ...enriched('l1', 'Ingeniera de datos'),
+        closedAt: '2026-09-22T12:00:00.000Z',
+        closedReason: 'recheck',
+      },
+    ]);
+    expect(text()).toContain('Oferta cerrada');
+
+    await notify(enriched('l1', 'Ingeniera de datos'));
+
+    http.expectNone(GROUP_PAGE);
+    expect(store.items()[0]?.closedAt).toBeUndefined();
+    expect(text()).not.toContain('Oferta cerrada');
+    expect(text()).toContain('Ingeniera de datos');
+  });
+
   it('Progreso de una importación', async () => {
     // Diez ofertas importadas; la página trae las diez primeras del listado, que son diez.
     await open(

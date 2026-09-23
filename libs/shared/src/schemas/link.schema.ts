@@ -197,6 +197,22 @@ export type UpdatePreviewResponse = JobLinkSummary;
 export const enrichLinkResponseSchema = jobLinkSummarySchema;
 export type EnrichLinkResponse = JobLinkSummary;
 
+/**
+ * Cuerpo de `POST /api/links/:id/reopen` (ADR-041): `expiresAt` date-only (`YYYY-MM-DD`) o `null` para quitar
+ * caducidad — el mismo contrato que `preview.expiresAt`. Ausente = no tocar el campo. Cuerpo vacío / ausente → `{}`.
+ */
+export const reopenLinkRequestSchema = z.preprocess(
+  (value) => (value === undefined || value === null ? {} : value),
+  z.strictObject({
+    expiresAt: z.iso.date().nullable().optional(),
+  }),
+);
+export type ReopenLinkRequest = z.infer<typeof reopenLinkRequestSchema>;
+
+/** Respuesta de reopen: summary sin `closedAt` cuando la vacante queda abierta. */
+export const reopenLinkResponseSchema = jobLinkSummarySchema;
+export type ReopenLinkResponse = JobLinkSummary;
+
 /** Resultado de compartir en el destino: `created` si la relación es nueva, `already_there` si ya estaba. */
 export const shareOutcomeSchema = z.enum(['created', 'already_there']);
 export type ShareOutcome = z.infer<typeof shareOutcomeSchema>;

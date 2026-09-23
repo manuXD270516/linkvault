@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  closedAtFromLink,
   salaryBoundsFromPreview,
   salaryCurrencyFromPreview,
 } from './mongo-search-aggregate.loader';
@@ -55,5 +56,18 @@ describe('salaryBoundsFromPreview', () => {
       salaryMin: null,
       salaryMax: null,
     });
+  });
+});
+
+describe('closedAtFromLink', () => {
+  it('writes ISO when closed and null when open (ADR-041)', () => {
+    expect(
+      closedAtFromLink({ closedAt: new Date('2026-09-22T18:00:00.000Z') }),
+    ).toBe('2026-09-22T18:00:00.000Z');
+    expect(closedAtFromLink({ closedAt: '2026-09-22T18:00:00.000Z' })).toBe(
+      '2026-09-22T18:00:00.000Z',
+    );
+    expect(closedAtFromLink({})).toBeNull();
+    expect(closedAtFromLink({ closedAt: undefined })).toBeNull();
   });
 });

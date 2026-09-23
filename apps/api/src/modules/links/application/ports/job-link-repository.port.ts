@@ -38,6 +38,15 @@ export interface ManualPreviewWrite {
 }
 
 /**
+ * Lo que deja un reopen (ADR-041): limpia el marcador de cierre y apunta la última comprobación de frescura. Si el body
+ * tocó `expiresAt`, lleva además el preview ya mezclado con procedencia manual (mismo path que PATCH preview).
+ */
+export interface ReopenLinkWrite {
+  readonly now: Date;
+  readonly preview?: ManualPreviewWrite;
+}
+
+/**
  * Lo que deja un pegado (D6 de paste-job-description): el preview ya mezclado, su procedencia, el estado derivado de los
  * campos y el motivo de fallo que sobrevive —ausente si no sobrevive ninguno—.
  */
@@ -113,6 +122,13 @@ export interface JobLinkRepository {
     expectedVersion: number,
     changes: PastedPreviewWrite,
   ): Promise<JobLink | null>;
+
+  /**
+   * Reabre una vacante cerrada (ADR-041): `$unset closedAt/closedReason`, set `lastFreshnessCheckAt`, y opcionalmente
+   * el preview ya mezclado (procedencia manual de `expiresAt`). Solo casa si el link tenía `closedAt`. `null` si no
+   * existe, el id no vale, o ya estaba abierto.
+   */
+  reopen(linkId: string, changes: ReopenLinkWrite): Promise<JobLink | null>;
 
   listByPreviewStatus(
     status: PreviewStatus,

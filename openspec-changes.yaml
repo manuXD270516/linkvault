@@ -353,3 +353,10 @@ changes:
     scope: |
       Fila 26. Meili salaryMin/salaryMax filterable (api+worker) + GET /api/search minSalary/maxSalary (solape D1,
       parse dígitos sin coerce). SPA /buscar rango + D3b + hint. Backfill job_preview. Fuera: period, salaryText parse.
+  - name: job-link-reopen
+    adrs: [041, 037, 010, 009]
+    agents: [backend-dev, frontend-dev]
+    scope: |
+      Fila 27 / G2 reopen. POST /api/links/:id/reopen (ACL legible); unset closed*; lastFreshnessCheckAt;
+      calendar exige expiresAt YYYY-MM-DD|null; SSE post-write; SearchFacade fingerprint reopen;
+      loader closedAt:null (Meili clear). SPA acción + date picker. Fuera: bulk apps expired, undo ASN.

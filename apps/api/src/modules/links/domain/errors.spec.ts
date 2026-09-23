@@ -6,6 +6,7 @@ import {
   CommentNotFound,
   CommentsGroupNotFound,
   InvalidCommentText,
+  InvalidExpiresAt,
   InvalidLinkField,
   InvalidShareNote,
   NoteRemovalForbidden,
@@ -117,8 +118,10 @@ describe('links domain errors', () => {
     expect(new InvalidCursor().field).toBe('cursor');
     expect(new InvalidCommentText()).toBeInstanceOf(InvalidLinkField);
     expect(new InvalidShareNote()).toBeInstanceOf(InvalidLinkField);
+    expect(new InvalidExpiresAt()).toBeInstanceOf(InvalidLinkField);
     expect(new InvalidCommentText().field).toBe('text');
     expect(new InvalidShareNote().field).toBe('note');
+    expect(new InvalidExpiresAt().field).toBe('expiresAt');
   });
 
   it('el enlace público responde forbidden y link_not_found, sin códigos nuevos', () => {

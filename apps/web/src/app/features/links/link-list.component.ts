@@ -19,6 +19,7 @@ import {
   type RequestFailure,
   hasApiErrorCode,
   isApiFailure,
+  namesApiErrorField,
   toRequestFailure,
 } from '../../core/api/api-error';
 import { ApplicationsStore } from '../../core/applications/applications.store';
@@ -42,6 +43,10 @@ import { EditPreviewDialog, type EditPreviewDialogData } from './edit-preview.di
 import { LinkCard } from './link-card.component';
 import { linkLabel } from './link-preview';
 import { PasteDescriptionDialog, type PasteDescriptionDialogData } from './paste-description.dialog';
+import {
+  ReopenExpiresDialog,
+  type ReopenExpiresDialogData,
+} from './reopen-expires.dialog';
 
 /** Cuánto se ve "Esta oferta ya no está en el grupo" tras cerrarse el hilo. */
 const GONE_NOTICE_MS = 6000;
@@ -336,6 +341,56 @@ export class LinkList {
     } finally {
       this.working.set(false);
     }
+  }
+
+  /**
+   * Reabre una vacante cerrada (ADR-041 / spec web/links). Sin body primero; si el API pide `expiresAt` (calendar o
+   * caducidad pasada), abre el diálogo de fecha o limpiar caducidad. Tras éxito, snack honesto: las postulaciones
+   * `expired` no se reabren solas (D4).
+   */
+  protected async reopen(link: JobLinkSummary): Promise<void> {
+    if (this.working()) {
+      return;
+    }
+    this.working.set(true);
+    this.failure.set(null);
+    try {
+      await this.store.reopen(link.id);
+      this.noticeReopened();
+    } catch (error: unknown) {
+      if (namesApiErrorField(error, 400, 'validation_error', 'expiresAt')) {
+        this.working.set(false);
+        await this.askExpiresThenReopen(link);
+        return;
+      }
+      this.failure.set(toRequestFailure(error));
+    } finally {
+      this.working.set(false);
+    }
+  }
+
+  /** Diálogo de fecha cuando calendar / `expiresAt` pasado lo exige; el diálogo guarda y actualiza la tarjeta. */
+  private async askExpiresThenReopen(link: JobLinkSummary): Promise<void> {
+    const result = await firstValueFrom(
+      this.dialog
+        .open<ReopenExpiresDialog, ReopenExpiresDialogData, JobLinkSummary | undefined>(
+          ReopenExpiresDialog,
+          { data: { link } },
+        )
+        .afterClosed(),
+    );
+    if (result !== undefined) {
+      this.noticeReopened();
+    }
+  }
+
+  /** Aviso tras reopen: no afirma que las postulaciones caducadas volvieron a abrirse. */
+  private noticeReopened(): void {
+    this.snackBar.open(
+      $localize`:@@links.reopen.done:Oferta marcada como abierta. Las postulaciones caducadas no cambian solas.`,
+      undefined,
+      { duration: COPY_NOTICE_MS, politeness: 'polite' },
+    );
   }
 
   /**
