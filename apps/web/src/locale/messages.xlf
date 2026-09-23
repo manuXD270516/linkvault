@@ -4345,6 +4345,146 @@
           <context context-type="linenumber">2,3</context>
         </context-group>
       </trans-unit>
+      <trans-unit id="discovery.title" datatype="html">
+        <source>Descubrir</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">2,3</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.intro" datatype="html">
+        <source> Busca vacantes en bolsas públicas y guárdalas en tus links sin salir de LinkVault. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">3,5</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.coverage" datatype="html">
+        <source> LinkedIn y Computrabajo no están disponibles vía discovery. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">12,14</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.query.label" datatype="html">
+        <source>Consulta</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">17,18</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.query.placeholder" datatype="html">
+        <source>Título, empresa, stack…</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">26,27</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.board.label" datatype="html">
+        <source>Bolsa</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">31,32</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.board.all" datatype="html">
+        <source>Todas</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">42,43</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.board.getonboard" datatype="html">
+        <source>GetOnBoard</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">45,46</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.board.remoteok" datatype="html">
+        <source>RemoteOK</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">48,49</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.submit" datatype="html">
+        <source>Buscar</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">64,66</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.save.hint" datatype="html">
+        <source> Guardar añade la vacante a «Solo para mí». </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">70,72</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.degraded.getonboard" datatype="html">
+        <source>GetOnBoard no está disponible ahora.</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">84,86</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.degraded.remoteok" datatype="html">
+        <source>RemoteOK no está disponible ahora.</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">89,91</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.disabled" datatype="html">
+        <source> El descubrimiento de vacantes no está disponible en este momento. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">105,107</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.loading" datatype="html">
+        <source> Buscando… </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">113,115</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.empty" datatype="html">
+        <source> No hay resultados para esta consulta. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">119,121</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.save" datatype="html">
+        <source> Guardar </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">175,177</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.save.created" datatype="html">
+        <source> Guardada en «Solo para mí». </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">185,187</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.save.already" datatype="html">
+        <source> Ya la tenías guardada. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">195,197</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.save.error" datatype="html">
+        <source> No pudimos guardar esta vacante. Inténtalo de nuevo. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">205,207</context>
+        </context-group>
+      </trans-unit>
       <trans-unit id="search.intro" datatype="html">
         <source> Encuentra vacantes, postulaciones, comentarios, notas, CVs y planes de estudio que puedas ver. </source>
         <context-group purpose="location">
@@ -4712,11 +4852,18 @@
           <context context-type="linenumber">4,5</context>
         </context-group>
       </trans-unit>
+      <trans-unit id="shell.discovery" datatype="html">
+        <source>Descubrir</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/layout/shell/shell.html</context>
+          <context context-type="linenumber">5,6</context>
+        </context-group>
+      </trans-unit>
       <trans-unit id="shell.applications" datatype="html">
         <source>Postulaciones</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/layout/shell/shell.html</context>
-          <context context-type="linenumber">5,6</context>
+          <context context-type="linenumber">6,7</context>
         </context-group>
       </trans-unit>
       <trans-unit id="shell.myLinks" datatype="html">

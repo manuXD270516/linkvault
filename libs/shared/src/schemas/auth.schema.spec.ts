@@ -322,6 +322,7 @@ describe('api error contract', () => {
       'empty_query',
       'search_unavailable',
       'search_purge_failed',
+      'discovery_disabled',
       'internal_error',
     ]);
   });

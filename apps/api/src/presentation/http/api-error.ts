@@ -52,6 +52,7 @@ export const API_ERROR_STATUS: Readonly<Record<ApiErrorCode, number>> = {
   empty_query: 400,
   search_unavailable: 503,
   search_purge_failed: 503,
+  discovery_disabled: 503,
 };
 
 /**
@@ -114,6 +115,7 @@ export const API_ERROR_MESSAGES: Readonly<Record<ApiErrorCode, string>> = {
   empty_query: 'Search query is empty',
   search_unavailable: 'Search is unavailable',
   search_purge_failed: 'Search index purge failed',
+  discovery_disabled: 'Discovery is disabled',
 };
 
 /** Cuerpo `{ code, message, fields? }`. `fields` solo nombra campos y se omite si está vacío. */

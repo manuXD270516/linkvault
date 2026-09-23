@@ -258,20 +258,28 @@ SHALL documentar cómo cargar la extensión unpacked y cómo obtener el extensio
 
 ### Requirement: Profile demo para seed
 
-El `docker-compose` SHALL asociar Meilisearch también al perfil `demo`
-(`profiles: ['search', 'demo']`) además del perfil `search`. El RUNBOOK SHALL documentar:
+El docker-compose SHALL asociar Meilisearch también al perfil demo
+(profiles: ['search', 'demo']) además del perfil search. El RUNBOOK SHALL documentar:
 
-1. `docker compose --profile demo up -d --wait` (infra + Meili)
-2. `ALLOW_DEMO_SEED=true pnpm nx run api:seed-demo`
+1. docker compose --profile demo up -d --wait (infra + Meili)
+2. ALLOW_DEMO_SEED=true pnpm nx run api:seed-demo
 3. servir api/worker/web en el host con flags del tour
-
-El profile `demo` NO SHALL arrancar `api`/`worker`/`web` como services permanentes.
-NO SHALL implementar un segundo sembrador distinto del target Nx (mongosh crudo, etc.).
 
 #### Scenario: Profile demo no arranca apps
 
-- **GIVEN** infraestructura + profile `demo`
-- **WHEN** se levanta compose con `--profile demo`
+- **GIVEN** infraestructura + profile demo
+- **WHEN** se levanta compose con --profile demo
 - **THEN** Meilisearch SHALL estar disponible
-- **AND** NO SHALL haber services permanentes de `api`, `worker` ni `web`
-- **AND** la documentación SHALL indicar `api:seed-demo` y credenciales demo
+- **AND** NO SHALL haber services permanentes de pi, worker ni web
+- **AND** la documentación SHALL indicar pi:seed-demo y credenciales demo
+
+### Requirement: Flag FEATURE_DISCOVERY
+
+.env.example y el RUNBOOK SHALL documentar FEATURE_DISCOVERY (default false) y
+DISCOVERY_CHAIN (mock en CI). El profile compose no requiere servicio nuevo para
+discovery (adapters HTTP salientes desde api).
+
+#### Scenario: Documentación
+
+- **WHEN** se revisa .env.example
+- **THEN** SHALL existir FEATURE_DISCOVERY documentado

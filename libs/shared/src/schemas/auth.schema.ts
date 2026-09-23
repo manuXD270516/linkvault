@@ -210,6 +210,8 @@ export const apiErrorCodeSchema = z.enum([
   'search_unavailable',
   // 503: purge Meili falló antes del borrado de cuenta; Mongo intacto (D9 / change search).
   'search_purge_failed',
+  // 503: `FEATURE_DISCOVERY=false` (ADR-043 / job-discovery).
+  'discovery_disabled',
   // 500
   'internal_error',
 ]);

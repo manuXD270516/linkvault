@@ -29,6 +29,7 @@ import { ProfilePage } from './features/profile/profile.page';
 import { NotificationsPage } from './features/notifications/notifications.page';
 import { RoadmapPage } from './features/roadmap/roadmap.page';
 import { SearchPage } from './features/search/search.page';
+import { DiscoveryPage } from './features/discovery/discovery.page';
 import { Shell } from './layout/shell/shell';
 
 const session: SessionResponse = {
@@ -111,6 +112,7 @@ describe('appRoutes', () => {
       'plan/:analysisId',
       'postulaciones',
       'buscar',
+      'descubrir',
       'perfil',
       'notificaciones',
     ]) {
@@ -312,6 +314,30 @@ describe('appRoutes', () => {
       expect(router.url).toBe('/buscar');
       await vi.waitFor(() =>
         expect(harness.routeNativeElement?.textContent).toContain('Encuentra vacantes'),
+      );
+    });
+
+    it('Ruta diferida de descubrir', async () => {
+      const discovery = routeAt('descubrir', routeAt('').children);
+      expect(discovery.component).toBeUndefined();
+      expect(discovery.loadComponent).toBeUndefined();
+      expect(discovery.loadChildren).toBeTypeOf('function');
+
+      store.setSession(session);
+      const harness = await RouterTestingHarness.create();
+      await harness.navigateByUrl('/grupos', Shell);
+      http.expectOne('/api/groups').flush([]);
+      const loaded = (): unknown =>
+        Reflect.get(routeAt('descubrir', routeAt('', router.config).children), '_loadedRoutes');
+      expect(loaded()).toBeUndefined();
+
+      await harness.navigateByUrl('/descubrir', Shell);
+
+      expect(loaded()).toBeDefined();
+      expect(harness.fixture.debugElement.query(By.directive(DiscoveryPage))).not.toBeNull();
+      expect(router.url).toBe('/descubrir');
+      await vi.waitFor(() =>
+        expect(harness.routeNativeElement?.textContent).toContain('LinkedIn y Computrabajo'),
       );
     });
 

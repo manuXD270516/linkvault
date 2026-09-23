@@ -1252,6 +1252,23 @@ Variables (ver `.env.example`): `FEATURE_LINK_FRESHNESS`, `LINK_FRESHNESS_INTERV
 
 ---
 
+## Paso 6 quindecies-bis — Discovery de bolsas (job-discovery / ADR-043)
+
+Buscar vacantes en Get on Board (API pública) y Remote OK (dump cacheado); guardar con
+`POST /api/links`. SPA: `/descubrir`.
+
+```bash
+# .env
+FEATURE_DISCOVERY=true
+DISCOVERY_CHAIN=live   # mock en CI / sin red
+```
+
+- Flag off → `GET /api/discovery/search` responde `503` `discovery_disabled`.
+- Remote OK: cache Redis 15 min + limiter de egress; no martillar el dump.
+- LinkedIn / Indeed / Computrabajo **no** son fuentes de discovery (ADR-022).
+
+---
+
 ## Paso 6 quindecies — Extensión Chromium (browser-extension / ADR-038)
 
 Guardar la URL de la pestaña activa sin scrapear el DOM (G5). Auth propia:
