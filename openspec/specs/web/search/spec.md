@@ -44,17 +44,20 @@ aviso breve no bloqueante. Estados vacíos y de error (`503`, red) SHALL tener c
 
 La UI de búsqueda SHALL permitir filtrar por **tipo de documento** (`docType`), **grupo** propio
 (`groupId`), **modalidad** (`modality`), **estado de postulación** (`applicationStatus`),
-**moneda de salario** (`salaryCurrency` con opciones V0: cualquiera / BOB / USD) y **solo
+**moneda de salario** (`salaryCurrency` con opciones V0: cualquiera / BOB / USD), **rango de
+salario** (`minSalary` / `maxSalary`, opcionales, números ≥ 0) y **solo
 abiertas** (`openOnly`, default desactivado), con opción “cualquiera” donde aplique. NO SHALL
 ofrecer selector de grupos ajenos. NO SHALL exponer toggle de modo `hybrid|fulltext|semantic`
 (siempre hybrid por defecto). La query vacía NO SHALL disparar un listado completo del índice
 (alineado al contrato de la API: `400 empty_query`), aunque haya filtros seleccionados. Copy i18n
 ES/EN.
 
-**Compatibilidad (D3b):** si el usuario activa `modality`, `salaryCurrency` u `openOnly`, la UI
-SHALL forzar `docType=job_preview` y limpiar `applicationStatus`. Si activa `applicationStatus`,
-SHALL forzar `docType=application` y limpiar modality/currency/`openOnly`. NO SHALL enviar a la
-API modality/currency/`openOnly=true` junto con `applicationStatus`.
+**Compatibilidad (D3b):** si el usuario activa `modality`, `salaryCurrency`, `minSalary`,
+`maxSalary` u `openOnly`, la UI SHALL forzar `docType=job_preview` y limpiar
+`applicationStatus`. Si activa `applicationStatus`, SHALL forzar `docType=application` y limpiar
+modality/currency/`openOnly`/rango. NO SHALL enviar a la API modality/currency/
+`openOnly=true`/rango junto con `applicationStatus`. Junto a los inputs de rango, la UI SHALL
+mostrar un hint i18n de que el filtro solo aplica a vacantes con salario numérico.
 
 #### Scenario: Filtro por tipo
 
@@ -72,6 +75,13 @@ API modality/currency/`openOnly=true` junto con `applicationStatus`.
 - **AND** NO SHALL incluir `applicationStatus`
 - **AND** NO SHALL existir control de modo hybrid/fulltext/semantic
 
+#### Scenario: Rango salarial en la petición
+
+- **GIVEN** Ana fija minSalary 3000 y maxSalary 8000
+- **WHEN** envía una búsqueda con texto no vacío
+- **THEN** la petición SHALL incluir `minSalary=3000`, `maxSalary=8000` y `docType=job_preview`
+- **AND** NO SHALL incluir `applicationStatus`
+
 #### Scenario: Solo abiertas en la petición
 
 - **GIVEN** Ana activa “Solo abiertas”
@@ -87,10 +97,11 @@ API modality/currency/`openOnly=true` junto con `applicationStatus`.
 
 #### Scenario: applicationStatus implica tipo application
 
-- **GIVEN** Ana elige estado `applied`
+- **GIVEN** Ana elige estado `applied` tras haber fijado rango o modalidad
 - **WHEN** envía una búsqueda con texto no vacío
 - **THEN** la petición SHALL incluir `applicationStatus=applied` y `docType=application`
-- **AND** NO SHALL incluir `modality` ni `salaryCurrency` ni `openOnly=true`
+- **AND** NO SHALL incluir `modality` ni `salaryCurrency` ni `openOnly=true` ni `minSalary` ni
+  `maxSalary`
 
 #### Scenario: Sin toggle de modo
 

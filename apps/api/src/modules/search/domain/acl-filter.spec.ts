@@ -77,4 +77,48 @@ describe('buildSearchAclFilter', () => {
       buildSearchAclFilter({ userId: 'ana', memberGroupIds: [] }),
     ).not.toContain('closedAt');
   });
+
+  it('ANDs D1 salary overlap when minSalary and/or maxSalary are set', () => {
+    const both = buildSearchAclFilter({
+      userId: 'ana',
+      memberGroupIds: [],
+      minSalary: 4000,
+      maxSalary: 6000,
+    });
+    expect(both).toContain(
+      '((salaryMax >= 4000) OR (salaryMax IS NULL AND salaryMin >= 4000))',
+    );
+    expect(both).toContain(
+      '((salaryMin <= 6000) OR (salaryMin IS NULL AND salaryMax <= 6000))',
+    );
+
+    const onlyMin = buildSearchAclFilter({
+      userId: 'ana',
+      memberGroupIds: [],
+      minSalary: 4000,
+    });
+    expect(onlyMin).toContain(
+      '((salaryMax >= 4000) OR (salaryMax IS NULL AND salaryMin >= 4000))',
+    );
+    expect(onlyMin).not.toContain('salaryMin <=');
+
+    const onlyMax = buildSearchAclFilter({
+      userId: 'ana',
+      memberGroupIds: [],
+      maxSalary: 4000,
+    });
+    expect(onlyMax).toContain(
+      '((salaryMin <= 4000) OR (salaryMin IS NULL AND salaryMax <= 4000))',
+    );
+    expect(onlyMax).not.toContain('salaryMax >=');
+  });
+
+  it('does not add salary range clauses when bounds are absent', () => {
+    const filter = buildSearchAclFilter({
+      userId: 'ana',
+      memberGroupIds: [],
+    });
+    expect(filter).not.toContain('salaryMin');
+    expect(filter).not.toContain('salaryMax');
+  });
 });

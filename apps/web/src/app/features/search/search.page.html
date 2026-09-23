@@ -169,6 +169,47 @@
       </mat-form-field>
     </div>
 
+    <div class="flex flex-col gap-2">
+      <div class="flex flex-col gap-4 sm:flex-row">
+        <mat-form-field appearance="outline" class="w-full sm:flex-1">
+          <mat-label i18n="@@search.filter.minSalary">Salario mínimo</mat-label>
+          <input
+            matInput
+            type="number"
+            name="minSalary"
+            min="0"
+            step="1"
+            inputmode="numeric"
+            [ngModel]="minSalary()"
+            (ngModelChange)="onMinSalaryChange($event)"
+            data-testid="search-min-salary"
+          />
+        </mat-form-field>
+
+        <mat-form-field appearance="outline" class="w-full sm:flex-1">
+          <mat-label i18n="@@search.filter.maxSalary">Salario máximo</mat-label>
+          <input
+            matInput
+            type="number"
+            name="maxSalary"
+            min="0"
+            step="1"
+            inputmode="numeric"
+            [ngModel]="maxSalary()"
+            (ngModelChange)="onMaxSalaryChange($event)"
+            data-testid="search-max-salary"
+          />
+        </mat-form-field>
+      </div>
+      <p
+        class="m-0 text-sm text-(--mat-sys-on-surface-variant)"
+        data-testid="search-salary-range-hint"
+        i18n="@@search.filter.salaryRange.hint"
+      >
+        Solo aplica a vacantes con salario numérico.
+      </p>
+    </div>
+
     <mat-slide-toggle
       [checked]="openOnly()"
       (change)="onOpenOnlyChange($event.checked)"

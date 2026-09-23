@@ -415,4 +415,195 @@ describe('SearchContent', () => {
     ).rejects.toBeInstanceOf(EmptySearchQuery);
     expect(meili.searchCalls).toHaveLength(0);
   });
+
+  it('applies D1 salary overlap for full range and excludes low max', async () => {
+    const meili = new InMemoryMeiliSearchClient();
+    await meili.upsert([
+      {
+        id: 'job_preview:overlap',
+        docType: 'job_preview',
+        ownerUserId: 'ana',
+        groupIds: [],
+        visibilityScope: 'owner',
+        updatedAt: 1,
+        embeddingStatus: 'missing',
+        title: 'Nest salario',
+        linkId: 'l-overlap',
+        salaryMin: 3000,
+        salaryMax: 5000,
+      },
+      {
+        id: 'job_preview:low',
+        docType: 'job_preview',
+        ownerUserId: 'ana',
+        groupIds: [],
+        visibilityScope: 'owner',
+        updatedAt: 1,
+        embeddingStatus: 'missing',
+        title: 'Nest salario',
+        linkId: 'l-low',
+        salaryMax: 2000,
+      },
+    ]);
+    const useCase = new SearchContent(
+      config(),
+      meili,
+      membership,
+      createStubEmbedTexts(),
+    );
+    const result = await useCase.execute('ana', {
+      q: 'Nest',
+      docType: 'job_preview',
+      minSalary: 4000,
+      maxSalary: 6000,
+    });
+    expect(result.hits.map((h) => h.id)).toEqual(['job_preview:overlap']);
+    expect(meili.searchCalls[0]?.filter).toContain(
+      '((salaryMax >= 4000) OR (salaryMax IS NULL AND salaryMin >= 4000))',
+    );
+    expect(meili.searchCalls[0]?.filter).toContain(
+      '((salaryMin <= 6000) OR (salaryMin IS NULL AND salaryMax <= 6000))',
+    );
+  });
+
+  it('includes docs with only salaryMin via minSalary proxy', async () => {
+    const meili = new InMemoryMeiliSearchClient();
+    await meili.upsert([
+      {
+        id: 'job_preview:min-only',
+        docType: 'job_preview',
+        ownerUserId: 'ana',
+        groupIds: [],
+        visibilityScope: 'owner',
+        updatedAt: 1,
+        embeddingStatus: 'missing',
+        title: 'Nest min',
+        linkId: 'l-min',
+        salaryMin: 4500,
+        salaryMax: null,
+      },
+      {
+        id: 'job_preview:min-low',
+        docType: 'job_preview',
+        ownerUserId: 'ana',
+        groupIds: [],
+        visibilityScope: 'owner',
+        updatedAt: 1,
+        embeddingStatus: 'missing',
+        title: 'Nest min',
+        linkId: 'l-min-low',
+        salaryMin: 3000,
+        salaryMax: null,
+      },
+    ]);
+    const useCase = new SearchContent(
+      config(),
+      meili,
+      membership,
+      createStubEmbedTexts(),
+    );
+    const result = await useCase.execute('ana', {
+      q: 'Nest',
+      minSalary: 4000,
+    });
+    expect(result.hits.map((h) => h.id)).toEqual(['job_preview:min-only']);
+  });
+
+  it('includes docs with only salaryMax via maxSalary proxy', async () => {
+    const meili = new InMemoryMeiliSearchClient();
+    await meili.upsert([
+      {
+        id: 'job_preview:max-only',
+        docType: 'job_preview',
+        ownerUserId: 'ana',
+        groupIds: [],
+        visibilityScope: 'owner',
+        updatedAt: 1,
+        embeddingStatus: 'missing',
+        title: 'Nest max',
+        linkId: 'l-max',
+        salaryMin: null,
+        salaryMax: 3500,
+      },
+      {
+        id: 'job_preview:max-high',
+        docType: 'job_preview',
+        ownerUserId: 'ana',
+        groupIds: [],
+        visibilityScope: 'owner',
+        updatedAt: 1,
+        embeddingStatus: 'missing',
+        title: 'Nest max',
+        linkId: 'l-max-high',
+        salaryMin: null,
+        salaryMax: 8000,
+      },
+    ]);
+    const useCase = new SearchContent(
+      config(),
+      meili,
+      membership,
+      createStubEmbedTexts(),
+    );
+    const result = await useCase.execute('ana', {
+      q: 'Nest',
+      maxSalary: 4000,
+    });
+    expect(result.hits.map((h) => h.id)).toEqual(['job_preview:max-only']);
+  });
+
+  it('excludes docs without numeric salary when range filter is set', async () => {
+    const meili = new InMemoryMeiliSearchClient();
+    await meili.upsert([
+      {
+        id: 'job_preview:no-salary',
+        docType: 'job_preview',
+        ownerUserId: 'ana',
+        groupIds: [],
+        visibilityScope: 'owner',
+        updatedAt: 1,
+        embeddingStatus: 'missing',
+        title: 'Nest sin salario',
+        linkId: 'l-none',
+      },
+      {
+        id: 'job_preview:with-salary',
+        docType: 'job_preview',
+        ownerUserId: 'ana',
+        groupIds: [],
+        visibilityScope: 'owner',
+        updatedAt: 1,
+        embeddingStatus: 'missing',
+        title: 'Nest con salario',
+        linkId: 'l-with',
+        salaryMin: 2000,
+        salaryMax: 4000,
+      },
+    ]);
+    const useCase = new SearchContent(
+      config(),
+      meili,
+      membership,
+      createStubEmbedTexts(),
+    );
+    const result = await useCase.execute('ana', {
+      q: 'Nest',
+      minSalary: 1000,
+    });
+    expect(result.hits.map((h) => h.id)).toEqual(['job_preview:with-salary']);
+  });
+
+  it('rejects empty query even when minSalary is set', async () => {
+    const meili = new InMemoryMeiliSearchClient();
+    const useCase = new SearchContent(
+      config(),
+      meili,
+      membership,
+      createStubEmbedTexts(),
+    );
+    await expect(
+      useCase.execute('ana', { q: '', minSalary: 3000 }),
+    ).rejects.toBeInstanceOf(EmptySearchQuery);
+    expect(meili.searchCalls).toHaveLength(0);
+  });
 });

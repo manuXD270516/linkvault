@@ -115,4 +115,20 @@ describe('SearchApi', () => {
     reqFalse.flush(emptyResponse);
     await expect(pendingFalse).resolves.toEqual(emptyResponse);
   });
+
+  it('serializes minSalary and maxSalary as digit strings', async () => {
+    const pending = api.search({
+      q: 'Nest',
+      docType: 'job_preview',
+      minSalary: 3000,
+      maxSalary: 8000,
+    });
+    const request = http.expectOne(
+      (req) => req.method === 'GET' && req.url === '/api/search',
+    );
+    expect(request.request.params.get('minSalary')).toBe('3000');
+    expect(request.request.params.get('maxSalary')).toBe('8000');
+    request.flush(emptyResponse);
+    await expect(pending).resolves.toEqual(emptyResponse);
+  });
 });

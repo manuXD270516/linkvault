@@ -2305,6 +2305,18 @@
         <source>USD</source>
         <target>USD</target>
       </trans-unit>
+      <trans-unit id="search.filter.minSalary" datatype="html">
+        <source>Salario mínimo</source>
+        <target>Minimum salary</target>
+      </trans-unit>
+      <trans-unit id="search.filter.maxSalary" datatype="html">
+        <source>Salario máximo</source>
+        <target>Maximum salary</target>
+      </trans-unit>
+      <trans-unit id="search.filter.salaryRange.hint" datatype="html">
+        <source>Solo aplica a vacantes con salario numérico.</source>
+        <target>Only applies to jobs with a numeric salary.</target>
+      </trans-unit>
       <trans-unit id="search.filter.openOnly" datatype="html">
         <source>Solo abiertas</source>
         <target>Open only</target>

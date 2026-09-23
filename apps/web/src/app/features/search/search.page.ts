@@ -39,8 +39,8 @@ const JOB_MODALITIES: readonly JobModality[] = [
 const SALARY_CURRENCIES: readonly SearchSalaryCurrency[] = ['BOB', 'USD'];
 
 /**
- * Pantalla de búsqueda (`/buscar`, spec web/search, D8 / D3). Siempre hybrid (sin toggle de modo);
- * filtros `docType`, `groupId`, LatAm y `openOnly` con D3b bidireccional.
+ * Pantalla de búsqueda (`/buscar`, spec web/search, D8 / D3 / D4). Siempre hybrid (sin toggle de
+ * modo); filtros `docType`, `groupId`, LatAm, rango salarial y `openOnly` con D3b bidireccional.
  */
 @Component({
   selector: 'lv-search-page',
@@ -77,6 +77,8 @@ export class SearchPage {
   protected readonly applicationStatus = this.store.applicationStatus;
   protected readonly salaryCurrency = this.store.salaryCurrency;
   protected readonly openOnly = this.store.openOnly;
+  protected readonly minSalary = this.store.minSalary;
+  protected readonly maxSalary = this.store.maxSalary;
   protected readonly groupOptions = this.groups.groups;
 
   protected readonly docTypes = SEARCH_DOC_TYPES;
@@ -121,6 +123,14 @@ export class SearchPage {
     this.store.setOpenOnly(checked);
   }
 
+  protected onMinSalaryChange(raw: number | string | null): void {
+    this.store.setMinSalary(parseSalaryInput(raw));
+  }
+
+  protected onMaxSalaryChange(raw: number | string | null): void {
+    this.store.setMaxSalary(parseSalaryInput(raw));
+  }
+
   protected async submit(): Promise<void> {
     const trimmed = this.queryDraft().trim();
     if (trimmed.length === 0) {
@@ -134,4 +144,22 @@ export class SearchPage {
   protected routeFor(hit: SearchHit): string | null {
     return searchHitRoute(hit);
   }
+}
+
+/** Vacío → null; entero ≥ 0 → número; basura / negativo / decimal → null (no envía el filtro). */
+function parseSalaryInput(raw: number | string | null): number | null {
+  if (raw === null || raw === '') {
+    return null;
+  }
+  if (typeof raw === 'number') {
+    if (!Number.isFinite(raw) || raw < 0 || !Number.isInteger(raw)) {
+      return null;
+    }
+    return raw;
+  }
+  const trimmed = raw.trim();
+  if (trimmed.length === 0 || !/^\d+$/.test(trimmed)) {
+    return null;
+  }
+  return Number(trimmed);
 }

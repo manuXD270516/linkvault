@@ -67,6 +67,28 @@ export const searchResponseSchema = z.strictObject({
 export type SearchResponse = z.infer<typeof searchResponseSchema>;
 
 /**
+ * Entero ≥ 0 desde query string de dígitos (ADR-040 / D2).
+ * Vacío o ausente → `undefined` (no filtrar). **Prohibido** `z.coerce.number()`:
+ * `""` o basura se volverían `0`. Negativos, decimales y no numéricos → issue en el campo.
+ */
+const optionalDigitIntParamSchema = z
+  .string()
+  .transform((raw, ctx) => {
+    if (raw === '') {
+      return undefined;
+    }
+    if (!/^\d+$/.test(raw)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Must be a non-negative integer',
+      });
+      return z.NEVER;
+    }
+    return Number.parseInt(raw, 10);
+  })
+  .optional();
+
+/**
  * Query params tipados para el cliente / `ZodValidationPipe` en `GET /api/search`.
  * `mode` es opcional; la SPA V0 **no** lo envía. `q` ausente o solo espacios → `400 empty_query`
  * en el caso de uso (no `validation_error`).
@@ -76,29 +98,48 @@ export type SearchResponse = z.infer<typeof searchResponseSchema>;
  * - `applicationStatus` → Meili atributo de documento `status` (no renombrar el campo del índice)
  * - `salaryCurrency` → Meili `salaryCurrency = "…"` (pass-through)
  * - `openOnly` → Meili `closedAt IS NULL` cuando es `true` (ausente/`false` = no filtrar cierre)
+ * - `minSalary` / `maxSalary` → solape D1 sobre `salaryMin`/`salaryMax` (ADR-040)
  *
  * Querystring: los booleanos llegan como strings `"true"`/`"false"`. Parseamos con
  * `z.enum(['true','false']).transform(...)` — **nunca** `z.coerce.boolean()` (la string
  * `"false"` sería truthy y pasaría el filtro).
  */
-export const searchQueryParamsSchema = z.strictObject({
-  q: z.string().default(''),
-  docType: searchDocTypeSchema.optional(),
-  groupId: z.string().min(1).optional(),
-  limit: z.coerce.number().int().min(1).max(SEARCH_LIMIT_MAX).optional(),
-  offset: z.coerce.number().int().min(0).optional(),
-  mode: searchModeSchema.optional(),
-  modality: jobModalitySchema.optional(),
-  /** Query param; el filtro Meili usa el atributo `status`. */
-  applicationStatus: applicationStatusSchema.optional(),
-  salaryCurrency: z.string().trim().min(1).max(16).optional(),
-  /**
-   * Solo `"true"` | `"false"` en HTTP; tipado como `boolean` tras el transform.
-   * Ausente = no filtrar por cierre.
-   */
-  openOnly: z
-    .enum(['true', 'false'])
-    .transform((v) => v === 'true')
-    .optional(),
-});
+export const searchQueryParamsSchema = z
+  .strictObject({
+    q: z.string().default(''),
+    docType: searchDocTypeSchema.optional(),
+    groupId: z.string().min(1).optional(),
+    limit: z.coerce.number().int().min(1).max(SEARCH_LIMIT_MAX).optional(),
+    offset: z.coerce.number().int().min(0).optional(),
+    mode: searchModeSchema.optional(),
+    modality: jobModalitySchema.optional(),
+    /** Query param; el filtro Meili usa el atributo `status`. */
+    applicationStatus: applicationStatusSchema.optional(),
+    salaryCurrency: z.string().trim().min(1).max(16).optional(),
+    /**
+     * Solo `"true"` | `"false"` en HTTP; tipado como `boolean` tras el transform.
+     * Ausente = no filtrar por cierre.
+     */
+    openOnly: z
+      .enum(['true', 'false'])
+      .transform((v) => v === 'true')
+      .optional(),
+    /** Tope inferior que el usuario acepta; ausente/vacío = no filtrar. */
+    minSalary: optionalDigitIntParamSchema,
+    /** Tope superior que el usuario acepta; ausente/vacío = no filtrar. */
+    maxSalary: optionalDigitIntParamSchema,
+  })
+  .superRefine((data, ctx) => {
+    if (
+      data.minSalary !== undefined &&
+      data.maxSalary !== undefined &&
+      data.minSalary > data.maxSalary
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'minSalary must not exceed maxSalary',
+        path: ['minSalary'],
+      });
+    }
+  });
 export type SearchQueryParams = z.infer<typeof searchQueryParamsSchema>;

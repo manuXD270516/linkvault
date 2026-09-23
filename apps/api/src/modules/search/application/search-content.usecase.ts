@@ -39,6 +39,10 @@ export interface SearchQueryInput {
   readonly salaryCurrency?: string;
   /** Cuando true, AND Meili `closedAt IS NULL`. */
   readonly openOnly?: boolean;
+  /** Usuario acepta desde M; solape D1 / ADR-040. */
+  readonly minSalary?: number;
+  /** Usuario acepta hasta X; solape D1 / ADR-040. */
+  readonly maxSalary?: number;
 }
 
 /**
@@ -90,6 +94,8 @@ export class SearchContent {
         ? {}
         : { salaryCurrency: input.salaryCurrency }),
       ...(input.openOnly === true ? { openOnly: true } : {}),
+      ...(input.minSalary === undefined ? {} : { minSalary: input.minSalary }),
+      ...(input.maxSalary === undefined ? {} : { maxSalary: input.maxSalary }),
     });
 
     let vector: number[] | undefined;

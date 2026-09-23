@@ -26,6 +26,9 @@ export interface SearchState {
   salaryCurrency: SearchSalaryCurrency | null;
   /** Default off: no envía filtro de cierre. */
   openOnly: boolean;
+  /** Rango opcional (enteros ≥ 0); `null` = no filtrar ese lado. */
+  minSalary: number | null;
+  maxSalary: number | null;
   hits: SearchHit[];
   degraded: boolean;
   degradeReason: SearchResponse['degradeReason'] | null;
@@ -44,6 +47,8 @@ const initialState: SearchState = {
   applicationStatus: null,
   salaryCurrency: null,
   openOnly: false,
+  minSalary: null,
+  maxSalary: null,
   hits: [],
   degraded: false,
   degradeReason: null,
@@ -113,7 +118,38 @@ export const SearchStore = signalStore(
     },
 
     /**
-     * D3b: applicationStatus activo → `docType=application` y limpia modality/currency/openOnly.
+     * D3b: minSalary activo → `docType=job_preview` y limpia `applicationStatus`.
+     */
+    setMinSalary(minSalary: number | null): void {
+      if (minSalary === null) {
+        patchState(store, { minSalary: null });
+        return;
+      }
+      patchState(store, {
+        minSalary,
+        docType: 'job_preview',
+        applicationStatus: null,
+      });
+    },
+
+    /**
+     * D3b: maxSalary activo → `docType=job_preview` y limpia `applicationStatus`.
+     */
+    setMaxSalary(maxSalary: number | null): void {
+      if (maxSalary === null) {
+        patchState(store, { maxSalary: null });
+        return;
+      }
+      patchState(store, {
+        maxSalary,
+        docType: 'job_preview',
+        applicationStatus: null,
+      });
+    },
+
+    /**
+     * D3b: applicationStatus activo → `docType=application` y limpia
+     * modality/currency/openOnly/rango.
      */
     setApplicationStatus(applicationStatus: ApplicationStatus | null): void {
       if (applicationStatus === null) {
@@ -126,6 +162,8 @@ export const SearchStore = signalStore(
         modality: null,
         salaryCurrency: null,
         openOnly: false,
+        minSalary: null,
+        maxSalary: null,
       });
     },
 
@@ -138,15 +176,23 @@ export const SearchStore = signalStore(
       if (trimmed.length === 0) {
         return;
       }
-      // D3b: re-forzar docType por si el usuario cambió el tipo tras activar un filtro LatAm/openOnly.
+      // D3b: re-forzar docType por si el usuario cambió el tipo tras activar un filtro LatAm/rango/openOnly.
       const modality = store.modality();
       const applicationStatus = store.applicationStatus();
       const salaryCurrency = store.salaryCurrency();
       const openOnly = store.openOnly();
+      const minSalary = store.minSalary();
+      const maxSalary = store.maxSalary();
+      const hasJobPreviewAxis =
+        modality !== null ||
+        salaryCurrency !== null ||
+        openOnly ||
+        minSalary !== null ||
+        maxSalary !== null;
       const latamDocType: SearchDocType | null =
         applicationStatus !== null
           ? 'application'
-          : modality !== null || salaryCurrency !== null || openOnly
+          : hasJobPreviewAxis
             ? 'job_preview'
             : null;
       if (latamDocType !== null && store.docType() !== latamDocType) {
@@ -170,6 +216,8 @@ export const SearchStore = signalStore(
           ...(applicationStatus !== null ? { applicationStatus } : {}),
           ...(salaryCurrency !== null ? { salaryCurrency } : {}),
           ...(openOnly ? { openOnly: true } : {}),
+          ...(minSalary !== null ? { minSalary } : {}),
+          ...(maxSalary !== null ? { maxSalary } : {}),
         });
         patchState(store, {
           hits: response.hits,

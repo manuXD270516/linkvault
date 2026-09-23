@@ -25,6 +25,8 @@ export const MEILI_FILTERABLE_ATTRIBUTES = [
   'modality',
   'status',
   'salaryCurrency',
+  'salaryMin',
+  'salaryMax',
 ] as const;
 
 const FILTERABLE = MEILI_FILTERABLE_ATTRIBUTES;

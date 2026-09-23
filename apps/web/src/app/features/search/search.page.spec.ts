@@ -209,9 +209,13 @@ describe('SearchPage', () => {
     expect(host().querySelector('[data-testid="search-modality"]')).not.toBeNull();
     expect(host().querySelector('[data-testid="search-application-status"]')).not.toBeNull();
     expect(host().querySelector('[data-testid="search-salary-currency"]')).not.toBeNull();
+    expect(host().querySelector('[data-testid="search-min-salary"]')).not.toBeNull();
+    expect(host().querySelector('[data-testid="search-max-salary"]')).not.toBeNull();
+    expect(host().querySelector('[data-testid="search-salary-range-hint"]')).not.toBeNull();
     expect(host().querySelector('[data-testid="search-open-only"]')).not.toBeNull();
     expect(host().textContent).toContain('Modalidad');
     expect(host().textContent).toContain('Solo abiertas');
+    expect(host().textContent).toContain('salario numérico');
   });
 
   it('sends openOnly=true with forced job_preview (D3b)', async () => {
@@ -253,6 +257,68 @@ describe('SearchPage', () => {
     expect(request.request.params.get('applicationStatus')).toBe('applied');
     expect(request.request.params.get('docType')).toBe('application');
     expect(request.request.params.has('openOnly')).toBe(false);
+    request.flush({
+      hits: [],
+      limit: SEARCH_PAGE_SIZE,
+      offset: 0,
+    } satisfies SearchResponse);
+    await settle();
+  });
+
+  it('sends minSalary and maxSalary with forced job_preview (D3b)', async () => {
+    const minInput = host().querySelector<HTMLInputElement>(
+      '[data-testid="search-min-salary"]',
+    );
+    const maxInput = host().querySelector<HTMLInputElement>(
+      '[data-testid="search-max-salary"]',
+    );
+    expect(minInput).not.toBeNull();
+    expect(maxInput).not.toBeNull();
+    minInput!.value = '3000';
+    minInput!.dispatchEvent(new Event('input'));
+    maxInput!.value = '8000';
+    maxInput!.dispatchEvent(new Event('input'));
+    await settle();
+
+    await submitSearch('Nest');
+    const request = await vi.waitFor(() =>
+      http.expectOne((req) => req.method === 'GET' && req.url === '/api/search'),
+    );
+    expect(request.request.params.get('minSalary')).toBe('3000');
+    expect(request.request.params.get('maxSalary')).toBe('8000');
+    expect(request.request.params.get('docType')).toBe('job_preview');
+    expect(request.request.params.has('applicationStatus')).toBe(false);
+    request.flush({
+      hits: [],
+      limit: SEARCH_PAGE_SIZE,
+      offset: 0,
+    } satisfies SearchResponse);
+    await settle();
+  });
+
+  it('clears salary range when applicationStatus is selected (D3b bidirectional)', async () => {
+    const minInput = host().querySelector<HTMLInputElement>(
+      '[data-testid="search-min-salary"]',
+    );
+    const maxInput = host().querySelector<HTMLInputElement>(
+      '[data-testid="search-max-salary"]',
+    );
+    minInput!.value = '3000';
+    minInput!.dispatchEvent(new Event('input'));
+    maxInput!.value = '8000';
+    maxInput!.dispatchEvent(new Event('input'));
+    await settle();
+
+    await selectMatOption('search-application-status', 'Postulada');
+
+    await submitSearch('Nest');
+    const request = await vi.waitFor(() =>
+      http.expectOne((req) => req.method === 'GET' && req.url === '/api/search'),
+    );
+    expect(request.request.params.get('applicationStatus')).toBe('applied');
+    expect(request.request.params.get('docType')).toBe('application');
+    expect(request.request.params.has('minSalary')).toBe(false);
+    expect(request.request.params.has('maxSalary')).toBe(false);
     request.flush({
       hits: [],
       limit: SEARCH_PAGE_SIZE,

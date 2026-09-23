@@ -5,8 +5,10 @@
 Al indexar un `job_preview`, el documento Meilisearch SHALL incluir `salaryMin` cuando
 `preview.salary.min` es un número, y `salaryMax` cuando `preview.salary.max` es un número.
 Ambos SHALL ser filterable en los clientes Meili de **api y worker**. Si el valor es null, el
-documento NO SHALL incluir esa clave. El backfill de búsqueda SHALL rellenar estos campos en
-documentos existentes elegibles (documentado en RUNBOOK).
+documento SHALL escribir `null` (o omitir la clave de forma equivalente para `IS NULL` en
+filtros) al limpiar el preview, de modo que el merge de Meili no conserve un número viejo. El
+backfill de búsqueda SHALL rellenar estos campos en documentos existentes elegibles
+(documentado en RUNBOOK; CLI `api:backfill-search`).
 
 #### Scenario: Ambos extremos
 

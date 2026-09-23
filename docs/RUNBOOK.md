@@ -1208,9 +1208,24 @@ Variables (ver `.env.example`): `FEATURE_SEARCH`, `MEILI_HOST`, `MEILI_MASTER_KE
 - Contenedor en la red compose: `MEILI_HOST=http://meilisearch:7700`.
 - Con `FEATURE_SEARCH=false`, api/worker arrancan sin exigir Meili.
 
+### Rango salarial (search-salary-range / ADR-040)
+
+Tras desplegar settings filterable (`salaryMin`/`salaryMax`) en **api y worker**, reindexar
+previews existentes:
+
+```bash
+pnpm nx run api:backfill-search -- --docType=job_preview --limit=500
+# opcional: --dry-run
+```
+
+Sin backfill, el filtro de rango solo ve docs reindexados tras el deploy. También se rellenan
+`salaryMin`/`salaryMax` en el próximo upsert natural (edición/enrich).
+
 **Red interna (prod):** Meilisearch MUST quedar en red interna (VPC / red `internal` de compose). No exponer el
 puerto ni la master key a Internet; solo api/worker en la misma red privada deben alcanzarlo. En local el puerto se
 publica solo para desarrollo en el host.
+
+---
 
 ### Frescura de vacantes (job-link-freshness / ADR-037)
 

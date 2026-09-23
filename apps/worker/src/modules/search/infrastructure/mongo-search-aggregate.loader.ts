@@ -75,6 +75,7 @@ export class MongoSearchAggregateLoader implements SearchAggregateLoader {
             .filter((v) => v !== null && v !== undefined)
             .join(' ');
     const salaryCurrency = salaryCurrencyFromPreview(salary);
+    const { salaryMin, salaryMax } = salaryBoundsFromPreview(salary);
 
     return {
       id: searchDocumentId('job_preview', linkId),
@@ -107,6 +108,9 @@ export class MongoSearchAggregateLoader implements SearchAggregateLoader {
         ? {}
         : { salaryText }),
       ...(salaryCurrency === undefined ? {} : { salaryCurrency }),
+      // Siempre escribir null|number para que Meili merge limpie extremos previos (ADR-040).
+      salaryMin,
+      salaryMax,
       ...(link['closedAt'] instanceof Date
         ? { closedAt: (link['closedAt'] as Date).toISOString() }
         : typeof link['closedAt'] === 'string'
@@ -293,6 +297,26 @@ export function salaryCurrencyFromPreview(
   if (typeof currency !== 'string') return undefined;
   const trimmed = currency.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+/**
+ * `preview.salary.min` / `.max` → `salaryMin` / `salaryMax` filterables (ADR-040).
+ * Solo números; cualquier otro valor (null/ausente) → `null` para limpiar en Meili merge.
+ * El backfill reusa este loader vía SearchUpsert.
+ */
+export function salaryBoundsFromPreview(
+  salary:
+    | {
+        readonly min?: number | null;
+        readonly max?: number | null;
+      }
+    | null
+    | undefined,
+): { readonly salaryMin: number | null; readonly salaryMax: number | null } {
+  return {
+    salaryMin: typeof salary?.min === 'number' ? salary.min : null,
+    salaryMax: typeof salary?.max === 'number' ? salary.max : null,
+  };
 }
 
 function toObjectId(id: string): Types.ObjectId | null {

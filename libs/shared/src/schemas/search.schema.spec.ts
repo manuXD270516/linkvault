@@ -126,4 +126,68 @@ describe('searchQueryParamsSchema', () => {
       searchQueryParamsSchema.parse({ q: 'x', openOnly: 'false' }).openOnly,
     ).toBe(false);
   });
+
+  it('parses minSalary/maxSalary digit strings to ints and omits empty', () => {
+    expect(
+      searchQueryParamsSchema.parse({
+        q: 'x',
+        minSalary: '3000',
+        maxSalary: '5000',
+      }),
+    ).toEqual({ q: 'x', minSalary: 3000, maxSalary: 5000 });
+    expect(
+      searchQueryParamsSchema.parse({ q: 'x', minSalary: '0' }),
+    ).toEqual({ q: 'x', minSalary: 0 });
+    expect(searchQueryParamsSchema.parse({ q: 'x', minSalary: '' })).toEqual({
+      q: 'x',
+    });
+    expect(searchQueryParamsSchema.parse({ q: 'x', maxSalary: '' })).toEqual({
+      q: 'x',
+    });
+    expect(
+      Object.prototype.hasOwnProperty.call(
+        searchQueryParamsSchema.parse({ q: 'x' }),
+        'minSalary',
+      ),
+    ).toBe(false);
+  });
+
+  it('rejects invalid minSalary/maxSalary naming the field (never coerce.number)', () => {
+    expect(
+      issuePaths(
+        searchQueryParamsSchema.safeParse({ q: 'x', minSalary: 'abc' }),
+      ),
+    ).toEqual(['minSalary']);
+    expect(
+      issuePaths(
+        searchQueryParamsSchema.safeParse({ q: 'x', minSalary: '-1' }),
+      ),
+    ).toEqual(['minSalary']);
+    expect(
+      issuePaths(
+        searchQueryParamsSchema.safeParse({ q: 'x', minSalary: '3.5' }),
+      ),
+    ).toEqual(['minSalary']);
+    expect(
+      issuePaths(
+        searchQueryParamsSchema.safeParse({ q: 'x', maxSalary: 'foo' }),
+      ),
+    ).toEqual(['maxSalary']);
+    // coerce.number("") → 0; nuestro parse omite vacío en vez de filtrar por 0.
+    expect(searchQueryParamsSchema.parse({ q: 'x', minSalary: '' })).toEqual({
+      q: 'x',
+    });
+  });
+
+  it('rejects minSalary greater than maxSalary', () => {
+    expect(
+      issuePaths(
+        searchQueryParamsSchema.safeParse({
+          q: 'x',
+          minSalary: '8000',
+          maxSalary: '2000',
+        }),
+      ),
+    ).toEqual(['minSalary']);
+  });
 });

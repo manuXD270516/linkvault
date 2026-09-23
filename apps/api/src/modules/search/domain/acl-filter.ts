@@ -10,9 +10,10 @@
  *
  * CV y roadmap solo por owner (impuesto además si se pide docType).
  *
- * Filtros LatAm + openOnly (AND al ACL): modality, status (desde query
- * `applicationStatus`), salaryCurrency; cuando `openOnly`, `closedAt IS NULL`
- * (atributo omitido por el loader = abierto; el loader nunca escribe `null`).
+ * Filtros LatAm + openOnly + rango salarial (AND al ACL): modality, status
+ * (desde query `applicationStatus`), salaryCurrency; cuando `openOnly`,
+ * `closedAt IS NULL` (atributo omitido por el loader = abierto); `minSalary`/
+ * `maxSalary` → solape D1 / ADR-040 sobre `salaryMin`/`salaryMax`.
  */
 export function buildSearchAclFilter(input: {
   readonly userId: string;
@@ -25,6 +26,10 @@ export function buildSearchAclFilter(input: {
   readonly salaryCurrency?: string;
   /** Cuando true, AND `closedAt IS NULL` (vacantes abiertas). */
   readonly openOnly?: boolean;
+  /** Usuario acepta desde M; fórmula D1 sobre salaryMax/salaryMin. */
+  readonly minSalary?: number;
+  /** Usuario acepta hasta X; fórmula D1 sobre salaryMin/salaryMax. */
+  readonly maxSalary?: number;
 }): string {
   const ownerBranch = `(ownerUserId = "${escapeMeili(
     input.userId,
@@ -69,6 +74,8 @@ function appendOptionalFilters(
     readonly status?: string;
     readonly salaryCurrency?: string;
     readonly openOnly?: boolean;
+    readonly minSalary?: number;
+    readonly maxSalary?: number;
   },
 ): string {
   const clauses: string[] = [base];
@@ -84,6 +91,19 @@ function appendOptionalFilters(
   // openOnly: Meili `closedAt IS NULL` cubre atributo omitido (loader no escribe null).
   if (input.openOnly === true) {
     clauses.push('closedAt IS NULL');
+  }
+  // D1 / ADR-040: solape con parciales; docs sin ningún número quedan fuera.
+  if (input.minSalary !== undefined) {
+    const m = input.minSalary;
+    clauses.push(
+      `((salaryMax >= ${m}) OR (salaryMax IS NULL AND salaryMin >= ${m}))`,
+    );
+  }
+  if (input.maxSalary !== undefined) {
+    const x = input.maxSalary;
+    clauses.push(
+      `((salaryMin <= ${x}) OR (salaryMin IS NULL AND salaryMax <= ${x}))`,
+    );
   }
   return clauses.length === 1 ? clauses[0]! : clauses.join(' AND ');
 }

@@ -65,6 +65,88 @@ describe('SearchStore', () => {
     expect(store.salaryCurrency()).toBeNull();
   });
 
+  it('setMinSalary forces job_preview and clears applicationStatus (D3b)', () => {
+    store.setApplicationStatus('applied');
+    expect(store.docType()).toBe('application');
+
+    store.setMinSalary(3000);
+
+    expect(store.minSalary()).toBe(3000);
+    expect(store.docType()).toBe('job_preview');
+    expect(store.applicationStatus()).toBeNull();
+  });
+
+  it('setMaxSalary forces job_preview and clears applicationStatus (D3b)', () => {
+    store.setApplicationStatus('applied');
+    store.setMaxSalary(8000);
+
+    expect(store.maxSalary()).toBe(8000);
+    expect(store.docType()).toBe('job_preview');
+    expect(store.applicationStatus()).toBeNull();
+  });
+
+  it('setApplicationStatus clears salary range (D3b bidirectional)', () => {
+    store.setMinSalary(3000);
+    store.setMaxSalary(8000);
+    expect(store.minSalary()).toBe(3000);
+    expect(store.maxSalary()).toBe(8000);
+
+    store.setApplicationStatus('applied');
+
+    expect(store.applicationStatus()).toBe('applied');
+    expect(store.docType()).toBe('application');
+    expect(store.minSalary()).toBeNull();
+    expect(store.maxSalary()).toBeNull();
+  });
+
+  it('run sends minSalary and maxSalary with forced job_preview and without applicationStatus', async () => {
+    store.setMinSalary(3000);
+    store.setMaxSalary(8000);
+    const pending = store.run('Nest');
+
+    const request = http.expectOne(
+      (req) => req.method === 'GET' && req.url === '/api/search',
+    );
+    expect(request.request.params.get('q')).toBe('Nest');
+    expect(request.request.params.get('docType')).toBe('job_preview');
+    expect(request.request.params.get('minSalary')).toBe('3000');
+    expect(request.request.params.get('maxSalary')).toBe('8000');
+    expect(request.request.params.has('applicationStatus')).toBe(false);
+    request.flush(emptyResponse);
+    await pending;
+  });
+
+  it('run re-forces job_preview when user changed type after salary range (D3b)', async () => {
+    store.setMinSalary(3000);
+    store.setDocType('application');
+    expect(store.docType()).toBe('application');
+
+    const pending = store.run('Nest');
+
+    const request = http.expectOne(
+      (req) => req.method === 'GET' && req.url === '/api/search',
+    );
+    expect(request.request.params.get('docType')).toBe('job_preview');
+    expect(request.request.params.get('minSalary')).toBe('3000');
+    request.flush(emptyResponse);
+    await pending;
+    expect(store.docType()).toBe('job_preview');
+  });
+
+  it('run omits salary range when both sides are empty', async () => {
+    expect(store.minSalary()).toBeNull();
+    expect(store.maxSalary()).toBeNull();
+    const pending = store.run('Nest');
+
+    const request = http.expectOne(
+      (req) => req.method === 'GET' && req.url === '/api/search',
+    );
+    expect(request.request.params.has('minSalary')).toBe(false);
+    expect(request.request.params.has('maxSalary')).toBe(false);
+    request.flush(emptyResponse);
+    await pending;
+  });
+
   it('run sends modality and salaryCurrency without applicationStatus', async () => {
     store.setModality('remote');
     store.setSalaryCurrency('USD');

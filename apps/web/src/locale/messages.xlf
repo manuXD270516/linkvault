@@ -4551,11 +4551,32 @@
           <context context-type="linenumber">163,165</context>
         </context-group>
       </trans-unit>
+      <trans-unit id="search.filter.minSalary" datatype="html">
+        <source>Salario mínimo</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">175</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.filter.maxSalary" datatype="html">
+        <source>Salario máximo</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">190</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.filter.salaryRange.hint" datatype="html">
+        <source> Solo aplica a vacantes con salario numérico. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">204,207</context>
+        </context-group>
+      </trans-unit>
       <trans-unit id="search.filter.openOnly" datatype="html">
         <source> Solo abiertas </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
-          <context context-type="linenumber">178,181</context>
+          <context context-type="linenumber">215,218</context>
         </context-group>
       </trans-unit>
       <trans-unit id="search.submit" datatype="html">
