@@ -137,6 +137,13 @@ export class MongoAccountDeletionCascade implements AccountDeletionCascade {
       { $unset: { publicShare: 1 } },
       { session },
     );
+    // Flag know-someone (D4 de know-someone-flag): quita el userId de todos los arrays donde figure.
+    await this.connection.collection(GROUP_LINKS_COLLECTION).updateMany(
+      { knowSomeoneUserIds: userOid },
+      // Cast: mongoose tipa `$pull` sobre Document genérico de forma demasiado estrecha para ObjectId.
+      { $pull: { knowSomeoneUserIds: userOid } } as Record<string, unknown>,
+      { session },
+    );
 
     await this.connection
       .collection(USER_LINKS_COLLECTION)

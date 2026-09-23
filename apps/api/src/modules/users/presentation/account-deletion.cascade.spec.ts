@@ -415,6 +415,7 @@ describe('DELETE /api/users/me account deletion cascade', () => {
         publishedBy: anaOid,
         publishedAt: NOW,
       },
+      knowSomeoneUserIds: [anaOid, betoOid],
     });
     await db().collection(GROUP_LINKS_COLLECTION).insertOne({
       groupId: groupOid,
@@ -428,6 +429,7 @@ describe('DELETE /api/users/me account deletion cascade', () => {
         publishedBy: betoOid,
         publishedAt: NOW,
       },
+      knowSomeoneUserIds: [anaOid],
     });
     await db().collection(GROUP_LINK_COMMENTS_COLLECTION).insertMany([
       {
@@ -645,6 +647,7 @@ describe('DELETE /api/users/me account deletion cascade', () => {
     });
     expect(groupLink).not.toHaveProperty('note');
     expect(groupLink).not.toHaveProperty('publicShare');
+    expect(groupLink?.['knowSomeoneUserIds']).toEqual([betoOid]);
 
     const betoShare = await db()
       .collection(GROUP_LINKS_COLLECTION)
@@ -653,6 +656,7 @@ describe('DELETE /api/users/me account deletion cascade', () => {
       slug: BETO_PUBLIC_SLUG,
       publishedBy: betoOid,
     });
+    expect(betoShare?.['knowSomeoneUserIds'] ?? []).toEqual([]);
 
     expect((await publicPage(ANA_PUBLIC_SLUG)).statusCode).toBe(404);
     expect(cvFiles.deletedPrefixes).toContain(ana.id);

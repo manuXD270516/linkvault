@@ -279,6 +279,31 @@
 -->
 @if (groupView()) {
   <div class="flex flex-col gap-1 text-sm" data-testid="link-group-context">
+    @if (knowSomeone(); as flag) {
+      <div class="flex flex-wrap items-center gap-x-2 gap-y-1" data-testid="link-know-someone">
+        <button
+          mat-button
+          type="button"
+          [disabled]="busy()"
+          [attr.aria-pressed]="flag.flaggedByMe"
+          (click)="toggleKnowSomeone.emit(!flag.flaggedByMe)"
+          data-testid="link-know-someone-toggle"
+        >
+          @if (flag.flaggedByMe) {
+            <ng-container i18n="@@links.knowSomeone.flagged">Ya marqué que conozco a alguien</ng-container>
+          } @else {
+            <ng-container i18n="@@links.knowSomeone.flag">Conozco a alguien ahí</ng-container>
+          }
+        </button>
+        @if (flag.count > 0) {
+          <span data-testid="link-know-someone-count" i18n="@@links.knowSomeone.count"
+            >{flag.count, plural, =1 {1 persona conoce a alguien ahí} other {{{ flag.count }} personas conocen a
+            alguien ahí}}</span
+          >
+        }
+      </div>
+    }
+
     @if (shareNote(); as note) {
       <div class="flex flex-col" data-testid="link-note">
         @if (link().sharedBy; as sharer) {

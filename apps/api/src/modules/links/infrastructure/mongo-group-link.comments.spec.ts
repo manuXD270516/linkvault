@@ -291,10 +291,12 @@ describe('the note (2.8)', () => {
       note,
       commentCount: 1,
       commentsRevision: 1,
+      knowSomeoneUserIds: [],
     });
     expect(byLink.get(plain)?.inGroup).toEqual({
       commentCount: 0,
       commentsRevision: 0,
+      knowSomeoneUserIds: [],
     });
   });
 

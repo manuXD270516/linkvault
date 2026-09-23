@@ -38,6 +38,7 @@ interface StoredGroupLink extends StoredRelation {
   commentCount: number;
   commentsRevision: number;
   publicShare?: PublicShare;
+  knowSomeoneUserIds: string[];
 }
 
 /** Sesión de mentira de las transacciones de este doble. */
@@ -90,6 +91,7 @@ export class InMemoryGroupLinkRepository implements GroupLinkRepository {
       ...(input.note === undefined ? {} : { note: input.note }),
       commentCount: 0,
       commentsRevision: 0,
+      knowSomeoneUserIds: [],
       // La visibilidad por defecto del grupo solo alcanza a la relación **nueva** (D3): el enlace del primero, arriba,
       // no se toca. Como en Mongo, aquí NO se reintenta el slug: la colisión sube y la resuelve quien repita el alta.
       ...(input.publish === true
@@ -144,6 +146,7 @@ export class InMemoryGroupLinkRepository implements GroupLinkRepository {
         ...(relation.publicShare === undefined
           ? {}
           : { publicShare: { ...relation.publicShare } }),
+        knowSomeoneUserIds: [...relation.knowSomeoneUserIds],
       }),
     );
   }
@@ -294,6 +297,31 @@ export class InMemoryGroupLinkRepository implements GroupLinkRepository {
     return Promise.resolve(true);
   }
 
+  setKnowSomeone(
+    groupId: string,
+    linkId: string,
+    userId: string,
+    flagged: boolean,
+  ): Promise<{ readonly flaggedByMe: boolean; readonly count: number } | null> {
+    const relation = this.relationOf(groupId, linkId);
+    if (relation === undefined) {
+      return Promise.resolve(null);
+    }
+    if (flagged) {
+      if (!relation.knowSomeoneUserIds.includes(userId)) {
+        relation.knowSomeoneUserIds.push(userId);
+      }
+    } else {
+      relation.knowSomeoneUserIds = relation.knowSomeoneUserIds.filter(
+        (id) => id !== userId,
+      );
+    }
+    return Promise.resolve({
+      flaggedByMe: relation.knowSomeoneUserIds.includes(userId),
+      count: relation.knowSomeoneUserIds.length,
+    });
+  }
+
   /** Alta directa para preparar un test, sin pasar por el caso de uso. */
   async seed(input: ShareInGroupInput): Promise<GroupLink> {
     const { relation } = await this.share(input, {});
@@ -360,6 +388,7 @@ function toGroupLink(relation: StoredGroupLink): GroupLink {
     ...(relation.publicShare === undefined
       ? {}
       : { publicShare: { ...relation.publicShare } }),
+    knowSomeoneUserIds: [...relation.knowSomeoneUserIds],
   };
 }
 

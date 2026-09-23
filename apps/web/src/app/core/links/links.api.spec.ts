@@ -276,6 +276,28 @@ describe('LinksApi', () => {
       await expect(result).resolves.toBeUndefined();
     });
 
+    it('toggles know-someone and returns the slim state', async () => {
+      const result = api.setKnowSomeone('g1', 'l1', { flagged: true });
+
+      expectRequest('PUT', '/api/groups/g1/links/l1/know-someone').flush({
+        flaggedByMe: true,
+        count: 2,
+      });
+
+      await expect(result).resolves.toEqual({ flaggedByMe: true, count: 2 });
+    });
+
+    it('escapes the identifiers of the know-someone path', async () => {
+      const result = api.setKnowSomeone('g 1', 'l/1', { flagged: false });
+
+      expectRequest('PUT', '/api/groups/g%201/links/l%2F1/know-someone').flush({
+        flaggedByMe: false,
+        count: 0,
+      });
+
+      await expect(result).resolves.toEqual({ flaggedByMe: false, count: 0 });
+    });
+
     it('escapes the identifiers of the comment paths', async () => {
       const result = api.deleteComment('g 1', 'l/1', 'c?1');
 

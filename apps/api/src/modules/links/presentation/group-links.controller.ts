@@ -1,10 +1,14 @@
 import {
   listLinksQuerySchema,
+  setKnowSomeoneRequestSchema,
   type LinkPage,
   type ListLinksQuery,
   type PublicShare,
+  type SetKnowSomeoneRequest,
+  type SetKnowSomeoneResponse,
 } from '@linkvault/shared';
 import {
+  Body,
   Controller,
   Delete,
   Get,
@@ -21,6 +25,7 @@ import { ListGroupLinks } from '../application/list-group-links.usecase';
 import { PublishGroupLink } from '../application/publish-group-link.usecase';
 import { RemoveGroupLink } from '../application/remove-group-link.usecase';
 import { RemoveShareNote } from '../application/remove-share-note.usecase';
+import { SetKnowSomeone } from '../application/set-know-someone.usecase';
 import { UnpublishGroupLink } from '../application/unpublish-group-link.usecase';
 
 /**
@@ -38,6 +43,7 @@ export class GroupLinksController {
     private readonly removeShareNote: RemoveShareNote,
     private readonly publishGroupLink: PublishGroupLink,
     private readonly unpublishGroupLink: UnpublishGroupLink,
+    private readonly setKnowSomeone: SetKnowSomeone,
   ) {}
 
   @Get(':id/links')
@@ -82,6 +88,22 @@ export class GroupLinksController {
     @Param('linkId') linkId: string,
   ): Promise<void> {
     return this.unpublishGroupLink.execute(user.userId, groupId, linkId);
+  }
+
+  /**
+   * Marca o desmarca «conozco a alguien ahí» (D2 de know-someone-flag). Idempotente por `$addToSet`/`$pull`; responde
+   * el estado slim para que el SPA mergee sin perder note/comments/publicShare.
+   */
+  @Put(':id/links/:linkId/know-someone')
+  @HttpCode(HttpStatus.OK)
+  knowSomeone(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') groupId: string,
+    @Param('linkId') linkId: string,
+    @Body(new ZodValidationPipe(setKnowSomeoneRequestSchema))
+    body: SetKnowSomeoneRequest,
+  ): Promise<SetKnowSomeoneResponse> {
+    return this.setKnowSomeone.execute(user.userId, groupId, linkId, body);
   }
 
   /**

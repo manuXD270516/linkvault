@@ -239,9 +239,23 @@ describe('jobLinkSummarySchema', () => {
         sharedAt: summary.sharedAt,
         latest: [],
       },
+      knowSomeone: { flaggedByMe: false, count: 0 },
     };
 
     expect(jobLinkSummarySchema.parse(inGroup)).toEqual(inGroup);
+  });
+
+  it('accepts knowSomeone on a group summary and omits it on a private one', () => {
+    const withFlag = {
+      ...summary,
+      knowSomeone: { flaggedByMe: true, count: 1 },
+    };
+    expect(jobLinkSummarySchema.parse(withFlag)).toEqual(withFlag);
+
+    const { sharedBy: _sharedBy, ...privateLink } = summary;
+    expect(jobLinkSummarySchema.parse(privateLink)).not.toHaveProperty(
+      'knowSomeone',
+    );
   });
 
   it('accepts a private link with no sharer', () => {

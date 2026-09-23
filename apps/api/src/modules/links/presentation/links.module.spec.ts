@@ -31,6 +31,7 @@ import { ImportLinks } from '../application/import-links.usecase';
 import { ListGroupLinkComments } from '../application/list-group-link-comments.usecase';
 import { PostGroupLinkComment } from '../application/post-group-link-comment.usecase';
 import { RemoveShareNote } from '../application/remove-share-note.usecase';
+import { SetKnowSomeone } from '../application/set-know-someone.usecase';
 import { COMMENT_NOTICES } from '../application/ports/comment-notices.port';
 import { COMMENTS_BROADCASTER } from '../application/ports/comments-broadcaster.port';
 import { COMMENTS_CHANGED_PUBLISHER } from '../application/ports/comments-changed-publisher.port';
@@ -203,6 +204,7 @@ describe('LinksModule', () => {
       DeleteGroupLinkComment,
       ListGroupLinkComments,
       RemoveShareNote,
+      SetKnowSomeone,
       DeliverCommentsChanged,
     ]) {
       expect(app.get(useCase, { strict: false })).toBeInstanceOf(useCase);
@@ -261,11 +263,17 @@ describe('LinksModule', () => {
     ['GET', `/api/groups/${GROUP_ID}/links/${LINK_ID}/comments`],
     ['DELETE', `/api/groups/${GROUP_ID}/links/${LINK_ID}/comments/${LINK_ID}`],
     ['DELETE', `/api/groups/${GROUP_ID}/links/${LINK_ID}/note`],
+    ['PUT', `/api/groups/${GROUP_ID}/links/${LINK_ID}/know-someone`],
   ])('answers 401 to %s %s without a token', async (method, url) => {
     const response = await app.inject({
       method: method as 'GET',
       url,
-      payload: method === 'POST' ? {} : undefined,
+      payload:
+        method === 'POST' || method === 'PUT'
+          ? method === 'PUT' && url.endsWith('/know-someone')
+            ? { flagged: true }
+            : {}
+          : undefined,
     });
 
     expect(response.statusCode).toBe(401);

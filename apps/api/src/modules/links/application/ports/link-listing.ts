@@ -44,6 +44,11 @@ export interface ListedGroupRelation {
    * nota y los contadores: pintar el interruptor no cuesta ninguna lectura más.
    */
   readonly publicShare?: PublicShare;
+  /**
+   * UserIds que marcaron know-someone (D3 de know-someone-flag). Viaja en la misma consulta; el listado proyecta
+   * `count` y `flaggedByMe` sin exponer los ids.
+   */
+  readonly knowSomeoneUserIds: readonly string[];
 }
 
 /** Página de un listado. `nextCursor` solo viaja cuando hay más filas detrás. */

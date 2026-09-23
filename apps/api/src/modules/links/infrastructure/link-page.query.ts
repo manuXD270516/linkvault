@@ -27,6 +27,8 @@ interface ListedRow {
   commentsRevision?: number;
   /** Solo en un grupo (D1 de public-preview-share): el enlace público de la relación, si lo tiene. */
   publicShare?: { slug: string; publishedBy: Types.ObjectId; publishedAt: Date };
+  /** Solo en un grupo (D3 de know-someone-flag): quién marcó el flag. */
+  knowSomeoneUserIds?: Types.ObjectId[];
   link: JobLinkDocument;
 }
 
@@ -71,6 +73,8 @@ export async function listLinkPage<D>(
                 // En la **misma** consulta de la relación: el interruptor del listado no cuesta una lectura más. La
                 // lista privada no lo proyecta, porque un link privado no se puede publicar.
                 publicShare: 1,
+                // Flag know-someone (D3): misma consulta; la lista privada no lo proyecta.
+                knowSomeoneUserIds: 1,
               }
             : {}),
         },
@@ -104,6 +108,10 @@ export async function listLinkPage<D>(
                     publishedAt: row.publicShare.publishedAt,
                   },
                 }),
+            // Un documento anterior a know-someone-flag no tiene el array: se lee como [].
+            knowSomeoneUserIds: (row.knowSomeoneUserIds ?? []).map((id) =>
+              id.toHexString(),
+            ),
           },
         }
       : {}),

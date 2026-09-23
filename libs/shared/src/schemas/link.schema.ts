@@ -6,6 +6,7 @@ import {
   shareNoteSchema,
   shareNoteTextSchema,
 } from './group-link-comment.schema';
+import { knowSomeoneStateSchema } from './know-someone.schema';
 import { linkSharerSchema } from './link-sharer.schema';
 import {
   lastEnrichmentErrorSchema,
@@ -176,6 +177,9 @@ export const jobLinkSummarySchema = z.strictObject({
   // También solo en el listado de un grupo y en la respuesta de guardar en uno (D10 de public-preview-share): su enlace
   // público, si lo tiene. La lista privada NO lo lleva nunca: no se puede publicar un link privado.
   publicShare: publicShareSchema.optional(),
+  // Solo en el listado de un grupo (D3 de know-someone-flag): siempre presente ahí. La lista privada y los saves
+  // privados NO lo llevan nunca.
+  knowSomeone: knowSomeoneStateSchema.optional(),
 });
 export type JobLinkSummary = z.infer<typeof jobLinkSummarySchema>;
 

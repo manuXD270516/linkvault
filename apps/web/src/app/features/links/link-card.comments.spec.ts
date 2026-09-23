@@ -200,4 +200,46 @@ describe('LinkCard: nota y comentarios del grupo', () => {
 
     expect(opened).toBe(1);
   });
+
+  it('shows know-someone control and badge in group view', async () => {
+    await render({
+      ...bare,
+      knowSomeone: { flaggedByMe: false, count: 2 },
+    });
+    let flagged: boolean | undefined;
+    fixture.componentInstance.toggleKnowSomeone.subscribe((value) => {
+      flagged = value;
+    });
+
+    expect(one('link-know-someone-toggle')?.textContent?.trim()).toBe('Conozco a alguien ahí');
+    expect(one('link-know-someone-count')?.textContent?.replace(/\s+/g, ' ').trim()).toContain(
+      '2 personas conocen a alguien ahí',
+    );
+
+    one('link-know-someone-toggle')?.click();
+    expect(flagged).toBe(true);
+  });
+
+  it('shows flagged state without losing the count badge', async () => {
+    await render({
+      ...bare,
+      knowSomeone: { flaggedByMe: true, count: 1 },
+    });
+
+    expect(one('link-know-someone-toggle')?.getAttribute('aria-pressed')).toBe('true');
+    expect(one('link-know-someone-toggle')?.textContent?.trim()).toBe(
+      'Ya marqué que conozco a alguien',
+    );
+    expect(one('link-know-someone-count')).not.toBeNull();
+  });
+
+  it('hides know-someone on the private list', async () => {
+    await render(
+      { ...bare, knowSomeone: { flaggedByMe: true, count: 3 } },
+      { groupView: false },
+    );
+
+    expect(one('link-know-someone')).toBeNull();
+    expect(one('link-know-someone-toggle')).toBeNull();
+  });
 });

@@ -404,6 +404,37 @@ export class MongoGroupLinkRepository implements GroupLinkRepository {
     return result.matchedCount === 1;
   }
 
+  async setKnowSomeone(
+    groupId: string,
+    linkId: string,
+    userId: string,
+    flagged: boolean,
+  ): Promise<{ readonly flaggedByMe: boolean; readonly count: number } | null> {
+    const ids = toRelationFilter(groupId, linkId);
+    const user = toUserObjectId(userId);
+    if (ids === null || user === null) {
+      return null;
+    }
+    const document = await this.groupLinks
+      .findOneAndUpdate(
+        ids,
+        flagged
+          ? { $addToSet: { knowSomeoneUserIds: user } }
+          : { $pull: { knowSomeoneUserIds: user } },
+        { returnDocument: 'after' },
+      )
+      .lean()
+      .exec();
+    if (document === null) {
+      return null;
+    }
+    const userIds = document.knowSomeoneUserIds ?? [];
+    return {
+      flaggedByMe: userIds.some((id) => id.equals(user)),
+      count: userIds.length,
+    };
+  }
+
   /**
    * Punto de espera **solo para tests** entre el `$inc` y el `insert` del alta de un comentario (D2, tareas 2.10 y
    * 2.11). En producción no hace nada; un test lo sobrescribe para detener el alta a mitad de su transacción y provocar
@@ -454,6 +485,10 @@ function toGroupLink(document: GroupLinkDocument): GroupLink {
     ...(document.publicShare === undefined || document.publicShare === null
       ? {}
       : { publicShare: toPublicShare(document.publicShare) }),
+    // Un documento anterior a know-someone-flag no tiene el array: se lee como [].
+    knowSomeoneUserIds: (document.knowSomeoneUserIds ?? []).map((id) =>
+      id.toHexString(),
+    ),
   };
 }
 

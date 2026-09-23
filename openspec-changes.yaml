@@ -324,3 +324,11 @@ changes:
       closedAt IS NULL cuando true. Parseo z.enum transform (nunca coerce.boolean). D3b bidireccional con
       applicationStatus (fuerza job_preview). Reutiliza closedAt filterable de freshness. Fuera: solo cerradas
       como producto, B11, ranking, reindex.
+  - name: know-someone-flag
+    adrs: []
+    agents: [backend-dev, frontend-dev]
+    scope: |
+      Fila 23 / B11. Flag «conozco a alguien ahí» por miembro en group_links.knowSomeoneUserIds ($addToSet/$pull
+      atómicos). PUT /api/groups/:id/links/:linkId/know-someone → { flaggedByMe, count }; listado de grupo siempre
+      con knowSomeone; lista privada omit; cascada account-deletion $pull; SPA control+badge en card de grupo.
+      Fuera: nombres, notify, search, CRM, lista privada, contador denormalizado.

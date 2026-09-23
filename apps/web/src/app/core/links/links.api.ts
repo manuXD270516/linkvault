@@ -9,11 +9,13 @@ import type {
   ImportLinksRequest,
   ImportLinksResponse,
   JobLinkSummary,
+  KnowSomeoneState,
   LinkPage,
   PastedDescriptionRequest,
   PublicShare,
   SaveLinkRequest,
   SaveLinkResponse,
+  SetKnowSomeoneRequest,
   UpdatePreviewRequest,
   UpdatePreviewResponse,
 } from '@linkvault/shared';
@@ -157,6 +159,20 @@ export class LinksApi {
       this.http.delete<null>(`${groupLinksUrl(groupId)}/${encodeURIComponent(linkId)}/note`),
     );
   }
+
+  /**
+   * Marca o desmarca «conozco a alguien ahí» y responde el estado slim (D2 de know-someone-flag) para merge local sin
+   * perder note/comments/publicShare.
+   */
+  setKnowSomeone(
+    groupId: string,
+    linkId: string,
+    body: SetKnowSomeoneRequest,
+  ): Promise<KnowSomeoneState> {
+    return firstValueFrom(
+      this.http.put<KnowSomeoneState>(knowSomeoneUrl(groupId, linkId), body),
+    );
+  }
 }
 
 /** El `cursor` es opaco: viaja tal cual y solo cuando lo hay, para que la primera página no lo lleve vacío. */
@@ -175,4 +191,8 @@ function commentsUrl(groupId: string, linkId: string): string {
 
 function publicShareUrl(groupId: string, linkId: string): string {
   return `${groupLinksUrl(groupId)}/${encodeURIComponent(linkId)}/public`;
+}
+
+function knowSomeoneUrl(groupId: string, linkId: string): string {
+  return `${groupLinksUrl(groupId)}/${encodeURIComponent(linkId)}/know-someone`;
 }
