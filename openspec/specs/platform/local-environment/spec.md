@@ -230,7 +230,6 @@ indexación.
 - **THEN** SHALL iniciar sin error por ausencia de Meili
 - **AND** mutaciones de agregados indexables NO SHALL escribir eventos Search* en outbox
 
-
 ### Requirement: Variables de frescura de links documentadas
 
 `.env.example` SHALL documentar `FEATURE_LINK_FRESHNESS` (default seguro `false` en ejemplo local
@@ -256,3 +255,23 @@ SHALL documentar cómo cargar la extensión unpacked y cómo obtener el extensio
 - **WHEN** un desarrollador abre `.env.example`
 - **THEN** SHALL existir la variable de allowlist CORS de extensión documentada
 - **AND** la guía local SHALL indicar pasos para cargar el build unpacked
+
+### Requirement: Profile demo para seed
+
+El `docker-compose` SHALL asociar Meilisearch también al perfil `demo`
+(`profiles: ['search', 'demo']`) además del perfil `search`. El RUNBOOK SHALL documentar:
+
+1. `docker compose --profile demo up -d --wait` (infra + Meili)
+2. `ALLOW_DEMO_SEED=true pnpm nx run api:seed-demo`
+3. servir api/worker/web en el host con flags del tour
+
+El profile `demo` NO SHALL arrancar `api`/`worker`/`web` como services permanentes.
+NO SHALL implementar un segundo sembrador distinto del target Nx (mongosh crudo, etc.).
+
+#### Scenario: Profile demo no arranca apps
+
+- **GIVEN** infraestructura + profile `demo`
+- **WHEN** se levanta compose con `--profile demo`
+- **THEN** Meilisearch SHALL estar disponible
+- **AND** NO SHALL haber services permanentes de `api`, `worker` ni `web`
+- **AND** la documentación SHALL indicar `api:seed-demo` y credenciales demo
