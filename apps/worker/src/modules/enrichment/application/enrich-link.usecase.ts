@@ -1,9 +1,10 @@
 import {
   ENRICH_TRIGGERED_BY_FRESHNESS,
+  applySalaryTextParse,
   linkEnrichedEvent,
   type PreviewStatus,
 } from '@linkvault/shared';
-import { mergeIntoStored } from '../domain/merge';
+import { mergeIntoStored, type PreviewState } from '../domain/merge';
 import { verdictOf } from '../domain/preview-status';
 import type {
   ExtractPreviewService,
@@ -133,10 +134,15 @@ export class EnrichLinkUseCase {
 
     const stored = { preview: link.preview, sources: link.previewSources };
     // Una descarga que falló no borra lo que ya había: el preview se conserva y lo que cambia es el estado.
-    const state =
+    let state: PreviewState =
       attempt.kind === 'extracted'
         ? mergeIntoStored(stored, attempt.draft, at.toISOString())
         : stored;
+
+    // Post-cadena ADR-046: rellenar extremos salariales desde texto cuando ambos faltan.
+    if (attempt.kind === 'extracted') {
+      state = applySalaryParseAfterMerge(state, attempt, at.toISOString());
+    }
 
     const verdict = verdictOf({
       state,
@@ -233,4 +239,27 @@ function shouldCloseFromFreshness(
     return attempt.reason === 'not_found';
   }
   return attempt.isJobPosting === false;
+}
+
+/**
+ * Prioridad del texto: blob `baseSalary` de JSON-LD en esta pasada; si no, `summary`
+ * con anclas. `applySalaryTextParse` ya hace no-op si source manual/pasted o hay extremos.
+ */
+function applySalaryParseAfterMerge(
+  state: PreviewState,
+  attempt: ExtractionSucceeded,
+  at: string,
+): PreviewState {
+  const fromJsonLd = attempt.salaryTextCandidate?.trim() ?? '';
+  const text =
+    fromJsonLd !== '' ? fromJsonLd : (state.preview.summary?.trim() ?? '');
+  if (text === '') return state;
+  const result = applySalaryTextParse(
+    state.preview,
+    state.sources,
+    text,
+    at,
+  );
+  if (!result.applied) return state;
+  return { preview: result.preview, sources: result.sources };
 }

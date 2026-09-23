@@ -1234,6 +1234,22 @@ pnpm nx run api:backfill-search -- --docType=job_preview --limit=500
 Sin backfill, el filtro de rango solo ve docs reindexados tras el deploy. También se rellenan
 `salaryMin`/`salaryMax` en el próximo upsert natural (edición/enrich).
 
+### Texto salarial → extremos (search-salary-text-parse / ADR-046)
+
+Backfill **two-step** (sin dual-write Meili). Paso 1 solo Mongo; paso 2 reusa el outbox:
+
+```bash
+# 1) Parse determinista de summary → preview.salary (+ source auto / parse-salary-text)
+pnpm nx run api:backfill-salary-parse -- --limit=500
+# opcional: --dry-run
+
+# 2) Reindex Meili vía SearchUpsert (misma semántica ADR-040)
+pnpm nx run api:backfill-search -- --docType=job_preview --limit=500
+```
+
+El CLI de parse **no** escribe Meili. Enrich live también aplica el parse post-cadena cuando
+ambos extremos faltan y el source no es `manual`/`pasted`.
+
 **Red interna (prod):** Meilisearch MUST quedar en red interna (VPC / red `internal` de compose). No exponer el
 puerto ni la master key a Internet; solo api/worker en la misma red privada deben alcanzarlo. En local el puerto se
 publica solo para desarrollo en el host.

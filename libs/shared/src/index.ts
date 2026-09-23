@@ -48,5 +48,7 @@ export * from './match/match-steps';
 export * from './preview/precedence';
 export * from './preview/preview-draft';
 export * from './privacy/redacted-data-types';
+export * from './salary/apply-salary-text-parse';
+export * from './salary/parse-salary-text';
 export * from './text/comment-text';
 export * from './text/contact-scrub';

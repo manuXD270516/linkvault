@@ -18,6 +18,7 @@ import { GroupDeletionHooks } from '../../groups/application/group-deletion-hook
 import { GroupsModule } from '../../groups/presentation/groups.module';
 import { UsersModule } from '../../users/presentation/users.module';
 import { BackfillEnrichment } from '../application/backfill-enrichment.usecase';
+import { BackfillSalaryParse } from '../application/backfill-salary-parse.usecase';
 import { DeleteGroupLinkComment } from '../application/delete-group-link-comment.usecase';
 import { DeliverCommentsChanged } from '../application/deliver-comments-changed.usecase';
 import { DeliverLinkEnriched } from '../application/deliver-link-enriched.usecase';
@@ -230,6 +231,7 @@ import { PublicPreviewsController } from './public-previews.controller';
     DeliverCommentsChanged,
     CommentsChangedSubscription,
     BackfillEnrichment,
+    BackfillSalaryParse,
     GroupLinksDeletionHook,
     LinksFacade,
   ],

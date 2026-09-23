@@ -99,6 +99,14 @@
         "cwd": "."
       }
     },
+    "backfill-salary-parse": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "node apps/api/src/backfill-salary-parse.cjs",
+        "cwd": "."
+      }
+    },
     "seed-demo": {
       "executor": "nx:run-commands",
       "cache": false,

@@ -1,5 +1,9 @@
 import type { EnrichmentFailureReason, PreviewDraft } from '@linkvault/shared';
 import type { ExtractionChain } from '../domain/extraction-chain';
+import {
+  baseSalaryTextOf,
+  findJobPosting,
+} from '../domain/extractors/json-ld.extractor';
 import { historyRescueUrls } from '../domain/history-rescue';
 import {
   effectiveWaitMs,
@@ -36,6 +40,11 @@ export interface ExtractionSucceeded {
   readonly ran: readonly string[];
   readonly isJobPosting?: boolean;
   readonly html: string;
+  /**
+   * Blob salarial textual de JSON-LD (`baseSalary` string) cuando el sitio no trae montos
+   * estructurados — prioridad del parse ADR-046 frente a `summary`.
+   */
+  readonly salaryTextCandidate?: string | null;
 }
 
 /** El host estaba ocupado: el job vuelve a la cola con espera, sin tocar el link. */
@@ -178,12 +187,17 @@ export class ExtractPreviewService {
       signal: input.signal,
     });
 
+    const posting = findJobPosting(page.jsonLdBlocks);
+    const salaryTextCandidate =
+      posting !== null ? baseSalaryTextOf(posting) : null;
+
     return {
       kind: 'extracted',
       draft: extracted.draft,
       ran: extracted.ran,
       isJobPosting: extracted.isJobPosting,
       html,
+      salaryTextCandidate,
     };
   }
 }

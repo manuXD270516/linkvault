@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { EMPTY_PAGE_CONTENT, type PageContent } from '../page-content';
 import type { ExtractionContext } from './extractor';
-import { JsonLdExtractor, findJobPosting } from './json-ld.extractor';
+import { JsonLdExtractor, findJobPosting, baseSalaryTextOf } from './json-ld.extractor';
 
 // Requisito "Cadena de extracción lícita" (specs/links/enrichment) y D3 de link-enrichment: la etapa `json-ld`, sin
 // HTML ni red. La página real de Trabajopolis, ya parseada, se prueba en `infrastructure/html/real-pages.spec.ts`.
@@ -136,6 +136,33 @@ describe('La página trae JSON-LD', () => {
       period: null,
       currency: 'USD',
     });
+  });
+
+  it('exposes textual baseSalary for the post-chain parse', () => {
+    expect(
+      baseSalaryTextOf({
+        ...POSTING,
+        baseSalary: 'USD 3,000 - 5,000 / month',
+      }),
+    ).toBe('USD 3,000 - 5,000 / month');
+    expect(
+      baseSalaryTextOf({
+        ...POSTING,
+        baseSalary: {
+          currency: 'USD',
+          value: 'from $4000 to $6000 per month',
+        },
+      }),
+    ).toBe('from $4000 to $6000 per month');
+    expect(
+      baseSalaryTextOf({
+        ...POSTING,
+        baseSalary: {
+          currency: 'BOB',
+          value: { minValue: 1000, maxValue: 2000, unitText: 'MONTH' },
+        },
+      }),
+    ).toBeNull();
   });
 
   it('leaves the recruiter contact out of the summary', async () => {
