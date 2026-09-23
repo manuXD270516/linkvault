@@ -40,13 +40,20 @@ aviso breve no bloqueante. Estados vacíos y de error (`503`, red) SHALL tener c
 - **THEN** SHALL verse un aviso de que la búsqueda semántica no está disponible
 - **AND** los hits full-text SHALL seguir visibles si los hay
 
-### Requirement: Filtros básicos en UI (V0)
+### Requirement: Filtros LatAm en UI
 
-La UI V0 SHALL permitir filtrar solo por **tipo de documento** (`docType`) y, si aplica, por **grupo** del que Ana es
-miembro (`groupId`). NO SHALL ofrecer selector de grupos ajenos. NO SHALL exponer toggle de modo
-`hybrid|fulltext|semantic` (siempre usa el default hybrid de la API). NO SHALL exponer filtros de `modality` ni
-`status` en V0. La query vacía NO SHALL disparar un listado completo del índice (alineado al contrato de la API:
-`400 empty_query`).
+La UI de búsqueda SHALL permitir filtrar por **tipo de documento** (`docType`), **grupo** propio
+(`groupId`), **modalidad** (`modality`), **estado de postulación** (`applicationStatus`) y
+**moneda de salario** (`salaryCurrency` con opciones V0: cualquiera / BOB / USD), con opción
+“cualquiera” en cada uno. NO SHALL ofrecer selector de grupos ajenos. NO SHALL exponer toggle de
+modo `hybrid|fulltext|semantic` (siempre hybrid por defecto). La query vacía NO SHALL disparar un
+listado completo del índice (alineado al contrato de la API: `400 empty_query`), aunque haya
+filtros LatAm seleccionados. Copy i18n ES/EN.
+
+**Compatibilidad (D3b):** si el usuario activa `modality` o `salaryCurrency`, la UI SHALL forzar
+`docType=job_preview` y limpiar `applicationStatus`. Si activa `applicationStatus`, SHALL forzar
+`docType=application` y limpiar modality/currency. NO SHALL enviar a la API modality/currency
+junto con `applicationStatus`.
 
 #### Scenario: Filtro por tipo
 
@@ -55,12 +62,27 @@ miembro (`groupId`). NO SHALL ofrecer selector de grupos ajenos. NO SHALL expone
 - **THEN** la petición a la API SHALL incluir ese filtro
 - **AND** la UI NO SHALL mostrar hits de otros tipos si la API los omite
 
-#### Scenario: Sin toggle de modo ni filtros modality/status
+#### Scenario: Filtros LatAm en la petición
+
+- **GIVEN** Ana elige modalidad `remote` y moneda `USD` (estado de postulación en “cualquiera”)
+- **WHEN** envía una búsqueda con texto no vacío
+- **THEN** la petición SHALL incluir `modality=remote`, `salaryCurrency=USD` y
+  `docType=job_preview` (implícito o explícito)
+- **AND** NO SHALL incluir `applicationStatus`
+- **AND** NO SHALL existir control de modo hybrid/fulltext/semantic
+
+#### Scenario: applicationStatus implica tipo application
+
+- **GIVEN** Ana elige estado `applied`
+- **WHEN** envía una búsqueda con texto no vacío
+- **THEN** la petición SHALL incluir `applicationStatus=applied` y `docType=application`
+- **AND** NO SHALL incluir `modality` ni `salaryCurrency`
+
+#### Scenario: Sin toggle de modo
 
 - **GIVEN** Ana en la pantalla de búsqueda
 - **WHEN** inspecciona los controles de la feature
 - **THEN** NO SHALL existir control de modo hybrid/fulltext/semantic
-- **AND** NO SHALL existir filtro de modality ni de status de postulación
 
 ### Requirement: i18n ES/EN
 
