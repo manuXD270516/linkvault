@@ -209,6 +209,55 @@ describe('SearchPage', () => {
     expect(host().querySelector('[data-testid="search-modality"]')).not.toBeNull();
     expect(host().querySelector('[data-testid="search-application-status"]')).not.toBeNull();
     expect(host().querySelector('[data-testid="search-salary-currency"]')).not.toBeNull();
+    expect(host().querySelector('[data-testid="search-open-only"]')).not.toBeNull();
     expect(host().textContent).toContain('Modalidad');
+    expect(host().textContent).toContain('Solo abiertas');
+  });
+
+  it('sends openOnly=true with forced job_preview (D3b)', async () => {
+    const toggleButton = host().querySelector<HTMLButtonElement>(
+      '[data-testid="search-open-only"] button',
+    );
+    expect(toggleButton).not.toBeNull();
+    toggleButton!.click();
+    await settle();
+
+    await submitSearch('Nest');
+    const request = await vi.waitFor(() =>
+      http.expectOne((req) => req.method === 'GET' && req.url === '/api/search'),
+    );
+    expect(request.request.params.get('openOnly')).toBe('true');
+    expect(request.request.params.get('docType')).toBe('job_preview');
+    expect(request.request.params.has('applicationStatus')).toBe(false);
+    request.flush({
+      hits: [],
+      limit: SEARCH_PAGE_SIZE,
+      offset: 0,
+    } satisfies SearchResponse);
+    await settle();
+  });
+
+  it('clears openOnly when applicationStatus is selected (D3b bidirectional)', async () => {
+    const toggleButton = host().querySelector<HTMLButtonElement>(
+      '[data-testid="search-open-only"] button',
+    );
+    toggleButton!.click();
+    await settle();
+
+    await selectMatOption('search-application-status', 'Postulada');
+
+    await submitSearch('Nest');
+    const request = await vi.waitFor(() =>
+      http.expectOne((req) => req.method === 'GET' && req.url === '/api/search'),
+    );
+    expect(request.request.params.get('applicationStatus')).toBe('applied');
+    expect(request.request.params.get('docType')).toBe('application');
+    expect(request.request.params.has('openOnly')).toBe(false);
+    request.flush({
+      hits: [],
+      limit: SEARCH_PAGE_SIZE,
+      offset: 0,
+    } satisfies SearchResponse);
+    await settle();
   });
 });

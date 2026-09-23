@@ -98,4 +98,53 @@ describe('SearchStore', () => {
     await pending;
     expect(store.docType()).toBe('job_preview');
   });
+
+  it('setOpenOnly forces job_preview and clears applicationStatus (D3b)', () => {
+    store.setApplicationStatus('applied');
+    expect(store.docType()).toBe('application');
+
+    store.setOpenOnly(true);
+
+    expect(store.openOnly()).toBe(true);
+    expect(store.docType()).toBe('job_preview');
+    expect(store.applicationStatus()).toBeNull();
+  });
+
+  it('setApplicationStatus clears openOnly (D3b bidirectional)', () => {
+    store.setOpenOnly(true);
+    expect(store.openOnly()).toBe(true);
+
+    store.setApplicationStatus('applied');
+
+    expect(store.applicationStatus()).toBe('applied');
+    expect(store.docType()).toBe('application');
+    expect(store.openOnly()).toBe(false);
+  });
+
+  it('run sends openOnly=true with forced job_preview and without applicationStatus', async () => {
+    store.setOpenOnly(true);
+    const pending = store.run('Nest');
+
+    const request = http.expectOne(
+      (req) => req.method === 'GET' && req.url === '/api/search',
+    );
+    expect(request.request.params.get('q')).toBe('Nest');
+    expect(request.request.params.get('docType')).toBe('job_preview');
+    expect(request.request.params.get('openOnly')).toBe('true');
+    expect(request.request.params.has('applicationStatus')).toBe(false);
+    request.flush(emptyResponse);
+    await pending;
+  });
+
+  it('run omits openOnly when toggle is off', async () => {
+    expect(store.openOnly()).toBe(false);
+    const pending = store.run('Nest');
+
+    const request = http.expectOne(
+      (req) => req.method === 'GET' && req.url === '/api/search',
+    );
+    expect(request.request.params.has('openOnly')).toBe(false);
+    request.flush(emptyResponse);
+    await pending;
+  });
 });

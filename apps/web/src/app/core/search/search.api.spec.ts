@@ -93,4 +93,26 @@ describe('SearchApi', () => {
 
     await expect(result).resolves.toEqual(emptyResponse);
   });
+
+  it('serializes openOnly as true|false query strings', async () => {
+    const pendingTrue = api.search({
+      q: 'Nest',
+      docType: 'job_preview',
+      openOnly: true,
+    });
+    const reqTrue = http.expectOne(
+      (req) => req.method === 'GET' && req.url === '/api/search',
+    );
+    expect(reqTrue.request.params.get('openOnly')).toBe('true');
+    reqTrue.flush(emptyResponse);
+    await expect(pendingTrue).resolves.toEqual(emptyResponse);
+
+    const pendingFalse = api.search({ q: 'Nest', openOnly: false });
+    const reqFalse = http.expectOne(
+      (req) => req.method === 'GET' && req.url === '/api/search',
+    );
+    expect(reqFalse.request.params.get('openOnly')).toBe('false');
+    reqFalse.flush(emptyResponse);
+    await expect(pendingFalse).resolves.toEqual(emptyResponse);
+  });
 });

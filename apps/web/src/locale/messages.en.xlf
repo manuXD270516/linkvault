@@ -2232,6 +2232,10 @@
         <source>USD</source>
         <target>USD</target>
       </trans-unit>
+      <trans-unit id="search.filter.openOnly" datatype="html">
+        <source>Solo abiertas</source>
+        <target>Open only</target>
+      </trans-unit>
       <trans-unit id="search.docType.job_preview" datatype="html">
         <source>Vacante</source>
         <target>Job post</target>

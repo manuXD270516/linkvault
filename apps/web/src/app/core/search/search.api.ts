@@ -13,11 +13,19 @@ export const SEARCH_PAGE_SIZE = 20;
 
 /**
  * Parámetros que envía la SPA V0. **Sin** `mode`: la API usa hybrid por defecto (D8 / S13).
- * Filtros: `docType`, `groupId`, y LatAm `modality` / `applicationStatus` / `salaryCurrency` (D3).
+ * Filtros: `docType`, `groupId`, LatAm `modality` / `applicationStatus` / `salaryCurrency`, y `openOnly` (D3).
  */
 export type SearchRequest = Pick<
   SearchQueryParams,
-  'q' | 'docType' | 'groupId' | 'limit' | 'offset' | 'modality' | 'applicationStatus' | 'salaryCurrency'
+  | 'q'
+  | 'docType'
+  | 'groupId'
+  | 'limit'
+  | 'offset'
+  | 'modality'
+  | 'applicationStatus'
+  | 'salaryCurrency'
+  | 'openOnly'
 >;
 
 /**
@@ -44,6 +52,10 @@ export class SearchApi {
     }
     if (request.salaryCurrency !== undefined) {
       params = params.set('salaryCurrency', request.salaryCurrency);
+    }
+    if (request.openOnly !== undefined) {
+      // Querystring: boolean tipado → "true"|"false" (API no usa coerce.boolean).
+      params = params.set('openOnly', request.openOnly ? 'true' : 'false');
     }
     params = params.set('limit', String(request.limit ?? SEARCH_PAGE_SIZE));
     if (request.offset !== undefined) {

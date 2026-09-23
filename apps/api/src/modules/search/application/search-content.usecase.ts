@@ -37,6 +37,8 @@ export interface SearchQueryInput {
   /** Query param; se mapea al atributo Meili `status`. */
   readonly applicationStatus?: ApplicationStatus;
   readonly salaryCurrency?: string;
+  /** Cuando true, AND Meili `closedAt IS NULL`. */
+  readonly openOnly?: boolean;
 }
 
 /**
@@ -87,6 +89,7 @@ export class SearchContent {
       ...(input.salaryCurrency === undefined
         ? {}
         : { salaryCurrency: input.salaryCurrency }),
+      ...(input.openOnly === true ? { openOnly: true } : {}),
     });
 
     let vector: number[] | undefined;

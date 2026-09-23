@@ -10,6 +10,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
+import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { RouterLink } from '@angular/router';
 import {
   APPLICATION_STATUSES,
@@ -39,7 +40,7 @@ const SALARY_CURRENCIES: readonly SearchSalaryCurrency[] = ['BOB', 'USD'];
 
 /**
  * Pantalla de búsqueda (`/buscar`, spec web/search, D8 / D3). Siempre hybrid (sin toggle de modo);
- * filtros `docType`, `groupId` y LatAm (modality / applicationStatus / salaryCurrency) con D3b.
+ * filtros `docType`, `groupId`, LatAm y `openOnly` con D3b bidireccional.
  */
 @Component({
   selector: 'lv-search-page',
@@ -49,6 +50,7 @@ const SALARY_CURRENCIES: readonly SearchSalaryCurrency[] = ['BOB', 'USD'];
     MatFormFieldModule,
     MatInputModule,
     MatSelectModule,
+    MatSlideToggleModule,
     RequestError,
     RouterLink,
   ],
@@ -74,6 +76,7 @@ export class SearchPage {
   protected readonly modality = this.store.modality;
   protected readonly applicationStatus = this.store.applicationStatus;
   protected readonly salaryCurrency = this.store.salaryCurrency;
+  protected readonly openOnly = this.store.openOnly;
   protected readonly groupOptions = this.groups.groups;
 
   protected readonly docTypes = SEARCH_DOC_TYPES;
@@ -112,6 +115,10 @@ export class SearchPage {
 
   protected onSalaryCurrencyChange(value: SearchSalaryCurrency | ''): void {
     this.store.setSalaryCurrency(value === '' ? null : value);
+  }
+
+  protected onOpenOnlyChange(checked: boolean): void {
+    this.store.setOpenOnly(checked);
   }
 
   protected async submit(): Promise<void> {

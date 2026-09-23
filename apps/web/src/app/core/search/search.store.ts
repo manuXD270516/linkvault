@@ -24,6 +24,8 @@ export interface SearchState {
   modality: JobModality | null;
   applicationStatus: ApplicationStatus | null;
   salaryCurrency: SearchSalaryCurrency | null;
+  /** Default off: no envía filtro de cierre. */
+  openOnly: boolean;
   hits: SearchHit[];
   degraded: boolean;
   degradeReason: SearchResponse['degradeReason'] | null;
@@ -41,6 +43,7 @@ const initialState: SearchState = {
   modality: null,
   applicationStatus: null,
   salaryCurrency: null,
+  openOnly: false,
   hits: [],
   degraded: false,
   degradeReason: null,
@@ -95,7 +98,22 @@ export const SearchStore = signalStore(
     },
 
     /**
-     * D3b: applicationStatus activo → `docType=application` y limpia modality/currency.
+     * D3b: openOnly activo → `docType=job_preview` y limpia `applicationStatus`.
+     */
+    setOpenOnly(openOnly: boolean): void {
+      if (!openOnly) {
+        patchState(store, { openOnly: false });
+        return;
+      }
+      patchState(store, {
+        openOnly: true,
+        docType: 'job_preview',
+        applicationStatus: null,
+      });
+    },
+
+    /**
+     * D3b: applicationStatus activo → `docType=application` y limpia modality/currency/openOnly.
      */
     setApplicationStatus(applicationStatus: ApplicationStatus | null): void {
       if (applicationStatus === null) {
@@ -107,6 +125,7 @@ export const SearchStore = signalStore(
         docType: 'application',
         modality: null,
         salaryCurrency: null,
+        openOnly: false,
       });
     },
 
@@ -119,14 +138,15 @@ export const SearchStore = signalStore(
       if (trimmed.length === 0) {
         return;
       }
-      // D3b: re-forzar docType por si el usuario cambió el tipo tras activar un filtro LatAm.
+      // D3b: re-forzar docType por si el usuario cambió el tipo tras activar un filtro LatAm/openOnly.
       const modality = store.modality();
       const applicationStatus = store.applicationStatus();
       const salaryCurrency = store.salaryCurrency();
+      const openOnly = store.openOnly();
       const latamDocType: SearchDocType | null =
         applicationStatus !== null
           ? 'application'
-          : modality !== null || salaryCurrency !== null
+          : modality !== null || salaryCurrency !== null || openOnly
             ? 'job_preview'
             : null;
       if (latamDocType !== null && store.docType() !== latamDocType) {
@@ -149,6 +169,7 @@ export const SearchStore = signalStore(
           ...(modality !== null ? { modality } : {}),
           ...(applicationStatus !== null ? { applicationStatus } : {}),
           ...(salaryCurrency !== null ? { salaryCurrency } : {}),
+          ...(openOnly ? { openOnly: true } : {}),
         });
         patchState(store, {
           hits: response.hits,
