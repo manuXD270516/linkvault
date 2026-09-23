@@ -132,6 +132,59 @@ describe('DiscoveryStore', () => {
     expect(store.savingUrls()[hit.url]).toBeUndefined();
   });
 
+  it('save posts groupId when destination is a group', async () => {
+    store.setSaveDestination('g1');
+    const pending = store.save(hit);
+
+    const request = http.expectOne({ method: 'POST', url: '/api/links' });
+    expect(request.request.body).toEqual({ url: hit.url, groupId: 'g1' });
+    request.flush(saved({ shared: 'created' }));
+    await pending;
+
+    expect(store.saveOutcomes()[hit.url]).toBe('created');
+  });
+
+  it('save captures groupId at click start (ignores mid-flight destination change)', async () => {
+    store.setSaveDestination('g1');
+    const pending = store.save(hit);
+    store.setSaveDestination(null);
+
+    const request = http.expectOne({ method: 'POST', url: '/api/links' });
+    expect(request.request.body).toEqual({ url: hit.url, groupId: 'g1' });
+    request.flush(saved());
+    await pending;
+  });
+
+  it('save maps already_there for group share', async () => {
+    store.setSaveDestination('g1');
+    const pending = store.save(hit);
+
+    http
+      .expectOne({ method: 'POST', url: '/api/links' })
+      .flush(saved({ created: false, shared: 'already_there' }));
+    await pending;
+
+    expect(store.saveOutcomes()[hit.url]).toBe('already');
+  });
+
+  it('save sets error feedback on 404 group_not_found', async () => {
+    store.setSaveDestination('missing');
+    const pending = store.save(hit);
+
+    const request = http.expectOne({ method: 'POST', url: '/api/links' });
+    const error = apiError('group_not_found', 404);
+    request.flush(error.body, error.options);
+    await pending;
+
+    expect(store.saveOutcomes()[hit.url]).toBe('error');
+  });
+
+  it('ensureDestinationAllowed resets stale group selection', () => {
+    store.setSaveDestination('gone');
+    store.ensureDestinationAllowed(['g1']);
+    expect(store.saveDestination()).toBeNull();
+  });
+
   it('save sets already feedback when shared is already_there', async () => {
     const pending = store.save(hit);
 

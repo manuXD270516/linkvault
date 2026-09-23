@@ -2314,8 +2314,8 @@
         <target>Search</target>
       </trans-unit>
       <trans-unit id="discovery.save.hint" datatype="html">
-        <source> Guardar añade la vacante a «Solo para mí». </source>
-        <target>Save adds the listing to “Just for me”.</target>
+        <source>El destino aplica a todos los Guardar de esta búsqueda (por defecto «Solo para mí»).</source>
+        <target>The destination applies to every Save in this search (default “Just for me”).</target>
       </trans-unit>
       <trans-unit id="discovery.degraded.getonboard" datatype="html">
         <source>GetOnBoard no está disponible ahora.</source>
@@ -2685,6 +2685,18 @@
         <source> Gestionar notificaciones </source>
         <target>Manage notifications</target>
       </trans-unit>
-    </body>
+        <trans-unit id="discovery.destination.label" datatype="html">
+        <source>Guardar en</source>
+        <target>Save to</target>
+      </trans-unit>
+      <trans-unit id="discovery.destination.private" datatype="html">
+        <source>Solo para mí</source>
+        <target>Just for me</target>
+      </trans-unit>
+      <trans-unit id="discovery.destination.groupsError" datatype="html">
+        <source>No se pudieron cargar tus grupos; puedes guardar en «Solo para mí».</source>
+        <target>Could not load your groups; you can still save to “Just for me”.</target>
+      </trans-unit>
+  </body>
   </file>
 </xliff>

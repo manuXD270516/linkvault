@@ -9,8 +9,14 @@ import { type RequestFailure, toRequestFailure } from '../api/api-error';
 import { LinksApi } from '../links/links.api';
 import { DiscoveryApi } from './discovery.api';
 
-/** Resultado visible del CTA Guardar por URL (D4). */
+/** Resultado visible del CTA Guardar por URL (D4 / ADR-045). */
 export type DiscoverySaveOutcome = 'created' | 'already' | 'error';
+
+/**
+ * Destino de página para Guardar: privado (`null`) o `groupId` de un grupo del usuario
+ * (ADR-045 D1–D2).
+ */
+export type DiscoverySaveDestination = string | null;
 
 /**
  * Estado de `/descubrir` (spec web/discovery). `searched` distingue "aún no se ha buscado" de
@@ -25,6 +31,8 @@ export interface DiscoveryState {
   /** `true` tras al menos una búsqueda enviada con éxito o con fallo. */
   searched: boolean;
   failure: RequestFailure | null;
+  /** Destino de página: `null` = privado (default). */
+  saveDestination: DiscoverySaveDestination;
   /** Feedback de guardado indexado por URL canónica del hit. */
   saveOutcomes: Record<string, DiscoverySaveOutcome>;
   /** URLs con POST /api/links en vuelo. */
@@ -39,6 +47,7 @@ const initialState: DiscoveryState = {
   loading: false,
   searched: false,
   failure: null,
+  saveDestination: null,
   saveOutcomes: {},
   savingUrls: {},
 };
@@ -53,6 +62,22 @@ export const DiscoveryStore = signalStore(
   withMethods((store, api = inject(DiscoveryApi), links = inject(LinksApi)) => ({
     setBoard(board: DiscoveryBoard): void {
       patchState(store, { board });
+    },
+
+    /** Cambia el destino de página (Privado | grupo). No re-guarda hits previos. */
+    setSaveDestination(destination: DiscoverySaveDestination): void {
+      patchState(store, { saveDestination: destination });
+    },
+
+    /**
+     * Si el `groupId` seleccionado ya no está en `allowedIds`, resetea a Privado
+     * (ADR-045 D5b).
+     */
+    ensureDestinationAllowed(allowedIds: readonly string[]): void {
+      const current = store.saveDestination();
+      if (current !== null && !allowedIds.includes(current)) {
+        patchState(store, { saveDestination: null });
+      }
     },
 
     /**
@@ -91,11 +116,13 @@ export const DiscoveryStore = signalStore(
     },
 
     /**
-     * Guarda el hit en la lista privada (`POST /api/links` sin groupId) y deja feedback
-     * creado / ya existía / error (D4 — no silencioso).
+     * Guarda el hit vía `POST /api/links` (ADR-045). Captura `groupId` al inicio del
+     * handler (antes de `await`) para no mezclar destino mid-flight.
      */
     async save(hit: DiscoveryHit): Promise<void> {
       const url = hit.url;
+      // Captura al click (D5): no releer el signal tras awaits.
+      const groupId = store.saveDestination();
       if (store.savingUrls()[url] === true) {
         return;
       }
@@ -106,7 +133,10 @@ export const DiscoveryStore = signalStore(
         saveOutcomes: priorOutcomes,
       });
       try {
-        const response = await links.saveLink(url);
+        const response =
+          groupId === null
+            ? await links.saveLink(url)
+            : await links.saveLink(url, groupId);
         const outcome: DiscoverySaveOutcome =
           response.shared === 'already_there' ? 'already' : 'created';
         patchState(store, {

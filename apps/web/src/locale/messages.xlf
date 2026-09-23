@@ -4500,7 +4500,7 @@
         </context-group>
       </trans-unit>
       <trans-unit id="discovery.save.hint" datatype="html">
-        <source> Guardar añade la vacante a «Solo para mí». </source>
+        <source>El destino aplica a todos los Guardar de esta búsqueda (por defecto «Solo para mí»).</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
           <context context-type="linenumber">70,72</context>
@@ -5013,6 +5013,15 @@
           <context context-type="linenumber">32,34</context>
         </context-group>
       </trans-unit>
-    </body>
+        <trans-unit id="discovery.destination.label" datatype="html">
+        <source>Guardar en</source>
+      </trans-unit>
+      <trans-unit id="discovery.destination.private" datatype="html">
+        <source>Solo para mí</source>
+      </trans-unit>
+      <trans-unit id="discovery.destination.groupsError" datatype="html">
+        <source>No se pudieron cargar tus grupos; puedes guardar en «Solo para mí».</source>
+      </trans-unit>
+  </body>
   </file>
 </xliff>
