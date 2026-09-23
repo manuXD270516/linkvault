@@ -504,6 +504,7 @@ sequenceDiagram
 | 18 | `search` | Meilisearch (compose profile `search`); índice híbrido full-text + embeddings; ACL; SPA `/buscar`; **ADR-036** (enmienda ADR-016) |
 | 19 | `job-link-freshness` | Re-check semanal + cierre calendario/`not_found`; auto-expire → `expired`; ASN worker claim; badge/SSE/search; **ADR-037** (enmienda ADR-035) |
 | 20 | `search-latam-filters` | B9r: filtros SPA/API modality + applicationStatus + salaryCurrency (BOB/USD); Meili filterable; D3b docType |
+| 21 | `group-weekly-digest` | B10: digest email semanal por grupo (semana ISO W−1, `group_links.sharedAt`); opt-out; enmienda **ADR-035** |
 
 ---
 

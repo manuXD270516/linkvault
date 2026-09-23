@@ -149,6 +149,8 @@ describe('worker configuration', () => {
       MONGO_URI: 'mongodb://localhost:27017/linkvault?directConnection=true',
       AI_CHAIN: 'mock',
       FEATURE_HEADLESS_EXTRACTION: false,
+      FEATURE_GROUP_DIGEST: false,
+      GROUP_DIGEST_CRON: '0 14 * * 1',
       ENRICH_FETCH_TIMEOUT_MS: 10_000,
       ENRICH_MAX_BYTES: 2_097_152,
       ENRICH_DOMAIN_DELAY_MS: 2_000,

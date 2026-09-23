@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_NOTIFICATION_PREFERENCES,
   notificationPreferencesSchema,
+  notificationTypeSchema,
   patchNotificationPreferencesSchema,
   pushSubscriptionRequestSchema,
 } from './notifications.schema';
@@ -14,9 +15,16 @@ describe('notification preferences', () => {
       groupNewLink: true,
       applicationStatusGroup: true,
       applicationStale: true,
+      groupWeeklyDigest: true,
       notifyOwnActions: true,
       applicationStatusGroupId: null,
     });
+  });
+
+  it('incluye group_weekly_digest en los tipos', () => {
+    expect(notificationTypeSchema.safeParse('group_weekly_digest').success).toBe(
+      true,
+    );
   });
 
   it('PATCH exige al menos un campo', () => {
@@ -26,6 +34,11 @@ describe('notification preferences', () => {
     expect(
       patchNotificationPreferencesSchema.safeParse({ groupNewLink: false })
         .success,
+    ).toBe(true);
+    expect(
+      patchNotificationPreferencesSchema.safeParse({
+        groupWeeklyDigest: false,
+      }).success,
     ).toBe(true);
   });
 

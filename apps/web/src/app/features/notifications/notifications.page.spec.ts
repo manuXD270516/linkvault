@@ -105,6 +105,26 @@ describe('NotificationsPage', () => {
     expect(host().querySelector('[data-testid="notifications-saved"]')).not.toBeNull();
   });
 
+  it('disables group_weekly_digest and patches the API', async () => {
+    const toggle = host().querySelector<HTMLElement>(
+      '[data-testid="pref-group-weekly-digest"] button',
+    );
+    expect(toggle).not.toBeNull();
+    toggle!.click();
+    await settle();
+
+    buttonWithText(host(), 'Guardar preferencias').click();
+    const request = await vi.waitFor(() =>
+      http.expectOne({ method: 'PATCH', url: '/api/notifications/preferences' }),
+    );
+    expect(request.request.body).toMatchObject({ groupWeeklyDigest: false });
+    request.flush({ ...DEFAULT_NOTIFICATION_PREFERENCES, groupWeeklyDigest: false });
+    await settle();
+    await harness.fixture.whenStable();
+
+    expect(host().querySelector('[data-testid="notifications-saved"]')).not.toBeNull();
+  });
+
   it('persists an optional applicationStatusGroupId', async () => {
     const select = host().querySelector('[data-testid="pref-status-group"]');
     expect(select).not.toBeNull();

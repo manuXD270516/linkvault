@@ -62,6 +62,7 @@ test('notifications: prefs page from profile, toggle save, vapid endpoint', asyn
   // Push section present; permiso denegado en headless no bloquea preferencias de email.
   await expect(page.getByTestId('notifications-push')).toBeVisible();
   await expect(page.getByTestId('pref-group-new-link')).toBeVisible();
+  await expect(page.getByTestId('pref-group-weekly-digest')).toBeVisible();
 
   expect(pageErrors).toEqual([]);
 });

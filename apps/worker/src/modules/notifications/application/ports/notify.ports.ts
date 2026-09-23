@@ -68,7 +68,8 @@ export const NOTIFY_MAILER = Symbol('NOTIFY_MAILER');
 export type NotifyMailTemplateId =
   | 'group-new-link'
   | 'application-status'
-  | 'application-stale';
+  | 'application-stale'
+  | 'group-weekly-digest';
 
 export interface NotifyMailMessage {
   readonly to: string;
@@ -80,6 +81,12 @@ export interface NotifyMailMessage {
     readonly groupName?: string;
     readonly linkTitle?: string;
     readonly statusLabel?: string;
+    /** Digest: títulos (máx 10) ya ordenados. */
+    readonly linkTitles?: readonly string[];
+    /** Digest: cuántos quedan tras el tope. */
+    readonly moreCount?: number;
+    /** Digest: URL a preferencias de notificación. */
+    readonly preferencesUrl?: string;
   };
 }
 
@@ -159,3 +166,59 @@ export interface NotifyFanoutQueuePublisher {
     readonly jobId: string;
   }): Promise<void>;
 }
+
+export const GROUP_DIGEST_CATALOG = Symbol('GROUP_DIGEST_CATALOG');
+
+export interface DigestGroupPage {
+  readonly groupIds: readonly string[];
+  /** Cursor para la siguiente página (`_id` hex); null si no hay más. */
+  readonly nextCursor: string | null;
+}
+
+export interface DigestWindowLink {
+  readonly linkId: string;
+  readonly sharedAt: Date;
+  readonly title: string | null;
+}
+
+/**
+ * Catálogo del digest: listado paginado de grupos + links con sharedAt en ventana.
+ * La proyección NO incluye `note` de group_links.
+ */
+export interface GroupDigestCatalog {
+  listGroupIds(params: {
+    readonly afterId: string | null;
+    readonly limit: number;
+  }): Promise<DigestGroupPage>;
+  /**
+   * Links del grupo con sharedAt ∈ [windowStart, windowEnd), sharedAt desc.
+   * `limit` acota filas leídas (típicamente maxTitles+1 o un tope alto para moreCount).
+   */
+  listLinksInWindow(params: {
+    readonly groupId: string;
+    readonly windowStart: Date;
+    readonly windowEnd: Date;
+    readonly limit: number;
+  }): Promise<readonly DigestWindowLink[]>;
+  /** Conteo exacto en ventana (para “y K más” si limit truncó). */
+  countLinksInWindow(params: {
+    readonly groupId: string;
+    readonly windowStart: Date;
+    readonly windowEnd: Date;
+  }): Promise<number>;
+}
+
+export const GROUP_DIGEST_QUEUE_PUBLISHER = Symbol(
+  'GROUP_DIGEST_QUEUE_PUBLISHER',
+);
+
+export interface GroupDigestQueuePublisher {
+  add(job: {
+    readonly name: string;
+    readonly data: { readonly weekKey: string };
+    readonly jobId: string;
+  }): Promise<void>;
+}
+
+export const GROUP_DIGEST_ENABLED = Symbol('GROUP_DIGEST_ENABLED');
+

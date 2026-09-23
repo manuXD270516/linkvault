@@ -300,6 +300,7 @@ describe('appRoutes', () => {
         groupNewLink: true,
         applicationStatusGroup: true,
         applicationStale: true,
+        groupWeeklyDigest: true,
         notifyOwnActions: true,
         applicationStatusGroupId: null,
       });

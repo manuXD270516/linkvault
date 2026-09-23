@@ -8,10 +8,12 @@ Pantallas y flujos del SPA para gestionar preferencias de notificación y la sus
 
 ### Requirement: Preferencias en el perfil
 
-El SPA SHALL ofrecer una sección (ruta o bloque en `/perfil`) donde la persona autenticada vea y cambie los tres tipos
-de aviso, el interruptor “avisarme también de mis propias acciones” y, de forma opcional, el grupo concreto al que
-acotar avisos de estado (`applicationStatusGroupId`), persistiendo vía la API de preferencias. Los textos SHALL estar en
-i18n ES/EN.
+El SPA SHALL ofrecer una sección (ruta o bloque en `/perfil`) donde la persona autenticada vea y
+cambie los tipos de aviso (`group_new_link`, `application_status_group`, `application_stale`,
+**`group_weekly_digest`**), el interruptor “avisarme también de mis propias acciones” y, de forma
+opcional, el grupo concreto al que acotar avisos de estado (`applicationStatusGroupId`),
+persistiendo vía la API de preferencias. Los textos SHALL estar en i18n ES/EN. El pie del email de
+digest SHALL enlazar a esta UI.
 
 #### Scenario: Desactivar nuevo link
 
@@ -19,6 +21,19 @@ i18n ES/EN.
 - **WHEN** desactiva “nuevo link en el grupo” y guarda
 - **THEN** la UI SHALL reflejar el estado desactivado
 - **AND** la API SHALL haber recibido el PATCH correspondiente
+
+#### Scenario: Desactivar digest semanal
+
+- **GIVEN** Ana en la pantalla de preferencias de notificaciones
+- **WHEN** desactiva el digest semanal del grupo
+- **THEN** la petición SHALL enviar `groupWeeklyDigest` `false`
+- **AND** la UI SHALL reflejar el estado tras `200`
+
+#### Scenario: Enlace desde el email de digest
+
+- **GIVEN** el copy del digest semanal
+- **WHEN** Ana sigue el enlace de preferencias del pie
+- **THEN** SHALL poder abrir la UI de preferencias de notificación (ruta autenticada documentada)
 
 #### Scenario: Acotar grupo de estado
 

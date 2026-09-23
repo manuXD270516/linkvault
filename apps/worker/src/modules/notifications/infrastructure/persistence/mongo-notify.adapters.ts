@@ -51,6 +51,11 @@ export class MongoNotifyPreferencesReader implements NotifyPreferencesReader {
       groupNewLink: Boolean(doc['groupNewLink']),
       applicationStatusGroup: Boolean(doc['applicationStatusGroup']),
       applicationStale: Boolean(doc['applicationStale']),
+      // Documentos previos al digest: ausencia ≡ default ON.
+      groupWeeklyDigest:
+        doc['groupWeeklyDigest'] === undefined
+          ? true
+          : Boolean(doc['groupWeeklyDigest']),
       notifyOwnActions: Boolean(doc['notifyOwnActions']),
       applicationStatusGroupId:
         (doc['applicationStatusGroupId'] as string | null | undefined) ?? null,

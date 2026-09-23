@@ -8,6 +8,7 @@ export interface NotificationPreferencesDocument {
   groupNewLink: boolean;
   applicationStatusGroup: boolean;
   applicationStale: boolean;
+  groupWeeklyDigest: boolean;
   notifyOwnActions: boolean;
   applicationStatusGroupId: string | null;
   updatedAt: Date;
@@ -23,6 +24,7 @@ export const notificationPreferencesSchema =
       groupNewLink: { type: Boolean, required: true },
       applicationStatusGroup: { type: Boolean, required: true },
       applicationStale: { type: Boolean, required: true },
+      groupWeeklyDigest: { type: Boolean, required: true },
       notifyOwnActions: { type: Boolean, required: true },
       applicationStatusGroupId: { type: String, default: null },
       updatedAt: { type: Date, required: true },

@@ -1183,6 +1183,14 @@ comprobándose en Mailpit. Sin claves usables en un entorno, el push falla en so
 Nunca versionar la privada real. Rotación: generar un par nuevo, desplegar env, y pedir a las personas que vuelvan a
 suscribirse (los endpoints firmados con el par anterior dejan de ser válidos).
 
+### Digest semanal de grupo (B10 / ADR-035 enmienda)
+
+Variables (`.env.example`): `FEATURE_GROUP_DIGEST`, `GROUP_DIGEST_CRON`.
+
+- Con `FEATURE_GROUP_DIGEST=false` el worker no registra / no-op el job de digest.
+- Cron default UTC `0 14 * * 1` (lunes 14:00): procesa la semana ISO **W−1** (`group_links.sharedAt`).
+- Opt-out: preferencia `groupWeeklyDigest`. Solo email (no push). Comprobar en Mailpit en local.
+
 ---
 
 ## Paso 6 quattuordecies — Meilisearch (perfil `search` / ADR-006 F2)

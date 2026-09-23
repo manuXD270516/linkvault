@@ -2348,6 +2348,10 @@
         <source> Postulación estancada </source>
         <target>Stale application</target>
       </trans-unit>
+      <trans-unit id="notifications.pref.groupWeeklyDigest" datatype="html">
+        <source> Digest semanal del grupo </source>
+        <target>Weekly group digest</target>
+      </trans-unit>
       <trans-unit id="notifications.pref.notifyOwnActions" datatype="html">
         <source> Avisarme también de mis propias acciones </source>
         <target>Also notify me about my own actions</target>
