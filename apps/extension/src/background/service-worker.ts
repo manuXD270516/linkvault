@@ -1,11 +1,12 @@
 import { ExtensionApi, ApiHttpError } from '../lib/api';
+import { getBrowser } from '../lib/browser-api';
 import type { ExtensionMessage, ExtensionMessageResult } from '../lib/messaging';
 import { readSession } from '../lib/storage';
 
 /** Única instancia de refresh: el SW es el dueño del mutex single-flight. */
 const api = new ExtensionApi();
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+getBrowser().runtime.onMessage.addListener((message, _sender, sendResponse) => {
   void handleMessage(message)
     .then((result) => sendResponse(result))
     .catch((error: unknown) => sendResponse(toFailure(error)));

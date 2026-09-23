@@ -5,6 +5,7 @@ import {
   logout,
   saveLink,
 } from '../lib/bridge';
+import { getBrowser } from '../lib/browser-api';
 import { t } from '../lib/i18n';
 import { mapSaveOutcome } from '../lib/save-link';
 import type { ExtensionSession } from '../lib/storage';
@@ -49,7 +50,7 @@ function applyI18n(): void {
       el.textContent = message;
     }
   });
-  const uiLang = chrome.i18n.getUILanguage();
+  const uiLang = getBrowser().i18n.getUILanguage();
   document.documentElement.lang = uiLang.startsWith('en') ? 'en' : 'es';
 }
 
@@ -105,7 +106,7 @@ async function fillGroups(): Promise<void> {
 }
 
 async function readActiveTabHttpUrl(): Promise<string | null> {
-  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  const tabs = await getBrowser().tabs.query({ active: true, currentWindow: true });
   const url = tabs[0]?.url;
   if (url === undefined || url.length === 0) {
     return null;

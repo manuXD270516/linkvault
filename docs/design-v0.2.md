@@ -516,6 +516,7 @@ sequenceDiagram
 | 30 | `group-link-tags-pinned` | Tags + pinned en `group_links`; filtros listado; SPA pin/chips; **ADR-044** (índice tag diferido) |
 | 31 | `discovery-save-group-picker` | Destino Privado|grupo al guardar desde `/descubrir`; paridad extensión; **ADR-045** (enmienda ADR-043) |
 | 32 | `search-salary-text-parse` | Parse determinista de texto salarial → `salary.min`/`max`; enrich + backfill two-step; **ADR-046** (enmienda ADR-040 §4) |
+| 33 | `extension-firefox-web-store` | Build Firefox MV3 (FF ≥ 121) + CORS `moz-extension://` + checklist CWS/AMO (manual); **ADR-047** (enmienda ADR-038) |
 
 ---
 

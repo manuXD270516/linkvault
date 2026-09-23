@@ -1,3 +1,5 @@
+import { getBrowser } from './browser-api';
+
 /** Perfil mínimo que persiste la extensión tras login/refresh. */
 export interface ExtensionUser {
   id: string;
@@ -5,7 +7,7 @@ export interface ExtensionUser {
   displayName: string;
 }
 
-/** Sesión de extensión en `chrome.storage.local` (ADR-038). */
+/** Sesión de extensión en storage.local (ADR-038 / ADR-047). */
 export interface ExtensionSession {
   accessToken: string;
   refreshToken: string;
@@ -20,7 +22,7 @@ const ACCESS_EXPIRES_AT_KEY = 'lv_ext_access_expires_at';
 const USER_KEY = 'lv_ext_user';
 
 export async function readSession(): Promise<ExtensionSession | null> {
-  const data = await chrome.storage.local.get([
+  const data = await getBrowser().storage.local.get([
     ACCESS_TOKEN_KEY,
     REFRESH_TOKEN_KEY,
     ACCESS_EXPIRES_AT_KEY,
@@ -42,7 +44,7 @@ export async function readSession(): Promise<ExtensionSession | null> {
 }
 
 export async function writeSession(session: ExtensionSession): Promise<void> {
-  await chrome.storage.local.set({
+  await getBrowser().storage.local.set({
     [ACCESS_TOKEN_KEY]: session.accessToken,
     [REFRESH_TOKEN_KEY]: session.refreshToken,
     [ACCESS_EXPIRES_AT_KEY]: session.accessExpiresAt,
@@ -51,7 +53,7 @@ export async function writeSession(session: ExtensionSession): Promise<void> {
 }
 
 export async function clearSession(): Promise<void> {
-  await chrome.storage.local.remove([
+  await getBrowser().storage.local.remove([
     ACCESS_TOKEN_KEY,
     REFRESH_TOKEN_KEY,
     ACCESS_EXPIRES_AT_KEY,

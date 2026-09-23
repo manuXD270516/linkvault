@@ -83,14 +83,16 @@ compose el hostname es `meilisearch` (`http://meilisearch:7700`). En producción
 pnpm nx build extension   # salida: dist/apps/extension/
 ```
 
-Carga unpacked en `chrome://extensions` → copia el Extension ID → en `.env` de la API:
+Carga unpacked en `chrome://extensions` (Chromium) o `about:debugging` (Firefox ≥ 121) →
+copia el Extension ID / `Origin` `moz-extension://…` → en `.env` de la API:
 
 ```dotenv
-EXTENSION_CORS_ORIGINS=chrome-extension://<extension-id>
+EXTENSION_CORS_ORIGINS=chrome-extension://<extension-id>,moz-extension://<uuid>
 ```
 
 Reinicia `pnpm nx serve api`. Detalle en `docs/RUNBOOK.md` (Paso 6 quindecies). Auth:
-`/api/auth/extension/*` (refresh en body; no cookie SPA).
+`/api/auth/extension/*` (refresh en body; no cookie SPA). Firefox:
+`pnpm nx run extension:build-firefox`.
 
 ### MongoDB
 

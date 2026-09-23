@@ -1285,18 +1285,18 @@ DISCOVERY_CHAIN=live   # mock en CI / sin red
 
 ---
 
-## Paso 6 quindecies — Extensión Chromium (browser-extension / ADR-038)
+## Paso 6 quindecies — Extensión Chromium / Firefox (browser-extension / ADR-038 + ADR-047)
 
 Guardar la URL de la pestaña activa sin scrapear el DOM (G5). Auth propia:
 `POST /api/auth/extension/{login,refresh,logout}` (refresh en body; **no** cookie `lv_refresh`).
 
-### Build y carga unpacked
+### Build Chromium (unpacked)
 
 ```bash
 pnpm nx build extension
 ```
 
-Salida loadable: `dist/apps/extension/`.
+Salida: `dist/apps/extension/`.
 
 1. Chrome/Edge → `chrome://extensions` → Modo desarrollador → **Load unpacked** → elegir
    `dist/apps/extension`.
@@ -1309,11 +1309,58 @@ EXTENSION_CORS_ORIGINS=chrome-extension://abcdefghijklmnopqrstuvwxyz123456
 
 4. Reinicia `pnpm nx serve api`. Vacío = CORS off (default en `.env.example`).
 
+### Build Firefox (temporary add-on)
+
+Requiere Firefox ≥ 121.
+
+```bash
+pnpm nx run extension:build-firefox
+pnpm nx run extension:lint-firefox   # contrato FF ≥ 121 (manifest + artefactos)
+```
+
+Salida: `dist/apps/extension-firefox/` (outDir **separado** del Chromium).
+
+1. Firefox → `about:debugging` → This Firefox → **Load Temporary Add-on…** → elegir
+   `dist/apps/extension-firefox/manifest.json`.
+2. Abre el popup / Network y copia el header `Origin` (`moz-extension://<uuid>`). En
+   temporary installs el UUID **cambia en cada carga** — vuelve a pegarlo en
+   `EXTENSION_CORS_ORIGINS` tras recargar el add-on. Builds firmados AMO usan el
+   `gecko.id` estable `linkvault@linkvault.app`.
+3. Ejemplo `.env` (puedes CSV-combinar Chrome + Firefox):
+
+```bash
+EXTENSION_CORS_ORIGINS=chrome-extension://abcdefghijklmnopqrstuvwxyz123456,moz-extension://xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+```
+
+4. Reinicia `pnpm nx serve api`. Orígenes con esquema distinto a `chrome-extension` /
+   `moz-extension` hacen fallar el boot de la API.
+
 Base URL del build: `EXTENSION_API_BASE_URL` (default `http://localhost:3000` en dev). El popup
 envía `X-Requested-With: linkvault` en las rutas de auth extensión.
 
-**Nota:** con `host_permissions` al origen API, Chromium puede omitir CORS; la allowlist acota
-orígenes web. La defensa real es auth + rate-limit + `client=extension` (ADR-038).
+**Nota:** con `host_permissions` al origen API, el navegador puede omitir CORS; la allowlist
+acota orígenes web. La defensa real es auth + rate-limit + `client=extension` (ADR-038).
+
+### Checklist tiendas (manual — listing live fuera del DoD)
+
+Builds de **tienda** (no local): setear `EXTENSION_API_BASE_URL` a la URL de producción
+**antes** de construir; el `host_permissions` del manifest refleja ese origen.
+
+**Chrome Web Store**
+
+1. `EXTENSION_API_BASE_URL=https://<api-prod> pnpm nx build extension --configuration=production`
+2. Zip del contenido de `dist/apps/extension/` (manifest en la raíz del zip).
+3. Developer Dashboard → New item → subir zip; privacy / single purpose; capturas.
+4. Sin secrets de publisher en el repo; sin publish desde CI en v1.
+
+**Firefox AMO**
+
+1. `EXTENSION_API_BASE_URL=https://<api-prod> pnpm nx run extension:build-firefox`
+2. `pnpm nx run extension:lint-firefox` (debe pasar).
+3. Zip de `dist/apps/extension-firefox/`; submit en AMO (gecko id
+   `linkvault@linkvault.app`). Privacy policy + capturas. El validador online de
+   AMO es la autoridad al publicar (el lint local no sustituye a AMO).
+4. Listing aprobado **no** es requisito para cerrar el change; solo checklist + artefacto.
 
 ---
 
