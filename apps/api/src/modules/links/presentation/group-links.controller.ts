@@ -1,9 +1,15 @@
 import {
-  listLinksQuerySchema,
+  listGroupLinksQuerySchema,
+  setGroupLinkPinnedRequestSchema,
+  setGroupLinkTagsRequestSchema,
   setKnowSomeoneRequestSchema,
   type LinkPage,
-  type ListLinksQuery,
+  type ListGroupLinksQuery,
   type PublicShare,
+  type SetGroupLinkPinnedRequest,
+  type SetGroupLinkPinnedResponse,
+  type SetGroupLinkTagsRequest,
+  type SetGroupLinkTagsResponse,
   type SetKnowSomeoneRequest,
   type SetKnowSomeoneResponse,
 } from '@linkvault/shared';
@@ -25,6 +31,8 @@ import { ListGroupLinks } from '../application/list-group-links.usecase';
 import { PublishGroupLink } from '../application/publish-group-link.usecase';
 import { RemoveGroupLink } from '../application/remove-group-link.usecase';
 import { RemoveShareNote } from '../application/remove-share-note.usecase';
+import { SetGroupLinkPinned } from '../application/set-group-link-pinned.usecase';
+import { SetGroupLinkTags } from '../application/set-group-link-tags.usecase';
 import { SetKnowSomeone } from '../application/set-know-someone.usecase';
 import { UnpublishGroupLink } from '../application/unpublish-group-link.usecase';
 
@@ -44,13 +52,16 @@ export class GroupLinksController {
     private readonly publishGroupLink: PublishGroupLink,
     private readonly unpublishGroupLink: UnpublishGroupLink,
     private readonly setKnowSomeone: SetKnowSomeone,
+    private readonly setGroupLinkTags: SetGroupLinkTags,
+    private readonly setGroupLinkPinned: SetGroupLinkPinned,
   ) {}
 
   @Get(':id/links')
   list(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') groupId: string,
-    @Query(new ZodValidationPipe(listLinksQuerySchema)) query: ListLinksQuery,
+    @Query(new ZodValidationPipe(listGroupLinksQuerySchema))
+    query: ListGroupLinksQuery,
   ): Promise<LinkPage> {
     return this.listGroupLinks.execute(user.userId, groupId, query);
   }
@@ -104,6 +115,37 @@ export class GroupLinksController {
     body: SetKnowSomeoneRequest,
   ): Promise<SetKnowSomeoneResponse> {
     return this.setKnowSomeone.execute(user.userId, groupId, linkId, body);
+  }
+
+  /**
+   * Reemplaza los tags del link en el grupo (D3/D4 de group-link-tags-pinned). Respuesta slim `{ tags }` para merge
+   * local sin pisar note/comments/knowSomeone.
+   */
+  @Put(':id/links/:linkId/tags')
+  @HttpCode(HttpStatus.OK)
+  tags(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') groupId: string,
+    @Param('linkId') linkId: string,
+    @Body(new ZodValidationPipe(setGroupLinkTagsRequestSchema))
+    body: SetGroupLinkTagsRequest,
+  ): Promise<SetGroupLinkTagsResponse> {
+    return this.setGroupLinkTags.execute(user.userId, groupId, linkId, body);
+  }
+
+  /**
+   * Fija o desfija el link en el grupo (D2/D4). Respuesta slim `{ pinned }`; el listado sigue ordenando por sharedAt.
+   */
+  @Put(':id/links/:linkId/pinned')
+  @HttpCode(HttpStatus.OK)
+  pinned(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') groupId: string,
+    @Param('linkId') linkId: string,
+    @Body(new ZodValidationPipe(setGroupLinkPinnedRequestSchema))
+    body: SetGroupLinkPinnedRequest,
+  ): Promise<SetGroupLinkPinnedResponse> {
+    return this.setGroupLinkPinned.execute(user.userId, groupId, linkId, body);
   }
 
   /**

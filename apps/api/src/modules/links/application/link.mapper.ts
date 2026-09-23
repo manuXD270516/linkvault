@@ -54,6 +54,12 @@ export interface SummaryContext {
    * privada NO lo lleva nunca.
    */
   readonly knowSomeone?: KnowSomeoneState;
+  /**
+   * Tags y pinned (D4 de group-link-tags-pinned). Solo en el listado de un grupo: **siempre** presentes ahí. La lista
+   * privada NO los lleva nunca. Tampoco salen en preview público, digest ni Meili.
+   */
+  readonly tags?: readonly string[];
+  readonly pinned?: boolean;
 }
 
 /** Link con cómo llegó a la lista. `sharedBy` falta en la lista privada, donde no hay con quién compartir. */
@@ -97,6 +103,8 @@ export function toJobLinkSummary(
     ...(options.knowSomeone === undefined
       ? {}
       : { knowSomeone: options.knowSomeone }),
+    ...(options.tags === undefined ? {} : { tags: [...options.tags] }),
+    ...(options.pinned === undefined ? {} : { pinned: options.pinned }),
   };
 }
 

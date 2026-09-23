@@ -19,7 +19,9 @@ import {
 // un texto pasado de largo `text_too_long` (400), en vez del `validation_error` genérico del pipe, que el SPA no sabría
 // explicar. Lo que sí hay son cotas de cordura, muy por encima de las de negocio, que evitan gastar CPU en una cadena
 // arbitrariamente larga antes de llegar al dominio (mismo patrón que el código de invitación en `groups`).
-
+//
+// `tags` / `pinned` de la relación de grupo: request/response y query de grupo viven en
+// `group-link-tags-pinned.schema.ts`; aquí solo van opcionales en el summary del listado de grupo.
 /** Longitud máxima de una URL guardada (spec links/job-link). La juzga el dominio, no este contrato. */
 export const LINK_URL_MAX_LENGTH = 2048;
 
@@ -181,6 +183,10 @@ export const jobLinkSummarySchema = z.strictObject({
   // Solo en el listado de un grupo (D3 de know-someone-flag): siempre presente ahí. La lista privada y los saves
   // privados NO lo llevan nunca.
   knowSomeone: knowSomeoneStateSchema.optional(),
+  // Solo en el listado de un grupo (D4 de group-link-tags-pinned): siempre presentes ahí con defaults `[]` / `false`.
+  // La lista privada y los saves privados NO los llevan nunca.
+  tags: z.array(z.string()).optional(),
+  pinned: z.boolean().optional(),
 });
 export type JobLinkSummary = z.infer<typeof jobLinkSummarySchema>;
 

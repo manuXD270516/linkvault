@@ -513,6 +513,7 @@ sequenceDiagram
 | 27 | `job-link-reopen` | Reabrir vacante tras falso positivo freshness; calendar/`expiresAt` date-only; Meili `closedAt: null`; SPA; **ADR-041** |
 | 28 | `demo-seed` | Profile compose `demo` + `api:seed-demo` idempotente; dataset tour; **ADR-042**. **F3 construcción cerrada** |
 | 29 | `job-discovery` | Post-v1 discovery: Get on Board + Remote OK APIs; `/descubrir`; save vía `POST /api/links`; **ADR-043** |
+| 30 | `group-link-tags-pinned` | Tags + pinned en `group_links`; filtros listado; SPA pin/chips; **ADR-044** (índice tag diferido) |
 
 ---
 

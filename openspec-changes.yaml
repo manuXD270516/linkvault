@@ -374,3 +374,10 @@ changes:
       Fila 29 / post-v1. GET /api/discovery/search (getonboard API pública + remoteok dump/cache/egress);
       mock CI; FEATURE_DISCOVERY; SPA /descubrir guardar privado vía POST /api/links + feedback;
       platform remoteok. Fuera: LinkedIn/Indeed/Computrabajo, headless, picker grupo.
+  - name: group-link-tags-pinned
+    adrs: [044, 026]
+    agents: [backend-dev, frontend-dev]
+    scope: |
+      Fila 30. tags[] + pinned en group_links; PUT slim /tags y /pinned (ACL miembro);
+      listGroupLinksQuerySchema (pinned enum string, tag); SPA pin/chips/filtros + reset cursor.
+      Índice tag diferido. Fuera: pin-to-top, Meili, digest, public, tags privados, funnel grupo.

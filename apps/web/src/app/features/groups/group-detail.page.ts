@@ -11,9 +11,12 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialog } from '@angular/material/dialog';
-import { MatSlideToggle, MatSlideToggleModule } from '@angular/material/slide-toggle';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
+import { MatSlideToggle, type MatSlideToggleChange, MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import type { GroupDetail, GroupMember } from '@linkvault/shared';
 import { firstValueFrom } from 'rxjs';
@@ -44,8 +47,11 @@ import { RenameGroupDialog, type RenameGroupDialogData } from './rename-group.di
   selector: 'lv-group-detail-page',
   imports: [
     DatePipe,
+    FormsModule,
     LinkList,
     MatButtonModule,
+    MatFormFieldModule,
+    MatInputModule,
     MatSlideToggleModule,
     RequestError,
     RouterLink,
@@ -86,6 +92,9 @@ export class GroupDetailPage {
   protected readonly linksTotal = this.linksStore.total;
   protected readonly hasMoreLinks = this.linksStore.hasMore;
   protected readonly loadingMoreLinks = this.linksStore.loadingMore;
+  protected readonly groupFilter = this.linksStore.groupFilter;
+  /** Borrador del filtro por tag; se aplica al pulsar Filtrar (reinicia el cursor). */
+  protected readonly tagDraft = signal('');
   /**
    * `true` solo cuando la lista abierta en `LinksStore` es la de este grupo. Guardar e importar van al ámbito abierto
    * (`LinksStore.scope()`), así que hasta entonces no se ofrecen: entre pintar el grupo y abrir su lista, un "Guardar"
@@ -95,13 +104,15 @@ export class GroupDetailPage {
     const scope = this.linksStore.scope();
     return scope?.kind === 'group' && scope.groupId === this.groupId;
   });
+  protected readonly pinnedOnly = computed(() => this.groupFilter().pinnedOnly === true);
+  protected readonly activeTag = computed(() => this.groupFilter().tag ?? '');
 
   /** `true` cuando ya se salió de la pantalla: lo que quedó esperando no debe tocar la lista de la siguiente. */
   private destroyed = false;
 
   private readonly invitationField = viewChild<ElementRef<HTMLTextAreaElement>>('invitationField');
   /** El interruptor de la visibilidad por defecto: lleva su propio estado y hay que devolvérselo si la API falla. */
-  private readonly publicToggle = viewChild(MatSlideToggle);
+  private readonly publicToggle = viewChild<MatSlideToggle>('publicToggle');
   private readonly deleteMessage = viewChild.required<TemplateRef<unknown>>('deleteMessage');
 
   constructor() {
@@ -136,6 +147,32 @@ export class GroupDetailPage {
 
   protected loadMoreLinks(): void {
     void this.linksStore.loadMore();
+  }
+
+  /**
+   * Filtro «solo fijados» → `?pinned=true` en el listado (spec web/links). Cambiar el filtro reinicia el cursor.
+   */
+  protected onPinnedOnlyChange(change: MatSlideToggleChange): void {
+    void this.linksStore.setGroupFilter({
+      pinnedOnly: change.checked ? true : undefined,
+      tag: this.activeTag() || undefined,
+    });
+  }
+
+  /** Aplica el filtro por un tag (`?tag=`); reinicia el cursor. */
+  protected applyTagFilter(): void {
+    const tag = this.tagDraft().trim();
+    void this.linksStore.setGroupFilter({
+      pinnedOnly: this.pinnedOnly() ? true : undefined,
+      tag: tag.length > 0 ? tag : undefined,
+    });
+  }
+
+  protected clearTagFilter(): void {
+    this.tagDraft.set('');
+    void this.linksStore.setGroupFilter({
+      pinnedOnly: this.pinnedOnly() ? true : undefined,
+    });
   }
 
   protected async load(): Promise<void> {

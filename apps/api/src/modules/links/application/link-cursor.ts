@@ -1,4 +1,7 @@
-import type { ListLinksQuery } from '@linkvault/shared';
+import type {
+  ListGroupLinksQuery,
+  ListLinksQuery,
+} from '@linkvault/shared';
 import { InvalidCursor } from '../domain/errors';
 import { isLinkId } from '../domain/identifier';
 import type { LinkCursor, LinkListQuery } from './ports/link-listing';
@@ -42,5 +45,17 @@ export function toLinkListQuery(query: ListLinksQuery): LinkListQuery {
     ...(query.cursor === undefined
       ? {}
       : { cursor: decodeCursor(query.cursor) }),
+  };
+}
+
+/**
+ * Query del listado de grupo (D5 de group-link-tags-pinned): misma paginación que la privada más filtros
+ * `pinned` / `tag` ya normalizados por el schema HTTP.
+ */
+export function toGroupLinkListQuery(query: ListGroupLinksQuery): LinkListQuery {
+  return {
+    ...toLinkListQuery(query),
+    ...(query.pinned === undefined ? {} : { pinned: query.pinned }),
+    ...(query.tag === undefined ? {} : { tag: query.tag }),
   };
 }

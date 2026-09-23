@@ -497,6 +497,56 @@ export class LinkList {
   }
 
   /**
+   * Fija o desfija y mergea `{ pinned }` (spec web/links pin). Solo en vista de grupo; no reordena la lista.
+   */
+  protected async togglePinned(link: JobLinkSummary, pinned: boolean): Promise<void> {
+    const groupId = this.groupId();
+    if (groupId === null || this.working()) {
+      return;
+    }
+    this.working.set(true);
+    this.failure.set(null);
+    try {
+      await this.store.setPinned(groupId, link.id, pinned);
+    } catch (error: unknown) {
+      this.failure.set(toRequestFailure(error));
+      if (
+        hasApiErrorCode(error, 404, 'link_not_found') ||
+        hasApiErrorCode(error, 404, 'group_not_found')
+      ) {
+        void this.store.reload();
+      }
+    } finally {
+      this.working.set(false);
+    }
+  }
+
+  /**
+   * Reemplaza el conjunto de tags y mergea `{ tags }` (spec web/links tags). Solo en vista de grupo.
+   */
+  protected async saveTags(link: JobLinkSummary, tags: string[]): Promise<void> {
+    const groupId = this.groupId();
+    if (groupId === null || this.working()) {
+      return;
+    }
+    this.working.set(true);
+    this.failure.set(null);
+    try {
+      await this.store.setTags(groupId, link.id, tags);
+    } catch (error: unknown) {
+      this.failure.set(toRequestFailure(error));
+      if (
+        hasApiErrorCode(error, 404, 'link_not_found') ||
+        hasApiErrorCode(error, 404, 'group_not_found')
+      ) {
+        void this.store.reload();
+      }
+    } finally {
+      this.working.set(false);
+    }
+  }
+
+  /**
    * Quién puede encender y apagar el enlace público: en un grupo, quien compartió el link y el propietario (ADR-027
    * §2). La **marca** de que está publicado la ve cualquier miembro, y eso lo decide la tarjeta.
    */

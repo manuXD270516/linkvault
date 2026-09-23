@@ -29,7 +29,10 @@ import type {
   LinkListQuery,
 } from '../application/ports/link-listing';
 import type { TransactionSession } from '../../../infrastructure/outbox/transaction-session';
-import { listLinkPage } from './link-page.query';
+import {
+  listLinkPage,
+  groupLinkListFilter,
+} from './link-page.query';
 import {
   GROUP_LINK_KEY,
   GROUP_LINK_MODEL_NAME,
@@ -257,19 +260,27 @@ export class MongoGroupLinkRepository implements GroupLinkRepository {
     }
     return await listLinkPage(
       this.groupLinks,
-      { groupId: id },
+      { groupId: id, ...groupLinkListFilter(query) },
       'sharedAt',
       query,
       true,
     );
   }
 
-  async countByGroup(groupId: string): Promise<number> {
+  async countByGroup(
+    groupId: string,
+    query?: LinkListQuery,
+  ): Promise<number> {
     const id = toGroupObjectId(groupId);
     if (id === null) {
       return 0;
     }
-    return await this.groupLinks.countDocuments({ groupId: id }).exec();
+    return await this.groupLinks
+      .countDocuments({
+        groupId: id,
+        ...(query === undefined ? {} : groupLinkListFilter(query)),
+      })
+      .exec();
   }
 
   async groupsWithLink(
@@ -435,6 +446,52 @@ export class MongoGroupLinkRepository implements GroupLinkRepository {
     };
   }
 
+  async setTags(
+    groupId: string,
+    linkId: string,
+    tags: readonly string[],
+  ): Promise<readonly string[] | null> {
+    const ids = toRelationFilter(groupId, linkId);
+    if (ids === null) {
+      return null;
+    }
+    const document = await this.groupLinks
+      .findOneAndUpdate(
+        ids,
+        { $set: { tags: [...tags] } },
+        { returnDocument: 'after' },
+      )
+      .lean()
+      .exec();
+    if (document === null) {
+      return null;
+    }
+    return document.tags ?? [];
+  }
+
+  async setPinned(
+    groupId: string,
+    linkId: string,
+    pinned: boolean,
+  ): Promise<boolean | null> {
+    const ids = toRelationFilter(groupId, linkId);
+    if (ids === null) {
+      return null;
+    }
+    const document = await this.groupLinks
+      .findOneAndUpdate(
+        ids,
+        { $set: { pinned } },
+        { returnDocument: 'after' },
+      )
+      .lean()
+      .exec();
+    if (document === null) {
+      return null;
+    }
+    return document.pinned ?? false;
+  }
+
   /**
    * Punto de espera **solo para tests** entre el `$inc` y el `insert` del alta de un comentario (D2, tareas 2.10 y
    * 2.11). En producción no hace nada; un test lo sobrescribe para detener el alta a mitad de su transacción y provocar
@@ -489,6 +546,9 @@ function toGroupLink(document: GroupLinkDocument): GroupLink {
     knowSomeoneUserIds: (document.knowSomeoneUserIds ?? []).map((id) =>
       id.toHexString(),
     ),
+    // Un documento anterior a group-link-tags-pinned: tags=[] / pinned=false.
+    tags: document.tags ?? [],
+    pinned: document.pinned ?? false,
   };
 }
 

@@ -951,6 +951,131 @@ describe('LinksStore', () => {
       expect(item?.note?.text).toBe('Esta es la que te dije');
       expect(item?.comments?.count).toBe(2);
     });
+
+    it('merges tags slim DTO without losing note, comments or pinned', async () => {
+      await openGroup({
+        items: [{ ...linkWithContext('l1'), tags: ['remoto'], pinned: true }],
+        total: 1,
+      });
+
+      const saving = store.setTags('g1', 'l1', ['senior', 'remoto']);
+      http
+        .expectOne({ method: 'PUT', url: '/api/groups/g1/links/l1/tags' })
+        .flush({ tags: ['senior', 'remoto'] });
+      await saving;
+
+      await settle();
+      http.expectNone(GROUP_PAGE);
+      const item = store.items()[0];
+      expect(item?.tags).toEqual(['senior', 'remoto']);
+      expect(item?.pinned).toBe(true);
+      expect(item?.note?.text).toBe('Esta es la que te dije');
+      expect(item?.comments?.count).toBe(2);
+    });
+
+    it('merges pinned slim DTO without losing note, comments or tags', async () => {
+      await openGroup({
+        items: [{ ...linkWithContext('l1'), tags: ['remoto'], pinned: false }],
+        total: 1,
+      });
+
+      const pinning = store.setPinned('g1', 'l1', true);
+      http
+        .expectOne({ method: 'PUT', url: '/api/groups/g1/links/l1/pinned' })
+        .flush({ pinned: true });
+      await pinning;
+
+      await settle();
+      http.expectNone(GROUP_PAGE);
+      const item = store.items()[0];
+      expect(item?.pinned).toBe(true);
+      expect(item?.tags).toEqual(['remoto']);
+      expect(item?.note?.text).toBe('Esta es la que te dije');
+      expect(item?.comments?.count).toBe(2);
+    });
+
+    it('keeps tags and pinned when an enrich notice omits them', async () => {
+      await openGroup({
+        items: [{ ...linkWithContext('l1'), tags: ['remoto'], pinned: true }],
+        total: 1,
+      });
+
+      store.applyEnriched({
+        ...linkWith('l1'),
+        previewStatus: 'enriched',
+        preview: { title: 'Backend Node.js' },
+      });
+
+      expect(store.items()[0]?.preview?.title).toBe('Backend Node.js');
+      expect(store.items()[0]?.tags).toEqual(['remoto']);
+      expect(store.items()[0]?.pinned).toBe(true);
+      expect(store.items()[0]?.note?.text).toBe('Esta es la que te dije');
+    });
+  });
+
+  describe('group filters', () => {
+    it('reloads the first page with pinned=true and without cursor', async () => {
+      await openGroup({
+        items: [linkWith('l1')],
+        total: 2,
+        nextCursor: 'Y3Vyc29y',
+      });
+      expect(store.nextCursor()).toBe('Y3Vyc29y');
+
+      const filtering = store.setGroupFilter({ pinnedOnly: true });
+      http
+        .expectOne('/api/groups/g1/links?limit=20&pinned=true')
+        .flush({ items: [linkWith('l2')], total: 1 } satisfies LinkPage);
+      await filtering;
+
+      expect(store.items().map((item) => item.id)).toEqual(['l2']);
+      expect(store.nextCursor()).toBeNull();
+      expect(store.groupFilter()).toEqual({ pinnedOnly: true });
+    });
+
+    it('sends the tag filter and clears the previous cursor', async () => {
+      await openGroup({
+        items: [linkWith('l1')],
+        total: 2,
+        nextCursor: 'Y3Vyc29y',
+      });
+
+      const filtering = store.setGroupFilter({ tag: 'remoto' });
+      http
+        .expectOne('/api/groups/g1/links?limit=20&tag=remoto')
+        .flush({ items: [linkWith('l3')], total: 1 } satisfies LinkPage);
+      await filtering;
+
+      expect(store.items().map((item) => item.id)).toEqual(['l3']);
+      expect(store.nextCursor()).toBeNull();
+      expect(store.groupFilter()).toEqual({ tag: 'remoto' });
+    });
+
+    it('clears filters and reloads without pinned or tag params', async () => {
+      await openGroup({ items: [linkWith('l1')], total: 1 });
+      const filtering = store.setGroupFilter({ pinnedOnly: true, tag: 'remoto' });
+      http
+        .expectOne('/api/groups/g1/links?limit=20&pinned=true&tag=remoto')
+        .flush({ items: [], total: 0 } satisfies LinkPage);
+      await filtering;
+
+      const clearing = store.setGroupFilter({});
+      http.expectOne(GROUP_PAGE).flush({ items: [linkWith('l1')], total: 1 } satisfies LinkPage);
+      await clearing;
+
+      expect(store.groupFilter()).toEqual({});
+      expect(store.items().map((item) => item.id)).toEqual(['l1']);
+    });
+
+    it('ignores filter changes on the private list', async () => {
+      const opening = store.open({ kind: 'mine' });
+      http.expectOne(MINE_PAGE).flush({ items: [linkWith('l1')], total: 1 } satisfies LinkPage);
+      await opening;
+
+      await store.setGroupFilter({ pinnedOnly: true });
+      http.expectNone('/api/links/mine?limit=20&pinned=true');
+      expect(store.groupFilter()).toEqual({});
+    });
   });
 
   describe('public link', () => {

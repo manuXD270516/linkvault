@@ -17,6 +17,10 @@ import type {
   ReopenLinkResponse,
   SaveLinkRequest,
   SaveLinkResponse,
+  SetGroupLinkPinnedRequest,
+  SetGroupLinkPinnedResponse,
+  SetGroupLinkTagsRequest,
+  SetGroupLinkTagsResponse,
   SetKnowSomeoneRequest,
   UpdatePreviewRequest,
   UpdatePreviewResponse,
@@ -33,10 +37,17 @@ const GROUPS_URL = '/api/groups';
  */
 export const LINKS_PAGE_SIZE = 20;
 
-/** Página pedida a la API: sin `cursor` es la primera. */
+/**
+ * Página pedida a la API: sin `cursor` es la primera. `pinned` y `tag` solo aplican al listado de un grupo (D5 de
+ * group-link-tags-pinned); la lista privada los ignora.
+ */
 export interface LinksPageQuery {
   limit?: number;
   cursor?: string;
+  /** Filtro server-side del listado de grupo; viaja como `pinned=true|false` (sin coerce). */
+  pinned?: boolean;
+  /** Un solo tag ya normalizado (o crudo: la API normaliza); omitir = sin filtro. */
+  tag?: string;
 }
 
 /**
@@ -188,12 +199,52 @@ export class LinksApi {
       this.http.put<KnowSomeoneState>(knowSomeoneUrl(groupId, linkId), body),
     );
   }
+
+  /**
+   * Reemplaza el conjunto de tags del link en el grupo y responde el DTO slim `{ tags }` (D4 de
+   * group-link-tags-pinned) para merge local sin perder note/comments/knowSomeone/publicShare.
+   */
+  setGroupLinkTags(
+    groupId: string,
+    linkId: string,
+    body: SetGroupLinkTagsRequest,
+  ): Promise<SetGroupLinkTagsResponse> {
+    return firstValueFrom(
+      this.http.put<SetGroupLinkTagsResponse>(groupLinkTagsUrl(groupId, linkId), body),
+    );
+  }
+
+  /**
+   * Fija o desfija el link en el grupo y responde el DTO slim `{ pinned }` (D4 de group-link-tags-pinned) para merge
+   * local sin reemplazar la tarjeta entera.
+   */
+  setGroupLinkPinned(
+    groupId: string,
+    linkId: string,
+    body: SetGroupLinkPinnedRequest,
+  ): Promise<SetGroupLinkPinnedResponse> {
+    return firstValueFrom(
+      this.http.put<SetGroupLinkPinnedResponse>(groupLinkPinnedUrl(groupId, linkId), body),
+    );
+  }
 }
 
-/** El `cursor` es opaco: viaja tal cual y solo cuando lo hay, para que la primera página no lo lleve vacío. */
-function pageParams({ limit = LINKS_PAGE_SIZE, cursor }: LinksPageQuery): HttpParams {
-  const params = new HttpParams().set('limit', limit);
-  return cursor === undefined ? params : params.set('cursor', cursor);
+/**
+ * El `cursor` es opaco: viaja tal cual y solo cuando lo hay, para que la primera página no lo lleve vacío. `pinned` va
+ * como enum de strings (`true`/`false`); `tag` solo si hay valor.
+ */
+function pageParams({ limit = LINKS_PAGE_SIZE, cursor, pinned, tag }: LinksPageQuery): HttpParams {
+  let params = new HttpParams().set('limit', limit);
+  if (cursor !== undefined) {
+    params = params.set('cursor', cursor);
+  }
+  if (pinned !== undefined) {
+    params = params.set('pinned', pinned ? 'true' : 'false');
+  }
+  if (tag !== undefined && tag.length > 0) {
+    params = params.set('tag', tag);
+  }
+  return params;
 }
 
 function groupLinksUrl(groupId: string): string {
@@ -210,4 +261,12 @@ function publicShareUrl(groupId: string, linkId: string): string {
 
 function knowSomeoneUrl(groupId: string, linkId: string): string {
   return `${groupLinksUrl(groupId)}/${encodeURIComponent(linkId)}/know-someone`;
+}
+
+function groupLinkTagsUrl(groupId: string, linkId: string): string {
+  return `${groupLinksUrl(groupId)}/${encodeURIComponent(linkId)}/tags`;
+}
+
+function groupLinkPinnedUrl(groupId: string, linkId: string): string {
+  return `${groupLinksUrl(groupId)}/${encodeURIComponent(linkId)}/pinned`;
 }

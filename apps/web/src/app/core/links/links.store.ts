@@ -13,6 +13,8 @@ import type {
   PublicShare,
   ReopenLinkRequest,
   SaveLinkResponse,
+  SetGroupLinkPinnedResponse,
+  SetGroupLinkTagsResponse,
   UpdatePreviewRequest,
 } from '@linkvault/shared';
 import {
@@ -45,6 +47,17 @@ export interface ReadingProgress {
 }
 
 /**
+ * Filtros del listado de un grupo (D2/D5 de group-link-tags-pinned). Solo viajan al GET de grupo; la lista privada los
+ * ignora. Cambiarlos reinicia el cursor (primera página sin `cursor`).
+ */
+export interface GroupLinksFilter {
+  /** `true` = solo fijados (`?pinned=true`); `false`/`undefined` = sin filtro de pin. */
+  pinnedOnly?: boolean;
+  /** Un tag; vacío o ausente = sin filtro. */
+  tag?: string;
+}
+
+/**
  * Lista de links paginada por cursor (D9). `loaded` distingue "todavía no se ha pedido" de "no hay links", que es lo que
  * decide el estado vacío; `total` es el número de links del listado entero, no el de los cargados.
  */
@@ -61,6 +74,8 @@ export interface LinksState {
   failure: RequestFailure | null;
   /** Progreso de las lecturas en curso, o `null` cuando no se está esperando ninguna. */
   reading: ReadingProgress | null;
+  /** Filtros activos del listado de grupo; se reinician al abrir otra lista. */
+  groupFilter: GroupLinksFilter;
 }
 
 const initialState: LinksState = {
@@ -73,6 +88,7 @@ const initialState: LinksState = {
   loaded: false,
   failure: null,
   reading: null,
+  groupFilter: {},
 };
 
 export const LinksStore = signalStore(
@@ -95,10 +111,18 @@ export const LinksStore = signalStore(
       return scope;
     };
 
-    const fetchPage = (scope: LinksScope, cursor?: string) =>
-      scope.kind === 'group'
-        ? api.listGroupLinks(scope.groupId, { limit: LINKS_PAGE_SIZE, cursor })
-        : api.listMyLinks({ limit: LINKS_PAGE_SIZE, cursor });
+    const fetchPage = (scope: LinksScope, cursor?: string) => {
+      if (scope.kind !== 'group') {
+        return api.listMyLinks({ limit: LINKS_PAGE_SIZE, cursor });
+      }
+      const filter = store.groupFilter();
+      return api.listGroupLinks(scope.groupId, {
+        limit: LINKS_PAGE_SIZE,
+        cursor,
+        ...(filter.pinnedOnly === true ? { pinned: true } : {}),
+        ...(filter.tag !== undefined && filter.tag.length > 0 ? { tag: filter.tag } : {}),
+      });
+    };
 
     /**
      * Número de la última carga de la lista (design D1). Sube con cada carga de la primera página y con `close()`: solo
@@ -461,6 +485,56 @@ export const LinksStore = signalStore(
       },
 
       /**
+       * Reemplaza los tags del link en el grupo y **fusiona** `{ tags }` en el ítem (D4 de group-link-tags-pinned),
+       * sin perder note/comments/knowSomeone/publicShare/pinned.
+       */
+      async setTags(
+        groupId: string,
+        linkId: string,
+        tags: string[],
+      ): Promise<SetGroupLinkTagsResponse> {
+        const response = await api.setGroupLinkTags(groupId, linkId, { tags });
+        if (groupIdOf(store.scope()) === groupId) {
+          updateItem(linkId, (item) => ({ ...item, tags: response.tags }));
+        }
+        return response;
+      },
+
+      /**
+       * Fija o desfija el link en el grupo y **fusiona** `{ pinned }` en el ítem (D4 de group-link-tags-pinned), sin
+       * reemplazar la tarjeta ni reordenar (el pin no flota: es lista corta + filtro).
+       */
+      async setPinned(
+        groupId: string,
+        linkId: string,
+        pinned: boolean,
+      ): Promise<SetGroupLinkPinnedResponse> {
+        const response = await api.setGroupLinkPinned(groupId, linkId, { pinned });
+        if (groupIdOf(store.scope()) === groupId) {
+          updateItem(linkId, (item) => ({ ...item, pinned: response.pinned }));
+        }
+        return response;
+      },
+
+      /**
+       * Aplica filtros del listado de grupo y recarga **sin** `cursor` (spec web/links: reset al filtrar). Solo tiene
+       * efecto con un grupo abierto; la lista privada ignora el filtro.
+       */
+      async setGroupFilter(filter: GroupLinksFilter): Promise<void> {
+        if (groupIdOf(store.scope()) === null) {
+          return;
+        }
+        const tag = filter.tag?.trim();
+        patchState(store, {
+          groupFilter: {
+            ...(filter.pinnedOnly === true ? { pinnedOnly: true } : {}),
+            ...(tag !== undefined && tag.length > 0 ? { tag } : {}),
+          },
+        });
+        await loadFirstPage();
+      },
+
+      /**
        * Quita el link de la lista abierta (solo la relación) y recarga; si al responder ya está abierta otra lista, no
        * la recarga (design D4).
        */
@@ -527,12 +601,15 @@ function readingOf(page: LinkPage): ReadingProgress | null {
  * trae, manda el resumen más nuevo.
  *
  * Conservar el enlace público NO es lo mismo que quitarlo: despublicar lo borra explícitamente (`unpublish`), porque
- * aquí un link sin `publicShare` solo significa "esta respuesta no lo traía".
+ * aquí un link sin `publicShare` solo significa "esta respuesta no lo traía". Igual con `tags`/`pinned`: un enrich sin
+ * ellos no debe borrar la lista corta ni las etiquetas del grupo.
  */
 function keepGroupContext(current: JobLinkSummary, incoming: JobLinkSummary): JobLinkSummary {
   const note = incoming.note ?? current.note;
   const publicShare = incoming.publicShare ?? current.publicShare;
   const knowSomeone = incoming.knowSomeone ?? current.knowSomeone;
+  const tags = incoming.tags ?? current.tags;
+  const pinned = incoming.pinned ?? current.pinned;
   const comments =
     incoming.comments === undefined || !isNewerSummary(current.comments, incoming.comments)
       ? current.comments
@@ -542,6 +619,8 @@ function keepGroupContext(current: JobLinkSummary, incoming: JobLinkSummary): Jo
     ...(note === undefined ? {} : { note }),
     ...(publicShare === undefined ? {} : { publicShare }),
     ...(knowSomeone === undefined ? {} : { knowSomeone }),
+    ...(tags === undefined ? {} : { tags }),
+    ...(pinned === undefined ? {} : { pinned }),
     ...(comments === undefined ? {} : { comments }),
   };
 }

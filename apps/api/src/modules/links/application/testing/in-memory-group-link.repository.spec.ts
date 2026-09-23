@@ -62,6 +62,8 @@ describe('share', () => {
       commentCount: 0,
       commentsRevision: 0,
       knowSomeoneUserIds: [],
+      tags: [],
+      pinned: false,
     });
   });
 
@@ -103,6 +105,8 @@ describe('find and listByGroup', () => {
       commentCount: 0,
       commentsRevision: 0,
       knowSomeoneUserIds: [],
+      tags: [],
+      pinned: false,
     });
   });
 
@@ -352,6 +356,8 @@ describe('the comment counters', () => {
       commentCount: 1,
       commentsRevision: 1,
       knowSomeoneUserIds: [],
+      tags: [],
+      pinned: false,
     });
   });
 });

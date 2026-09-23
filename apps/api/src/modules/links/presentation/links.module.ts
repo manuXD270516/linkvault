@@ -58,6 +58,8 @@ import { ReopenJobLink } from '../application/reopen-job-link.usecase';
 import { RequestLinkEnrichment } from '../application/request-link-enrichment.usecase';
 import { SaveLink } from '../application/save-link.usecase';
 import { SetKnowSomeone } from '../application/set-know-someone.usecase';
+import { SetGroupLinkTags } from '../application/set-group-link-tags.usecase';
+import { SetGroupLinkPinned } from '../application/set-group-link-pinned.usecase';
 import { UpdateLinkPreview } from '../application/update-link-preview.usecase';
 import { GroupLinksDeletionHook } from '../infrastructure/group-links-deletion.hook';
 import { CommentsChangedSubscription } from '../infrastructure/comments-changed.subscription';
@@ -222,6 +224,8 @@ import { PublicPreviewsController } from './public-previews.controller';
     PublishGroupLink,
     UnpublishGroupLink,
     SetKnowSomeone,
+    SetGroupLinkTags,
+    SetGroupLinkPinned,
     GetPublicPreview,
     DeliverCommentsChanged,
     CommentsChangedSubscription,

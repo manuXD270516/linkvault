@@ -298,6 +298,52 @@ describe('LinksApi', () => {
       await expect(result).resolves.toEqual({ flaggedByMe: false, count: 0 });
     });
 
+    it('replaces tags and returns the slim tags response', async () => {
+      const result = api.setGroupLinkTags('g1', 'l1', { tags: ['remoto', 'senior'] });
+
+      const request = expectRequest('PUT', '/api/groups/g1/links/l1/tags');
+      expect(request.request.body).toEqual({ tags: ['remoto', 'senior'] });
+      request.flush({ tags: ['remoto', 'senior'] });
+
+      await expect(result).resolves.toEqual({ tags: ['remoto', 'senior'] });
+    });
+
+    it('sets pinned and returns the slim pinned response', async () => {
+      const result = api.setGroupLinkPinned('g1', 'l1', { pinned: true });
+
+      const request = expectRequest('PUT', '/api/groups/g1/links/l1/pinned');
+      expect(request.request.body).toEqual({ pinned: true });
+      request.flush({ pinned: true });
+
+      await expect(result).resolves.toEqual({ pinned: true });
+    });
+
+    it('escapes the identifiers of the tags and pinned paths', async () => {
+      const tags = api.setGroupLinkTags('g 1', 'l/1', { tags: [] });
+      expectRequest('PUT', '/api/groups/g%201/links/l%2F1/tags').flush({ tags: [] });
+      await expect(tags).resolves.toEqual({ tags: [] });
+
+      const pinned = api.setGroupLinkPinned('g 1', 'l/1', { pinned: false });
+      expectRequest('PUT', '/api/groups/g%201/links/l%2F1/pinned').flush({ pinned: false });
+      await expect(pinned).resolves.toEqual({ pinned: false });
+    });
+
+    it('lists group links with pinned and tag query params', async () => {
+      const result = api.listGroupLinks('g1', { pinned: true, tag: 'remoto' });
+
+      expectRequest('GET', '/api/groups/g1/links?limit=20&pinned=true&tag=remoto').flush(page);
+
+      await expect(result).resolves.toEqual(page);
+    });
+
+    it('sends pinned=false as the string false, not as a coerced boolean', async () => {
+      const result = api.listGroupLinks('g1', { pinned: false });
+
+      expectRequest('GET', '/api/groups/g1/links?limit=20&pinned=false').flush(page);
+
+      await expect(result).resolves.toEqual(page);
+    });
+
     it('escapes the identifiers of the comment paths', async () => {
       const result = api.deleteComment('g 1', 'l/1', 'c?1');
 

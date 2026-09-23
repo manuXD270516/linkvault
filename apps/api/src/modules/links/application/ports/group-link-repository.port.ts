@@ -31,6 +31,15 @@ export interface GroupLink {
    * anterior al change se lee como `[]`.
    */
   readonly knowSomeoneUserIds: readonly string[];
+  /**
+   * Tags libres de la relación (D3 de group-link-tags-pinned). Vacío si nadie etiquetó; un documento anterior al
+   * change se lee como `[]`.
+   */
+  readonly tags: readonly string[];
+  /**
+   * Flag de fijado (D2 de group-link-tags-pinned). Default de lectura `false` si el documento no lo tiene.
+   */
+  readonly pinned: boolean;
 }
 
 /**
@@ -113,11 +122,14 @@ export interface GroupLinkRepository {
   relationsOfLink(linkId: string): Promise<GroupLink[]>;
   /**
    * Página de links del grupo, por `sharedAt` y `_id` descendentes, con la nota y los contadores de comentarios de
-   * cada relación.
+   * cada relación. `query.pinned` / `query.tag` filtran en servidor (D5); el orden no cambia.
    */
   listByGroup(groupId: string, query: LinkListQuery): Promise<LinkListPage>;
-  /** Cuántos links tiene el grupo. No depende del tamaño de página. */
-  countByGroup(groupId: string): Promise<number>;
+  /**
+   * Cuántos links del grupo cumplen el mismo filtro que la página (`pinned` / `tag`). No depende del tamaño de
+   * página (D6).
+   */
+  countByGroup(groupId: string, query?: LinkListQuery): Promise<number>;
   /**
    * De los grupos indicados, cuáles tienen ya ese link. Una sola consulta: es lo que evita el N+1 de `alreadyInGroups`
    * (D4).
@@ -170,4 +182,21 @@ export interface GroupLinkRepository {
     userId: string,
     flagged: boolean,
   ): Promise<{ readonly flaggedByMe: boolean; readonly count: number } | null>;
+  /**
+   * Reemplaza el array de tags con `$set` (D3 de group-link-tags-pinned). Devuelve los tags guardados, o `null` si
+   * la relación no existe. Sin outbox.
+   */
+  setTags(
+    groupId: string,
+    linkId: string,
+    tags: readonly string[],
+  ): Promise<readonly string[] | null>;
+  /**
+   * Fija o desfija con `$set` (D2). Devuelve el `pinned` after, o `null` si la relación no existe. Sin outbox.
+   */
+  setPinned(
+    groupId: string,
+    linkId: string,
+    pinned: boolean,
+  ): Promise<boolean | null>;
 }
