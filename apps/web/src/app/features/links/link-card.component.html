@@ -291,6 +291,94 @@
 -->
 @if (groupView()) {
   <div class="flex flex-col gap-1 text-sm" data-testid="link-group-context">
+    @if (pinned() !== null) {
+      <div class="flex flex-wrap items-center gap-x-2 gap-y-1" data-testid="link-pinned">
+        <button
+          mat-button
+          type="button"
+          [disabled]="busy()"
+          [attr.aria-pressed]="pinned()"
+          (click)="togglePinned.emit(!pinned())"
+          data-testid="link-pin-toggle"
+        >
+          @if (pinned()) {
+            <ng-container i18n="@@links.pinned.on">Fijado</ng-container>
+          } @else {
+            <ng-container i18n="@@links.pinned.off">Fijar</ng-container>
+          }
+        </button>
+        <span class="text-xs text-neutral-600" data-testid="link-pin-hint" i18n="@@links.pinned.hint"
+          >Lista corta del grupo (no sube al inicio)</span
+        >
+      </div>
+    }
+
+    <div class="flex flex-col gap-1" data-testid="link-tags">
+      @if (tags().length > 0) {
+        <ul class="m-0 flex list-none flex-wrap gap-1 p-0" data-testid="link-tag-chips">
+          @for (tag of tags(); track tag) {
+            <li
+              class="rounded border border-neutral-300 px-2 py-0.5 text-xs"
+              data-testid="link-tag-chip"
+            >
+              {{ tag }}
+            </li>
+          }
+        </ul>
+      }
+      @if (!editingTags()) {
+        <div>
+          <button
+            mat-button
+            type="button"
+            [disabled]="busy()"
+            (click)="startEditTags()"
+            data-testid="link-tags-edit"
+            i18n="@@links.tags.edit"
+          >
+            Editar etiquetas
+          </button>
+        </div>
+      } @else {
+        <div class="flex flex-col gap-1" data-testid="link-tags-editor">
+          <label class="text-xs" for="link-tags-input-{{ link().id }}" i18n="@@links.tags.editorLabel"
+            >Etiquetas (separadas por coma)</label
+          >
+          <input
+            class="rounded border border-neutral-300 px-2 py-1"
+            id="link-tags-input-{{ link().id }}"
+            type="text"
+            [ngModel]="tagsDraft()"
+            (ngModelChange)="tagsDraft.set($event)"
+            [disabled]="busy()"
+            data-testid="link-tags-input"
+          />
+          <div class="flex flex-wrap gap-1">
+            <button
+              mat-button
+              type="button"
+              [disabled]="busy()"
+              (click)="commitTags()"
+              data-testid="link-tags-save"
+              i18n="@@links.tags.save"
+            >
+              Guardar etiquetas
+            </button>
+            <button
+              mat-button
+              type="button"
+              [disabled]="busy()"
+              (click)="cancelEditTags()"
+              data-testid="link-tags-cancel"
+              i18n="@@links.tags.cancel"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      }
+    </div>
+
     @if (knowSomeone(); as flag) {
       <div class="flex flex-wrap items-center gap-x-2 gap-y-1" data-testid="link-know-someone">
         <button

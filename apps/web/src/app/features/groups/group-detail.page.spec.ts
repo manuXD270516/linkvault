@@ -294,6 +294,7 @@ describe('GroupDetailPage', () => {
     expect(buttonTexts()).toEqual([
       'Guardar',
       'Pegar un chat',
+      'Filtrar',
       'Copiar invitación',
       'Renombrar',
       'Regenerar el código',
@@ -322,7 +323,7 @@ describe('GroupDetailPage', () => {
       ['Ana', 'Propietario', 'Desde el 10/09/2026'],
       ['Beto', 'Miembro', 'Desde el 17/09/2026'],
     ]);
-    expect(buttonTexts()).toEqual(['Guardar', 'Pegar un chat', 'Salir del grupo']);
+    expect(buttonTexts()).toEqual(['Guardar', 'Pegar un chat', 'Filtrar', 'Salir del grupo']);
     expect(page().querySelector('[data-testid="invite-code"]')).toBeNull();
     expect(text()).not.toContain('Regenéralo si se filtró');
   });
@@ -606,7 +607,7 @@ describe('GroupDetailPage', () => {
       ['Beto', 'Propietario', 'Desde el 17/09/2026'],
     ]);
     expect(page().querySelector('[data-testid="invite-code"]')).toBeNull();
-    expect(buttonTexts()).toEqual(['Guardar', 'Pegar un chat', 'Salir del grupo']);
+    expect(buttonTexts()).toEqual(['Guardar', 'Pegar un chat', 'Filtrar', 'Salir del grupo']);
   });
 
   it('Cancelar la transferencia', async () => {
@@ -688,6 +689,74 @@ describe('GroupDetailPage', () => {
 
       expect(page().querySelector('[data-testid="group-default-visibility"]')).toBeNull();
       expect(text()).not.toContain('Los links nuevos se comparten con un enlace público');
+    });
+  });
+
+  describe('Filtros de organización (tags / pinned)', () => {
+    it('pide el listado con pinned=true al activar solo fijados', async () => {
+      await openDetail(memberDetail, members, [linkOfAna, linkOfBeto]);
+
+      const pinnedToggle = page().querySelector<HTMLElement>(
+        '[data-testid="group-filter-pinned"] button[role="switch"]',
+      );
+      expect(pinnedToggle).not.toBeNull();
+      pinnedToggle?.click();
+      await settle();
+
+      http
+        .expectOne(`/api/groups/${memberDetail.id}/links?limit=20&pinned=true`)
+        .flush({ items: [{ ...linkOfAna, pinned: true }], total: 1 } satisfies LinkPage);
+      await settle();
+      await harness.fixture.whenStable();
+
+      expect(TestBed.inject(LinksStore).groupFilter()).toEqual({ pinnedOnly: true });
+      expect(page().querySelectorAll('[data-testid="link-list"] li').length).toBe(1);
+    });
+
+    it('pide el listado con tag y reinicia el cursor', async () => {
+      await openDetail(memberDetail, members, [linkOfAna], 2);
+      // Simula que ya hay más páginas (cursor) sin cargarlas: el store conserva nextCursor del open.
+      // Abrimos de nuevo con cursor en la respuesta para poder afirmar el reset.
+      const store = TestBed.inject(LinksStore);
+      const reloading = store.reload();
+      http
+        .expectOne(`/api/groups/${memberDetail.id}/links?limit=20`)
+        .flush({
+          items: [linkOfAna],
+          total: 2,
+          nextCursor: 'Y3Vyc29y',
+        } satisfies LinkPage);
+      await reloading;
+      expect(store.nextCursor()).toBe('Y3Vyc29y');
+
+      typeInto(page(), '[data-testid="group-filter-tag-input"]', 'remoto');
+      buttonWithText(page(), 'Filtrar').click();
+      await settle();
+
+      http
+        .expectOne(`/api/groups/${memberDetail.id}/links?limit=20&tag=remoto`)
+        .flush({
+          items: [{ ...linkOfAna, tags: ['remoto'] }],
+          total: 1,
+        } satisfies LinkPage);
+      await settle();
+      await harness.fixture.whenStable();
+
+      expect(store.groupFilter()).toEqual({ tag: 'remoto' });
+      expect(store.nextCursor()).toBeNull();
+    });
+
+    it('muestra pin y etiquetas en las cards del grupo', async () => {
+      await openDetail(memberDetail, members, [
+        { ...linkOfAna, pinned: true, tags: ['remoto'] },
+      ]);
+
+      expect(page().querySelector('[data-testid="link-pin-toggle"]')?.textContent?.trim()).toBe(
+        'Fijado',
+      );
+      expect(page().querySelector('[data-testid="link-tag-chip"]')?.textContent?.trim()).toBe(
+        'remoto',
+      );
     });
   });
 });

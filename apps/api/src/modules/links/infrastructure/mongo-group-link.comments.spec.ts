@@ -292,11 +292,15 @@ describe('the note (2.8)', () => {
       commentCount: 1,
       commentsRevision: 1,
       knowSomeoneUserIds: [],
+      tags: [],
+      pinned: false,
     });
     expect(byLink.get(plain)?.inGroup).toEqual({
       commentCount: 0,
       commentsRevision: 0,
       knowSomeoneUserIds: [],
+      tags: [],
+      pinned: false,
     });
   });
 

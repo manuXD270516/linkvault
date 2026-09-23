@@ -29,6 +29,9 @@ interface ListedRow {
   publicShare?: { slug: string; publishedBy: Types.ObjectId; publishedAt: Date };
   /** Solo en un grupo (D3 de know-someone-flag): quién marcó el flag. */
   knowSomeoneUserIds?: Types.ObjectId[];
+  /** Solo en un grupo (D4 de group-link-tags-pinned). */
+  tags?: string[];
+  pinned?: boolean;
   link: JobLinkDocument;
 }
 
@@ -75,6 +78,9 @@ export async function listLinkPage<D>(
                 publicShare: 1,
                 // Flag know-someone (D3): misma consulta; la lista privada no lo proyecta.
                 knowSomeoneUserIds: 1,
+                // Tags y pinned (D4): misma consulta; la lista privada no los proyecta.
+                tags: 1,
+                pinned: 1,
               }
             : {}),
         },
@@ -112,6 +118,9 @@ export async function listLinkPage<D>(
             knowSomeoneUserIds: (row.knowSomeoneUserIds ?? []).map((id) =>
               id.toHexString(),
             ),
+            // Un documento anterior a group-link-tags-pinned: tags=[] / pinned=false.
+            tags: row.tags ?? [],
+            pinned: row.pinned ?? false,
           },
         }
       : {}),
@@ -123,6 +132,23 @@ export async function listLinkPage<D>(
         nextCursor: { date: last.date, relationId: last._id.toHexString() },
       }
     : { items };
+}
+
+/**
+ * Match de filtros `pinned` / `tag` del listado de grupo (D5). `pinned=false` incluye docs sin el campo
+ * (`$ne: true`). `tag` usa `$all` de un elemento.
+ */
+export function groupLinkListFilter(
+  query: Pick<LinkListQuery, 'pinned' | 'tag'>,
+): QueryFilter<unknown> {
+  const filter: Record<string, unknown> = {};
+  if (query.pinned !== undefined) {
+    filter['pinned'] = query.pinned ? true : { $ne: true };
+  }
+  if (query.tag !== undefined) {
+    filter['tags'] = { $all: [query.tag] };
+  }
+  return filter as QueryFilter<unknown>;
 }
 
 /**

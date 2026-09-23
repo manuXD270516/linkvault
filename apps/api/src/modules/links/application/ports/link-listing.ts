@@ -18,6 +18,12 @@ export interface LinkListQuery {
   readonly limit: number;
   /** Desde dónde seguir; ausente en la primera página. */
   readonly cursor?: LinkCursor;
+  /**
+   * Filtros solo del listado de un grupo (D5 de group-link-tags-pinned). La lista privada no los usa.
+   * `tag` llega ya normalizado desde el schema HTTP.
+   */
+  readonly pinned?: boolean;
+  readonly tag?: string;
 }
 
 /** Fila de un listado: el link y cómo llegó a esa lista. */
@@ -49,6 +55,12 @@ export interface ListedGroupRelation {
    * `count` y `flaggedByMe` sin exponer los ids.
    */
   readonly knowSomeoneUserIds: readonly string[];
+  /**
+   * Tags y pinned de la relación (D4 de group-link-tags-pinned). Viajan en la misma consulta; defaults de lectura
+   * `[]` / `false` si el documento no los tiene.
+   */
+  readonly tags: readonly string[];
+  readonly pinned: boolean;
 }
 
 /** Página de un listado. `nextCursor` solo viaja cuando hay más filas detrás. */

@@ -260,6 +260,20 @@ describe('jobLinkSummarySchema', () => {
     );
   });
 
+  it('accepts tags and pinned on a group summary and omits them on a private one', () => {
+    const inGroup = {
+      ...summary,
+      tags: ['remote', 'backend'],
+      pinned: true,
+    };
+    expect(jobLinkSummarySchema.parse(inGroup)).toEqual(inGroup);
+
+    const { sharedBy: _sharedBy, ...privateLink } = summary;
+    const parsed = jobLinkSummarySchema.parse(privateLink);
+    expect(parsed).not.toHaveProperty('tags');
+    expect(parsed).not.toHaveProperty('pinned');
+  });
+
   it('accepts a private link with no sharer', () => {
     const { sharedBy: _sharedBy, ...privateLink } = summary;
 

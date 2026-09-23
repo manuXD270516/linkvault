@@ -1,5 +1,6 @@
 import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, LOCALE_ID, computed, inject, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, LOCALE_ID, computed, inject, input, output, signal } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { RouterLink } from '@angular/router';
 import type { Application, GroupTracker, JobLinkSummary, PreviewFieldName } from '@linkvault/shared';
@@ -29,7 +30,7 @@ import { linkCardStatus } from './link-status';
  */
 @Component({
   selector: 'lv-link-card',
-  imports: [CommentAgo, DatePipe, MatButtonModule, RouterLink, TrackerAvatars],
+  imports: [CommentAgo, DatePipe, FormsModule, MatButtonModule, RouterLink, TrackerAvatars],
   templateUrl: './link-card.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -75,6 +76,10 @@ export class LinkCard {
   readonly removeNote = output<void>();
   /** Marcar o desmarcar know-someone; `LinkList` llama al PUT y mergea el DTO slim. */
   readonly toggleKnowSomeone = output<boolean>();
+  /** Fijar o desfijar (lista corta del grupo, no reordena); `LinkList` mergea `{ pinned }`. */
+  readonly togglePinned = output<boolean>();
+  /** Reemplazar el conjunto de tags; `LinkList` envía el PUT y mergea `{ tags }`. */
+  readonly saveTags = output<string[]>();
   /** Encender el enlace público; la confirmación que dice el alcance la pide `LinkList`. */
   readonly publish = output<void>();
   /** Apagarlo; su confirmación avisa de que el enlace deja de funcionar para quien ya lo tenga. */
@@ -120,6 +125,22 @@ export class LinkCard {
       ? (this.link().knowSomeone ?? { flaggedByMe: false, count: 0 })
       : null,
   );
+
+  /**
+   * Pin del grupo (lista corta, no reordena). Solo en vista de grupo; la lista privada no lo muestra aunque el link
+   * estuviera fijado en algún grupo.
+   */
+  protected readonly pinned = computed(() =>
+    this.groupView() ? (this.link().pinned ?? false) : null,
+  );
+
+  /** Tags del grupo; solo en vista de grupo. */
+  protected readonly tags = computed(() => (this.groupView() ? (this.link().tags ?? []) : []));
+
+  /** `true` mientras se edita el conjunto de tags (reemplazo completo vía API). */
+  protected readonly editingTags = signal(false);
+  /** Borrador de tags separados por coma mientras se edita. */
+  protected readonly tagsDraft = signal('');
 
   /**
    * El enlace público del link, solo en el grupo: la lista privada no lo lleva nunca, porque un link privado no se
@@ -203,5 +224,29 @@ export class LinkCard {
   protected note(field: PreviewFieldName): string | null {
     const origin = fieldOrigin(this.sources()?.[field]);
     return origin === null || origin.kind === 'page' ? null : originText(origin);
+  }
+
+  /** Abre el editor con el conjunto actual de tags (separados por coma). */
+  protected startEditTags(): void {
+    this.tagsDraft.set(this.tags().join(', '));
+    this.editingTags.set(true);
+  }
+
+  protected cancelEditTags(): void {
+    this.editingTags.set(false);
+    this.tagsDraft.set('');
+  }
+
+  /**
+   * Emite el conjunto de tags (split por coma, trim, vacíos fuera). La normalización fina y los caps los aplica la API.
+   */
+  protected commitTags(): void {
+    const tags = this.tagsDraft()
+      .split(',')
+      .map((tag) => tag.trim())
+      .filter((tag) => tag.length > 0);
+    this.saveTags.emit(tags);
+    this.editingTags.set(false);
+    this.tagsDraft.set('');
   }
 }

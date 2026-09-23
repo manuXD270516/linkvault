@@ -134,6 +134,21 @@ describe('toJobLinkSummary with a read offer', () => {
     expect(Object.keys(summary)).not.toContain('previewSources');
     expect(Object.keys(summary)).not.toContain('lastEnrichmentError');
   });
+
+  it('omits group tags and pinned unless the group list context supplies them', () => {
+    const privateSummary = toJobLinkSummary(jobLink(), { sharedAt: SHARED_AT });
+    expect(privateSummary).not.toHaveProperty('tags');
+    expect(privateSummary).not.toHaveProperty('pinned');
+
+    const groupSummary = toJobLinkSummary(jobLink(), {
+      sharedAt: SHARED_AT,
+      tags: ['remote'],
+      pinned: true,
+    });
+    expect(groupSummary.tags).toEqual(['remote']);
+    expect(groupSummary.pinned).toBe(true);
+    expect(jobLinkSummarySchema.parse(groupSummary)).toEqual(groupSummary);
+  });
 });
 
 describe('toJobLinkSummary with a pasted description', () => {

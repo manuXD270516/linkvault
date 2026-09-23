@@ -155,6 +155,8 @@ describe('find, listByGroup and countByGroup', () => {
       commentCount: 0,
       commentsRevision: 0,
       knowSomeoneUserIds: [],
+      tags: [],
+      pinned: false,
     });
   });
 
@@ -674,5 +676,67 @@ describe('setKnowSomeone (know-someone-flag)', () => {
         true,
       ),
     ).toBeNull();
+  });
+});
+
+describe('setTags and setPinned (group-link-tags-pinned)', () => {
+  it('replaces tags with $set and pins atomically', async () => {
+    const { linkId } = await shareLink(JOB_PAGE, BACKEND, ANA);
+
+    expect(await groupLinks.setTags(BACKEND, linkId, ['remote', 'backend'])).toEqual([
+      'remote',
+      'backend',
+    ]);
+    expect(await groupLinks.setTags(BACKEND, linkId, [])).toEqual([]);
+    expect(await groupLinks.setPinned(BACKEND, linkId, true)).toBe(true);
+    expect(await groupLinks.setPinned(BACKEND, linkId, false)).toBe(false);
+
+    const relation = await groupLinks.find(BACKEND, linkId);
+    expect(relation?.tags).toEqual([]);
+    expect(relation?.pinned).toBe(false);
+  });
+
+  it('filters list and count by pinned and tag with the same match', async () => {
+    const first = await shareLink(JOB_PAGE, BACKEND, ANA);
+    const second = await shareLink(OTHER_JOB, BACKEND, BETO, later);
+    await groupLinks.setPinned(BACKEND, first.linkId, true);
+    await groupLinks.setTags(BACKEND, second.linkId, ['remote']);
+
+    const pinnedPage = await groupLinks.listByGroup(BACKEND, {
+      limit: 20,
+      pinned: true,
+    });
+    expect(pinnedPage.items.map((item) => item.link.id)).toEqual([first.linkId]);
+    expect(await groupLinks.countByGroup(BACKEND, { limit: 20, pinned: true })).toBe(
+      1,
+    );
+
+    const unpinnedPage = await groupLinks.listByGroup(BACKEND, {
+      limit: 20,
+      pinned: false,
+    });
+    expect(unpinnedPage.items.map((item) => item.link.id)).toEqual([
+      second.linkId,
+    ]);
+    expect(
+      await groupLinks.countByGroup(BACKEND, { limit: 20, pinned: false }),
+    ).toBe(1);
+
+    const taggedPage = await groupLinks.listByGroup(BACKEND, {
+      limit: 20,
+      tag: 'remote',
+    });
+    expect(taggedPage.items.map((item) => item.link.id)).toEqual([
+      second.linkId,
+    ]);
+    expect(
+      await groupLinks.countByGroup(BACKEND, { limit: 20, tag: 'remote' }),
+    ).toBe(1);
+  });
+
+  it('answers null when the relation is missing', async () => {
+    const missing = new mongoose.Types.ObjectId().toHexString();
+    expect(await groupLinks.setTags(BACKEND, missing, ['a'])).toBeNull();
+    expect(await groupLinks.setPinned(BACKEND, missing, true)).toBeNull();
   });
 });

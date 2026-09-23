@@ -66,7 +66,7 @@ export class MongoGroupDigestCatalog implements GroupDigestCatalog {
           sharedAt: { $gte: params.windowStart, $lt: params.windowEnd },
         },
         {
-          // Sin `note`: strip obligatorio del digest.
+          // Sin `note` / tags / pinned de grupo (ADR-035; D7 de group-link-tags-pinned): strip obligatorio del digest.
           projection: { linkId: 1, sharedAt: 1 },
         },
       )

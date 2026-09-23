@@ -1,4 +1,4 @@
-import type { LinkPage, ListLinksQuery } from '@linkvault/shared';
+import type { LinkPage, ListGroupLinksQuery } from '@linkvault/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import { GroupNotFound } from '../../groups/domain/errors';
 import type { GroupLinkComment } from '../domain/group-link-comment';
@@ -7,7 +7,7 @@ import {
   toCommentsSummary,
   toShareNoteView,
 } from './comment.mapper';
-import { encodeCursor, toLinkListQuery } from './link-cursor';
+import { encodeCursor, toGroupLinkListQuery } from './link-cursor';
 import { displayNameIdsOf, toJobLinkSummary, toLinkSharer } from './link.mapper';
 import {
   GROUP_LINK_COMMENT_REPOSITORY,
@@ -60,17 +60,15 @@ export class ListGroupLinks {
   async execute(
     userId: string,
     groupId: string,
-    query: ListLinksQuery,
+    query: ListGroupLinksQuery,
   ): Promise<LinkPage> {
     const members = new Set(await this.membership.memberIdsOf([groupId]));
     if (!members.has(userId)) {
       throw new GroupNotFound();
     }
-    const page = await this.groupLinks.listByGroup(
-      groupId,
-      toLinkListQuery(query),
-    );
-    const total = await this.groupLinks.countByGroup(groupId);
+    const listQuery = toGroupLinkListQuery(query);
+    const page = await this.groupLinks.listByGroup(groupId, listQuery);
+    const total = await this.groupLinks.countByGroup(groupId, listQuery);
     const latest = await this.comments.latestByLinks(
       groupId,
       page.items.map((item) => item.link.id),
@@ -114,6 +112,8 @@ function toGroupItem(
     commentCount: 0,
     commentsRevision: 0,
     knowSomeoneUserIds: [],
+    tags: [],
+    pinned: false,
   };
   const knowSomeoneUserIds = inGroup.knowSomeoneUserIds ?? [];
   return toJobLinkSummary(item.link, {
@@ -145,5 +145,8 @@ function toGroupItem(
       flaggedByMe: knowSomeoneUserIds.includes(viewerId),
       count: knowSomeoneUserIds.length,
     },
+    // Siempre presentes en el listado del grupo (D4 de group-link-tags-pinned); la lista privada no los proyecta.
+    tags: [...(inGroup.tags ?? [])],
+    pinned: inGroup.pinned ?? false,
   });
 }

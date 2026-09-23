@@ -39,6 +39,8 @@ interface StoredGroupLink extends StoredRelation {
   commentsRevision: number;
   publicShare?: PublicShare;
   knowSomeoneUserIds: string[];
+  tags: string[];
+  pinned: boolean;
 }
 
 /** Sesión de mentira de las transacciones de este doble. */
@@ -92,6 +94,8 @@ export class InMemoryGroupLinkRepository implements GroupLinkRepository {
       commentCount: 0,
       commentsRevision: 0,
       knowSomeoneUserIds: [],
+      tags: [],
+      pinned: false,
       // La visibilidad por defecto del grupo solo alcanza a la relación **nueva** (D3): el enlace del primero, arriba,
       // no se toca. Como en Mongo, aquí NO se reintenta el slug: la colisión sube y la resuelve quien repita el alta.
       ...(input.publish === true
@@ -134,7 +138,10 @@ export class InMemoryGroupLinkRepository implements GroupLinkRepository {
       return { items: [] };
     }
     return await pageOf(
-      this.relations.filter((relation) => relation.groupId === groupId),
+      this.relations.filter(
+        (relation) =>
+          relation.groupId === groupId && matchesGroupLinkFilter(relation, query),
+      ),
       query,
       this.links,
       (relation) => relation.sharedBy,
@@ -147,17 +154,23 @@ export class InMemoryGroupLinkRepository implements GroupLinkRepository {
           ? {}
           : { publicShare: { ...relation.publicShare } }),
         knowSomeoneUserIds: [...relation.knowSomeoneUserIds],
+        tags: [...relation.tags],
+        pinned: relation.pinned,
       }),
     );
   }
 
-  countByGroup(groupId: string): Promise<number> {
+  countByGroup(groupId: string, query?: LinkListQuery): Promise<number> {
     this.countByGroupCalls += 1;
     if (!isGroupId(groupId)) {
       return Promise.resolve(0);
     }
     return Promise.resolve(
-      this.relations.filter((relation) => relation.groupId === groupId).length,
+      this.relations.filter(
+        (relation) =>
+          relation.groupId === groupId &&
+          matchesGroupLinkFilter(relation, query ?? {}),
+      ).length,
     );
   }
 
@@ -322,6 +335,32 @@ export class InMemoryGroupLinkRepository implements GroupLinkRepository {
     });
   }
 
+  setTags(
+    groupId: string,
+    linkId: string,
+    tags: readonly string[],
+  ): Promise<readonly string[] | null> {
+    const relation = this.relationOf(groupId, linkId);
+    if (relation === undefined) {
+      return Promise.resolve(null);
+    }
+    relation.tags = [...tags];
+    return Promise.resolve([...relation.tags]);
+  }
+
+  setPinned(
+    groupId: string,
+    linkId: string,
+    pinned: boolean,
+  ): Promise<boolean | null> {
+    const relation = this.relationOf(groupId, linkId);
+    if (relation === undefined) {
+      return Promise.resolve(null);
+    }
+    relation.pinned = pinned;
+    return Promise.resolve(relation.pinned);
+  }
+
   /** Alta directa para preparar un test, sin pasar por el caso de uso. */
   async seed(input: ShareInGroupInput): Promise<GroupLink> {
     const { relation } = await this.share(input, {});
@@ -389,7 +428,23 @@ function toGroupLink(relation: StoredGroupLink): GroupLink {
       ? {}
       : { publicShare: { ...relation.publicShare } }),
     knowSomeoneUserIds: [...relation.knowSomeoneUserIds],
+    tags: [...relation.tags],
+    pinned: relation.pinned,
   };
+}
+
+/** Mismo criterio que `groupLinkListFilter` de Mongo: pinned=false incluye ausente; tag = contiene. */
+function matchesGroupLinkFilter(
+  relation: StoredGroupLink,
+  query: Pick<LinkListQuery, 'pinned' | 'tag'>,
+): boolean {
+  if (query.pinned !== undefined && relation.pinned !== query.pinned) {
+    return false;
+  }
+  if (query.tag !== undefined && !relation.tags.includes(query.tag)) {
+    return false;
+  }
+  return true;
 }
 
 function countersOf(relation: StoredGroupLink): CommentsCounters {

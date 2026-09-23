@@ -1265,6 +1265,54 @@
             alguien ahí}}</source>
         <target>{VAR_PLURAL, plural, =1 {1 person knows someone there} other {<x id="INTERPOLATION"/> people know someone there}}</target>
       </trans-unit>
+      <trans-unit id="links.pinned.on" datatype="html">
+        <source>Fijado</source>
+        <target>Pinned</target>
+      </trans-unit>
+      <trans-unit id="links.pinned.off" datatype="html">
+        <source>Fijar</source>
+        <target>Pin</target>
+      </trans-unit>
+      <trans-unit id="links.pinned.hint" datatype="html">
+        <source>Lista corta del grupo (no sube al inicio)</source>
+        <target>Group shortlist (does not move to the top)</target>
+      </trans-unit>
+      <trans-unit id="links.tags.edit" datatype="html">
+        <source> Editar etiquetas </source>
+        <target>Edit tags</target>
+      </trans-unit>
+      <trans-unit id="links.tags.editorLabel" datatype="html">
+        <source>Etiquetas (separadas por coma)</source>
+        <target>Tags (comma-separated)</target>
+      </trans-unit>
+      <trans-unit id="links.tags.save" datatype="html">
+        <source> Guardar etiquetas </source>
+        <target>Save tags</target>
+      </trans-unit>
+      <trans-unit id="links.tags.cancel" datatype="html">
+        <source> Cancelar </source>
+        <target>Cancel</target>
+      </trans-unit>
+      <trans-unit id="links.filter.pinnedOnly" datatype="html">
+        <source> Solo fijados </source>
+        <target>Pinned only</target>
+      </trans-unit>
+      <trans-unit id="links.filter.pinnedHint" datatype="html">
+        <source> Muestra la lista corta del grupo. Fijar no cambia el orden del listado. </source>
+        <target> Shows the group shortlist. Pinning does not change list order. </target>
+      </trans-unit>
+      <trans-unit id="links.filter.tagLabel" datatype="html">
+        <source>Filtrar por etiqueta</source>
+        <target>Filter by tag</target>
+      </trans-unit>
+      <trans-unit id="links.filter.tagApply" datatype="html">
+        <source> Filtrar </source>
+        <target>Filter</target>
+      </trans-unit>
+      <trans-unit id="links.filter.tagClear" datatype="html">
+        <source> Quitar etiqueta </source>
+        <target>Clear tag</target>
+      </trans-unit>
       <trans-unit id="comments.note.from" datatype="html">
         <source>Nota de <x id="INTERPOLATION" equiv-text="{{ sharer.displayName }}"/></source>
         <target>Note from <x id="INTERPOLATION" equiv-text="{{ sharer.displayName }}"/></target>

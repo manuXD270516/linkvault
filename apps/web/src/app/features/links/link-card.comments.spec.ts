@@ -242,4 +242,59 @@ describe('LinkCard: nota y comentarios del grupo', () => {
     expect(one('link-know-someone')).toBeNull();
     expect(one('link-know-someone-toggle')).toBeNull();
   });
+
+  it('shows pin control and tags in group view', async () => {
+    await render({
+      ...bare,
+      pinned: false,
+      tags: ['remoto', 'senior'],
+    });
+    let pinned: boolean | undefined;
+    let savedTags: string[] | undefined;
+    fixture.componentInstance.togglePinned.subscribe((value) => {
+      pinned = value;
+    });
+    fixture.componentInstance.saveTags.subscribe((value) => {
+      savedTags = value;
+    });
+
+    expect(one('link-pin-toggle')?.textContent?.trim()).toBe('Fijar');
+    expect(one('link-pin-hint')?.textContent?.trim()).toContain('no sube al inicio');
+    expect(all('link-tag-chip').map((chip) => chip.textContent?.trim())).toEqual([
+      'remoto',
+      'senior',
+    ]);
+
+    one('link-pin-toggle')?.click();
+    expect(pinned).toBe(true);
+
+    one('link-tags-edit')?.click();
+    await fixture.whenStable();
+    const input = one('link-tags-input') as HTMLInputElement;
+    expect(input.value).toBe('remoto, senior');
+    input.value = 'remoto, mid';
+    input.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+    one('link-tags-save')?.click();
+    expect(savedTags).toEqual(['remoto', 'mid']);
+  });
+
+  it('shows pinned state with aria-pressed', async () => {
+    await render({ ...bare, pinned: true, tags: [] });
+
+    expect(one('link-pin-toggle')?.getAttribute('aria-pressed')).toBe('true');
+    expect(one('link-pin-toggle')?.textContent?.trim()).toBe('Fijado');
+  });
+
+  it('hides pin and tags on the private list', async () => {
+    await render(
+      { ...bare, pinned: true, tags: ['remoto'] },
+      { groupView: false },
+    );
+
+    expect(one('link-pinned')).toBeNull();
+    expect(one('link-pin-toggle')).toBeNull();
+    expect(one('link-tags')).toBeNull();
+    expect(one('link-tags-edit')).toBeNull();
+  });
 });

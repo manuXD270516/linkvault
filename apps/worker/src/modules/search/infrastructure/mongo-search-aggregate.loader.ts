@@ -187,6 +187,7 @@ export class MongoSearchAggregateLoader implements SearchAggregateLoader {
       | { text?: string; authorId?: string }
       | undefined;
     if (note === undefined || typeof note.text !== 'string') return null;
+    // Solo nota de share: tags/pinned de group_links NO entran al índice Meili (D7 de group-link-tags-pinned).
     return {
       id: searchDocumentId('group_link_note', relationKey),
       docType: 'group_link_note',

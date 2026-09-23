@@ -111,6 +111,15 @@ export interface GroupLinkDocument {
    * sin duplicados gracias a `$addToSet`. Un doc anterior al change se lee como vacío.
    */
   knowSomeoneUserIds?: Types.ObjectId[];
+  /**
+   * Tags libres de la relación (D3 de group-link-tags-pinned). Ausente o `[]` si nadie; un doc anterior se lee como
+   * vacío. Mutaciones con `$set` replace del array completo.
+   */
+  tags?: string[];
+  /**
+   * Flag de fijado (D2). Ausente = `false` en lectura. Mutación con `$set`.
+   */
+  pinned?: boolean;
 }
 
 export interface UserLinkDocument {
@@ -220,6 +229,18 @@ export const groupLinkSchema = new Schema<GroupLinkDocument>(
     knowSomeoneUserIds: {
       type: [{ type: Schema.Types.ObjectId }],
       required: false,
+    },
+    // Tags y pinned (D2/D3 de group-link-tags-pinned). Defaults en schema para altas nuevas; un doc viejo sin el
+    // campo se lee como [] / false en el mapper. Índice por tag diferido (ADR-044).
+    tags: {
+      type: [{ type: String }],
+      required: false,
+      default: [],
+    },
+    pinned: {
+      type: Boolean,
+      required: false,
+      default: false,
     },
   },
   { ...schemaOptions, collection: GROUP_LINKS_COLLECTION },
