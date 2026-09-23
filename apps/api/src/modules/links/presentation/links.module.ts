@@ -56,6 +56,7 @@ import { RemoveMyLink } from '../application/remove-my-link.usecase';
 import { RemoveShareNote } from '../application/remove-share-note.usecase';
 import { RequestLinkEnrichment } from '../application/request-link-enrichment.usecase';
 import { SaveLink } from '../application/save-link.usecase';
+import { SetKnowSomeone } from '../application/set-know-someone.usecase';
 import { UpdateLinkPreview } from '../application/update-link-preview.usecase';
 import { GroupLinksDeletionHook } from '../infrastructure/group-links-deletion.hook';
 import { CommentsChangedSubscription } from '../infrastructure/comments-changed.subscription';
@@ -218,6 +219,7 @@ import { PublicPreviewsController } from './public-previews.controller';
     RemoveShareNote,
     PublishGroupLink,
     UnpublishGroupLink,
+    SetKnowSomeone,
     GetPublicPreview,
     DeliverCommentsChanged,
     CommentsChangedSubscription,

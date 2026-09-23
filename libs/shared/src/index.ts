@@ -21,6 +21,7 @@ export * from './schemas/cv.schema';
 export * from './schemas/group.schema';
 export * from './schemas/group-link-comment.schema';
 export * from './schemas/health.schema';
+export * from './schemas/know-someone.schema';
 export * from './schemas/link.schema';
 export * from './schemas/match.schema';
 export * from './schemas/notifications.schema';

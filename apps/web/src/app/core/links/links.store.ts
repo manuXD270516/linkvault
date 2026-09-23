@@ -6,6 +6,7 @@ import type {
   GroupLinkCommentsMessage,
   ImportLinksResponse,
   JobLinkSummary,
+  KnowSomeoneState,
   LinkPage,
   PastedDescriptionRequest,
   PreviewFieldName,
@@ -432,6 +433,22 @@ export const LinksStore = signalStore(
       },
 
       /**
+       * Marca o desmarca know-someone y **fusiona** el DTO slim en el ítem (D2/D6 de know-someone-flag), sin reemplazar
+       * la tarjeta entera ni perder note/comments/publicShare.
+       */
+      async setKnowSomeone(
+        groupId: string,
+        linkId: string,
+        flagged: boolean,
+      ): Promise<KnowSomeoneState> {
+        const knowSomeone = await api.setKnowSomeone(groupId, linkId, { flagged });
+        if (groupIdOf(store.scope()) === groupId) {
+          updateItem(linkId, (item) => ({ ...item, knowSomeone }));
+        }
+        return knowSomeone;
+      },
+
+      /**
        * Quita el link de la lista abierta (solo la relación) y recarga; si al responder ya está abierta otra lista, no
        * la recarga (design D4).
        */
@@ -503,6 +520,7 @@ function readingOf(page: LinkPage): ReadingProgress | null {
 function keepGroupContext(current: JobLinkSummary, incoming: JobLinkSummary): JobLinkSummary {
   const note = incoming.note ?? current.note;
   const publicShare = incoming.publicShare ?? current.publicShare;
+  const knowSomeone = incoming.knowSomeone ?? current.knowSomeone;
   const comments =
     incoming.comments === undefined || !isNewerSummary(current.comments, incoming.comments)
       ? current.comments
@@ -511,6 +529,7 @@ function keepGroupContext(current: JobLinkSummary, incoming: JobLinkSummary): Jo
     ...incoming,
     ...(note === undefined ? {} : { note }),
     ...(publicShare === undefined ? {} : { publicShare }),
+    ...(knowSomeone === undefined ? {} : { knowSomeone }),
     ...(comments === undefined ? {} : { comments }),
   };
 }

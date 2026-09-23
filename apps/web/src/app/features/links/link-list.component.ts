@@ -416,6 +416,32 @@ export class LinkList {
   }
 
   /**
+   * Marca o desmarca know-someone y deja la tarjeta con el DTO slim mergeado (spec web/links know-someone). Solo en
+   * vista de grupo; la lista privada no emite el evento.
+   */
+  protected async toggleKnowSomeone(link: JobLinkSummary, flagged: boolean): Promise<void> {
+    const groupId = this.groupId();
+    if (groupId === null || this.working()) {
+      return;
+    }
+    this.working.set(true);
+    this.failure.set(null);
+    try {
+      await this.store.setKnowSomeone(groupId, link.id, flagged);
+    } catch (error: unknown) {
+      this.failure.set(toRequestFailure(error));
+      if (
+        hasApiErrorCode(error, 404, 'link_not_found') ||
+        hasApiErrorCode(error, 404, 'group_not_found')
+      ) {
+        void this.store.reload();
+      }
+    } finally {
+      this.working.set(false);
+    }
+  }
+
+  /**
    * Quién puede encender y apagar el enlace público: en un grupo, quien compartió el link y el propietario (ADR-027
    * §2). La **marca** de que está publicado la ve cualquier miembro, y eso lo decide la tarjeta.
    */

@@ -154,6 +154,7 @@ describe('find, listByGroup and countByGroup', () => {
       sharedAt: now,
       commentCount: 0,
       commentsRevision: 0,
+      knowSomeoneUserIds: [],
     });
   });
 
@@ -640,5 +641,38 @@ describe('el enlace público vive con la relación', () => {
 
     expect(again.relation.publicShare?.slug).not.toBe(burnt);
     await expect(groupLinks.findByPublicSlug(burnt)).resolves.toBeNull();
+  });
+});
+
+describe('setKnowSomeone (know-someone-flag)', () => {
+  it('adds and pulls atomically without duplicates', async () => {
+    const { linkId } = await shareLink(JOB_PAGE, BACKEND, ANA);
+
+    expect(
+      await groupLinks.setKnowSomeone(BACKEND, linkId, ANA, true),
+    ).toEqual({ flaggedByMe: true, count: 1 });
+    expect(
+      await groupLinks.setKnowSomeone(BACKEND, linkId, ANA, true),
+    ).toEqual({ flaggedByMe: true, count: 1 });
+    expect(
+      await groupLinks.setKnowSomeone(BACKEND, linkId, BETO, true),
+    ).toEqual({ flaggedByMe: true, count: 2 });
+    expect(
+      await groupLinks.setKnowSomeone(BACKEND, linkId, ANA, false),
+    ).toEqual({ flaggedByMe: false, count: 1 });
+
+    const relation = await groupLinks.find(BACKEND, linkId);
+    expect(relation?.knowSomeoneUserIds).toEqual([BETO]);
+  });
+
+  it('answers null when the relation is missing', async () => {
+    expect(
+      await groupLinks.setKnowSomeone(
+        BACKEND,
+        new mongoose.Types.ObjectId().toHexString(),
+        ANA,
+        true,
+      ),
+    ).toBeNull();
   });
 });

@@ -90,6 +90,7 @@ export class ListGroupLinks {
           names,
           members,
           this.urls,
+          userId,
         ),
       ),
       total,
@@ -107,8 +108,14 @@ function toGroupItem(
   names: Map<string, string>,
   members: ReadonlySet<string>,
   urls: PublicUrls,
+  viewerId: string,
 ): LinkPage['items'][number] {
-  const inGroup = item.inGroup ?? { commentCount: 0, commentsRevision: 0 };
+  const inGroup = item.inGroup ?? {
+    commentCount: 0,
+    commentsRevision: 0,
+    knowSomeoneUserIds: [],
+  };
+  const knowSomeoneUserIds = inGroup.knowSomeoneUserIds ?? [];
   return toJobLinkSummary(item.link, {
     sharedAt: item.sharedAt,
     names,
@@ -133,5 +140,10 @@ function toGroupItem(
       names,
       members,
     ),
+    // Siempre presente en el listado del grupo (D3 de know-someone-flag); la lista privada no lo proyecta.
+    knowSomeone: {
+      flaggedByMe: knowSomeoneUserIds.includes(viewerId),
+      count: knowSomeoneUserIds.length,
+    },
   });
 }

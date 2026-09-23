@@ -26,6 +26,11 @@ export interface GroupLink {
   readonly commentsRevision: number;
   /** Enlace público de esta relación, si está publicada (D1 de public-preview-share). */
   readonly publicShare?: PublicShare;
+  /**
+   * UserIds que marcaron «conozco a alguien ahí» (D1 de know-someone-flag). Vacío si nadie; sin duplicados. Un documento
+   * anterior al change se lee como `[]`.
+   */
+  readonly knowSomeoneUserIds: readonly string[];
 }
 
 /**
@@ -155,4 +160,14 @@ export interface GroupLinkRepository {
   ): Promise<CommentsCounters | null>;
   /** Quita la nota de la relación, la hubiera o no; `false` si la relación no existe. */
   clearNote(groupId: string, linkId: string): Promise<boolean>;
+  /**
+   * Marca o desmarca «conozco a alguien ahí» de forma atómica (D1 de know-someone-flag): `$addToSet` si `flagged`,
+   * `$pull` si no. Devuelve el documento **after** como `{ flaggedByMe, count }`, o `null` si la relación no existe.
+   */
+  setKnowSomeone(
+    groupId: string,
+    linkId: string,
+    userId: string,
+    flagged: boolean,
+  ): Promise<{ readonly flaggedByMe: boolean; readonly count: number } | null>;
 }

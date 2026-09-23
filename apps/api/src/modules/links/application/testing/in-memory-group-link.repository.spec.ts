@@ -61,6 +61,7 @@ describe('share', () => {
       sharedAt: now,
       commentCount: 0,
       commentsRevision: 0,
+      knowSomeoneUserIds: [],
     });
   });
 
@@ -101,6 +102,7 @@ describe('find and listByGroup', () => {
       sharedAt: now,
       commentCount: 0,
       commentsRevision: 0,
+      knowSomeoneUserIds: [],
     });
   });
 
@@ -349,6 +351,7 @@ describe('the comment counters', () => {
       note: { text: 'Mira', createdAt: now },
       commentCount: 1,
       commentsRevision: 1,
+      knowSomeoneUserIds: [],
     });
   });
 });

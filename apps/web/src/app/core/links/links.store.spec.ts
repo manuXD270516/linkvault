@@ -869,6 +869,31 @@ describe('LinksStore', () => {
       expect(store.items()[0]?.note).toBeUndefined();
       expect(store.items()[0]?.comments?.count).toBe(2);
     });
+
+    it('merges know-someone slim DTO without losing note or comments', async () => {
+      await openGroup({
+        items: [
+          {
+            ...linkWithContext('l1'),
+            knowSomeone: { flaggedByMe: false, count: 1 },
+          },
+        ],
+        total: 1,
+      });
+
+      const toggling = store.setKnowSomeone('g1', 'l1', true);
+      http
+        .expectOne({ method: 'PUT', url: '/api/groups/g1/links/l1/know-someone' })
+        .flush({ flaggedByMe: true, count: 2 });
+      await toggling;
+
+      await settle();
+      http.expectNone(GROUP_PAGE);
+      const item = store.items()[0];
+      expect(item?.knowSomeone).toEqual({ flaggedByMe: true, count: 2 });
+      expect(item?.note?.text).toBe('Esta es la que te dije');
+      expect(item?.comments?.count).toBe(2);
+    });
   });
 
   describe('public link', () => {

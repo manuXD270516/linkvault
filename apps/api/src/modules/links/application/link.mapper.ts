@@ -2,6 +2,7 @@ import {
   PREVIEW_FIELD_NAMES,
   type CommentsSummary,
   type JobLinkSummary,
+  type KnowSomeoneState,
   type LinkPage,
   type LinkSharer,
   type PreviewFieldName,
@@ -48,6 +49,11 @@ export interface SummaryContext {
    * grupo y en la respuesta de guardar en uno: la lista privada NO lo lleva nunca.
    */
   readonly publicShare?: PublicShareView;
+  /**
+   * Flag know-someone (D3 de know-someone-flag). Solo en el listado de un grupo: **siempre** presente ahí. La lista
+   * privada NO lo lleva nunca.
+   */
+  readonly knowSomeone?: KnowSomeoneState;
 }
 
 /** Link con cómo llegó a la lista. `sharedBy` falta en la lista privada, donde no hay con quién compartir. */
@@ -88,6 +94,9 @@ export function toJobLinkSummary(
     ...(options.publicShare === undefined
       ? {}
       : { publicShare: options.publicShare }),
+    ...(options.knowSomeone === undefined
+      ? {}
+      : { knowSomeone: options.knowSomeone }),
   };
 }
 

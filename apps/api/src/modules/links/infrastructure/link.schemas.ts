@@ -106,6 +106,11 @@ export interface GroupLinkDocument {
    * solo. Despublicar lo borra entero con un `$unset`, de modo que el slug se quema.
    */
   publicShare?: { slug: string; publishedBy: Types.ObjectId; publishedAt: Date };
+  /**
+   * Miembros que marcaron «conozco a alguien ahí» en esta relación (D1 de know-someone-flag). Ausente o `[]` si nadie;
+   * sin duplicados gracias a `$addToSet`. Un doc anterior al change se lee como vacío.
+   */
+  knowSomeoneUserIds?: Types.ObjectId[];
 }
 
 export interface UserLinkDocument {
@@ -208,6 +213,12 @@ export const groupLinkSchema = new Schema<GroupLinkDocument>(
         },
         { _id: false, versionKey: false, strict: true },
       ),
+      required: false,
+    },
+    // Flag «conozco a alguien ahí» (D1 de know-someone-flag). Sin default en schema: un doc viejo no lo tiene y se
+    // lee como []. Las mutaciones usan $addToSet / $pull atómicos; no hay campo contador denormalizado.
+    knowSomeoneUserIds: {
+      type: [{ type: Schema.Types.ObjectId }],
       required: false,
     },
   },

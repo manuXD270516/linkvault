@@ -73,6 +73,8 @@ export class LinkCard {
   readonly openComments = output<void>();
   /** Quitar la nota; la confirmación (propia o ajena) la pide `LinkList`, que sabe quién mira. */
   readonly removeNote = output<void>();
+  /** Marcar o desmarcar know-someone; `LinkList` llama al PUT y mergea el DTO slim. */
+  readonly toggleKnowSomeone = output<boolean>();
   /** Encender el enlace público; la confirmación que dice el alcance la pide `LinkList`. */
   readonly publish = output<void>();
   /** Apagarlo; su confirmación avisa de que el enlace deja de funcionar para quien ya lo tenga. */
@@ -103,6 +105,16 @@ export class LinkCard {
 
   /** La nota de quien compartió, solo en el grupo. */
   protected readonly shareNote = computed(() => (this.groupView() ? (this.link().note ?? null) : null));
+
+  /**
+   * Estado know-someone, solo en el grupo (D6 de know-someone-flag). La lista privada no muestra el control aunque el
+   * link lo tuviera en algún grupo. Si el listado aún no lo trajo, se asume sin marcar.
+   */
+  protected readonly knowSomeone = computed(() =>
+    this.groupView()
+      ? (this.link().knowSomeone ?? { flaggedByMe: false, count: 0 })
+      : null,
+  );
 
   /**
    * El enlace público del link, solo en el grupo: la lista privada no lo lleva nunca, porque un link privado no se

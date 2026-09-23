@@ -54,6 +54,7 @@ menos:
 - `group_link_comments` de esa persona (**borrar**, no anonimizar); al borrar, SHALL actualizar `commentCount` y
   `commentsRevision` en las `group_links` afectadas como el procedimiento del RUNBOOK (ADR-026);
 - `$unset` de `note` en `group_links` donde `sharedBy` es esa persona (la relación MAY permanecer);
+- `$pull` del `userId` borrado de `knowSomeoneUserIds` en todos los `group_links` donde figure;
 - `publicShare` de las relaciones que esa persona publicó (unset / despublicar; ver `links/public-share`);
 - `user_links` de esa persona (`deleteMany` por `userId`);
 - `cv_documents`, contadores de CV asociados y objetos S3 bajo el prefijo `userId/` del bucket de CV;
