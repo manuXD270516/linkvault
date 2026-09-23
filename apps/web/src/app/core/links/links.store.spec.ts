@@ -697,6 +697,28 @@ describe('LinksStore', () => {
       ]);
     });
 
+    /** `closedAt`/`closedReason` del summary tipado (ADR-037): el aviso SSE los pinta en el store sin perder el grupo. */
+    it('aplica closedAt y closedReason del aviso sin borrar el contexto de grupo', async () => {
+      await openGroup({ items: [linkWithContext('l1')], total: 1 });
+      const closed: JobLinkSummary = {
+        ...linkWith('l1'),
+        previewStatus: 'enriched',
+        previewVersion: 2,
+        preview: { title: 'Backend Engineer', company: 'Acme' },
+        closedAt: '2026-09-22T12:00:00.000Z',
+        closedReason: 'recheck',
+      };
+
+      store.applyEnriched(closed);
+
+      const [card] = store.items();
+      expect(card?.closedAt).toBe('2026-09-22T12:00:00.000Z');
+      expect(card?.closedReason).toBe('recheck');
+      expect(card?.preview?.title).toBe('Backend Engineer');
+      expect(card?.note?.text).toBe('Esta es la que te dije');
+      expect(card?.comments?.count).toBe(2);
+    });
+
     it('Corregir el preview no borra los comentarios', async () => {
       await openGroup({ items: [linkWithContext('l1')], total: 1 });
 

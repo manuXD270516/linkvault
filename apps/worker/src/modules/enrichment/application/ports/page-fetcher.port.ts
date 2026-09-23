@@ -20,6 +20,7 @@ export type PageFetchFailureReason = Extract<
   | 'robots_disallowed'
   | 'blocked'
   | 'rate_limited'
+  | 'not_found'
   | 'not_html'
   | 'too_large'
   | 'timeout'

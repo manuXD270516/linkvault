@@ -56,6 +56,13 @@ export const platformSchema = z.enum([
 export type Platform = z.infer<typeof platformSchema>;
 
 /**
+ * Por qué se marcó la vacante como cerrada (ADR-037). Ortogonal a `previewStatus`: el preview útil se conserva.
+ * `calendar` = `expiresAt` pasado; `recheck` = relectura de frescura con señal inequívoca.
+ */
+export const closedReasonSchema = z.enum(['calendar', 'recheck']);
+export type ClosedReason = z.infer<typeof closedReasonSchema>;
+
+/**
  * Estado del preview de una vacante. `pending` lo pone `api` al guardar el link y al pedir su relectura; los otros
  * cuatro los escribe el worker al terminar el enriquecimiento (D5 de link-enrichment), salvo `manual`, que también lo
  * pone la edición a mano. `pending` significa dos cosas para quien mira —"se está leyendo" y "nadie la ha leído
@@ -157,6 +164,9 @@ export const jobLinkSummarySchema = z.strictObject({
   previewSources: resolvedPreviewSourcesSchema.optional(),
   lastEnrichmentError: lastEnrichmentErrorSchema.optional(),
   previewRequestedAt: z.iso.datetime().optional(),
+  /** Ausente mientras la vacante sigue abierta (ADR-037). */
+  closedAt: z.iso.datetime().optional(),
+  closedReason: closedReasonSchema.optional(),
   sharedBy: linkSharerSchema.optional(),
   sharedAt: z.iso.datetime(),
   // Solo en el listado de un grupo (D7 de group-comments): la nota de quien lo compartió, si la tiene, y el resumen de

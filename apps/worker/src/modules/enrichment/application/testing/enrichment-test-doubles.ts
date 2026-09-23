@@ -254,8 +254,45 @@ export class InMemoryLinkRepository implements LinkRepository {
       previewVersion: expectedVersion + 1,
       preview: write.preview,
       previewSources: write.previewSources,
+      ...(write.lastFreshnessCheckAt === undefined
+        ? {}
+        : { lastFreshnessCheckAt: write.lastFreshnessCheckAt }),
     });
     return Promise.resolve(true);
+  }
+
+  closeIfOpen(
+    linkId: string,
+    write: {
+      readonly closedAt: Date;
+      readonly closedReason: 'calendar' | 'recheck';
+      readonly lastFreshnessCheckAt: Date;
+    },
+  ): Promise<boolean> {
+    const link = this.links.get(linkId);
+    if (link === undefined) return Promise.resolve(false);
+    if (link.closedAt !== undefined) {
+      this.links.set(linkId, {
+        ...link,
+        lastFreshnessCheckAt: write.lastFreshnessCheckAt,
+      });
+      return Promise.resolve(false);
+    }
+    this.links.set(linkId, {
+      ...link,
+      closedAt: write.closedAt,
+      closedReason: write.closedReason,
+      lastFreshnessCheckAt: write.lastFreshnessCheckAt,
+    });
+    return Promise.resolve(true);
+  }
+
+  touchFreshnessCheck(linkId: string, at: Date): Promise<void> {
+    const link = this.links.get(linkId);
+    if (link !== undefined) {
+      this.links.set(linkId, { ...link, lastFreshnessCheckAt: at });
+    }
+    return Promise.resolve();
   }
 
   saveSnapshotKey(linkId: string, snapshotKey: string): Promise<void> {

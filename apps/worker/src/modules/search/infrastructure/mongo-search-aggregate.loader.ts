@@ -105,6 +105,11 @@ export class MongoSearchAggregateLoader implements SearchAggregateLoader {
       ...(salaryText === undefined || salaryText.length === 0
         ? {}
         : { salaryText }),
+      ...(link['closedAt'] instanceof Date
+        ? { closedAt: (link['closedAt'] as Date).toISOString() }
+        : typeof link['closedAt'] === 'string'
+          ? { closedAt: link['closedAt'] }
+          : {}),
     };
   }
 

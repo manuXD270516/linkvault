@@ -254,7 +254,8 @@ describe('Respuestas del sitio que no son nuestras', () => {
       [401, 'blocked'],
       [403, 'blocked'],
       [429, 'rate_limited'],
-      [404, 'http_error'],
+      [404, 'not_found'],
+      [410, 'not_found'],
       [500, 'http_error'],
     ];
 

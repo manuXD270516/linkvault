@@ -20,6 +20,7 @@ const FILTERABLE = [
   'embeddingStatus',
   'embedModelId',
   'embeddingDim',
+  'closedAt',
 ] as const;
 
 const SEARCHABLE = [

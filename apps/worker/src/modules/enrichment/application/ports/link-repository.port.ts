@@ -1,5 +1,7 @@
 import type {
+  ClosedReason,
   EnrichmentFailureReason,
+  Platform,
   PreviewSources,
   PreviewStatus,
   StoredPreview,
@@ -14,7 +16,7 @@ import type {
 
 export const LINK_REPOSITORY = Symbol('LINK_REPOSITORY');
 
-/** El link tal y como lo necesita el enriquecimiento. */
+/** El link tal y como lo necesita el enriquecimiento (y el cierre por frescura). */
 export interface EnrichableLink {
   readonly id: string;
   /**
@@ -34,6 +36,11 @@ export interface EnrichableLink {
   readonly previewVersion: number;
   readonly preview: StoredPreview;
   readonly previewSources: PreviewSources;
+  readonly platform?: Platform;
+  readonly closedAt?: Date;
+  readonly closedReason?: ClosedReason;
+  readonly lastFreshnessCheckAt?: Date;
+  readonly previewRequestedAt?: Date;
 }
 
 /** Lo que una pasada deja escrito en el link. */
@@ -47,6 +54,14 @@ export interface PreviewWrite {
     readonly at: string;
   } | null;
   readonly at: Date;
+  /** Solo en re-checks de frescura sin cierre: marca la revisión. */
+  readonly lastFreshnessCheckAt?: Date;
+}
+
+export interface CloseLinkWrite {
+  readonly closedAt: Date;
+  readonly closedReason: ClosedReason;
+  readonly lastFreshnessCheckAt: Date;
 }
 
 export interface LinkRepository {
@@ -66,6 +81,15 @@ export interface LinkRepository {
     expectedVersion: number,
     write: PreviewWrite,
   ): Promise<boolean>;
+
+  /**
+   * Marca la vacante como cerrada de forma idempotente: si ya tiene `closedAt`, no cambia la razón ni la fecha, pero
+   * sí puede refrescar `lastFreshnessCheckAt`. Devuelve `true` si esta pasada acaba de cerrar (primera vez).
+   */
+  closeIfOpen(linkId: string, write: CloseLinkWrite): Promise<boolean>;
+
+  /** Aplaza la próxima revisión de frescura sin cerrar ni fallar (plataformas no scrapeables). */
+  touchFreshnessCheck(linkId: string, at: Date): Promise<void>;
 
   /**
    * Guarda la clave del snapshot, **después** de haber ganado la escritura condicionada (D12). Es una escritura

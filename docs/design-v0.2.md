@@ -502,6 +502,7 @@ sequenceDiagram
 | 16 | `deploy-prod` | compose prod + Traefik + GHCR CD; borrado de cuenta; `/metrics`; **ADR-033** |
 | 17 | `notifications` | email + web push; nuevo link / estado grupo / ApplicationStale; prefs opt-out; **ADR-035** |
 | 18 | `search` | Meilisearch (compose profile `search`); índice híbrido full-text + embeddings; ACL; SPA `/buscar`; **ADR-036** (enmienda ADR-016) |
+| 19 | `job-link-freshness` | Re-check semanal + cierre calendario/`not_found`; auto-expire → `expired`; ASN worker claim; badge/SSE/search; **ADR-037** (enmienda ADR-035) |
 
 ---
 

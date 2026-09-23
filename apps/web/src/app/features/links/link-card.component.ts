@@ -132,6 +132,12 @@ export class LinkCard {
     return title === undefined || title.length === 0 ? linkLabel(this.link().displayUrl) : title;
   });
 
+  /**
+   * `true` cuando la vacante ya cerró (`closedAt`). La razón (`calendar` | `recheck`) no se enseña en la UI (D10): un
+   * solo badge "Oferta cerrada" basta, y el aviso SSE trae el campo sin recargar la lista.
+   */
+  protected readonly isClosed = computed(() => this.link().closedAt !== undefined);
+
   protected readonly company = computed(() => this.preview()?.company ?? null);
   protected readonly location = computed(() => this.preview()?.location ?? null);
   protected readonly modality = computed(() => modalityLabel(this.preview()?.modality));

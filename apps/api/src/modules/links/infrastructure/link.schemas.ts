@@ -72,6 +72,10 @@ export interface JobLinkDocument {
   snapshotKey?: string;
   /** Cuándo se pidió leer la oferta. Ausente en los links guardados antes de `link-enrichment`. */
   previewRequestedAt?: Date;
+  /** Cierre de vacante (ADR-037). Ausente = abierta. */
+  closedAt?: Date;
+  closedReason?: 'calendar' | 'recheck';
+  lastFreshnessCheckAt?: Date;
   createdBy: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
@@ -151,6 +155,13 @@ export const jobLinkSchema = new Schema<JobLinkDocument>(
     },
     snapshotKey: { type: String, required: false },
     previewRequestedAt: { type: Date, required: false },
+    closedAt: { type: Date, required: false },
+    closedReason: {
+      type: String,
+      required: false,
+      enum: ['calendar', 'recheck'],
+    },
+    lastFreshnessCheckAt: { type: Date, required: false },
     createdBy: { type: Schema.Types.ObjectId, required: true },
     createdAt: { type: Date, required: true },
     updatedAt: { type: Date, required: true },
@@ -166,6 +177,9 @@ jobLinkSchema.index({ dedupeKey: 1 }, { unique: true });
 // Reencolado por estado (`api:backfill-enrichment`, D10): los links de un estado en orden de `_id`, que es por donde el
 // comando avanza en tandas. Sin él, rescatar los `pending` de una base con cien mil vacantes sería un escaneo completo.
 jobLinkSchema.index({ previewStatus: 1, _id: 1 });
+// Detector de frescura (ADR-037): abiertas por cadencia / expiresAt y cascada sobre cerradas.
+jobLinkSchema.index({ closedAt: 1, lastFreshnessCheckAt: 1, _id: 1 });
+jobLinkSchema.index({ closedAt: 1, 'preview.expiresAt': 1, _id: 1 });
 
 export const groupLinkSchema = new Schema<GroupLinkDocument>(
   {

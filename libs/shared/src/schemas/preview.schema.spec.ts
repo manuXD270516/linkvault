@@ -558,6 +558,7 @@ describe('enrichmentFailureReasonSchema', () => {
       'rate_limited',
       'host_busy',
       'not_a_job',
+      'not_found',
       'not_html',
       'too_large',
       'timeout',
@@ -575,6 +576,7 @@ describe('enrichmentFailureReasonSchema', () => {
       'robots_disallowed',
       'blocked',
       'not_a_job',
+      'not_found',
     ]);
     expect(isRetryableEnrichmentReason('rate_limited')).toBe(true);
     expect(isRetryableEnrichmentReason('host_busy')).toBe(true);
@@ -583,6 +585,7 @@ describe('enrichmentFailureReasonSchema', () => {
     expect(isRetryableEnrichmentReason('blocked')).toBe(false);
     expect(isRetryableEnrichmentReason('robots_disallowed')).toBe(false);
     expect(isRetryableEnrichmentReason('not_a_job')).toBe(false);
+    expect(isRetryableEnrichmentReason('not_found')).toBe(false);
   });
 });
 

@@ -4,7 +4,11 @@ import { MongooseModule } from '@nestjs/mongoose';
 import type { Redis } from 'ioredis';
 import { APP_CONFIG } from '../../infrastructure/config/app-config.module';
 import type { WorkerConfig } from '../../infrastructure/config/worker-config.schema';
-import { EnrichLinkUseCase } from './application/enrich-link.usecase';
+import { CLOSE_JOB_LINK } from '../freshness/application/ports/freshness.ports';
+import {
+  EnrichLinkUseCase,
+  type CloseVacancyForRecheck,
+} from './application/enrich-link.usecase';
 import { ExtractPreviewService } from './application/extract-preview.service';
 import { AiExtractJobExtractor } from './application/extractors/ai-extract-job.extractor';
 import { CLOCK, type Clock } from './application/ports/clock.port';
@@ -93,6 +97,7 @@ export class EnrichmentModule {
   static register(
     config: WorkerConfig,
     aiModule: DynamicModule,
+    freshnessModule?: DynamicModule,
   ): DynamicModule {
     // `NODE_ENV=test` es lo único que apaga el consumidor: es la diferencia entre "el proceso existe para consumir" y
     // "la suite no habla con Redis".
@@ -103,6 +108,7 @@ export class EnrichmentModule {
       imports: [
         // `aiModule` es el mismo objeto que importa `AppModule`: `RUN_TASK` solo es visible para quien lo importa.
         aiModule,
+        ...(freshnessModule === undefined ? [] : [freshnessModule]),
         MongooseModule.forFeature([
           { name: JOB_LINK_MODEL_NAME, schema: jobLinkSchema },
         ]),
@@ -219,6 +225,7 @@ export class EnrichmentModule {
             ENRICHMENT_NOTIFIER,
             CLOCK,
             APP_CONFIG,
+            ...(freshnessModule === undefined ? [] : [CLOSE_JOB_LINK]),
           ],
           useFactory: (
             links: LinkRepository,
@@ -227,6 +234,7 @@ export class EnrichmentModule {
             notifier: EnrichmentNotifier,
             clock: Clock,
             worker: WorkerConfig,
+            closeVacancy?: CloseVacancyForRecheck,
           ) =>
             new EnrichLinkUseCase(
               links,
@@ -235,6 +243,7 @@ export class EnrichmentModule {
               notifier,
               clock,
               worker.ENRICH_DEADLINE_MS,
+              closeVacancy ?? null,
             ),
         },
         ...(consumerEnabled

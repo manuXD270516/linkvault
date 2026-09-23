@@ -428,6 +428,13 @@ export function toJobLink(document: JobLinkDocument): JobLink {
     ...(document.previewRequestedAt === undefined
       ? {}
       : { previewRequestedAt: document.previewRequestedAt }),
+    ...(document.closedAt === undefined ? {} : { closedAt: document.closedAt }),
+    ...(document.closedReason === undefined
+      ? {}
+      : { closedReason: document.closedReason }),
+    ...(document.lastFreshnessCheckAt === undefined
+      ? {}
+      : { lastFreshnessCheckAt: document.lastFreshnessCheckAt }),
     createdBy: document.createdBy.toHexString(),
     createdAt: document.createdAt,
     updatedAt: document.updatedAt,

@@ -1204,6 +1204,16 @@ Variables (ver `.env.example`): `FEATURE_SEARCH`, `MEILI_HOST`, `MEILI_MASTER_KE
 puerto ni la master key a Internet; solo api/worker en la misma red privada deben alcanzarlo. En local el puerto se
 publica solo para desarrollo en el host.
 
+### Frescura de vacantes (job-link-freshness / ADR-037)
+
+Variables (ver `.env.example`): `FEATURE_LINK_FRESHNESS`, `LINK_FRESHNESS_INTERVAL_DAYS`,
+`LINK_FRESHNESS_BATCH_LIMIT`.
+
+- Con `FEATURE_LINK_FRESHNESS=false` el detector del worker es no-op (sin re-check ni auto-expire).
+- Cada pasada prioriza la **cascada pendiente** (links ya cerrados con apps abiertas o ASN de grupo
+  sin confirmar) y el resto del lote va a links abiertos elegibles (cadencia o `expiresAt` pasado).
+- Cierre por calendario no scrapea; re-check usa `jobId` `fresh:{linkId}:{bucket}`.
+
 ---
 
 ## Paso 6 duodecies — Operar producción (deploy-prod / ADR-033)

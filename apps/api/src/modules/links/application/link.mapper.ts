@@ -75,6 +75,12 @@ export function toJobLinkSummary(
     previewRequestedAt: (
       link.previewRequestedAt ?? link.createdAt
     ).toISOString(),
+    ...(link.closedAt === undefined
+      ? {}
+      : { closedAt: link.closedAt.toISOString() }),
+    ...(link.closedReason === undefined
+      ? {}
+      : { closedReason: link.closedReason }),
     ...(options.sharedBy === undefined ? {} : { sharedBy: options.sharedBy }),
     sharedAt: options.sharedAt.toISOString(),
     ...(options.note === undefined ? {} : { note: options.note }),

@@ -37,6 +37,11 @@ export interface JobLinkDocument {
   lastEnrichmentError?: { reason: string; at: string };
   /** Clave del objeto en MinIO. Se lee de aquí, **nunca se calcula** a partir de `previewVersion` (D12). */
   snapshotKey?: string;
+  closedAt?: Date;
+  closedReason?: 'calendar' | 'recheck';
+  lastFreshnessCheckAt?: Date;
+  previewRequestedAt?: Date;
+  platform?: string;
   updatedAt: Date;
 }
 
@@ -70,6 +75,15 @@ export const jobLinkSchema = new Schema<JobLinkDocument>(
       required: false,
     },
     snapshotKey: { type: String, required: false },
+    closedAt: { type: Date, required: false },
+    closedReason: {
+      type: String,
+      required: false,
+      enum: ['calendar', 'recheck'],
+    },
+    lastFreshnessCheckAt: { type: Date, required: false },
+    previewRequestedAt: { type: Date, required: false },
+    platform: { type: String, required: false },
     updatedAt: { type: Date, required: true },
   },
   {

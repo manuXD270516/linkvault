@@ -76,6 +76,8 @@ function losingWriter(links: InMemoryLinkRepository): LinkRepository {
   return {
     findById: (linkId) => links.findById(linkId),
     writePreview: () => Promise.resolve(false),
+    closeIfOpen: (linkId, write) => links.closeIfOpen(linkId, write),
+    touchFreshnessCheck: (linkId, at) => links.touchFreshnessCheck(linkId, at),
     saveSnapshotKey: (linkId, key) => links.saveSnapshotKey(linkId, key),
   };
 }

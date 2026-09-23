@@ -10,6 +10,7 @@ import { CvModule } from '../modules/cv/cv.module';
 import { EnrichmentModule } from '../modules/enrichment/enrichment.module';
 import { MatchModule } from '../modules/match/match.module';
 import { NotificationsModule } from '../modules/notifications/notifications.module';
+import { FreshnessModule } from '../modules/freshness/freshness.module';
 import { SearchModule } from '../modules/search/search.module';
 import { HealthModule } from '../presentation/http/health.module';
 
@@ -30,6 +31,9 @@ export class AppModule {
       useFactory: () => ({ config: ai, redisUrl: config.REDIS_URL }),
     });
     const searchModule = SearchModule.register(config, aiModule);
+    const freshnessModule = FreshnessModule.register(config, searchModule);
+    // Notifications registra `ScheduleModule.forRoot()` (stale + freshness crons).
+    const notificationsModule = NotificationsModule.register(config);
 
     return {
       module: AppModule,
@@ -40,12 +44,12 @@ export class AppModule {
         RedisHealthModule,
         BullmqConnectionModule,
         aiModule,
-        EnrichmentModule.register(config, aiModule),
-        // `searchModule` primero: cv/match importan el mismo objeto para SearchUpsert tras extract/ready.
         searchModule,
+        notificationsModule,
+        freshnessModule,
+        EnrichmentModule.register(config, aiModule, freshnessModule),
         CvModule.register(config, searchModule),
         MatchModule.register(config, aiModule, searchModule),
-        NotificationsModule.register(config),
         HealthModule,
       ],
     };
