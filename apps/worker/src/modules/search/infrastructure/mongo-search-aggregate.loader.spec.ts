@@ -1,3 +1,4 @@
+import { applySalaryTextParse } from '@linkvault/shared';
 import { describe, expect, it } from 'vitest';
 import {
   closedAtFromLink,
@@ -26,6 +27,20 @@ describe('salaryBoundsFromPreview', () => {
     expect(salaryBoundsFromPreview({ min: 3000, max: 5000 })).toEqual({
       salaryMin: 3000,
       salaryMax: 5000,
+    });
+  });
+
+  it('maps extremes filled by salary-text parse (ADR-046 smoke)', () => {
+    const result = applySalaryTextParse(
+      { summary: 'Sueldo Bs. 3.500 mensuales' },
+      {},
+      'Sueldo Bs. 3.500 mensuales',
+      '2026-09-23T12:00:00.000Z',
+    );
+    expect(result.applied).toBe(true);
+    expect(salaryBoundsFromPreview(result.preview.salary)).toEqual({
+      salaryMin: 3500,
+      salaryMax: 3500,
     });
   });
 

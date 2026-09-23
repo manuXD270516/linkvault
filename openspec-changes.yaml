@@ -387,3 +387,10 @@ changes:
     scope: |
       Fila 31. SPA /descubrir destino Privado (default) | grupo (página); POST /api/links con groupId opcional;
       carga grupos fail-open; captura groupId al click. Fuera: picker por hit, default=grupo, API discovery/save.
+  - name: search-salary-text-parse
+    adrs: [046, 040, 010, 009]
+    agents: [backend-dev]
+    scope: |
+      Fila 32. parseSalaryText (shared) + enrich post-chain cuando ambos extremos null; no-op manual/pasted;
+      source auto + extractor parse-salary-text; backfill two-step Mongo luego api:backfill-search.
+      Fuera: normalizar period en filtro, LLM primario, UI SPA, dual-write Meili.

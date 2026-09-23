@@ -1,5 +1,6 @@
 import {
   LINK_ENRICHED_EVENT_TYPE,
+  PARSE_SALARY_TEXT_EXTRACTOR,
   PASTED_PREVIEW_EXTRACTOR,
   type PreviewSources,
 } from '@linkvault/shared';
@@ -679,5 +680,96 @@ describe('Otras URLs de la misma vacante', () => {
     expect(links.writes[0].write.lastEnrichmentError?.reason).toBe(
       'robots_disallowed',
     );
+  });
+});
+
+describe('Parse salarial post-cadena (ADR-046)', () => {
+  const PAGE_WITH_SALARY_SUMMARY = `<html><head><title>Dev | Bolsa</title>
+<script type="application/ld+json">{"@type":"JobPosting","title":"Dev Senior","hiringOrganization":{"name":"Acme"},"description":"<p>Salario USD 4,000 - 6,000 monthly. Buscamos perfil full-stack.</p>"}</script>
+</head><body><main>Dev Senior</main></body></html>`;
+
+  const PAGE_WITH_BASE_SALARY_STRING = `<html><head>
+<script type="application/ld+json">{"@type":"JobPosting","title":"Dev","hiringOrganization":{"name":"Acme"},"baseSalary":"USD 3,000 - 5,000 / month","description":"<p>Sin montos en el cuerpo.</p>"}</script>
+</head><body></body></html>`;
+
+  it('fills min/max from summary when JSON-LD has no numeric salary', async () => {
+    const { useCase, links } = harnessOf({
+      response: htmlResponse(PAGE_WITH_SALARY_SUMMARY),
+    });
+
+    await useCase.execute({ linkId: LINK_ID, previewVersion: 1, deferrals: 0 });
+
+    const stored = links.peek(LINK_ID);
+    expect(stored?.preview.salary).toEqual({
+      min: 4000,
+      max: 6000,
+      currency: 'USD',
+      period: 'month',
+    });
+    expect(stored?.previewSources.salary).toMatchObject({
+      source: 'auto',
+      extractor: PARSE_SALARY_TEXT_EXTRACTOR,
+    });
+  });
+
+  it('prefers textual baseSalary over summary', async () => {
+    const { useCase, links } = harnessOf({
+      response: htmlResponse(PAGE_WITH_BASE_SALARY_STRING),
+    });
+
+    await useCase.execute({ linkId: LINK_ID, previewVersion: 1, deferrals: 0 });
+
+    expect(links.peek(LINK_ID)?.preview.salary).toEqual({
+      min: 3000,
+      max: 5000,
+      currency: 'USD',
+      period: 'month',
+    });
+  });
+
+  it('does not overwrite a manual salary', async () => {
+    const manualSalary = {
+      min: null,
+      max: null,
+      currency: 'BOB' as const,
+      period: null,
+    };
+    const { useCase, links } = harnessOf({
+      response: htmlResponse(PAGE_WITH_SALARY_SUMMARY),
+      link: linkOf({
+        previewVersion: 2,
+        previewStatus: 'manual',
+        preview: { title: 'Manual', company: 'Acme', salary: manualSalary },
+        previewSources: {
+          title: {
+            value: 'Manual',
+            source: 'manual',
+            by: ANA,
+            at: NOW.toISOString(),
+          },
+          company: {
+            value: 'Acme',
+            source: 'manual',
+            by: ANA,
+            at: NOW.toISOString(),
+          },
+          salary: {
+            value: manualSalary,
+            source: 'manual',
+            by: ANA,
+            at: NOW.toISOString(),
+          },
+        },
+      }),
+    });
+
+    await useCase.execute({
+      linkId: LINK_ID,
+      previewVersion: 2,
+      deferrals: 0,
+    });
+
+    expect(links.peek(LINK_ID)?.preview.salary).toEqual(manualSalary);
+    expect(links.peek(LINK_ID)?.previewSources.salary?.source).toBe('manual');
   });
 });

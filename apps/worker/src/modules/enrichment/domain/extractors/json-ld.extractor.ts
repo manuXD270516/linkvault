@@ -118,11 +118,37 @@ const SALARY_PERIODS: Readonly<Record<string, SalaryPeriod>> = {
   YEAR: 'year',
 };
 
+/**
+ * Texto crudo de `baseSalary` cuando el sitio publica un string (o un `value` string)
+ * en vez de un `MonetaryAmount` numérico — input prioritario del parse ADR-046.
+ */
+export function baseSalaryTextOf(
+  posting: Record<string, unknown>,
+): string | null {
+  const base = first(posting['baseSalary']);
+  if (typeof base === 'string') return asString(base);
+  if (!isRecord(base)) return null;
+  const amount = first(base['value']);
+  if (typeof amount === 'string') return asString(amount);
+  return null;
+}
+
 /** `baseSalary` es un `MonetaryAmount`: un valor fijo o un rango, con su moneda y su unidad de tiempo. */
 function salaryOf(posting: Record<string, unknown>): JobSalary | null {
   const base = first(posting['baseSalary']);
   if (!isRecord(base)) return null;
   const amount = first(base['value']);
+  // Value string no numérico: lo captura `baseSalaryTextOf` para el parse post-cadena.
+  if (typeof amount === 'string') {
+    const exact = asNumber(amount);
+    if (exact === null) return null;
+    return {
+      min: exact,
+      max: exact,
+      currency: asString(base['currency']),
+      period: null,
+    };
+  }
   const fields = isRecord(amount) ? amount : {};
 
   const exact = asNumber(fields['value']);

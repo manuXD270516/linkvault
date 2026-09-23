@@ -515,6 +515,7 @@ sequenceDiagram
 | 29 | `job-discovery` | Post-v1 discovery: Get on Board + Remote OK APIs; `/descubrir`; save vía `POST /api/links`; **ADR-043** |
 | 30 | `group-link-tags-pinned` | Tags + pinned en `group_links`; filtros listado; SPA pin/chips; **ADR-044** (índice tag diferido) |
 | 31 | `discovery-save-group-picker` | Destino Privado|grupo al guardar desde `/descubrir`; paridad extensión; **ADR-045** (enmienda ADR-043) |
+| 32 | `search-salary-text-parse` | Parse determinista de texto salarial → `salary.min`/`max`; enrich + backfill two-step; **ADR-046** (enmienda ADR-040 §4) |
 
 ---
 
