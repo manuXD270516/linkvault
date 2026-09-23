@@ -332,3 +332,11 @@ changes:
       atómicos). PUT /api/groups/:id/links/:linkId/know-someone → { flaggedByMe, count }; listado de grupo siempre
       con knowSomeone; lista privada omit; cascada account-deletion $pull; SPA control+badge en card de grupo.
       Fuera: nombres, notify, search, CRM, lista privada, contador denormalizado.
+  - name: browser-extension
+    adrs: [038, 012]
+    agents: [backend-dev, frontend-dev, devops]
+    scope: |
+      Fila 24 / F3 G5. Extensión Chromium MV3 (apps/extension): CTA Guardar, privado default, grupo opcional.
+      Auth POST /api/auth/extension/{login,refresh,logout} — refresh en body, client=extension, CSRF + rate-limit
+      compartido con login web; sin Set-Cookie lv_refresh. CORS EXTENSION_CORS_ORIGINS. Reuso POST /api/links.
+      Fuera: scraping DOM, note, Firefox, Web Store CI, device-code.

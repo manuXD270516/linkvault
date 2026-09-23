@@ -260,8 +260,8 @@ describe('la página pública', () => {
   });
 
   // "Lo público se limita a su prefijo" (spec auth/sessions): sin `Authorization` responden
-  // register/login/refresh/logout, forgot/reset/verify-email, `/api/public/*`, salud y `/p/:slug`.
-  // `verify-email/resend` y el resto exigen sesión → 401.
+  // register/login/refresh/logout, forgot/reset/verify-email, extension/login|refresh|logout,
+  // `/api/public/*`, salud y `/p/:slug`. `verify-email/resend` y el resto exigen sesión → 401.
   it('Lo público se limita a su prefijo', async () => {
     const share = await published(ana, 'https://empresa.example/careers/scope');
 
@@ -278,6 +278,9 @@ describe('la página pública', () => {
         '/api/auth/forgot-password',
         '/api/auth/reset-password',
         '/api/auth/verify-email',
+        '/api/auth/extension/login',
+        '/api/auth/extension/refresh',
+        '/api/auth/extension/logout',
       ].map((url) =>
         http.request('POST', url, {
           body: {},

@@ -101,6 +101,7 @@ describe('MongoSessionRepository (sessions)', () => {
       userId: 'user-open',
       expiresAt: new Date(NOW.getTime() + 90 * DAY),
       refreshExpiresAt: new Date(NOW.getTime() + 30 * DAY),
+      client: 'web',
     });
     expect(await sessionDocument(opened.sessionId)).toEqual({
       _id: opened.sessionId,
@@ -108,6 +109,7 @@ describe('MongoSessionRepository (sessions)', () => {
       createdAt: NOW,
       expiresAt: new Date(NOW.getTime() + 90 * DAY),
       revokedAt: null,
+      client: 'web',
     });
     expect(await repository.findRefreshToken(tokenHash)).toEqual({
       tokenHash,

@@ -66,10 +66,14 @@ async function openSession(userId = `user-${randomUUID()}`) {
   return { ...opened, tokenHash: first.tokenHash };
 }
 
-function rotate(tokenHash: string) {
+function rotate(tokenHash: string, expectedClient: 'web' | 'extension' = 'web') {
   const successor = generateRefreshToken();
   return repository
-    .rotate({ tokenHash, successorHash: successor.tokenHash })
+    .rotate({
+      tokenHash,
+      successorHash: successor.tokenHash,
+      expectedClient,
+    })
     .then((result) => ({ result, successorHash: successor.tokenHash }));
 }
 
@@ -207,6 +211,39 @@ describe('MongoSessionRepository (rotation)', () => {
 
     expect((await rotate(session.tokenHash)).result.outcome).toBe('conflict');
     expect(await revokedAt(session.sessionId)).toBeNull();
+  });
+
+  it('rejects rotation when expectedClient does not match the session', async () => {
+    const first = generateRefreshToken();
+    const opened = await repository.open(
+      `user-${randomUUID()}`,
+      first.tokenHash,
+      'extension',
+    );
+
+    const { result } = await rotate(first.tokenHash, 'web');
+
+    expect(result).toEqual({ outcome: 'invalid', reason: 'unknown_token' });
+    expect(await revokedAt(opened.sessionId)).toBeNull();
+    expect(
+      (await rotate(first.tokenHash, 'extension')).result.outcome,
+    ).toBe('rotated');
+  });
+
+  it('treats legacy sessions without client as web', async () => {
+    const first = generateRefreshToken();
+    const opened = await repository.open(
+      `user-${randomUUID()}`,
+      first.tokenHash,
+      'web',
+    );
+    await connection
+      .collection<{ _id: string; client?: string }>(AUTH_SESSIONS_COLLECTION)
+      .updateOne({ _id: opened.sessionId }, { $unset: { client: '' } });
+
+    expect((await rotate(first.tokenHash, 'web')).result.outcome).toBe(
+      'rotated',
+    );
   });
 
   it.each([10, 11])(

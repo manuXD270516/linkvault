@@ -77,6 +77,21 @@ En local el puerto se publica para `nx serve` en el host (`MEILI_HOST=http://loc
 compose el hostname es `meilisearch` (`http://meilisearch:7700`). En producción Meili es **solo red interna**
 (VPC / red internal de compose): no exponer el puerto ni la master key a Internet.
 
+### Extensión Chromium (opcional, ADR-038)
+
+```bash
+pnpm nx build extension   # salida: dist/apps/extension/
+```
+
+Carga unpacked en `chrome://extensions` → copia el Extension ID → en `.env` de la API:
+
+```dotenv
+EXTENSION_CORS_ORIGINS=chrome-extension://<extension-id>
+```
+
+Reinicia `pnpm nx serve api`. Detalle en `docs/RUNBOOK.md` (Paso 6 quindecies). Auth:
+`/api/auth/extension/*` (refresh en body; no cookie SPA).
+
 ### MongoDB
 
 MongoDB corre siempre como replica set de un nodo (`rs0`). Su healthcheck lo inicializa en el primer arranque, y el
@@ -1714,6 +1729,7 @@ pnpm nx run ai:record-fixtures --from-pending --task=extract-job --pending-file=
 | `apps/api`              | API HTTP (NestJS + Fastify). Rutas bajo `/api`; `/health` y `/health/live` fuera del prefijo. Ejecuta IA.      |
 | `apps/worker`           | Procesos en segundo plano (NestJS + BullMQ): consume `enrich-link`; solo expone salud en `WORKER_HEALTH_PORT`. |
 | `apps/web`              | SPA Angular 22 standalone y zoneless, con Material, Tailwind e i18n ES/EN.                                     |
+| `apps/extension`        | Extensión Chromium MV3: guardar URL de la pestaña (ADR-038). Build → `dist/apps/extension/`.                   |
 | `libs/shared`           | Contratos compartidos entre plataformas: schemas zod, enums y eventos de integración.                          |
 | `libs/ai`               | Módulo de IA (ADR-014): ports, tareas y errores; los SDKs de proveedores solo en `infrastructure/providers`.   |
 | `tools/test-env`        | Preset de Vitest con las variables de IA en mock (todas las plataformas).                                      |

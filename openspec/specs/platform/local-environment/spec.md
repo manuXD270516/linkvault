@@ -243,3 +243,16 @@ SHALL leerlas; con el flag en `false` el detector SHALL ser no-op.
 - **WHEN** se inspecciona `.env.example`
 - **THEN** SHALL incluir `FEATURE_LINK_FRESHNESS`, el intervalo y el límite de lote
 - **AND** `FEATURE_LINK_FRESHNESS` SHALL valer `false` por defecto en el ejemplo
+
+### Requirement: CORS y origen de la extensión en local
+
+El entorno local documentado SHALL permitir configurar allowlist de orígenes
+`chrome-extension://<extension-id>` (variable de entorno documentada en `.env.example`) para que
+la API acepte peticiones CORS preflight/simple desde la extensión unpacked. El README o RUNBOOK
+SHALL documentar cómo cargar la extensión unpacked y cómo obtener el extension id.
+
+#### Scenario: Variable documentada
+
+- **WHEN** un desarrollador abre `.env.example`
+- **THEN** SHALL existir la variable de allowlist CORS de extensión documentada
+- **AND** la guía local SHALL indicar pasos para cargar el build unpacked

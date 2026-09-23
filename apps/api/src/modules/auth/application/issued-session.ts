@@ -1,5 +1,6 @@
 import type { UserProfile } from '@linkvault/shared';
 import { Inject, Injectable } from '@nestjs/common';
+import type { SessionClient } from '../domain/session-client';
 import {
   ACCESS_TOKEN_SIGNER,
   type AccessTokenSigner,
@@ -11,14 +12,15 @@ import {
 import { generateRefreshToken } from './refresh-token';
 
 /**
- * Lo que devuelve un use case que inicia o renueva sesión. El controlador responde `{ accessToken, expiresIn, user }`
- * y fija la cookie `lv_refresh` con `refreshToken` y `Max-Age` hasta `refreshExpiresAt`.
+ * Lo que devuelve un use case que inicia o renueva sesión. El controlador web responde
+ * `{ accessToken, expiresIn, user }` y fija la cookie `lv_refresh`; el de extensión incluye
+ * `refreshToken` en el cuerpo y no toca cookies (ADR-038).
  */
 export interface IssuedSession {
   readonly accessToken: string;
   readonly expiresIn: number;
   readonly user: UserProfile;
-  /** Valor en claro para la cookie. Nunca se registra ni se guarda. */
+  /** Valor en claro (cookie web o cuerpo extensión). Nunca se registra ni se guarda. */
   readonly refreshToken: string;
   readonly refreshExpiresAt: Date;
 }
@@ -31,9 +33,12 @@ export class SessionOpener {
     @Inject(ACCESS_TOKEN_SIGNER) private readonly signer: AccessTokenSigner,
   ) {}
 
-  async open(user: UserProfile): Promise<IssuedSession> {
+  async open(
+    user: UserProfile,
+    client: SessionClient = 'web',
+  ): Promise<IssuedSession> {
     const refresh = generateRefreshToken();
-    const opened = await this.sessions.open(user.id, refresh.tokenHash);
+    const opened = await this.sessions.open(user.id, refresh.tokenHash, client);
     const { accessToken, expiresIn } = await this.signer.sign({
       userId: user.id,
       sessionId: opened.sessionId,

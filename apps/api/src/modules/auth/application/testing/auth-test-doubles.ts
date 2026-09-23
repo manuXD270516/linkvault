@@ -3,6 +3,10 @@ import { AI_CONSENT_TEXT_VERSION } from '@linkvault/shared';
 import type { Clock } from '../../domain/clock';
 import { EmailTaken, InvalidAccessToken } from '../../domain/errors';
 import type { RefreshSessionPolicy } from '../../domain/refresh-session';
+import {
+  resolveSessionClient,
+  type SessionClient,
+} from '../../domain/session-client';
 import type {
   AccessTokenSigner,
   AccessTokenSubject,
@@ -212,6 +216,7 @@ interface StoredSession {
   readonly userId: string;
   readonly createdAt: Date;
   readonly expiresAt: Date;
+  readonly client: SessionClient;
   revokedAt: Date | null;
 }
 
@@ -234,7 +239,11 @@ export class InMemorySessionRepository implements SessionRepository {
     private readonly clock: Clock,
   ) {}
 
-  open(userId: string, refreshTokenHash: string): Promise<OpenedSession> {
+  open(
+    userId: string,
+    refreshTokenHash: string,
+    client: SessionClient = 'web',
+  ): Promise<OpenedSession> {
     if (this.failOpenWith) {
       return Promise.reject(this.failOpenWith);
     }
@@ -245,6 +254,7 @@ export class InMemorySessionRepository implements SessionRepository {
       createdAt: window.createdAt,
       expiresAt: window.expiresAt,
       revokedAt: null,
+      client,
     });
     this.tokens.set(refreshTokenHash, {
       tokenHash: refreshTokenHash,
@@ -260,6 +270,7 @@ export class InMemorySessionRepository implements SessionRepository {
       userId,
       expiresAt: window.expiresAt,
       refreshExpiresAt: window.refreshExpiresAt,
+      client,
     });
   }
 
@@ -317,12 +328,19 @@ export class InMemorySessionRepository implements SessionRepository {
   rotate({
     tokenHash,
     successorHash,
+    expectedClient,
   }: RotateRefreshToken): Promise<RotationResult> {
     const token = this.tokens.get(tokenHash);
     if (!token) {
       return Promise.resolve({ outcome: 'invalid', reason: 'unknown_token' });
     }
     const session = this.sessions.get(token.sessionId) ?? null;
+    if (
+      session !== null &&
+      resolveSessionClient(session.client) !== expectedClient
+    ) {
+      return Promise.resolve({ outcome: 'invalid', reason: 'unknown_token' });
+    }
     const identity = { sessionId: token.sessionId, userId: token.userId };
     const decision = this.policy.decide(token, session);
     switch (decision.outcome) {
@@ -357,6 +375,11 @@ export class InMemorySessionRepository implements SessionRepository {
   /** `true` si la sesión existe y no está revocada. */
   isActive(sessionId: string): boolean {
     return this.sessions.get(sessionId)?.revokedAt === null;
+  }
+
+  /** Cliente persistido de la sesión, o `undefined` si no existe. */
+  clientOf(sessionId: string): SessionClient | undefined {
+    return this.sessions.get(sessionId)?.client;
   }
 }
 

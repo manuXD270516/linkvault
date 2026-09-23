@@ -17,7 +17,7 @@ describe('SessionRepository.revokeAllUserSessions', () => {
     );
 
     const anaA = await sessions.open('ana', 'hash-a');
-    const anaB = await sessions.open('ana', 'hash-b');
+    const anaB = await sessions.open('ana', 'hash-b', 'extension');
     const beto = await sessions.open('beto', 'hash-c');
 
     const revoked = await sessions.revokeAllUserSessions('ana');

@@ -10,6 +10,10 @@ import type {
 import type { Clock } from '../domain/clock';
 import type { RefreshSessionPolicy } from '../domain/refresh-session';
 import {
+  resolveSessionClient,
+  type SessionClient,
+} from '../domain/session-client';
+import {
   AUTH_SESSION_MODEL_NAME,
   authSessionSchema,
   REFRESH_TOKEN_MODEL_NAME,
@@ -18,8 +22,9 @@ import {
   type RefreshTokenDocument,
 } from './session.schemas';
 
-// Adaptador SESSION_REPOSITORY en MongoDB (D4 de auth-users, ADR-020) sobre la conexión Mongoose de la app. Las reglas
-// de validez, conflicto, reuso y caducidad son de `RefreshSessionPolicy`; aquí solo se leen y escriben documentos.
+// Adaptador SESSION_REPOSITORY en MongoDB (D4 de auth-users, ADR-020 + ADR-038) sobre la conexión Mongoose de la app.
+// Las reglas de validez, conflicto, reuso y caducidad son de `RefreshSessionPolicy`; aquí solo se leen y escriben
+// documentos. El aislamiento `client` (web ↔ extensión) se aplica en `rotate` antes de rotar.
 
 function modelOf<T>(
   connection: Connection,
@@ -53,7 +58,11 @@ export class MongoSessionRepository implements SessionRepository {
     );
   }
 
-  async open(userId: string, refreshTokenHash: string): Promise<OpenedSession> {
+  async open(
+    userId: string,
+    refreshTokenHash: string,
+    client: SessionClient = 'web',
+  ): Promise<OpenedSession> {
     const window = this.policy.openSession();
     const sessionId = randomUUID();
     // Sesión y primer token en la misma transacción: nunca queda una sesión sin token ni un token sin sesión.
@@ -66,6 +75,7 @@ export class MongoSessionRepository implements SessionRepository {
             createdAt: window.createdAt,
             expiresAt: window.expiresAt,
             revokedAt: null,
+            client,
           },
         ],
         { session },
@@ -90,6 +100,7 @@ export class MongoSessionRepository implements SessionRepository {
       userId,
       expiresAt: window.expiresAt,
       refreshExpiresAt: window.refreshExpiresAt,
+      client,
     };
   }
 
@@ -133,13 +144,15 @@ export class MongoSessionRepository implements SessionRepository {
   }
 
   /**
-   * Rotación (D4). Dentro de `withTransaction`, que reintenta ante `WriteConflict`: de dos rotaciones concurrentes, la
-   * perdedora relee el token ya marcado y devuelve `conflict`. El callback devuelve el resultado en lugar de lanzar, para
-   * que la revocación por reuso se confirme.
+   * Rotación (D4 + ADR-038). Dentro de `withTransaction`, que reintenta ante `WriteConflict`: de dos rotaciones
+   * concurrentes, la perdedora relee el token ya marcado y devuelve `conflict`. El callback devuelve el resultado en
+   * lugar de lanzar, para que la revocación por reuso se confirme. Cliente distinto al esperado → `invalid` sin tocar
+   * el token.
    */
   rotate({
     tokenHash,
     successorHash,
+    expectedClient,
   }: RotateRefreshToken): Promise<RotationResult> {
     return this.withTransaction(async (session) => {
       // 1. Token por hash y su sesión.
@@ -157,6 +170,13 @@ export class MongoSessionRepository implements SessionRepository {
         .lean()
         .exec();
       const identity = { sessionId: token.sessionId, userId: token.userId };
+
+      if (
+        stored !== null &&
+        resolveSessionClient(stored.client) !== expectedClient
+      ) {
+        return { outcome: 'invalid', reason: 'unknown_token' };
+      }
 
       // 1–2. Validez, ventana de conflicto y reuso: reglas del dominio.
       const decision = this.policy.decide(token, stored);

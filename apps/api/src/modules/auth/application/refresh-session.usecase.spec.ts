@@ -93,6 +93,46 @@ describe('RefreshSession and Logout', () => {
       ).rejects.toMatchObject({ reason: 'unknown_token' });
     });
 
+    it('rejects a web refresh when expectedClient is extension', async () => {
+      await expect(
+        refresh.execute({
+          refreshToken: session.refreshToken,
+          expectedClient: 'extension',
+        }),
+      ).rejects.toMatchObject({ reason: 'unknown_token' });
+    });
+
+    it('rejects an extension refresh on the web path', async () => {
+      const extension = await harness.sessionOpener.open(
+        session.user,
+        'extension',
+      );
+
+      await expect(
+        refresh.execute({
+          refreshToken: extension.refreshToken,
+          expectedClient: 'web',
+        }),
+      ).rejects.toMatchObject({ reason: 'unknown_token' });
+    });
+
+    it('rotates an extension session when expectedClient matches', async () => {
+      const extension = await harness.sessionOpener.open(
+        session.user,
+        'extension',
+      );
+
+      const renewed = await refresh.execute({
+        refreshToken: extension.refreshToken,
+        expectedClient: 'extension',
+      });
+
+      expect(renewed.refreshToken).not.toBe(extension.refreshToken);
+      expect(harness.sessions.clientOf(await sessionIdOf(renewed.refreshToken))).toBe(
+        'extension',
+      );
+    });
+
     it('Reuso revoca la sesión', async () => {
       const renewed = await refresh.execute({
         refreshToken: session.refreshToken,

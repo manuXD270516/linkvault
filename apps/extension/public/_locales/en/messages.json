@@ -1,0 +1,98 @@
+{
+  "extName": {
+    "message": "LinkVault",
+    "description": "Extension name"
+  },
+  "extDescription": {
+    "message": "Save the active tab’s job URL to LinkVault.",
+    "description": "Extension description"
+  },
+  "loginTitle": {
+    "message": "Sign in",
+    "description": "Login form title"
+  },
+  "emailLabel": {
+    "message": "Email",
+    "description": "Email field label"
+  },
+  "passwordLabel": {
+    "message": "Password",
+    "description": "Password field label"
+  },
+  "loginSubmit": {
+    "message": "Sign in",
+    "description": "Login button"
+  },
+  "logout": {
+    "message": "Sign out",
+    "description": "Logout button"
+  },
+  "tabUrlLabel": {
+    "message": "This tab’s URL",
+    "description": "Candidate URL label"
+  },
+  "noTabUrl": {
+    "message": "This tab has no URL that can be saved.",
+    "description": "When the active tab is not http(s)"
+  },
+  "destinationLabel": {
+    "message": "Destination",
+    "description": "Destination selector label"
+  },
+  "destinationPrivate": {
+    "message": "Private list",
+    "description": "Default: no group"
+  },
+  "destinationGroupHint": {
+    "message": "Group (optional)",
+    "description": "Group selector hint"
+  },
+  "saveCta": {
+    "message": "Save",
+    "description": "Primary save CTA"
+  },
+  "saveSuccess": {
+    "message": "Saved to LinkVault",
+    "description": "Success without promising enriched preview"
+  },
+  "saveAlreadyThere": {
+    "message": "You already had it saved here",
+    "description": "shared=already_there without sharer"
+  },
+  "saveAlreadyThereNamed": {
+    "message": "It was already here; $NAME$ shared it",
+    "description": "shared=already_there with sharer",
+    "placeholders": {
+      "NAME": {
+        "content": "$1",
+        "example": "Ana"
+      }
+    }
+  },
+  "saveAlreadyInGroups": {
+    "message": "You already have it in: $GROUPS$",
+    "description": "alreadyInGroups in the response",
+    "placeholders": {
+      "GROUPS": {
+        "content": "$1",
+        "example": "Team, Friends"
+      }
+    }
+  },
+  "saveError": {
+    "message": "Could not save. Try again.",
+    "description": "Generic save error"
+  },
+  "loginError": {
+    "message": "Could not sign in. Check your email and password.",
+    "description": "Login error"
+  },
+  "sessionExpired": {
+    "message": "Your session expired. Sign in again.",
+    "description": "After refresh retries are exhausted"
+  },
+  "loading": {
+    "message": "Just a moment…",
+    "description": "Loading state"
+  }
+}

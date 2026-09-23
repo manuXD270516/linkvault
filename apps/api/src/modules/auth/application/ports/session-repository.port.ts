@@ -1,7 +1,8 @@
 import type { InvalidRefreshReason } from '../../domain/errors';
+import type { SessionClient } from '../../domain/session-client';
 
-// Puerto de sesiones y refresh tokens (D4 de auth-users, ADR-020). El repositorio solo ve hashes de refresh tokens,
-// nunca su valor. Solo tipos y el token.
+// Puerto de sesiones y refresh tokens (D4 de auth-users, ADR-020 + ADR-038). El repositorio solo ve hashes de refresh
+// tokens, nunca su valor. Solo tipos y el token.
 
 export const SESSION_REPOSITORY = Symbol('SESSION_REPOSITORY');
 
@@ -12,6 +13,7 @@ export interface OpenedSession {
   readonly expiresAt: Date;
   /** Caducidad del primer refresh token (Max-Age de la cookie). */
   readonly refreshExpiresAt: Date;
+  readonly client: SessionClient;
 }
 
 export interface StoredRefreshToken {
@@ -25,10 +27,15 @@ export interface StoredRefreshToken {
 }
 
 export interface RotateRefreshToken {
-  /** Hash del refresh token presentado en la cookie. */
+  /** Hash del refresh token presentado (cookie web o body extensión). */
   readonly tokenHash: string;
   /** Hash del sucesor, generado por quien llama; solo se guarda si la rotación ocurre. */
   readonly successorHash: string;
+  /**
+   * Cliente esperado por la ruta (ADR-038). Si la sesión es del otro cliente → `invalid`
+   * (sin rotar ni emitir sucesor).
+   */
+  readonly expectedClient: SessionClient;
 }
 
 /** Resultado de la rotación (D4): la transacción lo devuelve y confirma; el código HTTP se decide fuera. */
@@ -54,8 +61,12 @@ export type RotationResult =
   | { readonly outcome: 'invalid'; readonly reason: InvalidRefreshReason };
 
 export interface SessionRepository {
-  /** Abre una sesión nueva con su primer refresh token. */
-  open(userId: string, refreshTokenHash: string): Promise<OpenedSession>;
+  /** Abre una sesión nueva con su primer refresh token. `client` por defecto `web`. */
+  open(
+    userId: string,
+    refreshTokenHash: string,
+    client?: SessionClient,
+  ): Promise<OpenedSession>;
   findRefreshToken(tokenHash: string): Promise<StoredRefreshToken | null>;
   /** Revoca una sesión con una sola escritura. Idempotente: no cambia `revokedAt` de una sesión ya revocada. */
   revokeSession(sessionId: string): Promise<void>;

@@ -86,6 +86,28 @@ export const sessionResponseSchema = z.strictObject({
 });
 export type SessionResponse = z.infer<typeof sessionResponseSchema>;
 
+/**
+ * Respuesta de `POST /api/auth/extension/login` y `.../refresh` (ADR-038): mismo perfil/access que el SPA
+ * más el refresh opaco en el cuerpo (sin cookie `lv_refresh`).
+ */
+export const extensionSessionResponseSchema = z.strictObject({
+  accessToken: z.string().min(1),
+  expiresIn: z.number().int().positive(),
+  user: userProfileSchema,
+  refreshToken: z.string().min(1),
+});
+export type ExtensionSessionResponse = z.infer<
+  typeof extensionSessionResponseSchema
+>;
+
+/** Cuerpo de `POST /api/auth/extension/refresh` y `.../logout`. */
+export const extensionRefreshRequestSchema = z.object({
+  refreshToken: z.string().min(1),
+});
+export type ExtensionRefreshRequest = z.infer<
+  typeof extensionRefreshRequestSchema
+>;
+
 /** Códigos de error de la API. El SPA traduce el código, nunca el `message`. */
 export const apiErrorCodeSchema = z.enum([
   // 400: cuerpo inválido; `fields` nombra los campos.

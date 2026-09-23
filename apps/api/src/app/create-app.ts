@@ -1,4 +1,5 @@
 import fastifyCookie from '@fastify/cookie';
+import fastifyCors from '@fastify/cors';
 import fastifyMultipart from '@fastify/multipart';
 import type { AiConfig } from '@linkvault/ai';
 import { CV_MAX_FILE_BYTES } from '@linkvault/shared';
@@ -49,22 +50,46 @@ export const CV_MULTIPART_LIMITS = {
   parts: 2,
 } as const;
 
+export interface ConfigureAppOptions {
+  /**
+   * Allowlist CORS de la extensión (ADR-038). Vacía o ausente = no se registra `@fastify/cors`
+   * (CORS off).
+   */
+  readonly extensionCorsOrigins?: readonly string[];
+}
+
 /**
  * Rutas bajo `/api` salvo la salud y la página pública, para que web y API compartan origen en desarrollo (D10 de
  * bootstrap-monorepo). Registra `@fastify/cookie` (cookie de refresh), `@fastify/multipart` con los límites de la
- * subida de CV, el hook de cabeceras de `POST /api/auth/*` (D5 de auth-users) y el filtro global de errores
- * `{ code, message, fields? }` (D8). Debe ejecutarse antes de `app.init()`, que es cuando Nest registra las rutas.
+ * subida de CV, CORS allowlist de extensión si hay orígenes (ADR-038), el hook de cabeceras de `POST /api/auth/*`
+ * (D5 de auth-users) y el filtro global de errores `{ code, message, fields? }` (D8). Debe ejecutarse antes de
+ * `app.init()`, que es cuando Nest registra las rutas.
  *
  * Registrar el plugin de multipart es **global**, y eso hay que decirlo: solo actúa cuando el `Content-Type` es
  * `multipart/form-data`, y cualquier otra ruta que reciba uno sigue fallando en su pipe de zod con
  * `400 validation_error`, porque su cuerpo no será el objeto que espera. **Solo `POST /api/cv` lee partes.**
  */
-export async function configureApp(app: NestFastifyApplication): Promise<void> {
+export async function configureApp(
+  app: NestFastifyApplication,
+  options: ConfigureAppOptions = {},
+): Promise<void> {
   app.setGlobalPrefix(API_GLOBAL_PREFIX, {
     exclude: ['health', 'health/live', 'metrics', ...PUBLIC_PAGE_ROUTES],
   });
   await app.register(fastifyCookie);
   await app.register(fastifyMultipart, { limits: { ...CV_MULTIPART_LIMITS } });
+  const corsOrigins = options.extensionCorsOrigins ?? [];
+  if (corsOrigins.length > 0) {
+    await app.register(fastifyCors, {
+      origin: [...corsOrigins],
+      methods: ['GET', 'POST', 'OPTIONS'],
+      allowedHeaders: [
+        'Authorization',
+        'Content-Type',
+        'X-Requested-With',
+      ],
+    });
+  }
   app.getHttpAdapter().getInstance().addHook('onRequest', authHeadersHook);
   app.useGlobalFilters(new ApiExceptionFilter(app.getHttpAdapter()));
 }
@@ -80,6 +105,8 @@ export async function createApp(
     { bufferLogs: true },
   );
   app.useLogger(app.get(Logger));
-  await configureApp(app);
+  await configureApp(app, {
+    extensionCorsOrigins: config.EXTENSION_CORS_ORIGINS,
+  });
   return app;
 }

@@ -151,6 +151,19 @@ export const apiConfigSchema = z
     VAPID_PUBLIC_KEY: z.string().optional().default(''),
     VAPID_PRIVATE_KEY: z.string().optional().default(''),
     VAPID_SUBJECT: z.string().optional().default(''),
+    /**
+     * Orígenes CORS de la extensión Chromium (ADR-038): CSV de `chrome-extension://…`.
+     * Vacío (default) = CORS off. Allowlist acota orígenes página/web; la defensa real es auth + client.
+     */
+    EXTENSION_CORS_ORIGINS: z
+      .string()
+      .default('')
+      .transform((value) =>
+        value
+          .split(',')
+          .map((origin) => origin.trim())
+          .filter((origin) => origin.length > 0),
+      ),
   })
   // Cada issue lleva `path` con la variable: `parseEnv` descarta los issues que no nombran ninguna.
   .superRefine((config, ctx) => {

@@ -76,6 +76,7 @@ export async function apiTestConfig(
     VAPID_PUBLIC_KEY: '',
     VAPID_PRIVATE_KEY: '',
     VAPID_SUBJECT: '',
+    EXTENSION_CORS_ORIGINS: [],
     ...overrides,
   };
 }
