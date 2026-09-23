@@ -381,3 +381,9 @@ changes:
       Fila 30. tags[] + pinned en group_links; PUT slim /tags y /pinned (ACL miembro);
       listGroupLinksQuerySchema (pinned enum string, tag); SPA pin/chips/filtros + reset cursor.
       Índice tag diferido. Fuera: pin-to-top, Meili, digest, public, tags privados, funnel grupo.
+  - name: discovery-save-group-picker
+    adrs: [045, 043]
+    agents: [frontend-dev]
+    scope: |
+      Fila 31. SPA /descubrir destino Privado (default) | grupo (página); POST /api/links con groupId opcional;
+      carga grupos fail-open; captura groupId al click. Fuera: picker por hit, default=grupo, API discovery/save.

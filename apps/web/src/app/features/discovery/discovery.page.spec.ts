@@ -17,6 +17,8 @@ import {
 } from '../../../testing/auth-testing';
 import { SessionStore } from '../../core/auth/session.store';
 import { DISCOVERY_PAGE_SIZE } from '../../core/discovery/discovery.api';
+import { DiscoveryStore } from '../../core/discovery/discovery.store';
+import { GroupsStore } from '../../core/groups/groups.store';
 import { Shell } from '../../layout/shell/shell';
 import { DiscoveryPage } from './discovery.page';
 
@@ -61,6 +63,9 @@ describe('DiscoveryPage', () => {
     harness = await RouterTestingHarness.create();
     await harness.navigateByUrl('/descubrir', Shell);
     expect(harness.fixture.debugElement.query(By.directive(DiscoveryPage))).not.toBeNull();
+    http.expectOne({ method: 'GET', url: '/api/groups' }).flush([]);
+    await settle();
+    await harness.fixture.whenStable();
   });
 
   afterEach(() => verifyNoPendingRequests(http));
@@ -224,5 +229,52 @@ describe('DiscoveryPage', () => {
     await harness.fixture.whenStable();
 
     expect(host().querySelector('[data-testid="discovery-save-error"]')).not.toBeNull();
+  });
+
+  it('saves to selected group with groupId in body', async () => {
+    const groupsStore = TestBed.inject(GroupsStore);
+    const reload = groupsStore.load();
+    http.expectOne({ method: 'GET', url: '/api/groups' }).flush([
+      {
+        id: 'g1',
+        name: 'Demo LatAm',
+        role: 'owner',
+        memberCount: 1,
+        joinedAt: '2026-09-17T10:00:00.000Z',
+      },
+    ]);
+    await reload;
+    await settle();
+
+    const pageDe = harness.fixture.debugElement.query(By.directive(DiscoveryPage));
+    pageDe.injector.get(DiscoveryStore).setSaveDestination('g1');
+
+    await submitSearch('Nest');
+    http
+      .expectOne((req) => req.method === 'GET' && req.url === '/api/discovery/search')
+      .flush(searchResponse());
+    await settle();
+    await harness.fixture.whenStable();
+
+    host().querySelector<HTMLButtonElement>('[data-testid="discovery-save"]')!.click();
+    await settle();
+
+    const save = http.expectOne({ method: 'POST', url: '/api/links' });
+    expect(save.request.body).toEqual({ url: hit.url, groupId: 'g1' });
+    save.flush({
+      link,
+      created: true,
+      shared: 'created',
+      alreadyInGroups: [],
+    } satisfies SaveLinkResponse);
+    await settle();
+    await harness.fixture.whenStable();
+
+    expect(host().querySelector('[data-testid="discovery-save-created"]')).not.toBeNull();
+  });
+
+  it('shows destination selector defaulting to private', async () => {
+    expect(host().querySelector('[data-testid="discovery-destination"]')).not.toBeNull();
+    expect(host().textContent).toContain('Solo para mí');
   });
 });

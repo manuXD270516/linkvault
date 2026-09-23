@@ -67,8 +67,36 @@
     </div>
   </form>
 
+  <mat-form-field appearance="outline" class="w-full" data-testid="discovery-destination-field">
+    <mat-label i18n="@@discovery.destination.label">Guardar en</mat-label>
+    <mat-select
+      [ngModel]="destinationSelectValue()"
+      (ngModelChange)="onDestinationChange($event)"
+      name="destination"
+      data-testid="discovery-destination"
+    >
+      <mat-option [value]="privateDestination" i18n="@@discovery.destination.private"
+        >Solo para mí</mat-option
+      >
+      @for (group of destinationGroups(); track group.id) {
+        <mat-option [value]="group.id">{{ group.name }}</mat-option>
+      }
+    </mat-select>
+  </mat-form-field>
+
+  @if (showGroupsLoadWarning()) {
+    <p
+      class="m-0 text-sm text-(--mat-sys-on-surface-variant)"
+      role="status"
+      data-testid="discovery-groups-warning"
+      i18n="@@discovery.destination.groupsError"
+    >
+      No se pudieron cargar tus grupos; puedes guardar en «Solo para mí».
+    </p>
+  }
+
   <p class="m-0 text-sm text-(--mat-sys-on-surface-variant)" i18n="@@discovery.save.hint">
-    Guardar añade la vacante a «Solo para mí».
+    El destino aplica a todos los Guardar de esta búsqueda (por defecto «Solo para mí»).
   </p>
 
   @if (degraded().length > 0) {

@@ -332,6 +332,7 @@ describe('appRoutes', () => {
       expect(loaded()).toBeUndefined();
 
       await harness.navigateByUrl('/descubrir', Shell);
+      http.expectOne('/api/groups').flush([]);
 
       expect(loaded()).toBeDefined();
       expect(harness.fixture.debugElement.query(By.directive(DiscoveryPage))).not.toBeNull();
