@@ -1,5 +1,6 @@
 import { ApplicationFitScores } from '../application-fit-scores';
 import { ChangeApplicationStatus } from '../change-application-status.usecase';
+import { GetApplicationAnalytics } from '../get-application-analytics.usecase';
 import { GetApplicationTimeline } from '../get-application-timeline.usecase';
 import { ListGroupTrackers } from '../list-group-trackers.usecase';
 import { ListMyApplications } from '../list-my-applications.usecase';
@@ -32,6 +33,7 @@ export interface ApplicationsHarness {
   readonly timeline: GetApplicationTimeline;
   readonly untrack: UntrackApplication;
   readonly listMine: ListMyApplications;
+  readonly analytics: GetApplicationAnalytics;
   readonly trackers: ListGroupTrackers;
 }
 
@@ -64,6 +66,7 @@ export function applicationsHarness(): ApplicationsHarness {
     timeline: new GetApplicationTimeline(repository),
     untrack: new UntrackApplication(repository),
     listMine: new ListMyApplications(repository, links, fitScores),
+    analytics: new GetApplicationAnalytics(repository, clock),
     trackers: new ListGroupTrackers(groups, links, repository, directory),
   };
 }

@@ -11,6 +11,7 @@ import type {
   UpdateApplicationRequest,
 } from '@linkvault/shared';
 import { firstValueFrom } from 'rxjs';
+import type { ApplicationAnalyticsResponse } from './application-analytics';
 
 const APPLICATIONS_URL = '/api/applications';
 const GROUPS_URL = '/api/groups';
@@ -78,6 +79,13 @@ export class ApplicationsApi {
       ),
     );
     return response.items;
+  }
+
+  /** Funnel personal on-read (ADR-039): byStatus, open/closed/accepted y stale (cap 20). */
+  analytics(): Promise<ApplicationAnalyticsResponse> {
+    return firstValueFrom(
+      this.http.get<ApplicationAnalyticsResponse>(`${APPLICATIONS_URL}/analytics`),
+    );
   }
 }
 

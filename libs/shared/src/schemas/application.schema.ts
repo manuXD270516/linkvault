@@ -335,3 +335,55 @@ export const groupTrackersResponseSchema = z.strictObject({
   items: z.array(groupLinkTrackersSchema),
 });
 export type GroupTrackersResponse = z.infer<typeof groupTrackersResponseSchema>;
+
+/**
+ * Cap de estancadas en el funnel personal (ADR-039). Umbral de días: `APPLICATION_STALE_AFTER_DAYS`.
+ * Sin dwell / tiempos medios en este contrato.
+ */
+export const APPLICATION_ANALYTICS_STALE_CAP = 20;
+
+/** Conteos por cada status canónico; ausentes viajan como `0`, nunca omitidos. */
+export const applicationAnalyticsByStatusSchema = z.strictObject({
+  saved: z.number().int().nonnegative(),
+  interested: z.number().int().nonnegative(),
+  applied: z.number().int().nonnegative(),
+  in_process: z.number().int().nonnegative(),
+  offer: z.number().int().nonnegative(),
+  accepted: z.number().int().nonnegative(),
+  rejected: z.number().int().nonnegative(),
+  withdrawn: z.number().int().nonnegative(),
+  expired: z.number().int().nonnegative(),
+});
+export type ApplicationAnalyticsByStatus = z.infer<
+  typeof applicationAnalyticsByStatusSchema
+>;
+
+/**
+ * Ítem de la lista stale del funnel: dueño = self, OK exponer `applicationId`.
+ * Elegibilidad: no closed y `status !== 'accepted'` (ADR-039; distinto del detector de email).
+ */
+export const applicationAnalyticsStaleItemSchema = z.strictObject({
+  applicationId: z.string().min(1),
+  linkId: z.string().min(1),
+  status: applicationStatusSchema,
+  statusChangedAt: z.iso.datetime(),
+});
+export type ApplicationAnalyticsStaleItem = z.infer<
+  typeof applicationAnalyticsStaleItemSchema
+>;
+
+/**
+ * Respuesta de `GET /api/applications/analytics` (ADR-039 / D2–D4):
+ * `closedCount` = suma de `CLOSED_STATUSES`; `acceptedCount` aparte; `openCount` = resto.
+ * Sin dwell.
+ */
+export const applicationAnalyticsResponseSchema = z.strictObject({
+  byStatus: applicationAnalyticsByStatusSchema,
+  openCount: z.number().int().nonnegative(),
+  closedCount: z.number().int().nonnegative(),
+  acceptedCount: z.number().int().nonnegative(),
+  stale: z.array(applicationAnalyticsStaleItemSchema),
+});
+export type ApplicationAnalyticsResponse = z.infer<
+  typeof applicationAnalyticsResponseSchema
+>;

@@ -52,4 +52,31 @@ describe('ApplicationsApi', () => {
 
     await expect(result).resolves.toEqual(expect.objectContaining({ status: 'offer' }));
   });
+
+  it('GET /api/applications/analytics returns the funnel shape', async () => {
+    const body = {
+      byStatus: {
+        saved: 0,
+        interested: 0,
+        applied: 1,
+        in_process: 0,
+        offer: 0,
+        accepted: 0,
+        rejected: 0,
+        withdrawn: 0,
+        expired: 0,
+      },
+      openCount: 1,
+      closedCount: 0,
+      acceptedCount: 0,
+      stale: [],
+    };
+    const result = api.analytics();
+
+    const request = http.expectOne({ method: 'GET', url: '/api/applications/analytics' });
+    expect(request.request.headers.get('Authorization')).toBe('Bearer token-1');
+    request.flush(body);
+
+    await expect(result).resolves.toEqual(body);
+  });
 });

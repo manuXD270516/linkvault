@@ -4,6 +4,7 @@ import { GroupsModule } from '../../groups/presentation/groups.module';
 import { UsersModule } from '../../users/presentation/users.module';
 import { ApplicationFitScores } from '../application/application-fit-scores';
 import { ChangeApplicationStatus } from '../application/change-application-status.usecase';
+import { GetApplicationAnalytics } from '../application/get-application-analytics.usecase';
 import { GetApplicationTimeline } from '../application/get-application-timeline.usecase';
 import { ListGroupTrackers } from '../application/list-group-trackers.usecase';
 import { ListMyApplications } from '../application/list-my-applications.usecase';
@@ -52,6 +53,7 @@ import { GroupApplicationsController } from './group-applications.controller';
     ApplicationFitScores,
     TrackLink,
     ListMyApplications,
+    GetApplicationAnalytics,
     ChangeApplicationStatus,
     UpdateApplication,
     GetApplicationTimeline,

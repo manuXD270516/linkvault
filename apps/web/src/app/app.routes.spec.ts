@@ -256,6 +256,40 @@ describe('appRoutes', () => {
       );
     });
 
+    it('Ruta diferida de insights de postulaciones', async () => {
+      store.setSession(session);
+      const harness = await RouterTestingHarness.create();
+      await harness.navigateByUrl('/grupos', Shell);
+      http.expectOne('/api/groups').flush([]);
+
+      await harness.navigateByUrl('/postulaciones/insights', Shell);
+      const request = await vi.waitFor(() =>
+        http.expectOne({ method: 'GET', url: '/api/applications/analytics' }),
+      );
+      request.flush({
+        byStatus: {
+          saved: 0,
+          interested: 0,
+          applied: 0,
+          in_process: 0,
+          offer: 0,
+          accepted: 0,
+          rejected: 0,
+          withdrawn: 0,
+          expired: 0,
+        },
+        openCount: 0,
+        closedCount: 0,
+        acceptedCount: 0,
+        stale: [],
+      });
+
+      expect(router.url).toBe('/postulaciones/insights');
+      await vi.waitFor(() =>
+        expect(harness.routeNativeElement?.textContent).toContain('Aún no tienes postulaciones'),
+      );
+    });
+
     it('Ruta diferida de buscar', async () => {
       const search = routeAt('buscar', routeAt('').children);
       expect(search.component).toBeUndefined();

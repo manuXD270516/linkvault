@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  APPLICATION_ANALYTICS_STALE_CAP,
   APPLICATION_NOTES_MAX_LENGTH,
   APPLICATION_STATUSES,
   APPLIED_AT_STATUSES,
   acceptsAppliedAt,
+  applicationAnalyticsResponseSchema,
   applicationEventSchema,
   applicationListQuerySchema,
   applicationNotesSchema,
@@ -500,5 +502,96 @@ describe('response schemas', () => {
         }).success,
       ).toBe(false);
     });
+  });
+});
+
+describe('applicationAnalyticsResponseSchema', () => {
+  const emptyByStatus = {
+    saved: 0,
+    interested: 0,
+    applied: 0,
+    in_process: 0,
+    offer: 0,
+    accepted: 0,
+    rejected: 0,
+    withdrawn: 0,
+    expired: 0,
+  } as const;
+
+  const empty = {
+    byStatus: emptyByStatus,
+    openCount: 0,
+    closedCount: 0,
+    acceptedCount: 0,
+    stale: [],
+  } as const;
+
+  it('caps stale list length at APPLICATION_ANALYTICS_STALE_CAP', () => {
+    expect(APPLICATION_ANALYTICS_STALE_CAP).toBe(20);
+  });
+
+  it('accepts an empty funnel with zeros and no stale', () => {
+    expect(applicationAnalyticsResponseSchema.parse(empty)).toEqual(empty);
+  });
+
+  it('accepts counts and a stale item without dwell fields', () => {
+    const body = {
+      byStatus: { ...emptyByStatus, applied: 1, rejected: 1 },
+      openCount: 1,
+      closedCount: 1,
+      acceptedCount: 0,
+      stale: [
+        {
+          applicationId: '66e9a0000000000000000009',
+          linkId: LINK_ID,
+          status: 'applied',
+          statusChangedAt: DATE,
+        },
+      ],
+    };
+
+    expect(applicationAnalyticsResponseSchema.parse(body)).toEqual(body);
+  });
+
+  it.each([
+    ['avgDwellMs', 86_400_000],
+    ['dwellByStatus', {}],
+    ['meanDaysInStage', 3],
+  ])('rejects dwell field %s', (field, value) => {
+    expect(
+      applicationAnalyticsResponseSchema.safeParse({
+        ...empty,
+        [field]: value,
+      }).success,
+    ).toBe(false);
+  });
+
+  it('requires every status key in byStatus', () => {
+    const withoutApplied = Object.fromEntries(
+      Object.entries(emptyByStatus).filter(([key]) => key !== 'applied'),
+    );
+
+    expect(
+      applicationAnalyticsResponseSchema.safeParse({
+        ...empty,
+        byStatus: withoutApplied,
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejects a stale item with an unknown status', () => {
+    expect(
+      applicationAnalyticsResponseSchema.safeParse({
+        ...empty,
+        stale: [
+          {
+            applicationId: '66e9a0000000000000000009',
+            linkId: LINK_ID,
+            status: 'hired',
+            statusChangedAt: DATE,
+          },
+        ],
+      }).success,
+    ).toBe(false);
   });
 });

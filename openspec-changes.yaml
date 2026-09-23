@@ -340,3 +340,10 @@ changes:
       Auth POST /api/auth/extension/{login,refresh,logout} — refresh en body, client=extension, CSRF + rate-limit
       compartido con login web; sin Set-Cookie lv_refresh. CORS EXTENSION_CORS_ORIGINS. Reuso POST /api/links.
       Fuera: scraping DOM, note, Firefox, Web Store CI, device-code.
+  - name: application-analytics
+    adrs: [039, 024]
+    agents: [backend-dev, frontend-dev]
+    scope: |
+      Fila 25 / F3 analytics. GET /api/applications/analytics: byStatus, openCount/closedCount/acceptedCount (ADR-024),
+      stale 10d cap 20 (!closed && !== accepted). SPA insights personal + empty + link desde aplicaciones.
+      Fuera: grupo, dwell, discovery, export, charts.
