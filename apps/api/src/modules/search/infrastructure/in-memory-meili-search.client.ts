@@ -131,12 +131,16 @@ function matchesSearchFilter(doc: SearchIndexDocument, filter: string): boolean 
   if (!matchesIsNullFilters(doc, filter)) {
     return false;
   }
+  if (!matchesSalaryRangeFilters(doc, filter)) {
+    return false;
+  }
   return matchesAclFilter(doc, filter);
 }
 
 /**
  * `attr IS NULL` del builder openOnly: en este fake equivale a clave ausente
  * (`doc.closedAt === undefined`), alineado al loader que nunca escribe `null`.
+ * (Los IS NULL de salaryMin/Max se evalúan en `matchesSalaryRangeFilters`.)
  */
 function matchesIsNullFilters(
   doc: SearchIndexDocument,
@@ -146,6 +150,63 @@ function matchesIsNullFilters(
     return true;
   }
   return doc.closedAt === undefined;
+}
+
+/**
+ * Solape D1 / ADR-040. Evalúa comparaciones `>=` / `<=` e `IS NULL` sobre
+ * salaryMin/salaryMax (null o ausente = NULL). Docs sin ningún número fallan.
+ */
+function matchesSalaryRangeFilters(
+  doc: SearchIndexDocument,
+  filter: string,
+): boolean {
+  const minMatch = /\(\(salaryMax\s*>=\s*(\d+)\)\s*OR\s*\(salaryMax\s+IS\s+NULL\s+AND\s+salaryMin\s*>=\s*\1\)\)/i.exec(
+    filter,
+  );
+  if (minMatch !== null) {
+    const m = Number(minMatch[1]);
+    if (!evalMinSalaryOverlap(doc, m)) {
+      return false;
+    }
+  }
+  const maxMatch = /\(\(salaryMin\s*<=\s*(\d+)\)\s*OR\s*\(salaryMin\s+IS\s+NULL\s+AND\s+salaryMax\s*<=\s*\1\)\)/i.exec(
+    filter,
+  );
+  if (maxMatch !== null) {
+    const x = Number(maxMatch[1]);
+    if (!evalMaxSalaryOverlap(doc, x)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function salaryField(
+  doc: SearchIndexDocument,
+  attr: 'salaryMin' | 'salaryMax',
+): number | null {
+  const value = doc[attr];
+  return typeof value === 'number' ? value : null;
+}
+
+/** minSalary=M → (salaryMax >= M) OR (salaryMax IS NULL AND salaryMin >= M) */
+function evalMinSalaryOverlap(doc: SearchIndexDocument, m: number): boolean {
+  const max = salaryField(doc, 'salaryMax');
+  const min = salaryField(doc, 'salaryMin');
+  if (max !== null && max >= m) {
+    return true;
+  }
+  return max === null && min !== null && min >= m;
+}
+
+/** maxSalary=X → (salaryMin <= X) OR (salaryMin IS NULL AND salaryMax <= X) */
+function evalMaxSalaryOverlap(doc: SearchIndexDocument, x: number): boolean {
+  const min = salaryField(doc, 'salaryMin');
+  const max = salaryField(doc, 'salaryMax');
+  if (min !== null && min <= x) {
+    return true;
+  }
+  return min === null && max !== null && max <= x;
 }
 
 /** Igualdades AND del builder (docType / modality / status / salaryCurrency). */

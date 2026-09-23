@@ -347,3 +347,9 @@ changes:
       Fila 25 / F3 analytics. GET /api/applications/analytics: byStatus, openCount/closedCount/acceptedCount (ADR-024),
       stale 10d cap 20 (!closed && !== accepted). SPA insights personal + empty + link desde aplicaciones.
       Fuera: grupo, dwell, discovery, export, charts.
+  - name: search-salary-range
+    adrs: [040]
+    agents: [backend-dev, frontend-dev]
+    scope: |
+      Fila 26. Meili salaryMin/salaryMax filterable (api+worker) + GET /api/search minSalary/maxSalary (solape D1,
+      parse dígitos sin coerce). SPA /buscar rango + D3b + hint. Backfill job_preview. Fuera: period, salaryText parse.

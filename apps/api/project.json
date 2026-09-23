@@ -93,6 +93,17 @@
           "TSX_TSCONFIG_PATH": "apps/api/tsconfig.app.json"
         }
       }
+    },
+    "backfill-search": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "node --import tsx apps/api/src/backfill-search.ts",
+        "cwd": ".",
+        "env": {
+          "TSX_TSCONFIG_PATH": "apps/api/tsconfig.app.json"
+        }
+      }
     }
   }
 }

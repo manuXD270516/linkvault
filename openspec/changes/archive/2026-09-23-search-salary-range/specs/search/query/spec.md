@@ -1,11 +1,49 @@
-# search/query Specification
+## ADDED Requirements
 
-## Purpose
+### Requirement: Filtro de rango salarial
 
-Expone una búsqueda autenticada híbrida (full-text + semántica) sobre el índice de contenido, con filtros, ranking
-estable y ACL que impide ver resultados ajenos.
+Cuando la petición incluye `minSalary` y/o `maxSalary` (enteros ≥ 0 parseados según design D2),
+el servidor SHALL aplicar filtros Meili sobre `salaryMin`/`salaryMax` con la fórmula de solape
+de design D1 / ADR-040. Docs sin ningún número salarial quedan fuera. `minSalary` > `maxSalary`
+(ambos presentes) SHALL responder `400` `validation_error`. Valores vacíos que se interpretan
+como ausentes NO SHALL filtrar. No numéricos, decimales o negativos: `400` nombrando el campo.
 
-## Requirements
+#### Scenario: Solape de rango completo
+
+- **GIVEN** un `job_preview` con `salaryMin=3000` y `salaryMax=5000`
+- **WHEN** Ana busca con `minSalary=4000&maxSalary=6000&docType=job_preview` y `q` no vacío
+- **THEN** ese hit SHALL poder aparecer
+- **AND** un doc con `salaryMax=2000` (y sin min, o max solo) que no cumpla D1 NO SHALL aparecer
+
+#### Scenario: Solo salaryMin en el doc
+
+- **GIVEN** un doc con solo `salaryMin=4500` (sin `salaryMax`)
+- **WHEN** Ana busca con `minSalary=4000`
+- **THEN** ese hit SHALL poder aparecer (proxy: `salaryMin >= 4000`)
+
+#### Scenario: Solo salaryMax en el doc
+
+- **GIVEN** un doc con solo `salaryMax=3500` (sin `salaryMin`)
+- **WHEN** Ana busca con `maxSalary=4000`
+- **THEN** ese hit SHALL poder aparecer (proxy: `salaryMax <= 4000`)
+
+#### Scenario: Sin salario numérico excluido
+
+- **GIVEN** un `job_preview` sin `salaryMin` ni `salaryMax`
+- **WHEN** Ana busca con `minSalary=1000`
+- **THEN** ese documento NO SHALL aparecer en los hits
+
+#### Scenario: min mayor que max
+
+- **WHEN** busca con `minSalary=8000&maxSalary=2000`
+- **THEN** SHALL responder `400` con código `validation_error`
+
+#### Scenario: Param inválido
+
+- **WHEN** busca con `minSalary=abc` o `minSalary=-1`
+- **THEN** SHALL responder `400` con código `validation_error` nombrando `minSalary`
+
+## MODIFIED Requirements
 
 ### Requirement: Endpoint de búsqueda autenticado
 
@@ -58,68 +96,6 @@ solo espacios SHALL responder `400` `validation_error` nombrando `salaryCurrency
 - **GIVEN** Ana autenticada
 - **WHEN** busca con `openOnly=maybe`
 - **THEN** SHALL responder `400` con código `validation_error` nombrando `openOnly`
-
-### Requirement: ACL en el filtro de consulta
-
-Toda consulta SHALL aplicar un filtro de autorización construido en el servidor a partir de la identidad autenticada.
-Los hits SHALL restringirse a documentos donde:
-
-- el dueño es la persona autenticada y `visibilityScope` es `owner` o `owner_and_groups` (privado / application / cv /
-  roadmap / …), **o**
-- el documento pertenece a un `groupId` del que la persona es miembro **y** `visibilityScope` es `group` o
-  `owner_and_groups`, y `docType` es uno de `job_preview`, `group_comment`, `group_link_note`.
-
-NO SHALL confiarse en filtros enviados por el cliente para ampliar el alcance. Un `groupId` en la query que no sea
-membresía de la persona SHALL ignorarse o responder `403`/`400` documentado sin filtrar resultados ajenos. CV y
-roadmap de otra persona NUNCA SHALL aparecer.
-
-#### Scenario: Contenido de otro grupo no aparece
-
-- **GIVEN** Luis tiene un comentario en el grupo "A" al que Ana no pertenece
-- **WHEN** Ana busca el texto de ese comentario
-- **THEN** ese hit NO SHALL aparecer en la respuesta
-
-#### Scenario: CV ajeno no aparece
-
-- **GIVEN** el CV de Luis indexado
-- **WHEN** Ana busca un fragmento único de ese CV
-- **THEN** NO SHALL haber hits `cv` de Luis
-
-#### Scenario: Filtro de grupo propio
-
-- **GIVEN** Ana miembro del grupo "Backend"
-- **WHEN** busca con filtro `groupId` de "Backend"
-- **THEN** los hits SHALL poder incluir contenido de ese grupo visible para miembros
-- **AND** NO SHALL incluir contenido solo privado de otras personas
-
-### Requirement: Búsqueda híbrida y degradación
-
-Con `mode=hybrid` (default), el sistema SHALL combinar recuperación full-text y recuperación vectorial/semántica sobre
-Meilisearch y fusionar rankings de forma determinista documentada. Si no hay embedding del query o el índice no tiene
-vectores listos, SHALL degradar a full-text y señalarlo en la respuesta (`degraded: true` y motivo estable, p. ej.
-`embeddings_unavailable`). Si Meilisearch no está disponible o `FEATURE_SEARCH=false`, SHALL responder `503`
-`search_unavailable` sin inventar resultados desde Mongo como si fueran el índice primario.
-
-#### Scenario: Hybrid con embeddings listos
-
-- **GIVEN** Meilisearch saludable e embeddings disponibles
-- **WHEN** Ana busca con `mode=hybrid` un sinónimo cercano a un título indexado
-- **THEN** la respuesta SHALL poder incluir ese documento aunque la coincidencia léxica exacta sea débil
-- **AND** `degraded` NO SHALL ser `true` por falta de embeddings
-
-#### Scenario: Degradación sin embeddings
-
-- **GIVEN** embeddings no disponibles
-- **WHEN** Ana busca con `mode=hybrid`
-- **THEN** SHALL ejecutarse full-text
-- **AND** la respuesta SHALL marcar `degraded: true` con motivo de embeddings
-
-#### Scenario: Meilisearch caído
-
-- **GIVEN** Meilisearch no responde y `FEATURE_SEARCH=true`
-- **WHEN** Ana busca
-- **THEN** SHALL responder `503` con código `search_unavailable`
-- **AND** NO SHALL devolver un listado inventado desde Mongo presentándolo como búsqueda full-text primaria
 
 ### Requirement: Filtros y ranking estables
 
@@ -197,47 +173,3 @@ docs que tengan ambos campos) MAY devolver cero hits; eso NO es error de API.
 - **GIVEN** Ana autenticada y una postulación de otro usuario indexada con `status` `applied`
 - **WHEN** busca con `applicationStatus=applied` y un `q` que textualmente podría coincidir
 - **THEN** esa postulación ajena NO SHALL aparecer
-
-### Requirement: Filtro de rango salarial
-
-Cuando la petición incluye `minSalary` y/o `maxSalary` (enteros ≥ 0 parseados según design D2),
-el servidor SHALL aplicar filtros Meili sobre `salaryMin`/`salaryMax` con la fórmula de solape
-de design D1 / ADR-040. Docs sin ningún número salarial quedan fuera. `minSalary` > `maxSalary`
-(ambos presentes) SHALL responder `400` `validation_error`. Valores vacíos que se interpretan
-como ausentes NO SHALL filtrar. No numéricos, decimales o negativos: `400` nombrando el campo.
-
-#### Scenario: Solape de rango completo
-
-- **GIVEN** un `job_preview` con `salaryMin=3000` y `salaryMax=5000`
-- **WHEN** Ana busca con `minSalary=4000&maxSalary=6000&docType=job_preview` y `q` no vacío
-- **THEN** ese hit SHALL poder aparecer
-- **AND** un doc con `salaryMax=2000` (y sin min, o max solo) que no cumpla D1 NO SHALL aparecer
-
-#### Scenario: Solo salaryMin en el doc
-
-- **GIVEN** un doc con solo `salaryMin=4500` (sin `salaryMax`)
-- **WHEN** Ana busca con `minSalary=4000`
-- **THEN** ese hit SHALL poder aparecer (proxy: `salaryMin >= 4000`)
-
-#### Scenario: Solo salaryMax en el doc
-
-- **GIVEN** un doc con solo `salaryMax=3500` (sin `salaryMin`)
-- **WHEN** Ana busca con `maxSalary=4000`
-- **THEN** ese hit SHALL poder aparecer (proxy: `salaryMax <= 4000`)
-
-#### Scenario: Sin salario numérico excluido
-
-- **GIVEN** un `job_preview` sin `salaryMin` ni `salaryMax`
-- **WHEN** Ana busca con `minSalary=1000`
-- **THEN** ese documento NO SHALL aparecer en los hits
-
-#### Scenario: min mayor que max
-
-- **WHEN** busca con `minSalary=8000&maxSalary=2000`
-- **THEN** SHALL responder `400` con código `validation_error`
-
-#### Scenario: Param inválido
-
-- **WHEN** busca con `minSalary=abc` o `minSalary=-1`
-- **THEN** SHALL responder `400` con código `validation_error` nombrando `minSalary`
-

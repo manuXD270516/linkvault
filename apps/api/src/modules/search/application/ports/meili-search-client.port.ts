@@ -32,6 +32,12 @@ export interface SearchIndexDocument {
   readonly salaryText?: string;
   /** Moneda de `preview.salary.currency` cuando es string no vacío (filterable). */
   readonly salaryCurrency?: string;
+  /**
+   * Extremos numéricos de `preview.salary.min` / `.max` (filterable, ADR-040).
+   * `null` al limpiar para que Meili merge borre el valor previo.
+   */
+  readonly salaryMin?: number | null;
+  readonly salaryMax?: number | null;
   readonly status?: string;
   readonly stageLabel?: string;
   readonly notes?: string;
