@@ -6,7 +6,7 @@ Decisiones humanas (2026-09-23): (1) seed con **compose profile `demo`** + CLI;
 ## Goals / Non-Goals
 
 **Goals:** profile `demo` + `api:seed-demo` idempotente; dataset tour completo;
-guards URI; search vía backfill/outbox; docs; fila 27; ADR-042; cierre F3.
+guards URI; search vía backfill/outbox; docs; fila 28; ADR-042; cierre F3.
 
 **Non-Goals:** discovery; headless; seed en prod; Meili SDK desde el seed; UI admin.
 
@@ -58,7 +58,7 @@ No HTTP. No `ALLOW_DEMO_SEED` en compose prod.
 
 ### D5 — F3 / discovery
 
-Fila **27** `demo-seed`. Nota: **F3 construcción cerrada**; `discovery` → post-v1.
+Fila **28** `demo-seed`. Nota: **F3 construcción cerrada**; `discovery` → post-v1.
 Actualizar `docs/design.md` (discovery diferido).
 
 ### D6 — ADR-042

@@ -14,7 +14,7 @@ local (compose profile `demo` + CLI) para demostrar el sistema en ~10 minutos.
 - Search: seed **no** habla a Meili; reutiliza backfill/outbox existente.
 - Guards: no prod, `ALLOW_DEMO_SEED`, allowlist de host Mongo local.
 - RUNBOOK / `docs/demo.md` checklist 8–10 min.
-- Plan §6 fila **27**; **F3 cerrado** sin discovery (post-v1).
+- Plan §6 fila **28**; **F3 cerrado** sin discovery (post-v1).
 - ADR-042.
 
 **Fuera de alcance:** discovery; headless; analytics de grupo; OTel; UI de reseeding;

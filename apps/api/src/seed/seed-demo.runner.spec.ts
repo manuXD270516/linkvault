@@ -88,7 +88,7 @@ describe('runSeedDemo', () => {
     expect(deps.groupLinks.addComment).toHaveBeenCalledTimes(1);
   });
 
-  it('seeds first-run dataset: recheck, closed app, stale ≥11d, credentials in log', async () => {
+  it('seeds first-run dataset: recheck, closed app, stale â‰¥11d, credentials in log', async () => {
     const lines: string[] = [];
     const deps = buildDeps({
       log: (line) => {
@@ -99,7 +99,7 @@ describe('runSeedDemo', () => {
     await runSeedDemo(deps);
 
     // Shared updateOne mock across collections (buildDeps).
-    const { updateOne } = deps.connection.collection('probe') as {
+    const { updateOne } = deps.connection.collection('probe') as unknown as {
       updateOne: ReturnType<typeof vi.fn>;
     };
     const updateSets = updateOne.mock.calls.map(
