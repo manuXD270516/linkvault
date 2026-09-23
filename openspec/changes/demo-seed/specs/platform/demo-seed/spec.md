@@ -8,7 +8,7 @@ para recorrer LinkVault en browser sin setup manual largo.
 ### Requirement: Seed de demostración idempotente
 
 Con `ALLOW_DEMO_SEED=true`, entorno **no** producción, y `MONGODB_URI` cuyo host está en
-la allowlist local (`localhost`, `127.0.0.1`, `mongo`, `host.docker.internal`), el comando
+la allowlist local (`localhost`, `127.0.0.1`, `::1`, `mongo`, `host.docker.internal`), el comando
 canónico `pnpm nx run api:seed-demo` SHALL crear o actualizar el dataset demo (Ana/Bob,
 grupo, links abierto y cerrado `recheck`, apps incl. al menos una closed y una stale con
 `statusChangedAt` ≥ 11 días atrás, preview con salary+modality+currency, comentario,

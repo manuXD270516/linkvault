@@ -87,6 +87,49 @@ describe('runSeedDemo', () => {
     // Un solo comentario seed: segunda corrida no vuelve a addComment.
     expect(deps.groupLinks.addComment).toHaveBeenCalledTimes(1);
   });
+
+  it('seeds first-run dataset: recheck, closed app, stale ≥11d, credentials in log', async () => {
+    const lines: string[] = [];
+    const deps = buildDeps({
+      log: (line) => {
+        lines.push(line);
+      },
+    });
+
+    await runSeedDemo(deps);
+
+    // Shared updateOne mock across collections (buildDeps).
+    const { updateOne } = deps.connection.collection('probe') as {
+      updateOne: ReturnType<typeof vi.fn>;
+    };
+    const updateSets = updateOne.mock.calls.map(
+      (call) => (call[1] as { $set?: Record<string, unknown> } | undefined)?.$set,
+    );
+
+    expect(
+      updateSets.some((set) => set?.['closedReason'] === 'recheck'),
+    ).toBe(true);
+
+    const closedAppStatuses = new Set(['rejected', 'withdrawn', 'expired']);
+    expect(
+      vi
+        .mocked(deps.trackLink.execute)
+        .mock.calls.some(([, req]) => closedAppStatuses.has(req.status)),
+    ).toBe(true);
+
+    const elevenDaysMs = 11 * 24 * 60 * 60 * 1000;
+    const staleAt = updateSets
+      .map((set) => set?.['statusChangedAt'])
+      .find((value): value is Date => value instanceof Date);
+    expect(staleAt).toBeDefined();
+    expect(NOW.getTime() - (staleAt as Date).getTime()).toBeGreaterThanOrEqual(
+      elevenDaysMs,
+    );
+
+    const logText = lines.join('\n');
+    expect(logText).toContain(DEMO_ANA.email);
+    expect(logText).toContain(DEMO_ANA.password);
+  });
 });
 
 describe('seed-demo entrypoint source', () => {
@@ -170,9 +213,10 @@ function buildDeps(overrides: Partial<SeedDemoDeps> = {}): SeedDemoDeps {
         ) => {
           const key = `${userId}:${request.linkId}`;
           const existing = appIds.get(key);
+          // 24-char hex so Types.ObjectId.isValid passes (stale statusChangedAt patch).
           const id =
             existing ??
-            `00000000000000000000a${appIds.size.toString(16).padStart(2, '0')}`;
+            `00000000000000000000a${appIds.size.toString(16).padStart(3, '0')}`;
           if (existing === undefined) {
             appIds.set(key, id);
           }
