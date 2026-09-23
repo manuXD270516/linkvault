@@ -1199,6 +1199,7 @@ Búsqueda híbrida (change `search`, ADR-036). Meilisearch **no** arranca con el
 
 ```bash
 docker compose --profile search up -d --wait
+# equivalente para demo (mismo Meili): docker compose --profile demo up -d --wait
 ```
 
 Variables (ver `.env.example`): `FEATURE_SEARCH`, `MEILI_HOST`, `MEILI_MASTER_KEY`, `MEILI_INDEX`,
@@ -1207,6 +1208,18 @@ Variables (ver `.env.example`): `FEATURE_SEARCH`, `MEILI_HOST`, `MEILI_MASTER_KE
 - Local / host (`nx serve`): `MEILI_HOST=http://localhost:7700` (puerto `MEILI_PORT`, default 7700).
 - Contenedor en la red compose: `MEILI_HOST=http://meilisearch:7700`.
 - Con `FEATURE_SEARCH=false`, api/worker arrancan sin exigir Meili.
+
+### Demo seed (demo-seed / ADR-042)
+
+Datos fijos para tour en browser. Detalle y checklist: [`docs/demo.md`](demo.md).
+
+```bash
+docker compose --profile demo up -d --wait
+ALLOW_DEMO_SEED=true pnpm nx run api:seed-demo
+```
+
+Guards: no `NODE_ENV=production`; host Mongo en allowlist local; el seed **no** llama a Meili
+(reutiliza backfill/outbox). Credenciales Ana/Bob en `docs/demo.md`.
 
 ### Rango salarial (search-salary-range / ADR-040)
 

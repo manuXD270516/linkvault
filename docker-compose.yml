@@ -4,6 +4,7 @@
 #   docker compose up -d --wait                         # mongo, redis, minio, mailpit
 #   docker compose --profile ai-local up -d --wait      # + ollama
 #   docker compose --profile search up -d --wait        # + meilisearch
+#   docker compose --profile demo up -d --wait          # + meilisearch (mismo servicio; luego api:seed-demo)
 #
 # Puertos del host configurables (MONGO_PORT, REDIS_PORT, MINIO_PORT, MINIO_CONSOLE_PORT,
 # MAILPIT_SMTP_PORT, MAILPIT_UI_PORT, OLLAMA_PORT, MEILI_PORT) por si otro proyecto ya los ocupa;
@@ -141,12 +142,13 @@ services:
       - ollama-data:/root/.ollama
     restart: unless-stopped
 
-  # Búsqueda híbrida (change search / ADR-006 F2, ADR-036). No arranca sin profile `search`.
+  # Búsqueda híbrida (change search / ADR-006 F2, ADR-036). No arranca sin profile `search`
+  # ni sin profile `demo` (demo-seed / ADR-042 — mismo servicio, sin segundo sembrador).
   # En local el puerto se publica para `nx serve` en el host; en producción Meili MUST quedar en
   # red interna (VPC / compose internal) — no exponer el puerto ni la master key a Internet (RUNBOOK).
   meilisearch:
     image: getmeili/meilisearch:v1.14
-    profiles: ['search']
+    profiles: ['search', 'demo']
     environment:
       MEILI_ENV: development
       # Solo desarrollo; no uses este valor fuera de local. Producción: secreto propio, nunca en repo.

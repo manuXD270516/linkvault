@@ -87,22 +87,24 @@
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "node --import tsx apps/api/src/backfill-enrichment.ts",
-        "cwd": ".",
-        "env": {
-          "TSX_TSCONFIG_PATH": "apps/api/tsconfig.app.json"
-        }
+        "command": "node apps/api/src/backfill-enrichment.cjs",
+        "cwd": "."
       }
     },
     "backfill-search": {
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "node --import tsx apps/api/src/backfill-search.ts",
-        "cwd": ".",
-        "env": {
-          "TSX_TSCONFIG_PATH": "apps/api/tsconfig.app.json"
-        }
+        "command": "node apps/api/src/backfill-search.cjs",
+        "cwd": "."
+      }
+    },
+    "seed-demo": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "node apps/api/src/seed-demo.cjs",
+        "cwd": "."
       }
     }
   }

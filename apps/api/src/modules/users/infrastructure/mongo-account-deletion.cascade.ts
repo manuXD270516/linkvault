@@ -49,13 +49,15 @@ export class MongoAccountDeletionCascade implements AccountDeletionCascade {
 
   constructor(
     @Inject(getConnectionToken()) private readonly connection: Connection,
-    private readonly groups: GroupsFacade,
+    // Explicit tokens: Nest CLIs must resolve these without relying solely on
+    // design:paramtypes (see apps/api/register-nest-cli.cjs).
+    @Inject(GroupsFacade) private readonly groups: GroupsFacade,
     @Inject(USER_REPOSITORY) private readonly users: UserRepository,
     @Inject(USER_AI_KEYS_REPOSITORY)
     private readonly keys: UserAiKeysRepository,
     @Inject(CV_USER_PREFIX_DELETER)
     private readonly cvFiles: CvUserPrefixDeleter,
-    private readonly search: SearchFacade,
+    @Inject(SearchFacade) private readonly search: SearchFacade,
   ) {}
 
   async execute(userId: string): Promise<void> {
