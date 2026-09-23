@@ -46,6 +46,13 @@ export interface JobLink {
    * leyendo" de "se quedó colgado con el relay caído" (D5). Ausente en los links guardados antes de `link-enrichment`.
    */
   readonly previewRequestedAt?: Date;
+  /**
+   * Cuándo se marcó la vacante como cerrada (ADR-037). Ausente = abierta. Ortogonal a `previewStatus`.
+   */
+  readonly closedAt?: Date;
+  readonly closedReason?: 'calendar' | 'recheck';
+  /** Última pasada del detector/re-check de frescura (solo persistencia; no va al summary HTTP). */
+  readonly lastFreshnessCheckAt?: Date;
   readonly createdBy: string;
   readonly createdAt: Date;
   readonly updatedAt: Date;

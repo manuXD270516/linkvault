@@ -64,7 +64,30 @@ describe('LinkCard', () => {
     expect(text()).toContain('Híbrido');
     expect(text()).toContain('Senior');
     expect(text()).not.toContain('senior backend engineer at acme');
+    expect(host().querySelector('[data-testid="link-closed"]')).toBeNull();
   });
+
+  /**
+   * Vacante cerrada (ADR-037 / D10): badge único junto al título; el preview enriquecido sigue a la vista. calendar y
+   * recheck se ven igual — la razón no viaja a la UI.
+   */
+  it.each(['calendar', 'recheck'] as const)(
+    'muestra «Oferta cerrada» con preview visible (closedReason=%s)',
+    async (closedReason) => {
+      await render({
+        ...enriched,
+        closedAt: '2026-09-22T12:00:00.000Z',
+        closedReason,
+      });
+
+      const badge = host().querySelector('[data-testid="link-closed"]');
+      expect(badge?.textContent?.trim()).toBe('Oferta cerrada');
+      expect(text()).toContain('Ingeniera de datos');
+      expect(text()).toContain('Acme');
+      expect(text()).not.toContain('calendar');
+      expect(text()).not.toContain('recheck');
+    },
+  );
 
   it('falls back to the label derived from the URL while there is no preview', async () => {
     await render(bare);

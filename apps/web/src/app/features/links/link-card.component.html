@@ -11,6 +11,13 @@
   <!-- Margen explícito: el título es un enlace en línea y sin él se leía "…Soporte TIDescripción pegada por…". -->
   <span class="ml-2 text-xs" data-testid="note-title">{{ titleNote }}</span>
 }
+<!--
+  Cierre de vacante (ADR-037 / D10): un solo indicador, sin distinguir calendar vs recheck. Ortogonal al estado de
+  enriquecimiento: el preview útil se sigue mostrando.
+-->
+@if (isClosed()) {
+  <span class="ml-2 text-xs" data-testid="link-closed" i18n="@@links.card.closed">Oferta cerrada</span>
+}
 
 @if (company(); as name) {
   <!-- El separador va aquí y no como margen: el título es un enlace en línea y sin él se leía "Full StackAcme". -->

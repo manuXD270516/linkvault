@@ -1,4 +1,4 @@
-import { ENRICH_LINK_QUEUE, linkCreatedPayloadSchema } from '@linkvault/shared';
+import { ENRICH_LINK_QUEUE, enrichTriggeredBySchema, linkCreatedPayloadSchema } from '@linkvault/shared';
 import {
   Logger,
   type OnApplicationShutdown,
@@ -24,11 +24,12 @@ export function lockDurationFor(deadlineMs: number): number {
 }
 
 /**
- * Datos del job. El relay publica `LinkCreated.v1` (`linkId` y `previewVersion`); `deferrals` lo añade este consumidor
- * al aplazar un job por encontrar su host ocupado, así que falta en el primer intento.
+ * Datos del job. El relay publica `LinkCreated.v1` (`linkId` y `previewVersion`); el detector de frescura añade
+ * `triggeredBy: freshness`. `deferrals` lo añade este consumidor al aplazar un job por host ocupado.
  */
 export const enrichLinkJobDataSchema = linkCreatedPayloadSchema.extend({
   deferrals: z.number().int().min(0).default(0),
+  triggeredBy: enrichTriggeredBySchema.optional(),
 });
 export type EnrichLinkJobData = z.input<typeof enrichLinkJobDataSchema>;
 

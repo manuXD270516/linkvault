@@ -292,3 +292,12 @@ changes:
       Reintroducir EmbeddingProvider (C18; ADR-036 enmienda ADR-016): mock + ollama/openrouter; vectores en Meili; hybrid
       search. API GET /api/search + SPA /buscar. Purga Meili en borrado de cuenta. Fuera: B10 digest, discovery F3,
       browser extension, caché semántico LLM.
+  - name: job-link-freshness
+    adrs: [010, 024, 035, 037]
+    agents: [backend-dev, frontend-dev]
+    scope: |
+      Fila 19 / design.md G2. Re-check semanal de JobLinks enriquecidos; cierre por expiresAt (calendario) o relectura
+      inequívoca (not_found 404/410, isJobPosting false sin JSON-LD JobPosting). Marcador closedAt/closedReason;
+      auto-expire postulaciones abiertas → expired; ASN visibility=group desde worker (claim→Queue.add, enmienda ADR-035);
+      selector cascada pendiente; SSE + Search closedAt si FEATURE_SEARCH; badge SPA. Flag FEATURE_LINK_FRESHNESS.
+      Fuera: digest B10, B9r filtros search, reopen link, scrape anti-robots, canal notify dedicado.

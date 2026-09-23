@@ -45,6 +45,19 @@ export class MongoLinkRepository implements LinkRepository {
       previewVersion: found.previewVersion,
       preview: found.preview ?? {},
       previewSources: found.previewSources ?? {},
+      ...(found.platform === undefined
+        ? {}
+        : { platform: found.platform as EnrichableLink['platform'] }),
+      ...(found.closedAt === undefined ? {} : { closedAt: found.closedAt }),
+      ...(found.closedReason === undefined
+        ? {}
+        : { closedReason: found.closedReason }),
+      ...(found.lastFreshnessCheckAt === undefined
+        ? {}
+        : { lastFreshnessCheckAt: found.lastFreshnessCheckAt }),
+      ...(found.previewRequestedAt === undefined
+        ? {}
+        : { previewRequestedAt: found.previewRequestedAt }),
     };
   }
 
@@ -67,6 +80,9 @@ export class MongoLinkRepository implements LinkRepository {
     if (write.lastEnrichmentError !== null) {
       $set['lastEnrichmentError'] = write.lastEnrichmentError;
     }
+    if (write.lastFreshnessCheckAt !== undefined) {
+      $set['lastFreshnessCheckAt'] = write.lastFreshnessCheckAt;
+    }
 
     const result = await this.links
       .updateOne(
@@ -83,6 +99,52 @@ export class MongoLinkRepository implements LinkRepository {
       .exec();
 
     return result.modifiedCount === 1;
+  }
+
+  async closeIfOpen(
+    linkId: string,
+    write: {
+      readonly closedAt: Date;
+      readonly closedReason: 'calendar' | 'recheck';
+      readonly lastFreshnessCheckAt: Date;
+    },
+  ): Promise<boolean> {
+    const id = toLinkObjectId(linkId);
+    if (id === null) return false;
+
+    const closed = await this.links
+      .updateOne(
+        { _id: id, closedAt: { $exists: false } },
+        {
+          $set: {
+            closedAt: write.closedAt,
+            closedReason: write.closedReason,
+            lastFreshnessCheckAt: write.lastFreshnessCheckAt,
+            updatedAt: write.closedAt,
+          },
+        },
+      )
+      .exec();
+    if (closed.modifiedCount === 1) return true;
+
+    await this.links
+      .updateOne(
+        { _id: id, closedAt: { $exists: true } },
+        { $set: { lastFreshnessCheckAt: write.lastFreshnessCheckAt } },
+      )
+      .exec();
+    return false;
+  }
+
+  async touchFreshnessCheck(linkId: string, at: Date): Promise<void> {
+    const id = toLinkObjectId(linkId);
+    if (id === null) return;
+    await this.links
+      .updateOne(
+        { _id: id },
+        { $set: { lastFreshnessCheckAt: at, updatedAt: at } },
+      )
+      .exec();
   }
 
   async saveSnapshotKey(linkId: string, snapshotKey: string): Promise<void> {

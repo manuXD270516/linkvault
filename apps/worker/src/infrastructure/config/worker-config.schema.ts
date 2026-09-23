@@ -29,6 +29,12 @@ export const workerConfigSchema = z
       .enum(['true', 'false'])
       .default('false')
       .transform((value) => value === 'true'),
+    FEATURE_LINK_FRESHNESS: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
+    LINK_FRESHNESS_INTERVAL_DAYS: positiveInt.min(1).max(90).default(7),
+    LINK_FRESHNESS_BATCH_LIMIT: positiveInt.min(1).max(500).default(50),
     MEILI_HOST: z
       .string()
       .default('')

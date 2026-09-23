@@ -1,4 +1,8 @@
-import { linkEnrichedEvent, type PreviewStatus } from '@linkvault/shared';
+import {
+  ENRICH_TRIGGERED_BY_FRESHNESS,
+  linkEnrichedEvent,
+  type PreviewStatus,
+} from '@linkvault/shared';
 import { mergeIntoStored } from '../domain/merge';
 import { verdictOf } from '../domain/preview-status';
 import type {
@@ -11,21 +15,15 @@ import type { EnrichmentNotifier } from './ports/enrichment-notifier.port';
 import type { LinkRepository } from './ports/link-repository.port';
 import type { SnapshotStore } from './ports/snapshot-store.port';
 
-// Caso de uso del consumidor de `enrich-link` (D2, D5, D9 y D12 de link-enrichment).
-//
-// **La idempotencia es propia, no prestada del `jobId`.** El `jobId` determinista solo evita duplicados mientras la
-// cola recuerda el trabajo; pasada su retención, el mismo evento puede volver a entrar. Lo que garantiza que el
-// resultado sea el mismo son los tres pasos de D2: descartar por versión antes de trabajar, escribir condicionado a la
-// versión leída, y terminar sin reintento cuando la escritura no modifica nada.
-//
-// El orden del final también es de D2 y D12: primero la escritura condicionada, y **solo si gana** el snapshot y el
-// aviso. La ejecución perdedora no sube ningún objeto ni avisa de un preview que no escribió.
+// Caso de uso del consumidor de `enrich-link` (D2, D5, D9 y D12 de link-enrichment + ADR-037 frescura).
 
 export interface EnrichLinkJob {
   readonly linkId: string;
   readonly previewVersion: number;
   /** Aplazamientos que este job ya lleva por encontrar su host ocupado. */
   readonly deferrals: number;
+  /** Presente solo en re-checks del detector de frescura. */
+  readonly triggeredBy?: typeof ENRICH_TRIGGERED_BY_FRESHNESS;
 }
 
 /** El link quedó escrito. */
@@ -33,6 +31,7 @@ export interface EnrichLinkDone {
   readonly kind: 'done';
   readonly previewStatus: PreviewStatus;
   readonly previewVersion: number;
+  readonly closed?: boolean;
 }
 
 /** No había nada que hacer. Ninguno de los tres es un error: el job se completa sin reintento. */
@@ -49,7 +48,17 @@ export interface EnrichLinkDeferred {
 }
 
 export type EnrichLinkResult =
-  EnrichLinkDone | EnrichLinkSkipped | EnrichLinkDeferred;
+  | EnrichLinkDone
+  | EnrichLinkSkipped
+  | EnrichLinkDeferred;
+
+/** Cierre de vacante por relectura (calendar vive en el detector). */
+export interface CloseVacancyForRecheck {
+  execute(input: {
+    readonly linkId: string;
+    readonly reason: 'recheck';
+  }): Promise<unknown>;
+}
 
 export class EnrichLinkUseCase {
   constructor(
@@ -60,6 +69,7 @@ export class EnrichLinkUseCase {
     private readonly clock: Clock,
     /** `ENRICH_DEADLINE_MS`: plazo total por link, repartido entre las etapas de la cadena. */
     private readonly deadlineMs: number,
+    private readonly closeVacancy: CloseVacancyForRecheck | null = null,
   ) {}
 
   async execute(job: EnrichLinkJob): Promise<EnrichLinkResult> {
@@ -93,6 +103,34 @@ export class EnrichLinkUseCase {
     }
 
     const at = this.clock.now();
+    const isFreshness = job.triggeredBy === ENRICH_TRIGGERED_BY_FRESHNESS;
+    const hadPreviewData =
+      link.previewStatus === 'enriched' ||
+      link.previewStatus === 'partial' ||
+      link.previewStatus === 'manual';
+
+    if (isFreshness && hadPreviewData && shouldCloseFromFreshness(attempt)) {
+      if (this.closeVacancy !== null) {
+        await this.closeVacancy.execute({
+          linkId: link.id,
+          reason: 'recheck',
+        });
+      } else {
+        await this.links.closeIfOpen(link.id, {
+          closedAt: at,
+          closedReason: 'recheck',
+          lastFreshnessCheckAt: at,
+        });
+        await this.announce(link.id, link.previewStatus, link.previewVersion);
+      }
+      return {
+        kind: 'done',
+        previewStatus: link.previewStatus,
+        previewVersion: link.previewVersion,
+        closed: true,
+      };
+    }
+
     const stored = { preview: link.preview, sources: link.previewSources };
     // Una descarga que falló no borra lo que ya había: el preview se conserva y lo que cambia es el estado.
     const state =
@@ -117,6 +155,7 @@ export class EnrichLinkUseCase {
           ? null
           : { reason: verdict.reason, at: at.toISOString() },
       at,
+      ...(isFreshness ? { lastFreshnessCheckAt: at } : {}),
     });
     // Otro ganó la carrera: ni snapshot, ni aviso, ni reintento. Lo que escribió el otro es lo bueno.
     if (!won) return { kind: 'skipped', reason: 'lost_race' };
@@ -161,16 +200,11 @@ export class EnrichLinkUseCase {
     return { kind: 'done', previewStatus: verdict.status, previewVersion };
   }
 
-  /**
-   * El snapshot se sube **después** de ganar la escritura, y su clave se guarda en el link: nunca se deduce de
-   * `previewVersion`, que también sube con las ediciones manuales y con los reintentos, que no producen ninguno.
-   */
   private async storeSnapshot(
     linkId: string,
     previewVersion: number,
     attempt: ExtractionSucceeded | ExtractionFailed,
   ): Promise<void> {
-    // Sin HTML no hay copia que guardar: lo que no se pudo descargar no deja snapshot.
     if (attempt.kind !== 'extracted') return;
     const key = await this.snapshots.save(linkId, previewVersion, attempt.html);
     if (key !== null) await this.links.saveSnapshotKey(linkId, key);
@@ -185,4 +219,18 @@ export class EnrichLinkUseCase {
       linkEnrichedEvent({ linkId, previewStatus, previewVersion }),
     );
   }
+}
+
+/**
+ * Señales inequívocas de cierre por relectura (ADR-037 D4):
+ * - `not_found` (HTTP 404/410), o
+ * - `isJobPosting === false` (la cadena OR ya incorpora JSON-LD JobPosting).
+ */
+function shouldCloseFromFreshness(
+  attempt: ExtractionSucceeded | ExtractionFailed,
+): boolean {
+  if (attempt.kind === 'failed') {
+    return attempt.reason === 'not_found';
+  }
+  return attempt.isJobPosting === false;
 }

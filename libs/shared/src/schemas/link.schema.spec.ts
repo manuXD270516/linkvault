@@ -268,6 +268,29 @@ describe('jobLinkSummarySchema', () => {
     expect(parsed.preview).toBeUndefined();
     expect(parsed.previewSources).toBeUndefined();
     expect(parsed.lastEnrichmentError).toBeUndefined();
+    expect(parsed.closedAt).toBeUndefined();
+    expect(parsed.closedReason).toBeUndefined();
+  });
+
+  it('accepts a closed vacancy with closedAt and closedReason', () => {
+    const closed = {
+      ...summary,
+      closedAt: '2026-09-22T12:00:00.000Z',
+      closedReason: 'calendar' as const,
+    };
+    expect(jobLinkSummarySchema.parse(closed)).toEqual(closed);
+    expect(
+      jobLinkSummarySchema.safeParse({
+        ...summary,
+        closedReason: 'recheck',
+      }).success,
+    ).toBe(true);
+    expect(
+      jobLinkSummarySchema.safeParse({
+        ...summary,
+        closedReason: 'unknown',
+      }).success,
+    ).toBe(false);
   });
 
   it('always carries the preview version, so a late notice can be told apart', () => {

@@ -163,6 +163,11 @@ export class HttpPageFetcher implements PageFetcher {
       await response.body?.cancel();
       return { ok: false, reason: 'rate_limited' };
     }
+    // 404/410: la oferta ya no está (ADR-037); distinto de un 5xx genérico.
+    if (response.status === 404 || response.status === 410) {
+      await response.body?.cancel();
+      return { ok: false, reason: 'not_found' };
+    }
     if (!response.ok) {
       await response.body?.cancel();
       return { ok: false, reason: 'http_error' };

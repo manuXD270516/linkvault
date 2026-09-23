@@ -1087,6 +1087,10 @@
         <source> Importar </source>
         <target>Import</target>
       </trans-unit>
+      <trans-unit id="links.card.closed" datatype="html">
+        <source>Oferta cerrada</source>
+        <target>Closed offer</target>
+      </trans-unit>
       <trans-unit id="links.card.postedAgo" datatype="html">
         <source>{VAR_PLURAL, plural, =0 {Publicada hoy} =1 {Publicada ayer} other {Publicada hace <x id="INTERPOLATION"/>
       días}}</source>

@@ -114,6 +114,25 @@ describe('La tarjeta se actualiza sola', () => {
     expect(text()).not.toContain('Sin vista previa todavía');
   });
 
+  /** Cierre en vivo (ADR-037): el mismo canal `link.enriched` trae `closedAt` y la tarjeta pinta el badge sin reload. */
+  it('Badge de oferta cerrada al aviso SSE', async () => {
+    await open([enriched('l1', 'Ingeniera de datos')]);
+    expect(text()).not.toContain('Oferta cerrada');
+
+    await notify({
+      ...enriched('l1', 'Ingeniera de datos'),
+      closedAt: '2026-09-22T12:00:00.000Z',
+      closedReason: 'calendar',
+    });
+
+    http.expectNone(GROUP_PAGE);
+    expect(store.items()[0]?.closedAt).toBe('2026-09-22T12:00:00.000Z');
+    expect(store.items()[0]?.closedReason).toBe('calendar');
+    expect(text()).toContain('Oferta cerrada');
+    expect(text()).toContain('Ingeniera de datos');
+    expect(text()).toContain('Acme');
+  });
+
   it('Progreso de una importación', async () => {
     // Diez ofertas importadas; la página trae las diez primeras del listado, que son diez.
     await open(

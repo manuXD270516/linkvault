@@ -350,6 +350,7 @@ export const enrichmentFailureReasonSchema = z.enum([
   'rate_limited',
   'host_busy',
   'not_a_job',
+  'not_found',
   'not_html',
   'too_large',
   'timeout',
@@ -362,13 +363,15 @@ export type EnrichmentFailureReason = z.infer<
 >;
 
 /**
- * Motivos que no se reintentan: volver a pedir la página no cambiaría nada, porque no se nos permite leerla o porque lo
- * que hay no es una oferta. Todos los demás son transitorios, incluidos `rate_limited` y `host_busy`.
+ * Motivos que no se reintentan: volver a pedir la página no cambiaría nada, porque no se nos permite leerla, la oferta
+ * ya no está (`not_found`, HTTP 404/410) o porque lo que hay no es una oferta. Todos los demás son transitorios,
+ * incluidos `rate_limited` y `host_busy`.
  */
 export const NON_RETRYABLE_ENRICHMENT_REASONS = [
   'robots_disallowed',
   'blocked',
   'not_a_job',
+  'not_found',
 ] as const satisfies readonly EnrichmentFailureReason[];
 
 /** Si merece la pena volver a pedir la lectura de un link que falló por ese motivo. */

@@ -43,6 +43,8 @@ export interface SearchIndexDocument {
   readonly cvId?: string;
   readonly roadmapId?: string;
   readonly analysisId?: string;
+  /** ISO datetime when the vacancy is closed (ADR-037); absent when open. */
+  readonly closedAt?: string;
   /** Vector nativo Meili (hybrid). Ausente si embeddingStatus ≠ ready. */
   readonly _vectors?: { readonly default: readonly number[] };
 }
