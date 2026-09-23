@@ -82,18 +82,20 @@ describe('SearchStore', () => {
     await pending;
   });
 
-  it('run sends applicationStatus without modality or salaryCurrency', async () => {
-    store.setApplicationStatus('applied');
+  it('run re-forces docType when user changed type after LatAm filter (D3b)', async () => {
+    store.setModality('remote');
+    store.setDocType('application');
+    expect(store.docType()).toBe('application');
+
     const pending = store.run('Nest');
 
     const request = http.expectOne(
       (req) => req.method === 'GET' && req.url === '/api/search',
     );
-    expect(request.request.params.get('docType')).toBe('application');
-    expect(request.request.params.get('applicationStatus')).toBe('applied');
-    expect(request.request.params.has('modality')).toBe(false);
-    expect(request.request.params.has('salaryCurrency')).toBe(false);
+    expect(request.request.params.get('docType')).toBe('job_preview');
+    expect(request.request.params.get('modality')).toBe('remote');
     request.flush(emptyResponse);
     await pending;
+    expect(store.docType()).toBe('job_preview');
   });
 });

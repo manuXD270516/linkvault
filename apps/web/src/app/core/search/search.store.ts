@@ -119,6 +119,19 @@ export const SearchStore = signalStore(
       if (trimmed.length === 0) {
         return;
       }
+      // D3b: re-forzar docType por si el usuario cambió el tipo tras activar un filtro LatAm.
+      const modality = store.modality();
+      const applicationStatus = store.applicationStatus();
+      const salaryCurrency = store.salaryCurrency();
+      const latamDocType: SearchDocType | null =
+        applicationStatus !== null
+          ? 'application'
+          : modality !== null || salaryCurrency !== null
+            ? 'job_preview'
+            : null;
+      if (latamDocType !== null && store.docType() !== latamDocType) {
+        patchState(store, { docType: latamDocType });
+      }
       patchState(store, {
         query: trimmed,
         loading: true,
@@ -129,9 +142,6 @@ export const SearchStore = signalStore(
       try {
         const docType = store.docType();
         const groupId = store.groupId();
-        const modality = store.modality();
-        const applicationStatus = store.applicationStatus();
-        const salaryCurrency = store.salaryCurrency();
         const response = await api.search({
           q: trimmed,
           ...(docType !== null ? { docType } : {}),
