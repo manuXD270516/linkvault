@@ -301,3 +301,11 @@ changes:
       auto-expire postulaciones abiertas → expired; ASN visibility=group desde worker (claim→Queue.add, enmienda ADR-035);
       selector cascada pendiente; SSE + Search closedAt si FEATURE_SEARCH; badge SPA. Flag FEATURE_LINK_FRESHNESS.
       Fuera: digest B10, B9r filtros search, reopen link, scrape anti-robots, canal notify dedicado.
+  - name: search-latam-filters
+    adrs: [006]
+    agents: [backend-dev, frontend-dev]
+    scope: |
+      Fila 20 / B9r. Expone en GET /api/search y SPA /buscar filtros modality, applicationStatus (→ Meili status) y
+      salaryCurrency (pass-through BOB/USD en UI). Meili filterable modality/status/salaryCurrency; loader salaryCurrency;
+      UX D3b fuerza docType para evitar AND vacío entre tipos. Fuera: rango salarial, closedAt/solo abiertas, toggle mode,
+      digest B10, discovery.

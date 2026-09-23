@@ -74,6 +74,7 @@ export class MongoSearchAggregateLoader implements SearchAggregateLoader {
         : [salary.min, salary.max, salary.currency]
             .filter((v) => v !== null && v !== undefined)
             .join(' ');
+    const salaryCurrency = salaryCurrencyFromPreview(salary);
 
     return {
       id: searchDocumentId('job_preview', linkId),
@@ -105,6 +106,7 @@ export class MongoSearchAggregateLoader implements SearchAggregateLoader {
       ...(salaryText === undefined || salaryText.length === 0
         ? {}
         : { salaryText }),
+      ...(salaryCurrency === undefined ? {} : { salaryCurrency }),
       ...(link['closedAt'] instanceof Date
         ? { closedAt: (link['closedAt'] as Date).toISOString() }
         : typeof link['closedAt'] === 'string'
@@ -274,6 +276,23 @@ export class MongoSearchAggregateLoader implements SearchAggregateLoader {
 function scopeForPreview(groupIds: readonly string[]): SearchVisibilityScope {
   if (groupIds.length === 0) return 'owner';
   return 'owner_and_groups';
+}
+
+/**
+ * Copia `preview.salary.currency` al campo filterable `salaryCurrency`.
+ * Omite el campo si salary/currency ausente, null o string vacío/solo espacios.
+ */
+export function salaryCurrencyFromPreview(
+  salary:
+    | { readonly currency?: string | null }
+    | null
+    | undefined,
+): string | undefined {
+  if (salary === null || salary === undefined) return undefined;
+  const currency = salary.currency;
+  if (typeof currency !== 'string') return undefined;
+  const trimmed = currency.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 }
 
 function toObjectId(id: string): Types.ObjectId | null {

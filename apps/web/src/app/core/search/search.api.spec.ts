@@ -40,16 +40,21 @@ describe('SearchApi', () => {
     expect(request.request.params.has('mode')).toBe(false);
     expect(request.request.params.has('docType')).toBe(false);
     expect(request.request.params.has('groupId')).toBe(false);
+    expect(request.request.params.has('modality')).toBe(false);
+    expect(request.request.params.has('applicationStatus')).toBe(false);
+    expect(request.request.params.has('salaryCurrency')).toBe(false);
     request.flush(emptyResponse);
 
     await expect(result).resolves.toEqual(emptyResponse);
   });
 
-  it('includes only docType and groupId filters when set', async () => {
+  it('includes docType, groupId and LatAm filters when set', async () => {
     const result = api.search({
       q: 'Nest',
-      docType: 'application',
+      docType: 'job_preview',
       groupId: 'g1',
+      modality: 'remote',
+      salaryCurrency: 'USD',
       limit: 10,
       offset: 5,
     });
@@ -57,11 +62,33 @@ describe('SearchApi', () => {
     const request = http.expectOne(
       (req) => req.method === 'GET' && req.url === '/api/search',
     );
-    expect(request.request.params.get('docType')).toBe('application');
+    expect(request.request.params.get('docType')).toBe('job_preview');
     expect(request.request.params.get('groupId')).toBe('g1');
+    expect(request.request.params.get('modality')).toBe('remote');
+    expect(request.request.params.get('salaryCurrency')).toBe('USD');
+    expect(request.request.params.has('applicationStatus')).toBe(false);
     expect(request.request.params.get('limit')).toBe('10');
     expect(request.request.params.get('offset')).toBe('5');
     expect(request.request.params.has('mode')).toBe(false);
+    request.flush(emptyResponse);
+
+    await expect(result).resolves.toEqual(emptyResponse);
+  });
+
+  it('includes applicationStatus in HttpParams when set', async () => {
+    const result = api.search({
+      q: 'Nest',
+      docType: 'application',
+      applicationStatus: 'applied',
+    });
+
+    const request = http.expectOne(
+      (req) => req.method === 'GET' && req.url === '/api/search',
+    );
+    expect(request.request.params.get('docType')).toBe('application');
+    expect(request.request.params.get('applicationStatus')).toBe('applied');
+    expect(request.request.params.has('modality')).toBe(false);
+    expect(request.request.params.has('salaryCurrency')).toBe(false);
     request.flush(emptyResponse);
 
     await expect(result).resolves.toEqual(emptyResponse);

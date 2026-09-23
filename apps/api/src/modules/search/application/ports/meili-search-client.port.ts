@@ -30,6 +30,8 @@ export interface SearchIndexDocument {
   readonly location?: string;
   readonly modality?: string;
   readonly salaryText?: string;
+  /** Moneda de `preview.salary.currency` cuando es string no vacío (filterable). */
+  readonly salaryCurrency?: string;
   readonly status?: string;
   readonly stageLabel?: string;
   readonly notes?: string;

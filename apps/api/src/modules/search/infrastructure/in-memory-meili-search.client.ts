@@ -80,7 +80,7 @@ export class InMemoryMeiliSearchClient implements MeiliSearchClient {
     }
     const q = query.q.trim().toLowerCase();
     const all = [...this.documents.values()].filter((doc) =>
-      matchesAclFilter(doc, query.filter),
+      matchesSearchFilter(doc, query.filter),
     );
     const matched = all.filter((doc) => {
       if (q.length === 0) return false;
@@ -122,6 +122,48 @@ export class InMemoryMeiliSearchClient implements MeiliSearchClient {
     }));
     return Promise.resolve({ hits, estimatedTotal: matched.length });
   }
+}
+
+function matchesSearchFilter(doc: SearchIndexDocument, filter: string): boolean {
+  if (!matchesEqualityFilters(doc, filter)) {
+    return false;
+  }
+  return matchesAclFilter(doc, filter);
+}
+
+/** Igualdades AND del builder (docType / modality / status / salaryCurrency). */
+function matchesEqualityFilters(
+  doc: SearchIndexDocument,
+  filter: string,
+): boolean {
+  const checks: ReadonlyArray<{
+    readonly attr: string;
+    readonly value: string | undefined;
+  }> = [
+    { attr: 'modality', value: doc.modality },
+    { attr: 'status', value: doc.status },
+    { attr: 'salaryCurrency', value: doc.salaryCurrency },
+  ];
+  for (const { attr, value } of checks) {
+    const required = equalityValue(filter, attr);
+    if (required !== undefined && required !== value) {
+      return false;
+    }
+  }
+  // docType = "…" (no confundir con docType IN […])
+  const docTypeEq = /(?:^|[^I])\s*docType\s*=\s*"([^"]+)"/.exec(
+    filter.replace(/docType\s+IN\s*\[[^\]]*]/g, ''),
+  );
+  if (docTypeEq !== null && docTypeEq[1] !== doc.docType) {
+    return false;
+  }
+  return true;
+}
+
+function equalityValue(filter: string, attr: string): string | undefined {
+  const re = new RegExp(`(?:^|[\\s(])${attr}\\s*=\\s*"([^"]+)"`);
+  const match = re.exec(filter);
+  return match?.[1];
 }
 
 function matchesAclFilter(doc: SearchIndexDocument, filter: string): boolean {

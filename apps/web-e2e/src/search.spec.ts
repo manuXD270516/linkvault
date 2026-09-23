@@ -34,6 +34,9 @@ test('search: /buscar hybrid page, empty query, no mode, GET /api/search', async
   await expect(page.getByRole('heading', { level: 1, name: 'Buscar' })).toBeVisible();
   await expect(page.getByTestId('search-doc-type')).toBeVisible();
   await expect(page.getByTestId('search-group')).toBeVisible();
+  await expect(page.getByTestId('search-modality')).toBeVisible();
+  await expect(page.getByTestId('search-application-status')).toBeVisible();
+  await expect(page.getByTestId('search-salary-currency')).toBeVisible();
   await expect(page.getByTestId('search-mode')).toHaveCount(0);
   await page.screenshot({
     path: join(SCREENSHOT_DIR, 'buscar-vacio.png'),

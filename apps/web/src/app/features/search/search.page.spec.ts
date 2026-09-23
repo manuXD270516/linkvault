@@ -79,10 +79,23 @@ describe('SearchPage', () => {
     await settle();
   }
 
+  async function selectMatOption(
+    testId: string,
+    optionText: string,
+  ): Promise<void> {
+    host().querySelector<HTMLElement>(`[data-testid="${testId}"]`)!.click();
+    await settle();
+    const option = Array.from(document.body.querySelectorAll('mat-option')).find((el) =>
+      el.textContent?.includes(optionText),
+    );
+    expect(option).toBeTruthy();
+    (option as HTMLElement).click();
+    await settle();
+  }
+
   it('shows the query field and does not request search on enter', async () => {
     expect(host().querySelector('[data-testid="search-query"]')).not.toBeNull();
     expect(host().textContent).toContain('Buscar');
-    // Sin envío: no hay GET /api/search pendiente.
   });
 
   it('does not call the API for an empty query', async () => {
@@ -92,15 +105,7 @@ describe('SearchPage', () => {
   });
 
   it('searches with docType filter and without mode', async () => {
-    // Mat-select: open and pick application.
-    host().querySelector<HTMLElement>('[data-testid="search-doc-type"]')!.click();
-    await settle();
-    const option = Array.from(document.body.querySelectorAll('mat-option')).find((el) =>
-      el.textContent?.includes('Postulación'),
-    );
-    expect(option).toBeTruthy();
-    (option as HTMLElement).click();
-    await settle();
+    await selectMatOption('search-doc-type', 'Postulación');
 
     await submitSearch('Nest');
     const request = await vi.waitFor(() =>
@@ -118,6 +123,46 @@ describe('SearchPage', () => {
     await harness.fixture.whenStable();
 
     expect(host().querySelector('[data-testid="search-empty"]')).not.toBeNull();
+  });
+
+  it('sends modality and salaryCurrency with forced job_preview (D3b)', async () => {
+    await selectMatOption('search-modality', 'Remoto');
+    await selectMatOption('search-salary-currency', 'USD');
+
+    await submitSearch('Nest');
+    const request = await vi.waitFor(() =>
+      http.expectOne((req) => req.method === 'GET' && req.url === '/api/search'),
+    );
+    expect(request.request.params.get('modality')).toBe('remote');
+    expect(request.request.params.get('salaryCurrency')).toBe('USD');
+    expect(request.request.params.get('docType')).toBe('job_preview');
+    expect(request.request.params.has('applicationStatus')).toBe(false);
+    expect(request.request.params.has('mode')).toBe(false);
+    request.flush({
+      hits: [],
+      limit: SEARCH_PAGE_SIZE,
+      offset: 0,
+    } satisfies SearchResponse);
+    await settle();
+  });
+
+  it('sends applicationStatus with forced application and without LatAm axis (D3b)', async () => {
+    await selectMatOption('search-application-status', 'Postulada');
+
+    await submitSearch('Nest');
+    const request = await vi.waitFor(() =>
+      http.expectOne((req) => req.method === 'GET' && req.url === '/api/search'),
+    );
+    expect(request.request.params.get('applicationStatus')).toBe('applied');
+    expect(request.request.params.get('docType')).toBe('application');
+    expect(request.request.params.has('modality')).toBe(false);
+    expect(request.request.params.has('salaryCurrency')).toBe(false);
+    request.flush({
+      hits: [],
+      limit: SEARCH_PAGE_SIZE,
+      offset: 0,
+    } satisfies SearchResponse);
+    await settle();
   });
 
   it('renders typed hits, degraded notice, and navigation', async () => {
@@ -159,11 +204,11 @@ describe('SearchPage', () => {
     expect(host().querySelector('[data-testid="search-unavailable"]')).not.toBeNull();
   });
 
-  it('does not expose mode, modality or status controls', () => {
+  it('exposes LatAm filter controls and does not expose mode toggle', () => {
     expect(host().querySelector('[data-testid="search-mode"]')).toBeNull();
-    expect(host().textContent).not.toMatch(/hybrid|fulltext|semantic|modalidad|Modalidad/i);
-    // "Estado" as application-status filter must not appear as a control label.
-    expect(host().querySelector('[data-testid="search-status"]')).toBeNull();
-    expect(host().querySelector('[data-testid="search-modality"]')).toBeNull();
+    expect(host().querySelector('[data-testid="search-modality"]')).not.toBeNull();
+    expect(host().querySelector('[data-testid="search-application-status"]')).not.toBeNull();
+    expect(host().querySelector('[data-testid="search-salary-currency"]')).not.toBeNull();
+    expect(host().textContent).toContain('Modalidad');
   });
 });

@@ -1,6 +1,8 @@
 import {
   SEARCH_LIMIT_DEFAULT,
   SEARCH_LIMIT_MAX,
+  type ApplicationStatus,
+  type JobModality,
   type SearchDocType,
   type SearchHit,
   type SearchMode,
@@ -31,10 +33,15 @@ export interface SearchQueryInput {
   readonly limit?: number;
   readonly offset?: number;
   readonly mode?: SearchMode;
+  readonly modality?: JobModality;
+  /** Query param; se mapea al atributo Meili `status`. */
+  readonly applicationStatus?: ApplicationStatus;
+  readonly salaryCurrency?: string;
 }
 
 /**
- * `GET /api/search` (D6 / D7 / C7 / C11 / C14). ACL solo server-side; default mode hybrid.
+ * `GET /api/search` (D6 / D7 / C7 / C11 / C14; filtros LatAm D1). ACL solo server-side;
+ * default mode hybrid.
  */
 @Injectable()
 export class SearchContent {
@@ -73,6 +80,13 @@ export class SearchContent {
       memberGroupIds,
       ...(input.docType === undefined ? {} : { docType: input.docType }),
       ...(input.groupId === undefined ? {} : { groupId: input.groupId }),
+      ...(input.modality === undefined ? {} : { modality: input.modality }),
+      ...(input.applicationStatus === undefined
+        ? {}
+        : { status: input.applicationStatus }),
+      ...(input.salaryCurrency === undefined
+        ? {}
+        : { salaryCurrency: input.salaryCurrency }),
     });
 
     let vector: number[] | undefined;

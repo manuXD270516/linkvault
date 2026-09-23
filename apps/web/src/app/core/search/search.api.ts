@@ -13,9 +13,12 @@ export const SEARCH_PAGE_SIZE = 20;
 
 /**
  * Parámetros que envía la SPA V0. **Sin** `mode`: la API usa hybrid por defecto (D8 / S13).
- * Solo filtros `docType` y `groupId` (S12).
+ * Filtros: `docType`, `groupId`, y LatAm `modality` / `applicationStatus` / `salaryCurrency` (D3).
  */
-export type SearchRequest = Pick<SearchQueryParams, 'q' | 'docType' | 'groupId' | 'limit' | 'offset'>;
+export type SearchRequest = Pick<
+  SearchQueryParams,
+  'q' | 'docType' | 'groupId' | 'limit' | 'offset' | 'modality' | 'applicationStatus' | 'salaryCurrency'
+>;
 
 /**
  * Llamadas a `GET /api/search`. El Bearer lo pone `authInterceptor`. Solo importa tipos de
@@ -32,6 +35,15 @@ export class SearchApi {
     }
     if (request.groupId !== undefined) {
       params = params.set('groupId', request.groupId);
+    }
+    if (request.modality !== undefined) {
+      params = params.set('modality', request.modality);
+    }
+    if (request.applicationStatus !== undefined) {
+      params = params.set('applicationStatus', request.applicationStatus);
+    }
+    if (request.salaryCurrency !== undefined) {
+      params = params.set('salaryCurrency', request.salaryCurrency);
     }
     params = params.set('limit', String(request.limit ?? SEARCH_PAGE_SIZE));
     if (request.offset !== undefined) {

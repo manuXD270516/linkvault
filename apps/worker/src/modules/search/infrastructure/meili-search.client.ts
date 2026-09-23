@@ -10,7 +10,8 @@ import type {
 
 // Adaptador Meilisearch (change search, D2–D3). SDK solo aquí (misma regla de aislamiento que IA).
 
-const FILTERABLE = [
+/** Debe coincidir con api `meili-search.client.ts` (search-latam-filters D4). */
+export const MEILI_FILTERABLE_ATTRIBUTES = [
   'id',
   'docType',
   'ownerUserId',
@@ -21,7 +22,12 @@ const FILTERABLE = [
   'embedModelId',
   'embeddingDim',
   'closedAt',
+  'modality',
+  'status',
+  'salaryCurrency',
 ] as const;
+
+const FILTERABLE = MEILI_FILTERABLE_ATTRIBUTES;
 
 const SEARCHABLE = [
   'title',
