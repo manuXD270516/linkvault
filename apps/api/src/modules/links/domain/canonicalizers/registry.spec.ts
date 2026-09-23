@@ -32,6 +32,10 @@ describe('canonicalize', () => {
       'https://www.getonbrd.com/jobs/programming/full-stack-developer-senior-witi-remote-afcb',
       'getonboard',
     ],
+    [
+      'https://remoteok.com/remote-jobs/1130248-customer-support-specialist-acme',
+      'remoteok',
+    ],
     ['https://empresa.example/careers/backend', 'generic'],
   ])('sends %j to the %s canonicalizer', (raw, platform) => {
     expect(canonicalizeRaw(raw).platform).toBe(platform);

@@ -42,6 +42,7 @@ describe('platformSchema', () => {
       'indeed',
       'trabajopolis',
       'getonboard',
+      'remoteok',
       'generic',
     ]);
   });

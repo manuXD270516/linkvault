@@ -4,6 +4,7 @@ import { genericCanonicalizer } from './generic';
 import { getonboardCanonicalizer } from './getonboard';
 import { indeedCanonicalizer } from './indeed';
 import { linkedinCanonicalizer } from './linkedin';
+import { remoteokCanonicalizer } from './remoteok';
 import { trabajopolisCanonicalizer } from './trabajopolis';
 
 // Registro de canonicalizadores (D2 de job-links): se prueban en orden y, si ninguno reconoce la URL, cae en `generic`.
@@ -16,6 +17,7 @@ const CANONICALIZERS: readonly Canonicalizer[] = [
   indeedCanonicalizer,
   trabajopolisCanonicalizer,
   getonboardCanonicalizer,
+  remoteokCanonicalizer,
 ];
 
 /**

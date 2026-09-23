@@ -18,6 +18,7 @@ export * from './schemas/application-freshness';
 export * from './schemas/auth.schema';
 export * from './schemas/critique-suggestions.schema';
 export * from './schemas/cv.schema';
+export * from './schemas/discovery.schema';
 export * from './schemas/group.schema';
 export * from './schemas/group-link-comment.schema';
 export * from './schemas/health.schema';

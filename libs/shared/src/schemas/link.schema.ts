@@ -52,6 +52,7 @@ export const platformSchema = z.enum([
   'indeed',
   'trabajopolis',
   'getonboard',
+  'remoteok',
   'generic',
 ]);
 export type Platform = z.infer<typeof platformSchema>;

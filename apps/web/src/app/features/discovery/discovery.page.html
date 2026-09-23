@@ -1,0 +1,217 @@
+<section class="mx-auto flex max-w-2xl flex-col gap-6 p-6" data-testid="discovery-page">
+  <h1 class="text-2xl font-medium" i18n="@@discovery.title">Descubrir</h1>
+  <p class="m-0 text-(--mat-sys-on-surface-variant)" i18n="@@discovery.intro">
+    Busca vacantes en bolsas públicas y guárdalas en tus links sin salir de LinkVault.
+  </p>
+  <p
+    class="m-0 rounded border border-(--mat-sys-outline-variant) p-3 text-sm text-(--mat-sys-on-surface-variant)"
+    role="note"
+    data-testid="discovery-coverage"
+    i18n="@@discovery.coverage"
+  >
+    LinkedIn y Computrabajo no están disponibles vía discovery.
+  </p>
+
+  <form class="flex flex-col gap-4" (ngSubmit)="submit()" data-testid="discovery-form">
+    <mat-form-field appearance="outline" class="w-full">
+      <mat-label i18n="@@discovery.query.label">Consulta</mat-label>
+      <input
+        matInput
+        type="search"
+        name="q"
+        [ngModel]="queryDraft()"
+        (ngModelChange)="onQueryDraft($event)"
+        data-testid="discovery-query"
+        i18n-placeholder="@@discovery.query.placeholder"
+        placeholder="Título, empresa, stack…"
+      />
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" class="w-full">
+      <mat-label i18n="@@discovery.board.label">Bolsa</mat-label>
+      <mat-select
+        [ngModel]="board()"
+        (ngModelChange)="onBoardChange($event)"
+        name="board"
+        data-testid="discovery-board"
+      >
+        @for (option of boards; track option) {
+          <mat-option [value]="option">
+            @switch (option) {
+              @case ('all') {
+                <ng-container i18n="@@discovery.board.all">Todas</ng-container>
+              }
+              @case ('getonboard') {
+                <ng-container i18n="@@discovery.board.getonboard">GetOnBoard</ng-container>
+              }
+              @case ('remoteok') {
+                <ng-container i18n="@@discovery.board.remoteok">RemoteOK</ng-container>
+              }
+            }
+          </mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+
+    <div>
+      <button
+        mat-flat-button
+        color="primary"
+        type="submit"
+        [disabled]="loading()"
+        data-testid="discovery-submit"
+        i18n="@@discovery.submit"
+      >
+        Buscar
+      </button>
+    </div>
+  </form>
+
+  <p class="m-0 text-sm text-(--mat-sys-on-surface-variant)" i18n="@@discovery.save.hint">
+    Guardar añade la vacante a «Solo para mí».
+  </p>
+
+  @if (degraded().length > 0) {
+    <ul class="m-0 flex list-none flex-col gap-2 p-0" data-testid="discovery-degraded">
+      @for (entry of degraded(); track entry.board) {
+        <li
+          class="m-0 rounded border border-(--mat-sys-outline-variant) p-3 text-sm"
+          role="status"
+          [attr.data-testid]="'discovery-degraded-' + entry.board"
+        >
+          @switch (entry.board) {
+            @case ('getonboard') {
+              <ng-container i18n="@@discovery.degraded.getonboard"
+                >GetOnBoard no está disponible ahora.</ng-container
+              >
+            }
+            @case ('remoteok') {
+              <ng-container i18n="@@discovery.degraded.remoteok"
+                >RemoteOK no está disponible ahora.</ng-container
+              >
+            }
+          }
+        </li>
+      }
+    </ul>
+  }
+
+  @if (disabled()) {
+    <p
+      class="m-0 text-(--mat-sys-error)"
+      role="alert"
+      data-testid="discovery-disabled"
+      i18n="@@discovery.disabled"
+    >
+      El descubrimiento de vacantes no está disponible en este momento.
+    </p>
+  } @else if (failure(); as currentFailure) {
+    <lv-request-error [failure]="currentFailure" />
+  }
+
+  @if (loading()) {
+    <p class="m-0" role="status" data-testid="discovery-loading" i18n="@@discovery.loading">
+      Buscando…
+    </p>
+  }
+
+  @if (isEmpty() && !disabled()) {
+    <p class="m-0" data-testid="discovery-empty" i18n="@@discovery.empty">
+      No hay resultados para esta consulta.
+    </p>
+  }
+
+  @if (results().length > 0) {
+    <ul class="m-0 flex list-none flex-col gap-3 p-0" data-testid="discovery-results">
+      @for (hit of results(); track hit.url) {
+        <li
+          class="flex flex-col gap-2 border-b border-(--mat-sys-outline-variant) pb-3"
+          [attr.data-testid]="'discovery-hit-' + hit.board"
+        >
+          <div class="flex flex-wrap items-baseline gap-2">
+            <span
+              class="text-xs font-medium uppercase tracking-wide text-(--mat-sys-on-surface-variant)"
+              data-testid="discovery-hit-board"
+            >
+              @switch (hit.board) {
+                @case ('getonboard') {
+                  <ng-container i18n="@@discovery.board.getonboard">GetOnBoard</ng-container>
+                }
+                @case ('remoteok') {
+                  <ng-container i18n="@@discovery.board.remoteok">RemoteOK</ng-container>
+                }
+              }
+            </span>
+            <a
+              class="text-lg font-medium"
+              [href]="hit.url"
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid="discovery-hit-link"
+              >{{ hit.title }}</a
+            >
+          </div>
+          @if (hit.company) {
+            <p class="m-0 text-sm text-(--mat-sys-on-surface-variant)" data-testid="discovery-hit-company">
+              {{ hit.company }}
+            </p>
+          }
+          @if (hit.location) {
+            <p class="m-0 text-sm text-(--mat-sys-on-surface-variant)" data-testid="discovery-hit-location">
+              {{ hit.location }}
+            </p>
+          }
+          @if (hit.salaryText) {
+            <p class="m-0 text-sm text-(--mat-sys-on-surface-variant)" data-testid="discovery-hit-salary">
+              {{ hit.salaryText }}
+            </p>
+          }
+          <div class="flex flex-wrap items-center gap-3">
+            <button
+              mat-stroked-button
+              type="button"
+              [disabled]="isSaving(hit.url)"
+              (click)="save(hit)"
+              data-testid="discovery-save"
+              i18n="@@discovery.save"
+            >
+              Guardar
+            </button>
+            @switch (outcomeFor(hit.url)) {
+              @case ('created') {
+                <p
+                  class="m-0 text-sm"
+                  role="status"
+                  data-testid="discovery-save-created"
+                  i18n="@@discovery.save.created"
+                >
+                  Guardada en «Solo para mí».
+                </p>
+              }
+              @case ('already') {
+                <p
+                  class="m-0 text-sm"
+                  role="status"
+                  data-testid="discovery-save-already"
+                  i18n="@@discovery.save.already"
+                >
+                  Ya la tenías guardada.
+                </p>
+              }
+              @case ('error') {
+                <p
+                  class="m-0 text-sm text-(--mat-sys-error)"
+                  role="alert"
+                  data-testid="discovery-save-error"
+                  i18n="@@discovery.save.error"
+                >
+                  No pudimos guardar esta vacante. Inténtalo de nuevo.
+                </p>
+              }
+            }
+          </div>
+        </li>
+      }
+    </ul>
+  }
+</section>
