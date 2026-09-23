@@ -3348,11 +3348,18 @@
           <context context-type="linenumber">47,50</context>
         </context-group>
       </trans-unit>
+      <trans-unit id="notifications.pref.groupWeeklyDigest" datatype="html">
+        <source> Digest semanal del grupo </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/notifications/notifications.page.html</context>
+          <context context-type="linenumber">55,58</context>
+        </context-group>
+      </trans-unit>
       <trans-unit id="notifications.pref.notifyOwnActions" datatype="html">
         <source> Avisarme también de mis propias acciones </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/notifications/notifications.page.html</context>
-          <context context-type="linenumber">55,58</context>
+          <context context-type="linenumber">63,66</context>
         </context-group>
       </trans-unit>
       <trans-unit id="notifications.pref.statusGroup" datatype="html">

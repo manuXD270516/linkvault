@@ -35,6 +35,19 @@ export const workerConfigSchema = z
       .transform((value) => value === 'true'),
     LINK_FRESHNESS_INTERVAL_DAYS: positiveInt.min(1).max(90).default(7),
     LINK_FRESHNESS_BATCH_LIMIT: positiveInt.min(1).max(500).default(50),
+    FEATURE_GROUP_DIGEST: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
+    // Cron UTC del job raíz (default: lunes 14:00 → procesa W−1).
+    GROUP_DIGEST_CRON: z
+      .string()
+      .min(1)
+      .default('0 14 * * 1')
+      .refine(
+        (value) => value.trim().split(/\s+/).length >= 5,
+        { message: 'GROUP_DIGEST_CRON must be a cron expression' },
+      ),
     MEILI_HOST: z
       .string()
       .default('')

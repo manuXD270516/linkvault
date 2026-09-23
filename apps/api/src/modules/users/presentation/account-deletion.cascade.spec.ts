@@ -526,6 +526,7 @@ describe('DELETE /api/users/me account deletion cascade', () => {
       groupNewLink: false,
       applicationStatusGroup: true,
       applicationStale: true,
+      groupWeeklyDigest: true,
       notifyOwnActions: true,
       applicationStatusGroupId: null,
       updatedAt: NOW,

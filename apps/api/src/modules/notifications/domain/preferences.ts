@@ -1,6 +1,7 @@
 import {
   DEFAULT_NOTIFICATION_PREFERENCES,
   type NotificationPreferences,
+  type NotificationType,
   type PatchNotificationPreferencesRequest,
 } from '@linkvault/shared';
 
@@ -27,6 +28,7 @@ export function applyPreferencePatch(
     applicationStatusGroup:
       patch.applicationStatusGroup ?? current.applicationStatusGroup,
     applicationStale: patch.applicationStale ?? current.applicationStale,
+    groupWeeklyDigest: patch.groupWeeklyDigest ?? current.groupWeeklyDigest,
     notifyOwnActions: patch.notifyOwnActions ?? current.notifyOwnActions,
     applicationStatusGroupId:
       patch.applicationStatusGroupId !== undefined
@@ -38,10 +40,7 @@ export function applyPreferencePatch(
 /** ¿El tipo está habilitado en las preferencias efectivas? */
 export function isTypeEnabled(
   prefs: NotificationPreferences,
-  type:
-    | 'group_new_link'
-    | 'application_status_group'
-    | 'application_stale',
+  type: NotificationType,
 ): boolean {
   switch (type) {
     case 'group_new_link':
@@ -50,5 +49,7 @@ export function isTypeEnabled(
       return prefs.applicationStatusGroup;
     case 'application_stale':
       return prefs.applicationStale;
+    case 'group_weekly_digest':
+      return prefs.groupWeeklyDigest;
   }
 }

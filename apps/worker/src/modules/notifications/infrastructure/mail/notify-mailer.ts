@@ -92,37 +92,102 @@ function renderProduct(message: NotifyMailMessage): {
     };
   }
   // application-stale
-  if (message.locale === 'en') {
+  if (message.templateId === 'application-stale') {
+    if (message.locale === 'en') {
+      return {
+        subject: 'Your application has had no updates',
+        text: [
+          `Hi ${v.displayName},`,
+          '',
+          v.linkTitle
+            ? `Your application for “${v.linkTitle}” has had no updates for several days.`
+            : 'One of your applications has had no updates for several days.',
+          '',
+          'Review or update it here:',
+          v.actionUrl,
+          '',
+          '— LinkVault',
+        ].join('\n'),
+      };
+    }
     return {
-      subject: 'Your application has had no updates',
+      subject: 'Tu postulación lleva tiempo sin cambios',
       text: [
-        `Hi ${v.displayName},`,
+        `Hola ${v.displayName},`,
         '',
         v.linkTitle
-          ? `Your application for “${v.linkTitle}” has had no updates for several days.`
-          : 'One of your applications has had no updates for several days.',
+          ? `Tu postulación a «${v.linkTitle}» lleva días sin actualizarse.`
+          : 'Una de tus postulaciones lleva días sin actualizarse.',
         '',
-        'Review or update it here:',
+        'Revisa el estado o actualízalo aquí:',
         v.actionUrl,
         '',
         '— LinkVault',
       ].join('\n'),
     };
   }
+
+  // group-weekly-digest
+  const titles = v.linkTitles ?? [];
+  const more = v.moreCount ?? 0;
+  const groupLabel = v.groupName ?? '';
+  if (message.locale === 'en') {
+    const titleLines = titles.map((t) => `• ${t}`);
+    if (more > 0) {
+      titleLines.push(`…and ${more} more`);
+    }
+    return {
+      subject: groupLabel
+        ? `Weekly digest · ${groupLabel}`
+        : 'Weekly group digest',
+      text: [
+        `Hi ${v.displayName},`,
+        '',
+        groupLabel
+          ? `Here’s what was shared in “${groupLabel}” last week:`
+          : 'Here’s what was shared in your group last week:',
+        '',
+        ...titleLines,
+        '',
+        'Open the group:',
+        v.actionUrl,
+        '',
+        'Notification preferences:',
+        v.preferencesUrl ?? '',
+        '',
+        '— LinkVault',
+      ]
+        .filter((line, i, arr) => !(line === '' && arr[i - 1] === ''))
+        .join('\n'),
+    };
+  }
+  const titleLinesEs = titles.map((t) => `• ${t}`);
+  if (more > 0) {
+    titleLinesEs.push(`…y ${more} más`);
+  }
   return {
-    subject: 'Tu postulación lleva tiempo sin cambios',
+    subject: groupLabel
+      ? `Resumen semanal · ${groupLabel}`
+      : 'Resumen semanal del grupo',
     text: [
       `Hola ${v.displayName},`,
       '',
-      v.linkTitle
-        ? `Tu postulación a «${v.linkTitle}» lleva días sin actualizarse.`
-        : 'Una de tus postulaciones lleva días sin actualizarse.',
+      groupLabel
+        ? `Esto se compartió en «${groupLabel}» la semana pasada:`
+        : 'Esto se compartió en tu grupo la semana pasada:',
       '',
-      'Revisa el estado o actualízalo aquí:',
+      ...titleLinesEs,
+      '',
+      'Ver grupo:',
       v.actionUrl,
       '',
+      'Preferencias de notificación:',
+      v.preferencesUrl ?? '',
+      '',
       '— LinkVault',
-    ].join('\n'),
+    ]
+      .filter((line, i, arr) => !(line === '' && arr[i - 1] === ''))
+      .join('\n'),
   };
 }
 

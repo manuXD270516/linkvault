@@ -47,6 +47,7 @@ export class MongoNotificationPreferencesRepository
             groupNewLink: preferences.groupNewLink,
             applicationStatusGroup: preferences.applicationStatusGroup,
             applicationStale: preferences.applicationStale,
+            groupWeeklyDigest: preferences.groupWeeklyDigest,
             notifyOwnActions: preferences.notifyOwnActions,
             applicationStatusGroupId: preferences.applicationStatusGroupId,
             updatedAt,
@@ -85,6 +86,9 @@ function toPreferences(
       DEFAULT_NOTIFICATION_PREFERENCES.applicationStatusGroup,
     applicationStale:
       doc.applicationStale ?? DEFAULT_NOTIFICATION_PREFERENCES.applicationStale,
+    groupWeeklyDigest:
+      doc.groupWeeklyDigest ??
+      DEFAULT_NOTIFICATION_PREFERENCES.groupWeeklyDigest,
     notifyOwnActions:
       doc.notifyOwnActions ?? DEFAULT_NOTIFICATION_PREFERENCES.notifyOwnActions,
     applicationStatusGroupId: doc.applicationStatusGroupId ?? null,

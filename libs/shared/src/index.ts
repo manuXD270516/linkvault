@@ -5,6 +5,7 @@ export * from './events/cv-deleted.event';
 export * from './events/cv-uploaded.event';
 export * from './events/group-link-added.event';
 export * from './events/group-link-comments.event';
+export * from './events/group-weekly-digest.event';
 export * from './events/link-created.event';
 export * from './events/link-enriched.event';
 export * from './events/link-freshness.event';

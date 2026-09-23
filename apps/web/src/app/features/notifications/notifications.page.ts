@@ -64,6 +64,7 @@ export class NotificationsPage {
     groupNewLink: true,
     applicationStatusGroup: true,
     applicationStale: true,
+    groupWeeklyDigest: true,
     notifyOwnActions: true,
     applicationStatusGroupId: this.formBuilder.control<string | null>(null),
   });
@@ -87,6 +88,7 @@ export class NotificationsPage {
       groupNewLink: prefs.groupNewLink,
       applicationStatusGroup: prefs.applicationStatusGroup,
       applicationStale: prefs.applicationStale,
+      groupWeeklyDigest: prefs.groupWeeklyDigest,
       notifyOwnActions: prefs.notifyOwnActions,
       applicationStatusGroupId: prefs.applicationStatusGroupId,
     });
@@ -99,6 +101,7 @@ export class NotificationsPage {
       groupNewLink: raw.groupNewLink,
       applicationStatusGroup: raw.applicationStatusGroup,
       applicationStale: raw.applicationStale,
+      groupWeeklyDigest: raw.groupWeeklyDigest,
       notifyOwnActions: raw.notifyOwnActions,
       applicationStatusGroupId: raw.applicationStatusGroupId,
     };

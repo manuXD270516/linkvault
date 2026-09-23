@@ -27,6 +27,7 @@ describe('GetNotificationPreferences', () => {
       groupNewLink: true,
       applicationStatusGroup: true,
       applicationStale: true,
+      groupWeeklyDigest: true,
       notifyOwnActions: true,
       applicationStatusGroupId: null,
     });
@@ -49,7 +50,22 @@ describe('UpdateNotificationPreferences', () => {
     const result = await update.execute(ANA, { groupNewLink: false });
     expect(result.groupNewLink).toBe(false);
     expect(result.applicationStatusGroup).toBe(true);
+    expect(result.groupWeeklyDigest).toBe(true);
     expect(await repo.findByUserId(ANA)).toMatchObject({ groupNewLink: false });
+  });
+
+  it('opt-out de groupWeeklyDigest', async () => {
+    const update = new UpdateNotificationPreferences(
+      repo,
+      new AlwaysMemberMembership(),
+      fixedClock(NOW),
+    );
+    const result = await update.execute(ANA, { groupWeeklyDigest: false });
+    expect(result.groupWeeklyDigest).toBe(false);
+    expect(result.groupNewLink).toBe(true);
+    expect(await repo.findByUserId(ANA)).toMatchObject({
+      groupWeeklyDigest: false,
+    });
   });
 
   it('configura applicationStatusGroupId si es miembro', async () => {

@@ -35,6 +35,8 @@ export async function workerTestConfig(
     FEATURE_LINK_FRESHNESS: false,
     LINK_FRESHNESS_INTERVAL_DAYS: 7,
     LINK_FRESHNESS_BATCH_LIMIT: 50,
+    FEATURE_GROUP_DIGEST: false,
+    GROUP_DIGEST_CRON: '0 14 * * 1',
     MEILI_HOST: '',
     MEILI_MASTER_KEY: '',
     MEILI_INDEX: 'lv_content',

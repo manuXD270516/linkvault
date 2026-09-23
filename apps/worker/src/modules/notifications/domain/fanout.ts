@@ -30,6 +30,8 @@ export function typeEnabled(
       return prefs.applicationStatusGroup;
     case 'application_stale':
       return prefs.applicationStale;
+    case 'group_weekly_digest':
+      return prefs.groupWeeklyDigest;
   }
 }
 

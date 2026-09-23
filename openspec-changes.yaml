@@ -309,3 +309,10 @@ changes:
       salaryCurrency (pass-through BOB/USD en UI). Meili filterable modality/status/salaryCurrency; loader salaryCurrency;
       UX D3b fuerza docType para evitar AND vacío entre tipos. Fuera: rango salarial, closedAt/solo abiertas, toggle mode,
       digest B10, discovery.
+  - name: group-weekly-digest
+    adrs: [034, 035]
+    agents: [backend-dev, frontend-dev, devops]
+    scope: |
+      Fila 21 / B10. Digest email semanal por miembro×grupo sobre group_links.sharedAt en semana ISO W−1; tipo
+      group_weekly_digest (opt-out, default ON); solo email; pie con link a prefs; FEATURE_GROUP_DIGEST; enmienda ADR-035.
+      Fuera: push, consolidar multi-grupo, status en el mail, IA, opt-out por grupo.
