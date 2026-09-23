@@ -37,6 +37,7 @@ test('search: /buscar hybrid page, empty query, no mode, GET /api/search', async
   await expect(page.getByTestId('search-modality')).toBeVisible();
   await expect(page.getByTestId('search-application-status')).toBeVisible();
   await expect(page.getByTestId('search-salary-currency')).toBeVisible();
+  await expect(page.getByTestId('search-open-only')).toBeVisible();
   await expect(page.getByTestId('search-mode')).toHaveCount(0);
   await page.screenshot({
     path: join(SCREENSHOT_DIR, 'buscar-vacio.png'),
