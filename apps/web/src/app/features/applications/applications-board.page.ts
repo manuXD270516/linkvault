@@ -1,7 +1,7 @@
 import { CdkDrag, type CdkDragDrop, CdkDropList, CdkDropListGroup } from '@angular/cdk/drag-drop';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { MatDialog } from '@angular/material/dialog';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import type { Application, ApplicationStatus } from '@linkvault/shared';
 import type { RequestFailure } from '../../core/api/api-error';
 import { ApplicationsStore } from '../../core/applications/applications.store';
@@ -29,6 +29,8 @@ const COLUMN_TARGET: Record<Exclude<BoardColumnId, 'closed'>, ApplicationStatus>
  * Tablero de postulaciones (`/postulaciones`, D11). Las columnas salen del store en cada cambio, así que una tarjeta
  * solo cambia de columna cuando la API confirma: el arrastre no toca los datos, y si el cambio falla o se cancela, la
  * tarjeta vuelve sola a donde estaba. "Mover a…" es la misma operación sin ratón.
+ *
+ * Query `applicationId` + `linkId` (desde insights stale): abre el detalle al cargar.
  */
 @Component({
   selector: 'lv-applications-board-page',
@@ -40,6 +42,8 @@ export class ApplicationsBoardPage {
   private readonly store = inject(ApplicationsStore);
   private readonly moves = inject(ApplicationMoves);
   private readonly dialog = inject(MatDialog);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
 
   protected readonly loaded = this.store.boardLoaded;
   protected readonly loadFailure = this.store.boardFailure;
@@ -62,7 +66,31 @@ export class ApplicationsBoardPage {
   protected readonly conflict = signal(false);
 
   constructor() {
-    void this.store.loadBoard();
+    void this.bootstrap();
+  }
+
+  private async bootstrap(): Promise<void> {
+    await this.store.loadBoard();
+    this.openDetailFromQuery();
+  }
+
+  /** Abre el panel si insights (u otro) llegó con `applicationId` + `linkId`, y limpia la query. */
+  private openDetailFromQuery(): void {
+    const params = this.route.snapshot.queryParamMap;
+    const applicationId = params.get('applicationId');
+    const linkId = params.get('linkId');
+    if (applicationId === null || linkId === null) {
+      return;
+    }
+    const application = this.store.byLinkId()[linkId];
+    if (application !== undefined && application.id === applicationId) {
+      this.openDetail(application);
+    }
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: {},
+      replaceUrl: true,
+    });
   }
 
   /** El panel se abre a la derecha, a toda la altura: el tablero sigue a la vista detrás. */

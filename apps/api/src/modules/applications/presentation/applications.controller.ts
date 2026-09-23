@@ -4,6 +4,7 @@ import {
   trackLinkRequestSchema,
   updateApplicationRequestSchema,
   type Application,
+  type ApplicationAnalyticsResponse,
   type ApplicationListQuery,
   type ApplicationListResponse,
   type ApplicationTimelineResponse,
@@ -28,6 +29,7 @@ import type { AuthenticatedUser } from '../../../presentation/http/auth-context/
 import { CurrentUser } from '../../../presentation/http/auth-context/current-user.decorator';
 import { ZodValidationPipe } from '../../../presentation/http/zod-validation.pipe';
 import { ChangeApplicationStatus } from '../application/change-application-status.usecase';
+import { GetApplicationAnalytics } from '../application/get-application-analytics.usecase';
 import { GetApplicationTimeline } from '../application/get-application-timeline.usecase';
 import { ListMyApplications } from '../application/list-my-applications.usecase';
 import { TrackLink } from '../application/track-link.usecase';
@@ -44,6 +46,7 @@ export class ApplicationsController {
   constructor(
     private readonly trackLink: TrackLink,
     private readonly listMine: ListMyApplications,
+    private readonly analytics: GetApplicationAnalytics,
     private readonly changeStatus: ChangeApplicationStatus,
     private readonly updateApplication: UpdateApplication,
     private readonly timeline: GetApplicationTimeline,
@@ -67,6 +70,14 @@ export class ApplicationsController {
     query: ApplicationListQuery,
   ): Promise<ApplicationListResponse> {
     return this.listMine.execute(user.userId, query.linkIds);
+  }
+
+  /** Embudo personal on-read (ADR-039): siempre `200` para el dueño, ceros + `stale: []` si vacío. */
+  @Get('analytics')
+  funnel(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ApplicationAnalyticsResponse> {
+    return this.analytics.execute(user.userId);
   }
 
   @Patch(':id/status')

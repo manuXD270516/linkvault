@@ -508,6 +508,7 @@ sequenceDiagram
 | 22 | `search-open-only` | Filtro SPA/API `openOnly` → Meili `closedAt IS NULL`; D3b con `job_preview` ↔ `applicationStatus` |
 | 23 | `know-someone-flag` | B11: flag «conozco a alguien ahí» por miembro en `group_links.knowSomeoneUserIds`; PUT atómico; badge en card de grupo |
 | 24 | `browser-extension` | F3/G5: extensión Chromium MV3; auth `/api/auth/extension/*` (refresh en body); CTA Guardar privado por defecto; CORS allowlist; **ADR-038** (enmienda ADR-012) |
+| 25 | `application-analytics` | F3 analytics: funnel personal on-read (conteos ADR-024 + stale 10d cap 20); SPA insights; **ADR-039**; grupo/dwell diferidos |
 
 ---
 

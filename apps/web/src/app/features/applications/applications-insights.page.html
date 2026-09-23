@@ -1,0 +1,90 @@
+<section class="flex flex-col gap-6 p-6" data-testid="applications-insights">
+  <header class="flex flex-wrap items-baseline justify-between gap-4">
+    <h1 class="text-2xl font-medium" i18n="@@applications.insights.title">Insights</h1>
+    <a routerLink="/postulaciones" i18n="@@applications.insights.backToBoard">Volver al tablero</a>
+  </header>
+
+  @if (failure(); as currentFailure) {
+    <lv-request-error [failure]="currentFailure" />
+  }
+
+  @if (isEmpty()) {
+    <div class="flex flex-col gap-2" data-testid="insights-empty">
+      <p i18n="@@applications.insights.empty">
+        Aún no tienes postulaciones. Registra ofertas con «Me interesa» o «Postulé» para ver aquí tu
+        embudo y las que llevan días sin moverse.
+      </p>
+      <div class="flex flex-wrap gap-4">
+        <a routerLink="/postulaciones" i18n="@@applications.insights.goToBoard">Ir al tablero</a>
+        <a routerLink="/grupos" i18n="@@applications.insights.goToGroups">Ir a tus grupos</a>
+        <a routerLink="/mis-links" i18n="@@applications.insights.goToMine">Ir a Solo para mí</a>
+      </div>
+    </div>
+  } @else if (loaded()) {
+    @let data = analytics();
+
+    <section class="flex flex-col gap-2" data-testid="insights-summary" aria-labelledby="insights-summary-heading">
+      <h2 id="insights-summary-heading" class="text-lg font-medium" i18n="@@applications.insights.summaryTitle">
+        Resumen
+      </h2>
+      <ul class="flex flex-wrap gap-6">
+        <li data-testid="insights-open">
+          <span class="text-sm" i18n="@@applications.insights.open">Abiertas</span>
+          <span class="ml-2 text-xl font-medium">{{ data.openCount }}</span>
+        </li>
+        <li data-testid="insights-closed">
+          <span class="text-sm" i18n="@@applications.insights.closed">Cerradas</span>
+          <span class="ml-2 text-xl font-medium">{{ data.closedCount }}</span>
+        </li>
+        <li data-testid="insights-accepted">
+          <span class="text-sm" i18n="@@applications.insights.accepted">Aceptadas</span>
+          <span class="ml-2 text-xl font-medium">{{ data.acceptedCount }}</span>
+        </li>
+      </ul>
+    </section>
+
+    <section class="flex flex-col gap-2" data-testid="insights-by-status" aria-labelledby="insights-by-status-heading">
+      <h2 id="insights-by-status-heading" class="text-lg font-medium" i18n="@@applications.insights.byStatusTitle">
+        Por estado
+      </h2>
+      <ul class="grid gap-2 sm:grid-cols-2 md:grid-cols-3">
+        @for (row of byStatusRows(); track row.status) {
+          <li class="flex justify-between gap-4" [attr.data-status]="row.status">
+            <span>{{ row.label }}</span>
+            <span class="font-medium">{{ row.count }}</span>
+          </li>
+        }
+      </ul>
+    </section>
+
+    <section class="flex flex-col gap-2" data-testid="insights-stale" aria-labelledby="insights-stale-heading">
+      <h2 id="insights-stale-heading" class="text-lg font-medium" i18n="@@applications.insights.staleTitle">
+        Estancadas (≥ 10 días)
+      </h2>
+      @if (data.stale.length === 0) {
+        <p data-testid="insights-stale-none" i18n="@@applications.insights.staleNone">
+          Ninguna postulación abierta lleva 10 días o más sin cambio de estado.
+        </p>
+      } @else {
+        <ul class="flex flex-col gap-2">
+          @for (item of data.stale; track item.applicationId) {
+            <li>
+              <a
+                class="flex flex-wrap items-baseline gap-x-3 gap-y-1"
+                routerLink="/postulaciones"
+                [queryParams]="boardQuery(item.applicationId, item.linkId)"
+                [attr.data-testid]="'insights-stale-' + item.applicationId"
+              >
+                <span class="font-medium">{{ labelOf(item.status) }}</span>
+                <time class="text-sm" [attr.datetime]="item.statusChangedAt">
+                  {{ item.statusChangedAt | date: 'mediumDate' }}
+                </time>
+                <span class="text-sm" i18n="@@applications.insights.openOnBoard">Ver en el tablero</span>
+              </a>
+            </li>
+          }
+        </ul>
+      }
+    </section>
+  }
+</section>

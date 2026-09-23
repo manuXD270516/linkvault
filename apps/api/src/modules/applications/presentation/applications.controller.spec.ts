@@ -1,4 +1,5 @@
 import {
+  applicationAnalyticsResponseSchema,
   applicationListResponseSchema,
   applicationSchema,
   applicationTimelineResponseSchema,
@@ -283,6 +284,128 @@ describe('applications endpoints', () => {
         }),
       ]);
       expect((await eventsOf(leaver, application.id)).statusCode).toBe(200);
+    });
+  });
+
+  describe('GET /api/applications/analytics', () => {
+    it('returns 200 with zeros and empty stale when the owner has none', async () => {
+      const empty = await http.authenticated('Sin apps');
+
+      const response = await http.request('GET', '/api/applications/analytics', {
+        authorization: empty.authorization,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(applicationAnalyticsResponseSchema.parse(response.json())).toEqual(
+        {
+          byStatus: {
+            saved: 0,
+            interested: 0,
+            applied: 0,
+            in_process: 0,
+            offer: 0,
+            accepted: 0,
+            rejected: 0,
+            withdrawn: 0,
+            expired: 0,
+          },
+          openCount: 0,
+          closedCount: 0,
+          acceptedCount: 0,
+          stale: [],
+        },
+      );
+    });
+
+    it('counts accepted separately from closed', async () => {
+      const owner = await http.authenticated('Accepted bucket');
+      const linkId = (await http.save(owner, jobUrl())).link.id;
+      const { application } = await http.track(owner, linkId, 'applied');
+      const movedResponse = await http.request(
+        'PATCH',
+        `/api/applications/${application.id}/status`,
+        {
+          authorization: owner.authorization,
+          body: { status: 'accepted', version: application.version },
+        },
+      );
+      expect(movedResponse.statusCode).toBe(200);
+
+      const response = await http.request('GET', '/api/applications/analytics', {
+        authorization: owner.authorization,
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = applicationAnalyticsResponseSchema.parse(response.json());
+      expect(body).toMatchObject({
+        byStatus: expect.objectContaining({ accepted: 1 }),
+        acceptedCount: 1,
+        closedCount: 0,
+        openCount: 0,
+        stale: [],
+      });
+    });
+
+    it('does not include another user applications', async () => {
+      const owner = await http.authenticated('Funnel sola');
+      const other = await http.authenticated('Funnel ajeno');
+      const ownerLink = (await http.save(owner, jobUrl())).link.id;
+      const otherLink = (await http.save(other, jobUrl())).link.id;
+      await http.track(owner, ownerLink, 'applied');
+      const { application: otherApp } = await http.track(
+        other,
+        otherLink,
+        'rejected',
+      );
+
+      const response = await http.request('GET', '/api/applications/analytics', {
+        authorization: owner.authorization,
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = applicationAnalyticsResponseSchema.parse(response.json());
+      expect(body.byStatus.applied).toBe(1);
+      expect(body.byStatus.rejected).toBe(0);
+      expect(body.closedCount).toBe(0);
+      expect(body.openCount).toBe(1);
+      expect(body.stale.map((item) => item.applicationId)).not.toContain(
+        otherApp.id,
+      );
+    });
+
+    it('lists applied as stale after 11 days and caps at 20', async () => {
+      const owner = await http.authenticated('Stale cap');
+      const elevenDaysAgo = new Date(Date.now() - 11 * DAY);
+      const ids: string[] = [];
+      for (let index = 0; index < 25; index += 1) {
+        const linkId = (await http.save(owner, jobUrl())).link.id;
+        const { application } = await http.track(owner, linkId, 'applied');
+        ids.push(application.id);
+        await http.connection.collection(APPLICATIONS_COLLECTION).updateOne(
+          { _id: new mongoose.Types.ObjectId(application.id) },
+          {
+            $set: {
+              statusChangedAt: new Date(
+                elevenDaysAgo.getTime() - index * DAY,
+              ),
+            },
+          },
+        );
+      }
+
+      const response = await http.request('GET', '/api/applications/analytics', {
+        authorization: owner.authorization,
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = applicationAnalyticsResponseSchema.parse(response.json());
+      expect(body.stale).toHaveLength(20);
+      expect(body.byStatus.applied).toBe(25);
+      expect(body.openCount).toBe(25);
+      // Oldest first: the ones with the earliest statusChangedAt.
+      const returned = body.stale.map((item) => item.applicationId);
+      expect(new Set(returned).size).toBe(20);
+      expect(returned.every((id) => ids.includes(id))).toBe(true);
     });
   });
 

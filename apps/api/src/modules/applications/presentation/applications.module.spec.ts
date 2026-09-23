@@ -15,6 +15,7 @@ import {
 import { LinksModule } from '../../links/presentation/links.module';
 import { ChangeApplicationStatus } from '../application/change-application-status.usecase';
 import { ApplicationFitScores } from '../application/application-fit-scores';
+import { GetApplicationAnalytics } from '../application/get-application-analytics.usecase';
 import { GetApplicationTimeline } from '../application/get-application-timeline.usecase';
 import { ListGroupTrackers } from '../application/list-group-trackers.usecase';
 import { ListMyApplications } from '../application/list-my-applications.usecase';
@@ -63,10 +64,11 @@ describe('ApplicationsModule', () => {
     await app.close();
   });
 
-  it('resolves the seven use cases of the module', () => {
+  it('resolves the eight use cases of the module', () => {
     for (const useCase of [
       TrackLink,
       ListMyApplications,
+      GetApplicationAnalytics,
       ChangeApplicationStatus,
       UpdateApplication,
       GetApplicationTimeline,
@@ -105,6 +107,7 @@ describe('ApplicationsModule', () => {
   it.each([
     ['POST', '/api/applications'],
     ['GET', '/api/applications'],
+    ['GET', '/api/applications/analytics'],
     ['PATCH', `/api/applications/${ID}/status`],
     ['PATCH', `/api/applications/${ID}`],
     ['GET', `/api/applications/${ID}/events`],

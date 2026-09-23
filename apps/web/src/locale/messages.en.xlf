@@ -130,6 +130,10 @@
         <source>Postulaciones</source>
         <target>Applications</target>
       </trans-unit>
+      <trans-unit id="applications.board.toInsights" datatype="html">
+        <source>Ver insights</source>
+        <target>View insights</target>
+      </trans-unit>
       <trans-unit id="applications.board.empty" datatype="html">
         <source> Aquí verás las ofertas que sigues. Pulsa «Me interesa» o «Postulé» en cualquier oferta de tus grupos o de tu lista. </source>
         <target>Here you will see the job posts you track. Press “I'm interested” or “I applied” on any job post in your groups or in your list.</target>
@@ -141,6 +145,62 @@
       <trans-unit id="applications.board.goToMine" datatype="html">
         <source>Ir a Solo para mí</source>
         <target>Go to Just for me</target>
+      </trans-unit>
+      <trans-unit id="applications.insights.title" datatype="html">
+        <source>Insights</source>
+        <target>Insights</target>
+      </trans-unit>
+      <trans-unit id="applications.insights.backToBoard" datatype="html">
+        <source>Volver al tablero</source>
+        <target>Back to the board</target>
+      </trans-unit>
+      <trans-unit id="applications.insights.empty" datatype="html">
+        <source> Aún no tienes postulaciones. Registra ofertas con «Me interesa» o «Postulé» para ver aquí tu embudo y las que llevan días sin moverse. </source>
+        <target>You have no applications yet. Track job posts with “I'm interested” or “I applied” to see your funnel here and which ones have stalled.</target>
+      </trans-unit>
+      <trans-unit id="applications.insights.goToBoard" datatype="html">
+        <source>Ir al tablero</source>
+        <target>Go to the board</target>
+      </trans-unit>
+      <trans-unit id="applications.insights.goToGroups" datatype="html">
+        <source>Ir a tus grupos</source>
+        <target>Go to your groups</target>
+      </trans-unit>
+      <trans-unit id="applications.insights.goToMine" datatype="html">
+        <source>Ir a Solo para mí</source>
+        <target>Go to Just for me</target>
+      </trans-unit>
+      <trans-unit id="applications.insights.summaryTitle" datatype="html">
+        <source> Resumen </source>
+        <target>Summary</target>
+      </trans-unit>
+      <trans-unit id="applications.insights.open" datatype="html">
+        <source>Abiertas</source>
+        <target>Open</target>
+      </trans-unit>
+      <trans-unit id="applications.insights.closed" datatype="html">
+        <source>Cerradas</source>
+        <target>Closed</target>
+      </trans-unit>
+      <trans-unit id="applications.insights.accepted" datatype="html">
+        <source>Aceptadas</source>
+        <target>Accepted</target>
+      </trans-unit>
+      <trans-unit id="applications.insights.byStatusTitle" datatype="html">
+        <source> Por estado </source>
+        <target>By status</target>
+      </trans-unit>
+      <trans-unit id="applications.insights.staleTitle" datatype="html">
+        <source> Estancadas (≥ 10 días) </source>
+        <target>Stalled (≥ 10 days)</target>
+      </trans-unit>
+      <trans-unit id="applications.insights.staleNone" datatype="html">
+        <source> Ninguna postulación abierta lleva 10 días o más sin cambio de estado. </source>
+        <target>No open application has gone 10 days or more without a status change.</target>
+      </trans-unit>
+      <trans-unit id="applications.insights.openOnBoard" datatype="html">
+        <source>Ver en el tablero</source>
+        <target>View on the board</target>
       </trans-unit>
       <trans-unit id="applications.appliedAgo" datatype="html">
         <source>{VAR_PLURAL, plural, =0 {Postulaste hoy} =1 {Postulaste ayer} other {Postulaste hace <x id="INTERPOLATION"/>
@@ -1159,6 +1219,19 @@
       <trans-unit id="links.list.remove" datatype="html">
         <source> Quitar </source>
         <target>Remove</target>
+      </trans-unit>
+      <trans-unit id="links.knowSomeone.flagged" datatype="html">
+        <source>Ya marqué que conozco a alguien</source>
+        <target>I already marked that I know someone there</target>
+      </trans-unit>
+      <trans-unit id="links.knowSomeone.flag" datatype="html">
+        <source>Conozco a alguien ahí</source>
+        <target>I know someone there</target>
+      </trans-unit>
+      <trans-unit id="links.knowSomeone.count" datatype="html">
+        <source>{VAR_PLURAL, plural, =1 {1 persona conoce a alguien ahí} other {<x id="INTERPOLATION"/> personas conocen a
+            alguien ahí}}</source>
+        <target>{VAR_PLURAL, plural, =1 {1 person knows someone there} other {<x id="INTERPOLATION"/> people know someone there}}</target>
       </trans-unit>
       <trans-unit id="comments.note.from" datatype="html">
         <source>Nota de <x id="INTERPOLATION" equiv-text="{{ sharer.displayName }}"/></source>

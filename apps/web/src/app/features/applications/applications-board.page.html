@@ -1,5 +1,13 @@
 <section class="flex flex-col gap-4 p-6">
-  <h1 class="text-2xl font-medium" i18n="@@applications.board.title">Postulaciones</h1>
+  <header class="flex flex-wrap items-baseline justify-between gap-4">
+    <h1 class="text-2xl font-medium" i18n="@@applications.board.title">Postulaciones</h1>
+    <a
+      routerLink="/postulaciones/insights"
+      data-testid="board-insights-link"
+      i18n="@@applications.board.toInsights"
+      >Ver insights</a
+    >
+  </header>
 
   @if (conflict()) {
     <p role="alert" data-testid="board-conflict" i18n="@@applications.board.conflict">
