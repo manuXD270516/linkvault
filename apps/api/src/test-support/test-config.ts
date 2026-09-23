@@ -32,6 +32,8 @@ export async function apiTestConfig(
     AI_CHAIN: 'mock',
     FEATURE_HEADLESS_EXTRACTION: false,
     FEATURE_SEARCH: false,
+    FEATURE_DISCOVERY: false,
+    DISCOVERY_CHAIN: 'mock',
     MEILI_HOST: '',
     MEILI_MASTER_KEY: '',
     MEILI_INDEX: 'lv_content',

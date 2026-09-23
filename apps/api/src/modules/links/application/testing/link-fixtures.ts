@@ -1,4 +1,5 @@
 import { PASTED_PREVIEW_EXTRACTOR } from '@linkvault/shared';
+import type { Canonicalization } from '../../domain/canonicalizers/canonicalizer';
 import { canonicalize } from '../../domain/canonicalizers/registry';
 import {
   createJobLink,
@@ -9,6 +10,18 @@ import { normalizeUrl, toDisplayUrl } from '../../domain/url';
 
 // Ayudas para preparar tests de `links`: convierten una URL en el borrador que el caso de uso pasaría al repositorio, y
 // dan identificadores con la forma de un ObjectId sin depender de Mongo.
+
+/**
+ * Canonicaliza una URL cruda como en producción (normalize → canonicalize).
+ * Expuesto a tests de otros módulos vía `links/application/testing/**`.
+ */
+export function canonicalizeFixtureUrl(url: string): Canonicalization {
+  const normalized = normalizeUrl(url);
+  if (normalized === null) {
+    return { platform: 'generic' };
+  }
+  return canonicalize(normalized.normalizedUrl);
+}
 
 /** Borrador de vacante a partir de una URL, con la misma normalización y canonicalización que el caso de uso. */
 export function jobLinkDraft(

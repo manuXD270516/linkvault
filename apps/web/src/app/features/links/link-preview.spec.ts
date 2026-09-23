@@ -33,6 +33,7 @@ describe('platformName', () => {
   it('names the platforms with their own brand', () => {
     expect(platformName('linkedin')).toBe('LinkedIn');
     expect(platformName('getonboard')).toBe('Get on Board');
+    expect(platformName('remoteok')).toBe('RemoteOK');
   });
 
   it('calls anything else another site', () => {

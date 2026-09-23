@@ -13,6 +13,7 @@ import { RedisHealthModule } from '../infrastructure/redis/redis-health.module';
 import { ApplicationsModule } from '../modules/applications/presentation/applications.module';
 import { AuthModule } from '../modules/auth/presentation/auth.module';
 import { CvModule } from '../modules/cv/presentation/cv.module';
+import { DiscoveryModule } from '../modules/discovery/presentation/discovery.module';
 import { GroupsModule } from '../modules/groups/presentation/groups.module';
 import { LinksModule } from '../modules/links/presentation/links.module';
 import { MatchModule } from '../modules/match/presentation/match.module';
@@ -83,6 +84,7 @@ export class AppModule {
         AiKeysModule.register(aiModule),
         AuthModule,
         GroupsModule,
+        DiscoveryModule,
         aiModule,
         searchModule,
         linksModule,

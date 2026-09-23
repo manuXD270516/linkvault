@@ -2217,9 +2217,93 @@
         <source>Buscar</source>
         <target>Search</target>
       </trans-unit>
+      <trans-unit id="shell.discovery" datatype="html">
+        <source>Descubrir</source>
+        <target>Discover</target>
+      </trans-unit>
       <trans-unit id="shell.applications" datatype="html">
         <source>Postulaciones</source>
         <target>Applications</target>
+      </trans-unit>
+      <trans-unit id="discovery.title" datatype="html">
+        <source>Descubrir</source>
+        <target>Discover</target>
+      </trans-unit>
+      <trans-unit id="discovery.intro" datatype="html">
+        <source> Busca vacantes en bolsas públicas y guárdalas en tus links sin salir de LinkVault. </source>
+        <target>Search public job boards and save listings to your links without leaving LinkVault.</target>
+      </trans-unit>
+      <trans-unit id="discovery.coverage" datatype="html">
+        <source> LinkedIn y Computrabajo no están disponibles vía discovery. </source>
+        <target>LinkedIn and Computrabajo are not available via discovery.</target>
+      </trans-unit>
+      <trans-unit id="discovery.query.label" datatype="html">
+        <source>Consulta</source>
+        <target>Query</target>
+      </trans-unit>
+      <trans-unit id="discovery.query.placeholder" datatype="html">
+        <source>Título, empresa, stack…</source>
+        <target>Title, company, stack…</target>
+      </trans-unit>
+      <trans-unit id="discovery.board.label" datatype="html">
+        <source>Bolsa</source>
+        <target>Board</target>
+      </trans-unit>
+      <trans-unit id="discovery.board.all" datatype="html">
+        <source>Todas</source>
+        <target>All</target>
+      </trans-unit>
+      <trans-unit id="discovery.board.getonboard" datatype="html">
+        <source>GetOnBoard</source>
+        <target>GetOnBoard</target>
+      </trans-unit>
+      <trans-unit id="discovery.board.remoteok" datatype="html">
+        <source>RemoteOK</source>
+        <target>RemoteOK</target>
+      </trans-unit>
+      <trans-unit id="discovery.submit" datatype="html">
+        <source>Buscar</source>
+        <target>Search</target>
+      </trans-unit>
+      <trans-unit id="discovery.save.hint" datatype="html">
+        <source> Guardar añade la vacante a «Solo para mí». </source>
+        <target>Save adds the listing to “Just for me”.</target>
+      </trans-unit>
+      <trans-unit id="discovery.degraded.getonboard" datatype="html">
+        <source>GetOnBoard no está disponible ahora.</source>
+        <target>GetOnBoard is unavailable right now.</target>
+      </trans-unit>
+      <trans-unit id="discovery.degraded.remoteok" datatype="html">
+        <source>RemoteOK no está disponible ahora.</source>
+        <target>RemoteOK is unavailable right now.</target>
+      </trans-unit>
+      <trans-unit id="discovery.disabled" datatype="html">
+        <source> El descubrimiento de vacantes no está disponible en este momento. </source>
+        <target>Job discovery is not available right now.</target>
+      </trans-unit>
+      <trans-unit id="discovery.loading" datatype="html">
+        <source> Buscando… </source>
+        <target>Searching…</target>
+      </trans-unit>
+      <trans-unit id="discovery.empty" datatype="html">
+        <source> No hay resultados para esta consulta. </source>
+        <target>No results for this query.</target>
+      </trans-unit>
+      <trans-unit id="discovery.save" datatype="html">
+        <source> Guardar </source>
+        <target>Save</target>
+      </trans-unit>
+      <trans-unit id="discovery.save.created" datatype="html">
+        <source> Guardada en «Solo para mí». </source>
+        <target>Saved to “Just for me”.</target>
+      </trans-unit>
+      <trans-unit id="discovery.save.already" datatype="html">
+        <source> Ya la tenías guardada. </source>
+        <target>You already had it saved.</target>
+      </trans-unit>
+      <trans-unit id="discovery.save.error" datatype="html">
+        <source> No pudimos guardar esta vacante. Inténtalo de nuevo. </source>
+        <target>We could not save this listing. Try again.</target>
       </trans-unit>
       <trans-unit id="search.title" datatype="html">
         <source>Buscar</source>
