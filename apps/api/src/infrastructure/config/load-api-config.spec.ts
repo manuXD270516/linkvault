@@ -80,6 +80,8 @@ describe('api configuration', () => {
       MONGO_URI: 'mongodb://localhost:27017/linkvault?directConnection=true',
       AI_CHAIN: 'mock',
       FEATURE_HEADLESS_EXTRACTION: false,
+      FEATURE_DISCOVERY: false,
+      DISCOVERY_CHAIN: 'mock',
       AUTH_JWT_SECRET: AUTH_JWT_SECRET_EXAMPLE,
       AUTH_ACCESS_TOKEN_TTL_SECONDS: 900,
       AUTH_REFRESH_TTL_DAYS: 30,

@@ -49,6 +49,7 @@ const PLATFORM_NAMES: Record<Exclude<Platform, 'generic'>, string> = {
   indeed: 'Indeed',
   trabajopolis: 'Trabajopolis',
   getonboard: 'Get on Board',
+  remoteok: 'RemoteOK',
 };
 
 /** Milisegundos de un día, para contar cuántos van desde que se publicó la oferta. */

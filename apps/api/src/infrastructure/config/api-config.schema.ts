@@ -46,6 +46,12 @@ export const apiConfigSchema = z
       .enum(['true', 'false'])
       .default('false')
       .transform((value) => value === 'true'),
+    // Discovery F3 (ADR-043). Off por defecto; mock en CI.
+    FEATURE_DISCOVERY: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
+    DISCOVERY_CHAIN: z.enum(['mock', 'live']).default('mock'),
     MEILI_HOST: z
       .string()
       .default('')

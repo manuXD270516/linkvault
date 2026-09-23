@@ -36,6 +36,10 @@ import {
   TooManyCvAttempts,
 } from '../../modules/cv/domain/errors';
 import {
+  DiscoveryError,
+  TooManyDiscoveryAttempts,
+} from '../../modules/discovery/domain/errors';
+import {
   MatchError,
   TooManyAnalysisAttempts,
 } from '../../modules/match/domain/errors';
@@ -245,6 +249,14 @@ export class ApiExceptionFilter extends BaseExceptionFilter {
       return reply(exception.code);
     }
     if (exception instanceof SearchError) {
+      return reply(exception.code);
+    }
+    if (exception instanceof TooManyDiscoveryAttempts) {
+      return reply(exception.code, [], {
+        'Retry-After': String(exception.retryAfterSeconds),
+      });
+    }
+    if (exception instanceof DiscoveryError) {
       return reply(exception.code);
     }
     if (exception instanceof HttpException) {

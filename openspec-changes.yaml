@@ -367,3 +367,10 @@ changes:
       Fila 28. Profile compose demo (Meili profiles search+demo) + pnpm nx run api:seed-demo idempotente.
       Guards ALLOW_DEMO_SEED / no prod / allowlist Mongo. Dataset Ana/Bob tour. Search vía backfill/outbox.
       F3 cerrado; discovery post-v1. Fuera: discovery, Meili SDK en seed, UI reseeding.
+  - name: job-discovery
+    adrs: [043, 008, 022]
+    agents: [backend-dev, frontend-dev]
+    scope: |
+      Fila 29 / post-v1. GET /api/discovery/search (getonboard API pública + remoteok dump/cache/egress);
+      mock CI; FEATURE_DISCOVERY; SPA /descubrir guardar privado vía POST /api/links + feedback;
+      platform remoteok. Fuera: LinkedIn/Indeed/Computrabajo, headless, picker grupo.
