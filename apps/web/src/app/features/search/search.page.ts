@@ -11,16 +11,35 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { RouterLink } from '@angular/router';
-import { SEARCH_DOC_TYPES, type SearchDocType, type SearchHit } from '@linkvault/shared';
+import {
+  APPLICATION_STATUSES,
+  SEARCH_DOC_TYPES,
+  type ApplicationStatus,
+  type JobModality,
+  type SearchDocType,
+  type SearchHit,
+} from '@linkvault/shared';
 import { isApiFailure } from '../../core/api/api-error';
 import { GroupsStore } from '../../core/groups/groups.store';
-import { SearchStore } from '../../core/search/search.store';
+import {
+  SearchStore,
+  type SearchSalaryCurrency,
+} from '../../core/search/search.store';
 import { RequestError } from '../../shared/ui/request-error';
 import { searchHitRoute } from './search-hit-route';
 
+const JOB_MODALITIES: readonly JobModality[] = [
+  'remote',
+  'hybrid',
+  'onsite',
+  'unknown',
+];
+
+const SALARY_CURRENCIES: readonly SearchSalaryCurrency[] = ['BOB', 'USD'];
+
 /**
- * Pantalla de búsqueda (`/buscar`, spec web/search, D8). Siempre hybrid (sin toggle de modo);
- * filtros solo `docType` + `groupId`.
+ * Pantalla de búsqueda (`/buscar`, spec web/search, D8 / D3). Siempre hybrid (sin toggle de modo);
+ * filtros `docType`, `groupId` y LatAm (modality / applicationStatus / salaryCurrency) con D3b.
  */
 @Component({
   selector: 'lv-search-page',
@@ -52,9 +71,15 @@ export class SearchPage {
   protected readonly failure = this.store.failure;
   protected readonly docType = this.store.docType;
   protected readonly groupId = this.store.groupId;
+  protected readonly modality = this.store.modality;
+  protected readonly applicationStatus = this.store.applicationStatus;
+  protected readonly salaryCurrency = this.store.salaryCurrency;
   protected readonly groupOptions = this.groups.groups;
 
   protected readonly docTypes = SEARCH_DOC_TYPES;
+  protected readonly modalities = JOB_MODALITIES;
+  protected readonly applicationStatuses = APPLICATION_STATUSES;
+  protected readonly salaryCurrencies = SALARY_CURRENCIES;
 
   protected readonly unavailable = computed(() =>
     isApiFailure(this.failure(), 503, 'search_unavailable'),
@@ -75,6 +100,18 @@ export class SearchPage {
 
   protected onGroupChange(value: string | ''): void {
     this.store.setGroupId(value === '' ? null : value);
+  }
+
+  protected onModalityChange(value: JobModality | ''): void {
+    this.store.setModality(value === '' ? null : value);
+  }
+
+  protected onApplicationStatusChange(value: ApplicationStatus | ''): void {
+    this.store.setApplicationStatus(value === '' ? null : value);
+  }
+
+  protected onSalaryCurrencyChange(value: SearchSalaryCurrency | ''): void {
+    this.store.setSalaryCurrency(value === '' ? null : value);
   }
 
   protected async submit(): Promise<void> {

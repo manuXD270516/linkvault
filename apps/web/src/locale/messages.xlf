@@ -4270,11 +4270,158 @@
           <context context-type="linenumber">66,67</context>
         </context-group>
       </trans-unit>
+      <trans-unit id="search.filter.modality" datatype="html">
+        <source>Modalidad</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">76</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.filter.modality.all" datatype="html">
+        <source>Cualquiera</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">82</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.modality.remote" datatype="html">
+        <source>Remoto</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">87</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.modality.hybrid" datatype="html">
+        <source>Híbrido</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">90</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.modality.onsite" datatype="html">
+        <source>Presencial</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">93</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.modality.unknown" datatype="html">
+        <source>Desconocida</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">96</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.filter.applicationStatus" datatype="html">
+        <source>Estado</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">105</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.filter.applicationStatus.all" datatype="html">
+        <source>Cualquiera</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">111</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.applicationStatus.saved" datatype="html">
+        <source>Guardada</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">116</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.applicationStatus.interested" datatype="html">
+        <source>Interés</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">119</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.applicationStatus.applied" datatype="html">
+        <source>Postulada</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">122</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.applicationStatus.inProcess" datatype="html">
+        <source>En proceso</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">125</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.applicationStatus.offer" datatype="html">
+        <source>Oferta</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">128</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.applicationStatus.accepted" datatype="html">
+        <source>Aceptada</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">131</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.applicationStatus.rejected" datatype="html">
+        <source>Rechazada</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">134</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.applicationStatus.withdrawn" datatype="html">
+        <source>Retirada</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">137</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.applicationStatus.expired" datatype="html">
+        <source>Expirada</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">140</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.filter.salaryCurrency" datatype="html">
+        <source>Moneda</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">149</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.filter.salaryCurrency.all" datatype="html">
+        <source>Cualquiera</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">155</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.salaryCurrency.BOB" datatype="html">
+        <source>BOB</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">160</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="search.salaryCurrency.USD" datatype="html">
+        <source>USD</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
+          <context context-type="linenumber">163</context>
+        </context-group>
+      </trans-unit>
       <trans-unit id="search.submit" datatype="html">
         <source> Buscar </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
-          <context context-type="linenumber">83,85</context>
+          <context context-type="linenumber">179</context>
         </context-group>
       </trans-unit>
       <trans-unit id="search.emptyQuery" datatype="html">

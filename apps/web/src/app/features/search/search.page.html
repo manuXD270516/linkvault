@@ -71,6 +71,104 @@
       </mat-form-field>
     </div>
 
+    <div class="flex flex-col gap-4 sm:flex-row">
+      <mat-form-field appearance="outline" class="w-full sm:flex-1">
+        <mat-label i18n="@@search.filter.modality">Modalidad</mat-label>
+        <mat-select
+          [value]="modality() ?? ''"
+          (selectionChange)="onModalityChange($event.value)"
+          data-testid="search-modality"
+        >
+          <mat-option value="" i18n="@@search.filter.modality.all">Cualquiera</mat-option>
+          @for (item of modalities; track item) {
+            <mat-option [value]="item">
+              @switch (item) {
+                @case ('remote') {
+                  <ng-container i18n="@@search.modality.remote">Remoto</ng-container>
+                }
+                @case ('hybrid') {
+                  <ng-container i18n="@@search.modality.hybrid">Híbrido</ng-container>
+                }
+                @case ('onsite') {
+                  <ng-container i18n="@@search.modality.onsite">Presencial</ng-container>
+                }
+                @case ('unknown') {
+                  <ng-container i18n="@@search.modality.unknown">Desconocida</ng-container>
+                }
+              }
+            </mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="w-full sm:flex-1">
+        <mat-label i18n="@@search.filter.applicationStatus">Estado</mat-label>
+        <mat-select
+          [value]="applicationStatus() ?? ''"
+          (selectionChange)="onApplicationStatusChange($event.value)"
+          data-testid="search-application-status"
+        >
+          <mat-option value="" i18n="@@search.filter.applicationStatus.all">Cualquiera</mat-option>
+          @for (status of applicationStatuses; track status) {
+            <mat-option [value]="status">
+              @switch (status) {
+                @case ('saved') {
+                  <ng-container i18n="@@search.applicationStatus.saved">Guardada</ng-container>
+                }
+                @case ('interested') {
+                  <ng-container i18n="@@search.applicationStatus.interested">Interés</ng-container>
+                }
+                @case ('applied') {
+                  <ng-container i18n="@@search.applicationStatus.applied">Postulada</ng-container>
+                }
+                @case ('in_process') {
+                  <ng-container i18n="@@search.applicationStatus.inProcess">En proceso</ng-container>
+                }
+                @case ('offer') {
+                  <ng-container i18n="@@search.applicationStatus.offer">Oferta</ng-container>
+                }
+                @case ('accepted') {
+                  <ng-container i18n="@@search.applicationStatus.accepted">Aceptada</ng-container>
+                }
+                @case ('rejected') {
+                  <ng-container i18n="@@search.applicationStatus.rejected">Rechazada</ng-container>
+                }
+                @case ('withdrawn') {
+                  <ng-container i18n="@@search.applicationStatus.withdrawn">Retirada</ng-container>
+                }
+                @case ('expired') {
+                  <ng-container i18n="@@search.applicationStatus.expired">Expirada</ng-container>
+                }
+              }
+            </mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="w-full sm:flex-1">
+        <mat-label i18n="@@search.filter.salaryCurrency">Moneda</mat-label>
+        <mat-select
+          [value]="salaryCurrency() ?? ''"
+          (selectionChange)="onSalaryCurrencyChange($event.value)"
+          data-testid="search-salary-currency"
+        >
+          <mat-option value="" i18n="@@search.filter.salaryCurrency.all">Cualquiera</mat-option>
+          @for (currency of salaryCurrencies; track currency) {
+            <mat-option [value]="currency">
+              @switch (currency) {
+                @case ('BOB') {
+                  <ng-container i18n="@@search.salaryCurrency.BOB">BOB</ng-container>
+                }
+                @case ('USD') {
+                  <ng-container i18n="@@search.salaryCurrency.USD">USD</ng-container>
+                }
+              }
+            </mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+    </div>
+
     <div>
       <button
         mat-flat-button

@@ -1,8 +1,7 @@
 import {
-  SEARCH_LIMIT_MAX,
+  searchQueryParamsSchema,
   searchResponseSchema,
-  type SearchDocType,
-  type SearchMode,
+  type SearchQueryParams,
   type SearchResponse,
 } from '@linkvault/shared';
 import {
@@ -12,10 +11,12 @@ import {
 } from '@nestjs/common';
 import type { AuthenticatedUser } from '../../../presentation/http/auth-context/authenticated-user';
 import { CurrentUser } from '../../../presentation/http/auth-context/current-user.decorator';
+import { ZodValidationPipe } from '../../../presentation/http/zod-validation.pipe';
 import { SearchContent } from '../application/search-content.usecase';
 
 /**
- * `GET /api/search` (D7). Sesión obligatoria (guard global). SPA V0 no envía `mode`.
+ * `GET /api/search` (D7; filtros LatAm D1). Sesión obligatoria (guard global).
+ * SPA V0 no envía `mode`; sí puede enviar modality / applicationStatus / salaryCurrency.
  */
 @Controller('search')
 export class SearchController {
@@ -24,59 +25,24 @@ export class SearchController {
   @Get()
   async query(
     @CurrentUser() user: AuthenticatedUser,
-    @Query('q') q: string | undefined,
-    @Query('docType') docType: string | undefined,
-    @Query('groupId') groupId: string | undefined,
-    @Query('limit') limitRaw: string | undefined,
-    @Query('offset') offsetRaw: string | undefined,
-    @Query('mode') modeRaw: string | undefined,
+    @Query(new ZodValidationPipe(searchQueryParamsSchema))
+    query: SearchQueryParams,
   ): Promise<SearchResponse> {
-    const limit = parsePositiveInt(limitRaw);
-    const offset = parseNonNegativeInt(offsetRaw);
     const result = await this.search.execute(user.userId, {
-      q: q ?? '',
-      ...(isDocType(docType) ? { docType } : {}),
-      ...(typeof groupId === 'string' && groupId.length > 0
-        ? { groupId }
-        : {}),
-      ...(limit === undefined ? {} : { limit }),
-      ...(offset === undefined ? {} : { offset }),
-      ...(isMode(modeRaw) ? { mode: modeRaw } : {}),
+      q: query.q,
+      ...(query.docType === undefined ? {} : { docType: query.docType }),
+      ...(query.groupId === undefined ? {} : { groupId: query.groupId }),
+      ...(query.limit === undefined ? {} : { limit: query.limit }),
+      ...(query.offset === undefined ? {} : { offset: query.offset }),
+      ...(query.mode === undefined ? {} : { mode: query.mode }),
+      ...(query.modality === undefined ? {} : { modality: query.modality }),
+      ...(query.applicationStatus === undefined
+        ? {}
+        : { applicationStatus: query.applicationStatus }),
+      ...(query.salaryCurrency === undefined
+        ? {}
+        : { salaryCurrency: query.salaryCurrency }),
     });
     return searchResponseSchema.parse(result);
   }
-}
-
-function parsePositiveInt(raw: string | undefined): number | undefined {
-  if (raw === undefined || raw.trim() === '') return undefined;
-  const n = Number(raw);
-  if (!Number.isInteger(n) || n < 1) return undefined;
-  return Math.min(n, SEARCH_LIMIT_MAX * 20);
-}
-
-function parseNonNegativeInt(raw: string | undefined): number | undefined {
-  if (raw === undefined || raw.trim() === '') return undefined;
-  const n = Number(raw);
-  if (!Number.isInteger(n) || n < 0) return undefined;
-  return n;
-}
-
-const DOC_TYPES: readonly SearchDocType[] = [
-  'job_preview',
-  'application',
-  'group_comment',
-  'group_link_note',
-  'cv',
-  'roadmap',
-];
-
-function isDocType(value: string | undefined): value is SearchDocType {
-  return (
-    typeof value === 'string' &&
-    (DOC_TYPES as readonly string[]).includes(value)
-  );
-}
-
-function isMode(value: string | undefined): value is SearchMode {
-  return value === 'hybrid' || value === 'fulltext' || value === 'semantic';
 }

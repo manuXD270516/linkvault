@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { InMemoryMeiliSearchClient } from './in-memory-meili-search.client';
 import type { SearchIndexDocument } from '../application/ports/meili-search-client.port';
+import { MEILI_FILTERABLE_ATTRIBUTES } from './meili-search.client';
+
+describe('MEILI_FILTERABLE_ATTRIBUTES', () => {
+  it('includes LatAm filterables (parity with worker)', () => {
+    expect(MEILI_FILTERABLE_ATTRIBUTES).toContain('modality');
+    expect(MEILI_FILTERABLE_ATTRIBUTES).toContain('status');
+    expect(MEILI_FILTERABLE_ATTRIBUTES).toContain('salaryCurrency');
+  });
+});
 
 describe('InMemoryMeiliSearchClient', () => {
   it('upserts and deletes by primary key idempotently', async () => {

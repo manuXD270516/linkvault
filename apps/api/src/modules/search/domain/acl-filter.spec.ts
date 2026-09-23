@@ -37,4 +37,21 @@ describe('buildSearchAclFilter', () => {
     expect(filter).toContain('docType = "cv"');
     expect(filter).toContain('ownerUserId = "ana"');
   });
+
+  it('ANDs LatAm filters mapping applicationStatus to status', () => {
+    const filter = buildSearchAclFilter({
+      userId: 'ana',
+      memberGroupIds: [],
+      modality: 'remote',
+      status: 'applied',
+      salaryCurrency: 'USD',
+    });
+    expect(filter).toContain('ownerUserId = "ana"');
+    expect(filter).toContain('modality = "remote"');
+    expect(filter).toContain('status = "applied"');
+    expect(filter).toContain('salaryCurrency = "USD"');
+    expect(filter).toMatch(
+      /modality = "remote" AND status = "applied" AND salaryCurrency = "USD"$/,
+    );
+  });
 });

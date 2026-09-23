@@ -1,7 +1,10 @@
 import { z } from 'zod';
+import { applicationStatusSchema } from './application.schema';
+import { jobModalitySchema } from './preview.schema';
 
-// Contratos HTTP de búsqueda híbrida (change search, D7). La SPA V0 no envía `mode` (siempre hybrid por
-// defecto en API) ni filtros de modality/status; esos parámetros existen en API para tests/debug.
+// Contratos HTTP de búsqueda híbrida (change search, D7; filtros LatAm: search-latam-filters).
+// La SPA V0 no envía `mode` (siempre hybrid por defecto en API). Los filtros `modality`,
+// `applicationStatus` y `salaryCurrency` sí los expone la SPA en `/buscar` (D3).
 
 /** Tipos de documento del índice unificado `lv_content` (D2). */
 export const SEARCH_DOC_TYPES = [
@@ -64,15 +67,25 @@ export const searchResponseSchema = z.strictObject({
 export type SearchResponse = z.infer<typeof searchResponseSchema>;
 
 /**
- * Query params tipados para el cliente. `mode` es opcional en API; la SPA V0 **no** lo envía.
- * `q` no vacío lo impone el servidor (`400 empty_query`).
+ * Query params tipados para el cliente / `ZodValidationPipe` en `GET /api/search`.
+ * `mode` es opcional; la SPA V0 **no** lo envía. `q` ausente o solo espacios → `400 empty_query`
+ * en el caso de uso (no `validation_error`).
+ *
+ * Filtros LatAm (AND con ACL):
+ * - `modality` → Meili `modality = "…"`
+ * - `applicationStatus` → Meili atributo de documento `status` (no renombrar el campo del índice)
+ * - `salaryCurrency` → Meili `salaryCurrency = "…"` (pass-through)
  */
 export const searchQueryParamsSchema = z.strictObject({
-  q: z.string(),
+  q: z.string().default(''),
   docType: searchDocTypeSchema.optional(),
   groupId: z.string().min(1).optional(),
-  limit: z.number().int().min(1).max(SEARCH_LIMIT_MAX).optional(),
-  offset: z.number().int().min(0).optional(),
+  limit: z.coerce.number().int().min(1).max(SEARCH_LIMIT_MAX).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
   mode: searchModeSchema.optional(),
+  modality: jobModalitySchema.optional(),
+  /** Query param; el filtro Meili usa el atributo `status`. */
+  applicationStatus: applicationStatusSchema.optional(),
+  salaryCurrency: z.string().trim().min(1).max(16).optional(),
 });
 export type SearchQueryParams = z.infer<typeof searchQueryParamsSchema>;

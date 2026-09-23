@@ -2148,6 +2148,90 @@
         <source>Todos tus grupos</source>
         <target>All your groups</target>
       </trans-unit>
+      <trans-unit id="search.filter.modality" datatype="html">
+        <source>Modalidad</source>
+        <target>Modality</target>
+      </trans-unit>
+      <trans-unit id="search.filter.modality.all" datatype="html">
+        <source>Cualquiera</source>
+        <target>Any</target>
+      </trans-unit>
+      <trans-unit id="search.modality.remote" datatype="html">
+        <source>Remoto</source>
+        <target>Remote</target>
+      </trans-unit>
+      <trans-unit id="search.modality.hybrid" datatype="html">
+        <source>Híbrido</source>
+        <target>Hybrid</target>
+      </trans-unit>
+      <trans-unit id="search.modality.onsite" datatype="html">
+        <source>Presencial</source>
+        <target>On-site</target>
+      </trans-unit>
+      <trans-unit id="search.modality.unknown" datatype="html">
+        <source>Desconocida</source>
+        <target>Unknown</target>
+      </trans-unit>
+      <trans-unit id="search.filter.applicationStatus" datatype="html">
+        <source>Estado</source>
+        <target>Status</target>
+      </trans-unit>
+      <trans-unit id="search.filter.applicationStatus.all" datatype="html">
+        <source>Cualquiera</source>
+        <target>Any</target>
+      </trans-unit>
+      <trans-unit id="search.applicationStatus.saved" datatype="html">
+        <source>Guardada</source>
+        <target>Saved</target>
+      </trans-unit>
+      <trans-unit id="search.applicationStatus.interested" datatype="html">
+        <source>Interés</source>
+        <target>Interested</target>
+      </trans-unit>
+      <trans-unit id="search.applicationStatus.applied" datatype="html">
+        <source>Postulada</source>
+        <target>Applied</target>
+      </trans-unit>
+      <trans-unit id="search.applicationStatus.inProcess" datatype="html">
+        <source>En proceso</source>
+        <target>In process</target>
+      </trans-unit>
+      <trans-unit id="search.applicationStatus.offer" datatype="html">
+        <source>Oferta</source>
+        <target>Offer</target>
+      </trans-unit>
+      <trans-unit id="search.applicationStatus.accepted" datatype="html">
+        <source>Aceptada</source>
+        <target>Accepted</target>
+      </trans-unit>
+      <trans-unit id="search.applicationStatus.rejected" datatype="html">
+        <source>Rechazada</source>
+        <target>Rejected</target>
+      </trans-unit>
+      <trans-unit id="search.applicationStatus.withdrawn" datatype="html">
+        <source>Retirada</source>
+        <target>Withdrawn</target>
+      </trans-unit>
+      <trans-unit id="search.applicationStatus.expired" datatype="html">
+        <source>Expirada</source>
+        <target>Expired</target>
+      </trans-unit>
+      <trans-unit id="search.filter.salaryCurrency" datatype="html">
+        <source>Moneda</source>
+        <target>Currency</target>
+      </trans-unit>
+      <trans-unit id="search.filter.salaryCurrency.all" datatype="html">
+        <source>Cualquiera</source>
+        <target>Any</target>
+      </trans-unit>
+      <trans-unit id="search.salaryCurrency.BOB" datatype="html">
+        <source>BOB</source>
+        <target>BOB</target>
+      </trans-unit>
+      <trans-unit id="search.salaryCurrency.USD" datatype="html">
+        <source>USD</source>
+        <target>USD</target>
+      </trans-unit>
       <trans-unit id="search.docType.job_preview" datatype="html">
         <source>Vacante</source>
         <target>Job post</target>
