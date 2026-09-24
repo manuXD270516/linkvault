@@ -245,10 +245,69 @@
 - [ ] 8.1 [infra] Aplicar a `.github/workflows/cd-prod.yml` la misma estructura: un job que construya (load, sin push), verifique con `docker-compose.prod.yml` y publique esas mismas imágenes, más `preflight` y `deploy` con las mismas condiciones y guardias de los grupos 6 y 7; verificar con una corrida `workflow_dispatch` en modo prueba.
 - [ ] 8.2 [infra] Comprobar antes de nada qué hace `environment: production` en este repositorio: si abre un **registro de despliegue** (mostraría producción como desplegada aunque no lo esté) o si exige revisores (el job quedaría **colgado** esperando aprobación); verificar leyendo la configuración del entorno y una corrida de prueba, y dejar escrito el resultado.
 - [ ] 8.3 [infra] Si 8.2 confirma cualquiera de las dos cosas, el `preflight` SHALL usar un **entorno espejo solo para leer secretos** (sin reglas de protección ni URL), y `environment: production` SHALL quedar únicamente en el job de despliegue: los secretos de prod son de *environment*, así que un preflight sin entorno los leería vacíos y reportaría "sin destino → verde" para siempre; verificar que el preflight reporta `none` honestamente y que no aparece ningún despliegue registrado en el entorno real.
-- [ ] 8.4 [infra] El `verify` de un release SHALL correr sobre **todo el workspace** (`run-many --all`) y no sobre `affected`: con `nx-set-shas` en un tag que apunta a un commit de `main`, base y cabeza coinciden y el conjunto afectado sale **vacío**, así que hoy el verify daría verde **sin ejecutar nada** justo antes de desplegar a producción; verificar comparando la lista de proyectos del log con `pnpm nx show projects`.
+- [x] 8.4 [infra] El `verify` de un release SHALL correr sobre **todo el workspace** (`run-many --all`) y no sobre `affected`: con `nx-set-shas` en un tag que apunta a un commit de `main`, base y cabeza coinciden y el conjunto afectado sale **vacío**, así que hoy el verify daría verde **sin ejecutar nada** justo antes de desplegar a producción; verificar comparando la lista de proyectos del log con `pnpm nx show projects`.
 - [ ] 8.5 [infra] Añadir un guardia que **falle** si el conjunto de proyectos verificados sale vacío, **solo en el modo release** (`run-many --all`, 8.4) y **no** en el `verify` por afectación de `ci.yml` y `cd-staging.yml`: ahí un conjunto vacío es legítimo —un merge que solo toca documentación no afecta a ningún proyecto— y un guardia incondicional pondría en rojo esos merges, inventando un fallo donde no lo hay. Verificar los dos lados: forzando el conjunto vacío en el modo release y viendo el fallo, y con un commit de solo documentación en la rama viendo que `ci.yml` sigue en verde (y que el paso incondicional de 3.2 sí corre). Restaurar.
-- [ ] 8.6 [infra] Endurecer el guardia de semver: hoy es un glob de `case` (`v[0-9]*.[0-9]*.[0-9]*`) que acepta `v1.2.3abc`; sustituirlo por una comparación anclada que **no admita ceros a la izquierda** (`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`); verificar con una tabla de casos: `v1.2.3` y `v0.1.0` pasan, y `v1.2.3abc`, `v1.2`, `v01.2.3` y `1.2.3` se rechazan nombrando el tag.
+- [x] 8.6 [infra] Endurecer el guardia de semver: hoy es un glob de `case` (`v[0-9]*.[0-9]*.[0-9]*`) que acepta `v1.2.3abc`; sustituirlo por una comparación anclada que **no admita ceros a la izquierda** (`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`); verificar con una tabla de casos: `v1.2.3` y `v0.1.0` pasan, y `v1.2.3abc`, `v1.2`, `v01.2.3` y `1.2.3` se rechazan nombrando el tag.
 - [ ] 8.7 [infra] La corrida de prueba **no puede mover tags flotantes ni correr código viejo**: añadir un input de `workflow_dispatch` que construya y verifique **sin publicar** (`:latest` es el valor por defecto de `IMAGE_TAG` en el compose, así que publicarlo en una prueba es lo que producción se llevaría en el siguiente `pull`) y **un input de referencia** para ese modo, porque hoy el checkout usa `inputs.tag` y una prueba desde esta rama haría checkout del tag y correría el código anterior; verificar con la corrida de prueba sobre la rama, comprobando en el log que el commit construido es el de la rama y en GHCR que no apareció ningún `:latest` nuevo. Es el modo de prueba al que 6.4 se refiere.
+
+> **Lo que el grupo 8 dio por cierto y no lo era (2026-09-24, implementación).**
+>
+> 1. **La premisa de 8.2 es falsa hoy, y de la forma que más importa: `environment: production` no existe.** 8.2 y
+>    ADR-048 §3 dan por hecho que «los secretos de producción son de *environment*». Medido con la API de GitHub
+>    sobre `manuXD270516/linkvault` (2026-09-24): `repos/{owner}/{repo}/environments` → `{"total_count":0,
+>    "environments":[]}`, `actions/secrets` → `{"total_count":0,"secrets":[]}`, `deployments` → `[]` y
+>    `actions/workflows/cd-prod.yml/runs` → `{"total_count":0}`. **No hay ningún entorno, ningún secreto y ningún
+>    despliegue registrado**, así que hoy no hay revisores que puedan colgar el job y el `environment: production`
+>    del workflow anterior apuntaba a un entorno que se habría creado solo en la primera corrida. Es decir: lo que
+>    el ADR describe como un hecho es un **plan**, y el preflight tenía que funcionar en las dos configuraciones
+>    posibles (secretos de repositorio o de entorno), no solo en la que el ADR supone.
+> 2. **Por eso el espejo se usa igual, y no "solo si 8.2 confirma".** 8.3 lo condiciona a 8.2. Pero de los dos
+>    efectos que 8.2 manda medir, uno —el **registro de despliegue**— solo se puede observar ejecutando, y observarlo
+>    significa haberlo producido ya en producción. Esperar a verlo una vez para entonces corregirlo es exactamente la
+>    forma de error que este change persigue. El preflight declara `production-preflight` (espejo sin reglas de
+>    protección, sin revisores y sin URL) y `environment: production` queda **solo** en el job de despliegue. El
+>    espejo funciona en las dos configuraciones: si los `PROD_*` son secretos de repositorio, un entorno sin secretos
+>    propios los hereda; si son del entorno `production`, hay que **copiarlos** también al espejo, y eso queda escrito
+>    en `infra/README.md` porque de lo contrario el preflight diría "sin destino" para siempre — la mentira original.
+> 3. **`run-many --all` no garantiza que se ejecute nada, así que 8.4 sin 8.5 no cerraría el agujero.** Medido
+>    (Nx 23.2.1): `pnpm nx run-many --all -t no-such-target` → `NX No tasks were run` y **código 0**. Y la premisa de
+>    8.4 se confirmó por el otro lado: `pnpm nx show projects --affected --base=HEAD --head=HEAD --json` → `[]`, y
+>    `NX_BASE=HEAD NX_HEAD=HEAD pnpm nx affected -t lint` → `No tasks were run`, código **0**. Las dos mitades hacen
+>    falta: `--all` (8.4) y el guardia del conjunto vacío (8.5, `infra/ci/assert-release-projects.sh`).
+> 4. **El guardia del conjunto vacío tiene que ser por target, no sobre el total.** Un guardia que solo comprobara
+>    "el workspace tiene proyectos" pasaría en verde con un target renombrado, que es el caso realista: el workspace
+>    sigue teniendo 11 proyectos y el `test` del release no ejecuta ninguno. El guardia resuelve la lista **por cada
+>    target del release** y falla nombrando los vacíos; de ahí que `RELEASE_TARGETS` tenga que ir a la par con los
+>    `run-many` del YAML, dicho en el propio script.
+> 5. **El modo de prueba y la tabla de tres resultados chocan en un caso, y queda anotado en vez de tapado.** En una
+>    corrida con `dry_run: true` **y destino configurado**, `deploy-prod` queda saltado a propósito y
+>    `report-cd-outcome.sh` lo lee como "había destino y el despliegue no terminó bien" → **rojo falso**. Hoy no puede
+>    darse (0 secretos configurados), y `cd-staging` tiene el mismo hueco con su `dry_run` de 6.4. No se arregla aquí
+>    duplicando la tabla de decisión en un segundo script —dos lógicas de decisión es peor que un rojo falso
+>    imposible—; se cierra en la fila 35, para los dos workflows a la vez.
+> 6. **Un dispatch sin modo prueba y sin tag deja el `ref` del checkout vacío.** Evaluada la expresión del YAML como
+>    JavaScript (mismos operadores y misma semántica de verdad) sobre los cinco escenarios: ahí `ref` sale `""` y
+>    `actions/checkout` cae a la referencia del dispatch. No se añade otra rama a una expresión que ya decide
+>    demasiado: el guardia de semver recibe el **nombre de la rama** y aborta nombrándolo (`no empieza por 'v'`) antes
+>    de construir nada. Queda escrito en el YAML.
+> 7. **`infra/README.md` seguía diciendo la regla revocada.** Línea 20: «Los workflows CD esperan secrets SSH; sin
+>    ellos el job de deploy **falla** (no hay dry-run de aceptación)» — que es literalmente ADR-033 D10, enmendado por
+>    ADR-048 §3 en este mismo change. Y el apartado de CD declaraba `cd-prod` «**todavía sin** la verificación del
+>    artefacto». Corregidas las dos, más la tabla de tags de producción (`:latest` móvil) y el modo de prueba.
+>
+> **Lo que queda sin verificar y por qué.** 8.1, 8.2, 8.3, 8.5 y 8.7 exigen una **corrida real de GitHub Actions**:
+> que el modo de prueba construya el commit de la rama y no el del tag; que no aparezca ningún `:latest` nuevo en
+> GHCR; que el preflight reporte `none` leyendo el entorno espejo; que no quede ningún despliegue registrado en
+> `production`; y el lado de 8.5 que pide un commit de solo documentación dejando `ci.yml` en verde. La rama no está
+> publicada y el repositorio no tiene secretos, así que nada de eso se puede observar desde aquí. Lo que **sí** se
+> ejecutó fuera de Actions: la tabla completa de casos del guardia de semver (8.6, diez casos), el guardia del
+> conjunto vacío por los dos lados (real → 11 proyectos y ningún target vacío; forzado → `[FAIL] el release
+> verificaría **cero proyectos** para: no-such-target`), las dos medidas de Nx del punto 3, la lectura de la API de
+> GitHub del punto 1, `actionlint` sobre los tres workflows (limpio, y falsado con un `needs` inexistente para
+> comprobar que de verdad analiza), el parseo del YAML confirmando que las expresiones plegadas llegan en **una sola
+> línea**, la evaluación de las ocho expresiones del workflow sobre cinco escenarios de disparo, y la comprobación de
+> que los **seis** nombres que deriva la expresión del job `report` coinciden uno a uno con los que imprime
+> `infra/ci/report-cd-outcome.sh` con `TARGET_LABEL=production`.
 
 ## 9. Cerrar la divergencia de entorno entre los tres `verify`
 
