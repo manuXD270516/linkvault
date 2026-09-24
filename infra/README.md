@@ -121,9 +121,44 @@ docker build -f docker/web.Dockerfile -t linkvault-web:local .
 
 ## CD (GitHub Actions)
 
-- `.github/workflows/cd-staging.yml` — `main` → verify → GHCR → ssh compose pull+up staging → smoke interno.
-- `.github/workflows/cd-prod.yml` — tag `v*` → verify → GHCR → ssh compose pull+up prod → smoke interno.
+- `.github/workflows/cd-staging.yml` — `main` → verify → **construir (load, sin push) → verificar el artefacto →
+  publicar lo verificado** en GHCR → ssh compose pull+up staging → smoke interno.
+- `.github/workflows/cd-prod.yml` — tag `v*` → verify → GHCR → ssh compose pull+up prod → smoke interno. **Todavía
+  sin** la verificación del artefacto: la trae el grupo 8 del change `deploy-image-verification`.
 
 Dry-run **no** cuenta como despliegue exitoso. Secrets requeridos documentados arriba y en los propios workflows.
+
+### Construir → verificar → publicar, en un solo job (ADR-048 §4)
+
+Las tres imágenes se construyen con `load: true` y **sin `push`**, se levanta con ellas la pila de
+`docker-compose.prod.yml` en el propio corredor (`infra/ci/verify-artifact.sh`) y **solo entonces** se publican
+(`infra/ci/publish-artifact.sh`). Los tres pasos viven en el **mismo job** porque tienen que ocurrir en el **mismo
+daemon**: una imagen cargada vive solo ahí, así que publicar desde otro sitio la reconstruiría y subiría bits que
+nadie ha arrancado.
+
+Por eso la publicación es `docker push` del tag ya cargado y **nunca** una segunda construcción (`push: true` o
+`buildx build --push`), y por eso el script comprueba en la propia corrida la **identidad por digest** entre lo
+publicado y lo verificado —digest de repositorio de la imagen local contra el `Digest:` que devuelve
+`docker buildx imagetools inspect`— y falla si difieren.
+
+Tags que publica `cd-staging`:
+
+| Tag | Cuándo |
+|---|---|
+| `sha-<12>` (inmutable) | en toda corrida que publique |
+| `:staging` (móvil) | **solo** desde `main`: una corrida de rama no mueve el canal |
+
+**Modo de prueba:** `workflow_dispatch` con `dry_run: true` construye y verifica **sin publicar nada** (útil para
+probar el workflow desde una rama sin dejar imágenes en el registro).
+
+Los tres scripts se ejecutan igual en local que en CI, que es la razón de que sean scripts y no pasos inline. Contra
+un registro local (`docker run -d -p 5000:5000 --name lv-registry registry:2`):
+
+```bash
+export API_IMAGE=127.0.0.1:5000/linkvault-api WORKER_IMAGE=127.0.0.1:5000/linkvault-worker \
+       WEB_IMAGE=127.0.0.1:5000/linkvault-web IMAGE_TAG=sha-000000000001
+infra/ci/verify-artifact.sh && infra/ci/publish-artifact.sh   # MOVING_TAG=staging para mover el canal
+infra/ci/teardown-artifact.sh
+```
 
 Operaciones de operador (password reset, GC de huérfanos, ack BullMQ): ver `docs/RUNBOOK.md` Paso 6 duodecies.

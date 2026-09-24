@@ -1,4 +1,5 @@
-# CD staging: main → verify → GHCR → ssh/compose pull+up → smoke interno (ADR-033 D3/D10).
+# CD staging: main → verify → construir (load) → verificar el artefacto → publicar en GHCR lo verificado, por
+# identidad de digest → ssh/compose pull+up → smoke interno (ADR-033 D3/D10; ADR-048 §4).
 # Dry-run NO cuenta como éxito. Secrets obligatorios; si faltan, el job de deploy falla.
 name: cd-staging
 
@@ -6,6 +7,15 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      # Modo de prueba: construye y **verifica** el artefacto sin publicar nada (tarea 6.4; el equivalente de 8.7 en
+      # `cd-prod`). Existe porque probar este workflow desde una rama no puede tener como precio dejar imágenes
+      # publicadas: el tag inmutable `sha-<12>` de una corrida de prueba se quedaría en el registro para siempre.
+      # El tag móvil `:staging` no depende de este input —solo se mueve desde `main`, ver el paso de publicación—.
+      dry_run:
+        description: 'Construir y verificar el artefacto SIN publicar en GHCR'
+        type: boolean
+        default: false
 
 concurrency:
   group: cd-staging
@@ -94,12 +104,12 @@ jobs:
   # con `load: true` y **sin `push`**: una imagen cargada vive solo en el daemon de este corredor, así que publicar
   # desde otro sitio la reconstruiría y subiría bits que nadie verificó.
   #
-  # ESTADO: este job hace hoy construir → verificar. **La publicación la devuelve el grupo 6** del change
-  # `deploy-image-verification` (6.1 `docker push` del tag ya cargado, 6.2 identidad por digest, 6.3 los dos tags).
-  # Hasta entonces este workflow no publica nada, que es el lado seguro del orden: lo que la spec prohíbe
-  # ("Nada se publica antes de verificarse") es lo contrario.
-  build-verify:
-    name: build and verify artifact
+  # Por eso el job es **uno** y no tres: construir, verificar y publicar tienen que ocurrir **en el mismo daemon**.
+  # Repartirlos entre jobs obligaría a reconstruir (o a transportar la imagen), que es justo lo que la garantía de
+  # identidad existe para impedir. Y por eso **no hay ningún build después de la verificación**: el único camino de
+  # publicación es `docker push` del tag ya cargado y verificado (`infra/ci/publish-artifact.sh`).
+  build-verify-publish:
+    name: build, verify and publish artifact
     needs: verify
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -196,6 +206,46 @@ jobs:
           IMAGE_TAG: ${{ steps.meta.outputs.tag }}
         run: infra/ci/verify-artifact.sh
 
+      # --- Publicación: **estas mismas** imágenes, nunca otras -------------------------------------------------
+      # Sin `if: always()` y sin `continue-on-error`: este paso solo se alcanza si el anterior terminó en verde, que
+      # es lo que la spec exige ("Nada se publica antes de verificarse"). Publicar es **consecuencia** de haber
+      # verificado.
+      #
+      # Se publica con `docker push` del tag ya cargado. **NO** hay aquí un segundo `docker/build-push-action` con
+      # `push: true` ni un `docker buildx build --push`, por barata que la caché hiciera esa construcción: la imagen
+      # que se acaba de levantar vive **solo en el daemon de este corredor**, así que reconstruir para publicar
+      # subiría bits que nadie ha arrancado — se cumpliría el orden construir → verificar → publicar y se
+      # incumpliría su propósito.
+      #
+      # Y el orden tampoco basta por sí solo, así que el script comprueba la **identidad por digest** de lo
+      # publicado contra lo verificado, en esta misma corrida, y falla si difieren. Lo que **no** se compara es
+      # `docker image inspect -f '{{.Id}}'` contra el digest del registro: en el daemon de los corredores ese es el
+      # digest del **config** de la imagen y el del registro es el del **manifiesto**, que por construcción contiene
+      # al config, de modo que esa comparación no puede coincidir nunca (medido: `sha256:1f6128…` local contra
+      # `sha256:cbbf94…` en el registro, para la misma imagen recién publicada). Y la variante a la que lleva verla
+      # fallar —comparar `{{.Id}}` antes y después de publicar— es peor, porque **pasa su propia falsación** sin
+      # consultar el registro ni una vez. El par comparable es el digest de **repositorio** de la imagen local
+      # contra el `Digest:` que devuelve `docker buildx imagetools inspect`; la lógica y el resto del razonamiento
+      # están en `infra/ci/publish-artifact.sh`.
+      #
+      # `MOVING_TAG` solo lleva valor desde `main`: una corrida de rama (o de prueba) que moviera `:staging`
+      # dejaría ese canal apuntando a código que no está en `main`. Fuera de `main` se publica únicamente el tag
+      # inmutable `sha-<12>`.
+      #
+      # `if:` — en `workflow_dispatch` con `dry_run: true` el paso **no se ejecuta**, y entonces la corrida
+      # construye y verifica sin dejar nada publicado. La condición nombra el evento en vez de apoyarse en que el
+      # contexto `inputs` esté vacío fuera de `workflow_dispatch`: si esa suposición fuera falsa, el fallo sería
+      # publicar cuando no tocaba, y eso no se quiere dejar a una suposición no comprobada.
+      - name: Publish verified artifact to GHCR (docker push of the loaded image)
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry_run != true }}
+        env:
+          API_IMAGE: ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-api
+          WORKER_IMAGE: ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-worker
+          WEB_IMAGE: ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-web
+          IMAGE_TAG: ${{ steps.meta.outputs.tag }}
+          MOVING_TAG: ${{ github.ref == 'refs/heads/main' && 'staging' || '' }}
+        run: infra/ci/publish-artifact.sh
+
       # `if: always()`: justo cuando la verificación falla es cuando hay volúmenes que limpiar. Sin `-v`, dos
       # corridas seguidas en el mismo corredor arrancarían sobre los datos de la anterior —una mongo ya inicializada
       # o un MinIO con los buckets ya creados esconderían los fallos de arranque que esto busca—.
@@ -205,7 +255,7 @@ jobs:
 
   deploy-staging:
     name: deploy staging (compose pull+up + internal smoke)
-    needs: build-verify
+    needs: build-verify-publish
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -238,7 +288,7 @@ jobs:
             set -euo pipefail
             cd "${{ secrets.STAGING_COMPOSE_DIR }}"
             OWNER="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
-            export IMAGE_TAG="${{ needs.build-verify.outputs.image_tag }}"
+            export IMAGE_TAG="${{ needs.build-verify-publish.outputs.image_tag }}"
             export API_IMAGE="ghcr.io/${OWNER}/linkvault-api"
             export WORKER_IMAGE="ghcr.io/${OWNER}/linkvault-worker"
             export WEB_IMAGE="ghcr.io/${OWNER}/linkvault-web"

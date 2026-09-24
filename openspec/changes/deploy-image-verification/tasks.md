@@ -124,12 +124,58 @@
 
 ## 6. Un solo job: construir → verificar → publicar
 
-- [ ] 6.1 [infra] Sustituir `build-push` de `cd-staging.yml` por **un único job** que construya las tres imágenes con `load: true` y **sin `push`**, ejecute la verificación del grupo 5 y publique **esas mismas** imágenes al final. La publicación SHALL ser `docker push` del tag **ya cargado y verificado**, y **NO SHALL haber una segunda construcción en el camino de publicación**: ni otro `docker/build-push-action` con `push: true`, ni `docker buildx build --push`, por barata que la haga la caché. Escribir en el YAML por qué: una imagen cargada vive **solo en el daemon de ese corredor**, así que reconstruir para publicar sube **bits que nadie verificó**, que es justo la garantía que este change viene a dar. Verificar leyendo el workflow que no hay ninguna ruta en la que se construya dos veces y que ningún paso posterior a la verificación ejecuta un build.
-- [ ] 6.2 [infra] Comprobar la **identidad por digest** entre lo verificado y lo publicado con el **único par comparable**: tras el `docker push` de la imagen cargada, leer el **digest del repositorio** de esa misma imagen local —`docker image inspect -f '{{index .RepoDigests 0}}' <tag>`, que el daemon rellena al publicar— y compararlo con el `Digest:` que devuelve `docker buildx imagetools inspect <tag>`, **fallando si difieren**. Dejar escrito en el YAML por qué **no** se compara `{{.Id}}`: es el digest del **config** de la imagen y el del registro es el del **manifiesto**, que por construcción contiene al config, así que esa comparación **no puede coincidir nunca**; y la variante a la que lleva verla fallar —comparar el `{{.Id}}` antes y después de publicar— es peor todavía, porque **pasa su propia prueba de falsación** ("reconstruir entre verificar y publicar cambia el id") **sin consultar el registro ni una vez**, y el pipeline volvería a afirmar identidad sin comprobarla. Falsación correcta: **publicar con una segunda construcción** (`buildx build --push` en lugar del `docker push` de la imagen cargada), ver que los dos digests difieren y que el paso falla; restaurar.
+- [x] 6.1 [infra] Sustituir `build-push` de `cd-staging.yml` por **un único job** que construya las tres imágenes con `load: true` y **sin `push`**, ejecute la verificación del grupo 5 y publique **esas mismas** imágenes al final. La publicación SHALL ser `docker push` del tag **ya cargado y verificado**, y **NO SHALL haber una segunda construcción en el camino de publicación**: ni otro `docker/build-push-action` con `push: true`, ni `docker buildx build --push`, por barata que la haga la caché. Escribir en el YAML por qué: una imagen cargada vive **solo en el daemon de ese corredor**, así que reconstruir para publicar sube **bits que nadie verificó**, que es justo la garantía que este change viene a dar. Verificar leyendo el workflow que no hay ninguna ruta en la que se construya dos veces y que ningún paso posterior a la verificación ejecuta un build.
+- [x] 6.2 [infra] Comprobar la **identidad por digest** entre lo verificado y lo publicado con el **único par comparable**: tras el `docker push` de la imagen cargada, leer el **digest del repositorio** de esa misma imagen local —`docker image inspect -f '{{index .RepoDigests 0}}' <tag>`, que el daemon rellena al publicar— y compararlo con el `Digest:` que devuelve `docker buildx imagetools inspect <tag>`, **fallando si difieren**. Dejar escrito en el YAML por qué **no** se compara `{{.Id}}`: es el digest del **config** de la imagen y el del registro es el del **manifiesto**, que por construcción contiene al config, así que esa comparación **no puede coincidir nunca**; y la variante a la que lleva verla fallar —comparar el `{{.Id}}` antes y después de publicar— es peor todavía, porque **pasa su propia prueba de falsación** ("reconstruir entre verificar y publicar cambia el id") **sin consultar el registro ni una vez**, y el pipeline volvería a afirmar identidad sin comprobarla. Falsación correcta: **publicar con una segunda construcción** (`buildx build --push` en lugar del `docker push` de la imagen cargada), ver que los dos digests difieren y que el paso falla; restaurar.
 - [ ] 6.3 [infra] La publicación SHALL ocurrir solo tras la verificación en verde, y entonces publicar el tag inmutable `sha-<12>` y el móvil `:staging`; verificar con una corrida en verde que los dos tags aparecen en GHCR y que ninguno existía antes del paso de verificación.
 - [ ] 6.4 [infra] Dar a `cd-staging` el mismo modo de prueba sin publicar que **8.7** da a `cd-prod` (input de `workflow_dispatch`; 8.6 es el guardia de semver, no el modo de prueba), y además condicionar el tag móvil `:staging` a `github.ref == refs/heads/main`: una corrida de prueba desde esta rama movería el canal `:staging` a código de rama. Verificar con la corrida de prueba de la rama **por lo que sí es observable desde aquí**: que ningún paso de publicación se ejecutó y que en GHCR no apareció ningún tag nuevo para el `sha-<12>` de esta corrida. Que `:staging` no se mueve en una corrida **de `main`** que falla la verificación **no es comprobable en esta rama** —fuera de `main` el tag móvil no se toca en ningún caso— y queda **pendiente post-merge**, anotado en la fila 35 (13.5).
 - [ ] 6.5 [infra] Comprobar que un artefacto que no pasa la verificación **no queda publicado bajo ningún tag**: hacer fallar la verificación a propósito en una corrida de la rama y comprobar en GHCR que no existe ninguna imagen nueva —ni `sha-<12>`, ni `:staging`, ni ninguna otra— para esa corrida; restaurar. Formulado así porque es lo que esta rama puede demostrar: comprobar que `:staging` "sigue apuntando a la imagen anterior" no prueba nada cuando el tag móvil no se mueve fuera de `main`.
 - [ ] 6.6 [infra] Mantener `cache-from`/`cache-to` de buildx con `load: true` para que la imagen no se reconstruya entre corridas; verificar comparando los tiempos de dos corridas consecutivas y leyendo en el log que las capas salen de caché. La caché abarata **la** construcción, no autoriza una segunda (6.1).
+
+> **Lo que el grupo 6 dio por cierto y no lo era (2026-09-24, implementación).** La publicación vive en
+> `infra/ci/publish-artifact.sh`, misma forma que la verificación del grupo 5 (script, no inline, para poder correr
+> en local lo mismo que CI). Todo lo de abajo se ejecutó contra un **registro local** (`registry:2`) y, para la
+> forma exacta de CI, dentro de un **dind con daemon clásico** (Docker 28.5.2, overlay2) — ver el punto 6.
+>
+> 1. **La falsación de 6.2 *pasó* a la primera, y el guardia que faltaba salió de ahí.** Publicando con una segunda
+>    construcción (`docker buildx build --push` sobre el mismo tag, driver `docker`), el paso terminó en **0** y
+>    dijo `identidad confirmada`: el daemon **reetiqueta** la imagen recién construida, así que el digest de
+>    repositorio que se lee *después* del paso de publicación **ya es el del artefacto reconstruido** y coincide con
+>    el del registro — la comprobación aprobaba la reconstrucción comparándola **consigo misma**. Se añadió tomar la
+>    identidad de la imagen **antes** de publicar y exigir que el tag local siga señalando al mismo objeto después.
+>    Ese guardia **no es** la comparación prohibida de 6.2 ascendida a buena: por sí solo no consulta el registro y
+>    no vale nada; el cotejo contra el registro, por sí solo, es ciego a la reetiquetación. Hacen falta los dos, y
+>    con los dos la falsación cae:
+>    `[FAIL] el paso de publicación sustituyó la imagen local … (sha256:3c42c57c… -> sha256:c0f9a04b…)`.
+> 2. **La falsación tiene dos desenlaces, no uno, y 6.2 solo describe el segundo.** Con el driver
+>    `docker-container` —el que crea `setup-buildx-action` en CI— la reconstrucción **no toca** el daemon local, así
+>    que el guardia del punto 1 pasa y quien cae es el cotejo contra el registro. Ejecutados los dos:
+>    con el almacén containerd, `[FAIL] lo publicado … NO es lo que se verificó: local sha256:4e8a263b… != registro
+>    sha256:a008738b…`; en el **daemon clásico**, donde una imagen sólo cargada **no tiene** digest de repositorio,
+>    `[FAIL] la imagen local … no tiene digest de repositorio … (¿se reconstruyó para publicar?)`. Es decir: en la
+>    forma real de CI la falsación **no** produce "dos digests que difieren" sino "no hay con qué comparar", y el
+>    mensaje tiene que decir eso o nadie entenderá el fallo.
+> 3. **`{{.Id}}` no siempre es el digest del config, y ahí había una trampa peor que la descrita.** En el daemon
+>    clásico se confirmó lo que dice 6.2 (`ID=sha256:1f612859…` frente a `Digest: sha256:cbbf947b…` en el registro
+>    para la misma imagen recién publicada). Pero con el **almacén containerd** de Docker Desktop `.Id` es el digest
+>    del **índice** y **coincide** con el del registro. Una comparación por `.Id` habría pasado en la máquina de
+>    desarrollo y fallado en CI: la peor combinación posible, y una razón más para no usarla.
+> 4. **`{{index .RepoDigests 0}}` es elegir a ciegas.** `RepoDigests` trae una entrada por repositorio conocido sin
+>    orden garantizado; con la imagen etiquetada además localmente se midieron **dos** entradas. Se selecciona por
+>    prefijo de repositorio y, si no hay ninguna para ese repositorio, se falla diciéndolo (que es el desenlace del
+>    punto 2 en el daemon clásico).
+> 5. **La comprobación detecta, pero no des-publica.** En la falsación los bits reconstruidos **quedaron en el
+>    registro** y el paso falló después. Lo que impide eso no es la comprobación sino la **forma** del camino
+>    (`docker push` de la imagen cargada); la comprobación existe para que nadie cambie esa forma sin que el
+>    pipeline se entere. Queda escrito en la cabecera del script en vez de darse por cubierto.
+> 6. **GHCR no se pudo ejercitar desde aquí, así que 6.3, 6.4, 6.5 y 6.6 quedan sin marcar.** El token local no
+>    tiene `write:packages` (`gh auth status`: `'gist', 'read:org', 'repo', 'workflow'`) y la rama no está publicada,
+>    de modo que no hay corrida real en la que mirar GHCR. Lo que **sí** se ejecutó: la mecánica completa contra
+>    `registry:2` (tag inmutable y móvil, con identidad confirmada en los dos), la falsación en sus dos desenlaces,
+>    el encadenado `verify && publish` con la verificación fallando —el paso de publicación **no llega a
+>    ejecutarse** y el registro no tiene ese tag: `ERROR: …:sha-e0000000000e: not found`—, y para 6.6 que
+>    `--cache-from` y `--load` conviven en la misma invocación (builder nuevo, capa cara `RUN sleep 6` resuelta como
+>    `CACHED`, 2 s en vez de ≥6 s, imagen igualmente cargada con el mismo id). Lo que queda pendiente de una corrida
+>    real es lo que solo se ve en GHCR y en la caché `type=gha`.
 
 ## 7. Tres resultados honestos y visibles en `cd-staging`
 
