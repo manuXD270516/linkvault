@@ -40,6 +40,8 @@ COMPOSE_FILE='docker-compose.prod.yml'
 ENV_FILE='infra/ci/verify.env'
 # Traefik fuera (borde: DNS y ACME). Los seis que sí: las tres dependencias y las tres imágenes que se verifican.
 SERVICES=(mongo redis minio api worker web)
+# Las de terceros se descargan aparte; las nuestras NO pueden descargarse (ver el `up` de abajo).
+THIRD_PARTY_SERVICES=(mongo redis minio)
 
 # --- El plazo del `up --wait`, y de dónde sale el número -----------------------------------------------------------
 # Corrección medida (2026-09-24, Docker Compose de Docker 29.8.0): el change afirmaba que «un plazo ausente deja el
@@ -107,6 +109,14 @@ section 'Imágenes que resuelve el compose'
 dc config --images
 
 # --- 5.6/5.7: levantar la pila entera, con plazo y con volcado al vencer -------------------------------------------
+# Las imágenes de terceros (mongo, redis, minio) sí hay que descargarlas: en un corredor limpio no existen, y
+# `--pull never` las daría por ausentes abortando el `up`. Se descargan **antes y por separado**, nombrándolas, para
+# que el `up` pueda seguir llevando `--pull never` y la garantía de arriba —verificar lo construido aquí y no algo
+# bajado del registro— siga valiendo para NUESTRAS tres imágenes, que son las únicas que este change produce.
+# Esto lo destapó la primera corrida real: en local pasaba porque esas imágenes ya estaban en la máquina.
+section "pull de las imágenes de terceros (${THIRD_PARTY_SERVICES[*]})"
+dc pull --quiet "${THIRD_PARTY_SERVICES[@]}"
+
 section "up -d --wait --wait-timeout ${WAIT_TIMEOUT} --pull never ${SERVICES[*]}"
 if ! dc up -d --wait --wait-timeout "$WAIT_TIMEOUT" --pull never "${SERVICES[@]}"; then
   fail "la pila no quedó sana en ${WAIT_TIMEOUT}s: alguna imagen no arranca o su readiness no pasa"
