@@ -8,8 +8,9 @@ Ver `proposal.md` §Why. Lo que condiciona el diseño y no está ahí:
   su propio `package.json`, `pnpm-lock.yaml` y `pnpm-workspace.yaml`. El manifiesto generado **lleva
   `packageManager: pnpm@12.4.2`**; el lockfile generado **no lleva** la entrada `packageManagerDependencies` que pnpm 12
   asocia a ese campo. Con `--frozen-lockfile`, pnpm aborta. Retirando ese campo, el mismo install termina en **3,4 s**.
-- **No hay servidor de staging ni secretos.** `gh secret list` devuelve vacío. Cualquier diseño que dependa de un
-  destino para estar en verde repetiría el error que este change corrige.
+- **No hay servidor de staging ni secretos de repositorio.** `gh secret list` devuelve vacío — y **no enumera los de
+  *environment***, que es donde `cd-prod` lee los suyos, así que eso se comprueba al implementar. Cualquier diseño que
+  dependa de un destino para estar en verde repetiría el error que este change corrige.
 - **`cd-prod` nunca se ha ejecutado** (cero ejecuciones), así que no hay evidencia de nada sobre él.
 - El `verify` de `cd-staging` sí pasa: instala desde la raíz, donde el lockfile es coherente. Por eso el PR se veía
   sano y el fallo vivía en el job siguiente.
@@ -135,9 +136,15 @@ configurados. Sería la misma mentira, mudada al sitio donde más cuesta.
 abre la ejecución, ve cuarenta ticks verdes en la lista de commits y concluye que hay algo desplegado. El aviso dentro
 del run no alcanza a quien mira desde fuera.
 
-Por eso el estado va en **el nombre de lo que se ve en la lista**, y por eso el compromiso del destino necesita fila y
-fecha en el plan, no una nota al pie: un estado sin dueño ni plazo dura para siempre, que es el mismo mecanismo que
-produjo los veintiún rojos, invertido de signo.
+Por eso el estado va en **una superficie que alguien mire sin abrir la corrida** —la lista de checks del commit—, y por
+eso el compromiso del destino necesita **fila propia y precedencia**, no una nota al pie: un estado sin dueño ni límite
+dura para siempre, que es el mismo mecanismo que produjo los veintiún rojos, invertido de signo.
+
+Se descartó fijar una **fecha**: nadie la había acordado, y una fecha inventada envejece sola sin que nada la observe.
+La precedencia —ningún change puede preceder a la fila 35 mientras el pipeline termine en "verificado sin destino"— se
+comprueba con un dato objetivo. *Y este párrafo es el mejor ejemplo de por qué:* la primera versión daba la fecha por
+escrita cuando no existía, y esa afirmación sobrevivió en cuatro sitios hasta la tercera iteración del debate, incluida
+la tarea que la habría reintroducido al implementarla.
 
 ### D3-ter. Un release se verifica entero, no por afectación
 
@@ -168,8 +175,11 @@ Con tres correcciones que el debate obligó a hacer, y que son la diferencia ent
   rompe el patrón registrado, en vez de fingir cobertura total.
 - **Las comprobaciones habrían nacido muertas.** `nx.json` no incluye `.env.example` ni `docs/**` entre sus entradas
   globales: un commit que solo tocara el RUNBOOK no marcaría ningún proyecto como afectado y, peor, el hash de caché no
-  cambiaría y Nx **restauraría un verde cacheado**. Hacen falta un proyecto propio con entradas explícitas y esos
-  ficheros en las entradas globales.
+  cambiaría y Nx **restauraría un verde cacheado**. La salida **no** es meter `docs/**` en las globales —en un
+  repositorio dirigido por specs eso invalidaría la caché de todos los proyectos en casi cada commit, desactivándola de
+  hecho—: a globales van solo `.env.example` y el compose de producción, la documentación entra por las **entradas
+  explícitas** del proyecto de comprobaciones, y ese proyecto corre como paso **incondicional**, sin depender de la
+  afectación.
 - **El arreglo del modelo muerto podía apagar una protección — dos veces.** `data_collection: deny` solo se fuerza con
   modelos `:free`; sustituirlo por uno verificado que no lo sea haría viajar el texto del CV **sin esa política**, en
   silencio — peor que el modelo muerto, que al menos falla.
@@ -201,10 +211,16 @@ Con tres correcciones que el debate obligó a hacer, y que son la diferencia ent
 - **Q1 y Q2 — cerradas en el debate, las dos en "sí".** Se verifica `worker` (expone readiness, y su premisa para
   excluirlo era falsa) y se verifica `web` (es lo único que una persona toca). Ninguna era una pregunta: eran alcance
   recortado justo por debajo de donde estaba el valor.
-- **Q3 (nueva, y es real).** ¿Existe hoy **algún** modelo de OpenRouter a la vez disponible y sujeto a
-  `data_collection: deny`? El RUNBOOK deja constancia de que los `:free` probados o estaban en rate-limit o no aceptan
-  la política. Si la respuesta es que no, la variable queda vacía con aviso — y eso es un resultado válido, no un
-  fallo de la tarea. **Se responde midiendo, no eligiendo.**
+- **Q3 — cerrada, y no era una pregunta: el repositorio ya la había respondido.** Pregunté si existe algún modelo de
+  OpenRouter a la vez disponible y sujeto a `data_collection: deny`, citando la parte del RUNBOOK que dice que los
+  `:free` populares estaban en rate-limit. **Omití el párrafo de al lado**, que registra con fecha la pasada real y el
+  modelo confirmado: `cohere/north-mini-code:free`, que `.env.example` ya usa para el proveedor de plataforma. Ese es
+  el sustituto, en las tres fuentes.
+
+  La regla "sin modelo utilizable → proveedor no disponible" **se queda**, pero como **invariante**, no como el camino
+  esperado: dejarla escrita como desenlace probable habría llevado a vaciar la variable y a dejar BYOK-OpenRouter
+  inenrutable sin motivo — una regresión funcional metida por un change de infraestructura, a partir de una premisa
+  que el propio repositorio desmentía.
 
 **No** son preguntas abiertas, aunque lo parezcan: si se retira el campo o se afloja el candado (D1, se retira el
 campo), y si "sin destino" es verde (D3, lo es). El debate puede revocarlas, pero son decisiones tomadas.

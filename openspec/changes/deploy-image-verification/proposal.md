@@ -27,7 +27,8 @@ Comprobado que esa es la causa y no otra: retirando `packageManager` del manifie
 
 **El segundo, de diseño, y es el que importa.** El job de despliegue exige `STAGING_HOST`, `STAGING_SSH_USER`,
 `STAGING_SSH_KEY` y `STAGING_COMPOSE_DIR`, y falla a propósito si faltan, porque ADR-033 D10 decidió que *"a dry-run is
-NOT an accepted CD outcome"*. El repositorio **no tiene ningún secret configurado**. Es decir: el pipeline era **rojo
+NOT an accepted CD outcome"*. El repositorio **no tiene ningún secret de repositorio configurado** —los de *environment*
+no los enumera `gh secret list`, así que se comprueban aparte durante la implementación—. Es decir: el pipeline era **rojo
 por construcción**, el rojo era el estado esperado, y detrás de esa expectativa se escondió un defecto real de build
 durante un mes.
 
@@ -101,8 +102,8 @@ y ambos se dieron por cumplidos.
 
 ### Fuera de alcance
 
-Provisionar el servidor de staging o sus secrets —eso es la **fila 35**, con fecha, para que "verde sin desplegar" no
-dure para siempre—, Traefik y DNS, publicar en registries de extensiones, y cualquier cambio funcional de la
+Provisionar el servidor de staging o sus secrets —eso es la **fila 35**, que ningun otro change puede preceder
+mientras el pipeline siga sin destino, para que "verde sin desplegar" no dure para siempre—, Traefik y DNS, publicar en registries de extensiones, y cualquier cambio funcional de la
 aplicación. **`cd-prod` sí entra**: hereda el arreglo del artefacto y los tres resultados, sin ninguna evidencia previa
 de funcionar.
 
