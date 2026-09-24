@@ -115,7 +115,25 @@ dc config --images
 # bajado del registro— siga valiendo para NUESTRAS tres imágenes, que son las únicas que este change produce.
 # Esto lo destapó la primera corrida real: en local pasaba porque esas imágenes ya estaban en la máquina.
 section "pull de las imágenes de terceros (${THIRD_PARTY_SERVICES[*]})"
-dc pull --quiet "${THIRD_PARTY_SERVICES[@]}"
+# Se reintenta porque el registro de terceros falla de forma intermitente: una descarga anónima limitada devuelve
+# `unauthorized`, no un error de cuota legible. Sin reintento, esa avería ajena pone el pipeline en rojo de vez en
+# cuando — y un rojo intermitente es exactamente lo que enseña a la gente a ignorar el pipeline, que es el defecto
+# que este change existe para cerrar.
+# Y si agota los intentos, el mensaje **no** puede confundirse con "nuestro artefacto no arranca": es una avería del
+# registro del que se descarga, y atribuirla al artefacto mandaría a alguien a depurar el sitio equivocado.
+pull_ok=0
+for attempt in 1 2 3; do
+  if dc pull --quiet "${THIRD_PARTY_SERVICES[@]}"; then
+    pull_ok=1
+    break
+  fi
+  printf '  intento %d de 3 fallido al descargar las imágenes de terceros; reintentando en %ds
+' "$attempt" $((attempt * 15))
+  sleep $((attempt * 15))
+done
+if [ "$pull_ok" -ne 1 ]; then
+  fail "no se pudieron descargar las imágenes de terceros (${THIRD_PARTY_SERVICES[*]}) tras 3 intentos. Esto NO es un fallo del artefacto de LinkVault: es el registro del que se descargan (limitación de peticiones anónimas o caída). Reintentar la corrida suele bastar."
+fi
 
 section "up -d --wait --wait-timeout ${WAIT_TIMEOUT} --pull never ${SERVICES[*]}"
 if ! dc up -d --wait --wait-timeout "$WAIT_TIMEOUT" --pull never "${SERVICES[@]}"; then
