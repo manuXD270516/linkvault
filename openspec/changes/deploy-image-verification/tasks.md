@@ -306,7 +306,7 @@
 - [x] 8.2 [infra] Comprobar antes de nada qué hace `environment: production` en este repositorio: si abre un **registro de despliegue** (mostraría producción como desplegada aunque no lo esté) o si exige revisores (el job quedaría **colgado** esperando aprobación); verificar leyendo la configuración del entorno y una corrida de prueba, y dejar escrito el resultado.
 - [x] 8.3 [infra] Si 8.2 confirma cualquiera de las dos cosas, el `preflight` SHALL usar un **entorno espejo solo para leer secretos** (sin reglas de protección ni URL), y `environment: production` SHALL quedar únicamente en el job de despliegue: los secretos de prod son de *environment*, así que un preflight sin entorno los leería vacíos y reportaría "sin destino → verde" para siempre; verificar que el preflight reporta `none` honestamente y que no aparece ningún despliegue registrado en el entorno real.
 - [x] 8.4 [infra] El `verify` de un release SHALL correr sobre **todo el workspace** (`run-many --all`) y no sobre `affected`: con `nx-set-shas` en un tag que apunta a un commit de `main`, base y cabeza coinciden y el conjunto afectado sale **vacío**, así que hoy el verify daría verde **sin ejecutar nada** justo antes de desplegar a producción; verificar comparando la lista de proyectos del log con `pnpm nx show projects`.
-- [ ] 8.5 [infra] Añadir un guardia que **falle** si el conjunto de proyectos verificados sale vacío, **solo en el modo release** (`run-many --all`, 8.4) y **no** en el `verify` por afectación de `ci.yml` y `cd-staging.yml`: ahí un conjunto vacío es legítimo —un merge que solo toca documentación no afecta a ningún proyecto— y un guardia incondicional pondría en rojo esos merges, inventando un fallo donde no lo hay. Verificar los dos lados: forzando el conjunto vacío en el modo release y viendo el fallo, y con un commit de solo documentación en la rama viendo que `ci.yml` sigue en verde (y que el paso incondicional de 3.2 sí corre). Restaurar.
+- [x] 8.5 [infra] Añadir un guardia que **falle** si el conjunto de proyectos verificados sale vacío, **solo en el modo release** (`run-many --all`, 8.4) y **no** en el `verify` por afectación de `ci.yml` y `cd-staging.yml`: ahí un conjunto vacío es legítimo —un merge que solo toca documentación no afecta a ningún proyecto— y un guardia incondicional pondría en rojo esos merges, inventando un fallo donde no lo hay. Verificar los dos lados: forzando el conjunto vacío en el modo release y viendo el fallo, y con un commit de solo documentación en la rama viendo que `ci.yml` sigue en verde (y que el paso incondicional de 3.2 sí corre). Restaurar.
 - [x] 8.6 [infra] Endurecer el guardia de semver: hoy es un glob de `case` (`v[0-9]*.[0-9]*.[0-9]*`) que acepta `v1.2.3abc`; sustituirlo por una comparación anclada que **no admita ceros a la izquierda** (`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`); verificar con una tabla de casos: `v1.2.3` y `v0.1.0` pasan, y `v1.2.3abc`, `v1.2`, `v01.2.3` y `1.2.3` se rechazan nombrando el tag.
 - [x] 8.7 [infra] La corrida de prueba **no puede mover tags flotantes ni correr código viejo**: añadir un input de `workflow_dispatch` que construya y verifique **sin publicar** (`:latest` es el valor por defecto de `IMAGE_TAG` en el compose, así que publicarlo en una prueba es lo que producción se llevaría en el siguiente `pull`) y **un input de referencia** para ese modo, porque hoy el checkout usa `inputs.tag` y una prueba desde esta rama haría checkout del tag y correría el código anterior; verificar con la corrida de prueba sobre la rama, comprobando en el log que el commit construido es el de la rama y en GHCR que no apareció ningún `:latest` nuevo. Es el modo de prueba al que 6.4 se refiere.
 
@@ -398,10 +398,11 @@
 >   modo de prueba salta por su `if:`: el camino de publicación de `cd-prod` (tag semver salido del guardia +
 >   `MOVING_TAG=latest`, que es el tag que producción se lleva en el siguiente `pull`) **no se ha ejecutado nunca**.
 >   Una corrida verde en modo prueba no prueba eso, y es la pieza de más riesgo del workflow.
-> * **8.5 sigue abierta.** La corrida demuestra el lado **positivo** —`ok: el release verifica 11 proyectos y ningún
->   target del release queda vacío`—, que es el que ya pasaba. Los dos lados que 8.5 pide **falsar** (conjunto vacío
->   en modo release dando rojo; commit de solo documentación dejando `ci.yml` verde con el paso incondicional
->   corriendo) no se han ejercitado dentro de Actions.
+> * **8.5 seguía abierta en esta revisión.** La corrida demuestra el lado **positivo** —`ok: el release verifica 11
+>   proyectos y ningún target del release queda vacío`—, que es el que ya pasaba. Los dos lados que 8.5 pide
+>   **falsar** (conjunto vacío en modo release dando rojo; commit de solo documentación dejando `ci.yml` verde con el
+>   paso incondicional corriendo) no se ejercitaron ahí. **Se ejercitaron después: los dos bloques siguientes son esa
+>   evidencia, y con ellos 8.5 queda marcada.**
 
 > **8.5 — lado 1 (conjunto vacío en modo release) falsado, 2026-09-24.** Ejercitado `infra/ci/assert-release-projects.sh`
 > tal cual está en la rama, sobre el workspace real, por dos caminos:
@@ -422,18 +423,37 @@
 > `ok: el release verifica 11 proyectos y ningún target del release queda vacío`, código **0**.
 
 > **8.5 — lado 2, lo medido fuera de Actions (2026-09-24).** El guardia **no está cableado** a los dos workflows por
-> afectación: `assert-release-projects.sh` se invoca en **un solo sitio** de los tres, `.github/workflows/cd-prod.yml:179`.
+> afectación: `grep -c assert-release-projects` sobre los tres da `ci.yml:0`, `cd-staging.yml:0` y `cd-prod.yml:1` —el
+> step `Assert the release verifies a non-empty set of projects` de `cd-prod.yml`, y ningún otro—.
 > Y con el conjunto afectado **vacío** —lo que produce el merge que solo toca documentación— los cinco pasos por
 > afectación de `ci.yml` terminan en verde sin ejecutar nada: con `NX_BASE=HEAD NX_HEAD=HEAD`,
 > `pnpm nx affected -t <lint|typecheck|test|eval-ci|build>` → `NX   No tasks were run` y código **0** en los cinco;
 > y el paso **incondicional** de 3.2 sí corre en ese mismo estado: `infra/ci/repo-checks.sh` →
 > `ok: 5 comprobaciones de repositorio ejecutadas`, código **0**.
 >
-> **Lo que a este lado le falta, y por eso 8.5 sigue abierta aquí:** la corrida real de `ci.yml` sobre un commit de
-> solo documentación. `ci.yml` se dispara con `push` a `main` y con `pull_request` (`:5-8`), así que **empujar a la
-> rama no dispara nada**: en el momento de escribir esto la rama no tiene ni una sola corrida de `ci` (`gh run list
-> --branch change/deploy-image-verification` devuelve seis, todas de `cd-staging`/`cd-prod` por `workflow_dispatch`).
-> Sin un PR abierto desde la rama no hay forma de observarlo, y empujar a `main` no es una opción.
+> **8.5 — lado 2, la corrida real (2026-09-24):**
+> **https://github.com/manuXD270516/linkvault/actions/runs/36072683959** — `ci` sobre
+> `change/deploy-image-verification`, evento `pull_request`, commit **`5a0a058933`**, conclusión **success**. Ese
+> commit es **de solo documentación**: toca un único fichero, `openspec/changes/deploy-image-verification/tasks.md`
+> (+32 líneas, el bloque del lado 1). El paso **incondicional** de 3.2 corrió en esa misma corrida —step 8,
+> `Repo checks` → `success`—, con `Successfully ran target check for project repo-checks and 5 tasks it depends on`
+> y `ok: 5 comprobaciones de repositorio ejecutadas` en el log, **antes** del step `Derive affected base and head`.
+> Los dieciséis steps del job salieron en `success` y ninguno invocó el guardia.
+>
+> **Hizo falta un PR para poder observarlo, y conviene que quede escrito**: `ci.yml` se dispara con `push` a `main` y
+> con `pull_request` (`:5-8`), así que empujar el commit a la rama **no disparó nada** —comprobado después del push:
+> `gh run list --branch change/deploy-image-verification` seguía devolviendo solo las seis corridas de
+> `cd-staging`/`cd-prod` por `workflow_dispatch`—. La corrida existe porque se abrió el PR **#57 en borrador**
+> (https://github.com/manuXD270516/linkvault/pull/57), que aquí no se fusiona.
+>
+> **Lo que esta corrida NO demuestra, dicho antes de que nadie lo lea de más:** su conjunto afectado **no estaba
+> vacío**. En `pull_request`, `nx-set-shas` fija la base en el punto de corte con `main` (`NX_BASE:
+> 00640a3d02a1`, `NX_HEAD: 271486c9f609`), así que el verify corrió de verdad: `lint` para 11 proyectos, `typecheck`
+> 10, `test` 9, `eval-ci` para `ai` y `build` 4, todos `Successfully ran target`. Dentro de Actions el conjunto vacío
+> solo se da en el `push` a `main` del merge, y eso no se observa sin empujar a `main`. Lo que cierra ese hueco es
+> que allí **no hay nada que pueda fallar**: el guardia no está invocado en `ci.yml` —el grep de arriba— y con el
+> conjunto vacío los cinco pasos por afectación terminan en **0** —la medición de arriba— mientras el paso
+> incondicional de 3.2 sigue ejecutando sus cinco comprobaciones.
 
 ## 9. Cerrar la divergencia de entorno entre los tres `verify`
 
