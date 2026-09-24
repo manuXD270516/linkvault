@@ -464,10 +464,16 @@ al operar y al probar a mano. Los comandos usan el Mongo del compose local; en o
   Que una postulación `group` se vea en un grupo depende también de que la persona sea miembro y de que el link esté
   compartido allí **ahora**. Se deriva al leer, así que no hay ningún campo que lo diga: mira `group_members` y
   `group_links`.
-- **La cascada al borrar una cuenta está pendiente, y la hereda `deploy-prod`** (ADR-024, riesgos aceptados). Hoy no
-  existe el borrado de cuenta. Cuando exista, tendrá que borrar las `applications` y los `application_events` de esa
-  persona. Mientras tanto, si alguien pide que se borren sus datos, se hace a mano, en una transacción, con el `_id` de
-  la consulta anterior. `application_events` repite el `userId`, así que el filtro alcanza todo su historial:
+- **Si alguien pide que se borren sus datos, el camino primero es `DELETE /api/users/me`.** La operación del producto
+  borra la cuenta con su cascada atómica, y las `applications` y los `application_events` de esa persona entran en
+  ella (`apps/api/src/modules/users/infrastructure/mongo-account-deletion.cascade.ts`, probada en
+  `account-deletion.cascade.spec.ts`). La persona la ejecuta desde su perfil; en una sola transacción y sin dejarse
+  las demás colecciones.
+
+  Lo de abajo **sustituye a `DELETE /api/users/me`** y solo para cuando esa operación no se puede usar: nadie puede
+  entrar ya en la cuenta, o el borrado queda bloqueado por `409 sole_owner_with_members`. A mano se borra **menos** —
+  solo lo que diga el comando — así que no se da una cuenta por borrada con esto. Va en una transacción, con el `_id`
+  de la consulta anterior; `application_events` repite el `userId`, así que el filtro alcanza todo su historial:
 
   ```bash
   docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'const s = db.getMongo().startSession(); s.withTransaction(() => { const d = s.getDatabase("linkvault"); const u = ObjectId("<userId>"); printjson({ events: d.application_events.deleteMany({ userId: u }).deletedCount, applications: d.applications.deleteMany({ userId: u }).deletedCount }); }); s.endSession()'
@@ -475,7 +481,7 @@ al operar y al probar a mano. Los comandos usan el Mongo del compose local; en o
 
   Repite las dos consultas de arriba: deben devolver `[]` y `0`. Sus avatares ya dejan de verse en cuanto deja de ser
   miembro de un grupo (visibilidad derivada), pero sus datos privados siguen guardados hasta este borrado. Borrar su
-  cuenta, sus membresías y sus links no entra aquí: es el resto del borrado de cuenta de `deploy-prod`.
+  cuenta, sus membresías y sus links no entra en este comando: de eso se ocupa la cascada de `DELETE /api/users/me`.
 - **Lo que se ve en el log y es normal:**
   - `409 application_conflict`: una pestaña vieja movió una tarjeta que otra ya había cambiado.
   - `404 application_not_found` tras un `DELETE`: se dejó de seguir en otra pestaña, y el SPA lo trata como "ya no la
@@ -555,11 +561,13 @@ usan el Mongo y el Redis del compose local; en otro entorno, cambia la URI o el 
   docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'const s = db.getMongo().startSession(); const d = s.getDatabase(db.getName()); const pair = { groupId: ObjectId("<groupId>"), linkId: ObjectId("<linkId>") }; s.withTransaction(() => { if (d.group_links.countDocuments(pair) !== 0) { print("the relation exists: nothing deleted"); return; } print(d.group_link_comments.deleteMany(pair).deletedCount + " orphan comments deleted"); }); s.endSession()'
   ```
 
-- **Borrar a mano los comentarios de una persona.** Hoy no existe el borrado de cuenta: `deploy-prod` hereda de ADR-026
-  qué hace con los `group_link_comments` de quien borra su cuenta (borrarlos o anonimizarlos), y hasta entonces una
-  petición de borrado se atiende a mano. Quien salió de un grupo tampoco puede borrar lo suyo sin volver a entrar,
-  aunque el propietario del grupo sí puede. Primero su `_id`, por su email normalizado, y qué tiene escrito, sin leer
-  ningún texto:
+- **Borrar a mano los comentarios de una persona (camino excepcional).** `DELETE /api/users/me` ya borra los
+  `group_link_comments` de quien borra su cuenta —ADR-026 decidió borrarlos, no anonimizarlos— y ajusta en la misma
+  transacción el `commentCount` y el `commentsRevision` de cada `group_links` afectada. Esto de aquí **sustituye** a
+  esa operación y solo para cuando no se puede usar (nadie entra ya en la cuenta, o sale
+  `409 sole_owner_with_members`), o para borrar los comentarios de alguien que conserva su cuenta. Quien salió de un
+  grupo tampoco puede borrar lo suyo sin volver a entrar, aunque el propietario del grupo sí puede. Primero su `_id`,
+  por su email normalizado, y qué tiene escrito, sin leer ningún texto:
 
   ```bash
   docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'db.users.findOne({ email: "<email>" }, { _id: 1, displayName: 1 })'
@@ -582,7 +590,8 @@ usan el Mongo y el Redis del compose local; en otro entorno, cambia la URI o el 
 
   Repite las dos consultas de arriba (deben quedar en `[]`) y la de deriva. Un borrado a mano **no publica ningún
   aviso**: las pantallas abiertas se ponen al día al volver a la pestaña o al reabrir el hilo. Borrar su cuenta, sus
-  membresías, sus links y sus postulaciones no entra aquí: es el resto del borrado de cuenta de `deploy-prod`.
+  membresías, sus links y sus postulaciones no entra en estos comandos: de eso se ocupa la cascada de
+  `DELETE /api/users/me`.
 - **Límite de comentarios.** `CounterLinkLimiter` escribe un contador de ventana fija de **15 min** en Redis,
   `links:comment:<userId>` (**30** comentarios por persona, en todos sus grupos; `<userId>` es el `_id` hexadecimal).
   El valor es lo contado en la ventana y el `TTL`, lo que le queda. Borrar no cuenta, y un comentario que no llega a
@@ -706,10 +715,11 @@ host por los suyos.
   docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'print(db.groups.updateOne({ _id: ObjectId("<groupId>") }, { $set: { "settings.defaultVisibility": "private" } }).modifiedCount + " group setting changed")'
   ```
 
-- **Los enlaces que publicó una persona.** Hoy no existe el borrado de cuenta: `deploy-prod` hereda de ADR-027
-  despublicar (`$unset publicShare`) lo que esa persona publicó, además de lo que decida sobre sus
-  `group_link_comments` (ADR-026) y sus postulaciones (ADR-024). Hasta entonces, una petición de borrado se atiende a
-  mano. Su `_id` sale por su email normalizado, como en el paso anterior:
+- **Los enlaces que publicó una persona (camino excepcional).** `DELETE /api/users/me` ya despublica
+  (`$unset publicShare`, ADR-027) lo que esa persona publicó, junto con sus `group_link_comments` (ADR-026) y sus
+  postulaciones (ADR-024), todo en la misma transacción. Lo de aquí **sustituye** a esa operación y solo para cuando
+  no se puede usar, o para despublicar lo de alguien que conserva su cuenta. Su `_id` sale por su email normalizado,
+  como en el paso anterior:
 
   ```bash
   docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'printjson(db.group_links.countDocuments({ "publicShare.publishedBy": ObjectId("<userId>") }))'
@@ -926,8 +936,10 @@ necesitas saber "de quién es este CV", basta con su `userId`.
   El `-T` de `docker compose exec` no es decorativo: sin él la salida llega con retornos de carro y la comparación
   miente.
 
-- **Borrar a mano todo lo de una persona.** Hoy no existe el borrado de cuenta: `deploy-prod` lo hereda (ADR-028), y
-  hasta entonces una petición se atiende así. Primero, **solo lectura**, qué se va a borrar:
+- **Borrar a mano todo lo de una persona (camino excepcional).** `DELETE /api/users/me` ya borra los `cv_documents`,
+  su contador de versiones y los objetos bajo el prefijo `<userId>/` del bucket, dentro de la cascada de borrado de
+  cuenta. Lo de aquí **sustituye** a esa operación y solo para cuando no se puede usar (nadie entra ya en la cuenta,
+  o sale `409 sole_owner_with_members`). Primero, **solo lectura**, qué se va a borrar:
 
   ```bash
   docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'printjson(db.cv_documents.find({ userId: ObjectId("<userId>") }, { _id: 1, fileKey: 1, version: 1, isDefault: 1, "extraction.status": 1 }).toArray())'
@@ -947,12 +959,16 @@ necesitas saber "de quién es este CV", basta con su `userId`.
   `_id`. Un borrado a mano **no avisa a nadie** ni encola nada: no escribe `CvDeleted.v1`, así que el objeto tienes que
   borrarlo tú, que es lo que hace la primera línea.
 
-- **Qué hereda `deploy-prod`** (ADR-028 y el `scope` del manifiesto), para no darlo por hecho aquí: el **cifrado en
-  reposo** y la **política de retención** del bucket —desviación explícita de `docs/design.md` §8: en local el bucket
-  guarda los archivos tal cual y nada caduca—, el **borrado de cuenta** con sus objetos y sus contadores, la
-  **automatización del barrido** de huérfanos si alguna vez pesa, el **aviso de privacidad** que diga qué se guarda de un
-  CV y por cuánto tiempo, y el **límite por IP y el tope de cuerpo en el proxy**, que es el único techo por cliente (los
-  tres contadores cuentan por persona autenticada). Las dos colas nuevas también entran en lo que hay que vigilar.
+- **Qué queda pendiente de `deploy-prod`** (ADR-028 y el `scope` del manifiesto), para no darlo por hecho aquí: el
+  **cifrado en reposo** y la **política de retención** del bucket —desviación explícita de `docs/design.md` §8: en
+  local el bucket guarda los archivos tal cual y nada caduca—, la **automatización del barrido** de huérfanos si
+  alguna vez pesa, el **aviso de privacidad** que diga qué se guarda de un CV y por cuánto tiempo, y el **límite por
+  IP y el tope de cuerpo en el proxy**, que es el único techo por cliente (los tres contadores cuentan por persona
+  autenticada). Las dos colas nuevas también entran en lo que hay que vigilar.
+
+  Lo que ya **no** está pendiente: el borrado de cuenta (objetos del bucket y contadores incluidos) lo entregó la
+  propia fila 16 (`deploy-prod`) y hoy es `DELETE /api/users/me` con su cascada; ADR-028 §Riesgos aceptados lo
+  listaba como deuda y lleva la nota fechada que lo corrige.
 
 ## Paso 6 nonies — Operar los análisis de encaje
 
@@ -1005,8 +1021,9 @@ consultas de abajo proyectan solo metadatos.
   docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'db.users.findOne({ email: "<email>" }, { "aiConsent.externalProviders": 1, "aiConsent.textVersion": 1, "aiConsent.consentedAt": 1 })'
   ```
 
-- **Borrar `ai_analyses` al borrar una cuenta.** Hoy el borrado de cuenta lo hereda `deploy-prod`. A mano, en la misma
-  transacción que el resto de datos de esa persona:
+- **Borrar `ai_analyses` al borrar una cuenta.** `DELETE /api/users/me` ya los borra dentro de la transacción de la
+  cascada, junto con `roadmaps`, `ai_feedback` y `ai_usage`. El comando de abajo **sustituye** a esa operación y solo
+  para cuando no se puede usar; entonces va en la misma transacción que el resto de datos de esa persona:
 
   ```bash
   docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'const s = db.getMongo().startSession(); s.withTransaction(() => { const d = s.getDatabase("linkvault"); const u = ObjectId("<userId>"); printjson({ analyses: d.ai_analyses.deleteMany({ userId: u }).deletedCount }); }); s.endSession()'
@@ -1014,16 +1031,28 @@ consultas de abajo proyectan solo metadatos.
 
   Borrar un CV ya cascada sus análisis en la misma transacción (ADR-030 §4); no hace falta un paso aparte por CV.
 
-- **OpenRouter y modelos `:free` (ADR-029).** Si el modelo de `OPENROUTER_MODEL` deja de servir o deja de aceptar
-  `data_collection: "deny"`, el proveedor falla, el circuit breaker abre y la degradación puede quedar **permanente y
-  silenciosa** mientras `/perfil` sigue afirmando que el CV va a OpenRouter. Cambio: otro modelo `:free` que acepte
-  `deny`, reiniciar `api`/`worker`, y verificar con la pasada de la [tarea 17.8](#pasada-manual-openrouter-tarea-178)
-  (modelo confirmado: `cohere/north-mini-code:free`).
+- **OpenRouter y modelos `:free` (ADR-029). Son dos casos distintos y ya no fallan igual.**
+
+  - **Cadena de plataforma (`OPENROUTER_MODEL`).** Aquí el mecanismo **sigue siendo el breaker**: si ese modelo deja
+    de servir o deja de aceptar `data_collection: "deny"`, el proveedor falla en caliente, el circuit breaker abre y
+    la degradación puede quedar **permanente y silenciosa** mientras `/perfil` sigue afirmando que el CV va a
+    OpenRouter. Se ve en el log de `api`/`worker` (fallos del proveedor `openrouter` y apertura del breaker) y en los
+    análisis que salen degradados. Cambio: otro modelo `:free` que acepte `deny`, reiniciar `api`/`worker`, y
+    verificar con la pasada de la [tarea 17.8](#pasada-manual-openrouter-tarea-178) (modelo confirmado:
+    `cohere/north-mini-code:free`).
+  - **BYOK de OpenRouter (`BYOK_OPENROUTER_MODEL`). Aquí ya no hay breaker que abrir.** Sin modelo utilizable
+    —variable ausente o vacía **y** sin valor por defecto del código que la sustituya— `ByokProviderFactory` **no
+    construye** ese proveedor: no entra en el universo de la ejecución, no se enruta para nadie y no sale ninguna
+    petición hacia OpenRouter por esa vía. El estado se ve **al arrancar**, en el aviso que escriben `api` y `worker`
+    nombrando la variable (`formatAiConfigWarnings`), no en un degradado tardío. Los vendors `anthropic` y `openai`
+    siguen su propia configuración y no se ven afectados. Si el modelo configurado **sí** existe pero deja de servir
+    en caliente, ese caso vuelve a ser un fallo de proveedor como el de la plataforma.
 
 ### Pasada manual OpenRouter (tarea 17.8) — hecha
 
 **Fecha:** `2026-09-21T03:29:43.798Z`  
-**Modelo fijado:** `cohere/north-mini-code:free` (en `.env.example` y `.env` local).
+**Modelo fijado:** `cohere/north-mini-code:free` (en `.env.example` y `.env` local, y desde 2026-09-24 también en
+`BYOK_OPENROUTER_MODEL`: ver «Resultado por candidato» más abajo).
 
 **Comprobado:**
 
@@ -1037,14 +1066,27 @@ consultas de abajo proyectan solo metadatos.
 
 **Resumen sin PII:** `reports/smoke/cv-match-suggestions/openrouter-17.8-result.json` (gitignored).
 
-**Síntoma si el modelo no acepta `deny`:** OpenRouter responde `404` con
+**Síntoma si el modelo configurado deja de aceptar `deny`:** OpenRouter responde `404` con
 `"No endpoints found matching your data policy (Free model training)"` → el proveedor falla → el breaker abre →
 degradación permanente y silenciosa mientras `/perfil` sigue diciendo que el CV va a OpenRouter. Mitigación: otro
-`:free` que acepte `deny`, reiniciar `api`/`worker`, repetir esta pasada.
+`:free` que acepte `deny`, reiniciar `api`/`worker`, repetir esta pasada. **Esto describe la cadena de plataforma
+(`OPENROUTER_MODEL`).** Para el BYOK sin modelo utilizable el desenlace es otro —vendor inenrutable con aviso al
+arrancar, sin breaker— y está arriba, en «OpenRouter y modelos `:free`».
 
-**Notas de la pasada:** `meta-llama/llama-3.3-70b-instruct:free` ya no existe (`404`). Varios `:free` populares
-(Qwen/Gemma) estaban en rate-limit upstream; otros (Nemotron, Liquid) aceptan la petición sin `deny` pero **no**
-tienen endpoint compatible con la política de datos.
+**Resultado por candidato de la pasada (2026-09-21; anotado entero el 2026-09-24).** La lectura a medias de este
+apartado —quedarse en los descartes y concluir «ninguno cumple»— es lo que llevó a proponer vaciar la variable; el
+candidato que **sí** cumple está en la primera fila y lleva anotado desde el principio:
+
+| Candidato | Disponible | `data_collection: deny` | Desenlace |
+|---|---|---|---|
+| `cohere/north-mini-code:free` | **sí** (HTTP 200) | **aceptado** (HTTP 200) | **Elegido.** Es el valor por defecto de `OPENROUTER_MODEL` y, desde 2026-09-24, también de `BYOK_OPENROUTER_MODEL` |
+| `meta-llama/llama-3.3-70b-instruct:free` | **no** (`404`) | no llega a probarse | Descartado: el modelo ya no existe. Era el valor por defecto de `BYOK_OPENROUTER_MODEL` hasta 2026-09-24 |
+| `:free` populares de Qwen / Gemma | rate-limit upstream | no llega a probarse | Descartados por indisponibilidad en la pasada, no por política |
+| Nemotron, Liquid (`:free`) | sí | **no**: sin endpoint compatible con la política de datos | Descartados: aceptan la petición pero sin `deny` |
+
+Las **dos** condiciones son necesarias (ADR-048 §6): disponible **y** terminado en `:free`, que es lo único con lo que
+OpenRouter fuerza `data_collection: deny` (ADR-032 §4). Un modelo verificado que no sea `:free` haría viajar el texto
+del CV sin la política, en silencio, que es peor que el modelo muerto al que sustituye.
 
 ## Paso 6 decies — Operar el roadmap de estudio
 

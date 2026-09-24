@@ -72,7 +72,7 @@ describe('ByokProviderFactory', () => {
       keys,
       vault,
       config: defaultByokConfig({
-        openrouterModel: 'meta-llama/llama-3.3-70b-instruct:free',
+        openrouterModel: 'cohere/north-mini-code:free',
       }),
       logger: new InMemoryAiLogger(),
     });
@@ -119,5 +119,96 @@ describe('ByokProviderFactory', () => {
     expect(bodies[1]).not.toHaveProperty('provider');
 
     fetchSpy.mockRestore();
+  });
+
+  // Invariante de `ai/byok` («OpenRouter BYOK y data_collection») y ADR-048 §6. No es el camino esperado: el valor
+  // por defecto del código es un `:free` verificado, así que esto solo ocurre el día que no haya candidato. Aquí se
+  // fija con `openrouterModel: ''` porque eso es lo que llega a la factory cuando no hay ni variable ni default.
+  describe('sin modelo utilizable para OpenRouter', () => {
+    async function factoryWithAllThreeVendors(
+      openrouterModel: string,
+    ): Promise<ByokProviderFactory> {
+      const vault = new LibsodiumSecretVault({ vaultKey: VAULT_KEY });
+      const keys = new InMemoryUserAiKeysRepository();
+      for (const vendor of ['anthropic', 'openai', 'openrouter'] as const) {
+        const apiKey = `sk-${vendor}-ana-secret-key`;
+        await keys.upsert({
+          userId: 'ana',
+          vendor,
+          ciphertext: await vault.encrypt(apiKey),
+          keyHint: keyHintOf(apiKey),
+        });
+      }
+      return new ByokProviderFactory({
+        keys,
+        vault,
+        config: defaultByokConfig({ openrouterModel }),
+        logger: new InMemoryAiLogger(),
+      });
+    }
+
+    it('no devuelve el proveedor de OpenRouter y deja intactos los otros dos', async () => {
+      const factory = await factoryWithAllThreeVendors('');
+
+      const providers = await factory.providersFor('ana');
+
+      expect(providers.map((p) => p.id)).toEqual([
+        byokProviderId('ana', 'anthropic'),
+        byokProviderId('ana', 'openai'),
+      ]);
+      expect(providers.map((p) => p.id)).not.toContain(
+        byokProviderId('ana', 'openrouter'),
+      );
+    });
+
+    it('lo devuelve con un modelo :free, y ese lleva data_collection deny', async () => {
+      const factory = await factoryWithAllThreeVendors(
+        'cohere/north-mini-code:free',
+      );
+
+      const providers = await factory.providersFor('ana');
+      const openrouter = providers.find(
+        (p) => p.id === byokProviderId('ana', 'openrouter'),
+      );
+
+      expect(providers.map((p) => p.id)).toEqual([
+        byokProviderId('ana', 'anthropic'),
+        byokProviderId('ana', 'openai'),
+        byokProviderId('ana', 'openrouter'),
+      ]);
+      expect(openrouter).toBeInstanceOf(OpenRouterProvider);
+
+      const bodies: unknown[] = [];
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockImplementation(async (_input, init) => {
+          bodies.push(
+            init?.body === undefined ? undefined : JSON.parse(String(init.body)),
+          );
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ choices: [{ message: { content: '{}' } }] }),
+            body: { cancel: async () => undefined },
+          } as unknown as Response;
+        });
+
+      await openrouter?.complete({ system: 's', user: 'u' });
+
+      expect(bodies[0]).toMatchObject({
+        provider: { data_collection: 'deny' },
+      });
+      fetchSpy.mockRestore();
+    });
+
+    it('un modelo de solo espacios cuenta como ausente, no como modelo', async () => {
+      const factory = await factoryWithAllThreeVendors('   ');
+
+      const providers = await factory.providersFor('ana');
+
+      expect(providers.map((p) => p.id)).not.toContain(
+        byokProviderId('ana', 'openrouter'),
+      );
+    });
   });
 });

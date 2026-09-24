@@ -44,10 +44,54 @@
         ]
       }
     },
+    "check-claims-registry": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "// inputs": "Los archivos del alcance declarado en claims.registry.mjs (docs/ sin docs/adr/, apps/ y libs/) más los símbolos que desmienten la afirmación. Sin ellos Nx restauraría un verde cacheado justo cuando cambia el fichero que la comprobación mira (ADR-048 §5).",
+      "inputs": [
+        "{workspaceRoot}/docs/**/*.md",
+        "!{workspaceRoot}/docs/adr/**",
+        "{workspaceRoot}/apps/**/*.ts",
+        "{workspaceRoot}/libs/**/*.ts",
+        "{projectRoot}/src/claims-registry.check.mjs",
+        "{projectRoot}/src/claims.registry.mjs",
+        "{projectRoot}/src/lib/compose.mjs",
+        "{projectRoot}/src/lib/report.mjs"
+      ],
+      "options": {
+        "cwd": "{workspaceRoot}",
+        "parallel": false,
+        "commands": ["node tools/repo-checks/src/claims-registry.check.mjs"]
+      }
+    },
+    "check-stale-defaults": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "// inputs": "Los tres sitios donde vive un valor por defecto, uno a uno. Ningún fichero de test: ver el alcance declarado en stale-defaults.registry.mjs.",
+      "inputs": [
+        "{workspaceRoot}/.env.example",
+        "{workspaceRoot}/docker-compose.prod.yml",
+        "{workspaceRoot}/libs/ai/src/infrastructure/config/ai-config.schema.ts",
+        "{projectRoot}/src/stale-defaults.check.mjs",
+        "{projectRoot}/src/stale-defaults.registry.mjs",
+        "{projectRoot}/src/lib/compose.mjs",
+        "{projectRoot}/src/lib/report.mjs"
+      ],
+      "options": {
+        "cwd": "{workspaceRoot}",
+        "parallel": false,
+        "commands": ["node tools/repo-checks/src/stale-defaults.check.mjs"]
+      }
+    },
     "check": {
       "executor": "nx:run-commands",
       "cache": false,
-      "dependsOn": ["check-compose-healthchecks", "check-compose-env-contract"],
+      "dependsOn": [
+        "check-compose-healthchecks",
+        "check-compose-env-contract",
+        "check-claims-registry",
+        "check-stale-defaults"
+      ],
       "options": {
         "cwd": "{workspaceRoot}",
         "parallel": false,

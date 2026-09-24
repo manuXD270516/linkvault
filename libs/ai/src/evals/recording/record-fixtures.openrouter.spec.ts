@@ -22,7 +22,7 @@ const TASKS: readonly AnyAiTask[] = [
   classifySkillsTask as unknown as AnyAiTask,
 ];
 const API_KEY = 'sk-or-v1-record-test-0a1b2c3d4e5f';
-const MODEL = 'meta-llama/llama-3.3-70b-instruct:free';
+const MODEL = 'cohere/north-mini-code:free';
 const EMAIL = 'ana.perez@example.com';
 
 type SkillsCase = GoldenCase<{ text: string }, { skills: string[] }>;

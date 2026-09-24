@@ -158,11 +158,14 @@ export {
 } from './infrastructure/catalog/search-catalog';
 export {
   formatAiConfigProblems,
+  formatAiConfigWarnings,
   parseAiConfig,
   type AiEnv,
 } from './infrastructure/config/parse-ai-config';
+export { isOpenRouterModelUsable } from './infrastructure/config/ai-config.schema';
 export type {
   AiConfig,
   AiConfigProblem,
   AiConfigResult,
+  AiConfigWarning,
 } from './infrastructure/config/ai-config.schema';

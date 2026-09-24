@@ -5,6 +5,7 @@ import type { SecretVault } from '../../domain/ports/secret-vault.port';
 import type { UserAiKeysRepository } from '../../domain/ports/user-ai-keys.repository.port';
 import type { ByokProviderConfig } from '../config/ai-config.schema';
 import {
+  isOpenRouterModelUsable,
   OPENROUTER_APP_REFERER,
   OPENROUTER_APP_TITLE,
 } from '../config/ai-config.schema';
@@ -103,6 +104,14 @@ export class ByokProviderFactory implements ByokProvidersSource {
         });
       case 'openrouter': {
         const model = config.openrouterModel;
+        // INVARIANTE (ADR-048 §6, `ai/byok` §«OpenRouter BYOK y data_collection»): sin modelo utilizable este
+        // proveedor **no se construye**. No es el camino esperado —el valor por defecto del código es un `:free`
+        // verificado— sino la defensa para el día en que no haya candidato. Construirlo igual sería el peor de los
+        // tres desenlaces: un proveedor que arranca, acepta la tarea y manda el texto del CV a OpenRouter con
+        // `dataCollection: 'omit'` (lo de abajo), es decir **sin** `data_collection: deny`, en silencio. Devolver
+        // `null` deja el vendor fuera del universo de routing sin impedir el arranque y sin tocar a `anthropic`
+        // ni a `openai`; el aviso visible lo emite `parseAiConfig` (`formatAiConfigWarnings`).
+        if (!isOpenRouterModelUsable(model)) return null;
         return new OpenRouterProvider({
           id,
           apiKey,

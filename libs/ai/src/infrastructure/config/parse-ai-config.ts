@@ -6,6 +6,7 @@ import {
   AI_CHAIN_NONE,
   AI_CONFIG_DEFAULTS,
   httpUrlSchema,
+  isOpenRouterModelUsable,
   KNOWN_PROVIDER_IDS,
   KNOWN_TASK_NAMES,
   MOCK_MODES,
@@ -16,6 +17,7 @@ import {
   type AiConfig,
   type AiConfigProblem,
   type AiConfigResult,
+  type AiConfigWarning,
   type AiMockMode,
   type AiNodeEnv,
   type AiProviderId,
@@ -151,7 +153,25 @@ export function parseAiConfig(
     ...(ollama ? { ollama } : {}),
     ...(openrouter ? { openrouter } : {}),
   };
-  return { ok: true, config };
+  return { ok: true, config, warnings: collectWarnings(config) };
+}
+
+/**
+ * Avisos de una configuración ya válida. Hoy hay uno: el BYOK de OpenRouter se queda sin modelo utilizable, con lo
+ * que `ByokProviderFactory` no lo construye y ese vendor deja de poder enrutarse para nadie (ADR-048 §6). El proceso
+ * arranca igual —lo exige `ai/byok`— y el aviso **no** sustituye a la indisponibilidad.
+ */
+function collectWarnings(config: AiConfig): readonly AiConfigWarning[] {
+  const warnings: AiConfigWarning[] = [];
+  if (!isOpenRouterModelUsable(config.byok.openrouterModel)) {
+    warnings.push({
+      variable: 'BYOK_OPENROUTER_MODEL',
+      warning: 'unusable',
+      detail:
+        'BYOK vendor openrouter has no usable model: it is not built and cannot be routed',
+    });
+  }
+  return warnings;
 }
 
 /** Mensaje de arranque: variables, motivo y detalle, sin valores. */
@@ -166,6 +186,23 @@ export function formatAiConfigProblems(
     )
     .join(', ');
   return `[${service}] Invalid AI configuration, check these environment variables: ${list}\n`;
+}
+
+/**
+ * Mensaje de arranque para los avisos: simétrico a `formatAiConfigProblems` —variables, motivo y detalle, sin
+ * valores— pero el proceso sigue. Quien lo escribe no aborta.
+ */
+export function formatAiConfigWarnings(
+  service: string,
+  warnings: readonly AiConfigWarning[],
+): string {
+  const list = warnings
+    .map(
+      (w) =>
+        `${w.variable} (${w.warning}${w.detail === undefined ? '' : `: ${w.detail}`})`,
+    )
+    .join(', ');
+  return `[${service}] AI configuration warnings: ${list}\n`;
 }
 
 class EnvReader {

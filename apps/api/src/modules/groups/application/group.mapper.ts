@@ -48,8 +48,10 @@ export function toGroupDetail(
 }
 
 /**
- * Nombre que se muestra cuando el directorio no conoce al usuario (D7). Defensa en profundidad: hoy no existe el borrado
- * de cuenta, así que no debería ocurrir.
+ * Nombre que se muestra cuando el directorio no conoce al usuario (D7). Defensa en profundidad: la cascada de
+ * `DELETE /api/users/me` borra las membresías de quien se va, así que no debería ocurrir. El motivo que daba este
+ * comentario antes de 2026-09-24 —que el producto todavía no tenía esa operación— dejó de ser cierto con
+ * `deploy-prod`; la defensa se queda, porque un `userId` sin entrada en el directorio no puede tumbar la lista.
  */
 export const UNKNOWN_MEMBER_NAME = 'Usuario';
 
