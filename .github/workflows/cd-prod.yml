@@ -218,7 +218,26 @@ jobs:
               echo "${{ secrets.GHCR_READ_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
             fi
             docker compose -f docker-compose.prod.yml --env-file .env.prod pull
-            docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait
+            # 7.9: plazo explícito y volcado al fallar. Los 360 s salen de los `start_period` y las ventanas de
+            # reintento de este mismo compose, encadenadas: minio 20 + 12×10 = 140 s y, solo entonces, api/worker
+            # 60 + 12×10 = 180 s → 320 s de suelo, más un 12 % de margen (el cálculo vive en
+            # `infra/ci/verify-artifact.sh`).
+            #
+            # Medido (ver la nota del grupo 7 en el change): sin plazo, Compose 5.5.1 **no** espera para siempre
+            # ante un bucle de reinicio —aborta en 4 s con `container … is unhealthy`—. Lo que el plazo sí acota es
+            # una readiness que no converge **dentro de su `start_period`**, donde Compose espera sin decir nada
+            # (`application not healthy after 20s` en la prueba). El **volcado** de `ps` y `logs` es lo que hace
+            # diagnosticable cualquiera de los dos, y este host es el único sitio donde se puede mirar.
+            up_status=0
+            docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait --wait-timeout 360 \
+              || up_status=$?
+            if [ "$up_status" -ne 0 ]; then
+              echo "::error::La pila de producción no quedó sana en 360 s (up salió $up_status)."
+              docker compose -f docker-compose.prod.yml --env-file .env.prod ps --all || true
+              docker compose -f docker-compose.prod.yml --env-file .env.prod logs --no-color --tail=200 \
+                api worker web || true
+              exit 1
+            fi
 
       - name: Smoke GET /health against api (Docker network, not Traefik)
         uses: appleboy/ssh-action@v1.2.0

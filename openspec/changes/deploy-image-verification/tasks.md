@@ -182,12 +182,63 @@
 - [ ] 7.1 [infra] Job `preflight` que mapee `STAGING_HOST`, `STAGING_SSH_USER`, `STAGING_SSH_KEY` y `STAGING_COMPOSE_DIR` a `env:` **dentro de un step** y emita un output con el estado (`none` | `partial` | `full`) y el aviso: el contexto `secrets` **no se puede leer en un `if:` de job**, así que no hay atajo; verificar con una corrida real que el output sale y vale `none`.
 - [ ] 7.2 [infra] `partial` **falla en el preflight** nombrando los que faltan, porque ahí alguien sí quería desplegar; verificar configurando un secret de prueba y dejando el resto ausente, ver el fallo, y retirarlo después.
 - [ ] 7.3 [infra] Job `deploy` con `needs` sobre `preflight` **y sobre el job de construir-verificar-publicar**, e `if:` sobre el estado igual a `full`, **sin `always()`**: sin el segundo `needs`, el tag de imagen llegaría vacío, el compose caería a `:latest` —que `cd-staging` ni siquiera publica— y el despliegue informaría éxito sobre la imagen equivocada; verificar en la corrida real (hoy sin secretos) que el job queda **saltado** y que un job saltado deja el workflow en **éxito**.
-- [ ] 7.4 [infra] Añadir en el despliegue un guardia que **falle** si el tag resuelto no es el de esta corrida: vacío, `latest` o distinto del output del job de publicación; verificar forzando el caso (vaciando el output) y viendo que el paso falla antes de tocar el host, en vez de desplegar otra cosa.
+- [x] 7.4 [infra] Añadir en el despliegue un guardia que **falle** si el tag resuelto no es el de esta corrida: vacío, `latest` o distinto del output del job de publicación; verificar forzando el caso (vaciando el output) y viendo que el paso falla antes de tocar el host, en vez de desplegar otra cosa.
 - [ ] 7.5 [infra] Escribir un job de **reporte** que corra **siempre** (`if: always()`), con el nombre calculado a partir del estado del preflight y del resultado de la verificación, porque lo que se ve en la lista de *checks* de un commit es el **nombre del job**, no el de la ejecución (`run-name` se evalúa al iniciar y no puede depender de outputs de jobs, así que no sirve de vehículo); verificar mirando la lista de checks del commit en la rama y leyendo ahí que no se desplegó.
 - [ ] 7.6 [infra] Publicar además un **estado de commit explícito** desde ese job (permiso `statuses: write`) y fijar **el estado, no solo la descripción**: `success` únicamente cuando el artefacto se construyó **y** arrancó; `failure` cuando no se construyó o no arrancó. Como el job corre con `if: always()`, un reporte que publique siempre `success` pondría un **tic verde junto al check rojo** y reconstruiría exactamente la señal que este change viene a arreglar. El estado SHALL derivarse del `result` del job de construir-verificar-publicar y del output del preflight, nunca de un literal. Verificar en el propio commit de la rama —API de estados o vista del commit— dos cosas: en verde, que el estado dice que se verificó y no se desplegó; y **con la corrida rota de 7.8**, que el estado publicado es de **fallo** y su descripción lo dice.
 - [ ] 7.7 [infra] Repasar que ningún job ni step siga diciendo "deploy" o "desplegado" en su nombre o en su resumen cuando solo verificó; verificar leyendo los nombres tal y como se ven en la lista de checks, no en el YAML.
 - [ ] 7.8 [infra] Comprobar que un artefacto roto **rompe** el pipeline aunque no haya destino, y que el fallo no queda tapado por la rama de "no hay dónde desplegar"; verificar rompiendo el build a propósito en una corrida de la rama y restaurando. Esta misma corrida es la que 7.6 usa para comprobar el estado de fallo.
-- [ ] 7.9 [infra] Aplicar el plazo explícito y el volcado de logs de 5.7 a los `up -d --wait` de los **dos** despliegues por ssh (`cd-staging.yml` y `cd-prod.yml`), que hoy se colgarían igual; verificar reproduciendo en local un contenedor en bucle de reinicio con exactamente esa línea de comandos y viendo que termina con error y con los logs, en vez de esperar sin fin.
+- [x] 7.9 [infra] Aplicar el plazo explícito y el volcado de logs de 5.7 a los `up -d --wait` de los **dos** despliegues por ssh (`cd-staging.yml` y `cd-prod.yml`), que hoy se colgarían igual; verificar reproduciendo en local un contenedor en bucle de reinicio con exactamente esa línea de comandos y viendo que termina con error y con los logs, en vez de esperar sin fin.
+
+> **Lo que el grupo 7 dio por cierto y no lo era (2026-09-24, implementación).**
+>
+> 1. **`cancelled` y `skipped` no son "artefacto roto", y la primera versión del reporte los describía así.** La
+>    tabla de ADR-048 §3 tiene tres resultados y el `result` de un job tiene cuatro valores. Decir «no se construyó
+>    o no arrancó» cuando alguien canceló la corrida es inventarse el motivo —el mismo pecado, en pequeño—, así que
+>    el estado sigue siendo de fallo (nadie ha comprobado nada) pero la descripción **nombra el resultado real**:
+>    `La verificación del artefacto terminó en 'cancelled': no se publicó nada y no se desplegó nada.`
+> 2. **El tic verde junto al check rojo tiene una tercera superficie que 7.6 no nombra: la conclusión del propio job
+>    de reporte.** 7.6 exige que el **estado de commit** lleve el estado y no solo la descripción. Pero un job con
+>    `if: always()` que publique un estado de `failure` y luego **termine en éxito** deja en la lista de checks un
+>    check verde («resultado: el artefacto NO pasó la verificación» ✅) al lado del rojo. Por eso
+>    `infra/ci/report-cd-outcome.sh` **sale ≠0** cuando lo que deriva es un fallo: el nombre, el estado de commit y
+>    la conclusión del job dicen lo mismo o no dicen nada.
+> 3. **Un estado de commit que no se publica es peor que ninguno**, porque el job sigue verde y nadie se entera de
+>    que la señal dejó de existir. El script **falla** si no tiene token en vez de saltarse la publicación; el modo
+>    local (`CD_REPORT_LOCAL=1`, para ejercitar la tabla) es explícito y no existe en CI.
+> 4. **El nombre del job hay que escribirlo dos veces, y eso no se puede evitar.** `jobs.<id>.name` no puede salir
+>    de un step del propio job, así que la expresión del YAML y el script derivan las mismas cinco cadenas. Se
+>    comprobó que **coinciden** evaluando la expresión del YAML (es JavaScript válido: `&&`/`||` con la misma
+>    precedencia y la misma semántica de verdad) contra la salida del script para los seis casos de la tabla, y el
+>    script **imprime** el nombre que deriva para que una divergencia futura se vea en la propia corrida.
+> 5. **Trampa de YAML en esa expresión.** En un escalar plegado (`>-`), las líneas **más indentadas** que la primera
+>    conservan su salto de línea. La expresión partida «bonita», con sangría por nivel, habría llegado a GitHub con
+>    saltos dentro del `${{ … }}`. Todas las líneas van al mismo nivel; se comprobó parseando el fichero y viendo
+>    que el nombre resultante es **una sola línea**.
+> 6. **`needs` con guiones va entre corchetes.** `needs['build-verify-publish'].result`: la sintaxis con punto sobre
+>    un nombre con guiones no es la documentada, y si fallara lo haría **en silencio** devolviendo vacío — que es
+>    justo el caso que el guardia de 7.4 existe para cazar (tag vacío → `:latest`). Se cambió también la referencia
+>    que el grupo 6 dejó en el paso de ssh.
+> 7. **La premisa de 7.9 es falsa con este Compose, igual que lo fue la de 5.7, y por el mismo motivo.** 7.9 dice
+>    que los dos `up -d --wait` por ssh «hoy se colgarían». Medido con Docker 29.8.0 / Compose 5.5.1 y un contenedor
+>    en **bucle de reinicio**: el `up` **sin** plazo termina en **4 s** con `container loop-api-1 is unhealthy` y
+>    código ≠0. Lo que el plazo **sí** acota —y esto necesitó un **segundo** experimento— es una readiness que no
+>    converge **dentro de su `start_period`**, donde Compose no declara nada y espera: con `--wait-timeout 20`
+>    terminó en 21 s con `application not healthy after 20s`. Con un solo experimento, la rama del plazo se habría
+>    quedado sin ejercitar y el número habría entrado en los dos workflows sin que nada lo probara. En los dos casos
+>    lo que hace el fallo **diagnosticable** es el volcado de `ps` y `logs` —`Up Less than a second (health:
+>    starting)` y el mensaje del proceso repetido una vez por reinicio—, y por eso el volcado se hace ante
+>    **cualquier** fallo del `up`.
+> 8. **`deploy-staging` no tenía `Checkout`.** No le hacía falta mientras todos sus pasos fueran `ssh-action`; el
+>    guardia de 7.4 es un script del repositorio, así que ahora sí.
+>
+> **Lo que queda sin verificar y por qué.** 7.1, 7.2, 7.3, 7.5, 7.6, 7.7 y 7.8 exigen una **corrida real de GitHub
+> Actions** (que el output del preflight salga y valga `none`; que un job saltado deje el workflow en éxito; que el
+> nombre y el estado de commit se vean en la lista de checks; que una corrida con el build roto termine en rojo).
+> La rama no está publicada y el repositorio no tiene secretos, así que nada de eso se puede observar desde aquí.
+> Lo que **sí** se ejecutó es la lógica entera fuera de Actions: los cuatro estados del preflight (incluido
+> `partial` saliendo ≠0 y nombrando los que faltan), los seis desenlaces de la tabla de resultados con su estado y
+> su descripción —entre ellos la falsación del grupo: **artefacto roto y sin destino → estado `failure`**—, los
+> cuatro caminos del guardia del tag y los dos experimentos del `up`.
 
 ## 8. `cd-prod`: el que nunca se ha ejecutado
 

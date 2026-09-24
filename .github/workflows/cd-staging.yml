@@ -1,6 +1,16 @@
 # CD staging: main → verify → construir (load) → verificar el artefacto → publicar en GHCR lo verificado, por
-# identidad de digest → ssh/compose pull+up → smoke interno (ADR-033 D3/D10; ADR-048 §4).
-# Dry-run NO cuenta como éxito. Secrets obligatorios; si faltan, el job de deploy falla.
+# identidad de digest → (si hay destino) ssh/compose pull+up → smoke interno (ADR-033 D3/D10; ADR-048 §3 y §4).
+#
+# **Tres resultados, no dos** (ADR-048 §3, que enmienda ADR-033 D10):
+#   1. el artefacto no se construye o no arranca → **fallo**, exista o no destino;
+#   2. artefacto verificado y con destino        → se despliega y se comprueba con el smoke;
+#   3. artefacto verificado y **sin** destino    → **verde**, diciendo de forma visible que no se desplegó.
+# La regla anterior —"si faltan los secrets, el job de deploy falla"— dejaba este workflow rojo **por construcción**
+# en un repositorio sin servidor: 21 corridas, 21 fallos, y detrás de ese rojo esperado se escondió un defecto real
+# de build durante un mes. Un dry-run sigue sin contar como despliegue y el pipeline nunca afirma haber desplegado;
+# lo que se revoca es comunicar la ausencia de destino como avería.
+#
+# El destino **a medias** (algunos secrets puestos y otros no) es un **fallo**: ahí alguien sí quería desplegar.
 name: cd-staging
 
 on:
@@ -25,6 +35,9 @@ permissions:
   contents: read
   actions: read
   packages: write
+  # 7.6: el job de reporte publica un **estado de commit** con el resultado del CD. Es la superficie que se lee sin
+  # abrir la ejecución, junto con el nombre del job.
+  statuses: write
 
 env:
   NX_DAEMON: 'false'
@@ -253,30 +266,67 @@ jobs:
         if: always()
         run: infra/ci/teardown-artifact.sh
 
+  # ¿Hay destino de staging? Este job existe porque **el contexto `secrets` no se puede leer en un `if:` de job**:
+  # una condición escrita ahí no da error, se evalúa contra un contexto vacío, y el job se saltaría —o se
+  # ejecutaría— **siempre**, en silencio. Los secretos se mapean a `env:` **dentro de un step**, que es donde sí se
+  # leen, y el estado sale como **output del job** (`none` | `partial` | `full`) para que `deploy-staging` y
+  # `report` decidan con él. La lógica vive en `infra/ci/preflight-deploy-target.sh` para poder ejercitarla fuera de
+  # una corrida.
+  #
+  # No lleva `needs`: saber si hay destino no depende de que el artefacto esté bien, y separarlo deja las dos
+  # respuestas visibles por separado en la lista de checks.
+  preflight:
+    name: preflight (¿hay destino de staging configurado?)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      state: ${{ steps.target.outputs.state }}
+      summary: ${{ steps.target.outputs.summary }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Resolve staging deploy target
+        id: target
+        shell: bash
+        env:
+          DEPLOY_TARGET: staging
+          DEPLOY_SECRET_PREFIX: STAGING
+          DEPLOY_HOST: ${{ secrets.STAGING_HOST }}
+          DEPLOY_SSH_USER: ${{ secrets.STAGING_SSH_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+          DEPLOY_COMPOSE_DIR: ${{ secrets.STAGING_COMPOSE_DIR }}
+        run: infra/ci/preflight-deploy-target.sh
+
+  # `needs` sobre **los dos** jobs, y esto no es redundante: sin `needs` sobre el de publicación, el tag de imagen
+  # llegaría **vacío**, el compose del host caería a su valor por defecto `:latest` —que `cd-staging` ni siquiera
+  # publica— y el despliegue informaría éxito sobre la imagen equivocada. El guardia de `infra/ci/assert-deploy-tag.sh`
+  # comprueba justo eso antes de tocar el host, por si alguien retira el `needs` más adelante.
+  #
+  # `if:` sobre el estado del preflight y **sin `always()`**: con `always()` este job se ejecutaría también con el
+  # artefacto roto, que es el fallo exacto que este change corrige. Sin `always()`, un `needs` que falla deja el job
+  # **saltado**, y un job saltado **no** pone el workflow en rojo — que es precisamente lo que hace posible el tercer
+  # resultado ("verificado y sin destino" → verde).
+  #
+  # `state == 'full'` y no `!= 'none'`: `partial` ya ha hecho fallar al preflight, y escribir la condición por
+  # exclusión dejaría que un estado nuevo o vacío cayera del lado de desplegar.
   deploy-staging:
-    name: deploy staging (compose pull+up + internal smoke)
-    needs: build-verify-publish
+    name: deploy staging (solo si hay destino configurado)
+    needs: [preflight, build-verify-publish]
+    if: needs.preflight.outputs.state == 'full'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - name: Require staging deploy secrets
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # 7.4: antes de tocar el host. Un despliegue equivocado detectado después sigue siendo un despliegue
+      # equivocado.
+      - name: Assert the tag to deploy is this run's verified artifact
         shell: bash
         env:
-          STAGING_HOST: ${{ secrets.STAGING_HOST }}
-          STAGING_SSH_USER: ${{ secrets.STAGING_SSH_USER }}
-          STAGING_SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
-          STAGING_COMPOSE_DIR: ${{ secrets.STAGING_COMPOSE_DIR }}
-        run: |
-          missing=()
-          [ -z "$STAGING_HOST" ] && missing+=(STAGING_HOST)
-          [ -z "$STAGING_SSH_USER" ] && missing+=(STAGING_SSH_USER)
-          [ -z "$STAGING_SSH_KEY" ] && missing+=(STAGING_SSH_KEY)
-          [ -z "$STAGING_COMPOSE_DIR" ] && missing+=(STAGING_COMPOSE_DIR)
-          if [ ${#missing[@]} -gt 0 ]; then
-            echo "::error::Missing required secrets for staging deploy: ${missing[*]}"
-            echo "Documented in infra/README.md. A dry-run is NOT an accepted CD outcome (ADR-033 D10)."
-            exit 1
-          fi
+          IMAGE_TAG: ${{ needs['build-verify-publish'].outputs.image_tag }}
+        run: infra/ci/assert-deploy-tag.sh
 
       - name: SSH compose pull+up staging
         uses: appleboy/ssh-action@v1.2.0
@@ -288,7 +338,7 @@ jobs:
             set -euo pipefail
             cd "${{ secrets.STAGING_COMPOSE_DIR }}"
             OWNER="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
-            export IMAGE_TAG="${{ needs.build-verify-publish.outputs.image_tag }}"
+            export IMAGE_TAG="${{ needs['build-verify-publish'].outputs.image_tag }}"
             export API_IMAGE="ghcr.io/${OWNER}/linkvault-api"
             export WORKER_IMAGE="ghcr.io/${OWNER}/linkvault-worker"
             export WEB_IMAGE="ghcr.io/${OWNER}/linkvault-web"
@@ -296,7 +346,28 @@ jobs:
               echo "${{ secrets.GHCR_READ_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
             fi
             docker compose -f docker-compose.prod.yml --env-file .env.staging pull
-            docker compose -f docker-compose.prod.yml --env-file .env.staging up -d --wait
+            # 7.9: plazo explícito y volcado al fallar, igual que en la verificación del artefacto. Los 360 s salen
+            # de los `start_period` y las ventanas de reintento de este mismo compose, encadenadas: minio
+            # 20 + 12×10 = 140 s y, solo entonces, api/worker 60 + 12×10 = 180 s → 320 s de suelo, más un 12 % de
+            # margen (el número y su cálculo viven en `infra/ci/verify-artifact.sh`).
+            #
+            # Medido, porque el enunciado de 7.9 daba por hecho que sin plazo esto "se colgaría": con Compose 5.5.1
+            # **no** se cuelga ante un contenedor en bucle de reinicio —aborta en 4 s con `container … is
+            # unhealthy`—. El plazo sí acota el otro caso, que es el que se midió con 20 s: una readiness que no
+            # converge **dentro de su `start_period`**, donde Compose no declara nada y espera (`application not
+            # healthy after 20s`). Y lo que convierte cualquiera de los dos en algo diagnosticable es el **volcado**
+            # de `ps` y `logs`, que por eso se hace ante **cualquier** fallo del `up` y no solo al vencer el plazo.
+            # Aquí importa más que en el corredor: este host es el único sitio donde se puede mirar.
+            up_status=0
+            docker compose -f docker-compose.prod.yml --env-file .env.staging up -d --wait --wait-timeout 360 \
+              || up_status=$?
+            if [ "$up_status" -ne 0 ]; then
+              echo "::error::La pila de staging no quedó sana en 360 s (up salió $up_status): no se despliega nada."
+              docker compose -f docker-compose.prod.yml --env-file .env.staging ps --all || true
+              docker compose -f docker-compose.prod.yml --env-file .env.staging logs --no-color --tail=200 \
+                api worker web || true
+              exit 1
+            fi
 
       - name: Smoke GET /health against api (Docker network, not Traefik)
         uses: appleboy/ssh-action@v1.2.0
@@ -316,3 +387,58 @@ jobs:
             case "$body" in
               *'<html'*|*'<!DOCTYPE'*) echo "::error::Smoke returned HTML (SPA); must hit api internally"; exit 1 ;;
             esac
+
+  # --- El resultado, dicho donde se lee sin abrir la corrida (7.5, 7.6, 7.7) ---------------------------------------
+  # Lo que alguien mira de forma habitual es la **lista de checks del commit o de la PR**: ahí se ven los **nombres
+  # de los jobs** y los **estados de commit**. La lista de *ejecuciones del workflow* no puede llevar el resultado
+  # —`run-name` se fija al **iniciar** la corrida, antes de que existan los outputs de los jobs—, y por eso la señal
+  # va en estas dos superficies y no en aquella.
+  #
+  # El **nombre del job** se calcula aquí porque el nombre de un job no puede salir de un step suyo. Las cinco
+  # cadenas son **las mismas** que deriva `infra/ci/report-cd-outcome.sh`, que es quien decide el estado y publica:
+  # si cambias una, cambia la otra (el script imprime el nombre que él deriva, así que una divergencia se ve en la
+  # propia corrida). El estado de commit **sí** sale entero del script, para que no haya dos lógicas de decisión.
+  #
+  # `if: always()` es obligatorio aquí —el reporte tiene que existir también cuando el artefacto está roto— y es
+  # justo por eso que el script **deriva** el estado en vez de publicar un literal: un reporte que publicara siempre
+  # `success` pondría un tic verde junto al check rojo del artefacto y reconstruiría la señal que este change viene
+  # a arreglar. El script sale ≠0 cuando lo que deriva es un fallo, de modo que este job tampoco se ve verde.
+  #
+  # `always()` vive **solo** aquí: no está en `deploy-staging`, donde dejaría pasar un artefacto roto hasta el host.
+  report:
+    # Nota de YAML: un escalar plegado (`>-`) conserva los saltos de línea de las líneas **más indentadas** que la
+    # primera, así que todas las líneas de la expresión van al **mismo** nivel: así se pliegan en una sola línea.
+    name: >-
+      ${{ needs['build-verify-publish'].result != 'success'
+      && 'resultado: el artefacto NO pasó la verificación'
+      || (needs.preflight.outputs.state == 'full'
+      && (needs['deploy-staging'].result == 'success'
+      && 'resultado: artefacto verificado y desplegado a staging'
+      || 'resultado: artefacto verificado, despliegue a staging NO completado')
+      || (needs.preflight.outputs.state == 'none'
+      && 'resultado: artefacto verificado — NO desplegado (sin destino de staging)'
+      || 'resultado: destino de staging indeterminado — no se desplegó')) }}
+    needs: [preflight, build-verify-publish, deploy-staging]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Publish CD outcome (job name + commit status)
+        shell: bash
+        env:
+          VERIFY_RESULT: ${{ needs['build-verify-publish'].result }}
+          PREFLIGHT_RESULT: ${{ needs.preflight.result }}
+          PREFLIGHT_STATE: ${{ needs.preflight.outputs.state }}
+          DEPLOY_RESULT: ${{ needs['deploy-staging'].result }}
+          TARGET_LABEL: staging
+          # Fijo: es la identidad del check, y GitHub sustituye el estado anterior del mismo contexto. Si el
+          # resultado fuera al contexto, cada desenlace dejaría un check distinto y todos vivirían a la vez.
+          STATUS_CONTEXT: cd-staging/artifact
+          STATUS_SHA: ${{ github.sha }}
+          STATUS_TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: infra/ci/report-cd-outcome.sh
