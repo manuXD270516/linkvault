@@ -110,7 +110,15 @@ services:
       start_period: 5s
 
   minio:
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    # Espejo propio de la imagen de MinIO. El 2026-09-24, MinIO **restringió el acceso anónimo** a sus imágenes en
+    # quay.io: el repositorio entero pasó a devolver 401 y la pila dejó de poder montarse desde cero en ninguna
+    # máquina limpia — lo destapó la verificación del artefacto de este change, no un despliegue fallido.
+    # Se replica el **mismo objeto** (idéntico id de imagen), sin modificarlo y conservando su procedencia. Va por
+    # variable y no fijo a fuego: la lección del incidente es justamente que una imagen de un tercero clavada en el
+    # fichero es un punto de fallo que no se puede sortear sin editarlo.
+    # Limitación conocida: el espejo lleva solo **linux/amd64**, que es lo que había en la máquina que lo replicó.
+    # Sustituir MinIO por otro servidor compatible con S3 sigue anotado para la fila 35.
+    image: ${MINIO_IMAGE:-ghcr.io/manuxd270516/linkvault-minio}:${MINIO_IMAGE_TAG:-RELEASE.2025-09-07T16-13-09Z}
     restart: unless-stopped
     command: ['server', '/data', '--console-address', ':9001']
     environment:
