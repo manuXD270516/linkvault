@@ -517,6 +517,7 @@ sequenceDiagram
 | 31 | `discovery-save-group-picker` | Destino Privado|grupo al guardar desde `/descubrir`; paridad extensión; **ADR-045** (enmienda ADR-043) |
 | 32 | `search-salary-text-parse` | Parse determinista de texto salarial → `salary.min`/`max`; enrich + backfill two-step; **ADR-046** (enmienda ADR-040 §4) |
 | 33 | `extension-firefox-web-store` | Build Firefox MV3 (FF ≥ 121) + CORS `moz-extension://` + checklist CWS/AMO (manual); **ADR-047** (enmienda ADR-038) |
+| 34 | `deploy-image-verification` | Deuda: `cd-staging` llevaba **21 de 21 en rojo desde el propio commit de `deploy-prod`**. Build de imagen reproducible + verificación del artefacto en CI sin servidor + estado de CD honesto; **ADR-048** (enmienda ADR-033 D10) |
 
 ---
 
