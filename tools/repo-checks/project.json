@@ -92,6 +92,23 @@
         "commands": ["node tools/repo-checks/src/stale-defaults.check.mjs"]
       }
     },
+    "check-docs-stack-up": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "// inputs": "Los DOS ficheros que compara —la prosa (infra/README.md) y el código (infra/ci/verify-artifact.sh)— y su propio código. Sin el script entre los inputs, cambiar la selección de servicios o el plazo del `up` no cambiaría el hash y Nx daría el verde anterior sobre una documentación ya divergente (ADR-048 §5).",
+      "inputs": [
+        "{workspaceRoot}/infra/README.md",
+        "{workspaceRoot}/infra/ci/verify-artifact.sh",
+        "{projectRoot}/src/docs-stack-up.check.mjs",
+        "{projectRoot}/src/lib/compose.mjs",
+        "{projectRoot}/src/lib/report.mjs"
+      ],
+      "options": {
+        "cwd": "{workspaceRoot}",
+        "parallel": false,
+        "commands": ["node tools/repo-checks/src/docs-stack-up.check.mjs"]
+      }
+    },
     "check": {
       "executor": "nx:run-commands",
       "cache": false,
@@ -99,7 +116,8 @@
         "check-compose-healthchecks",
         "check-compose-env-contract",
         "check-claims-registry",
-        "check-stale-defaults"
+        "check-stale-defaults",
+        "check-docs-stack-up"
       ],
       "options": {
         "cwd": "{workspaceRoot}",

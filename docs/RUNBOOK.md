@@ -1408,8 +1408,56 @@ Builds de **tienda** (no local): setear `EXTENSION_API_BASE_URL` a la URL de pro
 
 ## Paso 6 duodecies — Operar producción (deploy-prod / ADR-033)
 
-Camino canónico: `docker-compose.prod.yml` + Traefik + Let's Encrypt. Procedimiento de arranque, secrets CD y buckets:
-[`infra/README.md`](../infra/README.md). Aquí solo operaciones de operador que no caben en el README.
+Camino canónico: `docker-compose.prod.yml` + Traefik + Let's Encrypt. Procedimiento de arranque, contrato de
+variables, correo y buckets: [`infra/README.md`](../infra/README.md). Para levantar la pila entera en tu máquina
+—lo mismo que verifica el CI— hay un procedimiento ejecutable en
+[«Levantar la pila entera en tu máquina»](../infra/README.md#levantar-la-pila-entera-en-tu-máquina-lo-mismo-que-verifica-el-ci).
+
+### Los dos workflows de CD, y cómo se lee cada resultado
+
+Esto estaba sin documentar en ningún sitio, y no es una anécdota: `cd-staging` acumuló **21 ejecuciones y 21 fallos**
+—desde el propio commit que lo creó— sin que nadie los mirara, porque el rojo era el estado esperado de un pipeline
+que exigía secrets que no existían. Detrás de ese rojo se escondió un defecto real de build durante un mes
+([ADR-048](adr/ADR-048.md)). `cd-prod` no se había ejecutado **nunca**.
+
+| Workflow | Disparo | Qué hace |
+|---|---|---|
+| [`cd-staging`](../.github/workflows/cd-staging.yml) | push a `main`; `workflow_dispatch` con `dry_run` | verify por afectación → construir las tres imágenes **cargándolas** (sin publicar) → **verificar el artefacto** → publicar lo verificado en GHCR (`sha-<12>` siempre, `:staging` solo desde `main`) → si hay destino, ssh + `compose pull` + `up` + smoke interno |
+| [`cd-prod`](../.github/workflows/cd-prod.yml) | tag `vX.Y.Z`; `workflow_dispatch` con `tag`/`dry_run`/`ref` | igual, con el verify sobre **todo el workspace** y los tags `vX.Y.Z` y `:latest` |
+
+**La verificación del artefacto** es el paso que da sentido a todo lo demás: en el job `build, verify and publish
+artifact`, el paso `Verify artifact (docker-compose.prod.yml stack in the runner)` levanta en el propio corredor la
+pila de producción con las imágenes recién construidas y exige que `api`, `worker` y `web` arranquen y respondan. Que
+el código compile no dice **nada** sobre si la imagen arranca, y hasta ADR-048 nada lo comprobaba. El mismo script se
+ejecuta en local: `infra/ci/verify-artifact.sh`.
+
+**Tres resultados, no dos** (ADR-048 §3, que enmienda ADR-033 D10). Se leen **sin abrir la ejecución**, en la lista de
+checks del commit, por dos vías que dicen lo mismo: el **nombre del job de reporte** y el **estado de commit**
+`cd-staging/artifact` (o `cd-prod/artifact`).
+
+| Lo que ves en la lista de checks | Qué pasó | Qué hacer |
+|---|---|---|
+| `resultado: artefacto verificado — NO desplegado (sin destino de staging)`, en **verde** | el artefacto se construyó y arrancó; no hay servidor configurado | nada está roto. Es el estado normal hoy; para pasar a desplegado, mira abajo |
+| `resultado: el artefacto NO pasó la verificación`, en **rojo** | no construye, o construye y **no arranca** | abre la ejecución: el paso de verificación vuelca `docker compose ps` y los logs de `api`, `worker` y `web` |
+| `resultado: artefacto verificado y desplegado a staging`, en **verde** | había destino y el despliegue y su smoke terminaron bien | — |
+| `resultado: artefacto verificado, despliegue a staging NO completado`, en **rojo** | había destino y el despliegue falló | ahí sí hay una avería de despliegue |
+| `resultado: destino de staging indeterminado — no se desplegó`, en **rojo** | el `preflight` encontró **algunos** secrets y otros no | alguien sí quería desplegar: completa los que faltan (el preflight los nombra) |
+
+Un artefacto roto es **fallo en los tres casos**, haya destino o no; y un dry-run **no** cuenta como despliegue. Lo que
+ADR-048 revoca es comunicar la **ausencia de destino** como avería.
+
+**Qué hay que configurar para pasar de «verificado» a «desplegado».** Los cuatro secrets del target, todos o ninguno
+—`STAGING_HOST`, `STAGING_SSH_USER`, `STAGING_SSH_KEY`, `STAGING_COMPOSE_DIR` (y los `PROD_*` equivalentes)—, más, en
+el host, el `docker-compose.prod.yml`, el directorio de `infra/` y un `.env.staging` / `.env.prod` que cumpla el
+contrato de variables de [`infra/README.md`](../infra/README.md#variables-de-entorno-contrato-prod). Opcional:
+`GHCR_READ_TOKEN` si las imágenes del registro son privadas. En producción, además, los `PROD_*` tienen que ser
+legibles por el job `preflight`, que usa el entorno espejo `production-preflight`: si son secrets **del entorno
+`production`**, hay que copiarlos también al espejo o el preflight dirá «sin destino» para siempre — que es
+exactamente la mentira que este mecanismo existe para no contar.
+
+Mientras el CD siga terminando en «verificado sin destino», el siguiente change es la **fila 35** (`staging-host`):
+destino real y primeros usuarios que no sean el autor. Esa precedencia es el compromiso, y no una fecha (ADR-048,
+Consecuencias).
 
 ### Reseteo manual de contraseña (operador)
 

@@ -601,14 +601,86 @@
 
 ## 12. La documentación operativa deja de describir la regla vieja
 
-- [ ] 12.1 [infra] `infra/README.md:20` afirma la regla que este change revoca ("sin ellos el job de deploy **falla** (no hay dry-run de aceptación)") y `:127` la repite ("Dry-run **no** cuenta como despliegue exitoso. Secrets requeridos…"): reescribir con los tres resultados, quién los decide (el `preflight`) y que `partial` sí falla; verificar leyéndolo contra ADR-048 §3, para que el change no cree una mentira documental nueva del tipo que dice erradicar.
-- [ ] 12.2 [infra] Añadir a `infra/README.md` el orden **construir → verificar → publicar** en un solo job, por qué no se parte (la imagen cargada vive solo en ese corredor), por qué no puede haber una segunda construcción para publicar (6.1) y qué hace la verificación del artefacto (pila de `docker-compose.prod.yml`, mongo como replica set, sin Traefik ni certificados, sin publicar puertos), más la advertencia de que `IMAGE_TAG` vale `latest` por defecto y lo que eso implica al publicar tags flotantes; verificar que lo escrito coincide con los workflows ya modificados.
-- [ ] 12.3 [infra] **Nadie puede levantar esto hoy**: se demuestra en CI que la pila arranca y no hay ningún camino escrito para que una persona la levante. Documentar en `infra/README.md` **el mismo `up` que ejecuta CI** —`--env-file` partiendo de `.env.example`, secreto de sesión generado con un comando concreto, selección de servicios sin Traefik, `--wait` con el plazo justificado de 5.7, `exec` para mirar los healthchecks porque la red es interna— y qué se obtiene al final (los tres healthchecks en verde y cómo mirarlos). **Verificación ejecutable en el corredor**, porque "seguirlo desde cero en una máquina limpia" no es comprobable en un PR: una comprobación de `tools/repo-checks` que exija que el bloque de comandos documentado y el que ejecuta el workflow coinciden en fichero de compose, selección de servicios y flags (`--wait`, `--wait-timeout`, `--pull never` donde aplique), de modo que no puedan divergir en silencio; y, si el presupuesto del job lo permite, ejecutar una vez el bloque documentado tal cual en el corredor.
-- [ ] 12.4 [infra] Actualizar las cabeceras de los dos workflows: `cd-staging.yml:1-2` ("Secrets obligatorios; si faltan, el job de deploy falla") y `cd-prod.yml:1-2` ("Dry-run NO cuenta como éxito"); verificar que describen el mecanismo real y citan ADR-048 además de ADR-033.
-- [ ] 12.5 [infra] Completar el contrato de variables de `infra/README.md` con lo que los esquemas exigen de verdad (las cuatro nuevas de `api`, las tres de `worker`, las condicionales de `MAIL_*` en los dos procesos tras 4.4, `S3_BUCKET`, `AI_VAULT_KEY` como base64 de 32 bytes) y dejar explícito que en producción `AI_CHAIN` **no** puede incluir `mock`; verificar la lista contra `api-config.schema.ts`, `worker-config.schema.ts` y `parse-ai-config.ts`, no contra la memoria.
-- [ ] 12.6 [infra] El correo pasa a ser obligatorio (4.3) y hoy el README solo nombra Resend con dominio verificado, así que el primer operador no podría completar ni un alta: nombrar en el contrato **al menos una opción que funcione sin cuenta de pago** —SMTP contra un servidor que el operador ya tenga, o el nivel gratuito de Resend con sus límites escritos— y decir **qué queda inutilizable** si no se configura (verificación de cuenta y recuperación de contraseña, con el procedimiento de operador del RUNBOOK Paso 6 duodecies como salida); verificar que un lector sin cuenta de correo de pago encuentra un camino completo hasta el alta.
-- [ ] 12.7 [infra] Documentar en `infra/README.md` las alternativas de despliegue **sin presentarlas como soportadas**: una línea que diga que el camino canónico es compose+Traefik y que Fly, Railway, Render, k3s+Helm, Cloud Run y el VPS genérico no están soportados en este change; verificar que no se añade ningún manifiesto Helm ni config de esos hosts como entregable, que la spec prohíbe expresamente.
-- [ ] 12.8 [infra] Documentar en `docs/RUNBOOK.md` los dos workflows de CD, que hoy **no se mencionan en ningún sitio** —lo que contribuyó a que nadie mirara veintiún fallos—: qué hace cada uno, cómo se lee cada uno de los tres resultados **desde la lista de checks del commit**, dónde se ve la verificación del artefacto y qué hay que configurar para que llegue a desplegar; verificar con una búsqueda de `cd-staging` y `cd-prod` sobre el fichero.
+- [x] 12.1 [infra] `infra/README.md:20` afirma la regla que este change revoca ("sin ellos el job de deploy **falla** (no hay dry-run de aceptación)") y `:127` la repite ("Dry-run **no** cuenta como despliegue exitoso. Secrets requeridos…"): reescribir con los tres resultados, quién los decide (el `preflight`) y que `partial` sí falla; verificar leyéndolo contra ADR-048 §3, para que el change no cree una mentira documental nueva del tipo que dice erradicar.
+- [x] 12.2 [infra] Añadir a `infra/README.md` el orden **construir → verificar → publicar** en un solo job, por qué no se parte (la imagen cargada vive solo en ese corredor), por qué no puede haber una segunda construcción para publicar (6.1) y qué hace la verificación del artefacto (pila de `docker-compose.prod.yml`, mongo como replica set, sin Traefik ni certificados, sin publicar puertos), más la advertencia de que `IMAGE_TAG` vale `latest` por defecto y lo que eso implica al publicar tags flotantes; verificar que lo escrito coincide con los workflows ya modificados.
+- [x] 12.3 [infra] **Nadie puede levantar esto hoy**: se demuestra en CI que la pila arranca y no hay ningún camino escrito para que una persona la levante. Documentar en `infra/README.md` **el mismo `up` que ejecuta CI** —`--env-file` partiendo de `.env.example`, secreto de sesión generado con un comando concreto, selección de servicios sin Traefik, `--wait` con el plazo justificado de 5.7, `exec` para mirar los healthchecks porque la red es interna— y qué se obtiene al final (los tres healthchecks en verde y cómo mirarlos). **Verificación ejecutable en el corredor**, porque "seguirlo desde cero en una máquina limpia" no es comprobable en un PR: una comprobación de `tools/repo-checks` que exija que el bloque de comandos documentado y el que ejecuta el workflow coinciden en fichero de compose, selección de servicios y flags (`--wait`, `--wait-timeout`, `--pull never` donde aplique), de modo que no puedan divergir en silencio; y, si el presupuesto del job lo permite, ejecutar una vez el bloque documentado tal cual en el corredor.
+- [x] 12.4 [infra] Actualizar las cabeceras de los dos workflows: `cd-staging.yml:1-2` ("Secrets obligatorios; si faltan, el job de deploy falla") y `cd-prod.yml:1-2` ("Dry-run NO cuenta como éxito"); verificar que describen el mecanismo real y citan ADR-048 además de ADR-033.
+- [x] 12.5 [infra] Completar el contrato de variables de `infra/README.md` con lo que los esquemas exigen de verdad (las cuatro nuevas de `api`, las tres de `worker`, las condicionales de `MAIL_*` en los dos procesos tras 4.4, `S3_BUCKET`, `AI_VAULT_KEY` como base64 de 32 bytes) y dejar explícito que en producción `AI_CHAIN` **no** puede incluir `mock`; verificar la lista contra `api-config.schema.ts`, `worker-config.schema.ts` y `parse-ai-config.ts`, no contra la memoria.
+- [x] 12.6 [infra] El correo pasa a ser obligatorio (4.3) y hoy el README solo nombra Resend con dominio verificado, así que el primer operador no podría completar ni un alta: nombrar en el contrato **al menos una opción que funcione sin cuenta de pago** —SMTP contra un servidor que el operador ya tenga, o el nivel gratuito de Resend con sus límites escritos— y decir **qué queda inutilizable** si no se configura (verificación de cuenta y recuperación de contraseña, con el procedimiento de operador del RUNBOOK Paso 6 duodecies como salida); verificar que un lector sin cuenta de correo de pago encuentra un camino completo hasta el alta.
+- [x] 12.7 [infra] Documentar en `infra/README.md` las alternativas de despliegue **sin presentarlas como soportadas**: una línea que diga que el camino canónico es compose+Traefik y que Fly, Railway, Render, k3s+Helm, Cloud Run y el VPS genérico no están soportados en este change; verificar que no se añade ningún manifiesto Helm ni config de esos hosts como entregable, que la spec prohíbe expresamente.
+- [x] 12.8 [infra] Documentar en `docs/RUNBOOK.md` los dos workflows de CD, que hoy **no se mencionan en ningún sitio** —lo que contribuyó a que nadie mirara veintiún fallos—: qué hace cada uno, cómo se lee cada uno de los tres resultados **desde la lista de checks del commit**, dónde se ve la verificación del artefacto y qué hay que configurar para que llegue a desplegar; verificar con una búsqueda de `cd-staging` y `cd-prod` sobre el fichero.
+
+> **Lo que el grupo 12 dio por cierto y no lo era (2026-09-24, implementación).**
+>
+> 1. **La premisa de 12.6 es falsa: sin correo el alta SÍ se completa.** 12.6 dice que «el primer operador no podría
+>    completar ni un alta». Leído el código en vez de suponerlo: `Register`
+>    (`apps/api/src/modules/auth/application/register.usecase.ts`) **captura** el fallo del envío, registra un warning
+>    y devuelve `201`; y el login **no** gatea por `emailVerified` (ADR-034 D3, con test:
+>    `login.usecase.spec.ts:71-72`, «createWithPassword deja emailVerified=false; el login no gatea»). Nadie se queda
+>    fuera por no tener correo. Lo que **sí** queda inutilizable es otra cosa, y es lo que el README dice ahora: la
+>    **verificación de la cuenta** (banner permanente, y el reenvío tampoco llega), la **recuperación de contraseña
+>    por autoservicio**, y —esto no estaba en el enunciado— **todas las notificaciones por email**, que solo se envían
+>    a cuentas con `emailVerified = true` (`notifications/dispatch` y el digest semanal de grupo). Escribir la premisa
+>    tal cual habría metido en el README una afirmación falsa dentro del apartado que existe para no tenerlas.
+> 2. **La opción «SMTP contra un servidor que el operador ya tenga» casi nunca vale, y es una carencia del
+>    adaptador.** `SmtpMailer` (`apps/api/src/infrastructure/mail/smtp-mailer.ts`) construye el transporte **sin
+>    bloque `auth`**, con `secure: false`, y **no existen `MAIL_SMTP_USER` ni `MAIL_SMTP_PASSWORD`** en ninguno de los
+>    dos esquemas de configuración (comprobado por patrón sobre los dos ficheros). Es decir: sirve para un relay que
+>    autorice **por red o por IP** —un MTA en el propio host, el relay de la red— y **no** para una submission con
+>    usuario y contraseña en el 587 (Gmail, Fastmail, el SMTP de Mailgun). Va al README como limitación con su causa,
+>    no como un camino que funciona. Los topes del nivel gratuito de Resend **no se copian** al repositorio: son
+>    números de un tercero que envejecen solos, justo la forma de afirmación que ADR-048 §5 persigue; se remite a su
+>    página de precios y se escribe lo que sí es estructural (clave obligatoria, dominio a verificar, y hasta
+>    entonces solo se entrega a la dirección de la propia cuenta).
+> 3. **El par que 12.3 mandaba comparar ya no existe.** 12.3 planeaba atar «el bloque documentado» con «el del
+>    workflow», y el grupo 11 movió la verificación a `infra/ci/verify-artifact.sh`: comparar contra el YAML no diría
+>    nada, porque el YAML solo invoca el script. El par comparable es **README ↔ script**, y así está escrito
+>    `tools/repo-checks/src/docs-stack-up.check.mjs`. De paso, el «`--pull never` donde aplique» **aplica**: el camino
+>    a mano construye las imágenes en el daemon, así que una descarga silenciosa de GHCR arrancaría una versión
+>    anterior haciéndose pasar por la recién construida — exactamente el motivo de 5.1.
+> 4. **De 12.1, 12.2 y 12.4 quedaba vivo mucho menos de lo que el enunciado describe.** El grupo 8 ya había corregido
+>    `infra/README.md:20` y las cabeceras de los dos workflows. Comprobado por patrón sobre los cuatro ficheros
+>    operativos (los dos workflows, el README y el RUNBOOK): lo único que seguía **afirmando** la regla revocada era
+>    **una línea**, `infra/README.md:172` («Dry-run **no** cuenta como despliegue exitoso. Secrets requeridos…»), que
+>    además mezclaba lo que ADR-048 §3 mantiene con lo que revoca. Las otras dos apariciones del texto viejo están
+>    citadas **como revocadas** y se comprobó una a una que lo están.
+> 5. **Traefik es el único servicio con puertos publicados, y por eso el camino documentado termina sin URL.** Medido
+>    sobre `docker compose config` del fichero de producción: `api`, `worker`, `web`, `mongo`, `redis` y `minio`
+>    resuelven `ports = null`; `traefik` publica 80 y 443. El procedimiento de 12.3 deja **seis servicios sanos y
+>    ninguna página que abrir**, y decirlo es la mitad del entregable: sin esa frase, el primero que lo siga buscará
+>    un `localhost:puerto` que no existe y concluirá que el arranque falló. El README remite al README raíz para
+>    desarrollar y a la fila 35 para un destino usable.
+> 6. **El contrato de variables se contó, no se recordó.** El README anterior mezclaba obligatorias, opcionales y
+>    cosas que el compose ya fija. Lo que de verdad aborta el `up` son **trece** variables, extraídas recorriendo el
+>    compose en busca de `${VAR:?}`: `PUBLIC_HOST`, `ACME_EMAIL`, `PUBLIC_PAGE_BASE_URL`, `WEB_BASE_URL`,
+>    `AUTH_JWT_SECRET`, `AI_CHAIN`, `AI_VAULT_KEY`, `MAIL_PROVIDER`, `MAIL_FROM`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`,
+>    `MINIO_KMS_SECRET_KEY` y `ENRICH_USER_AGENT`. Las 30 obligatorias por proceso siguen estando, y el README remite
+>    a `inventarios.md` en vez de repetir la lista y dejarla envejecer en dos sitios.
+> 7. **Que anexar al final de `.env.example` baste no era evidente, y se comprobó ejecutando.** El procedimiento
+>    documentado hace `cp .env.example .env.local-stack` y **añade** las líneas que faltan o hay que cambiar; funciona
+>    porque `--env-file` rellena un mapa y **la última definición de cada clave gana**. Medido con `config`:
+>    `.env.example` trae `AI_CHAIN=mock` —prohibido con el `NODE_ENV=production` de las imágenes— y el compose
+>    resuelve `AI_CHAIN: none`, y `AUTH_JWT_SECRET` resuelve al generado y no al del ejemplo. Si no ganara la última,
+>    el procedimiento arrancaría una pila que aborta.
+>
+> **Lo que se ejecutó, con su salida.** El bloque documentado se **extrajo del propio README** y se ejecutó tal cual
+> (Docker 29.8.0): los tres `docker build` en 0, el `config` en 0, y el
+> `up -d --wait --wait-timeout 360 --pull never mongo redis minio api worker web` terminando en **0** con los seis
+> contenedores `Healthy`. Después, el bloque de comprobación, también extraído del README: `api` y `worker`
+> `200 {"status":"up",…,"checks":{"mongo":{"status":"up"},"redis":{"status":"up"}}}` y
+> `ok: web sirve el documento del SPA`; y el `down -v` documentado, en 0. La comprobación nueva
+> (`check-docs-stack-up`) se falsó **ocho veces, por los dos lados**: quitando `web` del bloque documentado, cambiando
+> su plazo a 120, quitándole `--pull never`, apuntándolo a `infra/ci/verify.env`, borrando la marca, y —en el
+> script— metiendo `traefik` en `SERVICES`, cambiando `COMPOSE_FILE` y bajando el plazo por defecto a 240. Las ocho
+> salieron ≠0 nombrando la diferencia; restaurado, vuelve a 0. El agregador pasa de cuatro a **cinco** comprobaciones
+> (`repo-checks: 5 comprobaciones ejecutadas`) y el guardia de `infra/ci/repo-checks.sh` sigue leyendo esa línea
+> (`ok: 5 comprobaciones de repositorio ejecutadas`).
+>
+> **Lo que NO se hace, y por qué.** La mitad condicional de 12.3 —«si el presupuesto del job lo permite, ejecutar una
+> vez el bloque documentado tal cual en el corredor»— **no** se añade a los workflows. Duplicaría en cada corrida de
+> CD el arranque de la pila entera (el paso que ya existe tarda minutos) por un único delta frente a lo que la
+> verificación ya hace: **construir el env file desde `.env.example`**. Ese delta se ejecutó aquí, con las salidas de
+> arriba, y lo que impide que el bloque se pudra es la comprobación estática, que sí corre en cada corrida.
 
 ## 13. Cierre
 
