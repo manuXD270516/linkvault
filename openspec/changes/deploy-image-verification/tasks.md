@@ -13,6 +13,31 @@
 - [x] 2.3 [infra] Dejar un comentario en ambos Dockerfiles que diga **por qué** se retira ese campo y qué pasa si alguien quita esa línea (vuelve `ERR_PNPM_FROZEN_LOCKFILE_WITH_OUTDATED_LOCKFILE`), y anotar ahí mismo que `docker/web.Dockerfile` no lleva el arreglo porque no tiene etapa de dependencias de producción (copia `dist/apps/web/browser` a nginx); verificar leyendo los tres Dockerfiles seguidos que la asimetría queda explicada y no se lee como un olvido.
 - [x] 2.4 [infra] Comprobar que el arreglo **no** desactiva la reproducibilidad: alterar a mano una versión del lockfile generado y verificar que el build **falla**; restaurar. Si pasara en verde, el arreglo habría aflojado el candado sin decirlo.
 
+- [x] 2.5 [infra] **La imagen se construye y no arranca: cuarto defecto nunca verificado.** El contenedor muere con `Cannot find module 'tslib'`. La causa: `tslib` está declarada como `devDependency` en la raíz, así que el manifiesto que genera Nx para el artefacto **no la incluye**, pero el bundle la requiere en tiempo de ejecución (`require("tslib")`, ~1.500 apariciones en `dist/apps/api/main.js`) porque `importHelpers` hace que el código emitido dependa de ella. Es una dependencia de ejecución mal declarada. **Decisión humana (2026-09-24): moverla a `dependencies`**, que es el arreglo mínimo y deja que Nx la incluya sola; se descartó dejar de externalizarla en webpack, que cambia cómo se construye el bundle y tiene más radio. Verificar que tras el cambio el manifiesto generado la lista.
+- [x] 2.6 [infra] **Y comprobar que la imagen arranca de verdad**, que es lo que el grupo 2 dio por bueno sin ejecutarlo: `docker run` de `api` y de `worker` con configuración mínima, viendo el proceso levantar en vez de morir importando. Esta tarea existe porque el build en verde **no dice nada** sobre si el artefacto corre — la tesis entera de este change— y al implementarlo caímos justo en eso.
+
+> **Corrección de 2.5 al implementarla (2026-09-24).** El enunciado daba por hecho que mover `tslib` a
+> `dependencies` bastaba «para que Nx la incluya sola». **No basta, y se comprobó ejecutando**: con `tslib` ya en
+> `dependencies`, el manifiesto generado seguía sin listarla, en Windows y también dentro de la imagen Linux
+> (`docker build` completo). La causa real es otra y es de Nx 23.2.1: `GeneratePackageJsonPlugin` llama a
+> `readTsConfig(options.tsConfig)` con la ruta **tal cual** —`apps/api/tsconfig.app.json`, relativa al raíz del
+> workspace— mientras el ejecutor corre con el cwd en el directorio del proyecto, así que el fichero no se
+> encuentra, `importHelpers` se lee `false` y Nx **nunca llega a considerar** `tslib`. El resto de consumidores del
+> mismo valor sí lo resuelven (`path.isAbsolute(tsConfig) ? tsConfig : path.join(options.root, tsConfig)`,
+> `@nx/webpack/dist/src/plugins/nx-webpack-plugin/lib/apply-base-config.js:267-269`).
+>
+> El arreglo son **las dos cosas**, y cada una es necesaria —las cuatro combinaciones se ejecutaron—:
+>
+> | `tslib` en | `tsConfig` | `tslib` en el manifiesto |
+> |---|---|---|
+> | `devDependencies` | relativo | no (estado anterior: el contenedor moría con `Cannot find module 'tslib'`) |
+> | `dependencies` | relativo | **no** (lo que 2.5 daba por suficiente) |
+> | `devDependencies` | absoluto | **no** (`createPackageJson` descarta con `isProduction` lo que esté en `devDependencies` raíz) |
+> | `dependencies` | absoluto | sí, `tslib 2.8.1`, y además en el `pnpm-lock.yaml` podado |
+>
+> Poner la ruta absoluta **no** es la alternativa descartada por radio (dejar de externalizar `tslib` en webpack):
+> el bundle se construye igual y sigue haciendo `require("tslib")`; lo único que cambia es qué manifiesto genera Nx.
+
 ## 3. El sitio donde viven las comprobaciones de repositorio
 
 - [x] 3.1 [infra] Crear el proyecto `tools/repo-checks` (al estilo de `tools/workspace-rules/project.json`) **ya con una comprobación real**, no vacío: que **todos** los servicios de `docker-compose.prod.yml` declaren `healthcheck` —hoy los siete lo hacen, así que nace en verde y no deja el repositorio en rojo entre esta tarea y las de los grupos 4 y 10, que añaden las demás—. Dos reglas escritas en el propio `project.json`: **un target por comprobación**, cada uno con `inputs` **explícitos** que nombren los ficheros que lee, y un target agregador que dependa de todos. Verificar con `pnpm nx show project repo-checks --json` redirigido a un archivo que el proyecto sale y que el agregador existe, y ejecutando el agregador y viendo que corre **una** comprobación y pasa.
@@ -33,6 +58,20 @@
 - [x] 4.11 [infra] Comprobar que la comprobación detecta el valor por defecto peligroso: poner `${MAIL_PROVIDER:-capture}` y ver que falla diciendo que ese proveedor descarta correos; restaurar.
 - [x] 4.12 [infra] **El healthcheck de `worker` decide por accidente**: hoy (`docker-compose.prod.yml:264-271`) solo hace `JSON.parse` del cuerpo y se apoya en que el controlador responde `503` cuando un indicador está caído; el día que responda `200` describiendo un estado degradado, `up --wait` daría verde con el worker roto. Igualarlo al de `api` (`:195-206`): exigir `status === 'up'` **y** `checks.mongo.status === 'up'` **y** `checks.redis.status === 'up'`, de modo que el **contenido** decida y el código de estado no haga falta para distinguir sano de degradado. Verificar por los dos lados: (a) parando `redis` y viendo que el servicio pasa a `unhealthy` y que `up --wait` no retorna en verde; (b) alimentando esa misma expresión de `node -e` con un cuerpo `200` que declare `redis` abajo y comprobando que sale ≠0. Cubre el requirement "La salud se decide por el contenido, no por el código de estado" de la delta de `platform/production-deploy`, que hasta esta iteración no tenía ninguna tarea.
 - [x] 4.13 [infra] Lo mismo con `web`, cuyo healthcheck (`:283`) es un `wget -qO- http://127.0.0.1/` que no mira **qué** sirve: un nginx con el directorio vacío o sirviendo otra cosa responde `200` y pasa. Exigir el documento del SPA en el cuerpo —la raíz de la aplicación Angular es `<lv-root>` (`apps/web/src/index.html:26`)—, p. ej. `wget -qO- http://127.0.0.1/ | grep -q '<lv-root'`. Verificar vaciando `/usr/share/nginx/html` en el contenedor, viendo que pasa a `unhealthy`, y restaurando con `up -d --force-recreate web`.
+
+- [x] 4.14 [infra] **Nadie ha podido levantar nunca el compose de producción: quinto defecto nunca verificado.** El healthcheck de MinIO ejecuta `sh /ensure-buckets.sh`, y ese script usa `grep` dos veces (`infra/minio/ensure-buckets.sh:33` y `:36`). **La imagen de MinIO no trae `grep`**: el healthcheck sale `127`, MinIO nunca queda sano, y `api` y `worker` —que dependen de `service_healthy`— no llegan a arrancar. **Decisión humana (2026-09-24): reescribir las dos comprobaciones sin `grep`**, resolviendo con `case` sobre la salida de `mc --json`. Verificar levantando MinIO y viendo el healthcheck pasar, y comprobar que **cae** cuando la condición que comprueba no se cumple, en vez de pasar por no encontrar el binario — un `127` y un "no está cifrado" son cosas distintas y hoy se ven igual.
+- [x] 4.15 [infra] Anotar en el change, y en la fila 35 del plan, el rediseño que **no** se hace aquí: un healthcheck no debería aprovisionar buckets. Mezclar "¿está sano?" con "¿está configurado?" es lo que convierte un fallo de configuración en un servicio enfermo para siempre, y es la razón de que este defecto durara tanto sin que nadie lo viera. Verificar que queda escrito dónde se retoma.
+
+> **El rediseño que este change NO hace (4.15).** El healthcheck de `minio` en `docker-compose.prod.yml:131` es
+> `sh /ensure-buckets.sh`: el mismo script que **crea** los buckets, les pone el ciclo de vida y activa SSE-S3 es el
+> que contesta «¿estoy sano?». Mezclar «¿está configurado?» con «¿está sano?» convierte cualquier fallo de
+> configuración en un servicio **enfermo para siempre** —y, como `api` y `worker` dependen de `service_healthy`, en
+> una pila que no arranca—; es exactamente lo que hizo que el `grep` ausente durase sin que nadie lo viera: no había
+> ningún otro sitio donde ese error pudiera salir. Aquí solo se quita el `grep` (4.14) y se hacen distinguibles los
+> tres desenlaces (binario ausente → 127 con su mensaje; condición incumplida → 1 nombrándola; correcto → 0).
+> **Se retoma en la fila 35 (`staging-host`)**, escrito en `docs/design-v0.2.md` §6 y en el `scope` de `staging-host`
+> de `openspec-changes.yaml`: separar las dos preguntas pide un despliegue real contra el que probar el paso de
+> aprovisionamiento, que es justo lo que esa fila trae.
 
 ## 5. Verificación del artefacto: la pila entera, en el corredor
 
@@ -184,6 +223,7 @@
   - las **dos tareas de endurecimiento del paso de secretos por ssh** —sacar `STAGING_COMPOSE_DIR`/`PROD_COMPOSE_DIR` y `GHCR_READ_TOKEN` del `script:` de `appleboy/ssh-action` a `envs:`—, que aquí solo podrían cerrarse leyendo YAML porque el job de despliegue queda **saltado**;
   - las **dos tareas del workflow reutilizable de `verify`** —extraerlo con input de modo (`affected` / `all`) y llevar allí el step `Check prompt assets`—, sacadas del alcance en esta iteración: son un refactor que ningún defecto de este change exige y un fallo ahí pondría en rojo los tres pipelines justo en el change cuyo entregable es una corrida verde (ver el grupo 9 y 11.5);
   - la comprobación **post-merge** de que una corrida de `main` con la verificación en rojo **no mueve** `:staging` (6.4), no observable desde una rama.
+  - el **rediseño del healthcheck de MinIO** (4.15): que deje de aprovisionar buckets para responder si está sano, lo que pide un despliegue real contra el que probar el paso de aprovisionamiento separado.
 
   Verificar que los dos ficheros dicen lo mismo y que el manifiesto del change registra lo que **no** cierra: sigue sin haber servidor de staging.
 - [ ] 13.6 [infra] `pnpm nx affected -t lint,typecheck,test --base=main` y `pnpm exec openspec validate --all --no-interactive` en verde, **redirigiendo la salida a un archivo y leyendo el archivo** (nunca por pipe). Con **A1** el conjunto afectado deja de ser solo de infraestructura: el grupo 10-bis toca `shared`, `ai`, `api` y `web`, así que la corrida verde SHALL incluir esos cuatro proyectos —comprobarlo leyendo la lista del log, no suponerla—; si `shared` o `web` no aparecen, o los `inputs` están mal o la corrida está restaurando caché, y el verde no significaría nada. El smoke de `web-e2e` **no** entra aquí (necesita la pila arrancada a mano): su corrida y su restauración del entorno son 10-bis.8.

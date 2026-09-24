@@ -449,6 +449,13 @@ changes:
       `deploy-image-verification` no pudo verificar porque el job de despliegue quedaba saltado (endurecer el paso
       de secretos al script remoto de ssh), y los primeros usuarios no-autor con su alta completa —lo que obliga a
       que el correo funcione de verdad, no solo a que la variable esté declarada—.
+      Entra también el **rediseño del healthcheck de MinIO**: en `docker-compose.prod.yml` el healthcheck es
+      `sh /ensure-buckets.sh`, o sea que **aprovisiona** buckets para contestar si el servicio está sano.
+      Mezclar "¿está configurado?" con "¿está sano?" convierte cualquier fallo de configuración en un
+      servicio enfermo para siempre, y es lo que hizo que el `grep` ausente (defecto 4.14 de
+      `deploy-image-verification`) durase sin que nadie lo viera. Separar las dos preguntas —aprovisionar en
+      un paso propio del despliegue, healthcheck de solo lectura— pide un despliegue de verdad contra el que
+      probarlo, así que se hace aquí y no allí, donde solo se quitó el `grep`.
       Fuera: `cd-prod` a un host de producción, escalado, observabilidad nueva.
   - name: golden-sets-reales
     adrs: [019, 018, 030]
