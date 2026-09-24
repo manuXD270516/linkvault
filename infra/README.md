@@ -151,7 +151,10 @@ local. Hay que apuntar a algo de fuera. Dos caminos **sin cuenta de pago**:
   autenticación** —`secure: false`, sin bloque `auth`— y no existen `MAIL_SMTP_USER` ni `MAIL_SMTP_PASSWORD` en
   ninguno de los dos esquemas de configuración. Es decir: sirve para un relay que autorice **por red o por IP**, y
   **no** sirve para una submission con usuario y contraseña en el 587 (Gmail, Fastmail, el SMTP de Mailgun…). Eso es
-  una carencia del adaptador, no de la documentación, y está registrada como tal.
+  una carencia del adaptador, no de la documentación, y se retoma en la **fila 35** (`staging-host`): está escrita en
+  `openspec-changes.yaml`, en `docs/design-v0.2.md` §6 y en el `proposal.md` de `deploy-image-verification`, §"Lo que
+  este change NO cierra". (Esta frase decía antes "y está registrada como tal" sin que lo estuviera en ningún sitio:
+  corregido el 2026-09-24 registrándola, que es lo que la frase prometía.)
 - **`MAIL_PROVIDER=resend` con una clave del nivel gratuito.** No pide tarjeta, pero sí una clave (`RESEND_API_KEY`) y,
   para enviar desde tu dominio, **verificarlo con SPF y DKIM**; mientras no lo verifiques, Resend solo deja enviar
   desde su dominio de pruebas y **solo a la dirección de tu propia cuenta**, lo que basta para probar el circuito

@@ -106,6 +106,12 @@ La garantía correcta no es temporal sino de **identidad**: lo publicado y lo ve
 comprobado en la propia corrida, y si difieren el pipeline falla. Es la tercera vez en este change que la forma de una
 regla se cumple y su contenido no.
 
+**Y una cuarta, al implementarlo (2026-09-24):** «el mismo digest» tampoco basta como **una** comprobación. El cotejo
+contra el registro, solo, **aprobó** la falsación —el daemon reetiqueta la imagen reconstruida, así que el digest de
+repositorio que se lee después de publicar coincide consigo mismo—. Hacen falta dos guardias: ese cotejo **y** que el
+tag local siga señalando al mismo objeto que antes de publicar. Detalle y salidas en ADR-048 §4 y en la cabecera de
+`infra/ci/publish-artifact.sh`.
+
 ### D3. Tres resultados, no dos
 
 El pipeline distingue **artefacto roto** (fallo), **desplegado** (verde, con smoke) y **verificado sin destino**
@@ -238,3 +244,9 @@ campo), y si "sin destino" es verde (D3, lo es). El debate puede revocarlas, per
 - **OTel**: `docs/design.md` promete trazas exportadas a Grafana Tempo que no existen, y la spec principal de
   observabilidad todavía habla de "este change" tras haberse archivado.
 - **No hay servidor de staging.** Este change hace que su ausencia se diga en voz alta; no la resuelve.
+- **Y siete cosas más que se fueron acumulando al implementar**, cada una con dónde se retoma: el healthcheck de MinIO
+  que sigue aprovisionando buckets, el paso de secretos por ssh sin endurecer, el workflow reutilizable de `verify`, el
+  rojo falso del modo de prueba con destino configurado (en los dos workflows), la comprobación post-merge del tag
+  `:staging`, el aviso de consentimiento apagado que sigue siendo de sección y no por vendor, y que el adaptador SMTP
+  no sabe autenticarse. La lista completa, con el motivo de cada una, está en `proposal.md` §"Lo que este change NO
+  cierra", y todas quedan registradas en la **fila 35** (`docs/design-v0.2.md` §6 y `openspec-changes.yaml`).

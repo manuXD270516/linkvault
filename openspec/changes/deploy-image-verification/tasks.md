@@ -418,6 +418,7 @@
 - [x] 10-bis.7 [frontend] **Textos ES y EN con identificador nuevo.** Añadir a `apps/web/src/locale/messages.xlf` y `messages.en.xlf` los `trans-unit` del aviso de indisponibilidad con ids **nuevos** (`profile.byok.unavailable…`), nunca reutilizando `profile.byok.destination` ni `profile.byok.openrouterDataCollection`. La regla de este mismo change: **cualquier frase cuyo `source` cambie, aunque sea una palabra, SHALL llevar id nuevo** — una traducción heredada es una promesa que sobrevive a su desmentido, y aquí el desmentido es precisamente el punto. Verificar con `pnpm nx run web:extract-i18n` (redirigiendo la salida a un archivo y leyendo el archivo) que los ids salen como se escribieron, y con un test junto a `apps/web/src/locale/privacy-text.spec.ts` —que ya sabe parsear los dos `.xlf` con `parseXlfUnits`— de que cada id nuevo existe en los dos ficheros, que el `target` inglés no está vacío y que ningún id heredado ha cambiado de `source`.
 - [x] 10-bis.8 [frontend] **Tests de componente y smoke.** En `apps/web/src/app/features/profile/profile.page.spec.ts`, con el API respondiendo los tres vendors: (a) con OpenRouter indisponible sale `profile-byok-unavailable-openrouter` con los cuatro contenidos y **no** sale `profile-byok-openrouter-data-collection`; (b) con OpenRouter disponible ocurre lo contrario; (c) con solo OpenRouter indisponible, `anthropic` y `openai` siguen mostrando su aviso de destino y **ninguno** muestra el de indisponibilidad (`:427-442` ya afirma parte de eso y pasa a depender del estado). En `apps/web-e2e/src/byok.spec.ts`: `:33` afirma hoy el aviso de `data_collection` **incondicionalmente**, así que pasa a derivar la expectativa del cuerpo de `GET /api/users/me/ai-keys` —afirmar la correspondencia UI↔API, que es comprobable en cualquier configuración, y no la existencia de un vendor—; y se añade el caso del vendor indisponible. **Cuidado con cómo se fabrica ese caso:** vaciar `BYOK_OPENROUTER_MODEL` en el entorno **no** lo produce, porque `EnvReader` lee la cadena vacía como ausente y `parse-ai-config.ts:525-527` repone el valor por defecto del código, que tras 10.10 es un modelo `:free` vivo; el estado indisponible es un **invariante** (13.2) y no es alcanzable por entorno. La pasada del smoke que lo cubre SHALL hacerse neutralizando a mano `AI_CONFIG_DEFAULTS.BYOK_OPENROUTER_MODEL` —romper, mirar, restaurar, como el resto del change—, con la `api` arrancada aparte (`playwright.config.mts` solo levanta `nx serve web`), comprobando el aviso de indisponibilidad, que la clave guardada se sigue anunciando como guardada y que **no** aparece el de `data_collection`. El procedimiento, el motivo por el que no basta con el entorno y la obligación de restaurar van escritos en la cabecera del propio spec.
 - [x] 10-bis.9 [frontend] **La verificación por negación, como el resto del change.** Romper cada afirmación a mano, mirar fallar y restaurar: (a) con OpenRouter **construible**, forzar el aviso de indisponibilidad (condición siempre cierta en la plantilla) y ver caer (b) de 10-bis.8; (b) con OpenRouter **indisponible**, devolver a la plantilla el `@if (vendor === 'openrouter')` de hoy y ver que el test del aviso de `data_collection` cae, porque afirmaría un envío que no va a ocurrir; (c) hacer que el caso de uso de la API responda `available: true` fijo y ver caer el test de coherencia de 10-bis.4 y los dos de componente. Sin estas tres, el grupo sería otra afirmación no verificada — y el aviso que nadie puede hacer fallar es exactamente el tipo de señal que este change vino a arreglar.
+- [x] 10-bis.10 [frontend] **La precedencia sobre el aviso de consentimiento apagado.** Tarea **añadida en el grupo 13 (13.4)**: el requirement "Claves guardadas con consentimiento off" de `web/byok` se amplía en este change con una precedencia **vendor a vendor** —para un vendor sin configuración utilizable, el aviso de indisponibilidad **sustituye** al de consentimiento apagado, porque «no se usan hasta que vuelvas a dar el permiso» es literalmente falso ahí: dar el permiso no lo activa— y **ninguna tarea lo enunciaba**. Estaba implementado y probado, pero sin tarea: exactamente el agujero que 13.4 existe para cazar, y el mismo que dejó sin tarea el requirement de healthchecks por contenido hasta la iteración 3. Enunciarlo aquí y verificar que lo implementado lo cumple: `profile-byok-consent-off` se condiciona a que haya al menos una clave de un vendor **no** indisponible, de modo que con una sola clave y su vendor caído el párrafo desaparece y solo se lee el de indisponibilidad —que ya dice que la clave sigue guardada y cifrada—, y con otra clave de un vendor disponible vuelve con su texto íntegro. Verificado con `apps/web/src/app/features/profile/profile.page.spec.ts:533` («Vendor indisponible con el consentimiento apagado: la indisponibilidad sustituye al aviso de permiso»), en verde dentro de `web:test` (86 ficheros) de la corrida sin caché de 13.6. **Lo que NO queda cubierto y se registra en vez de darse por cerrado:** ese aviso sigue siendo **de sección** y no por vendor, así que con una clave disponible y otra caída habla en plural; partirlo cambia su `data-testid` y su texto (ids nuevos de i18n por la regla de este change) y se retoma en la fila 35 (13.5).
 
 > **Lo que el contrato y el predicado (10-bis.1, 10-bis.2, 10-bis.2bis y 10-bis.3) dieron por cierto y no lo era
 > (2026-09-24, implementación).** El resto del grupo (10-bis.6 a 10-bis.9) sigue sin implementar.
@@ -684,30 +685,134 @@
 
 ## 13. Cierre
 
-- [ ] 13.1 [infra] Cerrar Q1 y Q2 de `design.md` **en "sí"** (se verifica el arranque de `worker`, 5.10, y de `web`, 5.11) y **Q3 con el dato**: sí existe un modelo a la vez disponible y sujeto a `data_collection: deny` —`cohere/north-mini-code:free`, medido en la pasada del RUNBOOK (10.8)—, así que la rama "la variable queda vacía con aviso" **no** es el resultado; reescribir esa sección para que no siga diciendo que se deciden en el debate y para que Q3 no deje escrito un desenlace que los datos del propio repositorio contradicen; verificar que el diseño y las specs no se contradicen en el alcance de la verificación ni en el estado del modelo.
-- [ ] 13.2 [infra] Dejar constancia de que el estado honesto de "sin modelo utilizable" es **"proveedor no enrutable"**, no "variable vacía con aviso", y de que es un **invariante** y no el camino esperado (hay candidato): anotar en `docs/adr/ADR-048.md` §6 y revisar la spec delta de `platform/local-environment` y `openspec/specs/ai/byok`; verificar que ninguna de las tres deja en pie el camino de `dataCollection: 'omit'` con modelo vacío, que es el que 10.9 cierra, y que ninguna manda vaciar la variable teniendo sustituto.
-- [ ] 13.3 [infra] Anotar igualmente `docs/adr/ADR-048.md` §3, que manda declarar `environment: production` **en el preflight**: si 8.2 confirma que ese entorno abre registro de despliegue o exige revisores, el mecanismo real pasa a ser el entorno espejo de 8.3 y el ADR no puede quedarse describiendo el anterior; verificar que la nota dice qué se mantiene (los secretos de prod son de *environment* y un preflight sin entorno mentiría para siempre) y qué cambia.
-- [ ] 13.4 [infra] **La auditoría de cobertura, por los dos lados.** `docs/adr/ADR-048.md` ya está escrito y `docs/adr/ADR-033.md:41-44` ya lleva la nota fechada de que su D10 queda **enmendado en parte**: verificar las dos cosas y, además, que:
-  - **cada decisión de ADR-048 (§1 a §6, §4-bis y sus Consecuencias) tiene al menos una tarea** en este fichero;
-  - **cada requirement de las ocho deltas tiene al menos una tarea**, listando requirement → tareas. Son **ocho** ficheros de `specs/` y **doce** requirements, no cuatro y siete: las cuatro deltas que entraron al cerrar el debate (`ai/usage-accounting`, `ai/task-execution`, `cv/match` y `web/byok`) y el segundo requirement de `ai/byok` quedaron fuera de la lista anterior, y con la decisión **A1** todas tienen tareas en el grupo 10-bis.
-    - `platform/ci-pipeline`: "CD a staging en main", "CD a producción por tag semver".
-    - `platform/production-deploy`: "Compose de producción", "Imágenes multi-stage publicables", "Contrato de variables de producción", "Documentación del camino canónico compose+Traefik".
-    - `platform/local-environment`: "Configuración por entorno documentada".
-    - `ai/byok`: "OpenRouter BYOK y data_collection" **e "Inyección BYOK en runTask"**, que es donde vive la acotación de que un vendor sin configuración utilizable no se inyecta y no arrastra a los demás.
-    - `ai/usage-accounting`: "Cuotas diarias por usuario y tarea".
-    - `ai/task-execution`: "Degradación tipada".
-    - `cv/match`: "BYOK hace no vigente el degradado por cuota de IA".
-    - `web/byok`: "Aviso de destino del dato".
+- [x] 13.1 [infra] Cerrar Q1 y Q2 de `design.md` **en "sí"** (se verifica el arranque de `worker`, 5.10, y de `web`, 5.11) y **Q3 con el dato**: sí existe un modelo a la vez disponible y sujeto a `data_collection: deny` —`cohere/north-mini-code:free`, medido en la pasada del RUNBOOK (10.8)—, así que la rama "la variable queda vacía con aviso" **no** es el resultado; reescribir esa sección para que no siga diciendo que se deciden en el debate y para que Q3 no deje escrito un desenlace que los datos del propio repositorio contradicen; verificar que el diseño y las specs no se contradicen en el alcance de la verificación ni en el estado del modelo.
+- [x] 13.2 [infra] Dejar constancia de que el estado honesto de "sin modelo utilizable" es **"proveedor no enrutable"**, no "variable vacía con aviso", y de que es un **invariante** y no el camino esperado (hay candidato): anotar en `docs/adr/ADR-048.md` §6 y revisar la spec delta de `platform/local-environment` y `openspec/specs/ai/byok`; verificar que ninguna de las tres deja en pie el camino de `dataCollection: 'omit'` con modelo vacío, que es el que 10.9 cierra, y que ninguna manda vaciar la variable teniendo sustituto.
+- [x] 13.3 [infra] Anotar igualmente `docs/adr/ADR-048.md` §3, que manda declarar `environment: production` **en el preflight**: si 8.2 confirma que ese entorno abre registro de despliegue o exige revisores, el mecanismo real pasa a ser el entorno espejo de 8.3 y el ADR no puede quedarse describiendo el anterior; verificar que la nota dice qué se mantiene (los secretos de prod son de *environment* y un preflight sin entorno mentiría para siempre) y qué cambia.
+- [x] 13.4 [infra] **La auditoría de cobertura, por los dos lados.** `docs/adr/ADR-048.md` ya está escrito y `docs/adr/ADR-033.md:41-44` ya lleva la nota fechada de que su D10 queda **enmendado en parte**: verificar las dos cosas y, además, que:
+  - **cada decisión de ADR-048 (§1 a §6, §4-bis y sus Consecuencias) tiene al menos una tarea** en este fichero. Enumerado: §1 → 2.1–2.4; §2 → 4.1–4.11, 4.7; §3 → 7.1–7.8, 12.1, 12.4; §4 → 5.1–5.16, 6.1, 6.2; §4-bis → 4.6, 10.11; §5 → 10.1–10.6, 11.1–11.4; §6 → 10.7–10.13, 13.2; §6-bis → 10-bis.5; §6-ter → 10-bis.1–10-bis.4; §Consecuencias → 13.5 (fila 35 y golden sets a la 36), 7.5 y 7.6 (el estado se lee sin abrir la ejecución), 8.1–8.7 (`cd-prod` en alcance), 8.4 y 8.5 (un release se verifica entero); §7 → 2.5, 2.6, 4.14, 4.15 y las falsaciones de cada grupo. **Las dos secciones que el enunciado no nombra —§6-bis y §6-ter— existen y también tienen tareas**: el enunciado dice «§1 a §6, §4-bis», escrito antes de que el debate las añadiera;
+  - **cada requirement de las deltas tiene al menos una tarea**, listando requirement → tareas.
 
-    Comprobar además que **cada escenario nuevo** de esos requirements tiene dónde caerse: los de las tres deltas de IA, en 10-bis.5; los de `web/byok`, en 10-bis.6, 10-bis.8 y 10-bis.9. Esta segunda mitad es la que faltaba: "La salud se decide por el contenido, no por el código de estado" llegó a la iteración 3 **sin ninguna tarea** porque la auditoría solo miraba el ADR, y las cuatro deltas del cierre del debate llegaron a la iteración 4 sin ninguna por el mismo motivo, agravado: la auditoría **nombraba cuatro deltas cuando ya había ocho**.
+    **Corregido al ejecutar la auditoría (2026-09-24): son NUEVE ficheros de `specs/` y DIECISÉIS requirements, no ocho y doce.** El enunciado anterior decía «ocho ficheros y doce requirements» y su propia lista sumaba **trece**, así que ni siquiera cuadraba consigo misma. Enumerado recorriendo los ficheros, no de memoria (`## ADDED|MODIFIED Requirements` → `### Requirement:` → `#### Scenario:`): 9 ficheros, 16 requirements, 104 escenarios. Faltaban **tres** requirements y **una delta entera**:
+
+    | # | Delta | Requirement | Tareas |
+    |---|---|---|---|
+    | 1 | `platform/ci-pipeline` | CD a staging en main | 3.2, 5.1–5.16, 6.1–6.6, 7.1–7.9, 9.1, 11.5, 12.4 |
+    | 2 | `platform/ci-pipeline` | CD a producción por tag semver | 8.1–8.7, 9.1, 11.5, 12.4 |
+    | 3 | `platform/production-deploy` | Compose de producción | 4.1–4.6, 4.12, 4.13, 4.14, 4.15, 5.6, 5.8 |
+    | 4 | `platform/production-deploy` | Imágenes multi-stage publicables | 2.1–2.6, 5.12, 5.13, 5.14, 6.1, 6.2 |
+    | 5 | `platform/production-deploy` | Contrato de variables de producción | 1.1, 4.1–4.11, 5.2–5.5, 12.5, 12.6 |
+    | 6 | `platform/production-deploy` | Documentación del camino canónico compose+Traefik | 10.1–10.6, 12.1–12.3, 12.7, 12.8 |
+    | 7 | `platform/local-environment` | Configuración por entorno documentada | 1.2, 10.7–10.13, 12.5, 12.6 |
+    | 8 | `ai/byok` | **Guardar y revocar una clave por vendor** ← faltaba | 10-bis.1, 10-bis.2, 10-bis.2bis, 10-bis.4 |
+    | 9 | `ai/byok` | Inyección BYOK en runTask | 10.9, 10-bis.3, 10-bis.5 |
+    | 10 | `ai/byok` | OpenRouter BYOK y data_collection | 10.8, 10.9, 10.10, 10.12, 10.13 |
+    | 11 | **`ai/data-protection`** ← delta entera fuera de la lista | Secretos BYOK fuera de logs y respuestas | 10-bis.2bis, 10-bis.4 |
+    | 12 | `ai/usage-accounting` | Cuotas diarias por usuario y tarea | 10-bis.5 |
+    | 13 | `ai/task-execution` | Degradación tipada | 10-bis.5 |
+    | 14 | `cv/match` | BYOK hace no vigente el degradado por cuota de IA | 10-bis.5 |
+    | 15 | `web/byok` | Aviso de destino del dato | 10-bis.6, 10-bis.7, 10-bis.8, 10-bis.9 |
+    | 16 | `web/byok` | **Claves guardadas con consentimiento off** ← faltaba, y **sin ninguna tarea** | **10-bis.10 (añadida aquí)**, 10-bis.6, 10-bis.8 |
+
+    De los tres que faltaban en la lista, **dos ya tenían tareas** y solo faltaba nombrarlos (el 8, cubierto por el contrato y el poblado del listado; el 11, cubierto por 10-bis.2bis, que nombra `openspec/specs/ai/data-protection/spec.md` por su ruta). El **16 no tenía ninguna**: la precedencia «la indisponibilidad sustituye al aviso de consentimiento apagado, vendor a vendor» estaba implementada y probada (`profile.page.spec.ts:533`) sin que ninguna tarea la enunciara. Se añade **10-bis.10**, que es lo que esta tarea manda hacer con lo que falte.
+
+    Comprobar además que **cada escenario nuevo** de esos requirements tiene dónde caerse: los de las tres deltas de IA, en 10-bis.5; los de `ai/byok` y `ai/data-protection` sobre disponibilidad, en 10-bis.2, 10-bis.2bis y 10-bis.4; los de `web/byok`, en 10-bis.6, 10-bis.8, 10-bis.9 y 10-bis.10. Esta segunda mitad es la que faltaba: "La salud se decide por el contenido, no por el código de estado" llegó a la iteración 3 **sin ninguna tarea** porque la auditoría solo miraba el ADR; las cuatro deltas del cierre del debate llegaron a la iteración 4 sin ninguna por el mismo motivo —la auditoría **nombraba cuatro deltas cuando ya había ocho**—; y la propia auditoría llegó al grupo 13 **nombrando ocho cuando ya había nueve**. Tres veces el mismo error, y las tres veces lo que lo destapó fue **contar**, no releer.
 
   Añadir la tarea que falte y comprobar que `proposal.md` referencia el ADR.
-- [ ] 13.5 [infra] Comprobar que la **fila 35 = destino real y primeros usuarios no-autor** esta abierta en `docs/design-v0.2.md` §6 y en `openspec-changes.yaml` —ya lo esta— **con la precedencia verificable de ADR-048 §Consecuencias y NO con una fecha**: una fecha que nadie acordo envejece sola, mientras que la precedencia se comprueba mirando si el pipeline sigue terminando en «verificado sin destino». Bajar los golden sets reales a la fila 36 (ADR-048, Consecuencias). Registrar en la fila 35, además, lo que este change **no** cierra y por qué:
+- [x] 13.5 [infra] Comprobar que la **fila 35 = destino real y primeros usuarios no-autor** esta abierta en `docs/design-v0.2.md` §6 y en `openspec-changes.yaml` —ya lo esta— **con la precedencia verificable de ADR-048 §Consecuencias y NO con una fecha**: una fecha que nadie acordo envejece sola, mientras que la precedencia se comprueba mirando si el pipeline sigue terminando en «verificado sin destino». Bajar los golden sets reales a la fila 36 (ADR-048, Consecuencias). Registrar en la fila 35, además, lo que este change **no** cierra y por qué:
   - las **dos tareas de endurecimiento del paso de secretos por ssh** —sacar `STAGING_COMPOSE_DIR`/`PROD_COMPOSE_DIR` y `GHCR_READ_TOKEN` del `script:` de `appleboy/ssh-action` a `envs:`—, que aquí solo podrían cerrarse leyendo YAML porque el job de despliegue queda **saltado**;
   - las **dos tareas del workflow reutilizable de `verify`** —extraerlo con input de modo (`affected` / `all`) y llevar allí el step `Check prompt assets`—, sacadas del alcance en esta iteración: son un refactor que ningún defecto de este change exige y un fallo ahí pondría en rojo los tres pipelines justo en el change cuyo entregable es una corrida verde (ver el grupo 9 y 11.5);
   - la comprobación **post-merge** de que una corrida de `main` con la verificación en rojo **no mueve** `:staging` (6.4), no observable desde una rama.
   - el **rediseño del healthcheck de MinIO** (4.15): que deje de aprovisionar buckets para responder si está sano, lo que pide un despliegue real contra el que probar el paso de aprovisionamiento separado.
 
+  **Y tres más que se acumularon después de escribir esta tarea, añadidas al ejecutarla (2026-09-24):**
+  - el **rojo falso del modo de prueba con destino configurado**, en los **dos** workflows: con `dry_run: true` y destino configurado, `deploy-*` queda saltado a propósito y `infra/ci/report-cd-outcome.sh` lo lee como «había destino y el despliegue no terminó bien». Hoy es imposible (cero secretos) y **deja de serlo en cuanto la fila 35 configure secretos**, que es justo el motivo de cerrarlo ahí y no antes. No se arregla aquí duplicando la tabla de decisión en un segundo script: dos lógicas de decisión son peores que un rojo falso imposible (nota del grupo 8, punto 5, y hueco gemelo de 6.4);
+  - el **aviso de consentimiento apagado que sigue siendo de sección y no por vendor** (`profile-byok-consent-off`): con una clave disponible y otra de un vendor indisponible, el párrafo sigue hablando en plural. Partirlo cambia su `data-testid` y su texto, es decir **ids nuevos** de i18n por la regla de este change (nota del SPA, punto 5, y 10-bis.10);
+  - la **carencia de autenticación del adaptador SMTP**: `SmtpMailer` crea el transporte **sin bloque `auth`** y con `secure: false`, y no existen `MAIL_SMTP_USER` ni `MAIL_SMTP_PASSWORD` en ninguno de los dos esquemas, así que solo sirve para un relay que autorice por red o por IP. Los primeros usuarios no-autor de la fila 35 obligan a que el correo funcione de verdad (nota del grupo 12, punto 2).
+
   Verificar que los dos ficheros dicen lo mismo y que el manifiesto del change registra lo que **no** cierra: sigue sin haber servidor de staging.
-- [ ] 13.6 [infra] `pnpm nx affected -t lint,typecheck,test --base=main` y `pnpm exec openspec validate --all --no-interactive` en verde, **redirigiendo la salida a un archivo y leyendo el archivo** (nunca por pipe). Con **A1** el conjunto afectado deja de ser solo de infraestructura: el grupo 10-bis toca `shared`, `ai`, `api` y `web`, así que la corrida verde SHALL incluir esos cuatro proyectos —comprobarlo leyendo la lista del log, no suponerla—; si `shared` o `web` no aparecen, o los `inputs` están mal o la corrida está restaurando caché, y el verde no significaría nada. El smoke de `web-e2e` **no** entra aquí (necesita la pila arrancada a mano): su corrida y su restauración del entorno son 10-bis.8.
+- [x] 13.6 [infra] `pnpm nx affected -t lint,typecheck,test --base=main` y `pnpm exec openspec validate --all --no-interactive` en verde, **redirigiendo la salida a un archivo y leyendo el archivo** (nunca por pipe). Con **A1** el conjunto afectado deja de ser solo de infraestructura: el grupo 10-bis toca `shared`, `ai`, `api` y `web`, así que la corrida verde SHALL incluir esos cuatro proyectos —comprobarlo leyendo la lista del log, no suponerla—; si `shared` o `web` no aparecen, o los `inputs` están mal o la corrida está restaurando caché, y el verde no significaría nada. El smoke de `web-e2e` **no** entra aquí (necesita la pila arrancada a mano): su corrida y su restauración del entorno son 10-bis.8.
 - [ ] 13.7 [infra] **La comprobación que da sentido al change**: `cd-staging` en **verde** sobre la rama, con las tres imágenes construidas, la pila de `docker-compose.prod.yml` levantada y verificada, **nada publicado antes de verificar**, el digest publicado idéntico al verificado (6.2) y el aviso de que no se desplegó visible **en la lista de checks del commit**. Adjuntar el enlace de la corrida. No se da por terminado con "el CI pasa". Con **A1** el criterio no se rebaja sino que se amplía: esa misma corrida SHALL llevar el `verify` de los proyectos que el grupo 10-bis toca (`shared`, `ai`, `api`, `web`) en verde **antes** del paso de publicación, de modo que lo que se publique sea también lo que pasó los tests del cambio funcional; una corrida verde por afectación vacía en esos cuatro proyectos NO SHALL contar como cierre.
+
+> **Lo que el grupo 13 dio por cierto y no lo era (2026-09-24, implementación).**
+>
+> 1. **La auditoría enumeraba OCHO deltas cuando ya había NUEVE, y decía «doce requirements» sobre una lista que sumaba
+>    trece.** Contado recorriendo los ficheros: **9 deltas, 16 requirements, 104 escenarios**. Faltaban `ai/byok` →
+>    "Guardar y revocar una clave por vendor", `web/byok` → "Claves guardadas con consentimiento off" y **la delta
+>    entera de `ai/data-protection`**. Es la **tercera** vez que esta auditoría se queda corta por el mismo motivo
+>    (iteración 3: el requirement de healthchecks por contenido; iteración 4: las cuatro deltas del cierre del debate;
+>    ahora: la novena), y las tres veces lo destapó **contar**, no releer. La tabla completa está en 13.4.
+> 2. **De los tres que faltaban, uno no tenía ninguna tarea**, que es lo que esta auditoría existe para encontrar: la
+>    precedencia «la indisponibilidad sustituye al aviso de consentimiento apagado, vendor a vendor» de `web/byok`
+>    estaba **implementada y probada** (`profile.page.spec.ts:533`) sin que ninguna tarea la enunciara. Añadida como
+>    **10-bis.10**. Los otros dos ya estaban cubiertos (10-bis.2/10-bis.4 y 10-bis.2bis) y solo faltaba nombrarlos.
+> 3. **ADR-048 §4 describía la identidad por digest como UNA comprobación, y la falsación demostró que con una sola
+>    pasa.** El ADR decía «lo publicado y lo verificado tienen el mismo digest, comprobado en la corrida, y si difieren
+>    el pipeline falla» — que es exactamente el cotejo que, solo, **aprobó** la reconstrucción (el daemon reetiqueta, y
+>    el digest leído después coincide consigo mismo; nota del grupo 6, punto 1). Corregido en el ADR con las dos
+>    salidas reales de la falsación, y la misma corrección aplicada a `design.md` D2-ter, que lo decía igual.
+> 4. **El encabezado de ADR-048 §7 se contradecía con su propio cuerpo**: «dos defectos más» sobre tres enumerados
+>    (cuarto, quinto y sexto), y «los cinco defectos de arriba» sobre una serie —la de «defecto nunca verificado», que
+>    usan §4-bis, 2.5 y 4.14— en la que arriba hay **tres**. Corregido a tres y tres, seis en total.
+> 5. **`infra/README.md` afirmaba que la carencia del SMTP «está registrada como tal», y no lo estaba en ningún sitio.**
+>    Buscado el par `MAIL_SMTP_USER`/`MAIL_SMTP_PASSWORD` sobre todo el repositorio: **dos** apariciones, las dos
+>    describiendo la carencia (el propio README y la nota del grupo 12), ninguna registrándola. Es la forma exacta de
+>    afirmación que este change persigue, escrita **dentro del fichero que el change corrigió para no tenerlas**.
+>    Arreglado registrándola de verdad (fila 35 en los dos ficheros del plan y en `proposal.md`), que es lo que la
+>    frase prometía.
+> 6. **El manifiesto seguía diciendo «Fuera: … y cualquier cambio funcional de la aplicación»**, revocado por A1 en el
+>    mismo debate. `design.md` §Non-Goals y `proposal.md` ya estaban corregidos; el manifiesto no. Y `proposal.md`
+>    §Modified Capabilities enumeraba **ocho** capacidades: le faltaba `ai/data-protection`, el mismo hueco del punto 1
+>    en otro fichero.
+> 7. **`api:test` es inestable bajo carga, y no en los dos ficheros que decía el grupo 10 sino en cualquiera de los de
+>    integración.** Con el gate entero corriendo sin caché una y otra vez en la misma máquina, `api:test` falló en
+>    **tres** de cinco pasadas, siempre con `Test timed out in 5000ms` (o `Hook timed out in 10000ms`) y **siempre en
+>    ficheros distintos**: `applications.controller.spec.ts`, `groups.controller.spec.ts`,
+>    `group-link-comments.limits.spec.ts` y `public-page.privacy.spec.ts` — ninguno de los dos que nombra la nota del
+>    grupo 10 (`auth.controller.logout.spec.ts`, `cv-match-analyses-count.spec.ts`). Todos son de integración con
+>    `mongodb-memory-server`. **En aislamiento pasa siempre**: `pnpm nx run api:test --skip-nx-cache` se ejecutó
+>    **cuatro** veces, las cuatro en código **0** con `Test Files 269 passed | 1 skipped (270)` y
+>    `Tests 3585 passed | 11 skipped (3596)`. No es una regresión de este grupo: lo único que toca son ficheros `.md`
+>    y `.yaml`. Y el aviso `NX Nx detected a flaky task: api:test` aparece **también debajo de corridas verdes**, así
+>    que no sirve para distinguir un fallo de esta corrida de un recuerdo de Nx.
+> 8. **Y salió una avería del propio Nx que importa a este change: una corrida verde puede imprimir el log de un
+>    intento fallido.** Después de una pasada en la que `api:test` falló y de una pasada en aislamiento en la que pasó,
+>    `pnpm nx affected -t lint,typecheck,test --base=main --output-style=static` terminó en **código 0** con
+>    `Successfully ran targets lint, typecheck, test for 11 projects` y `30 out of 30 tasks` desde la caché, y bajo
+>    `> nx run api:test [local cache]` **replicó la salida del intento fallido**: `Failed Suites 1`, `Failed Tests 3`,
+>    `Test Files 4 failed | 265 passed | 1 skipped (270)`. Reproducido una segunda vez con
+>    `pnpm nx affected -t test --base=main --output-style=static` (código 0, `Successfully ran target test for 9
+>    projects`, el mismo bloque de fallos dentro). El **estado** restaurado es verde —`api:test` en aislamiento pasa—;
+>    lo que está mal es el **texto** que se restaura con él. Importa aquí porque este change tiene guardias que
+>    **leen líneas del log de Nx** (3.2 vía `infra/ci/repo-checks.sh`, 8.5 vía `assert-release-projects.sh`), y es la
+>    misma avería que el grupo 11 ya cerró un piso más arriba al exigir `check.cache === false` en el agregador: un log
+>    restaurado no describe la corrida que lo imprime. Por eso las salidas que este grupo da por buenas son las de
+>    corridas **sin caché**, y nunca las de un `[local cache]`. (De paso: `pnpm nx reset` **no** se pudo ejecutar en
+>    Windows —`EBUSY: resource busy or locked, unlink .nx/workspace-data/…-v3.db`—, así que la caché sucia sigue ahí.)
+>
+> **Lo que se ejecutó, con su salida.**
+>
+> - `pnpm nx show projects --affected --base=main --json` →
+>   `["api","web-e2e","web","worker","ai","shared","testing","repo-checks","workspace-rules","extension","test-env"]`
+>   — los cuatro que 13.6 exige (`shared`, `ai`, `api`, `web`) están.
+> - `pnpm nx affected -t lint,typecheck,test --base=main --skip-nx-cache --output-style=static` → código **0**,
+>   `Successfully ran targets lint, typecheck, test for 11 projects`, `Cache: Skipped (--skip-nx-cache)`,
+>   `Run duration: 1m 38s`, las **30** tareas ejecutadas. Se corrió **sin caché a propósito**: la primera pasada
+>   resolvió `30/30` desde la caché, y un verde restaurado no responde a lo que 13.6 pregunta (ver el punto 8).
+> - El gate **se repitió tras editar** los ficheros de este grupo y, por la inestabilidad del punto 7, se partió para
+>   que la carga no fabricara el fallo: `--skip-nx-cache --exclude=api` → código **0**,
+>   `Successfully ran targets lint, typecheck, test for 10 projects`, `Run duration: 46.9s`; y `api:test` aparte,
+>   `pnpm nx run api:test --skip-nx-cache` → código **0**, `Tests 3585 passed | 11 skipped (3596)`. Las 30 tareas en
+>   verde, sin caché, después de los cambios.
+> - `pnpm exec openspec validate --all --no-interactive` → código **0**,
+>   `Totals: 74 passed, 0 failed (74 items)`, con `✓ change/deploy-image-verification` entre ellos.
+> - Salidas guardadas en el scratchpad de la sesión; ninguna se obtuvo entubando `nx`, siempre por redirección a
+>   fichero y lectura del fichero.
+>
+> **Lo que queda sin marcar y por qué.** **Diecisiete** tareas exigen una **corrida real de GitHub Actions** y la rama
+> no está publicada: **6.3, 6.4, 6.5, 6.6** (lo que solo se ve en GHCR y en la caché `type=gha`), **7.1, 7.2, 7.3,
+> 7.5, 7.6, 7.7, 7.8** (que el output del preflight salga y valga `none`; que un job saltado deje el workflow en
+> éxito; el nombre y el estado de commit en la lista de checks; la corrida con el build roto), **8.1, 8.2, 8.3, 8.5,
+> 8.7** (el modo de prueba construyendo el commit de la rama, el entorno espejo, que no quede despliegue registrado en
+> `production`, y el lado de 8.5 que pide un commit de solo documentación) y **11.5** (el paso incondicional visto en
+> una corrida de `cd-staging`). Más **13.7**, que es la corrida misma. Toda la lógica de esas tareas sí se ejecutó
+> fuera de Actions: está en las notas de los grupos 6, 7, 8 y 11.

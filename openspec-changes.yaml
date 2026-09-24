@@ -435,8 +435,19 @@ changes:
       pila entera con ese mismo compose**, no un compose escrito para CI: es donde el defecto estaba escondido.
       `cd-prod` **entra en el alcance** (hereda artefacto y los tres resultados; nunca se ha ejecutado).
 
-      Fuera: provisionar servidor de staging y sus secretos —eso es la fila 35—, Traefik/DNS, publicar en registries
-      de extensiones y cualquier cambio funcional de la aplicación.
+      Al cerrar el debate, la **decisión humana A1** revocó "ningún cambio funcional de la aplicación": el change
+      toca también `libs/shared`, `libs/ai`, `apps/api` y `apps/web` para cerrar la contradicción de elegibilidad
+      BYOK (ADR-049) hasta la pantalla. Lo que se mantiene es que no se toca nada **por iniciativa propia**: todo lo
+      que entra es consecuencia de una contradicción que este change destapa y que no se fusiona a sabiendas.
+
+      Lo que **no** cierra, enumerado con dónde se retoma, en `proposal.md` §"Lo que este change NO cierra": sigue sin
+      haber servidor de staging, el healthcheck de MinIO sigue aprovisionando buckets, el paso de secretos por ssh sin
+      endurecer, el workflow reutilizable de `verify`, el rojo falso del modo de prueba con destino configurado, la
+      comprobación post-merge del tag `:staging`, el aviso de consentimiento apagado que sigue siendo de sección, y
+      que el adaptador SMTP no sabe autenticarse. Todo eso entra en la fila 35.
+
+      Fuera: provisionar servidor de staging y sus secretos —eso es la fila 35—, Traefik/DNS y publicar en registries
+      de extensiones.
   - name: staging-host
     adrs: [048, 033]
     agents: [devops]
@@ -456,6 +467,24 @@ changes:
       `deploy-image-verification`) durase sin que nadie lo viera. Separar las dos preguntas —aprovisionar en
       un paso propio del despliegue, healthcheck de solo lectura— pide un despliegue de verdad contra el que
       probarlo, así que se hace aquí y no allí, donde solo se quitó el `grep`.
+      Entra además el resto de lo que `deploy-image-verification` deja abierto (su `proposal.md` §"Lo que este change
+      NO cierra" lo enumera con el mismo orden):
+      **(a)** el **workflow reutilizable de `verify`** —extraerlo con input de modo (`affected`/`all`) y llevar allí
+      el step `Check prompt assets`—, sacado de aquel change porque un fallo en él habría puesto en rojo los tres
+      pipelines justo en el change cuyo entregable era una corrida verde;
+      **(b)** el **rojo falso del modo de prueba con destino configurado**, en `cd-staging` y `cd-prod` a la vez: con
+      `dry_run: true` y destino configurado el job de despliegue queda saltado a propósito y
+      `infra/ci/report-cd-outcome.sh` lo lee como "había destino y el despliegue no terminó bien". Hoy es imposible
+      (cero secretos); en cuanto esta fila configure secretos, deja de serlo, y por eso se cierra aquí y no antes;
+      **(c)** la comprobación **post-merge** de que una corrida de `main` con la verificación en rojo **no mueve** el
+      tag móvil `:staging`, no observable desde una rama porque fuera de `main` ese tag no se toca en ningún caso;
+      **(d)** partir **por vendor** el aviso de consentimiento apagado del perfil (`profile-byok-consent-off`), hoy un
+      párrafo de sección: con una clave disponible y otra de un vendor indisponible sigue hablando en plural. Cambia su
+      `data-testid` y su texto, es decir ids nuevos de i18n;
+      **(e)** la **autenticación del adaptador SMTP**: `SmtpMailer` crea el transporte sin bloque `auth` y con
+      `secure: false`, y no existen `MAIL_SMTP_USER` ni `MAIL_SMTP_PASSWORD` en ninguno de los dos esquemas, así que
+      solo sirve para un relay que autorice por red o por IP. Los primeros usuarios no-autor de esta fila obligan a
+      que el correo funcione de verdad, no solo a que la variable esté declarada.
       Fuera: `cd-prod` a un host de producción, escalado, observabilidad nueva.
   - name: golden-sets-reales
     adrs: [019, 018, 030]

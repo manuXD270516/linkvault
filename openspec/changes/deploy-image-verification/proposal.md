@@ -96,6 +96,12 @@ y ambos se dieron por cumplidos.
   cadena vacía en lugar del `quota_exceeded` honesto — y en la pantalla se leería "no forzamos `data_collection: deny`"
   cuando la verdad es "este vendor no está disponible". `openspec validate` **no** las detecta: son contradicciones
   entre capacidades distintas.
+- `ai/data-protection`: "Secretos BYOK fuera de logs y respuestas" limita las respuestas de gestión de claves a
+  `vendor`, `keyHint` y timestamps. El dato nuevo entra en ese conjunto cerrado, así que la capacidad **se amplía
+  nombrándolo** en vez de que el campo aparezca fuera de lo declarado: `available` es un booleano pelado —ni el modelo,
+  ni la variable que falta, ni el motivo—, porque decir *por qué* un vendor no está disponible revelaría la
+  configuración del servidor por el camino que abrimos para no revelarla. Son **nueve** deltas en total, no ocho: esta
+  se quedó fuera de la primera enumeración.
 
 ## Impact
 
@@ -140,8 +146,42 @@ no fusionar ninguna contradicción conocida. El impacto queda enumerado por comp
 
 ### Lo que este change NO cierra
 
-Sigue **sin haber servidor de staging**: el objetivo es que el pipeline diga la verdad sobre eso, no inventarse un
-destino. Es la fila 35, y ningún otro change puede precederla mientras el pipeline termine en "verificado sin destino".
+Escrito aquí, con **dónde se retoma cada cosa**, en vez de quedar suelto en las notas de implementación de `tasks.md`.
+Todo lo de esta lista está además registrado en la **fila 35** (`staging-host`), en `docs/design-v0.2.md` §6 y en
+`openspec-changes.yaml`.
+
+1. **Sigue sin haber servidor de staging.** El objetivo es que el pipeline diga la verdad sobre eso, no inventarse un
+   destino. Es la fila 35, y ningún otro change puede precederla mientras el pipeline termine en "verificado sin
+   destino" (ADR-048 §Consecuencias). → **fila 35**.
+2. **El healthcheck de MinIO sigue aprovisionando buckets** (4.15). Aquí solo se le quita el `grep` que la imagen no
+   trae y se hacen distinguibles sus tres desenlaces; separar "¿está configurado?" de "¿está sano?" pide un despliegue
+   real contra el que probar el paso de aprovisionamiento. → **fila 35**.
+3. **Las dos tareas de endurecer el paso de secretos por ssh** —sacar `STAGING_COMPOSE_DIR`/`PROD_COMPOSE_DIR` y
+   `GHCR_READ_TOKEN` del `script:` de `appleboy/ssh-action` a `envs:`—. Aquí solo podrían cerrarse leyendo YAML, porque
+   el job de despliegue queda **saltado** por no haber destino. → **fila 35**.
+4. **Las dos tareas del workflow reutilizable de `verify`** —extraerlo con input de modo (`affected` / `all`) y llevar
+   allí el step `Check prompt assets`—. Es un refactor que ningún defecto de este change exige, y un fallo en él pondría
+   en rojo los tres pipelines justo en el change cuyo entregable es una corrida verde (grupo 9 y 11.5). → **fila 35**.
+5. **El hueco del modo de prueba con destino configurado, en los dos workflows.** Con `dry_run: true` **y** destino
+   configurado, el job de despliegue queda saltado a propósito y `infra/ci/report-cd-outcome.sh` lo lee como "había
+   destino y el despliegue no terminó bien" → **rojo falso**. Hoy no puede darse (cero secretos configurados). No se
+   arregla aquí duplicando la tabla de decisión en un segundo script —dos lógicas de decisión son peores que un rojo
+   falso imposible— y se cierra para `cd-staging` (6.4) y `cd-prod` (8.7) a la vez. → **fila 35**.
+6. **La comprobación post-merge de que una corrida de `main` con la verificación en rojo no mueve `:staging`** (6.4).
+   Fuera de `main` el tag móvil no se toca en ningún caso, así que desde esta rama no hay nada que observar. → **fila
+   35**, tras el merge.
+7. **El aviso de consentimiento apagado sigue siendo de sección, no por vendor.** `profile-byok-consent-off` es un
+   párrafo único para toda la sección de claves. Se ata a que haya al menos una clave de un vendor **no** indisponible,
+   así que el caso que la delta de `web/byok` nombra —una sola clave, su vendor caído— queda cubierto; pero con una
+   clave disponible y otra caída el párrafo sigue hablando en plural ("Tienes claves guardadas…") y un lector puede
+   entenderlo como que incluye al vendor caído. Partirlo por vendor cambia su `data-testid` y su texto, y por la regla
+   de este change eso son **ids nuevos** de i18n. → **fila 35**.
+8. **El adaptador SMTP no sabe autenticarse.** `SmtpMailer` (`apps/api/src/infrastructure/mail/smtp-mailer.ts`) crea el
+   transporte **sin bloque `auth`** y con `secure: false`, y no existen `MAIL_SMTP_USER` ni `MAIL_SMTP_PASSWORD` en
+   ninguno de los dos esquemas de configuración: sirve para un relay que autorice por red o por IP y **no** para una
+   submission con usuario y contraseña en el 587 (Gmail, Fastmail, el SMTP de Mailgun). Este change lo **documenta**
+   como limitación en `infra/README.md`; no lo arregla. → **fila 35**, donde los primeros usuarios no-autor obligan a
+   que el correo funcione de verdad.
 
 ### Fuera de alcance
 
