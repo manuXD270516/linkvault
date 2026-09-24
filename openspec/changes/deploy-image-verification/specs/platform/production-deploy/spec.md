@@ -1,5 +1,50 @@
 ## MODIFIED Requirements
 
+### Requirement: Compose de producción
+
+El repositorio SHALL incluir un `docker-compose.prod.yml` (o nombre equivalente documentado) que declare los servicios
+`api`, `worker` (al menos una réplica), `web`, MongoDB como replica set `rs0` de un nodo, Redis, un almacén de objetos
+S3-compatible (MinIO por defecto) y Traefik como proxy de entrada. El arranque documentado SHALL dejar esos servicios
+saludables según sus healthchecks sin pasos manuales fuera de las variables de entorno y los secretos.
+
+**El healthcheck de cada servicio SHALL decidir por el contenido de la respuesta, no por su código de estado.** El de
+`worker` hoy solo hace `JSON.parse` del cuerpo: acierta **por accidente**, porque el controlador devuelve `503` cuando
+algún indicador está caído. El día que responda `200` describiendo un estado degradado —un cambio razonable, hecho en
+otro fichero por alguien que no sabe que este depende de ese detalle—, `docker compose up --wait` daría **verde con el
+worker degradado** y el despliegue se daría por bueno. Una garantía que se sostiene sobre una casualidad no es una
+garantía. Por tanto:
+
+- Cuando el servicio publique un estado y sus dependencias, el healthcheck SHALL exigir **estado global arriba y cada
+  dependencia arriba**; para `api` y `worker`, al menos mongo y redis, con el mismo criterio en los dos.
+- Cuando el servicio sirva contenido, como `web`, el healthcheck SHALL exigir que lo servido sea el documento esperado,
+  no una respuesta cualquiera.
+- Un healthcheck que necesite el código de estado para distinguir sano de degradado NO SHALL considerarse suficiente,
+  aunque hoy funcione.
+
+#### Scenario: Stack prod completo
+
+- **GIVEN** un host con Docker y las variables de producción definidas
+- **WHEN** se ejecuta el comando de arranque documentado en `infra/README.md`
+- **THEN** SHALL quedar en ejecución `api`, al menos una réplica de `worker`, `web`, Mongo `rs0`, Redis, el object store
+  y Traefik
+- **AND** los healthchecks de `api` y `worker` SHALL reportar salud según `platform/runtime-health`
+
+#### Scenario: Réplicas del worker
+
+- **GIVEN** la configuración de compose con `worker` a escala ≥ 1
+- **WHEN** se levanta el stack de producción
+- **THEN** SHALL existir al menos una réplica de `worker` consumiendo colas
+- **AND** el compose SHALL permitir escalar `worker` sin tocar el resto de servicios
+
+#### Scenario: La salud se decide por el contenido, no por el código de estado
+
+- **GIVEN** un servicio cuyo endpoint de salud responde `200` con un cuerpo que declara una dependencia caída
+- **WHEN** el healthcheck de ese servicio en el compose lo evalúa
+- **THEN** SHALL considerarlo **no** saludable por lo que dice el cuerpo
+- **AND** `docker compose up --wait` NO SHALL terminar en verde con ese servicio degradado
+- **AND** el healthcheck de `worker` SHALL exigir mongo y redis arriba, igual que el de `api`, sin apoyarse en el código
+  de estado
+
 ### Requirement: Imágenes multi-stage publicables
 
 El repositorio SHALL incluir Dockerfiles multi-stage para `api`, `worker` y `web` que produzcan imágenes publicables en
@@ -114,6 +159,17 @@ verificación de una cuenta es peor que uno que se niega a arrancar, porque el f
 entrada de otra persona. Cuando no haya un valor por defecto seguro, la variable SHALL ser obligatoria y abortar el
 arranque nombrándose.
 
+**Y ningún valor por defecto SHALL nombrar un recurso que el proyecto no controle.** El nombre de las imágenes
+(`API_IMAGE`, `WORKER_IMAGE`, `WEB_IMAGE`) tiene hoy por defecto un espacio de nombres del registro que **no es del
+proyecto**. Es un tercer defecto de la misma familia que los otros dos: **nunca se ha ejercitado**, porque los
+workflows exportan siempre esas variables, así que el único que recorre ese camino es quien copia la configuración y
+hace `pull` —y no obtiene nuestra imagen—. Peor: ese espacio de nombres está **libre**, de modo que quien lo registre
+decide qué se ejecuta como producción en las máquinas que usen el valor por defecto. Por tanto, el nombre de cada
+imagen SHALL resolver a un espacio de nombres que el proyecto controle, o SHALL declararse en la forma que aborta el
+`up` nombrando la variable; NO SHALL quedar un valor por defecto que apunte a un espacio ajeno. La comprobación
+automatizada de valores por defecto SHALL cubrir también este caso, porque un defecto que nadie ejercita solo se
+descubre si algo lo mira a propósito.
+
 #### Scenario: Arranque sin URL pública
 
 - **GIVEN** un entorno de producción sin `PUBLIC_PAGE_BASE_URL`
@@ -146,6 +202,16 @@ arranque nombrándose.
 - **WHEN** se inspecciona el compose de producción
 - **THEN** `MAIL_PROVIDER` NO SHALL tener como valor por defecto uno que capture o deseche los mensajes sin entregarlos
 - **AND** si no se define, el `up` SHALL abortar nombrando la variable
+
+#### Scenario: Las imágenes no apuntan por defecto a un espacio de nombres ajeno
+
+- **GIVEN** el compose de producción sin ninguna de sus variables exportada, tal y como lo ejecuta quien copia la
+  configuración
+- **WHEN** se resuelven los nombres de las imágenes de `api`, `worker` y `web`
+- **THEN** cada nombre SHALL resolver a un espacio de nombres del registro que el proyecto controle, o el `up` SHALL
+  abortar nombrando la variable
+- **AND** la comprobación automatizada de valores por defecto SHALL fallar si alguno resuelve a un espacio ajeno
+- **AND** que los workflows exporten siempre esas variables NO SHALL bastar para dar el valor por defecto por bueno
 
 ### Requirement: Documentación del camino canónico compose+Traefik
 

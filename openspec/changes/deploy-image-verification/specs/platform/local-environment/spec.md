@@ -33,16 +33,24 @@ silencio, que es peor que el modelo muerto al que sustituye —el modelo muerto 
 
 - El valor por defecto SHALL ser un modelo **verificado y compatible con la política**: disponible en la pasada anotada
   y de los que hacen que la petición lleve `data_collection: deny`.
-- Si no existe ninguno que cumpla las dos cosas, la variable SHALL quedar **vacía**, y el arranque SHALL avisar de
-  forma visible de que ese proveedor se queda sin modelo utilizable. Un hueco declarado es un estado honesto; NO SHALL
-  rellenarse con un modelo que degrade la privacidad para que el ejemplo "tenga algo".
+- Si no existe ninguno que cumpla las dos cosas, **no SHALL haber valor por defecto en ningún sitio** —ni en el
+  ejemplo, ni en el compose, ni en el valor por defecto del código—, y ese estado SHALL significar **proveedor no
+  disponible**, no proveedor sin política: ese BYOK de OpenRouter NO SHALL poder enrutarse, según
+  `ai/byok`. Dejar la variable vacía y limitarse a avisar **NO SHALL** bastar: una cadena vacía se lee como ausente y
+  caería al valor por defecto del código, que construiría el proveedor igual y con la política en `omit` —es decir, el
+  arreglo de privacidad apagaría la privacidad, y el texto del CV viajaría sin `data_collection: deny`—.
+- El arranque SHALL avisar de forma visible de que ese proveedor se queda sin modelo utilizable, y ese aviso SHALL ser
+  **añadido** a la indisponibilidad, no un sustituto de ella.
+- Un hueco declarado es un estado honesto; NO SHALL rellenarse con un modelo que degrade la privacidad para que el
+  ejemplo "tenga algo".
 - La sustitución NO SHALL decidirse solo por disponibilidad: la comprobación de la política SHALL formar parte de lo
   que se verifica y se anota.
 
 La comprobación automatizada de estos valores por defecto SHALL cubrir **todos los sitios donde vive el valor por
-defecto** de cada variable —no solo `.env.example`—, incluido el compose de producción, donde los mismos modelos
-aparecen como valor de sustitución (`${VAR:-…}`). Arreglar el ejemplo y dejar el compose con el modelo muerto dejaría
-la avería exactamente donde más cuesta verla.
+defecto** de cada variable —no solo `.env.example`—, incluidos el compose de producción, donde los mismos modelos
+aparecen como valor de sustitución (`${VAR:-…}`), y el **valor por defecto del código**, que es el que gana cuando la
+variable no está o está vacía. Arreglar el ejemplo y dejar el compose o el código con el modelo muerto dejaría la
+avería exactamente donde más cuesta verla.
 
 #### Scenario: Valores por defecto seguros
 
@@ -87,13 +95,22 @@ la avería exactamente donde más cuesta verla.
 - **THEN** SHALL ser uno con el que la petición lleve `data_collection: deny`
 - **AND** NO SHALL elegirse uno que, por no cumplir esa condición, haga viajar el texto del CV sin la política
 
-#### Scenario: Sin candidato compatible la variable queda vacía
+#### Scenario: Sin candidato compatible el proveedor queda no disponible
 
 - **GIVEN** que ningún modelo está a la vez verificado como disponible y sujeto a `data_collection: deny`
 - **WHEN** se fija el valor por defecto
-- **THEN** la variable SHALL quedar vacía
+- **THEN** la variable SHALL quedar sin valor por defecto en el ejemplo, en el compose y en el código
+- **AND** ese BYOK de OpenRouter SHALL quedar **no disponible** para el routing, según `ai/byok`
 - **AND** el arranque SHALL avisar de forma visible de que ese proveedor queda sin modelo utilizable
+- **AND** avisar NO SHALL bastar: un proveedor construido sin modelo enviaría el texto del CV sin la política
 - **AND** NO SHALL rellenarse con un modelo que degrade la privacidad
+
+#### Scenario: La comprobación también mira el valor por defecto del código
+
+- **GIVEN** el mismo modelo inservible retirado del ejemplo y del compose pero intacto como valor por defecto del código
+- **WHEN** corre la comprobación de valores por defecto
+- **THEN** SHALL fallar nombrando la variable, el valor y el archivo del código
+- **AND** una variable vacía NO SHALL darse por corregida si el código la rellena por detrás
 
 #### Scenario: Un valor por defecto desmentido se detecta
 
@@ -104,7 +121,8 @@ la avería exactamente donde más cuesta verla.
 
 #### Scenario: La comprobación cubre todos los sitios del valor por defecto
 
-- **GIVEN** la misma variable de modelo con valor por defecto en `.env.example` y en el compose de producción
+- **GIVEN** la misma variable de modelo con valor por defecto en `.env.example`, en el compose de producción y en el
+  código
 - **WHEN** corre la comprobación de valores por defecto
-- **THEN** SHALL inspeccionar los dos sitios
+- **THEN** SHALL inspeccionar los tres sitios
 - **AND** corregir solo el ejemplo NO SHALL bastar para que pase

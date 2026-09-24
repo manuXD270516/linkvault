@@ -437,3 +437,25 @@ changes:
 
       Fuera: provisionar servidor de staging y sus secretos —eso es la fila 35—, Traefik/DNS, publicar en registries
       de extensiones y cualquier cambio funcional de la aplicación.
+  - name: staging-host
+    adrs: [048, 033]
+    agents: [devops]
+    scope: |
+      Fila 35. **Ningún change puede precederla mientras `cd-staging` termine en "verificado sin destino"**
+      (ADR-048 §Consecuencias): esa precedencia es el compromiso, en vez de una fecha que nadie acordó.
+      Provisionar el host de staging, sus secretos (`STAGING_HOST`, `STAGING_SSH_USER`, `STAGING_SSH_KEY`,
+      `STAGING_COMPOSE_DIR`), DNS y Traefik/ACME, y llevar el pipeline del tercer resultado al segundo: desplegado
+      de verdad, con el smoke post-deploy contra `api` en la red interna. Entran aquí las dos tareas que
+      `deploy-image-verification` no pudo verificar porque el job de despliegue quedaba saltado (endurecer el paso
+      de secretos al script remoto de ssh), y los primeros usuarios no-autor con su alta completa —lo que obliga a
+      que el correo funcione de verdad, no solo a que la variable esté declarada—.
+      Fuera: `cd-prod` a un host de producción, escalado, observabilidad nueva.
+  - name: golden-sets-reales
+    adrs: [019, 018, 030]
+    agents: [ai-engineer]
+    scope: |
+      Fila 36. Sustituir los cinco `golden.jsonl` con etiqueta `placeholder` por casos **reales anonimizados**,
+      a partir de uso consentido y pasado por el redactor, con su línea base en replay.
+      Baja de la 35 a la 36 a propósito (ADR-048): llevan cinco aplazamientos, pero miden la calidad de funciones
+      de IA que **nadie fuera del autor usa**, y con cero usuarios la sexta curación volvería a ser sintética.
+      Depende de la 35 para tener de dónde sacar casos reales con consentimiento.

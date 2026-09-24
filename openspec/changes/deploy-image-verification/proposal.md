@@ -71,8 +71,9 @@ y ambos se dieron por cumplidos.
   - **`.env.example:166` reparte un modelo muerto.** Fija `BYOK_OPENROUTER_MODEL=meta-llama/llama-3.3-70b-instruct:free`
     mientras el propio RUNBOOK (`:1045`) documenta que ese modelo **ya no existe y responde `404`**. Quien copie el
     ejemplo y active BYOK arranca con el proveedor caído, el breaker abierto y una degradación silenciosa. Y vive en
-    **cuatro sitios**, no en uno: el ejemplo, los dos servicios del compose de producción y —el peor— el valor por
-    defecto del propio código, que es el que gana cuando la variable no se define.
+    **seis sitios**, no en uno: el ejemplo, los dos servicios del compose de producción, el valor por defecto del propio
+    código —el peor, porque es el que gana cuando la variable no se define—, su consumidor, y dos ficheros de test que
+    lo fijan literal y que **romperán** al vaciarlo, lo cual es una señal y no un estorbo.
 
 ## Capabilities
 
@@ -84,7 +85,9 @@ y ambos se dieron por cumplidos.
   —que ocurre siempre y puede estar en verde hoy— de **desplegarlo**, que necesita un destino configurado; y definen
   qué se informa cuando no lo hay, sin contarlo como éxito ni como avería.
 - `platform/local-environment`: la configuración de ejemplo no puede repartir valores por defecto que **se sabe** que
-  no funcionan.
+  no funcionan, ni sustituirlos por otros que apaguen una protección.
+- `ai/byok`: "sin modelo utilizable" pasa a significar **proveedor no disponible**, no proveedor sin política de datos.
+  Sin esto, el arreglo del modelo muerto **apagaría** la protección que pretende preservar.
 
 ## Impact
 

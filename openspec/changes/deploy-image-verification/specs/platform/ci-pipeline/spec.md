@@ -24,6 +24,16 @@ sobrescribe al anterior convierte una imagen rota en la imagen que el siguiente 
 deja al despliegue anterior —que sí funcionaba— sin referencia a la que volver. Publicar SHALL ser consecuencia de
 haber verificado, no un paso previo.
 
+**Y lo publicado SHALL ser exactamente lo verificado, comprobado por identidad del artefacto.** El orden no basta: la
+imagen que se levanta para verificarla vive en el entorno donde se verificó, así que una publicación que no reutilice
+ese mismo artefacto lo **reconstruiría** y subiría al registro bits que nadie ha comprobado —se cumpliría el orden y se
+incumpliría el propósito, que es el peor resultado posible: una garantía que se ve satisfecha y no lo está—. Por tanto,
+para cada imagen publicada, el **digest** SHALL ser el mismo que el del artefacto que superó la verificación, y esa
+coincidencia SHALL comprobarse **en la propia corrida**. Si algún digest publicado no es el verificado, el pipeline
+SHALL fallar y NO SHALL contarse ese despliegue como realizado. Es una propiedad observable del artefacto, no de la
+secuencia de pasos: cómo se consiga —reutilizando el artefacto, transfiriéndolo o publicándolo desde donde se
+verificó— queda abierto, mientras la identidad se demuestre.
+
 **La verificación del artefacto NO SHALL depender de que exista un servidor.** SHALL ejecutarse con las imágenes recién
 construidas, levantándolas en el propio corredor, y SHALL comprobar que los procesos **arrancan** y responden, no que el
 código compile. Que el build termine NO SHALL bastar para dar el artefacto por bueno.
@@ -38,8 +48,13 @@ código compile. Que el build termine NO SHALL bastar para dar el artefacto por 
   mientras producción no arrancaba.
 - Lo único que MAY diferir del despliegue real es apuntar las imágenes a las recién construidas y dejar fuera el borde:
   Traefik, los certificados y la publicación de puertos al exterior NO SHALL formar parte de la verificación, porque
-  exigen DNS y ACME. Los **valores de entorno de los servicios** SHALL venir del fichero de producción, sin sustituirlos
-  por unos escritos para que la comprobación pase.
+  exigen DNS y ACME.
+- Lo que SHALL venir del fichero de producción es el **mapa de servicio a variable**: qué variables recibe cada
+  servicio, y con qué forma de sustitución. Ahí es donde vivía el defecto —al servicio le faltaba una variable
+  obligatoria— y por eso NO SHALL añadirse ni retirarse ninguna variable de ningún servicio para que la comprobación
+  pase. Los **valores** MAY ser de relleno, escogidos para el corredor (host público, credenciales del almacén,
+  destinatarios de correo), porque en el corredor no hay DNS ni cuentas reales: sustituir un valor no oculta nada;
+  sustituir el conjunto de variables oculta exactamente el defecto que esta verificación busca.
 - Mongo SHALL levantarse como **replica set**, igual que en producción: con instancia suelta, cualquier transacción
   multi-documento fallaría solo en el despliegue real, que es el sitio más caro para enterarse.
 
@@ -54,11 +69,18 @@ actualizar el target compose de staging (placeholders de host documentados) con 
 readiness de Nest, no HTML del SPA. Un job que solo realiza dry-run **NO SHALL** satisfacer la parte de despliegue de
 este requirement, ni SHALL presentarse como tal.
 
-**El resultado SHALL ser legible desde la lista de ejecuciones, sin abrir el run.** No basta con escribirlo en el
-resumen interno: dentro de tres meses nadie abre el run, ve el tick verde y concluye que hay algo desplegado. El estado
-—desplegado, o verificado sin destino— SHALL aparecer en el **nombre de lo que se ve en la lista** (el nombre de la
-ejecución o del check que la representa), de modo que una corrida que no desplegó se distinga de una que sí a simple
-vista.
+**El resultado SHALL ser legible sin abrir la ejecución.** No basta con escribirlo en el resumen interno: dentro de tres
+meses nadie abre el run, ve el tick verde y concluye que hay algo desplegado. El estado —desplegado, o verificado sin
+destino— SHALL aparecer en el **nombre de algo que se ve desde fuera**, en **al menos una superficie que alguien mire de
+forma habitual** —la lista de checks de un commit o de una pull request—, de modo que una corrida que no desplegó se
+distinga de una que sí a simple vista y no solo por el color del resultado.
+
+**Y la spec SHALL nombrar el límite en vez de dejarlo ambiguo.** La superficie donde se acumularon las veintiuna
+corridas rojas es la **lista de ejecuciones del workflow**, y esa lista muestra el nombre de la ejecución, que se fija
+al iniciarla: no puede depender de un resultado que todavía no existe. Por tanto esta spec NO SHALL exigir que el
+estado aparezca ahí, porque sería prometer lo que la herramienta no permite y volvería el requirement incumplible o,
+peor, cumplido de mentira. Lo exigible es la superficie que sí puede llevarlo; quien mire solo la lista de ejecuciones
+SHALL seguir necesitando abrir la corrida, y eso queda dicho aquí en lugar de darse por resuelto.
 
 #### Scenario: Merge a main verde despliega staging
 
@@ -97,7 +119,8 @@ vista.
 - **GIVEN** el corredor con las imágenes construidas
 - **WHEN** se levanta la pila para verificarla
 - **THEN** SHALL usarse `docker-compose.prod.yml`, no un compose escrito aparte para CI
-- **AND** los valores de entorno de los servicios SHALL ser los de ese fichero
+- **AND** cada servicio SHALL recibir exactamente las variables que ese fichero le declara, sin añadir ni quitar ninguna
+- **AND** los valores de esas variables MAY ser de relleno para el corredor
 - **AND** mongo SHALL levantarse como replica set, igual que en producción
 - **AND** Traefik y los certificados SHALL quedar fuera del alcance
 
@@ -106,7 +129,8 @@ vista.
 - **GIVEN** un `docker-compose.prod.yml` al que le falta una variable que el proceso valida al arrancar
 - **WHEN** corre la verificación del artefacto con ese mismo fichero
 - **THEN** el servicio SHALL terminar sin llegar a escuchar y la verificación SHALL fallar
-- **AND** NO SHALL enmascararse sustituyendo ese entorno por uno escrito para el corredor
+- **AND** NO SHALL enmascararse declarando esa variable fuera del compose ni cambiando qué variables recibe el servicio
+- **AND** dar valores de relleno a las variables que el compose sí declara NO SHALL considerarse enmascaramiento
 
 #### Scenario: Una imagen que no arranca rompe el pipeline
 
@@ -129,6 +153,20 @@ vista.
 - **THEN** ese tag SHALL seguir apuntando a la imagen anterior
 - **AND** la imagen fallida NO SHALL quedar publicada bajo ningún otro tag
 
+#### Scenario: Se publica exactamente el artefacto verificado
+
+- **GIVEN** unas imágenes que acaban de superar la verificación de arranque en el corredor
+- **WHEN** esas imágenes se publican en el registro
+- **THEN** el digest de cada imagen publicada SHALL ser el mismo que el de la imagen verificada
+- **AND** la coincidencia SHALL comprobarse en la propia corrida, no deducirse de que la publicación ocurriera después
+
+#### Scenario: Publicar algo reconstruido rompe el pipeline
+
+- **GIVEN** una publicación que no reutiliza el artefacto verificado y produce bits distintos de los que se levantaron
+- **WHEN** se comparan los digests de lo publicado y de lo verificado
+- **THEN** el pipeline SHALL fallar señalando que lo publicado no es lo que se verificó
+- **AND** NO SHALL darse por cumplido el requirement por haberse respetado el orden construir → verificar → publicar
+
 #### Scenario: Sin destino configurado el pipeline termina en verde sin desplegar
 
 - **GIVEN** un merge a `main` con la verificación y el artefacto en verde, y **ningún** secreto de destino configurado
@@ -138,13 +176,20 @@ vista.
 - **AND** NO SHALL afirmar en ningún punto que el despliegue se realizó
 - **AND** la ausencia de destino NO SHALL registrarse como fallo
 
-#### Scenario: El estado se lee desde la lista de ejecuciones
+#### Scenario: El estado se lee sin abrir la ejecución
 
 - **GIVEN** una corrida que verificó el artefacto y no desplegó por no haber destino
-- **WHEN** alguien mira la lista de ejecuciones sin abrir ninguna
+- **WHEN** alguien mira la lista de checks del commit o de la pull request, sin abrir la corrida
 - **THEN** el nombre de lo que ve SHALL decir que no se desplegó
 - **AND** NO SHALL distinguirse de una corrida que sí desplegó solo por el color del resultado
 - **AND** NO SHALL bastar con dejarlo escrito en el resumen interno del run
+
+#### Scenario: El límite de la señal queda escrito
+
+- **GIVEN** la lista de ejecuciones del workflow, cuyo nombre se fija al iniciar la corrida y no puede llevar el estado
+- **WHEN** se evalúa el cumplimiento de la señal
+- **THEN** la spec SHALL decir que esa superficie no lo lleva y cuál sí
+- **AND** NO SHALL exigirse que el estado aparezca en una superficie que la herramienta no permite
 
 #### Scenario: Un destino a medias sí falla
 
@@ -157,7 +202,8 @@ vista.
 
 Al publicar un tag `v*` con forma semver (p. ej. `v1.2.3`), el pipeline SHALL ejecutar la verificación y, **solo si
 pasa**, SHALL construir y **verificar el artefacto** con el mismo criterio que el CD de staging —la pila de
-`docker-compose.prod.yml` completa, levantada antes de publicar nada—, y desplegar a **producción** con el mecanismo
+`docker-compose.prod.yml` completa, levantada antes de publicar nada, y el digest de lo publicado idéntico al de lo
+verificado—, y desplegar a **producción** con el mecanismo
 cerrado (GHCR → compose pull+up del target prod → smoke `/health` interno contra `api`, no Traefik público) **cuando
 haya destino configurado**. Un tag que no cumpla el patrón documentado NO SHALL desplegar a prod. El fallo de verify
 NO SHALL desplegar a producción. Dry-run **NO SHALL** satisfacer la parte de despliegue.
@@ -200,6 +246,7 @@ que existe para abaratar los pushes y las pull requests, no para abaratar un rel
 - **THEN** SHALL levantarse la pila de `docker-compose.prod.yml` y comprobarse `api`, `worker` y `web`, igual que en
   staging
 - **AND** esa comprobación SHALL ocurrir antes de publicar ninguna imagen y antes de cualquier intento de despliegue
+- **AND** el digest de cada imagen publicada SHALL ser el de la imagen verificada, comprobado en la corrida
 
 #### Scenario: Un release verifica todo el workspace
 

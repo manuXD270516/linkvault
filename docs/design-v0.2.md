@@ -518,7 +518,7 @@ sequenceDiagram
 | 32 | `search-salary-text-parse` | Parse determinista de texto salarial → `salary.min`/`max`; enrich + backfill two-step; **ADR-046** (enmienda ADR-040 §4) |
 | 33 | `extension-firefox-web-store` | Build Firefox MV3 (FF ≥ 121) + CORS `moz-extension://` + checklist CWS/AMO (manual); **ADR-047** (enmienda ADR-038) |
 | 34 | `deploy-image-verification` | Deuda: `cd-staging` llevaba **21 de 21 en rojo desde el propio commit de `deploy-prod`**, y el compose de producción tampoco declaraba las variables que sus procesos exigen al arrancar. Build reproducible + verificación de la pila entera en CI sin servidor + estado de CD honesto; **ADR-048** (enmienda ADR-033 D10) |
-| 35 | `staging-host` | **Destino real y primeros usuarios no-autor.** Provisionar el host, sus secretos y el DNS, y llevar `cd-staging` de "verificado sin destino" a desplegado de verdad. Cierra el compromiso fechado que ADR-048 deja abierto: sin esto, "verde sin desplegar" dura para siempre. Con 34 filas entregadas, **nadie salvo el autor ha usado nada** |
+| 35 | `staging-host` | **Destino real y primeros usuarios no-autor.** Provisionar el host, sus secretos y el DNS, y llevar `cd-staging` de "verificado sin destino" a desplegado de verdad. **Ningún otro change puede precederla** mientras el pipeline siga en "verificado sin destino" (ADR-048): sin esa precedencia, "verde sin desplegar" dura para siempre. Con 34 filas entregadas, **nadie salvo el autor ha usado nada** |
 | 36 | `golden-sets-reales` | Golden sets de vacantes y CV **reales anonimizados**, a partir de uso consentido y redactado, sustituyendo los cinco `placeholder` sintéticos. Baja de la 35 a la 36 a propósito: con cero usuarios, la sexta curación volvería a ser sintética |
 
 ---

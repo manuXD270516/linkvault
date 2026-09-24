@@ -91,6 +91,16 @@ próxima variable obligatoria que alguien añada al código rompa la comprobaci�
 La comprobación es **unidireccional**: el compose puede declarar opcionales de más; lo prohibido es que el esquema
 exija algo que el compose no da. La dirección contraria es la que impide arrancar.
 
+### D2-ter. Lo que se publica es, por identidad, lo que se verificó
+
+La primera versión de este diseño pedía "construir → verificar → publicar" y lo dejaba ahí. **No basta.** Una imagen
+cargada en el daemon vive **solo en ese runner**: si la publicación ocurre donde la imagen no está, se reconstruye — y
+se publican bits que nadie verificó. Se cumpliría el orden y se incumpliría el propósito.
+
+La garantía correcta no es temporal sino de **identidad**: lo publicado y lo verificado tienen el **mismo digest**,
+comprobado en la propia corrida, y si difieren el pipeline falla. Es la tercera vez en este change que la forma de una
+regla se cumple y su contenido no.
+
 ### D3. Tres resultados, no dos
 
 El pipeline distingue **artefacto roto** (fallo), **desplegado** (verde, con smoke) y **verificado sin destino**
@@ -141,7 +151,7 @@ abarata pushes y PRs, no una publicación.
 Las dos mentiras encontradas tienen la misma forma: una afirmación cierta cuando se escribió, que nadie volvió a mirar
 cuando dejó de serlo. Corregir el texto sin más las deja volver.
 
-- **"Hoy no existe el borrado de cuenta"** (cuatro sitios del RUNBOOK) mientras `DELETE /api/users/me` existe con su
+- **"Hoy no existe el borrado de cuenta"** (**ocho** sitios del RUNBOOK) mientras `DELETE /api/users/me` existe con su
   cascada probada. Un operador que siga el RUNBOOK borraría a mano, sin transacción, y **omitiría lo que no recuerde**.
 - **`BYOK_OPENROUTER_MODEL` apunta a un modelo que el propio RUNBOOK declara muerto (`404`).** No falla ruidosamente:
   abre el breaker y degrada en silencio.
@@ -160,16 +170,23 @@ Con tres correcciones que el debate obligó a hacer, y que son la diferencia ent
   globales: un commit que solo tocara el RUNBOOK no marcaría ningún proyecto como afectado y, peor, el hash de caché no
   cambiaría y Nx **restauraría un verde cacheado**. Hacen falta un proyecto propio con entradas explícitas y esos
   ficheros en las entradas globales.
-- **El arreglo del modelo muerto podía apagar una protección.** `data_collection: deny` solo se fuerza con modelos
-  `:free`; sustituirlo por uno verificado que no lo sea haría viajar el texto del CV **sin esa política**, en silencio
-  — peor que el modelo muerto, que al menos falla. Si no hay candidato que cumpla disponibilidad **y** política, la
-  variable queda vacía con aviso. Y el valor vive también en el compose de producción, así que arreglar solo el ejemplo
-  dejaría la avería donde más cuesta verla.
+- **El arreglo del modelo muerto podía apagar una protección — dos veces.** `data_collection: deny` solo se fuerza con
+  modelos `:free`; sustituirlo por uno verificado que no lo sea haría viajar el texto del CV **sin esa política**, en
+  silencio — peor que el modelo muerto, que al menos falla.
+
+  Y la corrección que escribí en la iteración 1 —"la variable queda vacía con aviso"— **tenía el mismo defecto**: la
+  factory construye el proveedor igualmente y pone la política en `omit`, y un valor vacío se lee como ausente y cae
+  al valor por defecto del **código**. El estado por defecto habría mandado texto de CV sin protección, por el arreglo
+  pensado para protegerlo.
+
+  **"Sin modelo utilizable" significa proveedor no disponible**, no proveedor sin política: no se construye y no entra
+  en el enrutado. Avisar no basta. Y el valor vive en **tres** sitios —ejemplo, compose de producción y el default del
+  código—, así que arreglar solo el ejemplo dejaría la avería donde más cuesta verla.
 
 ## Risks / Trade-offs
 
-- **Levantar imágenes en el runner alarga el CD** → se acota a `api` y sus dependencias, con plazo; sigue siendo mucho
-  más barato que descubrirlo en un servidor.
+- **Levantar la pila en el runner alarga el CD** → se acota a la **pila mínima**: sin Traefik ni certificados, con
+  plazo explícito y volcado de logs al vencer. Sigue siendo mucho más barato que descubrirlo en un servidor.
 - **Verde sin desplegar puede leerse como "ya está desplegado"** → por eso el requirement obliga a decir *por qué* no
   se desplegó, de forma visible, y prohíbe afirmar lo contrario. El riesgo de la señal optimista es real y es
   exactamente lo que ADR-033 quería evitar; se mitiga con el texto, no fingiendo que no existe.
