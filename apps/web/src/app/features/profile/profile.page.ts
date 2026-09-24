@@ -51,6 +51,14 @@ const VENDOR_LABELS: Record<AiVendor, string> = {
 };
 
 /**
+ * Vendors cuya política de datos lleva la salvedad de `data_collection` (spec web/byok: OpenRouter).
+ *
+ * Es una propiedad del proveedor, no un estado: por eso vive aquí y no en la plantilla. Lo que sí es estado —si
+ * ese vendor está disponible— llega del API y se consulta aparte; el aviso necesita las dos cosas.
+ */
+const VENDORS_WITH_DATA_COLLECTION_CAVEAT = new Set<AiVendor>(['openrouter']);
+
+/**
  * Perfil: email en lectura, `displayName`, cambio de contraseña, sección "IA y privacidad" (spec web/auth,
  * ADR-030), claves BYOK (spec web/byok, ADR-032) y zona de peligro para borrar la cuenta (spec web/privacy).
  *
@@ -163,9 +171,16 @@ export class ProfilePage {
   protected readonly byokSavingVendor = this.aiKeys.savingVendor;
   protected readonly byokRevokingVendor = this.aiKeys.revokingVendor;
   protected readonly byokKeyByVendor = this.aiKeys.keyByVendor;
-  /** Claves guardadas con consentimiento off: se ven pero no se usan (D12). */
+  protected readonly byokAvailabilityByVendor = this.aiKeys.availabilityByVendor;
+  /**
+   * Claves guardadas con consentimiento off: se ven pero no se usan (D12).
+   *
+   * Solo cuenta las claves de vendors que **no** están indisponibles: para un vendor sin configuración
+   * utilizable el aviso de indisponibilidad sustituye a este, porque «no se usan hasta que vuelvas a dar el
+   * permiso» sería falso ahí —dar el permiso no lo activa— (spec `web/byok`, precedencia vendor a vendor).
+   */
   protected readonly byokKeysInactive = computed(
-    () => this.aiKeys.hasAnyKey() && !this.consentToggleOn(),
+    () => this.aiKeys.hasAnyUsableKey() && !this.consentToggleOn(),
   );
   protected readonly apiKeyMinLength = AI_BYOK_API_KEY_MIN_LENGTH;
 
@@ -175,6 +190,32 @@ export class ProfilePage {
 
   protected keyFor(vendor: AiVendor) {
     return this.byokKeyByVendor().get(vendor);
+  }
+
+  /**
+   * Muestra el aviso de indisponibilidad de ese vendor: el API dice que hoy no se puede construir.
+   *
+   * El estado viene del API (`vendors` del listado) y **no** se deduce de tener clave, del consentimiento ni
+   * de ninguna regla escrita aquí: deducirlo sería reimplementar en el cliente el criterio del servidor, y la
+   * pantalla podría decir «disponible» sobre un proveedor que el servidor no construye. Mientras el listado no
+   * haya respondido, el estado es `undefined` y no se afirma ninguna de las dos cosas.
+   */
+  protected showsUnavailableNotice(vendor: AiVendor): boolean {
+    return this.byokAvailabilityByVendor().get(vendor) === false;
+  }
+
+  /**
+   * Muestra la nota de `data_collection` de ese vendor: solo para los que la tienen (hoy OpenRouter) y solo
+   * cuando el API lo da por **disponible**.
+   *
+   * Para un vendor indisponible este aviso afirmaría un envío que no va a ocurrir, así que no se muestra; el de
+   * indisponibilidad ocupa su sitio. Son dos estados distintos y no comparten párrafo ni `data-testid`.
+   */
+  protected showsDataCollectionNotice(vendor: AiVendor): boolean {
+    return (
+      VENDORS_WITH_DATA_COLLECTION_CAVEAT.has(vendor) &&
+      this.byokAvailabilityByVendor().get(vendor) === true
+    );
   }
 
   protected draftControl(vendor: AiVendor) {

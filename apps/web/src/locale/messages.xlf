@@ -4058,147 +4058,175 @@
         <source>Tus claves de IA</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">230,231</context>
+          <context context-type="linenumber">235,236</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.byok.intro" datatype="html">
         <source> Usa tu propia clave de Anthropic, OpenAI u OpenRouter. LinkVault la guarda cifrada y solo muestra un hint. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">232,235</context>
+          <context context-type="linenumber">237,240</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.byok.keysInactive" datatype="html">
         <source>Tienes claves guardadas, pero no se usan mientras el permiso de IA externa esté desactivado. Retirar el permiso no las borró.</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">241,245</context>
+          <context context-type="linenumber">246,250</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.byok.configured" datatype="html">
         <source>Configurada · hint …<x id="INTERPOLATION" equiv-text="{{ key.keyHint }}"/></source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">269,270</context>
+          <context context-type="linenumber">274,275</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.byok.missing" datatype="html">
         <source>Sin configurar</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">272,274</context>
+          <context context-type="linenumber">277,279</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.byok.hint" datatype="html">
         <source>Últimos caracteres: …<x id="INTERPOLATION" equiv-text="{{ key.keyHint }}"/></source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">281,283</context>
+          <context context-type="linenumber">286,288</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.byok.destination" datatype="html">
         <source>Con el permiso de IA externa vigente, el texto de tu CV y de la oferta puede salir hacia <x id="INTERPOLATION" equiv-text="{{ label }}"/>.</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">289,293</context>
+          <context context-type="linenumber">294,298</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.byok.openrouterDataCollection" datatype="html">
         <source>Si el modelo configurado no es :free, LinkVault no fuerza data_collection: deny.</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">298,303</context>
+          <context context-type="linenumber">303,307</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="profile.byok.unavailable.reason" datatype="html">
+        <source><x id="INTERPOLATION" equiv-text="{{ label }}"/> no está disponible ahora mismo por la configuración de esta instancia.</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+          <context context-type="linenumber">314,315</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="profile.byok.unavailable.keyKept" datatype="html">
+        <source>Tu clave sigue guardada y cifrada en LinkVault: no se ha borrado.</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+          <context context-type="linenumber">318,320</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="profile.byok.unavailable.notUsed" datatype="html">
+        <source>No se usará para ninguna tarea mientras dure esta situación, ni siquiera con el permiso de IA externa vigente.</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+          <context context-type="linenumber">321,324</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="profile.byok.unavailable.whatToDo" datatype="html">
+        <source>Puedes usar o configurar otro de los proveedores soportados, o pedir a quien administra la instancia que configure el modelo de <x id="INTERPOLATION" equiv-text="{{ label }}"/>.</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+          <context context-type="linenumber">325,327</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.byok.apiKeyLabel" datatype="html">
         <source>Clave de API</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">303,305</context>
+          <context context-type="linenumber">332,334</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.byok.apiKeyHint" datatype="html">
         <source>Mínimo <x id="INTERPOLATION" equiv-text="{{ apiKeyMinLength }}"/> caracteres</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">312,313</context>
+          <context context-type="linenumber">341,342</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.byok.apiKeyInvalid" datatype="html">
         <source>La clave debe tener al menos <x id="INTERPOLATION" equiv-text="{{ apiKeyMinLength }}"/> caracteres</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">315,316</context>
+          <context context-type="linenumber">344,345</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.byok.rotate" datatype="html">
         <source>Rotar clave</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">329,330</context>
+          <context context-type="linenumber">358,359</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.byok.save" datatype="html">
         <source>Guardar clave</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">331,333</context>
+          <context context-type="linenumber">360,362</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.byok.revoke" datatype="html">
         <source> Revocar </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">344,345</context>
+          <context context-type="linenumber">373,374</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.notifications.title" datatype="html">
         <source>Notificaciones</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">354,355</context>
+          <context context-type="linenumber">383,384</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.notifications.intro" datatype="html">
         <source> Elige qué avisos quieres por email y, si quieres, el push del navegador. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">356,360</context>
+          <context context-type="linenumber">385,389</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.notifications.link" datatype="html">
         <source> Gestionar notificaciones </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">365,368</context>
+          <context context-type="linenumber">394,397</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.danger.title" datatype="html">
         <source>Zona de peligro</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">374,375</context>
+          <context context-type="linenumber">403,404</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.privacyLink" datatype="html">
         <source> Detalle de almacenamiento del CV, retención, IA y borrado en el <x id="START_LINK" ctype="x-a" equiv-text="&lt;a routerLink=&quot;/privacidad&quot; data-testid=&quot;profile-privacy-link&quot;&gt;"/>aviso de privacidad<x id="CLOSE_LINK" ctype="x-a" equiv-text="&lt;/a&gt;"/>. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">376,379</context>
+          <context context-type="linenumber">405,408</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.delete.intro" datatype="html">
         <source> Borrar la cuenta elimina tus datos personales de LinkVault. Esta acción no se puede deshacer. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">380,383</context>
+          <context context-type="linenumber">409,412</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.delete.open" datatype="html">
         <source> Borrar mi cuenta </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">391,393</context>
+          <context context-type="linenumber">420,422</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.byok.revokeTitle" datatype="html">

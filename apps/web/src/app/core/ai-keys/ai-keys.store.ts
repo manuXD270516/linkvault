@@ -1,5 +1,10 @@
 import { computed, inject } from '@angular/core';
-import type { AiKeyView, AiVendor, UpsertAiKeyRequest } from '@linkvault/shared';
+import type {
+  AiKeyView,
+  AiVendor,
+  AiVendorAvailability,
+  UpsertAiKeyRequest,
+} from '@linkvault/shared';
 import { patchState, signalStore, withComputed, withMethods, withState } from '@ngrx/signals';
 import { type RequestFailure, toRequestFailure } from '../api/api-error';
 import { AiKeysApi } from './ai-keys.api';
@@ -10,6 +15,11 @@ import { AiKeysApi } from './ai-keys.api';
  */
 export interface AiKeysState {
   keys: AiKeyView[];
+  /**
+   * Disponibilidad de **cada** vendor soportado tal y como la dice el API (`ListAiKeysResponse.vendors`).
+   * No se deriva de `keys` ni de ninguna regla del cliente: es un hecho sobre la configuración del servidor.
+   */
+  vendors: AiVendorAvailability[];
   loading: boolean;
   loaded: boolean;
   failure: RequestFailure | null;
@@ -22,6 +32,7 @@ export interface AiKeysState {
 
 const initialState: AiKeysState = {
   keys: [],
+  vendors: [],
   loading: false,
   loaded: false,
   failure: null,
@@ -36,7 +47,7 @@ const initialState: AiKeysState = {
  */
 export const AiKeysStore = signalStore(
   withState(initialState),
-  withComputed(({ keys }) => ({
+  withComputed(({ keys, vendors }) => ({
     hasAnyKey: computed(() => keys().length > 0),
     /** Vista por vendor, o `undefined` si no hay clave. */
     keyByVendor: computed((): ReadonlyMap<AiVendor, AiKeyView> => {
@@ -46,12 +57,35 @@ export const AiKeysStore = signalStore(
       }
       return map;
     }),
+    /**
+     * Disponibilidad por vendor. `undefined` significa **todavía no lo sabemos** (listado sin responder):
+     * no es «disponible», y la pantalla no afirma nada sobre ese vendor hasta tenerlo.
+     */
+    availabilityByVendor: computed((): ReadonlyMap<AiVendor, boolean> => {
+      const map = new Map<AiVendor, boolean>();
+      for (const entry of vendors()) {
+        map.set(entry.vendor, entry.available);
+      }
+      return map;
+    }),
+    /**
+     * Hay al menos una clave guardada de un vendor que **no** está indisponible.
+     *
+     * Es lo que decide el aviso de «claves guardadas con el permiso apagado»: decir «no se usan hasta que
+     * vuelvas a dar el permiso» sobre un vendor sin configuración utilizable es literalmente falso, porque dar
+     * el permiso no lo activa (spec `web/byok`, precedencia vendor a vendor).
+     */
+    hasAnyUsableKey: computed(() => {
+      const availability = new Map(vendors().map((entry) => [entry.vendor, entry.available]));
+      return keys().some((key) => availability.get(key.vendor) !== false);
+    }),
   })),
   withMethods((store, api = inject(AiKeysApi)) => {
     const load = async (): Promise<void> => {
       patchState(store, { loading: true, failure: null });
       try {
-        patchState(store, { keys: await api.list(), loaded: true });
+        const { keys, vendors } = await api.list();
+        patchState(store, { keys, vendors, loaded: true });
       } catch (error: unknown) {
         patchState(store, { failure: toRequestFailure(error) });
       } finally {
@@ -67,7 +101,8 @@ export const AiKeysStore = signalStore(
         patchState(store, { savingVendor: vendor, actionFailure: null });
         try {
           await api.upsert(vendor, body);
-          patchState(store, { keys: await api.list(), loaded: true });
+          const { keys, vendors } = await api.list();
+          patchState(store, { keys, vendors, loaded: true });
         } catch (error: unknown) {
           patchState(store, { actionFailure: toRequestFailure(error) });
           throw error;
@@ -81,7 +116,8 @@ export const AiKeysStore = signalStore(
         patchState(store, { revokingVendor: vendor, actionFailure: null });
         try {
           await api.remove(vendor);
-          patchState(store, { keys: await api.list(), loaded: true });
+          const { keys, vendors } = await api.list();
+          patchState(store, { keys, vendors, loaded: true });
         } catch (error: unknown) {
           patchState(store, { actionFailure: toRequestFailure(error) });
           throw error;

@@ -223,8 +223,13 @@
   </section>
 
   <!--
-    Claves BYOK (spec web/byok, D12): un bloque por vendor con aviso de destino nombrado;
-    OpenRouter añade la nota de data_collection cuando el modelo de entorno no es :free (MVP: siempre).
+    Claves BYOK (spec web/byok, D12): un bloque por vendor con aviso de destino nombrado.
+
+    Los dos avisos condicionales salen del estado que devuelve el API (`vendors` del listado), nunca del nombre
+    del vendor ni de reglas escritas aquí, y son excluyentes sobre el mismo vendor:
+      · `data_collection`  → solo si ese vendor sí es construible hoy; describe un envío que SÍ ocurre.
+      · indisponibilidad   → solo si no lo es; describe un envío que NO va a ocurrir.
+    Mostrar el primero para un vendor indisponible afirmaría un envío que no se producirá.
   -->
   <section class="flex flex-col gap-4" data-testid="profile-byok">
     <h2 class="text-xl font-medium" i18n="@@profile.byok.title">Tus claves de IA</h2>
@@ -290,13 +295,41 @@
           {{ label }}.</p
         >
 
-        @if (vendor === 'openrouter') {
+        @if (showsDataCollectionNotice(vendor)) {
           <p
             class="m-0 text-sm"
             data-testid="profile-byok-openrouter-data-collection"
             i18n="@@profile.byok.openrouterDataCollection"
             >Si el modelo configurado no es :free, LinkVault no fuerza data_collection: deny.</p
           >
+        }
+
+        @if (showsUnavailableNotice(vendor)) {
+          <p
+            class="m-0 text-sm"
+            role="status"
+            [attr.data-testid]="'profile-byok-unavailable-' + vendor"
+          >
+            <!--
+              `&ngsp;` y no un espacio a secas: Angular compila sin `preserveWhitespaces`, así que el espacio
+              entre dos elementos se pierde y las cuatro frases saldrían pegadas («…instancia.Tu clave…»).
+            -->
+            <span i18n="@@profile.byok.unavailable.reason"
+              >{{ label }} no está disponible ahora mismo por la configuración de esta
+              instancia.</span
+            >&ngsp;
+            <span i18n="@@profile.byok.unavailable.keyKept"
+              >Tu clave sigue guardada y cifrada en LinkVault: no se ha borrado.</span
+            >&ngsp;
+            <span i18n="@@profile.byok.unavailable.notUsed"
+              >No se usará para ninguna tarea mientras dure esta situación, ni siquiera con el
+              permiso de IA externa vigente.</span
+            >&ngsp;
+            <span i18n="@@profile.byok.unavailable.whatToDo"
+              >Puedes usar o configurar otro de los proveedores soportados, o pedir a quien
+              administra la instancia que configure el modelo de {{ label }}.</span
+            >
+          </p>
         }
 
         <mat-form-field>
