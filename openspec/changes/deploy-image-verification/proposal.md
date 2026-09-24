@@ -8,7 +8,7 @@ Hay dos defectos, y el segundo explica por qué el primero sobrevivió veintiuna
 **El primero, técnico, reproducido localmente** (`pnpm nx build api --configuration=production` y después el mismo
 install en `dist/apps/api`):
 
-`docker/api.Dockerfile:23` y `docker/worker.Dockerfile:22` hacen, tras compilar, `pnpm install --prod
+`docker/api.Dockerfile` y `docker/worker.Dockerfile` hacen, tras compilar, `pnpm install --prod
 --frozen-lockfile` dentro de `dist/apps/<app>`. Nx genera ahí un `package.json`, un `pnpm-lock.yaml` y un
 `pnpm-workspace.yaml` propios — así que el problema **no** es que falte un lockfile. Es más fino: Nx **copia el campo
 `packageManager: pnpm@12.4.2`** al manifiesto generado, pero el lockfile que genera **no lleva la entrada
