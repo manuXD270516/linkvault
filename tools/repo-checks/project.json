@@ -1,0 +1,38 @@
+{
+  "name": "repo-checks",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "tools/repo-checks/src",
+  "projectType": "library",
+  "tags": ["scope:tooling", "type:tooling", "platform:node"],
+  "// regla 1": "UN TARGET POR COMPROBACIÓN. Cada comprobación es un target 'check-<nombre>' con sus 'inputs' EXPLÍCITOS, que nombran uno a uno los ficheros que lee. Sin esa lista, Nx restauraría un verde cacheado cuando cambie justo el fichero que la comprobación mira (ADR-048 §5).",
+  "// regla 2": "UN AGREGADOR QUE DEPENDA DE TODOS. El target 'check' lleva en 'dependsOn' todos los 'check-*' y ejecuta src/aggregate.mjs, que falla si no queda ninguno o si alguno se quedó fuera del dependsOn.",
+  "targets": {
+    "check-compose-healthchecks": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "inputs": [
+        "{workspaceRoot}/docker-compose.prod.yml",
+        "{projectRoot}/src/compose-healthchecks.check.mjs",
+        "{projectRoot}/src/lib/compose.mjs",
+        "{projectRoot}/src/lib/report.mjs"
+      ],
+      "options": {
+        "cwd": "{workspaceRoot}",
+        "parallel": false,
+        "commands": [
+          "node tools/repo-checks/src/compose-healthchecks.check.mjs"
+        ]
+      }
+    },
+    "check": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["check-compose-healthchecks"],
+      "options": {
+        "cwd": "{workspaceRoot}",
+        "parallel": false,
+        "commands": ["node tools/repo-checks/src/aggregate.mjs"]
+      }
+    }
+  }
+}

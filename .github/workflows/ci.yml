@@ -68,6 +68,25 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Comprobaciones de repositorio (tools/repo-checks): el compose de producción contra los esquemas de
+      # configuración, y lo demás que se le vaya colgando. Va **antes** del cálculo de afectación y no por
+      # `nx affected` a propósito: son lecturas de ficheros que tardan segundos, y así ninguna comprobación depende
+      # de que el conjunto afectado la alcance (ADR-048 §5).
+      # El guardia del final es el que impide que un agregador vacío cuente como verde: si el agregador no dice
+      # cuántas comprobaciones ejecutó, o dice cero, el paso falla. Un verde sin nada mirado es la señal falsa que
+      # este pipeline existe para no volver a dar.
+      - name: Repo checks
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm nx run repo-checks:check 2>&1 | tee repo-checks.log
+          ran="$(sed -nE 's/^repo-checks: ([0-9]+) comprobaciones ejecutadas.*$/\1/p' repo-checks.log | tail -n 1)"
+          if [ -z "$ran" ] || [ "$ran" -eq 0 ]; then
+            echo "::error file=tools/repo-checks/project.json::el agregador de repo-checks no ejecutó ninguna comprobación"
+            exit 1
+          fi
+          echo "repo-checks: $ran comprobaciones ejecutadas"
+
       # Fija NX_BASE y NX_HEAD: en PR, la base de la rama destino; en main, el último commit con CI en verde.
       - name: Derive affected base and head
         uses: nrwl/nx-set-shas@v5
