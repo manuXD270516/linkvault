@@ -403,6 +403,38 @@
 >   en modo release dando rojo; commit de solo documentación dejando `ci.yml` verde con el paso incondicional
 >   corriendo) no se han ejercitado dentro de Actions.
 
+> **8.5 — lado 1 (conjunto vacío en modo release) falsado, 2026-09-24.** Ejercitado `infra/ci/assert-release-projects.sh`
+> tal cual está en la rama, sobre el workspace real, por dos caminos:
+>
+> 1. **Por la palanca documentada en la cabecera del script** (`RELEASE_TARGETS`):
+>    `RELEASE_TARGETS='lint typecheck test eval-ci-renamed build' infra/ci/assert-release-projects.sh` → código **1**,
+>    con `  eval-ci-renamed 0  <-- VACÍO` en la tabla y
+>    `[FAIL] el release verificaría **cero proyectos** para: eval-ci-renamed`.
+> 2. **Por el caso realista del punto 4 de la nota de implementación —un target renombrado—**, que es el que importa:
+>    renombrado `"eval-ci"` a `"eval-ci-old"` en `libs/ai/project.json` (el **único** sitio que lo declara) y ejecutado
+>    el guardia **con su lista de targets por defecto**, sin tocar nada más → código **1**, `  eval-ci      0  <-- VACÍO`
+>    y `[FAIL] el release verificaría **cero proyectos** para: eval-ci`. En ese mismo estado, lo que el `verify` del
+>    release haría sin guardia: `pnpm nx run-many --all -t eval-ci` → `NX   No tasks were run` y código **0**. El verde
+>    sin ejecutar nada, medido en el estado averiado y no supuesto. Y el total del workspace **seguía siendo 11
+>    proyectos**: un guardia sobre el total, y no por target, habría pasado en verde.
+>
+> **Restaurado** con `git checkout -- libs/ai/project.json`; el guardia vuelve a
+> `ok: el release verifica 11 proyectos y ningún target del release queda vacío`, código **0**.
+
+> **8.5 — lado 2, lo medido fuera de Actions (2026-09-24).** El guardia **no está cableado** a los dos workflows por
+> afectación: `assert-release-projects.sh` se invoca en **un solo sitio** de los tres, `.github/workflows/cd-prod.yml:179`.
+> Y con el conjunto afectado **vacío** —lo que produce el merge que solo toca documentación— los cinco pasos por
+> afectación de `ci.yml` terminan en verde sin ejecutar nada: con `NX_BASE=HEAD NX_HEAD=HEAD`,
+> `pnpm nx affected -t <lint|typecheck|test|eval-ci|build>` → `NX   No tasks were run` y código **0** en los cinco;
+> y el paso **incondicional** de 3.2 sí corre en ese mismo estado: `infra/ci/repo-checks.sh` →
+> `ok: 5 comprobaciones de repositorio ejecutadas`, código **0**.
+>
+> **Lo que a este lado le falta, y por eso 8.5 sigue abierta aquí:** la corrida real de `ci.yml` sobre un commit de
+> solo documentación. `ci.yml` se dispara con `push` a `main` y con `pull_request` (`:5-8`), así que **empujar a la
+> rama no dispara nada**: en el momento de escribir esto la rama no tiene ni una sola corrida de `ci` (`gh run list
+> --branch change/deploy-image-verification` devuelve seis, todas de `cd-staging`/`cd-prod` por `workflow_dispatch`).
+> Sin un PR abierto desde la rama no hay forma de observarlo, y empujar a `main` no es una opción.
+
 ## 9. Cerrar la divergencia de entorno entre los tres `verify`
 
 - [x] 9.1 [infra] Cerrar la divergencia con `ci.yml`: a los steps `Test` y `Eval (replay)` de `cd-staging.yml` y `cd-prod.yml` les falta `AI_EMBED_CHAIN: mock`, que `ci.yml` sí fija; añadirlo y verificar comparando los tres ficheros lado a lado.
