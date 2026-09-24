@@ -8,10 +8,10 @@
 
 ## 2. Arreglar el build de las imágenes
 
-- [ ] 2.1 [infra] En `docker/api.Dockerfile`, retirar `packageManager` del manifiesto generado antes del install de producción, **conservando `--frozen-lockfile`**; verificar construyendo la imagen localmente y comprobando que esa capa, que antes abortaba con `ERR_PNPM_FROZEN_LOCKFILE_WITH_OUTDATED_LOCKFILE` sobre `packageManagerDependencies` (salida literal en `proposal.md` §Why y ADR-048 §1), ahora termina con éxito.
-- [ ] 2.2 [infra] Lo mismo en `docker/worker.Dockerfile`; verificar con el build local de esa imagen y comprobando de paso que su manifiesto generado también traía el campo, es decir que el defecto era el mismo y no otro parecido.
-- [ ] 2.3 [infra] Dejar un comentario en ambos Dockerfiles que diga **por qué** se retira ese campo y qué pasa si alguien quita esa línea (vuelve `ERR_PNPM_FROZEN_LOCKFILE_WITH_OUTDATED_LOCKFILE`), y anotar ahí mismo que `docker/web.Dockerfile` no lleva el arreglo porque no tiene etapa de dependencias de producción (copia `dist/apps/web/browser` a nginx); verificar leyendo los tres Dockerfiles seguidos que la asimetría queda explicada y no se lee como un olvido.
-- [ ] 2.4 [infra] Comprobar que el arreglo **no** desactiva la reproducibilidad: alterar a mano una versión del lockfile generado y verificar que el build **falla**; restaurar. Si pasara en verde, el arreglo habría aflojado el candado sin decirlo.
+- [x] 2.1 [infra] En `docker/api.Dockerfile`, retirar `packageManager` del manifiesto generado antes del install de producción, **conservando `--frozen-lockfile`**; verificar construyendo la imagen localmente y comprobando que esa capa, que antes abortaba con `ERR_PNPM_FROZEN_LOCKFILE_WITH_OUTDATED_LOCKFILE` sobre `packageManagerDependencies` (salida literal en `proposal.md` §Why y ADR-048 §1), ahora termina con éxito.
+- [x] 2.2 [infra] Lo mismo en `docker/worker.Dockerfile`; verificar con el build local de esa imagen y comprobando de paso que su manifiesto generado también traía el campo, es decir que el defecto era el mismo y no otro parecido.
+- [x] 2.3 [infra] Dejar un comentario en ambos Dockerfiles que diga **por qué** se retira ese campo y qué pasa si alguien quita esa línea (vuelve `ERR_PNPM_FROZEN_LOCKFILE_WITH_OUTDATED_LOCKFILE`), y anotar ahí mismo que `docker/web.Dockerfile` no lleva el arreglo porque no tiene etapa de dependencias de producción (copia `dist/apps/web/browser` a nginx); verificar leyendo los tres Dockerfiles seguidos que la asimetría queda explicada y no se lee como un olvido.
+- [x] 2.4 [infra] Comprobar que el arreglo **no** desactiva la reproducibilidad: alterar a mano una versión del lockfile generado y verificar que el build **falla**; restaurar. Si pasara en verde, el arreglo habría aflojado el candado sin decirlo.
 
 ## 3. El sitio donde viven las comprobaciones de repositorio
 
