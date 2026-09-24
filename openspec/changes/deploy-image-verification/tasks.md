@@ -1,7 +1,10 @@
 ## 1. Los dos inventarios que el resto de grupos consume
 
-- [ ] 1.1 [infra] Extraer de `apps/api/src/infrastructure/config/api-config.schema.ts` y `apps/worker/src/infrastructure/config/worker-config.schema.ts` la lista completa de obligatorias (las que no tienen `.default()` ni `.optional()`), añadiendo las que valida en cadena `parseAiConfig` (`AI_VAULT_KEY`, obligatoria en producción como base64 de 32 bytes) y las condicionales del `superRefine` (`MAIL_SMTP_HOST`/`MAIL_SMTP_PORT` con `MAIL_PROVIDER=smtp`, `RESEND_API_KEY` con `resend`); verificar contando: `api` no son dos variables de infraestructura sino ~29 más `AI_VAULT_KEY`, y dejar la lista escrita en el change porque los grupos 4, 5 y 12 dependen de ella.
-- [ ] 1.2 [infra] Comprobar en `libs/ai/src/infrastructure/config/parse-ai-config.ts` que `mock` en `AI_CHAIN` (y en `AI_EMBED_CHAIN`) está **prohibido con `NODE_ENV=production`**, y que las imágenes de `api` y `worker` hornean `ENV NODE_ENV=production`; verificar que, por tanto, la verificación del artefacto tendrá que usar `AI_CHAIN=none` y dejarlo anotado antes de escribir el grupo 5.
+> **Los dos inventarios están escritos en [`inventarios.md`](./inventarios.md)**, que es el fichero que los grupos 4, 5
+> y 12 consumen. Las tareas 1.1 y 1.2 apuntan ahí; aquí solo queda su enunciado y el estado.
+
+- [x] 1.1 [infra] Extraer de `apps/api/src/infrastructure/config/api-config.schema.ts` y `apps/worker/src/infrastructure/config/worker-config.schema.ts` la lista completa de obligatorias (las que no tienen `.default()` ni `.optional()`), añadiendo las que valida en cadena `parseAiConfig` (`AI_VAULT_KEY`, obligatoria en producción como base64 de 32 bytes) y las condicionales del `superRefine` (`MAIL_SMTP_HOST`/`MAIL_SMTP_PORT` con `MAIL_PROVIDER=smtp`, `RESEND_API_KEY` con `resend`); verificar contando: `api` no son dos variables de infraestructura sino ~29 más `AI_VAULT_KEY`, y dejar la lista escrita en el change porque los grupos 4, 5 y 12 dependen de ella.
+- [x] 1.2 [infra] Comprobar en `libs/ai/src/infrastructure/config/parse-ai-config.ts` que `mock` en `AI_CHAIN` (y en `AI_EMBED_CHAIN`) está **prohibido con `NODE_ENV=production`**, y que las imágenes de `api` y `worker` hornean `ENV NODE_ENV=production`; verificar que, por tanto, la verificación del artefacto tendrá que usar `AI_CHAIN=none` y dejarlo anotado antes de escribir el grupo 5.
 
 ## 2. Arreglar el build de las imágenes
 
