@@ -1438,13 +1438,20 @@ checks del commit, por dos vías que dicen lo mismo: el **nombre del job de repo
 | Lo que ves en la lista de checks | Qué pasó | Qué hacer |
 |---|---|---|
 | `resultado: artefacto verificado — NO desplegado (sin destino de staging)`, en **verde** | el artefacto se construyó y arrancó; no hay servidor configurado | nada está roto. Es el estado normal hoy; para pasar a desplegado, mira abajo |
-| `resultado: el artefacto NO pasó la verificación`, en **rojo** | no construye, o construye y **no arranca** | abre la ejecución: el paso de verificación vuelca `docker compose ps` y los logs de `api`, `worker` y `web` |
+| `resultado: el artefacto NO pasó la verificación`, en **rojo**, con la descripción «El artefacto no se construyó o no arrancó…» | no construye, o construye y **no arranca** | abre la ejecución: el paso de verificación vuelca `docker compose ps` y los logs de `api`, `worker` y `web` |
+| el mismo nombre, en **rojo**, con la descripción «No se pudo verificar el artefacto: el registro de terceros no sirvió sus imágenes…» | **no es nuestro**: el registro del que se bajan mongo/redis/minio no sirvió las imágenes y el artefacto no llegó a levantarse; nadie lo ha comprobado, ni para bien ni para mal | relanza la corrida; suele bastar. Si se repite, mira el estado del registro antes de tocar nada del repositorio |
+| el mismo nombre, en **rojo**, con la descripción «La verificación del artefacto no pasó…» (sin causa) | la verificación no pasó y **la causa no llegó** al reporte: el job murió antes de clasificarla | abre la ejecución; aquí el reporte calla el motivo a propósito en vez de suponer el de siempre |
 | `resultado: artefacto verificado y desplegado a staging`, en **verde** | había destino y el despliegue y su smoke terminaron bien | — |
 | `resultado: artefacto verificado, despliegue a staging NO completado`, en **rojo** | había destino y el despliegue falló | ahí sí hay una avería de despliegue |
 | `resultado: destino de staging indeterminado — no se desplegó`, en **rojo** | el `preflight` encontró **algunos** secrets y otros no | alguien sí quería desplegar: completa los que faltan (el preflight los nombra) |
 
 Un artefacto roto es **fallo en los tres casos**, haya destino o no; y un dry-run **no** cuenta como despliegue. Lo que
 ADR-048 revoca es comunicar la **ausencia de destino** como avería.
+
+Las tres filas rojas comparten **nombre de job** y se distinguen por la **descripción del estado de commit**, que es lo
+que va debajo en la misma lista. No es un descuido: el nombre de un job se fija a partir de los resultados de los jobs
+de los que depende, y la causa del fallo no viaja por ahí. Un fallo del entorno **no es verde** —nadie ha verificado
+nada—, pero tampoco es un defecto del repositorio, y por eso se dice distinto (ADR-048 §3, desenlace 4).
 
 **Qué hay que configurar para pasar de «verificado» a «desplegado».** Los cuatro secrets del target, todos o ninguno
 —`STAGING_HOST`, `STAGING_SSH_USER`, `STAGING_SSH_KEY`, `STAGING_COMPOSE_DIR` (y los `PROD_*` equivalentes)—, más, en

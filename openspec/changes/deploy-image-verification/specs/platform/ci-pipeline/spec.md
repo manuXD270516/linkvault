@@ -17,6 +17,22 @@ sobreviviera veintiuna corridas escondido detrás de un rojo que todo el mundo d
    informando de forma visible que **no se desplegó** y por qué. NO SHALL afirmar que se desplegó, NO SHALL contarse
    como despliegue, y NO SHALL fallar por ello.
 
+Y SHALL distinguir un **cuarto desenlace**, que no es un cuarto color sino una causa distinta bajo el mismo rojo:
+
+4. **La verificación no se pudo llevar a cabo** porque una avería ajena lo impidió → SHALL seguir siendo **fallo**,
+   porque nadie ha comprobado el artefacto y eso NO SHALL caer del lado verde; pero la señal NO SHALL atribuirlo al
+   artefacto. Decir «el artefacto no arrancó» cuando el artefacto no llegó a levantarse manda a depurar el sitio
+   equivocado, y lo desmiente la propia ejecución que lo publica.
+
+**Cuando la causa no conste, NO SHALL nombrarse ninguna.** Una causa ausente NO SHALL tratarse como la causa habitual:
+el pipeline SHALL decir que la verificación no pasó y callar el porqué. Confundir "no se sabe" con "lo de siempre" es
+el mismo defecto que los cuatro desenlaces existen para cerrar, reconstruido por el mecanismo que lo cierra.
+
+Y el mecanismo que lleva la causa desde la verificación hasta donde se publica el resultado SHALL **sobrevivir al
+fallo** de la etapa que la produce —es el único caso en que hace falta—. Un mecanismo del que no se haya demostrado
+eso NO SHALL darse por bueno por parecer correcto: su modo de error es silencioso, porque la causa llegaría vacía
+siempre y el resultado seguiría publicándose sin que nada avise de que dejó de informar.
+
 **El orden SHALL ser: construir → verificar que arranca → publicar.** Una imagen que no ha superado la verificación
 NO SHALL publicarse en el registro **con ningún tag**, tampoco con uno móvil como `:staging` o `:latest`. Publicar
 antes de verificar contradice el propósito entero de este requirement y además es destructivo: un tag móvil que
@@ -138,6 +154,24 @@ SHALL seguir necesitando abrir la corrida, y eso queda dicho aquí en lugar de d
 - **WHEN** corre la verificación del artefacto
 - **THEN** el pipeline SHALL fallar señalando que la imagen no arranca
 - **AND** NO SHALL publicarse como apta ni desplegarse
+
+#### Scenario: Una avería ajena no se comunica como artefacto roto
+
+- **GIVEN** una corrida en la que la verificación no llega a levantar el artefacto porque una dependencia ajena al
+  repositorio no responde (p. ej. el registro del que se descargan las imágenes de las dependencias)
+- **WHEN** se publica el resultado del CD
+- **THEN** el resultado SHALL ser **fallo**, porque nadie ha comprobado el artefacto
+- **AND** lo publicado SHALL decir que **no se pudo verificar** y nombrar la avería ajena
+- **AND** NO SHALL afirmar que el artefacto no se construyó o no arrancó
+- **AND** el transporte de esa causa SHALL sobrevivir al fallo de la etapa que la produce
+
+#### Scenario: Sin causa conocida no se inventa una
+
+- **GIVEN** una corrida cuya verificación falla y cuya causa no llega al punto donde se publica el resultado
+- **WHEN** se publica el resultado del CD
+- **THEN** el resultado SHALL ser **fallo** y SHALL decir que la verificación no pasó
+- **AND** NO SHALL atribuirse a ninguna causa concreta
+- **AND** la ausencia de causa NO SHALL tratarse como la causa habitual
 
 #### Scenario: Nada se publica antes de verificarse
 

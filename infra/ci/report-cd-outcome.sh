@@ -23,7 +23,7 @@
 # --- La tabla de decisión (es la del ADR-048 §3, escrita como código) -------------------------------------------------
 #   verificación   preflight   despliegue   →  estado    significado
 #   -------------  ----------  -----------  -   -------  --------------------------------------------------------
-#   ≠ success      cualquiera  cualquiera      failure   artefacto roto: fallo **exista o no destino** (resultado 1)
+#   ≠ success      cualquiera  cualquiera      failure   la verificación no pasó: fallo **exista o no destino** (1)
 #   success        full        success         success   verificado y desplegado (resultado 2)
 #   success        full        ≠ success       failure   había destino y el despliegue no terminó bien
 #   success        none        (saltado)       success   verificado y **sin destino**: verde diciendo que no desplegó
@@ -31,6 +31,31 @@
 #
 # La última fila importa tanto como las otras: si el preflight falla (destino a medias) o no llega a emitir estado, lo
 # cómodo sería tratarlo como "no hay destino" y terminar en verde. Eso es la mentira que ADR-048 §3 prohíbe.
+#
+# --- El cuarto desenlace: "no se pudo verificar" no es "el artefacto está roto" ---------------------------------------
+# La primera fila decía siempre lo mismo —"El artefacto no se construyó o no arrancó"— y en las corridas reales
+# 36045259965 y 36048413770 eso era **falso**: las dos cayeron porque el registro de terceros no sirvió las imágenes de
+# mongo/redis/minio, con el artefacto sin llegar a levantarse. El mismo pecado que este script ya había corregido para
+# `cancelled`/`skipped` (nombrar el resultado real en vez de inventar el motivo) seguía vivo para `failure`.
+#
+# Por eso `failure` se desglosa por la **clase** que escribe `infra/ci/verify-artifact.sh` y transporta el job:
+#   artifact     → el artefacto no se construyó o no arrancó (lo de siempre).
+#   environment  → el entorno no dejó verificar; nadie ha comprobado el artefacto.
+#   vacía        → **no se afirma ninguna causa**. Vacío ≠ `artifact`: si el mecanismo de transporte falla, o el job
+#                  muere antes de clasificar, la salida honesta es decir que la verificación no pasó y callar el
+#                  porqué. Confundir "no lo sé" con "lo de siempre" es exactamente el defecto que esto arregla.
+# En los tres casos `state` es `failure` y este script sale ≠0: **un fallo de entorno no es verde**. Lo que cambia es
+# qué se dice que pasó, no si pasó.
+#
+# El `name` NO se desglosa, y no es un descuido: el nombre del job se evalúa en el YAML a partir de los contextos
+# `needs`, donde la clase no está (viaja por un artefacto que solo el propio job de reporte puede recoger). Así que el
+# nombre se queda en el enunciado que es cierto en los tres casos —la verificación no pasó— y la causa la lleva la
+# descripción.
+#
+# Longitud: un estado de commit admite 140 caracteres de `description`, y no está escrito en ninguna parte si el límite
+# se cuenta en caracteres o en bytes. Todas las descripciones se midieron al escribirlas por **las dos** varas; la más
+# larga es la de `environment`, con 137 caracteres y 139 bytes. Alargar una sin medirla se lleva por delante la
+# publicación del estado, que es la única superficie que se lee sin abrir la corrida.
 #
 # Uso (local, para ejercitar la tabla sin publicar nada):
 #   CD_REPORT_LOCAL=1 VERIFY_RESULT=success PREFLIGHT_RESULT=success PREFLIGHT_STATE=none DEPLOY_RESULT=skipped \
@@ -43,6 +68,8 @@ set -euo pipefail
 : "${DEPLOY_RESULT:?DEPLOY_RESULT es obligatoria: el result del job de despliegue (skipped si no se ejecutó)}"
 : "${TARGET_LABEL:?TARGET_LABEL es obligatoria: la etiqueta del destino (staging, production)}"
 PREFLIGHT_STATE="${PREFLIGHT_STATE:-}"
+# Opcional **a propósito**: su ausencia es un desenlace previsto (sin causa), no un error de invocación.
+VERIFY_FAIL_CLASS="${VERIFY_FAIL_CLASS:-}"
 
 fail() {
   printf '::error::%s\n' "$1" >&2
@@ -59,7 +86,20 @@ if [ "$VERIFY_RESULT" != 'success' ]; then
   status_state='failure'
   name="resultado: el artefacto NO pasó la verificación"
   if [ "$VERIFY_RESULT" = 'failure' ]; then
-    description="El artefacto no se construyó o no arrancó: no se publicó nada y no se desplegó nada."
+    # La clase la escribe `infra/ci/verify-artifact.sh` y la transporta el job; ver el bloque de cabecera. El `*`
+    # cubre tanto la ausencia como cualquier valor que no se reconozca: en los dos casos lo único honesto es no
+    # nombrar causa alguna.
+    case "$VERIFY_FAIL_CLASS" in
+      artifact)
+        description="El artefacto no se construyó o no arrancó: no se publicó nada y no se desplegó nada."
+        ;;
+      environment)
+        description="No se pudo verificar el artefacto: el registro de terceros no sirvió sus imágenes. Nada publicado ni desplegado. Reintentar suele bastar."
+        ;;
+      *)
+        description="La verificación del artefacto no pasó: no se publicó nada y no se desplegó nada."
+        ;;
+    esac
   else
     # `cancelled` o `skipped` no son "artefacto roto", y decir que no arrancó sería inventarse el motivo: tampoco
     # son verde, porque nadie ha comprobado nada. Se nombra el resultado real.
@@ -85,8 +125,16 @@ else
   description="El preflight terminó en '${PREFLIGHT_RESULT}' con estado '${PREFLIGHT_STATE:-vacío}': no se despliega."
 fi
 
+# El job escribe la clase por defecto al empezar, así que en una corrida verde llega con valor y no significa nada: se
+# muestra como "no aplica" en vez de dejar un "clase del fallo: artifact" junto a una verificación que pasó.
+if [ "$VERIFY_RESULT" = 'success' ]; then
+  fail_class_shown='no aplica (la verificación pasó)'
+else
+  fail_class_shown="${VERIFY_FAIL_CLASS:-vacía}"
+fi
+
 printf '=== Resultado del CD\n'
-printf '  verificación del artefacto : %s\n' "$VERIFY_RESULT"
+printf '  verificación del artefacto : %s (clase del fallo: %s)\n' "$VERIFY_RESULT" "$fail_class_shown"
 printf '  preflight                  : %s (estado: %s)\n' "$PREFLIGHT_RESULT" "${PREFLIGHT_STATE:-vacío}"
 printf '  despliegue                 : %s\n' "$DEPLOY_RESULT"
 printf '  ------------------------------------------------------------\n'
@@ -99,7 +147,7 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
     printf '### %s\n\n' "$name"
     printf '%s\n\n' "$description"
     printf '| | |\n|---|---|\n'
-    printf '| verificación del artefacto | `%s` |\n' "$VERIFY_RESULT"
+    printf '| verificación del artefacto | `%s` (clase del fallo: %s) |\n' "$VERIFY_RESULT" "$fail_class_shown"
     printf '| preflight | `%s` (estado `%s`) |\n' "$PREFLIGHT_RESULT" "${PREFLIGHT_STATE:-vacío}"
     printf '| despliegue | `%s` |\n' "$DEPLOY_RESULT"
     printf '| estado de commit publicado | `%s` |\n' "$status_state"

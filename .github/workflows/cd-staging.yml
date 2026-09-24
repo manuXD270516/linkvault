@@ -5,6 +5,10 @@
 #   1. el artefacto no se construye o no arranca → **fallo**, exista o no destino;
 #   2. artefacto verificado y con destino        → se despliega y se comprueba con el smoke;
 #   3. artefacto verificado y **sin** destino    → **verde**, diciendo de forma visible que no se desplegó.
+# Y un **cuarto desenlace**, que no es un cuarto color: la verificación **no se pudo llevar a cabo** (una avería ajena
+# —el registro de terceros— impidió comprobar nada) → **fallo también**, porque nadie ha verificado el artefacto, pero
+# la señal NO lo atribuye al artefacto. Apareció en las corridas 36045259965 y 36048413770 (ADR-048 §3).
+#
 # La regla anterior —"si faltan los secrets, el job de deploy falla"— dejaba este workflow rojo **por construcción**
 # en un repositorio sin servidor: 21 corridas, 21 fallos, y detrás de ese rojo esperado se escondió un defecto real
 # de build durante un mes. Un dry-run sigue sin contar como despliegue y el pipeline nunca afirma haber desplegado;
@@ -148,6 +152,30 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      # --- La clase del fallo, y por qué viaja en un artefacto y no en un output del job -------------------------
+      # El job de `report` tiene que poder decir **qué** falló: "el artefacto no arranca" y "el registro de terceros
+      # no sirvió las imágenes" son cosas distintas, y hasta ahora se publicaban con la misma frase (corridas reales
+      # 36045259965 y 36048413770, las dos del segundo tipo y las dos descritas como si fueran del primero).
+      #
+      # El camino evidente sería un `output` de este job leído en `needs['build-verify-publish'].outputs.…`. **No se
+      # usa**, y no por gusto: lo que este job tiene que comunicar es precisamente lo que pasa cuando **falla**, y no
+      # está demostrado —ni aquí ni en la documentación— que los outputs de un job fallido lleguen a `needs`. Elegir
+      # ese camino por lo bien que se lee el YAML significaría entregar un mecanismo que nadie ha visto funcionar, y
+      # su modo de fallo es silencioso: la clase llegaría vacía **siempre** y nadie se enteraría.
+      #
+      # Un **artefacto** sí se sabe que sobrevive: se sube en el paso, no al terminar el job, y ese es exactamente el
+      # patrón con el que se suben logs y reportes de tests `if: always()` desde jobs rojos. Por eso el fichero se
+      # escribe aquí, `infra/ci/verify-artifact.sh` lo sobrescribe si el fallo es de entorno, y se sube pase lo que
+      # pase.
+      #
+      # El valor por defecto es `artifact` porque este job **es** construir y verificar el artefacto: si muere en un
+      # build, en la verificación o en la publicación, la causa es nuestra. La única avería ajena reconocida es la
+      # que el script clasifica. Y si el job muere antes de este paso, no hay fichero, la clase llega vacía y el
+      # reporte **no afirma ninguna causa**: vacío no es `artifact`.
+      - name: Default artifact failure class
+        shell: bash
+        run: printf 'artifact\n' > "${{ runner.temp }}/verify-fail-class"
+
       - name: Image tag
         id: meta
         shell: bash
@@ -233,6 +261,7 @@ jobs:
           WORKER_IMAGE: ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-worker
           WEB_IMAGE: ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-web
           IMAGE_TAG: ${{ steps.meta.outputs.tag }}
+          VERIFY_FAIL_CLASS_FILE: ${{ runner.temp }}/verify-fail-class
         run: infra/ci/verify-artifact.sh
 
       # --- Publicación: **estas mismas** imágenes, nunca otras -------------------------------------------------
@@ -281,6 +310,19 @@ jobs:
       - name: Tear down verification stack
         if: always()
         run: infra/ci/teardown-artifact.sh
+
+      # `if: always()` y no `if: failure()`: con `failure()` una corrida verde no dejaría artefacto, y entonces el
+      # paso que lo recoge en `report` fallaría (y quedaría marcado en rojo) **en todas las corridas buenas**. Sembrar
+      # de rojos las corridas sanas es la avería que este change existe para cerrar, no para reproducir. En una corrida
+      # verde el fichero llega con el valor por defecto y el reporte lo ignora: `VERIFY_RESULT` ya dice `success`.
+      - name: Upload artifact failure class
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: verify-fail-class
+          path: ${{ runner.temp }}/verify-fail-class
+          if-no-files-found: ignore
+          retention-days: 1
 
   # ¿Hay destino de staging? Este job existe porque **el contexto `secrets` no se puede leer en un `if:` de job**:
   # una condición escrita ahí no da error, se evalúa contra un contexto vacío, y el job se saltaría —o se
@@ -421,6 +463,12 @@ jobs:
   # a arreglar. El script sale ≠0 cuando lo que deriva es un fallo, de modo que este job tampoco se ve verde.
   #
   # `always()` vive **solo** aquí: no está en `deploy-staging`, donde dejaría pasar un artefacto roto hasta el host.
+  #
+  # El **nombre** no distingue el cuarto desenlace (verificación imposible por avería ajena) del primero (artefacto
+  # roto), y eso es una limitación de la herramienta dicha en voz alta: el nombre de un job se evalúa desde los
+  # contextos `needs`, y la clase del fallo no vive ahí —viaja en un artefacto que solo un step puede recoger—. Así que
+  # el nombre se queda en el enunciado cierto en los dos casos ("el artefacto NO pasó la verificación": no pasó, ni
+  # aprobando ni suspendiendo) y la causa va en la **descripción** del estado de commit, que sí la lleva.
   report:
     # Nota de YAML: un escalar plegado (`>-`) conserva los saltos de línea de las líneas **más indentadas** que la
     # primera, así que todas las líneas de la expresión van al **mismo** nivel: así se pliegan en una sola línea.
@@ -442,10 +490,52 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      # --- La causa del fallo, recogida de donde sí sobrevive ---------------------------------------------------
+      # `continue-on-error: true` porque la ausencia del artefacto es un desenlace previsto, no una avería: si el job
+      # anterior murió antes de escribir la clase (o el subidor no llegó a correr), aquí no hay nada que descargar y
+      # eso **se traduce en "sin causa"**, no en un paso que tumba el reporte. Un reporte que no se publica es peor
+      # que uno que no nombra el motivo.
+      - name: Fetch the artifact failure class
+        id: failclass-download
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: verify-fail-class
+          path: ${{ runner.temp }}/failclass
+
+      # La lista blanca no es defensiva por costumbre: es la red de seguridad del mecanismo. Cualquier cosa que no sea
+      # `artifact` o `environment` —un fichero truncado, un valor de una versión futura, el fichero ausente— cae en
+      # "clase vacía", y el reporte entonces **no atribuye causa alguna**. Confundir "no lo sé" con "lo de siempre" es
+      # el defecto que este bloque arregla; repetirlo aquí lo dejaría intacto.
+      - name: Read the artifact failure class
+        id: failclass
+        shell: bash
+        run: |
+          set -euo pipefail
+          file="${{ runner.temp }}/failclass/verify-fail-class"
+          class=''
+          if [ -f "$file" ]; then
+            class="$(tr -d '[:space:]' <"$file")"
+          else
+            printf 'no llegó el fichero de clase (%s): el reporte no nombrará causa\n' "$file"
+          fi
+          case "$class" in
+            artifact | environment) ;;
+            *)
+              if [ -n "$class" ]; then
+                printf 'clase no reconocida (%s): se trata como ausente\n' "$class"
+              fi
+              class=''
+              ;;
+          esac
+          printf 'clase del fallo: %s\n' "${class:-vacía}"
+          echo "class=$class" >>"$GITHUB_OUTPUT"
+
       - name: Publish CD outcome (job name + commit status)
         shell: bash
         env:
           VERIFY_RESULT: ${{ needs['build-verify-publish'].result }}
+          VERIFY_FAIL_CLASS: ${{ steps.failclass.outputs.class }}
           PREFLIGHT_RESULT: ${{ needs.preflight.result }}
           PREFLIGHT_STATE: ${{ needs.preflight.outputs.state }}
           DEPLOY_RESULT: ${{ needs['deploy-staging'].result }}

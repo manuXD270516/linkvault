@@ -27,6 +27,9 @@
 # Uso:
 #   API_IMAGE=… WORKER_IMAGE=… WEB_IMAGE=… IMAGE_TAG=… infra/ci/verify-artifact.sh
 #
+# Opcional: `VERIFY_FAIL_CLASS_FILE=<ruta>` para que un fallo deje escrita su **clase** (`artifact` | `environment`) y
+# el reporte del CD pueda nombrar la causa en vez de suponerla. Ver el bloque de `fail()`.
+#
 # Las cuatro variables de imagen y tag son obligatorias y vienen del step que ejecuta esto, calculadas con el tag
 # local de la corrida (tarea 5.5). No están en `infra/ci/verify.env` a propósito: allí serían un valor fijo que
 # envejece. Sin ellas el compose resolvería al valor por defecto y se verificaría una imagen que no es la construida.
@@ -82,8 +85,36 @@ dump_diagnostics() {
   dc logs --no-color --tail=200 api worker web || true
 }
 
+# --- La clase del fallo: "el artefacto está roto" NO es lo mismo que "no se pudo verificar" -------------------------
+# Este script ya distinguía las dos cosas en el **texto** de cada `fail`, pero ese texto muere dentro del log del job:
+# quien mira la lista de checks lee lo que publica `infra/ci/report-cd-outcome.sh`, y allí llegaban las dos como
+# "El artefacto no se construyó o no arrancó". En las corridas reales 36045259965 y 36048413770 —las dos cayeron por el
+# `pull` de las imágenes de terceros— esa frase era **falsa**, y la desmentía la propia ejecución que la publicaba.
+#
+# Así que la clase se **escribe a un fichero** que el job sube como artefacto y el job de reporte recoge. Dos valores,
+# ni uno más, porque son los dos que las corridas reales han demostrado:
+#   artifact     → el artefacto no se construyó, no arrancó, no responde o no trae lo que dice traer (por defecto).
+#   environment  → el entorno no dejó verificar; nadie ha comprobado el artefacto, ni para bien ni para mal.
+# El fichero solo existe si `VERIFY_FAIL_CLASS_FILE` viene definida (en local no hace falta). Que no se pueda escribir
+# **no** aborta la verificación: dejaría el reporte sin causa, que es justo el desenlace previsto para ese caso.
+FAIL_CLASS_FILE="${VERIFY_FAIL_CLASS_FILE:-}"
+
+write_fail_class() {
+  if [ -z "$FAIL_CLASS_FILE" ]; then
+    return 0
+  fi
+  if ! printf '%s\n' "$1" >"$FAIL_CLASS_FILE"; then
+    printf '\n[WARN] no se pudo escribir la clase del fallo en %s: el reporte no nombrará la causa\n' \
+      "$FAIL_CLASS_FILE" >&2
+  fi
+}
+
+# Segundo argumento = clase. Se omite en todas las llamadas salvo en la del `pull` de terceros:
+# la clase por defecto es `artifact`, y un fallo sin clasificar explícitamente **no** es una avería ajena.
 fail() {
-  printf '\n[FAIL] %s\n' "$1" >&2
+  local class="${2:-artifact}"
+  write_fail_class "$class"
+  printf '\n[FAIL/%s] %s\n' "$class" "$1" >&2
   dump_diagnostics
   exit 1
 }
@@ -120,7 +151,9 @@ section "pull de las imágenes de terceros (${THIRD_PARTY_SERVICES[*]})"
 # cuando — y un rojo intermitente es exactamente lo que enseña a la gente a ignorar el pipeline, que es el defecto
 # que este change existe para cerrar.
 # Y si agota los intentos, el mensaje **no** puede confundirse con "nuestro artefacto no arranca": es una avería del
-# registro del que se descarga, y atribuirla al artefacto mandaría a alguien a depurar el sitio equivocado.
+# registro del que se descarga, y atribuirla al artefacto mandaría a alguien a depurar el sitio equivocado. Por eso es
+# la **única** llamada a `fail` que declara clase `environment`: aquí no se ha llegado a levantar nada, así que no hay
+# nada que decir del artefacto, ni bueno ni malo.
 pull_ok=0
 for attempt in 1 2 3; do
   if dc pull --quiet "${THIRD_PARTY_SERVICES[@]}"; then
@@ -132,7 +165,7 @@ for attempt in 1 2 3; do
   sleep $((attempt * 15))
 done
 if [ "$pull_ok" -ne 1 ]; then
-  fail "no se pudieron descargar las imágenes de terceros (${THIRD_PARTY_SERVICES[*]}) tras 3 intentos. Esto NO es un fallo del artefacto de LinkVault: es el registro del que se descargan (limitación de peticiones anónimas o caída). Reintentar la corrida suele bastar."
+  fail "no se pudieron descargar las imágenes de terceros (${THIRD_PARTY_SERVICES[*]}) tras 3 intentos. Esto NO es un fallo del artefacto de LinkVault: es el registro del que se descargan (limitación de peticiones anónimas o caída). Reintentar la corrida suele bastar." environment
 fi
 
 section "up -d --wait --wait-timeout ${WAIT_TIMEOUT} --pull never ${SERVICES[*]}"
