@@ -429,5 +429,11 @@ changes:
       distinga "no hay dónde desplegar" de "el despliegue falló", sin afirmar nunca que se desplegó algo que
       no se desplegó. El DoD exige `cd-staging` **en verde**, no "el CI pasa".
 
-      Fuera: provisionar servidor de staging, publicar en registries de extensiones, Traefik/DNS,
-      `cd-prod` (que nunca se ha ejecutado) más allá de heredar el mismo arreglo de imagen.
+      El debate añadió un **segundo defecto nunca verificado**: `docker-compose.prod.yml` no declara variables que
+      `api` y `worker` validan al arrancar (correo y TTL de auth en api; `WEB_BASE_URL` y correo en worker), y los dos
+      terminan antes de escuchar. Arreglar la imagen no habría servido de nada. Por eso la verificación levanta **la
+      pila entera con ese mismo compose**, no un compose escrito para CI: es donde el defecto estaba escondido.
+      `cd-prod` **entra en el alcance** (hereda artefacto y los tres resultados; nunca se ha ejecutado).
+
+      Fuera: provisionar servidor de staging y sus secretos —eso es la fila 35—, Traefik/DNS, publicar en registries
+      de extensiones y cualquier cambio funcional de la aplicación.

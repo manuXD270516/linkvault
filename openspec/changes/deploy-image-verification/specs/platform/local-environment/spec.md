@@ -19,12 +19,30 @@ Las variables de correo (`MAIL_PROVIDER`, `MAIL_FROM`, SMTP hacia Mailpit y `RES
 declararse para el entorno local con `MAIL_PROVIDER=smtp` (o el valor documentado hacia Mailpit) y sin clave real de
 Resend.
 
-**Un valor por defecto del ejemplo NO SHALL ser uno que se sepa que no funciona.** Cuando el ejemplo nombre un recurso
-externo —un modelo, un endpoint, un servicio— y el repositorio documente en otro sitio que ese recurso ya no responde,
-las dos cosas SHALL corregirse a la vez: el ejemplo es lo que alguien copia sin leerlo entero, y un recurso muerto ahí
-no produce un error claro sino una **degradación silenciosa**, que es la avería más cara de diagnosticar. Los valores
-por defecto de los proveedores de IA, incluidos los de las claves propias de cada persona, SHALL apuntar a un recurso
-verificado, y la verificación SHALL quedar anotada donde se opera.
+**Un valor por defecto NO SHALL ser uno que se sepa que no funciona.** Cuando se nombre un recurso externo —un modelo,
+un endpoint, un servicio— y el repositorio documente en otro sitio que ese recurso ya no responde, las dos cosas SHALL
+corregirse a la vez: el ejemplo es lo que alguien copia sin leerlo entero, y un recurso muerto ahí no produce un error
+claro sino una **degradación silenciosa**, que es la avería más cara de diagnosticar. Los valores por defecto de los
+proveedores de IA, incluidos los de las claves propias de cada persona, SHALL apuntar a un recurso verificado, y la
+verificación SHALL quedar anotada donde se opera.
+
+**Sustituir un recurso muerto NO SHALL apagar una protección de privacidad por el camino.** Con OpenRouter, la política
+`data_collection: deny` solo se fuerza cuando el modelo termina en `:free` (ADR-032 §4): un modelo verificado que no
+cumpla esa condición arrancaría bien, respondería bien y haría viajar el texto del CV **sin esa política**, en
+silencio, que es peor que el modelo muerto al que sustituye —el modelo muerto al menos falla—. Por tanto:
+
+- El valor por defecto SHALL ser un modelo **verificado y compatible con la política**: disponible en la pasada anotada
+  y de los que hacen que la petición lleve `data_collection: deny`.
+- Si no existe ninguno que cumpla las dos cosas, la variable SHALL quedar **vacía**, y el arranque SHALL avisar de
+  forma visible de que ese proveedor se queda sin modelo utilizable. Un hueco declarado es un estado honesto; NO SHALL
+  rellenarse con un modelo que degrade la privacidad para que el ejemplo "tenga algo".
+- La sustitución NO SHALL decidirse solo por disponibilidad: la comprobación de la política SHALL formar parte de lo
+  que se verifica y se anota.
+
+La comprobación automatizada de estos valores por defecto SHALL cubrir **todos los sitios donde vive el valor por
+defecto** de cada variable —no solo `.env.example`—, incluido el compose de producción, donde los mismos modelos
+aparecen como valor de sustitución (`${VAR:-…}`). Arreglar el ejemplo y dejar el compose con el modelo muerto dejaría
+la avería exactamente donde más cuesta verla.
 
 #### Scenario: Valores por defecto seguros
 
@@ -62,9 +80,31 @@ verificado, y la verificación SHALL quedar anotada donde se opera.
 - **THEN** ninguna variable de modelo SHALL tener ese valor por defecto
 - **AND** el valor por defecto SHALL ser uno cuya disponibilidad esté verificada y anotada
 
+#### Scenario: El modelo que sustituye al muerto no apaga la política de datos
+
+- **GIVEN** que la política `data_collection: deny` de OpenRouter solo se fuerza con modelos terminados en `:free`
+- **WHEN** se elige el valor por defecto de la variable de modelo de OpenRouter
+- **THEN** SHALL ser uno con el que la petición lleve `data_collection: deny`
+- **AND** NO SHALL elegirse uno que, por no cumplir esa condición, haga viajar el texto del CV sin la política
+
+#### Scenario: Sin candidato compatible la variable queda vacía
+
+- **GIVEN** que ningún modelo está a la vez verificado como disponible y sujeto a `data_collection: deny`
+- **WHEN** se fija el valor por defecto
+- **THEN** la variable SHALL quedar vacía
+- **AND** el arranque SHALL avisar de forma visible de que ese proveedor queda sin modelo utilizable
+- **AND** NO SHALL rellenarse con un modelo que degrade la privacidad
+
 #### Scenario: Un valor por defecto desmentido se detecta
 
-- **GIVEN** un valor por defecto del ejemplo que la documentación del repositorio declara inservible
+- **GIVEN** un valor por defecto que la documentación del repositorio declara inservible
 - **WHEN** corre la verificación del repositorio
-- **THEN** SHALL fallar nombrando la variable y el valor
+- **THEN** SHALL fallar nombrando la variable, el valor y el archivo donde aparece
 - **AND** NO SHALL depender de que alguien recuerde que las dos páginas tienen que coincidir
+
+#### Scenario: La comprobación cubre todos los sitios del valor por defecto
+
+- **GIVEN** la misma variable de modelo con valor por defecto en `.env.example` y en el compose de producción
+- **WHEN** corre la comprobación de valores por defecto
+- **THEN** SHALL inspeccionar los dos sitios
+- **AND** corregir solo el ejemplo NO SHALL bastar para que pase

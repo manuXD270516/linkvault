@@ -43,9 +43,18 @@ y ambos se dieron por cumplidos.
   renunciar a la resolución bloqueada: el artefacto que se despliega no puede depender de lo que hubiera publicado en
   el registro el día que se construyó. Un arreglo que se limite a aflojar el candado (`--no-frozen-lockfile`) pondría
   el pipeline en verde **y dejaría el problema**, que es exactamente cómo llegamos hasta aquí.
-- **El artefacto se verifica en el propio CI, sin necesitar servidor.** Las imágenes recién construidas se levantan en
-  el runner y se comprueba que la api **arranca de verdad** y responde `/health` con sus dependencias listas. Hasta hoy
-  nada comprobaba que la imagen arrancara: solo que el código compilaba.
+- **El compose de producción tampoco podía arrancar**, y es un **segundo defecto nunca verificado** que el debate
+  destapó: `docker-compose.prod.yml` no declara variables que sus procesos validan al arrancar —las de correo y los TTL
+  de auth en `api`; `WEB_BASE_URL` y las de correo en `worker`—, y ambos terminan **antes de escuchar**. Arreglar la
+  imagen no habría servido de nada. La correspondencia pasa a comprobarse contra los esquemas de configuración, no a
+  ojo.
+- **El artefacto se verifica en el propio CI, sin necesitar servidor, y se verifica entero.** Se levanta la pila de
+  **`docker-compose.prod.yml`** —el mismo fichero que se despliega, no uno escrito para CI— con las imágenes recién
+  construidas, y se comprueba que **`api`, `worker` y `web`** arrancan de verdad: readiness con mongo y redis las dos
+  primeras, y el documento del SPA la tercera, que es lo único que una persona toca. Hasta hoy nada comprobaba que
+  ninguna imagen arrancara: solo que el código compilaba.
+- **El orden pasa a ser construir → verificar → publicar.** Hoy se publica antes de comprobar nada, así que una imagen
+  rota sobrescribe el tag móvil y deja al despliegue anterior sin referencia a la que volver.
 - **El estado del CD deja de mentir en las dos direcciones.** "No hay dónde desplegar" y "el despliegue falló" pasan a
   ser resultados distintos y distinguibles de un vistazo. Se mantiene íntegro el principio de ADR-033 —nunca se afirma
   que se desplegó algo que no se desplegó— pero deja de expresarse como un fallo permanente que entrena a todo el mundo
@@ -54,14 +63,16 @@ y ambos se dieron por cumplidos.
   hoy, sin infraestructura que no existe.
 - **Dos mentiras operativas del mismo tejido**, encontradas en el barrido de diferidos que acompañó a esta revisión.
   Las dos son cosas que se dieron por hechas y nadie volvió a comprobar:
-  - **El RUNBOOK afirma en cuatro sitios que "hoy no existe el borrado de cuenta"** (`:468`, `:558`, `:709`, `:929`) y
+  - **El RUNBOOK afirma en ocho sitios que "hoy no existe el borrado de cuenta"** (`:468`, `:478`, `:558`, `:585`, `:709`, `:929`, `:952`, `:1008`) y
     manda borrar a mano, con `mongosh`, los datos de una persona. **Es falso desde `deploy-prod`**: existe
     `DELETE /api/users/me` con su cascada, probada en `account-deletion.cascade.spec.ts`. Un operador que siga el
     RUNBOOK haría a mano, sin transacción y a medias, lo que el producto ya hace entero. Es el defecto más caro del
     inventario.
   - **`.env.example:166` reparte un modelo muerto.** Fija `BYOK_OPENROUTER_MODEL=meta-llama/llama-3.3-70b-instruct:free`
     mientras el propio RUNBOOK (`:1045`) documenta que ese modelo **ya no existe y responde `404`**. Quien copie el
-    ejemplo y active BYOK arranca con el proveedor caído, el breaker abierto y una degradación silenciosa.
+    ejemplo y active BYOK arranca con el proveedor caído, el breaker abierto y una degradación silenciosa. Y vive en
+    **cuatro sitios**, no en uno: el ejemplo, los dos servicios del compose de producción y —el peor— el valor por
+    defecto del propio código, que es el que gana cuando la variable no se define.
 
 ## Capabilities
 
@@ -87,5 +98,9 @@ y ambos se dieron por cumplidos.
 
 ### Fuera de alcance
 
-Provisionar el servidor de staging o sus secrets, Traefik y DNS, publicar en registries de extensiones, y cualquier
-cambio funcional de la aplicación.
+Provisionar el servidor de staging o sus secrets —eso es la **fila 35**, con fecha, para que "verde sin desplegar" no
+dure para siempre—, Traefik y DNS, publicar en registries de extensiones, y cualquier cambio funcional de la
+aplicación. **`cd-prod` sí entra**: hereda el arreglo del artefacto y los tres resultados, sin ninguna evidencia previa
+de funcionar.
+
+Las decisiones no triviales quedan en **ADR-048**, que enmienda en parte ADR-033 D10.
