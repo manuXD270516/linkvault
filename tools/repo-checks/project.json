@@ -24,10 +24,30 @@
         ]
       }
     },
+    "check-compose-env-contract": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "inputs": [
+        "{workspaceRoot}/docker-compose.prod.yml",
+        "{workspaceRoot}/apps/api/src/infrastructure/config/api-config.schema.ts",
+        "{workspaceRoot}/apps/worker/src/infrastructure/config/worker-config.schema.ts",
+        "{projectRoot}/src/compose-env-contract.check.mjs",
+        "{projectRoot}/src/lib/compose.mjs",
+        "{projectRoot}/src/lib/zod-env-schema.mjs",
+        "{projectRoot}/src/lib/report.mjs"
+      ],
+      "options": {
+        "cwd": "{workspaceRoot}",
+        "parallel": false,
+        "commands": [
+          "node tools/repo-checks/src/compose-env-contract.check.mjs"
+        ]
+      }
+    },
     "check": {
       "executor": "nx:run-commands",
       "cache": false,
-      "dependsOn": ["check-compose-healthchecks"],
+      "dependsOn": ["check-compose-healthchecks", "check-compose-env-contract"],
       "options": {
         "cwd": "{workspaceRoot}",
         "parallel": false,
