@@ -543,11 +543,61 @@
 
 ## 11. Que las comprobaciones lleguen a ejecutarse en todas partes
 
-- [ ] 11.1 [infra] Comprobar que los targets creados por los grupos 4 y 10 declaran los `inputs` que de verdad leen (`{workspaceRoot}/.env.example`, `{workspaceRoot}/docker-compose.prod.yml`, `{workspaceRoot}/docs/RUNBOOK.md`, los dos esquemas de configuración, los ficheros de `apps/**` del registro y el propio registro de afirmaciones); verificar con `pnpm nx show project repo-checks --json` redirigido a un archivo que salen como se escribieron, porque de esos `inputs` depende que Nx no restaure un verde cacheado.
-- [ ] 11.2 [infra] Añadir a `sharedGlobals` de `nx.json` **solo** `.env.example` y `docker-compose.prod.yml` —hoy la lista tiene `nx.json`, `tsconfig.base.json`, `eslint.config.mjs`, `.nvmrc`, `package.json` y `pnpm-lock.yaml`— y dejar escrito por qué **no** entra `docs/**`: invalidaría la caché de **todos** los proyectos en cada commit de documentación, que en este repositorio es casi cada commit; la documentación queda cubierta por los `inputs` explícitos de 11.1 más el paso incondicional de 3.2. Verificar que un commit que solo toca `.env.example` hace que `pnpm nx show projects --affected` liste `repo-checks`.
-- [ ] 11.3 [infra] **La prueba espejo**, que es el PR donde esto importa: con un commit que solo toca `apps/api/src/infrastructure/config/api-config.schema.ts` añadiendo una obligatoria nueva, verificar que la comprobación del compose **se ejecuta** (paso incondicional) y **falla** nombrándola, y que Nx no dice que recupera la caché; si la restaurara, los `inputs` de 11.1 están mal. Restaurar el esquema después.
-- [ ] 11.4 [infra] Comprobar lo mismo con la documentación: un commit que solo toca `docs/RUNBOOK.md` hace que la comprobación de afirmaciones se ejecute de verdad; verificar leyendo la salida de Nx en la corrida (no puede decir que recupera la caché).
+- [x] 11.1 [infra] Comprobar que los targets creados por los grupos 4 y 10 declaran los `inputs` que de verdad leen (`{workspaceRoot}/.env.example`, `{workspaceRoot}/docker-compose.prod.yml`, `{workspaceRoot}/docs/RUNBOOK.md`, los dos esquemas de configuración, los ficheros de `apps/**` del registro y el propio registro de afirmaciones); verificar con `pnpm nx show project repo-checks --json` redirigido a un archivo que salen como se escribieron, porque de esos `inputs` depende que Nx no restaure un verde cacheado.
+- [x] 11.2 [infra] Añadir a `sharedGlobals` de `nx.json` **solo** `.env.example` y `docker-compose.prod.yml` —hoy la lista tiene `nx.json`, `tsconfig.base.json`, `eslint.config.mjs`, `.nvmrc`, `package.json` y `pnpm-lock.yaml`— y dejar escrito por qué **no** entra `docs/**`: invalidaría la caché de **todos** los proyectos en cada commit de documentación, que en este repositorio es casi cada commit; la documentación queda cubierta por los `inputs` explícitos de 11.1 más el paso incondicional de 3.2. Verificar que un commit que solo toca `.env.example` hace que `pnpm nx show projects --affected` liste `repo-checks`.
+- [x] 11.3 [infra] **La prueba espejo**, que es el PR donde esto importa: con un commit que solo toca `apps/api/src/infrastructure/config/api-config.schema.ts` añadiendo una obligatoria nueva, verificar que la comprobación del compose **se ejecuta** (paso incondicional) y **falla** nombrándola, y que Nx no dice que recupera la caché; si la restaurara, los `inputs` de 11.1 están mal. Restaurar el esquema después.
+- [x] 11.4 [infra] Comprobar lo mismo con la documentación: un commit que solo toca `docs/RUNBOOK.md` hace que la comprobación de afirmaciones se ejecute de verdad; verificar leyendo la salida de Nx en la corrida (no puede decir que recupera la caché).
 - [ ] 11.5 [infra] Llevar el paso incondicional de 3.2 también a `cd-staging.yml` y `cd-prod.yml`, **escribiéndolo en los tres workflows** (no hay workflow reutilizable en este change: su extracción sale del alcance, ver el grupo 9); dejar en el YAML una nota de que los tres bloques son el mismo y han de cambiarse a la vez hasta que la fila 35 cierre la extracción. Verificar con una corrida real de `cd-staging` en la rama que el paso aparece y pasa, y comparando los tres bloques lado a lado.
+
+> **Lo que el grupo 11 dio por cierto y no lo era (2026-09-24, implementación).**
+>
+> 1. **Las comprobaciones NO nacían muertas por lo que 11.2 dice, y se comprobó ejecutando las dos configuraciones.**
+>    11.2 da por hecho que sin `.env.example` ni el compose en `sharedGlobals` un commit que solo los tocara no
+>    marcaría ningún proyecto como afectado y Nx restauraría un verde cacheado. Medido con Nx 23.2.1, **quitando la
+>    adición** y con un commit real que solo toca `.env.example` y `docker-compose.prod.yml`:
+>    `pnpm nx show projects --affected` devuelve igualmente `["repo-checks"]`, y en la corrida siguiente
+>    `check-stale-defaults` **se vuelve a ejecutar** mientras las otras tres salen de la caché. La razón es que Nx
+>    deriva los proyectos tocados también de los **globs `{workspaceRoot}` de los `inputs` de los targets**, y los
+>    de `tools/repo-checks` (tarea 11.1) nombran los dos ficheros. Lo que las mantenía vivas eran, ya, los
+>    `inputs` explícitos. La adición se hace igual —es la decisión tomada— pero por lo que sí aporta: los dos
+>    ficheros entran en la clave de caché de **todos** los proyectos (de `["repo-checks"]` a los 11), así que
+>    ningún consumidor futuro puede leerlos y quedarse cacheado por olvidar declararlos. El motivo escrito en
+>    `nx.json` es ese y no el de la tarea.
+> 2. **Los `inputs` de `check-claims-registry` sí estaban mal, y por eso 11.1 no era una comprobación de trámite.**
+>    Declaraban `docs/**/*.md`, `apps/**/*.ts` y `libs/**/*.ts`; el alcance declarado en `claims.registry.mjs`
+>    es el producto de sus `roots` (docs, apps, libs) por sus `extensions` (`.md`, `.ts`, `.html`). Contados
+>    ejecutando el mismo recorrido del check: lee **1554** ficheros y los `inputs` cubrían **1508**. Los **46**
+>    restantes —40 plantillas `apps/**/*.html` y 6 `libs/**/*.md`— se leían pero **no cambiaban el hash**: una
+>    afirmación desmentida escrita en una plantilla de Angular o en un README de `libs/` habría salido en verde
+>    desde la caché. Ahora van los nueve globs del producto, incluidos los que hoy no casan con nada.
+> 3. **Faltaba un guardia, y lo descubrió el propio grupo: el agregador no puede ser cacheable.** El guardia de 3.2
+>    lee del log la línea `repo-checks: N comprobaciones ejecutadas`. Si `targets.check` llevara `cache: true`,
+>    Nx **reproduce esa línea desde la caché** sin ejecutar nada y el guardia daría verde sobre un verde restaurado
+>    — la misma avería que este grupo cierra en `nx.json`, un piso más arriba. Se añade la comprobación de que
+>    `check.cache === false` y se falsa poniéndolo a `true`:
+>    `[FAIL] el agregador de repo-checks no es ejecutable de forma fiable`.
+> 4. **El cuerpo del paso incondicional se extrae a `infra/ci/repo-checks.sh`, y 11.5 pedía copiarlo tres veces.**
+>    La tarea manda escribir el bloque en los tres workflows con una nota de que han de cambiarse a la vez. Se hace
+>    al revés y a propósito: un cuerpo copiado en tres YAML **no se puede ejecutar fuera de Actions** —y este change
+>    entero trata de no afirmar sin ejecutar—, y tres copias con una nota es exactamente la forma en la que un
+>    guardia deja de estar en uno de los tres sin que nadie se entere. Lo prohibido por 11.5 es el **workflow
+>    reutilizable** (extracción de la fila 35), no un script, que es además la forma que ya usan los grupos 5 a 8
+>    (`assert-semver-tag.sh`, `assert-release-projects.sh`, `verify-artifact.sh`…). Lo que queda duplicado es la
+>    invocación de cuatro líneas, comparada lado a lado: **idéntica** en los tres (en `cd-prod` con dos líneas más
+>    de comentario, porque un release se lanza sobre un tag y no pasa por el CI de la rama).
+> 5. **De paso, el paso de `ci.yml` era la única excepción a la norma de no entubar `nx`.** Hacía
+>    `pnpm nx run repo-checks:check 2>&1 | tee repo-checks.log`, mientras `assert-release-projects.sh` documenta
+>    que la salida de `nx` se redirige a fichero y nunca se entuba. El script redirige y lee el fichero.
+> 6. **El mensaje de fallo de la comprobación del compose (grupo 4) tenía un verbo de menos, y solo se ve al hacerlo
+>    fallar.** La prueba espejo de 11.3 lo sacó: `… le falta la variable obligatoria 'AUDIT_SINK_URL', que
+>    apps/api/…/api-config.schema.ts al arrancar el proceso`. Corregido a `…, que **exige**
+>    apps/api/…/api-config.schema.ts al arrancar el proceso`.
+>
+> **Lo que queda sin verificar y por qué.** 11.5 exige además una **corrida real de `cd-staging`** en la rama para
+> ver el paso aparecer y pasar. La rama no está publicada y el token local no tiene `write:packages` (mismo motivo
+> que 6.3–6.6 y que 7.1–7.8), así que queda sin marcar. Lo que **sí** se ejecutó: el script entero en local sobre el
+> repositorio real, sus dos guardias falsados uno a uno, el parseo de los tres workflows y la comparación literal de
+> los tres bloques.
 
 ## 12. La documentación operativa deja de describir la regla vieja
 

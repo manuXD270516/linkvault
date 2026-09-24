@@ -83,6 +83,17 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # --- Comprobaciones de repositorio: EL MISMO BLOQUE en ci.yml, cd-staging.yml y cd-prod.yml (tarea 11.5) ------
+      # Va **antes** del cálculo de afectación y no por `nx affected` a propósito: son lecturas de ficheros que
+      # tardan segundos, y así ninguna comprobación depende de que el conjunto afectado la alcance (ADR-048 §5).
+      # Los guardias (agregador vacío, agregador cacheable) viven en el script, no aquí: los tres workflows han de
+      # ejecutar exactamente lo mismo, y tres cuerpos copiados en tres YAML divergen. Este change no extrae un
+      # workflow reutilizable —eso es de la fila 35—, así que lo que queda duplicado es solo esta invocación; si se
+      # toca en uno, se toca en los tres.
+      - name: Repo checks
+        shell: bash
+        run: infra/ci/repo-checks.sh
+
       - name: Derive affected base and head
         uses: nrwl/nx-set-shas@v5
         with:

@@ -155,6 +155,19 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # --- Comprobaciones de repositorio: EL MISMO BLOQUE en ci.yml, cd-staging.yml y cd-prod.yml (tarea 11.5) ------
+      # Va **antes** del cálculo de afectación y no por `nx affected` a propósito: son lecturas de ficheros que
+      # tardan segundos, y así ninguna comprobación depende de que el conjunto afectado la alcance (ADR-048 §5).
+      # Los guardias (agregador vacío, agregador cacheable) viven en el script, no aquí: los tres workflows han de
+      # ejecutar exactamente lo mismo, y tres cuerpos copiados en tres YAML divergen. Este change no extrae un
+      # workflow reutilizable —eso es de la fila 35—, así que lo que queda duplicado es solo esta invocación; si se
+      # toca en uno, se toca en los tres.
+      # Aquí no basta con que corra en `ci.yml`: un release se lanza sobre un tag y no pasa por el CI de la rama, así
+      # que sin esto un `vX.Y.Z` llegaría a producción sin que ninguna comprobación de repositorio se hubiera mirado.
+      - name: Repo checks
+        shell: bash
+        run: infra/ci/repo-checks.sh
+
       # Guardia del conjunto vacío (8.5), **solo en este workflow**. `run-many --all` tampoco garantiza que se
       # ejecute algo: con un target que ningún proyecto declara termina en `No tasks were run` y código 0 (medido).
       # "No se ejecutó nada" y "se ejecutó todo y pasó" se ven igual, y aquí lo siguiente es producción.

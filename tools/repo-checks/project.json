@@ -10,6 +10,7 @@
     "check-compose-healthchecks": {
       "executor": "nx:run-commands",
       "cache": true,
+      "// inputs": "Lo único que lee es el compose de producción, más su propio código. Escrito uno a uno: sin la lista, un compose que pierda un healthcheck no cambiaría el hash y Nx daría el verde anterior (ADR-048 §5).",
       "inputs": [
         "{workspaceRoot}/docker-compose.prod.yml",
         "{projectRoot}/src/compose-healthchecks.check.mjs",
@@ -27,6 +28,7 @@
     "check-compose-env-contract": {
       "executor": "nx:run-commands",
       "cache": true,
+      "// inputs": "Los tres ficheros que compara —el compose y los DOS esquemas de configuración— y su propio código. El esquema de api es el input que hace de esto una comprobación viva: el PR que añade una obligatoria nueva es exactamente el que tiene que hacerla correr y fallar (tarea 11.3).",
       "inputs": [
         "{workspaceRoot}/docker-compose.prod.yml",
         "{workspaceRoot}/apps/api/src/infrastructure/config/api-config.schema.ts",
@@ -47,12 +49,19 @@
     "check-claims-registry": {
       "executor": "nx:run-commands",
       "cache": true,
-      "// inputs": "Los archivos del alcance declarado en claims.registry.mjs (docs/ sin docs/adr/, apps/ y libs/) más los símbolos que desmienten la afirmación. Sin ellos Nx restauraría un verde cacheado justo cuando cambia el fichero que la comprobación mira (ADR-048 §5).",
+      "// inputs": "El alcance declarado en claims.registry.mjs, escrito aquí GLOB A GLOB: es el producto de sus 'roots' (docs, apps, libs) por sus 'extensions' (.md, .ts, .html), menos 'excludePrefixes' (docs/adr/). Los símbolos que desmienten la afirmación viven en apps/**/*.ts y quedan dentro. Sin esta lista Nx restauraría un verde cacheado justo cuando cambia el fichero que la comprobación mira (ADR-048 §5).",
+      "// inputs (por qué los nueve y no tres)": "La lista anterior declaraba solo docs/**/*.md, apps/**/*.ts y libs/**/*.ts, y la comprobación lee 46 ficheros más (40 plantillas apps/**/*.html y 6 libs/**/*.md, medidos en la tarea 11.1): una afirmación escrita en una plantilla de Angular o en un README de libs/ se leía pero NO cambiaba el hash, así que Nx restauraba el verde anterior. Los globs que hoy no casan con nada (docs/**/*.ts, docs/**/*.html) van igual, para que el día que exista uno el registro no se quede fuera en silencio.",
       "inputs": [
         "{workspaceRoot}/docs/**/*.md",
+        "{workspaceRoot}/docs/**/*.ts",
+        "{workspaceRoot}/docs/**/*.html",
         "!{workspaceRoot}/docs/adr/**",
+        "{workspaceRoot}/apps/**/*.md",
         "{workspaceRoot}/apps/**/*.ts",
+        "{workspaceRoot}/apps/**/*.html",
+        "{workspaceRoot}/libs/**/*.md",
         "{workspaceRoot}/libs/**/*.ts",
+        "{workspaceRoot}/libs/**/*.html",
         "{projectRoot}/src/claims-registry.check.mjs",
         "{projectRoot}/src/claims.registry.mjs",
         "{projectRoot}/src/lib/compose.mjs",

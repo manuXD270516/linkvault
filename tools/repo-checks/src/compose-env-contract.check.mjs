@@ -128,7 +128,7 @@ for (const { service, schema, canaries } of PROCESSES) {
   /** Dos motivos distintos para "no declarada": no está, o está como `${VAR}` a secas. */
   const describeMissing = (variable, declaration, exigedBy) =>
     declaration === undefined
-      ? `${file}: al servicio '${service}' le falta la variable obligatoria '${variable}', que ${exigedBy}`
+      ? `${file}: al servicio '${service}' le falta la variable obligatoria '${variable}', que exige ${exigedBy}`
       : `${file}: el servicio '${service}' declara '${variable}' como '${declaration.value}', una sustitución sin valor por defecto ni obligatoriedad: si falta en el entorno, el proceso muere dentro del contenedor en vez de abortar el 'up' (la exige ${exigedBy})`;
 
   for (const variable of readSchemaVariables(schema, canaries)) {
