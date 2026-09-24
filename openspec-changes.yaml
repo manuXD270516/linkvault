@@ -402,8 +402,8 @@ changes:
       validación de esquema; RUNBOOK unpacked ambos + checklist CWS/AMO (manual; listing live fuera DoD).
       Fuera: Safari, publish CI, scraping DOM, changes de auth extensión.
   - name: deploy-image-verification
-    adrs: [048, 033]
-    agents: [devops]
+    adrs: [048, 049, 033, 032]
+    agents: [devops, backend-dev, frontend-dev, ai-engineer]
     scope: |
       Fila 34. **Deuda descubierta en la revisión del 2026-09-23: `cd-staging` acumula 21 ejecuciones y 21
       fallos, desde la primera, que es el propio commit de `deploy-prod` (#35). El despliegue nunca ha

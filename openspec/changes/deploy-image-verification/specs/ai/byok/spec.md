@@ -1,5 +1,60 @@
 ## MODIFIED Requirements
 
+### Requirement: Guardar y revocar una clave por vendor
+
+Una persona autenticada SHALL poder guardar exactamente una clave por vendor (`anthropic`, `openai`, `openrouter`) vía `PUT /api/users/me/ai-keys/:vendor` con cuerpo `{ apiKey }` (longitud mínima 16). El sistema SHALL cifrarla con libsodium secretbox y `AI_VAULT_KEY` antes de persistirla y SHALL responder `200` solo con `vendor`, `keyHint` (últimos 4 caracteres), `updatedAt` y `available`. `GET /api/users/me/ai-keys` SHALL listar solo esas vistas. `DELETE /api/users/me/ai-keys/:vendor` SHALL borrar la fila. Ninguna respuesta ni el ledger SHALL incluir la clave en claro ni el ciphertext. Sin vault disponible fuera de producción, PUT SHALL responder `503` con código `vault_unavailable`.
+
+`available` SHALL ser un booleano que diga si el servidor **puede construir hoy el proveedor de ese vendor**, en el sentido de «configuración utilizable» de «Inyección BYOK en runTask» y «OpenRouter BYOK y data_collection». SHALL derivarse **solo de la configuración del servidor**: NO SHALL derivarse de que haya clave guardada, de que la clave sea descifrable, de la disponibilidad del vault ni del estado del consentimiento externo. Existe para que la interfaz no tenga que deducir la disponibilidad en el cliente ni presentar como usable un vendor que el servidor no va a enrutar.
+
+La disponibilidad SHALL informarse para **cada vendor soportado, tenga o no clave guardada** —el formulario de un vendor sin configurar necesita el mismo dato—, y esa información SHALL limitarse al par vendor + `available`. NO SHALL fabricarse una vista de clave donde no hay clave: el listado de claves sigue conteniendo **solo las guardadas**. Cuando un vendor tiene clave guardada, el `available` de su vista y el que se informe para ese vendor SHALL salir del mismo cálculo y NO SHALL discrepar.
+
+El conjunto de campos SHALL seguir siendo **cerrado**: «solo» sigue significando solo, ahora con `available` dentro. Esta ampliación NO SHALL leerse como permiso para devolver cualquier otro campo de la clave o de la configuración.
+
+La prohibición del secreto queda **intacta**: `available` es un estado de configuración, no un secreto. Ninguna respuesta SHALL incluir la clave en claro ni su ciphertext, y `available` NO SHALL revelar ningún valor de configuración del servidor —ni el modelo, ni credenciales de plataforma—, solo el booleano.
+
+#### Scenario: Upsert y listado
+
+- **GIVEN** Ana autenticada y `AI_VAULT_KEY` configurada
+- **WHEN** hace PUT con una clave de OpenAI y luego GET
+- **THEN** el listado SHALL incluir `vendor: openai` y un `keyHint` de 4 caracteres
+- **AND** ni GET ni PUT SHALL devolver la clave completa
+
+#### Scenario: Revocar
+
+- **GIVEN** Ana con clave de Anthropic guardada
+- **WHEN** hace DELETE de ese vendor
+- **THEN** GET ya no SHALL listar Anthropic
+- **AND** las siguientes ejecuciones NO SHALL inyectar `byok:<ana>:anthropic`
+
+#### Scenario: Vault no disponible en desarrollo
+
+- **GIVEN** entorno no productivo sin `AI_VAULT_KEY` válida
+- **WHEN** Ana hace PUT
+- **THEN** SHALL responderse `503` con código `vault_unavailable`
+
+#### Scenario: El listado dice la disponibilidad de cada vendor
+
+- **GIVEN** Ana autenticada con claves guardadas de `openrouter` y `openai`, y una instancia donde `openrouter` no tiene configuración utilizable
+- **WHEN** hace GET del listado de claves
+- **THEN** la vista de `openrouter` SHALL llevar `available: false`
+- **AND** la vista de `openai` SHALL llevar `available: true`
+- **AND** la respuesta SHALL informar también de la disponibilidad de `anthropic`, que no tiene clave guardada, sin listarlo como clave guardada
+
+#### Scenario: La disponibilidad sale del servidor, no del vault ni de la clave
+
+- **GIVEN** un vendor con configuración utilizable del que Ana no tiene clave guardada, y el consentimiento externo revocado
+- **WHEN** hace GET del listado de claves
+- **THEN** ese vendor SHALL informarse como disponible
+- **AND** `available` NO SHALL calcularse a partir de tener clave guardada, de poder descifrarla ni del estado del consentimiento
+
+#### Scenario: La disponibilidad no es un secreto
+
+- **GIVEN** cualquier respuesta de las rutas de claves de IA
+- **WHEN** se inspecciona su cuerpo
+- **THEN** cada vista SHALL llevar como mucho `vendor`, `keyHint`, `updatedAt` y `available`
+- **AND** NO SHALL llevar la clave en claro ni su ciphertext
+- **AND** NO SHALL llevar el modelo configurado ni ningún otro valor de configuración del servidor
+
 ### Requirement: Inyección BYOK en runTask
 
 Cuando `runTask` recibe un `userId` con consentimiento externo vigente y al menos una clave descifrable, el sistema SHALL añadir proveedores `byok:<userId>:<vendor>` (`external: true`) al universo de la ejecución (delante en el orden de routing), **uno por cada vendor que tenga clave descifrable y configuración utilizable**. Sin consentimiento o sin claves, NO SHALL inyectar BYOK. Un fallo al descifrar o al llamar al vendor SHALL registrarse como `provider_error` y continuar con el siguiente proveedor **elegible de esa cadena** (si la cuota de plataforma está agotada, la cadena solo tiene BYOK).

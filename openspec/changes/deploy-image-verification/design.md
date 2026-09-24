@@ -30,7 +30,11 @@ Ver `proposal.md` §Why. Lo que condiciona el diseño y no está ahí:
 
 - Provisionar servidor de staging, secretos, DNS o Traefik.
 - Cambiar el mecanismo de despliegue (GHCR → ssh → compose pull+up) ni el smoke contra la red interna.
-- Cualquier cambio funcional de la aplicación.
+- ~~Cualquier cambio funcional de la aplicación.~~ **Revocado al cerrar el debate (decisión humana, alcance A1).** El
+  change corrige el valor por defecto de BYOK, la construcción del proveedor y —porque la contradicción llega hasta la
+  pantalla— la señal de disponibilidad por vendor en contrato, API y SPA. Sigue sin tocarse ninguna funcionalidad de
+  producto **por iniciativa propia**: todo lo que entra es consecuencia de una contradicción que este change destapa y
+  que no se fusiona a sabiendas.
 - Reescribir `docs/design.md`, que promete trazas OTel inexistentes: es deuda real, pero es de otro change (ver
   Pendientes).
 

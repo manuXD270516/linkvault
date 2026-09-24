@@ -89,22 +89,73 @@ y ambos se dieron por cumplidos.
   no funcionan, ni sustituirlos por otros que apaguen una protección.
 - `ai/byok`: "sin modelo utilizable" pasa a significar **proveedor no disponible**, no proveedor sin política de datos.
   Sin esto, el arreglo del modelo muerto **apagaría** la protección que pretende preservar.
+- `ai/usage-accounting`, `ai/task-execution`, `cv/match` y `web/byok`: las cuatro definen "BYOK elegible" como
+  *consentimiento + clave + capacidades*, sin contar si ese vendor puede construirse. Suman la condición que faltaba.
+  **Entraron por decisión humana al cerrar el debate**, y por un motivo concreto: sin ellas, alguien cuya única clave
+  fuera un vendor no construible contaría como elegible, la cadena restringida quedaría **vacía** y saldría un fallo de
+  cadena vacía en lugar del `quota_exceeded` honesto — y en la pantalla se leería "no forzamos `data_collection: deny`"
+  cuando la verdad es "este vendor no está disponible". `openspec validate` **no** las detecta: son contradicciones
+  entre capacidades distintas.
 
 ## Impact
 
-- **`docker/api.Dockerfile` y `docker/worker.Dockerfile`**: la etapa de dependencias de producción.
-- **`.github/workflows/cd-staging.yml` y `cd-prod.yml`**: verificación del artefacto en el runner y estado honesto
-  cuando no hay destino. `cd-prod` **nunca se ha ejecutado** (cero ejecuciones), así que hereda el mismo arreglo sin
-  ninguna evidencia previa de funcionar.
-- **`docs/RUNBOOK.md`**: hoy no menciona `cd-staging` en ningún sitio, lo que contribuyó a que nadie lo mirara.
-- **Riesgo que este change NO cierra**: sigue sin haber servidor de staging. El objetivo es que el pipeline diga la
-  verdad sobre eso, no inventarse un destino.
+El change nació tocando solo infraestructura y, al cerrar el debate, **se decidió (A1) llevarlo hasta la pantalla** para
+no fusionar ninguna contradicción conocida. El impacto queda enumerado por componente, no descrito en prosa.
+
+### Imagen y despliegue
+
+| Componente | Qué cambia |
+|---|---|
+| `docker/api.Dockerfile`, `docker/worker.Dockerfile` | La etapa de dependencias de producción: se retira del manifiesto generado el campo que impide instalar con el bloqueo puesto |
+| `docker-compose.prod.yml` | Variables obligatorias que faltan en `api` y `worker`; `healthcheck` de `worker` y `web` decidiendo por **contenido**; nombres de imagen sin valor por defecto hacia un espacio ajeno |
+| `.github/workflows/cd-staging.yml` | Construir → verificar → publicar en un solo job, identidad por digest, preflight con tres resultados, job de reporte y estado de commit |
+| `.github/workflows/cd-prod.yml` | Lo mismo, más verificación de **todo** el workspace y guardia de semver. **Nunca se ha ejecutado** |
+| `.github/workflows/ci.yml` | Paso incondicional de comprobaciones de repositorio |
+| `tools/repo-checks` (nuevo) | Las comprobaciones que hacen que la documentación no pueda volver a mentir |
+| `nx.json` | `.env.example` y el compose de producción en entradas globales. **`docs/**` no**, a propósito |
+| `infra/ci/verify.env` (nuevo) | Relleno para la verificación, con cabecera de que no sirve para ningún despliegue |
+
+### Elegibilidad BYOK (entra por A1 — ADR-049)
+
+| Componente | Qué cambia |
+|---|---|
+| `libs/shared/src/schemas/ai-byok.schema.ts` | La vista de una clave suma la **disponibilidad** de ese vendor |
+| `libs/ai` — `byok-provider.factory.ts` | Sin modelo utilizable **no construye** el proveedor, en vez de construirlo con la política en `omit` |
+| `libs/ai` — `ai-config.schema.ts`, `parse-ai-config.ts`, `default-byok-config.ts` | El valor por defecto pasa al modelo verificado; canal de **avisos** de configuración, que hoy solo sabe abortar |
+| `libs/ai` — predicado de disponibilidad | **Exportado y consumido**, no reimplementado en la API: dos implementaciones del mismo criterio son dos verdades que divergen |
+| `apps/api` — `list-my-ai-keys.usecase.ts`, `ai-keys.controller.ts` | Pueblan el campo nuevo |
+| `apps/web` — `ai-keys.api.ts`, `ai-keys.store.ts`, `profile.page.html` | El aviso deja de estar cableado (hoy dice literalmente "MVP: siempre") y pasa a **dos avisos distintos** que no pueden confundirse |
+| `apps/web/src/locale/messages*.xlf` | Textos ES y EN con **identificador nuevo** para lo que cambie de contenido |
+| Tests | Unitarios del predicado, del caso de uso y del componente; `byok.spec.ts` de e2e con el vendor indisponible |
+
+### Documentación
+
+| Componente | Qué cambia |
+|---|---|
+| `docs/RUNBOOK.md` | Deja de afirmar en **ocho** sitios que no existe el borrado de cuenta; documenta `cd-staging` (hoy no lo menciona); separa el breaker de plataforma del BYOK inenrutable |
+| `infra/README.md` | Deja de describir la regla vieja ("sin secretos el deploy falla") y documenta el arranque |
+| `.env.example` | Modelo verificado en vez del muerto |
+| `apps/api/**` (comentarios) | Tres sitios que repiten que el borrado de cuenta no existe |
+| ADR | **ADR-048** (nuevo), **ADR-049** (nuevo), nota de enmienda en **ADR-033 D10** |
+
+### Lo que este change NO cierra
+
+Sigue **sin haber servidor de staging**: el objetivo es que el pipeline diga la verdad sobre eso, no inventarse un
+destino. Es la fila 35, y ningún otro change puede precederla mientras el pipeline termine en "verificado sin destino".
 
 ### Fuera de alcance
 
-Provisionar el servidor de staging o sus secrets —eso es la **fila 35**, que ningun otro change puede preceder
-mientras el pipeline siga sin destino, para que "verde sin desplegar" no dure para siempre—, Traefik y DNS, publicar en registries de extensiones, y cualquier cambio funcional de la
-aplicación. **`cd-prod` sí entra**: hereda el arreglo del artefacto y los tres resultados, sin ninguna evidencia previa
-de funcionar.
+Provisionar el servidor de staging o sus secretos —eso es la **fila 35**, que ningún otro change puede preceder
+mientras el pipeline siga sin destino, para que "verde sin desplegar" no dure para siempre—, Traefik y DNS, y publicar
+en registries de extensiones.
 
-Las decisiones no triviales quedan en **ADR-048**, que enmienda en parte ADR-033 D10.
+**`cd-prod` sí entra**: hereda el arreglo del artefacto y los tres resultados, sin ninguna evidencia previa de
+funcionar.
+
+**Y "ningún cambio funcional de la aplicación" quedó revocado al cerrar el debate** (alcance A1, decisión humana). El
+change toca `libs/shared`, `libs/ai`, `apps/api` y `apps/web`. La distinción que se mantiene es otra: no se toca nada
+**por iniciativa propia**; todo lo que entra es consecuencia de una contradicción que este change destapa y que se
+decidió no fusionar a sabiendas.
+
+Las decisiones no triviales quedan en **ADR-048**, que enmienda en parte ADR-033 D10, y en **ADR-049**, que enmienda la
+definición de elegibilidad BYOK de ADR-032.
