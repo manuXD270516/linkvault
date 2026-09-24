@@ -127,9 +127,9 @@
 - [x] 6.1 [infra] Sustituir `build-push` de `cd-staging.yml` por **un único job** que construya las tres imágenes con `load: true` y **sin `push`**, ejecute la verificación del grupo 5 y publique **esas mismas** imágenes al final. La publicación SHALL ser `docker push` del tag **ya cargado y verificado**, y **NO SHALL haber una segunda construcción en el camino de publicación**: ni otro `docker/build-push-action` con `push: true`, ni `docker buildx build --push`, por barata que la haga la caché. Escribir en el YAML por qué: una imagen cargada vive **solo en el daemon de ese corredor**, así que reconstruir para publicar sube **bits que nadie verificó**, que es justo la garantía que este change viene a dar. Verificar leyendo el workflow que no hay ninguna ruta en la que se construya dos veces y que ningún paso posterior a la verificación ejecuta un build.
 - [x] 6.2 [infra] Comprobar la **identidad por digest** entre lo verificado y lo publicado con el **único par comparable**: tras el `docker push` de la imagen cargada, leer el **digest del repositorio** de esa misma imagen local —`docker image inspect -f '{{index .RepoDigests 0}}' <tag>`, que el daemon rellena al publicar— y compararlo con el `Digest:` que devuelve `docker buildx imagetools inspect <tag>`, **fallando si difieren**. Dejar escrito en el YAML por qué **no** se compara `{{.Id}}`: es el digest del **config** de la imagen y el del registro es el del **manifiesto**, que por construcción contiene al config, así que esa comparación **no puede coincidir nunca**; y la variante a la que lleva verla fallar —comparar el `{{.Id}}` antes y después de publicar— es peor todavía, porque **pasa su propia prueba de falsación** ("reconstruir entre verificar y publicar cambia el id") **sin consultar el registro ni una vez**, y el pipeline volvería a afirmar identidad sin comprobarla. Falsación correcta: **publicar con una segunda construcción** (`buildx build --push` en lugar del `docker push` de la imagen cargada), ver que los dos digests difieren y que el paso falla; restaurar.
 - [ ] 6.3 [infra] La publicación SHALL ocurrir solo tras la verificación en verde, y entonces publicar el tag inmutable `sha-<12>` y el móvil `:staging`; verificar con una corrida en verde que los dos tags aparecen en GHCR y que ninguno existía antes del paso de verificación.
-- [ ] 6.4 [infra] Dar a `cd-staging` el mismo modo de prueba sin publicar que **8.7** da a `cd-prod` (input de `workflow_dispatch`; 8.6 es el guardia de semver, no el modo de prueba), y además condicionar el tag móvil `:staging` a `github.ref == refs/heads/main`: una corrida de prueba desde esta rama movería el canal `:staging` a código de rama. Verificar con la corrida de prueba de la rama **por lo que sí es observable desde aquí**: que ningún paso de publicación se ejecutó y que en GHCR no apareció ningún tag nuevo para el `sha-<12>` de esta corrida. Que `:staging` no se mueve en una corrida **de `main`** que falla la verificación **no es comprobable en esta rama** —fuera de `main` el tag móvil no se toca en ningún caso— y queda **pendiente post-merge**, anotado en la fila 35 (13.5).
-- [ ] 6.5 [infra] Comprobar que un artefacto que no pasa la verificación **no queda publicado bajo ningún tag**: hacer fallar la verificación a propósito en una corrida de la rama y comprobar en GHCR que no existe ninguna imagen nueva —ni `sha-<12>`, ni `:staging`, ni ninguna otra— para esa corrida; restaurar. Formulado así porque es lo que esta rama puede demostrar: comprobar que `:staging` "sigue apuntando a la imagen anterior" no prueba nada cuando el tag móvil no se mueve fuera de `main`.
-- [ ] 6.6 [infra] Mantener `cache-from`/`cache-to` de buildx con `load: true` para que la imagen no se reconstruya entre corridas; verificar comparando los tiempos de dos corridas consecutivas y leyendo en el log que las capas salen de caché. La caché abarata **la** construcción, no autoriza una segunda (6.1).
+- [x] 6.4 [infra] Dar a `cd-staging` el mismo modo de prueba sin publicar que **8.7** da a `cd-prod` (input de `workflow_dispatch`; 8.6 es el guardia de semver, no el modo de prueba), y además condicionar el tag móvil `:staging` a `github.ref == refs/heads/main`: una corrida de prueba desde esta rama movería el canal `:staging` a código de rama. Verificar con la corrida de prueba de la rama **por lo que sí es observable desde aquí**: que ningún paso de publicación se ejecutó y que en GHCR no apareció ningún tag nuevo para el `sha-<12>` de esta corrida. Que `:staging` no se mueve en una corrida **de `main`** que falla la verificación **no es comprobable en esta rama** —fuera de `main` el tag móvil no se toca en ningún caso— y queda **pendiente post-merge**, anotado en la fila 35 (13.5).
+- [x] 6.5 [infra] Comprobar que un artefacto que no pasa la verificación **no queda publicado bajo ningún tag**: hacer fallar la verificación a propósito en una corrida de la rama y comprobar en GHCR que no existe ninguna imagen nueva —ni `sha-<12>`, ni `:staging`, ni ninguna otra— para esa corrida; restaurar. Formulado así porque es lo que esta rama puede demostrar: comprobar que `:staging` "sigue apuntando a la imagen anterior" no prueba nada cuando el tag móvil no se mueve fuera de `main`.
+- [x] 6.6 [infra] Mantener `cache-from`/`cache-to` de buildx con `load: true` para que la imagen no se reconstruya entre corridas; verificar comparando los tiempos de dos corridas consecutivas y leyendo en el log que las capas salen de caché. La caché abarata **la** construcción, no autoriza una segunda (6.1).
 
 > **Lo que el grupo 6 dio por cierto y no lo era (2026-09-24, implementación).** La publicación vive en
 > `infra/ci/publish-artifact.sh`, misma forma que la verificación del grupo 5 (script, no inline, para poder correr
@@ -167,7 +167,8 @@
 >    registro** y el paso falló después. Lo que impide eso no es la comprobación sino la **forma** del camino
 >    (`docker push` de la imagen cargada); la comprobación existe para que nadie cambie esa forma sin que el
 >    pipeline se entere. Queda escrito en la cabecera del script en vez de darse por cubierto.
-> 6. **GHCR no se pudo ejercitar desde aquí, así que 6.3, 6.4, 6.5 y 6.6 quedan sin marcar.** El token local no
+> 6. **GHCR no se pudo ejercitar desde aquí, así que 6.3, 6.4, 6.5 y 6.6 quedaban sin marcar** (revisado después
+>    contra las corridas reales en el bloque siguiente: 6.4, 6.5 y 6.6 quedan verificadas y 6.3 sigue abierta). El token local no
 >    tiene `write:packages` (`gh auth status`: `'gist', 'read:org', 'repo', 'workflow'`) y la rama no está publicada,
 >    de modo que no hay corrida real en la que mirar GHCR. Lo que **sí** se ejecutó: la mecánica completa contra
 >    `registry:2` (tag inmutable y móvil, con identidad confirmada en los dos), la falsación en sus dos desenlaces,
@@ -177,15 +178,42 @@
 >    `CACHED`, 2 s en vez de ≥6 s, imagen igualmente cargada con el mismo id). Lo que queda pendiente de una corrida
 >    real es lo que solo se ve en GHCR y en la caché `type=gha`.
 
+> **Lo que las corridas reales demuestran del grupo 6, y lo que no (2026-09-24, revisión contra los logs).** Seis
+> corridas sobre esta rama: `35980420363`, `35982223240`, `36045259965`, `36048413770` y `36064994390` (`cd-staging`)
+> y `36068228388` (`cd-prod`). Revisadas leyendo los logs (`gh run view <id> --log` redirigido a fichero) y el estado
+> real de GHCR (`users/manuXD270516/packages/container/linkvault-{api,worker,web}/versions`), no la conclusión de la
+> corrida.
+>
+> * **6.4 — verificada.** `35982223240` corre con `"dry_run": "true"`: el log del job pasa de
+>   `infra/ci/verify-artifact.sh` a `infra/ci/teardown-artifact.sh` sin que exista el paso de publicación, y la
+>   corrida queda verde. En GHCR **no hay ninguna versión** para el `sha-cf412ecd1df7` de esa corrida: los tres
+>   paquetes tienen **una sola** versión cada uno, con el único tag `sha-b541a9a314b4`.
+> * **6.5 — verificada, y por corridas reales en modo de publicación.** `36045259965` y `36048413770` corrieron con
+>   `"dry_run": "false"` —el camino de publicación estaba habilitado— y fallaron **dentro** de la verificación
+>   (`unauthorized: access to the requested resource is not authorized` bajando MinIO de quay.io;
+>   `[FAIL] no se pudieron descargar las imágenes de terceros (mongo redis minio) tras 3 intentos`), y `35980420363`
+>   falló con `[FAIL] la pila no quedó sana en 360s`. En las tres el paso de publicación **no llegó a ejecutarse** y
+>   GHCR no tiene ninguna versión para `sha-cf412ecd1df7`, `sha-0401241baf3e` ni `sha-b12520c41c03`. El fallo fue
+>   **real y no inducido**, así que no hubo nada que restaurar; la observación que la tarea pedía es la misma.
+> * **6.6 — verificada con dos corridas consecutivas comparables.** `35980420363` (09:18) y `35982223240` (09:36):
+>   el build de `api` pasa de **174 s con cero capas `CACHED`** a **13 s con 14 capas `CACHED`** tras
+>   `#7 importing cache manifest from gha:…`; `worker` 65 s → 10 s y `web` 39 s → 3 s. Y las imágenes siguen
+>   quedando cargadas en el daemon, porque la verificación de esa misma corrida las consume con `--pull never`.
+> * **6.3 sigue abierta, y esto es exactamente lo que le falta.** `36064994390` publicó el tag inmutable en los tres
+>   paquetes (`sha-b541a9a314b4`, con `identidad confirmada: lo publicado es el artefacto verificado` y los digests
+>   del registro coincidiendo uno a uno con los de GHCR), pero el tag móvil **no se publicó**: el log dice
+>   `tag móvil    : (ninguno: esta corrida no mueve ningún canal)` porque `MOVING_TAG` llega vacío fuera de `main`.
+>   6.3 enuncia **dos** tags y la evidencia cubre **uno**; se cierra con la primera corrida de `main`.
+
 ## 7. Tres resultados honestos y visibles en `cd-staging`
 
-- [ ] 7.1 [infra] Job `preflight` que mapee `STAGING_HOST`, `STAGING_SSH_USER`, `STAGING_SSH_KEY` y `STAGING_COMPOSE_DIR` a `env:` **dentro de un step** y emita un output con el estado (`none` | `partial` | `full`) y el aviso: el contexto `secrets` **no se puede leer en un `if:` de job**, así que no hay atajo; verificar con una corrida real que el output sale y vale `none`.
+- [x] 7.1 [infra] Job `preflight` que mapee `STAGING_HOST`, `STAGING_SSH_USER`, `STAGING_SSH_KEY` y `STAGING_COMPOSE_DIR` a `env:` **dentro de un step** y emita un output con el estado (`none` | `partial` | `full`) y el aviso: el contexto `secrets` **no se puede leer en un `if:` de job**, así que no hay atajo; verificar con una corrida real que el output sale y vale `none`.
 - [ ] 7.2 [infra] `partial` **falla en el preflight** nombrando los que faltan, porque ahí alguien sí quería desplegar; verificar configurando un secret de prueba y dejando el resto ausente, ver el fallo, y retirarlo después.
-- [ ] 7.3 [infra] Job `deploy` con `needs` sobre `preflight` **y sobre el job de construir-verificar-publicar**, e `if:` sobre el estado igual a `full`, **sin `always()`**: sin el segundo `needs`, el tag de imagen llegaría vacío, el compose caería a `:latest` —que `cd-staging` ni siquiera publica— y el despliegue informaría éxito sobre la imagen equivocada; verificar en la corrida real (hoy sin secretos) que el job queda **saltado** y que un job saltado deja el workflow en **éxito**.
+- [x] 7.3 [infra] Job `deploy` con `needs` sobre `preflight` **y sobre el job de construir-verificar-publicar**, e `if:` sobre el estado igual a `full`, **sin `always()`**: sin el segundo `needs`, el tag de imagen llegaría vacío, el compose caería a `:latest` —que `cd-staging` ni siquiera publica— y el despliegue informaría éxito sobre la imagen equivocada; verificar en la corrida real (hoy sin secretos) que el job queda **saltado** y que un job saltado deja el workflow en **éxito**.
 - [x] 7.4 [infra] Añadir en el despliegue un guardia que **falle** si el tag resuelto no es el de esta corrida: vacío, `latest` o distinto del output del job de publicación; verificar forzando el caso (vaciando el output) y viendo que el paso falla antes de tocar el host, en vez de desplegar otra cosa.
-- [ ] 7.5 [infra] Escribir un job de **reporte** que corra **siempre** (`if: always()`), con el nombre calculado a partir del estado del preflight y del resultado de la verificación, porque lo que se ve en la lista de *checks* de un commit es el **nombre del job**, no el de la ejecución (`run-name` se evalúa al iniciar y no puede depender de outputs de jobs, así que no sirve de vehículo); verificar mirando la lista de checks del commit en la rama y leyendo ahí que no se desplegó.
+- [x] 7.5 [infra] Escribir un job de **reporte** que corra **siempre** (`if: always()`), con el nombre calculado a partir del estado del preflight y del resultado de la verificación, porque lo que se ve en la lista de *checks* de un commit es el **nombre del job**, no el de la ejecución (`run-name` se evalúa al iniciar y no puede depender de outputs de jobs, así que no sirve de vehículo); verificar mirando la lista de checks del commit en la rama y leyendo ahí que no se desplegó.
 - [ ] 7.6 [infra] Publicar además un **estado de commit explícito** desde ese job (permiso `statuses: write`) y fijar **el estado, no solo la descripción**: `success` únicamente cuando el artefacto se construyó **y** arrancó; `failure` cuando no se construyó o no arrancó. Como el job corre con `if: always()`, un reporte que publique siempre `success` pondría un **tic verde junto al check rojo** y reconstruiría exactamente la señal que este change viene a arreglar. El estado SHALL derivarse del `result` del job de construir-verificar-publicar y del output del preflight, nunca de un literal. Verificar en el propio commit de la rama —API de estados o vista del commit— dos cosas: en verde, que el estado dice que se verificó y no se desplegó; y **con la corrida rota de 7.8**, que el estado publicado es de **fallo** y su descripción lo dice.
-- [ ] 7.7 [infra] Repasar que ningún job ni step siga diciendo "deploy" o "desplegado" en su nombre o en su resumen cuando solo verificó; verificar leyendo los nombres tal y como se ven en la lista de checks, no en el YAML.
+- [x] 7.7 [infra] Repasar que ningún job ni step siga diciendo "deploy" o "desplegado" en su nombre o en su resumen cuando solo verificó; verificar leyendo los nombres tal y como se ven en la lista de checks, no en el YAML.
 - [ ] 7.8 [infra] Comprobar que un artefacto roto **rompe** el pipeline aunque no haya destino, y que el fallo no queda tapado por la rama de "no hay dónde desplegar"; verificar rompiendo el build a propósito en una corrida de la rama y restaurando. Esta misma corrida es la que 7.6 usa para comprobar el estado de fallo.
 - [x] 7.9 [infra] Aplicar el plazo explícito y el volcado de logs de 5.7 a los `up -d --wait` de los **dos** despliegues por ssh (`cd-staging.yml` y `cd-prod.yml`), que hoy se colgarían igual; verificar reproduciendo en local un contenedor en bucle de reinicio con exactamente esa línea de comandos y viendo que termina con error y con los logs, en vez de esperar sin fin.
 
@@ -231,7 +259,9 @@
 > 8. **`deploy-staging` no tenía `Checkout`.** No le hacía falta mientras todos sus pasos fueran `ssh-action`; el
 >    guardia de 7.4 es un script del repositorio, así que ahora sí.
 >
-> **Lo que queda sin verificar y por qué.** 7.1, 7.2, 7.3, 7.5, 7.6, 7.7 y 7.8 exigen una **corrida real de GitHub
+> **Lo que quedaba sin verificar y por qué** (escrito antes de que la rama se publicara; **revisado contra las
+> corridas reales en el bloque siguiente**, que deja verificadas 7.1, 7.3, 7.5 y 7.7 y abiertas 7.2, 7.6 y 7.8).
+> 7.1, 7.2, 7.3, 7.5, 7.6, 7.7 y 7.8 exigen una **corrida real de GitHub
 > Actions** (que el output del preflight salga y valga `none`; que un job saltado deje el workflow en éxito; que el
 > nombre y el estado de commit se vean en la lista de checks; que una corrida con el build roto termine en rojo).
 > La rama no está publicada y el repositorio no tiene secretos, así que nada de eso se puede observar desde aquí.
@@ -240,15 +270,45 @@
 > su descripción —entre ellos la falsación del grupo: **artefacto roto y sin destino → estado `failure`**—, los
 > cuatro caminos del guardia del tag y los dos experimentos del `up`.
 
+> **Lo que las corridas reales demuestran del grupo 7, y lo que no (2026-09-24, revisión contra los logs).**
+>
+> * **7.1 — verificada.** En las seis corridas el step `Resolve staging deploy target` mapea los cuatro secretos a
+>   `env:` **dentro del step** (`DEPLOY_HOST:`, `DEPLOY_SSH_USER:`, `DEPLOY_SSH_KEY:`, `DEPLOY_COMPOSE_DIR:`, los
+>   cuatro vacíos), el script imprime `estado: none` con los cuatro nombres marcados `ausente`, y el job registra
+>   `Set output 'state'` y `Set output 'summary'`.
+> * **7.3 — verificada por los dos lados.** `deploy-staging` lleva `needs: [preflight, build-verify-publish]`,
+>   `if: needs.preflight.outputs.state == 'full'` y ningún `always()`; en `35982223240` y `36064994390` el job sale
+>   **`skipped`** y la corrida entera queda en **`success`**.
+> * **7.5 — verificada.** El nombre se **calcula**: `resultado: artefacto verificado — NO desplegado (sin destino de
+>   staging)` en las verdes y `resultado: el artefacto NO pasó la verificación` en las rojas. Y se lee donde la tarea
+>   exige: `commits/b541a9a…/check-runs` devuelve 10 checks, entre ellos ese nombre para `cd-staging` y su gemelo de
+>   `cd-prod`.
+> * **7.7 — verificada leyendo la lista de checks, no el YAML.** De los diez nombres de `b541a9a…`, ninguno afirma
+>   haber desplegado; los dos que llevan "deploy" (`deploy staging` / `deploy prod (solo si hay destino configurado)`)
+>   salen **`skipped`**, y los dos de reporte dicen `NO desplegado`.
+> * **7.2 sigue abierta.** Ninguna de las seis corridas tuvo un solo secreto de destino puesto: el estado `partial`
+>   —el que falla nombrando los que faltan— no se ha ejercitado **nunca** dentro de Actions.
+> * **7.6 sigue abierta, y no por falta de corrida.** Los dos estados existen sobre commits de esta rama
+>   (`success` en `b541a9a…` con «Artefacto verificado. NO desplegado…»; `failure` en `b12520c…`, `0401241…` y
+>   `cf412ec…`). Lo que falla es la **descripción** del lado de fallo, que la propia corrida desmiente: en
+>   `36048413770` el log dice `[FAIL] … Esto NO es un fallo del artefacto de LinkVault: es el registro del que se
+>   descargan`, y el estado publicado en ese mismo commit dice `El artefacto no se construyó o no arrancó`. 7.6 pide
+>   que el estado sea de fallo **y** que su descripción lo diga; dice de más, y afirmar una causa que el log niega es
+>   la forma de error que este change persigue. Queda abierta con el defecto nombrado aquí, no dada por buena.
+> * **7.8 sigue abierta.** No se ha roto ningún artefacto a propósito. Las tres corridas rojas sí demuestran que un
+>   fallo de la verificación pone la corrida en rojo **sin destino configurado** (deploy saltado, reporte ≠0), pero no
+>   el caso que 7.8 enuncia: en las tres el artefacto **se construyó y se cargó**, y lo que falló fue la descarga de
+>   las imágenes de terceros.
+
 ## 8. `cd-prod`: el que nunca se ha ejecutado
 
 - [ ] 8.1 [infra] Aplicar a `.github/workflows/cd-prod.yml` la misma estructura: un job que construya (load, sin push), verifique con `docker-compose.prod.yml` y publique esas mismas imágenes, más `preflight` y `deploy` con las mismas condiciones y guardias de los grupos 6 y 7; verificar con una corrida `workflow_dispatch` en modo prueba.
-- [ ] 8.2 [infra] Comprobar antes de nada qué hace `environment: production` en este repositorio: si abre un **registro de despliegue** (mostraría producción como desplegada aunque no lo esté) o si exige revisores (el job quedaría **colgado** esperando aprobación); verificar leyendo la configuración del entorno y una corrida de prueba, y dejar escrito el resultado.
-- [ ] 8.3 [infra] Si 8.2 confirma cualquiera de las dos cosas, el `preflight` SHALL usar un **entorno espejo solo para leer secretos** (sin reglas de protección ni URL), y `environment: production` SHALL quedar únicamente en el job de despliegue: los secretos de prod son de *environment*, así que un preflight sin entorno los leería vacíos y reportaría "sin destino → verde" para siempre; verificar que el preflight reporta `none` honestamente y que no aparece ningún despliegue registrado en el entorno real.
+- [x] 8.2 [infra] Comprobar antes de nada qué hace `environment: production` en este repositorio: si abre un **registro de despliegue** (mostraría producción como desplegada aunque no lo esté) o si exige revisores (el job quedaría **colgado** esperando aprobación); verificar leyendo la configuración del entorno y una corrida de prueba, y dejar escrito el resultado.
+- [x] 8.3 [infra] Si 8.2 confirma cualquiera de las dos cosas, el `preflight` SHALL usar un **entorno espejo solo para leer secretos** (sin reglas de protección ni URL), y `environment: production` SHALL quedar únicamente en el job de despliegue: los secretos de prod son de *environment*, así que un preflight sin entorno los leería vacíos y reportaría "sin destino → verde" para siempre; verificar que el preflight reporta `none` honestamente y que no aparece ningún despliegue registrado en el entorno real.
 - [x] 8.4 [infra] El `verify` de un release SHALL correr sobre **todo el workspace** (`run-many --all`) y no sobre `affected`: con `nx-set-shas` en un tag que apunta a un commit de `main`, base y cabeza coinciden y el conjunto afectado sale **vacío**, así que hoy el verify daría verde **sin ejecutar nada** justo antes de desplegar a producción; verificar comparando la lista de proyectos del log con `pnpm nx show projects`.
 - [ ] 8.5 [infra] Añadir un guardia que **falle** si el conjunto de proyectos verificados sale vacío, **solo en el modo release** (`run-many --all`, 8.4) y **no** en el `verify` por afectación de `ci.yml` y `cd-staging.yml`: ahí un conjunto vacío es legítimo —un merge que solo toca documentación no afecta a ningún proyecto— y un guardia incondicional pondría en rojo esos merges, inventando un fallo donde no lo hay. Verificar los dos lados: forzando el conjunto vacío en el modo release y viendo el fallo, y con un commit de solo documentación en la rama viendo que `ci.yml` sigue en verde (y que el paso incondicional de 3.2 sí corre). Restaurar.
 - [x] 8.6 [infra] Endurecer el guardia de semver: hoy es un glob de `case` (`v[0-9]*.[0-9]*.[0-9]*`) que acepta `v1.2.3abc`; sustituirlo por una comparación anclada que **no admita ceros a la izquierda** (`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`); verificar con una tabla de casos: `v1.2.3` y `v0.1.0` pasan, y `v1.2.3abc`, `v1.2`, `v01.2.3` y `1.2.3` se rechazan nombrando el tag.
-- [ ] 8.7 [infra] La corrida de prueba **no puede mover tags flotantes ni correr código viejo**: añadir un input de `workflow_dispatch` que construya y verifique **sin publicar** (`:latest` es el valor por defecto de `IMAGE_TAG` en el compose, así que publicarlo en una prueba es lo que producción se llevaría en el siguiente `pull`) y **un input de referencia** para ese modo, porque hoy el checkout usa `inputs.tag` y una prueba desde esta rama haría checkout del tag y correría el código anterior; verificar con la corrida de prueba sobre la rama, comprobando en el log que el commit construido es el de la rama y en GHCR que no apareció ningún `:latest` nuevo. Es el modo de prueba al que 6.4 se refiere.
+- [x] 8.7 [infra] La corrida de prueba **no puede mover tags flotantes ni correr código viejo**: añadir un input de `workflow_dispatch` que construya y verifique **sin publicar** (`:latest` es el valor por defecto de `IMAGE_TAG` en el compose, así que publicarlo en una prueba es lo que producción se llevaría en el siguiente `pull`) y **un input de referencia** para ese modo, porque hoy el checkout usa `inputs.tag` y una prueba desde esta rama haría checkout del tag y correría el código anterior; verificar con la corrida de prueba sobre la rama, comprobando en el log que el commit construido es el de la rama y en GHCR que no apareció ningún `:latest` nuevo. Es el modo de prueba al que 6.4 se refiere.
 
 > **Lo que el grupo 8 dio por cierto y no lo era (2026-09-24, implementación).**
 >
@@ -295,7 +355,9 @@
 >    ADR-048 §3 en este mismo change. Y el apartado de CD declaraba `cd-prod` «**todavía sin** la verificación del
 >    artefacto». Corregidas las dos, más la tabla de tags de producción (`:latest` móvil) y el modo de prueba.
 >
-> **Lo que queda sin verificar y por qué.** 8.1, 8.2, 8.3, 8.5 y 8.7 exigen una **corrida real de GitHub Actions**:
+> **Lo que quedaba sin verificar y por qué** (escrito antes de que la rama se publicara; **revisado contra la corrida
+> real en el bloque siguiente**, que deja verificadas 8.2, 8.3 y 8.7 y abiertas 8.1 y 8.5).
+> 8.1, 8.2, 8.3, 8.5 y 8.7 exigen una **corrida real de GitHub Actions**:
 > que el modo de prueba construya el commit de la rama y no el del tag; que no aparezca ningún `:latest` nuevo en
 > GHCR; que el preflight reporte `none` leyendo el entorno espejo; que no quede ningún despliegue registrado en
 > `production`; y el lado de 8.5 que pide un commit de solo documentación dejando `ci.yml` en verde. La rama no está
@@ -308,6 +370,38 @@
 > línea**, la evaluación de las ocho expresiones del workflow sobre cinco escenarios de disparo, y la comprobación de
 > que los **seis** nombres que deriva la expresión del job `report` coinciden uno a uno con los que imprime
 > `infra/ci/report-cd-outcome.sh` con `TARGET_LABEL=production`.
+
+> **Lo que la corrida real de `cd-prod` demuestra del grupo 8, y lo que no (2026-09-24, revisión contra los logs).**
+> La corrida es `36068228388`, `workflow_dispatch` con `dry_run: true` sobre esta rama.
+>
+> * **8.2 — verificada, y la premisa del grupo queda medida en vez de supuesta.** Consultada la API **después** de
+>   esa corrida: `repos/{owner}/{repo}/environments` → **1** (`production-preflight`, `protection_rules: []`, sin
+>   URL) y `repos/{owner}/{repo}/deployments` → **1**, con `environment: production-preflight` y
+>   `created_at: 2026-09-24T22:34:53Z`, el instante en que arrancó la corrida. Eso demuestra el primer efecto que 8.2
+>   manda medir: **referenciar un entorno abre un registro de despliegue**. El segundo queda descartado: el entorno
+>   `production` **no existe**, así que no hay revisores que puedan colgar el job. El resultado está escrito en
+>   `cd-prod.yml` §preflight.
+>   **Consecuencia que no conviene tapar:** el espejo **no** es «de solo lectura». El registro de despliegue se abrió
+>   —en `production-preflight`—; lo que el espejo consigue es que no se abra en `production`, no que no se abra.
+> * **8.3 — verificada por los dos lados.** `environment: production-preflight` aparece **solo** en `preflight` y
+>   `environment: production` **solo** en `deploy-prod`; el preflight reportó `estado: none` leyendo desde el espejo,
+>   y la lista de `deployments` no tiene **ninguna** entrada de `production`.
+> * **8.7 — verificada.** El step `Show what is being verified` imprime `commit      : b541a9a314b4…`,
+>   `github.ref  : refs/heads/change/deploy-image-verification` y `referencias que apuntan a este commit:
+>   change/deploy-image-verification` —el commit de la rama, no el del tag—, y
+>   `##[notice]Modo prueba: se construye y se verifica sha-b541a9a314b4; no se publica ni se despliega nada.`. En
+>   GHCR **no existe ningún tag `latest`** en ninguno de los tres paquetes.
+> * **8.1 sigue abierta.** La corrida de prueba demuestra tres de las cuatro piezas que 8.1 enuncia: construir con
+>   `load` y sin `push`, verificar con `docker-compose.prod.yml` —la pila entera sana, `rs0` con un miembro
+>   `PRIMARY`, `/health` de `api` y de `worker` con mongo y redis `up`, `<lv-root>` servido por `web`— y el par
+>   `preflight` (`none`) / `deploy-prod` (saltado). La cuarta, **publicar esas mismas imágenes**, es justo la que el
+>   modo de prueba salta por su `if:`: el camino de publicación de `cd-prod` (tag semver salido del guardia +
+>   `MOVING_TAG=latest`, que es el tag que producción se lleva en el siguiente `pull`) **no se ha ejecutado nunca**.
+>   Una corrida verde en modo prueba no prueba eso, y es la pieza de más riesgo del workflow.
+> * **8.5 sigue abierta.** La corrida demuestra el lado **positivo** —`ok: el release verifica 11 proyectos y ningún
+>   target del release queda vacío`—, que es el que ya pasaba. Los dos lados que 8.5 pide **falsar** (conjunto vacío
+>   en modo release dando rojo; commit de solo documentación dejando `ci.yml` verde con el paso incondicional
+>   corriendo) no se han ejercitado dentro de Actions.
 
 ## 9. Cerrar la divergencia de entorno entre los tres `verify`
 
@@ -548,7 +642,16 @@
 - [x] 11.2 [infra] Añadir a `sharedGlobals` de `nx.json` **solo** `.env.example` y `docker-compose.prod.yml` —hoy la lista tiene `nx.json`, `tsconfig.base.json`, `eslint.config.mjs`, `.nvmrc`, `package.json` y `pnpm-lock.yaml`— y dejar escrito por qué **no** entra `docs/**`: invalidaría la caché de **todos** los proyectos en cada commit de documentación, que en este repositorio es casi cada commit; la documentación queda cubierta por los `inputs` explícitos de 11.1 más el paso incondicional de 3.2. Verificar que un commit que solo toca `.env.example` hace que `pnpm nx show projects --affected` liste `repo-checks`.
 - [x] 11.3 [infra] **La prueba espejo**, que es el PR donde esto importa: con un commit que solo toca `apps/api/src/infrastructure/config/api-config.schema.ts` añadiendo una obligatoria nueva, verificar que la comprobación del compose **se ejecuta** (paso incondicional) y **falla** nombrándola, y que Nx no dice que recupera la caché; si la restaurara, los `inputs` de 11.1 están mal. Restaurar el esquema después.
 - [x] 11.4 [infra] Comprobar lo mismo con la documentación: un commit que solo toca `docs/RUNBOOK.md` hace que la comprobación de afirmaciones se ejecute de verdad; verificar leyendo la salida de Nx en la corrida (no puede decir que recupera la caché).
-- [ ] 11.5 [infra] Llevar el paso incondicional de 3.2 también a `cd-staging.yml` y `cd-prod.yml`, **escribiéndolo en los tres workflows** (no hay workflow reutilizable en este change: su extracción sale del alcance, ver el grupo 9); dejar en el YAML una nota de que los tres bloques son el mismo y han de cambiarse a la vez hasta que la fila 35 cierre la extracción. Verificar con una corrida real de `cd-staging` en la rama que el paso aparece y pasa, y comparando los tres bloques lado a lado.
+- [x] 11.5 [infra] Llevar el paso incondicional de 3.2 también a `cd-staging.yml` y `cd-prod.yml`, **escribiéndolo en los tres workflows** (no hay workflow reutilizable en este change: su extracción sale del alcance, ver el grupo 9); dejar en el YAML una nota de que los tres bloques son el mismo y han de cambiarse a la vez hasta que la fila 35 cierre la extracción. Verificar con una corrida real de `cd-staging` en la rama que el paso aparece y pasa, y comparando los tres bloques lado a lado.
+
+> **11.5 verificada con corrida real (2026-09-24).** En `36064994390` (`cd-staging`, rama) el step `Repo checks` del
+> job `verify` corre **antes** del cálculo de afectación y pasa: `=== Comprobaciones de repositorio
+> (tools/repo-checks), paso incondicional`, `repo-checks: 5 comprobaciones ejecutadas (check-claims-registry,
+> check-compose-env-contract, check-compose-healthchecks, check-docs-stack-up, check-stale-defaults)` y
+> `ok: 5 comprobaciones de repositorio ejecutadas`. El mismo step corre y pasa en `36068228388` (`cd-prod`).
+> Comparados los tres bloques lado a lado: `ci.yml:71-80`, `cd-staging.yml:86-95` y `cd-prod.yml:158-169` llevan el
+> **mismo** comentario de 11.5 y el **mismo** step (`cd-prod` añade dos líneas de comentario propias explicando por
+> qué no basta con que corra en `ci.yml`).
 
 > **Lo que el grupo 11 dio por cierto y no lo era (2026-09-24, implementación).**
 >
@@ -731,7 +834,32 @@
 
   Verificar que los dos ficheros dicen lo mismo y que el manifiesto del change registra lo que **no** cierra: sigue sin haber servidor de staging.
 - [x] 13.6 [infra] `pnpm nx affected -t lint,typecheck,test --base=main` y `pnpm exec openspec validate --all --no-interactive` en verde, **redirigiendo la salida a un archivo y leyendo el archivo** (nunca por pipe). Con **A1** el conjunto afectado deja de ser solo de infraestructura: el grupo 10-bis toca `shared`, `ai`, `api` y `web`, así que la corrida verde SHALL incluir esos cuatro proyectos —comprobarlo leyendo la lista del log, no suponerla—; si `shared` o `web` no aparecen, o los `inputs` están mal o la corrida está restaurando caché, y el verde no significaría nada. El smoke de `web-e2e` **no** entra aquí (necesita la pila arrancada a mano): su corrida y su restauración del entorno son 10-bis.8.
-- [ ] 13.7 [infra] **La comprobación que da sentido al change**: `cd-staging` en **verde** sobre la rama, con las tres imágenes construidas, la pila de `docker-compose.prod.yml` levantada y verificada, **nada publicado antes de verificar**, el digest publicado idéntico al verificado (6.2) y el aviso de que no se desplegó visible **en la lista de checks del commit**. Adjuntar el enlace de la corrida. No se da por terminado con "el CI pasa". Con **A1** el criterio no se rebaja sino que se amplía: esa misma corrida SHALL llevar el `verify` de los proyectos que el grupo 10-bis toca (`shared`, `ai`, `api`, `web`) en verde **antes** del paso de publicación, de modo que lo que se publique sea también lo que pasó los tests del cambio funcional; una corrida verde por afectación vacía en esos cuatro proyectos NO SHALL contar como cierre.
+- [x] 13.7 [infra] **La comprobación que da sentido al change**: `cd-staging` en **verde** sobre la rama, con las tres imágenes construidas, la pila de `docker-compose.prod.yml` levantada y verificada, **nada publicado antes de verificar**, el digest publicado idéntico al verificado (6.2) y el aviso de que no se desplegó visible **en la lista de checks del commit**. Adjuntar el enlace de la corrida. No se da por terminado con "el CI pasa". Con **A1** el criterio no se rebaja sino que se amplía: esa misma corrida SHALL llevar el `verify` de los proyectos que el grupo 10-bis toca (`shared`, `ai`, `api`, `web`) en verde **antes** del paso de publicación, de modo que lo que se publique sea también lo que pasó los tests del cambio funcional; una corrida verde por afectación vacía en esos cuatro proyectos NO SHALL contar como cierre.
+
+> **13.7 cerrada con corrida real (2026-09-24):**
+> **https://github.com/manuXD270516/linkvault/actions/runs/36064994390** — `cd-staging` sobre
+> `change/deploy-image-verification`, commit `b541a9a314b4`, conclusión **success**. Lo que el log demuestra, punto
+> por punto del enunciado:
+>
+> * **Las tres imágenes construidas y cargadas** en el daemon del corredor (`load: true`, sin `push`), con sus tres
+>   ids listados por la verificación.
+> * **La pila de `docker-compose.prod.yml` levantada y verificada**: `up -d --wait --wait-timeout 360 --pull never
+>   mongo redis minio api worker web` con los seis contenedores `(healthy)`, `traefik no se levantó (correcto)`,
+>   `rs0 con 1 miembro, estado PRIMARY, primario escribible`, `/health` de `api` y de `worker` con
+>   `"status":"up"` y `mongo`/`redis` en `up`, `web sirve el documento del SPA (<lv-root> presente)` y los dos
+>   directorios de prompts con 6 entradas.
+> * **Nada publicado antes de verificar**: el paso de publicación arranca cuando la verificación ya ha terminado en
+>   verde, y las tres versiones de GHCR se crean a las 22:16:08–22:16:25Z. Antes de esta corrida **no existía ninguna
+>   versión** de los tres paquetes.
+> * **Identidad por digest (6.2)**: `verificado (digest de repositorio local)` y `publicado (digest del registro)`
+>   coinciden en los tres (`sha256:107629fb…`, `sha256:0f317800…`, `sha256:d1c83477…`), y son exactamente los que
+>   devuelve hoy la API de paquetes de GHCR.
+> * **El aviso visible en la lista de checks del commit**: `commits/b541a9a…/check-runs` incluye
+>   `resultado: artefacto verificado — NO desplegado (sin destino de staging)` en `success`, con
+>   `deploy staging (solo si hay destino configurado)` en `skipped`.
+> * **A1**: el `verify` de esa misma corrida, **anterior** al job de publicación, no fue por afectación vacía:
+>   `lint` para **11** proyectos, `typecheck` para 10, `test` para **9** —entre ellos `api`, `web`, `ai` y
+>   `shared`—, `eval-ci` para `ai` y `build` para 4, todos `Successfully ran target`.
 
 > **Lo que el grupo 13 dio por cierto y no lo era (2026-09-24, implementación).**
 >
