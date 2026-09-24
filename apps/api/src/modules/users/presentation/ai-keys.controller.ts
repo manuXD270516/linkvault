@@ -1,4 +1,5 @@
 import {
+  aiKeyViewSchema,
   aiVendorSchema,
   listAiKeysResponseSchema,
   upsertAiKeyRequestSchema,
@@ -52,7 +53,11 @@ export class AiKeysController {
     @Body(new ZodValidationPipe(upsertAiKeyRequestSchema))
     body: UpsertAiKeyRequest,
   ): Promise<AiKeyView> {
-    return this.upsertMyAiKey.execute(user.userId, vendor, body);
+    const view = await this.upsertMyAiKey.execute(user.userId, vendor, body);
+    // La cabecera de esta clase prometía «respuestas validadas contra el contrato» y el PUT no lo estaba: el
+    // conjunto cerrado de `ai/data-protection` («Secretos BYOK fuera de logs y respuestas») vale igual para esta
+    // vista suelta que para el listado, y es la que el SPA lee justo después de guardar una clave.
+    return aiKeyViewSchema.parse(view);
   }
 
   @Delete()
