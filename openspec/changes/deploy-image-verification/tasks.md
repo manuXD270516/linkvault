@@ -311,7 +311,7 @@
 
 ## 9. Cerrar la divergencia de entorno entre los tres `verify`
 
-- [ ] 9.1 [infra] Cerrar la divergencia con `ci.yml`: a los steps `Test` y `Eval (replay)` de `cd-staging.yml` y `cd-prod.yml` les falta `AI_EMBED_CHAIN: mock`, que `ci.yml` sí fija; añadirlo y verificar comparando los tres ficheros lado a lado.
+- [x] 9.1 [infra] Cerrar la divergencia con `ci.yml`: a los steps `Test` y `Eval (replay)` de `cd-staging.yml` y `cd-prod.yml` les falta `AI_EMBED_CHAIN: mock`, que `ci.yml` sí fija; añadirlo y verificar comparando los tres ficheros lado a lado.
 
 > Extraer el `verify` a un workflow reutilizable y llevar allí el step `Check prompt assets` **salen de este change**: es un refactor que ningún defecto de aquí exige, y un fallo en él pondría en rojo los tres pipelines justo en el change cuyo entregable es una corrida verde. Quedan registrados en la fila 35 (13.5).
 

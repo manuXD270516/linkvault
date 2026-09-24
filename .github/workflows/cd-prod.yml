@@ -174,10 +174,14 @@ jobs:
       - name: Typecheck
         run: pnpm nx run-many --all -t typecheck
 
+      # Mismo entorno de IA que el verify de ci.yml (spec ci-pipeline, CLAUDE.md): mock determinista en
+      # replay, embeddings incluidos. AI_EMBED_CHAIN va explícito porque su ausencia hacía divergir este verify del
+      # de ci.yml, que es el único sitio donde la cadena de embeddings quedaba sin fijar.
       - name: Test
         env:
           AI_CHAIN: mock
           AI_MOCK_MODE: replay
+          AI_EMBED_CHAIN: mock
         run: pnpm nx run-many --all -t test
 
       - name: Eval (replay)
@@ -185,6 +189,7 @@ jobs:
           NODE_ENV: test
           AI_CHAIN: mock
           AI_MOCK_MODE: replay
+          AI_EMBED_CHAIN: mock
         run: pnpm nx run-many --all -t eval-ci
 
       - name: Build
