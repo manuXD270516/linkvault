@@ -90,8 +90,16 @@ jobs:
       - name: Build
         run: pnpm nx affected -t build
 
-  build-push:
-    name: build and push GHCR
+  # Construir → verificar que arranca → publicar, en **un solo job** (ADR-048 §4). Las tres imágenes se construyen
+  # con `load: true` y **sin `push`**: una imagen cargada vive solo en el daemon de este corredor, así que publicar
+  # desde otro sitio la reconstruiría y subiría bits que nadie verificó.
+  #
+  # ESTADO: este job hace hoy construir → verificar. **La publicación la devuelve el grupo 6** del change
+  # `deploy-image-verification` (6.1 `docker push` del tag ya cargado, 6.2 identidad por digest, 6.3 los dos tags).
+  # Hasta entonces este workflow no publica nada, que es el lado seguro del orden: lo que la spec prohíbe
+  # ("Nada se publica antes de verificarse") es lo contrario.
+  build-verify:
+    name: build and verify artifact
     needs: verify
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -120,45 +128,84 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and push api
+      # `load: true` y `push: false`: la imagen queda **en el daemon de este corredor**, que es la única forma de
+      # levantarla para verificarla. `cache-from`/`cache-to` se mantienen: abaratan **la** construcción, y no
+      # autorizan una segunda (el grupo 6 publica este mismo artefacto, no uno reconstruido).
+      # Solo el tag inmutable `sha-<12>`: el tag móvil `:staging` no puede existir antes de la verificación.
+      - name: Build api (load, no push)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/api.Dockerfile
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-api:${{ steps.meta.outputs.tag }}
-            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-api:staging
+          push: false
+          load: true
+          tags: ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-api:${{ steps.meta.outputs.tag }}
           cache-from: type=gha,scope=api
           cache-to: type=gha,mode=max,scope=api
 
-      - name: Build and push worker
+      - name: Build worker (load, no push)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/worker.Dockerfile
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-worker:${{ steps.meta.outputs.tag }}
-            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-worker:staging
+          push: false
+          load: true
+          tags: ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-worker:${{ steps.meta.outputs.tag }}
           cache-from: type=gha,scope=worker
           cache-to: type=gha,mode=max,scope=worker
 
-      - name: Build and push web
+      - name: Build web (load, no push)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/web.Dockerfile
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-web:${{ steps.meta.outputs.tag }}
-            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-web:staging
+          push: false
+          load: true
+          tags: ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-web:${{ steps.meta.outputs.tag }}
           cache-from: type=gha,scope=web
           cache-to: type=gha,mode=max,scope=web
 
+      # Verificación del artefacto (grupo 5 del change `deploy-image-verification`, ADR-048 §4): levanta
+      # `docker-compose.prod.yml` —el **mismo** fichero que se despliega, nunca un compose escrito para CI— con las
+      # imágenes que los tres pasos anteriores acaban de cargar, y exige que `api`, `worker` y `web` arranquen y
+      # respondan. Traefik, los certificados y la publicación de puertos quedan fuera (exigen DNS y ACME); los
+      # servicios no publican puertos y se entra con `docker compose exec`.
+      #
+      # Las cuatro variables de imagen y tag van **aquí**, como `env:` del paso, y no en `infra/ci/verify.env`: en el
+      # fichero versionado serían un valor fijo que envejece y que reintroduciría el espacio de nombres por defecto
+      # corregido en ADR-048 §4-bis. Sin ellas el compose resolvería `ghcr.io/manuxd270516/linkvault-*:latest` y se
+      # verificaría una imagen que no es la de esta corrida; el script aborta nombrándolas.
+      #
+      # El plazo del `up --wait` es **360 s**, y el número está justificado contra los `start_period` y las ventanas
+      # de reintento del compose: las dependencias tardan en el peor caso legítimo 140 s (minio: 20 s de
+      # `start_period` + 12 reintentos × 10 s), y `api`/`worker` no empiezan a contar hasta entonces, con otros 180 s
+      # cada uno (60 s + 12 × 10 s) → **320 s** de suelo, más un 12 % de margen para un corredor lento. Un plazo por
+      # debajo de eso cortaría corridas sanas. El número vive en `infra/ci/verify-artifact.sh` (una sola fuente) y se
+      # puede forzar con `VERIFY_WAIT_TIMEOUT`.
+      #
+      # Medido y corregido en la implementación: un `up --wait` **sin** plazo **no** se queda esperando para siempre
+      # ante un bucle de reinicio, como suponía el change. Con los seis servicios declarando healthcheck, Compose
+      # aborta en cuanto uno pasa a `unhealthy` (7 s con la imagen de `api` rota a propósito). Lo que convierte ese
+      # "is unhealthy" en algo diagnosticable es el **volcado de `docker compose ps` y `logs`** que el script hace al
+      # fallar, no el plazo.
+      - name: Verify artifact (docker-compose.prod.yml stack in the runner)
+        env:
+          API_IMAGE: ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-api
+          WORKER_IMAGE: ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-worker
+          WEB_IMAGE: ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-web
+          IMAGE_TAG: ${{ steps.meta.outputs.tag }}
+        run: infra/ci/verify-artifact.sh
+
+      # `if: always()`: justo cuando la verificación falla es cuando hay volúmenes que limpiar. Sin `-v`, dos
+      # corridas seguidas en el mismo corredor arrancarían sobre los datos de la anterior —una mongo ya inicializada
+      # o un MinIO con los buckets ya creados esconderían los fallos de arranque que esto busca—.
+      - name: Tear down verification stack
+        if: always()
+        run: infra/ci/teardown-artifact.sh
+
   deploy-staging:
     name: deploy staging (compose pull+up + internal smoke)
-    needs: build-push
+    needs: build-verify
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -191,7 +238,7 @@ jobs:
             set -euo pipefail
             cd "${{ secrets.STAGING_COMPOSE_DIR }}"
             OWNER="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
-            export IMAGE_TAG="${{ needs.build-push.outputs.image_tag }}"
+            export IMAGE_TAG="${{ needs.build-verify.outputs.image_tag }}"
             export API_IMAGE="ghcr.io/${OWNER}/linkvault-api"
             export WORKER_IMAGE="ghcr.io/${OWNER}/linkvault-worker"
             export WEB_IMAGE="ghcr.io/${OWNER}/linkvault-web"
