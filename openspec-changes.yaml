@@ -411,9 +411,13 @@ changes:
 
       Dos causas, y la segunda explica por qué la primera sobrevivió 21 corridas:
       1. `docker/api.Dockerfile:23` y `worker.Dockerfile:22` hacen `pnpm install --prod --frozen-lockfile`
-         dentro de `dist/apps/<app>`, sobre el package.json que genera Nx. Ese directorio no pertenece al
-         workspace, así que pnpm sube al lockfile de la raíz y encuentra un package.json que no está en él:
-         `ERR_PNPM_FROZEN_LOCKFILE_WITH_OUTDATED_LOCKFILE`. Nunca pudo funcionar.
+         dentro de `dist/apps/<app>`. **Reproducido localmente**: Nx genera ahí package.json, lockfile y
+         workspace propios, así que no falta ningún lockfile. Lo que ocurre es que Nx **copia el campo
+         `packageManager: pnpm@12.4.2`** al manifiesto generado y **no** escribe la entrada
+         `packageManagerDependencies` que ese campo exige en pnpm 12; pnpm quiere añadirla, `--frozen-lockfile`
+         se lo prohíbe y aborta con `ERR_PNPM_FROZEN_LOCKFILE_WITH_OUTDATED_LOCKFILE`. Retirando ese campo del
+         manifiesto generado, el mismo install con el candado intacto termina en 3,4 s. Nunca pudo funcionar,
+         y la reproducibilidad no es lo que estorba.
       2. El job de despliegue exige `STAGING_HOST`/`STAGING_SSH_USER`/`STAGING_SSH_KEY`/`STAGING_COMPOSE_DIR`
          y falla a propósito si faltan (ADR-033 D10: "a dry-run is NOT an accepted CD outcome"). El repo no
          tiene **ningún** secret configurado, así que el pipeline es **rojo por construcción**: el rojo era
