@@ -103,3 +103,6 @@ export function daysSinceApplied(appliedAt: string, now: Date): number {
   const to = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
   return Math.max(0, Math.round((to - from) / DAY_MS));
 }
+
+// TEMPORARY (i18n-catalog-gate, task 4.1): unextracted unit to prove CI fails. Reverted before merge.
+export const i18nGateProbe = $localize`:@@links.snack.newNotice:Link guardado`;
