@@ -149,8 +149,9 @@ no fusionar ninguna contradicción conocida. El impacto queda enumerado por comp
 ### Lo que este change NO cierra
 
 Escrito aquí, con **dónde se retoma cada cosa**, en vez de quedar suelto en las notas de implementación de `tasks.md`.
-Todo lo de esta lista está además registrado en la **fila 35** (`staging-host`), en `docs/design-v0.2.md` §6 y en
-`openspec-changes.yaml`.
+Todo lo de esta lista **salvo el punto 7** está además registrado en la **fila 35** (`staging-host`), en
+`docs/design-v0.2.md` §6 y en `openspec-changes.yaml`. El 7 se cerró dentro de este change (`4dca9e3`) y salió de los
+dos: la fila 35 dice que ya no entra, y en el `scope` de `staging-host` queda como **(d)** retirada.
 
 1. **Sigue sin haber servidor de staging.** El objetivo es que el pipeline diga la verdad sobre eso, no inventarse un
    destino. Es la fila 35, y ningún otro change puede precederla mientras el pipeline termine en "verificado sin
@@ -178,7 +179,9 @@ Todo lo de esta lista está además registrado en la **fila 35** (`staging-host`
    otra caída seguía hablando en plural ("Tienes claves guardadas…")—. Hoy el aviso sale **por vendor**, dentro del
    bloque de cada uno: `data-testid` `profile-byok-consent-off-<vendor>` e id de i18n nuevo
    `profile.byok.vendorKeyInactive` en ES y EN, con `profile.byok.keysInactive` retirado de los dos catálogos. El
-   número se conserva para no renumerar los puntos 8 y 9, a los que apuntan `tasks.md` y `openspec-changes.yaml`.
+   número se conserva para no renumerar. Las referencias que existen a los números de esta lista son dos, las dos en
+   la tarea 13.5 de `tasks.md`: una al punto 9 y otra a este mismo 7, al tacharlo. Al 8 no apunta nadie, y
+   `openspec-changes.yaml` no cita ningún número de aquí: usa sus propias letras, de (a) a (f).
    → **no queda nada pendiente aquí**.
 8. **El adaptador SMTP no sabe autenticarse.** `SmtpMailer` (`apps/api/src/infrastructure/mail/smtp-mailer.ts`) crea el
    transporte **sin bloque `auth`** y con `secure: false`, y no existen `MAIL_SMTP_USER` ni `MAIL_SMTP_PASSWORD` en

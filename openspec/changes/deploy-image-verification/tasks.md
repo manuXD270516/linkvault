@@ -747,26 +747,41 @@
 >    produce **exactamente los mismos 672 ids** que `messages.xlf`, conjunto idéntico, cero diferencias. Y
 >    `translations.spec.ts` no mira lo que extrae Angular: compara el **conjunto de ids** de los dos catálogos entre
 >    sí y exige `target` en cada unidad, así que **habría pasado igual**. Lo que la extracción produce de verdad es
->    **ruido**: **38** unidades `discovery.*`/`links.*` reordenadas y **356** líneas de `<context-type="linenumber">`
->    actualizadas —1724 líneas de diff—, todo ajeno a este change. El motivo correcto de editar el catálogo a mano es
->    **evitar ruido no relacionado**, no una prueba que se rompería.
+>    **ruido**, todo ajeno a este change: unidades `discovery.*`/`links.*` en otro orden, líneas de
+>    `<context-type="linenumber">` actualizadas y espacios en tres `source` (cifras en el párrafo siguiente). El
+>    motivo correcto de editar el catálogo a mano es **evitar ruido no relacionado**, no una prueba que se rompería.
 >
->    Y de paso corrige el tamaño: «**513 de 668** unidades movidas» era la medida del 2026-09-24; medido hoy contra
->    el catálogo ya mantenido, el extractor mueve **38**. La conclusión no cambia —el churn no lo explica nada del
->    change— pero el número que la sostiene sí, y un número que nadie vuelve a medir envejece como cualquier otra
->    afirmación de este fichero.
+>    **Las cifras, que este párrafo mezclaba (corregido el 2026-09-25, tercer pase de QA).** Decía «de paso corrige
+>    el tamaño: 513 de 668 → 38», como si fueran dos medidas de lo mismo. **Son dos métricas distintas**, y ninguna
+>    corrige a la otra:
+>    - **Unidades fuera de su posición** —las que en el fichero extraído no ocupan el mismo índice que en el
+>      versionado—: es lo que medía el «**513 de 668**» del 2026-09-24. Hoy son **517 de 672**.
+>    - **Unidades que cambian de orden relativo** —672 menos la subsecuencia común más larga de las dos secuencias de
+>      ids, que es de 634—: **38** (23 `discovery.*` y 15 `links.*`). Una unidad que cambia de sitio desplaza el
+>      índice de todas las que quedan entre su posición vieja y la nueva, y por eso la primera cifra es mucho mayor.
+>    - **El tamaño del diff depende de la herramienta**, así que se dan las dos: `diff -u` (GNU diffutils 3.12) da
+>      **1724** líneas, **798** de ellas `+`/`-`; `git diff --no-index` da **1735**, **810** `+`/`-` (417 inserciones,
+>      393 borrados). En las dos, **356** de las líneas `+`/`-` son de `<context-type="linenumber">`.
+>    - Y lo que el recuento anterior no decía: **3** `source` de `discovery.*` (`discovery.submit`,
+>      `discovery.save.hint`, `discovery.destination.groupsError`) difieren del versionado **solo en espacios** al
+>      principio y al final. El «cero diferencias» de arriba vale para el conjunto de ids, no para esos tres `source`.
+>
+>    Medido el 2026-09-25 sobre `f4d5342` con `nx run web:extract-i18n --outputPath=<scratchpad>` fuera del
+>    repositorio (672 ids en los dos ficheros, conjunto idéntico) y comparando las dos secuencias de `trans-unit id`.
+>    La conclusión no cambia —el churn no lo explica nada del change—, pero cada número dice ya qué mide.
 > 3. **La falsación (c) de 10-bis.9 no puede hacer caer «los dos de componente», y no es un matiz.** Los tests de
 >    componente hablan con `HttpTestingController`: no pasan por `ListMyAiKeys`. Fijar `available: true` en el caso
 >    de uso hace caer el test de coherencia de 10-bis.4 (lado API) y **ningún** test de `web`. El equivalente del
 >    lado del SPA —que el store ignore `vendors` y lo dé todo por disponible— es el que sí los ejercita, y es el que
 >    se ejecutó: caen **tres** (el del aviso, el de «no es de todos» y el de la precedencia con el permiso apagado).
 > 4. **Neutralizar `AI_CONFIG_DEFAULTS.BYOK_OPENROUTER_MODEL` NO basta para fabricar el caso indisponible en el
->    smoke local, y la pasada parece verde igual.** El `.env` del repositorio fija
->    `BYOK_OPENROUTER_MODEL=meta-llama/llama-3.3-70b-instruct:free`, y Nx lo inyecta **pisando** el valor por defecto
+>    smoke local, y la pasada parece verde igual.** El `.env` local de la máquina donde se corrió —no versionado:
+>    `.gitignore:15` lo ignora— fijaba `BYOK_OPENROUTER_MODEL=meta-llama/llama-3.3-70b-instruct:free`, que **no** es
+>    el modelo de `.env.example` (`cohere/north-mini-code:free`, `:172`), y Nx lo inyecta **pisando** el valor por defecto
 >    del código; exportar la variable vacía tampoco sirvió. Con solo la neutralización del código el smoke pasó en
 >    verde **sin ejecutar la rama** (el vendor seguía disponible), que es justo la forma de falso verde que este
 >    change persigue: lo que lo delata es que **no se escribe la captura** `perfil-byok-vendor-indisponible.png`. Hay
->    que **comentar además la línea de `.env`**; entonces `api` arranca diciendo
+>    que **comentar además la línea de ese `.env` local**; entonces `api` arranca diciendo
 >    `AI configuration warnings: BYOK_OPENROUTER_MODEL (unusable: BYOK vendor openrouter has no usable model: it is
 >    not built and cannot be routed)` y la rama corre. Queda escrito en la cabecera del spec.
 > 5. **La precedencia que la delta pide «vendor a vendor» cayó sobre un aviso que era de sección — y se partió aquí,
@@ -1143,14 +1158,40 @@
 > **Qué cubre esta segunda corrida y qué no, dicho en voz alta.** Fue en **modo prueba** (`dry_run`), así que
 > `Publish verified artifact to GHCR` salió **`skipped`**: no publicó nada. De las dos mitades del enunciado de 13.7,
 > la segunda corrida recomprueba la primera —construir las tres imágenes, levantar y verificar la pila de
-> `docker-compose.prod.yml`, no publicar nada antes de verificar y dejar el aviso visible en la lista de checks— y
-> **no** recomprueba la segunda: «**el digest publicado idéntico al verificado (6.2)**» sigue cubierta **solo** por
-> `36064994390`, la única corrida que ha publicado de verdad. El argumento del diff aditivo respalda que sigue
+> `docker-compose.prod.yml` y dejar el aviso visible en la lista de checks— y **no** recomprueba la segunda, que
+> son las dos afirmaciones sobre lo publicado. «**Nada publicado antes de verificar**» no puede recomprobarla: en
+> modo prueba el paso de publicación se salta **en cualquier caso**, verifique antes o no, así que una corrida sin
+> publicación no distingue el orden correcto del incorrecto. Y «**el digest publicado idéntico al verificado
+> (6.2)**» tampoco, porque no hay digest publicado. Las dos siguen cubiertas **solo** por `36064994390`, la única
+> corrida que ha publicado de verdad. El argumento del diff aditivo respalda que siguen
 > valiendo —cero líneas borradas, el paso de publicación intacto, y `report-cd-outcome.sh` solo consulta la clase
 > cuando la verificación **no** fue exitosa—, pero es un argumento, no una ejecución, y este change entero nace de no
-> confundir las dos cosas. Así que «recomprobada» aquí significa **parcialmente**: la identidad por digest está
-> demostrada por una corrida sobre `b541a9a`, no sobre el workflow de hoy. Cerrarla del todo pide una corrida que
-> publique —fuera del modo prueba—, que es lo que ocurre al fusionar.
+> confundir las dos cosas. Así que «recomprobada» aquí significa **parcialmente**: el orden verificar-antes-de-publicar
+> y la identidad por digest están demostrados por una corrida sobre `b541a9a`, no sobre el workflow de hoy. Cerrarla
+> del todo pide una corrida que publique —fuera del modo prueba—, que es lo que ocurre al fusionar.
+>
+> **Tercera corrida, sobre la punta de la rama (2026-09-25, `36114285794`, commit `f4d5342`), con el mismo límite.**
+> También en **modo prueba** —el payload del `workflow_dispatch` que registra el log del build lleva
+> `"dry_run": "true"`—, así que no publica nada y **no** amplía lo que la segunda no cubre. Conclusión **success**:
+>
+> ```
+> verify (lint, specs, typecheck, test, build)                          → success
+> preflight (¿hay destino de staging configurado?)                      → success (estado: none)
+> build, verify and publish artifact                                    → success
+>   Publish verified artifact to GHCR (docker push of the loaded image) → skipped
+> resultado: artefacto verificado — NO desplegado (sin destino de staging) → success
+> deploy staging (solo si hay destino configurado)                      → skipped
+> ```
+>
+> Lo que sí aporta, leído del log: el `verify` no fue por afectación vacía —`lint` para 11 proyectos, `typecheck`
+> para 10, `test` para 9, `eval-ci` para `ai` y `build` para 4, con `web:lint`, `web:typecheck`, `web:test` y
+> `web:build` entre ellos, igual que los de `api`, `ai` y `shared`—, así que el `web` que `4dca9e3` cambió pasó por
+> él; y la verificación del artefacto levantó los seis contenedores `(healthy)` con las imágenes `sha-f4d5342be…`,
+> `rs0` en `PRIMARY` y escribible, `/health` de `api` y de `worker` en `up`, `<lv-root>` servido y los dos
+> directorios de prompts con 6 entradas. Lo que **no** aporta, por lo mismo que la segunda: ni «nada publicado
+> antes de verificar» ni la identidad por digest (6.2). Que no publicó se comprobó también fuera del log: cada uno
+> de los tres paquetes de GHCR sigue teniendo **una sola versión**, `sha-b541a9a314b4`, la de `36064994390`.
+> Enlace: <https://github.com/manuXD270516/linkvault/actions/runs/36114285794>.
 
 > **Lo que el grupo 13 dio por cierto y no lo era (2026-09-24, implementación).**
 >

@@ -443,8 +443,9 @@ changes:
       Lo que **no** cierra, enumerado con dónde se retoma, en `proposal.md` §"Lo que este change NO cierra": sigue sin
       haber servidor de staging, el healthcheck de MinIO sigue aprovisionando buckets, el paso de secretos por ssh sin
       endurecer, el workflow reutilizable de `verify`, el rojo falso del modo de prueba con destino configurado, la
-      comprobación post-merge del tag `:staging`, y que el adaptador SMTP no sabe autenticarse. Todo eso entra en la
-      fila 35. El aviso de consentimiento apagado del perfil estuvo en esa lista y **salió de ella**: se partió por
+      comprobación post-merge del tag `:staging`, que el adaptador SMTP no sabe autenticarse, y sustituir MinIO
+      manteniendo mientras tanto su espejo en `ghcr.io` (ADR-048 §8). Todo eso entra en la fila 35. El aviso de
+      consentimiento apagado del perfil estuvo en esa lista y **salió de ella**: se partió por
       vendor dentro de este change el 2026-09-25 (`profile-byok-consent-off-<vendor>`, id de i18n
       `profile.byok.vendorKeyInactive`).
 
@@ -484,7 +485,10 @@ changes:
       apagado del perfil estuvo aquí mientras fue un párrafo de sección que hablaba en plural, pero
       `deploy-image-verification` lo cerró dentro de su propio alcance (`profile-byok-consent-off-<vendor>`, con el id
       de i18n nuevo `profile.byok.vendorKeyInactive` y el plural `profile.byok.keysInactive` retirado de los dos
-      catálogos). La letra se conserva para no renumerar **(e)** y **(f)**, referenciadas desde `tasks.md` y ADR-048;
+      catálogos). La letra se conserva para no renumerar **(e)** y **(f)**. De las dos, solo a la **(f)** apuntan
+      otros ficheros —la tarea 13.5 de `tasks.md`, ADR-048 §8 y el comentario del servicio `minio` en
+      `docker-compose.yml` y `docker-compose.prod.yml`—; a la **(e)** no la cita nadie. A esta **(d)** sí: la tarea
+      13.5 de `tasks.md`, al tacharla;
       **(e)** la **autenticación del adaptador SMTP**: `SmtpMailer` crea el transporte sin bloque `auth` y con
       `secure: false`, y no existen `MAIL_SMTP_USER` ni `MAIL_SMTP_PASSWORD` en ninguno de los dos esquemas, así que
       solo sirve para un relay que autorice por red o por IP. Los primeros usuarios no-autor de esta fila obligan a

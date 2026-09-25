@@ -244,12 +244,14 @@ campo), y si "sin destino" es verde (D3, lo es). El debate puede revocarlas, per
 - **OTel**: `docs/design.md` promete trazas exportadas a Grafana Tempo que no existen, y la spec principal de
   observabilidad todavía habla de "este change" tras haberse archivado.
 - **No hay servidor de staging.** Este change hace que su ausencia se diga en voz alta; no la resuelve.
-- **Y siete cosas más que se fueron acumulando al implementar, de las que seis siguen abiertas**, cada una con dónde se
+- **Y ocho cosas más que se fueron acumulando al implementar, de las que siete siguen abiertas**, cada una con dónde se
   retoma: el healthcheck de MinIO que sigue aprovisionando buckets, el paso de secretos por ssh sin endurecer, el
   workflow reutilizable de `verify`, el rojo falso del modo de prueba con destino configurado (en los dos workflows),
-  la comprobación post-merge del tag `:staging`, y que el adaptador SMTP no sabe autenticarse. La séptima —**el aviso
+  la comprobación post-merge del tag `:staging`, que el adaptador SMTP no sabe autenticarse, y sustituir MinIO
+  manteniendo mientras tanto su espejo en `ghcr.io` (ADR-048 §8: lo replicado es solo `linux/amd64` y una
+  vulnerabilidad en esa versión ya no se arregla sola). Son los puntos 2 a 6, 8 y 9 de `proposal.md`. La octava —**el aviso
   de consentimiento apagado, que era de sección y no por vendor**— **ya no se difiere: se cerró dentro de este change**
   el 2026-09-25 (`4dca9e3`), y hoy sale por vendor (`profile-byok-consent-off-<vendor>`, id de i18n
   `profile.byok.vendorKeyInactive`). La lista completa, con el motivo de cada una, está en `proposal.md` §"Lo que este
-  change NO cierra", y las seis abiertas quedan registradas en la **fila 35** (`docs/design-v0.2.md` §6 y
+  change NO cierra", y las siete abiertas quedan registradas en la **fila 35** (`docs/design-v0.2.md` §6 y
   `openspec-changes.yaml`).
