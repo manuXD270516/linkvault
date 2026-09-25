@@ -832,11 +832,14 @@
 >
 >    `135:69` es la columna del `expect(page.getByTestId('profile-byok-consent-off-openai')).toBeVisible(...)`. La
 >    captura `reports/smoke/ai-byok/perfil-byok-consent-off.png`, que se escribe en la línea siguiente, quedó fechada
->    en esa corrida. La falsación por edición del spec no hizo falta y además es innecesaria: el `data-testid` de
->    sección `profile-byok-consent-off` **ya no existe en ningún sitio** —`grep -rn` sobre `apps/web/src` y
->    `apps/web-e2e/src` solo devuelve la forma por vendor—, así que la aserción anterior habría caído por fuerza.
+>    en esa corrida. **No se falsó** la aserción nueva editando el spec. Que el `data-testid` de sección
+>    `profile-byok-consent-off` ya no exista en ningún sitio —`grep -rn` sobre `apps/web/src` y `apps/web-e2e/src`
+>    solo devuelve la forma por vendor— demuestra que la aserción **anterior** habría caído; **no** demuestra que la
+>    **nueva** pueda caer. Esa capacidad de fallo queda sin ejercitar en el e2e; las condiciones del aviso las fijan
+>    los tests de componente de `profile.page.spec.ts`, no esta corrida. (Corregido el 2026-09-25 tras el tercer pase
+>    de QA, que señaló que el razonamiento original no se seguía.)
 > 3. **Lo que esta corrida NO cubrió, y que ya está cubierto por la pasada del punto 6.** Los tres vendors son
->    construibles con el `.env` del repositorio, así que en esta corrida el bloque final —el del vendor indisponible—
+>    construibles con el `.env` local —no versionado (`.gitignore:15`) y con un modelo distinto al de `.env.example`—, así que en esta corrida el bloque final —el del vendor indisponible—
 >    se saltó: los steps saltan de `136` a `187` y **no** se escribe `perfil-byok-vendor-indisponible.png`, que es
 >    justo la señal que el punto 4 de arriba describe. Aquí se remitía ese lado a la corrida del 2026-09-24; **esa
 >    salvedad queda retirada**: la pasada del punto 6, del mismo día y sobre el spec de hoy, ejecuta ese bloque con la
