@@ -1055,6 +1055,25 @@
 > * **A1**: el `verify` de esa misma corrida, **anterior** al job de publicación, no fue por afectación vacía:
 >   `lint` para **11** proyectos, `typecheck` para 10, `test` para **9** —entre ellos `api`, `web`, `ai` y
 >   `shared`—, `eval-ci` para `ai` y `build` para 4, todos `Successfully ran target`.
+>
+> **Recomprobada sobre el workflow de hoy (2026-09-25, corrida `36106819545`).** La corrida de arriba es de
+> `b541a9a`, y desde entonces `cd-staging.yml` ha crecido **+90 líneas** (el cuarto desenlace y el transporte de
+> clase de `9a8dbbf`). El argumento de que la rama verde no podía haber cambiado es correcto —los cambios son
+> **puramente aditivos**, cero líneas borradas, y `infra/ci/report-cd-outcome.sh` solo consulta la clase cuando la
+> verificación **no** fue exitosa—, pero este change entero nace de confiar en un razonamiento correcto sobre algo
+> que nadie había ejecutado, así que se relanzó:
+>
+> ```
+> verify (lint, specs, typecheck, test, build)                          → success
+> preflight (¿hay destino de staging configurado?)                      → success
+> build, verify and publish artifact                                    → success
+> resultado: artefacto verificado — NO desplegado (sin destino de staging) → success
+> deploy staging (solo si hay destino configurado)                      → skipped
+> ```
+>
+> Enlace: <https://github.com/manuXD270516/linkvault/actions/runs/36106819545>. De paso confirma que el secreto de
+> prueba de 7.2 **se retiró de verdad**: el preflight vuelve a decir `none` y el desenlace vuelve a ser el tercero
+> —verificado y sin destino, en verde—, no el de destino a medias.
 
 > **Lo que el grupo 13 dio por cierto y no lo era (2026-09-24, implementación).**
 >
