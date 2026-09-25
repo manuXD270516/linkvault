@@ -39,7 +39,7 @@
 
 ## 4. CI, CD y reglas
 
-- [ ] 4.1 [infra] Step `i18n catalog` entre `Test` y `Eval (replay)` en `ci.yml` y en los jobs `verify` de
+- [x] 4.1 [infra] Step `i18n catalog` entre `Test` y `Eval (replay)` en `ci.yml` y en los jobs `verify` de
   `cd-staging.yml` (`pnpm nx affected -t i18n-check`) y `cd-prod.yml` (`pnpm nx run-many --all -t i18n-check`) (D5).
   Verificar:
   - que `pnpm nx show projects --affected --files=apps/api/src/main.ts --with-target=i18n-check` no devuelve `web`
