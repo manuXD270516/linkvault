@@ -2057,10 +2057,6 @@
         <source> Usa tu propia clave de Anthropic, OpenAI u OpenRouter. LinkVault la guarda cifrada y solo muestra un hint. </source>
         <target>Use your own Anthropic, OpenAI or OpenRouter key. LinkVault stores it encrypted and only shows a hint.</target>
       </trans-unit>
-      <trans-unit id="profile.byok.keysInactive" datatype="html">
-        <source>Tienes claves guardadas, pero no se usan mientras el permiso de IA externa esté desactivado. Retirar el permiso no las borró.</source>
-        <target>You have keys saved, but they are not used while external AI permission is off. Withdrawing the permission did not delete them.</target>
-      </trans-unit>
       <trans-unit id="profile.byok.configured" datatype="html">
         <source>Configurada · hint …<x id="INTERPOLATION" equiv-text="{{ key.keyHint }}"/></source>
         <target>Configured · hint …<x id="INTERPOLATION" equiv-text="{{ key.keyHint }}"/></target>
@@ -2080,6 +2076,26 @@
       <trans-unit id="profile.byok.openrouterDataCollection" datatype="html">
         <source>Si el modelo configurado no es :free, LinkVault no fuerza data_collection: deny.</source>
         <target>If the configured model is not :free, LinkVault does not force data_collection: deny.</target>
+      </trans-unit>
+      <trans-unit id="profile.byok.vendorKeyInactive" datatype="html">
+        <source>Tu clave de <x id="INTERPOLATION" equiv-text="{{ label }}"/> sigue guardada, pero no se usa mientras el permiso de IA externa esté desactivado. Retirar el permiso no la borró.</source>
+        <target>Your <x id="INTERPOLATION" equiv-text="{{ label }}"/> key is still stored, but it is not used while external AI permission is off. Withdrawing the permission did not delete it.</target>
+      </trans-unit>
+      <trans-unit id="profile.byok.unavailable.reason" datatype="html">
+        <source><x id="INTERPOLATION" equiv-text="{{ label }}"/> no está disponible ahora mismo por la configuración de esta instancia.</source>
+        <target><x id="INTERPOLATION" equiv-text="{{ label }}"/> is not available right now because of this instance’s configuration.</target>
+      </trans-unit>
+      <trans-unit id="profile.byok.unavailable.keyKept" datatype="html">
+        <source>Tu clave sigue guardada y cifrada en LinkVault: no se ha borrado.</source>
+        <target>Your key is still stored and encrypted in LinkVault: it has not been deleted.</target>
+      </trans-unit>
+      <trans-unit id="profile.byok.unavailable.notUsed" datatype="html">
+        <source>No se usará para ninguna tarea mientras dure esta situación, ni siquiera con el permiso de IA externa vigente.</source>
+        <target>It will not be used for any task while this lasts, not even with external AI permission in force.</target>
+      </trans-unit>
+      <trans-unit id="profile.byok.unavailable.whatToDo" datatype="html">
+        <source>Puedes usar o configurar otro de los proveedores soportados, o pedir a quien administra la instancia que configure el modelo de <x id="INTERPOLATION" equiv-text="{{ label }}"/>.</source>
+        <target>You can use or set up another supported provider, or ask whoever administers the instance to configure the <x id="INTERPOLATION" equiv-text="{{ label }}"/> model.</target>
       </trans-unit>
       <trans-unit id="profile.byok.apiKeyLabel" datatype="html">
         <source>Clave de API</source>

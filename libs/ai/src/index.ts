@@ -73,6 +73,7 @@ export {
   type AiModuleOptions,
 } from './ai.module';
 export {
+  BYOK_VENDOR_AVAILABILITY,
   EMBED_TEXTS,
   PROVIDER_ELIGIBILITY,
   RUN_TASK,
@@ -109,6 +110,11 @@ export {
   byokProviderId,
   isByokProviderId,
 } from './infrastructure/providers/byok-provider.factory';
+export {
+  byokVendorAvailabilityOf,
+  isByokVendorConfigUsable,
+  type ByokVendorAvailability,
+} from './infrastructure/providers/byok-vendor-availability';
 export { LibsodiumSecretVault } from './infrastructure/crypto/libsodium-secret-vault';
 export { keyHintOf } from './infrastructure/crypto/key-hint';
 export { InMemoryUserAiKeysRepository } from './application/testing/in-memory-user-ai-keys.repository';
@@ -158,11 +164,14 @@ export {
 } from './infrastructure/catalog/search-catalog';
 export {
   formatAiConfigProblems,
+  formatAiConfigWarnings,
   parseAiConfig,
   type AiEnv,
 } from './infrastructure/config/parse-ai-config';
+export { isOpenRouterModelUsable } from './infrastructure/config/ai-config.schema';
 export type {
   AiConfig,
   AiConfigProblem,
   AiConfigResult,
+  AiConfigWarning,
 } from './infrastructure/config/ai-config.schema';

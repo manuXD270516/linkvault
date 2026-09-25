@@ -81,7 +81,7 @@ function options(
   return {
     baseUrl: 'https://openrouter.ai/api/v1',
     apiKey: API_KEY,
-    model: 'meta-llama/llama-3.3-70b-instruct:free',
+    model: 'cohere/north-mini-code:free',
     maxContextTokens: 32_000,
     referer: 'https://linkvault.local',
     title: 'LinkVault',
@@ -122,7 +122,7 @@ describe('OpenRouterProvider', () => {
           () =>
             json(res, 200, {
               id: 'gen-1',
-              model: 'meta-llama/llama-3.3-70b-instruct:free',
+              model: 'cohere/north-mini-code:free',
               choices: [
                 {
                   index: 0,
@@ -157,7 +157,7 @@ describe('OpenRouterProvider', () => {
     expect(result).toEqual({
       text: '{"skills":[]}',
       usage: { inputTokens: 120, outputTokens: 9 },
-      model: 'meta-llama/llama-3.3-70b-instruct:free',
+      model: 'cohere/north-mini-code:free',
       latencyMs: expect.any(Number),
     });
     expect(result.latencyMs).toBeGreaterThanOrEqual(10);
@@ -167,7 +167,7 @@ describe('OpenRouterProvider', () => {
     expect(request?.method).toBe('POST');
     expect(request?.url).toBe('/api/v1/chat/completions');
     expect(request?.body).toEqual({
-      model: 'meta-llama/llama-3.3-70b-instruct:free',
+      model: 'cohere/north-mini-code:free',
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: USER_PROMPT },
@@ -197,9 +197,9 @@ describe('OpenRouterProvider', () => {
     const result = await provider.complete({ system: 's', user: 'u' });
 
     expect(result.usage).toEqual({ inputTokens: 0, outputTokens: 0 });
-    expect(result.model).toBe('meta-llama/llama-3.3-70b-instruct:free');
+    expect(result.model).toBe('cohere/north-mini-code:free');
     expect(server.received[0]?.body).toEqual({
-      model: 'meta-llama/llama-3.3-70b-instruct:free',
+      model: 'cohere/north-mini-code:free',
       messages: [
         { role: 'system', content: 's' },
         { role: 'user', content: 'u' },
@@ -232,7 +232,7 @@ describe('OpenRouterProvider', () => {
       options({
         baseUrl: server.baseUrl,
         id: 'byok:ana:openrouter',
-        model: 'meta-llama/llama-3.3-70b-instruct:free',
+        model: 'cohere/north-mini-code:free',
         dataCollection: 'deny',
       }),
     );
@@ -241,7 +241,7 @@ describe('OpenRouterProvider', () => {
 
     expect(provider.id).toBe('byok:ana:openrouter');
     expect(server.received[0]?.body).toMatchObject({
-      model: 'meta-llama/llama-3.3-70b-instruct:free',
+      model: 'cohere/north-mini-code:free',
       provider: { data_collection: 'deny' },
     });
   });

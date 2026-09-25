@@ -95,7 +95,7 @@ function completion(res: ServerResponse, content: string): void {
   res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end(
     JSON.stringify({
-      model: 'meta-llama/llama-3.3-70b-instruct:free',
+      model: 'cohere/north-mini-code:free',
       choices: [{ message: { content } }],
       usage: { prompt_tokens: 420, completion_tokens: 38 },
     }),
@@ -142,7 +142,7 @@ function openRouterRunTask(baseUrl: string) {
     new OpenRouterProvider({
       baseUrl,
       apiKey: API_KEY,
-      model: 'meta-llama/llama-3.3-70b-instruct:free',
+      model: 'cohere/north-mini-code:free',
       maxContextTokens: 32_000,
       referer: 'https://linkvault.test',
       title: 'LinkVault',
@@ -201,7 +201,7 @@ describe('data protection end to end with OpenRouter', () => {
         ],
       },
       providerId: 'openrouter',
-      model: 'meta-llama/llama-3.3-70b-instruct:free',
+      model: 'cohere/north-mini-code:free',
       promptVersion: 'v1',
       cached: false,
     });

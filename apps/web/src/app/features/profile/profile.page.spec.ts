@@ -4,7 +4,13 @@ import { MatDialog } from '@angular/material/dialog';
 import { By } from '@angular/platform-browser';
 import { Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { AI_CONSENT_TEXT_VERSION, type AiKeyView } from '@linkvault/shared';
+import {
+  AI_CONSENT_TEXT_VERSION,
+  AI_VENDORS,
+  type AiKeyView,
+  type AiVendor,
+  type AiVendorAvailability,
+} from '@linkvault/shared';
 import {
   apiError,
   buttonWithText,
@@ -24,13 +30,30 @@ const openaiKey: AiKeyView = {
   vendor: 'openai',
   keyHint: 'sk12',
   updatedAt: '2026-09-21T12:00:00.000Z',
+  available: true,
 };
 
 const anthropicKey: AiKeyView = {
   vendor: 'anthropic',
   keyHint: 'an34',
   updatedAt: '2026-09-21T12:00:00.000Z',
+  available: true,
 };
+
+const openrouterKey: AiKeyView = {
+  vendor: 'openrouter',
+  keyHint: 'or56',
+  updatedAt: '2026-09-21T12:00:00.000Z',
+  available: false,
+};
+
+/**
+ * Disponibilidad tal y como la devuelve el API: una entrada por cada vendor soportado, tenga clave o no.
+ * La pantalla la consume; no la deduce.
+ */
+function availability(...unavailable: AiVendor[]): AiVendorAvailability[] {
+  return AI_VENDORS.map((vendor) => ({ vendor, available: !unavailable.includes(vendor) }));
+}
 
 describe('ProfilePage', () => {
   let http: HttpTestingController;
@@ -50,25 +73,37 @@ describe('ProfilePage', () => {
     await flushAiKeys([]);
   });
 
+  /** Texto plano del elemento con ese `data-testid`, o `null` si no está en el DOM. */
+  function noticeText(testId: string): string | null {
+    const el = host().querySelector(`[data-testid="${testId}"]`);
+    return el === null ? null : (el.textContent?.replace(/\s+/g, ' ').trim() ?? '');
+  }
+
   afterEach(() => {
     TestBed.inject(MatDialog).closeAll();
     verifyNoPendingRequests(http);
   });
 
-  async function flushAiKeys(keys: AiKeyView[]): Promise<void> {
+  async function flushAiKeys(
+    keys: AiKeyView[],
+    vendors: AiVendorAvailability[] = availability(),
+  ): Promise<void> {
     const request = await vi.waitFor(() =>
       http.expectOne({ method: 'GET', url: '/api/users/me/ai-keys' }),
     );
-    request.flush({ keys });
+    request.flush({ keys, vendors });
     await settle();
     await harness.fixture.whenStable();
   }
 
   /** Vuelve a pedir el listado del store de la página (p. ej. para precargar un hint). */
-  async function reloadAiKeys(keys: AiKeyView[]): Promise<void> {
+  async function reloadAiKeys(
+    keys: AiKeyView[],
+    vendors: AiVendorAvailability[] = availability(),
+  ): Promise<void> {
     const page = harness.fixture.debugElement.query(By.directive(ProfilePage));
     void page.injector.get(AiKeysStore).load();
-    await flushAiKeys(keys);
+    await flushAiKeys(keys, vendors);
   }
 
   function host(): HTMLElement {
@@ -441,6 +476,104 @@ describe('ProfilePage', () => {
       expect(
         host().querySelector('[data-testid="profile-byok-destination-openrouter"]')?.textContent,
       ).toMatch(/OpenRouter/);
+      // (b) de 10-bis.8: con el vendor disponible, el aviso de indisponibilidad NO puede salir.
+      expect(noticeText('profile-byok-unavailable-openrouter')).toBeNull();
+    });
+
+    it('Vendor sin configuración utilizable: sale el aviso de indisponibilidad y no el de data_collection', async () => {
+      await reloadAiKeys([openrouterKey], availability('openrouter'));
+
+      const notice = host().querySelector('[data-testid="profile-byok-unavailable-openrouter"]');
+      expect(notice, 'falta el aviso de indisponibilidad de OpenRouter').not.toBeNull();
+      expect(notice?.getAttribute('role')).toBe('status');
+
+      const said = notice?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+      const reason = said.indexOf('no está disponible ahora mismo');
+      const kept = said.indexOf('sigue guardada y cifrada');
+      const notUsed = said.indexOf('No se usará para ninguna tarea');
+      const whatToDo = said.indexOf('otro de los proveedores soportados');
+      expect(reason, `sin el motivo: ${said}`).toBeGreaterThanOrEqual(0);
+      expect(kept, `sin «la clave sigue guardada»: ${said}`).toBeGreaterThan(reason);
+      expect(notUsed, `sin «no se usará»: ${said}`).toBeGreaterThan(kept);
+      expect(whatToDo, `sin qué puede hacer la persona: ${said}`).toBeGreaterThan(notUsed);
+      expect(said).toMatch(/OpenRouter/);
+      // Las cuatro frases se leen separadas: sin `&ngsp;` Angular se come el espacio entre `<span>`s.
+      expect(said, `frases pegadas: ${said}`).toMatch(/instancia\. Tu clave/);
+      expect(said).toMatch(/ni siquiera con el permiso de IA externa vigente/);
+      expect(said).toMatch(/administra la instancia/);
+      // No culpa a la clave de la persona.
+      expect(said).not.toMatch(/cambia tu clave|revisa tu clave/i);
+
+      // El aviso de data_collection afirmaría un envío que no va a ocurrir: no puede salir.
+      expect(noticeText('profile-byok-openrouter-data-collection')).toBeNull();
+      // El aviso de destino se mantiene para todos los vendors, también para este.
+      expect(noticeText('profile-byok-destination-openrouter')).toMatch(/OpenRouter/);
+      // Y la clave sigue anunciándose como guardada.
+      expect(noticeText('profile-byok-status-openrouter')).toMatch(/Configurada/);
+    });
+
+    it('La indisponibilidad es de un vendor, no de todos', async () => {
+      await reloadAiKeys(
+        [openrouterKey, openaiKey, anthropicKey],
+        availability('openrouter'),
+      );
+
+      expect(noticeText('profile-byok-unavailable-openrouter')).not.toBeNull();
+      for (const vendor of ['openai', 'anthropic'] as const) {
+        expect(
+          noticeText(`profile-byok-unavailable-${vendor}`),
+          `${vendor} no está indisponible y no debe decir que lo está`,
+        ).toBeNull();
+        expect(noticeText(`profile-byok-destination-${vendor}`)).toMatch(/puede salir hacia/);
+      }
+      expect(noticeText('profile-byok-destination-openai')).toMatch(/OpenAI/);
+      expect(noticeText('profile-byok-destination-anthropic')).toMatch(/Anthropic/);
+    });
+
+    it('Vendor indisponible con el consentimiento apagado: la indisponibilidad sustituye al aviso de permiso', async () => {
+      await reloadAiKeys([openrouterKey], availability('openrouter'));
+
+      expect(store.user()?.aiConsent.externalProviders).toBe(false);
+      // «no se usa hasta que vuelvas a dar el permiso» sería falso aquí: dar el permiso no lo activa.
+      expect(noticeText('profile-byok-consent-off-openrouter')).toBeNull();
+      expect(noticeText('profile-byok-unavailable-openrouter')).toMatch(/sigue guardada y cifrada/);
+    });
+
+    it('El permiso apagado es de cada vendor: el indisponible solo lleva su aviso y el disponible solo el del permiso', async () => {
+      // El caso que motivó partir el aviso: antes era de sección y los dos salían a la vez sobre OpenRouter.
+      await reloadAiKeys([openrouterKey, openaiKey], availability('openrouter'));
+
+      expect(store.user()?.aiConsent.externalProviders).toBe(false);
+
+      // OpenRouter: solo la indisponibilidad. Nada le promete que el permiso lo reactiva.
+      expect(noticeText('profile-byok-unavailable-openrouter')).not.toBeNull();
+      expect(
+        noticeText('profile-byok-consent-off-openrouter'),
+        'OpenRouter no se activa al dar el permiso: no puede decir que se usará entonces',
+      ).toBeNull();
+      // Y sigue leyéndose que su clave no se ha borrado, en el propio aviso de indisponibilidad.
+      expect(noticeText('profile-byok-unavailable-openrouter')).toMatch(/sigue guardada y cifrada/);
+      expect(noticeText('profile-byok-status-openrouter')).toMatch(/Configurada/);
+
+      // OpenAI: solo el aviso de permiso apagado, con su texto íntegro y nombrando al vendor.
+      const openai = noticeText('profile-byok-consent-off-openai');
+      expect(openai).toMatch(/OpenAI/);
+      expect(openai).toMatch(/sigue guardada/);
+      expect(openai).toMatch(/no se usa mientras el permiso/);
+      expect(openai).toMatch(/no la borró/);
+      expect(noticeText('profile-byok-unavailable-openai')).toBeNull();
+
+      // Anthropic no tiene clave: nada que decir sobre una clave que no existe.
+      expect(noticeText('profile-byok-consent-off-anthropic')).toBeNull();
+    });
+
+    it('Mientras el listado no ha respondido no se afirma nada sobre el permiso', async () => {
+      // Disponibilidad `undefined`: ni «se usará» ni «no se usará». Un aviso que aparece cargando y
+      // desaparece después es peor que ninguno.
+      await reloadAiKeys([openaiKey], []);
+
+      expect(noticeText('profile-byok-consent-off-openai')).toBeNull();
+      expect(noticeText('profile-byok-unavailable-openai')).toBeNull();
     });
 
     it('Guarda OpenAI y muestra el hint sin dejar la clave en el campo', async () => {
@@ -455,7 +588,7 @@ describe('ProfilePage', () => {
       put.flush(openaiKey);
       await settle();
       const list = http.expectOne({ method: 'GET', url: '/api/users/me/ai-keys' });
-      list.flush({ keys: [openaiKey] });
+      list.flush({ keys: [openaiKey], vendors: availability() });
       await settle();
       await harness.fixture.whenStable();
 
@@ -489,7 +622,9 @@ describe('ProfilePage', () => {
       );
       del.flush(null, { status: 204, statusText: 'No Content' });
       await settle();
-      http.expectOne({ method: 'GET', url: '/api/users/me/ai-keys' }).flush({ keys: [] });
+      http
+        .expectOne({ method: 'GET', url: '/api/users/me/ai-keys' })
+        .flush({ keys: [], vendors: availability() });
       await settle();
       await harness.fixture.whenStable();
 
@@ -499,13 +634,15 @@ describe('ProfilePage', () => {
       expect(host().querySelector('[data-testid="profile-byok-revoke-anthropic"]')).toBeNull();
     });
 
-    it('Con hint y consentimiento off dice que las claves no se usan', async () => {
+    it('Con hint y consentimiento off dice que esa clave no se usa', async () => {
       await reloadAiKeys([openaiKey]);
 
       expect(store.user()?.aiConsent.externalProviders).toBe(false);
-      const notice = host().querySelector('[data-testid="profile-byok-consent-off"]');
-      expect(notice?.textContent).toMatch(/no se usan/);
-      expect(notice?.textContent).toMatch(/no las borró/);
+      const notice = host().querySelector('[data-testid="profile-byok-consent-off-openai"]');
+      expect(notice?.getAttribute('role')).toBe('status');
+      expect(notice?.textContent).toMatch(/OpenAI/);
+      expect(notice?.textContent).toMatch(/no se usa mientras el permiso/);
+      expect(notice?.textContent).toMatch(/no la borró/);
       expect(host().querySelector('[data-testid="profile-byok-hint-openai"]')?.textContent).toContain(
         'sk12',
       );

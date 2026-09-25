@@ -1,6 +1,7 @@
 import {
   type AiConfig,
   type AiConfigProblem,
+  formatAiConfigWarnings,
   parseAiConfig,
 } from '@linkvault/ai';
 import {
@@ -56,6 +57,12 @@ export function loadWorkerConfigOrExit(
         ]),
       );
       return process.exit(1);
+    }
+    // Avisos de IA: configuración válida que deja algo sin poder usarse (p. ej. el BYOK de OpenRouter sin modelo
+    // utilizable, ADR-048 §6). Salen por stderr como los problemas —todavía no hay logger y `console` está
+    // prohibido— pero **no** abortan: `ai/byok` exige que el proceso arranque igual.
+    if (ai.warnings.length > 0) {
+      process.stderr.write(formatAiConfigWarnings('worker', ai.warnings));
     }
     return { config: worker.config, ai: ai.config };
   }

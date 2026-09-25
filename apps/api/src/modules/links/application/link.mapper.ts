@@ -28,8 +28,10 @@ import type { LinkListPage, ListedLink } from './ports/link-listing';
 // página entera —`displayNameIdsOf`—; resolverlos aquí sería una consulta por campo.
 
 /**
- * Nombre que se muestra cuando el directorio no conoce a quien compartió. Defensa en profundidad: hoy no existe el
- * borrado de cuenta, así que no debería ocurrir.
+ * Nombre que se muestra cuando el directorio no conoce a quien compartió. Defensa en profundidad: la cascada de
+ * `DELETE /api/users/me` borra las membresías y los links de quien se va, así que no debería ocurrir. El motivo que
+ * daba este comentario antes de 2026-09-24 —que el producto todavía no tenía esa operación— dejó de ser cierto con
+ * `deploy-prod`; la defensa se queda, porque un `userId` sin entrada en el directorio no puede tumbar la página.
  */
 export const UNKNOWN_SHARER_NAME = 'Usuario';
 

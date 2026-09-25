@@ -18,6 +18,10 @@ ENV CI=true
 RUN pnpm install --frozen-lockfile
 RUN pnpm nx build web --configuration=production
 
+# Aquí no hay etapa de dependencias de producción: se copian los estáticos ya compilados. Por eso
+# esta imagen no lleva el borrado de `packageManager` del manifiesto generado que sí llevan
+# `docker/api.Dockerfile` y `docker/worker.Dockerfile` (ADR-048 §1): sin `pnpm install` sobre un
+# manifiesto generado por Nx, el campo no tiene dónde romper nada. La asimetría es deliberada.
 FROM nginx:1.27-alpine AS runner
 COPY docker/web/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /workspace/dist/apps/web/browser /usr/share/nginx/html
