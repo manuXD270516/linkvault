@@ -14,6 +14,7 @@ import {
   settle,
   typeInto,
   verifyNoPendingRequests,
+  whenNavigatedTo,
 } from '../../../testing/auth-testing';
 import { SessionStore } from '../../core/auth/session.store';
 import { Shell } from '../../layout/shell/shell';
@@ -86,6 +87,8 @@ describe('CreateGroupDialog', () => {
   it('Grupo creado', async () => {
     await openDialog();
 
+    // Al diálogo le queda navegar al grupo nuevo; se arma la espera antes de enviar, que es quien la dispara.
+    const navigated = whenNavigatedTo(router, '/grupos/g3');
     await submitName('Backend Bolivia');
     const request = http.expectOne({ method: 'POST', url: '/api/groups' });
     expect(request.request.body).toEqual({ name: 'Backend Bolivia' });
@@ -102,7 +105,8 @@ describe('CreateGroupDialog', () => {
       },
     ]);
 
-    await vi.waitFor(() => expect(router.url).toBe('/grupos/g3'));
+    await navigated;
+    expect(router.url).toBe('/grupos/g3');
     await flushGroupDetail(http, created);
     await vi.waitFor(() =>
       expect(document.body.querySelector('mat-dialog-container')).toBeNull(),
@@ -136,6 +140,7 @@ describe('CreateGroupDialog', () => {
   it('trims the name before sending it', async () => {
     await openDialog();
 
+    const navigated = whenNavigatedTo(router, '/grupos/g3');
     await submitName('  Backend Bolivia ');
     const request = http.expectOne({ method: 'POST', url: '/api/groups' });
     expect(request.request.body).toEqual({ name: 'Backend Bolivia' });
@@ -143,7 +148,8 @@ describe('CreateGroupDialog', () => {
     await settle();
     await flushGroupsList(http);
 
-    await vi.waitFor(() => expect(router.url).toBe('/grupos/g3'));
+    await navigated;
+    expect(router.url).toBe('/grupos/g3');
     await flushGroupDetail(http, created);
   });
 });

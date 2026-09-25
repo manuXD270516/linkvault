@@ -14,6 +14,7 @@ import {
   settle,
   typeInto,
   verifyNoPendingRequests,
+  whenNavigatedTo,
 } from '../../../testing/auth-testing';
 import { SessionStore } from '../../core/auth/session.store';
 import { Shell } from '../../layout/shell/shell';
@@ -88,6 +89,8 @@ describe('JoinGroupDialog', () => {
   it('Unirse con un código válido', async () => {
     await openDialog();
 
+    // Al diálogo le queda navegar al grupo nuevo; se arma la espera antes de enviar, que es quien la dispara.
+    const navigated = whenNavigatedTo(router, '/grupos/g2');
     await submitCode(' abcd2345 ');
     const request = http.expectOne('/api/groups/join');
     expect(request.request.body).toEqual({ code: 'ABCD2345' });
@@ -95,7 +98,8 @@ describe('JoinGroupDialog', () => {
     await settle();
     await flushGroupsList(http, [joined]);
 
-    await vi.waitFor(() => expect(router.url).toBe('/grupos/g2'));
+    await navigated;
+    expect(router.url).toBe('/grupos/g2');
     await flushGroupDetail(http, {
       id: 'g2',
       name: 'Frontend Bolivia',
