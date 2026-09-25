@@ -2,7 +2,8 @@
 
 ## Purpose
 
-None
+Muestra sin sesión la vista pública de una oferta compartida, con el CTA para guardarla en la lista privada de
+LinkVault, y deja a quien la compartió o al propietario del grupo activar o quitar su enlace público desde la tarjeta.
 
 ## Requirements
 

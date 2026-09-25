@@ -2,7 +2,9 @@
 
 ## Purpose
 
-None
+Da a cada link compartido en un grupo una página pública opcional, con `slug` opaco y etiquetas Open Graph servidas
+por la API (ADR-013), para que el enlace que circula por WhatsApp enseñe la vacante —y solo la vacante— e invite a
+guardarla en LinkVault.
 
 ## Requirements
 

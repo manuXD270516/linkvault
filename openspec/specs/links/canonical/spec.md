@@ -1,7 +1,10 @@
 # links/canonical Specification
 
 ## Purpose
-TBD - created by archiving change job-discovery. Update Purpose after archive.
+
+Reconoce de qué bolsa viene la URL de una vacante y saca de ella un `externalJobId` estable, para que el dedupe por
+`platform:externalJobId` (ADR-008) identifique la misma oferta llegue por donde llegue; si la URL no da para más, la
+oferta cae en dedupe por `urlHash` como `generic`.
 
 ## Requirements
 

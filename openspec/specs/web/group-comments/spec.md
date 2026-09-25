@@ -2,7 +2,8 @@
 
 ## Purpose
 
-None
+Lleva al SPA la nota de quien comparte y los comentarios de cada oferta del grupo: verlos en la tarjeta y en su hilo,
+escribirlos, borrarlos y recibirlos en vivo, con textos en español e inglés.
 
 ## Requirements
 
