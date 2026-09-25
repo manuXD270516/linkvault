@@ -3,11 +3,12 @@
 set -u
 root="${BASH_SOURCE[0]%/*}"
 if command -v node >/dev/null 2>&1; then
-  exec node "$root/require-openspec-change.js"
+  exec node "$root/require-openspec-change.mjs"
 fi
 
-allow() { printf '%s\n' '{"permission":"allow"}'; exit 0; }
-deny() { printf '%s\n' '{"permission":"deny","agent_message":"No hay un change activo en openspec/changes/. Crea uno con /opsx:new antes de editar codigo."}'; exit 0; }
+# Mismo contrato que el .mjs: exit 0 sin salida permite, exit 2 con stderr bloquea.
+allow() { exit 0; }
+deny() { printf '%s\n' 'No hay un change activo en openspec/changes/. Crea uno con /opsx:new antes de editar codigo en apps/** o libs/**.' >&2; exit 2; }
 
 input=""
 while IFS= read -r __line || [ -n "$__line" ]; do input="$input$__line"; done
