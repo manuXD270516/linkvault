@@ -27,8 +27,8 @@ convierte esa premisa en algo comprobado.
   con el catálogo versionado sin escribir en `apps/`, y si difieren falla explicando **qué** difiere (unidades nuevas,
   eliminadas, con texto cambiado, o sin cambios de unidades) y con qué comando se arregla.
 - La verificación de los tres workflows (`ci`, `cd-staging`, `cd-prod`) ejecuta esa comprobación cuando `web` está afectado,
-  entre los tests y la evaluación de IA, con las mismas condiciones que las demás etapas. Pendiente aparte: en `cd-prod`
-  (lanzado por tag), la base de `affected` podría caer al commit anterior y acotar **todas** las etapas, no solo esta.
+  entre los tests y la evaluación de IA, con las mismas condiciones que las demás etapas: acotada por afectación en `ci` y
+  `cd-staging`, sobre todo el workspace en `cd-prod` (como el resto de su verificación desde `deploy-image-verification`).
 - La puerta local que deben pasar los agentes (`CLAUDE.md`, `/lv:apply`, `docs/RUNBOOK.md`) y `make test` incluye
   `i18n-check`.
 - `translations.spec.ts` gana una comprobación de **traducción vigente**: el texto español que `messages.en.xlf` guarda en
@@ -45,8 +45,10 @@ convierte esa premisa en algo comprobado.
 
 ### Modified Capabilities
 - `platform/ci-pipeline`: «Etapas de verificación» incorpora la comprobación del catálogo de traducciones (solo cuando `web`
-  está afectado) entre los tests y la evaluación de IA. «CD a staging en main» y «CD a producción por tag semver» dejan de
-  repetir la lista de etapas y remiten a «Etapas de verificación», para que el despliegue no pueda saltarse ninguna.
+  está afectado) entre los tests y la evaluación de IA. Nuevo requirement «El CD verifica con las mismas etapas que la
+  integración continua», para que ningún despliegue se salte una etapa. No se modifican «CD a staging en main» ni «CD a
+  producción por tag semver»: los reescribe `deploy-image-verification`, y reemplazarlos también desde aquí haría que el
+  change que se archive segundo borre lo del otro.
 
 ## Impact
 

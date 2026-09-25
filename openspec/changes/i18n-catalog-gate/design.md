@@ -111,15 +111,19 @@ texto con el mismo id: obliga a que la unidad inglesa aparezca en el diff que se
 
 ### D5. En los tres workflows: después de Test, antes de Eval
 
-Step `i18n catalog` con `pnpm nx affected -t i18n-check` en `ci.yml` **y** en los jobs `verify` de `cd-staging.yml` y
-`cd-prod.yml`. Si solo estuviera en `ci.yml`, `cd-staging` (que corre en paralelo en cada push a `main`) desplegaría un
-catálogo atrasado aunque `ci` estuviera en rojo. Como el target solo existe en `web`, `affected` lo limita a cuando `web`
-está afectado, igual que `eval-ci` con `ai`. Va después de Test porque los tests de `web` fallan antes, y con un mensaje más
-directo, por una traducción incompleta; y antes de Build, para no gastar el build en una rama que ya se sabe roja.
+Step `i18n catalog` en `ci.yml` **y** en los jobs `verify` de `cd-staging.yml` y `cd-prod.yml`. Si solo estuviera en
+`ci.yml`, `cd-staging` (que corre en paralelo en cada push a `main`) desplegaría un catálogo atrasado aunque `ci` estuviera
+en rojo. En `ci` y `cd-staging` es `pnpm nx affected -t i18n-check`: como el target solo existe en `web`, `affected` lo
+limita a cuando `web` está afectado, igual que `eval-ci` con `ai`. En `cd-prod` es `pnpm nx run-many --all -t i18n-check`,
+como el resto de su verificación desde `deploy-image-verification`: con `affected`, un tag no ejecutaría nada. Va después de
+Test porque los tests de `web` fallan antes, y con un mensaje más directo, por una traducción incompleta; y antes de Build,
+para no gastar el build en una rama que ya se sabe roja.
 
-Los requirements de CD de `platform/ci-pipeline` dejan de repetir la lista de etapas y remiten a «Etapas de verificación».
-Si mañana se añade otra etapa, la spec ya no se contradice. El YAML sigue copiado en tres sitios; unificarlo en un workflow
-reutilizable queda fuera de alcance.
+En la spec, un requirement **nuevo** de `platform/ci-pipeline` dice que la verificación de cada CD ejecuta todas las etapas
+de «Etapas de verificación» y prevalece sobre cualquier enumeración de etapas. **No se modifican** «CD a staging en main» ni
+«CD a producción por tag semver». `deploy-image-verification` (fusionado en `main` y aún sin archivar) los reescribe enteros,
+y un MODIFIED sustituye el bloque completo al archivar: el change que se archivara segundo borraría los cambios del otro. El
+YAML sigue copiado en tres sitios; unificarlo en un workflow reutilizable queda fuera de alcance.
 
 ### D6. Regla escrita y puerta local
 

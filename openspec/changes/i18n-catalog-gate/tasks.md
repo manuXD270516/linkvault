@@ -39,8 +39,9 @@
 
 ## 4. CI, CD y reglas
 
-- [ ] 4.1 [infra] Step `i18n catalog` (`pnpm nx affected -t i18n-check`) entre `Test` y `Eval (replay)` en `ci.yml` y en los
-  jobs `verify` de `cd-staging.yml` y `cd-prod.yml` (D5). Verificar:
+- [ ] 4.1 [infra] Step `i18n catalog` entre `Test` y `Eval (replay)` en `ci.yml` y en los jobs `verify` de
+  `cd-staging.yml` (`pnpm nx affected -t i18n-check`) y `cd-prod.yml` (`pnpm nx run-many --all -t i18n-check`) (D5).
+  Verificar:
   - que `pnpm nx show projects --affected --files=apps/api/src/main.ts --with-target=i18n-check` no devuelve `web`
     (escenario «Cambio que no afecta a web»);
   - en el PR de este change, que el step de `ci` corre (se toca `apps/web`) y pasa con el catálogo regenerado en Windows
@@ -48,8 +49,9 @@
   - en un commit temporal del PR que añade una unidad sin extraer, que falla nombrándola y no ejecuta Eval ni Build.
     Revertir ese commit antes del merge;
   - de forma estática, en `cd-staging.yml` y `cd-prod.yml`, que el step `i18n catalog` está dentro del job `verify` entre
-    `Test` y `Eval (replay)` y que `build-push` mantiene `needs: verify` (escenario «Catálogo de traducciones atrasado no
-    despliega staging»; la confirmación real llega con el primer push a `main` que toque `web`).
+    `Test` y `Eval (replay)` y que `build-verify-publish` mantiene `needs: verify` (escenarios «Catálogo de traducciones
+    atrasado no despliega staging» y «… producción»; la confirmación real llega con el primer push a `main` que toque
+    `web` y con el primer tag).
 - [x] 4.2 [infra] Regla y puerta local de D6:
   - `CLAUDE.md`: regla en Frontend, excepción de re-extracción en Flujo de trabajo (ADR-050 §5) y `i18n-check` en Calidad;
   - `.claude/commands/lv/apply.md`, `docs/RUNBOOK.md` (puertas de cierre) y `make test` con `i18n-check`.
