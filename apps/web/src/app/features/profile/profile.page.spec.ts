@@ -534,15 +534,46 @@ describe('ProfilePage', () => {
       await reloadAiKeys([openrouterKey], availability('openrouter'));
 
       expect(store.user()?.aiConsent.externalProviders).toBe(false);
-      // «no se usan hasta que vuelvas a dar el permiso» sería falso aquí: dar el permiso no lo activa.
-      expect(noticeText('profile-byok-consent-off')).toBeNull();
+      // «no se usa hasta que vuelvas a dar el permiso» sería falso aquí: dar el permiso no lo activa.
+      expect(noticeText('profile-byok-consent-off-openrouter')).toBeNull();
       expect(noticeText('profile-byok-unavailable-openrouter')).toMatch(/sigue guardada y cifrada/);
+    });
 
-      // Con otra clave de un vendor sí disponible, ese aviso vuelve con su texto íntegro.
+    it('El permiso apagado es de cada vendor: el indisponible solo lleva su aviso y el disponible solo el del permiso', async () => {
+      // El caso que motivó partir el aviso: antes era de sección y los dos salían a la vez sobre OpenRouter.
       await reloadAiKeys([openrouterKey, openaiKey], availability('openrouter'));
-      expect(noticeText('profile-byok-consent-off')).toMatch(/no se usan/);
-      expect(noticeText('profile-byok-consent-off')).toMatch(/no las borró/);
+
+      expect(store.user()?.aiConsent.externalProviders).toBe(false);
+
+      // OpenRouter: solo la indisponibilidad. Nada le promete que el permiso lo reactiva.
       expect(noticeText('profile-byok-unavailable-openrouter')).not.toBeNull();
+      expect(
+        noticeText('profile-byok-consent-off-openrouter'),
+        'OpenRouter no se activa al dar el permiso: no puede decir que se usará entonces',
+      ).toBeNull();
+      // Y sigue leyéndose que su clave no se ha borrado, en el propio aviso de indisponibilidad.
+      expect(noticeText('profile-byok-unavailable-openrouter')).toMatch(/sigue guardada y cifrada/);
+      expect(noticeText('profile-byok-status-openrouter')).toMatch(/Configurada/);
+
+      // OpenAI: solo el aviso de permiso apagado, con su texto íntegro y nombrando al vendor.
+      const openai = noticeText('profile-byok-consent-off-openai');
+      expect(openai).toMatch(/OpenAI/);
+      expect(openai).toMatch(/sigue guardada/);
+      expect(openai).toMatch(/no se usa mientras el permiso/);
+      expect(openai).toMatch(/no la borró/);
+      expect(noticeText('profile-byok-unavailable-openai')).toBeNull();
+
+      // Anthropic no tiene clave: nada que decir sobre una clave que no existe.
+      expect(noticeText('profile-byok-consent-off-anthropic')).toBeNull();
+    });
+
+    it('Mientras el listado no ha respondido no se afirma nada sobre el permiso', async () => {
+      // Disponibilidad `undefined`: ni «se usará» ni «no se usará». Un aviso que aparece cargando y
+      // desaparece después es peor que ninguno.
+      await reloadAiKeys([openaiKey], []);
+
+      expect(noticeText('profile-byok-consent-off-openai')).toBeNull();
+      expect(noticeText('profile-byok-unavailable-openai')).toBeNull();
     });
 
     it('Guarda OpenAI y muestra el hint sin dejar la clave en el campo', async () => {
@@ -603,13 +634,15 @@ describe('ProfilePage', () => {
       expect(host().querySelector('[data-testid="profile-byok-revoke-anthropic"]')).toBeNull();
     });
 
-    it('Con hint y consentimiento off dice que las claves no se usan', async () => {
+    it('Con hint y consentimiento off dice que esa clave no se usa', async () => {
       await reloadAiKeys([openaiKey]);
 
       expect(store.user()?.aiConsent.externalProviders).toBe(false);
-      const notice = host().querySelector('[data-testid="profile-byok-consent-off"]');
-      expect(notice?.textContent).toMatch(/no se usan/);
-      expect(notice?.textContent).toMatch(/no las borró/);
+      const notice = host().querySelector('[data-testid="profile-byok-consent-off-openai"]');
+      expect(notice?.getAttribute('role')).toBe('status');
+      expect(notice?.textContent).toMatch(/OpenAI/);
+      expect(notice?.textContent).toMatch(/no se usa mientras el permiso/);
+      expect(notice?.textContent).toMatch(/no la borró/);
       expect(host().querySelector('[data-testid="profile-byok-hint-openai"]')?.textContent).toContain(
         'sk12',
       );

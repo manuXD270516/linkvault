@@ -68,17 +68,6 @@ export const AiKeysStore = signalStore(
       }
       return map;
     }),
-    /**
-     * Hay al menos una clave guardada de un vendor que **no** está indisponible.
-     *
-     * Es lo que decide el aviso de «claves guardadas con el permiso apagado»: decir «no se usan hasta que
-     * vuelvas a dar el permiso» sobre un vendor sin configuración utilizable es literalmente falso, porque dar
-     * el permiso no lo activa (spec `web/byok`, precedencia vendor a vendor).
-     */
-    hasAnyUsableKey: computed(() => {
-      const availability = new Map(vendors().map((entry) => [entry.vendor, entry.available]));
-      return keys().some((key) => availability.get(key.vendor) !== false);
-    }),
   })),
   withMethods((store, api = inject(AiKeysApi)) => {
     const load = async (): Promise<void> => {

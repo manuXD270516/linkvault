@@ -132,7 +132,7 @@ test('BYOK profile: notices, save OpenAI hint, consent-off copy', async ({ page 
   );
   await page.getByTestId('profile-ai-consent').locator('button').click();
   await revoked;
-  await expect(page.getByTestId('profile-byok-consent-off')).toBeVisible({ timeout: LIVE });
+  await expect(page.getByTestId('profile-byok-consent-off-openai')).toBeVisible({ timeout: LIVE });
   await page.screenshot({
     path: join(SCREENSHOT_DIR, 'perfil-byok-consent-off.png'),
     fullPage: true,

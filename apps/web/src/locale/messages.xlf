@@ -4068,13 +4068,6 @@
           <context context-type="linenumber">237,240</context>
         </context-group>
       </trans-unit>
-      <trans-unit id="profile.byok.keysInactive" datatype="html">
-        <source>Tienes claves guardadas, pero no se usan mientras el permiso de IA externa esté desactivado. Retirar el permiso no las borró.</source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">246,250</context>
-        </context-group>
-      </trans-unit>
       <trans-unit id="profile.byok.configured" datatype="html">
         <source>Configurada · hint …<x id="INTERPOLATION" equiv-text="{{ key.keyHint }}"/></source>
         <context-group purpose="location">
@@ -4108,6 +4101,13 @@
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
           <context context-type="linenumber">303,307</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="profile.byok.vendorKeyInactive" datatype="html">
+        <source>Tu clave de <x id="INTERPOLATION" equiv-text="{{ label }}"/> sigue guardada, pero no se usa mientras el permiso de IA externa esté desactivado. Retirar el permiso no la borró.</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
+          <context context-type="linenumber">306,308</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.byok.unavailable.reason" datatype="html">

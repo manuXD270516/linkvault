@@ -225,27 +225,20 @@
   <!--
     Claves BYOK (spec web/byok, D12): un bloque por vendor con aviso de destino nombrado.
 
-    Los dos avisos condicionales salen del estado que devuelve el API (`vendors` del listado), nunca del nombre
-    del vendor ni de reglas escritas aquí, y son excluyentes sobre el mismo vendor:
+    Los tres avisos condicionales salen del estado que devuelve el API (`vendors` del listado), nunca del nombre
+    del vendor ni de reglas escritas aquí, y viven **dentro** del bloque de su vendor porque la precedencia de la
+    spec es vendor a vendor:
       · `data_collection`  → solo si ese vendor sí es construible hoy; describe un envío que SÍ ocurre.
       · indisponibilidad   → solo si no lo es; describe un envío que NO va a ocurrir.
-    Mostrar el primero para un vendor indisponible afirmaría un envío que no se producirá.
+      · permiso apagado    → solo si ese vendor es construible y tiene clave; el envío ocurriría al dar el permiso.
+    Mostrar el primero para un vendor indisponible afirmaría un envío que no se producirá; mostrar el tercero le
+    prometería que el permiso lo reactiva, y no lo hace.
   -->
   <section class="flex flex-col gap-4" data-testid="profile-byok">
     <h2 class="text-xl font-medium" i18n="@@profile.byok.title">Tus claves de IA</h2>
     <p class="m-0 text-sm" i18n="@@profile.byok.intro">
       Usa tu propia clave de Anthropic, OpenAI u OpenRouter. LinkVault la guarda cifrada y solo muestra un hint.
     </p>
-
-    @if (byokKeysInactive()) {
-      <p
-        class="m-0"
-        role="status"
-        data-testid="profile-byok-consent-off"
-        i18n="@@profile.byok.keysInactive"
-        >Tienes claves guardadas, pero no se usan mientras el permiso de IA externa esté desactivado. Retirar el permiso no las borró.</p
-      >
-    }
 
     @if (byokFailure(); as listFailure) {
       <lv-request-error [failure]="listFailure" />
@@ -301,6 +294,17 @@
             data-testid="profile-byok-openrouter-data-collection"
             i18n="@@profile.byok.openrouterDataCollection"
             >Si el modelo configurado no es :free, LinkVault no fuerza data_collection: deny.</p
+          >
+        }
+
+        @if (showsConsentOffNotice(vendor)) {
+          <p
+            class="m-0 text-sm"
+            role="status"
+            [attr.data-testid]="'profile-byok-consent-off-' + vendor"
+            i18n="@@profile.byok.vendorKeyInactive"
+            >Tu clave de {{ label }} sigue guardada, pero no se usa mientras el permiso de IA externa
+            esté desactivado. Retirar el permiso no la borró.</p
           >
         }
 

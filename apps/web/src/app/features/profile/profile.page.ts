@@ -172,16 +172,6 @@ export class ProfilePage {
   protected readonly byokRevokingVendor = this.aiKeys.revokingVendor;
   protected readonly byokKeyByVendor = this.aiKeys.keyByVendor;
   protected readonly byokAvailabilityByVendor = this.aiKeys.availabilityByVendor;
-  /**
-   * Claves guardadas con consentimiento off: se ven pero no se usan (D12).
-   *
-   * Solo cuenta las claves de vendors que **no** están indisponibles: para un vendor sin configuración
-   * utilizable el aviso de indisponibilidad sustituye a este, porque «no se usan hasta que vuelvas a dar el
-   * permiso» sería falso ahí —dar el permiso no lo activa— (spec `web/byok`, precedencia vendor a vendor).
-   */
-  protected readonly byokKeysInactive = computed(
-    () => this.aiKeys.hasAnyUsableKey() && !this.consentToggleOn(),
-  );
   protected readonly apiKeyMinLength = AI_BYOK_API_KEY_MIN_LENGTH;
 
   constructor() {
@@ -215,6 +205,26 @@ export class ProfilePage {
     return (
       VENDORS_WITH_DATA_COLLECTION_CAVEAT.has(vendor) &&
       this.byokAvailabilityByVendor().get(vendor) === true
+    );
+  }
+
+  /**
+   * Muestra el aviso de «clave guardada con el permiso apagado» de ese vendor (D12).
+   *
+   * Es por vendor y no de sección porque la precedencia de la spec `web/byok` lo es: para un vendor sin
+   * configuración utilizable el aviso de indisponibilidad **sustituye** a este, y los dos no pueden salir a la
+   * vez sobre el mismo vendor. Decirle a alguien que su clave de OpenRouter «no se usa hasta que vuelvas a dar
+   * el permiso» cuando el servidor no construye OpenRouter es prometer una reactivación que el permiso no trae.
+   *
+   * Exige disponibilidad `=== true`, no «distinta de false»: mientras el listado no ha respondido el estado es
+   * `undefined` y la pantalla no afirma nada, ni que se usará ni que no. Un aviso que aparece cargando y
+   * desaparece después es peor que ninguno.
+   */
+  protected showsConsentOffNotice(vendor: AiVendor): boolean {
+    return (
+      this.keyFor(vendor) !== undefined &&
+      this.byokAvailabilityByVendor().get(vendor) === true &&
+      !this.consentToggleOn()
     );
   }
 

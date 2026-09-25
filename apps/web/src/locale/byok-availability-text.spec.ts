@@ -25,7 +25,6 @@ const NEW_UNIT_IDS = [
 const INHERITED_UNIT_IDS = [
   'profile.byok.destination',
   'profile.byok.openrouterDataCollection',
-  'profile.byok.keysInactive',
 ] as const;
 
 /** `source` exacto (XML interno) de cada id heredado el día que entró este aviso. */
@@ -34,9 +33,17 @@ const FROZEN_SOURCES: Record<(typeof INHERITED_UNIT_IDS)[number], string> = {
     'Con el permiso de IA externa vigente, el texto de tu CV y de la oferta puede salir hacia <x id="INTERPOLATION" equiv-text="{{ label }}"/>.',
   'profile.byok.openrouterDataCollection':
     'Si el modelo configurado no es :free, LinkVault no fuerza data_collection: deny.',
-  'profile.byok.keysInactive':
-    'Tienes claves guardadas, pero no se usan mientras el permiso de IA externa esté desactivado. Retirar el permiso no las borró.',
 };
+
+/**
+ * Id del aviso de «clave guardada con el permiso apagado», ahora por vendor.
+ *
+ * `profile.byok.keysInactive` hablaba de *todas* las claves desde fuera del bucle de vendors y por eso podía salir
+ * junto al aviso de indisponibilidad, que lo desmiente. Al pasar a por-vendor la frase cambia de ámbito y de
+ * número, así que se **retira** el id viejo y entra uno nuevo: la misma regla de siempre, en su forma fuerte.
+ */
+const RETIRED_UNIT_ID = 'profile.byok.keysInactive';
+const VENDOR_CONSENT_OFF_ID = 'profile.byok.vendorKeyInactive';
 
 /** `source` tal cual está en el XML (con sus `<x/>`), que es lo que identifica la frase. */
 function rawSources(xliff: string): Map<string, string> {
@@ -124,5 +131,40 @@ describe('aviso de indisponibilidad por vendor (10-bis.7)', () => {
         );
       }
     }
+  });
+});
+
+describe('aviso de permiso apagado, ahora por vendor (10-bis.8)', () => {
+  it('el id plural queda retirado de los dos catálogos', () => {
+    // Era un aviso de sección: hablaba de «tus claves» en plural desde fuera del bucle de vendors, y por eso
+    // salía a la vez que la indisponibilidad de OpenRouter. Su ámbito ya no existe; el id tampoco.
+    expect(sourceRaw.get(RETIRED_UNIT_ID), `"${RETIRED_UNIT_ID}" sigue en messages.xlf`).toBeUndefined();
+    expect(enRaw.get(RETIRED_UNIT_ID), `"${RETIRED_UNIT_ID}" sigue en messages.en.xlf`).toBeUndefined();
+    expect(VENDOR_CONSENT_OFF_ID).not.toBe(RETIRED_UNIT_ID);
+  });
+
+  it('el id nuevo existe en los dos ficheros, está traducido y nombra al vendor', () => {
+    expect(sourceUnits.get(VENDOR_CONSENT_OFF_ID)?.source, 'falta en messages.xlf').toBeTruthy();
+    expect(enUnits.get(VENDOR_CONSENT_OFF_ID)?.target?.trim(), 'target inglés vacío').toBeTruthy();
+    // Sin la interpolación del vendor la frase volvería a ser de sección: diría «tu clave» sin decir cuál.
+    for (const raw of [sourceRaw.get(VENDOR_CONSENT_OFF_ID), enRaw.get(VENDOR_CONSENT_OFF_ID)]) {
+      expect(raw, 'el aviso no nombra al vendor').toMatch(/equiv-text="\{\{ label \}\}"/);
+    }
+  });
+
+  it('el texto dice la verdad del nuevo ámbito: una clave, y que el permiso la reactiva', () => {
+    const es = sourceUnits.get(VENDOR_CONSENT_OFF_ID)?.source ?? '';
+    const en = enUnits.get(VENDOR_CONSENT_OFF_ID)?.target ?? '';
+
+    expect(es).toMatch(/sigue guardada/i);
+    expect(es).toMatch(/no se usa mientras el permiso de IA externa esté desactivado/i);
+    expect(es).toMatch(/no la borró/i);
+    expect(en).toMatch(/still stored/i);
+    expect(en).toMatch(/not used while external AI permission is off/i);
+    expect(en).toMatch(/did not delete it/i);
+
+    // Ya no habla en plural de «tus claves»: este aviso es de un vendor y solo sale para él.
+    expect(es, 'el aviso sigue hablando en plural').not.toMatch(/claves guardadas|no las borró/i);
+    expect(en, 'el aviso sigue hablando en plural').not.toMatch(/keys saved|delete them/i);
   });
 });
