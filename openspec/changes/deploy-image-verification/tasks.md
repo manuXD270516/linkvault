@@ -208,7 +208,7 @@
 ## 7. Tres resultados honestos y visibles en `cd-staging`
 
 - [x] 7.1 [infra] Job `preflight` que mapee `STAGING_HOST`, `STAGING_SSH_USER`, `STAGING_SSH_KEY` y `STAGING_COMPOSE_DIR` a `env:` **dentro de un step** y emita un output con el estado (`none` | `partial` | `full`) y el aviso: el contexto `secrets` **no se puede leer en un `if:` de job**, así que no hay atajo; verificar con una corrida real que el output sale y vale `none`.
-- [ ] 7.2 [infra] `partial` **falla en el preflight** nombrando los que faltan, porque ahí alguien sí quería desplegar; verificar configurando un secret de prueba y dejando el resto ausente, ver el fallo, y retirarlo después.
+- [x] 7.2 [infra] `partial` **falla en el preflight** nombrando los que faltan, porque ahí alguien sí quería desplegar; verificar configurando un secret de prueba y dejando el resto ausente, ver el fallo, y retirarlo después.
 - [x] 7.3 [infra] Job `deploy` con `needs` sobre `preflight` **y sobre el job de construir-verificar-publicar**, e `if:` sobre el estado igual a `full`, **sin `always()`**: sin el segundo `needs`, el tag de imagen llegaría vacío, el compose caería a `:latest` —que `cd-staging` ni siquiera publica— y el despliegue informaría éxito sobre la imagen equivocada; verificar en la corrida real (hoy sin secretos) que el job queda **saltado** y que un job saltado deja el workflow en **éxito**.
 - [x] 7.4 [infra] Añadir en el despliegue un guardia que **falle** si el tag resuelto no es el de esta corrida: vacío, `latest` o distinto del output del job de publicación; verificar forzando el caso (vaciando el output) y viendo que el paso falla antes de tocar el host, en vez de desplegar otra cosa.
 - [x] 7.5 [infra] Escribir un job de **reporte** que corra **siempre** (`if: always()`), con el nombre calculado a partir del estado del preflight y del resultado de la verificación, porque lo que se ve en la lista de *checks* de un commit es el **nombre del job**, no el de la ejecución (`run-name` se evalúa al iniciar y no puede depender de outputs de jobs, así que no sirve de vehículo); verificar mirando la lista de checks del commit en la rama y leyendo ahí que no se desplegó.
@@ -351,7 +351,48 @@
 >   no se publicó nada y no se desplegó nada.`): la clase **viajó**, que es exactamente lo que no estaba demostrado.
 >   Lo que esta corrida **no** demuestra es la rama `environment` del `case` por esta vía —las dos corridas que la
 >   motivaron son anteriores al mecanismo—: lo falsado es el transporte y la clase `artifact`.
-> * **7.2 sigue abierta**, sin cambios: esta corrida tampoco tuvo ningún secreto de destino puesto.
+> * **7.2 seguía abierta en ese momento**: esta corrida tampoco tuvo ningún secreto de destino puesto. Se cierra en el bloque siguiente.
+
+> **El destino a medias, ejercitado por primera vez (2026-09-25, corrida `36104024048` de `cd-staging`).**
+>
+> Hasta esta corrida el estado `partial` no es que estuviera sin probar: era **inalcanzable**. `gh secret list`
+> devolvía la lista **vacía**, así que el preflight solo podía salir `none`. Se creó un único secreto de repositorio
+> —`STAGING_HOST`, con un valor de pega bajo el TLD reservado `.invalid`, que no resuelve en ninguna red— dejando
+> los otros tres ausentes, y se retiró al terminar.
+> Enlace: <https://github.com/manuXD270516/linkvault/actions/runs/36104024048>
+>
+> * **7.2 — verificada.** El preflight **falla** y **nombra los que faltan**, que es lo que la tarea exige (fallar a
+>   secas no bastaría: un mensaje que dijera solo «faltan secretos» la cumpliría en la forma y no en el fondo):
+>
+>   ```
+>   estado: partial
+>   destino de staging a medias: faltan STAGING_SSH_USER STAGING_SSH_KEY STAGING_COMPOSE_DIR
+>   ##[error]Destino de staging configurado a medias; faltan: STAGING_SSH_USER STAGING_SSH_KEY STAGING_COMPOSE_DIR
+>   Están: STAGING_HOST. Documentados en infra/README.md.
+>   ```
+>
+>   Además dice **cuál está** y cómo volver al estado "sin destino", de modo que quien se lo encuentre pueda salir
+>   por cualquiera de los dos lados.
+> * **El valor del secreto no se filtra al log, y esto no estaba en el enunciado.** Se comprobó sobre la corrida
+>   **entera**, no sobre el job: `0` coincidencias del valor en las 3.639 líneas. El script imprime
+>   `STAGING_HOST             presente` —nombres, nunca valores— y Actions enmascara el mapeo como
+>   `DEPLOY_HOST: ***`. Importan las dos capas, pero la del script es la nuestra: aquí el valor era de pega y daría
+>   igual, y el día que sea el host real ya no.
+> * **De paso quedó ejercitada la quinta fila de la tabla de ADR-048 §3**, la del preflight indeterminado, que
+>   tampoco se había ejecutado nunca. El artefacto se construyó y verificó **con éxito** (`build, verify and publish
+>   artifact` → `success`) y aun así la corrida es **roja**:
+>
+>   ```
+>   resultado: destino de staging indeterminado — no se desplegó   → failure
+>   deploy staging (solo si hay destino configurado)               → skipped
+>   cd-staging/artifact  failure  El preflight terminó en 'failure' con estado 'partial': no se despliega.
+>   ```
+>
+>   Es justo lo que el comentario del script advertía que no debía pasar: lo cómodo habría sido tratar el destino a
+>   medias como "no hay destino" y terminar en verde. Un destino a medias es un **fallo**, no una ausencia.
+> * **El secreto se retiró** al cerrar la comprobación. Dejarlo puesto habría hecho que la primera fusión a `main`
+>   saliera roja por un destino a medias que pusimos nosotros — el mismo rojo permanente que este change vino a
+>   quitar, y por una causa más tonta.
 
 ## 8. `cd-prod`: el que nunca se ha ejecutado
 
