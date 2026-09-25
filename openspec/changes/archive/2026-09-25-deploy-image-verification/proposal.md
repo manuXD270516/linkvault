@@ -198,6 +198,12 @@ dos: la fila 35 dice que ya no entra, y en el `scope` de `staging-host` queda co
    referenciarlo por variable en los dos composes (4.16, 4.17). El camino limpio —otro servidor compatible con S3— y
    el **coste de mantener el espejo** (una vulnerabilidad en esa versión ya no se arregla sola, y lo replicado es
    **solo `linux/amd64`**) quedan abiertos. → **fila 35**.
+10. **La primera release** (8.1), añadido al archivar el change (2026-09-25). El camino de **publicación** de `cd-prod`
+   —tag semver salido del guardia más el tag móvil `latest`— no se ha ejecutado nunca: solo corre con un tag `v*`
+   real, y el modo de prueba se lo salta. Se archivó con 8.1 abierta **por decisión humana**: sin destino de
+   producción, una release publicaría `:latest` —el valor por defecto de `IMAGE_TAG` en `docker-compose.prod.yml`—
+   sin desplegarlo en ningún sitio. Entra la publicación, no el despliegue a un host de producción. → **fila 35**,
+   punto **(g)** de `staging-host`.
 
 ### Fuera de alcance
 

@@ -121,6 +121,18 @@ cadena y no se contacta a ningún proveedor—; si el tope está alcanzado **y**
 una cadena **restringida a esos `byok:*`** y continuar (no degradar por cuota); después, con la cadena vacía, el de falta de
 consentimiento si procede y `no_providers` en otro caso; y `providers_failed` solo cuando hubo al menos un intento.
 
+**BYOK elegible** SHALL significar, en esa precedencia, un vendor con consentimiento externo vigente, clave descifrable,
+**configuración utilizable** (la que permite construir su proveedor, según «Inyección BYOK en runTask» de `ai/byok`) y las
+capacidades que la tarea requiere. Las cuatro condiciones SHALL **sumarse**, nunca sustituirse: la configuración utilizable
+NO SHALL habilitar a un vendor sin consentimiento vigente o sin clave descifrable. La indisponibilidad por configuración
+SHALL ser **de ese vendor**, nunca de BYOK entero: los demás vendors del usuario con clave, consentimiento y configuración
+utilizable SHALL seguir siendo BYOK elegible y componer la cadena restringida.
+
+En consecuencia, con el tope alcanzado y **ningún** vendor que reúna las cuatro condiciones, el motivo SHALL ser
+`quota_exceeded` —con su instante de vuelta— y NO SHALL ser `no_providers` ni ningún otro: la cadena restringida no llega a
+componerse vacía porque ese usuario nunca entra en la rama del BYOK. Un vendor sin configuración utilizable NO SHALL poder
+convertir un `quota_exceeded` en un degradado por cadena vacía.
+
 **Cuando el motivo es `quota_exceeded`**, el resultado degradado SHALL incluir además el **instante en que se podrá volver a
 intentar**: el momento en que la ejecución contada más antigua sale de la ventana de la cuota y el conteo vuelve a estar por
 debajo del límite. SHALL ser un instante absoluto, para que quien lo guarde lo devuelva tal cual sin recalcularlo, y NO SHALL
@@ -197,6 +209,31 @@ que es la manera más rápida de gastar una cuota que ya está agotada.
 - **GIVEN** una ejecución degradada con motivo `providers_failed`, otra con `no_providers` y otra por falta de consentimiento
 - **WHEN** se inspeccionan los tres resultados
 - **THEN** ninguno SHALL traer instante de vuelta
+
+#### Scenario: Cuota agotada y el único vendor BYOK sin configuración utilizable
+
+- **GIVEN** un usuario que alcanzó el límite diario de `success` no-BYOK, con consentimiento externo vigente y una única clave descifrable, la de un vendor sin configuración utilizable
+- **WHEN** se ejecuta `runTask`
+- **THEN** ese vendor NO SHALL contar como BYOK elegible
+- **AND** el motivo SHALL ser `quota_exceeded` con su instante de vuelta
+- **AND** NO SHALL ser `no_providers` ni ningún otro de los cuatro
+- **AND** ningún proveedor SHALL recibir una petición
+
+#### Scenario: Cuota agotada con un vendor inutilizable y otro utilizable
+
+- **GIVEN** un usuario que alcanzó el límite diario de `success` no-BYOK, con consentimiento vigente y claves descifrables de dos vendors
+- **AND** uno de ellos sin configuración utilizable y el otro con configuración utilizable y las capacidades de la tarea
+- **WHEN** se ejecuta `runTask`
+- **THEN** NO SHALL degradar con `quota_exceeded`
+- **AND** la cadena SHALL restringirse al `byok:*` del vendor con configuración utilizable
+- **AND** el `byok:*` del vendor sin configuración utilizable NO SHALL formar parte de la cadena
+
+#### Scenario: La configuración utilizable no abre una puerta trasera al consentimiento
+
+- **GIVEN** un usuario que alcanzó el límite diario de `success` no-BYOK y un vendor con configuración utilizable pero sin consentimiento externo vigente, o sin clave descifrable
+- **WHEN** se ejecuta `runTask`
+- **THEN** ese vendor NO SHALL componer ninguna cadena restringida
+- **AND** el motivo SHALL ser `quota_exceeded` sin contactar a ningún proveedor
 
 ### Requirement: Caché de resultados
 

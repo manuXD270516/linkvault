@@ -500,7 +500,13 @@ changes:
       `docker-compose.yml` y `docker-compose.prod.yml`). Entran aquí las dos consecuencias que aquella decisión
       aplazó: **sustituir MinIO por otro servidor compatible con S3** (opción C, el camino limpio) y, mientras eso no
       ocurra, **mantener el espejo**, que desde ese día es trabajo nuestro: una vulnerabilidad en esa versión ya no se
-      arregla sola y lo replicado es **solo `linux/amd64`**, así que un host `arm64` no tiene imagen que descargar.
+      arregla sola y lo replicado es **solo `linux/amd64`**, así que un host `arm64` no tiene imagen que descargar;
+      **(g)** la **primera release**, que cierra la tarea 8.1 de `deploy-image-verification`: el camino de
+      **publicación** de `cd-prod` —tag semver salido del guardia más el tag móvil `latest`— no se ha ejecutado nunca,
+      porque solo corre con un tag `v*` real y el modo de prueba se lo salta. Aquel change se archivó con 8.1 abierta
+      por decisión humana: sin destino de producción, una release publicaría `:latest` sin desplegarlo en ningún sitio.
+      Entra aquí la **publicación**, no el despliegue: `cd-prod` a un host de producción sigue fuera, como dice la
+      línea siguiente.
       Fuera: `cd-prod` a un host de producción, escalado, observabilidad nueva.
   - name: golden-sets-reales
     adrs: [019, 018, 030]
