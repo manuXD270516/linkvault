@@ -2,7 +2,7 @@ import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { type HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { type EnvironmentProviders, type Provider, provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { NavigationEnd, type Router, provideRouter } from '@angular/router';
 import {
   AI_CONSENT_TEXT_VERSION,
   type GroupDetail,
@@ -12,6 +12,7 @@ import {
   type SessionResponse,
   type UserProfile,
 } from '@linkvault/shared';
+import { filter, firstValueFrom } from 'rxjs';
 import { appRoutes } from '../app/app.routes';
 import { authInterceptor } from '../app/core/auth/auth.interceptor';
 import { REFRESH_LOCKS } from '../app/core/auth/refresh-coordination';
@@ -151,4 +152,30 @@ export function buttonWithText(host: HTMLElement, text: string): HTMLButtonEleme
 
 export function settle(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+/**
+ * Promesa que se resuelve cuando el router **termina** de navegar a `url`. Es para las navegaciones que dispara el
+ * código de la página (no el test), así que hay que armarla *antes* de la acción que navega y esperarla después:
+ *
+ * ```ts
+ * const navigated = whenNavigatedTo(router, '/grupos/g2');
+ * await submitCode('ABCD2345');
+ * // ...responder a la API...
+ * await navigated;
+ * ```
+ *
+ * Armarla antes evita la carrera: da igual cuántos microtasks tarde el componente en llamar a `navigate()`. Y como
+ * espera el evento en vez de sondear `router.url`, no tiene presupuesto de tiempo: entrar a una ruta perezosa carga su
+ * chunk, y con la máquina cargada eso pasa de sobra del segundo que `vi.waitFor` concede por defecto.
+ */
+export function whenNavigatedTo(router: Router, url: string): Promise<void> {
+  return firstValueFrom(
+    router.events.pipe(
+      filter(
+        (event): event is NavigationEnd =>
+          event instanceof NavigationEnd && event.urlAfterRedirects === url,
+      ),
+    ),
+  ).then(() => undefined);
 }
