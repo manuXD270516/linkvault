@@ -10,13 +10,38 @@
       "!{projectRoot}/tsconfig.spec.json",
       "!{projectRoot}/vitest.config.{js,ts,mjs,mts,cjs,cts}"
     ],
+    // Ficheros de la raíz que, al cambiar, invalidan la caché de **todos** los proyectos y los marcan como
+    // afectados. Entran aquí solo los que de verdad pueden cambiar el resultado de cualquier target.
+    //
+    // `.env.example` y `docker-compose.prod.yml` se añaden en el change `deploy-image-verification` (tarea 11.2).
+    // **Lo que aportan, medido, no es lo que la tarea daba por hecho.** 11.2 decía que sin ellos un commit que solo
+    // tocara el compose no marcaría ningún proyecto como afectado y Nx restauraría un verde cacheado. Ejecutado con
+    // Nx 23.2.1 y la adición quitada: `nx show projects --affected` sobre ese commit devuelve igualmente
+    // `["repo-checks"]`, y su comprobación se **vuelve a ejecutar** en vez de salir de la caché. La razón es que Nx
+    // también deriva los proyectos tocados de los **globs `{workspaceRoot}` de los `inputs` de sus targets**, y los
+    // de `tools/repo-checks` nombran los dos ficheros (tarea 11.1). Es decir: las comprobaciones **no** nacían
+    // muertas por esto — los `inputs` explícitos ya las mantienen vivas.
+    // Lo que la adición sí hace es meter los dos ficheros en la clave de caché de **todos** los proyectos: un
+    // cambio en el compose o en el ejemplo deja de poder pasar inadvertido para cualquier target futuro que los
+    // lea, sin depender de que quien lo escriba se acuerde de declararlos. Es la declaración de "estos dos ficheros
+    // de la raíz importan", y su precio —invalidar la caché de los 11 proyectos cuando cambian— está aceptado
+    // porque los dos cambian pocas veces.
+    //
+    // **`docs/**` NO entra aquí, y es una decisión, no un olvido.** Este repositorio se dirige por specs: casi cada
+    // commit toca documentación, así que meterla en las entradas globales invalidaría la caché de todos los
+    // proyectos casi siempre, que es desactivar la caché sin decirlo. La documentación queda cubierta por otras dos
+    // vías, que son las que la comprobación necesita: los `inputs` **explícitos** de los targets de
+    // `tools/repo-checks` (que nombran `docs/**/*.md`, así que un cambio en el RUNBOOK sí les cambia el hash) y el
+    // paso **incondicional** de los tres workflows, que ejecuta el agregador sin pasar por el cálculo de afectación.
     "sharedGlobals": [
       "{workspaceRoot}/nx.json",
       "{workspaceRoot}/tsconfig.base.json",
       "{workspaceRoot}/eslint.config.mjs",
       "{workspaceRoot}/.nvmrc",
       "{workspaceRoot}/package.json",
-      "{workspaceRoot}/pnpm-lock.yaml"
+      "{workspaceRoot}/pnpm-lock.yaml",
+      "{workspaceRoot}/.env.example",
+      "{workspaceRoot}/docker-compose.prod.yml"
     ]
   },
   "plugins": [

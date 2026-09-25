@@ -11,6 +11,7 @@ import {
 import { defaultByokConfig } from './default-byok-config';
 import {
   formatAiConfigProblems,
+  formatAiConfigWarnings,
   parseAiConfig,
   type AiEnv,
 } from './parse-ai-config';
@@ -70,7 +71,7 @@ describe('parseAiConfig', () => {
         AI_CHAIN: 'mock,ollama,openrouter',
         AI_MOCK_MODE: 'synth',
         OPENROUTER_API_KEY: API_KEY,
-        OPENROUTER_MODEL: 'meta-llama/llama-3.3-70b-instruct:free',
+        OPENROUTER_MODEL: 'cohere/north-mini-code:free',
       }),
     ).toEqual({
       nodeEnv: 'development',
@@ -96,7 +97,7 @@ describe('parseAiConfig', () => {
       openrouter: {
         baseUrl: 'https://openrouter.ai/api/v1',
         apiKey: API_KEY,
-        model: 'meta-llama/llama-3.3-70b-instruct:free',
+        model: 'cohere/north-mini-code:free',
         maxContextTokens: 32_000,
         timeoutMs: 30_000,
         referer: OPENROUTER_APP_REFERER,
@@ -141,6 +142,85 @@ describe('parseAiConfig', () => {
     });
     expect(parsed.byok.openaiModel).toBe('gpt-4o');
     expect(parsed.byok.openrouterModel).toBe('anthropic/claude-sonnet-4');
+  });
+
+  // ADR-048 §6 y `ai/byok`: el aviso de arranque. Va aquí porque no existía canal de aviso — todo lo que
+  // `parseAiConfig` sabía emitir abortaba el proceso.
+  describe('avisos de configuración', () => {
+    it('no avisa en el caso normal: el default del código es un modelo utilizable', () => {
+      const result = parse({ NODE_ENV: 'development', AI_CHAIN: 'none' });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.warnings).toEqual([]);
+      expect(result.config.byok.openrouterModel).toBe(
+        AI_CONFIG_DEFAULTS.BYOK_OPENROUTER_MODEL,
+      );
+    });
+
+    it('con BYOK_OPENROUTER_MODEL vacía y sin default avisa, y el parseo sigue siendo ok', () => {
+      // `EnvReader` lee la cadena vacía como ausente y `parseByok` cae al default del código, así que con la
+      // variable **vacía** el estado «sin modelo» solo se alcanza neutralizando también el default, que es lo que
+      // hace este test. Por entorno sí se alcanza con un valor de solo espacios, que `EnvReader` no trata como
+      // ausente e `isOpenRouterModelUsable` rechaza (receta en la cabecera de `apps/web-e2e/src/byok.spec.ts`).
+      const original = AI_CONFIG_DEFAULTS.BYOK_OPENROUTER_MODEL;
+      Object.defineProperty(AI_CONFIG_DEFAULTS, 'BYOK_OPENROUTER_MODEL', {
+        value: '',
+        configurable: true,
+        writable: true,
+      });
+      try {
+        const result = parse({
+          NODE_ENV: 'development',
+          AI_CHAIN: 'none',
+          BYOK_OPENROUTER_MODEL: '',
+        });
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        expect(result.warnings).toHaveLength(1);
+        expect(result.warnings[0]?.variable).toBe('BYOK_OPENROUTER_MODEL');
+        const text = formatAiConfigWarnings('worker', result.warnings);
+        expect(text).toContain('BYOK_OPENROUTER_MODEL');
+        expect(text).toContain('openrouter');
+      } finally {
+        Object.defineProperty(AI_CONFIG_DEFAULTS, 'BYOK_OPENROUTER_MODEL', {
+          value: original,
+          configurable: true,
+          writable: true,
+        });
+      }
+    });
+
+    it('el aviso no lleva ningún valor de configuración', () => {
+      const original = AI_CONFIG_DEFAULTS.BYOK_OPENROUTER_MODEL;
+      Object.defineProperty(AI_CONFIG_DEFAULTS, 'BYOK_OPENROUTER_MODEL', {
+        value: '',
+        configurable: true,
+        writable: true,
+      });
+      try {
+        const result = parse({
+          NODE_ENV: 'development',
+          AI_CHAIN: 'none',
+          AI_VAULT_KEY: VAULT_KEY_B64,
+          BYOK_OPENROUTER_MODEL: '',
+          BYOK_OPENAI_MODEL: 'gpt-4o',
+        });
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        const text = `${JSON.stringify(result.warnings)}\n${formatAiConfigWarnings('api', result.warnings)}`;
+        expect(text).not.toContain(VAULT_KEY_B64);
+        expect(text).not.toContain('gpt-4o');
+      } finally {
+        Object.defineProperty(AI_CONFIG_DEFAULTS, 'BYOK_OPENROUTER_MODEL', {
+          value: original,
+          configurable: true,
+          writable: true,
+        });
+      }
+    });
   });
 
   it('reads explicit values, keeps the AI_CHAIN order and resolves relative dirs against cwd', () => {
@@ -287,7 +367,7 @@ describe('parseAiConfig', () => {
     const found = problems({
       NODE_ENV: 'development',
       AI_CHAIN: 'openrouter',
-      OPENROUTER_MODEL: 'meta-llama/llama-3.3-70b-instruct:free',
+      OPENROUTER_MODEL: 'cohere/north-mini-code:free',
     });
 
     expect(found).toEqual([
@@ -305,7 +385,7 @@ describe('parseAiConfig', () => {
       AI_VAULT_KEY: VAULT_KEY_B64,
       AI_MOCK_MODE: 'replay',
       OPENROUTER_API_KEY: API_KEY,
-      OPENROUTER_MODEL: 'meta-llama/llama-3.3-70b-instruct:free',
+      OPENROUTER_MODEL: 'cohere/north-mini-code:free',
     });
 
     expect(found).toEqual([
@@ -399,7 +479,7 @@ describe('parseAiConfig', () => {
     const env = {
       AI_CHAIN: 'openrouter',
       OPENROUTER_API_KEY: API_KEY,
-      OPENROUTER_MODEL: 'meta-llama/llama-3.3-70b-instruct:free',
+      OPENROUTER_MODEL: 'cohere/north-mini-code:free',
       OPENROUTER_BASE_URL: 'http://127.0.0.1:4010/api/v1',
     };
 

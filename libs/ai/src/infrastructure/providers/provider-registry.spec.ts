@@ -28,7 +28,7 @@ const BASE_ENV: AiEnv = {
   OLLAMA_MAX_CONTEXT_TOKENS: '4096',
   OLLAMA_TIMEOUT_MS: '45000',
   OPENROUTER_API_KEY: 'sk-or-v1-provider-registry-test',
-  OPENROUTER_MODEL: 'meta-llama/llama-3.3-70b-instruct:free',
+  OPENROUTER_MODEL: 'cohere/north-mini-code:free',
   OPENROUTER_MAX_CONTEXT_TOKENS: '16000',
   OPENROUTER_TIMEOUT_MS: '20000',
 };

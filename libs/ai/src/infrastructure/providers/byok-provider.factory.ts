@@ -9,6 +9,7 @@ import {
   OPENROUTER_APP_TITLE,
 } from '../config/ai-config.schema';
 import { AnthropicProvider } from './anthropic.provider';
+import { isByokVendorConfigUsable } from './byok-vendor-availability';
 import { OpenAIProvider } from './openai.provider';
 import { OpenRouterProvider } from './openrouter.provider';
 
@@ -84,6 +85,20 @@ export class ByokProviderFactory implements ByokProvidersSource {
     apiKey: string,
   ): LlmProvider | null {
     const { config } = this.options;
+
+    // INVARIANTE (ADR-048 §6 y §6-ter, `ai/byok` §«OpenRouter BYOK y data_collection»): un vendor sin configuración
+    // utilizable **no se construye**. Hoy eso solo le pasa a OpenRouter sin modelo, y no es el camino esperado —el
+    // valor por defecto del código es un `:free` verificado— sino la defensa para el día en que no haya candidato.
+    // Construirlo igual sería el peor de los tres desenlaces: un proveedor que arranca, acepta la tarea y manda el
+    // texto del CV al vendor con `dataCollection: 'omit'` (lo de abajo), es decir **sin** `data_collection: deny`,
+    // en silencio. Devolver `null` deja ese vendor fuera del universo de routing sin impedir el arranque y sin
+    // tocar a los demás; el aviso visible lo emite `parseAiConfig` (`formatAiConfigWarnings`).
+    //
+    // La condición NO se escribe aquí: se pregunta a `isByokVendorConfigUsable`, el mismo predicado que la API
+    // consulta para decir `available`. Dos copias serían dos verdades, y `byok-vendor-availability.spec.ts`
+    // comprueba que este `providersFor` y ese predicado no pueden discrepar.
+    if (!isByokVendorConfigUsable(vendor, config)) return null;
+
     switch (vendor) {
       case 'anthropic':
         return new AnthropicProvider({

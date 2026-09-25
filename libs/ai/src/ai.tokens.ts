@@ -27,3 +27,11 @@ export const USER_AI_KEYS_REPOSITORY = Symbol('USER_AI_KEYS_REPOSITORY');
 
 /** Factory de proveedores `byok:*`. Interno al módulo salvo tests. */
 export const BYOK_PROVIDER_FACTORY = Symbol('BYOK_PROVIDER_FACTORY');
+
+/**
+ * `ByokVendorAvailability`: ¿puede esta instancia construir el proveedor BYOK de un vendor? (ADR-048 §6-ter).
+ *
+ * Exportado para que `api` pueble el `available` del contrato de claves sin leer `AiConfig.byok` por su cuenta ni
+ * reimplementar el criterio: es el mismo predicado que usa `ByokProviderFactory` para no construir el proveedor.
+ */
+export const BYOK_VENDOR_AVAILABILITY = Symbol('BYOK_VENDOR_AVAILABILITY');

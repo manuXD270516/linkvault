@@ -1,11 +1,6 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import type {
-  AiKeyView,
-  AiVendor,
-  ListAiKeysResponse,
-  UpsertAiKeyRequest,
-} from '@linkvault/shared';
+import type { AiKeyView, AiVendor, ListAiKeysResponse, UpsertAiKeyRequest } from '@linkvault/shared';
 import { firstValueFrom } from 'rxjs';
 
 const AI_KEYS_URL = '/api/users/me/ai-keys';
@@ -18,10 +13,17 @@ const AI_KEYS_URL = '/api/users/me/ai-keys';
 export class AiKeysApi {
   private readonly http = inject(HttpClient);
 
-  /** Lista solo vistas (`vendor`, `keyHint`, `updatedAt`). */
-  async list(): Promise<AiKeyView[]> {
-    const response = await firstValueFrom(this.http.get<ListAiKeysResponse>(AI_KEYS_URL));
-    return response.keys;
+  /**
+   * Devuelve el cuerpo **entero** del listado: `keys` (solo los vendors con clave guardada) y `vendors`
+   * (la disponibilidad de los tres vendors soportados, tengan clave o no).
+   *
+   * Antes se devolvía solo `response.keys` y el resto del cuerpo se tiraba. La pantalla necesita `vendors`
+   * para distinguir «no forzamos data_collection: deny» de «este vendor no está disponible», y la spec de
+   * `web/byok` le prohíbe deducir ese estado: tiene que venir del API. Quedarse solo con `keys` obligaría a
+   * reimplementar en el cliente el criterio del servidor, que es justo lo que este contrato evita.
+   */
+  list(): Promise<ListAiKeysResponse> {
+    return firstValueFrom(this.http.get<ListAiKeysResponse>(AI_KEYS_URL));
   }
 
   /** Guarda o rota la clave de un vendor; responde solo la vista. */

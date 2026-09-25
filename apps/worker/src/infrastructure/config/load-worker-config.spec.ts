@@ -254,6 +254,51 @@ describe('worker configuration', () => {
     expect(output).toContain('60000');
   });
 
+  // Ramas de correo del `superRefine` (ADR-048 §2): el worker envía notificaciones de producto con el mismo
+  // proveedor que `api`, así que exige lo mismo **al arrancar**. Antes de este change solo las comprobaba `api` y
+  // un worker mal configurado arrancaba para fallar en el primer envío.
+  it('requires SMTP host and port when MAIL_PROVIDER=smtp', () => {
+    const result = parseEnv(workerConfigSchema, {
+      ...readEnvExample(),
+      MAIL_PROVIDER: 'smtp',
+      MAIL_SMTP_HOST: undefined,
+      MAIL_SMTP_PORT: undefined,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      invalid: [
+        { name: 'MAIL_SMTP_HOST', reason: 'missing' },
+        { name: 'MAIL_SMTP_PORT', reason: 'missing' },
+      ],
+    });
+  });
+
+  it('requires the Resend key when MAIL_PROVIDER=resend', () => {
+    const result = parseEnv(workerConfigSchema, {
+      ...readEnvExample(),
+      MAIL_PROVIDER: 'resend',
+      RESEND_API_KEY: undefined,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      invalid: [{ name: 'RESEND_API_KEY', reason: 'missing' }],
+    });
+  });
+
+  it('asks for nothing else when MAIL_PROVIDER=capture', () => {
+    const result = parseEnv(workerConfigSchema, {
+      ...readEnvExample(),
+      MAIL_PROVIDER: 'capture',
+      MAIL_SMTP_HOST: undefined,
+      MAIL_SMTP_PORT: undefined,
+      RESEND_API_KEY: undefined,
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
   it('requires the enrichment variables', () => {
     const result = parseEnv(workerConfigSchema, {
       ...readEnvExample(),

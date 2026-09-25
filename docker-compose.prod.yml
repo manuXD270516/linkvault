@@ -110,7 +110,16 @@ services:
       start_period: 5s
 
   minio:
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    # Espejo propio de la imagen de MinIO. El 2026-09-24, MinIO **restringió el acceso anónimo** a sus imágenes en
+    # quay.io: el repositorio entero pasó a devolver 401 y la pila dejó de poder montarse desde cero en ninguna
+    # máquina limpia — lo destapó la verificación del artefacto de este change, no un despliegue fallido.
+    # Se replica el **mismo objeto** (idéntico id de imagen), sin modificarlo y conservando su procedencia. Va por
+    # variable y no fijo a fuego: la lección del incidente es justamente que una imagen de un tercero clavada en el
+    # fichero es un punto de fallo que no se puede sortear sin editarlo.
+    # Limitación conocida: el espejo lleva solo **linux/amd64**, que es lo que había en la máquina que lo replicó.
+    # Sustituir MinIO por otro servidor compatible con S3, y mantener este espejo mientras tanto, están
+    # registrados en la fila 35 (docs/design-v0.2.md y el scope de staging-host de openspec-changes.yaml, punto (f)).
+    image: ${MINIO_IMAGE:-ghcr.io/manuxd270516/linkvault-minio}:${MINIO_IMAGE_TAG:-RELEASE.2025-09-07T16-13-09Z}
     restart: unless-stopped
     command: ['server', '/data', '--console-address', ':9001']
     environment:
@@ -136,7 +145,11 @@ services:
       start_interval: 3s
 
   api:
-    image: ${API_IMAGE:-ghcr.io/linkvault/linkvault-api}:${IMAGE_TAG:-latest}
+    # El valor por defecto nombra el espacio de nombres **del repositorio** (ADR-048 §4-bis): antes apuntaba a
+    # `ghcr.io/linkvault/…`, que el proyecto no controla y que nadie ejercitaba nunca porque los workflows exportan
+    # siempre `API_IMAGE`/`WORKER_IMAGE`/`WEB_IMAGE`. Quien copiaba esta configuración y hacía `pull` no se llevaba
+    # nuestra imagen, y quien registrase ese espacio decidiría qué se ejecuta como producción en esas máquinas.
+    image: ${API_IMAGE:-ghcr.io/manuxd270516/linkvault-api}:${IMAGE_TAG:-latest}
     restart: unless-stopped
     depends_on:
       mongo:
@@ -163,6 +176,22 @@ services:
       AUTH_ACCESS_TOKEN_TTL_SECONDS: ${AUTH_ACCESS_TOKEN_TTL_SECONDS:-900}
       AUTH_REFRESH_TTL_DAYS: ${AUTH_REFRESH_TTL_DAYS:-30}
       AUTH_REFRESH_MAX_DAYS: ${AUTH_REFRESH_MAX_DAYS:-90}
+      # TTL de los tokens de verificación y de reset (ADR-034). Obligatorias en `apiConfigSchema`: sin ellas el
+      # proceso termina ≠0 **antes de escuchar**. Los valores de producto (24 h y 1 h) son un defecto razonable.
+      AUTH_VERIFY_TOKEN_TTL_HOURS: ${AUTH_VERIFY_TOKEN_TTL_HOURS:-24}
+      AUTH_RESET_TOKEN_TTL_SECONDS: ${AUTH_RESET_TOKEN_TTL_SECONDS:-3600}
+      # Correo transaccional (ADR-034, ADR-048 §2). `MAIL_PROVIDER` va sin valor por defecto **a propósito**: el
+      # único que no exige nada más es `capture`, que se queda los mensajes sin entregarlos, y un despliegue que
+      # arranca y nunca envía la verificación de una cuenta es peor que uno que se niega a arrancar. Sin ella el
+      # `up` aborta nombrándola.
+      MAIL_PROVIDER: ${MAIL_PROVIDER:?}
+      MAIL_FROM: ${MAIL_FROM:?}
+      # Condicionales del proveedor: con `smtp` el esquema exige host y puerto; con `resend`, la clave. Se pasan
+      # siempre y vacías por defecto —`parseEnv` lee la cadena vacía como ausente—, para que el fallo lo dé el
+      # esquema nombrando la variable y no un `undefined` a mitad del primer envío.
+      MAIL_SMTP_HOST: ${MAIL_SMTP_HOST:-}
+      MAIL_SMTP_PORT: ${MAIL_SMTP_PORT:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
       PASTE_EXTRACTION_TIMEOUT_MS: ${PASTE_EXTRACTION_TIMEOUT_MS:-20000}
       AI_CHAIN: ${AI_CHAIN:?}
       AI_VAULT_KEY: ${AI_VAULT_KEY:?}
@@ -177,7 +206,7 @@ services:
       OLLAMA_MODEL: ${OLLAMA_MODEL:-}
       BYOK_ANTHROPIC_MODEL: ${BYOK_ANTHROPIC_MODEL:-claude-sonnet-4-20250514}
       BYOK_OPENAI_MODEL: ${BYOK_OPENAI_MODEL:-gpt-4o-mini}
-      BYOK_OPENROUTER_MODEL: ${BYOK_OPENROUTER_MODEL:-meta-llama/llama-3.3-70b-instruct:free}
+      BYOK_OPENROUTER_MODEL: ${BYOK_OPENROUTER_MODEL:-cohere/north-mini-code:free}
       MATCH_ANALYSES_PER_USER: ${MATCH_ANALYSES_PER_USER:-10}
       MATCH_QUOTA_WINDOW_MS: ${MATCH_QUOTA_WINDOW_MS:-86400000}
       MATCH_ANALYSIS_MAX_AGE_MS: ${MATCH_ANALYSIS_MAX_AGE_MS:-240000}
@@ -206,7 +235,8 @@ services:
       start_period: 60s
 
   worker:
-    image: ${WORKER_IMAGE:-ghcr.io/linkvault/linkvault-worker}:${IMAGE_TAG:-latest}
+    # Mismo motivo que en `api`: el espacio de nombres por defecto es el del repositorio (ADR-048 §4-bis).
+    image: ${WORKER_IMAGE:-ghcr.io/manuxd270516/linkvault-worker}:${IMAGE_TAG:-latest}
     restart: unless-stopped
     # Scale without touching other services: docker compose … up -d --scale worker=2
     depends_on:
@@ -236,7 +266,7 @@ services:
       OLLAMA_MODEL: ${OLLAMA_MODEL:-}
       BYOK_ANTHROPIC_MODEL: ${BYOK_ANTHROPIC_MODEL:-claude-sonnet-4-20250514}
       BYOK_OPENAI_MODEL: ${BYOK_OPENAI_MODEL:-gpt-4o-mini}
-      BYOK_OPENROUTER_MODEL: ${BYOK_OPENROUTER_MODEL:-meta-llama/llama-3.3-70b-instruct:free}
+      BYOK_OPENROUTER_MODEL: ${BYOK_OPENROUTER_MODEL:-cohere/north-mini-code:free}
       ENRICH_FETCH_TIMEOUT_MS: ${ENRICH_FETCH_TIMEOUT_MS:-10000}
       ENRICH_MAX_BYTES: ${ENRICH_MAX_BYTES:-2097152}
       ENRICH_DOMAIN_DELAY_MS: ${ENRICH_DOMAIN_DELAY_MS:-2000}
@@ -252,6 +282,17 @@ services:
       MATCH_ANALYSIS_CONCURRENCY: ${MATCH_ANALYSIS_CONCURRENCY:-1}
       CV_EXTRACTION_TIMEOUT_MS: ${CV_EXTRACTION_TIMEOUT_MS:-30000}
       CV_EXTRACT_CONCURRENCY: ${CV_EXTRACT_CONCURRENCY:-1}
+      # Notificaciones de producto (ADR-035): el worker compone los enlaces del correo con `WEB_BASE_URL` y envía
+      # con el mismo proveedor que `api`. Las tres son obligatorias en `workerConfigSchema`, así que sin ellas el
+      # worker termina ≠0 antes de escuchar en su puerto de salud.
+      WEB_BASE_URL: ${WEB_BASE_URL:?}
+      MAIL_PROVIDER: ${MAIL_PROVIDER:?}
+      MAIL_FROM: ${MAIL_FROM:?}
+      # Mismas condicionales que en `api`, y desde este change el esquema del worker también las exige por rama
+      # (`smtp` → host y puerto; `resend` → clave), en vez de descubrirlo al enviar el primer correo.
+      MAIL_SMTP_HOST: ${MAIL_SMTP_HOST:-}
+      MAIL_SMTP_PORT: ${MAIL_SMTP_PORT:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
       S3_ENDPOINT: http://minio:9000
       S3_REGION: ${S3_REGION:-us-east-1}
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:?}
@@ -261,13 +302,19 @@ services:
       FEATURE_HEADLESS_EXTRACTION: ${FEATURE_HEADLESS_EXTRACTION:-false}
     networks:
       - internal
+    # Readiness **idéntica** a la de `api`: el que decide es el **contenido** (`status`, `checks.mongo`,
+    # `checks.redis`), y el `!r.ok` sobra para distinguir sano de degradado — está por simetría, no porque haga
+    # falta. La versión anterior solo hacía `JSON.parse` del cuerpo y acertaba por accidente, apoyada en que hoy el
+    # controlador responde 503 con un indicador caído: el día que respondiera 200 describiendo un estado degradado,
+    # `up --wait` habría dado verde con el worker roto (requirement "La salud se decide por el contenido, no por el
+    # código de estado", ADR-048 §4).
     healthcheck:
       test:
         [
           'CMD',
           'node',
           '-e',
-          "fetch('http://127.0.0.1:3001/health').then(async (r)=>{const t=await r.text(); if(!r.ok) process.exit(1); JSON.parse(t); process.exit(0)}).catch(()=>process.exit(1))",
+          "fetch('http://127.0.0.1:3001/health').then(async (r)=>{const t=await r.text(); if(!r.ok) process.exit(1); const j=JSON.parse(t); process.exit(j.status==='up'&&j.checks?.mongo?.status==='up'&&j.checks?.redis?.status==='up'?0:1)}).catch(()=>process.exit(1))",
         ]
       interval: 10s
       timeout: 5s
@@ -275,12 +322,16 @@ services:
       start_period: 60s
 
   web:
-    image: ${WEB_IMAGE:-ghcr.io/linkvault/linkvault-web}:${IMAGE_TAG:-latest}
+    # Mismo motivo que en `api`: el espacio de nombres por defecto es el del repositorio (ADR-048 §4-bis).
+    image: ${WEB_IMAGE:-ghcr.io/manuxd270516/linkvault-web}:${IMAGE_TAG:-latest}
     restart: unless-stopped
     networks:
       - internal
+    # No basta con que nginx responda: un directorio vacío, o sirviendo otra cosa, devuelve 200 y pasaría. Se exige
+    # el documento del SPA, cuya raíz es `<lv-root>` (apps/web/src/index.html). `CMD-SHELL` porque hace falta una
+    # tubería; `wget` viene en nginx:alpine.
     healthcheck:
-      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1/']
+      test: ['CMD-SHELL', "wget -qO- http://127.0.0.1/ | grep -q '<lv-root'"]
       interval: 15s
       timeout: 5s
       retries: 6

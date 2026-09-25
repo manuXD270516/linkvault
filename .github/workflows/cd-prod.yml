@@ -1,5 +1,21 @@
-# CD producción: tag v* (semver) → verify → GHCR → ssh/compose pull+up → smoke interno (ADR-033 D3/D10).
-# Push a main NO despliega prod. Dry-run NO cuenta como éxito.
+# CD producción: tag `vX.Y.Z` → verify (todo el workspace) → construir (load) → **verificar el artefacto** →
+# publicar en GHCR lo verificado, por identidad de digest → (si hay destino) ssh/compose pull+up → smoke interno
+# (ADR-033 D3/D10; ADR-048 §3 y §4).
+#
+# **Este workflow no se había ejecutado nunca** (0 corridas al escribir esto, comprobado con la API de Actions), así
+# que hereda el arreglo del artefacto y la estructura de tres resultados **sin ninguna evidencia previa de
+# funcionar**. Todo lo que aquí se afirma o se ha ejecutado fuera de Actions, o está anotado como pendiente en el
+# grupo 8 de `openspec/changes/deploy-image-verification/tasks.md`.
+#
+# **Tres resultados, no dos** (ADR-048 §3, que enmienda ADR-033 D10), los mismos que `cd-staging`:
+#   1. el artefacto no se construye o no arranca → **fallo**, exista o no destino;
+#   2. artefacto verificado y con destino        → se despliega y se comprueba con el smoke;
+#   3. artefacto verificado y **sin** destino    → **verde**, diciendo de forma visible que no se desplegó.
+# Y un **cuarto desenlace**, que no es un cuarto color: la verificación **no se pudo llevar a cabo** por una avería
+# ajena → **fallo también**, pero la señal NO lo atribuye al artefacto (ADR-048 §3).
+# El destino **a medias** (algunos secrets puestos y otros no) es un **fallo**: ahí alguien sí quería desplegar.
+#
+# Push a `main` NO despliega producción: eso es `cd-staging`. Un dry-run NO cuenta como despliegue.
 name: cd-prod
 
 on:
@@ -9,8 +25,28 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Existing semver tag to deploy (e.g. v1.2.3); required for manual runs'
-        required: true
+        description: 'Tag semver existente a desplegar (p. ej. v1.2.3). Obligatorio salvo en modo prueba.'
+        required: false
+        type: string
+      # --- Modo de prueba (tarea 8.7) --------------------------------------------------------------------------
+      # Este workflow nunca se ha ejecutado, así que hay que poder probarlo; y probarlo **no puede tener como precio
+      # tocar producción**. Con `dry_run` la corrida construye y verifica el artefacto y **no publica nada**.
+      #
+      # Por qué importa tanto aquí y no solo por prudencia general: el tag móvil de producción es `:latest`, que es
+      # además el **valor por defecto de `IMAGE_TAG`** en `docker-compose.prod.yml`. Una corrida de prueba que lo
+      # moviera dejaría a producción llevándose código de prueba en el siguiente `docker compose pull`, sin que nadie
+      # hubiera desplegado nada.
+      dry_run:
+        description: 'Modo prueba: construir y verificar el artefacto SIN publicar en GHCR ni desplegar'
+        type: boolean
+        default: false
+      # El modo de prueba necesita **su propia referencia**. El checkout de este workflow usa `inputs.tag`, así que
+      # una prueba lanzada desde una rama haría checkout del **tag** y verificaría el código anterior: la corrida
+      # saldría verde sin haber ejecutado ni una línea de lo que se quiere probar. Vacío = la referencia desde la
+      # que se lanza el dispatch (`github.ref`), que es lo que se espera al pulsar "Run workflow" sobre una rama.
+      ref:
+        description: 'Solo en modo prueba: rama o commit a construir (vacío = la referencia desde la que se lanza)'
+        required: false
         type: string
 
 concurrency:
@@ -21,31 +57,76 @@ permissions:
   contents: read
   actions: read
   packages: write
+  # El job de reporte publica un **estado de commit** con el resultado del CD: es la superficie que se lee sin abrir
+  # la ejecución, junto con el nombre del job (ADR-048 §3 y consecuencias).
+  statuses: write
 
 env:
   NX_DAEMON: 'false'
   REGISTRY: ghcr.io
 
 jobs:
+  # --- verify: **todo el workspace**, no el delta contra `main` (tareas 8.4 y 8.5) ---------------------------------
+  # Antes este job derivaba la base con `nrwl/nx-set-shas` y verificaba con `nx affected`. Un tag apunta casi siempre
+  # a un commit que **ya está en `main`**: base y cabeza coinciden, el conjunto afectado sale vacío y el verify daba
+  # **verde sin ejecutar nada**, justo antes de desplegar a producción. Medido en este repositorio (Nx 23.2.1):
+  # `pnpm nx show projects --affected --base=HEAD --head=HEAD --json` devuelve `[]`, y `nx affected -t lint` con esa
+  # base termina con `No tasks were run` y código **0**.
+  #
+  # Por eso aquí se usa `run-many --all`, y por eso `nx-set-shas` ya no aparece: no hay base que derivar. El acotado
+  # por afectación existe para abaratar pushes y PRs (`ci.yml`, `cd-staging.yml`), no para abaratar un release.
   verify:
-    name: verify (lint, specs, typecheck, test, build)
+    name: verify release (todo el workspace)
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
+    outputs:
+      release_tag: ${{ steps.semver.outputs.tag }}
     steps:
+      # El `ref` decide **qué código se verifica y se construye**, así que la expresión se lee entera:
+      #   * push de tag                    → `github.ref` (el tag que disparó la corrida);
+      #   * dispatch en modo prueba        → `inputs.ref` si se da, y si no la referencia del dispatch (la rama);
+      #   * dispatch de despliegue real    → `inputs.tag`.
+      # La rama del modo prueba es la tarea 8.7: sin ella, una prueba lanzada desde una rama haría checkout del tag y
+      # correría el código anterior.
+      #
+      # Caso raro y comprobado evaluando la expresión: un dispatch **sin** modo prueba y **sin** tag deja esto en
+      # cadena vacía, y `actions/checkout` cae entonces a la referencia del dispatch. No se queda ahí: el guardia de
+      # semver del paso siguiente recibe el nombre de la rama y aborta la corrida nombrándolo ("no empieza por 'v'"),
+      # antes de construir nada. Se documenta en vez de añadir una rama más a una expresión que ya decide demasiado.
+      #
+      # Nota de YAML (ya pisada en el grupo 7): en un escalar plegado (`>-`), las líneas **más indentadas** que la
+      # primera conservan su salto de línea. Todas van al mismo nivel para que esto llegue como una sola línea.
       - name: Checkout
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+          ref: >-
+            ${{ github.event_name != 'workflow_dispatch' && github.ref
+            || (inputs.dry_run && (inputs.ref != '' && inputs.ref || github.ref)
+            || inputs.tag) }}
 
-      - name: Assert semver tag
+      # Qué se está construyendo de verdad, dicho en el log. Es lo que la tarea 8.7 pide comprobar en la corrida de
+      # prueba: que el commit construido es el de la rama y no el del tag.
+      - name: Show what is being verified
         shell: bash
         run: |
-          ref="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
-          case "$ref" in
-            v[0-9]*.[0-9]*.[0-9]*) echo "tag=$ref" ;;
-            *) echo "::error::Prod deploy requires semver tag vMAJOR.MINOR.PATCH (got: $ref)"; exit 1 ;;
-          esac
+          printf 'evento      : %s\n' "$GITHUB_EVENT_NAME"
+          printf 'github.ref  : %s\n' "$GITHUB_REF"
+          printf 'commit      : %s\n' "$(git rev-parse HEAD)"
+          printf 'descripción : %s\n' "$(git log -1 --pretty='%h %s')"
+          printf 'referencias que apuntan a este commit: %s\n' "$(git name-rev --name-only HEAD || true)"
+
+      # El guardia de semver **no** corre en modo prueba: ahí no hay tag de release, y exigirlo impediría probar el
+      # workflow desde una rama, que es justo para lo que existe ese modo. La corrida de prueba no publica ni
+      # despliega, así que no hay nada que proteger con él. El guardia se ejercita con su propia tabla de casos
+      # (`infra/ci/assert-semver-tag.sh`), que se ejecuta fuera de Actions.
+      - name: Assert semver release tag
+        id: semver
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry_run != true }}
+        shell: bash
+        env:
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: infra/ci/assert-semver-tag.sh
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -76,25 +157,47 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Derive affected base and head
-        uses: nrwl/nx-set-shas@v5
-        with:
-          main-branch-name: main
+      # --- Comprobaciones de repositorio: EL MISMO BLOQUE en ci.yml, cd-staging.yml y cd-prod.yml (tarea 11.5) ------
+      # Va **antes** del cálculo de afectación y no por `nx affected` a propósito: son lecturas de ficheros que
+      # tardan segundos, y así ninguna comprobación depende de que el conjunto afectado la alcance (ADR-048 §5).
+      # Los guardias (agregador vacío, agregador cacheable) viven en el script, no aquí: los tres workflows han de
+      # ejecutar exactamente lo mismo, y tres cuerpos copiados en tres YAML divergen. Este change no extrae un
+      # workflow reutilizable —eso es de la fila 35—, así que lo que queda duplicado es solo esta invocación; si se
+      # toca en uno, se toca en los tres.
+      # Aquí no basta con que corra en `ci.yml`: un release se lanza sobre un tag y no pasa por el CI de la rama, así
+      # que sin esto un `vX.Y.Z` llegaría a producción sin que ninguna comprobación de repositorio se hubiera mirado.
+      - name: Repo checks
+        shell: bash
+        run: infra/ci/repo-checks.sh
+
+      # Guardia del conjunto vacío (8.5), **solo en este workflow**. `run-many --all` tampoco garantiza que se
+      # ejecute algo: con un target que ningún proyecto declara termina en `No tasks were run` y código 0 (medido).
+      # "No se ejecutó nada" y "se ejecutó todo y pasó" se ven igual, y aquí lo siguiente es producción.
+      #
+      # NO se añade a `ci.yml` ni a `cd-staging.yml`: allí el conjunto vacío es **legítimo** —un merge que solo toca
+      # documentación no afecta a ningún proyecto— y un guardia incondicional pondría esos merges en rojo inventando
+      # un fallo. Las comprobaciones que sí tienen que correr siempre van como paso incondicional en `ci.yml`.
+      - name: Assert the release verifies a non-empty set of projects
+        run: infra/ci/assert-release-projects.sh
 
       - name: Lint
-        run: pnpm nx affected -t lint
+        run: pnpm nx run-many --all -t lint
 
       - name: Validate OpenSpec specs
         run: pnpm exec openspec validate --all --no-interactive
 
       - name: Typecheck
-        run: pnpm nx affected -t typecheck
+        run: pnpm nx run-many --all -t typecheck
 
+      # Mismo entorno de IA que el verify de ci.yml (spec ci-pipeline, CLAUDE.md): mock determinista en
+      # replay, embeddings incluidos. AI_EMBED_CHAIN va explícito porque su ausencia hacía divergir este verify del
+      # de ci.yml, que es el único sitio donde la cadena de embeddings quedaba sin fijar.
       - name: Test
         env:
           AI_CHAIN: mock
           AI_MOCK_MODE: replay
-        run: pnpm nx affected -t test
+          AI_EMBED_CHAIN: mock
+        run: pnpm nx run-many --all -t test
 
       # Misma etapa que en ci.yml (spec platform/ci-pipeline, ADR-050): un catálogo i18n atrasado no se despliega.
       - name: i18n catalog
@@ -105,13 +208,21 @@ jobs:
           NODE_ENV: test
           AI_CHAIN: mock
           AI_MOCK_MODE: replay
-        run: pnpm nx affected -t eval-ci
+          AI_EMBED_CHAIN: mock
+        run: pnpm nx run-many --all -t eval-ci
 
       - name: Build
-        run: pnpm nx affected -t build
+        run: pnpm nx run-many --all -t build
 
-  build-push:
-    name: build and push GHCR
+  # Construir → verificar que arranca → publicar, en **un solo job** (ADR-048 §4), igual que en `cd-staging`. Las tres
+  # imágenes se construyen con `load: true` y **sin `push`**: una imagen cargada vive solo en el daemon de este
+  # corredor, así que publicar desde otro sitio la reconstruiría y subiría bits que nadie verificó.
+  #
+  # Por eso el job es **uno** y no tres: construir, verificar y publicar tienen que ocurrir **en el mismo daemon**, y
+  # por eso **no hay ningún build después de la verificación**. El único camino de publicación es el `docker push` de
+  # la imagen ya cargada y verificada (`infra/ci/publish-artifact.sh`), que además comprueba la identidad por digest.
+  build-verify-publish:
+    name: build, verify and publish release artifact
     needs: verify
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -121,16 +232,55 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+          ref: >-
+            ${{ github.event_name != 'workflow_dispatch' && github.ref
+            || (inputs.dry_run && (inputs.ref != '' && inputs.ref || github.ref)
+            || inputs.tag) }}
 
+      # --- La clase del fallo, y por qué viaja en un artefacto y no en un output del job -------------------------
+      # Mismo mecanismo y mismas razones que en `cd-staging` (ahí está el razonamiento entero): `report` tiene que
+      # poder decir **qué** falló —el artefacto, o el entorno que no dejó verificarlo—, y lo que hay que comunicar es
+      # justo lo que pasa cuando este job **falla**. Que los outputs de un job fallido lleguen a `needs` no está
+      # demostrado; que un artefacto subido en un paso sobreviva al job, sí. La clase por defecto es `artifact`
+      # porque este job es construir y verificar; si muere antes de este paso no hay fichero, la clase llega vacía y
+      # el reporte NO afirma ninguna causa.
+      - name: Default artifact failure class
+        shell: bash
+        run: printf 'artifact\n' > "${{ runner.temp }}/verify-fail-class"
+
+      # El tag inmutable de un release es el **tag semver**, ya comprobado por el guardia del job `verify` y recibido
+      # de allí: si aquí se volviera a derivar de `github.ref_name` por libre, el guardia dejaría de estar en el
+      # camino. Que llegue vacío significa que el guardia no corrió (o que el output cambió de nombre), y eso es un
+      # fallo, no algo que se arregle inventando un tag.
+      #
+      # En modo prueba el tag es `sha-<12>`: local, **nunca publicado**, y distinto de cualquier tag de release, para
+      # que ni por accidente pueda confundirse con uno. Y `MOVING_TAG` queda vacío, que es lo que impide mover
+      # `:latest` —el valor por defecto de `IMAGE_TAG` en el compose de producción— desde una prueba.
       - name: Image tag
         id: meta
         shell: bash
+        env:
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
+          RELEASE_TAG: ${{ needs.verify.outputs.release_tag }}
         run: |
-          tag="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
+          set -euo pipefail
+          if [ "$DRY_RUN" = 'true' ]; then
+            tag="sha-${GITHUB_SHA::12}"
+            moving=''
+            echo "::notice::Modo prueba: se construye y se verifica ${tag}; no se publica ni se despliega nada."
+          else
+            if [ -z "$RELEASE_TAG" ]; then
+              echo "::error::El tag de release llegó vacío desde el job verify: el guardia de semver no corrió."
+              exit 1
+            fi
+            tag="$RELEASE_TAG"
+            moving='latest'
+          fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "moving=$moving" >> "$GITHUB_OUTPUT"
           owner="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
           echo "owner=$owner" >> "$GITHUB_OUTPUT"
+          printf 'tag inmutable: %s\ntag móvil    : %s\n' "$tag" "${moving:-(ninguno)}"
 
       - name: Login GHCR
         uses: docker/login-action@v3
@@ -142,67 +292,196 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and push api
+      # `load: true` y `push: false`: la imagen queda en el daemon de este corredor, que es la única forma de
+      # levantarla para verificarla. Solo el tag inmutable; el móvil `:latest` no puede existir antes de la
+      # verificación, y en producción ese tag es el que el compose resuelve por defecto.
+      - name: Build api (load, no push)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/api.Dockerfile
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-api:${{ steps.meta.outputs.tag }}
-            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-api:latest
+          push: false
+          load: true
+          tags: ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-api:${{ steps.meta.outputs.tag }}
           cache-from: type=gha,scope=api
           cache-to: type=gha,mode=max,scope=api
 
-      - name: Build and push worker
+      - name: Build worker (load, no push)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/worker.Dockerfile
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-worker:${{ steps.meta.outputs.tag }}
-            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-worker:latest
+          push: false
+          load: true
+          tags: ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-worker:${{ steps.meta.outputs.tag }}
           cache-from: type=gha,scope=worker
           cache-to: type=gha,mode=max,scope=worker
 
-      - name: Build and push web
+      - name: Build web (load, no push)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/web.Dockerfile
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-web:${{ steps.meta.outputs.tag }}
-            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-web:latest
+          push: false
+          load: true
+          tags: ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-web:${{ steps.meta.outputs.tag }}
           cache-from: type=gha,scope=web
           cache-to: type=gha,mode=max,scope=web
 
+      # Verificación del artefacto (grupo 5, ADR-048 §4): levanta `docker-compose.prod.yml` —el **mismo** fichero que
+      # se despliega, nunca un compose escrito para CI— con las imágenes que los tres pasos anteriores acaban de
+      # cargar, y exige que `api`, `worker` y `web` arranquen y respondan. Traefik, los certificados y la publicación
+      # de puertos quedan fuera; se entra con `docker compose exec`.
+      #
+      # Las cuatro variables de imagen y tag van aquí, como `env:` del paso, y no en `infra/ci/verify.env`: allí
+      # serían un valor fijo que envejece y que reintroduciría el espacio de nombres por defecto corregido en
+      # ADR-048 §4-bis. El plazo del `up --wait` (360 s) y su justificación viven en `infra/ci/verify-artifact.sh`.
+      - name: Verify artifact (docker-compose.prod.yml stack in the runner)
+        env:
+          API_IMAGE: ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-api
+          WORKER_IMAGE: ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-worker
+          WEB_IMAGE: ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-web
+          IMAGE_TAG: ${{ steps.meta.outputs.tag }}
+          VERIFY_FAIL_CLASS_FILE: ${{ runner.temp }}/verify-fail-class
+        run: infra/ci/verify-artifact.sh
+
+      # --- Publicación: **estas mismas** imágenes, nunca otras -------------------------------------------------
+      # Sin `if: always()` y sin `continue-on-error`: este paso solo se alcanza si el anterior terminó en verde
+      # ("Nada se publica antes de verificarse"). Publicar es **consecuencia** de haber verificado.
+      #
+      # Se publica con `docker push` del tag ya cargado. **NO** hay aquí un segundo `docker/build-push-action` con
+      # `push: true` ni un `docker buildx build --push`, por barata que la caché hiciera esa construcción: la imagen
+      # que se acaba de levantar vive solo en el daemon de este corredor, así que reconstruir para publicar subiría
+      # bits que nadie ha arrancado. El script comprueba además la **identidad por digest** de lo publicado contra lo
+      # verificado, en esta misma corrida, y falla si difieren; el razonamiento completo —incluido por qué no vale
+      # comparar `{{.Id}}`— está en `infra/ci/publish-artifact.sh`.
+      #
+      # `MOVING_TAG` sale del paso `Image tag` y vale `latest` **solo** fuera del modo prueba. En producción ese tag
+      # no es cosmético: es el valor por defecto de `IMAGE_TAG` en `docker-compose.prod.yml`, así que moverlo es
+      # decidir qué se lleva el siguiente `pull` de un host que no ha desplegado nada.
+      #
+      # El `if:` nombra el evento en vez de apoyarse en que el contexto `inputs` esté vacío fuera de
+      # `workflow_dispatch`: si esa suposición fuera falsa, el fallo sería publicar cuando no tocaba.
+      - name: Publish verified artifact to GHCR (docker push of the loaded image)
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry_run != true }}
+        env:
+          API_IMAGE: ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-api
+          WORKER_IMAGE: ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-worker
+          WEB_IMAGE: ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-web
+          IMAGE_TAG: ${{ steps.meta.outputs.tag }}
+          MOVING_TAG: ${{ steps.meta.outputs.moving }}
+        run: infra/ci/publish-artifact.sh
+
+      # `if: always()`: justo cuando la verificación falla es cuando hay volúmenes que limpiar. Sin `-v`, dos
+      # corridas seguidas en el mismo corredor arrancarían sobre los datos de la anterior.
+      - name: Tear down verification stack
+        if: always()
+        run: infra/ci/teardown-artifact.sh
+
+      # `if: always()` y no `if: failure()`: con `failure()` una corrida verde no dejaría artefacto y el paso que lo
+      # recoge en `report` quedaría en rojo en **todas** las corridas buenas. En una corrida verde el fichero llega
+      # con el valor por defecto y el reporte lo ignora, porque `VERIFY_RESULT` ya dice `success`.
+      - name: Upload artifact failure class
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: verify-fail-class
+          path: ${{ runner.temp }}/verify-fail-class
+          if-no-files-found: ignore
+          retention-days: 1
+
+  # --- ¿Hay destino de producción? (tareas 8.2 y 8.3) ---------------------------------------------------------------
+  # Mismo mecanismo que en `cd-staging`: el contexto `secrets` **no se puede leer en un `if:` de job** —una condición
+  # escrita ahí se evalúa contra un contexto vacío y el job se saltaría (o se ejecutaría) siempre, en silencio—, así
+  # que los secretos se mapean a `env:` dentro de un step y el estado sale como **output del job**.
+  #
+  # --- Por qué este job declara un entorno, y por qué NO es `production` --------------------------------------------
+  # En producción los secretos suelen ser de **environment**, y un job sin entorno los leería **vacíos**: reportaría
+  # "sin destino → verde" para siempre aunque estuvieran configurados. Es la misma mentira que este change corrige,
+  # mudada al peor sitio posible (ADR-048 §3). Lo que se exige es que el job que decide el estado **pueda leerlos**.
+  #
+  # Declarar `environment: production` aquí lo conseguiría y traería dos efectos indeseados: cada job que referencia
+  # un entorno **registra un despliegue** en él —producción aparecería como desplegada sin haberlo estado, que es
+  # exactamente lo que este workflow existe para no hacer—, y si ese entorno exige revisores el job quedaría
+  # **colgado** esperando aprobación, que no es ninguno de los tres resultados.
+  #
+  # Estado medido en este repositorio (2026-09-24, API de GitHub): `repos/{owner}/{repo}/environments` →
+  # `{"total_count":0}`, `actions/secrets` → `{"total_count":0}` y `deployments` → `[]`. Es decir: **hoy no existe
+  # ningún entorno, ningún secreto y ningún despliegue registrado**, así que no hay revisores que puedan colgar nada.
+  # Lo que no se puede comprobar desde aquí es el registro de despliegue, que solo aparece al ejecutar; por eso el
+  # espejo se usa **ya**, en vez de esperar a verlo pasar en producción una vez.
+  #
+  # `production-preflight` es un entorno **espejo, de solo lectura**: sin reglas de protección, sin revisores y sin
+  # URL. Funciona en las dos configuraciones posibles de los secretos —si son de repositorio, un entorno sin secretos
+  # propios los hereda; si son de entorno, hay que copiarlos también aquí— y está documentado en `infra/README.md`.
+  # El entorno real `production` queda **solo** en el job de despliegue, que es el único que despliega.
+  #
+  # No lleva `needs`: saber si hay destino no depende de que el artefacto esté bien, y separarlo deja las dos
+  # respuestas visibles por separado en la lista de checks.
+  preflight:
+    name: preflight (¿hay destino de producción configurado?)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment: production-preflight
+    outputs:
+      state: ${{ steps.target.outputs.state }}
+      summary: ${{ steps.target.outputs.summary }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Resolve production deploy target
+        id: target
+        shell: bash
+        env:
+          DEPLOY_TARGET: production
+          DEPLOY_SECRET_PREFIX: PROD
+          DEPLOY_HOST: ${{ secrets.PROD_HOST }}
+          DEPLOY_SSH_USER: ${{ secrets.PROD_SSH_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+          DEPLOY_COMPOSE_DIR: ${{ secrets.PROD_COMPOSE_DIR }}
+        run: infra/ci/preflight-deploy-target.sh
+
+  # `needs` sobre **los dos** jobs, y no es redundante: sin `needs` sobre el de publicación, el tag de imagen llegaría
+  # **vacío** y el compose del host caería a su valor por defecto `:latest`, desplegando lo que hubiera ahí e
+  # informando de éxito. En producción ese defecto es peor que en staging, porque `:latest` **sí** existe en el
+  # registro (es el tag móvil de este workflow): el despliegue no fallaría, desplegaría **otra versión**.
+  #
+  # `if:` sobre el estado del preflight y **sin `always()`**: con `always()` este job se ejecutaría también con el
+  # artefacto roto, que es el fallo exacto que este change corrige. Sin `always()`, un `needs` que falla deja el job
+  # **saltado**, y un job saltado no pone el workflow en rojo — que es lo que hace posible el tercer resultado.
+  #
+  # `state == 'full'` y no `!= 'none'`: `partial` ya ha hecho fallar al preflight, y escribir la condición por
+  # exclusión dejaría que un estado nuevo o vacío cayera del lado de desplegar.
+  #
+  # Y el modo prueba **no despliega**, por construcción: no ha publicado ninguna imagen, así que un despliegue solo
+  # podría llevarse otra cosa. La condición lo nombra en vez de confiar en que el `pull` falle.
+  #
+  # `environment: production` vive **aquí y solo aquí** (ver el comentario del preflight): el despliegue es el único
+  # sitio donde registrar un despliegue en producción es verdad, y donde una regla de protección con revisores tiene
+  # el efecto que se espera de ella.
   deploy-prod:
-    name: deploy prod (compose pull+up + internal smoke)
-    needs: build-push
+    name: deploy prod (solo si hay destino configurado)
+    needs: [preflight, build-verify-publish]
+    if: >-
+      ${{ needs.preflight.outputs.state == 'full'
+      && (github.event_name != 'workflow_dispatch' || inputs.dry_run != true) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     environment: production
     steps:
-      - name: Require prod deploy secrets
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # 7.4, antes de tocar el host: un despliegue equivocado ya detectado sigue siendo un despliegue equivocado.
+      # `EXPECTED_TAG` se recalcula **aquí**, del evento, y no se toma del output del job de publicación: comparar el
+      # output consigo mismo no comprobaría nada. Esa duplicación es el contenido de la comprobación.
+      - name: Assert the tag to deploy is this run's verified artifact
         shell: bash
         env:
-          PROD_HOST: ${{ secrets.PROD_HOST }}
-          PROD_SSH_USER: ${{ secrets.PROD_SSH_USER }}
-          PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
-          PROD_COMPOSE_DIR: ${{ secrets.PROD_COMPOSE_DIR }}
-        run: |
-          missing=()
-          [ -z "$PROD_HOST" ] && missing+=(PROD_HOST)
-          [ -z "$PROD_SSH_USER" ] && missing+=(PROD_SSH_USER)
-          [ -z "$PROD_SSH_KEY" ] && missing+=(PROD_SSH_KEY)
-          [ -z "$PROD_COMPOSE_DIR" ] && missing+=(PROD_COMPOSE_DIR)
-          if [ ${#missing[@]} -gt 0 ]; then
-            echo "::error::Missing required secrets for prod deploy: ${missing[*]}"
-            echo "Documented in infra/README.md. A dry-run is NOT an accepted CD outcome (ADR-033 D10)."
-            exit 1
-          fi
+          IMAGE_TAG: ${{ needs['build-verify-publish'].outputs.image_tag }}
+          EXPECTED_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: infra/ci/assert-deploy-tag.sh
 
       - name: SSH compose pull+up prod
         uses: appleboy/ssh-action@v1.2.0
@@ -214,7 +493,7 @@ jobs:
             set -euo pipefail
             cd "${{ secrets.PROD_COMPOSE_DIR }}"
             OWNER="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
-            export IMAGE_TAG="${{ needs.build-push.outputs.image_tag }}"
+            export IMAGE_TAG="${{ needs['build-verify-publish'].outputs.image_tag }}"
             export API_IMAGE="ghcr.io/${OWNER}/linkvault-api"
             export WORKER_IMAGE="ghcr.io/${OWNER}/linkvault-worker"
             export WEB_IMAGE="ghcr.io/${OWNER}/linkvault-web"
@@ -222,7 +501,26 @@ jobs:
               echo "${{ secrets.GHCR_READ_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
             fi
             docker compose -f docker-compose.prod.yml --env-file .env.prod pull
-            docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait
+            # 7.9: plazo explícito y volcado al fallar. Los 360 s salen de los `start_period` y las ventanas de
+            # reintento de este mismo compose, encadenadas: minio 20 + 12×10 = 140 s y, solo entonces, api/worker
+            # 60 + 12×10 = 180 s → 320 s de suelo, más un 12 % de margen (el cálculo vive en
+            # `infra/ci/verify-artifact.sh`).
+            #
+            # Medido (ver la nota del grupo 7 en el change): sin plazo, Compose 5.5.1 **no** espera para siempre
+            # ante un bucle de reinicio —aborta en 4 s con `container … is unhealthy`—. Lo que el plazo sí acota es
+            # una readiness que no converge **dentro de su `start_period`**, donde Compose no declara nada y espera
+            # (`application not healthy after 20s` en la prueba). El **volcado** de `ps` y `logs` es lo que hace
+            # diagnosticable cualquiera de los dos, y este host es el único sitio donde se puede mirar.
+            up_status=0
+            docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait --wait-timeout 360 \
+              || up_status=$?
+            if [ "$up_status" -ne 0 ]; then
+              echo "::error::La pila de producción no quedó sana en 360 s (up salió $up_status)."
+              docker compose -f docker-compose.prod.yml --env-file .env.prod ps --all || true
+              docker compose -f docker-compose.prod.yml --env-file .env.prod logs --no-color --tail=200 \
+                api worker web || true
+              exit 1
+            fi
 
       - name: Smoke GET /health against api (Docker network, not Traefik)
         uses: appleboy/ssh-action@v1.2.0
@@ -242,3 +540,105 @@ jobs:
             case "$body" in
               *'<html'*|*'<!DOCTYPE'*) echo "::error::Smoke returned HTML (SPA); must hit api internally"; exit 1 ;;
             esac
+
+  # --- El resultado, dicho donde se lee sin abrir la corrida (7.5, 7.6, 7.7) ---------------------------------------
+  # Lo que alguien mira de forma habitual es la **lista de checks del commit o del tag**: ahí se ven los **nombres de
+  # los jobs** y los **estados de commit**. La lista de ejecuciones del workflow no puede llevar el resultado
+  # (`run-name` se fija al iniciar la corrida, antes de que existan los outputs), y por eso la señal va en estas dos
+  # superficies y no en aquella.
+  #
+  # El **nombre del job** se calcula aquí porque el nombre de un job no puede salir de un step suyo. Las cinco cadenas
+  # son **las mismas** que deriva `infra/ci/report-cd-outcome.sh` con `TARGET_LABEL=production`, que es quien decide
+  # el estado y publica: si cambias una, cambia la otra (el script imprime el nombre que él deriva, así que una
+  # divergencia se ve en la propia corrida).
+  #
+  # `if: always()` es obligatorio —el reporte tiene que existir también cuando el artefacto está roto— y es justo por
+  # eso que el script **deriva** el estado en vez de publicar un literal: un reporte que publicara siempre `success`
+  # pondría un tic verde junto al check rojo del artefacto. El script sale ≠0 cuando lo que deriva es un fallo, de
+  # modo que este job tampoco se ve verde.
+  #
+  # **Límite conocido, dicho en vez de tapado:** en una corrida de **modo prueba** con destino de producción
+  # configurado, `deploy-prod` queda saltado a propósito y la tabla del script lo lee como "había destino y el
+  # despliegue no terminó bien" → fallo. Es un rojo falso. Hoy no puede darse (el repositorio no tiene ningún secreto
+  # configurado: `actions/secrets` → `total_count: 0`), y `cd-staging` tiene exactamente el mismo hueco con su
+  # `dry_run`. Se cierra donde se cierra el resto del reporte —con destino real contra el que ejercitarlo, fila 35—,
+  # y en el mismo sitio para los dos workflows, para no dejar dos lógicas de decisión distintas.
+  #
+  # **Segundo límite, también dicho:** el **nombre** del job no distingue "el artefacto está roto" de "no se pudo
+  # verificar". El nombre se evalúa desde los contextos `needs` y la clase del fallo no vive ahí —viaja en un artefacto
+  # que solo un step puede recoger—, así que el nombre se queda en el enunciado cierto en los dos casos y la causa va
+  # en la **descripción** del estado de commit.
+  report:
+    # Nota de YAML: un escalar plegado (`>-`) conserva los saltos de línea de las líneas **más indentadas** que la
+    # primera, así que todas las líneas de la expresión van al **mismo** nivel: así se pliegan en una sola línea.
+    name: >-
+      ${{ needs['build-verify-publish'].result != 'success'
+      && 'resultado: el artefacto NO pasó la verificación'
+      || (needs.preflight.outputs.state == 'full'
+      && (needs['deploy-prod'].result == 'success'
+      && 'resultado: artefacto verificado y desplegado a production'
+      || 'resultado: artefacto verificado, despliegue a production NO completado')
+      || (needs.preflight.outputs.state == 'none'
+      && 'resultado: artefacto verificado — NO desplegado (sin destino de production)'
+      || 'resultado: destino de production indeterminado — no se desplegó')) }}
+    needs: [preflight, build-verify-publish, deploy-prod]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # `continue-on-error: true` porque la ausencia del artefacto es un desenlace previsto —el job murió antes de
+      # clasificar—, no una avería: se traduce en "sin causa", nunca en un reporte que no se publica.
+      - name: Fetch the artifact failure class
+        id: failclass-download
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: verify-fail-class
+          path: ${{ runner.temp }}/failclass
+
+      # Lista blanca: cualquier cosa que no sea `artifact` o `environment` cae en "clase vacía" y el reporte NO
+      # atribuye causa alguna. Confundir "no lo sé" con "lo de siempre" es el defecto que esto arregla.
+      - name: Read the artifact failure class
+        id: failclass
+        shell: bash
+        run: |
+          set -euo pipefail
+          file="${{ runner.temp }}/failclass/verify-fail-class"
+          class=''
+          if [ -f "$file" ]; then
+            class="$(tr -d '[:space:]' <"$file")"
+          else
+            printf 'no llegó el fichero de clase (%s): el reporte no nombrará causa\n' "$file"
+          fi
+          case "$class" in
+            artifact | environment) ;;
+            *)
+              if [ -n "$class" ]; then
+                printf 'clase no reconocida (%s): se trata como ausente\n' "$class"
+              fi
+              class=''
+              ;;
+          esac
+          printf 'clase del fallo: %s\n' "${class:-vacía}"
+          echo "class=$class" >>"$GITHUB_OUTPUT"
+
+      - name: Publish CD outcome (job name + commit status)
+        shell: bash
+        env:
+          VERIFY_RESULT: ${{ needs['build-verify-publish'].result }}
+          VERIFY_FAIL_CLASS: ${{ steps.failclass.outputs.class }}
+          PREFLIGHT_RESULT: ${{ needs.preflight.result }}
+          PREFLIGHT_STATE: ${{ needs.preflight.outputs.state }}
+          DEPLOY_RESULT: ${{ needs['deploy-prod'].result }}
+          TARGET_LABEL: production
+          # Fijo: es la identidad del check, y GitHub sustituye el estado anterior del mismo contexto. Si el
+          # resultado fuera al contexto, cada desenlace dejaría un check distinto y todos vivirían a la vez.
+          STATUS_CONTEXT: cd-prod/artifact
+          STATUS_SHA: ${{ github.sha }}
+          STATUS_TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: infra/ci/report-cd-outcome.sh

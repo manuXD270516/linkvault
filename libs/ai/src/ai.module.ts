@@ -12,6 +12,7 @@ import {
   AI_CACHE_REDIS_CLIENT,
   AI_MODULE_OPTIONS,
   BYOK_PROVIDER_FACTORY,
+  BYOK_VENDOR_AVAILABILITY,
   EMBED_TEXTS,
   PROVIDER_ELIGIBILITY,
   RUN_TASK,
@@ -47,6 +48,10 @@ import {
 } from './infrastructure/persistence/redis-result-cache.client';
 import { FilePromptRegistry } from './infrastructure/prompt-registry/file-prompt-registry';
 import { ByokProviderFactory } from './infrastructure/providers/byok-provider.factory';
+import {
+  byokVendorAvailabilityOf,
+  type ByokVendorAvailability,
+} from './infrastructure/providers/byok-vendor-availability';
 import { buildEmbeddingProviders } from './infrastructure/providers/embedding-provider-registry';
 import {
   buildProviders,
@@ -207,6 +212,15 @@ export class AiModule {
             logger,
           }),
       },
+      // Un solo predicado de disponibilidad por vendor (ADR-048 §6-ter): el mismo que usa la factory para no
+      // construir el proveedor. Se publica para que `api` pueble el `available` del contrato de claves sin volver a
+      // interpretar `config.byok` — dos lecturas de la misma configuración divergen en cuanto una cambie.
+      {
+        provide: BYOK_VENDOR_AVAILABILITY,
+        inject: [AI_MODULE_OPTIONS],
+        useFactory: ({ config }: AiModuleOptions): ByokVendorAvailability =>
+          byokVendorAvailabilityOf(config.byok),
+      },
       {
         provide: AI_CACHE_REDIS_CLIENT,
         inject: [AI_MODULE_OPTIONS],
@@ -365,6 +379,7 @@ export class AiModule {
         PROVIDER_ELIGIBILITY,
         SECRET_VAULT,
         USER_AI_KEYS_REPOSITORY,
+        BYOK_VENDOR_AVAILABILITY,
       ],
     };
   }

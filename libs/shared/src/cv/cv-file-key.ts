@@ -6,8 +6,9 @@
 // `ana/CV Ana Pérez - Backend.pdf` publicaría el nombre de una persona en el listado de un bucket, en un mensaje de
 // error del SDK y en cualquier traza. El tipo se guarda en Mongo (`fileType`), que es donde se consulta.
 //
-// El prefijo por usuario existe para que un operador pueda encontrar y borrar de una vez todo lo de una persona
-// (`mc rm --recursive <bucket>/<userId>/`, RUNBOOK), que es justo lo que el borrado de cuenta necesitará.
+// El prefijo por usuario existe para que se pueda encontrar y borrar de una vez todo lo de una persona. Es lo que usa
+// la cascada de `DELETE /api/users/me` (`CvUserPrefixDeleter`), y también el operador cuando esa operación no se puede
+// usar (`mc rm --recursive <bucket>/<userId>/`, RUNBOOK).
 
 /** `<userId>/<cvId>`, estable para los mismos identificadores. */
 export function cvFileKey(userId: string, cvId: string): string {

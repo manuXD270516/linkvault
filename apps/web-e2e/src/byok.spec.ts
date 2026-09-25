@@ -3,6 +3,62 @@ import { expect, test } from '@playwright/test';
 import { join } from 'node:path';
 import { resetRegisterLimit } from './support/register-limit';
 
+/**
+ * Smoke de la sección BYOK del perfil (spec `web/byok`).
+ *
+ * QUÉ AFIRMA ESTE SPOKE SOBRE LOS AVISOS, Y POR QUÉ ASÍ. Los dos avisos condicionales —la nota de
+ * `data_collection` y el de indisponibilidad del vendor— dependen de la configuración de la instancia contra la
+ * que corre el smoke, así que aquí **no** se afirma que exista un vendor caído ni que exista uno con modelo de
+ * pago: se afirma la **correspondencia** entre lo que enseña la pantalla y lo que dice el cuerpo de
+ * `GET /api/users/me/ai-keys`. Eso es comprobable en cualquier configuración, y es justo la propiedad que el
+ * change persigue: que la UI consuma la señal del servidor en vez de deducirla.
+ *
+ * CÓMO SE FABRICA LA PASADA DEL VENDOR INDISPONIBLE. Se alcanza por entorno, sin tocar código: basta con que
+ * `BYOK_OPENROUTER_MODEL` llegue a la `api` como una cadena **de solo espacios**. `EnvReader` solo trata `''` como
+ * ausente (`parse-ai-config.ts:211-213`), así que ese valor no cae al de `AI_CONFIG_DEFAULTS`
+ * (`parse-ai-config.ts:562-564`), e `isOpenRouterModelUsable` lo rechaza por `trim() === ''`
+ * (`ai-config.schema.ts:179-181`). Lo que **no** sirve, y por qué:
+ *
+ * - **Vaciar o comentar la línea.** `EnvReader` lee la cadena vacía como ausente y `parse-ai-config.ts` repone
+ *   `AI_CONFIG_DEFAULTS.BYOK_OPENROUTER_MODEL`, que hoy es un modelo `:free` vivo: el vendor sigue disponible.
+ * - **Espacios sin comillas** (`BYOK_OPENROUTER_MODEL=   `). El `dotenv` con el que Nx carga el `.env` (16.4.7)
+ *   recorta los valores sin comillas y entrega `''`, que vuelve al caso anterior. Entre comillas conserva los
+ *   espacios.
+ *
+ * Receta —romper, mirar, restaurar, como el resto del change—:
+ *
+ *   1. comprobar que `3000` y `4200` están libres (con un serve ajeno en pie se prueba código viejo);
+ *   2. copiar el `.env` local **entero** a un fichero fuera del repositorio;
+ *   3. en el `.env` local, dejar la línea como `BYOK_OPENROUTER_MODEL="   "` (tres espacios, **entre comillas**),
+ *      editando con algo que no toque el resto del fichero —`node`, un editor—, **no** con `sed -i` de Git Bash, que
+ *      quita los `\r` de todas las líneas;
+ *   4. arrancar la `api` aparte (`pnpm nx serve api`; `playwright.config.mts` solo levanta `nx serve web`) y
+ *      comprobar que su arranque dice
+ *      `AI configuration warnings: BYOK_OPENROUTER_MODEL (unusable: BYOK vendor openrouter has no usable model: ...)`.
+ *      Si ese aviso no sale, el valor no ha llegado como se esperaba y correr el spec no prueba nada: no sigas;
+ *   5. borrar `reports/smoke/ai-byok/perfil-byok-vendor-indisponible.png` si existe, y correr este spec;
+ *   6. apagar la `api` y **restaurar el `.env` desde la copia** del paso 2, comprobando que queda **idéntico byte a
+ *      byte** (`cmp`, o un hash antes y después). No basta con deshacer la edición: el `.env` está ignorado por git y
+ *      ningún `git diff` va a delatar un fichero que ha cambiado de bytes sin cambiar de texto.
+ *
+ * CÓMO DISTINGUIR LA RAMA EJECUTADA DE LA SALTADA. Sin ese valor el bloque final **se salta y el test pasa igual**:
+ * un `1 passed` no dice nada del vendor indisponible. La rama corrió solo si se dan **las dos** señales: (a) el aviso
+ * de configuración del paso 4 en el arranque de la `api`, y (b) la captura
+ * `reports/smoke/ai-byok/perfil-byok-vendor-indisponible.png` **escrita en esta corrida** (por eso el paso 5 la borra
+ * antes). Si falta cualquiera de las dos, la pasada del vendor indisponible no se ha hecho, aunque el reporter diga
+ * `ok`. El test deja además una anotación `skip-reason` al saltarse, pero el reporter de lista no la imprime.
+ *
+ * Con el vendor indisponible, el bloque final comprueba el aviso de indisponibilidad, que la clave guardada se
+ * sigue anunciando como guardada, que la nota de `data_collection` NO aparece y que, con el permiso apagado y una
+ * clave guardada de ese vendor, el aviso de clave inactiva **no** sale para él (`4dca9e3`: el aviso es por vendor
+ * y no puede hablar de uno que no se va a usar) mientras sí sigue saliendo para OpenAI.
+ */
+
+interface AiKeysBody {
+  keys: { vendor: string; keyHint: string; available: boolean }[];
+  vendors: { vendor: string; available: boolean }[];
+}
+
 const SCREENSHOT_DIR = join(workspaceRoot, 'reports', 'smoke', 'ai-byok');
 const RUN_ID = Date.now();
 const EMAIL = `smoke-byok+${RUN_ID}@example.com`;
@@ -26,11 +82,44 @@ test('BYOK profile: notices, save OpenAI hint, consent-off copy', async ({ page 
   await page.getByRole('button', { name: 'Crear cuenta' }).click();
   await expect(page).toHaveURL(/\/grupos$/, { timeout: LIVE });
 
+  const listed = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'GET' &&
+      new URL(response.url()).pathname === '/api/users/me/ai-keys' &&
+      response.ok(),
+    { timeout: LIVE },
+  );
   await page.locator('mat-toolbar').getByRole('link', { name: 'Perfil' }).click();
   await expect(page).toHaveURL(/\/perfil$/);
   await expect(page.getByTestId('profile-byok')).toBeVisible({ timeout: LIVE });
   await expect(page.getByTestId('profile-byok-destination-openai')).toBeVisible();
-  await expect(page.getByTestId('profile-byok-openrouter-data-collection')).toBeVisible();
+
+  // La expectativa se deriva del cuerpo del API, no de la configuración que este smoke suponga.
+  const listBody = (await (await listed).json()) as AiKeysBody;
+  expect(listBody.vendors).toHaveLength(3);
+  for (const { vendor, available } of listBody.vendors) {
+    // El aviso de destino sale para todos, esté o no disponible el vendor.
+    await expect(page.getByTestId(`profile-byok-destination-${vendor}`)).toBeVisible();
+    const unavailable = page.getByTestId(`profile-byok-unavailable-${vendor}`);
+    if (available) {
+      await expect(unavailable, `${vendor} es construible y no puede decir que no lo está`).toHaveCount(0);
+    } else {
+      await expect(unavailable, `${vendor} no es construible y tiene que decirlo`).toBeVisible();
+    }
+  }
+
+  // «no forzamos data_collection: deny» describe un envío que SÍ ocurre: solo con el vendor disponible.
+  const openrouterAvailable =
+    listBody.vendors.find((entry) => entry.vendor === 'openrouter')?.available === true;
+  const dataCollection = page.getByTestId('profile-byok-openrouter-data-collection');
+  if (openrouterAvailable) {
+    await expect(dataCollection).toBeVisible();
+  } else {
+    await expect(
+      dataCollection,
+      'OpenRouter no es construible: ese aviso afirmaría un envío que no va a ocurrir',
+    ).toHaveCount(0);
+  }
   await page.screenshot({ path: join(SCREENSHOT_DIR, 'perfil-byok-vacio.png'), fullPage: true });
 
   const patchedConsent = page.waitForResponse(
@@ -71,11 +160,65 @@ test('BYOK profile: notices, save OpenAI hint, consent-off copy', async ({ page 
   );
   await page.getByTestId('profile-ai-consent').locator('button').click();
   await revoked;
-  await expect(page.getByTestId('profile-byok-consent-off')).toBeVisible({ timeout: LIVE });
+  await expect(page.getByTestId('profile-byok-consent-off-openai')).toBeVisible({ timeout: LIVE });
   await page.screenshot({
     path: join(SCREENSHOT_DIR, 'perfil-byok-consent-off.png'),
     fullPage: true,
   });
+
+  // Vendor sin configuración utilizable. Solo corre con la receta de la cabecera (`BYOK_OPENROUTER_MODEL="   "` en
+  // el `.env` local): con la configuración habitual los tres vendors son construibles y no hay ninguno caído que mirar.
+  const down = listBody.vendors.find((entry) => !entry.available);
+  if (down === undefined) {
+    test.info().annotations.push({
+      type: 'skip-reason',
+      description:
+        'Todos los vendors son construibles en esta instancia: el caso indisponible exige arrancar la api con BYOK_OPENROUTER_MODEL="   " (solo espacios, entre comillas) en el .env local (ver cabecera).',
+    });
+  } else {
+    const notice = page.getByTestId(`profile-byok-unavailable-${down.vendor}`);
+    await expect(notice).toBeVisible();
+    await expect(notice).toHaveAttribute('role', 'status');
+    await expect(notice).toContainText('no está disponible ahora mismo');
+    await expect(notice).toContainText('sigue guardada y cifrada');
+    await expect(notice).toContainText('No se usará para ninguna tarea');
+    await expect(notice).toContainText('otro de los proveedores soportados');
+    await expect(page.getByTestId('profile-byok-openrouter-data-collection')).toHaveCount(0);
+
+    // La clave de ese vendor se guarda igual y se sigue anunciando como guardada.
+    const savedKey = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PUT' &&
+        new URL(response.url()).pathname === `/api/users/me/ai-keys/${down.vendor}` &&
+        response.ok(),
+      { timeout: LIVE },
+    );
+    await page.getByTestId(`profile-byok-key-${down.vendor}`).fill('sk-smoke-down-key-123456');
+    await page.getByTestId(`profile-byok-save-${down.vendor}`).click();
+    const saved = (await savedKey).json() as Promise<{ keyHint?: string }>;
+    const hint = (await saved).keyHint;
+    await expect(page.getByTestId(`profile-byok-status-${down.vendor}`)).toContainText(
+      'Configurada',
+      { timeout: LIVE },
+    );
+    await expect(page.getByTestId(`profile-byok-hint-${down.vendor}`)).toContainText(hint!, {
+      timeout: LIVE,
+    });
+    await expect(notice).toBeVisible();
+    await expect(page.getByTestId('profile-byok-openrouter-data-collection')).toHaveCount(0);
+    // Permiso apagado y clave guardada de este vendor: el aviso de clave inactiva no puede salir para él, porque
+    // afirmaría que la clave se usaría al reactivar el permiso. El de OpenAI sí sigue: el aviso no ha desaparecido
+    // por otra causa (permiso encendido, sección sin pintar), así que la ausencia de abajo significa algo.
+    await expect(page.getByTestId('profile-byok-consent-off-openai')).toBeVisible();
+    await expect(
+      page.getByTestId(`profile-byok-consent-off-${down.vendor}`),
+      `${down.vendor} no es construible: su clave no se usaría ni con el permiso encendido`,
+    ).toHaveCount(0);
+    await page.screenshot({
+      path: join(SCREENSHOT_DIR, 'perfil-byok-vendor-indisponible.png'),
+      fullPage: true,
+    });
+  }
 
   expect(pageErrors).toEqual([]);
 });

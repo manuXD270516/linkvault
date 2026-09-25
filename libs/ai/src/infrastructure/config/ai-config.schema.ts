@@ -56,7 +56,12 @@ export const AI_CONFIG_DEFAULTS = {
   BYOK_OPENAI_MAX_CONTEXT_TOKENS: 128_000,
   BYOK_OPENAI_TIMEOUT_MS: 60_000,
   BYOK_OPENROUTER_BASE_URL: 'https://openrouter.ai/api/v1',
-  BYOK_OPENROUTER_MODEL: 'meta-llama/llama-3.3-70b-instruct:free',
+  // Verificado y compatible con la política, las dos cosas (ADR-048 §6): disponible en la pasada manual del
+  // 2026-09-21 y terminado en `:free`, que es lo único con lo que OpenRouter fuerza `data_collection: deny`
+  // (ADR-032 §4). El resultado por candidato está en `docs/RUNBOOK.md`, Paso 6 nonies. Este valor no puede quedar en
+  // un modelo que el repositorio documente como muerto: lo vigila `tools/repo-checks` (target
+  // `check-stale-defaults`), que mira los tres sitios del valor por defecto y no solo `.env.example`.
+  BYOK_OPENROUTER_MODEL: 'cohere/north-mini-code:free',
   BYOK_OPENROUTER_MAX_CONTEXT_TOKENS: 32_000,
   BYOK_OPENROUTER_TIMEOUT_MS: 30_000,
 } as const;
@@ -144,9 +149,36 @@ export interface AiConfigProblem {
   detail?: string;
 }
 
+/**
+ * Aviso de configuración: la misma disciplina que `AiConfigProblem` —variable, motivo y un `detail` sin valores ni
+ * credenciales— pero **no aborta**. Existe porque todo lo que `parseAiConfig` sabía emitir terminaba el proceso
+ * (`formatAiConfigProblems`), y `ai/byok` exige un aviso visible al arrancar que **no** impida arrancar
+ * (ADR-048 §6). Avisar no sustituye a la indisponibilidad: el vendor sigue sin construirse.
+ */
+export interface AiConfigWarning {
+  variable: string;
+  warning: 'unusable';
+  detail?: string;
+}
+
 export type AiConfigResult =
-  | { ok: true; config: AiConfig }
+  | { ok: true; config: AiConfig; warnings: readonly AiConfigWarning[] }
   | { ok: false; problems: readonly AiConfigProblem[] };
+
+/**
+ * «Modelo utilizable» del BYOK de OpenRouter: una cadena no vacía tras recortar espacios.
+ *
+ * Vive aquí, junto a `AI_CONFIG_DEFAULTS`, y no en la factory, porque la consultan los dos lados: `parseAiConfig`
+ * para emitir el aviso de arranque y `ByokProviderFactory` para no construir el proveedor. Dos copias de esta
+ * condición serían dos verdades, y el día que una cambiara la otra seguiría mintiendo.
+ *
+ * `EnvReader` trata la cadena vacía como ausente y `parseByok` cae al valor por defecto del código, así que esto
+ * solo vale `false` cuando **tampoco** hay valor por defecto — el estado que `platform/local-environment` reserva
+ * para «ningún modelo verificado y compatible con la política» y que `ai/byok` traduce a «proveedor no disponible».
+ */
+export function isOpenRouterModelUsable(model: string | undefined): boolean {
+  return model !== undefined && model.trim() !== '';
+}
 
 export const positiveIntSchema = z.coerce.number().int().positive();
 
