@@ -790,6 +790,51 @@
 >    `profile-byok-openrouter-data-collection`— sigue nombrando al vendor, así que el día que otro proveedor gane la
 >    salvedad habrá que darle su propio identificador.
 
+> **10-bis.8 — el smoke de `web-e2e` ejecutado de verdad sobre la aserción que `4dca9e3` cambió (2026-09-25).**
+> La evidencia que cerraba esta tarea era del **2026-09-24** y, por tanto, **anterior** a la línea que hoy afirma:
+> `4dca9e3` movió `byok.spec.ts:135` de `profile-byok-consent-off` a `profile-byok-consent-off-openai`, y esa línea
+> **nunca se había ejecutado** —`ci.yml` no tiene ningún target de Playwright ni de `e2e`; este smoke solo corre a
+> mano—. Marcarla `[x]` sobre la corrida anterior era exactamente el fallo que este change persigue.
+>
+> 1. **Levantado.** `mongo`, `redis`, `minio` (más `meilisearch` y `mailpit`) del compose, ya `healthy`; `.env` del
+>    repositorio sin tocar (`AI_CHAIN=mock`, `AI_MOCK_MODE=replay`); `pnpm nx serve api` aparte
+>    (`playwright.config.mts` solo levanta `web`), con `GET /health` → `200 {"status":"up",…,"mongo":"up","redis":"up"}`;
+>    y `nx serve web` arrancado por el propio `webServer` de Playwright. Comprobado **antes** de empezar que `3000` y
+>    `4200` estaban libres: con un serve ajeno en pie se habría probado código viejo sin enterarse.
+> 2. **La línea 135 corrió, y eso está medido, no supuesto.** El reporter de lista dice `ok`, pero **no nombra
+>    ninguna aserción**: un verde de `1 passed` no distingue una línea ejecutada de una línea muerta. Se corrió con un
+>    reporter que imprime cada step con su `location`, y la salida literal es:
+>
+>    ```
+>    STEP byok.spec.ts:133:66 Click -> passed (38ms)
+>    STEP byok.spec.ts:126:24 Wait for event "response" -> passed (54ms)
+>    STEP byok.spec.ts:135:69 Expect "toBeVisible" -> passed (3ms)
+>    STEP byok.spec.ts:136:14 Screenshot -> passed (129ms)
+>      ok 1 [chromium] › apps\web-e2e\src\byok.spec.ts:45:5 › BYOK profile: notices, save OpenAI hint, consent-off copy (1.3s)
+>
+>      1 passed (10.7s)
+>    ```
+>
+>    `135:69` es la columna del `expect(page.getByTestId('profile-byok-consent-off-openai')).toBeVisible(...)`. La
+>    captura `reports/smoke/ai-byok/perfil-byok-consent-off.png`, que se escribe en la línea siguiente, quedó fechada
+>    en esa corrida. La falsación por edición del spec no hizo falta y además es innecesaria: el `data-testid` de
+>    sección `profile-byok-consent-off` **ya no existe en ningún sitio** —`grep -rn` sobre `apps/web/src` y
+>    `apps/web-e2e/src` solo devuelve la forma por vendor—, así que la aserción anterior habría caído por fuerza.
+> 3. **Lo que esta corrida NO cubre, dicho en vez de callado.** Los tres vendors son construibles con el `.env` del
+>    repositorio, así que el bloque final —el del vendor indisponible— se saltó: los steps saltan de `136` a `187` y
+>    **no** se escribe `perfil-byok-vendor-indisponible.png`, que es justo la señal que el punto 4 de arriba describe.
+>    Ese lado sigue cubierto por la corrida del 2026-09-24 con la neutralización a mano, y esta pasada no lo
+>    reemplaza. Lo que esta pasada cierra es la línea 135 y el resto del recorrido, que sí se ejecutaron hoy.
+> 4. **`pnpm nx serve api` no arranca en esta máquina si `dist/apps/api/node_modules` existe, y el mensaje no lo dice.**
+>    Webpack compila (`webpack compiled successfully`) y acto seguido Nx falla al cachear el target con
+>    `A required privilege is not held by the client. (os error 1314)` —el privilegio de crear symlinks en Windows—,
+>    porque ese directorio, que sobra de un `api:prune` anterior, tiene **708** enlaces simbólicos dentro de los
+>    `outputs` del build. Se apartó para la corrida y se dejó **restaurado** al terminar (708 enlaces, verificados).
+>    No es un defecto de este change, pero quien corra el smoke se lo encuentra y el error no menciona ni a `dist/`
+>    ni a los symlinks.
+> 5. **Apagado.** Se mató solo el árbol de procesos propio (`taskkill /T` desde el `sh` que arrancó `nx serve api`);
+>    el `nx serve web` lo cerró Playwright, que lo había levantado. `3000` y `4200`, libres al terminar.
+
 > **Lo que la API y los consumidores (10-bis.4 y 10-bis.5) dieron por cierto y no lo era (2026-09-24,
 > implementación).**
 >
