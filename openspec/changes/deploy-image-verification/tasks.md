@@ -212,9 +212,9 @@
 - [x] 7.3 [infra] Job `deploy` con `needs` sobre `preflight` **y sobre el job de construir-verificar-publicar**, e `if:` sobre el estado igual a `full`, **sin `always()`**: sin el segundo `needs`, el tag de imagen llegaría vacío, el compose caería a `:latest` —que `cd-staging` ni siquiera publica— y el despliegue informaría éxito sobre la imagen equivocada; verificar en la corrida real (hoy sin secretos) que el job queda **saltado** y que un job saltado deja el workflow en **éxito**.
 - [x] 7.4 [infra] Añadir en el despliegue un guardia que **falle** si el tag resuelto no es el de esta corrida: vacío, `latest` o distinto del output del job de publicación; verificar forzando el caso (vaciando el output) y viendo que el paso falla antes de tocar el host, en vez de desplegar otra cosa.
 - [x] 7.5 [infra] Escribir un job de **reporte** que corra **siempre** (`if: always()`), con el nombre calculado a partir del estado del preflight y del resultado de la verificación, porque lo que se ve en la lista de *checks* de un commit es el **nombre del job**, no el de la ejecución (`run-name` se evalúa al iniciar y no puede depender de outputs de jobs, así que no sirve de vehículo); verificar mirando la lista de checks del commit en la rama y leyendo ahí que no se desplegó.
-- [ ] 7.6 [infra] Publicar además un **estado de commit explícito** desde ese job (permiso `statuses: write`) y fijar **el estado, no solo la descripción**: `success` únicamente cuando el artefacto se construyó **y** arrancó; `failure` cuando no se construyó o no arrancó. Como el job corre con `if: always()`, un reporte que publique siempre `success` pondría un **tic verde junto al check rojo** y reconstruiría exactamente la señal que este change viene a arreglar. El estado SHALL derivarse del `result` del job de construir-verificar-publicar y del output del preflight, nunca de un literal. Verificar en el propio commit de la rama —API de estados o vista del commit— dos cosas: en verde, que el estado dice que se verificó y no se desplegó; y **con la corrida rota de 7.8**, que el estado publicado es de **fallo** y su descripción lo dice.
+- [x] 7.6 [infra] Publicar además un **estado de commit explícito** desde ese job (permiso `statuses: write`) y fijar **el estado, no solo la descripción**: `success` únicamente cuando el artefacto se construyó **y** arrancó; `failure` cuando no se construyó o no arrancó. Como el job corre con `if: always()`, un reporte que publique siempre `success` pondría un **tic verde junto al check rojo** y reconstruiría exactamente la señal que este change viene a arreglar. El estado SHALL derivarse del `result` del job de construir-verificar-publicar y del output del preflight, nunca de un literal. Verificar en el propio commit de la rama —API de estados o vista del commit— dos cosas: en verde, que el estado dice que se verificó y no se desplegó; y **con la corrida rota de 7.8**, que el estado publicado es de **fallo** y su descripción lo dice.
 - [x] 7.7 [infra] Repasar que ningún job ni step siga diciendo "deploy" o "desplegado" en su nombre o en su resumen cuando solo verificó; verificar leyendo los nombres tal y como se ven en la lista de checks, no en el YAML.
-- [ ] 7.8 [infra] Comprobar que un artefacto roto **rompe** el pipeline aunque no haya destino, y que el fallo no queda tapado por la rama de "no hay dónde desplegar"; verificar rompiendo el build a propósito en una corrida de la rama y restaurando. Esta misma corrida es la que 7.6 usa para comprobar el estado de fallo.
+- [x] 7.8 [infra] Comprobar que un artefacto roto **rompe** el pipeline aunque no haya destino, y que el fallo no queda tapado por la rama de "no hay dónde desplegar"; verificar rompiendo el build a propósito en una corrida de la rama y restaurando. Esta misma corrida es la que 7.6 usa para comprobar el estado de fallo.
 - [x] 7.9 [infra] Aplicar el plazo explícito y el volcado de logs de 5.7 a los `up -d --wait` de los **dos** despliegues por ssh (`cd-staging.yml` y `cd-prod.yml`), que hoy se colgarían igual; verificar reproduciendo en local un contenedor en bucle de reinicio con exactamente esa línea de comandos y viendo que termina con error y con los logs, en vez de esperar sin fin.
 
 > **Lo que el grupo 7 dio por cierto y no lo era (2026-09-24, implementación).**
@@ -260,7 +260,8 @@
 >    guardia de 7.4 es un script del repositorio, así que ahora sí.
 >
 > **Lo que quedaba sin verificar y por qué** (escrito antes de que la rama se publicara; **revisado contra las
-> corridas reales en el bloque siguiente**, que deja verificadas 7.1, 7.3, 7.5 y 7.7 y abiertas 7.2, 7.6 y 7.8).
+> corridas reales en el bloque siguiente**, que deja verificadas 7.1, 7.3, 7.5 y 7.7 y abiertas 7.2, 7.6 y 7.8; 7.6
+> y 7.8 se cierran en el **tercer** bloque, con la corrida rota a propósito, y 7.2 sigue abierta).
 > 7.1, 7.2, 7.3, 7.5, 7.6, 7.7 y 7.8 exigen una **corrida real de GitHub
 > Actions** (que el output del preflight salga y valga `none`; que un job saltado deje el workflow en éxito; que el
 > nombre y el estado de commit se vean en la lista de checks; que una corrida con el build roto termine en rojo).
@@ -288,17 +289,69 @@
 >   salen **`skipped`**, y los dos de reporte dicen `NO desplegado`.
 > * **7.2 sigue abierta.** Ninguna de las seis corridas tuvo un solo secreto de destino puesto: el estado `partial`
 >   —el que falla nombrando los que faltan— no se ha ejercitado **nunca** dentro de Actions.
-> * **7.6 sigue abierta, y no por falta de corrida.** Los dos estados existen sobre commits de esta rama
+> * **7.6 quedó abierta aquí, y no por falta de corrida** (se cierra en el bloque siguiente). Los dos estados
+>   existen sobre commits de esta rama
 >   (`success` en `b541a9a…` con «Artefacto verificado. NO desplegado…»; `failure` en `b12520c…`, `0401241…` y
 >   `cf412ec…`). Lo que falla es la **descripción** del lado de fallo, que la propia corrida desmiente: en
 >   `36048413770` el log dice `[FAIL] … Esto NO es un fallo del artefacto de LinkVault: es el registro del que se
 >   descargan`, y el estado publicado en ese mismo commit dice `El artefacto no se construyó o no arrancó`. 7.6 pide
 >   que el estado sea de fallo **y** que su descripción lo diga; dice de más, y afirmar una causa que el log niega es
 >   la forma de error que este change persigue. Queda abierta con el defecto nombrado aquí, no dada por buena.
-> * **7.8 sigue abierta.** No se ha roto ningún artefacto a propósito. Las tres corridas rojas sí demuestran que un
->   fallo de la verificación pone la corrida en rojo **sin destino configurado** (deploy saltado, reporte ≠0), pero no
->   el caso que 7.8 enuncia: en las tres el artefacto **se construyó y se cargó**, y lo que falló fue la descarga de
->   las imágenes de terceros.
+> * **7.8 quedó abierta aquí** (se cierra en el bloque siguiente). No se había roto ningún artefacto a propósito. Las
+>   tres corridas rojas sí demuestran que un fallo de la verificación pone la corrida en rojo **sin destino
+>   configurado** (deploy saltado, reporte ≠0), pero no el caso que 7.8 enuncia: en las tres el artefacto **se
+>   construyó y se cargó**, y lo que falló fue la descarga de las imágenes de terceros.
+
+> **La corrida rota a propósito, y lo que cierra (2026-09-25, corrida `36074771079` de `cd-staging`).**
+>
+> Rotura deliberada en el commit `831c37d3a0e9` —una capa `RUN … && exit 1` en la etapa `runner` de
+> `docker/api.Dockerfile`—, lanzada por `workflow_dispatch` sobre esta rama con `dry_run=true` para que una corrida
+> rota no tuviera como precio publicar nada, y **revertida** en `14fddc3`: `git diff 8f94e66 HEAD` sale vacío, el
+> árbol es el de antes de la rotura.
+> Enlace: <https://github.com/manuXD270516/linkvault/actions/runs/36074771079>
+>
+> * **7.8 — verificada, cláusula por cláusula.**
+>   * *El artefacto se rompe de verdad, y en el sitio previsto* (clase `artifact`, no de entorno): el paso
+>     `Build api (load, no push)` sale `failure` con
+>     `##[error]buildx failed with: ERROR: failed to build: failed to solve: process "/bin/sh -c echo 'ROTURA`
+>     `TEMPORAL 7.8: el build de api falla a proposito' >&2 && exit 1" did not complete successfully: exit code: 1`.
+>   * *No hay destino y aun así el pipeline es rojo.* El preflight termina en verde diciendo que no hay dónde
+>     desplegar (`preflight                  : success (estado: none)`), `deploy staging (solo si hay destino
+>     configurado)` queda **`skipped`** —así lo devuelven `/actions/runs/36074771079/jobs` y
+>     `commits/831c37d3…/check-runs`— y la corrida entera concluye en **`failure`**. Es la falsación de 7.3 por el
+>     otro lado: allí un job saltado dejaba el workflow en verde; aquí el rojo lo pone el fallo real, y la rama de
+>     "no hay dónde desplegar" **no lo tapa**.
+>   * *El fallo no queda tapado por ningún verde.* El job de reporte —el único con `if: always()`— sale
+>     **`failure`**: `[FAIL] El artefacto no se construyó o no arrancó: no se publicó nada y no se desplegó nada.`
+>     y `##[error]Process completed with exit code 1.`; y su **nombre** en la lista de checks del commit es
+>     `resultado: el artefacto NO pasó la verificación`. Los seis check-runs del commit son
+>     `failure build, verify and publish artifact`, `failure resultado: el artefacto NO pasó la verificación`,
+>     `skipped deploy staging (…)` y tres verdes que solo hablan de `verify`/`preflight`: ninguno afirma que el
+>     artefacto esté bien.
+>   * *Nada se publicó.* `Publish verified artifact to GHCR (docker push of the loaded image)` sale `skipped` y en
+>     GHCR los tres paquetes siguen con **una sola** versión cada uno (`sha-b541a9a314b4`): no existe
+>     `sha-831c37d3a0e9`.
+> * **7.6 — verificada por los dos lados, leyendo la API de estados y no la conclusión de la corrida.**
+>   * Verde: `commits/b541a9a3…/statuses` →
+>     `cd-staging/artifact  success  Artefacto verificado. NO desplegado: no hay destino de staging configurado (ADR-048 §3).`
+>     (con su gemelo `cd-prod/artifact`).
+>   * Fallo: `commits/831c37d3…/statuses` →
+>     `cd-staging/artifact  failure  El artefacto no se construyó o no arrancó: no se publicó nada y no se desplegó nada.`
+>     Lo que 7.6 exige es justo eso: el **`state`** es `failure` —no solo el texto—, y la descripción dice la causa.
+>     El `context` es el mismo en los dos, así que el estado sustituye al anterior en vez de acumularse.
+> * **El transporte de la clase del fallo funciona en GitHub, y esta fue su primera corrida.** El mecanismo de
+>   `9a8dbbf` solo se había ejercitado en local, así que esta corrida era también su prueba. Funcionó: el job de
+>   build sube el fichero **con el job ya condenado** (`Upload artifact failure class` en verde dentro de un job en
+>   rojo → `Artifact verify-fail-class has been successfully uploaded! Final size is 159 bytes. Artifact ID is`
+>   `10839712524`), el job de reporte lo recoge
+>   (`- verify-fail-class (ID: 10839712524, Size: 159, Expected Digest: sha256:4dad22f5…)`,
+>   `Artifact download completed successfully.`) y lo lee: `clase del fallo: artifact`, que el script repite en
+>   `verificación del artefacto : failure (clase del fallo: artifact)`. Y lo que llega al estado de commit es **la
+>   descripción de la clase `artifact`**, no la genérica de clase ausente (`La verificación del artefacto no pasó:
+>   no se publicó nada y no se desplegó nada.`): la clase **viajó**, que es exactamente lo que no estaba demostrado.
+>   Lo que esta corrida **no** demuestra es la rama `environment` del `case` por esta vía —las dos corridas que la
+>   motivaron son anteriores al mecanismo—: lo falsado es el transporte y la clase `artifact`.
+> * **7.2 sigue abierta**, sin cambios: esta corrida tampoco tuvo ningún secreto de destino puesto.
 
 ## 8. `cd-prod`: el que nunca se ha ejecutado
 
