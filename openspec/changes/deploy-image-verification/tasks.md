@@ -835,20 +835,113 @@
 >    en esa corrida. La falsación por edición del spec no hizo falta y además es innecesaria: el `data-testid` de
 >    sección `profile-byok-consent-off` **ya no existe en ningún sitio** —`grep -rn` sobre `apps/web/src` y
 >    `apps/web-e2e/src` solo devuelve la forma por vendor—, así que la aserción anterior habría caído por fuerza.
-> 3. **Lo que esta corrida NO cubre, dicho en vez de callado.** Los tres vendors son construibles con el `.env` del
->    repositorio, así que el bloque final —el del vendor indisponible— se saltó: los steps saltan de `136` a `187` y
->    **no** se escribe `perfil-byok-vendor-indisponible.png`, que es justo la señal que el punto 4 de arriba describe.
->    Ese lado sigue cubierto por la corrida del 2026-09-24 con la neutralización a mano, y esta pasada no lo
->    reemplaza. Lo que esta pasada cierra es la línea 135 y el resto del recorrido, que sí se ejecutaron hoy.
+> 3. **Lo que esta corrida NO cubrió, y que ya está cubierto por la pasada del punto 6.** Los tres vendors son
+>    construibles con el `.env` del repositorio, así que en esta corrida el bloque final —el del vendor indisponible—
+>    se saltó: los steps saltan de `136` a `187` y **no** se escribe `perfil-byok-vendor-indisponible.png`, que es
+>    justo la señal que el punto 4 de arriba describe. Aquí se remitía ese lado a la corrida del 2026-09-24; **esa
+>    salvedad queda retirada**: la pasada del punto 6, del mismo día y sobre el spec de hoy, ejecuta ese bloque con la
+>    neutralización completa y con la aserción que le faltaba.
 > 4. **`pnpm nx serve api` no arranca en esta máquina si `dist/apps/api/node_modules` existe, y el mensaje no lo dice.**
 >    Webpack compila (`webpack compiled successfully`) y acto seguido Nx falla al cachear el target con
 >    `A required privilege is not held by the client. (os error 1314)` —el privilegio de crear symlinks en Windows—,
 >    porque ese directorio, que sobra de un `api:prune` anterior, tiene **708** enlaces simbólicos dentro de los
 >    `outputs` del build. Se apartó para la corrida y se dejó **restaurado** al terminar (708 enlaces, verificados).
 >    No es un defecto de este change, pero quien corra el smoke se lo encuentra y el error no menciona ni a `dist/`
->    ni a los symlinks.
+>    ni a los symlinks. **Apartarlo renombrándolo dentro de `dist/apps/api/` no basta**: en la pasada del punto 6 el
+>    primer intento, como `dist/apps/api/node_modules.aside`, falló igual con `os error 1314`, porque sigue dentro
+>    de los `outputs`. Hay que sacarlo **fuera de `dist/`** —se movió a `D:/projects/linkvault-api-node_modules.aside`,
+>    en el mismo disco para que `mv` renombre y no copie los enlaces— y devolverlo al terminar.
 > 5. **Apagado.** Se mató solo el árbol de procesos propio (`taskkill /T` desde el `sh` que arrancó `nx serve api`);
 >    el `nx serve web` lo cerró Playwright, que lo había levantado. `3000` y `4200`, libres al terminar.
+> 6. **Pasada del vendor indisponible con la receta corregida (2026-09-25, QA: un P1 y el P2-6).**
+>
+>    **Lo que QA encontró.** La cabecera de `byok.spec.ts` daba una receta de tres pasos que **omitía el que la hace
+>    funcionar**: comentar la línea `BYOK_OPENROUTER_MODEL` del `.env` local. El punto 4 de la nota del SPA decía
+>    «Queda escrito en la cabecera del spec» y no lo estaba, así que quien siguiera la receta obtenía `1 passed` con
+>    la rama saltada —el falso verde que ese mismo punto describe—, con esta tarea ya marcada `[x]`. Y el bloque del
+>    vendor indisponible, que corre justo en el escenario de `4dca9e3` —permiso apagado y clave guardada de ese
+>    vendor—, **no afirmaba** que faltase `profile-byok-consent-off-<vendor>`: solo lo cubrían los tests de componente.
+>
+>    **Lo que se cambió en el spec.** La cabecera nombra ahora las **dos** fuentes que reponen un modelo utilizable
+>    (el valor por defecto del código y el `.env` local), da la receta en cinco pasos —neutralizar el código,
+>    comentar la línea del `.env`, arrancar la `api` y **no seguir** si su arranque no trae el aviso de
+>    configuración, borrar la captura y correr, restaurar los dos— y un apartado «CÓMO DISTINGUIR LA RAMA EJECUTADA DE
+>    LA SALTADA» con las dos señales: el aviso en el arranque de la `api` **y** la captura
+>    `perfil-byok-vendor-indisponible.png` escrita en esa corrida; si falta cualquiera, la pasada no se ha hecho,
+>    diga lo que diga el reporter. En el bloque se añade un `toHaveCount(0)` sobre
+>    `profile-byok-consent-off-${down.vendor}`, precedido de un `toBeVisible()` sobre `profile-byok-consent-off-openai`:
+>    sin él, la ausencia también se cumpliría si el aviso dejara de pintarse por cualquier otra causa (permiso
+>    encendido, sección sin renderizar).
+>
+>    **Ejecutada la receta tal como queda escrita.** `3000` y `4200` libres antes de empezar; `.env` copiado byte a
+>    byte al scratchpad; `dist/apps/api/node_modules` apartado fuera de `dist/` (punto 4);
+>    `AI_CONFIG_DEFAULTS.BYOK_OPENROUTER_MODEL` a `''`; la línea del `.env` comentada; la captura borrada. La `api`
+>    arrancó diciendo, literal:
+>
+>    ```
+>    [api] AI configuration warnings: BYOK_OPENROUTER_MODEL (unusable: BYOK vendor openrouter has no usable model: it is not built and cannot be routed)
+>    ```
+>
+>    y `GET /health` → `{"status":"up",…,"mongo":{"status":"up"},"redis":{"status":"up"}}`. El smoke, con un reporter
+>    que imprime cada step con su `file:line:col` (y el de lista detrás), dio en la parte que lee el cuerpo del API y
+>    en todo lo que sigue al apagado del permiso, literal (el `…` marca los steps del alta de la clave de OpenAI):
+>
+>    ```
+>    STEP byok.spec.ts:99:93 anthropic es construible y no puede decir que no lo está -> passed (2ms)
+>    STEP byok.spec.ts:96:74 Expect "toBeVisible" -> passed (1ms)
+>    STEP byok.spec.ts:99:93 openai es construible y no puede decir que no lo está -> passed (1ms)
+>    STEP byok.spec.ts:96:74 Expect "toBeVisible" -> passed (1ms)
+>    STEP byok.spec.ts:101:84 openrouter no es construible y tiene que decirlo -> passed (2ms)
+>    STEP byok.spec.ts:115:7 OpenRouter no es construible: ese aviso afirmaría un envío que no va a ocurrir -> passed (1ms)
+>    …
+>    STEP byok.spec.ts:155:66 Click -> passed (44ms)
+>    STEP byok.spec.ts:148:24 Wait for event "response" -> passed (56ms)
+>    STEP byok.spec.ts:157:69 Expect "toBeVisible" -> passed (3ms)
+>    STEP byok.spec.ts:158:14 Screenshot -> passed (135ms)
+>    STEP byok.spec.ts:174:26 Expect "toBeVisible" -> passed (2ms)
+>    STEP byok.spec.ts:175:26 Expect "toHaveAttribute" -> passed (2ms)
+>    STEP byok.spec.ts:176:26 Expect "toContainText" -> passed (3ms)
+>    STEP byok.spec.ts:177:26 Expect "toContainText" -> passed (2ms)
+>    STEP byok.spec.ts:178:26 Expect "toContainText" -> passed (2ms)
+>    STEP byok.spec.ts:179:26 Expect "toContainText" -> passed (2ms)
+>    STEP byok.spec.ts:180:79 Expect "toHaveCount" -> passed (1ms)
+>    STEP byok.spec.ts:190:63 Fill "sk-smoke-down-key-123456" -> passed (5ms)
+>    STEP byok.spec.ts:191:64 Click -> passed (40ms)
+>    STEP byok.spec.ts:183:27 Wait for event "response" -> passed (59ms)
+>    STEP byok.spec.ts:194:74 Expect "toContainText" -> passed (29ms)
+>    STEP byok.spec.ts:198:72 Expect "toContainText" -> passed (2ms)
+>    STEP byok.spec.ts:201:26 Expect "toBeVisible" -> passed (1ms)
+>    STEP byok.spec.ts:202:79 Expect "toHaveCount" -> passed (1ms)
+>    STEP byok.spec.ts:206:71 Expect "toBeVisible" -> passed (1ms)
+>    STEP byok.spec.ts:210:7 openrouter no es construible: su clave no se usaría ni con el permiso encendido -> passed (1ms)
+>    STEP byok.spec.ts:211:16 Screenshot -> passed (112ms)
+>    STEP byok.spec.ts:217:22 Expect "toEqual" -> passed (0ms)
+>    TEST BYOK profile: notices, save OpenAI hint, consent-off copy -> passed
+>      ok 1 [chromium] › apps\web-e2e\src\byok.spec.ts:67:5 › BYOK profile: notices, save OpenAI hint, consent-off copy (2.1s)
+>      1 passed (14.1s)
+>    ```
+>
+>    Los números de línea son los del spec **con la cabecera ampliada**: la aserción del punto 2 (`135:69` entonces) es
+>    ahora `157:69`, y corrió también. `174`–`180` son el aviso de indisponibilidad con sus cuatro contenidos y la
+>    ausencia de la nota de `data_collection`; `194` y `198`, la clave del vendor caído anunciada como «Configurada»
+>    con su `keyHint`; `206:71` es el `toBeVisible` de OpenAI y **`210:7` es la aserción nueva** —el reporter la nombra
+>    por su mensaje, porque lo lleva—. Los steps ya no saltan del final del bloque del permiso a `217`: la rama
+>    corrió. Y la segunda señal: `reports/smoke/ai-byok/perfil-byok-vendor-indisponible.png`, borrada antes de la
+>    corrida, quedó **escrita** por ella (2026-09-25 13:47:19, 176 647 bytes).
+>
+>    **Restauración.** `git diff --exit-code libs/ai/src/infrastructure/config/ai-config.schema.ts` vacío y el mismo
+>    md5 que antes de tocarlo. El `.env` tenía una trampa que conviene dejar escrita: **`sed -i` de Git Bash le quitó
+>    los `\r` a todo el fichero** —las mismas 176 líneas, otros bytes, y `git` no lo iba a delatar porque el fichero
+>    está ignorado—; se repuso la copia byte a byte tomada antes de tocarlo y `cmp` la da idéntica (md5 `2c30bc47…`
+>    antes y después). Quien automatice la receta ha de restaurar el `.env` **desde copia**, no deshaciendo la
+>    edición. `dist/apps/api/node_modules` devuelto a su sitio con sus **708** enlaces. Apagado solo el árbol propio
+>    (`taskkill /T` desde el `sh` que arrancó `nx serve api`); `nx serve web` lo cerró Playwright; `3000` y `4200`
+>    libres al terminar.
+>
+>    **Lo que esta pasada NO hace.** No se falseó la aserción nueva en el smoke —no se forzó el aviso de clave
+>    inactiva para el vendor caído para verla caer—. Que pueda fallar descansa hoy en el `toBeVisible` de OpenAI que
+>    la precede (el aviso sí se pinta en esa pantalla, para el vendor disponible) y en la falsación del lado del SPA
+>    de 10-bis.9, que hace caer el test de componente de la precedencia con el permiso apagado.
 
 > **Lo que la API y los consumidores (10-bis.4 y 10-bis.5) dieron por cierto y no lo era (2026-09-24,
 > implementación).**

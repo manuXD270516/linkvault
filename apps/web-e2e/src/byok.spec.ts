@@ -13,17 +13,39 @@ import { resetRegisterLimit } from './support/register-limit';
  * `GET /api/users/me/ai-keys`. Eso es comprobable en cualquier configuración, y es justo la propiedad que el
  * change persigue: que la UI consuma la señal del servidor en vez de deducirla.
  *
- * CÓMO SE FABRICA LA PASADA DEL VENDOR INDISPONIBLE. **Vaciar `BYOK_OPENROUTER_MODEL` en el entorno no sirve**:
- * `EnvReader` lee la cadena vacía como ausente y `parse-ai-config.ts` repone el valor por defecto del código
- * (`AI_CONFIG_DEFAULTS.BYOK_OPENROUTER_MODEL`), que hoy es un modelo `:free` vivo. El estado indisponible es un
- * invariante del código, no un ajuste de entorno. Para ejercitarlo hay que neutralizar ese valor **a mano**:
+ * CÓMO SE FABRICA LA PASADA DEL VENDOR INDISPONIBLE. El estado indisponible es un invariante del código, no un
+ * ajuste de entorno, y en local hay **dos** fuentes que reponen un modelo utilizable. Hay que neutralizar **las dos**:
+ *
+ * - **El valor por defecto del código.** Vaciar `BYOK_OPENROUTER_MODEL` en el entorno no sirve: `EnvReader` lee la
+ *   cadena vacía como ausente y `parse-ai-config.ts` repone `AI_CONFIG_DEFAULTS.BYOK_OPENROUTER_MODEL`, que hoy es un
+ *   modelo `:free` vivo.
+ * - **El `.env` local.** Fija `BYOK_OPENROUTER_MODEL=<modelo>:free` y Nx lo inyecta al servir la `api`, **pisando**
+ *   el valor por defecto del código. Con solo la neutralización del código el vendor sigue disponible.
+ *
+ * Receta —romper, mirar, restaurar, como el resto del change—:
  *
  *   1. en `libs/ai/src/infrastructure/config/ai-config.schema.ts`, poner `BYOK_OPENROUTER_MODEL: ''`;
- *   2. arrancar la `api` aparte (`playwright.config.mts` solo levanta `nx serve web`) y correr este spec;
- *   3. **restaurar el valor** — romper, mirar, restaurar, como el resto del change.
+ *   2. en el `.env` local, **comentar** la línea `BYOK_OPENROUTER_MODEL=...` (copiar antes su valor exacto);
+ *   3. arrancar la `api` aparte (`pnpm nx serve api`; `playwright.config.mts` solo levanta `nx serve web`) y
+ *      comprobar que su arranque dice
+ *      `AI configuration warnings: BYOK_OPENROUTER_MODEL (unusable: BYOK vendor openrouter has no usable model: ...)`.
+ *      Si ese aviso no sale, la neutralización no ha surtido efecto y correr el spec no prueba nada: no sigas;
+ *   4. borrar `reports/smoke/ai-byok/perfil-byok-vendor-indisponible.png` si existe, y correr este spec;
+ *   5. **restaurar los dos**: el esquema idéntico a HEAD (`git diff` vacío sobre ese fichero) y la línea exacta del
+ *      `.env`, que está ignorado por git y ningún `git diff` va a delatar.
  *
- * Con esa neutralización el bloque final de este test deja de saltarse y comprueba el aviso de indisponibilidad,
- * que la clave guardada se sigue anunciando como guardada, y que la nota de `data_collection` NO aparece.
+ * CÓMO DISTINGUIR LA RAMA EJECUTADA DE LA SALTADA. Sin la neutralización —o con solo una de las dos mitades— el
+ * bloque final **se salta y el test pasa igual**: un `1 passed` no dice nada del vendor indisponible. La rama corrió
+ * solo si se dan **las dos** señales: (a) el aviso de configuración del paso 3 en el arranque de la `api`, y (b) la
+ * captura `reports/smoke/ai-byok/perfil-byok-vendor-indisponible.png` **escrita en esta corrida** (por eso el paso 4
+ * la borra antes). Si falta cualquiera de las dos, la pasada del vendor indisponible no se ha hecho, aunque el
+ * reporter diga `ok`. El test deja además una anotación `skip-reason` al saltarse, pero el reporter de lista no la
+ * imprime.
+ *
+ * Con la neutralización completa, el bloque final comprueba el aviso de indisponibilidad, que la clave guardada se
+ * sigue anunciando como guardada, que la nota de `data_collection` NO aparece y que, con el permiso apagado y una
+ * clave guardada de ese vendor, el aviso de clave inactiva **no** sale para él (`4dca9e3`: el aviso es por vendor
+ * y no puede hablar de uno que no se va a usar) mientras sí sigue saliendo para OpenAI.
  */
 
 interface AiKeysBody {
@@ -178,6 +200,14 @@ test('BYOK profile: notices, save OpenAI hint, consent-off copy', async ({ page 
     });
     await expect(notice).toBeVisible();
     await expect(page.getByTestId('profile-byok-openrouter-data-collection')).toHaveCount(0);
+    // Permiso apagado y clave guardada de este vendor: el aviso de clave inactiva no puede salir para él, porque
+    // afirmaría que la clave se usaría al reactivar el permiso. El de OpenAI sí sigue: el aviso no ha desaparecido
+    // por otra causa (permiso encendido, sección sin pintar), así que la ausencia de abajo significa algo.
+    await expect(page.getByTestId('profile-byok-consent-off-openai')).toBeVisible();
+    await expect(
+      page.getByTestId(`profile-byok-consent-off-${down.vendor}`),
+      `${down.vendor} no es construible: su clave no se usaría ni con el permiso encendido`,
+    ).toHaveCount(0);
     await page.screenshot({
       path: join(SCREENSHOT_DIR, 'perfil-byok-vendor-indisponible.png'),
       fullPage: true,
