@@ -3,16 +3,20 @@ import { readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const DENY_MESSAGE =
+  'No hay un change activo en openspec/changes/. Crea uno con /opsx:new antes de editar codigo en apps/** o libs/**.';
+
+// Contrato de hooks de Claude Code: exit 0 sin salida = sin opinion (permite),
+// exit 2 = bloqueo y stderr se entrega como motivo. Usamos ese contrato en vez
+// del JSON de stdout porque su forma ha cambiado entre versiones y una salida
+// que el harness no reconoce se trata como vacia, dejando pasar la edicion.
 function allow() {
-  process.stdout.write('{"permission":"allow"}\n');
   process.exit(0);
 }
 
 function deny() {
-  process.stdout.write(
-    '{"permission":"deny","agent_message":"No hay un change activo en openspec/changes/. Crea uno con /opsx:new antes de editar codigo."}\n',
-  );
-  process.exit(0);
+  process.stderr.write(`${DENY_MESSAGE}\n`);
+  process.exit(2);
 }
 
 const chunks = [];

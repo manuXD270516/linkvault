@@ -36,6 +36,7 @@ ollama pull qwen2.5:7b
 mkdir linkvault && cd linkvault && git init -b main
 # descomprime linkvault-starter.zip y copia TODO su contenido a la raíz (incluye .claude/ oculto)
 cp -R /ruta/a/linkvault-starter/. .
+# el hook activo corre con `node`, no hace falta chmod; el .sh solo es fallback si no hay Node
 chmod +x .claude/hooks/require-openspec-change.sh
 cat > .gitignore <<'EOF'
 node_modules/
@@ -59,7 +60,8 @@ Qué acabas de cargar:
 | `docs/design-v0.2.md` | Decisiones vigentes: debate Critic/Business, flujos, módulo IA §4, plan de 15 changes §6 |
 | `docs/adr/ADR-001..016.md` | Decisiones atómicas que los agentes citan y respetan |
 | `.claude/agents/*.md` | 8 subagentes: architect, backend-dev, frontend-dev, devops, ai-engineer, qa-reviewer, critic, business |
-| `.claude/hooks/require-openspec-change.sh` | Bloquea edición de `apps/**` y `libs/**` sin change activo |
+| `.claude/hooks/require-openspec-change.mjs` | Bloquea edición de `apps/**` y `libs/**` sin change activo (el `.sh` es solo fallback si no hay Node) |
+| `.claude/hooks/openspec-validate-stop.mjs` | Stop: corre `openspec validate --all`; si falla, impide cerrar el turno y deja el detalle en `.claude/logs/openspec-validate.log` |
 | `.claude/settings.json` | Permisos y hooks (PreToolUse + Stop → `openspec validate`) |
 
 ---
@@ -1450,7 +1452,8 @@ público (van a 404 del SPA o no enrutan a api).
 | Síntoma | Acción |
 |---|---|
 | `/opsx:*` no aparece | `openspec init` no eligió Claude Code → vuelve a correrlo o `openspec update` |
-| Hook bloquea todo | Verifica que el script tenga `chmod +x`; prueba `echo '{"tool_input":{"file_path":"apps/x.ts"}}' \| bash .claude/hooks/require-openspec-change.sh` |
+| No deja cerrar el turno: `openspec validate --all fallo` | El hook `Stop` hizo su trabajo: corrige la spec que sale con `✗`. El detalle completo queda en `.claude/logs/openspec-validate.log` (ignorado por git, rota a 256 KB) |
+| Hook bloquea todo | Prueba `echo '{"tool_input":{"file_path":"apps/x.ts"}}' \| node .claude/hooks/require-openspec-change.mjs`: al bloquear imprime el motivo en stderr y sale con código 2; permitir es código 0 sin salida |
 | Mongo: "Transaction numbers are only allowed on a replica set member" | El healthcheck de `mongo` no ha inicializado `rs0`: revisa su estado con `docker compose ps` o `docker inspect --format '{{json .State.Health}}' linkvault-mongo-1` (ver ADR-017) |
 | `api` no arranca nombrando `AUTH_JWT_SECRET` u otra `AUTH_*` | Tu `.env` es anterior a `auth-users`: copia el bloque `AUTH_*` de `.env.example`. Con `NODE_ENV=production` el secreto de ejemplo se rechaza a propósito |
 | El `worker` no arranca nombrando `ENRICH_*` o `S3_*` | Tu `.env` es anterior a `link-enrichment`: copia esos dos bloques de `.env.example`. Todas son obligatorias |

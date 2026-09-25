@@ -22,7 +22,7 @@
         "hooks": [{ "type": "command", "command": "node .claude/hooks/require-openspec-change.mjs" }] }
     ],
     "Stop": [
-      { "hooks": [{ "type": "command", "command": "openspec validate --all 2>&1 | tail -n 10 || true" }] }
+      { "hooks": [{ "type": "command", "command": "node .claude/hooks/openspec-validate-stop.mjs" }] }
     ]
   }
 }
