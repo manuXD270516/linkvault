@@ -96,6 +96,10 @@ jobs:
           AI_MOCK_MODE: replay
         run: pnpm nx affected -t test
 
+      # Misma etapa que en ci.yml (spec platform/ci-pipeline, ADR-050): un catálogo i18n atrasado no se despliega.
+      - name: i18n catalog
+        run: pnpm nx affected -t i18n-check
+
       - name: Eval (replay)
         env:
           NODE_ENV: test
