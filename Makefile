@@ -9,4 +9,4 @@ autopilot:  ; bash scripts/autopilot.sh $(ARGS)                  # todos los pen
 mvp:        ; bash scripts/autopilot.sh --until applications-tracking
 up:         ; docker compose up -d --wait
 down:       ; docker compose down
-test:       ; AI_CHAIN=mock AI_MOCK_MODE=replay pnpm nx run-many -t lint,typecheck,test
+test:       ; AI_CHAIN=mock AI_MOCK_MODE=replay pnpm nx run-many -t lint,typecheck,test,i18n-check

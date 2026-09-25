@@ -199,6 +199,11 @@ jobs:
           AI_EMBED_CHAIN: mock
         run: pnpm nx run-many --all -t test
 
+      # Misma etapa que en ci.yml (spec platform/ci-pipeline, ADR-050): un catálogo i18n atrasado no se despliega. Como
+      # el resto de este job, sobre todo el workspace: con `affected` un tag no ejecutaría nada.
+      - name: i18n catalog
+        run: pnpm nx run-many --all -t i18n-check
+
       - name: Eval (replay)
         env:
           NODE_ENV: test

@@ -60,7 +60,7 @@
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-list.component.html</context>
-          <context context-type="linenumber">77,81</context>
+          <context context-type="linenumber">80,84</context>
         </context-group>
       </trans-unit>
       <trans-unit id="applications.detail.historyTitle" datatype="html">
@@ -1222,6 +1222,175 @@
           <context context-type="linenumber">129</context>
         </context-group>
       </trans-unit>
+      <trans-unit id="discovery.title" datatype="html">
+        <source>Descubrir</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">2,3</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.intro" datatype="html">
+        <source> Busca vacantes en bolsas públicas y guárdalas en tus links sin salir de LinkVault. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">4,7</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.coverage" datatype="html">
+        <source> LinkedIn y Computrabajo no están disponibles vía discovery. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">12,15</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.query.label" datatype="html">
+        <source>Consulta</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">17,19</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.query.placeholder" datatype="html">
+        <source>Título, empresa, stack…</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">26,30</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.board.label" datatype="html">
+        <source>Bolsa</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">31,33</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.board.all" datatype="html">
+        <source>Todas</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">42,44</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.board.getonboard" datatype="html">
+        <source>GetOnBoard</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">45,47</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">166,168</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.board.remoteok" datatype="html">
+        <source>RemoteOK</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">48,50</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">169,171</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.submit" datatype="html">
+        <source> Buscar </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">65,67</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.destination.label" datatype="html">
+        <source>Guardar en</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">71,73</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.destination.private" datatype="html">
+        <source>Solo para mí</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">79,81</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.destination.groupsError" datatype="html">
+        <source> No se pudieron cargar tus grupos; puedes guardar en «Solo para mí». </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">94,98</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.save.hint" datatype="html">
+        <source> El destino aplica a todos los Guardar de esta búsqueda (por defecto «Solo para mí»). </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">99,102</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.degraded.getonboard" datatype="html">
+        <source>GetOnBoard no está disponible ahora.</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">113,115</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.degraded.remoteok" datatype="html">
+        <source>RemoteOK no está disponible ahora.</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">118,120</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.disabled" datatype="html">
+        <source> El descubrimiento de vacantes no está disponible en este momento. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">134,136</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.loading" datatype="html">
+        <source> Buscando… </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">142,146</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.empty" datatype="html">
+        <source> No hay resultados para esta consulta. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">148,152</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.save" datatype="html">
+        <source> Guardar </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">206,207</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.save.created" datatype="html">
+        <source> Guardada en «Solo para mí». </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">216,217</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.save.already" datatype="html">
+        <source> Ya la tenías guardada. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">226,227</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.save.error" datatype="html">
+        <source> No pudimos guardar esta vacante. Inténtalo de nuevo. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">236,237</context>
+        </context-group>
+      </trans-unit>
       <trans-unit id="groups.create.title" datatype="html">
         <source>Crear un grupo</source>
         <context-group purpose="location">
@@ -1330,11 +1499,46 @@
           <context context-type="linenumber">65,67</context>
         </context-group>
       </trans-unit>
+      <trans-unit id="links.filter.pinnedOnly" datatype="html">
+        <source> Solo fijados </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
+          <context context-type="linenumber">50,51</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.filter.pinnedHint" datatype="html">
+        <source> Muestra la lista corta del grupo. Fijar no cambia el orden del listado. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
+          <context context-type="linenumber">53,55</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.filter.tagLabel" datatype="html">
+        <source>Filtrar por etiqueta</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
+          <context context-type="linenumber">57,59</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.filter.tagApply" datatype="html">
+        <source> Filtrar </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
+          <context context-type="linenumber">74,76</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.filter.tagClear" datatype="html">
+        <source> Quitar etiqueta </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
+          <context context-type="linenumber">84,85</context>
+        </context-group>
+      </trans-unit>
       <trans-unit id="links.more" datatype="html">
         <source> Ver más </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">61,62</context>
+          <context context-type="linenumber">107,108</context>
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/my-links.page.html</context>
@@ -1345,77 +1549,77 @@
         <source> Los links nuevos se comparten con un enlace público </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">80,82</context>
+          <context context-type="linenumber">127,129</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.publicDefaultHint" datatype="html">
         <source> Solo afecta a lo que se guarde a partir de ahora; los links que ya están no cambian. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">83,87</context>
+          <context context-type="linenumber">130,134</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.inviteTitle" datatype="html">
         <source>Código de invitación</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">90,91</context>
+          <context context-type="linenumber">137,138</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.inviteWarning" datatype="html">
         <source> Quien tenga este código puede entrar y ver los nombres de los miembros. Regenéralo si se filtró. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">93,96</context>
+          <context context-type="linenumber">140,143</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.invitationCopied" datatype="html">
         <source>Invitación copiada</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">97,99</context>
+          <context context-type="linenumber">144,146</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.invitationFallback" datatype="html">
         <source> No pudimos usar el portapapeles. Copia este mensaje: </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">101,103</context>
+          <context context-type="linenumber">148,150</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.copyInvitation" datatype="html">
         <source> Copiar invitación </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">113,115</context>
+          <context context-type="linenumber">160,162</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.rename" datatype="html">
         <source> Renombrar </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">122,124</context>
+          <context context-type="linenumber">169,171</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.rotateInviteCode" datatype="html">
         <source> Regenerar el código </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">131,133</context>
+          <context context-type="linenumber">178,180</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.membersTitle" datatype="html">
         <source>Miembros</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">138,139</context>
+          <context context-type="linenumber">185,186</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.role.owner" datatype="html">
         <source>Propietario</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">145,146</context>
+          <context context-type="linenumber">192,193</context>
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/groups-list.page.html</context>
@@ -1426,7 +1630,7 @@
         <source>Miembro</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">147,149</context>
+          <context context-type="linenumber">194,196</context>
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/groups-list.page.html</context>
@@ -1437,168 +1641,168 @@
         <source>Desde el <x id="INTERPOLATION" equiv-text="{{ member.joinedAt | date: &apos;dd/MM/yyyy&apos; }}"/></source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">151,152</context>
+          <context context-type="linenumber">198,199</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.transfer" datatype="html">
         <source> Nombrar propietario </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">161,162</context>
+          <context context-type="linenumber">208,209</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.removeMember" datatype="html">
         <source> Expulsar </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">170,172</context>
+          <context context-type="linenumber">217,219</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.rotateAfterRemoval" datatype="html">
         <source> Regenerar el código para que no pueda volver a entrar </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">185,187</context>
+          <context context-type="linenumber">232,234</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.rotateOfferDismiss" datatype="html">
         <source> Ahora no </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">188,191</context>
+          <context context-type="linenumber">235,238</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.ownerLeaveHint" datatype="html">
         <source>Para salir, nombra propietario a otro miembro</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">199,201</context>
+          <context context-type="linenumber">246,248</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.ownerAloneHint" datatype="html">
         <source>Eres el único miembro: para irte, borra el grupo</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">203,206</context>
+          <context context-type="linenumber">250,253</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.delete" datatype="html">
         <source> Borrar el grupo </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">214,216</context>
+          <context context-type="linenumber">261,263</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.leave" datatype="html">
         <source> Salir del grupo </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">224,228</context>
+          <context context-type="linenumber">271,275</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.leaveTitle" datatype="html">
         <source>Salir del grupo</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">154</context>
+          <context context-type="linenumber">191</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.leaveMessage" datatype="html">
         <source>Dejarás de ver este grupo. Para volver necesitarás el código de invitación.</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">155</context>
+          <context context-type="linenumber">192</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.leaveConfirm" datatype="html">
         <source>Salir</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">156</context>
+          <context context-type="linenumber">193</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.deleteTitle" datatype="html">
         <source>Borrar el grupo</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">170</context>
+          <context context-type="linenumber">207</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.deleteConfirm" datatype="html">
         <source>Borrar</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">172</context>
+          <context context-type="linenumber">209</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.rotateTitle" datatype="html">
         <source>Regenerar el código</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">208</context>
+          <context context-type="linenumber">245</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.rotateMessage" datatype="html">
         <source>Los miembros actuales siguen dentro; solo dejará de servir el código anterior</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">209</context>
+          <context context-type="linenumber">246</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.rotateConfirm" datatype="html">
         <source>Regenerar</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">210</context>
+          <context context-type="linenumber">247</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.invitationMessage" datatype="html">
         <source>Únete a «<x id="NAME" equiv-text="group.name"/>» en LinkVault: <x id="LINK" ctype="x-a" equiv-text="link"/> (código <x id="CODE" equiv-text="group.inviteCode"/>)</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">231</context>
+          <context context-type="linenumber">268</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.removeMemberTitle" datatype="html">
         <source>Expulsar del grupo</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">266</context>
+          <context context-type="linenumber">303</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.removeMemberMessage" datatype="html">
         <source><x id="NAME" equiv-text="member.displayName"/> dejará de ver este grupo. Podrá volver a entrar si consigue el código.</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">267</context>
+          <context context-type="linenumber">304</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.removeMemberConfirm" datatype="html">
         <source>Expulsar</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">268</context>
+          <context context-type="linenumber">305</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.transferTitle" datatype="html">
         <source>Nombrar propietario</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">291</context>
+          <context context-type="linenumber">328</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.transferMessage" datatype="html">
         <source>«<x id="NAME" equiv-text="member.displayName"/>» tendrá el rol de propietario de «<x id="GROUP" equiv-text="current.name"/>»: podrá renombrarlo, expulsar miembros y borrarlo. Tú seguirás como miembro y no podrás deshacerlo.</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">292</context>
+          <context context-type="linenumber">329</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.transferConfirm" datatype="html">
         <source>Nombrar propietario</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">293</context>
+          <context context-type="linenumber">330</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.list.title" datatype="html">
@@ -1777,7 +1981,7 @@
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
-          <context context-type="linenumber">339,341</context>
+          <context context-type="linenumber">439,441</context>
         </context-group>
       </trans-unit>
       <trans-unit id="comments.delete" datatype="html">
@@ -1945,7 +2149,7 @@
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
-          <context context-type="linenumber">74</context>
+          <context context-type="linenumber">75</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.modality.hybrid" datatype="html">
@@ -1956,7 +2160,7 @@
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
-          <context context-type="linenumber">76</context>
+          <context context-type="linenumber">77</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.modality.onsite" datatype="html">
@@ -1967,7 +2171,7 @@
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
-          <context context-type="linenumber">78</context>
+          <context context-type="linenumber">79</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.field.seniority" datatype="html">
@@ -1985,7 +2189,7 @@
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
-          <context context-type="linenumber">88</context>
+          <context context-type="linenumber">89</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.seniority.junior" datatype="html">
@@ -1996,7 +2200,7 @@
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
-          <context context-type="linenumber">90</context>
+          <context context-type="linenumber">91</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.seniority.mid" datatype="html">
@@ -2007,7 +2211,7 @@
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
-          <context context-type="linenumber">92</context>
+          <context context-type="linenumber">93</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.seniority.senior" datatype="html">
@@ -2018,7 +2222,7 @@
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
-          <context context-type="linenumber">94</context>
+          <context context-type="linenumber">95</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.seniority.lead" datatype="html">
@@ -2029,7 +2233,7 @@
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
-          <context context-type="linenumber">96</context>
+          <context context-type="linenumber">97</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.field.salaryMin" datatype="html">
@@ -2068,7 +2272,7 @@
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
-          <context context-type="linenumber">137</context>
+          <context context-type="linenumber">138</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.salary.year" datatype="html">
@@ -2079,7 +2283,7 @@
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
-          <context context-type="linenumber">139</context>
+          <context context-type="linenumber">140</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.salary.hour" datatype="html">
@@ -2090,7 +2294,7 @@
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
-          <context context-type="linenumber">141</context>
+          <context context-type="linenumber">142</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.field.summary" datatype="html">
@@ -2112,6 +2316,10 @@
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
           <context context-type="linenumber">93,94</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/reopen-expires.dialog.html</context>
+          <context context-type="linenumber">13,15</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.edit.cancel" datatype="html">
@@ -2327,7 +2535,7 @@
         <source> Reintentar </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
-          <context context-type="linenumber">207,211</context>
+          <context context-type="linenumber">207,210</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.card.reopen" datatype="html">
@@ -2337,67 +2545,18 @@
           <context context-type="linenumber">219,223</context>
         </context-group>
       </trans-unit>
-      <trans-unit id="links.reopen.expiresTitle" datatype="html">
-        <source>Elige cuándo cierra</source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/links/reopen-expires.dialog.html</context>
-          <context context-type="linenumber">1,1</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="links.reopen.expiresExplanation" datatype="html">
-        <source> Para reabrirla hace falta una fecha de cierre futura o quitar la caducidad </source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/links/reopen-expires.dialog.html</context>
-          <context context-type="linenumber">4,6</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="links.reopen.appsNote" datatype="html">
-        <source> Las postulaciones que ya marcamos como caducadas no se reabren solas </source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/links/reopen-expires.dialog.html</context>
-          <context context-type="linenumber">8,10</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="links.reopen.cancel" datatype="html">
-        <source> Cancelar </source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/links/reopen-expires.dialog.html</context>
-          <context context-type="linenumber">31,33</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="links.reopen.clearExpires" datatype="html">
-        <source> Sin fecha de cierre </source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/links/reopen-expires.dialog.html</context>
-          <context context-type="linenumber">40,43</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="links.reopen.confirm" datatype="html">
-        <source> Reabrir </source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/links/reopen-expires.dialog.html</context>
-          <context context-type="linenumber">50,53</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="links.reopen.done" datatype="html">
-        <source>Oferta marcada como abierta. Las postulaciones caducadas no cambian solas.</source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/links/link-list.component.ts</context>
-          <context context-type="linenumber">390,390</context>
-        </context-group>
-      </trans-unit>
       <trans-unit id="links.public.mark" datatype="html">
         <source>Enlace público</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
-          <context context-type="linenumber">215,216</context>
+          <context context-type="linenumber">227,228</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.public.copy" datatype="html">
         <source> Copiar enlace </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
-          <context context-type="linenumber">225,227</context>
+          <context context-type="linenumber">237,239</context>
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/save-link.form.html</context>
@@ -2408,35 +2567,84 @@
         <source> Dejar de compartir </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
-          <context context-type="linenumber">235,238</context>
+          <context context-type="linenumber">247,250</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.public.share" datatype="html">
         <source> Compartir con un enlace público </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
-          <context context-type="linenumber">247,250</context>
+          <context context-type="linenumber">259,262</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.list.remove" datatype="html">
         <source> Quitar </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
-          <context context-type="linenumber">259,262</context>
+          <context context-type="linenumber">271,274</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.pinned.on" datatype="html">
+        <source>Fijado</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
+          <context context-type="linenumber">305,306</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.pinned.off" datatype="html">
+        <source>Fijar</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
+          <context context-type="linenumber">307,309</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.pinned.hint" datatype="html">
+        <source>Lista corta del grupo (no sube al inicio)</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
+          <context context-type="linenumber">311,314</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.tags.edit" datatype="html">
+        <source> Editar etiquetas </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
+          <context context-type="linenumber">339,340</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.tags.editorLabel" datatype="html">
+        <source>Etiquetas (separadas por coma)</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
+          <context context-type="linenumber">345,348</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.tags.save" datatype="html">
+        <source> Guardar etiquetas </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
+          <context context-type="linenumber">365,366</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.tags.cancel" datatype="html">
+        <source> Cancelar </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
+          <context context-type="linenumber">375,376</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.knowSomeone.flagged" datatype="html">
         <source>Ya marqué que conozco a alguien</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
-          <context context-type="linenumber">293,295</context>
+          <context context-type="linenumber">393,395</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.knowSomeone.flag" datatype="html">
         <source>Conozco a alguien ahí</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
-          <context context-type="linenumber">295,297</context>
+          <context context-type="linenumber">395,397</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.knowSomeone.count" datatype="html">
@@ -2444,126 +2652,42 @@
             alguien ahí}}</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
-          <context context-type="linenumber">300,304</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="links.pinned.on" datatype="html">
-        <source>Fijado</source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
-          <context context-type="linenumber">1</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="links.pinned.off" datatype="html">
-        <source>Fijar</source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
-          <context context-type="linenumber">1</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="links.pinned.hint" datatype="html">
-        <source>Lista corta del grupo (no sube al inicio)</source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
-          <context context-type="linenumber">1</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="links.tags.edit" datatype="html">
-        <source> Editar etiquetas </source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
-          <context context-type="linenumber">1</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="links.tags.editorLabel" datatype="html">
-        <source>Etiquetas (separadas por coma)</source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
-          <context context-type="linenumber">1</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="links.tags.save" datatype="html">
-        <source> Guardar etiquetas </source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
-          <context context-type="linenumber">1</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="links.tags.cancel" datatype="html">
-        <source> Cancelar </source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
-          <context context-type="linenumber">1</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="links.filter.pinnedOnly" datatype="html">
-        <source> Solo fijados </source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">1</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="links.filter.pinnedHint" datatype="html">
-        <source> Muestra la lista corta del grupo. Fijar no cambia el orden del listado. </source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">1</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="links.filter.tagLabel" datatype="html">
-        <source>Filtrar por etiqueta</source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">1</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="links.filter.tagApply" datatype="html">
-        <source> Filtrar </source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">1</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="links.filter.tagClear" datatype="html">
-        <source> Quitar etiqueta </source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">1</context>
+          <context context-type="linenumber">400,404</context>
         </context-group>
       </trans-unit>
       <trans-unit id="comments.note.from" datatype="html">
         <source>Nota de <x id="INTERPOLATION" equiv-text="{{ sharer.displayName }}"/></source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
-          <context context-type="linenumber">311,312</context>
+          <context context-type="linenumber">411,412</context>
         </context-group>
       </trans-unit>
       <trans-unit id="comments.note.remove" datatype="html">
         <source> Quitar la nota </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
-          <context context-type="linenumber">325,326</context>
+          <context context-type="linenumber">425,426</context>
         </context-group>
       </trans-unit>
       <trans-unit id="comments.card.comment" datatype="html">
         <source>Comentar</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
-          <context context-type="linenumber">358,359</context>
+          <context context-type="linenumber">458,459</context>
         </context-group>
       </trans-unit>
       <trans-unit id="comments.card.reply" datatype="html">
         <source>Responder</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
-          <context context-type="linenumber">360,362</context>
+          <context context-type="linenumber">460,462</context>
         </context-group>
       </trans-unit>
       <trans-unit id="comments.card.viewAll" datatype="html">
         <source>Ver los <x id="INTERPOLATION" equiv-text="{{ count }}"/> comentarios</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-card.component.html</context>
-          <context context-type="linenumber">362,363</context>
+          <context context-type="linenumber">462,463</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.list.removeMessageGroupComments" datatype="html">
@@ -2609,98 +2733,105 @@
         <source> Esta oferta no se puede volver a leer automáticamente. Complétala a mano. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-list.component.html</context>
-          <context context-type="linenumber">84,86</context>
+          <context context-type="linenumber">87,89</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.public.forbidden" datatype="html">
         <source> Solo quien compartió la oferta o el propietario del grupo puede cambiar esto </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-list.component.html</context>
-          <context context-type="linenumber">88,91</context>
+          <context context-type="linenumber">91,94</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.reopen.done" datatype="html">
+        <source>Oferta marcada como abierta. Las postulaciones caducadas no cambian solas.</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/link-list.component.ts</context>
+          <context context-type="linenumber">390</context>
         </context-group>
       </trans-unit>
       <trans-unit id="comments.gone" datatype="html">
         <source>Esta oferta ya no está en el grupo</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-list.component.ts</context>
-          <context context-type="linenumber">368</context>
+          <context context-type="linenumber">423</context>
         </context-group>
       </trans-unit>
       <trans-unit id="comments.note.removeTitle" datatype="html">
         <source>Quitar la nota</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-list.component.ts</context>
-          <context context-type="linenumber">393</context>
+          <context context-type="linenumber">448</context>
         </context-group>
       </trans-unit>
       <trans-unit id="comments.note.removeOwn" datatype="html">
         <source>¿Quitar la nota? No se puede deshacer.</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-list.component.ts</context>
-          <context context-type="linenumber">396</context>
+          <context context-type="linenumber">451</context>
         </context-group>
       </trans-unit>
       <trans-unit id="comments.note.removeOther" datatype="html">
         <source>¿Quitar la nota de <x id="NAME" equiv-text="sharer.displayName"/>? Desaparecerá para todo el grupo y no se puede deshacer.</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-list.component.ts</context>
-          <context context-type="linenumber">397</context>
+          <context context-type="linenumber">452</context>
         </context-group>
       </trans-unit>
       <trans-unit id="comments.note.removeConfirm" datatype="html">
         <source>Quitar la nota</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-list.component.ts</context>
-          <context context-type="linenumber">398</context>
+          <context context-type="linenumber">453</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.public.shareTitle" datatype="html">
         <source>Compartir con un enlace público</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-list.component.ts</context>
-          <context context-type="linenumber">463</context>
+          <context context-type="linenumber">568</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.public.shareMessage" datatype="html">
         <source>Cualquiera con este enlace podrá ver la oferta sin entrar en LinkVault. No se verá el grupo, ni tu nombre, ni los comentarios. Puedes dejar de compartirlo cuando quieras.</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-list.component.ts</context>
-          <context context-type="linenumber">464</context>
+          <context context-type="linenumber">569</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.public.shareConfirm" datatype="html">
         <source>Compartir</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-list.component.ts</context>
-          <context context-type="linenumber">465</context>
+          <context context-type="linenumber">570</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.public.stopTitle" datatype="html">
         <source>Dejar de compartir</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-list.component.ts</context>
-          <context context-type="linenumber">483</context>
+          <context context-type="linenumber">588</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.public.stopMessage" datatype="html">
         <source>El enlace dejará de funcionar para todo el mundo, también para quien ya lo tenga. Si vuelves a activarlo, se creará un enlace nuevo. Las vistas previas ya enviadas en un chat pueden seguir viéndose ahí.</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-list.component.ts</context>
-          <context context-type="linenumber">484</context>
+          <context context-type="linenumber">589</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.public.stopConfirm" datatype="html">
         <source>Dejar de compartir</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-list.component.ts</context>
-          <context context-type="linenumber">485</context>
+          <context context-type="linenumber">590</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.public.copyUnread" datatype="html">
         <source>Todavía estamos leyendo la oferta: si lo envías ahora, la tarjeta saldrá sin datos</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-list.component.ts</context>
-          <context context-type="linenumber">529</context>
+          <context context-type="linenumber">634</context>
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/save-link.form.html</context>
@@ -2711,7 +2842,7 @@
         <source>Enlace copiado</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-list.component.ts</context>
-          <context context-type="linenumber">530</context>
+          <context context-type="linenumber">635</context>
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/save-link.form.html</context>
@@ -2722,70 +2853,70 @@
         <source>Quitar el enlace</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-list.component.ts</context>
-          <context context-type="linenumber">552</context>
+          <context context-type="linenumber">657</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.list.removeMessageMine" datatype="html">
         <source>Se quita de tu lista; la oferta sigue disponible en tus grupos.</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-list.component.ts</context>
-          <context context-type="linenumber">555</context>
+          <context context-type="linenumber">660</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.list.removeConfirm" datatype="html">
         <source>Quitar</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-list.component.ts</context>
-          <context context-type="linenumber">557</context>
+          <context context-type="linenumber">662</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.platform.generic" datatype="html">
         <source>Otra web</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
-          <context context-type="linenumber">64</context>
+          <context context-type="linenumber">65</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.salary.from" datatype="html">
         <source>Desde <x id="MIN" equiv-text="format(min)"/></source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
-          <context context-type="linenumber">123</context>
+          <context context-type="linenumber">124</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.salary.upTo" datatype="html">
         <source>Hasta <x id="MAX" equiv-text="format(max)"/></source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
-          <context context-type="linenumber">125</context>
+          <context context-type="linenumber">126</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.origin.page" datatype="html">
         <source>Leído de la página</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
-          <context context-type="linenumber">172</context>
+          <context context-type="linenumber">173</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.origin.ai" datatype="html">
         <source>Deducido por la IA</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
-          <context context-type="linenumber">174</context>
+          <context context-type="linenumber">175</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.origin.pasted" datatype="html">
         <source>Descripción pegada por <x id="NAME" equiv-text="origin.by.displayName"/></source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
-          <context context-type="linenumber">176</context>
+          <context context-type="linenumber">177</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.origin.manual" datatype="html">
         <source>Escrito por <x id="NAME" equiv-text="origin.by.displayName"/></source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
-          <context context-type="linenumber">178</context>
+          <context context-type="linenumber">179</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.status.missingFields" datatype="html">
@@ -2990,6 +3121,48 @@
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/paste-description.dialog.html</context>
           <context context-type="linenumber">110,112</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.reopen.expiresTitle" datatype="html">
+        <source>Elige cuándo cierra</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/reopen-expires.dialog.html</context>
+          <context context-type="linenumber">1,4</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.reopen.expiresExplanation" datatype="html">
+        <source> Para reabrirla hace falta una fecha de cierre futura o quitar la caducidad </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/reopen-expires.dialog.html</context>
+          <context context-type="linenumber">5,7</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.reopen.appsNote" datatype="html">
+        <source> Las postulaciones que ya marcamos como caducadas no se reabren solas </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/reopen-expires.dialog.html</context>
+          <context context-type="linenumber">9,12</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.reopen.cancel" datatype="html">
+        <source> Cancelar </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/reopen-expires.dialog.html</context>
+          <context context-type="linenumber">32,35</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.reopen.clearExpires" datatype="html">
+        <source> Sin fecha de cierre </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/reopen-expires.dialog.html</context>
+          <context context-type="linenumber">42,45</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.reopen.confirm" datatype="html">
+        <source> Reabrir </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/reopen-expires.dialog.html</context>
+          <context context-type="linenumber">52,54</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.save.url" datatype="html">
@@ -4058,49 +4231,49 @@
         <source>Tus claves de IA</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">235,236</context>
+          <context context-type="linenumber">238,239</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.byok.intro" datatype="html">
         <source> Usa tu propia clave de Anthropic, OpenAI u OpenRouter. LinkVault la guarda cifrada y solo muestra un hint. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">237,240</context>
+          <context context-type="linenumber">240,243</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.byok.configured" datatype="html">
         <source>Configurada · hint …<x id="INTERPOLATION" equiv-text="{{ key.keyHint }}"/></source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">274,275</context>
+          <context context-type="linenumber">267,268</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.byok.missing" datatype="html">
         <source>Sin configurar</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">277,279</context>
+          <context context-type="linenumber">270,272</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.byok.hint" datatype="html">
         <source>Últimos caracteres: …<x id="INTERPOLATION" equiv-text="{{ key.keyHint }}"/></source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">286,288</context>
+          <context context-type="linenumber">279,281</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.byok.destination" datatype="html">
         <source>Con el permiso de IA externa vigente, el texto de tu CV y de la oferta puede salir hacia <x id="INTERPOLATION" equiv-text="{{ label }}"/>.</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">294,298</context>
+          <context context-type="linenumber">287,291</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.byok.openrouterDataCollection" datatype="html">
         <source>Si el modelo configurado no es :free, LinkVault no fuerza data_collection: deny.</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">303,307</context>
+          <context context-type="linenumber">296,300</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.byok.vendorKeyInactive" datatype="html">
@@ -4114,140 +4287,140 @@
         <source><x id="INTERPOLATION" equiv-text="{{ label }}"/> no está disponible ahora mismo por la configuración de esta instancia.</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">314,315</context>
+          <context context-type="linenumber">322,323</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.byok.unavailable.keyKept" datatype="html">
         <source>Tu clave sigue guardada y cifrada en LinkVault: no se ha borrado.</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">318,320</context>
+          <context context-type="linenumber">326,328</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.byok.unavailable.notUsed" datatype="html">
         <source>No se usará para ninguna tarea mientras dure esta situación, ni siquiera con el permiso de IA externa vigente.</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">321,324</context>
+          <context context-type="linenumber">329,332</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.byok.unavailable.whatToDo" datatype="html">
         <source>Puedes usar o configurar otro de los proveedores soportados, o pedir a quien administra la instancia que configure el modelo de <x id="INTERPOLATION" equiv-text="{{ label }}"/>.</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">325,327</context>
+          <context context-type="linenumber">333,335</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.byok.apiKeyLabel" datatype="html">
         <source>Clave de API</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">332,334</context>
+          <context context-type="linenumber">340,342</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.byok.apiKeyHint" datatype="html">
         <source>Mínimo <x id="INTERPOLATION" equiv-text="{{ apiKeyMinLength }}"/> caracteres</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">341,342</context>
+          <context context-type="linenumber">349,350</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.byok.apiKeyInvalid" datatype="html">
         <source>La clave debe tener al menos <x id="INTERPOLATION" equiv-text="{{ apiKeyMinLength }}"/> caracteres</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">344,345</context>
+          <context context-type="linenumber">352,353</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.byok.rotate" datatype="html">
         <source>Rotar clave</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">358,359</context>
+          <context context-type="linenumber">366,367</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.byok.save" datatype="html">
         <source>Guardar clave</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">360,362</context>
+          <context context-type="linenumber">368,370</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.byok.revoke" datatype="html">
         <source> Revocar </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">373,374</context>
+          <context context-type="linenumber">381,382</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.notifications.title" datatype="html">
         <source>Notificaciones</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">383,384</context>
+          <context context-type="linenumber">391,392</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.notifications.intro" datatype="html">
         <source> Elige qué avisos quieres por email y, si quieres, el push del navegador. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">385,389</context>
+          <context context-type="linenumber">393,397</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.notifications.link" datatype="html">
         <source> Gestionar notificaciones </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">394,397</context>
+          <context context-type="linenumber">402,405</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.danger.title" datatype="html">
         <source>Zona de peligro</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">403,404</context>
+          <context context-type="linenumber">411,412</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.privacyLink" datatype="html">
         <source> Detalle de almacenamiento del CV, retención, IA y borrado en el <x id="START_LINK" ctype="x-a" equiv-text="&lt;a routerLink=&quot;/privacidad&quot; data-testid=&quot;profile-privacy-link&quot;&gt;"/>aviso de privacidad<x id="CLOSE_LINK" ctype="x-a" equiv-text="&lt;/a&gt;"/>. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">405,408</context>
+          <context context-type="linenumber">413,416</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.delete.intro" datatype="html">
         <source> Borrar la cuenta elimina tus datos personales de LinkVault. Esta acción no se puede deshacer. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">409,412</context>
+          <context context-type="linenumber">417,420</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.delete.open" datatype="html">
         <source> Borrar mi cuenta </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.html</context>
-          <context context-type="linenumber">420,422</context>
+          <context context-type="linenumber">428,430</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.byok.revokeTitle" datatype="html">
         <source>Revocar clave de <x id="VENDOR" equiv-text="label"/></source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.ts</context>
-          <context context-type="linenumber">201</context>
+          <context context-type="linenumber">252</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.byok.revokeMessage" datatype="html">
         <source>Se borrará la clave de <x id="VENDOR" equiv-text="label"/> guardada en LinkVault. No se puede deshacer.</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.ts</context>
-          <context context-type="linenumber">202</context>
+          <context context-type="linenumber">253</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.byok.revokeConfirm" datatype="html">
         <source>Revocar</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/profile/profile.page.ts</context>
-          <context context-type="linenumber">203</context>
+          <context context-type="linenumber">254</context>
         </context-group>
       </trans-unit>
       <trans-unit id="public.loading" datatype="html">
@@ -4457,146 +4630,6 @@
           <context context-type="linenumber">2,3</context>
         </context-group>
       </trans-unit>
-      <trans-unit id="discovery.title" datatype="html">
-        <source>Descubrir</source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
-          <context context-type="linenumber">2,3</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="discovery.intro" datatype="html">
-        <source> Busca vacantes en bolsas públicas y guárdalas en tus links sin salir de LinkVault. </source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
-          <context context-type="linenumber">3,5</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="discovery.coverage" datatype="html">
-        <source> LinkedIn y Computrabajo no están disponibles vía discovery. </source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
-          <context context-type="linenumber">12,14</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="discovery.query.label" datatype="html">
-        <source>Consulta</source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
-          <context context-type="linenumber">17,18</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="discovery.query.placeholder" datatype="html">
-        <source>Título, empresa, stack…</source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
-          <context context-type="linenumber">26,27</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="discovery.board.label" datatype="html">
-        <source>Bolsa</source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
-          <context context-type="linenumber">31,32</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="discovery.board.all" datatype="html">
-        <source>Todas</source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
-          <context context-type="linenumber">42,43</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="discovery.board.getonboard" datatype="html">
-        <source>GetOnBoard</source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
-          <context context-type="linenumber">45,46</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="discovery.board.remoteok" datatype="html">
-        <source>RemoteOK</source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
-          <context context-type="linenumber">48,49</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="discovery.submit" datatype="html">
-        <source>Buscar</source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
-          <context context-type="linenumber">64,66</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="discovery.save.hint" datatype="html">
-        <source>El destino aplica a todos los Guardar de esta búsqueda (por defecto «Solo para mí»).</source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
-          <context context-type="linenumber">70,72</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="discovery.degraded.getonboard" datatype="html">
-        <source>GetOnBoard no está disponible ahora.</source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
-          <context context-type="linenumber">84,86</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="discovery.degraded.remoteok" datatype="html">
-        <source>RemoteOK no está disponible ahora.</source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
-          <context context-type="linenumber">89,91</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="discovery.disabled" datatype="html">
-        <source> El descubrimiento de vacantes no está disponible en este momento. </source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
-          <context context-type="linenumber">105,107</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="discovery.loading" datatype="html">
-        <source> Buscando… </source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
-          <context context-type="linenumber">113,115</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="discovery.empty" datatype="html">
-        <source> No hay resultados para esta consulta. </source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
-          <context context-type="linenumber">119,121</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="discovery.save" datatype="html">
-        <source> Guardar </source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
-          <context context-type="linenumber">175,177</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="discovery.save.created" datatype="html">
-        <source> Guardada en «Solo para mí». </source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
-          <context context-type="linenumber">185,187</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="discovery.save.already" datatype="html">
-        <source> Ya la tenías guardada. </source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
-          <context context-type="linenumber">195,197</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="discovery.save.error" datatype="html">
-        <source> No pudimos guardar esta vacante. Inténtalo de nuevo. </source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
-          <context context-type="linenumber">205,207</context>
-        </context-group>
-      </trans-unit>
       <trans-unit id="search.intro" datatype="html">
         <source> Encuentra vacantes, postulaciones, comentarios, notas, CVs y planes de estudio que puedas ver. </source>
         <context-group purpose="location">
@@ -4640,7 +4673,7 @@
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
-          <context context-type="linenumber">244,246</context>
+          <context context-type="linenumber">285,287</context>
         </context-group>
       </trans-unit>
       <trans-unit id="search.docType.application" datatype="html">
@@ -4651,7 +4684,7 @@
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
-          <context context-type="linenumber">247,249</context>
+          <context context-type="linenumber">288,290</context>
         </context-group>
       </trans-unit>
       <trans-unit id="search.docType.group_comment" datatype="html">
@@ -4662,7 +4695,7 @@
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
-          <context context-type="linenumber">250,252</context>
+          <context context-type="linenumber">291,293</context>
         </context-group>
       </trans-unit>
       <trans-unit id="search.docType.group_link_note" datatype="html">
@@ -4673,7 +4706,7 @@
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
-          <context context-type="linenumber">253,255</context>
+          <context context-type="linenumber">294,296</context>
         </context-group>
       </trans-unit>
       <trans-unit id="search.docType.cv" datatype="html">
@@ -4684,7 +4717,7 @@
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
-          <context context-type="linenumber">256,257</context>
+          <context context-type="linenumber">297,298</context>
         </context-group>
       </trans-unit>
       <trans-unit id="search.docType.roadmap" datatype="html">
@@ -4695,7 +4728,7 @@
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
-          <context context-type="linenumber">259,261</context>
+          <context context-type="linenumber">300,302</context>
         </context-group>
       </trans-unit>
       <trans-unit id="search.filter.group" datatype="html">
@@ -4863,70 +4896,70 @@
         <source>Salario mínimo</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
-          <context context-type="linenumber">175</context>
+          <context context-type="linenumber">175,177</context>
         </context-group>
       </trans-unit>
       <trans-unit id="search.filter.maxSalary" datatype="html">
         <source>Salario máximo</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
-          <context context-type="linenumber">190</context>
+          <context context-type="linenumber">190,192</context>
         </context-group>
       </trans-unit>
       <trans-unit id="search.filter.salaryRange.hint" datatype="html">
         <source> Solo aplica a vacantes con salario numérico. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
-          <context context-type="linenumber">204,207</context>
+          <context context-type="linenumber">209,213</context>
         </context-group>
       </trans-unit>
       <trans-unit id="search.filter.openOnly" datatype="html">
         <source> Solo abiertas </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
-          <context context-type="linenumber">215,218</context>
+          <context context-type="linenumber">219,222</context>
         </context-group>
       </trans-unit>
       <trans-unit id="search.submit" datatype="html">
         <source> Buscar </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
-          <context context-type="linenumber">190,192</context>
+          <context context-type="linenumber">231,233</context>
         </context-group>
       </trans-unit>
       <trans-unit id="search.emptyQuery" datatype="html">
         <source> Escribe algo para buscar. No listamos todo el índice. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
-          <context context-type="linenumber">197,201</context>
+          <context context-type="linenumber">238,242</context>
         </context-group>
       </trans-unit>
       <trans-unit id="search.degraded" datatype="html">
         <source> La búsqueda semántica no está disponible ahora; mostramos coincidencias por texto. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
-          <context context-type="linenumber">208,212</context>
+          <context context-type="linenumber">249,253</context>
         </context-group>
       </trans-unit>
       <trans-unit id="search.unavailable" datatype="html">
         <source> La búsqueda no está disponible en este momento. Inténtalo más tarde. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
-          <context context-type="linenumber">214,216</context>
+          <context context-type="linenumber">255,257</context>
         </context-group>
       </trans-unit>
       <trans-unit id="search.loading" datatype="html">
         <source>Buscando…</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
-          <context context-type="linenumber">221,224</context>
+          <context context-type="linenumber">262,265</context>
         </context-group>
       </trans-unit>
       <trans-unit id="search.empty" datatype="html">
         <source> No hay resultados para esta consulta. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/search/search.page.html</context>
-          <context context-type="linenumber">226,230</context>
+          <context context-type="linenumber">267,271</context>
         </context-group>
       </trans-unit>
       <trans-unit id="emailVerify.banner.message" datatype="html">
@@ -4982,28 +5015,28 @@
         <source>Solo para mí</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/layout/shell/shell.html</context>
-          <context context-type="linenumber">6,7</context>
+          <context context-type="linenumber">7,8</context>
         </context-group>
       </trans-unit>
       <trans-unit id="shell.myCv" datatype="html">
         <source>Mi CV</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/layout/shell/shell.html</context>
-          <context context-type="linenumber">7,8</context>
+          <context context-type="linenumber">8,9</context>
         </context-group>
       </trans-unit>
       <trans-unit id="shell.profile" datatype="html">
         <source>Perfil</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/layout/shell/shell.html</context>
-          <context context-type="linenumber">8,10</context>
+          <context context-type="linenumber">9,11</context>
         </context-group>
       </trans-unit>
       <trans-unit id="shell.logout" datatype="html">
         <source> Cerrar sesión </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/layout/shell/shell.html</context>
-          <context context-type="linenumber">16,18</context>
+          <context context-type="linenumber">17,19</context>
         </context-group>
       </trans-unit>
       <trans-unit id="error.tooManyAttempts" datatype="html">
@@ -5041,15 +5074,6 @@
           <context context-type="linenumber">32,34</context>
         </context-group>
       </trans-unit>
-        <trans-unit id="discovery.destination.label" datatype="html">
-        <source>Guardar en</source>
-      </trans-unit>
-      <trans-unit id="discovery.destination.private" datatype="html">
-        <source>Solo para mí</source>
-      </trans-unit>
-      <trans-unit id="discovery.destination.groupsError" datatype="html">
-        <source>No se pudieron cargar tus grupos; puedes guardar en «Solo para mí».</source>
-      </trans-unit>
-  </body>
+    </body>
   </file>
 </xliff>

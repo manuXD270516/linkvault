@@ -163,7 +163,7 @@ git add -A && git commit -m "spec(bootstrap-monorepo): proposal, design, tasks a
 Sugerencia de reparto en el mismo mensaje:
 ```
 Ejecuta tasks.md delegando: tareas [infra] al subagente devops, [backend] a backend-dev, [frontend] a frontend-dev, [ai] a ai-engineer.
-Trabaja tarea por tarea, marca cada una en tasks.md al terminar, y al final corre pnpm nx run-many -t lint,typecheck,test.
+Trabaja tarea por tarea, marca cada una en tasks.md al terminar, y al final corre pnpm nx run-many -t lint,typecheck,test,i18n-check.
 Si una tarea no puede completarse sin decidir algo que no está en los docs, detente y pregúntame.
 ```
 Mientras corre: acepta los permisos que pida de forma razonable (los `Bash(pnpm *)` ya están permitidos). Si se atasca > 10 min en un mismo error, `Esc` y pídele que explique el bloqueo antes de seguir.
@@ -180,7 +180,7 @@ Luego tú, fuera de Claude Code:
 ```bash
 docker compose up -d
 pnpm install
-pnpm nx run-many -t lint,typecheck,test
+pnpm nx run-many -t lint,typecheck,test,i18n-check
 pnpm nx serve api   # http://localhost:3000/health
 pnpm nx serve web   # http://localhost:4200
 ```
@@ -1539,7 +1539,7 @@ público (van a 404 del SPA o no enrutan a api).
 
 - [ ] Change archivado; spec delta mergeada en `openspec/specs/`
 - [ ] Cada Scenario de la spec tiene un test que lo referencia por nombre
-- [ ] `pnpm nx affected -t lint,typecheck,test` en verde con `AI_CHAIN=mock AI_MOCK_MODE=replay`
+- [ ] `pnpm nx affected -t lint,typecheck,test,i18n-check` en verde con `AI_CHAIN=mock AI_MOCK_MODE=replay`
 - [ ] `docker compose up` levanta la feature end-to-end
 - [ ] qa-reviewer en verde; decisiones no triviales en `docs/adr/`
 - [ ] Sin SDKs de IA fuera de `libs/ai/infrastructure/providers`; sin PII en logs

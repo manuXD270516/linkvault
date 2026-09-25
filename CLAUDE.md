@@ -6,6 +6,8 @@ Antes de cualquier tarea lee, en este orden: `docs/design-v0.2.md` (decisiones v
 
 ## Flujo de trabajo (Spec-Driven con OpenSpec)
 - NUNCA edites `apps/**` o `libs/**` sin un change activo en `openspec/changes/<nombre>/` (el hook lo bloquea).
+  Única excepción: un PR `chore(web): re-extract i18n catalog` que solo contiene la salida de `pnpm nx run web:extract-i18n`
+  para devolver `main` a verde (ADR-050 §5).
 - Orden por change: `/opsx:new` → `/opsx:ff` → **debate critic/business/reflect** → aprobación humana → `/opsx:apply` → `/opsx:verify` → PR → `/opsx:archive`.
 - Antes de `/opsx:apply` de cualquier change con `design.md`: convoca a los subagentes `critic` y `business`, actúa como `reflect`,
   itera hasta que no quede ningún P0/V0 abierto y registra decisiones no triviales en `docs/adr/ADR-XXX.md`.
@@ -35,11 +37,14 @@ Antes de cualquier tarea lee, en este orden: `docs/design-v0.2.md` (decisiones v
 
 ## Calidad
 - Tests con Vitest. Cada caso de uso con test unitario (repositorios en memoria). Integración con `mongodb-memory-server` (replset) o testcontainers.
-- `pnpm nx affected -t lint,typecheck,test` debe pasar antes de dar por terminada una tarea. Sin `any`. Sin `console.log` (usar pino).
+- `pnpm nx affected -t lint,typecheck,test,i18n-check` debe pasar antes de dar por terminada una tarea. Sin `any`. Sin `console.log` (usar pino).
 - Commits convencionales: `feat(links):`, `fix(ai):`, `spec:`, `chore:`. Un change ≈ un PR.
 
 ## Frontend
 - Angular 22 standalone, signals, zoneless, `@ngrx/signals`, rutas lazy por feature, Angular Material + Tailwind, i18n ES/EN (ES por defecto).
+- `apps/web/src/locale/messages.xlf` no se edita a mano: se regenera con `pnpm nx run web:extract-i18n` (y sus conflictos se
+  resuelven re-extrayendo). Las traducciones se editan en `messages.en.xlf`, actualizando también su `source` si cambió el
+  texto español. `pnpm nx run web:i18n-check` lo comprueba (ADR-050).
 
 ## Seguridad y legal
 - Extractores: respetar `robots.txt`, cola por dominio, `User-Agent` identificable. Headless solo con `FEATURE_HEADLESS_EXTRACTION=true`.

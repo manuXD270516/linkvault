@@ -1,3 +1,4 @@
+import { staleSources } from './i18n-catalog';
 import enMessages from './messages.en.xlf' with { loader: 'text' };
 import sourceMessages from './messages.xlf' with { loader: 'text' };
 
@@ -44,10 +45,18 @@ describe('messages.en.xlf', () => {
     }
   });
 
+  // Escenarios «Unidad sin traducir» y «Unidad huérfana en inglés» (spec web/i18n). Que `messages.xlf` sea a su vez lo que
+  // producen las fuentes lo comprueba `nx run web:i18n-check`, no esta prueba.
   it('has exactly the units extracted from the Spanish source', () => {
     const source = [...translationUnits(sourceMessages).keys()].sort();
     const english = [...translationUnits(enMessages).keys()].sort();
 
     expect(english).toEqual(source);
+  });
+
+  // Requirement «Traducción inglesa vigente» (spec web/i18n): cambiar un texto español obliga a actualizar su original en
+  // messages.en.xlf, y con él a revisar la traducción. Los escenarios se prueban en i18n-catalog.spec.ts.
+  it('translates the current Spanish text of every unit', () => {
+    expect(staleSources(new DOMParser(), sourceMessages, enMessages)).toEqual([]);
   });
 });

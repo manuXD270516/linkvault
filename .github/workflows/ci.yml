@@ -104,6 +104,12 @@ jobs:
           AI_EMBED_CHAIN: mock
         run: pnpm nx affected -t test
 
+      # Catálogo i18n del SPA (spec web/i18n, ADR-050): messages.xlf debe ser exactamente la salida de la extracción. El
+      # target solo existe en web, así que affected lo corre únicamente cuando web está afectado. Falla nombrando las
+      # unidades nuevas, eliminadas o con texto cambiado; se reproduce en local con `pnpm nx run web:i18n-check`.
+      - name: i18n catalog
+        run: pnpm nx affected -t i18n-check
+
       # Eval harness en replay contra la línea base (D10 de ai-eval-harness, ADR-019): falla si una métrica bloqueante,
       # el golden o la versión del prompt difieren de baseline.json; el mensaje nombra la métrica y ambos valores y se
       # reproduce en local con `pnpm nx run ai:eval-ci`. Mismo entorno de IA que Test, más NODE_ENV=test.
