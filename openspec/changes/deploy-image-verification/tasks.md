@@ -687,7 +687,7 @@
 - [x] 10-bis.7 [frontend] **Textos ES y EN con identificador nuevo.** Añadir a `apps/web/src/locale/messages.xlf` y `messages.en.xlf` los `trans-unit` del aviso de indisponibilidad con ids **nuevos** (`profile.byok.unavailable…`), nunca reutilizando `profile.byok.destination` ni `profile.byok.openrouterDataCollection`. La regla de este mismo change: **cualquier frase cuyo `source` cambie, aunque sea una palabra, SHALL llevar id nuevo** — una traducción heredada es una promesa que sobrevive a su desmentido, y aquí el desmentido es precisamente el punto. Verificar con `pnpm nx run web:extract-i18n` (redirigiendo la salida a un archivo y leyendo el archivo) que los ids salen como se escribieron, y con un test junto a `apps/web/src/locale/privacy-text.spec.ts` —que ya sabe parsear los dos `.xlf` con `parseXlfUnits`— de que cada id nuevo existe en los dos ficheros, que el `target` inglés no está vacío y que ningún id heredado ha cambiado de `source`.
 - [x] 10-bis.8 [frontend] **Tests de componente y smoke.** En `apps/web/src/app/features/profile/profile.page.spec.ts`, con el API respondiendo los tres vendors: (a) con OpenRouter indisponible sale `profile-byok-unavailable-openrouter` con los cuatro contenidos y **no** sale `profile-byok-openrouter-data-collection`; (b) con OpenRouter disponible ocurre lo contrario; (c) con solo OpenRouter indisponible, `anthropic` y `openai` siguen mostrando su aviso de destino y **ninguno** muestra el de indisponibilidad (`:427-442` ya afirma parte de eso y pasa a depender del estado). En `apps/web-e2e/src/byok.spec.ts`: `:33` afirma hoy el aviso de `data_collection` **incondicionalmente**, así que pasa a derivar la expectativa del cuerpo de `GET /api/users/me/ai-keys` —afirmar la correspondencia UI↔API, que es comprobable en cualquier configuración, y no la existencia de un vendor—; y se añade el caso del vendor indisponible. **Cuidado con cómo se fabrica ese caso:** vaciar `BYOK_OPENROUTER_MODEL` en el entorno **no** lo produce, porque `EnvReader` lee la cadena vacía como ausente y `parse-ai-config.ts:525-527` repone el valor por defecto del código, que tras 10.10 es un modelo `:free` vivo; el estado indisponible es un **invariante** (13.2) y no es alcanzable por entorno. La pasada del smoke que lo cubre SHALL hacerse neutralizando a mano `AI_CONFIG_DEFAULTS.BYOK_OPENROUTER_MODEL` —romper, mirar, restaurar, como el resto del change—, con la `api` arrancada aparte (`playwright.config.mts` solo levanta `nx serve web`), comprobando el aviso de indisponibilidad, que la clave guardada se sigue anunciando como guardada y que **no** aparece el de `data_collection`. El procedimiento, el motivo por el que no basta con el entorno y la obligación de restaurar van escritos en la cabecera del propio spec.
 - [x] 10-bis.9 [frontend] **La verificación por negación, como el resto del change.** Romper cada afirmación a mano, mirar fallar y restaurar: (a) con OpenRouter **construible**, forzar el aviso de indisponibilidad (condición siempre cierta en la plantilla) y ver caer (b) de 10-bis.8; (b) con OpenRouter **indisponible**, devolver a la plantilla el `@if (vendor === 'openrouter')` de hoy y ver que el test del aviso de `data_collection` cae, porque afirmaría un envío que no va a ocurrir; (c) hacer que el caso de uso de la API responda `available: true` fijo y ver caer el test de coherencia de 10-bis.4 y los dos de componente. Sin estas tres, el grupo sería otra afirmación no verificada — y el aviso que nadie puede hacer fallar es exactamente el tipo de señal que este change vino a arreglar.
-- [x] 10-bis.10 [frontend] **La precedencia sobre el aviso de consentimiento apagado.** Tarea **añadida en el grupo 13 (13.4)**: el requirement "Claves guardadas con consentimiento off" de `web/byok` se amplía en este change con una precedencia **vendor a vendor** —para un vendor sin configuración utilizable, el aviso de indisponibilidad **sustituye** al de consentimiento apagado, porque «no se usan hasta que vuelvas a dar el permiso» es literalmente falso ahí: dar el permiso no lo activa— y **ninguna tarea lo enunciaba**. Estaba implementado y probado, pero sin tarea: exactamente el agujero que 13.4 existe para cazar, y el mismo que dejó sin tarea el requirement de healthchecks por contenido hasta la iteración 3. Enunciarlo aquí y verificar que lo implementado lo cumple: `profile-byok-consent-off` se condiciona a que haya al menos una clave de un vendor **no** indisponible, de modo que con una sola clave y su vendor caído el párrafo desaparece y solo se lee el de indisponibilidad —que ya dice que la clave sigue guardada y cifrada—, y con otra clave de un vendor disponible vuelve con su texto íntegro. Verificado con `apps/web/src/app/features/profile/profile.page.spec.ts:533` («Vendor indisponible con el consentimiento apagado: la indisponibilidad sustituye al aviso de permiso»), en verde dentro de `web:test` (86 ficheros) de la corrida sin caché de 13.6. **Lo que NO queda cubierto y se registra en vez de darse por cerrado:** ese aviso sigue siendo **de sección** y no por vendor, así que con una clave disponible y otra caída habla en plural; partirlo cambia su `data-testid` y su texto (ids nuevos de i18n por la regla de este change) y se retoma en la fila 35 (13.5).
+- [x] 10-bis.10 [frontend] **La precedencia sobre el aviso de consentimiento apagado.** Tarea **añadida en el grupo 13 (13.4)**: el requirement "Claves guardadas con consentimiento off" de `web/byok` se amplía en este change con una precedencia **vendor a vendor** —para un vendor sin configuración utilizable, el aviso de indisponibilidad **sustituye** al de consentimiento apagado, porque «no se usan hasta que vuelvas a dar el permiso» es literalmente falso ahí: dar el permiso no lo activa— y **ninguna tarea lo enunciaba**. Estaba implementado y probado, pero sin tarea: exactamente el agujero que 13.4 existe para cazar, y el mismo que dejó sin tarea el requirement de healthchecks por contenido hasta la iteración 3. Enunciarlo aquí y verificar que lo implementado lo cumple: el aviso de permiso apagado sale **por vendor** —`data-testid` `profile-byok-consent-off-<vendor>`, id de i18n `profile.byok.vendorKeyInactive`— y `showsConsentOffNotice(vendor)` exige las tres condiciones a la vez: clave guardada **de ese** vendor, disponibilidad `=== true` y permiso apagado. Así, sobre un vendor caído el aviso de permiso no sale nunca y solo se lee el de indisponibilidad —que ya dice que la clave sigue guardada y cifrada—, mientras un vendor disponible con clave lleva el suyo con el texto íntegro y nombrando al proveedor. Verificado en `apps/web/src/app/features/profile/profile.page.spec.ts` con tres casos: «Vendor indisponible con el consentimiento apagado: la indisponibilidad sustituye al aviso de permiso», «El permiso apagado es de cada vendor: el indisponible solo lleva su aviso y el disponible solo el del permiso» y «Mientras el listado no ha respondido no se afirma nada sobre el permiso» (disponibilidad `undefined`: la pantalla no afirma ni que se usará ni que no). En verde dentro de `web:test` sin caché: **86 ficheros, 1026 tests**, corrida del 2026-09-25. **Nota de cierre (2026-09-25, commit `4dca9e3`):** hasta ese commit este punto cerraba con un «lo que NO queda cubierto» —el aviso «sigue siendo de sección» y partirlo «se retoma en la fila 35 (13.5)»—, y eso ya es falso: se partió **dentro de este change**. El aviso de sección (`profile-byok-consent-off`, id `profile.byok.keysInactive`) y los símbolos `byokKeysInactive` y `hasAnyUsableKey` del store **ya no existen**; el catálogo retira el id plural en ES y EN y `apps/web/src/locale/byok-availability-text.spec.ts` exige que el retirado no esté en ninguno de los dos ficheros. Lo que queda abierto no es el aviso sino su registro, y por eso los siete sitios que lo daban por diferido se corrigen a la vez que esta nota.
 
 > **Lo que el contrato y el predicado (10-bis.1, 10-bis.2, 10-bis.2bis y 10-bis.3) dieron por cierto y no lo era
 > (2026-09-24, implementación).** El resto del grupo (10-bis.6 a 10-bis.9) sigue sin implementar.
@@ -739,6 +739,22 @@
 >    **ids y los `source`** del fichero versionado coincidan **exactamente** con los que extrae Angular (comprobado:
 >    668 → 672 unidades, las cuatro nuevas y ninguna otra diferencia). Regenerar el fichero entero habría metido en
 >    este PR un churn que nada del change explica.
+>
+>    **Corrección del motivo (2026-09-25, QA).** Donde esto se haya resumido como «la extracción completa metía
+>    unidades ajenas que **romperían** `translations.spec.ts`», es falso, y conviene decirlo porque es el mismo tipo
+>    de justificación cómoda que el change persigue. Se ejecutó la extracción sobre el árbol de hoy
+>    (`nx run web:extract-i18n` con `--outputPath` fuera del repositorio, para no pisar el catálogo versionado):
+>    produce **exactamente los mismos 672 ids** que `messages.xlf`, conjunto idéntico, cero diferencias. Y
+>    `translations.spec.ts` no mira lo que extrae Angular: compara el **conjunto de ids** de los dos catálogos entre
+>    sí y exige `target` en cada unidad, así que **habría pasado igual**. Lo que la extracción produce de verdad es
+>    **ruido**: **38** unidades `discovery.*`/`links.*` reordenadas y **356** líneas de `<context-type="linenumber">`
+>    actualizadas —1724 líneas de diff—, todo ajeno a este change. El motivo correcto de editar el catálogo a mano es
+>    **evitar ruido no relacionado**, no una prueba que se rompería.
+>
+>    Y de paso corrige el tamaño: «**513 de 668** unidades movidas» era la medida del 2026-09-24; medido hoy contra
+>    el catálogo ya mantenido, el extractor mueve **38**. La conclusión no cambia —el churn no lo explica nada del
+>    change— pero el número que la sostiene sí, y un número que nadie vuelve a medir envejece como cualquier otra
+>    afirmación de este fichero.
 > 3. **La falsación (c) de 10-bis.9 no puede hacer caer «los dos de componente», y no es un matiz.** Los tests de
 >    componente hablan con `HttpTestingController`: no pasan por `ListMyAiKeys`. Fijar `available: true` en el caso
 >    de uso hace caer el test de coherencia de 10-bis.4 (lado API) y **ningún** test de `web`. El equivalente del
@@ -753,13 +769,17 @@
 >    que **comentar además la línea de `.env`**; entonces `api` arranca diciendo
 >    `AI configuration warnings: BYOK_OPENROUTER_MODEL (unusable: BYOK vendor openrouter has no usable model: it is
 >    not built and cannot be routed)` y la rama corre. Queda escrito en la cabecera del spec.
-> 5. **La precedencia que la delta pide «vendor a vendor» cae sobre un aviso que es de sección.**
->    `profile-byok-consent-off` es un párrafo único para toda la sección, no uno por vendor. Se ha atado a que haya
->    al menos una clave de un vendor **no indisponible**, así que con una sola clave y su vendor caído el aviso
->    desaparece —que es el caso que la delta nombra—. Pero con una clave disponible y otra caída el párrafo sigue
->    hablando en plural («Tienes claves guardadas…») y un lector puede entenderlo como que incluye al vendor caído.
->    Partirlo por vendor cambiaría su `data-testid` y su texto (id nuevo, por la regla del change) y no lo pide
->    ninguna tarea: queda anotado en vez de darse por cubierto.
+> 5. **La precedencia que la delta pide «vendor a vendor» cayó sobre un aviso que era de sección — y se partió aquí,
+>    no en la fila 35.** El 2026-09-24 `profile-byok-consent-off` era un párrafo único para toda la sección, atado a
+>    que hubiera al menos una clave de un vendor **no indisponible**: con una sola clave y su vendor caído el aviso
+>    desaparecía —el caso que la delta nombra—, pero con una clave disponible y otra caída seguía hablando en plural
+>    («Tienes claves guardadas…») y podía leerse como que incluía al vendor caído. Entonces quedó anotado como
+>    diferido. **Cerrado el 2026-09-25 por `4dca9e3`, dentro de este mismo change:** el aviso vive ahora dentro del
+>    bloque de cada vendor, con `data-testid` `profile-byok-consent-off-<vendor>`, `role="status"`, texto en singular
+>    que nombra al proveedor e id de i18n **nuevo** `profile.byok.vendorKeyInactive` en ES y EN —`profile.byok.keysInactive`
+>    se retira y un test exige su ausencia de los dos catálogos—. Cae con él `hasAnyUsableKey` del store, que solo
+>    existía para el aviso de sección. Este punto se deja escrito, en vez de borrarse, porque lo que describe —una
+>    precedencia por vendor implementada sobre un aviso que no lo era— sí ocurrió.
 > 6. **Referencias del enunciado que ya no apuntan donde dicen.** `ai-keys.api.ts` vive en
 >    `apps/web/src/app/core/ai-keys/`, no en `features/profile/`; el valor por defecto lo repone
 >    `parse-ai-config.ts:563-564`, no `:525-527`; y en la plantilla el `@if (vendor === 'openrouter')` estaba en
@@ -1018,7 +1038,7 @@
 
   **Y tres más que se acumularon después de escribir esta tarea, añadidas al ejecutarla (2026-09-24):**
   - el **rojo falso del modo de prueba con destino configurado**, en los **dos** workflows: con `dry_run: true` y destino configurado, `deploy-*` queda saltado a propósito y `infra/ci/report-cd-outcome.sh` lo lee como «había destino y el despliegue no terminó bien». Hoy es imposible (cero secretos) y **deja de serlo en cuanto la fila 35 configure secretos**, que es justo el motivo de cerrarlo ahí y no antes. No se arregla aquí duplicando la tabla de decisión en un segundo script: dos lógicas de decisión son peores que un rojo falso imposible (nota del grupo 8, punto 5, y hueco gemelo de 6.4);
-  - el **aviso de consentimiento apagado que sigue siendo de sección y no por vendor** (`profile-byok-consent-off`): con una clave disponible y otra de un vendor indisponible, el párrafo sigue hablando en plural. Partirlo cambia su `data-testid` y su texto, es decir **ids nuevos** de i18n por la regla de este change (nota del SPA, punto 5, y 10-bis.10);
+  - ~~el **aviso de consentimiento apagado que sigue siendo de sección y no por vendor** (`profile-byok-consent-off`)~~ — **ya no se difiere, se cerró aquí**: el 2026-09-25 `4dca9e3` lo partió por vendor dentro de este change (`profile-byok-consent-off-<vendor>`, id nuevo `profile.byok.vendorKeyInactive`; el id plural `profile.byok.keysInactive` queda retirado de los dos catálogos). Sale de la fila 35, del punto **(d)** del `scope` de `staging-host` y del punto 7 de `proposal.md`; queda tachado aquí, y no borrado, porque durante un día sí fue un diferido de esta lista (nota del SPA, punto 5, y 10-bis.10);
   - la **carencia de autenticación del adaptador SMTP**: `SmtpMailer` crea el transporte **sin bloque `auth`** y con `secure: false`, y no existen `MAIL_SMTP_USER` ni `MAIL_SMTP_PASSWORD` en ninguno de los dos esquemas, así que solo sirve para un relay que autorice por red o por IP. Los primeros usuarios no-autor de la fila 35 obligan a que el correo funcione de verdad (nota del grupo 12, punto 2).
 
   **Y un cuarto, añadido el 2026-09-25 con 4.16/4.17:** **sustituir MinIO y mantener su espejo** (ADR-048 §8). Este es
@@ -1056,7 +1076,7 @@
 >   `lint` para **11** proyectos, `typecheck` para 10, `test` para **9** —entre ellos `api`, `web`, `ai` y
 >   `shared`—, `eval-ci` para `ai` y `build` para 4, todos `Successfully ran target`.
 >
-> **Recomprobada sobre el workflow de hoy (2026-09-25, corrida `36106819545`).** La corrida de arriba es de
+> **Recomprobada — pero solo en parte — sobre el workflow de hoy (2026-09-25, corrida `36106819545`).** La corrida de arriba es de
 > `b541a9a`, y desde entonces `cd-staging.yml` ha crecido **+90 líneas** (el cuarto desenlace y el transporte de
 > clase de `9a8dbbf`). El argumento de que la rama verde no podía haber cambiado es correcto —los cambios son
 > **puramente aditivos**, cero líneas borradas, y `infra/ci/report-cd-outcome.sh` solo consulta la clase cuando la
@@ -1074,6 +1094,18 @@
 > Enlace: <https://github.com/manuXD270516/linkvault/actions/runs/36106819545>. De paso confirma que el secreto de
 > prueba de 7.2 **se retiró de verdad**: el preflight vuelve a decir `none` y el desenlace vuelve a ser el tercero
 > —verificado y sin destino, en verde—, no el de destino a medias.
+>
+> **Qué cubre esta segunda corrida y qué no, dicho en voz alta.** Fue en **modo prueba** (`dry_run`), así que
+> `Publish verified artifact to GHCR` salió **`skipped`**: no publicó nada. De las dos mitades del enunciado de 13.7,
+> la segunda corrida recomprueba la primera —construir las tres imágenes, levantar y verificar la pila de
+> `docker-compose.prod.yml`, no publicar nada antes de verificar y dejar el aviso visible en la lista de checks— y
+> **no** recomprueba la segunda: «**el digest publicado idéntico al verificado (6.2)**» sigue cubierta **solo** por
+> `36064994390`, la única corrida que ha publicado de verdad. El argumento del diff aditivo respalda que sigue
+> valiendo —cero líneas borradas, el paso de publicación intacto, y `report-cd-outcome.sh` solo consulta la clase
+> cuando la verificación **no** fue exitosa—, pero es un argumento, no una ejecución, y este change entero nace de no
+> confundir las dos cosas. Así que «recomprobada» aquí significa **parcialmente**: la identidad por digest está
+> demostrada por una corrida sobre `b541a9a`, no sobre el workflow de hoy. Cerrarla del todo pide una corrida que
+> publique —fuera del modo prueba—, que es lo que ocurre al fusionar.
 
 > **Lo que el grupo 13 dio por cierto y no lo era (2026-09-24, implementación).**
 >

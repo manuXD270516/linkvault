@@ -172,12 +172,14 @@ Todo lo de esta lista está además registrado en la **fila 35** (`staging-host`
 6. **La comprobación post-merge de que una corrida de `main` con la verificación en rojo no mueve `:staging`** (6.4).
    Fuera de `main` el tag móvil no se toca en ningún caso, así que desde esta rama no hay nada que observar. → **fila
    35**, tras el merge.
-7. **El aviso de consentimiento apagado sigue siendo de sección, no por vendor.** `profile-byok-consent-off` es un
-   párrafo único para toda la sección de claves. Se ata a que haya al menos una clave de un vendor **no** indisponible,
-   así que el caso que la delta de `web/byok` nombra —una sola clave, su vendor caído— queda cubierto; pero con una
-   clave disponible y otra caída el párrafo sigue hablando en plural ("Tienes claves guardadas…") y un lector puede
-   entenderlo como que incluye al vendor caído. Partirlo por vendor cambia su `data-testid` y su texto, y por la regla
-   de este change eso son **ids nuevos** de i18n. → **fila 35**.
+7. ~~**El aviso de consentimiento apagado sigue siendo de sección, no por vendor.**~~ **Retirado de esta lista el
+   2026-09-25: se cerró dentro del change** (`4dca9e3`). Durante un día fue un diferido —el párrafo era único para
+   toda la sección, atado a que hubiera al menos una clave de un vendor no indisponible, y con una clave disponible y
+   otra caída seguía hablando en plural ("Tienes claves guardadas…")—. Hoy el aviso sale **por vendor**, dentro del
+   bloque de cada uno: `data-testid` `profile-byok-consent-off-<vendor>` e id de i18n nuevo
+   `profile.byok.vendorKeyInactive` en ES y EN, con `profile.byok.keysInactive` retirado de los dos catálogos. El
+   número se conserva para no renumerar los puntos 8 y 9, a los que apuntan `tasks.md` y `openspec-changes.yaml`.
+   → **no queda nada pendiente aquí**.
 8. **El adaptador SMTP no sabe autenticarse.** `SmtpMailer` (`apps/api/src/infrastructure/mail/smtp-mailer.ts`) crea el
    transporte **sin bloque `auth`** y con `secure: false`, y no existen `MAIL_SMTP_USER` ni `MAIL_SMTP_PASSWORD` en
    ninguno de los dos esquemas de configuración: sirve para un relay que autorice por red o por IP y **no** para una

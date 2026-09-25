@@ -443,8 +443,10 @@ changes:
       Lo que **no** cierra, enumerado con dónde se retoma, en `proposal.md` §"Lo que este change NO cierra": sigue sin
       haber servidor de staging, el healthcheck de MinIO sigue aprovisionando buckets, el paso de secretos por ssh sin
       endurecer, el workflow reutilizable de `verify`, el rojo falso del modo de prueba con destino configurado, la
-      comprobación post-merge del tag `:staging`, el aviso de consentimiento apagado que sigue siendo de sección, y
-      que el adaptador SMTP no sabe autenticarse. Todo eso entra en la fila 35.
+      comprobación post-merge del tag `:staging`, y que el adaptador SMTP no sabe autenticarse. Todo eso entra en la
+      fila 35. El aviso de consentimiento apagado del perfil estuvo en esa lista y **salió de ella**: se partió por
+      vendor dentro de este change el 2026-09-25 (`profile-byok-consent-off-<vendor>`, id de i18n
+      `profile.byok.vendorKeyInactive`).
 
       Fuera: provisionar servidor de staging y sus secretos —eso es la fila 35—, Traefik/DNS y publicar en registries
       de extensiones.
@@ -478,9 +480,11 @@ changes:
       (cero secretos); en cuanto esta fila configure secretos, deja de serlo, y por eso se cierra aquí y no antes;
       **(c)** la comprobación **post-merge** de que una corrida de `main` con la verificación en rojo **no mueve** el
       tag móvil `:staging`, no observable desde una rama porque fuera de `main` ese tag no se toca en ningún caso;
-      **(d)** partir **por vendor** el aviso de consentimiento apagado del perfil (`profile-byok-consent-off`), hoy un
-      párrafo de sección: con una clave disponible y otra de un vendor indisponible sigue hablando en plural. Cambia su
-      `data-testid` y su texto, es decir ids nuevos de i18n;
+      **(d)** *retirado el 2026-09-25 — no entra en esta fila*: partir **por vendor** el aviso de consentimiento
+      apagado del perfil estuvo aquí mientras fue un párrafo de sección que hablaba en plural, pero
+      `deploy-image-verification` lo cerró dentro de su propio alcance (`profile-byok-consent-off-<vendor>`, con el id
+      de i18n nuevo `profile.byok.vendorKeyInactive` y el plural `profile.byok.keysInactive` retirado de los dos
+      catálogos). La letra se conserva para no renumerar **(e)** y **(f)**, referenciadas desde `tasks.md` y ADR-048;
       **(e)** la **autenticación del adaptador SMTP**: `SmtpMailer` crea el transporte sin bloque `auth` y con
       `secure: false`, y no existen `MAIL_SMTP_USER` ni `MAIL_SMTP_PASSWORD` en ninguno de los dos esquemas, así que
       solo sirve para un relay que autorice por red o por IP. Los primeros usuarios no-autor de esta fila obligan a
