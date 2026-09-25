@@ -98,8 +98,25 @@
       "options": {
         "commands": [
           "tsc --noEmit -p tsconfig.app.json",
-          "tsc --noEmit -p tsconfig.spec.json"
+          "tsc --noEmit -p tsconfig.spec.json",
+          "tsc --noEmit -p scripts/tsconfig.json"
         ]
+      }
+    },
+    "i18n-check": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "cwd": ".",
+        "parallel": false,
+        "commands": [
+          "node -e \"require('node:fs').rmSync('tmp/i18n-check',{recursive:true,force:true})\"",
+          "nx run web:extract-i18n --output-path=tmp/i18n-check --skip-nx-cache",
+          "node --import tsx apps/web/scripts/check-i18n-catalog.ts"
+        ],
+        "env": {
+          "TSX_TSCONFIG_PATH": "apps/web/scripts/tsconfig.json"
+        }
       }
     }
   }
