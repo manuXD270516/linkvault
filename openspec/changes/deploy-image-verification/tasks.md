@@ -685,7 +685,7 @@
 
   El aviso de destino del dato (`profile-byok-destination-<vendor>`) se mantiene tal cual para **todos** los vendors, porque el primer párrafo del requirement lo exige sin condición y el aviso de indisponibilidad lo acota explícitamente en el párrafo siguiente; lo único que la delta prohíbe mostrar para un vendor indisponible es el de `data_collection`. Y la frase de `data_collection` conserva su redacción condicional («si el modelo configurado no es `:free`…»): el contrato de 10-bis.2 lleva disponibilidad, **no** si el modelo fuerza `deny`, así que afirmarlo en indicativo sería afirmar algo que el SPA no sabe. Verificar leyendo la plantilla que ningún aviso queda cableado a `vendor === 'openrouter'` y que no queda ningún «MVP» en el comentario.
 - [x] 10-bis.7 [frontend] **Textos ES y EN con identificador nuevo.** Añadir a `apps/web/src/locale/messages.xlf` y `messages.en.xlf` los `trans-unit` del aviso de indisponibilidad con ids **nuevos** (`profile.byok.unavailable…`), nunca reutilizando `profile.byok.destination` ni `profile.byok.openrouterDataCollection`. La regla de este mismo change: **cualquier frase cuyo `source` cambie, aunque sea una palabra, SHALL llevar id nuevo** — una traducción heredada es una promesa que sobrevive a su desmentido, y aquí el desmentido es precisamente el punto. Verificar con `pnpm nx run web:extract-i18n` (redirigiendo la salida a un archivo y leyendo el archivo) que los ids salen como se escribieron, y con un test junto a `apps/web/src/locale/privacy-text.spec.ts` —que ya sabe parsear los dos `.xlf` con `parseXlfUnits`— de que cada id nuevo existe en los dos ficheros, que el `target` inglés no está vacío y que ningún id heredado ha cambiado de `source`.
-- [x] 10-bis.8 [frontend] **Tests de componente y smoke.** En `apps/web/src/app/features/profile/profile.page.spec.ts`, con el API respondiendo los tres vendors: (a) con OpenRouter indisponible sale `profile-byok-unavailable-openrouter` con los cuatro contenidos y **no** sale `profile-byok-openrouter-data-collection`; (b) con OpenRouter disponible ocurre lo contrario; (c) con solo OpenRouter indisponible, `anthropic` y `openai` siguen mostrando su aviso de destino y **ninguno** muestra el de indisponibilidad (`:427-442` ya afirma parte de eso y pasa a depender del estado). En `apps/web-e2e/src/byok.spec.ts`: `:33` afirma hoy el aviso de `data_collection` **incondicionalmente**, así que pasa a derivar la expectativa del cuerpo de `GET /api/users/me/ai-keys` —afirmar la correspondencia UI↔API, que es comprobable en cualquier configuración, y no la existencia de un vendor—; y se añade el caso del vendor indisponible. **Cuidado con cómo se fabrica ese caso:** vaciar `BYOK_OPENROUTER_MODEL` en el entorno **no** lo produce, porque `EnvReader` lee la cadena vacía como ausente y `parse-ai-config.ts:525-527` repone el valor por defecto del código, que tras 10.10 es un modelo `:free` vivo; el estado indisponible es un **invariante** (13.2) y no es alcanzable por entorno. La pasada del smoke que lo cubre SHALL hacerse neutralizando a mano `AI_CONFIG_DEFAULTS.BYOK_OPENROUTER_MODEL` —romper, mirar, restaurar, como el resto del change—, con la `api` arrancada aparte (`playwright.config.mts` solo levanta `nx serve web`), comprobando el aviso de indisponibilidad, que la clave guardada se sigue anunciando como guardada y que **no** aparece el de `data_collection`. El procedimiento, el motivo por el que no basta con el entorno y la obligación de restaurar van escritos en la cabecera del propio spec.
+- [x] 10-bis.8 [frontend] **Tests de componente y smoke.** En `apps/web/src/app/features/profile/profile.page.spec.ts`, con el API respondiendo los tres vendors: (a) con OpenRouter indisponible sale `profile-byok-unavailable-openrouter` con los cuatro contenidos y **no** sale `profile-byok-openrouter-data-collection`; (b) con OpenRouter disponible ocurre lo contrario; (c) con solo OpenRouter indisponible, `anthropic` y `openai` siguen mostrando su aviso de destino y **ninguno** muestra el de indisponibilidad (`:427-442` ya afirma parte de eso y pasa a depender del estado). En `apps/web-e2e/src/byok.spec.ts`: `:33` afirma hoy el aviso de `data_collection` **incondicionalmente**, así que pasa a derivar la expectativa del cuerpo de `GET /api/users/me/ai-keys` —afirmar la correspondencia UI↔API, que es comprobable en cualquier configuración, y no la existencia de un vendor—; y se añade el caso del vendor indisponible. **Cuidado con cómo se fabrica ese caso:** vaciar `BYOK_OPENROUTER_MODEL` en el entorno **no** lo produce, porque `EnvReader` lee la cadena vacía como ausente y `parse-ai-config.ts:562-564` repone el valor por defecto del código, que tras 10.10 es un modelo `:free` vivo; el estado indisponible es un **invariante** (13.2) en el sentido de que no es el camino esperado, pero **sí** se alcanza por entorno con un valor de solo espacios: `EnvReader` solo trata `''` como ausente (`parse-ai-config.ts:211-213`) e `isOpenRouterModelUsable` lo rechaza (`ai-config.schema.ts:179-181`). (Hasta el cuarto pase de QA este enunciado decía que no era alcanzable por entorno y mandaba neutralizar a mano el valor por defecto del código; era falso, ver el punto 7 de la nota de 10-bis.8.) La pasada del smoke que lo cubre SHALL hacerse dejando en el `.env` local `BYOK_OPENROUTER_MODEL="   "` —tres espacios **entre comillas**, porque el `dotenv` con el que Nx carga el `.env` recorta los valores sin comillas y entregaría `''`— y restaurando después el `.env` **desde una copia del fichero entero**, sin tocar código —romper, mirar, restaurar, como el resto del change—, con la `api` arrancada aparte (`playwright.config.mts` solo levanta `nx serve web`), comprobando el aviso de indisponibilidad, que la clave guardada se sigue anunciando como guardada y que **no** aparece el de `data_collection`. El procedimiento, el motivo por el que no basta con vaciar la variable ni con espacios sin comillas y la obligación de restaurar desde copia van escritos en la cabecera del propio spec.
 - [x] 10-bis.9 [frontend] **La verificación por negación, como el resto del change.** Romper cada afirmación a mano, mirar fallar y restaurar: (a) con OpenRouter **construible**, forzar el aviso de indisponibilidad (condición siempre cierta en la plantilla) y ver caer (b) de 10-bis.8; (b) con OpenRouter **indisponible**, devolver a la plantilla el `@if (vendor === 'openrouter')` de hoy y ver que el test del aviso de `data_collection` cae, porque afirmaría un envío que no va a ocurrir; (c) hacer que el caso de uso de la API responda `available: true` fijo y ver caer el test de coherencia de 10-bis.4 y los dos de componente. Sin estas tres, el grupo sería otra afirmación no verificada — y el aviso que nadie puede hacer fallar es exactamente el tipo de señal que este change vino a arreglar.
 - [x] 10-bis.10 [frontend] **La precedencia sobre el aviso de consentimiento apagado.** Tarea **añadida en el grupo 13 (13.4)**: el requirement "Claves guardadas con consentimiento off" de `web/byok` se amplía en este change con una precedencia **vendor a vendor** —para un vendor sin configuración utilizable, el aviso de indisponibilidad **sustituye** al de consentimiento apagado, porque «no se usan hasta que vuelvas a dar el permiso» es literalmente falso ahí: dar el permiso no lo activa— y **ninguna tarea lo enunciaba**. Estaba implementado y probado, pero sin tarea: exactamente el agujero que 13.4 existe para cazar, y el mismo que dejó sin tarea el requirement de healthchecks por contenido hasta la iteración 3. Enunciarlo aquí y verificar que lo implementado lo cumple: el aviso de permiso apagado sale **por vendor** —`data-testid` `profile-byok-consent-off-<vendor>`, id de i18n `profile.byok.vendorKeyInactive`— y `showsConsentOffNotice(vendor)` exige las tres condiciones a la vez: clave guardada **de ese** vendor, disponibilidad `=== true` y permiso apagado. Así, sobre un vendor caído el aviso de permiso no sale nunca y solo se lee el de indisponibilidad —que ya dice que la clave sigue guardada y cifrada—, mientras un vendor disponible con clave lleva el suyo con el texto íntegro y nombrando al proveedor. Verificado en `apps/web/src/app/features/profile/profile.page.spec.ts` con tres casos: «Vendor indisponible con el consentimiento apagado: la indisponibilidad sustituye al aviso de permiso», «El permiso apagado es de cada vendor: el indisponible solo lleva su aviso y el disponible solo el del permiso» y «Mientras el listado no ha respondido no se afirma nada sobre el permiso» (disponibilidad `undefined`: la pantalla no afirma ni que se usará ni que no). En verde dentro de `web:test` sin caché: **86 ficheros, 1026 tests**, corrida del 2026-09-25. **Nota de cierre (2026-09-25, commit `4dca9e3`):** hasta ese commit este punto cerraba con un «lo que NO queda cubierto» —el aviso «sigue siendo de sección» y partirlo «se retoma en la fila 35 (13.5)»—, y eso ya es falso: se partió **dentro de este change**. El aviso de sección (`profile-byok-consent-off`, id `profile.byok.keysInactive`) y los símbolos `byokKeysInactive` y `hasAnyUsableKey` del store **ya no existen**; el catálogo retira el id plural en ES y EN y `apps/web/src/locale/byok-availability-text.spec.ts` exige que el retirado no esté en ninguno de los dos ficheros. Lo que queda abierto no es el aviso sino su registro, y por eso los siete sitios que lo daban por diferido se corrigen a la vez que esta nota.
 
@@ -783,7 +783,10 @@
 >    change persigue: lo que lo delata es que **no se escribe la captura** `perfil-byok-vendor-indisponible.png`. Hay
 >    que **comentar además la línea de ese `.env` local**; entonces `api` arranca diciendo
 >    `AI configuration warnings: BYOK_OPENROUTER_MODEL (unusable: BYOK vendor openrouter has no usable model: it is
->    not built and cannot be routed)` y la rama corre. Queda escrito en la cabecera del spec.
+>    not built and cannot be routed)` y la rama corre. Queda escrito en la cabecera del spec. **Superado por el
+>    cuarto pase de QA (2026-09-25):** lo de arriba ocurrió así, pero el camino no era el más corto. Neutralizar el
+>    código no hacía falta: basta un valor de solo espacios en el `.env` local, entre comillas, sin tocar
+>    `ai-config.schema.ts`. La cabecera lleva ya esa receta (punto 7 de la nota de 10-bis.8).
 > 5. **La precedencia que la delta pide «vendor a vendor» cayó sobre un aviso que era de sección — y se partió aquí,
 >    no en la fila 35.** El 2026-09-24 `profile-byok-consent-off` era un párrafo único para toda la sección, atado a
 >    que hubiera al menos una clave de un vendor **no indisponible**: con una sola clave y su vendor caído el aviso
@@ -797,7 +800,8 @@
 >    precedencia por vendor implementada sobre un aviso que no lo era— sí ocurrió.
 > 6. **Referencias del enunciado que ya no apuntan donde dicen.** `ai-keys.api.ts` vive en
 >    `apps/web/src/app/core/ai-keys/`, no en `features/profile/`; el valor por defecto lo repone
->    `parse-ai-config.ts:563-564`, no `:525-527`; y en la plantilla el `@if (vendor === 'openrouter')` estaba en
+>    `parse-ai-config.ts:563-564`, no `:525-527` (esta ya está corregida en el enunciado: el cuarto pase de QA lo
+>    reescribió); y en la plantilla el `@if (vendor === 'openrouter')` estaba en
 >    `:293` y el comentario del «MVP: siempre» en `:224-227`.
 > 7. **«Ningún aviso cableado a `vendor === 'openrouter'`» tiene un límite que conviene decir.** La condición salió
 >    de la plantilla a un conjunto documentado del componente (`VENDORS_WITH_DATA_COLLECTION_CAVEAT`) y ahora se
@@ -811,8 +815,8 @@
 > **nunca se había ejecutado** —`ci.yml` no tiene ningún target de Playwright ni de `e2e`; este smoke solo corre a
 > mano—. Marcarla `[x]` sobre la corrida anterior era exactamente el fallo que este change persigue.
 >
-> 1. **Levantado.** `mongo`, `redis`, `minio` (más `meilisearch` y `mailpit`) del compose, ya `healthy`; `.env` del
->    repositorio sin tocar (`AI_CHAIN=mock`, `AI_MOCK_MODE=replay`); `pnpm nx serve api` aparte
+> 1. **Levantado.** `mongo`, `redis`, `minio` (más `meilisearch` y `mailpit`) del compose, ya `healthy`; `.env` local
+>    —no versionado, `.gitignore:15`— sin tocar (`AI_CHAIN=mock`, `AI_MOCK_MODE=replay`); `pnpm nx serve api` aparte
 >    (`playwright.config.mts` solo levanta `web`), con `GET /health` → `200 {"status":"up",…,"mongo":"up","redis":"up"}`;
 >    y `nx serve web` arrancado por el propio `webServer` de Playwright. Comprobado **antes** de empezar que `3000` y
 >    `4200` estaban libres: con un serve ajeno en pie se habría probado código viejo sin enterarse.
@@ -941,10 +945,123 @@
 >    (`taskkill /T` desde el `sh` que arrancó `nx serve api`); `nx serve web` lo cerró Playwright; `3000` y `4200`
 >    libres al terminar.
 >
->    **Lo que esta pasada NO hace.** No se falseó la aserción nueva en el smoke —no se forzó el aviso de clave
->    inactiva para el vendor caído para verla caer—. Que pueda fallar descansa hoy en el `toBeVisible` de OpenAI que
->    la precede (el aviso sí se pinta en esa pantalla, para el vendor disponible) y en la falsación del lado del SPA
->    de 10-bis.9, que hace caer el test de componente de la precedencia con el permiso apagado.
+>    **Lo que esta pasada NO hace, y lo que sí está falsado.** (Reescrito en el cuarto pase de QA. La versión
+>    anterior decía que la capacidad de fallo del `toHaveCount(0)` «descansa» en el `toBeVisible` de OpenAI y en «la
+>    falsación del lado del SPA de 10-bis.9», y las dos citas eran falsas: 10-bis.9 no toca el aviso de permiso
+>    apagado, y la falsación del lado del SPA —punto 3 de la nota del SPA— es del 2026-09-24 y se hizo sobre el test
+>    del aviso **de sección**, que `4dca9e3` reescribió.)
+>
+>    - **El `toHaveCount(0)` del e2e NO se ha falsado.** Es `210:7` en esta corrida y `216:7` en la del punto 7, y
+>      nunca se ha visto caer: no se forzó el aviso de clave inactiva para el vendor caído. El `toBeVisible` de OpenAI
+>      que lo precede solo descarta que la ausencia se deba a que el aviso no se pinta en esa pantalla; no demuestra
+>      que la aserción pueda fallar.
+>    - **El test de componente sí puede caer, y se ha visto caer después de `4dca9e3`.** El 2026-09-25, sobre
+>      `72a24d0`, se quitó a mano la condición `this.byokAvailabilityByVendor().get(vendor) === true` de
+>      `showsConsentOffNotice` (`profile.page.ts:226`) y se corrió solo ese spec con
+>      `pnpm nx run web:test --skip-nx-cache --include='**/profile/profile.page.spec.ts'`. Cae el de `:542`, literal:
+>
+>      ```
+>       FAIL   web  apps/web/src/app/features/profile/profile.page.spec.ts > ProfilePage > Claves BYOK > El permiso apagado es de cada vendor: el indisponible solo lleva su aviso y el disponible solo el del permiso
+>      AssertionError: OpenRouter no se activa al dar el permiso: no puede decir que se usará entonces: expected 'Tu clave de OpenRouter sigue guardada…' to be null
+>       ❯ apps/web/src/app/features/profile/profile.page.spec.ts:553:9
+>      …
+>       Test Files  1 failed (1)
+>            Tests  3 failed | 31 passed (34)
+>      ```
+>
+>      Caen con él los otros dos casos de 10-bis.10: `:533` («Vendor indisponible con el consentimiento apagado…»,
+>      en `:538:65`) y `:570` («Mientras el listado no ha respondido…», en `:575:61`: sin la condición, la
+>      disponibilidad `undefined` también pinta el aviso). Restaurado con `git checkout`: `git diff --exit-code`
+>      sobre el fichero sale con 0 y el md5 (`f65e4f64…`) es el de antes de tocarlo.
+> 7. **La receta sin tocar código (2026-09-25, cuarto pase de QA).**
+>
+>    **Lo que QA encontró.** La cabecera del spec, el comentario del bloque del vendor indisponible y el enunciado de
+>    10-bis.8 decían que ese estado «no es alcanzable por entorno». Leyendo el código, es falso:
+>    `isOpenRouterModelUsable` rechaza un modelo de solo espacios (`ai-config.schema.ts:179-181`) y `EnvReader` solo
+>    trata `''` como ausente (`parse-ai-config.ts:211-213`), así que ese valor no cae al de `AI_CONFIG_DEFAULTS`
+>    (`:562-564`). QA lo vio con `parseAiConfig`, pero no pasando por la carga del `.env` de Nx.
+>
+>    **Comprobado por Nx.** Primero se copió el `.env` local entero al scratchpad (md5 `2c30bc47…`). Luego se dejó la
+>    línea 160 como `BYOK_OPENROUTER_MODEL="   "`, editando con `node`: las 165 líneas CRLF de 176 quedan intactas.
+>    `ai-config.schema.ts` no se tocó (`git diff --exit-code` sale con 0). `pnpm nx serve api` arrancó diciendo, literal:
+>
+>    ```
+>    [api] AI configuration warnings: BYOK_OPENROUTER_MODEL (unusable: BYOK vendor openrouter has no usable model: it is not built and cannot be routed)
+>    ```
+>
+>    Las comillas hacen falta. El `dotenv` que resuelve `nx` (16.4.7) parsea `A="   "` como `"   "`, pero
+>    `A=   ` como `""`, que `EnvReader` vuelve a leer como ausente.
+>
+>    **Lo que se cambió.** La cabecera del spec da una receta de seis pasos sin tocar código:
+>
+>    1. comprobar que los puertos están libres;
+>    2. copiar el `.env` entero;
+>    3. dejar la línea con tres espacios entre comillas, sin `sed -i`;
+>    4. arrancar la `api` y no seguir si no sale el aviso;
+>    5. borrar la captura y correr el spec;
+>    6. apagar la `api`, restaurar el `.env` **desde la copia** y comprobarlo byte a byte.
+>
+>    También se alinearon el comentario del bloque, la anotación `skip-reason`, el enunciado de 10-bis.8 y dos
+>    comentarios de test de `libs/ai` que afirmaban lo mismo (`parse-ai-config.spec.ts:162-165` y
+>    `byok-vendor-availability.spec.ts:42-45`). La receta de cinco pasos del punto 6, con
+>    `AI_CONFIG_DEFAULTS.BYOK_OPENROUTER_MODEL` a `''`, queda sustituida por esta.
+>
+>    **Ejecutada la receta tal como queda escrita**, desde cero y con la `api` de la comprobación anterior ya apagada
+>    y el `.env` restaurado:
+>
+>    - **Pasos 1 a 3.** `3000` y `4200` estaban libres. La copia y el original tenían el mismo md5 (`2c30bc47…`). La
+>      línea 160 quedó como `BYOK_OPENROUTER_MODEL="   "`.
+>    - **Paso 4.** El arranque dijo el mismo aviso literal de arriba, y `GET /health` respondió
+>      `{"status":"up",…,"mongo":{"status":"up"},"redis":{"status":"up"}}`.
+>    - **Paso 5.** A las 14:40:24 `perfil-byok-vendor-indisponible.png` ya no existía. El smoke corrió con un
+>      reporter que imprime cada step con su `file:line:col`, y el de lista detrás. Salida literal desde la lectura
+>      del cuerpo del API (el `…` marca los steps del alta de la clave de OpenAI):
+>
+>    ```
+>    STEP byok.spec.ts:99:28 Expect "toHaveLength" -> passed (0ms)
+>    STEP byok.spec.ts:102:74 Expect "toBeVisible" -> passed (2ms)
+>    STEP byok.spec.ts:105:93 anthropic es construible y no puede decir que no lo está -> passed (2ms)
+>    STEP byok.spec.ts:102:74 Expect "toBeVisible" -> passed (1ms)
+>    STEP byok.spec.ts:105:93 openai es construible y no puede decir que no lo está -> passed (2ms)
+>    STEP byok.spec.ts:102:74 Expect "toBeVisible" -> passed (2ms)
+>    STEP byok.spec.ts:107:84 openrouter no es construible y tiene que decirlo -> passed (1ms)
+>    STEP byok.spec.ts:121:7 OpenRouter no es construible: ese aviso afirmaría un envío que no va a ocurrir -> passed (1ms)
+>    …
+>    STEP byok.spec.ts:161:66 Click -> passed (42ms)
+>    STEP byok.spec.ts:154:24 Wait for event "response" -> passed (57ms)
+>    STEP byok.spec.ts:163:69 Expect "toBeVisible" -> passed (3ms)
+>    STEP byok.spec.ts:164:14 Screenshot -> passed (109ms)
+>    STEP byok.spec.ts:180:26 Expect "toBeVisible" -> passed (2ms)
+>    STEP byok.spec.ts:181:26 Expect "toHaveAttribute" -> passed (2ms)
+>    STEP byok.spec.ts:182:26 Expect "toContainText" -> passed (1ms)
+>    STEP byok.spec.ts:183:26 Expect "toContainText" -> passed (1ms)
+>    STEP byok.spec.ts:184:26 Expect "toContainText" -> passed (3ms)
+>    STEP byok.spec.ts:185:26 Expect "toContainText" -> passed (2ms)
+>    STEP byok.spec.ts:186:79 Expect "toHaveCount" -> passed (5ms)
+>    STEP byok.spec.ts:196:63 Fill "sk-smoke-down-key-123456" -> passed (19ms)
+>    STEP byok.spec.ts:197:64 Click -> passed (32ms)
+>    STEP byok.spec.ts:189:27 Wait for event "response" -> passed (65ms)
+>    STEP byok.spec.ts:200:74 Expect "toContainText" -> passed (34ms)
+>    STEP byok.spec.ts:204:72 Expect "toContainText" -> passed (2ms)
+>    STEP byok.spec.ts:207:26 Expect "toBeVisible" -> passed (1ms)
+>    STEP byok.spec.ts:208:79 Expect "toHaveCount" -> passed (1ms)
+>    STEP byok.spec.ts:212:71 Expect "toBeVisible" -> passed (1ms)
+>    STEP byok.spec.ts:216:7 openrouter no es construible: su clave no se usaría ni con el permiso encendido -> passed (1ms)
+>    STEP byok.spec.ts:217:16 Screenshot -> passed (106ms)
+>    STEP byok.spec.ts:223:22 Expect "toEqual" -> passed (1ms)
+>    TEST BYOK profile: notices, save OpenAI hint, consent-off copy -> passed
+>      ok 1 [chromium] › apps\web-e2e\src\byok.spec.ts:73:5 › BYOK profile: notices, save OpenAI hint, consent-off copy (2.2s)
+>
+>      1 passed (13.6s)
+>    ```
+>
+>      La cabecera nueva desplaza la numeración en 6 líneas: `157:69` → `163:69`, `210:7` → `216:7`. La rama corrió.
+>      Segunda señal: la captura, borrada antes, quedó **escrita** por esta corrida (2026-09-25 14:40:38, 175 562
+>      bytes).
+>    - **Paso 6.** Se apagó solo el árbol propio (`taskkill /T` desde el `sh` que arrancó `nx serve api`); el
+>      `nx serve web` lo cerró Playwright. El `.env` se restauró desde la copia: `cmp` no da diferencias y el md5 es
+>      `2c30bc47…`, igual que antes. `3000` y `4200` quedaron libres. `dist/apps/api/node_modules` se apartó fuera de
+>      `dist/` durante las dos arrancadas (punto 4) y volvió a su sitio con sus **708** enlaces.
 
 > **Lo que la API y los consumidores (10-bis.4 y 10-bis.5) dieron por cierto y no lo era (2026-09-24,
 > implementación).**

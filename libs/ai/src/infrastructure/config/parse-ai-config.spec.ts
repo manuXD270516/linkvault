@@ -159,9 +159,10 @@ describe('parseAiConfig', () => {
     });
 
     it('con BYOK_OPENROUTER_MODEL vacía y sin default avisa, y el parseo sigue siendo ok', () => {
-      // `EnvReader` lee la cadena vacía como ausente y `parseByok` cae al default del código, así que el estado
-      // «sin modelo» solo es alcanzable neutralizando también el default. Es un invariante, no un camino por
-      // entorno: se rompe a mano, se mira y se restaura.
+      // `EnvReader` lee la cadena vacía como ausente y `parseByok` cae al default del código, así que con la
+      // variable **vacía** el estado «sin modelo» solo se alcanza neutralizando también el default, que es lo que
+      // hace este test. Por entorno sí se alcanza con un valor de solo espacios, que `EnvReader` no trata como
+      // ausente e `isOpenRouterModelUsable` rechaza (receta en la cabecera de `apps/web-e2e/src/byok.spec.ts`).
       const original = AI_CONFIG_DEFAULTS.BYOK_OPENROUTER_MODEL;
       Object.defineProperty(AI_CONFIG_DEFAULTS, 'BYOK_OPENROUTER_MODEL', {
         value: '',

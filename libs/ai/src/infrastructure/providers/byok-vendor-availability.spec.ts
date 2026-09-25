@@ -39,9 +39,10 @@ async function factoryWithEveryVendor(
 }
 
 /**
- * Tabla de configuraciones. El caso «sin modelo» no es alcanzable por entorno —`EnvReader` lee la cadena vacía como
- * ausente y `parseByok` repone el valor por defecto del código, que es un `:free` vivo—: es el invariante, y aquí se
- * fija pasando directamente lo que llegaría a la factory el día que no hubiera candidato.
+ * Tabla de configuraciones. El caso «sin modelo» no se alcanza **vaciando** la variable —`EnvReader` lee la cadena
+ * vacía como ausente y `parseByok` repone el valor por defecto del código, que es un `:free` vivo—; por entorno solo
+ * llega con un valor de solo espacios, que es el caso `'   '` de abajo. Aquí se fija pasando directamente lo que
+ * llegaría a la factory, sin pasar por el parseo.
  */
 const CASES: { name: string; config: ByokProviderConfig }[] = [
   {

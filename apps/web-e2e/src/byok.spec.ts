@@ -13,36 +13,42 @@ import { resetRegisterLimit } from './support/register-limit';
  * `GET /api/users/me/ai-keys`. Eso es comprobable en cualquier configuración, y es justo la propiedad que el
  * change persigue: que la UI consuma la señal del servidor en vez de deducirla.
  *
- * CÓMO SE FABRICA LA PASADA DEL VENDOR INDISPONIBLE. El estado indisponible es un invariante del código, no un
- * ajuste de entorno, y en local hay **dos** fuentes que reponen un modelo utilizable. Hay que neutralizar **las dos**:
+ * CÓMO SE FABRICA LA PASADA DEL VENDOR INDISPONIBLE. Se alcanza por entorno, sin tocar código: basta con que
+ * `BYOK_OPENROUTER_MODEL` llegue a la `api` como una cadena **de solo espacios**. `EnvReader` solo trata `''` como
+ * ausente (`parse-ai-config.ts:211-213`), así que ese valor no cae al de `AI_CONFIG_DEFAULTS`
+ * (`parse-ai-config.ts:562-564`), e `isOpenRouterModelUsable` lo rechaza por `trim() === ''`
+ * (`ai-config.schema.ts:179-181`). Lo que **no** sirve, y por qué:
  *
- * - **El valor por defecto del código.** Vaciar `BYOK_OPENROUTER_MODEL` en el entorno no sirve: `EnvReader` lee la
- *   cadena vacía como ausente y `parse-ai-config.ts` repone `AI_CONFIG_DEFAULTS.BYOK_OPENROUTER_MODEL`, que hoy es un
- *   modelo `:free` vivo.
- * - **El `.env` local.** Fija `BYOK_OPENROUTER_MODEL=<modelo>:free` y Nx lo inyecta al servir la `api`, **pisando**
- *   el valor por defecto del código. Con solo la neutralización del código el vendor sigue disponible.
+ * - **Vaciar o comentar la línea.** `EnvReader` lee la cadena vacía como ausente y `parse-ai-config.ts` repone
+ *   `AI_CONFIG_DEFAULTS.BYOK_OPENROUTER_MODEL`, que hoy es un modelo `:free` vivo: el vendor sigue disponible.
+ * - **Espacios sin comillas** (`BYOK_OPENROUTER_MODEL=   `). El `dotenv` con el que Nx carga el `.env` (16.4.7)
+ *   recorta los valores sin comillas y entrega `''`, que vuelve al caso anterior. Entre comillas conserva los
+ *   espacios.
  *
  * Receta —romper, mirar, restaurar, como el resto del change—:
  *
- *   1. en `libs/ai/src/infrastructure/config/ai-config.schema.ts`, poner `BYOK_OPENROUTER_MODEL: ''`;
- *   2. en el `.env` local, **comentar** la línea `BYOK_OPENROUTER_MODEL=...` (copiar antes su valor exacto);
- *   3. arrancar la `api` aparte (`pnpm nx serve api`; `playwright.config.mts` solo levanta `nx serve web`) y
+ *   1. comprobar que `3000` y `4200` están libres (con un serve ajeno en pie se prueba código viejo);
+ *   2. copiar el `.env` local **entero** a un fichero fuera del repositorio;
+ *   3. en el `.env` local, dejar la línea como `BYOK_OPENROUTER_MODEL="   "` (tres espacios, **entre comillas**),
+ *      editando con algo que no toque el resto del fichero —`node`, un editor—, **no** con `sed -i` de Git Bash, que
+ *      quita los `\r` de todas las líneas;
+ *   4. arrancar la `api` aparte (`pnpm nx serve api`; `playwright.config.mts` solo levanta `nx serve web`) y
  *      comprobar que su arranque dice
  *      `AI configuration warnings: BYOK_OPENROUTER_MODEL (unusable: BYOK vendor openrouter has no usable model: ...)`.
- *      Si ese aviso no sale, la neutralización no ha surtido efecto y correr el spec no prueba nada: no sigas;
- *   4. borrar `reports/smoke/ai-byok/perfil-byok-vendor-indisponible.png` si existe, y correr este spec;
- *   5. **restaurar los dos**: el esquema idéntico a HEAD (`git diff` vacío sobre ese fichero) y la línea exacta del
- *      `.env`, que está ignorado por git y ningún `git diff` va a delatar.
+ *      Si ese aviso no sale, el valor no ha llegado como se esperaba y correr el spec no prueba nada: no sigas;
+ *   5. borrar `reports/smoke/ai-byok/perfil-byok-vendor-indisponible.png` si existe, y correr este spec;
+ *   6. apagar la `api` y **restaurar el `.env` desde la copia** del paso 2, comprobando que queda **idéntico byte a
+ *      byte** (`cmp`, o un hash antes y después). No basta con deshacer la edición: el `.env` está ignorado por git y
+ *      ningún `git diff` va a delatar un fichero que ha cambiado de bytes sin cambiar de texto.
  *
- * CÓMO DISTINGUIR LA RAMA EJECUTADA DE LA SALTADA. Sin la neutralización —o con solo una de las dos mitades— el
- * bloque final **se salta y el test pasa igual**: un `1 passed` no dice nada del vendor indisponible. La rama corrió
- * solo si se dan **las dos** señales: (a) el aviso de configuración del paso 3 en el arranque de la `api`, y (b) la
- * captura `reports/smoke/ai-byok/perfil-byok-vendor-indisponible.png` **escrita en esta corrida** (por eso el paso 4
- * la borra antes). Si falta cualquiera de las dos, la pasada del vendor indisponible no se ha hecho, aunque el
- * reporter diga `ok`. El test deja además una anotación `skip-reason` al saltarse, pero el reporter de lista no la
- * imprime.
+ * CÓMO DISTINGUIR LA RAMA EJECUTADA DE LA SALTADA. Sin ese valor el bloque final **se salta y el test pasa igual**:
+ * un `1 passed` no dice nada del vendor indisponible. La rama corrió solo si se dan **las dos** señales: (a) el aviso
+ * de configuración del paso 4 en el arranque de la `api`, y (b) la captura
+ * `reports/smoke/ai-byok/perfil-byok-vendor-indisponible.png` **escrita en esta corrida** (por eso el paso 5 la borra
+ * antes). Si falta cualquiera de las dos, la pasada del vendor indisponible no se ha hecho, aunque el reporter diga
+ * `ok`. El test deja además una anotación `skip-reason` al saltarse, pero el reporter de lista no la imprime.
  *
- * Con la neutralización completa, el bloque final comprueba el aviso de indisponibilidad, que la clave guardada se
+ * Con el vendor indisponible, el bloque final comprueba el aviso de indisponibilidad, que la clave guardada se
  * sigue anunciando como guardada, que la nota de `data_collection` NO aparece y que, con el permiso apagado y una
  * clave guardada de ese vendor, el aviso de clave inactiva **no** sale para él (`4dca9e3`: el aviso es por vendor
  * y no puede hablar de uno que no se va a usar) mientras sí sigue saliendo para OpenAI.
@@ -160,14 +166,14 @@ test('BYOK profile: notices, save OpenAI hint, consent-off copy', async ({ page 
     fullPage: true,
   });
 
-  // Vendor sin configuración utilizable. Solo corre con la neutralización descrita en la cabecera: el estado es
-  // un invariante del código y no se alcanza por entorno, así que sin ella no hay ningún vendor caído que mirar.
+  // Vendor sin configuración utilizable. Solo corre con la receta de la cabecera (`BYOK_OPENROUTER_MODEL="   "` en
+  // el `.env` local): con la configuración habitual los tres vendors son construibles y no hay ninguno caído que mirar.
   const down = listBody.vendors.find((entry) => !entry.available);
   if (down === undefined) {
     test.info().annotations.push({
       type: 'skip-reason',
       description:
-        'Todos los vendors son construibles en esta instancia: el caso indisponible exige neutralizar a mano AI_CONFIG_DEFAULTS.BYOK_OPENROUTER_MODEL (ver cabecera).',
+        'Todos los vendors son construibles en esta instancia: el caso indisponible exige arrancar la api con BYOK_OPENROUTER_MODEL="   " (solo espacios, entre comillas) en el .env local (ver cabecera).',
     });
   } else {
     const notice = page.getByTestId(`profile-byok-unavailable-${down.vendor}`);

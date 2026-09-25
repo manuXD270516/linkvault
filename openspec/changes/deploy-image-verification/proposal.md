@@ -179,9 +179,11 @@ dos: la fila 35 dice que ya no entra, y en el `scope` de `staging-host` queda co
    otra caída seguía hablando en plural ("Tienes claves guardadas…")—. Hoy el aviso sale **por vendor**, dentro del
    bloque de cada uno: `data-testid` `profile-byok-consent-off-<vendor>` e id de i18n nuevo
    `profile.byok.vendorKeyInactive` en ES y EN, con `profile.byok.keysInactive` retirado de los dos catálogos. El
-   número se conserva para no renumerar. Las referencias que existen a los números de esta lista son dos, las dos en
-   la tarea 13.5 de `tasks.md`: una al punto 9 y otra a este mismo 7, al tacharlo. Al 8 no apunta nadie, y
-   `openspec-changes.yaml` no cita ningún número de aquí: usa sus propias letras, de (a) a (f).
+   número se conserva para no renumerar. Las referencias que existen a los números de esta lista son tres (medido con
+   `git grep` el 2026-09-25): dos en la tarea 13.5 de `tasks.md` —una al punto 9 y otra a este mismo 7, al tacharlo— y
+   una en `design.md` §"Pendientes que este change no cierra", que da los siete abiertos como «los puntos 2 a 6, 8 y 9»
+   y es la única que apunta al 8. `docs/design-v0.2.md` (fila 35) y `openspec-changes.yaml` citan esta sección sin
+   ningún número: el `scope` de `staging-host` usa sus propias letras, de (a) a (f).
    → **no queda nada pendiente aquí**.
 8. **El adaptador SMTP no sabe autenticarse.** `SmtpMailer` (`apps/api/src/infrastructure/mail/smtp-mailer.ts`) crea el
    transporte **sin bloque `auth`** y con `secure: false`, y no existen `MAIL_SMTP_USER` ni `MAIL_SMTP_PASSWORD` en
