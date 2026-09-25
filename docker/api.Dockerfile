@@ -55,15 +55,6 @@ ENV NODE_ENV=production
 ENV AI_PROMPTS_DIR=/app/assets/ai/prompts
 EXPOSE 3000
 
-# ============================================================================================
-# ROTURA TEMPORAL — tarea 7.8 del change `deploy-image-verification`. NO DEBE LLEGAR A `main`.
-# Rompe el build de la imagen de `api` a propósito para comprobar que un artefacto roto pone el
-# pipeline en rojo aunque no haya destino de despliegue, y que el estado de commit publicado es
-# de fallo con la causa correcta (clase `artifact`). Se revierte en el commit inmediatamente
-# posterior a la corrida.
-# ============================================================================================
-RUN echo 'ROTURA TEMPORAL 7.8: el build de api falla a proposito' >&2 && exit 1
-
 # Liveness only in the image; compose readiness uses GET /health (platform/runtime-health).
 HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:3000/health/live').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
