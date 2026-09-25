@@ -73,6 +73,34 @@
 > de `openspec-changes.yaml`: separar las dos preguntas pide un despliegue real contra el que probar el paso de
 > aprovisionamiento, que es justo lo que esa fila trae.
 
+- [x] 4.16 [infra] **La pila dejó de poder montarse a mitad del change (ADR-048 §8).** El 2026-09-24 MinIO restringió el acceso anónimo a sus imágenes en `quay.io`: el repositorio entero pasó a devolver `401` y ninguna máquina limpia podía levantar los **dos** composes. **Decisión humana: replicar la imagen al registro propio** (opción A de cuatro), el **mismo objeto**, sin modificarlo y conservando su procedencia. Verificar que el espejo existe, que se descarga **sin credenciales** desde una máquina limpia —no desde la que lo subió, que ya la tiene en caché— y que la pila entera queda sana con él; y verificar el **precio** que la decisión acepta en vez de darlo por escrito: que lo replicado es **solo `linux/amd64`**, leyéndolo del manifiesto y no del comentario que lo afirma.
+- [x] 4.17 [infra] **La referencia pasa a variable con el espejo por defecto, no a otra URL clavada** (ADR-048 §8): la lección del incidente es que una imagen de un tercero fijada a fuego es un punto de fallo que no se puede sortear sin editar el fichero, y estaba fijada en `docker-compose.prod.yml` **y** en `docker-compose.yml`. Dejar `${MINIO_IMAGE:-…}:${MINIO_IMAGE_TAG:-…}` en los dos, con el porqué y la limitación de arquitectura escritos al lado; y **registrar de verdad en la fila 35** —no solo afirmar que está registrado— las dos cosas que la decisión aplaza: sustituir MinIO por otro servidor compatible con S3 (opción C, el camino limpio) y el **mantenimiento del espejo**, que pasa a ser trabajo nuestro. Verificar leyendo la fila 35 en `docs/design-v0.2.md` y el `scope` de `staging-host` en `openspec-changes.yaml`, no releyendo el comentario del compose que dice que está anotado.
+
+> **El espejo, comprobado en vez de afirmado (4.16 y 4.17, 2026-09-25).**
+>
+> * **Existe y se descarga sin credenciales.** `ghcr.io/manuxd270516/linkvault-minio:RELEASE.2025-09-07T16-13-09Z`,
+>   versión creada el `2026-09-24T21:09:54Z`. El manifiesto se obtiene con un token **anónimo** de `ghcr.io`
+>   (`docker-content-digest: sha256:a1a8bd4a…`), así que no depende de que quien lo consuma tenga cuenta.
+> * **La procedencia se conserva, y eso también se lee del objeto**: la configuración de la imagen
+>   (`sha256:69b2ec20…`, que es su id) trae `name: MinIO`, `vendor: MinIO Inc <dev@min.io>` y
+>   `release: RELEASE.2025-09-07T16-13-09Z`. Es el mismo objeto, no una reconstrucción.
+> * **Solo `linux/amd64`, leído del manifiesto.** Lo que responde el registro **no es un índice** multi-arquitectura
+>   sino un manifiesto único (`application/vnd.docker.distribution.manifest.v2+json`), y su configuración declara
+>   `architecture: amd64`, `os: linux`. El comentario del compose dice lo mismo; la diferencia es que ahora está
+>   comprobado.
+> * **La pila queda sana con él, en una máquina que no es la que lo subió.** Corrida `36104024048` de `cd-staging`,
+>   en el corredor de GitHub: `ghcr.io/manuxd270516/linkvault-minio:RELEASE.2025-09-07T16-13-09Z` → `minio Pulling`
+>   → `minio Pulled` → `Container linkvault-prod-minio-1  Healthy` y, en el `ps`,
+>   `linkvault-prod-minio-1  ghcr.io/manuxd270516/linkvault-minio:RELEASE.2025-09-07T16-13-09Z … Up 13 seconds
+>   (healthy)`. El `build, verify and publish artifact` de esa corrida terminó en `success`.
+> * **La variable está en los dos composes** (`docker-compose.prod.yml:121` y `docker-compose.yml:77`), con el mismo
+>   valor por defecto y el mismo bloque de comentario.
+> * **Y lo que estos dos apartados tenían mal:** los tres sitios que decían «sustituir MinIO … sigue anotado para la
+>   fila 35» (`docs/adr/ADR-048.md`, y el comentario de los dos composes) lo daban por hecho sobre una fila 35 que
+>   **no lo enumeraba**. Registrado ahora en `docs/design-v0.2.md` fila 35 y en el `scope` de `staging-host` de
+>   `openspec-changes.yaml`, con las dos piezas: sustituir MinIO y **mantener el espejo**, que es el coste que la
+>   decisión acepta y que sin dueño no lo tiene nadie. Es el mismo defecto que 13.5 §5 cazó para el SMTP.
+
 ## 5. Verificación del artefacto: la pila entera, en el corredor
 
 - [x] 5.1 [infra] La verificación SHALL consumir **las imágenes que están en el daemon del corredor**, etiquetadas localmente por el paso de build del mismo job, y `up` SHALL ejecutarse con `--pull never` para que un fallo de carga no se tape tirando del registro; verificar con `docker image inspect` que las tres están en el daemon y comprobando que, borrando una a mano, el `up` falla en vez de descargarla.
@@ -216,6 +244,7 @@
 - [x] 7.7 [infra] Repasar que ningún job ni step siga diciendo "deploy" o "desplegado" en su nombre o en su resumen cuando solo verificó; verificar leyendo los nombres tal y como se ven en la lista de checks, no en el YAML.
 - [x] 7.8 [infra] Comprobar que un artefacto roto **rompe** el pipeline aunque no haya destino, y que el fallo no queda tapado por la rama de "no hay dónde desplegar"; verificar rompiendo el build a propósito en una corrida de la rama y restaurando. Esta misma corrida es la que 7.6 usa para comprobar el estado de fallo.
 - [x] 7.9 [infra] Aplicar el plazo explícito y el volcado de logs de 5.7 a los `up -d --wait` de los **dos** despliegues por ssh (`cd-staging.yml` y `cd-prod.yml`), que hoy se colgarían igual; verificar reproduciendo en local un contenedor en bucle de reinicio con exactamente esa línea de comandos y viendo que termina con error y con los logs, en vez de esperar sin fin.
+- [x] 7.10 [infra] **La clase del fallo tiene que viajar del job que cae al job que lo describe.** El reporte publicaba «El artefacto no se construyó o no arrancó» para dos fallos de naturaleza distinta, y en las corridas `36045259965` y `36048413770` esa frase era **falsa**: las dos cayeron descargando imágenes de terceros, con el artefacto sin llegar a levantarse, y la desmentía la propia ejecución que la publicaba. `infra/ci/verify-artifact.sh` SHALL clasificar cada fallo (`artifact` por defecto; `environment` solo en el `pull` de terceros) y dejarlo escrito en `VERIFY_FAIL_CLASS_FILE`; el job de build SHALL subirlo como **artefacto de corrida** con `if: always()` y el job de reporte SHALL recogerlo y derivar de él la descripción. Un `output` de job **no sirve** aquí: lo que hay que comunicar es justo lo que pasa cuando el job falla, y que los outputs de un job fallido lleguen a `needs` no está demostrado. Con la clase **vacía** no se afirma ninguna causa —vacío no es `artifact`, y tratar "no lo sé" como "lo de siempre" es el defecto que esto cierra—, y el `state` sigue siendo `failure` y el script sigue saliendo ≠0 en los tres casos: un fallo de entorno no es verde. Verificar **en Actions**, no solo en local, que el fichero sobrevive a un job condenado, que el job de reporte lo recibe y que lo que llega al estado de commit es la descripción **de la clase** y no la genérica.
 
 > **Lo que el grupo 7 dio por cierto y no lo era (2026-09-24, implementación).**
 >
@@ -339,7 +368,7 @@
 >     `cd-staging/artifact  failure  El artefacto no se construyó o no arrancó: no se publicó nada y no se desplegó nada.`
 >     Lo que 7.6 exige es justo eso: el **`state`** es `failure` —no solo el texto—, y la descripción dice la causa.
 >     El `context` es el mismo en los dos, así que el estado sustituye al anterior en vez de acumularse.
-> * **El transporte de la clase del fallo funciona en GitHub, y esta fue su primera corrida.** El mecanismo de
+> * **7.10 — verificada. El transporte de la clase del fallo funciona en GitHub, y esta fue su primera corrida.** El mecanismo de
 >   `9a8dbbf` solo se había ejercitado en local, así que esta corrida era también su prueba. Funcionó: el job de
 >   build sube el fichero **con el job ya condenado** (`Upload artifact failure class` en verde dentro de un job en
 >   rojo → `Artifact verify-fail-class has been successfully uploaded! Final size is 159 bytes. Artifact ID is`
@@ -396,7 +425,7 @@
 
 ## 8. `cd-prod`: el que nunca se ha ejecutado
 
-- [ ] 8.1 [infra] Aplicar a `.github/workflows/cd-prod.yml` la misma estructura: un job que construya (load, sin push), verifique con `docker-compose.prod.yml` y publique esas mismas imágenes, más `preflight` y `deploy` con las mismas condiciones y guardias de los grupos 6 y 7; verificar con una corrida `workflow_dispatch` en modo prueba.
+- [ ] 8.1 [infra] Aplicar a `.github/workflows/cd-prod.yml` la misma estructura: un job que construya (load, sin push), verifique con `docker-compose.prod.yml` y publique esas mismas imágenes, más `preflight` y `deploy` con las mismas condiciones y guardias de los grupos 6 y 7. **La verificación pedida —una corrida `workflow_dispatch` en modo prueba— ya se hizo y salió en verde (`36068228388`), y aun así esta tarea sigue abierta, a propósito**: el modo de prueba salta por su `if:` justamente el cuarto trozo que la tarea enuncia, **publicar esas mismas imágenes**, así que el camino de publicación de `cd-prod` (tag semver salido del guardia + `MOVING_TAG=latest`, que es el tag que producción se lleva en el siguiente `pull`) **no se ha ejecutado nunca** y es la pieza de más riesgo del workflow. Cerrarla exige una corrida de `cd-prod` **sin** modo prueba, sobre un tag `v*` real, con las tres imágenes publicadas y `latest` movido; una corrida verde en modo prueba NO SHALL contar como cierre. Esta cláusula estaba solo en la nota del grupo 8 y se sube aquí para que el motivo no dependa de leerla.
 - [x] 8.2 [infra] Comprobar antes de nada qué hace `environment: production` en este repositorio: si abre un **registro de despliegue** (mostraría producción como desplegada aunque no lo esté) o si exige revisores (el job quedaría **colgado** esperando aprobación); verificar leyendo la configuración del entorno y una corrida de prueba, y dejar escrito el resultado.
 - [x] 8.3 [infra] Si 8.2 confirma cualquiera de las dos cosas, el `preflight` SHALL usar un **entorno espejo solo para leer secretos** (sin reglas de protección ni URL), y `environment: production` SHALL quedar únicamente en el job de despliegue: los secretos de prod son de *environment*, así que un preflight sin entorno los leería vacíos y reportaría "sin destino → verde" para siempre; verificar que el preflight reporta `none` honestamente y que no aparece ningún despliegue registrado en el entorno real.
 - [x] 8.4 [infra] El `verify` de un release SHALL correr sobre **todo el workspace** (`run-many --all`) y no sobre `affected`: con `nx-set-shas` en un tag que apunta a un commit de `main`, base y cabeza coinciden y el conjunto afectado sale **vacío**, así que hoy el verify daría verde **sin ejecutar nada** justo antes de desplegar a producción; verificar comparando la lista de proyectos del log con `pnpm nx show projects`.
@@ -938,16 +967,30 @@
 - [x] 13.2 [infra] Dejar constancia de que el estado honesto de "sin modelo utilizable" es **"proveedor no enrutable"**, no "variable vacía con aviso", y de que es un **invariante** y no el camino esperado (hay candidato): anotar en `docs/adr/ADR-048.md` §6 y revisar la spec delta de `platform/local-environment` y `openspec/specs/ai/byok`; verificar que ninguna de las tres deja en pie el camino de `dataCollection: 'omit'` con modelo vacío, que es el que 10.9 cierra, y que ninguna manda vaciar la variable teniendo sustituto.
 - [x] 13.3 [infra] Anotar igualmente `docs/adr/ADR-048.md` §3, que manda declarar `environment: production` **en el preflight**: si 8.2 confirma que ese entorno abre registro de despliegue o exige revisores, el mecanismo real pasa a ser el entorno espejo de 8.3 y el ADR no puede quedarse describiendo el anterior; verificar que la nota dice qué se mantiene (los secretos de prod son de *environment* y un preflight sin entorno mentiría para siempre) y qué cambia.
 - [x] 13.4 [infra] **La auditoría de cobertura, por los dos lados.** `docs/adr/ADR-048.md` ya está escrito y `docs/adr/ADR-033.md:41-44` ya lleva la nota fechada de que su D10 queda **enmendado en parte**: verificar las dos cosas y, además, que:
-  - **cada decisión de ADR-048 (§1 a §6, §4-bis y sus Consecuencias) tiene al menos una tarea** en este fichero. Enumerado: §1 → 2.1–2.4; §2 → 4.1–4.11, 4.7; §3 → 7.1–7.8, 12.1, 12.4; §4 → 5.1–5.16, 6.1, 6.2; §4-bis → 4.6, 10.11; §5 → 10.1–10.6, 11.1–11.4; §6 → 10.7–10.13, 13.2; §6-bis → 10-bis.5; §6-ter → 10-bis.1–10-bis.4; §Consecuencias → 13.5 (fila 35 y golden sets a la 36), 7.5 y 7.6 (el estado se lee sin abrir la ejecución), 8.1–8.7 (`cd-prod` en alcance), 8.4 y 8.5 (un release se verifica entero); §7 → 2.5, 2.6, 4.14, 4.15 y las falsaciones de cada grupo. **Las dos secciones que el enunciado no nombra —§6-bis y §6-ter— existen y también tienen tareas**: el enunciado dice «§1 a §6, §4-bis», escrito antes de que el debate las añadiera;
+  - **cada decisión de ADR-048 (§1 a §6, §4-bis y sus Consecuencias) tiene al menos una tarea** en este fichero. Enumerado: §1 → 2.1–2.4; §2 → 4.1–4.11, 4.7; §3 → 7.1–7.8, 12.1, 12.4; §4 → 5.1–5.16, 6.1, 6.2; §4-bis → 4.6, 10.11; §5 → 10.1–10.6, 11.1–11.4; §6 → 10.7–10.13, 13.2; §6-bis → 10-bis.5; §6-ter → 10-bis.1–10-bis.4; §Consecuencias → 13.5 (fila 35 y golden sets a la 36), 7.5 y 7.6 (el estado se lee sin abrir la ejecución), 8.1–8.7 (`cd-prod` en alcance), 8.4 y 8.5 (un release se verifica entero); §7 → 2.5, 2.6, 4.14, 4.15 y las falsaciones de cada grupo; **§8 → 4.16 y 4.17** (el espejo de la imagen de MinIO: replicarla al registro propio, referenciarla por variable en los dos composes y registrar en la fila 35 lo que la decisión aplaza). **Las tres secciones que el enunciado no nombra —§6-bis, §6-ter y §8— existen y también tienen tareas**: el enunciado dice «§1 a §6, §4-bis», escrito antes de que el debate añadiera las dos primeras y antes de que el incidente de `quay.io` añadiera §8;
+
+    **Corregido en la re-ejecución (2026-09-25): la enumeración de arriba omitía §8, y §8 no tenía NINGUNA tarea.** El ADR decidía ahí replicar la imagen de MinIO al registro propio —solo `amd64`, con el coste de mantenimiento aceptado— y ese trabajo estaba **hecho y sin enunciar**: es exactamente el hueco que esta auditoría existe para encontrar, el mismo del punto 2 de la nota de abajo. Añadidas **4.16** (el espejo existe, se descarga sin credenciales, la pila queda sana con él y lo replicado es solo `linux/amd64`, leído del manifiesto) y **4.17** (la referencia por variable en los **dos** composes y el registro real en la fila 35), las dos con su bloque de evidencia. Añadida también **7.10**, el **transporte de la clase del fallo** por artefacto de corrida (`VERIFY_FAIL_CLASS`, commit `9a8dbbf`), que entró después de la auditoría y tampoco tenía tarea: la verifica la corrida `36074771079`;
   - **cada requirement de las deltas tiene al menos una tarea**, listando requirement → tareas.
 
     **Corregido al ejecutar la auditoría (2026-09-24): son NUEVE ficheros de `specs/` y DIECISÉIS requirements, no ocho y doce.** El enunciado anterior decía «ocho ficheros y doce requirements» y su propia lista sumaba **trece**, así que ni siquiera cuadraba consigo misma. Enumerado recorriendo los ficheros, no de memoria (`## ADDED|MODIFIED Requirements` → `### Requirement:` → `#### Scenario:`): 9 ficheros, 16 requirements, 104 escenarios. Faltaban **tres** requirements y **una delta entera**:
 
+    **Re-contado el 2026-09-25: son 106 escenarios, no 104.** La cifra de arriba era correcta el 2026-09-24 y dejó de serlo esa misma tarde: el commit `9a8dbbf` añadió a `specs/platform/ci-pipeline/spec.md` los dos escenarios del transporte de la clase del fallo —«Una avería ajena no se comunica como artefacto roto» y «Sin causa conocida no se inventa una»—, **después** de la auditoría. Ficheros y requirements no cambian. Contado otra vez con comandos, no releyendo (`find`/`grep -c` sobre `openspec/changes/deploy-image-verification/specs`):
+
+    ```
+    ficheros: 9        ./ai/byok/spec.md 3 req / 15 esc      ./platform/ci-pipeline/spec.md      2 / 22
+    requirements: 16   ./ai/data-protection/spec.md 1 / 4    ./platform/local-environment/spec.md 1 / 11
+    escenarios: 106    ./ai/task-execution/spec.md  1 / 14   ./platform/production-deploy/spec.md 4 / 21
+                       ./ai/usage-accounting/spec.md 1 / 8   ./web/byok/spec.md                  2 / 7
+                       ./cv/match/spec.md            1 / 4
+    ```
+
+    Y los dos escenarios nuevos **no tenían ninguna tarea**, porque el mecanismo que describen tampoco la tenía: es **7.10**, añadida aquí. La lección es la misma de siempre, ahora por cuarta vez: un conteo escrito en prosa envejece con el primer commit posterior, y lo único que lo destapa es **volver a contar**.
+
     | # | Delta | Requirement | Tareas |
     |---|---|---|---|
-    | 1 | `platform/ci-pipeline` | CD a staging en main | 3.2, 5.1–5.16, 6.1–6.6, 7.1–7.9, 9.1, 11.5, 12.4 |
+    | 1 | `platform/ci-pipeline` | CD a staging en main | 3.2, 5.1–5.16, 6.1–6.6, 7.1–7.10, 9.1, 11.5, 12.4 |
     | 2 | `platform/ci-pipeline` | CD a producción por tag semver | 8.1–8.7, 9.1, 11.5, 12.4 |
-    | 3 | `platform/production-deploy` | Compose de producción | 4.1–4.6, 4.12, 4.13, 4.14, 4.15, 5.6, 5.8 |
+    | 3 | `platform/production-deploy` | Compose de producción | 4.1–4.6, 4.12, 4.13, 4.14, 4.15, 4.16, 4.17, 5.6, 5.8 |
     | 4 | `platform/production-deploy` | Imágenes multi-stage publicables | 2.1–2.6, 5.12, 5.13, 5.14, 6.1, 6.2 |
     | 5 | `platform/production-deploy` | Contrato de variables de producción | 1.1, 4.1–4.11, 5.2–5.5, 12.5, 12.6 |
     | 6 | `platform/production-deploy` | Documentación del camino canónico compose+Traefik | 10.1–10.6, 12.1–12.3, 12.7, 12.8 |
@@ -977,6 +1020,12 @@
   - el **rojo falso del modo de prueba con destino configurado**, en los **dos** workflows: con `dry_run: true` y destino configurado, `deploy-*` queda saltado a propósito y `infra/ci/report-cd-outcome.sh` lo lee como «había destino y el despliegue no terminó bien». Hoy es imposible (cero secretos) y **deja de serlo en cuanto la fila 35 configure secretos**, que es justo el motivo de cerrarlo ahí y no antes. No se arregla aquí duplicando la tabla de decisión en un segundo script: dos lógicas de decisión son peores que un rojo falso imposible (nota del grupo 8, punto 5, y hueco gemelo de 6.4);
   - el **aviso de consentimiento apagado que sigue siendo de sección y no por vendor** (`profile-byok-consent-off`): con una clave disponible y otra de un vendor indisponible, el párrafo sigue hablando en plural. Partirlo cambia su `data-testid` y su texto, es decir **ids nuevos** de i18n por la regla de este change (nota del SPA, punto 5, y 10-bis.10);
   - la **carencia de autenticación del adaptador SMTP**: `SmtpMailer` crea el transporte **sin bloque `auth`** y con `secure: false`, y no existen `MAIL_SMTP_USER` ni `MAIL_SMTP_PASSWORD` en ninguno de los dos esquemas, así que solo sirve para un relay que autorice por red o por IP. Los primeros usuarios no-autor de la fila 35 obligan a que el correo funcione de verdad (nota del grupo 12, punto 2).
+
+  **Y un cuarto, añadido el 2026-09-25 con 4.16/4.17:** **sustituir MinIO y mantener su espejo** (ADR-048 §8). Este es
+  el caso más claro del defecto que 13.5 §5 cazó para el SMTP: tres sitios —el propio ADR y el comentario de los dos
+  composes— afirmaban que quedaba «anotado para la fila 35», y la fila 35 enumeraba siete diferidos sin ninguno de los
+  dos. Registrado ahora de verdad en `docs/design-v0.2.md` fila 35, en el `scope` de `staging-host` de
+  `openspec-changes.yaml` (punto **(f)**) y en `proposal.md` §"Lo que este change NO cierra" (punto 9).
 
   Verificar que los dos ficheros dicen lo mismo y que el manifiesto del change registra lo que **no** cierra: sigue sin haber servidor de staging.
 - [x] 13.6 [infra] `pnpm nx affected -t lint,typecheck,test --base=main` y `pnpm exec openspec validate --all --no-interactive` en verde, **redirigiendo la salida a un archivo y leyendo el archivo** (nunca por pipe). Con **A1** el conjunto afectado deja de ser solo de infraestructura: el grupo 10-bis toca `shared`, `ai`, `api` y `web`, así que la corrida verde SHALL incluir esos cuatro proyectos —comprobarlo leyendo la lista del log, no suponerla—; si `shared` o `web` no aparecen, o los `inputs` están mal o la corrida está restaurando caché, y el verde no significaría nada. El smoke de `web-e2e` **no** entra aquí (necesita la pila arrancada a mano): su corrida y su restauración del entorno son 10-bis.8.
@@ -1010,7 +1059,9 @@
 > **Lo que el grupo 13 dio por cierto y no lo era (2026-09-24, implementación).**
 >
 > 1. **La auditoría enumeraba OCHO deltas cuando ya había NUEVE, y decía «doce requirements» sobre una lista que sumaba
->    trece.** Contado recorriendo los ficheros: **9 deltas, 16 requirements, 104 escenarios**. Faltaban `ai/byok` →
+>    trece.** Contado recorriendo los ficheros: **9 deltas, 16 requirements, 104 escenarios** — cifra válida el
+>    2026-09-24 y **superada el mismo día**: `9a8dbbf` añadió dos escenarios a `platform/ci-pipeline` y el conteo de
+>    hoy es **106** (re-contado con comandos en 13.4). Faltaban `ai/byok` →
 >    "Guardar y revocar una clave por vendor", `web/byok` → "Claves guardadas con consentimiento off" y **la delta
 >    entera de `ai/data-protection`**. Es la **tercera** vez que esta auditoría se queda corta por el mismo motivo
 >    (iteración 3: el requirement de healthchecks por contenido; iteración 4: las cuatro deltas del cierre del debate;
@@ -1082,11 +1133,21 @@
 > - Salidas guardadas en el scratchpad de la sesión; ninguna se obtuvo entubando `nx`, siempre por redirección a
 >   fichero y lectura del fichero.
 >
-> **Lo que queda sin marcar y por qué.** **Diecisiete** tareas exigen una **corrida real de GitHub Actions** y la rama
-> no está publicada: **6.3, 6.4, 6.5, 6.6** (lo que solo se ve en GHCR y en la caché `type=gha`), **7.1, 7.2, 7.3,
-> 7.5, 7.6, 7.7, 7.8** (que el output del preflight salga y valga `none`; que un job saltado deje el workflow en
-> éxito; el nombre y el estado de commit en la lista de checks; la corrida con el build roto), **8.1, 8.2, 8.3, 8.5,
-> 8.7** (el modo de prueba construyendo el commit de la rama, el entorno espejo, que no quede despliegue registrado en
-> `production`, y el lado de 8.5 que pide un commit de solo documentación) y **11.5** (el paso incondicional visto en
-> una corrida de `cd-staging`). Más **13.7**, que es la corrida misma. Toda la lógica de esas tareas sí se ejecutó
-> fuera de Actions: está en las notas de los grupos 6, 7, 8 y 11.
+> **~~Lo que queda sin marcar y por qué.~~ SUPERADO el 2026-09-25 — se deja fechado, no borrado, porque el bloque de
+> abajo describe un estado que ya no existe y leerlo como actual es el error que este change persigue.** Decía:
+> «**Diecisiete** tareas exigen una corrida real de GitHub Actions y la rama no está publicada: 6.3, 6.4, 6.5, 6.6,
+> 7.1, 7.2, 7.3, 7.5, 7.6, 7.7, 7.8, 8.1, 8.2, 8.3, 8.5, 8.7 y 11.5, más 13.7». Las dos premisas cayeron: **la rama
+> está publicada** (`origin/change/deploy-image-verification`) y tiene PR abierto —**#57**,
+> <https://github.com/manuXD270516/linkvault/pull/57>—, y de aquellas diecisiete quedan **dos**.
+>
+> **Estado de hoy (2026-09-25): abiertas 6.3 y 8.1, y ninguna otra.**
+>
+> * **6.3** — pide ver en GHCR los **dos** tags, el inmutable `sha-<12>` y el móvil `:staging`. El móvil solo se
+>   mueve en corridas de `main`, así que desde esta rama no se puede ejercitar sin fusionar; es el mismo límite que
+>   6.4 (cerrada anotando el hueco) por el otro lado.
+> * **8.1** — ver su enunciado y la nota del grupo 8: la cláusula literal se cumplió con `36068228388`, pero el
+>   **camino de publicación** de `cd-prod` no se ha ejecutado nunca.
+>
+> Las quince restantes se cerraron con corridas reales, cada una con su enlace: `36064994390` (la verde de
+> `cd-staging`, 13.7), `36068228388` (`cd-prod` en modo prueba, 8.2, 8.3, 8.7), `36074771079` (la rota a propósito,
+> 7.8, 7.6 y 7.10), `36104024048` (el destino a medias, 7.2) y las del grupo 8 para 8.5.

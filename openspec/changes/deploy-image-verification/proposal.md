@@ -120,6 +120,8 @@ no fusionar ninguna contradicción conocida. El impacto queda enumerado por comp
 | `tools/repo-checks` (nuevo) | Las comprobaciones que hacen que la documentación no pueda volver a mentir |
 | `nx.json` | `.env.example` y el compose de producción en entradas globales. **`docs/**` no**, a propósito |
 | `infra/ci/verify.env` (nuevo) | Relleno para la verificación, con cabecera de que no sirve para ningún despliegue |
+| `docker-compose.yml` | El compose **de desarrollo** también cambia, y no por simetría: la imagen de MinIO estaba fijada a fuego en los **dos** ficheros, así que cuando `quay.io` pasó a devolver `401` ni siquiera el entorno del README podía levantarse desde cero (ADR-048 §8) |
+| Espejo de la imagen de MinIO | Se replica el **mismo objeto** a `ghcr.io/manuxd270516/linkvault-minio` y los dos composes lo referencian por `MINIO_IMAGE`/`MINIO_IMAGE_TAG`, con el espejo por defecto y no otra URL clavada. Precios aceptados: mantenerlo es trabajo nuestro y lo replicado es **solo `linux/amd64`**; sustituir MinIO y mantener el espejo quedan registrados en la fila 35 |
 
 ### Elegibilidad BYOK (entra por A1 — ADR-049)
 
@@ -182,6 +184,13 @@ Todo lo de esta lista está además registrado en la **fila 35** (`staging-host`
    submission con usuario y contraseña en el 587 (Gmail, Fastmail, el SMTP de Mailgun). Este change lo **documenta**
    como limitación en `infra/README.md`; no lo arregla. → **fila 35**, donde los primeros usuarios no-autor obligan a
    que el correo funcione de verdad.
+9. **Sustituir MinIO, y mantener su espejo mientras tanto** (ADR-048 §8). El 2026-09-24 MinIO restringió el acceso
+   anónimo a sus imágenes en `quay.io` —`401` para el repositorio entero— y los dos composes dejaron de poder
+   levantarse en una máquina limpia; lo destapó la verificación del artefacto de este change, no un despliegue
+   fallido. Aquí se toma la salida rápida: **replicar el mismo objeto** a `ghcr.io/manuxd270516/linkvault-minio` y
+   referenciarlo por variable en los dos composes (4.16, 4.17). El camino limpio —otro servidor compatible con S3— y
+   el **coste de mantener el espejo** (una vulnerabilidad en esa versión ya no se arregla sola, y lo replicado es
+   **solo `linux/amd64`**) quedan abiertos. → **fila 35**.
 
 ### Fuera de alcance
 

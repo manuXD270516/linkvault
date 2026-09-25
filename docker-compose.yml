@@ -73,7 +73,8 @@ services:
     # variable y no fijo a fuego: la lección del incidente es justamente que una imagen de un tercero clavada en el
     # fichero es un punto de fallo que no se puede sortear sin editarlo.
     # Limitación conocida: el espejo lleva solo **linux/amd64**, que es lo que había en la máquina que lo replicó.
-    # Sustituir MinIO por otro servidor compatible con S3 sigue anotado para la fila 35.
+    # Sustituir MinIO por otro servidor compatible con S3, y mantener este espejo mientras tanto, están
+    # registrados en la fila 35 (docs/design-v0.2.md y el scope de staging-host de openspec-changes.yaml, punto (f)).
     image: ${MINIO_IMAGE:-ghcr.io/manuxd270516/linkvault-minio}:${MINIO_IMAGE_TAG:-RELEASE.2025-09-07T16-13-09Z}
     command: ['server', '/data', '--console-address', ':9001']
     environment:
