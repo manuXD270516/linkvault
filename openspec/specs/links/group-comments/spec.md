@@ -2,7 +2,9 @@
 
 ## Purpose
 
-None
+Deja que los miembros de un grupo añadan a cada oferta compartida el contexto que antes viajaba por el chat, con
+comentarios planos —texto, autor y fecha, sin hilos ni edición (ADR-015)— que su autor o el propietario del grupo
+pueden borrar (ADR-026).
 
 ## Requirements
 
