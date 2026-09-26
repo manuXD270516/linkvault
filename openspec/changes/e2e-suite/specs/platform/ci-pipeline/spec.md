@@ -8,7 +8,8 @@ fija el repositorio.
 
 - SHALL lanzarse **solo a mano**, sobre cualquier rama. NO SHALL ejecutarse en ningún push ni pull request mientras
   no se haya decidido otro disparador con los minutos medidos, y NO SHALL ser un check obligatorio para fusionar.
-- Dos corridas contra staging NO SHALL ejecutarse a la vez ni cancelarse entre sí.
+- Dos corridas contra staging NO SHALL ejecutarse a la vez, y la que está en curso NO SHALL cancelarse; una en espera
+  MAY ser sustituida por otra más nueva.
 - SHALL ejecutar el perfil `local`, y el ensayo del perfil `remote` contra la misma pila **cuando el lanzamiento lo
   pide**, y SHALL fallar si falla cualquiera de los dos.
 - SHALL subir, **también cuando falla**, el informe HTML de Playwright y las trazas y vídeos de los fallos, con una

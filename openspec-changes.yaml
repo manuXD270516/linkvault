@@ -495,12 +495,12 @@ changes:
       condiciones: no toca ficheros de despliegue ni requirements que modifiquen 35a, 35b o 35c (en particular, no
       «CD a staging en main»); corre solo a mano hasta medir sus minutos, y con el 70 % del mes consumido no se lanza
       en CI; el despliegue de 35b no espera a la suite, pero **invitar sí, a `e2e-remote` en verde contra staging**
-      sobre el commit desplegado (respaldo local; sin la suite a tiempo, el recorrido a mano en el móvil); la medición
+      sobre el commit desplegado (sin respaldo local; sin PR-1 en `main`, desde la cabeza de su rama; el recorrido a mano en el móvil, último recurso); la medición
       de 35b excluye por `userId` a las cuentas E2E (Q1, trasladada a `staging-host` en un PR solo de spec antes de
       su `/opsx:apply`); mismo método que la fila; y **35a va primero**: la suite solo ocupa sus esperas, y tras 35a
       solo su cola de PR-1 (7.6, 7.9, 8.1) antes que la fila. No libera la precedencia para ningún otro change.
       **Orden de fusión:** PR-1 se construye en paralelo pero se fusiona **después de 35a** (nace con `pnpm infra:up`
-      y el almacén nuevo) y fuera del tramo entre los dos PR de 35b; PR-2 (staging) tras el primer despliegue de 35b.
+      y el almacén nuevo) y antes del PR-1 de 35b o después de su 11.6; PR-2 (staging) tras el primer despliegue de 35b.
       **Suite end-to-end reproducible sobre `apps/web-e2e`** (parte de la suite que hay, no la reescribe).
       **Un comando local = el de CI** (`web-e2e:e2e-stack`): infraestructura con `pnpm infra:up` bajo un proyecto de
       compose por checkout y bloque (`linkvault-e2e-<hash8>`) y un bloque de puertos propio, `nx serve` de `api` y

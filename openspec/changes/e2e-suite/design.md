@@ -126,8 +126,13 @@ del `.env` de quien ejecuta. Por eso las anulaciones se aceptan **solo como flag
 `E2E_BASE_URL`, `E2E_API_ORIGIN`, `E2E_MATCH_EXPECTATION` ni `E2E_STACK_FAULT` de su entorno. Las variables con esos
 nombres existen solo **del runner hacia Playwright**, que las recibe de él con la lista blanca de D6. **Única
 excepción, las credenciales** de la cuenta remota: son secretos y en un flag quedarían en la lista de procesos, así
-que se leen del entorno, y el runner **falla** si la misma clave aparece en el `.env` de la raíz («pásala en el
-entorno de la sesión, no en el `.env`»). En CI los valores del evento llegan al paso por `env:` y al runner como
+que se leen del entorno, y son **solo dos**: `E2E_REMOTE_EMAIL` y `E2E_REMOTE_PASSWORD` (ninguna otra entrada del
+runner sale de su entorno). El runner **falla** si cualquiera de las dos aparece en **alguno** de los `.env*` que Nx
+cargaría en la tarea —los de la raíz y los de `apps/web-e2e/`, salvo `.env.example`— («pásala en el entorno de la
+sesión, no en un `.env`»). El README enseña a ponerlas en la sesión sin dejarlas en el historial: `Read-Host
+-AsSecureString` en PowerShell y `read -s` en bash, nunca un `export` con el valor escrito. En el ensayo, las
+credenciales de la cuenta del ensayo salen de `e2e.env`, no del entorno. En CI, los secretos `E2E_STAGING_EMAIL` y
+`E2E_STAGING_PASSWORD` llegan al paso por `env:` con esos dos nombres, y los valores del evento, al runner como
 `--base-url "$E2E_BASE_URL"`, nunca interpolados en `run:`.
 
 Fases de `e2e-stack`, cada una con su nombre en el mensaje de fallo:
@@ -150,7 +155,10 @@ Fases de `e2e-stack`, cada una con su nombre en el mensaje de fallo:
    que compose no lea el `.env` de la raíz. El runner **no nombra el almacén de objetos**: levanta lo que el compose
    levante sin perfiles y lo aprovisiona con la orden de 35a. Tras el `up`, `docker compose ps --format json` y
    **fallo** si algún puerto publicado del proyecto queda fuera del bloque.
-3. **Aplicaciones**: `nx serve api` y `nx serve worker` con `--watch=false`, y `nx serve web -c production` en el puerto
+3. **Aplicaciones**: `nx serve api` y `nx serve worker` con `--watch=false` e **`--inspect=false`**: `@nx/js:node`
+   23.2.1 abre por defecto el inspector en `9229`, fuera del bloque y sin guardia. Solo con `--stack-fault=inspect` se
+   lanzan con `--inspect=inspect --port=<su puerto de inspector del bloque>` (D4), para leer su entorno efectivo en la
+   tarea 2.4c. `nx serve web -c production`, en el puerto
    del bloque con una configuración de proxy propia de la suite que reenvía `/api` a la `api` del bloque. Entorno de
    cada proceso: D6 (lista blanca + `e2e.env`, `NX_LOAD_DOT_ENV_FILES=false`, `NX_DAEMON=false`). La salida de cada uno
    va a `dist/.playwright/apps/web-e2e/stack-logs/<app>.log`. Se esperan: `api` y `worker` por `/health` con mongo y
@@ -158,7 +166,9 @@ Fases de `e2e-stack`, cada una con su nombre en el mensaje de fallo:
    el puerto de cada aplicación **pertenece al árbol que lanzó** (`Get-NetTCPConnection -LocalPort` en Windows,
    `ss -ltnp` en Linux) y falla nombrando el puerto y el PID ajeno si no es así. Se comprueban **todas** las filas de
    escucha de cada puerto, no la primera: Windows admite a la vez un proceso en `127.0.0.1` y otro en `0.0.0.0` o `::`.
-   Una fila **sin PID** (`ss` no lo muestra para procesos de otro usuario o sin permisos) **cuenta como ajena**. Los
+   Una fila **sin PID** (`ss` no lo muestra para procesos de otro usuario o sin permisos) **cuenta como ajena**. La
+   decisión es una función pura, `evaluateListeners(rows, ownPids)`, con `ownPids` = el árbol lanzado **sin** el PID
+   del propio runner: falla ante cualquier fila ajena, sin PID o del runner (Vitest de la tarea 2.6b). Los
    puertos de la infraestructura los publica Docker, no el árbol lanzado: para ellos vale la comprobación de la fase 2.
 4. **Siembra** (solo con `--rehearse-remote`): la cuenta de prueba del ensayo remoto, **por la API pública**
    (`POST /api/auth/register`), nunca por Mongo, igual que la creará el autor en staging.
@@ -177,8 +187,10 @@ nombrándolo, aunque el puerto responda.
 
 **Falsación.** Los guardias que dependen de una carrera (un proceso ajeno que aparece tras la comprobación previa, un
 proceso que el apagado no mata) se provocan con un flag de prueba, `--stack-fault`, que el runner usa solo para eso y
-anuncia en su salida cuando está presente (valores en las tareas 2.6b y 2.7). Sin él, el runner no tiene ningún camino
-distinto.
+anuncia en su salida cuando está presente (valores en las tareas 2.4c, 2.6b y 2.7). Sin él, el runner no tiene ningún
+camino distinto. El oyente de `listen-after-preflight` vive en un **proceso hijo que el runner no registra en el árbol
+lanzado** (y que mata aparte al apagar): si lo abriera un hijo registrado, el guardia de PID lo daría por propio y el
+fallo no probaría nada.
 
 ### D4. Un bloque de puertos propio, un proyecto de compose por checkout y bloque
 
@@ -192,8 +204,10 @@ distinto.
 | Almacén S3 (35a) | 9000 | 9100 | `OBJECT_STORE_PORT` | `--object-store-port` |
 | MinIO, **solo antes de 35a** (API / consola) | 9000 / 9001 | 9100 / 9101 | `MINIO_PORT`, `MINIO_CONSOLE_PORT` | `--object-store-port` (la consola, +1) |
 | Mailpit (SMTP / UI y API) | 1025 / 8025 | 1125 / 8125 | `MAILPIT_SMTP_PORT`, `MAILPIT_UI_PORT` | `--mailpit-smtp-port`, `--mailpit-ui-port` |
+| Inspector de `api` / `worker` (solo con `--stack-fault=inspect`, D3) | 9229 (por defecto de `@nx/js:node`) | 9329 / 9330 | — | — |
 
-El bloque por defecto vive en `e2e.env`; una anulación por flag lo desplaza, y el runner recalcula a partir del bloque
+Los dos puertos de inspector son del bloque aunque solo se usen con ese fallo: entran en la comprobación previa y en la
+re-prueba tras apagar. El bloque por defecto vive en `e2e.env`; una anulación por flag lo desplaza, y el runner recalcula a partir del bloque
 efectivo las URIs (`MONGO_URI`, `REDIS_URL`, `S3_ENDPOINT`…). **Mientras la función de arranque (tarea 1.2) use el
 compose anterior a 35a**, `e2e.env` lleva además `MINIO_PORT=9100`, `MINIO_CONSOLE_PORT=9101` y `S3_ENDPOINT` hacia
 `9100`: sin ellos, el MinIO de ese compose publicaría `9000`/`9001`, fuera del bloque, y la fase 2 fallaría. La tarea
@@ -201,7 +215,8 @@ compose anterior a 35a**, `e2e.env` lleva además `MINIO_PORT=9100`, `MINIO_CONS
 
 **Nombre del proyecto de compose:** `linkvault-e2e-<hash8>`, donde `hash8` son los ocho primeros caracteres hex del
 SHA-256 de «ruta absoluta del checkout + bloque efectivo». La ruta se **normaliza** antes del hash (letra de unidad en
-minúscula y barras `/`), para que `D:\projects\…` y `d:/projects/…` den el mismo nombre. Se pasa por
+minúscula, barras `/` y sin separador final), para que `D:\projects\…`, `d:/projects/…` y `d:\projects\…\` den el
+mismo nombre; la normalización es una función pura con su Vitest (tarea 2.3a). Se pasa por
 `COMPOSE_PROJECT_NAME` y el runner lo imprime al empezar. Dos checkouts no comparten contenedores ni volúmenes; un
 `down -v` de uno no toca al otro.
 
@@ -254,7 +269,11 @@ esencial de `e2e.env`:
 
 Que el `.env` no se filtra **no se supone**: se comprueba con un canario que está en el `.env` y no en `e2e.env`, con
 una variable de interpolación del compose que el `.env` cambia (`MONGO_PORT=27999`: el `config` de compose tiene que
-seguir mostrando `27117`), y leyendo el entorno efectivo de los procesos `api` **y** `worker` (tareas 2.4b y 2.4c). El
+seguir mostrando `27117`), y leyendo el entorno efectivo de los procesos `api` **y** `worker` por su inspector (tareas
+2.4b y 2.4c). **Conjunto permitido** en ese entorno: la lista blanca ∪ las tres de control ∪ `e2e.env` ∪ las que añade
+libuv al lanzar un proceso en Windows (`HOMEDRIVE`, `HOMEPATH`, `LOGONSERVER`, `SYSTEMDRIVE`, `USERDOMAIN`,
+`USERNAME`) ∪ `NX_*` ∪ `FORCE_COLOR` (∪ `npm_*` y `PNPM_*` solo si el proceso se lanza por pnpm); las entradas `=X:`
+(el directorio actual por unidad que arrastra Windows) se ignoran. Cualquier otra clave es una fuga. El
 propio runner sí recibe el `.env` (Nx lo carga antes de lanzarlo); por eso sus entradas son flags (D3).
 
 ### D7. IA: replay en local y en CI; en el ensayo y en staging, ninguna llamada
@@ -434,7 +453,8 @@ fichero, con su admisión (tarea 9.9, condicional).
 - **Staging solo desde `main`:** el job de staging lleva `if: github.ref == 'refs/heads/main' && inputs.target ==
   'staging'`. Como un job omitido deja la corrida en verde sin haber verificado nada, un **job de guardia** con
   `if: github.event_name == 'workflow_dispatch' && inputs.target == 'staging'` falla cuando la referencia no es `main`,
-  diciéndolo (ADR-048 §3: un verde que no verificó no es verde).
+  diciéndolo (ADR-048 §3: un verde que no verificó no es verde). El job `local` lleva `if: inputs.target == 'local'`:
+  pedir staging no ejecuta también la pila local.
 - **Runner** `ubuntu-24.04` (como `ci.yml`), `timeout-minutes: 30`, `permissions: contents: read`. Mientras la rama se
   construye sobre un `main` anterior a 35a, el compose descarga el espejo de MinIO del espacio de nombres del
   repositorio y el job lleva **temporalmente** `packages: read` con `docker login` por la entrada estándar con
@@ -443,7 +463,8 @@ fichero, con su admisión (tarea 9.9, condicional).
   exigiría verificarla; se descartó en el debate. El store de pnpm, por `setup-node`.
 - **Pasos:** instalar → `pnpm nx run web-e2e:e2e-stack` (con `-- --rehearse-remote` si la entrada lo pide) o, con
   target `staging`, `pnpm nx run web-e2e:e2e-remote -- --base-url "$E2E_BASE_URL" --match-expectation
-  consent-required` con `E2E_BASE_URL: ${{ vars.E2E_STAGING_URL }}` y los secretos en `env:` → subir el informe HTML,
+  consent-required` con `E2E_BASE_URL: ${{ vars.E2E_STAGING_URL }}` y los secretos en `env:` como `E2E_REMOTE_EMAIL` y
+  `E2E_REMOTE_PASSWORD` (D3) → subir el informe HTML,
   la salida de Playwright y `stack-logs/` con `if: always()` y `retention-days: 7`. Los valores del evento pasan por
   `env:`, nunca interpolados en `run:`.
 - **Staging sin destino = rojo.** Si `vars.E2E_STAGING_URL` está vacía, el paso falla diciendo «no hay destino de staging
@@ -484,8 +505,10 @@ fichero, con su admisión (tarea 9.9, condicional).
 - **PR-1** (grupos 1-8 de tareas): base, lote 1, ensayo remoto y CI. **Se construye en paralelo a 35a, pero se fusiona
   después de que 35a esté en `main`**: así el runner nace con el comando de arranque definitivo (`pnpm infra:up` con
   `provision`), el paso del CV prueba el almacén nuevo y el workflow no necesita `packages: read` (tareas 1.2, 7.6 y
-  7.9). Su ventana la decide el usuario y **no puede caer entre PR-1 y PR-2 de 35b** (en ese tramo no se fusiona nada a
-  `main`, cabecera de las tareas de 35b): o antes de PR-1 de 35b o después de su PR-2.
+  7.9). Su ventana la decide el usuario: **antes del PR-1 de 35b o después de su 11.6**, nunca entre el PR-2 de 35b y
+  su 11.6 (B-V0-27 de la iteración 3: la 11.6 relanza los despliegues de la corrida de 6.3 y de la del PR-2 de 35b, y
+  una fusión en medio desplegaría otro commit entre los dos; entre los PR-1 y PR-2 de 35b ya no se fusiona nada, por
+  la cabecera de sus tareas).
 - **Mientras se construye**, 35a va primero: si 35a tiene una tarea ejecutable, se hace esa, y `e2e-suite` solo ocupa
   sus esperas (ADR-053 §1, condición 6).
 - **Tras fusionar 35a** (B-V1-17 de la iteración 2): la **cola de PR-1** —7.6, 7.9 y 8.1— se hace **enseguida**, en la
@@ -495,14 +518,18 @@ fichero, con su admisión (tarea 9.9, condicional).
   bloqueos): **`e2e-remote` contra staging, en `chromium` y `mobile`, en verde sobre el commit desplegado**, lanzada
   desde la máquina del autor, sin minutos de CI y gastando dos análisis del cupo de la cuenta de prueba. El commit
   desplegado se toma **del host** (`docker compose images` → `sha-<12>`) o del estado de commit `cd-staging/artifact`,
-  no de la lista de corridas. La corrida local de `e2e-stack`, en un `git worktree` de ese commit, queda solo como
-  **respaldo**. La anotación (commit, fecha, resultado) **no se lleva a `main` con un push**, que desplegaría otro
-  commit y la invalidaría: viaja en el PR-2 de este change o en el PR de archivo de 35b, que se fusionan **después**
-  de invitar. **El despliegue no espera a la suite; la invitación, sí, a una corrida en verde.**
-- **Si PR-1 no está en `main`** cuando 35b vaya a invitar, el usuario elige entre esperar o la **alternativa manual**:
-  los pasos que D11 declara para el perfil `remote` (0 y 2-8), hechos a mano en el móvil contra staging con la cuenta
-  de prueba de 9.2, anotados paso a paso (paso, resultado y hora). Es lo que antes se llamaba «el recorrido manual de
-  35b», que no existía como tal.
+  no de la lista de corridas. **Sin respaldo local** (B-V1-28, R-27 y C13 de la iteración 3): una corrida de
+  `e2e-stack`, aunque sea en un `git worktree` del commit desplegado, no prueba lo desplegado y no cuenta. Un `429` del
+  cupo de análisis se resuelve repitiendo la 9.4 **otro día** (el cupo es diario). La anotación (commit, fecha,
+  resultado) **no se lleva a `main` con un push**, que desplegaría otro commit y la invalidaría: viaja en el PR-2 de
+  este change o en el PR de archivo de 35b, que se fusionan **después** de invitar. **El despliegue no espera a la
+  suite; la invitación, sí, a una corrida en verde.**
+- **Si PR-1 no está en `main`** el día de invitar: la 9.4 se lanza **desde la cabeza de la rama de PR-1** (en un `git
+  worktree`) contra staging, con el commit desplegado leído del host. Vale lo mismo: la suite es la de la rama y lo
+  probado es lo desplegado. **Último recurso**, si ni así puede lanzarse y el usuario decide no esperar: la
+  **alternativa manual**, escrita paso a paso en la D14 de 35b —los pasos que D11 declara para el perfil `remote` (0 y
+  2-8), hechos a mano en el móvil contra staging con la cuenta de prueba de 9.2 y anotados con su resultado y la
+  hora—. 35b la tiene escrita entera porque, en ese caso, este design no está en `main`.
 - **PR-2** (grupo 9): la verificación contra staging, cuando 35b haya desplegado, más lo que la iteración 2 movió allí
   (la parte «sin destino = rojo» de la antigua 7.5, ahora 9.3a, y Q2 con los minutos, ahora 9.10). Hasta entonces sus
   tareas están **bloqueadas por 35b** y el change sigue abierto.
@@ -513,8 +540,8 @@ fichero, con su admisión (tarea 9.9, condicional).
 
 | Change | Qué toca que se cruce | Cómo se resuelve aquí |
 |---|---|---|
-| 35a `object-store` | MODIFIED de «Infraestructura con un comando» (`platform/local-environment`): el arranque local pasa a `pnpm infra:up` = `up --wait` + `api:object-store -- provision`; sustituye MinIO y su puerto pasa a `OBJECT_STORE_PORT`. MODIFIED de «CD a staging en main». También edita `staging-host` (D4, D5 y sus tareas 1.1, 2.1-2.2, 4.1, 4.4, 5.3 y 9.10). | PR-1 se fusiona **después** de 35a (D15): el runner llama a `pnpm infra:up` desde una sola función (tarea 1.2), el bloque usa `OBJECT_STORE_PORT` (D4, tarea 2.1), `packages: read` se retira (7.6) y la 7.9 ejecuta `e2e-stack` en local y en CI sobre la rama rebasada en el `main` que ya contiene 35a. No se toca «CD a staging en main». Las ediciones de aquí a `staging-host` evitan las secciones que edita 35a, salvo una **línea nueva bajo la tarea 1.1** (la precondición del PR solo de spec), adyacente a la línea de la 1.1 que 35a reescribe: al rebasar una rama sobre la otra, git lo marca como conflicto y se resuelve conservando las dos. |
-| 35b `staging-host` | Medición con exclusión del autor y recuento de no invitadas; secretos `STAGING_*`; el host y su URL; la invitación (10.7). | **Q1 y la precondición de invitar, trasladadas** por el **PR solo de spec `spec(staging-host): trasladar la exclusión de cuentas E2E y la precondición de invitar` (PR #71)**, que se fusiona en `main` antes del `/opsx:apply` de 35b: design D14 (la corrida `e2e-remote`), D15/D16 (lista «autor + cuentas E2E» fuera del repositorio, pasada a `run.sh`, exclusión por `userId` en cada métrica) y la fila de la tabla de bloqueos; tareas 1.1 (precondición: ese PR en `main`), 10.2 (días 7 y 14), 10.3 (exclusión, probada con Bob y con Ana), 10.6 (la línea base no borra las cuentas `+e2e`) y 10.7 (precondición de invitar, D15). La tarea 8.2 comprueba que el texto está en `main` antes del `/opsx:apply` de 35b y que sigue en los dos ficheros tras fusionar 35a. Secretos con prefijo `E2E_`. |
+| 35a `object-store` | MODIFIED de «Infraestructura con un comando» (`platform/local-environment`): el arranque local pasa a `pnpm infra:up` = `up --wait` + `api:object-store -- provision`; sustituye MinIO y su puerto pasa a `OBJECT_STORE_PORT`. MODIFIED de «CD a staging en main». También edita `staging-host` (D4, D5 y sus tareas 1.1, 2.1-2.2, 4.1, 4.4, 5.3 y 9.10). | PR-1 se fusiona **después** de 35a (D15): el runner llama a `pnpm infra:up` desde una sola función (tarea 1.2), el bloque usa `OBJECT_STORE_PORT` (D4, tarea 2.1), `packages: read` se retira (7.6) y la 7.9 ejecuta `e2e-stack` en local y en CI sobre la rama rebasada en el `main` que ya contiene 35a. No se toca «CD a staging en main». Las ediciones de aquí a `staging-host` evitan las secciones que edita 35a. La línea que la iteración 2 añadía bajo la tarea 1.1 (la precondición del PR solo de spec) se **retiró** en la iteración 3 (C2/C3): se comprobaba a sí misma y chocaba con la línea de la 1.1 que 35a reescribe. |
+| 35b `staging-host` | Medición con exclusión del autor y recuento de no invitadas; secretos `STAGING_*`; el host y su URL; la invitación (10.7). | **Q1 y la precondición de invitar, trasladadas** por el **PR solo de spec `spec(staging-host): trasladar la exclusión de cuentas E2E y la precondición de invitar` (PR #71)**, que se fusiona en `main` **como condición de la aprobación humana del `/opsx:apply` de este change**, en paralelo a 35a y siempre antes de 35b: design D14 (la corrida `e2e-remote`, la opción desde la cabeza de la rama de PR-1, sin respaldo local, y la alternativa manual escrita paso a paso), D15/D16 (lista «autor + cuentas E2E» fuera del repositorio, pasada a `run.sh`, exclusión por `userId` en cada métrica) y la fila de la tabla de bloqueos; tareas 10.2 (días 7 y 14), 10.3 (exclusión, probada con Bob y con Ana), 10.6 (la línea base no borra las cuentas `+e2e`) y 10.7 (precondición de invitar, D15). La tarea 8.2 comprueba, como primera tarea del `/opsx:apply` de este change, que el texto está en `main`, y que sigue en los dos ficheros tras fusionar 35a. Secretos con prefijo `E2E_`. |
 | 35c `verify-reusable-workflow` | Workflow reutilizable de verificación; guardias de `repo-checks` sobre workflows (acciones fijadas, `${{ }}` en `run:`); MODIFIED de «CD a staging en main». | `e2e.yml` no llama al workflow reutilizable ni lo necesita; ya pasa los valores por `env:` y no usa acciones de terceros con secretos. Si la suite remota debiera correr tras cada despliegue, eso modifica «CD a staging en main» y sería posterior a 35c: **Q4**, no se hace aquí. |
 
 ## Risks / Trade-offs
@@ -534,16 +561,17 @@ fichero, con su admisión (tarea 9.9, condicional).
   aceptado (D2) y listado en ADR-053 §Riesgos; se prueban en staging (PR-2).
 - [La admisión de `local` gasta exactamente los 10 intentos de registro del límite] → documentado (D5); un lote que
   añada intentos lo ve caer con el `429` nombrado.
-- [El recorrido remoto contra staging agota el cupo de análisis] → cuenta hecha en D10; el informe nombra el `429`.
+- [El recorrido remoto contra staging agota el cupo de análisis] → cuenta hecha en D10; el informe nombra el `429` y la
+  corrida se repite otro día (el cupo es diario).
 - [Mantener dos caminos de ejecución (runner y `nx e2e` antiguo)] → el antiguo queda para iterar sobre un spec no
   admitido y se retira cuando el último lote admita el último spec.
 - [La primera emisión de 35b contra el ACME de pruebas deja a staging con un certificado no confiable] → la suite falla
   contra staging mientras dure; no se relaja TLS.
-- [PR-1 no está en `main` cuando 35b va a invitar] → decide el usuario: esperar o la alternativa manual, los pasos del
-  perfil `remote` de D11 a mano en el móvil contra staging, anotados paso a paso (D15). La cola de PR-1 tras 35a se hace
-  enseguida para que no llegue a pasar (D15).
-- [Las ediciones a `staging-host` no llegan a `main` antes del `/opsx:apply` de 35b] → van en un PR solo de spec, y la
-  1.1 de 35b y la 8.2 de aquí lo comprueban (D16).
+- [PR-1 no está en `main` cuando 35b va a invitar] → la 9.4 se lanza desde la cabeza de la rama de PR-1 contra
+  staging; la alternativa manual, escrita paso a paso en la D14 de 35b, queda como último recurso (D15). La cola de
+  PR-1 tras 35a se hace enseguida para que no llegue a pasar (D15).
+- [Las ediciones a `staging-host` no llegan a `main` antes del `/opsx:apply` de 35b] → van en un PR solo de spec (#71),
+  cuya fusión es condición de la aprobación humana del `/opsx:apply` de este change; la 8.2 lo comprueba (D16).
 - [La suite en staging gasta el cupo de análisis del día] → como mucho 5 corridas contra staging por día y
   las verificaciones del grupo 9 repartidas en días distintos (D10).
 
@@ -637,3 +665,21 @@ Texto original de las preguntas, conservado como histórico:
 | C11 | 2.4b/2.4c, 4.3a/4.3b y 5.5a/5.5b partidas | tareas |
 | C12 | `uninvited` sube a 1 al quitar la cuenta E2E de la lista; 35b 10.3 también con Ana | 9.2; 35b 10.3 |
 | C13 | «intentos de registro»; como mucho 5 corridas contra staging al día | Context, D5, D10; grupo 9 |
+
+**Iteración 3 (2026-09-26, la última)**: reflect aplicado sobre los hallazgos de critic y business:
+
+| Hallazgo | Decisión | Dónde |
+|---|---|---|
+| C2 + C3 | se retira la línea añadida a la 1.1 de 35b (se comprobaba a sí misma y chocaba con la rama de 35a); la #71 se fusiona en `main` **como condición de la aprobación humana del `/opsx:apply`** de este change, en paralelo a 35a y siempre antes de 35b; la 8.2 (a) es la primera tarea del `/opsx:apply` | D16; Riesgos; cabecera de tareas, 8.2; ADR-053 §1.1 y §1.4; 35b 1.1 |
+| C4 | la alternativa manual, escrita paso a paso en la D14 de 35b sin remitir a ficheros que no están en `main`; la 10.7 y la tabla de bloqueos de 35b citan ADR-053 solo como origen | D15; 9.8; 35b D14, tabla de bloqueos y 10.7 |
+| B-V0-27 | ventana de fusión de PR-1: antes del PR-1 de 35b o después de su 11.6, nunca entre el PR-2 de 35b y su 11.6 | D15; cabecera de tareas, 8.1; ADR-053 §1.7 |
+| B-V1-28 + R-27 + C13 | fuera el respaldo local (no prueba lo desplegado); sin PR-1 en `main`, `e2e-remote` desde la cabeza de su rama contra staging con el commit leído del host; un `429`, la 9.4 otro día; la alternativa manual, último recurso | D15; Riesgos; 9.4, 9.8; ADR-053 §1.3 y §1.6; 35b D14, tabla de bloqueos y 10.7 |
+| B-V2-29 | la fusión del PR-2 de este change, fuera de los días 7 y 14 de medición | 9.8 |
+| C5 | `api` y `worker` con `--inspect=false` por defecto (`@nx/js:node` 23.2.1 abre el `9229`); `--stack-fault=inspect` con dos puertos de inspector del bloque; entorno leído por `/json/list` y `Runtime.evaluate` con el `WebSocket` de Node 22; conjunto permitido explícito, `=X:` ignoradas | D3, D4, D6; 2.4c |
+| C6 | credenciales `E2E_REMOTE_EMAIL`/`E2E_REMOTE_PASSWORD`, comparadas con todos los `.env*` que Nx cargaría (raíz y proyecto, salvo `.env.example`); `Read-Host -AsSecureString` y `read -s` en el README | D3, D13; 3.2, 6.4; spec de `e2e-suite` |
+| C7 | la normalización de la ruta, con un Vitest de tres entradas (mayúsculas de la unidad, barras, `\` final); `cmd /c "cd /d d:\…"` opcional | D4; 2.3a |
+| C8 | `evaluateListeners(rows, ownPids)`, función pura con Vitest de cuatro casos en fallo (y uno en verde de control); el oyente del fallo inyectado, en un hijo no registrado en el árbol | D3; 2.6b |
+| C9 | la falsación publica `'18125:8025'`; el mensaje nombra la fase «infraestructura» y «fuera del bloque» | 2.3b |
+| C10 | 5.9a y 5.9b tras la 5.10 | cabecera de tareas; 5.9a, 5.9b |
+| C11 | el job `local` con `if: inputs.target == 'local'`, comprobado en la 7.1a | D13; 7.1a |
+| C12 | «no se ejecutan a la vez; una en espera puede ser sustituida por otra más nueva» | spec de `ci-pipeline` |

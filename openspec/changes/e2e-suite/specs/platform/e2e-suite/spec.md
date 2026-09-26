@@ -149,7 +149,8 @@ el `.env` local NO SHALL cambiar el resultado de la suite.
 - Las anulaciones del propio comando (puertos del bloque, origen, resultado esperado del encaje, fallos provocados)
   SHALL darse como **argumentos**; el comando NO SHALL leerlas de su entorno, al que puede llegar el `.env`. Las
   credenciales de un destino remoto, que no pueden ir en argumentos, SHALL llegar por el entorno de la sesión, y el
-  comando SHALL fallar sin ejecutar ninguna prueba si también están en el `.env`.
+  comando SHALL fallar sin ejecutar ninguna prueba si también están en alguno de los ficheros `.env` que se cargarían
+  en su entorno.
 
 #### Scenario: El desarrollador tiene la IA en synth
 

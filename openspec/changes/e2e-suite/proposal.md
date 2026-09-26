@@ -34,11 +34,12 @@ pero su primer PR se **fusiona después de 35a**, para nacer con el arranque loc
   de la medición.
 - **La medición de 35b excluye a las cuentas de prueba** (Q1, decidida por el usuario): se edita `staging-host` para que
   sus scripts excluyan por `userId` en cada métrica la lista «autor + cuentas E2E». Esas ediciones llegan a `main` en un
-  **PR solo de spec**, antes del `/opsx:apply` de 35b.
+  **PR solo de spec** (#71), cuya fusión es condición de la aprobación humana del `/opsx:apply` de este change y que
+  llega siempre antes del de 35b.
 - **Invitar exige una corrida en verde contra staging**: `e2e-remote` en verde en escritorio y móvil sobre el commit
-  desplegado, lanzada desde la máquina del autor, es precondición de la invitación de 35b; la corrida local queda de
-  respaldo, y si la suite no está a tiempo la alternativa es el mismo recorrido hecho a mano en el móvil. El despliegue
-  no espera a la suite.
+  desplegado, lanzada desde la máquina del autor, es precondición de la invitación de 35b, sin respaldo local; si PR-1
+  no está en `main` ese día, se lanza desde la cabeza de su rama, y el mismo recorrido hecho a mano en el móvil, escrito
+  paso a paso en 35b, queda como último recurso. El despliegue no espera a la suite.
 - **IA y correo deterministas**: `AI_CHAIN=mock` con `AI_MOCK_MODE=replay` en local y en CI, aunque el `.env` del
   desarrollador diga `synth` (el `.env` no llega a los procesos); Mailpit del propio proyecto de compose. La entrada del
   recorrido se versiona junto a sus fixtures y un Vitest de `libs/ai` rompe CI si falta alguno.
@@ -73,13 +74,14 @@ pero su primer PR se **fusiona después de 35a**, para nacer con el arranque loc
   versionado, helpers, spec del camino crítico, reglas de lint); en `libs/ai`, la entrada versionada del recorrido, sus
   fixtures escritos a mano y un Vitest que los exige; ningún cambio de comportamiento de `api`, `worker` ni `web`.
 - **CI:** `.github/workflows/e2e.yml` nuevo; `ci.yml`, `cd-staging.yml` y `cd-prod.yml` **no se tocan**.
-- **Otro change:** `openspec/changes/staging-host` (35b), design D14, D15/D16 y tabla de bloqueos, y tareas 1.1, 10.2,
-  10.3, 10.6 y 10.7, por Q1 y por la precondición de invitar, sin tocar las secciones que edita 35a (salvo una línea
-  nueva bajo su 1.1), en un commit propio que llega a `main` en un PR solo de spec.
+- **Otro change:** `openspec/changes/staging-host` (35b), design D14, D15/D16 y tabla de bloqueos, y tareas 10.2,
+  10.3, 10.6 y 10.7, por Q1 y por la precondición de invitar, sin tocar las secciones que edita 35a, en un commit
+  propio que llega a `main` en un PR solo de spec (#71).
 - **Documentación:** `docs/adr/ADR-053.md`, anotación en `docs/adr/ADR-048.md`, `openspec-changes.yaml`,
   `docs/design-v0.2.md` §6, `apps/web-e2e/README.md`, la medición de minutos en `infra/README.md` y, en PR-2, la corrida
   previa a invitar en el RUNBOOK.
 - **Dependencias:** ninguna nueva (Playwright 1.63 y `eslint-plugin-playwright` ya están).
 - **Relación con la fila 35:** no toca ningún fichero de despliegue ni ningún requirement que 35a, 35b o 35c modifiquen.
-  PR-1 se fusiona después de 35a y fuera del tramo entre los dos PR de 35b; las tareas de staging esperan a 35b.
-- **Pendiente antes de `/opsx:apply`:** la aprobación humana del design tras el debate.
+  PR-1 se fusiona después de 35a y antes del PR-1 de 35b o después de su 11.6; las tareas de staging esperan a 35b.
+- **Pendiente antes de `/opsx:apply`:** la aprobación humana del design tras el debate, con la #71 fusionada en `main`
+  como condición.
