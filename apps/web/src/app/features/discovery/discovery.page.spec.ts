@@ -5,6 +5,7 @@ import { RouterTestingHarness } from '@angular/router/testing';
 import type {
   DiscoveryHit,
   DiscoverySearchResponse,
+  GroupSummary,
   JobLinkSummary,
   SaveLinkResponse,
 } from '@linkvault/shared';
@@ -40,6 +41,18 @@ const link: JobLinkSummary = {
   previewVersion: 1,
   sharedAt: '2026-09-17T10:00:00.000Z',
 };
+
+const demoGroup: GroupSummary = {
+  id: 'g1',
+  name: 'Demo LatAm',
+  role: 'owner',
+  memberCount: 1,
+  joinedAt: '2026-09-17T10:00:00.000Z',
+};
+
+function saved(overrides: Partial<SaveLinkResponse> = {}): SaveLinkResponse {
+  return { link, created: true, shared: 'created', alreadyInGroups: [], ...overrides };
+}
 
 function searchResponse(
   overrides: Partial<DiscoverySearchResponse> = {},
@@ -98,6 +111,45 @@ describe('DiscoveryPage', () => {
     expect(option).toBeTruthy();
     (option as HTMLElement).click();
     await settle();
+  }
+
+  function pageStore(): DiscoveryStore {
+    return harness.fixture.debugElement.query(By.directive(DiscoveryPage)).injector.get(DiscoveryStore);
+  }
+
+  async function loadGroups(groups: GroupSummary[]): Promise<void> {
+    const reload = TestBed.inject(GroupsStore).load();
+    http.expectOne({ method: 'GET', url: '/api/groups' }).flush(groups);
+    await reload;
+    await settle();
+    await harness.fixture.whenStable();
+  }
+
+  async function searchAndSave(response: SaveLinkResponse): Promise<void> {
+    await submitSearch('Nest');
+    http
+      .expectOne((req) => req.method === 'GET' && req.url === '/api/discovery/search')
+      .flush(searchResponse());
+    await settle();
+    await harness.fixture.whenStable();
+
+    host().querySelector<HTMLButtonElement>('[data-testid="discovery-save"]')!.click();
+    await settle();
+    http.expectOne({ method: 'POST', url: '/api/links' }).flush(response);
+    await settle();
+    await harness.fixture.whenStable();
+  }
+
+  function createdText(): string {
+    const created = host().querySelector('[data-testid="discovery-save-created"]');
+    expect(created).not.toBeNull();
+    return created!.textContent ?? '';
+  }
+
+  function alreadyText(): string {
+    const already = host().querySelector('[data-testid="discovery-save-already"]');
+    expect(already).not.toBeNull();
+    return already!.textContent ?? '';
   }
 
   it('shows coverage copy and does not request on enter', async () => {
@@ -271,6 +323,72 @@ describe('DiscoveryPage', () => {
     await harness.fixture.whenStable();
 
     expect(host().querySelector('[data-testid="discovery-save-created"]')).not.toBeNull();
+  });
+
+  it('saves to a group and the confirmation names that group', async () => {
+    await loadGroups([demoGroup]);
+    pageStore().setSaveDestination(demoGroup.id);
+
+    await searchAndSave(saved());
+
+    const confirmation = createdText();
+    expect(confirmation).toContain('Demo LatAm');
+    expect(confirmation).not.toContain('Solo para mí');
+  });
+
+  it('saves privately and the confirmation names Solo para mí', async () => {
+    await loadGroups([demoGroup]);
+
+    await searchAndSave(saved());
+
+    expect(createdText()).toContain('Solo para mí');
+  });
+
+  it('saves to a group that already had it and says it was already there', async () => {
+    await loadGroups([demoGroup]);
+    pageStore().setSaveDestination(demoGroup.id);
+
+    await searchAndSave(saved({ created: false, shared: 'already_there' }));
+
+    const confirmation = alreadyText();
+    expect(confirmation).toContain('Demo LatAm');
+    expect(confirmation).not.toContain('Ya la tenías');
+  });
+
+  it('keeps naming the saved group after the destination changes', async () => {
+    await loadGroups([demoGroup]);
+    pageStore().setSaveDestination(demoGroup.id);
+    await searchAndSave(saved());
+
+    pageStore().setSaveDestination(null);
+    await settle();
+    await harness.fixture.whenStable();
+
+    expect(createdText()).toContain('Demo LatAm');
+  });
+
+  it('says "the group" when the saved group is no longer listed', async () => {
+    await loadGroups([demoGroup]);
+    pageStore().setSaveDestination(demoGroup.id);
+    await searchAndSave(saved());
+
+    await loadGroups([]);
+
+    const confirmation = createdText();
+    expect(confirmation).toContain('el grupo');
+    expect(confirmation).not.toContain('Solo para mí');
+  });
+
+  it('says it was already in "the group" when the saved group is no longer listed', async () => {
+    await loadGroups([demoGroup]);
+    pageStore().setSaveDestination(demoGroup.id);
+    await searchAndSave(saved({ created: false, shared: 'already_there' }));
+
+    await loadGroups([]);
+
+    const confirmation = alreadyText();
+    expect(confirmation).toContain('el grupo');
+    expect(confirmation).not.toContain('Ya la tenías');
   });
 
   it('shows destination selector defaulting to private', async () => {

@@ -129,6 +129,7 @@ describe('DiscoveryStore', () => {
     await pending;
 
     expect(store.saveOutcomes()[hit.url]).toBe('created');
+    expect(store.saveDestinations()[hit.url]).toBeNull();
     expect(store.savingUrls()[hit.url]).toBeUndefined();
   });
 
@@ -142,6 +143,24 @@ describe('DiscoveryStore', () => {
     await pending;
 
     expect(store.saveOutcomes()[hit.url]).toBe('created');
+    expect(store.saveDestinations()[hit.url]).toBe('g1');
+  });
+
+  it('run during an in-flight save keeps the outcome paired with its group', async () => {
+    store.setSaveDestination('g1');
+    const pending = store.save(hit);
+
+    const search = store.run('Nest');
+    http
+      .expectOne((req) => req.method === 'GET' && req.url === '/api/discovery/search')
+      .flush({ ...emptyResponse, results: [hit] });
+    await search;
+
+    http.expectOne({ method: 'POST', url: '/api/links' }).flush(saved());
+    await pending;
+
+    expect(store.saveOutcomes()[hit.url]).toBe('created');
+    expect(store.saveDestinations()[hit.url]).toBe('g1');
   });
 
   it('save captures groupId at click start (ignores mid-flight destination change)', async () => {

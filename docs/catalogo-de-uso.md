@@ -528,7 +528,8 @@ pnpm nx run api:backfill-search -- --docType=job_preview --limit=500
 - **Dónde:** `/descubrir` · `GET /api/discovery/search`, `POST /api/links`.
 - **Cómo probarla:** «Descubrir» → «react» → «Buscar» → «Guardar en» un grupo → «Guardar» en un resultado.
 - **Qué esperar:** con `DISCOVERY_CHAIN=mock`, dos resultados fijos («React Developer» de GetOnBoard y «Senior React
-  Engineer» de RemoteOK); la oferta aparece en el grupo elegido. Con el flag apagado: «El descubrimiento de vacantes no
+  Engineer» de RemoteOK); la confirmación nombra el grupo elegido («Guardada en «<grupo>».», o «Ya estaba en
+  «<grupo>».» si alguien la había compartido) y la oferta aparece en ese grupo. Con el flag apagado: «El descubrimiento de vacantes no
   está disponible en este momento.».
 - **Requiere:** `FEATURE_DISCOVERY=true`. `DISCOVERY_CHAIN=live` sale a Internet.
 
@@ -648,7 +649,6 @@ Lo que una spec vigente promete y el código de `main` no hace:
 
 | Spec | Qué promete | Qué hay en el código |
 | ---- | ----------- | -------------------- |
-| `openspec/specs/web/discovery/spec.md`, «Página /descubrir» | Copy con el **destino actual** y confirmación de creado al guardar en un grupo. | La confirmación es fija: «Guardada en «Solo para mí».» (`apps/web/src/app/features/discovery/discovery.page.html:216`), también cuando se guarda en un grupo. |
 | `openspec/specs/web/*/spec.md`, requisitos «Textos en español e inglés» / «i18n ES/EN» y `web/i18n` | Textos traducidos al inglés. | El catálogo `messages.en.xlf` está completo, pero `apps/web/project.json` no tiene opción `localize` ni configuración `en`: en local no hay forma de ver la interfaz en inglés (ADR-050 deja pendiente publicarla). |
 
 ## Hallazgos en la documentación

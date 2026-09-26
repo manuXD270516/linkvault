@@ -27,6 +27,15 @@ const DISCOVERY_BOARDS: readonly DiscoveryBoard[] = ['all', 'getonboard', 'remot
 const PRIVATE_DESTINATION = '';
 
 /**
+ * Destino con el que se nombra la confirmación de un guardado. `unknownGroup`: el grupo
+ * capturado al click ya no está en la lista cargada (nunca se dice «Solo para mí» en su lugar).
+ */
+type SavedDestinationView =
+  | { kind: 'private' }
+  | { kind: 'group'; name: string }
+  | { kind: 'unknownGroup' };
+
+/**
  * Pantalla de discovery (`/descubrir`, spec web/discovery, ADR-045). Busca en bolsas,
  * elige destino Privado|grupo a nivel de página y guarda hits con feedback explícito.
  */
@@ -64,6 +73,7 @@ export class DiscoveryPage implements OnInit {
   protected readonly board = this.store.board;
   protected readonly saveDestination = this.store.saveDestination;
   protected readonly saveOutcomes = this.store.saveOutcomes;
+  protected readonly saveDestinations = this.store.saveDestinations;
   protected readonly savingUrls = this.store.savingUrls;
 
   protected readonly groups = this.groupsStore.groups;
@@ -113,6 +123,16 @@ export class DiscoveryPage implements OnInit {
 
   protected outcomeFor(url: string): DiscoverySaveOutcome | null {
     return this.saveOutcomes()[url] ?? null;
+  }
+
+  /** Destino real del guardado de `url` (capturado al click), no el del selector actual. */
+  protected savedDestinationFor(url: string): SavedDestinationView {
+    const groupId = this.saveDestinations()[url] ?? null;
+    if (groupId === null) {
+      return { kind: 'private' };
+    }
+    const group = this.groups().find((candidate) => candidate.id === groupId);
+    return group === undefined ? { kind: 'unknownGroup' } : { kind: 'group', name: group.name };
   }
 
   protected isSaving(url: string): boolean {
