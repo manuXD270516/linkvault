@@ -1,6 +1,11 @@
 import { randomBytes } from 'node:crypto';
-import { createServer, type IncomingMessage, type Server } from 'node:http';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import {
+  FAKE_STORE_BUCKET,
+  FakeStoreServer,
+  type Recorded,
+  s3ErrorXml,
+} from '../../../test-support/fake-store-server';
 import { createS3Client } from '../s3-client.factory';
 import { ObjectStoreReport } from './object-store-report';
 import { sendOf } from './s3-send';
@@ -15,136 +20,10 @@ import {
 // Las peticiones firmadas (la muestra del objeto y, si hace falta, el borrado de la sonda) las hace el cliente real de
 // la fábrica contra el mismo servidor, que registra cada petición y si iba firmada.
 
-type Kind = 'get' | 'list' | 'put';
-
-interface Answer {
-  readonly status: number;
-  readonly body?: string | Uint8Array;
-}
-
-interface Recorded {
-  readonly method: string;
-  readonly path: string;
-  readonly query: string;
-  readonly signed: boolean;
-}
-
-const BUCKET = 'cvs';
+const BUCKET = FAKE_STORE_BUCKET;
 const PROBE_ID = 'probe-0001';
 const PROBE_KEY = `${PROBE_PREFIX}${PROBE_ID}`;
 const OBJECT_KEY = '66e9a0000000000000000a01/66e9a0000000000000000c01';
-
-function s3ErrorXml(code: string): string {
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<Error><Code>${code}</Code><Message>fake</Message><Resource>/${BUCKET}</Resource></Error>`;
-}
-
-class FakeStoreServer {
-  readonly requests: Recorded[] = [];
-  /** Objeto del bucket, si lo hay: lo leen con firma el listado y el `GET` de la muestra. */
-  object: { key: string; bytes: Uint8Array } | undefined;
-  answer: (kind: Kind) => Answer = () => ({
-    status: 403,
-    body: s3ErrorXml('AccessDenied'),
-  });
-  private server: Server | undefined;
-  port = 0;
-
-  async start(): Promise<void> {
-    this.server = createServer((req, res) => {
-      void this.handle(req).then(({ status, body, headers }) => {
-        res.writeHead(status, headers);
-        res.end(body);
-      });
-    });
-    await new Promise<void>((resolve) => {
-      this.server?.listen(0, '127.0.0.1', () => resolve());
-    });
-    const address = this.server.address();
-    if (address === null || typeof address === 'string') {
-      throw new Error('unexpected address');
-    }
-    this.port = address.port;
-  }
-
-  async stop(): Promise<void> {
-    await new Promise<void>((resolve) => {
-      this.server?.closeAllConnections();
-      this.server?.close(() => resolve());
-    });
-  }
-
-  get endpoint(): string {
-    return `http://127.0.0.1:${this.port}`;
-  }
-
-  signedWrites(): Recorded[] {
-    return this.requests.filter(
-      (r) => r.signed && r.method !== 'GET' && r.method !== 'HEAD',
-    );
-  }
-
-  private async handle(
-    req: IncomingMessage,
-  ): Promise<{
-    status: number;
-    body: string | Uint8Array;
-    headers: Record<string, string>;
-  }> {
-    for await (const chunk of req) {
-      void chunk;
-    }
-    const url = new URL(req.url ?? '/', 'http://localhost');
-    const signed = typeof req.headers.authorization === 'string';
-    const method = req.method ?? 'GET';
-    this.requests.push({
-      method,
-      path: decodeURIComponent(url.pathname),
-      query: url.search,
-      signed,
-    });
-    const xml = { 'content-type': 'application/xml' };
-    const objectPath = url.pathname.slice(`/${BUCKET}/`.length);
-
-    if (signed) {
-      if (method === 'GET' && url.searchParams.get('list-type') === '2') {
-        const contents =
-          this.object === undefined
-            ? ''
-            : `<Contents><Key>${this.object.key}</Key><LastModified>2026-09-01T00:00:00.000Z</LastModified><Size>${this.object.bytes.length}</Size></Contents>`;
-        return {
-          status: 200,
-          headers: xml,
-          body: `<?xml version="1.0" encoding="UTF-8"?>\n<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Name>${BUCKET}</Name><KeyCount>${this.object === undefined ? 0 : 1}</KeyCount><MaxKeys>1</MaxKeys><IsTruncated>false</IsTruncated>${contents}</ListBucketResult>`,
-        };
-      }
-      if (method === 'GET' && this.object !== undefined) {
-        const bytes = this.object.bytes.subarray(0, 64);
-        return {
-          status: 206,
-          headers: {
-            'content-type': 'application/octet-stream',
-            'content-length': String(bytes.length),
-            'content-range': `bytes 0-${bytes.length - 1}/${this.object.bytes.length}`,
-          },
-          body: bytes,
-        };
-      }
-      if (method === 'DELETE') {
-        return { status: 204, headers: {}, body: '' };
-      }
-      return { status: 501, headers: xml, body: s3ErrorXml('NotImplemented') };
-    }
-
-    const kind: Kind =
-      method === 'PUT'
-        ? 'put'
-        : objectPath === '' || url.pathname === `/${BUCKET}`
-          ? 'list'
-          : 'get';
-    const answer = this.answer(kind);
-    return { status: answer.status, headers: xml, body: answer.body ?? '' };
-  }
-}
 
 describe('verifyAnonymousAccess', () => {
   let store: FakeStoreServer;
@@ -322,6 +201,7 @@ describe('verifyAnonymousAccess', () => {
         path: `/${BUCKET}/${PROBE_KEY}`,
         query: expect.any(String),
         signed: true,
+        headers: expect.any(Object),
       },
     ]);
     expect(report.render('verify')).toContain(

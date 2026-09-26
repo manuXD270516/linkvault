@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -42,9 +42,23 @@ import { createS3Client, readChecksumPolicy } from './s3-client.factory';
 // **no los borra**, y vuelca en el directorio `A1.bin`, `A2.bin`, `B1.bin`, `B2.bin` y `manifest.json` (bucket y clave
 // de cada uno, para leerlos después con otra clave). 1 KiB queda por debajo del `INLINE_THRESHOLD` de Garage, de unos
 // 3 KiB (a confirmar al medir).
+//
+// **Modo SSE-C de C5** (tarea 2.9b (i)), con `S3_CONTRACT_C5_SSE_C=1` además de `S3_CONTRACT_C5_DIR` y la clave de
+// prueba en `S3_CV_SSE_C_KEY` (base64 de 32 bytes; la genera `docs/object-store-matrix/c5.sh --sse-c`): A1 y A2 van
+// **con SSE-C** por el cliente de la fábrica y cada respuesta tiene que traer el eco de `SSECustomerKeyMD5` igual al MD5
+// de la clave (un almacén que ignore las cabeceras no lo devuelve). Si el `PUT` se rechaza, deja `sse-c-error.json`
+// (si respondió el servidor, código, estado y mensaje) para que `c5.sh` clasifique un rechazo por TLS.
 
 const enabled = process.env['S3_CONTRACT'] === '1';
 const c5Dir = process.env['S3_CONTRACT_C5_DIR'];
+const sseC = process.env['S3_CONTRACT_C5_SSE_C'] === '1';
+
+const C5_NAMES = ['A1', 'A2', 'B1', 'B2'] as const;
+type C5Name = (typeof C5_NAMES)[number];
+interface C5Object {
+  readonly bucket: string;
+  readonly key: string;
+}
 
 const MIB = 1024 * 1024;
 const KIB = 1024;
@@ -58,6 +72,36 @@ function hex(bytes: number): string {
 /** Un identificador con la forma de un ObjectId, para que las claves sean como las de producción. */
 function objectIdLike(): string {
   return hex(12);
+}
+
+/** Clave del modo SSE-C de C5: `S3_CV_SSE_C_KEY`, base64 de 32 bytes (la genera `c5.sh --sse-c`). */
+function readSseCKey(): Buffer {
+  const value = process.env['S3_CV_SSE_C_KEY'] ?? '';
+  const key = Buffer.from(value, 'base64');
+  if (key.length !== 32 || key.toString('base64') !== value) {
+    // Sin repetir el valor: es una clave.
+    throw new Error(
+      'S3_CONTRACT_C5_SSE_C=1 needs S3_CV_SSE_C_KEY: base64 of 32 bytes',
+    );
+  }
+  return key;
+}
+
+/** Lo que `c5.sh --sse-c` necesita de un rechazo: si respondió el servidor, y su código y mensaje. */
+function describeS3Error(error: unknown): Record<string, unknown> {
+  if (!(error instanceof Error)) {
+    return { side: 'client', name: 'UnknownError', message: String(error) };
+  }
+  const status = (error as { $metadata?: { httpStatusCode?: number } })
+    .$metadata?.httpStatusCode;
+  const code = (error as { Code?: unknown }).Code;
+  return {
+    side: status === undefined ? 'client' : 'server',
+    name: error.name,
+    code: typeof code === 'string' ? code : error.name,
+    httpStatus: status ?? null,
+    message: error.message,
+  };
 }
 
 function loadConfig(): ObjectStoreConfig {
@@ -208,116 +252,179 @@ describe.skipIf(!enabled)('S3 contract of api (real store)', () => {
     expect(await countKeys(client, config.S3_BUCKET, `${userId}/`)).toBe(0);
   }, 300_000);
 
-  it.skipIf(c5Dir === undefined || c5Dir === '')(
+  /**
+   * Escribe el juego de C5 (design D2): A1/A2 al bucket de CV —con `writeA`, que decide si van sin cabeceras SSE o con
+   * SSE-C— y B1/B2 al de snapshots con el cliente de la fábrica; no los borra, y vuelca los cuatro buffers y
+   * `manifest.json` en `S3_CONTRACT_C5_DIR`.
+   */
+  async function writeC5Set(
+    writeA: (
+      objects: Record<C5Name, C5Object>,
+      buffers: Record<C5Name, Buffer>,
+    ) => Promise<Record<string, unknown>>,
+    headA: Partial<Record<string, string>>,
+  ): Promise<void> {
+    const dir = c5Dir ?? '';
+    const buffers: Record<C5Name, Buffer> = {
+      A1: randomBytes(MIB),
+      A2: randomBytes(KIB),
+      B1: randomBytes(MIB),
+      B2: randomBytes(KIB),
+    };
+    for (const a of C5_NAMES) {
+      for (const b of C5_NAMES) {
+        if (a !== b) {
+          expect(buffers[a].equals(buffers[b])).toBe(false);
+        }
+      }
+    }
+
+    const stamp = `${Date.now().toString(16)}-${hex(4)}`;
+    const userId = objectIdLike();
+    const objects: Record<C5Name, C5Object> = {
+      A1: { bucket: config.S3_BUCKET, key: cvFileKey(userId, objectIdLike()) },
+      A2: { bucket: config.S3_BUCKET, key: cvFileKey(userId, objectIdLike()) },
+      B1: { bucket: config.S3_SNAPSHOTS_BUCKET, key: `c5-${stamp}/B1.bin` },
+      B2: { bucket: config.S3_SNAPSHOTS_BUCKET, key: `c5-${stamp}/B2.bin` },
+    };
+
+    mkdirSync(dir, { recursive: true });
+    const extra = await writeA(objects, buffers);
+
+    for (const name of ['B1', 'B2'] as const) {
+      await client.send(
+        new PutObjectCommand({
+          Bucket: objects[name].bucket,
+          Key: objects[name].key,
+          Body: buffers[name],
+          ContentType: 'application/octet-stream',
+        }),
+      );
+    }
+
+    // Lo que el almacén dice del cifrado de cada objeto: una observación, no la prueba (la prueba es leer el disco).
+    const reported: Record<string, string> = {};
+    for (const name of C5_NAMES) {
+      const head = await client.send(
+        new HeadObjectCommand({
+          Bucket: objects[name].bucket,
+          Key: objects[name].key,
+          ...(name.startsWith('A') ? headA : {}),
+        }),
+      );
+      expect(head.ContentLength).toBe(buffers[name].length);
+      reported[name] =
+        head.ServerSideEncryption ??
+        (head.SSECustomerAlgorithm === undefined
+          ? 'none reported'
+          : `SSE-C ${head.SSECustomerAlgorithm}`);
+    }
+
+    for (const name of C5_NAMES) {
+      writeFileSync(join(dir, `${name}.bin`), buffers[name]);
+    }
+    writeFileSync(
+      join(dir, 'manifest.json'),
+      `${JSON.stringify(
+        {
+          endpoint: config.S3_ENDPOINT,
+          checksumPolicy: readChecksumPolicy(process.env),
+          ...extra,
+          objects: Object.fromEntries(
+            C5_NAMES.map((name) => [
+              name,
+              {
+                ...objects[name],
+                bytes: buffers[name].length,
+                file: `${name}.bin`,
+                serverSideEncryptionReported: reported[name],
+              },
+            ]),
+          ),
+        },
+        null,
+        2,
+      )}\n`,
+    );
+  }
+
+  it.skipIf(c5Dir === undefined || c5Dir === '' || sseC)(
     'C5 mode: writes A1/A2 to the CV bucket without SSE headers and B1/B2 to the snapshots bucket, and dumps them',
     async () => {
-      const dir = c5Dir ?? '';
-      const buffers = {
-        A1: randomBytes(MIB),
-        A2: randomBytes(KIB),
-        B1: randomBytes(MIB),
-        B2: randomBytes(KIB),
-      };
-      const names = Object.keys(buffers) as (keyof typeof buffers)[];
-      for (const a of names) {
-        for (const b of names) {
-          if (a !== b) {
-            expect(buffers[a].equals(buffers[b])).toBe(false);
+      await writeC5Set(async (objects, buffers) => {
+        // A1 y A2 con el adaptador real del CV: se comprueba que no manda ninguna cabecera SSE.
+        const puts: Record<string, unknown>[] = [];
+        const send = S3Client.prototype.send;
+        vi.spyOn(S3Client.prototype, 'send').mockImplementation(function (
+          this: S3Client,
+          ...args: Parameters<S3Client['send']>
+        ) {
+          const [command] = args;
+          if (command instanceof PutObjectCommand) {
+            puts.push({ ...command.input });
+          }
+          return send.apply(this, args);
+        } as S3Client['send']);
+        const store = new S3CvFileStore(
+          createS3CvFileUploader({ ...connection, bucket: config.S3_BUCKET }),
+        );
+        await store.put(objects.A1.key, buffers.A1, 'pdf');
+        await store.put(objects.A2.key, buffers.A2, 'pdf');
+        vi.restoreAllMocks();
+        expect(puts).toHaveLength(2);
+        for (const input of puts) {
+          for (const field of Object.keys(input)) {
+            expect(field).not.toMatch(/^(ServerSideEncryption|SSE)/);
           }
         }
-      }
+        return { mode: 'server' };
+      }, {});
+    },
+    120_000,
+  );
 
-      const stamp = `${Date.now().toString(16)}-${hex(4)}`;
-      const userId = objectIdLike();
-      const objects = {
-        A1: {
-          bucket: config.S3_BUCKET,
-          key: cvFileKey(userId, objectIdLike()),
-        },
-        A2: {
-          bucket: config.S3_BUCKET,
-          key: cvFileKey(userId, objectIdLike()),
-        },
-        B1: { bucket: config.S3_SNAPSHOTS_BUCKET, key: `c5-${stamp}/B1.bin` },
-        B2: { bucket: config.S3_SNAPSHOTS_BUCKET, key: `c5-${stamp}/B2.bin` },
+  it.skipIf(c5Dir === undefined || c5Dir === '' || !sseC)(
+    'C5 SSE-C mode: writes A1/A2 with SSE-C and requires the SSECustomerKeyMD5 echo, B1/B2 without SSE, and dumps them',
+    async () => {
+      const key = readSseCKey();
+      const keyMd5 = createHash('md5').update(key).digest('base64');
+      const sseCInput = {
+        SSECustomerAlgorithm: 'AES256',
+        SSECustomerKey: key.toString('base64'),
       };
-
-      // A1 y A2 con el adaptador real del CV: se comprueba que no manda ninguna cabecera SSE.
-      const puts: Record<string, unknown>[] = [];
-      const send = S3Client.prototype.send;
-      vi.spyOn(S3Client.prototype, 'send').mockImplementation(function (
-        this: S3Client,
-        ...args: Parameters<S3Client['send']>
-      ) {
-        const [command] = args;
-        if (command instanceof PutObjectCommand) {
-          puts.push({ ...command.input });
+      await writeC5Set(async (objects, buffers) => {
+        const echoes: Record<string, string> = {};
+        for (const name of ['A1', 'A2'] as const) {
+          let echo: string | undefined;
+          try {
+            const response = await client.send(
+              new PutObjectCommand({
+                Bucket: objects[name].bucket,
+                Key: objects[name].key,
+                Body: buffers[name],
+                ContentType: CV_FILE_TYPES.pdf.mimeType,
+                ...sseCInput,
+              }),
+            );
+            echo = response.SSECustomerKeyMD5;
+          } catch (error) {
+            // Para `c5.sh --sse-c`: quién rechazó (el servidor respondió o el SDK no llegó a enviar) y con qué, para
+            // clasificar un rechazo que nombre TLS o una conexión segura como `falla: TLS del servidor`.
+            writeFileSync(
+              join(c5Dir ?? '', 'sse-c-error.json'),
+              `${JSON.stringify(describeS3Error(error), null, 2)}\n`,
+            );
+            throw error;
+          }
+          // Un almacén que ignore las cabeceras SSE-C no devuelve el eco.
+          expect(echo, `${name}: SSECustomerKeyMD5 echo`).toBe(keyMd5);
+          echoes[name] = echo ?? '';
         }
-        return send.apply(this, args);
-      } as S3Client['send']);
-      const store = new S3CvFileStore(
-        createS3CvFileUploader({ ...connection, bucket: config.S3_BUCKET }),
-      );
-      await store.put(objects.A1.key, buffers.A1, 'pdf');
-      await store.put(objects.A2.key, buffers.A2, 'pdf');
-      vi.restoreAllMocks();
-      expect(puts).toHaveLength(2);
-      for (const input of puts) {
-        for (const field of Object.keys(input)) {
-          expect(field).not.toMatch(/^(ServerSideEncryption|SSE)/);
-        }
-      }
-
-      for (const name of ['B1', 'B2'] as const) {
-        await client.send(
-          new PutObjectCommand({
-            Bucket: objects[name].bucket,
-            Key: objects[name].key,
-            Body: buffers[name],
-            ContentType: 'application/octet-stream',
-          }),
-        );
-      }
-
-      // Lo que el almacén dice del cifrado de cada objeto: una observación, no la prueba (la prueba es leer el disco).
-      const reported: Record<string, string> = {};
-      for (const name of names) {
-        const head = await client.send(
-          new HeadObjectCommand({
-            Bucket: objects[name].bucket,
-            Key: objects[name].key,
-          }),
-        );
-        expect(head.ContentLength).toBe(buffers[name].length);
-        reported[name] = head.ServerSideEncryption ?? 'none reported';
-      }
-
-      mkdirSync(dir, { recursive: true });
-      for (const name of names) {
-        writeFileSync(join(dir, `${name}.bin`), buffers[name]);
-      }
-      writeFileSync(
-        join(dir, 'manifest.json'),
-        `${JSON.stringify(
-          {
-            endpoint: config.S3_ENDPOINT,
-            checksumPolicy: readChecksumPolicy(process.env),
-            objects: Object.fromEntries(
-              names.map((name) => [
-                name,
-                {
-                  ...objects[name],
-                  bytes: buffers[name].length,
-                  file: `${name}.bin`,
-                  serverSideEncryptionReported: reported[name],
-                },
-              ]),
-            ),
-          },
-          null,
-          2,
-        )}\n`,
-      );
+        return {
+          mode: 'sse-c',
+          sseC: { algorithm: 'AES256', keyMd5Echo: echoes },
+        };
+      }, sseCInput);
     },
     120_000,
   );

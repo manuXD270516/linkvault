@@ -1101,3 +1101,325 @@ política la quita `provision` («bucket policy removed») y `verify` vuelve a 0
 
 Al terminar: `docker compose -p os26-minio -f docs/object-store-matrix/minio.compose.yml down -v` (contenedor, red y
 volumen `os26-minio_object-store-data` borrados). La 2.9 y la 2.10 levantan el control de nuevo, desde un volumen vacío.
+
+### 2.9: `find-plaintext.mjs`, `c5.sh` y lectura del disco
+
+Scripts: `docs/object-store-matrix/find-plaintext.mjs` (tres ventanas de 64 bytes de cada buffer, en el principio, la
+mitad y el final, y la clave en tres formas: textual, contenido codificado y decodificada; un resultado por buffer y
+otro por la clave), `docs/object-store-matrix/c5.sh`, y sus dos módulos `c5-helpers.mjs` (compose, contenedor, K2,
+`GET` por bytes, clasificación) y `c5-key.mjs` (formas de la clave y K2 con el mismo formato que K1). `c5.sh` lanza
+el modo C5 de la suite con `vitest` directamente (sin Nx: ni caché ni el `.env`; las `S3_*` son las exportadas).
+
+Corridas del 2026-09-26 con el proyecto `os29-minio` en el puerto `19629` (el `9000` es el MinIO de desarrollo, que no
+se tocó), credenciales y `OBJECT_STORE_SSE_KEY=lv-sse:<base64 de 32 bytes aleatorios>` generadas en el scratchpad y
+exportadas con `COMPOSE_PROJECT_NAME=os29-minio`, `S3_ENDPOINT=http://localhost:19629`, `S3_REGION=us-east-1`,
+`S3_BUCKET=cvs` y `S3_SNAPSHOTS_BUCKET=snapshots`. Control levantado desde un volumen vacío (`up -d --wait`) y
+aprovisionado con `pnpm nx run api:object-store -- provision` (`provision: ok`, `cvs: default encryption set
+(AES256)`). Se omiten las líneas `↓` (tests saltados) de la suite.
+
+**Lectura del disco y (b)-(c) sobre el control** (la misma corrida cierra la 2.10):
+
+```text
+$ C5_WORKDIR=<scratchpad>/r3-main bash docs/object-store-matrix/c5.sh docs/object-store-matrix/minio.compose.yml object-store-data
+c5: mode server, compose docs/object-store-matrix/minio.compose.yml, volume object-store-data, workdir <scratchpad>/r3-main
+c5: project os29-minio, docker volume os29-minio_object-store-data, key entry MINIO_KMS_SECRET_KEY (from OBJECT_STORE_SSE_KEY)
+container ok: one volume (os29-minio_object-store-data), no writable bind
+c5: 1. contract suite, C5 server mode (vitest, output in <scratchpad>/r3-main/suite.log)
+   ✓ |api| src/infrastructure/storage/s3.s3-contract.spec.ts > S3 contract of api (real store) > C5 mode: writes A1/A2 to the CV bucket without SSE headers and B1/B2 to the snapshots bucket, and dumps them 73ms
+   Test Files  1 passed (1)
+   Tests  1 passed | 4 skipped (5)
+   A1 cvs 1048576 bytes, lo que dice el almacén: AES256
+   A2 cvs 1024 bytes, lo que dice el almacén: AES256
+   B1 snapshots 1048576 bytes, lo que dice el almacén: none reported
+   B2 snapshots 1024 bytes, lo que dice el almacén: none reported
+c5: 2. docker compose stop object-store
+c5:    tar of volume os29-minio_object-store-data with alpine:3
+c5: 3. find-plaintext
+   find-plaintext: vol.tar, 4309504 bytes leídos
+   A1 0/3  (1048576 bytes; ventanas de 64 bytes en 0, 524256, 1048512)
+   A2 0/3  (1024 bytes; ventanas de 64 bytes en 0, 480, 960)
+   B1 3/3  (1048576 bytes; ventanas de 64 bytes en 0, 524256, 1048512)
+   B2 3/3  (1024 bytes; ventanas de 64 bytes en 0, 480, 960)
+   clave 0/3  (textual no; contenido no; decodificada (base64, 32 bytes) no)
+c5: 4. disk reading
+c5:    disco: ok (A1 0/3, A2 0/3, B1 3/3, B2 3/3)
+c5:    (c) ok: la clave, 0/3 formas en el volumen (textual; contenido; decodificada (base64, 32 bytes))
+c5: (b) copy project c5copy-d659aa: container created with K2 (same format as K1), volume c5copy-d659aa_object-store-data restored from vol.tar
+   K2 MINIO_KMS_SECRET_KEY of the container: the expected key
+c5: (b) K2 on the copy
+c5:    original object-store still stopped: the endpoint reaches the copy
+   almacén listo en 0.0 s
+c5:    K2: started
+   K2 A1: rechazado sin bytes (HTTP 400 kms:InvalidCiphertextException)
+   K2 B1: igual por bytes (1048576 bytes, sha256 2c07445245d6f332)
+c5: (b) K1 on the same copy (the compose's own key: OBJECT_STORE_SSE_KEY as the compose resolves it)
+   K1 MINIO_KMS_SECRET_KEY of the container: the expected key
+   almacén listo en 0.0 s
+c5:    K1: started
+   K1 A1: igual por bytes (1048576 bytes, sha256 f8a7b10698b3a666)
+   K1 B1: igual por bytes (1048576 bytes, sha256 2c07445245d6f332)
+c5: copy project c5copy-d659aa removed (container, network and volume)
+c5: original object-store started again (up -d --no-deps object-store)
+c5: (b) b1 (K2: arranca, A1 rechazado sin bytes, B1 leído; K1 sobre la misma copia: A1 y B1 idénticos)
+c5: (a) with the key in the environment the product uses that key: shown by (b) and (c)
+c5: resultado: nativo (disco: ok (A1 0/3, A2 0/3, B1 3/3, B2 3/3); (b) b1 (K2: arranca, A1 rechazado sin bytes, B1 leído; K1 sobre la misma copia: A1 y B1 idénticos); (c) ok: la clave, 0/3 formas en el volumen (textual; contenido; decodificada (base64, 32 bytes)))
+exit=0
+```
+
+**Negativas: `c5.sh` sale con 2 nombrando la causa**, con copias de `minio.compose.yml` en el scratchpad que añaden un
+segundo volumen al servicio, un bind escribible (`./bind-dir:/bind`), `name: os29-explicit-name` en el volumen, o
+cambian la entrada de la clave por `MINIO_KMS_SECRET_KEY: ${OBJECT_STORE_SSE_KEY:-}` y se ejecuta sin la variable. Las
+cuatro, con el control en marcha: salen en la lectura del compose, antes de `ps`, `stop` o la suite (`docker ps`
+después: `os29-minio-object-store-1 Up About a minute (healthy)`).
+
+```text
+$ c5.sh <scratchpad>/variants/minio.two-volumes.compose.yml object-store-data
+c5: mode server, compose <scratchpad>/variants/minio.two-volumes.compose.yml, volume object-store-data, workdir <scratchpad>/r2-two-volumes
+c5: refused: 2 volumes mounted (object-store-data, extra-data); exactly one is required
+exit=2
+$ c5.sh <scratchpad>/variants/minio.writable-bind.compose.yml object-store-data
+c5: mode server, compose <scratchpad>/variants/minio.writable-bind.compose.yml, volume object-store-data, workdir <scratchpad>/r2-writable-bind
+c5: refused: writable bind mount <scratchpad>\variants\bind-dir -> /bind
+exit=2
+$ c5.sh <scratchpad>/variants/minio.explicit-name.compose.yml object-store-data
+c5: mode server, compose <scratchpad>/variants/minio.explicit-name.compose.yml, volume object-store-data, workdir <scratchpad>/r2-explicit-name
+c5: refused: volume "object-store-data" declares an explicit name: (the copy of test (b) would mount the original)
+exit=2
+$ env -u OBJECT_STORE_SSE_KEY c5.sh <scratchpad>/variants/minio.empty-key.compose.yml object-store-data
+c5: mode server, compose <scratchpad>/variants/minio.empty-key.compose.yml, volume object-store-data, workdir <scratchpad>/r2-empty-key
+c5: refused: the key entry MINIO_KMS_SECRET_KEY resolves empty (K1)
+exit=2
+```
+
+El `name:` explícito se lee del **YAML crudo** (paquete `yaml` del repositorio): el JSON de `config`, también con
+`--no-interpolate`, pone `name: <proyecto>_<clave>` en todo volumen con nombre (medido en la 2.6), así que el compose
+sin `name:` pasa (corrida de arriba) y el que lo declara se rechaza.
+
+**Compose con un servicio extra** (`extra`: `alpine:3` con `sleep 86400`), proyecto `os29-extra` en el puerto `19630`
+(`S3_ENDPOINT=http://localhost:19630`), levantado entero con `up -d --wait` y aprovisionado (`provision: ok`). La
+lectura sale igual y el servicio extra queda intacto:
+
+```text
+$ docker inspect -f 'extra {{.Id}} StartedAt={{.State.StartedAt}} Running={{.State.Running}}' <extra>     # antes
+extra 4047b6708dfa82d75fdd29c5be4e3de30e8c8eb6d24c2de7bfa325418c538ec4 StartedAt=2026-09-26T22:57:48.028831456Z Running=true
+$ C5_WORKDIR=<scratchpad>/r3-extra bash docs/object-store-matrix/c5.sh <scratchpad>/variants/minio.extra-service.compose.yml object-store-data
+c5: mode server, compose <scratchpad>/variants/minio.extra-service.compose.yml, volume object-store-data, workdir <scratchpad>/r3-extra
+c5: project os29-extra, docker volume os29-extra_object-store-data, key entry MINIO_KMS_SECRET_KEY (from OBJECT_STORE_SSE_KEY)
+container ok: one volume (os29-extra_object-store-data), no writable bind
+c5: 1. contract suite, C5 server mode (vitest, output in <scratchpad>/r3-extra/suite.log)
+   ✓ |api| src/infrastructure/storage/s3.s3-contract.spec.ts > S3 contract of api (real store) > C5 mode: writes A1/A2 to the CV bucket without SSE headers and B1/B2 to the snapshots bucket, and dumps them 128ms
+   Test Files  1 passed (1)
+   Tests  1 passed | 4 skipped (5)
+   A1 cvs 1048576 bytes, lo que dice el almacén: AES256
+   A2 cvs 1024 bytes, lo que dice el almacén: AES256
+   B1 snapshots 1048576 bytes, lo que dice el almacén: none reported
+   B2 snapshots 1024 bytes, lo que dice el almacén: none reported
+c5: 2. docker compose stop object-store
+c5:    tar of volume os29-extra_object-store-data with alpine:3
+c5: 3. find-plaintext
+   find-plaintext: vol.tar, 4256256 bytes leídos
+   A1 0/3  (1048576 bytes; ventanas de 64 bytes en 0, 524256, 1048512)
+   A2 0/3  (1024 bytes; ventanas de 64 bytes en 0, 480, 960)
+   B1 3/3  (1048576 bytes; ventanas de 64 bytes en 0, 524256, 1048512)
+   B2 3/3  (1024 bytes; ventanas de 64 bytes en 0, 480, 960)
+   clave 0/3  (textual no; contenido no; decodificada (base64, 32 bytes) no)
+c5: 4. disk reading
+c5:    disco: ok (A1 0/3, A2 0/3, B1 3/3, B2 3/3)
+c5:    (c) ok: la clave, 0/3 formas en el volumen (textual; contenido; decodificada (base64, 32 bytes))
+c5: (b) copy project c5copy-ebacd8: container created with K2 (same format as K1), volume c5copy-ebacd8_object-store-data restored from vol.tar
+   K2 MINIO_KMS_SECRET_KEY of the container: the expected key
+c5: (b) K2 on the copy
+c5:    original object-store still stopped: the endpoint reaches the copy
+   almacén listo en 0.0 s
+c5:    K2: started
+   K2 A1: rechazado sin bytes (HTTP 400 kms:InvalidCiphertextException)
+   K2 B1: igual por bytes (1048576 bytes, sha256 00e6db8df789bbaa)
+c5: (b) K1 on the same copy (the compose's own key: OBJECT_STORE_SSE_KEY as the compose resolves it)
+   K1 MINIO_KMS_SECRET_KEY of the container: the expected key
+   almacén listo en 0.0 s
+c5:    K1: started
+   K1 A1: igual por bytes (1048576 bytes, sha256 22e6d227e4f37f81)
+   K1 B1: igual por bytes (1048576 bytes, sha256 00e6db8df789bbaa)
+c5: copy project c5copy-ebacd8 removed (container, network and volume)
+c5: original object-store started again (up -d --no-deps object-store)
+c5: (b) b1 (K2: arranca, A1 rechazado sin bytes, B1 leído; K1 sobre la misma copia: A1 y B1 idénticos)
+c5: (a) with the key in the environment the product uses that key: shown by (b) and (c)
+c5: resultado: nativo (disco: ok (A1 0/3, A2 0/3, B1 3/3, B2 3/3); (b) b1 (K2: arranca, A1 rechazado sin bytes, B1 leído; K1 sobre la misma copia: A1 y B1 idénticos); (c) ok: la clave, 0/3 formas en el volumen (textual; contenido; decodificada (base64, 32 bytes)))
+exit=0
+$ docker inspect -f 'extra {{.Id}} StartedAt={{.State.StartedAt}} Running={{.State.Running}}' <extra>     # después
+extra 4047b6708dfa82d75fdd29c5be4e3de30e8c8eb6d24c2de7bfa325418c538ec4 StartedAt=2026-09-26T22:57:48.028831456Z Running=true
+$ node -e "…compara las dos líneas…"
+servicio extra intacto (mismo id y StartedAt): true
+```
+
+(La primera corrida sobre esta copia salió `no ejecutado` por un error de sintaxis de la comprobación «el original
+sigue detenido» recién añadida —un `[` sin cerrar—, antes de pedir nada a la copia; el original volvió a arrancar, la
+copia se borró y el servicio extra quedó con el mismo id y `StartedAt`. Corregida, la de arriba es la segunda. Otro
+defecto visto al escribir el script: con `MSYS_NO_PATHCONV=1`, Docker recibía la ruta POSIX del compose sin convertir;
+`c5.sh` la pasa ahora como ruta del host.)
+
+**Falsación del método: el mismo control sin cifrado por defecto en `cvs`.** Un `DeleteBucketEncryption` de `cvs`
+con el SDK; `c5.sh` tiene que ver el texto en claro y cortar en el disco. Se restauró con `provision` y `verify`:
+
+```text
+$ node --input-type=module -e "…DeleteBucketEncryptionCommand cvs y GetBucketEncryption…"
+DeleteBucketEncryption cvs: ok; GetBucketEncryption: ServerSideEncryptionConfigurationNotFoundError
+exit=0
+$ C5_WORKDIR=<scratchpad>/r3-falsify bash docs/object-store-matrix/c5.sh docs/object-store-matrix/minio.compose.yml object-store-data
+c5: mode server, compose docs/object-store-matrix/minio.compose.yml, volume object-store-data, workdir <scratchpad>/r3-falsify
+c5: project os29-minio, docker volume os29-minio_object-store-data, key entry MINIO_KMS_SECRET_KEY (from OBJECT_STORE_SSE_KEY)
+container ok: one volume (os29-minio_object-store-data), no writable bind
+c5: 1. contract suite, C5 server mode (vitest, output in <scratchpad>/r3-falsify/suite.log)
+   ✓ |api| src/infrastructure/storage/s3.s3-contract.spec.ts > S3 contract of api (real store) > C5 mode: writes A1/A2 to the CV bucket without SSE headers and B1/B2 to the snapshots bucket, and dumps them 130ms
+   Test Files  1 passed (1)
+   Tests  1 passed | 4 skipped (5)
+   A1 cvs 1048576 bytes, lo que dice el almacén: none reported
+   A2 cvs 1024 bytes, lo que dice el almacén: none reported
+   B1 snapshots 1048576 bytes, lo que dice el almacén: none reported
+   B2 snapshots 1024 bytes, lo que dice el almacén: none reported
+c5: 2. docker compose stop object-store
+c5:    tar of volume os29-minio_object-store-data with alpine:3
+c5: 3. find-plaintext
+   find-plaintext: vol.tar, 6386176 bytes leídos
+   A1 3/3  (1048576 bytes; ventanas de 64 bytes en 0, 524256, 1048512)
+   A2 3/3  (1024 bytes; ventanas de 64 bytes en 0, 480, 960)
+   B1 3/3  (1048576 bytes; ventanas de 64 bytes en 0, 524256, 1048512)
+   B2 3/3  (1024 bytes; ventanas de 64 bytes en 0, 480, 960)
+   clave 0/3  (textual no; contenido no; decodificada (base64, 32 bytes) no)
+c5: 4. disk reading
+c5:    disco: falla: texto en claro del CV en el volumen (A1, A2); A1 3/3, A2 3/3, B1 3/3, B2 3/3
+c5: resultado: falla (disco: texto en claro del CV; no se ejecutan (a)-(c))
+c5: original object-store started again (up -d --no-deps object-store)
+exit=1
+$ pnpm nx run api:object-store -- provision
+ok    cvs: default encryption set (AES256)
+provision: ok
+exit=0
+$ pnpm nx run api:object-store -- verify
+ok    cvs: default encryption (AES256)
+verify: ok
+exit=0
+```
+
+**El método acierta sobre el cifrado conocido:** con el cifrado por defecto del bucket, A1 y A2 0/3 y B1 y B2 3/3 (el
+control aparece entero, así que la lectura vale para MinIO de un solo disco); sin él, A1 y A2 3/3 y `falla` sin
+ejecutar (a)-(c). Los dos caminos de escritura salen en el `tar`: el objeto de 1 MiB va a un `part.1` y el de 1 KiB, en
+línea dentro de `xl.meta` (listado del `tar` de `r3-main`, objetos B de una corrida anterior sobre el mismo volumen):
+
+```text
+$ tar tvf <scratchpad>/r3-main/vol.tar      # entradas de snapshots/c5-*
+-rw-r--r-- root/root       393 2026-09-26 18:55 ./snapshots/c5-1a0dfee80a3-05c04af1/B1.bin/xl.meta
+-rw-r--r-- root/root   1048608 2026-09-26 18:55 ./snapshots/c5-1a0dfee80a3-05c04af1/B1.bin/eaaae045-7e11-4820-a115-63270fb6bb91/part.1
+-rw-r--r-- root/root      1488 2026-09-26 18:55 ./snapshots/c5-1a0dfee80a3-05c04af1/B2.bin/xl.meta
+```
+
+### 2.10: (a), (b) y (c) en el control
+
+Salida en la corrida principal de la 2.9 (`r3-main`, arriba), que encadena (c) y (b) sobre el `tar` de esa misma
+lectura:
+
+- **(b) = b1, no b2.** Con K2 (`lv-sse:<otro base64 de 32 bytes>`: mismo nombre de clave y formato, contenido
+  distinto) sobre la copia restaurada desde el `tar`, MinIO **arranca**; el `GET` de A1 se rechaza sin bytes
+  (`HTTP 400 kms:InvalidCiphertextException`) y B1 vuelve idéntico; con K1 sobre **la misma copia**, A1 y B1 vuelven
+  idénticos por bytes. La copia monta su propio volumen (`c5copy-<hex>_object-store-data`, en otro proyecto de
+  Compose), el original sigue detenido mientras tanto (comprobado con `docker inspect`) y el contenedor de la copia
+  lleva K2 y después K1 en `MINIO_KMS_SECRET_KEY` (comprobado con `docker inspect` antes de cada arranque). Design D2
+  esperaba b2 (que no arrancara) y admite b1: esta versión de MinIO no sella con la clave del KMS nada que necesite para
+  arrancar, y sí la clave de cada objeto. **No es la parada de la 2.10** (que era «ni b1 ni b2»).
+- **(c)** la clave, 0/3 formas en el `tar` (textual `lv-sse:…`, su base64 y los 32 bytes decodificados).
+- **(a)** con `MINIO_KMS_SECRET_KEY` en el entorno, MinIO usa **esa**: lo demuestran (b) —cambiarla deja A1 ilegible y
+  volver a ella lo devuelve— y (c) —no hay otra clave suya en el volumen que la sustituya—.
+- **Resultado del control: `nativo`** (disco, (b) b1, (c)). Repetido en la copia con servicio extra: `nativo`, b1.
+
+**Observación de (a), que no decide:** MinIO **sin** la clave, con una copia de `minio.compose.yml` sin la línea de
+`MINIO_KMS_SECRET_KEY`, proyecto `os29-nokey` en el puerto `19631` y un volumen **vacío** nuevo
+(`os29-nokey_object-store-data`), `up -d --wait` sano (`environment: MINIO_ROOT_PASSWORD, MINIO_ROOT_USER`):
+
+```text
+$ pnpm nx run api:object-store -- provision
+ok    cvs: bucket created
+ok    cvs: no lifecycle configuration (removed if there was one)
+FAIL  cvs: default encryption: NotImplemented (HTTP 501)
+ok    cvs: no bucket policy
+ok    snapshots: bucket created
+ok    snapshots: no lifecycle configuration (removed if there was one)
+ok    snapshots: no bucket policy
+provision: FAILED (1): cvs: default encryption: NotImplemented (HTTP 501)
+exit=1
+```
+
+Sin clave, MinIO arranca y rechaza el cifrado por defecto del bucket con `NotImplemented` (501), y `provision` lo
+nombra y sale 1: no queda un bucket de CV sin cifrar que parezca aprovisionado. En los composes, el
+`${OBJECT_STORE_SSE_KEY:?…}` ya impide arrancar así.
+
+Al terminar: `down -v` de `os29-minio`, `os29-extra` y `os29-nokey`; los proyectos `c5copy-*` los borra `c5.sh`
+(`copy project … removed`). `docker ps -a`, `docker volume ls` y `docker network ls` sin `os29` ni `c5copy`: 0, 0 y 0.
+
+## SSE-C y TLS (tareas 2.9b y 3.7b)
+
+Medido el día 2 (design D2, «SSE-C y TLS»), el 2026-09-26, con `@aws-sdk/client-s3` 3.1134.0.
+
+**(iii) El SDK instalado por `http://` envía SSE-C; no lanza.** Test permanente de `api`,
+`apps/api/src/infrastructure/storage/s3-sse-c-over-http.spec.ts`, contra el servidor HTTP en proceso de la 2.5 (movido a
+`apps/api/src/test-support/fake-store-server.ts`, que ahora registra las cabeceras de cada petición): un `PutObject`
+con SSE-C del cliente de la fábrica llega al servidor por `http://127.0.0.1:<puerto>` con las tres cabeceras
+`x-amz-server-side-encryption-customer-*` (algoritmo `AES256`, la clave en base64 y su MD5). Falsación: invertir la
+afirmación (`expect(thrown).toBeDefined()` y ningún `PUT` recibido), verla caer y restaurar:
+
+```text
+$ pnpm nx run api:test --skip-nx-cache -- s3-sse-c-over-http --reporter=verbose      # afirmación invertida
+× |api| src/infrastructure/storage/s3-sse-c-over-http.spec.ts > SSE-C over http:// with the installed SDK > sends a PutObject with the three SSE-C headers instead of throwing without sending 37ms
+→ expected undefined to be defined
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+Test Files  1 failed (1)
+Tests  1 failed (1)
+exit=1
+$ pnpm nx run api:test --skip-nx-cache -- s3-sse-c-over-http --reporter=verbose      # restaurada
+✓ |api| src/infrastructure/storage/s3-sse-c-over-http.spec.ts > SSE-C over http:// with the installed SDK > sends a PutObject with the three SSE-C headers instead of throwing without sending 34ms
+Test Files  1 passed (1)
+Tests  1 passed (1)
+exit=0
+```
+
+**La salida SSE-C existe por el lado del SDK**: la 3.8 no se cierra por el SDK; que exista contra un candidato depende
+de su servidor.
+
+**(i) Modo SSE-C de la suite de contrato de `api`** (`S3_CONTRACT_C5_SSE_C=1` con `S3_CONTRACT_C5_DIR` y la clave de
+prueba en `S3_CV_SSE_C_KEY`, base64 de 32 bytes, que genera `c5.sh --sse-c`): A1 y A2 con SSE-C por el cliente de la
+fábrica, y cada respuesta tiene que traer `SSECustomerKeyMD5` igual al MD5 de la clave; si el `PUT` se rechaza, deja
+`sse-c-error.json` (lado, código, estado y mensaje). Contra el control por `http://` no pasa del primer `PUT` (salida de
+abajo): el eco solo se podrá ver con TLS, en el control positivo de la 3.7b, si la 3.8 llega a ejecutarse.
+
+**(ii) y (iv) `c5.sh --sse-c` contra el control de MinIO por `http://`: `falla: TLS del servidor`** (control negativo
+de la clasificación). El rechazo llega en el primer `PUT`, antes de detener nada:
+
+```text
+$ C5_WORKDIR=<scratchpad>/r3-ssec bash docs/object-store-matrix/c5.sh --sse-c docs/object-store-matrix/minio.compose.yml object-store-data
+c5: mode sse-c, compose docs/object-store-matrix/minio.compose.yml, volume object-store-data, workdir <scratchpad>/r3-ssec
+c5: project os29-minio, docker volume os29-minio_object-store-data
+container ok: one volume (os29-minio_object-store-data), no writable bind
+c5: 1. contract suite, C5 sse-c mode (vitest, output in <scratchpad>/r3-ssec/suite.log)
+   × |api| src/infrastructure/storage/s3.s3-contract.spec.ts > S3 contract of api (real store) > C5 SSE-C mode: writes A1/A2 with SSE-C and requires the SSECustomerKeyMD5 echo, B1/B2 without SSE, and dumps them 36ms
+   → Requests specifying Server Side Encryption with Customer provided keys must be made over a secure connection.
+   ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+   Test Files  1 failed (1)
+   Tests  1 failed | 4 skipped (5)
+SSE-C: rechazado por el servidor (HTTP 400 InvalidRequest): Requests specifying Server Side Encryption with Customer provided keys must be made over a secure connection.
+SSE-C: falla: TLS del servidor
+c5: resultado: falla: TLS del servidor (el almacén rechaza SSE-C por http://localhost:19629)
+exit=1
+$ cat <scratchpad>/r3-ssec/objects/sse-c-error.json
+{
+  "side": "server",
+  "name": "InvalidRequest",
+  "code": "InvalidRequest",
+  "httpStatus": 400,
+  "message": "Requests specifying Server Side Encryption with Customer provided keys must be made over a secure connection."
+}
+```
+
+`c5.sh --sse-c` clasifica como `falla: TLS del servidor` un rechazo **del servidor** (con respuesta HTTP) cuyo código o
+mensaje nombra TLS, SSL, HTTPS o una conexión segura; uno del SDK sin respuesta, como `falla (TLS)` del SDK. Si el
+`PUT` pasa, sigue como el modo `server`: lectura del disco con la clave SSE-C de 32 bytes y su base64 como formas de
+(c), y (b) sobre el original rearrancado (A1 sin clave y con otra clave, rechazados sin bytes; B1 leído; A1 con la
+clave, idéntico); resultado `salida`.
