@@ -452,40 +452,53 @@ changes:
       Fuera: provisionar servidor de staging y sus secretos —eso es la fila 35—, Traefik/DNS y publicar en registries
       de extensiones.
   - name: object-store
-    adrs: [051, 048, 006, 022, 028, 033]
+    adrs: [051, 052, 048, 006, 022, 028, 033]
     agents: [devops, backend-dev]
     scope: |
       Fila 35a, primera pieza de la fila 35 (ADR-051 §1: la fila se ejecuta como 35a → 35b → 35c y la precedencia
       de ADR-048 §Consecuencias aplica a la fila entera; ningún change de otra fila entra entre medias). `main`
       sigue en "verificado sin destino" al terminar; lo que se entrega es la precondición del host `arm64`.
       Es la letra **(f)** del `scope` original de la fila 35 (ver la nota de trazabilidad de `staging-host`).
+      Decisiones en **ADR-052** (debate de tres iteraciones, 2026-09-26).
       **Sustituir MinIO.** MinIO community está archivado desde febrero de 2026, sin parches ni imágenes, y nuestro
-      espejo (`ghcr.io/manuxd270516/linkvault-minio`, ADR-048 §8) es solo `amd64`. Candidatos, **en este orden**:
-      SeaweedFS, RustFS y Garage. Se elige con una **matriz de requisitos ejecutada**, candidato a candidato,
-      parando en el primero que lo cumpla todo: SSE en reposo, expiración, `GET` anónimo rechazado, imágenes
-      `amd64` y `arm64` descargables sin credenciales, y los tests reales de la app con el SDK actual (ojo con los
-      checksums CRC32 que `@aws-sdk/client-s3` envía por defecto).
-      **Aprovisionamiento** independiente del proveedor, por la API S3 (script node de un solo uso en la imagen de
-      `api`), no con `mc`. **Salidas si falta algo:** sin SSE-S3, SSE-C desde `s3-cv-file.store`/`reader` con la
-      clave en `.env`, copiada junto a `AI_VAULT_KEY`; sin expiración, barrido en el `worker` más un MODIFIED de
-      «Retención de snapshots de enriquecimiento» (`cv/documents`).
-      **Healthcheck del almacén** de solo lectura (antes grupo 7 / design D5 de `staging-host`): el de hoy
-      aprovisiona para contestar si está sano.
-      **Deltas:** MODIFIED de «Infraestructura con un comando» (`platform/local-environment`) y de «Compose de
-      producción» (`platform/production-deploy`) sin "MinIO por defecto"; ADDED «Las imágenes de la pila se pueden
-      descargar en la arquitectura del destino», con el script que compara las plataformas del registro con la
-      del host (35b lo coloca en el orden del despliegue). RUNBOOK e `infra/README.md` sin `mc`.
-      **Paso a `arm64`:** `build-verify-publish` de `cd-staging` en `runs-on: ubuntu-24.04-arm`; construye,
-      verifica y publica la misma imagen de una sola plataforma, y la identidad por digest no cambia. Escenario
-      «se verifica la arquitectura del destino, no otra». **Arquitectura ausente** ("no matching manifest" o
-      plataforma ausente) se clasifica `artifact`, no `environment`, con escenario y falsación.
-      **Medir** los minutos de CI de `arm64` frente al plan Free del repositorio privado.
-      **Plazo de arranque:** recalcular el `--wait-timeout` de 360 s de `infra/ci/verify-artifact.sh`, que sale de
-      los tiempos de MinIO (20 + 12×10 = 140 s encadenados con api/worker), con los del almacén nuevo; `staging-host`
-      lee ese plazo en `infra/deploy/deploy.sh` en vez de copiarlo.
+      espejo (`ghcr.io/manuxd270516/linkvault-minio`, ADR-048 §8) es solo `amd64`. Antes de nada se ejecuta el
+      corredor `ubuntu-24.04-arm` en este repositorio privado; si no está, se para y pregunta.
+      **Matriz ejecutada, por fases y con parada** sobre SeaweedFS, RustFS y Garage (MinIO solo como control del
+      arnés): el día 1, imágenes `amd64`/`arm64` sin credenciales, forja mantenida y la siembra de la expiración de
+      los tres; después, el cribado en el orden de la lista, que se detiene cuando el puntero ya no puede cambiar
+      (sin CLI del producto, sin acceso anónimo, cifrado que **protege**:
+      disco sin el CV y con un control, otra clave que no lo lee o con la que no arranca, clave fuera del disco); los
+      tests reales de la app, el healthcheck de solo lectura y el tiempo hasta sano solo en el candidato que señala el
+      puntero; y un veredicto con la expiración leída a las 48 h o 96 h. La regla de parada prima el cifrado nativo de
+      los CV (confirmada por el usuario antes de `/opsx:apply`); un punto de revisión a los 7 días solo para el change
+      si nadie da cifrado nativo; sin nadie apto, se para y vuelve al usuario. Evidencia en `docs/object-store-matrix/`.
+      **Salidas escritas en la spec:** SSE-C vía un middleware de la fábrica del cliente S3, con la clave junto a
+      `AI_VAULT_KEY`, **solo si** el cifrado del almacén no se ha podido demostrar con las pruebas de la matriz; y, si
+      la expiración no se observa, un **barrido** diario de snapshots en el `worker`, que se niega si los dos buckets
+      coinciden.
+      **Aprovisionamiento** por la API S3 con `object-store provision`/`verify` en la imagen de `api`, después del
+      `up`; `verify` estricto (una sola regla habilitada, rechazo anónimo solo por falta de autenticación). Healthcheck
+      del almacén de solo lectura. Una fábrica de cliente S3 por proceso, con plazos y política de checksums, y suites
+      de contrato.
+      **Deltas:** ADDED `platform/object-store`; MODIFIED de «Infraestructura con un comando»
+      (`platform/local-environment`), «Compose de producción» y ADDED «Las imágenes de la pila se pueden descargar en
+      la arquitectura del destino» (`platform/production-deploy`), «CD a staging en main» (`platform/ci-pipeline`),
+      «Bucket de CV cifrado en reposo», «Retención de snapshots» y «Recogida de objetos huérfanos documentada»
+      (`cv/documents`), y el seed (`platform/demo-seed`).
+      **Paso a `arm64`:** `build-verify-publish` de `cd-staging` en `ubuntu-24.04-arm`, con la identidad por digest y
+      su falsación repetidas en `arm64`. `infra/deploy/check-image-platforms.sh` compara las plataformas del registro
+      con las del destino; una arquitectura ausente es `artifact`, no `environment`. Minutos de CI medidos.
+      **Plazo de arranque** recalculado con tiempos medidos, en la línea `WAIT_TIMEOUT` de
+      `infra/ci/verify-artifact.sh`, que 35b lee.
+      **Operación sin `mc` diferida:** arrancar, desplegar y verificar no usan `mc`; listar, borrar y recoger huérfanos
+      pasan a un change posterior (se propondrá al archivar este) y sus secciones del RUNBOOK quedan marcadas como
+      pendientes.
+      **Traslados ejecutados** en `staging-host` y en el `scope` de `verify-reusable-workflow`, en el mismo PR, con base
+      en `main` (que ya contiene la #65).
       **Orden de archivo:** 35a y 35c modifican los dos «CD a staging en main» (`platform/ci-pipeline`); el orden por
       archivo es **35a → 35c**, y 35c redacta su MODIFIED sobre el texto que deje 35a.
-      Fuera: mantener el espejo de MinIO (se retira), migrar objetos (no hay usuarios todavía), el host.
+      Fuera: mantener el espejo de MinIO (se retira sin borrar el paquete), migrar objetos (no hay usuarios todavía),
+      el host (35b) y `cd-prod` (35c).
   - name: staging-host
     adrs: [051, 048, 033, 034, 035, 032]
     agents: [devops, backend-dev, frontend-dev, ai-engineer]
@@ -594,6 +607,12 @@ changes:
       `build-verify-publish` en `runs-on: ubuntu-24.04-arm`, necesario para una `v0.1.0` solo `arm64`.
       `GHCR_READ_*` no entra en su preflight: son secretos de repositorio compartidos con staging, y cada tag `v*`
       quedaría `partial` y en rojo.
+      **`deploy-prod` hereda de `object-store` (traslado de su debate, iteración 1):** la comprobación de plataformas
+      (`bash infra/deploy/check-image-platforms.sh`, salidas 0/3/4/2) después del login y antes del `pull`; tras el
+      `up`, `docker compose … run --rm --no-deps api node object-store.js provision` y después la misma orden con
+      `verify`, con el compose instalado; y, en `cd-prod`, el plazo de arranque leído de la línea
+      `WAIT_TIMEOUT="${VERIFY_WAIT_TIMEOUT:-<n>}"` de `infra/ci/verify-artifact.sh` (validado con `^[0-9]{2,4}$`, como
+      en 35b) en vez del `--wait-timeout` literal de hoy.
       Fuera: despliegue a un host de producción, matriz multiarquitectura.
   - name: golden-sets-reales
     adrs: [019, 018, 030]

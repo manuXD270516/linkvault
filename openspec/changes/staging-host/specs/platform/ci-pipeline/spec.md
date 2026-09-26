@@ -157,7 +157,9 @@ El orden SHALL ser el que deja la pila en ejecución intacta mientras quede algo
 3. autenticarse contra el registro, comprobar que las imágenes existen para la arquitectura del host y descargarlas,
    **usando la configuración recién copiada**, porque es la que declara qué imágenes hacen falta;
 4. solo entonces instalar esa configuración en su sitio;
-5. y arrancar.
+5. y arrancar con la configuración instalada, dejando el almacén de objetos aprovisionado y comprobado con las órdenes
+   del arranque documentado (`platform/production-deploy`, «Compose de producción»); si cualquiera de las dos falla, el
+   despliegue SHALL fallar nombrándola.
 
 - Lo que el repositorio no contiene y vive solo en el host —el fichero de entorno con los secretos, los volúmenes de
   datos, el almacén de certificados— NO SHALL modificarse ni borrarse al llevar la configuración.
