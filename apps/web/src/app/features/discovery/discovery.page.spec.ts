@@ -125,7 +125,19 @@ describe('DiscoveryPage', () => {
     await harness.fixture.whenStable();
   }
 
-  async function searchAndSave(response: SaveLinkResponse): Promise<void> {
+  /** Abre el selector de destino, devuelve sus opciones y lo cierra eligiendo la primera. */
+  async function destinationOptions(): Promise<string[]> {
+    host().querySelector<HTMLElement>('[data-testid="discovery-destination"]')!.click();
+    await settle();
+    const options = Array.from(document.body.querySelectorAll<HTMLElement>('mat-option'));
+    const labels = options.map((option) => option.textContent?.trim() ?? '');
+    options[0]!.click();
+    await settle();
+    return labels;
+  }
+
+  /** Busca, guarda el primer hit y devuelve el body del `POST /api/links`. */
+  async function searchAndSave(response: SaveLinkResponse): Promise<unknown> {
     await submitSearch('Nest');
     http
       .expectOne((req) => req.method === 'GET' && req.url === '/api/discovery/search')
@@ -135,9 +147,11 @@ describe('DiscoveryPage', () => {
 
     host().querySelector<HTMLButtonElement>('[data-testid="discovery-save"]')!.click();
     await settle();
-    http.expectOne({ method: 'POST', url: '/api/links' }).flush(response);
+    const save = http.expectOne({ method: 'POST', url: '/api/links' });
+    save.flush(response);
     await settle();
     await harness.fixture.whenStable();
+    return save.request.body;
   }
 
   function createdText(): string {
@@ -389,6 +403,25 @@ describe('DiscoveryPage', () => {
     const confirmation = alreadyText();
     expect(confirmation).toContain('el grupo');
     expect(confirmation).not.toContain('Ya la tenías');
+  });
+
+  it('offers only private when the user has no groups', async () => {
+    expect(await destinationOptions()).toEqual(['Solo para mí']);
+  });
+
+  it('warns, offers only private and still saves privately when listing groups fails', async () => {
+    const reload = TestBed.inject(GroupsStore).load();
+    const error = apiError('internal_error', 500);
+    http.expectOne({ method: 'GET', url: '/api/groups' }).flush(error.body, error.options);
+    await reload;
+    await settle();
+    await harness.fixture.whenStable();
+
+    expect(host().querySelector('[data-testid="discovery-groups-warning"]')).not.toBeNull();
+    expect(await destinationOptions()).toEqual(['Solo para mí']);
+
+    expect(await searchAndSave(saved())).toEqual({ url: hit.url });
+    expect(createdText()).toContain('Solo para mí');
   });
 
   it('shows destination selector defaulting to private', async () => {

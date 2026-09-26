@@ -529,7 +529,7 @@ pnpm nx run api:backfill-search -- --docType=job_preview --limit=500
 - **Cómo probarla:** «Descubrir» → «react» → «Buscar» → «Guardar en» un grupo → «Guardar» en un resultado.
 - **Qué esperar:** con `DISCOVERY_CHAIN=mock`, dos resultados fijos («React Developer» de GetOnBoard y «Senior React
   Engineer» de RemoteOK); la confirmación nombra el grupo elegido («Guardada en «<grupo>».», o «Ya estaba en
-  «<grupo>».» si alguien la había compartido) y la oferta aparece en ese grupo. Con el flag apagado: «El descubrimiento de vacantes no
+  «<grupo>».» si ya estaba en el grupo) y la oferta aparece en ese grupo. Con el flag apagado: «El descubrimiento de vacantes no
   está disponible en este momento.».
 - **Requiere:** `FEATURE_DISCOVERY=true`. `DISCOVERY_CHAIN=live` sale a Internet.
 
