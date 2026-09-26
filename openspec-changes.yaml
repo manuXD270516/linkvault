@@ -491,41 +491,46 @@ changes:
     agents: [frontend-dev, devops, ai-engineer]
     scope: |
       **En paralelo a 35a, como excepción a la precedencia de la fila 35** (ADR-048 §Consecuencias, extendida a la
-      fila entera por ADR-051 §1), decidida por el usuario el 2026-09-26 y registrada en **ADR-053** con sus
+      fila entera por ADR-051 §1), decidida por el usuario el 2026-09-26 y registrada en **ADR-053** con seis
       condiciones: no toca ficheros de despliegue ni requirements que modifiquen 35a, 35b o 35c (en particular, no
-      «CD a staging en main»); corre solo a demanda hasta medir sus minutos; sus tareas de staging nacen bloqueadas
-      por 35b, que no espera a ninguna de ellas; y no cambia la medición de 35b sin el usuario. No libera la
-      precedencia para ningún otro change.
+      «CD a staging en main»); corre solo a demanda hasta medir sus minutos, y con el 70 % del mes consumido solo a
+      mano; el despliegue de 35b no espera a la suite, pero **invitar sí, a una corrida en verde** sobre el commit
+      desplegado; la medición de 35b excluye por `userId` a las cuentas E2E (Q1, trasladada a `staging-host`); mismo
+      método que la fila; y **35a va primero**: la suite solo ocupa sus esperas. No libera la precedencia para ningún
+      otro change.
+      **Orden de fusión:** PR-1 se construye en paralelo pero se fusiona **después de 35a** (nace con `pnpm infra:up`
+      y el almacén nuevo) y fuera del tramo entre los dos PR de 35b; PR-2 (staging) tras el primer despliegue de 35b.
       **Suite end-to-end reproducible sobre `apps/web-e2e`** (parte de la suite que hay, no la reescribe).
-      **Un comando local = el de CI** (`web-e2e:e2e-stack`): infraestructura con el comando de
-      `platform/local-environment` bajo un proyecto de compose propio (`linkvault-e2e`) y un bloque de puertos propio,
-      `nx serve` de `api`, `worker` y `web` (no las imágenes del artefacto: prohíben el mock y su enrutado vive en
-      Traefik), siembra por la API pública, Playwright y apagado de lo arrancado también al fallar o interrumpir.
-      Nunca reutiliza procesos ajenos: puerto ocupado → no arranca nada; proceso lanzado que muere o da
-      `EADDRINUSE` → rojo. Entorno versionado (`apps/web-e2e/e2e.env`) que gana al `.env`: `AI_CHAIN=mock` +
-      `AI_MOCK_MODE=replay` aunque el desarrollador use `synth`; correo al Mailpit del bloque. Datos por prueba sobre
-      una pila desechable; la demo no es dato de la suite.
+      **Un comando local = el de CI** (`web-e2e:e2e-stack`): infraestructura con `pnpm infra:up` bajo un proyecto de
+      compose por checkout y bloque (`linkvault-e2e-<hash8>`) y un bloque de puertos propio, `nx serve` de `api` y
+      `worker` y `web -c production` (no las imágenes del artefacto: prohíben el mock y su enrutado vive en Traefik),
+      Playwright y apagado de lo arrancado también al fallar o interrumpir. Nunca prueba procesos ajenos: puerto
+      ocupado (conexión en IPv4/IPv6 o `bind`) o `serve` de desarrollo del mismo checkout → no arranca nada; tras
+      arrancar, quien atiende cada puerto es lo lanzado; tras apagar, el bloque queda libre. Entorno versionado
+      (`apps/web-e2e/e2e.env`) + lista blanca del sistema, con `NX_LOAD_DOT_ENV_FILES=false`: el `.env` no llega.
       **Perfiles** `local` y `remote` (`E2E_BASE_URL`): en `remote` nada de Mongo, Redis, Mailpit ni salidas
       concretas de IA, y los helpers que lo hacen fallan si la prueba es `@remote-safe`, en cualquier perfil. El
-      perfil `remote` se ensaya contra la pila local desde el primer día. **Staging** (tras 35b): sin altas, cuentas
-      de prueba persistentes creadas a mano, sin email verificado ni permiso de IA externa (el encaje degrada sin
-      llamar a OpenRouter), limpieza al empezar y al terminar, links en dominios reservados, TLS sin excepciones;
-      excluirlas de la medición de 35b es pregunta del usuario (Q1).
-      **Determinismo:** esperas fijas prohibidas por lint en error, sincronización por eventos armados antes de la
-      acción (lección de PR #59), intermitente = rojo (`failOnFlakyTests`), admisión con `--repeat-each=5` bajo carga,
-      un salto del camino crítico = rojo, traza y vídeo de cada fallo.
-      **CI:** `e2e.yml` nuevo con `workflow_dispatch` y la etiqueta `e2e` en pull requests; no obligatorio; artefactos
-      a 7 días; staging sin destino declarado = rojo; minutos medidos en `infra/README.md` antes de decidir más
-      disparadores (Q2). `ci.yml`, `cd-staging.yml` y `cd-prod.yml` no se tocan.
-      **Lote 1 = el camino crítico** como un solo recorrido: registro (o entrada con la cuenta de prueba en remoto) →
-      grupo → guardar link → completar la oferta a mano → postulación → CV → encaje, con los pasos de cada perfil
-      declarados y comprobados y un fixture de replay escrito a mano para su entrada. El resto del catálogo de uso
-      (`docs/catalogo-de-uso.md`) por lotes, cada uno su change, con un mapa de cobertura comprobado en CI; si los
-      lotes siguientes entran en la excepción es pregunta del usuario (Q3).
-      **Dos PR:** PR-1 (base, lote 1, ensayo remoto y CI) fusionable en paralelo a 35a; PR-2 (staging) tras 35b. Se
-      archiva tras PR-2.
-      Fuera: la suite contra las imágenes en local o en CI, ejecutarla tras cada despliegue a staging (modificaría
-      «CD a staging en main»; candidata para después de 35c, Q4), la extensión del navegador, los crons y los CLI.
+      ensayo remoto contra la pila local solo con `--rehearse-remote`, con el `worker` reiniciado con un proveedor
+      externo inalcanzable (desenlace `consent-required`). **Staging** (tras 35b): sin altas, cuentas `+e2e`
+      persistentes creadas a mano, sin email verificado ni permiso de IA, guardias antes de limpiar, grupo sin
+      visibilidad pública, links en dominios reservados, TLS sin excepciones, solo desde `main`, y nunca los días 7 y
+      14 de la medición.
+      **Determinismo:** esperas fijas y `setTimeout` prohibidos por lint en error, sincronización por eventos armados
+      antes de la acción (lección de PR #59), intermitente = rojo (`failOnFlakyTests`), admisión con
+      `--repeat-each=5` bajo carga en cada navegador y perfil, un salto del camino crítico = rojo, traza y vídeo de
+      cada fallo.
+      **CI:** `e2e.yml` nuevo con `workflow_dispatch` y la etiqueta `e2e` en pull requests (otra etiqueta no lo
+      relanza), concurrencia por destino, no obligatorio, artefactos a 7 días, staging sin destino o desde otra rama
+      = rojo, minutos medidos en `infra/README.md` antes de decidir más disparadores (Q2). `ci.yml`, `cd-staging.yml`
+      y `cd-prod.yml` no se tocan.
+      **Lote 1 = el camino crítico** como un solo recorrido, en escritorio y en móvil emulado (`Pixel 7`): registro
+      (o entrada con la cuenta de prueba en remoto) → grupo → segunda persona que se une con el código (solo local)
+      → guardar link → completar la oferta a mano → postulación → CV → encaje, con los pasos de cada perfil
+      declarados y comprobados; entrada versionada junto a sus fixtures de replay y un Vitest de `libs/ai` que los
+      exige. WebKit solo si la entrevista de 35b dice que alguien usa iPhone.
+      Fuera: la suite contra las imágenes en local o en CI; el mapa de cobertura, el inventario y la limpieza de los
+      specs no admitidos (lote 2); ejecutarla tras cada despliegue a staging (modificaría «CD a staging en main»;
+      candidata para después de 35c, Q4); la extensión del navegador, los crons y los CLI.
   - name: staging-host
     adrs: [051, 048, 033, 034, 035, 032]
     agents: [devops, backend-dev, frontend-dev, ai-engineer]
@@ -644,3 +649,20 @@ changes:
       Baja de la 35 a la 36 a propósito (ADR-048): llevan cinco aplazamientos, pero miden la calidad de funciones
       de IA que **nadie fuera del autor usa**, y con cero usuarios la sexta curación volvería a ser sintética.
       Depende de la 35 para tener de dónde sacar casos reales con consentimiento.
+  - name: e2e-suite-lot-2
+    adrs: [053, 048]
+    agents: [frontend-dev, devops]
+    scope: |
+      **Candidato posterior a la fila 35**, sin fila en `docs/design-v0.2.md` §6 hasta que el usuario la asigne: la
+      excepción de ADR-053 cubre solo el lote 1 (Q3 de `e2e-suite`). Viene del reflect de la iteración 1 del debate
+      de `e2e-suite` (B-V1-7).
+      **Mapa de cobertura** `apps/web-e2e/catalog-coverage.json`: una entrada por número de `docs/catalogo-de-uso.md`
+      (estado, lote, pruebas que lo cubren o motivo), y una **comprobación** que falla si falta un número, si el mapa
+      cita una prueba inexistente o si una prueba admitida no está en el mapa, con el requirement «La cobertura se
+      declara contra el catálogo» que `e2e-suite` retiró de su delta. **Ojo (C13 de `e2e-suite`):** si la
+      comprobación es un target de Nx, sus `inputs` tienen que incluir `docs/catalogo-de-uso.md` —si no, la caché la
+      daría por buena tras cambiar solo el catálogo—; si no, que viva en `repo-checks`, que no cachea.
+      **Inventario** de la suite actual (pruebas por fichero) y **limpieza de los specs no admitidos**: orígenes
+      escritos a mano (`home`, `groups`, `public-share`) y accesos a Mongo (`links`, `match`, `freshness`) por los
+      helpers `local-only`, y `register-limit.ts` con el proyecto de compose por variable.
+      **Lote 2 del plan de `e2e-suite` D14:** cuenta y salida (catálogo 2 y 4 con Mailpit, solo `local`; 5, 6 y 44).

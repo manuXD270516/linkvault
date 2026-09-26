@@ -10,41 +10,51 @@ máquina de quien la escribió no protege nada.
 
 Este change va **en paralelo a 35a (`object-store`)**, como **excepción explícita** a la precedencia de la fila 35
 (ADR-048 §Consecuencias, extendida a la fila entera por ADR-051 §1): la decisión es del usuario, con fecha, y queda
-registrada en **ADR-053** junto con las condiciones que impiden que retrase el despliegue.
+registrada en **ADR-053** junto con las condiciones que impiden que retrase el despliegue. Se **construye** en paralelo,
+pero su primer PR se **fusiona después de 35a**, para nacer con el arranque local definitivo.
 
 ## What Changes
 
-- **Un solo comando local** que levanta la infraestructura en un proyecto de compose propio y con un bloque de puertos
-  propio, sirve `api`, `worker` y `web` desde el código, siembra lo que la suite necesita, ejecuta Playwright y **apaga
-  lo que arrancó**, también si falla o se interrumpe. Nunca reutiliza procesos ajenos: un puerto ocupado detiene la
-  corrida nombrándolo.
+- **Un solo comando local** que levanta la infraestructura (con `pnpm infra:up` de 35a) en un proyecto de compose propio
+  por checkout y con un bloque de puertos propio, sirve `api`, `worker` y `web` (bundle de producción) desde el código,
+  ejecuta Playwright y **apaga lo que arrancó**, también si falla o se interrumpe. Nunca reutiliza procesos ajenos: un
+  puerto ocupado detiene la corrida nombrándolo, y tras arrancar comprueba que quien atiende cada puerto es lo que lanzó.
 - **El mismo comando en CI**: un workflow nuevo, `e2e.yml`, a demanda (`workflow_dispatch` y pull requests con la
-  etiqueta `e2e`), en un runner limpio, que sube el informe HTML, las trazas y los vídeos de los fallos. **No** es un
-  check obligatorio ni corre en cada push hasta tener medidos sus minutos (repositorio privado, plan Free).
+  etiqueta `e2e`), en un runner limpio, con concurrencia por destino, que sube el informe HTML, las trazas y los vídeos
+  de los fallos. **No** es un check obligatorio ni corre en cada push hasta tener medidos sus minutos (repositorio
+  privado, plan Free), y con el 70 % del mes consumido solo se lanza a mano.
 - **Contra cualquier origen**: `E2E_BASE_URL` y un **perfil** (`local` o `remote`) que declara qué puede hacer la suite
   en ese destino. En `remote` no se escribe en bases de datos, no se lee correo y no se afirma ninguna salida concreta de
   la IA; una prueba apta para remoto que intente hacerlo **falla**, no se salta.
-- **Staging especificado ya, verificado después**: el perfil `remote` se ensaya desde el primer día contra la pila
-  local; las tareas que tocan staging nacen **bloqueadas por 35b** (`staging-host`). Nada se da por verificado contra
-  staging antes de que exista.
+- **Staging especificado ya, verificado después**: el perfil `remote` se **ensaya** contra la pila local cuando se pide
+  (`--rehearse-remote`), con un proveedor de IA externo inalcanzable para que el desenlace sea el mismo que en staging;
+  las tareas que tocan staging nacen **bloqueadas por 35b** (`staging-host`). En staging: sin altas, cuentas de prueba
+  `+e2e` sin email verificado ni permiso de IA, guardias antes de limpiar, y la suite remota no se lanza los días 7 y 14
+  de la medición.
+- **La medición de 35b excluye a las cuentas de prueba** (Q1, decidida por el usuario): se edita `staging-host` para que
+  sus scripts excluyan por `userId` en cada métrica la lista «autor + cuentas E2E».
+- **Invitar exige una corrida en verde**: `e2e-stack` en verde sobre el commit desplegado es precondición de la
+  invitación de 35b; el despliegue no espera a la suite.
 - **IA y correo deterministas**: `AI_CHAIN=mock` con `AI_MOCK_MODE=replay` en local y en CI, aunque el `.env` del
-  desarrollador diga `synth`; Mailpit del propio proyecto de compose. En staging la IA es real y la suite no la consume.
-- **Sin esperas fijas ni reintentos que escondan**: reglas de lint de Playwright en error, sincronización por eventos
-  armados antes de la acción (la lección de la carrera de PR #59), un intermitente es un fallo, y una prueba entra en la
-  suite solo tras repetirse bajo carga.
-- **Lote 1 = el camino crítico**: registro → grupo → guardar link → postulación → CV → encaje, como un único recorrido.
-  El resto del catálogo de uso (`docs/catalogo-de-uso.md`, 46 funcionalidades) se añade **por lotes** sobre la misma
-  base, con un mapa de cobertura versionado y comprobado.
+  desarrollador diga `synth` (el `.env` no llega a los procesos); Mailpit del propio proyecto de compose. La entrada del
+  recorrido se versiona junto a sus fixtures y un Vitest de `libs/ai` rompe CI si falta alguno.
+- **Sin esperas fijas ni reintentos que escondan**: reglas de lint de Playwright y contra `setTimeout` en error,
+  sincronización por eventos armados antes de la acción (la lección de la carrera de PR #59), un intermitente es un
+  fallo, y una prueba entra en la suite solo tras repetirse bajo carga en cada navegador.
+- **Lote 1 = el camino crítico**: registro → grupo → **segunda persona que se une con el código** → guardar link →
+  postulación → CV → encaje, como un único recorrido, **en escritorio y en un móvil emulado**. El mapa de cobertura
+  contra el catálogo de uso y la limpieza de los specs existentes pasan al **lote 2**, candidato posterior a la fila 35.
 - **ADR-053** (el 052 está reservado por `object-store`), anotación en ADR-048 §Consecuencias, entrada en
-  `openspec-changes.yaml` tras `object-store` y fila en `docs/design-v0.2.md` §6.
+  `openspec-changes.yaml` tras `object-store` (y la del lote 2 como candidata al final) y fila en
+  `docs/design-v0.2.md` §6.
 
 ## Capabilities
 
 ### New Capabilities
 
-- `platform/e2e-suite`: la suite end-to-end reproducible — comando único, aislamiento de puertos y datos, entorno
-  versionado, perfiles por destino, pruebas remotas que no contaminan ni gastan, determinismo, camino crítico y mapa de
-  cobertura contra el catálogo de uso.
+- `platform/e2e-suite`: la suite end-to-end reproducible — comando único, aislamiento de puertos, procesos y datos,
+  entorno versionado, perfiles por destino, pruebas remotas que no contaminan ni gastan, determinismo y camino crítico en
+  escritorio y móvil.
 
 ### Modified Capabilities
 
@@ -53,15 +63,16 @@ registrada en **ADR-053** junto con las condiciones que impiden que retrase el d
 
 ## Impact
 
-- **Código:** `apps/web-e2e` (configuración de Playwright, runner, perfiles, entorno versionado, helpers, spec del camino
-  crítico, mapa de cobertura y su comprobación, reglas de lint); un fixture escrito a mano de `match-cv` (y los que pida
-  la corrida) en `libs/ai/src/infrastructure/fixtures`; ningún cambio de comportamiento de `api`, `worker` ni `web`.
+- **Código:** `apps/web-e2e` (configuración de Playwright con proyectos `chromium` y `mobile`, runner, perfiles, entorno
+  versionado, helpers, spec del camino crítico, reglas de lint); en `libs/ai`, la entrada versionada del recorrido, sus
+  fixtures escritos a mano y un Vitest que los exige; ningún cambio de comportamiento de `api`, `worker` ni `web`.
 - **CI:** `.github/workflows/e2e.yml` nuevo; `ci.yml`, `cd-staging.yml` y `cd-prod.yml` **no se tocan**.
+- **Otro change:** `openspec/changes/staging-host` (35b), design D15/D16 y tareas 10.2, 10.3, 10.6 y 10.7, por Q1 y por
+  la precondición de invitar, sin tocar las secciones que edita 35a.
 - **Documentación:** `docs/adr/ADR-053.md`, anotación en `docs/adr/ADR-048.md`, `openspec-changes.yaml`,
-  `docs/design-v0.2.md` §6, `apps/web-e2e/README.md` y la medición de minutos en `infra/README.md`.
+  `docs/design-v0.2.md` §6, `apps/web-e2e/README.md`, la medición de minutos en `infra/README.md` y, en PR-2, la corrida
+  previa a invitar en el RUNBOOK.
 - **Dependencias:** ninguna nueva (Playwright 1.63 y `eslint-plugin-playwright` ya están).
 - **Relación con la fila 35:** no toca ningún fichero de despliegue ni ningún requirement que 35a, 35b o 35c modifiquen.
-  El runner arranca la infraestructura con el comando de `platform/local-environment`, que 35a cambia; las tareas de
-  staging esperan a 35b; y la exclusión de las cuentas de prueba de la medición de 35b es una **pregunta para el
-  usuario** (design, Q1).
-- **Pendiente antes de `/opsx:apply`:** el debate critic/business/reflect y la aprobación humana.
+  PR-1 se fusiona después de 35a y fuera del tramo entre los dos PR de 35b; las tareas de staging esperan a 35b.
+- **Pendiente antes de `/opsx:apply`:** la aprobación humana del design tras el debate.

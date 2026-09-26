@@ -454,7 +454,11 @@ change **posterior a 35c**, y no retiene el archivado de 35b. La señal para dec
   - *uso de grupo* = al menos un estado de postulación visible para otro miembro del grupo;
   - *uso de IA* = al menos un análisis de encaje o un roadmap generado.
 - **Scripts `mongosh` versionados** (`infra/staging/measure.mongosh.js`, `uninvited.mongosh.js`) que devuelven **solo
-  recuentos** y excluyen al autor por su id. **Mongo no tiene autenticación**, así que no existe un usuario de rol
+  recuentos** y excluyen **por `userId`, en cada métrica** —users, groups, links, applications, cvs y analyses—, la
+  **lista de ids excluidos: autor + cuentas E2E** (las cuentas de prueba persistentes de `e2e-suite`, alias `+e2e`,
+  sin email verificado ni permiso de IA; ADR-053 §1.4, decidido por el usuario el 2026-09-26). No basta con quitarlas
+  del recuento de cuentas: sus grupos, links, postulaciones, CV y análisis tampoco cuentan. La lista vive **fuera del
+  repositorio** y se pasa a `run.sh`. **Mongo no tiene autenticación**, así que no existe un usuario de rol
   `read` con el que ejecutarlos: se ejecutan con `mongosh` dentro del contenedor `mongo`, **el operador tiene acceso
   total**, y así se escribe en el RUNBOOK. La garantía de solo lectura es una **comprobación estática**,
   `infra/staging/assert-readonly.mjs`, que falla nombrando cualquier operación de escritura: `insert*`, `update*`,
@@ -463,7 +467,8 @@ change **posterior a 35c**, y no retiene el archivado de 35b. La señal para dec
 - **La comprobación la aplica un envoltorio, en la máquina del operador.** `infra/staging/run.sh <script>` ejecuta
   primero `node infra/staging/assert-readonly.mjs <script>` en local y, **solo si pasa**, `ssh <host> 'docker compose …
   exec -T mongo mongosh --quiet …' < <script>`, con la lista de invitados inyectada en el host por `--eval` (la lista
-  vive allí, fuera del repositorio). Así el guardia no depende de que alguien se acuerde de ejecutarlo antes, ni de que
+  vive allí, fuera del repositorio) y la **lista de excluidos** (autor + cuentas E2E), que el operador pasa a `run.sh`
+  como fichero fuera del repositorio, inyectada igual. Así el guardia no depende de que alguien se acuerde de ejecutarlo antes, ni de que
   el host tenga `node`. Se ve caer añadiendo un `insertOne`: el envoltorio se niega a ejecutar y no abre ninguna sesión
   (tareas 9.12 y 10.3). Añadir autenticación a Mongo de producción queda fuera de la fila.
 - **Conversación de cinco preguntas** el día 14, con el guion escrito de antemano. Una de ellas pregunta si buscaron
@@ -471,12 +476,15 @@ change **posterior a 35c**, y no retiene el archivado de 35b. La señal para dec
 - **Regla de decisión** escrita: si no se alcanza la activación, lo que falla es la entrada (alta, primer link,
   aviso); si hay activación y no uso, lo que falla es el valor. Cada rama dice qué se hace después.
 - **Los días 7 y 14 son condiciones de cierre de la fila, no tareas de trabajo**: el change puede archivarse con ellos
-  pendientes, y la fila 35 no se da por cerrada en `docs/design-v0.2.md` hasta que ocurran.
+  pendientes, y la fila 35 no se da por cerrada en `docs/design-v0.2.md` hasta que ocurran. Esos dos días **no se lanza
+  la suite remota de `e2e-suite` contra staging**, para que ninguna corrida de prueba coincida con la foto de la
+  medición.
 
 ### D16. Cuentas no invitadas: vigilar en vez de restringir
 
 Por Certificate Transparency la URL es pública desde la primera emisión (ADR-051 §5). `uninvited.mongosh.js` cuenta las
-cuentas cuyo id no está en la lista de invitados del host (fichero fuera del repositorio: son datos personales). Se
+cuentas cuyo id no está en la lista de invitados del host (fichero fuera del repositorio: son datos personales) **ni en
+la de excluidos** (autor + cuentas E2E, D15), que tampoco vive en el repositorio y se pasa a `run.sh`. Se
 ejecuta semanalmente mientras dure staging, siempre por `run.sh` (D15), y el RUNBOOK describe qué hacer con una
 cuenta ajena: el borrado de la operación del producto no lo puede invocar el operador en nombre de otra persona, así que
 el procedimiento manual se presenta como excepcional y nombra la operación a la que sustituye.
