@@ -451,63 +451,150 @@ changes:
 
       Fuera: provisionar servidor de staging y sus secretos —eso es la fila 35—, Traefik/DNS y publicar en registries
       de extensiones.
+  - name: object-store
+    adrs: [051, 048, 006, 022, 028, 033]
+    agents: [devops, backend-dev]
+    scope: |
+      Fila 35a, primera pieza de la fila 35 (ADR-051 §1: la fila se ejecuta como 35a → 35b → 35c y la precedencia
+      de ADR-048 §Consecuencias aplica a la fila entera; ningún change de otra fila entra entre medias). `main`
+      sigue en "verificado sin destino" al terminar; lo que se entrega es la precondición del host `arm64`.
+      Es la letra **(f)** del `scope` original de la fila 35 (ver la nota de trazabilidad de `staging-host`).
+      **Sustituir MinIO.** MinIO community está archivado desde febrero de 2026, sin parches ni imágenes, y nuestro
+      espejo (`ghcr.io/manuxd270516/linkvault-minio`, ADR-048 §8) es solo `amd64`. Candidatos, **en este orden**:
+      SeaweedFS, RustFS y Garage. Se elige con una **matriz de requisitos ejecutada**, candidato a candidato,
+      parando en el primero que lo cumpla todo: SSE en reposo, expiración, `GET` anónimo rechazado, imágenes
+      `amd64` y `arm64` descargables sin credenciales, y los tests reales de la app con el SDK actual (ojo con los
+      checksums CRC32 que `@aws-sdk/client-s3` envía por defecto).
+      **Aprovisionamiento** independiente del proveedor, por la API S3 (script node de un solo uso en la imagen de
+      `api`), no con `mc`. **Salidas si falta algo:** sin SSE-S3, SSE-C desde `s3-cv-file.store`/`reader` con la
+      clave en `.env`, copiada junto a `AI_VAULT_KEY`; sin expiración, barrido en el `worker` más un MODIFIED de
+      «Retención de snapshots de enriquecimiento» (`cv/documents`).
+      **Healthcheck del almacén** de solo lectura (antes grupo 7 / design D5 de `staging-host`): el de hoy
+      aprovisiona para contestar si está sano.
+      **Deltas:** MODIFIED de «Infraestructura con un comando» (`platform/local-environment`) y de «Compose de
+      producción» (`platform/production-deploy`) sin "MinIO por defecto"; ADDED «Las imágenes de la pila se pueden
+      descargar en la arquitectura del destino», con el script que compara las plataformas del registro con la
+      del host (35b lo coloca en el orden del despliegue). RUNBOOK e `infra/README.md` sin `mc`.
+      **Paso a `arm64`:** `build-verify-publish` de `cd-staging` en `runs-on: ubuntu-24.04-arm`; construye,
+      verifica y publica la misma imagen de una sola plataforma, y la identidad por digest no cambia. Escenario
+      «se verifica la arquitectura del destino, no otra». **Arquitectura ausente** ("no matching manifest" o
+      plataforma ausente) se clasifica `artifact`, no `environment`, con escenario y falsación.
+      **Medir** los minutos de CI de `arm64` frente al plan Free del repositorio privado.
+      **Plazo de arranque:** recalcular el `--wait-timeout` de 360 s de `infra/ci/verify-artifact.sh`, que sale de
+      los tiempos de MinIO (20 + 12×10 = 140 s encadenados con api/worker), con los del almacén nuevo; `staging-host`
+      lee ese plazo en `infra/deploy/deploy.sh` en vez de copiarlo.
+      **Orden de archivo:** 35a y 35c modifican los dos «CD a staging en main» (`platform/ci-pipeline`); el orden por
+      archivo es **35a → 35c**, y 35c redacta su MODIFIED sobre el texto que deje 35a.
+      Fuera: mantener el espejo de MinIO (se retira), migrar objetos (no hay usuarios todavía), el host.
   - name: staging-host
-    adrs: [048, 033]
+    adrs: [051, 048, 033, 034, 035, 032]
+    agents: [devops, backend-dev, frontend-dev, ai-engineer]
+    scope: |
+      Fila 35b, segunda pieza de la fila 35 (ADR-051 §1). Tras archivar `object-store`. **Ningún change de otra
+      fila puede preceder a la fila 35 mientras `cd-staging` termine en "verificado sin destino"** (ADR-048
+      §Consecuencias), y esta es la pieza que lo lleva a "desplegado a staging".
+      **Guardias antes de configurar ningún secreto (PR-1):** el modo de prueba nunca despliega y a staging solo
+      despliega una corrida real de `main`, con el destino a medias evaluado antes que el modo y el límite escrito
+      (el guardia evita accidentes, no autoriza: quien tiene escritura en el repo tiene root en staging;
+      colaboradores, claves de despliegue y aplicaciones = solo el autor); OpenSSH nativo en vez de `appleboy/*`,
+      con la clave pública del host (`STAGING_SSH_HOST_KEY`) en `known_hosts` y `StrictHostKeyChecking=yes`;
+      configuración por `tar | ssh` a `.incoming-<sha12>` (`mkdir` sin `-p`) y usuario y token del registro por la
+      entrada estándar de `deploy.sh` con `docker logout` (en la orden remota solo valores no secretos y validados;
+      host validado por lista blanca); preflight a seis valores; `STAGING_COMPOSE_DIR` pasa a ruta fija del
+      repositorio (`/srv/linkvault-staging`): lo que el script usa como ruta o como código va en el repositorio;
+      `packages: write` solo en `build-verify-publish`; despliegue en el orden copia → login → plataformas y `pull`
+      con el compose de `.incoming` → `install-config` (sin cambiar el inodo) → `up` con el compose instalado,
+      conservando los últimos `.incoming-*`; relanzar solo el job de despliegue, hasta 30 días desde la corrida
+      inicial; el primer despliegue relanza el preflight de la corrida del push de PR-1, sin republicar; Traefik
+      sin `docker.sock`. `cd-prod` no se toca (35c).
+      **Host:** Oracle Cloud Always Free Ampere A1 (`arm64`, 2 OCPU / 12 GB), región anotada, IP reservada,
+      `iptables` de la imagen de OCI, "Out of host capacity". **Nombre:** `<ip>.sslip.io` + Let's Encrypt
+      (primera emisión contra ACME *staging*; `dig` y Public Suffix List comprobados).
+      **Correo:** SMTP con autenticación y TLS verificado en `api` y `worker`, rechazos con clase y sin secretos;
+      Brevo con remitente verificado; envío real a tres proveedores con umbral; la interfaz dice que verificar no
+      es necesario y que revisen spam; recuperación manual en el RUNBOOK.
+      **IA:** llamada real por OpenRouter `:free` con `data_collection: deny` desde el host; cupo en el RUNBOOK;
+      **sin búsqueda en staging**, como decisión del design y no del usuario (el compose de producción no la
+      tiene; lo dicen el aviso y quien invita). Activarla (Meilisearch `arm64` y una cadena de embeddings en
+      producción) sería un change posterior a 35c, que no retiene el archivado de este.
+      **Antes de invitar:** reconstrucción reemplazando el volumen de arranque del propio host (sin fusionar a `main`
+      durante el ensayo), copia de `.env.staging`, `/metrics` y `/health` no públicos, códigos de invitación fuera
+      de los logs, entrevista que dice qué fuentes usan los invitados y recorrido en el móvil con cinco links de esas
+      fuentes, aviso ampliado y recuento de cuentas no invitadas (Certificate Transparency hace pública la URL). Mongo
+      no tiene autenticación: los scripts de medición pasan por una comprobación estática de solo lectura.
+      **Usuarios y medición:** 3-5 personas que buscan empleo ahora, 2-3 en un mismo grupo; plan de medición
+      escrito antes de invitar (umbrales, script `mongosh` de solo lectura, conversación del día 14, regla de
+      decisión). Los días 7 y 14 son condiciones de cierre de la fila, no tareas.
+      **Bloqueos del usuario, que impiden invitar,** decididos en paralelo a `object-store`: pasar la cuenta de
+      Oracle a pago por uso (si sí, alerta de presupuesto a 1 €) y Q4 (quiénes), que también retienen PR-2 porque
+      lleva sus anotaciones; y el umbral del correo (bandeja de entrada en 2 de 3 proveedores, o riesgo aceptado por
+      escrito).
+      **Dos PR, cada uno en una ventana de fusión autorizada por el usuario:** PR-1 (guardias y código de correo) y
+      PR-2 (cierre), cuya ventana se pide junto con Q4; la vuelta atrás por GitHub se ejercita con PR-2 en `main`.
+      **Trazabilidad de las letras (a)–(g)** del `scope` original de la fila 35, a las que apuntan
+      `deploy-image-verification` (archivado), ADR-048 §8 y los comentarios de `docker-compose.yml` y
+      `docker-compose.prod.yml`; no se renumeran: **(a)** workflow reutilizable de `verify` y `Check prompt
+      assets` en los tres → `verify-reusable-workflow`; **(b)** rojo falso del modo de prueba con destino
+      configurado → aquí (su parte de `cd-prod` → `verify-reusable-workflow`); **(c)** comprobación post-merge de que un `main` en rojo no mueve `:staging` →
+      `verify-reusable-workflow`; **(d)** retirada el 2026-09-25 (la cerró `deploy-image-verification` con
+      `profile-byok-consent-off-<vendor>`); **(e)** autenticación del adaptador SMTP → aquí; **(f)** almacén de
+      objetos y espejo de su imagen → `object-store`, que sustituye MinIO en vez de mantener el espejo; **(g)**
+      primera release, tarea 8.1 de `deploy-image-verification` → `verify-reusable-workflow`. Sin letra: endurecer
+      el paso de secretos por ssh y llevar la configuración al host → aquí; rediseño del healthcheck del almacén →
+      `object-store`.
+      Fuera: `cd-prod` a un host de producción, escalado, observabilidad nueva, copias de seguridad de datos
+      (staging es desechable), registro restringido, la extensión para estos usuarios, límites `413`/`429` en el
+      borde y el aviso de registro abierto en la app (V2).
+  - name: verify-reusable-workflow
+    adrs: [051, 048, 050, 033]
     agents: [devops]
     scope: |
-      Fila 35. **Ningún change puede precederla mientras `cd-staging` termine en "verificado sin destino"**
-      (ADR-048 §Consecuencias): esa precedencia es el compromiso, en vez de una fecha que nadie acordó.
-      Provisionar el host de staging, sus secretos (`STAGING_HOST`, `STAGING_SSH_USER`, `STAGING_SSH_KEY`,
-      `STAGING_COMPOSE_DIR`), DNS y Traefik/ACME, y llevar el pipeline del tercer resultado al segundo: desplegado
-      de verdad, con el smoke post-deploy contra `api` en la red interna. Entran aquí las dos tareas que
-      `deploy-image-verification` no pudo verificar porque el job de despliegue quedaba saltado (endurecer el paso
-      de secretos al script remoto de ssh), y los primeros usuarios no-autor con su alta completa —lo que obliga a
-      que el correo funcione de verdad, no solo a que la variable esté declarada—.
-      Entra también el **rediseño del healthcheck de MinIO**: en `docker-compose.prod.yml` el healthcheck es
-      `sh /ensure-buckets.sh`, o sea que **aprovisiona** buckets para contestar si el servicio está sano.
-      Mezclar "¿está configurado?" con "¿está sano?" convierte cualquier fallo de configuración en un
-      servicio enfermo para siempre, y es lo que hizo que el `grep` ausente (defecto 4.14 de
-      `deploy-image-verification`) durase sin que nadie lo viera. Separar las dos preguntas —aprovisionar en
-      un paso propio del despliegue, healthcheck de solo lectura— pide un despliegue de verdad contra el que
-      probarlo, así que se hace aquí y no allí, donde solo se quitó el `grep`.
-      Entra además el resto de lo que `deploy-image-verification` deja abierto (su `proposal.md` §"Lo que este change
-      NO cierra" lo enumera con el mismo orden):
-      **(a)** el **workflow reutilizable de `verify`** —extraerlo con input de modo (`affected`/`all`) y llevar allí
-      el step `Check prompt assets`—, sacado de aquel change porque un fallo en él habría puesto en rojo los tres
-      pipelines justo en el change cuyo entregable era una corrida verde;
-      **(b)** el **rojo falso del modo de prueba con destino configurado**, en `cd-staging` y `cd-prod` a la vez: con
-      `dry_run: true` y destino configurado el job de despliegue queda saltado a propósito y
-      `infra/ci/report-cd-outcome.sh` lo lee como "había destino y el despliegue no terminó bien". Hoy es imposible
-      (cero secretos); en cuanto esta fila configure secretos, deja de serlo, y por eso se cierra aquí y no antes;
-      **(c)** la comprobación **post-merge** de que una corrida de `main` con la verificación en rojo **no mueve** el
-      tag móvil `:staging`, no observable desde una rama porque fuera de `main` ese tag no se toca en ningún caso;
-      **(d)** *retirado el 2026-09-25 — no entra en esta fila*: partir **por vendor** el aviso de consentimiento
-      apagado del perfil estuvo aquí mientras fue un párrafo de sección que hablaba en plural, pero
-      `deploy-image-verification` lo cerró dentro de su propio alcance (`profile-byok-consent-off-<vendor>`, con el id
-      de i18n nuevo `profile.byok.vendorKeyInactive` y el plural `profile.byok.keysInactive` retirado de los dos
-      catálogos). La letra se conserva para no renumerar **(e)** y **(f)**. De las dos, solo a la **(f)** apuntan
-      otros ficheros —la tarea 13.5 de `tasks.md`, ADR-048 §8 y el comentario del servicio `minio` en
-      `docker-compose.yml` y `docker-compose.prod.yml`—; a la **(e)** no la cita nadie. A esta **(d)** sí: la tarea
-      13.5 de `tasks.md`, al tacharla;
-      **(e)** la **autenticación del adaptador SMTP**: `SmtpMailer` crea el transporte sin bloque `auth` y con
-      `secure: false`, y no existen `MAIL_SMTP_USER` ni `MAIL_SMTP_PASSWORD` en ninguno de los dos esquemas, así que
-      solo sirve para un relay que autorice por red o por IP. Los primeros usuarios no-autor de esta fila obligan a
-      que el correo funcione de verdad, no solo a que la variable esté declarada;
-      **(f)** el **almacén de objetos y el espejo de su imagen**: el 2026-09-24 MinIO restringió el acceso anónimo a
-      sus imágenes en `quay.io` —`401` para el repositorio entero— y los dos composes dejaron de poder levantarse en
-      una máquina limpia. `deploy-image-verification` lo sorteó **replicando la imagen a nuestro propio registro**
-      (ADR-048 §8, opción A: `ghcr.io/manuxd270516/linkvault-minio`, por `MINIO_IMAGE`/`MINIO_IMAGE_TAG` en
-      `docker-compose.yml` y `docker-compose.prod.yml`). Entran aquí las dos consecuencias que aquella decisión
-      aplazó: **sustituir MinIO por otro servidor compatible con S3** (opción C, el camino limpio) y, mientras eso no
-      ocurra, **mantener el espejo**, que desde ese día es trabajo nuestro: una vulnerabilidad en esa versión ya no se
-      arregla sola y lo replicado es **solo `linux/amd64`**, así que un host `arm64` no tiene imagen que descargar;
-      **(g)** la **primera release**, que cierra la tarea 8.1 de `deploy-image-verification`: el camino de
-      **publicación** de `cd-prod` —tag semver salido del guardia más el tag móvil `latest`— no se ha ejecutado nunca,
-      porque solo corre con un tag `v*` real y el modo de prueba se lo salta. Aquel change se archivó con 8.1 abierta
-      por decisión humana: sin destino de producción, una release publicaría `:latest` sin desplegarlo en ningún sitio.
-      Entra aquí la **publicación**, no el despliegue: `cd-prod` a un host de producción sigue fuera, como dice la
-      línea siguiente.
-      Fuera: `cd-prod` a un host de producción, escalado, observabilidad nueva.
+      Fila 35c, última pieza de la fila 35 (ADR-051 §1). Tras archivar `staging-host` **y** `i18n-catalog-gate`.
+      **(a)** Workflow reutilizable de `verify` (`workflow_call`, alcance `affected`/`all` y referencia), invocado
+      por `ci.yml`, `cd-staging.yml` y `cd-prod.yml`, con `Check prompt assets` dentro (hoy solo lo ejecuta
+      `ci.yml`). Se escribe como **MODIFIED** de «El CD verifica con las mismas etapas que la integración
+      continua», el requirement que añade `i18n-catalog-gate`, no como un ADDED paralelo.
+      **(c)** Un `main` en rojo no mueve `:staging`: PR que rompe a propósito la verificación del artefacto,
+      fusionado en una ventana autorizada por el usuario, y su reversión; digest de `:staging` y la imagen que
+      corre el host, antes y después.
+      **(g)** Primera release `v0.1.0`, que cierra la tarea 8.1 de `deploy-image-verification`: **solo `arm64`**
+      mientras no haya host de producción, sin cambiar la spec de identidad por digest; la matriz
+      multiarquitectura queda diferida. Escribir en el RUNBOOK que `latest` no es un tag de despliegue.
+      **Precondiciones y orden:** archivar `i18n-catalog-gate` antes de `/opsx:apply` — **cumplida el 2026-09-25**
+      (PR #63, `openspec/changes/archive/2026-09-25-i18n-catalog-gate`). 35a y 35c modifican los dos «CD a staging en main»; el orden por archivo es **35a → 35c**
+      y el MODIFIED de aquí se redacta sobre el texto que deje 35a.
+      **Guardias de `repo-checks` diferidos por `staging-host`:** ningún `${{ … }}` en los `run:` que abren
+      sesión en un host, ningún secreto interpolado en `script:`, `source:` o `target:` de los pasos
+      `appleboy/ssh-action` y `scp-action` de `cd-prod` (35b lo verifica en `cd-staging` con un script de un solo
+      uso), y cada fichero que monta `docker-compose.prod.yml` está en la lista de configuración que el despliegue
+      lleva al host (`infra/deploy/config-files.txt`).
+      **Acciones fijadas (`actions-pinned`, antigua 3.7 de 35b):** en cada workflow, todo paso con `uses:` que reciba
+      un secreto del destino (`secrets.STAGING_*`, `secrets.PROD_*`, `secrets.GHCR_READ_*`) **y todo `uses:` de
+      un job con `packages: write`** se fija por el SHA de 40 caracteres de su commit, con el tag en comentario; la
+      comprobación falla nombrando workflow, paso y acción, y se ve caer devolviendo uno a su tag. Escenario que 35b
+      retiró: «Una acción que recibe secretos fijada por etiqueta rompe la comprobación» (GIVEN un workflow de CD con
+      un paso que recibe secretos del destino y usa una acción de terceros fijada por etiqueta; WHEN corre la
+      comprobación; THEN falla nombrando workflow, paso y acción).
+      **No republicar un `sha-<12>` (antigua 3.8 de 35b):** guardia en `infra/ci/publish-artifact.sh`. Antes del
+      `push`, `docker buildx imagetools inspect` del tag: si **no existe**, se publica; si falla por **error del
+      registro**, clase `environment`; si **existe**, falla sin publicar con la clase propia `republish`, añadida a
+      la lista blanca de clases del reporte y a su tabla como una dimensión más, con la descripción «relanza solo el
+      job de despliegue». No se promete "con el mismo digest no hace nada": el build no es reproducible y ese caso no
+      es observable. Se falsa **en CI**, relanzando entera una corrida de rama (que publicó su `sha-<12>`): la
+      segunda falla con `republish` y el tag conserva el digest de la primera; no con `registry:2` en local. Una
+      corrida manual sobre un commit ya publicado también falla así. El camino principal del primer despliegue de
+      35b (su 6.3) relanza el preflight de la corrida del push y no republica; solo si cayó a su alternativa (un
+      `workflow_dispatch` que republica) esa corrida no podrá repetirse. Escenario que 35b retiró: «Un tag de
+      commit no se reescribe con otro digest» (GIVEN el tag de un commit ya publicado; WHEN una corrida posterior
+      del mismo commit intenta publicar bajo ese tag; THEN falla sin publicar nombrando el tag, con clase
+      `republish`, AND el tag sigue apuntando al digest original).
+      **`cd-prod` (antiguas 2.6 y 3.5 de 35b):** `RUN_MODE` en su reporte y las cadenas en su `name:`, con el
+      escenario «Modo de prueba con destino de producción configurado»; secretos como datos en sus pasos de ssh
+      (`appleboy/*` fijadas, u OpenSSH nativo como staging); `packages: write` solo en su job de publicación; y
+      `build-verify-publish` en `runs-on: ubuntu-24.04-arm`, necesario para una `v0.1.0` solo `arm64`.
+      `GHCR_READ_*` no entra en su preflight: son secretos de repositorio compartidos con staging, y cada tag `v*`
+      quedaría `partial` y en rojo.
+      Fuera: despliegue a un host de producción, matriz multiarquitectura.
   - name: golden-sets-reales
     adrs: [019, 018, 030]
     agents: [ai-engineer]
