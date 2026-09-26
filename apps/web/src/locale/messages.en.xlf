@@ -1889,9 +1889,9 @@
         <source> Cuando subes un CV, LinkVault lo guarda en un almacén de objetos (compatible con S3) asociado a tu cuenta. Solo tú puedes verlo y gestionarlo desde Mi CV; no lo compartimos con otros usuarios. </source>
         <target>When you upload a CV, LinkVault stores it in an object store (S3-compatible) tied to your account. Only you can view and manage it from My CV; we do not share it with other users.</target>
       </trans-unit>
-      <trans-unit id="privacy.cv.encryption" datatype="html">
-        <source> En el entorno de producción el bucket de CV usa cifrado en reposo del proveedor (SSE-S3 o equivalente). </source>
-        <target>In production the CV bucket uses provider encryption at rest (SSE-S3 or equivalent).</target>
+      <trans-unit id="privacy.cv.encryption.v2" datatype="html">
+        <source> Tu CV se guarda cifrado en nuestro servidor; la clave la guardamos nosotros, aparte de los datos. </source>
+        <target>Your CV is stored encrypted on our server; we keep the key ourselves, separate from the data.</target>
       </trans-unit>
       <trans-unit id="privacy.cv.retention" datatype="html">
         <source> No hay caducidad automática del archivo: el CV permanece hasta que lo eliminas en Mi CV o borras tu cuenta. No prometemos que un CV caduque solo al cabo de N días. </source>
