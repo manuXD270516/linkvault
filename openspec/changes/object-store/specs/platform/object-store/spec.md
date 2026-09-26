@@ -52,9 +52,10 @@ fichero que contenga un secreto del almacén de un entorno real.
 ### Requirement: Aprovisionamiento idempotente y separado de la salud
 
 El repositorio SHALL ofrecer **una orden documentada de aprovisionamiento** que, por la API S3, deje el almacén como la
-aplicación lo necesita: el bucket de snapshots con su retención (`cv/documents`, «Retención de snapshots de
-enriquecimiento») y el bucket de CV con su cifrado en reposo y **sin** regla de expiración (`cv/documents`, «Bucket de
-CV cifrado en reposo en producción»), los dos sin ninguna política de acceso anónimo.
+aplicación lo necesita: el bucket de snapshots **sin ninguna regla de ciclo de vida**, porque su retención es el
+barrido del `worker` (`cv/documents`, «Retención de snapshots de enriquecimiento»), y el bucket de CV con su cifrado en
+reposo y **sin** regla de ciclo de vida (`cv/documents`, «Bucket de CV cifrado en reposo en producción»), los dos sin
+ninguna política de acceso anónimo.
 
 - SHALL ser **idempotente**: repetirla NO SHALL duplicar ni cambiar la configuración que ya es correcta.
 - La preparación de cada bucket SHALL ser **independiente** de la del otro: un almacén que ya tenía uno de los dos
@@ -66,12 +67,9 @@ CV cifrado en reposo en producción»), los dos sin ninguna política de acceso 
 - SHALL terminar en un **plazo acotado** aunque el almacén acepte la conexión y no responda, con código distinto de cero
   nombrando el paso en curso.
 - SHALL tener un **modo de comprobación que no escribe nada** y que termina con código distinto de cero nombrando cada
-  discrepancia: bucket ausente; retención distinta de la exigida (por su identificador, **habilitada**, sin filtro, como
-  **única** regla y por su plazo, no por la mera existencia de una regla); un snapshot más antiguo de lo que la
-  retención permite, que SHALL buscarse **con las dos formas de retención** (más de **32 días** con la regla del
-  almacén, que expira a los 30 y admite el redondeo a medianoche y un día de su pasada; más de **31** con el barrido);
-  expiración presente en el bucket de CV; cifrado ausente cuando el almacén lo aplica por bucket; o acceso anónimo
-  concedido. La única escritura admitida es
+  discrepancia: bucket ausente; una regla de ciclo de vida en cualquiera de los dos buckets, sea cual sea su plazo; un
+  snapshot de más de **31 días** (el barrido diario borra los de más de 30, con un día de margen); cifrado ausente
+  cuando el almacén lo aplica por bucket; o acceso anónimo concedido. La única escritura admitida es
   borrar, con firma, el objeto de sonda que una escritura anónima **ya aceptada** por el almacén haya creado, e
   informarlo como fallo.
 - SHALL ejecutarse en producción con la **imagen de la aplicación** ya publicada, sin imagen adicional, y en desarrollo
@@ -82,7 +80,8 @@ CV cifrado en reposo en producción»), los dos sin ninguna política de acceso 
 
 - **GIVEN** un almacén recién arrancado, sano y sin buckets
 - **WHEN** se ejecuta la orden de aprovisionamiento
-- **THEN** SHALL existir el bucket de snapshots con su retención y el de CV con su cifrado y sin expiración
+- **THEN** SHALL existir el bucket de snapshots sin regla de ciclo de vida y el de CV con su cifrado y sin regla de
+  ciclo de vida
 - **AND** el modo de comprobación SHALL terminar con código cero
 
 #### Scenario: Repetir el aprovisionamiento no cambia nada
@@ -90,7 +89,7 @@ CV cifrado en reposo en producción»), los dos sin ninguna política de acceso 
 - **GIVEN** un almacén ya aprovisionado
 - **WHEN** se ejecuta otra vez la orden de aprovisionamiento
 - **THEN** SHALL terminar con código cero
-- **AND** la configuración de los dos buckets SHALL ser la misma que antes, con una sola regla de retención
+- **AND** la configuración de los dos buckets SHALL ser la misma que antes, sin ninguna regla de ciclo de vida
 
 #### Scenario: Un bucket ya existente no impide crear el otro
 
@@ -111,26 +110,19 @@ CV cifrado en reposo en producción»), los dos sin ninguna política de acceso 
 - **WHEN** se ejecuta la orden de aprovisionamiento
 - **THEN** SHALL terminar dentro de su plazo con código distinto de cero nombrando el paso en curso
 
-#### Scenario: Una retención distinta se detecta
+#### Scenario: El aprovisionamiento quita una regla de ciclo de vida
 
-- **GIVEN** el bucket de snapshots con una regla de expiración de 7 días en lugar de la exigida
+- **GIVEN** el bucket de snapshots con una regla de ciclo de vida puesta a mano
+- **WHEN** se ejecuta la orden de aprovisionamiento
+- **THEN** el bucket SHALL quedar sin ninguna regla de ciclo de vida
+- **AND** el modo de comprobación SHALL terminar con código cero
+
+#### Scenario: Cualquier regla de ciclo de vida se detecta
+
+- **GIVEN** el bucket de snapshots con una regla de ciclo de vida, sea cual sea su plazo, su estado o su filtro
 - **WHEN** se ejecuta el modo de comprobación
-- **THEN** SHALL terminar con código distinto de cero nombrando el bucket y el plazo encontrado
-- **AND** la mera existencia de una regla NO SHALL bastar para darlo por bueno
-
-#### Scenario: Una regla deshabilitada o acompañada se detecta
-
-- **GIVEN** el bucket de snapshots con la regla exigida deshabilitada, con un filtro, o acompañada de otra regla
-- **WHEN** se ejecuta el modo de comprobación
-- **THEN** SHALL terminar con código distinto de cero nombrando el bucket y la propiedad
-
-#### Scenario: Con la regla del almacén, un snapshot viejo rompe la comprobación
-
-- **GIVEN** la retención por regla del almacén, con la regla exigida en su sitio, y un snapshot de 33 días en el bucket
-  de snapshots
-- **WHEN** se ejecuta el modo de comprobación
-- **THEN** SHALL terminar con código distinto de cero nombrando el bucket y el snapshot
-- **AND** que la regla esté bien escrita NO SHALL bastar para darlo por bueno
+- **THEN** SHALL terminar con código distinto de cero nombrando el bucket y la regla
+- **AND** una regla de 30 días habilitada NO SHALL bastar para darlo por bueno
 
 #### Scenario: El modo de comprobación no escribe
 
@@ -244,7 +236,7 @@ repositorio, `docs/object-store-matrix/` (el registro y los scripts que lo produ
 change, que se mueve al archivarlo y rompería el enlace. Ese registro SHALL contener la salida de cada comprobación para
 el producto elegido: cifrado en reposo demostrado leyendo el almacenamiento del contenedor con un control que sí aparece, y
 demostrado protegiendo (otra clave no lee el CV o el almacén no arranca con ella, y la clave no está en el
-almacenamiento); expiración observada;
+almacenamiento); barrido de snapshots ejecutado contra el almacén elegido;
 acceso anónimo rechazado; imágenes descargables en las dos arquitecturas; los tests reales de la aplicación con el SDK
 en uso; y un healthcheck de solo lectura. Sustituir el producto o subir su versión mayor SHALL repetir la matriz antes
 de cambiar el valor por defecto de su imagen.

@@ -464,21 +464,23 @@ changes:
       espejo (`ghcr.io/manuxd270516/linkvault-minio`, ADR-048 §8) es solo `amd64`. Antes de nada se ejecuta el
       corredor `ubuntu-24.04-arm` en este repositorio privado; si no está, se para y pregunta.
       **Matriz ejecutada, por fases y con parada** sobre SeaweedFS, RustFS y Garage (MinIO solo como control del
-      arnés): el día 1, imágenes `amd64`/`arm64` sin credenciales, forja mantenida y la siembra de la expiración de
-      los tres; después, el cribado en el orden de la lista, que se detiene cuando el puntero ya no puede cambiar
+      arnés): el día 1, imágenes `amd64`/`arm64` sin credenciales y forja mantenida; después, el cribado en el orden
+      de la lista, que se detiene cuando el puntero ya no puede cambiar
       (sin CLI del producto, sin acceso anónimo, cifrado que **protege**:
       disco sin el CV y con un control, otra clave que no lo lee o con la que no arranca, clave fuera del disco); los
       tests reales de la app, el healthcheck de solo lectura y el tiempo hasta sano solo en el candidato que señala el
-      puntero; y un veredicto con la expiración leída a las 48 h o 96 h. La regla de parada prima el cifrado nativo de
-      los CV (confirmada por el usuario antes de `/opsx:apply`); un punto de revisión a los 7 días solo para el change
-      si nadie da cifrado nativo; sin nadie apto, se para y vuelve al usuario. Evidencia en `docs/object-store-matrix/`.
+      puntero; y un veredicto. La regla de parada prima el cifrado nativo de los CV (confirmada por el usuario el
+      2026-09-26); un punto de revisión a los 7 días solo para el change si nadie da cifrado nativo; sin nadie apto,
+      se para y vuelve al usuario. Evidencia en `docs/object-store-matrix/`;
+      el servicio entregado se compara entero con el medido (solo difiere una lista cerrada) y C5 se repite sobre él
+      antes de escribir la elección.
       **Salidas escritas en la spec:** SSE-C vía un middleware de la fábrica del cliente S3, con la clave junto a
-      `AI_VAULT_KEY`, **solo si** el cifrado del almacén no se ha podido demostrar con las pruebas de la matriz; y, si
-      la expiración no se observa, un **barrido** diario de snapshots en el `worker`, que se niega si los dos buckets
-      coinciden.
+      `AI_VAULT_KEY`, **solo si** el cifrado del almacén no se ha podido demostrar con las pruebas de la matriz.
+      **Retención de snapshots siempre por barrido** diario en el `worker` (decisión del usuario, 2026-09-26), que se
+      niega si los dos buckets coinciden; la expiración del almacén no se mide ni se configura.
       **Aprovisionamiento** por la API S3 con `object-store provision`/`verify` en la imagen de `api`, después del
-      `up`; `verify` estricto (una sola regla habilitada, rechazo anónimo solo por falta de autenticación). Healthcheck
-      del almacén de solo lectura. Una fábrica de cliente S3 por proceso, con plazos y política de checksums, y suites
+      `up`; `verify` estricto (sin reglas de ciclo de vida ni snapshots de más de 31 días, rechazo anónimo solo por
+      falta de autenticación). Healthcheck del almacén de solo lectura. Una fábrica de cliente S3 por proceso, con plazos y política de checksums, y suites
       de contrato.
       **Deltas:** ADDED `platform/object-store`; MODIFIED de «Infraestructura con un comando»
       (`platform/local-environment`), «Compose de producción» y ADDED «Las imágenes de la pila se pueden descargar en

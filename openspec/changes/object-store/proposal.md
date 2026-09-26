@@ -13,25 +13,29 @@ fila 35 (ADR-051 §1) y va primero porque es **precondición** de 35b (`staging-
   la imagen `arm64` de cada candidato, y si consume minutos). Si no está disponible, el change se para y pregunta.
 - **Sustituir MinIO** por un almacén S3 mantenido y multiarquitectura. El producto **no se elige en este documento**:
   sale de una **matriz de requisitos ejecutada** sobre **SeaweedFS, RustFS y Garage**, por fases con parada: el primer
-  día, lo barato de los tres y la siembra de la expiración (lo único que no se puede acelerar); después, el cribado del
+  día, lo barato de los tres; después, el cribado del
   resto de lo barato, candidato a candidato en el orden de la lista, que se detiene cuando el puntero ya no puede
   cambiar; y lo caro (tests reales de la app, healthcheck, tiempos), solo en el candidato que
   señala la regla. Cada celda con su salida pegada: cifrado en reposo que **protege** (el disco no muestra el CV y sí un
-  control distinto, otra clave no lo lee o el almacén no arranca con ella, y la clave no está en el disco), expiración
-  observada, acceso anónimo rechazado como falta de autenticación (nunca un «no existe»), imágenes `amd64`/`arm64` sin
+  control distinto, otra clave no lo lee o el almacén no arranca con ella, y la clave no está en el disco), acceso
+  anónimo rechazado como falta de autenticación (nunca un «no existe»), imágenes `amd64`/`arm64` sin
   credenciales con su digest, los tests reales de la app con el SDK actual y un healthcheck de solo lectura posible. La
-  regla de parada da prioridad al **cifrado nativo** de los CV; es la lectura del motivo que dio el usuario, que este
-  **confirma en la aprobación previa a `/opsx:apply`**. Un **punto de revisión** a los 7 días (o al cerrar el cribado)
+  regla de parada da prioridad al **cifrado nativo** de los CV; es la lectura del motivo que dio el usuario, y este la
+  **confirmó el 2026-09-26**, junto con que la retención de snapshots vaya siempre por barrido (así que la expiración
+  del almacén no se mide). Un **punto de revisión** a los 7 días (o al cerrar el cribado)
   presenta el estado al usuario y solo detiene el change si nadie da cifrado nativo. La evidencia vive en
   `docs/object-store-matrix/`, una ruta que no se mueve al archivar. ADR-052 recoge ya las decisiones; su sección
   «Elección» se rellena con la evidencia.
 - **Salidas escritas en la spec, no improvisadas:** solo si el SSE del almacén no se ha podido demostrar con las
   pruebas de la matriz, **SSE-C desde la app**, inyectado por un
   middleware de la fábrica del cliente S3, con la clave en `.env` junto a `AI_VAULT_KEY` (la spec dice qué garantía
-  cambia); sin expiración observada, **barrido diario en el `worker`**.
+  cambia).
+- **Retención de snapshots por barrido diario en el `worker`, siempre** (decisión del usuario del 2026-09-26): la
+  expiración del almacén no se mide ni se configura; el aprovisionamiento quita cualquier regla de ciclo de vida y la
+  comprobación exige que no haya ninguna y ningún snapshot de más de 31 días.
 - **Aprovisionamiento por la API S3**, con un script node de un solo uso incluido en la imagen de `api` (ya trae el SDK
-  y es multiarquitectura), con plazos acotados y un modo que **comprueba sin escribir** y es estricto (regla única y
-  habilitada; un `404` anónimo es un fallo). Sin `mc` ni la CLI de ningún proveedor.
+  y es multiarquitectura), con plazos acotados y un modo que **comprueba sin escribir** y es estricto (ninguna regla
+  de ciclo de vida ni snapshots de más de 31 días; un `404` anónimo es un fallo). Sin `mc` ni la CLI de ningún proveedor.
 - **Healthcheck del almacén de solo lectura**: responde si está sano y no crea nada. Aprovisionar pasa a ser un paso
   aparte del arranque documentado. **BREAKING** para quien desarrolla: el arranque local cambia de orden y el volumen
   `minio-data` deja de usarse (no hay datos que migrar).
@@ -80,7 +84,8 @@ fila 35 (ADR-051 §1) y va primero porque es **precondición** de 35b (`staging-
   aprovisionamiento en el mismo comando) y «Meilisearch solo bajo el perfil search» (sin nombrar MinIO).
 - `cv/documents`: «Bucket de CV cifrado en reposo en producción» (SSE del almacén o, como salida, SSE-C con la garantía
   que cambia escrita; la demostración incluye el control, otra clave y la búsqueda de la clave), «Retención de
-  snapshots de enriquecimiento» (expiración del almacén, regla única y habilitada, o barrido del `worker`) y «Recogida
+  snapshots de enriquecimiento» (barrido diario del `worker`, siempre; una regla del almacén no se configura sin medir
+  su expiración en un change posterior) y «Recogida
   de objetos huérfanos documentada» (el procedimiento queda pendiente hasta el change posterior de operación, con su
   sección del RUNBOOK marcada).
 - `platform/demo-seed`: «Seed de demostración idempotente» deja de nombrar MinIO.
@@ -92,7 +97,7 @@ fila 35 (ADR-051 §1) y va primero porque es **precondición** de 35b (`staging-
 - **Código:** `apps/api` (fábrica del cliente S3, `s3-cv-file.store`, `s3-cv-user-prefix.deleter`, script
   `object-store` y su punto de entrada en el build, mensaje del seed), `apps/worker` (fábrica del cliente S3,
   `s3-cv-file.reader`, `s3-snapshot.store`, punto de entrada `s3-probe`), `apps/web` (texto de `/privacidad`);
-  condicionalmente, el middleware SSE-C en las dos fábricas y el barrido de snapshots en `worker`.
+  el barrido de snapshots en `worker` y, condicionalmente, el middleware SSE-C en las dos fábricas.
 - **CI:** `.github/workflows/cd-staging.yml` (runner `arm64`, plataforma del destino), `infra/ci/verify-artifact.sh`
   (servicios, plataformas, aprovisionamiento, lectura del `worker`, plazo), `infra/ci/report-cd-outcome.sh` (texto de
   la clase `artifact`), `infra/ci/verify.env`, script nuevo `infra/deploy/check-image-platforms.sh` y la comprobación

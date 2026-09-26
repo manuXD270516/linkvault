@@ -34,8 +34,9 @@ Ojo: `releases/latest` excluye prereleases.
 
 - **SeaweedFS** es el candidato con más papeletas para C5 `nativo` con (a) y (b1), porque la KEK viene del entorno y
   no se autogenera. **C4 tiene que comprobar que la identidad por entorno desactiva de verdad el modo público.**
-  **C6 depende de que el worker `s3_lifecycle` esté corriendo**; si no se puede lanzar sin CLI, C6 caerá en la salida
-  del barrido, que la regla de parada admite.
+  La expiración nativa necesita el worker `s3_lifecycle` corriendo; ya no importa: la retención de snapshots va
+  siempre por el barrido del `worker` de LinkVault y la matriz no mide la expiración (decisión del usuario,
+  2026-09-26; design D1 de `object-store`).
 - **RustFS**: C5 es la celda que decide, por la contradicción KMS/sin KMS, el paso de CLI (C3) y la issue #1397. Las
   credenciales por defecto hacen obligatorio fijarlas por entorno.
 - **Garage**: C5 solo puede salir `salida` (SSE-C); C8 (healthcheck) es difícil con una imagen `scratch`; necesita

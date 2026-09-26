@@ -34,8 +34,10 @@ almacén S3 que tiene imagen `arm64`; `build-verify-publish` de `cd-staging` en 
 publicado en `sha-<12>` y `:staging` es `linux/arm64` y verificado en esa arquitectura; la comprobación de plataformas
 de las imágenes del compose frente a la del host, como script del repositorio (`infra/deploy/check-image-platforms.sh`);
 la orden de aprovisionamiento del almacén en la imagen de `api` (`node object-store.js provision|verify`); y el plazo
-de `--wait-timeout` recalculado en `infra/ci/verify-artifact.sh` con los tiempos del almacén nuevo. Este change
-**coloca** la comprobación y el aprovisionamiento en el orden del despliegue y **lee** el plazo (D4); no los escribe.
+de `--wait-timeout` recalculado en `infra/ci/verify-artifact.sh` con los tiempos del almacén nuevo; y el digest del
+índice de la imagen del almacén en ADR-052 «Elección», en una línea `Digest del índice: sha256:<64 hexadecimales>`.
+Este change **coloca** la comprobación y el aprovisionamiento en el orden del despliegue y **lee** el plazo y el digest
+(D4); no los escribe.
 (Traslados que 35a editó aquí durante su debate: ver su design, «Traslados».)
 
 ## Goals / Non-Goals
@@ -145,14 +147,15 @@ acción convierta en orden remota.
   4.5).
 - **Usuario y token del registro por la entrada estándar, sin rama opcional y con `logout`.** `printf '%s\n%s\n'
   "$GHCR_READ_USER" "$GHCR_READ_TOKEN" | ssh … "bash $STAGING_DIR/.incoming-<sha12>/infra/deploy/deploy.sh <tag>
-  <plazo>"`. `deploy.sh` lee las dos líneas de su entrada estándar (`IFS= read -r user; IFS= read -r token`) y hace
+  <plazo> <digest>"`. `deploy.sh` lee las dos líneas de su entrada estándar (`IFS= read -r user; IFS= read -r token`) y hace
   `docker login ghcr.io -u "$user" --password-stdin` con el token, dentro de un `trap` que hace `docker logout ghcr.io`
   al salir, también en error. El `printf` termina en salto de línea porque `read` devuelve ≠0 ante una última línea sin
   él, y con `set -e` eso abortaría antes del login. Se invoca con `bash` para no depender del bit de ejecución, que
   `tar` sin `-p` no garantiza.
   **En la orden remota solo quedan valores no secretos y validados:** `STAGING_DIR` (constante del workflow),
   `<sha12>` (validado en el corredor), el tag (`sha-` + 12 hexadecimales, ya comprobado por `assert-deploy-tag.sh`) y
-  el plazo de arranque (`^[0-9]{2,4}$`, D4); `deploy.sh` valida otra vez el tag y el plazo. **El usuario del registro no
+  el plazo de arranque (`^[0-9]{2,4}$`, D4) y el digest del almacén (`^sha256:[0-9a-f]{64}$`, D4); `deploy.sh` valida
+  otra vez los tres. **El usuario del registro no
   puede ir como argumento de esa orden**, aunque no sea confidencial: es el valor de un secreto, y la shell remota
   interpreta la cadena **antes** de que ninguna expresión regular de `deploy.sh` la vea, así que validarlo allí llega
   tarde (iteración 3). Ya en el host, `docker login` recibe el usuario como argumento literal, sin shell de por medio, y
@@ -202,8 +205,8 @@ El orden del job de despliegue:
    (`deploy.sh`, `install-config.sh` y `smoke.sh`), **la propia `config-files.txt`**, que `install-config.sh` lee en el
    host, y **el script de plataformas de 35a**, `infra/deploy/check-image-platforms.sh`, que `deploy.sh` invoca. Si
    falta el directorio fijo, falla aquí nombrándolo, sin crear nada.
-2. **ssh** que ejecuta `bash .incoming-<sha12>/infra/deploy/deploy.sh <tag> <plazo>`, **del mismo commit**, con usuario
-   y token por la entrada estándar (D3), que hace: login → comprobación de plataformas (script de 35a) y `docker compose
+2. **ssh** que ejecuta `bash .incoming-<sha12>/infra/deploy/deploy.sh <tag> <plazo> <digest>`, **del mismo commit**, con usuario
+   y token por la entrada estándar (D3), que hace: login → comprobación de plataformas (script de 35a) → comprobación del digest del almacén (abajo) → `docker compose
    -f .incoming-<sha12>/docker-compose.prod.yml --env-file .env.staging pull` → `install-config.sh` → `docker compose -f
    docker-compose.prod.yml --env-file .env.staging up -d --wait --wait-timeout <plazo>`, **con el compose instalado** →
    `docker compose -f docker-compose.prod.yml --env-file .env.staging run --rm --no-deps api node object-store.js
@@ -220,6 +223,18 @@ con un paso como el que ya lee `MONGOMS_VERSION` en `cd-staging.yml:70-79`, que 
 con `^[0-9]{2,4}$` antes de ponerlo en la orden. `verify-artifact.sh` no viaja: leerlo en el host sería depender de un
 fichero que no está en la lista. La tarea 4.4 lo comprueba ejecutando `deploy.sh` desde un árbol extraído con `tar -T
 config-files.txt`, no desde el repositorio.
+
+**El digest del almacén se comprueba antes de descargar** (traslado de 35a, pasada extra de su debate). La imagen del
+almacén se eligió con una matriz ejecutada sobre una versión cuyo digest del índice anota ADR-052 «Elección» en una
+línea `Digest del índice: sha256:<64 hexadecimales>`. El corredor la lee del commit desplegado igual que el plazo
+(falla si no la encuentra exactamente una vez) y la valida con `^sha256:[0-9a-f]{64}$`; `deploy.sh` la recibe como
+tercer argumento, la valida otra vez y, antes del `pull`, resuelve la imagen del servicio `object-store` con `docker
+compose -f .incoming-<sha12>/docker-compose.prod.yml --env-file .env.staging config --images object-store` (forma
+medida en la tarea 2.14 de 35a) y su digest del índice con `docker buildx imagetools inspect` y la plantilla que midió
+esa misma tarea. Si difieren, sale ≠0 nombrando la imagen y los dos digests, sin `pull` ni instalación y con `logout`:
+una etiqueta movida en el registro, o un `OBJECT_STORE_IMAGE` de `.env.staging` que apunte a otra imagen, desplegaría
+algo que la matriz no midió (`platform/object-store`: cambiar la imagen del almacén repite la matriz). ADR-052 no viaja
+al host; viaja el valor, como el plazo. La tarea 4.4 lo comprueba con el `docker` falso.
 
 **`pull` con el compose de `.incoming`, `up` con el instalado.** El `pull` necesita la lista de imágenes del commit
 nuevo antes de instalar nada. El `up`, en cambio, usa el compose **instalado** en `$STAGING_DIR`: Compose toma como

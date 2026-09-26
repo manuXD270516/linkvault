@@ -84,62 +84,64 @@ decidirá en cada candidato, pero toda celda sale de una orden ejecutada con su 
 |---|---|---|
 | **C1** Imágenes | `docker buildx imagetools inspect <img>:<tag>` muestra `linux/amd64` y `linux/arm64`; tras `docker logout <registro>`, `docker pull --platform linux/amd64` y `--platform linux/arm64` terminan bien. Se anota el digest del índice. | dura |
 | **C2** Mantenido | la **API de la forja oficial** de cada proyecto: repositorio no archivado y una versión publicada en los últimos 12 meses; licencia anotada. SeaweedFS y RustFS: `gh api repos/<owner>/<repo>` (`archived: false`) y `gh api repos/<owner>/<repo>/releases/latest` (`published_at`). Garage (Forgejo): `curl -s https://git.deuxfleurs.fr/api/v1/repos/deuxfleurs/garage` (`archived`) y `curl -s 'https://git.deuxfleurs.fr/api/v1/repos/deuxfleurs/garage/releases?limit=1'` (`published_at`). | dura |
-| **C3** Sin CLI del producto | juzga **solo credenciales, buckets y objetos por la API S3**: el contenedor arranca con credenciales **por variables**, sin fichero con secretos, `object-store provision` (D4) crea los buckets y los objetos se escriben y se leen, todo sin la CLI del producto ni su API de administración; si alguna de las tres cosas las exige, la celda falla. Un paso de CLI, de API de administración o un **proceso extra** que **solo** necesiten el cifrado por defecto o la expiración **no** la suspende: deja esa forma en `no disponible` (C5 pasa a SSE-C; C6, a `salida`), se anota con su salida y **nunca** entra en los composes. Si `PutBucketEncryption` se rechaza, o solo se puede poner con la CLI, C5 nativo queda `no disponible` y C3 no falla. | dura |
-| **C4** Sin acceso anónimo | tras aprovisionar, `object-store verify` (D4) hace `GET` de objeto, listado y `PUT` **sin firmar** contra los dos buckets y exige en cada una un rechazo: `401` o `403`, o un `400` cuyo `<Code>` sea de la familia de autenticación (`AccessDenied`, `MissingSecurityHeader`, `AuthorizationHeaderMalformed`, `InvalidAccessKeyId`, `SignatureDoesNotMatch`), siempre sin bytes del objeto. Un `2xx`, un `404` o cualquier otra respuesta son fallo. Un `verify` que falla **solo** por el cifrado o por la regla de expiración no cuenta contra C4. Además, `verify` se ejecuta contra el arranque **sin identidades** del candidato y **tiene que salir ≠0 nombrando el acceso anónimo** (si sale 0, el defecto es de `verify`); si el producto no tiene modo abierto, «no aplica». | dura |
+| **C3** Sin CLI del producto | juzga **solo credenciales, buckets y objetos por la API S3**: el contenedor arranca con credenciales **por variables**, sin fichero con secretos, `object-store provision` (D4) crea los buckets y los objetos se escriben y se leen, todo sin la CLI del producto ni su API de administración; si alguna de las tres cosas las exige, la celda falla. Un paso de CLI, de API de administración o un **proceso extra** que **solo** necesiten el cifrado por defecto o la expiración **no** la suspende: deja esa forma en `no disponible` (C5 pasa a SSE-C; la expiración del almacén no se usa), se anota con su salida y **nunca** entra en los composes. Si `PutBucketEncryption` se rechaza, o solo se puede poner con la CLI, C5 nativo queda `no disponible` y C3 no falla. | dura |
+| **C4** Sin acceso anónimo | tras aprovisionar, `object-store verify` (D4) hace `GET` de objeto, listado y `PUT` **sin firmar** contra los dos buckets y exige en cada una un rechazo: `401` o `403`, o un `400` cuyo `<Code>` sea de la familia de autenticación (`AccessDenied`, `MissingSecurityHeader`, `AuthorizationHeaderMalformed`, `InvalidAccessKeyId`, `SignatureDoesNotMatch`), siempre sin bytes del objeto. Un `2xx`, un `404` o cualquier otra respuesta son fallo. Un `verify` que falla **solo** por el cifrado o por la configuración de ciclo de vida no cuenta contra C4. Además, `verify` se ejecuta contra el arranque **sin identidades** del candidato y **tiene que salir ≠0 nombrando el acceso anónimo** (si sale 0, el defecto es de `verify`); si el producto no tiene modo abierto, «no aplica». | dura |
 | **C5** Cifrado que protege | ver D2. Forma nativa: `nativo` (cifrado por defecto del bucket con las tres pruebas de D2), o `no disponible`, `no concluyente` o `falla` (una prueba muestra que la clave no protege), que dejan la forma (1) de `cv/documents` sin demostrar y obligan a probar SSE-C. SSE-C: `salida` (con las mismas pruebas), `no concluyente`, `falla` o `falla (TLS)` (subtipo aparte, D2). C5 se corta en la primera prueba ejecutada que decide. | dura, con salida |
-| **C6** Expiración observada | ver D2. Resultado: `nativo` (el objeto desaparece), `salida` (sigue ahí a las 96 h: barrido del `worker`) o `no observado` (el almacén se reinició o el control desapareció). No puede fallar del todo: el barrido solo necesita listar y borrar, que cubre C7. | con salida |
+| **C6** Expiración | **No se mide** (decisión del usuario, 2026-09-26): la retención de snapshots va siempre por el barrido diario del `worker` (D7), que solo necesita listar y borrar, lo que ya cubre C7. En la matriz queda con «no medido: retención por barrido, decisión del usuario 2026-09-26», para no renumerar C7-C9. | no medida |
 | **C7** Tests reales de la app | las suites de contrato de D3 contra el candidato, con el SDK instalado (versión anotada con `node -e "console.log(require('@aws-sdk/client-s3/package.json').version)"`), **primero con la política de checksums por defecto** y, si falla por checksums, con `WHEN_REQUIRED`. Incluye el borrado por prefijo con más de 1000 claves. | dura |
 | **C8** Healthcheck de solo lectura | una orden disponible **dentro de la imagen** (shell con cliente HTTP, o un subcomando del binario en forma `CMD` sin shell) que sale 0 con el almacén sirviendo, sale ≠0 apuntada a un puerto sin servicio, y tras diez ejecuciones deja la lista de buckets igual (vacía). | dura |
 | **C9** Tiempo hasta sano | tres arranques en frío, tiempo hasta `healthy` leído de `docker inspect --format '{{json .State.Health}}'`. Informa D8; no aprueba ni suspende. | medida |
 
 **Ejecución por fases.** Las celdas baratas se ejecutan a los tres a la vez; las caras, solo donde la regla lo pide.
 
-1. **Día 1:** C1 y C2 de los tres (tarea 1.4) y, para los que las pasan, su compose y la **siembra de C6** (1.5-1.7,
-   una tarea por candidato), cada uno en su propio proyecto de Compose, con su volumen y en un puerto del host distinto
-   (`9101`, `9102`, `9103`), que quedan corriendo hasta la lectura. Va el primer día porque C6 es lo único que no se
-   puede acelerar. Las versiones son las que fijó la 1.2 al probar el corredor `arm64`.
-2. **Arnés y control de MinIO (2.1-2.11)**; en los huecos de la espera de C6, **lo que no depende del producto**
-   (2.12-2.17: comprobación de los traslados, texto de `/privacidad`, medición y script de la comprobación de
-   plataformas, texto de la clase `artifact` y comentarios de los workflows).
+1. **Día 1:** C1 y C2 de los tres (tarea 1.4), con las versiones que fijó la 1.2 al probar el corredor `arm64` y el
+   digest del índice de cada uno anotado.
+2. **Arnés y control de MinIO (2.1-2.11)**; en los huecos (esperas de corredores y de CI, y la de la respuesta del
+   usuario si la 4.1 bloquea), **lo que no depende del producto** (2.12-2.17: comprobación de los traslados, texto de
+   `/privacidad`, medición y script de la comprobación de plataformas, texto de la clase `artifact` y comentarios de
+   los workflows).
 3. **Cribado C3-C5 candidato a candidato (grupo 3), en horas**, con el arnés del grupo 2 y el almacén en el `9000`, en
    el orden de la lista y **deteniéndose cuando el puntero ya no puede cambiar**: el primero que pasa C1-C4 con C5
    `nativo` fija el puntero, porque nadie que vaya detrás en la lista puede adelantarlo. Primero SeaweedFS (3.1 y 3.4);
    si pasa C1-C4 con C5 `nativo`, se va directo a C7-C9 (4.2-4.4) y las celdas C3-C5 de RustFS y Garage (3.2, 3.3, 3.5
    y 3.6) se cierran como «no ejecutado: puntero fijado en SeaweedFS». Solo si SeaweedFS cae se criban los demás, en el
    orden de la lista y con la misma regla; si el fijado cae después en C7 o C8, el cribado se reanuda con el siguiente.
-   La siembra de C6 de los tres el día 1 se mantiene: es barata y, si SeaweedFS cae, ahorra días.
+   El compose de cada candidato se escribe en su propia tarea de C3-C4 (3.1, 3.2, 3.3), así que el de RustFS y el de
+   Garage solo existen si el cribado llega a ellos.
 4. **C7-C9 solo en el candidato que señala el puntero (grupo 4)**, pasando al siguiente solo si falla una celda dura.
-5. **Veredicto de los tres en una tarea (5.3)**, cuando C6 está leído.
+5. **Veredicto de los tres en una tarea (5.3)**, en cuanto el candidato elegido tiene C7-C9. Lo que sigue no va en el
+   orden de la numeración (Migration Plan): el modo de cifrado, el compose de desarrollo y C5 repetido sobre él van
+   **antes** de escribir ADR-052 «Elección» y los traslados.
 
-**Forma de los composes de la matriz** (`docs/object-store-matrix/<candidato>.compose.yml`, tareas 1.5-1.7, y el del
+**Forma de los composes de la matriz** (`docs/object-store-matrix/<candidato>.compose.yml`, tareas 3.1-3.3, y el del
 control de MinIO, 2.6). Servicio `object-store`, credenciales solo por variables, la clave del cifrado desde
 `OBJECT_STORE_SSE_KEY` mapeada a la variable del producto, y **todo el estado del almacén en un solo volumen con
-nombre**: ningún bind montado con escritura, y un fichero de configuración sin secretos, si hace falta, montado solo
+nombre**, sin `name:` explícito: ningún bind montado con escritura, y un fichero de configuración sin secretos, si
+hace falta, montado solo
 de lectura. Así el `tar` de C5 es todo lo que el almacén guarda, y (c) no puede pasar porque la clave viva en otro
-sitio; `c5.sh` sale con 2 si `docker compose config` muestra en el servicio más de un volumen o un bind escribible.
+sitio; `c5.sh` sale con 2 si `docker compose config` muestra en el servicio más de un volumen, un bind escribible o un
+volumen con `name:` explícito (la copia de (b) seguiría montando el original).
 Ningún paso que solo necesiten el cifrado o la expiración (C3) entra en ellos. Su servicio es el que se copia a los
 composes de la pila (D2, «Lo que se entrega es lo que se midió»).
 
 **Regla de parada** — *lectura del motivo que dio el usuario («el cifrado de los CV es lo último que conviene
-rebajar»). Su confirmación se pide en la **aprobación humana previa a `/opsx:apply`** y la tarea 1.1 la anota, con
-fecha, como precondición; ver Open Questions.*
+rebajar»), **confirmada por el usuario el 2026-09-26** junto con la retención por barrido («Sí, adoptemos el
+barrido»); la tarea 1.1 lo anota como precondición cumplida; ver Open Questions.*
 
-- **Cumple todo** = pasa las celdas duras (C1-C4, C7, C8) **y C5 sale `nativo`**. C6 puede ser `salida` o `no
-  observado` (barrido del `worker`) sin que eso obligue a seguir buscando: el motivo del usuario es el cifrado, no la
+- **Cumple todo** = pasa las celdas duras (C1-C4, C7, C8) **y C5 sale `nativo`**. La expiración de snapshots va
+  **siempre** por el barrido del `worker` (D7), así que C6 no se mide: el motivo del usuario es el cifrado, no la
   expiración.
 - **Puntero** (dónde se gastan C7-C9), entre los que pasan C1-C4: primero los de C5 `nativo`; después, el orden de la
-  lista. **C6 no mueve el puntero.**
+  lista.
 - El primero del puntero que **cumple todo** se elige y se deja de buscar.
-- **C6 no decide la elección** (iteración 3): con el cribado que se detiene (fase 3) y C7-C9 solo en el candidato del
-  puntero, nunca hay dos candidatos que hayan pasado a la vez todas las celdas duras con el mismo C5, así que el
-  desempate por C6 de la iteración 2 no se aplicaría nunca y se ha borrado. C6 solo fija el modo de retención del
-  elegido (`lifecycle` si es `nativo`; `sweep` si es `salida` o `no observado`). **Por C6 no se ejecuta ninguna celda en
-  ningún otro candidato.**
+- **C6 no interviene**: no se mide, así que no mueve el puntero, no decide la elección ni hace ejecutar ninguna celda
+  en otro candidato. El desempate por C6 de la iteración 2 ya se había borrado en la iteración 3, y el modo de
+  retención ya no depende del elegido.
 - **La forma nativa de C5 en `no disponible`, `no concluyente` o `falla` obliga a probar SSE-C** (tarea 3.8) en ese
   candidato cuando el puntero llega a él: es la forma (2) de `cv/documents`, válida solo si la (1) no se ha podido
   demostrar con estas pruebas. Si SSE-C también sale `no concluyente`, el candidato queda **descartado**; si SSE-C se
   rechaza, C5 = `falla` y también. Un rechazo por falta de TLS se registra como **`falla (TLS)`**, un subtipo aparte
-  que descarta igual pero que la 4.1 y la 6.1 presentan al usuario con su coste (D2, «SSE-C y TLS»).
+  que descarta igual pero que la 4.1 y la 5.3 presentan al usuario con su coste (D2, «SSE-C y TLS»).
 - **Si ninguno cumple todo**, se elige el primer **apto con salida** (duras + C5 = `salida`) del puntero. **Si ninguno
   es apto**, el change **se detiene** y vuelve al usuario con la matriz: no se relaja una celda dura para que alguien
   pase.
@@ -157,38 +159,41 @@ que tarde el usuario en responder al punto de revisión cuando bloquea):
 
 | Hito | Peor caso | Por qué |
 |---|---|---|
-| Línea base, corredor `arm64`, C1-C2 y siembra de C6 de los tres (1.1-1.7) | día 1 | la siembra no admite retraso |
-| Arnés y control de MinIO (2.1-2.11 y 2.9b, 12 tareas) | días 2-3 | |
-| Cribado C3-C5 de los tres + SSE-C en los tres (3.1-3.8, hasta 10 ejecuciones: el cribado no se detiene porque nadie da C5 `nativo`) | días 4-5 | |
+| Línea base, corredor `arm64` y C1-C2 de los tres (1.1-1.4) | día 1 | |
+| Arnés y control de MinIO (2.1-2.11 y 2.9b, 12 tareas) | días 1-3 | empieza en el hueco del día 1 |
+| Cribado C3-C5 de los tres, control positivo de SSE-C y SSE-C en los tres (3.1-3.8 y 3.7b, hasta 11 ejecuciones: el cribado no se detiene porque nadie da C5 `nativo`) | días 4-5 | |
 | Punto de revisión (4.1), **bloqueante** porque nadie da C5 `nativo` | día 5, + R | |
 | Lo que no depende del producto (2.12-2.17, 6 tareas) | día 6, dentro de R | en el peor caso no hay otro hueco; si R ≤ 1 día, lo llenan y R no suma |
-| Relectura de C6 a las 96 h (5.2) | día 5 | la siembra fue el día 1; no está en el camino crítico |
 | C7-C9 en los tres candidatos (fallo duro en los dos primeros, 9 ejecuciones) | días 7-8 | |
 | **Veredicto (5.3)** | **día 8** | |
-| Resto del change con todas las salidas (grupos 6-13, 37 tareas) | + 6 días | |
+| Resto del change con todas las salidas (grupos 6-13, 37 tareas, con el barrido 8.5-8.7 siempre) | + 6 días | |
 | **Cierre del change** | **unos 14 días naturales, + (R − 1) si R pasa de un día** | sin contar la espera de la ventana de fusión (13.4) |
-| **Caso probable** (según `prelectura.md`, que no aprueba celdas): SeaweedFS con C5 `nativo` y C6 por barrido | **veredicto el día 5, cierre en unos 10-11 días** | el cribado se detiene en SeaweedFS (3.1 y 3.4), la 4.1 informa sin bloquear, C6 queda `salida` en la relectura de 96 h (o antes, si la regla necesita un proceso extra) y se suman las tareas del barrido (8.5-8.7) |
+| **Caso probable** (según `prelectura.md`, que no aprueba celdas): SeaweedFS con C5 `nativo` | **veredicto el día 4, cierre en unos 10-11 días** | el cribado se detiene en SeaweedFS (3.1 y 3.4), la 4.1 informa sin bloquear y C7-C9 van solo en él (unas 24 tareas hasta el veredicto); después, unas 32 tareas: el grupo 8 hace el barrido (8.5-8.7) y cierra 8.1-8.4 y 8.8 como «no aplica» |
 
-Sin salidas y con el primer candidato cumpliendo todo: la 4.1 informa sin bloquear, veredicto el día 5 (C6 `nativo` a
-las 48 h, o a las 96 h si hace falta la relectura) y cierre en unos 10-11 días (unas 28 tareas tras el veredicto, más
-2.12-2.17 si no encontraron hueco antes). Adelantar 2.12-2.17 no acorta el total cuando no hay huecos: los saca del
-tramo posterior al veredicto y llena la espera de R.
+Dejar de medir C6 no mueve el peor caso: la espera de la expiración nunca estuvo en su camino crítico, que pasa por el
+cribado de los tres, la respuesta al punto de revisión y C7-C9 en los tres. Sí adelanta un día el veredicto del caso
+probable, que antes esperaba a esa lectura aunque SeaweedFS hubiera cumplido todo el día 4. Sin salidas y con el primer
+candidato cumpliendo todo: la 4.1 informa sin bloquear, veredicto el día 4 y cierre en unos 10-11 días (unas 32
+tareas tras el veredicto, más 2.12-2.17 si no encontraron hueco antes). Adelantar 2.12-2.17 no acorta el total cuando
+no hay huecos: los saca del tramo posterior al veredicto y llena la espera de R.
 
 **Dónde queda la evidencia.** Cada orden y su salida, pegadas en `docs/object-store-matrix/matriz.md` (se crea en 1.1),
-con los ficheros del arnés en el mismo directorio (un compose por candidato y otro para el control de MinIO,
-`find-plaintext.mjs`, `c5.sh`, `c6.mjs` y `list-buckets.mjs`) y la pre-lectura (`prelectura.md`), que no es evidencia
-de ninguna celda. `matriz.md` termina con la sección «Configuración entregada» (D2): C5 repetido sobre
-`docker-compose.yml` y la comparación de servicios. Es una ruta **estable** desde el día 1: no vive bajo
+con los ficheros del arnés en el mismo directorio (un compose por candidato cribado, los del control de MinIO,
+`find-plaintext.mjs`, `c5.sh` y `list-buckets.mjs`) y la pre-lectura (`prelectura.md`), que no es evidencia
+de ninguna celda. `matriz.md` termina con la sección «Configuración entregada» (D2): la lista cerrada de claves, el digest
+comprobado, la orden que genera la clave, las comparaciones de servicios y C5 repetido sobre `docker-compose.yml`; y con
+la sección «Retención por barrido», con el barrido ejecutado contra el almacén elegido (tarea 8.7). Es una ruta **estable** desde el día 1: no vive bajo
 `openspec/changes/object-store/`, que se mueve al archivar, así que el enlace de `infra/README.md` no se rompe. El
 resultado y su porqué, en la sección «Elección» de **ADR-052**, creado en el debate con estas decisiones.
 `infra/README.md` enlaza ambos (`platform/object-store`, «La elección del almacén se justifica con evidencia
 ejecutada»).
 
 *Alternativas descartadas:* elegir por documentación (la afirmación «soporta SSE» es la que hay que medir); evaluar los
-tres enteros en paralelo (C7-C9 cuestan tareas que la regla puede no necesitar); evaluarlos en serie completos (la
-espera de C6 se multiplicaría por tres).
+tres enteros en paralelo (C7-C9 cuestan tareas que la regla puede no necesitar); evaluarlos en serie completos (C7-C9 en los tres aunque el primero cumpla todo); **medir la expiración del almacén (C6) y
+usarla cuando se observara**: el usuario decidió el 2026-09-26 no medirla, porque el barrido cubre la retención sin
+depender del producto y una regla sin medir sería una comprobación decorativa (ADR-048 §7).
 
-### D2. Las dos celdas que se pueden aprobar sin estar cumplidas
+### D2. La celda que se puede aprobar sin estar cumplida
 
 **C5, cifrado.** Una respuesta de la API que dice «AES256» no demuestra que el disco esté cifrado, y un disco sin texto
 en claro no demuestra que la clave proteja nada. El método, que valida primero el control de MinIO (tareas 2.9-2.10):
@@ -238,6 +243,11 @@ C5 = **`nativo`** exige, además de la lectura del disco, **tres pruebas de que 
 - **(c) La clave no está en el disco.** `find-plaintext` no encuentra los bytes de la clave en el `tar`.
 
 `docs/object-store-matrix/c5.sh <compose> <volumen>` encadena 1-4 y (b)-(c) para que cada candidato cueste una tarea.
+Lee K1 del compose **resuelto** (`docker compose config --format json`), en la entrada de `environment` del servicio
+`object-store` cuyo valor sin interpolar (`--no-interpolate`) referencia `OBJECT_STORE_SSE_KEY`, y sale con 2 si no
+hay exactamente una o si queda vacía: la clave medida es la que el compose entrega, no la de la shell. Nombra siempre
+ese servicio (`stop object-store`, `up -d --no-deps object-store`), así que en un compose de varios servicios, como
+`docker-compose.yml`, no toca los demás; y sale con 2 si el volumen tiene `name:` explícito.
 
 Si el cifrado por defecto no existe (`no disponible`: el almacén lo rechaza, solo se puede poner con su CLI o su API
 de administración, o necesita un proceso extra; nada de eso suspende C3 ni entra en los composes, D1) o el resultado de
@@ -260,13 +270,19 @@ enviarlo por `http://`, y la red interna del compose habla HTTP. Se mide el día
   `http://` o **lanza** sin enviar. Si lanza, la salida SSE-C **no existe para ningún candidato**, y la 4.1 lo sabe el
   día 2;
 - **(iv)** contra el control de MinIO por `http://`, `c5.sh --sse-c` tiene que salir con `falla: TLS del servidor`:
-  es el control negativo de la clasificación.
+  es el control negativo de la clasificación;
+- **(v) control positivo, condicional** (tarea 3.7b): solo si la salida SSE-C va a medirse en un candidato (3.8), el
+  mismo MinIO con TLS autofirmado (certificado generado con `openssl` en `alpine` y montado `:ro` en
+  `/root/.minio/certs`) y `c5.sh --sse-c --ca <pem>` (con `NODE_EXTRA_CA_CERTS`) por `https://` tiene que salir
+  `salida`: un método que solo se ha visto fallar no puede suspender a nadie.
 
 Un rechazo por TLS (del servidor o del SDK) se registra como **`falla (TLS)`**, un subtipo aparte de `falla`. Descarta
-igual, pero la 4.1 y la 6.1 lo presentan al usuario con el coste de meter TLS interno en la red del compose, como
+igual, pero la 4.1 y la 5.3 lo presentan al usuario con el coste de meter TLS interno en la red del compose, como
 **decisión suya**: no es relajar la celda, es **otra configuración**, que exigiría repetir C5 sobre ella. Si el elegido
 es RustFS, su `RUSTFS_SSE_C_REQUIRE_TLS=false` se fija **de forma explícita** en su compose de la matriz y en los dos de
-la pila, para que un cambio de su valor por defecto no cambie en silencio lo medido. Y la lectura con la que el `worker`
+la pila, para que un cambio de su valor por defecto no cambie en silencio lo medido (la comparación de servicios de
+abajo, que exige idénticos los valores de `environment` salvo una lista cerrada, lo comprueba). Y la lectura con la que
+el `worker`
 demuestra en la verificación del artefacto que alcanza el almacén (`s3-probe`, tarea 7.5) va al **bucket de CV** a
 través de la fábrica, la que lleva el middleware SSE-C: un almacén que pase a exigir TLS rompe el CD, no la primera
 lectura de un CV en staging.
@@ -277,35 +293,31 @@ la respuesta de la API, que es justo lo que este apartado dice que no demuestra 
 is stored unencrypted on disk despite SSE», citada en `prelectura.md`, es ese caso). Por eso:
 
 - el servicio `object-store` de `docker-compose.yml` se **copia** del compose de la matriz del elegido, y una
-  comprobación de un solo uso (`node` sobre `docker compose config --format json` de los dos) exige idénticos `image`,
-  `command`, `entrypoint`, los **nombres** de las claves de `environment` y los ficheros montados (destino, solo
-  lectura y contenido); solo pueden diferir los valores de `environment`, el puerto publicado y el nombre del volumen
-  (tarea 7.1). La misma comparación, entre `docker-compose.yml` y `docker-compose.prod.yml`, en la tarea 7.3;
-- con el modo `server`, tras `pnpm infra:up`, `c5.sh docker-compose.yml <volumen de desarrollo>` tiene que dar
+  comprobación de un solo uso (`node` sobre `docker compose config --format json` de los dos) compara el **objeto del
+  servicio entero** tras quitar una **lista cerrada** de rutas que pueden diferir: `ports`, `healthcheck` (el compose
+  de la matriz no tiene por qué llevar el de C8) y el origen del volumen con nombre; un fichero montado se compara por
+  su contenido, no por su ruta. En `environment`, los **valores** tienen que ser idénticos salvo otra lista cerrada,
+  escrita en la sección «Configuración entregada» de `matriz.md`: las claves mapeadas desde `S3_ACCESS_KEY`,
+  `S3_SECRET_KEY` y `OBJECT_STORE_SSE_KEY` (comprobadas con `config --no-interpolate`). Cualquier otra diferencia
+  falla nombrando su ruta. Antes, `docker buildx imagetools inspect` de la etiqueta por defecto tiene que dar el digest
+  del índice anotado en C1: la etiqueta no se ha movido desde la medición (tarea 7.1);
+- entre `docker-compose.yml` y `docker-compose.prod.yml` (tarea 7.3), la misma comparación con su propia lista
+  cerrada: `ports`, `networks`, `depends_on`, `restart`, `logging` y el origen del volumen; el `healthcheck` **sí**
+  tiene que ser igual. En producción, las claves de la lista se comprueban con
+  `docker compose config --no-interpolate` como referencias `${VAR:?…}`, sin valor por defecto;
+- con el modo `server`, con una `OBJECT_STORE_SSE_KEY` generada con la orden que se documentará (tarea 12.2) y
+  exportada, tras `pnpm infra:up`, `c5.sh docker-compose.yml <volumen de desarrollo>` tiene que dar
   **`nativo` con (a), (b) y (c)**, pegado en la sección «Configuración entregada» de `matriz.md` (tarea 7.2b); con
   `customer-key`, la tarea 8.4 hace lo mismo con `c5.sh --sse-c` sobre `docker-compose.yml`. Si no sale, se para y se
-  vuelve al usuario: la configuración entregada no es la medida.
+  vuelve al usuario: la configuración entregada no es la medida. Todo esto va **antes** de escribir ADR-052
+  «Elección» y los traslados (Migration Plan).
 
-**C6, expiración.** Una regla aceptada y listada no demuestra que se aplique: es la misma comprobación decorativa que
-ADR-048 §7 encontró en `ensure-buckets.sh`. Con `docs/object-store-matrix/c6.mjs seed` (el SDK, sin el script de D4, para poder sembrar
-el día 1): un bucket `lifecycle-probe` con una regla de **1 día** (el mínimo de S3), un objeto escrito **después** de la
-regla y otro en un bucket sin regla como control. Al sembrar y al leer se anotan `date -u` del host, `date -u` de la
-máquina de Docker (`docker run --rm alpine date -u`; la imagen de Garage no trae `date`) y `.State.StartedAt` del
-contenedor. La lectura (`c6.mjs read`, `HEAD` de los dos):
-
-- **A las 48 h** (S3 redondea la expiración a la medianoche UTC siguiente): el objeto no está y el control sí →
-  `nativo`.
-- Si el objeto **sigue** a las 48 h, **se relee a las 96 h** antes de declarar nada: no está → `nativo`; sigue →
-  `salida`.
-- Si `.State.StartedAt` cambió (el almacén se reinició: suspensión del equipo, actualización de Docker) o el control
-  desapareció → **`no observado`**, que **no** es `salida`: no se sabe. Cuenta como no `nativo`: si ese candidato se
-  elige, se aplica el barrido.
-- Si la regla solo se acepta o se aplica con la CLI del producto, su API de administración o un proceso extra, ese
-  paso no se da y C6 es `salida` (D1, C3).
-
-Para que el reinicio sea improbable, **antes de sembrar el usuario confirma** que el equipo no se suspenderá durante
-96 h (tareas 1.5-1.7). Es un ajuste de su sistema, que hace él; ningún agente lo ejecuta. Si no puede, se anota con
-fecha que acepta el riesgo de `no observado`.
+**C6, expiración: no se mide** (decisión del usuario, 2026-09-26). Una regla aceptada y listada no demuestra que se
+aplique —es la comprobación decorativa que ADR-048 §7 encontró en `ensure-buckets.sh`—, y observarla ataba el
+calendario a una espera que no se podía acelerar. En su lugar, la retención de snapshots va **siempre** por el barrido
+del `worker` (D7): `provision` quita cualquier regla de ciclo de vida y `verify` exige que no haya ninguna (D4).
+Configurar una regla del almacén exigiría medir su expiración en un change posterior (`cv/documents`, «Retención de
+snapshots de enriquecimiento»).
 
 ### D3. El arnés es agnóstico y se queda en el repositorio
 
@@ -332,16 +344,18 @@ de D12):
 
 | Subcomando | Qué hace | Escribe |
 |---|---|---|
-| `provision` | crea los dos buckets (un `BucketAlreadyOwnedByYou` es éxito), pone la regla `expire-snapshots-30d` (`Status: Enabled`, 30 días, filtro vacío) con `PutBucketLifecycleConfiguration` —que **reemplaza** la configuración entera, así que repetirlo deja una sola regla—, pone el cifrado por defecto del bucket de CV cuando el modo es `server`, quita cualquier regla de ciclo de vida del bucket de CV y cualquier política de bucket; cada bucket en su propio bloque, de modo que el fallo de uno no impide intentar el otro, y al final sale ≠0 nombrando lo que no quedó | sí |
+| `provision` | crea los dos buckets (un `BucketAlreadyOwnedByYou` es éxito), **quita cualquier configuración de ciclo de vida de los dos buckets** con `DeleteBucketLifecycle` (un `NoSuchLifecycleConfiguration`, o un `NotImplemented`/`501` anotado, es éxito; nunca envía `PutBucketLifecycleConfiguration`: la retención es el barrido, D7), pone el cifrado por defecto del bucket de CV cuando el modo es `server` y quita cualquier política de bucket; cada bucket en su propio bloque, de modo que el fallo de uno no impide intentar el otro, y al final sale ≠0 nombrando lo que no quedó | sí |
 | `verify` | lee y compara, sin escribir (salvo la excepción de la sonda): ver abajo | no |
 
 **`verify` es estricto**, porque una comprobación laxa aprueba lo que no está:
 
 - los dos buckets existen;
-- en el de snapshots hay **exactamente una** regla, `expire-snapshots-30d`, con `Status: Enabled`, **filtro vacío** y
-  30 días; una regla deshabilitada, con filtro o acompañada de otra es un fallo que nombra bucket y propiedad;
-- en el de CV no hay ninguna regla, y hay cifrado por defecto cuando el modo es `server` (con `customer-key` lo dice:
-  «cifrado por clave del cliente: no comprobable por bucket»);
+- en **ninguno** de los dos buckets hay regla de ciclo de vida: una regla en el de snapshots es un fallo que nombra
+  bucket y regla **aunque sea de 30 días y esté habilitada** (la retención es el barrido, y una regla cuya expiración
+  nadie ha medido no se deja puesta); un `NoSuchLifecycleConfiguration`, o un `NotImplemented`/`501` anotado, es «sin
+  regla»;
+- en el de CV hay cifrado por defecto cuando el modo es `server` (con `customer-key` lo dice: «cifrado por clave del
+  cliente: no comprobable por bucket»);
 - **acceso anónimo:** `GET` de objeto, listado y `PUT` **sin firmar** a cada bucket; cuenta como rechazo un `401` o un
   `403`, **o** un `400` cuyo `<Code>` sea de la familia de autenticación (`AccessDenied`, `MissingSecurityHeader`,
   `AuthorizationHeaderMalformed`, `InvalidAccessKeyId`, `SignatureDoesNotMatch`), que es como responden algunos
@@ -352,11 +366,9 @@ de D12):
 - **la sonda de escritura** va a `.verify-probe/<aleatorio>`; si el `PUT` anónimo se acepta, `verify` **borra ese objeto
   con firma**, informa del fallo y del borrado, y sale ≠0. Es la única escritura que hace, y solo existe si el almacén
   ya aceptó una escritura anónima (el escenario «El modo de comprobación no escribe» la lleva escrita);
-- **lista los snapshots en los dos modos de retención** (iteración 3), porque una regla bien escrita no demuestra que
-  se aplique: con `lifecycle` exige **cero** con `LastModified` de más de **32 días** (30 de la regla, más el redondeo
-  de S3 a la medianoche UTC siguiente y un día de margen de la pasada diaria del almacén); con `sweep`, en vez de la
-  regla, **cero** de más de 31 días (el barrido es diario; 31 da un día de margen). Un fallo nombra el bucket y la
-  clave.
+- **lista los snapshots** y exige **cero** con `LastModified` de más de **31 días** (el barrido es diario; 31 da un día
+  de margen). Un fallo nombra el bucket y la clave. Es también la única alarma de un `worker` que ha dejado de barrer:
+  lo detecta en el siguiente despliegue o verificación del artefacto, no antes (Riesgos).
 
 **`provision` es robusto:**
 
@@ -416,7 +428,7 @@ Dónde corre:
 
 - Servicio **`object-store`** (nombre genérico: el producto es un valor por defecto), imagen
   `${OBJECT_STORE_IMAGE:-<imagen elegida>}:${OBJECT_STORE_IMAGE_TAG:-<versión exacta>}` con **el mismo** valor por
-  defecto en los dos composes, volumen `object-store-data` y, en producción, solo red `internal`.
+  defecto en los dos composes, volumen `object-store-data` (sin `name:` explícito: `c5.sh` lo exige, D2) y, en producción, solo red `internal`.
 - En desarrollo se publica `${OBJECT_STORE_PORT:-9000}:<puerto S3 del elegido>`, de modo que `S3_ENDPOINT=http://localhost:9000`
   de `.env.example` no cambia. Desaparecen `MINIO_PORT` y `MINIO_CONSOLE_PORT`.
 - En producción, `api` y `worker` pasan a `S3_ENDPOINT: http://object-store:<puerto>` y a depender de
@@ -435,7 +447,7 @@ Dónde corre:
   puede ser **sin secretos** (C3) y versionado; entonces es un fichero montado más, que 35b lleva al host (su tarea 4.1
   ya lo exige; la 6.3 de aquí le pone nombre).
 
-### D7. Las salidas, si la matriz las pide, y el texto de privacidad, siempre
+### D7. La salida SSE-C, si la matriz la pide; el barrido y el texto de privacidad, siempre
 
 **SSE-C (C5 = `salida`).** Variable `S3_CV_SSE_C_KEY` (base64 de 32 bytes, validada al arrancar; el error de zod nombra
 la variable y **no** repite su valor) obligatoria en `api` y `worker`, documentada en `.env.example` y en
@@ -456,15 +468,16 @@ de saltársela es crear un cliente fuera de la fábrica. Pruebas:
 
 `provision` no pone cifrado por bucket y `verify` lo dice («cifrado por clave del cliente: no comprobable por bucket»).
 
-**Barrido (C6 = `salida` o `no observado`).** Un caso de uso del `worker` que lista el bucket de snapshots y borra con
-`DeleteObjects` lo que tiene `LastModified` de más de 30 días, con reloj inyectable, y su programación diaria con
-`@nestjs/schedule` (ya es dependencia). Se niega a arrancar si `S3_SNAPSHOTS_BUCKET` es igual a `S3_BUCKET`. Un objeto
-ya borrado por otra réplica no es error. `provision` no pone regla y `verify`, en modo `sweep`, exige cero snapshots de
-más de 31 días (D4).
+**Barrido, siempre** (decisión del usuario, 2026-09-26). Un caso de uso del `worker` que lista el bucket de snapshots
+y borra con `DeleteObjects` lo que tiene `LastModified` de más de 30 días, con reloj inyectable, y su programación
+diaria con `@nestjs/schedule` (ya es dependencia). Se niega a arrancar si `S3_SNAPSHOTS_BUCKET` es igual a
+`S3_BUCKET`. Un objeto ya borrado por otra réplica no es error. `provision` quita cualquier regla y `verify` exige que
+no haya ninguna y cero snapshots de más de 31 días (D4). Se ejecuta una vez contra el almacén elegido y su salida
+queda en `matriz.md` (tarea 8.7).
 
 **Qué modo rige lo dice una constante, no el entorno.** `libs/shared/src/storage/object-store-modes.ts` exporta el modo
-de cifrado del bucket de CV (`server` | `customer-key`) y el de retención de snapshots (`lifecycle` | `sweep`), fijados
-por la matriz; los leen el script de D4, las fábricas y el `worker`. No es una variable de entorno porque el producto es
+de cifrado del bucket de CV (`server` | `customer-key`), fijado por la matriz, y el de retención de snapshots, `sweep`,
+su único valor (una regla del almacén exigiría medir su expiración en un change posterior); los leen el script de D4, las fábricas y el `worker`. No es una variable de entorno porque el producto es
 el mismo en desarrollo, CI y producción, y un modo distinto por entorno sería verificar una configuración y desplegar
 otra.
 
@@ -474,8 +487,8 @@ se guarda cifrado en nuestro servidor; la clave la guardamos nosotros, aparte de
 la clave vive en el fichero de entorno, no en el volumen del almacén (D2 (a) y (c)). La spec `web/privacy` no cambia: ya
 exige no afirmar lo que el entorno no hace.
 
-Sin salida en C5 ni en C6, no hay variable nueva ni barrido: las tareas condicionales del grupo 8 se cierran anotando
-«no aplica» con la fila de la matriz que lo justifica.
+Sin salida en C5 no hay variable nueva: las tareas condicionales del grupo 8 (8.1-8.4 y 8.8) se cierran anotando «no
+aplica» con la fila de la matriz que lo justifica. El barrido (8.5-8.7) se hace siempre.
 
 ### D8. El plazo de arranque se recalcula con tiempos medidos y sigue en una sola línea
 
@@ -596,11 +609,10 @@ anotación que apunta a ADR-052.
 
 ## Risks / Trade-offs
 
-- [La expiración solo se puede observar tras ≥ 48 h, y hasta 96 h] → se siembra el día 1 para los tres a la vez y el
-  resto avanza en paralelo; peor caso del veredicto, día 8 (D1).
-- [El equipo donde corre la siembra se suspende o Docker se actualiza] → el usuario confirma antes de sembrar que no se
-  suspenderá (o acepta el riesgo); `.State.StartedAt` y las horas anotadas lo detectan; el resultado es `no observado`,
-  no un `salida` inventado, y lo cubre el barrido.
+- [Con el barrido, un `worker` caído, o con el trabajo diario sin registrar, deja de borrar snapshots sin avisar] →
+  `verify` exige cero de más de 31 días y corre en cada verificación del artefacto y en cada despliegue, así que lo
+  detecta en el **siguiente** despliegue, no antes. Se acepta: los snapshots son páginas de ofertas, no CV. Lo dicen
+  ADR-052 («Consecuencias») y el RUNBOOK (tarea 12.1).
 - [El método de C5 vuelve a estar mal] → control positivo en MinIO con cifrado (2.9-2.10) antes de suspender a nadie, y
   controles independientes en cada lectura (B1, B2).
 - [Un almacén que no arranca con otra clave, o que reescribe sus metadatos al intentarlo] → (b) se hace siempre sobre
@@ -614,7 +626,8 @@ anotación que apunta a ADR-052.
   se presenta al usuario como decisión sobre otra configuración que repetiría C5, en vez de montarlo dentro de este
   change sin medir.
 - [La configuración que se entrega no es la que se midió] → el servicio de los composes de la pila se copia del de la
-  matriz, se compara con una orden de un solo uso y C5 se repite sobre `docker-compose.yml` (D2, «Lo que se entrega es
+  matriz, se compara entero con una orden de un solo uso (solo una lista cerrada de rutas y de claves puede diferir),
+  la etiqueta de la imagen tiene que resolver al digest medido y C5 se repite sobre `docker-compose.yml` (D2, «Lo que se entrega es
   lo que se midió»).
 - [Con SSE-C la garantía pasa del almacén a la aplicación] → dicho en la spec; middleware en la fábrica, test por
   comando, test de inventario permanente y clave copiada con `AI_VAULT_KEY`.
@@ -646,11 +659,13 @@ anotación que apunta a ADR-052.
    commit `2409bbb` es ancestro de `origin/main`), fusionado en una ventana autorizada por el usuario con el CI en verde.
    El PR lleva este change **y** los traslados editados en `openspec/changes/staging-host/` (design, tasks, proposal y
    su spec `platform/ci-pipeline`), además del `scope` de `openspec-changes.yaml`, la fila 35a de
-   `docs/design-v0.2.md`, ADR-052 y `docs/object-store-matrix/`. Orden interno de las tareas: corredor `arm64`, C1-C2 y
-   siembra → arnés y control de MinIO y, en los huecos de la espera de C6, lo que no depende del producto (traslados,
+   `docs/design-v0.2.md`, ADR-052 y `docs/object-store-matrix/`. Orden interno de las tareas: corredor `arm64` y C1-C2 →
+   arnés y control de MinIO y, en los huecos, lo que no depende del producto (traslados,
    `/privacidad`, medición y script de plataformas, texto de la clase `artifact`, comentarios de los workflows) →
    cribado → punto de revisión (bloquea solo si nadie da C5 `nativo`) → celdas del candidato señalado → veredicto
-   (ADR-052 «Elección») → composes y aprovisionamiento con el CD aún en `amd64` → paso a `arm64` → modo `--compose` del
+   (5.3) → modo de cifrado (6.2), compose de desarrollo, aprovisionamiento y C5 sobre lo entregado (7.1, 7.2 y 7.2b o,
+   con `customer-key`, 8.1-8.4) → ADR-052 «Elección» y traslados (6.1, 6.3, 6.4) → compose de producción y resto del
+   grupo 7 con el CD aún en `amd64` → barrido (8.5-8.7) → paso a `arm64` → modo `--compose` del
    script, integración en la verificación y su falsación en `arm64` → plazo → documentación.
 2. Para quien desarrolla: `docker compose down`, `docker volume rm linkvault_minio-data` (opcional; no hay nada que
    migrar) y `pnpm infra:up`.
@@ -683,6 +698,12 @@ no existían en ese commit.
 - **`staging-host` tarea 9.10 y D15:** el aviso dice «si subes tu CV, se guarda cifrado; este entorno puede perderse sin
   copia; puedes borrarlo en Mi CV».
 - **`staging-host` tareas 2.1-2.2:** los casos con clase `artifact` esperan el texto nuevo de D9, leído del script.
+- **`staging-host` D3, D4 y tareas 1.1, 4.4 y 4.5, digest del almacén** (pasada extra del debate): el corredor lee de
+  ADR-052 «Elección» la línea `Digest del índice: sha256:<64 hexadecimales>`, la valida y la pasa como tercer
+  argumento de `deploy.sh`, que, antes del `pull`, la compara con el digest del índice resuelto para `object-store`
+  (`docker compose … config --images object-store` e `imagetools inspect` con la plantilla medida en la 2.14 de aquí)
+  y, si difiere, sale ≠0 sin `pull` ni instalación; la 4.4 tiene el caso de digest distinto con el `docker` falso y la
+  1.1 comprueba la línea.
 - **`openspec-changes.yaml`, `scope` de `verify-reusable-workflow`:** en `deploy-prod`, la comprobación de plataformas
   antes del `pull` y `provision` + `verify` tras el `up`; en `cd-prod`, el plazo leído de la línea `WAIT_TIMEOUT` en vez
   del literal.
@@ -713,16 +734,13 @@ no existían en ese commit.
 - **Regla de parada → «no rebajar el cifrado de los CV por ganar días».** El usuario eligió no parar en el primer
   candidato con salidas, con este motivo: «el cifrado de los CV es lo último que conviene rebajar por ganar días de
   calendario».
-  **Lectura de la iteración 1, que el usuario confirma en la aprobación humana previa a `/opsx:apply`** (la tarea 1.1 la
-  anota con fecha como precondición): el motivo es el **cifrado**, no la expiración. Por eso «cumple todo» pasa a ser
-  celdas duras + C5 `nativo`, con C6 libre de ser `salida` (barrido) sin seguir buscando; el puntero es C5 `nativo` →
-  orden de la lista, y C6 no mueve el puntero ni ejecuta celdas en ningún otro (D1, iteración 2); en la iteración 3 el
-  cribado se detiene en el primero que pasa C1-C4 con C5 `nativo`, y el desempate por C6, que así no se aplicaría
-  nunca, se borró. Con la regla anterior (C5 **y** C6 `nativo`), un candidato con cifrado nativo y sin
-  expiración obligaba a evaluar los otros dos enteros por una propiedad que el barrido cubre sin tocar ningún CV. Si el
-  usuario no la confirma, se vuelve a la regla anterior; no cambia ninguna spec, solo cuántas ejecuciones de los grupos
-  3 y 4 hacen falta (con ella, el cribado solo se detiene en un candidato con C5 **y** C6 `nativo`, así que puede
-  esperar a la lectura de C6).
+  **Lectura de la iteración 1, confirmada por el usuario el 2026-09-26 junto con la retención por barrido** («Sí,
+  adoptemos el barrido»; la tarea 1.1 lo anota como precondición cumplida): el motivo es el **cifrado**, no la
+  expiración. Por eso «cumple todo» son las celdas duras + C5 `nativo`; la expiración de snapshots va **siempre** por
+  el barrido del `worker` y C6 no se mide; el puntero es C5 `nativo` → orden de la lista (D1, iteración 2); y en la
+  iteración 3 el cribado se detiene en el primero que pasa C1-C4 con C5 `nativo`. Con la regla anterior (C5 **y** C6
+  `nativo`), un candidato con cifrado nativo y sin expiración obligaba a evaluar los otros dos enteros por una
+  propiedad que el barrido cubre sin tocar ningún CV.
 - **Paquete `linkvault-minio` → retirarlo sin borrarlo.** Se marca como retirado en su descripción tras su último uso en
   las comprobaciones de D9 (tareas 2.15 y 10.1); el borrado, irreversible, queda para más adelante.
 

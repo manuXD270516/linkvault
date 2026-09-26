@@ -76,7 +76,8 @@ de datos (staging es desechable) y la extensión del navegador para estos usuari
   `GHCR_READ_USER` y `GHCR_READ_TOKEN`.
 - **`packages: write` solo en el job que publica.**
 - **Configuración del mismo commit, en este orden:** copia a `.incoming-<sha12>` → login → comprobar plataformas y
-  `pull` con el compose de `.incoming` → `install-config` → `up` → `object-store.js provision` → `object-store.js
+  el digest del almacén (el de ADR-052 «Elección», que el corredor lee y pasa a `deploy.sh`) → `pull` con el compose
+  de `.incoming` → `install-config` → `up` → `object-store.js provision` → `object-store.js
   verify` (arranque documentado de 35a, con el compose instalado). Se conservan los últimos `.incoming-*` para volver
   atrás.
 - **Repetir un despliegue = relanzar solo su job** (`gh run rerun <id> --job …`); el guardia que impide republicar un

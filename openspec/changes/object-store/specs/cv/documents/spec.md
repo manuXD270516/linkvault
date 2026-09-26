@@ -96,43 +96,50 @@ de las dos formas como cifrado gestionado por un proveedor.
 ### Requirement: Retención de snapshots de enriquecimiento
 
 El bucket de snapshots de enriquecimiento en producción SHALL aplicar una retención de **30 días** sin intervención
-manual, de una de estas dos formas y en este orden de preferencia:
+manual mediante un **barrido diario del `worker`** que borre los snapshots con más de 30 días. El barrido SHALL actuar
+**solo sobre el bucket de snapshots**: SHALL negarse a ejecutarse si ese bucket es el mismo que el de CV, porque un
+barrido por antigüedad sobre el bucket de CV borraría los CV de todo el mundo. Varias réplicas del `worker` barriendo a
+la vez NO SHALL producir errores ni borrar nada que no tenga más de 30 días. El modo de comprobación del
+aprovisionamiento SHALL exigir que no quede ningún snapshot de más de 31 días.
 
-1. **Regla de expiración del almacén**, creada por la orden de aprovisionamiento y comprobada por su modo de comprobación
-   por su identificador, **habilitada**, sin filtro, como **única** regla del bucket **y** por su plazo.
-2. **Solo si el almacén elegido no aplica (1)**, demostrado ejecutando: un **barrido del `worker`**, al menos una vez al
-   día, que borre los snapshots con más de 30 días. El barrido SHALL actuar **solo sobre el bucket de snapshots**:
-   SHALL negarse a ejecutarse si ese bucket es el mismo que el de CV, porque un barrido por antigüedad sobre el bucket de
-   CV borraría los CV de todo el mundo. Varias réplicas del `worker` barriendo a la vez NO SHALL producir errores ni
-   borrar nada que no tenga más de 30 días. Con el barrido, el modo de comprobación SHALL exigir que no quede ningún
-   snapshot de más de 31 días.
+Una **regla de ciclo de vida del almacén** NO SHALL configurarse en el bucket de snapshots sin que un change posterior
+haya **medido su expiración** contra el almacén en uso: una regla aceptada y listada no demuestra que se aplique. Hasta
+entonces, la orden de aprovisionamiento SHALL quitar cualquier regla de ciclo de vida del bucket, y su modo de
+comprobación SHALL fallar si encuentra alguna.
 
 #### Scenario: Snapshot caduca a los 30 días
 
 - **GIVEN** un snapshot de enriquecimiento escrito hace más de 30 días
-- **WHEN** actúa la retención del bucket de snapshots, sea la regla del almacén o el barrido
-- **THEN** el objeto SHALL eliminarse o quedar marcado para eliminación según el mecanismo
+- **WHEN** actúa el barrido del bucket de snapshots
+- **THEN** el objeto SHALL eliminarse
 - **AND** un snapshot reciente (< 30 días) NO SHALL eliminarse
 
 #### Scenario: El barrido no toca el bucket de CV
 
-- **GIVEN** la retención por barrido y una configuración en la que el bucket de snapshots coincide con el de CV
+- **GIVEN** una configuración en la que el bucket de snapshots coincide con el de CV
 - **WHEN** llega la hora del barrido
 - **THEN** el barrido NO SHALL borrar nada
 - **AND** SHALL registrar que se negó a ejecutarse y por qué
 
 #### Scenario: Dos réplicas barren a la vez
 
-- **GIVEN** la retención por barrido y dos réplicas del `worker`
+- **GIVEN** dos réplicas del `worker`
 - **WHEN** las dos barren el bucket de snapshots al mismo tiempo
 - **THEN** ninguna SHALL terminar en error por un objeto que la otra ya borró
 - **AND** NO SHALL borrarse ningún snapshot de menos de 30 días
 
-#### Scenario: Con el barrido, un snapshot viejo rompe la comprobación
+#### Scenario: Un snapshot viejo rompe la comprobación
 
-- **GIVEN** la retención por barrido y un snapshot de más de 31 días en el bucket de snapshots
+- **GIVEN** un snapshot de más de 31 días en el bucket de snapshots
 - **WHEN** se ejecuta el modo de comprobación del aprovisionamiento
 - **THEN** SHALL terminar con código distinto de cero nombrando el bucket y el snapshot
+
+#### Scenario: Una regla de ciclo de vida sin medir rompe la comprobación
+
+- **GIVEN** una regla de ciclo de vida en el bucket de snapshots, sea cual sea su plazo, su estado o su filtro
+- **WHEN** se ejecuta el modo de comprobación del aprovisionamiento
+- **THEN** SHALL terminar con código distinto de cero nombrando el bucket y la regla
+- **AND** una regla de 30 días habilitada NO SHALL darse por buena
 
 ### Requirement: Recogida de objetos huérfanos documentada
 
