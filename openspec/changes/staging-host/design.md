@@ -436,6 +436,12 @@ change **posterior a 35c**, y no retiene el archivado de 35b. La señal para dec
   el enriquecimiento funcionó **desde la IP de Oracle** (algunas fuentes bloquean rangos de nube). Si falla una fuente
   que usa la mayoría, se decide por escrito antes de invitar: se avisa en el aviso ampliado o se pospone la invitación.
 - **Degradación de IA** forzando el agotamiento de cuota: si una persona ajena la entiende.
+- **El camino crítico automatizado, contra staging** (ADR-053 §1.3, añadido por `e2e-suite`): `e2e-remote` en verde en
+  `chromium` y `mobile` **sobre el commit desplegado** (el `sha-<12>` que muestra `docker compose images` en el host o
+  el estado `cd-staging/artifact`), lanzada desde la máquina del autor, sin minutos de CI y gastando dos análisis del
+  cupo de la cuenta de prueba (`e2e-suite` 9.4 y 9.8). Bloquea 10.7. Si el PR-1 de `e2e-suite` no está en `main`, el
+  usuario elige entre esperar o la alternativa manual: los pasos del perfil `remote` de su D11, a mano en el móvil
+  contra staging, anotados paso a paso.
 
 ### D15. Usuarios y medición, escritos antes del primer dato
 
@@ -454,7 +460,11 @@ change **posterior a 35c**, y no retiene el archivado de 35b. La señal para dec
   - *uso de grupo* = al menos un estado de postulación visible para otro miembro del grupo;
   - *uso de IA* = al menos un análisis de encaje o un roadmap generado.
 - **Scripts `mongosh` versionados** (`infra/staging/measure.mongosh.js`, `uninvited.mongosh.js`) que devuelven **solo
-  recuentos** y excluyen al autor por su id. **Mongo no tiene autenticación**, así que no existe un usuario de rol
+  recuentos** y excluyen **por `userId`, en cada métrica** —users, groups, links, applications, cvs y analyses—, la
+  **lista de ids excluidos: autor + cuentas E2E** (las cuentas de prueba persistentes de `e2e-suite`, alias `+e2e`,
+  sin email verificado ni permiso de IA; ADR-053 §1.4, decidido por el usuario el 2026-09-26). No basta con quitarlas
+  del recuento de cuentas: sus grupos, links, postulaciones, CV y análisis tampoco cuentan. La lista vive **fuera del
+  repositorio** y se pasa a `run.sh`. **Mongo no tiene autenticación**, así que no existe un usuario de rol
   `read` con el que ejecutarlos: se ejecutan con `mongosh` dentro del contenedor `mongo`, **el operador tiene acceso
   total**, y así se escribe en el RUNBOOK. La garantía de solo lectura es una **comprobación estática**,
   `infra/staging/assert-readonly.mjs`, que falla nombrando cualquier operación de escritura: `insert*`, `update*`,
@@ -463,7 +473,8 @@ change **posterior a 35c**, y no retiene el archivado de 35b. La señal para dec
 - **La comprobación la aplica un envoltorio, en la máquina del operador.** `infra/staging/run.sh <script>` ejecuta
   primero `node infra/staging/assert-readonly.mjs <script>` en local y, **solo si pasa**, `ssh <host> 'docker compose …
   exec -T mongo mongosh --quiet …' < <script>`, con la lista de invitados inyectada en el host por `--eval` (la lista
-  vive allí, fuera del repositorio). Así el guardia no depende de que alguien se acuerde de ejecutarlo antes, ni de que
+  vive allí, fuera del repositorio) y la **lista de excluidos** (autor + cuentas E2E), que el operador pasa a `run.sh`
+  como fichero fuera del repositorio, inyectada igual. Así el guardia no depende de que alguien se acuerde de ejecutarlo antes, ni de que
   el host tenga `node`. Se ve caer añadiendo un `insertOne`: el envoltorio se niega a ejecutar y no abre ninguna sesión
   (tareas 9.12 y 10.3). Añadir autenticación a Mongo de producción queda fuera de la fila.
 - **Conversación de cinco preguntas** el día 14, con el guion escrito de antemano. Una de ellas pregunta si buscaron
@@ -471,12 +482,15 @@ change **posterior a 35c**, y no retiene el archivado de 35b. La señal para dec
 - **Regla de decisión** escrita: si no se alcanza la activación, lo que falla es la entrada (alta, primer link,
   aviso); si hay activación y no uso, lo que falla es el valor. Cada rama dice qué se hace después.
 - **Los días 7 y 14 son condiciones de cierre de la fila, no tareas de trabajo**: el change puede archivarse con ellos
-  pendientes, y la fila 35 no se da por cerrada en `docs/design-v0.2.md` hasta que ocurran.
+  pendientes, y la fila 35 no se da por cerrada en `docs/design-v0.2.md` hasta que ocurran. Esos dos días **no se lanza
+  la suite remota de `e2e-suite` contra staging**, para que ninguna corrida de prueba coincida con la foto de la
+  medición.
 
 ### D16. Cuentas no invitadas: vigilar en vez de restringir
 
 Por Certificate Transparency la URL es pública desde la primera emisión (ADR-051 §5). `uninvited.mongosh.js` cuenta las
-cuentas cuyo id no está en la lista de invitados del host (fichero fuera del repositorio: son datos personales). Se
+cuentas cuyo id no está en la lista de invitados del host (fichero fuera del repositorio: son datos personales) **ni en
+la de excluidos** (autor + cuentas E2E, D15), que tampoco vive en el repositorio y se pasa a `run.sh`. Se
 ejecuta semanalmente mientras dure staging, siempre por `run.sh` (D15), y el RUNBOOK describe qué hacer con una
 cuenta ajena: el borrado de la operación del producto no lo puede invocar el operador en nombre de otra persona, así que
 el procedimiento manual se presenta como excepcional y nombra la operación a la que sustituye.
@@ -547,7 +561,8 @@ destino" (o a "a medias", si se retira solo uno) sin tocar código.
 
 Las once preguntas de la primera versión están respondidas (`proposal.md`, «Decisiones del usuario») y los debates de
 las iteraciones 1 a 3 cerraron el resto (ADR-051). **Ninguna pregunta cambia ya las specs.** Quedan **dos decisiones
-del usuario** (pago por uso y Q4), un umbral medido que puede convertirse en una tercera, y las dos ventanas de fusión.
+del usuario** (pago por uso y Q4), un umbral medido que puede convertirse en una tercera, las dos ventanas de fusión y
+la precondición de invitar que añadió `e2e-suite` (ADR-053 §1.3).
 **Sin búsqueda en staging ya no es un bloqueo**: es una decisión de este design (D13), que el usuario aprueba al
 aprobar el design antes de `/opsx:apply`.
 
@@ -558,6 +573,7 @@ aprobar el design antes de `/opsx:apply`.
 | **Umbral del correo** (7.10): bandeja de entrada en al menos 2 de 3 proveedores | la medición; si no se cumple, el usuario | 10.7 | cumplido: nada; no cumplido: dominio propio con su coste, o riesgo aceptado por escrito |
 | **Ventana de fusión de PR-1** | el usuario | la fusión de PR-1 y, tras ella, 6.1 | fusión a mano con el CI en verde |
 | **Ventana de fusión de PR-2** | el usuario, pedida **junto con Q4** | la fusión de PR-2 y, tras ella, 11.6 y 10.7 | fusión a mano con el CI en verde |
+| **Precondición de invitar de `e2e-suite`** (ADR-053 §1.3, D14) | la corrida `e2e-remote` contra staging; si el PR-1 de `e2e-suite` no está en `main`, el usuario | 10.7 | en verde en los dos proyectos sobre el commit desplegado: nada; si falla, no se invita hasta que pase; sin PR-1 en `main`: esperar o la alternativa manual (D14), anotada paso a paso |
 
 **PR-2 depende de Q4 y de 5.10** (pago por uso), porque lleva anotaciones que salen de ellas: la entrevista por
 invitado (9.7) y el número de personas y cuántas van al grupo (10.1) en el RUNBOOK, la decisión de pago por uso en
