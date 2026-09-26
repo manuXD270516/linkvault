@@ -335,13 +335,22 @@ function key([file]) {
   }
 }
 
-/** Líneas del log que nombran un error de clave o de descifrado. 0 hay alguna (se imprimen); 1 ninguna. */
+/**
+ * Líneas del log que nombran un error de clave o de descifrado. 0 hay alguna (se imprimen); 1 ninguna. Antes de
+ * imprimir, tapa las credenciales y las claves que haya en el entorno (`S3_ACCESS_KEY`, `S3_SECRET_KEY`, `C5_K1`,
+ * `C5_K2`): hay productos que registran el identificador de la clave de acceso.
+ */
 function logKeyError([file]) {
   const error = /(error|fatal|fail|unable|invalid|mismatch|panic|cannot|denied)/i;
   const keyish = /(kms|key|decrypt|encrypt|cipher|seal|unseal|authenticat)/i;
+  const secrets = ['S3_ACCESS_KEY', 'S3_SECRET_KEY', 'C5_K1', 'C5_K2']
+    .map((name) => process.env[name])
+    .filter((value) => typeof value === 'string' && value.length >= 4);
+  const redact = (line) => secrets.reduce((acc, secret) => acc.split(secret).join('<redacted>'), line);
   const lines = readFileSync(file, 'utf8')
     .split(/\r?\n/)
-    .filter((line) => error.test(line) && keyish.test(line));
+    .filter((line) => error.test(line) && keyish.test(line))
+    .map(redact);
   if (lines.length === 0) {
     out('log: ninguna línea nombra un error de clave o de descifrado');
     process.exitCode = 1;

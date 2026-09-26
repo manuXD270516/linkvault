@@ -281,7 +281,8 @@ if [ "$k2_started" = 1 ]; then
   node "$helpers" wait-ready "$wait_timeout" | sed 's/^/   /'
   [ "${PIPESTATUS[0]}" -eq 0 ] || k2_started=0
 fi
-dcc logs --no-color "$service" >"$work/copy-k2.log" 2>&1
+# El log de la copia se guarda **después** de los `GET`: en b1, el rechazo de A1 solo puede estar en el log si se lee
+# tras pedirlo (corrección posterior a la 3.4; hasta entonces se leía antes y el log de b1 no podía respaldarlo).
 k2_a1=-1
 k2_b1=-1
 k2_log=1
@@ -289,9 +290,13 @@ if [ "$k2_started" = 1 ]; then
   say "   K2: started"
   node "$helpers" get "$objects" A1 | sed 's/^/   K2 /'; k2_a1=${PIPESTATUS[0]}
   node "$helpers" get "$objects" B1 | sed 's/^/   K2 /'; k2_b1=${PIPESTATUS[0]}
+  dcc logs --no-color "$service" >"$work/copy-k2.log" 2>&1
+  # Informativo, no decide (b): las líneas del log de la copia con K2 que nombran la clave o el descifrado.
+  C5_K1="$k1" C5_K2="$k2" node "$helpers" log-key-error "$work/copy-k2.log" | sed 's/^/   K2 /'
 else
+  dcc logs --no-color "$service" >"$work/copy-k2.log" 2>&1
   say "   K2: did not start ($(dcc ps -a --format '{{.State}} {{.Status}}' "$service" 2>/dev/null | head -1))"
-  node "$helpers" log-key-error "$work/copy-k2.log" | sed 's/^/   K2 /'
+  C5_K1="$k1" C5_K2="$k2" node "$helpers" log-key-error "$work/copy-k2.log" | sed 's/^/   K2 /'
   k2_log=${PIPESTATUS[0]}
 fi
 dcc stop "$service" >/dev/null 2>&1
@@ -310,14 +315,15 @@ if [ "$k1_started" = 1 ]; then
   node "$helpers" wait-ready "$wait_timeout" | sed 's/^/   /'
   [ "${PIPESTATUS[0]}" -eq 0 ] || k1_started=0
 fi
-dcc logs --no-color "$service" >"$work/copy-k1.log" 2>&1
 k1_a1=-1
 k1_b1=-1
 if [ "$k1_started" = 1 ]; then
   say "   K1: started"
   node "$helpers" get "$objects" A1 | sed 's/^/   K1 /'; k1_a1=${PIPESTATUS[0]}
   node "$helpers" get "$objects" B1 | sed 's/^/   K1 /'; k1_b1=${PIPESTATUS[0]}
-else
+fi
+dcc logs --no-color "$service" >"$work/copy-k1.log" 2>&1
+if [ "$k1_started" != 1 ]; then
   say "   K1: did not start (see $work/copy-k1.log)"
 fi
 cleanup

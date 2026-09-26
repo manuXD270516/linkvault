@@ -1355,6 +1355,96 @@ nombra y sale 1: no queda un bucket de CV sin cifrar que parezca aprovisionado. 
 Al terminar: `down -v` de `os29-minio`, `os29-extra` y `os29-nokey`; los proyectos `c5copy-*` los borra `c5.sh`
 (`copy project … removed`). `docker ps -a`, `docker volume ls` y `docker network ls` sin `os29` ni `c5copy`: 0, 0 y 0.
 
+### Corrección posterior de `c5.sh`: el log de (b) se guarda después de los `GET` (grupo 4)
+
+**Defecto**, encontrado al cerrar la 3.4: en el modo `server`, `c5.sh` guardaba el log de la copia con K2
+(`copy-k2.log`) **antes** de los `GET` de A1 y B1, así que en b1 ese log no podía contener el rechazo de A1 y no
+respaldaba lo que la salida decía (y lo mismo el de K1, `copy-k1.log`). La clasificación no dependía de él: b1 se
+decide con los `GET`, y el log solo decide en b2, donde no hay `GET`. **Corrección:** con K2 y con K1, el log se guarda
+después de los `GET`; en b1, `c5.sh` imprime además, **como información que no decide (b)**, las líneas del log de la
+copia con K2 que nombran la clave o el descifrado (`c5-helpers.mjs log-key-error`, que ahora tapa las credenciales y
+las claves del entorno antes de imprimir). Las salidas ya pegadas de la 2.9, la 2.10 y la 3.4 **no se reescriben**: se
+tomaron con la versión anterior.
+
+**Comprobación, sin repetir la matriz:** una corrida de `c5.sh` sobre el control de MinIO, como en la 2.9, el
+2026-09-26, proyecto `os4-minio` en el puerto `19653`, volumen vacío, credenciales y clave nuevas en el scratchpad y
+`provision` en 0. Sigue dando `nativo` con b1, y el log de (b) contiene el rechazo:
+
+```text
+$ C5_WORKDIR=<scratchpad>/g4/c5-minio-fix bash docs/object-store-matrix/c5.sh docs/object-store-matrix/minio.compose.yml object-store-data
+c5: mode server, compose docs/object-store-matrix/minio.compose.yml, volume object-store-data, workdir <scratchpad>/g4/c5-minio-fix
+c5: project os4-minio, docker volume os4-minio_object-store-data, key entry MINIO_KMS_SECRET_KEY (from OBJECT_STORE_SSE_KEY)
+container ok: one volume (os4-minio_object-store-data), no writable bind
+c5: 1. contract suite, C5 server mode (vitest, output in <scratchpad>/g4/c5-minio-fix/suite.log)
+   ✓ |api| src/infrastructure/storage/s3.s3-contract.spec.ts > S3 contract of api (real store) > C5 mode: writes A1/A2 to the CV bucket without SSE headers and B1/B2 to the snapshots bucket, and dumps them 81ms
+   Test Files  1 passed (1)
+   Tests  1 passed | 4 skipped (5)
+   A1 cvs 1048576 bytes, lo que dice el almacén: AES256
+   A2 cvs 1024 bytes, lo que dice el almacén: AES256
+   B1 snapshots 1048576 bytes, lo que dice el almacén: none reported
+   B2 snapshots 1024 bytes, lo que dice el almacén: none reported
+c5: 2. docker compose stop object-store
+c5:    tar of volume os4-minio_object-store-data with alpine:3
+c5: 3. find-plaintext
+   find-plaintext: vol.tar, 2152448 bytes leídos
+   A1 0/3  (1048576 bytes; ventanas de 64 bytes en 0, 524256, 1048512)
+   A2 0/3  (1024 bytes; ventanas de 64 bytes en 0, 480, 960)
+   B1 3/3  (1048576 bytes; ventanas de 64 bytes en 0, 524256, 1048512)
+   B2 3/3  (1024 bytes; ventanas de 64 bytes en 0, 480, 960)
+   clave 0/3  (textual no; contenido no; decodificada (base64, 32 bytes) no)
+c5: 4. disk reading
+c5:    disco: ok (A1 0/3, A2 0/3, B1 3/3, B2 3/3)
+c5:    (c) ok: la clave, 0/3 formas en el volumen (textual; contenido; decodificada (base64, 32 bytes))
+c5: (b) copy project c5copy-0660c0: container created with K2 (same format as K1), volume c5copy-0660c0_object-store-data restored from vol.tar
+   K2 MINIO_KMS_SECRET_KEY of the container: the expected key
+c5: (b) K2 on the copy
+c5:    original object-store still stopped: the endpoint reaches the copy
+   almacén listo en 0.0 s
+c5:    K2: started
+   K2 A1: rechazado sin bytes (HTTP 400 kms:InvalidCiphertextException)
+   K2 B1: igual por bytes (1048576 bytes, sha256 59d4777820386db0)
+   K2 log: object-store-1  | Error: Unable to initialize config, some features may be missing: failed to decrypt ciphertext (*fmt.wrapError)
+   K2 log: object-store-1  | Error: IAM sub-system is partially initialized, unable to write the IAM format: failed to decrypt ciphertext (*fmt.wrapError)
+   K2 log: object-store-1  | Error: failed to decrypt ciphertext (kms.Error)
+c5: (b) K1 on the same copy (the compose's own key: OBJECT_STORE_SSE_KEY as the compose resolves it)
+   K1 MINIO_KMS_SECRET_KEY of the container: the expected key
+   almacén listo en 0.0 s
+c5:    K1: started
+   K1 A1: igual por bytes (1048576 bytes, sha256 da0e5d38b4cd3c65)
+   K1 B1: igual por bytes (1048576 bytes, sha256 59d4777820386db0)
+c5: copy project c5copy-0660c0 removed (container, network and volume)
+c5: original object-store started again (up -d --no-deps object-store)
+c5: (b) b1 (K2: arranca, A1 rechazado sin bytes, B1 leído; K1 sobre la misma copia: A1 y B1 idénticos)
+c5: (a) with the key in the environment the product uses that key: shown by (b) and (c)
+c5: resultado: nativo (disco: ok (A1 0/3, A2 0/3, B1 3/3, B2 3/3); (b) b1 (K2: arranca, A1 rechazado sin bytes, B1 leído; K1 sobre la misma copia: A1 y B1 idénticos); (c) ok: la clave, 0/3 formas en el volumen (textual; contenido; decodificada (base64, 32 bytes)))
+exit=0
+```
+
+Las dos primeras líneas del log son del arranque de la copia con K2 (`SYSTEM.config` y `SYSTEM.iam`, 23:46:09Z:
+MinIO arranca aunque no pueda descifrar su configuración, que es por lo que sale b1 y no b2). La tercera es **el
+rechazo del `GET` de A1**, dos segundos después y con la pila del manejador de `GetObject` (`copy-k2.log`, líneas
+34-47, leídas con `node` y con las credenciales tapadas):
+
+```text
+object-store-1  | API: SYSTEM.encryption
+object-store-1  | Time: 23:46:11 UTC 09/26/2026
+object-store-1  | DeploymentID: 5a524015-0bad-4ebb-86e2-c009d2ad6258
+object-store-1  | Error: failed to decrypt ciphertext (kms.Error)
+object-store-1  |       10: internal/logger/logger.go:271:logger.LogIf()
+object-store-1  |        9: cmd/logging.go:152:cmd.encLogIf()
+object-store-1  |        8: cmd/encryption-v1.go:1104:cmd.(*ObjectInfo).decryptPartsChecksums()
+object-store-1  |        7: cmd/erasure-metadata.go:177:cmd.FileInfo.ToObjectInfo()
+object-store-1  |        6: cmd/erasure-object.go:244:cmd.erasureObjects.GetObjectNInfo()
+object-store-1  |        5: cmd/erasure-sets.go:735:cmd.(*erasureSets).GetObjectNInfo()
+object-store-1  |        4: cmd/erasure-server-pool.go:924:cmd.(*erasureServerPools).GetObjectNInfo()
+object-store-1  |        3: cmd/object-handlers.go:405:cmd.objectAPIHandlers.getObjectHandler()
+object-store-1  |        2: cmd/object-handlers.go:742:cmd.objectAPIHandlers.GetObjectHandler()
+object-store-1  |        1: net/http/server.go:2294:http.HandlerFunc.ServeHTTP()
+```
+
+`copy-k1.log` (10 líneas, también tras los `GET`) no tiene ningún error: con K1, A1 y B1 se leen. Al terminar: `down
+-v` de `os4-minio`; la copia `c5copy-0660c0` la borró `c5.sh`.
+
 ## SSE-C y TLS (tareas 2.9b y 3.7b)
 
 Medido el día 2 (design D2, «SSE-C y TLS»), el 2026-09-26, con `@aws-sdk/client-s3` 3.1134.0.
@@ -1762,3 +1852,352 @@ exit=1
 
 Al terminar el grupo: `down -v` de `os3-sw`, `os3-swopen` y `os3-swnokey`; los proyectos `c5copy-*` los borra `c5.sh`
 (`copy project … removed`). `docker ps -a`, `docker volume ls` y `docker network ls` sin `os3` ni `c5copy`: 0, 0 y 0.
+
+## Punto de revisión (tarea 4.1)
+
+**Fecha de presentación: 2026-09-26.** Se presenta al quedar **fijado el puntero** (3.7, el mismo 2026-09-26), antes de
+los 7 días naturales desde la 2.1 (design D1, «Punto de revisión»). **No bloquea:** un candidato da C5 `nativo`; se
+informa y se sigue con 4.2-4.4 sin esperar respuesta.
+
+1. **Quién da C5 `nativo` entre los cribados.** **SeaweedFS 4.47**: C5 `nativo` (3.4: disco A1 y A2 0/3, B1 y B2 3/3;
+   (b) = b1; (c) la clave 0/3 formas), con C1-C4 en verde. **RustFS 1.0.0** y **Garage v2.4.1**: C3-C5 «no ejecutado:
+   puntero fijado en SeaweedFS» (3.2, 3.3, 3.5 y 3.6); no se sabe si darían `nativo`, porque la regla de D1 detiene el
+   cribado en el primero que lo da. **Ningún candidato quedó en `falla (TLS)`**: la 3.8 (SSE-C) no se ejecutó («no
+   aplica: el puntero tiene C5 `nativo`»), así que no hay coste de TLS interno que presentar.
+2. **Qué costaría SSE-C si hiciera falta** (solo si SeaweedFS cayera en C7-C8 y el cribado llegara a un candidato sin
+   C5 `nativo`; hoy no aplica):
+   - **Tareas 8.1-8.4:** `S3_CV_SSE_C_KEY` obligatoria en los esquemas de `api` y `worker` (error de zod que no repite el
+     valor) y declarada en `docker-compose.prod.yml`, `infra/ci/verify.env` y `.env.example` (8.1); el middleware SSE-C
+     en la fábrica de `api` con un test por comando y uno de registros (8.2); lo mismo en la de `worker`, con el test de
+     `s3-probe` y el test de inventario permanente de `new S3Client(` (8.3); y la demostración sobre la configuración
+     entregada, `c5.sh --sse-c docker-compose.yml`, que tiene que salir `salida` (8.4). Además, antes, el control
+     positivo con TLS (3.7b) y la 3.8 en el candidato.
+   - **La clave a custodiar:** `S3_CV_SSE_C_KEY` (base64 de 32 bytes), junto a `AI_VAULT_KEY` en el fichero de entorno
+     del host y en `infra/README.md`: **perderla es perder los CV**, porque el almacén no la guarda (design D7). Con el
+     modo nativo también hay una clave que custodiar, `OBJECT_STORE_SSE_KEY` (la KEK de SeaweedFS), con la misma
+     consecuencia si se pierde (3.4 (b): con otra clave, A1 no se lee).
+   - **Si la salida existe (2.9b):** por el lado del SDK, **sí**: `@aws-sdk/client-s3` 3.1134.0 **envía** SSE-C por
+     `http://` con las tres cabeceras, sin lanzar (2.9b (iii), test permanente `s3-sse-c-over-http.spec.ts`). Por el
+     lado del servidor depende de cada candidato: el control de MinIO la **rechaza sin TLS** (`HTTP 400
+     InvalidRequest`, «…must be made over a secure connection.», 2.9b (iv)), y en ningún candidato se ha medido.
+3. **Fecha estimada de cierre** (tabla de design D1, «Peor caso en cifras», fila «Caso probable»: SeaweedFS con C5
+   `nativo`, la 4.1 informa sin bloquear y C7-C9 solo en él): **veredicto el día 4 y cierre en unos 10-11 días
+   naturales desde la 1.1**. Con la 1.1 el 2026-09-26 (día 1), **cierre hacia el 2026-10-05 o el 2026-10-06**, sin
+   contar la espera de la ventana de fusión (13.4). Los grupos 1-4 han ido por delante de la tabla (todos el día 1); la
+   estimación no se recorta por eso. Sigue pendiente de decisión del usuario cómo medir los minutos del corredor `arm64`
+   (1.2, «Minutos: no concluyente»), que afecta a D11 y a la 9.4.
+
+### Preguntas abiertas al usuario (no deciden ninguna celda)
+
+Hallazgos del grupo 3 que ni design D1 ni D6 resuelven. No cambian C3, C4 ni C5 de SeaweedFS (C4 juzga la pasarela S3;
+C5 ya salió `nativo`) ni el puntero; se presentan para que el usuario decida si hace falta algo más.
+
+**(i) Puertos internos de `weed mini` sin autenticación.** Dentro de la red del compose, el filer (`8888`, no
+publicado) sirve los objetos **sin autenticación** (3.1: A1 vuelve cifrado, B1 idéntico) y registra `Registered IAM
+gRPC service on filer (unauthenticated; set jwt.filer_signing.key in security.toml to require admin Bearer token)`. En
+producción, la red del almacén es solo `internal` (D6), donde están `api` y `worker`. **Pregunta:** ¿se acepta así, o
+se quiere cerrar? Cerrarlo sería **otra configuración** del servicio `object-store`, que exigiría repetir sobre ella
+C3-C5 y C7-C9 antes de adoptarla.
+
+**Medición, como dato para esa decisión (no adoptada: `seaweedfs.compose.yml` no la lleva).** ¿Tiene `weed mini` una
+opción para que solo el filer (y su gRPC) escuchen en loopback dentro del contenedor? Leído de `weed mini -h` en 4.47
+(el volcado de la 3.1, `mini-help.txt` del scratchpad): **no hay opción de enlace por componente** (no existe
+`-filer.ip.bind`; los `-filer.*` son puertos, límites y comportamiento); solo la **global** `-ip.bind`:
+
+```text
+  -ip string
+    	ip or server name, also used as identifier (default "172.17.0.2")
+  -ip.bind string
+    	ip address to bind to. If empty, default to same as -ip option. (default "0.0.0.0")
+  -disableHttp
+    	disable http requests, only gRPC operations are allowed.
+```
+
+Medido el 2026-09-26 con **copias** de `seaweedfs.compose.yml` en el scratchpad (proyecto `os4-swbind`, puerto
+`19651`, volumen vacío, credenciales y KEK de prueba), que solo añaden una opción a `command`; el listado de puertos
+con `netstat -tln` dentro del contenedor y las peticiones desde un contenedor `alpine:3` en la red del proyecto:
+
+```text
+# Base (seaweedfs.compose.yml tal cual, proyecto os4-sw): todo escucha en todas las interfaces
+$ docker exec os4-sw-object-store-1 netstat -tln
+:::23646 :::19333 :::19340 :::18888 :::8888 :::33646 :::8333 :::18333 :::9333 :::9340
+$ docker run --rm --network os4-sw_default alpine:3 sh -c 'wget -q -T 5 -O /dev/null http://object-store:<puerto>/ …'
+8888: HTTP 2xx
+18888: wget: error getting response: Connection reset by peer        # conecta (gRPC no habla HTTP/1.1)
+8333: wget: server returned error: HTTP/1.1 403 Forbidden
+
+# Copia con '-ip.bind=127.0.0.1': todo pasa a loopback, también la pasarela S3
+$ docker exec os4-swbind-object-store-1 netstat -tln
+127.0.0.1:19333 127.0.0.1:19340 127.0.0.1:18888 127.0.0.1:18333 127.0.0.1:9333 127.0.0.1:9340 127.0.0.1:8888 127.0.0.1:8333 127.0.0.1:23646 :::33646
+$ pnpm nx run api:object-store -- provision          # desde el host, por el puerto publicado 19651
+FAIL  cvs: create bucket: TimeoutError
+FAIL  snapshots: create bucket: TimeoutError
+provision: FAILED (2): cvs: create bucket: TimeoutError; snapshots: create bucket: TimeoutError
+exit=1
+$ docker run --rm --network os4-swbind_default alpine:3 sh -c '…'
+8888: wget: can't connect to remote host (172.28.0.2): Connection refused
+18888: wget: can't connect to remote host (172.28.0.2): Connection refused
+8333: wget: can't connect to remote host (172.28.0.2): Connection refused
+9333: wget: can't connect to remote host (172.28.0.2): Connection refused
+33646: wget: error getting response: Connection reset by peer        # el gRPC del servidor de administración sigue abierto
+$ docker exec os4-swbind-object-store-1 sh -c 'wget … http://127.0.0.1:8333/; wget … http://127.0.0.1:8888/'
+  HTTP/1.1 403 Forbidden                                             # la pasarela, solo desde dentro
+filer-loopback-ok
+```
+
+**Con `-ip.bind=127.0.0.1` el filer deja de ser alcanzable desde la red, pero la pasarela S3 también**: `provision`
+sale 1 por tiempo y ningún otro contenedor llega al `8333`. **No cumple** lo pedido (filer en loopback y pasarela
+sirviendo); `verify` no se ejecutó. No hay en 4.47 una opción de `weed mini` que lo consiga.
+
+Dato adicional, que **no** es de loopback: la copia con `-disableHttp` (mismo proyecto, volumen vacío nuevo) deja la
+pasarela funcionando y el filer sin servir objetos por HTTP, pero **sigue escuchando todo** en todas las interfaces,
+incluido el gRPC del filer:
+
+```text
+$ docker exec os4-swbind-object-store-1 netstat -tln
+:::18888 :::19333 :::19340 :::9333 :::9340 :::18333 :::8333 :::33646 :::8888 :::23646
+$ pnpm nx run api:object-store -- provision   →  provision: ok, exit=0
+$ pnpm nx run api:object-store -- verify      →  verify: ok, exit=0 (las seis peticiones sin firmar, 403 AccessDenied)
+$ node <PUT firmado de 64 KiB a cada bucket y GET de vuelta>
+cvs/probe/e05a7e2c.bin PUT ok, GET igual por bytes, sha256 271eb1db570dabef
+snapshots/probe/b8561dc5.bin PUT ok, GET igual por bytes, sha256 ecb4d41df2b41c25
+$ docker run --rm --network os4-swbind_default alpine:3 sh -c '…'
+/buckets/cvs/probe/e05a7e2c.bin: wget: server returned error: HTTP/1.1 404 Not Found
+/buckets/snapshots/probe/b8561dc5.bin: wget: server returned error: HTTP/1.1 404 Not Found
+/buckets/: wget: server returned error: HTTP/1.1 404 Not Found
+POST /buckets/snapshots/probe/anon.bin: wget: server returned error: HTTP/1.1 404 Not Found
+18888: wget: error getting response: Connection reset by peer        # el gRPC del filer sigue aceptando conexiones
+9333: HTTP 2xx                                                       # el HTTP del maestro sigue respondiendo
+9340: wget: server returned error: HTTP/1.1 400 Bad Request          # el HTTP del volumen sigue respondiendo
+```
+
+No medido: si el gRPC del filer, el HTTP del maestro o el del volumen (por identificador de fichero) entregan o aceptan
+datos sin autenticación con `-disableHttp`, ni la vía de `security.toml` con JWT que nombra el propio log (sería un
+fichero de configuración con un secreto, que la forma de D1 y C3 no admiten montado).
+
+**(ii) Sin clave, `weed mini` autogenera una KEK en el volumen.** Sin `WEED_S3_SSE_KEK`, sobre un volumen vacío,
+`weed mini` 4.47 genera una KEK, la guarda en `/data/.mini_sse_kek` y cifra con ella; `provision` sale 0, así que desde
+fuera no se distingue de la configuración medida, pero la clave vive junto a los datos (3.4, «Observación de (a)»;
+`prelectura.md` decía lo contrario). Lo impide el `${OBJECT_STORE_SSE_KEY:?…}` de los composes (D6): sin la variable,
+Compose no arranca el servicio. **Pregunta:** ¿basta con esa guarda del compose, o se quiere que algo más lo detecte
+(p. ej., que la verificación del artefacto o el despliegue lo compruebe)? Cualquier comprobación nueva sería un guardia
+permanente que habría que ver caer (ADR-048 §7), fuera de lo que hoy piden las tareas.
+
+Verificación de la sección, con un `node -e` de un solo uso: ver «Comprobación de la 4.1», al final del grupo 4.
+
+## Celdas del candidato señalado: SeaweedFS (grupo 4)
+
+Corridas del 2026-09-26 con SeaweedFS 4.47 (`chrislusf/seaweedfs:4.47`), `docs/object-store-matrix/seaweedfs.compose.yml`
+**con el healthcheck de la 4.3**, proyecto `os4-sw` en el puerto `19650` del host (el `9000` es el MinIO de
+desarrollo, que no se tocó), credenciales y `OBJECT_STORE_SSE_KEY` nuevas generadas en el scratchpad y exportadas con
+`COMPOSE_PROJECT_NAME=os4-sw`, `S3_ENDPOINT=http://localhost:19650`, `S3_REGION=us-east-1`, `S3_BUCKET=cvs` y
+`S3_SNAPSHOTS_BUCKET=snapshots`. El orden de ejecución fue C8 (sobre el almacén recién arrancado y sin aprovisionar),
+C7 sobre ese mismo almacén ya aprovisionado, y C9. Las salidas de Nx se recortan a lo que imprime la orden.
+
+### 4.3: C8, healthcheck de solo lectura: pasa
+
+**Endpoint de salud real en 4.47.** La imagen es Alpine con `curl` y `wget` (busybox) y no declara `HEALTHCHECK`
+(`docker image inspect … {{json .Config.Healthcheck}}` → `null`). La issue #8243 de SeaweedFS («Health check for S3
+service not working», `curl -I …/healthz` → `404` en 4.09, porque la pasarela tomaba `healthz` por un bucket) está
+cerrada el 2026-02-09 (`gh api repos/seaweedfs/seaweedfs/issues/8243`). En 4.47, dentro del contenedor recién arrancado
+y sin aprovisionar:
+
+```text
+$ docker exec os4-sw-object-store-1 sh -c 'for p in /healthz /status /readyz /health; do curl … http://127.0.0.1:8333$p; curl -I …; done'      # salida resumida: código y bytes del GET, código del HEAD
+== GET /healthz   200 0B        == HEAD /healthz   200
+== GET /status    200 0B        == HEAD /status    200
+== GET /readyz    200 0B        == HEAD /readyz    200
+== GET /health    403 218B (<Code>AccessDenied</Code> … <BucketName>health</BucketName>)   == HEAD /health   403
+```
+
+`/healthz`, `/status` y `/readyz` responden `200` sin credenciales ni cuerpo; `/health` la pasarela lo toma por un
+bucket y lo rechaza. Se elige **`/healthz`** en forma `CMD`, sin shell, con `curl -f` (sale ≠0 ante cualquier respuesta
+≥ 400), y va al compose de la matriz:
+
+```yaml
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', '-o', '/dev/null', '--max-time', '3', 'http://127.0.0.1:8333/healthz']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
+      start_interval: 1s
+```
+
+Los parámetros son los de la medición de C9 (`start_interval: 1s` da la resolución de un segundo); los de la pila
+salen de C9 y de la medición en `arm64` (design D5 y D8).
+
+**C8**, sobre el almacén recién arrancado (`down -v` y `up -d --wait` con el healthcheck: `Container
+os4-sw-object-store-1 Healthy`) y **sin aprovisionar**:
+
+```text
+$ node docs/object-store-matrix/list-buckets.mjs          # antes
+buckets (0):
+exit=0
+$ docker exec os4-sw-object-store-1 curl -fsS -o /dev/null --max-time 3 http://127.0.0.1:8333/healthz      # x10, la orden del healthcheck
+run 1: exit=0
+run 2: exit=0
+run 3: exit=0
+run 4: exit=0
+run 5: exit=0
+run 6: exit=0
+run 7: exit=0
+run 8: exit=0
+run 9: exit=0
+run 10: exit=0
+$ docker exec os4-sw-object-store-1 curl -fsS -o /dev/null --max-time 3 http://127.0.0.1:18399/healthz      # puerto sin servicio
+curl: (7) Failed to connect to 127.0.0.1:18399 after 0 ms: Could not connect to server
+exit=7
+$ docker exec os4-sw-object-store-1 netstat -tln      # 18399 sin servicio
+11 puertos en LISTEN; 18399: no
+$ node docs/object-store-matrix/list-buckets.mjs          # después
+buckets (0):
+exit=0
+$ docker inspect os4-sw-object-store-1 --format '{{json .State.Health}}'      # los sondeos del propio healthcheck
+Status healthy, FailingStreak 0
+23:41:50.459 exit=0 output=""
+23:42:00.486 exit=0 output=""
+$ docker exec os4-sw-object-store-1 curl -fsS -o /dev/null --max-time 3 http://127.0.0.1:8333/health      # ruta que la pasarela toma por bucket: 403
+curl: (22) The requested URL returned error: 403
+exit=22
+```
+
+Sale 0 con el almacén sirviendo, ≠0 (7) contra un puerto sin servicio y ≠0 (22) ante un rechazo; tras diez
+ejecuciones (y los sondeos del propio healthcheck), la lista de buckets sigue **vacía**. **C8: pasa.**
+
+### 4.2: C7, tests reales de la app: pasa con la política por defecto
+
+SDK instalado y aprovisionamiento del almacén de la 4.3:
+
+```text
+$ node -e "console.log(require('@aws-sdk/client-s3/package.json').version)"
+3.1134.0
+$ pnpm nx run api:object-store -- provision
+ok    cvs: bucket created
+ok    cvs: no lifecycle configuration (removed if there was one)
+ok    cvs: default encryption set (AES256)
+ok    cvs: no bucket policy
+ok    snapshots: bucket created
+ok    snapshots: no lifecycle configuration (removed if there was one)
+ok    snapshots: no bucket policy
+provision: ok
+exit=0
+```
+
+Suites de contrato de la 2.7 y la 2.8 con la **política de checksums por defecto** (`S3_CONTRACT_CHECKSUM` sin
+definir, ni en la shell ni en `.env`; el primer test de `api` comprueba que la política es `when_supported`):
+
+```text
+$ S3_CONTRACT=1 pnpm nx run api:test --skip-nx-cache -- s3.s3-contract --reporter=verbose
+ ✓ |api| src/infrastructure/storage/s3.s3-contract.spec.ts > S3 contract of api (real store) > runs with the checksum policy it was asked for 1ms
+ ✓ |api| src/infrastructure/storage/s3.s3-contract.spec.ts > S3 contract of api (real store) > uploads a CV with the real adapter and the same bytes come back 247ms
+ ✓ |api| src/infrastructure/storage/s3.s3-contract.spec.ts > S3 contract of api (real store) > deletes a prefix of 1001 keys in two DeleteObjects batches and leaves it empty 1206ms
+ ↓ |api| src/infrastructure/storage/s3.s3-contract.spec.ts > S3 contract of api (real store) > C5 mode: writes A1/A2 to the CV bucket without SSE headers and B1/B2 to the snapshots bucket, and dumps them
+ ↓ |api| src/infrastructure/storage/s3.s3-contract.spec.ts > S3 contract of api (real store) > C5 SSE-C mode: writes A1/A2 with SSE-C and requires the SSECustomerKeyMD5 echo, B1/B2 without SSE, and dumps them
+ Test Files  1 passed (1)
+      Tests  3 passed | 2 skipped (5)
+exit=0
+$ S3_CONTRACT=1 pnpm nx run worker:test --skip-nx-cache -- s3.s3-contract --reporter=verbose
+ ✓ |worker| src/infrastructure/storage/s3.s3-contract.spec.ts > S3 contract of worker (real store) > reads the bytes that were written 37ms
+ ✓ |worker| src/infrastructure/storage/s3.s3-contract.spec.ts > S3 contract of worker (real store) > deletes, and deleting again is still a success 16ms
+ WARN [S3CvFileReader] CV file not read: Error
+ ✓ |worker| src/infrastructure/storage/s3.s3-contract.spec.ts > S3 contract of worker (real store) > tells a missing object (null) apart from a store that is down (error) 114ms
+ ✓ |worker| src/infrastructure/storage/s3.s3-contract.spec.ts > S3 contract of worker (real store) > stores a gzipped snapshot in the snapshots bucket 214ms
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
+exit=0
+```
+
+(Los dos modos C5 de `api` los salta la suite sin `S3_CONTRACT_C5_DIR`: el modo `server` ya se ejecutó en la 3.4 y el
+SSE-C no aplica. El `WARN` es el del caso «almacén caído», que apunta a un puerto sin servicio a propósito.)
+
+Las peticiones llegaron a SeaweedFS y no al MinIO de desarrollo: su log (`docker logs os4-sw-object-store-1`, filtrado
+por el manejador de borrado) registra los borrados de las suites en esos minutos, y `verify` después las encuentra
+limpias:
+
+```text
+I0926 23:42:44.294728 s3api_object_handlers_delete.go:209 DeleteObjectHandler cvs 999a14e37cffd34adeb0e9df/3b513a53d2e132f8ebe90076
+I0926 23:42:51.149213 s3api_object_handlers_delete.go:209 DeleteObjectHandler cvs 74a00572aaf776f0cc3d9344/09b7c828430f7ec6ac2612fd
+I0926 23:42:51.159889 s3api_object_handlers_delete.go:209 DeleteObjectHandler cvs ca9d1351f8603adfbd7c3fd6/f7875b91d4c8af03b6c912fb
+I0926 23:42:51.166243 s3api_object_handlers_delete.go:209 DeleteObjectHandler cvs ca9d1351f8603adfbd7c3fd6/f7875b91d4c8af03b6c912fb
+I0926 23:42:51.495094 s3api_object_handlers_delete.go:209 DeleteObjectHandler snapshots b94459f45a629197b1f1f21f/1.html.gz
+$ pnpm nx run api:object-store -- verify
+ok    cvs: bucket exists
+ok    snapshots: bucket exists
+ok    cvs: no lifecycle rule
+ok    cvs: default encryption (AES256)
+ok    snapshots: no lifecycle rule
+ok    snapshots: no snapshot older than 31 days (0 listed)
+ok    cvs: anonymous GET of a missing object rejected (HTTP 403 AccessDenied)
+ok    cvs: anonymous listing rejected (HTTP 403 AccessDenied)
+ok    cvs: anonymous PUT rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous GET of a missing object rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous listing rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous PUT rejected (HTTP 403 AccessDenied)
+verify: ok
+exit=0
+```
+
+**C7: pasa, con la política de checksums por defecto (`when_supported`)**, incluido el borrado por prefijo de 1001
+claves en dos lotes de `DeleteObjects` con el prefijo vacío al final. No hizo falta `WHEN_REQUIRED`.
+
+### 4.4: C9, tiempo hasta sano
+
+Tres arranques en frío (`down -v` entre ellos) con el healthcheck de la 4.3; tiempo hasta `healthy` = fin del primer
+sondeo con salida 0 de `.State.Health.Log` menos `.State.StartedAt`, leídos de `docker inspect` con `node`
+(`<scratchpad>/g4/c9-read.cjs`), justo después de `up -d --wait`, y un `list-buckets.mjs` en cuanto queda sano:
+
+```text
+run 1: down -v exit=0 (0 volúmenes os4-sw)
+run 1: up -d --wait exit=0, reloj 2.3 s
+run 1: Status healthy; StartedAt 2026-09-26T23:44:06.225921416Z; primer sondeo con 0: 2026-09-26T23:44:07.418598152Z; sondeos fallidos antes: 0; tiempo hasta healthy: 1.19 s
+run 1: list-buckets tras healthy: buckets (0):
+run 2: down -v exit=0 (0 volúmenes os4-sw)
+run 2: up -d --wait exit=0, reloj 2.3 s
+run 2: Status healthy; StartedAt 2026-09-26T23:44:12.615292897Z; primer sondeo con 0: 2026-09-26T23:44:13.785721627Z; sondeos fallidos antes: 0; tiempo hasta healthy: 1.17 s
+run 2: list-buckets tras healthy: buckets (0):
+run 3: down -v exit=0 (0 volúmenes os4-sw)
+run 3: up -d --wait exit=0, reloj 2.3 s
+run 3: Status healthy; StartedAt 2026-09-26T23:44:18.800807065Z; primer sondeo con 0: 2026-09-26T23:44:19.973502057Z; sondeos fallidos antes: 0; tiempo hasta healthy: 1.17 s
+run 3: list-buckets tras healthy: buckets (0):
+```
+
+**C9 (local, `amd64`): 1,19 s, 1,17 s y 1,17 s; peor, 1,19 s.** En los tres, el **primer** sondeo (a 1 s del arranque,
+`start_interval`) ya sale 0: el tiempo real es como mucho ese, y la medición no puede bajar de la resolución del
+sondeo. Informa D8, no aprueba ni suspende: la ventana de la matriz (`start_period` 60 s + 6 × 10 s = 120 s) es mucho
+más de tres veces el peor; la de la pila se fija con este dato y las tres corridas en el corredor `arm64`.
+
+Al terminar el grupo: `down -v` de `os4-sw` y `os4-swbind` (las dos variantes de la 4.1) y de `os4-minio` (la
+corrección de `c5.sh`, en «Control MinIO»); los `c5copy-*` los borró `c5.sh`. `docker ps -a`, `docker volume ls` y
+`docker network ls` sin `os4` ni `c5copy`: 0, 0 y 0.
+
+### Comprobación de la 4.1
+
+`node <scratchpad>/g4/check-41.js [matriz]`: lee la sección «Punto de revisión (tarea 4.1)» y exige la fecha de la
+presentación, que no bloquea, los tres puntos (quién da C5 `nativo` con RustFS y Garage como «no ejecutado»; el coste
+de SSE-C con 8.1-8.4, la clave y la 2.9b; la fecha estimada de cierre según D1), que no hay `falla (TLS)` y las dos
+preguntas abiertas con la medición del filer. Contra este fichero y contra una copia sin la fecha de presentación y con
+«Algún candidato quedó en `falla (TLS)`»:
+
+```text
+$ node <scratchpad>/g4/check-41.js
+ok   fecha de presentación 2026-09-26
+ok   no bloquea
+ok   1. quién da C5 nativo: SeaweedFS
+ok   1. RustFS y Garage «no ejecutado: puntero fijado en SeaweedFS»
+ok   falla (TLS): ninguno
+ok   2. coste SSE-C: tareas 8.1-8.4
+ok   2. clave a custodiar S3_CV_SSE_C_KEY
+ok   2. la salida existe según la 2.9b (SDK envía; MinIO rechaza sin TLS)
+ok   3. fecha estimada de cierre según la tabla de D1
+ok   pregunta (i): filer sin autenticación
+ok   medición del filer en loopback (-ip.bind)
+ok   pregunta (ii): KEK autogenerada
+4.1: ok
+exit=0
+$ node <scratchpad>/g4/check-41.js <copia falsada>      # solo las líneas que fallan
+FALTA fecha de presentación 2026-09-26
+FALTA falla (TLS): ninguno
+4.1: FALLA (2)
+exit=1
+```

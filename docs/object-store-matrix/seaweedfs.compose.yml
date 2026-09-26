@@ -26,7 +26,10 @@
 #     docker compose -p os3-sw -f docs/object-store-matrix/seaweedfs.compose.yml up -d --wait
 #   … y al terminar, `down -v` con el mismo `-p` y `-f`.
 #
-# Sin healthcheck: el de solo lectura es la celda C8 (tarea 4.3). Aprovisionar es `object-store provision` (design D4).
+# Healthcheck de solo lectura: el que aprobó la celda C8 (tarea 4.3), `GET /healthz` de la pasarela S3 con el `curl`
+# de la imagen, en forma `CMD` (sin shell), que no crea buckets ni necesita credenciales. Sus `interval`, `retries` y
+# `start_period` son los de la medición de C9 (tarea 4.4; `start_interval: 1s` da la resolución de un segundo): los de
+# la pila salen de C9 y de la medición en `arm64` (design D5 y D8). Aprovisionar es `object-store provision` (design D4).
 
 services:
   object-store:
@@ -47,6 +50,13 @@ services:
       - '${OBJECT_STORE_PORT:-9000}:8333'
     volumes:
       - object-store-data:/data
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', '-o', '/dev/null', '--max-time', '3', 'http://127.0.0.1:8333/healthz']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
+      start_interval: 1s
 
 volumes:
   object-store-data:
