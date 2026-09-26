@@ -16,9 +16,16 @@ un grupo del que el usuario es miembro. Copy i18n ES/EN, incluida cobertura
 devuelve `degraded`, SHALL mostrarlo. Con `503` discovery_disabled, SHALL empty
 honesto. Guardar SHALL usar el cliente de links (`POST /api/links`) con `{ url }`
 o `{ url, groupId }` según el destino, y SHALL mostrar confirmación de
-**creado**, **ya existía** o **error** (no silencioso). Sin grupos o si falla
-cargar grupos: SHALL ofrecer solo privado (y aviso no bloqueante si hubo error
-de carga).
+**creado**, **ya existía** o **error** (no silencioso). Las confirmaciones de
+**creado** y **ya existía** SHALL referirse al destino al que se guardó: con
+destino grupo SHALL nombrar el grupo (creado: se guardó en G; ya existía: ya
+estaba en G); con destino privado, la de creado SHALL nombrar el destino
+privado y la de ya existía SHALL decir que el usuario ya la tenía. Ese destino
+SHALL ser el fijado al pulsar Guardar, no el que tenga el selector después. Si
+el nombre del grupo ya no está disponible, SHALL referirse a «el grupo» sin
+nombrarlo y SHALL NOT contener el texto del destino privado. Sin grupos o si
+falla cargar grupos: SHALL ofrecer solo privado (y aviso no bloqueante si hubo
+error de carga).
 
 #### Scenario: Buscar y guardar privado (default)
 
@@ -26,13 +33,37 @@ de carga).
 - **WHEN** busca y pulsa Guardar en un hit
 - **THEN** SHALL invocarse `POST /api/links` **sin** `groupId`
 - **AND** SHALL mostrarse feedback de creado o ya existía
+- **AND** si fue creado, la confirmación de creado SHALL nombrar el destino privado
 
 #### Scenario: Guardar en un grupo
 
 - **GIVEN** Ana eligió el grupo G como destino
-- **WHEN** pulsa Guardar en un hit
+- **WHEN** pulsa Guardar en un hit y la API responde creado
 - **THEN** la petición SHALL incluir `groupId` de G
-- **AND** SHALL mostrarse feedback de creado o ya existía
+- **AND** la confirmación de creado SHALL nombrar G
+- **AND** la confirmación de creado SHALL NOT contener el texto del destino privado
+
+#### Scenario: Guardar en un grupo que ya la tenía
+
+- **GIVEN** Ana eligió el grupo G como destino
+- **WHEN** pulsa Guardar en un hit que ya estaba en G (`already_there`)
+- **THEN** la confirmación de ya existía SHALL decir que ya estaba en G
+- **AND** SHALL NOT decir que Ana ya la tenía guardada
+
+#### Scenario: Cambiar el destino después de guardar
+
+- **GIVEN** Ana guardó un hit en el grupo G y ve su confirmación de creado
+- **WHEN** cambia el selector de destino a Privado
+- **THEN** la confirmación de ese hit SHALL seguir nombrando G
+
+#### Scenario: Grupo del guardado ya no disponible
+
+- **GIVEN** Ana guardó un hit en el grupo G y ve su confirmación de creado
+- **WHEN** la lista de grupos se recarga sin G
+- **THEN** la confirmación de creado SHALL decir que se guardó en el grupo
+- **AND** SHALL NOT contener el texto del destino privado
+- **AND** si la API había respondido ya existía, la confirmación SHALL decir que ya estaba en el grupo y SHALL NOT
+  decir que Ana ya la tenía guardada
 
 #### Scenario: Sin grupos
 
