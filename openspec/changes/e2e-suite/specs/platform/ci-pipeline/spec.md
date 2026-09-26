@@ -6,11 +6,9 @@ El repositorio SHALL tener un workflow que ejecute la suite end-to-end **con el 
 runner recién aprovisionado, sin servicios declarados en el runner y con las versiones de Node, pnpm y Playwright que
 fija el repositorio.
 
-- SHALL poder lanzarse **a mano** sobre cualquier rama y en los **pull requests que llevan la etiqueta `e2e`**. Poner o
-  quitar **otra** etiqueta NO SHALL lanzarlo. NO SHALL ejecutarse en cada push ni en cada pull request mientras no se
-  haya decidido con los minutos medidos, y NO SHALL ser un check obligatorio para fusionar.
-- Un push nuevo a un pull request SHALL cancelar la corrida en curso de ese pull request; dos corridas contra staging NO
-  SHALL ejecutarse a la vez ni cancelarse entre sí.
+- SHALL lanzarse **solo a mano**, sobre cualquier rama. NO SHALL ejecutarse en ningún push ni pull request mientras
+  no se haya decidido otro disparador con los minutos medidos, y NO SHALL ser un check obligatorio para fusionar.
+- Dos corridas contra staging NO SHALL ejecutarse a la vez ni cancelarse entre sí.
 - SHALL ejecutar el perfil `local`, y el ensayo del perfil `remote` contra la misma pila **cuando el lanzamiento lo
   pide**, y SHALL fallar si falla cualquiera de los dos.
 - SHALL subir, **también cuando falla**, el informe HTML de Playwright y las trazas y vídeos de los fallos, con una
@@ -35,17 +33,11 @@ fija el repositorio.
 - **WHEN** se lanza el workflow a mano pidiendo el ensayo remoto
 - **THEN** SHALL ejecutar el perfil `local` y después el ensayo `remote` contra la misma pila
 
-#### Scenario: Pull request sin la etiqueta
+#### Scenario: Un pull request no la lanza
 
-- **GIVEN** un pull request sin la etiqueta `e2e`
-- **WHEN** se abre o se actualiza
+- **GIVEN** un pull request abierto
+- **WHEN** se actualiza o se le pone cualquier etiqueta
 - **THEN** la suite end-to-end NO SHALL ejecutarse
-
-#### Scenario: Otra etiqueta en un pull request con `e2e`
-
-- **GIVEN** un pull request que ya lleva la etiqueta `e2e`
-- **WHEN** se le pone otra etiqueta
-- **THEN** la suite end-to-end NO SHALL lanzarse de nuevo
 
 #### Scenario: Fallo con artefactos
 

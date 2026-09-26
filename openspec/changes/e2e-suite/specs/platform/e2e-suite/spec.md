@@ -62,11 +62,13 @@ ocupar— y, si alguno no lo está, SHALL terminar **sin arrancar nada** y nombr
 
 - La suite NO SHALL reutilizar un servidor que ya estuviera escuchando.
 - Si en el mismo checkout hay un servidor de desarrollo de `api` o `worker` en marcha, que compila en los mismos
-  ficheros de salida, el comando SHALL terminar sin arrancar nada nombrándolo.
+  ficheros de salida, el comando SHALL terminar sin arrancar nada nombrándolo. Un servidor de desarrollo de **otro**
+  checkout NO SHALL detenerlo, aunque la ruta de ese checkout contenga la de este.
 - Tras levantar la infraestructura, todo puerto publicado por su proyecto de compose SHALL estar dentro del bloque; si
   no, la corrida SHALL fallar nombrando el puerto y el servicio.
-- Tras arrancar cada aplicación, el proceso que atiende su puerto SHALL pertenecer a los procesos que lanzó la corrida;
-  si no, la corrida SHALL fallar nombrando el puerto y el proceso ajeno.
+- Tras arrancar cada aplicación, **cada** proceso que escucha en su puerto, en cualquier interfaz, SHALL pertenecer a
+  los procesos que lanzó la corrida; un proceso en escucha cuyo dueño no se puede determinar SHALL contar como ajeno.
+  Si no, la corrida SHALL fallar nombrando el puerto y el proceso ajeno.
 - Si un proceso lanzado por la corrida termina antes de tiempo o informa de que su puerto está en uso, la corrida SHALL
   fallar nombrándolo, aunque otro proceso responda en ese puerto.
 - Una aplicación SHALL darse por arrancada solo cuando responde en su puerto del bloque: `api` y `worker` por su salud,
@@ -99,6 +101,12 @@ ocupar— y, si alguno no lo está, SHALL terminar **sin arrancar nada** y nombr
 - **GIVEN** un servidor de desarrollo de `api` en marcha en el mismo checkout
 - **WHEN** se ejecuta el comando de la suite
 - **THEN** SHALL terminar con código distinto de cero nombrando ese proceso, sin arrancar nada
+
+#### Scenario: Servidor de desarrollo de otro checkout anidado
+
+- **GIVEN** un servidor de desarrollo de `api` en marcha en otro checkout cuya ruta está dentro de la de este
+- **WHEN** se ejecuta el comando de la suite en este checkout
+- **THEN** NO SHALL detenerse por ese proceso
 
 #### Scenario: Un proceso arrancado muere al empezar
 
@@ -138,6 +146,10 @@ el `.env` local NO SHALL cambiar el resultado de la suite.
 - El correo SHALL salir por SMTP hacia el Mailpit del proyecto de compose de la suite, nunca hacia un proveedor real.
 - Las funciones con flag SHALL quedar apagadas salvo las que necesite alguna prueba admitida, y el entorno SHALL
   declarar cuáles.
+- Las anulaciones del propio comando (puertos del bloque, origen, resultado esperado del encaje, fallos provocados)
+  SHALL darse como **argumentos**; el comando NO SHALL leerlas de su entorno, al que puede llegar el `.env`. Las
+  credenciales de un destino remoto, que no pueden ir en argumentos, SHALL llegar por el entorno de la sesión, y el
+  comando SHALL fallar sin ejecutar ninguna prueba si también están en el `.env`.
 
 #### Scenario: El desarrollador tiene la IA en synth
 
@@ -150,8 +162,20 @@ el `.env` local NO SHALL cambiar el resultado de la suite.
 
 - **GIVEN** un `.env` local con una variable que el entorno versionado no declara
 - **WHEN** se ejecuta el comando de la suite
-- **THEN** esa variable NO SHALL estar en el entorno del proceso `api`
-- **AND** cada variable del entorno versionado SHALL estar en él con su valor
+- **THEN** esa variable NO SHALL estar en el entorno de los procesos `api` ni `worker`
+- **AND** cada variable del entorno versionado SHALL estar en ellos con su valor
+
+#### Scenario: Puerto de la infraestructura en el .env
+
+- **GIVEN** un `.env` local que cambia el puerto publicado de Mongo
+- **WHEN** se ejecuta el comando de la suite
+- **THEN** Mongo SHALL publicarse en el puerto del bloque de la suite, no en el del `.env`
+
+#### Scenario: Anulación del comando en el .env
+
+- **GIVEN** un `.env` local con una variable que nombra un puerto del bloque de la suite
+- **WHEN** se ejecuta el comando de la suite sin argumentos
+- **THEN** SHALL usar el bloque por defecto, como si la variable no existiera
 
 #### Scenario: El correo no sale de la máquina
 
@@ -167,13 +191,10 @@ La suite SHALL poder ejecutarse contra **cualquier origen** indicado por variabl
 - **`local`**: contra la pila que arranca el comando de la suite. Las pruebas MAY escribir precondiciones en la base de
   datos, leer el correo en Mailpit, vaciar contadores de la infraestructura y afirmar salidas concretas del mock de IA.
 - **`remote`**: contra un origen que la suite no arranca ni controla. Solo SHALL ejecutar las pruebas marcadas como
-  **aptas para remoto**, y ninguna prueba SHALL poder escribir en la base de datos, leer correo, tocar la
-  infraestructura ni afirmar una salida concreta de la IA. `remote` SHALL afirmar solo el desenlace que declara el
-  destino.
+  **aptas para remoto**, y esas pruebas NO SHALL escribir en la base de datos, leer correo, tocar la infraestructura
+  ni afirmar una salida concreta de la IA. `remote` SHALL afirmar solo el desenlace que declara el destino.
 
-Una prueba apta para remoto que intente cualquiera de esas operaciones SHALL **fallar** nombrando la operación, en
-cualquier perfil. NO SHALL saltarse en silencio. Ningún origen SHALL estar escrito a mano dentro de una prueba: todos
-SHALL derivarse del origen configurado. En `remote`, el origen de la API SHALL derivarse del origen de la aplicación, y
+Ningún origen SHALL estar escrito a mano dentro de una prueba: todos SHALL derivarse del origen configurado. En `remote`, el origen de la API SHALL derivarse del origen de la aplicación, y
 un origen de API declarado distinto SHALL hacer fallar la corrida antes de ejecutar ninguna prueba.
 
 El perfil `remote` SHALL poder **ensayarse** contra la pila local que arranca el comando de la suite, **cuando se
@@ -181,12 +202,6 @@ pide** con una opción explícita, para ensayar un destino remoto antes de que e
 ejecutar el ensayo. En el ensayo, la IA SHALL tener configurado un proveedor externo **inalcanzable** y la cuenta
 SHALL carecer de permiso de IA externa, de modo que el desenlace esperado sea el análisis degradado por falta de
 permiso y cualquier llamada al proveedor lo cambie.
-
-#### Scenario: Prueba apta para remoto que escribe en la base de datos
-
-- **GIVEN** una prueba marcada como apta para remoto que siembra una precondición en Mongo
-- **WHEN** se ejecuta con el perfil `local`
-- **THEN** SHALL fallar nombrando la escritura en la base de datos
 
 #### Scenario: Perfil remoto sin origen
 
@@ -269,8 +284,8 @@ Contra un destino remoto compartido con personas reales, la suite:
 El primer lote de la suite SHALL ser **un recorrido** en el que una persona se registra (o, en el perfil `remote`,
 entra con su cuenta de prueba), crea un grupo, guarda en él el link de una oferta, completa la oferta a mano, registra
 su postulación y la ve en el tablero, sube un CV y ve que se leyó, y pide el análisis de encaje de esa oferta; y en el
-que, en el perfil `local`, una **segunda persona** se registra, **se une al grupo con su código de invitación** y hace
-lo mismo desde el paso de guardar el link.
+que, en el perfil `local`, una **segunda persona** abre **sin sesión** el enlace de invitación que copia la primera,
+crea su cuenta desde el inicio de sesión, **se une al grupo** y hace lo mismo desde el paso de guardar el link.
 
 - El recorrido SHALL ejecutarse en un navegador de **escritorio** y en uno **móvil emulado**, y SHALL admitirse en los
   dos.
@@ -292,10 +307,10 @@ lo mismo desde el paso de guardar el link.
 - **THEN** SHALL registrar una cuenta nueva y completar todos los pasos
 - **AND** el informe de encaje SHALL mostrar el resultado del fixture de replay de su entrada
 
-#### Scenario: Segunda persona se une con el código
+#### Scenario: Segunda persona se une con el enlace de invitación, sin sesión
 
-- **GIVEN** el recorrido con el perfil `local` y el grupo creado por la primera persona
-- **WHEN** la segunda persona se registra y se une con el código de invitación de ese grupo
+- **GIVEN** el recorrido con el perfil `local` y el enlace de invitación copiado del grupo creado por la primera persona
+- **WHEN** la segunda persona, sin sesión, abre ese enlace, crea su cuenta desde el inicio de sesión y confirma la unión
 - **THEN** SHALL aterrizar en el detalle del grupo y figurar entre sus miembros
 - **AND** SHALL completar los pasos de guardar el link, la oferta, la postulación, el CV y el encaje
 
@@ -348,14 +363,14 @@ lo mismo desde el paso de guardar el link.
 
 ### Requirement: Una rama saltada no pasa en silencio
 
-Un salto de prueba SHALL llevar su motivo escrito en el informe. Una prueba del camino crítico que se salta SHALL hacer
-fallar la corrida.
+El lint del proyecto de la suite SHALL rechazar todo salto de prueba, también el condicional, salvo el que lleve una
+excepción de línea con su motivo escrito. La prueba del camino crítico NO SHALL llevar ninguna excepción de ese tipo.
 
-#### Scenario: Camino crítico saltado
+#### Scenario: Salto sin motivo
 
-- **GIVEN** una corrida en la que la prueba del camino crítico se salta
-- **WHEN** termina la corrida
-- **THEN** SHALL terminar con código distinto de cero nombrando la prueba saltada
+- **GIVEN** una prueba del proyecto de la suite con un salto sin excepción de línea
+- **WHEN** se ejecuta el lint de ese proyecto
+- **THEN** SHALL fallar nombrando el fichero y la línea
 
 ### Requirement: Cada corrida deja su diagnóstico
 

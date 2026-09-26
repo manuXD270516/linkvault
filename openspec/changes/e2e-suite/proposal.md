@@ -19,29 +19,35 @@ pero su primer PR se **fusiona después de 35a**, para nacer con el arranque loc
   por checkout y con un bloque de puertos propio, sirve `api`, `worker` y `web` (bundle de producción) desde el código,
   ejecuta Playwright y **apaga lo que arrancó**, también si falla o se interrumpe. Nunca reutiliza procesos ajenos: un
   puerto ocupado detiene la corrida nombrándolo, y tras arrancar comprueba que quien atiende cada puerto es lo que lanzó.
-- **El mismo comando en CI**: un workflow nuevo, `e2e.yml`, a demanda (`workflow_dispatch` y pull requests con la
-  etiqueta `e2e`), en un runner limpio, con concurrencia por destino, que sube el informe HTML, las trazas y los vídeos
-  de los fallos. **No** es un check obligatorio ni corre en cada push hasta tener medidos sus minutos (repositorio
-  privado, plan Free), y con el 70 % del mes consumido solo se lanza a mano.
-- **Contra cualquier origen**: `E2E_BASE_URL` y un **perfil** (`local` o `remote`) que declara qué puede hacer la suite
-  en ese destino. En `remote` no se escribe en bases de datos, no se lee correo y no se afirma ninguna salida concreta de
-  la IA; una prueba apta para remoto que intente hacerlo **falla**, no se salta.
+- **El mismo comando en CI**: un workflow nuevo, `e2e.yml`, **solo a mano** (`workflow_dispatch`), en un runner
+  limpio, con las corridas contra staging en serie, que sube el informe HTML, las trazas y los vídeos de los fallos.
+  **No** es un check obligatorio ni corre en pushes ni pull requests hasta tener medidos sus minutos (repositorio
+  privado, plan Free), y con el 70 % del mes consumido no se lanza: la suite se ejecuta en local con el mismo comando.
+- **Contra cualquier origen**: un origen por argumento (`--base-url`) y un **perfil** (`local` o `remote`) que declara
+  qué puede hacer la suite en ese destino. En `remote` no se escribe en bases de datos, no se lee correo y no se afirma
+  ninguna salida concreta de la IA; los helpers que harán cumplir eso a las pruebas que los necesiten llegan con el
+  lote 2 (el lote 1 no los usa).
 - **Staging especificado ya, verificado después**: el perfil `remote` se **ensaya** contra la pila local cuando se pide
   (`--rehearse-remote`), con un proveedor de IA externo inalcanzable para que el desenlace sea el mismo que en staging;
   las tareas que tocan staging nacen **bloqueadas por 35b** (`staging-host`). En staging: sin altas, cuentas de prueba
   `+e2e` sin email verificado ni permiso de IA, guardias antes de limpiar, y la suite remota no se lanza los días 7 y 14
   de la medición.
 - **La medición de 35b excluye a las cuentas de prueba** (Q1, decidida por el usuario): se edita `staging-host` para que
-  sus scripts excluyan por `userId` en cada métrica la lista «autor + cuentas E2E».
-- **Invitar exige una corrida en verde**: `e2e-stack` en verde sobre el commit desplegado es precondición de la
-  invitación de 35b; el despliegue no espera a la suite.
+  sus scripts excluyan por `userId` en cada métrica la lista «autor + cuentas E2E». Esas ediciones llegan a `main` en un
+  **PR solo de spec**, antes del `/opsx:apply` de 35b.
+- **Invitar exige una corrida en verde contra staging**: `e2e-remote` en verde en escritorio y móvil sobre el commit
+  desplegado, lanzada desde la máquina del autor, es precondición de la invitación de 35b; la corrida local queda de
+  respaldo, y si la suite no está a tiempo la alternativa es el mismo recorrido hecho a mano en el móvil. El despliegue
+  no espera a la suite.
 - **IA y correo deterministas**: `AI_CHAIN=mock` con `AI_MOCK_MODE=replay` en local y en CI, aunque el `.env` del
   desarrollador diga `synth` (el `.env` no llega a los procesos); Mailpit del propio proyecto de compose. La entrada del
   recorrido se versiona junto a sus fixtures y un Vitest de `libs/ai` rompe CI si falta alguno.
 - **Sin esperas fijas ni reintentos que escondan**: reglas de lint de Playwright y contra `setTimeout` en error,
   sincronización por eventos armados antes de la acción (la lección de la carrera de PR #59), un intermitente es un
-  fallo, y una prueba entra en la suite solo tras repetirse bajo carga en cada navegador.
-- **Lote 1 = el camino crítico**: registro → grupo → **segunda persona que se une con el código** → guardar link →
+  fallo, un salto sin motivo lo rechaza el lint, y una prueba entra en la suite solo tras repetirse bajo carga en cada
+  navegador.
+- **Lote 1 = el camino crítico**: registro → grupo → **segunda persona que abre el enlace de invitación sin sesión,
+  crea su cuenta y se une** → guardar link →
   postulación → CV → encaje, como un único recorrido, **en escritorio y en un móvil emulado**. El mapa de cobertura
   contra el catálogo de uso y la limpieza de los specs existentes pasan al **lote 2**, candidato posterior a la fila 35.
 - **ADR-053** (el 052 está reservado por `object-store`), anotación en ADR-048 §Consecuencias, entrada en
@@ -67,8 +73,9 @@ pero su primer PR se **fusiona después de 35a**, para nacer con el arranque loc
   versionado, helpers, spec del camino crítico, reglas de lint); en `libs/ai`, la entrada versionada del recorrido, sus
   fixtures escritos a mano y un Vitest que los exige; ningún cambio de comportamiento de `api`, `worker` ni `web`.
 - **CI:** `.github/workflows/e2e.yml` nuevo; `ci.yml`, `cd-staging.yml` y `cd-prod.yml` **no se tocan**.
-- **Otro change:** `openspec/changes/staging-host` (35b), design D15/D16 y tareas 10.2, 10.3, 10.6 y 10.7, por Q1 y por
-  la precondición de invitar, sin tocar las secciones que edita 35a.
+- **Otro change:** `openspec/changes/staging-host` (35b), design D14, D15/D16 y tabla de bloqueos, y tareas 1.1, 10.2,
+  10.3, 10.6 y 10.7, por Q1 y por la precondición de invitar, sin tocar las secciones que edita 35a (salvo una línea
+  nueva bajo su 1.1), en un commit propio que llega a `main` en un PR solo de spec.
 - **Documentación:** `docs/adr/ADR-053.md`, anotación en `docs/adr/ADR-048.md`, `openspec-changes.yaml`,
   `docs/design-v0.2.md` §6, `apps/web-e2e/README.md`, la medición de minutos en `infra/README.md` y, en PR-2, la corrida
   previa a invitar en el RUNBOOK.

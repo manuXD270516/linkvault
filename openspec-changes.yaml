@@ -493,11 +493,12 @@ changes:
       **En paralelo a 35a, como excepción a la precedencia de la fila 35** (ADR-048 §Consecuencias, extendida a la
       fila entera por ADR-051 §1), decidida por el usuario el 2026-09-26 y registrada en **ADR-053** con seis
       condiciones: no toca ficheros de despliegue ni requirements que modifiquen 35a, 35b o 35c (en particular, no
-      «CD a staging en main»); corre solo a demanda hasta medir sus minutos, y con el 70 % del mes consumido solo a
-      mano; el despliegue de 35b no espera a la suite, pero **invitar sí, a una corrida en verde** sobre el commit
-      desplegado; la medición de 35b excluye por `userId` a las cuentas E2E (Q1, trasladada a `staging-host`); mismo
-      método que la fila; y **35a va primero**: la suite solo ocupa sus esperas. No libera la precedencia para ningún
-      otro change.
+      «CD a staging en main»); corre solo a mano hasta medir sus minutos, y con el 70 % del mes consumido no se lanza
+      en CI; el despliegue de 35b no espera a la suite, pero **invitar sí, a `e2e-remote` en verde contra staging**
+      sobre el commit desplegado (respaldo local; sin la suite a tiempo, el recorrido a mano en el móvil); la medición
+      de 35b excluye por `userId` a las cuentas E2E (Q1, trasladada a `staging-host` en un PR solo de spec antes de
+      su `/opsx:apply`); mismo método que la fila; y **35a va primero**: la suite solo ocupa sus esperas, y tras 35a
+      solo su cola de PR-1 (7.6, 7.9, 8.1) antes que la fila. No libera la precedencia para ningún otro change.
       **Orden de fusión:** PR-1 se construye en paralelo pero se fusiona **después de 35a** (nace con `pnpm infra:up`
       y el almacén nuevo) y fuera del tramo entre los dos PR de 35b; PR-2 (staging) tras el primer despliegue de 35b.
       **Suite end-to-end reproducible sobre `apps/web-e2e`** (parte de la suite que hay, no la reescribe).
@@ -507,9 +508,10 @@ changes:
       Playwright y apagado de lo arrancado también al fallar o interrumpir. Nunca prueba procesos ajenos: puerto
       ocupado (conexión en IPv4/IPv6 o `bind`) o `serve` de desarrollo del mismo checkout → no arranca nada; tras
       arrancar, quien atiende cada puerto es lo lanzado; tras apagar, el bloque queda libre. Entorno versionado
-      (`apps/web-e2e/e2e.env`) + lista blanca del sistema, con `NX_LOAD_DOT_ENV_FILES=false`: el `.env` no llega.
+      (`apps/web-e2e/e2e.env`) + lista blanca del sistema, con `NX_LOAD_DOT_ENV_FILES=false`: el `.env` no llega, y
+      las anulaciones del runner son flags, no variables de entorno.
       **Perfiles** `local` y `remote` (`E2E_BASE_URL`): en `remote` nada de Mongo, Redis, Mailpit ni salidas
-      concretas de IA, y los helpers que lo hacen fallan si la prueba es `@remote-safe`, en cualquier perfil. El
+      concretas de IA (los helpers `local-only` con su guardia `@remote-safe` llegan con el lote 2). El
       ensayo remoto contra la pila local solo con `--rehearse-remote`, con el `worker` reiniciado con un proveedor
       externo inalcanzable (desenlace `consent-required`). **Staging** (tras 35b): sin altas, cuentas `+e2e`
       persistentes creadas a mano, sin email verificado ni permiso de IA, guardias antes de limpiar, grupo sin
@@ -517,14 +519,15 @@ changes:
       14 de la medición.
       **Determinismo:** esperas fijas y `setTimeout` prohibidos por lint en error, sincronización por eventos armados
       antes de la acción (lección de PR #59), intermitente = rojo (`failOnFlakyTests`), admisión con
-      `--repeat-each=5` bajo carga en cada navegador y perfil, un salto del camino crítico = rojo, traza y vídeo de
-      cada fallo.
-      **CI:** `e2e.yml` nuevo con `workflow_dispatch` y la etiqueta `e2e` en pull requests (otra etiqueta no lo
-      relanza), concurrencia por destino, no obligatorio, artefactos a 7 días, staging sin destino o desde otra rama
-      = rojo, minutos medidos en `infra/README.md` antes de decidir más disparadores (Q2). `ci.yml`, `cd-staging.yml`
+      `--repeat-each=5` bajo carga en cada navegador y perfil, un salto sin motivo = rojo por lint, traza y vídeo
+      de cada fallo.
+      **CI:** `e2e.yml` nuevo, **solo `workflow_dispatch`** (sin `pull_request` hasta Q2), concurrencia en el job
+      de staging, no obligatorio, artefactos a 7 días, staging sin destino o desde otra rama = rojo, minutos medidos
+      en `infra/README.md` antes de decidir más disparadores (Q2). `ci.yml`, `cd-staging.yml`
       y `cd-prod.yml` no se tocan.
       **Lote 1 = el camino crítico** como un solo recorrido, en escritorio y en móvil emulado (`Pixel 7`): registro
-      (o entrada con la cuenta de prueba en remoto) → grupo → segunda persona que se une con el código (solo local)
+      (o entrada con la cuenta de prueba en remoto) → grupo → segunda persona que abre sin sesión el enlace de
+      invitación, crea su cuenta y se une (solo local)
       → guardar link → completar la oferta a mano → postulación → CV → encaje, con los pasos de cada perfil
       declarados y comprobados; entrada versionada junto a sus fixtures de replay y un Vitest de `libs/ai` que los
       exige. WebKit solo si la entrevista de 35b dice que alguien usa iPhone.
@@ -665,4 +668,9 @@ changes:
       **Inventario** de la suite actual (pruebas por fichero) y **limpieza de los specs no admitidos**: orígenes
       escritos a mano (`home`, `groups`, `public-share`) y accesos a Mongo (`links`, `match`, `freshness`) por los
       helpers `local-only`, y `register-limit.ts` con el proyecto de compose por variable.
+      **Helpers `local-only` y su guardia** (antigua tarea 3.3 de `e2e-suite`, R-18 de su iteración 2): Mongo,
+      Redis/`docker` y Mailpit en `apps/web-e2e/src/support/local-only/`, con URIs del bloque por variable, que
+      lanzan un error nombrando la operación si la prueba en curso lleva `@remote-safe`, en cualquier perfil; y el
+      MODIFIED del requirement de perfiles de `platform/e2e-suite` que lo exige («una prueba apta para remoto que
+      intente cualquiera de esas operaciones SHALL fallar nombrando la operación»), que `e2e-suite` retiró.
       **Lote 2 del plan de `e2e-suite` D14:** cuenta y salida (catálogo 2 y 4 con Mailpit, solo `local`; 5, 6 y 44).

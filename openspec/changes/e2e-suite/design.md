@@ -33,8 +33,9 @@ Motivación en `proposal.md` §Why; la excepción a la precedencia de la fila 35
   (`staging-host` design D15 y D16). Desde este change, esos scripts excluyen **por `userId` en cada métrica** la lista
   «autor + cuentas E2E», que vive fuera del repositorio y se pasa a `run.sh` (Q1, trasladada a 35b; D10).
 - **Registrar envía correo**: `register.usecase.ts` emite la verificación tras crear la cuenta. En staging, cada alta de
-  prueba sería un correo real por Brevo. Y el registro está limitado a **10 altas cada 15 minutos por IP**
-  (`REGISTRATIONS_PER_IP`, ADR-020): la undécima recibe `429`.
+  prueba sería un correo real por Brevo. Y el registro está limitado a **10 intentos de registro cada 15 minutos por
+  IP** (`REGISTRATIONS_PER_IP`, ADR-020): el limitador consume **antes** de crear la cuenta, así que un `409` (la
+  cuenta ya existe) también cuenta, y el undécimo intento recibe `429`.
 - **Minutos:** repositorio privado en el plan Free (2000 minutos al mes), compartidos con `ci`, `cd-staging` y la
   medición de `arm64` de 35a.
 
@@ -45,7 +46,8 @@ Motivación en `proposal.md` §Why; la excepción a la precedencia de la fila 35
 - Un comando local = el comando de CI, con la pila aislada y apagada al final.
 - Un perfil `remote` que se ensaya contra la pila local cuando se pide y contra staging sin cambiar las pruebas.
 - El camino crítico cubierto de punta a punta, **en escritorio y en un móvil emulado**, con una **segunda persona** que
-  se une al grupo con el código, y una corrida en verde como **precondición de invitar** en 35b.
+  se une al grupo con el enlace de invitación, y una corrida de `e2e-remote` en verde contra staging como
+  **precondición de invitar** en 35b.
 
 **Non-Goals:**
 
@@ -54,7 +56,12 @@ Motivación en `proposal.md` §Why; la excepción a la precedencia de la fila 35
 - Ejecutar la suite contra las imágenes del artefacto en local o en CI (D2).
 - Tocar `ci.yml`, `cd-staging.yml`, `cd-prod.yml`, `docker-compose*.yml` o cualquier requirement que modifiquen 35a,
   35b o 35c (D16). Las únicas ediciones a otro change son las de Q1 y de la precondición de invitar en
-  `staging-host`, decididas por el usuario (D16).
+  `staging-host`, decididas por el usuario, que llegan a `main` en un PR solo de spec (D16).
+- Los helpers `local-only` (Mongo, Redis/`docker`, Mailpit) y su guardia: ninguna prueba del lote 1 los usa; entran
+  con el lote 2 (D9).
+- Un reporter propio de saltos: el lint en `error` sobre `test.skip` y la comprobación de pasos declarados del
+  recorrido bastan para el lote 1 (D12).
+- Disparar `e2e.yml` desde pull requests: hasta Q2, solo `workflow_dispatch` (D13).
 - Ejecutar la suite automáticamente tras cada despliegue a staging (Q4).
 - Probar la extensión del navegador, los crons o los CLI (catálogo 23, 36, 41-43, 45, 46): se decide en su lote.
 
@@ -104,11 +111,24 @@ mock), y servir `dist/` con `node` (sería una tercera forma de arrancar la apli
 | Target | Qué hace |
 |---|---|
 | `web-e2e:e2e-stack` | Monta la pila, ejecuta el perfil `local` y la apaga. Con **`--rehearse-remote`**, además, el **ensayo** del perfil `remote` contra la misma pila. Es el comando local y el de CI. |
-| `web-e2e:e2e-remote` | No monta nada: ejecuta el perfil `remote` contra `E2E_BASE_URL`. Falla si falta el origen o las credenciales. |
+| `web-e2e:e2e-remote` | No monta nada: ejecuta el perfil `remote` contra el origen de `--base-url`. Falla si falta el origen o las credenciales. |
 
 El ensayo remoto **no** corre en cada `e2e-stack`: solo con `--rehearse-remote`, en la corrida de verificación de sus
 tareas (grupo 4 y 5.9) y cuando alguien cambie el perfil `remote`. Así no duplica los minutos de CI. Para la admisión
-del ensayo sin gastar las altas de `local` (D5), `--rehearse-remote --skip-local` ejecuta solo el ensayo.
+del ensayo sin gastar los intentos de registro de `local` (D5), `--rehearse-remote --skip-local` ejecuta solo el
+ensayo.
+
+**Entradas del runner: solo flags, no el entorno.** El runner se lanza con `pnpm nx run …`, y Nx carga el `.env` de la
+raíz en el entorno de la tarea antes de ejecutarla: cualquier variable que el runner leyera del entorno podría venir
+del `.env` de quien ejecuta. Por eso las anulaciones se aceptan **solo como flags** —`--web-port`, `--api-port`,
+`--worker-port`, `--mongo-port`, `--redis-port`, `--object-store-port`, `--mailpit-smtp-port`, `--mailpit-ui-port`
+(D4), `--base-url`, `--api-origin`, `--match-expectation` y `--stack-fault`— y el runner **no lee** `E2E_*_PORT`,
+`E2E_BASE_URL`, `E2E_API_ORIGIN`, `E2E_MATCH_EXPECTATION` ni `E2E_STACK_FAULT` de su entorno. Las variables con esos
+nombres existen solo **del runner hacia Playwright**, que las recibe de él con la lista blanca de D6. **Única
+excepción, las credenciales** de la cuenta remota: son secretos y en un flag quedarían en la lista de procesos, así
+que se leen del entorno, y el runner **falla** si la misma clave aparece en el `.env` de la raíz («pásala en el
+entorno de la sesión, no en el `.env`»). En CI los valores del evento llegan al paso por `env:` y al runner como
+`--base-url "$E2E_BASE_URL"`, nunca interpolados en `run:`.
 
 Fases de `e2e-stack`, cada una con su nombre en el mensaje de fallo:
 
@@ -118,9 +138,12 @@ Fases de `e2e-stack`, cada una con su nombre en el mensaje de fallo:
      `::1`, y el runner puede hacer `bind` (en Windows un `bind` a todas las interfaces puede prosperar con otro proceso
      escuchando solo en `127.0.0.1`, y las conexiones a `localhost` irían a ese otro);
    - **ningún `serve` de `api` o `worker` del mismo checkout** está vivo: se buscan procesos cuya línea de comando
-     contenga la ruta del workspace y `serve` (`Get-CimInstance Win32_Process` en Windows, `ps -eo pid,args` en Linux),
-     y se falla nombrándolos (PID y línea). Compilan en el mismo `dist/apps/<app>`, y el `serve` del runner cambiaría el
-     código bajo el de desarrollo o al revés. `web` no cuenta: su servidor compila en memoria.
+     contenga `<ruta del workspace>\node_modules\` (con el separador final, para que el checkout principal no case con
+     un worktree anidado bajo él, como `.claude/worktrees/…`) y `serve` (`Get-CimInstance Win32_Process` en Windows,
+     `ps -eo pid,args` en Linux), y se falla nombrándolos (PID y línea). La comparación **no distingue mayúsculas en
+     `win32`** y acepta los dos separadores. Compilan en el mismo `dist/apps/<app>`, y el `serve` del runner cambiaría el
+     código bajo el de desarrollo o al revés; un `serve` de **otro** worktree tiene su propio `dist/` y **no** bloquea.
+     `web` no cuenta: su servidor compila en memoria.
 2. **Infraestructura**: el comando de arranque de `platform/local-environment`, que tras 35a es `pnpm infra:up`, con
    `COMPOSE_PROJECT_NAME=linkvault-e2e-<hash8>` (D4) y el fichero de entorno de la suite (`--env-file
    apps/web-e2e/e2e.env`, o `COMPOSE_ENV_FILES` con el mismo valor cuando la orden la compone `pnpm infra:up`), de modo
@@ -133,14 +156,17 @@ Fases de `e2e-stack`, cada una con su nombre en el mensaje de fallo:
    va a `dist/.playwright/apps/web-e2e/stack-logs/<app>.log`. Se esperan: `api` y `worker` por `/health` con mongo y
    redis en `up`; `web`, por el documento con `<lv-root`. **Después**, el runner comprueba que el proceso que escucha en
    el puerto de cada aplicación **pertenece al árbol que lanzó** (`Get-NetTCPConnection -LocalPort` en Windows,
-   `ss -ltnp` en Linux) y falla nombrando el puerto y el PID ajeno si no es así. Los puertos de la infraestructura los
-   publica Docker, no el árbol lanzado: para ellos vale la comprobación de la fase 2.
+   `ss -ltnp` en Linux) y falla nombrando el puerto y el PID ajeno si no es así. Se comprueban **todas** las filas de
+   escucha de cada puerto, no la primera: Windows admite a la vez un proceso en `127.0.0.1` y otro en `0.0.0.0` o `::`.
+   Una fila **sin PID** (`ss` no lo muestra para procesos de otro usuario o sin permisos) **cuenta como ajena**. Los
+   puertos de la infraestructura los publica Docker, no el árbol lanzado: para ellos vale la comprobación de la fase 2.
 4. **Siembra** (solo con `--rehearse-remote`): la cuenta de prueba del ensayo remoto, **por la API pública**
    (`POST /api/auth/register`), nunca por Mongo, igual que la creará el autor en staging.
 5. **Suite**: Playwright con el perfil `local`. Con `--rehearse-remote`, después, el **ensayo**: el runner reinicia
-   **solo** `worker` con `AI_CHAIN=openrouter`, una clave falsa, `OPENROUTER_BASE_URL=https://ai.invalid` y
-   `NODE_ENV=development`, espera su `/health` y el guardia de PID, y ejecuta el perfil `remote` con
-   `E2E_MATCH_EXPECTATION=consent-required` (D7).
+   **solo** `worker` con `AI_CHAIN=openrouter`, una clave falsa, `OPENROUTER_MODEL=<modelo>:free` (`parseOpenRouter`
+   lo exige cuando la cadena incluye `openrouter`; vale el de los tests, `cohere/north-mini-code:free`),
+   `OPENROUTER_BASE_URL=https://ai.invalid` y `NODE_ENV=development`, espera su `/health` y el guardia de PID, y ejecuta
+   el perfil `remote` con `E2E_MATCH_EXPECTATION=consent-required` (D7).
 6. **Apagado**, siempre (`finally` y manejadores de `SIGINT`/`SIGTERM`): el árbol de cada proceso lanzado (en Windows,
    `taskkill /T /F` por el PID raíz; en Linux, el grupo de procesos) y `docker compose -p <proyecto> down -v
    --remove-orphans`. Solo lo que la corrida lanzó: nunca se mata por nombre de imagen ni por puerto. Al terminar,
@@ -150,32 +176,37 @@ Mientras dura la corrida, si un proceso lanzado **termina** o su log contiene `E
 nombrándolo, aunque el puerto responda.
 
 **Falsación.** Los guardias que dependen de una carrera (un proceso ajeno que aparece tras la comprobación previa, un
-proceso que el apagado no mata) se provocan con una variable de prueba, `E2E_STACK_FAULT`, que el runner lee solo para
-eso y anuncia en su salida cuando está definida (valores en las tareas 2.6b y 2.7). Sin ella, el runner no tiene ningún
-camino distinto.
+proceso que el apagado no mata) se provocan con un flag de prueba, `--stack-fault`, que el runner usa solo para eso y
+anuncia en su salida cuando está presente (valores en las tareas 2.6b y 2.7). Sin él, el runner no tiene ningún camino
+distinto.
 
 ### D4. Un bloque de puertos propio, un proyecto de compose por checkout y bloque
 
-| Servicio | Desarrollo | Suite (por defecto) | Variable del compose | Anulación |
+| Servicio | Desarrollo | Suite (por defecto) | Variable del compose | Anulación (flag, D3) |
 |---|---|---|---|---|
-| `web` | 4200 | 4300 | — | `E2E_WEB_PORT` |
-| `api` | 3000 | 3100 | — | `E2E_API_PORT` |
-| `worker` (salud) | 3001 | 3101 | — | `E2E_WORKER_PORT` |
-| Mongo | 27017 | 27117 | `MONGO_PORT` | `E2E_MONGO_PORT` |
-| Redis | 6379 | 6479 | `REDIS_PORT` | `E2E_REDIS_PORT` |
-| Almacén S3 (35a) | 9000 | 9100 | `OBJECT_STORE_PORT` | `E2E_OBJECT_STORE_PORT` |
-| Mailpit (SMTP / UI y API) | 1025 / 8025 | 1125 / 8125 | `MAILPIT_SMTP_PORT`, `MAILPIT_UI_PORT` | `E2E_MAILPIT_SMTP_PORT`, `E2E_MAILPIT_UI_PORT` |
+| `web` | 4200 | 4300 | — | `--web-port` |
+| `api` | 3000 | 3100 | — | `--api-port` |
+| `worker` (salud) | 3001 | 3101 | — | `--worker-port` |
+| Mongo | 27017 | 27117 | `MONGO_PORT` | `--mongo-port` |
+| Redis | 6379 | 6479 | `REDIS_PORT` | `--redis-port` |
+| Almacén S3 (35a) | 9000 | 9100 | `OBJECT_STORE_PORT` | `--object-store-port` |
+| MinIO, **solo antes de 35a** (API / consola) | 9000 / 9001 | 9100 / 9101 | `MINIO_PORT`, `MINIO_CONSOLE_PORT` | `--object-store-port` (la consola, +1) |
+| Mailpit (SMTP / UI y API) | 1025 / 8025 | 1125 / 8125 | `MAILPIT_SMTP_PORT`, `MAILPIT_UI_PORT` | `--mailpit-smtp-port`, `--mailpit-ui-port` |
 
-El bloque por defecto vive en `e2e.env`; una anulación `E2E_*` en el entorno de quien ejecuta lo desplaza, y el runner
-recalcula a partir del bloque efectivo las URIs (`MONGO_URI`, `REDIS_URL`, `S3_ENDPOINT`…).
+El bloque por defecto vive en `e2e.env`; una anulación por flag lo desplaza, y el runner recalcula a partir del bloque
+efectivo las URIs (`MONGO_URI`, `REDIS_URL`, `S3_ENDPOINT`…). **Mientras la función de arranque (tarea 1.2) use el
+compose anterior a 35a**, `e2e.env` lleva además `MINIO_PORT=9100`, `MINIO_CONSOLE_PORT=9101` y `S3_ENDPOINT` hacia
+`9100`: sin ellos, el MinIO de ese compose publicaría `9000`/`9001`, fuera del bloque, y la fase 2 fallaría. La tarea
+7.9 los retira al pasar a `pnpm infra:up` y lo comprueba.
 
 **Nombre del proyecto de compose:** `linkvault-e2e-<hash8>`, donde `hash8` son los ocho primeros caracteres hex del
-SHA-256 de «ruta absoluta del checkout + bloque efectivo». Se pasa por `COMPOSE_PROJECT_NAME` y el runner lo imprime al
-empezar. Dos checkouts, o el mismo con dos bloques, no comparten contenedores ni volúmenes; un `down -v` de uno no toca
-al otro.
+SHA-256 de «ruta absoluta del checkout + bloque efectivo». La ruta se **normaliza** antes del hash (letra de unidad en
+minúscula y barras `/`), para que `D:\projects\…` y `d:/projects/…` den el mismo nombre. Se pasa por
+`COMPOSE_PROJECT_NAME` y el runner lo imprime al empezar. Dos checkouts no comparten contenedores ni volúmenes; un
+`down -v` de uno no toca al otro.
 
-`reuseExistingServer` desaparece del camino del runner: cuando `E2E_BASE_URL` está definida, `playwright.config.mts` no
-declara `webServer`. El camino antiguo (`nx e2e web-e2e` sin variables) conserva su comportamiento, documentado como no
+`reuseExistingServer` desaparece del camino del runner: cuando el runner le pasa `E2E_BASE_URL`,
+`playwright.config.mts` no declara `webServer`. El camino antiguo (`nx e2e web-e2e` sin variables) conserva su comportamiento, documentado como no
 reproducible (D1). Así la pila de desarrollo y la suite pueden convivir, y otra sesión con `3000` ocupado ya no cambia el
 código que se prueba.
 
@@ -186,23 +217,26 @@ identificadores únicos por corrida (el patrón `RUN_ID` y `support/job-ids.ts` 
 (`api:seed-demo`, Ana, Bob y `SEEDD3M2`) **no** se usa: es estado compartido y mutable —el catálogo cambia la contraseña
 de Ana en la recuperación—, y una prueba que la toca haría depender a las demás del orden.
 
-**Presupuesto de altas** (10 cada 15 minutos por IP, y toda la corrida sale de la misma IP):
+**Presupuesto de intentos de registro** (10 cada 15 minutos por IP, y toda la corrida sale de la misma IP). Se cuentan
+**intentos**, no altas: el limitador consume antes de crear la cuenta, así que un `409` y la siembra que hace «alta; si
+existe, login» (tarea 4.1) consumen igual que una alta nueva.
 
-| Corrida | Altas |
+| Corrida | Intentos de registro |
 |---|---|
 | `e2e-stack` normal: perfil `local`, proyectos `chromium` y `mobile`, dos personas cada uno | 4 |
-| `e2e-stack --rehearse-remote`: lo anterior + la siembra | 5 |
+| `e2e-stack --rehearse-remote`: lo anterior + el intento de la siembra | 5 |
 | Admisión de `local` en **un** proyecto, `--repeat-each=5` (una invocación por proyecto, pila nueva) | 10, **justo el límite** |
 | Admisión del ensayo en un proyecto (`--rehearse-remote --skip-local`) | 1 |
 
-La admisión de `local` no tiene margen: si un lote añade una alta al recorrido, la admisión cae con el `429` del
-producto, nombrado en el informe, y ese lote decide cómo repartirla. `register-limit.ts` no lo usa ninguna prueba
-admitida.
+La admisión de `local` no tiene margen: si un lote añade un intento de registro al recorrido, la admisión cae con el
+`429` del producto, nombrado en el informe, y ese lote decide cómo repartirlo. `register-limit.ts` no lo usa ninguna
+prueba admitida.
 
 ### D6. El entorno de la suite está versionado y es el único que llega a las aplicaciones
 
 `apps/web-e2e/e2e.env`, sin secretos y con la cabecera «esto no es un fichero de despliegue» de `infra/ci/verify.env`.
-El runner **no hereda su entorno** a los procesos que lanza: cada uno recibe una **lista blanca** de variables del
+El runner **no hereda su entorno** a los procesos que lanza (aplicaciones, `docker compose`, `pnpm infra:up` y
+Playwright): cada uno recibe una **lista blanca** de variables del
 sistema (`PATH`/`Path`, `PATHEXT`, `SystemRoot`, `windir`, `ComSpec`, `HOME`, `USERPROFILE`, `APPDATA`,
 `LOCALAPPDATA`, `TEMP`, `TMP`, `TMPDIR`, `LANG`, `CI`), las de `e2e.env` y tres de control:
 `NX_LOAD_DOT_ENV_FILES=false` (Nx no carga ningún `.env`), `NX_DAEMON=false` (en Windows, Nx con daemon se cuelga con la
@@ -218,8 +252,10 @@ esencial de `e2e.env`:
   `FEATURE_HEADLESS_EXTRACTION`): ninguna prueba del lote 1 los necesita. Un lote que admita una prueba con flag lo
   enciende aquí.
 
-Que el `.env` no se filtra **no se supone**: se comprueba con una variable que está en el `.env` y no en `e2e.env`, y
-comparando el entorno efectivo del proceso `api` con `e2e.env` (tarea 2.4b).
+Que el `.env` no se filtra **no se supone**: se comprueba con un canario que está en el `.env` y no en `e2e.env`, con
+una variable de interpolación del compose que el `.env` cambia (`MONGO_PORT=27999`: el `config` de compose tiene que
+seguir mostrando `27117`), y leyendo el entorno efectivo de los procesos `api` **y** `worker` (tareas 2.4b y 2.4c). El
+propio runner sí recibe el `.env` (Nx lo carga antes de lanzarlo); por eso sus entradas son flags (D3).
 
 ### D7. IA: replay en local y en CI; en el ensayo y en staging, ninguna llamada
 
@@ -230,24 +266,24 @@ comparando el entorno efectivo del proceso `api` con `e2e.env` (tarea 2.4b).
   `match-cv` es `{ job: { title, text, skills }, cv: { text } }` (`analyze-match.usecase.ts`), sin URL ni
   identificadores de corrida, así que con una oferta fija y un CV de líneas fijas la clave es estable. **La entrada se
   versiona junto a los fixtures**, en `libs/ai/src/infrastructure/fixture-inputs/critical-path.json` (oferta y texto del
-  CV tal como lo extrae el worker, medido en 5.5); la prueba genera el PDF desde esas líneas y rellena la oferta con
+  CV tal como lo extrae el worker, medido en 5.5a y 5.5b); la prueba genera el PDF desde esas líneas y rellena la oferta con
   esos campos. Qué tareas pide el recorrido (`match-cv`, `critique-suggestions`, `build-roadmap`) y sus claves **se
-  miden ejecutando** (tarea 5.5), no se suponen.
+  miden ejecutando** (tareas 5.5a y 5.5b), no se suponen.
 - **Un Vitest en `libs/ai`** (corre en `ci.yml` con `nx affected -t test`, sin tocar el workflow) calcula con la
   definición **actual** de cada tarea la clave de esa entrada y **exige** los fixtures de `match-cv`,
-  `critique-suggestions` y `build-roadmap`, **o** que el de `match-cv` tenga `missingSkills: []` y 5.5 haya medido que
+  `critique-suggestions` y `build-roadmap`, **o** que el de `match-cv` tenga `missingSkills: []` y 5.5a haya medido que
   entonces el recorrido no pide las otras dos. Así, cambiar un prompt o su versión rompe CI en el mismo commit, no la
   suite días después.
 - **Ensayo remoto (pila local):** el runner reinicia solo `worker` con un proveedor externo configurado pero
-  inalcanzable (`AI_CHAIN=openrouter`, clave falsa, `OPENROUTER_BASE_URL=https://ai.invalid`,
-  `NODE_ENV=development`), y el ensayo afirma `consent-required`. La cuenta del ensayo no tiene permiso de IA externa, así
+  inalcanzable (`AI_CHAIN=openrouter`, clave falsa, `OPENROUTER_MODEL=<modelo>:free` —sin él `parseOpenRouter` no
+  arranca—, `OPENROUTER_BASE_URL=https://ai.invalid`, `NODE_ENV=development`), y el ensayo afirma `consent-required`. La cuenta del ensayo no tiene permiso de IA externa, así
   que el análisis degrada **sin llamar a nadie**; si hubiera cualquier llamada, el motivo del análisis sería un error del
   proveedor, no `consent_required`, y la prueba fallaría. Es el mismo desenlace que en staging, ensayado de verdad.
 - **Staging:** la IA es real y su cupo gratuito es pequeño y compartido con las personas invitadas. La cuenta de prueba
   **no tiene permiso de IA externa**, así que el análisis degrada por falta de permiso (`cv/match`, «Sin
   consentimiento y sin proveedor local»). Se afirma exactamente: marca de degradado y `consentRequired`.
-- **`remote` afirma solo el desenlace que declara el destino** (`E2E_MATCH_EXPECTATION`: `replay-report` o
-  `consent-required`); no se deduce en la prueba.
+- **`remote` afirma solo el desenlace que declara el destino** (`--match-expectation`, que el runner pasa a Playwright
+  como `E2E_MATCH_EXPECTATION`: `replay-report` o `consent-required`); no se deduce en la prueba.
 
 ### D8. Correo: Mailpit en local y en CI; en staging, ninguno
 
@@ -270,13 +306,16 @@ Que el email está sin verificar lo comprueba el guardia por la API (D10), **no*
 | Encaje esperado | `replay-report` | lo declara el destino |
 | Origen de la API | configuración del runner | **siempre** `new URL('/api', E2E_BASE_URL)` |
 
-El guardia no es una convención: los helpers de Mongo, Redis, `docker` y Mailpit viven en `src/support/local-only/` y
-**lanzan un error** si la prueba en curso lleva `@remote-safe`, **en cualquier perfil**. Así una prueba que se declara
-apta para remoto y no lo es cae ya en local y en CI, no el día que se ejecute contra staging. Ninguna prueba admitida
-lleva un `localhost` escrito.
+**En el lote 1 no hay helpers `local-only`** (R-18 de la iteración 2): la única prueba admitida, el recorrido de D11,
+no escribe en Mongo ni en Redis, no llama a `docker` ni lee Mailpit (todo por la interfaz, D11). El guardia que hace
+cumplir las filas «prohibido» llega **con el lote 2**, el primero que admite pruebas que las necesitan (entrada
+`e2e-suite-lot-2` de `openspec-changes.yaml`): los helpers de Mongo, Redis, `docker` y Mailpit vivirán en
+`src/support/local-only/` y **lanzarán un error** si la prueba en curso lleva `@remote-safe`, **en cualquier perfil**,
+para que una prueba que se declara apta para remoto y no lo es caiga ya en local y en CI. Ninguna prueba admitida lleva
+un `localhost` escrito.
 
-**Credenciales.** En `remote`, el origen de la API se deriva siempre del origen de la aplicación; si llega un
-`E2E_API_ORIGIN` distinto, el perfil **falla** antes de ejecutar nada. Las credenciales de la cuenta de prueba solo
+**Credenciales.** En `remote`, el origen de la API se deriva siempre del origen de la aplicación; si llega un origen de
+API distinto (`--api-origin`, que el runner pasa como `E2E_API_ORIGIN`), el perfil **falla** antes de ejecutar nada. Las credenciales de la cuenta de prueba solo
 viajan a ese origen. **El guardia evita accidentes, no autoriza**: quien puede lanzar el workflow o tiene las
 credenciales puede usarlas donde quiera; lo que el guardia impide es mandarlas a otro origen por un error de
 configuración.
@@ -315,14 +354,18 @@ Todo esto se especifica y se ensaya contra la pila local con `--rehearse-remote`
   análisis más**. Así caben **cinco corridas en verde al día** por cuenta y, en el peor caso (los dos proyectos fallan y
   se reintentan, cuatro análisis por corrida), **dos**: la tercera recibe el `429` del producto, nombrado en el informe.
   Si el análisis degradado por falta de permiso consume cupo o no se mide en 9.4; si no lo consume, el límite no aplica.
-- **TLS sin excepciones**: nada de `ignoreHTTPSErrors`. Mientras 35b emita contra el ACME de pruebas, la suite contra
-  staging falla, y es correcto.
+  Regla de trabajo del grupo 9: **como mucho 5 corridas contra staging por día**, y las verificaciones 9.2-9.6
+  repartidas en días distintos.
+- **TLS sin excepciones**: nada de `ignoreHTTPSErrors`, comprobado con un `node -e` en la tarea 3.2; rechazar un
+  certificado no confiable es el comportamiento por defecto de Playwright, no código de la suite. Mientras 35b emita
+  contra el ACME de pruebas, la suite contra staging falla, y es correcto.
 - **Días de medición:** la suite remota **no se lanza contra staging los días 7 y 14** de la medición de 35b (README y
   RUNBOOK, tarea 6.4 y 35b 10.2).
 - **Medición de 35b (Q1, trasladada):** `measure.mongosh.js` y `uninvited.mongosh.js` excluyen **por `userId` en cada
   métrica** —users, groups, links, applications, cvs y analyses— la lista «autor + cuentas E2E», que vive **fuera del
   repositorio** y se pasa a `run.sh`; la línea base de 35b (10.6) **no borra** las cuentas `+e2e`. Está escrito en
-  `staging-host` design D15/D16 y tareas 10.3, 10.6 y 10.7 desde este change (D16).
+  `staging-host` design D15/D16 y tareas 10.3, 10.6 y 10.7 desde este change, y llega a `main` en el PR solo de spec
+  de D16.
 
 ### D11. El lote 1: el camino crítico, un recorrido con pasos declarados
 
@@ -336,7 +379,7 @@ contexto de navegador aparte con el mismo dispositivo del proyecto:
 | 0 | Entrar con la cuenta de prueba, guardias por la API, limpieza previa (D10) | — | sí | 3, 30 |
 | 1 | A se registra y aterriza en `/grupos` | sí | **no aplicable** (D10) | 1 |
 | 2 | A crea un grupo (visibilidad pública apagada); detalle con «Propietario» y código de invitación | sí | sí | 7 |
-| 2b | B se registra, se une con el código del paso 2 y aterriza en el detalle del grupo | sí | **no aplicable** (D10) | 1, 8 |
+| 2b | A pulsa «Copiar invitación»; B, **sin sesión**, abre ese enlace (`/unirse?codigo=…`) → inicio de sesión con `returnUrl` → «Crear cuenta» → se registra, vuelve a `/unirse` con el código ya escrito, se une y aterriza en el detalle del grupo | sí | **no aplicable** (D10) | 1, 8 |
 | 3 | Guardar en el grupo el link de una oferta en dominio reservado; la tarjeta aparece | A y B | A | 10 |
 | 4 | Completar la oferta a mano con la entrada versionada (D7); «Escrito por …» | A y B | A | 14 |
 | 5 | «Postulé» → «Hoy»; la tarjeta muestra la postulación y `/postulaciones` la tiene en «Postuladas» | A y B | A | 24, 26 |
@@ -344,8 +387,9 @@ contexto de navegador aparte con el mismo dispositivo del proyecto:
 | 7 | «Analizar mi encaje» → «Analizar»; resultado según `E2E_MATCH_EXPECTATION` | A y B, `replay-report` | A, el del destino | 31 |
 | 8 | Limpieza de lo creado | sí | sí | — |
 
-Cada persona guarda **su** link (URL distinta con el `RUN_ID`) con la misma oferta fija, así que las dos piden la misma
-clave de replay. El perfil declara la lista de pasos (y de personas) que le tocan; al final, la prueba compara lo
+El paso 2b es el camino que seguirá una persona invitada en 35b: recibe el mensaje de «Copiar invitación», lo abre sin
+cuenta y la crea desde el inicio de sesión. Los intentos de registro no cambian (uno por persona, D5). Cada persona guarda **su** link
+(URL distinta con el `RUN_ID`) con la misma oferta fija, así que las dos piden la misma clave de replay. El perfil declara la lista de pasos (y de personas) que le tocan; al final, la prueba compara lo
 ejecutado con la lista y falla nombrando el que falte o sobre. Así «no aplicable» es una declaración comprobada, no un
 `if` que puede tragarse un paso.
 
@@ -370,41 +414,45 @@ fichero, con su admisión (tarea 9.9, condicional).
 - **`workers: 1`** en los dos sitios: las pruebas comparten el contador de registros y el worker de la pila.
 - **Admisión con carga.** Una prueba entra en un lote tras `--repeat-each=5` en verde **con la CPU cargada**, en **cada
   proyecto** (`chromium` y `mobile`) y en cada perfil que la ejecuta (`local` y ensayo `remote`), una invocación del
-  runner por proyecto y perfil sobre una pila nueva (presupuesto de altas, D5). Es la técnica que destapó la carrera de
-  navegación de `join-group.dialog.spec.ts` (PR #59). Un intermitente se arregla o no se admite.
-- **Saltos.** Todo `test.skip` admitido lleva su motivo en una anotación; un reporter propio falla la corrida si alguna
-  prueba `@critical-path` terminó saltada.
+  runner por proyecto y perfil sobre una pila nueva (presupuesto de intentos de registro, D5). Es la técnica que
+  destapó la carrera de navegación de `join-group.dialog.spec.ts` (PR #59). Un intermitente se arregla o no se admite.
+- **Saltos.** `playwright/no-skipped-test` en `error` rechaza cualquier `test.skip` (también el condicional) en
+  `apps/web-e2e/src`; el único admitido es el que lleva excepción de línea **con su motivo**, y el recorrido no lleva
+  ninguno. Un salto parcial dentro del recorrido lo detecta la comprobación de pasos declarados (D11). El reporter
+  propio de saltos se retiró en la iteración 2 (R-19): con lo anterior no le queda nada que detectar en el lote 1; si
+  un lote admite pruebas con saltos en tiempo de ejecución, lo trae ese lote.
 
 ### D13. CI: `e2e.yml`, a demanda y medido
 
-- **Disparadores:** `workflow_dispatch` con entradas `target` (`local` | `staging`, por defecto `local`) y
-  `rehearse_remote` (booleano, por defecto `false`); `pull_request` (`labeled`, `synchronize`, `reopened`). El job de
-  PR se condiciona a que el PR lleve la etiqueta `e2e` **y** a
-  `github.event.action != 'labeled' || github.event.label.name == 'e2e'`: poner otra etiqueta no lo relanza. Un job que
-  no se ejecuta por su `if` no consume minutos. No es check obligatorio.
-- **Concurrencia por destino:** en PR, un grupo por número de PR con `cancel-in-progress: true` (un push nuevo cancela
-  la corrida anterior); contra staging, un grupo único `e2e-staging` **sin** cancelar, para que dos corridas no se
-  pisen la cuenta de prueba ni se corte una limpieza a medias.
-- **Staging solo desde `main`:** el job de staging lleva `if: github.ref == 'refs/heads/main'`. Como un job omitido deja
-  la corrida en verde sin haber verificado nada, un job previo de una línea falla cuando `target` es `staging` y la
-  referencia no es `main`, diciéndolo (ADR-048 §3: un verde que no verificó no es verde).
+- **Disparador único: `workflow_dispatch`** (Q2 respondida: «a demanda» = solo a mano), con entradas `target`
+  (`local` | `staging`, por defecto `local`) y `rehearse_remote` (booleano, por defecto `false`). **Sin
+  `pull_request`** ni etiqueta hasta que Q2 se decida con los minutos medidos (R-21 de la iteración 2). No es check
+  obligatorio.
+- **Concurrencia en el job, no en el workflow:** el job de staging lleva `concurrency: { group: e2e-staging,
+  cancel-in-progress: false }`, para que dos corridas no se pisen la cuenta de prueba ni se corte una limpieza a medias;
+  el job `local` no la necesita (cada corrida tiene su runner y su pila).
+- **Staging solo desde `main`:** el job de staging lleva `if: github.ref == 'refs/heads/main' && inputs.target ==
+  'staging'`. Como un job omitido deja la corrida en verde sin haber verificado nada, un **job de guardia** con
+  `if: github.event_name == 'workflow_dispatch' && inputs.target == 'staging'` falla cuando la referencia no es `main`,
+  diciéndolo (ADR-048 §3: un verde que no verificó no es verde).
 - **Runner** `ubuntu-24.04` (como `ci.yml`), `timeout-minutes: 30`, `permissions: contents: read`. Mientras la rama se
   construye sobre un `main` anterior a 35a, el compose descarga el espejo de MinIO del espacio de nombres del
   repositorio y el job lleva **temporalmente** `packages: read` con `docker login` por la entrada estándar con
   `GITHUB_TOKEN` en un paso `run:`; la tarea 7.6 lo retira tras 35a, antes de fusionar.
 - **Sin caché de navegadores:** `playwright install --with-deps chromium` en cada corrida. La caché ahorraría segundos y
   exigiría verificarla; se descartó en el debate. El store de pnpm, por `setup-node`.
-- **Pasos:** instalar → `pnpm nx run web-e2e:e2e-stack` (con `-- --rehearse-remote` si la entrada lo pide) o
-  `pnpm nx run web-e2e:e2e-remote` con `E2E_BASE_URL: ${{ vars.E2E_STAGING_URL }}` y los secretos en `env:` (target
-  `staging`) → subir el informe HTML, la salida de Playwright y `stack-logs/` con `if: always()` y `retention-days: 7`.
-  Los valores del evento pasan por `env:`, nunca interpolados en `run:`.
+- **Pasos:** instalar → `pnpm nx run web-e2e:e2e-stack` (con `-- --rehearse-remote` si la entrada lo pide) o, con
+  target `staging`, `pnpm nx run web-e2e:e2e-remote -- --base-url "$E2E_BASE_URL" --match-expectation
+  consent-required` con `E2E_BASE_URL: ${{ vars.E2E_STAGING_URL }}` y los secretos en `env:` → subir el informe HTML,
+  la salida de Playwright y `stack-logs/` con `if: always()` y `retention-days: 7`. Los valores del evento pasan por
+  `env:`, nunca interpolados en `run:`.
 - **Staging sin destino = rojo.** Si `vars.E2E_STAGING_URL` está vacía, el paso falla diciendo «no hay destino de staging
   declarado».
 - **Minutos:** se miden las primeras corridas (tarea 7.8a) con el tiempo facturable de la API de GitHub y se anotan en
   `infra/README.md`, en una subsección propia junto a la medición de `arm64` de 35a. Con ese dato decide el usuario si la
-  suite pasa a correr en cada pull request, cada noche o se queda a demanda (**Q2**). **Umbral** (ADR-053 §1.2): con el
-  70 % o más de los 2000 minutos del mes consumidos, solo `workflow_dispatch` (la etiqueta no se usa), y el consumo se
-  consulta antes de cada corrida manual.
+  suite pasa a correr en cada pull request, cada noche o se queda a demanda (**Q2**, en PR-2: tarea 9.10). **Umbral**
+  (ADR-053 §1.2): el consumo se consulta antes de cada corrida manual, y con el 70 % o más de los 2000 minutos del mes
+  consumidos **no se lanza `e2e.yml`**: la suite se ejecuta en local con el mismo comando, sin minutos.
 
 ### D14. Cobertura por lotes; el mapa, en el lote 2
 
@@ -413,17 +461,18 @@ fichero, con su admisión (tarea 9.9, condicional).
   carga (D12). El procedimiento está en el README (tarea 6.4).
 - **Al change del lote 2** (candidato posterior a la fila 35 en `openspec-changes.yaml`, por Q3): el inventario de la
   suite actual, el **mapa de cobertura** `apps/web-e2e/catalog-coverage.json` contra `docs/catalogo-de-uso.md` con su
-  comprobación, el requirement «La cobertura se declara contra el catálogo», y la limpieza de orígenes y accesos a
-  Mongo de los specs no admitidos. Anotado allí: la comprobación del mapa necesita **`inputs` que incluyan
+  comprobación, el requirement «La cobertura se declara contra el catálogo», la limpieza de orígenes y accesos a
+  Mongo de los specs no admitidos y, desde la iteración 2 (R-18), los **helpers `local-only`** con su guardia
+  `@remote-safe` (la antigua tarea 3.3) y la frase del requirement de perfiles que lo exige (D9). Anotado allí: la comprobación del mapa necesita **`inputs` que incluyan
   `docs/catalogo-de-uso.md`** —si no, la caché de Nx la daría por buena tras cambiar solo el catálogo— o **vivir en
   `repo-checks`**, que no cachea.
 - **Plan de lotes propuesto** (cada lote, su propio change; esperan a que se cierre la fila 35, Q3):
 
 | Lote | Contenido (números del catálogo) | Parte de |
 |---|---|---|
-| 1 | 1, 3, 7, 8 (unirse con el código), 10, 14, 24, 26 (tablero, solo la columna), 29, 31 — el recorrido de D11 | este change |
+| 1 | 1, 3, 7, 8 (unirse con el enlace de invitación, sin sesión), 10, 14, 24, 26 (tablero, solo la columna), 29, 31 — el recorrido de D11 | este change |
 | 2 | Mapa de cobertura e inventario; cuenta y salida: 2 y 4 (Mailpit, solo `local`), 5, 6, 44 | `auth`, `auth-email-recovery`, `deploy-prod` |
-| 3 | Grupos y links: 8 (invitación por enlace y regenerar), 9, 11, 12, 15, 16, 17, 18, 19, 22 | `groups`, `links`, `comments` |
+| 3 | Grupos y links: 8 (unirse escribiendo el código y regenerarlo), 9, 11, 12, 15, 16, 17, 18, 19, 22 | `groups`, `links`, `comments` |
 | 4 | Postulaciones: 25, 26 completo, 27, 28 | `applications` |
 | 5 | CV e IA: 30, 32, 33, 34 | `cv`, `match`, `byok` |
 | 6 | Público: 20, 21 | `public-share` |
@@ -439,12 +488,24 @@ fichero, con su admisión (tarea 9.9, condicional).
   `main`, cabecera de las tareas de 35b): o antes de PR-1 de 35b o después de su PR-2.
 - **Mientras se construye**, 35a va primero: si 35a tiene una tarea ejecutable, se hace esa, y `e2e-suite` solo ocupa
   sus esperas (ADR-053 §1, condición 6).
-- **Precondición de invitar en 35b:** `e2e-stack` en verde sobre el commit que desplegó `cd-staging`, en una corrida
-  local (sin minutos de CI), tarea 9.8, añadida al bloqueo de la 10.7 de 35b. **El despliegue no espera a la suite; la
-  invitación, sí, a una corrida en verde.** Si PR-1 no está en `main` cuando 35b vaya a invitar, el usuario elige entre
-  esperar o invitar con el recorrido manual de 35b.
-- **PR-2** (grupo 9): la verificación contra staging, cuando 35b haya desplegado. Hasta entonces sus tareas están
-  **bloqueadas por 35b** y el change sigue abierto.
+- **Tras fusionar 35a** (B-V1-17 de la iteración 2): la **cola de PR-1** —7.6, 7.9 y 8.1— se hace **enseguida**, en la
+  ventana que queda antes del PR-1 de 35b, para que PR-1 se fusione allí. Para **todo lo demás** de este change, primero
+  va la **fila 35 entera** (35b y 35c), no solo 35a.
+- **Precondición de invitar en 35b** (9.4 y 9.8, añadida al bloqueo de la 10.7 de 35b, a su D14 y a su tabla de
+  bloqueos): **`e2e-remote` contra staging, en `chromium` y `mobile`, en verde sobre el commit desplegado**, lanzada
+  desde la máquina del autor, sin minutos de CI y gastando dos análisis del cupo de la cuenta de prueba. El commit
+  desplegado se toma **del host** (`docker compose images` → `sha-<12>`) o del estado de commit `cd-staging/artifact`,
+  no de la lista de corridas. La corrida local de `e2e-stack`, en un `git worktree` de ese commit, queda solo como
+  **respaldo**. La anotación (commit, fecha, resultado) **no se lleva a `main` con un push**, que desplegaría otro
+  commit y la invalidaría: viaja en el PR-2 de este change o en el PR de archivo de 35b, que se fusionan **después**
+  de invitar. **El despliegue no espera a la suite; la invitación, sí, a una corrida en verde.**
+- **Si PR-1 no está en `main`** cuando 35b vaya a invitar, el usuario elige entre esperar o la **alternativa manual**:
+  los pasos que D11 declara para el perfil `remote` (0 y 2-8), hechos a mano en el móvil contra staging con la cuenta
+  de prueba de 9.2, anotados paso a paso (paso, resultado y hora). Es lo que antes se llamaba «el recorrido manual de
+  35b», que no existía como tal.
+- **PR-2** (grupo 9): la verificación contra staging, cuando 35b haya desplegado, más lo que la iteración 2 movió allí
+  (la parte «sin destino = rojo» de la antigua 7.5, ahora 9.3a, y Q2 con los minutos, ahora 9.10). Hasta entonces sus
+  tareas están **bloqueadas por 35b** y el change sigue abierto.
 - **Archivo:** tras PR-2. No depende del orden de archivo de 35a y 35c, porque no modifica ningún requirement que ellos
   modifiquen (D16).
 
@@ -452,38 +513,46 @@ fichero, con su admisión (tarea 9.9, condicional).
 
 | Change | Qué toca que se cruce | Cómo se resuelve aquí |
 |---|---|---|
-| 35a `object-store` | MODIFIED de «Infraestructura con un comando» (`platform/local-environment`): el arranque local pasa a `pnpm infra:up` = `up --wait` + `api:object-store -- provision`; sustituye MinIO y su puerto pasa a `OBJECT_STORE_PORT`. MODIFIED de «CD a staging en main». También edita `staging-host` (D4, D5 y sus tareas 1.1, 2.1-2.2, 4.1, 4.4, 5.3 y 9.10). | PR-1 se fusiona **después** de 35a (D15): el runner llama a `pnpm infra:up` desde una sola función (tarea 1.2), el bloque usa `OBJECT_STORE_PORT` (D4, tarea 2.1), `packages: read` se retira (7.6) y la 7.9 ejecuta `e2e-stack` en local y en CI sobre la rama rebasada en el `main` que ya contiene 35a. No se toca «CD a staging en main». Las ediciones de aquí a `staging-host` evitan las secciones que edita 35a. |
-| 35b `staging-host` | Medición con exclusión del autor y recuento de no invitadas; secretos `STAGING_*`; el host y su URL; la invitación (10.7). | **Q1 trasladada** en el commit del reflect de la iteración 1 (`spec(e2e-suite): reflect de la iteración 1 del debate`): design D15/D16 (lista «autor + cuentas E2E» fuera del repositorio, pasada a `run.sh`, exclusión por `userId` en cada métrica) y tareas 10.2 (días 7 y 14), 10.3 (exclusión), 10.6 (la línea base no borra las cuentas `+e2e`) y 10.7 (precondición de invitar, D15). La tarea 8.2 comprueba que el texto sigue en los dos ficheros tras fusionar 35a. Secretos con prefijo `E2E_`. |
+| 35a `object-store` | MODIFIED de «Infraestructura con un comando» (`platform/local-environment`): el arranque local pasa a `pnpm infra:up` = `up --wait` + `api:object-store -- provision`; sustituye MinIO y su puerto pasa a `OBJECT_STORE_PORT`. MODIFIED de «CD a staging en main». También edita `staging-host` (D4, D5 y sus tareas 1.1, 2.1-2.2, 4.1, 4.4, 5.3 y 9.10). | PR-1 se fusiona **después** de 35a (D15): el runner llama a `pnpm infra:up` desde una sola función (tarea 1.2), el bloque usa `OBJECT_STORE_PORT` (D4, tarea 2.1), `packages: read` se retira (7.6) y la 7.9 ejecuta `e2e-stack` en local y en CI sobre la rama rebasada en el `main` que ya contiene 35a. No se toca «CD a staging en main». Las ediciones de aquí a `staging-host` evitan las secciones que edita 35a, salvo una **línea nueva bajo la tarea 1.1** (la precondición del PR solo de spec), adyacente a la línea de la 1.1 que 35a reescribe: al rebasar una rama sobre la otra, git lo marca como conflicto y se resuelve conservando las dos. |
+| 35b `staging-host` | Medición con exclusión del autor y recuento de no invitadas; secretos `STAGING_*`; el host y su URL; la invitación (10.7). | **Q1 y la precondición de invitar, trasladadas** por el **PR solo de spec `spec(staging-host): trasladar la exclusión de cuentas E2E y la precondición de invitar` (número tras abrirlo)**, que se fusiona en `main` antes del `/opsx:apply` de 35b: design D14 (la corrida `e2e-remote`), D15/D16 (lista «autor + cuentas E2E» fuera del repositorio, pasada a `run.sh`, exclusión por `userId` en cada métrica) y la fila de la tabla de bloqueos; tareas 1.1 (precondición: ese PR en `main`), 10.2 (días 7 y 14), 10.3 (exclusión, probada con Bob y con Ana), 10.6 (la línea base no borra las cuentas `+e2e`) y 10.7 (precondición de invitar, D15). La tarea 8.2 comprueba que el texto está en `main` antes del `/opsx:apply` de 35b y que sigue en los dos ficheros tras fusionar 35a. Secretos con prefijo `E2E_`. |
 | 35c `verify-reusable-workflow` | Workflow reutilizable de verificación; guardias de `repo-checks` sobre workflows (acciones fijadas, `${{ }}` en `run:`); MODIFIED de «CD a staging en main». | `e2e.yml` no llama al workflow reutilizable ni lo necesita; ya pasa los valores por `env:` y no usa acciones de terceros con secretos. Si la suite remota debiera correr tras cada despliegue, eso modifica «CD a staging en main» y sería posterior a 35c: **Q4**, no se hace aquí. |
 
 ## Risks / Trade-offs
 
-- [Los minutos del plan Free se agotan y retrasan el CD de la fila 35] → la suite no corre sola: solo a mano o con la
-  etiqueta; el ensayo remoto solo cuando se pide; umbral del 70 % (D13). Es la condición 2 de ADR-053 §1.
+- [Los minutos del plan Free se agotan y retrasan el CD de la fila 35] → la suite no corre sola: solo a mano
+  (`workflow_dispatch`); el ensayo remoto solo cuando se pide; umbral del 70 % (D13). Es la condición 2 de ADR-053 §1.
 - [La clave del fixture del recorrido no es estable entre Windows y el runner Linux (fin de línea en la extracción del
-  PDF)] → se mide en las dos máquinas antes de escribir el fixture (tarea 5.5, con el esqueleto de 7.1a); si difiere, el
+  PDF)] → se mide en las dos máquinas antes de escribir el fixture (tareas 5.5a y 5.5b, esta con el esqueleto de 7.1a); si difiere, el
   paso 7 local no puede ser exacto y vuelve al usuario antes de seguir.
 - [Un cambio de prompt deja al recorrido sin fixture] → el Vitest de `libs/ai` (D7) lo rompe en `ci.yml` en el mismo
   commit.
 - [Algo del `.env` llega a los procesos igualmente] → lista blanca y `NX_LOAD_DOT_ENV_FILES=false`, comprobado con un
-  canario y con el entorno efectivo de `api` (2.4b).
+  canario, con `MONGO_PORT` en el `.env` y con el entorno efectivo de `api` y `worker` (2.4b, 2.4c).
+- [El `.env` llega al propio runner, porque Nx lo carga antes de lanzarlo] → el runner no lee anulaciones del entorno:
+  solo flags; las credenciales, del entorno, y falla si también están en el `.env` (D3).
 - [La suite local no prueba las imágenes: nginx y el fallback del SPA, Traefik `/api` y cookies `Secure` bajo HTTPS] →
   aceptado (D2) y listado en ADR-053 §Riesgos; se prueban en staging (PR-2).
-- [La admisión de `local` gasta exactamente las 10 altas del límite] → documentado (D5); un lote que añada altas lo ve
-  caer con el `429` nombrado.
+- [La admisión de `local` gasta exactamente los 10 intentos de registro del límite] → documentado (D5); un lote que
+  añada intentos lo ve caer con el `429` nombrado.
 - [El recorrido remoto contra staging agota el cupo de análisis] → cuenta hecha en D10; el informe nombra el `429`.
 - [Mantener dos caminos de ejecución (runner y `nx e2e` antiguo)] → el antiguo queda para iterar sobre un spec no
   admitido y se retira cuando el último lote admita el último spec.
 - [La primera emisión de 35b contra el ACME de pruebas deja a staging con un certificado no confiable] → la suite falla
   contra staging mientras dure; no se relaja TLS.
-- [PR-1 no está en `main` cuando 35b va a invitar] → decide el usuario: esperar o invitar con el recorrido manual (D15).
+- [PR-1 no está en `main` cuando 35b va a invitar] → decide el usuario: esperar o la alternativa manual, los pasos del
+  perfil `remote` de D11 a mano en el móvil contra staging, anotados paso a paso (D15). La cola de PR-1 tras 35a se hace
+  enseguida para que no llegue a pasar (D15).
+- [Las ediciones a `staging-host` no llegan a `main` antes del `/opsx:apply` de 35b] → van en un PR solo de spec, y la
+  1.1 de 35b y la 8.2 de aquí lo comprueban (D16).
+- [La suite en staging gasta el cupo de análisis del día] → como mucho 5 corridas contra staging por día y
+  las verificaciones del grupo 9 repartidas en días distintos (D10).
 
 ## Migration Plan
 
 Nada que migrar: la suite es aditiva. Vuelta atrás: revertir PR-1 deja `apps/web-e2e` como estaba, elimina `e2e.yml` y
 el Vitest de fixtures de `libs/ai`; no hay datos ni secretos que retirar hasta PR-2, y en PR-2 los secretos
-`E2E_STAGING_*` se borran con `gh secret delete`. Las ediciones de Q1 en `staging-host` no se revierten con PR-1: son una
-decisión del usuario sobre la medición, independiente de que la suite exista.
+`E2E_STAGING_*` se borran con `gh secret delete`. Las ediciones de Q1 en `staging-host` no se revierten con PR-1: van en
+su propio PR solo de spec y son una decisión del usuario sobre la medición, independiente de que la suite exista.
 
 ## Open Questions
 
@@ -492,6 +561,8 @@ decisión del usuario sobre la medición, independiente de que la suite exista.
 - **Q1 →** cuentas de prueba persistentes en staging, creadas a mano por el autor, con alias `+e2e`, sin verificar y sin
   permiso de IA; excluidas de la medición de 35b. **Trasladada a `staging-host`** en este change (D10, D16).
 - **Q2 →** la suite corre **a demanda** hasta medir sus minutos; los disparadores automáticos se deciden con esa cifra.
+  «A demanda» = solo `workflow_dispatch`, sin `pull_request` ni etiqueta (iteración 2, R-21); la decisión con la cifra
+  es la tarea 9.10.
 - **Q3 →** la excepción de ADR-053 cubre **solo el lote 1**. Los lotes 2 a 7 esperan a que se cierre la fila 35.
 - **Q4 →** la suite remota tras cada despliegue a staging queda **anotada como candidata para después de 35c**.
 
@@ -538,3 +609,31 @@ Texto original de las preguntas, conservado como histórico:
 | C12 | entrada versionada junto a los fixtures; Vitest en `libs/ai`; 5.5 nombra las tres tareas | D7; 5.5, 5.6 |
 | C13 | sin objeto aquí (el mapa se va al lote 2); anotado para ese change | D14; yaml |
 | C14 | 7.1 en 7.1a/7.1b; 2.3, 2.4, 5.9 y 7.8 partidas; TLS con certificado local; lint contra `setTimeout` | tareas; D12 |
+
+**Iteración 2 (2026-09-26)**: critic, 1 P0 y 12 P1; business, 1 V0, V1/V2 y recortes R-18 a R-26. Reflect aplicado:
+
+| Hallazgo | Decisión | Dónde |
+|---|---|---|
+| C1 (P0): las ediciones a `staging-host` no tenían vehículo hacia `main` | PR solo de spec `spec(staging-host): trasladar la exclusión de cuentas E2E y la precondición de invitar`, fusionado antes del `/opsx:apply` de 35b; commit propio que solo toca `staging-host`; precondición en su 1.1 | D16; 8.2; 35b 1.1; ADR-053 §1.4 |
+| B-V0-13 + C8: el ciclo de la 9.8 se invalidaba solo | la anotación viaja en el PR-2 o en el PR de archivo de 35b; commit desplegado tomado del host o de `cd-staging/artifact`; respaldo local en un `git worktree` | D15; 9.8; 35b 10.7 |
+| B-V1-14 + C9: la precondición de invitar no probaba staging | la 9.4 (`e2e-remote` contra staging, dos proyectos, commit desplegado, máquina del autor) es la precondición; la corrida local, respaldo | D15; 9.4, 9.8; 35b D14, tabla de bloqueos y 10.7; ADR-053 §1.3 |
+| B-V1-15: la persona invitada llega sin sesión | paso 2b por el enlace de «Copiar invitación», sin sesión → login con `returnUrl` → «Crear cuenta» | D11, D14; 5.10; spec |
+| B-V1-16: «el recorrido manual de 35b» no existía | alternativa manual = pasos del perfil `remote` de D11 a mano en el móvil contra staging, anotados paso a paso | D15; 9.8; 35b D14, 10.7; ADR-053 §1.6 |
+| B-V1-17: turnos tras 35a | la cola de PR-1 (7.6, 7.9, 8.1) enseguida; lo demás, tras la fila 35 entera | D15; ADR-053 §1.6 |
+| B-V2-18 | excepción de la 9.8 en la cabecera; 5.10 sin mezclar proyectos y perfiles | tareas |
+| R-18 | 3.3 y la frase del guardia de helpers al lote 2 | D9, D14; spec; yaml |
+| R-19 | fuera la 3.6; los saltos, por lint | D12; 3.5; spec |
+| R-20 | la 4.4 se reduce a un `node -e` en la 3.2 | D10; 3.2 |
+| R-21 | fuera `pull_request` y la 7.4 | D13; spec de `ci-pipeline`; 7.1a |
+| R-22, R-23, R-24 | 7.7 en 7.1b; 7.8b → 9.10; 7.5(2) → 9.3a | tareas |
+| R-25, R-26 | fuera la mitad Linux de la 2.4b y el `kill -INT` de la 7.3 y la 2.8; la 2.2 en la 2.4a | tareas |
+| C2 | filas de `ss` sin PID = ajenas; todas las filas de escucha; `<ruta>\node_modules\` sin distinguir mayúsculas en `win32`; ruta normalizada antes del `hash8`; fuera «mismo checkout con dos bloques» | D3, D4; 2.6c |
+| C3 | entradas del runner solo por flags; credenciales del entorno y rojo si están en el `.env`; `MONGO_PORT=27999`; entorno de `worker` | D3, D6; 2.4b, 2.4c |
+| C4 | `OPENROUTER_MODEL=<modelo>:free` en el ensayo | D3, D7; 4.5 |
+| C5 | `MINIO_PORT`/`MINIO_CONSOLE_PORT`/`S3_ENDPOINT` del bloque mientras el compose sea el anterior a 35a; la 7.9 los retira | D4; 2.1, 7.9 |
+| C6 | la falsación de la 2.3b publica fuera del bloque sin tocar `e2e.env` | 2.3b |
+| C7 | job de guardia con su `if`; `concurrency` en el job | D13; 7.1a |
+| C10 | grupo 4 tras la 5.1; el paso 7 de la 4.5 se verifica en la 5.7; la 3.8 tras la 5.1 | tareas |
+| C11 | 2.4b/2.4c, 4.3a/4.3b y 5.5a/5.5b partidas | tareas |
+| C12 | `uninvited` sube a 1 al quitar la cuenta E2E de la lista; 35b 10.3 también con Ana | 9.2; 35b 10.3 |
+| C13 | «intentos de registro»; como mucho 5 corridas contra staging al día | Context, D5, D10; grupo 9 |
