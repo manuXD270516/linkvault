@@ -2201,3 +2201,104 @@ FALTA falla (TLS): ninguno
 4.1: FALLA (2)
 exit=1
 ```
+
+## Veredicto (tarea 5.3)
+
+Regla de parada de design D1 (sección «Regla de parada», arriba), aplicada el 2026-09-26 a las celdas ejecutadas en
+los grupos 1, 3 y 4. Cada resultado cita la tarea cuya salida está pegada en este fichero. Las celdas sin resultado
+llevan «no ejecutado: <motivo de D1>», y C6 lleva la anotación de la decisión del usuario, sin renumerar C7-C9.
+
+| Candidato | C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 | C9 | Veredicto |
+|---|---|---|---|---|---|---|---|---|---|---|
+| SeaweedFS 4.47 | pasa (1.4) | pasa (1.4) | pasa (3.1) | pasa (3.1) | nativo (3.4: disco, (b) b1, (c)) | no medido: retención por barrido, decisión del usuario 2026-09-26 | pasa (4.2: política de checksums por defecto, `when_supported`) | pasa (4.3: `curl -fsS … /healthz` en forma `CMD`) | 1,19 s, 1,17 s y 1,17 s (4.4: medida, no decide) | cumple todo |
+| RustFS 1.0.0 | pasa (1.4) | pasa (1.4) | no ejecutado: puntero fijado en SeaweedFS | no ejecutado: puntero fijado en SeaweedFS | no ejecutado: puntero fijado en SeaweedFS | no medido: retención por barrido, decisión del usuario 2026-09-26 | no ejecutado: puntero fijado en SeaweedFS, que cumple todo | no ejecutado: puntero fijado en SeaweedFS, que cumple todo | no ejecutado: puntero fijado en SeaweedFS, que cumple todo | no evaluado |
+| Garage v2.4.1 | pasa (1.4) | pasa (1.4) | no ejecutado: puntero fijado en SeaweedFS | no ejecutado: puntero fijado en SeaweedFS | no ejecutado: puntero fijado en SeaweedFS | no medido: retención por barrido, decisión del usuario 2026-09-26 | no ejecutado: puntero fijado en SeaweedFS, que cumple todo | no ejecutado: puntero fijado en SeaweedFS, que cumple todo | no ejecutado: puntero fijado en SeaweedFS, que cumple todo | no evaluado |
+
+- **SeaweedFS 4.47: cumple todo.** Pasa todas las celdas duras: C1 y C2 (1.4), C3 y C4 (3.1), C7 (4.2) y C8 (4.3).
+  Además, C5 sale `nativo` (3.4). C6 no interviene porque no se mide. C9 informa D8 y no aprueba ni suspende.
+- **RustFS 1.0.0 y Garage v2.4.1: no evaluado.** Pasan C1 y C2 (1.4) y no tienen ninguna celda en falla. No se
+  ejecutaron más celdas por dos reglas de D1. El cribado se detiene en el primero que pasa C1-C4 con C5 `nativo`, así
+  que C3-C5 quedan sin ejecutar (3.2, 3.3, 3.5 y 3.6). C7-C9 solo se ejecutan en el candidato que señala el puntero, y
+  se pasa al siguiente solo si ese falla una celda dura; SeaweedFS no falló ninguna. No están descartados: no se sabe
+  si cumplirían.
+- **Elegido: SeaweedFS.** El puntero de D1 pone primero, entre los que pasan C1-C4, a los de C5 `nativo`, y después
+  sigue el orden de la lista. Da SeaweedFS (3.7). Es el primero del puntero y cumple todo, así que se elige y se deja de
+  buscar. «Apto con salida» no entra en juego, porque solo cuenta si nadie cumple todo, y la 3.8 (SSE-C) no se ejecutó.
+  **Modo de cifrado que da la matriz: `server`**, el cifrado por defecto del bucket de CV (C5 `nativo`). La 6.2 lo fija
+  en `object-store-modes.ts`.
+- **Parada de la 5.3 («ningún candidato apto»): no se cumple.** Ningún candidato quedó en `falla (TLS)`: la 3.8 «no
+  aplica», así que no hay que presentar al usuario el coste de meter TLS interno.
+- **Abierto, y no decide el veredicto.** Siguen sin respuesta las dos preguntas al usuario de la 4.1. La primera es el
+  filer y su gRPC sin autenticación dentro de la red del compose. La segunda es la KEK que `weed mini` autogenera en el
+  volumen cuando no tiene clave. Ninguna es una celda de D1: C4 juzga la pasarela S3, y C5 salió `nativo` con la clave
+  en el entorno. Si el usuario pide cerrar el filer, eso sería otra configuración del servicio, y antes de adoptarla
+  habría que repetir sobre ella C3-C5 y C7-C9 (4.1). También sigue pendiente cómo medir los minutos del corredor
+  `arm64` (1.2), que afecta a D11 y a la 9.4 y no a ninguna celda.
+
+### Comprobación de la 5.3
+
+`node <scratchpad>/g5/check-53.js [matriz]` lee la tabla de esta sección y comprueba cuatro cosas:
+
+- Cada fila tiene sus nueve celdas y el veredicto. Cada celda lleva un resultado que cita su tarea, o «no
+  ejecutado: puntero fijado en <candidato>», o «no aplica: …». C6 lleva el texto de la decisión del usuario en las tres.
+- Cada resultado tiene salida pegada que lo respalda. La comprobación busca en los bloques de código de la sección de
+  la tarea citada lo que decide la celda: los pulls y plataformas de C1 por imagen; `archived=false` y `C2: pasa`;
+  `provision` y `verify`, con las seis peticiones sin firmar rechazadas, y el arranque sin identidades en ≠0; `c5:
+  resultado: nativo` con b1; las dos suites con SDK 3.1134.0; las diez ejecuciones en 0, el 7 y la lista vacía; y
+  los tres tiempos de C9, iguales a los de la celda.
+- La regla de D1 recalculada sobre las celdas da el veredicto de cada fila, el puntero, el elegido, la parada y el
+  modo de cifrado escritos.
+- Las «no ejecutado» son exactamente las de D1: C3-C5 de los que van detrás del fijado en el cribado, y C7-C9 de los
+  que el puntero no alcanzó, cada una con su motivo.
+
+Contra este fichero:
+
+```text
+$ node <scratchpad>/g5/check-53.js
+SeaweedFS pasa | pasa | pasa | pasa | nativo | no medido: retención por barrido, decisión del usuario 2026-09-26 | pasa | pasa | 1,19 s, 1,17 s y 1,17 s => cumple todo
+RustFS    pasa | pasa | no ejecutado: puntero fijado en SeaweedFS | no ejecutado: puntero fijado en SeaweedFS | no ejecutado: puntero fijado en SeaweedFS | no medido: retención por barrido, decisión del usuario 2026-09-26 | no ejecutado: puntero fijado en SeaweedFS, que cumple todo | no ejecutado: puntero fijado en SeaweedFS, que cumple todo | no ejecutado: puntero fijado en SeaweedFS, que cumple todo => no evaluado
+Garage    pasa | pasa | no ejecutado: puntero fijado en SeaweedFS | no ejecutado: puntero fijado en SeaweedFS | no ejecutado: puntero fijado en SeaweedFS | no medido: retención por barrido, decisión del usuario 2026-09-26 | no ejecutado: puntero fijado en SeaweedFS, que cumple todo | no ejecutado: puntero fijado en SeaweedFS, que cumple todo | no ejecutado: puntero fijado en SeaweedFS, que cumple todo => no evaluado
+puntero de D1: SeaweedFS | elegido por la regla: SeaweedFS | escrito: SeaweedFS
+comprobaciones: 89 ok, 0 fallan
+5.3: ok
+exit=0
+```
+
+Falsación (`node <scratchpad>/g5/falsify-53.js`): ocho copias de este fichero en el scratchpad, cada una con una
+alteración, y `check-53.js` contra cada una. Se muestran solo las líneas que fallan.
+
+```text
+$ node <scratchpad>/g5/falsify-53.js
+== veredicto de SeaweedFS cambiado a «apto con salida»
+SeaweedFS: veredicto escrito = regla de D1 (cumple todo): escrito «apto con salida»
+exit=1
+== C6 de Garage sin el texto de la decisión
+Garage C6: resultado o motivo: «no medido»
+Garage C6: «no medido: retención por barrido, decisión del usuario 2026-09-26»: «no medido»
+exit=1
+== salida de C8 alterada (run 10 con exit=1)
+SeaweedFS C8: salida pegada que respalda «pasa»: sin salida pegada que lo respalde
+exit=1
+== salida de C5 alterada (resultado: no concluyente)
+SeaweedFS C5: salida pegada que respalda «nativo»: sin salida pegada que lo respalde
+exit=1
+== salida de C9 alterada (1.17 → 1.71 en la corrida 2)
+SeaweedFS C9: salida pegada que respalda «medida»: sin salida pegada que lo respalde
+exit=1
+== elegido cambiado a RustFS
+elegido escrito = regla de D1 (SeaweedFS): escrito «RustFS»
+exit=1
+== C7 de RustFS con «pasa (4.2)» sin salida propia
+RustFS C7: salida pegada que respalda «pasa»: sin salida pegada que lo respalde
+RustFS C7: «no ejecutado» donde lo pide D1: falta
+exit=1
+== fila de Garage sin la celda C9
+Garage: nueve celdas y el veredicto: 9 columnas
+Garage C9: resultado o motivo: «no evaluado»
+Garage: veredicto válido: «undefined»
+Garage: veredicto escrito = regla de D1 (no evaluado): escrito «undefined»
+Garage C9: «no ejecutado» donde lo pide D1: falta
+exit=1
+falsación: todas las copias salen ≠0
+exit=0
+```
