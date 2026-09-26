@@ -366,8 +366,16 @@ no hay datos ni secretos que retirar hasta PR-2, y en PR-2 los secretos `E2E_STA
 
 ## Open Questions
 
-Preguntas para el usuario. Cada una tiene la recomendación ya reflejada en specs y tareas; si la respuesta es otra, se
-cambian antes de `/opsx:apply`.
+**Respondidas por el usuario el 2026-09-26, antes del debate: se aceptan las cuatro recomendaciones.**
+
+- **Q1 →** cuenta o cuentas de prueba persistentes en staging, creadas a mano por el autor, sin verificar y sin permiso de
+  IA; sus ids se excluyen de `measure.mongosh.js` y figuran en la lista que usa `uninvited.mongosh.js`, igual que el
+  autor. Hay que **anotarlo en el design de 35b** (`staging-host`) antes de su `/opsx:apply`.
+- **Q2 →** la suite corre **a demanda** hasta medir sus minutos; los disparadores automáticos se deciden con esa cifra.
+- **Q3 →** la excepción de ADR-053 cubre **solo el lote 1**. Los lotes 2 a 7 esperan a que se cierre la fila 35.
+- **Q4 →** la suite remota tras cada despliegue a staging queda **anotada como candidata para después de 35c**.
+
+Texto original de las preguntas, conservado como histórico:
 
 - **Q1 — Cuentas de prueba en staging y medición de 35b.** Recomendación: una cuenta persistente (dos cuando un lote lo
   necesite), creada a mano por el autor con alias de su buzón, sin verificar y sin permiso de IA; sus ids se excluyen de
