@@ -1423,3 +1423,342 @@ mensaje nombra TLS, SSL, HTTPS o una conexión segura; uno del SDK sin respuesta
 `PUT` pasa, sigue como el modo `server`: lectura del disco con la clave SSE-C de 32 bytes y su base64 como formas de
 (c), y (b) sobre el original rearrancado (A1 sin clave y con otra clave, rechazados sin bytes; B1 leído; A1 con la
 clave, idéntico); resultado `salida`.
+
+**3.7b: no aplica: el puntero tiene C5 `nativo`** (SeaweedFS, tarea 3.4, abajo). La 3.8 no se ejecuta, así que el
+control positivo de SSE-C tampoco: `minio-tls.compose.yml` y la opción `--ca` de `c5.sh` no existen.
+
+## Cribado C3-C5, candidato a candidato (grupo 3)
+
+Orden de design D1: SeaweedFS → RustFS → Garage, deteniéndose en el primero que pasa C1-C4 con C5 `nativo`. Corridas
+del 2026-09-26 entre 23:22Z y 23:30Z con SeaweedFS 4.47 (`chrislusf/seaweedfs:4.47`, la versión fijada en la 1.2),
+proyecto `os3-sw` en el puerto `19640` del host (el `9000` es el MinIO de desarrollo, que no se tocó), credenciales y
+`OBJECT_STORE_SSE_KEY` (64 caracteres hexadecimales de 32 bytes aleatorios) generadas en el scratchpad y exportadas con
+`COMPOSE_PROJECT_NAME=os3-sw`, `S3_ENDPOINT=http://localhost:19640`, `S3_REGION=us-east-1`, `S3_BUCKET=cvs` y
+`S3_SNAPSHOTS_BUCKET=snapshots`. Las salidas de Nx se recortan a lo que imprime la orden.
+
+### 3.1: compose, C3 y C4 de SeaweedFS
+
+**Compose:** `docs/object-store-matrix/seaweedfs.compose.yml`, con la forma de design D1: servicio `object-store`;
+credenciales solo por variables (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, desde `S3_ACCESS_KEY`/`S3_SECRET_KEY`,
+sin valor por defecto); la KEK de SSE-S3 desde `OBJECT_STORE_SSE_KEY`, mapeada a `WEED_S3_SSE_KEK` (256 bits en
+hexadecimal); puerto S3 (`8333`) en `OBJECT_STORE_PORT`; todo el estado en el volumen `object-store-data`, en `/data`,
+sin `name:` ni binds, y sin fichero de configuración. Orden: `weed mini -dir=/data` (la de la imagen) con WebDAV, la
+interfaz web de administración, Iceberg, Lance y la telemetría apagados. Ningún paso de CLI ni de API de
+administración.
+
+```text
+$ docker compose -p os3-sw -f docs/object-store-matrix/seaweedfs.compose.yml up -d --wait
+ Volume os3-sw_object-store-data Created
+ Network os3-sw_default Created
+ Container os3-sw-object-store-1 Started
+ Container os3-sw-object-store-1 Healthy
+exit=0
+$ docker compose -p os3-sw -f docs/object-store-matrix/seaweedfs.compose.yml config --format json   # servicio object-store
+{"image":"chrislusf/seaweedfs:4.47","command":["mini","-dir=/data","-webdav=false","-admin.ui=false","-s3.port.iceberg=0","-s3.port.lance=0","-master.telemetry=false"],"volumes":[{"type":"volume","source":"object-store-data","target":"/data","volume":{}}],"ports":[{"mode":"ingress","target":8333,"published":"19640","protocol":"tcp"}],"env":["AWS_ACCESS_KEY_ID","AWS_SECRET_ACCESS_KEY","WEED_S3_SSE_KEK"]}
+volumes top: {"object-store-data":{"name":"os3-sw_object-store-data"}}
+$ docker inspect os3-sw-object-store-1 --format '{{json .Mounts}}'
+[{"Type":"volume","Name":"os3-sw_object-store-data","Source":"/var/lib/docker/volumes/os3-sw_object-store-data/_data","Destination":"/data","Driver":"local","Mode":"rw","RW":true,"Propagation":""}]
+$ docker diff os3-sw-object-store-1          # lo que el contenedor escribe fuera del volumen: solo sockets
+C /tmp
+A /tmp/seaweedfs-admin-grpc-33646.sock
+A /tmp/seaweedfs-filer-8888.sock
+A /tmp/seaweedfs-filer-grpc-18888.sock
+A /tmp/seaweedfs-master-grpc-19333.sock
+A /tmp/seaweedfs-s3-8333.sock
+A /tmp/seaweedfs-s3-grpc-18333.sock
+A /tmp/seaweedfs-volume-grpc-19340.sock
+$ docker compose -p os3-sw -f docs/object-store-matrix/seaweedfs.compose.yml logs object-store   # líneas de la identidad y la KEK
+auth_credentials.go:578 Added admin identity from AWS environment variables: name=admin-<…>, accessKey=<…>
+s3_sse_s3.go:529 SSE-S3 KeyManager: Loaded KEK from s3.sse.kek config
+```
+
+(La imagen no declara `HEALTHCHECK` y el compose no lleva uno —el de solo lectura es la C8, tarea 4.3—, así que `up
+--wait` da por sano el contenedor en marcha; `provision` responde a la primera.)
+
+**C3: pasa.** Credenciales por variables, buckets creados por la API S3 con `object-store provision` (dos veces, las
+dos en 0) y cifrado por defecto del bucket de CV aceptado por `PutBucketEncryption`, sin CLI ni API de administración.
+Los objetos los ejercita la escritura de la 3.4 (A1, A2, B1 y B2 escritos y leídos de vuelta por la API S3).
+
+```text
+$ node docs/object-store-matrix/list-buckets.mjs          # recién arrancado
+buckets (0):
+exit=0
+$ pnpm nx run api:object-store -- provision        # primera
+ok    cvs: bucket created
+ok    cvs: no lifecycle configuration (removed if there was one)
+ok    cvs: default encryption set (AES256)
+ok    cvs: no bucket policy
+ok    snapshots: bucket created
+ok    snapshots: no lifecycle configuration (removed if there was one)
+ok    snapshots: no bucket policy
+provision: ok
+exit=0
+$ pnpm nx run api:object-store -- provision        # segunda
+ok    cvs: bucket already exists
+ok    cvs: no lifecycle configuration (removed if there was one)
+ok    cvs: default encryption set (AES256)
+ok    cvs: no bucket policy
+ok    snapshots: bucket already exists
+ok    snapshots: no lifecycle configuration (removed if there was one)
+ok    snapshots: no bucket policy
+provision: ok
+exit=0
+```
+
+**C4: pasa.** `verify` sobre la configuración aprovisionada, recién aprovisionada y otra vez tras la escritura de la
+3.4 (con objetos existentes en los dos buckets):
+
+```text
+$ pnpm nx run api:object-store -- verify           # recién aprovisionado
+ok    cvs: bucket exists
+ok    snapshots: bucket exists
+ok    cvs: no lifecycle rule
+ok    cvs: default encryption (AES256)
+ok    snapshots: no lifecycle rule
+ok    snapshots: no snapshot older than 31 days (0 listed)
+ok    cvs: anonymous GET of a missing object rejected (HTTP 403 AccessDenied)
+ok    cvs: anonymous listing rejected (HTTP 403 AccessDenied)
+ok    cvs: anonymous PUT rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous GET of a missing object rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous listing rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous PUT rejected (HTTP 403 AccessDenied)
+verify: ok
+exit=0
+$ pnpm nx run api:object-store -- verify           # tras la 3.4
+ok    cvs: bucket exists
+ok    snapshots: bucket exists
+ok    cvs: no lifecycle rule
+ok    cvs: default encryption (AES256)
+ok    snapshots: no lifecycle rule
+ok    snapshots: no snapshot older than 31 days (2 listed)
+ok    cvs: anonymous GET of an existing object rejected (HTTP 403 AccessDenied)
+ok    cvs: anonymous listing rejected (HTTP 403 AccessDenied)
+ok    cvs: anonymous PUT rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous GET of an existing object rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous listing rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous PUT rejected (HTTP 403 AccessDenied)
+verify: ok
+exit=0
+$ node docs/object-store-matrix/list-buckets.mjs
+buckets (2):
+cvs
+snapshots
+exit=0
+```
+
+**Arranque sin identidades: `verify` sale ≠0 nombrando el acceso anónimo.** Copia de `seaweedfs.compose.yml` en el
+scratchpad sin las dos líneas de identidad (`AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY:?…}` y `AWS_SECRET_ACCESS_KEY:
+${S3_SECRET_KEY:?…}`; `environment` queda con `WEED_S3_SSE_KEK` solo), proyecto `os3-swopen` en el puerto `19642`
+(`S3_ENDPOINT=http://localhost:19642`), volumen vacío. SeaweedFS queda en su modo abierto: `provision` pasa con
+cualquier firma y `verify` falla en las seis peticiones sin firmar; la sonda de escritura aceptada se borra con firma:
+
+```text
+$ pnpm nx run api:object-store -- provision
+ok    cvs: bucket created
+ok    cvs: no lifecycle configuration (removed if there was one)
+ok    cvs: default encryption set (AES256)
+ok    cvs: no bucket policy
+ok    snapshots: bucket created
+ok    snapshots: no lifecycle configuration (removed if there was one)
+ok    snapshots: no bucket policy
+provision: ok
+exit=0
+$ pnpm nx run api:object-store -- verify
+ok    cvs: bucket exists
+ok    snapshots: bucket exists
+ok    cvs: no lifecycle rule
+ok    cvs: default encryption (AES256)
+ok    snapshots: no lifecycle rule
+ok    snapshots: no snapshot older than 31 days (0 listed)
+FAIL  cvs: anonymous GET of a missing object: HTTP 404 NoSuchKey: the store let the anonymous request look for it
+FAIL  cvs: anonymous listing: access granted (HTTP 200)
+FAIL  cvs: anonymous PUT: access granted (HTTP 200)
+note  cvs: the anonymous probe object .verify-probe/1e3adb94-1d6d-48f5-bb55-9257668e0ba0 was deleted with a signed request
+FAIL  snapshots: anonymous GET of a missing object: HTTP 404 NoSuchKey: the store let the anonymous request look for it
+FAIL  snapshots: anonymous listing: access granted (HTTP 200)
+FAIL  snapshots: anonymous PUT: access granted (HTTP 200)
+note  snapshots: the anonymous probe object .verify-probe/dbca9b65-b3cd-4ae2-a8bc-c21773577ecc was deleted with a signed request
+verify: FAILED (6): cvs: anonymous GET of a missing object: HTTP 404 NoSuchKey: the store let the anonymous request look for it; cvs: anonymous listing: access granted (HTTP 200); cvs: anonymous PUT: access granted (HTTP 200); snapshots: anonymous GET of a missing object: HTTP 404 NoSuchKey: the store let the anonymous request look for it; snapshots: anonymous listing: access granted (HTTP 200); snapshots: anonymous PUT: access granted (HTTP 200)
+exit=1
+$ docker compose -p os3-swopen -f <scratchpad>/variants/seaweedfs.open.compose.yml down -v
+exit=0
+```
+
+Con la identidad por entorno, SeaweedFS sale de su modo abierto (C4 de arriba); sin ella, `verify` lo detecta. El
+defecto no es de `verify`.
+
+**Observación fuera de C4, que no decide la celda (para la 4.1 y la 5.3).** C4 juzga la pasarela S3. `weed mini`
+arranca además el filer, cuyo HTTP (`8888`, sin publicar) sirve los objetos **sin autenticación** a cualquier
+contenedor de la red del compose. Medido desde un contenedor `alpine` en la red `os3-sw_default`, tras la 3.4:
+
+```text
+$ docker run --rm --network os3-sw_default alpine:3 sh -c 'wget -q -O /tmp/o http://object-store:8888/buckets/<bucket>/<clave> …'
+/buckets/cvs/757639ab08ccf9d5d450f084/8a42c4ae3c50d665b21ecbde HTTP 200, 1048576 bytes, sha256 7b8788b59514fb9d
+/buckets/snapshots/c5-1a0e0086a17-5b75485e/B1.bin HTTP 200, 1048576 bytes, sha256 5906bdd4b314d887
+```
+
+A1 (`sha256 705b97ab82d72b5d` escrito) vuelve **cifrado** (otro hash: el filer entrega los bytes del volumen, que la
+3.4 muestra cifrados); B1 (`sha256 5906bdd4b314d887`) vuelve **idéntico**. El log del filer dice además `Registered IAM
+gRPC service on filer (unauthenticated; set jwt.filer_signing.key in security.toml to require admin Bearer token)`. Ni
+design D1 ni D6 dicen qué hacer con los puertos internos sin autenticación de un candidato: no se decide aquí.
+
+### 3.4: C5 de SeaweedFS
+
+**`nativo`, con (b) = b1.** `provision` puso el cifrado por defecto de `cvs` por la API S3 (3.1), así que C5 no se
+corta en «no disponible» y `c5.sh` corre entero:
+
+```text
+$ C5_WORKDIR=<scratchpad>/g3/c5-sw bash docs/object-store-matrix/c5.sh docs/object-store-matrix/seaweedfs.compose.yml object-store-data
+c5: mode server, compose docs/object-store-matrix/seaweedfs.compose.yml, volume object-store-data, workdir <scratchpad>/g3/c5-sw
+c5: project os3-sw, docker volume os3-sw_object-store-data, key entry WEED_S3_SSE_KEK (from OBJECT_STORE_SSE_KEY)
+container ok: one volume (os3-sw_object-store-data), no writable bind
+c5: 1. contract suite, C5 server mode (vitest, output in <scratchpad>/g3/c5-sw/suite.log)
+   ✓ |api| src/infrastructure/storage/s3.s3-contract.spec.ts > S3 contract of api (real store) > C5 mode: writes A1/A2 to the CV bucket without SSE headers and B1/B2 to the snapshots bucket, and dumps them 522ms
+   Test Files  1 passed (1)
+   Tests  1 passed | 4 skipped (5)
+   A1 cvs 1048576 bytes, lo que dice el almacén: AES256
+   A2 cvs 1024 bytes, lo que dice el almacén: AES256
+   B1 snapshots 1048576 bytes, lo que dice el almacén: none reported
+   B2 snapshots 1024 bytes, lo que dice el almacén: none reported
+c5: 2. docker compose stop object-store
+c5:    tar of volume os3-sw_object-store-data with alpine:3
+c5: 3. find-plaintext
+   find-plaintext: vol.tar, 2318336 bytes leídos
+   A1 0/3  (1048576 bytes; ventanas de 64 bytes en 0, 524256, 1048512)
+   A2 0/3  (1024 bytes; ventanas de 64 bytes en 0, 480, 960)
+   B1 3/3  (1048576 bytes; ventanas de 64 bytes en 0, 524256, 1048512)
+   B2 3/3  (1024 bytes; ventanas de 64 bytes en 0, 480, 960)
+   clave 0/3  (textual no; decodificada (hex, 32 bytes) no; decodificada (base64, 48 bytes) no)
+c5: 4. disk reading
+c5:    disco: ok (A1 0/3, A2 0/3, B1 3/3, B2 3/3)
+c5:    (c) ok: la clave, 0/3 formas en el volumen (textual; decodificada (hex, 32 bytes); decodificada (base64, 48 bytes))
+c5: (b) copy project c5copy-2be6b8: container created with K2 (same format as K1), volume c5copy-2be6b8_object-store-data restored from vol.tar
+   K2 WEED_S3_SSE_KEK of the container: the expected key
+c5: (b) K2 on the copy
+c5:    original object-store still stopped: the endpoint reaches the copy
+   almacén listo en 0.0 s
+c5:    K2: started
+   K2 A1: rechazado sin bytes (HTTP 500 InternalError)
+   K2 B1: igual por bytes (1048576 bytes, sha256 5906bdd4b314d887)
+c5: (b) K1 on the same copy (the compose's own key: OBJECT_STORE_SSE_KEY as the compose resolves it)
+   K1 WEED_S3_SSE_KEK of the container: the expected key
+   almacén listo en 0.0 s
+c5:    K1: started
+   K1 A1: igual por bytes (1048576 bytes, sha256 705b97ab82d72b5d)
+   K1 B1: igual por bytes (1048576 bytes, sha256 5906bdd4b314d887)
+c5: copy project c5copy-2be6b8 removed (container, network and volume)
+c5: original object-store started again (up -d --no-deps object-store)
+c5: (b) b1 (K2: arranca, A1 rechazado sin bytes, B1 leído; K1 sobre la misma copia: A1 y B1 idénticos)
+c5: (a) with the key in the environment the product uses that key: shown by (b) and (c)
+c5: resultado: nativo (disco: ok (A1 0/3, A2 0/3, B1 3/3, B2 3/3); (b) b1 (K2: arranca, A1 rechazado sin bytes, B1 leído; K1 sobre la misma copia: A1 y B1 idénticos); (c) ok: la clave, 0/3 formas en el volumen (textual; decodificada (hex, 32 bytes); decodificada (base64, 48 bytes)))
+exit=0
+```
+
+- **Disco:** A1 y A2 0/3, B1 y B2 3/3: el control aparece entero, así que la lectura vale para SeaweedFS de un nodo.
+  En el `tar`, los objetos de cada bucket van a su propio fichero de volumen (`cvs_2.dat`, 1049720 bytes;
+  `snapshots_3.dat`, 1049704 bytes: el de 1 MiB y el de 1 KiB juntos) y los metadatos, a `filerldb2/`.
+- **(b) = b1.** Con K2 (64 hexadecimales, mismo formato) sobre la copia restaurada desde el `tar`, SeaweedFS arranca,
+  el `GET` de A1 se rechaza sin bytes (`HTTP 500 InternalError`) y B1 vuelve idéntico; con K1 sobre **la misma
+  copia**, A1 y B1 vuelven idénticos. La copia lleva K2 y después K1 en `WEED_S3_SSE_KEK` (comprobado con `docker
+  inspect`) y el original sigue detenido mientras tanto.
+- **(c)** la clave, 0/3 formas (textual; los 32 bytes; y su lectura como base64, 48 bytes).
+- **(a)** con `WEED_S3_SSE_KEK` en el entorno, SeaweedFS usa **esa**: lo demuestran (b) y (c). En el volumen hay un
+  `.mini_kek_passphrase` de 64 bytes que `weed mini` crea al arrancar; la copia de (b) lo lleva, y aun así con K2 A1
+  no se lee: no es la clave que protege el CV.
+
+**Observación de (a), que no decide:** SeaweedFS **sin** la clave, con una copia de `seaweedfs.compose.yml` sin la
+línea de `WEED_S3_SSE_KEK`, proyecto `os3-swnokey` en el puerto `19643` y un volumen **vacío** nuevo
+(`os3-swnokey_object-store-data`), `up -d --wait` sano (`environment keys: [ 'AWS_ACCESS_KEY_ID',
+'AWS_SECRET_ACCESS_KEY' ]`):
+
+```text
+$ pnpm nx run api:object-store -- provision
+ok    cvs: bucket created
+ok    cvs: no lifecycle configuration (removed if there was one)
+ok    cvs: default encryption set (AES256)
+ok    cvs: no bucket policy
+ok    snapshots: bucket created
+ok    snapshots: no lifecycle configuration (removed if there was one)
+ok    snapshots: no bucket policy
+provision: ok
+exit=0
+$ docker compose -p os3-swnokey … logs object-store       # sin WEED_S3_SSE_KEK en el entorno del contenedor
+s3_sse_s3.go:529 SSE-S3 KeyManager: Loaded KEK from s3.sse.kek config
+$ node <PUT de 1 MiB a cvs sin cabeceras SSE; GET; restart del contenedor; GET>
+PUT cvs/nokey/A1.bin: ok, lo que dice el almacén: AES256, sha256 b292b1e439506fbb
+GET cvs/nokey/A1.bin: igual por bytes, lo que dice el almacén: AES256, sha256 b292b1e439506fbb
+GET cvs/nokey/A1.bin: igual por bytes, lo que dice el almacén: AES256, sha256 b292b1e439506fbb     # tras el restart
+$ tar tvf <tar del volumen os3-swnokey_object-store-data> y búsqueda con node
+-rw------- 1000/1000        64 2026-09-26 19:24 ./.mini_sse_kek
+-rw------- 1000/1000        64 2026-09-26 19:24 ./.mini_kek_passphrase
+nokey A1 en el volumen: 0/3
+```
+
+Sin clave, `weed mini` **genera una KEK y la guarda en el propio volumen** (`/data/.mini_sse_kek`), acepta el cifrado
+por defecto y cifra con ella: el disco no tiene el texto en claro, pero la clave vive junto a los datos y `provision`
+sale 0, así que desde fuera no se distingue de la configuración medida. Es el caso que (c) existe para detectar. En el
+volumen medido, con la clave en el entorno, no hay `.mini_sse_kek` (listado del `tar` de la 3.4). En los composes lo
+impide el `${OBJECT_STORE_SSE_KEY:?…}` (design D6); prelectura.md decía «no la autogenera», y en `weed mini` 4.47 sí
+lo hace.
+
+**C3-C4 en verde y C5 `nativo`: el puntero queda fijado en SeaweedFS** (design D1). El cribado se detiene aquí.
+
+### 3.2, 3.3, 3.5 y 3.6: RustFS y Garage
+
+**No ejecutado: puntero fijado en SeaweedFS.** Los dos pasaron C1 y C2 (1.4), pero van detrás de SeaweedFS en la
+lista, que pasa C1-C4 con C5 `nativo`: ninguno puede adelantarlo. `rustfs.compose.yml` y `garage.compose.yml` no se
+escriben. Si SeaweedFS cae en la 4.2 o la 4.3, el cribado se reanuda con RustFS (3.2 y 3.5) y estas celdas se
+sustituyen por su resultado.
+
+### 3.8: SSE-C
+
+**No aplica: el puntero tiene C5 `nativo`** (SeaweedFS, 3.4). La 3.8 solo se ejecuta cuando el puntero llega a un
+candidato sin C5 `nativo`.
+
+### 3.7: tabla C1-C5 y puntero
+
+| Candidato | C1 | C2 | C3 | C4 | C5 |
+|---|---|---|---|---|---|
+| SeaweedFS 4.47 | pasa (1.4) | pasa (1.4) | pasa (3.1) | pasa (3.1) | nativo (3.4: disco, (b) b1, (c)) |
+| RustFS 1.0.0 | pasa (1.4) | pasa (1.4) | no ejecutado: puntero fijado en SeaweedFS | no ejecutado: puntero fijado en SeaweedFS | no ejecutado: puntero fijado en SeaweedFS |
+| Garage v2.4.1 | pasa (1.4) | pasa (1.4) | no ejecutado: puntero fijado en SeaweedFS | no ejecutado: puntero fijado en SeaweedFS | no ejecutado: puntero fijado en SeaweedFS |
+
+**Puntero: SeaweedFS.** Entre los que pasan C1-C4 (solo SeaweedFS entre los cribados), primero los de C5 `nativo`
+(SeaweedFS) y después el orden de la lista. La parada de la 3.7 («ninguno pasa C1-C4») no se cumple. Siguen C7-C9 en
+SeaweedFS (4.2-4.4), y la 4.1 informa sin bloquear porque un candidato da C5 `nativo`.
+
+Comprobación de un solo uso (`node <scratchpad>/g3/check-37.js [matriz]`: lee la tabla de esta sección; exige en cada
+celda un resultado, «no ejecutado: puntero fijado en <candidato>» o «no aplica: …»; recalcula el puntero de D1 con
+las celdas ejecutadas y lo compara con el escrito; y exige «no ejecutado» exactamente en C3-C5 de los que van detrás
+del fijado con C5 `nativo`):
+
+```text
+$ node <scratchpad>/g3/check-37.js
+SeaweedFS pasa | pasa | pasa | pasa | nativo
+RustFS    pasa | pasa | no ejecutado: puntero fijado en SeaweedFS | no ejecutado: puntero fijado en SeaweedFS | no ejecutado: puntero fijado en SeaweedFS
+Garage    pasa | pasa | no ejecutado: puntero fijado en SeaweedFS | no ejecutado: puntero fijado en SeaweedFS | no ejecutado: puntero fijado en SeaweedFS
+puntero escrito: SeaweedFS | puntero de D1: SeaweedFS
+3.7: ok
+exit=0
+$ node <scratchpad>/g3/check-37.js <copia con «**Puntero: RustFS.**»>
+FALLA:
+puntero escrito RustFS, D1 da SeaweedFS
+exit=1
+$ node <scratchpad>/g3/check-37.js <copia con la C3 de RustFS en «pendiente»>
+FALLA:
+RustFS C3: «pendiente» sin resultado ni anotación
+RustFS C3: «no ejecutado» falta
+exit=1
+$ node <scratchpad>/g3/check-37.js <copia con la C5 de SeaweedFS en «no disponible»>
+FALLA:
+RustFS C3: «no ejecutado» sobra
+RustFS C4: «no ejecutado» sobra
+RustFS C5: «no ejecutado» sobra
+Garage C3: «no ejecutado» sobra
+Garage C4: «no ejecutado» sobra
+Garage C5: «no ejecutado» sobra
+exit=1
+```
+
+Al terminar el grupo: `down -v` de `os3-sw`, `os3-swopen` y `os3-swnokey`; los proyectos `c5copy-*` los borra `c5.sh`
+(`copy project … removed`). `docker ps -a`, `docker volume ls` y `docker network ls` sin `os3` ni `c5copy`: 0, 0 y 0.
