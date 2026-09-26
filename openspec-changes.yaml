@@ -560,8 +560,8 @@ changes:
       **(g)** Primera release `v0.1.0`, que cierra la tarea 8.1 de `deploy-image-verification`: **solo `arm64`**
       mientras no haya host de producción, sin cambiar la spec de identidad por digest; la matriz
       multiarquitectura queda diferida. Escribir en el RUNBOOK que `latest` no es un tag de despliegue.
-      **Precondiciones y orden:** archivar `i18n-catalog-gate` antes de `/opsx:apply` (responsable: este change,
-      como primera tarea). 35a y 35c modifican los dos «CD a staging en main»; el orden por archivo es **35a → 35c**
+      **Precondiciones y orden:** archivar `i18n-catalog-gate` antes de `/opsx:apply` — **cumplida el 2026-09-25**
+      (PR #63, `openspec/changes/archive/2026-09-25-i18n-catalog-gate`). 35a y 35c modifican los dos «CD a staging en main»; el orden por archivo es **35a → 35c**
       y el MODIFIED de aquí se redacta sobre el texto que deje 35a.
       **Guardias de `repo-checks` diferidos por `staging-host`:** ningún `${{ … }}` en los `run:` que abren
       sesión en un host, ningún secreto interpolado en `script:`, `source:` o `target:` de los pasos
