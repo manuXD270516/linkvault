@@ -19,6 +19,9 @@ responde.
 | `infra/traefik/dynamic.yml` | Rutas `/p/`+`/api/`→api, else→web; CV rate/body; Referrer-Policy |
 | `infra/traefik/access-log-no-query.md` | Logs sin query (`RequestURI` drop) |
 | `infra/minio/ensure-buckets.sh` | Bucket CV con SSE-S3; snapshots ILM 30d |
+| [`infra/revision-despliegue.md`](revision-despliegue.md) | Procedimiento de revisión de toda la configuración de despliegue, con registro |
+| `infra/ci/check-env-file.mjs` | Revisa un env file contra el contrato del compose sin imprimir valores |
+| `infra/ci/check-verify-stages.mjs` | Mismas etapas y orden en los tres jobs `verify` (hasta la fila 35c) |
 
 ## Targets de deploy (placeholders)
 
