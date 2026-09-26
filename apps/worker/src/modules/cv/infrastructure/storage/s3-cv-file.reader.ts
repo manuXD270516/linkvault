@@ -1,9 +1,9 @@
-import {
-  DeleteObjectCommand,
-  GetObjectCommand,
-  S3Client,
-} from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { Logger } from '@nestjs/common';
+import {
+  createS3Client,
+  type S3ConnectionSettings,
+} from '../../../../infrastructure/storage/s3-client.factory';
 import type { CvFileReader } from '../../application/ports/cv-file-reader.port';
 
 // Implementación de `CV_FILE_READER` sobre almacenamiento compatible con S3 (ADR-006, ADR-028 §5 y §8), con la misma
@@ -19,11 +19,7 @@ export interface CvObjectClient {
   delete(key: string): Promise<void>;
 }
 
-export interface S3CvReaderOptions {
-  readonly endpoint: string;
-  readonly region: string;
-  readonly accessKey: string;
-  readonly secretKey: string;
+export interface S3CvReaderOptions extends S3ConnectionSettings {
   readonly bucket: string;
 }
 
@@ -35,26 +31,21 @@ export function meansMissingObject(error: unknown): boolean {
   if (typeof error !== 'object' || error === null) {
     return false;
   }
-  const named = error as { name?: unknown; $metadata?: { httpStatusCode?: unknown } };
+  const named = error as {
+    name?: unknown;
+    $metadata?: { httpStatusCode?: unknown };
+  };
   return (
     (typeof named.name === 'string' && MISSING_OBJECT.has(named.name)) ||
     named.$metadata?.httpStatusCode === 404
   );
 }
 
-/** Cliente real. `forcePathStyle` es lo que MinIO necesita: no sirve buckets como subdominios. */
+/** Cliente real, con el cliente de la fábrica del `worker` (endpoint, checksums y plazos en un solo sitio; design D3). */
 export function createS3CvObjectClient(
   options: S3CvReaderOptions,
 ): CvObjectClient {
-  const client = new S3Client({
-    endpoint: options.endpoint,
-    region: options.region,
-    forcePathStyle: true,
-    credentials: {
-      accessKeyId: options.accessKey,
-      secretAccessKey: options.secretKey,
-    },
-  });
+  const client = createS3Client(options);
 
   return {
     get: async (key: string): Promise<Uint8Array | null> => {

@@ -1,6 +1,10 @@
 import { CV_FILE_TYPES, type CvFileType } from '@linkvault/shared';
-import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { Logger } from '@nestjs/common';
+import {
+  createS3Client,
+  type S3ConnectionSettings,
+} from '../../../infrastructure/storage/s3-client.factory';
 import type { CvFileStore } from '../application/ports/cv-file-store.port';
 
 // Implementación de `CV_FILE_STORE` sobre almacenamiento compatible con S3 (MinIO en local, cualquier proveedor en
@@ -15,27 +19,15 @@ export interface CvFileUploader {
   put(key: string, body: Uint8Array, contentType: string): Promise<void>;
 }
 
-export interface S3CvUploaderOptions {
-  readonly endpoint: string;
-  readonly region: string;
-  readonly accessKey: string;
-  readonly secretKey: string;
+export interface S3CvUploaderOptions extends S3ConnectionSettings {
   readonly bucket: string;
 }
 
-/** Subida real. `forcePathStyle` es lo que MinIO necesita: no sirve buckets como subdominios. */
+/** Subida real, con el cliente de la fábrica de `api` (endpoint, checksums y plazos en un solo sitio; design D3). */
 export function createS3CvFileUploader(
   options: S3CvUploaderOptions,
 ): CvFileUploader {
-  const client = new S3Client({
-    endpoint: options.endpoint,
-    region: options.region,
-    forcePathStyle: true,
-    credentials: {
-      accessKeyId: options.accessKey,
-      secretAccessKey: options.secretKey,
-    },
-  });
+  const client = createS3Client(options);
 
   return {
     put: async (
