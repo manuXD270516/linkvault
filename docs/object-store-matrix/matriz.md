@@ -356,3 +356,484 @@ $ curl -s 'https://git.deuxfleurs.fr/api/v1/repos/deuxfleurs/garage/releases?lim
 
 Parada de la 1.4, «ningún candidato pasa C1 y C2»: **no se cumple**. Los tres pasan C1 y C2, y el cribado C3-C5 empieza
 por SeaweedFS (grupo 3).
+
+## Traslados a 35b y 35c (tarea 2.12)
+
+Comprueba que siguen en `openspec/changes/staging-host/` (design, tasks, proposal y su spec `platform/ci-pipeline`) y
+en el `scope` de `verify-reusable-workflow` de `openspec-changes.yaml` los traslados que el debate de 35a editó allí
+(design de `object-store`, «Traslados»). Cada comprobación mira **su** sitio: la sección `### Dn.` del design o la línea
+de la tarea, con el texto normalizado (espacios colapsados, sin `**`), y, donde importa el orden, que las piezas
+aparezcan en ese orden. Ejecutado el 2026-09-26, en el árbol de trabajo y, una vez, contra las versiones del commit
+`2409bbb` leídas con `git show 2409bbb:<ruta>`.
+
+Script (en el scratchpad de la sesión, `traslados-check.js`, ejecutado con `node -e "$(cat traslados-check.js)"`):
+
+```js
+// 2.12: los traslados a 35b (staging-host) y 35c (verify-reusable-workflow) siguen hechos.
+// Uso: node -e "$(cat traslados-check.js)"            (árbol de trabajo)
+//      REV=2409bbb node -e "$(cat traslados-check.js)" (versiones de ese commit, con git show)
+const fs = require('fs');
+const { execFileSync } = require('child_process');
+const rev = process.env.REV || '';
+const read = (p) => (rev ? execFileSync('git', ['show', `${rev}:${p}`], { encoding: 'utf8' }) : fs.readFileSync(p, 'utf8'));
+const norm = (s) => s.replace(/\*\*/g, '').replace(/\s+/g, ' ');
+const SH = 'openspec/changes/staging-host/';
+const design = read(SH + 'design.md');
+const tasks = read(SH + 'tasks.md');
+const proposal = read(SH + 'proposal.md');
+const spec = read(SH + 'specs/platform/ci-pipeline/spec.md');
+const yaml = read('openspec-changes.yaml');
+const section = (n) => {
+  const m = design.match(new RegExp(`^### D${n}\\.[\\s\\S]*?(?=^###? )`, 'm'));
+  return m ? norm(m[0]) : '';
+};
+const task = (id) => {
+  const m = tasks.match(new RegExp(`^- \\[[ x]\\] ${id.replace('.', '\\.')} .*$`, 'm'));
+  return m ? norm(m[0]) : '';
+};
+const block = (src, startRe, endRe) => {
+  const s = src.search(startRe);
+  if (s < 0) return '';
+  const rest = src.slice(s + 1);
+  const e = rest.search(endRe);
+  return norm(e < 0 ? src.slice(s) : src.slice(s, s + 1 + e));
+};
+// a antes que b antes que c (cada uno buscado a partir del anterior)
+const inOrder = (txt, ...res) => {
+  let at = 0;
+  for (const re of res) {
+    const i = txt.slice(at).search(re);
+    if (i < 0) return false;
+    at += i + 1;
+  }
+  return true;
+};
+const has = (txt, ...res) => res.every((re) => (typeof re === 'string' ? txt.includes(re) : re.test(txt)));
+
+const D3 = section(3), D4 = section(4), D5 = section(5);
+const t11 = task('1.1'), t22 = task('2.2'), t41 = task('4.1'), t44 = task('4.4'), t45 = task('4.5'), t53 = task('5.3'), t910 = task('9.10');
+const prop = block(proposal, /^- \*\*Configuración del mismo commit/m, /^- \*\*/m);
+const vrw = block(yaml, /^ {2}- name: verify-reusable-workflow$/m, /^ {2}- name: /m);
+const UP = /up -d --wait/, PROV = /object-store\.js provision/, VER = /verify/;
+
+const checks = [
+  ['D4: `up` → `object-store.js provision` → `verify`', inOrder(D4, UP, PROV, VER)],
+  ['4.4: `up` → `object-store.js provision` → `object-store.js verify`', inOrder(t44, UP, PROV, /object-store\.js verify/)],
+  ['4.4: `docker` falso que contesta a `imagetools inspect`', has(t44, /docker` falso[^;]*imagetools inspect/)],
+  ['4.4: caso de plataforma ausente', has(t44, 'plataforma ausente', /sin `pull`, sin instalación y con `logout`/)],
+  ['D5: aprovisionar es un `run` aparte', has(D5, /aprovisionar es un `run [^`]*object-store\.js provision` aparte/)],
+  ['D5: 35a no mide `service_completed_successfully`', has(D5, /35a no vuelve a medir `service_completed_successfully`/)],
+  ['5.3: `docker buildx version`', has(t53, '`docker buildx version`')],
+  ['1.1: `check-image-platforms.sh`', has(t11, 'check-image-platforms.sh')],
+  ['1.1: `object-store.js`', has(t11, 'dist/apps/api/object-store.js')],
+  ['4.1: `infra/deploy/check-image-platforms.sh`', has(t41, 'infra/deploy/check-image-platforms.sh')],
+  ['9.10: «se guarda cifrado» y «Mi CV»', has(t910, 'se guarda cifrado', 'Mi CV')],
+  ['D3: digest como tercer argumento de `deploy.sh`', has(D3, '<tag> <plazo> <digest>', '^sha256:[0-9a-f]{64}$')],
+  ['D4: corredor lee `Digest del índice:` de ADR-052 «Elección»', has(D4, '`Digest del índice: sha256:<64 hexadecimales>`', 'ADR-052 «Elección»', 'El corredor la lee')],
+  ['D4: `deploy.sh` lo recibe como tercer argumento y lo compara antes del `pull`', has(D4, /tercer argumento[^.]*antes del `pull`/, 'config --images object-store', 'imagetools inspect', 'Si difieren, sale ≠0')],
+  ['4.4: tercer argumento, comparado con el digest resuelto de `object-store`', has(t44, '^sha256:[0-9a-f]{64}$', /config --images object-store[^;]*imagetools inspect[^;]*comparado con el tercer argumento/)],
+  ['4.4: `docker` falso con digest distinto', has(t44, /con digest distinto[^;]*sin `pull`, sin instalación y con `logout`/)],
+  ['4.5: el corredor lee la línea del digest y la pasa a `deploy.sh`', has(t45, '`^Digest del índice: (sha256:[0-9a-f]{64})$`', 'docs/adr/ADR-052.md', 'deploy.sh <tag> <plazo> <digest>')],
+  ['1.1: línea `Digest del índice:` de ADR-052', has(t11, '«Elección» de `docs/adr/ADR-052.md`', '`^Digest del índice: (sha256:[0-9a-f]{64})$`')],
+  ['proposal: digest del almacén en el orden del despliegue', inOrder(prop, /comprobar plataformas/, /digest del almacén/, /`pull`/, /`up`/, PROV, /verify/)],
+  ['2.2: clase `artifact` con el texto de 35a', has(t22, 'clase `artifact`', 'que dejó 35a', 'leído de `infra/ci/report-cd-outcome.sh`')],
+  ['spec ci-pipeline: almacén aprovisionado y comprobado tras arrancar', has(norm(spec), /y arrancar con la configuración instalada, dejando el almacén de objetos aprovisionado y comprobado/)],
+  ['scope verify-reusable-workflow: `deploy-prod` con `object-store.js provision`', has(vrw, /`deploy-prod` hereda de `object-store`/, PROV)],
+  ['scope verify-reusable-workflow: `check-image-platforms.sh`', has(vrw, 'infra/deploy/check-image-platforms.sh')],
+  ['scope verify-reusable-workflow: `WAIT_TIMEOUT`', has(vrw, 'WAIT_TIMEOUT')],
+];
+const bad = checks.filter(([, ok]) => !ok);
+console.log(`traslados (${rev ? 'git show ' + rev : 'árbol de trabajo'}): ${checks.length - bad.length}/${checks.length}`);
+for (const [n, ok] of checks) console.log(`${ok ? 'ok   ' : 'FALTA'} ${n}`);
+process.exit(bad.length ? 1 : 0);
+```
+
+En el árbol de trabajo, verde:
+
+```text
+$ node -e "$(cat traslados-check.js)"
+traslados (árbol de trabajo): 24/24
+ok    D4: `up` → `object-store.js provision` → `verify`
+ok    4.4: `up` → `object-store.js provision` → `object-store.js verify`
+ok    4.4: `docker` falso que contesta a `imagetools inspect`
+ok    4.4: caso de plataforma ausente
+ok    D5: aprovisionar es un `run` aparte
+ok    D5: 35a no mide `service_completed_successfully`
+ok    5.3: `docker buildx version`
+ok    1.1: `check-image-platforms.sh`
+ok    1.1: `object-store.js`
+ok    4.1: `infra/deploy/check-image-platforms.sh`
+ok    9.10: «se guarda cifrado» y «Mi CV»
+ok    D3: digest como tercer argumento de `deploy.sh`
+ok    D4: corredor lee `Digest del índice:` de ADR-052 «Elección»
+ok    D4: `deploy.sh` lo recibe como tercer argumento y lo compara antes del `pull`
+ok    4.4: tercer argumento, comparado con el digest resuelto de `object-store`
+ok    4.4: `docker` falso con digest distinto
+ok    4.5: el corredor lee la línea del digest y la pasa a `deploy.sh`
+ok    1.1: línea `Digest del índice:` de ADR-052
+ok    proposal: digest del almacén en el orden del despliegue
+ok    2.2: clase `artifact` con el texto de 35a
+ok    spec ci-pipeline: almacén aprovisionado y comprobado tras arrancar
+ok    scope verify-reusable-workflow: `deploy-prod` con `object-store.js provision`
+ok    scope verify-reusable-workflow: `check-image-platforms.sh`
+ok    scope verify-reusable-workflow: `WAIT_TIMEOUT`
+exit=0
+```
+
+Contra `2409bbb`, cae y nombra los 24. Ninguno existía en ese commit, y coincide con `git diff 2409bbb HEAD` de esas
+cinco rutas: todo lo que se comprueba entró después de él.
+
+```text
+$ REV=2409bbb node -e "$(cat traslados-check.js)"
+traslados (git show 2409bbb): 0/24
+FALTA D4: `up` → `object-store.js provision` → `verify`
+FALTA 4.4: `up` → `object-store.js provision` → `object-store.js verify`
+FALTA 4.4: `docker` falso que contesta a `imagetools inspect`
+FALTA 4.4: caso de plataforma ausente
+FALTA D5: aprovisionar es un `run` aparte
+FALTA D5: 35a no mide `service_completed_successfully`
+FALTA 5.3: `docker buildx version`
+FALTA 1.1: `check-image-platforms.sh`
+FALTA 1.1: `object-store.js`
+FALTA 4.1: `infra/deploy/check-image-platforms.sh`
+FALTA 9.10: «se guarda cifrado» y «Mi CV»
+FALTA D3: digest como tercer argumento de `deploy.sh`
+FALTA D4: corredor lee `Digest del índice:` de ADR-052 «Elección»
+FALTA D4: `deploy.sh` lo recibe como tercer argumento y lo compara antes del `pull`
+FALTA 4.4: tercer argumento, comparado con el digest resuelto de `object-store`
+FALTA 4.4: `docker` falso con digest distinto
+FALTA 4.5: el corredor lee la línea del digest y la pasa a `deploy.sh`
+FALTA 1.1: línea `Digest del índice:` de ADR-052
+FALTA proposal: digest del almacén en el orden del despliegue
+FALTA 2.2: clase `artifact` con el texto de 35a
+FALTA spec ci-pipeline: almacén aprovisionado y comprobado tras arrancar
+FALTA scope verify-reusable-workflow: `deploy-prod` con `object-store.js provision`
+FALTA scope verify-reusable-workflow: `check-image-platforms.sh`
+FALTA scope verify-reusable-workflow: `WAIT_TIMEOUT`
+exit=1
+```
+
+## Plataformas en el registro: medición (tarea 2.14)
+
+Se midió antes de escribir el script de la 2.15 (design D9), el 2026-09-26 entre 21:45Z y 21:49Z, con
+`docker buildx` v0.37.0 y Docker Compose v5.5.1 (línea base). Todas las órdenes corrieron con un `DOCKER_CONFIG`
+aislado cuyo `config.json` es `{}` y con `DOCKER_HOST=npipe:////./pipe/dockerDesktopLinuxEngine`, como en la 1.4. El
+almacén de credenciales de Docker Desktop no tiene ninguna entrada de `ghcr.io`, solo las de Docker Hub
+(`docker-credential-desktop list`). Así que ese `DOCKER_CONFIG` es exactamente el estado «tras `docker logout ghcr.io`»
+que pide el caso `401`, y no hizo falta ningún `docker logout`. Cada orden se volcó a fichero (stdout, stderr y código
+de salida) y se leyó con `node`. La imagen privada del caso `401` es `ghcr.io/manuxd270516/linkvault-api:staging`:
+`gh api user/packages/container/linkvault-api` da `visibility: private`, y la etiqueta `staging` existe en sus
+versiones.
+
+Plantillas probadas:
+
+```text
+RANGO       = {{range .Manifest.Manifests}}{{.Platform.OS}}/{{.Platform.Architecture}}{{"\n"}}{{end}}
+PLATAFORMAS = {{if or (eq .Manifest.MediaType "application/vnd.oci.image.index.v1+json") (eq .Manifest.MediaType "application/vnd.docker.distribution.manifest.list.v2+json")}}{{range .Manifest.Manifests}}{{with .Platform}}{{.OS}}/{{.Architecture}}{{"\n"}}{{end}}{{end}}{{else}}{{.Image.OS}}/{{.Image.Architecture}}{{"\n"}}{{end}}
+```
+
+### Plataformas: índice, manifiesto único y atestaciones
+
+`RANGO` sobre un índice (`mongo:7.0.43`), sobre el manifiesto único del espejo (1.3) y sobre una imagen con entradas
+de atestación (`rustfs/rustfs:1.0.0`):
+
+```text
+$ docker buildx imagetools inspect mongo:7.0.43 --format "$RANGO"
+linux/amd64
+unknown/unknown
+linux/arm64
+unknown/unknown
+windows/amd64
+windows/amd64
+exit=0
+$ docker buildx imagetools inspect ghcr.io/manuxd270516/linkvault-minio:RELEASE.2025-09-07T16-13-09Z --format "$RANGO"
+ERROR: template: :1:17: executing "" at <.Manifest.Manifests>: can't evaluate field Manifests in type interface {}
+exit=1
+$ docker buildx imagetools inspect rustfs/rustfs:1.0.0 --format "$RANGO"
+linux/amd64
+linux/arm64
+unknown/unknown
+unknown/unknown
+exit=0
+```
+
+Con un manifiesto único, `.Manifest` no tiene `Manifests` y la plantilla **falla con exit 1**. El error no se evita
+metiendo el `range` dentro de un `{{if .Manifest.Manifests}}`: evaluar la condición ya falla (medido, `:1:14`, el
+mismo error). `PLATAFORMAS` decide por `.Manifest.MediaType`, que existe en los dos casos, y solo entra en el `range`
+si es un índice OCI o una lista de Docker. Si no, lee la configuración de la imagen. `imagetools` **sí** distingue
+índice de manifiesto único, así que no hace falta la alternativa `docker manifest inspect --verbose` de D9. Se probó
+sobre las cinco formas: índice OCI con atestaciones y entradas `windows` (`mongo`), manifiesto único (espejo), índice
+con atestaciones (`rustfs`), lista de manifiestos de Docker (`garage`) e índice sin `arm64` (`mysql:5.7`, de la 1.3):
+
+```text
+$ docker buildx imagetools inspect mongo:7.0.43 --format "$PLATAFORMAS"
+linux/amd64
+unknown/unknown
+linux/arm64
+unknown/unknown
+windows/amd64
+windows/amd64
+exit=0
+$ docker buildx imagetools inspect ghcr.io/manuxd270516/linkvault-minio:RELEASE.2025-09-07T16-13-09Z --format "$PLATAFORMAS"
+linux/amd64
+exit=0
+$ docker buildx imagetools inspect rustfs/rustfs:1.0.0 --format "$PLATAFORMAS"
+linux/amd64
+linux/arm64
+unknown/unknown
+unknown/unknown
+exit=0
+$ docker buildx imagetools inspect dxflrs/garage:v2.4.1 --format "$PLATAFORMAS"
+linux/arm64
+linux/amd64
+linux/386
+linux/arm
+exit=0
+$ docker buildx imagetools inspect mysql:5.7 --format "$PLATAFORMAS"
+linux/amd64
+unknown/unknown
+exit=0
+```
+
+- Las entradas de atestación salen como `unknown/unknown` y se ignoran. Las `windows/amd64` de `mongo` no casan con
+  ninguna `linux/…` pedida.
+- `{{with .Platform}}` salta una entrada de índice sin plataforma en vez de fallar. Ninguna de las cinco la tiene.
+- Una variante (`linux/arm/v7` en SeaweedFS, 1.4) sale como `linux/arm`: la plantilla solo da `os/arch`.
+
+### Digest del índice
+
+La plantilla `{{.Manifest.Digest}}`, contrastada con la línea `Digest:` de la salida sin plantilla (se pegan sus
+tres primeras líneas):
+
+```text
+$ docker buildx imagetools inspect mongo:7.0.43
+Name:      docker.io/library/mongo:7.0.43
+MediaType: application/vnd.oci.image.index.v1+json
+Digest:    sha256:9854f7139445d766a9523571d6f047530c45547460ffcf8259eb2bf4264632ca
+(…)
+exit=0
+```
+
+```text
+$ docker buildx imagetools inspect mongo:7.0.43 --format '{{.Manifest.Digest}}'
+sha256:9854f7139445d766a9523571d6f047530c45547460ffcf8259eb2bf4264632ca
+exit=0
+```
+
+```text
+$ docker buildx imagetools inspect ghcr.io/manuxd270516/linkvault-minio:RELEASE.2025-09-07T16-13-09Z
+Name:      ghcr.io/manuxd270516/linkvault-minio:RELEASE.2025-09-07T16-13-09Z
+MediaType: application/vnd.docker.distribution.manifest.v2+json
+Digest:    sha256:a1a8bd4ac40ad7881a245bab97323e18f971e4d4cba2c2007ec1bedd21cbaba2
+(…)
+exit=0
+```
+
+```text
+$ docker buildx imagetools inspect ghcr.io/manuxd270516/linkvault-minio:RELEASE.2025-09-07T16-13-09Z --format '{{.Manifest.Digest}}'
+sha256:a1a8bd4ac40ad7881a245bab97323e18f971e4d4cba2c2007ec1bedd21cbaba2
+exit=0
+```
+
+```text
+$ docker buildx imagetools inspect dxflrs/garage:v2.4.1
+Name:      docker.io/dxflrs/garage:v2.4.1
+MediaType: application/vnd.docker.distribution.manifest.list.v2+json
+Digest:    sha256:9c96caa2612d3411acc5b0e6701fb238dbfba33e533a6d7d3d811a4b12d0d020
+(…)
+exit=0
+```
+
+```text
+$ docker buildx imagetools inspect dxflrs/garage:v2.4.1 --format '{{.Manifest.Digest}}'
+sha256:9c96caa2612d3411acc5b0e6701fb238dbfba33e533a6d7d3d811a4b12d0d020
+exit=0
+```
+
+Da el digest del índice en un índice OCI (`mongo`) y en una lista de Docker (`garage`, el mismo de la 1.4). En un
+manifiesto único (el espejo) da el del manifiesto. Imprime **71 bytes sin salto de línea**
+(`sha256:` + 64 hexadecimales), medidos con `node` sobre el fichero volcado.
+
+### `config --images` de un servicio
+
+```text
+$ docker compose -f docker-compose.prod.yml --env-file infra/ci/verify.env config --images
+mongo:7.0.43
+redis:7.4.11
+ghcr.io/manuxd270516/linkvault-minio:RELEASE.2025-09-07T16-13-09Z
+ghcr.io/manuxd270516/linkvault-api:latest
+ghcr.io/manuxd270516/linkvault-worker:latest
+ghcr.io/manuxd270516/linkvault-web:latest
+traefik:v3.3.5
+exit=0
+$ docker compose -f docker-compose.prod.yml --env-file infra/ci/verify.env config --images minio
+ghcr.io/manuxd270516/linkvault-minio:RELEASE.2025-09-07T16-13-09Z
+exit=0
+$ docker compose -f docker-compose.prod.yml --env-file infra/ci/verify.env config --images object-store
+no such service: object-store
+exit=1
+$ docker compose -f <scratchpad>/prod-renamed.yml --project-directory . --env-file infra/ci/verify.env config --images object-store
+ghcr.io/manuxd270516/linkvault-minio:RELEASE.2025-09-07T16-13-09Z
+exit=0
+$ docker compose -f <scratchpad>/prod-renamed.yml --project-directory . --env-file infra/ci/verify.env config --images object-store api
+mongo:7.0.43
+redis:7.4.11
+ghcr.io/manuxd270516/linkvault-minio:RELEASE.2025-09-07T16-13-09Z
+ghcr.io/manuxd270516/linkvault-api:latest
+exit=0
+```
+
+- Hoy el servicio del almacén se llama `minio`: `config --images object-store` sale con 1 (`no such service`). La
+  forma se midió sobre una copia del compose de producción, en el scratchpad, que solo renombra la clave del servicio
+  `minio` y sus dos `depends_on` a `object-store` (lo que hará la 7.3), con `--project-directory .`. Imprime **una
+  línea**, la imagen de ese servicio.
+- **Con nombres de servicio, Compose añade las imágenes de sus `depends_on`:** `config --images object-store api` da
+  también `mongo` y `redis`, de los que depende `api`. `config --images object-store` da una sola línea **mientras
+  `object-store` no tenga `depends_on`**, como en el compose de hoy. Quien la lea (la 7.1 y el `deploy.sh` de 35b)
+  tiene esa condición.
+- El orden de las imágenes de `config --images` sin argumentos no es estable entre corridas: en la 2.15 salió
+  `redis`, `traefik`, `mongo`.
+
+### Errores de `imagetools inspect`
+
+Con la plantilla `PLATAFORMAS` (el stderr es lo que clasifica el script):
+
+```text
+$ docker buildx imagetools inspect mongo:0.0.0-noexiste --format "$PLATAFORMAS"
+ERROR: docker.io/library/mongo:0.0.0-noexiste: not found
+exit=1
+$ docker buildx imagetools inspect ghcr.io/manuxd270516/noexiste:1 --format "$PLATAFORMAS"
+ERROR: failed to authorize: failed to fetch anonymous token: unexpected status from GET request to https://ghcr.io/token?scope=repository%3Amanuxd270516%2Fnoexiste%3Apull&service=ghcr.io: 403 Forbidden
+exit=1
+$ docker buildx imagetools inspect registry.invalid/x:1 --format "$PLATAFORMAS"
+ERROR: failed to do request: Head "https://registry.invalid/v2/x/manifests/1": dial tcp: lookup registry.invalid: no such host
+exit=1
+$ docker buildx imagetools inspect ghcr.io/manuxd270516/linkvault-api:staging --format "$PLATAFORMAS"
+ERROR: failed to authorize: failed to fetch anonymous token: unexpected status from GET request to https://ghcr.io/token?scope=repository%3Amanuxd270516%2Flinkvault-api%3Apull&service=ghcr.io: 401 Unauthorized
+exit=1
+$ docker buildx imagetools inspect ghcr.io/manuxd270516/linkvault-minio:noexiste --format "$PLATAFORMAS"
+ERROR: ghcr.io/manuxd270516/linkvault-minio:noexiste: not found
+exit=1
+$ docker buildx imagetools inspect docker.io/manuxd270516/noexiste-lv:1 --format "$PLATAFORMAS"
+ERROR: pull access denied, repository does not exist or may require authorization: server message: insufficient_scope: authorization failed
+exit=1
+```
+
+Sin plantilla, el mismo stderr, así que no depende de ella:
+
+```text
+$ docker buildx imagetools inspect mongo:0.0.0-noexiste
+ERROR: docker.io/library/mongo:0.0.0-noexiste: not found
+exit=1
+$ docker buildx imagetools inspect ghcr.io/manuxd270516/noexiste:1
+ERROR: failed to authorize: failed to fetch anonymous token: unexpected status from GET request to https://ghcr.io/token?scope=repository%3Amanuxd270516%2Fnoexiste%3Apull&service=ghcr.io: 403 Forbidden
+exit=1
+$ docker buildx imagetools inspect registry.invalid/x:1
+ERROR: failed to do request: Head "https://registry.invalid/v2/x/manifests/1": dial tcp: lookup registry.invalid: no such host
+exit=1
+$ docker buildx imagetools inspect ghcr.io/manuxd270516/linkvault-api:staging
+ERROR: failed to authorize: failed to fetch anonymous token: unexpected status from GET request to https://ghcr.io/token?scope=repository%3Amanuxd270516%2Flinkvault-api%3Apull&service=ghcr.io: 401 Unauthorized
+exit=1
+```
+
+Los dos últimos casos con plantilla son extra, para no clasificar por un solo registro: un tag inexistente en un
+repositorio **público** de GHCR y un repositorio inexistente en Docker Hub.
+
+| Caso | stderr medido (última línea) | Código de `imagetools` | Salida del script |
+|---|---|---|---|
+| Tag inexistente, Docker Hub (`mongo:0.0.0-noexiste`) | `ERROR: docker.io/library/mongo:0.0.0-noexiste: not found` | 1 | **3** |
+| Tag inexistente, GHCR público (`linkvault-minio:noexiste`) | `ERROR: ghcr.io/manuxd270516/linkvault-minio:noexiste: not found` | 1 | **3** |
+| Repositorio inexistente, GHCR sin sesión (`ghcr.io/manuxd270516/noexiste:1`) | `… failed to fetch anonymous token: … 403 Forbidden` | 1 | **4** |
+| Repositorio inexistente, Docker Hub (`manuxd270516/noexiste-lv:1`) | `… pull access denied, repository does not exist or may require authorization: … insufficient_scope …` | 1 | **4** |
+| Nombre que no resuelve (`registry.invalid/x:1`) | `… dial tcp: lookup registry.invalid: no such host` | 1 | **4** |
+| `401`: imagen privada de GHCR sin sesión (`linkvault-api:staging`) | `… failed to fetch anonymous token: … 401 Unauthorized` | 1 | **4** |
+| Plataforma ausente del índice o manifiesto único de otra | (sale 0; la plataforma falta en la lista) | 0 | **3** |
+| Cualquier otro error, incluido un `429` (no medido) | — | ≠0 | **4** |
+
+- **El código de salida no discrimina**: `imagetools inspect` sale con 1 en todos los errores. Clasifica el stderr.
+- **3** solo cuando la última línea es `ERROR: <ref>: not found`. Es como `buildx` presenta el «manifest unknown»/`404`
+  de D9, y es lo único medido que dice que la referencia no existe.
+- **Un repositorio inexistente no se distingue de uno privado.** Docker Hub lo dice en el propio mensaje («does not
+  exist or may require authorization»). GHCR, sin sesión, contesta al token con un `403` para el inexistente y un `401`
+  para el privado: los dos son un rechazo de la autorización, y ninguno afirma que la referencia no exista. Por D9
+  («no se inventa una distinción que el registro no da») caen en **4**, junto a todo lo no clasificado.
+- **No medido:** un repositorio inexistente de GHCR **con** sesión, que es como lo llamará el `deploy.sh` de 35b tras
+  el login. No cambia la regla: solo `not found` es 3 y todo lo demás es 4.
+
+**Plantillas elegidas** (las usan el script de la 2.15, la 7.1 y el `deploy.sh` de 35b):
+
+```text
+plataformas: PLATAFORMAS (arriba), leída línea a línea, ignorando unknown/unknown y comparando os/arch exacto
+digest del índice: {{.Manifest.Digest}}
+imagen del almacén: docker compose -f <compose> --env-file <env> config --images object-store
+```
+
+## Script de plataformas (tarea 2.15)
+
+`infra/deploy/check-image-platforms.sh`, escrito con la clasificación de la 2.14 (tabla de arriba). Las seis
+verificaciones de la tarea, el 2026-09-26 hacia las 21:50Z, con el mismo `DOCKER_CONFIG` aislado y un daemon `linux/amd64`. Las imágenes
+de terceros del compose de producción salen de su `config --images` sin las de `ghcr.io/manuxd270516/`:
+
+```text
+$ bash -n infra/deploy/check-image-platforms.sh
+exit=0
+$ bash infra/deploy/check-image-platforms.sh redis:7.4.11 traefik:v3.3.5 mongo:7.0.43
+ok: redis:7.4.11 (linux/amd64)
+ok: traefik:v3.3.5 (linux/amd64)
+ok: mongo:7.0.43 (linux/amd64)
+exit=0
+$ bash infra/deploy/check-image-platforms.sh --platform linux/arm64 ghcr.io/manuxd270516/linkvault-minio:RELEASE.2025-09-07T16-13-09Z
+no existe para linux/arm64: ghcr.io/manuxd270516/linkvault-minio:RELEASE.2025-09-07T16-13-09Z (disponibles: linux/amd64)
+exit=3
+$ bash infra/deploy/check-image-platforms.sh --platform linux/arm64 mysql:5.7
+no existe para linux/arm64: mysql:5.7 (disponibles: linux/amd64)
+exit=3
+$ bash infra/deploy/check-image-platforms.sh mongo:0.0.0-noexiste
+no existe: mongo:0.0.0-noexiste (pedida linux/amd64): el registro no tiene esa etiqueta (ERROR: docker.io/library/mongo:0.0.0-noexiste: not found)
+exit=3
+$ bash infra/deploy/check-image-platforms.sh registry.invalid/x:1
+no se pudo comprobar: registry.invalid/x:1: ERROR: failed to do request: Head "https://registry.invalid/v2/x/manifests/1": dial tcp: lookup registry.invalid: no such host
+exit=4
+$ bash infra/deploy/check-image-platforms.sh
+check-image-platforms: faltan las imágenes
+uso: infra/deploy/check-image-platforms.sh [--platform <os>/<arch>] (<imagen>... | --compose <fichero> --env-file <fichero>)
+exit=2
+```
+
+Extra: variante en `--platform` (uso incorrecto), la imagen privada sin sesión (`401` → 4), una mezcla de 4 y 3 (sale
+3: la ausencia demostrada es del artefacto y reintentar no la arregla) y las mismas imágenes de terceros en
+`linux/arm64`:
+
+```text
+$ bash infra/deploy/check-image-platforms.sh --platform linux/arm/v7 mongo:7.0.43
+check-image-platforms: plataforma no válida (solo <os>/<arch>, sin variante): linux/arm/v7
+uso: infra/deploy/check-image-platforms.sh [--platform <os>/<arch>] (<imagen>... | --compose <fichero> --env-file <fichero>)
+exit=2
+$ bash infra/deploy/check-image-platforms.sh ghcr.io/manuxd270516/linkvault-api:staging
+no se pudo comprobar: ghcr.io/manuxd270516/linkvault-api:staging: ERROR: failed to authorize: failed to fetch anonymous token: unexpected status from GET request to https://ghcr.io/token?scope=repository%3Amanuxd270516%2Flinkvault-api%3Apull&service=ghcr.io: 401 Unauthorized
+exit=4
+$ bash infra/deploy/check-image-platforms.sh --platform linux/arm64 registry.invalid/x:1 ghcr.io/manuxd270516/linkvault-minio:RELEASE.2025-09-07T16-13-09Z
+no se pudo comprobar: registry.invalid/x:1: ERROR: failed to do request: Head "https://registry.invalid/v2/x/manifests/1": dial tcp: lookup registry.invalid: no such host
+no existe para linux/arm64: ghcr.io/manuxd270516/linkvault-minio:RELEASE.2025-09-07T16-13-09Z (disponibles: linux/amd64)
+exit=3
+$ bash infra/deploy/check-image-platforms.sh --platform linux/arm64 redis:7.4.11 traefik:v3.3.5 mongo:7.0.43
+ok: redis:7.4.11 (linux/arm64)
+ok: traefik:v3.3.5 (linux/arm64)
+ok: mongo:7.0.43 (linux/arm64)
+exit=0
+```
+
+Falsación, sobre **copias** del script en el scratchpad (el del repositorio no se tocó):
+
+```text
+(a) comparación de plataforma rota ([ "$p" = "$platform" ] && found=1  →  found=1)
+rota-a | --platform linux/arm64 ghcr.io/manuxd270516/linkvault-minio:RELEASE.2025-09-07T16-13-09Z | exit=0 (sin romper: 3)
+rota-a | --platform linux/arm64 mysql:5.7 | exit=0 (sin romper: 3)
+rota-a | mongo:0.0.0-noexiste | exit=3 (sin romper: 3)
+(b) clasificación de «not found» rota (la condición pasa a `false`)
+rota-b | --platform linux/arm64 ghcr.io/manuxd270516/linkvault-minio:RELEASE.2025-09-07T16-13-09Z | exit=3 (sin romper: 3)
+rota-b | --platform linux/arm64 mysql:5.7 | exit=3 (sin romper: 3)
+rota-b | mongo:0.0.0-noexiste | exit=4 (sin romper: 3)
+```
+
+El modo `--compose` contra el compose ya sustituido y la imagen publicada en `arm64` se verifica en la 10.1.
