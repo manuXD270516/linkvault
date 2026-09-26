@@ -230,7 +230,12 @@ línea `Digest del índice: sha256:<64 hexadecimales>`. El corredor la lee del c
 (falla si no la encuentra exactamente una vez) y la valida con `^sha256:[0-9a-f]{64}$`; `deploy.sh` la recibe como
 tercer argumento, la valida otra vez y, antes del `pull`, resuelve la imagen del servicio `object-store` con `docker
 compose -f .incoming-<sha12>/docker-compose.prod.yml --env-file .env.staging config --images object-store` (forma
-medida en la tarea 2.14 de 35a) y su digest del índice con `docker buildx imagetools inspect` y la plantilla que midió
+medida en la tarea 2.14 de 35a), que tiene que dar **exactamente una línea**: con un servicio nombrado, Compose añade
+a la salida las imágenes de sus `depends_on` (medido en la misma 2.14: `config --images object-store api` da también
+`mongo` y `redis`), así que una segunda línea significa que `object-store` ganó un `depends_on` y la lectura ya no
+identifica la imagen; `deploy.sh` sale ≠0 nombrando las líneas en vez de elegir una (y nunca lee la lista sin
+argumentos, cuyo orden no es estable). 35a deja `object-store` **sin `depends_on`** en los dos composes y lo comprueba
+(sus tareas 7.1 y 7.3). Y su digest del índice con `docker buildx imagetools inspect` y la plantilla que midió
 esa misma tarea. Si difieren, sale ≠0 nombrando la imagen y los dos digests, sin `pull` ni instalación y con `logout`:
 una etiqueta movida en el registro, o un `OBJECT_STORE_IMAGE` de `.env.staging` que apunte a otra imagen, desplegaría
 algo que la matriz no midió (`platform/object-store`: cambiar la imagen del almacén repite la matriz). ADR-052 no viaja

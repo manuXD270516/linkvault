@@ -114,6 +114,14 @@
         "command": "node apps/api/src/seed-demo.cjs",
         "cwd": "."
       }
+    },
+    "object-store": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "node apps/api/src/object-store.cjs",
+        "cwd": "."
+      }
     }
   }
 }

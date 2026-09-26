@@ -837,3 +837,267 @@ rota-b | mongo:0.0.0-noexiste | exit=4 (sin romper: 3)
 ```
 
 El modo `--compose` contra el compose ya sustituido y la imagen publicada en `arm64` se verifica en la 10.1.
+
+## Control MinIO (tareas 2.6-2.11)
+
+Control del arnés: `docs/object-store-matrix/minio.compose.yml` (servicio `object-store`, imagen del espejo
+`ghcr.io/manuxd270516/linkvault-minio:RELEASE.2025-09-07T16-13-09Z`, `MINIO_KMS_SECRET_KEY` desde
+`OBJECT_STORE_SSE_KEY`, un solo volumen con nombre `object-store-data` sin `name:`, puerto S3 por `OBJECT_STORE_PORT`).
+Todas las corridas de esta sección, el 2026-09-26, con el proyecto `os26-minio` en el puerto `19626` del host (el
+`9000` es el MinIO de desarrollo, que no se tocó), credenciales y clave generadas en el scratchpad para la ocasión
+(`OBJECT_STORE_SSE_KEY=lv-sse:<base64 de 32 bytes aleatorios>`), exportadas junto con
+`S3_ENDPOINT=http://localhost:19626`, `S3_REGION=us-east-1`, `S3_BUCKET=cvs` y `S3_SNAPSHOTS_BUCKET=snapshots`, que
+tienen precedencia sobre el `.env` (Nx no sobrescribe el entorno del proceso). Las salidas de Nx se recortan a lo que
+imprime la orden.
+
+### 2.6: target, punto de entrada y control
+
+```text
+$ pnpm nx run api:build            # redirigido a fichero
+Successfully ran target build for project api
+exit=0
+$ node -e "…existsSync('dist/apps/api/object-store.js')…"
+dist/apps/api/object-store.js existe, 278006 bytes
+```
+
+(La primera corrida de `api:build` cayó con `A required privilege is not held by the client. (os error 1314)` al
+cachear: es la trampa conocida de `dist/apps/api/node_modules` —enlaces de un `api:prune` anterior—, no del cambio.
+Se apartó fuera de `dist/` durante el apply y se restauró al terminar.)
+
+```text
+$ docker build -f docker/api.Dockerfile -t lv-api:os .
+#21 naming to docker.io/library/lv-api:os done
+exit=0
+$ docker run --rm lv-api:os node object-store.js verify
+[object-store] Invalid configuration, check these environment variables: S3_ENDPOINT (missing), S3_REGION (missing), S3_ACCESS_KEY (missing), S3_SECRET_KEY (missing), S3_BUCKET (missing), S3_SNAPSHOTS_BUCKET (missing)
+exit=2
+```
+
+```text
+$ docker compose -p os26-minio -f docs/object-store-matrix/minio.compose.yml up -d --wait
+ Volume os26-minio_object-store-data Created
+ Network os26-minio_default Created
+ Container os26-minio-object-store-1 Started
+ Container os26-minio-object-store-1 Healthy
+exit=0
+$ docker compose -p os26-minio -f docs/object-store-matrix/minio.compose.yml config --format json   # servicio object-store
+{"volumes":[{"type":"volume","source":"object-store-data","target":"/data","volume":{}}],"ports":[{"mode":"ingress","target":9000,"published":"19626","protocol":"tcp"}],"env":["MINIO_KMS_SECRET_KEY","MINIO_ROOT_PASSWORD","MINIO_ROOT_USER"]}
+volumes top: {"object-store-data":{"name":"os26-minio_object-store-data"}}
+```
+
+```text
+$ pnpm nx run api:object-store -- provision        # primera
+ok    cvs: bucket created
+ok    cvs: no lifecycle configuration (removed if there was one)
+ok    cvs: default encryption set (AES256)
+ok    cvs: no bucket policy
+ok    snapshots: bucket created
+ok    snapshots: no lifecycle configuration (removed if there was one)
+ok    snapshots: no bucket policy
+provision: ok
+exit=0
+$ pnpm nx run api:object-store -- provision        # segunda
+ok    cvs: bucket already exists
+ok    cvs: no lifecycle configuration (removed if there was one)
+ok    cvs: default encryption set (AES256)
+ok    cvs: no bucket policy
+ok    snapshots: bucket already exists
+ok    snapshots: no lifecycle configuration (removed if there was one)
+ok    snapshots: no bucket policy
+provision: ok
+exit=0
+$ pnpm nx run api:object-store -- verify
+ok    cvs: bucket exists
+ok    snapshots: bucket exists
+ok    cvs: no lifecycle rule
+ok    cvs: default encryption (AES256)
+ok    snapshots: no lifecycle rule
+ok    snapshots: no snapshot older than 31 days (0 listed)
+ok    cvs: anonymous GET of a missing object rejected (HTTP 403 AccessDenied)
+ok    cvs: anonymous listing rejected (HTTP 403 AccessDenied)
+ok    cvs: anonymous PUT rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous GET of a missing object rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous listing rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous PUT rejected (HTTP 403 AccessDenied)
+verify: ok
+exit=0
+```
+
+La primera `provision` crea los dos buckets: habló con el control y no con el MinIO de desarrollo, que ya los tiene.
+
+**Medido de paso, para la 2.9:** `docker compose config --format json` pone `name: <proyecto>_<clave>` en todo volumen
+con nombre aunque el fichero no declare `name:`, **y también con `--no-interpolate`**
+(`{"object-store-data":{"name":"os26-minio_object-store-data"}}` en las dos). `c5.sh` no puede tomar «tiene `name`» por
+«`name:` explícito».
+
+### 2.7: suite de contrato de `api`
+
+```text
+$ pnpm nx run api:test -- s3.s3-contract --reporter=verbose          # sin S3_CONTRACT
+ ↓ S3 contract of api (real store) > runs with the checksum policy it was asked for
+ ↓ S3 contract of api (real store) > uploads a CV with the real adapter and the same bytes come back
+ ↓ S3 contract of api (real store) > deletes a prefix of 1001 keys in two DeleteObjects batches and leaves it empty
+ ↓ S3 contract of api (real store) > C5 mode: writes A1/A2 to the CV bucket without SSE headers and B1/B2 to the snapshots bucket, and dumps them
+ Test Files  1 skipped (1)
+      Tests  4 skipped (4)
+exit=0
+
+$ S3_CONTRACT=1 pnpm nx run api:test -- s3.s3-contract --reporter=verbose      # política por defecto (sin S3_CONTRACT_CHECKSUM)
+ ✓ S3 contract of api (real store) > runs with the checksum policy it was asked for 1ms
+ ✓ S3 contract of api (real store) > uploads a CV with the real adapter and the same bytes come back 46ms
+ ✓ S3 contract of api (real store) > deletes a prefix of 1001 keys in two DeleteObjects batches and leaves it empty 891ms
+ ↓ S3 contract of api (real store) > C5 mode: writes A1/A2 to the CV bucket without SSE headers and B1/B2 to the snapshots bucket, and dumps them
+ Test Files  1 passed (1)
+      Tests  3 passed | 1 skipped (4)
+exit=0
+
+$ S3_CONTRACT=1 S3_BUCKET=no-existe pnpm nx run api:test -- s3.s3-contract --reporter=verbose
+ ✓ S3 contract of api (real store) > runs with the checksum policy it was asked for 1ms
+ × S3 contract of api (real store) > uploads a CV with the real adapter and the same bytes come back 35ms
+   → The specified bucket does not exist
+ × S3 contract of api (real store) > deletes a prefix of 1001 keys in two DeleteObjects batches and leaves it empty 27ms
+   → The specified bucket does not exist
+ ↓ S3 contract of api (real store) > C5 mode: …
+ Test Files  1 failed (1)
+      Tests  2 failed | 1 passed | 1 skipped (4)
+exit=1
+
+$ S3_CONTRACT=1 S3_CONTRACT_C5_DIR=<scratchpad>\c5-2p7 pnpm nx run api:test -- s3.s3-contract --reporter=verbose
+ ✓ S3 contract of api (real store) > runs with the checksum policy it was asked for 1ms
+ ✓ S3 contract of api (real store) > uploads a CV with the real adapter and the same bytes come back 44ms
+ ✓ S3 contract of api (real store) > deletes a prefix of 1001 keys in two DeleteObjects batches and leaves it empty 892ms
+ ✓ S3 contract of api (real store) > C5 mode: writes A1/A2 to the CV bucket without SSE headers and B1/B2 to the snapshots bucket, and dumps them 87ms
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
+exit=0
+
+$ node -e "…tamaños esperados y sha256 de A1, A2, B1, B2…"     # en <scratchpad>\c5-2p7
+A1.bin 1048576 ok 4bac0a6cdeef9259
+A2.bin 1024 ok 9ed7d59b4032d0ff
+B1.bin 1048576 ok bc6721d922b49b2d
+B2.bin 1024 ok 92387266662660ad
+cuatro distintos: true
+manifest: endpoint,checksumPolicy,objects
+node -e exit=0
+```
+
+`manifest.json` de esa corrida: `checksumPolicy: when_supported`; A1 y A2 en `cvs` con
+`serverSideEncryptionReported: AES256` (el cifrado por defecto del bucket, sin cabeceras SSE en la petición); B1 y B2 en
+`snapshots` con `none reported`.
+
+### 2.8: suite de contrato de `worker`
+
+```text
+$ pnpm nx run worker:test -- s3.s3-contract --reporter=verbose       # sin S3_CONTRACT
+ ↓ S3 contract of worker (real store) > reads the bytes that were written
+ ↓ S3 contract of worker (real store) > deletes, and deleting again is still a success
+ ↓ S3 contract of worker (real store) > tells a missing object (null) apart from a store that is down (error)
+ ↓ S3 contract of worker (real store) > stores a gzipped snapshot in the snapshots bucket
+ Test Files  1 skipped (1)
+      Tests  4 skipped (4)
+exit=0
+
+$ S3_CONTRACT=1 pnpm nx run worker:test -- s3.s3-contract --reporter=verbose
+ ✓ S3 contract of worker (real store) > reads the bytes that were written 39ms
+ ✓ S3 contract of worker (real store) > deletes, and deleting again is still a success 17ms
+ ✓ S3 contract of worker (real store) > tells a missing object (null) apart from a store that is down (error) 165ms
+ ✓ S3 contract of worker (real store) > stores a gzipped snapshot in the snapshots bucket 16ms
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
+exit=0
+
+$ S3_CONTRACT=1 S3_BUCKET=no-existe pnpm nx run worker:test -- s3.s3-contract --reporter=verbose
+ × S3 contract of worker (real store) > reads the bytes that were written 44ms
+   → The specified bucket does not exist
+ × S3 contract of worker (real store) > deletes, and deleting again is still a success 4ms
+   → The specified bucket does not exist
+ ✓ S3 contract of worker (real store) > tells a missing object (null) apart from a store that is down (error) 239ms
+ ✓ S3 contract of worker (real store) > stores a gzipped snapshot in the snapshots bucket 19ms
+ Test Files  1 failed (1)
+      Tests  2 failed | 2 passed (4)
+exit=1
+
+$ S3_CONTRACT=1 S3_SNAPSHOTS_BUCKET=no-existe pnpm nx run worker:test -- s3.s3-contract --reporter=verbose
+ ✓ S3 contract of worker (real store) > reads the bytes that were written 37ms
+ ✓ S3 contract of worker (real store) > deletes, and deleting again is still a success 16ms
+ ✓ S3 contract of worker (real store) > tells a missing object (null) apart from a store that is down (error) 237ms
+ WARN [S3SnapshotStore] snapshot not stored for link e92eb1fd561dfbd31c678791: NoSuchBucket
+ × S3 contract of worker (real store) > stores a gzipped snapshot in the snapshots bucket 10ms
+   → expected null to be 'e92eb1fd561dfbd31c678791/1.html.gz' // Object.is equality
+ Test Files  1 failed (1)
+      Tests  1 failed | 3 passed (4)
+exit=1
+
+$ git ls-files -z | node -e "…busca CV_MINIO_LOCAL…"
+CV_MINIO_LOCAL en ficheros versionados: openspec/changes/object-store/design.md, openspec/changes/object-store/tasks.md
+fuera de este change: ninguno
+node -e exit=0
+```
+
+**Hallazgo (registrado en la 7.5 y la 7.5b):** con `S3_BUCKET=no-existe`, el caso «objeto ausente (`null`)» **pasa**:
+el lector del `worker` trata `NoSuchBucket` (y cualquier `404`) como objeto ausente (`meansMissingObject`). Una sonda
+que solo exija `null` pasaría con el bucket de CV sin crear.
+
+### 2.11: falsación del acceso anónimo y `list-buckets.mjs`
+
+```text
+$ node docs/object-store-matrix/list-buckets.mjs
+buckets (2):
+cvs
+snapshots
+exit=0
+
+$ node -e "…PutBucketPolicyCommand (lectura pública, la de 'mc anonymous set download') en S3_BUCKET y GetBucketPolicy…"
+PutBucketPolicy cvs: ok; política leída: {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":["*"]},"Action":["s3:GetBucketLocation","s3:ListBucket"],"Resource":["arn:aws:s3:::cvs"]},{"Effect":"Allow","Principal":{"AWS":["*"]},"Action":["s3:GetObject"],"Resource":["arn:aws:s3:::cvs/*"]}]}
+exit=0
+
+$ pnpm nx run api:object-store -- verify
+ok    cvs: bucket exists
+ok    snapshots: bucket exists
+ok    cvs: no lifecycle rule
+ok    cvs: default encryption (AES256)
+ok    snapshots: no lifecycle rule
+ok    snapshots: no snapshot older than 31 days (2 listed)
+FAIL  cvs: anonymous GET of an existing object: access granted (HTTP 200)
+FAIL  cvs: anonymous listing: access granted (HTTP 200)
+ok    cvs: anonymous PUT rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous GET of an existing object rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous listing rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous PUT rejected (HTTP 403 AccessDenied)
+verify: FAILED (2): cvs: anonymous GET of an existing object: access granted (HTTP 200); cvs: anonymous listing: access granted (HTTP 200)
+exit=1
+
+$ pnpm nx run api:object-store -- provision
+ok    cvs: bucket already exists
+ok    cvs: no lifecycle configuration (removed if there was one)
+ok    cvs: default encryption set (AES256)
+ok    cvs: bucket policy removed
+ok    snapshots: bucket already exists
+ok    snapshots: no lifecycle configuration (removed if there was one)
+ok    snapshots: no bucket policy
+provision: ok
+exit=0
+
+$ pnpm nx run api:object-store -- verify
+ok    cvs: bucket exists
+ok    snapshots: bucket exists
+ok    cvs: no lifecycle rule
+ok    cvs: default encryption (AES256)
+ok    snapshots: no lifecycle rule
+ok    snapshots: no snapshot older than 31 days (2 listed)
+ok    cvs: anonymous GET of an existing object rejected (HTTP 403 AccessDenied)
+ok    cvs: anonymous listing rejected (HTTP 403 AccessDenied)
+ok    cvs: anonymous PUT rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous GET of an existing object rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous listing rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous PUT rejected (HTTP 403 AccessDenied)
+verify: ok
+exit=0
+```
+
+Con los objetos del modo C5 de la 2.7 ya en los buckets, `verify` prueba el `GET` anónimo sobre un objeto **existente**
+(«of an existing object»): con la política pública lo concede con `200` y `verify` lo nombra sin imprimir sus bytes. La
+política la quita `provision` («bucket policy removed») y `verify` vuelve a 0.
+
+Al terminar: `docker compose -p os26-minio -f docs/object-store-matrix/minio.compose.yml down -v` (contenedor, red y
+volumen `os26-minio_object-store-data` borrados). La 2.9 y la 2.10 levantan el control de nuevo, desde un volumen vacío.
