@@ -436,6 +436,12 @@ change **posterior a 35c**, y no retiene el archivado de 35b. La señal para dec
   el enriquecimiento funcionó **desde la IP de Oracle** (algunas fuentes bloquean rangos de nube). Si falla una fuente
   que usa la mayoría, se decide por escrito antes de invitar: se avisa en el aviso ampliado o se pospone la invitación.
 - **Degradación de IA** forzando el agotamiento de cuota: si una persona ajena la entiende.
+- **El camino crítico automatizado, contra staging** (ADR-053 §1.3, añadido por `e2e-suite`): `e2e-remote` en verde en
+  `chromium` y `mobile` **sobre el commit desplegado** (el `sha-<12>` que muestra `docker compose images` en el host o
+  el estado `cd-staging/artifact`), lanzada desde la máquina del autor, sin minutos de CI y gastando dos análisis del
+  cupo de la cuenta de prueba (`e2e-suite` 9.4 y 9.8). Bloquea 10.7. Si el PR-1 de `e2e-suite` no está en `main`, el
+  usuario elige entre esperar o la alternativa manual: los pasos del perfil `remote` de su D11, a mano en el móvil
+  contra staging, anotados paso a paso.
 
 ### D15. Usuarios y medición, escritos antes del primer dato
 
@@ -555,7 +561,8 @@ destino" (o a "a medias", si se retira solo uno) sin tocar código.
 
 Las once preguntas de la primera versión están respondidas (`proposal.md`, «Decisiones del usuario») y los debates de
 las iteraciones 1 a 3 cerraron el resto (ADR-051). **Ninguna pregunta cambia ya las specs.** Quedan **dos decisiones
-del usuario** (pago por uso y Q4), un umbral medido que puede convertirse en una tercera, y las dos ventanas de fusión.
+del usuario** (pago por uso y Q4), un umbral medido que puede convertirse en una tercera, las dos ventanas de fusión y
+la precondición de invitar que añadió `e2e-suite` (ADR-053 §1.3).
 **Sin búsqueda en staging ya no es un bloqueo**: es una decisión de este design (D13), que el usuario aprueba al
 aprobar el design antes de `/opsx:apply`.
 
@@ -566,6 +573,7 @@ aprobar el design antes de `/opsx:apply`.
 | **Umbral del correo** (7.10): bandeja de entrada en al menos 2 de 3 proveedores | la medición; si no se cumple, el usuario | 10.7 | cumplido: nada; no cumplido: dominio propio con su coste, o riesgo aceptado por escrito |
 | **Ventana de fusión de PR-1** | el usuario | la fusión de PR-1 y, tras ella, 6.1 | fusión a mano con el CI en verde |
 | **Ventana de fusión de PR-2** | el usuario, pedida **junto con Q4** | la fusión de PR-2 y, tras ella, 11.6 y 10.7 | fusión a mano con el CI en verde |
+| **Precondición de invitar de `e2e-suite`** (ADR-053 §1.3, D14) | la corrida `e2e-remote` contra staging; si el PR-1 de `e2e-suite` no está en `main`, el usuario | 10.7 | en verde en los dos proyectos sobre el commit desplegado: nada; si falla, no se invita hasta que pase; sin PR-1 en `main`: esperar o la alternativa manual (D14), anotada paso a paso |
 
 **PR-2 depende de Q4 y de 5.10** (pago por uso), porque lleva anotaciones que salen de ellas: la entrevista por
 invitado (9.7) y el número de personas y cuántas van al grupo (10.1) en el RUNBOOK, la decisión de pago por uso en
