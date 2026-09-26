@@ -1,0 +1,84 @@
+# TEMPORAL (tarea 1.2 de object-store, design D10/D11): comprueba que el corredor arm64 existe para este
+# repositorio, que Docker funciona en él y que las imágenes arm64 de los candidatos arrancan en la versión fijada.
+# Se borra en el commit siguiente.
+name: arm64-probe
+
+on:
+  push:
+    branches: [change/object-store]
+    paths: [.github/workflows/arm64-probe.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - name: Arquitectura
+        run: uname -m
+
+      - name: Docker
+        run: docker version
+
+      - name: binfmt_misc
+        run: ls -la /proc/sys/fs/binfmt_misc
+
+      - name: mongo
+        run: docker run --rm mongo:7.0.43 mongod --version
+
+      - name: Arrancar candidatos (versiones fijadas en la 1.2)
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/garage.toml" <<'TOML'
+          metadata_dir = "/var/lib/garage/meta"
+          data_dir = "/var/lib/garage/data"
+          db_engine = "lmdb"
+          replication_factor = 1
+          rpc_bind_addr = "[::]:3901"
+          rpc_public_addr = "127.0.0.1:3901"
+
+          [s3_api]
+          s3_region = "garage"
+          api_bind_addr = "[::]:3900"
+          root_domain = ".s3.garage.localhost"
+
+          [admin]
+          api_bind_addr = "[::]:3903"
+          TOML
+          docker run -d --platform linux/arm64 --name probe-seaweedfs -p 8333:8333 chrislusf/seaweedfs:4.47 server -s3
+          docker run -d --platform linux/arm64 --name probe-rustfs -p 9000:9000 \
+            -e RUSTFS_ACCESS_KEY=probeaccess -e RUSTFS_SECRET_KEY="$(openssl rand -hex 16)" rustfs/rustfs:1.0.0
+          docker run -d --platform linux/arm64 --name probe-garage -p 3900:3900 \
+            -e GARAGE_RPC_SECRET="$(openssl rand -hex 32)" \
+            -v "$RUNNER_TEMP/garage.toml:/etc/garage.toml:ro" dxflrs/garage:v2.4.1
+
+      - name: Esperar respuesta HTTP en el puerto S3 (hasta 120 s por candidato)
+        run: |
+          set -uo pipefail
+          fail=0
+          for pair in seaweedfs:8333 rustfs:9000 garage:3900; do
+            name="${pair%%:*}"; port="${pair##*:}"; start=$(date +%s); code=000
+            while [ $(( $(date +%s) - start )) -lt 120 ]; do
+              code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "http://127.0.0.1:${port}/" || true)
+              [ "$code" != "000" ] && break
+              sleep 2
+            done
+            elapsed=$(( $(date +%s) - start ))
+            echo "PROBE ${name}: http_code=${code} after ${elapsed}s"
+            echo "PROBE ${name}: image_arch=$(docker image inspect --format '{{.Architecture}}' "$(docker inspect --format '{{.Config.Image}}' "probe-${name}")") healthcheck=$(docker inspect --format '{{json .Config.Healthcheck}}' "probe-${name}")"
+            [ "$code" = "000" ] && fail=1
+          done
+          echo "PROBE seaweedfs version: $(docker exec probe-seaweedfs weed version | head -n1)"
+          echo "PROBE rustfs version: $(docker exec probe-rustfs /usr/bin/rustfs --version | head -n1)"
+          echo "PROBE garage version: $(docker exec probe-garage /garage --version)"
+          echo "PROBE seaweedfs server header: $(curl -s -D - -o /dev/null http://127.0.0.1:8333/ | tr -d '\r' | grep -i '^server:' || true)"
+          exit $fail
+
+      - name: Logs de los candidatos
+        if: always()
+        run: |
+          for name in seaweedfs rustfs garage; do
+            echo "== ${name}"; docker logs --tail 20 "probe-${name}" 2>&1 || true
+          done
