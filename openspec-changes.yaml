@@ -486,6 +486,46 @@ changes:
       **Orden de archivo:** 35a y 35c modifican los dos «CD a staging en main» (`platform/ci-pipeline`); el orden por
       archivo es **35a → 35c**, y 35c redacta su MODIFIED sobre el texto que deje 35a.
       Fuera: mantener el espejo de MinIO (se retira), migrar objetos (no hay usuarios todavía), el host.
+  - name: e2e-suite
+    adrs: [053, 048, 051, 018, 019, 020, 034, 042]
+    agents: [frontend-dev, devops, ai-engineer]
+    scope: |
+      **En paralelo a 35a, como excepción a la precedencia de la fila 35** (ADR-048 §Consecuencias, extendida a la
+      fila entera por ADR-051 §1), decidida por el usuario el 2026-09-26 y registrada en **ADR-053** con sus
+      condiciones: no toca ficheros de despliegue ni requirements que modifiquen 35a, 35b o 35c (en particular, no
+      «CD a staging en main»); corre solo a demanda hasta medir sus minutos; sus tareas de staging nacen bloqueadas
+      por 35b, que no espera a ninguna de ellas; y no cambia la medición de 35b sin el usuario. No libera la
+      precedencia para ningún otro change.
+      **Suite end-to-end reproducible sobre `apps/web-e2e`** (parte de la suite que hay, no la reescribe).
+      **Un comando local = el de CI** (`web-e2e:e2e-stack`): infraestructura con el comando de
+      `platform/local-environment` bajo un proyecto de compose propio (`linkvault-e2e`) y un bloque de puertos propio,
+      `nx serve` de `api`, `worker` y `web` (no las imágenes del artefacto: prohíben el mock y su enrutado vive en
+      Traefik), siembra por la API pública, Playwright y apagado de lo arrancado también al fallar o interrumpir.
+      Nunca reutiliza procesos ajenos: puerto ocupado → no arranca nada; proceso lanzado que muere o da
+      `EADDRINUSE` → rojo. Entorno versionado (`apps/web-e2e/e2e.env`) que gana al `.env`: `AI_CHAIN=mock` +
+      `AI_MOCK_MODE=replay` aunque el desarrollador use `synth`; correo al Mailpit del bloque. Datos por prueba sobre
+      una pila desechable; la demo no es dato de la suite.
+      **Perfiles** `local` y `remote` (`E2E_BASE_URL`): en `remote` nada de Mongo, Redis, Mailpit ni salidas
+      concretas de IA, y los helpers que lo hacen fallan si la prueba es `@remote-safe`, en cualquier perfil. El
+      perfil `remote` se ensaya contra la pila local desde el primer día. **Staging** (tras 35b): sin altas, cuentas
+      de prueba persistentes creadas a mano, sin email verificado ni permiso de IA externa (el encaje degrada sin
+      llamar a OpenRouter), limpieza al empezar y al terminar, links en dominios reservados, TLS sin excepciones;
+      excluirlas de la medición de 35b es pregunta del usuario (Q1).
+      **Determinismo:** esperas fijas prohibidas por lint en error, sincronización por eventos armados antes de la
+      acción (lección de PR #59), intermitente = rojo (`failOnFlakyTests`), admisión con `--repeat-each=5` bajo carga,
+      un salto del camino crítico = rojo, traza y vídeo de cada fallo.
+      **CI:** `e2e.yml` nuevo con `workflow_dispatch` y la etiqueta `e2e` en pull requests; no obligatorio; artefactos
+      a 7 días; staging sin destino declarado = rojo; minutos medidos en `infra/README.md` antes de decidir más
+      disparadores (Q2). `ci.yml`, `cd-staging.yml` y `cd-prod.yml` no se tocan.
+      **Lote 1 = el camino crítico** como un solo recorrido: registro (o entrada con la cuenta de prueba en remoto) →
+      grupo → guardar link → completar la oferta a mano → postulación → CV → encaje, con los pasos de cada perfil
+      declarados y comprobados y un fixture de replay escrito a mano para su entrada. El resto del catálogo de uso
+      (`docs/catalogo-de-uso.md`) por lotes, cada uno su change, con un mapa de cobertura comprobado en CI; si los
+      lotes siguientes entran en la excepción es pregunta del usuario (Q3).
+      **Dos PR:** PR-1 (base, lote 1, ensayo remoto y CI) fusionable en paralelo a 35a; PR-2 (staging) tras 35b. Se
+      archiva tras PR-2.
+      Fuera: la suite contra las imágenes en local o en CI, ejecutarla tras cada despliegue a staging (modificaría
+      «CD a staging en main»; candidata para después de 35c, Q4), la extensión del navegador, los crons y los CLI.
   - name: staging-host
     adrs: [051, 048, 033, 034, 035, 032]
     agents: [devops, backend-dev, frontend-dev, ai-engineer]
