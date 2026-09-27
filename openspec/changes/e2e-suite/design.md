@@ -272,9 +272,27 @@ una variable de interpolación del compose que el `.env` cambia (`MONGO_PORT=279
 seguir mostrando `27117`), y leyendo el entorno efectivo de los procesos `api` **y** `worker` por su inspector (tareas
 2.4b y 2.4c). **Conjunto permitido** en ese entorno: la lista blanca ∪ las tres de control ∪ `e2e.env` ∪ las que añade
 libuv al lanzar un proceso en Windows (`HOMEDRIVE`, `HOMEPATH`, `LOGONSERVER`, `SYSTEMDRIVE`, `USERDOMAIN`,
-`USERNAME`) ∪ `NX_*` ∪ `FORCE_COLOR` (∪ `npm_*` y `PNPM_*` solo si el proceso se lanza por pnpm); las entradas `=X:`
-(el directorio actual por unidad que arrastra Windows) se ignoran. Cualquier otra clave es una fuga. El
+`USERNAME`) ∪ `NX_*` ∪ `LERNA_PACKAGE_NAME` ∪ `FORCE_COLOR` (∪ `npm_*` y `PNPM_*` solo si el proceso se lanza por
+pnpm); las entradas `=X:` (el directorio actual por unidad que arrastra Windows) se ignoran. `LERNA_PACKAGE_NAME` entra
+como `NX_*` (decisión del usuario del 2026-09-27, tarea 2.4c): la pone Nx 23.2.1 en toda tarea con el nombre del
+proyecto y no viene del `.env`. Cualquier otra clave es una fuga. El
 propio runner sí recibe el `.env` (Nx lo carga antes de lanzarlo); por eso sus entradas son flags (D3).
+
+**Hallazgos del `/opsx:apply` (2026-09-27, grupo 2; también en ADR-053 §Hallazgos del apply):**
+
+- **Nx 23.2.1 quita del entorno de cada tarea las variables cuyo valor coincide con el del `.env` de la raíz**
+  (`unloadDotEnvFiles` en `task-env.js`), **incluso con `NX_LOAD_DOT_ENV_FILES=false`**: con un `.env` de desarrollo,
+  `api` arrancaba sin `LOG_LEVEL`, `AUTH_*`… La lista blanca no basta para que `e2e.env` llegue entero. Por eso el
+  runner pasa además a `api` y `worker` el entorno efectivo de la suite con `node --env-file`
+  (`--runtimeArgs=--env-file=<stack-logs/effective-e2e.env>`), que repone lo quitado y no pisa lo que ya está: no añade
+  ninguna clave al entorno.
+- **`ProgramFiles` solo para `docker` en Windows**: sin ella, el CLI no encuentra el plugin `compose` («unknown
+  command: docker compose»). La recibe únicamente el proceso de `docker compose`; las aplicaciones no.
+- **`--keep-stack` en Windows lanza las aplicaciones ocultas y fuera del job del runner**: libuv mete a los hijos no
+  separados en un job que los mata cuando termina el runner, y un hijo `detached` no tiene consola, de modo que lo que
+  `nx` lanza después abre ventanas visibles. Con `--keep-stack` se crean desde PowerShell con `CreateNoWindow` y
+  exactamente el entorno de la suite (`scripts/lib/launch-hidden.ts`); sin `--keep-stack`, siguen siendo hijos normales,
+  que mueren si muere el runner.
 
 ### D7. IA: replay en local y en CI; en el ensayo y en staging, ninguna llamada
 
