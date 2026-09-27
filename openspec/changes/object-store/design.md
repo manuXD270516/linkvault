@@ -204,7 +204,9 @@ en claro no demuestra que la clave proteja nada. El método, que valida primero 
    que los grandes: Garage lo hace por debajo de su `INLINE_THRESHOLD`, de unos 3 KiB (**a confirmar al medir**), así
    que un par de 4 KiB habría ido por el camino de los grandes y no habría probado nada. Los escribe la suite de contrato de `api` en modo C5 (`S3_CONTRACT_C5_DIR=<tmp>`): A1 y A2 con el
    **adaptador real** `s3-cv-file.store` **sin cabeceras SSE**, porque lo que se prueba es el cifrado por defecto del
-   bucket, que es de lo que depende producción; B1 y B2 con el cliente de la fábrica. La suite vuelca los cuatro
+   bucket, que es de lo que depende producción; B1 y B2 con el cliente de la fábrica. *(Desde D17, el adaptador manda
+   `ServerSideEncryption` en cada subida, así que A1 y A2 van con el cliente de la fábrica, igualmente sin cabeceras
+   SSE: lo que se prueba sigue siendo el cifrado por defecto del bucket.)* La suite vuelca los cuatro
    buffers a ficheros en `<tmp>`.
 2. **`docker compose stop`** del almacén (cierra ficheros y vacía búferes) y copia del volumen fuera del contenedor:
    `docker run --rm -v <volumen>:/d:ro -v <tmp>:/out alpine tar -C /d -cf /out/vol.tar .`.
@@ -742,6 +744,46 @@ despliegue** (la API S3 no ve el volumen, y mirarlo con `docker exec` ata el des
 publicar en dos arquitecturas, lo que ADR-048 §8 y `platform/object-store` evitan); **un script montado** (un fichero
 más que 35b tendría que llevar al host en `config-files.txt`; en línea no hace falta).
 
+### D17. Autocreación de buckets en SeaweedFS: la subida del CV pide el cifrado (decisión del usuario, 2026-09-27)
+
+**El hallazgo, medido en la 7.5b** (`matriz.md`, «Configuración entregada», 7.5b). SeaweedFS 4.47 **crea el bucket**
+cuando recibe un `PutObject` firmado a un bucket que no existe; `HeadBucket`, `GetObject` y `DeleteObject` no lo
+crean (`NotFound` y `NoSuchBucket`, `404`). El bucket así creado **no tiene cifrado por defecto**
+(`GetBucketEncryption` responde `ServerSideEncryptionConfigurationNotFoundError`) y el objeto se guarda sin
+`ServerSideEncryption`. El `api` subía los CV sin cabecera SSE y dependía del cifrado por defecto que pone
+`provision`: con el bucket de CV borrado o mal nombrado, la siguiente subida lo recrearía **sin cifrado** y los CV
+quedarían en claro en el disco, sin que nada fallara. Para D15 significa además que un bucket de CV ausente deja de
+estarlo en cuanto llega una subida.
+
+**Decisión.**
+
+- La `api` manda `ServerSideEncryption: 'AES256'` en **cada** `PutObject` del bucket de CV
+  (`apps/api/src/modules/cv/infrastructure/s3-cv-file.store.ts`, su único camino de escritura), para que el cifrado del
+  objeto no dependa del estado del bucket.
+- `provision` sigue poniendo, y `verify` sigue exigiendo, el cifrado por defecto del bucket de CV: la cabecera se suma
+  a él, no lo sustituye.
+- No se desactiva la autocreación ni cambia la configuración medida de `weed mini` (orden, entorno y volumen): no se
+  repite ninguna celda.
+- **C5 sigue probando el cifrado por defecto del bucket.** El modo C5 de la suite de contrato de `api` escribe A1 y A2
+  **sin cabeceras SSE** con el cliente de la fábrica, y ya no con el adaptador, que ahora la manda (D2, paso 1). La
+  forma (1) de `cv/documents` exige que el almacén cifre «aunque el cliente no lo pida», y con la cabecera C5 aprobaría
+  aunque faltara el cifrado por defecto. La 7.2b se midió antes de este cambio, sin cabecera, y sigue valiendo. *(Esto
+  se deduce de la spec; no es una respuesta explícita del usuario.)*
+- Con el modo `customer-key` (no aplica: C5 = `nativo`), la cabecera SSE-S3 no convive con las de SSE-C, y la 8.2
+  tendría que revisarla.
+
+**Verificación de la 7.5b.** Con la suite de contrato completa y un `S3_BUCKET` inexistente, el caso «objeto ausente
+(`null`)» no puede fallar: el primer test sube un CV y SeaweedFS crea el bucket, así que el caso de `null` corre contra
+un bucket ya creado. La 7.5b se verifica con **ese caso aislado** (`-t "missing object"`) y un bucket que nunca existió.
+
+**Tarea 7.5c:** la cabecera con su test y su falsación, y la medición contra SeaweedFS: borrar `cvs`, subir con la
+cabecera, ver el bucket autocreado sin cifrado por defecto y el objeto con `AES256` y **ausente en claro** del
+volumen (el método de `c5.sh`); y, como falsación, la misma subida sin la cabecera, que sí aparece en claro.
+
+*Alternativas descartadas:* **desactivar la autocreación** (el usuario lo descartó: cambia la configuración medida y
+no está medido que el producto lo permita); **confiar solo en `verify`**, que mira en cada despliegue y no entre dos:
+un bucket recreado entre medias guardaría en claro todo lo subido hasta el siguiente.
+
 ## Risks / Trade-offs
 
 - [Con el barrido, un `worker` caído, o con el trabajo diario sin registrar, deja de borrar snapshots sin avisar] →
@@ -878,6 +920,9 @@ no existían en ese commit.
 - **Filer y gRPC sin autenticación en la red del compose → aislar el almacén en una red de Docker propia**, con solo
   `object-store`, `api` y `worker` (D14; tareas 7.1, 7.3 y 7.3b).
 - **Bucket de CV ausente al leer → error reintentable, no `null`** (D15; tarea 7.5b).
+- **Autocreación del bucket sin cifrado (hallazgo de la 7.5b) → la subida del CV manda `ServerSideEncryption:
+  'AES256'` en cada `PutObject`**, `verify` sigue exigiendo el cifrado por defecto, y la 7.5b se verifica con el caso
+  aislado y un bucket que nunca existió (D17; tareas 7.5b y 7.5c).
 - **KEK autogenerada sin clave → resolverlo y documentarlo**: guardia de arranque en el servicio (D16; tareas 7.1b,
   12.1 y 12.2).
 

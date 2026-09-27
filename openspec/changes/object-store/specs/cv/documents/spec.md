@@ -7,7 +7,9 @@ orden de preferencia:
 
 1. **Cifrado del lado del servidor con clave del almacén** (SSE-S3 o equivalente), configurado como **cifrado por
    defecto del bucket** por la orden de aprovisionamiento, de modo que el almacén cifre toda escritura aunque el cliente
-   no lo pida. La clave del almacén SHALL llegar por una variable del fichero de entorno, obligatoria en producción;
+   no lo pida. Además, la aplicación SHALL **pedir ese cifrado en cada escritura** del bucket de CV (cabecera SSE-S3),
+   para que el objeto quede cifrado aunque el bucket se haya creado sin cifrado por defecto: hay almacenes que crean el
+   bucket al recibir una escritura en uno que no existe. La clave del almacén SHALL llegar por una variable del fichero de entorno, obligatoria en producción;
    con ella en el entorno, el almacén SHALL cifrar con **esa** clave y NO SHALL guardarla en su volumen: una clave
    guardada junto a los datos que cifra no los protege.
 2. **Solo si (1) no se ha podido demostrar con estas pruebas**: **cifrado del lado del servidor con clave del
@@ -54,6 +56,15 @@ de las dos formas como cifrado gestionado por un proveedor.
 - **THEN** el objeto SHALL almacenarse cifrado en reposo con la forma (1) o, si la (1) no se ha podido demostrar con
   las pruebas de este requirement, con la (2)
 - **AND** la configuración documentada NO SHALL dejar el bucket de CV sin cifrado
+
+#### Scenario: El bucket de CV no existe al subir
+
+- **GIVEN** el bucket de CV borrado o mal nombrado, y un almacén que crea el bucket al recibir una escritura, sin
+  cifrado por defecto
+- **WHEN** se sube un CV
+- **THEN** el objeto SHALL quedar cifrado en el disco del almacén igualmente
+- **AND** el modo de comprobación del aprovisionamiento SHALL seguir fallando mientras el bucket de CV no tenga cifrado
+  por defecto
 
 #### Scenario: El contenido del CV no aparece en claro en el disco del almacén, y el control sí
 
