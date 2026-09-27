@@ -227,8 +227,9 @@ C5 = **`nativo`** exige, además de la lectura del disco, **tres pruebas de que 
   variable equivalente del producto, mapeada en su bloque `environment`). Lo demuestran (b) y (c): si el producto
   cifrara con una clave propia e ignorara la del entorno, cambiar esta no cambiaría nada en (b), y la suya estaría en el
   volumen, donde la busca (c). Lo que el producto haga **sin** clave se anota como **observación**, no decide la celda:
-  en producción ya lo impide el `${OBJECT_STORE_SSE_KEY:?…}` del compose (D6). Esa observación se hace sobre un
-  **volumen vacío** nuevo, nunca sobre el de la prueba.
+  en producción ya lo impide el `${OBJECT_STORE_SSE_KEY:?…}` del compose (D6) y, en todos los entornos, el guardia de
+  arranque del servicio (D16, decisión del usuario del 2026-09-27, tras medir en la 3.4 que SeaweedFS genera una clave
+  propia en el volumen). Esa observación se hace sobre un **volumen vacío** nuevo, nunca sobre el de la prueba.
 - **(b) Otra clave no lee el CV.** Siempre sobre una **copia** del volumen restaurada desde el `tar` del paso 2 (el
   volumen original no se toca: un almacén que reescriba sus metadatos al arrancar con otra clave no puede estropear la
   evidencia). Con otra clave **K2** sobre esa copia valen **dos** resultados:
@@ -295,8 +296,10 @@ is stored unencrypted on disk despite SSE», citada en `prelectura.md`, es ese c
 - el servicio `object-store` de `docker-compose.yml` se **copia** del compose de la matriz del elegido, y una
   comprobación de un solo uso (`node` sobre `docker compose config --format json` de los dos) compara el **objeto del
   servicio entero** tras quitar una **lista cerrada** de rutas que pueden diferir: `ports`, `healthcheck` (el compose
-  de la matriz no tiene por qué llevar el de C8) y el origen del volumen con nombre; un fichero montado se compara por
-  su contenido, no por su ruta. En `environment`, los **valores** tienen que ser idénticos salvo otra lista cerrada,
+  de la matriz no tiene por qué llevar el de C8), `networks` (la red propia del almacén, D14: dónde se conecta el
+  contenedor, no cómo se configura el producto), `entrypoint` (el guardia de arranque de D16, que se comprueba aparte:
+  termina en `exec` del `Entrypoint` de la imagen con los mismos argumentos, y `command` sigue en la comparación
+  estricta) y el origen del volumen con nombre; un fichero montado se compara por su contenido, no por su ruta. En `environment`, los **valores** tienen que ser idénticos salvo otra lista cerrada,
   escrita en la sección «Configuración entregada» de `matriz.md`: las claves mapeadas desde `S3_ACCESS_KEY`,
   `S3_SECRET_KEY` y `OBJECT_STORE_SSE_KEY` (comprobadas con `config --no-interpolate`). Cualquier otra diferencia
   falla nombrando su ruta. Antes, `docker buildx imagetools inspect` de la etiqueta por defecto tiene que dar el digest
@@ -428,17 +431,21 @@ Dónde corre:
 
 - Servicio **`object-store`** (nombre genérico: el producto es un valor por defecto), imagen
   `${OBJECT_STORE_IMAGE:-<imagen elegida>}:${OBJECT_STORE_IMAGE_TAG:-<versión exacta>}` con **el mismo** valor por
-  defecto en los dos composes, volumen `object-store-data` (sin `name:` explícito: `c5.sh` lo exige, D2) y, en producción, solo red `internal`.
+  defecto en los dos composes, volumen `object-store-data` (sin `name:` explícito: `c5.sh` lo exige, D2) y, en los dos
+  composes, **solo la red propia del almacén**, `object-store-net` (D14; en producción con `internal: true`).
 - En desarrollo se publica `${OBJECT_STORE_PORT:-9000}:<puerto S3 del elegido>`, de modo que `S3_ENDPOINT=http://localhost:9000`
-  de `.env.example` no cambia. Desaparecen `MINIO_PORT` y `MINIO_CONSOLE_PORT`.
+  de `.env.example` no cambia; es el **único** puerto publicado del almacén. Desaparecen `MINIO_PORT` y
+  `MINIO_CONSOLE_PORT`.
 - En producción, `api` y `worker` pasan a `S3_ENDPOINT: http://object-store:<puerto>` y a depender de
-  `object-store: service_healthy`.
+  `object-store: service_healthy`, y se unen a `object-store-net` **además** de su red `internal` (D14).
 - Las credenciales siguen siendo `S3_ACCESS_KEY` / `S3_SECRET_KEY`, mapeadas a las variables del producto en su bloque
   `environment`. Si el SSE nativo necesita una clave del servidor, entra como `OBJECT_STORE_SSE_KEY` (formato del
   elegido, documentado), **obligatoria** en producción (`${OBJECT_STORE_SSE_KEY:?…}`: sin ella, el producto podría
   arrancar con una clave propia guardada en su volumen, que es lo que D2 (a) deja como observación porque esta línea ya
   lo impide) y sustituye a `MINIO_KMS_SECRET_KEY`. **Desarrollo cifra igual que producción**, con un valor de desarrollo
-  por defecto, para que el aprovisionamiento sea uno solo.
+  por defecto, para que el aprovisionamiento sea uno solo. Como en desarrollo ese `:?` no existe, el servicio lleva
+  además, en los dos composes, el **guardia de arranque** de D16, que se niega a arrancar con la clave vacía o mal
+  formada o sobre un volumen donde el producto ya generó una clave propia.
 - En **producción**, las credenciales y la clave son solo referencias obligatorias (`:?`), sin valor por defecto; el
   compose de **desarrollo** puede llevar valores de desarrollo por defecto (`${S3_SECRET_KEY:-linkvault-dev-secret}`),
   que no son secretos de ningún entorno real (`platform/object-store`, «Las credenciales del almacén no viven en el
@@ -607,6 +614,134 @@ paquete de GHCR **se usa una última vez** como imagen solo `amd64` en las compr
 y 10.1) y queda, marcado como retirado en su descripción; borrarlo es irreversible y fuera del repositorio (Open Questions). ADR-048 §8 recibe una línea de
 anotación que apunta a ADR-052.
 
+### D14. El almacén vive en una red propia de Docker (decisión del usuario, 2026-09-27)
+
+**El problema, medido** (`matriz.md`, 3.1 y «Punto de revisión (tarea 4.1)», pregunta (i)). `weed mini` 4.47 arranca,
+además de la pasarela S3 (`8333`), el filer (`8888`), el maestro (`9333`), el volumen (`9340`), sus gRPC (`18888`,
+`19333`, `19340`, `18333`) y el servidor de administración (`23646`, gRPC `33646`), todos en todas las interfaces. El
+filer sirve los objetos **sin autenticación** a cualquier contenedor de la misma red (A1 vuelve cifrado, B1 idéntico) y
+su log dice que su servicio IAM por gRPC no está autenticado. No hay forma de cerrarlo **dentro** del producto sin
+cambiar su configuración: no existe enlace por componente; `-ip.bind=127.0.0.1` es global y cierra también la
+pasarela S3 (`provision` sale 1 por tiempo); `-disableHttp` quita el HTTP del filer pero deja todo lo demás escuchando,
+incluido el gRPC del filer; y la vía de `security.toml` con JWT es un fichero con un secreto montado, que la forma de
+D1 y C3 no admiten. Así que lo que se cierra es **quién llega al contenedor**.
+
+**Decisión.** El servicio `object-store` sale de las redes compartidas y vive en **una red de Docker propia,
+`object-store-net`**, a la que solo pertenecen los procesos que usan el almacén:
+
+- **Producción** (`docker-compose.prod.yml`): `object-store-net` con `internal: true` (sin salida ni puertos
+  publicados; el almacén ya no publicaba ninguno), con **exactamente** `object-store`, `api` y `worker`. El almacén
+  **deja** la red `internal`; `api` y `worker` **siguen** en `internal` (mongo, redis y Traefik) y se unen además a
+  `object-store-net`, por la que resuelven `object-store`. Mongo, Redis, `web` y Traefik no están en ella: no resuelven
+  el nombre ni alcanzan ningún puerto del almacén (`8333`, `8888`, `18888`, `9333`, `9340`, sus gRPC ni `23646`/`33646`).
+- **Desarrollo** (`docker-compose.yml`): `object-store-net` **sin** `internal: true`, porque una red interna impide
+  publicar puertos en el host, y en desarrollo `api` y `worker` corren en el host y llegan por
+  `${OBJECT_STORE_PORT:-9000}` (el único puerto publicado; `8888`, `9333`, `9340` y los gRPC no se publican). Solo
+  `object-store` pertenece a ella; sale de `default`, donde siguen Mongo, Redis, Mailpit, Ollama y Meilisearch.
+- **CI:** no hay compose de verificación aparte: `verify-artifact.sh` levanta `docker-compose.prod.yml`, y sus `dc run
+  --rm --no-deps api|worker …` heredan las redes del servicio, `object-store-net` incluida.
+
+**No cambia la configuración del producto** (misma imagen, misma orden, mismo entorno, mismo volumen): las celdas
+C3-C5 y C7-C9 **no se repiten por esto**. C3-C4 quedan cubiertas por la 7.2 (`provision` y `verify` sobre el compose
+entregado) y C5 por la 7.2b, que repite C5 sobre la configuración entregada, red incluida; el healthcheck de C8 es el
+mismo, y los tiempos de C9 se vuelven a medir en la 7.4 y la 11.1. En la comparación matriz ↔ desarrollo de la 7.1,
+`networks` entra en la lista cerrada (D2); la de desarrollo ↔ producción ya la tenía. En su lugar, la tarea 7.3b lo
+comprueba de forma explícita, con falsación: desde un contenedor efímero en la red de mongo y redis, `object-store:8888`
+y `:8333` no se alcanzan; desde `api`, `verify` sale 0; y el mismo contenedor, unido a `object-store-net`, sí conecta
+al `8888`.
+
+**Lo que queda.** `api` y `worker` (y quien los comprometa) siguen alcanzando el filer sin autenticación; ya tienen las
+credenciales raíz del almacén (Riesgos), así que no ganan nada que no tuvieran. En desarrollo, el puerto publicado
+escucha en todas las interfaces del host, como con MinIO; no cambia aquí.
+
+*Alternativas descartadas:* **aceptarlo en la red compartida** (cualquier contenedor comprometido de la pila —mongo,
+redis, `web`— o cualquier servicio que se añada después leería los snapshots en claro y los CV cifrados por el filer,
+y quizá escribiría: no medido); **`-ip.bind=127.0.0.1`** (cierra también la pasarela S3, medido); **`-disableHttp`**
+(deja el gRPC del filer y el HTTP del maestro y del volumen escuchando, sin medir qué entregan, y es otra configuración
+que obligaría a repetir C3-C5 y C7-C9); **`security.toml` con JWT** o **TLS interno** (otra configuración, y el primero
+un fichero con secreto montado).
+
+### D15. Un bucket de CV ausente es una avería reintentable, no un objeto ausente (decisión del usuario, 2026-09-27)
+
+**El problema, medido en la 2.8.** `meansMissingObject` (`apps/worker/src/modules/cv/infrastructure/storage/s3-cv-file.reader.ts`)
+cuenta como objeto ausente `NoSuchKey`, `NotFound`, `NoSuchBucket` **y cualquier respuesta `404`**. Con
+`S3_BUCKET=no-existe`, el caso «objeto ausente (`null`)» de la suite de contrato del `worker` pasa. Y
+`extract-cv.usecase.ts` resuelve un `null` como fallo definitivo sin reintento: con el bucket sin crear o mal nombrado,
+**cada** CV subido quedaría `failed` con `internal_error` en silencio, en vez de reintentarse como con un almacén caído.
+El borrado tiene el mismo defecto en el otro sentido: `remove` da por borrado un objeto de un bucket que no existe, y un
+bucket mal nombrado dejaría el CV real sin borrar dando el borrado por hecho.
+
+**Decisión.** Solo es «objeto ausente» un error de **objeto**: nombre `NoSuchKey` o `NotFound`. `NoSuchBucket`, y
+cualquier `404` con otro nombre o sin él, **se relanzan**:
+
+- en la **lectura**, el caso de uso de extracción lanza, el job usa los reintentos de BullMQ (tres intentos con espera
+  creciente, `cv/extraction`) y, agotados, el consumidor deja el CV en `failed` con `internal_error` como hoy con el
+  almacén caído; el aviso lleva solo el nombre del error (`CV file not read: NoSuchBucket`), nunca la clave;
+- en el **borrado**, el job de `delete-cv-file` falla y se reintenta, y NO da el borrado por hecho.
+
+Un `404` sin nombre reconocible que en realidad fuera de objeto pasa a reintentarse y termina igual (`failed` con
+`internal_error`), solo más tarde: el error es hacia el lado seguro. **`api` no tiene esta lógica:** no lee CV (el
+`worker` es el único lector; `s3-cv-file.store.ts` solo sube) y su borrado por prefijo no trata ningún `404` como
+ausente; no cambia.
+
+**Con la 7.5:** la sonda `s3-probe` lee una clave ausente de `.verify-probe/` y exige `null`; con el bucket presente
+sigue valiendo, y con el bucket ausente la lectura ahora lanza y la sonda sale ≠0, que es lo que se quiere. Su
+`HeadBucket` previo se mantiene: nombra el bucket en el fallo sin depender de cómo responda el producto a un `GetObject`
+en un bucket inexistente.
+
+*Alternativa descartada:* mantener `null` y apoyarse en la sonda de la 7.5 y en `verify`, que solo miran en cada
+despliegue: un bucket borrado o mal nombrado entre dos despliegues marcaría fallidos todos los CV subidos en ese tiempo,
+sin reintento posible.
+
+### D16. El almacén se niega a arrancar sin su clave (decisión del usuario, 2026-09-27)
+
+**El problema, medido en la 3.4** («Observación de (a)»). Sin `WEED_S3_SSE_KEK`, `weed mini` 4.47 **genera una KEK**,
+la guarda en el volumen (`/data/.mini_sse_kek`, junto a `/data/.mini_kek_passphrase`), acepta el cifrado por defecto y
+cifra con ella: `provision` y `verify` salen 0, y desde fuera no se distingue de la configuración medida, pero la clave
+vive junto a los datos que cifra. En producción lo impide el `${OBJECT_STORE_SSE_KEY:?…}` (D6); en desarrollo la 7.1
+da un valor por defecto, así que esa guarda no existe; y un volumen que arrancó **una vez** sin clave lo sigue
+arrastrando aunque después se ponga. El usuario pidió **resolverlo, no solo documentarlo**.
+
+**Decisión: un guardia de arranque en el propio servicio**, en los dos composes, idéntico (la comparación desarrollo ↔
+producción de la 7.3 no quita `entrypoint`):
+
+- `entrypoint: ['/bin/sh', '-c', '<guardia>', 'object-store-guard']`, con **`command` intacto**, la misma lista que
+  midió la matriz (`mini -dir=/data -webdav=false …`). La imagen es Alpine y trae `/bin/sh` (4.3). El guardia termina en
+  `exec <Entrypoint de la imagen> "$@"`, con el `Entrypoint` de la imagen fijada leído con `docker image inspect
+  --format '{{json .Config.Entrypoint}}'` (tarea 7.1b): el proceso que queda es **el mismo** que en la matriz, con el
+  mismo binario, los mismos argumentos y el mismo entorno. En el YAML, cada `$` del guardia se escribe `$$`; con uno
+  solo, Compose lo interpolaría desde el entorno del host.
+- **Se niega a arrancar** (sale ≠0 con una línea en stderr que nombra la variable o el fichero y remite al RUNBOOK, y
+  **nunca** contiene el valor de la clave) si:
+  1. `WEED_S3_SSE_KEK` no son **exactamente 64 caracteres `[0-9a-f]`**: vacía, más corta o más larga, o con otro
+     carácter. Minúsculas, porque es lo que da la orden de generación documentada (`randomBytes(32).toString('hex')`) y
+     lo único medido; salida 64;
+  2. existe `/data/.mini_sse_kek` (o `/data/.mini_kek_passphrase`, si la 7.1b confirma que con clave tampoco se crea):
+     el volumen arrancó alguna vez sin clave y puede tener objetos cifrados con la que el producto generó; salida 65.
+- Si no, `exec`: sin proceso intermedio, las señales y el código de salida son los de `weed`.
+
+**No cambia las flags de `weed` medidas** ni el entorno ni el volumen: la 7.2b, que repite C5 sobre la configuración
+entregada, lo cubre (la K2 de `c5.sh` tiene el formato de K1 y pasa el guardia; el volumen restaurado desde el `tar`
+no tiene `.mini_sse_kek`). El compose de la matriz **no se toca** (es la evidencia de lo medido): en la comparación
+matriz ↔ desarrollo, `entrypoint` entra en la lista cerrada y se comprueba aparte (7.1b), y `command` sigue en la
+estricta.
+
+**Protección en profundidad:** el `:?` de producción (Compose no crea el contenedor sin la variable); el guardia (el
+contenedor no arranca con la clave vacía o mal formada, en desarrollo, en CI y en producción, ni sobre un volumen que
+ya arrancó sin clave); C5 sobre lo entregado (7.2b: la clave del entorno es la que protege); y la documentación
+(12.1: qué significa el rechazo y qué hacer —**nunca** borrar el fichero sin saber con qué clave se cifraron los
+objetos—; 12.2: la clave es obligatoria y con qué formato).
+
+**Lo que queda.** El guardia es propio del producto (nombre de la variable y del fichero): sustituir el producto
+repite la matriz y lo reescribe. El guardia comprueba forma y ausencia del fichero, no que `weed` use esa clave: eso lo
+demuestra C5 (b) y (c).
+
+*Alternativas descartadas:* **solo documentarlo** (el usuario lo descartó); **comprobarlo en `verify` o en el
+despliegue** (la API S3 no ve el volumen, y mirarlo con `docker exec` ata el despliegue a un producto, contra
+`platform/object-store`); **una imagen propia con el guardia dentro** (una imagen de terceros replicada que mantener y
+publicar en dos arquitecturas, lo que ADR-048 §8 y `platform/object-store` evitan); **un script montado** (un fichero
+más que 35b tendría que llevar al host en `config-files.txt`; en línea no hace falta).
+
 ## Risks / Trade-offs
 
 - [Con el barrido, un `worker` caído, o con el trabajo diario sin registrar, deja de borrar snapshots sin avisar] →
@@ -638,6 +773,12 @@ anotación que apunta a ADR-052.
 - [SeaweedFS abierto sin identidades] → C4 ejecuta `verify` contra el arranque sin identidades y exige que salga ≠0
   nombrando el acceso anónimo, y `verify` corre en **cada** verificación del artefacto: una configuración que se abra
   después rompe el CD.
+- [Puertos internos de `weed mini` sin autenticación (filer, gRPC)] → red propia del almacén con solo `api` y `worker`
+  (D14), comprobada con falsación en la 7.3b; `api` y `worker` ya tienen las credenciales raíz.
+- [Sin clave, `weed mini` genera una propia en el volumen] → `:?` en producción y guardia de arranque en los dos
+  composes (D16), con tres falsaciones en la 7.1b; el RUNBOOK dice qué hacer si se niega (12.1).
+- [Bucket de CV ausente leído como «objeto ausente»] → error reintentable en el lector del `worker` (D15, 7.5b) y la
+  sonda de la 7.5 en cada verificación del artefacto.
 - [El producto elegido cambia de comportamiento en una versión] → versión exacta fijada, digest anotado y matriz
   obligatoria antes de subir la versión mayor (spec `platform/object-store`).
 - [Ventana sin buckets en el primer arranque de un volumen vacío] → sin usuarios en ese momento; el `worker` ya tolera un
@@ -663,9 +804,11 @@ anotación que apunta a ADR-052.
    arnés y control de MinIO y, en los huecos, lo que no depende del producto (traslados,
    `/privacidad`, medición y script de plataformas, texto de la clase `artifact`, comentarios de los workflows) →
    cribado → punto de revisión (bloquea solo si nadie da C5 `nativo`) → celdas del candidato señalado → veredicto
-   (5.3) → modo de cifrado (6.2), compose de desarrollo, aprovisionamiento y C5 sobre lo entregado (7.1, 7.2 y 7.2b o,
-   con `customer-key`, 8.1-8.4) → ADR-052 «Elección» y traslados (6.1, 6.3, 6.4) → compose de producción y resto del
-   grupo 7 con el CD aún en `amd64` → barrido (8.5-8.7) → paso a `arm64` → modo `--compose` del
+   (5.3) → modo de cifrado (6.2), compose de desarrollo con su red propia y su guardia de arranque, aprovisionamiento
+   y C5 sobre lo entregado (7.1, 7.1b, 7.2 y 7.2b o, con `customer-key`, 8.1-8.4) → ADR-052 «Elección» y traslados
+   (6.1, 6.3, 6.4) → compose de producción y su aislamiento de red comprobado (7.3, 7.3b) → bucket de CV ausente como
+   error reintentable (7.5b) → resto del grupo 7 con el CD aún en `amd64` → barrido (8.5-8.7) → paso a `arm64` → modo
+   `--compose` del
    script, integración en la verificación y su falsación en `arm64` → plazo → documentación.
 2. Para quien desarrolla: `docker compose down`, `docker volume rm linkvault_minio-data` (opcional; no hay nada que
    migrar) y `pnpm infra:up`.
@@ -728,6 +871,15 @@ no existían en ese commit.
   punto y reciben una línea de anotación; **ADR-033 D5** pasa a «efectiva» según su propia enmienda (ADR-051).
 
 ## Open Questions
+
+**Respondidas por el usuario el 2026-09-27, tras el punto de revisión** (las dos preguntas abiertas de la 4.1 en
+`matriz.md` y el hallazgo de la 2.8 que dejaba abierto la 7.5b):
+
+- **Filer y gRPC sin autenticación en la red del compose → aislar el almacén en una red de Docker propia**, con solo
+  `object-store`, `api` y `worker` (D14; tareas 7.1, 7.3 y 7.3b).
+- **Bucket de CV ausente al leer → error reintentable, no `null`** (D15; tarea 7.5b).
+- **KEK autogenerada sin clave → resolverlo y documentarlo**: guardia de arranque en el servicio (D16; tareas 7.1b,
+  12.1 y 12.2).
 
 **Respondidas por el usuario el 2026-09-26, antes del debate:**
 

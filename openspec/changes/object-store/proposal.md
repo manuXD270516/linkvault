@@ -70,7 +70,8 @@ fila 35 (ADR-051 §1) y va primero porque es **precondición** de 35b (`staging-
 - `platform/object-store`: lo que LinkVault exige a su almacén de objetos sin nombrar un producto: uso solo por la API
   S3 para arrancar, desplegar y verificar, aprovisionamiento idempotente y acotado separado de la salud, modo de
   comprobación estricto, healthcheck de solo lectura, sin acceso anónimo, imagen mantenida, fijada y multiarquitectura,
-  y elección justificada con evidencia ejecutada.
+  y elección justificada con evidencia ejecutada; y, por decisión del usuario del 2026-09-27 tras el punto de revisión,
+  red propia a la que solo llega la aplicación y negativa a arrancar sin la clave de cifrado (design D14 y D16).
 
 ### Modified Capabilities
 
@@ -89,11 +90,15 @@ fila 35 (ADR-051 §1) y va primero porque es **precondición** de 35b (`staging-
   de objetos huérfanos documentada» (el procedimiento queda pendiente hasta el change posterior de operación, con su
   sección del RUNBOOK marcada).
 - `platform/demo-seed`: «Seed de demostración idempotente» deja de nombrar MinIO.
+- `cv/extraction`: «Consumo idempotente de la lectura del CV» y «El borrado del archivo también se consume de la cola»:
+  un bucket de CV ausente es un fallo reintentable, no un objeto ausente ni un borrado hecho (decisión del usuario del
+  2026-09-27, design D15).
 
 ## Impact
 
 - **Compose:** `docker-compose.yml` y `docker-compose.prod.yml` (servicio, imagen por variable, volumen, healthcheck,
-  endpoint S3 de `api` y `worker`); se borra `infra/minio/ensure-buckets.sh`.
+  red propia del almacén, guardia de arranque de la clave, endpoint S3 de `api` y `worker`); se borra
+  `infra/minio/ensure-buckets.sh`.
 - **Código:** `apps/api` (fábrica del cliente S3, `s3-cv-file.store`, `s3-cv-user-prefix.deleter`, script
   `object-store` y su punto de entrada en el build, mensaje del seed), `apps/worker` (fábrica del cliente S3,
   `s3-cv-file.reader`, `s3-snapshot.store`, punto de entrada `s3-probe`), `apps/web` (texto de `/privacidad`);

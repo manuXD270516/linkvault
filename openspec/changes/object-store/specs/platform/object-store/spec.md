@@ -253,3 +253,68 @@ de cambiar el valor por defecto de su imagen.
 - **GIVEN** una propuesta de sustituir el almacén o de subir su versión mayor
 - **WHEN** se consulta el procedimiento en `infra/README.md` o en el ADR que enlaza
 - **THEN** SHALL constar que la matriz se repite antes de cambiar el valor por defecto de la imagen
+
+### Requirement: Solo la aplicación alcanza el almacén por la red
+
+El servicio del almacén SHALL vivir en una **red de contenedores propia**, porque un producto puede escuchar en
+puertos internos sin autenticación que su configuración no permite cerrar. En el compose de **producción**, a esa red
+SHALL pertenecer **solo** el almacén y los procesos de la aplicación que lo usan (`api` y `worker`), SHALL ser una red
+sin salida ni puertos publicados, y el almacén NO SHALL pertenecer a ninguna otra; ningún otro servicio (base de datos,
+cola, `web`, proxy de entrada) SHALL poder alcanzar **ningún** puerto del almacén. En el compose de **desarrollo**, donde
+la aplicación corre en el host, el almacén SHALL estar solo en su red y publicar en el host **únicamente** su puerto
+S3. Aislar la red NO SHALL cambiar la configuración del producto que midió la matriz.
+
+#### Scenario: Otro servicio de la pila no alcanza el almacén
+
+- **GIVEN** la pila de producción levantada
+- **WHEN** un contenedor de la red de la base de datos y la cola intenta conectar con cualquier puerto del almacén
+- **THEN** la conexión SHALL fallar por resolución o por conexión, sin llegar a ninguna respuesta del almacén
+
+#### Scenario: La aplicación sí alcanza el almacén
+
+- **GIVEN** la pila de producción levantada
+- **WHEN** se ejecuta el modo de comprobación del aprovisionamiento con la imagen de la aplicación
+- **THEN** SHALL terminar con código cero
+
+#### Scenario: Unirse a la red del almacén da acceso
+
+- **GIVEN** el mismo contenedor que no alcanzaba el almacén
+- **WHEN** se une a la red del almacén
+- **THEN** SHALL alcanzar sus puertos internos, lo que demuestra que la separación la da la red
+
+### Requirement: El almacén no arranca sin su clave de cifrado
+
+Cuando el producto, sin clave de cifrado del lado del servidor en el entorno, **genera una propia y la guarda en su
+volumen**, el servicio del almacén SHALL **negarse a arrancar**, en todos los entornos (también en desarrollo, donde la
+clave tiene un valor por defecto): si la clave del entorno falta o no tiene **exactamente** el formato documentado, o si
+el volumen contiene una clave generada por el producto, señal de que arrancó alguna vez sin ella. Al negarse SHALL
+terminar con código distinto de cero y un mensaje que nombre la variable o el fichero, y ese mensaje NO SHALL contener
+la clave. La comprobación NO SHALL cambiar los argumentos ni el entorno con que arranca el producto medido. La
+documentación de operación SHALL decir qué significa cada rechazo y que el fichero de la clave generada NO SHALL
+borrarse sin saber con qué clave se cifraron los objetos del volumen.
+
+#### Scenario: Sin clave no arranca
+
+- **GIVEN** el servicio del almacén con la variable de la clave vacía
+- **WHEN** se levanta esperando a que esté sano
+- **THEN** SHALL terminar sin llegar a sano, con código distinto de cero
+- **AND** su registro SHALL nombrar la variable sin contener ningún valor de clave
+
+#### Scenario: Con una clave mal formada no arranca
+
+- **GIVEN** una clave con un carácter de menos o con un carácter fuera del formato documentado
+- **WHEN** se levanta el almacén
+- **THEN** SHALL terminar sin llegar a sano, con código distinto de cero
+
+#### Scenario: Un volumen que arrancó sin clave no arranca
+
+- **GIVEN** un volumen del almacén que contiene la clave generada por el producto y una clave correcta en el entorno
+- **WHEN** se levanta el almacén
+- **THEN** SHALL terminar sin llegar a sano, nombrando el fichero
+- **AND** NO SHALL borrar ni modificar ese fichero
+
+#### Scenario: Con la clave correcta arranca
+
+- **GIVEN** un volumen vacío y una clave con el formato documentado
+- **WHEN** se levanta el almacén
+- **THEN** SHALL llegar a sano

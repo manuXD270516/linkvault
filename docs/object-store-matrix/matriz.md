@@ -1983,6 +1983,12 @@ Compose no arranca el servicio. **Pregunta:** ¿basta con esa guarda del compose
 (p. ej., que la verificación del artefacto o el despliegue lo compruebe)? Cualquier comprobación nueva sería un guardia
 permanente que habría que ver caer (ADR-048 §7), fuera de lo que hoy piden las tareas.
 
+**Respondidas por el usuario el 2026-09-27** (ADR-052, «Decisiones del usuario tras el punto de revisión»): (i) el
+almacén se aísla en una red de Docker propia con solo `object-store`, `api` y `worker` (design D14; tareas 7.1, 7.3 y
+7.3b); (ii) se resuelve y se documenta: el servicio se niega a arrancar sin una clave de 64 hexadecimales o sobre un
+volumen con `.mini_sse_kek` (design D16; tareas 7.1b, 12.1 y 12.2). Ninguna de las dos cambia la configuración medida
+de `weed mini`.
+
 Verificación de la sección, con un `node -e` de un solo uso: ver «Comprobación de la 4.1», al final del grupo 4.
 
 ## Celdas del candidato señalado: SeaweedFS (grupo 4)
