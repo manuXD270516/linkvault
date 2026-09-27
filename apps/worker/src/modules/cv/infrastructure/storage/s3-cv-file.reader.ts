@@ -1,4 +1,8 @@
-import { DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  type S3Client,
+} from '@aws-sdk/client-s3';
 import { Logger } from '@nestjs/common';
 import {
   createS3Client,
@@ -42,11 +46,15 @@ export function meansMissingObject(error: unknown): boolean {
   return typeof named.name === 'string' && MISSING_OBJECT.has(named.name);
 }
 
-/** Cliente real, con el cliente de la fábrica del `worker` (endpoint, checksums y plazos en un solo sitio; design D3). */
+/**
+ * Cliente real, con el cliente de la fábrica del `worker` (endpoint, checksums y plazos en un solo sitio; design D3).
+ * `client` permite compartir uno ya creado por la misma fábrica: la sonda `s3-probe` hace su `HeadBucket` y la lectura
+ * con el mismo cliente, y lo cierra al terminar (tarea 7.5 de `object-store`).
+ */
 export function createS3CvObjectClient(
   options: S3CvReaderOptions,
+  client: S3Client = createS3Client(options),
 ): CvObjectClient {
-  const client = createS3Client(options);
 
   return {
     get: async (key: string): Promise<Uint8Array | null> => {

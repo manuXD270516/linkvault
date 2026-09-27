@@ -2312,7 +2312,7 @@ falsación: todas las copias salen ≠0
 exit=0
 ```
 
-## Configuración entregada (tareas 7.1, 7.1b, 7.2, 7.2b, 7.3, 7.3b, 7.5b y 7.5c)
+## Configuración entregada (tareas 7.1, 7.1b, 7.2, 7.2b, 7.3, 7.3b, 7.5b, 7.5c y 7.5)
 
 El servicio `object-store` de `docker-compose.yml` está **copiado** del de `seaweedfs.compose.yml`, el que midió la
 matriz (design D2, «Lo que se entrega es lo que se midió»; D6, D14 y D16). Esta sección tiene lo que lo demuestra:
@@ -3268,4 +3268,90 @@ mode server
 cabecera, vuelven con `AES256` por el cifrado por defecto del bucket: C5 sigue midiendo lo que medía.
 
 `docker compose -p os9-c -f docker-compose.yml down -v --timeout 30` sale 0, y no queda ningún contenedor, volumen ni
+red `os9`: `docker ps -a`, `docker volume ls` y `docker network ls` filtrados por `os9` dan 0.
+
+### 7.5: sonda `s3-probe` del `worker` (parcial: falta la línea de `verify-artifact.sh`)
+
+Punto de entrada adicional del build de webpack de `worker` (`additionalEntryPoints`, `dist/apps/worker/s3-probe.js`).
+Con la fábrica de cliente S3 del `worker` (un solo cliente) hace un `HeadBucket` firmado del bucket de CV; si falla,
+sale ≠0 nombrando el bucket y no lee. Después lee, con el lector de CV del `worker` (`S3CvFileReader` sobre ese mismo
+cliente), una clave ausente de `.verify-probe/` y exige `null`; cualquier error o un objeto con bytes sale ≠0.
+Configuración: solo las `S3_*` que usa, con los campos del esquema del `worker`; si no es válida, sale 2 nombrando las
+variables, sin sus valores. Modo de cifrado `server` (6.2), así que no hay middleware SSE-C que llevar (8.3 no aplica).
+
+**Tests y falsación.** `pnpm nx run worker:test` completo, redirigido a fichero: 0 (65 ficheros, 640 tests). La sonda
+tiene 12 tests:
+- con dobles: lector que da `null` con el bucket presente → 0; lector que lanza → 1; lector que lanza `NoSuchBucket`
+  → 1; clave con bytes → 1; `HeadBucket` con `NoSuchBucket`, `NotFound` o un `404` sin nombre conocido → 1 con
+  «cvs: CV bucket does not exist» y sin lectura; `HeadBucket` con `403` → 1 con «could not be checked» y sin lectura;
+  configuración inválida → 2;
+- con el cliente real de la fábrica y `send` falso: `HeadBucket {Bucket: cvs}` y `GetObject` de `.verify-probe/…` en
+  `cvs`, `NoSuchKey` → 0; `NoSuchBucket` en el `GetObject` → 1; `NotFound` en el `HeadBucket` → 1 sin `GetObject`.
+
+Falsación: con el fallo del `HeadBucket` convertido en no fatal (la sonda sigue a la lectura), caen los cinco tests
+del `HeadBucket`; restaurado:
+
+```text
+$ pnpm nx run worker:test --skip-nx-cache -- s3-probe                  # HeadBucket no fatal
+     × HeadBucket with NoSuchBucket (404): exits non-zero naming the bucket, without reading 5ms
+     × HeadBucket with NotFound (404): exits non-zero naming the bucket, without reading 1ms
+     × HeadBucket with a 404 without a known name: exits non-zero naming the bucket, without reading 1ms
+     × HeadBucket refused (403): exits non-zero naming the bucket, without reading 1ms
+     × HeadBucket NotFound with the real client: non-zero naming the bucket, and no GetObject 1ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+ Test Files  1 failed (1)
+      Tests  5 failed | 7 passed (12)
+exit=1
+```
+
+**Ejecución del paquete, fuera del contenedor.** Contra el almacén local, proyecto `os9-p` desde volúmenes vacíos con
+`pnpm infra:up` (0, «provision: ok»), `pnpm nx run worker:build` (0) y `node dist/apps/worker/s3-probe.js` con las
+`S3_*` exportadas. Son el equivalente local de las falsaciones que la tarea pide **contra la pila de la 7.7**, con
+`dc run --rm --no-deps worker node s3-probe.js`, que siguen pendientes:
+
+```text
+$ node dist/apps/worker/s3-probe.js                                   # bucket presente
+ok    cvs: CV bucket exists (signed HeadBucket)
+ok    cvs: a missing key under .verify-probe/ reads as null with the CV reader
+s3-probe: ok
+exit=0
+$ S3_SECRET_KEY=incorrecta node dist/apps/worker/s3-probe.js
+FAIL  cvs: CV bucket could not be checked (Unknown, HTTP 403)
+s3-probe: failed
+exit=1
+$ S3_BUCKET= node dist/apps/worker/s3-probe.js                         # configuración inválida
+[s3-probe] Invalid configuration, check these environment variables: S3_BUCKET (missing)
+exit=2
+$ node delete-cvs.cjs                                                  # borra el bucket de CV con el SDK
+buckets: cvs,snapshots
+DeleteBucket cvs: HTTP 204
+buckets: snapshots
+exit=0
+$ node dist/apps/worker/s3-probe.js                                   # bucket de CV borrado
+FAIL  cvs: CV bucket does not exist (HeadBucket: NotFound, HTTP 404)
+s3-probe: failed
+exit=1
+$ pnpm nx run api:object-store -- provision
+ok    cvs: bucket created
+ok    cvs: no lifecycle configuration (removed if there was one)
+ok    cvs: default encryption set (AES256)
+ok    cvs: no bucket policy
+ok    snapshots: bucket already exists
+ok    snapshots: no lifecycle configuration (removed if there was one)
+ok    snapshots: no bucket policy
+provision: ok
+exit=0
+$ node dist/apps/worker/s3-probe.js                                   # tras provision
+ok    cvs: CV bucket exists (signed HeadBucket)
+ok    cvs: a missing key under .verify-probe/ reads as null with the CV reader
+s3-probe: ok
+exit=0
+```
+
+Sin la línea en `verify-artifact.sh`: la tarea la pone «tras `verify`», y `verify-artifact.sh` todavía no tiene
+`provision` ni `verify` (los añade la 7.4) y sigue nombrando `minio`. La línea, «en 7.7, la línea en 0» y las dos
+falsaciones con `dc run` (`-e S3_SECRET_KEY=incorrecta`, y borrar el bucket → ≠0 → `provision` → 0) quedan para la
+7.4 y la 7.7.
+
+`docker compose -p os9-p -f docker-compose.yml down -v --timeout 30` sale 0, y no queda ningún contenedor, volumen ni
 red `os9`: `docker ps -a`, `docker volume ls` y `docker network ls` filtrados por `os9` dan 0.
