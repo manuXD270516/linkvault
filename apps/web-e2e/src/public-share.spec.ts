@@ -180,8 +180,10 @@ test('public share flow: the card, the jump, the public view, the sign up and tu
       // Qué hace "atrás" tras un `<meta refresh>` varía entre motores, así que **no se afirma**: se observa y se anota
       // (critic I2, tarea 8.3). Lo único que se exige es que no se quede en un bucle que impida salir.
       await jumper.goBack({ waitUntil: 'commit' }).catch(() => undefined);
+      // eslint-disable-next-line no-restricted-syntax -- espera observacional (tarea 8.3): no sincroniza nada, deja pasar tiempo para anotar la URL tras «atrás», que no se afirma
       await jumper.waitForTimeout(2000);
       const afterBack = jumper.url();
+      // eslint-disable-next-line no-restricted-syntax -- espera observacional (tarea 8.3): segunda lectura de la URL, dos segundos después, para anotar si se asienta
       await jumper.waitForTimeout(2000);
       const settled = jumper.url();
 

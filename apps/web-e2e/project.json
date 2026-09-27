@@ -22,6 +22,17 @@
           "TSX_TSCONFIG_PATH": "apps/web-e2e/scripts/tsconfig.json"
         }
       }
+    },
+    "e2e-remote": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "node --import tsx apps/web-e2e/scripts/e2e-stack.ts --e2e-remote",
+        "cwd": ".",
+        "env": {
+          "TSX_TSCONFIG_PATH": "apps/web-e2e/scripts/tsconfig.json"
+        }
+      }
     }
   }
 }

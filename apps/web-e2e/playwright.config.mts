@@ -14,14 +14,24 @@ import { defineConfig, devices } from '@playwright/test';
 // apaga el runner, y Playwright no reutiliza ni arranca ningún servidor. Sin ella, el camino antiguo de arriba.
 const runnerBaseUrl = process.env['E2E_BASE_URL'];
 
+// Determinismo (design D12). Local: sin reintentos. CI: un reintento que **clasifica** (fallo estable frente a
+// intermitente) y deja la traza de los dos intentos, y `failOnFlakyTests` convierte en rojo la prueba que solo pasa al
+// reintentarse. `workers: 1` en los dos: las pruebas comparten el contador de registros por IP y el `worker` de la pila.
+const inCi = Boolean(process.env['CI']);
+
 export default defineConfig({
   ...nxE2EPreset(import.meta.dirname, {
     testDir: './src',
     openHtmlReport: 'never',
   }),
+  workers: 1,
+  retries: inCi ? 1 : 0,
+  failOnFlakyTests: inCi,
   use: {
     baseURL: runnerBaseUrl ?? 'http://localhost:4200',
-    trace: 'on-first-retry',
+    // Traza y vídeo de cada fallo, también del primer intento (con `on-first-retry` y cero reintentos no habría nunca).
+    trace: 'retain-on-failure',
+    video: 'retain-on-failure',
   },
   ...(runnerBaseUrl === undefined
     ? {

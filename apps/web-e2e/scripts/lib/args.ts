@@ -9,15 +9,22 @@ export type AppName = 'api' | 'worker' | 'web';
 export const APP_NAMES: readonly AppName[] = ['api', 'worker', 'web'];
 
 export type MatchExpectation = 'replay-report' | 'consent-required';
+export const MATCH_EXPECTATIONS: readonly MatchExpectation[] = ['replay-report', 'consent-required'];
 
 /** Entradas del runner: **solo flags** (design D3). El resto de argumentos pasa a Playwright. */
 export interface RunnerArgs {
+  /**
+   * `--e2e-remote`: la pone el target `web-e2e:e2e-remote` en su orden (design D3, «un runner, dos llamadores»). Sin
+   * ella, el runner es `web-e2e:e2e-stack`.
+   */
+  readonly remoteTarget: boolean;
   readonly keepStack: boolean;
   readonly down: boolean;
   readonly rehearseRemote: boolean;
   readonly skipLocal: boolean;
   readonly portOverrides: Partial<Record<OverridablePort, number>>;
-  readonly matchExpectation: MatchExpectation;
+  /** `undefined` si no se pasó: `e2e-stack` usa `replay-report`; `e2e-remote` la exige (la declara el destino, D7). */
+  readonly matchExpectation: MatchExpectation | undefined;
   readonly baseUrl: string | undefined;
   readonly apiOrigin: string | undefined;
   readonly stackFault: StackFault | undefined;
@@ -46,8 +53,9 @@ export function parseStackFault(value: string): StackFault {
 }
 
 function parseMatchExpectation(value: string): MatchExpectation {
-  if (value === 'replay-report' || value === 'consent-required') {
-    return value;
+  const known = MATCH_EXPECTATIONS.find((expectation) => expectation === value);
+  if (known !== undefined) {
+    return known;
   }
   throw new Error(`--match-expectation: "${value}" is not replay-report or consent-required`);
 }
@@ -60,11 +68,12 @@ export function parseRunnerArgs(argv: readonly string[]): RunnerArgs {
   const portFlagToName = new Map<string, OverridablePort>(
     Object.entries(PORT_FLAGS).map(([name, flag]) => [flag, name as OverridablePort]),
   );
+  let remoteTarget = false;
   let keepStack = false;
   let down = false;
   let rehearseRemote = false;
   let skipLocal = false;
-  let matchExpectation: MatchExpectation = 'replay-report';
+  let matchExpectation: MatchExpectation | undefined;
   let baseUrl: string | undefined;
   let apiOrigin: string | undefined;
   let stackFault: StackFault | undefined;
@@ -88,7 +97,9 @@ export function parseRunnerArgs(argv: readonly string[]): RunnerArgs {
       return next;
     };
 
-    if (flag === '--keep-stack') {
+    if (flag === '--e2e-remote') {
+      remoteTarget = true;
+    } else if (flag === '--keep-stack') {
       keepStack = true;
     } else if (flag === '--down') {
       down = true;
@@ -115,6 +126,7 @@ export function parseRunnerArgs(argv: readonly string[]): RunnerArgs {
   }
 
   return {
+    remoteTarget,
     keepStack,
     down,
     rehearseRemote,
@@ -129,10 +141,11 @@ export function parseRunnerArgs(argv: readonly string[]): RunnerArgs {
 }
 
 /**
- * Argumentos finales de Playwright: el filtro del lote (`@lot1`, design D1/D14) siempre, combinado con el `--grep` del
- * llamador si lo hay (las dos condiciones a la vez, con lookaheads).
+ * Argumentos finales de Playwright: las etiquetas que exige el perfil siempre —`@lot1` en `local`; `@lot1` **y**
+ * `@remote-safe` en `remote` (design D1, D9, D14)—, combinadas con el `--grep` del llamador si lo hay (todas las
+ * condiciones a la vez, con lookaheads).
  */
-export function playwrightGrepArgs(passthrough: readonly string[], suiteTag: string): string[] {
+export function playwrightGrepArgs(passthrough: readonly string[], requiredTags: readonly string[]): string[] {
   const rest: string[] = [];
   let userGrep: string | undefined;
   for (let i = 0; i < passthrough.length; i += 1) {
@@ -146,7 +159,10 @@ export function playwrightGrepArgs(passthrough: readonly string[], suiteTag: str
       rest.push(arg);
     }
   }
-  const escapedTag = suiteTag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const grep = userGrep === undefined ? escapedTag : `(?=.*${escapedTag})(?=.*(?:${userGrep}))`;
+  const escaped = requiredTags.map((tag) => tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const conditions = [...escaped, ...(userGrep === undefined ? [] : [`(?:${userGrep})`])];
+  const [only] = conditions;
+  const grep =
+    conditions.length === 1 && only !== undefined ? only : conditions.map((condition) => `(?=.*${condition})`).join('');
   return ['--grep', grep, ...rest];
 }

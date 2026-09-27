@@ -12,15 +12,23 @@ import { evaluateListeners, listListeners } from './lib/listeners';
 import { describeBusy, probePorts } from './lib/ports';
 import { runCommand } from './lib/proc';
 import { isSameCheckoutServe, killTree, listProcesses, type ProcessInfo, processTree } from './lib/processes';
+import { findCredentialsInDotEnvFiles, REMOTE_CREDENTIAL_KEYS, resolveRemoteOrigins } from './lib/remote';
 
-// Runner de la suite end-to-end (change `e2e-suite`, design D3). Se ejecuta con `node --import tsx` desde el target
-// `web-e2e:e2e-stack`, con la raíz del repositorio como directorio de trabajo. Salida por `process.stdout`/`stderr`.
+// Runner de la suite end-to-end (change `e2e-suite`, design D3). Se ejecuta con `node --import tsx` desde dos targets,
+// con la raíz del repositorio como directorio de trabajo. Salida por `process.stdout`/`stderr`.
 //
-// Fases: comprobación previa → infraestructura → aplicaciones → (siembra) → suite → apagado. El apagado ocurre
-// siempre (`finally` y SIGINT/SIGTERM), salvo con `--keep-stack`, y solo toca lo que esta corrida lanzó.
+// `web-e2e:e2e-stack`: comprobación previa → infraestructura → aplicaciones → (siembra) → suite → apagado. El apagado
+// ocurre siempre (`finally` y SIGINT/SIGTERM), salvo con `--keep-stack`, y solo toca lo que esta corrida lanzó.
+//
+// `web-e2e:e2e-remote` (su orden lleva `--e2e-remote`): no monta nada; comprobación previa (origen, expectativa,
+// credenciales) → suite con el perfil `remote` contra el origen de `--base-url`.
 
-const PREFIX = '[e2e-stack]';
-const SUITE_TAG = '@lot1';
+/** Prefijo de los mensajes: el del target que lanzó el runner. */
+const PREFIX = process.argv.includes('--e2e-remote') ? '[e2e-remote]' : '[e2e-stack]';
+/** Etiquetas que exige cada perfil (design D1, D9, D14). */
+const LOCAL_TAGS = ['@lot1'] as const;
+const REMOTE_TAGS = ['@lot1', '@remote-safe'] as const;
+const E2E_PROJECT_DIR = 'apps/web-e2e';
 const ENV_FILE = 'apps/web-e2e/e2e.env';
 const PLAYWRIGHT_CONFIG = 'apps/web-e2e/playwright.config.mts';
 const PROXY_CONFIG = 'apps/web-e2e/proxy.conf.mjs';
@@ -474,20 +482,16 @@ class Stack {
 
   async suite(): Promise<void> {
     const phase: Phase = 'suite';
-    const cli = join(dirname(require.resolve('@playwright/test/package.json')), 'cli.js');
-    const args = [cli, 'test', '-c', PLAYWRIGHT_CONFIG, ...playwrightGrepArgs(this.args.playwrightArgs, SUITE_TAG)];
+    const args = playwrightCliArgs(this.args.playwrightArgs, LOCAL_TAGS);
     const env: Record<string, string> = {
       ...this.appEnv,
       E2E_BASE_URL: `http://localhost:${this.block.web}`,
       E2E_PROFILE: 'local',
-      E2E_MATCH_EXPECTATION: this.args.matchExpectation,
+      E2E_MATCH_EXPECTATION: this.args.matchExpectation ?? 'replay-report',
     };
     log(`suite: playwright ${args.slice(1).join(' ')} (perfil local, E2E_BASE_URL=${env['E2E_BASE_URL']})`);
-    const code = await new Promise<number>((resolve) => {
-      const child = spawn(process.execPath, args, { cwd: this.root, env, stdio: 'inherit', windowsHide: true });
+    const code = await runPlaywright(this.root, args, env, (child) => {
       this.playwright = child;
-      child.once('exit', (exitCode) => resolve(exitCode ?? 1));
-      child.once('error', () => resolve(1));
     });
     this.playwright = undefined;
     this.throwIfFatal(phase);
@@ -549,6 +553,114 @@ class Stack {
   appendLog(file: string, text: string): void {
     mkdirSync(this.stackDir, { recursive: true });
     writeFileSync(join(this.stackDir, file), text, { flag: 'a' });
+  }
+}
+
+/** `node <cli de Playwright> test -c <config> --grep <etiquetas del perfil> …` (design D1, D9). */
+function playwrightCliArgs(passthrough: readonly string[], tags: readonly string[]): string[] {
+  const cli = join(dirname(require.resolve('@playwright/test/package.json')), 'cli.js');
+  return [cli, 'test', '-c', PLAYWRIGHT_CONFIG, ...playwrightGrepArgs(passthrough, tags)];
+}
+
+function runPlaywright(
+  root: string,
+  args: readonly string[],
+  env: Record<string, string>,
+  onSpawn: (child: ChildProcess) => void,
+): Promise<number> {
+  return new Promise<number>((resolve) => {
+    const child = spawn(process.execPath, [...args], { cwd: root, env, stdio: 'inherit', windowsHide: true });
+    onSpawn(child);
+    child.once('exit', (exitCode) => resolve(exitCode ?? 1));
+    child.once('error', () => resolve(1));
+  });
+}
+
+/** Flags que solo tienen sentido con la pila que monta `e2e-stack`. */
+function stackOnlyFlags(args: RunnerArgs): string[] {
+  return [
+    ...(args.keepStack ? ['--keep-stack'] : []),
+    ...(args.down ? ['--down'] : []),
+    ...(args.rehearseRemote ? ['--rehearse-remote'] : []),
+    ...(args.skipLocal ? ['--skip-local'] : []),
+    ...(args.stackFault === undefined ? [] : ['--stack-fault']),
+    ...(Object.keys(args.portOverrides).length > 0 ? ['port overrides (--*-port)'] : []),
+  ];
+}
+
+/**
+ * `web-e2e:e2e-remote` (design D3, D9): el perfil `remote` contra el origen de `--base-url`, sin montar nada. Todo lo
+ * que puede fallar antes de Playwright falla en la comprobación previa, **sin ejecutar ninguna prueba** ni enviar las
+ * credenciales a ningún sitio. No lee `E2E_BASE_URL`, `E2E_API_ORIGIN` ni `E2E_MATCH_EXPECTATION` de su entorno:
+ * solo las credenciales, que son secretos.
+ */
+async function runRemote(args: RunnerArgs, root: string): Promise<number> {
+  const phase: Phase = 'comprobación previa';
+  try {
+    const misplaced = stackOnlyFlags(args);
+    if (misplaced.length > 0) {
+      throw new PhaseError(phase, `${misplaced.join(', ')} belong to web-e2e:e2e-stack, not to e2e-remote`);
+    }
+    if (args.baseUrl === undefined) {
+      throw new PhaseError(
+        phase,
+        'the remote profile has no origin: pass --base-url <origin> (e2e-remote does not read E2E_BASE_URL from its environment)',
+      );
+    }
+    let origins: ReturnType<typeof resolveRemoteOrigins>;
+    try {
+      origins = resolveRemoteOrigins(args.baseUrl, args.apiOrigin);
+    } catch (error) {
+      throw new PhaseError(phase, error instanceof Error ? error.message : String(error));
+    }
+    if (args.matchExpectation === undefined) {
+      throw new PhaseError(
+        phase,
+        'pass --match-expectation replay-report|consent-required: the destination declares the expected match outcome (design D7)',
+      );
+    }
+    const inFiles = findCredentialsInDotEnvFiles(root, [E2E_PROJECT_DIR]);
+    if (inFiles.length > 0) {
+      throw new PhaseError(
+        phase,
+        inFiles.map((item) => `${item.key} is in ${item.file}`).join('; ') +
+          ': pass the remote credentials in the session environment, not in a .env file (design D3)',
+      );
+    }
+    const missing = REMOTE_CREDENTIAL_KEYS.filter((key) => (process.env[key] ?? '') === '');
+    if (missing.length > 0) {
+      throw new PhaseError(phase, `${missing.join(' and ')} missing from the session environment (design D3)`);
+    }
+    const browser = chromium.executablePath();
+    if (!existsSync(browser)) {
+      throw new PhaseError(
+        phase,
+        `the Playwright Chromium browser is not installed (${browser}): pnpm exec playwright install chromium`,
+      );
+    }
+    log(
+      `comprobación previa: perfil remote, origen ${origins.baseUrl}, API ${origins.apiOrigin}, expectativa ${args.matchExpectation}, credenciales en el entorno de la sesión`,
+    );
+    const cliArgs = playwrightCliArgs(args.playwrightArgs, REMOTE_TAGS);
+    const env: Record<string, string> = {
+      ...pickWhitelisted(process.env, SYSTEM_WHITELIST, process.platform),
+      E2E_BASE_URL: origins.baseUrl,
+      E2E_API_ORIGIN: origins.apiOrigin,
+      E2E_PROFILE: 'remote',
+      E2E_MATCH_EXPECTATION: args.matchExpectation,
+      E2E_REMOTE_EMAIL: process.env['E2E_REMOTE_EMAIL'] ?? '',
+      E2E_REMOTE_PASSWORD: process.env['E2E_REMOTE_PASSWORD'] ?? '',
+    };
+    log(`suite: playwright ${cliArgs.slice(1).join(' ')} (perfil remote)`);
+    const code = await runPlaywright(root, cliArgs, env, () => undefined);
+    if (code !== 0) {
+      throw new PhaseError('suite', `Playwright exited with code ${code}`);
+    }
+    log('suite: Playwright en verde');
+    return 0;
+  } catch (error) {
+    reportFailure(error);
+    return 1;
   }
 }
 
@@ -635,6 +747,9 @@ async function main(): Promise<number> {
     return 1;
   }
   const root = process.cwd();
+  if (args.remoteTarget) {
+    return runRemote(args, root);
+  }
   let suiteEnv: Record<string, string>;
   let block: PortBlock;
   try {

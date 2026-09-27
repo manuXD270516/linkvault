@@ -169,6 +169,7 @@ test('BYOK profile: notices, save OpenAI hint, consent-off copy', async ({ page 
   // Vendor sin configuración utilizable. Solo corre con la receta de la cabecera (`BYOK_OPENROUTER_MODEL="   "` en
   // el `.env` local): con la configuración habitual los tres vendors son construibles y no hay ninguno caído que mirar.
   const down = listBody.vendors.find((entry) => !entry.available);
+  // eslint-disable-next-line playwright/no-conditional-in-test -- salto condicional: sin un vendor caído (receta de la cabecera) esta rama solo anota «skip-reason» y pasa; spec no admitido (lote 5)
   if (down === undefined) {
     test.info().annotations.push({
       type: 'skip-reason',
