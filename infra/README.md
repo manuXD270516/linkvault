@@ -279,7 +279,7 @@ ACME_EMAIL=ops@example.invalid
 AI_CHAIN=none
 AUTH_JWT_SECRET=$(node -e "process.stdout.write(require('crypto').randomBytes(48).toString('base64url'))")
 AI_VAULT_KEY=$(node -e "process.stdout.write(require('crypto').randomBytes(32).toString('base64'))")
-MINIO_KMS_SECRET_KEY=linkvault-cv:$(node -e "process.stdout.write(require('crypto').randomBytes(32).toString('base64'))")
+OBJECT_STORE_SSE_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
 EOF
 
 # 3) Qué imágenes usa el compose: las recién construidas, no las de GHCR.
@@ -290,7 +290,13 @@ docker compose -f docker-compose.prod.yml --env-file .env.local-stack config >/d
 
 # 5) La pila, igual que en el corredor: sin traefik, con plazo y sin tirar del registro.
 docker compose -f docker-compose.prod.yml --env-file .env.local-stack \
-  up -d --wait --wait-timeout 360 --pull never mongo redis minio api worker web
+  up -d --wait --wait-timeout 360 --pull never mongo redis object-store api worker web
+
+# 6) El almacén, por la API S3 y con la imagen de `api`: crear los buckets y el cifrado del de CV, comprobarlo (sin
+#    escribir), y que el `worker` lee el bucket de CV con su propia configuración. Cada orden, con plazo.
+timeout 180 docker compose -f docker-compose.prod.yml --env-file .env.local-stack run --rm --no-deps api node object-store.js provision
+timeout 180 docker compose -f docker-compose.prod.yml --env-file .env.local-stack run --rm --no-deps api node object-store.js verify
+timeout 180 docker compose -f docker-compose.prod.yml --env-file .env.local-stack run --rm --no-deps worker node s3-probe.js
 ```
 
 Sobre las banderas, que no son decorativas:

@@ -42,9 +42,9 @@ set -euo pipefail
 COMPOSE_FILE='docker-compose.prod.yml'
 ENV_FILE='infra/ci/verify.env'
 # Traefik fuera (borde: DNS y ACME). Los seis que sí: las tres dependencias y las tres imágenes que se verifican.
-SERVICES=(mongo redis minio api worker web)
+SERVICES=(mongo redis object-store api worker web)
 # Las de terceros se descargan aparte; las nuestras NO pueden descargarse (ver el `up` de abajo).
-THIRD_PARTY_SERVICES=(mongo redis minio)
+THIRD_PARTY_SERVICES=(mongo redis object-store)
 
 # --- El plazo del `up --wait`, y de dónde sale el número -----------------------------------------------------------
 # Corrección medida (2026-09-24, Docker Compose de Docker 29.8.0): el change afirmaba que «un plazo ausente deja el
@@ -75,6 +75,12 @@ THIRD_PARTY_SERVICES=(mongo redis minio)
 WAIT_TIMEOUT="${VERIFY_WAIT_TIMEOUT:-360}"
 
 dc() { docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" "$@"; }
+
+# Cada `run` de un solo uso va acotado (design D4 de `object-store`): un almacén que acepta la conexión y no responde
+# no puede dejar este paso esperando hasta el timeout del job. `timeout` ejecuta un programa, no una función de la
+# shell, así que no puede envolver a `dc`: esta es la misma orden, con el plazo delante.
+RUN_TIMEOUT=180
+dc_bounded() { timeout "$RUN_TIMEOUT" docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" "$@"; }
 
 section() { printf '\n=== %s\n' "$1"; }
 
@@ -175,6 +181,74 @@ fi
 
 section 'Estado tras el up'
 dc ps
+
+# --- Tiempo hasta `healthy` de cada servicio, leído de `docker inspect` (design D8 de `object-store`) --------------
+# Informa el plazo del `up` (la tabla de `WAIT_TIMEOUT`); no aprueba ni suspende nada. Es el fin del primer sondeo con
+# salida 0 de `.State.Health.Log` menos `.State.StartedAt`, el mismo método que C9 en `docs/object-store-matrix/`.
+# Docker guarda solo los **cinco** últimos sondeos (y no guarda los fallidos dentro de `start_period`): con el
+# registro lleno, el primer sondeo sano puede haberse perdido, y lo que se imprime es una **cota superior** («≤»),
+# nunca una cifra que parezca exacta sin serlo. Por eso esta sección va justo después del `up`.
+section 'Tiempo hasta healthy de cada servicio (docker inspect)'
+seconds_since_epoch() { date -d "$1" +%s.%N 2>/dev/null; }
+for service in "${SERVICES[@]}"; do
+  cid="$(dc ps -q "$service" 2>/dev/null | head -n 1 || true)"
+  if [ -z "$cid" ]; then
+    printf '  %-12s sin contenedor\n' "$service"
+    continue
+  fi
+  inspected="$(docker inspect --format '{{.State.StartedAt}}|{{if .State.Health}}{{.State.Health.Status}}{{range .State.Health.Log}}|{{.ExitCode}}@{{json .End}}{{end}}{{else}}sin-healthcheck{{end}}' "$cid" 2>/dev/null || true)"
+  IFS='|' read -r -a fields <<<"$inspected"
+  started="${fields[0]:-}"
+  status="${fields[1]:-desconocido}"
+  probes=$((${#fields[@]} > 2 ? ${#fields[@]} - 2 : 0))
+  first_ok=''
+  for entry in "${fields[@]:2}"; do
+    if [ "${entry%%@*}" = '0' ]; then
+      first_ok="${entry#*@}"
+      first_ok="${first_ok//\"/}"
+      break
+    fi
+  done
+  start_s="$(seconds_since_epoch "$started" || true)"
+  ok_s=''
+  if [ -n "$first_ok" ]; then
+    ok_s="$(seconds_since_epoch "$first_ok" || true)"
+  fi
+  if [ -z "$start_s" ] || [ -z "$ok_s" ]; then
+    printf '  %-12s estado %s; sin sondeo con salida 0 en el registro (sondeos guardados: %d): no se puede medir\n' \
+      "$service" "$status" "$probes"
+    continue
+  fi
+  elapsed="$(awk -v a="$start_s" -v b="$ok_s" 'BEGIN { printf "%.2f", b - a }')"
+  if [ "$probes" -ge 5 ]; then
+    printf '  %-12s estado %s; hasta healthy: <= %s s (registro lleno, sondeos guardados: %d; el primero sano puede haberse perdido)\n' \
+      "$service" "$status" "$elapsed" "$probes"
+  else
+    printf '  %-12s estado %s; hasta healthy: %s s (sondeos guardados: %d)\n' "$service" "$status" "$elapsed" "$probes"
+  fi
+done
+
+# --- El almacén de objetos: aprovisionado y comprobado por la API S3, con la imagen de `api` (design D4) -----------
+# El orden es `up` → `provision` → `verify`: la readiness de `api` y `worker` no necesita los buckets. `provision` crea
+# los dos buckets, pone el cifrado por defecto del de CV y quita reglas de ciclo de vida y políticas; `verify` lo lee
+# sin escribir y exige además que las peticiones anónimas se rechacen. `run --no-deps` hereda las redes del servicio,
+# `object-store-net` incluida.
+section 'object-store: provision (run --rm --no-deps api node object-store.js provision)'
+dc_bounded run --rm --no-deps api node object-store.js provision \
+  || fail "object-store provision salió ≠0 (o superó ${RUN_TIMEOUT} s): el almacén no quedó aprovisionado"
+
+section 'object-store: verify (run --rm --no-deps api node object-store.js verify)'
+dc_bounded run --rm --no-deps api node object-store.js verify \
+  || fail "object-store verify salió ≠0 (o superó ${RUN_TIMEOUT} s): el almacén no está como se entrega"
+
+# --- El `worker` alcanza el almacén con su propia configuración (tarea 7.5 de `object-store`) ----------------------
+# La readiness del `worker` no mira el almacén. `s3-probe.js` (entrada del build de `worker`) usa su fábrica de
+# cliente S3 y su lector de CV: `HeadBucket` firmado del bucket de CV y lectura de una clave ausente de
+# `.verify-probe/`, que tiene que dar `null`. Un almacén que deje de aceptar esa lectura (credenciales, bucket, TLS)
+# rompe aquí el CD, no la primera lectura de un CV en el destino.
+section 'worker: lectura del bucket de CV (run --rm --no-deps worker node s3-probe.js)'
+dc_bounded run --rm --no-deps worker node s3-probe.js \
+  || fail "worker s3-probe salió ≠0 (o superó ${RUN_TIMEOUT} s): el worker no alcanza el bucket de CV con su configuración"
 
 # --- 5.6: el borde queda fuera, y se comprueba que de verdad quedó fuera -------------------------------------------
 if [ -n "$(dc ps --all --services --filter status=running | grep -x traefik || true)" ]; then

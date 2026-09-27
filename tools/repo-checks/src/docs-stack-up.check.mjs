@@ -19,6 +19,14 @@
  * Qué NO comprueba, dicho en voz alta: que el procedimiento documentado **funcione**. Eso solo lo dice ejecutarlo, y
  * se ejecutó al escribirlo (salidas literales en el grupo 12 de `tasks.md`). Aquí solo se impide que las dos copias
  * se separen.
+ *
+ * Las órdenes `run` de después del `up` (design D5 del change `object-store`, ADR-052 §5). El almacén no se
+ * aprovisiona en su healthcheck: tras el `up` van `run --rm --no-deps api node object-store.js provision` y después
+ * `verify` (y la lectura del `worker`). Dos comprobaciones, porque una sola no basta:
+ *   - **absoluta:** cada lado contiene, **después** de su `up`, `provision` y **después** `verify`. Comparar los dos
+ *     lados entre sí no lo cubre: si alguien quita las dos órdenes **de los dos**, siguen siendo iguales;
+ *   - **relativa:** las dos listas de órdenes `run` (desde `run` hasta el final de la orden) son las mismas y en el
+ *     mismo orden.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -37,6 +45,16 @@ const SENTINEL = '<!-- repo-check: stack-up';
 
 /** El env file de CI lleva escrito que no sirve para nada que no sea el corredor (tarea 5.3). */
 const CI_ENV_FILE = 'infra/ci/verify.env';
+
+/**
+ * Las dos órdenes que la comprobación absoluta exige tras el `up`, en este orden (design D5 de `object-store`).
+ * Se comparan desde `run` hasta el final de la orden, igual que las listas de la relativa.
+ */
+const PROVISION_RUN = 'run --rm --no-deps api node object-store.js provision';
+const VERIFY_RUN = 'run --rm --no-deps api node object-store.js verify';
+
+/** Lo que termina una orden dentro de una línea de shell. */
+const COMMAND_END = new Set(['||', '&&', ';', '|']);
 
 const findings = [];
 
@@ -103,6 +121,66 @@ function parseUp(tokens) {
   return result;
 }
 
+/**
+ * La orden `run` de una línea ya tokenizada: desde el token `run` que sigue a quien invoca Compose hasta el final de la
+ * orden (`||`, `&&`, `;`, `|`, un comentario o el final de la línea). `undefined` si la línea no es un `run`.
+ * @param {readonly string[]} tokens
+ * @param {(tokens: readonly string[], index: number) => boolean} isInvoker `true` si `tokens[index]` invoca Compose
+ */
+function runCommand(tokens, isInvoker) {
+  const invokerAt = tokens.findIndex((_, index) => isInvoker(tokens, index));
+  if (invokerAt === -1) {
+    return undefined;
+  }
+  const runAt = tokens.indexOf('run', invokerAt + 1);
+  if (runAt === -1) {
+    return undefined;
+  }
+  // Entre quien invoca y `run` solo caben opciones de Compose con su valor (`-f <f>`, `--env-file <e>`).
+  for (let i = invokerAt + 1; i < runAt; i += 1) {
+    if (!tokens[i].startsWith('-') && !tokens[i - 1].startsWith('-')) {
+      return undefined;
+    }
+  }
+  const command = [];
+  for (const token of tokens.slice(runAt)) {
+    if (COMMAND_END.has(token) || token.startsWith('#')) {
+      break;
+    }
+    const bare = token.replace(/;$/, '');
+    command.push(unquote(bare));
+    if (bare !== token) {
+      break;
+    }
+  }
+  return command.join(' ');
+}
+
+/**
+ * La comprobación absoluta sobre un lado: `provision` y después `verify` entre sus órdenes `run` de tras el `up`.
+ * @param {string} file
+ * @param {readonly string[]} runs
+ */
+function checkProvisionThenVerify(file, runs) {
+  const provisionAt = runs.indexOf(PROVISION_RUN);
+  const verifyAt = runs.indexOf(VERIFY_RUN);
+  if (provisionAt === -1) {
+    findings.push(
+      `${file} no ejecuta, después de su 'up', '${PROVISION_RUN}': el almacén quedaría sin buckets ni cifrado del bucket de CV`,
+    );
+  }
+  if (verifyAt === -1) {
+    findings.push(
+      `${file} no ejecuta, después de su 'up', '${VERIFY_RUN}': nada comprobaría el almacén que se entrega`,
+    );
+  }
+  if (provisionAt !== -1 && verifyAt !== -1 && verifyAt < provisionAt) {
+    findings.push(
+      `${file} ejecuta 'verify' antes que 'provision': el orden es up → provision → verify`,
+    );
+  }
+}
+
 // --- Lado A: el bloque documentado en infra/README.md --------------------------------------------------------------
 const readme = readFileSync(README_PATH, 'utf8');
 const sentinelAt = readme.indexOf(SENTINEL);
@@ -143,6 +221,30 @@ if (documentedUpLine === undefined) {
 const documented = parseUp(
   documentedUpLine.trim().split(/\s+/).map(unquote),
 );
+
+/** En el README, Compose se invoca siempre como `docker compose`. */
+function isDockerCompose(tokens, index) {
+  return tokens[index] === 'compose' && tokens[index - 1] === 'docker';
+}
+
+// Las órdenes `run` documentadas **después** del `up`, cada una con su fichero de compose.
+const documentedLines = joinContinuations(documentedBlock).split(/\r?\n/);
+const documentedRuns = [];
+const documentedRunFiles = [];
+for (const line of documentedLines.slice(documentedLines.indexOf(documentedUpLine) + 1)) {
+  if (line.trim().startsWith('#')) {
+    continue;
+  }
+  const tokens = line.trim().split(/\s+/).map(unquote);
+  const run = runCommand(tokens, isDockerCompose);
+  if (run === undefined) {
+    continue;
+  }
+  documentedRuns.push(run);
+  const composeAt = tokens.findIndex((_, index) => isDockerCompose(tokens, index));
+  const fileAt = tokens.findIndex((token, index) => index > composeAt && (token === '-f' || token === '--file'));
+  documentedRunFiles.push(fileAt === -1 ? undefined : tokens[fileAt + 1]);
+}
 
 // --- Lado B: lo que ejecuta infra/ci/verify-artifact.sh -------------------------------------------------------------
 const script = joinContinuations(readFileSync(SCRIPT_PATH, 'utf8'));
@@ -208,6 +310,24 @@ if (executed === undefined) {
   fail(NAME, [`${SCRIPT}: la línea del 'up' no se pudo tokenizar`], 'ver arriba');
 }
 
+// Las órdenes `run` del script **después** de su `up`. El script invoca Compose con `dc` o, cuando la orden va con
+// plazo, con `dc_bounded` (`timeout` no puede ejecutar una función de la shell); los dos llevan su `-f` y su
+// `--env-file`, que ya se comparan en el `up`.
+function isScriptCompose(tokens, index) {
+  return ['dc', 'dc_bounded'].includes(tokens[index]) || isDockerCompose(tokens, index);
+}
+const scriptLines = script.split(/\r?\n/);
+const executedRuns = [];
+for (const line of scriptLines.slice(scriptLines.indexOf(scriptUpLine) + 1)) {
+  if (line.trim().startsWith('#')) {
+    continue;
+  }
+  const run = runCommand(line.trim().split(/\s+/).map(unquote), isScriptCompose);
+  if (run !== undefined) {
+    executedRuns.push(run);
+  }
+}
+
 // --- El cotejo -----------------------------------------------------------------------------------------------------
 if (documented.composeFile !== executed.composeFile) {
   findings.push(
@@ -262,6 +382,26 @@ if (documented.envFile === CI_ENV_FILE) {
   );
 }
 
+// --- Las órdenes `run` de después del `up` (design D5 de `object-store`) --------------------------------------------
+// Absoluta, en cada lado por separado: la igualdad de abajo pasaría si alguien quitase las dos órdenes de los dos.
+checkProvisionThenVerify(README, documentedRuns);
+checkProvisionThenVerify(SCRIPT, executedRuns);
+
+// Relativa: las mismas órdenes y en el mismo orden.
+if (documentedRuns.join('\n') !== executedRuns.join('\n')) {
+  findings.push(
+    `las órdenes 'run' tras el 'up' no son las mismas o no van en el mismo orden: ${README} documenta [${documentedRuns.join(' ; ') || 'ninguna'}] y ${SCRIPT} ejecuta [${executedRuns.join(' ; ') || 'ninguna'}]`,
+  );
+}
+
+documentedRunFiles.forEach((file, index) => {
+  if (file !== documented.composeFile) {
+    findings.push(
+      `${README}: '${documentedRuns[index]}' usa el fichero de compose '${file ?? '(ninguno)'}' y el 'up' documentado '${documented.composeFile}'`,
+    );
+  }
+});
+
 if (findings.length > 0) {
   fail(
     NAME,
@@ -272,5 +412,5 @@ if (findings.length > 0) {
 
 pass(
   NAME,
-  `el 'up' documentado en ${README} y el de ${SCRIPT} coinciden: ${executed.composeFile}, ${executedServices.length} servicios (${executedServices.join(', ')}), --wait --wait-timeout ${executed.waitTimeout} --pull never, sin traefik`,
+  `el 'up' documentado en ${README} y el de ${SCRIPT} coinciden: ${executed.composeFile}, ${executedServices.length} servicios (${executedServices.join(', ')}), --wait --wait-timeout ${executed.waitTimeout} --pull never, sin traefik; y después del 'up', en los dos, provision y después verify, con las mismas ${executedRuns.length} órdenes 'run' en el mismo orden`,
 );
