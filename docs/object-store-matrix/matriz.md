@@ -3599,6 +3599,92 @@ exit=0
 En (a) los dos lados siguen siendo iguales entre sí (solo queda la sonda del `worker`), así que falla solo la absoluta,
 nombrando cada fichero. En (b) falla la relativa y, además, la absoluta del README, porque `verify` va antes.
 
+### 7.8: `cd-staging` en modo de prueba desde la rama (`amd64`)
+
+**Antes de lanzarla**, leído en `.github/workflows/cd-staging.yml` de la rama: con `workflow_dispatch` y
+`dry_run: true`, el paso «Publish verified artifact to GHCR» no se ejecuta (`if: github.event_name !=
+'workflow_dispatch' || inputs.dry_run != true`), y `deploy-staging` solo corre con `needs.preflight.outputs.state ==
+'full'`; `gh secret list` no da ningún secreto de repositorio, así que el preflight da `none`. El workflow ya está en
+la rama por defecto, así que se lanza con `gh workflow run` sin tocarlo (sin commit temporal).
+
+```text
+$ gh workflow run cd-staging.yml --ref change/object-store -f dry_run=true
+https://github.com/manuXD270516/linkvault/actions/runs/36306343252
+$ gh run view 36306343252 --json conclusion,jobs,headSha,event,url > <scratchpad>/run-78.json   # leído con node
+conclusion: success | headSha: 9bd0708df2cb381fc0f8ecff621d077f31c3366a | event: workflow_dispatch
+job: preflight (¿hay destino de staging configurado?) | success
+job: verify (lint, specs, typecheck, test, build) | success
+job: build, verify and publish artifact | success
+   step: Verify artifact (docker-compose.prod.yml stack in the runner) | success
+   step: Publish verified artifact to GHCR (docker push of the loaded image) | skipped
+   step: Tear down verification stack | success
+job: resultado: artefacto verificado — NO desplegado (sin destino de staging) | success
+job: deploy staging (solo si hay destino configurado) | skipped
+$ gh api repos/manuXD270516/linkvault/actions/jobs/108584921159      # labels del job, leído con node
+labels: ubuntu-24.04
+```
+
+Del log del paso de verificación (`gh run view 36306343252 --log --job 108584921159`, volcado a fichero y leído con
+`node`; sin las líneas `Creating`/`Created` de los contenedores de un solo uso):
+
+```text
+=== up -d --wait --wait-timeout 360 --pull never mongo redis object-store api worker web
+ (…)
+ Container linkvault-prod-object-store-1  Healthy
+ Container linkvault-prod-worker-1  Healthy
+ Container linkvault-prod-api-1  Healthy
+
+=== Tiempo hasta healthy de cada servicio (docker inspect)
+  mongo        estado healthy; hasta healthy: 5.33 s (sondeos guardados: 3)
+  redis        estado healthy; hasta healthy: 5.37 s (sondeos guardados: 2)
+  object-store estado healthy; hasta healthy: 1.37 s (sondeos guardados: 2)
+  api          estado healthy; hasta healthy: 5.49 s (sondeos guardados: 1)
+  worker       estado healthy; hasta healthy: 5.53 s (sondeos guardados: 1)
+  web          estado healthy; hasta healthy: 5.41 s (sondeos guardados: 1)
+
+=== object-store: provision (run --rm --no-deps api node object-store.js provision)
+ok    cvs: bucket created
+ok    cvs: no lifecycle configuration (removed if there was one)
+ok    cvs: default encryption set (AES256)
+ok    cvs: no bucket policy
+ok    snapshots: bucket created
+ok    snapshots: no lifecycle configuration (removed if there was one)
+ok    snapshots: no bucket policy
+provision: ok
+
+=== object-store: verify (run --rm --no-deps api node object-store.js verify)
+ok    cvs: bucket exists
+ok    snapshots: bucket exists
+ok    cvs: no lifecycle rule
+ok    cvs: default encryption (AES256)
+ok    snapshots: no lifecycle rule
+ok    snapshots: no snapshot older than 31 days (0 listed)
+ok    cvs: anonymous GET of a missing object rejected (HTTP 403 AccessDenied)
+ok    cvs: anonymous listing rejected (HTTP 403 AccessDenied)
+ok    cvs: anonymous PUT rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous GET of a missing object rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous listing rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous PUT rejected (HTTP 403 AccessDenied)
+verify: ok
+
+=== worker: lectura del bucket de CV (run --rm --no-deps worker node s3-probe.js)
+ok    cvs: CV bucket exists (signed HeadBucket)
+ok    cvs: a missing key under .verify-probe/ reads as null with the CV reader
+s3-probe: ok
+traefik no se levantó (correcto: el borde queda fuera del alcance)
+ (…)
+=== Artefacto verificado
+api, worker y web arrancan y responden con la configuración de producción real.
+```
+
+Del job de reporte: estado de commit `success` en `9bd0708`, «Artefacto verificado. NO desplegado: no hay destino de
+staging configurado (ADR-048 §3).». Y nada publicado: en el log del job no hay `docker push` ni `publish-artifact`, y
+`gh api user/packages/container/<paquete>/versions --paginate`, leído con `node`, no da ninguna versión con el tag
+`sha-9bd0708df2cb` en `linkvault-api`, `linkvault-worker` ni `linkvault-web`.
+
+Es la primera corrida en el corredor con el almacén: `amd64`, sin `TARGET_PLATFORM`. Los tiempos hasta `healthy` no
+cuentan para la 11.1, que pide tres corridas `arm64`.
+
 ## Retención por barrido (tarea 8.7)
 
 Barrido de snapshots (8.5) ejecutado contra el almacén elegido, **SeaweedFS 4.47** con la configuración entregada
