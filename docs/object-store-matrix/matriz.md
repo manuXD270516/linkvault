@@ -1038,6 +1038,9 @@ node -e exit=0
 el lector del `worker` trata `NoSuchBucket` (y cualquier `404`) como objeto ausente (`meansMissingObject`). Una sonda
 que solo exija `null` pasaría con el bucket de CV sin crear.
 
+Resuelto en la 7.5b: ver «Configuración entregada», sección 7.5b (con SeaweedFS, además, un `PutObject` crea el
+bucket; design D17).
+
 ### 2.11: falsación del acceso anónimo y `list-buckets.mjs`
 
 ```text
@@ -2309,7 +2312,7 @@ falsación: todas las copias salen ≠0
 exit=0
 ```
 
-## Configuración entregada (tareas 7.1, 7.1b, 7.2, 7.2b, 7.3 y 7.3b)
+## Configuración entregada (tareas 7.1, 7.1b, 7.2, 7.2b, 7.3, 7.3b, 7.5b y 7.5c)
 
 El servicio `object-store` de `docker-compose.yml` está **copiado** del de `seaweedfs.compose.yml`, el que midió la
 matriz (design D2, «Lo que se entrega es lo que se midió»; D6, D14 y D16). Esta sección tiene lo que lo demuestra:
@@ -3046,3 +3049,89 @@ exit=0
 
 Al terminar, no queda ningún contenedor, volumen ni red `os8`: `docker ps -a`, `docker volume ls` y
 `docker network ls` filtrados por `os8` dan 0.
+
+### 7.5b: bucket de CV ausente = error reintentable
+
+Lector del `worker`: solo `NoSuchKey` y `NotFound` son «objeto ausente»; `NoSuchBucket` y cualquier otro `404` se
+relanzan en `read` y en `remove` (design D15). Proyecto `os9-b` desde volúmenes vacíos, con `COMPOSE_PROJECT_NAME`, los
+puertos del bloque 19900-19999 y las `S3_*` (`S3_ENDPOINT=http://localhost:19940`) exportados en el entorno de la
+orden, sin tocar `.env`; `pnpm infra:up` sale 0 con «provision: ok».
+
+**Hallazgo (design D17).** SeaweedFS 4.47 **crea el bucket** al recibir un `PutObject` firmado en uno que no existe, y
+lo crea **sin cifrado por defecto**; `HeadBucket`, `GetObject` y `DeleteObject` no lo crean. Medido con el SDK
+(`autocreate.mjs` del scratchpad; un bucket que nunca existió, `os9-never-b3`; `os9-never-b2` es el que creó la suite
+completa de más abajo):
+
+```text
+$ node autocreate.mjs os9-never-b3
+buckets before: cvs,os9-never-b2,snapshots
+HeadBucket os9-never-b3: error name=NotFound HTTP 404
+GetObject os9-never-b3/k: error name=NoSuchBucket HTTP 404
+DeleteObject os9-never-b3/k: error name=NoSuchBucket HTTP 404
+buckets after get+delete: cvs,os9-never-b2,snapshots
+PutObject os9-never-b3/k: ok HTTP 200 {"ETag":"\"9dd4e461268c8034f5c8564e155c67a6\"","ChecksumCRC32":"jNwWgw=="}
+buckets after put: cvs,os9-never-b2,os9-never-b3,snapshots
+HeadObject os9-never-b3/k: ok HTTP 200 {"AcceptRanges":"bytes","LastModified":"2026-09-27T07:54:22.000Z","ContentLength":1,"ETag":"\"9dd4e461268c8034f5c8564e155c67a6\"","ContentType":"application/octet-stream","Metadata":{}}
+GetBucketEncryption os9-never-b3: error name=ServerSideEncryptionConfigurationNotFoundError HTTP 404
+GetBucketEncryption cvs: ok HTTP 200 {"ServerSideEncryptionConfiguration":{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"},"BucketKeyEnabled":false}]}}
+PutObject cvs/k: ok HTTP 200 {"ETag":"\"9dd4e461268c8034f5c8564e155c67a6\"","ChecksumCRC32":"jNwWgw==","ServerSideEncryption":"AES256"}
+HeadObject cvs/k: ok HTTP 200 {"AcceptRanges":"bytes","LastModified":"2026-09-27T07:54:22.000Z","ContentLength":1,"ETag":"\"9dd4e461268c8034f5c8564e155c67a6\"","ContentType":"application/octet-stream","ServerSideEncryption":"AES25
+DeleteObject cvs/k: ok HTTP 204 {}
+exit=0
+```
+
+(`autocreate.mjs` recorta cada respuesta a 200 caracteres; por eso la línea de `HeadObject cvs/k` termina en `AES25`.)
+
+Por eso la suite completa con un `S3_BUCKET` inexistente **no** puede mostrar el caso de `null` fallando: su primer
+test sube un CV y crea el bucket. La verificación, reescrita por decisión del usuario del 2026-09-27, es el caso aislado
+con un bucket que nunca existió:
+
+```text
+$ S3_CONTRACT=1 pnpm nx run worker:test --skip-nx-cache -- s3.s3-contract --reporter=verbose
+ ✓ S3 contract of worker (real store) > reads the bytes that were written 251ms
+ ✓ S3 contract of worker (real store) > deletes, and deleting again is still a success 22ms
+WARN [S3CvFileReader] CV file not read: Error
+ ✓ S3 contract of worker (real store) > tells a missing object (null) apart from a store that is down (error) 137ms
+ ✓ S3 contract of worker (real store) > stores a gzipped snapshot in the snapshots bucket 219ms
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
+exit=0
+
+$ S3_CONTRACT=1 S3_BUCKET=os9-never-b1 pnpm nx run worker:test --skip-nx-cache -- s3.s3-contract --reporter=verbose -t "missing object"
+WARN [S3CvFileReader] CV file not read: NoSuchBucket
+ ↓ S3 contract of worker (real store) > reads the bytes that were written
+ ↓ S3 contract of worker (real store) > deletes, and deleting again is still a success
+ × S3 contract of worker (real store) > tells a missing object (null) apart from a store that is down (error) 36ms
+   → promise rejected "NoSuchBucket: The specified bucket does n… { …(9) }" instead of resolving
+ ↓ S3 contract of worker (real store) > stores a gzipped snapshot in the snapshots bucket
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ Test Files  1 failed (1)
+      Tests  1 failed | 3 skipped (4)
+exit=1
+
+$ S3_CONTRACT=1 S3_BUCKET=os9-never-b2 pnpm nx run worker:test --skip-nx-cache -- s3.s3-contract --reporter=verbose   # suite completa: no vale como verificación
+ ✓ S3 contract of worker (real store) > reads the bytes that were written 279ms
+ ✓ S3 contract of worker (real store) > deletes, and deleting again is still a success 21ms
+WARN [S3CvFileReader] CV file not read: Error
+ ✓ S3 contract of worker (real store) > tells a missing object (null) apart from a store that is down (error) 170ms
+ ✓ S3 contract of worker (real store) > stores a gzipped snapshot in the snapshots bucket 15ms
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
+exit=0
+```
+
+- Con el bucket correcto, 4/4 en verde. El aviso `CV file not read: Error` es el del almacén caído (puerto cerrado) del
+  mismo caso.
+- Caso aislado con un bucket que nunca existió: **falla** con `NoSuchBucket` (en la 2.8, con MinIO, pasaba), y el aviso
+  lleva solo el nombre del error, sin la clave.
+- Suite completa con `os9-never-b2`: 4/4 en verde, porque el primer test creó el bucket (aparece en «buckets before» de
+  la medición de arriba).
+
+Falsación de los tests unitarios: con `NoSuchBucket` de vuelta en `MISSING_OBJECT`, `pnpm nx run worker:test -- s3-cv-file.reader`
+sale 1 con 3 fallos, los de `NoSuchBucket` («does not confuse a missing CV bucket (NoSuchBucket, 404) with a missing
+object», «NoSuchBucket (404): read and remove throw, so the queue retries», «NoSuchBucket: the warning names the error
+and never the key»); restaurado, `pnpm nx run worker:test` completo sale 0 (64 ficheros, 628 tests, 1 fichero y 4 tests
+saltados: la suite de contrato sin `S3_CONTRACT`).
+
+`docker compose -p os9-b -f docker-compose.yml down -v --timeout 30` sale 0, y no queda ningún contenedor, volumen ni
+red `os9`: `docker ps -a`, `docker volume ls` y `docker network ls` filtrados por `os9` dan 0.
