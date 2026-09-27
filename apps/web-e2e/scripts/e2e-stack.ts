@@ -1,4 +1,5 @@
 import { type ChildProcess, spawn } from 'node:child_process';
+import { randomInt } from 'node:crypto';
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -13,12 +14,15 @@ import { describeBusy, probePorts } from './lib/ports';
 import { runCommand } from './lib/proc';
 import { isSameCheckoutServe, killTree, listProcesses, type ProcessInfo, processTree } from './lib/processes';
 import { findCredentialsInDotEnvFiles, REMOTE_CREDENTIAL_KEYS, resolveRemoteOrigins } from './lib/remote';
+import { type SeedAccount, seedRehearsalAccount } from './lib/seed';
 
 // Runner de la suite end-to-end (change `e2e-suite`, design D3). Se ejecuta con `node --import tsx` desde dos targets,
 // con la raíz del repositorio como directorio de trabajo. Salida por `process.stdout`/`stderr`.
 //
 // `web-e2e:e2e-stack`: comprobación previa → infraestructura → aplicaciones → (siembra) → suite → apagado. El apagado
-// ocurre siempre (`finally` y SIGINT/SIGTERM), salvo con `--keep-stack`, y solo toca lo que esta corrida lanzó.
+// ocurre siempre (`finally` y SIGINT/SIGTERM), salvo con `--keep-stack`, y solo toca lo que esta corrida lanzó. Con
+// `--rehearse-remote`, la siembra de la cuenta del ensayo y, tras el perfil `local` (salvo `--skip-local`), el
+// **ensayo**: el perfil `remote` contra la misma pila.
 //
 // `web-e2e:e2e-remote` (su orden lleva `--e2e-remote`): no monta nada; comprobación previa (origen, expectativa,
 // credenciales) → suite con el perfil `remote` contra el origen de `--base-url`.
@@ -34,6 +38,10 @@ const PLAYWRIGHT_CONFIG = 'apps/web-e2e/playwright.config.mts';
 const PROXY_CONFIG = 'apps/web-e2e/proxy.conf.mjs';
 const STACK_DIR = 'dist/.playwright/apps/web-e2e/stack-logs';
 const STATE_FILE = 'stack-state.json';
+/** Cuenta del ensayo remoto: sale de `e2e.env`, no del entorno (design D3, D10). */
+const REHEARSAL_EMAIL_KEY = 'E2E_REHEARSAL_EMAIL';
+const REHEARSAL_PASSWORD_KEY = 'E2E_REHEARSAL_PASSWORD';
+const REHEARSAL_DISPLAY_NAME = 'Ensayo remoto e2e';
 const APP_START_TIMEOUT_MS = 10 * 60_000;
 const SHUTDOWN_FREE_TIMEOUT_MS = 30_000;
 
@@ -268,6 +276,14 @@ class Stack {
   private async launch(name: AppName, nxArgs: readonly string[]): Promise<LaunchedApp> {
     const logPath = join(this.stackDir, `${name}.log`);
     const args = [nxBinPath(this.root), ...nxArgs];
+    // Nx 23.2.1 apunta cada tarea en curso en su base de datos local (`task_invocations`) con la clave «PID raíz de la
+    // invocación» (`NX_INVOCATION_ROOT_PID`, o el propio PID si no está) y la borra al terminar la tarea. El apagado mata
+    // el árbol de `nx serve` sin dejarle borrarla, y cuando Windows reutiliza ese PID para el `nx serve` de una corrida
+    // posterior, Nx lo toma por una recursión («Recursive task invocation detected: api:serve:development ->
+    // api:serve:development») y sale: medido el 2026-09-27. Cada lanzamiento recibe una raíz propia, que no es un PID
+    // real ni se repite, para que un registro huérfano no pueda chocar con él. Es una variable `NX_*`: entra en el
+    // conjunto permitido de design D6.
+    const env = { ...this.appEnv, NX_INVOCATION_ROOT_PID: String(randomInt(1_000_000_000, 2_000_000_000)) };
     let app: LaunchedApp;
     if (process.platform === 'win32' && this.args.keepStack) {
       // --keep-stack en Windows: fuera del job del runner y sin ventanas (ver launch-hidden.ts).
@@ -275,7 +291,7 @@ class Stack {
         name,
         executable: process.execPath,
         args,
-        env: this.appEnv,
+        env,
         cwd: this.root,
         logPath,
         workDir: this.stackDir,
@@ -287,7 +303,7 @@ class Stack {
       const fd = openSync(logPath, 'w');
       const child = spawn(process.execPath, args, {
         cwd: this.root,
-        env: this.appEnv,
+        env,
         stdio: ['ignore', fd, fd],
         detached: process.platform !== 'win32',
         windowsHide: true,
@@ -478,27 +494,95 @@ class Stack {
     writeFileSync(join(this.stackDir, STATE_FILE), `${JSON.stringify(state, null, 2)}\n`);
   }
 
+  // --- 4. Siembra (solo con --rehearse-remote) --------------------------------------------------------------------
+
+  /** Origen de la aplicación servida por la pila; el de su API se deriva de él, como en `remote` (design D9). */
+  private webOrigin(): string {
+    return `http://localhost:${this.block.web}`;
+  }
+
+  /**
+   * La cuenta del ensayo, **por la API pública** a través del mismo origen que usará el ensayo (design D3 fase 4, D5):
+   * alta y, si ya existe, login correcto. Consume un intento de registro.
+   */
+  async seed(account: SeedAccount): Promise<void> {
+    const phase: Phase = 'siembra';
+    this.throwIfFatal(phase);
+    const { apiOrigin } = resolveRemoteOrigins(this.webOrigin(), undefined);
+    const outcome = await seedRehearsalAccount(
+      async (url, init) => {
+        const response = await fetch(url, { ...init, signal: AbortSignal.timeout(30_000) });
+        return { status: response.status };
+      },
+      apiOrigin,
+      account,
+    );
+    this.throwIfFatal(phase);
+    log(
+      outcome === 'registered'
+        ? `siembra: cuenta del ensayo ${account.email} registrada por POST /api/auth/register (201)`
+        : `siembra: cuenta del ensayo ${account.email} ya existía (409); login correcto (200)`,
+    );
+  }
+
   // --- 5. Suite -------------------------------------------------------------------------------------------------
 
-  async suite(): Promise<void> {
+  /** El perfil `local` (salvo `--skip-local`) y, con `--rehearse-remote`, el ensayo del perfil `remote`. */
+  async suite(rehearsal: SeedAccount | undefined): Promise<void> {
+    if (!this.args.skipLocal) {
+      await this.runProfile(
+        'local',
+        LOCAL_TAGS,
+        {
+          ...this.appEnv,
+          E2E_BASE_URL: this.webOrigin(),
+          E2E_PROFILE: 'local',
+          E2E_MATCH_EXPECTATION: this.args.matchExpectation ?? 'replay-report',
+        },
+        `perfil local, E2E_BASE_URL=${this.webOrigin()}`,
+      );
+    }
+    if (rehearsal !== undefined) {
+      // Tarea 4.5: antes del ensayo, el runner reinicia **solo** `worker` con un proveedor externo inalcanzable.
+      const origins = resolveRemoteOrigins(this.webOrigin(), undefined);
+      // Como `e2e-remote`: lista blanca del sistema y las variables del perfil, sin `e2e.env` (el perfil `remote` no
+      // sabe nada de la pila que tiene detrás, design D9).
+      await this.runProfile(
+        'remote',
+        REMOTE_TAGS,
+        {
+          ...this.toolEnv,
+          E2E_BASE_URL: origins.baseUrl,
+          E2E_API_ORIGIN: origins.apiOrigin,
+          E2E_PROFILE: 'remote',
+          E2E_MATCH_EXPECTATION: 'consent-required',
+          E2E_REMOTE_EMAIL: rehearsal.email,
+          E2E_REMOTE_PASSWORD: rehearsal.password,
+        },
+        `ensayo: perfil remote contra ${origins.baseUrl}, API ${origins.apiOrigin}, expectativa consent-required, cuenta ${rehearsal.email}`,
+      );
+    }
+  }
+
+  private async runProfile(
+    profile: 'local' | 'remote',
+    tags: readonly string[],
+    env: Record<string, string>,
+    description: string,
+  ): Promise<void> {
     const phase: Phase = 'suite';
-    const args = playwrightCliArgs(this.args.playwrightArgs, LOCAL_TAGS);
-    const env: Record<string, string> = {
-      ...this.appEnv,
-      E2E_BASE_URL: `http://localhost:${this.block.web}`,
-      E2E_PROFILE: 'local',
-      E2E_MATCH_EXPECTATION: this.args.matchExpectation ?? 'replay-report',
-    };
-    log(`suite: playwright ${args.slice(1).join(' ')} (perfil local, E2E_BASE_URL=${env['E2E_BASE_URL']})`);
+    this.throwIfFatal(phase);
+    const args = playwrightCliArgs(this.args.playwrightArgs, tags);
+    log(`suite: playwright ${args.slice(1).join(' ')} (${description})`);
     const code = await runPlaywright(this.root, args, env, (child) => {
       this.playwright = child;
     });
     this.playwright = undefined;
     this.throwIfFatal(phase);
     if (code !== 0) {
-      throw new PhaseError(phase, `Playwright exited with code ${code}`);
+      throw new PhaseError(phase, `Playwright exited with code ${code} (perfil ${profile})`);
     }
-    log('suite: Playwright en verde');
+    log(`suite: Playwright en verde (perfil ${profile})`);
   }
 
   // --- 6. Apagado -----------------------------------------------------------------------------------------------
@@ -813,12 +897,7 @@ async function main(): Promise<number> {
     if (args.skipLocal && !args.rehearseRemote) {
       throw new PhaseError('comprobación previa', '--skip-local is only accepted together with --rehearse-remote');
     }
-    if (args.rehearseRemote) {
-      throw new PhaseError(
-        'comprobación previa',
-        '--rehearse-remote: the remote rehearsal (seeding and the remote profile) arrives with tasks 4.1 and 4.5; not available yet',
-      );
-    }
+    const rehearsal = args.rehearseRemote ? rehearsalAccount(suiteEnv) : undefined;
     if (args.baseUrl !== undefined || args.apiOrigin !== undefined) {
       throw new PhaseError(
         'comprobación previa',
@@ -832,7 +911,10 @@ async function main(): Promise<number> {
     startRunnerLog(join(stack.stackDir, 'runner.log'));
     await inPhase('infraestructura', () => stack.infrastructure());
     await inPhase('aplicaciones', () => stack.applications());
-    await inPhase('suite', () => stack.suite());
+    if (rehearsal !== undefined) {
+      await inPhase('siembra', () => stack.seed(rehearsal));
+    }
+    await inPhase('suite', () => stack.suite(rehearsal));
   } catch (error) {
     failure = error;
     reportFailure(error);
@@ -865,6 +947,19 @@ async function main(): Promise<number> {
     return 1;
   }
   return failure === undefined ? 0 : 1;
+}
+
+/** Cuenta del ensayo desde `e2e.env`; sin ella, `--rehearse-remote` falla antes de arrancar nada. */
+function rehearsalAccount(suiteEnv: Readonly<Record<string, string>>): SeedAccount {
+  const email = suiteEnv[REHEARSAL_EMAIL_KEY] ?? '';
+  const password = suiteEnv[REHEARSAL_PASSWORD_KEY] ?? '';
+  if (email === '' || password === '') {
+    throw new PhaseError(
+      'comprobación previa',
+      `--rehearse-remote needs ${REHEARSAL_EMAIL_KEY} and ${REHEARSAL_PASSWORD_KEY} in ${ENV_FILE} (design D10)`,
+    );
+  }
+  return { email, password, displayName: REHEARSAL_DISPLAY_NAME };
 }
 
 /** Un error inesperado dentro de una fase se informa con el nombre de esa fase. */
