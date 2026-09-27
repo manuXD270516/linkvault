@@ -2312,7 +2312,7 @@ falsación: todas las copias salen ≠0
 exit=0
 ```
 
-## Configuración entregada (tareas 7.1, 7.1b, 7.2, 7.2b, 7.3, 7.3b, 7.5b, 7.5c y 7.5)
+## Configuración entregada (tareas 7.1, 7.1b, 7.2, 7.2b, 7.3, 7.3b, 7.5b, 7.5c, 7.5, 7.4, 7.6, 7.7 y 7.8)
 
 El servicio `object-store` de `docker-compose.yml` está **copiado** del de `seaweedfs.compose.yml`, el que midió la
 matriz (design D2, «Lo que se entrega es lo que se midió»; D6, D14 y D16). Esta sección tiene lo que lo demuestra:
@@ -3270,7 +3270,7 @@ cabecera, vuelven con `AES256` por el cifrado por defecto del bucket: C5 sigue m
 `docker compose -p os9-c -f docker-compose.yml down -v --timeout 30` sale 0, y no queda ningún contenedor, volumen ni
 red `os9`: `docker ps -a`, `docker volume ls` y `docker network ls` filtrados por `os9` dan 0.
 
-### 7.5: sonda `s3-probe` del `worker` (parcial: falta la línea de `verify-artifact.sh`)
+### 7.5: sonda `s3-probe` del `worker`
 
 Punto de entrada adicional del build de webpack de `worker` (`additionalEntryPoints`, `dist/apps/worker/s3-probe.js`).
 Con la fábrica de cliente S3 del `worker` (un solo cliente) hace un `HeadBucket` firmado del bucket de CV; si falla,
@@ -3351,10 +3351,253 @@ exit=0
 Sin la línea en `verify-artifact.sh`: la tarea la pone «tras `verify`», y `verify-artifact.sh` todavía no tiene
 `provision` ni `verify` (los añade la 7.4) y sigue nombrando `minio`. La línea, «en 7.7, la línea en 0» y las dos
 falsaciones con `dc run` (`-e S3_SECRET_KEY=incorrecta`, y borrar el bucket → ≠0 → `provision` → 0) quedan para la
-7.4 y la 7.7.
+7.4 y la 7.7. **Hechas:** ver «7.4, 7.5 y 7.7», más abajo.
 
 `docker compose -p os9-p -f docker-compose.yml down -v --timeout 30` sale 0, y no queda ningún contenedor, volumen ni
 red `os9`: `docker ps -a`, `docker volume ls` y `docker network ls` filtrados por `os9` dan 0.
+
+### 7.4, 7.5 y 7.7: el almacén en la verificación del artefacto
+
+**Qué cambia en `infra/ci/verify-artifact.sh` (7.4 y la línea de la 7.5).** `SERVICES` y `THIRD_PARTY_SERVICES`
+nombran `object-store` en lugar de `minio`. Después del `up`, el script imprime el tiempo hasta `healthy` de cada
+servicio y ejecuta tres órdenes, cada una con `timeout 180` y un `|| fail` de clase `artifact`:
+`run --rm --no-deps api node object-store.js provision`, la misma con `verify` y, tras `verify`,
+`run --rm --no-deps worker node s3-probe.js`. `timeout` ejecuta un programa, no una función de la shell, así que no
+puede envolver a `dc`: las tres van por `dc_bounded`, que es la misma orden de Compose con el plazo delante
+(`RUN_TIMEOUT=180`). `infra/ci/verify.env` no cambia aquí: la sustitución de `MINIO_KMS_SECRET_KEY` por
+`OBJECT_STORE_SSE_KEY` se adelantó a la 7.3.
+
+El tiempo hasta `healthy` sale del mismo método que C9 (4.4): el fin del primer sondeo con salida 0 de
+`.State.Health.Log` menos `.State.StartedAt`, leídos con `docker inspect` y una plantilla Go, sin `node` ni `jq`. Docker
+guarda solo los cinco últimos sondeos, y no guarda los fallidos dentro de `start_period` (medido al escribirlo, con un
+contenedor `alpine` cuyo sondeo falla los tres primeros segundos: el registro solo tenía los sondeos con 0). Por eso,
+con el registro lleno, el primer sondeo sano puede haberse perdido, y la línea da una cota superior («<=») y lo dice.
+
+```text
+$ bash -n infra/ci/verify-artifact.sh
+exit=0
+```
+
+**7.7 en local (`amd64`).** Imágenes construidas desde un árbol limpio de `4bc29ec` (un `git worktree` aparte en el
+scratchpad, para que ningún cambio sin confirmar entrara en el contexto de build): `docker build -f
+docker/<app>.Dockerfile -t os10-<app>:local .`, las tres en 0. El proyecto de Compose es `os10-v`, fijado con
+`COMPOSE_PROJECT_NAME`, que gana al `name: linkvault-prod` del compose (`config --format json` da `"name": "os10-v"`),
+y así `verify-artifact.sh` y `teardown-artifact.sh` corren **sin tocarlos**. La pila no publica puertos (Traefik fuera),
+así que no choca con ninguna otra.
+
+```text
+$ COMPOSE_PROJECT_NAME=os10-v API_IMAGE=os10-api WORKER_IMAGE=os10-worker WEB_IMAGE=os10-web IMAGE_TAG=local \
+    VERIFY_FAIL_CLASS_FILE=<scratchpad>/fail-class.txt bash infra/ci/verify-artifact.sh
+=== Imágenes cargadas en el daemon del corredor
+  os10-api:local -> sha256:de73bbf4e4e3757d1ffa46da0b50c9914171e359ab334417a5b3ed886c43739c
+  os10-worker:local -> sha256:6311a8746818bcfc0af367cbdf0b5f81606195ed69618ab91a4bf80db1a02d58
+  os10-web:local -> sha256:031cb01bf906a650370cc1aee093eed3b47c0e64bd7ca704525037699872e309
+
+=== Imágenes que resuelve el compose
+traefik:v3.3.5
+mongo:7.0.43
+redis:7.4.11
+chrislusf/seaweedfs:4.47
+os10-api:local
+os10-worker:local
+os10-web:local
+
+=== pull de las imágenes de terceros (mongo redis object-store)
+ (…)
+=== up -d --wait --wait-timeout 360 --pull never mongo redis object-store api worker web
+ (…)
+ Container os10-v-object-store-1 Healthy
+ Container os10-v-redis-1 Healthy
+ Container os10-v-mongo-1 Healthy
+ Container os10-v-web-1 Healthy
+ Container os10-v-worker-1 Healthy
+ Container os10-v-api-1 Healthy
+
+=== Estado tras el up
+ (…)
+=== Tiempo hasta healthy de cada servicio (docker inspect)
+  mongo        estado healthy; hasta healthy: 5.04 s (sondeos guardados: 3)
+  redis        estado healthy; hasta healthy: 5.03 s (sondeos guardados: 2)
+  object-store estado healthy; hasta healthy: 1.19 s (sondeos guardados: 2)
+  api          estado healthy; hasta healthy: 5.34 s (sondeos guardados: 1)
+  worker       estado healthy; hasta healthy: 5.30 s (sondeos guardados: 1)
+  web          estado healthy; hasta healthy: 5.17 s (sondeos guardados: 1)
+
+=== object-store: provision (run --rm --no-deps api node object-store.js provision)
+ok    cvs: bucket created
+ok    cvs: no lifecycle configuration (removed if there was one)
+ok    cvs: default encryption set (AES256)
+ok    cvs: no bucket policy
+ok    snapshots: bucket created
+ok    snapshots: no lifecycle configuration (removed if there was one)
+ok    snapshots: no bucket policy
+provision: ok
+
+=== object-store: verify (run --rm --no-deps api node object-store.js verify)
+ok    cvs: bucket exists
+ok    snapshots: bucket exists
+ok    cvs: no lifecycle rule
+ok    cvs: default encryption (AES256)
+ok    snapshots: no lifecycle rule
+ok    snapshots: no snapshot older than 31 days (0 listed)
+ok    cvs: anonymous GET of a missing object rejected (HTTP 403 AccessDenied)
+ok    cvs: anonymous listing rejected (HTTP 403 AccessDenied)
+ok    cvs: anonymous PUT rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous GET of a missing object rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous listing rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous PUT rejected (HTTP 403 AccessDenied)
+verify: ok
+
+=== worker: lectura del bucket de CV (run --rm --no-deps worker node s3-probe.js)
+ok    cvs: CV bucket exists (signed HeadBucket)
+ok    cvs: a missing key under .verify-probe/ reads as null with the CV reader
+s3-probe: ok
+traefik no se levantó (correcto: el borde queda fuera del alcance)
+
+=== mongo: replica set de un nodo y primario escribible
+rs0 con 1 miembro, estado PRIMARY, primario escribible: mongo:27017
+
+=== api: GET /health con mongo y redis
+{"status":"up","service":"api","version":"0.0.0","checks":{"mongo":{"status":"up"},"redis":{"status":"up"}}}
+
+=== worker: GET /health con mongo y redis
+{"status":"up","service":"worker","version":"0.0.0","checks":{"mongo":{"status":"up"},"redis":{"status":"up"}}}
+ (…)
+web sirve el documento del SPA (<lv-root> presente)
+ (…)
+=== Artefacto verificado
+api, worker y web arrancan y responden con la configuración de producción real.
+exit=0 (32 s); fichero de clase: no se escribió
+```
+
+Los tiempos son de un portátil `amd64` y solo informan: el plazo lo recalcula la 11.1 con tres corridas `arm64`. Esta
+es la segunda corrida; la primera, sobre la misma pila y antes de retocar el texto de la sección de tiempos, salió
+igual (0, `object-store` sano en 2.24 s).
+
+**Falsaciones de la 7.5 con `dc run`, contra esta pila** (antes de su `teardown-artifact.sh`). `dc` es
+`docker compose -f docker-compose.prod.yml --env-file infra/ci/verify.env`, con el mismo `COMPOSE_PROJECT_NAME`. El
+bucket de CV se borra con un `node -e` del SDK que corre en un contenedor de `api` (la pila no publica el almacén: solo
+se llega por `object-store-net`), con sus propias `S3_*`:
+
+```text
+$ timeout 180 dc run --rm --no-deps -e S3_SECRET_KEY=incorrecta worker node s3-probe.js
+FAIL  cvs: CV bucket could not be checked (Unknown, HTTP 403)
+s3-probe: failed
+exit=1
+$ timeout 180 dc run --rm --no-deps api node -e "<DeleteBucket del bucket de CV con el SDK>"
+buckets: cvs,snapshots
+DeleteBucket cvs: HTTP 204
+buckets: snapshots
+exit=0
+$ timeout 180 dc run --rm --no-deps worker node s3-probe.js
+FAIL  cvs: CV bucket does not exist (HeadBucket: NotFound, HTTP 404)
+s3-probe: failed
+exit=1
+$ timeout 180 dc run --rm --no-deps api node object-store.js provision
+ok    cvs: bucket created
+ok    cvs: no lifecycle configuration (removed if there was one)
+ok    cvs: default encryption set (AES256)
+ok    cvs: no bucket policy
+ok    snapshots: bucket already exists
+ok    snapshots: no lifecycle configuration (removed if there was one)
+ok    snapshots: no bucket policy
+provision: ok
+exit=0
+$ timeout 180 dc run --rm --no-deps worker node s3-probe.js
+ok    cvs: CV bucket exists (signed HeadBucket)
+ok    cvs: a missing key under .verify-probe/ reads as null with the CV reader
+s3-probe: ok
+exit=0
+```
+
+**Falsación de los tres pasos nuevos del script** (guardias permanentes, ADR-048 §7), sobre la misma pila de la
+primera corrida y con tres copias del script en el scratchpad, rotas a mano, ejecutadas desde la raíz del repositorio
+con `VERIFY_FAIL_CLASS_FILE`; el script del repositorio no se tocó:
+
+```text
+$ bash <scratchpad>/broken-verify.sh           # 'object-store.js verify' → 'verify-broken'
+provision: ok
+usage: object-store <provision|verify>
+[FAIL/artifact] object-store verify salió ≠0 (o superó 180 s): el almacén no está como se entrega
+exit=1 class=artifact
+$ bash <scratchpad>/broken-probe.sh            # la sonda con '-e S3_SECRET_KEY=incorrecta'
+verify: ok
+FAIL  cvs: CV bucket could not be checked (Unknown, HTTP 403)
+s3-probe: failed
+[FAIL/artifact] worker s3-probe salió ≠0 (o superó 180 s): el worker no alcanza el bucket de CV con su configuración
+exit=1 class=artifact
+$ bash <scratchpad>/broken-timeout.sh          # RUN_TIMEOUT=1
+provision: ok
+[FAIL/artifact] object-store provision salió ≠0 (o superó 1 s): el almacén no quedó aprovisionado
+exit=1 class=artifact
+```
+
+En la del plazo, `provision` llega a imprimir `provision: ok` y `timeout` mata a Compose antes de que termine de
+retirar el contenedor de un solo uso: el `run` sale ≠0 y el script falla, que es lo que se quería ver. No quedó ningún
+contenedor `os10-v-api-run-*` detrás (`docker ps -a`).
+
+**Derribo.**
+
+```text
+$ COMPOSE_PROJECT_NAME=os10-v bash infra/ci/teardown-artifact.sh
+ Container os10-v-web-1 Removed
+ Container os10-v-worker-1 Removed
+ Container os10-v-api-1 Removed
+ Container os10-v-redis-1 Removed
+ Container os10-v-mongo-1 Removed
+ Container os10-v-object-store-1 Removed
+ Volume os10-v_object-store-data Removed
+ Volume os10-v_redis-data Removed
+ Volume os10-v_mongo-data Removed
+ Network os10-v_object-store-net Removed
+ Network os10-v_internal Removed
+exit=0
+```
+
+`docker ps -a`, `docker volume ls` y `docker network ls` filtrados por `os10`: 0, 0 y 0.
+
+**Pendiente en el script, de otras tareas:** los comentarios que aún nombran MinIO (la cabecera y la tabla del plazo)
+los corrige la 12.3, y la tabla con los números nuevos, la 11.1.
+
+### 7.6: `docs-stack-up` con las órdenes `run` de después del `up`
+
+`tools/repo-checks/src/docs-stack-up.check.mjs` lee, en cada lado, las órdenes `run` que van **después** de su `up`
+(desde `run` hasta el final de la orden) y añade dos comprobaciones (design D5, ADR-052 §5): la **absoluta**, que en
+cada lado por separado exige `run --rm --no-deps api node object-store.js provision` y después la de `verify`; y la
+**relativa**, que exige las mismas órdenes en el mismo orden en los dos. En el README, además, cada `run` tiene que usar
+el mismo fichero de compose que su `up`. El bloque marcado de `infra/README.md` levanta `object-store`, genera
+`OBJECT_STORE_SSE_KEY` con la orden de ADR-052 «Elección» en vez de `MINIO_KMS_SECRET_KEY`, y añade las tres órdenes
+`run` del script con `timeout 180`.
+
+```text
+$ bash infra/ci/repo-checks.sh
+check(docs-stack-up): OK — el 'up' documentado en infra/README.md y el de infra/ci/verify-artifact.sh coinciden: docker-compose.prod.yml, 6 servicios (api, mongo, object-store, redis, web, worker), --wait --wait-timeout 360 --pull never, sin traefik; y después del 'up', en los dos, provision y después verify, con las mismas 3 órdenes 'run' en el mismo orden
+repo-checks: 5 comprobaciones ejecutadas (…)
+exit=0
+```
+
+Falsación (`<scratchpad>/falsify-76.cjs`: modifica los dos ficheros, ejecuta la comprobación y restaura siempre):
+
+```text
+--- (a) sin provision ni verify en los dos lados
+check(docs-stack-up): FALLA — 4 hallazgo(s)
+  - infra/README.md no ejecuta, después de su 'up', 'run --rm --no-deps api node object-store.js provision': el almacén quedaría sin buckets ni cifrado del bucket de CV
+  - infra/README.md no ejecuta, después de su 'up', 'run --rm --no-deps api node object-store.js verify': nada comprobaría el almacén que se entrega
+  - infra/ci/verify-artifact.sh no ejecuta, después de su 'up', 'run --rm --no-deps api node object-store.js provision': el almacén quedaría sin buckets ni cifrado del bucket de CV
+  - infra/ci/verify-artifact.sh no ejecuta, después de su 'up', 'run --rm --no-deps api node object-store.js verify': nada comprobaría el almacén que se entrega
+exit=1
+--- (b) provision y verify intercambiados solo en el README
+check(docs-stack-up): FALLA — 2 hallazgo(s)
+  - infra/README.md ejecuta 'verify' antes que 'provision': el orden es up → provision → verify
+  - las órdenes 'run' tras el 'up' no son las mismas o no van en el mismo orden: infra/README.md documenta [run --rm --no-deps api node object-store.js verify ; run --rm --no-deps api node object-store.js provision ; run --rm --no-deps worker node s3-probe.js] y infra/ci/verify-artifact.sh ejecuta [run --rm --no-deps api node object-store.js provision ; run --rm --no-deps api node object-store.js verify ; run --rm --no-deps worker node s3-probe.js]
+exit=1
+--- restaurado
+check(docs-stack-up): OK — (…)
+exit=0
+```
+
+En (a) los dos lados siguen siendo iguales entre sí (solo queda la sonda del `worker`), así que falla solo la absoluta,
+nombrando cada fichero. En (b) falla la relativa y, además, la absoluta del README, porque `verify` va antes.
 
 ## Retención por barrido (tarea 8.7)
 
