@@ -2574,3 +2574,96 @@ down -v exit=0
 
 La clave que recibió cada contenedor, leída de `docker inspect` (solo su forma): (a) 0 caracteres; (b63) 63, solo
 `[0-9a-f]`; (b64g) 64, con otro carácter; (c) 64, solo `[0-9a-f]`, la de desarrollo por defecto.
+
+### 7.2: `pnpm infra:up`
+
+Script `infra:up` del `package.json` raíz: `docker compose up -d --wait && pnpm nx run api:object-store -- provision`.
+Proyecto `os7-u` desde volúmenes vacíos, con `COMPOSE_PROJECT_NAME`, los puertos del bloque y las `S3_*` (con
+`S3_ENDPOINT=http://localhost:19740`) exportados en el entorno de la orden: `.env` no se toca, y Nx no sobrescribe una
+variable del entorno cuyo valor difiere del de `.env`. Salida de Compose resumida a una línea por recurso:
+
+```text
+$ pnpm infra:up                                   # 1.ª vez, sin volúmenes os7-u_* previos
+$ docker compose up -d --wait && pnpm nx run api:object-store -- provision
+Volume os7-u_redis-data Created
+Volume os7-u_mongo-data Created
+Volume os7-u_object-store-data Created
+Network os7-u_object-store-net Created
+Network os7-u_default Created
+Container os7-u-mailpit-1 Healthy
+Container os7-u-object-store-1 Healthy
+Container os7-u-redis-1 Healthy
+Container os7-u-mongo-1 Healthy
+> nx run api:object-store provision
+> node apps/api/src/object-store.cjs provision
+ok    cvs: bucket created
+ok    cvs: no lifecycle configuration (removed if there was one)
+ok    cvs: default encryption set (AES256)
+ok    cvs: no bucket policy
+ok    snapshots: bucket created
+ok    snapshots: no lifecycle configuration (removed if there was one)
+ok    snapshots: no bucket policy
+provision: ok
+exit=0
+$ pnpm nx run api:object-store -- verify
+ok    cvs: bucket exists
+ok    snapshots: bucket exists
+ok    cvs: no lifecycle rule
+ok    cvs: default encryption (AES256)
+ok    snapshots: no lifecycle rule
+ok    snapshots: no snapshot older than 31 days (0 listed)
+ok    cvs: anonymous GET of a missing object rejected (HTTP 403 AccessDenied)
+ok    cvs: anonymous listing rejected (HTTP 403 AccessDenied)
+ok    cvs: anonymous PUT rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous GET of a missing object rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous listing rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous PUT rejected (HTTP 403 AccessDenied)
+verify: ok
+exit=0
+$ pnpm infra:up                                   # 2.ª vez
+Container os7-u-object-store-1 Healthy
+(…)
+ok    cvs: bucket already exists
+ok    cvs: no lifecycle configuration (removed if there was one)
+ok    cvs: default encryption set (AES256)
+ok    cvs: no bucket policy
+ok    snapshots: bucket already exists
+ok    snapshots: no lifecycle configuration (removed if there was one)
+ok    snapshots: no bucket policy
+provision: ok
+exit=0
+$ pnpm nx run api:object-store -- verify
+ok    cvs: no lifecycle rule
+ok    snapshots: no lifecycle rule
+(… las mismas doce líneas `ok` que la 1.ª vez)
+verify: ok
+exit=0
+$ node <DeleteBucket del bucket de CV con el SDK>
+DeleteBucket cvs: ok
+exit=0
+$ node docs/object-store-matrix/list-buckets.mjs
+buckets (1):
+snapshots
+exit=0
+$ pnpm infra:up                                   # 3.ª vez: volumen que ya existía, sin el bucket de CV
+(…)
+ok    cvs: bucket created
+ok    cvs: no lifecycle configuration (removed if there was one)
+ok    cvs: default encryption set (AES256)
+ok    cvs: no bucket policy
+ok    snapshots: bucket already exists
+ok    snapshots: no lifecycle configuration (removed if there was one)
+ok    snapshots: no bucket policy
+provision: ok
+exit=0
+$ node docs/object-store-matrix/list-buckets.mjs
+buckets (2):
+cvs
+snapshots
+exit=0
+$ pnpm nx run api:object-store -- verify
+verify: ok
+exit=0
+$ docker compose -p os7-u -f docker-compose.yml down -v
+exit=0
+```
