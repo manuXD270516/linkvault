@@ -15,10 +15,11 @@ responde.
 | `docker/api.Dockerfile` | Imagen `api` (prompts en `/app/assets/ai/prompts`) |
 | `docker/worker.Dockerfile` | Imagen `worker` |
 | `docker/web.Dockerfile` | SPA Angular vía nginx |
-| `docker-compose.prod.yml` | Stack completo: api, worker (≥1), web, mongo `rs0`, redis, MinIO, Traefik |
+| `docker-compose.prod.yml` | Stack completo: api, worker (≥1), web, mongo `rs0`, redis, almacén de objetos (`object-store`, SeaweedFS), Traefik |
 | `infra/traefik/dynamic.yml` | Rutas `/p/`+`/api/`→api, else→web; CV rate/body; Referrer-Policy |
 | `infra/traefik/access-log-no-query.md` | Logs sin query (`RequestURI` drop) |
-| `infra/minio/ensure-buckets.sh` | Bucket CV con SSE-S3; snapshots ILM 30d |
+| `object-store.js` (imagen de `api`) | `provision` y `verify` del almacén por la API S3 (ADR-052 §4): buckets, cifrado del de CV, sin reglas de caducidad |
+| `infra/deploy/check-image-platforms.sh` | Comprueba en el registro que las imágenes existen para la plataforma del destino (ADR-052 §9) |
 | [`infra/revision-despliegue.md`](revision-despliegue.md) | Procedimiento de revisión de toda la configuración de despliegue, con registro |
 | `infra/ci/check-env-file.mjs` | Revisa un env file contra el contrato del compose sin imprimir valores |
 | `infra/ci/check-verify-stages.mjs` | Mismas etapas y orden en los tres jobs `verify` (hasta la fila 35c) |
@@ -111,9 +112,9 @@ del operador (`NODE_ENV`, `MONGO_URI`, `REDIS_URL`, `S3_ENDPOINT`, `AI_PROMPTS_D
 | `AI_VAULT_KEY` | api, worker | **base64 de exactamente 32 bytes**; obligatoria aunque `AI_CHAIN=none` |
 | `MAIL_PROVIDER` | api, worker | `smtp` \| `resend` \| `capture`; **sin valor por defecto a propósito** (ver «Correo») |
 | `MAIL_FROM` | api, worker | remitente visible, p. ej. `LinkVault <noreply@tu-dominio>` |
-| `S3_ACCESS_KEY` | api, worker, minio | credencial del almacén de objetos |
-| `S3_SECRET_KEY` | api, worker, minio | ídem |
-| `MINIO_KMS_SECRET_KEY` | minio | `<nombre>:<base64 de 32 bytes>` (SSE-S3 del bucket de CV) |
+| `S3_ACCESS_KEY` | api, worker, object-store | credencial del almacén de objetos |
+| `S3_SECRET_KEY` | api, worker, object-store | ídem |
+| `OBJECT_STORE_SSE_KEY` | object-store | **64 hexadecimales en minúscula**: la clave del cifrado del bucket de CV (ver [«Almacén de objetos»](#almacén-de-objetos-cv-y-snapshots)) |
 | `ENRICH_USER_AGENT` | worker | `User-Agent` identificable del extractor (obligación de la spec de extracción) |
 
 Condicionales, que **no** salen en esa lista porque dependen del valor de otra variable, y que desde el change
@@ -186,12 +187,6 @@ Cuando se active búsqueda (`FEATURE_SEARCH`): Meilisearch es **solo red interna
 entrypoint público ni exponer `MEILI_MASTER_KEY`. En local el perfil `search` publica 7700 para `nx serve`; en prod
 debe vivir en la red private/internal junto a api/worker (ver [RUNBOOK Paso 6 quattuordecies](../docs/RUNBOOK.md#paso-6-quattuordecies--meilisearch-perfil-search--adr-006-f2)).
 
-Generar `MINIO_KMS_SECRET_KEY` (SSE-S3 del bucket de CV):
-
-```bash
-node -e "console.log('linkvault-cv:'+require('crypto').randomBytes(32).toString('base64'))"
-```
-
 ## Arranque
 
 En el host (con el repo o al menos compose + `infra/` + env):
@@ -200,7 +195,13 @@ En el host (con el repo o al menos compose + `infra/` + env):
 docker compose -f docker-compose.prod.yml --env-file .env.prod config   # valida
 docker compose -f docker-compose.prod.yml --env-file .env.prod pull
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait --wait-timeout 360
+docker compose -f docker-compose.prod.yml --env-file .env.prod run --rm --no-deps api node object-store.js provision
+docker compose -f docker-compose.prod.yml --env-file .env.prod run --rm --no-deps api node object-store.js verify
 ```
+
+El `up` no crea los buckets: el healthcheck del almacén es de solo lectura. Los crea `provision`, por la API S3 y con la
+imagen de `api` (idempotente: se puede repetir en cada despliegue), y `verify` comprueba sin escribir nada que el
+almacén está como se entrega (ver [«Almacén de objetos»](#almacén-de-objetos-cv-y-snapshots)).
 
 El plazo es el mismo que usan los dos workflows de CD y la verificación del artefacto, por el mismo motivo y con el
 mismo cálculo (`infra/ci/verify-artifact.sh`). Si el `up` falla, mira `docker compose ps` y
@@ -228,17 +229,43 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T api \
 
 El cuerpo debe ser JSON Nest (`status`, `checks.mongo`, `checks.redis`), no HTML del SPA.
 
-## Object store
+## Almacén de objetos (CV y snapshots)
 
-- Bucket CV (`S3_BUCKET`, default `cvs`): **SSE-S3**, sin lifecycle de borrado; el objeto vive hasta delete de CV o borrado de cuenta.
-- Bucket snapshots (`S3_SNAPSHOTS_BUCKET`): ILM **30 días** (`expire-snapshots-30d`).
-- Script reproducible: `infra/minio/ensure-buckets.sh` (también lo ejecuta el healthcheck de MinIO).
+El servicio `object-store` es **SeaweedFS**, elegido por una matriz ejecutada:
+[`docs/object-store-matrix/matriz.md`](../docs/object-store-matrix/matriz.md) tiene cada celda con la orden que la
+aprobó, y [ADR-052](../docs/adr/ADR-052.md), en «Elección», el producto y su versión, el **digest del índice** de la
+imagen, la **fecha** en que se leyó y la tabla resumen. Sustituir el producto o subir su versión mayor **repite la
+matriz** antes de cambiar la imagen por defecto (ADR-052, «Consecuencias»), con los scripts y los composes del mismo
+directorio.
 
-Verificar:
+- Bucket de CV (`S3_BUCKET`, por defecto `cvs`): **cifrado por defecto** con la clave del almacén, privado, sin regla
+  de caducidad; el objeto vive hasta que se borra el CV o la cuenta.
+- Bucket de snapshots (`S3_SNAPSHOTS_BUCKET`): sin regla de caducidad en el almacén; los de más de 30 días los borra
+  un barrido diario del `worker` (ADR-052 §7).
+
+**La clave del cifrado de los CV es `OBJECT_STORE_SSE_KEY`**: 32 bytes en 64 hexadecimales en minúscula, que el almacén
+lee de `WEED_S3_SSE_KEK`. Se genera con esta orden, la de ADR-052 «Elección»:
 
 ```bash
-docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T minio \
-  sh -c 'mc encrypt info admin/${S3_BUCKET:-cvs}; mc ilm rule ls admin/${S3_SNAPSHOTS_BUCKET:-snapshots}'
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+Guarda `OBJECT_STORE_SSE_KEY` en el fichero de entorno del host y **cópiala fuera del host junto a `AI_VAULT_KEY`**, en
+el mismo sitio y con el mismo cuidado: **perder la clave es perder los CV**, porque sin ella el almacén no puede
+descifrarlos y no hay otra copia.
+
+La clave es **obligatoria**: el almacén **no arranca** sin ella, ni con un formato distinto de **64** hexadecimales en
+minúscula, ni sobre un volumen que arrancó alguna vez sin ella. En producción, Compose ni siquiera crea el contenedor
+sin la variable (`${OBJECT_STORE_SSE_KEY:?}`); en los dos composes, un guardia de arranque sale con `64` (clave ausente
+o mal formada) o `65` (el volumen tiene `.mini_sse_kek`, la clave que SeaweedFS genera cuando arranca sin ninguna).
+Qué hacer en cada caso, y por qué nunca se borra ese fichero sin saber con qué clave se cifraron los objetos:
+[RUNBOOK, «Operar los CV»](../docs/RUNBOOK.md#paso-6-octies--operar-los-cv).
+
+Comprobar el almacén, sin escribir nada (buckets, sin reglas de caducidad, cifrado del de CV, ningún snapshot de más de
+31 días y acceso anónimo rechazado):
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env.prod run --rm --no-deps api node object-store.js verify
 ```
 
 ## Levantar la pila entera en tu máquina (lo mismo que verifica el CI)
@@ -250,7 +277,7 @@ separen lo comprueba `tools/repo-checks` (`check-docs-stack-up`), que compara es
 nombrando la diferencia.
 
 **Lee esto antes de ejecutarlo, porque es la mitad que se suele omitir.** Al terminar tendrás **seis servicios sanos**
-—`mongo`, `redis`, `minio`, `api`, `worker` y `web`— y **ninguna URL que abrir**. En `docker-compose.prod.yml`
+—`mongo`, `redis`, `object-store`, `api`, `worker` y `web`— y **ninguna URL que abrir**. En `docker-compose.prod.yml`
 **Traefik es el único servicio que publica puertos** (80 y 443); los seis de abajo viven en la red `internal`, que es
 `internal: true`, y no publican ninguno. Este camino responde a «¿arranca el artefacto con su configuración real?», que
 es justo lo que el CD verifica, y **no** a «¿puedo usar la aplicación?». Para desarrollar, usa el `docker compose up` +
@@ -327,23 +354,24 @@ case "$body" in
 esac
 ```
 
-Lo que se vio al escribir esto (2026-09-24, Docker 29.8.0):
+Lo que se vio al repetirlo con el almacén nuevo (2026-09-27, Docker 29.8.0; las imágenes, construidas con otro nombre
+y exportadas en el paso 3; `provision: ok`, `verify: ok` y `s3-probe: ok` en el paso 6):
 
 ```text
-SERVICE   STATUS
-api       Up 51 seconds (healthy)
-minio     Up 56 seconds (healthy)
-mongo     Up 57 seconds (healthy)
-redis     Up 57 seconds (healthy)
-web       Up 56 seconds (healthy)
-worker    Up 51 seconds (healthy)
+SERVICE        STATUS
+api            Up 12 seconds (healthy)
+mongo          Up 18 seconds (healthy)
+object-store   Up 19 seconds (healthy)
+redis          Up 18 seconds (healthy)
+web            Up 18 seconds (healthy)
+worker         Up 12 seconds (healthy)
 200 {"status":"up","service":"api","version":"0.0.0","checks":{"mongo":{"status":"up"},"redis":{"status":"up"}}}
 200 {"status":"up","service":"worker","version":"0.0.0","checks":{"mongo":{"status":"up"},"redis":{"status":"up"}}}
 ok: web sirve el documento del SPA
 ```
 
 Y al terminar, **con `-v`**: sin borrar los volúmenes, el siguiente arranque parte de una mongo ya inicializada y de un
-MinIO con los buckets ya creados, que es justo lo que esconde los fallos de arranque que esto busca.
+almacén con los buckets ya creados, que es justo lo que esconde los fallos de arranque que esto busca.
 
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env.local-stack down -v --remove-orphans
@@ -389,8 +417,8 @@ Qué levanta exactamente esa verificación, y qué deja fuera:
 - **el mismo `docker-compose.prod.yml` que se despliega**, nunca un compose escrito para CI — el defecto de ADR-048 §2
   (variables que los procesos exigen y el compose no daba) vivía **literalmente** en ese fichero, así que verificar
   otro no habría encontrado nada;
-- `mongo`, `redis` y `minio` como dependencias, y `api`, `worker` y `web` como lo que se verifica; **mongo queda como
-  replica set de un nodo** (`rs0`, primario escribible), igual que en producción, porque con instancia suelta una
+- `mongo`, `redis` y `object-store` como dependencias, y `api`, `worker` y `web` como lo que se verifica; **mongo queda
+  como replica set de un nodo** (`rs0`, primario escribible), igual que en producción, porque con instancia suelta una
   transacción multi-documento fallaría **solo** en el despliegue real;
 - **sin Traefik y sin certificados** (exigen DNS y ACME, fuera de alcance) y **sin publicar ni un puerto**: la red
   `internal` es `internal: true` y ningún servicio de aplicación publica nada, así que la readiness se comprueba desde
@@ -399,9 +427,12 @@ Qué levanta exactamente esa verificación, y qué deja fuera:
   con el `NODE_ENV=production` que las imágenes hornean. Ese fichero **no sirve para desplegar** y lo dice en su
   cabecera.
 
-Lo que la verificación **no** cubre, dicho en voz alta: el `/health` de `api` y de `worker` declara indicadores de
-mongo y redis, y **ninguno mira el almacén de objetos**. Que los procesos sepan hablar con S3 se cierra con un
-despliegue real (fila 35), no aquí.
+El `/health` de `api` y de `worker` declara indicadores de mongo y redis, y **ninguno mira el almacén de objetos**.
+Por eso, después del `up`, la verificación aprovisiona y comprueba el almacén con la imagen de `api`
+(`object-store.js provision` y `verify`) y comprueba que el `worker` lee el bucket de CV con su propia configuración
+(`s3-probe.js`). Y antes de descargar nada comprueba que cada imagen existe para la plataforma del destino
+(`TARGET_PLATFORM`, `linux/arm64` en `cd-staging`): las propias en el daemon y las de terceros en su registro, con
+`infra/deploy/check-image-platforms.sh`; si falta, el fallo es del artefacto, no del registro.
 
 Por eso la publicación es `docker push` del tag ya cargado y **nunca** una segunda construcción (`push: true` o
 `buildx build --push`), y por eso el script comprueba en la propia corrida la **identidad por digest** entre lo

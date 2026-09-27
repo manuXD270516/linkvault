@@ -8,8 +8,8 @@ import {
 } from '../../../../infrastructure/storage/s3-client.factory';
 import type { SnapshotStore } from '../../application/ports/snapshot-store.port';
 
-// Implementación de `SNAPSHOT_STORE` sobre almacenamiento compatible con S3 (MinIO en local, cualquier proveedor en
-// producción; D12 de link-enrichment).
+// Implementación de `SNAPSHOT_STORE` sobre almacenamiento compatible con S3 (el servicio `object-store`; D12 de
+// link-enrichment, ADR-052).
 //
 // La compresión es **asíncrona** a propósito (C18): `gzipSync` sobre 300 KB de HTML bloquea el hilo, y con
 // `ENRICH_CONCURRENCY` jobs a la vez eso retrasa los latidos del `Worker` lo bastante como para que BullMQ dé un job
@@ -22,7 +22,7 @@ export function snapshotKey(linkId: string, previewVersion: number): string {
   return `${linkId}/${previewVersion}.html.gz`;
 }
 
-/** Lo que el store necesita del almacenamiento. Se inyecta para que ningún test hable con MinIO. */
+/** Lo que el store necesita del almacenamiento. Se inyecta para que ningún test hable con el almacén. */
 export interface SnapshotUploader {
   put(key: string, body: Uint8Array): Promise<void>;
 }

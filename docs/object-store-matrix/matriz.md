@@ -4175,3 +4175,157 @@ contiene «registro de terceros»: false | contiene «reintentar»: false
 
 La descripción es el texto de la 2.16 (118 caracteres, 122 bytes). Revertido en `ec1753a` («chore(ci): revert …»):
 `git diff b90786a ec1753a` vacío, el workflow queda como antes del commit temporal.
+
+## Documentación que protege los CV (grupo 12)
+
+### 12.1: RUNBOOK, «Operar los CV»
+
+En «Paso 6 octies — Operar los CV»: la comprobación de configuración pasa a `object-store verify`, con la orden local
+(`pnpm nx run api:object-store -- verify`) y la de producción (`docker compose -f docker-compose.prod.yml --env-file
+.env.prod run --rm --no-deps api node object-store.js verify`); el mismo párrafo explica que `pnpm infra:up` crea los
+buckets y que `docker compose up` solo ya no; la retención por barrido con su **riesgo residual**; una viñeta nueva,
+«El almacén se niega a arrancar: la clave del cifrado», con los dos mensajes del guardia de la 7.1b, sus códigos (`64` y
+`65`) y qué hacer en cada caso; y la marca «**Pendiente:** no aplicable al almacén actual; lo reescribe un change
+posterior (`object-store`, design D12).» al principio de la sonda de escritura («Comprobar el almacén a mano»), de la
+recogida de huérfanos, del borrado manual de lo de una persona y de la sección «GC de objetos huérfanos (CV)». La
+«tabla de síntomas» del RUNBOOK (Paso 8) no usa `mc`: su fila del snapshot nombraba el almacén anterior y decía que el
+`up` crea los buckets con su regla de 30 días; se corrigió (`pnpm infra:up` y `verify`) en vez de marcarla, porque esa
+operación sí es válida con el almacén actual. También se corrigió la viñeta «Qué queda pendiente de `deploy-prod`»,
+que daba el cifrado en reposo por pendiente.
+
+`verify` ejecutado una vez contra el almacén local: el `object-store` de `docker-compose.yml`, en un proyecto aparte
+(`COMPOSE_PROJECT_NAME=os12-l`, `OBJECT_STORE_PORT=19612`), con las `S3_*` de desarrollo exportadas y
+`S3_ENDPOINT=http://localhost:19612`:
+
+```text
+$ docker compose up -d --wait object-store
+exit=0
+$ pnpm nx run api:object-store -- provision
+ok    cvs: bucket created
+ok    cvs: no lifecycle configuration (removed if there was one)
+ok    cvs: default encryption set (AES256)
+ok    cvs: no bucket policy
+ok    snapshots: bucket created
+ok    snapshots: no lifecycle configuration (removed if there was one)
+ok    snapshots: no bucket policy
+provision: ok
+exit=0
+$ pnpm nx run api:object-store -- verify
+ok    cvs: bucket exists
+ok    snapshots: bucket exists
+ok    cvs: no lifecycle rule
+ok    cvs: default encryption (AES256)
+ok    snapshots: no lifecycle rule
+ok    snapshots: no snapshot older than 31 days (0 listed)
+ok    cvs: anonymous GET of a missing object rejected (HTTP 403 AccessDenied)
+ok    cvs: anonymous listing rejected (HTTP 403 AccessDenied)
+ok    cvs: anonymous PUT rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous GET of a missing object rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous listing rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous PUT rejected (HTTP 403 AccessDenied)
+verify: ok
+exit=0
+$ docker compose down -v
+exit=0     # 0 contenedores, volúmenes y redes os12
+```
+
+Comprobación de un solo uso (`<scratchpad>/check-121.cjs`; «sección» es la viñeta de primer nivel o el título más
+cercanos hacia arriba, fuera de los bloques de código):
+
+```text
+$ node check-121.cjs docs/RUNBOOK.md
+ok    sin «mc anonymous»
+ok    sin «mc ilm»
+ok    línea 859 con «mc »: en viñeta de la línea 853 («- **Pendiente:** no aplicable al almacén actual; …»), que empieza con la marca
+ok    línea 860 con «mc »: en viñeta de la línea 853 (…), que empieza con la marca
+ok    línea 861 con «mc »: en viñeta de la línea 853 (…), que empieza con la marca
+ok    línea 964 con «mc »: en viñeta de la línea 955 (…), que empieza con la marca
+ok    línea 974 con «mc »: en viñeta de la línea 955 (…), que empieza con la marca
+ok    línea 988 con «mc »: en viñeta de la línea 980 (…), que empieza con la marca
+ok    línea 996 con «mc »: en viñeta de la línea 980 (…), que empieza con la marca
+      (7 líneas con «mc »)
+ok    «GC de objetos huérfanos (CV)» empieza con la marca
+ok    `worker`, `verify` y «31 días» en un mismo párrafo
+ok    en «Operar los CV»: OBJECT_STORE_SSE_KEY
+ok    en «Operar los CV»: .mini_sse_kek
+ok    en «Operar los CV»: nunca borr
+ok    en «Operar los CV»: `64`
+ok    en «Operar los CV»: `65`
+RESULT: ok
+exit=0
+$ node check-121.cjs <git show HEAD:docs/RUNBOOK.md>      # antes del grupo 12
+RESULT: FAIL (21)
+```
+
+### 12.2: `infra/README.md`, lo que protege los CV
+
+Sección nueva «Almacén de objetos (CV y snapshots)», en lugar de la que operaba MinIO con `mc`: el producto y los
+enlaces a esta matriz y a ADR-052 (digest del índice, fecha, tabla resumen y la regla de repetir la matriz antes de
+cambiar el producto o su versión mayor); los dos buckets; la orden que genera `OBJECT_STORE_SSE_KEY`, **copiada de
+ADR-052 «Elección»** por el propio script de edición (lee el bloque de código de esa sección); guardarla y copiarla fuera
+del host junto a `AI_VAULT_KEY`, con la advertencia de que perderla es perder los CV; que es obligatoria y el almacén no
+arranca sin ella, con otro formato ni sobre un volumen que arrancó sin ella (códigos `64` y `65`), con el enlace a la
+sección del RUNBOOK; y `object-store.js verify`. Además: la fila de la clave en la tabla del contrato de variables (en
+lugar de la del almacén anterior), las piezas (`object-store.js` y `check-image-platforms.sh` en lugar del script de
+buckets retirado), `provision` y `verify` tras el `up` en «Arranque», y lo que la verificación del artefacto sí cubre
+ahora del almacén y de la plataforma.
+
+```text
+$ node check-122.cjs infra/README.md
+      orden en ADR-052 «Elección»: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+ok    la variable de la clave: OBJECT_STORE_SSE_KEY
+ok    una línea idéntica, carácter a carácter, a la orden de ADR-052 «Elección»
+ok    OBJECT_STORE_SSE_KEY, `AI_VAULT_KEY`, «fuera del host» y la advertencia «perder la clave es perder los CV» en un mismo párrafo
+ok    «obligatoria», «no arranca» y «64» en un mismo párrafo
+ok    `object-store.js verify`
+ok    enlace a la sección del RUNBOOK de la 12.1
+ok    enlace ../docs/object-store-matrix/matriz.md y el fichero existe (true)
+ok    enlace ../docs/adr/ADR-052.md y el fichero existe (true)
+RESULT: ok
+exit=0
+$ node check-122.cjs <git show HEAD:infra/README.md>      # antes del grupo 12
+RESULT: FAIL (6)
+```
+
+El bloque «Lo que se vio al escribir esto» de «Levantar la pila entera en tu máquina» pegaba una salida con el almacén
+anterior. Se repitió el procedimiento del bloque (pasos 2 a 6 y «Qué mirar») con las imágenes `os12-*:local` de la 10.2,
+el fichero de entorno en el scratchpad y `COMPOSE_PROJECT_NAME=os12-r`, y se pegó la salida nueva: `config` 0, `up` 0,
+`provision: ok`, `verify: ok`, `s3-probe: ok`, los seis servicios `healthy` (con `object-store`), los dos `/health` en
+`200` y el documento del SPA; `down -v --remove-orphans` 0 y 0 contenedores, volúmenes y redes `os12`.
+
+### 12.3 y 12.4: búsqueda de referencias
+
+`<scratchpad>/check-123-124.cjs`. «minio» se busca sin distinguir mayúsculas **y sin una letra delante**: la palabra
+«dominio» contiene «minio» (16 líneas de estos ficheros, todas sobre dominios de correo o de bolsas), y una búsqueda de
+la subcadena las daría como apariciones.
+
+```text
+=== 12.3: minio (sin distinguir mayúsculas) y \bmc\b en 15 ficheros
+  .claude/commands/lv/smoke.md:6: 1) `docker compose up -d --wait`; espera a mongo (rs0 iniciado), redis, minio. …
+  infra/ci/verify-artifact.sh:70: #   minio  start_period 20 s + retries 12 × interval 10 s = 140 s   ← el más lento de las dependencias
+  infra/ci/verify-artifact.sh:75: # `api` y `worker` dependen de `service_healthy` de mongo, redis y minio, así que su ventana …
+  apariciones: 3
+=== 12.4: \bmc\b, minio y linkvault-minio en docker-compose.yml, docker-compose.prod.yml, README.md, infra/README.md, docs/RUNBOOK.md
+  FUERA   infra/README.md:334 [minio] sección «Levantar la pila entera en tu máquina (…)»: compose, encadenadas (`minio` 20 s + 12×10 s = 140 s …
+  marcada docs/RUNBOOK.md:855 [minio] sección «Paso 6 octies — Operar los CV» / viñeta «**Pendiente:** …»: que prueba que MinIO responde …
+  marcada docs/RUNBOOK.md:859 [mc,minio] … / viñeta «**Pendiente:** …»: docker compose exec minio sh -c '… mc cp …'
+  marcada docs/RUNBOOK.md:860 [mc,minio] … / viñeta «**Pendiente:** …»: docker compose exec minio mc ls --recursive admin/cvs/probe/
+  marcada docs/RUNBOOK.md:861 [mc,minio] … / viñeta «**Pendiente:** …»: docker compose exec minio mc rm --recursive --force admin/cvs/probe/
+  marcada docs/RUNBOOK.md:964 [mc,minio] … / viñeta «**Pendiente:** …»: docker compose exec -T minio mc find admin/cvs …
+  marcada docs/RUNBOOK.md:974 [mc,minio] … / viñeta «**Pendiente:** …»: docker compose exec minio mc rm admin/cvs/<userId>/<cvId>
+  marcada docs/RUNBOOK.md:988 [mc,minio] … / viñeta «**Pendiente:** …»: docker compose exec minio mc ls --recursive admin/cvs/<userId>/
+  marcada docs/RUNBOOK.md:996 [mc,minio] … / viñeta «**Pendiente:** …»: docker compose exec minio mc rm --recursive --force admin/cvs/<userId>/
+  marcada docs/RUNBOOK.md:1562 [minio] sección «GC de objetos huérfanos (CV)»: `docker-compose.prod.yml` y el alias MinIO del contenedor prod. …
+  fuera de las secciones marcadas: 1; dentro: 9; líneas con «minio» solo dentro de otra palabra («dominio»): 16
+$ node check-123-124.cjs HEAD      # antes del grupo 12
+  apariciones: 41
+  fuera de las secciones marcadas: 47; dentro: 0
+```
+
+**Lo que queda, y por qué no se tocó aquí.** Las dos líneas de `verify-artifact.sh` son la tabla del plazo y su
+párrafo, y la de `infra/README.md` es el cálculo del plazo del bloque de la pila: los reescribe la 11.1 con los números
+medidos en `arm64`, y cambiar solo el nombre dejaría una tabla que atribuye al almacén nuevo la ventana del anterior
+(el healthcheck de `object-store` es hoy 60 s + 6 × 10 s). `.claude/commands/lv/smoke.md` es la definición de un
+comando de Claude Code: no se edita sin el visto bueno del usuario. Con esas tres, la 12.3 y la 12.4 siguen abiertas.
+`pnpm nx run shared:lint` (0 errores) y `pnpm nx run api:test` (275 ficheros, 3665 tests) en verde con los cambios de
+la 12.3.

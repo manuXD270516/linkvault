@@ -1,8 +1,8 @@
 # LinkVault
 
-Monorepo Nx (pnpm) con `api` (NestJS + Fastify), `worker` (NestJS + BullMQ), `web` (Angular 22 zoneless) y las
-librerías `shared` y `ai`. En desarrollo, Docker solo levanta la infraestructura (MongoDB, Redis, MinIO, Mailpit) y las
-apps corren en el host ([ADR-017](docs/adr/ADR-017.md), correo local [ADR-034](docs/adr/ADR-034.md)).
+Monorepo Nx (pnpm) con `api` (NestJS + Fastify), `worker` (NestJS + BullMQ), `web` (Angular 22 zoneless) y las librerías
+`shared` y `ai`. En desarrollo, Docker solo levanta la infraestructura (MongoDB, Redis, el almacén de objetos S3 y
+Mailpit) y las apps corren en el host ([ADR-017](docs/adr/ADR-017.md), correo local [ADR-034](docs/adr/ADR-034.md)).
 
 - Reglas del proyecto y flujo con Claude Code: [CLAUDE.md](CLAUDE.md)
 - Flujo de trabajo por changes de OpenSpec: [docs/RUNBOOK.md](docs/RUNBOOK.md)
@@ -22,8 +22,17 @@ apps corren en el host ([ADR-017](docs/adr/ADR-017.md), correo local [ADR-034](d
 ```bash
 pnpm install
 cp .env.example .env
-docker compose up -d --wait        # mongo (replica set rs0), redis, minio y mailpit, esperando a que estén sanos
+pnpm infra:up                      # mongo (rs0), redis, el almacén de objetos y mailpit, sanos; y los buckets
 ```
+
+`pnpm infra:up` es `docker compose up -d --wait` seguido de `pnpm nx run api:object-store -- provision`, que crea por
+la API S3 los dos buckets del almacén (`object-store`, SeaweedFS; [ADR-052](docs/adr/ADR-052.md)), pone el cifrado por
+defecto del de CV y quita reglas de caducidad y políticas de bucket. `docker compose up` solo **no** crea los buckets.
+Para comprobar el almacén sin escribir nada: `pnpm nx run api:object-store -- verify`. El almacén cifra los CV con
+`OBJECT_STORE_SSE_KEY`; en local el compose trae una de desarrollo, y en producción es obligatoria
+([infra/README.md](infra/README.md#almacén-de-objetos-cv-y-snapshots)). Si tu `.env` es de antes de este almacén, el
+puerto publicado se configura ahora con `OBJECT_STORE_PORT` (por defecto, 9000); las variables de puertos del almacén
+anterior ya no se leen.
 
 Si ya tenías un `.env` de antes del enriquecimiento de links, cópiale de `.env.example` las variables `ENRICH_*` y `S3_*`:
 son obligatorias y **el worker no arranca sin ellas** (ver [Variables del enriquecimiento](#variables-del-enriquecimiento)).
@@ -108,9 +117,9 @@ Desde el host hace falta `directConnection=true`: el replica set anuncia `mongo:
 
 ### Puertos ocupados por otro proyecto
 
-Los puertos publicados en el host se configuran con `MONGO_PORT`, `REDIS_PORT`, `MINIO_PORT`, `MINIO_CONSOLE_PORT`,
-`MAILPIT_SMTP_PORT`, `MAILPIT_UI_PORT`, `OLLAMA_PORT` y `MEILI_PORT`. Docker Compose los lee del `.env`. Si otro
-proyecto ya usa el 6379, por ejemplo, pon en tu `.env`:
+Los puertos publicados en el host se configuran con `MONGO_PORT`, `REDIS_PORT`, `OBJECT_STORE_PORT` (la API S3 del
+almacén), `MAILPIT_SMTP_PORT`, `MAILPIT_UI_PORT`, `OLLAMA_PORT` y `MEILI_PORT`. Docker Compose los lee del `.env`. Si
+otro proyecto ya usa el 6379, por ejemplo, pon en tu `.env`:
 
 ```dotenv
 REDIS_PORT=6380
@@ -739,11 +748,11 @@ este change no las tiene, así que **cópialas de [`.env.example`](.env.example)
 | `ENRICH_USER_AGENT`         | `LinkVaultBot/0.1 (+…)` | Agente identificable con URL de contacto; contra él se resuelve el grupo del `robots.txt`.        |
 | `ENRICH_CONCURRENCY`        | `4`                     | Jobs simultáneos en el proceso (1–64). Es global: un host a la vez lo garantiza el mutex.         |
 | `ENRICH_MAX_DEFERRALS`      | `600`                   | Aplazamientos por host ocupado antes de darlo por fallido transitorio (1–10 000).                 |
-| `S3_ENDPOINT`               | `http://localhost:9000` | Almacén de objetos: MinIO en local, cualquier S3 en producción.                                   |
-| `S3_REGION`                 | `us-east-1`             | MinIO la ignora, pero el protocolo la exige para firmar la petición.                              |
-| `S3_ACCESS_KEY`             | `linkvault`             | Credencial del almacén; docker compose la usa además como raíz de MinIO.                          |
+| `S3_ENDPOINT`               | `http://localhost:9000` | La API S3 del almacén de objetos: el servicio `object-store` del compose (SeaweedFS, ADR-052).    |
+| `S3_REGION`                 | `us-east-1`             | El protocolo S3 la exige para firmar la petición.                                                 |
+| `S3_ACCESS_KEY`             | `linkvault`             | Credencial del almacén; docker compose la usa además como credencial raíz de `object-store`.      |
 | `S3_SECRET_KEY`             | `linkvault-dev-secret`  | Idem. Valor de desarrollo, nunca uno real.                                                        |
-| `S3_SNAPSHOTS_BUCKET`       | `snapshots`             | Bucket de los snapshots; el healthcheck de MinIO lo crea con su regla de 30 días.                 |
+| `S3_SNAPSHOTS_BUCKET`       | `snapshots`             | Bucket de los snapshots; lo crea `pnpm infra:up` (`object-store provision`), sin regla de caducidad. |
 
 `ENRICH_DOMAIN_DELAY_MS` y `ENRICH_CONCURRENCY` son la cara visible de nuestra cortesía con sitios ajenos: bajarlos en un
 entorno real es una decisión con consecuencias, no un ajuste de rendimiento.
@@ -778,9 +787,10 @@ Cada lectura que gana la escritura guarda una copia comprimida de la página en
 `previewVersion`, que también sube con las ediciones manuales y con los reintentos, que no producen snapshot. Si el
 almacén está caído, el enriquecimiento no falla; lo que se pierde es la copia.
 
-El bucket tiene una **regla de expiración a 30 días**, que crea el healthcheck de MinIO al levantar el compose. Su única
-razón de existir es poder construir después el **golden real de `extract-job`** sin volver a pedirle nada al sitio, y eso
-no necesita historia infinita. La consecuencia es operativa y está asumida:
+Los snapshots de **más de 30 días** los borra un **barrido diario del worker** ([ADR-052](docs/adr/ADR-052.md) §7); el
+almacén no lleva ninguna regla de caducidad. La única razón de guardarlos es poder construir después el **golden real de
+`extract-job`** sin volver a pedirle nada al sitio, y eso no necesita historia infinita. La consecuencia es operativa y
+está asumida:
 
 > **El golden real de `extract-job` hay que grabarlo dentro de esos 30 días.** Pasados, el snapshot ya no está y habrá
 > que volver a descargar las páginas, con el permiso del sitio que corresponda.
@@ -1487,16 +1497,16 @@ lo primero es qué se hace con él. Cómo operarlo: [RUNBOOK, Paso 6 octies](doc
 
 | Dato | Dónde | Quién lo ve |
 | ---- | ----- | ----------- |
-| Los **bytes del archivo** | MinIO, bucket de CV (`S3_BUCKET`, por defecto `cvs`), clave `<userId>/<cvId>` | **Nadie por HTTP.** El único que los lee es el worker, para extraer el texto. |
+| Los **bytes del archivo** | El almacén de objetos, bucket de CV (`S3_BUCKET`, por defecto `cvs`), **cifrados** con la clave del almacén; clave `<userId>/<cvId>` | **Nadie por HTTP.** El único que los lee es el worker, para extraer el texto. |
 | `fileName` (saneado), `fileType`, `sizeBytes`, `version`, `isDefault`, `uploadedAt` | `cv_documents` | Su dueño, en su listado. |
 | `extraction`: `status`, `failureReason?`, `textChars`, `extractedAt?` | `cv_documents` | Su dueño, en su listado. |
 | `extractedText` | `cv_documents` | Su dueño, **solo los primeros 2.000 caracteres** y solo por la vista previa. |
 | `truncated` (el texto se recortó a 200.000 caracteres) y `fileKey` | `cv_documents` | **Nadie**: son detalles de cómo guardamos, no salen en ninguna respuesta. |
 
 - **No hay descarga, y no es un olvido.** No existe `GET /api/cv/:id/file` ni ningún botón "Descargar", ni una URL
-  prefirmada de MinIO: una ruta que devuelve el CV entero es la mayor superficie de salida de datos de todo esto, y el
-  archivo lo acaba de subir la persona desde su dispositivo. Para saber "cuál de estos tres subí" están el **nombre y la
-  fecha** de la tarjeta y la **vista previa del texto**.
+  prefirmada del almacén: una ruta que devuelve el CV entero es la mayor superficie de salida de datos de todo esto, y
+  el archivo lo acaba de subir la persona desde su dispositivo. Para saber "cuál de estos tres subí" están el **nombre y
+  la fecha** de la tarjeta y la **vista previa del texto**.
 - **La clave del objeto no dice nada**: `<userId>/<cvId>`, sin el nombre del archivo y sin extensión, para que no acabe
   en el listado de un bucket, en un mensaje de error del SDK ni en una traza. El prefijo por usuario existe para poder
   borrar de una vez todo lo de una persona.
@@ -1597,9 +1607,9 @@ Ventana fija de 15 min por persona, con el contador de plataforma; superado el t
 
 - **Sin backfill ni migración:** no existe ningún CV previo. Volver atrás es desplegar la versión anterior; los
   documentos y los objetos se quedan como están.
-- **El bucket se llama `cvs`, no `cv`:** S3 —y MinIO con él— exige entre 3 y 63 caracteres en el nombre de un bucket. Lo
-  crea el `docker-compose` de forma idempotente, privado y sin regla de expiración, en una comprobación **independiente**
-  de la del bucket de snapshots (con un volumen que ya existía, si colgara de ella no se crearía nunca).
+- **El bucket se llama `cvs`, no `cv`:** S3 exige entre 3 y 63 caracteres en el nombre de un bucket. Lo crea
+  `object-store provision` (`pnpm infra:up`) de forma idempotente, con el cifrado por defecto, privado y sin regla de
+  expiración; `object-store verify` lo comprueba sin escribir nada.
 - **Variables**: las cinco `S3_*` pasan a ser **obligatorias también en `api`** (incluida `S3_BUCKET`, que hasta ahora no
   leía nadie), y `worker` añade `CV_EXTRACTION_TIMEOUT_MS` (30 s por defecto, de 1 s a 120 s) y `CV_EXTRACT_CONCURRENCY`
   (1 por defecto, de 1 a 4). Un `.env` anterior a esta función **no las tiene y los procesos no arrancan**.

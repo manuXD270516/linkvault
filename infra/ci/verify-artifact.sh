@@ -18,11 +18,11 @@
 # que desde el corredor no se alcanza ninguno. Se entra con `docker compose exec`. Abrir puertos para poder comprobar
 # cambiaría la configuración que se está verificando.
 #
-# Lo que esta verificación **no** cubre, dicho en voz alta en vez de fingido: el `GET /health` de `api` y de `worker`
-# declara indicadores de **mongo y redis**, y ninguno de los dos mira el almacén de objetos. MinIO se levanta porque
-# `api` y `worker` dependen de su `service_healthy`, y su propio healthcheck comprueba que los buckets existen, pero
-# que los procesos sepan hablar con S3 **no** queda cubierto por la readiness. Ese hueco se cierra con un despliegue
-# real (fila 35), no aquí.
+# El `GET /health` de `api` y de `worker` declara indicadores de **mongo y redis**, y ninguno de los dos mira el almacén
+# de objetos: el almacén se levanta porque `api` y `worker` dependen de su `service_healthy`, y su healthcheck es de
+# solo lectura. Por eso, después del `up`, este script aprovisiona y comprueba el almacén con la imagen de `api`
+# (`object-store.js provision` y `verify`) y comprueba que el `worker` lee el bucket de CV con su configuración
+# (`s3-probe.js`); ver esas secciones, más abajo.
 #
 # Uso:
 #   API_IMAGE=… WORKER_IMAGE=… WEB_IMAGE=… IMAGE_TAG=… infra/ci/verify-artifact.sh
@@ -185,11 +185,11 @@ section 'Imágenes que resuelve el compose'
 dc config --images
 
 # --- 5.6/5.7: levantar la pila entera, con plazo y con volcado al vencer -------------------------------------------
-# Las imágenes de terceros (mongo, redis, minio) sí hay que descargarlas: en un corredor limpio no existen, y
-# `--pull never` las daría por ausentes abortando el `up`. Se descargan **antes y por separado**, nombrándolas, para
-# que el `up` pueda seguir llevando `--pull never` y la garantía de arriba —verificar lo construido aquí y no algo
-# bajado del registro— siga valiendo para NUESTRAS tres imágenes, que son las únicas que este change produce.
-# Esto lo destapó la primera corrida real: en local pasaba porque esas imágenes ya estaban en la máquina.
+# Las imágenes de terceros (mongo, redis y el almacén de objetos) sí hay que descargarlas: en un corredor limpio no
+# existen, y `--pull never` las daría por ausentes abortando el `up`. Se descargan **antes y por separado**,
+# nombrándolas, para que el `up` pueda seguir llevando `--pull never` y la garantía de arriba —verificar lo construido
+# aquí y no algo bajado del registro— siga valiendo para NUESTRAS tres imágenes, que son las únicas que este change
+# produce. Esto lo destapó la primera corrida real: en local pasaba porque esas imágenes ya estaban en la máquina.
 section "pull de las imágenes de terceros (${THIRD_PARTY_SERVICES[*]})"
 # Se reintenta porque el registro de terceros falla de forma intermitente: una descarga anónima limitada devuelve
 # `unauthorized`, no un error de cuota legible. Sin reintento, esa avería ajena pone el pipeline en rojo de vez en

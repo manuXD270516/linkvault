@@ -7,14 +7,14 @@ import {
 } from '../../../infrastructure/storage/s3-client.factory';
 import type { CvFileStore } from '../application/ports/cv-file-store.port';
 
-// Implementación de `CV_FILE_STORE` sobre almacenamiento compatible con S3 (MinIO en local, cualquier proveedor en
-// producción; ADR-006, ADR-028 §1), con la misma forma que `S3SnapshotStore`: el adaptador real se separa de un
-// `CvFileUploader` inyectable para que **ningún test de `api` hable con MinIO**. La comprobación contra el almacén de
-// verdad es un paso local del RUNBOOK.
+// Implementación de `CV_FILE_STORE` sobre almacenamiento compatible con S3 (el servicio `object-store`; ADR-006,
+// ADR-028 §1, ADR-052), con la misma forma que `S3SnapshotStore`: el adaptador real se separa de un `CvFileUploader`
+// inyectable para que **ningún test de `api` hable con el almacén**. La comprobación contra el almacén de verdad es un
+// paso local del RUNBOOK.
 //
 // Solo sube. No lee y no borra: leer los bytes es del worker y borrarlos sale de la cola `delete-cv-file`.
 
-/** Lo que el store necesita del almacenamiento. Se inyecta para que ningún test hable con MinIO. */
+/** Lo que el store necesita del almacenamiento. Se inyecta para que ningún test hable con el almacén. */
 export interface CvFileUploader {
   put(key: string, body: Uint8Array, contentType: string): Promise<void>;
 }

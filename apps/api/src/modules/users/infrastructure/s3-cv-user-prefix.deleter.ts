@@ -6,7 +6,7 @@ import {
 } from '../../../infrastructure/storage/s3-client.factory';
 import type { CvUserPrefixDeleter } from '../application/ports/cv-user-prefix-deleter.port';
 
-/** Lo que el borrado de prefijo necesita del almacén. Se inyecta para que los tests no hablen con MinIO. */
+/** Lo que el borrado de prefijo necesita del almacén. Se inyecta para que los tests no hablen con él. */
 export interface CvPrefixObjectStore {
   listKeys(prefix: string): Promise<string[]>;
   deleteKeys(keys: readonly string[]): Promise<void>;

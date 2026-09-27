@@ -12,11 +12,11 @@ import type { CvFileReader } from '../../application/ports/cv-file-reader.port';
 
 // Implementación de `CV_FILE_READER` sobre almacenamiento compatible con S3 (ADR-006, ADR-028 §5 y §8), con la misma
 // forma que `S3SnapshotStore`: el adaptador real se separa de un cliente inyectable para que ningún test hable con
-// MinIO.
+// el almacén.
 //
 // El worker es el **único** lector de estos bytes: no hay ninguna ruta de la API que los devuelva.
 
-/** Lo que el lector necesita del almacenamiento. Se inyecta para que ningún test hable con MinIO. */
+/** Lo que el lector necesita del almacenamiento. Se inyecta para que ningún test hable con el almacén. */
 export interface CvObjectClient {
   /** Bytes del objeto, o `null` si no existe. */
   get(key: string): Promise<Uint8Array | null>;

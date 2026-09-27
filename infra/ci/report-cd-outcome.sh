@@ -35,8 +35,9 @@
 # --- El cuarto desenlace: "no se pudo verificar" no es "el artefacto está roto" ---------------------------------------
 # La primera fila decía siempre lo mismo —"El artefacto no se construyó o no arrancó"— y en las corridas reales
 # 36045259965 y 36048413770 eso era **falso**: las dos cayeron porque el registro de terceros no sirvió las imágenes de
-# mongo/redis/minio, con el artefacto sin llegar a levantarse. El mismo pecado que este script ya había corregido para
-# `cancelled`/`skipped` (nombrar el resultado real en vez de inventar el motivo) seguía vivo para `failure`.
+# terceros (mongo, redis y el almacén de objetos), con el artefacto sin llegar a levantarse. El mismo pecado que este
+# script ya había corregido para `cancelled`/`skipped` (nombrar el resultado real en vez de inventar el motivo) seguía
+# vivo para `failure`.
 #
 # Por eso `failure` se desglosa por la **clase** que escribe `infra/ci/verify-artifact.sh` y transporta el job:
 #   artifact     → el artefacto no se construyó, no arrancó o una imagen no existe para la arquitectura del destino
