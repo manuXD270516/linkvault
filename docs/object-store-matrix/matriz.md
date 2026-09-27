@@ -2309,7 +2309,7 @@ falsación: todas las copias salen ≠0
 exit=0
 ```
 
-## Configuración entregada (tareas 7.1, 7.1b, 7.2, 7.2b y 7.3)
+## Configuración entregada (tareas 7.1, 7.1b, 7.2, 7.2b, 7.3 y 7.3b)
 
 El servicio `object-store` de `docker-compose.yml` está **copiado** del de `seaweedfs.compose.yml`, el que midió la
 matriz (design D2, «Lo que se entrega es lo que se midió»; D6, D14 y D16). Esta sección tiene lo que lo demuestra:
@@ -2861,3 +2861,188 @@ FALLA (3) image: valor distinto
 exit=1
 falsación: todas las copias salen ≠0
 ```
+
+### 7.3b: aislamiento de red del almacén
+
+La red no cambia la configuración del producto (mismas flags, entorno y volumen), así que C3-C5 y C7-C9 no se repiten:
+C3-C4 las cubre la 7.2 (`provision` y `verify`) y C5 la 7.2b. Las pilas de esta sección usan proyectos de Compose
+`os8-*`: la de producción no publica ningún puerto (Traefik no se levanta) y la de desarrollo usa el bloque
+19800-19899. La pila de desarrollo por defecto (`linkvault`) no se toca.
+
+**(1) Forma** (`node <scratchpad>/g8/check-73b-shape.js --profiles`): vuelca `docker compose -f docker-compose.yml
+config --format json` y `docker compose -f docker-compose.prod.yml --env-file infra/ci/verify.env config --format
+json` a ficheros del scratchpad. Con `--profiles` lee además el de desarrollo con sus tres perfiles activos, porque
+`config` sin perfiles no lista `ollama` ni `meilisearch`.
+
+```text
+$ node <scratchpad>/g8/check-73b-shape.js --profiles
+producción: object-store-net internal=true; miembros: api, object-store, worker
+producción: object-store en object-store-net; ports: ninguno
+producción: api en internal, object-store-net
+producción: worker en internal, object-store-net
+desarrollo: servicios mailpit, mongo, object-store, redis
+desarrollo: object-store-net internal=(sin clave); miembros: object-store
+desarrollo: object-store en object-store-net; puertos publicados: 9000:8333
+desarrollo (todos los perfiles): servicios mailpit, meilisearch, mongo, object-store, ollama, redis
+desarrollo (todos los perfiles): object-store-net internal=(sin clave); miembros: object-store
+desarrollo (todos los perfiles): object-store en object-store-net; puertos publicados: 9000:8333
+7.3b (1) forma: ok
+exit=0
+```
+
+Falsación: una copia de `docker-compose.prod.yml` en el scratchpad con `redis` añadido a `object-store-net`:
+
+```text
+$ node <scratchpad>/g8/check-73b-shape.js <scratchpad>/g8/prod.redis-in-osnet.yml
+producción: object-store-net internal=true; miembros: api, object-store, redis, worker
+(…)
+FALLA producción: miembros de object-store-net distintos de object-store, api y worker; de más: redis
+7.3b (1): FALLA (1)
+exit=1
+```
+
+**(2) Producción.** La pila de `docker-compose.prod.yml` con `infra/ci/verify.env` se levanta como en la 7.7: mismas
+imágenes de terceros, las tres propias construidas en local desde el árbol de `e7c371a` (`apps/`, `libs/`, `docker/` y el lockfile, iguales en `73e3023`)
+(`docker build -f docker/<app>.Dockerfile -t os8-<app>:local .`, con `API_IMAGE=os8-api`, `WORKER_IMAGE=os8-worker`,
+`WEB_IMAGE=os8-web` e `IMAGE_TAG=local`), los mismos servicios y banderas que `verify-artifact.sh`, y `object-store` en
+lugar de `minio`. `verify-artifact.sh` todavía nombra `minio` (la 7.4 lo cambia), así que el `up` va a mano, en el
+proyecto `os8-p`. Al terminar se ejecuta el `down -v` de `teardown-artifact.sh`, también en ese proyecto: el script
+apunta al proyecto por defecto (`linkvault-prod`).
+
+```text
+$ docker compose -p os8-p -f docker-compose.prod.yml --env-file infra/ci/verify.env up -d --wait --wait-timeout 360 --pull never mongo redis object-store api worker web
+ Network os8-p_internal Created
+ Network os8-p_object-store-net Created
+ Volume os8-p_object-store-data Created
+ (…)
+ Container os8-p-object-store-1 Healthy
+ Container os8-p-mongo-1 Healthy
+ Container os8-p-redis-1 Healthy
+ Container os8-p-api-1 Healthy
+ Container os8-p-worker-1 Healthy
+ Container os8-p-web-1 Healthy
+exit=0
+$ timeout 180 docker compose -p os8-p … run --rm --no-deps api node object-store.js provision
+ok    cvs: bucket created
+ok    cvs: no lifecycle configuration (removed if there was one)
+ok    cvs: default encryption set (AES256)
+ok    cvs: no bucket policy
+ok    snapshots: bucket created
+ok    snapshots: no lifecycle configuration (removed if there was one)
+ok    snapshots: no bucket policy
+provision: ok
+exit=0
+$ timeout 180 docker compose -p os8-p … run --rm --no-deps api node object-store.js verify
+ok    cvs: bucket exists
+ok    snapshots: bucket exists
+ok    cvs: no lifecycle rule
+ok    cvs: default encryption (AES256)
+ok    snapshots: no lifecycle rule
+ok    snapshots: no snapshot older than 31 days (0 listed)
+ok    cvs: anonymous GET of a missing object rejected (HTTP 403 AccessDenied)
+ok    cvs: anonymous listing rejected (HTTP 403 AccessDenied)
+ok    cvs: anonymous PUT rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous GET of a missing object rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous listing rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous PUT rejected (HTTP 403 AccessDenied)
+verify: ok
+exit=0
+$ docker network ls --format '{{.Name}} {{.Internal}}'      # las de os8-p
+os8-p_internal true
+os8-p_object-store-net true
+$ docker network inspect --format '{{range .Containers}}{{.Name}} {{end}}' <red>
+os8-p_object-store-net: os8-p-object-store-1 os8-p-api-1 os8-p-worker-1
+os8-p_internal: os8-p-redis-1 os8-p-mongo-1 os8-p-web-1 os8-p-api-1 os8-p-worker-1
+$ docker run --rm --network os8-p_internal alpine:3 sh -c 'wget -S -T 5 -O /dev/null http://object-store:8888/; wget -S -T 5 -O /dev/null http://object-store:8333/'
+wget: bad address 'object-store:8888'
+wget 8888 exit=1
+wget: bad address 'object-store:8333'
+wget 8333 exit=1
+```
+
+Desde la red de mongo y redis, `object-store` no se resuelve: `bad address` en los dos puertos y ningún estado HTTP.
+Desde `api`, en cambio, `verify` sale 0.
+
+**Falsación:** un contenedor `alpine:3` con `sleep` en `os8-p_internal` no llega al filer. Unido a
+`os8-p_object-store-net`, sí llega. Además, se prueba la IP del almacén desde `internal`: no hay ruta.
+
+```text
+$ docker run -d --name os8-probe --network os8-p_internal alpine:3 sleep 600
+exit=0
+$ docker exec os8-probe wget -S -T 5 -O /dev/null http://object-store:8888/
+wget: bad address 'object-store:8888'
+exit=1
+IP del almacén en os8-p_object-store-net: 172.28.0.2
+$ docker exec os8-probe wget -S -T 5 -O /dev/null http://172.28.0.2:8888/
+Connecting to 172.28.0.2:8888 (172.28.0.2:8888)
+wget: can't connect to remote host (172.28.0.2): Network unreachable
+exit=1
+$ docker network connect os8-p_object-store-net os8-probe
+exit=0
+$ docker exec os8-probe wget -S -T 5 -O /dev/null http://object-store:8888/
+Connecting to object-store:8888 (172.28.0.2:8888)
+  HTTP/1.1 200 OK
+  Server: SeaweedFS 30GB 4.47
+  (…)
+'/dev/null' saved
+exit=0
+$ docker rm -f os8-probe
+exit=0
+$ docker compose -p os8-p -f docker-compose.prod.yml --env-file infra/ci/verify.env down -v --remove-orphans --timeout 30
+exit=0
+```
+
+**(3) Desarrollo.** `pnpm infra:up` en el proyecto `os8-d`, desde volúmenes vacíos. Se exportan `COMPOSE_PROJECT_NAME`,
+los puertos del bloque (`OBJECT_STORE_PORT=19840` y los demás) y `S3_ENDPOINT=http://localhost:19840`. Las
+credenciales y la clave de prueba están en un `.env` del scratchpad: la clave se generó con la orden de ADR-052
+«Elección» y no se imprime. `docker inspect` confirma que las tres claves del contenedor son las de ese fichero.
+
+```text
+$ pnpm infra:up
+$ docker compose up -d --wait && pnpm nx run api:object-store -- provision
+ Network os8-d_default Created
+ Network os8-d_object-store-net Created
+ (…)
+ Container os8-d-object-store-1 Healthy
+provision: ok
+exit=0
+$ docker inspect --format '{{json .Config.Env}}' os8-d-object-store-1      # comparado con node, sin imprimir valores
+AWS_ACCESS_KEY_ID: el valor del .env del scratchpad
+AWS_SECRET_ACCESS_KEY: el valor del .env del scratchpad
+WEED_S3_SSE_KEK: el valor del .env del scratchpad
+$ docker port os8-d-object-store-1
+8333/tcp -> 0.0.0.0:19840
+8333/tcp -> [::]:19840
+$ docker run --rm --network os8-d_default alpine:3 sh -c 'wget -S -T 5 -O /dev/null http://object-store:8888/; wget -S -T 5 -O /dev/null http://object-store:8333/'
+wget: bad address 'object-store:8888'
+wget 8888 exit=1
+wget: bad address 'object-store:8333'
+wget 8333 exit=1
+$ pnpm nx run api:object-store -- verify           # desde el host, por el puerto publicado
+ok    cvs: bucket exists
+ok    snapshots: bucket exists
+ok    cvs: no lifecycle rule
+ok    cvs: default encryption (AES256)
+ok    snapshots: no lifecycle rule
+ok    snapshots: no snapshot older than 31 days (0 listed)
+ok    cvs: anonymous GET of a missing object rejected (HTTP 403 AccessDenied)
+ok    cvs: anonymous listing rejected (HTTP 403 AccessDenied)
+ok    cvs: anonymous PUT rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous GET of a missing object rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous listing rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous PUT rejected (HTTP 403 AccessDenied)
+verify: ok
+exit=0
+$ docker run --rm --network os8-d_default alpine:3 sh -c 'wget -S -T 5 -O /dev/null http://172.28.0.2:8888/'   # IP del almacén en os8-d_object-store-net
+Connecting to 172.28.0.2:8888 (172.28.0.2:8888)
+wget: download timed out
+exit=1
+$ docker network inspect --format '{{range .Containers}}{{.Name}} {{end}}' <red>
+os8-d_object-store-net: os8-d-object-store-1
+os8-d_default: os8-d-redis-1 os8-d-mailpit-1 os8-d-mongo-1
+$ docker compose -p os8-d -f docker-compose.yml down -v --timeout 30
+exit=0
+```
+
+Al terminar, no queda ningún contenedor, volumen ni red `os8`: `docker ps -a`, `docker volume ls` y
+`docker network ls` filtrados por `os8` dan 0.
