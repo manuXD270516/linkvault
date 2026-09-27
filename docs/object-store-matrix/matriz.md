@@ -4108,3 +4108,70 @@ exit=0
 ```
 
 `docker ps -a`, `docker volume ls` y `docker network ls` filtrados por `os12`: 0, 0 y 0 tras cada caso.
+
+## Falsación de la comprobación de plataformas en `arm64` (tarea 10.3)
+
+Commit temporal `de3f854` («chore(ci): TEMPORARY …»): en el `env` del paso de verificación de `cd-staging.yml`,
+`OBJECT_STORE_IMAGE: docker.io/library/mysql` y `OBJECT_STORE_IMAGE_TAG: "5.7"`, la imagen de la 1.3 cuyo índice no
+incluye `linux/arm64`. Antes de lanzarla, leído en el commit empujado: el paso de publicación sigue con su `if` de
+`dry_run` y `deploy-staging` con el estado `full`; `gh secret list`, vacío. Una sola corrida, en modo de prueba:
+
+```text
+$ gh workflow run cd-staging.yml --ref change/object-store -f dry_run=true
+https://github.com/manuXD270516/linkvault/actions/runs/36308803112
+$ gh run view 36308803112 --json conclusion,jobs,headSha,event > <scratchpad>/run-103.json   # leído con node
+conclusion: failure | headSha: de3f854c78960d7f377382e814288f92d495c7ff | event: workflow_dispatch
+job: preflight (¿hay destino de staging configurado?) | success
+job: verify (lint, specs, typecheck, test, build) | success
+job: build, verify and publish artifact | failure
+   step: Build api (load, no push) | success
+   step: Build worker (load, no push) | success
+   step: Build web (load, no push) | success
+   step: Verify artifact (docker-compose.prod.yml stack in the runner) | failure
+   step: Publish verified artifact to GHCR (docker push of the loaded image) | skipped
+   step: Tear down verification stack | success
+   step: Upload artifact failure class | success
+job: resultado: el artefacto NO pasó la verificación | failure
+job: deploy staging (solo si hay destino configurado) | skipped
+```
+
+Del log del paso de verificación (`gh run view 36308803112 --log --job 108592645023`, volcado a fichero y leído con
+`node`; el log intercala stdout y stderr, así que la línea `[FAIL/artifact]` sale tras la cabecera del diagnóstico): la
+plataforma se comprueba **antes** del `pull`, sin reintentos, y no se levanta nada.
+
+```text
+=== Plataforma del daemon y de las imágenes propias
+  daemon: linux/arm64
+  TARGET_PLATFORM: linux/arm64 (igual que el daemon)
+  ok: ghcr.io/manuxd270516/linkvault-api:sha-de3f854c7896 (linux/arm64)
+  ok: ghcr.io/manuxd270516/linkvault-worker:sha-de3f854c7896 (linux/arm64)
+  ok: ghcr.io/manuxd270516/linkvault-web:sha-de3f854c7896 (linux/arm64)
+=== Imágenes que resuelve el compose
+ (…)
+docker.io/library/mysql:5.7
+=== pull de las imágenes de terceros (mongo redis object-store)
+ok: mongo:7.0.43 (linux/arm64)
+ok: redis:7.4.11 (linux/arm64)
+no existe para linux/arm64: docker.io/library/mysql:5.7 (disponibles: linux/amd64)
+=== Diagnóstico: estado de los servicios
+[FAIL/artifact] alguna imagen de terceros no existe para linux/arm64 (la línea de arriba nombra la imagen y las plataformas que existen): es un defecto del compose, no del registro, y reintentar no lo arregla
+NAME      IMAGE     COMMAND   SERVICE   CREATED   STATUS    PORTS
+```
+
+Del job de reporte (`--log --job 108592818907`) y del estado de commit (`gh api
+repos/manuXD270516/linkvault/commits/de3f854c78960d7f377382e814288f92d495c7ff/statuses`, volcado a fichero y leído con
+`node`):
+
+```text
+clase del fallo: artifact
+  verificación del artefacto : failure (clase del fallo: artifact)
+  preflight                  : success (estado: none)
+  estado de commit           : failure
+  nombre (lista de checks)   : resultado: el artefacto NO pasó la verificación
+  descripción                : El artefacto no se construyó, no arrancó o no existe para la arquitectura del destino: no se publicó ni desplegó nada.
+cd-staging/artifact | failure | "El artefacto no se construyó, no arrancó o no existe para la arquitectura del destino: no se publicó ni desplegó nada." | 118 car. | 122 bytes | https://github.com/manuXD270516/linkvault/actions/runs/36308803112
+contiene «registro de terceros»: false | contiene «reintentar»: false
+```
+
+La descripción es el texto de la 2.16 (118 caracteres, 122 bytes). Revertido en `ec1753a` («chore(ci): revert …»):
+`git diff b90786a ec1753a` vacío, el workflow queda como antes del commit temporal.
