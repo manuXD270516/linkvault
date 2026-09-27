@@ -2308,3 +2308,269 @@ exit=1
 falsación: todas las copias salen ≠0
 exit=0
 ```
+
+## Configuración entregada (tareas 7.1, 7.1b, 7.2 y 7.2b)
+
+El servicio `object-store` de `docker-compose.yml` está **copiado** del de `seaweedfs.compose.yml`, el que midió la
+matriz (design D2, «Lo que se entrega es lo que se midió»; D6, D14 y D16). Esta sección tiene lo que lo demuestra:
+la lista cerrada de lo que puede diferir, la comparación de servicios, el guardia de arranque de la clave y C5 repetida
+sobre el compose entregado. Todas las corridas usan un proyecto de Compose propio (`os7-*`) y puertos del bloque
+19700-19799 (`OBJECT_STORE_PORT=19740` y los demás por sus variables): la pila de desarrollo por defecto no se toca.
+
+### Lista cerrada de claves de `environment` que pueden tener otro valor
+
+Solo las mapeadas desde las variables del fichero de entorno (`S3_ACCESS_KEY`, `S3_SECRET_KEY` y, porque el modo es
+`server`, `OBJECT_STORE_SSE_KEY`). En `docker-compose.yml` llevan valores de desarrollo por defecto (`:-`); en el
+compose de la matriz, `:?`. Cada una tiene que referenciar su variable en los dos composes (`config --no-interpolate`).
+
+- `AWS_ACCESS_KEY_ID` ← `S3_ACCESS_KEY`
+- `AWS_SECRET_ACCESS_KEY` ← `S3_SECRET_KEY`
+- `WEED_S3_SSE_KEK` ← `OBJECT_STORE_SSE_KEY`
+
+Rutas del servicio que la comparación quita antes de comparar, y ninguna más: `ports`, `healthcheck`, `networks`
+(design D14; su forma la comprueba la 7.3b), el `source` del volumen con nombre y los valores de las claves de la lista
+de arriba; desde la 7.1b, también `entrypoint` (el guardia de design D16, que se comprueba aparte). El `source` de un
+fichero montado se compara por el sha256 de su contenido (el servicio no monta ninguno).
+
+### 7.1: servicio copiado, red propia y comparación
+
+**(1) Digest.** `node <scratchpad>/g7/check-image.js docker-compose.yml`: `docker compose -f docker-compose.yml config
+--images object-store`, sin `OBJECT_STORE_IMAGE`/`OBJECT_STORE_IMAGE_TAG` en el entorno, volcado a fichero y leído con
+`node`, que exige **exactamente una línea**; después `docker buildx imagetools inspect <imagen> --format
+'{{.Manifest.Digest}}'` (la plantilla de la 2.14) contra el digest de la 1.2/1.4:
+
+```text
+$ node <scratchpad>/g7/check-image.js docker-compose.yml
+config --images object-store (docker-compose.yml): 1 línea(s)
+imagen: chrislusf/seaweedfs:4.47
+digest del índice (imagetools inspect --format '{{.Manifest.Digest}}'): sha256:ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882
+digest anotado en la 1.4 (matriz.md):                              sha256:ce9e796f1fe6f06968f4c04bdaf8f678dad9c8acdfef3d244133d71bfa6bf882
+7.1 (1): ok
+exit=0
+```
+
+**(2) Desde volúmenes vacíos, el `up` no crea buckets** (escenario «El healthcheck del almacén no crea buckets»):
+
+```text
+$ COMPOSE_PROJECT_NAME=os7-a docker compose -f docker-compose.yml up -d --wait     # sin volúmenes os7-a_* previos
+ Volume os7-a_redis-data Created
+ Volume os7-a_object-store-data Created
+ Volume os7-a_mongo-data Created
+ Network os7-a_default Created
+ Network os7-a_object-store-net Created
+ Container os7-a-mailpit-1 Healthy
+ Container os7-a-redis-1 Healthy
+ Container os7-a-object-store-1 Healthy
+ Container os7-a-mongo-1 Healthy
+exit=0
+$ docker compose … ps --format '{{.Service}} {{.State}} {{.Health}}'
+mailpit running healthy
+mongo running healthy
+object-store running healthy
+redis running healthy
+$ S3_ENDPOINT=http://localhost:19740 node docs/object-store-matrix/list-buckets.mjs
+buckets (0):
+exit=0
+```
+
+**(3) Comparación de servicios** (`node <scratchpad>/g7/compare-service.js <matriz> <entregado>`): lee la lista cerrada
+de arriba, vuelca `config --format json` y `config --no-interpolate --format json` de los dos composes a ficheros del
+scratchpad (el de la matriz, con valores de relleno en sus tres variables obligatorias), comprueba las referencias y
+compara el objeto del servicio entero tras quitar solo las rutas de arriba. No imprime valores de `environment`.
+
+```text
+$ node <scratchpad>/g7/compare-service.js docs/object-store-matrix/seaweedfs.compose.yml docker-compose.yml
+lista cerrada (matriz.md): AWS_ACCESS_KEY_ID <- S3_ACCESS_KEY, AWS_SECRET_ACCESS_KEY <- S3_SECRET_KEY, WEED_S3_SSE_KEK <- OBJECT_STORE_SSE_KEY
+rutas quitadas: ports, healthcheck, networks, volumes[].source (volumen con nombre), environment.<lista cerrada>
+referencias (config --no-interpolate): las 3 claves referencian su variable en los dos composes
+claves comparadas del servicio: command, entrypoint, environment, image, volumes
+comparación de servicios: ok (idénticos salvo la lista cerrada)
+exit=0
+```
+
+Falsación: una variable más en el servicio de `docker-compose.yml` (`S3_EXTRA_FALSIFICATION: '1'`), y restaurado
+(fichero idéntico a la copia de antes, `cmp`):
+
+```text
+$ node <scratchpad>/g7/compare-service.js docs/object-store-matrix/seaweedfs.compose.yml docker-compose.yml
+(…)
+FALLA environment.S3_EXTRA_FALSIFICATION: solo en el entregado
+comparación de servicios: FALLA (1)
+exit=1
+$ node <scratchpad>/g7/compare-service.js …          # restaurado
+comparación de servicios: ok (idénticos salvo la lista cerrada)
+exit=0
+```
+
+**(4) `object-store` sin `depends_on`** (`bash <scratchpad>/g7/check-no-depends.sh docker-compose.yml`: `config
+--format json` volcado a fichero y un `node -e` sobre él). Falsación con `depends_on: [redis]` en el servicio: falla
+ese `node -e` **y** la lectura de (1) sale ≠0 nombrando las dos líneas; restaurado, las dos en verde:
+
+```text
+$ bash <scratchpad>/g7/check-no-depends.sh docker-compose.yml
+7.1 (4): object-store sin depends_on: ok
+exit=0
+--- falsación: depends_on: [redis]
+$ bash <scratchpad>/g7/check-no-depends.sh docker-compose.yml
+FALLA: el servicio object-store tiene depends_on: redis
+exit=1
+$ node <scratchpad>/g7/check-image.js docker-compose.yml
+config --images object-store (docker-compose.yml): 2 línea(s)
+FALLA: se exige exactamente una línea; hay 2: redis:7.4.11, chrislusf/seaweedfs:4.47
+exit=1
+--- restaurado
+$ bash <scratchpad>/g7/check-no-depends.sh docker-compose.yml
+7.1 (4): object-store sin depends_on: ok
+exit=0
+$ node <scratchpad>/g7/check-image.js docker-compose.yml
+(…)
+7.1 (1): ok
+```
+
+### 7.1b: guardia de arranque de la clave
+
+**`Entrypoint` y `Cmd` de la imagen fijada**, leídos antes de escribir el guardia (termina en `exec` de ese
+`Entrypoint` con los mismos argumentos; el `Cmd` de la imagen no se usa, porque el servicio fija su `command`):
+
+```text
+$ docker image inspect --format '{{json .Config.Entrypoint}} {{json .Config.Cmd}}' chrislusf/seaweedfs:4.47
+["/entrypoint.sh"] ["mini","-dir=/data"]
+exit=0
+```
+
+**Listado del `tar` de un volumen arrancado con clave**, uno nuevo: el de la 7.1 (2) (`os7-a_object-store-data`,
+arrancado con la clave de desarrollo por defecto de `docker-compose.yml`), después de `object-store provision` y de
+un `PUT` al bucket de CV sin cabeceras SSE (`lo que dice el almacén: AES256`), con `object-store` detenido. Entradas
+de la raíz (el `tar` tiene 112) y la búsqueda de los dos ficheros con `node`:
+
+```text
+$ docker run --rm -v os7-a_object-store-data:/d:ro alpine:3 sh -c 'cd /d && tar -cf - . | tar -tvf -'
+-rw-r--r-- 1000/1000       194 2026-09-27 02:02:34 ./cvs_1.vif
+drwxr-xr-x 1000/1000         0 2026-09-27 02:02:02 ./worker/
+-rw-r--r-- 1000/1000        16 2026-09-27 02:02:34 ./cvs_1.idx
+-rw------- 1000/1000        64 2026-09-27 02:02:01 ./.mini_kek_passphrase
+drwxr-xr-x 1000/1000         0 2026-09-27 02:02:01 ./admin/
+-rw-r--r-- 1000/1000      1080 2026-09-27 02:02:34 ./cvs_1.dat
+-rw-r--r-- 1000/1000        36 2026-09-27 02:02:01 ./vol_dir.uuid
+-rw-r--r-- 1000/1000        32 2026-09-27 02:02:46 ./2.idx
+drwxr-xr-x 1000/1000         0 2026-09-27 02:02:01 ./filerldb2/
+-rw-r--r-- 1000/1000       361 2026-09-27 02:02:02 ./mini.options
+-rw-r--r-- 1000/1000      7768 2026-09-27 02:02:46 ./2.dat
+-rw-r--r-- 1000/1000       194 2026-09-27 02:02:45 ./2.vif
+drwxr-xr-x 1000/1000         0 2026-09-27 02:02:01 ./m9333/
+exit=0
+$ node <búsqueda en el listado>
+112 entradas
+.mini_sse_kek: no existe
+.mini_kek_passphrase: existe
+```
+
+Con clave **no existe `.mini_sse_kek`** y **sí existe `.mini_kek_passphrase`** (64 bytes, creado al arrancar, como en
+la 3.4, donde la copia de (b) lo llevaba y con K2 A1 no se leía). Así que el guardia rechaza **solo**
+`/data/.mini_sse_kek`: rechazar también `.mini_kek_passphrase` impediría arrancar cualquier volumen con clave.
+
+El guardia, en `entrypoint` del servicio de `docker-compose.yml` con `command` intacto (en el YAML, cada `$` va
+escrito `$$`; `docker compose config` conserva ese escape en su salida, y el contenedor recibe un solo `$`, visto con
+`docker inspect` abajo): sale con 64 si `WEED_S3_SSE_KEK` no son exactamente 64 caracteres `[0-9a-f]` (un `case` con
+`*[!0-9a-f]*` y `${#WEED_S3_SSE_KEK}`), con 65 si existe `/data/.mini_sse_kek`, y si no, `exec /entrypoint.sh "$@"`.
+Ninguna de sus dos líneas de error lleva el valor de la clave.
+
+**(1) Comparación de servicios con `entrypoint` en la lista cerrada, y el guardia aparte.** `check-guard.js` vuelca
+`docker compose -f docker-compose.yml config --format json` a fichero y exige `entrypoint` = `/bin/sh`, `-c`, el
+guardia, `object-store-guard`; que el guardia (sin el escape `$$` de `config`) termine en `exec` + el `Entrypoint`
+pegado arriba + `"$@"`; y `command` idéntico, elemento a elemento, al de `seaweedfs.compose.yml`:
+
+```text
+$ node <scratchpad>/g7/check-guard.js docker-compose.yml
+Entrypoint pegado: ["/entrypoint.sh"]
+entrypoint: "/bin/sh", "-c", <guardia de 13 líneas>, "object-store-guard"
+última línea del guardia (tras quitar el escape $$ de config): exec /entrypoint.sh "$@"
+command (7 elementos, igual elemento a elemento al de la matriz: sí): ["mini","-dir=/data","-webdav=false","-admin.ui=false","-s3.port.iceberg=0","-s3.port.lance=0","-master.telemetry=false"]
+7.1b (1) guardia: ok
+exit=0
+$ node <scratchpad>/g7/compare-service.js docs/object-store-matrix/seaweedfs.compose.yml docker-compose.yml --strip-entrypoint
+lista cerrada (matriz.md): AWS_ACCESS_KEY_ID <- S3_ACCESS_KEY, AWS_SECRET_ACCESS_KEY <- S3_SECRET_KEY, WEED_S3_SSE_KEK <- OBJECT_STORE_SSE_KEY
+rutas quitadas: ports, healthcheck, networks, entrypoint, volumes[].source (volumen con nombre), environment.<lista cerrada>
+referencias (config --no-interpolate): las 3 claves referencian su variable en los dos composes
+claves comparadas del servicio: command, environment, image, volumes
+comparación de servicios: ok (idénticos salvo la lista cerrada)
+exit=0
+$ node <scratchpad>/g7/compare-service.js docs/object-store-matrix/seaweedfs.compose.yml docker-compose.yml   # sin quitar entrypoint
+(…)
+FALLA entrypoint: valor distinto
+comparación de servicios: FALLA (1)
+exit=1
+```
+
+**(2) Caso bueno**, desde volúmenes vacíos (proyecto `os7-g`, sin volúmenes previos), con la clave de desarrollo por
+defecto. El proceso que queda es `weed` con los argumentos de la matriz (el `-logtostderr=true` lo añade
+`/entrypoint.sh`, como en la matriz):
+
+```text
+$ COMPOSE_PROJECT_NAME=os7-g docker compose -f docker-compose.yml up -d --wait object-store
+exit=0
+$ docker inspect --format '{{json .State.Health}}' <contenedor>      # leído con node
+State.Health.Status: healthy | FailingStreak: 0
+$ docker inspect --format '{{json .Config.Entrypoint}}' <contenedor>  # leído con node
+Config.Entrypoint del contenedor: "/bin/sh" "-c" <guardia> "object-store-guard" | última línea: exec /entrypoint.sh "$@"
+$ docker top <contenedor> -o pid,user,args
+PID                 USER                COMMAND
+48732               1000                /usr/bin/weed -logtostderr=true mini -dir=/data -webdav=false -admin.ui=false -s3.port.iceberg=0 -s3.port.lance=0 -master.telemetry=false
+$ docker compose -p os7-g -f docker-compose.yml down -v
+exit=0
+```
+
+**(3) Tres falsaciones** (`bash <scratchpad>/g7/falsify.sh <etiqueta> <código> <modo>`), cada una en su proyecto
+desde volúmenes vacíos y con `down -v` al terminar: `up -d --wait --wait-timeout 60 object-store` sale ≠0, `docker
+inspect` no da `healthy` y da el código esperado, los logs del servicio (volcados a fichero) tienen la línea del
+guardia y, buscado con `node`, **no** contienen el valor de la clave. (a) con `-f docker-compose.yml -f
+<scratchpad>/kek-empty.yml`, que pone `WEED_S3_SSE_KEK: ''`; (b) con `OBJECT_STORE_SSE_KEY` de 63 hexadecimales y,
+aparte, de 64 caracteres con una `g`; (c) `up --no-start object-store`, `docker run --rm -v
+os7-fc_object-store-data:/data alpine:3 touch /data/.mini_sse_kek` y la clave por defecto, que es correcta:
+
+```text
+== (a) proyecto os7-fa, volúmenes previos: ninguno
+$ docker compose … up -d --wait --wait-timeout 60 object-store
+ container os7-fa-object-store-1 exited (64)
+exit=1
+docker inspect: Status=exited, ExitCode=64, Health=unhealthy
+línea del guardia en los logs: object-store-guard: WEED_S3_SSE_KEK (OBJECT_STORE_SSE_KEY) must be exactly 64 characters [0-9a-f]; refusing to start (see docs/RUNBOOK.md)
+valor de la clave en los logs: no
+(a) ok: up ≠0, no healthy, ExitCode 64, línea del guardia, sin la clave
+down -v exit=0
+
+== (b63) proyecto os7-fb63, volúmenes previos: ninguno
+$ docker compose … up -d --wait --wait-timeout 60 object-store
+ container os7-fb63-object-store-1 exited (64)
+exit=1
+docker inspect: Status=exited, ExitCode=64, Health=unhealthy
+línea del guardia en los logs: object-store-guard: WEED_S3_SSE_KEK (OBJECT_STORE_SSE_KEY) must be exactly 64 characters [0-9a-f]; refusing to start (see docs/RUNBOOK.md)
+valor de la clave en los logs: no
+(b63) ok: up ≠0, no healthy, ExitCode 64, línea del guardia, sin la clave
+down -v exit=0
+
+== (b64g) proyecto os7-fb64g, volúmenes previos: ninguno
+$ docker compose … up -d --wait --wait-timeout 60 object-store
+ container os7-fb64g-object-store-1 exited (64)
+exit=1
+docker inspect: Status=exited, ExitCode=64, Health=unhealthy
+línea del guardia en los logs: object-store-guard: WEED_S3_SSE_KEK (OBJECT_STORE_SSE_KEY) must be exactly 64 characters [0-9a-f]; refusing to start (see docs/RUNBOOK.md)
+valor de la clave en los logs: no
+(b64g) ok: up ≠0, no healthy, ExitCode 64, línea del guardia, sin la clave
+down -v exit=0
+
+== (c) proyecto os7-fc, volúmenes previos: ninguno
+up --no-start exit=0
+touch /data/.mini_sse_kek exit=0
+$ docker compose … up -d --wait --wait-timeout 60 object-store
+ container os7-fc-object-store-1 exited (65)
+exit=1
+docker inspect: Status=exited, ExitCode=65, Health=unhealthy
+línea del guardia en los logs: object-store-guard: /data/.mini_sse_kek exists: this volume was started without WEED_S3_SSE_KEK and may hold objects encrypted with a key SeaweedFS generated; refusing to start (see docs/RUNBOOK.md before touching the file)
+valor de la clave en los logs: no
+(c) ok: up ≠0, no healthy, ExitCode 65, línea del guardia, sin la clave
+down -v exit=0
+```
+
+La clave que recibió cada contenedor, leída de `docker inspect` (solo su forma): (a) 0 caracteres; (b63) 63, solo
+`[0-9a-f]`; (b64g) 64, con otro carácter; (c) 64, solo `[0-9a-f]`, la de desarrollo por defecto.
