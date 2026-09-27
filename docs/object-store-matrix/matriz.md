@@ -4349,7 +4349,35 @@ repo-checks: 5 comprobaciones ejecutadas (check-claims-registry, check-compose-e
 exit=0
 ```
 
-La corrida en modo de prueba con el plazo nuevo se anota abajo, en «Corrida con el plazo nuevo».
+**Corrida con el plazo nuevo**, en modo de prueba sobre `f1415d2`:
+
+```text
+$ gh workflow run cd-staging.yml --ref change/object-store -f dry_run=true
+https://github.com/manuXD270516/linkvault/actions/runs/36347012639
+$ gh run view 36347012639 --json conclusion,jobs,headSha,event,createdAt,updatedAt > <scratchpad>/g13/run-111b.json   # leído con node
+conclusion: success | headSha: f1415d2d4492a054602adc397108da3358548250 | event: workflow_dispatch | 2026-09-27T20:09:55Z → 2026-09-27T20:25:19Z
+job: build, verify and publish artifact | success | id 108700589627 | labels: ubuntu-24.04-arm
+   step: Verify artifact (docker-compose.prod.yml stack in the runner) | success
+   step: Publish verified artifact to GHCR (docker push of the loaded image) | skipped
+job: deploy staging (solo si hay destino configurado) | skipped
+job: resultado: artefacto verificado — NO desplegado (sin destino de staging) | success
+  daemon: linux/arm64
+=== up -d --wait --wait-timeout 330 --pull never mongo redis object-store api worker web
+  mongo        estado healthy; hasta healthy: 5.09 s (sondeos guardados: 3)
+  redis        estado healthy; hasta healthy: 5.23 s (sondeos guardados: 2)
+  object-store estado healthy; hasta healthy: 1.29 s (sondeos guardados: 1)
+  api          estado healthy; hasta healthy: 5.35 s (sondeos guardados: 1)
+  worker       estado healthy; hasta healthy: 5.37 s (sondeos guardados: 1)
+  web          estado healthy; hasta healthy: 5.29 s (sondeos guardados: 1)
+provision: ok
+verify: ok
+s3-probe: ok
+=== Artefacto verificado
+```
+
+Sus tiempos (almacén 1,29 s; ventana 120 s ≥ 3 × 1,29 s) no cambian ninguna ventana ni el plazo. Nada publicado: ninguna
+versión con `sha-f1415d2d4492` en los tres paquetes (`gh api user/packages/container/linkvault-<p>/versions --paginate`,
+leído con `node`).
 
 ## Documentación que protege los CV (grupo 12)
 
@@ -4504,3 +4532,35 @@ medidos en `arm64`, y cambiar solo el nombre dejaría una tabla que atribuye al 
 comando de Claude Code: no se edita sin el visto bueno del usuario. Con esas tres, la 12.3 y la 12.4 siguen abiertas.
 `pnpm nx run shared:lint` (0 errores) y `pnpm nx run api:test` (275 ficheros, 3665 tests) en verde con los cambios de
 la 12.3.
+
+**Repetida tras la 11.1** (`f1415d2`, que reescribió la tabla del plazo de `verify-artifact.sh` y el cálculo del bloque
+de la pila de `infra/README.md`; `.claude/commands/lv/smoke.md` se corrigió en `83afb67` con el visto bueno del
+usuario):
+
+```text
+$ node check-123-124.cjs
+=== 12.3: minio (sin distinguir mayúsculas) y \bmc\b en 15 ficheros
+  apariciones: 0
+=== 12.4: \bmc\b, minio y linkvault-minio en docker-compose.yml, docker-compose.prod.yml, README.md, infra/README.md, docs/RUNBOOK.md
+  marcada docs/RUNBOOK.md:855 [minio] sección «Paso 6 octies — Operar los CV» / viñeta «**Pendiente:** …»: que prueba que MinIO responde …
+  marcada docs/RUNBOOK.md:859 [mc,minio] … / viñeta «**Pendiente:** …»: docker compose exec minio sh -c '… mc cp …'
+  marcada docs/RUNBOOK.md:860 [mc,minio] … / viñeta «**Pendiente:** …»: docker compose exec minio mc ls --recursive admin/cvs/probe/
+  marcada docs/RUNBOOK.md:861 [mc,minio] … / viñeta «**Pendiente:** …»: docker compose exec minio mc rm --recursive --force admin/cvs/probe/
+  marcada docs/RUNBOOK.md:964 [mc,minio] … / viñeta «**Pendiente:** …»: docker compose exec -T minio mc find admin/cvs …
+  marcada docs/RUNBOOK.md:974 [mc,minio] … / viñeta «**Pendiente:** …»: docker compose exec minio mc rm admin/cvs/<userId>/<cvId>
+  marcada docs/RUNBOOK.md:988 [mc,minio] … / viñeta «**Pendiente:** …»: docker compose exec minio mc ls --recursive admin/cvs/<userId>/
+  marcada docs/RUNBOOK.md:996 [mc,minio] … / viñeta «**Pendiente:** …»: docker compose exec minio mc rm --recursive --force admin/cvs/<userId>/
+  marcada docs/RUNBOOK.md:1562 [minio] sección «GC de objetos huérfanos (CV)»: `docker-compose.prod.yml` y el alias MinIO del contenedor prod. …
+  fuera de las secciones marcadas: 0; dentro: 9; líneas con «minio» solo dentro de otra palabra («dominio»): 16
+exit=0
+$ pnpm nx run shared:lint      # redirigido a fichero
+✖ 20 problems (0 errors, 20 warnings)
+ NX   Successfully ran target lint for project shared
+$ pnpm nx run api:test         # redirigido a fichero
+ Test Files  275 passed | 2 skipped (277)
+      Tests  3665 passed | 16 skipped (3681)
+ NX   Successfully ran target test for project api
+```
+
+La 12.3 y la 12.4 quedan cerradas: cero apariciones en los ficheros de la 12.3 y cero fuera de las secciones del
+RUNBOOK marcadas en la 12.1.
