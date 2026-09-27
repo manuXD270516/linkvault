@@ -194,7 +194,7 @@ En el host (con el repo o al menos compose + `infra/` + env):
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env.prod config   # valida
 docker compose -f docker-compose.prod.yml --env-file .env.prod pull
-docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait --wait-timeout 360
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --wait --wait-timeout 330
 docker compose -f docker-compose.prod.yml --env-file .env.prod run --rm --no-deps api node object-store.js provision
 docker compose -f docker-compose.prod.yml --env-file .env.prod run --rm --no-deps api node object-store.js verify
 ```
@@ -203,8 +203,9 @@ El `up` no crea los buckets: el healthcheck del almacén es de solo lectura. Los
 imagen de `api` (idempotente: se puede repetir en cada despliegue), y `verify` comprueba sin escribir nada que el
 almacén está como se entrega (ver [«Almacén de objetos»](#almacén-de-objetos-cv-y-snapshots)).
 
-El plazo es el mismo que usan los dos workflows de CD y la verificación del artefacto, por el mismo motivo y con el
-mismo cálculo (`infra/ci/verify-artifact.sh`). Si el `up` falla, mira `docker compose ps` y
+El plazo es el de la verificación del artefacto: la línea `WAIT_TIMEOUT` de `infra/ci/verify-artifact.sh`, con su
+cálculo en el comentario (design D8 de `object-store`). Los dos workflows de CD aún llevan el literal anterior (360 s)
+hasta que lean esa línea: `cd-staging` en 35b y `cd-prod` en 35c. Si el `up` falla, mira `docker compose ps` y
 `docker compose logs api worker web` antes que nada: es lo que distingue «esta imagen no arranca» de «esta readiness
 todavía no converge».
 
