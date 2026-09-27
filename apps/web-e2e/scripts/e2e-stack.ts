@@ -303,7 +303,11 @@ class Stack {
     }
     app.exited = how;
     if (!this.shuttingDown && this.fatal === null) {
-      this.fatal = `${app.name} terminated before the end of the run (${how}); see ${STACK_DIR}/${app.name}.log`;
+      // El fin del proceso puede llegar antes que la lectura periódica del log: se mira aquí mismo si dijo EADDRINUSE,
+      // para que el motivo quede nombrado siempre (medido en la repetición de la 2.7).
+      const log = existsSync(app.logPath) ? readFileSync(app.logPath, 'utf8') : '';
+      const cause = /EADDRINUSE/.test(log) ? 'reports EADDRINUSE (its port is in use by another process) and ' : '';
+      this.fatal = `${app.name} ${cause}terminated before the end of the run (${how}); see ${STACK_DIR}/${app.name}.log`;
     }
   }
 
