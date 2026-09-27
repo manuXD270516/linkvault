@@ -23,22 +23,23 @@ export interface S3CvReaderOptions extends S3ConnectionSettings {
   readonly bucket: string;
 }
 
-/** Códigos con que S3 y MinIO dicen "ese objeto no está". */
-const MISSING_OBJECT = new Set(['NoSuchKey', 'NotFound', 'NoSuchBucket']);
+/**
+ * Nombres de error con que el almacén dice "ese **objeto** no está" (`NotFound` es el de una respuesta sin cuerpo).
+ *
+ * **Solo errores de objeto** (design D15 de `object-store`, decisión del usuario del 2026-09-27). `NoSuchBucket`, y
+ * cualquier `404` con otro nombre o sin él, **no** cuentan: un bucket de CV sin crear o mal nombrado es una avería
+ * reintentable. Tratarlo como objeto ausente dejaría cada CV subido en `failed` sin reintento, y daría por hecho el
+ * borrado de un archivo que sigue en su bucket.
+ */
+const MISSING_OBJECT = new Set(['NoSuchKey', 'NotFound']);
 
-/** `true` si el error del SDK significa que el objeto no existe, y no que el almacén no responda. */
+/** `true` si el error del SDK significa que el objeto no existe, y no que el almacén (o su bucket) falle. */
 export function meansMissingObject(error: unknown): boolean {
   if (typeof error !== 'object' || error === null) {
     return false;
   }
-  const named = error as {
-    name?: unknown;
-    $metadata?: { httpStatusCode?: unknown };
-  };
-  return (
-    (typeof named.name === 'string' && MISSING_OBJECT.has(named.name)) ||
-    named.$metadata?.httpStatusCode === 404
-  );
+  const named = error as { name?: unknown };
+  return typeof named.name === 'string' && MISSING_OBJECT.has(named.name);
 }
 
 /** Cliente real, con el cliente de la fábrica del `worker` (endpoint, checksums y plazos en un solo sitio; design D3). */
