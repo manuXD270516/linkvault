@@ -23,7 +23,14 @@ export interface S3CvUploaderOptions extends S3ConnectionSettings {
   readonly bucket: string;
 }
 
-/** Subida real, con el cliente de la fábrica de `api` (endpoint, checksums y plazos en un solo sitio; design D3). */
+/**
+ * Subida real, con el cliente de la fábrica de `api` (endpoint, checksums y plazos en un solo sitio; design D3).
+ *
+ * **Pide el cifrado en cada subida** (`ServerSideEncryption: 'AES256'`; design D17 de `object-store`, decisión del
+ * usuario del 2026-09-27). SeaweedFS crea el bucket al recibir un `PutObject` en uno que no existe, y lo crea sin
+ * cifrado por defecto: sin la cabecera, un bucket de CV borrado o mal nombrado se recrearía con la siguiente subida y
+ * guardaría el CV en claro. El cifrado por defecto del bucket (`provision`, `verify`) sigue siendo obligatorio.
+ */
 export function createS3CvFileUploader(
   options: S3CvUploaderOptions,
 ): CvFileUploader {
@@ -41,6 +48,7 @@ export function createS3CvFileUploader(
           Key: key,
           Body: body,
           ContentType: contentType,
+          ServerSideEncryption: 'AES256',
         }),
       );
     },

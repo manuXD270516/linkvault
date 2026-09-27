@@ -37,8 +37,9 @@ import { createS3Client, readChecksumPolicy } from './s3-client.factory';
 // por defecto, o la alternativa con `S3_CONTRACT_CHECKSUM=when_required` (C7 de la matriz).
 //
 // **Modo C5** (design D2), además con `S3_CONTRACT_C5_DIR=<directorio>`: escribe cuatro buffers aleatorios e
-// independientes —A1 (1 MiB) y A2 (1 KiB) al bucket de CV con `S3CvFileStore`, **sin cabeceras SSE**, porque lo que se
-// prueba es el cifrado por defecto del bucket; B1 (1 MiB) y B2 (1 KiB) al de snapshots con el cliente de la fábrica—,
+// independientes —A1 (1 MiB) y A2 (1 KiB) al bucket de CV con el cliente de la fábrica, **sin cabeceras SSE**, porque lo
+// que se prueba es el cifrado por defecto del bucket (no con `S3CvFileStore`, que pide el cifrado en cada subida desde
+// design D17); B1 (1 MiB) y B2 (1 KiB) al de snapshots con el cliente de la fábrica—,
 // **no los borra**, y vuelca en el directorio `A1.bin`, `A2.bin`, `B1.bin`, `B2.bin` y `manifest.json` (bucket y clave
 // de cada uno, para leerlos después con otra clave). 1 KiB queda por debajo del `INLINE_THRESHOLD` de Garage, de unos
 // 3 KiB (a confirmar al medir).
@@ -352,7 +353,9 @@ describe.skipIf(!enabled)('S3 contract of api (real store)', () => {
     'C5 mode: writes A1/A2 to the CV bucket without SSE headers and B1/B2 to the snapshots bucket, and dumps them',
     async () => {
       await writeC5Set(async (objects, buffers) => {
-        // A1 y A2 con el adaptador real del CV: se comprueba que no manda ninguna cabecera SSE.
+        // A1 y A2 con el cliente de la fábrica y **sin cabeceras SSE**: C5 prueba que el almacén cifra aunque el cliente
+        // no lo pida (forma (1) de `cv/documents`). No con el adaptador real, que desde design D17 pide el cifrado en
+        // cada subida y haría aprobar C5 aunque faltara el cifrado por defecto del bucket. Se comprueba lo que sale.
         const puts: Record<string, unknown>[] = [];
         const send = S3Client.prototype.send;
         vi.spyOn(S3Client.prototype, 'send').mockImplementation(function (
@@ -365,11 +368,16 @@ describe.skipIf(!enabled)('S3 contract of api (real store)', () => {
           }
           return send.apply(this, args);
         } as S3Client['send']);
-        const store = new S3CvFileStore(
-          createS3CvFileUploader({ ...connection, bucket: config.S3_BUCKET }),
-        );
-        await store.put(objects.A1.key, buffers.A1, 'pdf');
-        await store.put(objects.A2.key, buffers.A2, 'pdf');
+        for (const name of ['A1', 'A2'] as const) {
+          await client.send(
+            new PutObjectCommand({
+              Bucket: objects[name].bucket,
+              Key: objects[name].key,
+              Body: buffers[name],
+              ContentType: CV_FILE_TYPES.pdf.mimeType,
+            }),
+          );
+        }
         vi.restoreAllMocks();
         expect(puts).toHaveLength(2);
         for (const input of puts) {

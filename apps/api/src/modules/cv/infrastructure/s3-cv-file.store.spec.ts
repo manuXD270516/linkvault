@@ -1,7 +1,9 @@
+import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { CV_FILE_TYPES, cvFileKey } from '@linkvault/shared';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   S3CvFileStore,
+  createS3CvFileUploader,
   type CvFileUploader,
 } from './s3-cv-file.store';
 
@@ -81,5 +83,53 @@ describe('S3CvFileStore', () => {
     expect(warnings).toEqual(['CV file not stored: NoSuchBucket']);
     expect(JSON.stringify(warnings)).not.toContain(USER);
     expect(JSON.stringify(warnings)).not.toContain(CV);
+  });
+});
+
+describe('createS3CvFileUploader', () => {
+  // Design D17 de `object-store`: SeaweedFS crea el bucket al recibir un `PutObject` en uno que no existe, y lo crea
+  // sin cifrado por defecto. La subida pide el cifrado ella misma, para que el objeto quede cifrado aunque el bucket de
+  // CV se haya recreado así. Cliente real de la fábrica de `api`; solo `send` es falso.
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('asks for server-side encryption (AES256) on every CV upload', async () => {
+    const sent: unknown[] = [];
+    vi.spyOn(S3Client.prototype, 'send').mockImplementation(((
+      command: unknown,
+    ) => {
+      sent.push(command);
+      return Promise.resolve({});
+    }) as S3Client['send']);
+    const uploader = createS3CvFileUploader({
+      endpoint: 'http://127.0.0.1:9',
+      region: 'us-east-1',
+      accessKey: 'test-access',
+      secretKey: 'test-secret',
+      bucket: 'cvs',
+    });
+    const body = new Uint8Array([0x25, 0x50, 0x44, 0x46]);
+    const key = cvFileKey(USER, CV);
+
+    await uploader.put(key, body, CV_FILE_TYPES.pdf.mimeType);
+    await uploader.put(key, body, CV_FILE_TYPES.docx.mimeType);
+
+    expect(sent).toHaveLength(2);
+    for (const command of sent) {
+      expect(command).toBeInstanceOf(PutObjectCommand);
+      expect((command as PutObjectCommand).input).toMatchObject({
+        Bucket: 'cvs',
+        Key: key,
+        Body: body,
+        ServerSideEncryption: 'AES256',
+      });
+    }
+    expect((sent[0] as PutObjectCommand).input.ContentType).toBe(
+      CV_FILE_TYPES.pdf.mimeType,
+    );
+    expect((sent[1] as PutObjectCommand).input.ContentType).toBe(
+      CV_FILE_TYPES.docx.mimeType,
+    );
   });
 });

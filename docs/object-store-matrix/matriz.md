@@ -3135,3 +3135,137 @@ saltados: la suite de contrato sin `S3_CONTRACT`).
 
 `docker compose -p os9-b -f docker-compose.yml down -v --timeout 30` sale 0, y no queda ningún contenedor, volumen ni
 red `os9`: `docker ps -a`, `docker volume ls` y `docker network ls` filtrados por `os9` dan 0.
+
+### 7.5c: cabecera de cifrado en cada subida de CV
+
+`createS3CvFileUploader` (`apps/api/src/modules/cv/infrastructure/s3-cv-file.store.ts`) manda
+`ServerSideEncryption: 'AES256'` en cada `PutObjectCommand` (design D17). El modo C5 de la suite de contrato de `api`
+escribe A1 y A2 con el cliente de la fábrica, sin cabeceras SSE, y sigue comprobando que no las llevan.
+
+**Test y falsación.**
+
+```text
+$ pnpm nx run api:test --skip-nx-cache -- s3-cv-file.store             # antes de poner la cabecera
+     × asks for server-side encryption (AES256) on every CV upload
+-   "ServerSideEncryption": "AES256",
+      Tests  1 failed | 4 passed (5)
+exit=1
+$ pnpm nx run api:test --skip-nx-cache -- s3-cv-file.store             # con la cabecera
+      Tests  5 passed (5)
+exit=0
+$ pnpm nx run api:test --skip-nx-cache -- s3-cv-file.store             # falsación: cabecera quitada
+     × asks for server-side encryption (AES256) on every CV upload
+      Tests  1 failed | 4 passed (5)
+exit=1
+$ pnpm nx run api:test --skip-nx-cache                                  # restaurada
+ Test Files  275 passed | 2 skipped (277)
+      Tests  3665 passed | 16 skipped (3681)
+exit=0
+```
+
+**Medición contra SeaweedFS.** Proyecto `os9-c` desde volúmenes vacíos, con `COMPOSE_PROJECT_NAME`, los puertos del
+bloque 19900-19999 y las `S3_*` exportados en el entorno de la orden (sin tocar `.env`); `pnpm infra:up` sale 0 con
+«provision: ok». `measure-75c.cjs` (scratchpad) borra `cvs` con el SDK, sube A1 (1 MiB) y A2 (1 KiB) con la
+cabecera (el mismo `PutObject` que el adaptador; A1, el primero, es el que recrea el bucket) y, como falsación, B1 y B2,
+distintos y de los mismos tamaños, sin ella, todos al bucket de CV:
+
+```text
+$ node measure-75c.cjs <dir>
+buckets: cvs,snapshots
+DeleteBucket cvs: ok HTTP 204
+HeadBucket cvs: error name=NotFound HTTP 404
+buckets: snapshots
+PutObject A1 (1048576 bytes, ServerSideEncryption: 'AES256'): ok HTTP 200 ServerSideEncryption=AES256
+PutObject A2 (1024 bytes, ServerSideEncryption: 'AES256'): ok HTTP 200 ServerSideEncryption=AES256
+PutObject B1 (1048576 bytes, no SSE header): ok HTTP 200 ServerSideEncryption=(none)
+PutObject B2 (1024 bytes, no SSE header): ok HTTP 200 ServerSideEncryption=(none)
+buckets: cvs,snapshots
+GetBucketEncryption cvs: error name=ServerSideEncryptionConfigurationNotFoundError HTTP 404
+HeadObject A1: ok HTTP 200 ContentLength=1048576 ServerSideEncryption=AES256
+GetObject A1: same bytes
+HeadObject A2: ok HTTP 200 ContentLength=1024 ServerSideEncryption=AES256
+GetObject A2: same bytes
+HeadObject B1: ok HTTP 200 ContentLength=1048576 ServerSideEncryption=(none)
+GetObject B1: same bytes
+HeadObject B2: ok HTTP 200 ContentLength=1024 ServerSideEncryption=(none)
+GetObject B2: same bytes
+measure-75c: ok
+exit=0
+```
+
+`cvs` se recreó con la primera subida y **sin cifrado por defecto**, y aun así A1 y A2 vuelven con `AES256`; B1 y B2,
+sin la cabecera, sin él. El disco, con el método de `c5.sh` (almacén detenido, `tar` del volumen con `alpine`,
+`find-plaintext.mjs` con la clave del almacén por el entorno):
+
+```text
+$ docker compose -f docker-compose.yml stop object-store                      # COMPOSE_PROJECT_NAME=os9-c
+exit=0
+$ docker run --rm -v os9-c_object-store-data:/data:ro -v <dir>:/out alpine:3 tar -C /data -cf /out/c-vol.tar .
+exit=0
+$ C5_KEY_TEXT=<OBJECT_STORE_SSE_KEY> node docs/object-store-matrix/find-plaintext.mjs <dir>/c-vol.tar <dir>
+find-plaintext: c-vol.tar, 2293760 bytes leídos
+A1 0/3  (1048576 bytes; ventanas de 64 bytes en 0, 524256, 1048512)
+A2 0/3  (1024 bytes; ventanas de 64 bytes en 0, 480, 960)
+B1 3/3  (1048576 bytes; ventanas de 64 bytes en 0, 524256, 1048512)
+B2 3/3  (1024 bytes; ventanas de 64 bytes en 0, 480, 960)
+clave 0/3  (textual no; decodificada (hex, 32 bytes) no; decodificada (base64, 48 bytes) no)
+exit=0
+```
+
+**Con la cabecera, A1 y A2 no aparecen en claro (0/3); sin ella, B1 y B2 sí (3/3)**, en el mismo volumen y el mismo
+bucket autocreado. Así B1 y B2 son a la vez la falsación y el control que hace concluyente la lectura. La clave no está
+en el volumen.
+
+**El almacén de nuevo arriba, `provision`, `verify` y la suite de contrato de `api` con el modo C5:**
+
+```text
+$ docker compose -f docker-compose.yml up -d --wait object-store
+exit=0
+$ pnpm nx run api:object-store -- provision
+ok    cvs: bucket already exists
+ok    cvs: no lifecycle configuration (removed if there was one)
+ok    cvs: default encryption set (AES256)
+ok    cvs: no bucket policy
+ok    snapshots: bucket already exists
+ok    snapshots: no lifecycle configuration (removed if there was one)
+ok    snapshots: no bucket policy
+provision: ok
+exit=0
+$ pnpm nx run api:object-store -- verify
+ok    cvs: bucket exists
+ok    snapshots: bucket exists
+ok    cvs: no lifecycle rule
+ok    cvs: default encryption (AES256)
+ok    snapshots: no lifecycle rule
+ok    snapshots: no snapshot older than 31 days (0 listed)
+ok    cvs: anonymous GET of an existing object rejected (HTTP 403 AccessDenied)
+ok    cvs: anonymous listing rejected (HTTP 403 AccessDenied)
+ok    cvs: anonymous PUT rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous GET of a missing object rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous listing rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous PUT rejected (HTTP 403 AccessDenied)
+verify: ok
+exit=0
+$ S3_CONTRACT=1 S3_CONTRACT_C5_DIR=<dir>/c-c5 pnpm nx run api:test --skip-nx-cache -- s3.s3-contract --reporter=verbose
+ ✓ S3 contract of api (real store) > runs with the checksum policy it was asked for 1ms
+ ✓ S3 contract of api (real store) > uploads a CV with the real adapter and the same bytes come back 46ms
+ ✓ S3 contract of api (real store) > deletes a prefix of 1001 keys in two DeleteObjects batches and leaves it empty 1444ms
+ ✓ S3 contract of api (real store) > C5 mode: writes A1/A2 to the CV bucket without SSE headers and B1/B2 to the snapshots bucket, and dumps them 330ms
+ ↓ S3 contract of api (real store) > C5 SSE-C mode: writes A1/A2 with SSE-C and requires the SSECustomerKeyMD5 echo, B1/B2 without SSE, and dumps them
+ Test Files  1 passed (1)
+      Tests  4 passed | 1 skipped (5)
+exit=0
+$ node -e "…manifest.json del modo C5…"                   # objeto, bucket, bytes, ServerSideEncryption que informa el almacén
+A1 cvs 1048576 AES256
+A2 cvs 1024 AES256
+B1 snapshots 1048576 none reported
+B2 snapshots 1024 none reported
+mode server
+```
+
+`provision` vuelve a poner el cifrado por defecto en el `cvs` recreado, y `verify` sale 0. El `GET` anónimo a `cvs` es
+«of an existing object» porque el bucket ya tiene objetos (los de la medición). En modo C5, A1 y A2, subidos **sin**
+cabecera, vuelven con `AES256` por el cifrado por defecto del bucket: C5 sigue midiendo lo que medía.
+
+`docker compose -p os9-c -f docker-compose.yml down -v --timeout 30` sale 0, y no queda ningún contenedor, volumen ni
+red `os9`: `docker ps -a`, `docker volume ls` y `docker network ls` filtrados por `os9` dan 0.
