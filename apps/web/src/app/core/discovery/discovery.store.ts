@@ -35,6 +35,11 @@ export interface DiscoveryState {
   saveDestination: DiscoverySaveDestination;
   /** Feedback de guardado indexado por URL canónica del hit. */
   saveOutcomes: Record<string, DiscoverySaveOutcome>;
+  /**
+   * Destino al que se envió cada guardado, capturado al click. Se escribe junto a `saveOutcomes`
+   * para que no haya resultado sin destino.
+   */
+  saveDestinations: Record<string, DiscoverySaveDestination>;
   /** URLs con POST /api/links en vuelo. */
   savingUrls: Record<string, true>;
 }
@@ -49,6 +54,7 @@ const initialState: DiscoveryState = {
   failure: null,
   saveDestination: null,
   saveOutcomes: {},
+  saveDestinations: {},
   savingUrls: {},
 };
 
@@ -91,6 +97,7 @@ export const DiscoveryStore = signalStore(
         failure: null,
         degraded: [],
         saveOutcomes: {},
+        saveDestinations: {},
         savingUrls: {},
       });
       try {
@@ -128,9 +135,12 @@ export const DiscoveryStore = signalStore(
       }
       const priorOutcomes = { ...store.saveOutcomes() };
       delete priorOutcomes[url];
+      const priorDestinations = { ...store.saveDestinations() };
+      delete priorDestinations[url];
       patchState(store, {
         savingUrls: { ...store.savingUrls(), [url]: true },
         saveOutcomes: priorOutcomes,
+        saveDestinations: priorDestinations,
       });
       try {
         const response =
@@ -141,10 +151,12 @@ export const DiscoveryStore = signalStore(
           response.shared === 'already_there' ? 'already' : 'created';
         patchState(store, {
           saveOutcomes: { ...store.saveOutcomes(), [url]: outcome },
+          saveDestinations: { ...store.saveDestinations(), [url]: groupId },
         });
       } catch {
         patchState(store, {
           saveOutcomes: { ...store.saveOutcomes(), [url]: 'error' },
+          saveDestinations: { ...store.saveDestinations(), [url]: groupId },
         });
       } finally {
         const remaining = { ...store.savingUrls() };

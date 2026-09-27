@@ -205,25 +205,40 @@
             >
               Guardar
             </button>
+            @let destination = savedDestinationFor(hit.url);
             @switch (outcomeFor(hit.url)) {
               @case ('created') {
-                <p
-                  class="m-0 text-sm"
-                  role="status"
-                  data-testid="discovery-save-created"
-                  i18n="@@discovery.save.created"
-                >
-                  Guardada en «Solo para mí».
+                <p class="m-0 text-sm" role="status" data-testid="discovery-save-created">
+                  @if (destination.kind === 'group') {
+                    <ng-container i18n="@@discovery.save.createdInGroup"
+                      >Guardada en «{{ destination.name }}».</ng-container
+                    >
+                  } @else if (destination.kind === 'unknownGroup') {
+                    <ng-container i18n="@@discovery.save.createdInUnknownGroup"
+                      >Guardada en el grupo.</ng-container
+                    >
+                  } @else {
+                    <ng-container i18n="@@discovery.save.created"
+                      >Guardada en «Solo para mí».</ng-container
+                    >
+                  }
                 </p>
               }
               @case ('already') {
-                <p
-                  class="m-0 text-sm"
-                  role="status"
-                  data-testid="discovery-save-already"
-                  i18n="@@discovery.save.already"
-                >
-                  Ya la tenías guardada.
+                <p class="m-0 text-sm" role="status" data-testid="discovery-save-already">
+                  @if (destination.kind === 'group') {
+                    <ng-container i18n="@@discovery.save.alreadyInGroup"
+                      >Ya estaba en «{{ destination.name }}».</ng-container
+                    >
+                  } @else if (destination.kind === 'unknownGroup') {
+                    <ng-container i18n="@@discovery.save.alreadyInUnknownGroup"
+                      >Ya estaba en el grupo.</ng-container
+                    >
+                  } @else {
+                    <ng-container i18n="@@discovery.save.already"
+                      >Ya la tenías guardada.</ng-container
+                    >
+                  }
                 </p>
               }
               @case ('error') {

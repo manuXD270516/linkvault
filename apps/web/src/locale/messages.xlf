@@ -1370,25 +1370,53 @@
           <context context-type="linenumber">206,207</context>
         </context-group>
       </trans-unit>
-      <trans-unit id="discovery.save.created" datatype="html">
-        <source> Guardada en «Solo para mí». </source>
+      <trans-unit id="discovery.save.createdInGroup" datatype="html">
+        <source>Guardada en «<x id="INTERPOLATION" equiv-text="{{ destination.name }}"/>».</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
-          <context context-type="linenumber">216,217</context>
+          <context context-type="linenumber">214,215</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.save.createdInUnknownGroup" datatype="html">
+        <source>Guardada en el grupo.</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">218,220</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.save.created" datatype="html">
+        <source>Guardada en «Solo para mí».</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">222,224</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.save.alreadyInGroup" datatype="html">
+        <source>Ya estaba en «<x id="INTERPOLATION" equiv-text="{{ destination.name }}"/>».</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">231,232</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="discovery.save.alreadyInUnknownGroup" datatype="html">
+        <source>Ya estaba en el grupo.</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
+          <context context-type="linenumber">235,237</context>
         </context-group>
       </trans-unit>
       <trans-unit id="discovery.save.already" datatype="html">
-        <source> Ya la tenías guardada. </source>
+        <source>Ya la tenías guardada.</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
-          <context context-type="linenumber">226,227</context>
+          <context context-type="linenumber">239,241</context>
         </context-group>
       </trans-unit>
       <trans-unit id="discovery.save.error" datatype="html">
         <source> No pudimos guardar esta vacante. Inténtalo de nuevo. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/discovery/discovery.page.html</context>
-          <context context-type="linenumber">236,237</context>
+          <context context-type="linenumber">251,252</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.create.title" datatype="html">
