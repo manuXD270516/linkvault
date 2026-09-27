@@ -3892,6 +3892,97 @@ en los dos buckets y «no snapshot older than 31 days (0 listed)», y el listado
 `docker compose -p os11-s down -v` sale 0, y no queda ningún contenedor, volumen ni red `os11`: `docker ps -a`,
 `docker volume ls` y `docker network ls` filtrados por `os11` dan 0.
 
+## `build-verify-publish` en `arm64` (tarea 9.1)
+
+**Qué cambia en `.github/workflows/cd-staging.yml`** (commit `e346581`). En el job `build-verify-publish`:
+`runs-on: ubuntu-24.04-arm` y `env: TARGET_PLATFORM: linux/arm64` a nivel de job; `platforms: ${{ env.TARGET_PLATFORM }}`
+en los tres `docker/build-push-action` (que siguen con `load: true`); caché `scope=api-arm64`, `worker-arm64` y
+`web-arm64`; y `TARGET_PLATFORM: ${{ env.TARGET_PLATFORM }}` en el `env` del paso de verificación. El resto de jobs,
+igual. Un comentario sobre el job lo explica (design D10).
+
+Comprobación sobre el YAML parseado (`<scratchpad>/check-91.cjs`, con el paquete `yaml` del repositorio), contra la
+versión de `HEAD` anterior para los demás jobs:
+
+```text
+$ node check-91.cjs .github/workflows/cd-staging.yml <git show 0f3e766:.github/workflows/cd-staging.yml>
+ok    1 runs-on: ubuntu-24.04-arm
+ok    2 env.TARGET_PLATFORM (job): linux/arm64
+ok    builds: 3
+ok    3 api platforms=${{ env.TARGET_PLATFORM }} load=true
+ok    4 api cache: type=gha,scope=api-arm64 | type=gha,mode=max,scope=api-arm64
+ok    3 worker platforms=${{ env.TARGET_PLATFORM }} load=true
+ok    4 worker cache: type=gha,scope=worker-arm64 | type=gha,mode=max,scope=worker-arm64
+ok    3 web platforms=${{ env.TARGET_PLATFORM }} load=true
+ok    4 web cache: type=gha,scope=web-arm64 | type=gha,mode=max,scope=web-arm64
+ok    5 verify step env.TARGET_PLATFORM: ${{ env.TARGET_PLATFORM }}
+ok    other job verify runs-on: ubuntu-24.04 (before ubuntu-24.04)
+ok    other job preflight runs-on: ubuntu-24.04 (before ubuntu-24.04)
+ok    other job deploy-staging runs-on: ubuntu-24.04 (before ubuntu-24.04)
+ok    other job report runs-on: ubuntu-24.04 (before ubuntu-24.04)
+ok    same jobs: verify,build-verify-publish,preflight,deploy-staging,report
+RESULT: ok
+exit=0
+$ node check-91.cjs <versión de 0f3e766> <versión de 0f3e766>      # la misma comprobación sobre el YAML anterior
+RESULT: FAIL (9)
+```
+
+**Antes de lanzar la corrida**, leído otra vez en el workflow del commit empujado (`git show e346581:…`): el paso de
+publicación lleva `if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry_run != true }}` (con `dry_run: true`
+no se ejecuta) y `deploy-staging` solo corre con `needs.preflight.outputs.state == 'full'`; `gh secret list` no da
+ningún secreto de repositorio (preflight `none`) y el único entorno del repositorio es `production-preflight`, que
+`cd-staging` no usa.
+
+```text
+$ gh workflow run cd-staging.yml --ref change/object-store -f dry_run=true
+https://github.com/manuXD270516/linkvault/actions/runs/36307691093
+$ gh run view 36307691093 --json conclusion,jobs,headSha,event,url,createdAt,updatedAt > <scratchpad>/run-91.json   # leído con node
+conclusion: success | headSha: e346581db12558cdd05630f5bbe99feb44a26dfa | event: workflow_dispatch | 2026-09-27T08:54:46Z → 2026-09-27T09:12:29Z
+job: preflight (¿hay destino de staging configurado?) | success
+job: verify (lint, specs, typecheck, test, build) | success
+job: build, verify and publish artifact | success | id 108589406398 | 2026-09-27T09:07:58Z → 2026-09-27T09:12:13Z
+   step: Verify artifact (docker-compose.prod.yml stack in the runner) | success
+   step: Publish verified artifact to GHCR (docker push of the loaded image) | skipped
+   step: Tear down verification stack | success
+job: resultado: artefacto verificado — NO desplegado (sin destino de staging) | success
+job: deploy staging (solo si hay destino configurado) | skipped
+$ gh api repos/manuXD270516/linkvault/actions/jobs/108589406398 > <scratchpad>/job-91.json   # leído con node
+labels: ubuntu-24.04-arm | runner_name: GitHub Actions 1000000344 | runner_group: GitHub Actions
+```
+
+Del log del job (`gh run view 36307691093 --log --job 108589406398`, volcado a fichero y leído con `node`):
+
+```text
+Image: ubuntu-24.04-arm
+Server: Docker Engine - Community
+  Version:          28.0.4
+  OS/Arch:          linux/arm64
+Platforms:             linux/arm64, linux/arm/v7, linux/arm/v6
+/usr/bin/docker buildx build --cache-from type=gha,scope=api-arm64 --cache-to type=gha,mode=max,scope=api-arm64 --file docker/api.Dockerfile … --platform linux/arm64 --tag ghcr.io/manuxd270516/linkvault-api:sha-e346581db125 --load …
+ (lo mismo para worker y web, con sus scope -arm64)
+=== Tiempo hasta healthy de cada servicio (docker inspect)
+  mongo        estado healthy; hasta healthy: 5.03 s (sondeos guardados: 3)
+  redis        estado healthy; hasta healthy: 5.27 s (sondeos guardados: 2)
+  object-store estado healthy; hasta healthy: 1.21 s (sondeos guardados: 2)
+  api          estado healthy; hasta healthy: 5.33 s (sondeos guardados: 1)
+  worker       estado healthy; hasta healthy: 5.31 s (sondeos guardados: 1)
+  web          estado healthy; hasta healthy: 5.22 s (sondeos guardados: 1)
+provision: ok
+verify: ok
+s3-probe: ok
+=== Artefacto verificado
+api, worker y web arrancan y responden con la configuración de producción real.
+```
+
+Es la **primera corrida `arm64` con la verificación en verde** que cuenta para la 11.1 (tiempos hasta `healthy` de
+arriba; `object-store` 1,21 s). La corrida es anterior a la 10.2, así que el log aún no tiene la sección de plataforma
+del script; el daemon `linux/arm64` sale del `docker version` que imprime `docker/setup-buildx-action`.
+
+Nada publicado: en el log no hay `docker push` ni `publish-artifact`, y `gh api user/packages/container/<paquete>/versions
+--paginate`, leído con `node`, no da ninguna versión con el tag `sha-e346581db125` en `linkvault-api` (5 versiones),
+`linkvault-worker` (5) ni `linkvault-web` (3). `gh api …/runs/36307691093/timing`:
+`{"billable":{"UBUNTU":{"total_ms":0,"jobs":5,…}},"run_duration_ms":1063000}` (el campo sigue sin discriminar, como en
+la 1.2).
+
 ## Comprobación de plataformas en la verificación del artefacto (tarea 10.2)
 
 **Qué cambia en `infra/ci/verify-artifact.sh`.** Una sección nueva, «Plataforma del daemon y de las imágenes propias»,
