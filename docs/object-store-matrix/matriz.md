@@ -2667,3 +2667,108 @@ exit=0
 $ docker compose -p os7-u -f docker-compose.yml down -v
 exit=0
 ```
+
+### 7.2b: C5 sobre la configuración entregada
+
+**Orden de generación de la clave** (la del formato que pide SeaweedFS, `WEED_S3_SSE_KEK`: 32 bytes en 64
+hexadecimales en minúscula, los que exige el guardia de la 7.1b; la copia la 6.1 a ADR-052 «Elección», y de ahí la
+12.2):
+
+```text
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+K1 se generó con esa orden, se guardó solo en un `.env` del scratchpad (no se imprime ni se versiona) y se exportó como
+`OBJECT_STORE_SSE_KEY`. Con ella, `pnpm infra:up` desde volúmenes vacíos (proyecto `os7-c5`, sin volúmenes previos;
+la red propia de la 7.1 y el guardia de la 7.1b ya en el servicio): los cuatro servicios `healthy` y `provision: ok`
+(`cvs: bucket created`, `cvs: default encryption set (AES256)`, `snapshots: bucket created`). `docker inspect` del
+contenedor: su `WEED_S3_SSE_KEK` es K1 y no la de desarrollo por defecto. Después, `c5.sh` con `docker-compose.yml`
+como compose y el volumen de desarrollo del almacén (`object-store-data` del proyecto, `os7-c5_object-store-data`); lee
+K1 del compose resuelto y solo detiene y arranca `object-store`. La K2 de la copia de (b) tiene el formato de K1 y pasa
+el guardia (arranca):
+
+```text
+$ COMPOSE_PROJECT_NAME=os7-c5 C5_WORKDIR=<scratchpad>/g7/c5-delivered bash docs/object-store-matrix/c5.sh docker-compose.yml object-store-data
+c5: mode server, compose docker-compose.yml, volume object-store-data, workdir <scratchpad>/g7/c5-delivered
+c5: project os7-c5, docker volume os7-c5_object-store-data, key entry WEED_S3_SSE_KEK (from OBJECT_STORE_SSE_KEY)
+container ok: one volume (os7-c5_object-store-data), no writable bind
+c5: 1. contract suite, C5 server mode (vitest, output in <scratchpad>/g7/c5-delivered/suite.log)
+   ↓ |api| src/infrastructure/storage/s3.s3-contract.spec.ts > S3 contract of api (real store) > runs with the checksum policy it was asked for
+   ↓ |api| src/infrastructure/storage/s3.s3-contract.spec.ts > S3 contract of api (real store) > uploads a CV with the real adapter and the same bytes come back
+   ↓ |api| src/infrastructure/storage/s3.s3-contract.spec.ts > S3 contract of api (real store) > deletes a prefix of 1001 keys in two DeleteObjects batches and leaves it empty
+   ✓ |api| src/infrastructure/storage/s3.s3-contract.spec.ts > S3 contract of api (real store) > C5 mode: writes A1/A2 to the CV bucket without SSE headers and B1/B2 to the snapshots bucket, and dumps them 501ms
+   ↓ |api| src/infrastructure/storage/s3.s3-contract.spec.ts > S3 contract of api (real store) > C5 SSE-C mode: writes A1/A2 with SSE-C and requires the SSECustomerKeyMD5 echo, B1/B2 without SSE, and dumps them
+   Test Files  1 passed (1)
+   Tests  1 passed | 4 skipped (5)
+   A1 cvs 1048576 bytes, lo que dice el almacén: AES256
+   A2 cvs 1024 bytes, lo que dice el almacén: AES256
+   B1 snapshots 1048576 bytes, lo que dice el almacén: none reported
+   B2 snapshots 1024 bytes, lo que dice el almacén: none reported
+c5: 2. docker compose stop object-store
+c5:    tar of volume os7-c5_object-store-data with alpine:3
+c5: 3. find-plaintext
+   find-plaintext: vol.tar, 2293760 bytes leídos
+   A1 0/3  (1048576 bytes; ventanas de 64 bytes en 0, 524256, 1048512)
+   A2 0/3  (1024 bytes; ventanas de 64 bytes en 0, 480, 960)
+   B1 3/3  (1048576 bytes; ventanas de 64 bytes en 0, 524256, 1048512)
+   B2 3/3  (1024 bytes; ventanas de 64 bytes en 0, 480, 960)
+   clave 0/3  (textual no; decodificada (hex, 32 bytes) no; decodificada (base64, 48 bytes) no)
+c5: 4. disk reading
+c5:    disco: ok (A1 0/3, A2 0/3, B1 3/3, B2 3/3)
+c5:    (c) ok: la clave, 0/3 formas en el volumen (textual; decodificada (hex, 32 bytes); decodificada (base64, 48 bytes))
+c5: (b) copy project c5copy-51de37: container created with K2 (same format as K1), volume c5copy-51de37_object-store-data restored from vol.tar
+   K2 WEED_S3_SSE_KEK of the container: the expected key
+c5: (b) K2 on the copy
+c5:    original object-store still stopped: the endpoint reaches the copy
+   almacén listo en 0.0 s
+c5:    K2: started
+   K2 A1: rechazado sin bytes (HTTP 500 InternalError)
+   K2 B1: igual por bytes (1048576 bytes, sha256 f248c804dd574771)
+   K2 log: object-store-1  | E0927 02:17:07.541641 s3api_object_handlers.go:883 GetObjectHandler: failed to stream cvs/28e6850670ec2d8e76b05964/7f372d1e05101ae2047a72fb from volume servers: failed to decrypt DEK: failed to decrypt DEK: cipher: message authentication failed
+c5: (b) K1 on the same copy (the compose's own key: OBJECT_STORE_SSE_KEY as the compose resolves it)
+   K1 WEED_S3_SSE_KEK of the container: the expected key
+   almacén listo en 0.0 s
+c5:    K1: started
+   K1 A1: igual por bytes (1048576 bytes, sha256 56492b6653bebd0b)
+   K1 B1: igual por bytes (1048576 bytes, sha256 f248c804dd574771)
+c5: copy project c5copy-51de37 removed (container, network and volume)
+c5: original object-store started again (up -d --no-deps object-store)
+c5: (b) b1 (K2: arranca, A1 rechazado sin bytes, B1 leído; K1 sobre la misma copia: A1 y B1 idénticos)
+c5: (a) with the key in the environment the product uses that key: shown by (b) and (c)
+c5: resultado: nativo (disco: ok (A1 0/3, A2 0/3, B1 3/3, B2 3/3); (b) b1 (K2: arranca, A1 rechazado sin bytes, B1 leído; K1 sobre la misma copia: A1 y B1 idénticos); (c) ok: la clave, 0/3 formas en el volumen (textual; decodificada (hex, 32 bytes); decodificada (base64, 48 bytes)))
+exit=0
+```
+
+- **Disco:** A1 y A2 0/3, B1 y B2 3/3.
+- **(b) = b1**, como en la 3.4: con K2 sobre la copia restaurada desde el `tar`, SeaweedFS arranca (el guardia la
+  deja pasar), el `GET` de A1 se rechaza sin bytes (`HTTP 500 InternalError`; el log de la copia dice `failed to
+  decrypt DEK … cipher: message authentication failed`) y B1 vuelve idéntico; con K1 sobre la misma copia, A1 y B1
+  vuelven idénticos.
+- **(c)** la clave, 0/3 formas en el volumen.
+- **Resultado: `nativo`** sobre `docker-compose.yml`, con la red propia y el guardia de arranque: la configuración
+  entregada es la que se midió. La parada de la 7.2b no se cumple.
+- Al terminar, `docker compose -p os7-c5 -f docker-compose.yml down -v`; la copia `c5copy-51de37` la borró `c5.sh`.
+
+Comprobación (`node <scratchpad>/g7/check-72b.js [matriz]`), contra este fichero y contra una copia con el resultado
+cambiado a `no concluyente` y B2 a 0/3 (solo las líneas que fallan):
+
+```text
+$ node <scratchpad>/g7/check-72b.js
+ok   sección 7.2b dentro de «Configuración entregada»
+ok   orden de generación
+ok   c5.sh con docker-compose.yml como compose
+ok   lectura del disco: A1 0/3
+ok   lectura del disco: A2 0/3
+ok   lectura del disco: B1 3/3
+ok   lectura del disco: B2 3/3
+ok   resultado de (b): b1 o b2
+ok   resultado de (c)
+ok   resultado nativo
+7.2b: ok
+exit=0
+$ node <scratchpad>/g7/check-72b.js <copia falsada>
+FALTA lectura del disco: B2 3/3
+FALTA resultado nativo
+7.2b: FALLA (2)
+exit=1
+```
