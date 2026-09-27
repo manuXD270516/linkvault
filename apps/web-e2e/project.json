@@ -11,6 +11,17 @@
       "options": {
         "commands": ["tsc --noEmit -p tsconfig.json", "tsc --noEmit -p scripts/tsconfig.json"]
       }
+    },
+    "e2e-stack": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "node --import tsx apps/web-e2e/scripts/e2e-stack.ts",
+        "cwd": ".",
+        "env": {
+          "TSX_TSCONFIG_PATH": "apps/web-e2e/scripts/tsconfig.json"
+        }
+      }
     }
   }
 }

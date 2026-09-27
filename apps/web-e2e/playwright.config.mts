@@ -9,22 +9,31 @@ import { defineConfig, devices } from '@playwright/test';
 // nx con daemon se cuelga así. Además, un webServer con `env` hace que @nx/playwright/plugin no infiera una
 // dependencia continua sobre `web:serve`: esa dependencia arrancaría otro dev-server y fallaría con el puerto
 // 4200 ocupado cuando ya hay uno en marcha. El arranque o la reutilización quedan en manos de Playwright.
+//
+// Con `E2E_BASE_URL` (la fija el runner `web-e2e:e2e-stack`, design D4) no hay `webServer`: la pila la monta y la
+// apaga el runner, y Playwright no reutiliza ni arranca ningún servidor. Sin ella, el camino antiguo de arriba.
+const runnerBaseUrl = process.env['E2E_BASE_URL'];
+
 export default defineConfig({
   ...nxE2EPreset(import.meta.dirname, {
     testDir: './src',
     openHtmlReport: 'never',
   }),
   use: {
-    baseURL: 'http://localhost:4200',
+    baseURL: runnerBaseUrl ?? 'http://localhost:4200',
     trace: 'on-first-retry',
   },
-  webServer: {
-    command: 'pnpm nx serve web',
-    url: 'http://localhost:4200',
-    reuseExistingServer: true,
-    cwd: workspaceRoot,
-    env: { NX_DAEMON: 'false' },
-  },
+  ...(runnerBaseUrl === undefined
+    ? {
+        webServer: {
+          command: 'pnpm nx serve web',
+          url: 'http://localhost:4200',
+          reuseExistingServer: true,
+          cwd: workspaceRoot,
+          env: { NX_DAEMON: 'false' },
+        },
+      }
+    : {}),
   projects: [
     {
       name: 'chromium',
