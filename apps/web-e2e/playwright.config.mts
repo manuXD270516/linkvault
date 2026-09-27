@@ -49,5 +49,12 @@ export default defineConfig({
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
     },
+    // Las personas invitadas usan el móvil (design D11): el camino crítico se ejecuta también en un Pixel 7 emulado
+    // (Chromium), y solo él; los demás specs siguen solo en escritorio.
+    {
+      name: 'mobile',
+      use: { ...devices['Pixel 7'] },
+      testMatch: 'critical-path.spec.ts',
+    },
   ],
 });
