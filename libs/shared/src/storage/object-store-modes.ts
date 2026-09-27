@@ -15,8 +15,9 @@ export type CvBucketEncryptionMode =
   (typeof CV_BUCKET_ENCRYPTION_MODES)[number];
 
 /**
- * Modo vigente. **Valor inicial `server`, pendiente de la matriz**: lo fija la tarea 6.2 de `object-store` con el
- * veredicto de `docs/object-store-matrix/matriz.md`.
+ * Modo vigente, **fijado por la matriz** (tarea 6.2 de `object-store`): el veredicto de la 5.3 en
+ * `docs/object-store-matrix/matriz.md` elige SeaweedFS 4.47 con C5 `nativo`, es decir, cifrado por defecto del bucket
+ * de CV con la clave del servidor. Cambiarlo exige repetir C5 sobre la configuración entregada.
  */
 export const CV_BUCKET_ENCRYPTION_MODE: CvBucketEncryptionMode = 'server';
 
