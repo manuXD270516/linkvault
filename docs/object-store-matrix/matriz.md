@@ -3891,3 +3891,129 @@ en los dos buckets y «no snapshot older than 31 days (0 listed)», y el listado
 
 `docker compose -p os11-s down -v` sale 0, y no queda ningún contenedor, volumen ni red `os11`: `docker ps -a`,
 `docker volume ls` y `docker network ls` filtrados por `os11` dan 0.
+
+## Comprobación de plataformas en la verificación del artefacto (tarea 10.2)
+
+**Qué cambia en `infra/ci/verify-artifact.sh`.** Una sección nueva, «Plataforma del daemon y de las imágenes propias»,
+justo después de comprobar que las tres imágenes están cargadas y antes de nada más: lee la plataforma del daemon
+(`docker version --format '{{.Server.Os}}/{{.Server.Arch}}'`); con `TARGET_PLATFORM`, exige que sean iguales y, si no,
+`fail` de clase `artifact` sin levantar nada; sin ella, la plataforma exigida es la del daemon. Después, cada imagen
+propia, **en el daemon**, con `docker image inspect --format '{{.Os}}/{{.Architecture}}'`: una distinta es `fail` de
+clase `artifact` nombrando la imagen, su plataforma y la del destino. Las de terceros se comprueban en el registro con
+`infra/deploy/check-image-platforms.sh --platform <la exigida>` sobre `dc config --images mongo redis object-store`,
+**dentro** del bucle de tres intentos del `pull`: salida 0 → `pull`; 3 → `fail` de clase `artifact` sin reintentar; 4 →
+se reintenta como un `pull` fallido y, agotados los tres intentos, `fail` de clase `environment` («no se pudieron
+comprobar o descargar…»); cualquier otra (2, uso incorrecto) → `fail` de clase `artifact`.
+
+Verificación en local, en el daemon `amd64` de esta máquina (Docker Desktop con el almacén de imágenes de containerd),
+con las tres imágenes construidas desde un árbol limpio de `0f3e766` (`git worktree` en el scratchpad; `docker build -f
+docker/<app>.Dockerfile -t os12-<app>:local .`, las tres en 0), proyecto de Compose `os12-v` (`COMPOSE_PROJECT_NAME`) y
+`VERIFY_FAIL_CLASS_FILE` en el scratchpad. `bash -n infra/ci/verify-artifact.sh`: 0.
+
+**(1) `TARGET_PLATFORM=linux/arm64`: falla antes de levantar nada, con clase `artifact`.**
+
+```text
+$ COMPOSE_PROJECT_NAME=os12-v API_IMAGE=os12-api WORKER_IMAGE=os12-worker WEB_IMAGE=os12-web IMAGE_TAG=local \
+    TARGET_PLATFORM=linux/arm64 VERIFY_FAIL_CLASS_FILE=<scratchpad>/class-a.txt bash infra/ci/verify-artifact.sh
+=== Imágenes cargadas en el daemon del corredor
+  os12-api:local -> sha256:cfc198427cc8410116f274fb63d0c96723f315b7b11803e19808a2551b9b1e90
+  os12-worker:local -> sha256:8bc3f16e326605346545125202f1e1323aeaf42991ec151998830e393db2f4e6
+  os12-web:local -> sha256:171a973976fcc803399ec78c37c457d7c2b0159639e3d6a36e5f08bbfe753e37
+
+=== Plataforma del daemon y de las imágenes propias
+  daemon: linux/amd64
+
+[FAIL/artifact] el daemon es linux/amd64 y TARGET_PLATFORM pide linux/arm64: este corredor no es de la arquitectura del destino y aquí no se emula
+
+=== Diagnóstico: estado de los servicios
+NAME      IMAGE     COMMAND   SERVICE   CREATED   STATUS    PORTS
+exit=1 class=artifact; contenedores os12: 0
+```
+
+**(2) `TARGET_PLATFORM=linux/amd64` con la imagen de `api` sustituida por un `alpine` `arm64`: falla con clase
+`artifact` nombrando esa imagen.** Medido al hacerlo: en este daemon, `docker pull --platform linux/arm64 alpine`
+seguido de `docker tag alpine <nombre>` **no** deja una imagen `arm64`: con el almacén de containerd la etiqueta apunta
+al índice y `docker image inspect` responde por la plataforma del host (`linux/amd64`), así que la verificación siguió
+(las tres imágenes `ok`) y la pila se levantó hasta que `api` (un `alpine` sin proceso) salió `unhealthy`. Pila
+derribada con `teardown-artifact.sh` (0 contenedores, volúmenes y redes `os12`). Para tener de verdad una imagen solo
+`arm64` en el daemon se descarga y se etiqueta **el manifiesto `linux/arm64`** del índice de `alpine`, leído con
+`imagetools inspect`:
+
+```text
+$ docker buildx imagetools inspect alpine --format '{{range .Manifest.Manifests}}{{.Digest}} {{.Platform.OS}}/{{.Platform.Architecture}}{{"\n"}}{{end}}'
+sha256:d56c381f961d307a21b3ca004cf1e3910f106644aefb1f43e654c8a56c4fd395 linux/amd64
+sha256:260479a1cfaf304c4c20da7f8405d3ce313513dcd534bb743257bdd2fe0f3e2d linux/arm64
+$ docker pull -q --platform linux/arm64 alpine@sha256:260479a1cfaf304c4c20da7f8405d3ce313513dcd534bb743257bdd2fe0f3e2d
+$ docker tag alpine@sha256:260479a1… os12-api-alt:local
+$ docker image inspect os12-api-alt:local --format '{{.Os}}/{{.Architecture}}'
+linux/arm64
+$ COMPOSE_PROJECT_NAME=os12-v API_IMAGE=os12-api-alt WORKER_IMAGE=os12-worker WEB_IMAGE=os12-web IMAGE_TAG=local \
+    TARGET_PLATFORM=linux/amd64 VERIFY_FAIL_CLASS_FILE=<scratchpad>/class-b.txt bash infra/ci/verify-artifact.sh
+=== Plataforma del daemon y de las imágenes propias
+  daemon: linux/amd64
+  TARGET_PLATFORM: linux/amd64 (igual que el daemon)
+
+[FAIL/artifact] la imagen os12-api-alt:local es linux/arm64 y el destino es linux/amd64: no existe para la arquitectura del destino
+exit=1 class=artifact; contenedores os12: 0
+```
+
+**(3) `OBJECT_STORE_IMAGE=registry.invalid/x`: falla tras tres intentos con clase `environment`.**
+
+```text
+$ COMPOSE_PROJECT_NAME=os12-v API_IMAGE=os12-api WORKER_IMAGE=os12-worker WEB_IMAGE=os12-web IMAGE_TAG=local \
+    OBJECT_STORE_IMAGE=registry.invalid/x VERIFY_FAIL_CLASS_FILE=<scratchpad>/class-c.txt bash infra/ci/verify-artifact.sh
+=== Plataforma del daemon y de las imágenes propias
+  daemon: linux/amd64
+  TARGET_PLATFORM: sin definir; se exige la del daemon, linux/amd64
+  ok: os12-api:local (linux/amd64)
+  ok: os12-worker:local (linux/amd64)
+  ok: os12-web:local (linux/amd64)
+ (…)
+=== pull de las imágenes de terceros (mongo redis object-store)
+no se pudo comprobar: registry.invalid/x:4.47: ERROR: failed to do request: Head "https://registry.invalid/v2/x/manifests/4.47": dial tcp: lookup registry.invalid: no such host
+ok: mongo:7.0.43 (linux/amd64)
+ok: redis:7.4.11 (linux/amd64)
+  intento 1 de 3: no se pudo comprobar la plataforma de las imágenes de terceros en su registro; reintentando en 15s
+ (… lo mismo en el intento 2 …)
+  intento 2 de 3: no se pudo comprobar la plataforma de las imágenes de terceros en su registro; reintentando en 30s
+ (… lo mismo en el intento 3 …)
+  intento 3 de 3: no se pudo comprobar la plataforma de las imágenes de terceros en su registro; reintentando en 45s
+
+[FAIL/environment] no se pudieron comprobar o descargar las imágenes de terceros (mongo redis object-store) tras 3 intentos. Esto NO es un fallo del artefacto de LinkVault: es el registro del que se descargan (limitación de peticiones anónimas o caída). Reintentar la corrida suele bastar.
+exit=1 (122 s) class=environment; contenedores os12: 0
+```
+
+**(4) Sin `TARGET_PLATFORM`: pasa la comprobación y sigue** hasta el final.
+
+```text
+$ COMPOSE_PROJECT_NAME=os12-v API_IMAGE=os12-api WORKER_IMAGE=os12-worker WEB_IMAGE=os12-web IMAGE_TAG=local \
+    VERIFY_FAIL_CLASS_FILE=<scratchpad>/class-d.txt bash infra/ci/verify-artifact.sh
+=== Plataforma del daemon y de las imágenes propias
+  daemon: linux/amd64
+  TARGET_PLATFORM: sin definir; se exige la del daemon, linux/amd64
+  ok: os12-api:local (linux/amd64)
+  ok: os12-worker:local (linux/amd64)
+  ok: os12-web:local (linux/amd64)
+=== pull de las imágenes de terceros (mongo redis object-store)
+ok: mongo:7.0.43 (linux/amd64)
+ok: redis:7.4.11 (linux/amd64)
+ok: chrislusf/seaweedfs:4.47 (linux/amd64)
+=== up -d --wait --wait-timeout 360 --pull never mongo redis object-store api worker web
+=== Tiempo hasta healthy de cada servicio (docker inspect)
+  mongo        estado healthy; hasta healthy: 5.24 s (sondeos guardados: 3)
+  redis        estado healthy; hasta healthy: 5.03 s (sondeos guardados: 2)
+  object-store estado healthy; hasta healthy: 1.22 s (sondeos guardados: 2)
+  api          estado healthy; hasta healthy: 5.37 s (sondeos guardados: 1)
+  worker       estado healthy; hasta healthy: 5.36 s (sondeos guardados: 1)
+  web          estado healthy; hasta healthy: 5.21 s (sondeos guardados: 1)
+provision: ok
+verify: ok
+s3-probe: ok
+=== Artefacto verificado
+api, worker y web arrancan y responden con la configuración de producción real.
+exit=0 (49 s); fichero de clase: no se escribió
+$ COMPOSE_PROJECT_NAME=os12-v bash infra/ci/teardown-artifact.sh
+exit=0
+```
+
+`docker ps -a`, `docker volume ls` y `docker network ls` filtrados por `os12`: 0, 0 y 0 tras cada caso.

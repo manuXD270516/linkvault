@@ -30,6 +30,10 @@
 # Opcional: `VERIFY_FAIL_CLASS_FILE=<ruta>` para que un fallo deje escrita su **clase** (`artifact` | `environment`) y
 # el reporte del CD pueda nombrar la causa en vez de suponerla. Ver el bloque de `fail()`.
 #
+# Opcional: `TARGET_PLATFORM=<os>/<arch>` (`linux/arm64` en `cd-staging`), la arquitectura del destino. Con ella, el
+# daemon tiene que ser de esa plataforma y las imágenes, existir para ella; sin ella (`cd-prod`, en local), se exige la
+# del daemon. Ver la sección de la plataforma.
+#
 # Las cuatro variables de imagen y tag son obligatorias y vienen del step que ejecuta esto, calculadas con el tag
 # local de la corrida (tarea 5.5). No están en `infra/ci/verify.env` a propósito: allí serían un valor fijo que
 # envejece. Sin ellas el compose resolvería al valor por defecto y se verificaría una imagen que no es la construida.
@@ -141,6 +145,41 @@ for ref in "${API_IMAGE}:${IMAGE_TAG}" "${WORKER_IMAGE}:${IMAGE_TAG}" "${WEB_IMA
   printf '  %s -> %s\n' "$ref" "$id"
 done
 
+# --- La plataforma: el daemon, nuestras imágenes y las de terceros (design D9 de `object-store`, ADR-052 §9) -------
+# Una imagen que no existe para la arquitectura del destino es un defecto **del artefacto**, no una avería del registro:
+# sin esto, el `pull` de una imagen de terceros sin `arm64` («no matching manifest») agotaba los reintentos y salía
+# con clase `environment`, mandando a alguien a depurar el sitio equivocado. Por eso se comprueba **antes** del `pull`:
+#   - con `TARGET_PLATFORM`, el daemon tiene que ser de esa plataforma (sin QEMU: un corredor de otra arquitectura no
+#     construye ni arranca por emulación sin avisar); sin ella, se exige la del daemon;
+#   - nuestras imágenes están cargadas y aún no publicadas, así que no hay registro al que preguntar: se miran **en el
+#     daemon** con `docker image inspect`;
+#   - las de terceros, en el registro, con `infra/deploy/check-image-platforms.sh` (el mismo que usa el `deploy.sh` de
+#     35b), dentro del bucle de reintentos del `pull`: su salida 3 (no existe para esa plataforma) es `artifact` y no
+#     se reintenta; su salida 4 (no se pudo comprobar) se reintenta como un `pull` fallido y, agotada, es `environment`.
+# Solo se compara `os/arch`, sin variantes, como en el script.
+section 'Plataforma del daemon y de las imágenes propias'
+daemon_platform="$(docker version --format '{{.Server.Os}}/{{.Server.Arch}}')"
+daemon_platform="${daemon_platform//$''/}"
+printf '  daemon: %s\n' "$daemon_platform"
+if [ -n "${TARGET_PLATFORM:-}" ]; then
+  if [ "$daemon_platform" != "$TARGET_PLATFORM" ]; then
+    fail "el daemon es ${daemon_platform} y TARGET_PLATFORM pide ${TARGET_PLATFORM}: este corredor no es de la arquitectura del destino y aquí no se emula"
+  fi
+  expected_platform="$TARGET_PLATFORM"
+  printf '  TARGET_PLATFORM: %s (igual que el daemon)\n' "$expected_platform"
+else
+  expected_platform="$daemon_platform"
+  printf '  TARGET_PLATFORM: sin definir; se exige la del daemon, %s\n' "$expected_platform"
+fi
+for ref in "${API_IMAGE}:${IMAGE_TAG}" "${WORKER_IMAGE}:${IMAGE_TAG}" "${WEB_IMAGE}:${IMAGE_TAG}"; do
+  image_platform="$(docker image inspect "$ref" --format '{{.Os}}/{{.Architecture}}')"
+  image_platform="${image_platform//$''/}"
+  if [ "$image_platform" != "$expected_platform" ]; then
+    fail "la imagen ${ref} es ${image_platform} y el destino es ${expected_platform}: no existe para la arquitectura del destino"
+  fi
+  printf '  ok: %s (%s)\n' "$ref" "$image_platform"
+done
+
 # --- 5.2/5.5: qué resuelve el compose con este env file y estas variables de step ----------------------------------
 section 'Imágenes que resuelve el compose'
 dc config --images
@@ -160,18 +199,43 @@ section "pull de las imágenes de terceros (${THIRD_PARTY_SERVICES[*]})"
 # registro del que se descarga, y atribuirla al artefacto mandaría a alguien a depurar el sitio equivocado. Por eso es
 # la **única** llamada a `fail` que declara clase `environment`: aquí no se ha llegado a levantar nada, así que no hay
 # nada que decir del artefacto, ni bueno ni malo.
+# Antes de cada intento, la plataforma en el registro (ver la sección de la plataforma, arriba).
+PLATFORM_CHECK='infra/deploy/check-image-platforms.sh'
+third_party_images=()
+while IFS= read -r line; do
+  line="${line%$''}"
+  [ -n "$line" ] && third_party_images+=("$line")
+done < <(dc config --images "${THIRD_PARTY_SERVICES[@]}")
+[ ${#third_party_images[@]} -eq ${#THIRD_PARTY_SERVICES[@]} ] \
+  || fail "el compose resolvió ${#third_party_images[@]} imágenes para ${#THIRD_PARTY_SERVICES[@]} servicios de terceros (${THIRD_PARTY_SERVICES[*]})"
 pull_ok=0
 for attempt in 1 2 3; do
-  if dc pull --quiet "${THIRD_PARTY_SERVICES[@]}"; then
-    pull_ok=1
-    break
-  fi
-  printf '  intento %d de 3 fallido al descargar las imágenes de terceros; reintentando en %ds
-' "$attempt" $((attempt * 15))
+  platform_status=0
+  bash "$PLATFORM_CHECK" --platform "$expected_platform" "${third_party_images[@]}" || platform_status=$?
+  case "$platform_status" in
+    0)
+      if dc pull --quiet "${THIRD_PARTY_SERVICES[@]}"; then
+        pull_ok=1
+        break
+      fi
+      printf '  intento %d de 3 fallido al descargar las imágenes de terceros; reintentando en %ds\n' \
+        "$attempt" $((attempt * 15))
+      ;;
+    3)
+      fail "alguna imagen de terceros no existe para ${expected_platform} (la línea de arriba nombra la imagen y las plataformas que existen): es un defecto del compose, no del registro, y reintentar no lo arregla"
+      ;;
+    4)
+      printf '  intento %d de 3: no se pudo comprobar la plataforma de las imágenes de terceros en su registro; reintentando en %ds\n' \
+        "$attempt" $((attempt * 15))
+      ;;
+    *)
+      fail "${PLATFORM_CHECK} salió ${platform_status} (uso incorrecto): la comprobación de plataformas está mal invocada"
+      ;;
+  esac
   sleep $((attempt * 15))
 done
 if [ "$pull_ok" -ne 1 ]; then
-  fail "no se pudieron descargar las imágenes de terceros (${THIRD_PARTY_SERVICES[*]}) tras 3 intentos. Esto NO es un fallo del artefacto de LinkVault: es el registro del que se descargan (limitación de peticiones anónimas o caída). Reintentar la corrida suele bastar." environment
+  fail "no se pudieron comprobar o descargar las imágenes de terceros (${THIRD_PARTY_SERVICES[*]}) tras 3 intentos. Esto NO es un fallo del artefacto de LinkVault: es el registro del que se descargan (limitación de peticiones anónimas o caída). Reintentar la corrida suele bastar." environment
 fi
 
 section "up -d --wait --wait-timeout ${WAIT_TIMEOUT} --pull never ${SERVICES[*]}"
