@@ -9,7 +9,7 @@
   "targets": {
     "typecheck": {
       "options": {
-        "commands": ["tsc --noEmit -p tsconfig.json"]
+        "commands": ["tsc --noEmit -p tsconfig.json", "tsc --noEmit -p scripts/tsconfig.json"]
       }
     }
   }
