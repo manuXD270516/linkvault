@@ -2357,12 +2357,28 @@
         <source> Guardar </source>
         <target>Save</target>
       </trans-unit>
+      <trans-unit id="discovery.save.createdInGroup" datatype="html">
+        <source>Guardada en «<x id="INTERPOLATION" equiv-text="{{ destination.name }}"/>».</source>
+        <target>Saved to “<x id="INTERPOLATION" equiv-text="{{ destination.name }}"/>”.</target>
+      </trans-unit>
+      <trans-unit id="discovery.save.createdInUnknownGroup" datatype="html">
+        <source>Guardada en el grupo.</source>
+        <target>Saved to the group.</target>
+      </trans-unit>
       <trans-unit id="discovery.save.created" datatype="html">
-        <source> Guardada en «Solo para mí». </source>
+        <source>Guardada en «Solo para mí».</source>
         <target>Saved to “Just for me”.</target>
       </trans-unit>
+      <trans-unit id="discovery.save.alreadyInGroup" datatype="html">
+        <source>Ya estaba en «<x id="INTERPOLATION" equiv-text="{{ destination.name }}"/>».</source>
+        <target>Already in “<x id="INTERPOLATION" equiv-text="{{ destination.name }}"/>”.</target>
+      </trans-unit>
+      <trans-unit id="discovery.save.alreadyInUnknownGroup" datatype="html">
+        <source>Ya estaba en el grupo.</source>
+        <target>Already in the group.</target>
+      </trans-unit>
       <trans-unit id="discovery.save.already" datatype="html">
-        <source> Ya la tenías guardada. </source>
+        <source>Ya la tenías guardada.</source>
         <target>You already had it saved.</target>
       </trans-unit>
       <trans-unit id="discovery.save.error" datatype="html">

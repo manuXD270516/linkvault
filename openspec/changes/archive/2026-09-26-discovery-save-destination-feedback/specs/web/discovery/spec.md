@@ -1,10 +1,4 @@
-# web/discovery Specification
-
-## Purpose
-Página autenticada para descubrir vacantes en bolsas y guardarlas en el vault sin salir
-de la SPA.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Página /descubrir
 
