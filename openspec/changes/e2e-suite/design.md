@@ -508,7 +508,8 @@ fichero, con su admisión (tarea 9.9, condicional).
   7.9). Su ventana la decide el usuario: **antes del PR-1 de 35b o después de su 11.6**, nunca entre el PR-2 de 35b y
   su 11.6 (B-V0-27 de la iteración 3: la 11.6 relanza los despliegues de la corrida de 6.3 y de la del PR-2 de 35b, y
   una fusión en medio desplegaría otro commit entre los dos; entre los PR-1 y PR-2 de 35b ya no se fusiona nada, por
-  la cabecera de sus tareas).
+  la cabecera de sus tareas). Si cae después de la 11.6, también **fuera de los días 7 y 14** de la medición de 35b,
+  como el PR-2, porque también despliega a staging (B-V1-30, pasada extra).
 - **Mientras se construye**, 35a va primero: si 35a tiene una tarea ejecutable, se hace esa, y `e2e-suite` solo ocupa
   sus esperas (ADR-053 §1, condición 6).
 - **Tras fusionar 35a** (B-V1-17 de la iteración 2): la **cola de PR-1** —7.6, 7.9 y 8.1— se hace **enseguida**, en la
@@ -673,6 +674,7 @@ Texto original de las preguntas, conservado como histórico:
 | C2 + C3 | se retira la línea añadida a la 1.1 de 35b (se comprobaba a sí misma y chocaba con la rama de 35a); la #71 se fusiona en `main` **como condición de la aprobación humana del `/opsx:apply`** de este change, en paralelo a 35a y siempre antes de 35b; la 8.2 (a) es la primera tarea del `/opsx:apply` | D16; Riesgos; cabecera de tareas, 8.2; ADR-053 §1.1 y §1.4; 35b 1.1 |
 | C4 | la alternativa manual, escrita paso a paso en la D14 de 35b sin remitir a ficheros que no están en `main`; la 10.7 y la tabla de bloqueos de 35b citan ADR-053 solo como origen | D15; 9.8; 35b D14, tabla de bloqueos y 10.7 |
 | B-V0-27 | ventana de fusión de PR-1: antes del PR-1 de 35b o después de su 11.6, nunca entre el PR-2 de 35b y su 11.6 | D15; cabecera de tareas, 8.1; ADR-053 §1.7 |
+| B-V1-30 (pasada extra) | PR-1 fusionado tras la 11.6: también fuera de los días 7 y 14 de la medición, como el PR-2 (los dos despliegan) | D15; 8.1; ADR-053 §1.7 |
 | B-V1-28 + R-27 + C13 | fuera el respaldo local (no prueba lo desplegado); sin PR-1 en `main`, `e2e-remote` desde la cabeza de su rama contra staging con el commit leído del host; un `429`, la 9.4 otro día; la alternativa manual, último recurso | D15; Riesgos; 9.4, 9.8; ADR-053 §1.3 y §1.6; 35b D14, tabla de bloqueos y 10.7 |
 | B-V2-29 | la fusión del PR-2 de este change, fuera de los días 7 y 14 de medición | 9.8 |
 | C5 | `api` y `worker` con `--inspect=false` por defecto (`@nx/js:node` 23.2.1 abre el `9229`); `--stack-fault=inspect` con dos puertos de inspector del bloque; entorno leído por `/json/list` y `Runtime.evaluate` con el `WebSocket` de Node 22; conjunto permitido explícito, `=X:` ignoradas | D3, D4, D6; 2.4c |

@@ -11,7 +11,7 @@
 > **Dos PR** (design D15):
 > - **PR-1** = grupos 1-8. **Se construye en paralelo a 35a y se fusiona después de que 35a esté en `main`** (el runner
 >   nace con `pnpm infra:up` y el paso del CV prueba el almacén nuevo), en una ventana que decide el usuario: **antes
->   del PR-1 de 35b o después de su 11.6**, nunca entre el PR-2 de 35b y su 11.6 (design D15). Mientras se construye,
+>   del PR-1 de 35b o después de su 11.6**, nunca entre el PR-2 de 35b y su 11.6, y si cae después de la 11.6, fuera de los días 7 y 14 de la medición de 35b (design D15). Mientras se construye,
 >   **35a va primero**: si 35a tiene una tarea ejecutable, se hace
 >   esa, y este change solo ocupa sus esperas (ADR-053 §1, condición 6). **Tras fusionar 35a**, la cola de PR-1 (7.6,
 >   7.9 y 8.1) se hace **enseguida**, en la ventana antes del PR-1 de 35b; para todo lo demás, primero la fila 35 entera.
@@ -108,7 +108,7 @@
 
 ## 8. Cierre de PR-1
 
-- [ ] 8.1 [infra] [bloqueada: 7.6 y 7.9] `pnpm nx affected -t lint,typecheck,test,i18n-check`, `pnpm exec openspec validate --all --no-interactive` y `bash infra/ci/repo-checks.sh` en verde; y el runner completo en verde en esta máquina y en CI (7.9) sobre el mismo commit. PR-1 se fusiona en la ventana que decida el usuario: **antes del PR-1 de 35b o después de su 11.6**, nunca entre el PR-2 de 35b y su 11.6 (design D15).
+- [ ] 8.1 [infra] [bloqueada: 7.6 y 7.9] `pnpm nx affected -t lint,typecheck,test,i18n-check`, `pnpm exec openspec validate --all --no-interactive` y `bash infra/ci/repo-checks.sh` en verde; y el runner completo en verde en esta máquina y en CI (7.9) sobre el mismo commit. PR-1 se fusiona en la ventana que decida el usuario: **antes del PR-1 de 35b o después de su 11.6**, nunca entre el PR-2 de 35b y su 11.6, y si cae después de la 11.6, fuera de los días 7 y 14 de la medición de 35b (design D15).
 - [ ] 8.2 [infra] Las ediciones a 35b están en `main` y siguen ahí. (a) **Primera tarea del `/opsx:apply`** (la fusión del PR solo de spec `spec(staging-host): trasladar la exclusión de cuentas E2E y la precondición de invitar`, PR #71, es condición de la aprobación humana de ese `/opsx:apply`, en paralelo a 35a y siempre antes de 35b): `git fetch` y un `node -e` sobre `git show origin/main:openspec/changes/staging-host/design.md` y `…/tasks.md` que encuentra en D15/D16 «autor + cuentas E2E», «por `userId`» y la lista de colecciones (users, groups, links, applications, cvs y analyses); en D14, la corrida `e2e-remote`, «cabeza de la rama», «Sin respaldo local» y los siete pasos de la alternativa manual; en la tabla de bloqueos, la fila «Precondición de invitar de `e2e-suite`»; en 10.3, la exclusión por `userId` probada con Bob y con Ana; en 10.6, «no se borran» las cuentas `+e2e`; en 10.7, `e2e-remote` y la alternativa manual; y **ningún** «respaldo» en 10.7 ni en la tabla de bloqueos. Si no está, el `/opsx:apply` no sigue y vuelve al usuario. (b) Con la rama rebasada de 7.9, lo mismo sobre el árbol de trabajo. Si 35b ya está archivado, buscarlo en su carpeta de `openspec/changes/archive`.
 
 ## 9. Staging (PR-2)
