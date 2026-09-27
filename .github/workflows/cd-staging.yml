@@ -145,11 +145,20 @@ jobs:
   # Repartirlos entre jobs obligaría a reconstruir (o a transportar la imagen), que es justo lo que la garantía de
   # identidad existe para impedir. Y por eso **no hay ningún build después de la verificación**: el único camino de
   # publicación es `docker push` del tag ya cargado y verificado (`infra/ci/publish-artifact.sh`).
+  #
+  # **Arquitectura del destino: `linux/arm64`, en un corredor nativo** (design D10 de `object-store`, ADR-052 §10).
+  # `runs-on` y `TARGET_PLATFORM` son la única declaración de la arquitectura: los tres builds la toman de
+  # `TARGET_PLATFORM` y la verificación la recibe para exigir que el daemon y las imágenes sean de ella. Sin QEMU: si
+  # alguien devuelve el job a `amd64`, la verificación falla en la comprobación del daemon, no construye por emulación.
+  # La caché lleva `scope=<imagen>-arm64`: con el mismo `scope` que `cd-prod` (`amd64`), cada `mode=max` pisaría la del
+  # otro. El resto de jobs sigue en `ubuntu-24.04`: no ejecutan nada de la arquitectura del destino.
   build-verify-publish:
     name: build, verify and publish artifact
     needs: verify
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 60
+    env:
+      TARGET_PLATFORM: linux/arm64
     outputs:
       image_tag: ${{ steps.meta.outputs.tag }}
     steps:
@@ -208,33 +217,36 @@ jobs:
         with:
           context: .
           file: docker/api.Dockerfile
+          platforms: ${{ env.TARGET_PLATFORM }}
           push: false
           load: true
           tags: ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-api:${{ steps.meta.outputs.tag }}
-          cache-from: type=gha,scope=api
-          cache-to: type=gha,mode=max,scope=api
+          cache-from: type=gha,scope=api-arm64
+          cache-to: type=gha,mode=max,scope=api-arm64
 
       - name: Build worker (load, no push)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/worker.Dockerfile
+          platforms: ${{ env.TARGET_PLATFORM }}
           push: false
           load: true
           tags: ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-worker:${{ steps.meta.outputs.tag }}
-          cache-from: type=gha,scope=worker
-          cache-to: type=gha,mode=max,scope=worker
+          cache-from: type=gha,scope=worker-arm64
+          cache-to: type=gha,mode=max,scope=worker-arm64
 
       - name: Build web (load, no push)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/web.Dockerfile
+          platforms: ${{ env.TARGET_PLATFORM }}
           push: false
           load: true
           tags: ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-web:${{ steps.meta.outputs.tag }}
-          cache-from: type=gha,scope=web
-          cache-to: type=gha,mode=max,scope=web
+          cache-from: type=gha,scope=web-arm64
+          cache-to: type=gha,mode=max,scope=web-arm64
 
       # Verificación del artefacto (grupo 5 del change `deploy-image-verification`, ADR-048 §4): levanta
       # `docker-compose.prod.yml` —el **mismo** fichero que se despliega, nunca un compose escrito para CI— con las
@@ -264,6 +276,7 @@ jobs:
           WORKER_IMAGE: ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-worker
           WEB_IMAGE: ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-web
           IMAGE_TAG: ${{ steps.meta.outputs.tag }}
+          TARGET_PLATFORM: ${{ env.TARGET_PLATFORM }}
           VERIFY_FAIL_CLASS_FILE: ${{ runner.temp }}/verify-fail-class
         run: infra/ci/verify-artifact.sh
 
