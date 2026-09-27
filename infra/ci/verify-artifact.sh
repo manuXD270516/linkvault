@@ -63,20 +63,23 @@ THIRD_PARTY_SERVICES=(mongo redis object-store)
 # paso se dé por perdido con su propio mensaje, en vez de depender de la heurística de Compose o de morir por el
 # timeout del job. Por eso el número tiene que quedar **por encima** del peor caso legítimo; si se quedara corto,
 # cortaría corridas buenas. Sale de los `start_period` y las ventanas de reintento del propio
-# `docker-compose.prod.yml`:
+# `docker-compose.prod.yml` (regla de design D8 de `object-store`, ADR-052 §8), con el tiempo hasta `healthy` medido:
 #
-#   mongo  start_period 30 s + retries 12 × interval  5 s =  90 s
-#   redis  start_period  5 s + retries 10 × interval  5 s =  55 s
-#   minio  start_period 20 s + retries 12 × interval 10 s = 140 s   ← el más lento de las dependencias
-#   api    start_period 60 s + retries 12 × interval 10 s = 180 s
-#   worker start_period 60 s + retries 12 × interval 10 s = 180 s
-#   web    start_period 10 s + retries  6 × interval 15 s = 100 s
+#   servicio      ventana (start_period + retries × interval)   peor medido hasta healthy
+#   mongo         30 s + 12 ×  5 s =  90 s                        5,03 s
+#   redis          5 s + 10 ×  5 s =  55 s                        5,27 s
+#   object-store  60 s +  6 × 10 s = 120 s   ← la más larga       1,24 s (ventana ≥ 3 × 1,24 s)
+#   api           60 s + 12 × 10 s = 180 s                        5,33 s (< 90 s, la mitad de su ventana)
+#   worker        60 s + 12 × 10 s = 180 s                        5,34 s (< 90 s)
+#   web           10 s +  6 × 15 s = 100 s                        5,28 s
 #
-# `api` y `worker` dependen de `service_healthy` de mongo, redis y minio, así que su ventana **no empieza a contar**
-# hasta que la más lenta de las tres termina: 140 s + 180 s = **320 s** en el peor caso legítimo. De ahí sale el
-# suelo, y 360 s le deja un margen del 12 % para un corredor lento. (El change escribió «≥ 240 s»; esa cifra sale de
-# sumar sin encadenar las dos fases y queda **por debajo** del peor caso de sus propios números. Se usa 360.)
-WAIT_TIMEOUT="${VERIFY_WAIT_TIMEOUT:-360}"
+# Mediciones: tres corridas `arm64` de `cd-staging` con la verificación en verde (36307691093, 36344930563 y
+# 36345047743; `object-store` 1,21 s, 1,24 s y 1,24 s) y C9 en local (`amd64`: 1,19 s, 1,17 s y 1,17 s). Ninguna
+# ventana se amplía: la del almacén pasa de tres veces su peor tiempo y ni `api` ni `worker` llegan a la mitad de la
+# suya. `api` y `worker` dependen de `service_healthy` de mongo, redis y el almacén, así que su ventana **no empieza
+# a contar** hasta que la más larga de las tres termina: suelo = 120 s + 180 s = **300 s**, y plazo = suelo × 1,10
+# redondeado hacia arriba a múltiplo de 30 = **330 s**.
+WAIT_TIMEOUT="${VERIFY_WAIT_TIMEOUT:-330}"
 
 dc() { docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" "$@"; }
 

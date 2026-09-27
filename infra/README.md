@@ -317,7 +317,7 @@ docker compose -f docker-compose.prod.yml --env-file .env.local-stack config >/d
 
 # 5) La pila, igual que en el corredor: sin traefik, con plazo y sin tirar del registro.
 docker compose -f docker-compose.prod.yml --env-file .env.local-stack \
-  up -d --wait --wait-timeout 360 --pull never mongo redis object-store api worker web
+  up -d --wait --wait-timeout 330 --pull never mongo redis object-store api worker web
 
 # 6) El almacén, por la API S3 y con la imagen de `api`: crear los buckets y el cifrado del de CV, comprobarlo (sin
 #    escribir), y que el `worker` lee el bucket de CV con su propia configuración. Cada orden, con plazo.
@@ -330,9 +330,10 @@ Sobre las banderas, que no son decorativas:
 
 - **`--pull never`** — si una imagen no está en tu daemon, el `up` tiene que **decirlo**, no descargar de GHCR una
   versión anterior y arrancarla como si fuera la que acabas de construir.
-- **`--wait --wait-timeout 360`** — el plazo sale de los `start_period` y las ventanas de reintento de este mismo
-  compose, encadenadas (`minio` 20 s + 12×10 s = 140 s y, solo entonces, `api`/`worker` 60 s + 12×10 s = 180 s → 320 s
-  de suelo, más un 12 % de margen). El número y su cálculo viven en un solo sitio, `infra/ci/verify-artifact.sh`.
+- **`--wait --wait-timeout 330`** — el plazo sale de los `start_period` y las ventanas de reintento de este mismo
+  compose, encadenadas (`object-store` 60 s + 6×10 s = 120 s y, solo entonces, `api`/`worker` 60 s + 12×10 s = 180 s
+  → 300 s de suelo, × 1,10 y redondeado hacia arriba a múltiplo de 30). El número, su cálculo y los tiempos medidos
+  viven en un solo sitio, `infra/ci/verify-artifact.sh`.
 - **la selección de servicios** — `traefik` queda fuera a propósito: exige DNS y un certificado ACME reales.
 
 Qué mirar cuando termine. Como no hay puertos publicados, se entra con `exec`; el cuerpo tiene que ser el JSON de

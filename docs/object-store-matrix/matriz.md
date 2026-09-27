@@ -3983,6 +3983,104 @@ Nada publicado: en el log no hay `docker push` ni `publish-artifact`, y `gh api 
 `{"billable":{"UBUNTU":{"total_ms":0,"jobs":5,…}},"run_duration_ms":1063000}` (el campo sigue sin discriminar, como en
 la 1.2).
 
+## Corrida real en `arm64` (tarea 9.2)
+
+**Antes de lanzarla**, leído en el workflow del commit empujado (`git show 83afb67:.github/workflows/cd-staging.yml`,
+parseado con el paquete `yaml` del repositorio): `deploy-staging` solo corre con `needs.preflight.outputs.state ==
+'full'` y no declara `environment`; el preflight lee los cuatro `STAGING_*` de los secretos del repositorio y
+`gh secret list` no da ninguno (estado `none`); el único entorno del repositorio es `production-preflight`, que
+`cd-staging` no usa; y `MOVING_TAG` solo lleva valor desde `main`, así que la corrida no mueve `:staging`.
+
+```text
+deploy-staging.if: needs.preflight.outputs.state == 'full' | environment: undefined
+publish.if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry_run != true }} | MOVING_TAG: ${{ github.ref == 'refs/heads/main' && 'staging' || '' }}
+$ gh workflow run cd-staging.yml --ref change/object-store -f dry_run=false
+https://github.com/manuXD270516/linkvault/actions/runs/36344930563
+$ gh run view 36344930563 --json conclusion,jobs,headSha,event,url,createdAt,updatedAt > <scratchpad>/g13/run-92.json   # leído con node
+conclusion: success | headSha: 83afb67b1fe83179a2c353d8b3b7874e9511627b | event: workflow_dispatch | 2026-09-27T19:35:45Z → 2026-09-27T19:53:33Z
+job: verify (lint, specs, typecheck, test, build) | success
+job: preflight (¿hay destino de staging configurado?) | success
+job: build, verify and publish artifact | success | id 108694291588
+   step: Verify artifact (docker-compose.prod.yml stack in the runner) | success
+   step: Publish verified artifact to GHCR (docker push of the loaded image) | success
+   step: Tear down verification stack | success
+job: resultado: artefacto verificado — NO desplegado (sin destino de staging) | success
+job: deploy staging (solo si hay destino configurado) | skipped
+$ gh api repos/manuXD270516/linkvault/actions/jobs/108694291588 > <scratchpad>/g13/job-92.json   # leído con node
+labels: ubuntu-24.04-arm | runner: GitHub Actions 1000000358
+```
+
+Del log del job (`gh run view 36344930563 --log --job 108694291588`, volcado a fichero y leído con `node`), la
+verificación y después `publish-artifact.sh`:
+
+```text
+  daemon: linux/arm64
+  TARGET_PLATFORM: linux/arm64 (igual que el daemon)
+  ok: ghcr.io/manuxd270516/linkvault-api:sha-83afb67b1fe8 (linux/arm64)
+  ok: ghcr.io/manuxd270516/linkvault-worker:sha-83afb67b1fe8 (linux/arm64)
+  ok: ghcr.io/manuxd270516/linkvault-web:sha-83afb67b1fe8 (linux/arm64)
+ok: chrislusf/seaweedfs:4.47 (linux/arm64)
+ok: mongo:7.0.43 (linux/arm64)
+ok: redis:7.4.11 (linux/arm64)
+=== Tiempo hasta healthy de cada servicio (docker inspect)
+  mongo        estado healthy; hasta healthy: 4.99 s (sondeos guardados: 3)
+  redis        estado healthy; hasta healthy: 5.20 s (sondeos guardados: 2)
+  object-store estado healthy; hasta healthy: 1.24 s (sondeos guardados: 2)
+  api          estado healthy; hasta healthy: 5.32 s (sondeos guardados: 1)
+  worker       estado healthy; hasta healthy: 5.34 s (sondeos guardados: 1)
+  web          estado healthy; hasta healthy: 5.28 s (sondeos guardados: 1)
+provision: ok
+verify: ok
+s3-probe: ok
+=== Artefacto verificado
+=== Publicación del artefacto verificado
+tag inmutable: sha-83afb67b1fe8
+tag móvil    : (ninguno: esta corrida no mueve ningún canal)
+=== Publicar ghcr.io/manuxd270516/linkvault-api:sha-83afb67b1fe8
+  artefacto verificado en este daemon: sha256:5acbf462ac9f138f824e84838d38a621e36e748e4ecdecc05b5d22db8866a2db
+sha-83afb67b1fe8: digest: sha256:d94fb5fdf0c395c8c7d628ac46acfe5419f8072388e7fca7d0d19ba5a2a96ce8 size: 1783
+  verificado (digest de repositorio local): sha256:d94fb5fdf0c395c8c7d628ac46acfe5419f8072388e7fca7d0d19ba5a2a96ce8
+  publicado  (digest del registro)        : sha256:d94fb5fdf0c395c8c7d628ac46acfe5419f8072388e7fca7d0d19ba5a2a96ce8
+  identidad confirmada: lo publicado es el artefacto verificado
+  tag móvil: no se mueve en esta corrida (MOVING_TAG vacío)
+=== Publicar ghcr.io/manuxd270516/linkvault-worker:sha-83afb67b1fe8
+  (…) verificado y publicado: sha256:64304c31b1dc39cec82279a40f7e0b0742be0f7db3a5425729b3fd60528612e0; identidad confirmada
+=== Publicar ghcr.io/manuxd270516/linkvault-web:sha-83afb67b1fe8
+  (…) verificado y publicado: sha256:c5a47499e3232283204aa58f6e08e4648964f70a35b4e7fe3d571e77ccb66000; identidad confirmada
+=== Artefacto publicado
+api, worker y web publicados con el digest del artefacto que se verificó en este mismo job.
+```
+
+**Tag publicado desde la rama: `sha-83afb67b1fe8`** (commit `83afb67`), en los tres paquetes y sin tag móvil. Listado
+de versiones después de la corrida (`gh api user/packages/container/linkvault-<p>/versions --paginate`, volcado a
+fichero y leído con `node`):
+
+```text
+linkvault-api: 6 versiones; con sha-83afb67b1fe8: 1302218905 sha256:d94fb5fdf0c395c8c7d628ac46acfe5419f8072388e7fca7d0d19ba5a2a96ce8 tags=["sha-83afb67b1fe8"]
+linkvault-worker: 6 versiones; con sha-83afb67b1fe8: 1302219216 sha256:64304c31b1dc39cec82279a40f7e0b0742be0f7db3a5425729b3fd60528612e0 tags=["sha-83afb67b1fe8"]
+linkvault-web: 4 versiones; con sha-83afb67b1fe8: 1302219449 sha256:c5a47499e3232283204aa58f6e08e4648964f70a35b4e7fe3d571e77ccb66000 tags=["sha-83afb67b1fe8"]
+```
+
+`gh api …/runs/36344930563/timing`: `{"billable":{"UBUNTU":{"total_ms":0,"jobs":5,…}},"run_duration_ms":1068000}`. Es la
+**segunda corrida `arm64` con la verificación en verde** que cuenta para la 11.1.
+
+**Pendiente: `docker buildx imagetools inspect --raw`.** Los tres paquetes son privados y en esta máquina no hay sesión
+de Docker en `ghcr.io` (el almacén de credenciales solo tiene Docker Hub y `dhi.io`), así que el registro rechaza la
+lectura antes de llegar al manifiesto:
+
+```text
+$ docker buildx imagetools inspect --raw ghcr.io/manuxd270516/linkvault-api:sha-e86d3755a525
+ERROR: failed to authorize: failed to fetch anonymous token: unexpected status from GET request to https://ghcr.io/token?scope=repository%3Amanuxd270516%2Flinkvault-api%3Apull&service=ghcr.io: 401 Unauthorized
+```
+
+La comprobación de «un manifiesto único (no un índice) de `linux/arm64`» queda para cuando la sesión esté iniciada; no
+se hizo `docker login` con credenciales nuevas. La 9.2 sigue abierta solo por eso.
+
+## `--compose` contra la pila sustituida (tarea 10.1)
+
+**No ejecutada:** pide la sesión de `ghcr.io` iniciada (las imágenes propias del compose son privadas; ver la 9.2) y no
+la hay. Se ejecuta con el tag de la 9.2, `sha-83afb67b1fe8`, en cuanto esté.
+
 ## Comprobación de plataformas en la verificación del artefacto (tarea 10.2)
 
 **Qué cambia en `infra/ci/verify-artifact.sh`.** Una sección nueva, «Plataforma del daemon y de las imágenes propias»,
@@ -4175,6 +4273,83 @@ contiene «registro de terceros»: false | contiene «reintentar»: false
 
 La descripción es el texto de la 2.16 (118 caracteres, 122 bytes). Revertido en `ec1753a` («chore(ci): revert …»):
 `git diff b90786a ec1753a` vacío, el workflow queda como antes del commit temporal.
+
+## Plazo de arranque (tarea 11.1)
+
+**Tres corridas `arm64` con la verificación en verde:** la 9.1 (36307691093, modo de prueba, `e346581`), la 9.2
+(36344930563, real, `83afb67`) y una más en modo de prueba sobre `83afb67`, lanzada para esto:
+
+```text
+$ gh workflow run cd-staging.yml --ref change/object-store -f dry_run=true
+https://github.com/manuXD270516/linkvault/actions/runs/36345047743
+$ gh run view 36345047743 --json conclusion,jobs,headSha,event,createdAt,updatedAt > <scratchpad>/g13/run-111a.json   # leído con node
+conclusion: success | headSha: 83afb67b1fe83179a2c353d8b3b7874e9511627b | event: workflow_dispatch | 2026-09-27T19:37:41Z → 2026-09-27T20:05:34Z
+job: build, verify and publish artifact | success | id 108696942860 | labels: ubuntu-24.04-arm
+   step: Verify artifact (docker-compose.prod.yml stack in the runner) | success
+   step: Publish verified artifact to GHCR (docker push of the loaded image) | skipped
+job: deploy staging (solo si hay destino configurado) | skipped
+  daemon: linux/arm64
+  mongo        estado healthy; hasta healthy: 4.99 s (sondeos guardados: 3)
+  redis        estado healthy; hasta healthy: 5.20 s (sondeos guardados: 2)
+  object-store estado healthy; hasta healthy: 1.24 s (sondeos guardados: 2)
+  api          estado healthy; hasta healthy: 5.23 s (sondeos guardados: 1)
+  worker       estado healthy; hasta healthy: 5.24 s (sondeos guardados: 1)
+  web          estado healthy; hasta healthy: 5.24 s (sondeos guardados: 1)
+provision: ok
+verify: ok
+s3-probe: ok
+```
+
+| servicio | 9.1 | 9.2 | 36345047743 | C9 local (`amd64`) | peor | ventana | ¿cambia? |
+|---|---|---|---|---|---|---|---|
+| mongo | 5,03 s | 4,99 s | 4,99 s | — | 5,03 s | 90 s | no |
+| redis | 5,27 s | 5,20 s | 5,20 s | — | 5,27 s | 55 s | no |
+| object-store | 1,21 s | 1,24 s | 1,24 s | 1,19 / 1,17 / 1,17 s | 1,24 s | 120 s ≥ 3 × 1,24 s | no |
+| api | 5,33 s | 5,32 s | 5,23 s | — | 5,33 s | 180 s (mitad: 90 s) | no |
+| worker | 5,31 s | 5,34 s | 5,24 s | — | 5,34 s | 180 s (mitad: 90 s) | no |
+| web | 5,22 s | 5,28 s | 5,24 s | — | 5,28 s | 100 s | no |
+
+**Healthchecks:** los del almacén se quedan como están en los dos composes (`start_period` 60 s, `interval` 10 s,
+`retries` 6: 120 s, los de C9, que es además lo que comparan la 7.1 y la 7.3 con el compose de la matriz): la regla de
+design D8 pide una ventana de **al menos** tres veces el peor tiempo (3,72 s) y 120 s la cumple. Ni `api` ni `worker`
+pasan de la mitad de su ventana, así que no se amplían. **Plazo:** suelo = 120 s (el almacén, la mayor de las
+dependencias) + 180 s (`api`/`worker`) = 300 s; × 1,10 = 330 s, que ya es múltiplo de 30: **330 s** (antes, 360 s con
+los números de MinIO). Cambian la tabla del comentario y la línea de `infra/ci/verify-artifact.sh` y el bloque de la
+pila de `infra/README.md` (`--wait-timeout 330` y el cálculo, sin `minio`). No se tocan las copias conocidas de design D8
+(el `--wait-timeout 360` de los pasos de despliegue de `cd-staging.yml` y `cd-prod.yml`, que sustituyen 35b y 35c).
+
+Comprobación (`<scratchpad>/g13/check-111.cjs`: recalcula el plazo desde los healthchecks de `docker-compose.prod.yml`
+parseado con `yaml`, en aritmética entera, y lo compara con la línea del script y con el `up` del bloque del README):
+
+```text
+$ node check-111.cjs docker-compose.prod.yml infra/ci/verify-artifact.sh infra/README.md      # antes del cambio
+suelo = max(deps) 120 + max(api,worker) 180 = 300 s; plazo = ceil(300 × 1,10 / 30) × 30 = 330 s
+línea: WAIT_TIMEOUT="${VERIFY_WAIT_TIMEOUT:-360}"
+valor 360 casa con ^[0-9]{2,4}$: true
+valor del script = plazo recalculado: false
+README, bloque de la pila: --wait-timeout 360 = plazo: false
+RESULT: FAIL (2)
+$ node check-111.cjs docker-compose.prod.yml infra/ci/verify-artifact.sh infra/README.md      # después
+  mongo        start_period 30 s + retries 12 × interval 5 s = 90 s
+  redis        start_period 5 s + retries 10 × interval 5 s = 55 s
+  object-store start_period 60 s + retries 6 × interval 10 s = 120 s
+  api          start_period 60 s + retries 12 × interval 10 s = 180 s
+  worker       start_period 60 s + retries 12 × interval 10 s = 180 s
+  web          start_period 10 s + retries 6 × interval 15 s = 100 s
+suelo = max(deps) 120 + max(api,worker) 180 = 300 s; plazo = ceil(300 × 1,10 / 30) × 30 = 330 s
+línea: WAIT_TIMEOUT="${VERIFY_WAIT_TIMEOUT:-330}"
+valor 330 casa con ^[0-9]{2,4}$: true
+valor del script = plazo recalculado: true
+README, bloque de la pila: --wait-timeout 330 = plazo: true
+RESULT: ok
+exit=0
+$ bash infra/ci/repo-checks.sh
+check(docs-stack-up): OK — el 'up' documentado en infra/README.md y el de infra/ci/verify-artifact.sh coinciden: docker-compose.prod.yml, 6 servicios (api, mongo, object-store, redis, web, worker), --wait --wait-timeout 330 --pull never, sin traefik; y después del 'up', en los dos, provision y después verify, con las mismas 3 órdenes 'run' en el mismo orden
+repo-checks: 5 comprobaciones ejecutadas (check-claims-registry, check-compose-env-contract, check-compose-healthchecks, check-docs-stack-up, check-stale-defaults)
+exit=0
+```
+
+La corrida en modo de prueba con el plazo nuevo se anota abajo, en «Corrida con el plazo nuevo».
 
 ## Documentación que protege los CV (grupo 12)
 
