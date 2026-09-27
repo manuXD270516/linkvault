@@ -3355,3 +3355,210 @@ falsaciones con `dc run` (`-e S3_SECRET_KEY=incorrecta`, y borrar el bucket → 
 
 `docker compose -p os9-p -f docker-compose.yml down -v --timeout 30` sale 0, y no queda ningún contenedor, volumen ni
 red `os9`: `docker ps -a`, `docker volume ls` y `docker network ls` filtrados por `os9` dan 0.
+
+## Retención por barrido (tarea 8.7)
+
+Barrido de snapshots (8.5) ejecutado contra el almacén elegido, **SeaweedFS 4.47** con la configuración entregada
+(`docker-compose.yml` de la 7.1, `pnpm infra:up` de la 7.2), con el reloj adelantado 31 días. Es la evidencia «barrido
+de snapshots ejecutado contra el almacén elegido» de `platform/object-store`. La retención es `sweep` desde la 2.3:
+`provision` no pone regla de ciclo de vida y quita la que haya.
+
+**Qué se adelanta y cómo.** No hay forma de escribir en el almacén un objeto con `LastModified` de hace más de 31 días,
+así que se adelanta el reloj **inyectado**, no el del proceso: el `CLOCK` del caso de uso `SweepExpiredSnapshots` y el
+`now` de `object-store verify` (`runObjectStoreCli`, el mismo que usa `object-store.ts`). Adelantar el reloj del proceso
+movería también la fecha de la firma SigV4 y el almacén rechazaría las peticiones. Los dos lados miden la antigüedad con
+el mismo reloj adelantado, así que un snapshot escrito un momento antes tiene, para los dos, 31 días y unos segundos:
+más de 30 para el barrido y más de 31 para `verify`.
+
+**Punto de entrada.** No existía uno para lanzar el barrido a mano con el reloj adelantado, y no se añade ninguno al
+producto (un barrido con el reloj desplazado dentro de la imagen del `worker` sería una forma de borrar todos los
+snapshots). Se usa este script, fuera del repo, que carga el **código fuente real** de `api` y `worker` con el registro
+SWC del repo (`apps/api/register-nest-cli.cjs`, el de `object-store.cjs`) y solo inyecta el reloj; todo lo demás
+—fábricas de cliente S3, adaptadores `S3SnapshotStore` y `S3SnapshotBucket`, caso de uso, `verify`— es el del
+producto. El barrido corre sin el `ScheduleModule`: la programación diaria y el cableado en `EnrichmentModule` los
+comprueba la 8.6.
+
+```js
+'use strict';
+// Tarea 8.7 de `object-store`: barrido de snapshots contra el almacén con el reloj adelantado.
+// Carga el código fuente real (api y worker) con el registro SWC del repo; solo el reloj se inyecta.
+//   node sweep-31d.cjs write               -> S3SnapshotStore.save (worker) de un snapshot de prueba
+//   node sweep-31d.cjs verify <días>       -> runObjectStoreCli(['verify']) (api) con now = ahora + días
+//   node sweep-31d.cjs sweep <días>        -> SweepExpiredSnapshots + S3SnapshotBucket (worker) con now = ahora + días
+//   node sweep-31d.cjs list                -> ListObjectsV2 del bucket de snapshots (fábrica del worker)
+const root = 'D:/projects/linkvault';
+require(`${root}/apps/api/register-nest-cli.cjs`);
+const DAY_MS = 86_400_000;
+const [step, daysArg] = process.argv.slice(2);
+const offsetDays = Number(daysArg ?? '0');
+const shiftedNow = () => new Date(Date.now() + offsetDays * DAY_MS);
+const env = process.env;
+const settings = {
+  endpoint: env.S3_ENDPOINT,
+  region: env.S3_REGION,
+  accessKey: env.S3_ACCESS_KEY,
+  secretKey: env.S3_SECRET_KEY,
+};
+const w = `${root}/apps/worker/src`;
+
+async function main() {
+  if (step === 'write') {
+    const { createS3SnapshotUploader, S3SnapshotStore } = require(`${w}/modules/enrichment/infrastructure/storage/s3-snapshot.store.ts`);
+    const store = new S3SnapshotStore(createS3SnapshotUploader({ ...settings, bucket: env.S3_SNAPSHOTS_BUCKET }));
+    const linkId = require('node:crypto').randomBytes(12).toString('hex');
+    const key = await store.save(linkId, 1, '<html><body>snapshot 8.7</body></html>');
+    process.stdout.write(`written: ${key}\n`);
+    return key === null ? 1 : 0;
+  }
+  if (step === 'verify') {
+    process.stdout.write(`verify clock: ${shiftedNow().toISOString()} (now + ${offsetDays} days)\n`);
+    const { runObjectStoreCli } = require(`${root}/apps/api/src/infrastructure/storage/object-store/object-store.cli.ts`);
+    return runObjectStoreCli(['verify'], {
+      env,
+      now: shiftedNow,
+      io: { out: (t) => process.stdout.write(t), err: (t) => process.stderr.write(t) },
+    });
+  }
+  if (step === 'sweep') {
+    process.stdout.write(`sweep clock: ${shiftedNow().toISOString()} (now + ${offsetDays} days)\n`);
+    const { SweepExpiredSnapshots } = require(`${w}/modules/enrichment/application/sweep-expired-snapshots.usecase.ts`);
+    const { S3SnapshotBucket, createS3SnapshotBucketClient } = require(`${w}/modules/enrichment/infrastructure/storage/s3-snapshot.bucket.ts`);
+    const sweep = new SweepExpiredSnapshots(
+      new S3SnapshotBucket(createS3SnapshotBucketClient(settings)),
+      { now: shiftedNow },
+      { snapshotsBucket: env.S3_SNAPSHOTS_BUCKET, cvBucket: env.S3_BUCKET },
+    );
+    const result = await sweep.execute();
+    process.stdout.write(`result: ${JSON.stringify(result)}\n`);
+    return result.status === 'swept' && result.failed === 0 ? 0 : 1;
+  }
+  if (step === 'list') {
+    const { ListObjectsV2Command } = require(require.resolve('@aws-sdk/client-s3', { paths: [root] }));
+    const { createS3Client } = require(`${w}/infrastructure/storage/s3-client.factory.ts`);
+    const out = await createS3Client(settings).send(new ListObjectsV2Command({ Bucket: env.S3_SNAPSHOTS_BUCKET }));
+    const objects = (out.Contents ?? []).map((o) => `${o.Key} ${o.LastModified.toISOString()}`);
+    process.stdout.write(`${env.S3_SNAPSHOTS_BUCKET}: ${objects.length} object(s)${objects.map((o) => `\n  ${o}`).join('')}\n`);
+    return 0;
+  }
+  process.stderr.write('usage: sweep-31d.cjs <write|verify <days>|sweep <days>|list>\n');
+  return 2;
+}
+main().then((code) => { process.exitCode = code; }, (e) => { process.stderr.write(`failed: ${e && e.name}: ${e && e.message}\n`); process.exitCode = 1; });
+```
+
+**Ejecución.** Proyecto `os11-s` desde volúmenes vacíos, puertos del bloque 19950-19999 y `S3_ACCESS_KEY`,
+`S3_SECRET_KEY` y `OBJECT_STORE_SSE_KEY` de prueba exportados en la orden (sin tocar `.env`). `pnpm infra:up` sale 0:
+
+```text
+$ docker compose -p os11-s ps --format '{{.Service}} {{.Image}} {{.Status}}'
+mailpit axllent/mailpit:v1.27.7 Up About a minute (healthy)
+mongo mongo:7.0.43 Up About a minute (healthy)
+object-store chrislusf/seaweedfs:4.47 Up About a minute (healthy)
+redis redis:7.4.11 Up About a minute (healthy)
+$ pnpm infra:up                                    # final de la salida
+ok    cvs: bucket created
+ok    cvs: no lifecycle configuration (removed if there was one)
+ok    cvs: default encryption set (AES256)
+ok    cvs: no bucket policy
+ok    snapshots: bucket created
+ok    snapshots: no lifecycle configuration (removed if there was one)
+ok    snapshots: no bucket policy
+provision: ok
+exit=0
+```
+
+Secuencia, con `NO_COLOR=1` y las `S3_*` del proyecto exportadas. Además de lo que pide la tarea (`verify 31` ≠0
+nombrando el snapshot → `sweep 31` → `verify 31` en 0), dos controles con el reloj **sin** adelantar: `verify 0` en 0 con
+el snapshot presente (lo que hace fallar a `verify` es la antigüedad, no que haya un snapshot) y `sweep 0`, que lista el
+snapshot y no lo borra (lo que lo borra es el reloj, no el barrido en sí):
+
+```text
+$ node sweep-31d.cjs write
+written: 703586067d106b5ac8bafc53/1.html.gz
+exit=0
+
+$ node sweep-31d.cjs list
+snapshots: 1 object(s)
+  703586067d106b5ac8bafc53/1.html.gz 2026-09-27T08:19:08.000Z
+exit=0
+
+$ node sweep-31d.cjs verify 0
+verify clock: 2026-09-27T08:19:08.420Z (now + 0 days)
+ok    cvs: bucket exists
+ok    snapshots: bucket exists
+ok    cvs: no lifecycle rule
+ok    cvs: default encryption (AES256)
+ok    snapshots: no lifecycle rule
+ok    snapshots: no snapshot older than 31 days (1 listed)
+ok    cvs: anonymous GET of a missing object rejected (HTTP 403 AccessDenied)
+ok    cvs: anonymous listing rejected (HTTP 403 AccessDenied)
+ok    cvs: anonymous PUT rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous GET of an existing object rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous listing rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous PUT rejected (HTTP 403 AccessDenied)
+verify: ok
+exit=0
+
+$ node sweep-31d.cjs verify 31
+verify clock: 2026-10-28T08:19:09.036Z (now + 31 days)
+ok    cvs: bucket exists
+ok    snapshots: bucket exists
+ok    cvs: no lifecycle rule
+ok    cvs: default encryption (AES256)
+ok    snapshots: no lifecycle rule
+FAIL  snapshots: snapshot 703586067d106b5ac8bafc53/1.html.gz is 31 days old (more than 31); is the worker sweep running?
+ok    cvs: anonymous GET of a missing object rejected (HTTP 403 AccessDenied)
+ok    cvs: anonymous listing rejected (HTTP 403 AccessDenied)
+ok    cvs: anonymous PUT rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous GET of an existing object rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous listing rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous PUT rejected (HTTP 403 AccessDenied)
+verify: FAILED (1): snapshots: snapshot 703586067d106b5ac8bafc53/1.html.gz is 31 days old (more than 31); is the worker sweep running?
+exit=1
+
+$ node sweep-31d.cjs sweep 0
+sweep clock: 2026-09-27T08:19:09.742Z (now + 0 days)
+[Nest] 79724  - 09/27/2026, 4:19:10 AM     LOG [SweepExpiredSnapshots] snapshot sweep: listed 1, expired 0, deleted 0, already gone 0, failed 0
+result: {"status":"swept","listed":1,"expired":0,"deleted":0,"alreadyGone":0,"failed":0}
+exit=0
+
+$ node sweep-31d.cjs list
+snapshots: 1 object(s)
+  703586067d106b5ac8bafc53/1.html.gz 2026-09-27T08:19:08.000Z
+exit=0
+
+$ node sweep-31d.cjs sweep 31
+sweep clock: 2026-10-28T08:19:10.556Z (now + 31 days)
+[Nest] 34828  - 09/27/2026, 4:19:10 AM     LOG [SweepExpiredSnapshots] snapshot sweep: listed 1, expired 1, deleted 1, already gone 0, failed 0
+result: {"status":"swept","listed":1,"expired":1,"deleted":1,"alreadyGone":0,"failed":0}
+exit=0
+
+$ node sweep-31d.cjs verify 31
+verify clock: 2026-10-28T08:19:11.057Z (now + 31 days)
+ok    cvs: bucket exists
+ok    snapshots: bucket exists
+ok    cvs: no lifecycle rule
+ok    cvs: default encryption (AES256)
+ok    snapshots: no lifecycle rule
+ok    snapshots: no snapshot older than 31 days (0 listed)
+ok    cvs: anonymous GET of a missing object rejected (HTTP 403 AccessDenied)
+ok    cvs: anonymous listing rejected (HTTP 403 AccessDenied)
+ok    cvs: anonymous PUT rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous GET of a missing object rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous listing rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous PUT rejected (HTTP 403 AccessDenied)
+verify: ok
+exit=0
+
+$ node sweep-31d.cjs list
+snapshots: 0 object(s)
+exit=0
+```
+
+Resultado: antes del barrido, `verify` con el reloj adelantado sale 1 nombrando el snapshot
+(`snapshots: snapshot 703586067d106b5ac8bafc53/1.html.gz is 31 days old (more than 31)`); el barrido con el mismo reloj
+lo borra (`listed 1, expired 1, deleted 1, already gone 0, failed 0`); después, `verify` sale 0 con «no lifecycle rule»
+en los dos buckets y «no snapshot older than 31 days (0 listed)», y el listado del bucket de snapshots está vacío.
+
+`docker compose -p os11-s down -v` sale 0, y no queda ningún contenedor, volumen ni red `os11`: `docker ps -a`,
+`docker volume ls` y `docker network ls` filtrados por `os11` dan 0.
