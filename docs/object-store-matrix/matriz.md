@@ -2309,7 +2309,7 @@ falsación: todas las copias salen ≠0
 exit=0
 ```
 
-## Configuración entregada (tareas 7.1, 7.1b, 7.2 y 7.2b)
+## Configuración entregada (tareas 7.1, 7.1b, 7.2, 7.2b y 7.3)
 
 El servicio `object-store` de `docker-compose.yml` está **copiado** del de `seaweedfs.compose.yml`, el que midió la
 matriz (design D2, «Lo que se entrega es lo que se midió»; D6, D14 y D16). Esta sección tiene lo que lo demuestra:
@@ -2771,4 +2771,93 @@ FALTA lectura del disco: B2 3/3
 FALTA resultado nativo
 7.2b: FALLA (2)
 exit=1
+```
+
+### 7.3: servicio de producción y comparación desarrollo ↔ producción
+
+En `docker-compose.prod.yml`, el servicio `minio` y su montaje de `infra/minio/ensure-buckets.sh` (borrado) se
+sustituyen por `object-store`, **copiado** del de `docker-compose.yml`: misma imagen por defecto
+(`${OBJECT_STORE_IMAGE:-chrislusf/seaweedfs}:${OBJECT_STORE_IMAGE_TAG:-4.47}`), el mismo guardia de arranque de la
+7.1b en `entrypoint`, la misma `command`, las mismas tres claves de `environment` (aquí `${S3_ACCESS_KEY:?}`,
+`${S3_SECRET_KEY:?}` y `${OBJECT_STORE_SSE_KEY:?…}`, sin valor por defecto), el volumen `object-store-data` y el mismo
+healthcheck. Lo que cambia es lo de la lista cerrada de la 7.3: sin `ports`, `restart: unless-stopped` y la red propia
+`object-store-net` con `internal: true`, de la que es el único servicio además de `api` y `worker` (design D14). `api` y
+`worker` pasan a `S3_ENDPOINT: http://object-store:8333`, a `depends_on: object-store: service_healthy` y a las redes
+`internal` y `object-store-net`. Mongo, redis, `web` y Traefik no cambian.
+
+**`infra/ci/verify.env` en esta misma tarea.** La 7.3 se verifica con `docker compose -f docker-compose.prod.yml
+--env-file infra/ci/verify.env config`, y con `${OBJECT_STORE_SSE_KEY:?…}` en el compose esa orden solo sale 0 si el
+fichero de relleno da la variable. Por eso la sustitución de `MINIO_KMS_SECRET_KEY` que enumera la 7.4 se hace aquí:
+`OBJECT_STORE_SSE_KEY` con un valor de relleno de 64 hexadecimales (el hexadecimal del texto
+`linkvault-ci-only-sse-kek-000000`, no una clave), que pasa el guardia. El resto de la 7.4 (`verify-artifact.sh`)
+sigue pendiente, así que hasta la 7.4 la verificación del artefacto no puede levantar esta pila: su lista de servicios
+aún nombra `minio`.
+
+```text
+$ docker compose -f docker-compose.prod.yml --env-file infra/ci/verify.env config > <scratchpad>/73-config.yml
+exit=0
+365 líneas; minio: false; ensure-buckets: false
+$ docker compose -f docker-compose.prod.yml --env-file <verify.env de 52a681f, con MINIO_KMS_SECRET_KEY> config
+error while interpolating services.object-store.environment.WEED_S3_SSE_KEK: required variable OBJECT_STORE_SSE_KEY is missing a value: set OBJECT_STORE_SSE_KEY to 64 hex characters (ADR-052)
+exit=1
+$ bash infra/ci/repo-checks.sh                     # líneas de las comprobaciones que leen el compose de producción
+check(compose-env-contract): OK — 55 variables obligatorias de 'api' y 'worker' tienen valor en su servicio de docker-compose.prod.yml; las condicionales de correo se pasan en los dos. La comprobación es unidireccional: el compose puede declarar opcionales de más
+check(compose-healthchecks): OK — 7 servicios de docker-compose.prod.yml con healthcheck: traefik, mongo, redis, object-store, api, worker, web
+check(stale-defaults): OK — 212 valores por defecto inspeccionados en .env.example, docker-compose.prod.yml y libs/ai/src/infrastructure/config/ai-config.schema.ts; 1 recurso(s) muerto(s) y 1 espacio(s) de nombres ajeno(s) en el registro. Los ficheros de test quedan fuera a propósito (ver stale-defaults.registry.mjs)
+ok: 5 comprobaciones de repositorio ejecutadas
+exit=0
+```
+
+`docs-stack-up` sigue en verde porque compara el bloque de `infra/README.md` con `verify-artifact.sh`, y los dos siguen
+nombrando `minio` hasta la 7.4 y la 7.6.
+
+**Imagen, `depends_on`, comparación y referencias** (`node <scratchpad>/g8/check-73.js`): `config --images
+object-store` de los dos composes, sin `OBJECT_STORE_IMAGE`/`OBJECT_STORE_IMAGE_TAG` en el entorno (el de producción con
+`--env-file infra/ci/verify.env`), volcado a fichero y exigiendo **exactamente una línea** en cada uno; `object-store`
+de producción sin `depends_on` (`config --format json`); la comparación de servicios de la 7.1 entre desarrollo y
+producción con la lista cerrada de la 7.3 (`ports`, `networks`, `depends_on`, `restart`, `logging`, el `source` del
+volumen con nombre y los valores de las claves de la lista de arriba), con `healthcheck` y `entrypoint` comparados; y,
+con `config --no-interpolate --format json`, que en producción las tres claves son exactamente `${VAR:?…}`. No imprime
+valores de `environment`.
+
+```text
+$ node <scratchpad>/g8/check-73.js
+lista cerrada (matriz.md): AWS_ACCESS_KEY_ID <- S3_ACCESS_KEY, AWS_SECRET_ACCESS_KEY <- S3_SECRET_KEY, WEED_S3_SSE_KEK <- OBJECT_STORE_SSE_KEY
+(1) config --images object-store (docker-compose.yml): 1 línea(s): chrislusf/seaweedfs:4.47
+(1) config --images object-store (docker-compose.prod.yml --env-file infra/ci/verify.env): 1 línea(s): chrislusf/seaweedfs:4.47
+(1) la misma referencia con versión exacta en los dos: chrislusf/seaweedfs:4.47
+(2) object-store de producción sin depends_on: ok
+(4) producción (config --no-interpolate): las 3 claves son ${VAR:?...} sin :-, y desarrollo referencia las mismas variables
+(3) rutas quitadas: ports, networks, depends_on, restart, logging, volumes[].source (volumen con nombre), environment.<lista cerrada>; healthcheck y entrypoint se comparan
+(3) claves comparadas del servicio: command, entrypoint, environment, healthcheck, image, volumes
+(3) comparación de servicios desarrollo <-> producción: ok (idénticos salvo la lista cerrada; healthcheck y entrypoint iguales)
+7.3: ok
+exit=0
+```
+
+Falsación (`node <scratchpad>/g8/falsify-73.js`): seis copias de `docker-compose.prod.yml` en el scratchpad, cada una
+con una alteración, y `check-73.js` contra cada una (solo las líneas que fallan):
+
+```text
+== healthcheck distinto (interval 10s -> 15s en el almacén)
+FALLA (3) healthcheck.interval: valor distinto
+exit=1
+== guardia distinto (exit 64 -> 63)
+FALLA (3) entrypoint.2: valor distinto
+exit=1
+== clave con valor por defecto (:-)
+FALLA (4) producción: environment.WEED_S3_SSE_KEK no es exactamente ${OBJECT_STORE_SSE_KEY:?...}
+exit=1
+== variable de más en el almacén
+FALLA (3) environment.S3_EXTRA_FALSIFICATION: solo en producción
+exit=1
+== depends_on: [redis] en el almacén
+FALLA (1) producción: se exige exactamente una línea; hay 2: chrislusf/seaweedfs:4.47, redis:7.4.11
+FALLA (2) object-store de producción tiene depends_on: redis
+exit=1
+== otra versión de la imagen (4.46)
+FALLA (1) imagen distinta: chrislusf/seaweedfs:4.47 / chrislusf/seaweedfs:4.46
+FALLA (3) image: valor distinto
+exit=1
+falsación: todas las copias salen ≠0
 ```
