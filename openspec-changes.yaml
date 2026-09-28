@@ -486,7 +486,8 @@ changes:
       (`platform/local-environment`), «Compose de producción» y ADDED «Las imágenes de la pila se pueden descargar en
       la arquitectura del destino» (`platform/production-deploy`), «CD a staging en main» (`platform/ci-pipeline`),
       «Bucket de CV cifrado en reposo», «Retención de snapshots» y «Recogida de objetos huérfanos documentada»
-      (`cv/documents`), y el seed (`platform/demo-seed`).
+      (`cv/documents`), el seed (`platform/demo-seed`) y «Liveness» (`platform/runtime-health`: `api` y `worker`
+      escuchan en todas las interfaces, decisión del usuario del 2026-09-28).
       **Paso a `arm64`:** `build-verify-publish` de `cd-staging` en `ubuntu-24.04-arm`, con la identidad por digest y
       su falsación repetidas en `arm64`. `infra/deploy/check-image-platforms.sh` compara las plataformas del registro
       con las del destino; una arquitectura ausente es `artifact`, no `environment`. Minutos de CI medidos.

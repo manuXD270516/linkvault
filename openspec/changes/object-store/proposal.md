@@ -93,6 +93,8 @@ fila 35 (ADR-051 §1) y va primero porque es **precondición** de 35b (`staging-
 - `cv/extraction`: «Consumo idempotente de la lectura del CV» y «El borrado del archivo también se consume de la cola»:
   un bucket de CV ausente es un fallo reintentable, no un objeto ausente ni un borrado hecho (decisión del usuario del
   2026-09-27, design D15).
+- `platform/runtime-health`: «Liveness» exige que `api` y `worker` respondan a otro contenedor de la misma red, no solo
+  desde dentro del suyo (hallazgo del smoke local; decisión del usuario del 2026-09-28, tareas 7.9 y 7.10).
 
 ## Impact
 
@@ -102,7 +104,8 @@ fila 35 (ADR-051 §1) y va primero porque es **precondición** de 35b (`staging-
 - **Código:** `apps/api` (fábrica del cliente S3, `s3-cv-file.store`, `s3-cv-user-prefix.deleter`, script
   `object-store` y su punto de entrada en el build, mensaje del seed), `apps/worker` (fábrica del cliente S3,
   `s3-cv-file.reader`, `s3-snapshot.store`, punto de entrada `s3-probe`), `apps/web` (texto de `/privacidad`);
-  el barrido de snapshots en `worker` y, condicionalmente, el middleware SSE-C en las dos fábricas.
+  el barrido de snapshots en `worker` y, condicionalmente, el middleware SSE-C en las dos fábricas. Y el arranque de
+  `api` y `worker`, que pasan a escuchar en todas las interfaces del contenedor (tarea 7.9).
 - **CI:** `.github/workflows/cd-staging.yml` (runner `arm64`, plataforma del destino), `infra/ci/verify-artifact.sh`
   (servicios, plataformas, aprovisionamiento, lectura del `worker`, plazo), `infra/ci/report-cd-outcome.sh` (texto de
   la clase `artifact`), `infra/ci/verify.env`, script nuevo `infra/deploy/check-image-platforms.sh` y la comprobación

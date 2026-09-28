@@ -919,6 +919,15 @@ no existían en ese commit.
 
 ## Open Questions
 
+**Respondida por el usuario el 2026-09-28, tras el smoke local tipo producción** (`reports/smoke/object-store/REPORT.md`):
+
+- **`api` y `worker` escuchan solo en loopback dentro del contenedor → se arregla dentro de 35a.** `app.listen(port)`
+  sin host, con Fastify, escucha en `localhost`; Traefik recibe `ECONNREFUSED` en `http://api:3000` y
+  `verify-artifact.sh` no lo ve porque pregunta desde dentro del contenedor. Es anterior a este change (también está
+  en `main`), pero bloquea cualquier despliegue real, 35b incluido: los dos escuchan en `0.0.0.0` (tarea 7.9) y la
+  verificación del artefacto pide su salud desde otro contenedor de la red `internal` (tarea 7.10); ADR-052,
+  decisión 5; spec `platform/runtime-health`, «Liveness».
+
 **Respondidas por el usuario el 2026-09-27, tras el punto de revisión** (las dos preguntas abiertas de la 4.1 en
 `matriz.md` y el hallazgo de la 2.8 que dejaba abierto la 7.5b):
 
