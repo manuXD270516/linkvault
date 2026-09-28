@@ -1,0 +1,9 @@
+{
+  "source": "handwritten",
+  "text": "{\"score\":0.9,\"issues\":[]}",
+  "model": "handwritten",
+  "usage": {
+    "inputTokens": 0,
+    "outputTokens": 0
+  }
+}

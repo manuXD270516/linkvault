@@ -338,7 +338,8 @@ propio runner sí recibe el `.env` (Nx lo carga antes de lanzarlo); por eso sus 
 - **Un Vitest en `libs/ai`** (corre en `ci.yml` con `nx affected -t test`, sin tocar el workflow) calcula con la
   definición **actual** de cada tarea la clave de esa entrada y **exige** los fixtures de `match-cv`,
   `critique-suggestions` y `build-roadmap`, **o** que el de `match-cv` tenga `missingSkills: []` y 5.5a haya medido que
-  entonces el recorrido no pide las otras dos. Así, cambiar un prompt o su versión rompe CI en el mismo commit, no la
+  entonces el recorrido no pide las otras dos (corregido el 2026-09-28: con `missingSkills: []` se exigen `match-cv` y
+  `critique-suggestions`; solo `build-roadmap` deja de pedirse). Así, cambiar un prompt o su versión rompe CI en el mismo commit, no la
   suite días después.
 - **Ensayo remoto (pila local):** el runner reinicia solo `worker` con un proveedor externo configurado pero
   inalcanzable (`AI_CHAIN=openrouter`, clave falsa, `OPENROUTER_MODEL=<modelo>:free` —sin él `parseOpenRouter` no
@@ -353,6 +354,16 @@ propio runner sí recibe el `.env` (Nx lo carga antes de lanzarlo); por eso sus 
   el mismo `--match-expectation` y, sin él, usa `consent-required` (decisión del usuario del 2026-09-27, tarea 5.7).
 - **La entrada versionada la crea la 5.2 solo con la oferta** y la 5.6 la completa con el texto del CV y lo demás que
   midan 5.5a y 5.5b (decisión del usuario del 2026-09-27).
+- **Se mide solo `match-cv`; lo demás se calcula** (decisión del usuario del 2026-09-28, tareas 5.5a y 5.6). `worker.log`
+  no lleva claves (el `FixtureMissing` de `match-cv` acaba en el `failedReason` del job y el consumidor no lo registra)
+  ni texto de CV, y sin el fixture de `match-cv` el worker no llega a pedir las otras dos tareas, cuyas entradas dependen
+  de ese fixture. La 5.5a lanza el análisis con lo mínimo de un solo uso sobre la pila de la suite, lee la clave del
+  `failedReason` en su Redis y el texto de `cv_documents.extractedText` en su Mongo (solo lectura, solo `linkvault-e2e-*`)
+  y lo comprueba recalculando la clave con `executionKey`; las claves de `critique-suggestions` y `build-roadmap` las
+  calcula el Vitest a partir del fixture de `match-cv`. **Premisa corregida:** tras un `match-cv` no degradado la crítica
+  se pide **siempre** (`runJudgeLoop`), también con `missingSkills: []`; con eso solo se salta `build-roadmap`. La
+  entrada lleva además las líneas del CV de las que la prueba genera el PDF (`cv.lines`) y el idioma de salida de la
+  clave (`outputLanguage`).
 
 ### D8. Correo: Mailpit en local y en CI; en staging, ninguno
 

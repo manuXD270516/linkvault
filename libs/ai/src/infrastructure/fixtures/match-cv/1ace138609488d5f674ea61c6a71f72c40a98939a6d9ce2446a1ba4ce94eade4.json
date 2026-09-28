@@ -1,0 +1,9 @@
+{
+  "source": "handwritten",
+  "text": "{\"score\":80,\"matchedSkills\":[\"Node\",\"NestJS\",\"MongoDB\",\"Redis\",\"Vitest\"],\"missingSkills\":[],\"suggestions\":[{\"section\":\"Experiencia\",\"after\":\"Servicios backend con Node, NestJS y MongoDB, con colas de trabajos en Redis y tests automatizados con Vitest.\",\"reason\":\"La oferta pide servicios backend con Node, NestJS y MongoDB y colas en Redis: juntarlo en una frase lo deja a la vista.\",\"evidence\":{\"jobRequirement\":\"Servicios backend con Node, NestJS y MongoDB\",\"importance\":\"must\",\"cvFragment\":\"Experiencia: servicios backend con Node, NestJS y MongoDB\"}}]}",
+  "model": "handwritten",
+  "usage": {
+    "inputTokens": 0,
+    "outputTokens": 0
+  }
+}
