@@ -3,9 +3,11 @@ import { getMongoTestUri } from '@linkvault/testing';
 import mongoose, { type Connection } from 'mongoose';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { executionKey } from '../../application/execution-key';
-import type {
-  UsageOutcome,
-  UsageRecord,
+import { DEGRADED_REASONS } from '../../domain/ai-result';
+import {
+  USAGE_OUTCOMES,
+  type UsageOutcome,
+  type UsageRecord,
 } from '../../domain/ports/usage-ledger.port';
 import { AI_USAGE_COLLECTION, aiUsageSchema } from './ai-usage.schema';
 import { MongoUsageLedger } from './mongo-usage-ledger';
@@ -135,6 +137,57 @@ describe('MongoUsageLedger', () => {
       },
     ]);
   });
+
+  it('Resultado degradado por falta de consentimiento', async () => {
+    const ledger = new MongoUsageLedger(connection);
+
+    await ledger.record(
+      attempt('degraded', {
+        userId: 'consent-user',
+        providerId: null,
+        model: null,
+        inputTokens: 0,
+        outputTokens: 0,
+        estCost: 0,
+        latencyMs: 0,
+        reason: 'consent_required',
+      }),
+    );
+
+    const [document] = await rawDocuments({ userId: 'consent-user' });
+    expect(document).toMatchObject({
+      outcome: 'degraded',
+      reason: 'consent_required',
+      providerId: null,
+    });
+  });
+
+  // Barrera contra listas divergentes: todo motivo y todo outcome que el dominio puede emitir se guarda tal cual.
+  it.each(DEGRADED_REASONS)(
+    'accepts a degraded record with reason %s',
+    async (reason) => {
+      const userId = `reason-${reason}`;
+      const ledger = new MongoUsageLedger(connection);
+
+      await ledger.record(attempt('degraded', { userId, reason }));
+
+      const [document] = await rawDocuments({ userId });
+      expect(document).toMatchObject({ outcome: 'degraded', reason });
+    },
+  );
+
+  it.each(USAGE_OUTCOMES)(
+    'accepts a record with outcome %s',
+    async (outcome) => {
+      const userId = `outcome-${outcome}`;
+      const ledger = new MongoUsageLedger(connection);
+
+      await ledger.record(attempt(outcome, { userId }));
+
+      const [document] = await rawDocuments({ userId });
+      expect(document).toMatchObject({ outcome });
+    },
+  );
 
   it('writes a quota record with null provider and model, zeros and no user-less fields invented', async () => {
     const ledger = new MongoUsageLedger(connection);
