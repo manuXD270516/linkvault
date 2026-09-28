@@ -1,0 +1,138 @@
+# Suite end-to-end a demanda (change `e2e-suite`, design D13; spec platform/ci-pipeline, «Suite end-to-end a demanda
+# en un runner limpio»). Esqueleto de la tarea 7.1a: el job `local` ejecuta el mismo comando que en local; el job de
+# staging todavía no ejecuta `e2e-remote` (ver su comentario).
+#
+# Solo a mano (Q2 del design, R-21): sin `pull_request`, sin `push` y sin etiquetas hasta que el usuario decida otro
+# disparador con los minutos medidos (7.8a, 9.10). No es check obligatorio. Umbral (ADR-053 §1.2): el consumo del mes
+# se consulta antes de cada corrida manual y, con el 70 % o más de los 2000 minutos consumidos, no se lanza este
+# workflow: la suite se ejecuta en local con el mismo comando, sin minutos.
+#
+# Los valores del evento pasan a los comandos por `env:`, nunca interpolados en el texto de un `run:`.
+name: e2e
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Destino: local (pila aislada en el runner) o staging (solo desde main)'
+        type: choice
+        options: [local, staging]
+        default: local
+      rehearse_remote:
+        description: 'Tras el perfil local, ensayo del perfil remote contra la misma pila (--rehearse-remote)'
+        type: boolean
+        default: false
+
+# Sin concurrencia a nivel de workflow (D13): la de staging vive en su job; el job `local` no la necesita, porque cada
+# corrida tiene su runner y su pila.
+permissions:
+  contents: read
+
+jobs:
+  # Un job omitido deja la corrida en verde sin haber verificado nada (ADR-048 §3). Si se pide staging desde una
+  # referencia que no es `main`, el job de staging se omite y este guardia pone la corrida en rojo diciéndolo, sin
+  # ejecutar pruebas ni leer credenciales.
+  staging-ref-guard:
+    name: staging solo desde main
+    if: github.event_name == 'workflow_dispatch' && inputs.target == 'staging'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Require main
+        shell: bash
+        env:
+          GIT_REF: ${{ github.ref }}
+        run: |
+          if [ "$GIT_REF" != "refs/heads/main" ]; then
+            echo "::error::staging solo se lanza desde main (referencia de esta corrida: $GIT_REF)"
+            exit 1
+          fi
+          echo "referencia $GIT_REF: staging permitido"
+
+  local:
+    name: e2e-stack (local)
+    if: inputs.target == 'local'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # TEMPORAL (D13): mientras la rama se construya sobre un `main` anterior a 35a, el compose descarga el espejo de
+    # MinIO del espacio de nombres del repositorio en GHCR. La tarea 7.6 retira `packages: read` y el `docker login`
+    # tras fusionar 35a. Los permisos del job sustituyen a los del workflow: `contents: read` se repite aquí.
+    permissions:
+      contents: read
+      packages: read
+    env:
+      # Runner efímero: sin daemon de Nx (como ci.yml).
+      NX_DAEMON: 'false'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # Sin `version`: pnpm/action-setup lee el campo packageManager de package.json.
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      # El store de pnpm lo cachea setup-node. Sin caché de navegadores (D13): se instalan en cada corrida.
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      # TEMPORAL (D13, tarea 7.6): login en GHCR por la entrada estándar con el GITHUB_TOKEN de la corrida.
+      - name: Log in to GHCR (temporary)
+        shell: bash
+        env:
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GHCR_USER" --password-stdin
+
+      # El mismo comando que en local (design D3). El runner monta la pila aislada, sirve api, worker y web, ejecuta
+      # Playwright y apaga lo que arrancó, también si falla.
+      - name: Run e2e-stack
+        shell: bash
+        env:
+          REHEARSE_REMOTE: ${{ inputs.rehearse_remote }}
+        run: |
+          if [ "$REHEARSE_REMOTE" = "true" ]; then
+            pnpm nx run web-e2e:e2e-stack -- --rehearse-remote
+          else
+            pnpm nx run web-e2e:e2e-stack
+          fi
+
+      # Informe HTML y resultados de Playwright de cada perfil (con sufijo `-remote` el ensayo) y `stack-logs/` del
+      # runner: todo vive bajo dist/.playwright/apps/web-e2e. También cuando la corrida falla (D13; tarea 7.3).
+      - name: Upload e2e artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-local-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist/.playwright/apps/web-e2e/
+          if-no-files-found: warn
+          retention-days: 7
+
+  # Solo desde `main` (D13); dos corridas contra staging no se pisan la cuenta de prueba ni se corta una limpieza a
+  # medias: concurrencia en el job, sin cancelar la que está en curso.
+  #
+  # ESQUELETO (tarea 7.1a): el job todavía no ejecuta `e2e-remote` contra staging ni lee sus credenciales; hasta que se
+  # conecte (design D13: destino de `vars.E2E_STAGING_URL`, «no hay destino de staging declarado» si falta, y
+  # credenciales por `env:`), termina en rojo diciéndolo, para no dar un verde que no verificó nada (ADR-048 §3).
+  staging:
+    name: e2e-remote (staging)
+    if: github.ref == 'refs/heads/main' && inputs.target == 'staging'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    concurrency:
+      group: e2e-staging
+      cancel-in-progress: false
+    steps:
+      - name: Staging run not wired yet
+        shell: bash
+        run: |
+          echo "::error::el job de staging es un esqueleto (tarea 7.1a): todavía no ejecuta e2e-remote"
+          exit 1
