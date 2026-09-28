@@ -123,15 +123,7 @@ publish_one() {
   printf '  artefacto verificado en este daemon: %s\n' "$verified_id"
 
   # `docker push` de la imagen cargada. Nunca un build.
-  # TEMPORARY (object-store 9.3, falsación de ADR-048 §4 en arm64): para `api`, el `docker push` de la imagen cargada
-  # se SUSTITUYE por una reconstrucción publicada con el builder `docker-container` de setup-buildx-action. Se revierte
-  # en el commit siguiente. `--provenance=false`: manifiesto único, sin índice ni atestación.
-  if [ "$repo" = "$API_IMAGE" ]; then
-    docker buildx build --push --provenance=false --platform "${TARGET_PLATFORM:?}" -f docker/api.Dockerfile -t "$ref" . ||
-      fail "no se pudo reconstruir y publicar ${ref}"
-  else
-    docker push "$ref" || fail "no se pudo publicar ${ref}"
-  fi
+  docker push "$ref" || fail "no se pudo publicar ${ref}"
 
   # --- El tag local tiene que seguir señalando **al mismo objeto** que se verificó ------------------------------
   # Esta comprobación salió de ver **fallar la falsación**: con `docker buildx build --push` sobre el mismo tag y el
