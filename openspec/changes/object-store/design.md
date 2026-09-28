@@ -591,6 +591,11 @@ minutos facturados por corrida en `arm64`) frente a los incluidos en el plan, le
 ADR-052. Por encima del **80 %**, pasa al usuario como decisión con el dato antes de archivar (ADR-051, «si no caben, se
 decide con el dato»).
 
+**Medido en el apply (2026-09-28):** `timing` devuelve `total_ms`/`billable` a 0 incluso en corridas que se
+facturan, así que la 1.2 y la 9.4 leen el ritmo y el consumo de la facturación de la cuenta
+(`users/<usuario>/settings/billing/usage`), y los incluidos del plan, de la cifra documentada del plan Free (ninguna API
+los da). La cifra (95 % en septiembre) y la decisión del usuario están en ADR-052 «Elección» y en la tarea 9.4.
+
 ### D12. Arrancar, desplegar y verificar sin `mc`; operar, en un change posterior
 
 - **Aquí:** ningún paso del arranque local, del arranque documentado de producción, de la verificación del artefacto ni
