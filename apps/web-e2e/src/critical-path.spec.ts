@@ -34,6 +34,7 @@ import {
   type GuardedAccount,
   SUITE_PREFIX,
   sweepSuiteLeftovers,
+  TEST_ACCOUNT_ALIAS,
 } from './support/remote-account';
 import { SuiteApi } from './support/suite-api';
 
@@ -52,11 +53,14 @@ import { SuiteApi } from './support/suite-api';
  * | 5 | «Postulé» → «Hoy»; la tarjeta muestra la postulación y `/postulaciones` la tiene en «Postuladas» | sí | sí |
  * | 6 | A sube el CV de líneas fijas generado en la prueba; «Listo · tu CV se leyó bien» | sí | sí |
  * | 7 | «Analizar mi encaje» → «Analizar»; resultado según `E2E_MATCH_EXPECTATION` (D7) | `replay-report` | el del destino |
+ * | 8 | Limpieza de lo creado por A: sus postulaciones, sus grupos y sus CV de la suite (D10) | sí | sí |
  *
- * Los pasos 2b y 8 los añaden las tareas 5.10 y 5.8, cada una con su línea en `DECLARED_STEPS`.
+ * El paso 2b lo añade la tarea 5.10, con su línea en `DECLARED_STEPS`.
  *
- * En `remote`, lo que la prueba crea en la cuenta se borra al terminar en un `finally` (design D10, tarea 4.2), también
- * si falla, y solo si los guardias del paso 0 pasaron: un guardia que falla deja la cuenta como estaba.
+ * La limpieza (paso 8) solo se hace sobre una cuenta cuyos guardias pasaron (`GuardedAccount`, D10): en `remote`, los
+ * del paso 0; en `local`, los mismos guardias sobre la cuenta que A acaba de registrar, que por eso lleva el alias
+ * `+e2e` y tiene el email sin verificar y sin permiso de IA externa. En `remote`, si la prueba falla antes del paso 8,
+ * lo que creó se borra igual en el `finally` (tarea 4.2); un guardia que falla deja la cuenta como estaba.
  *
  * Sincronización (D11): cada paso arma **antes** de la acción la espera de la respuesta o de la navegación que provoca
  * y afirma con aserciones web-first. El paso 0 no afirma el texto del aviso de email (35b lo cambia): el estado del
@@ -65,8 +69,8 @@ import { SuiteApi } from './support/suite-api';
 
 /** Pasos que ejecuta cada perfil, por persona. Lo que no está aquí es «no aplicable» en ese perfil. */
 const DECLARED_STEPS: Readonly<Record<ProfileName, readonly StepKey[]>> = {
-  local: ['A:1', 'A:2', 'A:3', 'A:4', 'A:5', 'A:6', 'A:7'],
-  remote: ['A:0', 'A:2', 'A:3', 'A:4', 'A:5', 'A:6', 'A:7'],
+  local: ['A:1', 'A:2', 'A:3', 'A:4', 'A:5', 'A:6', 'A:7', 'A:8'],
+  remote: ['A:0', 'A:2', 'A:3', 'A:4', 'A:5', 'A:6', 'A:7', 'A:8'],
 };
 
 /**
@@ -142,8 +146,8 @@ async function enterWithTestAccount(
   return guarded;
 }
 
-/** Paso 1 (`local`): A se registra y aterriza en `/grupos`. */
-async function register(page: Page, person: Person): Promise<void> {
+/** Paso 1 (`local`): A se registra y aterriza en `/grupos`. Devuelve el access token de su sesión. */
+async function register(page: Page, person: Person): Promise<string> {
   await page.goto('/registro');
   await expect(page.getByRole('heading', { level: 1, name: 'Crear cuenta' })).toBeVisible();
   await page.getByLabel('Nombre', { exact: true }).fill(person.displayName);
@@ -152,16 +156,24 @@ async function register(page: Page, person: Person): Promise<void> {
   const registered = page.waitForResponse(isApiCall('POST', /^\/api\/auth\/register$/));
   const landed = page.waitForURL(/\/grupos$/);
   await page.getByRole('button', { name: 'Crear cuenta' }).click();
-  expect((await registered).status()).toBe(201);
+  const registeredResponse = await registered;
+  expect(registeredResponse.status()).toBe(201);
+  const session = sessionResponseSchema.parse(await registeredResponse.json());
   await landed;
   await expect(page.getByRole('heading', { level: 1, name: 'Tus grupos' })).toBeVisible();
+  return session.accessToken;
 }
 
 interface Entry {
   /** Nombre visible de A si la prueba lo conoce: en `remote` la cuenta la creó el autor y solo se tiene su email. */
   readonly ownerName: string | undefined;
-  /** En `remote`, la cuenta cuyos guardias pasaron: la única que se limpia al terminar. */
+  /** En `remote`, la cuenta cuyos guardias pasaron en el paso 0. */
   readonly guarded: GuardedAccount | undefined;
+  /**
+   * Cómo llega el paso 8 a una cuenta con los guardias pasados: en `remote`, la del paso 0; en `local`, pasando los
+   * guardias sobre la sesión de A, con el access token de su registro y en el origen de la API del perfil.
+   */
+  readonly guard: () => Promise<GuardedAccount>;
 }
 
 /** Entrada según el perfil: el paso 0 en `remote`, el 1 en `local` (D11). */
@@ -178,10 +190,40 @@ async function enter(
     await journey.step('A', '0', 'enter with the declared test account, API guards, sweep of leftovers', async () => {
       guarded = await enterWithTestAccount(page, request, profile, testInfo);
     });
-    return { ownerName: undefined, guarded };
+    const account = guarded;
+    if (account === undefined) {
+      throw new Error('step 0 ended without an account whose guards passed');
+    }
+    return { ownerName: undefined, guarded: account, guard: () => Promise.resolve(account) };
   }
-  await journey.step('A', '1', 'register and land on /grupos', () => register(page, personA));
-  return { ownerName: personA.displayName, guarded: undefined };
+  let accessToken = '';
+  await journey.step('A', '1', 'register and land on /grupos', async () => {
+    accessToken = await register(page, personA);
+  });
+  return {
+    ownerName: personA.displayName,
+    guarded: undefined,
+    guard: () => assertRemoteAccountGuards(new SuiteApi(request, profile.apiOrigin, accessToken)),
+  };
+}
+
+/**
+ * Paso 8 (D10, D11): borra lo que creó A en su cuenta —la postulación sobre el link del grupo, el grupo y el CV de la
+ * suite— y comprueba que era exactamente eso y que no queda nada de la suite (un segundo barrido no encuentra nada).
+ */
+async function cleanUpJourney(account: GuardedAccount, testInfo: TestInfo): Promise<void> {
+  const swept = await sweepSuiteLeftovers(account);
+  testInfo.annotations.push({ type: 'sweep-end', description: describeSweep(swept) });
+  expect(swept, 'step 8 deletes what A created: one group, one application and one CV of the suite').toEqual({
+    groups: 1,
+    applications: 1,
+    cvs: 1,
+  });
+  expect(await sweepSuiteLeftovers(account), 'after step 8 the account has nothing of the suite').toEqual({
+    groups: 0,
+    applications: 0,
+    cvs: 0,
+  });
 }
 
 /** Si la prueba ya falló, un fallo de la limpieza se anota sin tapar el fallo original. */
@@ -198,8 +240,8 @@ async function sweepAtEnd(account: GuardedAccount, testFailed: boolean, testInfo
 }
 
 /**
- * Borrado al terminar (design D10, tarea 4.2), en el `finally` de la prueba: solo en una cuenta cuyos guardias
- * pasaron (`undefined` en `local` y cuando un guardia falló: no se toca nada).
+ * Borrado al terminar cuando la prueba falló antes del paso 8 (design D10, tarea 4.2), en el `finally`: solo en una
+ * cuenta cuyos guardias pasaron (`undefined` en `local` y cuando un guardia falló: no se toca nada).
  */
 async function cleanUpAtEnd(account: GuardedAccount | undefined, testFailed: boolean, testInfo: TestInfo): Promise<void> {
   if (account === undefined) {
@@ -516,7 +558,8 @@ test(
     const id = runId(testInfo);
     const personA: Person = {
       displayName: `Persona A ${id}`,
-      email: `e2e-cp-a-${id}@example.com`,
+      // Con el alias de las cuentas de prueba (D10): el paso 8 limpia solo tras pasar los guardias, también en `local`.
+      email: `e2e-cp-a-${id}${TEST_ACCOUNT_ALIAS}@example.com`,
       password: `Camino-A-${id}`,
     };
     const groupName = `${SUITE_PREFIX}camino ${id}`;
@@ -525,6 +568,7 @@ test(
     const journey = new Journey();
 
     let guarded: GuardedAccount | undefined;
+    let cleaned = false;
     let failed = true;
     try {
       const entry = await enter(journey, page, request, profile, personA, testInfo);
@@ -546,12 +590,20 @@ test(
         await backToGroup(page, groupName);
         await analyzeMatch(page, urlA, job, profile.matchExpectation);
       });
+      await journey.step('A', '8', 'clean up what A created: the application, the group and the CV of the suite', async () => {
+        const account = await entry.guard();
+        guarded = account;
+        await cleanUpJourney(account, testInfo);
+        cleaned = true;
+      });
 
       journey.assertDeclared(profile.name, DECLARED_STEPS[profile.name]);
       expect(pageErrors).toEqual([]);
       failed = false;
     } finally {
-      await cleanUpAtEnd(guarded, failed, testInfo);
+      if (!cleaned) {
+        await cleanUpAtEnd(guarded, failed, testInfo);
+      }
     }
   },
 );
