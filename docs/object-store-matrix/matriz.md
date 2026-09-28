@@ -4933,3 +4933,49 @@ worker 5,29 s y web 5,20 s. Nada publicado: ninguna versión con `sha-af5fd465e0
 `api` y `worker` escuchan solo en loopback, y la verificación del artefacto no lo ve porque pregunta desde dentro del
 contenedor. Las dos cambian `api`, `worker` y `verify-artifact.sh`, así que esta corrida verificó el árbol anterior y la
 13.3 queda abierta hasta repetirla sobre el árbol con las dos (unos 15 minutos; quedan 59 de septiembre).
+
+#### La última: sobre `0cc2c0e`, con la 7.9 y la 7.10
+
+Leído antes de lanzarla: `usage/summary` de 2026-09, `actions_linux` 1920 + `actions_linux_arm` 21 = 1941 (59
+restantes, ≥ 25). El workflow `ci` sigue `disabled_manually`; el push de `0cc2c0e` no disparó ninguna corrida.
+
+```text
+$ gh workflow run cd-staging.yml --ref change/object-store -f dry_run=true      # rama en 0cc2c0e, 06:45Z
+https://github.com/manuXD270516/linkvault/actions/runs/36388075458
+conclusion: success | headSha: 0cc2c0e87ec474514d3c9ceb86f337f331d1675d | 2026-09-28T06:45:49Z → 2026-09-28T07:04:31Z
+job: preflight (¿hay destino de staging configurado?) | success
+job: verify (lint, specs, typecheck, test, build) | success
+job: build, verify and publish artifact | success | id 108820979324 (06:58:55Z → 07:04:16Z)
+job: resultado: artefacto verificado — NO desplegado (sin destino de staging) | success
+job: deploy staging (solo si hay destino configurado) | skipped
+```
+
+`<scratchpad>/g18/check-133.cjs` es el de arriba con dos secciones más, las de la 7.10 (cada una tiene que terminar en
+su línea «alcanzable … -> 200»):
+
+```text
+$ node check-133.cjs run-133.json job-133.json log-133.txt
+ok   conclusion: success | headSha 0cc2c0e87ec474514d3c9ceb86f337f331d1675d | workflow_dispatch
+ok   job build-verify-publish: success (id 108820979324)
+ok   step Verify artifact: success
+ok   step Publish: skipped (modo de prueba)
+ok   job deploy-staging: skipped
+ok   runner labels: ["ubuntu-24.04-arm"] | GitHub Actions 1000000381
+ok   ^=== object-store: provision → «provision: ok»
+ok   ^=== object-store: verify → «verify: ok»
+ok   ^=== worker: lectura del bucket de CV → «s3-probe: ok»
+ok   ^=== api: GET http:\/\/api:3000\/health desde otro contenedor → «api alcanzable desde otro contenedor de la red internal: http://api:3000/health -> 200»
+ok   ^=== worker: GET http:\/\/worker:3001\/health desde otro contenedor → «worker alcanzable desde otro contenedor de la red internal: http://worker:3001/health -> 200»
+ok   comprobación de plataformas de terceros: ok: redis:7.4.11 (linux/arm64) | ok: chrislusf/seaweedfs:4.47 (linux/arm64) | ok: mongo:7.0.43 (linux/arm64)
+ok   plataforma de las imágenes propias: 3 ok
+ok   sección final «Artefacto verificado»
+ok   ninguna línea [FAIL] en el paso de verificación
+RESULT: ok
+```
+
+Del mismo log: `daemon: linux/arm64`; hasta `healthy` mongo 5,02 s, redis 5,25 s, object-store 1,27 s, api 5,26 s,
+worker 5,28 s y web 5,25 s; y en las dos secciones nuevas, `HTTP/1.1 200 OK` desde `web`. Nada publicado: ninguna
+versión con `sha-0cc2c0e87ec4` en `linkvault-api` (6 versiones), `-worker` (6) ni `-web` (4). Coste esperado:
+15 minutos `Actions Linux` (1 + 13 + 1, redondeo por job) + 6 `Actions Linux ARM` (job de 5 min 21 s). Leído al
+terminar: `actions_linux` 1935 (+15) y `actions_linux_arm` 21, sin la parte ARM todavía (la facturación llega con
+retraso): 1956 leídos, 1962 esperados.
