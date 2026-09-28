@@ -13,8 +13,16 @@
 // sigue sola al compose (quitar el almacén, añadir credenciales SMTP…). Lo demás son las reglas que el compose no
 // puede expresar y que infra/README.md («Variables de entorno») documenta: formatos, valores prohibidos en producción y
 // obligatorias condicionales. El arranque las vuelve a validar (zod) y aborta; esto las adelanta a antes del `up`.
+//
+// `OBJECT_STORE_SSE_KEY` no la valida ninguna app: la lee el almacén, cuyo guardia de arranque solo mira el formato
+// (design D16 de `object-store`). Aquí se exige ese formato y, además, que no sea ninguna de las dos claves versionadas
+// que lo cumplen: el valor por defecto de desarrollo de `docker-compose.yml` y el de relleno de `infra/ci/verify.env`.
+// Las dos se leen de esos ficheros (junto a este script, en el repositorio), no se copian aquí; si no se encuentran,
+// la comprobación falla en lugar de pasar sin haber comparado. Por eso `infra/ci/verify.env` ya no pasa entero: es
+// relleno de CI, no un env file de despliegue, y ningún paso lo revisa con este script.
 // =====================================================================================================================
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 const [envPath, composePath = 'docker-compose.prod.yml', examplePath = '.env.example'] = process.argv.slice(2);
 if (!envPath) {
@@ -71,7 +79,33 @@ if ([...chain('AI_CHAIN'), ...chain('AI_EMBED_CHAIN')].includes('openrouter')) {
   check('OPENROUTER_MODEL ends with :free', /:free$/.test(env.OPENROUTER_MODEL ?? ''));
 }
 
-const secrets = ['AUTH_JWT_SECRET', 'AI_VAULT_KEY', 'S3_ACCESS_KEY', 'S3_SECRET_KEY', 'MINIO_KMS_SECRET_KEY', 'MAIL_SMTP_PASSWORD'];
+// Clave del cifrado de los CV: el formato del guardia de arranque, y ninguna de las dos claves versionadas.
+const SSE_KEY = 'OBJECT_STORE_SSE_KEY';
+const devComposePath = fileURLToPath(new URL('../../docker-compose.yml', import.meta.url));
+const verifyEnvPath = fileURLToPath(new URL('./verify.env', import.meta.url));
+/** El valor por defecto de `${VAR:-valor}` en un compose, o `undefined` si no lo declara. */
+function composeDefault(path, name) {
+  if (!existsSync(path)) return undefined;
+  const text = readFileSync(path, 'utf8');
+  const marker = '${' + name + ':-';
+  const start = text.indexOf(marker);
+  if (start < 0) return undefined;
+  const end = text.indexOf('}', start);
+  return end < 0 ? undefined : text.slice(start + marker.length, end);
+}
+const devSseKey = composeDefault(devComposePath, SSE_KEY);
+const ciSseKey = existsSync(verifyEnvPath) ? parseEnv(verifyEnvPath)[SSE_KEY] : undefined;
+check(`${SSE_KEY} is exactly 64 characters [0-9a-f] (object-store start guard)`, /^[0-9a-f]{64}$/.test(env[SSE_KEY] ?? ''));
+check(
+  `${SSE_KEY} is not the development default of docker-compose.yml`,
+  Boolean(devSseKey) && has(SSE_KEY) && env[SSE_KEY] !== devSseKey,
+);
+check(
+  `${SSE_KEY} is not the CI filler of infra/ci/verify.env`,
+  Boolean(ciSseKey) && has(SSE_KEY) && env[SSE_KEY] !== ciSseKey,
+);
+
+const secrets = ['AUTH_JWT_SECRET', 'AI_VAULT_KEY', 'S3_ACCESS_KEY', 'S3_SECRET_KEY', SSE_KEY, 'MAIL_SMTP_PASSWORD'];
 check('no secret keeps its .env.example value', secrets.every((name) => !has(name) || env[name] !== example[name]));
 
 let failed = 0;
