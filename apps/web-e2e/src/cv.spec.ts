@@ -232,7 +232,9 @@ function dialogWith(page: Page, selector: string): Locator {
  */
 async function expectPrivacyAndNoDownload(page: Page): Promise<void> {
   await expect(page.getByTestId('cv-privacy')).toHaveText(
-    'Tu CV solo lo ves tú y hoy no lo lee ninguna IA. No saldrá de LinkVault sin tu autorización.',
+    'Tu CV solo lo ves tú y no sale de LinkVault sin tu permiso. En Perfil decides si un proveedor de IA externo puede ' +
+      'analizarlo: antes de enviárselo sustituimos tu email, tus teléfonos, tu dirección, tu documento de identidad y ' +
+      'las URL por marcadores, y también tu nombre, salvo que lo desactives allí.',
   );
   const labels = await page.locator('lv-my-cv-page button, lv-my-cv-page a').allInnerTexts();
   expect(labels.length).toBeGreaterThan(0);
