@@ -1,6 +1,9 @@
 import {
   cvDocumentSchema,
   groupDetailSchema,
+  type MatchLatest,
+  type MatchReportCore,
+  matchAnalysisResponseSchema,
   sessionResponseSchema,
   trackLinkResponseSchema,
   updatePreviewResponseSchema,
@@ -19,10 +22,12 @@ import {
   CRITICAL_PATH_CV_LINES,
   type CriticalPathJob,
   readCriticalPathJob,
+  readCriticalPathMatchReport,
 } from './support/critical-path-input';
 import { minimalPdf } from './support/cv-files';
 import { Journey, type StepKey } from './support/journey';
 import { type Profile, type ProfileName, resolveProfile } from './support/profile';
+import type { MatchExpectation } from '../scripts/lib/args';
 import {
   assertRemoteAccountGuards,
   describeSweep,
@@ -46,8 +51,9 @@ import { SuiteApi } from './support/suite-api';
  * | 4 | A completa la oferta a mano con la entrada versionada (D7); «Escrito por …» | sí | sí |
  * | 5 | «Postulé» → «Hoy»; la tarjeta muestra la postulación y `/postulaciones` la tiene en «Postuladas» | sí | sí |
  * | 6 | A sube el CV de líneas fijas generado en la prueba; «Listo · tu CV se leyó bien» | sí | sí |
+ * | 7 | «Analizar mi encaje» → «Analizar»; resultado según `E2E_MATCH_EXPECTATION` (D7) | `replay-report` | el del destino |
  *
- * Los pasos 2b, 7 y 8 los añaden las tareas 5.7, 5.8 y 5.10, cada una con su línea en `DECLARED_STEPS`.
+ * Los pasos 2b y 8 los añaden las tareas 5.10 y 5.8, cada una con su línea en `DECLARED_STEPS`.
  *
  * En `remote`, lo que la prueba crea en la cuenta se borra al terminar en un `finally` (design D10, tarea 4.2), también
  * si falla, y solo si los guardias del paso 0 pasaron: un guardia que falla deja la cuenta como estaba.
@@ -59,8 +65,8 @@ import { SuiteApi } from './support/suite-api';
 
 /** Pasos que ejecuta cada perfil, por persona. Lo que no está aquí es «no aplicable» en ese perfil. */
 const DECLARED_STEPS: Readonly<Record<ProfileName, readonly StepKey[]>> = {
-  local: ['A:1', 'A:2', 'A:3', 'A:4', 'A:5', 'A:6'],
-  remote: ['A:0', 'A:2', 'A:3', 'A:4', 'A:5', 'A:6'],
+  local: ['A:1', 'A:2', 'A:3', 'A:4', 'A:5', 'A:6', 'A:7'],
+  remote: ['A:0', 'A:2', 'A:3', 'A:4', 'A:5', 'A:6', 'A:7'],
 };
 
 /**
@@ -74,6 +80,12 @@ const ENRICHMENT_SETTLED_TIMEOUT = 60_000;
  * estado visible de la tarjeta, no por tiempo.
  */
 const CV_READ_TIMEOUT = 60_000;
+
+/**
+ * Techo de la espera a que el análisis de encaje termine: con replay o degradado por falta de permiso dura segundos. Se
+ * espera por la respuesta que lo trae resuelto, armada antes de «Analizar», no por tiempo.
+ */
+const ANALYSIS_TIMEOUT = 120_000;
 
 /** Alfabeto del código de invitación: base32 de Crockford sin `0`, `1`, `I`, `L`, `O` ni `U`. */
 const INVITE_CODE = /^[23456789ABCDEFGHJKMNPQRSTVWXYZ]{8}$/;
@@ -354,6 +366,144 @@ async function uploadCv(page: Page): Promise<void> {
   await expect(cv.getByText('Listo · tu CV se leyó bien')).toBeVisible({ timeout: CV_READ_TIMEOUT });
 }
 
+/** Vuelta al detalle del grupo por la interfaz: la marca de la barra lleva a `/grupos` y de ahí, el grupo. */
+async function backToGroup(page: Page, groupName: string): Promise<void> {
+  const home = page.waitForURL(/\/grupos$/);
+  await page.getByRole('link', { name: 'LinkVault', exact: true }).click();
+  await home;
+  const detail = page.waitForURL(/\/grupos\/[0-9a-f]{24}$/);
+  await page.getByRole('link', { name: groupName, exact: true }).click();
+  await detail;
+  await expect(page.getByRole('heading', { level: 1, name: groupName })).toBeVisible();
+}
+
+const MATCH_PATH = /^\/api\/links\/[0-9a-f]{24}\/match$/;
+
+/**
+ * La respuesta del sondeo del diálogo (`GET /api/links/:linkId/match`) que trae el análisis resuelto: sin bloque en
+ * curso y con el último resultado. Un cuerpo que no valida también la cierra, para que la prueba falle al validarlo.
+ */
+async function isResolvedMatch(response: Response): Promise<boolean> {
+  if (!isApiCall('GET', MATCH_PATH)(response) || response.status() !== 200) {
+    return false;
+  }
+  const body = matchAnalysisResponseSchema.safeParse(await response.json());
+  return !body.success || (body.data.running === undefined && body.data.latest !== undefined);
+}
+
+/** Imprescindibles primero, estable dentro del mismo peso: el orden en que el diálogo pinta sugerencias y carencias. */
+function mustFirst<T>(items: readonly T[], importance: (item: T) => 'must' | 'nice'): T[] {
+  return [...items].sort((a, b) => Number(importance(a) === 'nice') - Number(importance(b) === 'nice'));
+}
+
+/**
+ * `replay-report` (perfil `local`, D7): el informe es **exactamente** el del fixture de replay de `match-cv` de la
+ * entrada versionada —en la API y en el diálogo—, sin degradar.
+ */
+async function assertReplayReport(dialog: Locator, latest: MatchLatest, label: string): Promise<void> {
+  const { key, report: expected } = readCriticalPathMatchReport();
+  const report = latest.report;
+  expect(report?.degraded, `${label}: the report is degraded (${report?.degradedReason ?? 'no report'})`).toBe(false);
+  const core: MatchReportCore | undefined =
+    report === undefined
+      ? undefined
+      : {
+          score: report.score,
+          matchedSkills: report.matchedSkills,
+          missingSkills: report.missingSkills,
+          suggestions: report.suggestions,
+        };
+  expect(core, `${label}: the report is not exactly the one of the fixture match-cv/${key}.json`).toEqual(expected);
+  expect(latest.consentRequired, `${label}: consentRequired`).toBe(false);
+
+  await expect(dialog.getByTestId('match-badge-score')).toHaveText(String(expected.score));
+  await expect(dialog.getByText('Análisis básico', { exact: true })).toHaveCount(0);
+  await expect(dialog.getByTestId('match-matched-skills').getByRole('listitem')).toHaveText(expected.matchedSkills);
+  const missing = dialog.getByTestId('match-missing-skills');
+  if (expected.missingSkills.length === 0) {
+    await expect(missing.getByText('Tienes todas las habilidades que pide esta oferta')).toBeVisible();
+  } else {
+    const names = mustFirst(expected.missingSkills, (skill) => skill.importance).map((skill) => skill.name);
+    await expect(missing.getByRole('listitem')).toHaveText(names);
+  }
+  // El diálogo enseña cinco de entrada; el fixture del recorrido tiene menos, y así se ven todas.
+  expect(expected.suggestions.length, `fixture match-cv/${key}.json: more suggestions than the dialog shows`).toBeLessThanOrEqual(5);
+  const suggestions = dialog.getByTestId('match-suggestion');
+  await expect(suggestions).toHaveCount(expected.suggestions.length);
+  for (const [index, suggestion] of mustFirst(expected.suggestions, (item) => item.evidence.importance).entries()) {
+    const item = suggestions.nth(index);
+    await expect(item.getByTestId('match-suggestion-section')).toHaveText(suggestion.section);
+    await expect(item.getByTestId('match-suggestion-after')).toHaveText(suggestion.after);
+    await expect(item.getByTestId('match-suggestion-reason')).toHaveText(suggestion.reason);
+    await expect(item.getByTestId('match-suggestion-job')).toHaveText(suggestion.evidence.jobRequirement);
+    const fragment = suggestion.evidence.cvFragment;
+    await expect(item.getByTestId(fragment === null ? 'match-suggestion-cv-missing' : 'match-suggestion-cv')).toHaveText(
+      fragment ?? 'Esto no aparece en tu CV',
+    );
+  }
+}
+
+/**
+ * `consent-required` (ensayo y staging, D7): la cuenta no tiene permiso de IA externa, así que el análisis degrada por
+ * falta de permiso **sin llamar a nadie**; si se hubiera llamado a un proveedor, el motivo sería otro.
+ */
+async function assertConsentRequired(dialog: Locator, latest: MatchLatest, label: string): Promise<void> {
+  const report = latest.report;
+  expect(report?.degraded, `${label}: the report is not degraded`).toBe(true);
+  expect(
+    report?.degradedReason,
+    `${label}: the analysis degraded for another reason than the missing external AI permission`,
+  ).toBe('consent_required');
+  expect(latest.consentRequired, `${label}: consentRequired`).toBe(true);
+
+  await expect(dialog.getByText('Análisis básico', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('Para analizar tu CV con IA necesitamos tu permiso.', { exact: true })).toBeVisible();
+  await expect(dialog.getByTestId('match-badge-label')).toHaveText('Encaje aproximado — comparamos listas de habilidades');
+  await expect(dialog.getByTestId('match-badge-score')).toHaveCount(0);
+  await expect(dialog.getByTestId('match-suggestion')).toHaveCount(0);
+}
+
+/**
+ * Paso 7: desde la tarjeta, «Analizar mi encaje» → «Analizar» con el CV del paso 6, y el resultado que declara el
+ * destino (`E2E_MATCH_EXPECTATION`, D7): no se deduce en la prueba. El análisis se espera por la respuesta del sondeo
+ * que lo trae resuelto, armada antes del clic, con `ANALYSIS_TIMEOUT` como techo.
+ */
+async function analyzeMatch(
+  page: Page,
+  url: string,
+  job: CriticalPathJob,
+  expectation: MatchExpectation,
+): Promise<void> {
+  const label = `E2E_MATCH_EXPECTATION=${expectation}`;
+  await linkCard(page, url).getByRole('button', { name: 'Analizar mi encaje', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByRole('heading', { name: 'Tu encaje con esta oferta' })).toBeVisible();
+  await expect(dialog.getByTestId('match-job-title')).toHaveText(job.title);
+  await expect(dialog.getByText(`CV: ${CRITICAL_PATH_CV_FILE_NAME}`, { exact: true })).toBeVisible();
+  const analyze = dialog.getByRole('button', { name: 'Analizar', exact: true });
+  await expect(analyze).toBeEnabled();
+
+  const requested = page.waitForResponse(isApiCall('POST', MATCH_PATH));
+  const resolved = page.waitForResponse(isResolvedMatch, { timeout: ANALYSIS_TIMEOUT });
+  await analyze.click();
+  expect((await requested).status()).toBe(202);
+  const latest = matchAnalysisResponseSchema.parse(await (await resolved).json()).latest;
+  if (latest?.status !== 'done') {
+    throw new Error(
+      `${label}: the analysis ended ${latest?.status ?? 'without a result'} (failure code ${latest?.failureCode ?? '-'})`,
+    );
+  }
+  await expect(dialog.getByTestId('match-badge')).toBeVisible();
+  if (expectation === 'replay-report') {
+    await assertReplayReport(dialog, latest, label);
+  } else {
+    await assertConsentRequired(dialog, latest, label);
+  }
+
+  await dialog.getByRole('button', { name: 'Cerrar', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+}
+
 test(
   'critical path: sign up, group, link, application, CV and match',
   { tag: ['@lot1', '@critical-path', '@remote-safe'] },
@@ -392,6 +542,10 @@ test(
         applyToday(page, urlA, job),
       );
       await journey.step('A', '6', 'upload the fixed-lines CV; "Listo · tu CV se leyó bien"', () => uploadCv(page));
+      await journey.step('A', '7', `analyze the match; outcome ${profile.matchExpectation}`, async () => {
+        await backToGroup(page, groupName);
+        await analyzeMatch(page, urlA, job, profile.matchExpectation);
+      });
 
       journey.assertDeclared(profile.name, DECLARED_STEPS[profile.name]);
       expect(pageErrors).toEqual([]);

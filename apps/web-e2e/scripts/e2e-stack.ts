@@ -18,6 +18,7 @@ import {
   compareListenerPids,
   describeRehearsalWorker,
   REHEARSAL_WORKER_OVERRIDES,
+  rehearsalMatchExpectation,
   rehearsalWorkerEnv,
 } from './lib/rehearsal';
 import { findCredentialsInDotEnvFiles, REMOTE_CREDENTIAL_KEYS, resolveRemoteOrigins } from './lib/remote';
@@ -569,6 +570,10 @@ class Stack {
     if (rehearsal !== undefined) {
       await this.restartWorkerForRehearsal();
       const origins = resolveRemoteOrigins(this.webOrigin(), undefined);
+      // El ensayo acepta `--match-expectation` como `e2e-remote`; sin ella, `consent-required`: la cuenta del ensayo no
+      // tiene permiso de IA externa y el `worker` reiniciado tiene un proveedor inalcanzable (design D3, D7; decisión del
+      // usuario del 2026-09-27, tarea 5.7).
+      const expectation = rehearsalMatchExpectation(this.args.matchExpectation);
       // Como `e2e-remote`: lista blanca del sistema y las variables del perfil, sin `e2e.env` (el perfil `remote` no
       // sabe nada de la pila que tiene detrás, design D9).
       await this.runProfile(
@@ -579,11 +584,11 @@ class Stack {
           E2E_BASE_URL: origins.baseUrl,
           E2E_API_ORIGIN: origins.apiOrigin,
           E2E_PROFILE: 'remote',
-          E2E_MATCH_EXPECTATION: 'consent-required',
+          E2E_MATCH_EXPECTATION: expectation,
           E2E_REMOTE_EMAIL: rehearsal.email,
           E2E_REMOTE_PASSWORD: rehearsal.password,
         },
-        `ensayo: perfil remote contra ${origins.baseUrl}, API ${origins.apiOrigin}, expectativa consent-required, cuenta ${rehearsal.email}`,
+        `ensayo: perfil remote contra ${origins.baseUrl}, API ${origins.apiOrigin}, expectativa ${expectation}, cuenta ${rehearsal.email}`,
       );
     }
   }

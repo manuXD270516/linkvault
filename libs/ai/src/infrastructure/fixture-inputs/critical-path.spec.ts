@@ -44,6 +44,11 @@ const entrySchema = z.object({
     /** Texto tal como lo extrae el worker del PDF generado con `lines` (medido en 5.5a). */
     text: z.string().min(1),
   }),
+  /**
+   * Clave de `match-cv` de esta entrada, la que se midió (5.5a). La prueba end-to-end la usa para leer el informe del
+   * fixture que afirma en el paso 7 con `replay-report` (tarea 5.7); aquí se exige que sea la calculada.
+   */
+  replayKeys: z.strictObject({ 'match-cv': z.string().regex(/^[0-9a-f]{64}$/) }),
 });
 
 /** Formato de un fixture del mock (`MockDeterministicProvider`). */
@@ -91,6 +96,14 @@ const matchInput = { job, cv: { text: entry.cv.text } };
 describe('critical path replay fixtures (e2e-suite, design D7)', () => {
   it('has the match-cv fixture for the versioned entry', () => {
     fixtureOutput(matchCvTask, keyOf(matchCvTask, matchInput, entry.outputLanguage));
+  });
+
+  it('records in the entry the match-cv key that the current definition computes', () => {
+    const key = keyOf(matchCvTask, matchInput, entry.outputLanguage);
+    expect(
+      entry.replayKeys['match-cv'],
+      `critical path: replayKeys["match-cv"] in critical-path.json is not the key of task match-cv (${key}, prompt ${matchCvTask.promptVersion})`,
+    ).toBe(key);
   });
 
   it('has the critique-suggestions fixture computed from the match-cv fixture', () => {

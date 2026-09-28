@@ -23,7 +23,11 @@ export interface RunnerArgs {
   readonly rehearseRemote: boolean;
   readonly skipLocal: boolean;
   readonly portOverrides: Partial<Record<OverridablePort, number>>;
-  /** `undefined` si no se pasó: `e2e-stack` usa `replay-report`; `e2e-remote` la exige (la declara el destino, D7). */
+  /**
+   * `undefined` si no se pasó: `e2e-stack` usa `replay-report` en el perfil `local` y `consent-required` en el ensayo
+   * (`--rehearse-remote`, tarea 5.7); `e2e-remote` la exige (la declara el destino, D7). Si se pasa, vale para los dos
+   * perfiles de la corrida.
+   */
   readonly matchExpectation: MatchExpectation | undefined;
   readonly baseUrl: string | undefined;
   readonly apiOrigin: string | undefined;

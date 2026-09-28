@@ -1,3 +1,5 @@
+import type { MatchExpectation } from './args';
+
 // Entorno del `worker` del ensayo remoto (change `e2e-suite`, design D3 fase 5 y D7; tarea 4.5).
 //
 // Antes del ensayo, el runner reinicia **solo** `worker` con un proveedor de IA externo **configurado pero
@@ -54,4 +56,13 @@ export function compareListenerPids(
     return `${label}: listener PIDs changed across the worker restart (before ${a.join(',')}, after ${b.join(',') || 'none'})`;
   }
   return null;
+}
+
+/**
+ * Expectativa del paso 7 en el ensayo (design D7; decisión del usuario del 2026-09-27, tarea 5.7): la de
+ * `--match-expectation` si se pasó, como en `e2e-remote`; si no, `consent-required`, el desenlace del destino que el
+ * ensayo imita (cuenta sin permiso de IA externa y un proveedor externo inalcanzable).
+ */
+export function rehearsalMatchExpectation(flag: MatchExpectation | undefined): MatchExpectation {
+  return flag ?? 'consent-required';
 }

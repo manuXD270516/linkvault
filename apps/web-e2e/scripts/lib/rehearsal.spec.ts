@@ -3,6 +3,7 @@ import {
   compareListenerPids,
   describeRehearsalWorker,
   REHEARSAL_FAKE_OPENROUTER_KEY,
+  rehearsalMatchExpectation,
   rehearsalWorkerEnv,
 } from './rehearsal';
 
@@ -57,5 +58,16 @@ describe('compareListenerPids', () => {
 
   it('fails when nothing listened before the restart', () => {
     expect(compareListenerPids('api', [], [])).toBe('api: no listener PID before the worker restart');
+  });
+});
+
+describe('rehearsalMatchExpectation (tarea 5.7)', () => {
+  it('defaults to consent-required, the outcome of the destination the rehearsal imitates', () => {
+    expect(rehearsalMatchExpectation(undefined)).toBe('consent-required');
+  });
+
+  it('takes --match-expectation like e2e-remote', () => {
+    expect(rehearsalMatchExpectation('replay-report')).toBe('replay-report');
+    expect(rehearsalMatchExpectation('consent-required')).toBe('consent-required');
   });
 });
