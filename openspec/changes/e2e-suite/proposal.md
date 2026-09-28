@@ -72,7 +72,10 @@ pero su primer PR se **fusiona después de 35a**, para nacer con el arranque loc
 
 - **Código:** `apps/web-e2e` (configuración de Playwright con proyectos `chromium` y `mobile`, runner, perfiles, entorno
   versionado, helpers, spec del camino crítico, reglas de lint); en `libs/ai`, la entrada versionada del recorrido, sus
-  fixtures escritos a mano y un Vitest que los exige; ningún cambio de comportamiento de `api`, `worker` ni `web`.
+  fixtures escritos a mano y un Vitest que los exige; ningún cambio de comportamiento de `api` ni `worker`. En
+  `apps/web`, **solo la barra superior** (`layout/shell`): en un móvil sus entradas pasan a otra fila en vez de salirse
+  y taparse (hallazgo del proyecto `mobile` aceptado por el usuario el 2026-09-28, tarea 5.4b); en escritorio no cambia.
+  En `apps/web-e2e`, la aserción obsoleta del texto de privacidad de `cv.spec.ts` (excepción a D1, tarea 5.4).
 - **CI:** `.github/workflows/e2e.yml` nuevo; `ci.yml`, `cd-staging.yml` y `cd-prod.yml` **no se tocan**.
 - **Otro change:** `openspec/changes/staging-host` (35b), design D14, D15/D16 y tabla de bloqueos, y tareas 10.2,
   10.3, 10.6 y 10.7, por Q1 y por la precondición de invitar, sin tocar las secciones que edita 35a, en un commit

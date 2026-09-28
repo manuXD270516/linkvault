@@ -1,4 +1,5 @@
 import {
+  cvDocumentSchema,
   groupDetailSchema,
   sessionResponseSchema,
   trackLinkResponseSchema,
@@ -13,7 +14,13 @@ import {
   type Response,
   type TestInfo,
 } from '@playwright/test';
-import { type CriticalPathJob, readCriticalPathJob } from './support/critical-path-input';
+import {
+  CRITICAL_PATH_CV_FILE_NAME,
+  CRITICAL_PATH_CV_LINES,
+  type CriticalPathJob,
+  readCriticalPathJob,
+} from './support/critical-path-input';
+import { minimalPdf } from './support/cv-files';
 import { Journey, type StepKey } from './support/journey';
 import { type Profile, type ProfileName, resolveProfile } from './support/profile';
 import {
@@ -38,8 +45,9 @@ import { SuiteApi } from './support/suite-api';
  * | 3 | A guarda en el grupo el link de una oferta en un dominio reservado (`.invalid`); la tarjeta aparece | sí | sí |
  * | 4 | A completa la oferta a mano con la entrada versionada (D7); «Escrito por …» | sí | sí |
  * | 5 | «Postulé» → «Hoy»; la tarjeta muestra la postulación y `/postulaciones` la tiene en «Postuladas» | sí | sí |
+ * | 6 | A sube el CV de líneas fijas generado en la prueba; «Listo · tu CV se leyó bien» | sí | sí |
  *
- * Los pasos 2b y 6 a 8 los añaden las tareas 5.4, 5.7, 5.8 y 5.10, cada una con su línea en `DECLARED_STEPS`.
+ * Los pasos 2b, 7 y 8 los añaden las tareas 5.7, 5.8 y 5.10, cada una con su línea en `DECLARED_STEPS`.
  *
  * En `remote`, lo que la prueba crea en la cuenta se borra al terminar en un `finally` (design D10, tarea 4.2), también
  * si falla, y solo si los guardias del paso 0 pasaron: un guardia que falla deja la cuenta como estaba.
@@ -51,8 +59,8 @@ import { SuiteApi } from './support/suite-api';
 
 /** Pasos que ejecuta cada perfil, por persona. Lo que no está aquí es «no aplicable» en ese perfil. */
 const DECLARED_STEPS: Readonly<Record<ProfileName, readonly StepKey[]>> = {
-  local: ['A:1', 'A:2', 'A:3', 'A:4', 'A:5'],
-  remote: ['A:0', 'A:2', 'A:3', 'A:4', 'A:5'],
+  local: ['A:1', 'A:2', 'A:3', 'A:4', 'A:5', 'A:6'],
+  remote: ['A:0', 'A:2', 'A:3', 'A:4', 'A:5', 'A:6'],
 };
 
 /**
@@ -60,6 +68,12 @@ const DECLARED_STEPS: Readonly<Record<ProfileName, readonly StepKey[]>> = {
  * `worker` da una lectura por perdida a los `ENRICH_DEADLINE_MS` (45 s en `e2e.env`). Es un techo, no una espera.
  */
 const ENRICHMENT_SETTLED_TIMEOUT = 60_000;
+
+/**
+ * Techo de la espera a que el `worker` lea el CV (`CV_EXTRACTION_TIMEOUT_MS` es 30 s en `e2e.env`); se espera por el
+ * estado visible de la tarjeta, no por tiempo.
+ */
+const CV_READ_TIMEOUT = 60_000;
 
 /** Alfabeto del código de invitación: base32 de Crockford sin `0`, `1`, `I`, `L`, `O` ni `U`. */
 const INVITE_CODE = /^[23456789ABCDEFGHJKMNPQRSTVWXYZ]{8}$/;
@@ -255,6 +269,10 @@ async function completeOfferByHand(
   await completeByHand.click();
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByRole('heading', { name: 'Corregir la oferta' })).toBeVisible();
+  // El diálogo termina de abrirse llevando el foco a su primer campo (`autoFocus: 'first-tabbable'` de Material). Si se
+  // escribe antes, ese foco puede llegar a mitad de un `fill` y el texto del Resumen acaba al final del Puesto (medido
+  // el 2026-09-28: el título guardado llevaba el resumen detrás). Se espera a ese foco antes de escribir.
+  await expect(dialog.getByLabel('Puesto', { exact: true })).toBeFocused();
   await dialog.getByLabel('Puesto', { exact: true }).fill(job.title);
   await dialog.getByLabel('Empresa', { exact: true }).fill(job.company);
   await dialog.getByLabel('Resumen', { exact: true }).fill(job.text);
@@ -312,6 +330,30 @@ async function applyToday(page: Page, url: string, job: CriticalPathJob): Promis
   await expect(offer).toContainText('Postulaste hoy');
 }
 
+/** Paso 6: A abre «Mi CV», sube el CV de líneas fijas y la tarjeta dice que se leyó bien. */
+async function uploadCv(page: Page): Promise<void> {
+  const list = page.waitForResponse(isApiCall('GET', /^\/api\/cv$/));
+  const landed = page.waitForURL(/\/mi-cv$/);
+  await page.getByRole('link', { name: 'Mi CV', exact: true }).click();
+  expect((await list).status()).toBe(200);
+  await landed;
+
+  const uploaded = page.waitForResponse(isApiCall('POST', /^\/api\/cv$/));
+  const chooser = page.waitForEvent('filechooser');
+  await page.getByRole('button', { name: 'Subir CV' }).click();
+  await (
+    await chooser
+  ).setFiles({ name: CRITICAL_PATH_CV_FILE_NAME, mimeType: 'application/pdf', buffer: minimalPdf(CRITICAL_PATH_CV_LINES) });
+  const uploadedResponse = await uploaded;
+  expect(uploadedResponse.status()).toBe(201);
+  const saved = cvDocumentSchema.parse(await uploadedResponse.json());
+  expect(saved.fileName).toBe(CRITICAL_PATH_CV_FILE_NAME);
+
+  const cv = page.getByRole('article').filter({ hasText: CRITICAL_PATH_CV_FILE_NAME });
+  await expect(cv).toHaveCount(1);
+  await expect(cv.getByText('Listo · tu CV se leyó bien')).toBeVisible({ timeout: CV_READ_TIMEOUT });
+}
+
 test(
   'critical path: sign up, group, link, application, CV and match',
   { tag: ['@lot1', '@critical-path', '@remote-safe'] },
@@ -349,6 +391,7 @@ test(
       await journey.step('A', '5', 'apply "today"; the card shows it and the board has it in "Postuladas"', () =>
         applyToday(page, urlA, job),
       );
+      await journey.step('A', '6', 'upload the fixed-lines CV; "Listo · tu CV se leyó bien"', () => uploadCv(page));
 
       journey.assertDeclared(profile.name, DECLARED_STEPS[profile.name]);
       expect(pageErrors).toEqual([]);

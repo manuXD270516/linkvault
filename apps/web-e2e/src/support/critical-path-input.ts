@@ -27,6 +27,28 @@ const criticalPathInputSchema = z.object({ job: criticalPathJobSchema });
 
 export type CriticalPathJob = z.infer<typeof criticalPathJobSchema>;
 
+/**
+ * CV del recorrido (paso 6): líneas **fijas**, inventadas y sin ningún dato personal ni identificador de corrida, para
+ * que el texto que extrae el `worker` —y con él la clave de replay del encaje— no cambie entre corridas. ASCII puro
+ * (el PDF mínimo no lleva acentos) y más de 4 kB de PDF (ver `minimalPdf`). Viven aquí hasta que la 5.6 lleve el texto
+ * del CV, medido en 5.5a y 5.5b, a la entrada versionada.
+ */
+export const CRITICAL_PATH_CV_LINES: readonly string[] = [
+  'Curriculum de prueba para la suite end-to-end de LinkVault',
+  'Perfil: desarrollo backend, persona inventada y sin datos de nadie',
+  'Experiencia: servicios backend con Node, NestJS y MongoDB',
+  'Colas de trabajos con Redis y tests automatizados con Vitest',
+  'Formacion: ingenieria de sistemas',
+  'Idiomas: espanol nativo e ingles intermedio',
+  ...Array.from(
+    { length: 70 },
+    (_, index) => `Proyecto ${index + 1}: servicio de prueba con su API, su cola de trabajos y sus tests automatizados`,
+  ),
+];
+
+/** Nombre del archivo del CV: con el prefijo de la suite, para que la limpieza de la cuenta remota lo reconozca (D10). */
+export const CRITICAL_PATH_CV_FILE_NAME = 'e2e-cv-camino.pdf';
+
 export function readCriticalPathJob(): CriticalPathJob {
   const raw: unknown = JSON.parse(readFileSync(join(workspaceRoot, CRITICAL_PATH_INPUT_PATH), 'utf8'));
   return criticalPathInputSchema.parse(raw).job;

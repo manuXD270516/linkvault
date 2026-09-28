@@ -73,7 +73,8 @@ Se conserva el proyecto, su preset y sus specs. Lo que cambia es **qué se ejecu
 etiquetadas con su lote (`@lot1` en este change), y solo esas; el runner ejecuta `--grep @lot1`. Los specs no admitidos
 siguen ejecutándose como hoy (`pnpm nx e2e web-e2e` contra la pila que cada cual tenga), documentados en
 `apps/web-e2e/README.md` como **no reproducibles** hasta que su lote los admita, y **no se tocan** en este change salvo
-las excepciones de lint de D12.
+las excepciones de lint de D12 y, por decisión del usuario del 2026-09-28, la aserción obsoleta del texto de privacidad de
+«Mi CV» en `cv.spec.ts` (tarea 5.4), en un commit aparte que no toca nada más.
 
 *Descartado:* admitir los quince specs de golpe. Cada uno arrastra supuestos de entorno distintos (flags, Meilisearch,
 `AI_VAULT_KEY`, Mongo, Redis); meterlos sin adaptarlos convertiría la primera corrida de CI en un rojo que nadie sabría
@@ -208,6 +209,12 @@ fallo no probaría nada.
   el target sale con ≠0 (con `node` directo sobreviven; medido). El runner lo dice en ese caso y da la orden directa, en
   lugar de afirmar que la pila sigue levantada; sacar las aplicaciones de lo que Nx termina exigiría cambiar el
   lanzamiento oculto verificado en la 2.4c.
+- **La barra superior de `web` se arregla en este change** (hallazgo del proyecto `mobile` aceptado por el usuario el
+  2026-09-28, tarea 5.4b): en el Pixel 7 no cabía y «Mi CV» quedaba tapada, sin forma de abrirla en el móvil. Las
+  entradas pasan a otra fila cuando no caben; en escritorio no cambia. Es el único cambio de comportamiento de `web`
+  del change.
+- **Excepción a D1 en `cv.spec.ts`** (decisión del usuario del 2026-09-28, tarea 5.4): se actualiza solo su aserción
+  obsoleta del texto de privacidad de «Mi CV», en un commit aparte.
 
 ### D4. Un bloque de puertos propio, un proyecto de compose por checkout y bloque
 
@@ -461,6 +468,11 @@ estado visible, con el plazo máximo como techo, no como mecanismo.
 
 **WebKit**, solo si la entrevista de 35b (su tarea 9.7) dice que algún invitado usa iPhone: un proyecto más para este
 fichero, con su admisión (tarea 9.9, condicional).
+
+**Hallazgos del `/opsx:apply` en el recorrido (2026-09-28):** el proyecto `mobile` encontró que la barra superior no
+cabía en el Pixel 7 y tapaba «Mi CV» (arreglado en la tarea 5.4b, D3); y un diálogo de Material que lleva el foco a su
+primer campo al terminar de abrirse puede recibir a mitad de un `fill` el texto de otro campo: el recorrido espera a
+ese foco antes de escribir (tarea 5.4).
 
 ### D12. Determinismo: ni esperas fijas ni reintentos que escondan
 
