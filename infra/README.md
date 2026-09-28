@@ -347,6 +347,12 @@ dc ps --format 'table {{.Service}}\t{{.Status}}'
 dc exec -T api    node -e "fetch('http://127.0.0.1:3000/health').then(async r=>console.log(r.status, await r.text()))"
 dc exec -T worker node -e "fetch('http://127.0.0.1:3001/health').then(async r=>console.log(r.status, await r.text()))"
 
+# Preguntar desde dentro no prueba que otro contenedor llegue: una imagen que solo escucha en loopback da 200 arriba y
+# el borde recibe `ECONNREFUSED`. Desde `web` (solo en `internal`, como ve la pila Traefik), las dos tienen que dar
+# `HTTP/1.1 200 OK`; es la misma comprobación que hace `infra/ci/verify-artifact.sh` (tarea 7.10 de `object-store`).
+dc exec -T web wget -S -q -O /dev/null -T 10 http://api:3000/health
+dc exec -T web wget -S -q -O /dev/null -T 10 http://worker:3001/health
+
 # `web` no se comprueba con un 200: un nginx sirviendo otra cosa también responde 200. Se exige la raíz de la
 # aplicación Angular en el cuerpo, igual que hace el healthcheck del compose y la verificación del artefacto.
 body="$(dc exec -T web wget -qO- http://127.0.0.1/)"

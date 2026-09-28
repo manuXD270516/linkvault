@@ -16,7 +16,9 @@
 #
 # Y NO se publican puertos: la red `internal` es `internal: true` y ningún servicio de aplicación publica nada, así
 # que desde el corredor no se alcanza ninguno. Se entra con `docker compose exec`. Abrir puertos para poder comprobar
-# cambiaría la configuración que se está verificando.
+# cambiaría la configuración que se está verificando. Pero preguntar desde dentro de un contenedor no prueba que otro
+# llegue a él, así que `api` y `worker` se piden además por su nombre de servicio desde `web`, otro contenedor de la
+# red `internal` (tarea 7.10 de `object-store`; ver esa sección, más abajo).
 #
 # El `GET /health` de `api` y de `worker` declara indicadores de **mongo y redis**, y ninguno de los dos mira el almacén
 # de objetos: el almacén se levanta porque `api` y `worker` dependen de su `service_healthy`, y su healthcheck es de
@@ -366,6 +368,34 @@ dc exec -T worker node -e '
     process.exit(0);
   }).catch((e) => { console.error("[FAIL] worker /health inalcanzable: " + e); process.exit(1); });
 ' || fail 'worker no responde readiness con mongo y redis'
+
+# --- api y worker, alcanzados desde OTRO contenedor de la red `internal` (tarea 7.10 de `object-store`) -------------
+# Las dos comprobaciones de arriba, y los healthchecks del compose, preguntan desde **dentro** del contenedor
+# (`127.0.0.1`): una imagen que solo escucha en loopback las pasa todas y nadie más la alcanza. Es lo que encontró el
+# smoke local del 2026-09-28: `api` escuchaba solo en `127.0.0.1:3000` y el borde, que la busca en `http://api:3000`,
+# recibía `ECONNREFUSED` (spec `platform/runtime-health`, «Liveness»; ADR-052 «Decisiones del usuario tras el punto de
+# revisión», 5). Aquí se pide `GET /health` por el nombre del servicio desde `web`, que está **solo** en `internal`,
+# igual que Traefik ve la pila; se exige `200` en la primera línea de estado. `wget` de busybox viene en nginx:alpine
+# (el healthcheck de `web` ya lo usa), y la petición lleva su propio plazo además del de `dc_bounded`.
+probe_from_internal() {
+  local service="$1" url="$2" out status
+  if ! out="$(dc_bounded exec -T web wget -S -q -O /dev/null -T 10 "$url" 2>&1)"; then
+    printf '%s\n' "$out"
+    fail "${service} no responde a otro contenedor de la red internal (GET ${url} desde web): conexión rechazada, plazo agotado o estado de error; ¿escucha solo en loopback?" artifact
+  fi
+  printf '%s\n' "$out"
+  status="$(printf '%s\n' "$out" | grep -m1 'HTTP/' | awk '{print $2}')"
+  if [ "$status" != '200' ]; then
+    fail "${service} respondió '${status:-sin estado}' a otro contenedor de la red internal (GET ${url} desde web); se exige 200" artifact
+  fi
+  printf '%s alcanzable desde otro contenedor de la red internal: %s -> %s\n' "$service" "$url" "$status"
+}
+
+section 'api: GET http://api:3000/health desde otro contenedor de la red internal (web)'
+probe_from_internal api 'http://api:3000/health'
+
+section 'worker: GET http://worker:3001/health desde otro contenedor de la red internal (web)'
+probe_from_internal worker 'http://worker:3001/health'
 
 # --- 5.11: web sirve el documento del SPA --------------------------------------------------------------------------
 # No un 200: un nginx con el directorio vacío responde 200. Se exige la raíz de la aplicación Angular, `<lv-root>`
