@@ -146,8 +146,42 @@ RESULT: ok
 
   El campo `billable` no discrimina, así que de él no sale ni «no consume» ni un ritmo. Los informes de facturación
   (`users/{user}/settings/billing/usage` y `.../billing/actions`) responden `404` y piden el ámbito `user` del token,
-  que hoy tiene `gist, read:org, repo, workflow, write:packages`. **Pendiente de decisión del usuario:** cómo se mide
-  (conceder el ámbito `user` o leer la página de facturación). Afecta a D11 y a la 9.4, no al resto del grupo 1.
+  que entonces tenía `gist, read:org, repo, workflow, write:packages`. El usuario concedió después el ámbito
+  `user`, y la medición se hizo el 2026-09-28 con el informe de facturación (abajo).
+
+- **Minutos: sí consumen, a 1 minuto facturado por minuto de reloj de cada job, redondeado hacia arriba por job**
+  (medido el 2026-09-28 con el ámbito `user`). Endpoints de la cuenta personal probados (`gh api -i`, volcados a
+  fichero):
+
+  ```text
+  users/manuXD270516/settings/billing/actions                 410 Gone  «This endpoint has been moved.»
+  users/manuXD270516/settings/billing/shared-storage          410 Gone  «This endpoint has been moved.»
+  users/manuXD270516/settings/billing/budgets                 404 Not Found
+  users/manuXD270516/settings/billing/usage                   200 (líneas por día, producto, SKU y repositorio)
+  users/manuXD270516/settings/billing/usage/summary           200 (totales del mes por SKU)
+  users/manuXD270516/settings/billing/usage?…&day=27&hour=19  400 «Hourly time period filtering is deprecated»
+  $ gh api users/manuXD270516/settings/billing/usage/summary     # 2026-09
+  actions_linux     grossQuantity 1892 discountQuantity 1892 netQuantity 0 minutes, 0.006 USD
+  actions_linux_arm grossQuantity   17 discountQuantity   17 netQuantity 0 minutes, 0.005 USD
+  ```
+
+  Minutos `Actions Linux ARM` por día (`usage?year=2026&month=9&day=<d>`) frente a los jobs `ubuntu-24.04-arm` de
+  ese día (`gh api repos/…/actions/runs/<id>/jobs` de las 64 corridas creadas del 26 al 28), leídos con `node`
+  (`<scratchpad>/g14/check-12.cjs`):
+
+  ```text
+  2026-09-26: facturados ARM=1 min | jobs arm64=1 reloj=35 s (0.58 min) | suma de ceil(min) por job=1 -> igual
+  2026-09-27: facturados ARM=16 min | jobs arm64=5 reloj=784 s (13.07 min) | suma de ceil(min) por job=16 -> igual
+  total: 17 min facturados por 13.65 min de reloj (1.25 por minuto de reloj); regla: 1 minuto por minuto de reloj de cada job, redondeado hacia arriba por job
+  descontado del incluido: sí (net 0)
+  RESULT: ok — las corridas arm64 consumen minutos del plan
+  ```
+
+  Los jobs `arm64` son la sonda de la 1.2 (35 s → 1 min) y los `build, verify and publish artifact` de 36307691093
+  (9.1, 255 s → 5), 36308803112 (10.3, 64 s → 2), 36344930563 (9.2, 287 s → 5), 36345047743 (83 s → 2) y
+  36347012639 (95 s → 2). Los minutos `arm64` se descuentan de lo incluido en el plan (`discountQuantity` =
+  `grossQuantity`, `netQuantity` 0), igual que los de `ubuntu-24.04`; el campo `billable` de `timing` sigue sin
+  discriminar (0 en todas). Consumen minutos, así que la 9.4 aplica (design D11).
 
 - **Workflow temporal retirado** en el commit que cierra el grupo 1 (índice de git tras `git rm`):
 
@@ -4064,22 +4098,82 @@ linkvault-web: 4 versiones; con sha-83afb67b1fe8: 1302219449 sha256:c5a47499e323
 `gh api …/runs/36344930563/timing`: `{"billable":{"UBUNTU":{"total_ms":0,"jobs":5,…}},"run_duration_ms":1068000}`. Es la
 **segunda corrida `arm64` con la verificación en verde** que cuenta para la 11.1.
 
-**Pendiente: `docker buildx imagetools inspect --raw`.** Los tres paquetes son privados y en esta máquina no hay sesión
-de Docker en `ghcr.io` (el almacén de credenciales solo tiene Docker Hub y `dhi.io`), así que el registro rechaza la
-lectura antes de llegar al manifiesto:
+**`docker buildx imagetools inspect --raw`, primer intento (2026-09-27): sin sesión.** Los tres paquetes son privados y
+en esta máquina no había sesión de Docker en `ghcr.io` (el almacén de credenciales solo tenía Docker Hub y `dhi.io`),
+así que el registro rechazó la lectura antes de llegar al manifiesto:
 
 ```text
 $ docker buildx imagetools inspect --raw ghcr.io/manuxd270516/linkvault-api:sha-e86d3755a525
 ERROR: failed to authorize: failed to fetch anonymous token: unexpected status from GET request to https://ghcr.io/token?scope=repository%3Amanuxd270516%2Flinkvault-api%3Apull&service=ghcr.io: 401 Unauthorized
 ```
 
-La comprobación de «un manifiesto único (no un índice) de `linux/arm64`» queda para cuando la sesión esté iniciada; no
-se hizo `docker login` con credenciales nuevas. La 9.2 sigue abierta solo por eso.
+**Lectura `--raw` con la sesión iniciada por el usuario (2026-09-28).** Las tres imágenes del tag de la rama, cada una
+volcada a fichero con `docker buildx imagetools inspect --raw …:sha-83afb67b1fe8` y leída con `node`
+(`<scratchpad>/g14/check-92.cjs`: tipo de medio, si es índice, número de capas y sha256 de los bytes leídos frente al
+digest publicado); la plataforma de un manifiesto único sale de su configuración con
+`--format "{{.Manifest.Digest}} {{.Image.OS}}/{{.Image.Architecture}}"`, como en la 1.3:
+
+```text
+ghcr.io/manuxd270516/linkvault-api:sha-83afb67b1fe8
+  mediaType: application/vnd.docker.distribution.manifest.v2+json
+  forma: manifiesto único (manifests: false, capas: 7)
+  config.mediaType: application/vnd.docker.container.image.v1+json
+  sha256 de los bytes leídos: sha256:d94fb5fdf0c395c8c7d628ac46acfe5419f8072388e7fca7d0d19ba5a2a96ce8 (1783 bytes) = digest publicado en la 9.2
+  plataforma (config, --format): sha256:d94fb5fdf0c395c8c7d628ac46acfe5419f8072388e7fca7d0d19ba5a2a96ce8 linux/arm64
+  ok
+ghcr.io/manuxd270516/linkvault-worker:sha-83afb67b1fe8
+  mediaType: application/vnd.docker.distribution.manifest.v2+json
+  forma: manifiesto único (manifests: false, capas: 7)
+  config.mediaType: application/vnd.docker.container.image.v1+json
+  sha256 de los bytes leídos: sha256:64304c31b1dc39cec82279a40f7e0b0742be0f7db3a5425729b3fd60528612e0 (1783 bytes) = digest publicado en la 9.2
+  plataforma (config, --format): sha256:64304c31b1dc39cec82279a40f7e0b0742be0f7db3a5425729b3fd60528612e0 linux/arm64
+  ok
+ghcr.io/manuxd270516/linkvault-web:sha-83afb67b1fe8
+  mediaType: application/vnd.docker.distribution.manifest.v2+json
+  forma: manifiesto único (manifests: false, capas: 10)
+  config.mediaType: application/vnd.docker.container.image.v1+json
+  sha256 de los bytes leídos: sha256:c5a47499e3232283204aa58f6e08e4648964f70a35b4e7fe3d571e77ccb66000 (2406 bytes) = digest publicado en la 9.2
+  plataforma (config, --format): sha256:c5a47499e3232283204aa58f6e08e4648964f70a35b4e7fe3d571e77ccb66000 linux/arm64
+  ok
+RESULT: ok
+```
+
+Las tres son un **manifiesto único** (`application/vnd.docker.distribution.manifest.v2+json`, no un índice) de
+`linux/arm64`, y el sha256 de los bytes que devuelve el registro es el digest que `publish-artifact.sh` confirmó en la
+corrida. Es la forma que 35b espera en su precondición 1.1 (la leerá sobre `:staging` en la 13.4).
 
 ## `--compose` contra la pila sustituida (tarea 10.1)
 
-**No ejecutada:** pide la sesión de `ghcr.io` iniciada (las imágenes propias del compose son privadas; ver la 9.2) y no
-la hay. Se ejecuta con el tag de la 9.2, `sha-83afb67b1fe8`, en cuanto esté.
+Ejecutada el 2026-09-28 con la sesión de `ghcr.io` iniciada por el usuario y el tag de la 9.2, desde la raíz del
+repositorio (salida y código volcados a fichero):
+
+```text
+$ IMAGE_TAG=sha-83afb67b1fe8 bash infra/deploy/check-image-platforms.sh --compose docker-compose.prod.yml --env-file infra/ci/verify.env --platform linux/arm64
+ok: redis:7.4.11 (linux/arm64)
+ok: chrislusf/seaweedfs:4.47 (linux/arm64)
+ok: ghcr.io/manuxd270516/linkvault-api:sha-83afb67b1fe8 (linux/arm64)
+ok: ghcr.io/manuxd270516/linkvault-worker:sha-83afb67b1fe8 (linux/arm64)
+ok: ghcr.io/manuxd270516/linkvault-web:sha-83afb67b1fe8 (linux/arm64)
+ok: traefik:v3.3.5 (linux/arm64)
+ok: mongo:7.0.43 (linux/arm64)
+exit=0
+
+$ IMAGE_TAG=sha-83afb67b1fe8 OBJECT_STORE_IMAGE=ghcr.io/manuxd270516/linkvault-minio OBJECT_STORE_IMAGE_TAG=RELEASE.2025-09-07T16-13-09Z bash infra/deploy/check-image-platforms.sh --compose docker-compose.prod.yml --env-file infra/ci/verify.env --platform linux/arm64
+ok: ghcr.io/manuxd270516/linkvault-web:sha-83afb67b1fe8 (linux/arm64)
+ok: traefik:v3.3.5 (linux/arm64)
+ok: mongo:7.0.43 (linux/arm64)
+ok: redis:7.4.11 (linux/arm64)
+no existe para linux/arm64: ghcr.io/manuxd270516/linkvault-minio:RELEASE.2025-09-07T16-13-09Z (disponibles: linux/amd64)
+ok: ghcr.io/manuxd270516/linkvault-api:sha-83afb67b1fe8 (linux/arm64)
+ok: ghcr.io/manuxd270516/linkvault-worker:sha-83afb67b1fe8 (linux/arm64)
+exit=3
+```
+
+- Con el compose de producción sustituido (7.3) y la imagen publicada en `arm64` (9.2), las siete imágenes existen
+  para `linux/arm64`: **sale 0**.
+- Con el espejo de MinIO en el lugar del almacén: **sale 3**, nombrando el espejo y `linux/amd64` como única
+  disponible (el manifiesto único de la 1.3). El orden de las líneas es el de `docker compose config --images`,
+  que no es el mismo en cada invocación.
 
 ## Comprobación de plataformas en la verificación del artefacto (tarea 10.2)
 
