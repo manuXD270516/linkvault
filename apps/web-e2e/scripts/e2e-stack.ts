@@ -14,6 +14,12 @@ import { evaluateListeners, listListeners } from './lib/listeners';
 import { describeBusy, probePorts } from './lib/ports';
 import { runCommand } from './lib/proc';
 import { isSameCheckoutServe, killTree, listProcesses, type ProcessInfo, processTree } from './lib/processes';
+import {
+  compareListenerPids,
+  describeRehearsalWorker,
+  REHEARSAL_WORKER_OVERRIDES,
+  rehearsalWorkerEnv,
+} from './lib/rehearsal';
 import { findCredentialsInDotEnvFiles, REMOTE_CREDENTIAL_KEYS, resolveRemoteOrigins } from './lib/remote';
 import { type SeedAccount, seedRehearsalAccount } from './lib/seed';
 
@@ -274,8 +280,18 @@ class Stack {
 
   // --- 3. Aplicaciones ------------------------------------------------------------------------------------------
 
-  private async launch(name: AppName, nxArgs: readonly string[]): Promise<LaunchedApp> {
+  /**
+   * Lanza una aplicación con `nx`. Por defecto, con el entorno de la suite y un log nuevo; el `worker` del ensayo
+   * (tarea 4.5) pasa su propio entorno y **añade** al log, que así conserva también el del perfil `local`.
+   */
+  private async launch(
+    name: AppName,
+    nxArgs: readonly string[],
+    options: { readonly env?: Record<string, string>; readonly append?: boolean; readonly label?: string } = {},
+  ): Promise<LaunchedApp> {
     const logPath = join(this.stackDir, `${name}.log`);
+    const append = options.append === true;
+    const logOffset = append && existsSync(logPath) ? statSync(logPath).size : 0;
     const args = [nxBinPath(this.root), ...nxArgs];
     // Nx 23.2.1 apunta cada tarea en curso en su base de datos local (`task_invocations`) con la clave «PID raíz de la
     // invocación» (`NX_INVOCATION_ROOT_PID`, o el propio PID si no está) y la borra al terminar la tarea. El apagado mata
@@ -284,7 +300,7 @@ class Stack {
     // api:serve:development») y sale: medido el 2026-09-27. Cada lanzamiento recibe una raíz propia, que no es un PID
     // real ni se repite, para que un registro huérfano no pueda chocar con él. Es una variable `NX_*`: entra en el
     // conjunto permitido de design D6.
-    const env = { ...this.appEnv, NX_INVOCATION_ROOT_PID: String(randomInt(1_000_000_000, 2_000_000_000)) };
+    const env = { ...(options.env ?? this.appEnv), NX_INVOCATION_ROOT_PID: String(randomInt(1_000_000_000, 2_000_000_000)) };
     let app: LaunchedApp;
     if (process.platform === 'win32' && this.args.keepStack) {
       // --keep-stack en Windows: fuera del job del runner y sin ventanas (ver launch-hidden.ts).
@@ -296,12 +312,13 @@ class Stack {
         cwd: this.root,
         logPath,
         workDir: this.stackDir,
+        append,
       });
-      app = { name, child: undefined, pid, logPath, exited: null, logOffset: 0 };
+      app = { name, child: undefined, pid, logPath, exited: null, logOffset };
     } else {
       // Linux: grupo de procesos propio (se mata el grupo entero). Windows: libuv mete al hijo en un job que lo mata si
       // el runner muere, que es la red de seguridad que se quiere cuando la pila no se conserva.
-      const fd = openSync(logPath, 'w');
+      const fd = openSync(logPath, append ? 'a' : 'w');
       const child = spawn(process.execPath, args, {
         cwd: this.root,
         env,
@@ -313,12 +330,12 @@ class Stack {
       if (child.pid === undefined) {
         throw new PhaseError('aplicaciones', `${name} could not be launched`);
       }
-      const launched: LaunchedApp = { name, child, pid: child.pid, logPath, exited: null, logOffset: 0 };
+      const launched: LaunchedApp = { name, child, pid: child.pid, logPath, exited: null, logOffset };
       child.once('exit', (code, signal) => this.markExited(launched, `exit ${code ?? signal ?? '?'}`));
       app = launched;
     }
     this.apps.push(app);
-    log(`aplicaciones: ${name} lanzado (PID ${app.pid}) → ${STACK_DIR}/${name}.log`);
+    log(`${options.label ?? 'aplicaciones'}: ${name} lanzado (PID ${app.pid}) → ${STACK_DIR}/${name}.log`);
     return app;
   }
 
@@ -411,25 +428,14 @@ class Stack {
     // `worker` reciben además el entorno efectivo de la suite con `node --env-file`, que repone lo quitado y no pisa
     // lo que ya está (los valores del runner). Es el mismo entorno: no añade ninguna variable.
     const effectiveEnvFile = join(this.stackDir, 'effective-e2e.env');
-    writeFileSync(
-      effectiveEnvFile,
-      `${Object.entries(this.suiteEnv)
-        .map(([key, value]) => `${key}=${value}`)
-        .join('\n')}\n`,
-    );
+    writeEnvFile(effectiveEnvFile, this.suiteEnv);
     const envFileArg = `--runtimeArgs=--env-file=${effectiveEnvFile}`;
 
     await this.launch('api', ['run', 'api:serve', '--watch=false', envFileArg, ...inspectArgs(this.block.apiInspector)]);
     await this.waitUntil(phase, `api /health on ${this.block.api}`, () => this.healthUp(this.block.api));
     log(`aplicaciones: api sano en ${this.block.api} (mongo y redis up)`);
 
-    await this.launch('worker', [
-      'run',
-      'worker:serve',
-      '--watch=false',
-      envFileArg,
-      ...inspectArgs(this.block.workerInspector),
-    ]);
+    await this.launch('worker', this.workerArgs(effectiveEnvFile, inspect));
     await this.waitUntil(phase, `worker /health on ${this.block.worker}`, () => this.healthUp(this.block.worker));
     log(`aplicaciones: worker sano en ${this.block.worker} (mongo y redis up)`);
 
@@ -437,13 +443,30 @@ class Stack {
     await this.waitUntil(phase, `web document on ${this.block.web}`, () => this.webUp(this.block.web));
     log(`aplicaciones: web sirve el documento con <lv-root en ${this.block.web}`);
 
-    await this.pidGuard(phase, inspect);
+    await this.pidGuard(phase, 'aplicaciones', inspect);
     this.throwIfFatal(phase);
     this.writeState(await listProcesses(this.toolEnv, this.root));
   }
 
+  /** Argumentos de `nx` para `worker`: los mismos en el arranque y en el reinicio del ensayo. */
+  private workerArgs(envFile: string, inspect: boolean): string[] {
+    return [
+      'run',
+      'worker:serve',
+      '--watch=false',
+      `--runtimeArgs=--env-file=${envFile}`,
+      ...(inspect ? ['--inspect=inspect', `--port=${this.block.workerInspector}`] : ['--inspect=false']),
+    ];
+  }
+
+  /** PID de cada fila de escucha de un puerto. */
+  private async listenerPids(port: number): Promise<number[]> {
+    const rows = await listListeners([port], this.toolEnv, this.root);
+    return rows.map((row) => row.pid).filter((pid): pid is number => pid !== null);
+  }
+
   /** Guardia de PID (design D3): cada fila de escucha de cada puerto de aplicación es del árbol lanzado. */
-  private async pidGuard(phase: Phase, inspect: boolean): Promise<void> {
+  private async pidGuard(phase: Phase, label: string, inspect: boolean): Promise<void> {
     const ports: { port: number; owner: string }[] = [
       { port: this.block.api, owner: 'api' },
       { port: this.block.worker, owner: 'worker' },
@@ -479,7 +502,7 @@ class Stack {
     if (problems.length > 0) {
       throw new PhaseError(phase, `PID guard: another process serves a port of the block:\n  ${problems.join('\n  ')}`);
     }
-    log(`aplicaciones: guardia de PID en verde (${rows.length} filas de escucha, todas del árbol lanzado)`);
+    log(`${label}: guardia de PID en verde (${rows.length} filas de escucha, todas del árbol lanzado)`);
   }
 
   private writeState(processes: readonly ProcessInfo[]): void {
@@ -544,7 +567,7 @@ class Stack {
       );
     }
     if (rehearsal !== undefined) {
-      // Tarea 4.5: antes del ensayo, el runner reinicia **solo** `worker` con un proveedor externo inalcanzable.
+      await this.restartWorkerForRehearsal();
       const origins = resolveRemoteOrigins(this.webOrigin(), undefined);
       // Como `e2e-remote`: lista blanca del sistema y las variables del perfil, sin `e2e.env` (el perfil `remote` no
       // sabe nada de la pila que tiene detrás, design D9).
@@ -563,6 +586,56 @@ class Stack {
         `ensayo: perfil remote contra ${origins.baseUrl}, API ${origins.apiOrigin}, expectativa consent-required, cuenta ${rehearsal.email}`,
       );
     }
+  }
+
+  /**
+   * Tarea 4.5 (design D3 fase 5, D7): antes del ensayo, reinicia **solo** `worker` con un proveedor de IA externo
+   * configurado pero inalcanzable (`lib/rehearsal.ts`), espera su `/health` y el guardia de PID sobre el `worker`
+   * nuevo, y comprueba que `api` no se reinició: los PID que escuchan en su puerto son los mismos antes y después.
+   */
+  async restartWorkerForRehearsal(): Promise<void> {
+    const phase: Phase = 'suite';
+    this.throwIfFatal(phase);
+    const old = this.apps.find((app) => app.name === 'worker');
+    const api = this.apps.find((app) => app.name === 'api');
+    if (old === undefined || api === undefined) {
+      throw new PhaseError(phase, 'ensayo: api and worker must be running before the worker restart');
+    }
+    const inspect = this.args.stackFault?.kind === 'inspect';
+    const apiBefore = await this.listenerPids(this.block.api);
+    // Parada a propósito: ni su manejador de salida ni el vigilante la cuentan como una caída.
+    old.exited = 'stopped by the runner for the rehearsal';
+    await killTree(old.pid, this.toolEnv, this.root);
+    const ports = [this.block.worker, ...(inspect ? [this.block.workerInspector] : [])];
+    const busy = await waitForFreeBlock(ports, SHUTDOWN_FREE_TIMEOUT_MS);
+    if (busy !== '') {
+      throw new PhaseError(phase, `ensayo: the old worker still holds its port after being stopped:\n  ${busy}`);
+    }
+    this.apps.splice(this.apps.indexOf(old), 1);
+    // El fichero de `--env-file` lleva también las variables del ensayo: Nx quita del entorno de la tarea las que
+    // coinciden con el `.env` de la raíz, y ese fichero las repone (design D6, hallazgos del apply).
+    const envFile = join(this.stackDir, 'effective-rehearsal-worker.env');
+    writeEnvFile(envFile, rehearsalWorkerEnv(this.suiteEnv));
+    const chain = describeRehearsalWorker();
+    this.appendLog('worker.log', `\n${PREFIX} ensayo: worker reiniciado (PID anterior ${old.pid}) con ${chain}\n`);
+    const fresh = await this.launch('worker', this.workerArgs(envFile, inspect), {
+      env: { ...this.appEnv, ...REHEARSAL_WORKER_OVERRIDES },
+      append: true,
+      label: 'ensayo',
+    });
+    await this.waitUntil(phase, `rehearsal worker /health on ${this.block.worker}`, () => this.healthUp(this.block.worker));
+    await this.pidGuard(phase, 'ensayo', inspect);
+    const apiAfter = await this.listenerPids(this.block.api);
+    const problem = compareListenerPids(`api (port ${this.block.api})`, apiBefore, apiAfter);
+    if (problem !== null) {
+      throw new PhaseError(phase, `ensayo: ${problem}`);
+    }
+    this.throwIfFatal(phase);
+    this.writeState(await listProcesses(this.toolEnv, this.root));
+    log(
+      `ensayo: worker reiniciado (PID ${old.pid} → ${fresh.pid}) con ${chain}; api no se reinició ` +
+        `(PID raíz ${api.pid}; escucha en ${this.block.api}: ${[...new Set(apiBefore)].join(',')} antes y ${[...new Set(apiAfter)].join(',')} después)`,
+    );
   }
 
   private async runProfile(
@@ -639,6 +712,16 @@ class Stack {
     mkdirSync(this.stackDir, { recursive: true });
     writeFileSync(join(this.stackDir, file), text, { flag: 'a' });
   }
+}
+
+/** Fichero para `node --env-file`: `CLAVE=valor` por línea. */
+function writeEnvFile(path: string, env: Readonly<Record<string, string>>): void {
+  writeFileSync(
+    path,
+    `${Object.entries(env)
+      .map(([key, value]) => `${key}=${value}`)
+      .join('\n')}\n`,
+  );
 }
 
 /** `node <cli de Playwright> test -c <config> --grep <etiquetas del perfil> …` (design D1, D9). */

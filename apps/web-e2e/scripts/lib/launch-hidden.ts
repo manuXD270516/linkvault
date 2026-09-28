@@ -41,7 +41,10 @@ function quote(value: string): string {
   return `"${value}"`;
 }
 
-/** Lanza `executable args…` con la salida a `logPath`, oculto y fuera del job del runner. Devuelve el PID raíz (`cmd.exe`). */
+/**
+ * Lanza `executable args…` con la salida a `logPath`, oculto y fuera del job del runner. Devuelve el PID raíz (`cmd.exe`).
+ * Con `append`, la salida se añade al log en lugar de reemplazarlo (el `worker` reiniciado del ensayo, tarea 4.5).
+ */
 export async function launchHiddenWindows(options: {
   readonly name: string;
   readonly executable: string;
@@ -50,6 +53,7 @@ export async function launchHiddenWindows(options: {
   readonly cwd: string;
   readonly logPath: string;
   readonly workDir: string;
+  readonly append?: boolean;
 }): Promise<number> {
   const envFile = join(options.workDir, `launch-${options.name}.env.json`);
   const pidFile = join(options.workDir, `launch-${options.name}.pid`);
@@ -59,7 +63,7 @@ export async function launchHiddenWindows(options: {
   rmSync(pidFile, { force: true });
   const command = [options.executable, ...options.args].map(quote).join(' ');
   // `cmd.exe` añade `PROMPT` a su entorno y los hijos lo heredarían: se quita antes de lanzar (medido en la 2.4c).
-  const cmdArguments = `/d /s /c "set "PROMPT=" && ${command} > ${quote(options.logPath)} 2>&1"`;
+  const cmdArguments = `/d /s /c "set "PROMPT=" && ${command} ${options.append === true ? '>>' : '>'} ${quote(options.logPath)} 2>&1"`;
   try {
     const code = await new Promise<number>((resolve) => {
       const child = spawn(
