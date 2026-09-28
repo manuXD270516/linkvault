@@ -1,0 +1,8 @@
+{
+  "job": {
+    "title": "Backend Developer (oferta de prueba)",
+    "company": "Empresa Ficticia E2E",
+    "text": "Oferta inventada para la suite end-to-end de LinkVault, sin datos de ninguna persona ni empresa real. Buscamos a alguien para desarrollar servicios backend con Node, NestJS y MongoDB, con colas de trabajos en Redis y tests automatizados. Trabajo remoto.",
+    "skills": []
+  }
+}

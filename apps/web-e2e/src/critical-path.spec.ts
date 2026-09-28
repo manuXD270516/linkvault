@@ -1,5 +1,19 @@
-import { groupDetailSchema, sessionResponseSchema } from '@linkvault/shared';
-import { type APIRequestContext, expect, test, type Page, type Response, type TestInfo } from '@playwright/test';
+import {
+  groupDetailSchema,
+  sessionResponseSchema,
+  trackLinkResponseSchema,
+  updatePreviewResponseSchema,
+} from '@linkvault/shared';
+import {
+  type APIRequestContext,
+  expect,
+  type Locator,
+  test,
+  type Page,
+  type Response,
+  type TestInfo,
+} from '@playwright/test';
+import { type CriticalPathJob, readCriticalPathJob } from './support/critical-path-input';
 import { Journey, type StepKey } from './support/journey';
 import { type Profile, type ProfileName, resolveProfile } from './support/profile';
 import {
@@ -21,8 +35,11 @@ import { SuiteApi } from './support/suite-api';
  * | 0 | Entrar con la cuenta de prueba, guardias por la API, limpieza previa (D10) | — | sí |
  * | 1 | A se registra y aterriza en `/grupos` | sí | no aplicable (D10: sin altas en remoto) |
  * | 2 | A crea un grupo con la visibilidad pública por defecto apagada; detalle con «Propietario» y el código | sí | sí |
+ * | 3 | A guarda en el grupo el link de una oferta en un dominio reservado (`.invalid`); la tarjeta aparece | sí | sí |
+ * | 4 | A completa la oferta a mano con la entrada versionada (D7); «Escrito por …» | sí | sí |
+ * | 5 | «Postulé» → «Hoy»; la tarjeta muestra la postulación y `/postulaciones` la tiene en «Postuladas» | sí | sí |
  *
- * Los pasos 2b a 8 los añaden las tareas 5.2 a 5.10, cada una con su línea en `DECLARED_STEPS`.
+ * Los pasos 2b y 6 a 8 los añaden las tareas 5.4, 5.7, 5.8 y 5.10, cada una con su línea en `DECLARED_STEPS`.
  *
  * En `remote`, lo que la prueba crea en la cuenta se borra al terminar en un `finally` (design D10, tarea 4.2), también
  * si falla, y solo si los guardias del paso 0 pasaron: un guardia que falla deja la cuenta como estaba.
@@ -34,9 +51,15 @@ import { SuiteApi } from './support/suite-api';
 
 /** Pasos que ejecuta cada perfil, por persona. Lo que no está aquí es «no aplicable» en ese perfil. */
 const DECLARED_STEPS: Readonly<Record<ProfileName, readonly StepKey[]>> = {
-  local: ['A:1', 'A:2'],
-  remote: ['A:0', 'A:2'],
+  local: ['A:1', 'A:2', 'A:3', 'A:4', 'A:5'],
+  remote: ['A:0', 'A:2', 'A:3', 'A:4', 'A:5'],
 };
+
+/**
+ * Techo de la espera a que la lectura automática de la oferta termine (en un dominio `.invalid` no puede prosperar): el
+ * `worker` da una lectura por perdida a los `ENRICH_DEADLINE_MS` (45 s en `e2e.env`). Es un techo, no una espera.
+ */
+const ENRICHMENT_SETTLED_TIMEOUT = 60_000;
 
 /** Alfabeto del código de invitación: base32 de Crockford sin `0`, `1`, `I`, `L`, `O` ni `U`. */
 const INVITE_CODE = /^[23456789ABCDEFGHJKMNPQRSTVWXYZ]{8}$/;
@@ -192,6 +215,103 @@ async function createPrivateGroup(page: Page, groupName: string, ownerName: stri
   await expect(page.getByTestId('invite-code')).toHaveText(INVITE_CODE);
 }
 
+/**
+ * Link de la oferta de una persona en esta ejecución: un dominio reservado (`.invalid`, RFC 2606) que no es de nadie, de
+ * modo que el `worker` del destino no pida nada a una bolsa real (D10); distinto por ejecución (D11), porque los links
+ * se deduplican entre todas las cuentas.
+ */
+function jobUrl(runIdentifier: string): string {
+  return `https://empleos.e2e-camino.invalid/ofertas/${encodeURIComponent(runIdentifier)}`;
+}
+
+/** Tarjeta del link cuya URL es `url` (su enlace abre la URL tal y como se guardó). */
+function linkCard(page: Page, url: string): Locator {
+  return page.getByRole('listitem').filter({ has: page.locator(`a[href="${url}"]`) });
+}
+
+/** Paso 3: A guarda en el grupo el link de la oferta y la tarjeta aparece. */
+async function saveJobLink(page: Page, url: string): Promise<void> {
+  await page.getByLabel('Pega el enlace de una oferta', { exact: true }).fill(url);
+  const saved = page.waitForResponse(isApiCall('POST', /^\/api\/links$/));
+  await page.getByRole('button', { name: 'Guardar', exact: true }).click();
+  expect((await saved).status()).toBe(201);
+  await expect(linkCard(page, url)).toHaveCount(1);
+}
+
+/**
+ * Paso 4: la lectura automática no puede leer un dominio `.invalid`; cuando la tarjeta ofrece «Completar a mano», A
+ * escribe la oferta de la entrada versionada (D7) y la tarjeta queda legible, con «Escrito por …» en el título.
+ * `authorName` es el nombre visible de A si la prueba lo conoce (en `remote`, la cuenta la creó el autor).
+ */
+async function completeOfferByHand(
+  page: Page,
+  url: string,
+  job: CriticalPathJob,
+  authorName: string | undefined,
+): Promise<void> {
+  const card = linkCard(page, url);
+  const completeByHand = card.getByRole('button', { name: 'Completar a mano' });
+  await expect(completeByHand).toBeVisible({ timeout: ENRICHMENT_SETTLED_TIMEOUT });
+  await completeByHand.click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByRole('heading', { name: 'Corregir la oferta' })).toBeVisible();
+  await dialog.getByLabel('Puesto', { exact: true }).fill(job.title);
+  await dialog.getByLabel('Empresa', { exact: true }).fill(job.company);
+  await dialog.getByLabel('Resumen', { exact: true }).fill(job.text);
+  const saved = page.waitForResponse(isApiCall('PATCH', /^\/api\/links\/[0-9a-f]{24}\/preview$/));
+  await dialog.getByRole('button', { name: 'Guardar', exact: true }).click();
+  const savedResponse = await saved;
+  expect(savedResponse.status()).toBe(200);
+  const preview = updatePreviewResponseSchema.parse(await savedResponse.json()).preview;
+  expect(preview?.title).toBe(job.title);
+  expect(preview?.company).toBe(job.company);
+  expect(preview?.summary).toBe(job.text);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+
+  await expect(card.getByRole('link', { name: job.title })).toBeVisible();
+  // Título y empresa los escribió A: los dos llevan su procedencia.
+  const writtenBy = authorName === undefined ? /^Escrito por .+/ : `Escrito por ${authorName}`;
+  await expect(card.getByTestId('note-title')).toHaveText(writtenBy);
+  await expect(card.getByTestId('note-company')).toHaveText(writtenBy);
+  await expect(card.getByText('Completar a mano')).toHaveCount(0);
+}
+
+/** `GET /api/applications` del tablero: sin `linkIds` (la lista del grupo pide los estados de sus links con ellos). */
+function isBoardList(response: Response): boolean {
+  const url = new URL(response.url());
+  return response.request().method() === 'GET' && url.pathname === '/api/applications' && !url.searchParams.has('linkIds');
+}
+
+/**
+ * Paso 5: A pulsa «Postulé» en la tarjeta y contesta «Hoy»; la tarjeta dice su postulación, y en `/postulaciones` la
+ * oferta está en la columna «Postuladas». La postulación queda privada: la invitación a compartirla no se acepta.
+ */
+async function applyToday(page: Page, url: string, job: CriticalPathJob): Promise<void> {
+  const card = linkCard(page, url);
+  await card.getByRole('button', { name: 'Postulé', exact: true }).click();
+  const question = page.getByRole('dialog');
+  await expect(question).toContainText('¿Cuándo postulaste?');
+  const tracked = page.waitForResponse(isApiCall('POST', /^\/api\/applications$/));
+  await question.getByRole('button', { name: 'Hoy', exact: true }).click();
+  const trackedResponse = await tracked;
+  expect(trackedResponse.status()).toBe(201);
+  const { application } = trackLinkResponseSchema.parse(await trackedResponse.json());
+  expect(application.status).toBe('applied');
+  expect(application.visibility).toBe('private');
+  await expect(card.getByTestId('link-own-status')).toHaveText(/Tu postulación:\s*Postulada/);
+
+  const board = page.waitForResponse(isBoardList);
+  const landed = page.waitForURL(/\/postulaciones$/);
+  await page.getByRole('link', { name: 'Postulaciones', exact: true }).click();
+  expect((await board).status()).toBe(200);
+  await landed;
+  await expect(page.getByRole('heading', { level: 1, name: 'Postulaciones' })).toBeVisible();
+  const applied = page.getByRole('region', { name: /^Postuladas/ });
+  const offer = applied.getByRole('article').filter({ hasText: job.title });
+  await expect(offer).toHaveCount(1);
+  await expect(offer).toContainText('Postulaste hoy');
+}
+
 test(
   'critical path: sign up, group, link, application, CV and match',
   { tag: ['@lot1', '@critical-path', '@remote-safe'] },
@@ -208,6 +328,8 @@ test(
       password: `Camino-A-${id}`,
     };
     const groupName = `${SUITE_PREFIX}camino ${id}`;
+    const job = readCriticalPathJob();
+    const urlA = jobUrl(`a-${id}`);
     const journey = new Journey();
 
     let guarded: GuardedAccount | undefined;
@@ -217,6 +339,15 @@ test(
       guarded = entry.guarded;
       await journey.step('A', '2', 'create a group without public visibility; detail with owner and invite code', () =>
         createPrivateGroup(page, groupName, entry.ownerName),
+      );
+      await journey.step('A', '3', 'save the link of an offer on a reserved domain; the card appears', () =>
+        saveJobLink(page, urlA),
+      );
+      await journey.step('A', '4', 'complete the offer by hand with the versioned input; "Escrito por …"', () =>
+        completeOfferByHand(page, urlA, job, entry.ownerName),
+      );
+      await journey.step('A', '5', 'apply "today"; the card shows it and the board has it in "Postuladas"', () =>
+        applyToday(page, urlA, job),
       );
 
       journey.assertDeclared(profile.name, DECLARED_STEPS[profile.name]);
