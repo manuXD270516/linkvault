@@ -34,3 +34,12 @@ prueba (medido el 2026-09-28).
 |---|---|---|
 | `pnpm nx run web-e2e:e2e-stack -- --project=chromium --repeat-each=5` | 5 de 5 en verde (3,9 min) | 10 `POST /api/auth/register` `201`, ningún `429` |
 | `pnpm nx run web-e2e:e2e-stack -- --rehearse-remote --skip-local --project=chromium --repeat-each=5` | 5 de 5 en verde (2,6 min) | 1 (la siembra) `201`, ningún `429` |
+
+### 2026-09-28 — `critical-path.spec.ts` en `mobile` (tarea 5.9b, sobre `e2d0cc5`)
+
+| Invocación | Resultado | Registro |
+|---|---|---|
+| `pnpm nx run web-e2e:e2e-stack -- --project=mobile --repeat-each=5` | 5 de 5 en verde (3,8 min) | 10 `POST /api/auth/register` `201`, ningún `429` |
+| `pnpm nx run web-e2e:e2e-stack -- --rehearse-remote --skip-local --project=mobile --repeat-each=5` | 5 de 5 en verde (2,7 min) | 1 (la siembra) `201`, ningún `429` |
+
+Con la 5.9a, el camino crítico queda **admitido** en el lote 1: `chromium` y `mobile`, perfil `local` y ensayo.
