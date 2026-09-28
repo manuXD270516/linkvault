@@ -1,6 +1,7 @@
 import {
   cvDocumentSchema,
   groupDetailSchema,
+  groupSummarySchema,
   type MatchLatest,
   type MatchReportCore,
   matchAnalysisResponseSchema,
@@ -25,7 +26,7 @@ import {
   readCriticalPathMatchReport,
 } from './support/critical-path-input';
 import { minimalPdf } from './support/cv-files';
-import { Journey, type StepKey } from './support/journey';
+import { Journey, type Person as PersonKey, type StepKey } from './support/journey';
 import { type Profile, type ProfileName, resolveProfile } from './support/profile';
 import type { MatchExpectation } from '../scripts/lib/args';
 import {
@@ -48,14 +49,16 @@ import { SuiteApi } from './support/suite-api';
  * | 0 | Entrar con la cuenta de prueba, guardias por la API, limpieza previa (D10) | — | sí |
  * | 1 | A se registra y aterriza en `/grupos` | sí | no aplicable (D10: sin altas en remoto) |
  * | 2 | A crea un grupo con la visibilidad pública por defecto apagada; detalle con «Propietario» y el código | sí | sí |
- * | 3 | A guarda en el grupo el link de una oferta en un dominio reservado (`.invalid`); la tarjeta aparece | sí | sí |
- * | 4 | A completa la oferta a mano con la entrada versionada (D7); «Escrito por …» | sí | sí |
- * | 5 | «Postulé» → «Hoy»; la tarjeta muestra la postulación y `/postulaciones` la tiene en «Postuladas» | sí | sí |
- * | 6 | A sube el CV de líneas fijas generado en la prueba; «Listo · tu CV se leyó bien» | sí | sí |
- * | 7 | «Analizar mi encaje» → «Analizar»; resultado según `E2E_MATCH_EXPECTATION` (D7) | `replay-report` | el del destino |
+ * | 2b | A pulsa «Copiar invitación»; B, **sin sesión** y en un contexto aparte con el dispositivo del proyecto, abre ese enlace → inicio de sesión con `returnUrl` → «Crear cuenta» → se registra, vuelve a `/unirse` con el código escrito, se une y aterriza en el detalle; A ve a B entre los miembros | sí | no aplicable (D10: sin altas en remoto) |
+ * | 3 | Guardar en el grupo el link de una oferta en un dominio reservado (`.invalid`); la tarjeta aparece | A y B | A |
+ * | 4 | Completar la oferta a mano con la entrada versionada (D7); «Escrito por …» | A y B | A |
+ * | 5 | «Postulé» → «Hoy»; la tarjeta muestra la postulación y `/postulaciones` la tiene en «Postuladas» | A y B | A |
+ * | 6 | Subir el CV de líneas fijas generado en la prueba; «Listo · tu CV se leyó bien» | A y B | A |
+ * | 7 | «Analizar mi encaje» → «Analizar»; resultado según `E2E_MATCH_EXPECTATION` (D7) | A y B, `replay-report` | A, el del destino |
  * | 8 | Limpieza de lo creado por A: sus postulaciones, sus grupos y sus CV de la suite (D10) | sí | sí |
  *
- * El paso 2b lo añade la tarea 5.10, con su línea en `DECLARED_STEPS`.
+ * Cada persona guarda **su** link (URL distinta por ejecución) con la misma oferta fija y el mismo CV, así que las dos
+ * piden la misma clave de replay (D11). Los intentos de registro no cambian: uno por persona (D5).
  *
  * La limpieza (paso 8) solo se hace sobre una cuenta cuyos guardias pasaron (`GuardedAccount`, D10): en `remote`, los
  * del paso 0; en `local`, los mismos guardias sobre la cuenta que A acaba de registrar, que por eso lleva el alias
@@ -69,7 +72,22 @@ import { SuiteApi } from './support/suite-api';
 
 /** Pasos que ejecuta cada perfil, por persona. Lo que no está aquí es «no aplicable» en ese perfil. */
 const DECLARED_STEPS: Readonly<Record<ProfileName, readonly StepKey[]>> = {
-  local: ['A:1', 'A:2', 'A:3', 'A:4', 'A:5', 'A:6', 'A:7', 'A:8'],
+  local: [
+    'A:1',
+    'A:2',
+    'B:2b',
+    'A:3',
+    'A:4',
+    'A:5',
+    'A:6',
+    'A:7',
+    'B:3',
+    'B:4',
+    'B:5',
+    'B:6',
+    'B:7',
+    'A:8',
+  ],
   remote: ['A:0', 'A:2', 'A:3', 'A:4', 'A:5', 'A:6', 'A:7', 'A:8'],
 };
 
@@ -546,11 +564,113 @@ async function analyzeMatch(
   await expect(page.getByRole('dialog')).toHaveCount(0);
 }
 
+/**
+ * Paso 2b, mitad de A: pulsa «Copiar invitación» en el detalle del grupo y lee lo copiado. Devuelve el enlace del
+ * mensaje, que tiene que llevar el código que enseña el detalle y apuntar al origen de la aplicación (D9).
+ */
+async function copyInvitationLink(page: Page, baseUrl: string): Promise<{ link: string; code: string }> {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  const code = ((await page.getByTestId('invite-code').textContent()) ?? '').trim();
+  expect(code).toMatch(INVITE_CODE);
+  await page.getByRole('button', { name: 'Copiar invitación', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Invitación copiada' })).toBeVisible();
+  const message = await page.evaluate(() => navigator.clipboard.readText());
+  const link = /(https?:\/\/\S+\/unirse\?codigo=[^\s)]+)/.exec(message)?.[1];
+  if (link === undefined) {
+    throw new Error(`step 2b: the copied invitation has no /unirse?codigo=… link: ${message}`);
+  }
+  const url = new URL(link);
+  expect(url.origin, 'step 2b: the invitation link points to the application origin').toBe(new URL(baseUrl).origin);
+  expect(url.searchParams.get('codigo'), 'step 2b: the invitation link carries the invite code').toBe(code);
+  return { link, code };
+}
+
+/**
+ * Paso 2b, mitad de B: **sin sesión**, abre el enlace copiado; el guardia lo lleva al inicio de sesión con `returnUrl`;
+ * pulsa «Crear cuenta», se registra y vuelve a `/unirse` con el código ya escrito; se une y aterriza en el detalle del
+ * grupo de A, donde figura como «Miembro».
+ */
+async function joinByInvitation(
+  pageB: Page,
+  invitation: { readonly link: string; readonly code: string },
+  person: Person,
+  group: { readonly id: string; readonly name: string },
+): Promise<void> {
+  const returnUrl = `/unirse?codigo=${invitation.code}`;
+  const toLogin = pageB.waitForURL((url) => url.pathname === '/login' && url.searchParams.get('returnUrl') === returnUrl);
+  await pageB.goto(invitation.link);
+  await toLogin;
+  await expect(pageB.getByRole('heading', { level: 1, name: 'Iniciar sesión' })).toBeVisible();
+
+  const toRegister = pageB.waitForURL(
+    (url) => url.pathname === '/registro' && url.searchParams.get('returnUrl') === returnUrl,
+  );
+  await pageB.getByRole('link', { name: 'Crear cuenta', exact: true }).click();
+  await toRegister;
+  await expect(pageB.getByRole('heading', { level: 1, name: 'Crear cuenta' })).toBeVisible();
+  await pageB.getByLabel('Nombre', { exact: true }).fill(person.displayName);
+  await pageB.getByLabel('Email', { exact: true }).fill(person.email);
+  await pageB.getByLabel('Contraseña', { exact: true }).fill(person.password);
+  const registered = pageB.waitForResponse(isApiCall('POST', /^\/api\/auth\/register$/));
+  const backToJoin = pageB.waitForURL((url) => url.pathname === '/unirse');
+  await pageB.getByRole('button', { name: 'Crear cuenta', exact: true }).click();
+  expect((await registered).status()).toBe(201);
+  await backToJoin;
+
+  const dialog = pageB.getByRole('dialog');
+  await expect(dialog.getByRole('heading', { name: 'Unirse a un grupo' })).toBeVisible();
+  await expect(dialog.getByLabel('Código de invitación', { exact: true })).toHaveValue(invitation.code);
+  const joined = pageB.waitForResponse(isApiCall('POST', /^\/api\/groups\/join$/));
+  const landed = pageB.waitForURL((url) => url.pathname === `/grupos/${group.id}`);
+  await dialog.getByRole('button', { name: 'Unirme', exact: true }).click();
+  const joinedResponse = await joined;
+  expect(joinedResponse.status()).toBe(200);
+  const summary = groupSummarySchema.parse(await joinedResponse.json());
+  expect(summary.id).toBe(group.id);
+  expect(summary.role).toBe('member');
+  await landed;
+  await expect(pageB.getByRole('heading', { level: 1, name: group.name })).toBeVisible();
+  await expect(memberRow(pageB, person.displayName)).toContainText('Miembro');
+}
+
+/** Fila de una persona en la lista de miembros del detalle del grupo. */
+function memberRow(page: Page, displayName: string): Locator {
+  return page.getByTestId('members').getByRole('listitem').filter({ hasText: displayName });
+}
+
+/** Pasos 3 a 7 de una persona (D11): su propio link, la oferta a mano, la postulación, el CV y el análisis. */
+async function stepsThreeToSeven(
+  journey: Journey,
+  who: PersonKey,
+  page: Page,
+  url: string,
+  job: CriticalPathJob,
+  authorName: string | undefined,
+  groupName: string,
+  expectation: MatchExpectation,
+): Promise<void> {
+  await journey.step(who, '3', 'save the link of an offer on a reserved domain; the card appears', () =>
+    saveJobLink(page, url),
+  );
+  await journey.step(who, '4', 'complete the offer by hand with the versioned input; "Escrito por …"', () =>
+    completeOfferByHand(page, url, job, authorName),
+  );
+  await journey.step(who, '5', 'apply "today"; the card shows it and the board has it in "Postuladas"', () =>
+    applyToday(page, url, job),
+  );
+  await journey.step(who, '6', 'upload the fixed-lines CV; "Listo · tu CV se leyó bien"', () => uploadCv(page));
+  await journey.step(who, '7', `analyze the match; outcome ${expectation}`, async () => {
+    await backToGroup(page, groupName);
+    await analyzeMatch(page, url, job, expectation);
+  });
+}
+
 test(
   'critical path: sign up, group, link, application, CV and match',
   { tag: ['@lot1', '@critical-path', '@remote-safe'] },
-  async ({ page, request, baseURL }, testInfo) => {
-    test.setTimeout(180_000);
+  async ({ page, request, browser, baseURL }, testInfo) => {
+    // Techo, no espera: dos personas en `local`, cada una con su lectura de oferta, su CV y su análisis.
+    test.setTimeout(360_000);
     const profile = resolveProfile(process.env, baseURL);
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
@@ -562,10 +682,18 @@ test(
       email: `e2e-cp-a-${id}${TEST_ACCOUNT_ALIAS}@example.com`,
       password: `Camino-A-${id}`,
     };
+    const personB: Person = {
+      displayName: `Persona B ${id}`,
+      email: `e2e-cp-b-${id}@example.com`,
+      password: `Camino-B-${id}`,
+    };
     const groupName = `${SUITE_PREFIX}camino ${id}`;
     const job = readCriticalPathJob();
     const urlA = jobUrl(`a-${id}`);
+    const urlB = jobUrl(`b-${id}`);
     const journey = new Journey();
+    // B, en un contexto de navegador aparte y sin sesión; `browser.newContext()` lleva las opciones del proyecto.
+    const contextB = profile.name === 'local' ? await browser.newContext() : undefined;
 
     let guarded: GuardedAccount | undefined;
     let cleaned = false;
@@ -576,20 +704,31 @@ test(
       await journey.step('A', '2', 'create a group without public visibility; detail with owner and invite code', () =>
         createPrivateGroup(page, groupName, entry.ownerName),
       );
-      await journey.step('A', '3', 'save the link of an offer on a reserved domain; the card appears', () =>
-        saveJobLink(page, urlA),
-      );
-      await journey.step('A', '4', 'complete the offer by hand with the versioned input; "Escrito por …"', () =>
-        completeOfferByHand(page, urlA, job, entry.ownerName),
-      );
-      await journey.step('A', '5', 'apply "today"; the card shows it and the board has it in "Postuladas"', () =>
-        applyToday(page, urlA, job),
-      );
-      await journey.step('A', '6', 'upload the fixed-lines CV; "Listo · tu CV se leyó bien"', () => uploadCv(page));
-      await journey.step('A', '7', `analyze the match; outcome ${profile.matchExpectation}`, async () => {
-        await backToGroup(page, groupName);
-        await analyzeMatch(page, urlA, job, profile.matchExpectation);
-      });
+      const pageB = contextB === undefined ? undefined : await contextB.newPage();
+      if (pageB !== undefined) {
+        pageB.on('pageerror', (error) => pageErrors.push(`B: ${error.message}`));
+        await journey.step(
+          'B',
+          '2b',
+          'A copies the invitation; B, without a session, opens it, creates an account from the login and joins',
+          async () => {
+            // Mismo dispositivo que el proyecto (D11): un contexto sin sus opciones sería otro navegador.
+            expect(pageB.viewportSize(), 'B uses the device of the project').toEqual(page.viewportSize());
+            expect(await pageB.evaluate(() => navigator.userAgent)).toBe(await page.evaluate(() => navigator.userAgent));
+            const group = { id: new URL(page.url()).pathname.split('/').pop() ?? '', name: groupName };
+            const invitation = await copyInvitationLink(page, profile.baseUrl);
+            await joinByInvitation(pageB, invitation, personB, group);
+            await backToGroup(page, groupName);
+            await expect(memberRow(page, personB.displayName), 'the group detail of A lists B as a member').toContainText(
+              'Miembro',
+            );
+          },
+        );
+      }
+      await stepsThreeToSeven(journey, 'A', page, urlA, job, entry.ownerName, groupName, profile.matchExpectation);
+      if (pageB !== undefined) {
+        await stepsThreeToSeven(journey, 'B', pageB, urlB, job, personB.displayName, groupName, profile.matchExpectation);
+      }
       await journey.step('A', '8', 'clean up what A created: the application, the group and the CV of the suite', async () => {
         const account = await entry.guard();
         guarded = account;
@@ -604,6 +743,7 @@ test(
       if (!cleaned) {
         await cleanUpAtEnd(guarded, failed, testInfo);
       }
+      await contextB?.close();
     }
   },
 );
