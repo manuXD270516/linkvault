@@ -1,6 +1,6 @@
 # Suite end-to-end a demanda (change `e2e-suite`, design D13; spec platform/ci-pipeline, «Suite end-to-end a demanda
-# en un runner limpio»). Esqueleto de la tarea 7.1a: el job `local` ejecuta el mismo comando que en local; el job de
-# staging todavía no ejecuta `e2e-remote` (ver su comentario).
+# en un runner limpio»). Tareas 7.1a y 7.5a: el job `local` ejecuta `e2e-stack`, el mismo comando que en local; el job
+# de staging, `e2e-remote` contra el destino declarado en `vars.E2E_STAGING_URL`.
 #
 # Solo a mano (Q2 del design, R-21): sin `pull_request`, sin `push` y sin etiquetas hasta que el usuario decida otro
 # disparador con los minutos medidos (7.8a, 9.10). No es check obligatorio. Umbral (ADR-053 §1.2): el consumo del mes
@@ -117,11 +117,9 @@ jobs:
           retention-days: 7
 
   # Solo desde `main` (D13); dos corridas contra staging no se pisan la cuenta de prueba ni se corta una limpieza a
-  # medias: concurrencia en el job, sin cancelar la que está en curso.
-  #
-  # ESQUELETO (tarea 7.1a): el job todavía no ejecuta `e2e-remote` contra staging ni lee sus credenciales; hasta que se
-  # conecte (design D13: destino de `vars.E2E_STAGING_URL`, «no hay destino de staging declarado» si falta, y
-  # credenciales por `env:`), termina en rojo diciéndolo, para no dar un verde que no verificó nada (ADR-048 §3).
+  # medias: concurrencia en el job, sin cancelar la que está en curso. No monta nada: `e2e-remote` ejecuta el perfil
+  # `remote` contra el origen declarado en `vars.E2E_STAGING_URL` (design D3, D13; tarea 7.5a). La variable y los dos
+  # secretos los crea el usuario (tarea 9.3); este workflow no los crea.
   staging:
     name: e2e-remote (staging)
     if: github.ref == 'refs/heads/main' && inputs.target == 'staging'
@@ -130,9 +128,60 @@ jobs:
     concurrency:
       group: e2e-staging
       cancel-in-progress: false
+    env:
+      # Runner efímero: sin daemon de Nx (como ci.yml).
+      NX_DAEMON: 'false'
     steps:
-      - name: Staging run not wired yet
+      # Primer paso, antes de instalar nada: sin destino declarado, rojo diciéndolo y cero pruebas (D13, «staging sin
+      # destino = rojo»; ADR-048 §3). La variable llega por `env:`; un `vars.*` que no existe se evalúa como vacío.
+      - name: Require a staging destination
         shell: bash
+        env:
+          E2E_STAGING_URL: ${{ vars.E2E_STAGING_URL }}
         run: |
-          echo "::error::el job de staging es un esqueleto (tarea 7.1a): todavía no ejecuta e2e-remote"
-          exit 1
+          if [ -z "$E2E_STAGING_URL" ]; then
+            echo "::error::no hay destino de staging declarado (variable E2E_STAGING_URL vacía): cero pruebas ejecutadas"
+            exit 1
+          fi
+          echo "destino de staging declarado: $E2E_STAGING_URL"
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # Sin `version`: pnpm/action-setup lee el campo packageManager de package.json.
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      # El store de pnpm lo cachea setup-node. Sin caché de navegadores (D13): se instalan en cada corrida.
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      # El mismo comando que en local (design D3). El origen llega como flag desde `env:` (el runner no lo lee de su
+      # entorno); las credenciales son secretos y el runner solo las lee del entorno, con estos dos nombres.
+      - name: Run e2e-remote against staging
+        shell: bash
+        env:
+          E2E_BASE_URL: ${{ vars.E2E_STAGING_URL }}
+          E2E_REMOTE_EMAIL: ${{ secrets.E2E_STAGING_EMAIL }}
+          E2E_REMOTE_PASSWORD: ${{ secrets.E2E_STAGING_PASSWORD }}
+        run: pnpm nx run web-e2e:e2e-remote -- --base-url "$E2E_BASE_URL" --match-expectation consent-required
+
+      # La misma subida que el job `local`: informe HTML y resultados de Playwright del perfil `remote` bajo
+      # dist/.playwright/apps/web-e2e, también cuando la corrida falla (D13).
+      - name: Upload e2e artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-staging-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist/.playwright/apps/web-e2e/
+          if-no-files-found: warn
+          retention-days: 7
