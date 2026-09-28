@@ -8,7 +8,7 @@ import {
 } from './s3-cv-file.store';
 
 // El almacén se prueba sobre su doble: lo que importa aquí es con qué clave y con qué `ContentType` sube, y que un
-// error no filtre la clave al registro. La prueba contra el MinIO del compose es un paso local del RUNBOOK
+// error no filtre la clave al registro. La prueba contra el almacén del compose es un paso local del RUNBOOK
 // (ADR-028, "Pruebas"), porque un test de `api` no debe necesitar un contenedor.
 
 const USER = '66e9a0000000000000000a01';

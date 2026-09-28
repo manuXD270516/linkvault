@@ -24,11 +24,11 @@ export const AUTH_JWT_SECRET_EXAMPLE =
  */
 export const s3ConfigShape = {
   S3_ENDPOINT: z.string().regex(/^https?:\/\/\S+$/),
-  // MinIO la ignora, pero la firma de la petición la exige.
+  // El almacén puede ignorarla, pero la firma de la petición la exige.
   S3_REGION: z.string().min(1),
   S3_ACCESS_KEY: z.string().min(1),
   S3_SECRET_KEY: z.string().min(1),
-  // Bucket de los CV, privado y sin expiración (lo crea `docker compose`). S3 exige de 3 a 63 caracteres.
+  // Bucket de los CV, privado y sin expiración (lo crea `object-store provision`). S3 exige de 3 a 63 caracteres.
   S3_BUCKET: z.string().min(3).max(63),
 };
 
