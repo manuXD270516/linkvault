@@ -363,7 +363,9 @@ propio runner sí recibe el `.env` (Nx lo carga antes de lanzarlo); por eso sus 
   calcula el Vitest a partir del fixture de `match-cv`. **Premisa corregida:** tras un `match-cv` no degradado la crítica
   se pide **siempre** (`runJudgeLoop`), también con `missingSkills: []`; con eso solo se salta `build-roadmap`. La
   entrada lleva además las líneas del CV de las que la prueba genera el PDF (`cv.lines`) y el idioma de salida de la
-  clave (`outputLanguage`).
+  clave (`outputLanguage`), y la clave medida de `match-cv` (`replayKeys["match-cv"]`, tarea 5.7): con ella el paso 7 lee
+  del fichero del fixture el informe que afirma con `replay-report`, y el Vitest de `libs/ai` exige que sea la que calcula
+  la definición actual de la tarea.
 
 ### D8. Correo: Mailpit en local y en CI; en staging, ninguno
 
