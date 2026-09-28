@@ -1,5 +1,9 @@
 import { Logger } from 'nestjs-pino';
-import { createApp } from './app/create-app';
+import {
+  createApp,
+  LISTEN_HOST,
+  listenOnAllInterfaces,
+} from './app/create-app';
 import { loadApiConfigOrExit } from './infrastructure/config/load-api-config';
 
 async function bootstrap(): Promise<void> {
@@ -7,8 +11,10 @@ async function bootstrap(): Promise<void> {
   const { config, ai } = loadApiConfigOrExit(process.env);
   const app = await createApp(config, ai);
   app.enableShutdownHooks();
-  await app.listen(config.API_PORT);
-  app.get(Logger).log(`API listening on port ${config.API_PORT}`, 'Bootstrap');
+  await listenOnAllInterfaces(app, config.API_PORT);
+  app
+    .get(Logger)
+    .log(`API listening on ${LISTEN_HOST}:${config.API_PORT}`, 'Bootstrap');
 }
 
 bootstrap().catch((error: unknown) => {
