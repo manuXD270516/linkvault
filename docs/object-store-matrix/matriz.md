@@ -4142,6 +4142,136 @@ Las tres son un **manifiesto único** (`application/vnd.docker.distribution.mani
 `linux/arm64`, y el sha256 de los bytes que devuelve el registro es el digest que `publish-artifact.sh` confirmó en la
 corrida. Es la forma que 35b espera en su precondición 1.1 (la leerá sobre `:staging` en la 13.4).
 
+## Falsación de la identidad en `arm64` (tarea 9.3)
+
+Ejecutada el 2026-09-28, con la autorización del usuario del 2026-09-27 (publicar una imagen de `api` no verificada y
+borrar solo esa versión) y la del 2026-09-28 de gastar en la 9.3 y la 13.3 los minutos que quedaban (ver la 9.4).
+
+**Commit temporal `4c077dc`.** En `publish_one` de `infra/ci/publish-artifact.sh`, para `api`, la reconstrucción
+**sustituye** al `docker push` de la imagen cargada (con el `docker push` después, el tag del registro volvería a
+apuntar a la imagen verificada y la identidad «se confirmaría» sin haber falsado nada); `worker` y `web` siguen con
+`docker push`. Se reconstruye con el builder `docker-container` que deja `docker/setup-buildx-action` y con
+`--provenance=false`, para que el registro reciba un manifiesto único y no un índice con atestación:
+
+```text
+  if [ "$repo" = "$API_IMAGE" ]; then
+    docker buildx build --push --provenance=false --platform "${TARGET_PLATFORM:?}" -f docker/api.Dockerfile -t "$ref" . ||
+      fail "no se pudo reconstruir y publicar ${ref}"
+  else
+    docker push "$ref" || fail "no se pudo publicar ${ref}"
+  fi
+```
+
+**Antes de lanzarla**, leído en el workflow del commit empujado (`git show 4c077dc:.github/workflows/cd-staging.yml`,
+parseado con el paquete `yaml` del repositorio): `deploy-staging` solo corre con el estado `full` y no declara
+`environment`; `gh secret list` no da ningún secreto (preflight `none`) y el único entorno es
+`production-preflight`, que `cd-staging` no usa; `MOVING_TAG` vacío fuera de `main`. Y el listado de versiones
+de `linkvault-api`, volcado a fichero: 6 versiones, ninguna sin tag.
+
+```text
+deploy-staging.if: needs.preflight.outputs.state == 'full' | environment: undefined
+publish.if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry_run != true }} | MOVING_TAG: ${{ github.ref == 'refs/heads/main' && 'staging' || '' }}
+secretos de repositorio: []
+entornos: production-preflight
+$ gh api "users/manuXD270516/settings/billing/usage/summary?year=2026&month=9"      # leído con node, 05:21Z
+actions_linux 1892 | actions_linux_arm 17 | total 1909 | restan 91
+$ gh workflow run cd-staging.yml --ref change/object-store -f dry_run=false
+https://github.com/manuXD270516/linkvault/actions/runs/36381575435
+$ gh run view 36381575435 --json conclusion,jobs,headSha,event,url,createdAt,updatedAt > <scratchpad>/g15/run-93.json   # leído con node
+conclusion: failure | headSha: 4c077dc0fe18ffbc1948c02c6d305d062b81c001 | event: workflow_dispatch | 2026-09-28T05:21:41Z → 2026-09-28T05:36:22Z
+job: verify (lint, specs, typecheck, test, build) | success
+job: preflight (¿hay destino de staging configurado?) | success
+job: build, verify and publish artifact | failure | id 108800974022
+   step: Verify artifact (docker-compose.prod.yml stack in the runner) | success
+   step: Publish verified artifact to GHCR (docker push of the loaded image) | failure
+   step: Tear down verification stack | success
+job: resultado: el artefacto NO pasó la verificación | failure
+job: deploy staging (solo si hay destino configurado) | skipped
+$ gh api repos/manuXD270516/linkvault/actions/jobs/108800974022      # leído con node
+labels: ["ubuntu-24.04-arm"] | GitHub Actions 1000000373
+```
+
+Del log del paso de publicación (`gh run view 36381575435 --log --job 108800974022`, volcado a fichero y leído con
+`node`), sin las líneas de progreso de BuildKit:
+
+```text
+=== Publicación del artefacto verificado
+tag inmutable: sha-4c077dc0fe18
+tag móvil    : (ninguno: esta corrida no mueve ningún canal)
+
+=== Publicar ghcr.io/manuxd270516/linkvault-api:sha-4c077dc0fe18
+  artefacto verificado en este daemon: sha256:5acbf462ac9f138f824e84838d38a621e36e748e4ecdecc05b5d22db8866a2db
+#0 building with "builder-2bc3abd4-dba1-4ccc-8c78-b9780ee4a8d8" instance using docker-container driver
+…
+#21 exporting to image
+#21 exporting layers done
+#21 exporting manifest sha256:6e3e245848603c43dc8564b666f849eb26cbafebc479ca9ad4ef45f588aaaf60 done
+#21 exporting config sha256:5acbf462ac9f138f824e84838d38a621e36e748e4ecdecc05b5d22db8866a2db done
+#21 pushing layers 0.6s done
+#21 pushing manifest for ghcr.io/manuxd270516/linkvault-api:sha-4c077dc0fe18@sha256:6e3e245848603c43dc8564b666f849eb26cbafebc479ca9ad4ef45f588aaaf60 0.6s done
+
+[FAIL] la imagen local ghcr.io/manuxd270516/linkvault-api:sha-4c077dc0fe18 no tiene digest de repositorio para ghcr.io/manuxd270516/linkvault-api: lo que hay publicado bajo ese tag no salió de este daemon (¿se reconstruyó para publicar?)
+##[error]Process completed with exit code 1.
+```
+
+**Cae con el mensaje del daemon clásico**, el que se esperaba con Docker 28.0.4 (9.1): la imagen solo cargada no tiene
+digest de repositorio, porque lo que llegó al registro lo publicó el builder y no el daemon. El guardia del `.Id` no
+salta (el tag local sigue en `sha256:5acbf462…`): la reconstrucción salió entera de la caché del builder y su config es
+la de la imagen verificada, así que lo que detecta la comprobación no son bits distintos sino que lo publicado **no salió
+de este daemon**, que es lo que dice su mensaje. `worker` y `web` no llegaron a publicarse. Revertido en `af5fd46`.
+
+**Borrado de la versión no verificada.** Listado después de la corrida y `<scratchpad>/g15/find-93.cjs`, que busca la
+versión con el tag del commit temporal, exige que sea una sola, que no tenga ningún otro tag y que no existiera antes,
+y lista las versiones nuevas sin tag (que no se borrarían):
+
+```text
+$ gh api "user/packages/container/linkvault-api/versions" --paginate > <scratchpad>/g15/api-versions-after-run.json
+$ node find-93.cjs api-versions-before.json api-versions-after-run.json sha-4c077dc0fe18
+versiones antes: 6 | después: 7
+con sha-4c077dc0fe18: id 1303401435 | 2026-09-28T05:36:00Z | tags ["sha-4c077dc0fe18"] | sha256:6e3e245848603c43dc8564b666f849eb26cbafebc479ca9ad4ef45f588aaaf60
+ok   la versión 1303401435 solo tiene sha-4c077dc0fe18
+ok   la versión 1303401435 no existía antes de la corrida
+versiones nuevas: 1303401435
+versiones nuevas sin tag: (ninguna)
+versiones de antes que ya no están: (ninguna)
+BORRAR_ID=1303401435
+RESULT: ok
+linkvault-worker: versiones 6 | con sha-4c077dc0fe18: 0
+linkvault-web: versiones 4 | con sha-4c077dc0fe18: 0
+$ gh api -i -X DELETE user/packages/container/linkvault-api/versions/1303401435      # exit=0
+HTTP/2.0 204 No Content
+$ gh api "user/packages/container/linkvault-api/versions" --paginate > <scratchpad>/g15/api-versions-after-delete.json
+$ node -e "…" api-versions-before.json api-versions-after-delete.json
+versiones: 6
+1302218905 2026-09-27T19:52:47Z ["sha-83afb67b1fe8"]
+1299977163 2026-09-27T01:52:00Z ["sha-e86d3755a525","staging"]
+1296678774 2026-09-25T21:38:29Z ["sha-283115548a1a", … 9 tags]
+1296517947 2026-09-25T20:47:09Z ["sha-618f5409dd52"]
+1296354065 2026-09-25T19:59:19Z ["sha-6288dee81f2d"]
+1292050195 2026-09-24T22:16:08Z ["sha-b541a9a314b4"]
+ok   ningún tag sha-4c077dc0fe18
+ok   la versión 1303401435 ya no está
+ok   mismas versiones que antes de la corrida
+RESULT: ok
+```
+
+Con `--provenance=false` el registro recibió un manifiesto único: ninguna versión sin tag quedó en GHCR. Solo se borró
+la 1303401435. Coste de la corrida, de `usage?…&day=28`: 15 minutos `Actions Linux` y 2 `Actions Linux ARM`.
+
+**Observación abierta al usuario, sin tocar.** El job de reporte describió la corrida como un fallo de verificación
+cuando la verificación pasó y lo que falló fue la publicación, y afirmó que no se publicó nada cuando el paso sí dejó
+una imagen en GHCR:
+
+```text
+  verificación del artefacto : failure (clase del fallo: artifact)
+  nombre (lista de checks)   : resultado: el artefacto NO pasó la verificación
+  descripción                : El artefacto no se construyó, no arrancó o no existe para la arquitectura del destino: no se publicó ni desplegó nada.
+```
+
+El reporte lee `needs['build-verify-publish'].result`, que es el del job entero (construir, verificar y publicar), y lo
+nombra «verificación». Hoy solo se ve con un camino de publicación roto a propósito, pero es una afirmación falsa sobre
+lo publicado.
+
 ## Minutos de CI en `arm64` (tarea 9.4)
 
 Medido el 2026-09-28. La 1.2 estableció que las corridas `arm64` consumen minutos del plan. La cifra es el consumo
@@ -4187,6 +4317,21 @@ RESULT: FAIL (9)
 **Pasa del 80 %.** La decisión se abrió al usuario el 2026-09-28, y respondió el mismo día: **esperar al 1 de
 octubre** para todo lo que consuma minutos de Actions (9.3, 13.3, el `ci` del PR #69 y la fusión de la 13.4). Hasta
 entonces, ninguna corrida ni push, y solo commits locales. Anotado en ADR-052 «Elección».
+
+**Revisada por el usuario el mismo día.** Desactivó temporalmente el workflow `ci` (se reactiva el 1 de octubre) para
+que los push a la rama no gasten minutos, y autorizó gastar los que quedaban en la 9.3 y la 13.3, leyendo el consumo
+antes de cada corrida y sin lanzarla con menos de 25 restantes:
+
+```text
+$ gh workflow list --all
+ci	disabled_manually	360114183
+$ gh api "users/manuXD270516/settings/billing/usage/summary?year=2026&month=9"      # leído con node
+05:21Z, antes de la 9.3 : actions_linux 1892 + actions_linux_arm 17 = 1909 (restan 91)
+05:39Z, antes de la 13.3: actions_linux 1907 + actions_linux_arm 19 = 1926 (restan 74)
+05:52Z, después         : actions_linux 1920 + actions_linux_arm 21 = 1941 (restan 59)
+```
+
+La 9.3 costó 17 minutos (15 + 2 ARM) y la 13.3, 15 (13 + 2 ARM). La 13.4 sigue esperando a la ventana del usuario.
 
 ## `--compose` contra la pila sustituida (tarea 10.1)
 
@@ -4707,8 +4852,9 @@ RUNBOOK marcadas en la 12.1.
 
 ## Cierre (grupo 13)
 
-El 2026-09-28, solo en local: el usuario decidió esperar al 1 de octubre para todo lo que consuma minutos de Actions
-(ver la 9.4). La 13.3 (última corrida en modo de prueba) y la 13.4 (fusión) quedan hasta entonces.
+El 2026-09-28. La 13.1 y la 13.2, en local. La 13.3 se lanzó el mismo día con la autorización del usuario de gastar en
+ella y en la 9.3 los minutos restantes (ver la 9.4), y queda por repetir tras la 7.9 y la 7.10. La 13.4 (fusión), en la
+ventana del usuario.
 
 ### 13.1: `nx affected`
 
@@ -4733,3 +4879,57 @@ Totals: 76 passed, 0 failed (76 items)
 $ bash infra/ci/repo-checks.sh      # exit=0 (última línea)
 ok: 5 comprobaciones de repositorio ejecutadas
 ```
+
+### 13.3: corrida en modo de prueba
+
+```text
+$ gh workflow run cd-staging.yml --ref change/object-store -f dry_run=true      # rama en af5fd46, 05:39Z
+https://github.com/manuXD270516/linkvault/actions/runs/36382881342
+$ gh run view 36382881342 --json conclusion,jobs,headSha,event,url,createdAt,updatedAt > <scratchpad>/g15/run-133.json
+conclusion: success | headSha: af5fd465e0c838f9c38d644ab3029f494aa1da8e | event: workflow_dispatch | 2026-09-28T05:39:48Z → 2026-09-28T05:51:45Z
+job: verify (lint, specs, typecheck, test, build) | success
+job: preflight (¿hay destino de staging configurado?) | success
+job: build, verify and publish artifact | success | id 108804295136
+   step: Verify artifact (docker-compose.prod.yml stack in the runner) | success
+   step: Publish verified artifact to GHCR (docker push of the loaded image) | skipped
+   step: Tear down verification stack | success
+job: resultado: artefacto verificado — NO desplegado (sin destino de staging) | success
+job: deploy staging (solo si hay destino configurado) | skipped
+```
+
+`<scratchpad>/g15/check-133.cjs` lee ese JSON, el del job (`gh api …/actions/jobs/108804295136`) y su log
+(`gh run view 36382881342 --log --job 108804295136`, volcado a fichero). `verify-artifact.sh` corta con `fail` en el
+primer ≠0, así que cada marcador de éxito dentro de su sección es esa orden saliendo 0; la comprobación de plataformas
+de terceros sale 0 cuando pasa a `pull` sin la línea de reintento:
+
+```text
+$ node check-133.cjs run-133.json job-133.json log-133.txt
+ok   conclusion: success | headSha af5fd465e0c838f9c38d644ab3029f494aa1da8e | workflow_dispatch
+ok   job build-verify-publish: success (id 108804295136)
+ok   step Verify artifact: success
+ok   step Publish: skipped (modo de prueba)
+ok   job deploy-staging: skipped
+ok   runner labels: ["ubuntu-24.04-arm"] | GitHub Actions 1000000377
+ok   ^=== object-store: provision → «provision: ok»
+ok   ^=== object-store: verify → «verify: ok»
+ok   ^=== worker: lectura del bucket de CV → «s3-probe: ok»
+ok   comprobación de plataformas de terceros: ok: redis:7.4.11 (linux/arm64) | ok: chrislusf/seaweedfs:4.47 (linux/arm64) | ok: mongo:7.0.43 (linux/arm64)
+ok   plataforma de las imágenes propias: 3 ok
+ok   sección final «Artefacto verificado»
+ok   ninguna línea [FAIL] en el paso de verificación
+RESULT: ok
+$ node check-133.cjs run-93.json job-93.json log-93.txt      # la corrida de la 9.3, solo las líneas que fallan
+FAIL conclusion: failure | headSha 4c077dc0fe18ffbc1948c02c6d305d062b81c001 | workflow_dispatch
+FAIL job build-verify-publish: failure (id 108800974022)
+FAIL step Publish: failure (modo de prueba)
+RESULT: FAIL (3)
+```
+
+Del mismo log: `daemon: linux/arm64`, y hasta `healthy` mongo 5,01 s, redis 5,21 s, object-store 1,24 s, api 5,26 s,
+worker 5,29 s y web 5,20 s. Nada publicado: ninguna versión con `sha-af5fd465e0c8` en `linkvault-api`, `-worker` ni
+`-web`. Coste: 15 minutos (13 + 2 ARM).
+
+**No es la última corrida.** A las 05:51Z, con esta ya en marcha, el smoke local registró la 7.9 y la 7.10 (`ed370c2`):
+`api` y `worker` escuchan solo en loopback, y la verificación del artefacto no lo ve porque pregunta desde dentro del
+contenedor. Las dos cambian `api`, `worker` y `verify-artifact.sh`, así que esta corrida verificó el árbol anterior y la
+13.3 queda abierta hasta repetirla sobre el árbol con las dos (unos 15 minutos; quedan 59 de septiembre).
