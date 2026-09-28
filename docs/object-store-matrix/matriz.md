@@ -4142,6 +4142,52 @@ Las tres son un **manifiesto único** (`application/vnd.docker.distribution.mani
 `linux/arm64`, y el sha256 de los bytes que devuelve el registro es el digest que `publish-artifact.sh` confirmó en la
 corrida. Es la forma que 35b espera en su precondición 1.1 (la leerá sobre `:staging` en la 13.4).
 
+## Minutos de CI en `arm64` (tarea 9.4)
+
+Medido el 2026-09-28. La 1.2 estableció que las corridas `arm64` consumen minutos del plan. La cifra es el consumo
+real del mes frente a lo incluido, con el coste medido de una corrida `arm64` real. `timing` no sirve para esto: da 0
+también en corridas que se facturan. Los minutos incluidos no los da ninguna API (`410` y `404`, ver la 1.2): 2000
+es la cifra documentada del plan Free, y el plan de la cuenta se lee de `gh api user`. `<scratchpad>/g14/check-94.cjs`
+lee los ficheros volcados (`usage/summary`, `gh api user`, los jobs y el `timing` de 9.1 y 9.2) y busca la cifra en
+ADR-052 «Elección»:
+
+```text
+$ node check-94.cjs <volcados> docs/adr/ADR-052.md
+ok   plan de manuXD270516: free -> incluidos 2000 min/mes (documentado)
+     2026-9 actions_linux: 1892 min
+     2026-9 actions_linux_arm: 17 min
+ok   consumido: 1909 de 2000 -> 95,45 %
+ok   por encima del 80 %: true
+ok   corrida 36307691093 job 108589406398 (ubuntu-24.04-arm): 255 s -> 5 min facturados; timing total_ms=0
+ok   corrida 36344930563 job 108694291588 (ubuntu-24.04-arm): 287 s -> 5 min facturados; timing total_ms=0
+ok   coste de una corrida arm64 real: 5 y 5 min
+ok   ADR-052 «Elección» contiene «1909»
+ok   ADR-052 «Elección» contiene «2000»
+ok   ADR-052 «Elección» contiene «95,45 %»
+ok   ADR-052 «Elección» contiene «5 minutos»
+ok   ADR-052 «Elección» contiene «/timing`»
+ok   ADR-052 «Elección» contiene «total_ms = 0»
+ok   ADR-052 «Elección» contiene «plan=free»
+ok   ADR-052 «Elección» contiene «2026-09-28»
+ok   ADR-052 «Elección» contiene «1 de octubre»
+RESULT: ok
+$ node check-94.cjs <volcados> <ADR-052.md anterior a esta tarea>      # solo las líneas que fallan
+FAIL ADR-052 «Elección» contiene «1909»
+FAIL ADR-052 «Elección» contiene «2000»
+FAIL ADR-052 «Elección» contiene «95,45 %»
+FAIL ADR-052 «Elección» contiene «5 minutos»
+FAIL ADR-052 «Elección» contiene «/timing`»
+FAIL ADR-052 «Elección» contiene «total_ms = 0»
+FAIL ADR-052 «Elección» contiene «plan=free»
+FAIL ADR-052 «Elección» contiene «2026-09-28»
+FAIL ADR-052 «Elección» contiene «1 de octubre»
+RESULT: FAIL (9)
+```
+
+**Pasa del 80 %.** La decisión se abrió al usuario el 2026-09-28, y respondió el mismo día: **esperar al 1 de
+octubre** para todo lo que consuma minutos de Actions (9.3, 13.3, el `ci` del PR #69 y la fusión de la 13.4). Hasta
+entonces, ninguna corrida ni push, y solo commits locales. Anotado en ADR-052 «Elección».
+
 ## `--compose` contra la pila sustituida (tarea 10.1)
 
 Ejecutada el 2026-09-28 con la sesión de `ghcr.io` iniciada por el usuario y el tag de la 9.2, desde la raíz del
@@ -4658,3 +4704,32 @@ $ pnpm nx run api:test         # redirigido a fichero
 
 La 12.3 y la 12.4 quedan cerradas: cero apariciones en los ficheros de la 12.3 y cero fuera de las secciones del
 RUNBOOK marcadas en la 12.1.
+
+## Cierre (grupo 13)
+
+El 2026-09-28, solo en local: el usuario decidió esperar al 1 de octubre para todo lo que consuma minutos de Actions
+(ver la 9.4). La 13.3 (última corrida en modo de prueba) y la 13.4 (fusión) quedan hasta entonces.
+
+### 13.1: `nx affected`
+
+```text
+$ pnpm nx affected -t lint,typecheck,test > <scratchpad>/g14/nx-131.txt 2>&1      # exit=0
+$ node -e "…"      # lee el fichero: objetivos ejecutados y líneas con fallo
+NX   Running targets lint, typecheck, test for 11 projects:
+NX   Successfully ran targets lint, typecheck, test for 11 projects
+líneas con fallo: 0
+RESULT: ok (11 proyectos)
+```
+
+### 13.2: validaciones y `repo-checks`
+
+```text
+$ pnpm exec openspec validate object-store --strict --no-interactive      # exit=0
+Change 'object-store' is valid
+$ pnpm exec openspec validate staging-host --strict --no-interactive      # exit=0
+Change 'staging-host' is valid
+$ pnpm exec openspec validate --all --no-interactive      # exit=0 (última línea)
+Totals: 76 passed, 0 failed (76 items)
+$ bash infra/ci/repo-checks.sh      # exit=0 (última línea)
+ok: 5 comprobaciones de repositorio ejecutadas
+```
