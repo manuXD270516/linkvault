@@ -576,6 +576,12 @@ changes:
       **(g)** Primera release `v0.1.0`, que cierra la tarea 8.1 de `deploy-image-verification`: **solo `arm64`**
       mientras no haya host de producción, sin cambiar la spec de identidad por digest; la matriz
       multiarquitectura queda diferida. Escribir en el RUNBOOK que `latest` no es un tag de despliegue.
+      **(h)** El reporte de `cd-staging`/`cd-prod` atribuye a la verificación un fallo de la **publicación**: en la
+      corrida 36381575435 (falsación 9.3 de `object-store`) tituló «el artefacto NO pasó la verificación» y «no se
+      publicó ni desplegó nada», con la verificación en verde y una imagen ya publicada en GHCR, porque toma el
+      resultado del job entero como el de la verificación. Separar el resultado de verificar del de publicar (clase o
+      desenlace propio para «verificado, publicación fallida») y probarlo con esa misma falsación. Trasladado aquí por
+      decisión del usuario del 2026-09-28.
       **Precondiciones y orden:** archivar `i18n-catalog-gate` antes de `/opsx:apply` — **cumplida el 2026-09-25**
       (PR #63, `openspec/changes/archive/2026-09-25-i18n-catalog-gate`). 35a y 35c modifican los dos «CD a staging en main»; el orden por archivo es **35a → 35c**
       y el MODIFIED de aquí se redacta sobre el texto que deje 35a.
