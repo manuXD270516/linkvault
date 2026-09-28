@@ -192,6 +192,23 @@ camino distinto. El oyente de `listen-after-preflight` vive en un **proceso hijo
 lanzado** (y que mata aparte al apagar): si lo abriera un hijo registrado, el guardia de PID lo daría por propio y el
 fallo no probaría nada.
 
+**Decisiones del usuario del 2026-09-27 (`/opsx:apply`, grupo 4; también en ADR-053 §Hallazgos del apply):**
+
+- **La limpieza entre corridas se verifica con `e2e-remote` sobre una pila conservada** (tarea 4.2): cada corrida del
+  runner parte de una pila nueva y la borra al terminar, así que dos ensayos seguidos nunca comparten la cuenta. Sobre
+  una pila levantada con `--keep-stack`, varias corridas `e2e-remote` contra su origen sí la comparten, como en staging:
+  una se interrumpe tras crear el grupo y la siguiente lo barre en su paso 0.
+- **El ensayo acepta `--match-expectation`** igual que `e2e-remote`; sin él, `consent-required` (tarea 5.7).
+- **La entrada versionada del recorrido la crea la 5.2 solo con la oferta**; la 5.6 la completa con lo medido en 5.5a y
+  5.5b (D7).
+- **`cv.spec.ts` se verifica contra la pila del runner en su bloque**, no contra la de desarrollo (tarea 5.4): con
+  `--keep-stack` y Playwright sobre ese fichero (el runner solo ejecuta `@lot1`), y sin `docker` en el `PATH` para
+  que su `resetRegisterLimit()` no toque el Redis de la pila de desarrollo.
+- **Riesgo abierto, `--keep-stack` tras un fallo lanzado por Nx en Windows**: Nx termina `api`, `worker` y `web` cuando
+  el target sale con ≠0 (con `node` directo sobreviven; medido). El runner lo dice en ese caso y da la orden directa, en
+  lugar de afirmar que la pila sigue levantada; sacar las aplicaciones de lo que Nx termina exigiría cambiar el
+  lanzamiento oculto verificado en la 2.4c.
+
 ### D4. Un bloque de puertos propio, un proyecto de compose por checkout y bloque
 
 | Servicio | Desarrollo | Suite (por defecto) | Variable del compose | Anulación (flag, D3) |
@@ -293,6 +310,11 @@ propio runner sí recibe el `.env` (Nx lo carga antes de lanzarlo); por eso sus 
   `nx` lanza después abre ventanas visibles. Con `--keep-stack` se crean desde PowerShell con `CreateNoWindow` y
   exactamente el entorno de la suite (`scripts/lib/launch-hidden.ts`); sin `--keep-stack`, siguen siendo hijos normales,
   que mueren si muere el runner.
+- **Cada aplicación lanzada recibe su propio `NX_INVOCATION_ROOT_PID`** (grupo 4, 2026-09-27, aceptado por el usuario):
+  Nx 23.2.1 apunta cada tarea en curso en `task_invocations` con la clave «PID raíz» y la borra al terminar; el apagado
+  mata `nx serve` sin dejarle borrarla, y si Windows reutiliza ese PID para el `nx serve` de una corrida posterior, Nx
+  sale con «Recursive task invocation detected». Una raíz aleatoria (entre 10⁹ y 2·10⁹, que no es un PID real) no choca
+  con los registros huérfanos. Es una variable `NX_*`: está en el conjunto permitido.
 
 ### D7. IA: replay en local y en CI; en el ensayo y en staging, ninguna llamada
 
@@ -320,7 +342,10 @@ propio runner sí recibe el `.env` (Nx lo carga antes de lanzarlo); por eso sus 
   **no tiene permiso de IA externa**, así que el análisis degrada por falta de permiso (`cv/match`, «Sin
   consentimiento y sin proveedor local»). Se afirma exactamente: marca de degradado y `consentRequired`.
 - **`remote` afirma solo el desenlace que declara el destino** (`--match-expectation`, que el runner pasa a Playwright
-  como `E2E_MATCH_EXPECTATION`: `replay-report` o `consent-required`); no se deduce en la prueba.
+  como `E2E_MATCH_EXPECTATION`: `replay-report` o `consent-required`); no se deduce en la prueba. El **ensayo** acepta
+  el mismo `--match-expectation` y, sin él, usa `consent-required` (decisión del usuario del 2026-09-27, tarea 5.7).
+- **La entrada versionada la crea la 5.2 solo con la oferta** y la 5.6 la completa con el texto del CV y lo demás que
+  midan 5.5a y 5.5b (decisión del usuario del 2026-09-27).
 
 ### D8. Correo: Mailpit en local y en CI; en staging, ninguno
 

@@ -8,6 +8,7 @@ import { type AppName, parseRunnerArgs, playwrightGrepArgs, type RunnerArgs } fr
 import { blockPorts, composeProjectName, type PortBlock, resolveBlock } from './lib/block';
 import { DOCKER_WINDOWS_EXTRA, pickWhitelisted, readEnvFile, SYSTEM_WHITELIST } from './lib/env';
 import { type ComposeContext, composePs, parsePublishedPorts, startInfra, stopInfra } from './lib/infra';
+import { keepStackMessage } from './lib/keep-stack';
 import { isAlive, launchHiddenWindows } from './lib/launch-hidden';
 import { evaluateListeners, listListeners } from './lib/listeners';
 import { describeBusy, probePorts } from './lib/ports';
@@ -937,7 +938,16 @@ async function main(): Promise<number> {
     for (const app of stack.apps) {
       app.child?.unref();
     }
-    log(`--keep-stack: la pila sigue levantada (proyecto ${projectName}). Para apagarla: ${downCommand(args)}`);
+    log(
+      keepStackMessage({
+        failed: failure !== undefined,
+        platform: process.platform,
+        underNx: process.env['NX_TASK_TARGET_PROJECT'] !== undefined,
+        projectName,
+        downCommand: downCommand(args),
+        runnerArgs: process.argv.slice(2),
+      }),
+    );
     return failure === undefined ? 0 : 1;
   }
   try {
