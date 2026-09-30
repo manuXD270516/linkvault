@@ -19,6 +19,20 @@ export const AUTH_JWT_SECRET_EXAMPLE =
   'dev-only-change-me-not-a-real-jwt-secret';
 
 /**
+ * Variables del almacén de objetos. Fragmento aparte porque lo valida también el script `object-store` (design D4 de
+ * `object-store`), que no arranca Nest: comprueba solo esto más el bucket de snapshots.
+ */
+export const s3ConfigShape = {
+  S3_ENDPOINT: z.string().regex(/^https?:\/\/\S+$/),
+  // El almacén puede ignorarla, pero la firma de la petición la exige.
+  S3_REGION: z.string().min(1),
+  S3_ACCESS_KEY: z.string().min(1),
+  S3_SECRET_KEY: z.string().min(1),
+  // Bucket de los CV, privado y sin expiración (lo crea `object-store provision`). S3 exige de 3 a 63 caracteres.
+  S3_BUCKET: z.string().min(3).max(63),
+};
+
+/**
  * Configuración de `api` (D8 de bootstrap-monorepo). Todas obligatorias salvo `APP_VERSION`, que inyecta el
  * build y tiene como respaldo la versión de `package.json` (D9). La configuración de IA (`AI_*`, `OLLAMA_*`,
  * `OPENROUTER_*`) no se valida aquí sino con `parseAiConfig` de `@linkvault/ai` en `loadApiConfigOrExit`, igual que
@@ -103,39 +117,21 @@ export const apiConfigSchema = z
     // `api` sube el archivo del CV y nada más: no lo lee, no lo borra y no emite ninguna URL para alcanzarlo. Las
     // cinco son obligatorias porque sin ellas la subida respondería `500` en la primera petición, y un proceso que
     // arranca sabiendo que no puede cumplir su trabajo es peor que uno que se niega a arrancar (Migration Plan).
-    S3_ENDPOINT: z.string().regex(/^https?:\/\/\S+$/),
-    // MinIO la ignora, pero la firma de la petición la exige.
-    S3_REGION: z.string().min(1),
-    S3_ACCESS_KEY: z.string().min(1),
-    S3_SECRET_KEY: z.string().min(1),
-    // Bucket de los CV, privado y sin expiración (lo crea `docker compose`). S3 exige de 3 a 63 caracteres.
-    S3_BUCKET: z.string().min(3).max(63),
+    ...s3ConfigShape,
     // --- Análisis de encaje (cv-match-suggestions, ADR-030) ---
     // Cuántos análisis con informe **no** degradado caben en la ventana por persona. La cuota se deriva del
     // historial (ADR-030 §8); este número es el tope, no un contador.
     MATCH_ANALYSES_PER_USER: z.coerce.number().int().min(1).max(1_000),
     // Ventana de esa cuota, en milisegundos (Q3 del diseño: 24 h por defecto).
-    MATCH_QUOTA_WINDOW_MS: z.coerce
-      .number()
-      .int()
-      .min(60_000)
-      .max(604_800_000),
+    MATCH_QUOTA_WINDOW_MS: z.coerce.number().int().min(60_000).max(604_800_000),
     // Plazo tras el cual un `running` se **lee** `failed`, deja de ocupar sitio en la cuota y es el que la API
     // **publica** en el bloque `running`. Ha de ser el **mismo** valor que recibe el worker: la escritura
     // condicionada a "no vencido" vive allí. `assertAnalysisDeadlines` (arranque) exige que sea mayor que
     // `MATCH_ANALYSIS_TIMEOUT_MS` contando entregas y margen.
-    MATCH_ANALYSIS_MAX_AGE_MS: z.coerce
-      .number()
-      .int()
-      .min(1_000)
-      .max(600_000),
+    MATCH_ANALYSIS_MAX_AGE_MS: z.coerce.number().int().min(1_000).max(600_000),
     // Plazo del trabajo en el worker. `api` no lo aplica a la ejecución, pero lo valida al arrancar junto a
     // `MATCH_ANALYSIS_MAX_AGE_MS` para rechazar una pareja invertida antes de aceptar tráfico.
-    MATCH_ANALYSIS_TIMEOUT_MS: z.coerce
-      .number()
-      .int()
-      .min(1_000)
-      .max(300_000),
+    MATCH_ANALYSIS_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(300_000),
     // Detrás de Traefik en compose.prod (D12 / ADR-033). Ausente → false (sin confiar en X-Forwarded-For).
     TRUST_PROXY: z
       .enum(['true', 'false'])

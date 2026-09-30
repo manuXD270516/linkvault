@@ -14,6 +14,9 @@ module.exports = {
       target: 'node',
       compiler: 'tsc',
       main: './src/main.ts',
+      // Punto de entrada adicional (design D4 de `object-store`): `node object-store.js <provision|verify>` con la imagen
+      // de `api` ya publicada, tras el `up`. No importa `AppModule`; valida solo las `S3_*`.
+      additionalEntryPoints: [{ entryName: 'object-store', entryPath: './src/object-store.ts' }],
       // Ruta **absoluta** a propósito (ADR-048): `GeneratePackageJsonPlugin` de Nx 23.2.1 llama a
       // `readTsConfig(options.tsConfig)` con el valor **tal cual** —a diferencia del resto de consumidores, que
       // hacen `path.isAbsolute(tsConfig) ? tsConfig : path.join(options.root, tsConfig)`

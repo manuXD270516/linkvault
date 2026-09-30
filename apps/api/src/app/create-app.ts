@@ -17,6 +17,15 @@ import { AppModule } from './app.module';
 export const API_GLOBAL_PREFIX = 'api';
 
 /**
+ * Host en el que escucha `api`: **todas las interfaces IPv4** (tarea 7.9 de `object-store`, ADR-052 «Decisiones del
+ * usuario tras el punto de revisión», 5). Con el adaptador Fastify, `listen(port)` sin host escucha en `localhost`, y
+ * dentro de un contenedor eso deja a Traefik —y a cualquier otro contenedor de la red— con `ECONNREFUSED`, mientras
+ * los healthchecks, que preguntan desde dentro por `127.0.0.1`, siguen en verde. No `::`: en un host con IPv6
+ * desactivado el proceso no arrancaría, y la red de Compose y todos los healthchecks son IPv4.
+ */
+export const LISTEN_HOST = '0.0.0.0';
+
+/**
  * Rutas fuera del prefijo `/api`: la salud y la **página pública** `/p/:slug` (D4 de public-preview-share). Esa URL se
  * pega en un chat, así que tiene que ser corta, y `/api/...` es por contrato JSON con sesión.
  *
@@ -109,4 +118,12 @@ export async function createApp(
     extensionCorsOrigins: config.EXTENSION_CORS_ORIGINS,
   });
   return app;
+}
+
+/** Pone la aplicación a escuchar en `port` en {@link LISTEN_HOST}. `main.ts` arranca por aquí. */
+export async function listenOnAllInterfaces(
+  app: NestFastifyApplication,
+  port: number,
+): Promise<void> {
+  await app.listen(port, LISTEN_HOST);
 }

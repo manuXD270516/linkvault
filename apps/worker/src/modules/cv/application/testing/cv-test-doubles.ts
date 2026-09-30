@@ -16,7 +16,7 @@ import type {
 } from '../ports/cv-text-extractors.port';
 
 // Dobles de los puertos del módulo `cv` del worker. No son adaptadores de producción: los reales viven en
-// `infrastructure/`, y el del almacén es lo que permite probar los cuatro cortes de idempotencia sin MinIO.
+// `infrastructure/`, y el del almacén es lo que permite probar los cuatro cortes de idempotencia sin un almacén S3.
 
 export class MovableClock implements Clock {
   constructor(public current = new Date('2026-09-12T10:00:00.000Z')) {}

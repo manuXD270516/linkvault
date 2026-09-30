@@ -1,16 +1,20 @@
 import { Logger } from 'nestjs-pino';
-import { createWorkerApp } from './app/create-worker-app';
+import {
+  createWorkerApp,
+  LISTEN_HOST,
+  listenOnAllInterfaces,
+} from './app/create-worker-app';
 import { loadWorkerConfigOrExit } from './infrastructure/config/load-worker-config';
 
 async function bootstrap(): Promise<void> {
   const { config, ai } = loadWorkerConfigOrExit(process.env);
   const app = await createWorkerApp(config, ai);
   app.enableShutdownHooks();
-  await app.listen(config.WORKER_HEALTH_PORT);
+  await listenOnAllInterfaces(app, config.WORKER_HEALTH_PORT);
   app
     .get(Logger)
     .log(
-      `Worker health listening on port ${config.WORKER_HEALTH_PORT}`,
+      `Worker health listening on ${LISTEN_HOST}:${config.WORKER_HEALTH_PORT}`,
       'Bootstrap',
     );
 }

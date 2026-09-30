@@ -3,7 +3,7 @@ description: Prueba end-to-end automática del change activo (docker compose + h
 argument-hint: [nombre-del-change]
 ---
 Change: "$ARGUMENTS" (si vacío, el último archivado o el activo).
-1) `docker compose up -d --wait`; espera a mongo (rs0 iniciado), redis, minio. Arranca api, worker y web en segundo plano
+1) `docker compose up -d --wait`; espera a mongo (rs0 iniciado), redis, object-store (`pnpm infra:up` crea los buckets). Arranca api, worker y web en segundo plano
    (`pnpm nx run-many -t serve --parallel=3 &`) y espera a que /health de api y worker respondan 200.
 2) Deriva del proposal.md y de specs/ del change los flujos HTTP que demuestra (ej. registro → login → crear grupo → importar links → esperar
    SSE link.enriched → cambiar estado). Ejecútalos con curl/httpie contra AI_CHAIN=mock, verificando códigos y campos clave.

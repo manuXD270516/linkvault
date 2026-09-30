@@ -8,7 +8,7 @@
 //
 // El prefijo por usuario existe para que se pueda encontrar y borrar de una vez todo lo de una persona. Es lo que usa
 // la cascada de `DELETE /api/users/me` (`CvUserPrefixDeleter`), y también el operador cuando esa operación no se puede
-// usar (`mc rm --recursive <bucket>/<userId>/`, RUNBOOK).
+// usar (RUNBOOK, «Borrar a mano todo lo de una persona», pendiente de reescribir para el almacén actual).
 
 /** `<userId>/<cvId>`, estable para los mismos identificadores. */
 export function cvFileKey(userId: string, cvId: string): string {

@@ -35,7 +35,7 @@ export interface JobLinkDocument {
   preview?: StoredPreview;
   previewSources?: PreviewSources;
   lastEnrichmentError?: { reason: string; at: string };
-  /** Clave del objeto en MinIO. Se lee de aquí, **nunca se calcula** a partir de `previewVersion` (D12). */
+  /** Clave del objeto S3. Se lee de aquí, **nunca se calcula** a partir de `previewVersion` (D12). */
   snapshotKey?: string;
   closedAt?: Date;
   closedReason?: 'calendar' | 'recheck';

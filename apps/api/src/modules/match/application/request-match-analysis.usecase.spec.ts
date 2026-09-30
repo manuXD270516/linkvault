@@ -27,7 +27,7 @@ import {
 import type { MatchAnalysisSettings } from './ports/match-settings.port';
 import type { AnalysisRepository } from './ports/analysis-repository.port';
 
-// Casos de uso del análisis (tareas 9.1–9.10) sobre dobles: sin HTTP, sin Mongo, sin MinIO.
+// Casos de uso del análisis (tareas 9.1–9.10) sobre dobles: sin HTTP, sin Mongo, sin almacén de objetos.
 
 const ANA = '66e9a0000000000000000a01';
 const BETO = '66e9a0000000000000000d01';

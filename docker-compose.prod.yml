@@ -1,4 +1,5 @@
-# Producción canónica de LinkVault (ADR-033): api, worker, web, mongo rs0, redis, MinIO, Traefik+LE.
+# Producción canónica de LinkVault (ADR-033): api, worker, web, mongo rs0, redis, almacén S3 (object-store, ADR-052),
+# Traefik+LE.
 # Arranque: ver infra/README.md. No publicar /metrics ni /health* en el entrypoint público.
 #
 #   docker compose -f docker-compose.prod.yml --env-file .env.prod config
@@ -14,11 +15,15 @@ networks:
   internal:
     driver: bridge
     internal: true
+  # Red propia del almacén (design D14 de `object-store`): solo `object-store`, `api` y `worker`.
+  object-store-net:
+    driver: bridge
+    internal: true
 
 volumes:
   mongo-data:
   redis-data:
-  minio-data:
+  object-store-data:
   traefik-letsencrypt:
   traefik-logs:
 
@@ -109,41 +114,65 @@ services:
       retries: 10
       start_period: 5s
 
-  minio:
-    # Espejo propio de la imagen de MinIO. El 2026-09-24, MinIO **restringió el acceso anónimo** a sus imágenes en
-    # quay.io: el repositorio entero pasó a devolver 401 y la pila dejó de poder montarse desde cero en ninguna
-    # máquina limpia — lo destapó la verificación del artefacto de este change, no un despliegue fallido.
-    # Se replica el **mismo objeto** (idéntico id de imagen), sin modificarlo y conservando su procedencia. Va por
-    # variable y no fijo a fuego: la lección del incidente es justamente que una imagen de un tercero clavada en el
-    # fichero es un punto de fallo que no se puede sortear sin editarlo.
-    # Limitación conocida: el espejo lleva solo **linux/amd64**, que es lo que había en la máquina que lo replicó.
-    # Sustituir MinIO por otro servidor compatible con S3 es la fila 35a, `object-store` (docs/design-v0.2.md §6 y
-    # openspec-changes.yaml; punto (f) del scope original de la fila 35, ADR-051 §1). El espejo no se mantiene: es un
-    # puente hasta esa sustitución.
-    image: ${MINIO_IMAGE:-ghcr.io/manuxd270516/linkvault-minio}:${MINIO_IMAGE_TAG:-RELEASE.2025-09-07T16-13-09Z}
+  # Almacén de objetos S3 (change `object-store`, ADR-052 «Elección»: SeaweedFS 4.47; design D6, D14 y D16). Servicio
+  # **copiado** del de `docker-compose.yml`, que a su vez es copia del que midió la matriz
+  # (`docs/object-store-matrix/seaweedfs.compose.yml`): misma imagen por defecto, mismo guardia de arranque en
+  # `entrypoint`, misma orden, mismo entorno, mismo volumen y mismo healthcheck de solo lectura. La tarea 7.3 lo compara
+  # con el de desarrollo; solo pueden diferir `ports`, `networks`, `depends_on`, `restart`, `logging`, el origen del
+  # volumen y los valores de las tres claves mapeadas del fichero de entorno, que aquí son referencias obligatorias sin
+  # valor por defecto: sin la clave, `weed mini` generaría una propia y la guardaría junto a los datos (design D16).
+  # No aprovisiona: los buckets, el cifrado del bucket de CV y la ausencia de reglas los pone `object-store provision`
+  # (`docker compose … run --rm --no-deps api node object-store.js provision`, y después `verify`) tras el `up`.
+  # Red propia (design D14): el filer (8888), el maestro (9333), el volumen (9340) y sus gRPC escuchan sin
+  # autenticación, así que el almacén vive solo en `object-store-net` (interna, sin puertos publicados), con `api` y
+  # `worker` como únicos otros miembros; mongo, redis, `web` y Traefik no llegan a él. Sin `depends_on`: así
+  # `config --images object-store` da una sola línea, la que lee el `deploy.sh` de 35b para comparar el digest.
+  object-store:
+    image: ${OBJECT_STORE_IMAGE:-chrislusf/seaweedfs}:${OBJECT_STORE_IMAGE_TAG:-4.47}
     restart: unless-stopped
-    command: ['server', '/data', '--console-address', ':9001']
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |-
+        case "$${WEED_S3_SSE_KEK-}" in
+          *[!0-9a-f]*) kek_format=bad ;;
+          *) kek_format=hex ;;
+        esac
+        if [ "$$kek_format" != hex ] || [ "$${#WEED_S3_SSE_KEK}" -ne 64 ]; then
+          echo "object-store-guard: WEED_S3_SSE_KEK (OBJECT_STORE_SSE_KEY) must be exactly 64 characters [0-9a-f]; refusing to start (see docs/RUNBOOK.md)" >&2
+          exit 64
+        fi
+        if [ -e /data/.mini_sse_kek ]; then
+          echo "object-store-guard: /data/.mini_sse_kek exists: this volume was started without WEED_S3_SSE_KEK and may hold objects encrypted with a key SeaweedFS generated; refusing to start (see docs/RUNBOOK.md before touching the file)" >&2
+          exit 65
+        fi
+        exec /entrypoint.sh "$$@"
+      - object-store-guard
+    command:
+      - 'mini'
+      - '-dir=/data'
+      - '-webdav=false'
+      - '-admin.ui=false'
+      - '-s3.port.iceberg=0'
+      - '-s3.port.lance=0'
+      - '-master.telemetry=false'
     environment:
-      MINIO_ROOT_USER: ${S3_ACCESS_KEY:?}
-      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?}
-      # Required for `mc encrypt set sse-s3` on the CV bucket (ADR-033 D5).
-      # Format: <key-name>:<base64 of 32 raw bytes>. Generate: see infra/README.md.
-      MINIO_KMS_SECRET_KEY: ${MINIO_KMS_SECRET_KEY:?}
-      MC_HOST_admin: http://${S3_ACCESS_KEY}:${S3_SECRET_KEY}@localhost:9000
-      S3_BUCKET: ${S3_BUCKET:-cvs}
-      S3_SNAPSHOTS_BUCKET: ${S3_SNAPSHOTS_BUCKET:-snapshots}
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY:?}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:?}
+      # Clave del cifrado del bucket de CV: 64 caracteres [0-9a-f] (ADR-052 «Elección», orden que la genera). Perderla
+      # es perder los CV.
+      WEED_S3_SSE_KEK: ${OBJECT_STORE_SSE_KEY:?set OBJECT_STORE_SSE_KEY to 64 hex characters (ADR-052)}
     volumes:
-      - minio-data:/data
-      - ./infra/minio/ensure-buckets.sh:/ensure-buckets.sh:ro
+      - object-store-data:/data
     networks:
-      - internal
+      - object-store-net
     healthcheck:
-      test: ['CMD-SHELL', 'sh /ensure-buckets.sh']
+      test: ['CMD', 'curl', '-fsS', '-o', '/dev/null', '--max-time', '3', 'http://127.0.0.1:8333/healthz']
       interval: 10s
-      timeout: 15s
-      retries: 12
-      start_period: 20s
-      start_interval: 3s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
+      start_interval: 1s
 
   api:
     # El valor por defecto nombra el espacio de nombres **del repositorio** (ADR-048 §4-bis): antes apuntaba a
@@ -157,7 +186,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      minio:
+      object-store:
         condition: service_healthy
     environment:
       NODE_ENV: production
@@ -212,7 +241,7 @@ services:
       MATCH_QUOTA_WINDOW_MS: ${MATCH_QUOTA_WINDOW_MS:-86400000}
       MATCH_ANALYSIS_MAX_AGE_MS: ${MATCH_ANALYSIS_MAX_AGE_MS:-240000}
       MATCH_ANALYSIS_TIMEOUT_MS: ${MATCH_ANALYSIS_TIMEOUT_MS:-120000}
-      S3_ENDPOINT: http://minio:9000
+      S3_ENDPOINT: http://object-store:8333
       S3_REGION: ${S3_REGION:-us-east-1}
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:?}
       S3_SECRET_KEY: ${S3_SECRET_KEY:?}
@@ -221,6 +250,7 @@ services:
       FEATURE_HEADLESS_EXTRACTION: ${FEATURE_HEADLESS_EXTRACTION:-false}
     networks:
       - internal
+      - object-store-net
     # Readiness for compose --wait; image HEALTHCHECK is liveness (/health/live).
     healthcheck:
       test:
@@ -245,7 +275,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      minio:
+      object-store:
         condition: service_healthy
     environment:
       NODE_ENV: production
@@ -294,7 +324,7 @@ services:
       MAIL_SMTP_HOST: ${MAIL_SMTP_HOST:-}
       MAIL_SMTP_PORT: ${MAIL_SMTP_PORT:-}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
-      S3_ENDPOINT: http://minio:9000
+      S3_ENDPOINT: http://object-store:8333
       S3_REGION: ${S3_REGION:-us-east-1}
       S3_ACCESS_KEY: ${S3_ACCESS_KEY:?}
       S3_SECRET_KEY: ${S3_SECRET_KEY:?}
@@ -303,6 +333,7 @@ services:
       FEATURE_HEADLESS_EXTRACTION: ${FEATURE_HEADLESS_EXTRACTION:-false}
     networks:
       - internal
+      - object-store-net
     # Readiness **idéntica** a la de `api`: el que decide es el **contenido** (`status`, `checks.mongo`,
     # `checks.redis`), y el `!r.ok` sobra para distinguir sano de degradado — está por simetría, no porque haga
     # falta. La versión anterior solo hacía `JSON.parse` del cuerpo y acertaba por accidente, apoyada en que hoy el

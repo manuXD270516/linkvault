@@ -163,6 +163,33 @@ describe('ExtractCvUseCase, the four idempotency cuts', () => {
     expect(repository.failures.size).toBe(0);
   });
 
+  it('El bucket de CV no existe: throws, so the queue retries, and the CV stays pending', async () => {
+    // Design D15 de `object-store`: el lector relanza `NoSuchBucket` en vez de dar `null`.
+    repository.withCv(CV_ID, { userId: USER_ID });
+    files.failure = Object.assign(new Error('The specified bucket does not exist'), {
+      name: 'NoSuchBucket',
+      $metadata: { httpStatusCode: 404 },
+    });
+
+    await expect(
+      useCaseWith({ kind: 'text', text: GOOD_TEXT }).execute(PAYLOAD),
+    ).rejects.toMatchObject({ name: 'NoSuchBucket' });
+    expect(repository.statusOf(CV_ID)).toBe('pending');
+    expect(repository.failures.size).toBe(0);
+  });
+
+  it('El objeto no está (null from the reader): failed with internal_error, resolved without a retry', async () => {
+    repository.withCv(CV_ID, { userId: USER_ID });
+    const read = vi.spyOn(files, 'read').mockResolvedValueOnce(null);
+
+    await expect(
+      useCaseWith({ kind: 'text', text: GOOD_TEXT }).execute(PAYLOAD),
+    ).resolves.toEqual({ kind: 'failed', reason: 'internal_error' });
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(repository.statusOf(CV_ID)).toBe('failed');
+    expect(repository.failures.get(CV_ID)).toBe('internal_error');
+  });
+
   it('Carrera perdida: the conditional write changed nothing', async () => {
     repository.withCv(CV_ID, { userId: USER_ID });
     files.withObject(KEY, new Uint8Array([0x25]));

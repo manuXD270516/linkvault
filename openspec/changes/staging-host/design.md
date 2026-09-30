@@ -32,9 +32,13 @@ change se aplique:
 **Lo que 35a entrega y este change da por hecho** (precondición de `/opsx:apply`, tarea 1.1): la pila sin MinIO, con un
 almacén S3 que tiene imagen `arm64`; `build-verify-publish` de `cd-staging` en `ubuntu-24.04-arm`, de modo que lo
 publicado en `sha-<12>` y `:staging` es `linux/arm64` y verificado en esa arquitectura; la comprobación de plataformas
-de las imágenes del compose frente a la del host, como script del repositorio; y el plazo de `--wait-timeout`
-recalculado en `infra/ci/verify-artifact.sh` con los tiempos del almacén nuevo. Este change **coloca** la comprobación
-en el orden del despliegue y **lee** el plazo (D4); no los escribe.
+de las imágenes del compose frente a la del host, como script del repositorio (`infra/deploy/check-image-platforms.sh`);
+la orden de aprovisionamiento del almacén en la imagen de `api` (`node object-store.js provision|verify`); y el plazo
+de `--wait-timeout` recalculado en `infra/ci/verify-artifact.sh` con los tiempos del almacén nuevo; y el digest del
+índice de la imagen del almacén en ADR-052 «Elección», en una línea `Digest del índice: sha256:<64 hexadecimales>`.
+Este change **coloca** la comprobación y el aprovisionamiento en el orden del despliegue y **lee** el plazo y el digest
+(D4); no los escribe.
+(Traslados que 35a editó aquí durante su debate: ver su design, «Traslados».)
 
 ## Goals / Non-Goals
 
@@ -143,14 +147,15 @@ acción convierta en orden remota.
   4.5).
 - **Usuario y token del registro por la entrada estándar, sin rama opcional y con `logout`.** `printf '%s\n%s\n'
   "$GHCR_READ_USER" "$GHCR_READ_TOKEN" | ssh … "bash $STAGING_DIR/.incoming-<sha12>/infra/deploy/deploy.sh <tag>
-  <plazo>"`. `deploy.sh` lee las dos líneas de su entrada estándar (`IFS= read -r user; IFS= read -r token`) y hace
+  <plazo> <digest>"`. `deploy.sh` lee las dos líneas de su entrada estándar (`IFS= read -r user; IFS= read -r token`) y hace
   `docker login ghcr.io -u "$user" --password-stdin` con el token, dentro de un `trap` que hace `docker logout ghcr.io`
   al salir, también en error. El `printf` termina en salto de línea porque `read` devuelve ≠0 ante una última línea sin
   él, y con `set -e` eso abortaría antes del login. Se invoca con `bash` para no depender del bit de ejecución, que
   `tar` sin `-p` no garantiza.
   **En la orden remota solo quedan valores no secretos y validados:** `STAGING_DIR` (constante del workflow),
   `<sha12>` (validado en el corredor), el tag (`sha-` + 12 hexadecimales, ya comprobado por `assert-deploy-tag.sh`) y
-  el plazo de arranque (`^[0-9]{2,4}$`, D4); `deploy.sh` valida otra vez el tag y el plazo. **El usuario del registro no
+  el plazo de arranque (`^[0-9]{2,4}$`, D4) y el digest del almacén (`^sha256:[0-9a-f]{64}$`, D4); `deploy.sh` valida
+  otra vez los tres. **El usuario del registro no
   puede ir como argumento de esa orden**, aunque no sea confidencial: es el valor de un secreto, y la shell remota
   interpreta la cadena **antes** de que ninguna expresión regular de `deploy.sh` la vea, así que validarlo allí llega
   tarde (iteración 3). Ya en el host, `docker login` recibe el usuario como argumento literal, sin shell de por medio, y
@@ -195,15 +200,17 @@ entorno `staging` con reglas de protección (D8).
 El orden del job de despliegue:
 
 1. **Copia** (D3): `tar | ssh` a `"$STAGING_DIR/.incoming-<sha12>/"` de los ficheros de `infra/deploy/config-files.txt`:
-   `docker-compose.prod.yml`, los que monta (`infra/traefik/dynamic.yml` y los que 35a deje), los scripts de
-   `infra/deploy/` (`deploy.sh`, `install-config.sh` y `smoke.sh`), **la propia `config-files.txt`**, que
-   `install-config.sh` lee en el host, y **el script de plataformas de 35a**, que `deploy.sh` invoca. Si falta el
-   directorio fijo, falla aquí nombrándolo, sin crear nada.
-2. **ssh** que ejecuta `bash .incoming-<sha12>/infra/deploy/deploy.sh <tag> <plazo>`, **del mismo commit**, con usuario
-   y token por la entrada estándar (D3), que hace: login → comprobación de plataformas (script de 35a) y `docker compose
+   `docker-compose.prod.yml`, los que monta (`infra/traefik/dynamic.yml` y el fichero de configuración que monte el
+   almacén elegido por 35a, si lo hay, sin secretos, según ADR-052 «Elección»), los scripts de `infra/deploy/`
+   (`deploy.sh`, `install-config.sh` y `smoke.sh`), **la propia `config-files.txt`**, que `install-config.sh` lee en el
+   host, y **el script de plataformas de 35a**, `infra/deploy/check-image-platforms.sh`, que `deploy.sh` invoca. Si
+   falta el directorio fijo, falla aquí nombrándolo, sin crear nada.
+2. **ssh** que ejecuta `bash .incoming-<sha12>/infra/deploy/deploy.sh <tag> <plazo> <digest>`, **del mismo commit**, con usuario
+   y token por la entrada estándar (D3), que hace: login → comprobación de plataformas (script de 35a) → comprobación del digest del almacén (abajo) → `docker compose
    -f .incoming-<sha12>/docker-compose.prod.yml --env-file .env.staging pull` → `install-config.sh` → `docker compose -f
    docker-compose.prod.yml --env-file .env.staging up -d --wait --wait-timeout <plazo>`, **con el compose instalado** →
-   `logout` (en `trap`).
+   `docker compose -f docker-compose.prod.yml --env-file .env.staging run --rm --no-deps api node object-store.js
+   provision` → la misma orden con `verify` → `logout` (en `trap`).
 3. **Smoke:** `ssh … "bash $STAGING_DIR/.incoming-<sha12>/infra/deploy/smoke.sh"`, contra `api` por la red Docker,
    como hoy. Pasa a un script del repositorio porque hoy es JavaScript con comillas simples y dobles mezcladas dentro
    de una orden de shell que va a su vez dentro de un `script:`; como fichero se lee, se prueba en local con un
@@ -217,12 +224,36 @@ con `^[0-9]{2,4}$` antes de ponerlo en la orden. `verify-artifact.sh` no viaja: 
 fichero que no está en la lista. La tarea 4.4 lo comprueba ejecutando `deploy.sh` desde un árbol extraído con `tar -T
 config-files.txt`, no desde el repositorio.
 
+**El digest del almacén se comprueba antes de descargar** (traslado de 35a, pasada extra de su debate). La imagen del
+almacén se eligió con una matriz ejecutada sobre una versión cuyo digest del índice anota ADR-052 «Elección» en una
+línea `Digest del índice: sha256:<64 hexadecimales>`. El corredor la lee del commit desplegado igual que el plazo
+(falla si no la encuentra exactamente una vez) y la valida con `^sha256:[0-9a-f]{64}$`; `deploy.sh` la recibe como
+tercer argumento, la valida otra vez y, antes del `pull`, resuelve la imagen del servicio `object-store` con `docker
+compose -f .incoming-<sha12>/docker-compose.prod.yml --env-file .env.staging config --images object-store` (forma
+medida en la tarea 2.14 de 35a), que tiene que dar **exactamente una línea**: con un servicio nombrado, Compose añade
+a la salida las imágenes de sus `depends_on` (medido en la misma 2.14: `config --images object-store api` da también
+`mongo` y `redis`), así que una segunda línea significa que `object-store` ganó un `depends_on` y la lectura ya no
+identifica la imagen; `deploy.sh` sale ≠0 nombrando las líneas en vez de elegir una (y nunca lee la lista sin
+argumentos, cuyo orden no es estable). 35a deja `object-store` **sin `depends_on`** en los dos composes y lo comprueba
+(sus tareas 7.1 y 7.3). Y su digest del índice con `docker buildx imagetools inspect` y la plantilla que midió
+esa misma tarea. Si difieren, sale ≠0 nombrando la imagen y los dos digests, sin `pull` ni instalación y con `logout`:
+una etiqueta movida en el registro, o un `OBJECT_STORE_IMAGE` de `.env.staging` que apunte a otra imagen, desplegaría
+algo que la matriz no midió (`platform/object-store`: cambiar la imagen del almacén repite la matriz). ADR-052 no viaja
+al host; viaja el valor, como el plazo. La tarea 4.4 lo comprueba con el `docker` falso.
+
 **`pull` con el compose de `.incoming`, `up` con el instalado.** El `pull` necesita la lista de imágenes del commit
 nuevo antes de instalar nada. El `up`, en cambio, usa el compose **instalado** en `$STAGING_DIR`: Compose toma como
 directorio del proyecto el del primer `-f`, y de él salen el nombre del proyecto —y con él los de contenedores, redes y
 volúmenes— y la resolución de los montajes relativos como `./infra/traefik/dynamic.yml`. Un `up` con `-f
 .incoming-<sha12>/…` crearía otro proyecto con volúmenes vacíos y montaría ficheros de un directorio que la retención
 acabará borrando. La tarea 4.4 lo comprueba en los argumentos registrados.
+
+**Aprovisionar después del `up`, con el compose instalado.** Es el arranque documentado de 35a (`platform/production-deploy`,
+«Compose de producción»): `up --wait`, luego `object-store.js provision` y `verify` con la imagen de `api` recién
+descargada. `provision` es idempotente, así que repetirlo en cada despliegue no cambia nada; `verify` comprueba en cada
+despliegue que los buckets, la retención, el cifrado y el rechazo anónimo siguen como se exigen. Si cualquiera de las
+dos falla, el despliegue falla nombrándola, con la pila nueva ya arriba (el `up` ya ocurrió): la vuelta atrás es la de
+abajo. La tarea 4.4 comprueba el orden en los argumentos registrados.
 
 **Instalar sin cambiar el inodo.** Traefik monta `./infra/traefik/dynamic.yml` como **fichero suelto** y lo vigila con
 `--providers.file.watch=true`. El montaje de un fichero suelto queda atado a su **inodo**: si `install-config.sh`
@@ -273,8 +304,11 @@ configuración nueva con las imágenes viejas).
 
 ### D5. → 35a
 
-El aprovisionamiento del almacén fuera del healthcheck, su healthcheck de solo lectura y la medición de
-`service_completed_successfully` pasan a 35a, porque dependen de qué almacén sustituya a MinIO.
+El aprovisionamiento del almacén fuera del healthcheck y su healthcheck de solo lectura pasan a 35a, porque dependen de
+qué almacén sustituya a MinIO. 35a **no** vuelve a medir `service_completed_successfully`: aprovisionar es un `run
+--rm --no-deps api node object-store.js provision` aparte, después del `up` (ADR-052 §4), y un servicio de un solo uso
+en el compose queda descartado sin medir, porque `compose-healthchecks` exige healthcheck en todo servicio (design D4 de
+`object-store`). Aquí solo se coloca ese `run`, con el de `verify`, en el orden del despliegue (D4).
 
 ### D6. SMTP con autenticación: una sola regla para los dos procesos, y rechazos con clase
 
@@ -302,9 +336,11 @@ con el motivo.
 
 El requirement «Las imágenes de la pila se pueden descargar en la arquitectura del destino» y su script van a 35a con
 el paso a `arm64`, que también lo falsa. Este change lo invoca en el paso 2 de D4, **después** del login y **antes**
-del `pull`, y verifica ese lugar con el `docker` falso de la tarea 4.4. La falsación en el host que proponía la versión
-anterior (apuntar la imagen del almacén al espejo `amd64` de MinIO) se retira: 35a retira ese espejo y la comprobación
-ya se ve caer allí.
+del `pull`, y verifica ese lugar con el `docker` falso de la tarea 4.4. El script usa `docker buildx imagetools`
+(35a, su design D9, eligió `imagetools` frente a `docker manifest inspect`), así que el host necesita el plugin
+`buildx`, que viene en la instalación oficial de Docker Engine; la tarea 5.3 lo comprueba con `docker buildx version`.
+La falsación en el host que proponía la versión anterior (apuntar la imagen del almacén al espejo `amd64` de
+MinIO) se retira: 35a retira ese espejo y la comprobación ya se ve caer allí.
 
 ### D8. Secretos de staging como secretos de repositorio
 
@@ -469,7 +505,8 @@ change **posterior a 35c**, y no retiene el archivado de 35b. La señal para dec
   creado por el autor e invitadas con el código de unión.
 - **Aviso ampliado**, entregado antes del alta y guardado en el RUNBOOK: que la URL `…sslip.io` es legítima; que el
   entorno es desechable y no tiene copias; que el correo puede ir a spam y no es obligatorio; que la IA es OpenRouter
-  gratuito con PII redactada y `data_collection: deny`; que la búsqueda no está disponible (D13); que puede borrar su
+  gratuito con PII redactada y `data_collection: deny`; que la búsqueda no está disponible (D13); **que si sube su CV,
+  se guarda cifrado, que este entorno puede perderse sin copia y que puede borrarlo en Mi CV**; que puede borrar su
   cuenta; el canal de feedback; **si la cuenta de Oracle sigue gratuita, que la instancia puede reclamarse tras 7 días
   de poco uso**; y **una pregunta aparte, desactivada por defecto**, sobre si sus datos anonimizados pueden alimentar el
   golden set de la fila 36, con la respuesta registrada en el RUNBOOK. El consentimiento dentro de la aplicación es de

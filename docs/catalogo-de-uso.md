@@ -65,10 +65,12 @@ un proveedor externo (`external: false`), así que no hace falta el permiso de I
 ### 3. Levantar la infraestructura
 
 ```bash
-docker compose --profile demo up -d --wait   # mongo (rs0), redis, minio, mailpit y meilisearch
+COMPOSE_PROFILES=demo pnpm infra:up   # mongo (rs0), redis, object-store (almacén S3, SeaweedFS), mailpit y meilisearch; y los buckets
 ```
 
-Sin búsqueda basta `docker compose up -d --wait` (sin Meilisearch). `--profile search` es equivalente a `demo` para
+`pnpm infra:up` es `docker compose up -d --wait` seguido de `pnpm nx run api:object-store -- provision`, que crea los
+buckets de CV y de snapshots; sin ese paso el CV de la demo se omite. Sin búsqueda basta `pnpm infra:up` (sin
+Meilisearch). `--profile search` es equivalente a `demo` para
 Meilisearch. Ollama (`--profile ai-local`) no hace falta para este catálogo.
 
 ### 4. Cargar la demo
@@ -440,7 +442,7 @@ Fuente: `apps/api/src/seed/demo-seed.dataset.ts` y `seed-demo.runner.ts`.
   CV → «Eliminar».
 - **Qué esperar:** «Estamos leyendo tu CV…» → «Listo · tu CV se leyó bien». El CV de la demo acaba en «Este archivo no
   tiene texto…». No hay descarga del archivo.
-- **Requiere:** worker, MinIO.
+- **Requiere:** worker, `object-store` (almacén S3, SeaweedFS) con sus buckets (`pnpm infra:up`).
 
 #### 30. Permiso de IA externa, idioma y nombre
 
@@ -693,7 +695,7 @@ Lo que una spec vigente promete y el código de `main` no hace:
 | 26 | Tablero de postulaciones | `/postulaciones` · `PATCH /api/applications/:id/status` | api | [ ] |
 | 27 | Dejar de seguir | `DELETE /api/applications/:id` | api | [ ] |
 | 28 | Insights de postulaciones | `/postulaciones/insights` · `GET /api/applications/analytics` | demo | [ ] |
-| 29 | Mi CV | `/mi-cv` · `POST /api/cv` | worker, MinIO | [ ] |
+| 29 | Mi CV | `/mi-cv` · `POST /api/cv` | worker, `object-store` (almacén S3, SeaweedFS) | [ ] |
 | 30 | Permiso de IA, idioma y nombre | `/perfil` · `PATCH /api/users/me` | api | [ ] |
 | 31 | Analizar mi encaje | `POST /api/links/:linkId/match` | CV real, IA `synth` | [ ] |
 | 32 | Sugerencias y «No me convence» | `POST /api/analyses/:analysisId/suggestion-feedback` | IA `synth` | [ ] |

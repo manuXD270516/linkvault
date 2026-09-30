@@ -1,0 +1,290 @@
+## MODIFIED Requirements
+
+### Requirement: CD a staging en main
+
+Tras un push o merge a `main`, el pipeline SHALL ejecutar la verificación existente (lint, specs, typecheck, tests, eval
+cuando aplique, build) y, **solo si esa verificación pasa**, SHALL construir el artefacto, **verificarlo** y, cuando
+haya un destino configurado, desplegarlo a **staging**. El fallo de cualquier etapa de verificación NO SHALL disparar
+nada de lo que viene después.
+
+El pipeline SHALL distinguir **tres** resultados, porque confundirlos es lo que hizo que un defecto real de build
+sobreviviera veintiuna corridas escondido detrás de un rojo que todo el mundo daba por normal:
+
+1. **El artefacto no se pudo construir o no arranca** → fallo. Es un defecto del repositorio y SHALL romper el
+   pipeline, exista o no un destino de despliegue.
+2. **El artefacto está verificado y hay destino** → se despliega y se comprueba con el smoke.
+3. **El artefacto está verificado y NO hay destino configurado** → el pipeline SHALL terminar **en verde**,
+   informando de forma visible que **no se desplegó** y por qué. NO SHALL afirmar que se desplegó, NO SHALL contarse
+   como despliegue, y NO SHALL fallar por ello.
+
+Y SHALL distinguir un **cuarto desenlace**, que no es un cuarto color sino una causa distinta bajo el mismo rojo:
+
+4. **La verificación no se pudo llevar a cabo** porque una avería ajena lo impidió → SHALL seguir siendo **fallo**,
+   porque nadie ha comprobado el artefacto y eso NO SHALL caer del lado verde; pero la señal NO SHALL atribuirlo al
+   artefacto. Decir «el artefacto no arrancó» cuando el artefacto no llegó a levantarse manda a depurar el sitio
+   equivocado, y lo desmiente la propia ejecución que lo publica.
+
+**Cuando la causa no conste, NO SHALL nombrarse ninguna.** Una causa ausente NO SHALL tratarse como la causa habitual:
+el pipeline SHALL decir que la verificación no pasó y callar el porqué. Confundir "no se sabe" con "lo de siempre" es
+el mismo defecto que los cuatro desenlaces existen para cerrar, reconstruido por el mecanismo que lo cierra.
+
+**Una imagen de la pila que no existe para la arquitectura del destino NO SHALL contarse como avería ajena**, aunque
+sea de terceros y el síntoma aparezca al descargarla del registro: es el repositorio quien la eligió o la publicó, y
+reintentar no lo arregla. SHALL clasificarse en el primer desenlace —defecto del artefacto—, SHALL detectarse **antes**
+de descargar ninguna imagen (`platform/production-deploy`, «Las imágenes de la pila se pueden descargar en la
+arquitectura del destino») y SHALL nombrar la imagen y las plataformas que sí existen. Lo publicado NO SHALL decir
+entonces que el registro no sirvió sus imágenes ni recomendar reintentar.
+
+Y el mecanismo que lleva la causa desde la verificación hasta donde se publica el resultado SHALL **sobrevivir al
+fallo** de la etapa que la produce —es el único caso en que hace falta—. Un mecanismo del que no se haya demostrado
+eso NO SHALL darse por bueno por parecer correcto: su modo de error es silencioso, porque la causa llegaría vacía
+siempre y el resultado seguiría publicándose sin que nada avise de que dejó de informar.
+
+**El orden SHALL ser: construir → verificar que arranca → publicar.** Una imagen que no ha superado la verificación
+NO SHALL publicarse en el registro **con ningún tag**, tampoco con uno móvil como `:staging` o `:latest`. Publicar
+antes de verificar contradice el propósito entero de este requirement y además es destructivo: un tag móvil que
+sobrescribe al anterior convierte una imagen rota en la imagen que el siguiente `docker compose pull` se lleva, y
+deja al despliegue anterior —que sí funcionaba— sin referencia a la que volver. Publicar SHALL ser consecuencia de
+haber verificado, no un paso previo.
+
+**Y lo publicado SHALL ser exactamente lo verificado, comprobado por identidad del artefacto.** El orden no basta: la
+imagen que se levanta para verificarla vive en el entorno donde se verificó, así que una publicación que no reutilice
+ese mismo artefacto lo **reconstruiría** y subiría al registro bits que nadie ha comprobado —se cumpliría el orden y se
+incumpliría el propósito, que es el peor resultado posible: una garantía que se ve satisfecha y no lo está—. Por tanto,
+para cada imagen publicada, el **digest** SHALL ser el mismo que el del artefacto que superó la verificación, y esa
+coincidencia SHALL comprobarse **en la propia corrida**. Si algún digest publicado no es el verificado, el pipeline
+SHALL fallar y NO SHALL contarse ese despliegue como realizado. Es una propiedad observable del artefacto, no de la
+secuencia de pasos: cómo se consiga —reutilizando el artefacto, transfiriéndolo o publicándolo desde donde se
+verificó— queda abierto, mientras la identidad se demuestre.
+
+**La verificación del artefacto NO SHALL depender de que exista un servidor.** SHALL ejecutarse con las imágenes recién
+construidas, levantándolas en el propio corredor, y SHALL comprobar que los procesos **arrancan** y responden, no que el
+código compile. Que el build termine NO SHALL bastar para dar el artefacto por bueno.
+
+**La verificación del CD a staging SHALL ejecutarse en la arquitectura del destino de staging**, en un corredor nativo de
+esa arquitectura. Una verificación vale para la arquitectura en la que se ejecuta: verificar una y desplegar otra
+llevaría al host bits que nadie ha arrancado. Por tanto:
+
+- La arquitectura del destino SHALL declararse **en un solo sitio** del workflow, y la verificación SHALL comprobar,
+  **antes de levantar nada**, que el daemon del corredor y cada imagen construida son de esa arquitectura. Si no lo son,
+  SHALL fallar como defecto del artefacto.
+- Lo publicado SHALL ser **la misma imagen de una sola plataforma** que se construyó y se verificó en ese daemon, con la
+  identidad por digest de este requirement sin cambios.
+- NO SHALL construirse otra arquitectura por emulación ni publicarse ninguna variante que no se haya arrancado.
+- Esta regla es **del CD a staging**. El «mismo criterio» que comparte con «CD a producción por tag semver» NO SHALL
+  extenderla al CD a producción mientras producción no tenga un destino con arquitectura declarada.
+
+**Lo que se verifica SHALL ser la pila de producción completa, con la configuración de producción real:**
+
+- El alcance SHALL cubrir `api`, `worker`, `web` y sus dependencias (mongo, redis y el almacén de objetos), no solo
+  `api`. `web` es lo único que toca una persona y hoy se publica sin que nada compruebe que sirve algo.
+- El almacén de objetos SHALL quedar **aprovisionado con la misma orden que documenta el arranque** y su configuración
+  SHALL comprobarse con el modo de comprobación de `platform/object-store`: buckets, retención, cifrado cuando el
+  almacén lo aplica por bucket y peticiones sin firmar rechazadas. Que los procesos arranquen NO SHALL bastar para dar
+  por bueno un almacén que no tiene la configuración que se despliega.
+- Los dos procesos que usan el almacén SHALL demostrar que lo alcanzan **con su propia configuración**: `api`, porque el
+  aprovisionamiento corre con su imagen y su entorno; y `worker`, con una lectura de un objeto ausente **del bucket de
+  CV**, hecha por el mismo cliente con el que lee los CV (con su clave, si el cifrado es con clave del cliente), que
+  SHALL devolver «ausente» y no un error. La readiness de los dos no mira el almacén, así que sin esto un `worker` con el
+  almacén mal configurado pasaría la verificación.
+- SHALL usarse **`docker-compose.prod.yml`**, el mismo fichero que se despliega, y NO SHALL escribirse un compose
+  paralelo para el corredor. Un compose escrito para CI verificaría una configuración que nadie ejecuta, y es
+  exactamente donde vivía el defecto de las variables obligatorias que faltan: la comprobación habría pasado en verde
+  mientras producción no arrancaba.
+- Lo único que MAY diferir del despliegue real es apuntar las imágenes a las recién construidas y dejar fuera el borde:
+  Traefik, los certificados y la publicación de puertos al exterior NO SHALL formar parte de la verificación, porque
+  exigen DNS y ACME.
+- Lo que SHALL venir del fichero de producción es el **mapa de servicio a variable**: qué variables recibe cada
+  servicio, y con qué forma de sustitución. Ahí es donde vivía el defecto —al servicio le faltaba una variable
+  obligatoria— y por eso NO SHALL añadirse ni retirarse ninguna variable de ningún servicio para que la comprobación
+  pase. Los **valores** MAY ser de relleno, escogidos para el corredor (host público, credenciales del almacén,
+  destinatarios de correo), porque en el corredor no hay DNS ni cuentas reales: sustituir un valor no oculta nada;
+  sustituir el conjunto de variables oculta exactamente el defecto que esta verificación busca.
+- Mongo SHALL levantarse como **replica set**, igual que en producción: con instancia suelta, cualquier transacción
+  multi-documento fallaría solo en el despliegue real, que es el sitio más caro para enterarse.
+
+Las comprobaciones por servicio SHALL ser, como mínimo: `api` respondiendo readiness de Nest (`GET /health` con sus
+comprobaciones de mongo y redis); `worker` respondiendo readiness en **su propio `GET /health`** —lo expone, con los
+mismos indicadores de mongo y redis, en su puerto de salud—; y `web` sirviendo el documento del SPA.
+
+El despliegue a staging, cuando hay destino, SHALL seguir el mecanismo cerrado: publicar imágenes en **GHCR**, luego
+actualizar el target compose de staging (placeholders de host documentados) con **ssh + `docker compose pull` + `up`**
+(o equivalente documentado con el mismo efecto), y ejecutar un smoke post-deploy de `GET /health` **contra el servicio
+`api` en la red host/Docker** (no contra el origen HTTPS público de Traefik). El smoke SHALL exigir respuesta de
+readiness de Nest, no HTML del SPA. Un job que solo realiza dry-run **NO SHALL** satisfacer la parte de despliegue de
+este requirement, ni SHALL presentarse como tal.
+
+**El resultado SHALL ser legible sin abrir la ejecución.** No basta con escribirlo en el resumen interno: dentro de tres
+meses nadie abre el run, ve el tick verde y concluye que hay algo desplegado. El estado —desplegado, o verificado sin
+destino— SHALL aparecer en el **nombre de algo que se ve desde fuera**, en **al menos una superficie que alguien mire de
+forma habitual** —la lista de checks de un commit o de una pull request—, de modo que una corrida que no desplegó se
+distinga de una que sí a simple vista y no solo por el color del resultado.
+
+**Y la spec SHALL nombrar el límite en vez de dejarlo ambiguo.** La superficie donde se acumularon las veintiuna
+corridas rojas es la **lista de ejecuciones del workflow**, y esa lista muestra el nombre de la ejecución, que se fija
+al iniciarla: no puede depender de un resultado que todavía no existe. Por tanto esta spec NO SHALL exigir que el
+estado aparezca ahí, porque sería prometer lo que la herramienta no permite y volvería el requirement incumplible o,
+peor, cumplido de mentira. Lo exigible es la superficie que sí puede llevarlo; quien mire solo la lista de ejecuciones
+SHALL seguir necesitando abrir la corrida, y eso queda dicho aquí en lugar de darse por resuelto.
+
+#### Scenario: Merge a main verde despliega staging
+
+- **GIVEN** un merge a `main` cuya verificación completa termina con éxito y un destino de staging configurado
+- **WHEN** termina el workflow de CI/CD
+- **THEN** SHALL haberse publicado imagen(es) en GHCR y actualizado el compose de staging
+- **AND** el smoke post-deploy de `/health` SHALL haber corrido contra `api` en red interna/Docker
+- **AND** el smoke NO SHALL haberse limitado a curl del entrypoint público Traefik
+- **AND** el despliegue NO SHALL haberse iniciado antes de que verify terminara en éxito
+
+#### Scenario: Verify fallido no despliega staging
+
+- **GIVEN** un push a `main` cuya etapa de tests falla
+- **WHEN** termina el workflow
+- **THEN** NO SHALL desplegarse a staging
+- **AND** NO SHALL contarse un dry-run como despliegue exitoso
+
+#### Scenario: El artefacto se verifica sin servidor
+
+- **GIVEN** un merge a `main` con la verificación en verde
+- **WHEN** se construyen las imágenes
+- **THEN** SHALL levantarse la pila de `docker-compose.prod.yml` con esas imágenes dentro del propio corredor
+- **AND** SHALL comprobarse que `api` responde readiness con mongo y redis
+- **AND** esta comprobación NO SHALL requerir ningún secreto de despliegue
+
+#### Scenario: Se verifica la pila entera, no solo api
+
+- **GIVEN** las tres imágenes recién construidas
+- **WHEN** corre la verificación del artefacto
+- **THEN** `worker` SHALL responder readiness en su propio `GET /health` con mongo y redis
+- **AND** `web` SHALL servir el documento del SPA
+- **AND** que `api` esté en verde NO SHALL bastar para dar el artefacto por verificado
+
+#### Scenario: La verificación usa el compose de producción
+
+- **GIVEN** el corredor con las imágenes construidas
+- **WHEN** se levanta la pila para verificarla
+- **THEN** SHALL usarse `docker-compose.prod.yml`, no un compose escrito aparte para CI
+- **AND** cada servicio SHALL recibir exactamente las variables que ese fichero le declara, sin añadir ni quitar ninguna
+- **AND** los valores de esas variables MAY ser de relleno para el corredor
+- **AND** mongo SHALL levantarse como replica set, igual que en producción
+- **AND** Traefik y los certificados SHALL quedar fuera del alcance
+
+#### Scenario: Una variable obligatoria ausente en el compose se descubre aquí
+
+- **GIVEN** un `docker-compose.prod.yml` al que le falta una variable que el proceso valida al arrancar
+- **WHEN** corre la verificación del artefacto con ese mismo fichero
+- **THEN** el servicio SHALL terminar sin llegar a escuchar y la verificación SHALL fallar
+- **AND** NO SHALL enmascararse declarando esa variable fuera del compose ni cambiando qué variables recibe el servicio
+- **AND** dar valores de relleno a las variables que el compose sí declara NO SHALL considerarse enmascaramiento
+
+#### Scenario: Una imagen que no arranca rompe el pipeline
+
+- **GIVEN** una imagen que se construye pero cuyo proceso termina al ejecutarla
+- **WHEN** corre la verificación del artefacto
+- **THEN** el pipeline SHALL fallar señalando que la imagen no arranca
+- **AND** NO SHALL publicarse como apta ni desplegarse
+
+#### Scenario: Una avería ajena no se comunica como artefacto roto
+
+- **GIVEN** una corrida en la que la verificación no llega a levantar el artefacto porque una dependencia ajena al
+  repositorio no responde (p. ej. el registro del que se descargan las imágenes de las dependencias)
+- **WHEN** se publica el resultado del CD
+- **THEN** el resultado SHALL ser **fallo**, porque nadie ha comprobado el artefacto
+- **AND** lo publicado SHALL decir que **no se pudo verificar** y nombrar la avería ajena
+- **AND** NO SHALL afirmar que el artefacto no se construyó o no arrancó
+- **AND** el transporte de esa causa SHALL sobrevivir al fallo de la etapa que la produce
+
+#### Scenario: Sin causa conocida no se inventa una
+
+- **GIVEN** una corrida cuya verificación falla y cuya causa no llega al punto donde se publica el resultado
+- **WHEN** se publica el resultado del CD
+- **THEN** el resultado SHALL ser **fallo** y SHALL decir que la verificación no pasó
+- **AND** NO SHALL atribuirse a ninguna causa concreta
+- **AND** la ausencia de causa NO SHALL tratarse como la causa habitual
+
+#### Scenario: Nada se publica antes de verificarse
+
+- **GIVEN** un merge a `main` con las imágenes construidas y la verificación todavía sin ejecutar
+- **WHEN** se observa el registro de imágenes
+- **THEN** NO SHALL haberse publicado ninguna imagen, con ningún tag
+- **AND** la publicación SHALL ocurrir solo después de que la verificación termine en éxito
+
+#### Scenario: Una imagen no verificada no sobrescribe un tag móvil
+
+- **GIVEN** una imagen que falla la verificación y un tag móvil (p. ej. `:staging`) que hoy apunta a una imagen buena
+- **WHEN** termina el pipeline
+- **THEN** ese tag SHALL seguir apuntando a la imagen anterior
+- **AND** la imagen fallida NO SHALL quedar publicada bajo ningún otro tag
+
+#### Scenario: Se publica exactamente el artefacto verificado
+
+- **GIVEN** unas imágenes que acaban de superar la verificación de arranque en el corredor
+- **WHEN** esas imágenes se publican en el registro
+- **THEN** el digest de cada imagen publicada SHALL ser el mismo que el de la imagen verificada
+- **AND** la coincidencia SHALL comprobarse en la propia corrida, no deducirse de que la publicación ocurriera después
+
+#### Scenario: Publicar algo reconstruido rompe el pipeline
+
+- **GIVEN** una publicación que no reutiliza el artefacto verificado y produce bits distintos de los que se levantaron
+- **WHEN** se comparan los digests de lo publicado y de lo verificado
+- **THEN** el pipeline SHALL fallar señalando que lo publicado no es lo que se verificó
+- **AND** NO SHALL darse por cumplido el requirement por haberse respetado el orden construir → verificar → publicar
+
+#### Scenario: Sin destino configurado el pipeline termina en verde sin desplegar
+
+- **GIVEN** un merge a `main` con la verificación y el artefacto en verde, y **ningún** secreto de destino configurado
+- **WHEN** termina el workflow
+- **THEN** el workflow SHALL terminar en éxito
+- **AND** SHALL informar de forma visible que no se desplegó por no haber destino
+- **AND** NO SHALL afirmar en ningún punto que el despliegue se realizó
+- **AND** la ausencia de destino NO SHALL registrarse como fallo
+
+#### Scenario: El estado se lee sin abrir la ejecución
+
+- **GIVEN** una corrida que verificó el artefacto y no desplegó por no haber destino
+- **WHEN** alguien mira la lista de checks del commit o de la pull request, sin abrir la corrida
+- **THEN** el nombre de lo que ve SHALL decir que no se desplegó
+- **AND** NO SHALL distinguirse de una corrida que sí desplegó solo por el color del resultado
+- **AND** NO SHALL bastar con dejarlo escrito en el resumen interno del run
+
+#### Scenario: El límite de la señal queda escrito
+
+- **GIVEN** la lista de ejecuciones del workflow, cuyo nombre se fija al iniciar la corrida y no puede llevar el estado
+- **WHEN** se evalúa el cumplimiento de la señal
+- **THEN** la spec SHALL decir que esa superficie no lo lleva y cuál sí
+- **AND** NO SHALL exigirse que el estado aparezca en una superficie que la herramienta no permite
+
+#### Scenario: Un destino a medias sí falla
+
+- **GIVEN** un destino de staging configurado solo en parte, con secretos que faltan
+- **WHEN** el pipeline llega a la etapa de despliegue
+- **THEN** SHALL fallar nombrando lo que falta
+- **AND** NO SHALL tratarse como "no hay destino", porque alguien quiso desplegar y no se hizo
+
+#### Scenario: Se verifica la arquitectura del destino, no otra
+
+- **GIVEN** el CD a staging con `linux/arm64` declarada como arquitectura del destino
+- **WHEN** corren la construcción y la verificación del artefacto
+- **THEN** SHALL ejecutarse en un corredor `linux/arm64`, y las imágenes verificadas y publicadas SHALL ser `linux/arm64`
+  de una sola plataforma
+- **AND** el digest de cada imagen publicada SHALL ser el de la verificada, comprobado en la corrida
+- **AND** un corredor o una imagen construida de otra arquitectura SHALL hacer fallar la verificación antes de levantar
+  la pila, como defecto del artefacto
+
+#### Scenario: Una imagen sin la arquitectura del destino es un defecto del artefacto
+
+- **GIVEN** el compose de producción con una imagen de terceros que no existe para la arquitectura del destino
+- **WHEN** corre la verificación del artefacto
+- **THEN** SHALL fallar antes de descargar las imágenes de terceros, nombrando la imagen y las plataformas que sí existen
+- **AND** lo publicado SHALL atribuirlo al artefacto
+- **AND** NO SHALL decir que el registro de terceros no sirvió sus imágenes ni recomendar reintentar
+
+#### Scenario: El almacén se verifica aprovisionado y cerrado
+
+- **GIVEN** las imágenes recién construidas y la pila levantada en el corredor
+- **WHEN** corre la verificación del artefacto
+- **THEN** el almacén SHALL aprovisionarse con la misma orden que documenta el arranque
+- **AND** su modo de comprobación SHALL terminar con código cero, incluidas las peticiones sin firmar rechazadas
+- **AND** una lectura del `worker` de un objeto ausente del bucket de CV SHALL devolver «ausente» y no un error
+- **AND** un fallo de cualquiera de las tres órdenes, o que no termine en su plazo, SHALL hacer fallar la verificación
+  como defecto del artefacto

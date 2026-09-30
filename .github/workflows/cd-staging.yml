@@ -145,11 +145,20 @@ jobs:
   # Repartirlos entre jobs obligaría a reconstruir (o a transportar la imagen), que es justo lo que la garantía de
   # identidad existe para impedir. Y por eso **no hay ningún build después de la verificación**: el único camino de
   # publicación es `docker push` del tag ya cargado y verificado (`infra/ci/publish-artifact.sh`).
+  #
+  # **Arquitectura del destino: `linux/arm64`, en un corredor nativo** (design D10 de `object-store`, ADR-052 §10).
+  # `runs-on` y `TARGET_PLATFORM` son la única declaración de la arquitectura: los tres builds la toman de
+  # `TARGET_PLATFORM` y la verificación la recibe para exigir que el daemon y las imágenes sean de ella. Sin QEMU: si
+  # alguien devuelve el job a `amd64`, la verificación falla en la comprobación del daemon, no construye por emulación.
+  # La caché lleva `scope=<imagen>-arm64`: con el mismo `scope` que `cd-prod` (`amd64`), cada `mode=max` pisaría la del
+  # otro. El resto de jobs sigue en `ubuntu-24.04`: no ejecutan nada de la arquitectura del destino.
   build-verify-publish:
     name: build, verify and publish artifact
     needs: verify
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 60
+    env:
+      TARGET_PLATFORM: linux/arm64
     outputs:
       image_tag: ${{ steps.meta.outputs.tag }}
     steps:
@@ -208,33 +217,36 @@ jobs:
         with:
           context: .
           file: docker/api.Dockerfile
+          platforms: ${{ env.TARGET_PLATFORM }}
           push: false
           load: true
           tags: ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-api:${{ steps.meta.outputs.tag }}
-          cache-from: type=gha,scope=api
-          cache-to: type=gha,mode=max,scope=api
+          cache-from: type=gha,scope=api-arm64
+          cache-to: type=gha,mode=max,scope=api-arm64
 
       - name: Build worker (load, no push)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/worker.Dockerfile
+          platforms: ${{ env.TARGET_PLATFORM }}
           push: false
           load: true
           tags: ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-worker:${{ steps.meta.outputs.tag }}
-          cache-from: type=gha,scope=worker
-          cache-to: type=gha,mode=max,scope=worker
+          cache-from: type=gha,scope=worker-arm64
+          cache-to: type=gha,mode=max,scope=worker-arm64
 
       - name: Build web (load, no push)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/web.Dockerfile
+          platforms: ${{ env.TARGET_PLATFORM }}
           push: false
           load: true
           tags: ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-web:${{ steps.meta.outputs.tag }}
-          cache-from: type=gha,scope=web
-          cache-to: type=gha,mode=max,scope=web
+          cache-from: type=gha,scope=web-arm64
+          cache-to: type=gha,mode=max,scope=web-arm64
 
       # Verificación del artefacto (grupo 5 del change `deploy-image-verification`, ADR-048 §4): levanta
       # `docker-compose.prod.yml` —el **mismo** fichero que se despliega, nunca un compose escrito para CI— con las
@@ -247,12 +259,11 @@ jobs:
       # corregido en ADR-048 §4-bis. Sin ellas el compose resolvería `ghcr.io/manuxd270516/linkvault-*:latest` y se
       # verificaría una imagen que no es la de esta corrida; el script aborta nombrándolas.
       #
-      # El plazo del `up --wait` es **360 s**, y el número está justificado contra los `start_period` y las ventanas
-      # de reintento del compose: las dependencias tardan en el peor caso legítimo 140 s (minio: 20 s de
-      # `start_period` + 12 reintentos × 10 s), y `api`/`worker` no empiezan a contar hasta entonces, con otros 180 s
-      # cada uno (60 s + 12 × 10 s) → **320 s** de suelo, más un 12 % de margen para un corredor lento. Un plazo por
-      # debajo de eso cortaría corridas sanas. El número vive en `infra/ci/verify-artifact.sh` (una sola fuente) y se
-      # puede forzar con `VERIFY_WAIT_TIMEOUT`.
+      # El plazo del `up --wait` está justificado contra los `start_period` y las ventanas de reintento del compose,
+      # encadenadas: primero las dependencias en su peor caso legítimo, y solo entonces `api`/`worker`, que no empiezan
+      # a contar hasta que ellas están sanas; más un margen para un corredor lento. Un plazo por debajo de eso cortaría
+      # corridas sanas. El número y su cálculo viven solo en la línea `WAIT_TIMEOUT` de `infra/ci/verify-artifact.sh`
+      # (una sola fuente), y se puede forzar con `VERIFY_WAIT_TIMEOUT`.
       #
       # Medido y corregido en la implementación: un `up --wait` **sin** plazo **no** se queda esperando para siempre
       # ante un bucle de reinicio, como suponía el change. Con los seis servicios declarando healthcheck, Compose
@@ -265,6 +276,7 @@ jobs:
           WORKER_IMAGE: ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-worker
           WEB_IMAGE: ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-web
           IMAGE_TAG: ${{ steps.meta.outputs.tag }}
+          TARGET_PLATFORM: ${{ env.TARGET_PLATFORM }}
           VERIFY_FAIL_CLASS_FILE: ${{ runner.temp }}/verify-fail-class
         run: infra/ci/verify-artifact.sh
 
@@ -310,7 +322,7 @@ jobs:
 
       # `if: always()`: justo cuando la verificación falla es cuando hay volúmenes que limpiar. Sin `-v`, dos
       # corridas seguidas en el mismo corredor arrancarían sobre los datos de la anterior —una mongo ya inicializada
-      # o un MinIO con los buckets ya creados esconderían los fallos de arranque que esto busca—.
+      # o un almacén de objetos con los buckets ya creados esconderían los fallos de arranque que esto busca—.
       - name: Tear down verification stack
         if: always()
         run: infra/ci/teardown-artifact.sh
@@ -408,10 +420,10 @@ jobs:
               echo "${{ secrets.GHCR_READ_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
             fi
             docker compose -f docker-compose.prod.yml --env-file .env.staging pull
-            # 7.9: plazo explícito y volcado al fallar, igual que en la verificación del artefacto. Los 360 s salen
-            # de los `start_period` y las ventanas de reintento de este mismo compose, encadenadas: minio
-            # 20 + 12×10 = 140 s y, solo entonces, api/worker 60 + 12×10 = 180 s → 320 s de suelo, más un 12 % de
-            # margen (el número y su cálculo viven en `infra/ci/verify-artifact.sh`).
+            # 7.9: plazo explícito y volcado al fallar, igual que en la verificación del artefacto. El plazo y su
+            # cálculo viven en la línea `WAIT_TIMEOUT` de `infra/ci/verify-artifact.sh`; el `--wait-timeout` literal
+            # de abajo es una copia conocida de ese número (ADR-052, «Consecuencias para 35b y 35c»), que 35b
+            # (`staging-host`) sustituye leyendo esa línea.
             #
             # Medido, porque el enunciado de 7.9 daba por hecho que sin plazo esto "se colgaría": con Compose 5.5.1
             # **no** se cuelga ante un contenedor en bucle de reinicio —aborta en 4 s con `container … is

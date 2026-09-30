@@ -4,7 +4,9 @@
   "license": "UNLICENSED",
   "private": true,
   "packageManager": "pnpm@12.4.2",
-  "scripts": {},
+  "scripts": {
+    "infra:up": "docker compose up -d --wait && pnpm nx run api:object-store -- provision"
+  },
   "devDependencies": {
     "@angular-devkit/core": "~22.1.0",
     "@angular-devkit/schematics": "~22.1.0",

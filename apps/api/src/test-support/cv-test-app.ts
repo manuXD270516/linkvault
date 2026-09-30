@@ -39,8 +39,8 @@ import { apiTestAiConfig, apiTestConfig } from './test-config';
 
 // App completa de `api` para los tests de integración HTTP de `cv` (tarea 6.4): el `AppModule` real con una base de
 // datos propia por archivo, el contador de intentos en memoria (esta suite no levanta Redis, ADR-021 §4) y, sobre
-// todo, un **doble del almacén de objetos**: ningún test de `api` habla con MinIO, y la comprobación contra el almacén
-// real es un paso local del RUNBOOK (ADR-028, "Pruebas").
+// todo, un **doble del almacén de objetos**: ningún test de `api` habla con un almacén S3, y la comprobación contra el
+// almacén real es un paso local del RUNBOOK (ADR-028, "Pruebas").
 //
 // La URI del replica set la pasa quien llama (`getMongoTestUri()`): este archivo no es un spec, así que no puede
 // depender de `@linkvault/testing`.

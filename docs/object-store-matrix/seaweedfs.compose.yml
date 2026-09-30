@@ -1,0 +1,62 @@
+# SeaweedFS, candidato 1 de la matriz (tareas 3.1 y 3.4 de `object-store`; design D1, «Forma de los composes de la
+# matriz»). Versión fijada en la 1.2: 4.47 (`chrislusf/seaweedfs:4.47`, digest del índice en `matriz.md`, 1.4).
+#
+# Forma común a todos los composes de la matriz:
+# - un solo servicio, `object-store`, al que `c5.sh` nombra en cada orden de Compose;
+# - credenciales solo por variables (`S3_ACCESS_KEY`, `S3_SECRET_KEY`), sin valores por defecto. SeaweedFS las toma de
+#   `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` como identidad de administración única; con una identidad, deja de
+#   estar en su modo abierto («Allow-All Mode»);
+# - la clave del cifrado del servidor desde `OBJECT_STORE_SSE_KEY`, mapeada a `WEED_S3_SSE_KEK`: la KEK de SSE-S3,
+#   **256 bits en hexadecimal (64 caracteres)**, p. ej.
+#   `OBJECT_STORE_SSE_KEY="$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")"`;
+# - **todo el estado del almacén en un solo volumen con nombre** (`object-store-data`, en `/data`: maestro, volúmenes,
+#   metadatos del filer), sin `name:` explícito y sin ningún bind: el `tar` de C5 es todo lo que el almacén guarda, y
+#   la copia de la prueba (b) no monta el original;
+# - puerto S3 del host por variable (`OBJECT_STORE_PORT`, `9000` por defecto); los demás puertos no se publican.
+#
+# `weed mini` (la orden por defecto de la imagen) arranca maestro, volumen, filer y la pasarela S3 en un proceso. Se
+# apagan las piezas que no usa LinkVault y que escuchan sin autenticación dentro de la red del compose (WebDAV, la
+# interfaz web de administración, los catálogos Iceberg y Lance) y la telemetría del maestro, que por defecto informa a
+# `telemetry.seaweedfs.com`. Siguen escuchando, sin publicar, el maestro (9333), el volumen (9340), el filer (8888),
+# sus gRPC y el servidor de administración sin interfaz (23646); el filer sirve los objetos sin autenticación dentro
+# de la red (medido en la 3.1, `matriz.md`).
+#
+# Uso (con un nombre de proyecto propio y un puerto que no choque con el de desarrollo):
+#   OBJECT_STORE_PORT=19640 S3_ACCESS_KEY=… S3_SECRET_KEY=… OBJECT_STORE_SSE_KEY=… \
+#     docker compose -p os3-sw -f docs/object-store-matrix/seaweedfs.compose.yml up -d --wait
+#   … y al terminar, `down -v` con el mismo `-p` y `-f`.
+#
+# Healthcheck de solo lectura: el que aprobó la celda C8 (tarea 4.3), `GET /healthz` de la pasarela S3 con el `curl`
+# de la imagen, en forma `CMD` (sin shell), que no crea buckets ni necesita credenciales. Sus `interval`, `retries` y
+# `start_period` son los de la medición de C9 (tarea 4.4; `start_interval: 1s` da la resolución de un segundo): los de
+# la pila salen de C9 y de la medición en `arm64` (design D5 y D8). Aprovisionar es `object-store provision` (design D4).
+
+services:
+  object-store:
+    image: ${OBJECT_STORE_IMAGE:-chrislusf/seaweedfs}:${OBJECT_STORE_IMAGE_TAG:-4.47}
+    command:
+      - 'mini'
+      - '-dir=/data'
+      - '-webdav=false'
+      - '-admin.ui=false'
+      - '-s3.port.iceberg=0'
+      - '-s3.port.lance=0'
+      - '-master.telemetry=false'
+    environment:
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY:?S3_ACCESS_KEY is required}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:?S3_SECRET_KEY is required}
+      WEED_S3_SSE_KEK: ${OBJECT_STORE_SSE_KEY:?OBJECT_STORE_SSE_KEY is required (256-bit KEK, 64 hex characters)}
+    ports:
+      - '${OBJECT_STORE_PORT:-9000}:8333'
+    volumes:
+      - object-store-data:/data
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', '-o', '/dev/null', '--max-time', '3', 'http://127.0.0.1:8333/healthz']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
+      start_interval: 1s
+
+volumes:
+  object-store-data:

@@ -99,14 +99,15 @@ export const workerConfigSchema = z
     // turno. El tope solo existe para que un host que nunca se libera no rebote para siempre.
     ENRICH_MAX_DEFERRALS: positiveInt.min(1).max(10_000),
     // --- Almacenamiento de objetos (D12 de link-enrichment, ADR-022) ---
-    // Endpoint compatible con S3: MinIO en local y cualquier proveedor S3 en producción, que es lo que permite a
+    // Endpoint compatible con S3: el del compose en local y cualquier proveedor en producción, que es lo que permite a
     // `deploy-prod` cambiar de proveedor sin tocar código.
     S3_ENDPOINT: z.string().regex(/^https?:\/\/\S+$/),
-    // MinIO la ignora, pero la firma de la petición la exige.
+    // El almacén puede ignorarla, pero la firma de la petición la exige.
     S3_REGION: z.string().min(1),
     S3_ACCESS_KEY: z.string().min(1),
     S3_SECRET_KEY: z.string().min(1),
-    // Bucket de las copias comprimidas de la página descargada, con expiración a 30 días (la crea `minio-init`).
+    // Bucket de las copias comprimidas de la página descargada (lo crea `object-store provision`). No lleva regla de
+    // expiración: la retención de 30 días es el barrido diario del worker (design D7 de `object-store`).
     S3_SNAPSHOTS_BUCKET: z.string().min(1),
     // Bucket de los CV, privado y sin expiración. El worker es el **único** lector de esos bytes (ADR-028 §5) y
     // quien los borra desde `delete-cv-file`. S3 exige de 3 a 63 caracteres en el nombre.

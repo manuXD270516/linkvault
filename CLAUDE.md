@@ -21,7 +21,7 @@ Antes de cualquier tarea lee, en este orden: `docs/design-v0.2.md` (decisiones v
   - `domain/` no importa `@nestjs/*`, `mongoose`, `bullmq` ni otros módulos.
   - Casos de uso dependen de interfaces (ports) inyectadas por tokens: `{ provide: X_REPOSITORY, useClass: MongoXRepository }`.
   - Entre módulos: eventos de dominio (EventEmitter2 in-process) y eventos de integración versionados en `libs/shared/events` vía BullMQ.
-- Persistencia: MongoDB (replica set de 1 nodo, siempre), Redis (BullMQ, caché), MinIO (CVs). Outbox pattern para todo lo que encola (ADR-009).
+- Persistencia: MongoDB (replica set de 1 nodo, siempre), Redis (BullMQ, caché), almacén S3 para CVs y snapshots (SeaweedFS, cifrado nativo; ADR-052). Outbox pattern para todo lo que encola (ADR-009).
 - Dedupe de links: `platform:externalJobId` con fallback `urlHash` (ADR-008). Procedencia por campo en `JobPreview` (ADR-010).
 - Auth: access token en memoria, refresh en cookie httpOnly con rotación, Argon2id (ADR-012).
 
