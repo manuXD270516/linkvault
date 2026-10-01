@@ -474,3 +474,25 @@ infra/ci/teardown-artifact.sh
 ```
 
 Operaciones de operador (password reset, GC de huérfanos, ack BullMQ): ver `docs/RUNBOOK.md` Paso 6 duodecies.
+
+## Minutos de la suite end-to-end
+
+Medición de la tarea 7.8a de `e2e-suite` (ADR-053 §1.2), separada de la de `arm64` de `object-store` (ADR-052
+«Elección»). El repositorio es privado en el plan Free: **2000 minutos de Actions al mes**, compartidos con los demás
+repositorios privados de la cuenta (el 2026-10-01 consumieron 19 de ellos otros dos repositorios).
+
+Cómo se mide: `…/runs/<id>/timing` devuelve `billable` y `total_ms` a 0 también en corridas facturadas, así que los
+minutos salen de los jobs de la corrida (`gh api repos/{owner}/{repo}/actions/runs/<id>/jobs`), redondeando cada job
+hacia arriba al minuto, y se cruzan con la facturación por día (`gh api users/<usuario>/settings/billing/usage?year=…`).
+
+| Corrida (2026-10-01) | Qué hizo | Jobs | Minutos |
+|---|---|---|---|
+| 36827569812 | `local` con `--rehearse-remote`; cayó en el paso 7 (lectura del cuerpo del sondeo) | `e2e-stack (local)` 332 s | **6** |
+| 36827566128 | `target: staging` fuera de `main`: rojo por el guardia, cero pruebas | `staging solo desde main` 4 s | **1** |
+| 36828990658 | `local` con `--rehearse-remote`, en verde | `e2e-stack (local)` 289 s | **5** |
+
+Una corrida completa con el ensayo remoto cuesta **5-6 minutos** (`ubuntu-24.04`, sin `arm64`); la del guardia, 1.
+
+**Umbral (ADR-053 §1.2): 70 % de los 2000 minutos = 1400.** Antes de lanzar `e2e.yml` se lee el consumo del mes
+(`gh api users/<usuario>/settings/billing/usage/summary`, todas las SKU `actions_linux*`); con 1400 o más, no se lanza
+y la suite se ejecuta en local con el mismo comando (`pnpm nx run web-e2e:e2e-stack`), sin minutos.
