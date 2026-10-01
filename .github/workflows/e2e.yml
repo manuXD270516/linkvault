@@ -104,6 +104,12 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+      # Prueba del apagado en el log (tarea 7.1b): tras el runner no debe quedar ningún contenedor de la pila de la
+      # suite, tampoco si falló.
+      - name: Leftover containers
+        if: always()
+        run: docker ps -a
+
   # Solo desde `main` (D13); dos corridas contra staging no se pisan la cuenta de prueba ni se corta una limpieza a
   # medias: concurrencia en el job, sin cancelar la que está en curso. No monta nada: `e2e-remote` ejecuta el perfil
   # `remote` contra el origen declarado en `vars.E2E_STAGING_URL` (design D3, D13; tarea 7.5a). La variable y los dos
