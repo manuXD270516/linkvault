@@ -80,7 +80,7 @@ Repositorio colaborativo de vacantes: cuentas personales, grupos, links comparti
 tracking de postulación por usuario, y análisis de CV + roadmap con IA.
 
 ## Stack
-Nx monorepo · NestJS 11 (Fastify) api + worker (BullMQ) · Angular 22 · MongoDB (replset) · Redis · MinIO · Vitest · Docker.
+Nx monorepo · NestJS 11 (Fastify) api + worker (BullMQ) · Angular 22 · MongoDB (replset) · Redis · almacén S3 (SeaweedFS) · Vitest · Docker.
 
 ## Convenciones
 Ver CLAUDE.md. Decisiones vigentes en docs/design-v0.2.md y docs/adr/. Specs en español; código en inglés.
@@ -134,7 +134,7 @@ Para bootstrap-monorepo, el proposal debe referenciar ADR-001, 006, 007, 009, 01
 - Nx workspace con pnpm: apps/api (Nest + Fastify), apps/worker (Nest standalone), apps/web (Angular 22 standalone, zoneless), libs/shared, libs/ai (vacía salvo estructura de carpetas y ports).
 - ESLint con regla no-restricted-imports para @anthropic-ai/sdk, openai, ollama, @openrouter/* fuera de libs/ai/infrastructure/providers, y regla de capas (domain no importa @nestjs, mongoose, bullmq).
 - Vitest configurado en los 5 proyectos con un test trivial cada uno.
-- docker-compose.yml: mongo 7 como replica set rs0 (inicializado por su healthcheck, ver ADR-017), redis 7, minio, ollama bajo profile ai-local. .env.example con las variables de docs/design.md §7.8.
+- docker-compose.yml: mongo 7 como replica set rs0 (inicializado por su healthcheck, ver ADR-017), redis 7, un almacén de objetos S3, ollama bajo profile ai-local. .env.example con las variables de docs/design.md §7.8.
 - GitHub Actions: lint → openspec validate --all → nx affected test (AI_CHAIN=mock) → build.
 - README con comandos: pnpm install, docker compose up -d, pnpm nx serve api|worker|web.
 NADA de features de negocio. Los health checks /health en api y worker son el único endpoint.
@@ -225,7 +225,7 @@ Orden y notas específicas:
 | 8 | `applications-tracking` | ADR-004, 015 y **ADR-024** (transiciones libres, visibilidad derivada, "Dejar de seguir"). Kanban + timeline. Cómo operarlo: Paso 6 quinquies. |
 | 9 | `group-comments` | Planos, sin hilos. |
 | 10 | `public-preview-share` | ADR-013. |
-| 11 | `cv-upload-extract` | MinIO, pdf-parse, mammoth. |
+| 11 | `cv-upload-extract` | almacén S3, pdf-parse, mammoth. |
 | 12 | `cv-match-suggestions` | §4.7 y 4.12 (el bucle de juez §4.8 va en `cv-suggestions-review`). `match-cv`, `ai_analyses`, `fitScore` derivado, consentimiento con versión `2026-09-21`, sin SSE de progreso. Cómo operarlo: Paso 6 nonies. ADR-029/030. |
 | 13 | `study-roadmap` | Catálogo curado `resources.seed.json` primero. Cómo operarlo: Paso 6 decies. |
 | 14 | `ai-byok` | Vault libsodium + claves por persona (Anthropic/OpenAI/OpenRouter). Cómo operarlo: Paso 6 undecies. ADR-032. |
@@ -786,10 +786,11 @@ host por los suyos.
 
 ## Paso 6 octies — Operar los CV
 
-Desde `cv-upload-extract`, cada persona guarda hasta 5 CV: los **bytes** van al bucket de CV de MinIO y los metadatos y
-el **texto extraído**, a `cv_documents`. Qué se guarda, quién lo ve, los endpoints, los estados y los límites están en el
-[README](../README.md#mi-cv); las decisiones, en [ADR-028](adr/ADR-028.md). Aquí, lo que hay que tener presente al
-operar. Los comandos usan el Mongo, el Redis y el MinIO del compose local; en otro entorno, cambia la URI o el host.
+Desde `cv-upload-extract`, cada persona guarda hasta 5 CV: los **bytes** van al bucket de CV del almacén de objetos
+(SeaweedFS, [ADR-052](adr/ADR-052.md)) y los metadatos y el **texto extraído**, a `cv_documents`. Qué se guarda, quién
+lo ve, los endpoints, los estados y los límites están en el [README](../README.md#mi-cv); las decisiones, en
+[ADR-028](adr/ADR-028.md). Aquí, lo que hay que tener presente al operar. Los comandos usan el Mongo, el Redis y el
+almacén de objetos del compose local; en otro entorno, cambia la URI o el host.
 
 **Antes de tocar nada, la regla de este paso:** ni el texto de un CV, ni el nombre de su archivo, ni sus bytes salen de
 aquí. Ninguna consulta de abajo los lee, y ninguna debería: no los pegues en un ticket ni en un chat de soporte. Si
@@ -798,24 +799,61 @@ necesitas saber "de quién es este CV", basta con su `userId`.
 - **Variables nuevas y obligatorias.** `api` pasa a exigir las cinco `S3_*`, incluida `S3_BUCKET` (hasta ahora no la
   leía nadie), y `worker` añade `CV_EXTRACTION_TIMEOUT_MS` y `CV_EXTRACT_CONCURRENCY`. **Un `.env` anterior no las tiene
   y los procesos no arrancan**: cópialas de `.env.example`.
-- **Los dos buckets, y que el de CV no sea público.** `docker compose up -d --wait` crea `snapshots` (con su regla de
-  expiración a 30 días) y el de CV, **`cvs`** por defecto —no `cv`: S3 exige entre 3 y 63 caracteres—, privado, sin
-  política anónima y **sin** regla de expiración. Las dos comprobaciones del healthcheck son independientes, así que un
-  volumen que ya tenía el de snapshots crea igualmente el de CV:
+- **Los dos buckets, el de CV cifrado, y ninguno público** ([ADR-052](adr/ADR-052.md) §4). `pnpm infra:up` es
+  `docker compose up -d --wait` seguido de `object-store provision`, que por la API S3 crea `snapshots` y el de CV,
+  **`cvs`** por defecto —no `cv`: S3 exige entre 3 y 63 caracteres—, pone el **cifrado por defecto** del de CV y quita
+  cualquier regla de ciclo de vida y cualquier política de bucket de los dos. `docker compose up` solo **no** crea los
+  buckets: el healthcheck del almacén es de solo lectura. La comprobación de la configuración es `object-store verify`,
+  que **no escribe nada**: los dos buckets existen, ninguno tiene regla de ciclo de vida, el de CV tiene cifrado por
+  defecto, no hay ningún snapshot de más de 31 días y las peticiones anónimas (`GET`, listado y `PUT`) se rechazan en
+  los dos. En local, contra el almacén del compose, y en producción, con la imagen de `api` dentro de la red del
+  almacén:
 
   ```bash
-  docker compose exec minio mc ls admin/
-  docker compose exec minio mc anonymous get admin/cvs   # debe decir: Access permission ... is `private`
-  docker compose exec minio mc ilm rule ls admin/cvs     # debe fallar con "lifecycle configuration does not exist"
+  pnpm nx run api:object-store -- verify
+  docker compose -f docker-compose.prod.yml --env-file .env.prod run --rm --no-deps api node object-store.js verify
   ```
 
-  Si `mc anonymous get` dijera `download`, `public` o `upload`, **los CV de todo el mundo son alcanzables con la URL**:
-  quítalo con `mc anonymous set none admin/cvs` y averigua quién lo puso. Y si el `ilm rule ls` listara una regla, algo
-  le puso caducidad a un dato que no caduca solo.
+  Sale 0 con `verify: ok`; si no, sale ≠0 nombrando el bucket y lo que falla. Un acceso anónimo aceptado quiere decir
+  que **los CV de todo el mundo son alcanzables con la URL**: `object-store provision` quita la política de bucket, y
+  hay que averiguar quién la puso. Una regla de ciclo de vida en el de CV le pondría caducidad a un dato que no caduca
+  solo; `provision` también la quita.
 
-- **Comprobar el almacén a mano.** Los tests de `api` hablan con un **doble** del almacén a propósito, así que lo único
-  que prueba que MinIO responde con la configuración de este entorno es hacerlo. Sube, lista y borra un objeto de
-  prueba bajo un prefijo inventado (nunca bajo el de una persona real):
+  **La retención de los snapshots es un barrido del `worker`**, no una regla del almacén: un trabajo diario borra los
+  de más de 30 días (ADR-052 §7). **Riesgo residual:** un `worker` caído no avisa; deja de borrar snapshots, y solo lo
+  detecta `verify` (un snapshot de más de 31 días) en el siguiente despliegue o verificación del artefacto, no antes
+  (ADR-052, «Consecuencias»). Se acepta porque los snapshots son páginas de ofertas, no CV.
+
+- **El almacén se niega a arrancar: la clave del cifrado** (design D16 de `object-store`; ADR-052, «Decisiones del
+  usuario», 3). El servicio `object-store` de los dos composes lleva un guardia de arranque que mira la clave
+  **antes** de arrancar SeaweedFS. Si algo no cuadra, el contenedor sale con uno de estos dos códigos y una línea en su
+  log que **nunca** contiene el valor de la clave (el código, con `docker inspect --format '{{.State.ExitCode}}'
+  <contenedor>`; el mensaje, con `docker compose logs object-store`):
+
+  | Código | Mensaje | Qué significa |
+  |---|---|---|
+  | `64` | `object-store-guard: WEED_S3_SSE_KEK (OBJECT_STORE_SSE_KEY) must be exactly 64 characters [0-9a-f]; refusing to start (see docs/RUNBOOK.md)` | la clave falta o está mal formada: vacía, más corta o más larga, o con un carácter que no es `0-9a-f` en minúscula |
+  | `65` | `object-store-guard: /data/.mini_sse_kek exists: this volume was started without WEED_S3_SSE_KEK and may hold objects encrypted with a key SeaweedFS generated; refusing to start (see docs/RUNBOOK.md before touching the file)` | el volumen arrancó alguna vez **sin** clave: SeaweedFS generó una propia y la guardó en ese fichero, junto a los datos |
+
+  **Con `64`**, pon en el fichero de entorno (`.env`, `.env.staging` o `.env.prod`) la `OBJECT_STORE_SSE_KEY` **con la
+  que se cifraron los objetos de ese volumen**: 64 hexadecimales en minúscula. **Nunca una nueva sobre un volumen con
+  CV**: el almacén arrancaría, pero los CV cifrados con la anterior dejarían de leerse (medido en C5, prueba (b), de
+  `docs/object-store-matrix/matriz.md`). Una clave nueva —la orden que la genera está en
+  [`infra/README.md`](../infra/README.md#almacén-de-objetos-cv-y-snapshots)— solo va en un volumen vacío.
+
+  **Con `65`**, el volumen puede tener objetos cifrados con la clave que generó el producto, que es la de ese fichero.
+  No intentes arrancarlo de otra forma: con el almacén detenido, **copia el volumen** antes de tocar nada (por ejemplo,
+  `docker run --rm -v <proyecto>_object-store-data:/data:ro -v "$PWD":/backup alpine:3 tar czf
+  /backup/object-store-data.tgz -C /data .`). Y **nunca borrar `.mini_sse_kek` sin saber con qué clave se cifraron los
+  objetos**: borrarlo puede dejar ilegibles los CV escritos con ella. Solo si el volumen no guarda nada que conservar
+  (desarrollo, o staging sin usuarios), `docker compose down -v` y aprovisionar de nuevo: `pnpm infra:up` en local; en
+  un destino, el `up` y después `object-store provision` y `verify` (ver
+  [`infra/README.md`](../infra/README.md#arranque)).
+
+- **Pendiente:** no aplicable al almacén actual; lo reescribe un change posterior (`object-store`, design D12).
+  **Comprobar el almacén a mano.** Los tests de `api` hablan con un **doble** del almacén a propósito, así que lo único
+  que prueba que MinIO responde con la configuración de este entorno es hacerlo. Sube, lista y borra un objeto de prueba
+  bajo un prefijo inventado (nunca bajo el de una persona real):
 
   ```bash
   docker compose exec minio sh -c 'printf "%%PDF-prueba" > /tmp/cv-probe.bin && mc cp /tmp/cv-probe.bin admin/cvs/probe/0001'
@@ -914,7 +952,8 @@ necesitas saber "de quién es este CV", basta con su `userId`.
   abiertos**: con Redis caído se sube y se mira igual, porque el tope duro no lo pone el contador sino el máximo de 5 CV
   por persona.
 
-- **Objetos huérfanos: dos pasos, con revisión humana en medio.** Aparecen cuando una transacción del alta aborta
+- **Pendiente:** no aplicable al almacén actual; lo reescribe un change posterior (`object-store`, design D12).
+  **Objetos huérfanos: dos pasos, con revisión humana en medio.** Aparecen cuando una transacción del alta aborta
   después de subir el objeto, o cuando un `CvDeleted.v1` se agota a las 24 h. Son invisibles para la persona y para la
   API, y **no hay barrido automático a propósito**: un script que borra objetos comparándolos con la base es justo el
   que, mal escrito, borra los CV de todo el mundo.
@@ -938,10 +977,11 @@ necesitas saber "de quién es este CV", basta con su `userId`.
   El `-T` de `docker compose exec` no es decorativo: sin él la salida llega con retornos de carro y la comparación
   miente.
 
-- **Borrar a mano todo lo de una persona (camino excepcional).** `DELETE /api/users/me` ya borra los `cv_documents`,
-  su contador de versiones y los objetos bajo el prefijo `<userId>/` del bucket, dentro de la cascada de borrado de
-  cuenta. Lo de aquí **sustituye** a esa operación y solo para cuando no se puede usar (nadie entra ya en la cuenta,
-  o sale `409 sole_owner_with_members`). Primero, **solo lectura**, qué se va a borrar:
+- **Pendiente:** no aplicable al almacén actual; lo reescribe un change posterior (`object-store`, design D12). **Borrar
+  a mano todo lo de una persona (camino excepcional).** `DELETE /api/users/me` ya borra los `cv_documents`, su contador
+  de versiones y los objetos bajo el prefijo `<userId>/` del bucket, dentro de la cascada de borrado de cuenta. Lo de
+  aquí **sustituye** a esa operación y solo para cuando no se puede usar (nadie entra ya en la cuenta, o sale `409
+  sole_owner_with_members`). Primero, **solo lectura**, qué se va a borrar:
 
   ```bash
   docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval 'printjson(db.cv_documents.find({ userId: ObjectId("<userId>") }, { _id: 1, fileKey: 1, version: 1, isDefault: 1, "extraction.status": 1 }).toArray())'
@@ -961,16 +1001,17 @@ necesitas saber "de quién es este CV", basta con su `userId`.
   `_id`. Un borrado a mano **no avisa a nadie** ni encola nada: no escribe `CvDeleted.v1`, así que el objeto tienes que
   borrarlo tú, que es lo que hace la primera línea.
 
-- **Qué queda pendiente de `deploy-prod`** (ADR-028 y el `scope` del manifiesto), para no darlo por hecho aquí: el
-  **cifrado en reposo** y la **política de retención** del bucket —desviación explícita de `docs/design.md` §8: en
-  local el bucket guarda los archivos tal cual y nada caduca—, la **automatización del barrido** de huérfanos si
-  alguna vez pesa, el **aviso de privacidad** que diga qué se guarda de un CV y por cuánto tiempo, y el **límite por
-  IP y el tope de cuerpo en el proxy**, que es el único techo por cliente (los tres contadores cuentan por persona
-  autenticada). Las dos colas nuevas también entran en lo que hay que vigilar.
+- **Qué queda pendiente de `deploy-prod`** (ADR-028 y el `scope` del manifiesto), para no darlo por hecho aquí: la
+  **política de retención** del bucket —desviación explícita de `docs/design.md` §8: nada caduca—, la **automatización
+  del barrido** de huérfanos si alguna vez pesa, el **aviso de privacidad** que diga qué se guarda de un CV y por cuánto
+  tiempo, y el **límite por IP y el tope de cuerpo en el proxy**, que es el único techo por cliente (los tres contadores
+  cuentan por persona autenticada). Las dos colas nuevas también entran en lo que hay que vigilar.
 
   Lo que ya **no** está pendiente: el borrado de cuenta (objetos del bucket y contadores incluidos) lo entregó la
   propia fila 16 (`deploy-prod`) y hoy es `DELETE /api/users/me` con su cascada; ADR-028 §Riesgos aceptados lo
-  listaba como deuda y lleva la nota fechada que lo corrige.
+  listaba como deuda y lleva la nota fechada que lo corrige. Tampoco el **cifrado en reposo** del bucket de CV: desde
+  el change `object-store` el almacén lo cifra por defecto con `OBJECT_STORE_SSE_KEY`, también en local
+  ([ADR-052](adr/ADR-052.md)).
 
 ## Paso 6 nonies — Operar los análisis de encaje
 
@@ -1161,7 +1202,7 @@ Desde `auth-email-recovery`, `api` envía correo de verificación y de recuperac
 
 ### Local: Mailpit (sin DNS)
 
-`docker compose up -d --wait` levanta Mailpit junto a mongo/redis/minio. Con `.env` de `.env.example`
+`docker compose up -d --wait` levanta Mailpit junto a mongo, redis y el almacén de objetos. Con `.env` de `.env.example`
 (`MAIL_PROVIDER=smtp`, `MAIL_SMTP_HOST=localhost`, `MAIL_SMTP_PORT=1025`):
 
 - SMTP: `localhost:1025` (o `MAILPIT_SMTP_PORT` / `MAIL_SMTP_PORT` si los cambiaste).
@@ -1440,8 +1481,8 @@ checks del commit, por dos vías que dicen lo mismo: el **nombre del job de repo
 | Lo que ves en la lista de checks | Qué pasó | Qué hacer |
 |---|---|---|
 | `resultado: artefacto verificado — NO desplegado (sin destino de staging)`, en **verde** | el artefacto se construyó y arrancó; no hay servidor configurado | nada está roto. Es el estado normal hoy; para pasar a desplegado, mira abajo |
-| `resultado: el artefacto NO pasó la verificación`, en **rojo**, con la descripción «El artefacto no se construyó o no arrancó…» | no construye, o construye y **no arranca** | abre la ejecución: el paso de verificación vuelca `docker compose ps` y los logs de `api`, `worker` y `web` |
-| el mismo nombre, en **rojo**, con la descripción «No se pudo verificar el artefacto: el registro de terceros no sirvió sus imágenes…» | **no es nuestro**: el registro del que se bajan mongo/redis/minio no sirvió las imágenes y el artefacto no llegó a levantarse; nadie lo ha comprobado, ni para bien ni para mal | relanza la corrida; suele bastar. Si se repite, mira el estado del registro antes de tocar nada del repositorio |
+| `resultado: el artefacto NO pasó la verificación`, en **rojo**, con la descripción «El artefacto no se construyó, no arrancó o no existe para la arquitectura del destino…» | no construye, construye y **no arranca**, o alguna imagen **no existe para la arquitectura del destino** (ADR-051 §3: una imagen propia de otra plataforma, o una de terceros que falta en el registro para esa plataforma o con una etiqueta que no existe) | abre la ejecución: el paso de verificación vuelca `docker compose ps` y los logs de `api`, `worker` y `web`; si es la plataforma, `infra/deploy/check-image-platforms.sh` nombra la imagen, la plataforma pedida y las que existen |
+| el mismo nombre, en **rojo**, con la descripción «No se pudo verificar el artefacto: el registro de terceros no sirvió sus imágenes…» | **no es nuestro**: el registro del que se bajan mongo, redis y el almacén de objetos no sirvió las imágenes y el artefacto no llegó a levantarse; nadie lo ha comprobado, ni para bien ni para mal | relanza la corrida; suele bastar. Si se repite, mira el estado del registro antes de tocar nada del repositorio |
 | el mismo nombre, en **rojo**, con la descripción «La verificación del artefacto no pasó…» (sin causa) | la verificación no pasó y **la causa no llegó** al reporte: el job murió antes de clasificarla | abre la ejecución; aquí el reporte calla el motivo a propósito en vez de suponer el de siempre |
 | `resultado: artefacto verificado y desplegado a staging`, en **verde** | había destino y el despliegue y su smoke terminaron bien | — |
 | `resultado: artefacto verificado, despliegue a staging NO completado`, en **rojo** | había destino y el despliegue falló | ahí sí hay una avería de despliegue |
@@ -1515,6 +1556,8 @@ No hagas `--scale api=2` mientras esa variable siga en `true` en todas las répl
 
 ### GC de objetos huérfanos (CV)
 
+**Pendiente:** no aplicable al almacén actual; lo reescribe un change posterior (`object-store`, design D12).
+
 Sin job automático (ADR-033 D5). Procedimiento: Paso 6 octies (objetos huérfanos), adaptando el compose a
 `docker-compose.prod.yml` y el alias MinIO del contenedor prod. Revisión humana entre listar y borrar.
 
@@ -1560,7 +1603,7 @@ público (van a 404 del SPA o no enrutan a api).
 | `api` no arranca nombrando `PASTE_EXTRACTION_TIMEOUT_MS`, `AI_CHAIN`, `AI_MOCK_MODE`, `AI_QUOTAS` u otra `AI_*`/`OLLAMA_*`/`OPENROUTER_*` (`[api] Invalid configuration, check these environment variables: …`) | Desde `paste-job-description` `api` ejecuta IA y valida su configuración con el mismo `parseAiConfig` que el worker. Si falta `PASTE_EXTRACTION_TIMEOUT_MS`, tu `.env` es anterior: cópiala de `.env.example` junto con la sección `--- IA ---`. Si es `invalid`, el detalle dice por qué: `mock` con `NODE_ENV=production`, `AI_MOCK_MODE` distinto de `replay`/`synth` (`record` se graba con `nx run ai:record-fixtures`), `openrouter` sin `OPENROUTER_API_KEY` u `OPENROUTER_MODEL`, o una tarea desconocida en `AI_QUOTAS`. Si no arranca porque no encuentra un prompt, es un `api` compilado fuera de la raíz: necesita `AI_PROMPTS_DIR=dist/apps/api/assets/ai/prompts`, porque `AiModule` comprueba al iniciarse que existen los prompts de todas sus tareas |
 | `POST /api/links/:id/pasted` responde `503 extraction_unavailable` siempre | Por orden: ¿`curl http://localhost:3000/health` da `200`? Con Redis caído el contador de pegados falla cerrado y responde `503` sin llamar a la IA. ¿`AI_CHAIN=none`? Entonces toda lectura degrada. ¿Ollama arriba y con el modelo? `curl http://localhost:11434/api/tags` debe listar `OLLAMA_MODEL` (si no, `ollama pull qwen2.5:7b`). ¿El plazo? Un modelo en CPU puede pasar de los 20 s de `PASTE_EXTRACTION_TIMEOUT_MS`: súbelo (hasta 120 000) y reinicia `api`; `OLLAMA_TIMEOUT_MS` también corta. ¿La cadena solo tiene `openrouter` y quien pega no dio su consentimiento? Responde `503` para siempre hasta que exista `ai_consent_required` (ADR-023). Tras varios fallos seguidos el circuit breaker del proceso deja de llamar a ese proveedor unos 30 s. El ledger dice qué pasó, sin el texto: `docker compose exec mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval "db.ai_usage.find({task:'extract-pasted-job'},{_id:0,outcome:1,reason:1,providerId:1,latencyMs:1,at:1}).sort({at:-1}).limit(5)"` (`degraded` con `no_providers`: ningún proveedor elegible; con `providers_failed`: fallaron o se agotó el plazo). Un `503` no gasta pegados |
 | `POST /api/links/:id/pasted` responde `429` | Mira el código. `ai_quota_exceeded` ("vuelve mañana", `Retry-After` de 24 h): quien pega agotó su cuota diaria de `extract-pasted-job` en `AI_QUOTAS`, que cuenta sus lecturas con éxito de las últimas 24 h en `ai_usage` y es independiente de la de `extract-job`. En local, sube o quita esa entrada de `AI_QUOTAS` y reinicia `api`; en un entorno compartido se ajusta la cuota del entorno, nunca el ledger. `too_many_attempts` ("espera un poco"): más de 10 pegados en 15 min; en local, `docker compose exec redis redis-cli del links:paste:<userId>`. Nunca en un entorno compartido |
-| El worker avisa de que no pudo guardar el snapshot | MinIO caído o sin bucket: `docker compose up -d --wait` lo crea con su regla de 30 días. El enriquecimiento no falla por eso; lo que se pierde es la copia para el golden real |
+| El worker avisa de que no pudo guardar el snapshot | El almacén de objetos caído o sin buckets: `pnpm infra:up` lo levanta y crea los buckets (`object-store provision`), y `pnpm nx run api:object-store -- verify` lo comprueba. El enriquecimiento no falla por eso; lo que se pierde es la copia para el golden real |
 | `api` registra `Could not build the index one_owner_per_group of group_members: …` | Hay datos antiguos con dos owners en un grupo (`11000 DuplicateKey`) y el índice no existe; `api` sigue sirviendo. Lista los grupos afectados, degrada a `member` a los owners sobrantes, reinicia `api` y comprueba el índice con `getIndexes()` (Paso 6 quater). Otro motivo: reinicia `api` con Mongo sano |
 | `POST /api/groups/join` responde `429` | Más de 10 códigos incorrectos del usuario o más de 100 desde su IP (IPv6 por /64) en 15 min; `Retry-After` dice cuánto falta. En local: `docker compose exec redis redis-cli del groups:join:user:<userId>` o `del groups:join:ip:<grupo de IP>`. Si una IP se agota una y otra vez, localiza las cuentas (Paso 6 quater). Si le pasa a todos a la vez detrás de un proxy, falta `trustProxy` |
 | Login o registro responden `429` en pruebas locales o en `/lv:smoke` | Contadores de intentos de la ventana de 15 min en Redis. En local: `docker compose exec redis sh -c "redis-cli --scan --pattern 'auth:*' \| xargs -r redis-cli del"`. Nunca en un entorno compartido |

@@ -34,9 +34,14 @@ import {
 } from './application/ports/page-parser.port';
 import { ROBOTS, type Robots } from './application/ports/robots.port';
 import {
+  SNAPSHOT_BUCKET,
+  type SnapshotBucket,
+} from './application/ports/snapshot-bucket.port';
+import {
   SNAPSHOT_STORE,
   type SnapshotStore,
 } from './application/ports/snapshot-store.port';
+import { SweepExpiredSnapshots } from './application/sweep-expired-snapshots.usecase';
 import { ExtractionChain } from './domain/extraction-chain';
 import { HeadlessExtractor } from './domain/extractors/headless.extractor';
 import { JsonLdExtractor } from './domain/extractors/json-ld.extractor';
@@ -65,6 +70,11 @@ import {
   createS3SnapshotUploader,
 } from './infrastructure/storage/s3-snapshot.store';
 import { RedisEnrichmentNotifier } from './infrastructure/notifications/redis-enrichment-notifier';
+import { SnapshotSweepScheduler } from './infrastructure/schedule/snapshot-sweep.scheduler';
+import {
+  S3SnapshotBucket,
+  createS3SnapshotBucketClient,
+} from './infrastructure/storage/s3-snapshot.bucket';
 import { SystemClock } from './infrastructure/system-clock';
 
 // Módulo del enriquecimiento (D1 de link-enrichment). Aquí se cablea todo: los puertos con sus implementaciones y el
@@ -73,7 +83,7 @@ import { SystemClock } from './infrastructure/system-clock';
 // **El consumidor no se registra en los tests.** Un `Worker` abre conexión a Redis nada más crearse, y la suite del
 // worker no tiene ninguno: todo lo demás del módulo sí se construye, así que los tests de inyección siguen
 // comprobando que el grafo resuelve. Fuera de los tests el consumidor existe siempre; que la cola tenga trabajo o no
-// es otra cosa.
+// es otra cosa. El cron del barrido de snapshots sigue la misma regla que los demás cron del `worker`.
 
 /** La cadena de D3, en su orden. El orden es el contrato: es lo que decide los empates del merge. */
 function extractionChainOf(
@@ -171,6 +181,34 @@ export class EnrichmentModule {
             ),
         },
         {
+          // Barrido diario de snapshots (design D7 de `object-store`): lista y borra en el bucket de snapshots, y el caso
+          // de uso se niega si es el mismo que el de CV.
+          provide: SNAPSHOT_BUCKET,
+          inject: [APP_CONFIG],
+          useFactory: (worker: WorkerConfig) =>
+            new S3SnapshotBucket(
+              createS3SnapshotBucketClient({
+                endpoint: worker.S3_ENDPOINT,
+                region: worker.S3_REGION,
+                accessKey: worker.S3_ACCESS_KEY,
+                secretKey: worker.S3_SECRET_KEY,
+              }),
+            ),
+        },
+        {
+          provide: SweepExpiredSnapshots,
+          inject: [SNAPSHOT_BUCKET, CLOCK, APP_CONFIG],
+          useFactory: (
+            bucket: SnapshotBucket,
+            clock: Clock,
+            worker: WorkerConfig,
+          ) =>
+            new SweepExpiredSnapshots(bucket, clock, {
+              snapshotsBucket: worker.S3_SNAPSHOTS_BUCKET,
+              cvBucket: worker.S3_BUCKET,
+            }),
+        },
+        {
           // Publica en el canal que `api` reparte por SSE (D9). Comparte el cliente del módulo porque solo publica: el
           // que necesita conexión propia es el suscriptor de `api`, que en modo suscripción deja de aceptar comandos.
           provide: ENRICHMENT_NOTIFIER,
@@ -261,6 +299,7 @@ export class EnrichmentModule {
                     deadlineMs: worker.ENRICH_DEADLINE_MS,
                   }),
               },
+              SnapshotSweepScheduler,
             ]
           : []),
       ],

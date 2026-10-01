@@ -14,9 +14,9 @@ import type { DefaultJobOptions } from 'bullmq';
  *
  * Los reintentos son para lo que revienta, no para lo que sale mal: que una bolsa nos bloquee, que la página no sea
  * una oferta o que un PDF esté cifrado son **resultados**, se guardan con su motivo y el job termina bien. Aquí solo
- * se reintenta cuando el consumidor lanza —Mongo caído, MinIO sin responder—, y por eso son pocos y espaciados: tres
- * intentos con espera creciente desde 5 s. Sin `attempts`, BullMQ haría uno solo y un corte de un segundo dejaría el
- * agregado en `failed` sin haber reintentado nada.
+ * se reintenta cuando el consumidor lanza —Mongo caído, el almacén sin responder—, y por eso son pocos y espaciados:
+ * tres intentos con espera creciente desde 5 s. Sin `attempts`, BullMQ haría uno solo y un corte de un segundo
+ * dejaría el agregado en `failed` sin haber reintentado nada.
  */
 export const OUTBOX_JOB_OPTIONS: DefaultJobOptions = {
   attempts: 3,

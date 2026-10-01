@@ -31,9 +31,9 @@ import type {
 // Dobles de los puertos de `cv` para los tests de casos de uso y para la app de integración del módulo (D12 de
 // cv-upload-extract, tarea 6.4). No son adaptadores de producción: los reales viven en `infrastructure/`.
 //
-// El del almacén de objetos existe para que **ningún test hable con MinIO**: la comprobación contra el almacén real es
-// un paso local del RUNBOOK. El del repositorio guarda además los eventos que el alta y el borrado escriben, porque
-// esos eventos salen de la misma transacción que el documento y no se pueden observar de otra forma.
+// El del almacén de objetos existe para que **ningún test hable con un almacén S3**: la comprobación contra el almacén
+// real es un paso local del RUNBOOK. El del repositorio guarda además los eventos que el alta y el borrado escriben,
+// porque esos eventos salen de la misma transacción que el documento y no se pueden observar de otra forma.
 
 export class MovableClock implements Clock {
   constructor(public current = new Date('2026-09-12T10:00:00.000Z')) {}

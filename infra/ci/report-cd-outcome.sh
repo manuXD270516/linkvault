@@ -35,11 +35,13 @@
 # --- El cuarto desenlace: "no se pudo verificar" no es "el artefacto está roto" ---------------------------------------
 # La primera fila decía siempre lo mismo —"El artefacto no se construyó o no arrancó"— y en las corridas reales
 # 36045259965 y 36048413770 eso era **falso**: las dos cayeron porque el registro de terceros no sirvió las imágenes de
-# mongo/redis/minio, con el artefacto sin llegar a levantarse. El mismo pecado que este script ya había corregido para
-# `cancelled`/`skipped` (nombrar el resultado real en vez de inventar el motivo) seguía vivo para `failure`.
+# terceros (mongo, redis y el almacén de objetos), con el artefacto sin llegar a levantarse. El mismo pecado que este
+# script ya había corregido para `cancelled`/`skipped` (nombrar el resultado real en vez de inventar el motivo) seguía
+# vivo para `failure`.
 #
 # Por eso `failure` se desglosa por la **clase** que escribe `infra/ci/verify-artifact.sh` y transporta el job:
-#   artifact     → el artefacto no se construyó o no arrancó (lo de siempre).
+#   artifact     → el artefacto no se construyó, no arrancó o una imagen no existe para la arquitectura del destino
+#                  (ADR-051 §3; `infra/deploy/check-image-platforms.sh` sale con 3, design D9 de `object-store`).
 #   environment  → el entorno no dejó verificar; nadie ha comprobado el artefacto.
 #   vacía        → **no se afirma ninguna causa**. Vacío ≠ `artifact`: si el mecanismo de transporte falla, o el job
 #                  muere antes de clasificar, la salida honesta es decir que la verificación no pasó y callar el
@@ -91,7 +93,7 @@ if [ "$VERIFY_RESULT" != 'success' ]; then
     # nombrar causa alguna.
     case "$VERIFY_FAIL_CLASS" in
       artifact)
-        description="El artefacto no se construyó o no arrancó: no se publicó nada y no se desplegó nada."
+        description="El artefacto no se construyó, no arrancó o no existe para la arquitectura del destino: no se publicó ni desplegó nada."
         ;;
       environment)
         description="No se pudo verificar el artefacto: el registro de terceros no sirvió sus imágenes. Nada publicado ni desplegado. Reintentar suele bastar."

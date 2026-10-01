@@ -9,7 +9,7 @@ import {
 } from './s3-snapshot.store';
 
 // Requisito "Snapshot de la página" (specs/links/enrichment) y D12 de link-enrichment. La subida es un doble: ningún
-// test habla con MinIO.
+// test habla con un almacén S3.
 
 const gunzipAsync = promisify(gunzip);
 

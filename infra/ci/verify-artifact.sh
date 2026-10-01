@@ -16,19 +16,25 @@
 #
 # Y NO se publican puertos: la red `internal` es `internal: true` y ningún servicio de aplicación publica nada, así
 # que desde el corredor no se alcanza ninguno. Se entra con `docker compose exec`. Abrir puertos para poder comprobar
-# cambiaría la configuración que se está verificando.
+# cambiaría la configuración que se está verificando. Pero preguntar desde dentro de un contenedor no prueba que otro
+# llegue a él, así que `api` y `worker` se piden además por su nombre de servicio desde `web`, otro contenedor de la
+# red `internal` (tarea 7.10 de `object-store`; ver esa sección, más abajo).
 #
-# Lo que esta verificación **no** cubre, dicho en voz alta en vez de fingido: el `GET /health` de `api` y de `worker`
-# declara indicadores de **mongo y redis**, y ninguno de los dos mira el almacén de objetos. MinIO se levanta porque
-# `api` y `worker` dependen de su `service_healthy`, y su propio healthcheck comprueba que los buckets existen, pero
-# que los procesos sepan hablar con S3 **no** queda cubierto por la readiness. Ese hueco se cierra con un despliegue
-# real (fila 35), no aquí.
+# El `GET /health` de `api` y de `worker` declara indicadores de **mongo y redis**, y ninguno de los dos mira el almacén
+# de objetos: el almacén se levanta porque `api` y `worker` dependen de su `service_healthy`, y su healthcheck es de
+# solo lectura. Por eso, después del `up`, este script aprovisiona y comprueba el almacén con la imagen de `api`
+# (`object-store.js provision` y `verify`) y comprueba que el `worker` lee el bucket de CV con su configuración
+# (`s3-probe.js`); ver esas secciones, más abajo.
 #
 # Uso:
 #   API_IMAGE=… WORKER_IMAGE=… WEB_IMAGE=… IMAGE_TAG=… infra/ci/verify-artifact.sh
 #
 # Opcional: `VERIFY_FAIL_CLASS_FILE=<ruta>` para que un fallo deje escrita su **clase** (`artifact` | `environment`) y
 # el reporte del CD pueda nombrar la causa en vez de suponerla. Ver el bloque de `fail()`.
+#
+# Opcional: `TARGET_PLATFORM=<os>/<arch>` (`linux/arm64` en `cd-staging`), la arquitectura del destino. Con ella, el
+# daemon tiene que ser de esa plataforma y las imágenes, existir para ella; sin ella (`cd-prod`, en local), se exige la
+# del daemon. Ver la sección de la plataforma.
 #
 # Las cuatro variables de imagen y tag son obligatorias y vienen del step que ejecuta esto, calculadas con el tag
 # local de la corrida (tarea 5.5). No están en `infra/ci/verify.env` a propósito: allí serían un valor fijo que
@@ -42,9 +48,9 @@ set -euo pipefail
 COMPOSE_FILE='docker-compose.prod.yml'
 ENV_FILE='infra/ci/verify.env'
 # Traefik fuera (borde: DNS y ACME). Los seis que sí: las tres dependencias y las tres imágenes que se verifican.
-SERVICES=(mongo redis minio api worker web)
+SERVICES=(mongo redis object-store api worker web)
 # Las de terceros se descargan aparte; las nuestras NO pueden descargarse (ver el `up` de abajo).
-THIRD_PARTY_SERVICES=(mongo redis minio)
+THIRD_PARTY_SERVICES=(mongo redis object-store)
 
 # --- El plazo del `up --wait`, y de dónde sale el número -----------------------------------------------------------
 # Corrección medida (2026-09-24, Docker Compose de Docker 29.8.0): el change afirmaba que «un plazo ausente deja el
@@ -59,22 +65,31 @@ THIRD_PARTY_SERVICES=(mongo redis minio)
 # paso se dé por perdido con su propio mensaje, en vez de depender de la heurística de Compose o de morir por el
 # timeout del job. Por eso el número tiene que quedar **por encima** del peor caso legítimo; si se quedara corto,
 # cortaría corridas buenas. Sale de los `start_period` y las ventanas de reintento del propio
-# `docker-compose.prod.yml`:
+# `docker-compose.prod.yml` (regla de design D8 de `object-store`, ADR-052 §8), con el tiempo hasta `healthy` medido:
 #
-#   mongo  start_period 30 s + retries 12 × interval  5 s =  90 s
-#   redis  start_period  5 s + retries 10 × interval  5 s =  55 s
-#   minio  start_period 20 s + retries 12 × interval 10 s = 140 s   ← el más lento de las dependencias
-#   api    start_period 60 s + retries 12 × interval 10 s = 180 s
-#   worker start_period 60 s + retries 12 × interval 10 s = 180 s
-#   web    start_period 10 s + retries  6 × interval 15 s = 100 s
+#   servicio      ventana (start_period + retries × interval)   peor medido hasta healthy
+#   mongo         30 s + 12 ×  5 s =  90 s                        5,03 s
+#   redis          5 s + 10 ×  5 s =  55 s                        5,27 s
+#   object-store  60 s +  6 × 10 s = 120 s   ← la más larga       1,24 s (ventana ≥ 3 × 1,24 s)
+#   api           60 s + 12 × 10 s = 180 s                        5,33 s (< 90 s, la mitad de su ventana)
+#   worker        60 s + 12 × 10 s = 180 s                        5,34 s (< 90 s)
+#   web           10 s +  6 × 15 s = 100 s                        5,28 s
 #
-# `api` y `worker` dependen de `service_healthy` de mongo, redis y minio, así que su ventana **no empieza a contar**
-# hasta que la más lenta de las tres termina: 140 s + 180 s = **320 s** en el peor caso legítimo. De ahí sale el
-# suelo, y 360 s le deja un margen del 12 % para un corredor lento. (El change escribió «≥ 240 s»; esa cifra sale de
-# sumar sin encadenar las dos fases y queda **por debajo** del peor caso de sus propios números. Se usa 360.)
-WAIT_TIMEOUT="${VERIFY_WAIT_TIMEOUT:-360}"
+# Mediciones: tres corridas `arm64` de `cd-staging` con la verificación en verde (36307691093, 36344930563 y
+# 36345047743; `object-store` 1,21 s, 1,24 s y 1,24 s) y C9 en local (`amd64`: 1,19 s, 1,17 s y 1,17 s). Ninguna
+# ventana se amplía: la del almacén pasa de tres veces su peor tiempo y ni `api` ni `worker` llegan a la mitad de la
+# suya. `api` y `worker` dependen de `service_healthy` de mongo, redis y el almacén, así que su ventana **no empieza
+# a contar** hasta que la más larga de las tres termina: suelo = 120 s + 180 s = **300 s**, y plazo = suelo × 1,10
+# redondeado hacia arriba a múltiplo de 30 = **330 s**.
+WAIT_TIMEOUT="${VERIFY_WAIT_TIMEOUT:-330}"
 
 dc() { docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" "$@"; }
+
+# Cada `run` de un solo uso va acotado (design D4 de `object-store`): un almacén que acepta la conexión y no responde
+# no puede dejar este paso esperando hasta el timeout del job. `timeout` ejecuta un programa, no una función de la
+# shell, así que no puede envolver a `dc`: esta es la misma orden, con el plazo delante.
+RUN_TIMEOUT=180
+dc_bounded() { timeout "$RUN_TIMEOUT" docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" "$@"; }
 
 section() { printf '\n=== %s\n' "$1"; }
 
@@ -135,16 +150,51 @@ for ref in "${API_IMAGE}:${IMAGE_TAG}" "${WORKER_IMAGE}:${IMAGE_TAG}" "${WEB_IMA
   printf '  %s -> %s\n' "$ref" "$id"
 done
 
+# --- La plataforma: el daemon, nuestras imágenes y las de terceros (design D9 de `object-store`, ADR-052 §9) -------
+# Una imagen que no existe para la arquitectura del destino es un defecto **del artefacto**, no una avería del registro:
+# sin esto, el `pull` de una imagen de terceros sin `arm64` («no matching manifest») agotaba los reintentos y salía
+# con clase `environment`, mandando a alguien a depurar el sitio equivocado. Por eso se comprueba **antes** del `pull`:
+#   - con `TARGET_PLATFORM`, el daemon tiene que ser de esa plataforma (sin QEMU: un corredor de otra arquitectura no
+#     construye ni arranca por emulación sin avisar); sin ella, se exige la del daemon;
+#   - nuestras imágenes están cargadas y aún no publicadas, así que no hay registro al que preguntar: se miran **en el
+#     daemon** con `docker image inspect`;
+#   - las de terceros, en el registro, con `infra/deploy/check-image-platforms.sh` (el mismo que usa el `deploy.sh` de
+#     35b), dentro del bucle de reintentos del `pull`: su salida 3 (no existe para esa plataforma) es `artifact` y no
+#     se reintenta; su salida 4 (no se pudo comprobar) se reintenta como un `pull` fallido y, agotada, es `environment`.
+# Solo se compara `os/arch`, sin variantes, como en el script.
+section 'Plataforma del daemon y de las imágenes propias'
+daemon_platform="$(docker version --format '{{.Server.Os}}/{{.Server.Arch}}')"
+daemon_platform="${daemon_platform//$''/}"
+printf '  daemon: %s\n' "$daemon_platform"
+if [ -n "${TARGET_PLATFORM:-}" ]; then
+  if [ "$daemon_platform" != "$TARGET_PLATFORM" ]; then
+    fail "el daemon es ${daemon_platform} y TARGET_PLATFORM pide ${TARGET_PLATFORM}: este corredor no es de la arquitectura del destino y aquí no se emula"
+  fi
+  expected_platform="$TARGET_PLATFORM"
+  printf '  TARGET_PLATFORM: %s (igual que el daemon)\n' "$expected_platform"
+else
+  expected_platform="$daemon_platform"
+  printf '  TARGET_PLATFORM: sin definir; se exige la del daemon, %s\n' "$expected_platform"
+fi
+for ref in "${API_IMAGE}:${IMAGE_TAG}" "${WORKER_IMAGE}:${IMAGE_TAG}" "${WEB_IMAGE}:${IMAGE_TAG}"; do
+  image_platform="$(docker image inspect "$ref" --format '{{.Os}}/{{.Architecture}}')"
+  image_platform="${image_platform//$''/}"
+  if [ "$image_platform" != "$expected_platform" ]; then
+    fail "la imagen ${ref} es ${image_platform} y el destino es ${expected_platform}: no existe para la arquitectura del destino"
+  fi
+  printf '  ok: %s (%s)\n' "$ref" "$image_platform"
+done
+
 # --- 5.2/5.5: qué resuelve el compose con este env file y estas variables de step ----------------------------------
 section 'Imágenes que resuelve el compose'
 dc config --images
 
 # --- 5.6/5.7: levantar la pila entera, con plazo y con volcado al vencer -------------------------------------------
-# Las imágenes de terceros (mongo, redis, minio) sí hay que descargarlas: en un corredor limpio no existen, y
-# `--pull never` las daría por ausentes abortando el `up`. Se descargan **antes y por separado**, nombrándolas, para
-# que el `up` pueda seguir llevando `--pull never` y la garantía de arriba —verificar lo construido aquí y no algo
-# bajado del registro— siga valiendo para NUESTRAS tres imágenes, que son las únicas que este change produce.
-# Esto lo destapó la primera corrida real: en local pasaba porque esas imágenes ya estaban en la máquina.
+# Las imágenes de terceros (mongo, redis y el almacén de objetos) sí hay que descargarlas: en un corredor limpio no
+# existen, y `--pull never` las daría por ausentes abortando el `up`. Se descargan **antes y por separado**,
+# nombrándolas, para que el `up` pueda seguir llevando `--pull never` y la garantía de arriba —verificar lo construido
+# aquí y no algo bajado del registro— siga valiendo para NUESTRAS tres imágenes, que son las únicas que este change
+# produce. Esto lo destapó la primera corrida real: en local pasaba porque esas imágenes ya estaban en la máquina.
 section "pull de las imágenes de terceros (${THIRD_PARTY_SERVICES[*]})"
 # Se reintenta porque el registro de terceros falla de forma intermitente: una descarga anónima limitada devuelve
 # `unauthorized`, no un error de cuota legible. Sin reintento, esa avería ajena pone el pipeline en rojo de vez en
@@ -154,18 +204,43 @@ section "pull de las imágenes de terceros (${THIRD_PARTY_SERVICES[*]})"
 # registro del que se descarga, y atribuirla al artefacto mandaría a alguien a depurar el sitio equivocado. Por eso es
 # la **única** llamada a `fail` que declara clase `environment`: aquí no se ha llegado a levantar nada, así que no hay
 # nada que decir del artefacto, ni bueno ni malo.
+# Antes de cada intento, la plataforma en el registro (ver la sección de la plataforma, arriba).
+PLATFORM_CHECK='infra/deploy/check-image-platforms.sh'
+third_party_images=()
+while IFS= read -r line; do
+  line="${line%$''}"
+  [ -n "$line" ] && third_party_images+=("$line")
+done < <(dc config --images "${THIRD_PARTY_SERVICES[@]}")
+[ ${#third_party_images[@]} -eq ${#THIRD_PARTY_SERVICES[@]} ] \
+  || fail "el compose resolvió ${#third_party_images[@]} imágenes para ${#THIRD_PARTY_SERVICES[@]} servicios de terceros (${THIRD_PARTY_SERVICES[*]})"
 pull_ok=0
 for attempt in 1 2 3; do
-  if dc pull --quiet "${THIRD_PARTY_SERVICES[@]}"; then
-    pull_ok=1
-    break
-  fi
-  printf '  intento %d de 3 fallido al descargar las imágenes de terceros; reintentando en %ds
-' "$attempt" $((attempt * 15))
+  platform_status=0
+  bash "$PLATFORM_CHECK" --platform "$expected_platform" "${third_party_images[@]}" || platform_status=$?
+  case "$platform_status" in
+    0)
+      if dc pull --quiet "${THIRD_PARTY_SERVICES[@]}"; then
+        pull_ok=1
+        break
+      fi
+      printf '  intento %d de 3 fallido al descargar las imágenes de terceros; reintentando en %ds\n' \
+        "$attempt" $((attempt * 15))
+      ;;
+    3)
+      fail "alguna imagen de terceros no existe para ${expected_platform} (la línea de arriba nombra la imagen y las plataformas que existen): es un defecto del compose, no del registro, y reintentar no lo arregla"
+      ;;
+    4)
+      printf '  intento %d de 3: no se pudo comprobar la plataforma de las imágenes de terceros en su registro; reintentando en %ds\n' \
+        "$attempt" $((attempt * 15))
+      ;;
+    *)
+      fail "${PLATFORM_CHECK} salió ${platform_status} (uso incorrecto): la comprobación de plataformas está mal invocada"
+      ;;
+  esac
   sleep $((attempt * 15))
 done
 if [ "$pull_ok" -ne 1 ]; then
-  fail "no se pudieron descargar las imágenes de terceros (${THIRD_PARTY_SERVICES[*]}) tras 3 intentos. Esto NO es un fallo del artefacto de LinkVault: es el registro del que se descargan (limitación de peticiones anónimas o caída). Reintentar la corrida suele bastar." environment
+  fail "no se pudieron comprobar o descargar las imágenes de terceros (${THIRD_PARTY_SERVICES[*]}) tras 3 intentos. Esto NO es un fallo del artefacto de LinkVault: es el registro del que se descargan (limitación de peticiones anónimas o caída). Reintentar la corrida suele bastar." environment
 fi
 
 section "up -d --wait --wait-timeout ${WAIT_TIMEOUT} --pull never ${SERVICES[*]}"
@@ -175,6 +250,74 @@ fi
 
 section 'Estado tras el up'
 dc ps
+
+# --- Tiempo hasta `healthy` de cada servicio, leído de `docker inspect` (design D8 de `object-store`) --------------
+# Informa el plazo del `up` (la tabla de `WAIT_TIMEOUT`); no aprueba ni suspende nada. Es el fin del primer sondeo con
+# salida 0 de `.State.Health.Log` menos `.State.StartedAt`, el mismo método que C9 en `docs/object-store-matrix/`.
+# Docker guarda solo los **cinco** últimos sondeos (y no guarda los fallidos dentro de `start_period`): con el
+# registro lleno, el primer sondeo sano puede haberse perdido, y lo que se imprime es una **cota superior** («≤»),
+# nunca una cifra que parezca exacta sin serlo. Por eso esta sección va justo después del `up`.
+section 'Tiempo hasta healthy de cada servicio (docker inspect)'
+seconds_since_epoch() { date -d "$1" +%s.%N 2>/dev/null; }
+for service in "${SERVICES[@]}"; do
+  cid="$(dc ps -q "$service" 2>/dev/null | head -n 1 || true)"
+  if [ -z "$cid" ]; then
+    printf '  %-12s sin contenedor\n' "$service"
+    continue
+  fi
+  inspected="$(docker inspect --format '{{.State.StartedAt}}|{{if .State.Health}}{{.State.Health.Status}}{{range .State.Health.Log}}|{{.ExitCode}}@{{json .End}}{{end}}{{else}}sin-healthcheck{{end}}' "$cid" 2>/dev/null || true)"
+  IFS='|' read -r -a fields <<<"$inspected"
+  started="${fields[0]:-}"
+  status="${fields[1]:-desconocido}"
+  probes=$((${#fields[@]} > 2 ? ${#fields[@]} - 2 : 0))
+  first_ok=''
+  for entry in "${fields[@]:2}"; do
+    if [ "${entry%%@*}" = '0' ]; then
+      first_ok="${entry#*@}"
+      first_ok="${first_ok//\"/}"
+      break
+    fi
+  done
+  start_s="$(seconds_since_epoch "$started" || true)"
+  ok_s=''
+  if [ -n "$first_ok" ]; then
+    ok_s="$(seconds_since_epoch "$first_ok" || true)"
+  fi
+  if [ -z "$start_s" ] || [ -z "$ok_s" ]; then
+    printf '  %-12s estado %s; sin sondeo con salida 0 en el registro (sondeos guardados: %d): no se puede medir\n' \
+      "$service" "$status" "$probes"
+    continue
+  fi
+  elapsed="$(awk -v a="$start_s" -v b="$ok_s" 'BEGIN { printf "%.2f", b - a }')"
+  if [ "$probes" -ge 5 ]; then
+    printf '  %-12s estado %s; hasta healthy: <= %s s (registro lleno, sondeos guardados: %d; el primero sano puede haberse perdido)\n' \
+      "$service" "$status" "$elapsed" "$probes"
+  else
+    printf '  %-12s estado %s; hasta healthy: %s s (sondeos guardados: %d)\n' "$service" "$status" "$elapsed" "$probes"
+  fi
+done
+
+# --- El almacén de objetos: aprovisionado y comprobado por la API S3, con la imagen de `api` (design D4) -----------
+# El orden es `up` → `provision` → `verify`: la readiness de `api` y `worker` no necesita los buckets. `provision` crea
+# los dos buckets, pone el cifrado por defecto del de CV y quita reglas de ciclo de vida y políticas; `verify` lo lee
+# sin escribir y exige además que las peticiones anónimas se rechacen. `run --no-deps` hereda las redes del servicio,
+# `object-store-net` incluida.
+section 'object-store: provision (run --rm --no-deps api node object-store.js provision)'
+dc_bounded run --rm --no-deps api node object-store.js provision \
+  || fail "object-store provision salió ≠0 (o superó ${RUN_TIMEOUT} s): el almacén no quedó aprovisionado"
+
+section 'object-store: verify (run --rm --no-deps api node object-store.js verify)'
+dc_bounded run --rm --no-deps api node object-store.js verify \
+  || fail "object-store verify salió ≠0 (o superó ${RUN_TIMEOUT} s): el almacén no está como se entrega"
+
+# --- El `worker` alcanza el almacén con su propia configuración (tarea 7.5 de `object-store`) ----------------------
+# La readiness del `worker` no mira el almacén. `s3-probe.js` (entrada del build de `worker`) usa su fábrica de
+# cliente S3 y su lector de CV: `HeadBucket` firmado del bucket de CV y lectura de una clave ausente de
+# `.verify-probe/`, que tiene que dar `null`. Un almacén que deje de aceptar esa lectura (credenciales, bucket, TLS)
+# rompe aquí el CD, no la primera lectura de un CV en el destino.
+section 'worker: lectura del bucket de CV (run --rm --no-deps worker node s3-probe.js)'
+dc_bounded run --rm --no-deps worker node s3-probe.js \
+  || fail "worker s3-probe salió ≠0 (o superó ${RUN_TIMEOUT} s): el worker no alcanza el bucket de CV con su configuración"
 
 # --- 5.6: el borde queda fuera, y se comprueba que de verdad quedó fuera -------------------------------------------
 if [ -n "$(dc ps --all --services --filter status=running | grep -x traefik || true)" ]; then
@@ -225,6 +368,34 @@ dc exec -T worker node -e '
     process.exit(0);
   }).catch((e) => { console.error("[FAIL] worker /health inalcanzable: " + e); process.exit(1); });
 ' || fail 'worker no responde readiness con mongo y redis'
+
+# --- api y worker, alcanzados desde OTRO contenedor de la red `internal` (tarea 7.10 de `object-store`) -------------
+# Las dos comprobaciones de arriba, y los healthchecks del compose, preguntan desde **dentro** del contenedor
+# (`127.0.0.1`): una imagen que solo escucha en loopback las pasa todas y nadie más la alcanza. Es lo que encontró el
+# smoke local del 2026-09-28: `api` escuchaba solo en `127.0.0.1:3000` y el borde, que la busca en `http://api:3000`,
+# recibía `ECONNREFUSED` (spec `platform/runtime-health`, «Liveness»; ADR-052 «Decisiones del usuario tras el punto de
+# revisión», 5). Aquí se pide `GET /health` por el nombre del servicio desde `web`, que está **solo** en `internal`,
+# igual que Traefik ve la pila; se exige `200` en la primera línea de estado. `wget` de busybox viene en nginx:alpine
+# (el healthcheck de `web` ya lo usa), y la petición lleva su propio plazo además del de `dc_bounded`.
+probe_from_internal() {
+  local service="$1" url="$2" out status
+  if ! out="$(dc_bounded exec -T web wget -S -q -O /dev/null -T 10 "$url" 2>&1)"; then
+    printf '%s\n' "$out"
+    fail "${service} no responde a otro contenedor de la red internal (GET ${url} desde web): conexión rechazada, plazo agotado o estado de error; ¿escucha solo en loopback?" artifact
+  fi
+  printf '%s\n' "$out"
+  status="$(printf '%s\n' "$out" | grep -m1 'HTTP/' | awk '{print $2}')"
+  if [ "$status" != '200' ]; then
+    fail "${service} respondió '${status:-sin estado}' a otro contenedor de la red internal (GET ${url} desde web); se exige 200" artifact
+  fi
+  printf '%s alcanzable desde otro contenedor de la red internal: %s -> %s\n' "$service" "$url" "$status"
+}
+
+section 'api: GET http://api:3000/health desde otro contenedor de la red internal (web)'
+probe_from_internal api 'http://api:3000/health'
+
+section 'worker: GET http://worker:3001/health desde otro contenedor de la red internal (web)'
+probe_from_internal worker 'http://worker:3001/health'
 
 # --- 5.11: web sirve el documento del SPA --------------------------------------------------------------------------
 # No un 200: un nginx con el directorio vacío responde 200. Se exige la raíz de la aplicación Angular, `<lv-root>`

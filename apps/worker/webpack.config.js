@@ -14,6 +14,9 @@ module.exports = {
       target: 'node',
       compiler: 'tsc',
       main: './src/main.ts',
+      // Punto de entrada adicional (tarea 7.5 de `object-store`, design D4): `node s3-probe.js` con la imagen de `worker`,
+      // que comprueba el bucket de CV con la fábrica y el lector de CV del propio `worker`. No importa `AppModule`.
+      additionalEntryPoints: [{ entryName: 's3-probe', entryPath: './src/s3-probe.ts' }],
       // Ruta **absoluta** a propósito (ADR-048): `GeneratePackageJsonPlugin` de Nx 23.2.1 llama a
       // `readTsConfig(options.tsConfig)` con el valor **tal cual** —a diferencia del resto de consumidores, que
       // hacen `path.isAbsolute(tsConfig) ? tsConfig : path.join(options.root, tsConfig)`

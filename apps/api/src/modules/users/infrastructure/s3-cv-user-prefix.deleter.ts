@@ -1,37 +1,26 @@
-import {
-  DeleteObjectsCommand,
-  ListObjectsV2Command,
-  S3Client,
-} from '@aws-sdk/client-s3';
+import { DeleteObjectsCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { Logger } from '@nestjs/common';
+import {
+  createS3Client,
+  type S3ConnectionSettings,
+} from '../../../infrastructure/storage/s3-client.factory';
 import type { CvUserPrefixDeleter } from '../application/ports/cv-user-prefix-deleter.port';
 
-/** Lo que el borrado de prefijo necesita del almacén. Se inyecta para que los tests no hablen con MinIO. */
+/** Lo que el borrado de prefijo necesita del almacén. Se inyecta para que los tests no hablen con él. */
 export interface CvPrefixObjectStore {
   listKeys(prefix: string): Promise<string[]>;
   deleteKeys(keys: readonly string[]): Promise<void>;
 }
 
-export interface S3CvPrefixOptions {
-  readonly endpoint: string;
-  readonly region: string;
-  readonly accessKey: string;
-  readonly secretKey: string;
+export interface S3CvPrefixOptions extends S3ConnectionSettings {
   readonly bucket: string;
 }
 
+/** Almacén real, con el cliente de la fábrica de `api` (design D3). */
 export function createS3CvPrefixStore(
   options: S3CvPrefixOptions,
 ): CvPrefixObjectStore {
-  const client = new S3Client({
-    endpoint: options.endpoint,
-    region: options.region,
-    forcePathStyle: true,
-    credentials: {
-      accessKeyId: options.accessKey,
-      secretAccessKey: options.secretKey,
-    },
-  });
+  const client = createS3Client(options);
   const bucket = options.bucket;
 
   return {
@@ -51,7 +40,8 @@ export function createS3CvPrefixStore(
             keys.push(object.Key);
           }
         }
-        token = page.IsTruncated === true ? page.NextContinuationToken : undefined;
+        token =
+          page.IsTruncated === true ? page.NextContinuationToken : undefined;
       } while (token !== undefined);
       return keys;
     },

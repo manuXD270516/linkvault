@@ -3,7 +3,7 @@ Repositorio colaborativo de vacantes: cuentas personales, grupos, links comparti
 tracking de postulación por usuario, y análisis de CV + roadmap con IA.
 
 ## Stack
-Nx monorepo · NestJS 11 (Fastify) api + worker (BullMQ) · Angular 22 · MongoDB (replset) · Redis · MinIO · Vitest · Docker.
+Nx monorepo · NestJS 11 (Fastify) api + worker (BullMQ) · Angular 22 · MongoDB (replset) · Redis · almacén S3 (SeaweedFS) · Vitest · Docker.
 
 ## Convenciones
 Ver CLAUDE.md. Decisiones vigentes en docs/design-v0.2.md y docs/adr/. Specs en español; código en inglés.

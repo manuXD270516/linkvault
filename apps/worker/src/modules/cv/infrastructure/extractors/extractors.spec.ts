@@ -58,7 +58,7 @@ describe('PdfTextExtractor', () => {
   });
 
   it('reads a small PDF that arrives in a pooled buffer', async () => {
-    // El caso real: el adaptador de MinIO devuelve un `Buffer` sacado del *pool*, con `byteOffset` distinto de cero.
+    // El caso real: el adaptador S3 devuelve un `Buffer` sacado del *pool*, con `byteOffset` distinto de cero.
     // Sin la copia a desplazamiento cero, `pdf-parse` lee la tabla `xref` desplazada y este CV legible acabaría en
     // `failed`.
     const source = pdfWithText();

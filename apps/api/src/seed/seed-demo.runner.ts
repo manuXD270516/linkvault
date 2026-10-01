@@ -139,7 +139,7 @@ export async function runSeedDemo(deps: SeedDemoDeps): Promise<SeedDemoReport> {
   log(`  Grupo: ${DEMO_GROUP_NAME} (código ${DEMO_GROUP_INVITE_CODE})`);
   log(`  SPA: ${DEMO_SPA_URL}`);
   if (cvSkipped) {
-    log('  CV: omitido (MinIO no disponible)');
+    log('  CV: omitido (almacén de objetos no disponible)');
   }
   log(
     `  Search backfill: enqueued ${search.enqueued} of ${search.found} candidates`,
@@ -398,7 +398,7 @@ function daysAgo(now: Date, days: number): Date {
   return new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
 }
 
-/** PDF mínimo válido para MinIO (best-effort; no se parsea en el seed). */
+/** PDF mínimo válido para el almacén de objetos (best-effort; no se parsea en el seed). */
 function minimalPdfBytes(): Uint8Array {
   return new TextEncoder().encode(
     '%PDF-1.1\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n',

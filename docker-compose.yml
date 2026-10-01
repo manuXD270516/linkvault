@@ -1,12 +1,12 @@
 # Infraestructura local de LinkVault (ADR-017, D6 de bootstrap-monorepo; ADR-034 correo; search ADR-006 F2).
 # Solo infraestructura: api, worker y web se ejecutan en el host con `pnpm nx serve`.
 #
-#   docker compose up -d --wait                         # mongo, redis, minio, mailpit
+#   docker compose up -d --wait                         # mongo, redis, object-store, mailpit (sin buckets)
 #   docker compose --profile ai-local up -d --wait      # + ollama
 #   docker compose --profile search up -d --wait        # + meilisearch
 #   docker compose --profile demo up -d --wait          # + meilisearch (mismo servicio; luego api:seed-demo)
 #
-# Puertos del host configurables (MONGO_PORT, REDIS_PORT, MINIO_PORT, MINIO_CONSOLE_PORT,
+# Puertos del host configurables (MONGO_PORT, REDIS_PORT, OBJECT_STORE_PORT,
 # MAILPIT_SMTP_PORT, MAILPIT_UI_PORT, OLLAMA_PORT, MEILI_PORT) por si otro proyecto ya los ocupa;
 # por defecto, los estándar.
 # URI desde el host:        mongodb://localhost:27017/linkvault?directConnection=true
@@ -64,70 +64,79 @@ services:
       start_interval: 1s
     restart: unless-stopped
 
-  minio:
-    # MinIO ya no publica en Docker Hub; quay.io es el registro oficial del mismo editor.
-    # Espejo propio de la imagen de MinIO. El 2026-09-24, MinIO **restringió el acceso anónimo** a sus imágenes en
-    # quay.io: el repositorio entero pasó a devolver 401 y la pila dejó de poder montarse desde cero en ninguna
-    # máquina limpia — lo destapó la verificación del artefacto de este change, no un despliegue fallido.
-    # Se replica el **mismo objeto** (idéntico id de imagen), sin modificarlo y conservando su procedencia. Va por
-    # variable y no fijo a fuego: la lección del incidente es justamente que una imagen de un tercero clavada en el
-    # fichero es un punto de fallo que no se puede sortear sin editarlo.
-    # Limitación conocida: el espejo lleva solo **linux/amd64**, que es lo que había en la máquina que lo replicó.
-    # Sustituir MinIO por otro servidor compatible con S3 es la fila 35a, `object-store` (docs/design-v0.2.md §6 y
-    # openspec-changes.yaml; punto (f) del scope original de la fila 35, ADR-051 §1). El espejo no se mantiene: es un
-    # puente hasta esa sustitución.
-    image: ${MINIO_IMAGE:-ghcr.io/manuxd270516/linkvault-minio}:${MINIO_IMAGE_TAG:-RELEASE.2025-09-07T16-13-09Z}
-    command: ['server', '/data', '--console-address', ':9001']
+  # Almacén de objetos S3 (change `object-store`, ADR-052; design D6, D14 y D16). Producto elegido por la matriz:
+  # SeaweedFS 4.47 (`docs/object-store-matrix/matriz.md`, veredicto de la 5.3). El servicio está **copiado** del compose
+  # que midió la matriz, `docs/object-store-matrix/seaweedfs.compose.yml`: misma imagen, misma orden, mismo entorno y
+  # mismo volumen; la comparación de la tarea 7.1 lo comprueba («Configuración entregada» de la matriz). Lo único que
+  # cambia es lo de su lista cerrada:
+  # - valores de desarrollo por defecto para las credenciales (`S3_ACCESS_KEY`, `S3_SECRET_KEY`, la identidad de
+  #   administración única de SeaweedFS) y para la clave del cifrado del bucket de CV (`OBJECT_STORE_SSE_KEY`, que
+  #   SeaweedFS lee de `WEED_S3_SSE_KEK`: **64 caracteres [0-9a-f]**, 32 bytes). El valor por defecto de la clave es
+  #   **solo de desarrollo** (el hexadecimal de «linkvault-dev-only-sse-kek-00000»): desarrollo cifra igual que
+  #   producción (design D6), pero con una clave que no protege nada;
+  # - el healthcheck de solo lectura de C8 (tarea 4.3) con los parámetros provisionales de C9 (4.4): no crea buckets;
+  #   los crea `object-store provision` (design D4), que encadena `pnpm infra:up`;
+  # - un solo puerto publicado, el S3. El filer (8888), el maestro (9333), el volumen (9340) y sus gRPC escuchan sin
+  #   autenticación y no se publican;
+  # - la red propia `object-store-net` (design D14), de la que es el único miembro: los demás servicios de este fichero
+  #   no llegan a ningún puerto del almacén. Sin `internal: true`, porque una red interna no deja publicar el puerto S3
+  #   en el host, y `api` y `worker` corren en el host.
+  # - el guardia de arranque de la clave (design D16), en `entrypoint`, con `command` intacto: sin clave, `weed mini`
+  #   genera una propia y la guarda en el volumen (`/data/.mini_sse_kek`, medido en la 3.4). El guardia sale con 64 si
+  #   `WEED_S3_SSE_KEK` no son exactamente 64 caracteres [0-9a-f] (sin imprimirla) y con 65 si el volumen ya tiene
+  #   `.mini_sse_kek` (arrancó alguna vez sin clave: ver docs/RUNBOOK.md antes de tocarlo); si no, `exec` del
+  #   `Entrypoint` de la imagen (`/entrypoint.sh`) con los mismos argumentos: el proceso que queda es el de la matriz.
+  #   Va en línea, sin fichero montado, y cada dólar se escribe doble para que Compose no lo interpole.
+  # Sin `depends_on` (así `config --images object-store` da una sola línea, la que leen la 7.1 y 35b) y sin `restart`
+  # (la comparación con el compose de la matriz no admite claves de más).
+  object-store:
+    image: ${OBJECT_STORE_IMAGE:-chrislusf/seaweedfs}:${OBJECT_STORE_IMAGE_TAG:-4.47}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |-
+        case "$${WEED_S3_SSE_KEK-}" in
+          *[!0-9a-f]*) kek_format=bad ;;
+          *) kek_format=hex ;;
+        esac
+        if [ "$$kek_format" != hex ] || [ "$${#WEED_S3_SSE_KEK}" -ne 64 ]; then
+          echo "object-store-guard: WEED_S3_SSE_KEK (OBJECT_STORE_SSE_KEY) must be exactly 64 characters [0-9a-f]; refusing to start (see docs/RUNBOOK.md)" >&2
+          exit 64
+        fi
+        if [ -e /data/.mini_sse_kek ]; then
+          echo "object-store-guard: /data/.mini_sse_kek exists: this volume was started without WEED_S3_SSE_KEK and may hold objects encrypted with a key SeaweedFS generated; refusing to start (see docs/RUNBOOK.md before touching the file)" >&2
+          exit 65
+        fi
+        exec /entrypoint.sh "$$@"
+      - object-store-guard
+    command:
+      - 'mini'
+      - '-dir=/data'
+      - '-webdav=false'
+      - '-admin.ui=false'
+      - '-s3.port.iceberg=0'
+      - '-s3.port.lance=0'
+      - '-master.telemetry=false'
     environment:
-      # Credenciales solo de desarrollo local; se sobrescriben desde .env.
-      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-linkvault}
-      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-linkvault-dev-secret}
-      # Alias autenticado para el healthcheck: el `local` que trae la imagen es anónimo y no puede crear buckets.
-      # `MC_HOST_<alias>` deja la credencial fuera de la línea de comandos.
-      MC_HOST_admin: http://${S3_ACCESS_KEY:-linkvault}:${S3_SECRET_KEY:-linkvault-dev-secret}@localhost:9000
+      # Credenciales y clave solo de desarrollo local; se sobrescriben desde .env.
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY:-linkvault}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:-linkvault-dev-secret}
+      WEED_S3_SSE_KEK: ${OBJECT_STORE_SSE_KEY:-6c696e6b7661756c742d6465762d6f6e6c792d7373652d6b656b2d3030303030}
     ports:
-      - '${MINIO_PORT:-9000}:9000'
-      - '${MINIO_CONSOLE_PORT:-9001}:9001'
+      - '${OBJECT_STORE_PORT:-9000}:8333'
     volumes:
-      - minio-data:/data
-    # El healthcheck crea **los dos buckets** de forma idempotente y solo da "healthy" con los dos puestos, igual que
-    # el de mongo con el replica set:
-    # - snapshots (D12 de link-enrichment, ADR-022): la comprobación normal es un `ilm rule ls`, que solo lee; falla
-    #   tanto si el bucket no existe como si no tiene configuración de ciclo de vida, y solo entonces se crea el
-    #   bucket y se importa la regla.
-    # - `mb --ignore-existing` no falla con el bucket ya creado e `ilm rule import` **reemplaza** la configuración
-    #   entera, así que repetirlo deja una sola regla; `ilm rule add` acumularía una por arranque.
-    # - la expiración a 30 días no es decorativa: el bucket guarda páginas completas y su razón de ser es poder
-    #   construir después el golden real sin volver a pedirle nada al sitio, que no necesita historia infinita.
-    # - cv (D6 de cv-upload-extract, ADR-028 §1): **sin** regla de expiración —un CV no caduca solo, y borrarlo por
-    #   un temporizador sería destruir datos de una persona— y **sin** política anónima, que es la que abriría los
-    #   bytes del dato más personal del producto a cualquiera con la URL. `mb` crea el bucket privado por defecto,
-    #   así que no hay nada que poner: lo que hace falta es no ponerlo. El nombre por defecto es `cvs` y no `cv`
-    #   porque S3 (y MinIO con él) exige entre 3 y 63 caracteres.
-    # - las dos comprobaciones son **conjunciones independientes**, no una sola cadena: con un volumen que ya tenía
-    #   el bucket de snapshots, la primera pasa y, si colgara de ella, el de CV no llegaría a crearse nunca. Quien ya
-    #   tenía el proyecto levantado no vería el bucket nuevo y lo descubriría con un `500` al subir su CV.
-    # - se hace aquí y no en un contenedor de un solo uso porque `docker compose up -d --wait` da por fallido un
-    #   servicio que termina, aunque termine bien, y entonces `--wait` no garantizaría que los buckets ya existen.
+      - object-store-data:/data
+    networks:
+      - object-store-net
     healthcheck:
-      test:
-        - CMD-SHELL
-        - >-
-          mc ready local &&
-          { mc ilm rule ls admin/${S3_SNAPSHOTS_BUCKET:-snapshots} > /dev/null 2>&1 ||
-          { mc mb --ignore-existing admin/${S3_SNAPSHOTS_BUCKET:-snapshots} &&
-          echo '{"Rules":[{"ID":"expire-snapshots-30d","Status":"Enabled","Expiration":{"Days":30},"Filter":{}}]}'
-          | mc ilm rule import admin/${S3_SNAPSHOTS_BUCKET:-snapshots}; }; } &&
-          { mc ls admin/${S3_BUCKET:-cvs} > /dev/null 2>&1 ||
-          mc mb --ignore-existing admin/${S3_BUCKET:-cvs}; }
-      interval: 5s
+      test: ['CMD', 'curl', '-fsS', '-o', '/dev/null', '--max-time', '3', 'http://127.0.0.1:8333/healthz']
+      interval: 10s
       timeout: 5s
-      retries: 10
-      start_period: 10s
+      retries: 6
+      start_period: 60s
       start_interval: 1s
-    restart: unless-stopped
 
-  # Captura SMTP local para correo transaccional (ADR-034). Sin perfil: mismo arranque que mongo/redis/minio.
+  # Captura SMTP local para correo transaccional (ADR-034). Sin perfil: mismo arranque que mongo/redis/object-store.
   # CI y tests unitarios/integración usan CapturingMailer (`MAIL_PROVIDER=capture`); no dependen de este servicio.
   mailpit:
     image: axllent/mailpit:v1.27.7
@@ -179,6 +188,10 @@ services:
 volumes:
   mongo-data:
   redis-data:
-  minio-data:
+  object-store-data:
   ollama-data:
   meili-data:
+
+# Red propia del almacén (design D14 de `object-store`): solo `object-store`. Sin `internal: true` (ver el servicio).
+networks:
+  object-store-net:

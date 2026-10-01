@@ -21,7 +21,7 @@ host de Mongo no está en la allowlist.
 
 NO SHALL exponerse por HTTP. NO SHALL llamar al SDK/cliente Meili directamente; para
 índice SHALL reutilizar el camino de backfill/outbox de search (`api:backfill-search` o
-equivalente). CV en MinIO es best-effort (omitible con log).
+equivalente). El CV en el almacén de objetos es best-effort (omitible con log).
 
 #### Scenario: Primera corrida
 

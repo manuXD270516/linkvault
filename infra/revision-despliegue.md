@@ -21,8 +21,6 @@ y **qué debe salir**. Ninguna modifica nada, y ninguna imprime un secreto.
 La fila 35 está a medias (ADR-051 §1), así que no todo lo que se revisa existe todavía:
 
 - **[hoy]** — existe en `main` y se puede comprobar ya.
-- **[35a]** — llega con `object-store`: almacén S3 mantenido en lugar de MinIO, y build, verificación y publicación
-  `arm64`.
 - **[35b]** — llega con `staging-host`: host de Oracle, guardias de despliegue, `sslip.io`, correo con Brevo.
 
 Una comprobación de una pieza que aún no está fusionada no se marca como fallida: se marca **N/A** en el registro
@@ -57,9 +55,13 @@ repositorio.
 | Permisos del fichero | Contiene `AI_VAULT_KEY` y todas las credenciales | En el host: `stat -c '%a %U' <env-file>` | `600` y el usuario de despliegue |
 | Copia fuera del host | Sin `AI_VAULT_KEY` las claves BYOK guardadas no se descifran (ADR-051 §2) | `sha256sum` del original y de la copia | Los dos hashes iguales. Anotar en el registro solo la fecha de la copia, no el hash. |
 
-`check-env-file.mjs` lee las obligatorias del propio compose, así que sigue solo a 35a (cuando desaparezca
-`MINIO_KMS_SECRET_KEY`) y a 35b (cuando el compose declare `MAIL_SMTP_USER`/`MAIL_SMTP_PASSWORD`, las exige con
-`MAIL_PROVIDER=smtp`).
+`check-env-file.mjs` lee las obligatorias del propio compose, así que sigue solo a 35b (cuando el compose declare
+`MAIL_SMTP_USER`/`MAIL_SMTP_PASSWORD`, las exige con `MAIL_PROVIDER=smtp`). La clave del cifrado de los CV,
+`OBJECT_STORE_SSE_KEY`, la comprueba además con la misma regla que el guardia de arranque del almacén (64 caracteres
+`[0-9a-f]`; design D16 de `object-store`) y rechaza el valor de desarrollo de `docker-compose.yml` y el de relleno de
+`infra/ci/verify.env`, que el guardia sí deja pasar porque tienen el formato. El guardia sigue siendo la última
+barrera: sale con `64` ante una clave ausente o mal formada y con `65` sobre un volumen que arrancó sin ella (README
+«Almacén de objetos (CV y snapshots)»).
 
 ## 3. Secretos de GitHub y quién puede desplegar [hoy]
 
@@ -75,13 +77,13 @@ secretos.
 | Secretos presentes (nombres, nunca valores) | `gh secret list` | Los cuatro `STAGING_*` **todos o ninguno** (el preflight falla con un destino a medias, ADR-048 §3), y lo mismo con `PROD_*`. `GHCR_READ_TOKEN` si hay destino. |
 | Caducidad del token del registro [35b] | Anotada en el RUNBOOK por la tarea 5.9 de `staging-host` | Fecha futura, con margen de un mes |
 
-## 4. Workflows de CD [hoy, 35a, 35b]
+## 4. Workflows de CD [hoy, 35b]
 
 | Qué | Por qué | Cómo | Esperado |
 |---|---|---|---|
 | Nada se publica sin verificar [hoy] | ADR-048 §4 | `grep -n "needs: verify" .github/workflows/cd-staging.yml .github/workflows/cd-prod.yml` | `build-verify-publish` depende de `verify` en los dos |
 | El release verifica todo el workspace [hoy] | «CD a producción por tag semver» | `grep -n "nx affected" .github/workflows/cd-prod.yml` | Ninguna coincidencia: en `cd-prod` todo es `run-many --all` |
-| Se verifica la arquitectura del destino [35a] | ADR-051 §3 | `grep -n "runs-on" .github/workflows/cd-staging.yml` | `build-verify-publish` en `ubuntu-24.04-arm` |
+| Se verifica la arquitectura del destino [hoy] | ADR-051 §3 | `grep -n "runs-on" .github/workflows/cd-staging.yml` | `build-verify-publish` en `ubuntu-24.04-arm` |
 | El modo de prueba no despliega [35b] | ADR-051 §4 (guardia de accidentes) | Leer el `if:` del job de despliegue | Excluye `dry_run` y cualquier ref que no sea `refs/heads/main` |
 | El despliegue no usa acciones de terceros con la clave [35b] | ADR-051 §Consecuencias | Buscar `uses:` en el job de despliegue | Solo OpenSSH nativo, con `known_hosts` fijado y comprobación estricta |
 
@@ -121,7 +123,7 @@ Con `C="docker compose -f docker-compose.prod.yml --env-file <env-file>"` en el 
 | Replica set de Mongo | Las transacciones lo exigen (21 ficheros usan sesiones) | `$C exec -T mongo mongosh --quiet --eval 'rs.status().ok'` | `1` |
 | Redis sin desalojo | BullMQ exige `noeviction`, y el compose no lo fija: vale el valor por defecto de Redis | `$C exec -T redis redis-cli CONFIG GET maxmemory-policy` | `noeviction` |
 | Redis persiste | El compose arranca con AOF | `$C exec -T redis redis-cli CONFIG GET appendonly` | `yes` |
-| Almacén: cifrado del bucket de CV y caducidad de snapshots | README «Object store» | Hoy, el `mc encrypt info` / `mc ilm rule ls` del README. [35a]: el equivalente del almacén elegido. | Bucket de CV cifrado; snapshots a 30 días |
+| Almacén: buckets, cifrado del de CV y retención de snapshots | README «Almacén de objetos (CV y snapshots)»; ADR-052 §4 y §7 (la retención es el barrido diario del `worker`, no una regla del almacén) | `docker compose -f docker-compose.prod.yml --env-file <env-file> run --rm --no-deps api node object-store.js verify` (no escribe nada) | `verify: ok`: los dos buckets presentes, **ninguna** regla de ciclo de vida, cifrado por defecto en el de CV, ningún snapshot de más de 31 días y acceso anónimo rechazado |
 
 ## 8. Correo [hoy, 35b]
 

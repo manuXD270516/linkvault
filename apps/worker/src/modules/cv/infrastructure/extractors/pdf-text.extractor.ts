@@ -14,7 +14,7 @@ import type {
  * Copia los bytes a una vista con **desplazamiento cero**, y no es una precaución de manual.
  *
  * `pdf-parse` lee mal un búfer que viene del *pool* de Node: con `byteOffset` distinto de cero —lo normal en objetos
- * pequeños, porque Node los saca de un búfer compartido, y es justo lo que devuelve leer un objeto de MinIO— el parser
+ * pequeños, porque Node los saca de un búfer compartido, y es justo lo que devuelve leer un objeto S3— el parser
  * interpreta las posiciones de la tabla `xref` desplazadas y falla con `bad XRef entry`. El mismo PDF se abre sin
  * problema si el búfer empieza en cero. Se reprodujo por debajo de ~4 kB; por encima Node deja de usar el *pool* y el
  * fallo desaparece, que es lo que lo hace tan fácil de no ver.

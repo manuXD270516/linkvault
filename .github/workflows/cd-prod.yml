@@ -336,7 +336,8 @@ jobs:
       #
       # Las cuatro variables de imagen y tag van aquí, como `env:` del paso, y no en `infra/ci/verify.env`: allí
       # serían un valor fijo que envejece y que reintroduciría el espacio de nombres por defecto corregido en
-      # ADR-048 §4-bis. El plazo del `up --wait` (360 s) y su justificación viven en `infra/ci/verify-artifact.sh`.
+      # ADR-048 §4-bis. El plazo del `up --wait` y su justificación viven en la línea `WAIT_TIMEOUT` de
+      # `infra/ci/verify-artifact.sh`.
       - name: Verify artifact (docker-compose.prod.yml stack in the runner)
         env:
           API_IMAGE: ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/linkvault-api
@@ -502,10 +503,10 @@ jobs:
               echo "${{ secrets.GHCR_READ_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
             fi
             docker compose -f docker-compose.prod.yml --env-file .env.prod pull
-            # 7.9: plazo explícito y volcado al fallar. Los 360 s salen de los `start_period` y las ventanas de
-            # reintento de este mismo compose, encadenadas: minio 20 + 12×10 = 140 s y, solo entonces, api/worker
-            # 60 + 12×10 = 180 s → 320 s de suelo, más un 12 % de margen (el cálculo vive en
-            # `infra/ci/verify-artifact.sh`).
+            # 7.9: plazo explícito y volcado al fallar. El plazo y su cálculo viven en la línea `WAIT_TIMEOUT` de
+            # `infra/ci/verify-artifact.sh`; el `--wait-timeout` literal de abajo es una copia conocida de ese número
+            # (ADR-052, «Consecuencias para 35b y 35c»), que 35c (`verify-reusable-workflow`) sustituye leyendo esa
+            # línea.
             #
             # Medido (ver la nota del grupo 7 en el change): sin plazo, Compose 5.5.1 **no** espera para siempre
             # ante un bucle de reinicio —aborta en 4 s con `container … is unhealthy`—. Lo que el plazo sí acota es

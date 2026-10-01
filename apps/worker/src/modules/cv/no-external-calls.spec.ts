@@ -24,8 +24,9 @@ import { PdfTextExtractor } from './infrastructure/extractors/pdf-text.extractor
 // nuestra infraestructura, y aquí se comprueba de dos maneras que no se solapan:
 //
 // 1. **Vigilando el transporte**: se extrae un CV de verdad, con los extractores de producción, y toda salida de red de
-//    Node queda interceptada. Las dos salidas legítimas —Mongo y MinIO— están puestas como dobles en memoria, así que
-//    cualquier socket, petición HTTP o resolución de nombre que se abriera durante la extracción sería una de más.
+//    Node queda interceptada. Las dos salidas legítimas —Mongo y el almacén de objetos— están puestas como dobles en
+//    memoria, así que cualquier socket, petición HTTP o resolución de nombre que se abriera durante la extracción
+//    sería una de más.
 // 2. **Siguiendo los imports** desde el módulo, que es lo único que puede decir algo sobre un proveedor que ni siquiera
 //    llega a llamarse. Es una comprobación estática y el nombre de su test lo dice.
 

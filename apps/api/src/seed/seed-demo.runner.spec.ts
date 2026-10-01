@@ -275,7 +275,7 @@ function buildDeps(overrides: Partial<SeedDemoDeps> = {}): SeedDemoDeps {
     } as unknown as CvRepository,
     cvFiles: {
       put: vi.fn(async () => {
-        throw new Error('MinIO unavailable in unit test');
+        throw new Error('object store unavailable in unit test');
       }),
     } as unknown as CvFileStore,
     connection,

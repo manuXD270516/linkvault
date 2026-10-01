@@ -1,14 +1,18 @@
-// Resultado tipado de runTask (D2 de ai-gateway-core, ADR-018 §1; ampliado por D6 de cv-match-suggestions). Solo tipos.
+// Resultado tipado de runTask (D2 de ai-gateway-core, ADR-018 §1; ampliado por D6 de cv-match-suggestions). Solo tipos y la lista
+// literal de motivos.
 
 /**
  * Motivos de degradación: cuatro y solo cuatro. El de consentimiento existe para no confundir «falta el permiso»
- * con «no hay IA» (ADR-030 §3).
+ * con «no hay IA» (ADR-030 §3). Única lista: el schema del ledger la usa como `enum` (ai-usage-consent-reason).
  */
-export type DegradedReason =
-  | 'no_providers'
-  | 'providers_failed'
-  | 'quota_exceeded'
-  | 'consent_required';
+export const DEGRADED_REASONS = [
+  'no_providers',
+  'providers_failed',
+  'quota_exceeded',
+  'consent_required',
+] as const;
+
+export type DegradedReason = (typeof DEGRADED_REASONS)[number];
 
 export interface AiSuccess<O> {
   status: 'success';

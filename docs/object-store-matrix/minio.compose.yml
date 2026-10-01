@@ -1,0 +1,44 @@
+# Control del arnés de la matriz (tarea 2.6 de `object-store`; design D1, «Forma de los composes de la matriz»).
+# MinIO no es candidato: es el almacén conocido sobre el que se valida que el arnés (provision/verify, suites de
+# contrato, `c5.sh`) acierta antes de juzgar a nadie con él (tareas 2.6-2.11).
+#
+# Forma común a todos los composes de la matriz:
+# - un solo servicio, `object-store`, al que `c5.sh` nombra en cada orden de Compose;
+# - credenciales solo por variables (`S3_ACCESS_KEY`, `S3_SECRET_KEY`), sin valores por defecto;
+# - la clave del cifrado del servidor desde `OBJECT_STORE_SSE_KEY`, mapeada a la variable del producto. En MinIO es
+#   `MINIO_KMS_SECRET_KEY`, con el formato `<nombre-de-clave>:<base64 de 32 bytes>`, p. ej.
+#   `OBJECT_STORE_SSE_KEY="lv-sse:$(node -e "console.log(require('crypto').randomBytes(32).toString('base64'))")"`;
+# - **todo el estado del almacén en un solo volumen con nombre** (`object-store-data`), sin `name:` explícito y sin
+#   ningún bind: el `tar` de C5 es todo lo que el almacén guarda, y la copia de la prueba (b) no monta el original;
+# - puerto S3 del host por variable (`OBJECT_STORE_PORT`, `9000` por defecto); la consola no se publica.
+#
+# Uso (con un nombre de proyecto propio y un puerto que no choque con el de desarrollo):
+#   OBJECT_STORE_PORT=19626 S3_ACCESS_KEY=… S3_SECRET_KEY=… OBJECT_STORE_SSE_KEY=… \
+#     docker compose -p os26-minio -f docs/object-store-matrix/minio.compose.yml up -d --wait
+#   … y al terminar, `down -v` con el mismo `-p` y `-f`.
+#
+# El healthcheck solo lee (`mc ready`): no crea buckets ni pone reglas. Aprovisionar es `object-store provision`
+# (design D4).
+
+services:
+  object-store:
+    image: ${OBJECT_STORE_IMAGE:-ghcr.io/manuxd270516/linkvault-minio}:${OBJECT_STORE_IMAGE_TAG:-RELEASE.2025-09-07T16-13-09Z}
+    command: ['server', '/data']
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:?S3_ACCESS_KEY is required}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?S3_SECRET_KEY is required}
+      MINIO_KMS_SECRET_KEY: ${OBJECT_STORE_SSE_KEY:?OBJECT_STORE_SSE_KEY is required (<key-name>:<base64 of 32 bytes>)}
+    ports:
+      - '${OBJECT_STORE_PORT:-9000}:9000'
+    volumes:
+      - object-store-data:/data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+      start_interval: 1s
+
+volumes:
+  object-store-data:

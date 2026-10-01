@@ -1,10 +1,18 @@
 import type { DegradedReason } from '../ai-result';
 import type { AiLedgerTask } from '../task';
 
-// Ledger de uso de IA (design-v0.2 §4, D9 de ai-gateway-core). Solo tipos. Nunca guarda input, salida ni prompt.
+// Ledger de uso de IA (design-v0.2 §4, D9 de ai-gateway-core). Nunca guarda input, salida ni prompt.
 
-export type UsageOutcome =
-  'success' | 'schema_error' | 'provider_error' | 'quota' | 'degraded';
+/** Única lista de outcomes: el schema del ledger la usa como `enum` (ai-usage-consent-reason). */
+export const USAGE_OUTCOMES = [
+  'success',
+  'schema_error',
+  'provider_error',
+  'quota',
+  'degraded',
+] as const;
+
+export type UsageOutcome = (typeof USAGE_OUTCOMES)[number];
 
 export interface UsageRecord {
   userId?: string;

@@ -47,9 +47,21 @@ describe('PrivacyPage', () => {
     expect(body).toMatch(/caducidad automática|permanece hasta/i);
     expect(body).toMatch(/IA|OpenRouter|BYOK/i);
     expect(body).toMatch(/Borrar tu cuenta|borrar tu cuenta/i);
-    // D5 documenta SSE y sin lifecycle: MAY afirmar cifrado; NO SHALL inventar caducidad automática.
-    expect(body).toMatch(/cifrado en reposo|SSE/i);
+    // Cifrado con clave propia (object-store D7) y sin lifecycle de borrado: NO SHALL inventar caducidad automática.
+    expect(body).toMatch(/se guarda cifrado/i);
     expect(body).not.toMatch(/caduca solo al cabo de \d+ d[ií]as/i);
+  });
+
+  it('El cifrado del CV se explica sin jerga ni proveedor', async () => {
+    await harness.navigateByUrl('/privacidad', PrivacyPage);
+    const paragraph = host().querySelector('[data-testid="privacy-cv-encryption"]');
+    const encryption = paragraph?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+
+    // object-store D7: cierto con el almacén autoalojado, tanto con cifrado del servidor como con clave del cliente.
+    expect(encryption).toBe(
+      'Tu CV se guarda cifrado en nuestro servidor; la clave la guardamos nosotros, aparte de los datos.',
+    );
+    expect(encryption).not.toMatch(/proveedor|SSE|bucket/i);
   });
 
   it('muestra el enlace a iniciar sesión', async () => {

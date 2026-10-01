@@ -5,7 +5,7 @@ Tour ~8–10 min tras sembrar datos fijos (ADR-042).
 ## Arranque
 
 ```bash
-docker compose --profile demo up -d --wait
+COMPOSE_PROFILES=demo pnpm infra:up   # la pila con meilisearch, y los buckets del almacén (object-store provision)
 # .env: FEATURE_SEARCH=true, MEILI_*, AI_CHAIN=mock, AI_MOCK_MODE=replay
 ALLOW_DEMO_SEED=true pnpm nx run api:seed-demo
 pnpm nx serve api   # + worker + web en otras terminales
@@ -28,7 +28,8 @@ SPA: http://localhost:4200
 3. Abrir postulaciones: applied / in_process / closed; insights stale si hay app ≥11d.
 4. `/buscar` con `FEATURE_SEARCH` + worker relay: openOnly, min/max salary (tras backfill del seed).
 5. Comentario + know-someone (como Bob).
-6. CV / encaje: skip si el seed omitió CV (MinIO) — subir uno a mano desde `/mi-cv`.
+6. CV / encaje: skip si el seed omitió CV (`object-store`, el almacén S3 de SeaweedFS, caído o sin buckets: `pnpm infra:up`
+   los crea) — subir uno a mano desde `/mi-cv`.
 
 ## Reseed
 
