@@ -20,6 +20,20 @@ name: cd-staging
 on:
   push:
     branches: [main]
+    # Un push que solo toca specs o documentación no cambia el artefacto: no se reconstruye ni se verifica (change
+    # `cd-staging-docs-paths-ignore`; ~20 min de Actions por fusión en el plan Free). Basta un fichero fuera de la
+    # lista para que corra. `**/*.md` NO va aquí: los prompts de `libs/ai/src/infrastructure/prompts/` son `.md` y
+    # viajan en las imágenes. Lo que `verify` comprueba sobre docs (`repo-checks`, `openspec validate`) se corre en
+    # local antes de fusionar, y el commit publicado es el último de `main` con estado `cd-staging/artifact`.
+    paths-ignore:
+      - 'openspec/**'
+      - 'docs/**'
+      - '.claude/**'
+      - '.cursor/**'
+      - '*.md'
+      - 'infra/**/*.md'
+      - 'tools/**/*.md'
+      - '**/README.md'
   workflow_dispatch:
     inputs:
       # Modo de prueba: construye y **verifica** el artefacto sin publicar nada (tarea 6.4; el equivalente de 8.7 en
