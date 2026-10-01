@@ -15,7 +15,9 @@ import {
   type Locator,
   test,
   type Page,
+  type Request,
   type Response,
+  type Route,
   type TestInfo,
 } from '@playwright/test';
 import {
@@ -439,16 +441,55 @@ async function backToGroup(page: Page, groupName: string): Promise<void> {
 
 const MATCH_PATH = /^\/api\/links\/[0-9a-f]{24}\/match$/;
 
+interface MatchPolls {
+  /** Cuerpo de un sondeo `GET` del diálogo, tal como lo leyó la ruta (JSON, o el texto si no lo era). */
+  readonly bodyOf: (response: Response) => unknown;
+  readonly stop: () => Promise<void>;
+}
+
 /**
- * La respuesta del sondeo del diálogo (`GET /api/links/:linkId/match`) que trae el análisis resuelto: sin bloque en
- * curso y con el último resultado. Un cuerpo que no valida también la cierra, para que la prueba falle al validarlo.
+ * Los sondeos del diálogo (`GET /api/links/:linkId/match`) pasan por `page.route` y su cuerpo lo lee Playwright con
+ * `route.fetch()`; la aplicación recibe esa misma respuesta. No se leen con `response.json()`: `web` usa `HttpClient`
+ * sobre `fetch` (`withFetch`), que consume el cuerpo en streaming, y en el runner Linux de CI Chromium no lo conserva
+ * para DevTools: `response.json()` cayó con «No data found for resource with given identifier» en los cuatro intentos
+ * de la corrida 36827569812, con el cuerpo entregado a la aplicación (en Windows no había fallado nunca).
  */
-async function isResolvedMatch(response: Response): Promise<boolean> {
-  if (!isApiCall('GET', MATCH_PATH)(response) || response.status() !== 200) {
-    return false;
-  }
-  const body = matchAnalysisResponseSchema.safeParse(await response.json());
-  return !body.success || (body.data.running === undefined && body.data.latest !== undefined);
+async function routeMatchPolls(page: Page): Promise<MatchPolls> {
+  const bodies = new Map<Request, unknown>();
+  const matcher = (url: URL): boolean => MATCH_PATH.test(url.pathname);
+  const handler = async (route: Route): Promise<void> => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback();
+      return;
+    }
+    const response = await route.fetch();
+    const text = await response.text();
+    try {
+      bodies.set(route.request(), JSON.parse(text) as unknown);
+    } catch {
+      bodies.set(route.request(), text);
+    }
+    await route.fulfill({ response });
+  };
+  await page.route(matcher, handler);
+  return {
+    bodyOf: (response) => bodies.get(response.request()),
+    stop: () => page.unroute(matcher, handler),
+  };
+}
+
+/**
+ * La respuesta del sondeo que trae el análisis resuelto: sin bloque en curso y con el último resultado. Un cuerpo que
+ * no valida también la cierra, para que la prueba falle al validarlo.
+ */
+function isResolvedMatch(polls: MatchPolls): (response: Response) => boolean {
+  return (response) => {
+    if (!isApiCall('GET', MATCH_PATH)(response) || response.status() !== 200) {
+      return false;
+    }
+    const body = matchAnalysisResponseSchema.safeParse(polls.bodyOf(response));
+    return !body.success || (body.data.running === undefined && body.data.latest !== undefined);
+  };
 }
 
 /** Imprescindibles primero, estable dentro del mismo peso: el orden en que el diálogo pinta sugerencias y carencias. */
@@ -543,11 +584,17 @@ async function analyzeMatch(
   const analyze = dialog.getByRole('button', { name: 'Analizar', exact: true });
   await expect(analyze).toBeEnabled();
 
-  const requested = page.waitForResponse(isApiCall('POST', MATCH_PATH));
-  const resolved = page.waitForResponse(isResolvedMatch, { timeout: ANALYSIS_TIMEOUT });
-  await analyze.click();
-  expect((await requested).status()).toBe(202);
-  const latest = matchAnalysisResponseSchema.parse(await (await resolved).json()).latest;
+  const polls = await routeMatchPolls(page);
+  let latest: MatchLatest | undefined;
+  try {
+    const requested = page.waitForResponse(isApiCall('POST', MATCH_PATH));
+    const resolved = page.waitForResponse(isResolvedMatch(polls), { timeout: ANALYSIS_TIMEOUT });
+    await analyze.click();
+    expect((await requested).status()).toBe(202);
+    latest = matchAnalysisResponseSchema.parse(polls.bodyOf(await resolved)).latest;
+  } finally {
+    await polls.stop();
+  }
   if (latest?.status !== 'done') {
     throw new Error(
       `${label}: the analysis ended ${latest?.status ?? 'without a result'} (failure code ${latest?.failureCode ?? '-'})`,
