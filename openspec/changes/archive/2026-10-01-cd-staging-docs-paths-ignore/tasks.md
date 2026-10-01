@@ -14,6 +14,9 @@
 
 - [x] 2.1 [infra] `bash infra/ci/repo-checks.sh`, `pnpm exec openspec validate --all --no-interactive` y
   `pnpm nx affected -t lint,typecheck,test,i18n-check --base=main` en verde en local.
-- [ ] 2.2 [infra] **[tras fusionar el PR de este change]** Fusionar el archivo de este change (solo `openspec/`) y
+- [x] 2.2 [infra] **[tras fusionar el PR de este change]** Fusionar el archivo de este change (solo `openspec/`) y
   verificar con `gh run list --workflow cd-staging.yml --commit <sha del merge>` volcado a fichero que **no** hay
-  ninguna corrida para ese commit. Es la prueba del filtro y no gasta minutos.
+  ninguna corrida para ese commit. Es la prueba del filtro y no gasta minutos. **Estado (2026-10-01): ejecutada.**
+  El archivo (#76) se fusionó como `0beb41c`; `git diff --name-only 6f8073c 0beb41c` solo lista `openspec/`, y
+  `gh run list --commit 0beb41c` devuelve **0 corridas** de cualquier workflow. La fusión de #75 (`6f8073c`), que
+  tocaba el propio workflow, sí lanzó `cd-staging` (36821136971), cancelada a mano por redundante: unos 4 minutos.

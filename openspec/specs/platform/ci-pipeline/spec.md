@@ -150,6 +150,13 @@ Y SHALL distinguir un **cuarto desenlace**, que no es un cuarto color sino una c
 el pipeline SHALL decir que la verificación no pasó y callar el porqué. Confundir "no se sabe" con "lo de siempre" es
 el mismo defecto que los cuatro desenlaces existen para cerrar, reconstruido por el mecanismo que lo cierra.
 
+**Una imagen de la pila que no existe para la arquitectura del destino NO SHALL contarse como avería ajena**, aunque
+sea de terceros y el síntoma aparezca al descargarla del registro: es el repositorio quien la eligió o la publicó, y
+reintentar no lo arregla. SHALL clasificarse en el primer desenlace —defecto del artefacto—, SHALL detectarse **antes**
+de descargar ninguna imagen (`platform/production-deploy`, «Las imágenes de la pila se pueden descargar en la
+arquitectura del destino») y SHALL nombrar la imagen y las plataformas que sí existen. Lo publicado NO SHALL decir
+entonces que el registro no sirvió sus imágenes ni recomendar reintentar.
+
 Y el mecanismo que lleva la causa desde la verificación hasta donde se publica el resultado SHALL **sobrevivir al
 fallo** de la etapa que la produce —es el único caso en que hace falta—. Un mecanismo del que no se haya demostrado
 eso NO SHALL darse por bueno por parecer correcto: su modo de error es silencioso, porque la causa llegaría vacía
@@ -176,10 +183,32 @@ verificó— queda abierto, mientras la identidad se demuestre.
 construidas, levantándolas en el propio corredor, y SHALL comprobar que los procesos **arrancan** y responden, no que el
 código compile. Que el build termine NO SHALL bastar para dar el artefacto por bueno.
 
+**La verificación del CD a staging SHALL ejecutarse en la arquitectura del destino de staging**, en un corredor nativo de
+esa arquitectura. Una verificación vale para la arquitectura en la que se ejecuta: verificar una y desplegar otra
+llevaría al host bits que nadie ha arrancado. Por tanto:
+
+- La arquitectura del destino SHALL declararse **en un solo sitio** del workflow, y la verificación SHALL comprobar,
+  **antes de levantar nada**, que el daemon del corredor y cada imagen construida son de esa arquitectura. Si no lo son,
+  SHALL fallar como defecto del artefacto.
+- Lo publicado SHALL ser **la misma imagen de una sola plataforma** que se construyó y se verificó en ese daemon, con la
+  identidad por digest de este requirement sin cambios.
+- NO SHALL construirse otra arquitectura por emulación ni publicarse ninguna variante que no se haya arrancado.
+- Esta regla es **del CD a staging**. El «mismo criterio» que comparte con «CD a producción por tag semver» NO SHALL
+  extenderla al CD a producción mientras producción no tenga un destino con arquitectura declarada.
+
 **Lo que se verifica SHALL ser la pila de producción completa, con la configuración de producción real:**
 
 - El alcance SHALL cubrir `api`, `worker`, `web` y sus dependencias (mongo, redis y el almacén de objetos), no solo
   `api`. `web` es lo único que toca una persona y hoy se publica sin que nada compruebe que sirve algo.
+- El almacén de objetos SHALL quedar **aprovisionado con la misma orden que documenta el arranque** y su configuración
+  SHALL comprobarse con el modo de comprobación de `platform/object-store`: buckets, retención, cifrado cuando el
+  almacén lo aplica por bucket y peticiones sin firmar rechazadas. Que los procesos arranquen NO SHALL bastar para dar
+  por bueno un almacén que no tiene la configuración que se despliega.
+- Los dos procesos que usan el almacén SHALL demostrar que lo alcanzan **con su propia configuración**: `api`, porque el
+  aprovisionamiento corre con su imagen y su entorno; y `worker`, con una lectura de un objeto ausente **del bucket de
+  CV**, hecha por el mismo cliente con el que lee los CV (con su clave, si el cifrado es con clave del cliente), que
+  SHALL devolver «ausente» y no un error. La readiness de los dos no mira el almacén, así que sin esto un `worker` con el
+  almacén mal configurado pasaría la verificación.
 - SHALL usarse **`docker-compose.prod.yml`**, el mismo fichero que se despliega, y NO SHALL escribirse un compose
   paralelo para el corredor. Un compose escrito para CI verificaría una configuración que nadie ejecuta, y es
   exactamente donde vivía el defecto de las variables obligatorias que faltan: la comprobación habría pasado en verde
@@ -353,6 +382,34 @@ SHALL seguir necesitando abrir la corrida, y eso queda dicho aquí en lugar de d
 - **WHEN** el pipeline llega a la etapa de despliegue
 - **THEN** SHALL fallar nombrando lo que falta
 - **AND** NO SHALL tratarse como "no hay destino", porque alguien quiso desplegar y no se hizo
+
+#### Scenario: Se verifica la arquitectura del destino, no otra
+
+- **GIVEN** el CD a staging con `linux/arm64` declarada como arquitectura del destino
+- **WHEN** corren la construcción y la verificación del artefacto
+- **THEN** SHALL ejecutarse en un corredor `linux/arm64`, y las imágenes verificadas y publicadas SHALL ser `linux/arm64`
+  de una sola plataforma
+- **AND** el digest de cada imagen publicada SHALL ser el de la verificada, comprobado en la corrida
+- **AND** un corredor o una imagen construida de otra arquitectura SHALL hacer fallar la verificación antes de levantar
+  la pila, como defecto del artefacto
+
+#### Scenario: Una imagen sin la arquitectura del destino es un defecto del artefacto
+
+- **GIVEN** el compose de producción con una imagen de terceros que no existe para la arquitectura del destino
+- **WHEN** corre la verificación del artefacto
+- **THEN** SHALL fallar antes de descargar las imágenes de terceros, nombrando la imagen y las plataformas que sí existen
+- **AND** lo publicado SHALL atribuirlo al artefacto
+- **AND** NO SHALL decir que el registro de terceros no sirvió sus imágenes ni recomendar reintentar
+
+#### Scenario: El almacén se verifica aprovisionado y cerrado
+
+- **GIVEN** las imágenes recién construidas y la pila levantada en el corredor
+- **WHEN** corre la verificación del artefacto
+- **THEN** el almacén SHALL aprovisionarse con la misma orden que documenta el arranque
+- **AND** su modo de comprobación SHALL terminar con código cero, incluidas las peticiones sin firmar rechazadas
+- **AND** una lectura del `worker` de un objeto ausente del bucket de CV SHALL devolver «ausente» y no un error
+- **AND** un fallo de cualquiera de las tres órdenes, o que no termine en su plazo, SHALL hacer fallar la verificación
+  como defecto del artefacto
 
 ### Requirement: CD a producción por tag semver
 

@@ -40,12 +40,16 @@ sí mismo y no por el `jobId` de la cola:
 - un CV cuyo **objeto no existe** en el almacén SHALL completar el job **sin reintentos**, dejándolo en `failed` con
   motivo `internal_error`: un objeto que no está no aparece al siguiente intento. Esto SHALL distinguirse de que el
   almacén no responda, que sí es transitorio;
+- **solo** un error del almacén que diga que **el objeto** no existe SHALL contar como objeto ausente. Que **el bucket
+  de CV** no exista, o una respuesta de «no encontrado» que no se sepa atribuir al objeto, NO SHALL tratarse como
+  objeto ausente: SHALL tratarse como un fallo de infraestructura y reintentarse, porque un bucket sin crear o mal
+  nombrado dejaría en `failed` cada CV subido sin posibilidad de reintento;
 - la escritura del resultado SHALL ir condicionada a que el CV siga en `pending`, y si no modifica nada el job SHALL
   completarse sin reintento.
 
-Un fallo de infraestructura (la base o el almacén de objetos sin responder) SHALL reintentarse según la política de la
-cola: tres intentos con espera creciente. Agotados, el CV SHALL quedar en `failed` con motivo `internal_error` y un
-aviso con su identificador; NO SHALL quedar en `pending` indefinidamente.
+Un fallo de infraestructura (la base o el almacén de objetos sin responder, o el bucket de CV ausente) SHALL
+reintentarse según la política de la cola: tres intentos con espera creciente. Agotados, el CV SHALL quedar en `failed`
+con motivo `internal_error` y un aviso con su identificador; NO SHALL quedar en `pending` indefinidamente.
 
 #### Scenario: El mismo evento dos veces
 
@@ -65,6 +69,14 @@ aviso con su identificador; NO SHALL quedar en `pending` indefinidamente.
 - **WHEN** el worker consume su evento
 - **THEN** el CV SHALL quedar en `failed` con motivo `internal_error`
 - **AND** el job SHALL completarse sin reintentos
+
+#### Scenario: El bucket de CV no existe
+
+- **GIVEN** un CV en `pending` y el almacén respondiendo que el bucket de CV no existe
+- **WHEN** el worker consume su evento
+- **THEN** el job SHALL fallar y reintentarse según la política de la cola
+- **AND** el CV NO SHALL quedar en `failed` en ese intento
+- **AND** el aviso registrado SHALL nombrar el tipo de error y ningún dato del archivo ni su clave
 
 #### Scenario: El almacén no responde
 
@@ -207,7 +219,9 @@ versión.
 El consumidor de `delete-cv-file` SHALL borrar del almacén de objetos el archivo del CV nombrado por el evento
 `CvDeleted.v1`, componiendo su clave con la misma función que la usó al guardarlo. Borrar un objeto que ya no está SHALL
 considerarse un acierto, de modo que consumir el evento dos veces SHALL ser inofensivo. Un fallo del almacén SHALL
-reintentarse según la política de la cola y NO SHALL dar el borrado por hecho.
+reintentarse según la política de la cola y NO SHALL dar el borrado por hecho. Que **el bucket de CV no exista** NO
+SHALL contar como objeto ya borrado: SHALL tratarse como fallo del almacén, porque con un bucket mal nombrado el
+archivo real seguiría en el suyo.
 
 #### Scenario: El archivo desaparece
 
@@ -225,6 +239,13 @@ reintentarse según la política de la cola y NO SHALL dar el borrado por hecho.
 - **GIVEN** el almacén de objetos caído
 - **WHEN** el worker consume el evento
 - **THEN** el job SHALL fallar y reintentarse, y el objeto SHALL borrarse cuando el almacén vuelva
+
+#### Scenario: El bucket de CV no existe al borrar
+
+- **GIVEN** el almacén respondiendo que el bucket de CV no existe
+- **WHEN** el worker consume un evento de borrado
+- **THEN** el job SHALL fallar y reintentarse
+- **AND** el borrado NO SHALL darse por hecho
 
 ### Requirement: La extracción no usa inteligencia artificial
 
