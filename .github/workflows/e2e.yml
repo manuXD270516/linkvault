@@ -54,12 +54,8 @@ jobs:
     if: inputs.target == 'local'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    # TEMPORAL (D13): mientras la rama se construya sobre un `main` anterior a 35a, el compose descarga el espejo de
-    # MinIO del espacio de nombres del repositorio en GHCR. La tarea 7.6 retira `packages: read` y el `docker login`
-    # tras fusionar 35a. Los permisos del job sustituyen a los del workflow: `contents: read` se repite aquí.
-    permissions:
-      contents: read
-      packages: read
+    # Sin permisos propios: hereda `contents: read` del workflow. Desde 35a el compose solo usa imágenes públicas, que se
+    # descargan sin credenciales (la tarea 7.6 retiró el permiso de lectura de paquetes y el login en GHCR).
     env:
       # Runner efímero: sin daemon de Nx (como ci.yml).
       NX_DAEMON: 'false'
@@ -83,14 +79,6 @@ jobs:
 
       - name: Install Playwright browser
         run: pnpm exec playwright install --with-deps chromium
-
-      # TEMPORAL (D13, tarea 7.6): login en GHCR por la entrada estándar con el GITHUB_TOKEN de la corrida.
-      - name: Log in to GHCR (temporary)
-        shell: bash
-        env:
-          GHCR_USER: ${{ github.actor }}
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GHCR_USER" --password-stdin
 
       # El mismo comando que en local (design D3). El runner monta la pila aislada, sirve api, worker y web, ejecuta
       # Playwright y apaga lo que arrancó, también si falla.

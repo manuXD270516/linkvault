@@ -13,19 +13,25 @@ function composeArgs(ctx: ComposeContext, args: readonly string[]): string[] {
   return ['compose', '--project-name', ctx.projectName, '--env-file', ctx.envFile, ...args];
 }
 
+/** La orden de arranque, tal como la documenta `platform/local-environment`; la muestran el log y los errores. */
+export const START_INFRA_COMMAND = 'pnpm infra:up';
+
 /**
  * Arranque de la infraestructura: el **único** sitio del runner que la levanta (tarea 1.2). El comando es el de
- * `platform/local-environment` («Infraestructura con un comando»), con el proyecto de compose de la suite y
- * `e2e.env` como fichero de entorno, para que compose no lea el `.env` de la raíz (design D3, fase 2).
+ * `platform/local-environment` («Infraestructura con un comando»): `pnpm infra:up` (`docker compose up -d --wait` y
+ * `api:object-store -- provision`, que crea los buckets; tarea 7.9). Compose recibe el proyecto de la suite por
+ * `COMPOSE_PROJECT_NAME` (ya en `ctx.env`) y `e2e.env` por `COMPOSE_ENV_FILES`, para no leer el `.env` de la raíz
+ * (design D3, fase 2); `provision` lee las `S3_*` del mismo entorno, sin `.env` (`NX_LOAD_DOT_ENV_FILES=false`).
  *
- * Mientras 35a (`object-store`) no esté en `main`, ese comando es `docker compose up -d --wait` sobre el compose con
- * MinIO. **La tarea 7.9 lo cambia** a `pnpm infra:up` (`up --wait` + `api:object-store -- provision`) pasando el
- * fichero de entorno por `COMPOSE_ENV_FILES`, al rebasar la rama sobre el `main` que contiene 35a.
+ * El runner no usa shell, y en Windows `pnpm` es un `.cmd` que Node no lanza sin ella: ahí pasa por `cmd.exe` con
+ * argumentos fijos, sin nada que venga de fuera.
  */
 export function startInfra(ctx: ComposeContext): Promise<CommandResult> {
-  return runCommand('docker', composeArgs(ctx, ['up', '-d', '--wait']), {
+  const [command, args] =
+    process.platform === 'win32' ? ['cmd.exe', ['/d', '/s', '/c', 'pnpm', 'infra:up']] : ['pnpm', ['infra:up']];
+  return runCommand(command, args, {
     cwd: ctx.root,
-    env: ctx.env,
+    env: { ...ctx.env, COMPOSE_ENV_FILES: ctx.envFile },
     echo: true,
   });
 }

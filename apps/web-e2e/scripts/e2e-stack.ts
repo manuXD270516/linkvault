@@ -7,7 +7,14 @@ import { chromium } from '@playwright/test';
 import { type AppName, parseRunnerArgs, playwrightGrepArgs, type RunnerArgs } from './lib/args';
 import { blockPorts, composeProjectName, type PortBlock, resolveBlock } from './lib/block';
 import { DOCKER_WINDOWS_EXTRA, pickWhitelisted, readEnvFile, SYSTEM_WHITELIST } from './lib/env';
-import { type ComposeContext, composePs, parsePublishedPorts, startInfra, stopInfra } from './lib/infra';
+import {
+  type ComposeContext,
+  composePs,
+  parsePublishedPorts,
+  START_INFRA_COMMAND,
+  startInfra,
+  stopInfra,
+} from './lib/infra';
 import { keepStackMessage } from './lib/keep-stack';
 import { isAlive, launchHiddenWindows } from './lib/launch-hidden';
 import { evaluateListeners, listListeners } from './lib/listeners';
@@ -138,8 +145,6 @@ function applyBlock(suiteEnv: Readonly<Record<string, string>>, block: PortBlock
   set('MONGO_PORT', String(block.mongo));
   set('REDIS_PORT', String(block.redis));
   set('OBJECT_STORE_PORT', String(block.objectStore));
-  set('MINIO_PORT', String(block.objectStore));
-  set('MINIO_CONSOLE_PORT', String(block.objectStoreConsole));
   set('MAILPIT_SMTP_PORT', String(block.mailpitSmtp));
   set('MAILPIT_UI_PORT', String(block.mailpitUi));
   set('MAIL_SMTP_PORT', String(block.mailpitSmtp));
@@ -258,9 +263,9 @@ class Stack {
     this.started = true;
     log(`infraestructura: docker compose del proyecto ${this.projectName} con ${ENV_FILE}`);
     const up = await startInfra(this.compose);
-    this.appendLog('infra.log', `$ docker compose up -d --wait\n${up.stdout}${up.stderr}`);
+    this.appendLog('infra.log', `$ ${START_INFRA_COMMAND}\n${up.stdout}${up.stderr}`);
     if (up.code !== 0) {
-      throw new PhaseError(phase, `docker compose up failed (exit ${up.code})`);
+      throw new PhaseError(phase, `${START_INFRA_COMMAND} failed (exit ${up.code})`);
     }
     const ps = await composePs(this.compose, false);
     if (ps.code !== 0) {
@@ -936,7 +941,7 @@ async function main(): Promise<number> {
   log(`proyecto de compose: ${projectName}`);
   log(
     `bloque: web ${block.web}, api ${block.api}, worker ${block.worker}, mongo ${block.mongo}, redis ${block.redis}, ` +
-      `S3 ${block.objectStore}/${block.objectStoreConsole}, mailpit ${block.mailpitSmtp}/${block.mailpitUi}, ` +
+      `S3 ${block.objectStore}, mailpit ${block.mailpitSmtp}/${block.mailpitUi}, ` +
       `inspector ${block.apiInspector}/${block.workerInspector}`,
   );
   if (args.stackFault !== undefined) {

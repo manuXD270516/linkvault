@@ -16,10 +16,9 @@ Es **el mismo comando en local y en CI** (`e2e.yml`, job `local`). Monta una pil
 prueba, y el mensaje nombra la fase: comprobación previa, infraestructura, aplicaciones, siembra, suite o apagado.
 
 La infraestructura se levanta con el comando de arranque local del repositorio, **`pnpm infra:up`** (35a,
-`object-store`: `docker compose up -d --wait` + `api:object-store -- provision`), con el proyecto de compose de la suite
-y `apps/web-e2e/e2e.env` como fichero de entorno. Mientras 35a no esté en `main`, el runner ejecuta en su lugar
-`docker compose up -d --wait` sobre el compose anterior (con MinIO); la tarea 7.9 lo cambia a `pnpm infra:up`. Hay un
-solo sitio en el runner que arranca la infraestructura: `startInfra` en `scripts/lib/infra.ts`.
+`object-store`: `docker compose up -d --wait` + `api:object-store -- provision`, que crea los buckets), con el proyecto
+de compose de la suite (`COMPOSE_PROJECT_NAME`) y `apps/web-e2e/e2e.env` como fichero de entorno (`COMPOSE_ENV_FILES`).
+Hay un solo sitio en el runner que arranca la infraestructura: `startInfra` en `scripts/lib/infra.ts`.
 
 Los argumentos que no son del runner pasan a Playwright: `--grep` (siempre combinado con `@lot1`), ficheros,
 `--project=chromium|mobile`, `--repeat-each=N`, `--list`. Informes y diagnóstico en `dist/.playwright/apps/web-e2e/`:
@@ -101,7 +100,7 @@ entorno. En CI, los secretos `E2E_STAGING_EMAIL`/`E2E_STAGING_PASSWORD` llegan a
 | `worker` (salud) | 3001 | 3101 | `--worker-port` |
 | Mongo | 27017 | 27117 | `--mongo-port` |
 | Redis | 6379 | 6479 | `--redis-port` |
-| Almacén S3 (MinIO hasta la 7.9: API / consola) | 9000 / 9001 | 9100 / 9101 | `--object-store-port` |
+| Almacén S3 (`object-store`) | 9000 | 9100 | `--object-store-port` |
 | Mailpit (SMTP / UI y API) | 1025 / 8025 | 1125 / 8125 | `--mailpit-smtp-port`, `--mailpit-ui-port` |
 | Inspector de `api` / `worker` (solo con `--stack-fault=inspect`) | 9229 | 9329 / 9330 | — |
 

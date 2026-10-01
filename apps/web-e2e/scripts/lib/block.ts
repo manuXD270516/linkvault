@@ -11,8 +11,6 @@ export interface PortBlock {
   readonly mongo: number;
   readonly redis: number;
   readonly objectStore: number;
-  /** Consola de MinIO: solo mientras el compose sea el anterior a 35a (la tarea 7.9 la retira). Siempre `objectStore + 1`. */
-  readonly objectStoreConsole: number;
   readonly mailpitSmtp: number;
   readonly mailpitUi: number;
   /** Inspector de `api` y de `worker`: solo se usan con `--stack-fault=inspect`, pero son del bloque (D3, D4). */
@@ -30,7 +28,6 @@ export const PORT_NAMES: readonly PortName[] = [
   'mongo',
   'redis',
   'objectStore',
-  'objectStoreConsole',
   'mailpitSmtp',
   'mailpitUi',
   'apiInspector',
@@ -100,15 +97,13 @@ export function resolveBlock(
     }
     return parsePort(value, `e2e.env ${key}`);
   };
-  const objectStore = fromEnv('objectStore');
   const block: PortBlock = {
     web: fromEnv('web'),
     api: fromEnv('api'),
     worker: fromEnv('worker'),
     mongo: fromEnv('mongo'),
     redis: fromEnv('redis'),
-    objectStore,
-    objectStoreConsole: objectStore + 1,
+    objectStore: fromEnv('objectStore'),
     mailpitSmtp: fromEnv('mailpitSmtp'),
     mailpitUi: fromEnv('mailpitUi'),
     apiInspector: INSPECTOR_PORTS.apiInspector,

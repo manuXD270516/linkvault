@@ -46,9 +46,10 @@ describe('composeProjectName', () => {
 });
 
 describe('resolveBlock', () => {
-  it('lee el bloque de e2e.env, con web desde WEB_BASE_URL y la consola S3 en +1', () => {
+  it('lee el bloque de e2e.env, con web desde WEB_BASE_URL y un solo puerto del almacén S3', () => {
     const block = resolveBlock(SUITE_ENV, {});
-    expect(block).toMatchObject({ web: 4300, api: 3100, worker: 3101, objectStore: 9100, objectStoreConsole: 9101 });
+    expect(block).toMatchObject({ web: 4300, api: 3100, worker: 3101, objectStore: 9100 });
+    expect(Object.keys(block)).not.toContain('objectStoreConsole');
   });
 
   it('rechaza dos servicios en el mismo puerto', () => {
