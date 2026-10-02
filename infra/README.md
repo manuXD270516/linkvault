@@ -139,6 +139,12 @@ coinciden: horneado en `docker/api.Dockerfile` y `docker/worker.Dockerfile`, y v
 
 `AI_PROMPTS_DIR` no se toca: la imagen la hornea a `/app/assets/ai/prompts` y el compose la vuelve a fijar ahí.
 
+**`ACME_CA_SERVER`** (opcional, traefik): el servidor ACME del que Traefik pide los certificados. Sin valor es el de
+producción de Let's Encrypt (`https://acme-v02.api.letsencrypt.org/directory`). Para la primera emisión en un host
+nuevo se usa su entorno de pruebas (`https://acme-staging-v02.api.letsencrypt.org/directory`), que no gasta el cupo de
+producción; al pasar a producción hay que borrar `acme.json` entero, porque guarda la cuenta del servidor anterior.
+Traefik ya **no monta** `/var/run/docker.sock`: solo usa el proveedor de fichero (`infra/traefik/dynamic.yml`).
+
 ### Correo: obligatorio, y el compose **no trae ningún servidor**
 
 `MAIL_PROVIDER` va declarada como `${MAIL_PROVIDER:?}` **a propósito** (ADR-048 §2): el único valor que no exige nada

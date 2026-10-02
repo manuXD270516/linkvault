@@ -37,8 +37,9 @@ services:
     ports:
       - '80:80'
       - '443:443'
+    # Sin `/var/run/docker.sock` (tarea 4.6 de `staging-host`): Traefik solo usa el proveedor de fichero, y montar el
+    # socket de Docker en un contenedor expuesto a Internet es darle el host entero si alguien lo compromete.
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./infra/traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro
       - traefik-letsencrypt:/letsencrypt
       - traefik-logs:/var/log/traefik
@@ -51,6 +52,9 @@ services:
       - --entrypoints.websecure.address=:443
       - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}
       - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+      # Servidor ACME: por defecto el de producción de Let's Encrypt. En staging se prueba primero contra su entorno
+      # de pruebas (`ACME_CA_SERVER`, ver infra/README.md) para no gastar el cupo de certificados de producción.
+      - --certificatesresolvers.letsencrypt.acme.caserver=${ACME_CA_SERVER:-https://acme-v02.api.letsencrypt.org/directory}
       - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
       # Access logs: JSON + drop RequestURI so query strings (invite codes) never hit disk
       # (infra/traefik/access-log-no-query.md). RequestPath stays (path without query).
