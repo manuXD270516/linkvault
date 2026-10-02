@@ -442,8 +442,12 @@ async function backToGroup(page: Page, groupName: string): Promise<void> {
 const MATCH_PATH = /^\/api\/links\/[0-9a-f]{24}\/match$/;
 
 interface MatchPolls {
+  /** ¿Pasó este sondeo por la ruta? El `GET` con que el diálogo se abre puede llegar antes de instalarla. */
+  readonly has: (response: Response) => boolean;
   /** Cuerpo de un sondeo `GET` del diálogo, tal como lo leyó la ruta (JSON, o el texto si no lo era). */
   readonly bodyOf: (response: Response) => unknown;
+  /** Rechaza si la ruta no pudo leer o entregar un sondeo (la petición se aborta en vez de quedar colgada). */
+  readonly failed: Promise<never>;
   readonly stop: () => Promise<void>;
 }
 
@@ -456,35 +460,50 @@ interface MatchPolls {
  */
 async function routeMatchPolls(page: Page): Promise<MatchPolls> {
   const bodies = new Map<Request, unknown>();
+  let fail: (error: Error) => void = () => undefined;
+  const failed = new Promise<never>((_resolve, reject) => {
+    fail = reject;
+  });
+  // Rechazo marcado como atendido: solo se observa en la carrera con la respuesta resuelta.
+  failed.catch(() => undefined);
   const matcher = (url: URL): boolean => MATCH_PATH.test(url.pathname);
   const handler = async (route: Route): Promise<void> => {
     if (route.request().method() !== 'GET') {
       await route.fallback();
       return;
     }
-    const response = await route.fetch();
-    const text = await response.text();
     try {
-      bodies.set(route.request(), JSON.parse(text) as unknown);
-    } catch {
-      bodies.set(route.request(), text);
+      const response = await route.fetch();
+      const text = await response.text();
+      try {
+        bodies.set(route.request(), JSON.parse(text) as unknown);
+      } catch {
+        bodies.set(route.request(), text);
+      }
+      await route.fulfill({ response });
+    } catch (error) {
+      const name = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+      fail(new Error(`step 7: a match poll could not be read through the route (${name})`));
+      await route.abort('failed').catch(() => undefined);
     }
-    await route.fulfill({ response });
   };
   await page.route(matcher, handler);
   return {
+    has: (response) => bodies.has(response.request()),
     bodyOf: (response) => bodies.get(response.request()),
+    failed,
     stop: () => page.unroute(matcher, handler),
   };
 }
 
 /**
  * La respuesta del sondeo que trae el análisis resuelto: sin bloque en curso y con el último resultado. Un cuerpo que
- * no valida también la cierra, para que la prueba falle al validarlo.
+ * no valida también la cierra, para que la prueba falle al validarlo. Un `GET` que no pasó por la ruta (el de la
+ * apertura del diálogo, si llega tarde) no cuenta: de él no se tiene el cuerpo.
  */
 function isResolvedMatch(polls: MatchPolls): (response: Response) => boolean {
   return (response) => {
-    if (!isApiCall('GET', MATCH_PATH)(response) || response.status() !== 200) {
+    if (!isApiCall('GET', MATCH_PATH)(response) || response.status() !== 200 || !polls.has(response)) {
       return false;
     }
     const body = matchAnalysisResponseSchema.safeParse(polls.bodyOf(response));
@@ -591,9 +610,10 @@ async function analyzeMatch(
     const resolved = page.waitForResponse(isResolvedMatch(polls), { timeout: ANALYSIS_TIMEOUT });
     await analyze.click();
     expect((await requested).status()).toBe(202);
-    latest = matchAnalysisResponseSchema.parse(polls.bodyOf(await resolved)).latest;
+    latest = matchAnalysisResponseSchema.parse(polls.bodyOf(await Promise.race([resolved, polls.failed]))).latest;
   } finally {
-    await polls.stop();
+    // Con la página ya cerrada `unroute` también falla; ese error no debe tapar el de la prueba.
+    await polls.stop().catch(() => undefined);
   }
   if (latest?.status !== 'done') {
     throw new Error(
