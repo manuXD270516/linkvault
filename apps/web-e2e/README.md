@@ -232,3 +232,18 @@ prueba (medido el 2026-09-28).
 | `pnpm nx run web-e2e:e2e-stack -- --rehearse-remote --skip-local --project=mobile --repeat-each=5` | 5 de 5 en verde (2,7 min) | 1 (la siembra) `201`, ningún `429` |
 
 Con la 5.9a, el camino crítico queda **admitido** en el lote 1: `chromium` y `mobile`, perfil `local` y ensayo.
+
+### 2026-10-02 — readmisión de `critical-path.spec.ts` (sobre `491d0a0`)
+
+La sincronización del paso 7 cambió después de la admisión: los sondeos del análisis se leen por `page.route` en vez de
+con `response.json()`, que en el runner Linux de CI no tenía el cuerpo (corrida 36827569812). Se repiten las cuatro
+invocaciones, con la carga de arriba (24 procesos desde que empieza Playwright):
+
+| Invocación | Resultado | Registro |
+|---|---|---|
+| `pnpm nx run web-e2e:e2e-stack -- --project=chromium --repeat-each=5` | 5 de 5 en verde (4,3 min) | 10 `POST /api/auth/register` `201`, ningún `429` |
+| `pnpm nx run web-e2e:e2e-stack -- --rehearse-remote --skip-local --project=chromium --repeat-each=5` | 5 de 5 en verde (2,7 min) | 1 (la siembra) `201`, ningún `429` |
+| `pnpm nx run web-e2e:e2e-stack -- --project=mobile --repeat-each=5` | 5 de 5 en verde (3,8 min) | 10 `POST /api/auth/register` `201`, ningún `429` |
+| `pnpm nx run web-e2e:e2e-stack -- --rehearse-remote --skip-local --project=mobile --repeat-each=5` | 5 de 5 en verde (2,5 min) | 1 (la siembra) `201`, ningún `429` |
+
+Ningún fallo ni intermitente. El camino crítico sigue **admitido** con la sincronización nueva.
