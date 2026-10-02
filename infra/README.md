@@ -496,3 +496,8 @@ Una corrida completa con el ensayo remoto cuesta **5-6 minutos** (`ubuntu-24.04`
 **Umbral (ADR-053 §1.2): 70 % de los 2000 minutos = 1400.** Antes de lanzar `e2e.yml` se lee el consumo del mes
 (`gh api users/<usuario>/settings/billing/usage/summary`, todas las SKU `actions_linux*`); con 1400 o más, no se lanza
 y la suite se ejecuta en local con el mismo comando (`pnpm nx run web-e2e:e2e-stack`), sin minutos.
+
+**Disparador (Q2, decisión del usuario del 2026-10-02): `e2e.yml` se queda solo a demanda** (`workflow_dispatch`), ni en
+cada pull request ni cada noche. Tomada con estas cifras y con el consumo de la cuenta ese día: 337 minutos del mes, 37
+de ellos de este repositorio; la cuota se comparte con los demás repositorios privados, que gastaban unos 240 al día.
+Cambiar de disparador es otra decisión del usuario, con una medición nueva.
