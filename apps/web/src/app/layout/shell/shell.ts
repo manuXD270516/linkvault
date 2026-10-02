@@ -10,6 +10,7 @@ import { EmailUnverifiedBanner } from './email-unverified-banner';
   selector: 'lv-shell',
   imports: [EmailUnverifiedBanner, MatButtonModule, MatToolbarModule, RouterLink, RouterOutlet],
   templateUrl: './shell.html',
+  styleUrl: './shell.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class Shell {

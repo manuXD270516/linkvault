@@ -1,0 +1,11 @@
+// Barra superior en pantallas estrechas (change `e2e-suite`, tarea 5.4b). En un móvil (Pixel 7, 412 px; o 375 px) las
+// ocho entradas no caben en una fila: con la altura fija de Material se salían de la pantalla y unas tapaban a otras
+// («Mi CV» no se podía pulsar). Aquí pasan a otra fila cuando no caben. En escritorio, donde caben, sigue siendo una
+// sola fila del alto de siempre. Va en la hoja del componente y no con utilidades de Tailwind porque la altura la fija
+// `.mat-toolbar-single-row` sin capa, que gana a las utilidades (en capa); esta regla tiene más especificidad.
+.lv-shell-toolbar {
+  flex-wrap: wrap;
+  height: auto;
+  min-height: var(--mat-toolbar-standard-height, 64px);
+  padding-block: 4px;
+}
