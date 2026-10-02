@@ -398,10 +398,18 @@ jobs:
   #
   # `state == 'full'` y no `!= 'none'`: `partial` ya ha hecho fallar al preflight, y escribir la condición por
   # exclusión dejaría que un estado nuevo o vacío cayera del lado de desplegar.
+  #
+  # Tres condiciones, no una (design D1 de `staging-host`): destino `full`, **no** modo de prueba y **solo `main`**.
+  # Con los secretos puestos, un `workflow_dispatch` con `dry_run` —o lanzado desde otra rama— desplegaría de verdad
+  # sin las dos últimas. El guardia evita accidentes y **no autoriza**: quien tiene escritura puede escribir en una
+  # rama un workflow que lea los secretos (ver `infra/README.md`, «Quién puede desplegar a staging»).
   deploy-staging:
     name: deploy staging (solo si hay destino configurado)
     needs: [preflight, build-verify-publish]
-    if: needs.preflight.outputs.state == 'full'
+    if: >-
+      needs.preflight.outputs.state == 'full'
+      && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
+      && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -482,7 +490,7 @@ jobs:
   # —`run-name` se fija al **iniciar** la corrida, antes de que existan los outputs de los jobs—, y por eso la señal
   # va en estas dos superficies y no en aquella.
   #
-  # El **nombre del job** se calcula aquí porque el nombre de un job no puede salir de un step suyo. Las cinco
+  # El **nombre del job** se calcula aquí porque el nombre de un job no puede salir de un step suyo. Las siete
   # cadenas son **las mismas** que deriva `infra/ci/report-cd-outcome.sh`, que es quien decide el estado y publica:
   # si cambias una, cambia la otra (el script imprime el nombre que él deriva, así que una divergencia se ve en la
   # propia corrida). El estado de commit **sí** sale entero del script, para que no haya dos lógicas de decisión.
@@ -502,16 +510,22 @@ jobs:
   report:
     # Nota de YAML: un escalar plegado (`>-`) conserva los saltos de línea de las líneas **más indentadas** que la
     # primera, así que todas las líneas de la expresión van al **mismo** nivel: así se pliegan en una sola línea.
+    # El orden es el de la tabla del script (design D1): no verificado → destino indeterminado → modo de prueba →
+    # fuera de `main` → con destino → sin destino.
     name: >-
       ${{ needs['build-verify-publish'].result != 'success'
       && 'resultado: el artefacto NO pasó la verificación'
+      || ((needs.preflight.outputs.state != 'full' && needs.preflight.outputs.state != 'none')
+      && 'resultado: destino de staging indeterminado — no se desplegó'
+      || ((github.event_name == 'workflow_dispatch' && inputs.dry_run)
+      && 'resultado: artefacto verificado — NO desplegado (modo de prueba)'
+      || (github.ref != 'refs/heads/main'
+      && 'resultado: artefacto verificado — NO desplegado (corrida fuera de main)'
       || (needs.preflight.outputs.state == 'full'
       && (needs['deploy-staging'].result == 'success'
       && 'resultado: artefacto verificado y desplegado a staging'
       || 'resultado: artefacto verificado, despliegue a staging NO completado')
-      || (needs.preflight.outputs.state == 'none'
-      && 'resultado: artefacto verificado — NO desplegado (sin destino de staging)'
-      || 'resultado: destino de staging indeterminado — no se desplegó')) }}
+      || 'resultado: artefacto verificado — NO desplegado (sin destino de staging)')))) }}
     needs: [preflight, build-verify-publish, deploy-staging]
     if: always()
     runs-on: ubuntu-24.04
@@ -569,6 +583,11 @@ jobs:
           PREFLIGHT_RESULT: ${{ needs.preflight.result }}
           PREFLIGHT_STATE: ${{ needs.preflight.outputs.state }}
           DEPLOY_RESULT: ${{ needs['deploy-staging'].result }}
+          # Modo de la corrida (design D1): `test` con `dry_run`, `off-main` desde otra rama, `real` en `main`. Las
+          # mismas condiciones que el `if:` de `deploy-staging` y que el `name:` de este job.
+          RUN_MODE: >-
+            ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && 'test'
+            || (github.ref != 'refs/heads/main' && 'off-main' || 'real') }}
           TARGET_LABEL: staging
           # Fijo: es la identidad del check, y GitHub sustituye el estado anterior del mismo contexto. Si el
           # resultado fuera al contexto, cada desenlace dejaría un check distinto y todos vivirían a la vez.
