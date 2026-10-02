@@ -332,6 +332,15 @@ Tests: un servidor SMTP **en proceso** que exige `AUTH` tras `STARTTLS`, con un 
 el test, sin Docker ni red. Es una dependencia de desarrollo nueva; su elección se anota aquí al aplicar la tarea 7.2,
 con el motivo.
 
+**Elegida (tarea 7.2, 2026-10-02): `smtp-server` 3.19 (MIT-0) con `@types/smtp-server`, solo en `devDependencies`.** Es
+el servidor de los autores de `nodemailer`, el cliente que ya usan `api` y `worker`, así que habla exactamente el mismo
+SMTP: `STARTTLS`, `AUTH PLAIN`/`LOGIN` y, por defecto (`allowInsecureAuth: false`), rechaza con `538` un `AUTH` sobre la
+conexión en claro sin llegar a su `onAuth`, que es lo que la spec pide comprobar. Corre en el proceso del test, sin
+Docker ni red, y deja inyectar los rechazos (`535`, `452`…) por código. Vive en `@linkvault/testing`
+(`tools/testing/src/smtp/`), con un certificado autofirmado para `localhost`/`127.0.0.1` de 100 años que solo confían
+los tests. Descartadas: Mailpit (contenedor y sin `AUTH` obligatorio tras `STARTTLS`) y un servidor escrito a mano
+(repetir el protocolo para probar un cliente).
+
 ### D7. La comprobación de plataformas es de 35a; aquí solo su sitio
 
 El requirement «Las imágenes de la pila se pueden descargar en la arquitectura del destino» y su script van a 35a con

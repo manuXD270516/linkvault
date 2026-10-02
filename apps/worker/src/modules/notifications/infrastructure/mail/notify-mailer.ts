@@ -1,4 +1,5 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { classifySmtpRejection, smtpTransportOptions } from '@linkvault/shared';
 import type {
   NotifyMailer,
   NotifyMailMessage,
@@ -207,14 +208,29 @@ export const NOTIFY_MAIL_TRANSPORT = Symbol('NOTIFY_MAIL_TRANSPORT');
 
 export type NotifyMailTransport = 'capture' | 'smtp' | 'resend';
 
+/** Servidor SMTP de las notificaciones: Mailpit sin credenciales, o uno con usuario y contraseña (design D6). */
+export interface NotifySmtpSettings {
+  readonly host: string;
+  readonly port: number;
+  /** TLS implícito (`MAIL_SMTP_SECURE=true`); por defecto, en claro con STARTTLS exigido si hay credenciales. */
+  readonly secure?: boolean;
+  readonly user?: string;
+  readonly password?: string;
+  /** CA adicional en la que confiar (la del servidor de pruebas). */
+  readonly trustedCa?: string;
+}
+
 @Injectable()
 export class SmtpOrResendNotifyMailer implements NotifyMailer {
   constructor(
     @Inject(NOTIFY_MAIL_FROM) private readonly from: string,
     @Inject(NOTIFY_MAIL_TRANSPORT)
     private readonly transport: NotifyMailTransport,
-    private readonly smtp?: { host: string; port: number },
+    private readonly smtp?: NotifySmtpSettings,
     private readonly resendKey?: string,
+    private readonly logger: Pick<Logger, 'warn'> = new Logger(
+      SmtpOrResendNotifyMailer.name,
+    ),
   ) {}
 
   async send(message: NotifyMailMessage): Promise<void> {
@@ -224,17 +240,33 @@ export class SmtpOrResendNotifyMailer implements NotifyMailer {
     }
     if (this.transport === 'smtp') {
       const nodemailer = await import('nodemailer');
-      const transporter = nodemailer.createTransport({
-        host: this.smtp?.host ?? 'localhost',
-        port: this.smtp?.port ?? 1025,
-        secure: false,
-      });
-      await transporter.sendMail({
-        from: this.from,
-        to: message.to,
-        subject: rendered.subject,
-        text: rendered.text,
-      });
+      // Las mismas opciones que el adaptador de `api` (`smtpTransportOptions`, design D6 de `staging-host`): con
+      // credenciales, cifrado antes de enviarlas y certificado verificado.
+      const transporter = nodemailer.createTransport(
+        smtpTransportOptions({
+          host: this.smtp?.host ?? 'localhost',
+          port: this.smtp?.port ?? 1025,
+          secure: this.smtp?.secure ?? false,
+          user: this.smtp?.user,
+          password: this.smtp?.password,
+          trustedCa: this.smtp?.trustedCa,
+        }),
+      );
+      try {
+        await transporter.sendMail({
+          from: this.from,
+          to: message.to,
+          subject: rendered.subject,
+          text: rendered.text,
+        });
+      } catch (error) {
+        // Clase y código, nunca credenciales ni el texto del servidor (puede repetir el usuario).
+        const rejection = classifySmtpRejection(error);
+        this.logger.warn(
+          `SMTP send rejected: class=${rejection.class} code=${rejection.code ?? 'none'}`,
+        );
+        throw error;
+      }
       return;
     }
     const key = this.resendKey ?? '';

@@ -123,7 +123,7 @@ Condicionales, que **no** salen en esa lista porque dependen del valor de otra v
 
 | Rama | Pasan a ser obligatorias |
 |---|---|
-| `MAIL_PROVIDER=smtp` | `MAIL_SMTP_HOST`, `MAIL_SMTP_PORT` |
+| `MAIL_PROVIDER=smtp` | `MAIL_SMTP_HOST`, `MAIL_SMTP_PORT`; y `MAIL_SMTP_USER` con `MAIL_SMTP_PASSWORD`, juntas o ninguna (`MAIL_SMTP_SECURE` opcional) |
 | `MAIL_PROVIDER=resend` | `RESEND_API_KEY` |
 | `AI_CHAIN`/`AI_EMBED_CHAIN` con `openrouter` | `OPENROUTER_API_KEY`, y `OPENROUTER_MODEL` **terminado en `:free`** |
 | `AI_CHAIN`/`AI_EMBED_CHAIN` con `mock` | `AI_MOCK_MODE` — **pero `mock` está prohibido en producción** |
@@ -155,16 +155,16 @@ nombrando la variable en vez de elegir por ti. `capture` es de tests y CI; **no*
 Y `docker-compose.prod.yml` **no incluye ningún servicio de correo**: Mailpit solo existe en el `docker-compose.yml`
 local. Hay que apuntar a algo de fuera. Dos caminos **sin cuenta de pago**:
 
-- **`MAIL_PROVIDER=smtp` contra un relay que ya tengas** (un MTA en el propio host, el relay de tu red o el de tu
-  proveedor de VPS). Gratis y sin depender de nadie, **pero con una limitación real que conviene saber antes de
-  intentarlo**: el adaptador (`apps/api/src/infrastructure/mail/smtp-mailer.ts`) crea el transporte **sin
-  autenticación** —`secure: false`, sin bloque `auth`— y no existen `MAIL_SMTP_USER` ni `MAIL_SMTP_PASSWORD` en
-  ninguno de los dos esquemas de configuración. Es decir: sirve para un relay que autorice **por red o por IP**, y
-  **no** sirve para una submission con usuario y contraseña en el 587 (Gmail, Fastmail, el SMTP de Mailgun…). Eso es
-  una carencia del adaptador, no de la documentación, y se retoma en la **fila 35** (`staging-host`): está escrita en
-  `openspec-changes.yaml`, en `docs/design-v0.2.md` §6 y en el `proposal.md` de `deploy-image-verification`, §"Lo que
-  este change NO cierra". (Esta frase decía antes "y está registrada como tal" sin que lo estuviera en ningún sitio:
-  corregido el 2026-09-24 registrándola, que es lo que la frase prometía.)
+- **`MAIL_PROVIDER=smtp` contra un servidor con usuario y contraseña, o contra un relay.** Desde `staging-host`
+  (design D6) los dos adaptadores (`api` y `worker`) se autentican: `MAIL_SMTP_USER` y `MAIL_SMTP_PASSWORD`, **juntas o
+  ninguna** (una sin la otra impide arrancar nombrando la que falta), y `MAIL_SMTP_SECURE` (`true` = TLS implícito,
+  típico del 465; vacío o `false` = conexión en claro que, **con credenciales, exige STARTTLS** antes de autenticarse,
+  típico del 587). Con credenciales el certificado del servidor **se verifica siempre**: un servidor sin cifrado o con
+  un certificado que no se puede comprobar hace fallar el envío, sin mandar la contraseña. Sin credenciales se conserva
+  el envío sin autenticación de siempre, que sirve para un relay que autorice por red o por IP (un MTA en el propio
+  host, el de tu red o el de tu proveedor de VPS). Un rechazo del servidor se registra con su **clase** —credenciales
+  rechazadas, cuota del proveedor agotada o sin clasificar— y el código SMTP, nunca con el usuario ni la contraseña.
+  Staging usa Brevo así: `MAIL_SMTP_HOST=smtp-relay.brevo.com`, `MAIL_SMTP_PORT=587`, `MAIL_SMTP_SECURE=false`.
 - **`MAIL_PROVIDER=resend` con una clave del nivel gratuito.** No pide tarjeta, pero sí una clave (`RESEND_API_KEY`) y,
   para enviar desde tu dominio, **verificarlo con SPF y DKIM**; mientras no lo verifiques, Resend solo deja enviar
   desde su dominio de pruebas y **solo a la dirección de tu propia cuenta**, lo que basta para probar el circuito

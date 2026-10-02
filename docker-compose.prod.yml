@@ -225,6 +225,11 @@ services:
       # esquema nombrando la variable y no un `undefined` a mitad del primer envío.
       MAIL_SMTP_HOST: ${MAIL_SMTP_HOST:-}
       MAIL_SMTP_PORT: ${MAIL_SMTP_PORT:-}
+      # Credenciales SMTP (design D6 de `staging-host`): juntas o ninguna; sin ellas, envío sin autenticación (relay).
+      # `MAIL_SMTP_SECURE=true` es TLS implícito (465); vacío o `false`, STARTTLS exigido si hay credenciales (587).
+      MAIL_SMTP_USER: ${MAIL_SMTP_USER:-}
+      MAIL_SMTP_PASSWORD: ${MAIL_SMTP_PASSWORD:-}
+      MAIL_SMTP_SECURE: ${MAIL_SMTP_SECURE:-}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       PASTE_EXTRACTION_TIMEOUT_MS: ${PASTE_EXTRACTION_TIMEOUT_MS:-20000}
       AI_CHAIN: ${AI_CHAIN:?}
@@ -327,6 +332,11 @@ services:
       # (`smtp` → host y puerto; `resend` → clave), en vez de descubrirlo al enviar el primer correo.
       MAIL_SMTP_HOST: ${MAIL_SMTP_HOST:-}
       MAIL_SMTP_PORT: ${MAIL_SMTP_PORT:-}
+      # Credenciales SMTP (design D6 de `staging-host`): juntas o ninguna; sin ellas, envío sin autenticación (relay).
+      # `MAIL_SMTP_SECURE=true` es TLS implícito (465); vacío o `false`, STARTTLS exigido si hay credenciales (587).
+      MAIL_SMTP_USER: ${MAIL_SMTP_USER:-}
+      MAIL_SMTP_PASSWORD: ${MAIL_SMTP_PASSWORD:-}
+      MAIL_SMTP_SECURE: ${MAIL_SMTP_SECURE:-}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       S3_ENDPOINT: http://object-store:8333
       S3_REGION: ${S3_REGION:-us-east-1}

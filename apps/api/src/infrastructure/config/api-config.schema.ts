@@ -1,3 +1,4 @@
+import { mailConfigShape, refineMailConfig } from '@linkvault/shared';
 import { z } from 'zod';
 
 const port = z.coerce.number().int().min(1).max(65_535);
@@ -138,13 +139,9 @@ export const apiConfigSchema = z
       .default('false')
       .transform((value) => value === 'true'),
     // --- Correo transaccional (auth-email-recovery, ADR-034) ---
-    // `smtp` → Mailpit local; `resend` → API HTTP (exige clave); `capture` → CapturingMailer (tests/CI).
-    MAIL_PROVIDER: z.enum(['smtp', 'resend', 'capture']),
-    MAIL_FROM: z.string().min(1),
-    MAIL_SMTP_HOST: z.string().min(1).optional(),
-    MAIL_SMTP_PORT: port.optional(),
-    // Vacío en local; obligatorio solo con `MAIL_PROVIDER=resend` (ver superRefine).
-    RESEND_API_KEY: z.string().optional(),
+    // El mismo fragmento y las mismas reglas que `worker` (`@linkvault/shared`, design D6 de `staging-host`):
+    // proveedor, remitente, SMTP con credenciales juntas o ninguna y TLS, y la clave de Resend.
+    ...mailConfigShape,
     // TTL del token de verificación (horas). Producto: 24 h.
     AUTH_VERIFY_TOKEN_TTL_HOURS: z.coerce.number().int().min(1).max(168),
     // TTL del token de reset (segundos). Producto: 1 h fijo.
@@ -199,31 +196,7 @@ export const apiConfigSchema = z
           'AUTH_JWT_SECRET must not be the .env.example value in production',
       });
     }
-    if (config.MAIL_PROVIDER === 'resend') {
-      if (config.RESEND_API_KEY === undefined || config.RESEND_API_KEY === '') {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['RESEND_API_KEY'],
-          message: 'RESEND_API_KEY is required when MAIL_PROVIDER=resend',
-        });
-      }
-    }
-    if (config.MAIL_PROVIDER === 'smtp') {
-      if (config.MAIL_SMTP_HOST === undefined || config.MAIL_SMTP_HOST === '') {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['MAIL_SMTP_HOST'],
-          message: 'MAIL_SMTP_HOST is required when MAIL_PROVIDER=smtp',
-        });
-      }
-      if (config.MAIL_SMTP_PORT === undefined) {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['MAIL_SMTP_PORT'],
-          message: 'MAIL_SMTP_PORT is required when MAIL_PROVIDER=smtp',
-        });
-      }
-    }
+    refineMailConfig(config, ctx);
   });
 
 export type ApiConfig = z.output<typeof apiConfigSchema>;

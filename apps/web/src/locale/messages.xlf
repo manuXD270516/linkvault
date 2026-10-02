@@ -861,7 +861,7 @@
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/auth/verify-email.page.html</context>
-          <context context-type="linenumber">22,24</context>
+          <context context-type="linenumber">26,28</context>
         </context-group>
       </trans-unit>
       <trans-unit id="resetPassword.requestAgain" datatype="html">
@@ -886,17 +886,17 @@
         </context-group>
       </trans-unit>
       <trans-unit id="emailVerify.title" datatype="html">
-        <source>Verificar email</source>
+        <source> Verificar email </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/auth/verify-email.page.html</context>
-          <context context-type="linenumber">2,5</context>
+          <context context-type="linenumber">3,6</context>
         </context-group>
       </trans-unit>
       <trans-unit id="emailVerify.loading" datatype="html">
         <source>Comprobando el enlace…</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/auth/verify-email.page.html</context>
-          <context context-type="linenumber">6,8</context>
+          <context context-type="linenumber">7,9</context>
         </context-group>
       </trans-unit>
       <trans-unit id="emailVerify.success" datatype="html">
@@ -910,25 +910,32 @@
         <source>Ir a iniciar sesión</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/auth/verify-email.page.html</context>
-          <context context-type="linenumber">12,15</context>
+          <context context-type="linenumber">13,18</context>
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/auth/verify-email.page.html</context>
-          <context context-type="linenumber">29,33</context>
+          <context context-type="linenumber">39,42</context>
         </context-group>
       </trans-unit>
       <trans-unit id="emailVerify.goToApp" datatype="html">
         <source>Ir a la aplicación</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/auth/verify-email.page.html</context>
-          <context context-type="linenumber">16,20</context>
+          <context context-type="linenumber">18,20</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="emailVerify.invalidSpamHint" datatype="html">
+        <source> Verificar el email no es necesario para empezar a usar LinkVault. Si pides un correo nuevo y no lo encuentras, revisa la carpeta de spam. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/auth/verify-email.page.html</context>
+          <context context-type="linenumber">29,32</context>
         </context-group>
       </trans-unit>
       <trans-unit id="emailVerify.invalidHintGuest" datatype="html">
         <source> Inicia sesión y usa el aviso de la aplicación para solicitar un correo nuevo. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/auth/verify-email.page.html</context>
-          <context context-type="linenumber">26,29</context>
+          <context context-type="linenumber">34,38</context>
         </context-group>
       </trans-unit>
       <trans-unit id="cv.defaultLine" datatype="html">
@@ -4994,21 +5001,28 @@
         <source> Tu email aún no está verificado. Revisa tu bandeja o reenvía el correo de verificación. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/layout/shell/email-unverified-banner.ts</context>
-          <context context-type="linenumber">23,25</context>
+          <context context-type="linenumber">31,34</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="emailVerify.banner.notRequired" datatype="html">
+        <source> No hace falta verificarlo para empezar a usar LinkVault. Si no encuentras el correo, revisa la carpeta de spam. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/layout/shell/email-unverified-banner.ts</context>
+          <context context-type="linenumber">38,41</context>
         </context-group>
       </trans-unit>
       <trans-unit id="emailVerify.banner.resend" datatype="html">
         <source> Reenviar correo </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/layout/shell/email-unverified-banner.ts</context>
-          <context context-type="linenumber">33,35</context>
+          <context context-type="linenumber">49,51</context>
         </context-group>
       </trans-unit>
       <trans-unit id="emailVerify.banner.resent" datatype="html">
         <source> Si procede, te hemos enviado un correo de verificación. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/layout/shell/email-unverified-banner.ts</context>
-          <context context-type="linenumber">37,39</context>
+          <context context-type="linenumber">56,58</context>
         </context-group>
       </trans-unit>
       <trans-unit id="shell.brand" datatype="html">
