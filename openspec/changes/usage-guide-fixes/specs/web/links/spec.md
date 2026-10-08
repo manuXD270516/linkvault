@@ -9,15 +9,18 @@ mostrarse "Ya estaba aquí, lo compartió <nombre>".
 
 Cuando el link nazca con enlace público —porque el grupo comparte en público—, la confirmación SHALL decirlo en una
 línea, "Cualquiera con este enlace verá la oferta; no se verá el grupo ni tu nombre", y SHALL ofrecer "Copiar enlace"
-sobre el enlace que ya viene en la respuesta, sin pedir nada más a la API. Si la oferta todavía no se ha leído, copiar
-SHALL avisar con "Todavía estamos leyendo la oferta: si lo envías ahora, la tarjeta saldrá sin datos" y SHALL dejar
-copiar igualmente. "Todavía no se ha leído" SHALL evaluarse con el estado **actual** del link —el mismo que muestra su
-tarjeta y que actualizan los avisos en tiempo real—, no con el que traía la respuesta de guardar: en cuanto la lectura
-termine, bien o mal, o alguien complete la oferta, ese aviso SHALL desaparecer sin recargar. Cuando el link no nazca
-publicado, NO SHALL mostrarse ni esa línea ni "Copiar enlace".
+sobre el enlace que ya viene en la respuesta, sin pedir nada más a la API. Si la tarjeta de la oferta **no tiene
+datos** —sin puesto—, copiar SHALL avisar y SHALL dejar copiar igualmente: mientras la lectura está pendiente, con
+"Todavía estamos leyendo la oferta: si lo envías ahora, la tarjeta saldrá sin datos"; si la lectura falló, con "No
+pudimos leer la oferta: si lo envías ahora, la tarjeta saldrá sin datos. Complétala antes.". Si la tarjeta tiene
+datos —leídos, pegados o escritos a mano— NO SHALL mostrarse ninguno de los dos avisos. Ese estado SHALL evaluarse con
+el link **actual** —el mismo que muestra su tarjeta y que actualizan los avisos en tiempo real, también cuando el link
+no está en la lista cargada por los filtros—, no con el que traía la respuesta de guardar: el aviso SHALL cambiar o
+desaparecer sin recargar. Cuando el link no nazca publicado, NO SHALL mostrarse ni esa línea ni "Copiar enlace".
 
 Tras un guardado correcto el formulario SHALL volver a su estado inicial: el campo de la URL vacío y **sin marca de
-error**, como al abrir la página. La marca de error SHALL reservarse para un envío que falla o para un valor inválido
+error**, como al abrir la página, conservando los avisos de esa respuesta ("Ya estaba aquí, lo compartió <nombre>",
+"Ya lo tienes en: <grupos>"). La marca de error SHALL reservarse para un envío que falla o para un valor inválido
 escrito por la persona.
 
 #### Scenario: Link guardado
@@ -70,14 +73,31 @@ escrito por la persona.
 
 - **GIVEN** un link recién guardado en un grupo que comparte en público, con el formulario mostrando "Todavía estamos
   leyendo la oferta: si lo envías ahora, la tarjeta saldrá sin datos"
-- **WHEN** llega el aviso de que la lectura terminó, con la oferta leída o con "No pudimos leer esta oferta"
+- **WHEN** llega el aviso de que la lectura terminó con la oferta leída
 - **THEN** el formulario NO SHALL seguir mostrando ese aviso, sin recargar
+
+#### Scenario: Lectura fallida sin datos
+
+- **GIVEN** un link recién guardado en un grupo que comparte en público, con el formulario mostrando "Todavía estamos
+  leyendo la oferta: si lo envías ahora, la tarjeta saldrá sin datos"
+- **WHEN** llega el aviso de que la lectura terminó con "No pudimos leer esta oferta" y sin puesto
+- **THEN** el formulario SHALL mostrar "No pudimos leer la oferta: si lo envías ahora, la tarjeta saldrá sin datos.
+  Complétala antes." en lugar del aviso de lectura, sin recargar
+- **AND** "Copiar enlace" SHALL seguir copiando el enlace
+
+#### Scenario: Con filtros activos, el aviso también se actualiza
+
+- **GIVEN** un link recién guardado y publicado que no aparece en la lista por los filtros activos, con el formulario
+  mostrando "Todavía estamos leyendo la oferta: si lo envías ahora, la tarjeta saldrá sin datos"
+- **WHEN** llega el aviso en tiempo real de que su lectura terminó con la oferta leída
+- **THEN** el formulario NO SHALL seguir mostrando ese aviso
 
 #### Scenario: Completada a mano, tampoco
 
 - **GIVEN** un link publicado cuya lectura terminó en "No pudimos leer esta oferta" y que el miembro completó a mano
 - **WHEN** mira el formulario de guardar
-- **THEN** NO SHALL ver "Todavía estamos leyendo la oferta: si lo envías ahora, la tarjeta saldrá sin datos"
+- **THEN** NO SHALL ver ni "Todavía estamos leyendo la oferta: si lo envías ahora, la tarjeta saldrá sin datos" ni "No
+  pudimos leer la oferta: si lo envías ahora, la tarjeta saldrá sin datos. Complétala antes."
 
 #### Scenario: El campo no queda en rojo tras guardar
 
@@ -91,6 +111,13 @@ escrito por la persona.
 - **GIVEN** un miembro que envía una URL y la API responde `400` con `invalid_url`
 - **WHEN** ve la respuesta
 - **THEN** SHALL conservarse lo escrito y SHALL mostrarse "Eso no parece un enlace de una oferta"
+
+#### Scenario: El reinicio conserva el aviso de que ya estaba
+
+- **GIVEN** un miembro que guarda una URL y la respuesta trae `shared` `already_there`
+- **WHEN** el formulario vuelve a su estado inicial
+- **THEN** SHALL seguir mostrándose "Ya estaba aquí, lo compartió Ana"
+- **AND** el campo de la URL SHALL quedar vacío y sin marca de error
 
 ### Requirement: Editar la oferta a mano
 
@@ -146,6 +173,14 @@ que una persona corrige lo ven las demás. Un error de la API SHALL mostrarse si
 - **WHEN** mira la tarjeta o abre el formulario
 - **THEN** SHALL ver "Escrito por otra persona" en el título y "Descripción pegada por otra persona" en la empresa
 - **AND** NO SHALL ver el nombre de Ana en ninguna parte de la tarjeta ni del formulario
+
+#### Scenario: Un miembro ve la corrección de alguien de fuera como "Escrito por otra persona"
+
+- **GIVEN** Beto en el detalle de "Backend Bolivia" con un link cuyo título corrigió Carla, que tiene esa vacante en su
+  lista privada y no comparte ningún grupo con Beto
+- **WHEN** Beto mira la tarjeta o abre el formulario
+- **THEN** SHALL ver "Escrito por otra persona" en el título
+- **AND** NO SHALL ver el nombre de Carla en ninguna parte de la tarjeta ni del formulario
 
 #### Scenario: Volver a lo pegado
 

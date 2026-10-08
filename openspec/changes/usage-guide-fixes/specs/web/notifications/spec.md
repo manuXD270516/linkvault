@@ -14,6 +14,10 @@ cambios acotados a ese grupo…", y la confirmación "Preferencias guardadas"—
 a ningún otro, en escritorio (1280 px de ancho) y en móvil (412 px): un texto de ayuda de varias líneas SHALL empujar
 lo que viene detrás, no quedar encima ni debajo.
 
+El selector "Grupo para avisos de estado" SHALL mostrar siempre la opción elegida: cuando la preferencia no acota a
+ningún grupo (`applicationStatusGroupId` `null`), SHALL verse "Todos mis grupos (unión del link)" en el campo, no un
+campo vacío, y elegir esa opción SHALL guardar `applicationStatusGroupId` `null`.
+
 #### Scenario: Desactivar nuevo link
 
 - **GIVEN** Ana en la sección de notificaciones
@@ -46,4 +50,16 @@ lo que viene detrás, no quedar encima ni debajo.
 - **WHEN** cambia una preferencia y pulsa "Guardar preferencias"
 - **THEN** SHALL ver "Preferencias guardadas"
 - **AND** la caja de ese texto NO SHALL solaparse con la de la ayuda del selector "Grupo para avisos de estado"
+
+#### Scenario: Todos mis grupos se ve elegido
+
+- **GIVEN** Ana con `applicationStatusGroupId` `null`
+- **WHEN** abre la pantalla de preferencias de notificaciones
+- **THEN** el selector "Grupo para avisos de estado" SHALL mostrar "Todos mis grupos (unión del link)"
+
+#### Scenario: Volver a todos los grupos
+
+- **GIVEN** Ana con un grupo concreto como alcance de avisos de estado
+- **WHEN** elige "Todos mis grupos (unión del link)" y guarda
+- **THEN** la petición SHALL enviar `applicationStatusGroupId` `null`
 

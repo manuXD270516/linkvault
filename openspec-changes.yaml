@@ -559,18 +559,21 @@ changes:
       fila ni cambia su orden (35b → 35c); no libera la precedencia para ningún otro change. Si cubre también aplicar y
       fusionar antes de que termine la fila es la Q1 del change (bloqueante para `/opsx:apply`; recomendación: sí, antes
       de invitar en 35b). No toca ficheros de despliegue, workflows ni requirements de `platform/*`.
-      Corrige los hallazgos de producto **H1-H7** de `docs/guia-de-uso/README.md`:
+      Corrige los hallazgos de producto **H1, H2, H4, H5 y H6** de `docs/guia-de-uso/README.md` (alcance tras la
+      iteración 1 del debate, 2026-10-08):
       **H1 (privacidad):** el nombre de quien escribió o pegó un campo del preview solo lo ve quien comparte un grupo
       con esa persona (regla de `users/profile`); a los demás la API devuelve `by: null` y el SPA dice «Escrito por otra
-      persona» (ADR-055 §2), también en los avisos en tiempo real, por destinatario.
-      **H2:** la ayuda del selector de grupo de Notificaciones no se superpone a «Preferencias guardadas».
-      **H3:** mensaje propio para `503 vault_unavailable` al guardar una clave BYOK.
-      **H4:** el aviso «Todavía estamos leyendo la oferta…» del formulario sale del estado actual del link.
+      persona» (ADR-055 §2), también en los avisos en tiempo real, por destinatario. Si la promesa «no se verá tu
+      nombre» se matiza frente a quien comparte grupo con el autor es la Q7 (bloqueante para `/opsx:apply`).
+      **H2:** la ayuda del selector de grupo de Notificaciones no se superpone a «Preferencias guardadas», y el selector
+      muestra «Todos mis grupos» cuando la preferencia es `null`.
+      **H4:** el aviso de copiar el enlace de una oferta publicada depende de que la tarjeta no tenga datos (lectura
+      pendiente o fallida sin puesto), con su estado actual, en el formulario y en la tarjeta.
       **H5:** el campo de URL no queda en rojo tras un guardado correcto.
       **H6:** el aviso «Compartido · Deshacer» se cierra al salir del detalle del grupo.
-      **H7:** los campos de fecha muestran y aceptan `dd/mm/aaaa` en español, sea cual sea el idioma del navegador.
       Textos nuevos en ES y EN con el catálogo re-extraído (ADR-050).
-      Fuera: H8-H17 (pruebas y configuración de la pila e2e; su sitio es `e2e-suite-lot-2` o un change de fixtures).
+      Fuera: H3 (a `e2e-suite-lot-2`, con H11), H7 (a un change con datos reales de 35b) y H8-H17 (pruebas y
+      configuración de la pila e2e; su sitio es `e2e-suite-lot-2` o un change de fixtures).
   - name: staging-host
     adrs: [051, 048, 033, 034, 035, 032]
     agents: [devops, backend-dev, frontend-dev, ai-engineer]
@@ -723,3 +726,6 @@ changes:
       MODIFIED del requirement de perfiles de `platform/e2e-suite` que lo exige («una prueba apta para remoto que
       intente cualquiera de esas operaciones SHALL fallar nombrando la operación»), que `e2e-suite` retiró.
       **Lote 2 del plan de `e2e-suite` D14:** cuenta y salida (catálogo 2 y 4 con Mailpit, solo `local`; 5, 6 y 44).
+      **Diferido desde `usage-guide-fixes` (iteración 1 de su debate, 2026-10-08):** H3 de la guía de uso —guardar una
+      clave BYOK sin bóveda (`503 vault_unavailable`) muestra el genérico «Algo salió mal»—, junto con H11 (`AI_VAULT_KEY`
+      vacía en `e2e.env`): con la bóveda obligatoria en producción solo se ve en pilas de prueba.

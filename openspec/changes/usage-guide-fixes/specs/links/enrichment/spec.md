@@ -10,7 +10,8 @@ pueda verlo**: el propio autor o quien comparta con él al menos un grupo en el 
 (`by: null`), sin nombre ni identificador, y lo mismo el autor de la entrada que el campo guarda para deshacerse; el
 origen (`pasted` o `manual`) y su fecha SHALL seguir saliendo. La regla SHALL aplicarse a toda respuesta que lleve la
 procedencia —listados, guardar, importar, pegar, editar, reabrir, releer— y a cada destinatario de los avisos en
-tiempo real por separado. Lo que se guarda NO SHALL cambiar: el autor se conserva siempre. La precedencia SHALL
+tiempo real por separado. Si no puede saberse a quién es visible un autor, la respuesta SHALL fallar antes que
+nombrarlo. Lo que se guarda NO SHALL cambiar: el autor se conserva siempre. La precedencia SHALL
 ser **escrito a mano > pegado > leído de la página**, y SHALL ser una sola regla para todo lo que escribe el preview: un
 merge automático NO SHALL sobrescribir un campo `manual` ni `pasted`, y un pegado NO SHALL sobrescribir un campo
 `manual`. Cuando una persona sustituya un campo —pegando una descripción o escribiendo a mano—, SHALL guardarse la
@@ -103,6 +104,21 @@ página pudo cambiar.
 - **WHEN** se termina de leer la oferta y se reparte el aviso
 - **THEN** Beto SHALL recibir `previewSources.title.by` con el nombre de Ana
 - **AND** Carla SHALL recibir `previewSources.title.by` `null`
+
+#### Scenario: Un miembro no ve el nombre de quien corrigió desde fuera del grupo
+
+- **GIVEN** un link de "Backend Bolivia" (donde está Beto) que Carla, que no comparte ningún grupo con Beto, tiene en su
+  lista privada y cuyo `title` corrigió a mano
+- **WHEN** Beto pide el listado de "Backend Bolivia"
+- **THEN** `previewSources.title` SHALL tener origen `manual` y `by` `null`
+- **AND** la respuesta NO SHALL contener ni el `userId` ni el `displayName` de Carla
+
+#### Scenario: Calcular quién es visible no falla abierto
+
+- **GIVEN** un lector y un link con autores ajenos a él
+- **WHEN** la consulta de quién comparte grupo con el lector falla
+- **THEN** la petición SHALL fallar
+- **AND** NO SHALL devolverse ningún nombre de autor ajeno
 
 #### Scenario: Lo guardado no cambia
 

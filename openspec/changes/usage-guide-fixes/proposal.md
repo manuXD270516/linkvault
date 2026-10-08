@@ -3,7 +3,8 @@
 La guía de uso (`docs/guia-de-uso/README.md`, capturas del 2026-09-28 sobre el commit `0f307c6`) recorrió la
 plataforma entera como lo haría una persona nueva y dejó, en su sección «Hallazgos», siete defectos de producto
 (H1-H7). Uno es de **privacidad** y rompe una promesa escrita en la propia interfaz; los otros seis son defectos de
-pantalla que verá cualquiera de los primeros usuarios no-autor que invita 35b (`staging-host`):
+pantalla que verá cualquiera de los primeros usuarios no-autor que invita 35b (`staging-host`). **Tras la iteración 1
+del debate (2026-10-08) este change corrige H1, H2, H4, H5 y H6**; H3 y H7 se difieren (ver «Fuera de alcance»):
 
 - **H1 (el más grave).** Al guardar en un grupo que comparte en público, el formulario promete «Cualquiera con este
   enlace verá la oferta; no se verá el grupo ni tu nombre». La página pública cumple, pero Carla —que no es del grupo—
@@ -17,7 +18,8 @@ pantalla que verá cualquiera de los primeros usuarios no-autor que invita 35b (
 - **H3.** Guardar una clave de IA sin bóveda (`503 vault_unavailable`) muestra el genérico «Algo salió mal. Inténtalo de
   nuevo» (081).
 - **H4.** El formulario de guardar sigue diciendo «Todavía estamos leyendo la oferta…» cuando la lectura ya terminó, y
-  aunque la oferta se completó a mano (030, 033, 035).
+  aunque la oferta se completó a mano (030, 033, 035); y cuando la lectura falla sin datos, nada avisa de que la
+  tarjeta saldrá vacía.
 - **H5.** Tras un guardado correcto, el campo «Pega el enlace de una oferta» queda vacío y pintado como error (028, 068).
 - **H6.** El aviso «Compartido · Deshacer» sigue visible al navegar al tablero, a los insights y a «Mi CV» (037, 042 a 046).
 - **H7.** «Publicada el» y «Cierra el» muestran `mm/dd/yyyy` en una interfaz en español (032).
@@ -38,17 +40,22 @@ recomendación es que sí y **antes de invitar en 35b**, porque H1 afecta precis
   vacío (`by: null`, sin `userId` ni nombre), también en la entrada que el campo guarda para deshacerse y en los avisos
   en tiempo real. La tarjeta conserva el **tipo** de origen y dice «Escrito por otra persona», «Descripción pegada por
   otra persona» y «Deshacer lo que pegó otra persona». Una sola regla, aplicada en el mapeo único de la API, con el
-  conjunto de autores visibles como parámetro obligatorio para que ningún caso de uso pueda olvidarlo (design D1-D4,
-  ADR-055 §2).
+  conjunto de autores visibles como parámetro obligatorio de un tipo que solo construye un ayudante, para que ningún
+  caso de uso pueda olvidarlo, y una consulta indexada por petición (design D1-D4, ADR-055 §2). Quien comparte algún
+  grupo con el autor sí ve su nombre: si eso obliga a matizar el texto de la promesa es la **Q7** (bloqueante).
 - **H2:** la ayuda del selector de grupo crece con su texto y no se superpone a nada (design D5).
-- **H3:** mensaje propio para `503 vault_unavailable` en la sección de claves, y el campo de la clave se vacía (D6).
-- **H4:** el aviso de «todavía estamos leyendo» del formulario sale del estado **actual** del link en la lista, no de la
-  foto de la respuesta, y desaparece en cuanto deja de estar `pending` (D7).
-- **H5:** tras un guardado correcto el formulario vuelve a su estado inicial sin marca de error (D8).
-- **H6:** el aviso de compartir se cierra al salir de la página del grupo donde se abrió, con el mismo desenlace que si
-  se hubiera dejado ir; y se comprueba que el cierre a los 10 s sin foco ocurre de verdad (D9).
-- **H7:** los tres campos de fecha del SPA usan el selector de Angular Material con un adaptador que muestra y acepta
-  `dd/mm/aaaa` en español, sea cual sea el idioma del navegador (D10).
+- **H2, selector (Q2 = a):** «Grupo para avisos de estado» muestra «Todos mis grupos (unión del link)» cuando la
+  preferencia es `null`, en vez de un campo vacío (D5).
+- **H4:** el aviso de copiar el enlace de una oferta publicada depende de que la tarjeta **no tenga datos** (lectura
+  pendiente, o fallida sin puesto), evaluado con el estado **actual** del link —también con filtros activos—, en el
+  formulario y en «Copiar enlace» de la tarjeta; si la lectura falló, «No pudimos leer la oferta: si lo envías ahora, la
+  tarjeta saldrá sin datos. Complétala antes.» (D6).
+- **H5:** tras un guardado correcto el formulario vuelve a su estado inicial sin marca de error (D7).
+- **H6:** el aviso de compartir se cierra al cambiar de path fuera de la página del grupo donde se abrió (los cambios de
+  query no), con el mismo desenlace que si se hubiera dejado ir, y no se abre si la persona ya salió; se intenta
+  reproducir el cierre a los 10 s sin foco, con una hora como límite (D8).
+- **Verificación sin E2E no admitidos (D10):** H1 con pruebas de integración de la API; H2, H4, H5 y H6 con specs de
+  componente con Angular Material real. Las E2E, si se añaden, son informativas.
 - Textos nuevos en español (por defecto) y en inglés; `messages.xlf` se regenera con `pnpm nx run web:extract-i18n`,
   nunca a mano, y las traducciones van en `messages.en.xlf` (ADR-050).
 
@@ -64,29 +71,37 @@ Ninguna.
   grupo con él).
 - `web/links`: **MODIFIED** «Guardar un link desde el SPA» (H4, H5), «Editar la oferta a mano» y «Pegar la descripción
   de una oferta» (H1, textos sin nombre).
-- `web/public-preview`: **MODIFIED** «La oferta importada cae en la lista privada» (H1, el caso de la guía).
-- `web/notifications`: **MODIFIED** «Preferencias en el perfil» (H2).
-- `web/byok`: **MODIFIED** «Gestión de claves en perfil» (H3).
+- `web/public-preview`: **MODIFIED** «La oferta importada cae en la lista privada» (H1, el caso de la guía) e
+  «Interruptor del enlace público en la tarjeta del grupo» (H4, «Copiar enlace» de una tarjeta sin datos).
+- `web/notifications`: **MODIFIED** «Preferencias en el perfil» (H2 y el selector de Q2).
 - `web/applications`: **MODIFIED** «Invitación a compartir tras el gesto» (H6).
-- `web/i18n`: **ADDED** «Fechas en el formato del idioma de la interfaz» (H7).
 
 ## Impact
 
 - **Código:** `apps/api/src/modules/links` (mapeo de la procedencia y los casos de uso que lo llaman, reparto de
-  avisos en tiempo real); `libs/shared/src/schemas/preview.schema.ts` (autor resuelto anulable); `apps/web` (procedencia,
-  formulario de guardar, notificaciones, perfil BYOK, aviso de compartir, campos de fecha y un adaptador de fechas).
+  avisos en tiempo real, puerto `GroupMembership.peersAmong`); `apps/api/src/modules/groups` (método nuevo de
+  `GroupsFacade` con una consulta indexada); `libs/shared/src/schemas/preview.schema.ts` (autor resuelto anulable);
+  `apps/web` (procedencia, formulario de guardar, «Copiar enlace» de la tarjeta, notificaciones y aviso de compartir).
   `apps/worker` no cambia: la procedencia se guarda igual, solo cambia cómo se lee.
 - **Contrato de la API:** `previewSources.<campo>.by` y `previewSources.<campo>.replaced.by` pasan a admitir `null`.
   Los clientes son el SPA y la extensión; la extensión no lee `previewSources` (`apps/extension/src/lib/save-link.ts`
   solo usa `sharedBy.displayName`, que no cambia), así que no se ve afectada.
-- **Datos:** ninguna migración. Nada se borra ni se reescribe en Mongo.
-- **Dependencias:** ninguna nueva (el adaptador extiende `NativeDateAdapter` de Angular Material).
+- **Datos:** ninguna migración. Nada se borra ni se reescribe en Mongo; como mucho, un índice de membresía si falta
+  (design D2).
+- **Dependencias:** ninguna nueva.
 - **Documentación:** `docs/adr/ADR-055.md`, anotaciones de una línea en `docs/adr/ADR-048.md` y `docs/adr/ADR-010.md`,
   entrada en `openspec-changes.yaml` y fila en `docs/design-v0.2.md` §6.
 - **Relación con la fila 35:** no toca ningún fichero de despliegue, ningún workflow ni ningún requirement que 35b o
   35c modifiquen (sus deltas están todos en `platform/*`).
 
 ## Fuera de alcance
+
+- **H3 (bóveda BYOK ausente → mensaje genérico), diferido a `e2e-suite-lot-2` junto con H11 (B2).** Con
+  `AI_VAULT_KEY` obligatoria en producción, ninguna persona usuaria verá ese error: solo aparece en pilas de prueba sin
+  bóveda, que es justo lo que H11 arregla. Sin H3, la antigua Q4 queda sin objeto.
+- **H7 (fechas `mm/dd/yyyy` en español), diferido a un change futuro con datos reales de las 5 personas de 35b (B3).**
+  Sustituir el control nativo es caro, empeora el selector nativo del móvil y el formato puede depender del idioma del
+  sistema y no solo del navegador: conviene decidirlo con lo que vean esas personas.
 
 - **H8-H13 (no se pudo probar en local)** no son defectos de producto, sino de la pila de pruebas o de su
   configuración: el fixture de encaje que no deja ver el plan de estudio (H8), los flags apagados de búsqueda y
@@ -96,7 +111,7 @@ Ninguna.
 - **H14-H17 (pruebas):** orígenes escritos a mano en `home.spec.ts` y `groups.spec.ts`, el orden de `match.spec.ts`,
   las capturas en `reports/smoke/` y las URLs de `linkedin.com` en los specs antiguos. Son del lote 2 de la suite
   (`e2e-suite-lot-2` ya enumera la limpieza de esos specs).
-- El selector «Grupo para avisos de estado» que aparece vacío con «Todos mis grupos» elegido (visto en la captura 076,
-  no listado como hallazgo) queda como pregunta **Q2**; no entra sin decisión.
+- Si una persona de fuera de un grupo debe poder corregir el preview que ese grupo ve (anterior a este change; **Q8**,
+  para un change posterior).
 - Publicar la interfaz en inglés (fila 37 candidata): los textos nuevos llevan su traducción, pero el build sigue
   generando solo ES.
