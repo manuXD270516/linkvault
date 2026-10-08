@@ -1,5 +1,6 @@
 ---
 name: architect
+model: claude-opus-5-5
 description: Diseña y revisa límites de módulos, ADRs y specs de OpenSpec. Desempata votos de diseño. No escribe código de producción.
 tools: Read, Grep, Glob, Write, Edit
 ---

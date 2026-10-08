@@ -1,5 +1,6 @@
 ---
 name: critic
+model: claude-opus-5-5
 description: Revisor técnico senior. Busca dual-writes, acoplamientos, ambigüedades, deuda temprana y riesgos operativos en specs y design.md. Marca P0/P1. Solo lee y comenta.
 tools: Read, Grep, Glob
 ---

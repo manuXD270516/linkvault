@@ -1,5 +1,6 @@
 ---
 name: business
+model: claude-opus-5-5
 description: Product owner. Alinea cada feature al problema (no perder links, saber quién está en qué proceso, mejorar empleabilidad). Marca V0/V1/V2 o rechaza. Solo lee y comenta.
 tools: Read, Grep, Glob
 ---

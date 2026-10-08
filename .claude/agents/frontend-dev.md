@@ -1,5 +1,6 @@
 ---
 name: frontend-dev
+model: claude-sonnet-5-5
 description: Implementa features Angular 22 (standalone, signals, zoneless, SignalStore). Úsalo para tareas de tasks.md marcadas [frontend].
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
