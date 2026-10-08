@@ -1,5 +1,6 @@
 ---
 name: backend-dev
+model: claude-sonnet-5-5
 description: Implementa módulos NestJS (api y worker) siguiendo clean architecture, outbox, BullMQ y MongoDB. Úsalo para tareas de tasks.md marcadas [backend].
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---

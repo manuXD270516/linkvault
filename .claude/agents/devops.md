@@ -1,5 +1,6 @@
 ---
 name: devops
+model: claude-sonnet-5-5
 description: Nx, Dockerfiles multi-stage, docker-compose (mongo replset, redis, object-store SeaweedFS, ollama), GitHub Actions, despliegue. Úsalo para tareas [infra].
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---

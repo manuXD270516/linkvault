@@ -1,5 +1,6 @@
 ---
 name: qa-reviewer
+model: claude-sonnet-5-5
 description: Revisa un change o PR contra la spec de OpenSpec, CLAUDE.md y los ADRs. Solo lee y reporta; nunca edita.
 tools: Read, Grep, Glob, Bash
 ---
