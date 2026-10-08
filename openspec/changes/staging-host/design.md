@@ -512,11 +512,19 @@ change **posterior a 35c**, y no retiene el archivado de 35b. La señal para dec
 
 - **Quiénes (Q4, decide el usuario, bloquea):** 3-5 personas **que buscan empleo ahora**; 2 o 3 en **un mismo grupo**
   creado por el autor e invitadas con el código de unión.
+  **Decisión del usuario (Q4, 2026-10-08):** **5 personas** por defecto, configurable con la lista de invitados del
+  host (`invited-ids.txt`), sin tocar código. **Cuántas van al grupo del autor (2026-10-08):** el usuario respondió
+  «respetemos 5», que la sesión principal interpreta como que **las 5 entran en el grupo del autor**, no 2 o 3 como
+  sugería este design; la interpretación es de la sesión principal y queda vigente mientras el usuario no la
+  contradiga. Consecuencia: no queda nadie fuera del grupo con quien comparar el uso individual; el umbral de *uso de
+  grupo* no cambia (basta un estado de postulación visible para otro miembro), y 10.7 sigue comprobando al menos dos
+  miembros distintos del autor.
 - **Aviso ampliado**, entregado antes del alta y guardado en el RUNBOOK: que la URL `…sslip.io` es legítima; que el
   entorno es desechable y no tiene copias; que el correo puede ir a spam y no es obligatorio; que la IA es OpenRouter
   gratuito con PII redactada y `data_collection: deny`; que la búsqueda no está disponible (D13); **que si sube su CV,
   se guarda cifrado, que este entorno puede perderse sin copia y que puede borrarlo en Mi CV**; que puede borrar su
-  cuenta; el canal de feedback; **si la cuenta de Oracle sigue gratuita, que la instancia puede reclamarse tras 7 días
+  cuenta; el canal de feedback (**decisión del usuario, 2026-10-08: el mismo canal por el que llega la invitación**);
+  **si la cuenta de Oracle sigue gratuita, que la instancia puede reclamarse tras 7 días
   de poco uso**; y **una pregunta aparte, desactivada por defecto**, sobre si sus datos anonimizados pueden alimentar el
   golden set de la fila 36, con la respuesta registrada en el RUNBOOK. El consentimiento dentro de la aplicación es de
   la fila 36.
@@ -560,6 +568,112 @@ la de excluidos** (autor + cuentas E2E, D15), que tampoco vive en el repositorio
 ejecuta semanalmente mientras dure staging, siempre por `run.sh` (D15), y el RUNBOOK describe qué hacer con una
 cuenta ajena: el borrado de la operación del producto no lo puede invocar el operador en nombre de otra persona, así que
 el procedimiento manual se presenta como excepcional y nombra la operación a la que sustituye.
+
+### D17. Semilla de volumen para la medición: sintética, local, marcada y regenerable
+
+**Origen: petición del usuario (2026-10-08)**: «datos semilla para pruebas con mayor volumen, y luego limpiarlos o que
+sea fácil volver a generarlos». La 10.3 verificó `measure.mongosh.js` con una docena de documentos sintéticos (aceptado
+por el usuario el mismo día); esta semilla lo prueba **con volumen** antes de que mida datos reales: que cada recuento
+sigue siendo el esperado con miles de documentos y cuánto tarda. Tareas 10.3b-10.3e.
+
+- **Dos ficheros nuevos, con la forma de los demás de `infra/staging/`:** `infra/staging/seed-volume.mongosh.js` (el
+  generador, con los modos `seed`, `clean`, `expect` y `digest`) e `infra/staging/seed-volume.sh` (el envoltorio).
+  Los parámetros llegan al script por `--eval` (`globalThis.LV_SEED = {…}`) y el script por `/dev/stdin`, como en
+  `run.sh`. El envoltorio ejecuta `docker exec -i <contenedor> mongosh
+  "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval … /dev/stdin` **en la máquina donde
+  corre**; no tiene camino `ssh`.
+- **Solo contra un Mongo local y desechable** (el servicio `mongo` de `docker-compose.yml` o un contenedor
+  `mongo:7.0.43` de réplica de 1 nodo como el `os35b-mongo` de 9.12 y 10.3). **Nunca contra staging ni producción.**
+  Staging queda fuera aunque no sea producción: las cuentas sintéticas contarían en `measure.mongosh.js` y en
+  `uninvited.mongosh.js` y romperían la línea base de 10.6; y el Mongo del host es la misma imagen, así que el volumen
+  se prueba igual en local (si el usuario quiere el tiempo medido en el host ARM, es la pregunta Q12).
+- **Guardias (fallan cerrados, antes de escribir nada):**
+  1. el envoltorio se niega si `DOCKER_HOST` apunta a algo que no es el *socket* o la tubería local, o si el contexto
+     de Docker activo (`docker context inspect`) no es local: así no se puede apuntar a otro host sin `ssh`;
+  2. el envoltorio lee las etiquetas del contenedor (`docker inspect`) y se niega si
+     `com.docker.compose.project.config_files` contiene `docker-compose.prod.yml` —el compose de staging y de
+     producción (35c)—, nombrando el fichero, o si la imagen no es `mongo:`; es lo que lo para si alguien lo ejecuta
+     **en el host**;
+  3. el script se niega sin `LV_SEED.guard === 'local-synthetic-only'`, que solo pone el envoltorio: pegado a mano en
+     un `mongosh` no escribe;
+  4. el script no puede llegar a staging por el único camino que existe hacia su Mongo: `run.sh` aplica
+     `assert-readonly.mjs`, que lo rechaza por sus escrituras, y no abre `ssh`.
+- **Marca del lote:** cada documento creado lleva el campo de primer nivel `lvSeedBatch: '<lote>'` (el nombre del lote,
+  `^[a-z0-9][a-z0-9-]{0,30}$`, por defecto `vol`), y además valores reconocibles a simple vista: correos
+  `seed-<lote>-<nnnn>@seed.linkvault.invalid`, nombres `Seed <lote> <nnnn>`, grupos `Seed <lote> <nn>` y URLs
+  `https://seed-<lote>.linkvault.invalid/jobs/<n>`. Los esquemas de Mongoose son `strict`: un campo de más se ignora al
+  leer, así que la aplicación lee estos documentos como los suyos. `.invalid` no resuelve nunca (RFC 2606) y la
+  deduplicación de un link real no puede chocar con uno sintético.
+- **Determinista:** un generador pseudoaleatorio con semilla (`--seed`, entero de 32 bits, por defecto `35`) produce
+  todo, `_id` incluidos (12 bytes: los 4 primeros, el ancla en segundos; los 8 restantes, del generador); todas las
+  fechas son el ancla (`--anchor`, por defecto `2026-10-01T00:00:00Z`) menos un desplazamiento del generador. Prohibidos
+  `new Date()` sin argumento, `Date.now()`, `Math.random()` y `ObjectId()` sin argumento. Misma semilla, ancla, escala
+  y lote → documentos idénticos byte a byte (`digest`).
+- **Idempotente y convergente:** `seed` genera el lote en memoria, **borra primero** los documentos con la marca del
+  lote cuyo `_id` no está en lo generado (si no, el índice único de `email`, `inviteCode` o `dedupeKey` chocaría al
+  cambiar la semilla) y después hace `replaceOne` con `upsert` por `_id`, en `bulkWrite` desordenados de 1000. Repetirlo
+  igual informa 0 insertados, 0 modificados y 0 borrados; con otra escala o semilla deja exactamente lo que dejaría una
+  generación desde cero.
+- **Escala:** `--scale N`, entero de 1 a 50 (por defecto 1). Por unidad de escala:
+
+  | Colección | Documentos | Lo que tiene que cubrir |
+  |---|---|---|
+  | `users` | 100 | con y sin links; primer link antes y después de 48 h desde el alta |
+  | `groups` | 10 | — |
+  | `group_members` | 60 | un owner por grupo; tamaños de 2 a 10, el mayor exactamente 10 |
+  | `job_links` | 1000 | `previewStatus` variados; `createdBy` de un usuario del lote |
+  | `user_links` | 1500 | personas con 3 o más links y con menos |
+  | `group_links` | 500 | compartidos por miembros del grupo; algunos con `knowSomeoneUserIds` |
+  | `applications` | 600 | visibilidad `group` (visibles y no visibles para otro miembro) y `private`; estados variados |
+  | `application_events` | 600 | el evento de alta de cada postulación |
+  | `cv_documents` | 40 | `extraction.status` `extracted`, sin objeto en el almacén |
+  | `ai_analyses` | 120 | `done` y otros estados, sobre un CV y un link del mismo usuario |
+  | `roadmaps` | 30 | `ready` y otros estados; `analysisId` distinto en cada uno (índice único) |
+
+  Con la escala máxima son 5000 usuarios y 75 000 `user_links`. Cada documento tiene la forma del esquema real
+  (`apps/api/src/modules/*/infrastructure/*.schemas.ts` y `user.schema.ts`; los enums se copian de `libs/shared` y del
+  dominio, con un comentario que nombra el fichero de origen): campos obligatorios presentes y valores dentro de su
+  enum. Los usuarios llevan `emailVerified: true`, sin permiso de IA y el hash Argon2id (parámetros de `ARGON2_OPTIONS`)
+  de una contraseña pública fija, escrito en el script como constante y comentado como **no secreto**: el lote nunca
+  sale de una máquina local, y con ella se comprueba en 10.3e que la aplicación lee los documentos.
+- **`expect`, el oráculo:** imprime los valores que `measure.mongosh.js` debe dar **para el lote solo**, sabidos por
+  construcción (el generador decide quién se activa, quién llega a 3 links, qué postulación es visible), no recalculados
+  con las consultas de `measure`. Sobre una base con otros datos, cada métrica es la de la base más la del lote, salvo
+  `membersInLargestGroup`, que es el máximo de las dos (los grupos del lote solo tienen usuarios del lote).
+- **Limpieza (`clean`):** borra **solo** lo del lote, en este orden: primero, en las colecciones de la cascada de borrado
+  de cuenta (`apps/api/src/modules/users/infrastructure/mongo-account-deletion.cascade.ts`, lista copiada de ahí), lo
+  cuyo `userId` es de un usuario del lote (sesiones, eventos o avisos que la aplicación haya creado al usarlo en 10.3e,
+  sin marca); después, en cada colección de la tabla, `{ lvSeedBatch: <lote> }`. Nunca un filtro vacío: el script se
+  niega si el lote está vacío o no casa con su expresión. **Se niega sin borrar nada** si un usuario que no es del lote
+  tiene relación con algo del lote (un `user_links`, `group_links`, `group_members` o `applications` sin marca que apunta
+  a un link o grupo del lote), y da el recuento: borrar el lote no puede dejar colgando datos ajenos.
+- **`digest`:** imprime, por colección y ordenados por `_id`, los documentos del lote en EJSON canónico; la SHA-256 la
+  calcula `node` fuera (el script no usa `require`).
+- **Sin delta de spec:** como `measure.mongosh.js` y `uninvited.mongosh.js`, es una herramienta del operador para
+  verificar otra herramienta del operador; no cambia ningún comportamiento del producto ni del despliegue. Viaja en PR-2.
+
+**Alternativas descartadas:** ampliar `api:seed-demo` (ADR-042) con un modo de volumen —pasa por los casos de uso y
+encola trabajo (enriquecimiento, búsqueda) que no hace falta, con un coste que crece con el volumen, y mezcla la demo,
+que tiene que seguir siendo pequeña y legible, con datos de carga—; una base aparte (`linkvault_seed`) —`measure` lee
+`linkvault` fijo, y probarlo en otra base no prueba la orden real—; marcar por intervalo de `_id` o por dominio de correo
+sin campo propio —`job_links`, `group_links` o `applications` no tienen correo, y un intervalo de `_id` no se lee a
+simple vista—.
+
+**Riesgos:** el lote se queda en el Mongo local de desarrollo si no se limpia (es sintético y lleva la marca; `clean`
+lo quita, y `seed` lo regenera idéntico); un esquema real cambia y el generador se queda atrás (10.3e lo detecta al leer
+con la aplicación; el script nombra en comentarios de dónde copió cada forma); la contraseña pública del lote abriría
+una cuenta si el lote llegara a un entorno compartido (las guardias 1-4 lo impiden).
+
+**Preguntas abiertas:**
+
+- **Q12 [no bloqueante]:** ¿medir también el tiempo de `measure.mongosh.js` con volumen **en el host ARM**? Opciones:
+  (a) no, solo local (recomendada: el volumen prueba el script y no el host, y en staging la semilla contaminaría la
+  medición real); (b) sí, en el host **antes de 10.6**, con la guardia 2 relajada por una bandera explícita y `clean`
+  verificado por la línea base en 0; (c) sí, en un contenedor desechable aparte en el host, fuera del compose de
+  staging. Sin respuesta, (a).
+- **Q13 [no bloqueante]:** ¿un umbral de tiempo para `measure.mongosh.js` con escala 10? Opciones: (a) solo anotarlo
+  (recomendada: con 5 personas el volumen real es mínimo y el dato sirve de referencia); (b) un tope, p. ej. 30 s, que
+  si se pasa abre un change de índices. Sin respuesta, (a).
 
 ## Risks / Trade-offs
 
@@ -635,7 +749,7 @@ aprobar el design antes de `/opsx:apply`.
 | Bloqueo | Quién decide | Qué bloquea | Si se decide que sí |
 |---|---|---|---|
 | Pasar la cuenta de Oracle a **pago por uso** | el usuario | 5.10, PR-2 y 10.7 | alerta de presupuesto a 1 € (tarea 5.10); si no, el riesgo aceptado en `infra/README.md` y el aviso de 9.10 lleva la reclamación a 7 días |
-| **Q4**: quiénes (3-5 que buscan empleo ahora, 2-3 en un mismo grupo) | el usuario | 9.7, 9.8, 10.1, PR-2 y 10.7 | invitación con el código de unión del grupo del autor |
+| **Q4**: quiénes (3-5 que buscan empleo ahora, 2-3 en un mismo grupo) — **decidido el 2026-10-08**: 5 por defecto, configurable, y las 5 en el grupo del autor (interpretación de «respetemos 5», D15); falta la lista nominal, fuera del repositorio | el usuario | 9.7, 9.8, 10.1, PR-2 y 10.7 | invitación con el código de unión del grupo del autor |
 | **Umbral del correo** (7.10): bandeja de entrada en al menos 2 de 3 proveedores | la medición; si no se cumple, el usuario | 10.7 | cumplido: nada; no cumplido: dominio propio con su coste, o riesgo aceptado por escrito |
 | **Ventana de fusión de PR-1** | el usuario | la fusión de PR-1 y, tras ella, 6.1 | fusión a mano con el CI en verde |
 | **Ventana de fusión de PR-2** | el usuario, pedida **junto con Q4** | la fusión de PR-2 y, tras ella, 11.6 y 10.7 | fusión a mano con el CI en verde |

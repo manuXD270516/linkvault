@@ -1636,7 +1636,9 @@ junto con la de excluidos; cambiarlo es cambiar esa lista, sin tocar código. La
 no se pidió, y añadirlo sería un change aparte. La tarea 10.7 comprueba que `users` de `measure.mongosh.js` es el
 número de la lista.
 
-- **Cuántas van al grupo del autor** (design D15: 2 o 3, invitadas con el código de unión): Pendiente (10.1).
+- **Cuántas van al grupo del autor: las 5**, invitadas con el código de unión. Decisión del usuario (2026-10-08,
+  «respetemos 5»), interpretada por la sesión principal como que las cinco entran en el grupo (design D15 sugería 2 o
+  3); vale mientras el usuario no la contradiga. Si la lista del host invita a otro número, van todas al grupo.
 - **Quiénes:** la lista nominal vive fuera del repositorio; aquí nunca se escriben nombres.
 
 ### Aviso para las personas invitadas
@@ -1675,7 +1677,9 @@ consentimiento dentro de la aplicación es de la fila 36; esto es el aviso de la
 
 La dirección se rellena con el nombre `<ip-con-guiones>.sslip.io` cuando exista la IP reservada (tarea 5.2; el nombre
 queda fijado en `.env.staging` en la 5.7). La línea de la reclamación depende de la decisión de pago por uso (5.10):
-con «no», se queda; con «sí», se quita.
+con «no», se queda; con «sí», se quita. El canal de feedback es **el mismo por el que llega la invitación**: decisión
+del usuario (2026-10-08); las respuestas a la pregunta del golden set y la identificación de la recuperación manual de
+cuenta usan ese mismo canal.
 
 ### Golden set: respuesta de cada persona
 
