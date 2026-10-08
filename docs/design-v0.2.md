@@ -463,7 +463,7 @@ sequenceDiagram
   participant K as Worker
   participant AI as libs/ai runTask
   U->>W: sube CV (PDF/DOCX)
-  W->>A: POST /cv (multipart) → MinIO → tx cv_documents + outbox(CvUploaded)
+  W->>A: POST /cv (multipart) → almacén S3 (SeaweedFS) → tx cv_documents + outbox(CvUploaded)
   K->>K: extract-cv (pdf-parse / mammoth) → extractedText, version
   U->>W: "Analizar contra esta vacante"
   W->>A: POST /links/:linkId/match {cvId?} → outbox(MatchRequested.v1)
