@@ -1627,6 +1627,76 @@ Solo si el enlace sigue sin llegar y la persona necesita entrar ya (o no tiene a
 Para `emailVerified` no hay procedimiento de operador: la cuenta sin verificar se usa igual y solo se queda sin los
 correos de notificación ([`infra/README.md`](../infra/README.md#correo-obligatorio-y-el-compose-no-trae-ningún-servidor)).
 
+### Personas invitadas
+
+**Decisión del usuario (Q4, 2026-10-08): 5 personas por defecto, configurable.** Personas que buscan empleo ahora
+(design D15). El número real no está en el código ni en el repositorio: lo fija la **lista de invitados** del host
+(`/srv/linkvault-staging/invited-ids.txt`, ver [«Scripts de lectura en el Mongo de staging»](#scripts-de-lectura-en-el-mongo-de-staging)),
+junto con la de excluidos; cambiarlo es cambiar esa lista, sin tocar código. La aplicación no tiene un tope de cuentas:
+no se pidió, y añadirlo sería un change aparte. La tarea 10.7 comprueba que `users` de `measure.mongosh.js` es el
+número de la lista.
+
+- **Cuántas van al grupo del autor** (design D15: 2 o 3, invitadas con el código de unión): Pendiente (10.1).
+- **Quiénes:** la lista nominal vive fuera del repositorio; aquí nunca se escriben nombres.
+
+### Aviso para las personas invitadas
+
+Se entrega **antes del alta**, a cada persona y por el mismo canal por el que se la invita, con este texto (design D15
+de `staging-host`). Quien invita dice además **de palabra** que staging no tiene búsqueda (tarea 10.7). El
+consentimiento dentro de la aplicación es de la fila 36; esto es el aviso de la prueba, no una política de privacidad.
+
+> **Antes de darte de alta en LinkVault (versión de prueba)**
+>
+> - **La dirección es esta, y es legítima:** Pendiente (5.2). Termina en `.sslip.io` porque la prueba no tiene dominio
+>   propio: `sslip.io` es un servicio que convierte la IP del servidor en un nombre. El candado del navegador es un
+>   certificado normal de Let's Encrypt. No te pediremos datos por ninguna otra dirección.
+> - **Es un entorno desechable y sin copias.** Puede borrarse o perderse en cualquier momento, con todo lo que hayas
+>   guardado. No guardes aquí nada que no tengas en otro sitio.
+> - **El correo puede ir a spam y no es obligatorio.** Los correos salen sin dominio propio y a veces acaban en la
+>   carpeta de spam. Verificar el correo no hace falta para empezar ni para usar la aplicación.
+> - **La IA usa OpenRouter en su modalidad gratuita**, y solo si le das permiso en Perfil. Antes de enviar nada se
+>   quitan los datos personales que se reconocen (correos, enlaces, documentos, direcciones y teléfonos, y tu nombre
+>   mientras «Ocultar mi nombre a los proveedores externos» siga activado, como viene), y las peticiones van con
+>   `data_collection: deny`: solo se aceptan proveedores que declaran no guardar ni usar lo que se les envía.
+> - **La búsqueda no está disponible en esta prueba.** La pantalla de búsqueda dice que «no está disponible en este
+>   momento», pero en esta prueba no volverá: no es una avería pasajera.
+> - **Si subes tu CV, se guarda cifrado; este entorno puede perderse sin copia; puedes borrarlo en Mi CV.**
+> - **Puedes borrar tu cuenta cuando quieras**, desde Perfil («Borrar tu cuenta»): se eliminan tu usuario, tus
+>   sesiones, tu CV, tus análisis y el resto de tus datos.
+> - **Feedback:** escríbeme por este mismo canal, el de esta invitación. Cualquier cosa vale: lo que no entiendas, lo
+>   que no funcione o lo que eches de menos.
+> - **Solo si la cuenta de Oracle sigue gratuita** (decisión de la tarea 5.10, Pendiente (5.10); si pasa a pago por
+>   uso, esta línea se quita antes de invitar): el servidor está en la capa gratuita de Oracle Cloud, que puede
+>   reclamar una instancia tras 7 días de poco uso. Si pasa, la prueba se para hasta reconstruirlo, sin tus datos.
+>
+> **Una pregunta aparte, que puedes dejar sin responder:** ¿nos dejas usar tus datos, anonimizados, para el conjunto
+> de evaluación con el que se mide la calidad de la IA (el *golden set* de la fila 36)? Si no respondes, la respuesta
+> es **no**.
+
+La dirección se rellena con el nombre `<ip-con-guiones>.sslip.io` cuando exista la IP reservada (tarea 5.2; el nombre
+queda fijado en `.env.staging` en la 5.7). La línea de la reclamación depende de la decisión de pago por uso (5.10):
+con «no», se queda; con «sí», se quita.
+
+### Golden set: respuesta de cada persona
+
+La pregunta del aviso va **aparte y desactivada por defecto**: solo un **sí explícito**, dado por la propia persona por
+escrito en el canal de la invitación, cambia su fila; el silencio, una respuesta ambigua o no haber preguntado son
+**no**. Se puede retirar en cualquier momento, y entonces la fila vuelve a **no**. Una fila por persona invitada,
+anonimizada: la correspondencia entre «Persona N» y quién es vive fuera del repositorio, junto a la lista de invitados
+del host. Hay cinco filas, el número por defecto de [«Personas invitadas»](#personas-invitadas); si la lista del host
+invita a otro número, se añaden o se quitan filas antes de invitar. Antes de invitar, **todas** valen «no».
+
+| Persona | ¿Sus datos anonimizados pueden alimentar el golden set de la fila 36? | Fecha de la respuesta |
+|---|---|---|
+| Persona 1 | no | — |
+| Persona 2 | no | — |
+| Persona 3 | no | — |
+| Persona 4 | no | — |
+| Persona 5 | no | — |
+
+Ningún dato de una persona con «no» entra en `libs/ai/evals/`, ni anonimizado. Con «sí», lo que se lleve sigue el
+camino de la fila 36 (anonimizado, redactado y con revisión humana); esta tabla solo registra la respuesta.
+
 ### Plan de medición de los primeros usuarios
 
 Escrito **antes de invitar y antes del primer dato** (design D15 de `staging-host`; ADR-051, Consecuencias): con los
@@ -1651,6 +1721,13 @@ repositorio** y el operador se la pasa como fichero a `infra/staging/run.sh`, qu
 
 La activación se da por **alcanzada** con al menos dos personas activadas: con menos, el umbral de uso, que pide dos
 personas, ya no puede medir el valor, solo la entrada.
+
+**De dónde sale cada cifra.** `infra/staging/measure.mongosh.js` devuelve un objeto JSON de recuentos, todos sin los
+excluidos (qué cuenta cada clave: la cabecera del script). Activación: `activatedUsers` ≥ 2. Uso: `usersWith3PlusLinks`
+≥ 2. Uso de grupo: `groupVisibleApplications` ≥ 1. Uso de IA: `aiGenerated` ≥ 1 (análisis terminados más roadmaps
+listos). La invitación de la tarea 10.7 se comprueba con `users` (las cuentas distintas del autor y de las E2E) y con
+`membersInLargestGroup` ≥ 2 (el grupo del autor, con al menos dos miembros distintos de él). Cómo ejecutarlo:
+[«Scripts de lectura en el Mongo de staging»](#scripts-de-lectura-en-el-mongo-de-staging).
 
 **Cuándo se mide.** Línea base antes de invitar (tarea 10.6, todos los recuentos en 0), día 7 y día 14 desde la
 invitación. Los **días 7 y 14 no se lanza la suite remota de `e2e-suite` contra staging** (`e2e-remote`), para que
@@ -1686,6 +1763,88 @@ Las notas se toman anonimizadas y fuera del repositorio; aquí solo se escribe e
 
 La segunda es la señal para decidir si se activa la búsqueda, que staging no tiene (design D13): si alguien buscó algo
 que había guardado y no lo encontró.
+
+### Scripts de lectura en el Mongo de staging
+
+**Mongo no tiene autenticación.** No hay un usuario de rol `read`: quien entra en el host (el usuario de despliegue o el
+de administración) llega al contenedor `mongo` con **acceso total**, y el operador lo tiene. La garantía de que un
+script de medición **no escribe** es una comprobación estática, `infra/staging/assert-readonly.mjs`, que falla
+nombrando cualquier operación de escritura de la lista de design D15 (`insert*`, `update*`, `replace*`, `delete*`,
+`remove`, `drop*`, `bulkWrite`, `findOneAnd*`, `findAndModify`, `create*`, `rename*`, `save`, `runCommand`,
+`adminCommand`, `$out` y `$merge`) y las indirecciones más directas para llamarlas sin nombrarlas. No protege de quien
+quiera saltársela; protege de un error al editar un script. La aplica el envoltorio, no la memoria de nadie:
+
+```bash
+# En la máquina del operador, desde la raíz del repositorio.
+STAGING_SSH_DEST=<usuario>@<ip> STAGING_EXCLUDED_IDS_FILE=<ruta fuera del repositorio> \
+  bash infra/staging/run.sh infra/staging/measure.mongosh.js      # o infra/staging/uninvited.mongosh.js
+```
+
+`run.sh` copia el script, pasa `node infra/staging/assert-readonly.mjs` sobre la copia y, **solo si pasa**, la envía
+por la entrada estándar a `ssh <destino> '… docker compose -f docker-compose.prod.yml --env-file .env.staging exec -T
+mongo mongosh --quiet --eval <listas> /dev/stdin'`, desde `/srv/linkvault-staging`. Si la comprobación falla, sale 1
+nombrando la operación y **no llama a `ssh`**. Sale 2 si falta o está mal su configuración local, y 3 si en el host
+falta o está mal la lista de invitados.
+
+- **Lista de excluidos** (`STAGING_EXCLUDED_IDS_FILE`): el id del autor y los de las cuentas E2E (`+e2e`), uno por
+  línea (se ignoran las vacías y las que empiezan por `#`). Vive en la máquina del operador, **fuera del repositorio**
+  (`run.sh` se niega si el fichero está dentro), y tiene al menos un id. `run.sh` la inyecta como `LV_EXCLUDED_IDS`.
+- **Lista de invitados**: `/srv/linkvault-staging/invited-ids.txt`, en el host y **solo allí** (son datos
+  personales): un id por línea, con el mismo formato; propiedad del usuario de despliegue y con permisos `600`. Se crea
+  vacía antes de la línea base (tarea 10.6) y se añade el id de cada persona invitada cuando se da de alta. La orden
+  remota la valida y la inyecta como `LV_INVITED_IDS`.
+- **Los ids** salen de una lectura en el host, desde el directorio fijo (no es un script versionado: se escribe a mano
+  y no pasa por `run.sh`):
+
+  ```bash
+  docker compose -f docker-compose.prod.yml --env-file .env.staging exec -T mongo \
+    mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet \
+    --eval 'print(db.users.findOne({ email: "<email>" }, { _id: 1 })._id.toHexString())'
+  ```
+
+- **Salida**: una sola línea JSON en la salida estándar, solo con números; el informe de la comprobación y los avisos
+  van a la salida de errores. Se vuelca a fichero y se lee con `node`.
+- El `/dev/stdin` explícito hace falta: con `--eval`, `mongosh` no ejecuta la entrada estándar si no se le nombra como
+  fichero (medido con `mongosh` 2.10.0, el de `mongo:7.0.43`).
+
+### Cuentas no invitadas
+
+La URL de staging es pública desde la primera emisión del certificado (Certificate Transparency, ADR-051 §5), así que
+cualquiera puede darse de alta. No se restringe el alta: se **vigila** (design D16). **Cada semana**, mientras dure
+staging, `run.sh` con `infra/staging/uninvited.mongosh.js`; su `uninvitedUsers` cuenta las cuentas que no están ni en
+la lista de invitados ni en la de excluidos. Con 0, nada que hacer. Con más de 0:
+
+1. **Quién es**, en el host y desde el directorio fijo: una lectura a mano (no pasa por `run.sh`) con el id y el correo
+   de las cuentas que no están en ninguna lista. El correo sale solo en la terminal del operador; no se copia a ningún
+   sitio.
+
+   ```bash
+   inv=$(grep -E '^[0-9a-f]{24}$' invited-ids.txt | sed "s/.*/ObjectId('&')/" | paste -sd, -)
+   docker compose -f docker-compose.prod.yml --env-file .env.staging exec -T mongo \
+     mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet \
+     --eval "db.users.find({ _id: { \$nin: [${inv:+$inv,}ObjectId('<id del autor>'), ObjectId('<id de cada cuenta E2E>')] } }, { email: 1, createdAt: 1 }).toArray()"
+   ```
+
+2. **Si es una persona invitada** que se dio de alta con otra dirección, no se borra nada: su id se añade a
+   `invited-ids.txt` y `uninvited.mongosh.js` vuelve a 0.
+3. **Si es una cuenta ajena, se borra.** La operación del producto es el **borrado de cuenta** que hace la propia
+   persona (Perfil → «Borrar tu cuenta», `DELETE /api/users/me` con su contraseña; spec `users/account-deletion`): en una
+   transacción elimina el usuario, sus sesiones, su CV, sus claves de IA, sus análisis y el resto de sus datos, y
+   después el fichero del CV en el almacén. El operador no puede invocarla en nombre de otra persona, porque pide su contraseña. Este procedimiento
+   **excepcional** la sustituye **solo para eso**, y sigue usando la cascada del producto en vez de borrar colecciones
+   a mano:
+   1. una contraseña temporal y su hash, con la orden del paso 2 de
+      [«Recuperación manual de cuenta (excepcional)»](#recuperación-manual-de-cuenta-excepcional);
+   2. sustituir el hash y revocar sus sesiones con el bloque `mongosh` del paso 2 de
+      [«Reseteo manual de contraseña (operador)»](#reseteo-manual-de-contraseña-operador), con
+      `--env-file .env.staging` (es una escritura: no pasa por `run.sh`);
+   3. en una ventana privada del navegador, entrar en staging con ese correo y la contraseña temporal, y en Perfil,
+      «Borrar tu cuenta», confirmar con la misma contraseña. Si contesta que es la única propietaria de un grupo con
+      otros miembros, esos miembros tampoco están invitados (las personas invitadas solo entran en el grupo del
+      autor): se tratan primero con este mismo procedimiento, y nunca se borra un grupo a mano;
+   4. comprobar con `run.sh` y `uninvited.mongosh.js` que `uninvitedUsers` bajó, y en el host que
+      `db.users.countDocuments({ _id: ObjectId('<id>') })` da 0;
+   5. anotar la fecha y cuántas cuentas se borraron **fuera del repositorio**, sin datos de nadie.
 
 ## Paso 7 — Definition of Done (pégalo en cada PR)
 

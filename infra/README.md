@@ -279,6 +279,46 @@ ensaya.
 
 - **Pasos que faltaban (defectos corregidos en este texto) y tiempo total del ensayo:** Pendiente (9.1-9.4).
 
+### Quién puede desplegar a staging
+
+El guardia de `cd-staging` (solo una corrida de `main`, fuera del modo de prueba y con preflight `full`, despliega)
+**evita accidentes**: un `dry_run` que despliega de verdad, una rama que pisa staging. **No autoriza**: no es un
+control de acceso (ADR-051 §4). Quien tiene escritura en el repositorio puede escribir en una rama un workflow que lea
+los secretos de staging y abra una sesión en el host, y el usuario de despliegue está en el grupo `docker`, que equivale
+a root. Por tanto, **quien tiene escritura en el repositorio tiene root en staging**.
+
+Quién tiene escritura, comprobado el 2026-10-08 (tarea 1.2 de `staging-host`; API de GitHub volcada a fichero y leída
+con `node`, y la página de aplicaciones instaladas leída por el usuario):
+
+1. **Colaboradores con escritura** (`permissions.push`): solo `manuXD270516`, el autor, con rol `admin`.
+2. **Claves de despliegue con escritura** (`read_only: false`): ninguna; el repositorio no tiene claves de despliegue.
+3. **GitHub Apps instaladas**: cinco, todas con acceso a **«All repositories»** (95 repositorios, `linkvault`
+   incluido), con estos permisos concedidos:
+
+   | Aplicación | Solo lectura | Lectura y escritura |
+   |---|---|---|
+   | Claude | commit statuses, metadata | actions, checks, code, discussions, issues, pull requests, repository hooks, workflows |
+   | Cursor | administration, commit statuses, deployments, metadata, packages, pages | actions, checks, code, discussions, issues, merge queues, pull requests, workflows |
+   | Railway App | metadata | actions, administration, checks, code, commit statuses, deployments, pull requests, workflows |
+   | Render | Dependabot alerts, code, metadata | actions, checks, commit statuses, deployments, environments, issues, pull requests, repository hooks, workflows |
+   | Vercel | metadata | administration, checks, code, commit statuses, deployments, issues, pull requests, repository hooks |
+
+   Claude y Vercel tienen además una solicitud de ampliación de permisos **pendiente y no aprobada**; la tabla es lo
+   concedido.
+
+Ese día, además: ningún secreto de repositorio, de Dependabot ni de entorno, ninguna variable de Actions y un solo
+entorno, `production-preflight` (sin secretos).
+
+**Riesgo aceptado por el usuario el 2026-10-08.** Cuatro de las cinco aplicaciones (Claude, Cursor, Railway App y
+Render) pueden escribir workflows, y Railway App y Vercel pueden escribir código y administración. Cualquiera de ellas
+podría escribir en una rama un workflow que lea los secretos de staging, así que «quien tiene escritura = solo el
+autor» (ADR-051 §4) **no se cumple al pie de la letra**: tiene escritura el autor y, a través de su instalación, cada una
+de estas cinco aplicaciones. Se le ofrecieron tres salidas (restringir las aplicaciones a sus repositorios activos,
+darles acceso a todos menos a `linkvault`, o desinstalar las que no usa) y eligió **aceptar el riesgo sin tocar la
+configuración de las aplicaciones**. Staging es desechable y sin copias, pero sus secretos dan root en el host y
+`.env.staging` contiene `AI_VAULT_KEY`. Si cambian las aplicaciones o sus permisos, esta sección se rehace con la misma
+comprobación.
+
 ## Prerrequisitos DNS / TLS
 
 1. `PUBLIC_HOST` (p. ej. `app.example.com`) con A/AAAA al VPS.
