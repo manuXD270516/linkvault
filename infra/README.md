@@ -30,7 +30,7 @@ Configura dos hosts distintos (o el mismo host con dos directorios/env files).
 
 | Target | Trigger CD | Secrets (GitHub) | Compose env file (en el host) |
 |---|---|---|---|
-| **staging** | push/merge a `main` (verify verde) | `STAGING_HOST`, `STAGING_SSH_USER`, `STAGING_SSH_KEY`, `STAGING_COMPOSE_DIR`; opcional `GHCR_READ_TOKEN` (PAT `read:packages` si las imágenes GHCR son privadas) | `.env.staging` |
+| **staging** | push/merge a `main` (verify verde) | `STAGING_HOST`, `STAGING_SSH_USER`, `STAGING_SSH_KEY`, `STAGING_SSH_HOST_KEY`, `GHCR_READ_USER`, `GHCR_READ_TOKEN` (los seis, desde `staging-host`; ver [«Destino de staging real»](#destino-de-staging-real)) | `.env.staging` en `/srv/linkvault-staging` |
 | **prod** | tag `vX.Y.Z` semver | `PROD_HOST`, `PROD_SSH_USER`, `PROD_SSH_KEY`, `PROD_COMPOSE_DIR`; opcional `GHCR_READ_TOKEN` | `.env.prod` |
 
 ### Qué pasa según cuántos secrets haya (ADR-048 §3)
@@ -82,6 +82,202 @@ Imágenes en GHCR (nombres por defecto del compose):
 - `ghcr.io/<owner>/linkvault-web:<tag>`
 
 Sustituye con `API_IMAGE` / `WORKER_IMAGE` / `WEB_IMAGE` + `IMAGE_TAG` en el env del host si hace falta.
+
+## Destino de staging real
+
+Esqueleto escrito **antes** de crear el host (tarea 5.1 de `staging-host`), para que la creación (tareas 5.2-5.10) y el
+ensayo de reconstrucción (9.1-9.4) lo **sigan** y cada desviación se corrija aquí, en el texto. Las decisiones son de
+[ADR-051](../docs/adr/ADR-051.md) y de los apartados D3, D4, D10, D11 y D14 del design de `staging-host`. Es un destino
+del camino soportado (este compose con Traefik), no un camino distinto.
+
+Los pasos de consola y de terminal **no se repiten aquí**: están en el runbook
+[`docs/runbooks/oracle-cloud-a1.md`](../docs/runbooks/oracle-cloud-a1.md), y cada apartado enlaza el suyo y dice qué se
+comprueba. **Pendiente (tarea X.Y)** marca un dato que solo da el host: se rellena con la salida de esa tarea, nunca con
+un valor supuesto.
+
+### Proveedor y región
+
+Oracle Cloud Infrastructure, cuenta **Always Free** (ADR-051 §2; Fly.io se evaluó y se descartó por coste:
+[ADR-054](../docs/adr/ADR-054.md)). Los recursos Always Free **solo existen en la región de origen**, que no se puede
+cambiar; si no hay capacidad ARM, **no se cambia de región**: 45 minutos por sesión probando cada dominio de
+disponibilidad, dos rondas, otro día en otra franja, y tras tres días el dato pasa al usuario (design D10). Runbook:
+[§1 Crear la cuenta](../docs/runbooks/oracle-cloud-a1.md#1-crear-la-cuenta) y
+[§6 «Out of host capacity»](../docs/runbooks/oracle-cloud-a1.md#6-si-sale-out-of-host-capacity).
+
+- **Región de origen:** Pendiente (5.2).
+- **Dominio de disponibilidad donde salió la instancia, y cada intento fallido (hora y dominio):** Pendiente (5.2).
+- **Pago por uso o cuenta gratuita:** Pendiente (5.10), decisión del usuario
+  ([runbook §11](../docs/runbooks/oracle-cloud-a1.md#11-decisión-pasar-a-pago-por-uso-tuya-tarea-510-de-35b)).
+
+### Forma
+
+`VM.Standard.A1.Flex`, **2 OCPU / 12 GB**, Ubuntu 24.04 `aarch64`: la plataforma `linux/arm64`, la misma que construye,
+verifica y publica `cd-staging` (`TARGET_PLATFORM`). Volumen de arranque dentro del límite gratuito. La documentación de
+Oracle aún dice 4 OCPU / 24 GB; la cifra que cuenta es la que muestra la consola de la cuenta (ADR-051 §Contexto).
+Runbook: [§5 Crear la instancia](../docs/runbooks/oracle-cloud-a1.md#5-crear-la-instancia-ampere-a1).
+
+- Comprobación (5.2), en el host: `uname -m` → `aarch64`, `nproc` → `2`, `free -g`.
+- **Salidas reales y tamaño del volumen de arranque:** Pendiente (5.2).
+
+### IP reservada
+
+IP pública **reservada**, no efímera: el nombre (`<ip-con-guiones>.sslip.io`) y el certificado dependen de ella.
+Runbook: [§8 IP pública reservada](../docs/runbooks/oracle-cloud-a1.md#8-ip-pública-reservada).
+
+- Comprobación (5.2): `oci network public-ip get --public-ip-address <ip>` → `lifetime: RESERVED`. Reiniciar la
+  instancia no lo prueba: una efímera también se conserva al reiniciar.
+- **IP:** Pendiente (5.2).
+
+### Cortafuegos en dos capas
+
+Hay que abrir 80 y 443 en **las dos**, y nada más que 22, 80 y 443:
+
+1. la **lista de seguridad de la VCN** (o su NSG), en la consola de Oracle;
+2. las reglas **`iptables` propias de la imagen** Ubuntu de Oracle (`/etc/iptables/rules.v4`), que rechazan todo salvo
+   22: abrir solo la VCN deja 80 y 443 cerrados **sin error visible**. Sin `ufw`, que choca con esas reglas.
+
+Runbook: [§7 Abrir 80 y 443](../docs/runbooks/oracle-cloud-a1.md#7-abrir-80-y-443-dos-capas-oracle-y-ubuntu). La lista
+de la VCN sobrevive a un reemplazo del volumen de arranque; las reglas `iptables`, no (se rehacen en 9.3).
+
+- Comprobación (5.5), desde fuera y con un servidor temporal en 80 y 443: `nc -zvw3 <ip> 80` y `443` aceptan;
+  `27017`, `6379` y `8080` fallan; tras reiniciar, lo mismo.
+- **`sudo iptables -S INPUT`:** Pendiente (5.5).
+
+### Docker
+
+Docker Engine con los plugins de **Compose y Buildx** desde el **repositorio oficial de Docker** para `arm64`, no el
+paquete `docker.io` de Ubuntu: `infra/deploy/check-image-platforms.sh`, que `deploy.sh` ejecuta en el host, usa
+`docker buildx imagetools`. Runbook: [§10 Docker y usuario de despliegue](../docs/runbooks/oracle-cloud-a1.md#10-docker-y-usuario-de-despliegue).
+
+- Comprobación (5.3): `docker version`, `docker compose version`, `docker buildx version` y
+  `docker run --rm hello-world`.
+- **Versiones instaladas** (son las mínimas comprobadas con este compose): Pendiente (5.3).
+
+### Usuario de despliegue
+
+Un usuario dedicado, **solo con clave**, shell `bash` y en el grupo `docker`. Estar en `docker` **equivale a root** en el
+host (ADR-051 §4). SSH sin contraseñas ni `root` (`/etc/ssh/sshd_config.d/99-linkvault.conf`). Runbook:
+[§10](../docs/runbooks/oracle-cloud-a1.md#10-docker-y-usuario-de-despliegue).
+
+- Secretos: `STAGING_SSH_USER` (el nombre) y `STAGING_SSH_KEY` (la clave **privada** `ed25519` de despliegue, sin frase
+  de paso porque el CD la usa con `BatchMode=yes`). Es una clave **distinta** de la de administración del runbook §3;
+  su parte pública va a `~/.ssh/authorized_keys` de ese usuario.
+- Comprobación (5.4): `ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no <user>@<ip>` es rechazado,
+  `sudo sshd -T` muestra `passwordauthentication no` y `ssh <user>@<ip> docker ps` funciona con la clave de despliegue.
+- **Nombre del usuario y huella (`SHA256:…`) de la clave pública de despliegue:** Pendiente (5.4).
+
+### Clave del host
+
+`STAGING_SSH_HOST_KEY` es la clave **pública** `ed25519` del host, una línea `ssh-ed25519 <base64>` sin comentario.
+Se obtiene **desde dentro, sin pasar por la red** que se quiere autenticar: del historial de consola de la instancia en
+OCI (cloud-init la imprime entre `-----BEGIN SSH HOST KEY KEYS-----` y `-----END SSH HOST KEY KEYS-----`) o con
+`cat /etc/ssh/ssh_host_ed25519_key.pub` desde la consola del proveedor; **nunca** con `ssh-keyscan` ni aceptando la
+primera conexión. El CD la valida por lista blanca y la escribe en un `known_hosts` propio
+(`infra/ci/prepare-staging-ssh.sh`), y cada `ssh` va con `StrictHostKeyChecking=yes` (design D3). Runbook:
+[§9 Primer acceso](../docs/runbooks/oracle-cloud-a1.md#9-primer-acceso-y-puesta-a-punto-de-ubuntu).
+
+- Comprobación (5.6): con un `known_hosts` temporal que solo contiene `<ip> <clave>`,
+  `ssh -o StrictHostKeyChecking=yes -o UserKnownHostsFile=<tmp> <user>@<ip> true` sale 0, y con otra clave sale ≠0
+  con `Host key verification failed`.
+- Reconstruir el disco **cambia la clave**: hay que actualizar el secreto (9.3).
+- **Huella (`SHA256:…`) de la clave del host:** Pendiente (5.6).
+
+### Directorio fijo
+
+`/srv/linkvault-staging`, propiedad del usuario de despliegue. **No es un secreto**: es la constante `STAGING_DIR` de
+`cd-staging.yml`. Tiene que **existir antes** del primer despliegue: la copia crea `.incoming-<sha12>` con `mkdir` sin
+`-p` y falla si falta el directorio fijo (design D4). Dentro viven la configuración instalada (la lista de
+`infra/deploy/config-files.txt`), `.env.staging` y los cinco últimos `.incoming-<sha12>/`.
+
+Toda orden manual de Compose se ejecuta **desde ese directorio** con
+`docker compose -f docker-compose.prod.yml --env-file .env.staging …`, como `deploy.sh`. Una orden que **recree**
+contenedores (`up`, `run`) lleva además `IMAGE_TAG=sha-<12 desplegado>`: sin él, el compose usa `:latest`, que es el
+canal de producción.
+
+- **Creado y con su propietario (`stat -c '%U %a'`):** Pendiente (5.7).
+
+### `.env.staging`
+
+Se crea a partir de `.env.example` siguiendo [«Variables de entorno (contrato prod)»](#variables-de-entorno-contrato-prod),
+con permisos `600`, en el directorio fijo. **Nunca** está en el repositorio ni en el CD: el despliegue no lo toca
+(`install-config.sh` no escribe nada fuera de su lista). Lo propio de staging (tarea 5.7):
+
+- `PUBLIC_HOST=<ip-con-guiones>.sslip.io` y las URL base con ese nombre;
+- `ACME_CA_SERVER` del entorno *staging* de Let's Encrypt para la primera emisión, y después el de producción (6.8-6.9);
+- correo por Brevo (`MAIL_PROVIDER=smtp`, `MAIL_SMTP_HOST=smtp-relay.brevo.com`, `MAIL_SMTP_PORT=587`,
+  `MAIL_SMTP_SECURE=false`), provisional y sin credenciales hasta 7.9;
+- `AI_CHAIN=openrouter` y **sin** `AI_EMBED_CHAIN`: staging no tiene búsqueda (design D13);
+- los secretos (`AUTH_JWT_SECRET`, `AI_VAULT_KEY`, `OBJECT_STORE_SSE_KEY`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`), generados
+  con las órdenes de este README.
+
+Comprobación (5.7): `stat -c %a .env.staging` → `600` y
+`docker compose -f docker-compose.prod.yml --env-file .env.staging config -q` sale 0.
+
+**Copia fuera del host**, comprobada por suma SHA-256: contiene `AI_VAULT_KEY` (sin ella no se descifran las claves BYOK)
+y `OBJECT_STORE_SSE_KEY` (sin ella no se descifran los CV). Toda tarea que edita `.env.staging` actualiza la copia.
+
+- **Dónde está la copia:** Pendiente (5.8).
+
+### Credencial del registro
+
+`GHCR_READ_USER` y `GHCR_READ_TOKEN`: un token **clásico** solo con `read:packages` y **con caducidad**, porque las
+imágenes de GHCR son privadas. Solo la usa `deploy.sh`, que la recibe por la entrada estándar: `docker login
+--password-stdin` → descarga → `docker logout` (en un `trap`, también si falla), así que no queda en
+`~/.docker/config.json` del usuario de despliegue (design D3).
+
+- Comprobación (5.9): con el login, `docker pull ghcr.io/manuxd270516/linkvault-api:sha-<12>` funciona; tras
+  `docker logout ghcr.io`, falla por autorización.
+- **Caducidad del token** (también en el RUNBOOK): Pendiente (5.9).
+
+### Nombre `sslip.io`
+
+Sin dominio propio, el nombre público es `<ip-con-guiones>.sslip.io`, que `sslip.io` resuelve a esa IP; el certificado
+es de Let's Encrypt por el reto HTTP-01 que Traefik ya hace, primero contra su entorno *staging* y después contra
+producción (ver `ACME_CA_SERVER` arriba y design D11). Riesgos aceptados en ADR-051: `sslip.io` es un tercero gratuito
+del que depende el DNS, los límites de emisión pueden compartirse con todos sus usuarios y la URL se publica sola en
+Certificate Transparency al emitir el certificado.
+
+- **Nombre:** Pendiente (5.7).
+- **Resolución (`dig +short <nombre> @1.1.1.1` y `@8.8.8.8`) y si `sslip.io` figura en la Public Suffix List:**
+  Pendiente (6.8).
+
+### Qué vive solo en el host
+
+Staging es **desechable**: sus datos no tienen copia (ADR-051 §2). Lo único con copia fuera es `.env.staging`.
+
+| Qué | Dónde | Qué se pierde si se pierde el host |
+|---|---|---|
+| `.env.staging` | directorio fijo | nada, si la copia está al día: se restaura y se compara su suma |
+| datos de MongoDB | volumen `mongo-data` | cuentas, grupos, links, postulaciones y análisis, sin copia |
+| almacén de objetos | volumen `object-store-data` | los CV y los snapshots, sin copia |
+| colas de Redis | volumen `redis-data` | los trabajos en vuelo |
+| certificados y cuenta ACME | volumen `traefik-letsencrypt` (`acme.json`) | nada que no se recupere: se emite de nuevo contra producción, y cuenta en sus límites |
+| `access.log` de Traefik | volumen `traefik-logs` | el registro de accesos |
+| configuración de los últimos despliegues | `.incoming-<sha12>/` (los cinco últimos) | la vuelta atrás sin GitHub, hasta el siguiente despliegue |
+
+- **Lo que añadan los grupos 6-10 (lista de invitados del host, entre otros):** Pendiente (11.1).
+
+### Reconstrucción por reemplazo del volumen de arranque
+
+Si el host se pierde o se corrompe, se reconstruye con **«Replace boot volume»** de OCI con la imagen Ubuntu 24.04
+`aarch64` (design D14): conserva la instancia, su forma, su IP reservada y su **capacidad** —no hay que volver a
+conseguir una A1— y parte de un disco vacío. **No se fusiona nada a `main` mientras dure**: un push desplegaría contra un
+host a medio reconstruir. Orden, cada paso en su apartado de arriba:
+
+1. reemplazar el volumen de arranque y comprobar que es la misma instancia con la misma forma e IP;
+2. [Docker](#docker) y [usuario de despliegue](#usuario-de-despliegue);
+3. [cortafuegos](#cortafuegos-en-dos-capas) (solo `iptables`: la lista de la VCN sigue) y
+   [clave del host](#clave-del-host), actualizando `STAGING_SSH_HOST_KEY`;
+4. [directorio fijo](#directorio-fijo) y [`.env.staging`](#envstaging) restaurado desde su copia, comparando la suma;
+   [credencial del registro](#credencial-del-registro);
+5. relanzar **solo el job de despliegue** de la última corrida desplegada (GitHub lo deja hasta 30 días después de la
+   corrida inicial) o, pasado ese plazo, las mismas dos órdenes del job desde la máquina del operador; el certificado
+   se emite de nuevo contra producción.
+
+Con pago por uso hay margen para crear la instancia nueva **antes** de terminar la vieja; es una variante que no se
+ensaya.
+
+- **Pasos que faltaban (defectos corregidos en este texto) y tiempo total del ensayo:** Pendiente (9.1-9.4).
 
 ## Prerrequisitos DNS / TLS
 

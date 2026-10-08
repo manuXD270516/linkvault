@@ -1578,6 +1578,115 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T api \
 `GET https://$PUBLIC_HOST/health` **no** es smoke válido: Traefik no expone `/health*` ni `/metrics` al entrypoint
 público (van a 404 del SPA o no enrutan a api).
 
+## Paso 6 sexdecies — Operar staging (staging-host / ADR-051)
+
+Staging es el host de Oracle con el nombre `<ip-con-guiones>.sslip.io` donde prueban los primeros usuarios invitados
+([ADR-051](adr/ADR-051.md)). Cómo está montado y cómo se reconstruye: [«Destino de staging real»](../infra/README.md#destino-de-staging-real)
+en `infra/README.md`. Las órdenes de Compose en el host se ejecutan desde `/srv/linkvault-staging` con
+`docker compose -f docker-compose.prod.yml --env-file .env.staging …`.
+
+### Recuperación manual de cuenta (excepcional)
+
+**Camino excepcional.** La operación del producto es la **recuperación de contraseña** (spec `auth/password-recovery`):
+la persona pide el enlace en `/recuperar-contrasena` (`POST /api/auth/forgot-password`), lo recibe por correo y elige
+la contraseña nueva en `/restablecer-contrasena` (`POST /api/auth/reset-password`). Este procedimiento **la sustituye**
+solo cuando ese correo no llega en staging, que envía por Brevo sin dominio propio y puede acabar en spam (ADR-051,
+Riesgos aceptados). No es un atajo: el operador escribe en la base de datos a mano, sin las comprobaciones del producto.
+
+Antes, en este orden:
+
+- Si lo que no llega es el correo de **verificación**, no hay nada que recuperar: verificar el correo no es necesario
+  para entrar ni para usar la aplicación, y la interfaz lo dice.
+- La persona pide el enlace otra vez y revisa la carpeta de spam.
+- En el host, `docker compose … logs api` y busca `SMTP send rejected: class=`. Con `class=credentials_rejected`, la
+  clave SMTP de `.env.staging` está mal; con `class=quota_exceeded`, se agotó el cupo diario de Brevo y el enlace
+  saldrá al día siguiente; con `class=unclassified`, el código SMTP de la misma línea dice qué contestó el servidor.
+  Arreglar el envío es mejor que saltárselo.
+
+Solo si el enlace sigue sin llegar y la persona necesita entrar ya (o no tiene acceso a su buzón):
+
+1. **Identidad por otro canal.** Solo para una persona invitada que el operador conoce, confirmando por un canal
+   distinto del correo de la cuenta (el mismo por el que se la invitó) que es ella quien lo pide. Nunca a petición de
+   alguien que el operador no puede identificar así.
+2. **Contraseña temporal y su hash**, en la máquina del operador, desde el repositorio con las dependencias
+   instaladas: una contraseña aleatoria y su hash Argon2id con los parámetros de la aplicación (`ARGON2_OPTIONS` de
+   `apps/api/src/modules/auth/infrastructure/argon2-password-hasher.ts`):
+
+   ```bash
+   node -e "const {hash}=require('@node-rs/argon2');const pw=require('crypto').randomBytes(12).toString('base64url');hash(pw,{algorithm:2,memoryCost:19456,timeCost:2,parallelism:1}).then(h=>console.log('temporal: '+pw+'\nhash: '+h))"
+   ```
+
+3. **Sustituir el hash y revocar sus sesiones**, en el host y desde `/srv/linkvault-staging`: el bloque `mongosh` del
+   paso 2 de [«Reseteo manual de contraseña (operador)»](#reseteo-manual-de-contraseña-operador), con
+   `--env-file .env.staging` en lugar de `--env-file .env.prod`. Es una **escritura**: no pasa por
+   `infra/staging/run.sh`, que solo ejecuta scripts de lectura (tarea 9.12 de `staging-host`).
+4. Dar la contraseña temporal por el mismo canal del paso 1 y pedir que la cambie en `/perfil` al entrar.
+5. Anotar la fecha y el motivo **fuera del repositorio** y sin datos de la persona. Si se repite, lo que falla es el
+   correo de staging, y se arregla ahí.
+
+Para `emailVerified` no hay procedimiento de operador: la cuenta sin verificar se usa igual y solo se queda sin los
+correos de notificación ([`infra/README.md`](../infra/README.md#correo-obligatorio-y-el-compose-no-trae-ningún-servidor)).
+
+### Plan de medición de los primeros usuarios
+
+Escrito **antes de invitar y antes del primer dato** (design D15 de `staging-host`; ADR-051, Consecuencias): con los
+datos delante, cualquier umbral se puede elegir para que salga bien. La fecha y el commit de este plan son los del
+commit que lo introdujo, y tienen que ser anteriores a la línea base de la tarea 10.6.
+
+**Qué se cuenta y qué no.** Solo lo de las personas invitadas. La **lista de excluidos** es el autor y las **cuentas
+E2E** (las cuentas de prueba persistentes de `e2e-suite`, con alias `+e2e`, sin email verificado ni permiso de IA;
+ADR-053 §1.4). Se excluyen **por `userId` en cada métrica** —users, groups, links, applications, cvs y analyses—, no
+solo del recuento de cuentas: sus grupos, links, postulaciones, CV y análisis tampoco cuentan. La lista vive **fuera del
+repositorio** y el operador se la pasa como fichero a `infra/staging/run.sh`, que la inyecta en el host al ejecutar
+`infra/staging/measure.mongosh.js` (tareas 9.12 y 10.3); el script devuelve solo recuentos.
+
+**Los cuatro umbrales**, medidos el día 14 desde la invitación:
+
+| Métrica | Umbral |
+|---|---|
+| Activación | primer link guardado en **menos de 48 h** desde el alta (por persona) |
+| Uso | **al menos 2 personas** con **3 o más links** en 14 días |
+| Uso de grupo | **al menos 1** estado de postulación visible para otro miembro del grupo |
+| Uso de IA | **al menos 1** análisis de encaje o roadmap generado |
+
+La activación se da por **alcanzada** con al menos dos personas activadas: con menos, el umbral de uso, que pide dos
+personas, ya no puede medir el valor, solo la entrada.
+
+**Cuándo se mide.** Línea base antes de invitar (tarea 10.6, todos los recuentos en 0), día 7 y día 14 desde la
+invitación. Los **días 7 y 14 no se lanza la suite remota de `e2e-suite` contra staging** (`e2e-remote`), para que
+ninguna corrida de prueba coincida con la foto de la medición. Medir esos dos días y escribir aquí qué dice la regla son
+condiciones de cierre de la fila 35, no tareas del change: la fila no se da por cerrada en `docs/design-v0.2.md` hasta
+que ocurran.
+
+**Regla de decisión**, con los datos del día 14:
+
+- **Si no se alcanza la activación, lo que falla es la entrada**: el alta, el primer link o el aviso. Qué se hace: con
+  la conversación del día 14 se localiza en qué paso se quedó cada persona y se corrige ese paso; no se invita a nadie
+  más ni se juzga el valor del producto con esta cohorte hasta corregirlo.
+- **Si hay activación y no hay uso, lo que falla es el valor**: la gente entra y guarda, pero no vuelve. Qué se hace: el
+  siguiente change sale de lo que diga la conversación del día 14 (dónde guardaron las ofertas en su lugar, qué les
+  faltó), no de la siguiente fila del plan por inercia; activar la búsqueda solo si lo dice la pregunta sobre lo
+  guardado que no encontraron (design D13).
+- Con activación y uso, la regla no señala ningún fallo; el uso de grupo y el de IA dicen qué partes del producto se
+  usaron y entran como dato en la fila 36.
+
+**Resultado de la regla:** pendiente (días 7 y 14).
+
+### Guion de la conversación del día 14
+
+Una conversación por persona invitada, el día 14 desde la invitación, con estas cinco preguntas y en este orden.
+Pregunta por lo que hizo, no por lo que haría; no se enseña la aplicación ni se corrige a la persona mientras habla.
+Las notas se toman anonimizadas y fuera del repositorio; aquí solo se escribe el resultado agregado.
+
+1. La última vez que te llegó una oferta que te interesaba, ¿qué hiciste con ella y dónde la guardaste?
+2. ¿Buscaste alguna vez algo que habías guardado en LinkVault y no lo encontraste? ¿Qué buscabas y qué hiciste entonces?
+3. ¿Viste lo que hacían los demás del grupo, como sus postulaciones o sus comentarios? ¿Te sirvió para algo concreto?
+4. Si usaste el análisis de encaje o el roadmap, ¿qué hiciste después con el resultado? Y si no los usaste, ¿qué te frenó?
+5. ¿Qué fue lo más difícil o lo más molesto, y qué echarías de menos si mañana LinkVault dejara de existir?
+
+La segunda es la señal para decidir si se activa la búsqueda, que staging no tiene (design D13): si alguien buscó algo
+que había guardado y no lo encontró.
+
 ## Paso 7 — Definition of Done (pégalo en cada PR)
 
 - [ ] Change archivado; spec delta mergeada en `openspec/specs/`
