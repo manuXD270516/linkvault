@@ -102,9 +102,15 @@ todos con el mismo patrón: `displayNameIdsOf(links)` → `directory.displayName
   Mongo hace **una sola consulta indexada** a las membresías y **reutiliza `groupsOfUserStages`** —o su
   `$lookup`+`$unwind` contra `groups`— tanto para las membresías del lector como para las de los candidatos (N5): una
   membresía huérfana (su grupo ya no existe) no cuenta como grupo en común, igual que no cuenta en la lista de grupos
-  ni en el límite de 20. Sobre los índices de membresía existentes; si el índice de `(groupId, userId)` no existe, la
-  tarea 1.2a lo añade. La implementación en memoria hace lo mismo y **cuenta las consultas**. Las pruebas que cuentan
-  comandos del driver van en `mongo-group.repository.spec.ts` (replset), no en la fachada.
+  ni en el límite de 20. Usa los índices de membresía existentes: el de `(groupId, userId)` ya existe
+  (`MEMBERSHIP_KEY`), así que no se añade ninguno. La implementación en memoria del repositorio hace lo mismo y
+  **cuenta las consultas**. Las pruebas que cuentan comandos del driver van en `mongo-group.repository.spec.ts`
+  (replset, con el contador copiado de `mongo-group-link.comments.spec.ts`), no en la fachada (tareas 1.2a-i y 1.2a-ii).
+- **Doble de pruebas de `links` (P1-A).** Los specs de `links` no usan el repositorio de `groups`: usan
+  `InMemoryGroupMembership.peersAmong`, en `links/application/testing/links-test-doubles.ts`, que devuelve los
+  co-miembros a partir de membresías sembradas y **cuenta sus llamadas**. Es el contador al que se refieren
+  «issues exactly one query…» y «issues no query…» de la 1.2b y «issues one peersAmong per distinct author» de la 1.7
+  (tarea 1.2a-iii).
 - **Tipo con marca (C3).** `VisibleAuthors` = `ReadonlySet<string> & { readonly [visibleAuthorsBrand]: true }`, con la
   marca como `unique symbol` no exportado del módulo del ayudante: solo el ayudante puede construirlo.
   `toJobLinkSummary` / `toResolvedPreviewSources` reciben `visibleAuthors: VisibleAuthors` como campo **obligatorio**
@@ -194,22 +200,26 @@ son `pending`, `enriched`, `partial`, `failed` y `manual`; no existe `ready` (N7
 | `pending`, sin datos, dentro de `READING_GRACE_MS` | vacío | `reading`: «Todavía estamos leyendo la oferta: si lo envías ahora, la tarjeta saldrá sin datos» (texto actual) |
 | `pending` fuera de `READING_GRACE_MS` (caducado) | vacío | `empty` |
 | `pending` con otros datos (la tarjeta dice «Faltan datos de esta oferta») | vacío | `empty` |
-| `failed` por `not_a_job` | vacío | `notAJob`: **«Esto no parece una oferta: si lo envías, la tarjeta saldrá sin datos.»** / EN «This doesn't look like a job posting: if you send it, the card will show no details.» |
+| `failed` por `not_a_job` | vacío | `notAJob`: **«Esto no parece una oferta: si lo envías, la tarjeta saldrá sin datos»** / EN «This does not look like a job offer: if you send it, the preview will be empty» |
 | `failed` por cualquier otro motivo | vacío | `empty` |
 | `partial` | vacío | `empty` |
 | `manual` | vacío | `empty` |
 
 Texto `empty` (G2): **«La tarjeta todavía no tiene el puesto: si lo envías ahora, saldrá sin datos. Complétala antes
-desde la tarjeta.»** / EN «This card doesn't have the job title yet: if you send it now, it will show no details. Fill
-it in from the card first.». Conserva el id `@@links.public.copyFailedEmpty`. El de `notAJob` es nuevo,
-`@@links.public.copyNotAJob`.
+desde la tarjeta»** / EN «This card doesn't have the job title yet: if you send it now, it will show an empty
+preview. Fill it in from the card first». Id nuevo, `@@links.public.copyFailedEmpty`. El de `notAJob` también es nuevo,
+`@@links.public.copyNotAJob`. Los dos avisos nuevos van **sin punto final**, en ES y en EN, como el `copyUnread` que
+ya existe.
 
 Completar a mano el puesto hace desaparecer el aviso en los dos sitios. Esto responde la antigua Q6. `now` es la hora
-de cada evaluación, como en `linkCardStatus` de la tarjeta (`new Date()` dentro del `computed`); en la tarjeta se
-evalúa al pulsar «Copiar enlace».
+de cada evaluación, como en `linkCardStatus` de la tarjeta (`new Date()` dentro del `computed`). **Cuándo se evalúa
+(P1-E):** el aviso se evalúa al cambiar el link (formulario) o al pulsar (tarjeta); el paso del tiempo sin cambios no
+lo reevalúa, igual que el estado de la tarjeta.
 
-**De dónde sale el estado (formulario).** `savedUnread` deja de ser una señal escrita una vez y pasa a ser un
-`computed` sobre el link recién guardado. Hay tres fuentes posibles de ese link:
+**De dónde sale el estado (formulario, P1-B).** `savedUnread` deja de ser una señal escrita una vez y pasa a ser un
+`computed` con `emptyCardNotice` sobre `latestSaved`, una señal **acumulada** (`linkedSignal` o `effect`) que guarda la
+instantánea más reciente del link recién guardado y **solo avanza** si llega una con `previewVersion` mayor (a igual
+versión, la de `LinksStore` sustituye a la guardada). La alimentan tres fuentes:
 
 1. `LinksStore`, si el link está en la lista cargada (el mismo dato que usa la tarjeta);
 2. el último `LinkEnrichedMessage` de `EventsChannel.linkEnriched` cuyo `link.id` es el id guardado (C12): el formulario
@@ -217,10 +227,17 @@ evalúa al pulsar «Copiar enlace».
    fijo;
 3. la respuesta de guardar.
 
-Se toma **la instantánea más reciente por `previewVersion`** entre las que existan (N8), no la primera por orden de
-fuente: si una recarga de la lista deja fuera el link (filtros), la fuente 1 desaparece pero el último `linkEnriched`
-sigue siendo más nuevo que la respuesta de guardar, y el aviso de lectura no vuelve. A igual `previewVersion` gana
-`LinksStore` (es lo que pinta la tarjeta).
+Se toma **la instantánea más reciente por `previewVersion`** que haya llegado (N8), no la primera por orden de fuente,
+y se **acumula**: que una fuente desaparezca no hace retroceder `latestSaved`. Si una recarga de la lista deja fuera
+el link (filtros), la fuente 1 desaparece pero `latestSaved` conserva la versión ya vista —venga del último
+`linkEnriched` o de la propia lista, por ejemplo un link completado a mano—, y el aviso ya superado no vuelve. Un
+`computed` que solo mirase las fuentes presentes sí lo devolvería. A igual `previewVersion` gana `LinksStore` (es lo
+que pinta la tarjeta).
+
+**Carrera con el guardado (P1-B).** El id no se conoce hasta que responde `store.save`, y el worker puede emitir
+`link_enriched` antes. Por eso el formulario se suscribe a `linkEnriched` **antes** de llamar a `store.save`, guarda
+los mensajes que lleguen durante el guardado y, cuando llega la respuesta, los filtra por el id guardado y los entrega
+a `latestSaved` (que se queda con el de mayor `previewVersion`); a partir de ahí filtra por id en vivo.
 
 La tarjeta ya tiene el link actual; solo cambia la condición (`emptyCardNotice` en lugar de `=== 'pending'`).
 
@@ -247,10 +264,12 @@ pintar un campo vacío como error. Con `invalid_url` el campo **conserva** lo es
    **compartida**; «Deshacer» sigue disponible en el interruptor del panel de la postulación. La regla de «no antes de
    10 s ni con el foco dentro» sigue rigiendo mientras la persona está en la página: salir es una acción explícita.
    El aviso se cierra en `NavigationStart` con path distinto y, además, en `NavigationEnd` si el path final ya no es el
-   del gesto (N9): cubre un aviso que se abrió entre los dos eventos.
+   del gesto (N9): cubre un aviso que se abrió entre los dos eventos. Una navegación cancelada también cierra el
+   aviso; se acepta porque el desenlace es el de dejarlo ir (P1-D).
 3. **No abrir tarde (C7, N9).** Antes de cada `show()` —la invitación tras el gesto y «Compartido» tras
    `setVisibility`, que espera a la API— se comprueba que el path actual sigue siendo el del gesto **y** que no hay una
-   navegación en curso hacia otro path (`router.getCurrentNavigation()` nulo, o con destino del mismo path); si la
+   navegación en curso hacia otro path (la señal `router.currentNavigation()` nula, o con destino del mismo path,
+   comparando el path de `finalUrl ?? extractedUrl`; P1-C); si la
    persona ya navegó o está navegando, no se abre. Cubre la respuesta de la API que llega entre `NavigationStart` y
    `NavigationEnd`, cuando la URL todavía es la del grupo.
 
@@ -393,19 +412,38 @@ siguen pendientes del owner.
 | Id | Origen | Decisión | Motivo |
 | --- | --- | --- | --- |
 | G1 (V0) | business | aceptado | El aviso depende solo de que no haya puesto: `reading` mientras la tarjeta dice «Leyendo la oferta…», `notAJob` con texto propio, `empty` en el resto (D6). |
-| G2 | business | aceptado | Texto `empty` nuevo en ES y EN con el mismo id `@@links.public.copyFailedEmpty` (D6, specs, 8.1). |
+| G2 | business | aceptado | Texto `empty` nuevo en ES y EN con id nuevo, `@@links.public.copyFailedEmpty` (D6, specs, 8.1). |
 | G3 | business | aceptado | La opción (a) de Q7 usa el texto de business; Q7 sigue pendiente del owner (Q7, ADR-055 §3, 8.2). |
 | G4 | business | aceptado | Se elimina la E2E opcional 2.3: no verificaba nada. |
 | N1 | critic | aceptado | Se mantiene `summaryFor` por destinatario con su `VisibleAuthors`, porque `sharedAt`/`sharedBy` son de cada uno; como mucho se cachea la procedencia por conjunto (D3, 1.7). |
 | N2 | critic | aceptado | No hay cola: un fallo del reparto se descarta y se registra, y la pantalla se pone al día al recargar o al volver a la pestaña (D3). |
 | N3 | critic | aceptado | Solo los autores de procedencia ocultos dejan de pedirse al directorio; `sharedBy` y comentarios siguen igual (D2, 1.3, 1.4). |
 | N4 | critic | aceptado (a) | B4 acotado a `previewSources`; la excepción heredada de `group-comments` (quien salió sigue nombrado en `sharedBy` y comentarios) va a ADR-055 §Consecuencias. |
-| N5 | critic | aceptado | `peersAmong` reutiliza `groupsOfUserStages` para lector y candidatos: las membresías huérfanas no cuentan (D2, 1.2a). |
-| N6 | critic | aceptado | Método nuevo en el puerto `GroupRepository` (Mongo y memoria); el conteo de comandos va en `mongo-group.repository.spec.ts` y la fachada delega (D2, 1.2a). |
+| N5 | critic | aceptado | `peersAmong` reutiliza `groupsOfUserStages` para lector y candidatos: las membresías huérfanas no cuentan (D2, 1.2a-ii). |
+| N6 | critic | aceptado | Método nuevo en el puerto `GroupRepository` (Mongo y memoria); el conteo de comandos va en `mongo-group.repository.spec.ts` y la fachada delega (D2, 1.2a-i a 1.2a-iii). |
 | N7 | critic | resuelto por G1 | `ready` no existe; los estados son `pending`, `enriched`, `partial`, `failed` y `manual` (D6). |
 | N8 | critic | aceptado | `savedUnread` toma la instantánea más reciente por `previewVersion` entre las tres fuentes (D6, 5.3). |
-| N9 | critic | aceptado | Antes de `show()` se mira también `router.getCurrentNavigation()`, y el aviso se cierra además en `NavigationEnd` (D8, 6.2). |
+| N9 | critic | aceptado | Antes de `show()` se mira también la señal `router.currentNavigation()` (path de `finalUrl ?? extractedUrl`; corregido en P1-C), y el aviso se cierra además en `NavigationEnd` (D8, 6.2). |
 | N10 | critic | aceptado | Requirement de notifications reducido a lo verificable (subíndice dinámico); la clase es el sustituto aceptado de la geometría y sale el test de orden (D10, 3.1). |
 | N11 | critic | aceptado | `grep` de `as VisibleAuthors` que solo admite `visible-authors.ts`; los specs construyen el tipo con `visibleAuthorsFor` (1.3). |
 | N12 | critic | aceptado | El patrón de la 0.1 agrupa la alternativa Q1/Q7 dentro del paréntesis y exige dos coincidencias; hoy da 0 (0.1). |
 | N13 | critic | aceptado | 1.8 añade a Dani, que comparte con Ana otro grupo y guarda la URL en privado: su `/mine` sí trae «Ana Quiroga». |
+
+## Debate — iteración 3
+
+Fecha: 2026-10-08. Participantes: `critic` (P1-*, P0 0), `business` (V0 0), reflect (sesión principal). Última
+iteración. Q1 y Q7 siguen pendientes del owner.
+
+| Id | Origen | Decisión | Motivo |
+| --- | --- | --- | --- |
+| P1-A | critic | aceptado | Se nombra el doble `InMemoryGroupMembership.peersAmong` (`links/application/testing/links-test-doubles.ts`), con contador de llamadas, y su caso en `links-test-doubles.spec.ts` (D2, 1.2a-iii). |
+| P1-B | critic | aceptado | `latestSaved` es una señal acumulada que solo avanza con un `previewVersion` mayor; suscripción a `linkEnriched` antes de `store.save`, con los mensajes del guardado filtrados por id al llegar la respuesta; caso del link completado a mano que los filtros dejan fuera (D6, 5.3). |
+| P1-C | critic | aceptado | `router.getCurrentNavigation()` pasa a la señal `router.currentNavigation()`, comparando el path de `finalUrl ?? extractedUrl` (D8.3, 6.2, N9). |
+| P1-D | critic | aceptado | Una navegación cancelada también cierra el aviso; se acepta porque el desenlace es el de dejarlo ir (D8.2). |
+| P1-E | critic | aceptado | El aviso se evalúa al cambiar el link o al pulsar; el paso del tiempo no lo reevalúa. El escenario de la lectura pendiente que ya no se espera parte de un link que llega ya caducado (D6, `web/links`). |
+| P1-F | critic | aceptado | 1.2a partida en 1.2a-i (puerto de `groups` y memoria), 1.2a-ii (Mongo, replset, contador; falsación sin `$unwind`) y 1.2a-iii (fachada, puerto y adaptador de `links`, doble); 1.2b depende de 1.2a-iii; fuera el índice, que ya existe (`MEMBERSHIP_KEY`). |
+| Textos EN | business | aceptado | `copyNotAJob` = «This does not look like a job offer: if you send it, the preview will be empty»; `copyFailedEmpty` = «This card doesn't have the job title yet: if you send it now, it will show an empty preview. Fill it in from the card first» (D6, 8.1). |
+| Puntuación | business | aceptado | `copyNotAJob` y `copyFailedEmpty` sin punto final en ES y EN, como `copyUnread` (D6, specs, proposal, 8.1). |
+| Ids | business | aceptado | `copyFailedEmpty` es un id nuevo, no uno que se conserva (D6, G2). |
+
+Convergencia: SI (critic P0 0, business V0 0; Q1 y Q7 pendientes del owner)

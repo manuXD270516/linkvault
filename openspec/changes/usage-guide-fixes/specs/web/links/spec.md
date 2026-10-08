@@ -16,15 +16,16 @@ del nombre del estado de lectura:
 - mientras la tarjeta aún dice "Leyendo la oferta…", con "Todavía estamos leyendo la oferta: si lo envías ahora, la
   tarjeta saldrá sin datos";
 - si la lectura terminó en "Esto no parece una oferta", con "Esto no parece una oferta: si lo envías, la tarjeta saldrá
-  sin datos.";
+  sin datos";
 - en cualquier otro caso sin puesto —lectura fallida, lectura parcial sin puesto, edición a mano sin puesto, o una
   lectura pendiente que ya no se espera—, con "La tarjeta todavía no tiene el puesto: si lo envías ahora, saldrá sin
-  datos. Complétala antes desde la tarjeta.".
+  datos. Complétala antes desde la tarjeta".
 
 Si la tarjeta tiene puesto —leído, pegado o escrito a mano— NO SHALL mostrarse ninguno de esos avisos. Ese estado SHALL evaluarse con
 el link **actual** —el mismo que muestra su tarjeta y que actualizan los avisos en tiempo real, también cuando el link
 no está en la lista cargada por los filtros—, no con el que traía la respuesta de guardar: el aviso SHALL cambiar o
-desaparecer sin recargar, y una recarga de la lista que deje fuera el link NO SHALL devolver un aviso ya superado. Cuando el link no nazca publicado, NO SHALL mostrarse ni esa línea ni "Copiar enlace".
+desaparecer sin recargar, y una recarga de la lista que deje fuera el link NO SHALL devolver un aviso ya superado. El aviso SHALL reevaluarse cuando cambia el link; el paso del tiempo sin cambios no lo
+reevalúa, igual que el estado de la tarjeta. Cuando el link no nazca publicado, NO SHALL mostrarse ni esa línea ni "Copiar enlace".
 
 Tras un guardado correcto el formulario SHALL volver a su estado inicial: el campo de la URL vacío y **sin marca de
 error**, como al abrir la página, conservando los avisos de esa respuesta ("Ya estaba aquí, lo compartió <nombre>",
@@ -90,7 +91,7 @@ escrito por la persona.
   leyendo la oferta: si lo envías ahora, la tarjeta saldrá sin datos"
 - **WHEN** llega el aviso de que la lectura terminó con "No pudimos leer esta oferta" y sin puesto
 - **THEN** el formulario SHALL mostrar "La tarjeta todavía no tiene el puesto: si lo envías ahora, saldrá sin datos.
-  Complétala antes desde la tarjeta." en lugar del aviso de lectura, sin recargar
+  Complétala antes desde la tarjeta" en lugar del aviso de lectura, sin recargar
 - **AND** "Copiar enlace" SHALL seguir copiando el enlace
 
 #### Scenario: Lectura parcial sin puesto
@@ -98,23 +99,24 @@ escrito por la persona.
 - **GIVEN** un link recién guardado y publicado cuya lectura terminó como parcial, con la empresa pero sin puesto
 - **WHEN** el miembro mira el formulario de guardar
 - **THEN** SHALL ver "La tarjeta todavía no tiene el puesto: si lo envías ahora, saldrá sin datos. Complétala antes
-  desde la tarjeta."
+  desde la tarjeta"
 
 #### Scenario: Una lectura pendiente que ya no se espera
 
-- **GIVEN** un link publicado sin puesto, pendiente de lectura desde hace más tiempo del que la tarjeta sigue diciendo
-  "Leyendo la oferta…"
+- **GIVEN** un link publicado sin puesto que **llega ya caducado** al formulario: pendiente de lectura desde hace más
+  tiempo del que la tarjeta sigue diciendo "Leyendo la oferta…" en el momento en que el formulario lo recibe (el paso
+  del tiempo sin cambios en el link no reevalúa el aviso)
 - **WHEN** el miembro mira el formulario de guardar
 - **THEN** SHALL ver "La tarjeta todavía no tiene el puesto: si lo envías ahora, saldrá sin datos. Complétala antes
-  desde la tarjeta."
+  desde la tarjeta"
 - **AND** NO SHALL ver "Todavía estamos leyendo la oferta: si lo envías ahora, la tarjeta saldrá sin datos"
 
 #### Scenario: No parece una oferta
 
 - **GIVEN** un link recién guardado y publicado cuya lectura terminó en "Esto no parece una oferta", sin puesto
 - **WHEN** el miembro mira el formulario de guardar
-- **THEN** SHALL ver "Esto no parece una oferta: si lo envías, la tarjeta saldrá sin datos."
-- **AND** NO SHALL ver "Complétala antes desde la tarjeta."
+- **THEN** SHALL ver "Esto no parece una oferta: si lo envías, la tarjeta saldrá sin datos"
+- **AND** NO SHALL ver "Complétala antes desde la tarjeta"
 
 #### Scenario: Una recarga de la lista no devuelve el aviso de lectura
 
@@ -136,7 +138,7 @@ escrito por la persona.
 - **GIVEN** un link publicado cuya lectura terminó en "No pudimos leer esta oferta" y que el miembro completó a mano
 - **WHEN** mira el formulario de guardar
 - **THEN** NO SHALL ver ni "Todavía estamos leyendo la oferta: si lo envías ahora, la tarjeta saldrá sin datos" ni "La
-  tarjeta todavía no tiene el puesto: si lo envías ahora, saldrá sin datos. Complétala antes desde la tarjeta."
+  tarjeta todavía no tiene el puesto: si lo envías ahora, saldrá sin datos. Complétala antes desde la tarjeta"
 
 #### Scenario: El campo no queda en rojo tras guardar
 

@@ -50,9 +50,9 @@ recomendación es que sí y **antes de invitar en 35b**, porque H1 afecta precis
 - **H4:** el aviso de copiar el enlace de una oferta publicada depende solo de que la tarjeta **no tenga puesto**, no
   del nombre del estado, evaluado con la versión más reciente conocida del link —también con filtros activos—, en el
   formulario y en «Copiar enlace» de la tarjeta: mientras la tarjeta dice «Leyendo la oferta…», el aviso de lectura
-  actual; si no parece una oferta, «Esto no parece una oferta: si lo envías, la tarjeta saldrá sin datos.»; en
+  actual; si no parece una oferta, «Esto no parece una oferta: si lo envías, la tarjeta saldrá sin datos»; en
   cualquier otro caso sin puesto, «La tarjeta todavía no tiene el puesto: si lo envías ahora, saldrá sin datos.
-  Complétala antes desde la tarjeta.» (D6).
+  Complétala antes desde la tarjeta» (D6).
 - **H5:** tras un guardado correcto el formulario vuelve a su estado inicial sin marca de error (D7).
 - **H6:** el aviso de compartir se cierra al cambiar de path fuera de la página del grupo donde se abrió (los cambios de
   query no), con el mismo desenlace que si se hubiera dejado ir, y no se abre si la persona ya salió; se intenta
@@ -89,8 +89,8 @@ Ninguna.
 - **Contrato de la API:** `previewSources.<campo>.by` y `previewSources.<campo>.replaced.by` pasan a admitir `null`.
   Los clientes son el SPA y la extensión; la extensión no lee `previewSources` (`apps/extension/src/lib/save-link.ts`
   solo usa `sharedBy.displayName`, que no cambia), así que no se ve afectada.
-- **Datos:** ninguna migración. Nada se borra ni se reescribe en Mongo; como mucho, un índice de membresía si falta
-  (design D2).
+- **Datos:** ninguna migración. Nada se borra ni se reescribe en Mongo, y no hace falta ningún índice nuevo: el de
+  membresía `(groupId, userId)` ya existe (`MEMBERSHIP_KEY`, design D2).
 - **Dependencias:** ninguna nueva.
 - **Documentación:** `docs/adr/ADR-055.md`, anotaciones de una línea en `docs/adr/ADR-048.md` y `docs/adr/ADR-010.md`,
   entrada en `openspec-changes.yaml` y fila en `docs/design-v0.2.md` §6.
