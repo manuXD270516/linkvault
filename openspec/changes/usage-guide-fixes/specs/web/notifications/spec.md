@@ -9,10 +9,10 @@ opcional, el grupo concreto al que acotar avisos de estado (`applicationStatusGr
 persistiendo vía la API de preferencias. Los textos SHALL estar en i18n ES/EN. El pie del email de
 digest SHALL enlazar a esta UI.
 
-Cada texto de la sección —en particular la ayuda del selector de grupo, "Opcional. Si eliges un grupo, solo avisamos
-cambios acotados a ese grupo…", y la confirmación "Preferencias guardadas"— SHALL leerse entero y **sin superponerse**
-a ningún otro, en escritorio (1280 px de ancho) y en móvil (412 px): un texto de ayuda de varias líneas SHALL empujar
-lo que viene detrás, no quedar encima ni debajo.
+El subíndice del selector "Grupo para avisos de estado" —donde vive su ayuda, "Opcional. Si eliges un grupo, solo
+avisamos cambios acotados a ese grupo…"— SHALL crecer con su contenido (`subscriptSizing="dynamic"` de Angular
+Material), de modo que una ayuda de varias líneas empuje lo que viene detrás, como la confirmación "Preferencias
+guardadas", en lugar de reservar un alto fijo que ese texto desborda.
 
 El selector "Grupo para avisos de estado" SHALL mostrar siempre la opción elegida: cuando la preferencia no acota a
 ningún grupo (`applicationStatusGroupId` `null`), SHALL verse "Todos mis grupos (unión del link)" en el campo, no un
@@ -44,12 +44,17 @@ campo vacío, y elegir esa opción SHALL guardar `applicationStatusGroupId` `nul
 - **WHEN** elige un grupo concreto como alcance de avisos de estado y guarda
 - **THEN** la preferencia `applicationStatusGroupId` SHALL persistirse
 
-#### Scenario: La confirmación no queda debajo de la ayuda
+#### Scenario: El subíndice del selector crece con su ayuda
 
-- **GIVEN** Ana en la pantalla de preferencias de notificaciones, en escritorio o en móvil
+- **GIVEN** Ana en la pantalla de preferencias de notificaciones
+- **WHEN** se pinta el selector "Grupo para avisos de estado" con su ayuda
+- **THEN** su subíndice SHALL tener alto dinámico (`subscriptSizing="dynamic"`), no el alto fijo por defecto
+
+#### Scenario: La confirmación se sigue viendo
+
+- **GIVEN** Ana en la pantalla de preferencias de notificaciones
 - **WHEN** cambia una preferencia y pulsa "Guardar preferencias"
 - **THEN** SHALL ver "Preferencias guardadas"
-- **AND** la caja de ese texto NO SHALL solaparse con la de la ayuda del selector "Grupo para avisos de estado"
 
 #### Scenario: Todos mis grupos se ve elegido
 

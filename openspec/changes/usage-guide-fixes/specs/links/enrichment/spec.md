@@ -75,6 +75,20 @@ página pudo cambiar.
 - **WHEN** Beto pide el listado de "Backend Bolivia"
 - **THEN** `previewSources.title.by` SHALL ser `{ userId, displayName }` de Ana
 
+#### Scenario: Basta con cualquier grupo en común
+
+- **GIVEN** un link de "Backend Bolivia" cuyo `title` escribió Ana a mano, y Dani, que no es de "Backend Bolivia" pero
+  comparte con Ana el grupo "Frontend Sucre" y guarda la misma URL en su lista privada
+- **WHEN** Dani pide `GET /api/links/mine`
+- **THEN** `previewSources.title.by` SHALL ser `{ userId, displayName }` de Ana
+
+#### Scenario: Una membresía de un grupo borrado no cuenta
+
+- **GIVEN** Ana y Carla con membresías que apuntan a un grupo que ya no existe, sin ningún otro grupo en común, y un
+  link cuyo `title` escribió Ana a mano en la lista privada de Carla
+- **WHEN** Carla pide `GET /api/links/mine`
+- **THEN** `previewSources.title.by` SHALL ser `null`
+
 #### Scenario: Quien no comparte grupo con el autor no ve su nombre
 
 - **GIVEN** un link cuyo `title` escribió Ana a mano y Carla, que no comparte ningún grupo con Ana, con ese link en su
@@ -105,13 +119,22 @@ página pudo cambiar.
 - **THEN** Beto SHALL recibir `previewSources.title.by` con el nombre de Ana
 - **AND** Carla SHALL recibir `previewSources.title.by` `null`
 
+#### Scenario: Filtrar la procedencia no mezcla lo de cada destinatario
+
+- **GIVEN** un link compartido por Ana en "Backend Bolivia" y por Beto en "Frontend Sucre", y Eva y Fran, miembros de
+  uno y otro grupo, que ven los mismos autores de procedencia
+- **WHEN** se reparte el aviso de que terminó la lectura
+- **THEN** Eva SHALL recibir el `sharedAt` y el `sharedBy` de "Backend Bolivia"
+- **AND** Fran SHALL recibir el `sharedAt` y el `sharedBy` de "Frontend Sucre"
+
 #### Scenario: Un miembro no ve el nombre de quien corrigió desde fuera del grupo
 
 - **GIVEN** un link de "Backend Bolivia" (donde está Beto) que Carla, que no comparte ningún grupo con Beto, tiene en su
   lista privada y cuyo `title` corrigió a mano
 - **WHEN** Beto pide el listado de "Backend Bolivia"
 - **THEN** `previewSources.title` SHALL tener origen `manual` y `by` `null`
-- **AND** la respuesta NO SHALL contener ni el `userId` ni el `displayName` de Carla
+- **AND** `previewSources` NO SHALL contener ni el `userId` ni el `displayName` de Carla en ningún campo ni en
+  `replaced`
 
 #### Scenario: Calcular quién es visible no falla abierto
 

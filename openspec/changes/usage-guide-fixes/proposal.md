@@ -43,13 +43,16 @@ recomendación es que sí y **antes de invitar en 35b**, porque H1 afecta precis
   conjunto de autores visibles como parámetro obligatorio de un tipo que solo construye un ayudante, para que ningún
   caso de uso pueda olvidarlo, y una consulta indexada por petición (design D1-D4, ADR-055 §2). Quien comparte algún
   grupo con el autor sí ve su nombre: si eso obliga a matizar el texto de la promesa es la **Q7** (bloqueante).
-- **H2:** la ayuda del selector de grupo crece con su texto y no se superpone a nada (design D5).
+- **H2:** el subíndice del selector de grupo crece con su ayuda (`subscriptSizing="dynamic"`) y empuja lo que viene
+  detrás (design D5).
 - **H2, selector (Q2 = a):** «Grupo para avisos de estado» muestra «Todos mis grupos (unión del link)» cuando la
   preferencia es `null`, en vez de un campo vacío (D5).
-- **H4:** el aviso de copiar el enlace de una oferta publicada depende de que la tarjeta **no tenga datos** (lectura
-  pendiente, o fallida sin puesto), evaluado con el estado **actual** del link —también con filtros activos—, en el
-  formulario y en «Copiar enlace» de la tarjeta; si la lectura falló, «No pudimos leer la oferta: si lo envías ahora, la
-  tarjeta saldrá sin datos. Complétala antes.» (D6).
+- **H4:** el aviso de copiar el enlace de una oferta publicada depende solo de que la tarjeta **no tenga puesto**, no
+  del nombre del estado, evaluado con la versión más reciente conocida del link —también con filtros activos—, en el
+  formulario y en «Copiar enlace» de la tarjeta: mientras la tarjeta dice «Leyendo la oferta…», el aviso de lectura
+  actual; si no parece una oferta, «Esto no parece una oferta: si lo envías, la tarjeta saldrá sin datos.»; en
+  cualquier otro caso sin puesto, «La tarjeta todavía no tiene el puesto: si lo envías ahora, saldrá sin datos.
+  Complétala antes desde la tarjeta.» (D6).
 - **H5:** tras un guardado correcto el formulario vuelve a su estado inicial sin marca de error (D7).
 - **H6:** el aviso de compartir se cierra al cambiar de path fuera de la página del grupo donde se abrió (los cambios de
   query no), con el mismo desenlace que si se hubiera dejado ir, y no se abre si la persona ya salió; se intenta

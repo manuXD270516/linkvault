@@ -97,10 +97,14 @@ todos con el mismo patrón: `displayNameIdsOf(links)` → `directory.displayName
 - **Puerto nuevo (C2).** `GroupMembership` (`links/application/ports/group-membership.port.ts`) gana
   `peersAmong(userId: string, candidateIds: readonly string[]): Promise<Set<string>>`: de los candidatos, los que
   comparten al menos un grupo con `userId`. El adaptador `groups-facade-membership.ts` lo resuelve con un método nuevo
-  de `GroupsFacade` que hace **una sola consulta indexada** a las membresías (agregación con `$match` por `userId` y
-  `$lookup` por `groupId` restringido a los candidatos, sobre los índices de membresía existentes; si el índice de
-  `(groupId, userId)` no existe, la tarea 1.2a lo añade). El repositorio en memoria implementa lo mismo y **cuenta las
-  consultas**.
+  de `GroupsFacade` que **solo delega** en un método nuevo del puerto `GroupRepository`
+  (`groups/application/ports/group-repository.port.ts`), con sus dos implementaciones, Mongo y en memoria (N6). La de
+  Mongo hace **una sola consulta indexada** a las membresías y **reutiliza `groupsOfUserStages`** —o su
+  `$lookup`+`$unwind` contra `groups`— tanto para las membresías del lector como para las de los candidatos (N5): una
+  membresía huérfana (su grupo ya no existe) no cuenta como grupo en común, igual que no cuenta en la lista de grupos
+  ni en el límite de 20. Sobre los índices de membresía existentes; si el índice de `(groupId, userId)` no existe, la
+  tarea 1.2a lo añade. La implementación en memoria hace lo mismo y **cuenta las consultas**. Las pruebas que cuentan
+  comandos del driver van en `mongo-group.repository.spec.ts` (replset), no en la fachada.
 - **Tipo con marca (C3).** `VisibleAuthors` = `ReadonlySet<string> & { readonly [visibleAuthorsBrand]: true }`, con la
   marca como `unique symbol` no exportado del módulo del ayudante: solo el ayudante puede construirlo.
   `toJobLinkSummary` / `toResolvedPreviewSources` reciben `visibleAuthors: VisibleAuthors` como campo **obligatorio**
@@ -112,28 +116,37 @@ todos con el mismo patrón: `displayNameIdsOf(links)` → `directory.displayName
   lector), devuelve `{viewerId}` **sin ninguna consulta**; si no, `peersAmong(viewerId, resto)` ∪ `{viewerId}`.
   **Las excepciones se propagan**: no hay `catch` con respaldo («todos visibles» o «ninguno») y la petición falla como
   falla cualquier lectura de Mongo.
-- **Nombres solo de lo visible (C3).** `displayNamesOf` se llama solo con los ids del conjunto visible: los nombres de
-  autores ocultos ni se cargan.
+- **Nombres solo de lo visible (C3, N3).** Los autores de procedencia **ocultos** no se piden al directorio: de los
+  ids de autores, `displayNamesOf` recibe solo los del conjunto visible. `sharedBy` y los autores de comentarios
+  siguen igual que hoy (se piden y se resuelven como ahora).
 - **Coste (corrige lo afirmado en la versión anterior):** **una** consulta por petición cuando hay autores ajenos al
   lector; **cero** cuando no los hay. Ninguna por campo ni por link.
 - Los nombres de `sharedBy` y de los comentarios **no cambian**: solo salen en el listado de un grupo, donde quien lee
-  es miembro por definición (`links/sharing`, `links/group-comments`).
+  es miembro por definición (`links/sharing`, `links/group-comments`). **Excepción heredada (N4):** por la decisión
+  humana 4 de `group-comments`, quien salió del grupo sigue nombrado en `sharedBy` y en sus comentarios; este change no
+  la toca y lo anota en ADR-055 §Consecuencias. La regla de D1 es solo sobre `previewSources`.
 
 ### D3. H1: en los avisos en tiempo real, por destinatario
 
-`DeliverLinkEnriched` compone hoy **un** resumen y lo manda a todos los que ven el link (miembros de sus grupos y
-quienes lo guardaron en privado). Con D1, el resumen depende de quién lo recibe. Por cada autor distinto del link
-(pocos: quien escribió o pegó algún campo) se llama **una vez** a `peersAmong(autor, destinatarios)`, que devuelve los
-destinatarios que comparten grupo con ese autor; el `VisibleAuthors` de cada destinatario son los autores cuyo
-resultado lo contiene, más él mismo si es autor. El ayudante ofrece para esto `visibleAuthorsByRecipient(membership,
-authorIds, recipientIds): Promise<Map<string, VisibleAuthors>>`, el único otro constructor del tipo. Se agrupan los
-destinatarios con el mismo conjunto y se compone un resumen por grupo distinto. `displayNamesOf` recibe solo la unión
-de autores visibles para algún destinatario.
+`DeliverLinkEnriched` compone hoy el resumen **por destinatario** con `summaryFor(link, seenThrough, names)`: cada uno
+lleva su `sharedAt` y su `sharedBy` (la fecha de su lista privada o la del grupo por el que lo ve, y quién lo compartió
+en ese grupo). Eso **se mantiene** (N1): no se agrupan destinatarios en un resumen común, porque dos destinatarios con
+el mismo conjunto visible pueden tener `sharedAt`/`sharedBy` distintos.
+
+Lo que cambia es que `summaryFor` recibe además el `VisibleAuthors` de ese destinatario. Para calcularlo, por cada
+autor distinto del link (pocos: quien escribió o pegó algún campo) se llama **una vez** a `peersAmong(autor,
+destinatarios)`, que devuelve los destinatarios que comparten grupo con ese autor; el `VisibleAuthors` de cada
+destinatario son los autores cuyo resultado lo contiene, más él mismo si es autor. El ayudante ofrece para esto
+`visibleAuthorsByRecipient(membership, authorIds, recipientIds): Promise<Map<string, VisibleAuthors>>`, el único otro
+constructor del tipo. Como mucho, se cachea `toResolvedPreviewSources` por conjunto visible distinto (la procedencia
+resuelta solo depende del conjunto); el resumen sigue siendo uno por destinatario. `displayNamesOf` recibe, de los
+autores de procedencia, solo la unión de los visibles para algún destinatario; los `sharedBy`, como hoy.
 
 Coste añadido por aviso: **una consulta por autor distinto**, ninguna si el link no tiene autores humanos. Se acepta:
-el reparto ya hace una consulta por grupo y no ocurre cuando nadie escucha. Un fallo de `peersAmong` se propaga y el
-aviso no se reparte (lo reintenta la cola como cualquier otro fallo del reparto); nunca se reparte un resumen sin
-filtrar.
+el reparto ya hace una consulta por grupo y no ocurre cuando nadie escucha. **Un fallo de `peersAmong` se propaga y el
+aviso no se reparte (N2).** No hay cola ni reintento: `LinkEnrichedSubscription` recibe el aviso por pub/sub, el fallo
+se descarta y se registra, y las pantallas abiertas se ponen al día al recargar o al volver a la pestaña (como cuando
+el aviso se pierde por cualquier otro motivo). Nunca se reparte un resumen sin filtrar.
 
 ### D4. H1: contrato — autor anulable en la lectura, nunca en lo guardado
 
@@ -157,29 +170,57 @@ filtrar.
   (`ALL_GROUPS = '__all__'`, constante del componente) para esa opción y lo traduce a `null` al guardar y desde `null`
   al cargar. La API no cambia.
 
-### D6. H4: el aviso de «sin datos» depende de que la tarjeta no tenga datos (B1)
+### D6. H4: el aviso de «sin datos» depende solo de que la tarjeta no tenga puesto (B1, G1)
 
-**Cuándo hay aviso.** Una función pura, `emptyCardNotice(link): 'reading' | 'failed' | null` en
+**Cuándo hay aviso.** Una función pura, `emptyCardNotice(link, now): 'reading' | 'empty' | 'notAJob' | null` en
 `features/links/empty-card-notice.ts`, decide el aviso de copiar el enlace de una oferta publicada, igual en el
-formulario de guardar y en «Copiar enlace» de la tarjeta (`link-list.component.ts:633`):
+formulario de guardar y en «Copiar enlace» de la tarjeta (`link-list.component.ts:633`). El aviso depende **solo de
+que no haya puesto** (`preview.title` vacío), no del nombre del estado (G1). Los estados reales de `previewStatusSchema`
+son `pending`, `enriched`, `partial`, `failed` y `manual`; no existe `ready` (N7).
+
+- **Con puesto** (leído, pegado o escrito a mano), en cualquier estado → ninguno.
+- **Sin puesto y la tarjeta aún dice «Leyendo la oferta…»** → `reading`. Es la misma condición con la que
+  `linkCardStatus` (`link-status.ts`) pinta «Leyendo la oferta…»: sin error de lectura, sin ningún dato y pedida hace
+  menos de `READING_GRACE_MS`. Se extrae a un predicado compartido (`isStillReading(link, now)`) para que tarjeta y
+  aviso no puedan divergir.
+- **Sin puesto y `lastEnrichmentError.reason === 'not_a_job'`** → `notAJob`, con texto propio y sin «Complétala»: no
+  hay nada que completar en algo que no es una oferta.
+- **Sin puesto en cualquier otro caso** —`failed` por otro motivo, `partial` sin puesto, `manual` sin puesto, `pending`
+  caducado o `pending` con otros datos pero sin puesto— → `empty`.
 
 | Estado del link | Puesto (`title`) | Aviso |
 | --- | --- | --- |
-| `pending` | vacío | `reading`: «Todavía estamos leyendo la oferta: si lo envías ahora, la tarjeta saldrá sin datos» (texto actual) |
-| `failed` | vacío | `failed`: **«No pudimos leer la oferta: si lo envías ahora, la tarjeta saldrá sin datos. Complétala antes.»** / EN «We couldn't read this job: if you send it now, the card will show no details. Fill it in first.» |
-| cualquiera | con valor (leído, pegado o escrito a mano) | ninguno |
-| `ready` | vacío | ninguno (la lectura terminó; no es un caso de la guía) |
+| cualquiera | con valor | ninguno |
+| `pending`, sin datos, dentro de `READING_GRACE_MS` | vacío | `reading`: «Todavía estamos leyendo la oferta: si lo envías ahora, la tarjeta saldrá sin datos» (texto actual) |
+| `pending` fuera de `READING_GRACE_MS` (caducado) | vacío | `empty` |
+| `pending` con otros datos (la tarjeta dice «Faltan datos de esta oferta») | vacío | `empty` |
+| `failed` por `not_a_job` | vacío | `notAJob`: **«Esto no parece una oferta: si lo envías, la tarjeta saldrá sin datos.»** / EN «This doesn't look like a job posting: if you send it, the card will show no details.» |
+| `failed` por cualquier otro motivo | vacío | `empty` |
+| `partial` | vacío | `empty` |
+| `manual` | vacío | `empty` |
 
-Completar a mano el puesto hace desaparecer el aviso en los dos sitios. Esto responde la antigua Q6.
+Texto `empty` (G2): **«La tarjeta todavía no tiene el puesto: si lo envías ahora, saldrá sin datos. Complétala antes
+desde la tarjeta.»** / EN «This card doesn't have the job title yet: if you send it now, it will show no details. Fill
+it in from the card first.». Conserva el id `@@links.public.copyFailedEmpty`. El de `notAJob` es nuevo,
+`@@links.public.copyNotAJob`.
+
+Completar a mano el puesto hace desaparecer el aviso en los dos sitios. Esto responde la antigua Q6. `now` es la hora
+de cada evaluación, como en `linkCardStatus` de la tarjeta (`new Date()` dentro del `computed`); en la tarjeta se
+evalúa al pulsar «Copiar enlace».
 
 **De dónde sale el estado (formulario).** `savedUnread` deja de ser una señal escrita una vez y pasa a ser un
-`computed` sobre el link recién guardado, tomado, por este orden, de:
+`computed` sobre el link recién guardado. Hay tres fuentes posibles de ese link:
 
 1. `LinksStore`, si el link está en la lista cargada (el mismo dato que usa la tarjeta);
 2. el último `LinkEnrichedMessage` de `EventsChannel.linkEnriched` cuyo `link.id` es el id guardado (C12): el formulario
    se suscribe filtrando por ese id, así que con filtros activos —el link fuera de la lista— el aviso tampoco queda
    fijo;
 3. la respuesta de guardar.
+
+Se toma **la instantánea más reciente por `previewVersion`** entre las que existan (N8), no la primera por orden de
+fuente: si una recarga de la lista deja fuera el link (filtros), la fuente 1 desaparece pero el último `linkEnriched`
+sigue siendo más nuevo que la respuesta de guardar, y el aviso de lectura no vuelve. A igual `previewVersion` gana
+`LinksStore` (es lo que pinta la tarjeta).
 
 La tarjeta ya tiene el link actual; solo cambia la condición (`emptyCardNotice` en lugar de `=== 'pending'`).
 
@@ -205,8 +246,13 @@ pintar un campo vacío como error. Con `invalid_url` el campo **conserva** lo es
    ir: la invitación sin pulsar deja la postulación **privada**, y «Compartido» sin pulsar «Deshacer» la deja
    **compartida**; «Deshacer» sigue disponible en el interruptor del panel de la postulación. La regla de «no antes de
    10 s ni con el foco dentro» sigue rigiendo mientras la persona está en la página: salir es una acción explícita.
-3. **No abrir tarde (C7).** Antes de cada `show()` —la invitación tras el gesto y «Compartido» tras `setVisibility`,
-   que espera a la API— se comprueba que el path actual sigue siendo el del gesto; si la persona ya navegó, no se abre.
+   El aviso se cierra en `NavigationStart` con path distinto y, además, en `NavigationEnd` si el path final ya no es el
+   del gesto (N9): cubre un aviso que se abrió entre los dos eventos.
+3. **No abrir tarde (C7, N9).** Antes de cada `show()` —la invitación tras el gesto y «Compartido» tras
+   `setVisibility`, que espera a la API— se comprueba que el path actual sigue siendo el del gesto **y** que no hay una
+   navegación en curso hacia otro path (`router.getCurrentNavigation()` nulo, o con destino del mismo path); si la
+   persona ya navegó o está navegando, no se abre. Cubre la respuesta de la API que llega entre `NavigationStart` y
+   `NavigationEnd`, cuando la URL todavía es la del grupo.
 
 Se descarta darle duración fija al aviso (rompe la regla de accesibilidad de 10 s con foco, business 4 de
 `applications-tracking`) y anclarlo dentro de la tarjeta (cambia el patrón de aviso del SPA para un solo caso).
@@ -216,8 +262,9 @@ Se descarta darle duración fija al aviso (rompe la regla de accesibilidad de 10
 Cada texto nuevo lleva id `@@…` explícito, ES por defecto en la plantilla o en `$localize`, y su traducción en
 `apps/web/src/locale/messages.en.xlf`. `messages.xlf` se regenera con `pnpm nx run web:extract-i18n` en el mismo
 commit, nunca a mano, y `pnpm nx run web:i18n-check` tiene que pasar (ADR-050). Ids nuevos: `links.origin.pastedHidden`,
-`links.origin.manualHidden`, `links.paste.undoHidden`, `links.public.copyFailedEmpty`. Si Q7 = (a), cambian además el
-texto ES y la traducción EN (con su `source`) de los ids existentes de las promesas, sin cambiar el id.
+`links.origin.manualHidden`, `links.paste.undoHidden`, `links.public.copyFailedEmpty` (texto `empty` de G2) y
+`links.public.copyNotAJob`. Si Q7 = (a), cambian además el texto ES y la traducción EN (con su `source`) de los ids
+existentes de las promesas, sin cambiar el id.
 
 ### D10. Cómo se verifica sin depender de E2E no admitidos (C1)
 
@@ -228,6 +275,11 @@ Solo `critical-path.spec.ts` lleva `@lot1`; un spec sin esa etiqueta no cuenta c
   recorre las rutas y un suscriptor de avisos en tiempo real.
 - **H2, H4, H5 y H6** se verifican con specs de componente en `TestBed` con **Angular Material real** (no stubs):
   `subscriptSizing`, el `ErrorStateMatcher` por defecto, el `MatSnackBar` y el router son los de producción.
+- **H2, sustituto aceptado de la geometría (N10).** `TestBed` sobre jsdom no maqueta: no hay cajas que medir ni orden
+  visual fiable. Lo verificable es que el subíndice del selector crece con su contenido, y eso lo dice la clase
+  `mat-mdc-form-field-subscript-dynamic-size` que Material pone con `subscriptSizing="dynamic"`. Esa clase es el
+  **sustituto aceptado** de comprobar la geometría (que nada se solape a 1280 px ni a 412 px); no se añade un test de
+  orden en el DOM, que no probaría nada sobre el solape.
 - Las E2E que se quieran añadir viven en el camino antiguo, **sin `@lot1`**, y se anotan como **evidencia
   informativa**: no son la verificación de ninguna tarea.
 - El cierre exige `critical-path` (`@lot1`) sin regresión.
@@ -236,8 +288,8 @@ Solo `critical-path.spec.ts` lleva `@lot1`; un spec sin esa etiqueta no cuenta c
 
 - **[Riesgo] Un caso de uso que construya resúmenes fuera de `toJobLinkSummary`.** → D2 hace obligatorio un tipo que
   solo construye el ayudante; la tarea 1.3 busca con `grep` cualquier otra construcción de `previewSources` resuelto,
-  también la forma abreviada (`{ previewSources }`); las pruebas de integración 1.8 y 1.9 recorren todas las rutas que
-  devuelven links y el aviso en tiempo real.
+  también la forma abreviada (`{ previewSources }`), y cualquier `as VisibleAuthors` fuera de `visible-authors.ts`
+  (N11); las pruebas de integración 1.8 y 1.9 recorren todas las rutas que devuelven links y el aviso en tiempo real.
 - **[Riesgo] Un fallo al calcular la visibilidad que «se arregle» mostrando todo.** → las excepciones se propagan, sin
   respaldo, y un test lo exige (1.2b).
 - **[Trade-off] Un autor que sale de los grupos que compartía con alguien pasa a «otra persona» en sus tarjetas.** Es
@@ -277,14 +329,15 @@ intervalo. Vuelta atrás: revertir el PR.
   del interruptor (`link-list.component.ts:569`, `@@links.public.shareMessage`)— y las specs que las exigen
   (`web/links`, `web/public-preview`) la formulan sin matiz. (Reflect habló de tres superficies; en el código hay dos
   textos y sus dos specs. Si el owner cuenta una tercera, recibe el mismo ajuste.)
-  - (a) **Ajustar el texto** para que diga la verdad. Propuesta exacta:
-    - Formulario, ES: «Cualquiera con este enlace verá la oferta; quien no esté en tus grupos no verá el grupo ni tu
-      nombre». EN: «Anyone with this link can see the job; people outside your groups won't see the group or your
-      name».
-    - Confirmación, ES: «Cualquiera con este enlace podrá ver la oferta sin entrar en LinkVault. Quien no esté en tus
-      grupos no verá el grupo, ni tu nombre, ni los comentarios. Puedes dejar de compartirlo cuando quieras.» EN:
-      «Anyone with this link can see the job without signing in to LinkVault. People outside your groups won't see the
-      group, your name or the comments. You can stop sharing whenever you like.»
+  - (a) **Ajustar el texto** para que diga la verdad. Propuesta exacta (texto de business, G3, iteración 2):
+    - Formulario, ES: «Cualquiera con este enlace verá la oferta, pero no el grupo; tu nombre solo lo verá quien ya
+      comparta un grupo contigo.» EN: «Anyone with this link can see the job, but not the group; only people who
+      already share a group with you will see your name.»
+    - Confirmación, ES: «Cualquiera con este enlace podrá ver la oferta sin entrar en LinkVault. No verá el grupo ni
+      los comentarios, y tu nombre solo lo verá quien ya comparta un grupo contigo. Puedes dejar de compartirlo cuando
+      quieras.» EN: «Anyone with this link can see the job without signing in to LinkVault. They won't see the group or
+      the comments, and only people who already share a group with you will see your name. You can stop sharing
+      whenever you like.»
     - Coste: dos textos (ids sin cambiar), dos requirements más con MODIFIED de texto y la re-extracción del catálogo;
       una tarea de < 1 h (8.2).
   - (b) **Mantener el texto** y aceptar por escrito en ADR-055 que la promesa no se cumple frente a quien comparte un
@@ -296,6 +349,10 @@ intervalo. Vuelta atrás: revertir el PR.
 
 **Resueltas en el debate (iteración 1, 2026-10-08):** Q2 = (a), entra el selector (D5). Q3 = (a), cualquier grupo en
 común. Q4 sin objeto (H3 fuera del change). Q5 = «Escrito por otra persona». Q6 respondida por B1 (D6).
+
+**Formato de las respuestas del owner (N12).** Q1 y Q7 se anotan en ADR-055 (§1 y §3) con una línea que empieza por
+«Respuesta del owner (Q1), AAAA-MM-DD:» y «Respuesta del owner (Q7), AAAA-MM-DD:», con la fecha real; la tarea 0.1 las
+busca con ese patrón.
 
 ## Debate — iteración 1
 
@@ -327,3 +384,28 @@ Fecha: 2026-10-08. Participantes: `critic` (C*), `business` (B*), reflect (sesi�
 | Q4 | design | sin objeto | H3 sale del change. |
 | Q5 | design | aceptado | «Escrito por otra persona». |
 | Q6 | design | resuelto por B1 | Texto propio para lectura fallida sin datos (D6). |
+
+## Debate — iteración 2
+
+Fecha: 2026-10-08. Participantes: `critic` (N*, P0 0), `business` (G*, V0 1), reflect (sesión principal). Q1 y Q7
+siguen pendientes del owner.
+
+| Id | Origen | Decisión | Motivo |
+| --- | --- | --- | --- |
+| G1 (V0) | business | aceptado | El aviso depende solo de que no haya puesto: `reading` mientras la tarjeta dice «Leyendo la oferta…», `notAJob` con texto propio, `empty` en el resto (D6). |
+| G2 | business | aceptado | Texto `empty` nuevo en ES y EN con el mismo id `@@links.public.copyFailedEmpty` (D6, specs, 8.1). |
+| G3 | business | aceptado | La opción (a) de Q7 usa el texto de business; Q7 sigue pendiente del owner (Q7, ADR-055 §3, 8.2). |
+| G4 | business | aceptado | Se elimina la E2E opcional 2.3: no verificaba nada. |
+| N1 | critic | aceptado | Se mantiene `summaryFor` por destinatario con su `VisibleAuthors`, porque `sharedAt`/`sharedBy` son de cada uno; como mucho se cachea la procedencia por conjunto (D3, 1.7). |
+| N2 | critic | aceptado | No hay cola: un fallo del reparto se descarta y se registra, y la pantalla se pone al día al recargar o al volver a la pestaña (D3). |
+| N3 | critic | aceptado | Solo los autores de procedencia ocultos dejan de pedirse al directorio; `sharedBy` y comentarios siguen igual (D2, 1.3, 1.4). |
+| N4 | critic | aceptado (a) | B4 acotado a `previewSources`; la excepción heredada de `group-comments` (quien salió sigue nombrado en `sharedBy` y comentarios) va a ADR-055 §Consecuencias. |
+| N5 | critic | aceptado | `peersAmong` reutiliza `groupsOfUserStages` para lector y candidatos: las membresías huérfanas no cuentan (D2, 1.2a). |
+| N6 | critic | aceptado | Método nuevo en el puerto `GroupRepository` (Mongo y memoria); el conteo de comandos va en `mongo-group.repository.spec.ts` y la fachada delega (D2, 1.2a). |
+| N7 | critic | resuelto por G1 | `ready` no existe; los estados son `pending`, `enriched`, `partial`, `failed` y `manual` (D6). |
+| N8 | critic | aceptado | `savedUnread` toma la instantánea más reciente por `previewVersion` entre las tres fuentes (D6, 5.3). |
+| N9 | critic | aceptado | Antes de `show()` se mira también `router.getCurrentNavigation()`, y el aviso se cierra además en `NavigationEnd` (D8, 6.2). |
+| N10 | critic | aceptado | Requirement de notifications reducido a lo verificable (subíndice dinámico); la clase es el sustituto aceptado de la geometría y sale el test de orden (D10, 3.1). |
+| N11 | critic | aceptado | `grep` de `as VisibleAuthors` que solo admite `visible-authors.ts`; los specs construyen el tipo con `visibleAuthorsFor` (1.3). |
+| N12 | critic | aceptado | El patrón de la 0.1 agrupa la alternativa Q1/Q7 dentro del paréntesis y exige dos coincidencias; hoy da 0 (0.1). |
+| N13 | critic | aceptado | 1.8 añade a Dani, que comparte con Ana otro grupo y guarda la URL en privado: su `/mine` sí trae «Ana Quiroga». |

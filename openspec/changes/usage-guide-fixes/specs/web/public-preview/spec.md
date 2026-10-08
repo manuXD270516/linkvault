@@ -95,11 +95,13 @@ quieras." Apagarlo SHALL confirmar con "El enlace dejará de funcionar para todo
 tenga. Si vuelves a activarlo, se creará un enlace nuevo. Las vistas previas ya enviadas en un chat pueden seguir
 viéndose ahí."
 
-"Copiar enlace" SHALL avisar cuando la tarjeta **no tiene datos** —sin puesto—, y SHALL dejar copiar igualmente:
-mientras la lectura está pendiente, con "Todavía estamos leyendo la oferta: si lo envías ahora, la tarjeta saldrá sin
-datos"; si la lectura falló, con "No pudimos leer la oferta: si lo envías ahora, la tarjeta saldrá sin datos.
-Complétala antes.". Si la tarjeta tiene datos —leídos, pegados o escritos a mano— SHALL verse "Enlace copiado". Es la
-misma regla que el formulario de guardar (spec `web/links`, «Guardar un link desde el SPA»).
+"Copiar enlace" SHALL avisar cuando la tarjeta **no tiene puesto**, y SHALL dejar copiar igualmente; el aviso SHALL
+depender solo de que no haya puesto, no del nombre del estado de lectura: mientras la tarjeta aún dice "Leyendo la
+oferta…", con "Todavía estamos leyendo la oferta: si lo envías ahora, la tarjeta saldrá sin datos"; si la lectura
+terminó en "Esto no parece una oferta", con "Esto no parece una oferta: si lo envías, la tarjeta saldrá sin datos.";
+en cualquier otro caso sin puesto, con "La tarjeta todavía no tiene el puesto: si lo envías ahora, saldrá sin datos.
+Complétala antes desde la tarjeta.". Si la tarjeta tiene puesto —leído, pegado o escrito a mano— SHALL verse "Enlace
+copiado". Es la misma regla que el formulario de guardar (spec `web/links`, «Guardar un link desde el SPA»).
 
 La tarjeta SHALL actualizarse sin recargar: al publicar SHALL mostrar el enlace devuelto y al despublicar SHALL
 **borrar explícitamente** el enlace de la tarjeta, como ya hace al quitar la nota, sin esperar a recargar la lista. Un
@@ -164,7 +166,23 @@ interruptor.
 
 - **GIVEN** un link publicado cuya lectura terminó en "No pudimos leer esta oferta", sin puesto
 - **WHEN** quien lo compartió pulsa "Copiar enlace"
-- **THEN** SHALL verse "No pudimos leer la oferta: si lo envías ahora, la tarjeta saldrá sin datos. Complétala antes."
+- **THEN** SHALL verse "La tarjeta todavía no tiene el puesto: si lo envías ahora, saldrá sin datos. Complétala antes
+  desde la tarjeta."
+- **AND** el enlace SHALL copiarse igualmente
+
+#### Scenario: Copiar el enlace de algo que no parece una oferta
+
+- **GIVEN** un link publicado cuya lectura terminó en "Esto no parece una oferta", sin puesto
+- **WHEN** quien lo compartió pulsa "Copiar enlace"
+- **THEN** SHALL verse "Esto no parece una oferta: si lo envías, la tarjeta saldrá sin datos."
+- **AND** el enlace SHALL copiarse igualmente
+
+#### Scenario: Copiar el enlace de una oferta leída a medias sin puesto
+
+- **GIVEN** un link publicado cuya lectura terminó como parcial, con la empresa pero sin puesto
+- **WHEN** quien lo compartió pulsa "Copiar enlace"
+- **THEN** SHALL verse "La tarjeta todavía no tiene el puesto: si lo envías ahora, saldrá sin datos. Complétala antes
+  desde la tarjeta."
 - **AND** el enlace SHALL copiarse igualmente
 
 #### Scenario: Copiar el enlace de una oferta completada a mano

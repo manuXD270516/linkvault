@@ -14,8 +14,8 @@ foco no esté en ellos. Un aviso pertenece al detalle del grupo donde se abrió:
 path— SHALL cerrarse en ese momento, con el mismo desenlace que si se hubiera dejado ir —sin pulsar "Compartir", la
 postulación sigue privada; sin pulsar "Deshacer", sigue compartida y se puede cambiar desde el interruptor del panel— y
 NO SHALL verse en ninguna otra página. Un cambio solo de la query (por ejemplo, los filtros del grupo) NO SHALL
-cerrarlo. Un aviso que llegue cuando la persona ya salió de la página del gesto —porque la API tardó— NO SHALL
-abrirse. Si no se pulsa "Compartir", la postulación SHALL seguir privada. En `/mis-links` NO SHALL
+cerrarlo. Un aviso que llegue cuando la persona ya salió de la página del gesto, o mientras está saliendo hacia otra
+—porque la API tardó—, NO SHALL abrirse ni verse en la página nueva. Si no se pulsa "Compartir", la postulación SHALL seguir privada. En `/mis-links` NO SHALL
 mostrarse el aviso.
 
 #### Scenario: Compartir tras el gesto
@@ -72,6 +72,12 @@ mostrarse el aviso.
 - **WHEN** navega a otra página antes de que la API responda
 - **THEN** NO SHALL abrirse "Compartido · Deshacer" en la página nueva
 - **AND** la postulación SHALL quedar como la deje la respuesta de la API
+
+#### Scenario: La respuesta llega mientras se navega
+
+- **GIVEN** un miembro que pulsa "Compartir" en el aviso del detalle de un grupo y empieza a navegar a "Postulaciones"
+- **WHEN** la API responde después de empezar la navegación y antes de que termine, con la URL todavía en el grupo
+- **THEN** "Compartido · Deshacer" NO SHALL verse en "Postulaciones"
 
 #### Scenario: Salir sin compartir
 

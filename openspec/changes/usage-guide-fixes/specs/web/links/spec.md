@@ -10,13 +10,21 @@ mostrarse "Ya estaba aquí, lo compartió <nombre>".
 Cuando el link nazca con enlace público —porque el grupo comparte en público—, la confirmación SHALL decirlo en una
 línea, "Cualquiera con este enlace verá la oferta; no se verá el grupo ni tu nombre", y SHALL ofrecer "Copiar enlace"
 sobre el enlace que ya viene en la respuesta, sin pedir nada más a la API. Si la tarjeta de la oferta **no tiene
-datos** —sin puesto—, copiar SHALL avisar y SHALL dejar copiar igualmente: mientras la lectura está pendiente, con
-"Todavía estamos leyendo la oferta: si lo envías ahora, la tarjeta saldrá sin datos"; si la lectura falló, con "No
-pudimos leer la oferta: si lo envías ahora, la tarjeta saldrá sin datos. Complétala antes.". Si la tarjeta tiene
-datos —leídos, pegados o escritos a mano— NO SHALL mostrarse ninguno de los dos avisos. Ese estado SHALL evaluarse con
+puesto**, copiar SHALL avisar y SHALL dejar copiar igualmente; el aviso SHALL depender solo de que no haya puesto, no
+del nombre del estado de lectura:
+
+- mientras la tarjeta aún dice "Leyendo la oferta…", con "Todavía estamos leyendo la oferta: si lo envías ahora, la
+  tarjeta saldrá sin datos";
+- si la lectura terminó en "Esto no parece una oferta", con "Esto no parece una oferta: si lo envías, la tarjeta saldrá
+  sin datos.";
+- en cualquier otro caso sin puesto —lectura fallida, lectura parcial sin puesto, edición a mano sin puesto, o una
+  lectura pendiente que ya no se espera—, con "La tarjeta todavía no tiene el puesto: si lo envías ahora, saldrá sin
+  datos. Complétala antes desde la tarjeta.".
+
+Si la tarjeta tiene puesto —leído, pegado o escrito a mano— NO SHALL mostrarse ninguno de esos avisos. Ese estado SHALL evaluarse con
 el link **actual** —el mismo que muestra su tarjeta y que actualizan los avisos en tiempo real, también cuando el link
 no está en la lista cargada por los filtros—, no con el que traía la respuesta de guardar: el aviso SHALL cambiar o
-desaparecer sin recargar. Cuando el link no nazca publicado, NO SHALL mostrarse ni esa línea ni "Copiar enlace".
+desaparecer sin recargar, y una recarga de la lista que deje fuera el link NO SHALL devolver un aviso ya superado. Cuando el link no nazca publicado, NO SHALL mostrarse ni esa línea ni "Copiar enlace".
 
 Tras un guardado correcto el formulario SHALL volver a su estado inicial: el campo de la URL vacío y **sin marca de
 error**, como al abrir la página, conservando los avisos de esa respuesta ("Ya estaba aquí, lo compartió <nombre>",
@@ -81,9 +89,40 @@ escrito por la persona.
 - **GIVEN** un link recién guardado en un grupo que comparte en público, con el formulario mostrando "Todavía estamos
   leyendo la oferta: si lo envías ahora, la tarjeta saldrá sin datos"
 - **WHEN** llega el aviso de que la lectura terminó con "No pudimos leer esta oferta" y sin puesto
-- **THEN** el formulario SHALL mostrar "No pudimos leer la oferta: si lo envías ahora, la tarjeta saldrá sin datos.
-  Complétala antes." en lugar del aviso de lectura, sin recargar
+- **THEN** el formulario SHALL mostrar "La tarjeta todavía no tiene el puesto: si lo envías ahora, saldrá sin datos.
+  Complétala antes desde la tarjeta." en lugar del aviso de lectura, sin recargar
 - **AND** "Copiar enlace" SHALL seguir copiando el enlace
+
+#### Scenario: Lectura parcial sin puesto
+
+- **GIVEN** un link recién guardado y publicado cuya lectura terminó como parcial, con la empresa pero sin puesto
+- **WHEN** el miembro mira el formulario de guardar
+- **THEN** SHALL ver "La tarjeta todavía no tiene el puesto: si lo envías ahora, saldrá sin datos. Complétala antes
+  desde la tarjeta."
+
+#### Scenario: Una lectura pendiente que ya no se espera
+
+- **GIVEN** un link publicado sin puesto, pendiente de lectura desde hace más tiempo del que la tarjeta sigue diciendo
+  "Leyendo la oferta…"
+- **WHEN** el miembro mira el formulario de guardar
+- **THEN** SHALL ver "La tarjeta todavía no tiene el puesto: si lo envías ahora, saldrá sin datos. Complétala antes
+  desde la tarjeta."
+- **AND** NO SHALL ver "Todavía estamos leyendo la oferta: si lo envías ahora, la tarjeta saldrá sin datos"
+
+#### Scenario: No parece una oferta
+
+- **GIVEN** un link recién guardado y publicado cuya lectura terminó en "Esto no parece una oferta", sin puesto
+- **WHEN** el miembro mira el formulario de guardar
+- **THEN** SHALL ver "Esto no parece una oferta: si lo envías, la tarjeta saldrá sin datos."
+- **AND** NO SHALL ver "Complétala antes desde la tarjeta."
+
+#### Scenario: Una recarga de la lista no devuelve el aviso de lectura
+
+- **GIVEN** un link recién guardado y publicado cuyo aviso en tiempo real ya dijo que la lectura terminó con la oferta
+  leída, y el formulario sin aviso
+- **WHEN** la lista se recarga con unos filtros que dejan fuera ese link
+- **THEN** el formulario NO SHALL volver a mostrar "Todavía estamos leyendo la oferta: si lo envías ahora, la tarjeta
+  saldrá sin datos"
 
 #### Scenario: Con filtros activos, el aviso también se actualiza
 
@@ -96,8 +135,8 @@ escrito por la persona.
 
 - **GIVEN** un link publicado cuya lectura terminó en "No pudimos leer esta oferta" y que el miembro completó a mano
 - **WHEN** mira el formulario de guardar
-- **THEN** NO SHALL ver ni "Todavía estamos leyendo la oferta: si lo envías ahora, la tarjeta saldrá sin datos" ni "No
-  pudimos leer la oferta: si lo envías ahora, la tarjeta saldrá sin datos. Complétala antes."
+- **THEN** NO SHALL ver ni "Todavía estamos leyendo la oferta: si lo envías ahora, la tarjeta saldrá sin datos" ni "La
+  tarjeta todavía no tiene el puesto: si lo envías ahora, saldrá sin datos. Complétala antes desde la tarjeta."
 
 #### Scenario: El campo no queda en rojo tras guardar
 
@@ -180,7 +219,7 @@ que una persona corrige lo ven las demás. Un error de la API SHALL mostrarse si
   lista privada y no comparte ningún grupo con Beto
 - **WHEN** Beto mira la tarjeta o abre el formulario
 - **THEN** SHALL ver "Escrito por otra persona" en el título
-- **AND** NO SHALL ver el nombre de Carla en ninguna parte de la tarjeta ni del formulario
+- **AND** la procedencia de los campos NO SHALL mostrar el nombre de Carla
 
 #### Scenario: Volver a lo pegado
 
