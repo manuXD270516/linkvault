@@ -463,6 +463,10 @@
         <source> Inicia sesión y usa el aviso de la aplicación para solicitar un correo nuevo. </source>
         <target> Sign in and use the in-app notice to request a new email. </target>
       </trans-unit>
+      <trans-unit id="emailVerify.invalidSpamHint" datatype="html">
+        <source> Verificar el email no es necesario para empezar a usar LinkVault. Si pides un correo nuevo y no lo encuentras, revisa la carpeta de spam. </source>
+        <target> You don't need to verify your email to start using LinkVault. If you request a new email and can't find it, check your spam folder. </target>
+      </trans-unit>
       <trans-unit id="cv.defaultLine" datatype="html">
         <source> Este es el CV que compararemos con las vacantes </source>
         <target>This is the CV we will compare with job posts</target>
@@ -2292,6 +2296,10 @@
       <trans-unit id="emailVerify.banner.resent" datatype="html">
         <source> Si procede, te hemos enviado un correo de verificación. </source>
         <target> If appropriate, we have sent you a verification email. </target>
+      </trans-unit>
+      <trans-unit id="emailVerify.banner.notRequired" datatype="html">
+        <source> No hace falta verificarlo para empezar a usar LinkVault. Si no encuentras el correo, revisa la carpeta de spam. </source>
+        <target> You don't need to verify it to start using LinkVault. If you can't find the email, check your spam folder. </target>
       </trans-unit>
       <trans-unit id="shell.brand" datatype="html">
         <source>LinkVault</source>

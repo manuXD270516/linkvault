@@ -52,7 +52,8 @@ concurrency:
 permissions:
   contents: read
   actions: read
-  packages: write
+  # `packages: write` no está aquí: solo lo tiene `build-verify-publish`, el único job que publica (tarea 3.5 de
+  # `staging-host`). El despliegue lee el registro con su propia credencial (`GHCR_READ_*`), no con este token.
   # 7.6: el job de reporte publica un **estado de commit** con el resultado del CD. Es la superficie que se lee sin
   # abrir la ejecución, junto con el nombre del job.
   statuses: write
@@ -60,6 +61,8 @@ permissions:
 env:
   NX_DAEMON: 'false'
   REGISTRY: ghcr.io
+  # Directorio fijo del host de staging (design D3): una constante, no un secreto. El despliegue no lo crea.
+  STAGING_DIR: /srv/linkvault-staging
 
 jobs:
   verify:
@@ -169,6 +172,10 @@ jobs:
   build-verify-publish:
     name: build, verify and publish artifact
     needs: verify
+    # Un `permissions:` de job **sustituye** al del workflow: se declara el bloque entero que este job necesita.
+    permissions:
+      contents: read
+      packages: write
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 60
     env:
@@ -377,13 +384,17 @@ jobs:
       - name: Resolve staging deploy target
         id: target
         shell: bash
+        # Los seis valores del destino (design D3): el directorio deja de ser un secreto (es `STAGING_DIR`, constante
+        # del workflow) y entran la clave pública del host y la credencial de lectura del registro.
         env:
           DEPLOY_TARGET: staging
-          DEPLOY_SECRET_PREFIX: STAGING
-          DEPLOY_HOST: ${{ secrets.STAGING_HOST }}
-          DEPLOY_SSH_USER: ${{ secrets.STAGING_SSH_USER }}
-          DEPLOY_SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
-          DEPLOY_COMPOSE_DIR: ${{ secrets.STAGING_COMPOSE_DIR }}
+          DEPLOY_SECRETS: STAGING_HOST STAGING_SSH_USER STAGING_SSH_KEY STAGING_SSH_HOST_KEY GHCR_READ_USER GHCR_READ_TOKEN
+          STAGING_HOST: ${{ secrets.STAGING_HOST }}
+          STAGING_SSH_USER: ${{ secrets.STAGING_SSH_USER }}
+          STAGING_SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+          STAGING_SSH_HOST_KEY: ${{ secrets.STAGING_SSH_HOST_KEY }}
+          GHCR_READ_USER: ${{ secrets.GHCR_READ_USER }}
+          GHCR_READ_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
         run: infra/ci/preflight-deploy-target.sh
 
   # `needs` sobre **los dos** jobs, y esto no es redundante: sin `needs` sobre el de publicación, el tag de imagen
@@ -398,10 +409,18 @@ jobs:
   #
   # `state == 'full'` y no `!= 'none'`: `partial` ya ha hecho fallar al preflight, y escribir la condición por
   # exclusión dejaría que un estado nuevo o vacío cayera del lado de desplegar.
+  #
+  # Tres condiciones, no una (design D1 de `staging-host`): destino `full`, **no** modo de prueba y **solo `main`**.
+  # Con los secretos puestos, un `workflow_dispatch` con `dry_run` —o lanzado desde otra rama— desplegaría de verdad
+  # sin las dos últimas. El guardia evita accidentes y **no autoriza**: quien tiene escritura puede escribir en una
+  # rama un workflow que lea los secretos (ver `infra/README.md`, «Quién puede desplegar a staging»).
   deploy-staging:
     name: deploy staging (solo si hay destino configurado)
     needs: [preflight, build-verify-publish]
-    if: needs.preflight.outputs.state == 'full'
+    if: >-
+      needs.preflight.outputs.state == 'full'
+      && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
+      && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -416,65 +435,80 @@ jobs:
           IMAGE_TAG: ${{ needs['build-verify-publish'].outputs.image_tag }}
         run: infra/ci/assert-deploy-tag.sh
 
-      - name: SSH compose pull+up staging
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.STAGING_HOST }}
-          username: ${{ secrets.STAGING_SSH_USER }}
-          key: ${{ secrets.STAGING_SSH_KEY }}
-          script: |
-            set -euo pipefail
-            cd "${{ secrets.STAGING_COMPOSE_DIR }}"
-            OWNER="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
-            export IMAGE_TAG="${{ needs['build-verify-publish'].outputs.image_tag }}"
-            export API_IMAGE="ghcr.io/${OWNER}/linkvault-api"
-            export WORKER_IMAGE="ghcr.io/${OWNER}/linkvault-worker"
-            export WEB_IMAGE="ghcr.io/${OWNER}/linkvault-web"
-            if [ -n "${{ secrets.GHCR_READ_TOKEN }}" ]; then
-              echo "${{ secrets.GHCR_READ_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-            fi
-            docker compose -f docker-compose.prod.yml --env-file .env.staging pull
-            # 7.9: plazo explícito y volcado al fallar, igual que en la verificación del artefacto. El plazo y su
-            # cálculo viven en la línea `WAIT_TIMEOUT` de `infra/ci/verify-artifact.sh`; el `--wait-timeout` literal
-            # de abajo es una copia conocida de ese número (ADR-052, «Consecuencias para 35b y 35c»), que 35b
-            # (`staging-host`) sustituye leyendo esa línea.
-            #
-            # Medido, porque el enunciado de 7.9 daba por hecho que sin plazo esto "se colgaría": con Compose 5.5.1
-            # **no** se cuelga ante un contenedor en bucle de reinicio —aborta en 4 s con `container … is
-            # unhealthy`—. El plazo sí acota el otro caso, que es el que se midió con 20 s: una readiness que no
-            # converge **dentro de su `start_period`**, donde Compose no declara nada y espera (`application not
-            # healthy after 20s`). Y lo que convierte cualquiera de los dos en algo diagnosticable es el **volcado**
-            # de `ps` y `logs`, que por eso se hace ante **cualquier** fallo del `up` y no solo al vencer el plazo.
-            # Aquí importa más que en el corredor: este host es el único sitio donde se puede mirar.
-            up_status=0
-            docker compose -f docker-compose.prod.yml --env-file .env.staging up -d --wait --wait-timeout 360 \
-              || up_status=$?
-            if [ "$up_status" -ne 0 ]; then
-              echo "::error::La pila de staging no quedó sana en 360 s (up salió $up_status): no se despliega nada."
-              docker compose -f docker-compose.prod.yml --env-file .env.staging ps --all || true
-              docker compose -f docker-compose.prod.yml --env-file .env.staging logs --no-color --tail=200 \
-                api worker web || true
-              exit 1
-            fi
+      # --- OpenSSH nativo, con la clave del host fijada (design D3) ------------------------------------------------
+      # Ningún código de terceros recibe la clave privada, `ssh` comprueba el host con `StrictHostKeyChecking=yes` y el
+      # token viaja por la entrada estándar. Los secretos llegan **solo** como `env:` de cada paso, nunca dentro del
+      # texto de un `run:`; el destino se valida por lista blanca antes de usarlo.
+      - name: Validate the staging target and write the SSH files
+        shell: bash
+        env:
+          STAGING_HOST: ${{ secrets.STAGING_HOST }}
+          STAGING_SSH_USER: ${{ secrets.STAGING_SSH_USER }}
+          STAGING_SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+          STAGING_SSH_HOST_KEY: ${{ secrets.STAGING_SSH_HOST_KEY }}
+        run: infra/ci/prepare-staging-ssh.sh
+
+      # `<sha12>`, el plazo de arranque (`WAIT_TIMEOUT` de `infra/ci/verify-artifact.sh`) y el digest del almacén
+      # (ADR-052 «Elección»), leídos y validados en el corredor: no viajan al host como ficheros (design D4).
+      - name: Resolve the deploy inputs
+        id: inputs
+        shell: bash
+        env:
+          GIT_SHA: ${{ github.sha }}
+        run: infra/ci/resolve-deploy-inputs.sh
+
+      # La configuración del **mismo commit**, por la misma conexión: `mkdir` sin `-p` (falla si falta el directorio
+      # fijo, sin crearlo) y `rm -rf` previo del `.incoming` de este commit para poder relanzar el job.
+      - name: Copy the configuration of this commit to the host
+        shell: bash
+        env:
+          STAGING_HOST: ${{ secrets.STAGING_HOST }}
+          STAGING_SSH_USER: ${{ secrets.STAGING_SSH_USER }}
+          SHA12: ${{ steps.inputs.outputs.sha12 }}
+        run: |
+          incoming="$STAGING_DIR/.incoming-$SHA12"
+          tar -cf - -T infra/deploy/config-files.txt |
+            ssh -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$RUNNER_TEMP/staging-ssh/known_hosts" \
+              -o BatchMode=yes -o IdentitiesOnly=yes -i "$RUNNER_TEMP/staging-ssh/key" \
+              "$STAGING_SSH_USER@$STAGING_HOST" \
+              "rm -rf $incoming && mkdir $incoming && tar -xf - -C $incoming"
+
+      # `deploy.sh` del mismo commit: login → plataformas → digest del almacén → pull → instalación → up → provision →
+      # verify → logout. Usuario y token del registro por la entrada estándar, nunca en la orden remota (design D3).
+      - name: Deploy on the host
+        shell: bash
+        env:
+          STAGING_HOST: ${{ secrets.STAGING_HOST }}
+          STAGING_SSH_USER: ${{ secrets.STAGING_SSH_USER }}
+          GHCR_READ_USER: ${{ secrets.GHCR_READ_USER }}
+          GHCR_READ_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
+          SHA12: ${{ steps.inputs.outputs.sha12 }}
+          WAIT_TIMEOUT: ${{ steps.inputs.outputs.timeout }}
+          STORE_DIGEST: ${{ steps.inputs.outputs.digest }}
+          IMAGE_TAG: ${{ needs['build-verify-publish'].outputs.image_tag }}
+        run: |
+          printf '%s\n%s\n' "$GHCR_READ_USER" "$GHCR_READ_TOKEN" |
+            ssh -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$RUNNER_TEMP/staging-ssh/known_hosts" \
+              -o BatchMode=yes -o IdentitiesOnly=yes -i "$RUNNER_TEMP/staging-ssh/key" \
+              "$STAGING_SSH_USER@$STAGING_HOST" \
+              "bash $STAGING_DIR/.incoming-$SHA12/infra/deploy/deploy.sh $IMAGE_TAG $WAIT_TIMEOUT $STORE_DIGEST"
 
       - name: Smoke GET /health against api (Docker network, not Traefik)
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.STAGING_HOST }}
-          username: ${{ secrets.STAGING_SSH_USER }}
-          key: ${{ secrets.STAGING_SSH_KEY }}
-          script: |
-            set -euo pipefail
-            cd "${{ secrets.STAGING_COMPOSE_DIR }}"
-            body="$(docker compose -f docker-compose.prod.yml --env-file .env.staging exec -T api \
-              node -e "fetch('http://127.0.0.1:3000/health').then(async r=>{const t=await r.text(); if(!r.ok){console.error(t);process.exit(1)}; console.log(t); const j=JSON.parse(t); if(j.status!=='up'||!j.checks||!j.checks.mongo||!j.checks.redis){process.exit(1)}}).catch(e=>{console.error(e);process.exit(1)})")"
-            echo "$body"
-            echo "$body" | grep -q '"status":"up"'
-            echo "$body" | grep -q '"mongo"'
-            echo "$body" | grep -q '"redis"'
-            case "$body" in
-              *'<html'*|*'<!DOCTYPE'*) echo "::error::Smoke returned HTML (SPA); must hit api internally"; exit 1 ;;
-            esac
+        shell: bash
+        env:
+          STAGING_HOST: ${{ secrets.STAGING_HOST }}
+          STAGING_SSH_USER: ${{ secrets.STAGING_SSH_USER }}
+          SHA12: ${{ steps.inputs.outputs.sha12 }}
+        run: |
+          ssh -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$RUNNER_TEMP/staging-ssh/known_hosts" \
+            -o BatchMode=yes -o IdentitiesOnly=yes -i "$RUNNER_TEMP/staging-ssh/key" \
+            "$STAGING_SSH_USER@$STAGING_HOST" \
+            "bash $STAGING_DIR/.incoming-$SHA12/infra/deploy/smoke.sh"
+
+      - name: Remove the SSH files
+        if: always()
+        shell: bash
+        run: rm -rf "$RUNNER_TEMP/staging-ssh"
 
   # --- El resultado, dicho donde se lee sin abrir la corrida (7.5, 7.6, 7.7) ---------------------------------------
   # Lo que alguien mira de forma habitual es la **lista de checks del commit o de la PR**: ahí se ven los **nombres
@@ -482,7 +516,7 @@ jobs:
   # —`run-name` se fija al **iniciar** la corrida, antes de que existan los outputs de los jobs—, y por eso la señal
   # va en estas dos superficies y no en aquella.
   #
-  # El **nombre del job** se calcula aquí porque el nombre de un job no puede salir de un step suyo. Las cinco
+  # El **nombre del job** se calcula aquí porque el nombre de un job no puede salir de un step suyo. Las siete
   # cadenas son **las mismas** que deriva `infra/ci/report-cd-outcome.sh`, que es quien decide el estado y publica:
   # si cambias una, cambia la otra (el script imprime el nombre que él deriva, así que una divergencia se ve en la
   # propia corrida). El estado de commit **sí** sale entero del script, para que no haya dos lógicas de decisión.
@@ -502,16 +536,22 @@ jobs:
   report:
     # Nota de YAML: un escalar plegado (`>-`) conserva los saltos de línea de las líneas **más indentadas** que la
     # primera, así que todas las líneas de la expresión van al **mismo** nivel: así se pliegan en una sola línea.
+    # El orden es el de la tabla del script (design D1): no verificado → destino indeterminado → modo de prueba →
+    # fuera de `main` → con destino → sin destino.
     name: >-
       ${{ needs['build-verify-publish'].result != 'success'
       && 'resultado: el artefacto NO pasó la verificación'
+      || ((needs.preflight.outputs.state != 'full' && needs.preflight.outputs.state != 'none')
+      && 'resultado: destino de staging indeterminado — no se desplegó'
+      || ((github.event_name == 'workflow_dispatch' && inputs.dry_run)
+      && 'resultado: artefacto verificado — NO desplegado (modo de prueba)'
+      || (github.ref != 'refs/heads/main'
+      && 'resultado: artefacto verificado — NO desplegado (corrida fuera de main)'
       || (needs.preflight.outputs.state == 'full'
       && (needs['deploy-staging'].result == 'success'
       && 'resultado: artefacto verificado y desplegado a staging'
       || 'resultado: artefacto verificado, despliegue a staging NO completado')
-      || (needs.preflight.outputs.state == 'none'
-      && 'resultado: artefacto verificado — NO desplegado (sin destino de staging)'
-      || 'resultado: destino de staging indeterminado — no se desplegó')) }}
+      || 'resultado: artefacto verificado — NO desplegado (sin destino de staging)')))) }}
     needs: [preflight, build-verify-publish, deploy-staging]
     if: always()
     runs-on: ubuntu-24.04
@@ -569,6 +609,11 @@ jobs:
           PREFLIGHT_RESULT: ${{ needs.preflight.result }}
           PREFLIGHT_STATE: ${{ needs.preflight.outputs.state }}
           DEPLOY_RESULT: ${{ needs['deploy-staging'].result }}
+          # Modo de la corrida (design D1): `test` con `dry_run`, `off-main` desde otra rama, `real` en `main`. Las
+          # mismas condiciones que el `if:` de `deploy-staging` y que el `name:` de este job.
+          RUN_MODE: >-
+            ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && 'test'
+            || (github.ref != 'refs/heads/main' && 'off-main' || 'real') }}
           TARGET_LABEL: staging
           # Fijo: es la identidad del check, y GitHub sustituye el estado anterior del mismo contexto. Si el
           # resultado fuera al contexto, cada desenlace dejaría un check distinto y todos vivirían a la vez.
