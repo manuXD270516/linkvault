@@ -629,6 +629,7 @@ sigue siendo el esperado con miles de documentos y cuánto tarda. Tareas 10.3b-1
   | `cv_documents` | 40 | `extraction.status` `extracted`, sin objeto en el almacén |
   | `ai_analyses` | 120 | `done` y otros estados, sobre un CV y un link del mismo usuario |
   | `roadmaps` | 30 | `ready` y otros estados; `analysisId` distinto en cada uno (índice único) |
+  | `cv_version_counters` | 40 | uno por usuario con CV, con `lvSeedBatch`; `_id` = id del usuario en hexadecimal y `next` = la última versión sembrada (1), para que el siguiente CV de la cuenta sea la v2 sin chocar (decisión del owner 2026-10-08) |
 
   Con la escala máxima son 5000 usuarios y 75 000 `user_links`. Cada documento tiene la forma del esquema real
   (`apps/api/src/modules/*/infrastructure/*.schemas.ts` y `user.schema.ts`; los enums se copian de `libs/shared` y del

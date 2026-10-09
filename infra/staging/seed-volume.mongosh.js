@@ -59,6 +59,7 @@ const COLLECTIONS = [
   'cv_documents',
   'ai_analyses',
   'roadmaps',
+  'cv_version_counters',
 ];
 
 // Cascada de borrado de cuenta, copiada de apps/api/src/modules/users/infrastructure/mongo-account-deletion.cascade.ts
@@ -594,6 +595,15 @@ function generateUnit(unit) {
     const text = `Synthetic CV text for ${BATCH} user ${pad(user.number, 4)}. No personal data.`;
     const uploadedAt = user.createdAt + (1 + rng.int(10)) * DAY;
     cvs.push(cvId);
+    // Contador de versiones (apps/api/src/modules/cv/infrastructure/cv.schemas.ts: cvVersionCounterSchema, `_id` = id del
+    // usuario en hexadecimal). Su `next` guarda la ÚLTIMA versión entregada (mongo-cv.repository.ts: `$inc` con
+    // `returnDocument: 'after'`, la primera vez 1): el CV sembrado es la v1, así que vale 1 y el siguiente CV de la
+    // cuenta es la v2. Decisión del owner 2026-10-08.
+    out.cv_version_counters.push({
+      _id: user.id,
+      next: 1,
+      lvSeedBatch: BATCH,
+    });
     out.cv_documents.push({
       _id: ObjectId(cvId),
       userId: ObjectId(user.id),
@@ -770,11 +780,14 @@ function batchFilter() {
   return filter;
 }
 
+// `_id` como cadena: ObjectId en casi todas las colecciones; en `cv_version_counters` ya es una cadena (el id del
+// usuario en hexadecimal).
+function idKey(doc) {
+  return typeof doc._id === 'string' ? doc._id : doc._id.toHexString();
+}
+
 function existingIds(collection) {
-  return lv[collection]
-    .find(batchFilter(), { _id: 1 })
-    .toArray()
-    .map((doc) => doc._id.toHexString());
+  return lv[collection].find(batchFilter(), { _id: 1 }).toArray().map(idKey);
 }
 
 // ---- seed ----------------------------------------------------------------------------------------------------------
@@ -785,7 +798,7 @@ function runSeed() {
   const wanted = {};
   COLLECTIONS.forEach((name) => {
     counts[name] = out[name].length;
-    wanted[name] = new Set(out[name].map((doc) => doc._id.toHexString()));
+    wanted[name] = new Set(out[name].map(idKey));
   });
 
   // Antes de escribir nada: ningún `_id` generado puede ser de un documento que no es de este lote.
@@ -809,7 +822,11 @@ function runSeed() {
     const stale = existingIds(name).filter((id) => !wanted[name].has(id));
     chunks(stale).forEach((part) => {
       removed += lv[name].deleteMany({
-        _id: { $in: part.map((id) => ObjectId(id)) },
+        _id: {
+          $in: part.map((id) =>
+            name === 'cv_version_counters' ? id : ObjectId(id),
+          ),
+        },
         lvSeedBatch: BATCH,
       }).deletedCount;
     });
