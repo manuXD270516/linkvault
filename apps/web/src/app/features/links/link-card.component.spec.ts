@@ -601,6 +601,26 @@ describe('LinkCard: lo pegado', () => {
     expect(undone).toEqual([['company', 'location']]);
   });
 
+  it('offers Deshacer lo que pegó otra persona for a hidden author', async () => {
+    const at = '2026-09-18T10:00:00.000Z';
+    await render({
+      ...enriched,
+      previewSources: {
+        title: { value: 'Ingeniera de datos', source: 'manual', by: null, at },
+        location: { value: 'La Paz, Bolivia', source: 'pasted', extractor: 'ai:extract-pasted-job', by: null, at },
+      },
+    });
+    const undone: string[][] = [];
+    fixture.componentInstance.undoPaste.subscribe((fields) => undone.push(fields));
+
+    const undo = host().querySelector<HTMLButtonElement>('[data-testid="link-undo-paste"]');
+    expect(undo?.textContent?.trim()).toBe('Deshacer lo que pegó otra persona');
+    undo?.click();
+
+    expect(undone).toEqual([['title', 'location']]);
+    expect(note('location')).toBe('Descripción pegada por otra persona');
+  });
+
   it('undoes the header typed in the same paste along with it', async () => {
     const at = '2026-09-18T10:00:00.000Z';
     await render({

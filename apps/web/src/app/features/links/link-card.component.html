@@ -190,9 +190,12 @@
       [disabled]="busy()"
       (click)="undoPaste.emit(pasted.fields)"
       data-testid="link-undo-paste"
-      i18n="@@links.card.undoPaste"
     >
-      Deshacer lo que pegó {{ pasted.by.displayName }}
+      @if (pasted.by; as author) {
+        <ng-container i18n="@@links.card.undoPaste">Deshacer lo que pegó {{ author.displayName }}</ng-container>
+      } @else {
+        <ng-container i18n="@@links.paste.undoHidden">Deshacer lo que pegó otra persona</ng-container>
+      }
     </button>
   }
   @if (state.canRetry) {

@@ -40,6 +40,7 @@ import {
   type CommentsDialogResult,
 } from './comments.dialog';
 import { EditPreviewDialog, type EditPreviewDialogData } from './edit-preview.dialog';
+import { emptyCardNotice, emptyCardNoticeText } from './empty-card-notice';
 import { LinkCard } from './link-card.component';
 import { linkLabel } from './link-preview';
 import { PasteDescriptionDialog, type PasteDescriptionDialogData } from './paste-description.dialog';
@@ -566,7 +567,7 @@ export class LinkList {
     }
     const confirmed = await confirmWith(this.dialog, {
       title: $localize`:@@links.public.shareTitle:Compartir con un enlace público`,
-      message: $localize`:@@links.public.shareMessage:Cualquiera con este enlace podrá ver la oferta sin entrar en LinkVault. No se verá el grupo, ni tu nombre, ni los comentarios. Puedes dejar de compartirlo cuando quieras.`,
+      message: $localize`:@@links.public.shareMessage:Cualquiera con este enlace podrá ver la oferta sin entrar en LinkVault. No verá el grupo ni los comentarios, y tu nombre solo lo verá quien ya comparta un grupo contigo. Puedes dejar de compartirlo cuando quieras.`,
       confirmLabel: $localize`:@@links.public.shareConfirm:Compartir`,
     });
     if (!confirmed) {
@@ -629,10 +630,12 @@ export class LinkList {
       this.failure.set({ kind: 'unknown' });
       return;
     }
+    // El aviso depende de que la tarjeta no tenga puesto, no del nombre del estado (design D6 de usage-guide-fixes).
+    const warning = emptyCardNotice(link, new Date());
     this.notice(
-      link.previewStatus === 'pending'
-        ? $localize`:@@links.public.copyUnread:Todavía estamos leyendo la oferta: si lo envías ahora, la tarjeta saldrá sin datos`
-        : $localize`:@@links.public.copied:Enlace copiado`,
+      warning === null
+        ? $localize`:@@links.public.copied:Enlace copiado`
+        : emptyCardNoticeText(warning),
     );
   }
 

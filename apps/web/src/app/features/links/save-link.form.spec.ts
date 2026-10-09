@@ -1,4 +1,5 @@
-import { HttpTestingController } from '@angular/common/http/testing';
+import { HttpEventType } from '@angular/common/http';
+import { HttpTestingController, type TestRequest } from '@angular/common/http/testing';
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import type { JobLinkSummary, LinkPage, SaveLinkResponse } from '@linkvault/shared';
@@ -11,6 +12,7 @@ import {
   verifyNoPendingRequests,
 } from '../../../testing/auth-testing';
 import { SessionStore } from '../../core/auth/session.store';
+import { EventsChannel } from '../../core/events/events.channel';
 import { LinksStore } from '../../core/links/links.store';
 import { LinkList } from './link-list.component';
 import { SaveLinkForm } from './save-link.form';
@@ -114,6 +116,51 @@ describe('SaveLinkForm', () => {
     expect(text()).not.toContain('Ya estaba aquí');
   });
 
+  it('after a successful save the URL field is empty and not in error state', async () => {
+    const request = await save();
+    request.flush(saved, { status: 201, statusText: 'Created' });
+    await flushReload([link]);
+
+    expect(urlField().value).toBe('');
+    expect(host().querySelector('mat-form-field.mat-form-field-invalid')).toBeNull();
+    expect(urlField().getAttribute('aria-invalid')).not.toBe('true');
+  });
+
+  it('invalid_url keeps the text and the error', async () => {
+    const request = await save('no-es-una-url');
+    request.flush(
+      { code: 'invalid_url', message: 'Invalid url' },
+      { status: 400, statusText: 'Bad Request' },
+    );
+    await settle();
+    await fixture.whenStable();
+
+    expect(urlField().value).toBe('no-es-una-url');
+    expect(text()).toContain('Eso no parece un enlace de una oferta');
+  });
+
+  it('already_there keeps the note after resetForm', async () => {
+    const note = host().querySelector<HTMLTextAreaElement>('[data-testid="save-link-note"]');
+    if (!note) {
+      throw new Error('Note field not rendered');
+    }
+    note.value = 'Yo también la vi';
+    note.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+    const request = await save();
+    request.flush(
+      { ...saved, created: false, shared: 'already_there', sharedBy: { userId: 'u9', displayName: 'Ana' } },
+      { status: 201, statusText: 'Created' },
+    );
+    await flushReload([link]);
+
+    expect(text()).toContain('Ya estaba aquí, lo compartió Ana');
+    expect(text()).toContain('Tu nota no se añadió porque la oferta ya estaba en el grupo.');
+    expect(note.value).toBe('Yo también la vi');
+    expect(urlField().value).toBe('');
+    expect(host().querySelector('mat-form-field.mat-form-field-invalid')).toBeNull();
+  });
+
   it('URL inválida', async () => {
     const request = await save('no-es-una-url');
     request.flush(
@@ -214,9 +261,25 @@ describe('SaveLinkForm', () => {
       await flushReload([{ ...link, publicShare: share }]);
 
       expect(text()).toContain(
-        'Cualquiera con este enlace verá la oferta; no se verá el grupo ni tu nombre',
+        'Cualquiera con este enlace verá la oferta, pero no el grupo; tu nombre solo lo verá quien ya comparta un grupo contigo.',
       );
       expect(host().querySelector('[data-testid="save-link-copy-public"]')).not.toBeNull();
+    });
+
+    it('the public line says only people who share a group will see your name', async () => {
+      const request = await save();
+      request.flush(
+        { ...saved, link: { ...link, publicShare: share } } satisfies SaveLinkResponse,
+        { status: 201, statusText: 'Created' },
+      );
+      await flushReload([{ ...link, publicShare: share }]);
+
+      const line = host()
+        .querySelector('[data-testid="save-link-public"]')
+        ?.textContent?.replace(/\s+/g, ' ')
+        .trim();
+      expect(line).toContain('tu nombre solo lo verá quien ya comparta un grupo contigo');
+      expect(line).not.toContain('ni tu nombre');
     });
 
     it('Guardado en un grupo que no comparte en público', async () => {
@@ -230,12 +293,13 @@ describe('SaveLinkForm', () => {
 
     it('Copiar el enlace de una oferta recién guardada', async () => {
       const writeText = stubClipboard();
+      const fresh = { ...link, previewRequestedAt: new Date().toISOString(), publicShare: share };
       const request = await save();
-      request.flush(
-        { ...saved, link: { ...link, publicShare: share } } satisfies SaveLinkResponse,
-        { status: 201, statusText: 'Created' },
-      );
-      await flushReload([{ ...link, publicShare: share }]);
+      request.flush({ ...saved, link: fresh } satisfies SaveLinkResponse, {
+        status: 201,
+        statusText: 'Created',
+      });
+      await flushReload([fresh]);
 
       // La oferta todavía está en `pending`: se avisa y se copia igualmente.
       expect(text()).toContain(
@@ -264,6 +328,164 @@ describe('SaveLinkForm', () => {
 
       expect(text()).not.toContain('Todavía estamos leyendo la oferta');
       expect(text()).toContain('Cualquiera con este enlace verá la oferta');
+    });
+  });
+
+  describe('el aviso de copiar sigue al link guardado', () => {
+    const share = {
+      slug: 'k3m9qrtv2xyz',
+      url: 'http://localhost:3000/p/k3m9qrtv2xyz',
+      publishedAt: '2026-09-19T10:00:00.000Z',
+    };
+    const READING = 'Todavía estamos leyendo la oferta: si lo envías ahora, la tarjeta saldrá sin datos';
+    const EMPTY =
+      'La tarjeta todavía no tiene el puesto: si lo envías ahora, saldrá sin datos. Complétala antes desde la tarjeta';
+    const pending: JobLinkSummary = {
+      ...link,
+      previewRequestedAt: new Date().toISOString(),
+      publicShare: share,
+    };
+    const enriched: JobLinkSummary = {
+      ...pending,
+      previewStatus: 'enriched',
+      previewVersion: 2,
+      preview: { title: 'Ingeniera de datos', company: 'Acme' },
+    };
+    const failedEmpty: JobLinkSummary = {
+      ...pending,
+      previewStatus: 'failed',
+      previewVersion: 2,
+      lastEnrichmentError: { reason: 'timeout', at: '2026-09-17T10:05:00.000Z' },
+    };
+    const byHand: JobLinkSummary = {
+      ...failedEmpty,
+      previewStatus: 'manual',
+      previewVersion: 3,
+      preview: { title: 'Ingeniera de datos' },
+    };
+
+    let events: TestRequest;
+    let streamed = '';
+
+    beforeEach(() => {
+      streamed = '';
+      TestBed.inject(EventsChannel).connect();
+      events = http.expectOne({ method: 'GET', url: '/api/events' });
+    });
+
+    /** Un aviso `link.enriched` llega por el canal, como lo manda el servidor. */
+    async function emit(message: JobLinkSummary): Promise<void> {
+      streamed += `event: link.enriched\ndata: ${JSON.stringify({ link: message })}\n\n`;
+      events.event({ type: HttpEventType.DownloadProgress, loaded: streamed.length, partialText: streamed });
+      await settle();
+      await fixture.whenStable();
+    }
+
+    /** Guarda y deja el formulario con la respuesta y la lista recargada con `listed`. */
+    async function saveAs(response: JobLinkSummary, listed: JobLinkSummary[] = [response]): Promise<void> {
+      const request = await save();
+      request.flush({ ...saved, link: response } satisfies SaveLinkResponse, {
+        status: 201,
+        statusText: 'Created',
+      });
+      await flushReload(listed);
+    }
+
+    async function reloadWith(items: JobLinkSummary[]): Promise<void> {
+      const reloading = TestBed.inject(LinksStore).reload();
+      await settle();
+      http.expectOne(GROUP_PAGE).flush({ items, total: items.length } satisfies LinkPage);
+      await reloading;
+      await settle();
+      await fixture.whenStable();
+    }
+
+    it('the unread notice disappears when the stored link becomes enriched', async () => {
+      await saveAs(pending);
+      expect(text()).toContain(READING);
+
+      await emit(enriched);
+
+      expect(text()).not.toContain(READING);
+      expect(text()).not.toContain(EMPTY);
+    });
+
+    it('shows the empty-card notice when the read fails without title', async () => {
+      await saveAs(pending);
+      expect(text()).toContain(READING);
+
+      await emit(failedEmpty);
+
+      expect(text()).toContain(EMPTY);
+      expect(text()).not.toContain(READING);
+      expect(host().querySelector('[data-testid="save-link-copy-public"]')).not.toBeNull();
+    });
+
+    it('the notice disappears when the link is completed by hand', async () => {
+      await saveAs(pending);
+      await emit(failedEmpty);
+      expect(text()).toContain(EMPTY);
+
+      TestBed.inject(LinksStore).replace(byHand);
+      await fixture.whenStable();
+
+      expect(text()).not.toContain(EMPTY);
+      expect(text()).not.toContain(READING);
+    });
+
+    it('with active filters the notice follows linkEnriched for the saved id', async () => {
+      await saveAs(pending, []);
+      expect(text()).toContain(READING);
+
+      await emit({ ...enriched, id: 'other-link' });
+      expect(text()).toContain(READING);
+
+      await emit(enriched);
+
+      expect(text()).not.toContain(READING);
+    });
+
+    it('a reload that drops the link does not bring back the reading notice', async () => {
+      await saveAs(pending);
+      await emit(enriched);
+      expect(text()).not.toContain(READING);
+
+      await reloadWith([]);
+
+      expect(text()).not.toContain(READING);
+    });
+
+    it('a hand-completed link dropped by filters does not bring back the empty notice', async () => {
+      await saveAs(failedEmpty);
+      expect(text()).toContain(EMPTY);
+      TestBed.inject(LinksStore).replace(byHand);
+      await fixture.whenStable();
+      expect(text()).not.toContain(EMPTY);
+
+      await reloadWith([]);
+
+      expect(text()).not.toContain(EMPTY);
+      expect(text()).not.toContain(READING);
+    });
+
+    it('a linkEnriched received while saving is applied once the id is known', async () => {
+      const request = await save();
+      // El worker termina antes de que responda el guardado: el id aún no se conoce.
+      await emit(enriched);
+      request.flush({ ...saved, link: pending } satisfies SaveLinkResponse, {
+        status: 201,
+        statusText: 'Created',
+      });
+      await flushReload([]);
+
+      expect(text()).not.toContain(READING);
+      expect(text()).not.toContain(EMPTY);
+    });
+
+    it('keeps the response status when nothing newer is known', async () => {
+      await saveAs(failedEmpty, []);
+
+      expect(text()).toContain(EMPTY);
     });
   });
 

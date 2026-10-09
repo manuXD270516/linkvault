@@ -150,7 +150,7 @@ describe('LinkList: el enlace público', () => {
 
     await click('Ingeniera de datos', 'link-public-on');
     expect(dialog().textContent).toContain(
-      'Cualquiera con este enlace podrá ver la oferta sin entrar en LinkVault. No se verá el grupo, ni tu nombre, ni los comentarios. Puedes dejar de compartirlo cuando quieras.',
+      'Cualquiera con este enlace podrá ver la oferta sin entrar en LinkVault. No verá el grupo ni los comentarios, y tu nombre solo lo verá quien ya comparta un grupo contigo. Puedes dejar de compartirlo cuando quieras.',
     );
     await confirm('Compartir');
 
@@ -164,6 +164,16 @@ describe('LinkList: el enlace público', () => {
     http.expectNone(GROUP_PAGE);
   });
 
+  it('the share confirmation says only people who share a group will see your name', async () => {
+    await setUp();
+
+    await click('Ingeniera de datos', 'link-public-on');
+
+    expect(dialog().textContent).toContain('tu nombre solo lo verá quien ya comparta un grupo contigo');
+    expect(dialog().textContent).not.toContain('ni tu nombre');
+    await confirm('Cancelar');
+  });
+
   it('El aviso dice el alcance', async () => {
     await setUp();
 
@@ -171,7 +181,7 @@ describe('LinkList: el enlace público', () => {
 
     const message = dialog().textContent ?? '';
     expect(message).toContain('Cualquiera con este enlace podrá ver la oferta');
-    expect(message).toContain('No se verá el grupo, ni tu nombre, ni los comentarios');
+    expect(message).toContain('No verá el grupo ni los comentarios');
     await confirm('Cancelar');
   });
 
@@ -237,7 +247,8 @@ describe('LinkList: el enlace público', () => {
   it('Copiar el enlace de una oferta sin leer', async () => {
     const writeText = stubClipboard();
     // Beto compartió el link, pero Ana es propietaria del grupo, así que puede tocar su interruptor.
-    await setUp([{ ...ofBeto, publicShare: share }]);
+    // Pedida ahora mismo: la tarjeta todavía dice "Leyendo la oferta…".
+    await setUp([{ ...ofBeto, previewRequestedAt: new Date().toISOString(), publicShare: share }]);
     fixture.componentInstance.canModerate.set(true);
     await fixture.whenStable();
 
@@ -246,6 +257,70 @@ describe('LinkList: el enlace público', () => {
     expect(snackBarText()).toContain(
       'Todavía estamos leyendo la oferta: si lo envías ahora, la tarjeta saldrá sin datos',
     );
+    expect(writeText).toHaveBeenCalledWith(share.url);
+  });
+
+  it('Copiar enlace on a failed card without title shows La tarjeta todavía no tiene el puesto', async () => {
+    const writeText = stubClipboard();
+    await setUp([
+      {
+        ...ofBeto,
+        previewStatus: 'failed',
+        lastEnrichmentError: { reason: 'timeout', at: '2026-09-17T09:05:00.000Z' },
+        publicShare: share,
+      },
+    ]);
+    fixture.componentInstance.canModerate.set(true);
+    await fixture.whenStable();
+
+    await click('analista de datos', 'link-public-copy');
+
+    expect(snackBarText()).toContain(
+      'La tarjeta todavía no tiene el puesto: si lo envías ahora, saldrá sin datos. Complétala antes desde la tarjeta',
+    );
+    expect(snackBarText()).not.toContain('Todavía estamos leyendo la oferta');
+    expect(writeText).toHaveBeenCalledWith(share.url);
+  });
+
+  it('Copiar enlace on a not_a_job card shows Esto no parece una oferta', async () => {
+    const writeText = stubClipboard();
+    await setUp([
+      {
+        ...ofBeto,
+        previewStatus: 'failed',
+        lastEnrichmentError: { reason: 'not_a_job', at: '2026-09-17T09:05:00.000Z' },
+        publicShare: share,
+      },
+    ]);
+    fixture.componentInstance.canModerate.set(true);
+    await fixture.whenStable();
+
+    await click('analista de datos', 'link-public-copy');
+
+    expect(snackBarText()).toContain(
+      'Esto no parece una oferta: si lo envías, la tarjeta saldrá sin datos',
+    );
+    expect(snackBarText()).not.toContain('Complétala');
+    expect(writeText).toHaveBeenCalledWith(share.url);
+  });
+
+  it('Copiar enlace on a card completed by hand shows Enlace copiado', async () => {
+    const writeText = stubClipboard();
+    await setUp([
+      {
+        ...ofBeto,
+        previewStatus: 'manual',
+        preview: { title: 'Analista de datos' },
+        lastEnrichmentError: { reason: 'timeout', at: '2026-09-17T09:05:00.000Z' },
+        publicShare: share,
+      },
+    ]);
+    fixture.componentInstance.canModerate.set(true);
+    await fixture.whenStable();
+
+    await click('Analista de datos', 'link-public-copy');
+
+    expect(snackBarText()).toBe('Enlace copiado');
     expect(writeText).toHaveBeenCalledWith(share.url);
   });
 

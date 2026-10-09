@@ -25,8 +25,8 @@ export type PreviewSourceEntry = NonNullable<ResolvedPreviewSources[keyof Resolv
 export type PreviewFieldOrigin =
   | { kind: 'page'; extractor: string }
   | { kind: 'ai' }
-  | { kind: 'pasted'; by: PreviewAuthor }
-  | { kind: 'manual'; by: PreviewAuthor };
+  | { kind: 'pasted'; by: PreviewAuthor | null }
+  | { kind: 'manual'; by: PreviewAuthor | null };
 
 /** Procedencia de un campo, o `null` si nadie lo ha escrito todavía. */
 export function fieldOrigin(entry: PreviewSourceEntry | undefined): PreviewFieldOrigin | null {
@@ -174,9 +174,13 @@ export function originText(origin: PreviewFieldOrigin | null): string | null {
     case 'ai':
       return $localize`:@@links.origin.ai:Deducido por la IA`;
     case 'pasted':
-      return $localize`:@@links.origin.pasted:Descripción pegada por ${origin.by.displayName}:NAME:`;
+      return origin.by === null
+        ? $localize`:@@links.origin.pastedHidden:Descripción pegada por otra persona`
+        : $localize`:@@links.origin.pasted:Descripción pegada por ${origin.by.displayName}:NAME:`;
     case 'manual':
-      return $localize`:@@links.origin.manual:Escrito por ${origin.by.displayName}:NAME:`;
+      return origin.by === null
+        ? $localize`:@@links.origin.manualHidden:Escrito por otra persona`
+        : $localize`:@@links.origin.manual:Escrito por ${origin.by.displayName}:NAME:`;
     default:
       return null;
   }
@@ -184,9 +188,15 @@ export function originText(origin: PreviewFieldOrigin | null): string | null {
 
 /** Un pegado que todavía se ve en la tarjeta: quién lo hizo, cuándo y qué campos siguen diciendo lo que él trajo. */
 export interface PasteInEffect {
-  by: PreviewAuthor;
+  /** `null` si el autor del pegado no comparte ningún grupo con quien lee: la API no da su nombre (H1). */
+  by: PreviewAuthor | null;
   at: string;
   fields: PreviewFieldName[];
+}
+
+/** Dos autores ocultos (`null`) cuentan como el mismo autor: de ninguno se sabe más (D4 de usage-guide-fixes). */
+function sameAuthor(a: PreviewAuthor | null, b: PreviewAuthor | null): boolean {
+  return a === null || b === null ? a === b : a.userId === b.userId;
 }
 
 /**
@@ -220,7 +230,7 @@ export function latestPaste(sources: ResolvedPreviewSources | undefined): PasteI
       ([, entry]) =>
         (entry?.source === 'pasted' || entry?.source === 'manual') &&
         entry.at === at &&
-        entry.by.userId === by.userId,
+        sameAuthor(entry.by, by),
     )
     .map(([name]) => name);
   return latest;
