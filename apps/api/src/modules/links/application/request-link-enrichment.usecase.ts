@@ -11,7 +11,13 @@ import {
 } from '../domain/errors';
 import type { JobLink } from '../domain/job-link';
 import { requireReadableLink, type ReadableLink } from './link-access';
-import { displayNameIdsOf, toJobLinkSummary, toLinkSharer } from './link.mapper';
+import {
+  displayNameIdsOf,
+  previewAuthorIdsOf,
+  toJobLinkSummary,
+  toLinkSharer,
+} from './link.mapper';
+import { visibleAuthorsFor } from './visible-authors';
 import { LINKS_CLOCK, type Clock } from './ports/clock.port';
 import {
   GROUP_LINK_REPOSITORY,
@@ -30,7 +36,10 @@ import {
   LINK_USER_DIRECTORY,
   type LinkUserDirectory,
 } from './ports/link-user-directory.port';
-import { OUTBOX, type Outbox } from '../../../infrastructure/outbox/outbox.port';
+import {
+  OUTBOX,
+  type Outbox,
+} from '../../../infrastructure/outbox/outbox.port';
 import {
   USER_LINK_REPOSITORY,
   type UserLinkRepository,
@@ -68,7 +77,10 @@ export class RequestLinkEnrichment {
     const readable = await requireReadableLink(this.readers(), userId, linkId);
     assertRetryable(readable.link);
 
-    const decision = await this.limiter.consume({ kind: 'enrich-link', linkId });
+    const decision = await this.limiter.consume({
+      kind: 'enrich-link',
+      linkId,
+    });
     if (!decision.allowed) {
       throw new TooManyLinkAttempts(decision.retryAfterSeconds);
     }
@@ -90,7 +102,7 @@ export class RequestLinkEnrichment {
     if (requested === null) {
       throw new LinkNotFound();
     }
-    return await this.toSummary(readable, requested);
+    return await this.toSummary(userId, readable, requested);
   }
 
   private readers() {
@@ -103,11 +115,19 @@ export class RequestLinkEnrichment {
   }
 
   private async toSummary(
+    userId: string,
     readable: ReadableLink,
     link: JobLink,
   ): Promise<EnrichLinkResponse> {
+    // El nombre de un autor del preview solo sale si quien lee comparte un grupo con él (H1, ADR-055 §2).
+    const visibleAuthors = await visibleAuthorsFor(
+      this.membership,
+      userId,
+      previewAuthorIdsOf([link]),
+    );
     const ids = displayNameIdsOf(
       [link],
+      visibleAuthors,
       readable.sharedBy === undefined ? [] : [readable.sharedBy],
     );
     const names =
@@ -117,6 +137,7 @@ export class RequestLinkEnrichment {
     return toJobLinkSummary(link, {
       sharedAt: readable.sharedAt,
       names,
+      visibleAuthors,
       ...(readable.sharedBy === undefined
         ? {}
         : {

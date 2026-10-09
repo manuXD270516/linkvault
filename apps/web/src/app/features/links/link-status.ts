@@ -78,7 +78,7 @@ export function linkCardStatus(link: JobLinkSummary, now: Date): LinkCardStatus 
   }
 
   // Sin nada que enseñar y sin fallo: la diferencia entre "está en camino" y "no llegó" la marca el reloj.
-  return requestedAgo(link, now) < READING_GRACE_MS
+  return isStillReading(link, now)
     ? {
         text: $localize`:@@links.status.reading:Leyendo la oferta…`,
         needsHand: false,
@@ -93,6 +93,21 @@ export function linkCardStatus(link: JobLinkSummary, now: Date): LinkCardStatus 
         notAnOffer: false,
         pasteFirst: false,
       };
+}
+
+/**
+ * `true` mientras la tarjeta dice "Leyendo la oferta…": sin título y empresa, sin error de lectura, sin ningún dato y
+ * pedida hace menos de `READING_GRACE_MS`. Es el predicado que comparten la tarjeta y el aviso de "Copiar enlace"
+ * (`emptyCardNotice`), para que no puedan divergir.
+ */
+export function isStillReading(link: JobLinkSummary, now: Date): boolean {
+  const preview = link.preview;
+  return (
+    !isReadable(preview) &&
+    link.lastEnrichmentError === undefined &&
+    !hasAnyData(preview) &&
+    requestedAgo(link, now) < READING_GRACE_MS
+  );
 }
 
 /** Motivos en los que la bolsa, y no algo pasajero, nos impide leer la oferta: prohibirlo o bloquearnos. */

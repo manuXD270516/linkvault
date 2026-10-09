@@ -34,6 +34,13 @@ export class GroupsFacadeMembership implements GroupMembership {
     return [...members];
   }
 
+  peersAmong(
+    userId: string,
+    candidateIds: readonly string[],
+  ): Promise<Set<string>> {
+    return this.groups.peersAmong(userId, candidateIds);
+  }
+
   async groupsOf(userId: string): Promise<UserGroup[]> {
     const groups = await this.groups.getGroupsOf(userId);
     return groups.map((group) => ({

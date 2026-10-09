@@ -297,6 +297,28 @@ describe('EditPreviewDialog', () => {
     expect(dialog().querySelector('[data-testid="revert-company"]')).toBeNull();
   });
 
+  it('shows Escrito por otra persona and no name for a hidden author', async () => {
+    await showOnly({
+      ...link,
+      preview: { title: 'Ingeniera de datos', company: 'Acme' },
+      previewSources: {
+        title: { value: 'Ingeniera de datos', source: 'manual', by: null, at: '2026-09-18T11:00:00.000Z' },
+        company: {
+          value: 'Acme',
+          source: 'pasted',
+          extractor: 'ai:extract-pasted-job',
+          by: null,
+          at: '2026-09-18T10:00:00.000Z',
+        },
+      },
+    });
+    await openDialog();
+
+    expect(originOf('title')).toBe('Escrito por otra persona');
+    expect(originOf('company')).toBe('Descripción pegada por otra persona');
+    expect(dialog().textContent).not.toContain('Ana');
+  });
+
   it('Volver a lo pegado', async () => {
     await showOnly(pastedLink);
     await openDialog();

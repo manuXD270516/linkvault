@@ -31,12 +31,18 @@ export class InMemoryGroupRepository implements GroupRepository {
   private readonly groups = new Map<string, Group>();
   private readonly memberships: Membership[] = [];
   private nextId = 1;
+  private peersAmongCalls = 0;
 
   constructor(private readonly codes: InviteCodeGenerator) {}
 
   /** Cuántos grupos hay guardados; lo usan los tests que comprueban que una escritura no dejó rastro. */
   get size(): number {
     return this.groups.size;
+  }
+
+  /** Cuántas consultas de `peersAmong` se han hecho (una por llamada, como en Mongo); lo miden los tests. */
+  get peersAmongQueries(): number {
+    return this.peersAmongCalls;
   }
 
   // `async` aunque no espere a nadie: un código agotado tiene que rechazar la promesa, no lanzar en la llamada.
@@ -101,6 +107,30 @@ export class InMemoryGroupRepository implements GroupRepository {
 
   countGroupsOfUser(userId: string): Promise<number> {
     return Promise.resolve(this.groupsOfUser(userId).length);
+  }
+
+  peersAmong(
+    userId: string,
+    candidateIds: readonly string[],
+  ): Promise<Set<string>> {
+    this.peersAmongCalls += 1;
+    const peers = new Set<string>();
+    if (!isUserId(userId)) {
+      return Promise.resolve(peers);
+    }
+    const viewerGroups = new Set(
+      this.groupsOfUser(userId).map((entry) => entry.group.id),
+    );
+    const wanted = new Set(candidateIds.filter((id) => isUserId(id)));
+    for (const membership of this.memberships) {
+      if (
+        wanted.has(membership.userId) &&
+        viewerGroups.has(membership.groupId)
+      ) {
+        peers.add(membership.userId);
+      }
+    }
+    return Promise.resolve(peers);
   }
 
   listMembers(groupId: string): Promise<Membership[]> {
@@ -202,7 +232,6 @@ export class InMemoryGroupRepository implements GroupRepository {
       withDefaultVisibility(group, defaultVisibility, now),
     );
   }
-
 
   async rotateInviteCode(groupId: string, now: Date): Promise<Group | null> {
     return await this.update(groupId, (group) =>

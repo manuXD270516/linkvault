@@ -124,9 +124,7 @@ describe('ReopenJobLink', () => {
     const stored = await links.findById(linkId);
     expect(stored?.closedAt).toBeUndefined();
     expect(stored?.closedReason).toBeUndefined();
-    expect(stored?.lastFreshnessCheckAt?.toISOString()).toBe(
-      NOW.toISOString(),
-    );
+    expect(stored?.lastFreshnessCheckAt?.toISOString()).toBe(NOW.toISOString());
     expect(publisher.published).toEqual([
       { linkId, previewStatus: 'enriched', previewVersion: 2 },
     ]);
@@ -193,9 +191,9 @@ describe('ReopenJobLink', () => {
     await expect(reopen.execute(STRANGER, linkId, {})).rejects.toBeInstanceOf(
       LinkNotFound,
     );
-    await expect(
-      reopen.execute(ANA, objectId(999), {}),
-    ).rejects.toBeInstanceOf(LinkNotFound);
+    await expect(reopen.execute(ANA, objectId(999), {})).rejects.toBeInstanceOf(
+      LinkNotFound,
+    );
   });
 
   it('does not reopen applications in expired (no apps port / D4)', async () => {
@@ -301,5 +299,25 @@ describe('ReopenJobLink', () => {
     const summary = await reopen.execute(ANA, linkId, { expiresAt: null });
     expect(summary.closedAt).toBeUndefined();
     expect(summary.preview?.expiresAt).toBeNull();
+  });
+});
+
+describe('ReopenJobLink provenance names (H1)', () => {
+  const CARLA = objectId(4);
+
+  it('response hides authors who share no group with the caller', async () => {
+    const linkId = await seedClosed({ reason: 'recheck' });
+    await userLinks.save(
+      { userId: CARLA, linkId, savedAt: clock.now() },
+      IN_MEMORY_SESSION,
+    );
+
+    const summary = await reopen.execute(CARLA, linkId, {});
+    const company = summary.previewSources?.company;
+
+    expect(company?.source === 'manual' ? company.by : undefined).toBeNull();
+    const sources = JSON.stringify(summary.previewSources);
+    expect(sources).not.toContain(ANA);
+    expect(sources).not.toContain('Ana');
   });
 });

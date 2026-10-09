@@ -14,6 +14,7 @@ import {
 import type { JobLink } from '../domain/job-link';
 import { encodeCursor } from './link-cursor';
 import type { LinkListPage, ListedLink } from './ports/link-listing';
+import type { VisibleAuthors } from './visible-authors';
 
 // Mapeo único a los contratos de la API. La URL normalizada viaja como identidad, pero lo que el SPA abre es
 // `displayUrl` (D2).
@@ -24,7 +25,8 @@ import type { LinkListPage, ListedLink } from './ports/link-listing';
 //
 // La procedencia sale con `by` resuelto a `{ userId, displayName }` (D4; D3 de paste-job-description): la tarjeta dice
 // "Escrito por Ana" o "Descripción pegada por Beto", no un identificador, y lo mismo el autor de lo que guarda
-// `replaced`. Los nombres llegan ya resueltos en un `Map`, porque quien llama los pide **todos de una vez** para la
+// `replaced`. **Solo si quien lee puede ver ese nombre** (H1 de usage-guide-fixes, ADR-055 §2): el autor que no está en
+// `visibleAuthors` sale `by: null`, sin nombre ni identificador, y no se le pide el nombre al directorio. Los nombres llegan ya resueltos en un `Map`, porque quien llama los pide **todos de una vez** para la
 // página entera —`displayNameIdsOf`—; resolverlos aquí sería una consulta por campo.
 
 /**
@@ -42,6 +44,11 @@ export interface SummaryContext {
   readonly sharedBy?: LinkSharer;
   /** Nombres visibles ya resueltos; un id que no esté se responde como "Usuario". */
   readonly names?: Map<string, string>;
+  /**
+   * Autores de procedencia cuyo nombre puede ver quien lee (obligatorio y de tipo marcado: solo lo construye
+   * `visible-authors.ts`). Un autor fuera del conjunto sale `by: null`; un conjunto vacío oculta a todos.
+   */
+  readonly visibleAuthors: VisibleAuthors;
   /** Nota de quien lo compartió; solo en un grupo y solo si la tiene (D3 de group-comments). */
   readonly note?: ShareNote;
   /** Resumen de sus comentarios en el grupo; solo en el listado de un grupo (D7 de group-comments). */
@@ -81,7 +88,11 @@ export function toJobLinkSummary(
     ...(link.previewSources === undefined
       ? {}
       : {
-          previewSources: toResolvedPreviewSources(link.previewSources, names),
+          previewSources: toResolvedPreviewSources(
+            link.previewSources,
+            names,
+            options.visibleAuthors,
+          ),
         }),
     ...(link.lastEnrichmentError === undefined
       ? {}
@@ -121,10 +132,12 @@ export function toLinkSharer(
 /**
  * Identificadores cuyo nombre visible hace falta para responder esos links: quien los compartió, quien escribió a mano o
  * pegó cualquiera de sus campos y quien firmaba lo que esos campos guardan para deshacerse. Se piden **en una sola
- * consulta** por página, no uno por campo ni uno por link.
+ * consulta** por página, no uno por campo ni uno por link. De los autores de procedencia solo se piden los que
+ * `visibleAuthors` deja ver: el nombre de uno oculto no sale del directorio. `sharedBy` se pide siempre.
  */
 export function displayNameIdsOf(
   links: readonly JobLink[],
+  visibleAuthors: ReadonlySet<string>,
   sharedBy: readonly (string | undefined)[] = [],
 ): string[] {
   const ids = new Set<string>();
@@ -135,10 +148,17 @@ export function displayNameIdsOf(
   }
   for (const link of links) {
     for (const userId of authorIdsOf(link)) {
-      ids.add(userId);
+      if (visibleAuthors.has(userId)) {
+        ids.add(userId);
+      }
     }
   }
   return [...ids];
+}
+
+/** Autores de procedencia de todos esos links, sin repetir: los candidatos de `visibleAuthorsFor`. */
+export function previewAuthorIdsOf(links: readonly JobLink[]): string[] {
+  return [...new Set(links.flatMap((link) => authorIdsOf(link)))];
 }
 
 /**
@@ -172,10 +192,14 @@ type DisplacedEntry = NonNullable<
   >['replaced']
 >;
 
-/** Procedencia con todo `by` resuelto a `{ userId, displayName }`, también el de `replaced`; lo automático sale tal cual. */
+/**
+ * Procedencia con todo `by` resuelto a `{ userId, displayName }`, también el de `replaced`, o `null` si el autor no
+ * está en `visibleAuthors`; lo automático sale tal cual.
+ */
 export function toResolvedPreviewSources(
   sources: PreviewSources,
   names: Map<string, string>,
+  visibleAuthors: VisibleAuthors,
 ): ResolvedPreviewSources {
   const resolved: ResolvedPreviewSources = {};
   for (const field of PREVIEW_FIELD_NAMES) {
@@ -184,7 +208,7 @@ export function toResolvedPreviewSources(
       continue;
     }
     // El campo se escribe uno a uno porque cada uno tiene el tipo de su valor: un `Record` genérico lo perdería.
-    assignResolved(resolved, field, entry, names);
+    assignResolved(resolved, field, entry, names, visibleAuthors);
   }
   return resolved;
 }
@@ -199,6 +223,7 @@ function assignResolved(
   field: PreviewFieldName,
   entry: NonNullable<PreviewSources[PreviewFieldName]>,
   names: Map<string, string>,
+  visibleAuthors: VisibleAuthors,
 ): void {
   if (entry.source === 'auto') {
     resolved[field] = entry as never;
@@ -207,21 +232,36 @@ function assignResolved(
   const { replaced, ...rest } = entry;
   resolved[field] = {
     ...rest,
-    by: toLinkSharer(entry.by, names.get(entry.by)),
+    by: resolveAuthor(entry.by, names, visibleAuthors),
     ...(replaced === undefined
       ? {}
-      : { replaced: resolveDisplaced(replaced, names) }),
+      : { replaced: resolveDisplaced(replaced, names, visibleAuthors) }),
   } as never;
+}
+
+/** El autor con su nombre si quien lee puede verlo; `null` (ni nombre ni identificador) si no. */
+function resolveAuthor(
+  userId: string,
+  names: Map<string, string>,
+  visibleAuthors: VisibleAuthors,
+): LinkSharer | null {
+  return visibleAuthors.has(userId)
+    ? toLinkSharer(userId, names.get(userId))
+    : null;
 }
 
 /** La entrada desplazada con su autor resuelto; la que salió de la página no tiene autor y sale tal cual. */
 function resolveDisplaced(
   replaced: DisplacedEntry,
   names: Map<string, string>,
+  visibleAuthors: VisibleAuthors,
 ): unknown {
   return replaced.source === 'auto'
     ? replaced
-    : { ...replaced, by: toLinkSharer(replaced.by, names.get(replaced.by)) };
+    : {
+        ...replaced,
+        by: resolveAuthor(replaced.by, names, visibleAuthors),
+      };
 }
 
 /**
@@ -232,8 +272,11 @@ export function toLinkPage(
   page: LinkListPage,
   total: number,
   names: Map<string, string>,
+  visibleAuthors: VisibleAuthors,
 ): LinkPage {
-  const items = page.items.map((item) => toListedSummary(item, names));
+  const items = page.items.map((item) =>
+    toListedSummary(item, names, visibleAuthors),
+  );
   return {
     items,
     total,
@@ -246,10 +289,12 @@ export function toLinkPage(
 function toListedSummary(
   item: ListedLink,
   names: Map<string, string>,
+  visibleAuthors: VisibleAuthors,
 ): JobLinkSummary {
   return toJobLinkSummary(item.link, {
     sharedAt: item.sharedAt,
     names,
+    visibleAuthors,
     ...(item.sharedBy === undefined
       ? {}
       : { sharedBy: toLinkSharer(item.sharedBy, names.get(item.sharedBy)) }),

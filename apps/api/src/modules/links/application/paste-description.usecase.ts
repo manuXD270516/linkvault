@@ -26,9 +26,11 @@ import { previewStatusOf } from '../domain/preview-status';
 import { requireReadableLink, type ReadableLink } from './link-access';
 import {
   displayNameIdsOf,
+  previewAuthorIdsOf,
   toJobLinkSummary,
   toLinkSharer,
 } from './link.mapper';
+import { visibleAuthorsFor } from './visible-authors';
 import { LINKS_CLOCK, type Clock } from './ports/clock.port';
 import {
   GROUP_LINK_REPOSITORY,
@@ -150,7 +152,7 @@ export class PasteDescription {
     if (written.changed) {
       this.announce(written.link);
     }
-    return await this.toSummary(readable, written.link);
+    return await this.toSummary(userId, readable, written.link);
   }
 
   /** Los campos leídos, o el error que corresponde a lo que respondió la IA. Un 503 devuelve el intento. */
@@ -241,11 +243,19 @@ export class PasteDescription {
 
   /** El link con la forma de una fila de lista: quien pega lo está viendo en una. */
   private async toSummary(
+    userId: string,
     readable: ReadableLink,
     link: JobLink,
   ): Promise<JobLinkSummary> {
+    // El nombre de un autor del preview solo sale si quien lee comparte un grupo con él (H1, ADR-055 §2).
+    const visibleAuthors = await visibleAuthorsFor(
+      this.membership,
+      userId,
+      previewAuthorIdsOf([link]),
+    );
     const ids = displayNameIdsOf(
       [link],
+      visibleAuthors,
       readable.sharedBy === undefined ? [] : [readable.sharedBy],
     );
     const names =
@@ -255,6 +265,7 @@ export class PasteDescription {
     return toJobLinkSummary(link, {
       sharedAt: readable.sharedAt,
       names,
+      visibleAuthors,
       ...(readable.sharedBy === undefined
         ? {}
         : {

@@ -21,6 +21,13 @@ import { GroupsStore } from '../../core/groups/groups.store';
 import { RequestError } from '../../shared/ui/request-error';
 
 /**
+ * Valor centinela de la opción «Todos mis grupos (unión del link)». `mat-option` con valor `null` es la opción de
+ * reinicio de Material y no se pinta como elegida: el formulario usa este valor y lo traduce a `null` al guardar y
+ * desde `null` al cargar (design D5 de usage-guide-fixes). La API no cambia.
+ */
+const ALL_GROUPS = '__all__';
+
+/**
  * Preferencias de notificación y Web Push (spec web/notifications + web/auth).
  * Enlace desde `/perfil`; email sigue editable si push falla o se niega el permiso.
  */
@@ -52,6 +59,7 @@ export class NotificationsPage {
   protected readonly saveFailure = this.store.saveFailure;
   protected readonly preferences = this.store.preferences;
   protected readonly groupOptions = this.groups.groups;
+  protected readonly allGroups = ALL_GROUPS;
 
   protected readonly pushSupported = this.push.supported();
   protected readonly pushSubscribed = this.push.subscribed;
@@ -66,7 +74,7 @@ export class NotificationsPage {
     applicationStale: true,
     groupWeeklyDigest: true,
     notifyOwnActions: true,
-    applicationStatusGroupId: this.formBuilder.control<string | null>(null),
+    applicationStatusGroupId: ALL_GROUPS,
   });
 
   protected readonly formReady = computed(() => this.loaded());
@@ -90,7 +98,7 @@ export class NotificationsPage {
       applicationStale: prefs.applicationStale,
       groupWeeklyDigest: prefs.groupWeeklyDigest,
       notifyOwnActions: prefs.notifyOwnActions,
-      applicationStatusGroupId: prefs.applicationStatusGroupId,
+      applicationStatusGroupId: prefs.applicationStatusGroupId ?? ALL_GROUPS,
     });
   }
 
@@ -103,7 +111,7 @@ export class NotificationsPage {
       applicationStale: raw.applicationStale,
       groupWeeklyDigest: raw.groupWeeklyDigest,
       notifyOwnActions: raw.notifyOwnActions,
-      applicationStatusGroupId: raw.applicationStatusGroupId,
+      applicationStatusGroupId: raw.applicationStatusGroupId === ALL_GROUPS ? null : raw.applicationStatusGroupId,
     };
     const ok = await this.store.save(patch);
     if (ok) {

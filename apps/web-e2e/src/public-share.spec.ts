@@ -153,7 +153,7 @@ test('public share flow: the card, the jump, the public view, the sign up and tu
       });
       await expect(offerRow(owner).getByTestId('link-public-copy')).toBeVisible();
       await expect(owner.getByTestId('save-link-public')).toContainText(
-        'Cualquiera con este enlace verá la oferta; no se verá el grupo ni tu nombre',
+        'Cualquiera con este enlace verá la oferta, pero no el grupo; tu nombre solo lo verá quien ya comparta un grupo contigo.',
       );
       await owner.screenshot({ path: join(SCREENSHOT_DIR, 'tarjeta-publica.png'), fullPage: true });
     });

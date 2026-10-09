@@ -8,7 +8,13 @@ import type { JobLink } from '../domain/job-link';
 import { applyManualEdit } from '../domain/preview-edit';
 import { previewStatusOf } from '../domain/preview-status';
 import { requireReadableLink, type ReadableLink } from './link-access';
-import { displayNameIdsOf, toJobLinkSummary, toLinkSharer } from './link.mapper';
+import {
+  displayNameIdsOf,
+  previewAuthorIdsOf,
+  toJobLinkSummary,
+  toLinkSharer,
+} from './link.mapper';
+import { visibleAuthorsFor } from './visible-authors';
 import { LINKS_CLOCK, type Clock } from './ports/clock.port';
 import {
   GROUP_LINK_REPOSITORY,
@@ -68,7 +74,7 @@ export class ReopenJobLink {
 
     // Ya abierto: 200 sin mutar (incluso con expiresAt pasado o body con expiresAt).
     if (current.closedAt === undefined) {
-      return await this.toSummary(readable, current);
+      return await this.toSummary(userId, readable, current);
     }
 
     this.assertCalendarTrap(current, request);
@@ -79,7 +85,7 @@ export class ReopenJobLink {
     if (written !== null) {
       this.announce(written);
       await this.emitSearch(written, now);
-      return await this.toSummary(readable, written);
+      return await this.toSummary(userId, readable, written);
     }
 
     // Carrera: otro proceso lo reabrió entre la lectura y la escritura → idempotente sin mutar de nuevo.
@@ -88,7 +94,7 @@ export class ReopenJobLink {
       throw new LinkNotFound();
     }
     if (reread.closedAt === undefined) {
-      return await this.toSummary(readable, reread);
+      return await this.toSummary(userId, readable, reread);
     }
     throw new Error('The link could not be reopened');
   }
@@ -97,10 +103,7 @@ export class ReopenJobLink {
    * Si `closedReason === 'calendar'` o la `expiresAt` resultante (día UTC) está en el pasado, el body tiene que
    * aportar `expiresAt` futuro o `null`. Solo aplica cuando había `closedAt`.
    */
-  private assertCalendarTrap(
-    link: JobLink,
-    request: ReopenLinkRequest,
-  ): void {
+  private assertCalendarTrap(link: JobLink, request: ReopenLinkRequest): void {
     const today = utcDateOnly(this.clock.now());
     const resulting =
       request.expiresAt !== undefined
@@ -114,7 +117,10 @@ export class ReopenJobLink {
     if (request.expiresAt === undefined) {
       throw new InvalidExpiresAt();
     }
-    if (request.expiresAt !== null && isPastDateOnly(request.expiresAt, today)) {
+    if (
+      request.expiresAt !== null &&
+      isPastDateOnly(request.expiresAt, today)
+    ) {
       throw new InvalidExpiresAt();
     }
   }
@@ -193,11 +199,19 @@ export class ReopenJobLink {
   }
 
   private async toSummary(
+    userId: string,
     readable: ReadableLink,
     link: typeof readable.link,
   ): Promise<JobLinkSummary> {
+    // El nombre de un autor del preview solo sale si quien lee comparte un grupo con él (H1, ADR-055 §2).
+    const visibleAuthors = await visibleAuthorsFor(
+      this.membership,
+      userId,
+      previewAuthorIdsOf([link]),
+    );
     const ids = displayNameIdsOf(
       [link],
+      visibleAuthors,
       readable.sharedBy === undefined ? [] : [readable.sharedBy],
     );
     const names =
@@ -207,6 +221,7 @@ export class ReopenJobLink {
     return toJobLinkSummary(link, {
       sharedAt: readable.sharedAt,
       names,
+      visibleAuthors,
       ...(readable.sharedBy === undefined
         ? {}
         : {
