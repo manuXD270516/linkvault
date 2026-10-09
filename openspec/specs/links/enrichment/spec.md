@@ -146,7 +146,14 @@ máximo, y SHALL aceptarse solo contenido HTML.
 
 Cada campo del preview SHALL guardarse con su valor y su origen: `auto` con el identificador del extractor que lo
 produjo, `pasted` con quién pegó el texto del que salió y cuándo, o `manual` con quién lo escribió y cuándo. Al leerse,
-los orígenes `pasted` y `manual` SHALL decir el nombre visible de la persona, no su identificador. La precedencia SHALL
+los orígenes `pasted` y `manual` SHALL decir el nombre visible de la persona, no su identificador, **solo a quien
+pueda verlo**: el propio autor o quien comparta con él al menos un grupo en el momento de la lectura (spec
+`users/profile`, «Consulta del perfil propio»). A cualquier otro lector la API SHALL devolver ese autor vacío
+(`by: null`), sin nombre ni identificador, y lo mismo el autor de la entrada que el campo guarda para deshacerse; el
+origen (`pasted` o `manual`) y su fecha SHALL seguir saliendo. La regla SHALL aplicarse a toda respuesta que lleve la
+procedencia —listados, guardar, importar, pegar, editar, reabrir, releer— y a cada destinatario de los avisos en
+tiempo real por separado. Si no puede saberse a quién es visible un autor, la respuesta SHALL fallar antes que
+nombrarlo. Lo que se guarda NO SHALL cambiar: el autor se conserva siempre. La precedencia SHALL
 ser **escrito a mano > pegado > leído de la página**, y SHALL ser una sola regla para todo lo que escribe el preview: un
 merge automático NO SHALL sobrescribir un campo `manual` ni `pasted`, y un pegado NO SHALL sobrescribir un campo
 `manual`. Cuando una persona sustituya un campo —pegando una descripción o escribiendo a mano—, SHALL guardarse la
@@ -203,6 +210,86 @@ página pudo cambiar.
 - **GIVEN** un campo que salió de un texto pegado y después se corrigió a mano
 - **WHEN** se pide volver al valor anterior
 - **THEN** el campo SHALL recuperar el valor pegado, con su origen `pasted` y su autor
+
+#### Scenario: Quien comparte grupo con el autor ve su nombre
+
+- **GIVEN** Ana y Beto miembros del grupo "Backend Bolivia" y un link cuyo `title` escribió Ana a mano
+- **WHEN** Beto pide el listado de "Backend Bolivia"
+- **THEN** `previewSources.title.by` SHALL ser `{ userId, displayName }` de Ana
+
+#### Scenario: Basta con cualquier grupo en común
+
+- **GIVEN** un link de "Backend Bolivia" cuyo `title` escribió Ana a mano, y Dani, que no es de "Backend Bolivia" pero
+  comparte con Ana el grupo "Frontend Sucre" y guarda la misma URL en su lista privada
+- **WHEN** Dani pide `GET /api/links/mine`
+- **THEN** `previewSources.title.by` SHALL ser `{ userId, displayName }` de Ana
+
+#### Scenario: Una membresía de un grupo borrado no cuenta
+
+- **GIVEN** Ana y Carla con membresías que apuntan a un grupo que ya no existe, sin ningún otro grupo en común, y un
+  link cuyo `title` escribió Ana a mano en la lista privada de Carla
+- **WHEN** Carla pide `GET /api/links/mine`
+- **THEN** `previewSources.title.by` SHALL ser `null`
+
+#### Scenario: Quien no comparte grupo con el autor no ve su nombre
+
+- **GIVEN** un link cuyo `title` escribió Ana a mano y Carla, que no comparte ningún grupo con Ana, con ese link en su
+  lista privada
+- **WHEN** Carla pide `GET /api/links/mine`
+- **THEN** `previewSources.title` SHALL tener origen `manual` y su fecha
+- **AND** `previewSources.title.by` SHALL ser `null`
+- **AND** la respuesta NO SHALL contener ni el `userId` ni el `displayName` de Ana en ningún campo
+
+#### Scenario: Tampoco en lo que se guarda para deshacer
+
+- **GIVEN** un link cuyo `company` pegó Beto y después corrigió Ana a mano, y Carla, que no comparte grupo con ninguno
+  de los dos, con ese link en su lista privada
+- **WHEN** Carla recibe ese link en cualquier respuesta de la API
+- **THEN** `previewSources.company.by` y `previewSources.company.replaced.by` SHALL ser `null`
+
+#### Scenario: Uno mismo siempre se ve
+
+- **GIVEN** Carla, sin grupos, que corrige a mano el `title` de un link de su lista privada
+- **WHEN** recibe la respuesta de `PATCH /api/links/:id/preview`
+- **THEN** `previewSources.title.by` SHALL ser `{ userId, displayName }` de Carla
+
+#### Scenario: Cada destinatario de un aviso en tiempo real recibe lo suyo
+
+- **GIVEN** un link cuyo `title` escribió Ana, en "Backend Bolivia" (donde está Beto) y en la lista privada de Carla,
+  ambos con la conexión de avisos abierta
+- **WHEN** se termina de leer la oferta y se reparte el aviso
+- **THEN** Beto SHALL recibir `previewSources.title.by` con el nombre de Ana
+- **AND** Carla SHALL recibir `previewSources.title.by` `null`
+
+#### Scenario: Filtrar la procedencia no mezcla lo de cada destinatario
+
+- **GIVEN** un link compartido por Ana en "Backend Bolivia" y por Beto en "Frontend Sucre", y Eva y Fran, miembros de
+  uno y otro grupo, que ven los mismos autores de procedencia
+- **WHEN** se reparte el aviso de que terminó la lectura
+- **THEN** Eva SHALL recibir el `sharedAt` y el `sharedBy` de "Backend Bolivia"
+- **AND** Fran SHALL recibir el `sharedAt` y el `sharedBy` de "Frontend Sucre"
+
+#### Scenario: Un miembro no ve el nombre de quien corrigió desde fuera del grupo
+
+- **GIVEN** un link de "Backend Bolivia" (donde está Beto) que Carla, que no comparte ningún grupo con Beto, tiene en su
+  lista privada y cuyo `title` corrigió a mano
+- **WHEN** Beto pide el listado de "Backend Bolivia"
+- **THEN** `previewSources.title` SHALL tener origen `manual` y `by` `null`
+- **AND** `previewSources` NO SHALL contener ni el `userId` ni el `displayName` de Carla en ningún campo ni en
+  `replaced`
+
+#### Scenario: Calcular quién es visible no falla abierto
+
+- **GIVEN** un lector y un link con autores ajenos a él
+- **WHEN** la consulta de quién comparte grupo con el lector falla
+- **THEN** la petición SHALL fallar
+- **AND** NO SHALL devolverse ningún nombre de autor ajeno
+
+#### Scenario: Lo guardado no cambia
+
+- **GIVEN** un link cuyo `title` escribió Ana a mano
+- **WHEN** Carla, sin grupo en común con Ana, lo lee
+- **THEN** el documento guardado SHALL seguir teniendo a Ana como autora de `title`
 
 ### Requirement: Estados del enriquecimiento
 
@@ -524,7 +611,6 @@ SHALL ser **no reintentable** (misma clase que `robots_disallowed`, `blocked` y 
 - **GIVEN** un enrich que falló con `not_found`
 - **WHEN** se evalúa si el fallo es reintentable
 - **THEN** SHALL ser no reintentable
-
 
 ### Requirement: Cierre en lugar de failed vacío tras frescura
 

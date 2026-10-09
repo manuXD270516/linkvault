@@ -267,8 +267,14 @@ ofrecer "Compartir", que activa la visibilidad `group`, y "Qué verán", que mue
 interruptor del panel. Tras compartir SHALL mostrarse "Compartido · Deshacer", y "Deshacer" SHALL volver a `private`.
 Las dos acciones SHALL actuar sobre la postulación del gesto que abrió el aviso; si la API responde `404` con
 `application_not_found`, NO SHALL mostrarse ningún error. Los avisos SHALL anunciarse a los lectores de pantalla y NO
-SHALL cerrarse antes de 10 segundos ni mientras tengan el foco. Si no se pulsa "Compartir", la postulación SHALL seguir
-privada. En `/mis-links` NO SHALL mostrarse el aviso.
+SHALL cerrarse antes de 10 segundos ni mientras tengan el foco; pasados los 10 segundos, SHALL cerrarse en cuanto el
+foco no esté en ellos. Un aviso pertenece al detalle del grupo donde se abrió: al navegar a otra página —un cambio de
+path— SHALL cerrarse en ese momento, con el mismo desenlace que si se hubiera dejado ir —sin pulsar "Compartir", la
+postulación sigue privada; sin pulsar "Deshacer", sigue compartida y se puede cambiar desde el interruptor del panel— y
+NO SHALL verse en ninguna otra página. Un cambio solo de la query (por ejemplo, los filtros del grupo) NO SHALL
+cerrarlo. Un aviso que llegue cuando la persona ya salió de la página del gesto, o mientras está saliendo hacia otra
+—porque la API tardó—, NO SHALL abrirse ni verse en la página nueva. Si no se pulsa "Compartir", la postulación SHALL seguir privada. En `/mis-links` NO SHALL
+mostrarse el aviso.
 
 #### Scenario: Compartir tras el gesto
 
@@ -297,6 +303,46 @@ privada. En `/mis-links` NO SHALL mostrarse el aviso.
 - **GIVEN** el aviso de compartir visible con el foco en "Compartir"
 - **WHEN** pasan 15 segundos
 - **THEN** el aviso SHALL seguir visible
+
+#### Scenario: Sin foco, se va a los 10 segundos
+
+- **GIVEN** el aviso "Compartido · Deshacer" visible y el foco fuera de él
+- **WHEN** pasan 10 segundos
+- **THEN** el aviso SHALL cerrarse
+- **AND** la postulación SHALL seguir compartida
+
+#### Scenario: Al salir del grupo, el aviso no acompaña
+
+- **GIVEN** el aviso "Compartido · Deshacer" visible en el detalle de un grupo, antes de 10 segundos
+- **WHEN** el miembro navega a "Postulaciones", a sus insights o a "Mi CV"
+- **THEN** el aviso NO SHALL verse en esa página
+- **AND** la postulación SHALL seguir compartida
+
+#### Scenario: Cambiar los filtros no lo cierra
+
+- **GIVEN** el aviso "Compartido · Deshacer" visible en el detalle de un grupo, antes de 10 segundos
+- **WHEN** el miembro cambia un filtro del grupo y solo cambia la query de la URL
+- **THEN** el aviso SHALL seguir visible
+
+#### Scenario: Navegar mientras se comparte
+
+- **GIVEN** un miembro que pulsa "Compartir" en el aviso del detalle de un grupo
+- **WHEN** navega a otra página antes de que la API responda
+- **THEN** NO SHALL abrirse "Compartido · Deshacer" en la página nueva
+- **AND** la postulación SHALL quedar como la deje la respuesta de la API
+
+#### Scenario: La respuesta llega mientras se navega
+
+- **GIVEN** un miembro que pulsa "Compartir" en el aviso del detalle de un grupo y empieza a navegar a "Postulaciones"
+- **WHEN** la API responde después de empezar la navegación y antes de que termine, con la URL todavía en el grupo
+- **THEN** "Compartido · Deshacer" NO SHALL verse en "Postulaciones"
+
+#### Scenario: Salir sin compartir
+
+- **GIVEN** el aviso "¿Que tus grupos vean que postulaste a esta oferta? También quien entre después." visible
+- **WHEN** el miembro navega a otra página sin pulsar "Compartir"
+- **THEN** el aviso SHALL cerrarse
+- **AND** la postulación SHALL seguir privada
 
 #### Scenario: Se dejó de seguir entretanto
 
