@@ -447,3 +447,10 @@ iteración. Q1 y Q7 siguen pendientes del owner.
 | Ids | business | aceptado | `copyFailedEmpty` es un id nuevo, no uno que se conserva (D6, G2). |
 
 Convergencia: SI (critic P0 0, business V0 0; Q1 y Q7 pendientes del owner)
+
+## Respuestas del owner y aprobación
+
+Fecha: 2026-10-08. Aprobación humana del change tras la convergencia de la iteración 3.
+
+- **Q1 = (a):** «Aplícalo para homogeneizar». Se aplica y se fusiona antes de invitar en 35b (ADR-055 §1).
+- **Q7 = (a):** «Cámbialo». El texto de la promesa pasa al de business (ADR-055 §3; tarea 8.2).

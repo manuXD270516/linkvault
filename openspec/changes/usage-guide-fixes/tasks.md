@@ -2,8 +2,8 @@
 
 Los grupos 4 (H3) y 7 (H7) se retiraron en la iteración 1 del debate; la 2.3 (E2E opcional) se retiró en la iteración 2 (G4); la numeración se conserva para que las referencias del debate sigan valiendo. Cada tarea cabe en menos de una hora (C15).
 
-- [ ] 0.1 [infra] Q1 y Q7 respondidas por el owner y anotadas con fecha en ADR-055 (§1 y §3), cada una en una línea que empieza por «Respuesta del owner (Q1), AAAA-MM-DD:» / «Respuesta del owner (Q7), AAAA-MM-DD:», y en `design.md`; si Q1 = (b), este change no pasa de aquí hasta archivar 35c; si Q1 = (c), se aplican solo los grupos 1, 2 y 9. Verificar: `grep -cE "Respuesta del owner \((Q1|Q7)\), 20[0-9]{2}-" docs/adr/ADR-055.md` devuelve `2` (N12; antes de anotar las respuestas devuelve `0`, comprobado el 2026-10-08).
-- [ ] 0.2 [infra] Debate critic/business/reflect cerrado sin P0/V0 abiertos y aprobación humana registrada. Verificar: el `design.md` lleva la sección del debate de la última iteración con la fecha de la aprobación.
+- [x] 0.1 [infra] Q1 y Q7 respondidas por el owner y anotadas con fecha en ADR-055 (§1 y §3), cada una en una línea que empieza por «Respuesta del owner (Q1), AAAA-MM-DD:» / «Respuesta del owner (Q7), AAAA-MM-DD:», y en `design.md`; si Q1 = (b), este change no pasa de aquí hasta archivar 35c; si Q1 = (c), se aplican solo los grupos 1, 2 y 9. Verificar: `grep -cE "Respuesta del owner \((Q1|Q7)\), 20[0-9]{2}-" docs/adr/ADR-055.md` devuelve `2` (N12; antes de anotar las respuestas devuelve `0`, comprobado el 2026-10-08). **Estado (2026-10-08):** Q1 = (a) y Q7 = (a), anotadas en ADR-055 §1 y §3 y en design.md; el grep devuelve `2`.
+- [x] 0.2 [infra] Debate critic/business/reflect cerrado sin P0/V0 abiertos y aprobación humana registrada. Verificar: el `design.md` lleva la sección del debate de la última iteración con la fecha de la aprobación. **Estado (2026-10-08):** iteración 3 con «Convergencia: SI» (critic P0 0, business V0 0); aprobación del owner en la sección «Respuestas del owner y aprobación» de design.md.
 
 ## 1. H1 — la API no devuelve nombres de autores ajenos (design D1-D4)
 
