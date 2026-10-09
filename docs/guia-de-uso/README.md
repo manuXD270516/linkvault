@@ -688,19 +688,26 @@ Qué no funcionó, qué se vio mal y qué no se pudo probar en local. No se ha c
   formulario promete «Cualquiera con este enlace verá la oferta; no se verá el grupo ni tu nombre». La vista pública
   cumple (062), pero Carla, que no es del grupo, ve en su «Solo para mí» «Escrito por Ana Guía de Uso» junto al puesto y
   la empresa (064).
+  **Corregido por el change `usage-guide-fixes`:** la API devuelve `by: null` para los autores con quienes quien lee no comparte ningún grupo y la tarjeta dice «Escrito por otra persona»; el texto de la promesa se ajustó a lo que de verdad se cumple.
 - **H2. Texto superpuesto en Notificaciones.** Tras «Guardar preferencias», el texto de ayuda de «Grupo para avisos de
   estado» se monta encima de «Preferencias guardadas» (076).
+  **Corregido por el change `usage-guide-fixes`:** el subíndice del selector crece con su ayuda, y «Todos mis grupos» se ve elegido.
 - **H3. Error genérico al guardar una clave de IA sin bóveda.** Con la API respondiendo 503 (sin `AI_VAULT_KEY`), el
   perfil muestra «Algo salió mal. Inténtalo de nuevo» en vez de decir que las claves propias no están disponibles (081).
+  **Diferido por el change `usage-guide-fixes`** a `e2e-suite-lot-2`, junto con H11: con `AI_VAULT_KEY` obligatoria en producción nadie lo verá.
 - **H4. Aviso de lectura que no se actualiza.** El formulario de guardar sigue diciendo «Todavía estamos leyendo la oferta:
   si lo envías ahora, la tarjeta saldrá sin datos», aunque la lectura ya terminó en «No pudimos leer esta oferta» y aunque
   la oferta ya se completó a mano (030, 033, 035).
+  **Corregido por el change `usage-guide-fixes`:** el aviso sigue al link guardado y depende de que la tarjeta tenga o no puesto.
 - **H5. El campo de URL queda en rojo tras guardar.** Después de un guardado correcto, la etiqueta «Pega el enlace de una
   oferta» se pinta como error con el campo vacío (028, 068).
+  **Corregido por el change `usage-guide-fixes`:** tras guardar, el formulario se reinicia entero (`resetForm`).
 - **H6. El aviso «Compartido · Deshacer» sigue al navegar.** Sale en el grupo y sigue visible en el tablero, los insights y
   «Mi CV» (037, 042 a 046).
+  **Corregido por el change `usage-guide-fixes`:** el aviso se cierra al navegar a otra página y no se abre si la persona ya salió.
 - **H7. Fechas en formato estadounidense.** Los campos «Publicada el» y «Cierra el» del editor muestran `mm/dd/yyyy` en una
   interfaz en español (032). Visto en Chromium sin interfaz con `locale es-ES`; puede depender del sistema.
+  **Diferido por el change `usage-guide-fixes`** a un change futuro con datos reales de las 5 personas de 35b.
 
 **No se pudo probar en local**
 
