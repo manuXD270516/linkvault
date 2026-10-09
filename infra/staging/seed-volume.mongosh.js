@@ -15,7 +15,11 @@
 //   clean   borra SOLO lo del lote: primero lo de las colecciones de la cascada de borrado de cuenta cuyo `userId` es de
 //           un usuario del lote (lo que la aplicación haya creado al usarlo), después `{ lvSeedBatch }` en cada
 //           colección de la tabla. Se niega, sin borrar nada, si alguien que no es del lote se relaciona con algo del
-//           lote. Nunca usa un filtro vacío.
+//           lote. Nunca usa un filtro vacío. Borra también los eventos de `outbox_events` cuyo payload nombra a un
+//           usuario del lote (`userId` o `actorUserId`); se niega si uno nombra a la vez a alguien que no lo es.
+//           IMPORTANTE: tras usar la aplicación con cuentas del lote (subir un CV, etc.) hay que ejecutar `clean` ANTES
+//           del siguiente `seed`: lo que crea la aplicación no lleva marca y choca con índices únicos (p. ej. el CV
+//           por defecto de cada usuario).
 //   expect  imprime los doce valores que `measure.mongosh.js` debe dar PARA EL LOTE SOLO, sabidos por construcción del
 //           generador (no recalculados con las consultas de `measure`).
 //   digest  imprime los documentos del lote, por colección y ordenados por `_id`, en EJSON canónico, una línea cada uno
@@ -82,6 +86,11 @@ const CASCADE = [
   { coll: 'ai_feedback', field: 'userId', key: 'oid' },
   { coll: 'ai_usage', field: 'userId', key: 'hex' },
   { coll: 'user_ai_keys', field: 'userId', key: 'hex' },
+  // Eventos del outbox que la aplicación emite al usar una cuenta, con el usuario en el payload en hexadecimal
+  // (libs/shared/src/events: `userId` en CvUploaded, CvDeleted, MatchRequested y RoadmapRequested; `actorUserId` en
+  // ApplicationStatusNotify y GroupLinkAdded). No llevan `lvSeedBatch`.
+  { coll: 'outbox_events', field: 'payload.userId', key: 'hex' },
+  { coll: 'outbox_events', field: 'payload.actorUserId', key: 'hex' },
 ];
 
 // ---- Parámetros y guardia ------------------------------------------------------------------------------------------
@@ -919,6 +928,7 @@ function runClean() {
 
   // 1. Relaciones cruzadas: algo sin la marca del lote, de alguien que no es del lote, que apunta a un link o grupo del
   //    lote. Borrar el lote lo dejaría colgando: se niega, sin borrar nada.
+  const hexUsers = batchUsers.map((id) => id.toHexString());
   const notOurs = { lvSeedBatch: { $ne: BATCH } };
   const foreign = (coll, extra) =>
     lv[coll].countDocuments({ ...notOurs, ...extra });
@@ -940,6 +950,19 @@ function runClean() {
       linkId: { $in: batchLinks },
     }),
   };
+  // Un evento del outbox que nombra a la vez a alguien del lote y a alguien que no lo es.
+  cross.outbox_events = foreign('outbox_events', {
+    $or: [
+      {
+        'payload.userId': { $in: hexUsers },
+        'payload.actorUserId': { $exists: true, $nin: hexUsers },
+      },
+      {
+        'payload.actorUserId': { $in: hexUsers },
+        'payload.userId': { $exists: true, $nin: hexUsers },
+      },
+    ],
+  });
   const crossTotal = Object.values(cross).reduce((sum, n) => sum + n, 0);
   if (crossTotal > 0) {
     fail(
@@ -948,7 +971,6 @@ function runClean() {
   }
 
   // 2. Cascada de borrado de cuenta, por usuario del lote.
-  const hexUsers = batchUsers.map((id) => id.toHexString());
   const cascade = {};
   CASCADE.forEach(({ coll, field, key }) => {
     const ids = key === 'hex' ? hexUsers : batchUsers;
@@ -956,7 +978,7 @@ function runClean() {
     chunks(ids).forEach((part) => {
       n += lv[coll].deleteMany({ [field]: { $in: part } }).deletedCount;
     });
-    cascade[coll] = n;
+    cascade[coll] = (cascade[coll] ?? 0) + n;
   });
   // Contador de versiones de CV: su `_id` es el id del usuario en hexadecimal.
   let counters = 0;

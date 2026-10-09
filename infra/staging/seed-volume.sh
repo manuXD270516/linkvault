@@ -27,6 +27,9 @@
 #   4. `infra/staging/run.sh` rechaza el script por sus escrituras y no abre `ssh`.
 # Los parámetros se validan antes de llamar a `docker`.
 #
+# Tras usar la aplicación con cuentas del lote (subir un CV, guardar un link...), ejecuta `clean` ANTES del siguiente
+# `seed`: lo que la aplicación crea no lleva la marca del lote y choca con los índices únicos al volver a sembrar.
+#
 # Salidas: la de `mongosh` (0 si terminó); 2 por un parámetro, una guardia o un error de uso.
 # ===================================================================================================================
 set -euo pipefail
