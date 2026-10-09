@@ -1197,8 +1197,12 @@
         <target>Edit</target>
       </trans-unit>
       <trans-unit id="links.card.undoPaste" datatype="html">
-        <source> Deshacer lo que pegó <x id="INTERPOLATION" equiv-text="{{ pasted.by.displayName }}"/> </source>
-        <target>Undo what <x id="INTERPOLATION" equiv-text="{{ pasted.by.displayName }}"/> pasted</target>
+        <source>Deshacer lo que pegó <x id="INTERPOLATION" equiv-text="{{ author.displayName }}"/></source>
+        <target>Undo what <x id="INTERPOLATION" equiv-text="{{ author.displayName }}"/> pasted</target>
+      </trans-unit>
+      <trans-unit id="links.paste.undoHidden" datatype="html">
+        <source>Deshacer lo que pegó otra persona</source>
+        <target>Undo what someone else pasted</target>
       </trans-unit>
       <trans-unit id="links.card.retry" datatype="html">
         <source> Reintentar </source>
@@ -1394,8 +1398,8 @@
         <target>Share with a public link</target>
       </trans-unit>
       <trans-unit id="links.public.shareMessage" datatype="html">
-        <source>Cualquiera con este enlace podrá ver la oferta sin entrar en LinkVault. No se verá el grupo, ni tu nombre, ni los comentarios. Puedes dejar de compartirlo cuando quieras.</source>
-        <target>Anyone with this link can see the job without signing in to LinkVault. The group, your name and the comments stay hidden. You can stop sharing whenever you like.</target>
+        <source>Cualquiera con este enlace podrá ver la oferta sin entrar en LinkVault. No verá el grupo ni los comentarios, y tu nombre solo lo verá quien ya comparta un grupo contigo. Puedes dejar de compartirlo cuando quieras.</source>
+        <target>Anyone with this link can see the job without signing in to LinkVault. They won't see the group or the comments, and only people who already share a group with you will see your name. You can stop sharing whenever you like.</target>
       </trans-unit>
       <trans-unit id="links.public.shareConfirm" datatype="html">
         <source>Compartir</source>
@@ -1416,6 +1420,14 @@
       <trans-unit id="links.public.copyUnread" datatype="html">
         <source>Todavía estamos leyendo la oferta: si lo envías ahora, la tarjeta saldrá sin datos</source>
         <target>We're still reading the job: if you send it now, the preview will be empty</target>
+      </trans-unit>
+      <trans-unit id="links.public.copyNotAJob" datatype="html">
+        <source>Esto no parece una oferta: si lo envías, la tarjeta saldrá sin datos</source>
+        <target>This does not look like a job offer: if you send it, the preview will be empty</target>
+      </trans-unit>
+      <trans-unit id="links.public.copyFailedEmpty" datatype="html">
+        <source>La tarjeta todavía no tiene el puesto: si lo envías ahora, saldrá sin datos. Complétala antes desde la tarjeta</source>
+        <target>This card doesn't have the job title yet: if you send it now, it will show an empty preview. Fill it in from the card first</target>
       </trans-unit>
       <trans-unit id="links.public.copied" datatype="html">
         <source>Enlace copiado</source>
@@ -1457,9 +1469,17 @@
         <source>Descripción pegada por <x id="NAME" equiv-text="origin.by.displayName"/></source>
         <target>Description pasted by <x id="NAME" equiv-text="origin.by.displayName"/></target>
       </trans-unit>
+      <trans-unit id="links.origin.pastedHidden" datatype="html">
+        <source>Descripción pegada por otra persona</source>
+        <target>Description pasted by someone else</target>
+      </trans-unit>
       <trans-unit id="links.origin.manual" datatype="html">
         <source>Escrito por <x id="NAME" equiv-text="origin.by.displayName"/></source>
         <target>Written by <x id="NAME" equiv-text="origin.by.displayName"/></target>
+      </trans-unit>
+      <trans-unit id="links.origin.manualHidden" datatype="html">
+        <source>Escrito por otra persona</source>
+        <target>Written by someone else</target>
       </trans-unit>
       <trans-unit id="links.status.missingFields" datatype="html">
         <source>Faltan datos de esta oferta</source>
@@ -1606,8 +1626,8 @@
         <target>It was already here, <x id="INTERPOLATION" equiv-text="{{ name }}"/> shared it</target>
       </trans-unit>
       <trans-unit id="links.save.publicScope" datatype="html">
-        <source> Cualquiera con este enlace verá la oferta; no se verá el grupo ni tu nombre </source>
-        <target>Anyone with this link can see the job; the group and your name stay hidden</target>
+        <source> Cualquiera con este enlace verá la oferta, pero no el grupo; tu nombre solo lo verá quien ya comparta un grupo contigo. </source>
+        <target>Anyone with this link can see the job, but not the group; only people who already share a group with you will see your name.</target>
       </trans-unit>
       <trans-unit id="comments.note.discarded" datatype="html">
         <source> Tu nota no se añadió porque la oferta ya estaba en el grupo. </source>

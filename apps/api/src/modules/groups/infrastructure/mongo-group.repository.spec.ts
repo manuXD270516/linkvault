@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { getMongoTestUri } from '@linkvault/testing';
-import mongoose, { type Connection } from 'mongoose';
+import mongoose, { mongo, type Connection } from 'mongoose';
 import {
   afterAll,
   afterEach,
@@ -45,7 +45,11 @@ const ANOTHER_FREE_CODE = 'VW2X3Y4Z';
 
 beforeAll(async () => {
   connection = await mongoose
-    .createConnection(getMongoTestUri(), { dbName: `groups-${randomUUID()}` })
+    .createConnection(getMongoTestUri(), {
+      dbName: `groups-${randomUUID()}`,
+      // Los eventos de comando dejan contar cuántas consultas hace `peersAmong`.
+      monitorCommands: true,
+    })
     .asPromise();
   generator = new StubInviteCodeGenerator();
   repository = new MongoGroupRepository(
@@ -880,5 +884,99 @@ describe('removeMember', () => {
     await expect(repository.removeMember(MALFORMED, OWNER)).resolves.toBe(
       'not_member',
     );
+  });
+});
+
+describe('peersAmong', () => {
+  /** Cuántos comandos de lectura se envían a la base de los tests mientras corre `work`. */
+  async function readCommandsDuring(
+    work: () => Promise<unknown>,
+  ): Promise<number> {
+    const client = connection.getClient();
+    let started = 0;
+    const listener = (event: mongo.CommandStartedEvent): void => {
+      if (
+        event.databaseName === connection.db?.databaseName &&
+        (event.commandName === 'aggregate' || event.commandName === 'find')
+      ) {
+        started += 1;
+      }
+    };
+    client.on('commandStarted', listener);
+    try {
+      await work();
+    } finally {
+      client.off('commandStarted', listener);
+    }
+    return started;
+  }
+
+  it('peersAmong returns only candidates sharing a group', async () => {
+    const viewer = newUserId();
+    const peer = newUserId();
+    const stranger = newUserId();
+    const shared = await createGroupOf(viewer, 'Compartido');
+    await repository.addMember({ groupId: shared.id, userId: peer, now });
+    await createGroupOf(stranger, 'Ajeno');
+
+    await expect(
+      repository.peersAmong(viewer, [peer, stranger, MALFORMED]),
+    ).resolves.toEqual(new Set([peer]));
+  });
+
+  it('peersAmong excludes a former co-member', async () => {
+    const viewer = newUserId();
+    const former = newUserId();
+    const group = await createGroupOf(viewer, 'Con ex miembro');
+    await repository.addMember({ groupId: group.id, userId: former, now });
+    await repository.removeMember(group.id, former);
+
+    await expect(repository.peersAmong(viewer, [former])).resolves.toEqual(
+      new Set(),
+    );
+  });
+
+  it('peersAmong ignores orphan memberships', async () => {
+    const viewer = newUserId();
+    const candidate = newUserId();
+    const doomed = await createGroupOf(STRANGER, 'Borrado a la vez');
+    await repository.addMember({ groupId: doomed.id, userId: viewer, now });
+    await repository.addMember({ groupId: doomed.id, userId: candidate, now });
+    await dropGroupDocument(doomed.id);
+
+    await expect(repository.peersAmong(viewer, [candidate])).resolves.toEqual(
+      new Set(),
+    );
+  });
+
+  it('peersAmong issues one query', async () => {
+    const viewer = newUserId();
+    const first = newUserId();
+    const second = newUserId();
+    const groupA = await createGroupOf(viewer, 'Uno');
+    const groupB = await createGroupOf(viewer, 'Dos');
+    await repository.addMember({ groupId: groupA.id, userId: first, now });
+    await repository.addMember({ groupId: groupB.id, userId: second, now });
+
+    let peers = new Set<string>();
+    const commands = await readCommandsDuring(async () => {
+      peers = await repository.peersAmong(viewer, [first, second, STRANGER]);
+    });
+
+    expect(peers).toEqual(new Set([first, second]));
+    expect(commands).toBe(1);
+  });
+
+  it('answers an empty set without querying for a malformed viewer or no candidates', async () => {
+    const commands = await readCommandsDuring(async () => {
+      await expect(repository.peersAmong(MALFORMED, [OWNER])).resolves.toEqual(
+        new Set(),
+      );
+      await expect(repository.peersAmong(OWNER, [])).resolves.toEqual(
+        new Set(),
+      );
+    });
+
+    expect(commands).toBe(0);
   });
 });

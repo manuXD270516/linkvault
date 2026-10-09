@@ -105,6 +105,28 @@ describe('NotificationsPage', () => {
     expect(host().querySelector('[data-testid="notifications-saved"]')).not.toBeNull();
   });
 
+  it('La confirmación se sigue viendo', async () => {
+    buttonWithText(host(), 'Guardar preferencias').click();
+    const request = await vi.waitFor(() =>
+      http.expectOne({ method: 'PATCH', url: '/api/notifications/preferences' }),
+    );
+    request.flush({ ...DEFAULT_NOTIFICATION_PREFERENCES });
+    await settle();
+    await harness.fixture.whenStable();
+
+    const saved = host().querySelector<HTMLElement>('[data-testid="notifications-saved"]');
+    expect(saved).not.toBeNull();
+    expect(saved?.textContent).toContain('Preferencias guardadas');
+    for (let el: HTMLElement | null = saved; el !== null; el = el.parentElement) {
+      expect(el.hidden).toBe(false);
+      expect(getComputedStyle(el).display).not.toBe('none');
+      expect(getComputedStyle(el).visibility).not.toBe('hidden');
+    }
+    // El campo de grupo usa subscript dinámico: no reserva (ni tapa) el hueco de la confirmación.
+    const field = host().querySelector('[data-testid="pref-status-group"]')?.closest('mat-form-field');
+    expect(field?.querySelector('.mat-mdc-form-field-subscript-dynamic-size')).not.toBeNull();
+  });
+
   it('disables group_weekly_digest and patches the API', async () => {
     const toggle = host().querySelector<HTMLElement>(
       '[data-testid="pref-group-weekly-digest"] button',
@@ -147,6 +169,46 @@ describe('NotificationsPage', () => {
       ...DEFAULT_NOTIFICATION_PREFERENCES,
       applicationStatusGroupId: 'g1',
     });
+    await settle();
+  });
+
+  it('the status-group field uses a dynamic subscript', () => {
+    const field = host().querySelector('[data-testid="pref-status-group"]')?.closest('mat-form-field');
+    expect(field).not.toBeNull();
+    expect(field?.querySelector('.mat-mdc-form-field-subscript-wrapper')).not.toBeNull();
+    expect(field?.querySelector('.mat-mdc-form-field-subscript-dynamic-size')).not.toBeNull();
+  });
+
+  it('shows Todos mis grupos when the preference is null', () => {
+    const trigger = host().querySelector('[data-testid="pref-status-group"] .mat-mdc-select-value');
+    expect(trigger?.textContent?.trim()).toBe('Todos mis grupos (unión del link)');
+  });
+
+  it('sends applicationStatusGroupId null when Todos mis grupos is chosen', async () => {
+    // Primero se elige un grupo concreto y se guarda; luego se vuelve a "Todos mis grupos".
+    const select = host().querySelector<HTMLElement>('[data-testid="pref-status-group"]');
+    select?.click();
+    await settle();
+    const pick = (text: string): void => {
+      const option = Array.from(document.body.querySelectorAll<HTMLElement>('mat-option')).find((el) =>
+        el.textContent?.includes(text),
+      );
+      expect(option).toBeTruthy();
+      option?.click();
+    };
+    pick('Backend Bolivia');
+    await settle();
+    select?.click();
+    await settle();
+    pick('Todos mis grupos');
+    await settle();
+
+    buttonWithText(host(), 'Guardar preferencias').click();
+    const request = await vi.waitFor(() =>
+      http.expectOne({ method: 'PATCH', url: '/api/notifications/preferences' }),
+    );
+    expect((request.request.body as { applicationStatusGroupId: unknown }).applicationStatusGroupId).toBeNull();
+    request.flush(DEFAULT_NOTIFICATION_PREFERENCES);
     await settle();
   });
 

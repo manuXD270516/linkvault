@@ -35,6 +35,7 @@ import type { Membership } from '../domain/membership';
 import {
   GROUP_MEMBER_MODEL_NAME,
   GROUP_MODEL_NAME,
+  GROUP_MEMBERS_COLLECTION,
   GROUPS_COLLECTION,
   groupMemberSchema,
   groupSchema,
@@ -217,6 +218,44 @@ export class MongoGroupRepository implements GroupRepository {
       .lean()
       .exec();
     return documents.map((document) => toMembership(document));
+  }
+
+  /**
+   * Una sola agregación: los grupos vivos del lector (`groupsOfUserStages`, el `$unwind` descarta las membresías
+   * huérfanas) y, de cada uno, las membresías de los candidatos (`$lookup` por el índice `(groupId, userId)`). Los
+   * grupos de los candidatos no se miran aparte: una membresía en un grupo vivo del lector ya es un grupo en común.
+   */
+  async peersAmong(
+    userId: string,
+    candidateIds: readonly string[],
+  ): Promise<Set<string>> {
+    const viewer = toUserObjectId(userId);
+    const candidates = candidateIds
+      .map((candidate) => toUserObjectId(candidate))
+      .filter((id): id is Types.ObjectId => id !== null);
+    if (viewer === null || candidates.length === 0) {
+      return new Set();
+    }
+    const rows = await this.members
+      .aggregate<{ _id: Types.ObjectId }>([
+        ...groupsOfUserStages(viewer),
+        {
+          $lookup: {
+            from: GROUP_MEMBERS_COLLECTION,
+            localField: 'groupId',
+            foreignField: 'groupId',
+            pipeline: [
+              { $match: { userId: { $in: candidates } } },
+              { $project: { _id: 0, userId: 1 } },
+            ],
+            as: 'peers',
+          },
+        },
+        { $unwind: '$peers' },
+        { $group: { _id: '$peers.userId' } },
+      ])
+      .exec();
+    return new Set(rows.map((row) => row._id.toHexString()));
   }
 
   /** Una sola agregación para todos los grupos: es el patrón que heredará `job-links` para contar links (D1). */

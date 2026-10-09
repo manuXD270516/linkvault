@@ -8,8 +8,17 @@ import { GroupNotFound } from '../../groups/domain/errors';
 import { TooManyLinkAttempts } from '../domain/errors';
 import type { NewJobLink } from '../domain/job-link';
 import { extractUrls } from '../domain/link-text';
-import { assertImportTextWithinLimit, MAX_LINKS_PER_IMPORT } from '../domain/limits';
-import { displayNameIdsOf, toJobLinkSummary, toLinkSharer } from './link.mapper';
+import {
+  assertImportTextWithinLimit,
+  MAX_LINKS_PER_IMPORT,
+} from '../domain/limits';
+import {
+  displayNameIdsOf,
+  previewAuthorIdsOf,
+  toJobLinkSummary,
+  toLinkSharer,
+} from './link.mapper';
+import { visibleAuthorsFor } from './visible-authors';
 import { LINKS_CLOCK, type Clock } from './ports/clock.port';
 import {
   GROUP_LINK_REPOSITORY,
@@ -29,7 +38,10 @@ import {
   type LinkUserDirectory,
 } from './ports/link-user-directory.port';
 import { LINK_LIMITER, type LinkLimiter } from './ports/link-limiter.port';
-import { OUTBOX, type Outbox } from '../../../infrastructure/outbox/outbox.port';
+import {
+  OUTBOX,
+  type Outbox,
+} from '../../../infrastructure/outbox/outbox.port';
 import { PUBLIC_URLS, type PublicUrls } from './ports/public-urls.port';
 import { toPublicShareView } from './public-share.mapper';
 import {
@@ -132,7 +144,7 @@ export class ImportLinks {
       existing,
       unrecognized,
       skipped,
-      links: await this.toSummaries(saved, groupId !== undefined),
+      links: await this.toSummaries(userId, saved, groupId !== undefined),
     };
   }
 
@@ -157,11 +169,20 @@ export class ImportLinks {
 
   /** Nombres de quien compartió, resueltos de una vez para toda la importación. */
   private async toSummaries(
+    userId: string,
     saved: readonly SavedLink[],
     inGroup: boolean,
   ): Promise<JobLinkSummary[]> {
+    const links = saved.map((entry) => entry.link);
+    // Una sola consulta para toda la importación: los autores ajenos al lector salen `by: null` (H1, ADR-055 §2).
+    const visibleAuthors = await visibleAuthorsFor(
+      this.membership,
+      userId,
+      previewAuthorIdsOf(links),
+    );
     const ids = displayNameIdsOf(
-      saved.map((entry) => entry.link),
+      links,
+      visibleAuthors,
       inGroup ? saved.map((entry) => entry.sharedBy) : [],
     );
     const names =
@@ -172,8 +193,11 @@ export class ImportLinks {
       toJobLinkSummary(entry.link, {
         sharedAt: entry.sharedAt,
         names,
+        visibleAuthors,
         ...(inGroup
-          ? { sharedBy: toLinkSharer(entry.sharedBy, names.get(entry.sharedBy)) }
+          ? {
+              sharedBy: toLinkSharer(entry.sharedBy, names.get(entry.sharedBy)),
+            }
           : {}),
         ...(inGroup && entry.publicShare !== undefined
           ? { publicShare: toPublicShareView(entry.publicShare, this.urls) }

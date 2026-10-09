@@ -67,6 +67,16 @@ export interface GroupRepository {
   listGroupsOfUser(userId: string): Promise<UserGroup[]>;
   /** Cuántos grupos cuentan para el límite del usuario: la misma consulta que `listGroupsOfUser` (D4 y D6). */
   countGroupsOfUser(userId: string): Promise<number>;
+  /**
+   * De los candidatos, los que comparten al menos un grupo con `userId` (cualquier grupo, usa la regla de
+   * `users/profile`: el nombre de otra persona solo lo ven los miembros de sus grupos). Una sola consulta por llamada;
+   * una membresía huérfana (su grupo ya no existe) no cuenta como grupo en común, igual que no cuenta en
+   * `listGroupsOfUser`. Un id mal formado no coincide con nadie. Las excepciones del almacén se propagan.
+   */
+  peersAmong(
+    userId: string,
+    candidateIds: readonly string[],
+  ): Promise<Set<string>>;
   /** Miembros del grupo por `joinedAt` ascendente (el owner primero por antigüedad). */
   listMembers(groupId: string): Promise<Membership[]>;
   /**

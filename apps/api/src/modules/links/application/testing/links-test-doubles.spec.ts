@@ -142,3 +142,28 @@ describe('InMemoryLinkUserDirectory', () => {
     expect(directory.calls).toBe(1);
   });
 });
+
+describe('InMemoryGroupMembership.peersAmong', () => {
+  it('peersAmong counts calls and returns co-members', async () => {
+    const membership = new InMemoryGroupMembership()
+      .withMember(BACKEND, ANA, 'owner')
+      .withMember(BACKEND, BETO)
+      .withMember(FRONTEND, objectId(3));
+
+    expect(membership.peersAmongCalls).toBe(0);
+    expect(
+      await membership.peersAmong(ANA, [BETO, objectId(3), objectId(99)]),
+    ).toEqual(new Set([BETO]));
+    await membership.peersAmong(ANA, []);
+
+    expect(membership.peersAmongCalls).toBe(2);
+  });
+
+  it('rejects with the configured failure', async () => {
+    const membership = new InMemoryGroupMembership();
+    membership.peersAmongFailure = new Error('forced');
+
+    await expect(membership.peersAmong(ANA, [BETO])).rejects.toThrow('forced');
+    expect(membership.peersAmongCalls).toBe(1);
+  });
+});

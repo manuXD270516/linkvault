@@ -6,6 +6,7 @@ import {
   latestPaste,
   linkLabel,
   modalityLabel,
+  originText,
   platformName,
   seniorityLabel,
 } from './link-preview';
@@ -153,9 +154,9 @@ describe('latestPaste', () => {
   const beto = { userId: 'u2', displayName: 'Beto' };
   const pastedAt = '2026-09-18T12:00:00.000Z';
   const later = '2026-09-18T13:00:00.000Z';
-  const pasted = <const T>(value: T, by = ana, at = pastedAt) =>
+  const pasted = <const T>(value: T, by: typeof ana | null = ana, at = pastedAt) =>
     ({ value, source: 'pasted', extractor: 'ai:extract-pasted-job', by, at }) as const;
-  const manual = <const T>(value: T, by = ana, at = pastedAt) => ({ value, source: 'manual', by, at }) as const;
+  const manual = <const T>(value: T, by: typeof ana | null = ana, at = pastedAt) => ({ value, source: 'manual', by, at }) as const;
 
   it('Deshacer un pegado con la cabecera escrita aparte', () => {
     const sources: ResolvedPreviewSources = {
@@ -198,5 +199,54 @@ describe('latestPaste', () => {
   it('offers nothing when only fields written by hand are left', () => {
     expect(latestPaste({ title: manual('Ingeniera de datos'), company: manual('Acme') })).toBeNull();
     expect(latestPaste(undefined)).toBeNull();
+  });
+
+  it('latestPaste groups hidden-author fields of the same paste', () => {
+    const sources: ResolvedPreviewSources = {
+      title: manual('Ingeniera de datos', null),
+      location: pasted('Bolivia', null),
+      modality: pasted('remote', null),
+    };
+
+    expect(latestPaste(sources)).toEqual({
+      by: null,
+      at: pastedAt,
+      fields: ['title', 'location', 'modality'],
+    });
+  });
+
+  it('latestPaste does not mix a hidden and a visible author', () => {
+    const sources: ResolvedPreviewSources = {
+      title: manual('Ingeniera de datos', ana),
+      location: pasted('Bolivia', null),
+      modality: pasted('remote', null),
+    };
+
+    expect(latestPaste(sources)).toEqual({ by: null, at: pastedAt, fields: ['location', 'modality'] });
+  });
+});
+
+describe('originText with a hidden author', () => {
+  const at = '2026-09-18T10:00:00.000Z';
+
+  it('manual with hidden author reads Escrito por otra persona', () => {
+    const origin = fieldOrigin({ value: 'Ingeniera de datos', source: 'manual', by: null, at });
+    expect(origin).toEqual({ kind: 'manual', by: null });
+    expect(originText(origin)).toBe('Escrito por otra persona');
+  });
+
+  it('pasted with hidden author reads Descripción pegada por otra persona', () => {
+    const origin = fieldOrigin({
+      value: 'Bolivia',
+      source: 'pasted',
+      extractor: 'ai:extract-pasted-job',
+      by: null,
+      at,
+    });
+    expect(originText(origin)).toBe('Descripción pegada por otra persona');
+  });
+
+  it('keeps the name when the author is visible', () => {
+    expect(originText({ kind: 'manual', by: { userId: 'u1', displayName: 'Ana' } })).toBe('Escrito por Ana');
   });
 });

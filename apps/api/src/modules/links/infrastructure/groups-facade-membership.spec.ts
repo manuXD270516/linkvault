@@ -12,6 +12,7 @@ import { GroupsFacadeMembership } from './groups-facade-membership';
 
 const ANA = '66e9a0000000000000000001';
 const BETO = '66e9a0000000000000000002';
+const CARLA = '66e9a0000000000000000003';
 const ORPHAN_GROUP = '66e9a00000000000000000ff';
 
 let clock: MovableClock;
@@ -59,8 +60,18 @@ describe('groupsOf', () => {
     });
 
     expect(await membership.groupsOf(ANA)).toEqual([
-      { groupId: other.id, name: 'Frontend LatAm', role: 'member', defaultVisibility: 'public' },
-      { groupId: own.id, name: 'Backend Bolivia', role: 'owner', defaultVisibility: 'public' },
+      {
+        groupId: other.id,
+        name: 'Frontend LatAm',
+        role: 'member',
+        defaultVisibility: 'public',
+      },
+      {
+        groupId: own.id,
+        name: 'Backend Bolivia',
+        role: 'owner',
+        defaultVisibility: 'public',
+      },
     ]);
   });
 
@@ -73,7 +84,12 @@ describe('groupsOf', () => {
     });
 
     expect(await membership.groupsOf(ANA)).toEqual([
-      { groupId: own.id, name: 'Backend Bolivia', role: 'owner', defaultVisibility: 'public' },
+      {
+        groupId: own.id,
+        name: 'Backend Bolivia',
+        role: 'owner',
+        defaultVisibility: 'public',
+      },
     ]);
   });
 
@@ -103,6 +119,18 @@ describe('groupsOf', () => {
 
     expect(JSON.stringify(await membership.groupsOf(ANA))).not.toContain(
       'inviteCode',
+    );
+  });
+});
+
+describe('peersAmong', () => {
+  it('answers the candidates that share a group with the user', async () => {
+    const own = await createGroupOf(ANA, 'Backend Bolivia');
+    await groups.addMember({ groupId: own.id, userId: BETO, now: clock.now() });
+    await createGroupOf(CARLA, 'De Carla');
+
+    expect(await membership.peersAmong(ANA, [BETO, CARLA])).toEqual(
+      new Set([BETO]),
     );
   });
 });

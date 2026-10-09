@@ -63,13 +63,13 @@
         Avisarme también de mis propias acciones
       </mat-slide-toggle>
 
-      <mat-form-field>
+      <mat-form-field subscriptSizing="dynamic">
         <mat-label i18n="@@notifications.pref.statusGroup">Grupo para avisos de estado</mat-label>
         <mat-select
           formControlName="applicationStatusGroupId"
           data-testid="pref-status-group"
         >
-          <mat-option [value]="null" i18n="@@notifications.pref.statusGroupAll"
+          <mat-option [value]="allGroups" i18n="@@notifications.pref.statusGroupAll"
             >Todos mis grupos (unión del link)</mat-option
           >
           @for (group of groupOptions(); track group.id) {

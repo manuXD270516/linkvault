@@ -76,7 +76,7 @@ beforeEach(() => {
     directory,
     urls,
   );
-  listMyLinks = new ListMyLinks(userLinks, directory);
+  listMyLinks = new ListMyLinks(userLinks, directory, membership);
 });
 
 async function shared(sharedBy: string, url = JOB_PAGE): Promise<string> {
@@ -108,9 +108,9 @@ describe('SetGroupLinkTags', () => {
     const linkId = await shared(ANA);
     await setTags.execute(ANA, BACKEND, linkId, { tags: ['remote'] });
 
-    expect(
-      await setTags.execute(ANA, BACKEND, linkId, { tags: [] }),
-    ).toEqual({ tags: [] });
+    expect(await setTags.execute(ANA, BACKEND, linkId, { tags: [] })).toEqual({
+      tags: [],
+    });
     expect((await groupLinks.find(BACKEND, linkId))?.tags).toEqual([]);
   });
 
@@ -276,12 +276,7 @@ describe('no leak to public preview', () => {
     const linkId = await shared(ANA);
     await setTags.execute(ANA, BACKEND, linkId, { tags: ['secret-tag'] });
     await setPinned.execute(ANA, BACKEND, linkId, { pinned: true });
-    const share = await groupLinks.publish(
-      BACKEND,
-      linkId,
-      ANA,
-      clock.now(),
-    );
+    const share = await groupLinks.publish(BACKEND, linkId, ANA, clock.now());
 
     const response = await preview.execute(share?.slug ?? '');
     const serialized = JSON.stringify(response);

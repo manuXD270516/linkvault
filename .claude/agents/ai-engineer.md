@@ -1,5 +1,6 @@
 ---
 name: ai-engineer
+model: claude-sonnet-5-5
 description: Construye y evoluciona libs/ai (runTask, providers, mock determinista, prompts versionados, ledger, eval harness). Úsalo para tareas [ai].
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---

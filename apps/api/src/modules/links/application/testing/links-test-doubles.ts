@@ -24,7 +24,10 @@ import type {
   LinkUserDirectory,
 } from '../ports/link-user-directory.port';
 import type { LinkEnrichedPublisher } from '../ports/link-enriched-publisher.port';
-import type { Outbox, OutboxEvent } from '../../../../infrastructure/outbox/outbox.port';
+import type {
+  Outbox,
+  OutboxEvent,
+} from '../../../../infrastructure/outbox/outbox.port';
 import type { PublicUrls } from '../ports/public-urls.port';
 import type {
   PastedExtraction,
@@ -179,6 +182,41 @@ export class InMemoryGroupMembership implements GroupMembership {
     return Promise.resolve([...members]);
   }
 
+  /** Cuántas veces se preguntó por los co-miembros: una consulta por llamada, como el adaptador real. */
+  peersAmongCalls = 0;
+  /** Si se fija, `peersAmong` rechaza con ese error: para probar que un fallo se propaga. */
+  peersAmongFailure: Error | null = null;
+
+  peersAmong(
+    userId: string,
+    candidateIds: readonly string[],
+  ): Promise<Set<string>> {
+    this.peersAmongCalls += 1;
+    if (this.peersAmongFailure !== null) {
+      return Promise.reject(this.peersAmongFailure);
+    }
+    const viewerGroups = new Set<string>();
+    for (const key of this.roles.keys()) {
+      const [groupId, member] = key.split('|');
+      if (member === userId && groupId !== undefined) {
+        viewerGroups.add(groupId);
+      }
+    }
+    const peers = new Set<string>();
+    for (const key of this.roles.keys()) {
+      const [groupId, member] = key.split('|');
+      if (
+        groupId !== undefined &&
+        member !== undefined &&
+        viewerGroups.has(groupId) &&
+        candidateIds.includes(member)
+      ) {
+        peers.add(member);
+      }
+    }
+    return Promise.resolve(peers);
+  }
+
   groupsOf(userId: string): Promise<UserGroup[]> {
     this.groupsOfCalls += 1;
     const groups: UserGroup[] = [];
@@ -204,6 +242,8 @@ export class InMemoryLinkUserDirectory implements LinkUserDirectory {
   private readonly names = new Map<string, string>();
   /** Cuántas consultas se hicieron: un listado resuelve todos los nombres de la página de una vez. */
   calls = 0;
+  /** Todos los ids por los que se preguntó, en orden: lo usa el test de que un autor oculto no se pide (H1). */
+  requestedIds: string[] = [];
 
   set(userId: string, displayName: string): this {
     this.names.set(userId, displayName);
@@ -235,6 +275,7 @@ export class InMemoryLinkUserDirectory implements LinkUserDirectory {
 
   displayNamesOf(userIds: readonly string[]): Promise<Map<string, string>> {
     this.calls += 1;
+    this.requestedIds.push(...userIds);
     const found = new Map<string, string>();
     for (const userId of new Set(userIds)) {
       const displayName = this.names.get(userId);
@@ -415,9 +456,7 @@ export class FakePastedExtraction implements PastedExtractionPort {
  * Publicador de avisos de comentarios en memoria: apunta lo publicado. Con `hang()`, publicar no termina nunca, que es
  * como se prueba que el caso de uso no espera al aviso; con `fail()`, falla como un Redis caído.
  */
-export class InMemoryCommentsChangedPublisher
-  implements CommentsChangedPublisher
-{
+export class InMemoryCommentsChangedPublisher implements CommentsChangedPublisher {
   readonly published: GroupLinkCommentsChangedPayload[] = [];
   private mode: 'up' | 'hang' | 'fail' = 'up';
 

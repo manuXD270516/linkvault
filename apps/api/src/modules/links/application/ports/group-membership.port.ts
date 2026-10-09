@@ -34,4 +34,12 @@ export interface GroupMembership {
    * link compartido; un grupo que no existe simplemente no aporta a nadie.
    */
   memberIdsOf(groupIds: readonly string[]): Promise<string[]>;
+  /**
+   * De los candidatos, los que comparten al menos un grupo con `userId` (cualquiera, no necesariamente el del link). Una
+   * sola consulta por llamada. Un fallo se propaga: quien llama no tiene un respaldo que muestre más de lo debido.
+   */
+  peersAmong(
+    userId: string,
+    candidateIds: readonly string[],
+  ): Promise<Set<string>>;
 }

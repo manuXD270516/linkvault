@@ -83,6 +83,30 @@ describe('ShareNotice', () => {
     expect(dismiss).toHaveBeenCalled();
   });
 
+  it('the shared notice closes 10 s after opening when focus is outside', async () => {
+    await show({ kind: 'shared' });
+    expect(document.activeElement).not.toBe(button('share-notice-undo'));
+
+    await vi.advanceTimersByTimeAsync(SHARE_NOTICE_MIN_MS - 1);
+    expect(dismiss).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(dismiss).toHaveBeenCalledTimes(1);
+    expect(dismissWithAction).not.toHaveBeenCalled();
+  });
+
+  it('the invite notice closes 10 s after opening when focus is outside', async () => {
+    await show({ kind: 'invite', gesture: 'interested' });
+    expect(document.activeElement).not.toBe(button('share-notice-share'));
+
+    await vi.advanceTimersByTimeAsync(SHARE_NOTICE_MIN_MS - 1);
+    expect(dismiss).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(dismiss).toHaveBeenCalledTimes(1);
+    expect(dismissWithAction).not.toHaveBeenCalled();
+  });
+
   it('closes with its action', async () => {
     await show({ kind: 'shared' });
 

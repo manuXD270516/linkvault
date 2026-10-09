@@ -425,3 +425,49 @@ describe('UpdateLinkPreview', () => {
     expect(summary.preview?.title).toBe('Título recién leído');
   });
 });
+
+describe('UpdateLinkPreview provenance names (H1)', () => {
+  const CARLA = objectId(4);
+
+  /** Link que Ana corrigió y que Carla, sin grupo en común con ella, tiene en su lista privada. */
+  async function privateLinkOfCarla(): Promise<string> {
+    const link = links.seed({
+      ...jobLinkDraft(JOB_PAGE, { createdBy: ANA, now: clock.now() }),
+      previewStatus: 'manual',
+      previewVersion: 2,
+      ...enrichedPreview(ANA),
+    });
+    await userLinks.save(
+      { userId: CARLA, linkId: link.id, savedAt: clock.now() },
+      IN_MEMORY_SESSION,
+    );
+    directory.set(CARLA, 'Carla Benítez');
+    return link.id;
+  }
+
+  it('response hides authors who share no group with the caller', async () => {
+    const linkId = await privateLinkOfCarla();
+
+    const summary = await updatePreview.execute(CARLA, linkId, {
+      fields: { location: 'Cochabamba' },
+    });
+    const company = summary.previewSources?.company;
+
+    expect(company?.source === 'manual' ? company.by : undefined).toBeNull();
+    expect(JSON.stringify(summary.previewSources?.company)).not.toContain(ANA);
+  });
+
+  it('the caller always sees their own name', async () => {
+    const linkId = await privateLinkOfCarla();
+
+    const summary = await updatePreview.execute(CARLA, linkId, {
+      fields: { location: 'Cochabamba' },
+    });
+    const location = summary.previewSources?.location;
+
+    expect(location?.source === 'manual' ? location.by : undefined).toEqual({
+      userId: CARLA,
+      displayName: 'Carla Benítez',
+    });
+  });
+});

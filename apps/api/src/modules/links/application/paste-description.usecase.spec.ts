@@ -17,7 +17,11 @@ import { UpdateLinkPreview } from './update-link-preview.usecase';
 import { InMemoryGroupLinkRepository } from './testing/in-memory-group-link.repository';
 import { InMemoryJobLinkRepository } from './testing/in-memory-job-link.repository';
 import { InMemoryUserLinkRepository } from './testing/in-memory-user-link.repository';
-import { jobLinkDraft, objectId } from './testing/link-fixtures';
+import {
+  enrichedPreview,
+  jobLinkDraft,
+  objectId,
+} from './testing/link-fixtures';
 import {
   FakePastedExtraction,
   IN_MEMORY_SESSION,
@@ -617,5 +621,32 @@ describe('PasteDescription: the notice', () => {
 
     expect(summary.previewVersion).toBe(3);
     expect(publisher.published).toHaveLength(1);
+  });
+});
+
+describe('PasteDescription provenance names (H1)', () => {
+  const CARLA = objectId(4);
+
+  it('response hides authors who share no group with the caller', async () => {
+    const link = links.seed({
+      ...jobLinkDraft(LINKEDIN_JOB, { createdBy: ANA, now: clock.now() }),
+      previewStatus: 'manual',
+      previewVersion: 2,
+      ...enrichedPreview(ANA),
+    });
+    await userLinks.save(
+      { userId: CARLA, linkId: link.id, savedAt: clock.now() },
+      IN_MEMORY_SESSION,
+    );
+
+    const summary = await pasteDescription.execute(CARLA, link.id, {
+      text: PASTED_TEXT,
+    });
+    const company = summary.previewSources?.company;
+
+    expect(company?.source === 'manual' ? company.by : undefined).toBeNull();
+    const sources = JSON.stringify(summary.previewSources);
+    expect(sources).not.toContain(ANA);
+    expect(sources).not.toContain('Ana');
   });
 });

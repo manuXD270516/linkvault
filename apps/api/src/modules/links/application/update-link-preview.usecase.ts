@@ -5,7 +5,13 @@ import type { JobLink } from '../domain/job-link';
 import { applyManualEdit } from '../domain/preview-edit';
 import { previewStatusOf } from '../domain/preview-status';
 import { requireReadableLink, type ReadableLink } from './link-access';
-import { displayNameIdsOf, toJobLinkSummary, toLinkSharer } from './link.mapper';
+import {
+  displayNameIdsOf,
+  previewAuthorIdsOf,
+  toJobLinkSummary,
+  toLinkSharer,
+} from './link.mapper';
+import { visibleAuthorsFor } from './visible-authors';
 import { LINKS_CLOCK, type Clock } from './ports/clock.port';
 import {
   GROUP_LINK_REPOSITORY,
@@ -87,7 +93,7 @@ export class UpdateLinkPreview {
     for (let attempt = 0; attempt < UpdateLinkPreview.MAX_ATTEMPTS; attempt++) {
       const edited = applyManualEdit(current, edit, userId, this.clock.now());
       if (!edited.changed) {
-        return await this.toSummary(readable, current);
+        return await this.toSummary(userId, readable, current);
       }
       const written = await this.links.updatePreview(
         linkId,
@@ -108,7 +114,7 @@ export class UpdateLinkPreview {
       if (written !== null) {
         this.announce(written);
         await this.emitSearch(written);
-        return await this.toSummary(readable, written);
+        return await this.toSummary(userId, readable, written);
       }
       // Otra escritura ganó: se vuelve a leer y la corrección se aplica sobre lo que hay ahora.
       const reread = await this.links.findById(linkId);
@@ -167,11 +173,19 @@ export class UpdateLinkPreview {
 
   /** El link editado con la forma de una fila de lista: quien lo edita lo está viendo en una. */
   private async toSummary(
+    userId: string,
     readable: ReadableLink,
     link: typeof readable.link,
   ): Promise<JobLinkSummary> {
+    // El nombre de un autor del preview solo sale si quien lee comparte un grupo con él (H1, ADR-055 §2).
+    const visibleAuthors = await visibleAuthorsFor(
+      this.membership,
+      userId,
+      previewAuthorIdsOf([link]),
+    );
     const ids = displayNameIdsOf(
       [link],
+      visibleAuthors,
       readable.sharedBy === undefined ? [] : [readable.sharedBy],
     );
     const names =
@@ -181,6 +195,7 @@ export class UpdateLinkPreview {
     return toJobLinkSummary(link, {
       sharedAt: readable.sharedAt,
       names,
+      visibleAuthors,
       ...(readable.sharedBy === undefined
         ? {}
         : {

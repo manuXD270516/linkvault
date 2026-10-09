@@ -1,5 +1,5 @@
 import { jobLinkSummarySchema } from '@linkvault/shared';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import type { JobLink } from '../domain/job-link';
 import {
   displayNameIdsOf,
@@ -12,6 +12,12 @@ import {
   objectId,
   pastedPreview,
 } from './testing/link-fixtures';
+import { InMemoryGroupMembership } from './testing/links-test-doubles';
+import {
+  visibleAuthorsByRecipient,
+  visibleAuthorsFor,
+  type VisibleAuthors,
+} from './visible-authors';
 
 // Mapeo de un `JobLink` al contrato de la API. Lo del enriquecimiento se prueba aquí y no por HTTP porque es una función
 // pura: los tests de los listados comprueban que llega entera hasta la respuesta.
@@ -19,6 +25,34 @@ import {
 const CREATED_AT = new Date('2026-09-17T10:00:00.000Z');
 const REQUESTED_AT = new Date('2026-09-18T08:30:00.000Z');
 const SHARED_AT = new Date('2026-09-18T09:00:00.000Z');
+
+/** Lector que comparte un grupo con cada uno de `authors`: los ve a todos. Se construye con el ayudante, no con un cast. */
+async function seeing(...authors: string[]): Promise<VisibleAuthors> {
+  const viewer = objectId(90);
+  const membership = new InMemoryGroupMembership().withMember(
+    objectId(80),
+    viewer,
+  );
+  for (const author of authors) {
+    membership.withMember(objectId(80), author);
+  }
+  return await visibleAuthorsFor(membership, viewer, authors);
+}
+
+/** Conjunto vacío: ningún autor es visible (falla cerrado). */
+async function seeingNobody(): Promise<VisibleAuthors> {
+  const viewer = objectId(91);
+  const byRecipient = await visibleAuthorsByRecipient(
+    new InMemoryGroupMembership(),
+    [],
+    [viewer],
+  );
+  const empty = byRecipient.get(viewer);
+  if (empty === undefined) {
+    throw new Error('fixture: the recipient has no set');
+  }
+  return empty;
+}
 
 function jobLink(overrides: Partial<JobLink> = {}): JobLink {
   const draft = jobLinkDraft('https://www.linkedin.com/jobs/view/3811111111/', {
@@ -29,28 +63,34 @@ function jobLink(overrides: Partial<JobLink> = {}): JobLink {
 }
 
 describe('toJobLinkSummary', () => {
-  it('answers when the reading of the offer was asked for', () => {
+  it('answers when the reading of the offer was asked for', async () => {
     const summary = toJobLinkSummary(
       jobLink({ previewRequestedAt: REQUESTED_AT }),
-      { sharedAt: SHARED_AT },
+      { sharedAt: SHARED_AT, visibleAuthors: await seeing() },
     );
 
     expect(summary.previewRequestedAt).toBe(REQUESTED_AT.toISOString());
     expect(jobLinkSummarySchema.parse(summary)).toEqual(summary);
   });
 
-  it('a link saved before this change falls back to when it was created', () => {
+  it('a link saved before this change falls back to when it was created', async () => {
     const { previewRequestedAt, ...legacy } = jobLink();
     expect(previewRequestedAt).toBeDefined();
 
-    const summary = toJobLinkSummary(legacy, { sharedAt: SHARED_AT });
+    const summary = toJobLinkSummary(legacy, {
+      sharedAt: SHARED_AT,
+      visibleAuthors: await seeing(),
+    });
 
     expect(summary.previewRequestedAt).toBe(CREATED_AT.toISOString());
     expect(jobLinkSummarySchema.safeParse(summary).success).toBe(true);
   });
 
-  it('a new link is born pending with its reading already asked for', () => {
-    const summary = toJobLinkSummary(jobLink(), { sharedAt: SHARED_AT });
+  it('a new link is born pending with its reading already asked for', async () => {
+    const summary = toJobLinkSummary(jobLink(), {
+      sharedAt: SHARED_AT,
+      visibleAuthors: await seeing(),
+    });
 
     expect(summary.previewStatus).toBe('pending');
     expect(summary.previewRequestedAt).toBe(CREATED_AT.toISOString());
@@ -65,10 +105,11 @@ describe('toJobLinkSummary with a read offer', () => {
     ...enrichedPreview(ANA),
   });
 
-  it('Oferta enriquecida', () => {
+  it('Oferta enriquecida', async () => {
     const summary = toJobLinkSummary(enriched, {
       sharedAt: SHARED_AT,
       names: new Map([[ANA, 'Ana']]),
+      visibleAuthors: await seeing(ANA),
     });
 
     expect(jobLinkSummarySchema.parse(summary)).toEqual(summary);
@@ -82,10 +123,11 @@ describe('toJobLinkSummary with a read offer', () => {
     });
   });
 
-  it('says who wrote a field by name, not by identifier', () => {
+  it('says who wrote a field by name, not by identifier', async () => {
     const summary = toJobLinkSummary(enriched, {
       sharedAt: SHARED_AT,
       names: new Map([[ANA, 'Ana']]),
+      visibleAuthors: await seeing(ANA),
     });
     const company = summary.previewSources?.company;
 
@@ -99,19 +141,20 @@ describe('toJobLinkSummary with a read offer', () => {
     );
   });
 
-  it('falls back to a neutral name when the directory does not know the author', () => {
+  it('falls back to a neutral name when the directory does not know the author', async () => {
     const summary = toJobLinkSummary(enriched, {
       sharedAt: SHARED_AT,
       names: new Map(),
+      visibleAuthors: await seeing(ANA),
     });
     const company = summary.previewSources?.company;
 
     expect(
-      company?.source === 'manual' ? company.by.displayName : undefined,
+      company?.source === 'manual' ? company.by?.displayName : undefined,
     ).toBe(UNKNOWN_SHARER_NAME);
   });
 
-  it('carries the reason of the last failed reading', () => {
+  it('carries the reason of the last failed reading', async () => {
     const failed = jobLink({
       previewStatus: 'failed',
       lastEnrichmentError: {
@@ -120,14 +163,20 @@ describe('toJobLinkSummary with a read offer', () => {
       },
     });
 
-    const summary = toJobLinkSummary(failed, { sharedAt: SHARED_AT });
+    const summary = toJobLinkSummary(failed, {
+      sharedAt: SHARED_AT,
+      visibleAuthors: await seeing(),
+    });
 
     expect(summary.lastEnrichmentError?.reason).toBe('robots_disallowed');
     expect(jobLinkSummarySchema.safeParse(summary).success).toBe(true);
   });
 
-  it('a pending link answers just like before, without preview keys', () => {
-    const summary = toJobLinkSummary(jobLink(), { sharedAt: SHARED_AT });
+  it('a pending link answers just like before, without preview keys', async () => {
+    const summary = toJobLinkSummary(jobLink(), {
+      sharedAt: SHARED_AT,
+      visibleAuthors: await seeing(),
+    });
 
     expect(summary.previewStatus).toBe('pending');
     expect(Object.keys(summary)).not.toContain('preview');
@@ -135,13 +184,18 @@ describe('toJobLinkSummary with a read offer', () => {
     expect(Object.keys(summary)).not.toContain('lastEnrichmentError');
   });
 
-  it('omits group tags and pinned unless the group list context supplies them', () => {
-    const privateSummary = toJobLinkSummary(jobLink(), { sharedAt: SHARED_AT });
+  it('omits group tags and pinned unless the group list context supplies them', async () => {
+    const visibleAuthors = await seeing();
+    const privateSummary = toJobLinkSummary(jobLink(), {
+      sharedAt: SHARED_AT,
+      visibleAuthors,
+    });
     expect(privateSummary).not.toHaveProperty('tags');
     expect(privateSummary).not.toHaveProperty('pinned');
 
     const groupSummary = toJobLinkSummary(jobLink(), {
       sharedAt: SHARED_AT,
+      visibleAuthors,
       tags: ['remote'],
       pinned: true,
     });
@@ -159,12 +213,17 @@ describe('toJobLinkSummary with a pasted description', () => {
     previewVersion: 4,
     ...pastedPreview(BETO, ANA),
   });
-  const summary = toJobLinkSummary(pasted, {
-    sharedAt: SHARED_AT,
-    names: new Map([
-      [ANA, 'Ana'],
-      [BETO, 'Beto'],
-    ]),
+  let summary: ReturnType<typeof toJobLinkSummary>;
+
+  beforeAll(async () => {
+    summary = toJobLinkSummary(pasted, {
+      sharedAt: SHARED_AT,
+      names: new Map([
+        [ANA, 'Ana'],
+        [BETO, 'Beto'],
+      ]),
+      visibleAuthors: await seeing(ANA, BETO),
+    });
   });
 
   it('Lo pegado se distingue', () => {
@@ -212,10 +271,9 @@ describe('displayNameIdsOf', () => {
       jobLink({ id: objectId(13) }),
     ];
 
-    expect(displayNameIdsOf(links, [ANA, BETO, undefined])).toEqual([
-      ANA,
-      BETO,
-    ]);
+    expect(
+      displayNameIdsOf(links, new Set([ANA]), [ANA, BETO, undefined]),
+    ).toEqual([ANA, BETO]);
   });
 
   it('asks for whoever pasted a field and whoever signed what it keeps to be undone', () => {
@@ -225,10 +283,120 @@ describe('displayNameIdsOf', () => {
       jobLink({ id: objectId(12), ...pastedPreview(CARLA, ANA) }),
     ];
 
-    expect(displayNameIdsOf(links)).toEqual([ANA, BETO, CARLA]);
+    expect(displayNameIdsOf(links, new Set([ANA, BETO, CARLA]))).toEqual([
+      ANA,
+      BETO,
+      CARLA,
+    ]);
   });
 
   it('asks for nobody when no field was written by hand', () => {
-    expect(displayNameIdsOf([jobLink()])).toEqual([]);
+    expect(displayNameIdsOf([jobLink()], new Set())).toEqual([]);
+  });
+});
+
+describe('toJobLinkSummary hiding authors', () => {
+  const ANA = objectId(1);
+  const BETO = objectId(2);
+  const CARLA = objectId(3);
+  const pasted = jobLink({
+    previewStatus: 'manual',
+    previewVersion: 4,
+    ...pastedPreview(BETO, ANA),
+  });
+  const names = new Map([
+    [ANA, 'Ana Quiroga'],
+    [BETO, 'Beto Mamani'],
+  ]);
+
+  it('hides an author outside visibleAuthors', async () => {
+    const summary = toJobLinkSummary(pasted, {
+      sharedAt: SHARED_AT,
+      names,
+      visibleAuthors: await seeing(ANA),
+    });
+    const company = summary.previewSources?.company;
+    const title = summary.previewSources?.title;
+
+    // Beto pegó el resumen y la compañía; Ana firmaba lo que el título guarda para deshacerse.
+    expect(company?.source === 'pasted' ? company.by : undefined).toBeNull();
+    expect(title?.source).toBe('manual');
+    expect(jobLinkSummarySchema.parse(summary)).toEqual(summary);
+    expect(JSON.stringify(summary)).not.toContain(BETO);
+    expect(JSON.stringify(summary)).not.toContain('Beto Mamani');
+  });
+
+  it('hides the author of replaced', async () => {
+    const summary = toJobLinkSummary(pasted, {
+      sharedAt: SHARED_AT,
+      names,
+      visibleAuthors: await seeing(ANA),
+    });
+    const title = summary.previewSources?.title;
+
+    expect(
+      title?.source === 'manual' ? title.replaced : undefined,
+    ).toMatchObject({ source: 'pasted', by: null });
+  });
+
+  it('keeps origin and at when hiding', async () => {
+    const summary = toJobLinkSummary(pasted, {
+      sharedAt: SHARED_AT,
+      names,
+      visibleAuthors: await seeing(),
+    });
+
+    expect(summary.previewSources?.summary).toEqual({
+      value: 'Servicios en Node.js para pagos.',
+      source: 'pasted',
+      extractor: 'ai:extract-pasted-job',
+      by: null,
+      at: '2026-09-18T11:00:00.000Z',
+    });
+  });
+
+  it('an empty set hides every author (fails closed)', async () => {
+    const summary = toJobLinkSummary(pasted, {
+      sharedAt: SHARED_AT,
+      names,
+      visibleAuthors: await seeingNobody(),
+    });
+    const text = JSON.stringify(summary.previewSources);
+
+    expect(text).not.toContain(ANA);
+    expect(text).not.toContain(BETO);
+    expect(text).not.toContain('Ana Quiroga');
+    expect(text).not.toContain('Beto Mamani');
+  });
+
+  it('hidden authors are not requested from the directory', async () => {
+    const links = [pasted];
+
+    expect(displayNameIdsOf(links, await seeing(ANA))).toEqual([ANA]);
+    expect(displayNameIdsOf(links, await seeingNobody())).toEqual([]);
+  });
+
+  it('sharedBy is still requested and resolved', async () => {
+    const hidden = await seeingNobody();
+
+    expect(displayNameIdsOf([pasted], hidden, [CARLA])).toEqual([CARLA]);
+    const summary = toJobLinkSummary(pasted, {
+      sharedAt: SHARED_AT,
+      names: new Map([[CARLA, 'Carla Benítez']]),
+      sharedBy: { userId: CARLA, displayName: 'Carla Benítez' },
+      visibleAuthors: hidden,
+    });
+    expect(summary.sharedBy).toEqual({
+      userId: CARLA,
+      displayName: 'Carla Benítez',
+    });
+  });
+
+  it('does not accept a hand-made set where the branded type is required', () => {
+    toJobLinkSummary(pasted, {
+      sharedAt: SHARED_AT,
+      // @ts-expect-error solo visible-authors.ts construye un VisibleAuthors: un Set a mano no compila (N11).
+      visibleAuthors: new Set([ANA]),
+    });
   });
 });

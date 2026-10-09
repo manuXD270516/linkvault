@@ -52,3 +52,14 @@ Antes de cualquier tarea lee, en este orden: `docs/design-v0.2.md` (decisiones v
 
 ## Idioma
 - Código, identificadores y commits en inglés. Documentación, specs de OpenSpec y comentarios de dominio en español.
+
+## Modelos por tipo de trabajo
+- Diseño, specs, ADRs, decisiones y preguntas al owner → agente `arquitecto` (Claude Opus 5.5, `claude-opus-5-5`).
+- Implementación, tests, archivado y cierre de PRs → agente `implementador` (Claude Sonnet 5.5, `claude-sonnet-5-5`).
+- La sesión principal orquesta: reparte el trabajo, revisa diffs, resuelve conflictos e integra.
+- Si una tarea mezcla ambos, primero `arquitecto` (spec y decisiones) y después `implementador`.
+- Los agentes especializados que ya usa el flujo `/lv:*` siguen el mismo reparto: `architect`, `critic` y `business`
+  (diseño y debate) en `claude-opus-5-5`; `backend-dev`, `frontend-dev`, `devops`, `ai-engineer` y `qa-reviewer`
+  (implementación por etiqueta y verificación) en `claude-sonnet-5-5`.
+- Para cambiar de versión de modelo en el futuro, se actualiza el `model:` de todos los agentes de `.claude/agents/` y
+  esta sección en el mismo PR.

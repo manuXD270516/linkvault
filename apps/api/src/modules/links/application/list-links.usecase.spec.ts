@@ -28,6 +28,7 @@ import {
 const ANA = objectId(1);
 const BETO = objectId(2);
 const STRANGER = objectId(3);
+const CARLA = objectId(4);
 const BACKEND = objectId(10);
 const STRANGERS = objectId(12);
 const JOB_PAGE = 'https://www.linkedin.com/jobs/view/3811111111/';
@@ -41,6 +42,7 @@ let directory: InMemoryLinkUserDirectory;
 let saveLink: SaveLink;
 let listGroupLinks: ListGroupLinks;
 let listMyLinks: ListMyLinks;
+let membership: InMemoryGroupMembership;
 
 /** Las URLs públicas de un test: los mismos orígenes que `.env.example`. */
 const urls = new TestPublicUrls();
@@ -51,7 +53,7 @@ beforeEach(() => {
   groupLinks = new InMemoryGroupLinkRepository(links);
   userLinks = new InMemoryUserLinkRepository(links);
   directory = new InMemoryLinkUserDirectory().set(ANA, 'Ana').set(BETO, 'Beto');
-  const membership = new InMemoryGroupMembership()
+  membership = new InMemoryGroupMembership()
     .withMember(BACKEND, ANA, 'owner', 'Backend Bolivia')
     .withMember(BACKEND, BETO)
     .withMember(STRANGERS, STRANGER, 'owner', 'De otro');
@@ -72,9 +74,8 @@ beforeEach(() => {
     directory,
     urls,
   );
-  listMyLinks = new ListMyLinks(userLinks, directory);
+  listMyLinks = new ListMyLinks(userLinks, directory, membership);
 });
-
 
 describe('ListGroupLinks', () => {
   it('Miembro ve los links del grupo', async () => {
@@ -314,5 +315,128 @@ describe('read offers in the listings', () => {
     expect(page.items[0]?.previewSources).toBeUndefined();
     // Sin nada escrito a mano no hay ningún nombre que resolver: la lista privada sigue sin consultar el directorio.
     expect(directory.calls).toBe(0);
+  });
+});
+
+describe('names of provenance authors outside the viewer groups (H1)', () => {
+  /** Link con campos escritos por `author`, ya en la lista privada de `userId`. */
+  async function seedPrivate(userId: string, author: string): Promise<void> {
+    const link = links.seed({
+      ...jobLinkDraft('https://empresa.example/careers/ajena', {
+        createdBy: author,
+        now: clock.now(),
+      }),
+      previewStatus: 'manual',
+      previewVersion: 2,
+      ...enrichedPreview(author),
+    });
+    await userLinks.save(
+      { userId, linkId: link.id, savedAt: clock.now() },
+      IN_MEMORY_SESSION,
+    );
+  }
+
+  /** Link compartido en BACKEND por Ana, con campos escritos por `author`. */
+  async function seedInGroup(author: string): Promise<void> {
+    const link = links.seed({
+      ...jobLinkDraft('https://empresa.example/careers/del-grupo', {
+        createdBy: ANA,
+        now: clock.now(),
+      }),
+      previewStatus: 'manual',
+      previewVersion: 2,
+      ...enrichedPreview(author),
+    });
+    await groupLinks.seed({
+      groupId: BACKEND,
+      linkId: link.id,
+      sharedBy: ANA,
+      sharedAt: clock.now(),
+    });
+  }
+
+  it('private list hides the name of an author who shares no group with the viewer', async () => {
+    await seedPrivate(CARLA, ANA);
+    directory.requestedIds = [];
+
+    const page = await listMyLinks.execute(CARLA, { limit: 20 });
+    const company = page.items[0]?.previewSources?.company;
+
+    expect(company?.source === 'manual' ? company.by : undefined).toBeNull();
+    // Solo la procedencia: el id del propio link puede coincidir con el de un usuario en estos fixtures.
+    const sources = JSON.stringify(page.items[0]?.previewSources);
+    expect(sources).not.toContain(ANA);
+    expect(sources).not.toContain('Ana');
+  });
+
+  it('private list shows the name of an author who shares a group with the viewer', async () => {
+    await seedPrivate(BETO, ANA);
+
+    const page = await listMyLinks.execute(BETO, { limit: 20 });
+    const company = page.items[0]?.previewSources?.company;
+
+    expect(company?.source === 'manual' ? company.by : undefined).toEqual({
+      userId: ANA,
+      displayName: 'Ana',
+    });
+  });
+
+  it('group list shows the name of a co-member author', async () => {
+    await seedInGroup(ANA);
+
+    const page = await listGroupLinks.execute(BETO, BACKEND, { limit: 20 });
+    const company = page.items[0]?.previewSources?.company;
+
+    expect(company?.source === 'manual' ? company.by : undefined).toEqual({
+      userId: ANA,
+      displayName: 'Ana',
+    });
+  });
+
+  it('group list hides the name of an outsider who corrected the preview', async () => {
+    directory.set(STRANGER, 'Extra Ño');
+    await seedInGroup(STRANGER);
+
+    const page = await listGroupLinks.execute(BETO, BACKEND, { limit: 20 });
+    const company = page.items[0]?.previewSources?.company;
+
+    expect(company?.source === 'manual' ? company.by : undefined).toBeNull();
+    expect(JSON.stringify(page.items[0]?.previewSources)).not.toContain(
+      STRANGER,
+    );
+    expect(JSON.stringify(page.items[0]?.previewSources)).not.toContain(
+      'Extra',
+    );
+  });
+
+  it('the name directory does not receive the id of a hidden provenance author', async () => {
+    await seedInGroup(STRANGER);
+    directory.requestedIds = [];
+
+    await listGroupLinks.execute(BETO, BACKEND, { limit: 20 });
+
+    expect(directory.requestedIds).not.toContain(STRANGER);
+  });
+
+  it('group list still names the sharer', async () => {
+    await seedInGroup(STRANGER);
+    directory.requestedIds = [];
+
+    const page = await listGroupLinks.execute(BETO, BACKEND, { limit: 20 });
+
+    expect(directory.requestedIds).toContain(ANA);
+    expect(page.items[0]?.sharedBy).toEqual({
+      userId: ANA,
+      displayName: 'Ana',
+    });
+  });
+
+  it('a peersAmong failure fails the listing instead of showing every name', async () => {
+    await seedPrivate(CARLA, ANA);
+    membership.peersAmongFailure = new Error('mongo down');
+
+    await expect(listMyLinks.execute(CARLA, { limit: 20 })).rejects.toThrow(
+      'mongo down',
+    );
   });
 });

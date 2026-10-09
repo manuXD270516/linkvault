@@ -487,6 +487,63 @@ describe('previewSourcesSchema', () => {
   });
 });
 
+describe('resolved preview sources with a hidden author', () => {
+  const at = '2026-01-01T10:00:00.000Z';
+  const manual = {
+    value: 'Backend Engineer',
+    source: 'manual',
+    by: null,
+    at,
+  } as const;
+
+  it('resolved sources accept a hidden author (by: null)', () => {
+    expect(resolvedPreviewSourcesSchema.parse({ title: manual })).toEqual({
+      title: manual,
+    });
+    expect(
+      resolvedPreviewSourcesSchema.safeParse({
+        title: {
+          ...manual,
+          source: 'pasted',
+          extractor: 'ai:extract-pasted-job',
+        },
+      }).success,
+    ).toBe(true);
+  });
+
+  it('resolved sources accept a hidden author in replaced', () => {
+    const resolved = {
+      title: {
+        ...manual,
+        replaced: {
+          value: 'Dev',
+          source: 'pasted',
+          extractor: 'ai:extract-pasted-job',
+          by: null,
+          at,
+        },
+      },
+    };
+
+    expect(resolvedPreviewSourcesSchema.parse(resolved)).toEqual(resolved);
+  });
+
+  it('stored sources reject by: null', () => {
+    expect(previewSourcesSchema.safeParse({ title: manual }).success).toBe(
+      false,
+    );
+    expect(
+      previewSourcesSchema.safeParse({
+        title: {
+          ...manual,
+          by: 'u1',
+          replaced: { value: 'Dev', source: 'manual', by: null, at },
+        },
+      }).success,
+    ).toBe(false);
+  });
+});
+
 describe('updatePreviewRequestSchema', () => {
   it('takes the fields written by hand', () => {
     expect(

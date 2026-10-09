@@ -9,6 +9,7 @@ import { InMemoryGroupRepository } from './testing/in-memory-group.repository';
 
 const ANA = '66e9a0000000000000000001';
 const BETO = '66e9a0000000000000000002';
+const CARLA = '66e9a0000000000000000003';
 const ORPHAN_GROUP = '66e9a00000000000000000ff';
 
 let clock: MovableClock;
@@ -51,8 +52,18 @@ describe('GroupsFacade', () => {
     });
 
     await expect(facade.getGroupsOf(ANA)).resolves.toEqual([
-      { groupId: other.id, name: 'De Beto', role: 'member', defaultVisibility: 'public' },
-      { groupId: own.id, name: 'De Ana', role: 'owner', defaultVisibility: 'public' },
+      {
+        groupId: other.id,
+        name: 'De Beto',
+        role: 'member',
+        defaultVisibility: 'public',
+      },
+      {
+        groupId: own.id,
+        name: 'De Ana',
+        role: 'owner',
+        defaultVisibility: 'public',
+      },
     ]);
   });
 
@@ -65,7 +76,12 @@ describe('GroupsFacade', () => {
     });
 
     await expect(facade.getGroupsOf(ANA)).resolves.toEqual([
-      { groupId: own.id, name: 'Vivo', role: 'owner', defaultVisibility: 'public' },
+      {
+        groupId: own.id,
+        name: 'Vivo',
+        role: 'owner',
+        defaultVisibility: 'public',
+      },
     ]);
   });
 
@@ -87,5 +103,23 @@ describe('GroupsFacade', () => {
   it('answers an empty list for a user without groups and for a malformed id', async () => {
     await expect(facade.getGroupsOf(BETO)).resolves.toEqual([]);
     await expect(facade.getGroupsOf('no-es-un-id')).resolves.toEqual([]);
+  });
+});
+
+describe('GroupsFacade.peersAmong', () => {
+  it('peersAmong delegates to the repository', async () => {
+    const createGroup = new CreateGroup(repository, clock);
+    const own = await createGroup.execute(ANA, 'De Ana');
+    await repository.addMember({
+      groupId: own.id,
+      userId: BETO,
+      now: clock.now(),
+    });
+    await createGroup.execute(CARLA, 'De Carla');
+
+    await expect(facade.peersAmong(ANA, [BETO, CARLA])).resolves.toEqual(
+      new Set([BETO]),
+    );
+    expect(repository.peersAmongQueries).toBe(1);
   });
 });
