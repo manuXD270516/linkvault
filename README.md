@@ -1775,3 +1775,7 @@ Se perderían los generadores oficiales de Nest y Angular, los targets inferidos
 `@nx/enforce-module-boundaries`, que habría que reemplazar por otra herramienta de límites (por ejemplo
 `eslint-plugin-boundaries` o `dependency-cruiser`). La caché local de tareas tiene equivalente en Turborepo, y la
 caché remota es opcional en ambos.
+
+## Licencia
+
+[MIT](LICENSE) © 2026 Manuel Saavedra.
