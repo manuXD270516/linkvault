@@ -9,7 +9,11 @@ import { SaveLink } from './save-link.usecase';
 import { InMemoryGroupLinkRepository } from './testing/in-memory-group-link.repository';
 import { InMemoryJobLinkRepository } from './testing/in-memory-job-link.repository';
 import { InMemoryUserLinkRepository } from './testing/in-memory-user-link.repository';
-import { objectId } from './testing/link-fixtures';
+import {
+  enrichedPreview,
+  jobLinkDraft,
+  objectId,
+} from './testing/link-fixtures';
 import {
   InMemoryGroupMembership,
   InMemoryLinkLimiter,
@@ -105,14 +109,14 @@ function spyOnEveryLogger(): unknown[] {
 function chatWith(count: number): string {
   return Array.from(
     { length: count },
-    (_, index) => `[10:0${index % 10}] Ana: https://empresa.example/careers/${index}`,
+    (_, index) =>
+      `[10:0${index % 10}] Ana: https://empresa.example/careers/${index}`,
   ).join('\n');
 }
 
 afterEach(() => {
   vi.restoreAllMocks();
 });
-
 
 describe('ImportLinks', () => {
   it('Importar un chat', async () => {
@@ -393,17 +397,17 @@ describe('ImportLinks y la visibilidad por defecto del grupo', () => {
     });
 
     expect(response.created).toBe(3);
-    expect(
-      response.links.every((link) => link.publicShare === undefined),
-    ).toBe(true);
+    expect(response.links.every((link) => link.publicShare === undefined)).toBe(
+      true,
+    );
   });
 
   it('Importar sin grupo no crea ningún enlace público', async () => {
     const response = await importLinks.execute(ANA, { text: THREE_URLS });
 
-    expect(
-      response.links.every((link) => link.publicShare === undefined),
-    ).toBe(true);
+    expect(response.links.every((link) => link.publicShare === undefined)).toBe(
+      true,
+    );
   });
 
   // `groupsOf` en vez de `membershipOf` da la pertenencia y el ajuste en una sola lectura, cueste 3 URLs o 50.
@@ -430,4 +434,26 @@ describe('ImportLinks y la visibilidad por defecto del grupo', () => {
       expect(membership.membershipOfCalls).toBe(before.membershipOf);
     },
   );
+});
+
+describe('ImportLinks provenance names (H1)', () => {
+  const CARLA = objectId(4);
+
+  it('response hides authors who share no group with the caller', async () => {
+    links.seed({
+      ...jobLinkDraft(CAREERS, { createdBy: ANA, now: clock.now() }),
+      previewStatus: 'manual',
+      previewVersion: 2,
+      ...enrichedPreview(ANA),
+    });
+
+    const response = await importLinks.execute(CARLA, { text: CAREERS });
+    const company = response.links[0]?.previewSources?.company;
+
+    expect(response.links).toHaveLength(1);
+    expect(company?.source === 'manual' ? company.by : undefined).toBeNull();
+    const sources = JSON.stringify(response.links[0]?.previewSources);
+    expect(sources).not.toContain(ANA);
+    expect(sources).not.toContain('Ana');
+  });
 });

@@ -39,9 +39,23 @@ export class GroupsFacade {
    * Rol del usuario en el grupo, o `null` si no es miembro, el grupo no existe o el identificador está mal formado. Lo
    * usa `links` para dejar que el `owner` quite un link que compartió otro, sin poder leer nada más de `groups`.
    */
-  async membershipOf(groupId: string, userId: string): Promise<GroupRole | null> {
+  async membershipOf(
+    groupId: string,
+    userId: string,
+  ): Promise<GroupRole | null> {
     const membership = await this.groups.findMembership(groupId, userId);
     return membership === null ? null : membership.role;
+  }
+
+  /**
+   * De los candidatos, los que comparten al menos un grupo con el usuario. Solo delega en el repositorio (una consulta
+   * por llamada, sin membresías huérfanas). Lo usa `links` para decidir a quién se le nombra un autor.
+   */
+  async peersAmong(
+    userId: string,
+    candidateIds: readonly string[],
+  ): Promise<Set<string>> {
+    return await this.groups.peersAmong(userId, candidateIds);
   }
 
   /**
@@ -87,10 +101,7 @@ export class GroupsFacade {
    * Dentro de la txn del borrado de cuenta: borra grupos de los que es único miembro (vía
    * `deleteGroupInSession` + `GroupDeletionHooks`) y suelta el resto de membresías.
    */
-  async detachUserInSession(
-    userId: string,
-    session: object,
-  ): Promise<void> {
+  async detachUserInSession(userId: string, session: object): Promise<void> {
     const memberships = await this.getGroupsOf(userId);
     for (const membership of memberships) {
       if (membership.role === 'owner') {

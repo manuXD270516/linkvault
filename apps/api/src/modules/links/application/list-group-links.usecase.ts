@@ -8,7 +8,12 @@ import {
   toShareNoteView,
 } from './comment.mapper';
 import { encodeCursor, toGroupLinkListQuery } from './link-cursor';
-import { displayNameIdsOf, toJobLinkSummary, toLinkSharer } from './link.mapper';
+import {
+  displayNameIdsOf,
+  previewAuthorIdsOf,
+  toJobLinkSummary,
+  toLinkSharer,
+} from './link.mapper';
 import {
   GROUP_LINK_COMMENT_REPOSITORY,
   type GroupLinkCommentRepository,
@@ -28,6 +33,7 @@ import {
 } from './ports/link-user-directory.port';
 import { PUBLIC_URLS, type PublicUrls } from './ports/public-urls.port';
 import { toPublicShareView } from './public-share.mapper';
+import { visibleAuthorsFor, type VisibleAuthors } from './visible-authors';
 
 /**
  * `GET /api/groups/:id/links` (spec links/sharing): los links del grupo para sus miembros, del más reciente al más
@@ -38,7 +44,9 @@ import { toPublicShareView } from './public-share.mapper';
  * enterarse de cuántas ofertas hay dentro.
  *
  * Cada link trae la nota de quien lo compartió y el resumen de sus comentarios en este grupo (D7 de group-comments),
- * con **cinco lecturas fijas por página**, sea de 2 links o de 50:
+ * con **cinco lecturas fijas por página**, sea de 2 links o de 50 (más una consulta de `peersAmong` cuando el preview
+ * tiene autores ajenos al lector: el nombre de un autor solo sale si comparte un grupo con quien lee, H1 de
+ * usage-guide-fixes):
  * 1. `memberIdsOf`, que da la pertenencia y `authorLeft` para toda la página;
  * 2. la página, que ya trae la nota y los contadores de cada relación;
  * 3. el total;
@@ -73,9 +81,17 @@ export class ListGroupLinks {
       groupId,
       page.items.map((item) => item.link.id),
     );
+    const links = page.items.map((item) => item.link);
+    // El nombre de quien corrigió el preview solo sale si quien lee comparte un grupo con él (H1, ADR-055 §2).
+    const visibleAuthors = await visibleAuthorsFor(
+      this.membership,
+      userId,
+      previewAuthorIdsOf(links),
+    );
     const names = await this.directory.displayNamesOf([
       ...displayNameIdsOf(
-        page.items.map((item) => item.link),
+        links,
+        visibleAuthors,
         page.items.map((item) => item.sharedBy),
       ),
       ...authorIdsOf([...latest.values()].flat()),
@@ -89,6 +105,7 @@ export class ListGroupLinks {
           members,
           this.urls,
           userId,
+          visibleAuthors,
         ),
       ),
       total,
@@ -107,6 +124,7 @@ function toGroupItem(
   members: ReadonlySet<string>,
   urls: PublicUrls,
   viewerId: string,
+  visibleAuthors: VisibleAuthors,
 ): LinkPage['items'][number] {
   const inGroup = item.inGroup ?? {
     commentCount: 0,
@@ -119,6 +137,7 @@ function toGroupItem(
   return toJobLinkSummary(item.link, {
     sharedAt: item.sharedAt,
     names,
+    visibleAuthors,
     ...(item.sharedBy === undefined
       ? {}
       : { sharedBy: toLinkSharer(item.sharedBy, names.get(item.sharedBy)) }),

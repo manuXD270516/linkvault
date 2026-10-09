@@ -488,3 +488,53 @@ describe('rename, rotate and delete', () => {
     );
   });
 });
+
+describe('peersAmong', () => {
+  it('returns only candidates sharing a group', async () => {
+    const group = await repository.create({ name: 'Uno', ownerId: OWNER, now });
+    await repository.addMember({ groupId: group.id, userId: MEMBER, now });
+    await repository.create({ name: 'Dos', ownerId: STRANGER, now });
+
+    await expect(
+      repository.peersAmong(OWNER, [MEMBER, STRANGER]),
+    ).resolves.toEqual(new Set([MEMBER]));
+  });
+
+  it('ignores orphan memberships', async () => {
+    await repository.addMember({
+      groupId: UNKNOWN_GROUP,
+      userId: OWNER,
+      now,
+    });
+    await repository.addMember({
+      groupId: UNKNOWN_GROUP,
+      userId: MEMBER,
+      now,
+    });
+
+    await expect(repository.peersAmong(OWNER, [MEMBER])).resolves.toEqual(
+      new Set(),
+    );
+  });
+
+  it('counts one query per peersAmong call', async () => {
+    expect(repository.peersAmongQueries).toBe(0);
+
+    await repository.peersAmong(OWNER, [MEMBER, STRANGER]);
+    await repository.peersAmong(OWNER, [MEMBER]);
+
+    expect(repository.peersAmongQueries).toBe(2);
+  });
+
+  it('answers an empty set for a malformed viewer or candidate id', async () => {
+    const group = await repository.create({ name: 'Uno', ownerId: OWNER, now });
+    await repository.addMember({ groupId: group.id, userId: MEMBER, now });
+
+    await expect(repository.peersAmong(MALFORMED, [MEMBER])).resolves.toEqual(
+      new Set(),
+    );
+    await expect(
+      repository.peersAmong(OWNER, [MALFORMED, MEMBER]),
+    ).resolves.toEqual(new Set([MEMBER]));
+  });
+});

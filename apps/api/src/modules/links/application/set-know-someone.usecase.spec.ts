@@ -72,7 +72,7 @@ beforeEach(() => {
     directory,
     urls,
   );
-  listMyLinks = new ListMyLinks(userLinks, directory);
+  listMyLinks = new ListMyLinks(userLinks, directory, membership);
 });
 
 async function shared(sharedBy: string, url = JOB_PAGE): Promise<string> {

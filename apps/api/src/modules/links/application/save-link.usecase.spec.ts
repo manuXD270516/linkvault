@@ -6,7 +6,11 @@ import { SaveLink } from './save-link.usecase';
 import { InMemoryGroupLinkRepository } from './testing/in-memory-group-link.repository';
 import { InMemoryJobLinkRepository } from './testing/in-memory-job-link.repository';
 import { InMemoryUserLinkRepository } from './testing/in-memory-user-link.repository';
-import { jobLinkDraft, objectId } from './testing/link-fixtures';
+import {
+  enrichedPreview,
+  jobLinkDraft,
+  objectId,
+} from './testing/link-fixtures';
 import {
   IN_MEMORY_SESSION,
   InMemoryGroupMembership,
@@ -63,7 +67,6 @@ beforeEach(() => {
     clock,
   );
 });
-
 
 describe('SaveLink', () => {
   it('Guardar en un grupo', async () => {
@@ -162,9 +165,9 @@ describe('SaveLink', () => {
   it('rejects a url longer than the maximum with invalid_url too', async () => {
     const tooLong = `https://example.com/${'a'.repeat(2048)}`;
 
-    await expect(saveLink.execute(ANA, { url: tooLong })).rejects.toBeInstanceOf(
-      InvalidUrl,
-    );
+    await expect(
+      saveLink.execute(ANA, { url: tooLong }),
+    ).rejects.toBeInstanceOf(InvalidUrl);
     expect(links.size).toBe(0);
   });
 
@@ -418,5 +421,43 @@ describe('SaveLink y la visibilidad por defecto del grupo', () => {
 
     expect(membership.groupsOfCalls).toBe(before + 1);
     expect(membership.membershipOfCalls).toBe(0);
+  });
+});
+
+describe('SaveLink provenance names (H1)', () => {
+  const CARLA = objectId(4);
+
+  /** Vacante que Ana ya corrigió a mano (la empresa), tal y como la encontraría quien guarda la misma URL. */
+  function seedCorrectedByAna(): void {
+    links.seed({
+      ...jobLinkDraft(JOB_PAGE, { createdBy: ANA, now: clock.now() }),
+      previewStatus: 'manual',
+      previewVersion: 2,
+      ...enrichedPreview(ANA),
+    });
+  }
+
+  it('response hides authors who share no group with the caller', async () => {
+    seedCorrectedByAna();
+
+    const response = await saveLink.execute(CARLA, { url: JOB_PAGE });
+    const company = response.link.previewSources?.company;
+
+    expect(company?.source === 'manual' ? company.by : undefined).toBeNull();
+    const sources = JSON.stringify(response.link.previewSources);
+    expect(sources).not.toContain(ANA);
+    expect(sources).not.toContain('Ana');
+  });
+
+  it('response names the author to a caller who shares a group with them', async () => {
+    seedCorrectedByAna();
+
+    const response = await saveLink.execute(BETO, { url: JOB_PAGE });
+    const company = response.link.previewSources?.company;
+
+    expect(company?.source === 'manual' ? company.by : undefined).toEqual({
+      userId: ANA,
+      displayName: 'Ana',
+    });
   });
 });

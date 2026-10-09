@@ -7,6 +7,7 @@ import {
   enrichedPreview,
   jobLinkDraft,
   objectId,
+  pastedPreview,
 } from './testing/link-fixtures';
 import {
   IN_MEMORY_SESSION,
@@ -23,6 +24,7 @@ const ANA = objectId(1);
 const BETO = objectId(2);
 const STRANGER = objectId(3);
 const CARLA = objectId(4);
+const DANI = objectId(5);
 const BACKEND = objectId(10);
 const OTHER_GROUP = objectId(11);
 const JOB_PAGE = 'https://www.linkedin.com/jobs/view/3811111111/';
@@ -33,6 +35,7 @@ let groupLinks: InMemoryGroupLinkRepository;
 let userLinks: InMemoryUserLinkRepository;
 let broadcaster: InMemoryEnrichmentBroadcaster;
 let directory: InMemoryLinkUserDirectory;
+let membership: InMemoryGroupMembership;
 let deliver: DeliverLinkEnriched;
 
 beforeEach(() => {
@@ -45,7 +48,7 @@ beforeEach(() => {
     .set(ANA, 'Ana')
     .set(BETO, 'Beto')
     .set(CARLA, 'Carla');
-  const membership = new InMemoryGroupMembership()
+  membership = new InMemoryGroupMembership()
     .withMember(BACKEND, ANA, 'owner', 'Backend Bolivia')
     .withMember(BACKEND, BETO)
     .withMember(OTHER_GROUP, STRANGER, 'owner', 'De otro');
@@ -189,5 +192,122 @@ describe('DeliverLinkEnriched', () => {
     expect(sent?.preview?.title).toBe('Título corregido');
     expect(sent?.previewStatus).toBe('manual');
     expect(sent?.previewVersion).toBe(3);
+  });
+});
+
+describe('DeliverLinkEnriched provenance names (H1)', () => {
+  /** Instante en que llega el link a la lista de quien lo ve por otro grupo. */
+  const LATER = new Date('2026-09-19T08:00:00.000Z');
+
+  function companyAuthor(userId: string): unknown {
+    const company = broadcaster.sent.find((entry) => entry.userId === userId)
+      ?.link.previewSources?.company;
+    return company?.source === 'manual' ? company.by : undefined;
+  }
+
+  it('a group member receives the author name and a private saver outside the group receives by: null for the same notice', async () => {
+    const linkId = await enrichedInGroup();
+    await userLinks.save(
+      { userId: CARLA, linkId, savedAt: clock.now() },
+      IN_MEMORY_SESSION,
+    );
+
+    await deliver.execute(notice(linkId));
+
+    expect(companyAuthor(BETO)).toEqual({ userId: ANA, displayName: 'Ana' });
+    expect(companyAuthor(CARLA)).toBeNull();
+    const carla = broadcaster.sent.find((entry) => entry.userId === CARLA);
+    const sources = JSON.stringify(carla?.link.previewSources);
+    expect(sources).not.toContain(ANA);
+    expect(sources).not.toContain('Ana');
+  });
+
+  it('each recipient keeps its own sharedAt/sharedBy', async () => {
+    // Beto y Dani ven el mismo conjunto de autores (los dos comparten grupo con Ana), pero llegan al link por grupos
+    // distintos, con otra fecha y otro compartidor: no se puede reutilizar un único resumen.
+    membership.withMember(OTHER_GROUP, ANA).withMember(OTHER_GROUP, DANI);
+    directory.set(STRANGER, 'Extraño').set(DANI, 'Dani');
+    const linkId = await enrichedInGroup();
+    await groupLinks.share(
+      {
+        groupId: OTHER_GROUP,
+        linkId,
+        sharedBy: STRANGER,
+        sharedAt: LATER,
+      },
+      IN_MEMORY_SESSION,
+    );
+
+    await deliver.execute(notice(linkId));
+    const beto = broadcaster.sent.find((entry) => entry.userId === BETO)?.link;
+    const dani = broadcaster.sent.find((entry) => entry.userId === DANI)?.link;
+
+    expect(companyAuthor(BETO)).toEqual({ userId: ANA, displayName: 'Ana' });
+    expect(companyAuthor(DANI)).toEqual({ userId: ANA, displayName: 'Ana' });
+    expect(beto?.sharedBy).toEqual({ userId: ANA, displayName: 'Ana' });
+    expect(beto?.sharedAt).toBe(clock.now().toISOString());
+    expect(dani?.sharedBy).toEqual({
+      userId: STRANGER,
+      displayName: 'Extraño',
+    });
+    expect(dani?.sharedAt).toBe(LATER.toISOString());
+  });
+
+  it('issues one peersAmong per distinct author', async () => {
+    const link = links.seed({
+      ...jobLinkDraft(JOB_PAGE, { createdBy: ANA, now: clock.now() }),
+      previewStatus: 'manual',
+      previewVersion: 2,
+      ...pastedPreview(BETO, ANA),
+    });
+    await groupLinks.share(
+      {
+        groupId: BACKEND,
+        linkId: link.id,
+        sharedBy: ANA,
+        sharedAt: clock.now(),
+      },
+      IN_MEMORY_SESSION,
+    );
+    await userLinks.save(
+      { userId: CARLA, linkId: link.id, savedAt: clock.now() },
+      IN_MEMORY_SESSION,
+    );
+    membership.peersAmongCalls = 0;
+
+    await deliver.execute(notice(link.id));
+
+    // Ana y Beto escriben el preview: dos autores, aunque haya tres destinatarios.
+    expect(membership.peersAmongCalls).toBe(2);
+  });
+
+  it('issues no peersAmong when no person wrote the preview', async () => {
+    const link = links.seed({
+      ...jobLinkDraft(JOB_PAGE, { createdBy: ANA, now: clock.now() }),
+      previewStatus: 'pending',
+    });
+    await groupLinks.share(
+      {
+        groupId: BACKEND,
+        linkId: link.id,
+        sharedBy: ANA,
+        sharedAt: clock.now(),
+      },
+      IN_MEMORY_SESSION,
+    );
+    membership.peersAmongCalls = 0;
+
+    await deliver.execute(notice(link.id));
+
+    expect(membership.peersAmongCalls).toBe(0);
+    expect(broadcaster.sent).toHaveLength(2);
+  });
+
+  it('a peersAmong failure delivers nothing', async () => {
+    const linkId = await enrichedInGroup();
+    membership.peersAmongFailure = new Error('mongo down');
+
+    await expect(deliver.execute(notice(linkId))).rejects.toThrow('mongo down');
+    expect(broadcaster.sent).toEqual([]);
   });
 });

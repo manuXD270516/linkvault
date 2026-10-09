@@ -9,7 +9,11 @@ import { RequestLinkEnrichment } from './request-link-enrichment.usecase';
 import { InMemoryGroupLinkRepository } from './testing/in-memory-group-link.repository';
 import { InMemoryJobLinkRepository } from './testing/in-memory-job-link.repository';
 import { InMemoryUserLinkRepository } from './testing/in-memory-user-link.repository';
-import { jobLinkDraft, objectId } from './testing/link-fixtures';
+import {
+  enrichedPreview,
+  jobLinkDraft,
+  objectId,
+} from './testing/link-fixtures';
 import {
   IN_MEMORY_SESSION,
   InMemoryGroupMembership,
@@ -163,5 +167,35 @@ describe('RequestLinkEnrichment', () => {
       requestEnrichment.execute(ANA, 'no-es-un-id'),
     ).rejects.toBeInstanceOf(LinkNotFound);
     expect(outbox.size).toBe(0);
+  });
+});
+
+describe('RequestLinkEnrichment provenance names (H1)', () => {
+  const CARLA = objectId(4);
+
+  it('response hides authors who share no group with the caller', async () => {
+    const link = links.seed({
+      ...jobLinkDraft(JOB_PAGE, { createdBy: ANA, now: clock.now() }),
+      ...enrichedPreview(ANA),
+      previewStatus: 'failed',
+      previewVersion: 2,
+      lastEnrichmentError: {
+        reason: 'timeout',
+        at: clock.now().toISOString(),
+      },
+    });
+    await userLinks.save(
+      { userId: CARLA, linkId: link.id, savedAt: clock.now() },
+      IN_MEMORY_SESSION,
+    );
+    clock.advance(60_000);
+
+    const summary = await requestEnrichment.execute(CARLA, link.id);
+    const company = summary.previewSources?.company;
+
+    expect(company?.source === 'manual' ? company.by : undefined).toBeNull();
+    const sources = JSON.stringify(summary.previewSources);
+    expect(sources).not.toContain(ANA);
+    expect(sources).not.toContain('Ana');
   });
 });

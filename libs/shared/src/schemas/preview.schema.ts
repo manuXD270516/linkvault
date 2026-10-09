@@ -307,9 +307,15 @@ export const previewSourcesSchema = previewSourcesSchemaWith(
 );
 export type PreviewSources = z.infer<typeof previewSourcesSchema>;
 
-/** Procedencia tal y como sale por la API: todo `by` ya resuelto a `{ userId, displayName }`, también el de `replaced`. */
-export const resolvedPreviewSourcesSchema =
-  previewSourcesSchemaWith(previewAuthorSchema);
+/**
+ * Procedencia tal y como sale por la API: todo `by` ya resuelto a `{ userId, displayName }`, también el de `replaced`,
+ * o `null` cuando quien lee no comparte ningún grupo con el autor (users/profile: el nombre de otra persona solo lo ven
+ * los miembros de sus grupos). `null` no lleva ni nombre ni identificador. Lo guardado (`previewSourcesSchema`) nunca
+ * admite `null`: qué se guarda no cambia, solo quién lee el nombre.
+ */
+export const resolvedPreviewSourcesSchema = previewSourcesSchemaWith(
+  previewAuthorSchema.nullable(),
+);
 export type ResolvedPreviewSources = z.infer<
   typeof resolvedPreviewSourcesSchema
 >;

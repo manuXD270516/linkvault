@@ -8,7 +8,13 @@ import { GroupNotFound } from '../../groups/domain/errors';
 import { InvalidShareNote } from '../domain/errors';
 import { createShareNote } from '../domain/share-note';
 import { toShareNoteView } from './comment.mapper';
-import { displayNameIdsOf, toJobLinkSummary, toLinkSharer } from './link.mapper';
+import {
+  displayNameIdsOf,
+  previewAuthorIdsOf,
+  toJobLinkSummary,
+  toLinkSharer,
+} from './link.mapper';
+import { visibleAuthorsFor } from './visible-authors';
 import {
   GROUP_LINK_REPOSITORY,
   type GroupLinkRepository,
@@ -27,7 +33,10 @@ import {
   type LinkUserDirectory,
 } from './ports/link-user-directory.port';
 import { LINKS_CLOCK, type Clock } from './ports/clock.port';
-import { OUTBOX, type Outbox } from '../../../infrastructure/outbox/outbox.port';
+import {
+  OUTBOX,
+  type Outbox,
+} from '../../../infrastructure/outbox/outbox.port';
 import { PUBLIC_URLS, type PublicUrls } from './ports/public-urls.port';
 import { toPublicShareView } from './public-share.mapper';
 import {
@@ -95,7 +104,7 @@ export class SaveLink {
       ...(destination?.defaultVisibility === 'public' ? { publish: true } : {}),
       now: this.clock.now(),
     });
-    return await this.toResponse(saved, myGroups, groupId);
+    return await this.toResponse(userId, saved, myGroups, groupId);
   }
 
   private writers() {
@@ -109,6 +118,7 @@ export class SaveLink {
   }
 
   private async toResponse(
+    userId: string,
     saved: SavedLink,
     myGroups: readonly UserGroup[],
     groupId: string | undefined,
@@ -116,7 +126,18 @@ export class SaveLink {
     const inGroup = groupId !== undefined;
     // Una sola consulta para quien compartió y para quien escribió a mano algún campo del preview: compartir una
     // vacante que otro ya corrigió no puede costar una consulta por campo (D4).
-    const ids = displayNameIdsOf([saved.link], inGroup ? [saved.sharedBy] : []);
+    // El nombre de un autor del preview solo sale si quien guarda comparte un grupo con él (H1, ADR-055 §2): quien
+    // guarda desde un enlace público recibe el link canónico con la procedencia de otros.
+    const visibleAuthors = await visibleAuthorsFor(
+      this.membership,
+      userId,
+      previewAuthorIdsOf([saved.link]),
+    );
+    const ids = displayNameIdsOf(
+      [saved.link],
+      visibleAuthors,
+      inGroup ? [saved.sharedBy] : [],
+    );
     const names =
       ids.length === 0
         ? new Map<string, string>()
@@ -128,6 +149,7 @@ export class SaveLink {
       link: toJobLinkSummary(saved.link, {
         sharedAt: saved.sharedAt,
         names,
+        visibleAuthors,
         ...(sharer === undefined ? {} : { sharedBy: sharer }),
         ...(inGroup && saved.note !== undefined
           ? { note: toShareNoteView(saved.note) }
