@@ -15,6 +15,7 @@ import { SessionStore } from '../../core/auth/session.store';
 import { EventsChannel } from '../../core/events/events.channel';
 import { LinksStore } from '../../core/links/links.store';
 import { LinkList } from './link-list.component';
+import { READING_GRACE_MS } from './link-status';
 import { SaveLinkForm } from './save-link.form';
 
 const URL_TO_SAVE = 'https://www.linkedin.com/jobs/view/backend-engineer-en-acme-3912345678';
@@ -453,6 +454,20 @@ describe('SaveLinkForm', () => {
       await reloadWith([]);
 
       expect(text()).not.toContain(READING);
+    });
+
+    it('Una lectura pendiente que ya no se espera', async () => {
+      // `JobLinkSummary` no tiene `createdAt`: la antigüedad de la petición es `previewRequestedAt` (o `sharedAt`).
+      const stale: JobLinkSummary = {
+        ...pending,
+        previewRequestedAt: new Date(Date.now() - READING_GRACE_MS - 60_000).toISOString(),
+      };
+
+      await saveAs(stale);
+
+      expect(stale.previewStatus).toBe('pending');
+      expect(text()).not.toContain(READING);
+      expect(text()).toContain(EMPTY);
     });
 
     it('a hand-completed link dropped by filters does not bring back the empty notice', async () => {
