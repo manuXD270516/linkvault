@@ -697,26 +697,27 @@ changes:
       Fuera: despliegue a un host de producción, matriz multiarquitectura.
   - name: cv-extract-isolation
     adrs: [058, 028, 030, 048, 051]
-    agents: [backend-dev, devops]
+    agents: [backend-dev, devops, frontend-dev]
     scope: |
       **Cuándo entra: pendiente de la Q1 del change (bloqueante para `/opsx:apply`).** Sin fila en
       `docs/design-v0.2.md` §6 hasta que el owner responda. Mientras no haya respuesta va aquí, **justo después de
       35c**, porque la precedencia de la fila 35 (ADR-048 §Consecuencias, ADR-051 §1) sigue vigente; la recomendación
-      del design es una excepción como la de ADR-055 —aplicar y fusionar **antes de invitar en 35b** (antes de su
-      10.7)— porque el riesgo nace con los primeros archivos subidos por usuarios no-autor. Si el owner la concede,
+      del design es una excepción como la de ADR-055 —fusionar el change **después de la 11.6 y antes de la 10.7 de
+      35b**, con el PR de archivo y las vueltas atrás bajo sus propias reglas (Q1, tres clases)— porque el riesgo nace con los primeros archivos subidos por usuarios no-autor. Si el owner la concede,
       esta entrada se mueve delante de `staging-host` y la respuesta se anota en ADR-058 y ADR-048.
       Origen: auditoría de `critic` del 2026-10-28; **ADR-058** (Propuesto; enmienda ADR-028 §7).
-      La lectura del CV sale del hilo principal del worker: un `worker_thread` nuevo por CV con `resourceLimits`,
-      `env: {}`, salida descartada y un plazo (`CV_EXTRACTION_TIMEOUT_MS`) que **corta** con `terminate()`; topes de
+      La lectura del CV sale del worker: un proceso hijo nuevo por CV con `env: {}`, el modelo de permisos de Node
+      (`--permission`, lectura solo de su script y sus bibliotecas), heap acotado por flags, salida descartada, canal
+      propio por pipe y un plazo (`CV_EXTRACTION_TIMEOUT_MS`, desde `ready`) que **corta** con `SIGKILL`; topes de
       entrada como constantes (50 páginas, 1.000.000 de caracteres crudos, DOCX inflado con tope propio de 64 MiB y
-      2.000 entradas) y un vigía de memoria residente (+512 MiB). Contenido → `unreadable_file` sin reintento;
-      maquinaria (el hilo no arranca) → reintento y `internal_error`. `maxStalledCount: 1` explícito y un `stalled`
+      2.000 entradas) y un vigía del RSS del hijo (+512 MiB). Después de `ready` → `unreadable_file` sin reintento;
+      antes (el hijo no arranca) → reintento y `internal_error`. `maxStalledCount: 1` explícito y un `stalled`
       agotado deja el CV en `failed`. `pdf-parse` (pdf.js de 2017) se sustituye por `pdfjs-dist` en versión exacta,
-      tras un spike con criterio de parada (alternativa: `unpdf`); `mammoth` se queda. Métricas por formato y causa
-      sin texto del CV; sonda `cv-extract-probe.js` en `verify-artifact.sh`. Pruebas con archivos patológicos
+      tras un spike con criterio de parada al final del change (alternativa: `unpdf`); `mammoth` se queda. Un contador
+      por formato, desenlace y causa sin texto del CV; el texto de `unreadable_file` en `/mi-cv` se reescribe (ES/EN); sonda `cv-extract-probe.js` en `verify-artifact.sh`. Pruebas con archivos patológicos
       generados en el test, nunca muestras reales. El puerto `CvTextExtractor`, los estados de `cv/extraction`, el
-      SPA, el compose y `.env.example` no cambian.
-      Fuera: textos o motivo nuevo en `/mi-cv` (Q2), `mem_limit` del contenedor (Q5), OCR, re-extracción de CV ya
+      compose y `.env.example` no cambian.
+      Fuera: motivo nuevo en `/mi-cv`, `mem_limit` del contenedor (Q5), cortar la red del hijo (Q7), OCR, re-extracción de CV ya
       leídos.
   - name: golden-sets-reales
     adrs: [019, 018, 030]

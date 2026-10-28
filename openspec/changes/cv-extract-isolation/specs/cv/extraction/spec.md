@@ -22,9 +22,10 @@ reintentarse según la política de la cola: tres intentos con espera creciente.
 con motivo `internal_error` y un aviso con su identificador; NO SHALL quedar en `pending` indefinidamente.
 
 El consumidor SHALL declarar de forma explícita `maxStalledCount: 1`, de modo que una muerte del proceso a mitad de
-lectura reabra el archivo como mucho una vez más. Un job que la cola da por perdido por `stalled` por encima de ese
-límite SHALL dejar el CV en `failed` con motivo `internal_error`, aunque no haya agotado sus intentos: NO SHALL quedar
-en `pending` indefinidamente.
+lectura reabra el archivo como mucho una vez más. Un job que la cola falla **sin reintento pendiente** —con un error
+no recuperable, como el que da al superar ese límite de `stalled`, o ya terminado— SHALL dejar el CV en `failed` con
+motivo `internal_error`, aunque no haya agotado sus intentos: NO SHALL quedar en `pending` indefinidamente. Un job que
+falla con reintentos pendientes NO SHALL cambiar el CV.
 
 #### Scenario: El mismo evento dos veces
 
@@ -83,6 +84,12 @@ en `pending` indefinidamente.
 - **WHEN** el consumidor recibe ese fallo
 - **THEN** el CV SHALL quedar en `failed` con motivo `internal_error`
 - **AND** el aviso registrado SHALL nombrar el CV por su identificador y ningún dato del archivo
+
+#### Scenario: Un fallo con reintentos pendientes no toca el CV
+
+- **GIVEN** un CV en `pending` cuyo job falla con un error transitorio y le quedan intentos
+- **WHEN** el consumidor recibe ese fallo
+- **THEN** el CV SHALL seguir en `pending`
 
 ### Requirement: Texto extraído, normalizado y acotado
 
@@ -156,17 +163,18 @@ texto SHALL guardarse en el documento del CV y de él SHALL salir únicamente la
 
 ### Requirement: La lectura tiene plazo y no monopoliza el worker
 
-La extracción de un CV SHALL tener un plazo configurable (`CV_EXTRACTION_TIMEOUT_MS`, por defecto 30 s) que **detiene**
-el trabajo: al vencer, el hilo que lee el archivo SHALL terminarse, el CV SHALL quedar en `failed` con motivo
-`unreadable_file` y el job SHALL completarse **sin reintentos**. Un archivo que agotó el plazo NO SHALL volver a abrirse
-por ese motivo.
+La extracción de un CV SHALL tener un plazo configurable (`CV_EXTRACTION_TIMEOUT_MS`, por defecto 30 s), contado desde
+que el proceso que lee el archivo se anuncia listo, que **detiene** el trabajo: al vencer, ese proceso SHALL terminarse,
+el CV SHALL quedar en `failed` con motivo `unreadable_file` y el job SHALL completarse **sin reintentos**. Un archivo
+que agotó el plazo NO SHALL volver a abrirse por ese motivo.
 
 Mientras dura una lectura, el event loop del worker SHALL seguir atendiendo el resto de su trabajo: las demás colas,
 `GET /health`, `GET /health/live` y la renovación del bloqueo del propio job.
 
 `extract-cv` SHALL ser una cola propia, distinta de la del enriquecimiento de links, con su concurrencia configurable
-(`CV_EXTRACT_CONCURRENCY`, por defecto 1) y un `lockDuration` mayor que el plazo, para que un CV legítimamente lento no
-se dé por `stalled` ni se reentregue.
+(`CV_EXTRACT_CONCURRENCY`, por defecto 1) y un `lockDuration` mayor que el plazo más el arranque y la gracia del
+aislamiento, para que un CV legítimamente lento no se dé por `stalled` ni se reentregue. Con una concurrencia mayor que
+1, el worker SHALL avisar al arrancar, en una línea sin datos de ningún CV, de que la memoria de lectura se multiplica.
 
 #### Scenario: Extracción que no termina
 
@@ -177,14 +185,21 @@ se dé por `stalled` ni se reentregue.
 
 #### Scenario: El plazo detiene un bucle síncrono
 
-- **GIVEN** un hilo de extracción que ejecuta un bucle síncrono sin fin
+- **GIVEN** un proceso de extracción que, tras anunciarse listo, ejecuta un bucle síncrono sin fin
 - **WHEN** vence el plazo
-- **THEN** el hilo SHALL haber emitido su salida (`exit`) antes de que pase un segundo más
-- **AND** ningún hilo de extracción SHALL seguir vivo después del desenlace
+- **THEN** el proceso SHALL haber terminado antes de que pase un segundo más
+- **AND** ningún proceso de extracción SHALL seguir vivo después del desenlace
+
+#### Scenario: El plazo empieza al anunciarse listo
+
+- **GIVEN** un proceso de extracción que tarda en anunciarse listo menos que el plazo de arranque y responde antes del
+  plazo de contenido contado desde ese momento
+- **WHEN** termina la lectura
+- **THEN** el desenlace SHALL ser el texto que publicó
 
 #### Scenario: El worker responde mientras se lee un CV
 
-- **GIVEN** un hilo de extracción que ejecuta un bucle síncrono sin fin
+- **GIVEN** un proceso de extracción que ejecuta un bucle síncrono
 - **WHEN** se pide `GET /health/live` al worker antes de que venza el plazo
 - **THEN** la respuesta SHALL llegar en menos de 1 s
 
@@ -200,82 +215,148 @@ se dé por `stalled` ni se reentregue.
 - **WHEN** termina
 - **THEN** SHALL haberse ejecutado una sola vez y el job NO SHALL haberse reentregado por `stalled`
 
+#### Scenario: Aviso con concurrencia mayor que 1
+
+- **GIVEN** el worker configurado con `CV_EXTRACT_CONCURRENCY` igual a 2
+- **WHEN** arranca
+- **THEN** SHALL registrar un aviso sobre la memoria de lectura
+- **AND** con `CV_EXTRACT_CONCURRENCY` igual a 1 NO SHALL registrarlo
+
 ## ADDED Requirements
 
 ### Requirement: La lectura corre aislada del proceso del worker
 
-Cada lectura de un CV SHALL ejecutarse en un hilo (`worker_threads`) **nuevo**, que se termina al acabar y no se
-reutiliza para otro CV. El hilo SHALL arrancar con:
+Cada lectura de un CV SHALL ejecutarse en un **proceso hijo nuevo**, que se termina al acabar y no se reutiliza para
+otro CV. El proceso hijo SHALL arrancar:
 
-- heap acotado (`resourceLimits`: 256 MB de generación vieja, 32 MB de joven, 4 MB de pila);
-- un entorno vacío (`env: {}`), sin argumentos de ejecución heredados: NO SHALL poder leer ninguna variable de entorno
-  del worker;
-- su salida estándar y de errores capturadas y descartadas: nada de lo que escriba el hilo SHALL llegar a los registros.
+- con un entorno sin ninguna variable del worker;
+- con el modelo de permisos de Node activo, de modo que NO SHALL poder leer ficheros fuera de su propio script y de las
+  bibliotecas que necesita (en particular, ni el entorno del worker a través de `/proc`), ni escribir ficheros, ni
+  lanzar procesos o hilos, ni cargar código nativo;
+- con la generación de código desde cadenas desactivada;
+- con el heap acotado a 256 MB de generación vieja y 16 MB por semiespacio;
+- con su salida estándar y de errores descartadas: nada de lo que escriba SHALL llegar a los registros.
 
-El hilo SHALL anunciar que está listo antes de recibir los bytes. El desenlace SHALL clasificarse así:
+Este requirement NO promete cortar la red del proceso hijo: el mecanismo no lo permite en la versión de Node del
+proyecto, y es un riesgo aceptado (ADR-058).
 
-- **por el contenido** —plazo vencido, heap agotado, vigía de memoria, excepción del parser, tope de entrada superado, o
-  el hilo que termina tras anunciarse listo—: `unreadable_file`, sin reintento;
-- **por la maquinaria** —el script del hilo ausente, el hilo que no se anuncia listo en 5 s, una biblioteca que no
-  carga, un mensaje fuera del protocolo—: fallo de infraestructura, que SHALL reintentarse según la política de la cola
-  y, agotado, SHALL dejar el CV en `failed` con `internal_error`.
+El hijo SHALL anunciar que está listo antes de recibir los bytes, y su resultado SHALL llegar por un canal que el
+worker lee sin poder fallar por su contenido. El desenlace SHALL clasificarse por las causas de esta tabla:
 
-Un hilo que muere, por cualquier causa, NO SHALL terminar el proceso del worker.
+- **antes de anunciarse listo**, por la maquinaria —el script ausente, una biblioteca que no carga, la salida del hijo,
+  5 s sin anunciarse, o un mensaje inválido—: fallo de infraestructura, que SHALL reintentarse según la política de la
+  cola y, agotado, SHALL dejar el CV en `failed` con `internal_error`;
+- **después de anunciarse listo**, por el contenido —plazo vencido, heap agotado, vigía de memoria, excepción del
+  parser, tope de entrada superado, un mensaje inválido o la salida del hijo sin resultado—: `unreadable_file`, sin
+  reintento.
 
-#### Scenario: Heap agotado dentro del hilo
+El error de maquinaria SHALL llevar un mensaje fijo, sin causa encadenada ni texto que venga del hijo, salvo un código
+de error que cumpla `^[A-Z0-9_]{1,64}$`. Un proceso hijo que termina por cualquiera de las causas de la tabla NO SHALL
+terminar el proceso del worker.
 
-- **GIVEN** un hilo de extracción que reserva memoria del heap sin parar
+#### Scenario: Heap agotado dentro del hijo
+
+- **GIVEN** un proceso de extracción que reserva memoria del heap sin parar
 - **WHEN** supera su límite
 - **THEN** el CV SHALL quedar en `failed` con motivo `unreadable_file`
 - **AND** el proceso del worker SHALL seguir vivo y consumiendo su cola
 
-#### Scenario: El hilo sale por su cuenta
+#### Scenario: El hijo sale por su cuenta
 
-- **GIVEN** un hilo de extracción que termina con código 3 después de anunciarse listo
+- **GIVEN** un proceso de extracción que termina con código 3 después de anunciarse listo
 - **WHEN** el adaptador recibe su salida
 - **THEN** el desenlace SHALL ser `unreadable_file`
 
-#### Scenario: El hilo no ve credenciales
+#### Scenario: El hijo sale sin resultado
+
+- **GIVEN** un proceso de extracción que termina con código 0 después de anunciarse listo, sin haber publicado resultado
+- **WHEN** el adaptador recibe su salida
+- **THEN** el desenlace SHALL ser `unreadable_file`
+
+#### Scenario: Un mensaje inválido después de anunciarse listo
+
+- **GIVEN** un proceso de extracción que, tras anunciarse listo, escribe en su canal una línea que no es del protocolo
+- **WHEN** el adaptador la lee
+- **THEN** el desenlace SHALL ser `unreadable_file`
+- **AND** el proceso del worker SHALL seguir vivo
+
+#### Scenario: Un mensaje inválido antes de anunciarse listo
+
+- **GIVEN** un proceso de extracción que escribe en su canal una línea que no es del protocolo antes de anunciarse listo
+- **WHEN** el adaptador la lee
+- **THEN** el adaptador SHALL lanzar el error de maquinaria
+- **AND** el proceso del worker SHALL seguir vivo
+
+#### Scenario: El hijo no ve credenciales
 
 - **GIVEN** el worker con variables de entorno de almacén y de IA definidas
-- **WHEN** un hilo de extracción lee `process.env`
+- **WHEN** un proceso de extracción lee su `process.env`
 - **THEN** SHALL encontrarlo sin ninguna de esas variables
 
-#### Scenario: Lo que escribe el hilo no se registra
+#### Scenario: El hijo no lee el entorno del worker
 
-- **GIVEN** un hilo de extracción que escribe una cadena marcada en `stdout` y en `stderr`
+- **GIVEN** un proceso de extracción en Linux
+- **WHEN** intenta leer `/proc/<pid del worker>/environ` o un fichero fuera de sus rutas permitidas
+- **THEN** la lectura SHALL fallar con acceso denegado
+
+#### Scenario: El hijo no lanza procesos ni hilos
+
+- **GIVEN** un proceso de extracción
+- **WHEN** intenta lanzar un proceso o crear un hilo
+- **THEN** SHALL fallar con acceso denegado
+
+#### Scenario: Lo que escribe el hijo no se registra
+
+- **GIVEN** un proceso de extracción que escribe una cadena marcada en `stdout` y en `stderr`
 - **WHEN** termina la lectura
 - **THEN** ninguna línea de los registros capturados SHALL contener esa cadena
 
-#### Scenario: El script del hilo no existe
+#### Scenario: El hijo no mete texto en el error
+
+- **GIVEN** un proceso de extracción que, antes de anunciarse listo, publica un error con una cadena marcada en su
+  código y en un campo extra
+- **WHEN** el job falla por ese error de maquinaria
+- **THEN** ni el mensaje del error, ni el motivo de fallo guardado en el job, ni los registros SHALL contener la cadena
+
+#### Scenario: El script del hijo no existe
 
 - **GIVEN** el adaptador configurado con una ruta de script inexistente
 - **WHEN** el worker consume el evento de un CV en `pending`
 - **THEN** el job SHALL fallar y reintentarse según la política de la cola
 - **AND** el CV NO SHALL quedar en `failed` con `unreadable_file`
 
-#### Scenario: Un hilo que no arranca agota sus intentos
+#### Scenario: Un hijo que no arranca agota sus intentos
 
-- **GIVEN** un hilo de extracción que nunca se anuncia listo, en los tres intentos del job
+- **GIVEN** un proceso de extracción que nunca se anuncia listo, en los tres intentos del job
 - **WHEN** se agotan
 - **THEN** el CV SHALL quedar en `failed` con motivo `internal_error`
 
-#### Scenario: Un hilo por CV
+#### Scenario: Un proceso por CV
 
 - **GIVEN** dos CV leídos uno detrás de otro
 - **WHEN** termina el segundo
-- **THEN** cada uno SHALL haberse leído en un hilo distinto, y ninguno de los dos hilos SHALL seguir vivo
+- **THEN** cada uno SHALL haberse leído en un proceso distinto, y ninguno de los dos SHALL seguir vivo
+
+#### Scenario: El cierre del worker no deja hijos
+
+- **GIVEN** una lectura en curso
+- **WHEN** el worker se cierra de forma ordenada
+- **THEN** el proceso de extracción SHALL haber terminado
 
 ### Requirement: Topes de entrada y de memoria al leer
 
 La lectura SHALL acotar lo que un archivo puede hacer consumir, además del plazo y del heap:
 
 - un DOCX SHALL descomprimirse con un tope propio antes de entregarse a `mammoth`: como mucho **2.000 entradas** y
-  **64 MiB** inflados en total, contados sobre lo que **produce** el inflado y no sobre los tamaños que declara el
-  archivo. Superar cualquiera de los dos, o un ZIP64, una entrada cifrada, un método de compresión distinto de
-  `stored` y `deflate`, o un desplazamiento fuera del archivo, SHALL dar `unreadable_file` sin inflar nada más;
-- un vigía SHALL terminar el hilo si la memoria residente del proceso crece más de **512 MiB** sobre la que tenía al
-  empezar la lectura, y el desenlace SHALL ser `unreadable_file`.
+  **64 MiB** en total, contados sobre lo que **produce** el inflado (y el tamaño de las entradas sin comprimir), no
+  sobre los tamaños que declara el archivo. Superar cualquiera de los dos, un ZIP64 que lo sea de verdad, una entrada
+  cifrada, un método de compresión distinto de `stored` y `deflate`, un desplazamiento fuera del archivo o una
+  cabecera local que no coincide con el directorio central SHALL dar `unreadable_file` sin inflar nada más. Un campo
+  extra ZIP64 cuyos valores caben en 32 bits NO SHALL bastar para rechazar el archivo;
+- un vigía SHALL terminar **el proceso hijo cuya** memoria residente crezca más de **512 MiB** sobre la que tenía al
+  anunciarse listo, y el desenlace de esa lectura SHALL ser `unreadable_file`; las demás lecturas en curso NO SHALL
+  verse afectadas. Donde el sistema no ofrece la memoria de otro proceso (sin `/proc`), el vigía SHALL desactivarse con
+  un aviso y los demás topes SHALL seguir.
 
 Los topes SHALL ser constantes del código del worker, no variables de entorno.
 
@@ -283,8 +364,8 @@ Los topes SHALL ser constantes del código del worker, no variables de entorno.
 
 - **GIVEN** un DOCX generado de menos de 5 MiB cuyo `word/document.xml` infla a más de 64 MiB
 - **WHEN** el worker lo lee
-- **THEN** el CV SHALL quedar en `failed` con motivo `unreadable_file`
-- **AND** la memoria residente del proceso NO SHALL haber crecido más de 128 MiB durante la lectura
+- **THEN** el CV SHALL quedar en `failed` con motivo `unreadable_file`, por el tope de inflado y no por el vigía
+- **AND** la memoria residente del proceso del worker NO SHALL haber crecido más de 128 MiB durante la lectura
 
 #### Scenario: Cabecera que miente
 
@@ -304,12 +385,25 @@ Los topes SHALL ser constantes del código del worker, no variables de entorno.
 - **WHEN** el worker lo lee
 - **THEN** el CV SHALL quedar en `extracted` con el mismo texto que el DOCX sin comprimir
 
+#### Scenario: Un DOCX pequeño con campo extra ZIP64
+
+- **GIVEN** el DOCX de texto de los fixtures con un campo extra ZIP64 cuyos valores caben en 32 bits
+- **WHEN** el worker lo lee
+- **THEN** el CV SHALL quedar en `extracted`
+
 #### Scenario: Memoria fuera del heap
 
-- **GIVEN** un hilo de extracción que reserva búferes sin parar, fuera del heap de V8
-- **WHEN** la memoria residente del proceso supera en 512 MiB la del comienzo de la lectura
-- **THEN** el hilo SHALL terminarse y el desenlace SHALL ser `unreadable_file`
+- **GIVEN** un proceso de extracción que reserva búferes sin parar, fuera del heap de V8, en Linux
+- **WHEN** su memoria residente supera en 512 MiB la que tenía al anunciarse listo
+- **THEN** ese proceso SHALL terminarse y el desenlace SHALL ser `unreadable_file`
 - **AND** el proceso del worker SHALL seguir vivo
+
+#### Scenario: Una asignación enorme
+
+- **GIVEN** un proceso de extracción que reserva y escribe búferes de 256 MiB sin parar, en Linux
+- **WHEN** termina la lectura
+- **THEN** el desenlace SHALL ser `unreadable_file`
+- **AND** el proceso del worker SHALL seguir vivo y su memoria residente NO SHALL haber crecido más de 64 MiB
 
 #### Scenario: Anidamiento profundo
 
@@ -328,24 +422,31 @@ Los topes SHALL ser constantes del código del worker, no variables de entorno.
 
 ### Requirement: Métricas y registros de la lectura sin datos del CV
 
-El worker SHALL publicar en `GET /metrics`:
+El worker SHALL publicar en `GET /metrics` un único contador de lecturas, `linkvault_cv_extractions_total`, con las
+etiquetas `format` (`pdf`, `docx`), `outcome` (`text`, `unreadable`, `machinery_error`) y `cause`, cuyo valor SHALL
+pertenecer al conjunto cerrado de su desenlace:
 
-- `linkvault_cv_extractions_total` con las etiquetas `format` (`pdf`, `docx`), `outcome` (`text`, `unreadable`,
-  `machinery_error`) y `cause` (`none`, `parse_error`, `password`, `timeout`, `heap_limit`, `memory_ceiling`,
-  `thread_exit`, `input_budget`, `boot_error`, `boot_timeout`, `protocol`);
-- `linkvault_cv_extraction_duration_seconds`, histograma con las etiquetas `format` y `outcome`;
-- `linkvault_cv_extraction_capped_total` con las etiquetas `format` y `cap` (`pages`, `raw_text`).
+- con `text`: `none`, `pages_capped`, `raw_text_capped`;
+- con `unreadable`: `parse_error`, `password`, `timeout`, `heap_limit`, `memory_ceiling`, `child_exit`,
+  `input_budget`, `protocol`;
+- con `machinery_error`: `boot_error`, `boot_timeout`, `protocol`.
 
-Cada hilo terminado por plazo, heap, vigía o salida, y cada fallo de maquinaria, SHALL registrar una línea con formato,
-causa, duración y tamaño en bytes. Ninguna etiqueta ni línea SHALL contener texto del CV, el nombre del archivo, su
-clave en el almacén ni el mensaje de un error del parser o del hilo; de un error de arranque solo SHALL registrarse su
-código.
+Cada lectura que no termina en texto SHALL registrar una línea con formato, causa, duración y tamaño en bytes. Ninguna
+etiqueta ni línea SHALL contener texto del CV, el nombre del archivo, su clave en el almacén, el mensaje de un error
+del parser o del hijo, ni el detalle de una validación fallida; de un error de arranque solo SHALL registrarse su código
+validado.
 
 #### Scenario: Un plazo vencido se cuenta
 
-- **GIVEN** una lectura que vence el plazo
+- **GIVEN** una lectura de un PDF que vence el plazo
 - **WHEN** se pide `GET /metrics` al worker
 - **THEN** `linkvault_cv_extractions_total{format="pdf",outcome="unreadable",cause="timeout"}` SHALL haber subido en 1
+
+#### Scenario: Un tope de páginas se cuenta
+
+- **GIVEN** la lectura de un PDF de más de 50 páginas
+- **WHEN** se pide `GET /metrics` al worker
+- **THEN** `linkvault_cv_extractions_total{format="pdf",outcome="text",cause="pages_capped"}` SHALL haber subido en 1
 
 #### Scenario: Las métricas no llevan el CV
 
@@ -363,9 +464,13 @@ código.
 ### Requirement: La imagen publicada lee un CV
 
 El build del worker SHALL producir una entrada `cv-extract-probe.js` que genere en memoria un PDF y un DOCX de texto
-sin datos personales, los lea con el adaptador aislado real y salga con código 0 solo si los dos devuelven texto con el
-número de caracteres esperado, imprimiendo recuentos y nunca texto. La verificación del artefacto SHALL ejecutarla
-dentro de la imagen del worker construida, y SHALL fallar si sale con código distinto de 0.
+sin datos personales, los lea con el adaptador aislado real (proceso hijo con sus permisos) y salga con código 0 solo
+si los dos devuelven texto con el número de caracteres esperado, imprimiendo recuentos y nunca texto. La verificación
+del artefacto SHALL ejecutarla dentro de la imagen del worker construida, y SHALL fallar si sale con código distinto
+de 0.
+
+El script del proceso hijo NO SHALL importar el framework del worker, su registro ni su configuración, y el
+`package.json` generado del worker SHALL fijar las bibliotecas de lectura a versión exacta.
 
 #### Scenario: La sonda pasa en la imagen
 
@@ -373,9 +478,15 @@ dentro de la imagen del worker construida, y SHALL fallar si sale con código di
 - **WHEN** la verificación del artefacto ejecuta `node cv-extract-probe.js` dentro de ella
 - **THEN** SHALL salir con código 0 e imprimir los caracteres leídos de cada formato
 
-#### Scenario: Sin el bundle del hilo, la verificación falla
+#### Scenario: Sin el script del hijo, la verificación falla
 
-- **GIVEN** una imagen del worker sin el script del hilo de extracción
+- **GIVEN** una imagen del worker sin el script del proceso hijo de extracción
 - **WHEN** la verificación del artefacto ejecuta la sonda
 - **THEN** la sonda SHALL salir con código distinto de 0
 - **AND** la verificación SHALL fallar nombrando la sonda de lectura de CV
+
+#### Scenario: El hijo no carga el worker
+
+- **GIVEN** el script del proceso hijo construido
+- **WHEN** se revisan sus imports
+- **THEN** NO SHALL importar `@nestjs/*`, `pino` ni el módulo de configuración del worker
