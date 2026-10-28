@@ -29,8 +29,8 @@ sesión». Las dos presentaciones de la barra (ancha y compacta) SHALL salir de 
 El SPA SHALL pedir las capacidades del despliegue una sola vez por carga de la aplicación, compartiendo la petición
 entre quienes las necesiten mientras está en curso. «Buscar» SHALL mostrarse solo si `search` es `true` y «Descubrir»
 solo si `discovery` es `true`; una entrada de una función apagada NO SHALL mostrarse, ni deshabilitada. Mientras las
-capacidades no hayan llegado, esas dos entradas NO SHALL mostrarse. Si la petición falla o su respuesta no valida, las
-dos SHALL mostrarse, como si las capacidades no existieran. La barra SHALL exponer el estado de las capacidades
+capacidades no hayan llegado, esas dos entradas NO SHALL mostrarse. Si la petición falla, su respuesta no valida o no
+hay respuesta en 5 segundos, las dos SHALL mostrarse, como si las capacidades no existieran. La barra SHALL exponer el estado de las capacidades
 (`loading`, `ready` o `failed`) en su atributo `data-capabilities`.
 
 #### Scenario: Búsqueda y Descubrir apagados
@@ -66,6 +66,13 @@ dos SHALL mostrarse, como si las capacidades no existieran. La barra SHALL expon
 - **THEN** SHALL ver «Buscar» y «Descubrir»
 - **AND** la barra SHALL tener `data-capabilities="failed"`
 
+#### Scenario: Capacidades sin respuesta tras el plazo
+
+- **GIVEN** la petición de capacidades sin respuesta
+- **WHEN** pasan 5 segundos
+- **THEN** Ana SHALL ver «Buscar» y «Descubrir»
+- **AND** la barra SHALL tener `data-capabilities="failed"`
+
 #### Scenario: Una sola petición por carga
 
 - **GIVEN** la barra y la página de búsqueda piden las capacidades a la vez
@@ -79,9 +86,11 @@ las entradas en la fila; el modo SHALL ser el correcto desde el primer render. E
 `aria-expanded` si el panel está abierto y SHALL apuntar con `aria-controls` a un `<nav>` con nombre accesible
 «Navegación principal» que SHALL existir siempre en ese modo, oculto mientras está cerrado. Al abrirlo, el `<nav>`
 SHALL desplegarse bajo la barra con las mismas entradas visibles que el modo ancho, como enlaces, y «Cerrar sesión» al
-final. El panel SHALL cerrarse al completarse una navegación (con el foco en el contenido principal), al volver a
-pulsar el botón y con Escape (con el foco en el botón), y al pasar a modo ancho. Escape SHALL atenderse solo con el
-panel abierto y dentro de la cabecera. Desde 1024 px la barra SHALL mostrar las entradas en la fila y NO SHALL mostrar
+final. Si el panel está abierto al completarse una navegación, SHALL cerrarse y llevar el foco al contenido principal
+sin desplazar la página; con el panel cerrado o en modo ancho, una navegación NO SHALL mover el foco. Activar un enlace
+del panel SHALL cerrarlo y llevar el foco al contenido principal aunque sea la ruta actual. El panel SHALL cerrarse
+también al volver a pulsar el botón y con Escape (con el foco en el botón), y al pasar a modo ancho. Escape SHALL
+atenderse solo con el panel abierto y dentro de la cabecera. Desde 1024 px la barra SHALL mostrar las entradas en la fila y NO SHALL mostrar
 el botón «Menú».
 
 #### Scenario: Móvil, panel cerrado
@@ -104,6 +113,21 @@ el botón «Menú».
 - **WHEN** pulsa «Menú» y luego el enlace «Mi CV»
 - **THEN** el botón SHALL haber pasado a `aria-expanded="true"` y el panel SHALL haber mostrado «Mi CV» como enlace
 - **AND** al llegar a `/mi-cv` el panel SHALL cerrarse
+- **AND** el foco SHALL quedar en el contenido principal
+
+#### Scenario: Navegación con el panel cerrado no mueve el foco
+
+- **GIVEN** Ana en una pantalla de 412 px con el panel cerrado, escribiendo en un campo de la página o con un diálogo
+  abierto
+- **WHEN** la página completa una navegación sin pasar por el panel (por ejemplo, actualiza la URL con `replaceUrl`)
+- **THEN** el foco SHALL seguir donde estaba
+- **AND** el panel SHALL seguir cerrado
+
+#### Scenario: Pulsar la entrada de la ruta actual
+
+- **GIVEN** Ana en `/mi-cv` en una pantalla de 412 px con el panel abierto
+- **WHEN** pulsa el enlace «Mi CV» del panel
+- **THEN** el panel SHALL cerrarse
 - **AND** el foco SHALL quedar en el contenido principal
 
 #### Scenario: Cerrar con Escape

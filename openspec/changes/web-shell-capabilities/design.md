@@ -106,12 +106,17 @@ Un despliegue ya implica recargar para recibir el SPA nuevo.
 |---|---|---|
 | `loading` (aún no responde) | ocultas | estado neutro: el título de la página y un contenedor `aria-busy="true"`, sin formulario, enlace ni botón (C4) |
 | `ready` | según cada booleano | con `false`, estado «no incluida» (D7); con `true`, la página de hoy |
-| `failed` (red, 5xx, respuesta que no valida) | visibles, como hoy | la página de hoy, con su `503` |
+| `failed` (red, 5xx, respuesta que no valida, o sin respuesta en 5 s) | visibles, como hoy | la página de hoy, con su `503` |
 
 Ocultar mientras carga evita mostrar «Buscar» y quitarlo un instante después (lo peor para quien ya iba a pulsarlo);
 por la misma razón la página no ofrece su formulario hasta saber si la función existe. Fallar abierto vuelve
 exactamente al comportamiento actual, que ya tiene un `503` honesto en cada página: esto es navegación, no un control
 de acceso, y la API sigue respondiendo `503` a una función apagada. El fallo no se reintenta hasta la siguiente carga.
+
+**Plazo (iteración 2, B7).** Si la petición no responde en **5 s** (`CAPABILITIES_TIMEOUT_MS = 5000`, en el store), el
+store pasa a `failed` y falla abierto: una API lenta o una petición colgada no dejan la barra sin «Buscar» ni
+«Descubrir» y las páginas en estado neutro indefinidamente. Una respuesta que llegue después del plazo se descarta
+(el estado ya no cambia hasta la siguiente carga).
 
 **Estado observable (C3).** El `<mat-toolbar>` lleva `data-capabilities` con el estado del store (`loading`, `ready` o
 `failed`). Mientras carga, «Buscar» y «Descubrir» tampoco están, de modo que una prueba que afirma su ausencia pasaría
@@ -159,8 +164,19 @@ al final. Por encima de 1024 px, la barra de siempre, con el `flex-wrap` de 5.4b
 **El panel (C6).**
 - El `<nav>` con su `id` está **siempre en el DOM** en modo compacto y se oculta con `[hidden]` cuando está cerrado, de
   modo que `aria-controls` nunca apunta a un elemento inexistente.
-- **Cierre por navegación** (`NavigationEnd`): el foco pasa a `<main tabindex="-1">` del Shell, el contenido nuevo; no
-  queda en un enlace oculto ni cae al `<body>`.
+- **Cierre por navegación** (`NavigationEnd`), **solo si el panel estaba abierto** en ese `NavigationEnd`
+  (iteración 2, B6/N3): se cierra y el foco pasa a `<main tabindex="-1">` del Shell, el contenido nuevo, con
+  `focus({ preventScroll: true })` (B8); no queda en un enlace oculto ni cae al `<body>`. **Con el panel cerrado o en
+  modo ancho, una navegación no toca el foco:** `join-group.page.ts:30`, `my-links.page.ts:142-146` y
+  `applications-board.page.ts:89` hacen `router.navigate([], { replaceUrl })` con diálogos abiertos o mientras la
+  persona escribe, y cada una dispara un `NavigationEnd` que no debe robarle el foco.
+- **Pulsar un enlace del panel** (iteración 2, N5): cada enlace cierra además el panel con `(click)` y lleva el foco a
+  `<main>` (mismo `preventScroll`). Pulsar la entrada de la ruta actual no produce `NavigationEnd`, y sin esto el panel
+  quedaba abierto. Cuando sí hay navegación, el `NavigationEnd` posterior ve el panel ya cerrado y no repite nada.
+- **Contorno de `<main>`:** `<main tabindex="-1">` es fijo y `shell.scss` lleva `main:focus { outline: none }`: el
+  foco programático (y un clic en una zona no enfocable del contenido) no dibuja un contorno alrededor de toda la
+  página. *Descartado:* poner y quitar `tabindex` solo al enfocar; añade un listener de `blur` y un estado más para el
+  mismo resultado visible.
 - **Cierre con el botón o con Escape:** el foco queda en (o vuelve a) el botón «Menú».
 - **Escape** se escucha solo con el panel abierto y solo dentro del `<header>` del Shell (nuevo: envuelve la barra y
   el panel; no en `document`), de modo
@@ -171,13 +187,22 @@ al final. Por encima de 1024 px, la barra de siempre, con el `flex-wrap` de 5.4b
 convertido en signal, y no con una media query de CSS, porque así los specs de componente pueden fijarlo con un doble
 y comprobar el DOM de cada modo (jsdom no evalúa media queries). El valor inicial se toma de forma síncrona con
 `breakpointObserver.isMatched('(max-width: 1023.98px)')`, y `observe(...)` lo actualiza después: así el primer render
-ya está en el modo correcto y no hay un fotograma con la barra ancha en el móvil.
+ya está en el modo correcto y no hay un fotograma con la barra ancha en el móvil. La consulta vive en una constante,
+`SHELL_COMPACT_QUERY = '(max-width: 1023.98px)'` en `layout/shell/shell-breakpoint.ts`, y `shell.scss` **no repite el
+número**: los estilos del modo compacto cuelgan de una clase que pone la signal, de modo que el modo lo decide un solo
+sitio del SPA.
 
 **El umbral (C8, B5).** Sale de la barra ancha: marca + siete entradas + «Cerrar sesión» en texto no caben en una fila
 por debajo de ~1000 px. Se verifica con capturas a 1024 y a 1280 px con **todas las entradas visibles** (búsqueda y
 Descubrir encendidas), en ES y en EN (el inglés puede ser más largo), anotando el `scrollWidth` y el `clientWidth`
 medidos del `<mat-toolbar>` (tarea 3.6). Si a 1024 px no entra en una fila (`scrollWidth > clientWidth` o más de una
 fila), se sube el umbral y se anota el valor en la 3.6 y aquí.
+
+**Dónde vive el umbral (iteración 2, N7).** En cinco lugares, que cambian juntos: (1) `SHELL_COMPACT_QUERY` en
+`apps/web/src/app/layout/shell/shell-breakpoint.ts`; (2) `SHELL_WIDE_MIN_WIDTH_PX = 1024` en
+`apps/web-e2e/src/support/shell-nav.ts`, con un comentario cruzado hacia (1) y (1) hacia (2); (3) el requirement
+«Barra compacta en pantallas estrechas» de `specs/web/shell/spec.md`; (4) D8 y D13 de este documento; (5) las tareas
+3.3a, 3.6 y 6.1. `shell.ts` y `shell.scss` no llevan el número. La tarea 3.6 lo comprueba con un `grep`.
 
 *Alternativas descartadas:*
 - **`mat-menu`.** Pone `role="menu"`/`menuitem` a enlaces de navegación: un lector de pantalla anuncia un menú de
@@ -236,9 +261,11 @@ Solo `critical-path.spec.ts` lleva `@lot1`, y un spec sin esa etiqueta no cuenta
   `401` sin token, `200` con token, cuerpo exacto (D3) y `Cache-Control: private, no-store`.
 - **Camino crítico, navegación (C7).** El recorrido navega hoy con `getByRole('link', { name: 'Postulaciones' |
   'Mi CV' | 'LinkVault' })`; en el proyecto `mobile` (Pixel 7, 412 px) las entradas pasan al panel. Un ayudante
-  `navigateByShell(page, name)` en `apps/web-e2e/src/support/` decide el modo por `page.viewportSize().width < 1024`
-  (no por si «Menú» está visible, que depende del primer render): en compacto pulsa «Menú» y busca el enlace dentro del
-  `<nav>` «Navegación principal»; en ancho, dentro de la barra. La vuelta al grupo (`backToGroup`) pasa de la marca a
+  `navigateByShell(page, name)` en `apps/web-e2e/src/support/` decide el modo por
+  `page.viewportSize().width < SHELL_WIDE_MIN_WIDTH_PX` (1024; no por si «Menú» está visible, que depende del primer
+  render): en compacto lee `aria-expanded` del botón «Menú» y lo pulsa **solo si es `false`** (iteración 2, N4: pulsarlo
+  con el panel abierto lo cerraría), y busca el enlace dentro del `<nav>` «Navegación principal»; en ancho, dentro de
+  la barra. La vuelta al grupo (`backToGroup`) pasa de la marca a
   `navigateByShell(page, 'Grupos')`, que existe en los dos modos.
 - **Camino crítico, capacidades (C2, C3).** La espera de `GET /api/capabilities` (`page.waitForResponse`) se arma en
   `register()`, `enterWithTestAccount()` y `joinByInvitation()`, **antes del clic** que lleva al Shell («Crear
@@ -256,8 +283,10 @@ Solo `critical-path.spec.ts` lleva `@lot1`, y un spec sin esa etiqueta no cuenta
   edita la misma sección.
 - **Pruebas antiguas sin `@lot1` (C10).** Las que pulsan la barra (`byok`, `deploy-prod`, `match`, `auth`, `cv`,
   `links`, `search`) corren en escritorio, donde la barra conserva enlaces con el mismo nombre. `search.spec.ts` es la
-  excepción: pulsa «Buscar», que con la búsqueda apagada ya no está; pasa a navegar con `page.goto('/buscar')`. Si
-  alguna otra se rompe, se anota como evidencia informativa, no bloquea.
+  excepción: pulsa «Buscar», que con la búsqueda apagada ya no está; pasa a navegar con `page.goto('/buscar')` y
+  (iteración 2, N6) lee `GET /api/capabilities` del destino: con `search: false` afirma el aviso «no incluida», el
+  enlace a `/mis-links` y que no hubo ninguna petición a `GET /api/search`; con `true`, hace el recorrido actual. Se
+  verifica con una corrida informativa. Si alguna otra se rompe, se anota como evidencia informativa, no bloquea.
 
 ### D14. Fase: excepción ∥ 35b y ventana de fusión, pendiente del owner
 
@@ -274,9 +303,21 @@ requirements de `platform/ci-pipeline`, `platform/email` ni `platform/production
 
 La única ventana válida que queda sin tocar reglas ajenas es **después de la 11.6 de 35b y antes de su 10.7** (invitar),
 y, como toda fusión a `main` despliega a staging, con dos condiciones: **repetir la 9.4 de `e2e-suite`** (precondición
-de invitar) sobre el commit desplegado tras la fusión, y **nunca los días 7 y 14 de la medición** de 35b (si la 10.7
-se adelantara a lo previsto, la fusión ya no está en la ventana y vuelve al owner). Si este change se fusiona después
-de una 9.4 ya ejecutada, esa 9.4 no vale para invitar y se repite. La tarea 7.4 lo comprueba antes de fusionar.
+de invitar) sobre el commit desplegado tras la fusión, y **nunca los días 7 y 14 de la medición** de 35b. Si la 10.7
+ya se hizo: fuera de ventana, vuelve al owner. Si este change se fusiona después de una 9.4 ya ejecutada, esa 9.4 no
+vale para invitar y se repite. La tarea 7.4 lo comprueba antes de fusionar.
+
+**De dónde sale el estado de 35b (iteración 2, N1).** El estado de la 11.6 y la 10.7 se toma de una **confirmación
+escrita y fechada del owner en el PR de este change** («11.6 hecha el AAAA-MM-DD; 10.7 no hecha»); la casilla de
+`staging-host/tasks.md` (en `main` o en la rama del PR de archivo de 35b) es solo apoyo y, si contradice la
+confirmación, vuelve al owner. El PR-2 de 35b se identifica por su **número de PR**, no por la rama ni por el título.
+
+**Anotaciones posteriores a la fusión (iteración 2, N2).** Lo que solo se sabe después de fusionar (hash del merge,
+resultado de la guardia copiado del PR, marca de repetir la 9.4 de `e2e-suite`) no se commitea en el PR del change:
+viaja en el **PR de archivo de este change**. Ese PR también despliega a staging al fusionarse, así que se fusiona
+**después de la 10.7 de 35b y nunca los días 7 y 14** de la medición, con la misma guardia (confirmación escrita y
+fechada del owner en ese PR de que la 10.7 está hecha y en qué fecha, y comprobación del día). En el PR del change, la
+7.3 anota el número de PR, no la fecha de fusión, que todavía no existe.
 
 Alternativa que solo el owner puede abrir: una **excepción expresa a la regla «entre PR-1 y PR-2»** de 35b (Q1 (d)),
 con el riesgo descrito allí. Decisión del owner: **Q1**.
@@ -296,6 +337,9 @@ con el riesgo descrito allí. Decisión del owner: **Q1**.
   bloqueada por el servidor). → Q1 lo deja explícito: sin ventana, el change espera (b) o el owner abre (d); nunca se
   fusiona fuera de ella (7.4).
 - **[Trade-off] Una pestaña abierta no se entera de una bandera nueva hasta recargar** (D4).
+- **[Riesgo] Una API lenta (más de 5 s) deja el store en `failed`** y la barra vuelve a ofrecer entradas apagadas
+  hasta recargar (D5, B7). → Es el comportamiento de hoy; en el camino crítico, la espera de `ready` fallaría en vez de
+  pasar en falso, que es lo que se busca.
 - **[Trade-off] El umbral de 1024 px manda al modo compacto a tabletas en vertical** que quizá cabrían en dos filas.
   Una fila con menú es aceptable allí, y es un único número a ajustar.
 - **[Trade-off] Un enlace directo en frío muestra un instante el estado neutro** antes del formulario (D5). Es una
@@ -359,5 +403,28 @@ aplicadas en este documento, en `tasks.md`, en los specs, en `proposal.md` y en 
 | B1 | business | Aceptado. «… no está incluida en esta versión de LinkVault.» (búsqueda), «… no está incluido en esta versión de LinkVault. …» (Descubrir) y «isn't available in this version of LinkVault» en EN; «en este momento» solo para el `503` (D7, D12, specs) | «Activada en este entorno» es jerga para quien recibe la invitación |
 | B2 | business | Aceptado (recorte). `push` fuera del contrato, D11 y tarea 4.3 retiradas, delta de `web/notifications` quitado; candidata por adición (Q2) | El contrato es aditivo; el push no está en la barra ni en el camino a la activación |
 | B3 | business | Aceptado. Descubrir apagado ofrece también «Ir a mis grupos» (D7, D12, spec de Descubrir, 4.2) | Guardar en un grupo es lo que la página sugiere; el enlace tiene que llevar allí |
-| B4 | business | Sin decisión de `reflect` registrada en esta iteración; no se aplica ningún cambio | Pendiente de confirmar por la sesión principal si era informativo |
+| B4 | business | Informativo; sin cambio | Corregido en la iteración 2 (B9, N8) |
 | B5 | business | Aceptado; cubierto por C8 | Mismo pedido: comprobar el umbral con el inglés y con todas las entradas |
+
+## Debate — iteración 2
+
+Fecha: 2026-10-28. Resultado de entrada: `critic` P0 0 (N1-N8, todos P1), `business` V0 1 (B6) más B7-B11. Decisiones
+de `reflect` aplicadas en este documento, en `tasks.md`, en el spec de `web/shell` y en ADR-059. Q1 sigue abierta y
+bloqueante.
+
+| Id | Origen | Decisión | Motivo |
+|---|---|---|---|
+| B6 (V0) | business | Aceptado. El foco pasa a `<main>` solo si el panel estaba abierto en ese `NavigationEnd`; con el panel cerrado o en modo ancho no se toca (D8, escenario «Navegación con el panel cerrado no mueve el foco», 3.4 con falsación) | `join-group.page.ts:30`, `my-links.page.ts:142-146` y `applications-board.page.ts:89` navegan con `replaceUrl` con diálogos abiertos o mientras se escribe: el foco se robaba |
+| N3 | critic | Aceptado; mismo cambio que B6 | Mismo hallazgo |
+| B7 | business | Aceptado. Sin respuesta en 5 s, el store pasa a `failed` y falla abierto (D5, spec de shell, 2.2 «fails open after the timeout») | Una petición colgada dejaba la barra sin entradas y las páginas en estado neutro sin plazo |
+| B8 | business | Aceptado. `focus({ preventScroll: true })` al llevar el foco a `<main>`; `main:focus { outline: none }` en `shell.scss` con `tabindex="-1"` fijo (D8, 3.4, 3.5) | El foco programático no debe desplazar la página ni dibujar un contorno alrededor del contenido |
+| B9 | business | Aceptado. La fila B4 de la iteración 1 dice «Informativo; sin cambio» | La fila quedaba sin decisión registrada |
+| N8 | critic | Aceptado; mismo cambio que B9 | Mismo hallazgo |
+| B10 | business | Recortado; sin cambio | Recorte de `reflect` en esta iteración |
+| B11 | business | Recortado; sin cambio | Recorte de `reflect` en esta iteración |
+| N1 | critic | Aceptado. La 7.4 toma el estado de la 11.6 y la 10.7 de 35b de una confirmación escrita y fechada del owner en el PR; la casilla de la rama de archivo es solo apoyo; el PR-2 de 35b se identifica por su número; «si la 10.7 ya se hizo: fuera de ventana, vuelve al owner»; segunda falsación (D14, 7.4) | La casilla de una rama sin fusionar no es una fuente fiable y la frase anterior admitía dos lecturas |
+| N2 | critic | Aceptado. Las anotaciones posteriores a la fusión viajan en el PR de archivo de este change, que se fusiona después de la 10.7 de 35b, fuera de los días 7 y 14, con la misma guardia; la 7.3 anota el número de PR, no la fecha de fusión (D14, 7.3, 7.4, ADR-059 §1) | Commitear tras fusionar exigía otra fusión a `main` (otro despliegue) sin guardia |
+| N4 | critic | Aceptado. `navigateByShell` lee `aria-expanded` y pulsa «Menú» solo si es `false` (D13, 6.1) | Pulsarlo con el panel abierto lo cerraba |
+| N5 | critic | Aceptado. Cada enlace del panel lo cierra también con `(click)` y lleva el foco a `<main>`; caso «tapping the current route's entry closes the panel» (D8, spec de shell, 3.4) | La entrada de la ruta actual no produce `NavigationEnd` y el panel quedaba abierto |
+| N6 | critic | Aceptado. La 6.6 lee `GET /api/capabilities`: con `search: false` afirma el aviso «no incluida», el enlace a `/mis-links` y que no hubo `GET /api/search`; con `true`, el recorrido actual; corrida informativa (D13, 6.6) | `page.goto('/buscar')` sin más hacía fallar la prueba con la búsqueda apagada |
+| N7 | critic | Aceptado. Constantes `SHELL_COMPACT_QUERY` (SPA) y `SHELL_WIDE_MIN_WIDTH_PX` (e2e) con comentario cruzado, `shell.scss` sin el número, cinco lugares listados y comprobados con `grep` en la 3.6 (D8) | Subir el umbral en un sitio y no en otro desalineaba el SPA, el ayudante e2e y el spec |
