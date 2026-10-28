@@ -580,21 +580,22 @@ changes:
     scope: |
       **Propuesto el 2026-10-28; requiere excepción del owner a la precedencia de la fila 35 (ADR-048).** No es una
       pieza de la fila ni cambia su orden (35b → 35c); no libera la precedencia para ningún otro change. Cuándo entra
-      respecto de 35b es la Q1 del design (bloqueante; recomendación: excepción coordinada, fusión antes de la 6.1 de
-      35b —sin secretos, la fusión no despliega— para llegar a staging con el despliegue de PR-2, antes de invitar;
-      respaldo: entre la 11.6 y la 10.7 de 35b, repitiendo la corrida `e2e-remote` de la precondición de invitar).
+      respecto de 35b es la Q1 del design (bloqueante; recomendación: excepción coordinada, fusión después de la 11.6
+      de 35b y antes de su 10.7, nunca los días 7 y 14 —la única ventana que no rompe «entre PR-1 y PR-2» de 35b ni la
+      D15 de `e2e-suite`—; opción (d): excepción expresa del owner a «entre PR-1 y PR-2», fusión antes de la 6.1).
       Condiciones en **ADR-057 §1**: no toca compose, `.env.example`, `infra/deploy/`, `infra/ci/`, workflows ni
-      Dockerfiles; de `infra/traefik/dynamic.yml` solo añade el middleware `edge-hsts`.
-      **Cabeceras de seguridad del borde** (relevamiento del 2026-10-28): **HSTS** en Traefik (`max-age=31536000;
-      includeSubDomains`, sin `preload`) en los tres routers de `websecure`; **CSP aplicada** del SPA en nginx
-      (`'self'` en todo, `style-src 'unsafe-inline'`, `frame-ancestors 'none'`), con `inlineCritical: false` y `zod`
+      Dockerfiles ni `apps/web-e2e/`; de `infra/traefik/dynamic.yml` solo añade el middleware `edge-hsts`.
+      **Cabeceras de seguridad del borde** (relevamiento del 2026-10-28): **HSTS** en Traefik (`max-age=604800;
+      includeSubDomains`, siete días mientras el nombre sea `sslip.io`, sin `preload`) en los tres routers de
+      `websecure`; **CSP aplicada** del SPA en nginx (`'self'` en todo, `style-src 'unsafe-inline'`, `frame-ancestors 'none'`), con `inlineCritical: false` y `zod`
       `jitless` para que el build la cumpla; `X-Frame-Options`, `nosniff`, `Referrer-Policy`, `Permissions-Policy` y
       `Cross-Origin-Opener-Policy` en el bloque `server` de nginx con `always` y sin `add_header` en ningún `location`;
       **API**: hook `onSend` con `nosniff`, `X-Frame-Options`, `Referrer-Policy` y CSP `default-src 'none'` que no pisa
       lo que pone cada ruta (`/p/:slug` conserva la suya de ADR-027) y `nosniff` en el flujo SSE.
-      **Verificación:** tests de cabeceras de la API (`app.inject`), comprobación nueva de `tools/repo-checks` y guardia
-      de violaciones de CSP en el lote 1 de la suite e2e (política inyectada en local; servida e idéntica en remoto).
-      Fuera: Trusted Types y estilos con `nonce`, endpoint de informes de CSP, `preload`, COEP/CORP y caché.
+      **Verificación:** tests de cabeceras de la API (`app.inject`), comprobación nueva de `tools/repo-checks` (con
+      excepciones fechadas para las vueltas atrás), barrido único de todas las rutas del SPA con la política inyectada
+      y pasada manual del camino crítico en staging antes de invitar. Fuera: guardia dinámico de CSP en la suite e2e
+      (al change de la Q3), Trusted Types y estilos con `nonce`, endpoint de informes de CSP, `preload`, COEP/CORP y caché.
   - name: staging-host
     adrs: [051, 048, 033, 034, 035, 032]
     agents: [devops, backend-dev, frontend-dev, ai-engineer]

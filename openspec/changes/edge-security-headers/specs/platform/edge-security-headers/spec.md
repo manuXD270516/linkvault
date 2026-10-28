@@ -1,8 +1,8 @@
 ## Purpose
 
 Define qué cabeceras de seguridad sirve cada superficie pública de LinkVault —el SPA, la API, la página pública y el
-borde TLS—, dónde vive cada una y cómo se comprueba que siguen ahí y que la política de contenido no rompe el camino
-crítico. Protege el access token en memoria frente a scripts inyectados (ADR-012), las acciones de un clic frente al
+borde TLS—, dónde vive cada una y cómo se comprueba que siguen ahí y que la política de contenido no rompe ninguna
+ruta del SPA. Protege el access token en memoria frente a scripts inyectados (ADR-012), las acciones de un clic frente al
 encuadre desde otro origen y la primera visita frente a la degradación a HTTP (ADR-057).
 
 ## ADDED Requirements
@@ -10,15 +10,16 @@ encuadre desde otro origen y la primera visita frente a la degradación a HTTP (
 ### Requirement: El borde exige HTTPS con HSTS en todas las rutas públicas
 
 Toda respuesta que el borde (Traefik) sirva por el punto de entrada HTTPS —SPA, API y página pública `/p/:slug`— SHALL
-llevar `Strict-Transport-Security` con `max-age` de al menos `31536000` y `includeSubDomains`, y SHALL NOT llevar
-`preload`. La cabecera SHALL añadirla el borde, y la API SHALL NOT emitirla. Añadirla SHALL NOT cambiar las reglas, las
+llevar `Strict-Transport-Security` con `max-age` de al menos `604800` (siete días) e `includeSubDomains`, y SHALL NOT
+llevar `preload`. La única excepción es una vuelta atrás con `max-age=0`, que SHALL declararse con una línea de
+excepción fechada en la configuración del borde. La cabecera SHALL añadirla el borde, y la API SHALL NOT emitirla. Añadirla SHALL NOT cambiar las reglas, las
 prioridades ni los servicios de los routers, ni quitar `Referrer-Policy` de las rutas del SPA.
 
 #### Scenario: El SPA, la API y la página pública llevan HSTS
 
 - **GIVEN** la pila de producción desplegada con un certificado válido
 - **WHEN** se piden por HTTPS `/unirse`, una ruta bajo `/api/` y una bajo `/p/`
-- **THEN** las tres respuestas SHALL llevar `Strict-Transport-Security` con `max-age=31536000` e `includeSubDomains`
+- **THEN** las tres respuestas SHALL llevar `Strict-Transport-Security` con `max-age=604800` e `includeSubDomains`
 - **AND** ninguna SHALL llevar `preload`
 
 #### Scenario: La API no emite HSTS por su cuenta
@@ -32,9 +33,17 @@ prioridades ni los servicios de los routers, ni quitar `Referrer-Policy` de las 
 - **WHEN** se ejecutan las comprobaciones del repositorio
 - **THEN** SHALL fallar nombrando ese router
 
+#### Scenario: Una vuelta atrás de HSTS sin excepción fechada no pasa las comprobaciones del repositorio
+
+- **GIVEN** la configuración dinámica del borde con el middleware de HSTS en `max-age` 0
+- **WHEN** se ejecutan las comprobaciones del repositorio sin una línea `# hsts-rollback: AAAA-MM-DD <motivo>`
+- **THEN** SHALL fallar nombrando el middleware
+- **AND** con esa línea presente SHALL pasar
+
 ### Requirement: El SPA se sirve con una política de seguridad de contenido aplicada
 
-Las respuestas del SPA SHALL llevar `Content-Security-Policy` (aplicada, no `-Report-Only`) con, al menos:
+Las respuestas del SPA SHALL llevar `Content-Security-Policy` (aplicada, no `-Report-Only`, salvo una vuelta atrás
+declarada con una línea de excepción fechada en la configuración del servidor de `web`) con, al menos:
 `default-src 'self'`, `script-src 'self'` sin `'unsafe-inline'`, `'unsafe-eval'`, `data:`, `blob:` ni orígenes
 externos, `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`, `frame-ancestors 'none'` y `connect-src`,
 `img-src`, `font-src` y `worker-src` limitados a `'self'`. La política SHALL declararse una sola vez, en la
@@ -66,6 +75,13 @@ manejadores de eventos en línea, y el SPA SHALL NOT evaluar código en tiempo d
 - **GIVEN** la configuración de `web` con `'unsafe-inline'` en `script-src`
 - **WHEN** se ejecutan las comprobaciones del repositorio
 - **THEN** SHALL fallar nombrando la directiva
+
+#### Scenario: Una política en Report-Only sin excepción fechada no pasa las comprobaciones del repositorio
+
+- **GIVEN** la configuración de `web` con la política como `Content-Security-Policy-Report-Only`
+- **WHEN** se ejecutan las comprobaciones del repositorio sin una línea `# csp-report-only: AAAA-MM-DD <motivo>`
+- **THEN** SHALL fallar nombrando la cabecera
+- **AND** con esa línea presente SHALL pasar
 
 ### Requirement: Ninguna página de LinkVault se puede encuadrar desde otro origen
 
@@ -105,7 +121,9 @@ Las respuestas del SPA SHALL llevar `Permissions-Policy` que deshabilite al meno
 El servidor de la imagen `web` SHALL emitir las cabeceras de seguridad del SPA —`Content-Security-Policy`,
 `X-Frame-Options`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Permissions-Policy` y
 `Cross-Origin-Opener-Policy`— en toda respuesta, incluidas `index.html`, el fallback de rutas del SPA, los ficheros
-estáticos, `sw.js` y las respuestas de error. Las políticas de caché por tipo de fichero SHALL conservar sus valores.
+estáticos, `sw.js` y las respuestas de error. Las políticas de caché por tipo de fichero SHALL conservar sus valores en
+las respuestas correctas, cada respuesta SHALL llevar como mucho una cabecera `Cache-Control`, y una respuesta de error
+SHALL NOT llevar `immutable`.
 
 #### Scenario: El documento y los estáticos llevan nosniff
 
@@ -122,6 +140,12 @@ estáticos, `sw.js` y las respuestas de error. Las políticas de caché por tipo
 - **WHEN** se piden `/index.html` y un `.js` con hash
 - **THEN** `index.html` SHALL llevar `Cache-Control: no-cache`
 - **AND** el `.js` SHALL llevar `Cache-Control` público, inmutable y de siete días
+
+#### Scenario: Un recurso inexistente no se cachea como inmutable
+
+- **WHEN** se pide un `.png` que no existe
+- **THEN** la respuesta de error SHALL NOT llevar `immutable`
+- **AND** SHALL NOT llevar más de una cabecera `Cache-Control`
 
 #### Scenario: Una cabecera dentro de un location no pasa las comprobaciones del repositorio
 
@@ -158,28 +182,27 @@ valor de la ruta. El flujo de eventos en tiempo real SHALL llevar al menos `X-Co
 - **WHEN** una persona autenticada abre el flujo de eventos en tiempo real
 - **THEN** la cabecera del flujo SHALL llevar `X-Content-Type-Options: nosniff`
 
-### Requirement: El camino crítico no produce violaciones de la política
+### Requirement: Ninguna ruta del SPA produce violaciones de la política
 
-El primer lote de la suite end-to-end (el camino crítico) SHALL fallar si se produce cualquier violación de la
-`Content-Security-Policy` del SPA durante el recorrido, en escritorio y en móvil emulado. En el perfil `local` la suite
-SHALL aplicar a cada documento la política leída de la configuración de la imagen `web`; en el perfil `remote` SHALL
-exigir que el destino sirva exactamente esa política. El fallo SHALL nombrar la directiva, el recurso bloqueado y la
-página.
+Con el build de producción y la `Content-Security-Policy` y la `Permissions-Policy` de la imagen `web`, recorrer
+cualquier ruta del SPA —en escritorio y en móvil— SHALL NOT producir ninguna violación de la política de contenido ni
+ningún error de `Permissions-Policy` en la consola, y el service worker SHALL registrarse.
 
-#### Scenario: Una violación hace fallar el paso
+#### Scenario: El recorrido de todas las rutas no produce violaciones
 
-- **GIVEN** el lote 1 en el perfil `local`
-- **WHEN** durante un paso el SPA ejecuta algo que la política bloquea
-- **THEN** ese paso SHALL fallar nombrando la directiva y el recurso bloqueado
+- **GIVEN** el build de producción del SPA con la política de la imagen `web` aplicada a cada documento
+- **WHEN** se visita cada ruta del SPA y se abre su diálogo o menú principal, en escritorio y en móvil emulado
+- **THEN** SHALL NOT registrarse ninguna violación de la política
+- **AND** la consola SHALL NOT mostrar ningún error de `Permissions-Policy`
 
-#### Scenario: Staging sirve otra política
+#### Scenario: Activar las notificaciones registra el service worker
 
-- **GIVEN** el lote 1 en el perfil `remote` contra staging
-- **WHEN** la `Content-Security-Policy` del documento de staging difiere de la configurada en la imagen `web`
-- **THEN** la corrida SHALL fallar mostrando las dos
+- **GIVEN** el SPA servido con su política y el permiso de notificaciones concedido
+- **WHEN** una persona activa las notificaciones
+- **THEN** `sw.js` SHALL quedar registrado sin ninguna violación de la política
 
-#### Scenario: El recorrido sin violaciones pasa
+#### Scenario: El camino crítico en staging no produce violaciones
 
-- **GIVEN** el SPA de producción y su política
-- **WHEN** se ejecuta el lote 1 en los dos proyectos
-- **THEN** SHALL terminar en verde sin ninguna violación registrada
+- **GIVEN** staging sirviendo un commit con estas cabeceras
+- **WHEN** se recorre a mano el camino crítico en Chromium y en Firefox con la consola abierta
+- **THEN** SHALL NOT aparecer ningún mensaje de la política de contenido ni de `Permissions-Policy`
