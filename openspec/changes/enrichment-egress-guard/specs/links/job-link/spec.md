@@ -9,8 +9,9 @@ URL normalizada NO SHALL usarse para abrir ni para descargar: para eso se usa la
 (`displayUrl`), que es la que escribió una persona. Una URL que no es `http(s)` o que no tiene host SHALL rechazarse como
 no reconocida. Una URL cuyo host sea un nombre sin punto (tras quitar el punto final), `localhost` o un subdominio de
 `localhost`, o una dirección literal de un rango no público según la clasificación compartida de la spec
-`links/egress-guard`, SHALL rechazarse también como no reconocida. Con `EGRESS_ALLOW_PRIVATE_TARGETS` encendida fuera de
-producción, SHALL rechazarse solo lo que esa opción sigue prohibiendo. Esta comprobación SHALL ser sintáctica: al
+`links/egress-guard`, SHALL rechazarse también como no reconocida, igual que una URL con un puerto explícito distinto de
+`80` y `443`. Con `EGRESS_ALLOW_PRIVATE_TARGETS` encendida fuera de producción, SHALL rechazarse solo lo que esa opción
+sigue prohibiendo. Esta comprobación SHALL ser sintáctica: al
 guardar NO SHALL resolverse ningún nombre, y la decisión sobre adónde se conecta SHALL tomarla el filtro de salida del
 worker.
 
@@ -36,6 +37,13 @@ worker.
 
 - **WHEN** se guarda una URL cuyo host es un nombre de una sola etiqueta
 - **THEN** la URL SHALL contarse como no reconocida y NO SHALL crearse ningún link
+
+#### Scenario: Puerto no web
+
+- **GIVEN** `EGRESS_ALLOW_PRIVATE_TARGETS` apagada
+- **WHEN** se guarda una URL de un host con punto y un puerto explícito distinto de `80` y `443`
+- **THEN** la respuesta SHALL ser `400` con código `invalid_url`
+- **AND** NO SHALL crearse ningún link
 
 #### Scenario: Importación con una URL interna
 
