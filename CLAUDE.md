@@ -46,6 +46,13 @@ Antes de cualquier tarea lee, en este orden: `docs/design-v0.2.md` (decisiones v
   resuelven re-extrayendo). Las traducciones se editan en `messages.en.xlf`, actualizando también su `source` si cambió el
   texto español. `pnpm nx run web:i18n-check` lo comprueba (ADR-050).
 
+## Grafo de código (graphify)
+- A demanda: `GRAPHIFY_BACKEND=none graphify update .` arma `graphify-out/` solo con el AST (≈1 min, sin LLM ni tokens).
+  No se versiona; cada worktree arranca sin grafo y lo arma si le sirve.
+- Con grafo, los hooks de `.claude/settings.json` sugieren `graphify query "<pregunta>"`, `graphify explain "<símbolo>"`
+  o `graphify path "<A>" "<B>"` antes de un Grep o Read. Rinde con nombres concretos; con preguntas amplias trae ruido.
+- Sin grafo los hooks no dicen nada; sin `graphify` instalado fallan con un aviso. En ningún caso bloquean.
+
 ## Seguridad y legal
 - Extractores: respetar `robots.txt`, cola por dominio, `User-Agent` identificable. Headless solo con `FEATURE_HEADLESS_EXTRACTION=true`.
 - Nunca loguear tokens, claves BYOK ni texto de CV.

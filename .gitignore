@@ -36,3 +36,6 @@ Thumbs.db
 __screenshots__/
 
 vitest.config.*.timestamp*
+
+# Grafo local de código de graphify (se regenera con `graphify update .`)
+graphify-out/
