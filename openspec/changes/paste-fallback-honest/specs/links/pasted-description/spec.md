@@ -10,15 +10,16 @@ Cuando la IA no lee el texto, la respuesta SHALL decir por qué, sin mezclar cas
 
 - **Cuota diaria de IA de quien pega agotada:** `429` con código `ai_quota_exceeded` y `Retry-After` hasta el instante
   de vuelta que da la IA. Solo si ese instante falta, 24 horas.
-- **Falta el permiso de quien pega para proveedores externos, y ese permiso es lo único que falta:** `409` con código
-  `ai_consent_required`, sin `Retry-After`.
-- **El cupo del proveedor está agotado y no vuelve en los próximos 5 minutos, o no se sabe cuándo vuelve:** `503` con
-  código `ai_capacity_exhausted`. Lleva `Retry-After` hasta el instante de vuelta **solo si se conoce**.
-- **La lectura automática no está disponible por configuración o por política de datos** (proveedor que rechaza, o
-  ninguna IA configurada para esta tarea): `503` con código `extraction_disabled`, sin `Retry-After`.
-- **Cualquier otro fallo de la IA** (caída, plazo agotado, consentimiento ilegible, o un cupo que vuelve en 5 minutos
-  o menos): `503` con código `extraction_unavailable` y `Retry-After`. Ese `Retry-After` es el instante de vuelta, si
-  se conoce, y 60 segundos si no.
+- **Falta el permiso de quien pega para proveedores externos, y ese permiso es lo primero que falta** (motivo de falta de
+  consentimiento, o condición del proveedor `consent_required`): `409` con código `ai_consent_required`, sin
+  `Retry-After`.
+- **El proveedor agotó su cupo** (condición del proveedor `rate_limited`): `503` con código `ai_capacity_exhausted`,
+  sin `Retry-After`, porque no se sabe cuándo vuelve.
+- **La lectura automática no está disponible por configuración o por política de datos** (condición `rejected`, o
+  `no_providers` sin condición porque ninguna IA configurada es capaz de esta tarea): `503` con código
+  `extraction_disabled`, sin `Retry-After`.
+- **Cualquier otro fallo de la IA** (condición `unavailable`, plazo agotado, consentimiento ilegible, o cualquier
+  degradado que no encaje en los casos anteriores): `503` con código `extraction_unavailable` y `Retry-After: 60`.
 
 En todos esos casos el link NO SHALL cambiar, y ninguna respuesta SHALL contener el texto pegado.
 
@@ -53,28 +54,22 @@ En todos esos casos el link NO SHALL cambiar, y ninguna respuesta SHALL contener
 - **WHEN** pega otra oferta
 - **THEN** la respuesta SHALL ser `429` con código `ai_quota_exceeded` y un `Retry-After` de 3 horas, no de 24
 
-#### Scenario: Cupo gratuito del proveedor agotado hasta mañana
+#### Scenario: Cupo del proveedor agotado
 
-- **GIVEN** el único proveedor sin cupo hasta las 00:00 UTC del día siguiente
-- **WHEN** alguien pega una oferta a las 18:00 UTC
-- **THEN** la respuesta SHALL ser `503` con código `ai_capacity_exhausted` y un `Retry-After` de 6 horas
-- **AND** el link NO SHALL cambiar
-
-#### Scenario: Cupo agotado sin saber hasta cuándo
-
-- **GIVEN** el único proveedor sin cupo y sin instante de vuelta
+- **GIVEN** el único proveedor respondiendo `429`
 - **WHEN** alguien pega una oferta
 - **THEN** la respuesta SHALL ser `503` con código `ai_capacity_exhausted` y sin `Retry-After`
-
-#### Scenario: Límite por minuto del proveedor
-
-- **GIVEN** el único proveedor sin cupo durante los próximos 40 segundos
-- **WHEN** alguien pega una oferta
-- **THEN** la respuesta SHALL ser `503` con código `extraction_unavailable` y `Retry-After: 40`
+- **AND** el link NO SHALL cambiar
 
 #### Scenario: Ningún proveedor acepta la política de datos
 
-- **GIVEN** el único proveedor respondiendo que ninguno de sus proveedores acepta `data_collection: deny`
+- **GIVEN** el único proveedor respondiendo `404` porque ninguno de sus proveedores acepta `data_collection: deny`
+- **WHEN** alguien pega una oferta
+- **THEN** la respuesta SHALL ser `503` con código `extraction_disabled` y sin `Retry-After`
+
+#### Scenario: Ninguna IA capaz
+
+- **GIVEN** `AI_CHAIN=none`
 - **WHEN** alguien pega una oferta
 - **THEN** la respuesta SHALL ser `503` con código `extraction_disabled` y sin `Retry-After`
 
@@ -85,13 +80,26 @@ En todos esos casos el link NO SHALL cambiar, y ninguna respuesta SHALL contener
 - **THEN** la respuesta SHALL ser `409` con código `ai_consent_required`
 - **AND** el proveedor externo NO SHALL recibir el texto
 
+#### Scenario: Falta el permiso y el proveedor tiene el circuito abierto
+
+- **GIVEN** un usuario sin el permiso y el único proveedor externo con el circuito abierto
+- **WHEN** pega una oferta
+- **THEN** la respuesta SHALL ser `409` con código `ai_consent_required`
+
+#### Scenario: Un degradado sin caso propio
+
+- **GIVEN** un degradado `providers_failed` sin condición del proveedor
+- **WHEN** alguien pega una oferta
+- **THEN** la respuesta SHALL ser `503` con código `extraction_unavailable` y `Retry-After: 60`
+
 ### Requirement: Límite de pegados
 
 Pegar descripciones SHALL estar acotado por usuario en una ventana de tiempo. Al superarse, SHALL responder `429` con
 código `too_many_attempts` y `Retry-After`. El límite SHALL fallar cerrado: si el contador no responde, la petición
 SHALL rechazarse con `503` `extraction_unavailable`, no con un aviso de «demasiados pegados» a quien no pegó ninguno, y
-NO SHALL ejecutarse la IA. Un pegado que termina sin que la IA lea el texto, con cualquier `503` o con `409`
-`ai_consent_required`, SHALL devolver su intento. Un `429` `ai_quota_exceeded` no tiene intento que devolver.
+NO SHALL ejecutarse la IA. Un pegado que termina sin que la IA lea el texto —con cualquier `503`, con `409`
+`ai_consent_required` o con `429` `ai_quota_exceeded`— SHALL devolver su intento, porque el intento se consume antes de
+llamar a la IA.
 
 #### Scenario: Ventana agotada
 
@@ -112,9 +120,9 @@ NO SHALL ejecutarse la IA. Un pegado que termina sin que la IA lea el texto, con
 - **WHEN** pega una oferta y la IA no responde
 - **THEN** SHALL poder volver a pegar dentro de la misma ventana
 
-#### Scenario: Ni el cupo agotado ni la falta de permiso gastan un pegado
+#### Scenario: Ni el cupo, ni la cuota, ni la falta de permiso gastan un pegado
 
 - **GIVEN** un usuario con un pegado restante en la ventana
-- **WHEN** pega una oferta y la respuesta es `503` `ai_capacity_exhausted`, `503` `extraction_disabled` o `409`
-  `ai_consent_required`
+- **WHEN** pega una oferta y la respuesta es `503` `ai_capacity_exhausted`, `503` `extraction_disabled`, `409`
+  `ai_consent_required` o `429` `ai_quota_exceeded`
 - **THEN** SHALL poder volver a pegar dentro de la misma ventana

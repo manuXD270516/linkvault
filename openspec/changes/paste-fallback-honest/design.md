@@ -11,26 +11,31 @@ fichero y línea. En resumen, el camino del fallo es este:
 | Proveedor | `libs/ai/src/infrastructure/providers/openrouter.provider.ts:122-125` | Cualquier no-2xx da `ProviderUnavailable(id, status)`, sin cuerpo. |
 | `runTask` | `libs/ai/src/application/run-task.usecase.ts:461-478`, `:240-245`, `:188-197` | Registra `provider_error`, cuenta un fallo en el breaker y degrada con `providers_failed`. Con el circuito abierto, `no_providers`. Sin consentimiento y cadena solo externa, `consent_required`. |
 | Adaptador | `apps/api/src/modules/links/infrastructure/run-task-pasted-extraction.ts:78-81` | Todo lo que no es `quota_exceeded` se convierte en `unavailable`. |
-| Caso de uso | `apps/api/src/modules/links/application/paste-description.usecase.ts:163-174` | `unavailable` da `503 extraction_unavailable` con `Retry-After: 60`. `quota_exceeded` da `429` con 24 h fijas. |
+| Caso de uso | `apps/api/src/modules/links/application/paste-description.usecase.ts:163-174` | `unavailable` da `503 extraction_unavailable` con `Retry-After: 60`. `quota_exceeded` da `429` con 24 h fijas y **no** devuelve el intento, aunque el contador se consumió antes de llamar a la IA (`:124-131`). |
 | Código | `libs/shared/src/schemas/auth.schema.ts:170-175`, `apps/api/src/presentation/http/api-error.ts:34-36` | Tres códigos: `not_a_job_posting`, `extraction_unavailable` y `ai_quota_exceeded`. |
-| Diálogo | `apps/web/src/app/features/links/paste-description.dialog.{ts,html}` | «No pudimos leerla ahora, inténtalo en un rato». Solo ofrece reintentar o cancelar. Lo pegado se conserva mientras el diálogo esté abierto. |
+| Diálogo | `apps/web/src/app/features/links/paste-description.dialog.{ts,html}` | «No pudimos leerla ahora, inténtalo en un rato». Solo ofrece reintentar o cancelar. Lo pegado se conserva mientras el diálogo esté abierto. Lo abren `link-list.component.ts` y `match.dialog.ts`. |
 
 ## Goals / Non-Goals
 
 **Goals:**
 
-- Que cada error del pegado diga la verdad: cupo agotado (y hasta cuándo, si se sabe), fallo pasajero (reintentar),
-  lectura no disponible por configuración o por política de datos, falta de permiso y texto rechazado.
-- Que «Completar a mano» esté a un clic desde el error, sin perder lo pegado, que sirve como referencia.
-- Hacerlo sin romper las garantías de `libs/ai`: cuatro motivos cerrados, ledger sin contenido, errores sin cuerpo y
-  política de routing pura.
+- Que cada error del pegado diga la verdad: cupo de la IA agotado, fallo pasajero (reintentar), lectura no disponible
+  por configuración o por política de datos, falta de permiso, cuota propia (con su hora real) y texto rechazado.
+- Que «Completar a mano» esté a un clic desde el error, sin perder lo pegado, que sirve como referencia copiable.
+- Hacerlo sin romper las garantías de `libs/ai`: cuatro motivos cerrados, ledger sin contenido, errores sin cuerpo,
+  política de routing pura y un breaker que abre y cierra exactamente como hoy.
 
 **Non-Goals:**
 
-- Cambiar prompts, modelos, fixtures o el golden. No aplica `ai:eval --update-baseline` (D9).
+- **Decir hasta cuándo dura el cupo del proveedor** (B3, diferido): leer el reinicio del cupo de las cabeceras o del
+  cuerpo de OpenRouter, pausar el breaker hasta ese instante (en memoria y en Redis), el umbral entre espera corta y cupo
+  agotado, y el tope de 48 h. Se retoma en un change posterior, cuando la tarea 8.1 de 35b haya confirmado la forma real
+  del `429`.
+- Cambiar prompts, modelos, fixtures o el golden (D9).
 - Elegir otro proveedor o pagar cupo. Es una decisión de coste del owner, abierta en 35b (pago por uso).
 - Medir en el ledger la clase de fallo (Q6) y cambiar los textos de degradación de otras tareas (encaje, roadmap).
-  Esas pantallas pueden leer la condición nueva en un change posterior.
+- Decidir si `extract-pasted-job` debe pedir consentimiento, o si el texto del permiso de Perfil debe mencionar el
+  pegado (Q7, del owner).
 - Tocar despliegue, workflows o `platform/*` (condición de la excepción, Q1).
 
 ## Decisions
@@ -40,79 +45,79 @@ fichero y línea. En resumen, el camino del fallo es este:
 `ProviderUnavailable` gana `kind: 'rate_limited' | 'rejected' | 'unavailable'`, derivado de `httpStatus` en el
 constructor:
 
-- `429` es `rate_limited`, y puede llevar un `resetAt` opcional.
+- `429` es `rate_limited`.
 - `401`, `402`, `403` y `404` son `rejected`. Con esta credencial, este modelo o esta política de datos, el proveedor
   no va a atender, y reintentar en un minuto no lo cambia. «No endpoints found matching your data policy» llega como
-  `404`, según la documentación de OpenRouter, que se confirma en la tarea 2.4. En Ollama, un `404` es un modelo sin
+  `404`, según la documentación de OpenRouter, que se cita en la tarea 2.4. En Ollama, un `404` es un modelo sin
   descargar.
 - Cualquier otro código, o la ausencia de código (red, cuerpo inválido, `200` con `{ error }`), es `unavailable`.
 
-Como la regla está en un solo sitio, `openai`, `anthropic`, `ollama` y `openrouter-embedding` la heredan sin cambios.
+Como la regla está en un solo sitio, `openrouter`, `openai`, `anthropic`, `ollama` y `openrouter-embedding` la heredan
+sin cambiar su código. Ningún proveedor lee el cuerpo del error: ADR-018 §12 queda igual.
 
 *Alternativas descartadas:* clasificar en `runTask` por `httpStatus`, porque repartiría la regla entre quien lanza y
 quien interpreta; y distinguir «no endpoints» por el texto del cuerpo, que es frágil y obliga a tratar el cuerpo como
 dato, contra ADR-018 §12.
 
-### D2. OpenRouter lee el instante de reinicio y nada más del cuerpo
+### D2. Leer el instante de reinicio del cupo — **diferida** (B3)
 
-Ante un `429`, el proveedor busca el instante de reinicio en este orden:
+La versión anterior leía el reinicio de `Retry-After`, de `X-RateLimit-Reset` o de
+`error.metadata.headers["X-RateLimit-Reset"]` del cuerpo. Sale de este change: la forma real del `429` de OpenRouter
+no está confirmada (la 8.1 de 35b lo hará), y leer el cuerpo era lo único que tocaba ADR-018 §12. Se retoma en un
+change posterior, con la forma real.
 
-1. La cabecera `Retry-After`, en segundos o como fecha HTTP.
-2. La cabecera `X-RateLimit-Reset`, en milisegundos epoch.
-3. El campo `error.metadata.headers["X-RateLimit-Reset"]` del cuerpo JSON. OpenRouter repite ahí las cabeceras del
-   límite de modelos gratuitos.
+### D3. El breaker recuerda la clase del último fallo, sin pausa
 
-El cuerpo se parsea con un schema zod que **solo** extrae ese número. Si el parseo falla, no hay instante. Ni el cuerpo
-ni el error de parseo se propagan, se registran ni entran en `cause`, igual que hoy. Un instante en el pasado o a más
-de 48 h del reloj local se descarta, para no pausar un proveedor por un dato absurdo o por un desfase de reloj.
-
-*Alternativa descartada:* no leer el cuerpo. Con el límite diario de modelos gratuitos el instante solo viaja ahí, y
-sin él el diálogo no puede decir hasta cuándo.
-
-### D3. El breaker pausa hasta el reinicio conocido y recuerda la clase del último fallo
-
-- `recordFailure(providerId, failure)` recibe `ProviderFailure`, que es `{ kind: 'unavailable' | 'rejected' }` o
-  `{ kind: 'rate_limited'; resetAt?: Date }`. Sin argumento vale `{ kind: 'unavailable' }`, así que `embedTexts` y
-  los dobles existentes no cambian de comportamiento.
-- Un `rate_limited` **con** `resetAt` abre el circuito de inmediato **hasta ese instante**. No cuenta en la ventana de
-  5 fallos en 60 s, y al llegar el instante concede el permiso de prueba de half-open como hoy. Un `rate_limited`
-  **sin** `resetAt`, un `rejected` y un `unavailable` cuentan como fallo, como hoy.
+- `recordFailure(providerId, failure?)` recibe `ProviderFailure = { kind: 'rate_limited' | 'rejected' | 'unavailable' }`.
+  Sin argumento vale `{ kind: 'unavailable' }`, así que `embedTexts` y los dobles existentes no cambian.
+- **Todas las clases cuentan igual** en la ventana de 5 fallos en 60 s. La apertura, el half-open de 30 s y el cierre
+  no cambian: la clase solo se recuerda.
 - Cada circuito guarda la clase de su último fallo, y `recordSuccess` la borra. `openConditions()` devuelve, por cada
-  circuito abierto, esa clase y, si la hay, el instante de reapertura. Si Redis no responde, devuelve un mapa vacío,
-  como `openIds()`: falla abierta.
-- Tanto `InMemoryCircuitBreaker` como `RedisCircuitBreaker` (ADR-030 §8) lo implementan. En Redis, la pausa se
-  guarda con TTL igual al plazo.
+  circuito abierto, esa clase. Si Redis no responde, devuelve un mapa vacío, como `openIds()`: falla abierta.
+- Lo implementan `InMemoryCircuitBreaker` y `RedisCircuitBreaker` (ADR-030 §8). En Redis, la clase se guarda junto al
+  estado del circuito y con su mismo TTL.
 
-*Alternativas descartadas:*
-- Un almacén de pausas aparte del breaker. Serían dos estados de disponibilidad que pueden contradecirse.
-- No pausar y dejar que el breaker abra tras 5 fallos. Gasta 5 peticiones y 5 esperas de quien pega, y vuelve a
-  probar cada 30 s contra un cupo que no vuelve hasta mañana.
+**Efecto en el encaje (C5).** La vigencia de un degradado del encaje (`cv/match`) se decide con
+`ProviderEligibility`, que solo consulta `snapshotOpenIds()`. Como la clase no cambia cuándo un circuito está abierto,
+la vigencia, el reintento y el ledger del encaje se comportan exactamente igual que hoy. El encaje recibe
+`providerCondition` en su `AiDegraded` y no la lee ni la guarda.
+
+*Diferido (B3):* la pausa del circuito hasta el reinicio conocido de un `429`.
 
 ### D4. El degradado lleva la condición agregada de los proveedores, sin motivo nuevo
 
-`AiDegraded` gana un campo opcional `providerCondition`, que toma una de tres formas:
-`{ kind: 'unavailable' }`, `{ kind: 'rate_limited'; retryAt?: string }` (ISO-8601 UTC) o `{ kind: 'rejected' }`.
+`AiDegraded` gana un campo opcional `providerCondition: { kind: 'consent_required' | 'unavailable' | 'rate_limited' |
+'rejected' }`, **sin instante**.
 
-- **Solo** puede acompañar a `providers_failed` y a `no_providers`. Nunca acompaña a `quota_exceeded` ni a
+- **Solo** puede acompañar a `providers_failed` y a `no_providers`. Nunca acompaña a `quota_exceeded` ni al motivo
   `consent_required`, y `aiQuotaRetryAt` sigue siendo exclusivo de `quota_exceeded`.
-- **Proveedores afectados** de una ejecución son los que la cadena intentó y fallaron, más los que el filtrado habría
-  admitido de no estar su circuito abierto. Para obtenerlos se compone la cadena con y sin `openIds`; la política
-  sigue siendo pura. Cada uno aporta una clase:
-  - el fallo de este intento: un `schema_error` o una cancelación cuentan como `unavailable`;
-  - o la condición recordada de su circuito: un circuito abierto sin condición cuenta como `unavailable`.
-- **Agregación**, de la condición más esperanzadora a la menos:
-  - si algún afectado es `unavailable`, la condición es `{ kind: 'unavailable' }`;
-  - si no, y alguno es `rate_limited`, es `rate_limited`. Su `retryAt` es el más temprano de los conocidos, y solo
-    se incluye si **todos** los `rate_limited` lo conocen. No se promete una hora que podría no cumplirse;
-  - si no, es `rejected`.
-- **Sin afectados**, el campo no aparece. Así un `no_providers` sin condición significa «no hay IA configurada o
-  capaz para esto», algo que no cambia por esperar.
+- **Cadena hipotética (C3).** Se compone con `buildChain` sobre el **mismo universo** de la ejecución (el restringido a
+  BYOK si la cuota lo restringió), con `openIds` vacío y con el consentimiento supuesto. La política sigue siendo pura:
+  es otra llamada a la misma función.
+- **Proveedores afectados** son los de la cadena hipotética que no dieron salida válida, cada uno con su clase:
+  - intentado y fallido: la clase de su error. Un `schema_error` o una cancelación cuentan como `unavailable`;
+  - saltado porque `tryAcquire` no concedió el permiso: `unavailable`;
+  - excluido por circuito abierto: la clase recordada por el breaker, o `unavailable` si no hay;
+  - excluido solo por falta de consentimiento: **habilitable por el permiso**.
+- **Agregación**, en este orden:
+  1. con `no_providers`, si algún afectado es habilitable por el permiso, la condición es `consent_required`: el
+     permiso habría habilitado a alguien y es lo primero que la persona puede arreglar. Es el caso que hoy cae fuera
+     de `consentWouldEnable` porque ese proveedor externo además tiene el circuito abierto. Con `providers_failed`,
+     los habilitables no cuentan, igual que en «Degradación tipada»: hubo una avería y eso es lo que se dice;
+  2. si no, `unavailable` si algún afectado lo es;
+  3. si no, `rate_limited` si alguno lo es;
+  4. si no, `rejected`.
+- **Sin afectados** (la cadena hipotética está vacía), el campo no aparece. Así un `no_providers` sin condición
+  significa «no hay IA configurada o capaz para esto», algo que no cambia por esperar.
 
-Los cuatro motivos, su precedencia, el ledger y la caché no cambian: un degradado no se cachea. Lo registra ADR-060,
-que enmienda ADR-018 §1 y §7.
+Los cuatro motivos, su precedencia, `consentWouldEnable`, el ledger y la caché no cambian: un degradado no se cachea.
+Lo registra ADR-060, que enmienda ADR-018 §1 y §7.
 
-*Alternativas descartadas:* motivos nuevos en `DEGRADED_REASONS`, que rompen la lista cerrada, el `enum` del ledger y
-cada `switch` de las tareas existentes; y un booleano «transitorio», que no sirve para decir hasta cuándo.
+*Alternativas descartadas:*
+- Motivos nuevos en `DEGRADED_REASONS`: rompen la lista cerrada, el `enum` del ledger y cada `switch` de las tareas.
+- Cambiar `consentWouldEnable` para que ignore los circuitos abiertos: movería el motivo de `no_providers` a
+  `consent_required` en el encaje, que decide la vigencia por motivo, y eso sí cambiaría su comportamiento.
+- Un booleano «transitorio»: no distingue cupo de política.
 
 ### D5. El pegado traduce cada caso a un error propio
 
@@ -122,72 +127,83 @@ unión cerrada:
 ```
 | { outcome: 'quota_exceeded'; retryAt?: Date }
 | { outcome: 'consent_required' }
-| { outcome: 'capacity_exhausted'; retryAt?: Date }
+| { outcome: 'capacity_exhausted' }
 | { outcome: 'disabled' }
-| { outcome: 'unavailable'; retryAfterSeconds?: number }
+| { outcome: 'unavailable' }
 ```
 
-El adaptador decide la variante y el caso de uso, el error de dominio y la respuesta:
+El adaptador decide la variante, y el caso de uso, el error de dominio y la respuesta:
 
-| Resultado de `runTask` | `outcome` | Respuesta | `Retry-After` | ¿Devuelve el pegado? |
+| Resultado de `runTask` | `outcome` | Respuesta | `Retry-After` | ¿Devuelve el intento? |
 | --- | --- | --- | --- | --- |
-| `success` con `isJobPosting: false` | `not_a_job_posting` | `422 not_a_job_posting` | — | no (igual que hoy) |
-| `quota_exceeded` | `quota_exceeded` | `429 ai_quota_exceeded` | hasta `aiQuotaRetryAt`; sin el dato, 24 h | no (igual que hoy) |
-| `consent_required` | `consent_required` | `409 ai_consent_required` | — | **sí** |
-| condición `rate_limited` con `retryAt` ≤ 5 min | `unavailable` | `503 extraction_unavailable` | hasta `retryAt` | sí |
-| condición `rate_limited` con `retryAt` > 5 min, o sin `retryAt` | `capacity_exhausted` | `503 ai_capacity_exhausted` | hasta `retryAt`, solo si se conoce | sí |
-| condición `rejected`, o `no_providers` sin condición | `disabled` | `503 extraction_disabled` | — | sí |
-| condición `unavailable`, plazo agotado o consentimiento ilegible | `unavailable` | `503 extraction_unavailable` | 60 s | sí |
+| `success` con `isJobPosting: false` | `not_a_job_posting` | `422 not_a_job_posting` | — | no (igual que hoy: la IA leyó) |
+| `quota_exceeded` | `quota_exceeded` | `429 ai_quota_exceeded` | hasta `aiQuotaRetryAt`, mínimo 1 s; sin el dato, 24 h | **sí** (C10) |
+| motivo `consent_required` | `consent_required` | `409 ai_consent_required` | — | sí |
+| `no_providers` con condición `consent_required` | `consent_required` | `409 ai_consent_required` | — | sí |
+| condición `rate_limited` | `capacity_exhausted` | `503 ai_capacity_exhausted` | — | sí |
+| condición `rejected` | `disabled` | `503 extraction_disabled` | — | sí |
+| `no_providers` sin condición | `disabled` | `503 extraction_disabled` | — | sí |
+| condición `unavailable` | `unavailable` | `503 extraction_unavailable` | 60 s | sí |
+| **cualquier otro degradado** (p. ej. `providers_failed` sin condición), plazo agotado o consentimiento ilegible | `unavailable` | `503 extraction_unavailable` | 60 s | sí |
 
 Notas de la tabla:
 
+- `disabled` queda **solo** para `rejected` y para «no hay proveedores capaces» sin otra causa. Todo degradado que no
+  tenga fila propia va a `unavailable` (C3): ante la duda, el mensaje que invita a reintentar es el menos dañino.
 - Que el contador de pegados no responda sigue siendo `503 extraction_unavailable` y sigue sin llamar a la IA.
-- **Umbral de 5 minutos.** Separa el límite por minuto del proveedor, que se resuelve esperando un poco, del cupo
-  diario. Es una constante de `limits.ts`: `PASTE_SHORT_WAIT_SECONDS = 300` (Q3).
 - **`409` para el consentimiento.** Es una precondición que la persona arregla, como `no_cv`, y no un fallo del
   servidor.
 - **`503` sin `Retry-After`.** RFC 9110 permite omitirlo, y omitirlo es justo lo honesto cuando no se sabe cuándo
-  vuelve.
-- **El intento se devuelve** en todos los casos en que la IA no leyó el texto, salvo la cuota propia, que ya decide
-  sin gastar IA y no tiene nada que devolver (igual que hoy).
+  vuelve. En este change `ai_capacity_exhausted` nunca lo lleva (D2 diferida).
+- **El intento se devuelve** en todos los casos en que la IA no leyó el texto, incluida la cuota propia (C10): el
+  contador se consume antes de llamar a la IA (`paste-description.usecase.ts:124-131`), así que la cuota agotada
+  también gastaba un pegado.
 
 *Alternativas descartadas:*
 - Un solo `503` con un subcódigo en el cuerpo. `ApiErrorResponse` no lo admite, y el SPA ya traduce por código.
 - `403` para el consentimiento. `forbidden` significa permiso sobre el recurso, y el SPA lo explica distinto.
 
-### D6. El diálogo dice lo que pasa y hasta cuándo
+### D6. El diálogo dice lo que pasa, y qué hacer
 
 Textos en ES. Las traducciones EN siguen D8.
 
-| Caso | Texto |
-| --- | --- |
-| `extraction_unavailable` | «No pudimos leerla ahora, inténtalo en un rato» (sin cambio) |
-| `ai_capacity_exhausted` con `Retry-After` | «Se agotaron las lecturas gratuitas de la IA. Vuelven {cuándo}» |
-| `ai_capacity_exhausted` sin `Retry-After` | «Se agotaron por ahora las lecturas gratuitas de la IA y no sabemos cuándo vuelven» |
-| `extraction_disabled` | «La lectura automática no está disponible» |
-| `ai_consent_required` | «Para leerla con la IA hace falta tu permiso para enviar datos a proveedores externos» |
-| `ai_quota_exceeded` | «Llegaste a tu límite de lecturas con IA. Podrás volver a pegar {cuándo}». Sustituye a «…vuelve mañana», que es falso cuando la ventana móvil se libera hoy. |
-| `too_many_attempts`, `not_a_job_posting` | sin cambio |
+| Caso | Texto | Acción principal | Volver a enviar |
+| --- | --- | --- | --- |
+| `extraction_unavailable` | «No pudimos leerla ahora, inténtalo en un rato» (sin cambio) | Enviar | principal |
+| `ai_capacity_exhausted` sin `Retry-After` | «La IA llegó a su límite de lecturas y no sabemos cuándo vuelve» | Completar a mano | secundaria |
+| `ai_capacity_exhausted` con `Retry-After` | «La IA llegó a su límite de lecturas. Vuelve {cuándo}» | Completar a mano | secundaria |
+| `extraction_disabled` | «La lectura automática no está disponible. Puedes completarla a mano» | Completar a mano | no se ofrece |
+| `ai_consent_required` | «Para leerla con IA hace falta el permiso de IA externa, que tienes apagado. Puedes completarla a mano» | Completar a mano | no se ofrece |
+| `ai_quota_exceeded` | «Llegaste a tu límite de lecturas con IA. Podrás volver a pegar {cuándo}». Sustituye a «…vuelve mañana», que es falso cuando la ventana móvil se libera hoy. | Enviar | principal |
+| `too_many_attempts`, `not_a_job_posting`, errores comunes | sin cambio | Enviar | principal |
 
+- **Sin «Dar permiso en Perfil» (B1).** El permiso de Perfil habla solo del CV
+  (`apps/web/src/app/features/profile/profile.page.html:147,154`): llevar allí a quien pega lo haría aceptar un texto
+  que no describe lo que va a pasar. Qué hacer con eso es la Q7.
+- La variante de `ai_capacity_exhausted` **con** `Retry-After` existe en el SPA aunque la API de este change no la
+  produzca: es un `if` sobre la cabecera, deja el SPA listo para el change que retome D2 y se prueba con
+  `HttpTestingController`.
 - **{cuándo}** se calcula como el instante actual más el `Retry-After` de `RequestFailure`, que ya viene en minutos.
   Dice «hoy a las HH:mm» si cae hoy, «mañana a las HH:mm» si cae mañana y una fecha corta en otro caso, siempre con
   la hora local del navegador y el locale activo.
-- Debajo del texto van las acciones de D7. Ante `ai_consent_required` se añade «Dar permiso en Perfil», que navega a
-  `/perfil` y cierra el diálogo, como hace el diálogo de encaje (`match.dialog.ts:347-348`).
+- «Completar a mano» es la acción principal (botón relleno) donde reenviar no arregla nada o casi seguro vuelve a
+  fallar (B5). En el resto aparece como acción secundaria.
 
-### D7. «Completar a mano» desde el mismo diálogo, con lo pegado como referencia
+### D7. «Completar a mano» desde el mismo diálogo, con lo pegado como referencia copiable
 
 - El botón «Completar a mano» (`data-testid="paste-complete-by-hand"`) aparece tras **cualquier** fallo del envío,
   sea propio del pegado o común (sin conexión, error genérico). También tras `not_a_job_posting` (Q2): la IA puede
   equivocarse, y lo pegado sigue sirviendo de referencia.
 - Al pulsarlo, el diálogo de pegado **se cierra y él mismo** abre `EditPreviewDialog` sobre el mismo link. Así
-  funciona igual desde cualquier pantalla que lo abra, sin que cada pantalla tenga que reaccionar.
+  funciona igual desde la lista de links y desde el diálogo de encaje (`match.dialog.ts`, C9), sin que cada pantalla
+  tenga que reaccionar.
 - `EditPreviewDialogData` gana `reference?: { text: string; title?: string; company?: string }`:
   - `title` y `company` son los que la persona **cambió** en el pegado, con la misma regla de `changed()` de hoy.
     Entran como valor inicial **modificado** del formulario: se enviarán como edición manual, que es lo que son.
-  - `text` se muestra en un panel plegable de solo lectura: «Lo que pegaste (solo para consultar: no se guarda ni se
-    envía)». Vive en la memoria del diálogo. No entra en el store, no viaja en la petición de edición y no se
-    registra.
+  - `text` se muestra en un panel plegable: «Lo que pegaste (solo para consultar: no se guarda ni se envía)». Es
+    **texto seleccionable y copiable** (B4): un `<pre>`/párrafo con `white-space: pre-wrap` o un `<textarea readonly>`,
+    **nunca** `disabled`, que en varios navegadores impide seleccionar. Vive en la memoria del diálogo. No entra en el
+    store, no viaja en la petición de edición y no se registra.
 - La corrección a mano exige el mismo permiso que pegar (ver el link, `requireReadableLink` en
   `update-link-preview.usecase.ts`), así que ofrecerla no amplía permisos.
 
@@ -201,82 +217,98 @@ Textos en ES. Las traducciones EN siguen D8.
 ### D8. Textos e i18n (ADR-050)
 
 - Cada texto nuevo lleva un `@@id` estable con el prefijo `links.paste.`: `capacityExhausted`,
-  `capacityExhaustedUnknown`, `disabled`, `consentRequired`, `quotaExceededUntil`, `completeByHand`,
-  `giveConsent`, `when.today`, `when.tomorrow`, `when.date` y `edit.reference`.
+  `capacityExhaustedUnknown`, `disabled`, `consentRequired`, `quotaExceededUntil`, `completeByHand`, `when.today`,
+  `when.tomorrow`, `when.date` y `edit.reference`.
 - `@@links.paste.quotaExceeded` cambia de texto y **conserva su id**.
 - `messages.xlf` se regenera con `pnpm nx run web:extract-i18n`. `messages.en.xlf` recibe las traducciones y el
   `source` actualizado.
 - `pnpm nx run web:i18n-check` verde.
 
-### D9. Lo que no cambia, y por qué no hace falta `--update-baseline`
+### D9. Lo que no cambia, y la comprobación de no regresión del eval
 
 - Los cuatro motivos y su precedencia no cambian, ni el ledger, ni la caché, ni la redacción, ni el consentimiento,
-  ni las cuotas.
-- No se toca ningún prompt, modelo, fixture ni golden. El mock nunca lanza un `429`, así que las métricas del eval
-  (`schema_validity_rate` y `degraded_rate`) no pueden moverse, y la línea base debe pasar **sin**
-  `--update-baseline` (tarea 2.6). Si algún día este trabajo tocara un prompt o un fixture, la regla de CLAUDE.md
-  exige `nx run ai:eval --provider=mock --update-baseline` en el mismo commit.
+  ni las cuotas, ni cuándo se abre o se cierra un circuito.
+- No se toca ningún prompt, modelo, fixture ni golden. El mock nunca lanza un `429`, así que las métricas del eval no
+  pueden moverse. La tarea 2.6 es una **comprobación de no regresión** (C6): `pnpm nx run ai:eval-ci` (o
+  `ai:eval --all --provider=mock`) **sin** `--update-baseline`, con salida 0 y `git status --porcelain` limpio. Si algún
+  día este trabajo tocara un prompt o un fixture, la regla de CLAUDE.md exige `--update-baseline` en el mismo commit.
 - `consent_required` ya existía en `runTask`. Lo nuevo es que el pegado deja de tratarlo como un fallo pasajero.
 
 ### D10. Cómo se verifica sin proveedores reales
 
-- **Proveedor.** `openrouter.provider.spec.ts` sustituye `fetch` y prueba cada forma de `429` (cabecera, cuerpo con
-  `metadata.headers`, sin dato), el `404`, el instante absurdo y que ni el cuerpo ni la credencial salen en el error.
-  La forma del cuerpo se toma de la documentación de OpenRouter y se anota en el spec con la fecha de la consulta
-  (tarea 2.4). La confirmación con una respuesta real queda en la tarea 8.1 de 35b, que ya registra «qué proveedor
-  respondió o el error "no endpoints"». Si la forma real difiere, el resultado es el de hoy (`unavailable`) y no algo
-  peor (ver Riesgos).
+- **Proveedor.** `openrouter.provider.spec.ts` sustituye `fetch` y prueba el `429` y el `404`, y que ni el cuerpo ni la
+  credencial salen en el error. La relación «no endpoints» = `404` se toma de la documentación de OpenRouter y se
+  anota con la fecha de la consulta (tarea 2.4). La confirmación con una respuesta real queda en la 8.1 de 35b, que
+  ya registra «qué proveedor respondió o el error "no endpoints"»; reflect se la comunica a esa sesión (C7). Si la
+  forma real difiere, el resultado es el de hoy (`unavailable`) y no algo peor (ver Riesgos).
 - **`runTask`.** Proveedores falsos (`fake-llm-provider.ts`) que lanzan `ProviderUnavailable` con cada código, y los
   breakers en memoria y Redis con su suite actual.
 - **API.** Caso de uso con dobles; controlador con `runTask` doble (`links.controller.pasted.spec.ts`).
-- **SPA.** Specs del diálogo con `HttpTestingController`.
+- **SPA.** Specs del diálogo con `HttpTestingController`, incluido el pegado abierto desde el encaje.
 - En CI: `AI_CHAIN=mock` y `AI_MOCK_MODE=replay`. Ninguna prueba llama a un proveedor real.
+
+### D11. Ventana de fusión
+
+Aun con la Q1 concedida, el PR solo puede fusionarse en una ventana que no rompa a 35b ni a `e2e-suite`:
+
+- `openspec/changes/staging-host/tasks.md`: «Entre PR-1 y PR-2 no se fusiona nada a `main`». El PR-1 de 35b ya está en
+  `main` (#86).
+- D15 de `e2e-suite`: nada se fusiona entre el PR-2 de 35b y su 11.6.
+
+La única ventana válida es **después de la 11.6 de 35b y antes de su 10.7** (la invitación), **repitiendo la 9.4 de
+`e2e-suite`** sobre el commit desplegado con este change, porque la precondición de invitar se anota sobre el commit
+que se despliega. Nunca los días 7 y 14 de la medición. La alternativa es la Q1 (d). La tarea 6.3 lo comprueba antes
+de fusionar.
 
 ## Risks / Trade-offs
 
 - **[La forma real del `429` o del «no endpoints» de OpenRouter difiere de la documentada]** → la clasificación cae
-  a `unavailable`, que es el comportamiento de hoy. Se confirma con la llamada real de 35b (tarea 8.1 de
-  `staging-host`); la tarea 7.3 de este change pide anotar el resultado.
+  a `unavailable`, que es el comportamiento de hoy. Lo confirma la 8.1 de 35b, y queda anotado como pendiente en
+  ADR-060 §Consecuencias.
+- **[Un `429` por minuto se anuncia como cupo agotado]** → sin el instante de reinicio (D2 diferida), un límite de
+  20 peticiones por minuto se ve como «La IA llegó a su límite de lecturas y no sabemos cuándo vuelve». Es verdad, y
+  reenviar queda como acción secundaria. Se afina en el change que retome D2.
 - **[Un `404` pasajero se clasifica como `rejected`]** → el diálogo dice «no disponible» y ofrece completar a mano,
-  pero el breaker sigue el umbral de siempre para `rejected` y se recupera en el half-open de 30 s. El coste es un
-  mensaje pesimista durante segundos.
-- **[La pausa de hasta 48 h deja a todos sin ese proveedor]** → es lo correcto: el cupo de la clave de plataforma es
-  común a todos. Los BYOK tienen su propio id (`byok:<userId>:<vendor>`) y su propia pausa.
-- **[El id `openrouter` lo comparten el chat y los embeddings]** → un `429` del chat también pausa los embeddings de
-  plataforma. El breaker ya compartía id antes de este change, y staging no tiene cadena de embeddings (D13 de 35b).
-  Se anota en ADR-060 §Consecuencias.
-- **[Desfase de reloj entre el proveedor y el host]** → se descarta todo instante pasado o a más de 48 h. Un desfase
-  de minutos solo mueve la hora anunciada.
+  pero el breaker sigue el umbral de siempre y se recupera en el half-open de 30 s. El coste es un mensaje pesimista
+  durante segundos.
+- **[Quien no dio el permiso no tiene un camino para darlo desde el pegado]** → a propósito (B1): el permiso de Perfil
+  habla solo del CV. La Q7 decide si hace falta.
 - **[«{cuándo}» con la hora del navegador]** → la persona ve su hora local. El `Retry-After` es relativo, así que no
   depende de la zona del servidor.
-- **[Precedencia de la fila 35]** → nada se aplica sin la Q1.
+- **[Precedencia de la fila 35 y ventana de fusión]** → nada se aplica sin la Q1, y nada se fusiona fuera de D11.
 
 ## Migration Plan
 
-Sin datos ni migraciones. Orden de los PR dentro del change: `libs/ai` (grupo 2), después la API (grupo 3) y después
-el SPA (grupos 4 y 5). Todo cabe en un PR. Rollback: revertir el PR. Los códigos nuevos solo los produce este change,
-y un SPA viejo frente a una API nueva los mostraría con el texto genérico de `lv-request-error`.
+Sin datos ni migraciones. Orden dentro del change: `libs/ai` (grupos 1 y 2), después la API (grupo 3) y después el SPA
+(grupos 4 y 5). Todo cabe en un PR, que se fusiona solo en la ventana de D11. Rollback: revertir el PR. Los códigos
+nuevos solo los produce este change, y un SPA viejo frente a una API nueva los mostraría con el texto genérico de
+`lv-request-error`.
 
 ## Open Questions
 
 - **Q1 [bloqueante] Excepción a la precedencia de la fila 35.** ¿Se abre este change, y se aplica y fusiona, antes de
   cerrar la fila 35?
-  - (a) Sí, y antes de invitar en 35b. Los invitados son quienes chocan con esto (D13 de 35b lo anota como riesgo) y
-    el change no toca nada de 35b ni de 35c.
+  - (a) Sí, aplicarlo ya y fusionarlo **solo en la ventana de D11**: después de la 11.6 de 35b y antes de su 10.7,
+    repitiendo la 9.4 de `e2e-suite` sobre el commit desplegado y nunca los días 7 y 14 de la medición. Los invitados
+    son quienes chocan con esto (D13 de 35b lo anota como riesgo) y el change no toca nada de 35b ni de 35c.
   - (b) Sí, pero solo spec hasta archivar 35c.
   - (c) No: se reabre tras la fila 35.
+  - (d) Sí, y el owner autoriza **expresamente** una excepción a la regla «Entre PR-1 y PR-2 no se fusiona nada a
+    `main`» de 35b, para fusionarlo antes. Riesgo para la 6.3 de 35b (primer despliegue real, que relanza el
+    `preflight` de la corrida del push de PR-1): con otro commit en `main`, el merge de este change dispara su propia
+    corrida y el primer despliegue deja de ser el del commit ensayado, o compite con él; además obliga a repetir la
+    9.4 de `e2e-suite`.
 
-  **Recomendación: (a).** Se registra con fecha en ADR-060 §1 y con una línea en ADR-048 §Consecuencias, como
-  ADR-053 y ADR-055.
+  **Recomendación: (a).** Llega a tiempo para los invitados sin tocar la secuencia de 35b. Se registra con fecha en
+  ADR-060 §1 y con una línea en ADR-048 §Consecuencias, como ADR-053 y ADR-055.
 - **Q2 [no bloqueante] ¿«Completar a mano» también tras `not_a_job_posting`?** (a) Sí. (b) No, solo tras los
   errores de lectura. **Recomendación: (a)**: la IA puede equivocarse, y lo pegado sirve de referencia igual.
-- **Q3 [no bloqueante] Umbral entre espera corta y cupo agotado.** (a) 5 min. (b) 1 min. (c) 15 min.
-  **Recomendación: (a)**: cubre el límite por minuto de OpenRouter con margen, y es una constante fácil de mover.
-- **Q4 [no bloqueante] Textos de D6.** Son una propuesta; el owner puede reescribirlos sin cambiar el diseño.
-  **Recomendación:** aceptarlos y revisarlos en el móvil, como pide la línea de riesgo de D13 de 35b («se comprueba
-  en el móvil que se entiende»).
+- **Q3 [sin objeto]** Umbral entre espera corta y cupo agotado. Se difiere con D2 (B3).
+- **Q4 [no bloqueante] Textos de D6.** Los cambió reflect tras business (B1, B2, B6); el owner puede reescribirlos sin
+  cambiar el diseño. **Recomendación:** aceptarlos y revisarlos en el móvil, como pide la línea de riesgo de D13 de
+  35b («se comprueba en el móvil que se entiende»).
 - **Q5 [no bloqueante] Lo pegado como referencia en la corrección a mano.**
-  - (a) Panel plegable de solo lectura.
+  - (a) Panel plegable con texto copiable.
   - (b) No mostrarlo.
   - (c) Mostrarlo desplegado.
 
@@ -285,3 +317,51 @@ y un SPA viejo frente a una API nueva los mostraría con el texto genérico de `
 - **Q6 [no bloqueante] ¿Registrar en el ledger la clase del fallo para medir el cupo en staging?** (a) No en este
   change: el log `AI provider error` ya lleva `httpStatus`. (b) Sí: un campo nuevo en `ai_usage`, con su
   migración de `enum`. **Recomendación: (a)**: (b) toca el ledger, que este change deja intacto a propósito.
+- **Q7 [no bloqueante para este change; decisión del owner] Consentimiento y pegado.** `extract-pasted-job` es
+  `personal`, así que con `AI_CHAIN=openrouter` exige el permiso de IA externa, pero el permiso de Perfil
+  («Permitir que un proveedor de IA externo analice mi CV», `profile.page.html:147,154`) solo habla del CV. Una oferta
+  pública no lleva datos personales de quien pega, aunque el texto pegado puede traer datos de terceros (recruiter)
+  que `PiiRedactor` quita.
+  - (a) Dejar `extract-pasted-job` como `personal` y ampliar el texto del permiso de Perfil para que mencione la
+    descripción de las ofertas que pegas (nueva versión del texto: quien ya lo dio tiene que aceptarlo de nuevo).
+  - (b) Reclasificar `extract-pasted-job` como no `personal`: el pegado deja de pedir el permiso, siempre con
+    `PiiRedactor` y `data_collection: deny`. Requiere ADR (enmienda ADR-014/ADR-018 sobre sensibilidad).
+  - (c) Un permiso aparte para el pegado.
+  - (d) Dejarlo como está: el pegado sin permiso termina en «Completar a mano».
+
+  **Recomendación: (b)**: lo que se envía es una oferta pública, ya pasa por `PiiRedactor` y por `data_collection:
+  deny`, y pedir un permiso que habla del CV para leer una oferta confunde justo a quien más usa el pegado. Es un
+  change propio, con su ADR.
+
+## Debate — iteración 1
+
+Resultado de la iteración 1: critic P0 0 / P1 11 (C1-C11); business V0 1 (B1-B6). Decisiones de reflect (sesión
+principal), 2026-10-28.
+
+| Id | Origen | Decisión | Motivo |
+| --- | --- | --- | --- |
+| B1 | business (V0) | Aceptado | Sin «Dar permiso en Perfil»: ese permiso habla solo del CV; texto nuevo del `409` y Q7 al owner. |
+| B2 | business | Aceptado | El texto de cupo no dice «gratuitas» y tiene sujeto claro: «La IA llegó a su límite de lecturas…». |
+| B3 | business | Aceptado (recorte) | Se difieren D2, la pausa de D3, el umbral de 5 min y las 48 h hasta confirmar el `429` real (8.1 de 35b). |
+| B4 | business | Aceptado | La referencia es texto seleccionable y copiable (`readonly` o texto plano, nunca `disabled`). |
+| B5 | business | Aceptado | Con cupo, lectura no disponible o permiso, «Completar a mano» es la principal; reenviar, secundaria o fuera. |
+| B6 | business | Aceptado | «La lectura automática no está disponible. Puedes completarla a mano». |
+| C1 | critic | Sin objeto | Su objeto (lectura del reinicio o pausa del breaker) sale del change con el recorte de B3. |
+| C2 | critic | Sin objeto | Su objeto (lectura del reinicio o pausa del breaker) sale del change con el recorte de B3. |
+| C3 | critic | Aceptado | Afectados sobre la cadena hipotética (sin `openIds`, permiso supuesto); `tryAcquire` = `unavailable`; sin fila = `unavailable`. |
+| C4 | critic | Sin objeto | Su objeto (pausa, umbral o tope de 48 h) sale del change con el recorte de B3. |
+| C5 | critic | Sin objeto (frase corregida) | Sin pausa, la clase no cambia `snapshotOpenIds`: la vigencia del encaje no cambia; ADR-060 lo dice exacto. |
+| C6 | critic | Aceptado | La 2.6 es no regresión: `ai:eval-ci` sin `--update-baseline`, salida 0 y `git status --porcelain` limpio. |
+| C7 | critic | Aceptado | Fuera la 7.3; el pendiente del `429` real va a ADR-060 §Consecuencias y reflect avisa a 35b. |
+| C8 | critic | Aceptado | Tareas de más de 1 h partidas: 2.5 en a/b/c y 2.2 en a/b. |
+| C9 | critic | Aceptado | Caso en `match.dialog.spec.ts` para completar a mano desde el pegado abierto en el encaje. |
+| C10 | critic | Aceptado | `quota_exceeded` también devuelve el intento: el contador se consume antes de llamar a la IA. |
+| C11 | critic | Sin objeto | En lo que tocaba la lectura del cuerpo del `429`, diferida por B3; ningún proveedor lee el cuerpo. |
+| P0 (otro change) | critic vía reflect | Aceptado | Ventana de fusión: solo tras la 11.6 de 35b y antes de su 10.7, repitiendo la 9.4 de `e2e-suite` (D11, Q1 (a)/(d)). |
+
+Interpretación del arquitecto, a confirmar por reflect en la iteración 2: «si el permiso habría habilitado alguno, gana
+`consent_required`» se aplica solo con `no_providers`, mediante la condición `consent_required`. Con `providers_failed`
+manda la regla vigente de «Degradación tipada» (la avería gana), y `consentWouldEnable` no cambia para no mover la
+vigencia del encaje (D4).
+
+Convergencia: NO (pendiente de la iteración 2).
