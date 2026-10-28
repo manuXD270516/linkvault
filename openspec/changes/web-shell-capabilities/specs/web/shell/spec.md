@@ -30,18 +30,19 @@ El SPA SHALL pedir las capacidades del despliegue una sola vez por carga de la a
 entre quienes las necesiten mientras está en curso. «Buscar» SHALL mostrarse solo si `search` es `true` y «Descubrir»
 solo si `discovery` es `true`; una entrada de una función apagada NO SHALL mostrarse, ni deshabilitada. Mientras las
 capacidades no hayan llegado, esas dos entradas NO SHALL mostrarse. Si la petición falla o su respuesta no valida, las
-dos SHALL mostrarse, como si las capacidades no existieran.
+dos SHALL mostrarse, como si las capacidades no existieran. La barra SHALL exponer el estado de las capacidades
+(`loading`, `ready` o `failed`) en su atributo `data-capabilities`.
 
 #### Scenario: Búsqueda y Descubrir apagados
 
-- **GIVEN** las capacidades `{ search: false, discovery: false, push: false }`
+- **GIVEN** las capacidades `{ search: false, discovery: false }`
 - **WHEN** Ana mira la barra
 - **THEN** NO SHALL ver «Buscar» ni «Descubrir»
 - **AND** SHALL ver el resto de entradas
 
 #### Scenario: Solo Descubrir activo
 
-- **GIVEN** las capacidades `{ search: false, discovery: true, push: false }`
+- **GIVEN** las capacidades `{ search: false, discovery: true }`
 - **WHEN** Ana mira la barra
 - **THEN** SHALL ver «Descubrir» y NO SHALL ver «Buscar»
 
@@ -50,12 +51,20 @@ dos SHALL mostrarse, como si las capacidades no existieran.
 - **GIVEN** la petición de capacidades en curso
 - **WHEN** Ana mira la barra
 - **THEN** NO SHALL ver «Buscar» ni «Descubrir»
+- **AND** la barra SHALL tener `data-capabilities="loading"`
+
+#### Scenario: Capacidades recibidas
+
+- **GIVEN** la petición de capacidades respondió `200` con un cuerpo válido
+- **WHEN** Ana mira la barra
+- **THEN** la barra SHALL tener `data-capabilities="ready"`
 
 #### Scenario: Falla la petición de capacidades
 
 - **GIVEN** la petición de capacidades responde `500` o con un cuerpo que no valida
 - **WHEN** Ana mira la barra
 - **THEN** SHALL ver «Buscar» y «Descubrir»
+- **AND** la barra SHALL tener `data-capabilities="failed"`
 
 #### Scenario: Una sola petición por carga
 
@@ -66,18 +75,28 @@ dos SHALL mostrarse, como si las capacidades no existieran.
 ### Requirement: Barra compacta en pantallas estrechas
 
 Por debajo de 1024 px de ancho la barra SHALL ocupar una sola fila con la marca y un botón «Menú», y NO SHALL mostrar
-las entradas en la fila. El botón SHALL indicar con `aria-expanded` si el panel está abierto y SHALL apuntar a él con
-`aria-controls`. Al abrirlo, SHALL desplegarse bajo la barra un `<nav>` con nombre accesible «Navegación principal»
-que contenga las mismas entradas visibles que el modo ancho, como enlaces, y «Cerrar sesión» al final. El panel SHALL
-cerrarse al completarse una navegación, al volver a pulsar el botón y con Escape; con Escape, el foco SHALL volver al
-botón. Desde 1024 px la barra SHALL mostrar las entradas en la fila y NO SHALL mostrar el botón «Menú».
+las entradas en la fila; el modo SHALL ser el correcto desde el primer render. El botón SHALL indicar con
+`aria-expanded` si el panel está abierto y SHALL apuntar con `aria-controls` a un `<nav>` con nombre accesible
+«Navegación principal» que SHALL existir siempre en ese modo, oculto mientras está cerrado. Al abrirlo, el `<nav>`
+SHALL desplegarse bajo la barra con las mismas entradas visibles que el modo ancho, como enlaces, y «Cerrar sesión» al
+final. El panel SHALL cerrarse al completarse una navegación (con el foco en el contenido principal), al volver a
+pulsar el botón y con Escape (con el foco en el botón), y al pasar a modo ancho. Escape SHALL atenderse solo con el
+panel abierto y dentro de la cabecera. Desde 1024 px la barra SHALL mostrar las entradas en la fila y NO SHALL mostrar
+el botón «Menú».
 
 #### Scenario: Móvil, panel cerrado
 
 - **GIVEN** Ana con sesión en una pantalla de 412 px
 - **WHEN** abre `/grupos`
 - **THEN** la barra SHALL mostrar la marca y el botón «Menú» con `aria-expanded="false"`
+- **AND** el elemento al que apunta `aria-controls` SHALL existir y estar oculto
 - **AND** NO SHALL mostrar «Postulaciones» ni ninguna otra entrada fuera del panel
+
+#### Scenario: Primer render en el móvil
+
+- **GIVEN** una pantalla de 412 px
+- **WHEN** el Shell se renderiza por primera vez
+- **THEN** SHALL estar ya en modo compacto, sin un render previo con las entradas en la fila
 
 #### Scenario: Abrir el panel y navegar
 
@@ -85,17 +104,30 @@ botón. Desde 1024 px la barra SHALL mostrar las entradas en la fila y NO SHALL 
 - **WHEN** pulsa «Menú» y luego el enlace «Mi CV»
 - **THEN** el botón SHALL haber pasado a `aria-expanded="true"` y el panel SHALL haber mostrado «Mi CV» como enlace
 - **AND** al llegar a `/mi-cv` el panel SHALL cerrarse
+- **AND** el foco SHALL quedar en el contenido principal
 
 #### Scenario: Cerrar con Escape
 
 - **GIVEN** el panel abierto
-- **WHEN** Ana pulsa Escape
+- **WHEN** Ana pulsa Escape dentro de la cabecera
 - **THEN** el panel SHALL cerrarse
 - **AND** el foco SHALL quedar en el botón «Menú»
 
+#### Scenario: Escape fuera del panel
+
+- **GIVEN** el panel cerrado, o un Escape pulsado fuera de la cabecera
+- **WHEN** Ana pulsa Escape
+- **THEN** la barra NO SHALL cambiar el estado del panel ni mover el foco
+
+#### Scenario: Pasar a modo ancho con el panel abierto
+
+- **GIVEN** el panel abierto en una pantalla estrecha
+- **WHEN** la pantalla pasa a 1024 px o más
+- **THEN** el panel SHALL cerrarse y la barra SHALL mostrar las entradas en la fila
+
 #### Scenario: El panel respeta las capacidades
 
-- **GIVEN** las capacidades `{ search: false, discovery: false, push: false }` y una pantalla de 412 px
+- **GIVEN** las capacidades `{ search: false, discovery: false }` y una pantalla de 412 px
 - **WHEN** Ana abre el panel
 - **THEN** NO SHALL ver «Buscar» ni «Descubrir»
 

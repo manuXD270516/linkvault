@@ -22,21 +22,29 @@ directos. Sin sesión, la ruta SHALL redirigir al login como el resto de feature
 
 ## ADDED Requirements
 
-### Requirement: Búsqueda no activada en este entorno
+### Requirement: Búsqueda no incluida en esta versión
 
 Con la capacidad `search` en `false`, la página de búsqueda SHALL cargar sin redirigir y, en lugar del formulario,
-SHALL mostrar con `role="status"` «La búsqueda no está activada en este entorno.» y un enlace «Ver Solo para mí» a
-`/mis-links`. En ese estado NO SHALL llamar a la API de búsqueda. Mientras las capacidades no hayan llegado o si su
-petición falló, la página SHALL comportarse como sin este requirement, y un `503` de la API SHALL seguir mostrando el
-aviso de que la búsqueda no está disponible en este momento.
+SHALL mostrar con `role="status"` «La búsqueda no está incluida en esta versión de LinkVault.» y un enlace «Ver Solo
+para mí» a `/mis-links`. En ese estado NO SHALL llamar a la API de búsqueda. Mientras las capacidades no hayan
+llegado, la página SHALL mostrar un estado neutro, sin formulario ni ningún control accionable. Si su petición falló,
+la página SHALL comportarse como sin este requirement, y un `503` de la API SHALL seguir mostrando el aviso de que la
+búsqueda no está disponible en este momento.
 
 #### Scenario: Enlace directo con la búsqueda apagada
 
 - **GIVEN** Ana autenticada y la capacidad `search` en `false`
 - **WHEN** abre `/buscar` desde un enlace guardado
-- **THEN** SHALL seguir en `/buscar` y ver «La búsqueda no está activada en este entorno.»
+- **THEN** SHALL seguir en `/buscar` y ver «La búsqueda no está incluida en esta versión de LinkVault.»
 - **AND** SHALL ver el enlace «Ver Solo para mí» a `/mis-links`
 - **AND** NO SHALL ver el campo de consulta
+- **AND** el SPA NO SHALL haber pedido `GET /api/search`
+
+#### Scenario: Capacidades aún sin respuesta
+
+- **GIVEN** la petición de capacidades en curso
+- **WHEN** Ana abre `/buscar`
+- **THEN** NO SHALL ver el campo de consulta ni ningún botón o enlace de la página
 - **AND** el SPA NO SHALL haber pedido `GET /api/search`
 
 #### Scenario: Capacidades caídas
@@ -50,4 +58,4 @@ aviso de que la búsqueda no está disponible en este momento.
 
 - **GIVEN** la interfaz en inglés y la capacidad `search` en `false`
 - **WHEN** Ana abre la ruta de búsqueda
-- **THEN** el aviso y el enlace SHALL estar en inglés
+- **THEN** SHALL ver «Search isn't available in this version of LinkVault.» y el enlace en inglés

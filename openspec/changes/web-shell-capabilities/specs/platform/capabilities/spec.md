@@ -1,29 +1,28 @@
 ## Purpose
 
 Permite que el SPA sepa, antes de que nadie lo intente, qué funciones opcionales tiene activas el despliegue
-(búsqueda, Descubrir, push), para no ofrecer entradas que llevan a un error, sin exponer ninguna configuración sensible.
+(búsqueda y Descubrir), para no ofrecer entradas que llevan a un error, sin exponer ninguna configuración sensible.
 
 ## ADDED Requirements
 
 ### Requirement: Capacidades del despliegue
 
 La API SHALL exponer `GET /api/capabilities`, solo con sesión, que responda `200` con un objeto cuyas claves son
-exactamente `search`, `discovery` y `push`, todas booleanas, validado con el contrato compartido de `libs/shared`.
-Cada valor SHALL derivarse solo de la configuración del proceso, con una única función de derivación:
+exactamente `search` y `discovery`, ambas booleanas, validado con el contrato compartido de `libs/shared`. Cada valor
+SHALL derivarse solo de la configuración del proceso, con una única función de derivación:
 
 - `search` SHALL ser `true` solo si la búsqueda está activada por su bandera **y** el host de Meilisearch está
   configurado;
-- `discovery` SHALL ser `true` solo si Descubrir está activado por su bandera;
-- `push` SHALL ser `true` solo si la clave pública VAPID, la privada y el sujeto están configurados y no vacíos.
+- `discovery` SHALL ser `true` solo si Descubrir está activado por su bandera.
 
 Una capacidad SHALL describir lo configurado, no la salud del servicio: una avería transitoria NO SHALL cambiar su
 valor. Sin sesión la ruta SHALL responder `401` como el resto de rutas privadas.
 
 #### Scenario: Despliegue con todo apagado
 
-- **GIVEN** la API arrancada sin bandera de búsqueda, sin bandera de Descubrir y sin claves VAPID
+- **GIVEN** la API arrancada sin bandera de búsqueda y sin bandera de Descubrir
 - **WHEN** Ana, con sesión, pide `GET /api/capabilities`
-- **THEN** la respuesta SHALL ser `200` con `{ "search": false, "discovery": false, "push": false }`
+- **THEN** la respuesta SHALL ser `200` con `{ "search": false, "discovery": false }`
 
 #### Scenario: Bandera de búsqueda sin host
 
@@ -36,12 +35,6 @@ valor. Sin sesión la ruta SHALL responder `401` como el resto de rutas privadas
 - **GIVEN** la bandera de búsqueda activada con host de Meilisearch y la bandera de Descubrir activada
 - **WHEN** Ana pide `GET /api/capabilities`
 - **THEN** `search` y `discovery` SHALL ser `true`
-
-#### Scenario: Push con la clave privada vacía
-
-- **GIVEN** la clave pública VAPID y el sujeto configurados y la clave privada vacía
-- **WHEN** se derivan las capacidades
-- **THEN** `push` SHALL ser `false`
 
 #### Scenario: Sin sesión
 
@@ -65,23 +58,24 @@ con el contrato en modo estricto.
 
 - **GIVEN** cualquier configuración válida
 - **WHEN** Ana pide `GET /api/capabilities`
-- **THEN** el cuerpo SHALL tener exactamente las claves `search`, `discovery` y `push`
-- **AND** sus tres valores SHALL ser booleanos
+- **THEN** el cuerpo SHALL tener exactamente las claves `search` y `discovery`
+- **AND** sus dos valores SHALL ser booleanos
 
-### Requirement: Capacidades cacheables y contrato aditivo
+### Requirement: Capacidades sin caché HTTP y contrato aditivo
 
-La API SHALL calcular las capacidades una vez por proceso y servirlas con `Cache-Control: private, max-age=300`. El
-cliente SHALL aceptar una respuesta con claves adicionales desconocidas sin fallar, de modo que añadir una capacidad
-nueva no rompa un SPA ya cargado.
+La API SHALL calcular las capacidades una vez por proceso y servirlas con `Cache-Control: private, no-store`, de modo
+que ningún navegador ni intermediario reutilice una respuesta tras un cambio de sesión o un redespliegue. El cliente
+SHALL aceptar una respuesta con claves adicionales desconocidas sin fallar, de modo que añadir una capacidad nueva no
+rompa un SPA ya cargado.
 
 #### Scenario: Cabecera de caché
 
 - **GIVEN** Ana con sesión
 - **WHEN** pide `GET /api/capabilities`
-- **THEN** la respuesta SHALL llevar `Cache-Control: private, max-age=300`
+- **THEN** la respuesta SHALL llevar `Cache-Control: private, no-store`
 
 #### Scenario: Capacidad nueva desconocida para el cliente
 
-- **GIVEN** una respuesta con `search`, `discovery`, `push` y una clave adicional `foo: true`
+- **GIVEN** una respuesta con `search`, `discovery` y una clave adicional `push: true`
 - **WHEN** el cliente la valida con el contrato compartido
-- **THEN** la validación SHALL tener éxito con los tres valores conocidos
+- **THEN** la validación SHALL tener éxito con los dos valores conocidos
