@@ -21,16 +21,25 @@
 # job de reporte tiene que verse rojo, no verde al lado de un rojo.
 #
 # --- La tabla de decisión (es la del ADR-048 §3, escrita como código) -------------------------------------------------
-#   verificación   preflight   despliegue   →  estado    significado
-#   -------------  ----------  -----------  -   -------  --------------------------------------------------------
-#   ≠ success      cualquiera  cualquiera      failure   la verificación no pasó: fallo **exista o no destino** (1)
-#   success        full        success         success   verificado y desplegado (resultado 2)
-#   success        full        ≠ success       failure   había destino y el despliegue no terminó bien
-#   success        none        (saltado)       success   verificado y **sin destino**: verde diciendo que no desplegó
-#   success        partial/∅   cualquiera      failure   el preflight no pudo decidir: nunca se cae del lado verde
+#   verificación   preflight   modo       despliegue   →  estado    significado
+#   -------------  ----------  ---------  -----------  -   -------  ----------------------------------------------
+#   ≠ success      cualquiera  cualquiera cualquiera      failure   la verificación no pasó: fallo **exista o no destino**
+#   success        partial/∅   cualquiera cualquiera      failure   el preflight no pudo decidir: nunca se cae del lado verde
+#   success        full/none   test       (saltado)       success   verificado y NO desplegado: modo de prueba
+#   success        full/none   off-main   (saltado)       success   verificado y NO desplegado: corrida fuera de main
+#   success        full        real       success         success   verificado y desplegado (resultado 2)
+#   success        full        real       ≠ success       failure   había destino y el despliegue no terminó bien
+#   success        none        real       (saltado)       success   verificado y **sin destino**: verde diciendo que no desplegó
 #
-# La última fila importa tanto como las otras: si el preflight falla (destino a medias) o no llega a emitir estado, lo
-# cómodo sería tratarlo como "no hay destino" y terminar en verde. Eso es la mentira que ADR-048 §3 prohíbe.
+# El orden es el de la tabla (design D1 de `staging-host`). La fila de `partial` va **antes** que la del modo: un
+# destino a medias es un defecto de configuración también en modo de prueba o fuera de `main`, y con el modo delante
+# `partial` + `test` saldría verde. Si el preflight falla (destino a medias) o no llega a emitir estado, lo cómodo sería
+# tratarlo como "no hay destino" y terminar en verde. Eso es la mentira que ADR-048 §3 prohíbe.
+#
+# `RUN_MODE` (`real` | `test` | `off-main`) es el modo de la corrida: `test` es el modo de prueba (`dry_run`) y
+# `off-main`, una corrida real lanzada desde otra rama. **Ausente vale `real`**: `cd-prod` no lo pasa hasta 35c y su
+# comportamiento no cambia. Un valor desconocido es `failure` nombrándolo: inventarle un significado sería decidir a
+# ciegas si se desplegó.
 #
 # --- El cuarto desenlace: "no se pudo verificar" no es "el artefacto está roto" ---------------------------------------
 # La primera fila decía siempre lo mismo —"El artefacto no se construyó o no arrancó"— y en las corridas reales
@@ -72,6 +81,8 @@ set -euo pipefail
 PREFLIGHT_STATE="${PREFLIGHT_STATE:-}"
 # Opcional **a propósito**: su ausencia es un desenlace previsto (sin causa), no un error de invocación.
 VERIFY_FAIL_CLASS="${VERIFY_FAIL_CLASS:-}"
+# Ausente = `real` (ver la cabecera): `cd-prod` no lo pasa hasta 35c.
+RUN_MODE="${RUN_MODE:-real}"
 
 fail() {
   printf '::error::%s\n' "$1" >&2
@@ -107,6 +118,22 @@ if [ "$VERIFY_RESULT" != 'success' ]; then
     # son verde, porque nadie ha comprobado nada. Se nombra el resultado real.
     description="La verificación del artefacto terminó en '${VERIFY_RESULT}': no se publicó nada y no se desplegó nada."
   fi
+elif [ "$PREFLIGHT_STATE" != 'full' ] && [ "$PREFLIGHT_STATE" != 'none' ]; then
+  status_state='failure'
+  name="resultado: destino de ${TARGET_LABEL} indeterminado — no se desplegó"
+  description="El preflight terminó en '${PREFLIGHT_RESULT}' con estado '${PREFLIGHT_STATE:-vacío}': no se despliega."
+elif [ "$RUN_MODE" = 'test' ]; then
+  status_state='success'
+  name="resultado: artefacto verificado — NO desplegado (modo de prueba)"
+  description="Artefacto verificado. NO desplegado: el modo de prueba nunca despliega, haya o no destino de ${TARGET_LABEL}."
+elif [ "$RUN_MODE" = 'off-main' ]; then
+  status_state='success'
+  name="resultado: artefacto verificado — NO desplegado (corrida fuera de main)"
+  description="Artefacto verificado. NO desplegado: solo una corrida de main despliega a ${TARGET_LABEL}."
+elif [ "$RUN_MODE" != 'real' ]; then
+  status_state='failure'
+  name="resultado: modo de corrida desconocido — no se desplegó"
+  description="Modo de corrida desconocido '${RUN_MODE:0:40}' (se espera real, test u off-main): no se despliega."
 elif [ "$PREFLIGHT_STATE" = 'full' ]; then
   if [ "$DEPLOY_RESULT" = 'success' ]; then
     status_state='success'
@@ -117,14 +144,10 @@ elif [ "$PREFLIGHT_STATE" = 'full' ]; then
     name="resultado: artefacto verificado, despliegue a ${TARGET_LABEL} NO completado"
     description="Había destino de ${TARGET_LABEL} y el despliegue terminó en '${DEPLOY_RESULT}': no se desplegó."
   fi
-elif [ "$PREFLIGHT_STATE" = 'none' ]; then
+else
   status_state='success'
   name="resultado: artefacto verificado — NO desplegado (sin destino de ${TARGET_LABEL})"
   description="Artefacto verificado. NO desplegado: no hay destino de ${TARGET_LABEL} configurado (ADR-048 §3)."
-else
-  status_state='failure'
-  name="resultado: destino de ${TARGET_LABEL} indeterminado — no se desplegó"
-  description="El preflight terminó en '${PREFLIGHT_RESULT}' con estado '${PREFLIGHT_STATE:-vacío}': no se despliega."
 fi
 
 # El job escribe la clase por defecto al empezar, así que en una corrida verde llega con valor y no significa nada: se
@@ -139,6 +162,7 @@ printf '=== Resultado del CD\n'
 printf '  verificación del artefacto : %s (clase del fallo: %s)\n' "$VERIFY_RESULT" "$fail_class_shown"
 printf '  preflight                  : %s (estado: %s)\n' "$PREFLIGHT_RESULT" "${PREFLIGHT_STATE:-vacío}"
 printf '  despliegue                 : %s\n' "$DEPLOY_RESULT"
+printf '  modo de la corrida         : %s\n' "$RUN_MODE"
 printf '  ------------------------------------------------------------\n'
 printf '  estado de commit           : %s\n' "$status_state"
 printf '  nombre (lista de checks)   : %s\n' "$name"
@@ -152,6 +176,7 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
     printf '| verificación del artefacto | `%s` (clase del fallo: %s) |\n' "$VERIFY_RESULT" "$fail_class_shown"
     printf '| preflight | `%s` (estado `%s`) |\n' "$PREFLIGHT_RESULT" "${PREFLIGHT_STATE:-vacío}"
     printf '| despliegue | `%s` |\n' "$DEPLOY_RESULT"
+    printf '| modo de la corrida | `%s` |\n' "$RUN_MODE"
     printf '| estado de commit publicado | `%s` |\n' "$status_state"
   } >>"$GITHUB_STEP_SUMMARY"
 fi

@@ -274,6 +274,41 @@ describe('worker configuration', () => {
     });
   });
 
+  // Credenciales SMTP a medias (tarea 7.4/7.6 de staging-host, design D6): el arranque falla nombrando la que falta y
+  // el mensaje no lleva el valor de la otra.
+  it('Credenciales a medias impiden arrancar', () => {
+    const result = parseEnv(workerConfigSchema, {
+      ...readEnvExample(),
+      MAIL_PROVIDER: 'smtp',
+      MAIL_SMTP_USER: 'usuario-smtp-de-prueba',
+      MAIL_SMTP_PASSWORD: undefined,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      invalid: [{ name: 'MAIL_SMTP_PASSWORD', reason: 'missing' }],
+    });
+    const message = result.ok
+      ? ''
+      : formatInvalidVariables('worker', result.invalid);
+    expect(message).toContain('MAIL_SMTP_PASSWORD');
+    expect(message).not.toContain('usuario-smtp-de-prueba');
+  });
+
+  it('SMTP con usuario y contraseña arranca, con STARTTLS por defecto', () => {
+    const result = parseEnv(workerConfigSchema, {
+      ...readEnvExample(),
+      MAIL_PROVIDER: 'smtp',
+      MAIL_SMTP_USER: 'usuario-smtp-de-prueba',
+      MAIL_SMTP_PASSWORD: 'clave-smtp-de-prueba',
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.config.MAIL_SMTP_SECURE).toBe(false);
+    }
+  });
+
   it('requires the Resend key when MAIL_PROVIDER=resend', () => {
     const result = parseEnv(workerConfigSchema, {
       ...readEnvExample(),

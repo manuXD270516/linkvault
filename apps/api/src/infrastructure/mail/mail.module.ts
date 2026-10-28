@@ -25,6 +25,9 @@ import { SmtpMailer } from './smtp-mailer';
               host: config.MAIL_SMTP_HOST ?? 'localhost',
               port: config.MAIL_SMTP_PORT ?? 1025,
               from: config.MAIL_FROM,
+              secure: config.MAIL_SMTP_SECURE,
+              user: config.MAIL_SMTP_USER,
+              password: config.MAIL_SMTP_PASSWORD,
             });
           case 'resend':
             return new ResendMailer({

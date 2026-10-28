@@ -75,6 +75,7 @@ export async function workerTestConfig(
     MAIL_FROM: 'LinkVault <noreply@example.com>',
     MAIL_SMTP_HOST: 'localhost',
     MAIL_SMTP_PORT: 1025,
+    MAIL_SMTP_SECURE: false,
     RESEND_API_KEY: undefined,
     VAPID_PUBLIC_KEY: '',
     VAPID_PRIVATE_KEY: '',

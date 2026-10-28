@@ -72,6 +72,7 @@ export async function apiTestConfig(
     MAIL_FROM: 'LinkVault <noreply@example.com>',
     MAIL_SMTP_HOST: 'localhost',
     MAIL_SMTP_PORT: 1025,
+    MAIL_SMTP_SECURE: false,
     RESEND_API_KEY: undefined,
     AUTH_VERIFY_TOKEN_TTL_HOURS: 24,
     AUTH_RESET_TOKEN_TTL_SECONDS: 3600,

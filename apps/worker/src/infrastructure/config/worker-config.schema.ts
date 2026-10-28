@@ -1,3 +1,4 @@
+import { mailConfigShape, refineMailConfig } from '@linkvault/shared';
 import { z } from 'zod';
 
 const port = z.coerce.number().int().min(1).max(65_535);
@@ -44,10 +45,9 @@ export const workerConfigSchema = z
       .string()
       .min(1)
       .default('0 14 * * 1')
-      .refine(
-        (value) => value.trim().split(/\s+/).length >= 5,
-        { message: 'GROUP_DIGEST_CRON must be a cron expression' },
-      ),
+      .refine((value) => value.trim().split(/\s+/).length >= 5, {
+        message: 'GROUP_DIGEST_CRON must be a cron expression',
+      }),
     MEILI_HOST: z
       .string()
       .default('')
@@ -131,14 +131,9 @@ export const workerConfigSchema = z
     // pareja con `MATCH_ANALYSIS_TIMEOUT_MS` es `assertAnalysisDeadlines` en el arranque de cada proceso.
     MATCH_ANALYSIS_MAX_AGE_MS: positiveInt.min(1_000).max(600_000),
     // --- Notificaciones de producto (ADR-035) ---
-    WEB_BASE_URL: z
-      .string()
-      .regex(/^https?:\/\/[^\s/]+(\/[^\s?#]*[^\s/?#])?$/),
-    MAIL_PROVIDER: z.enum(['smtp', 'resend', 'capture']),
-    MAIL_FROM: z.string().min(1),
-    MAIL_SMTP_HOST: z.string().min(1).optional(),
-    MAIL_SMTP_PORT: port.optional(),
-    RESEND_API_KEY: z.string().optional(),
+    WEB_BASE_URL: z.string().regex(/^https?:\/\/[^\s/]+(\/[^\s?#]*[^\s/?#])?$/),
+    // El mismo fragmento y las mismas reglas que `api` (`@linkvault/shared`, design D6 de `staging-host`).
+    ...mailConfigShape,
     VAPID_PUBLIC_KEY: z.string().optional().default(''),
     VAPID_PRIVATE_KEY: z.string().optional().default(''),
     VAPID_SUBJECT: z.string().optional().default(''),
@@ -152,34 +147,11 @@ export const workerConfigSchema = z
         message: 'ENRICH_DEADLINE_MS must be >= ENRICH_FETCH_TIMEOUT_MS',
       });
     }
-    // Las mismas ramas de correo que `apiConfigSchema` (ADR-034). Hasta este change solo las comprobaba `api`, así
-    // que un worker con `MAIL_PROVIDER=smtp` y sin `MAIL_SMTP_HOST` arrancaba y fallaba al enviar el primer correo:
-    // el defecto se descubría en la bandeja de entrada de otra persona, no al arrancar.
-    if (config.MAIL_PROVIDER === 'resend') {
-      if (config.RESEND_API_KEY === undefined || config.RESEND_API_KEY === '') {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['RESEND_API_KEY'],
-          message: 'RESEND_API_KEY is required when MAIL_PROVIDER=resend',
-        });
-      }
-    }
-    if (config.MAIL_PROVIDER === 'smtp') {
-      if (config.MAIL_SMTP_HOST === undefined || config.MAIL_SMTP_HOST === '') {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['MAIL_SMTP_HOST'],
-          message: 'MAIL_SMTP_HOST is required when MAIL_PROVIDER=smtp',
-        });
-      }
-      if (config.MAIL_SMTP_PORT === undefined) {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['MAIL_SMTP_PORT'],
-          message: 'MAIL_SMTP_PORT is required when MAIL_PROVIDER=smtp',
-        });
-      }
-    }
+    // Las mismas ramas de correo que `apiConfigSchema` (ADR-034), escritas una vez en `@linkvault/shared`: un worker
+    // con `MAIL_PROVIDER=smtp` y sin `MAIL_SMTP_HOST`, o con credenciales a medias, no arranca. Antes de
+    // `deploy-image-verification` solo las comprobaba `api`, y el defecto se descubría en la bandeja de entrada de otra
+    // persona, no al arrancar.
+    refineMailConfig(config, ctx);
   });
 
 export type WorkerConfig = z.output<typeof workerConfigSchema>;

@@ -166,6 +166,9 @@ export class NotificationsModule {
             {
               host: config.MAIL_SMTP_HOST ?? 'localhost',
               port: config.MAIL_SMTP_PORT ?? 1025,
+              secure: config.MAIL_SMTP_SECURE,
+              user: config.MAIL_SMTP_USER,
+              password: config.MAIL_SMTP_PASSWORD,
             },
             config.RESEND_API_KEY,
           );

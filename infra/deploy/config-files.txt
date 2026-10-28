@@ -1,0 +1,7 @@
+docker-compose.prod.yml
+infra/traefik/dynamic.yml
+infra/deploy/config-files.txt
+infra/deploy/deploy.sh
+infra/deploy/install-config.sh
+infra/deploy/smoke.sh
+infra/deploy/check-image-platforms.sh

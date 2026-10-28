@@ -4,7 +4,7 @@ import { parseEnv as parseDotenv } from 'node:util';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { apiTestAiConfig, apiTestConfig } from '../../test-support/test-config';
 import { AUTH_JWT_SECRET_EXAMPLE, apiConfigSchema } from './api-config.schema';
-import { parseEnv } from './env-parser';
+import { formatInvalidVariables, parseEnv } from './env-parser';
 import { loadApiConfigOrExit } from './load-api-config';
 
 class ProcessExit extends Error {
@@ -99,6 +99,7 @@ describe('api configuration', () => {
       MAIL_FROM: 'LinkVault <noreply@example.com>',
       MAIL_SMTP_HOST: 'localhost',
       MAIL_SMTP_PORT: 1025,
+      MAIL_SMTP_SECURE: false,
       AUTH_VERIFY_TOKEN_TTL_HOURS: 24,
       AUTH_RESET_TOKEN_TTL_SECONDS: 3600,
       EXTENSION_CORS_ORIGINS: [],
@@ -121,6 +122,41 @@ describe('api configuration', () => {
   it('ejemplo local arranca con smtp', () => {
     const result = parseEnv(apiConfigSchema, readEnvExample());
     expect(result.ok).toBe(true);
+  });
+
+  // Credenciales SMTP a medias (tarea 7.4/7.6 de staging-host, design D6): el arranque falla nombrando la que falta y
+  // el mensaje no lleva el valor de la otra.
+  it('Credenciales a medias impiden arrancar', () => {
+    const result = parseEnv(apiConfigSchema, {
+      ...readEnvExample(),
+      MAIL_PROVIDER: 'smtp',
+      MAIL_SMTP_USER: 'usuario-smtp-de-prueba',
+      MAIL_SMTP_PASSWORD: undefined,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      invalid: [{ name: 'MAIL_SMTP_PASSWORD', reason: 'missing' }],
+    });
+    const message = result.ok
+      ? ''
+      : formatInvalidVariables('api', result.invalid);
+    expect(message).toContain('MAIL_SMTP_PASSWORD');
+    expect(message).not.toContain('usuario-smtp-de-prueba');
+  });
+
+  it('SMTP con usuario y contraseña arranca, con STARTTLS por defecto', () => {
+    const result = parseEnv(apiConfigSchema, {
+      ...readEnvExample(),
+      MAIL_PROVIDER: 'smtp',
+      MAIL_SMTP_USER: 'usuario-smtp-de-prueba',
+      MAIL_SMTP_PASSWORD: 'clave-smtp-de-prueba',
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.config.MAIL_SMTP_SECURE).toBe(false);
+    }
   });
 
   it('EXTENSION_CORS_ORIGINS acepta chrome-extension y moz-extension', () => {
@@ -156,14 +192,11 @@ describe('api configuration', () => {
   });
 
   // URLs públicas declaradas (spec platform/local-environment): obligatorias, absolutas y sin barra final.
-  it.each(['PUBLIC_PAGE_BASE_URL', 'WEB_BASE_URL'])(
-    'requires %s',
-    (name) => {
-      expect(
-        parseEnv(apiConfigSchema, { ...readEnvExample(), [name]: undefined }),
-      ).toEqual({ ok: false, invalid: [{ name, reason: 'missing' }] });
-    },
-  );
+  it.each(['PUBLIC_PAGE_BASE_URL', 'WEB_BASE_URL'])('requires %s', (name) => {
+    expect(
+      parseEnv(apiConfigSchema, { ...readEnvExample(), [name]: undefined }),
+    ).toEqual({ ok: false, invalid: [{ name, reason: 'missing' }] });
+  });
 
   it.each([
     ['PUBLIC_PAGE_BASE_URL', 'http://localhost:3000/'],
@@ -210,7 +243,10 @@ describe('api configuration', () => {
       [name]: undefined,
     });
 
-    expect(result).toEqual({ ok: false, invalid: [{ name, reason: 'missing' }] });
+    expect(result).toEqual({
+      ok: false,
+      invalid: [{ name, reason: 'missing' }],
+    });
   });
 
   it('rejects a CV bucket name that S3 would not accept', () => {

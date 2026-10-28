@@ -1,6 +1,14 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  inject,
+  signal,
+} from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
-import { type RequestFailure, toRequestFailure } from '../../core/api/api-error';
+import {
+  type RequestFailure,
+  toRequestFailure,
+} from '../../core/api/api-error';
 import { AuthApi } from '../../core/auth/auth.api';
 import { SessionStore } from '../../core/auth/session.store';
 import { RequestError } from '../../shared/ui/request-error';
@@ -20,7 +28,15 @@ import { RequestError } from '../../shared/ui/request-error';
         data-testid="email-unverified-banner"
       >
         <p i18n="@@emailVerify.banner.message">
-          Tu email aún no está verificado. Revisa tu bandeja o reenvía el correo de verificación.
+          Tu email aún no está verificado. Revisa tu bandeja o reenvía el correo
+          de verificación.
+        </p>
+        <p
+          class="m-0 text-(--mat-sys-on-surface-variant)"
+          i18n="@@emailVerify.banner.notRequired"
+        >
+          No hace falta verificarlo para empezar a usar LinkVault. Si no
+          encuentras el correo, revisa la carpeta de spam.
         </p>
         <div class="flex flex-wrap items-center gap-2">
           <button
@@ -33,7 +49,10 @@ import { RequestError } from '../../shared/ui/request-error';
             Reenviar correo
           </button>
           @if (resent()) {
-            <p class="m-0 text-(--mat-sys-on-surface-variant)" i18n="@@emailVerify.banner.resent">
+            <p
+              class="m-0 text-(--mat-sys-on-surface-variant)"
+              i18n="@@emailVerify.banner.resent"
+            >
               Si procede, te hemos enviado un correo de verificación.
             </p>
           }
