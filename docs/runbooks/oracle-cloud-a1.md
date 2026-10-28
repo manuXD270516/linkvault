@@ -249,6 +249,113 @@ A partir de aquí 35b hace, verificando cada paso: `.env.staging` y su copia fue
 lectura del registro (5.9), secretos y primer despliegue (6.x), TLS con sslip.io y Let's Encrypt (6.8-6.9), correo por
 Brevo (7.x) y la precondición de invitar (9.x).
 
+## 13. Lo que falta de tu parte para el primer despliegue
+
+El código de 35b que va antes de los secretos ya está en `main` (PR-1, #86: guardias del despliegue, SSH nativo con la
+configuración del mismo commit y correo SMTP autenticado). Lo que queda para desplegar y para invitar depende de
+**cuatro cosas tuyas**. Ninguna pasa un secreto por el chat.
+
+| Pendiente | Apartado | Qué desbloquea en 35b | Qué me pasas cuando lo tengas |
+|---|---|---|---|
+| Servidor de Oracle | 13.1 | grupo 5 (5.2-5.9) y, con él, los secretos (6.1) y el primer despliegue (6.x) | los datos del paso 12 |
+| Pago por uso | 13.2 | 5.10 y el PR-2 | «sí» o «no» (y, si es sí, que el presupuesto está creado) |
+| Cuenta de Brevo | 13.3 | 7.9-7.12 (correo real) | que está hecho, **sin** la clave |
+| Personas invitadas | 13.4 | 9.7, 9.8, 10.1 y la invitación (10.7) | que tienes la lista y las entrevistas, **sin** nombres |
+
+**Orden recomendado:** 13.1 y 13.2 juntos (la decisión de pago por uso puede hacer falta si no hay capacidad ARM),
+después 13.3 (el correo tiene que funcionar antes de invitar) y 13.4 en paralelo desde ya, porque las entrevistas no
+dependen del servidor.
+
+### 13.1 Servidor de Oracle
+
+Es este runbook entero: pasos 1 a 10, en orden, y la lista de comprobación del final. Al terminar, pásame **solo** lo
+del paso 12 (región, AD, `nproc`/`free -g`, IP reservada, usuario `deploy`, ruta `/srv/linkvault-staging` y la clave
+**pública** `ssh-ed25519 …` del host).
+
+- **Si no hay capacidad ARM** («Out of host capacity», paso 6): reintenta en cada AD hasta 45 minutos por sesión y
+  anota cada intento (hora y AD); tras tres días sin capacidad, decide 13.2 o la alternativa de Fly.io (ADR-054).
+- **La clave del usuario `deploy`:** déjale preparada la carpeta `.ssh` (paso 10) y espera a que 35b te dé la clave
+  pública de despliegue para pegarla en `authorized_keys`. No reutilices tu clave de administración.
+- **Lo que hago yo con tus datos:** `.env.staging` y su copia fuera del host (5.7-5.8), la credencial de lectura del
+  registro (5.9) y la lista de los seis secretos del CD que pones **tú** con `gh secret set` (6.1). Después, el primer
+  despliegue relanzando el `preflight` de la corrida del PR-1 (6.3; hay plazo: **30 días** desde esa corrida, que es del
+  2026-10-28).
+
+### 13.2 Pago por uso (tarea 5.10)
+
+La comparación está en el paso 11. Resumen para decidir:
+
+- **No pasar:** sigue costando 0 €, pero Oracle puede **reclamar** la instancia si en 7 días queda por debajo del
+  20 % de uso (CPU, red y memoria). Staging es desechable y se reconstruye, así que el riesgo es perder tiempo, no
+  datos de nadie: el aviso a las personas invitadas ya dice que el entorno puede perderse.
+- **Pasar:** también 0 € mientras no salgas de Always Free, sin reclamación por inactividad y con más facilidad para
+  conseguir capacidad ARM. El riesgo es un cobro si alguien crea algo fuera de lo gratuito; por eso, **en el mismo
+  momento**, el presupuesto con alerta a 1 € del paso 11.
+
+Dime la decisión en el chat. 35b la anota en `infra/README.md` y, si es «no», el aviso a los invitados lleva la
+reclamación a 7 días (9.10). La memoria real en régimen se mide tras el primer despliegue (6.4), por si quieres
+revisarla con el dato.
+
+### 13.3 Cuenta de Brevo (correo de staging)
+
+Staging envía la verificación de cuenta y la recuperación de contraseña por **Brevo**, por SMTP con usuario y
+contraseña, con un remitente verificado y **sin dominio propio** (ADR-051; plan gratuito de 300 correos al día). Los
+nombres de los menús de Brevo cambian a menudo: si no coinciden, busca el equivalente.
+
+1. **Crea la cuenta** en <https://www.brevo.com/> con el plan gratuito y activa la verificación en dos pasos.
+2. **Verifica el remitente:** *Senders, domains & dedicated IPs → Senders → Add a sender*, con un nombre visible
+   (`LinkVault`) y una dirección **que controles**; Brevo manda un código o un enlace a esa dirección. Esa dirección es
+   la de `MAIL_FROM`. Sin dominio propio no hay DKIM alineado y los correos **pueden ir a spam**: es un riesgo aceptado
+   (ADR-051) que 35b mide antes de invitar (7.10).
+3. **Genera la clave SMTP:** *SMTP & API → SMTP → Generate a new SMTP key*, con un nombre como `linkvault-staging`. La
+   pantalla muestra el **servidor** (`smtp-relay.brevo.com`), el **puerto** (587) y el **login** SMTP (no es tu
+   contraseña de Brevo). La clave solo se ve una vez: guárdala en tu gestor de contraseñas.
+4. **Ponla en el host, no en el chat.** Por SSH, en `/srv/linkvault-staging/.env.staging` (permisos `600`), sustituye
+   los `MAIL_*` provisionales que dejó la tarea 5.7:
+
+   ```bash
+   MAIL_PROVIDER=smtp
+   MAIL_FROM=LinkVault <la-direccion-verificada>
+   MAIL_SMTP_HOST=smtp-relay.brevo.com
+   MAIL_SMTP_PORT=587
+   MAIL_SMTP_SECURE=false        # STARTTLS exigido en el 587: con credenciales, la app cifra antes de autenticarse
+   MAIL_SMTP_USER=<el login SMTP de Brevo>
+   MAIL_SMTP_PASSWORD=<la clave SMTP>
+   ```
+
+   Las dos credenciales van **juntas**: con una sola, `api` y `worker` no arrancan y dicen cuál falta.
+5. **Actualiza la copia de `.env.staging`** que guardaste fuera del host (5.8): sin ella, la reconstrucción perdería la
+   clave.
+6. **Avísame** de que está hecho. Desde el host compruebo el TLS de Brevo (7.9) y, con la pila arriba, envío la
+   verificación a una cuenta de Gmail, una de Outlook y una de otro proveedor (7.10): si llega a la bandeja de entrada
+   en al menos dos de los tres, seguimos; si no, la decisión vuelve a ti (dominio propio con su coste, o el riesgo
+   aceptado por escrito).
+
+**Si un correo no sale**, el log de `api` o `worker` lo dice sin mostrar credenciales: `class=credentials_rejected`
+es la clave mal copiada; `class=quota_exceeded`, el cupo diario de Brevo agotado (vuelve al día siguiente). Detalle en
+el RUNBOOK, [«Operar staging»](../RUNBOOK.md#paso-6-sexdecies--operar-staging-staging-host--adr-051).
+
+### 13.4 Personas invitadas (Q4, tareas 9.7 y 10.1)
+
+**Ya decidido** (2026-10-08): **5 personas** que buscan empleo ahora, configurable; las **5 entran en tu grupo** con el
+código de unión. Esto último es la interpretación de tu «respetemos 5»: si querías otra cosa, dilo y se corrige
+(design D15 sugería 2 o 3 en el grupo). Está escrito en el RUNBOOK,
+[«Personas invitadas»](../RUNBOOK.md#personas-invitadas).
+
+**Lo que falta, todo fuera del repositorio:**
+
+1. **La lista nominal** de quiénes. Vive en el host (`/srv/linkvault-staging/invited-ids.txt`, con los ids de usuario
+   cuando existan) y en tus notas; **nunca** en el repositorio ni en el chat.
+2. **Una entrevista de 10 minutos con cada persona, antes de invitarla** (9.7): cómo guarda hoy las ofertas, **qué
+   fuentes de ofertas usa y cómo le llegan** (enlace directo, WhatsApp, correo, aplicación). Pásame las respuestas
+   **anonimizadas** (persona 1, persona 2…): 35b las escribe en el RUNBOOK con una tabla de fuentes. Con ellas se
+   prepara el recorrido en el móvil con los cinco links reales de las fuentes más usadas (9.8).
+3. **No invites todavía.** La invitación es la tarea 10.7 y tiene condiciones: correo medido (13.3), pago por uso
+   decidido (13.2), la precondición de `e2e-suite` en verde contra staging y la línea base de la medición. Cuando
+   invites, cada persona recibe **antes del alta** el texto del RUNBOOK,
+   [«Aviso para las personas invitadas»](../RUNBOOK.md#aviso-para-las-personas-invitadas), por el mismo canal por el
+   que la invitas.
+
 ## Lista de comprobación
 
 - [ ] Cuenta aprovisionada, MFA activo, home region anotada
@@ -261,3 +368,8 @@ Brevo (7.x) y la precondición de invitar (9.x).
 - [ ] Docker y Compose instalados desde el repositorio oficial; `hello-world` funciona
 - [ ] Usuario `deploy` con solo clave y en el grupo `docker`; SSH sin contraseñas ni root
 - [ ] Decisión de pago por uso tomada (y, si es sí, presupuesto con alerta a 1 €)
+- [ ] Datos del paso 12 pasados a 35b (sin secretos)
+- [ ] Brevo: cuenta con verificación en dos pasos, remitente verificado y clave SMTP generada
+- [ ] `.env.staging` con los `MAIL_*` de Brevo y su copia fuera del host actualizada; aviso a 35b de que está hecho
+- [ ] Lista nominal de las 5 personas (fuera del repositorio) y entrevista de 10 minutos con cada una
+- [ ] Respuestas de las entrevistas pasadas a 35b, anonimizadas
