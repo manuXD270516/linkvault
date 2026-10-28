@@ -574,6 +574,27 @@ changes:
       Textos nuevos en ES y EN con el catálogo re-extraído (ADR-050).
       Fuera: H3 (a `e2e-suite-lot-2`, con H11), H7 (a un change con datos reales de 35b) y H8-H17 (pruebas y
       configuración de la pila e2e; su sitio es `e2e-suite-lot-2` o un change de fixtures).
+  - name: web-shell-capabilities
+    adrs: [059, 048, 051, 055, 053, 050, 036, 043, 035]
+    agents: [backend-dev, frontend-dev]
+    scope: |
+      **Propuesto como ∥ 35b, segunda excepción a la precedencia de la fila 35** (ADR-048 §Consecuencias, extendida a
+      la fila entera por ADR-051 §1). ADR-055 §1 no la cubre: **abrirlo, aplicarlo y fusionarlo antes de invitar en
+      35b es la Q1 del change, del owner y bloqueante para `/opsx:apply`** (ADR-059 §1; recomendación: sí, antes de la
+      6.3 de 35b o repitiendo su 10.7 y la 9.4 de `e2e-suite`). Si la respuesta es no, espera a archivar 35c. No toca
+      composes, workflows, variables de entorno ni requirements de `platform/ci-pipeline`, `platform/email` o
+      `platform/production-deploy`.
+      **Capacidades:** `GET /api/capabilities` con sesión, `{ search, discovery, push }` booleanos derivados de la
+      configuración (no de la salud), contrato zod en `libs/shared` (estricto en la API, aditivo en el cliente),
+      calculado una vez y con `Cache-Control: private, max-age=300` (ADR-059 §2).
+      **SPA:** «Buscar» y «Descubrir» solo con su capacidad (ocultas mientras carga, visibles si la petición falla);
+      enlace directo a `/buscar` o `/descubrir` apagados = la página dice «no está activada en este entorno» y
+      ofrece «Solo para mí», sin redirigir ni llamar a la API; «Activar push» deshabilitado con explicación.
+      **Barra compacta** por debajo de 1024 px: una fila con la marca y «Menú», que despliega un `<nav>` de enlaces
+      (disclosure), con una sola lista de entradas (Grupos, Solo para mí, Postulaciones, Mi CV, Buscar, Descubrir,
+      Perfil). Textos ES/EN (ADR-050). `critical-path.spec.ts` (`@lot1`) navega por la barra en los dos modos,
+      afirma las entradas contra la respuesta de capacidades y se re-admite (ADR-053).
+      Coordinación: `web-english-locale` (fila 37) pone su selector en esta misma lista.
   - name: staging-host
     adrs: [051, 048, 033, 034, 035, 032]
     agents: [devops, backend-dev, frontend-dev, ai-engineer]
