@@ -17,20 +17,23 @@ Cada error SHALL decir lo que pasa, con estos textos:
 | --- | --- |
 | `422` | «Eso no parece una oferta de trabajo. Copia la descripción de la oferta, no la conversación» |
 | `503` `extraction_unavailable` | «No pudimos leerla ahora, inténtalo en un rato» |
-| `503` `ai_capacity_exhausted` con `Retry-After` | «La IA llegó a su límite de lecturas. Vuelve {cuándo}» |
-| `503` `ai_capacity_exhausted` sin `Retry-After` | «La IA llegó a su límite de lecturas y no sabemos cuándo vuelve» |
+| `503` `ai_capacity_exhausted` | «La IA no admite más lecturas por ahora y no sabemos cuándo vuelve» |
 | `503` `extraction_disabled` | «La lectura automática no está disponible. Puedes completarla a mano» |
-| `409` `ai_consent_required` | «Para leerla con IA hace falta el permiso de IA externa, que tienes apagado. Puedes completarla a mano» |
+| `409` `ai_consent_required` | «Tu cuenta no permite leerla con IA externa. Puedes completarla a mano» |
 | `429` por límite de pegados | «Pegaste demasiadas ofertas seguidas, espera un poco» |
 | `429` `ai_quota_exceeded` | «Llegaste a tu límite de lecturas con IA. Podrás volver a pegar {cuándo}» |
 
-{cuándo} SHALL calcularse con el `Retry-After` y decirse en la hora local: «hoy a las HH:mm» si cae hoy, «mañana a las
-HH:mm» si cae mañana y una fecha corta en otro caso. Ningún texto SHALL invitar a reintentar «en un rato» cuando la
+{cuándo} solo aparece con `ai_quota_exceeded`. SHALL calcularse con el `Retry-After`, redondearse hacia arriba al minuto
+siguiente para no anunciar nunca una hora anterior a la real, y decirse en la hora local: «hoy a las HH:mm» si cae hoy,
+«mañana a las HH:mm» si cae mañana y una fecha corta en otro caso. Ante `ai_capacity_exhausted` el diálogo SHALL ignorar
+el `Retry-After` aunque la respuesta lo traiga. Ningún texto SHALL invitar a reintentar «en un rato» cuando la
 respuesta no es `extraction_unavailable`. En todos los errores SHALL conservarse lo pegado.
 
-Ante `ai_capacity_exhausted`, `extraction_disabled` y `ai_consent_required`, «Completar a mano» SHALL ser la acción
-principal del diálogo. Volver a enviar SHALL quedar como acción secundaria ante `ai_capacity_exhausted` y NO SHALL
-ofrecerse ante `extraction_disabled` ni ante `ai_consent_required`, porque reenviar no cambia nada.
+Ante `ai_capacity_exhausted`, `ai_quota_exceeded`, `extraction_disabled` y `ai_consent_required`, «Completar a mano»
+SHALL ser la acción principal del diálogo. Volver a enviar SHALL quedar como acción secundaria ante
+`ai_capacity_exhausted` y `ai_quota_exceeded`, y NO SHALL ofrecerse ante `extraction_disabled` ni ante
+`ai_consent_required`, porque reenviar no cambia nada. Las acciones SHALL aparecer en este orden: la principal, la
+secundaria si la hay, y cancelar, también en una pantalla de 360 px de ancho.
 
 #### Scenario: Completar una oferta de LinkedIn
 
@@ -58,21 +61,34 @@ ofrecerse ante `extraction_disabled` ni ante `ai_consent_required`, porque reenv
 - **GIVEN** son las 10:00 en la hora local
 - **WHEN** la API responde `429` con `ai_quota_exceeded` y `Retry-After: 10800`
 - **THEN** SHALL mostrarse «Llegaste a tu límite de lecturas con IA. Podrás volver a pegar hoy a las 13:00»
+- **AND** «Completar a mano» SHALL ser la acción principal y volver a enviar, la secundaria
 - **AND** SHALL conservarse lo pegado
 
-#### Scenario: Cupo de la IA agotado sin hora
+#### Scenario: La hora de vuelta se redondea hacia arriba
 
-- **WHEN** la API responde `503` con `ai_capacity_exhausted` sin `Retry-After`
-- **THEN** SHALL mostrarse «La IA llegó a su límite de lecturas y no sabemos cuándo vuelve»
+- **GIVEN** son las 10:00:30 en la hora local
+- **WHEN** la API responde `429` con `ai_quota_exceeded` y `Retry-After: 10800`
+- **THEN** SHALL mostrarse «Podrás volver a pegar hoy a las 13:01», nunca «13:00»
+
+#### Scenario: Cupo de la IA agotado
+
+- **WHEN** la API responde `503` con `ai_capacity_exhausted`
+- **THEN** SHALL mostrarse «La IA no admite más lecturas por ahora y no sabemos cuándo vuelve»
 - **AND** NO SHALL mostrarse «inténtalo en un rato»
 - **AND** «Completar a mano» SHALL ser la acción principal y volver a enviar, la secundaria
 - **AND** SHALL conservarse lo pegado
 
-#### Scenario: Cupo de la IA agotado con hora
+#### Scenario: El cupo de la IA ignora Retry-After
 
-- **GIVEN** son las 20:00 en la hora local
 - **WHEN** la API responde `503` con `ai_capacity_exhausted` y `Retry-After: 46800`
-- **THEN** SHALL mostrarse «La IA llegó a su límite de lecturas. Vuelve mañana a las 09:00»
+- **THEN** SHALL mostrarse «La IA no admite más lecturas por ahora y no sabemos cuándo vuelve»
+- **AND** NO SHALL mostrarse ninguna hora
+
+#### Scenario: Orden de las acciones en el móvil
+
+- **GIVEN** una pantalla de 360 px de ancho
+- **WHEN** la API responde `503` con `ai_capacity_exhausted`
+- **THEN** SHALL verse, en este orden, «Completar a mano», volver a enviar y cancelar, sin desplazamiento horizontal
 
 #### Scenario: Lectura automática no disponible
 
@@ -84,8 +100,7 @@ ofrecerse ante `extraction_disabled` ni ante `ai_consent_required`, porque reenv
 #### Scenario: Falta el permiso
 
 - **WHEN** la API responde `409` con `ai_consent_required`
-- **THEN** SHALL mostrarse «Para leerla con IA hace falta el permiso de IA externa, que tienes apagado. Puedes
-  completarla a mano»
+- **THEN** SHALL mostrarse «Tu cuenta no permite leerla con IA externa. Puedes completarla a mano»
 - **AND** «Completar a mano» SHALL ser la acción principal y NO SHALL ofrecerse volver a enviar
 - **AND** NO SHALL ofrecerse ninguna acción que lleve a `/perfil`
 

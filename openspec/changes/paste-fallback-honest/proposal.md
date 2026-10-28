@@ -51,9 +51,11 @@ porque lo van a ver justo las 3 a 5 personas que 35b invita, y con la IA de stag
 de su primer uso. **El owner no lo decidió todavía**: es la **Q1** de `design.md`, bloqueante para `/opsx:apply`.
 Mientras tanto, este change solo existe como spec. Si se aprueba, la excepción no cambia el orden de la fila
 (35b → 35c), no libera la precedencia para ningún otro change y no toca ficheros de despliegue, workflows ni
-requirements de `platform/*`. Y aun aprobada, el PR solo se fusiona **después de la 11.6 de 35b y antes de su 10.7**,
-repitiendo la 9.4 de `e2e-suite` y nunca los días 7 y 14 de la medición (design D11), salvo que el owner autorice
-expresamente fusionar entre el PR-1 y el PR-2 de 35b (Q1 (d)).
+requirements de `platform/*`. Y aun aprobada, la excepción cubre las tres clases de fusión del change (design D11): el PR
+se fusiona **después de la 11.6 de 35b y antes de su 10.7**, según confirmación escrita y fechada del owner, repitiendo
+la 9.4 de `e2e-suite`; el PR de archivo y las vueltas atrás siguen reglas propias (nunca entre el PR-2 de 35b y su 11.6,
+nunca durante su 9.1-9.4, nunca los días 7 y 14 de la medición, nunca el día de una corrida `e2e-remote`). Fusionar
+antes exige que el owner autorice expresamente fusionar entre el PR-1 y el PR-2 de 35b (Q1 (d)).
 
 ## What Changes
 
@@ -61,16 +63,17 @@ expresamente fusionar entre el PR-1 y el PR-2 de 35b (Q1 (d)).
   código HTTP: `rate_limited` (`429`), `rejected` (`401`, `402`, `403` y `404`: con esta configuración no va a
   atender, y reintentar no lo cambia) y `unavailable` (el resto: red, `5xx`, plazo). Ningún proveedor lee el cuerpo
   del error (ADR-018 §12 se mantiene).
-- **El breaker recuerda la clase del último fallo.** Todas las clases cuentan igual en la ventana de 5 fallos: el
-  circuito abre y cierra exactamente como hoy.
+- **El breaker recuerda la clase dominante de su ventana** (`unavailable` > `rate_limited` > `rejected`), dentro
+  del mismo estado del circuito y sin caducidades nuevas. Todas las clases cuentan igual en la ventana de 5 fallos: el
+  circuito abre y cierra exactamente como hoy. `runTask` y `embedTexts` registran la clase.
 - **El degradado dice por qué falló el proveedor.** Cuando el motivo es `providers_failed` o `no_providers`, el
-  resultado puede traer la condición agregada de los proveedores afectados (`consent_required`, `unavailable`,
+  resultado puede traer la condición agregada de los proveedores afectados (`consent_missing`, `unavailable`,
   `rate_limited` o `rejected`, sin instante). Los cuatro motivos no cambian, el ledger tampoco y `aiQuotaRetryAt` sigue
   siendo solo de `quota_exceeded` (ADR-060).
 - **Errores del pegado distintos y verdaderos** (API, `libs/shared`):
   - `503 extraction_unavailable`, con `Retry-After: 60`: fallo pasajero, y todo degradado sin caso propio. Se mantiene.
-  - `503 ai_capacity_exhausted`: nuevo, para el cupo del proveedor agotado. Sin `Retry-After`: en este change no se
-    sabe cuándo vuelve.
+  - `503 ai_capacity_exhausted`: nuevo, para el proveedor que no admite más lecturas (cupo o saturación). Sin
+    `Retry-After`: en este change no se sabe cuándo vuelve, y el SPA siempre lo dice así.
   - `503 extraction_disabled`: nuevo, para la lectura automática no disponible por configuración o por política de
     datos. Sin `Retry-After`.
   - `409 ai_consent_required`: nuevo, para quien no dio el permiso, cuando el permiso es lo primero que falta.
@@ -79,7 +82,8 @@ expresamente fusionar entre el PR-1 y el PR-2 de 35b (Q1 (d)).
 
   Todos los que no llegaron a leer el texto devuelven el intento de pegado, también la cuota propia.
 - **Diálogo de pegado (SPA):** un texto por caso. **«Completar a mano»** se ofrece en el mismo diálogo tras cualquier
-  error, y es la acción principal ante el cupo agotado, la lectura no disponible y la falta de permiso. Al pulsarlo se
+  error, y es la acción principal ante el cupo agotado, la cuota propia agotada, la lectura no disponible y la falta de
+  permiso. Al pulsarlo se
   abre la corrección a mano del link, con el puesto y la empresa que se escribieron y **lo pegado como referencia
   copiable**, que no se envía ni se guarda. No se ofrece ir al permiso de Perfil, que habla solo del CV (Q7).
 - **i18n** ES/EN según ADR-050: textos nuevos con `@@id` estable, `messages.xlf` re-extraído y `messages.en.xlf`
@@ -97,8 +101,8 @@ Ninguna.
 
 ### Modified Capabilities
 
-- `ai/provider-routing`: nuevo requirement «Clase del fallo de proveedor» y «Circuit breaker por proveedor» (clase del
-  último fallo, sin cambiar cuándo abre).
+- `ai/provider-routing`: nuevo requirement «Clase del fallo de proveedor» y «Circuit breaker por proveedor» (clase
+  dominante de la ventana, sin cambiar cuándo abre).
 - `ai/task-execution`: nuevo requirement «Condición del proveedor en la degradación». «Degradación tipada» no cambia.
 - `links/pasted-description`: «Lo pegado tiene que parecer una oferta» (errores distintos) y «Límite de pegados»
   (qué devuelve el intento).

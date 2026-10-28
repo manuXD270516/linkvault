@@ -11,7 +11,7 @@ Cuando la IA no lee el texto, la respuesta SHALL decir por qué, sin mezclar cas
 - **Cuota diaria de IA de quien pega agotada:** `429` con código `ai_quota_exceeded` y `Retry-After` hasta el instante
   de vuelta que da la IA. Solo si ese instante falta, 24 horas.
 - **Falta el permiso de quien pega para proveedores externos, y ese permiso es lo primero que falta** (motivo de falta de
-  consentimiento, o condición del proveedor `consent_required`): `409` con código `ai_consent_required`, sin
+  consentimiento, o condición del proveedor `consent_missing`): `409` con código `ai_consent_required`, sin
   `Retry-After`.
 - **El proveedor agotó su cupo** (condición del proveedor `rate_limited`): `503` con código `ai_capacity_exhausted`,
   sin `Retry-After`, porque no se sabe cuándo vuelve.

@@ -66,16 +66,32 @@ La versión anterior leía el reinicio de `Retry-After`, de `X-RateLimit-Reset` 
 no está confirmada (la 8.1 de 35b lo hará), y leer el cuerpo era lo único que tocaba ADR-018 §12. Se retoma en un
 change posterior, con la forma real.
 
-### D3. El breaker recuerda la clase del último fallo, sin pausa
+### D3. El breaker recuerda la clase dominante de su ventana, sin pausa
 
 - `recordFailure(providerId, failure?)` recibe `ProviderFailure = { kind: 'rate_limited' | 'rejected' | 'unavailable' }`.
-  Sin argumento vale `{ kind: 'unavailable' }`, así que `embedTexts` y los dobles existentes no cambian.
+  Sin argumento vale `{ kind: 'unavailable' }`, así que los dobles existentes siguen compilando. **`runTask` y
+  `embedTexts` pasan la clase** del `ProviderUnavailable` capturado (`recordFailure(id, { kind })`); cualquier otro
+  error cuenta como `unavailable` (N6).
 - **Todas las clases cuentan igual** en la ventana de 5 fallos en 60 s. La apertura, el half-open de 30 s y el cierre
   no cambian: la clase solo se recuerda.
-- Cada circuito guarda la clase de su último fallo, y `recordSuccess` la borra. `openConditions()` devuelve, por cada
-  circuito abierto, esa clase. Si Redis no responde, devuelve un mapa vacío, como `openIds()`: falla abierta.
-- Lo implementan `InMemoryCircuitBreaker` y `RedisCircuitBreaker` (ADR-030 §8). En Redis, la clase se guarda junto al
-  estado del circuito y con su mismo TTL.
+- **Clase dominante, no la última (N4).** Con el circuito cerrado, cada fallo de la ventana guarda su clase junto a su
+  instante, y los que salen de la ventana se descartan juntos. Al abrirse, el circuito guarda la **clase dominante** de
+  la ventana con la precedencia de D4 (`unavailable` > `rate_limited` > `rejected`). Si la prueba de half-open falla,
+  la clase pasa a ser la de ese fallo: es el único de la ventana del nuevo período abierto. Así, cuatro `429` detrás de
+  un `503` no esconden la caída.
+- **Dónde se escribe y dónde se borra (N5).**
+  - La clase vive **en el mismo JSON** del circuito (`StoredCircuit` en `redis-circuit-breaker.ts`, y su equivalente
+    en memoria): las clases de la ventana van en paralelo a `failures`, y la del circuito abierto, junto a `openedAt`.
+    Un JSON anterior sin esos campos se lee como `unavailable`.
+  - Solo se escribe en los fallos que **hoy cambian el estado**: los que cuentan en la ventana con el circuito cerrado y
+    el de la prueba de half-open. Un fallo con el circuito abierto y sin prueba en curso sigue sin escribir nada.
+  - Solo se borra **donde hoy se borra el circuito**: cuando la prueba recibe respuesta (`recordSuccess` con el
+    circuito abierto) y cuando el circuito queda vacío (`save` → `clear`).
+  - `recordSuccess` con el circuito cerrado **no toca `failures`** ni sus clases, igual que hoy.
+  - En Redis no hay TTL nuevo: la clave de estado sigue sin caducidad, y la del permiso de prueba conserva su `PX`.
+- `openConditions()` devuelve, por cada circuito abierto según la misma regla de `snapshotOpenIds()`, su clase. Si
+  Redis no responde, devuelve un mapa vacío, como `openIds()`: falla abierta.
+- Lo implementan `InMemoryCircuitBreaker` y `RedisCircuitBreaker` (ADR-030 §8).
 
 **Efecto en el encaje (C5).** La vigencia de un degradado del encaje (`cv/match`) se decide con
 `ProviderEligibility`, que solo consulta `snapshotOpenIds()`. Como la clase no cambia cuándo un circuito está abierto,
@@ -86,24 +102,32 @@ la vigencia, el reintento y el ledger del encaje se comportan exactamente igual 
 
 ### D4. El degradado lleva la condición agregada de los proveedores, sin motivo nuevo
 
-`AiDegraded` gana un campo opcional `providerCondition: { kind: 'consent_required' | 'unavailable' | 'rate_limited' |
-'rejected' }`, **sin instante**.
+`AiDegraded` gana un campo opcional `providerCondition: { kind: 'consent_missing' | 'unavailable' | 'rate_limited' |
+'rejected' }`, **sin instante**. `consent_missing` significa «falta el permiso de quien ejecuta y ese permiso es
+necesario para al menos un proveedor de la cadena hipotética». **No implica `consentWouldEnable`** ni el motivo
+`consent_required`: puede acompañar a un `no_providers` cuya cadena compuesta no estaba vacía (N2). El nombre distinto
+evita confundirla con el motivo.
 
 - **Solo** puede acompañar a `providers_failed` y a `no_providers`. Nunca acompaña a `quota_exceeded` ni al motivo
   `consent_required`, y `aiQuotaRetryAt` sigue siendo exclusivo de `quota_exceeded`.
 - **Cadena hipotética (C3).** Se compone con `buildChain` sobre el **mismo universo** de la ejecución (el restringido a
   BYOK si la cuota lo restringió), con `openIds` vacío y con el consentimiento supuesto. La política sigue siendo pura:
   es otra llamada a la misma función.
-- **Proveedores afectados** son los de la cadena hipotética que no dieron salida válida, cada uno con su clase:
+- **Proveedores afectados** son los de la cadena hipotética que no dieron salida válida, cada uno con su clase; vale
+  la primera regla que le aplica:
+  - excluido por falta de consentimiento (tenga o no el circuito abierto): `consent_missing`. La clase recordada del
+    circuito de ese proveedor no cuenta (N1);
   - intentado y fallido: la clase de su error. Un `schema_error` o una cancelación cuentan como `unavailable`;
-  - saltado porque `tryAcquire` no concedió el permiso: `unavailable`;
-  - excluido por circuito abierto: la clase recordada por el breaker, o `unavailable` si no hay;
-  - excluido solo por falta de consentimiento: **habilitable por el permiso**.
+  - elegible según la instantánea de circuitos pero saltado porque `tryAcquire` no concedió el permiso (otra ejecución
+    tomó la prueba entre `openIds()` y `tryAcquire()`): `unavailable` (N3);
+  - excluido por circuito abierto: la clase recordada por el breaker, o `unavailable` si no hay. Un half-open con la
+    prueba en curso cuando se toma la instantánea es abierto para ella y cuenta con su clase recordada (N3).
 - **Agregación**, en este orden:
-  1. con `no_providers`, si algún afectado es habilitable por el permiso, la condición es `consent_required`: el
-     permiso habría habilitado a alguien y es lo primero que la persona puede arreglar. Es el caso que hoy cae fuera
-     de `consentWouldEnable` porque ese proveedor externo además tiene el circuito abierto. Con `providers_failed`,
-     los habilitables no cuentan, igual que en «Degradación tipada»: hubo una avería y eso es lo que se dice;
+  1. con `no_providers`, si algún afectado es `consent_missing`, la condición es `consent_missing`: el permiso es lo
+     primero que la persona puede arreglar. Cubre el caso que hoy cae fuera de `consentWouldEnable` porque ese
+     proveedor externo además tiene el circuito abierto, y el de la carrera de `tryAcquire` con un local y un externo
+     sin permiso. Con `providers_failed`, los `consent_missing` no cuentan, igual que en «Degradación tipada»: hubo una
+     avería y eso es lo que se dice;
   2. si no, `unavailable` si algún afectado lo es;
   3. si no, `rate_limited` si alguno lo es;
   4. si no, `rejected`.
@@ -139,7 +163,7 @@ El adaptador decide la variante, y el caso de uso, el error de dominio y la resp
 | `success` con `isJobPosting: false` | `not_a_job_posting` | `422 not_a_job_posting` | — | no (igual que hoy: la IA leyó) |
 | `quota_exceeded` | `quota_exceeded` | `429 ai_quota_exceeded` | hasta `aiQuotaRetryAt`, mínimo 1 s; sin el dato, 24 h | **sí** (C10) |
 | motivo `consent_required` | `consent_required` | `409 ai_consent_required` | — | sí |
-| `no_providers` con condición `consent_required` | `consent_required` | `409 ai_consent_required` | — | sí |
+| `no_providers` con condición `consent_missing` | `consent_required` | `409 ai_consent_required` | — | sí |
 | condición `rate_limited` | `capacity_exhausted` | `503 ai_capacity_exhausted` | — | sí |
 | condición `rejected` | `disabled` | `503 extraction_disabled` | — | sí |
 | `no_providers` sin condición | `disabled` | `503 extraction_disabled` | — | sí |
@@ -154,7 +178,7 @@ Notas de la tabla:
 - **`409` para el consentimiento.** Es una precondición que la persona arregla, como `no_cv`, y no un fallo del
   servidor.
 - **`503` sin `Retry-After`.** RFC 9110 permite omitirlo, y omitirlo es justo lo honesto cuando no se sabe cuándo
-  vuelve. En este change `ai_capacity_exhausted` nunca lo lleva (D2 diferida).
+  vuelve. En este change `ai_capacity_exhausted` nunca lo lleva, y el SPA lo ignora si llegara (D2 diferida, N7).
 - **El intento se devuelve** en todos los casos en que la IA no leyó el texto, incluida la cuota propia (C10): el
   contador se consume antes de llamar a la IA (`paste-description.usecase.ts:124-131`), así que la cuota agotada
   también gastaba un pegado.
@@ -170,24 +194,28 @@ Textos en ES. Las traducciones EN siguen D8.
 | Caso | Texto | Acción principal | Volver a enviar |
 | --- | --- | --- | --- |
 | `extraction_unavailable` | «No pudimos leerla ahora, inténtalo en un rato» (sin cambio) | Enviar | principal |
-| `ai_capacity_exhausted` sin `Retry-After` | «La IA llegó a su límite de lecturas y no sabemos cuándo vuelve» | Completar a mano | secundaria |
-| `ai_capacity_exhausted` con `Retry-After` | «La IA llegó a su límite de lecturas. Vuelve {cuándo}» | Completar a mano | secundaria |
+| `ai_capacity_exhausted` (con o sin `Retry-After`) | «La IA no admite más lecturas por ahora y no sabemos cuándo vuelve» | Completar a mano | secundaria |
 | `extraction_disabled` | «La lectura automática no está disponible. Puedes completarla a mano» | Completar a mano | no se ofrece |
-| `ai_consent_required` | «Para leerla con IA hace falta el permiso de IA externa, que tienes apagado. Puedes completarla a mano» | Completar a mano | no se ofrece |
-| `ai_quota_exceeded` | «Llegaste a tu límite de lecturas con IA. Podrás volver a pegar {cuándo}». Sustituye a «…vuelve mañana», que es falso cuando la ventana móvil se libera hoy. | Enviar | principal |
+| `ai_consent_required` | «Tu cuenta no permite leerla con IA externa. Puedes completarla a mano» | Completar a mano | no se ofrece |
+| `ai_quota_exceeded` | «Llegaste a tu límite de lecturas con IA. Podrás volver a pegar {cuándo}». Sustituye a «…vuelve mañana», que es falso cuando la ventana móvil se libera hoy. | Completar a mano | secundaria |
 | `too_many_attempts`, `not_a_job_posting`, errores comunes | sin cambio | Enviar | principal |
 
 - **Sin «Dar permiso en Perfil» (B1).** El permiso de Perfil habla solo del CV
   (`apps/web/src/app/features/profile/profile.page.html:147,154`): llevar allí a quien pega lo haría aceptar un texto
   que no describe lo que va a pasar. Qué hacer con eso es la Q7.
-- La variante de `ai_capacity_exhausted` **con** `Retry-After` existe en el SPA aunque la API de este change no la
-  produzca: es un `if` sobre la cabecera, deja el SPA listo para el change que retome D2 y se prueba con
-  `HttpTestingController`.
-- **{cuándo}** se calcula como el instante actual más el `Retry-After` de `RequestFailure`, que ya viene en minutos.
-  Dice «hoy a las HH:mm» si cae hoy, «mañana a las HH:mm» si cae mañana y una fecha corta en otro caso, siempre con
-  la hora local del navegador y el locale activo.
+- **Sin variante con hora para `ai_capacity_exhausted` (N7).** El SPA siempre dice «no sabemos cuándo vuelve» e
+  ignora el `Retry-After` de esa respuesta. La variante con hora se reintroduce con D2, cuando la API sepa la hora.
+- **{cuándo}** solo existe para `ai_quota_exceeded`. `whenText(now, retryAfterMinutes, locale)` suma al instante actual
+  el `Retry-After` de `RequestFailure` (ya en minutos, redondeado hacia arriba) y **redondea el resultado hacia arriba
+  al minuto siguiente** si tiene segundos (N8b): nunca anuncia una hora anterior a la real. Dice «hoy a las HH:mm» si
+  cae hoy, «mañana a las HH:mm» si cae mañana y una fecha corta en otro caso, con la hora local del navegador y el
+  locale activo.
 - «Completar a mano» es la acción principal (botón relleno) donde reenviar no arregla nada o casi seguro vuelve a
-  fallar (B5). En el resto aparece como acción secundaria.
+  fallar (B5): cupo de la IA, cuota propia (B2-8), lectura no disponible y permiso. En el resto aparece como acción
+  secundaria.
+- **Orden de las acciones (B2-10):** principal, secundaria si la hay, y cancelar, también a 360 px de ancho.
+- **Texto del cupo (N8a, B2-11).** «No admite más lecturas por ahora» no culpa a nadie: vale tanto para el cupo de la
+  cuenta de OpenRouter como para la saturación del proveedor de origen del modelo `:free`, que también llega como `429`.
 
 ### D7. «Completar a mano» desde el mismo diálogo, con lo pegado como referencia copiable
 
@@ -216,8 +244,8 @@ Textos en ES. Las traducciones EN siguen D8.
 
 ### D8. Textos e i18n (ADR-050)
 
-- Cada texto nuevo lleva un `@@id` estable con el prefijo `links.paste.`: `capacityExhausted`,
-  `capacityExhaustedUnknown`, `disabled`, `consentRequired`, `quotaExceededUntil`, `completeByHand`, `when.today`,
+- Cada texto nuevo lleva un `@@id` estable con el prefijo `links.paste.`: `capacityExhausted`
+  (un solo texto, sin variante con hora: N7), `disabled`, `consentRequired`, `quotaExceededUntil`, `completeByHand`, `when.today`,
   `when.tomorrow`, `when.date` y `edit.reference`.
 - `@@links.paste.quotaExceeded` cambia de texto y **conserva su id**.
 - `messages.xlf` se regenera con `pnpm nx run web:extract-i18n`. `messages.en.xlf` recibe las traducciones y el
@@ -247,27 +275,46 @@ Textos en ES. Las traducciones EN siguen D8.
 - **SPA.** Specs del diálogo con `HttpTestingController`, incluido el pegado abierto desde el encaje.
 - En CI: `AI_CHAIN=mock` y `AI_MOCK_MODE=replay`. Ninguna prueba llama a un proveedor real.
 
-### D11. Ventana de fusión
+### D11. Ventana de fusión y fusiones cubiertas por la excepción
 
-Aun con la Q1 concedida, el PR solo puede fusionarse en una ventana que no rompa a 35b ni a `e2e-suite`:
+Aun con la Q1 concedida, ninguna fusión del change puede romper a 35b ni a `e2e-suite`:
 
 - `openspec/changes/staging-host/tasks.md`: «Entre PR-1 y PR-2 no se fusiona nada a `main`». El PR-1 de 35b ya está en
   `main` (#86).
 - D15 de `e2e-suite`: nada se fusiona entre el PR-2 de 35b y su 11.6.
 
-La única ventana válida es **después de la 11.6 de 35b y antes de su 10.7** (la invitación), **repitiendo la 9.4 de
-`e2e-suite`** sobre el commit desplegado con este change, porque la precondición de invitar se anota sobre el commit
-que se despliega. Nunca los días 7 y 14 de la medición. La alternativa es la Q1 (d). La tarea 6.3 lo comprueba antes
-de fusionar.
+**La excepción que firma el owner (Q1) cubre las tres clases de fusión del change**, no solo la primera:
+
+1. **La fusión del change**, solo dentro de la ventana (a): **después de la 11.6 de 35b y antes de su 10.7** (la
+   invitación). Aquí no hace falta la cláusula «nunca los días 7 y 14»: la ventana termina antes de la 10.7 y la
+   medición empieza con ella, así que esos días nunca caen dentro. Después de fusionar, y antes de la 10.7, se repite la
+   9.4 de `e2e-suite` sobre el commit desplegado con este change (la precondición de invitar se anota sobre el commit
+   que se despliega).
+2. **El PR de archivo.** Lleva las anotaciones posteriores a la fusión (la repetición de la 9.4, las casillas de la 6.x
+   y la 7.x) y se fusiona **después de la 10.7**.
+3. **Las fusiones de vuelta atrás**, si las hay (revertir este change), y la vuelta de esa vuelta atrás.
+
+Las clases 2 y 3 tienen sus propias reglas: **nunca** entre el PR-2 de 35b y su 11.6, **nunca** durante su 9.1-9.4,
+**nunca** los días 7 y 14 de la medición y **nunca** el día de una corrida `e2e-remote`.
+
+**De dónde sale el estado (ajuste común a todos los changes).** La casilla de la 10.7 se marca recién en el PR de
+archivo de 35b, después de invitar, así que no sirve para saber si ya se invitó. Cada fusión toma el estado de la 11.6,
+de la 9.1-9.4 y de la 10.7 de 35b de una **confirmación escrita y fechada del owner en el PR** (por ejemplo, «11.6 hecha
+el AAAA-MM-DD; 10.7 no hecha»). Las casillas de `staging-host/tasks.md` son solo apoyo. El PR-2 de 35b se identifica
+**por su número**. Los días 7 y 14 se cuentan desde la fecha de la 10.7 que confirma el owner. Si el owner declara la
+10.7 hecha, la fusión del change está fuera de ventana y no se fusiona. Las tareas 6.3 (fusión del change), 7.3 (PR de
+archivo) y 7.4 (vueltas atrás) lo comprueban, y la 7.3 verifica en `main` cada fusión de este change.
 
 ## Risks / Trade-offs
 
 - **[La forma real del `429` o del «no endpoints» de OpenRouter difiere de la documentada]** → la clasificación cae
   a `unavailable`, que es el comportamiento de hoy. Lo confirma la 8.1 de 35b, y queda anotado como pendiente en
   ADR-060 §Consecuencias.
-- **[Un `429` por minuto se anuncia como cupo agotado]** → sin el instante de reinicio (D2 diferida), un límite de
-  20 peticiones por minuto se ve como «La IA llegó a su límite de lecturas y no sabemos cuándo vuelve». Es verdad, y
-  reenviar queda como acción secundaria. Se afina en el change que retome D2.
+- **[Un `429` pasajero se anuncia como «no admite más lecturas por ahora»]** → sin el instante de reinicio (D2
+  diferida), tres causas distintas llegan igual como `429`: el cupo diario de la cuenta de OpenRouter, el límite de
+  20 peticiones por minuto y la **saturación del proveedor de origen** del modelo `:free`, que a veces se libera en
+  segundos (N8a, B2-11). «Por ahora» y «no sabemos cuándo vuelve» son verdad en los tres casos, y reenviar queda como
+  acción secundaria. Se afina en el change que retome D2.
 - **[Un `404` pasajero se clasifica como `rejected`]** → el diálogo dice «no disponible» y ofrece completar a mano,
   pero el breaker sigue el umbral de siempre y se recupera en el half-open de 30 s. El coste es un mensaje pesimista
   durante segundos.
@@ -275,12 +322,18 @@ de fusionar.
   habla solo del CV. La Q7 decide si hace falta.
 - **[«{cuándo}» con la hora del navegador]** → la persona ve su hora local. El `Retry-After` es relativo, así que no
   depende de la zona del servidor.
-- **[Precedencia de la fila 35 y ventana de fusión]** → nada se aplica sin la Q1, y nada se fusiona fuera de D11.
+- **[Precedencia de la fila 35 y ventana de fusión]** → nada se aplica sin la Q1, y ninguna de las tres clases de
+  fusión de D11 se hace fuera de sus reglas. El estado de la 10.7 sale de la confirmación del owner, no de una casilla
+  que se marca después de invitar.
+- **[Clase dominante y JSON anterior]** → un estado de Redis escrito antes del despliegue no trae clases; se lee como
+  `unavailable`, que es el mensaje de hoy. El formato de `failures` no cambia, así que una versión anterior que lea un
+  estado nuevo ignora los campos añadidos.
 
 ## Migration Plan
 
 Sin datos ni migraciones. Orden dentro del change: `libs/ai` (grupos 1 y 2), después la API (grupo 3) y después el SPA
-(grupos 4 y 5). Todo cabe en un PR, que se fusiona solo en la ventana de D11. Rollback: revertir el PR. Los códigos
+(grupos 4 y 5). Todo cabe en un PR, que se fusiona solo en la ventana de D11; las anotaciones posteriores van en el PR de archivo.
+Rollback: revertir el PR, con las reglas de las vueltas atrás de D11 (clase 3). Los códigos
 nuevos solo los produce este change, y un SPA viejo frente a una API nueva los mostraría con el texto genérico de
 `lv-request-error`.
 
@@ -288,8 +341,11 @@ nuevos solo los produce este change, y un SPA viejo frente a una API nueva los m
 
 - **Q1 [bloqueante] Excepción a la precedencia de la fila 35.** ¿Se abre este change, y se aplica y fusiona, antes de
   cerrar la fila 35?
-  - (a) Sí, aplicarlo ya y fusionarlo **solo en la ventana de D11**: después de la 11.6 de 35b y antes de su 10.7,
-    repitiendo la 9.4 de `e2e-suite` sobre el commit desplegado y nunca los días 7 y 14 de la medición. Los invitados
+  - (a) Sí, aplicarlo ya, con una excepción que cubre **las tres clases de fusión de D11**: la fusión del change
+    solo después de la 11.6 de 35b y antes de su 10.7 (según confirmación escrita y fechada del owner en el PR),
+    repitiendo la 9.4 de `e2e-suite` sobre el commit desplegado; el PR de archivo, después de la 10.7; y las vueltas
+    atrás, si las hay, y su vuelta. El PR de archivo y las vueltas atrás nunca entre el PR-2 de 35b y su 11.6, nunca
+    durante su 9.1-9.4, nunca los días 7 y 14 de la medición y nunca el día de una corrida `e2e-remote`. Los invitados
     son quienes chocan con esto (D13 de 35b lo anota como riesgo) y el change no toca nada de 35b ni de 35c.
   - (b) Sí, pero solo spec hasta archivar 35c.
   - (c) No: se reabre tras la fila 35.
@@ -333,6 +389,10 @@ nuevos solo los produce este change, y un SPA viejo frente a una API nueva los m
   deny`, y pedir un permiso que habla del CV para leer una oferta confunde justo a quien más usa el pegado. Es un
   change propio, con su ADR.
 
+  **Voto de business (iteración 2, 2026-10-28):** (b) en un change propio con ADR, con `PiiRedactor` obligatorio y
+  `data_collection: deny`, planificado **antes de la 10.7 de 35b**; mientras tanto, (d). Es un voto: Q7 sigue siendo
+  decisión del owner.
+
 ## Debate — iteración 1
 
 Resultado de la iteración 1: critic P0 0 / P1 11 (C1-C11); business V0 1 (B1-B6). Decisiones de reflect (sesión
@@ -365,3 +425,32 @@ manda la regla vigente de «Degradación tipada» (la avería gana), y `consentW
 vigencia del encaje (D4).
 
 Convergencia: NO (pendiente de la iteración 2).
+
+## Debate — iteración 2
+
+Resultado de la iteración 2: critic P0 0 / P1 8 (N1-N8); business V0 0 (B2-7 a B2-11 y un voto en Q7). Decisiones de
+reflect (sesión principal), 2026-10-28. Confirma la interpretación de la iteración 1: la condición de permiso gana solo
+con `no_providers`, y `consentWouldEnable` no cambia.
+
+| Id | Origen | Decisión | Motivo |
+| --- | --- | --- | --- |
+| N1 | critic | Aceptado | Un proveedor excluido por falta de consentimiento cuenta como `consent_missing` tenga o no el circuito abierto; su clase recordada no cuenta (D4, ADR-060 §4). |
+| N2 | critic | Aceptado | La condición se llama `consent_missing` («falta el permiso y es necesario») y no implica `consentWouldEnable`; escenario de la carrera de `tryAcquire` con un externo sin permiso. |
+| N3 | critic | Aceptado | El saltado es el que la instantánea daba elegible y perdió la prueba antes de enviar (breaker doble que cambia entre `openIds()` y `tryAcquire()`); escenario «prueba de half-open en curso → clase recordada». |
+| N4 | critic | Aceptado | El breaker guarda la clase dominante de la ventana (`unavailable` > `rate_limited` > `rejected`), no la del último fallo; un test en cada breaker. |
+| N5 | critic | Aceptado | La clase vive en `StoredCircuit`; se escribe solo en los fallos que cambian el estado y se borra solo donde se borra el circuito; un éxito no toca `failures`; sin TTL nuevo (D3, 2.1, 2.2a). |
+| N6 | critic | Aceptado | `embedTexts` también pasa la clase (`recordFailure(id, { kind })`), con su test (2.5d). |
+| N7 | critic | Aceptado | Sin variante con hora de `ai_capacity_exhausted` en spec, D6, D8 ni 4.1; el SPA ignora `Retry-After` en ese código. Vuelve con D2. Cubre B2-9. |
+| N8 | critic | Aceptado | (a) «La IA no admite más lecturas por ahora y no sabemos cuándo vuelve» y riesgo ampliado a la saturación del proveedor de origen (cubre B2-11). (b) `whenText` redondea al minuto siguiente. |
+| B2-7 | business | Aceptado | `409`: «Tu cuenta no permite leerla con IA externa. Puedes completarla a mano». |
+| B2-8 | business | Aceptado | Con `ai_quota_exceeded`, «Completar a mano» principal y reenviar secundaria (regla y escenario). |
+| B2-9 | business | Cubierto por N7 | Sin hora inventada para el cupo del proveedor. |
+| B2-10 | business | Aceptado | Tarea 5.6: orden principal, secundaria, cancelar, comprobado a 360 px. |
+| B2-11 | business | Cubierto por N8a | Texto del cupo sin atribuir la causa. |
+| Q7 | business (voto) | Registrado | (b) en change propio con ADR, `PiiRedactor` obligatorio y `data_collection: deny`, antes de la 10.7 de 35b; mientras tanto (d). Decide el owner. |
+| Ventana | reflect (común a todos los changes) | Aceptado | El estado de la 11.6 y la 10.7 sale de una confirmación escrita y fechada del owner en el PR; PR-2 de 35b por número; falsación «owner declara 10.7 hecha → fuera de ventana»; anotaciones posteriores en el PR de archivo. |
+| Excepción | reflect (P0 de critic en otro change, común a todos) | Aceptado | La excepción de Q1 cubre las tres clases de fusión: la del change (ventana (a), sin cláusula de días 7 y 14), el PR de archivo y las vueltas atrás, estas dos con sus reglas propias (D11, ADR-060 §1, 6.3, 7.3, 7.4). |
+
+Q1 sigue pendiente del owner.
+
+Convergencia: pendiente de la confirmación de critic y business sobre esta iteración.

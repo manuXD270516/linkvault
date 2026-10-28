@@ -44,10 +44,20 @@ que se toma justo antes de enviar la petición: una respuesta del proveedor (vá
 un error de proveedor lo reabre. Un permiso no tomado NO SHALL dejar el circuito bloqueado.
 
 Todas las clases de error (`rate_limited`, `rejected` y `unavailable`) SHALL contar igual en la ventana de 5 errores: la
-clase NO SHALL cambiar cuándo se abre ni cuándo se cierra un circuito. Cada circuito SHALL recordar la clase de su último
-error, y una respuesta del proveedor SHALL borrarla. El breaker SHALL exponer, para los circuitos abiertos, esa clase
-recordada. Si su almacén no responde, SHALL devolver un conjunto vacío (fallar abierto), igual que la instantánea de
-circuitos abiertos.
+clase NO SHALL cambiar cuándo se abre ni cuándo se cierra un circuito. Toda ejecución que registra un error en el
+breaker, sea de una tarea o de embeddings, SHALL registrarlo con la clase del error.
+
+Cada circuito SHALL recordar la **clase dominante** de los errores que cuentan en su ventana, con la precedencia
+`unavailable` > `rate_limited` > `rejected`, y no la del último error. Si la prueba de half-open falla, la clase SHALL
+pasar a ser la de ese error, que es el único de la ventana del nuevo período abierto. La clase SHALL escribirse solo en
+los errores que hoy cambian el estado del circuito (los que cuentan en la ventana con el circuito cerrado y el de la
+prueba de half-open) y SHALL borrarse solo donde hoy se borra el circuito (cuando la prueba recibe respuesta, o cuando el
+circuito queda sin errores ni apertura). Una respuesta con el circuito cerrado NO SHALL alterar la ventana de errores ni
+su clase, igual que hoy.
+
+El breaker SHALL exponer, para los circuitos abiertos, esa clase recordada. Si su almacén no responde, SHALL devolver un
+conjunto vacío (fallar abierto), igual que la instantánea de circuitos abiertos. Guardar la clase NO SHALL añadir
+caducidades nuevas al almacén.
 
 #### Scenario: Apertura tras fallos repetidos
 
@@ -74,6 +84,36 @@ circuitos abiertos.
 - **THEN** ese proveedor NO SHALL formar parte de la cadena
 - **AND** la clase recordada de su circuito SHALL ser `rate_limited`
 - **AND** a los 30 segundos SHALL concederse el permiso de prueba, como en cualquier half-open
+
+#### Scenario: La clase recordada es la dominante de la ventana
+
+- **GIVEN** un proveedor que, en los últimos 60 segundos, respondió `503` una vez y después `429` cuatro veces
+- **WHEN** se abre su circuito
+- **THEN** la clase recordada SHALL ser `unavailable`, no la del último error
+
+#### Scenario: Un error fuera de la ventana no cuenta para la clase
+
+- **GIVEN** un proveedor que respondió `503` hace más de 60 segundos y después `429` cinco veces dentro de la ventana
+- **WHEN** se abre su circuito
+- **THEN** la clase recordada SHALL ser `rate_limited`
+
+#### Scenario: Prueba de half-open fallida
+
+- **GIVEN** un circuito abierto con clase recordada `unavailable`, cuya petición de prueba recibe un `404`
+- **WHEN** el circuito se reabre
+- **THEN** la clase recordada SHALL ser `rejected`
+
+#### Scenario: Una respuesta con el circuito cerrado no borra la ventana
+
+- **GIVEN** un proveedor con 4 errores en los últimos 60 segundos y el circuito cerrado
+- **WHEN** el proveedor responde una vez y después falla una vez más dentro de la ventana
+- **THEN** el circuito SHALL abrirse, igual que hoy
+
+#### Scenario: Los embeddings registran la clase
+
+- **GIVEN** un proveedor de embeddings que responde `429` cinco veces en 60 segundos
+- **WHEN** se abre su circuito
+- **THEN** la clase recordada SHALL ser `rate_limited`
 
 #### Scenario: Una respuesta olvida la clase
 
