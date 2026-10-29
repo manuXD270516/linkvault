@@ -634,10 +634,12 @@ changes:
       (staging es desechable), registro restringido, la extensión para estos usuarios, límites `413`/`429` en el
       borde y el aviso de registro abierto en la app (V2).
   - name: verify-reusable-workflow
-    adrs: [051, 048, 050, 033]
+    adrs: [051, 048, 050, 033, 061]
     agents: [devops]
     scope: |
       Fila 35c, última pieza de la fila 35 (ADR-051 §1). Tras archivar `staging-host` **y** `i18n-catalog-gate`.
+      No escalar `worker` hasta archivar `worker-data-hygiene` (o `worker-claims-multi-replica` si Q5 = (a));
+      ADR-061 §6. Incluye corregir el comentario `--scale worker=2` del servicio `worker` de `docker-compose.prod.yml`.
       **(a)** Workflow reutilizable de `verify` (`workflow_call`, alcance `affected`/`all` y referencia), invocado
       por `ci.yml`, `cd-staging.yml` y `cd-prod.yml`, con `Check prompt assets` dentro (hoy solo lo ejecuta
       `ci.yml`). Se escribe como **MODIFIED** de «El CD verifica con las mismas etapas que la integración
@@ -748,7 +750,7 @@ changes:
       las colas del relay más un día, fijado por test); pendientes y agotados nunca se borran (ADR-061 §1, enmienda
       ADR-009). **(b)** Stale elige entre las no avisadas (`$lookup`). **(c)** Entrega en vuelo: el job se aplaza hasta
       que vence el lease (tope de 3) en vez de terminar (ADR-061 §5b). **(d)** `listCascadePending` filtra los cerrados
-      antes del límite (Q2 = (a)). **(e)** Jobs fallidos de BullMQ: sin cambio de retención (D8); línea `warn` en
+      y los ya avisados antes del límite (Q2 = (a); MODIFIED de «Auto-expire de vacante cerrada sin outbox»). **(e)** Jobs fallidos de BullMQ: sin cambio de retención (D8); línea `warn` en
       `notify-fanout`/`group-digest` (Q3 = (a)).
       **Parte B — (f) Marcas del worker** (`link_freshness_claims`, `application_status_group_notify_claims`,
       `application_stale_claims`; capacidad nueva `platform/worker-claims`): índice único por clave, toma con un

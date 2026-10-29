@@ -55,7 +55,7 @@ El change tiene dos partes que se pueden fusionar por separado; `tasks.md` las o
 
 | Parte | Decisiones | Specs | Tareas |
 |---|---|---|---|
-| **A. Lo que ve el usuario** (se queda siempre) | D1, D8 (Q3), D9 (stale), D11, Q2 | `platform/outbox`, `notifications/stale-applications`, `notifications/dispatch` «Una entrega en vuelo se reintenta…» | grupos 1-6 |
+| **A. Lo que ve el usuario** (se queda siempre) | D1, D8 (Q3), D9 (stale), D10 (regla de no escalar, B6), D11, Q2 | `platform/outbox`, `notifications/stale-applications`, `notifications/dispatch` «Una entrega en vuelo se reintenta…» y «Auto-expire de vacante cerrada sin outbox» (MODIFIED, B7) | grupos 1-6 |
 | **B. Marcas atómicas multi-réplica** (sale si Q5 = (a)) | D2-D5, D7, D9 (ledger) | `platform/worker-claims`, `notifications/dispatch` «Toma única de una entrega vencida» | grupos 7-11 |
 
 Con Q5 = (a), la parte B pasa a un change posterior (nombre propuesto `worker-claims-multi-replica`, en el manifiesto),
@@ -265,10 +265,33 @@ alargar `removeOnFail` (Redis no es un almacén de auditoría y compite por memo
 ### D9. Stale elige entre las no avisadas, y la toma vencida del ledger es de uno solo
 
 - *(parte A)* `MongoApplicationStaleClaims.listEligible`: agregación sobre `applications` con `$match` (no cerradas,
-  `statusChangedAt <= threshold`), `$sort { statusChangedAt: 1, _id: 1 }`, `$lookup` a `application_stale_claims` por
-  `applicationId` y `statusChangedAt` con `confirmed: true` (usa `uniq_claim_key` cuando existe; sin él, escanea la
-  colección de marcas), `$match` sin marca, `$limit` y `maxTimeMS`. Las avisadas no consumen el lote; la más antigua
-  sin avisar va primero.
+  `statusChangedAt <= threshold`), `$sort { statusChangedAt: 1, _id: 1 }`, `$lookup` a `application_stale_claims`,
+  `$match` sin marca, `$limit` y `maxTimeMS`. Las avisadas no consumen el lote; la más antigua sin avisar va primero.
+  El `$lookup` tiene que comparar un `ObjectId` (`applications._id`) con el `applicationId` de la marca, que es un
+  `string`, así que **no** puede ser `localField`/`foreignField` (F4); es la forma con variables:
+
+  ```ts
+  {
+    $lookup: {
+      from: 'application_stale_claims',
+      let: { appId: { $toString: '$_id' }, sca: '$statusChangedAt' },
+      pipeline: [
+        { $match: { $expr: { $and: [
+          { $eq: ['$applicationId', '$$appId'] },
+          { $eq: ['$statusChangedAt', '$$sca'] },
+        ] }, confirmed: true } },
+        { $limit: 1 },
+        { $project: { _id: 1 } },
+      ],
+      as: 'notified',
+    },
+  },
+  { $match: { notified: { $size: 0 } } },
+  ```
+
+  Con `uniq_claim_key` (parte B), el `$expr` con `$eq` sobre los dos campos lo usa; sin él, escanea la colección de
+  marcas, que a esta escala son decenas o cientos de documentos. El mismo `$lookup`, contra
+  `application_status_group_notify_claims`, es el de Q2 (tareas 4.2).
 - *(parte B)* `MongoNotifyDeliveryLedger.claim`, rama de toma vencida: `updateOne({ ...filter, status: 'claimed',
   claimedAt: existing.claimedAt }, ...)` y `'claimed'` solo con `modifiedCount === 1`; si no, se vuelve a leer una vez
   y se responde según el estado nuevo (`in_flight` o `already_done`). Entre la lectura y la retoma, un método
@@ -289,8 +312,11 @@ Lo que tendría que pasar para que esto afecte a 35b, y por qué no pasa:
 | Medición | lectura de estas colecciones | `measure`/`uninvited` no las leen |
 
 Adelantarlo cuesta un redespliegue antes de invitar y repetir la 9.4 de `e2e-suite` (ADR-056 §1). Por eso el change es
-**candidato posterior a la fila 35** y Q1 pide al owner la fila. Para 35c (B2): no escalar `worker` hasta archivar este
-change (o su parte B si Q5 = (a)); dónde se escribe —RUNBOOK o comentario del compose— lo decide 35c (ADR-061 §6).
+**candidato posterior a la fila 35** y Q1 pide al owner la fila. Para 35c (B2, B6): no escalar `worker` hasta archivar
+este change (o `worker-claims-multi-replica` si Q5 = (a)). La regla queda escrita ya, sin esperar a la 11.7, en el
+`scope` de `verify-reusable-workflow` (35c) del manifiesto y en una línea de advertencia bajo «Escalar worker» de
+`infra/README.md` (tarea 5.2); el comentario `--scale worker=2` de `docker-compose.prod.yml` es de despliegue y queda
+como pendiente para 35c en ADR-061 §6.
 
 ### D11. Una entrega en vuelo se reintenta cuando vence su lease *(parte A, B3)*
 
@@ -300,11 +326,20 @@ termina el job. La entrega queda `claimed` para siempre y el aviso no llega nunc
 
 - **Adaptador**: `mongo-notify.adapters.ts` exporta `NOTIFY_DELIVERY_LEASE_MS` (hoy `CLAIM_LEASE_MS`, 5 min); `claim`
   no cambia de forma.
-- **Casos de uso**: `ProcessNotifyFanOut.execute` y `ProcessGroupWeeklyDigest.execute` dejan de devolver `void` y
-  devuelven `{ inFlight: number }`: cuentan las entregas que encontraron `in_flight` y siguen con las demás como hoy.
-  Ninguna lógica de BullMQ entra en `application/`.
-- **Consumidores** (`notify-fanout.consumer.ts`, `group-digest.consumer.ts`): si `inFlight > 0` y el contador
-  `inFlightDeferrals` de `job.data` es menor que `NOTIFY_IN_FLIGHT_MAX_DEFERRALS` (3), incrementan el contador
+- **Casos de uso**: `ProcessNotifyFanOut.execute` deja de devolver `void` y devuelve `{ inFlight: number }`;
+  `ProcessGroupWeeklyDigest.execute` amplía lo que ya devuelve a `{ groupsScanned, emailsSent, inFlight }` (F2). Los
+  dos cuentan las entregas que encontraron `in_flight` y siguen con las demás como hoy. Ninguna lógica de BullMQ entra
+  en `application/`. `deliverChannel` de fan-out lee `this.clock.now()` justo antes de `ledger.claim` y deja de
+  recibir `now` (F6): con el `now` del principio del job, una entrega reclamada tras varios envíos lentos nace con un
+  lease más corto de lo que dice `NOTIFY_DELIVERY_LEASE_MS` (el digest ya lee el reloj por entrega).
+- **El contador se separa antes de validar** (F1): los payloads de los jobs se validan con `z.strictObject`, así que un
+  `job.data` con `inFlightDeferrals` haría fallar el parse de siempre en la ejecución aplazada. El helper hace
+  `const { inFlightDeferrals, ...payload } = job.data`, valida el contador con `z.number().int().min(0).default(0)` y
+  devuelve `payload`, que es lo único que llega a `parseFanOutJob` o a `groupDigestJobPayloadSchema.parse`. Al aplazar,
+  `job.updateData({ ...payload, inFlightDeferrals: n + 1 })`.
+- **Consumidores** (`notify-fanout.consumer.ts`, `group-digest.consumer.ts`): adoptan el `WorkerHandle` y el
+  procesador `(job, token?)` de `enrich-link.consumer.ts` (F2), porque `moveToDelayed` necesita el `token` del lock
+  del job. Si `inFlight > 0` y el contador es menor que `NOTIFY_IN_FLIGHT_MAX_DEFERRALS` (3), incrementan el contador
   (`job.updateData`), llaman a `job.moveToDelayed(Date.now() + NOTIFY_DELIVERY_LEASE_MS + 1_000, token)` y lanzan
   `DelayedError` (el patrón de BullMQ para aplazar sin gastar intentos). El job vuelve después de que la toma ajena
   venció: la retoma (`claimed`) o, si quien la tenía terminó, la encuentra `already_done`. Las ya completadas en la
@@ -355,8 +390,10 @@ con el resultado del caso de uso); reducir el lease (no cambia que el job termin
    por igualdad se reintenta sin error; con `ttl_lease` (parcial sobre `confirmed: false`), sus tomas sin confirmar sin
    `leaseUntil` no caducan, las que el código nuevo dejó con `leaseUntil` caducan como abandonadas (lo mismo que su
    toma permitía reclamar) y sus confirmadas, lleven o no `leaseUntil`, quedan fuera del TTL; con `ttl_published`, el
-   outbox sigue borrando publicados antiguos, que la versión anterior no lee. Los consumidores viejos ignoran
-   `inFlightDeferrals` en `job.data`. Si hiciera falta quitarlos: `dropIndex('uniq_claim_key')`,
+   outbox sigue borrando publicados antiguos, que la versión anterior no lee. **Antes de revertir**, esperar a que
+   `getDelayedCount()` de `notify-fanout` y de `group-digest` sea `0` (como mucho unos 15 min: tres aplazamientos de
+   lease + 1 s): un job aplazado lleva `inFlightDeferrals` en `job.data`, y el consumidor anterior lo valida entero con
+   `z.strictObject` y lo rechaza (F3). Si hiciera falta quitarlos: `dropIndex('uniq_claim_key')`,
    `dropIndex('ttl_lease')`, `dropIndex('ttl_published')`.
 
 ## Open Questions
@@ -373,10 +410,15 @@ con el resultado del caso de uso); reducir el lease (no cambia que el job termin
     `e2e-suite` sobre el último commit desplegado antes de invitar. Además rompería la condición de los otros changes
     de excepción («no toca requirements de `platform/*`»): este añade a `platform/outbox` y crea `platform/worker-claims`.
   - La respuesta se anota en ADR-061 en una línea que empieza por «Respuesta del owner (Q1), AAAA-MM-DD:».
-- **Q2. Selector de la cascada de frescura.** `listCascadePending` agrupa `applications` por `linkId` con
-  `$limit: 4 × límite` **antes** de filtrar los links cerrados: con más de 200 links con postulaciones abiertas (con
-  el límite por defecto), los cerrados pueden no verse nunca y sus postulaciones no expiran. (a) Incluirlo aquí, con
-  `$lookup` a `job_links` filtrando `closedAt` antes del `$limit`; (b) un change propio de frescura.
+- **Q2. Selector de la cascada de frescura.** `MongoFreshnessLinkStore.listCascadePending`
+  (`mongo-freshness.adapters.ts`; `listForExpireCascade` es por link y sin límite, no cambia) agrupa `applications`
+  por `linkId` con `$limit: 4 × límite` **antes** de filtrar los links cerrados: con más de 200 links con postulaciones
+  abiertas (con el límite por defecto), los cerrados pueden no verse nunca y sus postulaciones no expiran. Lo mismo
+  pasa con los links cerrados cuyas postulaciones de grupo expiradas ya tienen su ASN confirmada: entran en el `$group`
+  y consumen el límite sin tener nada pendiente (F5). (a) Incluirlo aquí: antes de `$group`/`$limit`, excluir las
+  expiradas de grupo con ASN confirmada con el `$lookup` de D9 contra `application_status_group_notify_claims`
+  (`let: { appId: { $toString: '$_id' }, sca: '$statusChangedAt' }`, `pipeline` con `$expr`/`$eq` y
+  `confirmed: true`, F4), y después `$lookup` a `job_links` filtrando `closedAt`; (b) un change propio de frescura.
   **Resuelta en el debate (iteración 1), 2026-10-28: (a)** (voto de business, aceptado por reflect); grupo 4 de tareas.
 - **Q3. Rastro de los avisos que no se pudieron enviar.** (a) Una línea `warn` por job agotado en `notify-fanout` y
   `group-digest` (cola, `jobId`, nombre del error; sin destinatarios ni correos); (b) dejarlo como está.
@@ -391,7 +433,9 @@ con el resultado del caso de uso); reducir el lease (no cambia que el job termin
     de una entrega vencida»— pasa a un change posterior, `worker-claims-multi-replica`, disparado por «antes del primer
     `--scale worker=2`» —**recomendación de reflect**: lo que ve el usuario no tiene que esperar a una veintena de
     tareas de concurrencia—.
-  - (b) **Mantenerlo entero**, con las dos partes en un PR.
+    *Costo:* un segundo debate y un segundo PR más adelante (B9).
+  - (b) **Mantenerlo entero**, con las dos partes en un PR. *Costo:* unas 25 tareas de concurrencia ahora (grupos
+    7-11), antes de que nada de la parte A llegue a `main` (B9).
   - Con (a), antes de aplicar: borrar los grupos 7-11 de `tasks.md`, mover `specs/platform/worker-claims/` y el
     requirement de la toma vencida al change nuevo cuando se cree, y dejar en ADR-061 §2-§4 la nota de que los aplica
     ese change. La respuesta se anota aquí en una línea que empieza por «Respuesta del owner (Q5), AAAA-MM-DD:».
@@ -423,3 +467,26 @@ Fecha: 2026-10-28. Critic: P0 0, P1 11 (H1-H11). Business: V0 0 (B1-B5 y votos).
 
 Abiertas: Q1 (owner, bloqueante para `/opsx:apply`; recomendación: después de 35c) y Q5 (owner, antes de
 `/opsx:apply`; recomendación: (a)). Convergencia: pendiente de la iteración 2.
+
+## Debate — iteración 2
+
+Fecha: 2026-10-29. Critic: P0 1 (F1), P1 7 (F2-F8). Business: V0 1 (B6), B7-B10. Reflect: la sesión principal.
+
+| Id | Origen | Decisión | Motivo |
+|---|---|---|---|
+| F1 | critic (P0) | Aceptado: el helper separa `inFlightDeferrals` de `job.data` **antes** de validar (`z.number().int().min(0).default(0)`) y pasa solo el resto al parse de siempre (D11, 3.3, 3.5; la 3.3 se partió en 3.3 y 3.5 para que cada una quepa en una hora); test «reruns a deferred job whose data carries the deferral counter» en los dos consumidores, con los 3 tipos de fan-out y el digest | Los payloads son `z.strictObject`: la ejecución aplazada fallaba el parse y el aviso se perdía igual |
+| F2 | critic | Aceptado: `WorkerHandle` y procesador `(job, token?)` como en `enrich-link.consumer.ts`; el doble comprueba que `moveToDelayed` recibe el `token`; digest devuelve `{ groupsScanned, emailsSent, inFlight }` (D11, 3.2, 3.5, 4.3) | Sin `token`, `moveToDelayed` no puede mover un job con lock; el digest ya devolvía dos contadores |
+| F3 | critic | Aceptado: Migration Plan §4 espera `getDelayedCount()` = 0 en `notify-fanout` y `group-digest` antes de revertir; fuera la frase de que los consumidores viejos ignoran el contador | El consumidor anterior valida `job.data` entero y rechazaría el job aplazado |
+| F4 | critic | Aceptado: `$lookup` con `let: { appId: { $toString: '$_id' }, sca: '$statusChangedAt' }` y `pipeline` con `$expr`/`$eq` y `confirmed: true` (D9, Q2, 2.1, 4.2) | `applications._id` es `ObjectId` y `applicationId` de la marca es `string`: `localField`/`foreignField` no casa nunca |
+| F5 | critic | Aceptado: en `MongoFreshnessLinkStore.listCascadePending`, las expiradas de grupo con ASN confirmada se excluyen antes de `$group`/`$limit` (Q2, 4.2); test con 201 links cerrados ya avisados + 1 con una postulación abierta; falsación con el `$lookup` después del `$limit` | Los cerrados ya avisados también consumían el límite |
+| F6 | critic | Aceptado: `deliverChannel` lee `this.clock.now()` justo antes de `claim` y deja de recibir `now` (D11, 3.1) | El lease de una entrega tardía nacía acortado |
+| F7 | critic | Aceptado: la 0.2 con Q5 = (a) quita de `proposal.md` `platform/worker-claims` y la parte B, y marca en ADR-061 las dos consecuencias de la parte B; verificación `grep -c "worker-claims" … proposal.md` = 0 | La 0.2 dejaba la propuesta prometiendo lo que ya no aplica |
+| F8 | critic | Aceptado: la 5.1 dice «entre `clean` y el siguiente `seed`» y la verificación exige la frase | La huérfana solo estorba si se borra antes del `seed`, no en cualquier momento |
+| B6 | business (V0) | Aceptado: regla de no escalar `worker` en el `scope` de 35c (con `061` en sus `adrs`) y una línea bajo «Escalar worker» de `infra/README.md` (5.2); el comentario de `docker-compose.prod.yml:281` queda como pendiente para 35c en ADR-061 §6 (D10) | La regla vivía solo en la 11.7, que con Q5 = (a) sale del change, y el README sigue enseñando `--scale worker=2` |
+| B7 | business | Aceptado: MODIFIED de «Auto-expire de vacante cerrada sin outbox» en `notifications/dispatch` con el escenario «Link cerrado detrás de más de cuatro lotes de links abiertos» (4.1) y el de los links ya avisados (4.2, F5) | El arreglo de Q2 no tenía escenario que lo exigiera |
+| B8 | business | Aceptado: la 0.2 con Q5 = (a) anota el commit fuente del diseño debatido (`<commit de cierre del debate>`, lo completa la sesión principal) en ADR-061 §6 y en una fila `worker-claims-multi-replica` del manifiesto con solo el disparador y ese commit | Que el change posterior parta del diseño debatido y no de una reescritura |
+| B9 | business | Aceptado: línea de costo en cada opción de Q5 | El owner decide con el costo a la vista |
+| B10 | business | Resuelto con F5: la función es `listCascadePending` | — |
+
+Abiertas: Q1 (owner, bloqueante para `/opsx:apply`) y Q5 (owner, antes de `/opsx:apply`). Convergencia: pendiente de
+la iteración 3.

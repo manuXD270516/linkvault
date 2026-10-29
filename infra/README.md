@@ -453,6 +453,8 @@ todavía no converge».
 
 Escalar worker sin tocar el resto:
 
+> No escalar `worker` hasta archivar `worker-data-hygiene` (o `worker-claims-multi-replica` si Q5 = (a)); ADR-061 §6.
+
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --scale worker=2 --no-recreate
 ```

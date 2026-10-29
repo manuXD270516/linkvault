@@ -101,7 +101,8 @@ borrar postulaciones se borran a mano con el procedimiento del RUNBOOK (design R
 - `platform/outbox`: ADDED «Retención de los eventos publicados».
 - `notifications/stale-applications`: ADDED «Las postulaciones ya avisadas no consumen el lote».
 - `notifications/dispatch`: ADDED «Una entrega en vuelo se reintenta al vencer su lease» (parte A) y «Toma única de
-  una entrega vencida» (parte B).
+  una entrega vencida» (parte B); MODIFIED «Auto-expire de vacante cerrada sin outbox» (parte A: la selección de la
+  cascada se acota después de descartar los links abiertos y los ya avisados).
 
 ## Impact
 
@@ -116,7 +117,9 @@ borrar postulaciones se borran a mano con el procedimiento del RUNBOOK (design R
   `FreshnessLinkClaims`, `StatusGroupNotifyClaims` y `ApplicationStaleClaims` devuelven una toma con testigo en vez de
   un booleano, y sus dobles en memoria y casos de uso se ajustan; `listEligible` de stale con `$lookup`; la toma del
   ledger condicionada; los schedulers consultan la compuerta.
-- Sin variables de entorno nuevas, sin cambios en `docker-compose*.yml`, workflows, `infra/` ni `libs/`.
+- Sin variables de entorno nuevas, sin cambios en `docker-compose*.yml`, workflows ni `libs/`. En `infra/`, solo una
+  línea de advertencia bajo «Escalar worker» de `infra/README.md` (no escalar `worker` hasta archivar la parte B; B6
+  del debate), además de la misma regla en el `scope` de 35c del manifiesto.
 - RUNBOOK: cómo comprobar los índices y listar los agotados del outbox.
 
 ## Fuera de alcance

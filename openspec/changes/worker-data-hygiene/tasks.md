@@ -21,9 +21,19 @@ pasan a `worker-claims-multi-replica`; si Q5 = (b), se aplican **antes** del gru
   Q5 = (a): borrar los grupos 7-11 de este fichero, sacar `specs/platform/worker-claims/` y el requirement «Toma única
   de una entrega vencida» de `specs/notifications/dispatch/spec.md` (se recrean en el change posterior cuando se cree),
   marcar D2-D5, D7 y la viñeta del ledger de D9 como «trasladadas» y anotar en ADR-061 §2-§4 que las aplica
-  `worker-claims-multi-replica`. Verificar: `grep -c "Respuesta del owner (Q5), 20" openspec/changes/worker-data-hygiene/design.md`
-  devuelve `1`; con (a), además, `grep -c "^## 7\." openspec/changes/worker-data-hygiene/tasks.md` devuelve `0` y
-  `openspec validate worker-data-hygiene --strict` sigue en verde.
+  `worker-claims-multi-replica`. Además (F7): quitar de `proposal.md` la capacidad `platform/worker-claims` y todo lo
+  de la parte B (viñetas, `Impact` y el requirement «Toma única…» de `Modified Capabilities`), y marcar en ADR-061
+  §Consecuencias las dos de la parte B («Escalar el worker deja de ser un riesgo…» y «Los puertos de las marcas
+  devuelven una toma con testigo…») con «(al aplicarse `worker-claims-multi-replica`)». Y (B8): anotar el commit
+  fuente del diseño debatido, `<commit de cierre del debate>` (lo completa la sesión principal con el commit que cierre
+  el debate), en ADR-061 §6 y en una fila propia `worker-claims-multi-replica` de `openspec-changes.yaml` que solo
+  lleva el disparador «antes del primer `--scale worker=2`» y ese commit, sin `scope` completo. Verificar:
+  `grep -c "Respuesta del owner (Q5), 20" openspec/changes/worker-data-hygiene/design.md` devuelve `1`; con (a),
+  además, `grep -c "^## 7\." openspec/changes/worker-data-hygiene/tasks.md` devuelve `0`,
+  `grep -c "worker-claims" openspec/changes/worker-data-hygiene/proposal.md` devuelve `0`,
+  `grep -c "name: worker-claims-multi-replica" openspec-changes.yaml` devuelve `1`,
+  `grep -c "<commit de cierre del debate>" docs/adr/ADR-061.md openspec-changes.yaml` devuelve `0` en los dos (el
+  marcador se sustituyó) y `openspec validate worker-data-hygiene --strict` sigue en verde.
 - [ ] 0.3 [infra] Debate critic/business/reflect cerrado sin P0/V0 abiertos y aprobación humana registrada en
   `design.md` con su fecha. Verificar: la sección del debate de la última iteración dice «Convergencia: SI».
 
@@ -56,60 +66,93 @@ pasan a `worker-claims-multi-replica`; si Q5 = (b), se aplican **antes** del gru
 ## 2. Stale sin inanición (`apps/worker`, design D9)
 
 - [ ] 2.1 [backend] `MongoApplicationStaleClaims.listEligible` como agregación (`$match`, `$sort { statusChangedAt: 1,
-  _id: 1 }`, `$lookup` a `application_stale_claims` con `confirmed: true`, `$match` sin marca, `$limit`, `maxTimeMS`).
-  Verificar en `mongo-notify.adapters.spec.ts`: «includes a newly stale application when more than a batch of notified
+  _id: 1 }`, `$lookup` a `application_stale_claims`, `$match` sin marca, `$limit`, `maxTimeMS`). El `$lookup` es el de
+  design D9 (F4): `let: { appId: { $toString: '$_id' }, sca: '$statusChangedAt' }` y `pipeline` con
+  `$expr`/`$eq` sobre `applicationId` y `statusChangedAt` más `confirmed: true`; **no** `localField`/`foreignField`
+  (`_id` es `ObjectId`, `applicationId` es `string`). Verificar en `mongo-notify.adapters.spec.ts`: «includes a newly stale application when more than a batch of notified
   ones remain open» (60 avisadas + P, lote 50) y «picks the oldest unnotified applications first». Falsación: volver a
-  `find().limit()` + filtro en memoria y ver caer el primero; restaurar.
+  `find().limit()` + filtro en memoria y ver caer el primero; restaurar. Segunda falsación (F4): escribir el `$lookup`
+  con `localField: '_id'`/`foreignField: 'applicationId'` y ver caer el primero (ninguna marca casa y las 60 avisadas
+  vuelven a llenar el lote); restaurar.
 
 ## 3. Entrega en vuelo reintentada (`apps/worker`, design D11)
 
 - [ ] 3.1 [backend] `NOTIFY_DELIVERY_LEASE_MS` exportada desde `mongo-notify.adapters.ts` (renombra `CLAIM_LEASE_MS`) y
   `ProcessNotifyFanOut.execute` devuelve `{ inFlight: number }`, contando las entregas `in_flight` sin dejar de procesar
-  las demás. Verificar en `process-notify-fanout.usecase.spec.ts` (ledger en memoria): «reports an in-flight delivery
-  instead of dropping it silently» (`inFlight: 1`, la otra entrega del mismo job se envía) y «reports no in-flight
-  deliveries when all were claimed or done» (`inFlight: 0`).
-- [ ] 3.2 [backend] Lo mismo en `ProcessGroupWeeklyDigest.execute`. Verificar en
+  las demás. `deliverChannel` lee `this.clock.now()` justo antes de `ledger.claim` y deja de recibir `now` (F6).
+  Verificar en `process-notify-fanout.usecase.spec.ts` (ledger en memoria): «reports an in-flight delivery
+  instead of dropping it silently» (`inFlight: 1`, la otra entrega del mismo job se envía), «reports no in-flight
+  deliveries when all were claimed or done» (`inFlight: 0`) y «claims each delivery with the clock at claim time»
+  (reloj doble que avanza 1 min en cada envío; el ledger doble registra un `now` distinto y creciente en cada
+  `claim`). Falsación: volver a pasar el `now` del principio del job y ver caer el tercero; restaurar.
+- [ ] 3.2 [backend] Lo mismo en `ProcessGroupWeeklyDigest.execute`, que devuelve `{ groupsScanned, emailsSent,
+  inFlight }` (F2). Verificar en
   `process-group-weekly-digest.usecase.spec.ts`: «reports in-flight digest deliveries and still sends the rest» y «does
   not resend a completed digest delivery on the deferred rerun» (segunda ejecución con las completadas en el ledger:
   0 envíos nuevos para ellas).
-- [ ] 3.3 [backend] Helper `deferWhileInFlight(job, token, inFlight, logger)` en `notifications/infrastructure/queue/`
-  y su uso en `notify-fanout.consumer.ts` y `group-digest.consumer.ts`: con `inFlight > 0` y `job.data.inFlightDeferrals
-  < NOTIFY_IN_FLIGHT_MAX_DEFERRALS` (3), `job.updateData` con el contador + 1, `job.moveToDelayed(Date.now() +
-  NOTIFY_DELIVERY_LEASE_MS + 1_000, token)` y `throw new DelayedError()`. Verificar en `defer-while-in-flight.spec.ts`
-  con un `Job` doble (espías de `updateData` y `moveToDelayed`): «delays the job past the delivery lease when a delivery
-  is in flight» (instante de `moveToDelayed` ≥ ahora + lease) y «completes the job when nothing is in flight». Y en los
-  specs de los dos consumidores, con el `WorkerFactory` doble que captura el procesador: «defers a notify-fanout job
-  that found an in-flight delivery» y «defers a group-digest job that found an in-flight delivery». Falsación: devolver
-  sin aplazar cuando `inFlight > 0` y ver caer el primero; restaurar.
+- [ ] 3.3 [backend] Helpers en `notifications/infrastructure/queue/defer-while-in-flight.ts`:
+  `splitInFlightDeferrals(data)` hace `const { inFlightDeferrals, ...payload } = job.data`, valida el contador con
+  `z.number().int().min(0).default(0)` y devuelve `{ inFlightDeferrals, payload }` (F1); `deferWhileInFlight(job,
+  token, { inFlight, inFlightDeferrals, payload }, logger)`, con `inFlight > 0` y `inFlightDeferrals <
+  NOTIFY_IN_FLIGHT_MAX_DEFERRALS` (3), hace `job.updateData({ ...payload, inFlightDeferrals: n + 1 })`,
+  `job.moveToDelayed(Date.now() + NOTIFY_DELIVERY_LEASE_MS + 1_000, token)` y `throw new DelayedError()`. Verificar en
+  `defer-while-in-flight.spec.ts` con un `Job` doble (espías de `updateData` y `moveToDelayed`): «delays the job past
+  the delivery lease when a delivery is in flight» (instante de `moveToDelayed` ≥ ahora + lease y segundo argumento
+  igual al `token` recibido), «completes the job when nothing is in flight» y «splits the deferral counter from the
+  payload» (`payload` sin `inFlightDeferrals`; contador `0` si falta). Falsación: devolver sin aplazar cuando
+  `inFlight > 0` y ver caer «delays the job…»; restaurar.
 - [ ] 3.4 [backend] Tope: con `inFlightDeferrals = 3`, el helper registra un `warn` con cola, `jobId` y número de
   entregas en vuelo y termina sin aplazar. Verificar: «stops deferring after the maximum and warns without recipients»
   (el texto no contiene ningún correo ni `userId` del job) y, con el ledger Mongo real (`mongo-notify.adapters.spec.ts`),
   «a delivery left claimed by a dead worker is sent once its lease expires» (toma `claimed` sin completar, reloj + 6 min,
   la reejecución obtiene `claimed` y envía una vez).
+- [ ] 3.5 [backend] Consumidores: `notify-fanout.consumer.ts` y `group-digest.consumer.ts` adoptan `WorkerHandle` y el
+  procesador `(job, token?)` de `enrich-link.consumer.ts` (F2), separan el contador con `splitInFlightDeferrals`, pasan
+  solo `payload` a `parseFanOutJob` / `groupDigestJobPayloadSchema.parse` y llaman a `deferWhileInFlight` con el
+  resultado del caso de uso. Verificar en los specs de los dos consumidores, con el `WorkerFactory` doble que captura
+  el procesador (`(job, token)`): «defers a notify-fanout job that found an in-flight delivery» y «defers a
+  group-digest job that found an in-flight delivery» (los dos comprueban que `moveToDelayed` recibe el `token` pasado
+  al procesador), y «reruns a deferred job whose data carries the deferral counter»: un `Job` doble cuyo `updateData`
+  sustituye `job.data`; tras el `DelayedError`, el test vuelve a invocar el procesador capturado con ese mismo job y
+  la segunda ejecución no lanza `ZodError` y llega al caso de uso. En fan-out cubre los tres tipos
+  (`GroupLinkAdded`, `ApplicationStatusNotify`, `ApplicationStale`); en digest, `{ weekKey }`. Falsación (F1): validar
+  `job.data` entero, sin separar el contador, y ver caer «reruns a deferred job…» en los dos consumidores; restaurar.
 
 ## 4. Cascada de frescura y rastro de avisos agotados (Q2 = (a), Q3 = (a))
 
-- [ ] 4.1 [backend] `listCascadePending` filtra los links cerrados antes del `$limit` (`$lookup` a `job_links` con
-  `closedAt`, `maxTimeMS`). Verificar: «finds a closed link with open applications behind more than four batches of open
-  links» (201 links abiertos con postulaciones + 1 cerrado, límite 50). Falsación: devolver el `$limit` antes del
-  `$lookup` y verlo caer; restaurar.
-- [ ] 4.2 [backend] Mismo cambio en la consulta de ASN pendientes de `listCascadePending`, con la marca confirmada por
-  `$lookup` (usa `uniq_claim_key` si existe). Verificar: `freshness-close.spec.ts` y
-  `detect-link-freshness.usecase.spec.ts` en verde y «skips a closed link whose group notifications are all confirmed».
-- [ ] 4.3 [backend] `on('failed')` en `notify-fanout` y `group-digest` con una línea `warn` (cola, `jobId`, nombre del
-  error). Verificar: «logs an exhausted notify-fanout job without recipients» y «logs an exhausted group-digest job
+- [ ] 4.1 [backend] `MongoFreshnessLinkStore.listCascadePending` (`mongo-freshness.adapters.ts`; `listForExpireCascade`
+  no cambia) filtra los links cerrados antes del `$limit` (`$lookup` a `job_links` con `closedAt`, `maxTimeMS`).
+  Verificar en `freshness-close.spec.ts` (escenario «Link cerrado detrás de más de cuatro lotes de links abiertos»):
+  «finds a closed link with open applications behind more than four batches of open links» (201 links abiertos con
+  postulaciones + 1 cerrado, límite 50). Falsación: devolver el `$limit` antes del `$lookup` y verlo caer; restaurar.
+- [ ] 4.2 [backend] En la misma agregación, **antes** de `$group`/`$limit`, excluir las postulaciones `expired` de
+  grupo con ASN confirmada con el `$lookup` de design D9 contra `application_status_group_notify_claims` (`let: {
+  appId: { $toString: '$_id' }, sca: '$statusChangedAt' }`, `pipeline` con `$expr`/`$eq` y `confirmed: true`, F4/F5).
+  Verificar: `freshness-close.spec.ts` y `detect-link-freshness.usecase.spec.ts` en verde, «skips a closed link whose
+  group notifications are all confirmed» y (escenario «Link cerrado ya avisado no tapa a uno pendiente») «finds a
+  closed link with open applications behind more than four batches of fully notified closed links» (201 links cerrados
+  con todas sus postulaciones `expired` de grupo y sus ASN confirmadas + 1 cerrado con una postulación abierta, límite
+  50). Falsación: mover el `$lookup` de ASN después del `$limit` y ver caer el segundo; restaurar.
+- [ ] 4.3 [backend] `on('failed')` en `notify-fanout` y `group-digest` (sobre el `WorkerHandle` de 3.5) con una línea
+  `warn` (cola, `jobId`, nombre del error). Verificar: «logs an exhausted notify-fanout job without recipients» y «logs an exhausted group-digest job
   without recipients», comprobando que el texto no contiene ningún correo ni `userId` del job.
 
 ## 5. Documentación de la parte A
 
 - [ ] 5.1 [infra] RUNBOOK, sección «Higiene de datos del worker»: `db.outbox_events.getIndexes()` con `ttl_published`;
   la consulta de agotados del outbox (`{ failedAt: { $type: 'date' } }`, proyección sin payload); qué significa el
-  `warn` de entregas en vuelo agotado (D11); y, junto a `seed-volume.sh`, el borrado de las marcas huérfanas tras
-  `clean` (R5, sin barrido por B4): en el Mongo local, `deleteMany` en `application_stale_claims` y
+  `warn` de entregas en vuelo agotado (D11); y, junto a `seed-volume.sh`, el borrado de las marcas huérfanas
+  **entre `clean` y el siguiente `seed`** (R5, sin barrido por B4; F8): en el Mongo local, `deleteMany` en `application_stale_claims` y
   `application_status_group_notify_claims` de los documentos cuyo `applicationId` no esté entre los `_id` de
   `applications` (agregación con `$convert` a `objectId` y `onError: null`, o lista de `_id` en `mongosh`), con la
   advertencia de que es solo para Mongo locales desechables. Verificar: `grep -c "ttl_published\|seed-volume.sh clean"
-  docs/RUNBOOK.md` devuelve al menos `2` más que en `main`.
+  docs/RUNBOOK.md` devuelve al menos `2` más que en `main` y `grep -c "entre .clean. y el siguiente .seed."
+  docs/RUNBOOK.md` devuelve al menos `1`.
+- [ ] 5.2 [infra] Regla de no escalar `worker` (B6, design D10), ya escrita en la iteración 2 del debate: una línea de
+  advertencia bajo «Escalar worker» de `infra/README.md` y el `scope` de `verify-reusable-workflow` (35c) en
+  `openspec-changes.yaml`, con `061` en sus `adrs`. Si 35b o 35c reescribieron esa sección del README, reponer la
+  línea en un bloque mínimo. Verificar: `grep -c "No escalar .worker. hasta archivar" infra/README.md
+  openspec-changes.yaml` devuelve al menos `1` en cada fichero.
 
 ## 6. Cierre (con Q5 = (b), después del grupo 11)
 
@@ -262,6 +305,6 @@ pasan a `worker-claims-multi-replica`; si Q5 = (b), se aplican **antes** del gru
   lease» y «a legacy confirm over a new take leaves a confirmed claim outside the lease ttl» (la confirmación heredada
   deja `leaseUntil`; con el servidor TTL de 10.1, el documento sigue tras desaparecer un centinela).
 - [ ] 11.7 [infra] RUNBOOK, misma sección: `getIndexes()` de las tres colecciones de marcas (`uniq_claim_key`,
-  `ttl_lease` con su filtro parcial), el `warn` de compuerta cerrada y qué hacer, y la regla de no escalar `worker` antes
-  de archivar esta parte (B2, si 35c no la escribió ya). Verificar: `grep -c "uniq_claim_key\|ttl_lease"
-  docs/RUNBOOK.md` devuelve al menos `2`.
+  `ttl_lease` con su filtro parcial) y el `warn` de compuerta cerrada y qué hacer. Con esta parte archivada, la
+  advertencia de no escalar `worker` de `infra/README.md` (5.2, B6) se reduce a «escalar solo con la parte B
+  desplegada». Verificar: `grep -c "uniq_claim_key\|ttl_lease" docs/RUNBOOK.md` devuelve al menos `2`.
