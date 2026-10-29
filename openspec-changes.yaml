@@ -729,3 +729,28 @@ changes:
       **Diferido desde `usage-guide-fixes` (iteración 1 de su debate, 2026-10-08):** H3 de la guía de uso —guardar una
       clave BYOK sin bóveda (`503 vault_unavailable`) muestra el genérico «Algo salió mal»—, junto con H11 (`AI_VAULT_KEY`
       vacía en `e2e.env`): con la bóveda obligatoria en producción solo se ve en pilas de prueba.
+  - name: worker-data-hygiene
+    adrs: [061, 009, 035, 037, 048]
+    agents: [backend-dev]
+    scope: |
+      **Candidato posterior a la fila 35** (propuesto el 2026-10-28), sin fila en `docs/design-v0.2.md` §6 hasta que el
+      owner la asigne (Q1 del design, bloqueante para `/opsx:apply`; recomendación: justo después de 35c). No pide
+      excepción a la precedencia de ADR-048: con un solo worker en staging, sin lectura de estas colecciones en la
+      medición y con volumen despreciable, no hay riesgo real para 35b (design D10). Si el owner la pide, aplica desde
+      el principio las reglas de ADR-056 §1 (tres clases de fusión, confirmación fechada del owner con el PR-2 de 35b,
+      repetir la 9.4 de `e2e-suite` sobre el último commit desplegado).
+      Origen: relevamiento del 2026-10-28, devuelto a planificación por la sesión de 35b.
+      **(a) Outbox:** TTL parcial de 7 días sobre `publishedAt` de los publicados (≥ `removeOnFail` de todas las colas
+      del relay, fijado por test); pendientes y agotados nunca se borran (ADR-061 §1, enmienda ADR-009).
+      **(b) Marcas del worker** (`link_freshness_claims`, `application_status_group_notify_claims`,
+      `application_stale_claims`; capacidad nueva `platform/worker-claims`): índice único por clave, toma con un
+      `findOneAndUpdate` + `upsert` cuyo filtro exige marca libre (ocupada → `E11000` → «no tomada»), testigo por toma,
+      `leaseUntil` con TTL de 24 h para las tomas abandonadas y la frescura confirmada (retenida 30 min), confirmadas de
+      stale y ASN sin caducidad y con barrido diario de las de clave muerta.
+      **(c) Migración al arrancar:** completar `leaseUntil`, quitar duplicados conservando la confirmada, crear índices;
+      sin índice único, solo los detectores de esa colección se saltan el tick.
+      **(d)** Stale elige entre las no avisadas (`$lookup`); toma vencida del ledger de entregas condicionada.
+      **(e)** Jobs fallidos de BullMQ: sin cambio de retención (D8); línea de log en `notify-fanout`/`group-digest` si Q3.
+      Verificación con `mongodb-memory-server` (replset) y pruebas de dos réplicas (dos conexiones).
+      Fuera: ficheros de despliegue (rotación de logs, recomendación para 35b en ADR-061, Q4), retención de
+      `notification_deliveries`, selector de la cascada de frescura (Q2), índices en `applications`.
