@@ -703,7 +703,9 @@ changes:
       `docs/design-v0.2.md` §6 hasta que el owner responda. Mientras no haya respuesta va aquí, **justo después de
       35c**, porque la precedencia de la fila 35 (ADR-048 §Consecuencias, ADR-051 §1) sigue vigente; la recomendación
       del design es una excepción como la de ADR-055 —fusionar el change **después de la 11.6 y antes de la 10.7 de
-      35b**, con el PR de archivo y las vueltas atrás bajo sus propias reglas (Q1, tres clases)— porque el riesgo nace con los primeros archivos subidos por usuarios no-autor. Si el owner la concede,
+      35b**, con toda fusión previa a la 10.7 (el change, un arreglo o una vuelta atrás) en esa ventana y con las
+      comprobaciones repetidas sobre el último commit, y el PR de archivo y lo posterior bajo sus propias reglas (Q1,
+      tres clases)— porque el riesgo nace con los primeros archivos subidos por usuarios no-autor. Si el owner la concede,
       esta entrada se mueve delante de `staging-host` y la respuesta se anota en ADR-058 y ADR-048.
       Origen: auditoría de `critic` del 2026-10-28; **ADR-058** (Propuesto; enmienda ADR-028 §7).
       La lectura del CV sale del worker: un proceso hijo nuevo por CV con `env: {}`, el modelo de permisos de Node
@@ -714,7 +716,9 @@ changes:
       antes (el hijo no arranca) → reintento y `internal_error`. `maxStalledCount: 1` explícito y un `stalled`
       agotado deja el CV en `failed`. Con las bibliotecas de hoy (`pdf-parse` 1.1.4 y `mammoth`) dentro del hijo,
       con `--disallow-code-generation-from-strings`; el worker arranca con `--disable-sigusr1` (`CMD` de
-      `docker/worker.Dockerfile` y `runtimeArgs` de `nx serve`), para que una señal del hijo no le abra el depurador.
+      `docker/worker.Dockerfile` y `runtimeArgs` de `nx serve`, con `inspect: false`), y todo Node del contenedor lo
+      hereda por `ENV NODE_OPTIONS=--disable-sigusr1` (healthchecks, sonda, `exec`), para que una señal del hijo no le
+      abra el depurador ni al worker ni a un proceso hermano con su entorno.
       Un contador por formato, desenlace y causa sin texto del CV; el texto de `unreadable_file` en `/mi-cv` se
       reescribe (ES/EN); sonda `cv-extract-probe.js` en `verify-artifact.sh`, que mide además el arranque del hijo
       (p95 ≤ 1,5 s en `arm64`). Pruebas con archivos patológicos generados en el test, nunca muestras reales. El
@@ -752,6 +756,8 @@ changes:
       `ERR_REQUIRE_ASYNC_MODULE` e `import()` dinámico) y R6 (el pdf.js nuevo puede leer distinto que el de 2017; los
       CV ya leídos no se re-extraen). También B2-03 del debate de `cv-extract-isolation`.
       Fuera: cambiar `mammoth`, re-extraer CV ya leídos, OCR.
+      **Excepción a «sin excepción»** (B3-03 del debate de `cv-extract-isolation`, 2026-10-28): salvo un fallo
+      publicado de pdf.js ≤ 1.10 que no acoten los flags del hijo; decide el owner.
   - name: golden-sets-reales
     adrs: [019, 018, 030]
     agents: [ai-engineer]

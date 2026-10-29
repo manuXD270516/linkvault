@@ -41,12 +41,14 @@ Restricciones que este diseño respeta:
 - Lo que ve la persona son los estados existentes de `cv/extraction`; solo cambia **el texto** de `unreadable_file`
   (D13, decisión del debate).
 - Nada del CV en registros ni métricas (`cv/documents` «Nada del CV en los registros», `platform/observability`).
-- Fila 35: no se tocan compose, workflows, `.env.example` ni requirements de `platform/*` (Q1). **Sí** se toca una línea
-  de `docker/worker.Dockerfile` (el `CMD`, D7 · N1) y una opción de `serve` en `apps/worker/project.json`; no choca con
-  esa condición: la fila 35 no edita ese Dockerfile (35b y 35c no lo nombran en sus tareas ni en su `scope`; los
+- Fila 35: no se tocan compose, workflows, `.env.example` ni requirements de `platform/*` (Q1). **Sí** se tocan dos
+  líneas de la etapa `runner` de `docker/worker.Dockerfile` (`ENV NODE_OPTIONS=--disable-sigusr1` y el `CMD`, D7 · N1,
+  C3-01) y dos opciones de `serve` en `apps/worker/project.json` (`runtimeArgs` e `inspect: false`, C3-06); no choca
+  con esa condición: la fila 35 no edita ese Dockerfile (35b y 35c no lo nombran en sus tareas ni en su `scope`; los
   workflows solo lo citan por su ruta en `file:`), el compose de producción no sobrescribe el `command` del `worker`
-  (así que manda el `CMD` de la imagen) y ningún requirement de `platform/*` fija ese `CMD` (comprobado con `grep` el
-  2026-10-28). La condición de Q1 no necesita ajuste; se hace explícita aquí y en la propuesta.
+  (así que manda el `CMD` de la imagen), su `environment` es un mapa explícito sin `NODE_OPTIONS` y sin `env_file` (así
+  que manda el `ENV` de la imagen) y ningún requirement de `platform/*` fija ese `CMD` ni ese `ENV` (comprobado con
+  `grep` el 2026-10-28). La condición de Q1 no necesita ajuste; se hace explícita aquí y en la propuesta.
 - El worker se empaqueta con webpack (`apps/worker/webpack.config.js`, `compiler: 'tsc'`, `module: commonjs`) y corre en
   `node:22.23.2-alpine` como PID 1 (`CMD ["node", "main.js"]` hoy), `linux/arm64` en el destino (ADR-051 §3, ADR-052).
 - **Partición (B2-01, 2026-10-28):** este change aísla la lectura con las bibliotecas de hoy (`pdf-parse` 1.1.4 y
@@ -102,12 +104,25 @@ spawn(process.execPath, [
   1. `/app/cv-extract-child.js`, el script del hijo;
   2. `/app/node_modules`, la raíz desde la que el hijo resuelve sus bibliotecas (con pnpm, los enlaces de
      `node_modules/<paquete>` apuntan a `node_modules/.pnpm/…`, dentro de la misma raíz);
-  3. `/app/package.json`, **solo si hace falta**: Node lo consulta para saber el tipo de módulo del script. La tarea 3.5
-     lo decide con una prueba: si la sonda pasa sin esa entrada, no entra.
+  3. `/app/package.json`, **solo si hace falta**: Node consulta el `package.json` **del ámbito del script** (el más
+     cercano subiendo desde su directorio) para saber su tipo de módulo; en la imagen es `/app/package.json`. La tarea
+     3.5 lo decide con una prueba: si la sonda pasa sin esa entrada, no entra.
 
-  Nada más. Fuera de la imagen (desarrollo y tests) la lista se calcula con **la misma regla** a partir del directorio
-  del script: el script, la raíz de `node_modules` donde se resuelven `pdf-parse` y `mammoth`, y el `package.json`
-  junto al script si la 3.5 lo exige. El spec dice «las rutas de la lista fijada en el design»: es esta.
+  Nada más. En producción el script es **un solo fichero**: el bundle de webpack del hijo no carga otros chunks por
+  ruta relativa (aserción de la 3.6, C3-04). Fuera de la imagen la lista se calcula con **la misma regla**, salvo en el
+  primer punto para el hijo de los tests:
+  - en desarrollo (`nx serve`, `dist/apps/worker/`): el script, la raíz de `node_modules` donde se resuelven
+    `pdf-parse` y `mammoth`, y el `package.json` del ámbito del script si la 3.5 lo exige;
+  - en los tests (hijo compilado con `tsc` a `tmp/cv-child-test/`, D10): **el directorio de salida**
+    `tmp/cv-child-test/` en lugar del script (C3-04), porque `tsc` emite un fichero por módulo y el script del hijo
+    hace `require("./…")` de `child-protocol`, `extraction-limits` y los extractores. El directorio pasa por `realpath`
+    como las demás rutas, el `globalSetup` lo vacía antes de compilar (solo contiene la salida de `tsc`) y ningún
+    fichero de prueba «fuera de lo permitido» de la 1.7 vive dentro de él. *Descartado:* empaquetar el hijo de los
+    tests en un único fichero con «el esbuild de Vite»: el Vite del proyecto es la 8, que empaqueta con rolldown, y
+    `esbuild` solo está como dependencia transitiva, no declarada en el `package.json` raíz; usarlo sería una
+    dependencia nueva o una implícita.
+
+  El spec dice «las rutas de la lista fijada en el design»: es esta.
 - **Rutas reales (N3).** `child-command.ts` pasa cada ruta por `fs.realpathSync.native` antes de construir el flag. El
   modelo de permisos compara contra la ruta resuelta; una ruta con un enlace simbólico (pnpm, un `dist/` enlazado en
   Windows, `os.tmpdir()` en macOS) daría `ERR_ACCESS_DENIED` donde no se espera, o permitiría lo que no se quiere. Test
@@ -151,7 +166,8 @@ spawn(process.execPath, [
   mata todo. Si el worker muere, el contenedor muere con él (PID 1: el kernel mata el resto del espacio de PID). En el
   cierre ordenado, el adaptador mata a los hijos vivos (`onApplicationShutdown`). En desarrollo, un `nx serve` matado con
   `SIGKILL` podría dejar un hijo en bucle hasta que alguien lo mate (R10).
-- **El worker arranca con `--disable-sigusr1` (N1).** Ver D7.
+- **El worker arranca con `--disable-sigusr1` (N1), y todo Node del contenedor lo hereda por `NODE_OPTIONS`
+  (C3-01).** Ver D7.
 
 **Por qué no el canal IPC de `fork`.** Comprobado el 2026-10-28 en Alpine: si el hijo escribe una línea que no es JSON
 directamente en el descriptor del canal (`fs.writeSync(3, …)`), el padre lanza un `SyntaxError` **no capturado** desde
@@ -347,15 +363,38 @@ Lo que el mecanismo **da**, y nada más (los SHALL del spec prometen exactamente
   `node:22.23.2-alpine` (la versión fijada en la imagen) y `node:22.23.3-alpine`: un hijo con `--permission` y `env: {}`
   manda `SIGUSR1` a su padre y el padre abre el 9229; con el padre lanzado con `--disable-sigusr1`, el padre sigue vivo
   y el 9229 queda cerrado (`ECONNREFUSED`). El flag existe desde Node 22.14.0 y es estable desde 22.20.0 (documentación
-  de la CLI de Node), así que está en la 22.23.2 del `.nvmrc` y de la imagen. Por eso:
-  - `docker/worker.Dockerfile`: `CMD ["node", "--disable-sigusr1", "main.js"]`;
-  - `apps/worker/project.json`, `serve`: `"runtimeArgs": ["--disable-sigusr1"]` (la opción del ejecutor `@nx/js:node`
-    que llega al `execArgv` del worker);
-  - tarea 1.9 (test en Linux con un padre real) y 1.10 (guardia estática de las dos líneas de arranque).
+  de la CLI de Node), así que está en la 22.23.2 del `.nvmrc` y de la imagen.
 
-  **Ojo con `nx serve`:** el ejecutor `@nx/js:node` arranca por defecto con `inspect: "inspect"`, es decir, con el
-  inspector **ya abierto** en el 9229 durante el desarrollo, y ahí `--disable-sigusr1` no cambia nada: el hijo puede
-  conectarse sin mandar señal. Solo afecta a desarrollo (los archivos los sube el autor), pero es el mismo hueco. Q8.
+  **No solo el PID 1 (C3-01, C3-03).** En el contenedor del worker corren otros procesos Node con el mismo usuario y
+  **el entorno completo del contenedor** (credenciales incluidas): el `HEALTHCHECK` de la imagen y el healthcheck del
+  compose (`node -e "fetch(…)"`, cada 30 s y cada 10 s), la sonda `node cv-extract-probe.js` y cualquier `docker compose
+  exec worker node …`. El hijo puede mandarles `SIGUSR1` igual que al PID 1, y un inspector abierto en uno de ellos es
+  el mismo hueco. Medido el 2026-10-28 en `node:22.23.2-alpine`, con contenedores desechables:
+
+  | Orden | Salida | Lectura |
+  |---|---|---|
+  | `docker run --rm node:22.23.2-alpine sh -c 'node --disable-sigusr1 -e "setTimeout(()=>{},3000)" & p=$!; sleep 0.5; kill -USR1 $p; wait $p; echo exit=$?'` | `exit=0` | **C3-03**: fuera de PID 1, con el flag, el proceso **sobrevive** a `SIGUSR1` (sale 0 a los 3 s, no por la señal). No hace falta `process.on('SIGUSR1', …)` en `main.ts` |
+  | `docker run --rm -e NODE_OPTIONS=--disable-sigusr1 node:22.23.2-alpine node -p 1` | `1` (código 0) | **C3-01**: Node acepta el flag en `NODE_OPTIONS` |
+  | control: `node -e "setTimeout(()=>console.log('url='+require('inspector').url()),2000)"` en segundo plano, `kill -USR1` a los 0,5 s, sin flag | `Debugger listening on ws://127.0.0.1:9229/…` y `url=ws://127.0.0.1:9229/…`, `exit=0` | sin el flag, un proceso cualquiera del contenedor abre el inspector |
+  | lo mismo, con `-e NODE_OPTIONS=--disable-sigusr1` y **sin** flag en la línea de órdenes | `url=undefined`, `exit=0` | el flag por `NODE_OPTIONS` basta: sobrevive y el inspector no se abre |
+
+  Por eso, y **sin manejador en `main.ts`** (la medición de C3-03 lo hace innecesario; tampoco se pone vía `--require`,
+  porque `NODE_OPTIONS` ya protege al healthcheck, que es el proceso que no pasa por `main.ts`):
+  - `docker/worker.Dockerfile`, etapa `runner`: `ENV NODE_OPTIONS=--disable-sigusr1` (lo heredan el PID 1, los dos
+    healthchecks, la sonda y cualquier `exec`; no lo hereda el hijo, que arranca con `env: {}`, ni le hace falta);
+  - `docker/worker.Dockerfile`: `CMD ["node", "--disable-sigusr1", "main.js"]` **se queda**: es la segunda barrera del
+    PID 1 si alguien llegara a poner un `NODE_OPTIONS` propio en el `environment` del compose, que lo sustituiría (no
+    se suma); la guardia 1.10 comprueba que hoy el compose no lo hace;
+  - `apps/worker/project.json`, `serve.options`: `"runtimeArgs": ["--disable-sigusr1"]` (la opción del ejecutor
+    `@nx/js:node` que llega al `execArgv` del worker) y `"inspect": false` (C3-06, B3-04);
+  - tarea 1.9 (test en Linux con un padre real y con un hermano lanzado solo con `NODE_OPTIONS`) y 1.10 (guardia
+    estática del `ENV`, el `CMD`, `serve` y la ausencia de `NODE_OPTIONS` en el `environment` del `worker` del compose).
+
+  **`nx serve` (Q8, resuelta en la iteración 3 por `reflect`, C3-06/B3-04; el owner la puede revertir):** el ejecutor
+  `@nx/js:node` arranca por defecto con `inspect: "inspect"`, es decir, con el inspector **ya abierto** en el 9229, y
+  ahí `--disable-sigusr1` no cambia nada: el hijo puede conectarse sin mandar señal. Pasa a `"inspect": false` en
+  `serve.options`, **sin** configuración `debug`: quien quiera depurar corre `pnpm nx serve worker --inspect=inspect`
+  (una línea en el RUNBOOK, 10.1). El proceso de `nx` en sí queda fuera (R10).
 
 Lo que **no** da:
 
@@ -419,10 +458,25 @@ de error del parser o del hijo, `ZodError` ni clave del objeto.
   y 5). **El hijo real de los tests se compila aparte (N7)**: solo `cv-extract.child.ts` y lo que importa, con un
   `tsconfig` propio (`module: commonjs`) a `tmp/cv-child-test/`, en el `globalSetup` del proyecto de Vitest de
   aislamiento; **sin** `pnpm nx build worker`, que tarda y arrastra el bundle entero. La lista de lecturas de ese hijo
-  sale de la regla de D1 (el script compilado y la raíz de `node_modules` del workspace). Lo fija la tarea 3.5.
+  sale de la regla de D1 para los tests: el **directorio** `tmp/cv-child-test/` pasado por `realpath` (C3-04), la raíz
+  de `node_modules` del workspace y, si la 3.5 lo exige, el `package.json` del ámbito del script. Lo fija la tarea 3.5.
 - **Los specs de aislamiento no corren en paralelo ni dejan hijos (N6)**: un proyecto de Vitest propio,
   `worker-isolation` (en `test.projects` del `vitest.config.mts` del worker), con `fileParallelism: false`, que incluye
-  `infrastructure/isolation/**/*.spec.ts` y `extractors/pathological.spec.ts` (el proyecto `worker` los excluye); un
+  `infrastructure/isolation/**/*.spec.ts` y `extractors/pathological.spec.ts` (el proyecto `worker` los excluye).
+  **Forma en Vitest 4 (C3-05)**, con el Vitest 4.1 del proyecto:
+  - los dos proyectos llevan `extends: true`, así heredan de la raíz el plugin `unplugin-swc` (sin él se pierden los
+    metadatos de decoradores y la inyección de Nest), el `testingPreset` y el `env`;
+  - `coverage` queda **en la raíz** (en Vitest 4 no es opción de proyecto);
+  - `worker-isolation` declara `pool: 'forks'` y `execArgv: ['--expose-gc']` (en Vitest 4 `poolOptions` ya no existe;
+    `execArgv` es opción de `test`), y su `globalSetup` propio compila el hijo (3.5);
+  - **Mongo:** `worker-isolation` **no lo necesita** (la 4.4 usa el repositorio en memoria y la 5.7 solo
+    `/health/live`), pero con `extends: true` hereda el `globalSetup` de Mongo del preset, porque Vitest concatena las
+    listas. Se acepta (un replset más por corrida) y la 1.0 anota en «Estado de las mediciones» cuánto añade; si pasara
+    de 10 s, el preset se aplica solo al proyecto `worker` en vez de a la raíz;
+  - test «worker project keeps decorator metadata» (un proveedor de Nest resuelto por constructor en el proyecto
+    `worker`) y «isolation project runs files serially».
+
+  Además, un
   `afterEach` común que mata con `SIGKILL` cualquier hijo que el runner tenga aún en su conjunto de vivos; ningún bucle
   sin fin en los hijos de prueba: todos son **acotados** (p. ej. `while (Date.now() < fin)` con `fin` a 10 s), de modo
   que un fallo del runner nunca deja un proceso girando en CI; y el test de heap usa un hijo con heap **inyectado** más
@@ -500,7 +554,11 @@ nuevo) pasaron a `cv-pdf-library-upgrade` con la partición (B2-01). Los demás 
     añadir ningún flag. La primera línea **LTS** que lo trae es **Node 26 («Lithium»)**, que pasó a LTS **hoy,
     2026-10-28, con la 26.13.0**. La línea 24 («Krypton», LTS) no lo trae. El proyecto está en la 22 («Jod», LTS).
   - **Señales.** El modelo de permisos no impide `process.kill`: el hijo puede mandar señales al worker, que corre con
-    el mismo usuario. Lo peligroso, `SIGUSR1` (abre el inspector), queda cerrado con `--disable-sigusr1` (D7, N1).
+    el mismo usuario. Lo peligroso, `SIGUSR1` (abre el inspector), queda cerrado con `--disable-sigusr1` (D7, N1) en
+    el PID 1 y, por `ENV NODE_OPTIONS=--disable-sigusr1` en la imagen, en todo otro Node del contenedor con el entorno
+    del worker (healthchecks, sonda, `exec`), medido el 2026-10-28 (C3-01, C3-03). Queda una condición: si alguien
+    pusiera un `NODE_OPTIONS` propio en el `environment` del `worker` del compose, sustituiría al de la imagen y los
+    healthchecks quedarían sin el flag (el PID 1 conserva el del `CMD`); la guardia 1.10 lo comprueba.
     **No** se promete impedir el resto: un `SIGTERM` o `SIGINT` del hijo provoca el cierre ordenado del worker y su
     reinicio por `restart: unless-stopped`. Es una **denegación de servicio aceptada, acotada por D8**: como mucho dos
     aperturas del mismo archivo y después el CV queda en `failed`/`internal_error`.
@@ -519,6 +577,10 @@ nuevo) pasaron a `cv-pdf-library-upgrade` con la partición (B2-01). Los demás 
   `CMD` de `docker/worker.Dockerfile` (N1) no solapa: la fila 35 no edita ese fichero.
 - **R10 — Hijos huérfanos en desarrollo.** Un `nx serve` del worker matado con `SIGKILL` deja vivo un hijo que estuviera
   en un bucle, hasta que se mate a mano. En la imagen no pasa (D1, PID 1). Aceptado; el RUNBOOK lo menciona.
+  **Y el proceso de `nx` queda fuera de D7 (C3-06):** `inspect: false` y `runtimeArgs` protegen al worker que `nx serve`
+  lanza, no al proceso de `nx` que lo vigila, que corre sin `--disable-sigusr1` con el entorno del `.env` de desarrollo;
+  un hijo podría mandarle `SIGUSR1` y abrir su inspector. Riesgo de desarrollo aceptado: los archivos los sube el
+  autor, y cerrarlo exigiría cambiar cómo se lanza `nx` en todo el workspace.
 - **R11 — Coste de arranque por lectura.** Un proceso Node por CV: ~40 MB de RSS y el arranque de Node, `pdf-parse` y
   `mammoth` hasta `ready`. El criterio es **p95 ≤ 1,5 s en `arm64`** (N8): la sonda imprime `boot_p95_ms` (D11) y se lee
   en el runner `arm64` antes de fusionar (7.3, 7.4) y en el host de staging tras desplegar (Migration Plan). Un p95 por
@@ -539,26 +601,32 @@ nuevo) pasaron a `cv-pdf-library-upgrade` con la partición (B2-01). Los demás 
 
 1. **Sin migración de datos.** Ningún documento cambia de forma. Los CV en `pending` al desplegar los lee el código
    nuevo; los ya leídos o fallidos se quedan como están.
-2. **Despliegue**: imágenes nuevas del worker (con `--disable-sigusr1` en su `CMD`) y del SPA (el texto de D13); `api`
-   no cambia. No hay variables nuevas que poner en el host.
+2. **Despliegue**: imágenes nuevas del worker (con `--disable-sigusr1` en su `CMD` y `NODE_OPTIONS=--disable-sigusr1`
+   en su `ENV`) y del SPA (el texto de D13); `api` no cambia. No hay variables nuevas que poner en el host: el
+   `NODE_OPTIONS` viene en la imagen.
 3. **Comprobación tras desplegar**:
    - subir un CV PDF y uno DOCX con la cuenta `+e2e` (o la e2e del lote 1) y ver
      `linkvault_cv_extractions_total{outcome="text"}` subir en `/metrics` desde la red interna;
    - la línea de órdenes del PID 1 del contenedor `worker` (`/proc/1/cmdline`) contiene `--disable-sigusr1`;
+   - `docker compose exec worker sh -c 'echo $NODE_OPTIONS'` imprime `--disable-sigusr1` (lo heredan los
+     healthchecks y cualquier `exec`, C3-01);
    - `node cv-extract-probe.js` dentro del contenedor `worker` del host (`run --rm --no-deps`): `boot_p95_ms` ≤ 1.500
      (N8, R11), anotado en «Estado de las mediciones»;
    - `core_pattern` del host y `ulimit -c` del contenedor, anotados en el RUNBOOK (R12).
-4. **Vuelta atrás**: revertir el PR y redesplegar la imagen anterior (procedimiento de 35b). La fusión del revert (y la de
-   su vuelta) sigue las reglas de la clase 3 de Q1; dentro de un periodo prohibido, se vuelve desde el host sin tocar
-   `main` y el revert espera. Los CV leídos con el código nuevo se quedan; un CV en `pending` en el momento del cambio lo
-   lee la imagen anterior.
+4. **Vuelta atrás**: revertir el PR y redesplegar la imagen anterior (procedimiento de 35b). **Antes de la 10.7 de
+   35b**, el revert (o un arreglo) es de la clase 1 de Q1: solo en la ventana 11.6-10.7 y repitiendo este §3, la 7.3,
+   la 7.4 y las comprobaciones previas a invitar de 35b sobre el commit desplegado (C3-02). **Después de la 10.7**, la
+   fusión del revert (y la de su vuelta) sigue las reglas de la clase 3; dentro de un periodo prohibido, se vuelve desde
+   el host sin tocar `main` y el revert espera. Los CV leídos con el código nuevo se quedan; un CV en `pending` en el
+   momento del cambio lo lee la imagen anterior.
 
 ## Costo estimado
 
-52 tareas de menos de una hora (`tasks.md`, 0.1-11.5). Respecto de la iteración 1 (51): salen las 7 del grupo 8
+53 tareas de menos de una hora (`tasks.md`, 0.1-11.5). La iteración 3 suma la 11.2c (guardia de las señales para la
+10.7, C3-02) y amplía 1.0, 1.9, 1.10, 3.5, 3.6, 10.1, 11.2a, 11.3 y 11.5 sin partirlas. Respecto de la iteración 1 (51): salen las 7 del grupo 8
 (spike y sustitución de pdf.js, con la 8.5 del owner) hacia `cv-pdf-library-upgrade`; entran el proyecto de Vitest de
 aislamiento (1.0, N6), la prueba y la guardia de `--disable-sigusr1` (1.9 y 1.10, N1) y la lectura del arranque en
-`arm64` (7.4, N8); y se parten la 1.4 en tres, la 3.1 en dos y la 11.2 en dos (T1). El paso de hilo a proceso hijo sigue
+`arm64` (7.4, N8); y se parten la 1.4 en tres, la 3.1 en dos y la 11.2 en dos (T1), que la iteración 3 lleva a tres. El paso de hilo a proceso hijo sigue
 costando **3-4 h** sobre la versión con hilo (estimación de `critic`, iteración 1).
 
 ## Open Questions
@@ -576,13 +644,22 @@ Q3 (umbral de crecimiento de la imagen) y Q6 (alertas de Renovate para los parse
 
   **La excepción que firma el owner cubre todas las fusiones que este change necesita**, en tres clases:
 
-  1. **La fusión del change**: solo en la ventana **después de la 11.6 de 35b y antes de su 10.7**. Es la única ventana
-     válida antes de invitar. No hace falta la cláusula de los días 7 y 14: la ventana termina antes de la 10.7, y la
-     medición empieza con ella. La precondición de la 10.7 (`e2e-remote` en verde sobre el commit desplegado) se corre
-     sobre el commit que deja esta fusión.
+  1. **Toda fusión de este change a `main` antes de la 10.7 de 35b** (C3-02): la del change, la de un arreglo o la de
+     una vuelta atrás. Solo en la ventana **después de la 11.6 de 35b y antes de su 10.7**, la única válida antes de
+     invitar. No hace falta la cláusula de los días 7 y 14: la ventana termina antes de la 10.7, y la medición empieza
+     con ella. **Por cada fusión de la clase 1** se repiten sobre el commit desplegado:
+     - (i) las comprobaciones previas a invitar de 35b (entre ellas, `e2e-remote` en verde sobre el commit desplegado);
+     - (ii) la 7.3 y la 7.4 (la sonda en `arm64` y su `boot_p95_ms` ≤ 1.500);
+     - (iii) el Migration Plan §3.
+
+     Las tres señales se exigen sobre el commit de la **última** fusión de la clase 1; las de las fusiones intermedias
+     solo se anotan (en el PR de cada una). La guardia (11.2a) imprime la orden de repetirlas, y la 11.2c dice si las
+     señales cubren el último commit. **Después de la 10.7**, un arreglo o una vuelta atrás siguen las reglas de la
+     clase 3.
   2. **El PR de archivo** (anotaciones posteriores a la fusión: número del PR, hash del merge, ADR-058 a Aceptado,
      «Estado de las mediciones», deltas aplicados). Se fusiona **después de la 10.7 de 35b**, y con las reglas de la clase 3.
-  3. **Las fusiones de vuelta atrás**, si hacen falta, y la vuelta de esas vueltas atrás. Reglas de las clases 2 y 3:
+  3. **Las fusiones de arreglo y de vuelta atrás después de la 10.7 de 35b**, si hacen falta, y la vuelta de esas
+     vueltas atrás. Reglas de las clases 2 y 3:
      **nunca** entre el PR-2 de 35b y su 11.6, **nunca** durante su 9.1-9.4, **nunca** los días 7 y 14 de la medición,
      **nunca** el día de una corrida `e2e-remote`. Si staging necesita volver atrás dentro de un periodo prohibido, se
      vuelve **desde el host** con el procedimiento «vuelta atrás sin GitHub» de 35b (su 11.2), que no toca `main`, y la
@@ -592,8 +669,9 @@ Q3 (umbral de crecimiento de la imagen) y Q6 (alertas de Renovate para los parse
   antes de que este change esté listo, decide el owner entre esperar o invitar con el código de hoy (y entonces la
   clase 1 ya no tiene ventana antes de invitar: vuelve al owner).
 
-  - (a) Sí: se aplica en paralelo; la fusión del change va en la ventana de la clase 1, el PR de archivo y las vueltas
-    atrás con las reglas de las clases 2 y 3. Como ADR-055 §1 hizo con `usage-guide-fixes`.
+  - (a) Sí: se aplica en paralelo; toda fusión antes de la 10.7 (el change, un arreglo o una vuelta atrás) va en la
+    ventana de la clase 1, con (i)-(iii) repetidos; el PR de archivo y lo posterior a la 10.7, con las reglas de las
+    clases 2 y 3. Como ADR-055 §1 hizo con `usage-guide-fixes`.
   - (b) No: entra justo después de 35c (posición actual en `openspec-changes.yaml`).
   - (c) Como (a), pero sin tocar `verify-artifact.sh` ni `infra/README.md`: la sección de la sonda (D11) se traslada a
     35c.
@@ -613,12 +691,17 @@ Q3 (umbral de crecimiento de la imagen) y Q6 (alertas de Renovate para los parse
   11.6 y la 10.7 se toma de una **confirmación escrita y fechada del owner en el PR** que se va a fusionar («11.6 hecha
   el AAAA-MM-DD; 10.7 no hecha»), junto con si hoy es día 7 o 14 o día de una corrida `e2e-remote`; el PR-2 de 35b se
   identifica **por su número** en `git log` de `main`; las casillas de `staging-host/tasks.md` (en `main` o en la rama
-  de archivo de 35b) son solo apoyo. Para la clase 1, si el owner declara la 10.7 hecha, el resultado es «fuera de
-  ventana». Nada de la clase 2 se escribe en `main` justo después de fusionar el PR del change.
+  de archivo de 35b) son solo apoyo. Para la clase 1 (sea el change, un arreglo o una vuelta atrás), si el owner
+  declara la 10.7 hecha, el resultado es «fuera de ventana». Para dar por cubierta la 10.7, la confirmación del owner
+  dice que (i)-(iii) se repitieron **sobre el commit de la última fusión de la clase 1** (su hash); sin ella, este
+  change no da sus señales por buenas y la 10.7 no queda habilitada por él (lo que se haga entonces lo decide el owner,
+  PO-04). Nada de la clase 2 se escribe en `main` justo después de fusionar el PR del change.
 - **Q2 [cerrada en el debate, iteración 1] — Texto de «el archivo era demasiado complejo».** Opciones: (a) no tocar
   nada; (b) motivo nuevo en `libs/shared` + textos + SPA; (c) reescribir solo el texto existente de `unreadable_file`.
   **Decisión del debate (PO-02): (c)**, en D13, sujeta a la aprobación humana del change; el texto lo fijó la
-  iteración 2 (B2-04). (b) queda para cuando 35b muestre cuántas lecturas acaban con `cause="timeout"`.
+  iteración 2 (B2-04). (b) queda para cuando 35b muestre cuántas lecturas acaban con `cause="timeout"`. **Se reabre**
+  si en la medición de 35b aparece algún `unreadable` con `cause` ∈ {`timeout`, `heap_limit`, `memory_ceiling`}
+  (B3-02).
 - **Q4 [no bloqueante] — ¿Fijar `CV_EXTRACT_CONCURRENCY` a 1?** Con el vigía por hijo ya no hay daño colateral; queda
   la suma de memoria (R4). Opciones: (a) dejar el rango 1-4 con el `warn` de D5 y el RUNBOOK; (b) bajar el máximo a 1.
   **Recomendación: (a)**: el rango es un contrato de configuración vigilado y el valor real es 1.
@@ -634,7 +717,10 @@ Q3 (umbral de crecimiento de la imagen) y Q6 (alertas de Renovate para los parse
   actualización menor.
   **Voto de la iteración 2 (B2-05): (a) sí y (b) sí —(b) como fila propia del manifiesto, después de la 35—; (c) no y
   (d) no.** La decisión sigue siendo del owner; la fila de (b) no se crea hasta que la apruebe.
-- **Q8 [no bloqueante, nueva en la iteración 2] — El inspector de `nx serve` del worker.** El ejecutor `@nx/js:node`
+- **Q8 [resuelta en la iteración 3 por `reflect`, 2026-10-28; el owner la puede revertir] — El inspector de `nx serve`
+  del worker.** **Decisión (C3-06, en la versión recortada de B3-04):** solo `"inspect": false` en `serve.options`, sin
+  configuración `debug`; para depurar, `pnpm nx serve worker --inspect=inspect` (RUNBOOK, 10.1). El proceso de `nx`
+  queda fuera (R10). Planteamiento original: el ejecutor `@nx/js:node`
   arranca por defecto con `inspect: "inspect"`: en desarrollo el worker escucha en `127.0.0.1:9229` desde el arranque,
   y un hijo con red puede conectarse sin mandar ninguna señal (D7). Solo afecta a desarrollo, donde los archivos los
   sube el autor. Opciones: (a) `inspect: false` en las opciones de `serve` y una configuración `debug` que lo active a
@@ -645,8 +731,8 @@ Q3 (umbral de crecimiento de la imagen) y Q6 (alertas de Renovate para los parse
 
 ## Estado de las mediciones
 
-Se completa aquí durante `/opsx:apply`, con fecha: cómo arranca Vitest el hijo real y si `/app/package.json` entra en
-la lista de lecturas (3.5); lo que hizo el test de asignación enorme (1.6); `boot_p50_ms` y `boot_p95_ms` en el runner
+Se completa aquí durante `/opsx:apply`, con fecha: cuánto añade a `worker-isolation` el `globalSetup` de Mongo heredado
+(1.0); cómo arranca Vitest el hijo real y si `/app/package.json` entra en la lista de lecturas (3.5); lo que hizo el test de asignación enorme (1.6); `boot_p50_ms` y `boot_p95_ms` en el runner
 `arm64` (7.4) y en el host de staging (Migration Plan); y `ulimit -c` del contenedor y `core_pattern` del host (R12).
 Hasta la iteración 1 esta sección se llamaba «D3 · Estado» y recogía el spike, que pasó a `cv-pdf-library-upgrade`.
 
@@ -715,3 +801,27 @@ de ADR-028 §Consecuencias y `openspec-changes.yaml` (fila nueva `cv-pdf-library
 
 Convergencia: NO (pendiente de que `critic` verifique N1 y los P1 aplicados, y de que `business` vea la partición y la
 fila nueva; Q1 sigue siendo del owner).
+
+## Debate — iteración 3
+
+Fecha: 2026-10-28. `critic`: 3 P0 (C3-01, C3-02, C3-03) y C3-04 a C3-06 como P1. `business`: 0 V0, B3-01 a B3-05.
+Decisiones de `reflect` aplicadas en `proposal.md`, este design, los deltas de `cv/extraction` y `web/cv`, `tasks.md`,
+ADR-058 y `openspec-changes.yaml` (fila de este change y `scope` de `cv-pdf-library-upgrade`). Mediciones del
+arquitecto en `node:22.23.2-alpine`, con contenedores desechables, anotadas con orden y salida en D7.
+
+| Id | Origen | Decisión | Motivo |
+|---|---|---|---|
+| C3-03 (P0) | critic | Medido primero: fuera de PID 1, `node --disable-sigusr1` **sobrevive** a `SIGUSR1` (`exit=0`, sale al terminar su `setTimeout`, no por la señal). No se añade manejador en `main.ts`; la medición queda en D7 | La duda era si el flag, fuera de PID 1, cambiaba el abrir el inspector por morir; no lo hace |
+| C3-01 (P0) | critic | Aceptado: Node acepta el flag en `NODE_OPTIONS` (`node -p 1` imprime `1`) y, con él, un proceso sin el flag en la línea de órdenes sobrevive a `SIGUSR1` con `inspector.url()` `undefined`. `ENV NODE_OPTIONS=--disable-sigusr1` en la etapa `runner` (lo heredan los dos healthchecks `node -e`, la sonda y cualquier `exec`; el hijo no, por `env: {}`); el `CMD` conserva el flag como segunda barrera del PID 1; sin manejador ni `--require`: el healthcheck queda protegido por `NODE_OPTIONS`, medido. 1.9 gana el caso del hermano lanzado solo con `NODE_OPTIONS`; 1.10 lee el `ENV` y comprueba que el compose no pisa `NODE_OPTIONS` del `worker`; Migration Plan §3 gana `docker compose exec worker sh -c 'echo $NODE_OPTIONS'`; corregida la frase «una línea de `docker/worker.Dockerfile`» (Context, propuesta, ADR-058, manifiesto). Requirement y escenarios del delta de `cv/extraction` ampliados | Los healthchecks corren con el entorno completo del contenedor y el mismo usuario: un inspector abierto en ellos era el mismo hueco que N1 |
+| C3-02 (P0) | critic | Aceptado: la clase 1 de Q1, ADR-058 §11 y la 11.2a pasa a ser **toda fusión de este change a `main` antes de la 10.7 de 35b** (el change, un arreglo o una vuelta atrás), solo en la ventana 11.6-10.7, repitiendo por cada una sobre el commit desplegado (i) las comprobaciones previas a invitar de 35b, (ii) la 7.3 y la 7.4 y (iii) el Migration Plan §3; las tres señales se exigen sobre la **última** y las intermedias solo se anotan. La guardia imprime la orden de repetir; la 11.2c nueva dice si las señales cubren la última fusión; después de la 10.7 los arreglos siguen la clase 3; la 11.5 lista también los arreglos. Falsaciones: un arreglo con «10.7 hecha» da «fuera de ventana» (11.2a) y uno sin la confirmación de comprobaciones repetidas da «señales no cubiertas» (11.2c). Migration Plan §4 y propuesta alineados | Un arreglo fusionado antes de invitar cambia el commit desplegado sobre el que se dieron por buenas las señales; sin regla, la 10.7 se apoyaba en un commit que ya no estaba |
+| C3-04 | critic | Aceptado, opción del **directorio**: el hijo de los tests recibe `tmp/cv-child-test/` (vaciado por el `globalSetup`, pasado por `realpath`) en lugar del script; se descarta el empaquetado con «el esbuild de Vite» porque el Vite del proyecto es la 8 (rolldown) y `esbuild` solo es transitiva. «`package.json` junto al script» pasa a «el `package.json` del ámbito del script» (D1, D10, spec, ADR-058). La 3.6 añade «the child bundle is a single file» (sin `require("./…")` ni carga de chunks) con su falsación por `splitChunks`; la 3.5, «the test child reads only its output directory» | `tsc` emite un fichero por módulo y el hijo hace `require` relativos: con solo el script en la lista, el hijo de los tests no arrancaba |
+| C3-05 | critic | Aceptado: 1.0 reescrita para Vitest 4.1: `extends: true` en los dos proyectos, `worker-isolation` con su `globalSetup` y `pool: 'forks'` + `execArgv: ['--expose-gc']`, `coverage` en la raíz; declara que no necesita Mongo pero lo hereda (se acepta y se mide; si pasa de 10 s, el preset va solo a `worker`). Verificación nueva «worker project keeps decorator metadata» con falsación (quitar `extends: true`) (D10) | La 1.0 estaba escrita con opciones de Vitest 3 (`poolOptions`) y, sin `extends`, el proyecto `worker` perdía `unplugin-swc` |
+| C3-06 / Q8 | critic / business (B3-04) | Aceptado en la versión recortada de B3-04: solo `"inspect": false` en `serve.options`, sin configuración `debug`; RUNBOOK con `pnpm nx serve worker --inspect=inspect` (10.1). Q8 resuelta como decisión de `reflect`, que el owner puede revertir. R10: el proceso de `nx` queda fuera, riesgo de desarrollo aceptado. La 1.9 comprueba `inspector.url()` y el puerto que declara el padre (`process.debugPort`), no un 9229 fijo | Cierra el inspector abierto por defecto con una línea; una configuración `debug` es ergonomía que nadie pidió |
+| B3-01 | business | Aceptado, con un ajuste de forma: OpenSpec no deja renombrar dentro de un MODIFIED un escenario que la spec vigente tiene (`validate --strict` rechaza omitir «Un CV protegido con contraseña»), así que el escenario se parte: «Un CV protegido con contraseña» queda solo con la frase de la contraseña y se añade «Un archivo que no pudimos abrir» (CV sin contraseña en `unreadable_file`: pide volver a exportarlo y no se limita a la contraseña) | El desenlace ya no es solo la contraseña; el nombre nuevo cubre el caso que el texto de D13 añade |
+| B3-02 | business | Aceptado: Q2 se reabre si en la medición de 35b aparece algún `unreadable` con `cause` ∈ {`timeout`, `heap_limit`, `memory_ceiling`} | Disparador concreto en vez de «cuando 35b muestre» |
+| B3-03 | business | Aceptado: el `scope` de `cv-pdf-library-upgrade` admite una excepción a «sin excepción»: un fallo publicado de pdf.js ≤ 1.10 que no acoten los flags del hijo; decide el owner | Un fallo explotable a pesar del aislamiento no puede esperar a 35c por regla |
+| B3-04 | business | Aceptado; aplicado como C3-06 | Ídem |
+| B3-05 | business | Aceptado: la viñeta de `--disable-sigusr1` de ADR-058 dice «y `serve` arranca con `inspect: false`» y nombra `NODE_OPTIONS` | El ADR tiene que decir todo lo que se arranca con el flag |
+| Q1 | owner | Sigue pendiente, con la clase 1 redefinida (C3-02) | Decisión del owner |
+
+Convergencia: pendiente de la verificación puntual de C3-01, C3-02 y C3-03.

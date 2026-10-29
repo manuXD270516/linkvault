@@ -40,10 +40,18 @@ El número de caracteres leídos NO SHALL mostrarse, y el texto del CV NO SHALL 
 
 #### Scenario: Un CV protegido con contraseña
 
-- **GIVEN** un CV en `failed` con motivo `unreadable_file`
+- **GIVEN** un CV protegido con contraseña en `failed` con motivo `unreadable_file`
 - **WHEN** Ana lo mira
 - **THEN** el mensaje SHALL decirle que le quite la contraseña si la tiene
-- **AND** SHALL pedirle, si no la tiene, que vuelva a exportarlo desde su editor en PDF o DOCX y lo suba otra vez
+
+#### Scenario: Un archivo que no pudimos abrir
+
+- **GIVEN** un CV sin contraseña en `failed` con motivo `unreadable_file` (por ejemplo, porque su lectura agotó el plazo
+  o la memoria)
+- **WHEN** Ana lo mira
+- **THEN** el mensaje SHALL pedirle, si no tiene contraseña, que vuelva a exportarlo desde su editor en PDF o DOCX y lo
+  suba otra vez
+- **AND** NO SHALL limitarse a hablar de la contraseña
 
 #### Scenario: El mismo texto en inglés
 

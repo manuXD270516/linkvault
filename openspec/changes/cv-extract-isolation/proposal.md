@@ -33,8 +33,9 @@ siguiente es `worker_threads` o un proceso aparte»). Lo que cambia ahora es **q
   sin variables de entorno (`env: {}`), sin poder leer el disco fuera de su script y sus bibliotecas (ni el entorno del
   worker por `/proc`), sin escribir, sin lanzar procesos ni hilos, sin código nativo ni `eval`; con el heap acotado por
   flags, la salida estándar descartada y un **plazo que corta** con `SIGKILL`, que detiene incluso un bucle síncrono. El
-  event loop del worker queda libre durante toda la lectura. El worker arranca con `--disable-sigusr1`, para que una
-  señal del hijo no le abra el depurador. La red **no** se corta (Node 22 no lo permite), ni se impide que el hijo
+  event loop del worker queda libre durante toda la lectura. El worker arranca con `--disable-sigusr1`, y todo Node del
+  contenedor lo hereda por `NODE_OPTIONS` (healthchecks, sonda, `exec`), para que una señal del hijo no le abra el
+  depurador ni a él ni a un proceso hermano con su entorno; `nx serve worker` arranca sin inspector. La red **no** se corta (Node 22 no lo permite), ni se impide que el hijo
   mande otras señales al worker: riesgos aceptados (design D1, D2, D7, R8).
 - **Topes de contenido**: como mucho 50 páginas de PDF, 1.000.000 de caracteres de texto crudo, 64 MiB inflados y 2.000
   entradas por DOCX, y un vigía que mata **al hijo** si su memoria residente crece más de 512 MiB sobre la que tenía al
@@ -86,7 +87,7 @@ Ninguna.
 - **Código** (solo en `/opsx:apply`, nada aquí): `apps/worker/src/modules/cv/infrastructure/` (aislamiento, proceso
   hijo, extractores, consumidor), `apps/worker/src/modules/cv/application/extract-cv.usecase.ts` (red exterior del plazo),
   `apps/worker/src/modules/cv/cv.module.ts`, `apps/worker/webpack.config.js` (dos entradas nuevas: el hijo y la sonda),
-  `apps/worker/project.json` (`runtimeArgs` de `serve`), `apps/worker/vitest.config.mts` (proyecto de aislamiento),
+  `apps/worker/project.json` (`runtimeArgs` e `inspect: false` de `serve`), `apps/worker/vitest.config.mts` (proyecto de aislamiento),
   `apps/worker/src/presentation/http/metrics.controller.ts` (registro compartido), `eslint.config.mjs` (lista de
   parsers y `node:child_process`, que el dominio no importa). En el SPA, `cv-card.component.html`, su spec y los
   catálogos de i18n (ADR-050).
@@ -94,8 +95,9 @@ Ninguna.
   desenlaces. Tampoco `CvRepository`.
 - **Dependencias**: ninguna cambia. `pdf-parse` y `mammoth` se quedan, ahora dentro del hijo; la sustitución de
   `pdf-parse` es de `cv-pdf-library-upgrade`.
-- **Imagen y CI**: el `CMD` de `docker/worker.Dockerfile` gana `--disable-sigusr1` (la fila 35 no edita ese fichero
-  y ningún requirement de `platform/*` fija el `CMD`); una sección más en `infra/ci/verify-artifact.sh` y su línea
+- **Imagen y CI**: la etapa `runner` de `docker/worker.Dockerfile` gana `ENV NODE_OPTIONS=--disable-sigusr1` y su
+  `CMD` gana `--disable-sigusr1` (la fila 35 no edita ese fichero, el compose no fija `NODE_OPTIONS` ni `command` del
+  `worker`, y ningún requirement de `platform/*` fija el `CMD` ni el `ENV`); una sección más en `infra/ci/verify-artifact.sh` y su línea
   gemela en `infra/README.md`. Ningún workflow, ningún compose, ningún `.env.example`, ningún requirement de
   `platform/*`.
 - **Datos**: ninguna migración. Los CV ya leídos conservan su texto; nadie re-extrae nada.
@@ -111,8 +113,9 @@ entrar antes de 35c**, como las de ADR-053 y ADR-055, y la decide el owner (**Q1
 
 Argumento para la excepción, y para fusionar **antes de invitar en 35b**, en la única ventana que no rompe ninguna regla
 de 35b ni de `e2e-suite`: **después de la 11.6 de 35b y antes de su 10.7**. La excepción cubre las tres clases de
-fusión que el change necesita —la del change, el PR de archivo y las vueltas atrás—, cada una con sus reglas (design
-Q1). Y no bloquea la 10.7: si 35b llega antes, decide el owner (PO-04).
+fusión que el change necesita —toda fusión antes de la 10.7 (el change, un arreglo o una vuelta atrás, repitiendo
+sobre el último commit las comprobaciones previas a invitar de 35b, la sonda en `arm64` y la comprobación tras
+desplegar), el PR de archivo, y los arreglos y vueltas atrás posteriores—, cada una con sus reglas (design Q1). Y no bloquea la 10.7: si 35b llega antes, decide el owner (PO-04).
 
 1. **El riesgo nace exactamente en 35b.** Hasta hoy el único que sube CV es el autor. La 10.7 de 35b invita a 3-5
    personas que buscan empleo, y el flujo crítico que esas personas recorren (lote 1 de `e2e-suite`) incluye subir un
@@ -121,8 +124,8 @@ Q1). Y no bloquea la 10.7: si 35b llega antes, decide el owner (PO-04).
    que lo note: el síntoma sería que «no llegan los avisos» o «no se lee la oferta», precisamente las señales que la
    medición de 35b quiere recoger.
 3. **No compite con la fila**: no toca compose, workflows, `.env.example` ni requirements de `platform/*` (el texto de
-   `/mi-cv` es del SPA, que la fila no edita; la línea del `CMD` de `docker/worker.Dockerfile`, tampoco la edita la
-   fila). Los
+   `/mi-cv` es del SPA, que la fila no edita; las dos líneas de `docker/worker.Dockerfile`, el `ENV` y el `CMD`,
+   tampoco: la fila no edita ese fichero). Los
    únicos ficheros compartidos son `infra/ci/verify-artifact.sh` (una sección nueva, en un tramo que 35c no edita; 35c
    cambia el `--wait-timeout`) e `infra/README.md` (la misma orden en el `up` documentado, que
    `check-docs-stack-up` exige idéntico al del script). Si el owner prefiere cero solape, la sonda de la imagen (D11)

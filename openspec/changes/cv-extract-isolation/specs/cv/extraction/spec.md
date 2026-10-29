@@ -217,7 +217,7 @@ otro CV. El proceso hijo SHALL arrancar:
 - con un entorno sin ninguna variable del worker;
 - con el modelo de permisos de Node activo, de modo que NO SHALL poder leer ficheros fuera de las rutas de la lista
   fijada en el design (design de `cv-extract-isolation`, D1: el script del hijo, la raíz de `node_modules` de la que
-  resuelve sus bibliotecas y, solo si hace falta, el `package.json` junto al script) —en particular, ni el entorno del
+  resuelve sus bibliotecas y, solo si hace falta, el `package.json` del ámbito del script) —en particular, ni el entorno del
   worker a través de `/proc`—, ni escribir ficheros, ni lanzar procesos o hilos, ni cargar código nativo;
 - con la generación de código desde cadenas desactivada;
 - con el heap acotado a 256 MB de generación vieja y 16 MB por semiespacio;
@@ -225,7 +225,9 @@ otro CV. El proceso hijo SHALL arrancar:
 
 El proceso del worker SHALL arrancar con la activación del depurador por `SIGUSR1` desactivada
 (`--disable-sigusr1`), tanto en la imagen como en `nx serve`, de modo que una señal del proceso hijo no abra el
-inspector del worker.
+inspector del worker. En la imagen, todo proceso Node que se lance en el contenedor del worker con su entorno (el
+healthcheck, las sondas, una orden `exec`) SHALL heredar la misma desactivación, y `nx serve worker` NO SHALL arrancar
+con el inspector abierto.
 
 Este requirement NO promete cortar la red del proceso hijo: el mecanismo no lo permite en la versión de Node del
 proyecto, y es un riesgo aceptado (ADR-058). Tampoco promete impedir que el hijo mande señales al worker, con el que
@@ -315,12 +317,22 @@ terminar el proceso del worker.
   listo, le manda `SIGUSR1`
 - **WHEN** pasa medio segundo
 - **THEN** el proceso del worker SHALL seguir vivo
-- **AND** su inspector NO SHALL estar activo ni escuchar en `127.0.0.1:9229`
+- **AND** su inspector NO SHALL estar activo ni escuchar en el puerto de depuración que declara
+
+#### Scenario: Una señal del hijo no abre el depurador de otro proceso del contenedor
+
+- **GIVEN** un proceso Node hermano lanzado solo con el entorno de la imagen (sin el flag en su línea de órdenes), en
+  Linux, y un proceso de extracción que, tras anunciarse listo, le manda `SIGUSR1`
+- **WHEN** pasa medio segundo
+- **THEN** el proceso hermano SHALL seguir vivo
+- **AND** su inspector NO SHALL estar activo
 
 #### Scenario: El worker se lanza sin el depurador por señal
 
-- **WHEN** se revisan el `CMD` de la imagen del worker y las opciones de `nx serve worker`
-- **THEN** los dos SHALL pasar `--disable-sigusr1` a Node
+- **WHEN** se revisan el `CMD` y el entorno de la imagen del worker y las opciones de `nx serve worker`
+- **THEN** el `CMD` y las opciones de `nx serve worker` SHALL pasar `--disable-sigusr1` a Node
+- **AND** el entorno de la imagen SHALL fijar `NODE_OPTIONS=--disable-sigusr1`
+- **AND** `nx serve worker` SHALL arrancar sin el inspector abierto
 
 #### Scenario: Lo que escribe el hijo no se registra
 
