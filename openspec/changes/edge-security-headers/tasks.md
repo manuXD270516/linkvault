@@ -6,14 +6,19 @@
 > **Un PR** con los grupos 1-5, 7 y 8, que se prepara en cualquier momento. **Tres clases de fusión** (design D10, F1),
 > todas cubiertas por la excepción que firma el owner:
 >
-> 1. **La del change**, solo en la ventana que fije la Q1, comprobada por la 0.3: (a) después de la 11.6 de 35b y antes
->    de su 10.7 (la medición empieza al invitar: sus días 7 y 14 no caen aquí); o la que autorice el owner en (d).
-> 2. **El PR de archivo** (casillas y anotaciones del grupo 9 y la 10.3).
-> 3. **Las de la vuelta atrás de la CSP** (design D9 (i)) y su regreso.
+> 1. **La del change y sus correcciones antes de la 10.7 de 35b**, solo en la ventana que fije la Q1, con la 0.3
+>    **repetida antes de cada fusión**: (a) después de la 11.6 de 35b y antes de su 10.7 (la medición empieza al
+>    invitar: sus días 7 y 14 no caen aquí); o la que autorice el owner en (d). Después de invitar, una corrección
+>    sigue las reglas de la clase 3.
+> 2. **El PR de archivo** (casillas y anotaciones del grupo 9 y la 10.3). Solo toca `openspec/**` y `docs/**`, que
+>    `cd-staging.yml` ignora (`paths-ignore`), así que **no despliega**; sus reglas se mantienen por prudencia.
+> 3. **Las de la vuelta atrás de la CSP** (design D9 (i)) y su regreso, y las correcciones después de invitar.
 >
 > Las clases 2 y 3: **nunca** entre el PR-2 de 35b y su 11.6, **nunca** durante su 9.1-9.4, **nunca** los días 7 y 14
-> de la medición, **nunca** el día de una corrida `e2e-remote` contra staging. El grupo 9 se hace contra staging con el
-> commit desplegado, **antes de la 10.7 de 35b**. La 10.3 verifica **cada** fusión de este change en `main`.
+> de la medición, **nunca** el día de una corrida `e2e-remote` contra staging. **Toda fusión de clase 1 o 3 antes de la
+> 10.7 de 35b obliga a repetir la 9.1, la 9.3a y la `e2e-remote` sobre el commit nuevo** (G1). El grupo 9 se hace
+> contra staging con el commit desplegado, **antes de la 10.7 de 35b**. La 10.3 verifica **cada** fusión de este
+> change en `main`.
 >
 > **Cómo se comprueba una ventana** (regla común con los demás changes que se fusionan junto a 35b): el PR-2 de 35b se
 > identifica **por su número de PR**; el estado de la 11.6 y la 10.7 de 35b se toma de una **confirmación escrita y
@@ -32,15 +37,17 @@
   HSTS pasa a un change posterior; si Q1 = (d), la excepción se anota también junto a la regla «Entre PR-1 y PR-2» del
   `tasks.md` de 35b. **Línea de bloqueo en 35b** (V0-1): si Q1 = (a) —y también con (c) o (d), que llegan a staging
   antes de la 10.7—, pedir por escrito a la sesión dueña de 35b (o al owner) que agregue a la lista de bloqueos de su
-  10.7 la condición «9.3 de `edge-security-headers` anotada (comentario en su PR fusionado)». **Este change no edita
-  35b.** Verificar con un `node -e` que lea `docs/adr/ADR-057.md` y encuentre exactamente una línea que case con
+  10.7 la condición «9.3 de `edge-security-headers` anotada (comentario en su PR fusionado)» y que, al cerrar su 10.7,
+  anote la **fecha y la hora** de invitar (G4: la 10.3 compara con ellas la hora del comentario de la 9.3a). **Este
+  change no edita 35b.** Verificar con un `node -e` que lea `docs/adr/ADR-057.md` y encuentre exactamente una línea que case con
   `^Respuesta del owner \(Q1\), \d{4}-\d{2}-\d{2}:` (hoy, cero); y, con (a), (c) o (d), con un `node -e` sobre
   `openspec/changes/staging-host/tasks.md` de `origin/main` (o de la rama donde la agregó su dueño, anotada aquí) que
   encuentre `edge-security-headers` en la línea de la 10.7.
 - [ ] 0.2 [infra] Debate critic/business/reflect cerrado sin P0/V0 abiertos y aprobación humana registrada. Verificar:
   `design.md` lleva la sección del debate de la última iteración con «Convergencia: SI» y la fecha de la aprobación.
 - [ ] 0.3 [infra] Depende de 0.1. **Guardia de la ventana de la clase 1**, **justo antes de fusionar** el PR (no al
-  abrirlo). Con (a), las cuatro condiciones:
+  abrirlo), y **repetida antes de cada fusión de clase 1** (el change y cada corrección antes de la 10.7 de 35b, G1),
+  con su propio comentario. Con (a), las cinco condiciones:
   1. con `git fetch` y `git log --first-parent --merges --format='%H %cI %s' origin/main` volcado a fichero y leído con
      `node`, el merge del PR-2 de 35b, **identificado por su número de PR**, está en `main`;
   2. el estado de la 11.6 y la 10.7 de 35b se toma de una **confirmación escrita y fechada del owner en el PR** de este
@@ -49,17 +56,27 @@
      confirmación, vuelve al owner;
   3. el ensayo de reconstrucción de 35b (9.1-9.4) está cerrado (F5): sus cuatro casillas marcadas en `origin/main` o
      en la rama del PR de archivo de 35b, o cerrado en la misma confirmación del owner;
-  4. si ya hubo una corrida `e2e-remote` contra staging para la 10.7 de 35b, se anota su fecha y commit, y que **hay
-     que repetirla** sobre el commit que despliegue esta fusión (F4).
+  4. si ya hubo una corrida `e2e-remote` contra staging para la 10.7 de 35b, o una 9.1 o una 9.3a de este change, se
+     anota su fecha y commit, y que **hay que repetirlas** (la 9.1, la 9.3a y la `e2e-remote`) sobre el commit que
+     despliegue esta fusión (F4, G1);
+  5. la línea de bloqueo de la 0.1 está en 35b (G3, B9-2): un `node -e` sobre `openspec/changes/staging-host/tasks.md`
+     de `origin/main` (obtenido con `git show origin/main:openspec/changes/staging-host/tasks.md` volcado a fichero)
+     encuentra `edge-security-headers` en la línea de la 10.7 (la que empieza por `- [ ] 10.7` o `- [x] 10.7`); si no
+     aparece, **fuera de ventana**.
 
-  Sin confirmación, con la 11.6 sin hacer o con el 9.1-9.4 abierto: fuera de ventana. Con la 10.7 declarada hecha:
-  fuera de ventana, vuelve al owner. Con (d): la 6.1 sin marcar y la excepción anotada en el `tasks.md` de 35b.
+  Sin confirmación, con la 11.6 sin hacer, con el 9.1-9.4 abierto o sin la línea de bloqueo en la 10.7 de 35b: fuera
+  de ventana. Con la 10.7 declarada hecha: fuera de ventana, vuelve al owner. Con (d): la 6.1 sin marcar y la
+  excepción anotada en el `tasks.md` de 35b.
   Verificar con un comentario en el PR, antes de fusionar, con el número y el hash del merge del PR-2 de 35b, la
-  confirmación del owner citada con su fecha, el estado del 9.1-9.4, la nota de la `e2e-remote`, la fecha de hoy y el
-  resultado («en ventana» / «fuera de ventana»); si dice «fuera de ventana», no se fusiona. Falsación 1: ejecutar la
-  comprobación sobre el `origin/main` del 2026-10-28 (`5b92d28`, sin el PR-2 de 35b) y ver «fuera de ventana».
+  confirmación del owner citada con su fecha, el estado del 9.1-9.4, la nota de la `e2e-remote` (y de la 9.1 y la 9.3a,
+  si las hubo), el resultado de la condición 5, la fecha de hoy y el resultado («en ventana» / «fuera de ventana»); si
+  dice «fuera de ventana», no se fusiona. Falsación 1: ejecutar la comprobación sobre el `origin/main` del 2026-10-28
+  (`5b92d28`, sin el PR-2 de 35b) y ver «fuera de ventana».
   Falsación 2: con la 11.6 hecha y una confirmación del owner que declara la **10.7 hecha**, ver «fuera de ventana».
   Falsación 3: con todo en regla salvo la 9.4 de 35b sin cerrar, ver «fuera de ventana».
+  Falsación 4 (condición 5): ejecutar el `node -e` de la condición 5 sobre una copia en el scratchpad del
+  `tasks.md` de 35b de `origin/main` **sin** `edge-security-headers` en la línea de la 10.7 (hoy, el de `5b92d28`) y
+  ver «fuera de ventana»; y sobre la misma copia con la cadena añadida a esa línea, ver que la condición pasa.
 
 ## 1. API (design D6)
 
@@ -92,8 +109,10 @@
   --configuration=production --skip-nx-cache` redirigido a fichero y un `node -e` sobre
   `dist/apps/web/browser/index.html`: cero `onload=`, cero `<script` sin `src`, cero `<style`, y un `<link
   rel="stylesheet"` sin `media="print"`. Anotar en esta tarea el tamaño de la hoja de estilos con y sin el cambio; el
-  primer pintado se mide en la 3.3, contra nginx. Conservar en el scratchpad una copia del `dist` de `main` (base) para
-  la 3.3. Falsación: cubierta por el guardia estático (5.1,
+  primer pintado se mide en la 3.3, contra nginx. **Base** (G5): anotar el commit de `main` sobre el que parte la rama,
+  construirlo en un worktree temporal con el mismo `pnpm nx run web:build --configuration=production --skip-nx-cache`
+  (redirigido a fichero) y conservar en el scratchpad una copia de ese `dist` y del `nginx.conf` de ese commit para la
+  3.3. Falsación: cubierta por el guardia estático (5.1,
   «web production build disables inlineCritical»); y, después de 7.1a, con su script sobre `/login` y
   `inlineCritical: true`: violación de `script-src-attr` (el `onload`) y la página sin estilos; restaurar.
 - [ ] 2.2 [frontend] `apps/web/src/zod-csp.ts` con `z.config({ jitless: true })` y `import './zod-csp';` como **primera
@@ -129,14 +148,15 @@
   respuesta, y restaurar; y, aparte, poner `always` en `Cache-Control` en la copia y ver `immutable` en el `404`.
 - [ ] 3.3 [frontend] Depende de 2.1 y 3.2. **Primer pintado contra nginx** (B6, V1-2), con un script de Playwright de
   un solo uso (scratchpad): el contenedor de la 3.2 sirve primero el `dist` de `main` con el `nginx.conf` de `main`
-  (base) y después el `dist` de 2.1 con el `nginx.conf` de 3.1; por cada uno, Chromium con una sesión CDP
-  (`context.newCDPSession(page)`) que ejecuta `Network.enable`, `Network.setCacheDisabled({ cacheDisabled: true })` y
-  `Network.emulateNetworkConditions` con los valores del perfil «Fast 4G» de las DevTools (latencia, bajada y subida,
-  **copiados del código fuente de las DevTools** con su enlace anotado, no de memoria), cinco cargas de `/login` en
-  contextos nuevos, y en cada una la entrada `first-contentful-paint` leída con un `PerformanceObserver` (`type:
-  'paint'`, `buffered: true`). Verificar con la salida volcada a fichero y leída con `node`: las diez medidas, la media
-  de cada lado y la regresión. **Umbral**: si la regresión media supera **300 ms**, la tarea se detiene y vuelve al
-  design. Anotar valores del perfil, medidas y resultado. Apagar el contenedor.
+  (base, el de la 2.1) y después el `dist` de 2.1 con el `nginx.conf` de 3.1; por cada uno, cinco cargas de `/login`,
+  cada una en un **contexto nuevo** de Chromium en el que, **antes del `page.goto`** (G5), una sesión CDP
+  (`context.newCDPSession(page)`) ejecuta, en este orden, `Network.enable`, `Network.setCacheDisabled({ cacheDisabled:
+  true })` y `Network.emulateNetworkConditions` con los valores del perfil «Fast 4G» de las DevTools (latencia, bajada
+  y subida, **copiados del código fuente de las DevTools** con su enlace anotado, no de memoria); en cada carga, la
+  entrada `first-contentful-paint` leída con un `PerformanceObserver` (`type: 'paint'`, `buffered: true`). Verificar
+  con la salida volcada a fichero y leída con `node`: las diez medidas, la **media y la mediana** de cada lado y la
+  regresión de las dos. **Umbral**: si la regresión media supera **300 ms**, la tarea se detiene y vuelve al design.
+  Anotar valores del perfil, medidas, media, mediana y resultado. Apagar el contenedor.
 
 ## 4. HSTS en el borde (design D7, D10)
 
@@ -200,8 +220,9 @@ y pasan al change posterior de la Q3. Este change no toca `apps/web-e2e/**`. La 
   suite (`pnpm nx run web-e2e:e2e-stack` con la pila conservada, redirigido a fichero), como describe D8: lee los
   `add_header` del bloque `server` de `docker/web/nginx.conf` salvo `Cache-Control`; `context.route` solo sobre
   navegaciones principales con `route.fetch()` + `route.fulfill()` añadiéndolas (el resto, `route.fallback()`);
-  `addInitScript` que acumula `securitypolicyviolation`; escuchador de consola que recoge «Refused to», «Content
-  Security Policy» y «Permissions-Policy». Mide si el documento contiene `@vite/client` y lo anota. **Control positivo**
+  `addInitScript` que acumula `securitypolicyviolation`, que es **el criterio** de violación de CSP en todo navegador
+  (G6); escuchador de consola, **solo de apoyo** para la CSP, que recoge «Refused to», «Content Security Policy» y
+  «Content-Security-Policy» (las dos grafías), y «Permissions-Policy», cuyo control vale **solo en Chromium**. Mide si el documento contiene `@vite/client` y lo anota. **Control positivo**
   (E8): en `/login`, crear desde el DOM un `<script>` en línea (`document.createElement('script')`, `textContent`,
   `appendChild`); verificar con la salida volcada a fichero y leída con `node` que el script registra exactamente esa
   violación (F6): `effectiveDirective === 'script-src-elem'` (o `'script-src'` como alternativa), `blockedURI ===
@@ -212,15 +233,15 @@ y pasan al change posterior de la Q3. Este change no toca `apps/web-e2e/**`. La 
   `/recuperar-contrasena`, `/restablecer-contrasena`, `/verificar-email`, `/privacidad`, `/oferta/:slug` (con un link
   publicado), `/grupos`, `/grupos/:id`, `/unirse`, `/mis-links`, `/postulaciones`, `/buscar`, `/descubrir`, `/mi-cv`,
   `/plan/:analysisId` (si el mock lo produce), `/perfil` (incluida la bóveda BYOK si está visible) y `/notificaciones`;
-  y abrir en cada una el diálogo o menú principal. Push (E8): el contexto concede `notifications`; en `/notificaciones`
-  se activa y se mide que `navigator.serviceWorker.getRegistration()` devuelve el registro de `sw.js`; un fallo de
-  `pushManager.subscribe` no cuenta. Verificar con la lista de violaciones y de mensajes de consola volcada a fichero y
-  leída con `node`: cero violaciones y cero errores de `Permissions-Policy`, y `sw.js` registrado. Si `browsing-topics`
+  y abrir en cada una el diálogo o menú principal. La medida del push (E8: `notifications` concedido y `sw.js`
+  registrado) **pasó a la 9.3a**, contra staging en `chromium` (B9-1); aquí `/notificaciones` se visita como las
+  demás. Verificar con la lista de violaciones y de mensajes de consola volcada a fichero y leída con `node`: cero
+  eventos `securitypolicyviolation` y cero errores de consola de `Permissions-Policy` (Chromium). Si `browsing-topics`
   aparece como no reconocida (E10), se quita de `nginx.conf`, de D5 y del requirement, y se repite la ruta. Cualquier
   otra violación detiene la tarea y vuelve al design (como en 2.3); una atribuible al servidor de desarrollo, también.
   Anotar rutas, proyectos y resultado.
-- 7.2 (retirada en la iteración 2 del debate, V2-a: el push a mano se hace solo contra staging, en la 9.3b; se
-  conserva el número.)
+- 7.2 (retirada en la iteración 2 del debate, V2-a; el push a mano de la 9.3b también se retiró en la iteración 3,
+  B9-1: la medida del push contra staging la hace la 9.3a; se conserva el número.)
 
 ## 8. Documentación y ADR
 
@@ -232,12 +253,13 @@ y pasan al change posterior de la Q3. Este change no toca `apps/web-e2e/**`. La 
   PR-2 de 35b y su 11.6, nunca durante su 9.1-9.4, nunca los días 7 y 14, nunca el día de una `e2e-remote`); (ii)
   despliegue anterior **solo como puente** (F3): antes de cualquier otra fusión a `main` se aplica el (i), y pasados 30
   días el puente es el `.incoming-*` anterior en el host con `install-config.sh` (remitiendo a «Operar staging» de
-  35b). **HSTS sin vuelta atrás** (F2): si el certificado se rompe, se arregla; quien ya la guardó espera como mucho
-  siete días. `infra/README.md`: la descripción de la fila de `infra/traefik/dynamic.yml` añade «HSTS (`edge-hsts`)».
+  35b). **HSTS sin vuelta atrás** (F2): si el certificado se rompe, se arregla el certificado; quien ya la guardó
+  espera como mucho siete días (la sección puede explicar por qué publicar `max-age=0` no sirve). `infra/README.md`: la
+  descripción de la fila de `infra/traefik/dynamic.yml` añade «HSTS (`edge-hsts`)».
   Verificar con un `node -e` que encuentre el encabezado nuevo antes de «Paso 6 sexdecies», en la sección las cadenas
   `página sin estilos`, `inlineCritical`, `Report-Only`, `csp-report-only`, `puente`, `.incoming-`, `30 días`,
-  `sin vuelta atrás` y `edge-hsts`, con `página sin estilos` antes que las otras, **ninguna** `hsts-rollback` ni
-  `max-age=0`, y `edge-hsts` en la fila de `infra/README.md`.
+  `sin vuelta atrás`, `se arregla el certificado` y `edge-hsts`, con `página sin estilos` antes que las otras,
+  **ninguna** `hsts-rollback` (G8: es la única cadena prohibida), y `edge-hsts` en la fila de `infra/README.md`.
 - [ ] 8.2 [infra] Tras la aprobación: ADR-057 pasa a «Aceptado» con la fecha; ADR-048 §Consecuencias gana su línea
   «· **Excepción de ADR-057 (AAAA-MM-DD), por decisión del owner.** …» tras la de ADR-055; `docs/design-v0.2.md` §6 gana
   la fila «∥ 35b `edge-security-headers`»; la nota de la fila de `openspec-changes.yaml` pasa de «propuesto» a la
@@ -260,23 +282,40 @@ y pasan al change posterior de la Q3. Este change no toca `apps/web-e2e/**`. La 
   -D <cabeceras> --max-time 40 -H "Authorization: Bearer …" https://<nombre>/api/events`: la cabecera lleva `nosniff`
   y HSTS, y el cuerpo recibe al menos un latido (intervalo `SSE_HEARTBEAT_INTERVAL_MS`, 25 s). Anotar el commit
   desplegado (del host o del estado `cd-staging/artifact`) y comprobar con `git merge-base --is-ancestor <merge de este
-  change> <commit desplegado>` que lo contiene (F5); si no, la tarea no vale.
+  change> <commit desplegado>` que lo contiene (F5); si no, la tarea no vale. **Se repite** sobre el commit nuevo
+  después de cada fusión de clase 1 o 3 anterior a la 10.7 de 35b (G1), y la anotación nombra la fusión que la motivó.
 - 9.2 (retirada en la iteración 2 del debate, V2-b: la 9.1 ya comprueba `frame-ancestors` y `X-Frame-Options`
   servidos; se conserva el número.)
 - [ ] 9.3a [infra] **[bloqueada: 9.1; antes de la 10.7 de 35b]** **Pasada de staging, la ejecuta un agente** (B2, F4,
   V1-1): el script de la 7.1a con `--no-inject` y la URL de staging (las cabeceras las sirven nginx y Traefik), con los
-  navegadores `chromium` y `firefox` de Playwright y la cuenta `+e2e`: primero el control positivo de la 7.1a contra
-  staging (la misma comparación de F6), y después los pasos del lote 1 (`critical-path.spec.ts`) **sin el análisis**.
-  No consume cupo, así que puede ir el mismo día que la corrida `e2e-remote` de la 10.7 de 35b. Verificar con la salida
-  volcada a fichero y leída con `node`, por navegador: versión, commit desplegado (el de la 9.1), control positivo
-  registrado, cada paso, y cero violaciones de CSP y cero errores de `Permissions-Policy`. El resultado se publica como
-  **comentario en el PR fusionado** de este change (la hora la pone GitHub) y se **avisa al owner antes de que
-  invite**. Una violación **bloquea invitar** hasta corregirla o aplicar D9.
-- [ ] 9.3b [infra] **[bloqueada: usuario — en la misma sesión que la alternativa manual de la 10.7 de 35b; después de
-  9.3a]** Push a mano, una vez (B5, V2-a): en un Chromium real (no automatizado) contra staging, con la cuenta `+e2e`
-  y la consola abierta, activar las notificaciones en `/notificaciones`, aceptar el permiso y comprobar en
-  `chrome://serviceworker-internals` el registro de `sw.js` y en la consola cero violaciones. Verificar con un
-  comentario en el mismo PR fusionado: navegador, versión, commit desplegado y resultado.
+  navegadores `chromium` y `firefox` de Playwright y la cuenta `+e2e`. Reglas de la pasada (G2):
+  - **pasos**: solo los que `critical-path.spec.ts` declara aplicables al perfil `remote` (hoy 0, 2, 3, 4, 5, 6 y 8 de
+    la tabla de D11 de `e2e-suite`; ninguno de los «no aplicable», así que **sin altas**), **sin el análisis** (paso 7).
+    La lista se toma de `critical-path.spec.ts` en `origin/main` o, si todavía no está, de la cabeza de la rama del
+    PR-1 de `e2e-suite` (B9-3), y se anotan el fichero, el commit y la lista;
+  - **limpieza de la cuenta `+e2e` al empezar y al terminar** (también si falla), con el orden de D10 de `e2e-suite`:
+    primero los guardias por la API (`GET /api/users/me`: email con `+e2e`, sin verificar, permiso de IA externa
+    apagado), y solo después borrar grupos, postulaciones y CV de corridas anteriores; un guardia que falla deja la
+    cuenta como estaba y la pasada no vale;
+  - **links en dominio reservado** (`.invalid`), como en el lote 1;
+  - **nunca a la vez que una corrida `e2e-remote`** contra staging (comparten la cuenta `+e2e`): puede ir el mismo día,
+    antes o después, nunca solapada; no consume cupo de análisis;
+  - **contraseña por variable de entorno** (`E2E_REMOTE_PASSWORD`, leída con `read -s` o `Read-Host -AsSecureString`),
+    nunca en un argumento, en un fichero ni en la salida; el volcado se comprueba con un `node -e` que no la contiene.
+
+  Orden: primero el control positivo de la 7.1a contra staging (la misma comparación de F6); después los pasos; y, en
+  `chromium`, la **medida del push** que antes era de la 7.1b y la 9.3b (B9-1): el contexto concede `notifications`, en
+  `/notificaciones` se activan y se mide que `navigator.serviceWorker.getRegistration()` devuelve el registro de
+  `sw.js` (un fallo de `pushManager.subscribe` no cuenta). Criterio de G6: los eventos `securitypolicyviolation` en los
+  dos navegadores; la consola es apoyo (las dos grafías); el control de `Permissions-Policy`, solo en `chromium`.
+  Verificar con la salida volcada a fichero y leída con `node`, por navegador: versión, commit desplegado (el de la
+  9.1), control positivo registrado, cada paso, `sw.js` registrado (`chromium`), y cero violaciones de CSP y cero
+  errores de `Permissions-Policy` (`chromium`). El resultado se publica como **comentario en el PR fusionado** de este
+  change (la hora la pone GitHub) y se **avisa al owner antes de que invite**. Una violación **bloquea invitar** hasta
+  corregirla o aplicar D9. **Se repite** sobre el commit nuevo después de cada fusión de clase 1 o 3 anterior a la 10.7
+  de 35b (G1), con un comentario nuevo.
+- 9.3b (retirada en la iteración 3 del debate, B9-1: la medida del push contra staging pasa a la 9.3a, en `chromium`;
+  ya no queda ningún paso humano bloqueante en la verificación de la CSP; se conserva el número.)
 
 ## 10. Cierre
 
@@ -286,19 +325,31 @@ y pasan al change posterior de la Q3. Este change no toca `apps/web-e2e/**`. La 
 - [ ] 10.2 [infra] `/opsx:verify` sobre el change tras el grupo 9, y archivo con las casillas del grupo 9 marcadas en
   el PR de archivo, que es una fusión de **clase 2**: antes de fusionarlo, la guardia de la 0.3 con la regla de su
   clase (nunca entre el PR-2 de 35b y su 11.6, nunca durante su 9.1-9.4, nunca los días 7 y 14 de la medición, nunca
-  el día de una `e2e-remote`), con una confirmación escrita y fechada del owner en ese PR.
+  el día de una `e2e-remote`), con una confirmación escrita y fechada del owner en ese PR. Ese PR solo toca
+  `openspec/**` y `docs/**`, que `cd-staging.yml` ignora, así que no despliega; las reglas se mantienen por prudencia
+  (G1). Verificar, además, con `git diff --name-only origin/main...HEAD` volcado a fichero y leído con `node`, que todos
+  los ficheros del PR empiezan por `openspec/` o `docs/`; si no, el PR desplegaría: lo demás sale del PR antes de
+  fusionarlo.
 - [ ] 10.3 [infra] Verificar **cada fusión de este change en `main`** contra la regla de su clase (F1). Con `git log
   --first-parent --merges --format='%H %cI %s' origin/main` volcado a fichero y leído con `node`, listar las fusiones
-  de este change (la del change, la del archivo y, si las hubo, las de D9) y, por cada una:
-  - **clase 1**: después del merge del PR-2 de 35b (identificado por su número) en (a), o antes de la anotación de la
-    6.1 en (d); con `git show <merge>:openspec/changes/staging-host/tasks.md` leído con `node`, la 10.7 de 35b sin
-    marcar en ese commit; y el comentario de la 0.3 («en ventana») con la confirmación del owner en el PR fusionado;
-  - **clases 2 y 3**: la fecha no es la de ningún día entre el merge del PR-2 de 35b y la 11.6, ni del 9.1-9.4 de 35b,
-    ni el día 7 o 14 de la medición, ni el de una corrida `e2e-remote` contra staging (fechas tomadas de la
-    confirmación del owner y de las anotaciones de 35b).
+  de este change (la del change, sus correcciones, la del archivo y, si las hubo, las de D9) y, por cada una:
+  - **clase 1** (la del change y **cada** corrección anterior a la 10.7 de 35b, G1): después del merge del PR-2 de 35b
+    (identificado por su número) en (a), o antes de la anotación de la 6.1 en (d); con `git show
+    <merge>:openspec/changes/staging-host/tasks.md` leído con `node`, la 10.7 de 35b sin marcar en ese commit y con
+    `edge-security-headers` en su línea; y **su propio** comentario de la 0.3 («en ventana») con la confirmación del
+    owner en el PR fusionado;
+  - **clases 2 y 3** (y las correcciones posteriores a invitar, que son de clase 3): la fecha no es la de ningún día
+    entre el merge del PR-2 de 35b y la 11.6, ni del 9.1-9.4 de 35b, ni el día 7 o 14 de la medición, ni el de una
+    corrida `e2e-remote` contra staging (fechas tomadas de la confirmación del owner y de las anotaciones de 35b).
 
-  Además (F4, F5): el commit desplegado de la 9.1 contiene la fusión de clase 1; el comentario de la 9.3a es anterior a
-  la fecha de la 10.7 de 35b; y **el commit de la 9.3a, el de la corrida `e2e-remote` de la 10.7 y el desplegado el día
-  de invitar son el mismo**. Anotar la salida en el PR de archivo; si algo no cuadra, se avisa al owner antes de
-  archivar. Falsación: correr la comprobación con una fecha de archivo inventada que caiga el día 7 de la medición y
-  ver que la marca fuera de regla; y con un commit de la `e2e-remote` distinto del de la 9.3a y ver que lo marca.
+  Además (F4, F5, G1, G4): el commit desplegado de la 9.1 contiene la **última** fusión de clase 1 o 3 anterior a la
+  10.7 de 35b; por cada una de esas fusiones hay una 9.1, una 9.3a y una `e2e-remote` sobre su commit; el comentario de
+  la **última** 9.3a tiene una hora (la de GitHub) anterior a la **fecha y hora** de invitar que anota la 10.7 de 35b
+  (0.1); y **el commit de la última 9.3a, el de la corrida `e2e-remote` de la 10.7 y el desplegado el día de invitar
+  son el mismo**. El desplegado el día de invitar se toma del estado `cd-staging/artifact` de ese día o, si la 10.7 se
+  cerró con su alternativa manual, del **host ese día** (`docker compose images`, la etiqueta de imagen que nombra el
+  commit), anotado en la 10.7 de 35b. Anotar la salida en el PR de archivo; si algo no cuadra, se avisa al owner antes
+  de archivar. Falsación: correr la comprobación con una fecha de archivo inventada que caiga el día 7 de la medición y
+  ver que la marca fuera de regla; con un commit de la `e2e-remote` distinto del de la 9.3a y ver que lo marca; con
+  una corrección de clase 1 inventada posterior a la última 9.3a y ver que marca la 9.3a como no repetida; y con una
+  hora de invitar inventada anterior a la del comentario de la 9.3a y ver que lo marca.

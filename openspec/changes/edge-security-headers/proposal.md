@@ -25,8 +25,9 @@ ficheros ni requirements que modifiquen 35b o 35c salvo el único fichero compar
 (`infra/traefik/dynamic.yml`), de las tareas de 35b solo cambia **una línea de bloqueo en su 10.7** («9.3 de
 `edge-security-headers` anotada»), que agrega su dueño, y se fusiona solo en la ventana que no rompe ninguna regla
 escrita de 35b ni de `e2e-suite`: **después de la 11.6 de 35b y antes de su 10.7** (o la que autorice el owner en la
-opción (d) de la Q1). La excepción cubre **tres clases de fusión** (la del change, el PR de archivo y las de la
-vuelta atrás de la CSP), cada una con su regla (design D10).
+opción (d) de la Q1). La excepción cubre **tres clases de fusión** (la del change y sus correcciones antes de la 10.7
+de 35b, el PR de archivo —que no despliega— y las de la vuelta atrás de la CSP), cada una con su regla (design D10);
+toda fusión que despliegue antes de la 10.7 obliga a repetir las verificaciones de staging sobre el commit nuevo.
 
 ## What Changes
 
@@ -56,7 +57,9 @@ vuelta atrás de la CSP), cada una con su regla (design D10).
   (`check-edge-security-headers`) que lee `dynamic.yml`, `nginx.conf` y la configuración de build de `web`, con
   una única excepción fechada, para la vuelta atrás de la CSP; un **barrido único** de todas las rutas del SPA con la
   política inyectada y un control positivo; y una **pasada del camino crítico en staging** con el mismo script, sin
-  inyectar, en Chromium y Firefox, que ejecuta un agente antes de invitar (más el push, a mano, una vez). Sin guardia dinámico permanente en la suite e2e (pasa al change de la Q3).
+  inyectar, en Chromium y Firefox, que ejecuta un agente antes de invitar y que en Chromium mide también el registro
+  del service worker con las notificaciones concedidas: ningún paso humano bloquea la verificación de la CSP. Sin
+  guardia dinámico permanente en la suite e2e (pasa al change de la Q3).
 - **Documentación**: síntomas («página sin estilos» primero) y procedimiento de vuelta atrás en el RUNBOOK (CSP a
   `Report-Only` con su excepción fechada, o el despliegue anterior solo como puente). HSTS no tiene vuelta atrás: si
   el certificado se rompe, se arregla, y el bloqueo dura como mucho siete días.
@@ -89,7 +92,7 @@ crear un orden de archivo con 35b ni con 35c.
 - **Sin cambios**: `docker-compose*.yml`, `.env.example`, `infra/deploy/**`, `infra/ci/**`, `.github/workflows/**`,
   `docker/*.Dockerfile`, ningún requirement de `platform/ci-pipeline` ni de `platform/production-deploy`.
 - **Personas**: ninguna pantalla cambia. El primer pintado del SPA puede tardar algo más sin CSS crítico en línea
-  (medido en la tarea 2.1).
+  (medido en la tarea 3.3).
 
 ## Fuera de alcance
 

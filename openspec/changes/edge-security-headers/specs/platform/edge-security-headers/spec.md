@@ -94,13 +94,22 @@ manejadores de eventos en línea, y el SPA SHALL NOT evaluar código en tiempo d
 ### Requirement: Ninguna página de LinkVault se puede encuadrar desde otro origen
 
 Las respuestas del SPA y de la API, incluida la página pública `/p/:slug`, SHALL llevar `frame-ancestors 'none'` en su
-`Content-Security-Policy` y `X-Frame-Options: DENY`.
+`Content-Security-Policy` y `X-Frame-Options: DENY`, salvo bajo la vuelta atrás declarada, en la que `X-Frame-Options:
+DENY` lo cubre: con la política del SPA como `Content-Security-Policy-Report-Only`, su `frame-ancestors` no se aplica, y
+las respuestas del SPA SHALL seguir llevando `X-Frame-Options: DENY`.
 
 #### Scenario: Unirse a un grupo no se puede encuadrar
 
 - **GIVEN** una página de otro origen que pone `/unirse?codigo=<código>` en un `iframe`
 - **WHEN** el navegador la carga
 - **THEN** el navegador SHALL negarse a mostrar LinkVault dentro del `iframe`
+
+#### Scenario: Bajo la vuelta atrás de la CSP, el SPA sigue sin encuadrarse
+
+- **GIVEN** la política del SPA servida como `Content-Security-Policy-Report-Only` con su línea de excepción fechada
+- **WHEN** una página de otro origen pone `/unirse?codigo=<código>` en un `iframe`
+- **THEN** la respuesta SHALL llevar `X-Frame-Options: DENY`
+- **AND** el navegador SHALL negarse a mostrar LinkVault dentro del `iframe`
 
 #### Scenario: La página pública tampoco se encuadra
 
@@ -217,5 +226,7 @@ ningún error de `Permissions-Policy` en la consola, y el service worker SHALL r
   Chromium y en Firefox
 - **THEN** el control positivo (un `<script>` en línea creado desde el DOM en `/login`) SHALL registrarse como
   violación de `script-src-elem` (o `script-src`) con recurso bloqueado `inline`
-- **AND** los pasos SHALL NOT producir ninguna otra violación de la política de contenido ni ningún error de
-  `Permissions-Policy`
+- **AND** los pasos SHALL NOT producir ningún otro evento `securitypolicyviolation`, en ninguno de los dos navegadores,
+  ni, en Chromium, ningún error de `Permissions-Policy` en la consola
+- **AND** en Chromium, con el permiso de notificaciones concedido, activar las notificaciones SHALL dejar `sw.js`
+  registrado
