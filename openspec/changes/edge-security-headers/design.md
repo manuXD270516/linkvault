@@ -289,7 +289,7 @@ línea o el router, si:
   navegador automatizado) **no cuenta**. Así no queda ningún paso humano bloqueante en la verificación de la CSP (la
   9.3b y la 7.2 se retiraron). El resultado (commit desplegado, navegadores con versión, pasos, `sw.js`, violaciones)
   se publica como **comentario en el PR fusionado** de este change, con la hora de GitHub, y se avisa al owner **antes
-  de que invite**. Se repite sobre el commit nuevo tras cada fusión de clase 1 o 3 anterior a la 10.7 (D10, G1).
+  de que invite**. Se repite sobre el commit de la última fusión de clase 1 o 3 anterior a la 10.7; las intermedias solo se anotan (D10, G1, G1-a).
 
 **Servidor de desarrollo en el barrido**: `nx serve web -c production` puede inyectar el cliente de Vite (recarga en
 vivo), un script del mismo origen con un WebSocket al mismo origen, que la política admite. La 7.1a **mide** si aparece
