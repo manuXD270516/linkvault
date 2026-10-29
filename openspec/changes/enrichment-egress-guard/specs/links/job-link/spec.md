@@ -10,7 +10,8 @@ URL normalizada NO SHALL usarse para abrir ni para descargar: para eso se usa la
 no reconocida. Una URL cuyo host sea un nombre sin punto (tras quitar el punto final), `localhost` o un subdominio de
 `localhost`, o una dirección literal de un rango no público según la clasificación compartida de la spec
 `links/egress-guard`, SHALL rechazarse también como no reconocida. El host SHALL clasificarse como `hostname` sin
-corchetes. Al guardar NO SHALL juzgarse el puerto: una URL de un host aceptado con un puerto que no sea web SHALL
+corchetes. Al guardar NO SHALL juzgarse el puerto: una URL de un host aceptado (un nombre con punto o una dirección
+literal pública) con un puerto que no sea web SHALL
 guardarse, y la descarga la marcará el filtro de salida del worker con el motivo de destino no permitido, de modo que la
 persona no pierde el link. Esta comprobación SHALL ser sintáctica: al guardar NO SHALL resolverse ningún nombre, y la
 decisión sobre adónde se conecta SHALL tomarla el filtro de salida del worker.
@@ -42,6 +43,12 @@ decisión sobre adónde se conecta SHALL tomarla el filtro de salida del worker.
 - **WHEN** se guarda una URL de un host con punto y un puerto explícito distinto de `80` y `443`
 - **THEN** SHALL crearse el link
 - **AND** su enriquecimiento SHALL terminar en `failed` con el motivo `unsafe_destination`, sin abrir ninguna conexión
+
+#### Scenario: Literal público con puerto no web
+
+- **WHEN** se guarda una URL cuyo host es una dirección literal pública, con un puerto explícito distinto de `80` y
+  `443`
+- **THEN** SHALL crearse el link
 
 #### Scenario: Importación con una URL interna
 

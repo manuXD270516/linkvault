@@ -6,9 +6,10 @@ El SPA SHALL registrar un Service Worker en el scope de la aplicación, poder so
 obtener la clave pública VAPID de la API y registrar o eliminar la suscripción por endpoint. Si el navegador no soporta
 push, faltan claves VAPID (`503`) o el usuario niega el permiso, el resto de preferencias email SHALL seguir
 funcionando. Si la API rechaza el alta con `400` y código `validation_error`, el SPA SHALL cancelar la suscripción del
-navegador —la recién creada o la que ya existía— y NO SHALL mostrar push como activado; si esa cancelación falla, el
-fallo SHALL ignorarse y el resultado SHALL seguir siendo el fallo original del alta, con push sin activar. Ante otros
-fallos del alta SHALL conservarla.
+navegador —la recién creada o la que ya existía—, NO SHALL mostrar push como activado y SHALL tratar el resultado como
+el de un navegador sin soporte push, con el texto existente para ese caso y sin texto nuevo; si esa cancelación falla,
+el fallo SHALL ignorarse y el resultado SHALL seguir siendo el de navegador sin soporte, con push sin activar. Ante
+otros fallos del alta SHALL conservarla.
 
 #### Scenario: Permiso denegado
 
@@ -29,15 +30,16 @@ fallos del alta SHALL conservarla.
 - **GIVEN** Ana en un navegador cuyo servicio push no está en la lista de servicios conocidos
 - **WHEN** activa las notificaciones push y la API responde `400` con código `validation_error`
 - **THEN** la suscripción del navegador SHALL cancelarse, sea la recién creada o la que ya existía
+- **AND** el resultado de la activación SHALL ser el de un navegador sin soporte push
 - **AND** la UI NO SHALL mostrar push como activado
-- **AND** la UI SHALL informar del fallo de forma no bloqueante, con el texto de fallo existente
+- **AND** la UI SHALL mostrar, de forma no bloqueante, el texto existente de navegador sin soporte push
 - **AND** las preferencias de email SHALL permanecer editables
 
 #### Scenario: La cancelación de la suscripción del navegador falla
 
 - **GIVEN** la API rechazó el alta con `400` y código `validation_error`
 - **WHEN** la cancelación de la suscripción del navegador también falla
-- **THEN** el resultado SHALL ser el fallo original del alta
+- **THEN** el resultado de la activación SHALL seguir siendo el de un navegador sin soporte push
 - **AND** la UI NO SHALL mostrar push como activado
 
 #### Scenario: Un fallo pasajero no cancela la suscripción

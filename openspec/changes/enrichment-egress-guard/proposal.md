@@ -79,7 +79,8 @@ a cualquiera que se registre. Las condiciones, a la manera de ADR-053 §1 y ADR-
 - `links/job-link`: MODIFIED «Normalización de URL para identidad» (rechazo sintáctico de hosts internos).
 - `notifications/web-push`: MODIFIED «Alta de suscripción» (lista de servicios push y endpoint canónico) y «Envío con
   VAPID» (comprobación antes de enviar, borrado de las antiguas y registro sin el endpoint completo).
-- `web/notifications`: MODIFIED «Suscripción push opcional» (cancelar la suscripción local si la API rechaza el alta).
+- `web/notifications`: MODIFIED «Suscripción push opcional» (cancelar la suscripción local si la API rechaza el alta y
+  tratarlo como navegador sin soporte push, con el texto existente).
 
 ## Impact
 
@@ -90,14 +91,16 @@ a cualquiera que se registre. Las condiciones, a la manera de ADR-053 §1 y ADR-
 - `apps/worker`: guardia de salida (`src/infrastructure/egress/`) con un `Agent` de `undici` y su `lookup`;
   `HttpPageFetcher` y `createHttpRobotsFetcher` sobre él; `PageFetchFailureReason` con `unsafe_destination`;
   `WebPushVapidSender` con la política de endpoints inyectada.
-- `apps/api`: `url.ts` (o el caso de uso que lo llama) con el rechazo sintáctico; fixtures de tests de push con hosts
+- `apps/api`: `url.ts` con el rechazo sintáctico, usando la política pública directamente; fixtures de tests de push con hosts
   de la lista.
-- Dependencias: `undici` y `ipaddr.js` pasan a ser directas (ya están en el lockfile como transitivas); `selfsigned`,
-  de desarrollo, con la versión del lockfile, para el servidor TLS de los tests.
+- Dependencias: `undici` e `ipaddr.js` pasan a `dependencies` de la raíz (ya están en el lockfile como transitivas);
+  `selfsigned`, a `devDependencies`,
+  con la versión del lockfile, para el servidor TLS de los tests.
 - Sin variables de entorno nuevas: `.env.example`, `apps/web-e2e/e2e.env` y los esquemas de configuración no cambian.
 - `eslint.config.mjs`: regla que impide el `fetch` global y los clientes HTTP de bajo nivel en el módulo de
   enriquecimiento del worker.
-- SPA: `core/notifications/push-notifications.ts` cancela la suscripción local ante un alta rechazada; el motivo nuevo
+- SPA: `core/notifications/push-notifications.ts` cancela la suscripción local ante un alta rechazada y lo
+  muestra con el texto existente de navegador sin soporte push; el motivo nuevo
   cae en el texto genérico existente, sin cambio de código (lo fija un test en `link-status.spec.ts`). Sin textos
   nuevos ni cambios en el catálogo i18n.
 
@@ -109,7 +112,8 @@ a cualquiera que se registre. Las condiciones, a la manera de ADR-053 §1 y ADR-
   dirección de metadatos del proveedor. Queda como **recomendación escrita para 35b** en ADR-056 §6; trasladarla a los
   artefactos de `staging-host` es la Q3.
 - Una métrica de rechazos del filtro en `/metrics` (tocaría `platform/observability`): Q4.
-- Mensajes específicos en el SPA para «destino no permitido» o «servicio push no admitido»: Q2.
+- Mensajes específicos en el SPA para «destino no permitido»: Q2. El alta push rechazada usa el texto existente de
+  navegador sin soporte push (B3-a del debate).
 - La etapa headless (no tiene adaptador; cuando lo tenga, tendrá que pasar por el filtro: riesgo R4 del design).
 - Descargas que no parten de datos de usuario (APIs fijas de `job-discovery`, proveedores de IA, correo, almacén).
 - **Texto propio para una URL con dirección literal interna** (hallazgo V2-1 de business): con este change, guardar una

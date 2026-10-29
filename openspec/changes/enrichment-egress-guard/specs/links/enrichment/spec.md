@@ -7,7 +7,8 @@ redirecciones, la descarga SHALL terminar con el motivo `unsafe_destination`, de
 enriquecimiento. Ese motivo SHALL ser **no reintentable**: `POST /api/links/:id/enrich` sobre un link `failed` por él
 SHALL responder `409` sin pedir ninguna lectura. Un re-check de frescura que termine con ese motivo NO SHALL cerrar la
 vacante. Un nombre que no resuelve SHALL seguir terminando en `http_error`, no en `unsafe_destination`. El registro del
-worker SHALL anotar el rechazo de la página con el `linkId`, la etapa `page` y la categoría del rango, y el rechazo de
+worker SHALL anotar el rechazo de la página con el `linkId`, la etapa `page` y la categoría del rechazo (la clase
+de la dirección o del literal, o `port`, `dotless` o `localhost`), y el rechazo de
 un salto del `robots.txt` con la etapa `robots` y la categoría, sin `linkId`; ninguno de los dos SHALL incluir la URL,
 el host ni la dirección resuelta. En el SPA, la tarjeta de un link `failed` por `unsafe_destination` y sin título y
 empresa SHALL mostrarse como pendiente de una persona, con el texto genérico de lectura fallida y sin la acción de
@@ -44,14 +45,14 @@ reintentar.
 
 - **GIVEN** un rechazo del filtro de salida al descargar la página de un link
 - **WHEN** se inspecciona el registro del worker
-- **THEN** SHALL constar el `linkId`, la etapa `page` y la categoría del rango
+- **THEN** SHALL constar el `linkId`, la etapa `page` y la categoría del rechazo
 - **AND** NO SHALL aparecer la URL, el host ni la dirección resuelta
 
 #### Scenario: El registro del robots.txt no lleva el link ni la URL
 
 - **GIVEN** un rechazo del filtro de salida en un salto del `robots.txt`
 - **WHEN** se inspecciona el registro del worker
-- **THEN** SHALL constar la etapa `robots` y la categoría del rango
+- **THEN** SHALL constar la etapa `robots` y la categoría del rechazo
 - **AND** NO SHALL aparecer el `linkId`, la URL, el host ni la dirección resuelta
 
 #### Scenario: La tarjeta pide a una persona y no ofrece reintentar

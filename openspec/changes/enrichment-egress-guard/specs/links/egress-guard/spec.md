@@ -133,7 +133,8 @@ El cliente HTTP de estas descargas NO SHALL usar un proxy tomado del entorno.
 Ninguna variable de entorno ni opción de configuración SHALL ampliar los destinos, rangos o puertos que acepta el filtro,
 en ningún entorno. La política del filtro SHALL ser una interfaz (`EgressPolicy`) con tres decisiones —host, dirección y
 puerto— que el código de producción construye siempre con la política pública de este requirement; una política más
-permisiva SHALL existir solo en el código de tests, inyectada por constructor o por token.
+permisiva SHALL existir solo en el código de tests del worker, inyectada por constructor; la API SHALL usar siempre la
+política pública, sin inyección.
 
 #### Scenario: Página servida en loopback
 

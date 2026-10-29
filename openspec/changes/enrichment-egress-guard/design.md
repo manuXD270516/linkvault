@@ -71,8 +71,8 @@ direcciones internas o de metadatos de la nube. Este documento lo describe en ge
 - **Política** (N1 del debate): una interfaz `EgressPolicy` con tres decisiones, `allowsHost(hostClass)`,
   `allowsAddress(addressClass)` y `allowsPort(protocol, port, hostClass)`. El puerto se decide **solo con la clase del
   host, antes de resolver**. La única implementación de producción es `PUBLIC_EGRESS_POLICY`: hosts `name` y literales
-  públicos, direcciones `public`, y puerto por defecto u `80`/`443` siempre. Las tareas 2.3, 3.5 y 4.3 inyectan una
-  política de test **completa** (las tres decisiones), que vive solo en código de tests (D8).
+  públicos, direcciones `public`, y puerto por defecto u `80`/`443` siempre. Las tareas 2.2a-2.3, 3.5 y 4.3 inyectan
+  una política de test **completa** (las tres decisiones) y **nombrada** (D8), que vive solo en código de tests (D8).
 - **Publicación** (N6 del debate): el clasificador y la política salen por la subruta `@linkvault/shared/net` (entrada
   propia en `tsconfig.base.json`), no por el índice de `@linkvault/shared`, para que el SPA no arrastre `ipaddr.js`.
   Solo la importan la API y el worker. La API y el guardia llaman a las mismas funciones; ninguno repite rangos ni
@@ -82,6 +82,15 @@ direcciones internas o de metadatos de la nube. Este documento lo describe en ge
   del `robots.txt`; ninguno de los dos llama al `fetch` global, y una regla de ESLint lo impide en el módulo (D10).
 - El rechazo viaja como un error tipado del guardia (`EgressBlockedError` con la categoría y nada más) que cada fetcher
   traduce: la página a `unsafe_destination`, el `robots.txt` a «no disponible».
+- **Categorías del rechazo** (P0-2 de la iteración 3). `category` es una clase de dirección de `classifyAddress` o una
+  de las tres categorías que no son de dirección:
+  - `port`: lo rechazó `allowsPort`;
+  - `dotless`: el host es un nombre sin punto;
+  - `localhost`: el host es `localhost` o un subdominio suyo.
+
+  Un host literal rechazado por `allowsHost` lleva **la clase del literal** (`loopback`, `private`, `ipv4_mapped`…),
+  no una categoría propia; una dirección resuelta rechazada por `allowsAddress` lleva su clase. Si fallan host y puerto
+  a la vez, gana el host (se clasifica primero). Los tests negativos afirman la categoría exacta.
 
 *Descartado:* dos listas (una en la API y otra en el worker), porque se separan; `node:net` `BlockList` en
 `libs/shared`, porque rompe el build del SPA; validar en la API con DNS, porque la API no conecta y la respuesta de DNS
@@ -139,10 +148,12 @@ venga la petición de quien venga y en el salto que sea: no depende de que el qu
 - **Sin proxy del entorno**: el `Agent` es el dispatcher explícito de cada petición; no se usa `EnvHttpProxyAgent`. Con
   un proxy, el filtro comprobaría la dirección del proxy y no la del destino (R5).
 - TLS y `Host` siguen usando el nombre: el certificado se valida contra el host de la URL.
-- **Confianza TLS de tests** (N4 del debate): `createGuardedFetch` acepta `tls?: { ca }`, que **solo añade** una
-  autoridad de confianza a la verificación del `Agent`; ninguna opción la desactiva. Producción no la pasa. Un test
-  afirma que, sin `ca`, un servidor con certificado autofirmado se rechaza. El certificado de los tests lo genera
-  `selfsigned` (dependencia de desarrollo, versión del lockfile).
+- **Confianza TLS de tests** (N4 del debate; P1-1 de la iteración 3): `createGuardedFetch` acepta `tls?: { ca }`.
+  Pasar `ca` a la conexión TLS **sustituye** las raíces del sistema, así que la suma se hace a mano: el conector recibe
+  `ca: [...tls.rootCertificates, ca]` (`node:tls`), es decir, las raíces de Node más la autoridad dada. Ninguna opción
+  desactiva la verificación. Producción no pasa `tls` y conserva las raíces por defecto. Un test afirma que, sin `ca`,
+  un servidor con certificado autofirmado se rechaza. El certificado de los tests lo genera `selfsigned` (dependencia
+  de desarrollo, versión del lockfile, importada solo desde ficheros `*.spec.ts`).
 
 *Descartado:* comprobar los literales antes de llamar a `fetch` (no cubre un salto que siga el propio cliente ni a un
 llamador que se la salte: E2); resolver aparte y reescribir la URL con la IP (rompe SNI y la validación del
@@ -194,15 +205,16 @@ cualquier ruta en otro host (más superficie que la necesaria); tratar un destin
 
 ### D6. La API rechaza lo que se ve sin resolver
 
-`normalizeUrl` (o el caso de uso que lo llama, que recibe la política por un token: el dominio no lee configuración y
-producción inyecta `PUBLIC_EGRESS_POLICY`) rechaza como no reconocida una URL cuyo host es un nombre sin punto,
-`localhost`/`*.localhost` o una dirección literal no pública, con el mismo clasificador de D1. `POST /api/links`
+`normalizeUrl` usa `PUBLIC_EGRESS_POLICY` directamente (P1-5 de la iteración 3): es una función pura de
+`@linkvault/shared/net`, sin token ni configuración, y la API no tiene otra política ni en tests. Rechaza como no
+reconocida una URL cuyo host es un nombre sin punto, `localhost`/`*.localhost` o una dirección literal no pública, con
+el mismo clasificador de D1. `POST /api/links`
 responde `invalid_url`; la importación la cuenta en `unrecognized`; la extensión usa el mismo guardado. **No se resuelve
 DNS en la API**: la decisión de adónde se conecta es del worker, y un nombre público que resuelve a una dirección
 interna solo se detecta allí.
 
-**El puerto no se juzga al guardar** (B2 del debate): una URL de un nombre con punto y un puerto no web se guarda, y el
-worker la marca `unsafe_destination` sin conectar. La persona conserva el link (puede pegar la descripción) en lugar de
+**El puerto no se juzga al guardar** (B2 del debate): una URL de un host aceptado (nombre con punto o literal público)
+y un puerto no web se guarda, y el worker la marca `unsafe_destination` sin conectar. La persona conserva el link (puede pegar la descripción) en lugar de
 perderlo con un «no reconocida» que no explica nada.
 
 *Descartado:* no tocar la API (guarda basura que nunca se podrá leer y da peor respuesta a quien la escribió);
@@ -249,9 +261,17 @@ a hosts de la lista.
 
 (B4 del debate.) No hay variable de entorno que abra destinos locales, en ningún entorno. La API y el worker construyen
 siempre `PUBLIC_EGRESS_POLICY`; los tests que necesitan un servidor en loopback inyectan una `EgressPolicy` completa por
-constructor (`createGuardedFetch({ policy })`, `createEgressLookup(resolve, policy)`) o por token (la API). Esa política
-de test vive en `apps/worker/src/test-support/` (y, si la API la necesita, en su `test-support/`), fuera del código de
-producción. Sin variable no hay esquema que la prohíba en producción, ni `warn` de arranque, ni línea en
+constructor (`createGuardedFetch({ policy })`, `createEgressLookup(resolve, policy)`). La API no inyecta ninguna:
+`normalizeUrl` usa `PUBLIC_EGRESS_POLICY` directamente (D6). Las políticas de test viven en
+`apps/worker/src/test-support/`, fuera del código de producción, con nombre propio para que cada test diga cuál usa:
+
+- `PERMISSIVE_TEST_POLICY`: admite hosts, direcciones y puertos de loopback; solo para los controles positivos;
+- `PUBLIC_WITH_ANY_PORT_TEST_POLICY`: la pública salvo `allowsPort`, que admite el puerto efímero; para los negativos
+  de host y de dirección;
+- `LOOPBACK_BY_NAME_TEST_POLICY`: aprueba la dirección `loopback` resuelta desde un nombre y rechaza el literal
+  `loopback` (y toda otra clase no pública), con cualquier puerto; para las redirecciones y el cambio de DNS.
+
+Un negativo de puerto usa `PUBLIC_EGRESS_POLICY` tal cual. Sin variable no hay esquema que la prohíba en producción, ni `warn` de arranque, ni línea en
 `.env.example`. No afecta a la lista de push (D7), que tampoco tiene excepción por entorno.
 
 Si un change futuro necesita enriquecer contra un servidor local (desarrollo o e2e), la variable entra con ese change y
@@ -270,8 +290,12 @@ despliegue, workflows, `infra/ci/` ni requirements de `platform/*`. Sin opción 
 ningún guardia en `repo-checks`, que queda intacto (35c tiene guardias diferidos ahí). La regla de ESLint de D10 va en `eslint.config.mjs` de la raíz, que no
 es `infra/ci/`. La defensa del lado del despliegue se escribe como recomendación en ADR-056 §6 y no se edita
 `openspec/changes/staging-host/`. Cuándo se aplica y fusiona es la Q1, con las ventanas que ya fijan 35b y
-`e2e-suite`. La excepción cubre tres clases de fusión (ADR-056 §1): la del change (tarea 7.7), la del PR de archivo y
-la de una eventual vuelta atrás con su vuelta (tarea 7.8); cada fusión se verifica por separado.
+`e2e-suite`. La excepción cubre tres clases de fusión (ADR-056 §1), y **toda fusión de este change a `main` antes de
+la 10.7 es de clase 1: la del change, cualquier correctiva y las de clase 2 o 3 si caen antes. Cada una pasa por la
+comprobación de 7.7 y obliga a repetir la 9.4 sobre el commit desplegado** (P0-3 de la iteración 3). La 10.7 solo
+procede con la 9.4 en verde sobre el **último** hash desplegado; la descripción de cada PR lleva el hash desplegado y
+el id de la corrida de la 9.4 sobre ese hash. Después de la 10.7, el PR de archivo, una vuelta atrás con su vuelta y
+cualquier correctiva siguen las reglas de las clases 2 y 3 (tarea 7.8). Cada fusión se verifica por separado.
 
 ### D10. Cómo se verifica
 
@@ -283,12 +307,22 @@ la de una eventual vuelta atrás con su vuelta (tarea 7.8); cada fusión se veri
   los puertos de `PUBLIC_EGRESS_POLICY`.
 - **Integración del guardia** (worker, sin red externa): servidores HTTP en loopback que **cuentan conexiones** y un
   resolvedor inyectado que mapea nombres de prueba de `.test` a direcciones elegidas. **Cada test de «no abre
-  conexión»** (E9 a) afirma además que la causa del fallo es `EgressBlockedError` (no un rechazo de conexión ni un
-  plazo vencido) y va acompañado, en el mismo fichero, de un **control positivo** que abre exactamente una conexión
-  con la misma pila: sin eso, «cero conexiones» lo daría también un guardia roto que no conecta nunca.
-- **Cambio de DNS** (E9 b): dos servidores en `127.0.0.2` y `127.0.0.3`, una **política inyectada** que aprueba el
-  primero y rechaza el segundo, y un resolvedor que responde distinto en la primera y la segunda consulta y cuenta
-  llamadas; se afirma una consulta por conexión, que la conexión llegó al servidor aprobado y que el otro contó cero.
+  conexión»** (E9 a) afirma además que la causa del fallo es `EgressBlockedError` **con su categoría exacta** (D1; no
+  un rechazo de conexión ni un plazo vencido) y va acompañado, en el mismo fichero, de un **control positivo** que abre
+  exactamente una conexión con la misma pila: sin eso, «cero conexiones» lo daría también un guardia roto que no
+  conecta nunca. Cada test nombra su política de D8 (P0-2 de la iteración 3): los negativos de host y de dirección,
+  `PUBLIC_WITH_ANY_PORT_TEST_POLICY`; el de puerto no web, `PUBLIC_EGRESS_POLICY`; los de redirección,
+  `LOOPBACK_BY_NAME_TEST_POLICY`; los controles positivos, `PERMISSIVE_TEST_POLICY`.
+- **Cambio de DNS** (E9 b; reescrito por P0-1 de la iteración 3, sin tocar la interfaz). La política solo ve clases, y
+  `127.0.0.2` y `127.0.0.3` son las dos `loopback`: ninguna política puede aprobar una y rechazar la otra. Por eso son
+  dos tests, los dos con `LOOPBACK_BY_NAME_TEST_POLICY`, que aprueba `loopback`:
+  1. «connects to the address approved in the same resolution»: dos servidores contadores en `127.0.0.2` y
+     `127.0.0.3`, y un resolvedor que responde `.2` en la primera consulta y `.3` en la segunda y cuenta llamadas. La
+     prueba es **una consulta por conexión**: el resolvedor contó una, `.2` cuenta una conexión y `.3` cuenta cero. Una
+     segunda resolución fuera del `lookup` haría que la conexión llegara a `.3`.
+  2. «a later hop resolving to a private address opens no connection»: el resolvedor devuelve, para la conexión del
+     segundo salto, una dirección de clase `private`; se afirma `EgressBlockedError` con categoría `private` y ninguna
+     conexión del segundo salto.
 - **Proxy** (E9 c): un proxy HTTP local que cuenta conexiones, apuntado por `HTTP_PROXY`/`HTTPS_PROXY` en el entorno
   del test; cuenta cero. Falsación: usar `EnvHttpProxyAgent` como dispatcher y ver al proxy contar una.
 - **Fetcher real sobre guardia real** (E8, B7): `HttpPageFetcher` con el `createGuardedFetch` real en `http://`:
@@ -308,14 +342,17 @@ la de una eventual vuelta atrás con su vuelta (tarea 7.8); cada fusión se veri
 
 ### D11. Dos toques mínimos al SPA
 
-- **Alta push rechazada** (V1-1 del debate): si `registerPushSubscription` responde `400` con código
-  `validation_error`, `PushNotifications.enable()` llama a `subscription.unsubscribe()` sobre la suscripción del
-  navegador —la recién creada o la que ya existía (N7)— antes de devolver el fallo, y `subscribed` queda en `false`. Un
-  fallo de `unsubscribe()` se ignora: el resultado sigue siendo `failed` con el fallo original del alta y
-  `subscribed = false`. La UI informa del fallo de forma no bloqueante con el texto existente (B3). Así la pantalla no dice «activados» para un
-  navegador al que el servidor nunca enviará nada. Otros fallos (red, `5xx`) no la cancelan: son transitorios y la
-  suscripción sirve para el siguiente intento. Vive en `core/notifications/push-notifications.ts`, sin textos nuevos ni
-  cambios en el catálogo i18n.
+- **Alta push rechazada** (V1-1 del debate; B3-a de la iteración 3): si `registerPushSubscription` responde `400` con
+  código `validation_error`, `PushNotifications.enable()` llama a `subscription.unsubscribe()` sobre la suscripción del
+  navegador —la recién creada o la que ya existía (N7)— y devuelve **`{ kind: 'unsupported' }`**, no `failed`;
+  `subscribed` queda en `false` y el fallo no se deja en `failure`. Un fallo de `unsubscribe()` se ignora: el resultado
+  sigue siendo `unsupported` con `subscribed = false`. La página muestra el texto que ya tiene para ese resultado,
+  «Este navegador no admite notificaciones push.», sin texto nuevo: es lo que le pasa a la persona (su navegador usa un
+  servicio push que no admitimos) y le dice que no reintente. Así la pantalla no dice «activados» para un navegador al
+  que el servidor nunca enviará nada. Otros fallos (red, `5xx`) no la cancelan y siguen siendo `failed`: son
+  transitorios y la suscripción sirve para el siguiente intento. Vive en `core/notifications/push-notifications.ts`,
+  sin textos nuevos ni cambios en el catálogo i18n. El spec del servicio afirma solo `kind` (y `subscribed`); el texto
+  lo fija un spec de `notifications.page` (B3-b).
 - **Tarjeta con `unsafe_destination`** (V2-2 del debate): sin cambio de código; un test en `link-status.spec.ts` fija
   `needsHand: true`, `canRetry: false`, `pasteFirst: false` y el texto genérico.
 
@@ -327,12 +364,15 @@ cualquier fallo del alta (un corte de red la perdería sin motivo).
 - **R1. Falsos positivos.** Un sitio público cuyo DNS devuelve alguna dirección interna, o que publica sus ofertas en
   un puerto que no es `80`/`443`, queda ilegible (`unsafe_destination`; el link se guarda igual, B2). Se acepta: no se
   conoce ninguna bolsa así, y el motivo lo deja visible en el link.
-- **R2. Dependencias directas nuevas** (`undici`, `ipaddr.js`; `selfsigned` solo de desarrollo). Ya están en el lockfile; pasar a directas obliga a
-  vigilarlas en Renovate. La versión de `undici` del paquete y la interna de Node pueden diferir: por eso se usan juntos
+- **R2. Dependencias directas nuevas** (`undici` e `ipaddr.js` en `dependencies` de la raíz; `selfsigned` en
+  `devDependencies`). Ya están en el lockfile; pasar a directas obliga a vigilarlas en Renovate. El `package.json` que
+  genera el build de cada app debe llevarlas (P1-4 de la iteración 3): si faltaran, la imagen arrancaría sin ellas; lo
+  comprueban 1.1 y 2.1 sobre `dist/`. La versión de `undici` del paquete y la interna de Node pueden diferir: por eso se usan juntos
   `fetch` y `Agent` del paquete (D3). Un cambio de la firma de `buildConnector` en una versión mayor rompe el conector:
   lo detectan los tests de integración de 2.2a/2.2b.
-- **R3. La lista de push envejece.** Un navegador con un servicio push nuevo no podrá suscribirse (`400`), el SPA lo
-  muestra como fallo no bloqueante, cancela la suscripción local (D11) y el correo sigue igual (`web/notifications`).
+- **R3. La lista de push envejece.** Un navegador con un servicio push nuevo no podrá suscribirse (`400`), el SPA
+  cancela la suscripción local y lo muestra como navegador no compatible, con el texto existente (D11), y el correo
+  sigue igual (`web/notifications`).
   Se corrige ampliando la lista.
 - **R4. Headless futuro.** Un navegador headless resuelve y conecta por su cuenta y saltaría este filtro. Cuando exista
   su adaptador, tendrá que salir por el mismo guardia (proxy local filtrado o equivalente); ADR-056 lo deja escrito.
@@ -343,8 +383,14 @@ cualquier fallo del alta (un corte de red la perdería sin motivo).
 - **R7. Reversión reabre el defecto** (E12 y N5 del debate). Revertir este change devuelve el worker a descargar sin
   filtro: con el registro abierto de staging, el defecto vuelve a ser explotable por cualquiera que se registre. Por eso
   **revertir exige que el despliegue tenga antes la defensa de ADR-056 §6** (red propia del worker y servicios internos
-  autenticados). Si hay que actuar antes de tenerla, la contingencia **no es revertir sino pausar** las colas de
-  enriquecimiento y de frescura: sin descargas no hay salida, y los links esperan sin perder datos. Además, los links
+  autenticados). Si hay que actuar antes de tenerla, la contingencia **no es revertir sino pausar la cola
+  `enrich-link`** (`ENRICH_LINK_QUEUE`; P1-3 de la iteración 3): es la única, porque la frescura reutiliza esa misma
+  cola con `triggeredBy: freshness`. Sin descargas no hay salida, y los links esperan sin perder datos. La pausa es un
+  script con `Queue.pause()` y `resume()` de BullMQ, que se ejecuta donde Redis es alcanzable y no toca ficheros de
+  despliegue; se ensaya en local (7.3a) y su orden exacta queda en el PR. Respaldo, si el script no se puede ejecutar:
+  parar el worker, **aceptando que con él se cortan el correo y el push**, que también salen del worker. La corrección
+  posterior es una fusión correctiva de clase 1 (antes de la 10.7; después, con las reglas de las clases 2 y 3, D9).
+  Además, los links
   con `lastEnrichmentError.reason = unsafe_destination` no los acepta el esquema anterior: ver Migration Plan.
 - **R8. Pestañas abiertas durante el despliegue.** Un SPA anterior que reciba `unsafe_destination` en un aviso en
   tiempo real no lo reconoce; se recarga (mismo trato que ADR-055).
@@ -376,7 +422,7 @@ cualquier fallo del alta (un corte de red la perdería sin motivo).
    4. repetir la actualización del paso 2 (recoge lo que escribiera una réplica o un job en vuelo entre 2 y 3) y
       comprobar que el recuento de `unsafe_destination` es `0`.
 
-   La orden exacta (`mongosh`) se anota en el PR de apply y se ensaya en local (7.3). Las suscripciones push
+   La orden exacta (`mongosh`) se anota en el PR de apply y se ensaya en local (7.3b). Las suscripciones push
    borradas no se recuperan: el navegador las vuelve a registrar al reactivar.
 
 ## Open Questions
@@ -395,9 +441,13 @@ cualquier fallo del alta (un corte de red la perdería sin motivo).
     más de la 9.4 (dos análisis del cupo de IA de la cuenta de pruebas).
     **Tres clases de fusión** cubre la excepción, para este y cualquier change que la invoque: (1) la del change, en
     esta ventana; (2) el PR de archivo, que lleva las anotaciones posteriores y también despliega staging; (3) las
-    fusiones de vuelta atrás y su vuelta. Las clases 2 y 3 tienen reglas propias: nunca entre el PR-2 de 35b y su 11.6,
-    nunca durante sus 9.1-9.4, nunca los días 7 y 14 de la medición y nunca el día de una corrida `e2e-remote`; cada
-    fusión se verifica con su propia confirmación del owner (tarea 7.8). Las falsaciones de estas guardias son
+    fusiones de vuelta atrás y su vuelta. **Toda fusión de este change a `main` antes de la 10.7 es de clase 1: la del
+    change, cualquier correctiva y las de clase 2 o 3 si caen antes. Cada una pasa por la comprobación de 7.7 y obliga a
+    repetir la 9.4 sobre el commit desplegado.** La 10.7 solo procede con la 9.4 en verde sobre el **último** hash
+    desplegado; la descripción de cada PR lleva el hash desplegado y el id de la corrida de la 9.4 sobre ese hash.
+    Después de la 10.7, las clases 2 y 3, y cualquier correctiva, tienen reglas propias: nunca entre el PR-2 de 35b y su
+    11.6, nunca durante sus 9.1-9.4, nunca los días 7 y 14 de la medición y nunca el día de una corrida `e2e-remote`;
+    cada fusión se verifica con su propia confirmación del owner (tarea 7.8). Las falsaciones de estas guardias son
     ejercicios de escritorio, nunca comentarios en el PR.
   - (b) **Después de 35c**, sin excepción: entonces 35b no debería invitar —ni dejar el registro abierto con destino—
     hasta tenerlo, lo que retrasa la fila entera.
@@ -416,10 +466,10 @@ cualquier fallo del alta (un corte de red la perdería sin motivo).
   - **Recomendación: (a)**, con (e) como regla de respaldo si la 11.6 se retrasa hasta el día previsto para invitar.
     (d) no se recomienda: su costo cae sobre tareas de 35b ya ensayadas. La respuesta se anota en ADR-056 §1 en una
     línea que empieza por «Respuesta del owner (Q1), AAAA-MM-DD:» y en ADR-048 §Consecuencias.
-- **Q2 [no bloqueante]. Mensajes propios en el SPA** para `unsafe_destination` («Esta dirección no es pública»), para
-  el `400` del alta push («Este navegador no es compatible con los avisos push») y para el `invalid_url` de una URL con
-  IP literal interna, que con este change dice «no reconocida» (V2-1 y B1 del debate; «Fuera de alcance» de la
-  proposal). Recomendación: no ahora; los textos genéricos evitan tocar el catálogo i18n y el tercer caso es raro.
+- **Q2 [no bloqueante]. Mensajes propios en el SPA** para `unsafe_destination` («Esta dirección no es pública») y para
+  el `invalid_url` de una URL con IP literal interna, que con este change dice «no reconocida» (V2-1 y B1 del debate;
+  «Fuera de alcance» de la proposal). El `400` del alta push ya no entra aquí: desde B3-a de la iteración 3 usa el
+  texto existente de navegador no compatible (D11). Recomendación: no ahora; los textos genéricos evitan tocar el catálogo i18n y el tercer caso es raro.
   Candidato para un change de producto tras la fila 35.
 - **Q3 [no bloqueante]. Trasladar la recomendación de ADR-056 §6 a `staging-host`** (tareas o riesgos de su design) en
   un PR solo de spec, como hizo ADR-053 §1.4, o dejarla solo en el ADR para que 35b la recoja en su debate.
@@ -482,3 +532,26 @@ iteración 1, nada se describe con un detalle que sirva para saltarse el filtro:
 | Ventana | reflect (para todos los changes) | La excepción cubre tres clases de fusión: (1) la del change, en la ventana (a), sin la cláusula de los días 7 y 14; (2) el PR de archivo; (3) las vueltas atrás y su vuelta. Las clases 2 y 3: nunca entre el PR-2 de 35b y su 11.6, nunca durante sus 9.1-9.4, nunca los días 7 y 14 de la medición, nunca el día de una corrida `e2e-remote`. La confirmación del owner nombra el PR-2 de 35b; las falsaciones de la guardia son ejercicios de escritorio. Q1(a); D9; ADR-056 §1; 7.7, 7.8 | La iteración 1 cubría solo el PR de apply y el de archivo, y aplicaba a la primera una cláusula que no puede darse |
 
 Convergencia: pendiente de la iteración 3.
+
+## Debate — iteración 3
+
+Critic: P0 3 (P0-1, P0-2, P0-3) y seis P1 (P1-1 a P1-6). Business: V0 0, tres hallazgos (B3-a, B3-b, B2-a). Reflect: la
+sesión principal. Como en las iteraciones anteriores, nada se describe con un detalle que sirva para saltarse el
+filtro: el repositorio es público.
+
+| Id | Origen | Decisión | Motivo |
+|---|---|---|---|
+| P0-1 | critic | Aceptado, sin tocar la interfaz: D10 y 2.3 reescritas. El primer test usa una política que aprueba `loopback` y prueba «una consulta por conexión: `.2` cuenta una, `.3` cuenta cero»; el segundo hace que el resolvedor devuelva una dirección `private` en el segundo salto y afirma `EgressBlockedError` con categoría `private`. D10; 2.3 | `127.0.0.2` y `127.0.0.3` son de la misma clase: una política por clases no podía aprobar una y rechazar la otra, así que el test pedido era imposible |
+| P0-2 | critic | Aceptado: D1 define las categorías que no son de dirección (`port`, `dotless`, `localhost`) y que un literal rechazado lleva su clase; D8 nombra tres políticas de test; 2.2a, 2.2b, 2.3, 3.5 y 4.3 fijan la política de cada test (negativos de host y dirección: la pública salvo `allowsPort`, que admite el puerto efímero; puerto no web: la pública; redirecciones: la que aprueba el `loopback` resuelto desde un nombre y rechaza el literal `loopback`); cada negativo afirma `EgressBlockedError` y su categoría. D1, D8, D10; tasks | Sin política fijada por test, un negativo podía pasar por el motivo equivocado, y la categoría del error no estaba definida para los rechazos que no son de dirección |
+| P0-3 | critic | Aceptado: toda fusión de este change a `main` antes de la 10.7 es de clase 1 (la del change, cualquier correctiva y las de clase 2 o 3 si caen antes); cada una pasa por 7.7 y obliga a repetir la 9.4 sobre el commit desplegado. La 10.7 solo procede con la 9.4 en verde sobre el último hash desplegado; cada PR lleva ese hash y el id de su corrida. Ejercicio de escritorio «9.4 sobre un hash anterior → fuera de ventana». Después de la 10.7, una correctiva sigue las reglas de las clases 2 y 3. ADR-056 §1; Q1(a); D9; 7.7, 7.8 | Una segunda fusión antes de invitar desplegaba un commit que la 9.4 no había visto, y las clases 2 y 3 no decían qué pasaba si caían antes de la 10.7 |
+| P1-1 | critic | Aceptado: la suma de verdad, `ca: [...tls.rootCertificates, ca]`; corregida la frase «solo añade». D3; 2.2c; ADR-056 §2 | Pasar `ca` sustituye las raíces del sistema: la frase anterior describía algo que el código no habría hecho |
+| P1-2 | critic | Aceptado: 1.4 tabula `''`, `'80'`, `'443'`, `80` y `undefined`; 2.2a suma «with the public policy a default-port name reaches the resolver» (resolvedor inyectado con `ENOTFOUND`, causa `ENOTFOUND`). 1.4; 2.2a | El puerto llega con representaciones distintas según quién llame, y ningún test probaba que la política pública deja resolver un nombre con el puerto por defecto |
+| P1-3 | critic | Aceptado: una sola cola, `enrich-link` (`ENRICH_LINK_QUEUE`), que la frescura reutiliza. Contingencia: script con `Queue.pause()`/`resume()`; respaldo, parar el worker aceptando que se cortan el correo y el push. Ensayo y orden en el PR (7.3a, nueva; el ensayo de la reversión pasa a 7.3b); la corrección posterior, fusión correctiva de clase 1. R7; Migration Plan; ADR-056 §Consecuencias; 7.3a | «Las colas de enriquecimiento y de frescura» nombraba dos colas donde hay una, y la contingencia no tenía orden ni ensayo |
+| P1-4 | critic | Aceptado: `undici` e `ipaddr.js` en `dependencies` raíz, `selfsigned` en `devDependencies` e importada solo desde `*.spec.ts`; 1.1 y 2.1 comprueban, tras `nx build`, el `package.json` de `dist/apps/worker` (`undici`, `ipaddr.js`) y de `dist/apps/api` (`ipaddr.js`), sin `selfsigned` en ninguno. R2; D3; ADR-056 §Consecuencias; 1.1, 2.1 | La imagen instala lo que dice el `package.json` generado; una dependencia de desarrollo filtrada o una faltante solo se vería al arrancar |
+| P1-5 | critic | Aceptado: `normalizeUrl` usa `PUBLIC_EGRESS_POLICY` directamente, como función pura de `@linkvault/shared/net`, sin token; fuera «por token (la API)» de D8, 5.1 y la spec. D6, D8; spec `links/egress-guard`; 5.1 | Un token de política en la API era una puerta que ningún test necesita |
+| P1-6 | critic | Aceptado: 5.1 suma «accepts a public IP literal with a non-web port»; D6 y la spec de `links/job-link` dicen «host aceptado (nombre con punto o literal público)». D6; spec; 5.1 | El caso del literal público con puerto no web no estaba escrito ni probado |
+| B3-a | business | Aceptado: ante `400 validation_error` en el alta push, `enable()` devuelve `{ kind: 'unsupported' }` en lugar de `failed` y la página muestra el texto existente «Este navegador no admite notificaciones push.», sin texto nuevo; se mantiene la cancelación, también si `unsubscribe()` falla. D11; R3; Q2; spec `web/notifications`; ADR-056 §3 y §Consecuencias; 6.4 | «Falló» invitaba a reintentar algo que nunca va a funcionar en ese navegador; el texto de no compatible ya existe y dice la verdad |
+| B3-b | business | Aceptado: el spec del servicio afirma solo `kind` (y `subscribed`); el texto se fija en `notifications.page.spec.ts`. D11; 6.4 | El servicio no conoce textos; afirmarlos ahí acoplaba su test a la plantilla |
+| B2-a | business | Recortado: no se suma un caso de punta a punta para el puerto no web; la composición de 2.2a («a non-web port opens no connection», categoría `port`) y 3.1 («maps an egress rejection to unsafe_destination») lo cubre. 5.1 | Un e2e más costaría una pila entera para probar dos piezas que ya tienen su test |
+
+Convergencia: pendiente de la verificación puntual de P0-1, P0-2 y P0-3.
