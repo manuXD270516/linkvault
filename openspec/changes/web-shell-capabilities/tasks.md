@@ -98,7 +98,9 @@ el implementador crea tal cual; cada uno sale de un escenario de `specs/`.
   estaba abierto** (cierra y foco a `<main>` con `focus({ preventScroll: true })`), al pulsar cualquier enlace del
   panel con `(click)` (cierra y foco a `<main>`, también en la ruta actual), al volver a pulsar el botón (foco en el
   botón) y al pasar a modo ancho (cierra y, si el foco estaba dentro del panel, foco a `<main>` con
-  `preventScroll`). Verificar en `shell.spec.ts` (router real de prueba): «closes the panel and focuses main when a
+  `preventScroll`). Verificar en `shell.spec.ts` (router real de prueba, con `{ path: 'mi-cv', component: Stub }`
+  registrado en `provideRouter` para que la navegación termine en `NavigationEnd` y no en `NavigationError`; I2-a de
+  la verificación puntual): «closes the panel and focuses main when a
   navigation completes while it is open» (panel abierto, `router.navigateByUrl('/mi-cv')` sin pasar por el enlace:
   panel cerrado, `aria-expanded="false"` y `document.activeElement` es `<main>`), «closes the panel after navigating to
   Mi CV» (clic en el enlace del panel: prueba el `(click)`), «tapping the current route's entry closes the panel»,
@@ -112,8 +114,10 @@ el implementador crea tal cual; cada uno sale de un escenario de `specs/`.
   `NavigationEnd` no toca el foco; Escape escuchado solo con el panel abierto y en el `<header>` del Shell (cierra y
   foco al botón). Verificar en `shell.spec.ts`: «focuses main after navigating from the panel», «focuses main without
   scrolling» (espía sobre `focus` de `<main>` llamado con `{ preventScroll: true }`), «does not move focus on
-  NavigationEnd when the panel was closed» (foco en un `<input>` de la página, `router.navigate([], { replaceUrl:
-  true })`, el foco sigue en el `<input>`), «Escape closes the panel and focuses the menu button», «ignores Escape when
+  NavigationEnd when the panel was closed» (foco en un `<input>` de la página, `router.navigate([], { queryParams: {
+  q: 'x' }, replaceUrl: true })` —cambia la URL, como hacen `join-group`, `my-links` y `applications-board`; con la
+  misma URL el router emite `NavigationSkipped` y el caso no podría fallar (B6-b de la verificación puntual)—, el test
+  afirma que llegó un `NavigationEnd` filtrando `router.events` y que el foco sigue en el `<input>`), «Escape closes the panel and focuses the menu button», «ignores Escape when
   the panel is closed» e «ignores Escape from outside the header» (panel abierto, Escape despachado desde un `<input>`
   de `<main>`: el panel sigue abierto y el foco sigue en el `<input>`). Falsación (B6): enfocar `<main>` en todo
   `NavigationEnd`, sin mirar si el panel estaba abierto, y ver caer «does not move focus on NavigationEnd when the

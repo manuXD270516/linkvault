@@ -486,4 +486,16 @@ el spec de `web/shell`, en `proposal.md` y en ADR-059. Q1 sigue abierta y bloque
 | B15 | business | Aceptado. ADR-059 §3 dice «si fallan o no responden en 5 s» | El ADR no mencionaba el plazo de B7 y quien implementa leyendo solo el ADR podía omitirlo |
 | Fusiones | reflect | Aceptado. La excepción de Q1 cubre tres clases de fusión: (1) la del change, en la ventana (a), sin la cláusula de los días 7 y 14; (2) el PR de archivo; (3) las vueltas atrás y su vuelta. Las clases 2 y 3: nunca entre el PR-2 de 35b y su 11.6, nunca durante su 9.1-9.4, nunca los días 7 y 14, nunca el día de una corrida `e2e-remote` (ADR-059 §1, D14, Q1(a), 7.4) | La ventana de la clase 1 termina antes de la 10.7; las otras dos clases no tenían reglas propias y el PR de archivo quedaba atado a «después de la 10.7» sin cubrir el ensayo ni las corridas remotas |
 
-Convergencia: pendiente de la verificación puntual de I2 (P0 de la iteración 3)
+Convergencia: ver «Verificación puntual de I2» a continuación
+
+## Verificación puntual de I2 (2026-10-28)
+
+Critic verificó solo el P0 de la iteración 3, sin abrir una iteración nueva.
+
+| id | origen | decisión | motivo |
+|---|---|---|---|
+| I2 | critic | resuelto | El caso nuevo cae si se quita la suscripción a `NavigationEnd`. |
+| I2-a | critic (P1) | aceptado | La 3.4a registra la ruta `mi-cv` con un stub; sin ella la navegación termina en `NavigationError`. |
+| B6-b | critic (P0) | aceptado | La 3.4b navega cambiando un query param y afirma que llegó un `NavigationEnd`: con la misma URL el router emite `NavigationSkipped` y el caso no podía fallar. Corrección de dos líneas en la tarea. |
+
+Convergencia: SI (iteración 3 más verificación puntual: critic P0 0 tras corregir B6-b, business V0 0; Q1 pendiente del owner).
