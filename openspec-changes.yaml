@@ -574,6 +574,34 @@ changes:
       Textos nuevos en ES y EN con el catálogo re-extraído (ADR-050).
       Fuera: H3 (a `e2e-suite-lot-2`, con H11), H7 (a un change con datos reales de 35b) y H8-H17 (pruebas y
       configuración de la pila e2e; su sitio es `e2e-suite-lot-2` o un change de fixtures).
+  - name: web-error-copy-coverage
+    adrs: [062, 050, 053, 048, 051, 055, 032]
+    agents: [frontend-dev]
+    scope: |
+      **Pide una excepción a la precedencia de la fila 35** (ADR-048 §Consecuencias, extendida a la fila entera por
+      ADR-051 §1). **No está concedida**: es la Q1 de su design, bloqueante para `/opsx:apply`, y su respuesta se
+      anota con fecha en ADR-062 §1. No cambia el orden de la fila (35b → 35c), no libera la precedencia para otro
+      change y solo toca `apps/web` (sin API, `libs/*`, composes, workflows, `infra/ci/` ni `platform/*`). Prioridad
+      por detrás de `paste-fallback-honest` y `enrichment-egress-guard`; si no se concede, va después de 35c.
+      Origen: relevamiento de producto del 2026-10-28. `lv-request-error` (42 usos) solo distingue «sin conexión» y
+      `too_many_attempts`; un `503` pasajero, un `502` del proxy y un `500` dicen «Algo salió mal», y 11 de los 48
+      códigos de `apiErrorCodeSchema` no aparecen en ningún fichero del SPA.
+      **Componente común:** resuelve por código y después por estado: `502`/`503`/`504` → «LinkVault no está
+      disponible en este momento. Inténtalo en unos minutos»; el resto → «Algo salió mal. Inténtalo de nuevo» (sin
+      cambio), con «Referencia: <estado> · <código>» fuera del `role="alert"`. Textos comunes para
+      `member_not_found`, `owner_cannot_leave`, `consent_text_outdated` y `vault_unavailable`.
+      **Guardia (ADR-062 §3):** `API_ERROR_COPY` con una decisión por código (`common`, `local` con ficheros,
+      `fallback` o `unreachable` con motivo), comprobada en `web:typecheck`, `web:test` (completitud y coherencia con
+      el componente) y `web:i18n-check` (cada `local` mencionado en sus ficheros). El change que añade un código añade
+      su entrada; entre este y `paste-fallback-honest`, el que llegue segundo completa la tabla con
+      `ai_consent_required`, `ai_capacity_exhausted` y `extraction_disabled`.
+      **H3** de la guía de uso (clave BYOK sin bóveda) se corrige aquí si el owner lo asigna (Q2, bloqueante); H11
+      sigue en `e2e-suite-lot-2`. i18n ES/EN según ADR-050; verificación por tests de componente (ADR-053: las E2E
+      sin `@lot1` no cuentan).
+      **Ventana de fusión, si Q1 se concede:** después de la 11.6 de 35b y antes de su 10.7, con las tres clases de
+      fusión, la confirmación fechada del owner en el PR y la 9.4 de `e2e-suite` repetida sobre el último commit
+      desplegado. **Fuera:** motivos de enriquecimiento (`unsafe_destination`, Q3), los textos propios de otros
+      changes y cualquier cambio de API.
   - name: staging-host
     adrs: [051, 048, 033, 034, 035, 032]
     agents: [devops, backend-dev, frontend-dev, ai-engineer]
