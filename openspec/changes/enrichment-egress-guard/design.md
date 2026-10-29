@@ -26,7 +26,8 @@ direcciones internas o de metadatos de la nube. Este documento lo describe en ge
   `buildConnector` y la opción `connect` del `Agent` acepta un conector propio.
 - Ninguna prueba e2e enriquece hoy contra un servidor local: el camino crítico usa un host `.invalid` y el resto, URLs
   de bolsas públicas que no se descargan en la pila de pruebas. Ningún spec del worker levanta un servidor HTTP para el
-  enriquecimiento. La opción de destinos locales (D8) sirve para desarrollo y para los tests del propio filtro.
+  enriquecimiento. Por eso no hace falta una opción de destinos locales por configuración: los tests del propio filtro
+  inyectan su política en código (D8).
 - El SPA muestra cualquier motivo que no sea `robots_disallowed`, `blocked` o `not_a_job` con el texto genérico «No
   pudimos leer esta oferta» (`features/links/link-status.ts`), marca la tarjeta como pendiente de una persona
   (`needsHand`) y ofrece reintentar según `isRetryableEnrichmentReason` de `@linkvault/shared`.
@@ -45,7 +46,8 @@ direcciones internas o de metadatos de la nube. Este documento lo describe en ge
 - Un solo clasificador de direcciones, nombres y puertos, usado por la API (rechazo temprano) y por el worker (decisión
   final).
 - El push solo habla con servicios push, con un criterio de URL que no pueda leerse de dos maneras.
-- Desarrollo y tests pueden seguir usando servidores locales, sin que esa puerta exista en producción.
+- Los tests del filtro usan servidores locales con una política inyectada en código; ninguna configuración abre esa
+  puerta, en ningún entorno (D8).
 - Sin tocar ficheros de despliegue, workflows ni `platform/*` (condición de la excepción, D9). El SPA solo recibe los
   dos toques mínimos de D11.
 
@@ -62,10 +64,19 @@ direcciones internas o de metadatos de la nube. Este documento lo describe en ge
 
 - **Clasificador** `libs/shared/src/net/egress-address.ts`: funciones puras `classifyAddress(ip)` →
   `public | loopback | private | link_local | shared_cgnat | unspecified | multicast | broadcast | reserved |
-  documentation | ipv4_mapped | ula`, `classifyHost(host)` → `ip literal (con su clase) | dotless | localhost | name`,
-  y `isEgressPortAllowed(protocol, port, cls, policy)` (D2). Sobre `ipaddr.js` (sin dependencias de Node, apto para el
-  SPA si algún día lo importa). Un predicado `isEgressAllowed(cls, { allowPrivateTargets })` decide con la política de
-  D8. La API y el guardia llaman a las mismas funciones; ninguno repite rangos ni puertos.
+  documentation | ipv4_mapped | ula` y `classifyHost(hostname)` → `ip literal (con su clase) | dotless | localhost |
+  name`. `classifyHost` recibe el `hostname` **sin corchetes**: `new URL(...).hostname` y el host que recibe el
+  conector de `undici` los conservan en un literal IPv6, y quien llama los quita antes de clasificar. Sobre
+  `ipaddr.js`, sin dependencias de Node.
+- **Política** (N1 del debate): una interfaz `EgressPolicy` con tres decisiones, `allowsHost(hostClass)`,
+  `allowsAddress(addressClass)` y `allowsPort(protocol, port, hostClass)`. El puerto se decide **solo con la clase del
+  host, antes de resolver**. La única implementación de producción es `PUBLIC_EGRESS_POLICY`: hosts `name` y literales
+  públicos, direcciones `public`, y puerto por defecto u `80`/`443` siempre. Las tareas 2.3, 3.5 y 4.3 inyectan una
+  política de test **completa** (las tres decisiones), que vive solo en código de tests (D8).
+- **Publicación** (N6 del debate): el clasificador y la política salen por la subruta `@linkvault/shared/net` (entrada
+  propia en `tsconfig.base.json`), no por el índice de `@linkvault/shared`, para que el SPA no arrastre `ipaddr.js`.
+  Solo la importan la API y el worker. La API y el guardia llaman a las mismas funciones; ninguno repite rangos ni
+  puertos.
 - **Guardia** `apps/worker/src/infrastructure/egress/`: un **conector propio** que envuelve el `buildConnector` de
   `undici` (D3) y un `createGuardedFetch` que expone un `HttpFetch` ya filtrado. Lo usan `HttpPageFetcher` y el fetcher
   del `robots.txt`; ninguno de los dos llama al `fetch` global, y una regla de ESLint lo impide en el módulo (D10).
@@ -93,11 +104,13 @@ Lista completa en la spec `links/egress-guard`. Criterios:
   traducción. **Traducción** (`64:ff9b::/96`, `2002::/16`): se clasifica la IPv4 de dentro; `64:ff9b::/96` queda fuera
   de `2000::/3` y es la única excepción a la regla anterior. Rechazarlas enteras rompería un host solo-IPv6 con DNS64.
 - **Mapeadas y compatibles con IPv4** (`::ffff:0:0/96`, `::/96`): se rechazan enteras, como pide el relevamiento.
-- **Puertos** (E3 del debate): solo el puerto por defecto del esquema (ausente en la URL) o `80`/`443` explícitos. Un
-  servicio interno escucha casi siempre en otro puerto; un destino público de una bolsa, nunca. La regla vive en
-  `isEgressPortAllowed` y la aplican la API (rechazo al guardar) y el conector (cada conexión, cada salto). Con
-  `EGRESS_ALLOW_PRIVATE_TARGETS` encendida (D8), los destinos que esa opción abre admiten cualquier puerto, para que el
-  desarrollo y los tests usen servidores en puertos efímeros; los destinos públicos siguen limitados a `80`/`443`.
+- **Puertos** (E3 y N1 del debate): solo el puerto por defecto del esquema (ausente en la URL) o `80`/`443` explícitos.
+  Un servicio interno escucha casi siempre en otro puerto; un destino público de una bolsa, nunca. La regla vive en
+  `allowsPort` de la política, se decide con la clase del host antes de resolver y la aplica **solo el conector** (cada
+  conexión, cada salto); en producción es `80`/`443` siempre. La API no juzga el puerto (B2 del debate, D6). Los tests
+  que usan servidores en puertos efímeros inyectan una política que los admite (D8).
+- **Rangos de dentro de `2000::/3`** (N3 del debate): además de `2001:db8::/32`, la spec enumera `2001::/23`
+  (asignaciones de protocolo de IETF) y `3fff::/20` (documentación).
 
 *Descartado:* lista de permitidos IPv6 expresada solo como `2000::/3` sin enumerar las excepciones de dentro, porque
 dejaría pasar documentación y otros rangos especiales; puertos por configuración (otra superficie que se puede dejar
@@ -107,8 +120,8 @@ abierta).
 
 El `Agent` de `undici` se crea con `connect` = un conector propio (E2 del debate). Para cada conexión, el conector:
 
-1. clasifica el host que recibe (literal, nombre sin punto, `localhost`) y el puerto, y, si no pasan, llama a su
-   callback con `EgressBlockedError` **sin abrir socket**;
+1. clasifica el host que recibe (sin corchetes: literal, nombre sin punto, `localhost`) y el puerto, con `allowsHost` y
+   `allowsPort` de la política, y, si no pasan, llama a su callback con `EgressBlockedError` **sin abrir socket**;
 2. si es un nombre, delega en un conector base creado con `buildConnector({ lookup })`, donde `lookup` llama a
    `dns.lookup(host, { all: true, ... })`, clasifica **todas** las direcciones y, si todas pasan, devuelve exactamente
    esas al socket (respetando `options.all` y la familia pedidas, que `net.connect` usa con `autoSelectFamily`); si
@@ -126,6 +139,10 @@ venga la petición de quien venga y en el salto que sea: no depende de que el qu
 - **Sin proxy del entorno**: el `Agent` es el dispatcher explícito de cada petición; no se usa `EnvHttpProxyAgent`. Con
   un proxy, el filtro comprobaría la dirección del proxy y no la del destino (R5).
 - TLS y `Host` siguen usando el nombre: el certificado se valida contra el host de la URL.
+- **Confianza TLS de tests** (N4 del debate): `createGuardedFetch` acepta `tls?: { ca }`, que **solo añade** una
+  autoridad de confianza a la verificación del `Agent`; ninguna opción la desactiva. Producción no la pasa. Un test
+  afirma que, sin `ca`, un servidor con certificado autofirmado se rechaza. El certificado de los tests lo genera
+  `selfsigned` (dependencia de desarrollo, versión del lockfile).
 
 *Descartado:* comprobar los literales antes de llamar a `fetch` (no cubre un salto que siga el propio cliente ni a un
 llamador que se la salte: E2); resolver aparte y reescribir la URL con la IP (rompe SNI y la validación del
@@ -177,16 +194,20 @@ cualquier ruta en otro host (más superficie que la necesaria); tratar un destin
 
 ### D6. La API rechaza lo que se ve sin resolver
 
-`normalizeUrl` (o el caso de uso que lo llama, que recibe la política por un token de configuración: el dominio no
-lee configuración) rechaza como no reconocida una URL cuyo host es un nombre sin punto, `localhost`/`*.localhost` o una
-dirección literal no pública, o cuyo puerto no admite D2, con el mismo clasificador de D1 y la misma política de D8.
-`POST /api/links` responde `invalid_url`; la importación la cuenta en `unrecognized`; la extensión usa el mismo
-guardado. **No se resuelve DNS en la API**: la decisión de adónde se conecta es del worker, y un nombre público que
-resuelve a una dirección interna solo se detecta allí.
+`normalizeUrl` (o el caso de uso que lo llama, que recibe la política por un token: el dominio no lee configuración y
+producción inyecta `PUBLIC_EGRESS_POLICY`) rechaza como no reconocida una URL cuyo host es un nombre sin punto,
+`localhost`/`*.localhost` o una dirección literal no pública, con el mismo clasificador de D1. `POST /api/links`
+responde `invalid_url`; la importación la cuenta en `unrecognized`; la extensión usa el mismo guardado. **No se resuelve
+DNS en la API**: la decisión de adónde se conecta es del worker, y un nombre público que resuelve a una dirección
+interna solo se detecta allí.
+
+**El puerto no se juzga al guardar** (B2 del debate): una URL de un nombre con punto y un puerto no web se guarda, y el
+worker la marca `unsafe_destination` sin conectar. La persona conserva el link (puede pegar la descripción) en lugar de
+perderlo con un «no reconocida» que no explica nada.
 
 *Descartado:* no tocar la API (guarda basura que nunca se podrá leer y da peor respuesta a quien la escribió);
 resolver en la API (latencia en el guardado, y la respuesta puede cambiar antes de que el worker conecte, así que no
-aporta seguridad).
+aporta seguridad); rechazar el puerto al guardar (la versión de la iteración 1: la persona perdía el link).
 
 ### D7. Push: lista de servicios push conocidos, con un solo criterio de URL, en el alta y antes de enviar
 
@@ -224,40 +245,42 @@ a hosts de la lista.
 - **Normalizar el endpoint y guardar la forma normalizada**: cambia la identidad del endpoint que usa la idempotencia
   del alta y la baja por endpoint; rechazar lo no canónico es más simple y ningún navegador envía un endpoint así.
 
-### D8. `EGRESS_ALLOW_PRIVATE_TARGETS`, solo fuera de producción
+### D8. Sin opción de destinos locales: la política permisiva vive solo en los tests
 
-Booleano, por defecto `false`, en `api-config.schema.ts` y `worker-config.schema.ts`. Encendido permite **solo**
-loopback (`127.0.0.0/8`, `::1`), los rangos de RFC 1918 (`10/8`, `172.16/12`, `192.168/16`), `localhost` y nombres sin
-punto, con cualquier puerto (D2). **Sigue prohibiendo** (E5 del debate) `100.64/10` y `fc00::/7` —direcciones de
-infraestructura del proveedor o de redes superpuestas, que nadie necesita para desarrollar—, enlace local
-(`169.254/16`, `fe80::/10`, donde viven los metadatos de la nube), `0/8`, `::`, multidifusión, difusión, reservadas,
-documentación y las mapeadas a IPv4: un portátil de desarrollo dentro de una VM en la nube también tiene metadatos. Con
-`NODE_ENV=production` y `true`, el `superRefine` de cada esquema falla nombrando la variable, como hace `parseAiConfig`
-con el mock. Encendido, un `warn` en el arranque. No se declara en `apps/web-e2e/e2e.env` (no la necesita nadie hoy) y
-en `.env.example` va documentada y apagada. No afecta a la lista de push (D7), que no tiene excepción por entorno.
+(B4 del debate.) No hay variable de entorno que abra destinos locales, en ningún entorno. La API y el worker construyen
+siempre `PUBLIC_EGRESS_POLICY`; los tests que necesitan un servidor en loopback inyectan una `EgressPolicy` completa por
+constructor (`createGuardedFetch({ policy })`, `createEgressLookup(resolve, policy)`) o por token (la API). Esa política
+de test vive en `apps/worker/src/test-support/` (y, si la API la necesita, en su `test-support/`), fuera del código de
+producción. Sin variable no hay esquema que la prohíba en producción, ni `warn` de arranque, ni línea en
+`.env.example`. No afecta a la lista de push (D7), que tampoco tiene excepción por entorno.
 
-*Descartado:* abrir también `100.64/10` y `fc00::/7` (la versión anterior de este design; E5); una lista de hosts
-permitidos por configuración (más superficie y más fácil de dejar abierta); permitirlo por `NODE_ENV !== 'production'`
-sin variable (la pila e2e corre con `NODE_ENV=development` y quedaría abierta sin que nadie lo pidiera).
+Si un change futuro necesita enriquecer contra un servidor local (desarrollo o e2e), la variable entra con ese change y
+su debate, con la lista de rangos que dejó escrita la iteración 1 (E5): solo loopback, RFC 1918, `localhost` y nombres
+sin punto; nunca `100.64/10`, `fc00::/7`, enlace local ni las demás categorías.
+
+*Descartado:* `EGRESS_ALLOW_PRIVATE_TARGETS` con prohibición en producción por esquema (la versión de las iteraciones
+anteriores: una superficie de configuración que hoy no usa nadie, con dos esquemas, un `warn` y tres tareas para
+mantenerla); permitirlo por `NODE_ENV !== 'production'` sin variable (la pila e2e corre con `NODE_ENV=development` y
+quedaría abierta sin que nadie lo pidiera).
 
 ### D9. Encaje con la fila 35 (excepción pedida)
 
 Las condiciones de la proposal: no cambia el orden de la fila, no libera la precedencia para nadie y no toca ficheros de
-despliegue, workflows, `infra/ci/` ni requirements de `platform/*`. Que la producción no pueda arrancar con la opción
-encendida lo garantiza el esquema de configuración (D8), no un guardia en `repo-checks`, precisamente para no tocar
-`infra/ci/` (35c tiene guardias diferidos ahí). La regla de ESLint de D10 va en `eslint.config.mjs` de la raíz, que no
+despliegue, workflows, `infra/ci/` ni requirements de `platform/*`. Sin opción de configuración (D8) no hace falta
+ningún guardia en `repo-checks`, que queda intacto (35c tiene guardias diferidos ahí). La regla de ESLint de D10 va en `eslint.config.mjs` de la raíz, que no
 es `infra/ci/`. La defensa del lado del despliegue se escribe como recomendación en ADR-056 §6 y no se edita
 `openspec/changes/staging-host/`. Cuándo se aplica y fusiona es la Q1, con las ventanas que ya fijan 35b y
-`e2e-suite`; dos tareas de cierre comprueban la ventana del PR de apply (7.7) y la del PR de archivo (7.8).
+`e2e-suite`. La excepción cubre tres clases de fusión (ADR-056 §1): la del change (tarea 7.7), la del PR de archivo y
+la de una eventual vuelta atrás con su vuelta (tarea 7.8); cada fusión se verifica por separado.
 
 ### D10. Cómo se verifica
 
 - **Rangos con literales de la spec** (E10 del debate): los tests del clasificador recorren tablas de direcciones
   **copiadas a mano de la spec** (dentro, borde y fuera por rango), sin importar ninguna tabla de la implementación;
   así un rango que falte en el código no desaparece también del test. Además: notaciones IPv4 que normaliza el
-  analizador WHATWG, IPv6 con corchetes, mapeadas, traducción con IPv4 pública y privada dentro, IPv6 fuera de
-  `2000::/3`, nombres sin punto con y sin punto final, `localhost` y subdominios, puertos; con y sin
-  `allowPrivateTargets`.
+  analizador WHATWG, IPv6 con los corchetes ya quitados, mapeadas, traducción con IPv4 pública y privada dentro, IPv6
+  fuera de `2000::/3`, `2001::/23` y `3fff::/20`, nombres sin punto con y sin punto final, `localhost` y subdominios, y
+  los puertos de `PUBLIC_EGRESS_POLICY`.
 - **Integración del guardia** (worker, sin red externa): servidores HTTP en loopback que **cuentan conexiones** y un
   resolvedor inyectado que mapea nombres de prueba de `.test` a direcciones elegidas. **Cada test de «no abre
   conexión»** (E9 a) afirma además que la causa del fallo es `EgressBlockedError` (no un rechazo de conexión ni un
@@ -268,20 +291,28 @@ es `infra/ci/`. La defensa del lado del despliegue se escribe como recomendació
   llamadas; se afirma una consulta por conexión, que la conexión llegó al servidor aprobado y que el otro contó cero.
 - **Proxy** (E9 c): un proxy HTTP local que cuenta conexiones, apuntado por `HTTP_PROXY`/`HTTPS_PROXY` en el entorno
   del test; cuenta cero. Falsación: usar `EnvHttpProxyAgent` como dispatcher y ver al proxy contar una.
-- **Fetcher real sobre guardia real** (E8): `HttpPageFetcher` con el `createGuardedFetch` real, en `http://` y
-  `https://` (servidor TLS local con certificado autofirmado generado en el test y confiado solo en ese `Agent`):
-  destino rechazado → `unsafe_destination` con cero conexiones; nombre que no resuelve → `http_error`.
-- **Regla de ESLint** (E11) en `apps/worker/src/modules/enrichment/**`: `no-restricted-globals` (`fetch`) y
-  `no-restricted-imports` (`undici`, `node:http`, `node:https`, `http`, `https`). El guardia vive en
-  `apps/worker/src/infrastructure/egress/`, fuera de ese alcance. Como ESLint no combina las opciones de una regla entre
-  bloques (ADR-017), el bloque que cubra `enrichment/domain/**` repite `DOMAIN_RESTRICTED_PATTERNS`.
+- **Fetcher real sobre guardia real** (E8, B7): `HttpPageFetcher` con el `createGuardedFetch` real en `http://`:
+  destino rechazado → `unsafe_destination` con cero conexiones; nombre que no resuelve → `http_error`; control
+  positivo. En `https://`, **un único** caso: el control positivo contra un servidor TLS local con certificado de
+  `selfsigned`, confiado por `tls.ca` (N4). La prueba de que sin `ca` se rechaza vive en el guardia (2.2c).
+- **Regla de ESLint** (E11, N2) en `apps/worker/src/modules/enrichment/**`, con `basePath` e
+  `ignores: ['**/*.spec.ts']`: `no-restricted-globals` (`fetch`) y `no-restricted-imports` (`undici`, `node:http`,
+  `node:https`, `http`, `https`). Se elige `ignores` en lugar de mover el test de integración de 3.5 a
+  `infrastructure/egress/`: ese test ejercita `HttpPageFetcher` y levanta servidores con `node:http`, y en `egress/`
+  haría que los tests del guardia dependieran del módulo que protege; la regla vigila el transporte del código de
+  producción, que es donde importa. El guardia vive en `apps/worker/src/infrastructure/egress/`, fuera de ese alcance.
+  Como ESLint no combina las opciones de una regla entre bloques (ADR-017), un segundo bloque **al final del fichero**,
+  con `basePath`, cubre `apps/worker/src/modules/enrichment/domain/**` con `DOMAIN_RESTRICTED_PATTERNS` más las rutas
+  nuevas, sin `ignores` (el dominio no tiene motivo para levantar servidores).
 - **Falsación** de cada guardia: se hace, se ve caer el test nombrado en `tasks.md` y se restaura.
 
 ### D11. Dos toques mínimos al SPA
 
 - **Alta push rechazada** (V1-1 del debate): si `registerPushSubscription` responde `400` con código
   `validation_error`, `PushNotifications.enable()` llama a `subscription.unsubscribe()` sobre la suscripción del
-  navegador antes de devolver el fallo, y `subscribed` queda en `false`. Así la pantalla no dice «activados» para un
+  navegador —la recién creada o la que ya existía (N7)— antes de devolver el fallo, y `subscribed` queda en `false`. Un
+  fallo de `unsubscribe()` se ignora: el resultado sigue siendo `failed` con el fallo original del alta y
+  `subscribed = false`. La UI informa del fallo de forma no bloqueante con el texto existente (B3). Así la pantalla no dice «activados» para un
   navegador al que el servidor nunca enviará nada. Otros fallos (red, `5xx`) no la cancelan: son transitorios y la
   suscripción sirve para el siguiente intento. Vive en `core/notifications/push-notifications.ts`, sin textos nuevos ni
   cambios en el catálogo i18n.
@@ -294,9 +325,9 @@ cualquier fallo del alta (un corte de red la perdería sin motivo).
 ## Risks / Trade-offs
 
 - **R1. Falsos positivos.** Un sitio público cuyo DNS devuelve alguna dirección interna, o que publica sus ofertas en
-  un puerto que no es `80`/`443`, queda ilegible (`unsafe_destination`, o `invalid_url` al guardar si el puerto está en
-  la URL). Se acepta: no se conoce ninguna bolsa así, y el motivo lo deja visible en el link.
-- **R2. Dependencias directas nuevas** (`undici`, `ipaddr.js`). Ya están en el lockfile; pasar a directas obliga a
+  un puerto que no es `80`/`443`, queda ilegible (`unsafe_destination`; el link se guarda igual, B2). Se acepta: no se
+  conoce ninguna bolsa así, y el motivo lo deja visible en el link.
+- **R2. Dependencias directas nuevas** (`undici`, `ipaddr.js`; `selfsigned` solo de desarrollo). Ya están en el lockfile; pasar a directas obliga a
   vigilarlas en Renovate. La versión de `undici` del paquete y la interna de Node pueden diferir: por eso se usan juntos
   `fetch` y `Agent` del paquete (D3). Un cambio de la firma de `buildConnector` en una versión mayor rompe el conector:
   lo detectan los tests de integración de 2.2a/2.2b.
@@ -309,11 +340,12 @@ cualquier fallo del alta (un corte de red la perdería sin motivo).
   diseño fija «sin proxy del entorno» y un test lo comprueba; usar un proxy sería un change con su propio filtro.
 - **R6. El filtro no sustituye a la segmentación.** Cubre las conexiones iniciadas por URLs de usuario; un fallo en
   otra parte del worker seguiría viendo los servicios internos. Por eso la recomendación de ADR-056 §6 para 35b.
-- **R7. Reversión reabre el defecto** (E12 del debate). Revertir este change devuelve el worker a descargar sin filtro:
-  con el registro abierto de staging, el defecto vuelve a ser explotable por cualquiera que se registre. Por eso **no
-  se revierte** mientras el registro siga abierto **salvo** que antes se cierre el registro o que el despliegue ya
-  tenga la defensa de ADR-056 §6 (red propia del worker y servicios internos autenticados). Además, los links con
-  `lastEnrichmentError.reason = unsafe_destination` no los acepta el esquema anterior: ver Migration Plan.
+- **R7. Reversión reabre el defecto** (E12 y N5 del debate). Revertir este change devuelve el worker a descargar sin
+  filtro: con el registro abierto de staging, el defecto vuelve a ser explotable por cualquiera que se registre. Por eso
+  **revertir exige que el despliegue tenga antes la defensa de ADR-056 §6** (red propia del worker y servicios internos
+  autenticados). Si hay que actuar antes de tenerla, la contingencia **no es revertir sino pausar** las colas de
+  enriquecimiento y de frescura: sin descargas no hay salida, y los links esperan sin perder datos. Además, los links
+  con `lastEnrichmentError.reason = unsafe_destination` no los acepta el esquema anterior: ver Migration Plan.
 - **R8. Pestañas abiertas durante el despliegue.** Un SPA anterior que reciba `unsafe_destination` en un aviso en
   tiempo real no lo reconoce; se recarga (mismo trato que ADR-055).
 - **R9. Ventana de exposición antes de fusionar.** Con la Q1 en (a), staging tiene registro abierto desde la 6.3 de 35b
@@ -326,23 +358,25 @@ cualquier fallo del alta (un corte de red la perdería sin motivo).
 
 1. Sin migración de datos: los links existentes no cambian; los guardados antes con hosts internos fallarán con
    `unsafe_destination` en su próxima lectura, y las suscripciones push fuera de la lista se borran en su próximo envío.
-2. Despliegue normal por `cd-staging` tras fusionar, en la ventana de la Q1; ningún fichero de despliegue cambia y la
-   variable nueva no se declara en producción (vale `false`).
-3. **Reversión** (E12 del debate; solo si R7 lo permite). El esquema anterior no conoce `unsafe_destination`, así que
+2. Despliegue normal por `cd-staging` tras fusionar, en la ventana de la Q1; no cambia ningún fichero de despliegue ni
+   ninguna variable de entorno.
+3. **Reversión** (E12 y N5 del debate; solo con la defensa de ADR-056 §6, R7). El esquema anterior no conoce `unsafe_destination`, así que
    ese motivo pasa a **`blocked`**: es no reintentable en el esquema anterior (el código viejo no reintenta ni ofrece
    reintentar, que es lo que importa sin filtro) y no cierra vacantes por frescura (`links/freshness`, «Cierre por
    relectura», lo excluye). Se descartan `http_error` (reintentable: el código viejo volvería a pedir la página sin
    filtro), `not_found` (cierra por frescura), `not_a_job` (dice que no es una oferta) y `robots_disallowed` (dispara
    el rescate por historial de `asksForHistoryRescue`, que pediría una lectura nueva sin filtro). El SPA anterior
    mostrará esos links como «esta web no nos deja leer» y ofrecerá pegar la descripción: es inexacto, pero no lleva a
-   ninguna descarga. Orden:
+   ninguna descarga. Antes de empezar se cuentan y anotan los links con `unsafe_destination` y una preview usable
+   (enriquecidos antes y caídos después, por ejemplo en una relectura de frescura): son los que el SPA anterior
+   mostrará con el texto de `blocked` sobre datos válidos (N5). Orden:
    1. parar el worker (nadie escribe motivos nuevos ni lee sin filtro);
    2. actualizar en `job_links` los `lastEnrichmentError.reason` que valgan `unsafe_destination` a `blocked`;
    3. desplegar el commit anterior;
    4. repetir la actualización del paso 2 (recoge lo que escribiera una réplica o un job en vuelo entre 2 y 3) y
       comprobar que el recuento de `unsafe_destination` es `0`.
 
-   La orden exacta (`mongosh`) se anota en el PR de apply y se ensaya en local (7.3a, 7.3b). Las suscripciones push
+   La orden exacta (`mongosh`) se anota en el PR de apply y se ensaya en local (7.3). Las suscripciones push
    borradas no se recuperan: el navegador las vuelve a registrar al reactivar.
 
 ## Open Questions
@@ -353,12 +387,18 @@ cualquier fallo del alta (un corte de red la perdería sin motivo).
   rama) puede empezar en cuanto se responda; lo que tiene ventana es la fusión.
   - (a) **Después de la 11.6 de 35b y antes de su 10.7.** Es la única ventana que respetan las dos reglas. La fusión
     despliega un commit nuevo en staging, así que la precondición de invitar se rehace: se **repite la 9.4 de
-    `e2e-suite`** sobre el commit desplegado con este change. Y, si por cualquier motivo la fusión cae con la medición
-    de 35b ya en marcha, nunca en sus días 7 y 14. El estado de la 11.6 y la 10.7 se toma de una confirmación escrita
-    y fechada del owner en el PR, porque sus casillas solo se marcan en el PR de archivo de 35b (tarea 7.7). El PR de
-    archivo de este change, que lleva las anotaciones posteriores a la fusión y también despliega staging, se fusiona
-    después de la 10.7 de 35b y fuera de los días 7 y 14, con la misma guardia (tarea 7.8). Costo: staging tiene registro abierto sin filtro desde la 6.3
-    hasta esta fusión (R9), y una corrida más de la 9.4 (dos análisis del cupo de IA de la cuenta de pruebas).
+    `e2e-suite`** sobre el commit desplegado con este change. La cláusula «nunca los días 7 y 14» de la medición no se
+    aplica a esta fusión: la ventana termina antes de la 10.7, y la medición empieza al invitar. El estado de 35b se
+    toma de una confirmación escrita y fechada del owner en el PR, porque sus casillas solo se marcan en el PR de
+    archivo de 35b; esa confirmación nombra el PR-2: «PR-2 de 35b = #NN; 11.6 hecha el AAAA-MM-DD; 10.7 no hecha»
+    (tarea 7.7). Costo: staging tiene registro abierto sin filtro desde la 6.3 hasta esta fusión (R9), y una corrida
+    más de la 9.4 (dos análisis del cupo de IA de la cuenta de pruebas).
+    **Tres clases de fusión** cubre la excepción, para este y cualquier change que la invoque: (1) la del change, en
+    esta ventana; (2) el PR de archivo, que lleva las anotaciones posteriores y también despliega staging; (3) las
+    fusiones de vuelta atrás y su vuelta. Las clases 2 y 3 tienen reglas propias: nunca entre el PR-2 de 35b y su 11.6,
+    nunca durante sus 9.1-9.4, nunca los días 7 y 14 de la medición y nunca el día de una corrida `e2e-remote`; cada
+    fusión se verifica con su propia confirmación del owner (tarea 7.8). Las falsaciones de estas guardias son
+    ejercicios de escritorio, nunca comentarios en el PR.
   - (b) **Después de 35c**, sin excepción: entonces 35b no debería invitar —ni dejar el registro abierto con destino—
     hasta tenerlo, lo que retrasa la fila entera.
   - (c) **Dentro de 35b**: absorberlo en `staging-host`, que es un change de despliegue con dos PR en ventanas
@@ -376,9 +416,11 @@ cualquier fallo del alta (un corte de red la perdería sin motivo).
   - **Recomendación: (a)**, con (e) como regla de respaldo si la 11.6 se retrasa hasta el día previsto para invitar.
     (d) no se recomienda: su costo cae sobre tareas de 35b ya ensayadas. La respuesta se anota en ADR-056 §1 en una
     línea que empieza por «Respuesta del owner (Q1), AAAA-MM-DD:» y en ADR-048 §Consecuencias.
-- **Q2 [no bloqueante]. Mensajes propios en el SPA** para `unsafe_destination` («Esta dirección no es pública») y para
-  el `400` del alta push («Este navegador no es compatible con los avisos push»). Recomendación: no ahora; el texto
-  genérico es honesto y evita tocar el catálogo i18n. Candidato para un change de producto tras la fila 35.
+- **Q2 [no bloqueante]. Mensajes propios en el SPA** para `unsafe_destination` («Esta dirección no es pública»), para
+  el `400` del alta push («Este navegador no es compatible con los avisos push») y para el `invalid_url` de una URL con
+  IP literal interna, que con este change dice «no reconocida» (V2-1 y B1 del debate; «Fuera de alcance» de la
+  proposal). Recomendación: no ahora; los textos genéricos evitan tocar el catálogo i18n y el tercer caso es raro.
+  Candidato para un change de producto tras la fila 35.
 - **Q3 [no bloqueante]. Trasladar la recomendación de ADR-056 §6 a `staging-host`** (tareas o riesgos de su design) en
   un PR solo de spec, como hizo ADR-053 §1.4, o dejarla solo en el ADR para que 35b la recoja en su debate.
   Recomendación: PR solo de spec tras la aprobación de este change, con el texto de §6 y sin cambiar su orden de tareas.
@@ -407,9 +449,36 @@ principal. Los hallazgos de seguridad se describen en términos generales: el re
 | E12 | critic | Aceptado: la reversión usa `blocked`; orden parar worker → actualizar → desplegar anterior → repetir; R7 dice que revertir reabre el defecto y exige cerrar el registro o la defensa de ADR-056 §6. Migration Plan; R7; 7.3a, 7.3b | `http_error` es reintentable y `robots_disallowed` dispara el rescate por historial: los dos pedirían lecturas sin filtro |
 | E13 | critic | Aceptado: 2.2 partida en 2.2a/2.2b y 7.3 en 7.3a/7.3b. tasks | Superaban la hora |
 | V1-1 | business | Aceptado: ante `400 validation_error` en el alta push, el SPA cancela la suscripción local. D11; spec `web/notifications`; 6.4 | La pantalla decía «activados» para un navegador al que nunca se enviará nada |
-| V2-1 | business | Diferido: queda en «Fuera de alcance» de la proposal | Decisión de reflect en esta iteración |
+| V2-1 | business | Diferido: queda en «Fuera de alcance» de la proposal | Texto nuevo = catálogo i18n; se agrupa con Q2 |
 | V2-2 | business | Aceptado: escenario «`unsafe_destination` → pendiente de una persona, sin reintentar» y test en `link-status.spec.ts`. D4, D11; spec; 3.6 | Fija el comportamiento del SPA, que no cambia de código |
 | V2-3 | business | Aceptado: el registro del borrado push lleva el host (o `unparseable`), nunca el endpoint completo. D7; spec; 6.3 | Sin el host no se puede diagnosticar qué servicio falta en la lista |
 | Ventana | critic (P0 en otro change, aplica a todos) | Q1 reescrita: la única ventana válida es tras la 11.6 de 35b y antes de su 10.7, repitiendo la 9.4 de `e2e-suite`; opciones (d) y (e) nuevas con su costo; tarea 7.7 que comprueba la ventana con la confirmación fechada del owner y el número del PR-2 de 35b; tarea 7.8: el PR de archivo, con las anotaciones posteriores, se fusiona tras la 10.7 y fuera de los días 7 y 14. Q1; ADR-056 §1; 0.1, 7.7, 7.8 | La Q1 anterior proponía fusionar entre PR-1 y PR-2 de 35b, que su cabecera de tareas prohíbe |
 
 Convergencia: pendiente de la iteración 2.
+
+## Debate — iteración 2
+
+Critic: P0 0, ocho P1 (N1-N8). Business: V0 0, siete hallazgos (B1-B7). Reflect: la sesión principal. Como en la
+iteración 1, nada se describe con un detalle que sirva para saltarse el filtro: el repositorio es público.
+
+| Id | Origen | Decisión | Motivo |
+|---|---|---|---|
+| B4 | business | Aceptado (recorte): fuera `EGRESS_ALLOW_PRIVATE_TARGETS` (esquemas, D8, specs, ADR-056 §4 y las tareas 2.4, 5.1 y la parte de configuración de 7.1); la política permisiva se inyecta solo en tests. D8; spec `links/egress-guard`; 7.1 | Nadie la usa hoy y mantenerla costaba dos esquemas, un `warn` y tres tareas. Entra con el change que la necesite |
+| E5 | critic (iteración 1) | Sin objeto en el código: no queda opción que limitar. Su lista de rangos queda escrita en D8 para el change que la traiga | Consecuencia de B4 |
+| N1 | critic | Aceptado, simplificado por B4: interfaz `EgressPolicy` (`allowsHost`, `allowsAddress`, `allowsPort`), puerto decidido solo con la clase del host antes de resolver, `80`/`443` siempre en producción; se clasifica `hostname` sin corchetes. D1, D2, D3; spec; 1.3, 1.4, 2.3, 3.5, 4.3 | El puerto dependía de una opción y de la dirección resuelta; ahora es una decisión previa y única |
+| N2 | critic | Aceptado: `ignores: ['**/*.spec.ts']` en el bloque de ESLint (el test no se mueve); bloque de `enrichment/domain/**` al final, con `DOMAIN_RESTRICTED_PATTERNS` más las rutas nuevas y `basePath`; falsación con `import 'undici'` en el dominio. D10; 3.2 | El test de integración levanta servidores con `node:http`, y el orden de los bloques decidía qué lista ganaba en el dominio |
+| N3 | critic | Aceptado: `2001::/23` y `3fff::/20` en la spec, D2, 1.2 y ADR-056 §2 | Rangos especiales dentro de `2000::/3` que la lista no enumeraba |
+| N4 | critic | Aceptado: `selfsigned` como dependencia de desarrollo con la versión del lockfile (2.1); `createGuardedFetch` con `tls?: { ca }`, que solo añade confianza, con un test de rechazo sin `ca`. D3, D10; 2.1, 2.2c | El caso `https` no tenía cómo confiar en el certificado del test sin debilitar la verificación |
+| N5 | critic | Aceptado: revertir exige la defensa de ADR-056 §6; antes de tenerla, la contingencia es pausar las colas de enriquecimiento y de frescura. Recuento de los links con `unsafe_destination` y preview usable. R7; Migration Plan; ADR-056 §Consecuencias; 7.3 | Cerrar el registro no es una decisión de este change y no detiene a quien ya está registrado |
+| N6 | critic | Aceptado: subruta `@linkvault/shared/net`, que solo importan la API y el worker; la 1.1 comprueba que `web:build` no tenga avisos nuevos. D1; proposal; 1.1 | El índice de `shared` lo importa el SPA y arrastraría `ipaddr.js` |
+| N7 | critic | Aceptado: se cancela la suscripción del navegador, recién creada o ya existente; un fallo de `unsubscribe()` se ignora y el resultado sigue siendo `failed` con el fallo original y `subscribed = false`. D11; spec `web/notifications`; 6.4 | No estaban definidos el caso de una suscripción previa ni el de una cancelación fallida |
+| N8 | critic | Aceptado: la falsación de 2.2a cae por la causa (`ENOTFOUND` en lugar de `EgressBlockedError`). 2.2a | Sin `lookup`, un nombre `.test` no resuelve y el servidor no cuenta nada: lo que cae es la afirmación de la causa |
+| B1 | business | Aceptado: V2-1 descrito en «Fuera de alcance» y sumado a la Q2 | El `invalid_url` de una IP literal interna dice «no reconocida»; texto nuevo = catálogo i18n |
+| B2 | business | Aceptado: la API no juzga el puerto; un puerto no web en un nombre con punto se guarda y el worker lo marca `unsafe_destination`. La API sigue rechazando literales no públicos, nombres sin punto y `localhost`. D2, D6; R1; spec `links/job-link`; 5.1 | La persona perdía el link con un «no reconocida» que no explicaba nada |
+| B3 | business | Aceptado: el escenario «La API rechaza el endpoint del navegador» informa del fallo de forma no bloqueante, con el texto existente y sin i18n nuevo. Spec `web/notifications`; 6.4 | El escenario no decía qué ve la persona |
+| B5 | business | Aceptado: 5.3 unida a 5.2 (ahora 5.1, tras el recorte de B4) | Juntas caben en una hora |
+| B6 | business | Aceptado: 7.3a y 7.3b unidas en 7.3; la comprobación del rescate por historial pasa a una línea del PR | El ensayo es uno; el rescate se lee del código |
+| B7 | business | Aceptado: 3.5 en `http://`, más un único caso `https` (el control positivo), que N4 deja resuelto de forma limpia | Repetir cada caso en los dos esquemas no aporta cobertura del filtro |
+| Ventana | reflect (para todos los changes) | La excepción cubre tres clases de fusión: (1) la del change, en la ventana (a), sin la cláusula de los días 7 y 14; (2) el PR de archivo; (3) las vueltas atrás y su vuelta. Las clases 2 y 3: nunca entre el PR-2 de 35b y su 11.6, nunca durante sus 9.1-9.4, nunca los días 7 y 14 de la medición, nunca el día de una corrida `e2e-remote`. La confirmación del owner nombra el PR-2 de 35b; las falsaciones de la guardia son ejercicios de escritorio. Q1(a); D9; ADR-056 §1; 7.7, 7.8 | La iteración 1 cubría solo el PR de apply y el de archivo, y aplicaba a la primera una cláusula que no puede darse |
+
+Convergencia: pendiente de la iteración 3.

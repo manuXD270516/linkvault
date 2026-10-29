@@ -3,7 +3,7 @@
 Impide que una URL escrita por una persona haga que LinkVault abra conexiones hacia su propia red interna, hacia
 servicios de metadatos del proveedor de nube o hacia cualquier dirección que no sea de Internet pública. Define qué
 destinos y puertos se aceptan, cómo se garantiza que la dirección comprobada es la que se conecta, en qué descargas se
-aplica y la única forma de relajarlo, que nunca existe en producción.
+aplica y que ninguna configuración lo relaja.
 
 ## ADDED Requirements
 
@@ -19,13 +19,16 @@ SHALL incluir, como mínimo:
   `192.0.2.0/24`, `192.168.0.0/16`, `198.18.0.0/15`, `198.51.100.0/24`, `203.0.113.0/24`, `224.0.0.0/4` (multidifusión)
   y `240.0.0.0/4` (reservado, incluida la difusión `255.255.255.255`);
 - IPv6: toda dirección fuera de `2000::/3` (salvo la traducción del punto siguiente), y dentro o fuera de él `::/128`,
-  `::1/128`, `::/96` (compatibles con IPv4), `::ffff:0:0/96` (mapeadas a IPv4), `100::/64`, `2001:db8::/32`,
-  `fc00::/7` (ULA), `fe80::/10` (enlace local), `fec0::/10` y `ff00::/8` (multidifusión);
+  `::1/128`, `::/96` (compatibles con IPv4), `::ffff:0:0/96` (mapeadas a IPv4), `100::/64`, `2001::/23` (asignaciones
+  de protocolo de IETF), `2001:db8::/32` y `3fff::/20` (documentación), `fc00::/7` (ULA), `fe80::/10` (enlace local),
+  `fec0::/10` y `ff00::/8` (multidifusión);
 - en `64:ff9b::/96` y `2002::/16`, la dirección IPv4 que llevan dentro SHALL clasificarse con la lista IPv4.
 
 El filtro SHALL rechazar también, antes de resolver nada, un host que sea un nombre sin punto (tras quitar el punto
-final), `localhost` o un subdominio de `localhost`, y un host que sea una dirección literal de un rango no público.
-SHALL aceptar solo el puerto por defecto del esquema o los puertos `80` y `443`. La comprobación SHALL hacerse en el
+final), `localhost` o un subdominio de `localhost`, y un host que sea una dirección literal de un rango no público. El
+host SHALL clasificarse como `hostname` sin corchetes (un literal IPv6 se juzga sin ellos). El puerto SHALL decidirse
+solo con la clase del host, antes de resolver; en producción SHALL aceptarse solo el puerto por defecto del esquema o
+los puertos `80` y `443`, sea cual sea el host. La comprobación SHALL hacerse en el
 punto donde el cliente HTTP abre cada conexión, de modo que cubra por igual nombres y direcciones literales en cualquier
 salto. La clasificación de direcciones, nombres y puertos SHALL vivir en un solo módulo compartido, sin dependencias de
 Node, que usen la API y el worker.
@@ -125,44 +128,24 @@ El cliente HTTP de estas descargas NO SHALL usar un proxy tomado del entorno.
 - **WHEN** descarga una página
 - **THEN** la conexión SHALL abrirse directamente contra la dirección aprobada del host, sin pasar por el proxy
 
-### Requirement: Destinos locales solo fuera de producción
+### Requirement: El filtro no se relaja por configuración
 
-La API y el worker SHALL aceptar una opción de configuración, `EGRESS_ALLOW_PRIVATE_TARGETS`, apagada por defecto, que
-permita **solo** destinos de loopback (`127.0.0.0/8`, `::1`), de los rangos privados de RFC 1918 (`10.0.0.0/8`,
-`172.16.0.0/12`, `192.168.0.0/16`), `localhost` y nombres sin punto, con cualquier puerto, para desarrollo y tests.
-Incluso encendida, SHALL seguir rechazando `100.64.0.0/10`, `fc00::/7`, las direcciones de enlace local
-(`169.254.0.0/16`, `fe80::/10`), `0.0.0.0/8`, `::/128`, multidifusión, difusión, reservadas, de documentación y
-mapeadas a IPv4, y SHALL seguir limitando los destinos públicos a los puertos web. Con `NODE_ENV=production`, un valor
-verdadero SHALL impedir el arranque del proceso con un error de configuración que nombre la variable. Encendida fuera
-de producción, el proceso SHALL dejar constancia en su registro de arranque, sin ningún dato de usuario.
+Ninguna variable de entorno ni opción de configuración SHALL ampliar los destinos, rangos o puertos que acepta el filtro,
+en ningún entorno. La política del filtro SHALL ser una interfaz (`EgressPolicy`) con tres decisiones —host, dirección y
+puerto— que el código de producción construye siempre con la política pública de este requirement; una política más
+permisiva SHALL existir solo en el código de tests, inyectada por constructor o por token.
 
-#### Scenario: Opción encendida en producción
+#### Scenario: Página servida en loopback
 
-- **GIVEN** `NODE_ENV=production` y `EGRESS_ALLOW_PRIVATE_TARGETS=true`
-- **WHEN** arranca el worker o la API
-- **THEN** el arranque SHALL fallar nombrando `EGRESS_ALLOW_PRIVATE_TARGETS`
-
-#### Scenario: Desarrollo contra un servidor local
-
-- **GIVEN** `NODE_ENV=development` y `EGRESS_ALLOW_PRIVATE_TARGETS=true`
-- **AND** una página de oferta servida en loopback en un puerto efímero
-- **WHEN** el worker la enriquece
-- **THEN** la descarga SHALL hacerse
-
-#### Scenario: Enlace local sigue prohibido con la opción encendida
-
-- **GIVEN** `EGRESS_ALLOW_PRIVATE_TARGETS=true` fuera de producción
-- **WHEN** un host resuelve a una dirección de `169.254.0.0/16`
+- **GIVEN** el worker arrancado con su configuración, en cualquier entorno
+- **AND** una página de oferta servida en loopback
+- **WHEN** el worker intenta descargarla
 - **THEN** NO SHALL abrirse la conexión
+- **AND** la descarga SHALL terminar con el motivo de destino no permitido
 
-#### Scenario: Espacio compartido y ULA siguen prohibidos con la opción encendida
+#### Scenario: Tests con un servidor local
 
-- **GIVEN** `EGRESS_ALLOW_PRIVATE_TARGETS=true` fuera de producción
-- **WHEN** un host resuelve a una dirección de `100.64.0.0/10` o de `fc00::/7`
-- **THEN** NO SHALL abrirse la conexión
-
-#### Scenario: Opción ausente
-
-- **GIVEN** un entorno que no declara `EGRESS_ALLOW_PRIVATE_TARGETS`
-- **WHEN** el worker intenta descargar una página servida en loopback
-- **THEN** NO SHALL abrirse la conexión
+- **GIVEN** un test que inyecta en el guardia una política permisiva para loopback
+- **AND** una página servida en loopback en un puerto efímero
+- **WHEN** el fetcher la descarga
+- **THEN** la descarga SHALL hacerse sobre exactamente una conexión

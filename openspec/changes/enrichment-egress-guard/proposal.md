@@ -26,7 +26,8 @@ no-autor.
   usuario: la página, su `robots.txt` y cada salto de redirección de ambos. Resuelve el nombre y rechaza si **alguna**
   dirección resuelta es loopback, privada (RFC 1918), de enlace local, `100.64.0.0/10`, `0.0.0.0/8`, multidifusión,
   difusión, reservada o de documentación, IPv6 fuera de `2000::/3`, ULA, de enlace local o mapeada a IPv4; rechaza
-  también nombres sin punto, `localhost` y puertos que no sean el por defecto, `80` o `443`. La comprobación ocurre
+  también nombres sin punto, `localhost` y puertos que no sean el por defecto, `80` o `443`. Ninguna configuración lo
+  relaja: los tests inyectan su política en código. La comprobación ocurre
   **en el conector del cliente HTTP** (`undici`, conector propio sobre `buildConnector` con su `lookup`), así que cubre
   nombres y literales en cada salto, se conecta exactamente a la dirección comprobada y no hay ventana para un cambio
   de DNS.
@@ -35,16 +36,14 @@ no-autor.
   existente («No pudimos leer esta oferta»), como pendiente de una persona y sin acción de reintentar.
 - **`robots.txt` con redirecciones a mano**: hasta cinco saltos, cada uno por el filtro, a otro host solo hacia
   `/robots.txt` sin query, cuerpo leído por trozos con tope, un plazo para toda la cadena.
-- **Rechazo sintáctico al guardar** (MODIFIED de `links/job-link`): host sin punto, `localhost`, dirección literal no
-  pública o puerto no web → `invalid_url` / no reconocida. Sin DNS en la API.
+- **Rechazo sintáctico al guardar** (MODIFIED de `links/job-link`): host sin punto, `localhost` o dirección literal no
+  pública → `invalid_url` / no reconocida. Sin DNS en la API. Un puerto no web no se rechaza al guardar: el link se
+  guarda y el worker lo marca `unsafe_destination`.
 - **Push solo a servicios push conocidos** (MODIFIED de `notifications/web-push`): el alta exige `https`, un host de la
   lista compartida (FCM, Mozilla, Apple, Windows) y un endpoint ya canónico que ningún analizador pueda leer distinto;
   el worker vuelve a comprobarlo antes de enviar y borra, sin conectar, las suscripciones antiguas que no cumplan,
   registrando el host y nunca el endpoint completo. Si el alta se rechaza, el SPA cancela la suscripción local
   (MODIFIED de `web/notifications`).
-- **`EGRESS_ALLOW_PRIVATE_TARGETS`**: opción solo para desarrollo y tests que admite loopback, rangos de RFC 1918,
-  `localhost` y nombres sin punto (nunca `100.64.0.0/10`, ULA, enlace local ni metadatos); con `NODE_ENV=production` el
-  proceso no arranca, igual que el mock de IA.
 - **ADR-056** (Propuesto) con las decisiones y la excepción pedida a la precedencia de la fila 35.
 
 ## Excepción a la precedencia de la fila 35
@@ -62,14 +61,16 @@ a cualquiera que se registre. Las condiciones, a la manera de ADR-053 §1 y ADR-
   sus tareas prohíben fusionar entre su PR-1 y su PR-2, y `e2e-suite` (D15) entre su PR-2 y su 11.6. Opciones:
   (a) después de la 11.6 de 35b y antes de su 10.7, repitiendo la 9.4 de `e2e-suite` —recomendación—, (b) después de
   35c, (c) dentro de 35b, (d) excepción expresa del owner a la regla «entre PR-1 y PR-2» de 35b, o (e) que 35b no abra
-  el registro hasta tener este change. La respuesta se anota con fecha en ADR-056 §1 y en ADR-048 §Consecuencias.
+  el registro hasta tener este change. La respuesta se anota con fecha en ADR-056 §1 y en ADR-048 §Consecuencias. La
+  excepción cubre tres clases de fusión —la del change, la del PR de archivo y una eventual vuelta atrás con su
+  vuelta—, cada una con su guardia (ADR-056 §1).
 
 ## Capabilities
 
 ### New Capabilities
 
 - `links/egress-guard`: qué destinos de red se aceptan para las descargas iniciadas por datos de usuario, la garantía
-  de que la dirección comprobada es la conectada y la opción de destinos locales fuera de producción.
+  de que la dirección comprobada es la conectada y que ninguna configuración lo relaja.
 
 ### Modified Capabilities
 
@@ -82,18 +83,18 @@ a cualquiera que se registre. Las condiciones, a la manera de ADR-053 §1 y ADR-
 
 ## Impact
 
-- `libs/shared`: clasificador puro de direcciones y nombres (`src/net/`, sobre `ipaddr.js`, sin dependencias de Node);
+- `libs/shared`: clasificador puro de direcciones y nombres y política pública (`src/net/`, sobre `ipaddr.js`, sin
+  dependencias de Node), publicado en la subruta `@linkvault/shared/net`, que importan solo la API y el worker;
   lista de servicios push y su predicado; `unsafe_destination` en `enrichmentFailureReasonSchema` y en
   `NON_RETRYABLE_ENRICHMENT_REASONS`; `pushSubscriptionRequestSchema` con el refinamiento.
 - `apps/worker`: guardia de salida (`src/infrastructure/egress/`) con un `Agent` de `undici` y su `lookup`;
   `HttpPageFetcher` y `createHttpRobotsFetcher` sobre él; `PageFetchFailureReason` con `unsafe_destination`;
-  `WebPushVapidSender` con la política de endpoints inyectada; `EGRESS_ALLOW_PRIVATE_TARGETS` en
-  `worker-config.schema.ts`.
-- `apps/api`: `url.ts` (o el caso de uso que lo llama) con el rechazo sintáctico; `EGRESS_ALLOW_PRIVATE_TARGETS` en
-  `api-config.schema.ts`; fixtures de tests de push con hosts de la lista.
-- Dependencias: `undici` y `ipaddr.js` pasan a ser directas (ya están en el lockfile como transitivas).
-- `.env.example`: la variable documentada y apagada. `apps/web-e2e/e2e.env` no cambia: hoy ninguna prueba e2e
-  enriquece contra un servidor local (el camino crítico usa un host `.invalid`).
+  `WebPushVapidSender` con la política de endpoints inyectada.
+- `apps/api`: `url.ts` (o el caso de uso que lo llama) con el rechazo sintáctico; fixtures de tests de push con hosts
+  de la lista.
+- Dependencias: `undici` y `ipaddr.js` pasan a ser directas (ya están en el lockfile como transitivas); `selfsigned`,
+  de desarrollo, con la versión del lockfile, para el servidor TLS de los tests.
+- Sin variables de entorno nuevas: `.env.example`, `apps/web-e2e/e2e.env` y los esquemas de configuración no cambian.
 - `eslint.config.mjs`: regla que impide el `fetch` global y los clientes HTTP de bajo nivel en el módulo de
   enriquecimiento del worker.
 - SPA: `core/notifications/push-notifications.ts` cancela la suscripción local ante un alta rechazada; el motivo nuevo
@@ -111,5 +112,9 @@ a cualquiera que se registre. Las condiciones, a la manera de ADR-053 §1 y ADR-
 - Mensajes específicos en el SPA para «destino no permitido» o «servicio push no admitido»: Q2.
 - La etapa headless (no tiene adaptador; cuando lo tenga, tendrá que pasar por el filtro: riesgo R4 del design).
 - Descargas que no parten de datos de usuario (APIs fijas de `job-discovery`, proveedores de IA, correo, almacén).
-- Hallazgo V2-1 de business (iteración 1 del debate): diferido por decisión de reflect; se retoma en un change
-  posterior.
+- **Texto propio para una URL con dirección literal interna** (hallazgo V2-1 de business): con este change, guardar una
+  URL cuyo host es una IP literal privada responde `invalid_url` y el SPA dice «no reconocida», un texto engañoso
+  —la URL se reconoce, pero no se admite— aunque el caso es raro. Un texto nuevo toca el catálogo i18n; llega con el
+  change de producto de la Q2.
+- **Destinos locales por configuración** (una variable que abra loopback o redes privadas para desarrollo): hoy no la
+  necesita nadie; si algún change necesita enriquecer contra un servidor local, la variable entra con ese change.

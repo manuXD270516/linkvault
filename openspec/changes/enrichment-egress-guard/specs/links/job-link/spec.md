@@ -9,11 +9,11 @@ URL normalizada NO SHALL usarse para abrir ni para descargar: para eso se usa la
 (`displayUrl`), que es la que escribió una persona. Una URL que no es `http(s)` o que no tiene host SHALL rechazarse como
 no reconocida. Una URL cuyo host sea un nombre sin punto (tras quitar el punto final), `localhost` o un subdominio de
 `localhost`, o una dirección literal de un rango no público según la clasificación compartida de la spec
-`links/egress-guard`, SHALL rechazarse también como no reconocida, igual que una URL con un puerto explícito distinto de
-`80` y `443`. Con `EGRESS_ALLOW_PRIVATE_TARGETS` encendida fuera de producción, SHALL rechazarse solo lo que esa opción
-sigue prohibiendo. Esta comprobación SHALL ser sintáctica: al
-guardar NO SHALL resolverse ningún nombre, y la decisión sobre adónde se conecta SHALL tomarla el filtro de salida del
-worker.
+`links/egress-guard`, SHALL rechazarse también como no reconocida. El host SHALL clasificarse como `hostname` sin
+corchetes. Al guardar NO SHALL juzgarse el puerto: una URL de un host aceptado con un puerto que no sea web SHALL
+guardarse, y la descarga la marcará el filtro de salida del worker con el motivo de destino no permitido, de modo que la
+persona no pierde el link. Esta comprobación SHALL ser sintáctica: al guardar NO SHALL resolverse ningún nombre, y la
+decisión sobre adónde se conecta SHALL tomarla el filtro de salida del worker.
 
 #### Scenario: URL normalizada
 
@@ -28,7 +28,6 @@ worker.
 
 #### Scenario: Host que es una dirección interna literal
 
-- **GIVEN** `EGRESS_ALLOW_PRIVATE_TARGETS` apagada
 - **WHEN** se guarda una URL cuyo host es una dirección literal de un rango privado o de loopback
 - **THEN** la respuesta SHALL ser `400` con código `invalid_url`
 - **AND** NO SHALL crearse ningún link
@@ -40,10 +39,9 @@ worker.
 
 #### Scenario: Puerto no web
 
-- **GIVEN** `EGRESS_ALLOW_PRIVATE_TARGETS` apagada
 - **WHEN** se guarda una URL de un host con punto y un puerto explícito distinto de `80` y `443`
-- **THEN** la respuesta SHALL ser `400` con código `invalid_url`
-- **AND** NO SHALL crearse ningún link
+- **THEN** SHALL crearse el link
+- **AND** su enriquecimiento SHALL terminar en `failed` con el motivo `unsafe_destination`, sin abrir ninguna conexión
 
 #### Scenario: Importación con una URL interna
 
@@ -56,9 +54,3 @@ worker.
 
 - **WHEN** se guarda una URL cuyo host es un nombre con punto
 - **THEN** NO SHALL hacerse ninguna consulta DNS para aceptarla o rechazarla
-
-#### Scenario: Servidor local en desarrollo
-
-- **GIVEN** `NODE_ENV=development` y `EGRESS_ALLOW_PRIVATE_TARGETS=true`
-- **WHEN** se guarda una URL cuyo host es `localhost` con un puerto
-- **THEN** SHALL crearse el link
