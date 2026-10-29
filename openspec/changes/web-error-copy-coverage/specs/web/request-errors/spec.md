@@ -89,12 +89,14 @@ El SPA NO SHALL mostrar el `message` del cuerpo de error de la API en ningún ca
 - **WHEN** la persona activa el push y la API responde `503` con `vapid_unavailable`
 - **THEN** ve "El push no está disponible ahora. Los avisos por email siguen activos"
 - **AND** la página NO SHALL mostrar el componente común de errores para ese fallo
+- **AND** al salir de `/notificaciones` y volver, tampoco SHALL mostrar el componente común de errores para ese fallo
 
 ### Requirement: Referencia técnica del fallo
 
 Con los mensajes de servicio no disponible y de fallo inesperado, cuando hubo respuesta HTTP, el componente SHALL
 mostrar debajo una línea de referencia "Si lo reportas, menciona: <estado> · <código>" (EN: "If you report it,
-mention: <status> · <code>"). El código SHALL mostrarse solo si es una clave de `API_ERROR_COPY`; si la respuesta no
+mention: <status> · <code>"). El código SHALL mostrarse solo si es una clave propia de `API_ERROR_COPY` (no
+heredada de su prototipo, p. ej. `toString`); si la respuesta no
 trae código o trae uno que no está en la tabla, la línea SHALL ser "Si lo reportas, menciona: <estado>" (EN: "If you
 report it, mention: <status>"). La referencia SHALL quedar fuera del elemento con `role="alert"`, para que el mensaje
 anunciado sea solo el texto. El componente NO SHALL mostrar referencia sin conexión, con un error que no es una
@@ -136,9 +138,9 @@ El componente común SHALL tener texto propio, en español y en inglés, para es
 | --- | --- | --- |
 | `too_many_attempts` | "Demasiados intentos. Vuelve a intentarlo en N minutos" (N = `Retry-After` en minutos redondeado hacia arriba) o, sin `Retry-After`, "Demasiados intentos. Vuelve a intentarlo más tarde" | sin cambio |
 | `member_not_found` | "Esa persona ya no está en el grupo. Recarga la página para ver la lista actual" | "That person is no longer in the group. Reload the page to see the current list" |
-| `owner_cannot_leave` | "Eres propietario de este grupo: para salir, nombra propietario a otro miembro" | "You are the owner of this group: to leave, make another member the owner" |
+| `owner_cannot_leave` | "Ahora eres propietario de este grupo. Recarga la página y nombra propietario a otro miembro para poder salir" | "You are now the owner of this group. Reload the page and make another member the owner to leave" |
 | `consent_text_outdated` | "El texto del permiso cambió. Recarga la página para leer la versión vigente" | "The consent text changed. Reload the page to read the current version" |
-| `vault_unavailable` | "Las claves de IA propias no están activadas en LinkVault. No se guardó nada" | "Your own AI keys are not enabled in LinkVault. Nothing was saved" |
+| `vault_unavailable` | "LinkVault no tiene activado el guardado de claves de IA. Tu clave no se guardó" | "Saving AI keys is not enabled in LinkVault. Your key was not saved" |
 
 Un código SHALL tener texto común solo si la persona puede recibirlo por un camino que el SPA ofrece y el mensaje de
 servicio no disponible o el de fallo inesperado la llevaría a reintentar algo que vuelve a fallar. Un código que
@@ -153,7 +155,7 @@ indica que algo falta por configuración NO SHALL caer en el mensaje de servicio
 #### Scenario: Propietario que intenta salir
 
 - **WHEN** salir del grupo responde `409` con `owner_cannot_leave`
-- **THEN** la persona ve "Eres propietario de este grupo: para salir, nombra propietario a otro miembro"
+- **THEN** la persona ve "Ahora eres propietario de este grupo. Recarga la página y nombra propietario a otro miembro para poder salir"
 
 #### Scenario: Texto del permiso desactualizado
 
@@ -164,7 +166,7 @@ indica que algo falta por configuración NO SHALL caer en el mensaje de servicio
 #### Scenario: Bóveda de claves ausente
 
 - **WHEN** guardar una clave de IA propia responde `503` con `vault_unavailable`
-- **THEN** el componente SHALL mostrar "Las claves de IA propias no están activadas en LinkVault. No se guardó nada"
+- **THEN** el componente SHALL mostrar "LinkVault no tiene activado el guardado de claves de IA. Tu clave no se guardó"
 
 ### Requirement: Cada código de error tiene una decisión de texto
 

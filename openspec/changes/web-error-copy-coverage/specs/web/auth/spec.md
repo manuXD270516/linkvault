@@ -21,7 +21,7 @@ retorno externa. Los errores SHALL mostrarse sin borrar el email escrito, con es
   es `fallback`): "LinkVault no está disponible en este momento. Inténtalo en unos minutos", con la referencia técnica
   de «Referencia técnica del fallo» de `web/request-errors`.
 - Cualquier otro error: "Algo salió mal. Inténtalo de nuevo", con la misma referencia técnica cuando hubo respuesta
-  de la API.
+  HTTP.
 
 Los tres últimos mensajes son los comunes de «Mensajes comunes de fallo de una petición» de `web/request-errors`; el
 formulario solo añade los suyos propios.

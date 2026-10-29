@@ -109,11 +109,13 @@ contenedores en un despliegue de staging: es el fallo pasajero más probable dur
 
 Con servicio no disponible y con fallo inesperado, si hubo respuesta HTTP, el componente pinta debajo «Si lo
 reportas, menciona: <estado> · <código>» (`@@error.reference`; EN «If you report it, mention: …»), o «Si lo reportas,
-menciona: <estado>» (`@@error.referenceStatusOnly`), en un elemento hermano **fuera** del `<p role="alert">`. El
-código solo se pinta si es una clave de `API_ERROR_COPY` (C2): un cuerpo que no es de la API o un código que la tabla
-no conoce da la variante solo con el estado, para no mostrar texto arbitrario de un cuerpo. La etiqueta dice para qué
-sirve la línea (V1-1): quien no es técnico no sabe qué hacer con «Referencia». Así el lector de pantalla anuncia solo el mensaje, y `alertText()` de los specs existentes (p. ej.
-`login.page.spec.ts:134`, que usa `toBe`) no cambia. No se pinta sin conexión, con `unknown` ni con un texto común.
+menciona: <estado>» (`@@error.referenceStatusOnly`), en un elemento hermano **fuera** del `<p role="alert">`. Así
+el lector de pantalla anuncia solo el mensaje, y `alertText()` de los specs existentes (p. ej. `login.page.spec.ts:134`,
+que usa `toBe`) no cambia. El código solo se pinta si es una clave propia de `API_ERROR_COPY`, comprobada con
+`Object.hasOwn(API_ERROR_COPY, code)` (C2, N4): un cuerpo que no es de la API, un código que la tabla no conoce o una
+clave del prototipo (`toString`, `constructor`) dan la variante solo con el estado, para no mostrar texto arbitrario de
+un cuerpo. No se pinta sin conexión, con `unknown` ni con un texto común. La etiqueta dice para qué sirve la línea
+(V1-1): quien no es técnico no sabe qué hacer con «Referencia».
 
 Es lo que hace útil «me salió un error» en la conversación del día 14: una captura con «Si lo reportas, menciona: 409 ·
 already_owner» señala un hueco del SPA; con «500 · internal_error», un fallo de la API que se busca en los logs por la
@@ -153,11 +155,16 @@ los tres serían fallo inesperado con referencia (paso 4 de D1, por ser `local`)
 `extraction_disabled`, que es configuración, eso evita prometer «en unos minutos».
 
 `vapid_unavailable` es `local` con `core/notifications/push-notifications.ts`, que lo reconoce por el `503` y devuelve el
-aviso propio de `/notificaciones`. Hoy la página pinta además `lv-request-error` con el mismo fallo; con D1 diría «Algo
-salió mal» debajo de «El push no está disponible ahora». La tarea 3.3 deja de pintarlo con ese aviso (C1).
+aviso propio de `/notificaciones`. Hoy `enable()` guarda además el fallo en la señal `failure` antes de distinguir el
+resultado, y la página pinta `lv-request-error` con él; con D1 diría «Algo salió mal» debajo de «El push no está
+disponible ahora». La tarea 3.3 mueve el `this.failure.set` a la rama `failed` (C1, N1): con `vapid_unavailable` la
+señal queda en `null` y la plantilla no necesita condición. Como la señal vive en el servicio, eso también evita que el
+error común reaparezca al volver a `/notificaciones`.
 
 Los textos (ES/EN) están en el requirement. Usan el vocabulario que ya tiene el SPA: «propietario» y «nombra
-propietario a otro miembro» (`@@groups.detail.ownerLeaveHint`), «permiso» (perfil), «claves de IA propias».
+propietario a otro miembro» (`@@groups.detail.ownerLeaveHint`), «permiso» (perfil) y «clave» («Tus claves de IA»,
+«Guardar clave» en `/perfil`). El texto de `vault_unavailable` dice qué falta y qué pasó con la clave de la persona
+(V2-5), sin el «claves de IA propias» de la iteración 1, que el SPA no usa en ningún sitio.
 
 *Alternativas descartadas:*
 - **Texto común para todos los códigos sin texto.** Doce textos más para casos que el SPA no ofrece: cada uno sería
@@ -248,8 +255,8 @@ llena la conversación del día 14, y es cuando más despliegues hay (cada fusi�
 cada `up` da `502`/`504` durante segundos). Después de 35c, la medición ya terminó y el change sigue siendo útil, pero
 solo para un producto sin usuarios.
 
-**Por qué es una excepción barata.** Solo `apps/web` (el componente común, la plantilla de `/notificaciones`, una
-tabla, specs y catálogo). Sin
+**Por qué es una excepción barata.** Solo `apps/web` (el componente común, el servicio de push de
+`/notificaciones`, una tabla, specs y catálogo). Sin
 API, `libs/*`, composes, workflows ni `infra/ci/`, ni requirements de `platform/*`. El riesgo es de regresión de
 textos en 42 sitios, y lo acotan los specs de pantalla existentes (el fallo inesperado no cambia de texto) y la
 repetición de la 9.4 de `e2e-suite`.
@@ -261,7 +268,7 @@ es el primero que pasa a después de 35c.
 **Reglas, si se concede (las ya convergidas en los otros changes):**
 
 1. **Tres clases de fusión.** (1) La fusión del change y sus correcciones: solo **después de la 11.6 de 35b y antes
-   de su 10.7**, nunca con una corrida `e2e-remote` en curso. (2) El PR de archivo, con las anotaciones posteriores:
+   de su 10.7**, nunca con una corrida `e2e-remote` en curso ni del día. (2) El PR de archivo, con las anotaciones posteriores:
    **después de la 10.7**. (3) Las vueltas atrás y la vuelta de una vuelta atrás. Las clases 2 y 3: nunca entre el
    PR-2 de 35b y su 11.6, nunca durante la 9.1-9.4 de `e2e-suite`, nunca los días 7 y 14 de la medición ni el día de
    una corrida `e2e-remote`.
@@ -372,7 +379,7 @@ y las antiguas 2.2, 2.3 y 2.4 pasan a 2.3, 2.4 y 2.5; la 3.3 nueva es `/notifica
 | C3 | critic | Aceptado. La 0.3 se cumple con (a) una línea en la 4.1 de `paste-fallback-honest`, anotada en su tabla de debate como cambio posterior a la aprobación y con la conformidad del owner, o (b) paste ya en `main`; se verifica por el contenido del PR (`gh pr view <n> --json files`), no por la rama. La rama de paste no se edita aquí | El nombre de una rama no prueba nada; editar un change aprobado necesita registro y conformidad |
 | C4 | critic | Aceptado. La 6.1 y la línea para paste exigen actualizar la cabeza del PR y esperar CI verde si `main` cambió `messages.xlf`, `auth.schema.ts` o `api-error-copy.ts` desde la última corrida | Dos PR verdes por separado pueden dejar `main` en rojo (ADR-050 §5, ampliado a la tabla y al enum) |
 | C5 | critic | Aceptado en parte. La 1.1 busca en `*.ts` y `*.html`, y cada `local` anota el fichero que compara el código. Context corregido: `internal_error` también está en `cv-card.component.html:29`. La parte de C5 sobre la capa 2 queda sin objeto (V1-2) | Un fichero que solo nombra el código no prueba que lo traduzca; el recuento de 37/11 no cambia con `*.html` |
-| C6 | critic | Aceptado. La falsación «clasificar solo por estado» pasa a la tarea de textos comunes (2.4); la 2.1 se falsa con «503 without own text shows unavailable»; la 2.1 se parte en 2.1 (no disponible) y 2.2 (fallo inesperado), y la 2.3 y la 2.4 llevan su propio comando de verificación | Cada falsación debe hacer caer un test de su propia tarea |
+| C6 | critic | Aceptado. La falsación «clasificar solo por estado» pasa a la tarea de textos comunes (2.4); la 2.1 se falsa con «503 with a fallback code shows unavailable» (nombre de la iteración 2, N5); la 2.1 se parte en 2.1 (no disponible) y 2.2 (fallo inesperado), y la 2.3 y la 2.4 llevan su propio comando de verificación | Cada falsación debe hacer caer un test de su propia tarea |
 | C7 | critic | Sin objeto | Era sobre la capa 2, que sale del change (V1-2) |
 | C8 | critic | Aceptado. La 6.1, 6.3 y 6.4 copian las verificaciones y falsaciones de las 6.3, 7.3 y 7.4 de `paste-fallback-honest`: merge del PR-2 de 35b en `git log`, falsación con la 10.7 hecha, job `e2e-remote` del día por `gh run view`, confirmación fechada en cada fusión. Toda fusión antes de la 10.7, correctivas incluidas, es de clase 1 y repite las comprobaciones sobre la última (regla 4 de D7) | Las reglas ya convergidas en otro change no se reescriben más débiles |
 | C9 | critic | Aceptado. La 5.2 anota ADR-050 §2 sin depender de Q2: la cobertura se comprueba en `web:typecheck` y `web:test`, y la capa 2 queda diferida. La línea de ADR-050 ya refleja eso | La anotación decía que `web:i18n-check` corre un script que ya no existe en el change |
@@ -383,3 +390,23 @@ y las antiguas 2.2, 2.3 y 2.4 pasan a 2.3, 2.4 y 2.5; la 3.3 nueva es `/notifica
 | V2-2 | business | Aceptado. `vault_unavailable`: «Las claves de IA propias no están activadas en LinkVault. No se guardó nada» (EN, de `reflect`: «Your own AI keys are not enabled in LinkVault. Nothing was saved») | Texto propuesto por `business`; «en este entorno» es vocabulario de quien desarrolla |
 | V2-3 | business | Aceptado como recomendación para 35b, en «Fuera de alcance»: el aviso de invitación dice «si ves un código bajo el error, manda una captura». No se edita `staging-host` | El aviso de invitación es de 35b |
 | V2-4 | business | Sin cambios | Decisión de `reflect` |
+
+## Debate — iteración 2
+
+2026-10-28. `critic`: 0 P0 y 7 P1 (N1-N7). `business`: 0 V0, 1 V1 (V1-3) y 2 V2 (V2-5, V2-6). Decisiones de `reflect`:
+todo aceptado. Q1 y Q2 siguen pendientes del owner. No cambia el número de tareas.
+
+| Id | Origen | Decisión | Motivo |
+| --- | --- | --- | --- |
+| N1 | critic | Aceptado. La 3.3 mueve el `this.failure.set` de `enable()` (`push-notifications.ts`) a la rama `failed`; la plantilla de `/notificaciones` no cambia. Caso nuevo «returning to /notificaciones after vapid unavailable shows no common error»; D3 y el escenario «Un aviso propio no se duplica con el común» ajustados | La señal `failure` vive en el servicio: una condición en la plantilla dejaba el fallo guardado y el diseño dependía de que nadie más la leyera |
+| N2 | critic | Aceptado. En la 6.1, la 6.3 y la 6.4 el filtro es `select(.name\|startswith("e2e-remote")) \| "\(.status):\(.conclusion // "")"` y se exige vacío o `completed:skipped`. La regla 1 de D7 dice «ni en curso ni del día» | Con solo `.conclusion`, un job en curso sale vacío y pasaba por limpio |
+| N3 | critic | Aceptado. El comando de la 5.2 queda `… \| grep -cE "vault_unavailable\|H3"` (hoy 2, después 0), y se añade `grep -c "propuesto, 2026-10-28" docs/adr/ADR-050.md` → `0` después de aplicar | El comando tenía las comillas rotas, y el paso de «propuesto» a la fecha no tenía verificación |
+| N4 | critic | Aceptado. D2 y la 2.3 usan `Object.hasOwn(API_ERROR_COPY, code)`; caso «a prototype key is not a known code»; el requirement «Referencia técnica del fallo» dice «clave propia» | `code in API_ERROR_COPY` o un acceso por índice aceptan `toString` y pintarían texto del cuerpo |
+| N5 | critic | Aceptado. El caso de la 2.1 se llama «503 with a fallback code shows unavailable» (en la 2.1, en su falsación y en la fila C6). La falsación de la 2.5 dice que caen los casos de todos los códigos `local` y `unreachable`, cada uno con el suyo | El nombre anterior no decía qué se probaba; la falsación nombraba solo dos códigos |
+| N6 | critic | Aceptado. `web/auth`: la referencia del fallo inesperado aparece «cuando hubo respuesta HTTP» | Coincide con «Referencia técnica del fallo»: un `502` del proxy no es respuesta de la API y también lleva referencia |
+| N7 | critic | Aceptado. En D2, la frase de V1-1 pasa al final del párrafo y «Así» vuelve a seguir a «fuera del `<p role="alert">`» | La inserción de la iteración 1 dejó «Así» refiriéndose a la etiqueta |
+| V1-3 | business | Aceptado. `owner_cannot_leave`: «Ahora eres propietario de este grupo. Recarga la página y nombra propietario a otro miembro para poder salir» / «You are now the owner of this group. Reload the page and make another member the owner to leave»; tabla del requirement, escenario y caso de la 3.2 actualizados | El código solo llega por la carrera de D3; sin «Ahora» y «Recarga» la persona no entiende por qué ve «Salir» |
+| V2-5 | business | Aceptado. `vault_unavailable`: «LinkVault no tiene activado el guardado de claves de IA. Tu clave no se guardó» / «Saving AI keys is not enabled in LinkVault. Your key was not saved», en `web/request-errors`, `web/byok` y la 3.1. Corregida la frase de D3 que daba «claves de IA propias» como vocabulario existente | El SPA dice «Tus claves de IA» y «clave», no «claves de IA propias»; «Tu clave no se guardó» dice qué pasó con lo que escribió |
+| V2-6 | business | Aceptado. Nota de implementación en la 2.3: el fragmento `estado · código` va con `white-space: nowrap`. Sin test nuevo | En móvil el corte dentro de `500 · internal_error` hace la captura ilegible; un test de estilo no aporta |
+
+Convergencia: SI (iteración 2: critic P0 0, business V0 0; Q1 y Q2 pendientes del owner)
