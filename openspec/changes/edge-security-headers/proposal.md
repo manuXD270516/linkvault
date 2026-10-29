@@ -21,10 +21,12 @@ barato es cerrar esto **antes** de invitarlas.
 §Consecuencias —extendida a la fila entera por ADR-051 §1 y su §Enmiendas, punto 3— impide abrirlo hasta cerrar 35c.
 Se **propone el 2026-10-28** como excepción, que solo puede decidir el owner (Q1 del design, **bloqueante**), con las
 condiciones de ADR-057 §1: no cambia el orden de la fila, no libera la precedencia para ningún otro change, no toca
-ficheros ni requirements que modifiquen 35b o 35c salvo la única línea compartida que se coordina en el design D10
-(`infra/traefik/dynamic.yml`), y se fusiona solo en la ventana que no rompe ninguna regla escrita de 35b ni de
-`e2e-suite`: **después de la 11.6 de 35b y antes de su 10.7**, nunca los días 7 y 14 de la medición (o la que
-autorice el owner en la opción (d) de la Q1).
+ficheros ni requirements que modifiquen 35b o 35c salvo el único fichero compartido que se coordina en el design D10
+(`infra/traefik/dynamic.yml`), de las tareas de 35b solo cambia **una línea de bloqueo en su 10.7** («9.3 de
+`edge-security-headers` anotada»), que agrega su dueño, y se fusiona solo en la ventana que no rompe ninguna regla
+escrita de 35b ni de `e2e-suite`: **después de la 11.6 de 35b y antes de su 10.7** (o la que autorice el owner en la
+opción (d) de la Q1). La excepción cubre **tres clases de fusión** (la del change, el PR de archivo y las de la
+vuelta atrás de la CSP), cada una con su regla (design D10).
 
 ## What Changes
 
@@ -52,11 +54,12 @@ autorice el owner en la opción (d) de la Q1).
   cabecera.
 - **Verificación**: tests unitarios y de integración de la API (`app.inject`); una comprobación de repositorio nueva
   (`check-edge-security-headers`) que lee `dynamic.yml`, `nginx.conf` y la configuración de build de `web`, con
-  excepciones fechadas para las dos vueltas atrás; un **barrido único** de todas las rutas del SPA con la política
-  inyectada y un control positivo; y una **pasada manual** del camino crítico en staging, con la consola abierta en
-  Chromium y Firefox, antes de invitar. Sin guardia dinámico permanente en la suite e2e (pasa al change de la Q3).
+  una única excepción fechada, para la vuelta atrás de la CSP; un **barrido único** de todas las rutas del SPA con la
+  política inyectada y un control positivo; y una **pasada del camino crítico en staging** con el mismo script, sin
+  inyectar, en Chromium y Firefox, que ejecuta un agente antes de invitar (más el push, a mano, una vez). Sin guardia dinámico permanente en la suite e2e (pasa al change de la Q3).
 - **Documentación**: síntomas («página sin estilos» primero) y procedimiento de vuelta atrás en el RUNBOOK (CSP a
-  `Report-Only` con su excepción fechada; HSTS a `max-age=0` con la suya; o el despliegue anterior).
+  `Report-Only` con su excepción fechada, o el despliegue anterior solo como puente). HSTS no tiene vuelta atrás: si
+  el certificado se rompe, se arregla, y el bloqueo dura como mucho siete días.
 - **ADR-057** (Propuesto) con las decisiones y la excepción pendiente.
 
 ## Capabilities
@@ -94,14 +97,16 @@ crear un orden de archivo con 35b ni con 35c.
   exigen nonce por respuesta en nginx (`sub_filter` + `$request_id`) o revisar Material y las plantillas; candidatos a
   un change posterior a 35c (Q3).
 - **Un endpoint de informes de CSP** (`report-to`): abriría una ruta anónima de escritura; hasta tener dominio propio y
-  un destino de observabilidad, los detecta la suite (Q2).
+  un destino de observabilidad, las violaciones las ven el barrido único de todas las rutas y la pasada de staging de
+  la 9.3a; un guardia dinámico permanente llega con el change de la Q3 (Q2).
 - **`preload` de HSTS**: imposible sobre `sslip.io` (no es nuestro) y prematuro sin dominio propio (Q4).
 - **`Cross-Origin-Embedder-Policy` y `Cross-Origin-Resource-Policy`**: nada lo pide hoy, y CORP en la API necesitaría
   probar antes la extensión de Chromium y de Firefox (ADR-038, ADR-047).
 - **`Cache-Control: no-store` en la API** y la caché de `sw.js` (hoy `immutable` siete días como cualquier `.js`):
   son decisiones de caché, no de cabeceras de seguridad; el `map` de nginx conserva exactamente los valores de hoy.
-- **CSP en `nx serve web` de desarrollo**: el servidor de desarrollo no se toca; la política se prueba en la suite e2e
-  y en staging.
+- **CSP en `nx serve web` de desarrollo**: el servidor de desarrollo no se toca; la política se prueba una vez con el
+  barrido único (inyectada sobre el build de producción) y en staging con la pasada de la 9.3a; la suite e2e no la
+  comprueba hasta el change de la Q3.
 - **Guardia dinámico de CSP en la suite e2e** (inyección de la política en el lote 1, readmisión y falsaciones): pasa
   al change posterior de la Q3, que lo necesita igual (debate, B1).
 - **Cualquier cambio en el compose, en los workflows, en `infra/deploy/` o en `infra/ci/`**, y cualquier tarea de 35b o

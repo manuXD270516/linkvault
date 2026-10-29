@@ -581,8 +581,10 @@ changes:
       **Propuesto el 2026-10-28; requiere excepción del owner a la precedencia de la fila 35 (ADR-048).** No es una
       pieza de la fila ni cambia su orden (35b → 35c); no libera la precedencia para ningún otro change. Cuándo entra
       respecto de 35b es la Q1 del design (bloqueante; recomendación: excepción coordinada, fusión después de la 11.6
-      de 35b y antes de su 10.7, nunca los días 7 y 14 —la única ventana que no rompe «entre PR-1 y PR-2» de 35b ni la
-      D15 de `e2e-suite`—; opción (d): excepción expresa del owner a «entre PR-1 y PR-2», fusión antes de la 6.1).
+      de 35b y antes de su 10.7 —la única ventana que no rompe «entre PR-1 y PR-2» de 35b ni la D15 de `e2e-suite`—;
+      la excepción cubre tres clases de fusión: la del change, el PR de archivo y las de la vuelta atrás de la CSP, cada
+      una con su regla; opción (d): excepción expresa del owner a «entre PR-1 y PR-2», fusión antes de la 6.1). De 35b
+      solo cambia una línea de bloqueo en su 10.7 («9.3 de `edge-security-headers` anotada»), que agrega su dueño.
       Condiciones en **ADR-057 §1**: no toca compose, `.env.example`, `infra/deploy/`, `infra/ci/`, workflows ni
       Dockerfiles ni `apps/web-e2e/`; de `infra/traefik/dynamic.yml` solo añade el middleware `edge-hsts`.
       **Cabeceras de seguridad del borde** (relevamiento del 2026-10-28): **HSTS** en Traefik (`max-age=604800;
@@ -593,8 +595,9 @@ changes:
       **API**: hook `onSend` con `nosniff`, `X-Frame-Options`, `Referrer-Policy` y CSP `default-src 'none'` que no pisa
       lo que pone cada ruta (`/p/:slug` conserva la suya de ADR-027) y `nosniff` en el flujo SSE.
       **Verificación:** tests de cabeceras de la API (`app.inject`), comprobación nueva de `tools/repo-checks` (con
-      excepciones fechadas para las vueltas atrás), barrido único de todas las rutas del SPA con la política inyectada
-      y pasada manual del camino crítico en staging antes de invitar. Fuera: guardia dinámico de CSP en la suite e2e
+      una excepción fechada para la vuelta atrás de la CSP; HSTS sin vuelta atrás), barrido único de todas las rutas del
+      SPA con la política inyectada y pasada del camino crítico en staging antes de invitar (un agente, `chromium` y
+      `firefox`, sin análisis; el push, a mano). Fuera: guardia dinámico de CSP en la suite e2e
       (al change de la Q3), Trusted Types y estilos con `nonce`, endpoint de informes de CSP, `preload`, COEP/CORP y caché.
   - name: staging-host
     adrs: [051, 048, 033, 034, 035, 032]

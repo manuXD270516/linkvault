@@ -57,8 +57,10 @@ Restricciones heredadas:
 - HSTS en todo lo que sirve el borde, sin bloquear staging por culpa de `sslip.io`.
 - Cabeceras de seguridad por defecto en la API, sin tocar las de `/p/:slug`.
 - Que perder una cabecera falle en el repositorio (guardia estático), y que la política se pruebe **una vez** sobre
-  todas las rutas del SPA (barrido 7.1) y **a mano** en staging antes de invitar (9.3).
-- Llegar a staging **antes de invitar** sin cambiar ninguna tarea de 35b.
+  todas las rutas del SPA (barrido 7.1) y **una vez en staging**, servida por nginx de verdad, antes de invitar
+  (pasada de la 9.3a, que ejecuta un agente con el mismo script).
+- Llegar a staging **antes de invitar** sin cambiar ninguna tarea de 35b salvo **una línea de bloqueo** en su 10.7,
+  que agrega su dueño (D10).
 
 **Non-Goals**
 
@@ -127,13 +129,18 @@ La política vive **una sola vez**, en `docker/web/nginx.conf`. El barrido de la
 1. **`inlineCritical: false`** en `build.configurations.production` de `apps/web/project.json`
    (`"optimization": { "scripts": true, "styles": { "minify": true, "inlineCritical": false }, "fonts": true }`). Quita
    el `<style>` crítico y el `onload` en línea: la hoja de estilos se carga bloqueante, como cualquier SPA sin SSR.
-   Coste: algo más de tiempo hasta el primer pintado, medido en la tarea 2.1 con un **umbral**: si la regresión del
+   Coste: algo más de tiempo hasta el primer pintado, medido en la tarea 3.3 con un **umbral**: si la regresión del
    primer pintado supera **300 ms** en el perfil «Fast 4G» de Chromium, la tarea se detiene y vuelve al design (B6).
+   **Cómo se mide** (V1-2): Playwright con Chromium y una sesión CDP que aplica `Network.emulateNetworkConditions` con
+   los valores del perfil «Fast 4G» de las DevTools (copiados de su código fuente, no de memoria: latencia, bajada y
+   subida), sin caché; el dato es la entrada `first-contentful-paint` de un `PerformanceObserver` (`type: 'paint'`,
+   `buffered: true`), y el servidor es el contenedor nginx de la 3.2 (no `nx serve`), una vez con el build y el
+   `nginx.conf` de `main` (base) y otra con los de este change.
    Con `onload` bloqueado la página quedaría **sin estilos** (la hoja seguiría en `media="print"`), así que no es
    opcional; por eso «página sin estilos» es el primer síntoma del RUNBOOK (B4).
 2. **`zod` sin JIT en el navegador**: un módulo `apps/web/src/zod-csp.ts` que ejecuta `z.config({ jitless: true })`,
    importado **en la primera línea** de `main.ts`, antes de cualquier esquema. Sin él, la sonda `new Function('')`
-   dispara una violación por carga: no rompe nada, pero ensucia la señal del barrido y de la pasada manual (D8), y una
+   dispara una violación por carga: no rompe nada, pero ensucia la señal del barrido y de la pasada de staging (D8), y una
    señal que siempre tiene ruido acaba ignorada. La API y el worker no se tocan (no tienen CSP).
 
 *Descartado:* **`'unsafe-hashes'` con el hash de `this.media='all'`**: abre una excepción de script para mantener una
@@ -146,19 +153,20 @@ reescribir `index.html` por petición y revisar todo Material; queda para el cha
 
 `Content-Security-Policy-Report-Only` sin un destino de informes solo escribe en la consola de cada navegador: con
 cinco personas invitadas, nadie lo vería. Las únicas señales que tiene este change —el barrido de la 7.1 y la pasada
-manual de la 9.3— ven **igual** una violación con la política aplicada. Así que `report-only` costaría toda la
+de staging de la 9.3a— ven **igual** una violación con la política aplicada. Así que `report-only` costaría toda la
 protección sin dar ninguna señal que la política aplicada no dé. Lo que se hace en su lugar:
 
 - inventario del build antes de escribir la política (tarea 2.3);
 - un barrido, **una vez**, de **todas** las rutas del SPA (las del lote 1 y las demás), en escritorio y en móvil
   emulado, sobre el build de producción con la política inyectada, con un control positivo que demuestra que el
   barrido ve violaciones (tareas 7.1a y 7.1b);
-- una pasada manual del camino crítico en staging, con la consola abierta en Chromium y en Firefox, antes de invitar
-  (tarea 9.3);
+- una pasada del camino crítico en staging, servida por nginx y Traefik de verdad, con el mismo script **sin inyectar
+  cabeceras**, en `chromium` y `firefox` de Playwright, antes de invitar (tarea 9.3a, la ejecuta un agente); y el push,
+  que el navegador automatizado no puede probar, a mano una vez (9.3b);
 - y una vuelta atrás escrita en el RUNBOOK (D9).
 
-**No hay guardia dinámico permanente** en la suite: una dependencia nueva que rompa la CSP se vería en uso o en la
-siguiente pasada manual, no en CI. Es un riesgo aceptado hasta el change de la Q3 (B1), que trae el guardia en el
+**No hay guardia dinámico permanente** en la suite: una dependencia nueva que rompa la CSP se vería en uso o en un
+barrido nuevo, no en CI. Es un riesgo aceptado hasta el change de la Q3 (B1), que trae el guardia en el
 lote 1 con su readmisión.
 
 *Descartado:* **`report-only` primero con un endpoint propio de informes**: ruta anónima de escritura más, con su
@@ -215,33 +223,36 @@ Middleware `edge-hsts` en `dynamic.yml` (`headers.stsSeconds: 604800`, `stsInclu
   aviso durante hasta siete días. Traefik renueva 30 días antes de caducar, la 6.8 de 35b comprueba la Public Suffix
   List antes de emitir, y el ensayo de reconstrucción (9.4 de 35b) se hace antes de invitar. Ese bloqueo es además lo
   que queremos: saltar el aviso de un certificado roto es exactamente lo que HSTS existe para impedir.
+- **HSTS no tiene vuelta atrás** (F2): publicar `max-age=0` solo la borra en quien vuelva a entrar por HTTPS **válido**,
+  que es justo lo que falta cuando el certificado está roto. La salida es **arreglar el certificado** o **esperar**,
+  como mucho los siete días del tope (B3). Por eso no hay excepción de vuelta atrás en el guardia (D8, regla 1).
 - **Sin `preload`**: no se puede pedir para un nombre bajo `sslip.io`, y pedirlo para un dominio futuro es casi
   irreversible (Q4).
 
-### D8. Verificación: estática en el repositorio; barrido único y pasada manual para la CSP
+### D8. Verificación: estática en el repositorio; barrido único y pasada de staging para la CSP
 
 **Estática — `tools/repo-checks`, target `check-edge-security-headers`** (inputs explícitos: `infra/traefik/dynamic.yml`,
 `docker/web/nginx.conf`, `apps/web/project.json` y su propio código; ADR-048 §5). Falla, nombrando el fichero y la
 línea o el router, si:
 
 1. algún router con `websecure` no lleva `edge-hsts`; o `edge-hsts` no tiene `stsSeconds ≥ 604800` con
-   `stsIncludeSubdomains: true` y sin `stsPreload: true`. **Excepción de vuelta atrás** (E1): `stsSeconds: 0` se admite
-   solo si `dynamic.yml` contiene una línea `# hsts-rollback: AAAA-MM-DD <motivo>` (fecha válida, motivo no vacío); y
-   esa línea, con `stsSeconds` distinto de `0`, **también falla** (una excepción olvidada);
+   `stsIncludeSubdomains: true` y sin `stsPreload: true`. **Sin excepción**: HSTS no tiene vuelta atrás (D7, F2), así
+   que `stsSeconds: 0` falla como cualquier valor menor de `604800`;
 2. el router `web` pierde `spa-referrer-policy` (la 6.11 de 35b depende de él);
 3. el bloque `server` de `nginx.conf` no declara, con `always`, las seis cabeceras del SPA de D1; o algún `location`
    declara un `add_header` (la trampa de herencia de nginx); o `Cache-Control` lleva `always` (E3: `Cache-Control` es la
    **única** cabecera del `server` sin `always`, para que un `404` no reciba `immutable`). **Excepción de vuelta atrás
-   simétrica** (E1): en lugar de `Content-Security-Policy` se admite `Content-Security-Policy-Report-Only` solo si
-   `nginx.conf` contiene una línea `# csp-report-only: AAAA-MM-DD <motivo>`; esa línea con la cabecera aplicada
-   presente y sin `-Report-Only` también falla. Una `-Report-Only` **adicional** junto a la aplicada se admite sin
-   excepción (es la pauta de la Q3);
+   de la CSP** (E1, F7): en lugar de `Content-Security-Policy` se admite `Content-Security-Policy-Report-Only` solo si
+   `nginx.conf` contiene una línea `# csp-report-only: AAAA-MM-DD <motivo>` (fecha válida, motivo no vacío). Esa línea
+   **solo vale si no hay ninguna `Content-Security-Policy` aplicada**: con la aplicada presente falla, haya o no además
+   una `-Report-Only` (una excepción olvidada). Una `-Report-Only` **adicional** junto a la aplicada, **sin** la línea,
+   se admite (es la pauta de la Q3);
 4. la CSP de `nginx.conf` —la aplicada o, bajo la excepción, la `-Report-Only`— no tiene `frame-ancestors 'none'`, tiene
    `'unsafe-eval'`, o su `script-src` (o `default-src`, si falta `script-src`) admite `'unsafe-inline'`, `data:`,
    `blob:`, `*` o un esquema/host externo;
 5. la configuración de producción de `web` no tiene `inlineCritical: false`.
 
-**CSP — barrido único y pasada manual** (sin guardia dinámico permanente, D4):
+**CSP — barrido único y pasada de staging** (sin guardia dinámico permanente, D4):
 
 - **7.1a**: un script de Playwright de un solo uso (scratchpad, no queda en el repositorio) sobre la pila de la suite:
   lee los `add_header` del bloque `server` de `nginx.conf` (salvo `Cache-Control`); con `context.route` solo sobre las
@@ -250,23 +261,30 @@ línea o el router, si:
   recurso bloqueado, documento, fichero y línea); y un escuchador de consola que recoge «Refused to», «Content Security
   Policy» y «Permissions-Policy» (E10). **Control positivo** (E8): antes del barrido, en una página cualquiera, crear
   desde el DOM un `<script>` en línea (`document.createElement('script')` con `textContent`) y añadirlo; el script del
-  barrido tiene que registrar la violación de `script-src`; si no la registra, el barrido no vale.
+  barrido tiene que registrar **esa** violación, comparada campo por campo (F6): `effectiveDirective ===
+  'script-src-elem'` (o `'script-src'`, en un navegador que no distinga las subdirectivas), `blockedURI === 'inline'` y
+  `documentURI` con la ruta `/login`; si no la registra, el barrido no vale.
 - **7.1b**: el barrido de **todas** las rutas de `app.routes.ts`, incluidas las del lote 1, en escritorio y en
   `Pixel 7`. Push (E8): el contexto concede `notifications`, y lo que se mide es que `sw.js` quede registrado
   (`navigator.serviceWorker.getRegistration()`); un fallo de `pushManager.subscribe` (sin servicio de push en el
   navegador automatizado) **no cuenta**.
-- **7.2**: el push se activa **a mano una vez** en un Chromium real contra la pila, o en la 9.3 contra staging, y se
-  anota (B5).
-- **9.3**: pasada manual del camino crítico en staging con la consola abierta en Chromium y en Firefox, antes de la 10.7
-  de 35b (B2).
+- **9.3a** (F4, V1-1): la ejecuta un **agente**. El script de la 7.1a contra staging, **sin inyectar cabeceras** (las
+  sirven nginx y Traefik), con los navegadores `chromium` y `firefox` de Playwright, recorre los pasos del lote 1
+  (`critical-path.spec.ts`) **sin el análisis**, con la cuenta `+e2e`. Sin análisis no consume cupo, así que puede ir
+  el mismo día que la `e2e-remote` de la 10.7 de 35b. El control positivo se repite contra staging. El resultado
+  (commit desplegado, navegadores con versión, pasos, violaciones) se publica como **comentario en el PR fusionado** de
+  este change, con la hora de GitHub, y se avisa al owner **antes de que invite**.
+- **9.3b**: el **push**, que el navegador automatizado no puede probar (B5), lo activa el **usuario** a mano una vez
+  contra staging en un Chromium real, en la misma sesión en que haría la alternativa manual de la 10.7 de 35b, y se
+  anota en el mismo PR. Es la única parte humana de la verificación de la CSP (la 7.2 se retiró, V2-a).
 
 **Servidor de desarrollo en el barrido**: `nx serve web -c production` puede inyectar el cliente de Vite (recarga en
 vivo), un script del mismo origen con un WebSocket al mismo origen, que la política admite. La 7.1a **mide** si aparece
 `@vite/client` en el documento; si una violación del barrido es atribuible al servidor de desarrollo, se anota y la
 tarea vuelve al design. No se filtran violaciones por origen: un filtro así escondería las reales.
 
-**Lo que el barrido no ve**, y se cubre a mano una vez: nginx sirviendo de verdad (tarea 3.2, contenedor
-`nginx:1.27-alpine` de un solo uso; y staging, grupo 9).
+**Lo que el barrido no ve**, y se cubre una vez: nginx sirviendo de verdad (tarea 3.2, contenedor
+`nginx:1.27-alpine` de un solo uso; y staging, 9.1 y 9.3a).
 
 ### D9. Vuelta atrás
 
@@ -274,44 +292,67 @@ Escrita en `docs/RUNBOOK.md`; el primer síntoma que se describe es **«página 
 `inlineCritical` y al `onload` bloqueado.
 
 - **CSP rompe algo en staging**, dos caminos:
-  - **Por fusión**: en `docker/web/nginx.conf`, cambiar el nombre de la cabecera a `Content-Security-Policy-Report-Only`
-    y añadir la línea `# csp-report-only: AAAA-MM-DD <motivo>` que el guardia estático exige (D8, regla 3). La fusión
-    despliega, así que respeta las ventanas de 35b (nunca entre su PR-2 y su 11.6, nunca durante su 9.1-9.4, nunca los
-    días 7 y 14). **Implica**: el SPA queda **sin CSP aplicada** hasta revertirlo, ningún guardia obliga a volver (la
-    línea fechada solo lo deja visible en el repositorio), y volver a la aplicada es otra fusión con su propia ventana.
-  - **Sin fusión**: volver al despliegue anterior con el procedimiento de 35b (relanzar el job de despliegue de una
-    corrida anterior). **Implica**: se retira el change entero de staging, HSTS incluido para visitas nuevas (quien ya
-    la guardó la conserva hasta que caduque), porque `dynamic.yml` viaja con el commit desplegado.
-- **HSTS**: no se puede retirar de los navegadores que ya la guardaron; se publica `stsSeconds: 0` en `edge-hsts`, con
-  la línea `# hsts-rollback: AAAA-MM-DD <motivo>` que el guardia exige (D8, regla 1), y la borra en la siguiente visita
-  por HTTPS válido.
+  - **(i) Por fusión** (clase 3 de D10): en `docker/web/nginx.conf`, cambiar el nombre de la cabecera a
+    `Content-Security-Policy-Report-Only` y añadir la línea `# csp-report-only: AAAA-MM-DD <motivo>` que el guardia
+    estático exige (D8, regla 3). La fusión despliega, así que respeta las reglas de la clase 3. **Implica**: el SPA
+    queda **sin CSP aplicada** hasta revertirlo, ningún guardia obliga a volver (la línea fechada solo lo deja visible
+    en el repositorio), y el regreso a la aplicada es otra fusión de clase 3.
+  - **(ii) Sin fusión, solo como puente** (F3): volver al despliegue anterior con el procedimiento de 35b (relanzar el
+    job de despliegue de una corrida anterior de `main`). **Implica**: se retira el change entero de staging, HSTS
+    incluido para visitas nuevas (quien ya la guardó la conserva hasta que caduque), porque `dynamic.yml` viaja con el
+    commit desplegado. **Es un puente, no un estado**: la siguiente fusión a `main` volvería a desplegar la CSP
+    aplicada, así que **antes de cualquier otra fusión a `main`** se aplica el camino (i). GitHub solo relanza jobs
+    hasta 30 días después de la corrida inicial: pasado ese plazo, el puente es la vuelta atrás sin GitHub de 35b (en
+    el host, `install-config.sh` desde el `.incoming-*` anterior y el `IMAGE_TAG` anterior, RUNBOOK «Operar staging»).
+- **HSTS no tiene vuelta atrás** (D7, F2): si el certificado se rompe, se arregla el certificado; quien ya guardó la
+  política espera, como mucho, los siete días del tope. No se publica `max-age=0` y el guardia no lo admite.
 
-### D10. Coordinación con 35b: un solo fichero compartido, ninguna tarea suya cambia
+### D10. Coordinación con 35b: un solo fichero compartido y una línea de bloqueo en su 10.7
 
 - **Único fichero de 35b que se toca:** `infra/traefik/dynamic.yml`, y solo para **añadir** el middleware `edge-hsts`
   y su nombre en las tres listas `middlewares`. No cambian reglas, prioridades, servicios, `spa-referrer-policy` ni los
   middlewares del CV. PR-2 de 35b no edita ese fichero (sus cambios son documentación, `infra/staging/`, ADR y fila del
   plan), así que no hay conflicto de texto; `infra/README.md`, que PR-2 sí edita, solo cambia aquí en la descripción de
   la fila de `dynamic.yml` de su tabla de ficheros.
-- **Cuándo se fusiona** es la Q1 (bloqueante). Tres reglas ya escritas la acotan: la de 35b («entre PR-1 y PR-2 no se
-  fusiona nada a `main`»), la D15 de `e2e-suite` (nada entre el PR-2 de 35b y su 11.6) y los días 7 y 14 de la
-  medición. Con PR-1 de 35b ya en `main` (#86), **la única ventana válida sin otra excepción es después de la 11.6 de
-  35b y antes de su 10.7, nunca los días 7 y 14** (Q1 (a)). Esa fusión despliega a staging, y la corrida `e2e-remote`
-  de la 10.7 de 35b, que ya exige el commit desplegado, se hace (o se repite) sobre un commit que contiene este change.
-  La alternativa (d) es que el owner autorice expresamente una excepción a la regla «entre PR-1 y PR-2» de 35b (ver Q1).
-  La tarea 0.3 comprueba la ventana antes de fusionar y la 10.3 la verifica al cerrar.
-- **Efecto sobre la precondición de invitar de 35b** (B2): este change **no** añade nada a la corrida `e2e-remote` de
-  ADR-053 §1.3 (no hay guardia dinámico). Añade, **desde sus propias tareas**, una pasada manual del camino crítico en
-  staging con la consola abierta en Chromium y en Firefox (tarea 9.3), que se hace y se anota **antes de la 10.7 de
-  35b**. Una violación de CSP o un error de `Permissions-Policy` en esa pasada bloquea invitar hasta corregirlo o
-  aplicar D9. No se añade ninguna corrida automática contra staging (el cupo de análisis de ADR-053 no cambia); la
-  pasada manual se hace en un día distinto al de la corrida `e2e-remote`, para no competir por el cupo de la cuenta
-  `+e2e`.
+- **Cuándo se fusiona** es la Q1 (bloqueante). Las reglas escritas que la acotan: la de 35b («entre PR-1 y PR-2 no se
+  fusiona nada a `main`», y nada durante su 9.1-9.4), la D15 de `e2e-suite` (nada entre el PR-2 de 35b y su 11.6) y
+  los días 7 y 14 de la medición. Con PR-1 de 35b ya en `main` (#86), **la única ventana válida sin otra excepción es
+  después de la 11.6 de 35b y antes de su 10.7** (Q1 (a)).
+- **Tres clases de fusión** (F1). La excepción que firma el owner cubre las tres, cada una con su regla:
+  1. **La fusión del change**, en la ventana (a): después de la 11.6 de 35b y antes de su 10.7. La medición empieza al
+     invitar (10.7), así que los días 7 y 14 **no** pueden caer en esa ventana y no se nombran en ella (V2-c). Esa
+     fusión despliega a staging; si ya hubo una corrida `e2e-remote` para la 10.7 de 35b, **hay que repetirla** sobre
+     el commit desplegado (0.3 lo anota).
+  2. **El PR de archivo** de este change (casillas y anotaciones del grupo 9 y la 10.3).
+  3. **Las fusiones de D9**: la vuelta atrás de la CSP a `-Report-Only` (camino (i)) y el regreso a la aplicada.
+
+  Las clases 2 y 3 caen después de invitar, y por eso llevan sus propias reglas: **nunca** entre el PR-2 de 35b y su
+  11.6, **nunca** durante su 9.1-9.4, **nunca** los días 7 y 14 de la medición, **nunca** el día de una corrida
+  `e2e-remote` contra staging. La 0.3 comprueba la ventana de la clase 1 antes de fusionar; la 10.3 verifica **cada**
+  fusión de este change en `main` contra la regla de su clase. La alternativa (d) es que el owner autorice
+  expresamente una excepción a la regla «entre PR-1 y PR-2» de 35b (ver Q1).
+- **Cómo se comprueba la ventana** (regla común a los changes que se fusionan junto a 35b): el PR-2 de 35b se
+  identifica **por su número de PR**; el estado de la 11.6 y la 10.7 de 35b se toma de una **confirmación escrita y
+  fechada del owner en el PR** de este change («11.6 hecha el AAAA-MM-DD; 10.7 no hecha»); la casilla de
+  `openspec/changes/staging-host/tasks.md` (en `origin/main` o en la rama del PR de archivo de 35b) es solo apoyo y, si
+  contradice la confirmación, vuelve al owner. Sin confirmación, con la 11.6 sin hacer o con la 10.7 declarada hecha:
+  fuera de ventana.
+- **Efecto sobre la precondición de invitar de 35b** (B2, F4, V0-1): este change **no** añade nada a la corrida
+  `e2e-remote` de ADR-053 §1.3 (no hay guardia dinámico). Añade, **desde sus propias tareas**, la pasada de la 9.3a en
+  staging (agente, `chromium` y `firefox` de Playwright, sin análisis, sin consumir cupo) y el push a mano de la 9.3b,
+  publicados en el PR fusionado y avisados al owner **antes de que invite**. Una violación de CSP o un error de
+  `Permissions-Policy` bloquea invitar hasta corregirlo o aplicar D9. Para que lo lea **quien invita**, la condición
+  «9.3 de `edge-security-headers` anotada» tiene que figurar en la 10.7 de 35b. **Este change no edita 35b**: la 0.1
+  pide a la sesión dueña de 35b (o al owner) que agregue esa línea de bloqueo a su 10.7. Es la **única** tarea de 35b
+  que cambia, y la cambia su dueño.
+- **El mismo commit en las tres señales** (F4): el commit de la 9.3a, el de la corrida `e2e-remote` de la 10.7 y el
+  desplegado el día de invitar tienen que ser el mismo; la 10.3 lo comprueba. Y el commit desplegado que anota la 9.1
+  tiene que contener la fusión de este change (F5).
 - **35c**: añade guardias a `tools/repo-checks` y a `infra/ci/repo-checks.sh`. Este change solo añade un target y su
   entrada en el agregador de `tools/repo-checks` (conflicto de texto trivial en `project.json`, si lo hay); no toca
   `infra/ci/`.
-- **`e2e-suite`** (abierto, PR-2 pendiente de staging): este change **no** toca `apps/web-e2e/**`. El barrido es un
-  script de un solo uso fuera del repositorio. No hay choque con el PR-2 de `e2e-suite`.
+- **`e2e-suite`** (abierto, PR-2 pendiente de staging): este change **no** toca `apps/web-e2e/**`. El barrido y la
+  pasada de staging son un script de un solo uso fuera del repositorio. No hay choque con el PR-2 de `e2e-suite`.
 
 ## Casos de prueba
 
@@ -340,62 +381,80 @@ Derivados de los escenarios de `specs/platform/edge-security-headers/spec.md`, c
 **Repo** — `tools/repo-checks/src/edge-security-headers.check.mjs` (falsaciones en la tarea 5.1):
 - «every websecure router has edge-hsts»
 - «edge-hsts is at least seven days with subdomains and without preload»
-- «edge-hsts max-age 0 requires a dated hsts-rollback line»
-- «a stale hsts-rollback line fails»
+- «edge-hsts max-age 0 fails with no rollback exception»
 - «the web router keeps spa-referrer-policy»
 - «nginx declares the six SPA headers at server level with always»
 - «Cache-Control is the only server header without always»
 - «no nginx location declares add_header»
 - «a Report-Only CSP requires a dated csp-report-only line»
+- «a csp-report-only line with an enforced CSP fails, even with an extra Report-Only»
 - «the SPA CSP forbids inline and external scripts and framing»
 - «web production build disables inlineCritical»
 
 **Barrido de un solo uso** (7.1a/7.1b, no queda en el repositorio; se anota en la tarea):
-- control positivo: «a DOM-created inline script is reported»
+- control positivo: «a DOM-created inline script is reported as script-src-elem, blockedURI inline, on /login»
 - por ruta y proyecto: «no CSP violations and no Permissions-Policy console errors»
 - push: «sw.js is registered with notifications granted»
+
+**Pasada de staging** (9.3a, mismo script sin inyección, `chromium` y `firefox`; se publica en el PR fusionado):
+- «the positive control is reported against staging»
+- «the batch-1 steps without analysis produce no CSP violations and no Permissions-Policy console errors»
+
+**Primer pintado** (3.3, un solo uso):
+- «first-contentful-paint regression under Fast 4G is at most 300 ms»
 
 ## Risks / Trade-offs
 
 - [Sin guardia dinámico, una dependencia nueva que rompa la CSP no falla en CI] → inventario del build (2.3), barrido
-  único de todas las rutas (7.1b), pasada manual antes de invitar (9.3), vuelta atrás (D9) y el guardia en el change de
-  la Q3 (B1). Riesgo residual aceptado: cinco personas, observadas.
+  único de todas las rutas (7.1b), pasada de staging antes de invitar (9.3a), vuelta atrás (D9) y el guardia en el
+  change de la Q3 (B1). Riesgo residual aceptado: cinco personas, observadas.
 - [`'unsafe-inline'` en estilos] → permite inyectar CSS si hay una inyección de HTML; sin script, sin orígenes externos
   para `img-src`/`connect-src`/`font-src`, la exfiltración por CSS queda muy limitada. Q3 para quitarlo.
-- [Sin CSS crítico en línea, el primer pintado tarda más] → se mide en 2.1 (tamaño de la hoja y tiempo en «Fast 4G»);
-  con más de 300 ms de regresión vuelve como decisión (no como `'unsafe-hashes'` sin debate).
+- [Sin CSS crítico en línea, el primer pintado tarda más] → se mide en 3.3 (tamaño de la hoja en 2.1;
+  `first-contentful-paint` con CDP en «Fast 4G» contra el nginx de la 3.2); con más de 300 ms de regresión vuelve
+  como decisión (no como `'unsafe-hashes'` sin debate).
 - [HSTS bloquea a quien ya la guardó si el certificado se rompe] → siete días como máximo, renovación con 30 días de
-  margen, comprobación de la Public Suffix List en 35b, ensayo antes de invitar; `max-age=0` como salida (D7, D9).
+  margen, comprobación de la Public Suffix List en 35b, ensayo antes de invitar. **Sin vuelta atrás** (F2): la salida
+  es arreglar el certificado o esperar (D7, D9).
 - [El barrido inyecta la cabecera; no prueba nginx] → el guardia estático prueba la configuración, la tarea 3.2 la
-  prueba en un nginx real una vez, y la 9.1 y la 9.3 la prueban servida en staging.
+  prueba en un nginx real una vez, y la 9.1 y la 9.3a la prueban servida en staging.
 - [Una vuelta atrás a `-Report-Only` se queda olvidada] → la línea fechada la deja visible; ningún guardia obliga a
-  volver (D9). Se acepta: la vuelta a la aplicada es una tarea del RUNBOOK.
-- [La pasada manual bloquea invitar si staging tiene una violación] → es la intención (D10); la salida es corregir o D9.
+  volver (D9). Se acepta: la vuelta a la aplicada es una tarea del RUNBOOK y una fusión de clase 3 (D10).
+- [El puente sin fusión (D9 (ii)) se queda como estado] → la siguiente fusión a `main` volvería a desplegar la CSP;
+  por eso el camino (i) va antes de cualquier otra fusión (F3).
+- [La pasada de staging bloquea invitar si hay una violación] → es la intención (D10); la salida es corregir o D9.
+- [Quien invita no lee las tareas de este change] → la condición «9.3 de `edge-security-headers` anotada» la agrega a
+  la 10.7 de 35b su dueño (0.1, V0-1), y el resultado de la 9.3a se avisa al owner antes de invitar.
 - [La ventana (a) cae entre la 11.6 y la 10.7 de 35b, con la invitación esperando] → el PR se prepara antes, y solo su
   fusión espera la ventana; la (d) existe si el owner prefiere otra.
+- [La fusión de la ventana (a) invalida una `e2e-remote` ya hecha para la 10.7] → la 0.3 lo anota y la corrida se
+  repite sobre el commit desplegado; la 10.3 comprueba que los tres commits coinciden.
 
 ## Migration Plan
 
 1. Aprobación del owner de la Q1 y del design tras el debate; ADR-057 pasa a Aceptado y ADR-048 §Consecuencias gana su
    línea de excepción (tarea 0.1, 8.2).
 2. Un PR con todo el código, la configuración y la documentación (grupos 1-5, 7 y 8). Se prepara en cualquier momento;
-   se fusiona **solo** en la ventana que diga la Q1, comprobada por la 0.3: después de la 11.6 de 35b y antes de su
-   10.7, fuera de los días 7 y 14 (a), o la que autorice el owner en (d).
+   se fusiona **solo** en la ventana que diga la Q1 (clase 1 de D10), comprobada por la 0.3: después de la 11.6 de 35b
+   y antes de su 10.7 (a), o la que autorice el owner en (d).
 3. Llega a staging con esa misma fusión (en (a), la 6.1 ya está hecha y cada fusión despliega).
-4. Grupo 9 contra staging con ese commit desplegado, **antes de la 10.7 de 35b**; sus casillas y sus anotaciones se
-   marcan **en el PR de archivo** (una fusión con solo eso no despliega nada nuevo de este change; se fusiona fuera de
-   los días 7 y 14 de la medición, como los PR de 35b). La 10.3 verifica la ventana.
-5. Vuelta atrás: D9.
+4. Grupo 9 contra staging con ese commit desplegado, **antes de la 10.7 de 35b**: la 9.3a se publica como comentario
+   en el PR fusionado y se avisa al owner antes de que invite. Sus casillas y anotaciones se marcan **en el PR de
+   archivo** (clase 2 de D10: nunca entre el PR-2 de 35b y su 11.6, nunca durante su 9.1-9.4, nunca los días 7 y 14 de
+   la medición, nunca el día de una `e2e-remote`). La 10.3 verifica cada fusión de este change.
+5. Vuelta atrás: D9 (sus fusiones son de clase 3).
 
 ## Open Questions
 
 - **Q1 [bloqueante] — Cuándo entra respecto de 35b.** La opción anterior «fusionar antes de la 6.1» **no es válida**:
   el PR-1 de 35b está en `main` (#86) y su `tasks.md` prohíbe fusionar nada entre PR-1 y PR-2; y la D15 de
   `e2e-suite` prohíbe fusionar entre el PR-2 de 35b y su 11.6.
-  - (a) **Excepción coordinada, fusión después de la 11.6 de 35b y antes de su 10.7**, nunca los días 7 y 14 de la
-    medición. Es la única ventana que no rompe ninguna regla escrita. La fusión despliega a staging; la corrida
-    `e2e-remote` de la 10.7 se hace (o se repite) sobre el commit desplegado, y el grupo 9 de este change se cierra
-    antes de la 10.7.
+  - (a) **Excepción coordinada, fusión después de la 11.6 de 35b y antes de su 10.7.** Es la única ventana que no
+    rompe ninguna regla escrita (la medición empieza al invitar, así que sus días 7 y 14 no caen en ella). La fusión
+    despliega a staging; la corrida `e2e-remote` de la 10.7 se hace (o se repite) sobre el commit desplegado, y el
+    grupo 9 de este change se cierra antes de la 10.7. La excepción que firma el owner cubre las **tres clases de
+    fusión** de D10 (la del change, el PR de archivo y las de D9), cada una con su regla, y la **línea de bloqueo**
+    que el dueño de 35b agrega a su 10.7 («9.3 de `edge-security-headers` anotada»).
   - (b) **Después de 35c**, sin excepción: las cinco personas usan staging durante toda la medición sin CSP, sin HSTS y
     sin protección contra encuadre, con el token en memoria.
   - (c) **Partido**: como excepción solo lo que no toca `dynamic.yml` (nginx, API, build), en la ventana de (a); HSTS
@@ -408,17 +467,18 @@ Derivados de los escenarios de `specs/platform/edge-security-headers/spec.md`, c
     encima de uno más nuevo, quitando las cabeceras) y su verificación pierde la premisa; además la verificación de la
     6.1 (modo de prueba sobre `main`) correría sobre un `main` que ya no es el de PR-1. La excepción se anota también
     en el `tasks.md` de 35b, junto a la regla.
-  - **Recomendación: (a).** No rompe ninguna regla, el único fichero compartido se toca solo para añadir, 35b no cambia
-    ninguna tarea, y nadie invitado ve staging sin cabeceras porque la ventana cierra antes de la 10.7. La respuesta se
+  - **Recomendación: (a).** No rompe ninguna regla, el único fichero compartido se toca solo para añadir, de 35b solo
+    cambia una línea de bloqueo en su 10.7 (la agrega su dueño), y nadie invitado ve staging sin cabeceras porque la ventana cierra antes de la 10.7. La respuesta se
     anota en ADR-057 §1 en una línea que empieza por «Respuesta del owner (Q1), AAAA-MM-DD:».
 - **Q2 [no bloqueante] — Destino de informes de CSP.** (a) ninguno hasta tener dominio propio y observabilidad
   externa; (b) un endpoint `POST /api/csp-reports` con límite por IP y solo recuento en `/metrics`. **Recomendación:
-  (a)**; el barrido y la pasada manual cubren lo que cinco personas pueden ver.
+  (a)**; el barrido y la pasada de staging cubren lo que cinco personas pueden ver.
 - **Q3 [no bloqueante] — Trusted Types, estilos con `nonce` y guardia dinámico.** (a) change posterior a 35c que añada
   `nonce` por respuesta en nginx, `ngCspNonce`, quite `'unsafe-inline'` de `style-src`, pruebe `require-trusted-types-for
   'script'` primero como `report-only` adicional, y traiga el **guardia dinámico de CSP en el lote 1** de la suite e2e
-  con su readmisión y sus falsaciones (lo que salió de este change por B1); (b) no hacerlo. **Recomendación: (a)**,
-  como candidato en el manifiesto cuando el owner lo apruebe.
+  con su readmisión y sus falsaciones (lo que salió de este change por B1); (b) no hacerlo. **Recomendación: (a)**:
+  la 8.2 lo agrega como candidato en el manifiesto, con la nota «trae el guardia dinámico de CSP (B1 de
+  `edge-security-headers`)» (V2-d); abrirlo sigue siendo decisión del owner.
 - **Q4 [no bloqueante] — HSTS con dominio propio.** Cuando haya dominio: (a) subir `stsSeconds` a un año
   (`31536000`), mantener `includeSubDomains` si `PUBLIC_HOST` es un subdominio y revisar si es el apex; pedir `preload`
   solo con el dominio entero en HTTPS; (b) quedarse en siete días y quitar `includeSubDomains`. **Recomendación:
@@ -449,3 +509,29 @@ La convergencia la declara la iteración 2.
 | E9 | critic | Sin objeto por B1 | Se refería al guardia dinámico del grupo 6 |
 | E10 | critic | Aceptado: el barrido recoge los mensajes de consola de `Permissions-Policy`; si `browsing-topics` no se reconoce, se quita | Una función desconocida escribe un error en cada carga |
 | Ventana | critic (P0 de otro change) | Aceptado: Q1 reescrita; la única ventana válida es después de la 11.6 de 35b y antes de su 10.7, nunca los días 7 y 14; opción (d) con excepción expresa del owner a «entre PR-1 y PR-2»; tareas 0.3 y 10.3 verifican la ventana | PR-1 de 35b ya está en `main` (#86): «antes de la 6.1» cae entre PR-1 y PR-2, que 35b prohíbe |
+
+## Debate — iteración 2
+
+Cierre de la iteración: critic con 1 P0 (F1) más F2-F8 y un ajuste a E7; business con 1 V0 (V0-1) más V1-1, V1-2 y
+V2-a a V2-d. Decisiones de reflect aplicadas en proposal, design, spec, tasks y ADR-057. La Q1 sigue pendiente del
+owner. La convergencia la declara la iteración siguiente.
+
+| Id | Origen | Decisión | Motivo |
+|---|---|---|---|
+| F1 | critic (P0) | Aceptado: la excepción que firma el owner cubre tres clases de fusión (D10): 1) la del change, en la ventana (a); 2) el PR de archivo; 3) las de D9 (vuelta atrás de la CSP y regreso). Las clases 2 y 3: nunca entre el PR-2 de 35b y su 11.6, nunca durante su 9.1-9.4, nunca los días 7 y 14, nunca el día de una `e2e-remote`. La clase 1 pierde la cláusula de los días 7 y 14. Redactado en ADR-057 §1 cond. 5, D10, Q1 (a) y la cabecera de tasks; la 10.3 verifica cada fusión de este change en `main` | La excepción solo nombraba la fusión del change; el archivo y las vueltas atrás también fusionan, y las últimas despliegan después de invitar |
+| F2 | critic | Aceptado (opción preferida): sin vuelta atrás de HSTS ni excepción `# hsts-rollback:`; la salida es arreglar el certificado o esperar como mucho 7 días (B3). Simplificados el guardia (regla 1), la spec, D7, D9, ADR-057 §6 y la 5.1 | `max-age=0` solo llega a quien entra por HTTPS válido, justo lo que falta con un certificado roto |
+| F3 | critic | Aceptado: en D9 y en el RUNBOOK (8.1), el camino (ii) (relanzar una corrida anterior) es solo un puente; antes de cualquier otra fusión a `main` se aplica el (i). Pasados 30 días, el puente es el `.incoming-*` del host con `install-config.sh` | La siguiente fusión volvería a desplegar la CSP aplicada; GitHub solo relanza hasta 30 días |
+| F4 | critic | Aceptado junto con V0-1 y V1-1: la 9.3a la ejecuta un agente con el script de la 7.1a contra staging, sin inyectar cabeceras, en `chromium` y `firefox` de Playwright, los pasos del lote 1 sin el análisis (sin cupo; puede ir el mismo día que la `e2e-remote`); el escenario de spec deja de decir «a mano». Solo el push queda humano (9.3b, «[bloqueada: usuario]», en la misma sesión que la alternativa manual de la 10.7). El resultado se publica como comentario en el PR fusionado, con hora de GitHub, y se avisa al owner antes de invitar. La 0.3 anota si ya hubo una `e2e-remote` para la 10.7 y que se repite; la 10.3 comprueba que el commit de la 9.3a, el de esa `e2e-remote` y el desplegado al invitar son el mismo | Una pasada manual en dos navegadores competía por el cupo y por el día; el script ya existe y no depende de una persona |
+| V0-1 | business (V0) | Aceptado: la condición «9.3 de `edge-security-headers` anotada» tiene que figurar en la 10.7 de 35b, que es lo que lee quien invita. Este change no edita 35b: si Q1 = (a) (y con (c) o (d), que también llegan antes de la 10.7), la 0.1 pide a la sesión dueña de 35b (o al owner) que agregue esa línea. ADR-057 §1 cond. 4 reescrita: ninguna tarea de 35b cambia salvo esa línea, que agrega su dueño | Un bloqueo escrito solo en este change no lo ve quien invita |
+| V1-1 | business | Aceptado dentro de F4 | La misma corrección: la verificación previa a invitar sin cupo ni persona |
+| F5 | critic | Aceptado: la 0.3 comprueba que el 9.1-9.4 de 35b esté cerrado; la 10.3 comprueba que el commit desplegado que anota la 9.1 de este change contiene la fusión | Fusionar durante el ensayo de reconstrucción lo invalida; una 9.1 sobre un commit viejo no prueba nada |
+| F6 | critic | Aceptado: el control positivo compara `effectiveDirective === 'script-src-elem'` (con `script-src` como alternativa), `blockedURI === 'inline'` y el documento `/login` (D8, 7.1a, 9.3a) | «Registra una violación» admitía cualquier violación |
+| F7 | critic | Aceptado: `# csp-report-only:` vale solo si no hay ninguna `Content-Security-Policy` aplicada; falsación nueva «línea + aplicada + `Report-Only` adicional → falla» (5.1) | Con una `-Report-Only` adicional, la línea olvidada pasaba |
+| F8 | critic | Aceptado: la proposal («Fuera de alcance») habla del barrido único, la pasada de la 9.3a y la Q3, no de «la suite» | El texto contradecía B1 |
+| E7 (ajuste) | critic | Aceptado: el `POST /api/auth/login` de la 9.1 lleva `X-Requested-With: linkvault` y `Content-Type: application/json`, con la contraseña por stdin (`--data @-`) | Sin la cabecera CSRF el login da `403`; por argumento, la contraseña queda en el historial y en la lista de procesos |
+| V1-2 | business | Aceptado: el umbral de 300 ms se mide con Playwright y CDP (`Network.emulateNetworkConditions` con los valores de «Fast 4G»), `first-contentful-paint` de `PerformanceObserver`, sirviendo desde el contenedor nginx de la 3.2; la medición pasa a la 3.3, después de la 3.2 | «Medir en Chromium» no era reproducible, y `nx serve` no es lo que se sirve |
+| V2-a | business | Aceptado: 7.2 retirada; el push se hace solo en la 9.3b contra staging | Una extensión de cabeceras contra la pila no aporta sobre staging |
+| V2-b | business | Aceptado: 9.2 retirada; la 9.1 comprueba `frame-ancestors` y `X-Frame-Options` servidos | El navegador aplica lo que la 9.1 ya ve en las cabeceras |
+| V2-c | business | Cubierto por F1 (la clase 1 no nombra los días 7 y 14) | La ventana (a) es anterior a la medición |
+| V2-d | business | Aceptado: la 8.2 agrega a `openspec-changes.yaml` el candidato de la Q3 con la nota «trae el guardia dinámico de CSP (B1 de `edge-security-headers`)» | Que el riesgo aceptado por B1 tenga dueño visible en el manifiesto |
+| Ventana (todos los changes) | reflect | Comprobado y aplicado: la verificación toma el estado de la 11.6 y la 10.7 de una confirmación escrita y fechada del owner en el PR (la casilla, solo apoyo); el PR-2 de 35b se identifica por su número; falsación «owner declara 10.7 hecha → fuera de ventana» (0.3) | La casilla se marca en el PR de archivo de 35b, después de los hechos; la confirmación del owner es la fuente |

@@ -11,9 +11,9 @@ encuadre desde otro origen y la primera visita frente a la degradación a HTTP (
 
 Toda respuesta que el borde (Traefik) sirva por el punto de entrada HTTPS —SPA, API y página pública `/p/:slug`— SHALL
 llevar `Strict-Transport-Security` con `max-age` de al menos `604800` (siete días) e `includeSubDomains`, y SHALL NOT
-llevar `preload`. La única excepción es una vuelta atrás con `max-age=0`, que SHALL declararse con una línea de
-excepción fechada en la configuración del borde. La cabecera SHALL añadirla el borde, y la API SHALL NOT emitirla. Añadirla SHALL NOT cambiar las reglas, las
-prioridades ni los servicios de los routers, ni quitar `Referrer-Policy` de las rutas del SPA.
+llevar `preload`. No hay excepción de vuelta atrás: un `max-age` menor, incluido `0`, SHALL NOT admitirse en la
+configuración del borde. La cabecera SHALL añadirla el borde, y la API SHALL NOT emitirla. Añadirla SHALL NOT cambiar
+las reglas, las prioridades ni los servicios de los routers, ni quitar `Referrer-Policy` de las rutas del SPA.
 
 #### Scenario: El SPA, la API y la página pública llevan HSTS
 
@@ -33,17 +33,17 @@ prioridades ni los servicios de los routers, ni quitar `Referrer-Policy` de las 
 - **WHEN** se ejecutan las comprobaciones del repositorio
 - **THEN** SHALL fallar nombrando ese router
 
-#### Scenario: Una vuelta atrás de HSTS sin excepción fechada no pasa las comprobaciones del repositorio
+#### Scenario: Un HSTS en max-age 0 no pasa las comprobaciones del repositorio
 
 - **GIVEN** la configuración dinámica del borde con el middleware de HSTS en `max-age` 0
-- **WHEN** se ejecutan las comprobaciones del repositorio sin una línea `# hsts-rollback: AAAA-MM-DD <motivo>`
+- **WHEN** se ejecutan las comprobaciones del repositorio, haya o no un comentario que lo declare vuelta atrás
 - **THEN** SHALL fallar nombrando el middleware
-- **AND** con esa línea presente SHALL pasar
 
 ### Requirement: El SPA se sirve con una política de seguridad de contenido aplicada
 
 Las respuestas del SPA SHALL llevar `Content-Security-Policy` (aplicada, no `-Report-Only`, salvo una vuelta atrás
-declarada con una línea de excepción fechada en la configuración del servidor de `web`) con, al menos:
+declarada con una línea de excepción fechada en la configuración del servidor de `web`, que SHALL valer solo si no hay
+ninguna `Content-Security-Policy` aplicada) con, al menos:
 `default-src 'self'`, `script-src 'self'` sin `'unsafe-inline'`, `'unsafe-eval'`, `data:`, `blob:` ni orígenes
 externos, `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`, `frame-ancestors 'none'` y `connect-src`,
 `img-src`, `font-src` y `worker-src` limitados a `'self'`. La política SHALL declararse una sola vez, en la
@@ -82,6 +82,14 @@ manejadores de eventos en línea, y el SPA SHALL NOT evaluar código en tiempo d
 - **WHEN** se ejecutan las comprobaciones del repositorio sin una línea `# csp-report-only: AAAA-MM-DD <motivo>`
 - **THEN** SHALL fallar nombrando la cabecera
 - **AND** con esa línea presente SHALL pasar
+
+#### Scenario: Una excepción de Report-Only junto a la política aplicada no pasa las comprobaciones del repositorio
+
+- **GIVEN** la configuración de `web` con la `Content-Security-Policy` aplicada, una `Content-Security-Policy-Report-Only`
+  adicional y una línea `# csp-report-only: AAAA-MM-DD <motivo>`
+- **WHEN** se ejecutan las comprobaciones del repositorio
+- **THEN** SHALL fallar nombrando la línea de excepción
+- **AND** sin esa línea, la `-Report-Only` adicional junto a la aplicada SHALL pasar
 
 ### Requirement: Ninguna página de LinkVault se puede encuadrar desde otro origen
 
@@ -203,6 +211,11 @@ ningún error de `Permissions-Policy` en la consola, y el service worker SHALL r
 
 #### Scenario: El camino crítico en staging no produce violaciones
 
-- **GIVEN** staging sirviendo un commit con estas cabeceras
-- **WHEN** se recorre a mano el camino crítico en Chromium y en Firefox con la consola abierta
-- **THEN** SHALL NOT aparecer ningún mensaje de la política de contenido ni de `Permissions-Policy`
+- **GIVEN** staging sirviendo un commit con estas cabeceras, servidas por el borde y por el servidor de `web` sin
+  inyectarlas
+- **WHEN** un recorrido automatizado de los pasos del camino crítico, sin el análisis, se ejecuta contra staging en
+  Chromium y en Firefox
+- **THEN** el control positivo (un `<script>` en línea creado desde el DOM en `/login`) SHALL registrarse como
+  violación de `script-src-elem` (o `script-src`) con recurso bloqueado `inline`
+- **AND** los pasos SHALL NOT producir ninguna otra violación de la política de contenido ni ningún error de
+  `Permissions-Policy`
