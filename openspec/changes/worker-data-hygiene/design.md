@@ -519,4 +519,17 @@ Fecha: 2026-10-29. Critic: P0 1 (N1), P1 7 (N2-N8). Business: V0 0, B11-B13 (B11
 | B13 | business | Aceptado: `Impact` dice que la línea de `infra/README.md` ya está escrita en el debate (B6) y que la 5.2 la repone si 35b/35c reescriben la sección | La propuesta describía como futuro algo que ya está en el repo |
 
 Abiertas: Q1 (owner, bloqueante para `/opsx:apply`) y Q5 (owner, antes de `/opsx:apply`).
-Convergencia: pendiente de la verificación puntual de N1 (P0 de la iteración 3)
+Convergencia: ver «Verificación puntual de N1» a continuación
+
+## Verificación puntual de N1 (2026-10-29)
+
+Critic verificó solo el P0 de la iteración 3, sin abrir una iteración nueva. Con el arreglo y con las falsaciones, las pruebas de 4.1 y 4.2 son deterministas: `linkId` es `ObjectId`, así que `$sort { _id: 1 }` ordena por tiempo, y `$lookup` respeta el orden de entrada.
+
+| id | origen | decisión | motivo |
+|---|---|---|---|
+| N1 | critic | resuelto | Orden fijo después del `$group` y L creado el último. |
+| N1-bis | critic (P0) | aceptado | «Falla contra el código actual» no era determinista sin `$sort`. La 4.1 pide primero agregar solo el `$sort`, ver fallar el test y después mover el filtro. Corrección de dos frases en la tarea. |
+| N1-b | critic (P1) | aceptado | La falsación de la 4.2 pasa a «filtrar las ASN en memoria después del `$limit`», porque tras el `$group` ya no hay campos para un `$lookup`. |
+| N1-c | critic (P1) | aceptado | L lleva un `_id` explícito mayor que todos: el contador del `ObjectId` puede dar la vuelta dentro de un segundo. |
+
+Convergencia: SI (iteración 3 más verificación puntual: critic P0 0 tras corregir N1-bis, business V0 0; Q1 y Q5 pendientes del owner).

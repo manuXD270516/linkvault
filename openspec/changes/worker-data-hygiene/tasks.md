@@ -141,11 +141,13 @@ pasan a `worker-claims-multi-replica`; si Q5 = (b), se aplican **antes** del gru
   no cambia) filtra los links cerrados antes del `$limit`: `$group` por `linkId`, **`{ $sort: { _id: 1 } }` justo
   después del `$group`** (N1; `$group` no garantiza orden), `$lookup` a `job_links` con `closedAt`, `$limit` y
   `maxTimeMS`. Fixture: 201 links abiertos con postulaciones + 1 cerrado L con una postulación abierta, límite 50; **L se
-  crea el último**, así su `ObjectId` es el mayor y cualquier `$limit` aplicado antes de filtrar lo deja afuera
-  siempre. Verificar en `freshness-close.spec.ts` (escenario «Link cerrado detrás de más de cuatro lotes de links
-  abiertos»): «finds a closed link with open applications behind more than four batches of open links», que **falla
-  también contra el código actual** (comprobarlo antes de cambiar el adaptador: el `$limit: 4 × límite` de hoy deja
-  afuera a L), y, sobre el mismo fixture con `DetectLinkFreshness` real (N5), «expires the open application of a closed
+  crea el último y con un `_id` explícito mayor que todos** (el contador de `ObjectId` puede dar la vuelta dentro de un
+  segundo; N1-c), así cualquier `$limit` aplicado antes de filtrar lo deja afuera siempre. Verificar en
+  `freshness-close.spec.ts` (escenario «Link cerrado detrás de más de cuatro lotes de links abiertos»): «finds a closed
+  link with open applications behind more than four batches of open links». Orden de trabajo (N1-bis): **primero**
+  agregar solo `{ $sort: { _id: 1 } }` después del `$group` del código actual y comprobar que el test **falla** (sin el
+  `$sort`, el código de hoy no es determinista y podría pasar por azar); **después** mover el filtro de cerrados antes
+  del `$limit` y verlo pasar. Además, sobre el mismo fixture con `DetectLinkFreshness` real (N5), «expires the open application of a closed
   link behind more than four batches» (la postulación de L queda `expired`). Falsación: devolver el `$limit` antes del
   `$lookup` y ver caer el primero; restaurar.
 - [ ] 4.2 [backend] En la misma agregación, **antes** de `$group`/`$limit`, excluir las postulaciones `expired` de
@@ -156,7 +158,9 @@ pasan a `worker-claims-multi-replica`; si Q5 = (b), se aplican **antes** del gru
   closed link with open applications behind more than four batches of fully notified closed links» (201 links cerrados
   con todas sus postulaciones `expired` de grupo y sus ASN confirmadas + 1 cerrado L con una postulación abierta,
   límite 50; L se crea el último, con el `ObjectId` mayor, y el `$sort { _id: 1 }` de 4.1 lo deja detrás de los 201).
-  Falsación: mover el `$lookup` de ASN después del `$limit` y ver caer el segundo; restaurar.
+  Falsación (N1-b): quitar el `$lookup` de ASN previo y filtrar las ASN en memoria después del `$limit`, como hoy (tras
+  el `$group` ya no hay `_id` ni `statusChangedAt` de la postulación para un `$lookup`), y ver caer el segundo; con el
+  `$sort` de 4.1, L se cae siempre; restaurar.
 - [ ] 4.3 [backend] `on('failed')` en `notify-fanout` y `group-digest` (sobre el `WorkerHandle` de 3.5) con una línea
   `warn` (cola, `jobId`, nombre del error); un `DelayedError` (el aplazamiento de D11) o un job `undefined` se ignoran,
   como `onJobFailed` de `enrich-link.consumer.ts:133`. Verificar además: «ignores a delayed notify-fanout job in the
