@@ -712,13 +712,46 @@ changes:
       entrada como constantes (50 páginas, 1.000.000 de caracteres crudos, DOCX inflado con tope propio de 64 MiB y
       2.000 entradas) y un vigía del RSS del hijo (+512 MiB). Después de `ready` → `unreadable_file` sin reintento;
       antes (el hijo no arranca) → reintento y `internal_error`. `maxStalledCount: 1` explícito y un `stalled`
-      agotado deja el CV en `failed`. `pdf-parse` (pdf.js de 2017) se sustituye por `pdfjs-dist` en versión exacta,
-      tras un spike con criterio de parada al final del change (alternativa: `unpdf`); `mammoth` se queda. Un contador
-      por formato, desenlace y causa sin texto del CV; el texto de `unreadable_file` en `/mi-cv` se reescribe (ES/EN); sonda `cv-extract-probe.js` en `verify-artifact.sh`. Pruebas con archivos patológicos
-      generados en el test, nunca muestras reales. El puerto `CvTextExtractor`, los estados de `cv/extraction`, el
-      compose y `.env.example` no cambian.
-      Fuera: motivo nuevo en `/mi-cv`, `mem_limit` del contenedor (Q5), cortar la red del hijo (Q7), OCR, re-extracción de CV ya
-      leídos.
+      agotado deja el CV en `failed`. Con las bibliotecas de hoy (`pdf-parse` 1.1.4 y `mammoth`) dentro del hijo,
+      con `--disallow-code-generation-from-strings`; el worker arranca con `--disable-sigusr1` (`CMD` de
+      `docker/worker.Dockerfile` y `runtimeArgs` de `nx serve`), para que una señal del hijo no le abra el depurador.
+      Un contador por formato, desenlace y causa sin texto del CV; el texto de `unreadable_file` en `/mi-cv` se
+      reescribe (ES/EN); sonda `cv-extract-probe.js` en `verify-artifact.sh`, que mide además el arranque del hijo
+      (p95 ≤ 1,5 s en `arm64`). Pruebas con archivos patológicos generados en el test, nunca muestras reales. El
+      puerto `CvTextExtractor`, los estados de `cv/extraction`, el compose y `.env.example` no cambian.
+      **Pendiente para 35b o el change de Q5** (R12 del design, sin editar `staging-host`): si `ulimit -c` del
+      contenedor o el `core_pattern` del host permiten volcados, `ulimits: { core: 0 }` en el `worker` del compose.
+      Fuera: sustituir `pdf-parse` (→ `cv-pdf-library-upgrade`, B2-01), motivo nuevo en `/mi-cv`, `mem_limit` del
+      contenedor (Q5), cortar la red del hijo (Q7), OCR, re-extracción de CV ya leídos.
+  - name: cv-pdf-library-upgrade
+    adrs: [058, 028]
+    agents: [backend-dev, devops]
+    scope: |
+      **Trasladado desde `cv-extract-isolation` (B2-01, 2026-10-28).** Entra **después de 35c** y de archivar
+      `cv-extract-isolation`, **sin excepción** a la precedencia de la fila 35. Sin directorio de change ni fila en
+      `docs/design-v0.2.md` §6 hasta que se abra con `/opsx:new`.
+      Sustituye `pdf-parse` 1.1.4 (pdf.js 1.10.100 de 2017, sin correcciones) por un pdf.js mantenido, dentro del
+      proceso hijo aislado de ADR-058, por la costura `PdfTextSource` que deja aquel change.
+      **Spike con criterio de parada** (design D3 de `cv-extract-isolation` en la iteración 1, commit `5f802d4`):
+      `pdfjs-dist` (build `legacy`, versión exacta, `isEvalSupported: false`, sin canvas ni `Worker` anidado, sin
+      fuentes del sistema ni URL remota; `@napi-rs/canvas` excluido de la instalación) y `unpdf` como alternativa
+      escrita; se adopta si carga dentro del hijo con sus flags desde el bundle y desde la imagen, el delta de imagen
+      tras la poda cumple el umbral de Q3, las licencias del árbol son permisivas y pasa la paridad; **tope de 4 h por
+      biblioteca**; si fallan las dos, se queda `pdf-parse` aislado y vuelve al owner.
+      **Sustitución**: la nueva implementación de `PdfTextSource`, lista de `--allow-fs-read` ampliada (CMaps y fuentes
+      estándar del paquete), `pdf-parse` y `@types/pdf-parse` fuera, la regla de lint del dominio actualizada y un
+      test de que la dependencia vieja no vuelve; el arranque del hijo se vuelve a medir con el criterio de
+      `cv-extract-isolation` (p95 ≤ 1,5 s en `arm64`).
+      **Medición del owner con CV reales**: igualdad exacta sobre los fixtures sintéticos; recall de tokens ≥ 0,98 y
+      mismo orden de bloques sobre PDF de productores reales (persona inventada desde Word, LibreOffice, Google Docs,
+      LaTeX y plantilla a dos columnas) y sobre 5 o 6 CV reales que el owner pasa **en su máquina**, sin commitear
+      nada; decisión sobre `disableNormalization`; repetida con la candidata adoptada (PO-03, PO-08).
+      **Preguntas y riesgos heredados**: Q3 (umbral de crecimiento de la imagen: recomendación ≤ 30 MB sin preguntar),
+      Q6 (alertas de vulnerabilidad de Renovate sin aprobación del Dashboard para `pdfjs-dist`, `mammoth`,
+      `@xmldom/xmldom` y `jszip`), R1 (tamaño de la imagen), R2 (ESM desde un bundle `commonjs`:
+      `ERR_REQUIRE_ASYNC_MODULE` e `import()` dinámico) y R6 (el pdf.js nuevo puede leer distinto que el de 2017; los
+      CV ya leídos no se re-extraen). También B2-03 del debate de `cv-extract-isolation`.
+      Fuera: cambiar `mammoth`, re-extraer CV ya leídos, OCR.
   - name: golden-sets-reales
     adrs: [019, 018, 030]
     agents: [ai-engineer]

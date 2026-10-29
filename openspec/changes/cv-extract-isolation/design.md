@@ -41,9 +41,17 @@ Restricciones que este diseño respeta:
 - Lo que ve la persona son los estados existentes de `cv/extraction`; solo cambia **el texto** de `unreadable_file`
   (D13, decisión del debate).
 - Nada del CV en registros ni métricas (`cv/documents` «Nada del CV en los registros», `platform/observability`).
-- Fila 35: no se tocan compose, workflows, `.env.example` ni requirements de `platform/*` (Q1).
+- Fila 35: no se tocan compose, workflows, `.env.example` ni requirements de `platform/*` (Q1). **Sí** se toca una línea
+  de `docker/worker.Dockerfile` (el `CMD`, D7 · N1) y una opción de `serve` en `apps/worker/project.json`; no choca con
+  esa condición: la fila 35 no edita ese Dockerfile (35b y 35c no lo nombran en sus tareas ni en su `scope`; los
+  workflows solo lo citan por su ruta en `file:`), el compose de producción no sobrescribe el `command` del `worker`
+  (así que manda el `CMD` de la imagen) y ningún requirement de `platform/*` fija ese `CMD` (comprobado con `grep` el
+  2026-10-28). La condición de Q1 no necesita ajuste; se hace explícita aquí y en la propuesta.
 - El worker se empaqueta con webpack (`apps/worker/webpack.config.js`, `compiler: 'tsc'`, `module: commonjs`) y corre en
-  `node:22.23.2-alpine` como PID 1 (`CMD ["node", "main.js"]`), `linux/arm64` en el destino (ADR-051 §3, ADR-052).
+  `node:22.23.2-alpine` como PID 1 (`CMD ["node", "main.js"]` hoy), `linux/arm64` en el destino (ADR-051 §3, ADR-052).
+- **Partición (B2-01, 2026-10-28):** este change aísla la lectura con las bibliotecas de hoy (`pdf-parse` 1.1.4 y
+  `mammoth`). El spike, la sustitución de pdf.js y la paridad con CV reales pasan a **`cv-pdf-library-upgrade`**,
+  después de 35c y sin excepción (`openspec-changes.yaml`).
 
 ## Goals / Non-Goals
 
@@ -54,14 +62,18 @@ Restricciones que este diseño respeta:
   reintentos.
 - Que el código que abre el archivo **no tenga a su alcance** los secretos del worker ni su sistema de ficheros.
 - Que la memoria que puede consumir una lectura esté acotada también fuera del heap, y medida en el proceso que lee.
-- Que el parser de PDF sea una versión mantenida, verificada en `arm64` y en la imagen publicada.
+- Que una señal del hijo no pueda abrir un depurador en el worker (D7 · N1).
+- Que la lectura aislada funcione en la imagen publicada y en `arm64`, con un arranque medido (D11, N8).
 - Medir lo que pasa (un contador y una línea de registro por lectura terminada mal) sin una palabra del CV.
 
 **Non-Goals**
 
+- **Sustituir `pdf-parse` por un pdf.js mantenido**: va a `cv-pdf-library-upgrade` (B2-01), con su spike, su medición
+  de tamaño y su paridad con CV reales.
 - Un motivo nuevo en `/mi-cv` (Q2 quedó en reescribir el texto existente, D13).
 - Aislar a nivel de contenedor (`mem_limit`, servicio aparte) (Q5, alternativas de D1).
 - Cortar la red del proceso que lee (no hay mecanismo en Node 22; riesgo aceptado R8, Q7).
+- Impedir que el hijo mande señales al worker: comparten usuario (D7, R8).
 - OCR, antivirus o re-extracción de CV ya leídos.
 
 ## Decisions
@@ -76,14 +88,35 @@ de este design; solo cambia el transporte.
 ```
 spawn(process.execPath, [
   '--permission',
-  '--allow-fs-read=<ruta absoluta de cv-extract-child.js>',
-  '--allow-fs-read=<raíz de node_modules del worker>',      // lo exacto lo fija el spike (8.2); una ruta por flag
+  '--allow-fs-read=/app/cv-extract-child.js',   // una ruta por flag, cada una pasada por fs.realpathSync.native
+  '--allow-fs-read=/app/node_modules',
+  '--allow-fs-read=/app/package.json',          // solo si la 3.5 demuestra que hace falta
   '--max-old-space-size=256', '--max-semi-space-size=16',
   '--disallow-code-generation-from-strings',
-  '<ruta absoluta de cv-extract-child.js>',
+  '/app/cv-extract-child.js',
 ], { env: {}, stdio: ['pipe', 'ignore', 'ignore', 'pipe'], detached: false })
 ```
 
+- **La lista de `--allow-fs-read` está fijada (N2)** para las bibliotecas de hoy (`pdf-parse` 1.1.4 y `mammoth`), con
+  la imagen tal como la deja `docker/worker.Dockerfile` (`WORKDIR /app`, el `dist/apps/worker` copiado ahí):
+  1. `/app/cv-extract-child.js`, el script del hijo;
+  2. `/app/node_modules`, la raíz desde la que el hijo resuelve sus bibliotecas (con pnpm, los enlaces de
+     `node_modules/<paquete>` apuntan a `node_modules/.pnpm/…`, dentro de la misma raíz);
+  3. `/app/package.json`, **solo si hace falta**: Node lo consulta para saber el tipo de módulo del script. La tarea 3.5
+     lo decide con una prueba: si la sonda pasa sin esa entrada, no entra.
+
+  Nada más. Fuera de la imagen (desarrollo y tests) la lista se calcula con **la misma regla** a partir del directorio
+  del script: el script, la raíz de `node_modules` donde se resuelven `pdf-parse` y `mammoth`, y el `package.json`
+  junto al script si la 3.5 lo exige. El spec dice «las rutas de la lista fijada en el design»: es esta.
+- **Rutas reales (N3).** `child-command.ts` pasa cada ruta por `fs.realpathSync.native` antes de construir el flag. El
+  modelo de permisos compara contra la ruta resuelta; una ruta con un enlace simbólico (pnpm, un `dist/` enlazado en
+  Windows, `os.tmpdir()` en macOS) daría `ERR_ACCESS_DENIED` donde no se espera, o permitiría lo que no se quiere. Test
+  «allow-fs-read paths are real paths» (1.2).
+- **API de escritura del canal (N11).** El hijo escribe en el descriptor 3 con `new net.Socket({ fd: 3, readable:
+  false })` y `socket.write(línea + '\n', cb)`, y **espera al callback**; no usa `fs.writeSync(3, …)`, que en un pipe no
+  bloqueante falla con `EAGAIN` en escrituras grandes y cuyo comportamiento en Windows no está probado. El padre lee el
+  descriptor 3 como `stdio[3]` (un `Readable`). La 1.3 empieza por una prueba de ida y vuelta de este canal con un hijo
+  mínimo, en Windows y en Linux, con una línea de 6 MB; si falla en alguna de las dos, vuelve al debate antes de seguir.
 - **`env: {}`**: el hijo arranca sin ninguna variable. Comprobado el 2026-10-28 en `node:22.23.3-alpine`:
   `Object.keys(process.env)` vale `[]` y, por ser `spawn` y no `fork`, ni siquiera llevan `NODE_CHANNEL_FD`, así que su
   `/proc/self/environ` queda vacío. En Windows, libuv añade una decena de variables de sistema (`SYSTEMROOT`, `PATH`,
@@ -100,8 +133,9 @@ spawn(process.execPath, [
   - sin `--allow-fs-write`, `--allow-child-process`, `--allow-worker`, `--allow-addons` ni `--allow-wasi`: escribir,
     lanzar procesos, crear un `Worker` anidado y cargar código nativo dan `ERR_ACCESS_DENIED`; `process.binding()`
     también;
-  - `--disallow-code-generation-from-strings`: `eval` y `new Function` lanzan `EvalError`. Es la segunda llave de
-    `isEvalSupported: false` (D3).
+  - `--disallow-code-generation-from-strings`: `eval` y `new Function` lanzan `EvalError`. Con el pdf.js 1.10 de
+    `pdf-parse`, que compila fuentes con `new Function` cuando puede, es **la** llave contra la clase de fallo de
+    CVE-2024-4367 (D3).
 - **Límites de memoria del hijo**: `--max-old-space-size=256` y `--max-semi-space-size=16` (equivalen al
   `maxOldGenerationSizeMb: 256` / `maxYoungGenerationSizeMb: 32` de la versión con hilo). Superarlos aborta **el hijo**:
   en Linux sale por `SIGABRT` (comprobado), en Windows con código 134. Sin `--stack-size`: es un flag de V8 que, por
@@ -110,12 +144,14 @@ spawn(process.execPath, [
 - **Salida estándar y de errores a `ignore`**: lo que el hijo escriba no llega a ningún sitio. pdf.js escribe avisos por
   consola, y un aviso puede llevar trozos del documento.
 - **Proceso nuevo por CV, sin pool.** pdf.js guarda cachés globales (fuentes, CMaps, objetos) y un proceso reutilizado
-  arrastraría estado de una persona a otra. El arranque (Node + bibliotecas) se mide en el spike (8.1); es irrelevante
-  para un CV que se lee una vez.
+  arrastraría estado de una persona a otra. El arranque (Node + bibliotecas) tiene criterio propio: **p95 ≤ 1,5 s en
+  `arm64`** (N8, R11), medido por la sonda (D11) en el runner `arm64` (7.4) y en el host de staging tras desplegar
+  (Migration Plan).
 - **Sin huérfanos en producción.** El hijo no puede lanzar procesos (sin `--allow-child-process`), así que matar al hijo
   mata todo. Si el worker muere, el contenedor muere con él (PID 1: el kernel mata el resto del espacio de PID). En el
   cierre ordenado, el adaptador mata a los hijos vivos (`onApplicationShutdown`). En desarrollo, un `nx serve` matado con
   `SIGKILL` podría dejar un hijo en bucle hasta que alguien lo mate (R10).
+- **El worker arranca con `--disable-sigusr1` (N1).** Ver D7.
 
 **Por qué no el canal IPC de `fork`.** Comprobado el 2026-10-28 en Alpine: si el hijo escribe una línea que no es JSON
 directamente en el descriptor del canal (`fs.writeSync(3, …)`), el padre lanza un `SyntaxError` **no capturado** desde
@@ -153,61 +189,39 @@ inválida es un desenlace, nunca una excepción.
 *Alternativa descartada:* quitar el `Promise.race` del caso de uso. Ahorra un temporizador y deja el job colgado ante
 cualquier defecto futuro del adaptador; el coste de mantenerlo es una línea.
 
-### D3. PDF: pdf.js mantenido (`pdfjs-dist`, build `legacy`), versión exacta, confirmado por spike **al final**
+### D3. PDF: `pdf-parse` 1.1.4 se queda, dentro del hijo; la sustitución va a `cv-pdf-library-upgrade` (B2-01)
 
-**Recomendación:** `pdfjs-dist` de Mozilla (Apache-2.0), build `legacy/build/pdf.mjs` (la indicada para Node), fijado
-a **versión exacta** (sin `^`), cargado solo dentro del hijo, con:
+**Decisión de este change (B2-01, 2026-10-28).** El PDF lo sigue leyendo `pdf-parse` 1.1.4 (pdf.js 1.10.100 embebido),
+pero **dentro del proceso hijo** de D1 y detrás de una interfaz interna `PdfTextSource` (un fichero), que es la costura
+por la que el change posterior enchufará la biblioteca nueva sin tocar el runner. Lo que cierra este change es la
+**disponibilidad** (el event loop, el plazo, el `pending` eterno) y los **secretos** (el hijo no ve el entorno ni el
+disco del worker); la **superficie** del parser de 2017 la cierra `cv-pdf-library-upgrade`.
 
-- `isEvalSupported: false` (cierra la clase de fallo de CVE-2024-4367, ejecución de código vía `FontMatrix` con `eval`
-  activo; no consta que la extracción de texto de pdf.js 1.10 la alcance, pero esa versión está entre las afectadas y
-  sin corrección posible), reforzado por `--disallow-code-generation-from-strings` (D1);
-- `disableFontFace: true`, `useSystemFonts: false`, `enableXfa: false`, `verbosity` en errores y **sin URL remota** (los
-  datos van en memoria);
-- **sin canvas y sin `Worker` anidado**: `@napi-rs/canvas` excluido de la instalación y el «worker falso» de pdf.js
-  corriendo dentro del propio hijo (el modelo de permisos deniega crear un `Worker`; el spike lo confirma);
-- `cMapUrl`/`standardFontDataUrl` apuntando a los directorios del propio paquete, que entran en `--allow-fs-read`;
-- la unión de líneas que hacía `pdf-parse` (salto de línea cuando cambia la coordenada Y del elemento), para que el
-  texto guardado conserve su forma;
-- `disableNormalization`: **decisión explícita** del spike (8.4), con el resultado de la medición de paridad: `true` si
-  la normalización Unicode de pdf.js empeora el recall frente a `pdf-parse`, `false` si lo mejora o lo deja igual;
-- **tope de páginas** y de texto crudo (D5).
+- La carga de `pdf-parse` en el hijo es un `require` de literal de `pdf-parse/lib/pdf-parse.js` (como hoy, para saltar
+  el código de depuración de su `index.js`), de modo que webpack y el generador de `package.json` de Nx la vean.
+- La evaluación de código queda cortada por `--disallow-code-generation-from-strings` (D1): si pdf.js 1.10 intenta
+  compilar una fuente con `new Function`, lanza `EvalError`; según cómo lo trate pdf.js, sigue por su camino
+  interpretado o la lectura acaba en `parse_error`. Las dos salidas son aceptables; la 3.4 comprueba que el fixture de
+  texto se lee **con** el flag puesto.
+- Topes (D5): el de páginas con la opción `max` de `pdf-parse`; el de texto crudo, con un `pagerender` propio que deja
+  de pedir `getTextContent` al llegar a 1.000.000 de caracteres. La unión de líneas por coordenada Y es la de
+  `pdf-parse`, así que el texto guardado no cambia frente a hoy.
+- `withOwnBuffer` se conserva dentro del hijo: los bytes que llegan por `stdin` se juntan con `Buffer.concat`, que
+  puede devolver un búfer del *pool* con desplazamiento distinto de cero, y `pdf-parse` lo lee mal (ADR-028).
 
-| Criterio | `pdfjs-dist` (recomendado) | `unpdf` (alternativa escrita) | `pdf-parse` 2.x | poppler `pdftotext` | `mupdf` (WASM) | `pdf-parse` 1.1.4 aislado |
-|---|---|---|---|---|---|---|
-| Mantenimiento | Mozilla, publicaciones frecuentes | UnJS; reempaqueta pdf.js con retraso | mantenido | distro | Artifex | **sin correcciones desde 2017** |
-| `arm64` | JS puro | JS puro | arrastra `@napi-rs/canvas` (nativo) | binario de Alpine | WASM | JS puro |
-| Tamaño | decenas de MB sin podar; su `@napi-rs/canvas` opcional hay que excluirlo | pequeño, sin dependencias | ~25 MB nativos (ADR-028 lo descartó) | ~10-20 MB con dependencias | ~10 MB | ya está |
-| Licencia | Apache-2.0 | MIT | Apache-2.0 | GPL-2 (binario distribuido en una imagen pública de GHCR) | **AGPL-3.0** | MIT/Apache |
-| Calidad | la de pdf.js actual | la misma que su pdf.js | la de pdf.js | buena, con `-layout` | buena | la de 2017 |
-| Integración | ESM; desde un bundle `commonjs` exige `import()` dinámico (R2) | ESM y CJS | ESM | proceso hijo; sin API | WASM | ya integrada |
+**Trasladado a `cv-pdf-library-upgrade`** (no se ejecuta aquí): el spike de `pdfjs-dist` (build `legacy`, versión
+exacta, `isEvalSupported: false`, sin canvas ni `Worker` anidado, sin fuentes del sistema ni URL remota) con `unpdf`
+como alternativa escrita y criterio de parada de 4 h por biblioteca; la medición de tamaño de la imagen tras la poda
+(antigua Q3); las licencias; la paridad sintética y con PDF de productores reales y CV reales del owner (antiguas
+8.4-8.5, PO-03, PO-08); `disableNormalization`; la vía rápida de Renovate para los parsers (antigua Q6); y los riesgos
+de tamaño, ESM desde un bundle `commonjs` y diferencias de texto (antiguas R1, R2, R6). La tabla comparativa de la
+iteración 1 (`pdfjs-dist`, `unpdf`, `pdf-parse` 2.x, poppler, `mupdf`) queda como antecedente de ese change en el
+historial de este design (commit `5f802d4`).
 
-- `mupdf`: descartado por AGPL en un proyecto MIT con imagen pública.
-- `pdftotext`: descartado por traer código C que parsea entradas hostiles (memoria no segura), un binario GPL dentro de
-  la imagen publicada y correcciones que dependen de reconstruir la imagen sobre Alpine.
-- `pdf-parse` 2.x: descartado por la dependencia nativa, igual que en ADR-028.
-- `pdf-parse` 1.1.4 dentro del hijo: **resuelve la disponibilidad y los secretos, no la superficie**. Es el estado
-  intermedio del change (PO-04: el aislamiento va primero y la biblioteca al final) y la salida si el spike falla en las
-  dos candidatas; en ese caso el change sigue y la sustitución vuelve al owner como pregunta nueva.
-
-**Orden (PO-04).** El aislamiento (grupos 1-7 de `tasks.md`) se construye y se prueba **con las bibliotecas de hoy
-dentro del hijo**, detrás de una interfaz interna `PdfTextSource` (un fichero); el spike y la sustitución son el grupo
-8. Así lo que cierra el riesgo de disponibilidad y de secretos no espera a la biblioteca (ver la condición de Q1).
-
-**Spike (tareas 8.1-8.6), con criterio de parada escrito.** `pdfjs-dist` se adopta si:
-
-- (a) carga y extrae **dentro del hijo con los flags de D1**, desde el bundle de webpack y desde la imagen
-  (`node dist/apps/worker/cv-extract-probe.js`), sin canvas y sin `Worker` anidado;
-- (b) el incremento de la imagen del worker es ≤ 30 MB (Q3), **medido después de la poda** (canvas excluido y, si hace
-  falta, los builds que no se usan quitados en `docker/worker.Dockerfile`): no se descarta por (b) sin haber podado;
-- (c) las licencias de su árbol son permisivas;
-- (d) la paridad pasa: igualdad exacta sobre los fixtures sintéticos, y sobre PDF de productores reales (H7) recall de
-  tokens ≥ 0,98 frente a `pdf-parse` y el mismo orden de bloques; una caída de 5 % o más en cualquiera de los dos
-  **vuelve al debate**.
-
-Un fallo de (c) o de (d) se trata como uno de (a) o (b): se prueba `unpdf` con el mismo criterio. **Tope: 4 h por
-biblioteca** (H5). Si fallan las dos, el change se cierra con `pdf-parse` 1.1.4 dentro del hijo y una pregunta nueva
-al owner. La medición de paridad se **repite con la candidata adoptada** si no es la que se midió primero (PO-08). El
-resultado se escribe en «D3 · Estado» antes de la tarea 8.7.
+*Alternativa descartada en la iteración 2:* hacer el spike y la sustitución aquí, al final del change (PO-04). Ata la
+fusión del aislamiento, que cierra el riesgo de disponibilidad y de secretos antes de invitar en 35b, a una medición
+con CV reales que hace el owner en su máquina y a un tope de 8 h de spike; y mete en la ventana de Q1 un cambio de
+dependencia que nadie necesita para esa ventana (B2-01).
 
 ### D4. DOCX: `mammoth` se queda, detrás de un inflado con tope propio
 
@@ -293,10 +307,20 @@ del archivo** (H2: también un mensaje inválido o una salida sin resultado).
 - **Oyentes explícitos** (H3): `error` del proceso, `error` de `stdin` (un `EPIPE` al escribir los bytes si el hijo ya
   murió) y del descriptor 3, `close` del descriptor 3 y `exit` del proceso. Cada uno resuelve **una sola vez** la
   promesa de la lectura; los que llegan después se ignoran. Ninguno lanza fuera del adaptador.
-- **El marco**: el padre acumula el descriptor 3 por líneas, con tope de 8 MiB (1.000.000 de caracteres en JSON caben
-  con margen); cada línea se parsea con `JSON.parse` dentro de `try` y se valida con `safeParse` de zod. **El
-  `ZodError` y el texto de la línea nunca se registran ni se adjuntan**: de una línea inválida solo queda la causa
-  `protocol`.
+- **El marco (N4)**: el padre acumula el descriptor 3 como `Buffer` y cuenta **bytes**, no caracteres, con tope de
+  8 MiB por línea y en total; solo decodifica en UTF-8 una línea ya completa (hasta el `\n`), así que un carácter de
+  varios bytes partido entre dos trozos no cuenta mal ni se corrompe. Cada línea se parsea con `JSON.parse` dentro de
+  `try` y se valida con `safeParse` de zod. **El `ZodError` y el texto de la línea nunca se registran ni se
+  adjuntan**: de una línea inválida solo queda la causa `protocol`.
+- **El tope cabe en el peor caso**: el hijo corta el texto con `slice(0, 1_000_000)` **antes** de serializar. En JSON,
+  la peor unidad UTF-16 ocupa 6 bytes (un carácter de control o un sustituto suelto se escriben `\uXXXX`), así que el
+  peor texto ocupa 6.000.000 de bytes más el sobre, por debajo de 8 MiB (8.388.608). Test «a 1M-char worst-case
+  escaped result arrives intact», en Linux y en Windows (1.4c).
+- **El hijo no sale por su cuenta**: tras escribir su resultado espera; el padre, cuando tiene la línea completa, lo
+  mata con `SIGKILL` y resuelve tras el `exit`. Así una salida del hijo nunca trunca un resultado a medio escribir, y
+  un `exit` después de un resultado completo se ignora (la promesa ya se resolvió).
+- **Un `ready` o un `boot_error` después de `ready` es `protocol`** de contenido (N5): el protocolo solo admite, tras
+  `ready`, un `text` o un `failed`. Test «boot_error or ready after ready is unreadable protocol» (1.4b).
 - **`CvExtractionMachineryError`**: mensaje **fijo** `cv extraction machinery failure: <causa>` (causa de la lista
   cerrada), **sin `cause`** ni propiedades con datos del hijo, salvo `code` validado con `^[A-Z0-9_]{1,64}$` en
   `boot_error`. Es lo que BullMQ guarda en `job.failedReason`, así que ese campo tampoco puede llevar nada del CV; un
@@ -306,19 +330,41 @@ del archivo** (H2: también un mensaje inválido o una salida sin resultado).
   antes de publicar.
 - El puerto no cambia: `unreadable_file` sigue sin causa. La causa vive en el contador y en el registro (D9).
 
-### D7. El hijo no ve secretos, no lee el disco y no habla por su cuenta
+### D7. El hijo no ve secretos, no lee el disco, no habla por su cuenta y no abre el depurador del worker
 
 Lo que el mecanismo **da**, y nada más (los SHALL del spec prometen exactamente esto):
 
 - **Sin variables de entorno del worker** (`env: {}`), y sin forma de leer las del worker por `/proc`: el modelo de
-  permisos deniega leer cualquier fichero fuera del script del hijo y de `node_modules` (D1).
+  permisos deniega leer cualquier fichero fuera de las rutas de la lista fijada en D1.
 - **Sin escribir en disco, sin lanzar procesos ni hilos, sin código nativo, sin `eval`.**
 - **Sin salida visible**: `stdout` y `stderr` a `ignore`.
 - **Ningún mensaje de error del hijo se registra**: solo su causa de una lista cerrada (D9) y, en `boot_error`, el
   `code` validado (`ERR_MODULE_NOT_FOUND`, …), nunca su `message`.
+- **Una señal del hijo no abre el depurador del worker (N1).** El modelo de permisos **no** impide `process.kill`: el
+  hijo corre con el mismo usuario que el worker y puede mandarle señales. Sin más, un `SIGUSR1` al padre arranca el
+  inspector del worker en `127.0.0.1:9229`, y el hijo —que tiene red (R8)— podría conectarse y ejecutar código **en
+  el worker**, con su entorno y sus credenciales: todo D1 deshecho por una señal. Comprobado el 2026-10-28 en
+  `node:22.23.2-alpine` (la versión fijada en la imagen) y `node:22.23.3-alpine`: un hijo con `--permission` y `env: {}`
+  manda `SIGUSR1` a su padre y el padre abre el 9229; con el padre lanzado con `--disable-sigusr1`, el padre sigue vivo
+  y el 9229 queda cerrado (`ECONNREFUSED`). El flag existe desde Node 22.14.0 y es estable desde 22.20.0 (documentación
+  de la CLI de Node), así que está en la 22.23.2 del `.nvmrc` y de la imagen. Por eso:
+  - `docker/worker.Dockerfile`: `CMD ["node", "--disable-sigusr1", "main.js"]`;
+  - `apps/worker/project.json`, `serve`: `"runtimeArgs": ["--disable-sigusr1"]` (la opción del ejecutor `@nx/js:node`
+    que llega al `execArgv` del worker);
+  - tarea 1.9 (test en Linux con un padre real) y 1.10 (guardia estática de las dos líneas de arranque).
 
-Lo que **no** da: **la red**. En Node 22 el modelo de permisos no restringe sockets (el flag de red llega en una línea
-posterior de Node). Ver R8 y Q7.
+  **Ojo con `nx serve`:** el ejecutor `@nx/js:node` arranca por defecto con `inspect: "inspect"`, es decir, con el
+  inspector **ya abierto** en el 9229 durante el desarrollo, y ahí `--disable-sigusr1` no cambia nada: el hijo puede
+  conectarse sin mandar señal. Solo afecta a desarrollo (los archivos los sube el autor), pero es el mismo hueco. Q8.
+
+Lo que **no** da:
+
+- **La red**. En Node 22 el modelo de permisos no restringe sockets. Ver R8 y Q7.
+- **Aislamiento de señales**: **no** se promete impedir señales entre procesos del mismo usuario. Un `SIGTERM` (o
+  `SIGINT`) del hijo al worker dispara su cierre ordenado (`enableShutdownHooks`) y el contenedor se reinicia por
+  `restart: unless-stopped`; un `SIGKILL` al PID 1 desde dentro de su espacio de PID lo ignora el kernel. Es una
+  **denegación de servicio aceptada**, acotada por D8: el job en curso se reentrega como mucho una vez y después el CV
+  queda en `failed`/`internal_error`, así que un archivo que «mata» al worker lo hace como mucho dos veces. Ver R8.
 
 ### D8. Reentregas acotadas, y un `stalled` agotado tampoco deja el CV en `pending`
 
@@ -365,13 +411,22 @@ de error del parser o del hijo, `ZodError` ni clave del objeto.
   `cv-fixtures.ts` (que ya ensamblan PDF y ZIP a mano) y `node:zlib`. Los generadores grandes trabajan **por streaming**
   (H11): la bomba de ZIP se deflacta desde un generador de trozos, sin materializar los 100 MiB en el proceso de test.
 - **El mecanismo** (D1, D2, D5, D6, D7) se prueba con scripts de hijo **escritos por el test en un directorio
-  temporal**: bucle infinito, heap creciente, `Buffer.alloc` sin fin, `process.exit(3)`, uno que nunca dice `ready`,
+  temporal**: bucle síncrono acotado más largo que el plazo, heap creciente, `Buffer.alloc` sin fin, `process.exit(3)`, uno que nunca dice `ready`,
   uno que dice `boot_error`, uno que escribe basura en el descriptor 3 antes y después de `ready`, uno que sale con 0 sin
   resultado, uno que escribe en `stdout`, uno que lee `process.env`, `/proc/<ppid>/environ` y un fichero fuera de lo
   permitido. El adaptador recibe la ruta del script y la lista de lecturas permitidas como parámetros de construcción.
 - **Los parsers reales** se prueban dentro del hijo real con archivos generados (lista y nombres en `tasks.md`, grupos 3
-  y 5). El hijo real se arranca desde el bundle (`pnpm nx build worker` en un `globalSetup` de Vitest) o con el *type
-  stripping* de Node 22.18+ sobre un script autocontenido: lo decide la tarea 3.5.
+  y 5). **El hijo real de los tests se compila aparte (N7)**: solo `cv-extract.child.ts` y lo que importa, con un
+  `tsconfig` propio (`module: commonjs`) a `tmp/cv-child-test/`, en el `globalSetup` del proyecto de Vitest de
+  aislamiento; **sin** `pnpm nx build worker`, que tarda y arrastra el bundle entero. La lista de lecturas de ese hijo
+  sale de la regla de D1 (el script compilado y la raíz de `node_modules` del workspace). Lo fija la tarea 3.5.
+- **Los specs de aislamiento no corren en paralelo ni dejan hijos (N6)**: un proyecto de Vitest propio,
+  `worker-isolation` (en `test.projects` del `vitest.config.mts` del worker), con `fileParallelism: false`, que incluye
+  `infrastructure/isolation/**/*.spec.ts` y `extractors/pathological.spec.ts` (el proyecto `worker` los excluye); un
+  `afterEach` común que mata con `SIGKILL` cualquier hijo que el runner tenga aún en su conjunto de vivos; ningún bucle
+  sin fin en los hijos de prueba: todos son **acotados** (p. ej. `while (Date.now() < fin)` con `fin` a 10 s), de modo
+  que un fallo del runner nunca deja un proceso girando en CI; y el test de heap usa un hijo con heap **inyectado** más
+  chico (`--max-old-space-size=32`) y un plazo de 30 s.
 - **Mediciones de memoria del proceso de test** (H11): la base se toma después de `global.gc()` (Vitest con
   `--expose-gc` en `execArgv` del pool de ese spec) o con el vigía inyectado; nunca una base tomada en frío.
 - **Regla para los generadores patológicos**: tamaños elegidos para que cada test dure < 5 s en CI y para que el
@@ -384,7 +439,13 @@ genera en memoria un PDF y un DOCX con las funciones de fixtures, los lee con el
 hijo con los flags de D1) y sale 0 solo si los dos devuelven texto con los caracteres esperados; imprime recuentos,
 nunca texto. `infra/ci/verify-artifact.sh` gana una sección `run --rm --no-deps worker node cv-extract-probe.js`. Es lo
 que demuestra, en la arquitectura del destino, que el bundle del hijo está en la imagen, que el modelo de permisos deja
-leer lo que el hijo necesita y que pdf.js carga (ADR-048: una imagen que construye no es una imagen que funciona).
+leer lo que el hijo necesita y que `pdf-parse` y `mammoth` cargan dentro del hijo (ADR-048: una imagen que construye no
+es una imagen que funciona).
+
+**Medición del arranque (N8).** Tras las dos lecturas comprobadas, la sonda arranca 20 hijos más hasta `ready` (y los
+mata) e imprime `boot_p50_ms=<n> boot_p95_ms=<n>`. **No** falla por el valor —un umbral de rendimiento en CI es
+ruidoso—; el criterio, **p95 ≤ 1.500 ms en `arm64`**, se comprueba leyendo esa línea en la corrida del runner `arm64`
+(7.3, 7.4) y en el host de staging tras desplegar (Migration Plan). Si no se cumple, el change vuelve al debate.
 
 ### D12. Configuración y contratos que no cambian
 
@@ -392,12 +453,12 @@ leer lo que el hijo necesita y que pdf.js carga (ADR-048: una imagen que constru
   conservan nombre, rango y valor. Cambia la semántica del plazo: ahora corta, y corre desde `ready`.
 - `CvTextExtractor`, `ExtractionAttempt`, `CvRepository`, `CvExtractionFailureReason` y los schemas de `libs/shared` no
   cambian.
-- La regla de lint de la capa de dominio cambia `pdf-parse` por `pdfjs-dist` (y `unpdf`) en su lista, y gana
+- La regla de lint de la capa de dominio conserva `pdf-parse` y `mammoth` en su lista y gana
   `node:child_process`/`child_process`: lanzar un proceso es infraestructura.
 - **El bundle del hijo no importa nada del worker** (H6): ni `@nestjs/*`, ni `pino`, ni el módulo de configuración. Un
-  test sobre el fichero construido lo fija. Su biblioteca de PDF se carga con un `import()` de **literal de cadena**
-  (para que webpack y el generador de `package.json` de Nx la vean), y `dist/apps/worker/package.json` la lista con
-  versión exacta.
+  test sobre el fichero construido lo fija. Sus bibliotecas se cargan con `require` de **literal de cadena** (para que
+  webpack y el generador de `package.json` de Nx las vean), y `dist/apps/worker/package.json` las lista con versión
+  exacta.
 
 ### D13. El texto de `unreadable_file` deja de hablar solo de la contraseña (PO-02)
 
@@ -405,76 +466,105 @@ Hoy `@@cv.status.unreadable` dice «No pudimos abrir este archivo. Si tiene cont
 y con este change ese desenlace cubre también plazos, heap y topes, que no tienen que ver con la contraseña. Se
 reescribe **solo el texto**, sin motivo nuevo ni cambios en `libs/shared` (Q2, opción (c) del debate):
 
-- ES: «No pudimos abrir este archivo. Si tiene contraseña, quítasela; si no, prueba a exportarlo de nuevo como PDF o
-  súbelo en DOCX.»
-- EN: «We could not open this file. If it has a password, remove it; otherwise, try exporting it again as a PDF or
-  upload it as a DOCX.»
+- ES: «No pudimos abrir este archivo. Si tiene contraseña, quítasela; si no, vuelve a exportarlo desde tu editor (en PDF
+  o DOCX) y súbelo otra vez.» (B2-04, 2026-10-28; sustituye al texto de la iteración 1.)
+- EN: «We could not open this file. If it has a password, remove it; otherwise, export it again from your editor (as a
+  PDF or DOCX) and upload it again.»
 
 Se edita la plantilla de `cv-card.component.html`, `messages.en.xlf` (`source` y `target`) y se regenera
 `messages.xlf` con `pnpm nx run web:extract-i18n` (ADR-050). Delta en `web/cv`, «Lista de CV guardados con su estado».
 
 ## Risks / Trade-offs
 
-- **R1 — Tamaño de la imagen.** `pdfjs-dist` sin podar pesa bastante más que `pdf-parse`. Mitigación: excluir
-  `@napi-rs/canvas`, podar antes de medir y parar en 30 MB (Q3).
-- **R2 — ESM desde un bundle `commonjs`.** El build `legacy` de pdf.js es ESM; si usa `await` de nivel superior,
-  `require(esm)` de Node 22 falla con `ERR_REQUIRE_ASYNC_MODULE` y hace falta un `import()` dinámico que el compilador
-  no reescriba. Riesgo de que «funcione en Vitest y no en la imagen»: lo cierra la sonda de D11, y el spike lo prueba
-  primero desde el bundle.
+R1, R2 y R6 (tamaño de la imagen con pdf.js nuevo, ESM desde un bundle `commonjs`, diferencias de texto con el pdf.js
+nuevo) pasaron a `cv-pdf-library-upgrade` con la partición (B2-01). Los demás conservan su número.
+
 - **R3 — Memoria entre muestras del vigía.** En 100 ms un inflado rápido puede reservar memoria antes de que el vigía
   actúe (medido: ~36 MiB de exceso con búferes de 256 MiB). El techo real es «+512 MiB y lo que quepa en 100 ms», solo
   para el hijo. El `mem_limit` del contenedor sería la segunda barrera (Q5).
 - **R4 — Memoria total con concurrencia > 1.** Ya no hay daño colateral (cada hijo tiene su vigía), pero N lecturas a la
   vez suman N techos. Aceptado con el valor por defecto en 1, el `warn` de D5 y el RUNBOOK (Q4).
 - **R5 — Correlación de registros por tiempo** (D9). Aceptada con concurrencia 1.
-- **R6 — Diferencias de texto con el pdf.js nuevo.** Puede leer distinto que el de 2017. La paridad se mide sobre
-  fixtures sintéticos (igualdad exacta) y sobre PDF de productores reales (recall ≥ 0,98, orden de bloques; los CV
-  reales los pasa el owner en su máquina, sin subirlos). Los CV ya leídos no se re-extraen, así que dos CV iguales
-  subidos antes y después pueden diferir.
-- **R7 — Latencia de parches.** Renovate solo abre PR aprobados desde el Dependency Dashboard (PR #88), con
-  `minimumReleaseAge` de 7 días: una corrección de seguridad de pdf.js puede tardar. Q6.
-- **R8 — El hijo tiene red.** En Node 22 el modelo de permisos no restringe sockets, y el hijo comparte la red del
-  contenedor del worker, donde MongoDB y Redis responden **sin autenticación** (`docker-compose.prod.yml`, red interna)
-  y hay salida a Internet (el enriquecimiento la necesita). Un parser comprometido con ejecución de código podría
-  conectarse a ellos. **Riesgo aceptado**, porque:
-  - exige ejecución de código en pdf.js o `mammoth` con `eval` desactivado por partida doble, sin código nativo, sin
-    `process.binding`, sin lanzar procesos y sin leer el disco: una cadena de fallos, no uno;
-  - el hijo no tiene **ninguna credencial** (ni S3, ni IA, ni la URI con usuario, que hoy no existe);
-  - hoy es estrictamente peor: el parser corre en el worker con todo lo anterior y además con las credenciales;
-  - la mitigación de fondo es de otro change (Q7): el flag de red del modelo de permisos al subir de línea de Node, o
-    autenticación en Mongo y Redis, o el contenedor de extracción sin red (alternativa de D1).
+- **R7 — El parser de PDF sigue sin correcciones.** `pdf-parse` 1.1.4 trae pdf.js de 2017 y nadie lo va a parchear. Este
+  change acota lo que un fallo suyo puede hacer (sin secretos, sin disco, sin `eval`, sin procesos, con plazo y topes),
+  no lo elimina. La sustitución, y la latencia con que Renovate traería las correcciones de la biblioteca nueva (antigua
+  Q6), son de `cv-pdf-library-upgrade`, que entra después de 35c.
+- **R8 — El hijo tiene red y puede mandar señales al worker.**
+  - **Red.** En Node 22 el modelo de permisos no restringe sockets, y el hijo comparte la red del contenedor del worker,
+    donde MongoDB y Redis responden **sin autenticación** (`docker-compose.prod.yml`, red interna) y hay salida a
+    Internet (el enriquecimiento la necesita). Un parser comprometido con ejecución de código podría conectarse a ellos.
+    **Estado del flag de red (B2-05, comprobado el 2026-10-28 contra la documentación de la CLI y el índice de
+    versiones de nodejs.org):** `--allow-net` llegó en **Node 25.0.0** (2025-10-15), una línea impar que nunca es LTS; en
+    la documentación de la 26 sigue en *Stability 1.1 — Active development*. Con el modelo de permisos activo, desde la
+    25 la red queda **denegada por defecto** salvo `--allow-net`: en esa línea, el hijo de D1 se quedaría sin red sin
+    añadir ningún flag. La primera línea **LTS** que lo trae es **Node 26 («Lithium»)**, que pasó a LTS **hoy,
+    2026-10-28, con la 26.13.0**. La línea 24 («Krypton», LTS) no lo trae. El proyecto está en la 22 («Jod», LTS).
+  - **Señales.** El modelo de permisos no impide `process.kill`: el hijo puede mandar señales al worker, que corre con
+    el mismo usuario. Lo peligroso, `SIGUSR1` (abre el inspector), queda cerrado con `--disable-sigusr1` (D7, N1).
+    **No** se promete impedir el resto: un `SIGTERM` o `SIGINT` del hijo provoca el cierre ordenado del worker y su
+    reinicio por `restart: unless-stopped`. Es una **denegación de servicio aceptada, acotada por D8**: como mucho dos
+    aperturas del mismo archivo y después el CV queda en `failed`/`internal_error`.
+  - **Riesgo aceptado**, porque:
+    - exige ejecución de código en pdf.js o `mammoth` con `eval` desactivado, sin código nativo, sin `process.binding`,
+      sin lanzar procesos y sin leer el disco: una cadena de fallos, no uno;
+    - el hijo no tiene **ninguna credencial** (ni S3, ni IA, ni la URI con usuario, que hoy no existe) y no puede abrir
+      el depurador del worker;
+    - hoy es estrictamente peor: el parser corre en el worker con todo lo anterior y además con las credenciales;
+    - la mitigación de fondo es de otro change (Q7).
 - **R9 — Solape con la fila 35 en `verify-artifact.sh` e `infra/README.md`.** Una sección nueva en el script, y la
   misma orden en el `up` documentado de `infra/README.md`, porque `check-docs-stack-up` exige que los dos tengan las
   mismas órdenes `run` en el mismo orden (hoy 3: `provision`, `verify`, `s3-probe.js`). 35c edita otro tramo del script
   (`--wait-timeout`); `infra/README.md` lo tocan 35b y 35c, así que el conflicto, si aparece, es de una línea. Si el
-  owner quiere cero solape, D11 queda en su entrada de build y las dos líneas se mueven a 35c (Q1 (c)). La poda de
-  D3 (b), si hace falta, toca `docker/worker.Dockerfile`, que la fila 35 no edita.
+  owner quiere cero solape, D11 queda en su entrada de build y las dos líneas se mueven a 35c (Q1 (c)). La línea del
+  `CMD` de `docker/worker.Dockerfile` (N1) no solapa: la fila 35 no edita ese fichero.
 - **R10 — Hijos huérfanos en desarrollo.** Un `nx serve` del worker matado con `SIGKILL` deja vivo un hijo que estuviera
   en un bucle, hasta que se mate a mano. En la imagen no pasa (D1, PID 1). Aceptado; el RUNBOOK lo menciona.
-- **R11 — Coste por lectura.** Un proceso Node por CV (~40 MB de RSS, el arranque de Node y de las bibliotecas). Con un
-  CV que se lee una vez y concurrencia 1, aceptado.
+- **R11 — Coste de arranque por lectura.** Un proceso Node por CV: ~40 MB de RSS y el arranque de Node, `pdf-parse` y
+  `mammoth` hasta `ready`. El criterio es **p95 ≤ 1,5 s en `arm64`** (N8): la sonda imprime `boot_p95_ms` (D11) y se lee
+  en el runner `arm64` antes de fusionar (7.3, 7.4) y en el host de staging tras desplegar (Migration Plan). Un p95 por
+  encima vuelve al debate antes de fusionar o, si aparece en staging, se anota como hallazgo de la medición de 35b. Con
+  concurrencia 1 y un CV que se lee una vez, el coste en sí se acepta; lo que se mide es que no se acerque al plazo de
+  arranque de 5 s.
+- **R12 — Volcados de memoria con el CV en claro (N10).** Cuando el hijo agota su heap, V8 aborta con `SIGABRT`; si el
+  contenedor tiene `ulimit -c` distinto de 0 y el `core_pattern` del host escribe volcados, el volcado del hijo lleva
+  en claro los bytes y el texto del CV que estaba leyendo, fuera de la base y del almacén cifrado. **Comprobación:** en
+  la 2.3, `ulimit -c` dentro del contenedor del worker con la imagen construida en local; en el paso de despliegue
+  (Migration Plan), `cat /proc/sys/kernel/core_pattern` en el host de staging y el mismo `ulimit -c` en el contenedor.
+  Los valores se anotan en el RUNBOOK («Operar los CV») y en «Estado de las mediciones». **Si hay volcados posibles**,
+  la corrección (`ulimits: { core: 0 }` en el servicio `worker` del compose) toca el compose de producción: le
+  corresponde a 35b o al change de Q5, no a este. **Pendiente** que se anota aquí con el valor medido, sin editar
+  `staging-host`.
 
 ## Migration Plan
 
 1. **Sin migración de datos.** Ningún documento cambia de forma. Los CV en `pending` al desplegar los lee el código
    nuevo; los ya leídos o fallidos se quedan como están.
-2. **Despliegue**: imágenes nuevas del worker y del SPA (el texto de D13); `api` no cambia. No hay variables nuevas que
-   poner en el host.
-3. **Comprobación tras desplegar**: subir un CV PDF y uno DOCX con la cuenta `+e2e` (o la e2e del lote 1) y ver
-   `linkvault_cv_extractions_total{outcome="text"}` subir en `/metrics` desde la red interna.
+2. **Despliegue**: imágenes nuevas del worker (con `--disable-sigusr1` en su `CMD`) y del SPA (el texto de D13); `api`
+   no cambia. No hay variables nuevas que poner en el host.
+3. **Comprobación tras desplegar**:
+   - subir un CV PDF y uno DOCX con la cuenta `+e2e` (o la e2e del lote 1) y ver
+     `linkvault_cv_extractions_total{outcome="text"}` subir en `/metrics` desde la red interna;
+   - la línea de órdenes del PID 1 del contenedor `worker` (`/proc/1/cmdline`) contiene `--disable-sigusr1`;
+   - `node cv-extract-probe.js` dentro del contenedor `worker` del host (`run --rm --no-deps`): `boot_p95_ms` ≤ 1.500
+     (N8, R11), anotado en «Estado de las mediciones»;
+   - `core_pattern` del host y `ulimit -c` del contenedor, anotados en el RUNBOOK (R12).
 4. **Vuelta atrás**: revertir el PR y redesplegar la imagen anterior (procedimiento de 35b). La fusión del revert (y la de
    su vuelta) sigue las reglas de la clase 3 de Q1; dentro de un periodo prohibido, se vuelve desde el host sin tocar
-   `main` y el revert espera. Los CV leídos con el código
-   nuevo se quedan; un CV en `pending` en el momento del cambio lo lee la imagen anterior.
+   `main` y el revert espera. Los CV leídos con el código nuevo se quedan; un CV en `pending` en el momento del cambio lo
+   lee la imagen anterior.
 
 ## Costo estimado
 
-51 tareas de menos de una hora (`tasks.md`, 0.1-11.5), más la parte de la medición de paridad que hace el owner con sus CV
-(8.5). El paso de hilo a proceso hijo añade unas **3-4 h** sobre la versión anterior (estimación de `critic`,
-iteración 1): construcción de la línea de órdenes con permisos y su test (1.2), el marco del canal propio (1.1, 1.4), el
-vigía sobre `/proc/<pid>/statm` (1.6) y las pruebas de permisos (1.7).
+52 tareas de menos de una hora (`tasks.md`, 0.1-11.5). Respecto de la iteración 1 (51): salen las 7 del grupo 8
+(spike y sustitución de pdf.js, con la 8.5 del owner) hacia `cv-pdf-library-upgrade`; entran el proyecto de Vitest de
+aislamiento (1.0, N6), la prueba y la guardia de `--disable-sigusr1` (1.9 y 1.10, N1) y la lectura del arranque en
+`arm64` (7.4, N8); y se parten la 1.4 en tres, la 3.1 en dos y la 11.2 en dos (T1). El paso de hilo a proceso hijo sigue
+costando **3-4 h** sobre la versión con hilo (estimación de `critic`, iteración 1).
 
 ## Open Questions
+
+Q3 (umbral de crecimiento de la imagen) y Q6 (alertas de Renovate para los parsers) pasaron a
+`cv-pdf-library-upgrade` con la partición (B2-01). Las demás conservan su número.
 
 - **Q1 [bloqueante para `/opsx:apply`] — ¿Excepción a la precedencia de la fila 35, y para qué fusiones?**
   Reglas vigentes que acotan cualquier fusión a `main` mientras 35b esté abierta:
@@ -491,7 +581,7 @@ vigía sobre `/proc/<pid>/statm` (1.6) y las pruebas de permisos (1.7).
      medición empieza con ella. La precondición de la 10.7 (`e2e-remote` en verde sobre el commit desplegado) se corre
      sobre el commit que deja esta fusión.
   2. **El PR de archivo** (anotaciones posteriores a la fusión: número del PR, hash del merge, ADR-058 a Aceptado,
-     D3 · Estado, deltas aplicados). Se fusiona **después de la 10.7 de 35b**, y con las reglas de la clase 3.
+     «Estado de las mediciones», deltas aplicados). Se fusiona **después de la 10.7 de 35b**, y con las reglas de la clase 3.
   3. **Las fusiones de vuelta atrás**, si hacen falta, y la vuelta de esas vueltas atrás. Reglas de las clases 2 y 3:
      **nunca** entre el PR-2 de 35b y su 11.6, **nunca** durante su 9.1-9.4, **nunca** los días 7 y 14 de la medición,
      **nunca** el día de una corrida `e2e-remote`. Si staging necesita volver atrás dentro de un periodo prohibido, se
@@ -527,30 +617,38 @@ vigía sobre `/proc/<pid>/statm` (1.6) y las pruebas de permisos (1.7).
   ventana». Nada de la clase 2 se escribe en `main` justo después de fusionar el PR del change.
 - **Q2 [cerrada en el debate, iteración 1] — Texto de «el archivo era demasiado complejo».** Opciones: (a) no tocar
   nada; (b) motivo nuevo en `libs/shared` + textos + SPA; (c) reescribir solo el texto existente de `unreadable_file`.
-  **Decisión del debate (PO-02): (c)**, en D13, sujeta a la aprobación humana del change. (b) queda para cuando 35b
-  muestre cuántas lecturas acaban con `cause="timeout"`.
-- **Q3 [no bloqueante] — Umbral de crecimiento de la imagen del worker.** Opciones: (a) ≤ 30 MB sin preguntar, más
-  vuelve al owner; (b) cualquier tamaño; (c) ≤ 10 MB, que probablemente obliga a `unpdf`. **Recomendación: (a).**
+  **Decisión del debate (PO-02): (c)**, en D13, sujeta a la aprobación humana del change; el texto lo fijó la
+  iteración 2 (B2-04). (b) queda para cuando 35b muestre cuántas lecturas acaban con `cause="timeout"`.
 - **Q4 [no bloqueante] — ¿Fijar `CV_EXTRACT_CONCURRENCY` a 1?** Con el vigía por hijo ya no hay daño colateral; queda
   la suma de memoria (R4). Opciones: (a) dejar el rango 1-4 con el `warn` de D5 y el RUNBOOK; (b) bajar el máximo a 1.
   **Recomendación: (a)**: el rango es un contrato de configuración vigilado y el valor real es 1.
 - **Q5 [no bloqueante] — `mem_limit` del contenedor del worker.** Segunda barrera para R3. Toca el compose de
-  producción. **Recomendación:** después de la fila 35, en un change propio con medición de memoria en staging.
-- **Q6 [no bloqueante] — ¿Alertas de vulnerabilidad de Renovate sin aprobación del Dashboard para los parsers?**
-  `vulnerabilityAlerts` con `dependencyDashboardApproval: false` para `pdfjs-dist`, `mammoth`, `@xmldom/xmldom` y
-  `jszip`. Contradice en parte la decisión del PR #88, así que es del owner. **Recomendación:** sí, solo para alertas de
-  seguridad de esos cuatro paquetes.
+  producción. **Recomendación:** después de la fila 35, en un change propio con medición de memoria en staging; ese
+  change es también candidato a llevar `ulimits: { core: 0 }` si la comprobación de R12 encuentra volcados posibles.
 - **Q7 [no bloqueante] — ¿Cómo se corta la red del hijo, y cuándo?** (R8). Opciones: (a) aceptar el riesgo hasta subir
-  de línea de Node, y entonces añadir el flag de red del modelo de permisos en el change de la subida; (b) un change
-  propio, después de la fila 35, que ponga autenticación a MongoDB y Redis (toca compose y secretos); (c) el contenedor
-  de extracción sin red (alternativa de D1); (d) aceptar el riesgo sin plazo. **Recomendación: (a) y (b)**: (a) es
-  gratis cuando llegue, y (b) cierra además el mismo hueco para cualquier otro fallo del worker.
+  de línea de Node, y en el change de la subida comprobar que el modelo de permisos deja al hijo sin red (sin
+  `--allow-net`); (b) un change propio, después de la fila 35, que ponga autenticación a MongoDB y Redis (toca compose
+  y secretos); (c) el contenedor de extracción sin red (alternativa de D1); (d) aceptar el riesgo sin plazo.
+  **Dato para (a) (B2-05, 2026-10-28):** el flag de red es de Node 25.0.0 y la primera línea LTS que lo trae es la 26,
+  LTS desde hoy (26.13.0) y todavía en *Stability 1.1* (R8); subir de la 22 a la 26 es un change propio, no una
+  actualización menor.
+  **Voto de la iteración 2 (B2-05): (a) sí y (b) sí —(b) como fila propia del manifiesto, después de la 35—; (c) no y
+  (d) no.** La decisión sigue siendo del owner; la fila de (b) no se crea hasta que la apruebe.
+- **Q8 [no bloqueante, nueva en la iteración 2] — El inspector de `nx serve` del worker.** El ejecutor `@nx/js:node`
+  arranca por defecto con `inspect: "inspect"`: en desarrollo el worker escucha en `127.0.0.1:9229` desde el arranque,
+  y un hijo con red puede conectarse sin mandar ninguna señal (D7). Solo afecta a desarrollo, donde los archivos los
+  sube el autor. Opciones: (a) `inspect: false` en las opciones de `serve` y una configuración `debug` que lo active a
+  propósito; (b) dejarlo como está y anotarlo en el RUNBOOK; (c) `inspect` con `port: 0`, que elige un puerto
+  aleatorio (no lo cierra, solo lo esconde). **Recomendación: (a)**: cuesta dos líneas de `apps/worker/project.json`,
+  que este change ya toca por N1, y deja el depurador a un `--configuration=debug` de distancia. Si el owner elige (a),
+  entra como parte de la 1.10.
 
-## D3 · Estado
+## Estado de las mediciones
 
-Pendiente del spike (tareas 8.1-8.6). Se completa aquí con la biblioteca elegida, la versión exacta, la lista exacta de
-`--allow-fs-read`, el tiempo de arranque del hijo, el incremento de la imagen medido tras la poda, las licencias, la
-decisión sobre `disableNormalization` y el resultado de la paridad (sintética y de productores reales).
+Se completa aquí durante `/opsx:apply`, con fecha: cómo arranca Vitest el hijo real y si `/app/package.json` entra en
+la lista de lecturas (3.5); lo que hizo el test de asignación enorme (1.6); `boot_p50_ms` y `boot_p95_ms` en el runner
+`arm64` (7.4) y en el host de staging (Migration Plan); y `ulimit -c` del contenedor y `core_pattern` del host (R12).
+Hasta la iteración 1 esta sección se llamaba «D3 · Estado» y recogía el spike, que pasó a `cv-pdf-library-upgrade`.
 
 ## Debate — iteración 1
 
@@ -584,3 +682,36 @@ Fecha: 2026-10-28. `critic`: 1 P0 (H1), H2-H13. `business`: 0 V0, PO-01 a PO-08.
 | Ventana (3) | coordinador (P0 de critic en otro change) | La excepción de Q1 cubre las tres clases de fusión: la del change (ventana 11.6-10.7, sin cláusula de días 7 y 14), el PR de archivo y las vueltas atrás (nunca entre PR-2 y 11.6 de 35b, nunca en su 9.1-9.4, nunca días 7 y 14, nunca un día de `e2e-remote`); 11.2-11.5 verifican cada fusión del change en `main` | Una excepción que solo cubre la primera fusión deja sin regla las que vienen después |
 
 Convergencia: NO (pendiente de la iteración 2).
+
+## Debate — iteración 2
+
+Fecha: 2026-10-28. `critic`: 1 P0 (N1), N2-N11 y T1 como P1. `business`: 0 V0, B2-01 a B2-06. Decisiones de `reflect`
+aplicadas en `proposal.md`, este design, los deltas de `cv/extraction` y `web/cv`, `tasks.md`, ADR-058, la anotación
+de ADR-028 §Consecuencias y `openspec-changes.yaml` (fila nueva `cv-pdf-library-upgrade`).
+
+| Id | Origen | Decisión | Motivo |
+|---|---|---|---|
+| B2-01 | business | Aceptado, partición: este change queda con el aislamiento, el `pending` eterno, los topes, la métrica, la sonda y el texto (grupos 0-7, 9, 10 y 11), con `pdf-parse` 1.1.4 y `mammoth` dentro del hijo y `--disallow-code-generation-from-strings`. El spike, la sustitución de pdf.js y la paridad con CV reales (grupo 8 y las partes de pdf.js de 4.5 y 10.1) pasan a `cv-pdf-library-upgrade`, después de 35c y sin excepción, con su fila en `openspec-changes.yaml` (sin directorio). Fuera de aquí: el requirement de la biblioteca, el escenario «La dependencia vieja no vuelve» (y el de paridad con el parser nuevo), Q3, Q6, R1, R2 y R6 (D3, Context) | El aislamiento cierra el riesgo antes de invitar en 35b; la biblioteca no hace falta para esa ventana y ataba la fusión a una medición del owner y a un spike de hasta 8 h |
+| B2-02 | business | Resuelto por la partición (B2-01) | Su objeto pasó a `cv-pdf-library-upgrade` |
+| B2-03 | business | Trasladado a `cv-pdf-library-upgrade`; anotado en su `scope` | Trata de la biblioteca nueva |
+| B2-04 | business | Aceptado: texto de `unreadable_file` «No pudimos abrir este archivo. Si tiene contraseña, quítasela; si no, vuelve a exportarlo desde tu editor (en PDF o DOCX) y súbelo otra vez.», con su EN (D13, 9.1, delta de `web/cv`) | Una sola acción concreta, la que funciona con cualquier editor |
+| B2-05 | business | Aceptado: R8 y Q7 llevan la versión del flag de red (`--allow-net`, Node 25.0.0, no LTS; primera LTS que lo trae: Node 26, LTS desde el 2026-10-28 con la 26.13.0, aún *Stability 1.1*), comprobada contra la documentación de la CLI y el índice de versiones de nodejs.org. Voto registrado en Q7: (a) y (b) —(b) como fila propia después de la 35—; (c) y (d), no | El owner decide Q7 con el dato de cuándo llega el corte de red sin coste |
+| B2-06 | business | Resuelto por la partición (B2-01) | Su objeto pasó a `cv-pdf-library-upgrade` |
+| PO-03 / PO-08 | business (iteración 1) | Resueltos por la partición: la paridad con CV reales y su repetición con la candidata adoptada son de `cv-pdf-library-upgrade` | Este change no cambia el parser |
+| N1 (P0) | critic | Aceptado: el worker arranca con `node --disable-sigusr1 main.js` (`CMD` de `docker/worker.Dockerfile` y `runtimeArgs` de `nx serve worker`); 1.9 (test en Linux con un padre real: el hijo le manda `SIGUSR1` y el 9229 sigue cerrado; falsación sin el flag) y 1.10 (guardia de las dos líneas). Comprobado el 2026-10-28 en `node:22.23.2-alpine`: sin el flag el padre abre el 9229; con él, sigue vivo y cerrado. El flag existe desde 22.14.0 y es estable desde 22.20.0. D7, R8 y el requirement dicen que **no** se promete impedir señales entre procesos del mismo usuario; el `SIGTERM` al padre es una denegación de servicio aceptada, acotada por D8. **El Dockerfile no choca con la condición de Q1**: la fila 35 no lo edita, el compose no sobrescribe el `command` del `worker` y ningún requirement de `platform/*` fija el `CMD`; la condición no se ajusta, se hace explícita (Context, propuesta) | Sin el flag, una señal deshacía todo el aislamiento de D1: el hijo, con red, ejecutaba código en el worker con sus credenciales |
+| N2 | critic | Aceptado: lista de `--allow-fs-read` fijada en D1 (`/app/cv-extract-child.js`, `/app/node_modules` y `/app/package.json` solo si la 3.5 lo exige) y misma regla fuera de la imagen; el SHALL dice «las rutas de la lista fijada en el design» (1.2, 3.5) | Una lista que la fijaba el spike ya no tiene quién la fije |
+| N3 | critic | Aceptado: `child-command.ts` pasa las rutas por `fs.realpathSync.native`; test «allow-fs-read paths are real paths» (1.2) | pnpm y Windows ponen enlaces en medio |
+| N4 | critic | Aceptado: el hijo no sale por su cuenta (lo mata el padre), corta con `slice(0, 1_000_000)` antes de serializar y el padre cuenta bytes sobre `Buffer`; el peor caso (6 bytes por unidad) cabe en 8 MiB. Test «a 1M-char worst-case escaped result arrives intact», en Linux y en Windows (D6, 1.4c, escenario nuevo) | El tope de 8 MiB se contaba en caracteres y el hijo podía truncar su propio resultado |
+| N5 | critic | Aceptado: un `ready` o un `boot_error` después de `ready` es `protocol` de contenido. Test «boot_error or ready after ready is unreadable protocol» (D6, 1.4b, escenario nuevo) | El protocolo no decía qué pasa con un segundo anuncio |
+| N6 | critic | Aceptado: bucles acotados en todos los hijos de prueba, `afterEach` que mata los vivos, proyecto de Vitest `worker-isolation` con `fileParallelism: false`, test de heap con 32 MB inyectados y plazo de 30 s (D10, 1.0, 1.4b) | Tests que pueden dejar procesos girando en CI o pisarse entre ficheros |
+| N7 | critic | Aceptado: la 3.5 compila solo el script del hijo a `tmp/cv-child-test/` con un `tsconfig` propio en el `globalSetup`, sin `nx build worker` (D10, 3.5) | El build entero en cada corrida de tests es lento y acopla los tests al bundle |
+| N8 | critic | Aceptado: criterio p95 de arranque ≤ 1,5 s en `arm64` para `pdf-parse` y `mammoth`; la sonda lo imprime (D11, 7.1), se lee en el runner `arm64` (7.3, 7.4, precondición de 11.3) y en el host de staging (Migration Plan). Si no se cumple, vuelve al debate. R11 corregido para hablar de la medición | «Irrelevante» no era un criterio |
+| N9 | critic | Resuelto por la partición (B2-01) | Su objeto pasó a `cv-pdf-library-upgrade` |
+| N10 | critic | Aceptado: R12 (volcados de memoria con el CV en claro). `ulimit -c` en el contenedor en la 2.3, `core_pattern` del host en el despliegue, ambos al RUNBOOK; si hay volcados, `ulimits: { core: 0 }` es de 35b o del change de Q5, anotado como pendiente sin editar 35b (R12, Migration Plan, Q5, manifiesto) | El aborto por heap es justo el caso en que el hijo tiene el CV en memoria |
+| N11 | critic | Aceptado: la 1.3 empieza por una prueba de ida y vuelta por el descriptor 3 en Windows y en Linux con un hijo mínimo; API de escritura anotada en D1 (`net.Socket({ fd: 3 })` y esperar al callback, no `fs.writeSync`) | El canal no estaba probado en Windows y `writeSync` falla con `EAGAIN` en pipes no bloqueantes |
+| T1 | critic | Aceptado: la 1.4 en 1.4a/1.4b/1.4c, la 3.1 en 3.1a/3.1b y la 11.2 en 11.2a/11.2b; la 8.4 se fue con el change posterior. «Costo estimado» con 52 tareas | Tareas de más de una hora |
+| Q8 | arquitecto (al aplicar N1) | Pregunta nueva, no bloqueante: `nx serve` del worker arranca con el inspector abierto por defecto (`inspect: "inspect"` de `@nx/js:node`), lo que en desarrollo deja el mismo hueco que N1 sin necesidad de señal. Recomendación: (a) `inspect: false` y una configuración `debug` | Encontrado al leer el ejecutor para poner `runtimeArgs`; afecta solo a desarrollo y es decisión de ergonomía del owner |
+| Q1 | owner | Sigue pendiente, con las tres clases de fusión y la confirmación fechada del owner en cada PR | Decisión del owner |
+
+Convergencia: NO (pendiente de que `critic` verifique N1 y los P1 aplicados, y de que `business` vea la partición y la
+fila nueva; Q1 sigue siendo del owner).

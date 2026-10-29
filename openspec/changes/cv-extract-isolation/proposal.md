@@ -33,18 +33,18 @@ siguiente es `worker_threads` o un proceso aparte»). Lo que cambia ahora es **q
   sin variables de entorno (`env: {}`), sin poder leer el disco fuera de su script y sus bibliotecas (ni el entorno del
   worker por `/proc`), sin escribir, sin lanzar procesos ni hilos, sin código nativo ni `eval`; con el heap acotado por
   flags, la salida estándar descartada y un **plazo que corta** con `SIGKILL`, que detiene incluso un bucle síncrono. El
-  event loop del worker queda libre durante toda la lectura. La red **no** se corta (Node 22 no lo permite): riesgo
-  aceptado (design D1, D2, D7, R8).
+  event loop del worker queda libre durante toda la lectura. El worker arranca con `--disable-sigusr1`, para que una
+  señal del hijo no le abra el depurador. La red **no** se corta (Node 22 no lo permite), ni se impide que el hijo
+  mande otras señales al worker: riesgos aceptados (design D1, D2, D7, R8).
 - **Topes de contenido**: como mucho 50 páginas de PDF, 1.000.000 de caracteres de texto crudo, 64 MiB inflados y 2.000
   entradas por DOCX, y un vigía que mata **al hijo** si su memoria residente crece más de 512 MiB sobre la que tenía al
   anunciarse listo (lo que el heap acotado no ve: búferes y `ArrayBuffer`) (D4, D5).
 - **El DOCX se descomprime con nuestro tope antes de dárselo a `mammoth`**: lectura del directorio central del ZIP e
   inflado con `node:zlib` y `maxOutputLength`, de modo que una cabecera que miente sobre su tamaño no sirve de nada (D4).
-- **`pdf-parse` se sustituye por pdf.js mantenido** (`pdfjs-dist`, build `legacy` para Node, versión exacta), con
-  `isEvalSupported: false` y sin fuentes del sistema; la elección se confirma con un spike medido (carga desde el bundle
-  y la imagen, `arm64`, tamaño, licencias y paridad del texto sobre los fixtures) y tiene una alternativa escrita
-  (`unpdf`). Va **al final** del change: el aislamiento se construye primero con las bibliotecas de hoy dentro del
-  hijo (D3, PO-04).
+- **Las bibliotecas de hoy, dentro del hijo**: `pdf-parse` 1.1.4 y `mammoth` leen dentro del proceso aislado, con la
+  generación de código desde cadenas desactivada. **La sustitución de `pdf-parse` por un pdf.js mantenido** (spike,
+  tamaño de la imagen, paridad con CV reales) **pasa a un change posterior, `cv-pdf-library-upgrade`**, después de 35c
+  y sin excepción (D3; partición del debate, B2-01).
 - **Clasificación honesta del desenlace**: todo lo que causa el **contenido** (plazo, heap, vigía, excepción del
   parser, topes, el hijo que muere o habla fuera del protocolo después de anunciarse listo) es `unreadable_file`, terminal y **sin reintento** (la regla de ADR-030 §6 aplicada a la
   lectura); lo que causa **nuestra maquinaria** (el hijo no arranca, no carga sus bibliotecas o no
@@ -58,13 +58,14 @@ siguiente es `worker_threads` o un proceso aparte»). Lo que cambia ahora es **q
   profundo, cabeceras que mienten, expansión de entidades) y pruebas del mecanismo con scripts de hijo generados
   (bucle infinito, heap, memoria externa, salida forzada). **Ninguna muestra maliciosa real entra al repositorio** (D10).
 - **La imagen publicada demuestra que lee un CV**: entrada nueva del build (`cv-extract-probe.js`), ejecutada por
-  `infra/ci/verify-artifact.sh` como ya se hace con `s3-probe.js` (D11).
+  `infra/ci/verify-artifact.sh` como ya se hace con `s3-probe.js`, que además mide el arranque del hijo (p95 ≤ 1,5 s en
+  `arm64`) (D11).
 - **Sin variables de entorno nuevas**: los topes son constantes del código y `CV_EXTRACTION_TIMEOUT_MS` conserva nombre,
   rango y valor por defecto; pasa a ser un plazo que corta. El compose y `.env.example` no cambian (D12).
 - **Lo que ve la persona casi no cambia**: los mismos estados y motivos de `cv/extraction` (`unreadable_file`,
   `no_text`, `internal_error`). Solo se reescribe el texto de `unreadable_file` en `/mi-cv`, que hoy habla solo de
-  contraseñas: «No pudimos abrir este archivo. Si tiene contraseña, quítasela; si no, prueba a exportarlo de nuevo como
-  PDF o súbelo en DOCX.» (D13, decisión del debate sobre Q2).
+  contraseñas: «No pudimos abrir este archivo. Si tiene contraseña, quítasela; si no, vuelve a exportarlo desde tu
+  editor (en PDF o DOCX) y súbelo otra vez.» (D13, decisión del debate sobre Q2; texto de B2-04).
 
 ## Capabilities
 
@@ -85,18 +86,21 @@ Ninguna.
 - **Código** (solo en `/opsx:apply`, nada aquí): `apps/worker/src/modules/cv/infrastructure/` (aislamiento, proceso
   hijo, extractores, consumidor), `apps/worker/src/modules/cv/application/extract-cv.usecase.ts` (red exterior del plazo),
   `apps/worker/src/modules/cv/cv.module.ts`, `apps/worker/webpack.config.js` (dos entradas nuevas: el hijo y la sonda),
+  `apps/worker/project.json` (`runtimeArgs` de `serve`), `apps/worker/vitest.config.mts` (proyecto de aislamiento),
   `apps/worker/src/presentation/http/metrics.controller.ts` (registro compartido), `eslint.config.mjs` (lista de
   parsers y `node:child_process`, que el dominio no importa). En el SPA, `cv-card.component.html`, su spec y los
   catálogos de i18n (ADR-050).
 - **Puerto de dominio**: `CvTextExtractor.extract(bytes): Promise<ExtractionAttempt>` **no cambia**, ni sus dos
   desenlaces. Tampoco `CvRepository`.
-- **Dependencias**: sale `pdf-parse` (y `@types/pdf-parse`); entra `pdfjs-dist` en versión exacta (o `unpdf`, si el
-  spike lo decide). `mammoth` se queda.
-- **CI**: una sección más en `infra/ci/verify-artifact.sh` y su línea gemela en `infra/README.md`. Ningún workflow, ningún compose, ningún `.env.example`,
-  ningún requirement de `platform/*`.
+- **Dependencias**: ninguna cambia. `pdf-parse` y `mammoth` se quedan, ahora dentro del hijo; la sustitución de
+  `pdf-parse` es de `cv-pdf-library-upgrade`.
+- **Imagen y CI**: el `CMD` de `docker/worker.Dockerfile` gana `--disable-sigusr1` (la fila 35 no edita ese fichero
+  y ningún requirement de `platform/*` fija el `CMD`); una sección más en `infra/ci/verify-artifact.sh` y su línea
+  gemela en `infra/README.md`. Ningún workflow, ningún compose, ningún `.env.example`, ningún requirement de
+  `platform/*`.
 - **Datos**: ninguna migración. Los CV ya leídos conservan su texto; nadie re-extrae nada.
-- **Documentación**: ADR-058 (Propuesto), anotaciones de una línea en ADR-028; README y RUNBOOK donde nombran
-  `pdf-parse` (en `/opsx:apply`).
+- **Documentación**: ADR-058 (Propuesto), anotaciones de una línea en ADR-028; README y RUNBOOK donde describen la
+  lectura (en `/opsx:apply`).
 
 ## Encaje con la fila 35
 
@@ -117,7 +121,8 @@ Q1). Y no bloquea la 10.7: si 35b llega antes, decide el owner (PO-04).
    que lo note: el síntoma sería que «no llegan los avisos» o «no se lee la oferta», precisamente las señales que la
    medición de 35b quiere recoger.
 3. **No compite con la fila**: no toca compose, workflows, `.env.example` ni requirements de `platform/*` (el texto de
-   `/mi-cv` es del SPA, que la fila no edita). Los
+   `/mi-cv` es del SPA, que la fila no edita; la línea del `CMD` de `docker/worker.Dockerfile`, tampoco la edita la
+   fila). Los
    únicos ficheros compartidos son `infra/ci/verify-artifact.sh` (una sección nueva, en un tramo que 35c no edita; 35c
    cambia el `--wait-timeout`) e `infra/README.md` (la misma orden en el `up` documentado, que
    `check-docs-stack-up` exige idéntico al del script). Si el owner prefiere cero solape, la sonda de la imagen (D11)
@@ -128,14 +133,22 @@ en `openspec-changes.yaml` mientras Q1 no tenga respuesta: la posición conserva
 
 ## Fuera de alcance
 
+- **Sustituir `pdf-parse` por un pdf.js mantenido**: spike con criterio de parada, sustitución, medición del owner con
+  CV reales, tamaño de la imagen y alertas de Renovate. Change posterior `cv-pdf-library-upgrade`, después de 35c y sin
+  excepción (B2-01, 2026-10-28).
 - **Un motivo nuevo en `/mi-cv`** (p. ej. «archivo demasiado complejo»): exige tocar `libs/shared`; se decide con
   datos de 35b. Aquí solo se reescribe el texto existente de `unreadable_file` (Q2 (c)).
-- **Cortar la red del proceso hijo**: Node 22 no lo permite; riesgo aceptado (R8) y Q7.
+- **Cortar la red del proceso hijo**: Node 22 no lo permite; riesgo aceptado (R8) y Q7. El flag de red llegó en Node 25
+  y la primera línea LTS que lo trae es la 26, LTS desde el 2026-10-28.
+- **Impedir que el hijo mande señales al worker**: comparten usuario; un `SIGTERM` es una denegación de servicio
+  aceptada, acotada por `maxStalledCount: 1` (R8).
+- **`ulimits: { core: 0 }` en el compose**, si la comprobación de R12 encuentra volcados posibles: es de 35b o del
+  change de Q5.
 - **Límite de memoria del contenedor** (`mem_limit` del `worker` en el compose de producción): toca el compose de 35b
   y 35c; candidato para después de la fila (Q5).
 - **OCR**, antivirus y re-extracción de CV ya leídos (sigue vigente ADR-028 §Alternativas descartadas).
 - **Golden sets de CV en PDF reales**: no existen (los de `libs/ai/src/evals/match-cv` son texto); llegan con
-  `golden-sets-reales` (fila 36). La paridad de este change se mide sobre los fixtures generados (igualdad exacta) y,
-  una vez y sin commitear nada, sobre PDF de productores reales y CV reales del owner en su máquina (D3).
+  `golden-sets-reales` (fila 36). Este change no cambia el parser, así que el texto de un PDF sale igual que hoy; la
+  paridad con CV reales es de `cv-pdf-library-upgrade`.
 - **Aislar otros parsers del worker** (HTML del enriquecimiento con `cheerio`): su entrada viene de la red y ya tiene
   tope de bytes y plazo propios (ADR-022); si se mide un problema, es otro change.

@@ -9,8 +9,8 @@ Cada estado SHALL terminar en una acción o en una explicación de qué hacer:
 
 - `pending`: "Estamos leyendo tu CV…";
 - `extracted`: "Listo · tu CV se leyó bien", con la acción "Ver lo que leímos";
-- `failed` con `unreadable_file`: "No pudimos abrir este archivo. Si tiene contraseña, quítasela; si no, prueba a
-  exportarlo de nuevo como PDF o súbelo en DOCX.";
+- `failed` con `unreadable_file`: "No pudimos abrir este archivo. Si tiene contraseña, quítasela; si no, vuelve a
+  exportarlo desde tu editor (en PDF o DOCX) y súbelo otra vez.";
 - `failed` con `no_text`: "Este archivo no tiene texto: parece un escaneo o una imagen.", seguido del consejo que
   corresponde a su formato: con un PDF, "Sube el PDF original (no una foto ni un escaneo) o vuelve a exportarlo desde
   tu editor"; con un DOCX, "Vuelve a exportarlo desde tu editor y súbelo otra vez";
@@ -43,11 +43,11 @@ El número de caracteres leídos NO SHALL mostrarse, y el texto del CV NO SHALL 
 - **GIVEN** un CV en `failed` con motivo `unreadable_file`
 - **WHEN** Ana lo mira
 - **THEN** el mensaje SHALL decirle que le quite la contraseña si la tiene
-- **AND** SHALL ofrecerle, si no la tiene, exportarlo de nuevo como PDF o subirlo en DOCX
+- **AND** SHALL pedirle, si no la tiene, que vuelva a exportarlo desde su editor en PDF o DOCX y lo suba otra vez
 
 #### Scenario: El mismo texto en inglés
 
 - **GIVEN** un CV en `failed` con motivo `unreadable_file` y el SPA en inglés
 - **WHEN** Ana lo mira
-- **THEN** SHALL ver "We could not open this file. If it has a password, remove it; otherwise, try exporting it again as
-  a PDF or upload it as a DOCX."
+- **THEN** SHALL ver "We could not open this file. If it has a password, remove it; otherwise, export it again from
+  your editor (as a PDF or DOCX) and upload it again."

@@ -93,10 +93,8 @@ falla con reintentos pendientes NO SHALL cambiar el CV.
 
 ### Requirement: Texto extraído, normalizado y acotado
 
-El worker SHALL extraer el texto del PDF con pdf.js de Mozilla en una versión mantenida (paquete `pdfjs-dist`, o
-`unpdf` si el spike del change lo decide), fijada a versión exacta en `package.json`, y el del DOCX con `mammoth`. El
-worker NO SHALL depender de `pdf-parse`. pdf.js SHALL ejecutarse con la evaluación de código desactivada
-(`isEvalSupported: false`), sin fuentes del sistema y sin ninguna URL remota.
+El worker SHALL extraer el texto del PDF con `pdf-parse` y el del DOCX con `mammoth`, los dos **dentro del proceso
+hijo** de la lectura aislada (requirement «La lectura corre aislada del proceso del worker»).
 
 La extracción SHALL leer como mucho las **50 primeras páginas** de un PDF y SHALL dejar de acumular texto al llegar a
 **1.000.000 de caracteres** crudos, entregando lo acumulado; ninguno de los dos topes SHALL convertir la lectura en un
@@ -134,12 +132,6 @@ texto SHALL guardarse en el documento del CV y de él SHALL salir únicamente la
 - **WHEN** el worker lo lee
 - **THEN** el texto guardado SHALL tener solo `\n`, sin caracteres de control y sin líneas en blanco repetidas
 
-#### Scenario: El texto conserva su forma con el parser nuevo
-
-- **GIVEN** los PDF de texto generados por los fixtures de extracción
-- **WHEN** el worker los lee
-- **THEN** el texto normalizado SHALL ser igual, línea a línea, al que producía `pdf-parse` sobre los mismos archivos
-
 #### Scenario: Un PDF de muchas páginas
 
 - **GIVEN** un PDF generado de 200 páginas, cada una con una marca de página distinta
@@ -153,13 +145,6 @@ texto SHALL guardarse en el documento del CV y de él SHALL salir únicamente la
 - **WHEN** el worker lo lee
 - **THEN** el CV SHALL quedar en `extracted` con 200.000 caracteres y marcado como recortado
 - **AND** la lectura SHALL terminar antes del plazo
-
-#### Scenario: La dependencia vieja no vuelve
-
-- **GIVEN** el `package.json` raíz y el código del worker
-- **WHEN** se revisan sus dependencias e imports
-- **THEN** ninguno SHALL nombrar `pdf-parse`
-- **AND** la versión del parser de PDF SHALL estar escrita sin `^` ni `~`
 
 ### Requirement: La lectura tiene plazo y no monopoliza el worker
 
@@ -230,15 +215,22 @@ Cada lectura de un CV SHALL ejecutarse en un **proceso hijo nuevo**, que se term
 otro CV. El proceso hijo SHALL arrancar:
 
 - con un entorno sin ninguna variable del worker;
-- con el modelo de permisos de Node activo, de modo que NO SHALL poder leer ficheros fuera de su propio script y de las
-  bibliotecas que necesita (en particular, ni el entorno del worker a través de `/proc`), ni escribir ficheros, ni
-  lanzar procesos o hilos, ni cargar código nativo;
+- con el modelo de permisos de Node activo, de modo que NO SHALL poder leer ficheros fuera de las rutas de la lista
+  fijada en el design (design de `cv-extract-isolation`, D1: el script del hijo, la raíz de `node_modules` de la que
+  resuelve sus bibliotecas y, solo si hace falta, el `package.json` junto al script) —en particular, ni el entorno del
+  worker a través de `/proc`—, ni escribir ficheros, ni lanzar procesos o hilos, ni cargar código nativo;
 - con la generación de código desde cadenas desactivada;
 - con el heap acotado a 256 MB de generación vieja y 16 MB por semiespacio;
 - con su salida estándar y de errores descartadas: nada de lo que escriba SHALL llegar a los registros.
 
+El proceso del worker SHALL arrancar con la activación del depurador por `SIGUSR1` desactivada
+(`--disable-sigusr1`), tanto en la imagen como en `nx serve`, de modo que una señal del proceso hijo no abra el
+inspector del worker.
+
 Este requirement NO promete cortar la red del proceso hijo: el mecanismo no lo permite en la versión de Node del
-proyecto, y es un riesgo aceptado (ADR-058).
+proyecto, y es un riesgo aceptado (ADR-058). Tampoco promete impedir que el hijo mande señales al worker, con el que
+comparte usuario: una señal de terminación provoca el cierre ordenado y el reinicio del worker, y es una denegación de
+servicio aceptada, acotada por `maxStalledCount: 1` (requirement «Consumo idempotente de la lectura del CV»).
 
 El hijo SHALL anunciar que está listo antes de recibir los bytes, y su resultado SHALL llegar por un canal que el
 worker lee sin poder fallar por su contenido. El desenlace SHALL clasificarse por las causas de esta tabla:
@@ -280,6 +272,18 @@ terminar el proceso del worker.
 - **THEN** el desenlace SHALL ser `unreadable_file`
 - **AND** el proceso del worker SHALL seguir vivo
 
+#### Scenario: Un segundo anuncio después de anunciarse listo
+
+- **GIVEN** un proceso de extracción que, tras anunciarse listo, vuelve a anunciarse listo o publica un error de arranque
+- **WHEN** el adaptador lo lee
+- **THEN** el desenlace SHALL ser `unreadable_file`
+
+#### Scenario: El resultado más largo llega entero
+
+- **GIVEN** un proceso de extracción que publica 1.000.000 de caracteres cuya serialización ocupa el máximo posible
+- **WHEN** el adaptador lo lee, en Linux o en Windows
+- **THEN** el texto recibido SHALL ser idéntico al publicado
+
 #### Scenario: Un mensaje inválido antes de anunciarse listo
 
 - **GIVEN** un proceso de extracción que escribe en su canal una línea que no es del protocolo antes de anunciarse listo
@@ -304,6 +308,19 @@ terminar el proceso del worker.
 - **GIVEN** un proceso de extracción
 - **WHEN** intenta lanzar un proceso o crear un hilo
 - **THEN** SHALL fallar con acceso denegado
+
+#### Scenario: Una señal del hijo no abre el depurador del worker
+
+- **GIVEN** un proceso del worker lanzado como en la imagen, en Linux, y un proceso de extracción que, tras anunciarse
+  listo, le manda `SIGUSR1`
+- **WHEN** pasa medio segundo
+- **THEN** el proceso del worker SHALL seguir vivo
+- **AND** su inspector NO SHALL estar activo ni escuchar en `127.0.0.1:9229`
+
+#### Scenario: El worker se lanza sin el depurador por señal
+
+- **WHEN** se revisan el `CMD` de la imagen del worker y las opciones de `nx serve worker`
+- **THEN** los dos SHALL pasar `--disable-sigusr1` a Node
 
 #### Scenario: Lo que escribe el hijo no se registra
 
