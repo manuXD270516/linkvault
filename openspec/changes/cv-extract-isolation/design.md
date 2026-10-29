@@ -824,4 +824,15 @@ arquitecto en `node:22.23.2-alpine`, con contenedores desechables, anotadas con 
 | B3-05 | business | Aceptado: la viñeta de `--disable-sigusr1` de ADR-058 dice «y `serve` arranca con `inspect: false`» y nombra `NODE_OPTIONS` | El ADR tiene que decir todo lo que se arranca con el flag |
 | Q1 | owner | Sigue pendiente, con la clase 1 redefinida (C3-02) | Decisión del owner |
 
-Convergencia: pendiente de la verificación puntual de C3-01, C3-02 y C3-03.
+Convergencia: ver «Verificación puntual de C3-01, C3-02 y C3-03» a continuación.
+
+## Verificación puntual de C3-01, C3-02 y C3-03 (2026-10-28)
+
+Critic verificó solo los tres P0 de la iteración 3, sin abrir una iteración nueva: los tres cerrados con las mediciones de D7, sin P0 nuevos.
+
+| id | origen | decisión | motivo |
+|---|---|---|---|
+| C3-01, C3-02, C3-03 | critic | resueltos | `NODE_OPTIONS` medido y heredado por los dos healthchecks; toda fusión previa a la 10.7 es de clase 1 con la 11.2c; fuera de PID 1 el proceso sobrevive a `SIGUSR1` con el flag. |
+| N-01 | critic (P1) | aceptado | La clase 3 de la guardia pasa a llamarse `post-10.7` y exige la 10.7 hecha, con falsación: una vuelta atrás o un arreglo antes de la 10.7 no puede pasar por ella. |
+
+Convergencia: SI (iteración 3 más verificación puntual: critic P0 0, business V0 0; Q1 pendiente del owner).
