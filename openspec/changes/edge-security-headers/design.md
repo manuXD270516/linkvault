@@ -587,4 +587,15 @@ reflect aplicadas en proposal, design, spec, tasks y ADR-057. La Q1 sigue pendie
 | B9-1 | business | Aceptado (recorte): la medida del push de la 7.1b (`notifications` concedido, `getRegistration()` que devuelve `sw.js`) pasa a la 9.3a, contra staging en `chromium`; la 9.3b se retira conservando el número. Ajustados D4, D8, D10, ADR-057 §1 cond. 4 y §6 y la proposal: ya no queda ningún paso humano bloqueante en la verificación de la CSP | La medida automatizada contra staging cubre lo que medía el paso a mano, sin depender de una persona el día de invitar |
 | B9-4 | business | Aceptado: en `proposal.md` §Impact, «2.1» pasa a «3.3» | El primer pintado se mide en la 3.3 desde la iteración 2 (V1-2) |
 
-Convergencia: pendiente de la verificación puntual de G1 (P0 de la iteración 3)
+Convergencia: ver «Verificación puntual de G1» a continuación
+
+## Verificación puntual de G1 (2026-10-28)
+
+Critic verificó solo el P0 de la iteración 3, sin abrir una iteración nueva.
+
+| id | origen | decisión | motivo |
+|---|---|---|---|
+| G1 | critic | resuelto | Toda fusión del change cae en una clase con sus reglas, y la 10.3 la puede verificar (tiene la falsación de una corrección posterior a la última 9.3a). |
+| G1-a | critic (P1) | aceptado | Las tres señales se exigen solo sobre la última fusión de clase 1 o 3 antes de la 10.7; las intermedias se anotan. Así se evitan un fallo falso de la 10.3 y `e2e-remote` de más que gastan cupo. |
+
+Convergencia: SI (iteración 3 más verificación puntual: critic P0 0, business V0 0; Q1 pendiente del owner).

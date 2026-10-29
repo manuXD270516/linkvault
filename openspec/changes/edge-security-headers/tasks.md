@@ -343,7 +343,7 @@ y pasan al change posterior de la Q3. Este change no toca `apps/web-e2e/**`. La 
     corrida `e2e-remote` contra staging (fechas tomadas de la confirmación del owner y de las anotaciones de 35b).
 
   Además (F4, F5, G1, G4): el commit desplegado de la 9.1 contiene la **última** fusión de clase 1 o 3 anterior a la
-  10.7 de 35b; por cada una de esas fusiones hay una 9.1, una 9.3a y una `e2e-remote` sobre su commit; el comentario de
+  10.7 de 35b; las tres señales (9.1, 9.3a y `e2e-remote`) se exigen sobre el commit de **esa última** fusión, y las fusiones intermedias solo se anotan con su clase (G1-a); el comentario de
   la **última** 9.3a tiene una hora (la de GitHub) anterior a la **fecha y hora** de invitar que anota la 10.7 de 35b
   (0.1); y **el commit de la última 9.3a, el de la corrida `e2e-remote` de la 10.7 y el desplegado el día de invitar
   son el mismo**. El desplegado el día de invitar se toma del estado `cd-staging/artifact` de ese día o, si la 10.7 se
