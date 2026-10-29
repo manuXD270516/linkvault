@@ -554,4 +554,17 @@ filtro: el repositorio es público.
 | B3-b | business | Aceptado: el spec del servicio afirma solo `kind` (y `subscribed`); el texto se fija en `notifications.page.spec.ts`. D11; 6.4 | El servicio no conoce textos; afirmarlos ahí acoplaba su test a la plantilla |
 | B2-a | business | Recortado: no se suma un caso de punta a punta para el puerto no web; la composición de 2.2a («a non-web port opens no connection», categoría `port`) y 3.1 («maps an egress rejection to unsafe_destination») lo cubre. 5.1 | Un e2e más costaría una pila entera para probar dos piezas que ya tienen su test |
 
-Convergencia: pendiente de la verificación puntual de P0-1, P0-2 y P0-3.
+Convergencia: ver «Verificación puntual de P0-1, P0-2 y P0-3» a continuación.
+
+## Verificación puntual de P0-1, P0-2 y P0-3 (2026-10-28)
+
+Critic verificó solo los tres P0 de la iteración 3, sin abrir una iteración nueva: los tres cerrados, sin P0 nuevos.
+
+| id | origen | decisión | motivo |
+|---|---|---|---|
+| P0-1, P0-2, P0-3 | critic | resueltos | Tests que pueden fallar, categoría afirmada en cada negativo y toda fusión previa a la 10.7 como clase 1 con la 9.4 sobre el último hash. |
+| VP-1 | critic (P1) | aceptado | La 2.3 dice que el test sigue la redirección a mano, como en la 2.2b. |
+| VP-2 | critic (P1) | aceptado | El negativo de puerto de la 2.2a usa un nombre `.test` y afirma 0 llamadas al resolvedor. |
+| VP-3 | critic (P1) | aceptado | La condición de la 10.7 se repite en la línea de ADR-048 de la 0.1 y en la confirmación del owner, porque D9 no permite tocar `staging-host`. |
+
+Convergencia: SI (iteración 3 más verificación puntual: critic P0 0, business V0 0; Q1 pendiente del owner).

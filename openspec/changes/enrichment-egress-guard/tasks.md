@@ -12,7 +12,7 @@ una conexión (design D10). Los tests que necesitan un servidor local inyectan u
 DNS, y `PUBLIC_EGRESS_POLICY` tal cual para el negativo de puerto. No hay variable de entorno que abra ninguna.
 
 - [ ] 0.1 [infra] Q1 respondida por el owner y anotada con fecha en ADR-056 §1 (línea que empieza por «Respuesta del
-  owner (Q1), AAAA-MM-DD:») y, en una línea, en ADR-048 §Consecuencias bajo las excepciones de ADR-053 y ADR-055; con
+  owner (Q1), AAAA-MM-DD:») y, en una línea, en ADR-048 §Consecuencias bajo las excepciones de ADR-053 y ADR-055, línea que repite la condición «la 10.7 de 35b solo procede con la 9.4 en verde sobre el último hash desplegado», que además se pide en la confirmación del owner previa a la 10.7; con
   Q1 = (a) o (e), una fila «∥ 35b (fusión tras su 11.6, antes de su 10.7)» en `docs/design-v0.2.md` §6, como la de
   `usage-guide-fixes`. Si Q1 = (b), el change no pasa de aquí hasta archivar 35c; si Q1 = (c), se vuelve a
   `/lv:debate` para fundirlo con `staging-host`; si Q1 = (d), la autorización expresa del owner a la excepción de «entre
@@ -90,7 +90,7 @@ DNS, y `PUBLIC_EGRESS_POLICY` tal cual para el negativo de puerto. No hay variab
   - con `PUBLIC_WITH_ANY_PORT_TEST_POLICY`: «a name resolving to loopback opens no connection» (categoría
     `loopback`), «a literal loopback host opens no connection» (categoría `loopback`, la clase del literal) y «a
     dotless host is rejected without resolving» (categoría `dotless`; el resolvedor cuenta cero llamadas);
-  - con `PUBLIC_EGRESS_POLICY`: «a non-web port opens no connection» (servidor en el puerto efímero; categoría `port`)
+  - con `PUBLIC_EGRESS_POLICY`: «a non-web port opens no connection» (nombre `.test` resuelto al servidor en el puerto efímero; categoría `port`, y el resolvedor cuenta 0 llamadas porque el puerto se decide antes de resolver)
     y «with the public policy a default-port name reaches the resolver» (P1-2: URL sin puerto de un nombre `.test`,
     resolvedor inyectado que responde `ENOTFOUND`; el resolvedor cuenta una llamada y la causa es `ENOTFOUND`, no
     `EgressBlockedError`);
@@ -131,7 +131,7 @@ DNS, y `PUBLIC_EGRESS_POLICY` tal cual para el negativo de puerto. No hay variab
     `127.0.0.3`, y un resolvedor que responde `.2` en la primera consulta y `.3` en la segunda, con contador. La prueba
     es una consulta por conexión: el resolvedor cuenta una, `.2` cuenta una conexión y `.3` cuenta cero;
   - «a later hop resolving to a private address opens no connection»: un nombre `.test` cuyo primer salto resuelve a
-    `127.0.0.2`, que redirige dentro del mismo host y responde con `Connection: close` (para que el segundo salto abra
+    `127.0.0.2`, que redirige dentro del mismo host (el test sigue la redirección a mano, como en 2.2b, porque el guardia fuerza `redirect: 'manual'`) y responde con `Connection: close` (para que el segundo salto abra
     su propia conexión en lugar de reutilizar la aprobada); para la conexión del segundo salto el resolvedor devuelve una
     dirección de clase `private`. Se afirma que `.2` cuenta una conexión, que no hay conexión del segundo salto y que la
     causa es `EgressBlockedError` con categoría `private`.
