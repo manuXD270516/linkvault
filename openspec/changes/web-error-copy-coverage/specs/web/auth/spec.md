@@ -17,9 +17,9 @@ retorno externa. Los errores SHALL mostrarse sin borrar el email escrito, con es
 - `email_taken`: "Ya existe una cuenta con este email. ¿Quieres iniciar sesión?", con enlace a `/login` que conserva el
   email sin ponerlo en la URL.
 - Sin conexión: "No pudimos conectar con LinkVault. Revisa tu conexión".
-- Servicio no disponible (respuesta `502`, `503` o `504` cuyo código no tiene texto propio, o sin código): "LinkVault
-  no está disponible en este momento. Inténtalo en unos minutos", con la referencia técnica de «Referencia técnica
-  del fallo» de `web/request-errors`.
+- Servicio no disponible (respuesta `502`, `503` o `504` sin código o con un código cuya entrada en `API_ERROR_COPY`
+  es `fallback`): "LinkVault no está disponible en este momento. Inténtalo en unos minutos", con la referencia técnica
+  de «Referencia técnica del fallo» de `web/request-errors`.
 - Cualquier otro error: "Algo salió mal. Inténtalo de nuevo", con la misma referencia técnica cuando hubo respuesta
   de la API.
 
@@ -59,7 +59,7 @@ formulario solo añade los suyos propios.
 
 - **WHEN** el login responde `500` con `internal_error`
 - **THEN** el formulario SHALL mostrar "Algo salió mal. Inténtalo de nuevo", conservar el email y mostrar la
-  referencia `500 · internal_error`
+  referencia "Si lo reportas, menciona: 500 · internal_error"
 
 #### Scenario: Email ya registrado
 

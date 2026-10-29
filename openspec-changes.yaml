@@ -586,13 +586,15 @@ changes:
       Origen: relevamiento de producto del 2026-10-28. `lv-request-error` (42 usos) solo distingue «sin conexión» y
       `too_many_attempts`; un `503` pasajero, un `502` del proxy y un `500` dicen «Algo salió mal», y 11 de los 48
       códigos de `apiErrorCodeSchema` no aparecen en ningún fichero del SPA.
-      **Componente común:** resuelve por código y después por estado: `502`/`503`/`504` → «LinkVault no está
-      disponible en este momento. Inténtalo en unos minutos»; el resto → «Algo salió mal. Inténtalo de nuevo» (sin
-      cambio), con «Referencia: <estado> · <código>» fuera del `role="alert"`. Textos comunes para
+      **Componente común:** resuelve por código y después por estado: `502`/`503`/`504` sin código o con un código
+      `fallback` → «LinkVault no está disponible en este momento. Inténtalo en unos minutos»; el resto → «Algo salió
+      mal. Inténtalo de nuevo» (sin cambio), con «Si lo reportas, menciona: <estado> · <código>» fuera del
+      `role="alert"`. Textos comunes para
       `member_not_found`, `owner_cannot_leave`, `consent_text_outdated` y `vault_unavailable`.
       **Guardia (ADR-062 §3):** `API_ERROR_COPY` con una decisión por código (`common`, `local` con ficheros,
-      `fallback` o `unreachable` con motivo), comprobada en `web:typecheck`, `web:test` (completitud y coherencia con
-      el componente) y `web:i18n-check` (cada `local` mencionado en sus ficheros). El change que añade un código añade
+      `fallback` o `unreachable` con motivo), comprobada en `web:typecheck` y `web:test` (completitud y coherencia con
+      el componente). **Después de 35c:** comprobar en `web:i18n-check` que cada entrada `local` se cumple (capa 2,
+      recortada en la iteración 1 del debate, 2026-10-28). El change que añade un código añade
       su entrada; entre este y `paste-fallback-honest`, el que llegue segundo completa la tabla con
       `ai_consent_required`, `ai_capacity_exhausted` y `extraction_disabled`.
       **H3** de la guía de uso (clave BYOK sin bóveda) se corrige aquí si el owner lo asigna (Q2, bloqueante); H11

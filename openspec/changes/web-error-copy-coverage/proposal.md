@@ -20,16 +20,19 @@ decida.
 ## What Changes
 
 - **Mensajes comunes por clase de fallo.** `lv-request-error` resuelve primero por código (texto común propio, sea cual
-  sea el estado) y después por estado: `502`/`503`/`504` → «LinkVault no está disponible en este momento. Inténtalo en
-  unos minutos»; el resto → «Algo salió mal. Inténtalo de nuevo» (texto e id `@@error.unknown` sin cambio).
-- **Referencia técnica** «Referencia: 500 · internal_error» bajo esos dos mensajes, fuera del `role="alert"`, para que
-  quien reporta pueda copiarla.
+  sea el estado) y después por estado: `502`/`503`/`504` sin código o con un código `fallback` → «LinkVault no está
+  disponible en este momento. Inténtalo en unos minutos»; el resto, también un `5xx` con un código que traduce otra
+  pantalla → «Algo salió mal. Inténtalo de nuevo» (texto e id `@@error.unknown` sin cambio). `/notificaciones` deja de
+  pintar el componente común debajo de su aviso de push no disponible.
+- **Referencia técnica** «Si lo reportas, menciona: 500 · internal_error» bajo esos dos mensajes, fuera del
+  `role="alert"`, para que quien reporta pueda copiarla.
 - **Textos comunes nuevos** para `member_not_found`, `owner_cannot_leave`, `consent_text_outdated` y
   `vault_unavailable` (este último cierra H3 si el owner lo asigna aquí, Q2).
 - **Guardia de cobertura.** Tabla `API_ERROR_COPY` (`apps/web/src/app/shared/ui/api-error-copy.ts`) con una decisión
   por código —`common`, `local` (con los ficheros que lo traducen), `fallback` o `unreachable` (con motivo)—, tipada
-  como `Record<ApiErrorCode, …>`: un código nuevo sin decisión rompe `web:typecheck` y `web:test`; una entrada `local`
-  que no se cumple rompe `web:i18n-check`. Sirve igual si los códigos de otros changes llegan antes o después.
+  como `Record<ApiErrorCode, …>`: un código nuevo sin decisión rompe `web:typecheck` y `web:test`. Sirve igual si los
+  códigos de otros changes llegan antes o después. Comprobar en `web:i18n-check` que cada entrada `local` se cumple
+  queda para después de 35c.
 - **i18n ES/EN** según ADR-050.
 - **Requirements:** capacidad nueva `web/request-errors`; MODIFIED de «Registro y login» de `web/auth` (sus viñetas de
   errores comunes); ADDED «Bóveda de claves no disponible» en `web/byok`.
@@ -38,7 +41,8 @@ decida.
 `enrichment-egress-guard`; Q3), los textos propios de `paste-fallback-honest` y los de «no incluida en esta versión» de
 `web-shell-capabilities` (cada uno los define su change; este solo exige que sus códigos tengan entrada), H11
 (`AI_VAULT_KEY` en `e2e.env` y `byok.spec.ts`, sigue en `e2e-suite-lot-2`), y cualquier cambio en la API, workflows,
-composes o `infra/ci/`.
+composes o `infra/ci/`; la comprobación automática de las entradas `local` (después de 35c), y el texto del aviso
+de invitación de 35b (se le recomienda «si ves un código bajo el error, manda una captura»).
 
 ## Capabilities
 
@@ -56,8 +60,8 @@ composes o `infra/ci/`.
 ## Impact
 
 - **Código:** `apps/web/src/app/shared/ui/request-error.ts` (+ spec nuevo), `api-error-copy.ts` (+ spec),
-  `apps/web/scripts/check-error-copy.ts`, un comando más en `web:i18n-check` (`apps/web/project.json`), specs de
-  `profile.page` y `group-detail.page`, `messages.xlf` (extracción) y `messages.en.xlf`.
+  `features/notifications/notifications.page.html` (+ spec), specs de `profile.page` y `group-detail.page`,
+  `messages.xlf` (extracción) y `messages.en.xlf`.
 - **API, `libs/shared`, `libs/ai`:** sin cambios.
 - **ADR:** ADR-062 (Propuesto): la regla de cobertura y la excepción pedida. Anotación de una línea en ADR-050.
 - **Encaje:** pide una excepción a la precedencia de la fila 35 (Q1, bloqueante para `/opsx:apply`), con las tres
