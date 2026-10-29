@@ -30,8 +30,9 @@ El SPA SHALL pedir las capacidades del despliegue una sola vez por carga de la a
 entre quienes las necesiten mientras está en curso. «Buscar» SHALL mostrarse solo si `search` es `true` y «Descubrir»
 solo si `discovery` es `true`; una entrada de una función apagada NO SHALL mostrarse, ni deshabilitada. Mientras las
 capacidades no hayan llegado, esas dos entradas NO SHALL mostrarse. Si la petición falla, su respuesta no valida o no
-hay respuesta en 5 segundos, las dos SHALL mostrarse, como si las capacidades no existieran. La barra SHALL exponer el estado de las capacidades
-(`loading`, `ready` o `failed`) en su atributo `data-capabilities`.
+hay respuesta en 5 segundos, las dos SHALL mostrarse, como si las capacidades no existieran; al vencer ese plazo el SPA
+SHALL cancelar la petición. La barra SHALL exponer el estado de las capacidades (`loading`, `ready` o `failed`) en su
+atributo `data-capabilities`.
 
 #### Scenario: Búsqueda y Descubrir apagados
 
@@ -73,6 +74,13 @@ hay respuesta en 5 segundos, las dos SHALL mostrarse, como si las capacidades no
 - **THEN** Ana SHALL ver «Buscar» y «Descubrir»
 - **AND** la barra SHALL tener `data-capabilities="failed"`
 
+#### Scenario: La petición vencida se cancela
+
+- **GIVEN** la petición de capacidades sin respuesta
+- **WHEN** pasan 5 segundos
+- **THEN** el SPA SHALL haber cancelado la petición
+- **AND** el estado de las capacidades SHALL ser `failed`
+
 #### Scenario: Una sola petición por carga
 
 - **GIVEN** la barra y la página de búsqueda piden las capacidades a la vez
@@ -89,9 +97,10 @@ SHALL desplegarse bajo la barra con las mismas entradas visibles que el modo anc
 final. Si el panel está abierto al completarse una navegación, SHALL cerrarse y llevar el foco al contenido principal
 sin desplazar la página; con el panel cerrado o en modo ancho, una navegación NO SHALL mover el foco. Activar un enlace
 del panel SHALL cerrarlo y llevar el foco al contenido principal aunque sea la ruta actual. El panel SHALL cerrarse
-también al volver a pulsar el botón y con Escape (con el foco en el botón), y al pasar a modo ancho. Escape SHALL
-atenderse solo con el panel abierto y dentro de la cabecera. Desde 1024 px la barra SHALL mostrar las entradas en la fila y NO SHALL mostrar
-el botón «Menú».
+también al volver a pulsar el botón y con Escape dentro de la cabecera, tras lo cual el foco queda en el botón «Menú».
+Al pasar a modo ancho el panel SHALL cerrarse y, si el foco estaba dentro del panel, SHALL pasar al contenido principal
+sin desplazar la página. Escape SHALL atenderse solo con el panel abierto y dentro de la cabecera.
+Desde 1024 px la barra SHALL mostrar las entradas en la fila y NO SHALL mostrar el botón «Menú».
 
 #### Scenario: Móvil, panel cerrado
 
@@ -115,6 +124,14 @@ el botón «Menú».
 - **AND** al llegar a `/mi-cv` el panel SHALL cerrarse
 - **AND** el foco SHALL quedar en el contenido principal
 
+#### Scenario: Navegación con el panel abierto sin pasar por él
+
+- **GIVEN** Ana en una pantalla de 412 px con el panel abierto
+- **WHEN** se completa una navegación a `/mi-cv` que no sale de un enlace del panel (por ejemplo, el botón atrás del
+  navegador o una navegación programática)
+- **THEN** el panel SHALL cerrarse
+- **AND** el foco SHALL quedar en el contenido principal, sin desplazar la página
+
 #### Scenario: Navegación con el panel cerrado no mueve el foco
 
 - **GIVEN** Ana en una pantalla de 412 px con el panel cerrado, escribiendo en un campo de la página o con un diálogo
@@ -137,17 +154,24 @@ el botón «Menú».
 - **THEN** el panel SHALL cerrarse
 - **AND** el foco SHALL quedar en el botón «Menú»
 
-#### Scenario: Escape fuera del panel
+#### Scenario: Escape con el panel cerrado
 
-- **GIVEN** el panel cerrado, o un Escape pulsado fuera de la cabecera
+- **GIVEN** el panel cerrado
+- **WHEN** Ana pulsa Escape
+- **THEN** la barra NO SHALL cambiar el estado del panel ni mover el foco
+
+#### Scenario: Escape fuera de la cabecera
+
+- **GIVEN** el panel abierto y el foco en un elemento de la página, fuera de la cabecera
 - **WHEN** Ana pulsa Escape
 - **THEN** la barra NO SHALL cambiar el estado del panel ni mover el foco
 
 #### Scenario: Pasar a modo ancho con el panel abierto
 
-- **GIVEN** el panel abierto en una pantalla estrecha
+- **GIVEN** el panel abierto en una pantalla estrecha, con el foco en uno de sus enlaces
 - **WHEN** la pantalla pasa a 1024 px o más
 - **THEN** el panel SHALL cerrarse y la barra SHALL mostrar las entradas en la fila
+- **AND** el foco SHALL quedar en el contenido principal, sin desplazar la página
 
 #### Scenario: El panel respeta las capacidades
 

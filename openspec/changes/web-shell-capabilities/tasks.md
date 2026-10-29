@@ -49,14 +49,18 @@ el implementador crea tal cual; cada uno sale de un escenario de `specs/`.
   `loading | ready | failed`, `ensureLoaded()` que devuelve la misma promesa a llamadas concurrentes y no repite tras
   `ready` ni tras `failed`, y los `computed` `showSearch`, `showDiscovery`, `searchOff` y `discoveryOff` según la tabla
   de D5 (`*Off` solo es `true` en `ready` con el booleano en `false`); plazo `CAPABILITIES_TIMEOUT_MS = 5000` tras el
-  cual pasa a `failed` y descarta una respuesta tardía (D5, B7). Verificar en `capabilities.store.spec.ts` con
+  cual pasa a `failed` y **cancela la petición** (unsubscribe, por ejemplo con `timeout` de RxJS; D5, B7, I3).
+  Verificar en `capabilities.store.spec.ts` con
   `HttpTestingController` y temporizadores falsos de Vitest: «issues a single request for concurrent callers», «does
   not request again after ready», «hides conditional entries while loading», «shows them after a 500 (fails open)»,
   «shows them after an invalid body», «off flags are false while loading and after a failure», «state goes from
-  loading to ready or failed», «fails open after the timeout» (5 s sin respuesta → `failed` y entradas visibles) e
-  «ignores a response that arrives after the timeout». Falsación: hacer que `failed` oculte las entradas y ver caer
-  «shows them after a 500 (fails open)»; restaurar. Falsación (B7): quitar el plazo y ver caer «fails open after the
-  timeout»; restaurar.
+  loading to ready or failed», «fails open after the timeout» (5 s sin respuesta → `failed` y entradas visibles) y
+  «cancels the request when the timeout expires» (tras `vi.advanceTimersByTime(5000)`, la `TestRequest` de
+  `httpTesting.expectOne('/api/capabilities')` tiene `req.cancelled === true` y `state() === 'failed'`). Falsación:
+  hacer que `failed` oculte las entradas y ver caer «shows them after a 500 (fails open)»; restaurar. Falsación (B7):
+  quitar el plazo y ver caer «fails open after the timeout»; restaurar. Falsación (I3): al vencer el plazo, pasar a
+  `failed` con un `setTimeout` propio sin desuscribirse de la petición y ver caer «cancels the request when the timeout
+  expires» (`req.cancelled` en `false`); restaurar.
 
 ## 3. La barra (design D5, D6, D8, D9)
 
@@ -76,8 +80,8 @@ el implementador crea tal cual; cada uno sale de un escenario de `specs/`.
   «Cerrar sesión comes after every entry». Verificar: `pnpm nx run web:test` del spec en verde
   (`--include="**/shell.spec.ts" --skip-nx-cache`).
 - [ ] 3.3a [frontend] Depende de 3.2b. Modo compacto (D8): constante
-  `SHELL_COMPACT_QUERY = '(max-width: 1023.98px)'` en `layout/shell/shell-breakpoint.ts` (con comentario cruzado hacia
-  `SHELL_WIDE_MIN_WIDTH_PX` de `apps/web-e2e/src/support/shell-nav.ts`); signal con valor inicial
+  `SHELL_COMPACT_QUERY = '(max-width: 1023.98px)'` en `layout/shell/shell-breakpoint.ts` (con comentario cruzado que
+  nombra `SHELL_WIDE_MIN_WIDTH_PX` de `apps/web-e2e/src/support/shell-nav.ts` **sin repetir el número**; I5); signal con valor inicial
   `breakpointObserver.isMatched(SHELL_COMPACT_QUERY)`, actualizado con `observe(...)`; fila con la marca y el
   botón «Menú». Verificar en `shell.spec.ts` con el doble (que implementa `isMatched` y `observe`): «compact bar shows
   only the brand and the menu button», «wide mode has no menu button», «renders compact on the first change detection
@@ -90,22 +94,31 @@ el implementador crea tal cual; cada uno sale de un escenario de `specs/`.
   tabindex="-1">` en el Shell. Verificar en `shell.spec.ts`: «menu button starts with aria-expanded false and points to
   the nav», «the nav exists and is hidden while closed», «opening the menu lists the visible entries as links»,
   «compact panel hides Buscar and Descubrir when both are off».
-- [ ] 3.4 [frontend] Depende de 3.3b. Cierre del panel (D8, C6, B6, B8, N5): al `NavigationEnd` **solo si el panel
-  estaba abierto** (foco a `<main>` con `focus({ preventScroll: true })`; con el panel cerrado o en modo ancho no se
-  toca el foco), al pulsar cualquier enlace del panel con `(click)` (cierra y foco a `<main>`, también en la ruta
-  actual), al volver a pulsar el botón (foco en el botón), con Escape escuchado solo con el panel abierto y en el
-  `<header>` del Shell (foco al botón), y al pasar a modo ancho. Verificar en `shell.spec.ts` (router real de prueba):
-  «closes the panel after navigating to Mi CV», «toggles the panel with the menu button», «Escape closes the panel and
-  focuses the menu button», «focuses main after navigating from the panel», «focuses main without scrolling» (espía
-  sobre `focus` de `<main>` llamado con `{ preventScroll: true }`), «does not move focus on NavigationEnd when the
-  panel was closed» (foco en un `<input>` de la página, `router.navigate([], { replaceUrl: true })`, el foco sigue en
-  el `<input>`), «tapping the current route's entry closes the panel», «closes the panel when the viewport becomes
-  wide», «ignores Escape when the panel is closed or the key comes from outside the header». Falsación: quitar la
-  suscripción a `NavigationEnd` y ver caer «closes the panel after navigating to Mi CV»; restaurar. Falsación: mover el
-  listener de Escape a `document` y ver caer «ignores Escape when the panel is closed or the key comes from outside the
-  header»; restaurar. Falsación (B6): enfocar `<main>` en todo `NavigationEnd`, sin mirar si el panel estaba abierto, y
-  ver caer «does not move focus on NavigationEnd when the panel was closed»; restaurar. Falsación (N5): quitar el
-  `(click)` de los enlaces del panel y ver caer «tapping the current route's entry closes the panel»; restaurar.
+- [ ] 3.4a [frontend] Depende de 3.3b. Cierre del panel (D8, C6, N5, I2, I7): al `NavigationEnd` **solo si el panel
+  estaba abierto** (cierra y foco a `<main>` con `focus({ preventScroll: true })`), al pulsar cualquier enlace del
+  panel con `(click)` (cierra y foco a `<main>`, también en la ruta actual), al volver a pulsar el botón (foco en el
+  botón) y al pasar a modo ancho (cierra y, si el foco estaba dentro del panel, foco a `<main>` con
+  `preventScroll`). Verificar en `shell.spec.ts` (router real de prueba): «closes the panel and focuses main when a
+  navigation completes while it is open» (panel abierto, `router.navigateByUrl('/mi-cv')` sin pasar por el enlace:
+  panel cerrado, `aria-expanded="false"` y `document.activeElement` es `<main>`), «closes the panel after navigating to
+  Mi CV» (clic en el enlace del panel: prueba el `(click)`), «tapping the current route's entry closes the panel»,
+  «toggles the panel with the menu button» y «closes the panel when the viewport becomes wide» (foco en un enlace del
+  panel, el doble de `BreakpointObserver` emite modo ancho: panel cerrado y `focus` de `<main>` llamado con
+  `{ preventScroll: true }`). Falsación (I2): quitar la suscripción a `NavigationEnd` y ver caer «closes the panel and
+  focuses main when a navigation completes while it is open»; restaurar. Falsación (N5): quitar el `(click)` de los
+  enlaces del panel y ver caer «tapping the current route's entry closes the panel»; restaurar. Falsación (I7): cerrar
+  el panel al pasar a ancho sin mover el foco y ver caer «closes the panel when the viewport becomes wide»; restaurar.
+- [ ] 3.4b [frontend] Depende de 3.4a. Foco y Escape (D8, C6, B6, B8): con el panel cerrado o en modo ancho, un
+  `NavigationEnd` no toca el foco; Escape escuchado solo con el panel abierto y en el `<header>` del Shell (cierra y
+  foco al botón). Verificar en `shell.spec.ts`: «focuses main after navigating from the panel», «focuses main without
+  scrolling» (espía sobre `focus` de `<main>` llamado con `{ preventScroll: true }`), «does not move focus on
+  NavigationEnd when the panel was closed» (foco en un `<input>` de la página, `router.navigate([], { replaceUrl:
+  true })`, el foco sigue en el `<input>`), «Escape closes the panel and focuses the menu button», «ignores Escape when
+  the panel is closed» e «ignores Escape from outside the header» (panel abierto, Escape despachado desde un `<input>`
+  de `<main>`: el panel sigue abierto y el foco sigue en el `<input>`). Falsación (B6): enfocar `<main>` en todo
+  `NavigationEnd`, sin mirar si el panel estaba abierto, y ver caer «does not move focus on NavigationEnd when the
+  panel was closed»; restaurar. Falsación: mover el listener de Escape a `document` y ver caer «ignores Escape from
+  outside the header»; restaurar.
 - [ ] 3.5 [frontend] Depende de 3.3b. `shell.scss`: estilos del modo compacto (una fila, panel en columna bajo la
   barra) colgados de la clase que pone la signal, sin media query con el umbral (D8, N7), conservando el `flex-wrap` de
   5.4b en modo ancho, con el comentario actualizado; y `main:focus { outline: none }` (B8). Verificar:
@@ -118,13 +131,15 @@ el implementador crea tal cual; cada uno sale de un escenario de `specs/`.
   sesión de Playwright de usar y tirar). En cada una se mide `scrollWidth` y `clientWidth` del `<mat-toolbar>`.
   Verificar anotando en esta tarea, por captura, el ancho, el idioma, las dos medidas y el número de filas: a 412 px
   una fila con el botón; a 1024 y 1280 px una fila sin el botón y `scrollWidth <= clientWidth`. Si a 1024 px no entra
-  en ES o en EN, se sube el umbral, se repiten las capturas y se anota el valor aquí y en D8. Umbral único (D8, N7):
+  en ES o en EN, se sube el umbral al valor X, se repiten las capturas con los nombres `wsc-X-es-on.png` y
+  `wsc-X-en-on.png` y se anota el valor aquí, en D8 y en los demás lugares de D8 (I5). Umbral único (D8, N7, I5):
   `grep -rnE "1023\.98|1024" apps/web/src/app/layout/shell apps/web-e2e/src/support
-  openspec/changes/web-shell-capabilities/specs/web/shell/spec.md` solo devuelve `SHELL_COMPACT_QUERY` en
-  `shell-breakpoint.ts`, `SHELL_WIDE_MIN_WIDTH_PX` en `shell-nav.ts` y el requirement del spec, todos con el mismo
-  valor (1024 / 1023.98), y ninguna línea de `shell.ts` ni de `shell.scss`; D8, D13 y las tareas 3.3a y 6.1 dicen el
-  mismo número. Falsación: escribir `@media (max-width: 1023.98px)` en `shell.scss` y ver que el `grep` lo lista;
-  restaurar.
+  openspec/changes/web-shell-capabilities/specs/web/shell/spec.md` devuelve **exactamente cinco líneas**: una en
+  `shell-breakpoint.ts` (`SHELL_COMPACT_QUERY`), una en `shell-nav.ts` (`SHELL_WIDE_MIN_WIDTH_PX`) y tres en
+  `spec.md` (modo compacto, modo ancho y escenario de paso a ancho), todas con el mismo valor (1024 / 1023.98); ninguna
+  de `shell.ts`, de `shell.scss` ni de los comentarios cruzados, que nombran la otra constante sin el número. D8, D13,
+  las tareas 3.3a y 6.1 y `proposal.md` dicen el mismo número. Falsación: escribir `@media (max-width: 1023.98px)` en
+  `shell.scss` y ver que el `grep` devuelve seis líneas; restaurar.
 
 ## 4. Páginas con la capacidad apagada (design D5, D7)
 
@@ -167,7 +182,7 @@ el implementador crea tal cual; cada uno sale de un escenario de `specs/`.
 ## 6. Camino crítico (`@lot1`) y re-admisión (design D13)
 
 - [ ] 6.1 [frontend] `apps/web-e2e/src/support/shell-nav.ts`: constante `SHELL_WIDE_MIN_WIDTH_PX = 1024` (con
-  comentario cruzado hacia `SHELL_COMPACT_QUERY`) y `navigateByShell(page, name)`, que decide el modo por
+  comentario cruzado que nombra `SHELL_COMPACT_QUERY` sin repetir el número; I5) y `navigateByShell(page, name)`, que decide el modo por
   `page.viewportSize().width < SHELL_WIDE_MIN_WIDTH_PX`; en compacto lee `aria-expanded` del botón «Menú» y lo pulsa
   **solo si es `false`** (N4), y luego `getByRole('link', { name, exact: true })` dentro del `<nav>` «Navegación
   principal»; en ancho, el enlace dentro de la barra. Sustituir en `critical-path.spec.ts` los clics de
@@ -176,10 +191,11 @@ el implementador crea tal cual; cada uno sale de un escenario de `specs/`.
   devuelve la lectura antes del clic; y una corrida `pnpm nx run web-e2e:e2e-stack -- --project=mobile` en verde.
   Falsación (N4): pulsar «Menú» sin mirar `aria-expanded` y abrir el panel antes de llamar al ayudante en un paso del
   recorrido; ver caer la corrida `mobile` al no encontrar el enlace (panel cerrado por el segundo clic); restaurar.
-- [ ] 6.2 [frontend] Depende de 6.1. Capacidades en el recorrido (C2, C3): armar
-  `page.waitForResponse(GET /api/capabilities)` en `register()`, `enterWithTestAccount()` y `joinByInvitation()`
-  antes del clic de «Crear cuenta» o «Entrar»; guardar la promesa en `Entry` (A) y pasar la de B a sus pasos 3-7; en
-  el paso 5, antes de pulsar «Postulaciones» y sin recargar, esperar la promesa, esperar
+- [ ] 6.2 [frontend] Depende de 6.1. Capacidades en el recorrido (C2, C3, I4): armar
+  `page.waitForResponse(r => r.url().endsWith('/api/capabilities') && r.request().method() === 'GET' && r.status() === 200)`
+  en `register()`, `enterWithTestAccount()` y `joinByInvitation()` antes del clic de «Crear cuenta» o «Entrar» (nunca
+  `page.request.get`: el token vive en memoria); guardar la promesa en `Entry` (A) y pasar la de B a sus pasos 3-7; en
+  el paso 5, antes de pulsar «Postulaciones» y sin recargar, esperar la promesa, leer el cuerpo con `response.json()`, esperar
   `data-capabilities="ready"` en el `<mat-toolbar>` y afirmar «Buscar»/«Descubrir» visibles si y solo si su capacidad
   es `true` (en la barra o en el panel abierto). Verificar: `pnpm nx run web-e2e:e2e-stack -- --project=chromium` en
   verde. Falsación: invertir la condición de la afirmación y ver caer el recorrido en `chromium`; restaurar.
@@ -196,7 +212,10 @@ el implementador crea tal cual; cada uno sale de un escenario de `specs/`.
   la 9.9 no está hecha, cerrar la tarea anotando su estado y la salida de
   `grep -n "webkit" apps/web-e2e/playwright.config.mts` (vacía). Verificar con la anotación.
 - [ ] 6.6 [frontend] `apps/web-e2e/src/search.spec.ts`: navegar con `page.goto('/buscar')` en lugar de pulsar
-  «Buscar» (C10) y leer `GET /api/capabilities` del destino (N6, D13): con `search: false`, afirmar el aviso «La
+  «Buscar» (C10) y leer `GET /api/capabilities` del destino (N6, D13, I4) con
+  `page.waitForResponse(r => r.url().endsWith('/api/capabilities') && r.request().method() === 'GET' && r.status() === 200)`
+  armado **antes** del `page.goto('/buscar')` y su `response.json()` (nunca `page.request.get`: el token vive en
+  memoria del SPA; `grep -n "page.request" apps/web-e2e/src/search.spec.ts` no devuelve nada): con `search: false`, afirmar el aviso «La
   búsqueda no está incluida en esta versión de LinkVault.», el enlace a `/mis-links` y que no hubo ninguna petición a
   `GET /api/search` (contador sobre `page.on('request')`); con `search: true`, el recorrido actual. Verificar:
   `grep -n "name: /Buscar/i" apps/web-e2e/src/search.spec.ts` no devuelve nada, `pnpm nx run web-e2e:lint` en verde y
@@ -213,19 +232,36 @@ el implementador crea tal cual; cada uno sale de un escenario de `specs/`.
 - [ ] 7.3 [infra] ADR-059 a «Aceptado» con el **número de PR** de este change (no la fecha de fusión, que aún no
   existe; N2); si Q1 = (a), (c) o (d), anotar en `docs/design-v0.2.md` §6 una fila «∥ 35b» como la de
   `usage-guide-fixes`. Verificar con `grep` del estado, del número de PR y de la fila.
-- [ ] 7.4 [infra] Depende de 0.1. **Guardia de la ventana de fusión** (D14, C1, N1, N2), justo antes de fusionar:
-  (1) con `git fetch` y `git log --first-parent --oneline origin/main`, el merge del PR-2 de 35b, **identificado por
-  su número de PR**, está en `main` (si Q1 = (d), la excepción anotada en 35b sustituye esta condición); (2) el estado
-  de la 11.6 y la 10.7 de 35b se toma de una **confirmación escrita y fechada del owner en el PR de este change**
-  («11.6 hecha el AAAA-MM-DD; 10.7 no hecha»); la casilla de `openspec/changes/staging-host/tasks.md` (en
-  `origin/main` o en la rama del PR de archivo de 35b) queda solo como apoyo y, si contradice la confirmación, vuelve al
-  owner; (3) sin confirmación o con la 11.6 no hecha: fuera de ventana; si la 10.7 ya se hizo: fuera de ventana,
-  vuelve al owner. Verificar con un comentario en el PR, antes de fusionar, con el número y el hash del merge del PR-2
-  de 35b, la confirmación del owner citada con su fecha, la fecha de hoy y el resultado («en ventana» / «fuera de
-  ventana»). **Después de fusionar** no se commitea en este PR: el hash del merge de este change, la copia de ese
-  comentario y la marca de repetir la 9.4 de `e2e-suite` sobre el commit desplegado se anotan en esta tarea en el **PR
-  de archivo de este change**, que se fusiona después de la 10.7 de 35b, nunca los días 7 y 14 de la medición, con la
-  misma guardia (confirmación escrita y fechada del owner en ese PR de que la 10.7 está hecha y cuándo, y comprobación
-  del día). Falsación 1: ejecutar la comprobación sobre el `origin/main` del 2026-10-28 (`5b92d28`, sin el PR-2 de
-  35b) y ver que dice «fuera de ventana». Falsación 2: con la 11.6 hecha y una confirmación del owner que declara la
-  10.7 hecha, ver que dice «fuera de ventana».
+- [ ] 7.4 [infra] Depende de 0.1. **Guardia de cada fusión de este change en `main`** (D14, C1, N1, N2, I6), justo
+  antes de hacerla, para las tres clases de D14: (1) la fusión del change, (2) el PR de archivo, (3) una vuelta atrás
+  o su vuelta.
+  - **Entrada común:** una confirmación escrita y fechada del owner **en el PR que se va a fusionar**, que incluye el
+    número del PR-2 de 35b. Clase 1: «PR-2 de 35b = #NN; 11.6 hecha el AAAA-MM-DD; 10.7 no hecha». Clases 2 y 3:
+    «PR-2 de 35b = #NN; 11.6 hecha el AAAA-MM-DD; 9.1-9.4 sin corrida en curso; 10.7 hecha el AAAA-MM-DD (o no
+    hecha); sin corrida `e2e-remote` hoy». La casilla de `openspec/changes/staging-host/tasks.md` (en `origin/main` o
+    en la rama del PR de archivo de 35b) queda solo como apoyo y, si contradice la confirmación, vuelve al owner. Sin
+    confirmación: fuera de ventana.
+  - **Comprobación común:** con `git fetch` y `git log --first-parent --oneline origin/main`, el merge del PR `#NN`
+    citado en la confirmación está en `main` (si Q1 = (d), la excepción anotada en 35b sustituye esta condición).
+  - **Clase 1:** en ventana si y solo si la 11.6 está hecha y la 10.7 no. Si la 10.7 ya se hizo: fuera de ventana,
+    vuelve al owner. No aplica la cláusula de los días 7 y 14 (la ventana termina antes de la 10.7). Tras fusionar, la
+    9.4 de `e2e-suite` se repite sobre el commit desplegado.
+  - **Clases 2 y 3:** en ventana si y solo si la 11.6 está hecha (no se está entre el PR-2 de 35b y su 11.6), la
+    9.1-9.4 de 35b no está en curso, hoy no es el día 7 ni el 14 contados desde la fecha de la 10.7 (si está hecha) y
+    hoy no hay una corrida `e2e-remote` (apoyo: `gh run list --workflow e2e.yml` sin corridas de hoy del job
+    `e2e-remote`).
+  - **Verificar** con un comentario en ese PR, antes de fusionar, con la clase, el número y el hash del merge del PR-2
+    de 35b, la confirmación del owner citada con su fecha, la fecha de hoy (y, en las clases 2 y 3, los días 7 y 14
+    calculados) y el resultado («en ventana» / «fuera de ventana»).
+  - **Después de fusionar el change** no se commitea en su PR: el hash del merge, la copia de ese comentario y la
+    marca de repetir la 9.4 de `e2e-suite` sobre el commit desplegado se anotan en esta tarea en el **PR de archivo de
+    este change** (clase 2), cuya propia guardia queda en ese mismo PR.
+  - **Falsaciones**, como ejercicios de escritorio con las entradas escritas aquí, **nunca como comentarios en un PR**
+    (dejarían un estado de ventana falso en el sitio que lee la guardia). Falsación 1 (clase 1): entradas
+    `origin/main` = `5b92d28` (2026-10-28, sin el PR-2 de 35b) y confirmación «PR-2 de 35b = #NN; 11.6 hecha el
+    AAAA-MM-DD; 10.7 no hecha»; aplicar la comprobación común y ver que dice «fuera de ventana» (el merge de `#NN` no
+    está en ese `main`). Falsación 2 (clase 1): entradas `origin/main` con el merge del PR-2 de 35b y confirmación
+    «PR-2 de 35b = #NN; 11.6 hecha el 2026-11-10; 10.7 hecha el 2026-11-12»; ver que dice «fuera de ventana».
+    Falsación 3 (clase 2): entradas confirmación «PR-2 de 35b = #NN; 11.6 hecha el 2026-11-10; 9.1-9.4 sin corrida en
+    curso; 10.7 hecha el 2026-11-12; sin corrida `e2e-remote` hoy» y fecha de hoy 2026-11-19 (día 7); ver que dice
+    «fuera de ventana». Anotar en esta tarea el resultado de las tres.

@@ -58,7 +58,9 @@ requirement que 35b o 35c modifiquen (los suyos están en `platform/ci-pipeline`
 `/opsx:apply`**, registrada en **ADR-059** (Propuesto). El PR-1 de 35b ya está en `main` (#86) y 35b prohíbe fusionar
 entre su PR-1 y su PR-2; `e2e-suite` (D15) prohíbe fusionar entre el PR-2 de 35b y su 11.6. La única ventana que
 queda es **después de la 11.6 de 35b y antes de su 10.7**, repitiendo la 9.4 de `e2e-suite` sobre el commit desplegado
-y nunca los días 7 y 14 de la medición (design D14; recomendación). La alternativa es que el owner autorice
+(design D14; recomendación). El PR de archivo y las posibles vueltas atrás tienen sus propias reglas: nunca entre el
+PR-2 de 35b y su 11.6, ni durante su 9.1-9.4, ni los días 7 y 14 de la medición, ni el día de una corrida
+`e2e-remote` (D14). La alternativa es que el owner autorice
 expresamente una excepción a la regla «entre PR-1 y PR-2» de 35b, con riesgo para su 6.3 (Q1 (d)). Si el owner dice
 que no, el change espera a que cierre la 35c y entra como fila propia.
 

@@ -115,8 +115,11 @@ de acceso, y la API sigue respondiendo `503` a una función apagada. El fallo no
 
 **Plazo (iteración 2, B7).** Si la petición no responde en **5 s** (`CAPABILITIES_TIMEOUT_MS = 5000`, en el store), el
 store pasa a `failed` y falla abierto: una API lenta o una petición colgada no dejan la barra sin «Buscar» ni
-«Descubrir» y las páginas en estado neutro indefinidamente. Una respuesta que llegue después del plazo se descarta
-(el estado ya no cambia hasta la siguiente carga).
+«Descubrir» y las páginas en estado neutro indefinidamente. **Al vencer el plazo, el store cancela la petición**
+(se desuscribe del observable de `HttpClient`, por ejemplo con el operador `timeout` de RxJS; iteración 3, I3): no
+queda una petición colgada ni una respuesta tardía que procesar, y el estado no cambia hasta la siguiente carga. El
+test lo afirma con `HttpTestingController`: tras `vi.advanceTimersByTime(5000)`, `req.cancelled === true` y
+`state() === 'failed'`.
 
 **Estado observable (C3).** El `<mat-toolbar>` lleva `data-capabilities` con el estado del store (`loading`, `ready` o
 `failed`). Mientras carga, «Buscar» y «Descubrir» tampoco están, de modo que una prueba que afirma su ausencia pasaría
@@ -165,7 +168,8 @@ al final. Por encima de 1024 px, la barra de siempre, con el `flex-wrap` de 5.4b
 - El `<nav>` con su `id` está **siempre en el DOM** en modo compacto y se oculta con `[hidden]` cuando está cerrado, de
   modo que `aria-controls` nunca apunta a un elemento inexistente.
 - **Cierre por navegación** (`NavigationEnd`), **solo si el panel estaba abierto** en ese `NavigationEnd`
-  (iteración 2, B6/N3): se cierra y el foco pasa a `<main tabindex="-1">` del Shell, el contenido nuevo, con
+  (iteración 2, B6/N3), venga de donde venga la navegación (atrás del navegador o de Android, una navegación
+  programática; iteración 3, I2/B12): se cierra y el foco pasa a `<main tabindex="-1">` del Shell, el contenido nuevo, con
   `focus({ preventScroll: true })` (B8); no queda en un enlace oculto ni cae al `<body>`. **Con el panel cerrado o en
   modo ancho, una navegación no toca el foco:** `join-group.page.ts:30`, `my-links.page.ts:142-146` y
   `applications-board.page.ts:89` hacen `router.navigate([], { replaceUrl })` con diálogos abiertos o mientras la
@@ -181,7 +185,9 @@ al final. Por encima de 1024 px, la barra de siempre, con el `flex-wrap` de 5.4b
 - **Escape** se escucha solo con el panel abierto y solo dentro del `<header>` del Shell (nuevo: envuelve la barra y
   el panel; no en `document`), de modo
   que un Escape en un diálogo o en un campo de la página no cierra nada ni mueve el foco.
-- **Paso a modo ancho** con el panel abierto (girar la tableta, agrandar la ventana): el panel se cierra.
+- **Paso a modo ancho** con el panel abierto (girar la tableta, agrandar la ventana): el panel se cierra y, si el foco
+  estaba dentro del panel, pasa a `<main>` con `focus({ preventScroll: true })` (iteración 3, I7): el enlace que lo
+  tenía queda oculto y el foco caería al `<body>`. Si el foco estaba fuera del panel, no se toca.
 
 **El modo (C7).** Se decide con `BreakpointObserver` de `@angular/cdk/layout` (ya usado en `comments.dialog.ts`)
 convertido en signal, y no con una media query de CSS, porque así los specs de componente pueden fijarlo con un doble
@@ -198,11 +204,14 @@ Descubrir encendidas), en ES y en EN (el inglés puede ser más largo), anotando
 medidos del `<mat-toolbar>` (tarea 3.6). Si a 1024 px no entra en una fila (`scrollWidth > clientWidth` o más de una
 fila), se sube el umbral y se anota el valor en la 3.6 y aquí.
 
-**Dónde vive el umbral (iteración 2, N7).** En cinco lugares, que cambian juntos: (1) `SHELL_COMPACT_QUERY` en
-`apps/web/src/app/layout/shell/shell-breakpoint.ts`; (2) `SHELL_WIDE_MIN_WIDTH_PX = 1024` en
-`apps/web-e2e/src/support/shell-nav.ts`, con un comentario cruzado hacia (1) y (1) hacia (2); (3) el requirement
-«Barra compacta en pantallas estrechas» de `specs/web/shell/spec.md`; (4) D8 y D13 de este documento; (5) las tareas
-3.3a, 3.6 y 6.1. `shell.ts` y `shell.scss` no llevan el número. La tarea 3.6 lo comprueba con un `grep`.
+**Dónde vive el umbral (iteración 2, N7; iteración 3, I5).** En seis lugares, que cambian juntos: (1)
+`SHELL_COMPACT_QUERY` en `apps/web/src/app/layout/shell/shell-breakpoint.ts`; (2) `SHELL_WIDE_MIN_WIDTH_PX = 1024`
+en `apps/web-e2e/src/support/shell-nav.ts`; (3) el requirement «Barra compacta en pantallas estrechas» de
+`specs/web/shell/spec.md` (tres líneas: el modo compacto, el modo ancho y el escenario de paso a ancho); (4) D8 y D13
+de este documento; (5) las tareas 3.3a, 3.6 y 6.1; (6) `proposal.md`. Los comentarios cruzados entre (1) y (2)
+**nombran la otra constante sin repetir el número**, para que el `grep` de la 3.6 devuelva exactamente una línea por
+constante. `shell.ts` y `shell.scss` no llevan el número. La tarea 3.6 lo comprueba con un `grep` que espera ese
+conjunto exacto. Si se sube el umbral, las capturas de la 3.6 pasan a llamarse `wsc-X-*` con el valor nuevo.
 
 *Alternativas descartadas:*
 - **`mat-menu`.** Pone `role="menu"`/`menuitem` a enlaces de navegación: un lector de pantalla anuncia un menú de
@@ -267,9 +276,13 @@ Solo `critical-path.spec.ts` lleva `@lot1`, y un spec sin esa etiqueta no cuenta
   con el panel abierto lo cerraría), y busca el enlace dentro del `<nav>` «Navegación principal»; en ancho, dentro de
   la barra. La vuelta al grupo (`backToGroup`) pasa de la marca a
   `navigateByShell(page, 'Grupos')`, que existe en los dos modos.
-- **Camino crítico, capacidades (C2, C3).** La espera de `GET /api/capabilities` (`page.waitForResponse`) se arma en
+- **Camino crítico, capacidades (C2, C3).** La espera de `GET /api/capabilities` se arma en
   `register()`, `enterWithTestAccount()` y `joinByInvitation()`, **antes del clic** que lleva al Shell («Crear
-  cuenta» o «Entrar»), porque es entonces cuando el Shell se crea y pide las capacidades. La promesa se guarda en
+  cuenta» o «Entrar»), porque es entonces cuando el Shell se crea y pide las capacidades. Es siempre (iteración 3, I4)
+  `page.waitForResponse(r => r.url().endsWith('/api/capabilities') && r.request().method() === 'GET' && r.status() === 200)`,
+  armada antes de la acción que navega, y el cuerpo se lee con `response.json()` de esa respuesta. **Nunca
+  `page.request.get('/api/capabilities')`:** el access token vive en memoria del SPA (ADR-012) y una petición aparte
+  de Playwright no lo lleva. La promesa se guarda en
   `Entry` (A) y se pasa con la de B a sus pasos 3-7; en el **paso 5**, antes de pulsar «Postulaciones», se espera esa
   promesa (sin recargar la página), se espera `data-capabilities="ready"` en el `<mat-toolbar>` y se afirma que
   «Buscar» y «Descubrir» aparecen en la barra o en el panel **si y solo si** su capacidad es `true`. No añade un paso
@@ -284,7 +297,8 @@ Solo `critical-path.spec.ts` lleva `@lot1`, y un spec sin esa etiqueta no cuenta
 - **Pruebas antiguas sin `@lot1` (C10).** Las que pulsan la barra (`byok`, `deploy-prod`, `match`, `auth`, `cv`,
   `links`, `search`) corren en escritorio, donde la barra conserva enlaces con el mismo nombre. `search.spec.ts` es la
   excepción: pulsa «Buscar», que con la búsqueda apagada ya no está; pasa a navegar con `page.goto('/buscar')` y
-  (iteración 2, N6) lee `GET /api/capabilities` del destino: con `search: false` afirma el aviso «no incluida», el
+  (iteración 2, N6) lee `GET /api/capabilities` del destino con la misma espera de `page.waitForResponse` armada antes
+  del `page.goto` (iteración 3, I4): con `search: false` afirma el aviso «no incluida», el
   enlace a `/mis-links` y que no hubo ninguna petición a `GET /api/search`; con `true`, hace el recorrido actual. Se
   verifica con una corrida informativa. Si alguna otra se rompe, se anota como evidencia informativa, no bloquea.
 
@@ -301,23 +315,35 @@ requirements de `platform/ci-pipeline`, `platform/email` ni `platform/production
 - D15 de `e2e-suite` prohíbe fusionar entre el PR-2 de 35b y su 11.6 (la 11.6 relanza los despliegues de la corrida de
   6.3 y de la del PR-2, y una fusión en medio desplegaría otro commit entre los dos).
 
-La única ventana válida que queda sin tocar reglas ajenas es **después de la 11.6 de 35b y antes de su 10.7** (invitar),
-y, como toda fusión a `main` despliega a staging, con dos condiciones: **repetir la 9.4 de `e2e-suite`** (precondición
-de invitar) sobre el commit desplegado tras la fusión, y **nunca los días 7 y 14 de la medición** de 35b. Si la 10.7
-ya se hizo: fuera de ventana, vuelve al owner. Si este change se fusiona después de una 9.4 ya ejecutada, esa 9.4 no
-vale para invitar y se repite. La tarea 7.4 lo comprueba antes de fusionar.
+**Tres clases de fusión (iteración 3).** Toda fusión a `main` despliega a staging. La excepción que se pide al owner
+(Q1) cubre exactamente tres clases de fusión de este change, cada una con su regla:
 
-**De dónde sale el estado de 35b (iteración 2, N1).** El estado de la 11.6 y la 10.7 se toma de una **confirmación
-escrita y fechada del owner en el PR de este change** («11.6 hecha el AAAA-MM-DD; 10.7 no hecha»); la casilla de
-`staging-host/tasks.md` (en `main` o en la rama del PR de archivo de 35b) es solo apoyo y, si contradice la
-confirmación, vuelve al owner. El PR-2 de 35b se identifica por su **número de PR**, no por la rama ni por el título.
+1. **La fusión del change**, en la ventana de Q1 (a): **después de la 11.6 de 35b y antes de su 10.7** (invitar),
+   **repitiendo la 9.4 de `e2e-suite`** (precondición de invitar) sobre el commit desplegado tras la fusión. Si este
+   change se fusiona después de una 9.4 ya ejecutada, esa 9.4 no vale para invitar y se repite. Si la 10.7 ya se hizo:
+   fuera de ventana, vuelve al owner. Aquí **no aplica** la cláusula «nunca los días 7 y 14 de la medición»: la
+   ventana termina antes de la 10.7, que es cuando empieza la medición.
+2. **El PR de archivo de este change** (lleva las anotaciones posteriores a la fusión, abajo).
+3. **Las fusiones de vuelta atrás** (revert) de cualquiera de las anteriores, si las hay, **y su vuelta** (el revert
+   del revert).
+
+Las clases 2 y 3 llevan sus propias reglas, sin ventana fija: **nunca entre el PR-2 de 35b y su 11.6** (D15 de
+`e2e-suite`), **nunca mientras corre su 9.1-9.4** (ensayo de reconstrucción), **nunca los días 7 y 14 de la medición**
+(contados desde la 10.7) y **nunca el día de una corrida `e2e-remote`**. La tarea 7.4 comprueba cada fusión de este
+change en `main`, de cualquiera de las tres clases, justo antes de hacerla.
+
+**De dónde sale el estado de 35b (iteración 2, N1; iteración 3, I6).** El estado de 35b se toma de una **confirmación
+escrita y fechada del owner en el PR que se va a fusionar**, que incluye el número del PR-2 de 35b. Para la clase 1:
+«PR-2 de 35b = #NN; 11.6 hecha el AAAA-MM-DD; 10.7 no hecha». Para las clases 2 y 3: «PR-2 de 35b = #NN; 11.6 hecha
+el AAAA-MM-DD; 9.1-9.4 sin corrida en curso; 10.7 hecha el AAAA-MM-DD (o no hecha); sin corrida `e2e-remote` hoy». La
+casilla de `staging-host/tasks.md` (en `main` o en la rama del PR de archivo de 35b) es solo apoyo y, si contradice
+la confirmación, vuelve al owner. El PR-2 de 35b se identifica por su **número de PR**, no por la rama ni por el
+título.
 
 **Anotaciones posteriores a la fusión (iteración 2, N2).** Lo que solo se sabe después de fusionar (hash del merge,
 resultado de la guardia copiado del PR, marca de repetir la 9.4 de `e2e-suite`) no se commitea en el PR del change:
-viaja en el **PR de archivo de este change**. Ese PR también despliega a staging al fusionarse, así que se fusiona
-**después de la 10.7 de 35b y nunca los días 7 y 14** de la medición, con la misma guardia (confirmación escrita y
-fechada del owner en ese PR de que la 10.7 está hecha y en qué fecha, y comprobación del día). En el PR del change, la
-7.3 anota el número de PR, no la fecha de fusión, que todavía no existe.
+viaja en el **PR de archivo de este change** (clase 2), que se fusiona después de la del change y con las reglas de
+la clase 2. En el PR del change, la 7.3 anota el número de PR, no la fecha de fusión, que todavía no existe.
 
 Alternativa que solo el owner puede abrir: una **excepción expresa a la regla «entre PR-1 y PR-2»** de 35b (Q1 (d)),
 con el riesgo descrito allí. Decisión del owner: **Q1**.
@@ -345,7 +371,12 @@ con el riesgo descrito allí. Decisión del owner: **Q1**.
 - **[Trade-off] Un enlace directo en frío muestra un instante el estado neutro** antes del formulario (D5). Es una
   petición pequeña y sin caché que ya está en vuelo desde la creación del Shell.
 - **[Riesgo] Accesibilidad del panel.** → Botón con `aria-expanded`/`aria-controls` hacia un `<nav>` siempre presente,
-  foco gestionado en cada forma de cierre, Escape acotado al header; los specs lo comprueban (3.3b, 3.4).
+  foco gestionado en cada forma de cierre, Escape acotado al header; los specs lo comprueban (3.3b, 3.4a, 3.4b).
+- **[Riesgo aceptado] Una navegación asíncrona de la página cierra el panel abierto y le pasa el foco a `<main>`**
+  (iteración 3, B13). Pasa con `clearImportParam()` tras la petición de importación (`my-links.page.ts:102/110`) o con
+  el `replaceUrl` del tablero tras cargar `?link`, solo si la persona abre «Menú» durante esa latencia después de
+  entrar por un enlace profundo con `?import` o `?link`. → Se acepta: es un caso casi nulo, y distinguir esas
+  navegaciones (por `replaceUrl` o por cambiar solo la query) añadiría estado al Shell para él.
 
 ## Migration Plan
 
@@ -356,8 +387,12 @@ Rollback: revertir el PR.
 ## Open Questions
 
 - **Q1 [bloqueante para `/opsx:apply`] ¿Excepción a la precedencia de la fila 35, y en qué ventana se fusiona?**
-  (a) Sí, fusionando **después de la 11.6 de 35b y antes de su 10.7**, repitiendo la 9.4 de `e2e-suite` sobre el
-  commit desplegado tras la fusión, nunca los días 7 y 14 de la medición, con las condiciones de D14.
+  (a) Sí, fusionando el change **después de la 11.6 de 35b y antes de su 10.7**, repitiendo la 9.4 de `e2e-suite`
+  sobre el commit desplegado tras la fusión, con las condiciones de D14. La excepción cubre tres clases de fusión:
+  (1) la del change, en esa ventana (sin la cláusula de los días 7 y 14, porque la ventana termina antes de la 10.7);
+  (2) el PR de archivo; (3) las fusiones de vuelta atrás, si las hay, y su vuelta. Las clases 2 y 3 nunca se fusionan
+  entre el PR-2 de 35b y su 11.6, ni durante su 9.1-9.4, ni los días 7 y 14 de la medición, ni el día de una corrida
+  `e2e-remote`.
   (b) No: el change espera a archivar 35c y entra como fila propia.
   (c) Sí, pero solo capacidades y ocultar entradas (sin la barra compacta: tareas 3.3a-3.6, 5.2 y 6.1), en la misma
   ventana que (a), y la barra compacta después de 35c.
@@ -420,11 +455,35 @@ bloqueante.
 | B8 | business | Aceptado. `focus({ preventScroll: true })` al llevar el foco a `<main>`; `main:focus { outline: none }` en `shell.scss` con `tabindex="-1"` fijo (D8, 3.4, 3.5) | El foco programático no debe desplazar la página ni dibujar un contorno alrededor del contenido |
 | B9 | business | Aceptado. La fila B4 de la iteración 1 dice «Informativo; sin cambio» | La fila quedaba sin decisión registrada |
 | N8 | critic | Aceptado; mismo cambio que B9 | Mismo hallazgo |
-| B10 | business | Recortado; sin cambio | Recorte de `reflect` en esta iteración |
-| B11 | business | Recortado; sin cambio | Recorte de `reflect` en esta iteración |
+| B10 | business | Recortado; sin cambio. Pedía alinear los textos de los enlaces: «Ver Solo para mí» frente a «Ir a mis grupos» en ES, y «Go to» en EN | Inconsistencia mínima de redacción que no afecta a la activación |
+| B11 | business | Recortado; sin cambio. Señalaba que en producción «Buscar» y «Descubrir» aparecen al llegar `ready` en la barra ancha y desplazan «Perfil» | En modo compacto no se nota (están en el panel cerrado) y en staging las dos están apagadas |
 | N1 | critic | Aceptado. La 7.4 toma el estado de la 11.6 y la 10.7 de 35b de una confirmación escrita y fechada del owner en el PR; la casilla de la rama de archivo es solo apoyo; el PR-2 de 35b se identifica por su número; «si la 10.7 ya se hizo: fuera de ventana, vuelve al owner»; segunda falsación (D14, 7.4) | La casilla de una rama sin fusionar no es una fuente fiable y la frase anterior admitía dos lecturas |
 | N2 | critic | Aceptado. Las anotaciones posteriores a la fusión viajan en el PR de archivo de este change, que se fusiona después de la 10.7 de 35b, fuera de los días 7 y 14, con la misma guardia; la 7.3 anota el número de PR, no la fecha de fusión (D14, 7.3, 7.4, ADR-059 §1) | Commitear tras fusionar exigía otra fusión a `main` (otro despliegue) sin guardia |
 | N4 | critic | Aceptado. `navigateByShell` lee `aria-expanded` y pulsa «Menú» solo si es `false` (D13, 6.1) | Pulsarlo con el panel abierto lo cerraba |
 | N5 | critic | Aceptado. Cada enlace del panel lo cierra también con `(click)` y lleva el foco a `<main>`; caso «tapping the current route's entry closes the panel» (D8, spec de shell, 3.4) | La entrada de la ruta actual no produce `NavigationEnd` y el panel quedaba abierto |
 | N6 | critic | Aceptado. La 6.6 lee `GET /api/capabilities`: con `search: false` afirma el aviso «no incluida», el enlace a `/mis-links` y que no hubo `GET /api/search`; con `true`, el recorrido actual; corrida informativa (D13, 6.6) | `page.goto('/buscar')` sin más hacía fallar la prueba con la búsqueda apagada |
 | N7 | critic | Aceptado. Constantes `SHELL_COMPACT_QUERY` (SPA) y `SHELL_WIDE_MIN_WIDTH_PX` (e2e) con comentario cruzado, `shell.scss` sin el número, cinco lugares listados y comprobados con `grep` en la 3.6 (D8) | Subir el umbral en un sitio y no en otro desalineaba el SPA, el ayudante e2e y el spec |
+
+## Debate — iteración 3
+
+Fecha: 2026-10-28. Última iteración. Resultado de entrada: `critic` P0 1 (I2), con I1 e I3-I7 como P1 y la propuesta
+de partir la 3.4; `business` V0 0, con B12-B15. Decisiones de `reflect` aplicadas en este documento, en `tasks.md`, en
+el spec de `web/shell`, en `proposal.md` y en ADR-059. Q1 sigue abierta y bloqueante.
+
+| Id | Origen | Decisión | Motivo |
+|---|---|---|---|
+| I2 (P0) | critic | Aceptado. Caso nuevo «closes the panel and focuses main when a navigation completes while it is open» (panel abierto y `router.navigateByUrl('/mi-cv')` sin pasar por el enlace) y escenario «Navegación con el panel abierto sin pasar por él»; la falsación de `NavigationEnd` apunta a ese caso; «closes the panel after navigating to Mi CV» queda como test del `(click)` (D8, 3.4a) | Desde N5 el `(click)` ya cierra el panel, así que quitar la suscripción a `NavigationEnd` no hacía caer ningún caso: el camino del botón atrás quedaba sin prueba |
+| B12 | business | Aceptado; mismo cambio que I2 | Mismo hallazgo |
+| I1 | critic | Aceptado. Las filas B10 y B11 de la iteración 2 dicen qué pedía cada una y por qué se recortó | Un recorte sin contenido no se puede revisar después |
+| I3 | critic | Aceptado. Al vencer el plazo el store cancela la petición (unsubscribe); caso «cancels the request when the timeout expires» (`req.cancelled === true` y `state() === 'failed'` tras `vi.advanceTimersByTime(5000)`) en lugar de «ignores a response that arrives after the timeout»; escenario «La petición vencida se cancela» (D5, spec de shell, 2.2) | Descartar la respuesta tardía dejaba la petición colgada y un caso que probaba algo que no debía ocurrir |
+| I4 | critic | Aceptado. `page.waitForResponse(r => r.url().endsWith('/api/capabilities') && r.request().method() === 'GET' && r.status() === 200)`, armado antes de la navegación, en la 6.2 y la 6.6; nunca `page.request.get` (D13) | El access token vive en memoria del SPA: una petición aparte de Playwright no lo lleva y responde `401` |
+| I5 | critic | Aceptado. `proposal.md` en la lista del umbral (seis lugares); el `grep` de la 3.6 espera el conjunto exacto (una línea en `shell-breakpoint.ts`, una en `shell-nav.ts`, tres en `spec.md`); los comentarios cruzados nombran la otra constante sin el número; con otro umbral, capturas `wsc-X-*` (D8, 3.3a, 3.6, 6.1) | Un `grep` que acepta «solo esas líneas» sin contarlas no detecta una línea de menos, y un comentario con el número la añadía |
+| I6 | critic | Aceptado. La confirmación del owner incluye el número del PR-2 de 35b («PR-2 de 35b = #NN; 11.6 hecha el …; 10.7 no hecha»); las falsaciones de la 7.4 son ejercicios de escritorio con entradas escritas en la propia tarea, nunca comentarios en el PR (D14, 7.4) | Sin el número, la condición (1) de la 7.4 no tenía con qué compararse; una falsación como comentario en el PR deja un estado de ventana falso en el sitio que lee la guardia |
+| I7 | critic | Aceptado. Al pasar a modo ancho con el foco dentro del panel, el foco va a `<main>` con `preventScroll`; lo afirma «closes the panel when the viewport becomes wide» (D8, spec de shell, 3.4a) | El enlace enfocado queda oculto y el foco caía al `<body>` |
+| 3.4 | critic | Aceptado. Partida en 3.4a (cierre: `NavigationEnd`, `(click)`, botón, paso a ancho; falsaciones de `NavigationEnd`, N5 e I7) y 3.4b (foco y Escape; Escape partido en «ignores Escape when the panel is closed» e «ignores Escape from outside the header»; falsaciones de B6 y de Escape en `document`) | La tarea pasaba de una hora y un caso con «o» en el nombre no dice cuál de las dos condiciones falló |
+| B13 | business | Aceptado como riesgo (Risks) | Cerrar el panel en una navegación asíncrona de la página solo pasa si se abre «Menú» durante la carga de un enlace profundo con `?import` o `?link`; filtrarlo añade estado para un caso casi nulo |
+| B14 | business | Aceptado. El requirement dice «con Escape dentro de la cabecera, tras lo cual el foco queda en el botón «Menú»» (spec de shell) | «Con el foco en el botón» se leía como condición para que Escape funcione |
+| B15 | business | Aceptado. ADR-059 §3 dice «si fallan o no responden en 5 s» | El ADR no mencionaba el plazo de B7 y quien implementa leyendo solo el ADR podía omitirlo |
+| Fusiones | reflect | Aceptado. La excepción de Q1 cubre tres clases de fusión: (1) la del change, en la ventana (a), sin la cláusula de los días 7 y 14; (2) el PR de archivo; (3) las vueltas atrás y su vuelta. Las clases 2 y 3: nunca entre el PR-2 de 35b y su 11.6, nunca durante su 9.1-9.4, nunca los días 7 y 14, nunca el día de una corrida `e2e-remote` (ADR-059 §1, D14, Q1(a), 7.4) | La ventana de la clase 1 termina antes de la 10.7; las otras dos clases no tenían reglas propias y el PR de archivo quedaba atado a «después de la 10.7» sin cubrir el ensayo ni las corridas remotas |
+
+Convergencia: pendiente de la verificación puntual de I2 (P0 de la iteración 3)
