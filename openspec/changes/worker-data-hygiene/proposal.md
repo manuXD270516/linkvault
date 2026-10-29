@@ -106,21 +106,30 @@ borrar postulaciones se borran a mano con el procedimiento del RUNBOOK (design R
 
 ## Impact
 
+**Parte A:**
+
 - `apps/api/src/infrastructure/outbox/`: índice TTL en `outbox-event.schemas.ts`, constante de retención y su test de
   coherencia con `outbox-queues.ts`. Sin cambio en el relay.
-- `apps/worker/src/infrastructure/claims/` (nuevo, plataforma como el outbox de `api`; parte B): toma atómica genérica,
-  arranque de índices con migración y compuerta por colección.
-- `apps/worker/src/modules/notifications/` (parte A): `listEligible` de stale con `$lookup`; casos de uso de fan-out y
-  digest que informan las entregas en vuelo; consumidores que aplazan el job y registran los jobs agotados;
-  `listCascadePending` con el filtro de cerrados antes del límite.
-- `apps/worker/src/modules/freshness/` y `.../notifications/`: los adaptadores delegan en lo anterior; los puertos
-  `FreshnessLinkClaims`, `StatusGroupNotifyClaims` y `ApplicationStaleClaims` devuelven una toma con testigo en vez de
-  un booleano, y sus dobles en memoria y casos de uso se ajustan; `listEligible` de stale con `$lookup`; la toma del
-  ledger condicionada; los schedulers consultan la compuerta.
+- `apps/worker/src/modules/notifications/`: `listEligible` de stale con `$lookup`; casos de uso de fan-out y digest que
+  informan las entregas en vuelo; `infrastructure/queue/worker-factory.ts` propio del módulo; consumidores que aplazan
+  el job y registran los jobs agotados.
+- `apps/worker/src/modules/freshness/`: `listCascadePending` con el filtro de cerrados y de ya avisados antes del
+  límite.
 - Sin variables de entorno nuevas, sin cambios en `docker-compose*.yml`, workflows ni `libs/`. En `infra/`, solo una
-  línea de advertencia bajo «Escalar worker» de `infra/README.md` (no escalar `worker` hasta archivar la parte B; B6
-  del debate), además de la misma regla en el `scope` de 35c del manifiesto.
-- RUNBOOK: cómo comprobar los índices y listar los agotados del outbox.
+  línea de advertencia bajo «Escalar worker» de `infra/README.md` (no escalar `worker` hasta archivar la parte B), ya
+  escrita en el debate (B6); la 5.2 la repone si 35b/35c reescriben la sección. La misma regla está en el `scope` de
+  35c del manifiesto.
+- RUNBOOK: cómo comprobar el índice del outbox, listar sus agotados y borrar las marcas huérfanas de la semilla.
+
+**Parte B:**
+
+- `apps/worker/src/infrastructure/claims/` (nuevo, plataforma como el outbox de `api`): toma atómica genérica, arranque
+  de índices con migración y compuerta por colección.
+- `apps/worker/src/modules/freshness/` y `.../notifications/`: los adaptadores de marcas delegan en lo anterior; los
+  puertos `FreshnessLinkClaims`, `StatusGroupNotifyClaims` y `ApplicationStaleClaims` devuelven una toma con testigo en
+  vez de un booleano, y sus dobles en memoria y casos de uso se ajustan; la toma del ledger condicionada; los
+  schedulers consultan la compuerta.
+- RUNBOOK: índices de las colecciones de marcas y qué hacer con una compuerta cerrada.
 
 ## Fuera de alcance
 

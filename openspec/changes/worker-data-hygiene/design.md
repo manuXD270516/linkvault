@@ -291,7 +291,10 @@ alargar `removeOnFail` (Redis no es un almacén de auditoría y compite por memo
 
   Con `uniq_claim_key` (parte B), el `$expr` con `$eq` sobre los dos campos lo usa; sin él, escanea la colección de
   marcas, que a esta escala son decenas o cientos de documentos. El mismo `$lookup`, contra
-  `application_status_group_notify_claims`, es el de Q2 (tareas 4.2).
+  `application_status_group_notify_claims`, es el de Q2 (tareas 4.2). En la cascada de Q2, además, `$group` no
+  garantiza orden: `{ $sort: { _id: 1 } }` va justo después del `$group` por `linkId` (N1), así la selección es
+  determinista (primero los links más antiguos) y los tests de 4.1 y 4.2, que crean el link L el último, prueban que
+  ningún `$limit` aplicado antes de filtrar lo deja afuera.
 - *(parte B)* `MongoNotifyDeliveryLedger.claim`, rama de toma vencida: `updateOne({ ...filter, status: 'claimed',
   claimedAt: existing.claimedAt }, ...)` y `'claimed'` solo con `modifiedCount === 1`; si no, se vuelve a leer una vez
   y se responde según el estado nuevo (`in_flight` o `already_done`). Entre la lectura y la retoma, un método
@@ -334,12 +337,16 @@ termina el job. La entrega queda `claimed` para siempre y el aviso no llega nunc
   lease más corto de lo que dice `NOTIFY_DELIVERY_LEASE_MS` (el digest ya lee el reloj por entrega).
 - **El contador se separa antes de validar** (F1): los payloads de los jobs se validan con `z.strictObject`, así que un
   `job.data` con `inFlightDeferrals` haría fallar el parse de siempre en la ejecución aplazada. El helper hace
-  `const { inFlightDeferrals, ...payload } = job.data`, valida el contador con `z.number().int().min(0).default(0)` y
+  `const { inFlightDeferrals, ...payload } = data` (el consumidor le pasa `job.data`, plano como lo publican el relay y
+  los productores), valida el contador con `z.number().int().min(0).default(0)` y
   devuelve `payload`, que es lo único que llega a `parseFanOutJob` o a `groupDigestJobPayloadSchema.parse`. Al aplazar,
   `job.updateData({ ...payload, inFlightDeferrals: n + 1 })`.
 - **Consumidores** (`notify-fanout.consumer.ts`, `group-digest.consumer.ts`): adoptan el `WorkerHandle` y el
   procesador `(job, token?)` de `enrich-link.consumer.ts` (F2), porque `moveToDelayed` necesita el `token` del lock
-  del job. Si `inFlight > 0` y el contador es menor que `NOTIFY_IN_FLIGHT_MAX_DEFERRALS` (3), incrementan el contador
+  del job. El `WorkerHandle`/`WorkerFactory` es una copia propia del módulo en
+  `notifications/infrastructure/queue/worker-factory.ts`, como la de `match` (N4): un módulo no importa la
+  infraestructura de otro. Su listener `on('failed')` (D8) ignora `DelayedError`, como `enrich-link.consumer.ts:133`,
+  para que un aplazamiento no se registre como aviso agotado. Si `inFlight > 0` y el contador es menor que `NOTIFY_IN_FLIGHT_MAX_DEFERRALS` (3), incrementan el contador
   (`job.updateData`), llaman a `job.moveToDelayed(Date.now() + NOTIFY_DELIVERY_LEASE_MS + 1_000, token)` y lanzan
   `DelayedError` (el patrón de BullMQ para aplazar sin gastar intentos). El job vuelve después de que la toma ajena
   venció: la retoma (`claimed`) o, si quien la tenía terminó, la encuentra `already_done`. Las ya completadas en la
@@ -418,7 +425,8 @@ con el resultado del caso de uso); reducir el lease (no cambia que el job termin
   y consumen el límite sin tener nada pendiente (F5). (a) Incluirlo aquí: antes de `$group`/`$limit`, excluir las
   expiradas de grupo con ASN confirmada con el `$lookup` de D9 contra `application_status_group_notify_claims`
   (`let: { appId: { $toString: '$_id' }, sca: '$statusChangedAt' }`, `pipeline` con `$expr`/`$eq` y
-  `confirmed: true`, F4), y después `$lookup` a `job_links` filtrando `closedAt`; (b) un change propio de frescura.
+  `confirmed: true`, F4), después `$group` por `linkId` con `{ $sort: { _id: 1 } }` inmediato (N1), `$lookup` a
+  `job_links` filtrando `closedAt` y recién entonces `$limit`; (b) un change propio de frescura.
   **Resuelta en el debate (iteración 1), 2026-10-28: (a)** (voto de business, aceptado por reflect); grupo 4 de tareas.
 - **Q3. Rastro de los avisos que no se pudieron enviar.** (a) Una línea `warn` por job agotado en `notify-fanout` y
   `group-digest` (cola, `jobId`, nombre del error; sin destinatarios ni correos); (b) dejarlo como está.
@@ -433,7 +441,8 @@ con el resultado del caso de uso); reducir el lease (no cambia que el job termin
     de una entrega vencida»— pasa a un change posterior, `worker-claims-multi-replica`, disparado por «antes del primer
     `--scale worker=2`» —**recomendación de reflect**: lo que ve el usuario no tiene que esperar a una veintena de
     tareas de concurrencia—.
-    *Costo:* un segundo debate y un segundo PR más adelante (B9).
+    *Costo:* un segundo debate y un segundo PR más adelante (B9); además, la regla de no escalar `worker` sigue
+    vigente hasta aplicar el change posterior, que no tiene fila asignada en la secuencia (B12).
   - (b) **Mantenerlo entero**, con las dos partes en un PR. *Costo:* unas 25 tareas de concurrencia ahora (grupos
     7-11), antes de que nada de la parte A llegue a `main` (B9).
   - Con (a), antes de aplicar: borrar los grupos 7-11 de `tasks.md`, mover `specs/platform/worker-claims/` y el
@@ -490,3 +499,24 @@ Fecha: 2026-10-29. Critic: P0 1 (F1), P1 7 (F2-F8). Business: V0 1 (B6), B7-B10.
 
 Abiertas: Q1 (owner, bloqueante para `/opsx:apply`) y Q5 (owner, antes de `/opsx:apply`). Convergencia: pendiente de
 la iteración 3.
+
+## Debate — iteración 3
+
+Fecha: 2026-10-29. Critic: P0 1 (N1), P1 7 (N2-N8). Business: V0 0, B11-B13 (B11 = N6). Reflect: la sesión principal.
+
+| Id | Origen | Decisión | Motivo |
+|---|---|---|---|
+| N1 | critic (P0) | Aceptado: `{ $sort: { _id: 1 } }` justo después del `$group` por `linkId` (D9, Q2, 4.1, 4.2); en los dos fixtures el link L se crea el último (`ObjectId` mayor); la 4.1 exige que el test falle también contra el código actual. Los escenarios de `notifications/dispatch` no cambian de semántica | Sin orden, `$group` podía devolver L entre los primeros y el test pasaba también con el `$limit` antes del filtro: la prueba no falsaba nada |
+| N2 | critic | Aceptado: en la 3.5 el `job.data` del doble es plano, como lo publican el relay y los productores; la afirmación es que la segunda ejecución llega al caso de uso con el payload sin `inFlightDeferrals` (espía), sin nombrar `ZodError` | Afirmar sobre el tipo de error ataba el test a la implementación del parse |
+| N3 | critic | Aceptado: «a delivery left claimed by a dead worker is sent once its lease expires» pasa a una 3.6 propia; la 3.3 desestructura `data` (D11) | Eran dos verificaciones independientes en una tarea; el helper recibe el dato, no el job |
+| N4 | critic | Aceptado: `notifications/infrastructure/queue/worker-factory.ts` con `WorkerHandle`/`WorkerFactory`, copia por módulo como `match`; lo usan los dos consumidores (sale `DigestWorkerFactory`) y los dobles ganan `on`; en la 4.3 `on('failed')` ignora `DelayedError` (D11, 3.5, 4.3) | Importar de otro módulo rompe el monolito modular; sin ignorar `DelayedError`, cada aplazamiento se registraría como aviso agotado |
+| N5 | critic | Aceptado: la 4.1 suma «expires the open application of a closed link behind more than four batches» con `DetectLinkFreshness` real sobre el mismo fixture | El escenario exige que la postulación expire, no solo que el adaptador seleccione L |
+| N6 | critic | Aceptado: en la 0.2, respondida Q5, las líneas de `infra/README.md`, del `scope` de 35c y de ADR-061 §6 quedan solo con el nombre del change que aplica, con el prefijo «No escalar `worker` hasta archivar»; verificación `grep -c "si Q5" infra/README.md openspec-changes.yaml` = 0 | Una regla operativa condicional a una pregunta ya respondida confunde a quien la lee en 35c |
+| N7 | critic | Aceptado: `Impact` de `proposal.md` partido en «Parte A» y «Parte B», con `listCascadePending` en `freshness/`; la 0.2 solo borra el bloque B | La 0.2 tenía que editar viñetas mezcladas |
+| N8 | critic | Aceptado: en la 2.1, P se inserta la última y tiene el `statusChangedAt` más reciente | Así el `find().limit()` de la falsación la deja afuera siempre |
+| B11 | business | Igual que N6 | — |
+| B12 | business | Aceptado: el costo de Q5 (a) dice que la regla de no escalar `worker` sigue vigente hasta aplicar el change posterior, sin fila asignada | El owner decide con ese costo a la vista |
+| B13 | business | Aceptado: `Impact` dice que la línea de `infra/README.md` ya está escrita en el debate (B6) y que la 5.2 la repone si 35b/35c reescriben la sección | La propuesta describía como futuro algo que ya está en el repo |
+
+Abiertas: Q1 (owner, bloqueante para `/opsx:apply`) y Q5 (owner, antes de `/opsx:apply`).
+Convergencia: pendiente de la verificación puntual de N1 (P0 de la iteración 3)
