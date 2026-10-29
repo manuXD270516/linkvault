@@ -83,6 +83,11 @@ change posterior, con la forma real.
   - La clase vive **en el mismo JSON** del circuito (`StoredCircuit` en `redis-circuit-breaker.ts`, y su equivalente
     en memoria): las clases de la ventana van en paralelo a `failures`, y la del circuito abierto, junto a `openedAt`.
     Un JSON anterior sin esos campos se lee como `unavailable`.
+  - **En Redis, las clases siguen a `failures` posición por posición (P1-1).** Al leer el estado, el mismo filtro que
+    descarta un instante de `failures` que no es número descarta su clase; al podar la ventana o al abrir, las clases
+    se vacían junto con `failures`. Si al leer los dos largos no coinciden (un JSON anterior, o uno escrito a medias),
+    las clases que faltan se completan con `unavailable` **desde el principio**: así las clases que sí están quedan
+    alineadas con los fallos más recientes, y lo que falta cuenta como el mensaje de hoy.
   - Solo se escribe en los fallos que **hoy cambian el estado**: los que cuentan en la ventana con el circuito cerrado y
     el de la prueba de half-open. Un fallo con el circuito abierto y sin prueba en curso sigue sin escribir nada.
   - Solo se borra **donde hoy se borra el circuito**: cuando la prueba recibe respuesta (`recordSuccess` con el
@@ -91,6 +96,10 @@ change posterior, con la forma real.
   - En Redis no hay TTL nuevo: la clave de estado sigue sin caducidad, y la del permiso de prueba conserva su `PX`.
 - `openConditions()` devuelve, por cada circuito abierto según la misma regla de `snapshotOpenIds()`, su clase. Si
   Redis no responde, devuelve un mapa vacío, como `openIds()`: falla abierta.
+- **Cuándo se llama `openConditions()` (P1-4).** Solo en el camino que degrada con `providers_failed` o
+  `no_providers`, **después de recorrer la cadena**: nunca en una ejecución con éxito, ni antes de intentar, ni con
+  `quota_exceeded` o `consent_required`. Así el camino feliz no gana ninguna lectura de Redis, y la clase que se lee
+  es la que dejaron los fallos de esta misma ejecución.
 - Lo implementan `InMemoryCircuitBreaker` y `RedisCircuitBreaker` (ADR-030 §8).
 
 **Efecto en el encaje (C5).** La vigencia de un degradado del encaje (`cv/match`) se decide con
@@ -110,11 +119,16 @@ evita confundirla con el motivo.
 
 - **Solo** puede acompañar a `providers_failed` y a `no_providers`. Nunca acompaña a `quota_exceeded` ni al motivo
   `consent_required`, y `aiQuotaRetryAt` sigue siendo exclusivo de `quota_exceeded`.
-- **Cadena hipotética (C3).** Se compone con `buildChain` sobre el **mismo universo** de la ejecución (el restringido a
-  BYOK si la cuota lo restringió), con `openIds` vacío y con el consentimiento supuesto. La política sigue siendo pura:
-  es otra llamada a la misma función.
-- **Proveedores afectados** son los de la cadena hipotética que no dieron salida válida, cada uno con su clase; vale
-  la primera regla que le aplica:
+- **Cadena hipotética (C3, P1-2).** Se compone con `buildChain` sobre el **mismo universo** de la ejecución (el
+  restringido a BYOK si la cuota lo restringió), con `openIds` vacío y con el **mismo `ctx`, salvo el
+  consentimiento**, que se supone dado: `excludeProviderIds` y todo lo demás se conservan. La política sigue siendo
+  pura: es otra llamada a la misma función.
+- **Proveedores afectados (P1-2, P1-3)** son la unión de dos conjuntos: los de la cadena hipotética que no dieron
+  salida válida, y **todo proveedor intentado o saltado en la cadena real**, esté o no en la hipotética. La unión no
+  depende de que la cadena real quepa en la hipotética. **No cuentan** los proveedores que no se llegaron a intentar
+  porque la ejecución se canceló (`ctx.signal`): la cancelación corta la cadena, y lo que vino después no dice nada del
+  proveedor. El proveedor cuya petición se canceló sí cuenta, como `unavailable` (abajo). Cada afectado lleva su clase;
+  vale la primera regla que le aplica:
   - excluido por falta de consentimiento (tenga o no el circuito abierto): `consent_missing`. La clase recordada del
     circuito de ese proveedor no cuenta (N1);
   - intentado y fallido: la clase de su error. Un `schema_error` o una cancelación cuentan como `unavailable`;
@@ -194,10 +208,10 @@ Textos en ES. Las traducciones EN siguen D8.
 | Caso | Texto | Acción principal | Volver a enviar |
 | --- | --- | --- | --- |
 | `extraction_unavailable` | «No pudimos leerla ahora, inténtalo en un rato» (sin cambio) | Enviar | principal |
-| `ai_capacity_exhausted` (con o sin `Retry-After`) | «La IA no admite más lecturas por ahora y no sabemos cuándo vuelve» | Completar a mano | secundaria |
+| `ai_capacity_exhausted` (con o sin `Retry-After`) | «La IA no admite más lecturas por ahora y no sabemos cuándo vuelve. Puedes completarla a mano» (B3-1) | Completar a mano | secundaria, «Reintentar» (B3-2) |
 | `extraction_disabled` | «La lectura automática no está disponible. Puedes completarla a mano» | Completar a mano | no se ofrece |
-| `ai_consent_required` | «Tu cuenta no permite leerla con IA externa. Puedes completarla a mano» | Completar a mano | no se ofrece |
-| `ai_quota_exceeded` | «Llegaste a tu límite de lecturas con IA. Podrás volver a pegar {cuándo}». Sustituye a «…vuelve mañana», que es falso cuando la ventana móvil se libera hoy. | Completar a mano | secundaria |
+| `ai_consent_required` | «Para leerla con IA externa falta tu permiso. Puedes completarla a mano» (B3-4) | Completar a mano | no se ofrece |
+| `ai_quota_exceeded` | «Llegaste a tu límite de lecturas con IA. Podrás volver a pegar {cuándo}». Sustituye a «…vuelve mañana», que es falso cuando la ventana móvil se libera hoy. | Completar a mano | no se ofrece (B3-3) |
 | `too_many_attempts`, `not_a_job_posting`, errores comunes | sin cambio | Enviar | principal |
 
 - **Sin «Dar permiso en Perfil» (B1).** El permiso de Perfil habla solo del CV
@@ -207,15 +221,32 @@ Textos en ES. Las traducciones EN siguen D8.
   ignora el `Retry-After` de esa respuesta. La variante con hora se reintroduce con D2, cuando la API sepa la hora.
 - **{cuándo}** solo existe para `ai_quota_exceeded`. `whenText(now, retryAfterMinutes, locale)` suma al instante actual
   el `Retry-After` de `RequestFailure` (ya en minutos, redondeado hacia arriba) y **redondea el resultado hacia arriba
-  al minuto siguiente** si tiene segundos (N8b): nunca anuncia una hora anterior a la real. Dice «hoy a las HH:mm» si
-  cae hoy, «mañana a las HH:mm» si cae mañana y una fecha corta en otro caso, con la hora local del navegador y el
-  locale activo.
+  al minuto siguiente si no cae en un minuto exacto** (segundos o milisegundos distintos de cero; N8b, P1-5): nunca
+  anuncia una hora anterior a la real. Dice «hoy a las HH:mm» si cae hoy y «mañana a las HH:mm» si cae mañana, con la
+  hora local del navegador y el locale activo.
+- **Sin variante de fecha corta (B3-5).** La ventana de la cuota de IA es fija de 24 h: `QUOTA_WINDOW_MS = 24 * 60 *
+  60 * 1000` (`libs/ai/src/infrastructure/quota/config-quota-policy.ts:15`, no configurable), y `retryAt` es el
+  `success` más antiguo de la ventana (desde `now - 24 h`, `:43`) más 24 h (`:72-76`), así que la espera nunca pasa de 24 h; sin el dato, la API
+  anuncia 24 h justas (D5). Por eso salen `links.paste.when.date`, la rama de fecha de `whenText` y su test. Quedan dos
+  bordes en que el instante redondeado cae **pasado mañana** aunque la espera no pase de 24 h: una espera de casi 24 h
+  que empieza en el último minuto del día (el redondeo cruza la medianoche) y la noche de un cambio de hora con un día
+  de 23 h. En esos bordes, y si la respuesta llegara sin `Retry-After`, el diálogo usa el texto sin hora
+  (`@@links.paste.quotaExceeded`): «Llegaste a tu límite de lecturas con IA. Podrás volver a pegar en 24 horas como
+  mucho». Es verdad en los tres casos y no inventa un día.
 - «Completar a mano» es la acción principal (botón relleno) donde reenviar no arregla nada o casi seguro vuelve a
-  fallar (B5): cupo de la IA, cuota propia (B2-8), lectura no disponible y permiso. En el resto aparece como acción
+  fallar (B5): cupo de la IA, cuota propia, lectura no disponible y permiso. En el resto aparece como acción
   secundaria.
+- **Reenviar tras un error (B3-2, B3-3).** Cuando reenviar queda como acción secundaria —hoy, solo ante
+  `ai_capacity_exhausted`—, el botón se llama **«Reintentar»** (`@@links.paste.retry`), no «Completar la oferta», para
+  que no se confunda con «Completar a mano». Ante `ai_quota_exceeded` **no se ofrece** reenviar: hasta la hora
+  anunciada, reenviar siempre vuelve a dar el mismo `429`. Quedan «Completar a mano» y cancelar. Revierte en parte
+  B2-8, que dejaba reenviar como secundaria.
 - **Orden de las acciones (B2-10):** principal, secundaria si la hay, y cancelar, también a 360 px de ancho.
-- **Texto del cupo (N8a, B2-11).** «No admite más lecturas por ahora» no culpa a nadie: vale tanto para el cupo de la
-  cuenta de OpenRouter como para la saturación del proveedor de origen del modelo `:free`, que también llega como `429`.
+- **Texto del cupo (N8a, B2-11, B3-1).** «No admite más lecturas por ahora» no culpa a nadie: vale tanto para el cupo
+  de la cuenta de OpenRouter como para la saturación del proveedor de origen del modelo `:free`, que también llega como
+  `429`. «Puedes completarla a mano» nombra la salida que está en el botón principal.
+- **Texto del permiso (B3-4).** «Para leerla con IA externa falta tu permiso» dice qué falta sin sugerir que la cuenta
+  está limitada o castigada.
 
 ### D7. «Completar a mano» desde el mismo diálogo, con lo pegado como referencia copiable
 
@@ -245,9 +276,15 @@ Textos en ES. Las traducciones EN siguen D8.
 ### D8. Textos e i18n (ADR-050)
 
 - Cada texto nuevo lleva un `@@id` estable con el prefijo `links.paste.`: `capacityExhausted`
-  (un solo texto, sin variante con hora: N7), `disabled`, `consentRequired`, `quotaExceededUntil`, `completeByHand`, `when.today`,
-  `when.tomorrow`, `when.date` y `edit.reference`.
-- `@@links.paste.quotaExceeded` cambia de texto y **conserva su id**.
+  (un solo texto, sin variante con hora: N7), `disabled`, `consentRequired`, `quotaExceededUntil`, `completeByHand`,
+  `retry` («Reintentar», B3-2), `when.today`, `when.tomorrow` y `edit.reference`. Sin `when.date` (B3-5).
+- `@@links.paste.quotaExceeded` cambia de texto y **conserva su id**: pasa a ser el texto sin hora de D6 («…Podrás
+  volver a pegar en 24 horas como mucho»).
+- Traducciones EN previstas para los textos que cambió la iteración 3 (el owner puede reescribirlas, Q4):
+  `capacityExhausted` «The AI can't take more reads for now and we don't know when it will be back. You can fill it in
+  by hand»; `consentRequired` «Reading it with an external AI needs your permission. You can fill it in by hand»;
+  `retry` «Try again»; `quotaExceeded` «You've reached your limit of AI reads. You can paste again within 24 hours at
+  most».
 - `messages.xlf` se regenera con `pnpm nx run web:extract-i18n`. `messages.en.xlf` recibe las traducciones y el
   `source` actualizado.
 - `pnpm nx run web:i18n-check` verde.
@@ -273,6 +310,15 @@ Textos en ES. Las traducciones EN siguen D8.
   breakers en memoria y Redis con su suite actual.
 - **API.** Caso de uso con dobles; controlador con `runTask` doble (`links.controller.pasted.spec.ts`).
 - **SPA.** Specs del diálogo con `HttpTestingController`, incluido el pegado abierto desde el encaje.
+- **360 px (P1-9).** Un caso en `apps/web-e2e/src/links.spec.ts`. Ese fichero sigue hoy el camino antiguo (sin
+  `@lot1`), y el runner siempre combina el `--grep` del llamador con las etiquetas del perfil
+  (`apps/web-e2e/scripts/lib/args.ts:152-172`; `LOCAL_TAGS = ['@lot1']` y `REMOTE_TAGS = ['@lot1', '@remote-safe']`
+  en `scripts/e2e-stack.ts:48-49`). Por eso el caso nuevo lleva `@lot1` y una etiqueta propia, `@paste-actions`, y
+  **no** `@remote-safe`: entra solo en el perfil `local` (escribe en Mongo al registrar su cuenta y crear su link) y se
+  admite como pide el README de `apps/web-e2e` («Cómo admitir una prueba»), solo en `chromium` (el proyecto `mobile`
+  solo ejecuta `critical-path.spec.ts`). Los demás casos de `links.spec.ts` siguen sin `@lot1`. El caso registra una
+  cuenta: el presupuesto de registro del README sube en uno por corrida, y la readmisión del camino crítico con
+  `--repeat-each=5` pasa a filtrar `--grep @critical-path` para no pasar de 10 (tarea 5.6c).
 - En CI: `AI_CHAIN=mock` y `AI_MOCK_MODE=replay`. Ninguna prueba llama a un proveedor real.
 
 ### D11. Ventana de fusión y fusiones cubiertas por la excepción
@@ -287,7 +333,8 @@ Aun con la Q1 concedida, ninguna fusión del change puede romper a 35b ni a `e2e
 
 1. **La fusión del change**, solo dentro de la ventana (a): **después de la 11.6 de 35b y antes de su 10.7** (la
    invitación). Aquí no hace falta la cláusula «nunca los días 7 y 14»: la ventana termina antes de la 10.7 y la
-   medición empieza con ella, así que esos días nunca caen dentro. Después de fusionar, y antes de la 10.7, se repite la
+   medición empieza con ella, así que esos días nunca caen dentro. Sí rige **nunca con una corrida `e2e-remote` en
+   curso** (P1-6), local o en CI, y el owner lo declara en su confirmación. Después de fusionar, y antes de la 10.7, se repite la
    9.4 de `e2e-suite` sobre el commit desplegado con este change (la precondición de invitar se anota sobre el commit
    que se despliega).
 2. **El PR de archivo.** Lleva las anotaciones posteriores a la fusión (la repetición de la 9.4, las casillas de la 6.x
@@ -299,11 +346,23 @@ Las clases 2 y 3 tienen sus propias reglas: **nunca** entre el PR-2 de 35b y su 
 
 **De dónde sale el estado (ajuste común a todos los changes).** La casilla de la 10.7 se marca recién en el PR de
 archivo de 35b, después de invitar, así que no sirve para saber si ya se invitó. Cada fusión toma el estado de la 11.6,
-de la 9.1-9.4 y de la 10.7 de 35b de una **confirmación escrita y fechada del owner en el PR** (por ejemplo, «11.6 hecha
-el AAAA-MM-DD; 10.7 no hecha»). Las casillas de `staging-host/tasks.md` son solo apoyo. El PR-2 de 35b se identifica
-**por su número**. Los días 7 y 14 se cuentan desde la fecha de la 10.7 que confirma el owner. Si el owner declara la
-10.7 hecha, la fusión del change está fuera de ventana y no se fusiona. Las tareas 6.3 (fusión del change), 7.3 (PR de
-archivo) y 7.4 (vueltas atrás) lo comprueban, y la 7.3 verifica en `main` cada fusión de este change.
+de la 9.1-9.4 y de la 10.7 de 35b de una **confirmación escrita y fechada del owner en el PR**. Las casillas de
+`staging-host/tasks.md` son solo apoyo. El PR-2 de 35b se identifica **por su número**. Los días 7 y 14 se cuentan
+desde la fecha de la 10.7 que confirma el owner. Si el owner declara la 10.7 hecha, la fusión del change está fuera de
+ventana y no se fusiona. Las tareas 6.3 (fusión del change), 7.3 (PR de archivo) y 7.4 (vueltas atrás) lo comprueban,
+y la 7.3 verifica en `main` cada fusión de este change.
+
+**Forma y vigencia de la confirmación (P1-7, P1-8).**
+
+- La confirmación lleva **la fecha del día de la fusión**. Si es de un día anterior, se pide de nuevo antes de fusionar:
+  el estado de 35b y las corridas del día pueden haber cambiado.
+- Para la fusión del change (clase 1), la forma es: «11.6 hecha el AAAA-MM-DD; PR-2 de 35b = #NNN; 10.7 no hecha; sin
+  `e2e-remote` hoy».
+- Para el PR de archivo y las vueltas atrás (clases 2 y 3): «10.7 hecha el AAAA-MM-DD; PR-2 de 35b = #NNN; 9.1-9.4 no
+  en curso; sin `e2e-remote` hoy». La 7.4, si revierte antes de la 10.7, usa la forma de la clase 1.
+- «Sin `e2e-remote` hoy» cubre las corridas **locales y de CI**: las de CI se comprueban además con `gh run list
+  --workflow e2e.yml --created <AAAA-MM-DD>` (el job `e2e-remote (staging)` vive en `e2e.yml`); las locales solo las
+  puede declarar el owner.
 
 ## Risks / Trade-offs
 
@@ -321,7 +380,11 @@ archivo) y 7.4 (vueltas atrás) lo comprueban, y la 7.3 verifica en `main` cada 
 - **[Quien no dio el permiso no tiene un camino para darlo desde el pegado]** → a propósito (B1): el permiso de Perfil
   habla solo del CV. La Q7 decide si hace falta.
 - **[«{cuándo}» con la hora del navegador]** → la persona ve su hora local. El `Retry-After` es relativo, así que no
-  depende de la zona del servidor.
+  depende de la zona del servidor. En los bordes de D6 (redondeo que cruza a pasado mañana, cambio de hora) se dice
+  «en 24 horas como mucho», que es verdad, en vez de inventar un día.
+- **[Un caso nuevo en la suite reproducible]** → `@paste-actions` entra en `@lot1` y el job `local` de `e2e.yml` lo
+  ejecuta en cada corrida: suma un registro al presupuesto de 10 por 15 min (ADR-020). La 5.6c ajusta el README para
+  que la readmisión del camino crítico no choque con el `429` de registro.
 - **[Precedencia de la fila 35 y ventana de fusión]** → nada se aplica sin la Q1, y ninguna de las tres clases de
   fusión de D11 se hace fuera de sus reglas. El estado de la 10.7 sale de la confirmación del owner, no de una casilla
   que se marca después de invitar.
@@ -360,7 +423,7 @@ nuevos solo los produce este change, y un SPA viejo frente a una API nueva los m
 - **Q2 [no bloqueante] ¿«Completar a mano» también tras `not_a_job_posting`?** (a) Sí. (b) No, solo tras los
   errores de lectura. **Recomendación: (a)**: la IA puede equivocarse, y lo pegado sirve de referencia igual.
 - **Q3 [sin objeto]** Umbral entre espera corta y cupo agotado. Se difiere con D2 (B3).
-- **Q4 [no bloqueante] Textos de D6.** Los cambió reflect tras business (B1, B2, B6); el owner puede reescribirlos sin
+- **Q4 [no bloqueante] Textos de D6.** Los cambió reflect tras business (B1, B2, B6, B3-1, B3-4); el owner puede reescribirlos sin
   cambiar el diseño. **Recomendación:** aceptarlos y revisarlos en el móvil, como pide la línea de riesgo de D13 de
   35b («se comprueba en el móvil que se entiende»).
 - **Q5 [no bloqueante] Lo pegado como referencia en la corrección a mano.**
@@ -454,3 +517,31 @@ con `no_providers`, y `consentWouldEnable` no cambia.
 Q1 sigue pendiente del owner.
 
 Convergencia: pendiente de la confirmación de critic y business sobre esta iteración.
+
+## Debate — iteración 3
+
+Resultado de la iteración 3, la última: critic P0 0 / P1 10 (P1-1 a P1-10, todos aceptados); business V0 0 (B3-1 a
+B3-5). Decisiones de reflect (sesión principal), 2026-10-28.
+
+| Id | Origen | Decisión | Motivo |
+| --- | --- | --- | --- |
+| P1-1 | critic | Aceptado | En Redis, las clases se filtran y se vacían junto con `failures`; si los largos no coinciden al leer, se completan con `unavailable` desde el principio (D3, spec, 2.2a: «kinds shorter than failures are padded as unavailable»). |
+| P1-2 | critic | Aceptado | Afectados = cadena hipotética más todo proveedor intentado o saltado en la real; la hipotética conserva el `ctx` salvo el consentimiento, `excludeProviderIds` incluido (D4, spec, 2.5c-i). |
+| P1-3 | critic | Aceptado | Los proveedores no intentados porque la ejecución se canceló no cuentan; el cancelado sí, como `unavailable` (D4, spec, 2.5c-i). |
+| P1-4 | critic | Aceptado | `openConditions()` solo en el camino que degrada, después de recorrer la cadena (D3, spec, 2.5c-i: «success path never calls openConditions»). |
+| P1-5 | critic | Aceptado | Se redondea «si no cae en un minuto exacto (segundos o milisegundos)»; el escenario de las 13:00 fija el reloj con ms = 0 (D6, spec, 4.1). |
+| P1-6 | critic | Aceptado | Clase 1: nunca con una corrida `e2e-remote` en curso; el owner lo declara en su confirmación (D11, ADR-060 §1, 6.3). |
+| P1-7 | critic | Aceptado | La 7.3 usa `gh run list --workflow e2e.yml --created <fecha>`; la confirmación dice «sin `e2e-remote` hoy», local ni en CI (D11, 7.3, 7.4). |
+| P1-8 | critic | Aceptado | La confirmación lleva la fecha del día de la fusión, o se pide de nuevo; forma «11.6 hecha el AAAA-MM-DD; PR-2 de 35b = #NNN; 10.7 no hecha; sin `e2e-remote` hoy» (D11, 6.3, 7.3, 7.4). |
+| P1-9 | critic | Aceptado | La 5.6 va en `apps/web-e2e/src/links.spec.ts` con `@lot1` y `@paste-actions`, sin `@remote-safe` (el runner exige `@lot1` en `local` y además `@remote-safe` en `remote`); se verifica con `pnpm nx run web-e2e:e2e-stack -- --grep @paste-actions` y se admite según el README (D10, 5.6b, 5.6c). |
+| P1-10 | critic | Aceptado | 2.1 partida en 2.1a/2.1b/2.1c (la 2.1a nombra `breakerWith` de `provider-eligibility.spec.ts:32-43`, con su literal en la línea 34, y los dobles de `run-task.usecase.spec.ts`); 2.5c partida en 2.5c-i (cadena hipotética y afectados) y 2.5c-ii (consentimiento y carreras). |
+| B3-1 | business | Aceptado | Cupo: «La IA no admite más lecturas por ahora y no sabemos cuándo vuelve. Puedes completarla a mano» (spec, D6, D8 con su EN, 4.1). |
+| B3-2 | business | Aceptado | Tras un error, reenviar como secundaria se llama «Reintentar» (`links.paste.retry`) (D6, D8, spec, 5.3, 5.6a). |
+| B3-3 | business | Aceptado | Con `ai_quota_exceeded` no se ofrece reenviar: solo «Completar a mano» y cancelar. Revierte en parte B2-8 (D6, spec, 5.3). |
+| B3-4 | business | Aceptado | `409`: «Para leerla con IA externa falta tu permiso. Puedes completarla a mano» (spec, D6, D8, 4.1). |
+| B3-5 | business | Aceptado (verificado) | La ventana de la cuota es fija de 24 h (`config-quota-policy.ts:15,43,72-76`): fuera `links.paste.when.date`, la rama de fecha de `whenText` y su test. Los bordes en que el redondeo o un cambio de hora caen pasado mañana, y la falta de `Retry-After`, usan el texto sin hora «…en 24 horas como mucho» (D6, D8, spec, 4.1). |
+
+Q1 (bloqueante) y Q7 siguen pendientes del owner; Q2, Q4, Q5 y Q6 son no bloqueantes y siguen abiertas con su
+recomendación.
+
+Convergencia: SI (iteración 3: critic P0 0, business V0 0; Q1 y Q7 pendientes del owner)

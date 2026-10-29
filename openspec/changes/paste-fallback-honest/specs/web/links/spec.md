@@ -17,22 +17,25 @@ Cada error SHALL decir lo que pasa, con estos textos:
 | --- | --- |
 | `422` | «Eso no parece una oferta de trabajo. Copia la descripción de la oferta, no la conversación» |
 | `503` `extraction_unavailable` | «No pudimos leerla ahora, inténtalo en un rato» |
-| `503` `ai_capacity_exhausted` | «La IA no admite más lecturas por ahora y no sabemos cuándo vuelve» |
+| `503` `ai_capacity_exhausted` | «La IA no admite más lecturas por ahora y no sabemos cuándo vuelve. Puedes completarla a mano» |
 | `503` `extraction_disabled` | «La lectura automática no está disponible. Puedes completarla a mano» |
-| `409` `ai_consent_required` | «Tu cuenta no permite leerla con IA externa. Puedes completarla a mano» |
+| `409` `ai_consent_required` | «Para leerla con IA externa falta tu permiso. Puedes completarla a mano» |
 | `429` por límite de pegados | «Pegaste demasiadas ofertas seguidas, espera un poco» |
 | `429` `ai_quota_exceeded` | «Llegaste a tu límite de lecturas con IA. Podrás volver a pegar {cuándo}» |
 
 {cuándo} solo aparece con `ai_quota_exceeded`. SHALL calcularse con el `Retry-After`, redondearse hacia arriba al minuto
-siguiente para no anunciar nunca una hora anterior a la real, y decirse en la hora local: «hoy a las HH:mm» si cae hoy,
-«mañana a las HH:mm» si cae mañana y una fecha corta en otro caso. Ante `ai_capacity_exhausted` el diálogo SHALL ignorar
+siguiente si no cae en un minuto exacto (con segundos o milisegundos), para no anunciar nunca una hora anterior a la
+real, y decirse en la hora local: «hoy a las HH:mm» si cae hoy y «mañana a las HH:mm» si cae mañana. La espera de esa
+cuota no pasa de 24 horas, así que no hay variante con fecha. Si el instante redondeado cae más allá de mañana (por el
+redondeo o por un cambio de hora), o la respuesta no trae `Retry-After`, SHALL mostrarse «Llegaste a tu límite de
+lecturas con IA. Podrás volver a pegar en 24 horas como mucho». Ante `ai_capacity_exhausted` el diálogo SHALL ignorar
 el `Retry-After` aunque la respuesta lo traiga. Ningún texto SHALL invitar a reintentar «en un rato» cuando la
 respuesta no es `extraction_unavailable`. En todos los errores SHALL conservarse lo pegado.
 
 Ante `ai_capacity_exhausted`, `ai_quota_exceeded`, `extraction_disabled` y `ai_consent_required`, «Completar a mano»
-SHALL ser la acción principal del diálogo. Volver a enviar SHALL quedar como acción secundaria ante
-`ai_capacity_exhausted` y `ai_quota_exceeded`, y NO SHALL ofrecerse ante `extraction_disabled` ni ante
-`ai_consent_required`, porque reenviar no cambia nada. Las acciones SHALL aparecer en este orden: la principal, la
+SHALL ser la acción principal del diálogo. Volver a enviar SHALL quedar como acción secundaria, con el nombre
+«Reintentar», solo ante `ai_capacity_exhausted`, y NO SHALL ofrecerse ante `ai_quota_exceeded`, `extraction_disabled`
+ni `ai_consent_required`, porque reenviar no cambia nada. Las acciones SHALL aparecer en este orden: la principal, la
 secundaria si la hay, y cancelar, también en una pantalla de 360 px de ancho.
 
 #### Scenario: Completar una oferta de LinkedIn
@@ -58,10 +61,10 @@ secundaria si la hay, y cancelar, también en una pantalla de 360 px de ancho.
 
 #### Scenario: Límite de lecturas del día
 
-- **GIVEN** son las 10:00 en la hora local
+- **GIVEN** son las 10:00:00.000 en la hora local
 - **WHEN** la API responde `429` con `ai_quota_exceeded` y `Retry-After: 10800`
 - **THEN** SHALL mostrarse «Llegaste a tu límite de lecturas con IA. Podrás volver a pegar hoy a las 13:00»
-- **AND** «Completar a mano» SHALL ser la acción principal y volver a enviar, la secundaria
+- **AND** «Completar a mano» SHALL ser la acción principal y NO SHALL ofrecerse volver a enviar
 - **AND** SHALL conservarse lo pegado
 
 #### Scenario: La hora de vuelta se redondea hacia arriba
@@ -70,25 +73,32 @@ secundaria si la hay, y cancelar, también en una pantalla de 360 px de ancho.
 - **WHEN** la API responde `429` con `ai_quota_exceeded` y `Retry-After: 10800`
 - **THEN** SHALL mostrarse «Podrás volver a pegar hoy a las 13:01», nunca «13:00»
 
+#### Scenario: Una vuelta que el redondeo lleva más allá de mañana
+
+- **GIVEN** son las 23:59:30 en la hora local
+- **WHEN** la API responde `429` con `ai_quota_exceeded` y `Retry-After: 86400`
+- **THEN** SHALL mostrarse «Llegaste a tu límite de lecturas con IA. Podrás volver a pegar en 24 horas como mucho»
+- **AND** NO SHALL mostrarse ninguna fecha
+
 #### Scenario: Cupo de la IA agotado
 
 - **WHEN** la API responde `503` con `ai_capacity_exhausted`
-- **THEN** SHALL mostrarse «La IA no admite más lecturas por ahora y no sabemos cuándo vuelve»
+- **THEN** SHALL mostrarse «La IA no admite más lecturas por ahora y no sabemos cuándo vuelve. Puedes completarla a mano»
 - **AND** NO SHALL mostrarse «inténtalo en un rato»
-- **AND** «Completar a mano» SHALL ser la acción principal y volver a enviar, la secundaria
+- **AND** «Completar a mano» SHALL ser la acción principal y «Reintentar», la secundaria
 - **AND** SHALL conservarse lo pegado
 
 #### Scenario: El cupo de la IA ignora Retry-After
 
 - **WHEN** la API responde `503` con `ai_capacity_exhausted` y `Retry-After: 46800`
-- **THEN** SHALL mostrarse «La IA no admite más lecturas por ahora y no sabemos cuándo vuelve»
+- **THEN** SHALL mostrarse «La IA no admite más lecturas por ahora y no sabemos cuándo vuelve. Puedes completarla a mano»
 - **AND** NO SHALL mostrarse ninguna hora
 
 #### Scenario: Orden de las acciones en el móvil
 
 - **GIVEN** una pantalla de 360 px de ancho
 - **WHEN** la API responde `503` con `ai_capacity_exhausted`
-- **THEN** SHALL verse, en este orden, «Completar a mano», volver a enviar y cancelar, sin desplazamiento horizontal
+- **THEN** SHALL verse, en este orden, «Completar a mano», «Reintentar» y «Cancelar», sin desplazamiento horizontal
 
 #### Scenario: Lectura automática no disponible
 
@@ -100,7 +110,7 @@ secundaria si la hay, y cancelar, también en una pantalla de 360 px de ancho.
 #### Scenario: Falta el permiso
 
 - **WHEN** la API responde `409` con `ai_consent_required`
-- **THEN** SHALL mostrarse «Tu cuenta no permite leerla con IA externa. Puedes completarla a mano»
+- **THEN** SHALL mostrarse «Para leerla con IA externa falta tu permiso. Puedes completarla a mano»
 - **AND** «Completar a mano» SHALL ser la acción principal y NO SHALL ofrecerse volver a enviar
 - **AND** NO SHALL ofrecerse ninguna acción que lleve a `/perfil`
 

@@ -53,7 +53,7 @@ Mientras tanto, este change solo existe como spec. Si se aprueba, la excepción 
 (35b → 35c), no libera la precedencia para ningún otro change y no toca ficheros de despliegue, workflows ni
 requirements de `platform/*`. Y aun aprobada, la excepción cubre las tres clases de fusión del change (design D11): el PR
 se fusiona **después de la 11.6 de 35b y antes de su 10.7**, según confirmación escrita y fechada del owner, repitiendo
-la 9.4 de `e2e-suite`; el PR de archivo y las vueltas atrás siguen reglas propias (nunca entre el PR-2 de 35b y su 11.6,
+la 9.4 de `e2e-suite` y nunca con una corrida `e2e-remote` en curso; el PR de archivo y las vueltas atrás siguen reglas propias (nunca entre el PR-2 de 35b y su 11.6,
 nunca durante su 9.1-9.4, nunca los días 7 y 14 de la medición, nunca el día de una corrida `e2e-remote`). Fusionar
 antes exige que el owner autorice expresamente fusionar entre el PR-1 y el PR-2 de 35b (Q1 (d)).
 
@@ -121,6 +121,8 @@ Ninguna.
   responde igual.
 - `apps/web`: `paste-description.dialog`, `edit-preview.dialog` (dato opcional de referencia), specs de
   `link-list.component` y `match.dialog`, y los catálogos `messages.xlf` / `messages.en.xlf`.
+- `apps/web-e2e`: un caso `@lot1` `@paste-actions` (solo perfil `local`) en `src/links.spec.ts` y el README (admisión y
+  presupuesto de registro), design D10.
 - Sin migraciones, sin cambios en el ledger, en la caché, en prompts, en fixtures ni en el golden.
 - Documentación: ADR-060 (nuevo) y una línea en ADR-018 §Enmiendas. Nada de `staging-host`: el pendiente de confirmar
   la forma real del `429` queda en ADR-060 §Consecuencias.

@@ -8,9 +8,13 @@ acompañar nunca a `quota_exceeded` ni al motivo de falta de consentimiento. El 
 siendo exclusivo de `quota_exceeded`, y la condición NO SHALL llevar instante. Los cuatro motivos, su precedencia, el
 ledger y la caché NO SHALL cambiar por esta condición.
 
-**Proveedores afectados** de una ejecución son los de la **cadena hipotética** —la que compone la política de routing
-con el mismo universo de esa ejecución, **sin circuitos abiertos y con el consentimiento supuesto**— que no dieron una
-salida válida. Cada uno cuenta así, y la primera regla que le aplica es la que vale:
+La **cadena hipotética** es la que compone la política de routing con el mismo universo de esa ejecución, **sin
+circuitos abiertos** y con el **mismo contexto salvo el consentimiento**, que se supone dado: la lista de proveedores
+excluidos de la ejecución y el resto del contexto SHALL conservarse.
+
+**Proveedores afectados** de una ejecución son la unión de los de la cadena hipotética que no dieron una salida válida
+y de todo proveedor que se intentó o se saltó en la cadena real. Los proveedores que no se llegaron a intentar porque
+la ejecución se canceló NO SHALL contar. Cada afectado cuenta así, y la primera regla que le aplica es la que vale:
 
 - los excluidos por falta de consentimiento, **tengan o no el circuito abierto**, cuentan como `consent_missing`: la
   clase recordada por el breaker para ese proveedor NO SHALL contar;
@@ -36,7 +40,37 @@ consentimiento: puede acompañar a `no_providers` aunque la política haya compu
 cuando el único proveedor permitido se saltó por el breaker. `consentWouldEnable` y la elección del motivo NO SHALL
 cambiar.
 
-La condición SHALL ser determinista para un mismo estado de los breakers y unas mismas respuestas.
+La condición SHALL ser determinista para un mismo estado de los breakers y unas mismas respuestas. Las clases
+recordadas por el breaker SHALL consultarse solo cuando la ejecución degrada con `providers_failed` o `no_providers`, y
+después de recorrer la cadena: una ejecución con éxito NO SHALL consultarlas.
+
+#### Scenario: Una ejecución con éxito no consulta las clases
+
+- **GIVEN** una cadena cuyo primer proveedor responde `429` y cuyo segundo da una salida válida
+- **WHEN** se ejecuta `runTask`
+- **THEN** SHALL devolver `success`
+- **AND** el breaker NO SHALL recibir ninguna consulta de clases recordadas
+
+#### Scenario: La lista de exclusión se conserva en la cadena hipotética
+
+- **GIVEN** una ejecución que excluye a un proveedor con el circuito abierto con clase `unavailable`, y un único
+  proveedor más, que responde `429`
+- **WHEN** se ejecuta `runTask`
+- **THEN** la condición SHALL ser `rate_limited`, y el proveedor excluido NO SHALL contar como afectado
+
+#### Scenario: Lo que no se intentó por una cancelación no cuenta
+
+- **GIVEN** una cadena de dos proveedores elegibles, cuyo primero responde `429`, y una ejecución que se cancela antes
+  de intentar el segundo
+- **WHEN** se ejecuta `runTask`
+- **THEN** SHALL devolver `providers_failed` con condición `rate_limited`
+- **AND** el segundo proveedor NO SHALL contar como afectado
+
+#### Scenario: Una cancelación antes del primer intento
+
+- **GIVEN** una ejecución cancelada antes de intentar ningún proveedor
+- **WHEN** se ejecuta `runTask`
+- **THEN** SHALL devolver `providers_failed` sin condición del proveedor
 
 #### Scenario: Cupo del único proveedor agotado
 

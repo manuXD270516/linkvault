@@ -59,6 +59,11 @@ El breaker SHALL exponer, para los circuitos abiertos, esa clase recordada. Si s
 conjunto vacío (fallar abierto), igual que la instantánea de circuitos abiertos. Guardar la clase NO SHALL añadir
 caducidades nuevas al almacén.
 
+En el almacén compartido, la clase de cada error de la ventana SHALL seguir a su instante: se descarta cuando se
+descarta el instante y se vacía cuando se vacía la ventana. Si un estado guardado trae menos clases que errores, las que
+faltan SHALL contar como `unavailable` y SHALL completarse desde el principio, de modo que las clases guardadas queden
+con los errores más recientes.
+
 #### Scenario: Apertura tras fallos repetidos
 
 - **GIVEN** un proveedor con 5 errores de proveedor en los últimos 60 segundos
@@ -120,6 +125,14 @@ caducidades nuevas al almacén.
 - **GIVEN** un circuito abierto con clase recordada `rejected`
 - **WHEN** la petición de prueba recibe respuesta
 - **THEN** el circuito SHALL cerrarse y NO SHALL recordar ninguna clase
+
+#### Scenario: Un estado guardado con menos clases que errores
+
+- **GIVEN** un estado compartido con cinco errores en la ventana y solo dos clases guardadas, `rate_limited` y
+  `rate_limited`
+- **WHEN** se lee el circuito
+- **THEN** los tres errores más antiguos SHALL contar como `unavailable` y los dos más recientes como `rate_limited`
+- **AND** la clase dominante SHALL ser `unavailable`
 
 #### Scenario: Almacén del breaker caído
 
