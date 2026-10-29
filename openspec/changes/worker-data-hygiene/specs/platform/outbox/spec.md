@@ -2,20 +2,20 @@
 
 ### Requirement: Retención de los eventos publicados
 
-Un evento de `outbox_events` marcado como publicado SHALL borrarse automáticamente cuando hayan pasado 7 días desde su
+Un evento de `outbox_events` marcado como publicado SHALL borrarse automáticamente cuando hayan pasado 8 días desde su
 `publishedAt`. Un evento pendiente o agotado NO SHALL borrarse nunca por esta retención. La retención de los publicados
-SHALL ser mayor o igual que la retención de los jobs fallidos de todas las colas que alimenta el relay, de modo que un
+SHALL superar en al menos un día a la retención de los jobs fallidos de cada cola que alimenta el relay, de modo que un
 job fallido que siga en su cola conserve su evento.
 
-#### Scenario: Publicado hace más de 7 días
+#### Scenario: Publicado hace más de 8 días
 
-- **GIVEN** un evento con `publishedAt` de hace 8 días
+- **GIVEN** un evento con `publishedAt` de hace 9 días
 - **WHEN** corre el monitor de caducidad de Mongo
 - **THEN** el evento SHALL desaparecer de `outbox_events`
 
-#### Scenario: Publicado reciente
+#### Scenario: Publicado hace 7 días
 
-- **GIVEN** un evento con `publishedAt` de hace 6 días
+- **GIVEN** un evento con `publishedAt` de hace 7 días
 - **WHEN** corre el monitor de caducidad de Mongo
 - **THEN** el evento SHALL seguir en `outbox_events`
 
@@ -36,4 +36,4 @@ job fallido que siga en su cola conserve su evento.
 
 - **GIVEN** la retención de los publicados y la de los jobs fallidos de cada cola del relay
 - **WHEN** se comprueban en los tests
-- **THEN** la de los publicados SHALL ser mayor o igual que cada una de las otras
+- **THEN** la de los publicados SHALL ser mayor o igual que cada una de las otras más un día

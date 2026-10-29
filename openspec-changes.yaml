@@ -740,17 +740,25 @@ changes:
       el principio las reglas de ADR-056 §1 (tres clases de fusión, confirmación fechada del owner con el PR-2 de 35b,
       repetir la 9.4 de `e2e-suite` sobre el último commit desplegado).
       Origen: relevamiento del 2026-10-28, devuelto a planificación por la sesión de 35b.
-      **(a) Outbox:** TTL parcial de 7 días sobre `publishedAt` de los publicados (≥ `removeOnFail` de todas las colas
-      del relay, fijado por test); pendientes y agotados nunca se borran (ADR-061 §1, enmienda ADR-009).
-      **(b) Marcas del worker** (`link_freshness_claims`, `application_status_group_notify_claims`,
+      **Partición (Q5 del design, del owner antes de `/opsx:apply`; recomendación: partir).** Parte A (grupos 1-6 de
+      tareas) y parte B (grupos 7-11). Si Q5 = (a), la parte B sale a un change posterior que se llamaría
+      `worker-claims-multi-replica` (disparador: «antes del primer `--scale worker=2`»; se lleva `platform/worker-claims`,
+      la toma vencida del ledger y ADR-061 §2-§4); no se crea hasta que el owner responda.
+      **Parte A — (a) Outbox:** TTL parcial de 8 días sobre `publishedAt` de los publicados (≥ `removeOnFail` de todas
+      las colas del relay más un día, fijado por test); pendientes y agotados nunca se borran (ADR-061 §1, enmienda
+      ADR-009). **(b)** Stale elige entre las no avisadas (`$lookup`). **(c)** Entrega en vuelo: el job se aplaza hasta
+      que vence el lease (tope de 3) en vez de terminar (ADR-061 §5b). **(d)** `listCascadePending` filtra los cerrados
+      antes del límite (Q2 = (a)). **(e)** Jobs fallidos de BullMQ: sin cambio de retención (D8); línea `warn` en
+      `notify-fanout`/`group-digest` (Q3 = (a)).
+      **Parte B — (f) Marcas del worker** (`link_freshness_claims`, `application_status_group_notify_claims`,
       `application_stale_claims`; capacidad nueva `platform/worker-claims`): índice único por clave, toma con un
-      `findOneAndUpdate` + `upsert` cuyo filtro exige marca libre (ocupada → `E11000` → «no tomada»), testigo por toma,
-      `leaseUntil` con TTL de 24 h para las tomas abandonadas y la frescura confirmada (retenida 30 min), confirmadas de
-      stale y ASN sin caducidad y con barrido diario de las de clave muerta.
-      **(c) Migración al arrancar:** completar `leaseUntil`, quitar duplicados conservando la confirmada, crear índices;
-      sin índice único, solo los detectores de esa colección se saltan el tick.
-      **(d)** Stale elige entre las no avisadas (`$lookup`); toma vencida del ledger de entregas condicionada.
-      **(e)** Jobs fallidos de BullMQ: sin cambio de retención (D8); línea de log en `notify-fanout`/`group-digest` si Q3.
+      `findOneAndUpdate` + `upsert` cuyo filtro exige marca libre (ocupada → `E11000` → «no tomada») y lease contado
+      desde la toma, testigo por toma, confirmación duradera con `upsert`, `leaseUntil` con TTL de 24 h parcial sobre
+      `confirmed: false` (tomas abandonadas y frescura retenida 30 min); confirmadas de stale y ASN sin caducidad ni
+      barrido (retirado, B4). **(g) Migración al arrancar:** completar `leaseUntil`, quitar duplicados conservando la
+      confirmada, crear índices (TTL primero); nunca falla el arranque; sin índice único, solo los detectores de esa
+      colección (frescura: también la de ASN) se saltan el tick. **(h)** Toma vencida del ledger condicionada.
       Verificación con `mongodb-memory-server` (replset) y pruebas de dos réplicas (dos conexiones).
-      Fuera: ficheros de despliegue (rotación de logs, recomendación para 35b en ADR-061, Q4), retención de
-      `notification_deliveries`, selector de la cascada de frescura (Q2), índices en `applications`.
+      Fuera: ficheros de despliegue (rotación de logs, recomendación para 35b en ADR-061, Q4; no escalar `worker`, nota
+      para 35c en ADR-061 §6), retención de `notification_deliveries`, barrido de marcas duraderas, índices en
+      `applications`.

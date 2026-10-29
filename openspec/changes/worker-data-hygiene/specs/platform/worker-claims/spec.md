@@ -2,8 +2,8 @@
 
 Define las marcas que usan los detectores periódicos del worker —frescura de links, aviso de grupo por auto-expire
 (ASN) y postulaciones estancadas— para que, con cualquier número de réplicas corriendo los mismos crons a la vez, cada
-clave se procese una sola vez, ninguna toma ajena se pierda por error, ninguna colección crezca más allá del uso vivo y
-los datos existentes migren sin perder ningún «ya se avisó» (ADR-061).
+clave se procese una sola vez, ninguna toma ajena se pierda por error, las tomas abandonadas caduquen sin que caduque
+ningún «ya se avisó» y los datos existentes migren sin perder ninguno (ADR-061).
 
 ## ADDED Requirements
 
@@ -13,8 +13,10 @@ Cada colección de marcas del worker SHALL tener un índice único sobre su clav
 `applicationId` + `statusChangedAt` en `application_status_group_notify_claims` y `application_stale_claims`. Tomar una
 marca SHALL ser una única operación atómica que solo tiene éxito si la marca no existe o está libre (su lease venció y,
 en ASN y stale, no está confirmada); una marca ocupada o confirmada SHALL responderse como «no tomada», sin error. Con
-cualquier número de réplicas intentando tomar la misma clave a la vez, SHALL ganar exactamente una. Cada toma SHALL
-llevar un testigo propio, y liberar una marca SHALL borrar solo la toma con ese testigo y sin confirmar.
+cualquier número de réplicas intentando tomar la misma clave a la vez, SHALL ganar exactamente una. El lease de una toma
+SHALL contarse desde el instante en que se toma, no desde el comienzo de la pasada. Cada toma SHALL llevar un testigo
+propio, y liberar una marca SHALL borrar solo la toma con ese testigo y sin confirmar. Confirmar un aviso de ASN o de
+stale SHALL dejar la marca confirmada aunque la toma propia haya vencido o la marca haya sido liberada por otra réplica.
 
 #### Scenario: Dos réplicas toman la misma clave a la vez
 
@@ -42,6 +44,12 @@ llevar un testigo propio, y liberar una marca SHALL borrar solo la toma con ese 
 - **WHEN** dos réplicas intentan tomarla a la vez
 - **THEN** exactamente una SHALL obtener la toma
 
+#### Scenario: Toma tardía en una pasada lenta
+
+- **GIVEN** una pasada que empezó hace 50 minutos y toma ahora la marca de la clave K con un lease de 10 minutos
+- **WHEN** otra réplica intenta tomar K enseguida
+- **THEN** la respuesta SHALL ser «no tomada»
+
 #### Scenario: Marca confirmada
 
 - **GIVEN** una marca de ASN confirmada para la postulación P con su `statusChangedAt`
@@ -60,6 +68,12 @@ llevar un testigo propio, y liberar una marca SHALL borrar solo la toma con ese 
 - **WHEN** A confirma y después B libera porque su encolado falló
 - **THEN** la marca SHALL quedar confirmada
 
+#### Scenario: Confirmar después de que la otra réplica liberó
+
+- **GIVEN** la réplica A tomó una marca de stale y encoló el aviso, su lease venció, B la tomó y B la liberó porque su encolado falló
+- **WHEN** A confirma
+- **THEN** la marca SHALL existir y estar confirmada
+
 #### Scenario: Frescura no se repite en el mismo tick
 
 - **GIVEN** la réplica A procesó y confirmó el link L hace 2 minutos
@@ -75,9 +89,10 @@ llevar un testigo propio, y liberar una marca SHALL borrar solo la toma con ese 
 
 ### Requirement: Las tomas abandonadas caducan y las marcas duraderas no
 
-Una toma sin confirmar y una marca de frescura confirmada SHALL llevar un instante de caducidad (`leaseUntil`) y SHALL
-borrarse automáticamente 24 horas después de él. Una marca confirmada de ASN o de stale NO SHALL llevar ese instante y
-NO SHALL caducar por tiempo, porque es el registro de que el aviso ya se emitió.
+Una marca sin confirmar —una toma en curso o abandonada, o una marca de frescura, que nunca se confirma como duradera—
+SHALL llevar un instante de caducidad (`leaseUntil`) y SHALL borrarse automáticamente 24 horas después de él. Una marca
+confirmada de ASN o de stale NO SHALL caducar por tiempo, lleve o no un `leaseUntil`, porque es el registro de que el
+aviso ya se emitió.
 
 #### Scenario: Toma abandonada
 
@@ -92,44 +107,22 @@ NO SHALL caducar por tiempo, porque es el registro de que el aviso ya se emitió
 - **THEN** la marca SHALL seguir existiendo
 - **AND** el detector NO SHALL volver a avisar por esa postulación
 
-### Requirement: Barrido de las marcas duraderas cuya clave murió
+#### Scenario: Confirmada con un leaseUntil pasado
 
-Al menos una vez al día, el worker SHALL borrar las marcas confirmadas de ASN y de stale para las que no exista ninguna
-postulación con ese `applicationId` y ese mismo `statusChangedAt`, y NO SHALL borrar ninguna otra. El barrido SHALL
-poder correr a la vez en varias réplicas sin efectos adicionales, y SHALL procesar por tandas acotadas.
-
-#### Scenario: La postulación cambió de estado
-
-- **GIVEN** una marca de stale confirmada para P con `statusChangedAt` T1 y P ahora con `statusChangedAt` T2
-- **WHEN** corre el barrido
-- **THEN** la marca de T1 SHALL borrarse
-
-#### Scenario: La postulación ya no existe
-
-- **GIVEN** una marca de ASN confirmada para una postulación borrada con su cuenta
-- **WHEN** corre el barrido
-- **THEN** la marca SHALL borrarse
-
-#### Scenario: Marca viva
-
-- **GIVEN** una marca de stale confirmada para P con el mismo `statusChangedAt` que tiene P
-- **WHEN** corre el barrido
+- **GIVEN** una marca de ASN confirmada que conserva un `leaseUntil` de hace 2 días, escrita por una réplica de la versión anterior
+- **WHEN** corre el monitor de caducidad de Mongo
 - **THEN** la marca SHALL seguir existiendo
-
-#### Scenario: Barrido en dos réplicas
-
-- **WHEN** dos réplicas ejecutan el barrido a la vez sobre las mismas marcas muertas
-- **THEN** cada marca muerta SHALL borrarse una vez y ninguna viva SHALL borrarse
 
 ### Requirement: Índices antes del primer tick, con migración de los datos existentes
 
 Al arrancar y antes del primer tick de sus detectores, el worker SHALL, por cada colección de marcas, completar el
 instante de caducidad de las marcas existentes sin confirmar que no lo tengan, eliminar los duplicados de una misma
-clave conservando de forma determinista una confirmada si la hay, y crear sus índices. Si al final no existe el índice
-único, los detectores que usan esa colección NO SHALL ejecutar su tick, SHALL registrar un aviso que nombra la colección
-y SHALL reintentar la migración en el tick siguiente; el resto del worker SHALL seguir procesando sus colas. Una marca
-escrita por la versión anterior, sin instante de caducidad, SHALL poder tomarse cuando su lease contado desde su
-`claimedAt` haya vencido.
+clave conservando de forma determinista una confirmada si la hay, y crear sus índices. Ningún error de esta migración
+SHALL impedir que el worker arranque. Si al final no existe el índice único de una colección, los detectores que usan
+esa colección —el de frescura usa también la de ASN— NO SHALL ejecutar su tick, SHALL registrar un aviso que nombra la
+colección y SHALL reintentar la migración en el tick siguiente; el resto del worker SHALL seguir procesando sus colas.
+Una marca escrita por la versión anterior, sin instante de caducidad, SHALL poder tomarse cuando su lease contado desde
+su `claimedAt` haya vencido.
 
 #### Scenario: Duplicados heredados con una confirmada
 
@@ -152,6 +145,20 @@ escrita por la versión anterior, sin instante de caducidad, SHALL poder tomarse
 - **THEN** el detector NO SHALL encolar ningún aviso en ese tick
 - **AND** SHALL registrarse un aviso que nombra la colección
 - **AND** las colas de enriquecimiento SHALL seguir consumiéndose
+
+#### Scenario: Error inesperado al crear un índice
+
+- **GIVEN** que la creación de un índice de marcas falla con un error que no es de clave duplicada
+- **WHEN** arranca el worker
+- **THEN** el worker SHALL terminar de arrancar
+- **AND** SHALL registrarse un aviso con la colección y el código del error, sin claves ni documentos
+
+#### Scenario: Compuerta de ASN cerrada
+
+- **GIVEN** que no existe el índice único de `application_status_group_notify_claims` y sí el de `link_freshness_claims`
+- **WHEN** llega el tick del detector de frescura
+- **THEN** el detector NO SHALL ejecutar el tick
+- **AND** SHALL registrarse un aviso que nombra `application_status_group_notify_claims`
 
 #### Scenario: Marca heredada sin caducidad
 

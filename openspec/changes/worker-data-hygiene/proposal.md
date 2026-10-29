@@ -20,6 +20,9 @@ de una réplica del worker:
   postulaciones **antes** de descartar las ya avisadas: con más de 50 estancadas y avisadas, las nuevas no se ven nunca.
 - **La toma de una entrega vencida** en `notification_deliveries` hace `updateOne` sin condición tras leer: dos workers
   que encuentran el mismo `claimed` vencido envían los dos.
+- **Una entrega en vuelo se pierde**: si el worker muere entre reclamar una entrega y completarla, BullMQ recupera el
+  job, `claim` responde `in_flight` (la toma sigue dentro de sus 5 minutos) y los consumidores de `notify-fanout` y del
+  digest **terminan el job**; la entrega queda `claimed` para siempre y el aviso no llega. Pasa con un solo worker.
 - **Jobs fallidos de BullMQ** (`outbox-queues.ts:25`, `removeOnFail` a 7 días): evaluado en design D8; no hace falta
   retenerlos más, porque el rastro duradero es el estado del agregado (`platform/outbox`, «El trabajo encolado no se
   pierde»). El único hueco real son dos consumidores de notificaciones que no registran el fallo (Q3).
@@ -29,23 +32,37 @@ ninguna de estas colecciones y el volumen de 3-5 personas en 14 días es desprec
 
 ## What Changes
 
+El change tiene dos partes (design, «Partición (Q5)»); el owner decide en Q5 si la B sale a un change posterior.
+
+**Parte A — lo que ve el usuario:**
+
 - **Retención de los eventos publicados del outbox** (ADDED en `platform/outbox`): índice TTL parcial sobre
-  `publishedAt` (solo documentos con fecha), 7 días, igual que la retención de los jobs fallidos de sus colas, con un
-  test que impide que las dos cifras se separen. Los **pendientes** y los **agotados** no se borran nunca.
-- **Marcas atómicas del worker** (capacidad nueva `platform/worker-claims`): una clave única por colección, toma con
-  un solo `findOneAndUpdate` con `upsert` cuya condición incluye el vencimiento (la toma ocupada cae en `E11000` y se
-  lee como «no tomada»), un testigo por toma para que `release` solo borre la propia, `leaseUntil` como único campo de
-  caducidad (TTL de 24 h sobre las tomas abandonadas; las confirmadas no lo llevan), y en frescura una retención corta
-  tras confirmar que impide que otra réplica relea el mismo link en el mismo tick. Cierra el comentario de `:210-220`.
-- **Barrido diario de las marcas duraderas muertas**: borra las confirmadas de stale y ASN cuya postulación ya no existe
-  o ya no tiene ese `statusChangedAt`. Idempotente con varias réplicas.
-- **Arranque de índices con migración**: antes del primer tick, el worker completa `leaseUntil` en los documentos
-  heredados, elimina duplicados de forma determinista (gana la confirmada) y crea los índices; si no lo consigue, los
-  detectores de esa colección **se saltan el tick** con un aviso y el resto del worker sigue trabajando.
+  `publishedAt` (solo documentos con fecha), 8 días, un día más que la retención de los jobs fallidos de sus colas, con
+  un test que impide que las dos cifras se acerquen. Los **pendientes** y los **agotados** no se borran nunca.
 - **Selección de stale sin inanición** (ADDED en `notifications/stale-applications`): las ya avisadas no consumen el
   lote.
+- **Entrega en vuelo reintentada** (ADDED en `notifications/dispatch`): el job que encuentra una entrega `in_flight` se
+  aplaza hasta que vence su lease, con un tope de aplazamientos, en vez de terminar.
+- **Cascada de frescura sin puntos ciegos** (Q2 = (a)): `listCascadePending` filtra los links cerrados antes del límite.
+- **Rastro de los avisos agotados** (Q3 = (a)): una línea `warn` por job agotado de `notify-fanout` y `group-digest`.
+
+**Parte B — marcas atómicas multi-réplica:**
+
+- **Marcas atómicas del worker** (capacidad nueva `platform/worker-claims`): una clave única por colección, toma con
+  un solo `findOneAndUpdate` con `upsert` cuya condición incluye el vencimiento (la toma ocupada cae en `E11000` y se
+  lee como «no tomada») y cuyo lease se cuenta desde el instante de la toma, un testigo por toma para que `release` solo
+  borre la propia, una confirmación duradera que sobrevive a la liberación ajena, `leaseUntil` como único campo de
+  caducidad (TTL de 24 h parcial sobre las no confirmadas), y en frescura una retención corta tras confirmar que impide
+  que otra réplica relea el mismo link en el mismo tick. Cierra el comentario de `:210-220`.
+- **Arranque de índices con migración**: antes del primer tick, el worker completa `leaseUntil` en los documentos
+  heredados, elimina duplicados de forma determinista (gana la confirmada) y crea los índices; nunca falla el arranque;
+  si no consigue el índice único, los detectores de esa colección **se saltan el tick** con un aviso y el resto del
+  worker sigue trabajando.
 - **Toma única de una entrega vencida** (ADDED en `notifications/dispatch`): la toma se condiciona al `claimedAt` leído.
-- **ADR-061** (Propuesto) con la retención y el modelo de marcas; una línea en ADR-009.
+
+**Ambas:** ADR-061 (Propuesto) con la retención y el modelo de marcas; una línea en ADR-009. El barrido diario de las
+marcas duraderas muertas se retiró en el debate (B4): el RUNBOOK documenta el borrado manual de las huérfanas que deja
+la semilla.
 
 ## Encaje en la fase
 
@@ -68,28 +85,33 @@ comprobaciones previas a invitar sobre el último commit desplegado.
 **Seeds de `infra/staging/`**: compatibles. `seed-volume.mongosh.js` borra en `clean` los eventos del outbox cuyo
 payload nombra a un usuario del lote; el TTL solo quita publicados antiguos, que `clean` también habría borrado o que no
 le importan, y ni `expect` ni `digest` cuentan el outbox. La semilla no escribe marcas; las que deja huérfanas al
-borrar postulaciones las recoge el barrido (design R5). No se toca ningún fichero de `infra/staging/`.
+borrar postulaciones se borran a mano con el procedimiento del RUNBOOK (design R5). No se toca ningún fichero de
+`infra/staging/`.
 
 ## Capabilities
 
 ### New Capabilities
 
 - `platform/worker-claims`: contrato de las marcas de los detectores periódicos del worker (frescura, ASN y stale):
-  clave única, toma atómica entre réplicas, testigo, caducidad de las tomas abandonadas, barrido de las duraderas
-  muertas y arranque de índices con migración.
+  clave única, toma atómica entre réplicas, testigo, caducidad de las tomas abandonadas y arranque de índices con
+  migración (parte B).
 
 ### Modified Capabilities
 
 - `platform/outbox`: ADDED «Retención de los eventos publicados».
 - `notifications/stale-applications`: ADDED «Las postulaciones ya avisadas no consumen el lote».
-- `notifications/dispatch`: ADDED «Toma única de una entrega vencida».
+- `notifications/dispatch`: ADDED «Una entrega en vuelo se reintenta al vencer su lease» (parte A) y «Toma única de
+  una entrega vencida» (parte B).
 
 ## Impact
 
 - `apps/api/src/infrastructure/outbox/`: índice TTL en `outbox-event.schemas.ts`, constante de retención y su test de
   coherencia con `outbox-queues.ts`. Sin cambio en el relay.
-- `apps/worker/src/infrastructure/claims/` (nuevo, plataforma como el outbox de `api`): toma atómica genérica, arranque
-  de índices con migración y compuerta por colección, barrido diario.
+- `apps/worker/src/infrastructure/claims/` (nuevo, plataforma como el outbox de `api`; parte B): toma atómica genérica,
+  arranque de índices con migración y compuerta por colección.
+- `apps/worker/src/modules/notifications/` (parte A): `listEligible` de stale con `$lookup`; casos de uso de fan-out y
+  digest que informan las entregas en vuelo; consumidores que aplazan el job y registran los jobs agotados;
+  `listCascadePending` con el filtro de cerrados antes del límite.
 - `apps/worker/src/modules/freshness/` y `.../notifications/`: los adaptadores delegan en lo anterior; los puertos
   `FreshnessLinkClaims`, `StatusGroupNotifyClaims` y `ApplicationStaleClaims` devuelven una toma con testigo en vez de
   un booleano, y sus dobles en memoria y casos de uso se ajustan; `listEligible` de stale con `$lookup`; la toma del
@@ -102,9 +124,7 @@ borrar postulaciones las recoge el barrido (design R5). No se toca ningún fiche
 - **Rotación de logs de Docker** en el host (ningún compose declara `logging:`; `json-file` sin `max-size` crece sin
   límite): es un fichero de despliegue de 35b. Recomendación escrita para 35b, Q4.
 - Crecimiento de `notification_deliveries` (es el registro de idempotencia; su retención depende de cuánto puede
-  reaparecer un hecho) y la pérdida de una entrega cuando la toma en vuelo muere (`in_flight` termina el job sin
-  reintento): candidatos a un change de notificaciones.
-- Selector de la cascada de frescura (`listCascadePending`), que puede no ver los links cerrados cuando hay más de
-  `4 × LINK_FRESHNESS_BATCH_LIMIT` links con postulaciones abiertas: Q2.
+  reaparecer un hecho): candidato a un change de notificaciones.
+- Barrido de las marcas confirmadas de stale y ASN cuya clave murió (retirado en el debate, B4; design D6).
 - Una cola de mensajes muertos o una colección de jobs fallidos (design D8).
 - Índices nuevos en `applications` (los dueños son de `api`).
