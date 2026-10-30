@@ -1,14 +1,16 @@
 import { workspaceRoot } from '@nx/devkit';
-import type {
-  EnrichmentFailureReason,
-  PreviewSources,
-  StoredPreview,
+import {
+  type EnrichmentFailureReason,
+  type PreviewSources,
+  type StoredPreview,
+  sessionResponseSchema,
 } from '@linkvault/shared';
 import { type Page, expect, test } from '@playwright/test';
 import { MongoClient } from 'mongodb';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { JOB_ID_SLOTS, jobIdBase } from './support/job-ids';
+import { resolveProfile } from './support/profile';
 import { resetRegisterLimit } from './support/register-limit';
 
 const SCREENSHOT_DIR = join(workspaceRoot, 'reports', 'smoke', 'job-links');
@@ -622,3 +624,104 @@ test('links flow: save, open, import a chat, remove and the private list', async
     await context.close();
   }
 });
+
+/**
+ * Orden de lectura de las acciones del diálogo de pegar ante un error (change `paste-fallback-honest`, tarea 5.6b,
+ * design D10): a 360 px de ancho la principal va antes que la secundaria y esta, antes que cancelar, y nada se sale de
+ * la pantalla.
+ *
+ * Es de la suite reproducible (`@lot1`) y de ningún otro perfil: **no** lleva `@remote-safe` porque registra una cuenta
+ * y crea un link, y en `remote` no hay altas. Solo usa lo que admite la suite: el origen y la API del perfil, ningún
+ * `localhost` escrito a mano, ni Mongo, ni `docker`, ni esperas fijas. La respuesta del pegado la fija `page.route`: así
+ * el caso no depende de que la IA esté o no agotada.
+ */
+test(
+  'paste error actions fit and keep their order at 360 px',
+  { tag: ['@lot1', '@paste-actions'] },
+  async ({ page, request, baseURL }, testInfo) => {
+    const profile = resolveProfile(process.env, baseURL);
+    const id = `${Date.now()}-${testInfo.project.name}-${testInfo.repeatEachIndex}-${testInfo.retry}`;
+    const person = {
+      displayName: 'Smoke Paste',
+      email: `smoke-paste+${id}@example.com`,
+      password: `Paste-pass-${id}`,
+    };
+
+    await page.goto('/registro');
+    await expect(page.getByRole('heading', { level: 1, name: 'Crear cuenta' })).toBeVisible();
+    await page.getByLabel('Nombre', { exact: true }).fill(person.displayName);
+    await page.getByLabel('Email', { exact: true }).fill(person.email);
+    await page.getByLabel('Contraseña', { exact: true }).fill(person.password);
+    const registered = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        new URL(response.url()).pathname === '/api/auth/register',
+    );
+    const landed = page.waitForURL(/\/grupos$/);
+    await page.getByRole('button', { name: 'Crear cuenta' }).click();
+    const registeredResponse = await registered;
+    expect(registeredResponse.status()).toBe(201);
+    const session = sessionResponseSchema.parse(await registeredResponse.json());
+    await landed;
+
+    // El link de una oferta que no se puede leer (`.invalid`), por la API pública y con el token de la sesión.
+    const created = await request.post(`${profile.apiOrigin.replace(/\/$/, '')}/links`, {
+      headers: {
+        authorization: `Bearer ${session.accessToken}`,
+        'x-requested-with': 'linkvault',
+      },
+      data: { url: `https://ejemplo.invalid/ofertas/paste-actions-${id}` },
+    });
+    expect(created.status()).toBe(201);
+
+    await page.getByRole('link', { name: 'Solo para mí' }).click();
+    await expect(page).toHaveURL(/\/mis-links$/);
+    await expect(page.getByTestId('link-open')).toHaveCount(1);
+
+    await page.setViewportSize({ width: 360, height: 740 });
+    await page.route('**/api/links/*/pasted', (route) =>
+      route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 'ai_capacity_exhausted', message: 'The AI has no capacity' }),
+      }),
+    );
+
+    await page.getByTestId('link-paste').click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByLabel('Descripción de la oferta').fill('Buscamos una persona para el equipo de datos.');
+    await dialog.getByRole('button', { name: 'Completar la oferta', exact: true }).click();
+
+    await expect(dialog.getByTestId('paste-error')).toContainText(
+      'La IA no admite más lecturas por ahora y no sabemos cuándo vuelve',
+    );
+    const actions = [
+      dialog.getByRole('button', { name: 'Completar a mano', exact: true }),
+      dialog.getByRole('button', { name: 'Reintentar', exact: true }),
+      dialog.getByRole('button', { name: 'Cancelar', exact: true }),
+    ];
+    const boxes = [];
+    for (const action of actions) {
+      await expect(action).toBeVisible();
+      const box = await action.boundingBox();
+      expect(box).not.toBeNull();
+      boxes.push(box);
+    }
+    for (const box of boxes) {
+      expect(box?.x).toBeGreaterThanOrEqual(0);
+      expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(360);
+    }
+    // Orden de lectura: de arriba abajo y, en la misma fila, de izquierda a derecha.
+    for (let index = 1; index < boxes.length; index += 1) {
+      const before = boxes[index - 1];
+      const after = boxes[index];
+      const sameRow = Math.abs((before?.y ?? 0) - (after?.y ?? 0)) <= 1;
+      if (sameRow) {
+        expect(before?.x ?? 0).toBeLessThan(after?.x ?? 0);
+      } else {
+        expect(before?.y ?? 0).toBeLessThan(after?.y ?? 0);
+      }
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
+  },
+);
