@@ -64,6 +64,7 @@ a cualquiera que se registre. Las condiciones, a la manera de ADR-053 §1 y ADR-
   el registro hasta tener este change. La respuesta se anota con fecha en ADR-056 §1 y en ADR-048 §Consecuencias. La
   excepción cubre tres clases de fusión —la del change, la del PR de archivo y una eventual vuelta atrás con su
   vuelta—, cada una con su guardia (ADR-056 §1).
+  **Respondida por el owner el 2026-10-29: (a)** (ADR-056 §1; design, «Respuestas del owner y aprobación»).
 
 ## Capabilities
 

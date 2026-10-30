@@ -578,7 +578,8 @@ changes:
     adrs: [056, 048, 051, 003, 022, 035]
     agents: [backend-dev]
     scope: |
-      **Propuesto el 2026-10-28; requiere excepción del owner a la precedencia de la fila 35 (ADR-048).** No es una
+      **Propuesto el 2026-10-28; excepción a la precedencia de la fila 35 (ADR-048) decidida por el owner el 2026-10-29:
+      Q1 = (a), fusión tras la 11.6 de 35b y antes de su 10.7 (ADR-056 §1).** No es una
       pieza de la fila ni cambia su orden (35b → 35c); no libera la precedencia para ningún otro change. Cuándo se
       aplica y fusiona es la Q1 del design (bloqueante para `/opsx:apply`): antes de invitar en 35b (recomendación;
       idealmente antes de su primer despliegue), después de 35c o dentro de 35b; la respuesta va a **ADR-056 §1**.
@@ -595,8 +596,8 @@ changes:
       tope y un plazo para toda la cadena.
       **(c)** Push solo a servicios push conocidos (FCM, Mozilla, Apple, Windows) en el alta y antes de enviar; las
       suscripciones antiguas fuera de la lista se borran sin conectar.
-      **(d)** `EGRESS_ALLOW_PRIVATE_TARGETS` para desarrollo y tests (nunca enlace local); con `NODE_ENV=production`
-      el proceso no arranca. La API rechaza sin DNS los hosts internos visibles en la URL (`invalid_url`).
+      **(d)** Sin opción de configuración que abra el filtro: la política permisiva solo se inyecta en tests
+      (`EgressPolicy`). La API rechaza sin DNS los hosts internos visibles en la URL (`invalid_url`) y no juzga el puerto.
       **(e) Fuera:** la defensa del lado del despliegue (red del worker, autenticación o filtro por origen en el
       almacén, contraseñas en Redis y Mongo, métricas no alcanzables desde el worker) queda como recomendación para 35b
       en ADR-056 §6; trasladarla a `staging-host` es la Q3.

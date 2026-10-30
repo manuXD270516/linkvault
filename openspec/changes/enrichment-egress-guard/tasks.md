@@ -11,16 +11,16 @@ una conexión (design D10). Los tests que necesitan un servidor local inyectan u
 (aprueba el `loopback` resuelto desde un nombre y rechaza el literal `loopback`) para las redirecciones y el cambio de
 DNS, y `PUBLIC_EGRESS_POLICY` tal cual para el negativo de puerto. No hay variable de entorno que abra ninguna.
 
-- [ ] 0.1 [infra] Q1 respondida por el owner y anotada con fecha en ADR-056 §1 (línea que empieza por «Respuesta del
+- [x] 0.1 [infra] Q1 respondida por el owner y anotada con fecha en ADR-056 §1 (línea que empieza por «Respuesta del
   owner (Q1), AAAA-MM-DD:») y, en una línea, en ADR-048 §Consecuencias bajo las excepciones de ADR-053 y ADR-055, línea que repite la condición «la 10.7 de 35b solo procede con la 9.4 en verde sobre el último hash desplegado», que además se pide en la confirmación del owner previa a la 10.7; con
   Q1 = (a) o (e), una fila «∥ 35b (fusión tras su 11.6, antes de su 10.7)» en `docs/design-v0.2.md` §6, como la de
   `usage-guide-fixes`. Si Q1 = (b), el change no pasa de aquí hasta archivar 35c; si Q1 = (c), se vuelve a
   `/lv:debate` para fundirlo con `staging-host`; si Q1 = (d), la autorización expresa del owner a la excepción de «entre
   PR-1 y PR-2» de 35b, con su riesgo para la 6.3 aceptado por escrito, se anota en la misma línea. Verificar:
   `grep -c "Respuesta del owner (Q1), 20" docs/adr/ADR-056.md` devuelve `1` (hoy `0`) y
-  `grep -c "ADR-056" docs/adr/ADR-048.md` devuelve al menos `1` (hoy `0`).
-- [ ] 0.2 [infra] Debate critic/business/reflect cerrado sin P0/V0 abiertos y aprobación humana registrada en
-  `design.md` con su fecha. Verificar: la sección del debate de la última iteración dice «Convergencia: SI».
+  `grep -c "ADR-056" docs/adr/ADR-048.md` devuelve al menos `1` (hoy `0`). **Estado (2026-10-29):** Q1 = (a) («Toma las recomendaciones»), anotada en ADR-056 §1, en design.md (Open Questions y «Respuestas del owner y aprobación»), en ADR-048 §Consecuencias (línea de la excepción de ADR-056, con la condición de la 9.4 sobre el último hash) y en `docs/design-v0.2.md` §6 (fila «∥ 35b (fusión tras su 11.6, antes de su 10.7)»). `grep -c "Respuesta del owner (Q1), 20" docs/adr/ADR-056.md` devuelve `1`; `grep -c "ADR-056" docs/adr/ADR-048.md` devuelve `1`.
+- [x] 0.2 [infra] Debate critic/business/reflect cerrado sin P0/V0 abiertos y aprobación humana registrada en
+  `design.md` con su fecha. Verificar: la sección del debate de la última iteración dice «Convergencia: SI». **Estado (2026-10-29):** iteración 3 más verificación puntual con «Convergencia: SI» (critic P0 0, business V0 0); aprobación del owner del 2026-10-29 en la sección «Respuestas del owner y aprobación» de design.md.
 
 ## 1. Clasificador compartido (`libs/shared`, design D1, D2)
 

@@ -466,17 +466,25 @@ cualquier fallo del alta (un corte de red la perdería sin motivo).
   - **Recomendación: (a)**, con (e) como regla de respaldo si la 11.6 se retrasa hasta el día previsto para invitar.
     (d) no se recomienda: su costo cae sobre tareas de 35b ya ensayadas. La respuesta se anota en ADR-056 §1 en una
     línea que empieza por «Respuesta del owner (Q1), AAAA-MM-DD:» y en ADR-048 §Consecuencias.
+  - Respuesta del owner (Q1), 2026-10-29: (a), «Toma las recomendaciones». Fusión después de la 11.6 de 35b y antes
+    de su 10.7, con las tres clases de fusión y las reglas de arriba; (e) como respaldo. Anotada en ADR-056 §1, en
+    ADR-048 §Consecuencias y en `docs/design-v0.2.md` §6.
 - **Q2 [no bloqueante]. Mensajes propios en el SPA** para `unsafe_destination` («Esta dirección no es pública») y para
   el `invalid_url` de una URL con IP literal interna, que con este change dice «no reconocida» (V2-1 y B1 del debate;
   «Fuera de alcance» de la proposal). El `400` del alta push ya no entra aquí: desde B3-a de la iteración 3 usa el
   texto existente de navegador no compatible (D11). Recomendación: no ahora; los textos genéricos evitan tocar el catálogo i18n y el tercer caso es raro.
   Candidato para un change de producto tras la fila 35.
+  Respuesta del owner (Q2), 2026-10-29: la recomendada; no entra en este change, queda como candidato para un change
+  de producto tras la fila 35.
 - **Q3 [no bloqueante]. Trasladar la recomendación de ADR-056 §6 a `staging-host`** (tareas o riesgos de su design) en
   un PR solo de spec, como hizo ADR-053 §1.4, o dejarla solo en el ADR para que 35b la recoja en su debate.
   Recomendación: PR solo de spec tras la aprobación de este change, con el texto de §6 y sin cambiar su orden de tareas.
+  Respuesta del owner (Q3), 2026-10-29: la recomendada. El PR solo de spec sobre `staging-host` queda pendiente de
+  abrir (lo hace la sesión dueña de 35b o la principal; este change no edita `openspec/changes/staging-host/`).
 - **Q4 [no bloqueante]. Métrica de rechazos** (`linkvault_egress_blocked_total{stage,category}`) en `/metrics`.
   Toca `platform/observability`, que la condición de D9 deja fuera. Recomendación: solo registro ahora; la métrica
   después de 35c.
+  Respuesta del owner (Q4), 2026-10-29: la recomendada; solo registro en este change y la métrica después de 35c.
 
 ## Debate — iteración 1
 
@@ -568,3 +576,15 @@ Critic verificó solo los tres P0 de la iteración 3, sin abrir una iteración n
 | VP-3 | critic (P1) | aceptado | La condición de la 10.7 se repite en la línea de ADR-048 de la 0.1 y en la confirmación del owner, porque D9 no permite tocar `staging-host`. |
 
 Convergencia: SI (iteración 3 más verificación puntual: critic P0 0, business V0 0; Q1 pendiente del owner).
+
+## Respuestas del owner y aprobación
+
+Fecha: 2026-10-29. Aprobación humana del change tras la convergencia de la iteración 3 y la verificación puntual
+(«Toma las recomendaciones»: se acepta la opción recomendada de cada pregunta abierta).
+
+- **Q1 = (a):** fusión después de la 11.6 de 35b y antes de su 10.7, con las tres clases de fusión de ADR-056 §1 y
+  (e) como respaldo. Anotada en ADR-056 §1, ADR-048 §Consecuencias y `docs/design-v0.2.md` §6 (tarea 0.1).
+- **Q2:** la recomendada; sin mensajes propios en el SPA en este change.
+- **Q3:** la recomendada; PR solo de spec sobre `staging-host` con el texto de ADR-056 §6, pendiente de abrir fuera
+  de este change.
+- **Q4:** la recomendada; solo registro, la métrica después de 35c.
