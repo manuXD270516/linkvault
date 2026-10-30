@@ -563,10 +563,12 @@ docker compose -f docker-compose.prod.yml --env-file .env.local-stack \
   up -d --wait --wait-timeout 330 --pull never mongo redis object-store api worker web
 
 # 6) El almacén, por la API S3 y con la imagen de `api`: crear los buckets y el cifrado del de CV, comprobarlo (sin
-#    escribir), y que el `worker` lee el bucket de CV con su propia configuración. Cada orden, con plazo.
+#    escribir), que el `worker` lee el bucket de CV con su propia configuración y que lee un CV con su proceso hijo
+#    aislado (`cv-extract-probe.js`, que además imprime el arranque medido). Cada orden, con plazo.
 timeout 180 docker compose -f docker-compose.prod.yml --env-file .env.local-stack run --rm --no-deps api node object-store.js provision
 timeout 180 docker compose -f docker-compose.prod.yml --env-file .env.local-stack run --rm --no-deps api node object-store.js verify
 timeout 180 docker compose -f docker-compose.prod.yml --env-file .env.local-stack run --rm --no-deps worker node s3-probe.js
+timeout 180 docker compose -f docker-compose.prod.yml --env-file .env.local-stack run --rm --no-deps worker node cv-extract-probe.js
 ```
 
 Sobre las banderas, que no son decorativas:
@@ -680,7 +682,8 @@ Qué levanta exactamente esa verificación, y qué deja fuera:
 El `/health` de `api` y de `worker` declara indicadores de mongo y redis, y **ninguno mira el almacén de objetos**.
 Por eso, después del `up`, la verificación aprovisiona y comprueba el almacén con la imagen de `api`
 (`object-store.js provision` y `verify`) y comprueba que el `worker` lee el bucket de CV con su propia configuración
-(`s3-probe.js`). Y antes de descargar nada comprueba que cada imagen existe para la plataforma del destino
+(`s3-probe.js`) y que lee un CV de prueba con el adaptador aislado, en un proceso hijo con el modelo de permisos de Node
+(`cv-extract-probe.js`). Y antes de descargar nada comprueba que cada imagen existe para la plataforma del destino
 (`TARGET_PLATFORM`, `linux/arm64` en `cd-staging`): las propias en el daemon y las de terceros en su registro, con
 `infra/deploy/check-image-platforms.sh`; si falta, el fallo es del artefacto, no del registro.
 

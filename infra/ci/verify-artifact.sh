@@ -24,7 +24,7 @@
 # de objetos: el almacén se levanta porque `api` y `worker` dependen de su `service_healthy`, y su healthcheck es de
 # solo lectura. Por eso, después del `up`, este script aprovisiona y comprueba el almacén con la imagen de `api`
 # (`object-store.js provision` y `verify`) y comprueba que el `worker` lee el bucket de CV con su configuración
-# (`s3-probe.js`); ver esas secciones, más abajo.
+# (`s3-probe.js`) y que lee un CV con su proceso hijo aislado (`cv-extract-probe.js`); ver esas secciones, más abajo.
 #
 # Uso:
 #   API_IMAGE=… WORKER_IMAGE=… WEB_IMAGE=… IMAGE_TAG=… infra/ci/verify-artifact.sh
@@ -318,6 +318,15 @@ dc_bounded run --rm --no-deps api node object-store.js verify \
 section 'worker: lectura del bucket de CV (run --rm --no-deps worker node s3-probe.js)'
 dc_bounded run --rm --no-deps worker node s3-probe.js \
   || fail "worker s3-probe salió ≠0 (o superó ${RUN_TIMEOUT} s): el worker no alcanza el bucket de CV con su configuración"
+
+# --- El `worker` lee un CV con el adaptador aislado (tarea 7.2 de `cv-extract-isolation`, design D11) ---------------
+# `cv-extract-probe.js` (entrada del build de `worker`) genera en memoria un PDF y un DOCX y los lee con el **adaptador
+# aislado real**: el proceso hijo, con el modelo de permisos de Node, en la arquitectura del destino. Demuestra que el
+# script del hijo está en la imagen, que las lecturas permitidas le dejan cargar `pdf-parse` y `mammoth` y que el
+# hijo arranca (imprime `boot_p50_ms` y `boot_p95_ms`, que no son criterio de este script: se leen en la corrida
+# `arm64`). Una imagen que construye no es una imagen que lee un CV (ADR-048).
+section 'worker: lectura aislada de un CV (run --rm --no-deps worker node cv-extract-probe.js)'
+dc_bounded run --rm --no-deps worker node cv-extract-probe.js   || fail "worker cv-extract-probe salió ≠0 (o superó ${RUN_TIMEOUT} s): el worker no lee un CV en un proceso hijo aislado"
 
 # --- 5.6: el borde queda fuera, y se comprueba que de verdad quedó fuera -------------------------------------------
 if [ -n "$(dc ps --all --services --filter status=running | grep -x traefik || true)" ]; then
