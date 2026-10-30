@@ -19,6 +19,8 @@ import {
 import { PUBLIC_EGRESS_POLICY } from '@linkvault/shared/net';
 import { EgressBlockedError, findEgressBlocked } from './egress-blocked-error';
 import { createEgressLookup, type EgressResolver } from './egress-lookup';
+import { createHttpRobotsFetcher } from '../../modules/enrichment/infrastructure/robots/http-robots-fetcher';
+import { RedisCachedRobots } from '../../modules/enrichment/infrastructure/robots/redis-cached-robots';
 import { createGuardedConnector } from './guarded-connector';
 import { createGuardedFetch, type GuardedFetch } from './guarded-fetch';
 
@@ -435,5 +437,86 @@ describe('createGuardedFetch: DNS changes between check and connect', () => {
     expect(findEgressBlocked(error)?.category).toBe('private');
     expect(hopOne.connections()).toBe(1);
     expect(calls).toBe(2);
+  });
+});
+
+describe('createGuardedFetch: robots.txt redirects', () => {
+  const NO_CACHE = {
+    get: () => Promise.resolve(null),
+    set: () => Promise.resolve('OK' as const),
+  };
+
+  function robotsOver(
+    fetcher: GuardedFetch,
+    logged: Record<string, string>[],
+  ): RedisCachedRobots {
+    return new RedisCachedRobots(
+      NO_CACHE,
+      createHttpRobotsFetcher(fetcher, {
+        userAgent: 'LinkVaultBot/0.1',
+        timeoutMs: 5_000,
+        logger: { warn: (entry) => logged.push(entry) },
+      }),
+      { userAgent: 'LinkVaultBot/0.1', ttlSeconds: 60 },
+    );
+  }
+
+  it('a robots redirect to an internal address opens no connection to it', async () => {
+    const target = await startServer((_request, response) => {
+      response.writeHead(200, { 'content-type': 'text/plain' });
+      response.end('User-agent: *\nDisallow: /');
+    });
+    const origin = await startServer((_request, response) => {
+      response.writeHead(302, {
+        location: `http://127.0.0.1:${target.port}/robots.txt`,
+      });
+      response.end();
+    });
+    const logged: Record<string, string>[] = [];
+    const fetcher = guarded({
+      policy: LOOPBACK_BY_NAME_TEST_POLICY,
+      resolve: fakeResolver({ 'jobs.test': ['127.0.0.1'] }),
+    });
+
+    const decision = await robotsOver(fetcher, logged).decide(
+      `http://jobs.test:${origin.port}/oferta`,
+    );
+
+    // El destino interno no se pidió; sin reglas, la página se considera permitida (y tiene su propio filtro).
+    expect(decision.allowed).toBe(true);
+    expect(origin.connections()).toBe(1);
+    expect(target.connections()).toBe(0);
+    expect(logged).toEqual([
+      { event: 'egress_blocked', stage: 'robots', category: 'loopback' },
+    ]);
+  });
+
+  it('a robots redirect to an approved host opens exactly one connection to it', async () => {
+    const target = await startServer((_request, response) => {
+      response.writeHead(200, { 'content-type': 'text/plain' });
+      response.end('User-agent: *\nDisallow: /privado');
+    });
+    const origin = await startServer((_request, response) => {
+      response.writeHead(302, {
+        location: `http://cdn.test:${target.port}/robots.txt`,
+      });
+      response.end();
+    });
+    const logged: Record<string, string>[] = [];
+    const fetcher = guarded({
+      policy: PERMISSIVE_TEST_POLICY,
+      resolve: fakeResolver({
+        'jobs.test': ['127.0.0.1'],
+        'cdn.test': ['127.0.0.1'],
+      }),
+    });
+
+    const decision = await robotsOver(fetcher, logged).decide(
+      `http://jobs.test:${origin.port}/privado/oferta`,
+    );
+
+    expect(decision.allowed).toBe(false);
+    expect(target.connections()).toBe(1);
+    expect(logged).toEqual([]);
   });
 });

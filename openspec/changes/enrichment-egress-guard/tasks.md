@@ -188,7 +188,7 @@ DNS, y `PUBLIC_EGRESS_POLICY` tal cual para el negativo de puerto. No hay variab
 
 ## 4. `robots.txt` (design D5)
 
-- [ ] 4.1 [backend] `createHttpRobotsFetcher` recibe el `HttpFetch` guardado y sigue redirecciones a mano: hasta cinco
+- [x] 4.1 [backend] `createHttpRobotsFetcher` recibe el `HttpFetch` guardado y sigue redirecciones a mano: hasta cinco
   saltos, a otro host **solo** si el destino es `/robots.txt` sin query, un `AbortSignal.timeout` para la cadena entera;
   más saltos, otro host con otra ruta o `EgressBlockedError` → `null`, con un `warn` de `stage: 'robots'` y `category`
   sin `linkId`, URL ni host. Verificar en `http-robots-fetcher.spec.ts` (nuevo) con dobles y un logger que captura:
@@ -196,19 +196,19 @@ DNS, y `PUBLIC_EGRESS_POLICY` tal cual para el negativo de puerto. No hay variab
   another public host and returns its rules», «does not follow a cross-host redirect to another path or with a query»
   y «returns null when a hop is rejected by the egress guard and logs stage robots without linkId or url». Falsación:
   volver a `redirect: 'follow'` y ver caer el segundo y el quinto; quitar la condición de ruta y ver caer el cuarto;
-  restaurar.
-- [ ] 4.2 [backend] Lectura del cuerpo por trozos con corte al pasar `ROBOTS_MAX_BYTES` (lo que no cabe → cuerpo
+  restaurar. **Estado (2026-10-29):** `createHttpRobotsFetcher(httpFetch, { userAgent, timeoutMs, logger? })` sobre el `HttpFetch` guardado: redirecciones a mano (hasta cinco, cada salto por el guardia), a otro host solo si el destino es `/robots.txt` sin query, un `AbortSignal.timeout` para toda la cadena; más saltos, otro host con otra ruta o `EgressBlockedError` devuelven `null`, con un `warn` `{ event, stage: 'robots', category }` sin `linkId`, URL ni host (el módulo le pasa un `Logger` de Nest). Los cinco tests nombrados de `http-robots-fetcher.spec.ts` en verde. Falsaciones hechas: no seguir las redirecciones (equivale a volver a `follow`) cae el primero, el segundo, el tercero, el cuarto y el quinto; quitar la condición de ruta cae «does not follow a cross-host redirect to another path or with a query»; restauradas.
+- [x] 4.2 [backend] Lectura del cuerpo por trozos con corte al pasar `ROBOTS_MAX_BYTES` (lo que no cabe → cuerpo
   vacío, como hoy). Verificar: «stops reading a robots body over the cap without a content-length» (el doble cuenta
   los trozos leídos y afirma que no se leyó hasta el final) y «returns no rules for an oversized robots body».
-  Falsación: volver a `response.text()` y ver caer el primero; restaurar.
-- [ ] 4.3 [backend] Integración con el guardia real y una política de test completa y nombrada (P0-2). Verificar en
+  Falsación: volver a `response.text()` y ver caer el primero; restaurar. **Estado (2026-10-29):** Lectura del cuerpo por trozos con corte al pasar `ROBOTS_MAX_BYTES` (lo que no cabe da cuerpo vacío, con el estado y el tipo de contenido de la respuesta). «stops reading a robots body over the cap without a content-length» (el doble cuenta los trozos entregados y afirma que no se leyó el flujo entero) y «returns no rules for an oversized robots body» en verde. Falsación hecha: volver a `response.text()` cae los dos; restaurada.
+- [x] 4.3 [backend] Integración con el guardia real y una política de test completa y nombrada (P0-2). Verificar en
   `guarded-fetch.int.spec.ts`: «a robots redirect to an internal address opens no connection to it», con
   `LOOPBACK_BY_NAME_TEST_POLICY`, la misma del test de redirección de 2.2b (el `robots.txt` de un nombre `.test`
   resuelto a loopback redirige a `/robots.txt` de un literal de loopback; el servidor de destino cuenta cero
   conexiones, la categoría registrada es `loopback`, la causa es `EgressBlockedError` y `RedisCachedRobots` decide
   permitido), con su control positivo «a robots redirect to an approved host opens exactly one connection to it»
   (`PERMISSIVE_TEST_POLICY`). Falsación:
-  construir el fetcher del `robots.txt` con el `fetch` global y ver caer el primero; restaurar.
+  construir el fetcher del `robots.txt` con el `fetch` global y ver caer el primero; restaurar. **Estado (2026-10-29):** En `guarded-fetch.int.spec.ts`, con el guardia real y `RedisCachedRobots` (caché en memoria): «a robots redirect to an internal address opens no connection to it» con `LOOPBACK_BY_NAME_TEST_POLICY` (un nombre `.test` resuelto a loopback redirige a `/robots.txt` de un literal de loopback: el servidor de destino cuenta cero conexiones, el `warn` registrado es `{ event, stage: 'robots', category: 'loopback' }` y la decisión es permitido) y el control «a robots redirect to an approved host opens exactly one connection to it» con `PERMISSIVE_TEST_POLICY`. 16 tests del fichero en verde. Falsación hecha: construir el fetcher del `robots.txt` con el `fetch` global cae los dos; restaurada.
 
 ## 5. Rechazo sintáctico en la API (design D6)
 

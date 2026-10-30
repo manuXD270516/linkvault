@@ -1,6 +1,6 @@
 import { RUN_TASK, type RunTaskFn } from '@linkvault/ai';
 import { PUBLIC_EGRESS_POLICY } from '@linkvault/shared/net';
-import { type DynamicModule, Module } from '@nestjs/common';
+import { type DynamicModule, Logger, Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import type { Redis } from 'ioredis';
 import { APP_CONFIG } from '../../infrastructure/config/app-config.module';
@@ -157,6 +157,7 @@ export class EnrichmentModule {
             new RedisCachedRobots(
               redis,
               createHttpRobotsFetcher(httpFetch, {
+                logger: new Logger('RobotsFetcher'),
                 userAgent: worker.ENRICH_USER_AGENT,
                 timeoutMs: worker.ENRICH_FETCH_TIMEOUT_MS,
               }),
