@@ -488,8 +488,8 @@
         <target>We could not read it now. Upload it again in a while.</target>
       </trans-unit>
       <trans-unit id="cv.status.unreadable" datatype="html">
-        <source>No pudimos abrir este archivo. Si tiene contraseña, quítasela y vuelve a subirlo.</source>
-        <target>We could not open this file. If it has a password, remove it and upload it again.</target>
+        <source>No pudimos abrir este archivo. Si tiene contraseña, quítasela; si no, vuelve a exportarlo desde tu editor (en PDF o DOCX) y súbelo otra vez.</source>
+        <target>We could not open this file. If it has a password, remove it; otherwise, export it again from your editor (as a PDF or DOCX) and upload it again.</target>
       </trans-unit>
       <trans-unit id="cv.advice.pdf" datatype="html">
         <source>Sube el PDF original (no una foto ni un escaneo) o vuelve a exportarlo desde tu editor</source>

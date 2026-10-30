@@ -974,7 +974,7 @@
         </context-group>
       </trans-unit>
       <trans-unit id="cv.status.unreadable" datatype="html">
-        <source>No pudimos abrir este archivo. Si tiene contraseña, quítasela y vuelve a subirlo.</source>
+        <source>No pudimos abrir este archivo. Si tiene contraseña, quítasela; si no, vuelve a exportarlo desde tu editor (en PDF o DOCX) y súbelo otra vez.</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/cv/cv-card.component.html</context>
           <context context-type="linenumber">36,38</context>

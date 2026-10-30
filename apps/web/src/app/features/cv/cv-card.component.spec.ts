@@ -95,9 +95,18 @@ describe('CvCard', () => {
   it('Un CV protegido con contraseña', async () => {
     const host = await show(cv({ extraction: failed('unreadable_file') }));
 
+    expect(text(host)).toContain('Si tiene contraseña, quítasela');
+  });
+
+  it('an unreadable cv suggests removing the password or exporting again', async () => {
+    const host = await show(cv({ extraction: failed('unreadable_file') }));
+
+    // Las dos frases: la de la contraseña y la de volver a exportarlo desde el editor.
     expect(text(host)).toContain(
-      'No pudimos abrir este archivo. Si tiene contraseña, quítasela y vuelve a subirlo.',
+      'No pudimos abrir este archivo. Si tiene contraseña, quítasela; si no, vuelve a exportarlo desde tu editor (en PDF o DOCX) y súbelo otra vez.',
     );
+    expect(text(host)).toContain('vuelve a exportarlo desde tu editor');
+    expect(text(host)).not.toContain('quítasela y vuelve a subirlo');
   });
 
   it('el fallo nuestro dice cuándo volver', async () => {
