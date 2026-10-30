@@ -30,6 +30,12 @@ import {
 import { minimalPdf } from './support/cv-files';
 import { Journey, type Person as PersonKey, type StepKey } from './support/journey';
 import { type Profile, type ProfileName, resolveProfile } from './support/profile';
+import {
+  armCapabilitiesResponse,
+  expectShellOptionalEntries,
+  navigateByShell,
+  readShellCapabilities,
+} from './support/shell-nav';
 import type { MatchExpectation } from '../scripts/lib/args';
 import {
   assertRemoteAccountGuards,
@@ -142,7 +148,7 @@ async function enterWithTestAccount(
   request: APIRequestContext,
   profile: Profile,
   testInfo: TestInfo,
-): Promise<GuardedAccount> {
+): Promise<{ readonly guarded: GuardedAccount; readonly capabilities: Promise<Response> }> {
   const account = profile.remoteAccount;
   if (account === undefined) {
     throw new Error('step 0 runs only in the remote profile, with its declared account');
@@ -153,6 +159,8 @@ async function enterWithTestAccount(
   await page.getByLabel('Contraseña', { exact: true }).fill(account.password);
   const login = page.waitForResponse(isApiCall('POST', /^\/api\/auth\/login$/));
   const landed = page.waitForURL(/\/grupos$/);
+  // Antes del clic: al entrar se crea el Shell y es entonces cuando pide las capacidades (paso 5, web-shell-capabilities).
+  const capabilities = armCapabilitiesResponse(page);
   await page.getByRole('button', { name: 'Entrar' }).click();
   const loginResponse = await login;
   expect(loginResponse.status()).toBe(200);
@@ -163,11 +171,17 @@ async function enterWithTestAccount(
   const guarded = await assertRemoteAccountGuards(new SuiteApi(request, profile.apiOrigin, session.accessToken));
   const swept = await sweepSuiteLeftovers(guarded);
   testInfo.annotations.push({ type: 'sweep-start', description: describeSweep(swept) });
-  return guarded;
+  return { guarded, capabilities };
 }
 
-/** Paso 1 (`local`): A se registra y aterriza en `/grupos`. Devuelve el access token de su sesión. */
-async function register(page: Page, person: Person): Promise<string> {
+/**
+ * Paso 1 (`local`): A se registra y aterriza en `/grupos`. Devuelve el access token de su sesión y la espera de las
+ * capacidades del destino, armada antes del clic.
+ */
+async function register(
+  page: Page,
+  person: Person,
+): Promise<{ readonly accessToken: string; readonly capabilities: Promise<Response> }> {
   await page.goto('/registro');
   await expect(page.getByRole('heading', { level: 1, name: 'Crear cuenta' })).toBeVisible();
   await page.getByLabel('Nombre', { exact: true }).fill(person.displayName);
@@ -175,13 +189,14 @@ async function register(page: Page, person: Person): Promise<string> {
   await page.getByLabel('Contraseña', { exact: true }).fill(person.password);
   const registered = page.waitForResponse(isApiCall('POST', /^\/api\/auth\/register$/));
   const landed = page.waitForURL(/\/grupos$/);
+  const capabilities = armCapabilitiesResponse(page);
   await page.getByRole('button', { name: 'Crear cuenta' }).click();
   const registeredResponse = await registered;
   expect(registeredResponse.status()).toBe(201);
   const session = sessionResponseSchema.parse(await registeredResponse.json());
   await landed;
   await expect(page.getByRole('heading', { level: 1, name: 'Tus grupos' })).toBeVisible();
-  return session.accessToken;
+  return { accessToken: session.accessToken, capabilities };
 }
 
 interface Entry {
@@ -194,6 +209,8 @@ interface Entry {
    * guardias sobre la sesión de A, con el access token de su registro y en el origen de la API del perfil.
    */
   readonly guard: () => Promise<GuardedAccount>;
+  /** Respuesta de `GET /api/capabilities` que el Shell de A pidió al entrar (armada antes del clic; paso 5). */
+  readonly capabilities: Promise<Response>;
 }
 
 /** Entrada según el perfil: el paso 0 en `remote`, el 1 en `local` (D11). */
@@ -206,24 +223,31 @@ async function enter(
   testInfo: TestInfo,
 ): Promise<Entry> {
   if (profile.name === 'remote') {
-    let guarded: GuardedAccount | undefined;
+    let entered: Awaited<ReturnType<typeof enterWithTestAccount>> | undefined;
     await journey.step('A', '0', 'enter with the declared test account, API guards, sweep of leftovers', async () => {
-      guarded = await enterWithTestAccount(page, request, profile, testInfo);
+      entered = await enterWithTestAccount(page, request, profile, testInfo);
     });
-    const account = guarded;
-    if (account === undefined) {
+    if (entered === undefined) {
       throw new Error('step 0 ended without an account whose guards passed');
     }
-    return { ownerName: undefined, guarded: account, guard: () => Promise.resolve(account) };
+    const { guarded: account, capabilities } = entered;
+    return { ownerName: undefined, guarded: account, guard: () => Promise.resolve(account), capabilities };
   }
   let accessToken = '';
+  let capabilities: Promise<Response> | undefined;
   await journey.step('A', '1', 'register and land on /grupos', async () => {
-    accessToken = await register(page, personA);
+    const registered = await register(page, personA);
+    accessToken = registered.accessToken;
+    capabilities = registered.capabilities;
   });
+  if (capabilities === undefined) {
+    throw new Error('step 1 ended without the capabilities wait');
+  }
   return {
     ownerName: personA.displayName,
     guarded: undefined,
     guard: () => assertRemoteAccountGuards(new SuiteApi(request, profile.apiOrigin, accessToken)),
+    capabilities,
   };
 }
 
@@ -378,7 +402,12 @@ function isBoardList(response: Response): boolean {
  * Paso 5: A pulsa «Postulé» en la tarjeta y contesta «Hoy»; la tarjeta dice su postulación, y en `/postulaciones` la
  * oferta está en la columna «Postuladas». La postulación queda privada: la invitación a compartirla no se acepta.
  */
-async function applyToday(page: Page, url: string, job: CriticalPathJob): Promise<void> {
+async function applyToday(
+  page: Page,
+  url: string,
+  job: CriticalPathJob,
+  capabilities: Promise<Response>,
+): Promise<void> {
   const card = linkCard(page, url);
   await card.getByRole('button', { name: 'Postulé', exact: true }).click();
   const question = page.getByRole('dialog');
@@ -392,9 +421,13 @@ async function applyToday(page: Page, url: string, job: CriticalPathJob): Promis
   expect(application.visibility).toBe('private');
   await expect(card.getByTestId('link-own-status')).toHaveText(/Tu postulación:\s*Postulada/);
 
+  // Las entradas condicionales de la barra: las capacidades que el destino declaró, sin recargar la página.
+  const declared = await readShellCapabilities(page, capabilities);
+  await expectShellOptionalEntries(page, declared);
+
   const board = page.waitForResponse(isBoardList);
   const landed = page.waitForURL(/\/postulaciones$/);
-  await page.getByRole('link', { name: 'Postulaciones', exact: true }).click();
+  await navigateByShell(page, 'Postulaciones');
   expect((await board).status()).toBe(200);
   await landed;
   await expect(page.getByRole('heading', { level: 1, name: 'Postulaciones' })).toBeVisible();
@@ -408,7 +441,7 @@ async function applyToday(page: Page, url: string, job: CriticalPathJob): Promis
 async function uploadCv(page: Page): Promise<void> {
   const list = page.waitForResponse(isApiCall('GET', /^\/api\/cv$/));
   const landed = page.waitForURL(/\/mi-cv$/);
-  await page.getByRole('link', { name: 'Mi CV', exact: true }).click();
+  await navigateByShell(page, 'Mi CV');
   expect((await list).status()).toBe(200);
   await landed;
 
@@ -428,10 +461,10 @@ async function uploadCv(page: Page): Promise<void> {
   await expect(cv.getByText('Listo · tu CV se leyó bien')).toBeVisible({ timeout: CV_READ_TIMEOUT });
 }
 
-/** Vuelta al detalle del grupo por la interfaz: la marca de la barra lleva a `/grupos` y de ahí, el grupo. */
+/** Vuelta al detalle del grupo por la interfaz: «Grupos» de la barra lleva a `/grupos` (existe en los dos modos) y de ahí, el grupo. */
 async function backToGroup(page: Page, groupName: string): Promise<void> {
   const home = page.waitForURL(/\/grupos$/);
-  await page.getByRole('link', { name: 'LinkVault', exact: true }).click();
+  await navigateByShell(page, 'Grupos');
   await home;
   const detail = page.waitForURL(/\/grupos\/[0-9a-f]{24}$/);
   await page.getByRole('link', { name: groupName, exact: true }).click();
@@ -662,7 +695,7 @@ async function joinByInvitation(
   invitation: { readonly link: string; readonly code: string },
   person: Person,
   group: { readonly id: string; readonly name: string },
-): Promise<void> {
+): Promise<{ readonly capabilities: Promise<Response> }> {
   const returnUrl = `/unirse?codigo=${invitation.code}`;
   const toLogin = pageB.waitForURL((url) => url.pathname === '/login' && url.searchParams.get('returnUrl') === returnUrl);
   await pageB.goto(invitation.link);
@@ -680,6 +713,7 @@ async function joinByInvitation(
   await pageB.getByLabel('Contraseña', { exact: true }).fill(person.password);
   const registered = pageB.waitForResponse(isApiCall('POST', /^\/api\/auth\/register$/));
   const backToJoin = pageB.waitForURL((url) => url.pathname === '/unirse');
+  const capabilities = armCapabilitiesResponse(pageB);
   await pageB.getByRole('button', { name: 'Crear cuenta', exact: true }).click();
   expect((await registered).status()).toBe(201);
   await backToJoin;
@@ -698,6 +732,7 @@ async function joinByInvitation(
   await landed;
   await expect(pageB.getByRole('heading', { level: 1, name: group.name })).toBeVisible();
   await expect(memberRow(pageB, person.displayName)).toContainText('Miembro');
+  return { capabilities };
 }
 
 /** Fila de una persona en la lista de miembros del detalle del grupo. */
@@ -715,6 +750,7 @@ async function stepsThreeToSeven(
   authorName: string | undefined,
   groupName: string,
   expectation: MatchExpectation,
+  capabilities: Promise<Response>,
 ): Promise<void> {
   await journey.step(who, '3', 'save the link of an offer on a reserved domain; the card appears', () =>
     saveJobLink(page, url),
@@ -723,7 +759,7 @@ async function stepsThreeToSeven(
     completeOfferByHand(page, url, job, authorName),
   );
   await journey.step(who, '5', 'apply "today"; the card shows it and the board has it in "Postuladas"', () =>
-    applyToday(page, url, job),
+    applyToday(page, url, job, capabilities),
   );
   await journey.step(who, '6', 'upload the fixed-lines CV; "Listo · tu CV se leyó bien"', () => uploadCv(page));
   await journey.step(who, '7', `analyze the match; outcome ${expectation}`, async () => {
@@ -772,6 +808,7 @@ test(
         createPrivateGroup(page, groupName, entry.ownerName),
       );
       const pageB = contextB === undefined ? undefined : await contextB.newPage();
+      let capabilitiesB: Promise<Response> | undefined;
       if (pageB !== undefined) {
         pageB.on('pageerror', (error) => pageErrors.push(`B: ${error.message}`));
         await journey.step(
@@ -784,7 +821,7 @@ test(
             expect(await pageB.evaluate(() => navigator.userAgent)).toBe(await page.evaluate(() => navigator.userAgent));
             const group = { id: new URL(page.url()).pathname.split('/').pop() ?? '', name: groupName };
             const invitation = await copyInvitationLink(page, profile.baseUrl);
-            await joinByInvitation(pageB, invitation, personB, group);
+            ({ capabilities: capabilitiesB } = await joinByInvitation(pageB, invitation, personB, group));
             await backToGroup(page, groupName);
             await expect(memberRow(page, personB.displayName), 'the group detail of A lists B as a member').toContainText(
               'Miembro',
@@ -792,9 +829,32 @@ test(
           },
         );
       }
-      await stepsThreeToSeven(journey, 'A', page, urlA, job, entry.ownerName, groupName, profile.matchExpectation);
+      await stepsThreeToSeven(
+        journey,
+        'A',
+        page,
+        urlA,
+        job,
+        entry.ownerName,
+        groupName,
+        profile.matchExpectation,
+        entry.capabilities,
+      );
       if (pageB !== undefined) {
-        await stepsThreeToSeven(journey, 'B', pageB, urlB, job, personB.displayName, groupName, profile.matchExpectation);
+        if (capabilitiesB === undefined) {
+          throw new Error('step 2b ended without the capabilities wait of B');
+        }
+        await stepsThreeToSeven(
+          journey,
+          'B',
+          pageB,
+          urlB,
+          job,
+          personB.displayName,
+          groupName,
+          profile.matchExpectation,
+          capabilitiesB,
+        );
       }
       await journey.step('A', '8', 'clean up what A created: the application, the group and the CV of the suite', async () => {
         const account = await entry.guard();

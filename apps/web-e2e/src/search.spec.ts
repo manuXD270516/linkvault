@@ -2,6 +2,7 @@ import { workspaceRoot } from '@nx/devkit';
 import { expect, test } from '@playwright/test';
 import { join } from 'node:path';
 import { resetRegisterLimit } from './support/register-limit';
+import { armCapabilitiesResponse, readShellCapabilities } from './support/shell-nav';
 
 const SCREENSHOT_DIR = join(workspaceRoot, 'reports', 'smoke', 'search');
 const RUN_ID = Date.now();
@@ -14,12 +15,18 @@ test.beforeAll(() => {
   resetRegisterLimit();
 });
 
-test('search: /buscar hybrid page, empty query, no mode, GET /api/search', async ({
+test('search: /buscar hybrid page, empty query, no mode, GET /api/search; or the not-included notice', async ({
   page,
 }) => {
   test.setTimeout(180_000);
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
+  const searchRequests: string[] = [];
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname === '/api/search' && request.method() === 'GET') {
+      searchRequests.push(request.url());
+    }
+  });
 
   await page.goto('/registro');
   await page.getByLabel('Nombre', { exact: true }).fill(DISPLAY_NAME);
@@ -28,8 +35,29 @@ test('search: /buscar hybrid page, empty query, no mode, GET /api/search', async
   await page.getByRole('button', { name: 'Crear cuenta' }).click();
   await expect(page).toHaveURL(/\/grupos$/, { timeout: LIVE });
 
-  await page.getByRole('link', { name: /Buscar/i }).click();
+  // Con la búsqueda apagada (como en `e2e.env` y en staging) la barra no ofrece «Buscar»: se llega por enlace directo.
+  // La espera de las capacidades se arma antes del `goto`, que recarga el SPA y vuelve a crear el Shell.
+  const capabilities = armCapabilitiesResponse(page);
+  await page.goto('/buscar');
   await expect(page).toHaveURL(/\/buscar$/, { timeout: LIVE });
+  const declared = await readShellCapabilities(page, capabilities);
+  await expect(page.getByTestId('search-page')).toBeVisible({ timeout: LIVE });
+  if (!declared.search) {
+    await expect(page.getByTestId('search-not-enabled')).toContainText('La búsqueda no está incluida en esta versión de LinkVault.');
+    await expect(page.getByTestId('search-page').getByRole('link', { name: 'Ver Solo para mí' })).toHaveAttribute(
+      'href',
+      '/mis-links',
+    );
+    await expect(page.getByTestId('search-query')).toHaveCount(0);
+    await page.screenshot({
+      path: join(SCREENSHOT_DIR, 'buscar-no-incluida.png'),
+      fullPage: true,
+    });
+    expect(searchRequests, 'no GET /api/search while search is off').toEqual([]);
+    expect(pageErrors).toEqual([]);
+    return;
+  }
+
   await expect(page.getByTestId('search-page')).toBeVisible({ timeout: LIVE });
   await expect(page.getByRole('heading', { level: 1, name: 'Buscar' })).toBeVisible();
   await expect(page.getByTestId('search-doc-type')).toBeVisible();
