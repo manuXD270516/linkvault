@@ -291,6 +291,9 @@ sitio (el manifiesto no tiene forma de marcarla, igual que las otras excepciones
 
 La respuesta va a ADR-062 §1 en una línea «Respuesta del owner (Q1), AAAA-MM-DD:».
 
+**Concedida el 2026-10-29 (Q1 = (a)), con prioridad menor:** si la ventana no alcanza, pasa a (b), después de 35c
+(ver Open Questions).
+
 ### D8. H3 entra aquí; H11 se queda en `e2e-suite-lot-2` (Q2)
 
 `vault_unavailable` necesita una decisión en la tabla sí o sí (D4). Sin texto propio, como `fallback` diría «no
@@ -309,6 +312,9 @@ Cambiar el reparto que hizo un debate aprobado lo decide el owner (Q2). Si dice 
 de `vault_unavailable` pasa a `common` igualmente (el texto no depende de H3) o, si el owner tampoco quiere el texto, a
 `unreachable` con el motivo «solo en pilas sin `AI_VAULT_KEY`; H3 en `e2e-suite-lot-2`», aceptando por escrito que
 mostrará el fallo inesperado con la referencia (con C1, un `503` `unreachable` ya no dice «no disponible»).
+
+**Decidido el 2026-10-29 (Q2 = (a)):** H3 entra aquí, con la tarea 3.1 y el delta de `web/byok`; H11 se queda en
+`e2e-suite-lot-2`.
 
 ## Risks / Trade-offs
 
@@ -349,6 +355,9 @@ la API no cambia, así que un SPA anterior frente a la API de hoy vuelve al comp
   - (c) Se aplica ya y se fusiona después de 35c (el PR espera abierto).
   - **Recomendación: (a)**, y si la ventana no da para todas las excepciones, (b) antes que (c): un PR abierto semanas
     se desfasa del catálogo y del enum.
+  - Respuesta del owner (Q1), 2026-10-29: (a), «Toma las recomendaciones». Excepción concedida con la ventana de D7
+    y prioridad menor (detrás de `paste-fallback-honest` y `enrichment-egress-guard`): si la ventana no alcanza, pasa
+    a (b), después de archivar 35c; nunca a (c). Anotada en ADR-062 §1 y en ADR-048 §Consecuencias.
 - **Q2 [bloqueante para `/opsx:apply`] H3 en este change.**
   - (a) Sí: H3 se corrige aquí (requirement de `web/byok`, tarea 3.1); H11 sigue en `e2e-suite-lot-2`, cuyo `scope`
     se recorta en la tarea 5.2, y la guía de uso anota H3 como corregido.
@@ -358,6 +367,8 @@ la API no cambia, así que un SPA anterior frente a la API de hoy vuelve al comp
     tras C1; antes de la iteración 1 decía «no disponible en este momento»).
   - **Recomendación: (a)**. El texto lo exige el guardia de todas formas; (a) solo añade el test de pantalla y deja
     H3 cerrado donde se arregla.
+  - Respuesta del owner (Q2), 2026-10-29: (a), «Toma las recomendaciones». H3 se corrige aquí (3.1 y delta de
+    `web/byok`); H11 se queda en `e2e-suite-lot-2`, cuyo `scope` recorta la 5.2. Anotada en ADR-062 §2.
 - **Q3 [no bloqueante] Motivos de enriquecimiento.** ¿Se extiende la misma regla a `EnrichmentFailureReason`, cuyo
   `default` en `failureText` convierte cualquier motivo nuevo (p. ej. `unsafe_destination`) en «No pudimos leer esta
   oferta»?
@@ -365,6 +376,8 @@ la API no cambia, así que un SPA anterior frente a la API de hoy vuelve al comp
   - (b) Sí: una segunda tabla y el mismo guardia en este change.
   - **Recomendación: (a)**. Son otra superficie (la tarjeta, no el componente común) y otro dueño; quitar el
     `default` del `switch` basta para que TypeScript lo exija, y eso es una línea del change que añade el motivo.
+  - Respuesta del owner (Q3), 2026-10-29: (a), «Toma las recomendaciones». Los motivos de enriquecimiento quedan
+    fuera de este change.
 
 ## Debate — iteración 1
 
@@ -410,3 +423,10 @@ todo aceptado. Q1 y Q2 siguen pendientes del owner. No cambia el número de tare
 | V2-6 | business | Aceptado. Nota de implementación en la 2.3: el fragmento `estado · código` va con `white-space: nowrap`. Sin test nuevo | En móvil el corte dentro de `500 · internal_error` hace la captura ilegible; un test de estilo no aporta |
 
 Convergencia: SI (iteración 2: critic P0 0, business V0 0; Q1 y Q2 pendientes del owner)
+
+## Aprobación humana (2026-10-29)
+
+Aprobado por el owner el 2026-10-29 («Toma las recomendaciones»): Q1 = (a) con prioridad menor (si la ventana no
+alcanza, (b), después de 35c), Q2 = (a) y Q3 = (a). Ninguna respuesta cambia el diseño. La 0.3 se cumplió en la forma
+(a): la 4.1 y la 6.3 de `paste-fallback-honest` llevan la línea de D6 y la regla de C4, anotadas en su design como
+cambio posterior a la aprobación con la conformidad del owner del 2026-10-29.

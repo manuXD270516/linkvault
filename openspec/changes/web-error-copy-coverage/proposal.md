@@ -27,7 +27,7 @@ decida.
 - **Referencia técnica** «Si lo reportas, menciona: 500 · internal_error» bajo esos dos mensajes, fuera del
   `role="alert"`, para que quien reporta pueda copiarla.
 - **Textos comunes nuevos** para `member_not_found`, `owner_cannot_leave`, `consent_text_outdated` y
-  `vault_unavailable` (este último cierra H3 si el owner lo asigna aquí, Q2).
+  `vault_unavailable` (este último cierra H3, asignado aquí por el owner el 2026-10-29, Q2 = (a)).
 - **Guardia de cobertura.** Tabla `API_ERROR_COPY` (`apps/web/src/app/shared/ui/api-error-copy.ts`) con una decisión
   por código —`common`, `local` (con los ficheros que lo traducen), `fallback` o `unreachable` (con motivo)—, tipada
   como `Record<ApiErrorCode, …>`: un código nuevo sin decisión rompe `web:typecheck` y `web:test`. Sirve igual si los
@@ -64,8 +64,8 @@ de invitación de 35b (se le recomienda «si ves un código bajo el error, manda
   `messages.xlf` (extracción) y `messages.en.xlf`.
 - **API, `libs/shared`, `libs/ai`:** sin cambios.
 - **ADR:** ADR-062 (Propuesto): la regla de cobertura y la excepción pedida. Anotación de una línea en ADR-050.
-- **Encaje:** pide una excepción a la precedencia de la fila 35 (Q1, bloqueante para `/opsx:apply`), con las tres
+- **Encaje:** excepción a la precedencia de la fila 35 concedida por el owner el 2026-10-29 (Q1 = (a), prioridad menor), con las tres
   clases de fusión, la confirmación fechada del owner y la repetición de la 9.4 de `e2e-suite` sobre el último commit
-  desplegado; si no se concede, va después de 35c.
+  desplegado; si la ventana no alcanza, va después de 35c.
 - **Coordinación:** el change que se fusione segundo entre este y `paste-fallback-honest` añade las entradas de
   `ai_consent_required`, `ai_capacity_exhausted` y `extraction_disabled` (el guardia lo obliga).
