@@ -143,7 +143,7 @@ el implementador crea tal cual; cada uno sale de un escenario de `specs/`.
   `grep -c "main:focus" apps/web/src/app/layout/shell/shell.scss` devuelve `1`, y `pnpm nx run web:lint` y
   `pnpm nx run web:build` en verde.
   **Estado (2026-10-30):** hecha. `grep -c "main:focus" apps/web/src/app/layout/shell/shell.scss` devuelve 1; el SCSS no lleva el umbral; `web:lint` y `web:typecheck` en verde y `web:build` en verde (solo el aviso previo de presupuesto del bundle inicial).
-- [ ] 3.6 [frontend] Depende de 3.5. Evidencia del umbral (D8, C8, B5): con `nx serve web` y la pila local, capturas de
+- [x] 3.6 [frontend] Depende de 3.5. Evidencia del umbral (D8, C8, B5): con `nx serve web` y la pila local, capturas de
   `/grupos` guardadas fuera del repositorio con estos nombres: `wsc-412-es-off.png` (búsqueda y Descubrir apagados,
   como staging), `wsc-1024-es-on.png`, `wsc-1024-en-on.png`, `wsc-1280-es-on.png` y `wsc-1280-en-on.png` (las dos
   capacidades en `true`, por configuración de la API local o con `page.route` sobre `GET /api/capabilities` en una
@@ -159,10 +159,10 @@ el implementador crea tal cual; cada uno sale de un escenario de `specs/`.
   de `shell.ts`, de `shell.scss` ni de los comentarios cruzados, que nombran la otra constante sin el número. D8, D13,
   las tareas 3.3a y 6.1 y `proposal.md` dicen el mismo número. Falsación: escribir `@media (max-width: 1023.98px)` en
   `shell.scss` y ver que el `grep` devuelve seis líneas; restaurar.
-
+  **Estado (2026-10-30):** hecha, con una variante declarada: sin la pila Docker (denegada en esta sesión) se sirvió el build de desarrollo localizado (`web:build:development --localize=true`, es y en) con un servidor estático en el puerto 4291 y la API simulada con `page.route` (`/api/auth/refresh`, `/api/capabilities`, `/api/groups`), como permite la tarea. Capturas fuera del repositorio, en `C:/Users/MANUEL~1/AppData/Local/Temp/claude/D--projects-linkvault/53ccf56c-1f74-44a0-a7d1-3eaf3fd741a8/scratchpad/wsc-captures/` (script `wsc-evidence.cjs` en el scratchpad). Medidas del `<mat-toolbar>` (scrollWidth/clientWidth/filas): `wsc-412-es-off.png` 412 px, ES, 412/412, 1 fila, con botón «Menú»; `wsc-1024-es-on.png` 1024 px, ES, 1024/1024, 1 fila, sin botón; `wsc-1024-en-on.png` 1024 px, EN, 1024/1024, 1 fila, sin botón; `wsc-1280-es-on.png` 1280 px, ES, 1280/1280, 1 fila; `wsc-1280-en-on.png` 1280 px, EN, 1280/1280, 1 fila. A 1024 px entra en una fila en ES y en EN con las siete entradas y «Cerrar sesión»: el umbral no se sube. `grep -rnE "1023\.98|1024"` sobre los tres lugares devuelve exactamente cinco líneas (`shell-breakpoint.ts:6`, `shell-nav.ts:17` y tres de `spec.md`: 92, 103 y 172); falsación: con `@media (max-width: 1023.98px)` en `shell.scss` devuelve seis; restaurado, cinco.
 ## 4. Páginas con la capacidad apagada (design D5, D7)
 
-- [ ] 4.1 [frontend] Depende de 2.2. `features/search/search.page`: en `loading`, estado neutro (título y contenedor
+- [x] 4.1 [frontend] Depende de 2.2. `features/search/search.page`: en `loading`, estado neutro (título y contenedor
   `aria-busy="true"`, sin formulario, enlace ni botón); con `searchOff()`, estado de D7 (`role="status"`, «La búsqueda
   no está incluida en esta versión de LinkVault.», enlace a `/mis-links`) en lugar del formulario, sin llamar a
   `GET /api/search`; en `failed`, la página de hoy. Verificar en `search.page.spec.ts`: «shows the not-included state
@@ -170,34 +170,37 @@ el implementador crea tal cual; cada uno sale de un escenario de `specs/`.
   state», «shows a neutral state without the form while capabilities are loading», «keeps the 503 message when
   capabilities failed». Falsación (C4): mostrar el formulario en `loading` y ver caer «shows a neutral state without
   the form while capabilities are loading»; restaurar.
-- [ ] 4.2 [frontend] Depende de 2.2. `features/discovery/discovery.page`: lo mismo con `discoveryOff()` (texto de D7,
+  **Estado (2026-10-30):** hecha. `search.page.spec.ts` (bloque «SearchPage with capabilities»): los cinco casos nombrados más «shows the form when search is on»; el spec completo 18 de 18. Falsación C4: con el estado neutro desactivado (`@if (false)`) cae «shows a neutral state without the form while capabilities are loading» (1 failed, 17 passed); restaurado. Para que los demás specs que pasan por el Shell no pidan `/api/capabilities`, `providePageTesting()` provee un doble con todo encendido (`provideCapabilitiesAllOn()`, también en `app.routes.spec.ts`); los specs de capacidades añaden la `CapabilitiesApi` real al final.
+- [x] 4.2 [frontend] Depende de 2.2. `features/discovery/discovery.page`: lo mismo con `discoveryOff()` (texto de D7,
   enlaces a `/mis-links` y a `/grupos`), sin búsqueda, selector de bolsa ni de destino, y sin
   `GET /api/discovery/search`; estado neutro en `loading`. Verificar en `discovery.page.spec.ts`: «shows the
   not-included state when discovery is off», «does not request /api/discovery/search when discovery is off», «links to
   /mis-links and /grupos from the not-included state», «shows a neutral state without the form while capabilities are
   loading», «shows the board and destination selectors when discovery is on», «keeps the discovery_disabled empty
   state when capabilities failed».
+  **Estado (2026-10-30):** hecha. `discovery.page.spec.ts` (bloque «DiscoveryPage with capabilities»): los seis casos nombrados; el spec completo 23 de 23. Falsación: estado neutro desactivado cae «shows a neutral state without the form while capabilities are loading» (1 failed, 22 passed); restaurado. Toda la suite `web:test` en verde: 92 ficheros, 1156 casos.
 - 4.3 (retirada en la iteración 1 del debate, B2: el push sale de este change; se conserva el número.)
 - [ ] 4.4 [frontend] Depende de 4.1 y 4.2. Comprobación cruzada a mano con la pila local (capacidades apagadas como
   `e2e.env`): `/buscar` y `/descubrir` por URL directa en modo compacto (412 px) y ancho (1280 px). Capturas guardadas
   fuera del repositorio con estos nombres: `wsc-buscar-off-412.png`, `wsc-buscar-off-1280.png`,
   `wsc-descubrir-off-412.png` y `wsc-descubrir-off-1280.png`. Verificar anotando en esta tarea, por captura, la URL, el
   modo y lo visto (texto del aviso y enlaces).
-
+  **Estado (2026-10-30):** sin marcar: falta la corrida con la pila local con capacidades apagadas como `e2e.env` (la pila Docker está denegada en esta sesión). Se hizo una comprobación equivalente con el build localizado y la API simulada (`page.route`, capacidades en `false`), capturas en `.../scratchpad/wsc-captures/`: `wsc-buscar-off-412.png` (/es/buscar, compacto: «La búsqueda no está incluida en esta versión de LinkVault.», enlace «Ver Solo para mí» -> /mis-links, sin formulario, ninguna petición a /api/search); `wsc-buscar-off-1280.png` (ancho, igual, barra sin «Buscar»); `wsc-descubrir-off-412.png` y `wsc-descubrir-off-1280.png` (/es/descubrir: «Descubrir vacantes no está incluido en esta versión de LinkVault. Puedes guardar una oferta pegando su enlace en Solo para mí o en un grupo.», enlaces «Ver Solo para mí» -> /mis-links y «Ir a mis grupos» -> /grupos, sin formulario, ninguna petición a /api/discovery; barra sin «Buscar» ni «Descubrir»). Falta repetirla contra la pila real.
 ## 5. Textos, i18n y guía (design D12)
 
-- [ ] 5.1 [frontend] Depende de 3.x y 4.x. `pnpm nx run web:extract-i18n` y traducciones en `messages.en.xlf` de
+- [x] 5.1 [frontend] Depende de 3.x y 4.x. `pnpm nx run web:extract-i18n` y traducciones en `messages.en.xlf` de
   `shell.groups`, `shell.menu`, `shell.navLabel`, `search.notEnabled`, `search.notEnabled.myLinks`,
   `discovery.notEnabled`, `discovery.notEnabled.myLinks` y `discovery.notEnabled.groups` con los textos de D12.
   Verificar: `pnpm nx run web:i18n-check` en verde y `grep -c` de los ocho ids en `messages.en.xlf` devuelve `8`.
   Falsación: borrar la unidad `shell.menu` de `messages.en.xlf` y ver caer `web:i18n-check` nombrándola; restaurar.
-- [ ] 5.2 [frontend] Depende de 3.6. `docs/guia-de-uso/README.md` §27 «En el móvil (Pixel 7)»: el «Visto» describe la
+  **Estado (2026-10-30):** hecha. `web:extract-i18n` regenerado (`messages.xlf`) y los ocho ids traducidos en `messages.en.xlf` con los textos de D12 (`grep -c` de los ocho ids devuelve 8); `web:i18n-check` en verde. Observación: la falsación prevista no cae en `web:i18n-check` (compara la extracción con `messages.xlf`, no con la traducción): borrar la unidad `shell.menu` de `messages.en.xlf` hace caer `translations.spec.ts` («has exactly the units extracted from the Spanish source», que nombra `shell.menu`) dentro de `web:test`; restaurado, 4 de 4.
+- [x] 5.2 [frontend] Depende de 3.6. `docs/guia-de-uso/README.md` §27 «En el móvil (Pixel 7)»: el «Visto» describe la
   barra de una fila con «Menú» en vez de «ocupa tres filas»; las capturas `088-movil-grupos.png`,
   `089-movil-detalle-grupo.png` y `090-movil-postulaciones.png` se rehacen con la barra nueva o, si no se rehacen en
   este PR, quedan marcadas en §27 como «captura con la barra anterior a `web-shell-capabilities`». Verificar:
   `grep -n "tres filas" docs/guia-de-uso/README.md` no devuelve la línea de §27, y las tres capturas rehechas (fecha de
   modificación del PR) o marcadas (`grep -c "barra anterior a" docs/guia-de-uso/README.md` devuelve al menos `1`).
-
+  **Estado (2026-10-30):** hecha por la vía de marcar las capturas: §27 de `docs/guia-de-uso/README.md` dice ahora que la barra ocupa una sola fila con la marca y «Menú» y no contiene «tres filas» (`grep -n "tres filas"` vacío); las capturas 088, 089 y 090 no se rehicieron (exigen la pila) y quedan marcadas como «captura con la barra anterior a `web-shell-capabilities`» (`grep -c "barra anterior a"` devuelve 1). `bash infra/ci/repo-checks.sh`: ok.
 ## 6. Camino crítico (`@lot1`) y re-admisión (design D13)
 
 - [ ] 6.1 [frontend] `apps/web-e2e/src/support/shell-nav.ts`: constante `SHELL_WIDE_MIN_WIDTH_PX = 1024` (con
@@ -210,6 +213,7 @@ el implementador crea tal cual; cada uno sale de un escenario de `specs/`.
   devuelve la lectura antes del clic; y una corrida `pnpm nx run web-e2e:e2e-stack -- --project=mobile` en verde.
   Falsación (N4): pulsar «Menú» sin mirar `aria-expanded` y abrir el panel antes de llamar al ayudante en un paso del
   recorrido; ver caer la corrida `mobile` al no encontrar el enlace (panel cerrado por el segundo clic); restaurar.
+  **Estado (2026-10-30):** sin marcar: lo escrito y verificado sin pila. `apps/web-e2e/src/support/shell-nav.ts` con `SHELL_WIDE_MIN_WIDTH_PX` (comentario cruzado sin repetir el número), `isShellCompact`, `navigateByShell` (en compacto lee `aria-expanded` y pulsa «Menú» solo si es `false`, luego el enlace dentro del `<nav>` «Navegación principal»; en ancho, dentro de `mat-toolbar`), `armCapabilitiesResponse`, `readShellCapabilities` y `expectShellOptionalEntries`; `critical-path.spec.ts` usa `navigateByShell` para «Postulaciones», «Mi CV» y «Grupos» (en `backToGroup`, en lugar de la marca). `web-e2e:lint` y `web-e2e:typecheck` en verde; `grep -n aria-expanded` devuelve la lectura antes del clic (línea 60); `playwright test --list` lista el recorrido. Falta la corrida `web-e2e:e2e-stack -- --project=mobile` y la falsación N4 (necesitan la pila; denegada en esta sesión).
 - [ ] 6.2 [frontend] Depende de 6.1. Capacidades en el recorrido (C2, C3, I4): armar
   `page.waitForResponse(r => r.url().endsWith('/api/capabilities') && r.request().method() === 'GET' && r.status() === 200)`
   en `register()`, `enterWithTestAccount()` y `joinByInvitation()` antes del clic de «Crear cuenta» o «Entrar» (nunca
@@ -220,16 +224,20 @@ el implementador crea tal cual; cada uno sale de un escenario de `specs/`.
   verde. Falsación: invertir la condición de la afirmación y ver caer el recorrido en `chromium`; restaurar.
   Falsación (C3): dejar el store atascado en `loading` (que `ensureLoaded()` no resuelva nunca) y ver caer el
   recorrido en la espera de `ready`, no pasar; restaurar.
+  **Estado (2026-10-30):** sin marcar: lo escrito y verificado sin pila. La espera de `GET /api/capabilities` se arma antes del clic en `register()`, `enterWithTestAccount()` y `joinByInvitation()` (`waitForResponse`, nunca `page.request`); la promesa vive en `Entry` (A) y se pasa la de B a `stepsThreeToSeven`; el paso 5, antes de «Postulaciones» y sin recargar, lee el cuerpo, espera `data-capabilities="ready"` y afirma «Buscar»/«Descubrir» si y solo si su capacidad es `true`. Lint y typecheck de `web-e2e` en verde. Falta `web-e2e:e2e-stack -- --project=chromium` y las dos falsaciones (invertir la condición; store atascado en `loading`), que necesitan la pila.
 - [ ] 6.3 [frontend] Depende de 6.2 y 6.6. Re-admisión con carga en `chromium`, perfil `local` y ensayo (dos
   invocaciones de `apps/web-e2e/README.md` «Cómo admitir una prueba», pila nueva cada una): cinco de cinco y ningún
   `429` de registro. Verificar anotando las dos filas con fecha y commit en un **bloque propio** de «Admisiones»
   titulado «`web-shell-capabilities`, AAAA-MM-DD», separado de las filas de `e2e-suite`.
+  **Estado (2026-10-30):** sin marcar: exige dos invocaciones de «Cómo admitir una prueba» con pila nueva en `chromium` (perfil `local` y ensayo), que dependen de `web-e2e:e2e-stack` (denegado en esta sesión) y de la 6.2 ejecutada. No se anotó ninguna fila en «Admisiones».
 - [ ] 6.4 [frontend] Depende de 6.2. Lo mismo en `mobile` (dos invocaciones). Verificar anotando las dos filas en el
   mismo bloque.
-- [ ] 6.5 [frontend] [condicional: la 9.9 de `e2e-suite` está hecha y `apps/web-e2e/playwright.config.mts` tiene el
+  **Estado (2026-10-30):** sin marcar: lo mismo en `mobile`; necesita la pila y la 6.2 ejecutada. No se anotó ninguna fila.
+- [x] 6.5 [frontend] [condicional: la 9.9 de `e2e-suite` está hecha y `apps/web-e2e/playwright.config.mts` tiene el
   proyecto `webkit` al aplicar] Depende de 6.2. Lo mismo en `webkit` (dos invocaciones), anotado en el mismo bloque. Si
   la 9.9 no está hecha, cerrar la tarea anotando su estado y la salida de
   `grep -n "webkit" apps/web-e2e/playwright.config.mts` (vacía). Verificar con la anotación.
+  **Estado (2026-10-30):** cerrada anotando su estado: la 9.9 de `e2e-suite` no está hecha (`- [ ] 9.9` en `openspec/changes/e2e-suite/tasks.md`) y `grep -n "webkit" apps/web-e2e/playwright.config.mts` sale vacío (exit 1), así que la tarea condicional no aplica en este momento.
 - [ ] 6.6 [frontend] `apps/web-e2e/src/search.spec.ts`: navegar con `page.goto('/buscar')` en lugar de pulsar
   «Buscar» (C10) y leer `GET /api/capabilities` del destino (N6, D13, I4) con
   `page.waitForResponse(r => r.url().endsWith('/api/capabilities') && r.request().method() === 'GET' && r.status() === 200)`
@@ -241,7 +249,7 @@ el implementador crea tal cual; cada uno sale de un escenario de `specs/`.
   una corrida informativa de `search.spec.ts` en `chromium` con la pila local (capacidades apagadas, como `e2e.env`),
   anotando en esta tarea la rama tomada y el resultado. No lleva `@lot1`: su resultado es evidencia informativa, no
   bloquea.
-
+  **Estado (2026-10-30):** sin marcar: lo escrito y verificado sin pila. `search.spec.ts` navega con `page.goto('/buscar')` (espera de `GET /api/capabilities` armada antes del `goto`, `response.json()` vía `readShellCapabilities`); con `search: false` afirma el aviso «La búsqueda no está incluida en esta versión de LinkVault.», el enlace a `/mis-links`, la ausencia del campo de consulta y que no hubo ninguna petición a `GET /api/search` (contador sobre `page.on('request')`); con `true`, el recorrido de antes. `grep -n "page.request"` y `grep -n "name: /Buscar/i"` salen vacíos; `web-e2e:lint` y `typecheck` en verde; `playwright test --list` lo lista. Falta la corrida informativa en `chromium` con la pila local (denegada en esta sesión); la rama de «apagada» sí se ejercitó en lo visual con el build localizado y la API simulada (ver 4.4), no con este spec.
 ## 7. Cierre
 
 - [ ] 7.1 [frontend] `pnpm nx affected -t lint,typecheck,test,i18n-check` en verde. Verificar con la salida volcada a
