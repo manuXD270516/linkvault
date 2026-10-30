@@ -28,6 +28,7 @@ escrita de 35b ni de `e2e-suite`: **después de la 11.6 de 35b y antes de su 10.
 opción (d) de la Q1). La excepción cubre **tres clases de fusión** (la del change y sus correcciones antes de la 10.7
 de 35b, el PR de archivo —que no despliega— y las de la vuelta atrás de la CSP), cada una con su regla (design D10);
 toda fusión que despliegue antes de la 10.7 obliga a repetir las verificaciones de staging sobre el commit nuevo.
+**Respondida por el owner el 2026-10-29: Q1 = (a)** (ADR-057 §1; design, «Respuestas del owner y aprobación»).
 
 ## What Changes
 

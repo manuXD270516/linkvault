@@ -501,19 +501,27 @@ Derivados de los escenarios de `specs/platform/edge-security-headers/spec.md`, c
   - **Recomendación: (a).** No rompe ninguna regla, el único fichero compartido se toca solo para añadir, de 35b solo
     cambia una línea de bloqueo en su 10.7 (la agrega su dueño), y nadie invitado ve staging sin cabeceras porque la ventana cierra antes de la 10.7. La respuesta se
     anota en ADR-057 §1 en una línea que empieza por «Respuesta del owner (Q1), AAAA-MM-DD:».
+  - Respuesta del owner (Q1), 2026-10-29: (a), «Toma las recomendaciones». Excepción coordinada, fusión después de
+    la 11.6 de 35b y antes de su 10.7, con las tres clases de fusión de D10 y la línea de bloqueo en la 10.7 de 35b,
+    que agrega su dueño (tarea 0.1). Anotada en ADR-057 §1.
 - **Q2 [no bloqueante] — Destino de informes de CSP.** (a) ninguno hasta tener dominio propio y observabilidad
   externa; (b) un endpoint `POST /api/csp-reports` con límite por IP y solo recuento en `/metrics`. **Recomendación:
   (a)**; el barrido y la pasada de staging cubren lo que cinco personas pueden ver.
+  Respuesta del owner (Q2), 2026-10-29: (a), la recomendada; sin destino de informes hasta tener dominio propio y
+  observabilidad externa.
 - **Q3 [no bloqueante] — Trusted Types, estilos con `nonce` y guardia dinámico.** (a) change posterior a 35c que añada
   `nonce` por respuesta en nginx, `ngCspNonce`, quite `'unsafe-inline'` de `style-src`, pruebe `require-trusted-types-for
   'script'` primero como `report-only` adicional, y traiga el **guardia dinámico de CSP en el lote 1** de la suite e2e
   con su readmisión y sus falsaciones (lo que salió de este change por B1); (b) no hacerlo. **Recomendación: (a)**:
   la 8.2 lo agrega como candidato en el manifiesto, con la nota «trae el guardia dinámico de CSP (B1 de
   `edge-security-headers`)» (V2-d); abrirlo sigue siendo decisión del owner.
+  Respuesta del owner (Q3), 2026-10-29: (a), la recomendada; la 8.2 lo agrega como candidato en el manifiesto. Abrir
+  ese change sigue siendo una decisión aparte del owner.
 - **Q4 [no bloqueante] — HSTS con dominio propio.** Cuando haya dominio: (a) subir `stsSeconds` a un año
   (`31536000`), mantener `includeSubDomains` si `PUBLIC_HOST` es un subdominio y revisar si es el apex; pedir `preload`
   solo con el dominio entero en HTTPS; (b) quedarse en siete días y quitar `includeSubDomains`. **Recomendación:
   (a)**, como punto de la decisión del dominio (ADR-051 §Riesgos).
+  Respuesta del owner (Q4), 2026-10-29: (a), la recomendada; se aplica cuando se decida el dominio propio.
 
 ## Debate — iteración 1
 
@@ -599,3 +607,16 @@ Critic verificó solo el P0 de la iteración 3, sin abrir una iteración nueva.
 | G1-a | critic (P1) | aceptado | Las tres señales se exigen solo sobre la última fusión de clase 1 o 3 antes de la 10.7; las intermedias se anotan. Así se evitan un fallo falso de la 10.3 y `e2e-remote` de más que gastan cupo. |
 
 Convergencia: SI (iteración 3 más verificación puntual: critic P0 0, business V0 0; Q1 pendiente del owner).
+
+## Respuestas del owner y aprobación
+
+Fecha: 2026-10-29. Aprobación humana del change tras la convergencia de la iteración 3 y la verificación puntual de G1
+(«Toma las recomendaciones»: se acepta la opción recomendada de cada pregunta abierta).
+
+- **Q1 = (a):** excepción coordinada, fusión después de la 11.6 de 35b y antes de su 10.7, con las tres clases de
+  fusión de D10. Anotada en ADR-057 §1. La línea de bloqueo en la 10.7 de 35b («9.3 de `edge-security-headers`
+  anotada») y la anotación de fecha y hora de invitar las agrega la sesión dueña de 35b o el owner; está pedida y
+  pendiente (tarea 0.1). La guardia de la ventana (0.3) se ejecuta justo antes de cada fusión de clase 1.
+- **Q2 = (a):** sin destino de informes de CSP.
+- **Q3 = (a):** change candidato posterior a 35c con `nonce`, Trusted Types y el guardia dinámico de CSP (tarea 8.2).
+- **Q4 = (a):** HSTS de un año al tener dominio propio.

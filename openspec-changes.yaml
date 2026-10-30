@@ -578,7 +578,8 @@ changes:
     adrs: [057, 048, 051, 053, 012, 027, 033]
     agents: [devops, backend-dev, frontend-dev]
     scope: |
-      **Propuesto el 2026-10-28; requiere excepción del owner a la precedencia de la fila 35 (ADR-048).** No es una
+      **Propuesto el 2026-10-28; excepción a la precedencia de la fila 35 (ADR-048) decidida por el owner el 2026-10-29:
+      Q1 = (a), fusión tras la 11.6 de 35b y antes de su 10.7 (ADR-057 §1).** No es una
       pieza de la fila ni cambia su orden (35b → 35c); no libera la precedencia para ningún otro change. Cuándo entra
       respecto de 35b es la Q1 del design (bloqueante; recomendación: excepción coordinada, fusión después de la 11.6
       de 35b y antes de su 10.7 —la única ventana que no rompe «entre PR-1 y PR-2» de 35b ni la D15 de `e2e-suite`—;

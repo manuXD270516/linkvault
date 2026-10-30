@@ -31,7 +31,7 @@
 
 ## 0. Antes de aplicar
 
-- [ ] 0.1 [infra] **[bloqueada: owner — Q1]** Q1 respondida por el owner y anotada en ADR-057 §1 en una línea que
+- [ ] 0.1 [infra] **[bloqueada: línea de bloqueo en la 10.7 de 35b; Q1 respondida el 2026-10-29]** Q1 respondida por el owner y anotada en ADR-057 §1 en una línea que
   empieza por «Respuesta del owner (Q1), AAAA-MM-DD:» con la fecha real, y en este design (sección «Open Questions»).
   Si Q1 = (b), el change no pasa de aquí hasta archivar 35c; si Q1 = (c), se retira la tarea 4.1 y la regla 1 de 5.1, y
   HSTS pasa a un change posterior; si Q1 = (d), la excepción se anota también junto a la regla «Entre PR-1 y PR-2» del
@@ -43,8 +43,18 @@
   `^Respuesta del owner \(Q1\), \d{4}-\d{2}-\d{2}:` (hoy, cero); y, con (a), (c) o (d), con un `node -e` sobre
   `openspec/changes/staging-host/tasks.md` de `origin/main` (o de la rama donde la agregó su dueño, anotada aquí) que
   encuentre `edge-security-headers` en la línea de la 10.7.
-- [ ] 0.2 [infra] Debate critic/business/reflect cerrado sin P0/V0 abiertos y aprobación humana registrada. Verificar:
+  **Estado (2026-10-29), parcial:** hecha la parte de este change. Q1 = (a) («Toma las recomendaciones»), anotada en
+  ADR-057 §1 y en design.md (Open Questions y «Respuestas del owner y aprobación»); el `node -e` sobre
+  `docs/adr/ADR-057.md` encuentra exactamente `1` línea `^Respuesta del owner (Q1), d{4}-d{2}-d{2}:`.
+  **Pendiente de terceros:** el pedido por escrito a la sesión dueña de 35b (o al owner) para que agregue a su 10.7
+  la condición «9.3 de `edge-security-headers` anotada (comentario en su PR fusionado)» y anote la fecha y la hora de
+  invitar al cerrarla. Hoy el `node -e` sobre `openspec/changes/staging-host/tasks.md` de `origin/main` (`5b92d28`)
+  encuentra la línea de la 10.7 sin `edge-security-headers`. La casilla se marca cuando esa línea aparezca (en
+  `origin/main` o en la rama de su dueño, anotada aquí).
+- [x] 0.2 [infra] Debate critic/business/reflect cerrado sin P0/V0 abiertos y aprobación humana registrada. Verificar:
   `design.md` lleva la sección del debate de la última iteración con «Convergencia: SI» y la fecha de la aprobación.
+  **Estado (2026-10-29):** iteración 3 más verificación puntual de G1 con «Convergencia: SI» (critic P0 0, business V0
+  0); aprobación del owner del 2026-10-29 en la sección «Respuestas del owner y aprobación» de design.md.
 - [ ] 0.3 [infra] Depende de 0.1. **Guardia de la ventana de la clase 1**, **justo antes de fusionar** el PR (no al
   abrirlo), y **repetida antes de cada fusión de clase 1** (el change y cada corrección antes de la 10.7 de 35b, G1),
   con su propio comentario. Con (a), las cinco condiciones:
