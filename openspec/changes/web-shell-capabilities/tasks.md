@@ -47,11 +47,12 @@ el implementador crea tal cual; cada uno sale de un escenario de `specs/`.
   **Estado (2026-10-30):** hecha. `capabilities.controller.spec.ts` (app de Descubrir con guard real, Mongo en memoria): 4 de 4. Falsación D3: añadir `meiliHost` al objeto hace caer el `parse` estricto (ZodError `unrecognized_keys`) al construir el controlador: la app no arranca, los 4 casos quedan sin ejecutar y la suite falla; restaurado. Falsación C5: `private, max-age=300` hace caer «sends Cache-Control private, no-store» (1 failed, 3 passed); restaurado, 8 de 8 entre ambos specs.
 ## 2. Capacidades en el SPA (design D4, D5)
 
-- [ ] 2.1 [frontend] `apps/web/src/app/core/capabilities/capabilities.api.ts`: `get()` sobre
+- [x] 2.1 [frontend] `apps/web/src/app/core/capabilities/capabilities.api.ts`: `get()` sobre
   `GET /api/capabilities`, validado con `capabilitiesResponseSchema` (no estricto). Verificar en
   `capabilities.api.spec.ts`: «requests GET /api/capabilities», «parses a response with an unknown extra key» y
   «rejects a body that does not validate».
-- [ ] 2.2 [frontend] Depende de 2.1. `capabilities.store.ts` (`providedIn: 'root'`): signal `state` con
+  **Estado (2026-10-30):** hecha. `capabilities.api.spec.ts`: 3 de 3 (`web:test --skip-nx-cache`, 14 de 14 con el store). `get()` devuelve un `Observable` (no una promesa) para que el store pueda cancelar la petición al vencer el plazo.
+- [x] 2.2 [frontend] Depende de 2.1. `capabilities.store.ts` (`providedIn: 'root'`): signal `state` con
   `loading | ready | failed`, `ensureLoaded()` que devuelve la misma promesa a llamadas concurrentes y no repite tras
   `ready` ni tras `failed`, y los `computed` `showSearch`, `showDiscovery`, `searchOff` y `discoveryOff` según la tabla
   de D5 (`*Off` solo es `true` en `ready` con el booleano en `false`); plazo `CAPABILITIES_TIMEOUT_MS = 5000` tras el
@@ -67,7 +68,7 @@ el implementador crea tal cual; cada uno sale de un escenario de `specs/`.
   quitar el plazo y ver caer «fails open after the timeout»; restaurar. Falsación (I3): al vencer el plazo, pasar a
   `failed` con un `setTimeout` propio sin desuscribirse de la petición y ver caer «cancels the request when the timeout
   expires» (`req.cancelled` en `false`); restaurar.
-
+  **Estado (2026-10-30):** hecha. `capabilities.store.spec.ts`: 11 de 11 (los diez nombrados más «does not request again after failed» y «follows each flag once ready»). Falsaciones ejecutadas: (1) `failed` oculta las entradas: caen «shows them after a 500 (fails open)», «shows them after an invalid body» y «fails open after the timeout»; (2) sin plazo: caen «fails open after the timeout» y «cancels the request when the timeout expires» (5 s reales); (3) I3, `setTimeout` propio sin desuscribirse: cae solo «cancels the request when the timeout expires» (1 failed, 10 passed). Restaurado: 11 de 11.
 ## 3. La barra (design D5, D6, D8, D9)
 
 - [ ] 3.1 [frontend] `layout/shell/nav-entries.ts`: `NAV_ENTRIES` en el orden de D9, cada una con ruta, texto i18n
