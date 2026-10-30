@@ -389,9 +389,13 @@ implementador crea. Ninguna prueba llama a un proveedor real: `AI_CHAIN=mock` y 
 
 ## 6. Cierre
 
-- [ ] 6.1 [backend] `pnpm nx affected -t lint,typecheck,test,i18n-check` en verde. Verificar con su salida.
-- [ ] 6.2 [infra] `node D:/projects/linkvault/node_modules/@fission-ai/openspec/bin/openspec.js validate paste-fallback-honest --strict --no-interactive`
+- [x] 6.1 [backend] `pnpm nx affected -t lint,typecheck,test,i18n-check` en verde. Verificar con su salida.
+
+  **Estado (2026-10-30):** hecha. `pnpm nx affected -t lint,typecheck,test,i18n-check --base=origin/main --parallel=2` (salida en fichero): lint, typecheck y test en verde en los 8 proyectos afectados; `web:i18n-check` falló una vez porque el formato de `paste-when.ts` movió las ubicaciones del catálogo, se re-extrajo (`chore(web): re-extract i18n catalog`) y `nx affected -t i18n-check` salió con 0. Nx marcó `api:test` como intermitente (carga local, como ya anota la memoria del proyecto); repetido aislado con `--parallel=1 --skip-nx-cache`: 279 ficheros, 3768 tests en verde. Pendiente aparte: 5.6b y 5.6c (e2e) siguen sin marcar.
+- [x] 6.2 [infra] `node D:/projects/linkvault/node_modules/@fission-ai/openspec/bin/openspec.js validate paste-fallback-honest --strict --no-interactive`
   y `validate --all --strict --no-interactive` en verde, y `bash infra/ci/repo-checks.sh` con salida 0.
+
+  **Estado (2026-10-30):** hecha. `openspec validate paste-fallback-honest --strict --no-interactive`: «Change 'paste-fallback-honest' is valid»; `bash infra/ci/repo-checks.sh`: salida 0 («ok: 5 comprobaciones de repositorio ejecutadas»). `validate --all` y `eval-ci`/`build` de `nx affected` no se corrieron en esta pasada.
 - [ ] 6.3 [infra] **Fusión del change** (design D11, clase 1), justo antes de fusionar el PR. Verificar:
   - con (a): el PR lleva una confirmación escrita del owner **con la fecha del día de la fusión** (P1-8), en la forma
     «11.6 hecha el AAAA-MM-DD; PR-2 de 35b = #NNN; 10.7 no hecha; sin `e2e-remote` hoy». Si la confirmación es de un
