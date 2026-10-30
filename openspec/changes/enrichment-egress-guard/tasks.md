@@ -80,8 +80,8 @@ DNS, y `PUBLIC_EGRESS_POLICY` tal cual para el negativo de puerto. No hay variab
   dirección rechazada). Tras `pnpm nx run worker:build` (P1-4): `dist/apps/worker/package.json` contiene `undici` e
   `ipaddr.js` y no contiene `selfsigned` (`grep -c` anotado en el PR). Falsación: devolver solo las direcciones
   públicas en vez de rechazar y ver caer el primero; importar `selfsigned` desde un fichero de `test-support/`, volver
-  a construir y ver aparecer `selfsigned` en `dist/apps/worker/package.json`; restaurar.
-- [ ] 2.2a [backend] Conector guardado en `egress/guarded-connector.ts`: envuelve `buildConnector({ lookup })` de
+  a construir y ver aparecer `selfsigned` en `dist/apps/worker/package.json`; restaurar. **Estado (2026-10-29):** parcial. Hecho: `undici` 7.29.1 en `dependencies` y `selfsigned` 5.5.0 en `devDependencies` (versiones del lockfile), las tres políticas nombradas en `apps/worker/src/test-support/egress-policies.ts`, `EgressBlockedError`/`findEgressBlocked`, `egress-lookup.ts` y los cinco tests de `egress-lookup.spec.ts` en verde. Falsación hecha: devolver solo las públicas en vez de rechazar cae «rejects when any resolved address is not public»; restaurada. **Pendiente**: la comprobación de `dist/apps/worker/package.json` y su falsación de `selfsigned` no son concluyentes todavía: el guardia aún no está cableado en `enrichment.module.ts` (3.2), así que importar `selfsigned` desde `test-support/` no aparece en el `package.json` generado (0 coincidencias). Hoy `undici` e `ipaddr.js` figuran en `dist/apps/worker/package.json` y `selfsigned` no (`grep -c` = 1, 1, 0); repetir con la falsación al cablear en 3.2.
+- [x] 2.2a [backend] Conector guardado en `egress/guarded-connector.ts`: envuelve `buildConnector({ lookup })` de
   `undici`; antes de delegar clasifica el host recibido sin corchetes (`classifyHost`, `allowsHost`) y el puerto
   (`allowsPort`) y, si no pasan, llama al callback con `EgressBlockedError` sin abrir socket. Verificar en
   `guarded-fetch.int.spec.ts`, con un servidor HTTP en loopback que **cuenta conexiones** y nombres de `.test`
@@ -100,8 +100,8 @@ DNS, y `PUBLIC_EGRESS_POLICY` tal cual para el negativo de puerto. No hay variab
   Falsación: quitar el `lookup` del conector base y ver caer el primero por la causa (`ENOTFOUND` en lugar de
   `EgressBlockedError`); quitar la clasificación del host en el conector y ver caer el segundo; hacer que el conector
   rechace todo puerto que no venga como número y ver caer «with the public policy a default-port name reaches the
-  resolver» (la causa pasa a `EgressBlockedError` con categoría `port`); restaurar.
-- [ ] 2.2b [backend] `createGuardedFetch({ policy, resolve?, tls? })` en `egress/guarded-fetch.ts`: `fetch` y `Agent`
+  resolver» (la causa pasa a `EgressBlockedError` con categoría `port`); restaurar. **Estado (2026-10-29):** `guarded-connector.ts` sobre `buildConnector({ lookup })`, clasificando host y puerto antes de abrir socket. Los seis tests de `guarded-fetch.int.spec.ts` en verde (cada negativo afirma cero conexiones, `EgressBlockedError` y categoría exacta; el de puerto y el de nombre sin punto, cero llamadas al resolvedor). Falsaciones hechas: sin `lookup` en el conector base cae «a name resolving to loopback opens no connection» (causa `ENOTFOUND`); sin clasificar el host caen «a literal loopback host opens no connection» y «a dotless host is rejected without resolving»; rechazar el puerto `''` cae «with the public policy a default-port name reaches the resolver»; restauradas.
+- [x] 2.2b [backend] `createGuardedFetch({ policy, resolve?, tls? })` en `egress/guarded-fetch.ts`: `fetch` y `Agent`
   del paquete `undici` con `connect` = conector de 2.2a y `allowH2: false`; fuerza `redirect: 'manual'` en cada
   petición; dispatcher explícito, sin proxy del entorno. Devuelve un `HttpFetch`. Verificar en
   `guarded-fetch.int.spec.ts`: «a followed redirect to a literal loopback opens no connection», con
@@ -112,8 +112,8 @@ DNS, y `PUBLIC_EGRESS_POLICY` tal cual para el negativo de puerto. No hay variab
   the caller asks» (`PERMISSIVE_TEST_POLICY`) e «ignores proxy variables in the environment» (`PERMISSIVE_TEST_POLICY`;
   proxy HTTP local contador en `HTTP_PROXY`/`HTTPS_PROXY`: cuenta cero y el destino cuenta una).
   Falsación: usar `EnvHttpProxyAgent` como dispatcher y ver caer el tercero (el proxy cuenta una); quitar el forzado de
-  `redirect` y ver caer el segundo; restaurar.
-- [ ] 2.2c [backend] Opción `tls?: { ca }` de `createGuardedFetch` (design D3, N4, P1-1): como pasar `ca` sustituye
+  `redirect` y ver caer el segundo; restaurar. **Estado (2026-10-29):** `createGuardedFetch({ policy, resolve?, tls? })` con `fetch`/`Agent` de `undici`, `allowH2: false`, `redirect: 'manual'` forzado y dispatcher explícito (más `close()`). Los tres tests nombrados en verde. Falsaciones hechas: `EnvHttpProxyAgent` como dispatcher cae «ignores proxy variables in the environment» (el proxy cuenta una conexión); quitar el forzado de `redirect` cae «forces manual redirects whatever the caller asks» (y la redirección de 2.2b); restauradas.
+- [x] 2.2c [backend] Opción `tls?: { ca }` de `createGuardedFetch` (design D3, N4, P1-1): como pasar `ca` sustituye
   las raíces del sistema, el conector recibe `ca: [...tls.rootCertificates, ca]` (`node:tls`), las raíces de Node más
   la autoridad dada; sin `tls`, no pasa `ca` y quedan las raíces por defecto. Ninguna opción del guardia desactiva la
   verificación del certificado. Servidor TLS local con certificado de `selfsigned` generado en el test, con
@@ -122,8 +122,8 @@ DNS, y `PUBLIC_EGRESS_POLICY` tal cual para el negativo de puerto. No hay variab
   por el certificado) y «keeps the system roots when a test ca is given» (con un doble de `buildConnector` que captura
   sus opciones: el `ca` recibido contiene cada certificado de `tls.rootCertificates` y además el dado). Falsación:
   hacer que la opción `tls` desactive la verificación en lugar de añadir la autoridad y ver caer el segundo; pasar
-  `ca` sin las raíces del sistema y ver caer el tercero; restaurar.
-- [ ] 2.3 [backend] Cambio de DNS entre comprobación y conexión (design D10, reescrita por P0-1 sin tocar la
+  `ca` sin las raíces del sistema y ver caer el tercero; restaurar. **Estado (2026-10-29):** Opción `tls?: { ca }`: el conector recibe `ca: [...tls.rootCertificates, ca]`; sin `tls` no pasa `ca`. Certificado generado en el test con `selfsigned` (solo desde `*.spec.ts`). Los tres tests nombrados en verde. Falsaciones hechas: desactivar la verificación cae «rejects a self-signed server when no ca is given»; pasar `ca` sin las raíces cae «keeps the system roots when a test ca is given»; restauradas.
+- [x] 2.3 [backend] Cambio de DNS entre comprobación y conexión (design D10, reescrita por P0-1 sin tocar la
   interfaz: `.2` y `.3` son las dos `loopback`, y ninguna política por clases aprueba una y rechaza la otra). Los dos
   tests usan `LOOPBACK_BY_NAME_TEST_POLICY`, que aprueba `loopback` y admite el puerto efímero. Verificar en
   `guarded-fetch.int.spec.ts`:
@@ -139,7 +139,7 @@ DNS, y `PUBLIC_EGRESS_POLICY` tal cual para el negativo de puerto. No hay variab
   Si el sistema local no admite esas direcciones, el test se salta con motivo escrito (nunca en CI, design R10).
   Falsación: resolver otra vez el nombre fuera del `lookup` (simulando un pre-chequeo separado) y ver caer el primero
   (el resolvedor cuenta dos y `.3` cuenta una); clasificar solo la primera resolución de cada host y ver caer el
-  segundo; restaurar.
+  segundo; restaurar. **Estado (2026-10-29):** Dos tests con `LOOPBACK_BY_NAME_TEST_POLICY` y servidores en `127.0.0.2`/`127.0.0.3` (se saltan con motivo escrito si el sistema no admite las direcciones y nunca en CI, R10); en esta máquina corren y pasan (19/19 en `infrastructure/egress`). Falsaciones hechas: segunda resolución fuera del `lookup` cae «connects to the address approved in the same resolution» (y «calls the resolver once per lookup»); clasificar solo la primera resolución de cada host cae «a later hop resolving to a private address opens no connection»; restauradas.
 
 ## 3. Descarga de la página (design D4, D10, D11)
 
