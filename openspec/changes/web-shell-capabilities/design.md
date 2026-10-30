@@ -406,15 +406,21 @@ Rollback: revertir el PR.
   viendo la barra nueva desde el primer día. (c) deja la barra de tres filas durante la medición; (d) toca la
   secuencia de despliegues de 35b, que no es de este change. La respuesta se anota en ADR-059 §1 en una línea que
   empiece por «Respuesta del owner (Q1), AAAA-MM-DD:».
+  Respuesta del owner (Q1), 2026-10-29: (a), «Toma las recomendaciones». Fusión después de la 11.6 de 35b y antes de
+  su 10.7, repitiendo la 9.4 de `e2e-suite` sobre el commit desplegado, con las tres clases de fusión de D14. Anotada
+  en ADR-059 §1.
 - **Q2 [no bloqueante] ¿Añadir `push`, `externalAi` o `byokVault` al contrato?** (a) No en esta versión; se añaden
   cuando haya un consumidor, sin romper el contrato (D4). (b) Sí, ya. **Recomendación: (a).** `push` salió de este
   change en la iteración 1 (B2); la bóveda BYOK es obligatoria en producción (H3 vive en `e2e-suite-lot-2` solo por
   las pilas de prueba) y el permiso de IA externa ya lo gestiona el perfil.
+  Respuesta del owner (Q2), 2026-10-29: (a), la recomendada.
 - **Q3 [no bloqueante] ¿Atajo global «Guardar link» en la barra compacta?** (a) No hasta ver los datos del día 7 de
   35b. (b) Sí, en esta versión. **Recomendación: (a)** (D10).
+  Respuesta del owner (Q3), 2026-10-29: (a), la recomendada.
 - **Q4 [no bloqueante] ¿Se toca el aviso de invitación de 35b** («la búsqueda no está disponible»)? (a) No: sigue
   siendo cierto y ahora la interfaz es coherente con él. (b) Quitar la línea. **Recomendación: (a).** Es un artefacto
   de `staging-host`; este change no lo edita.
+  Respuesta del owner (Q4), 2026-10-29: (a), la recomendada; el aviso queda como está.
 
 ## Debate — iteración 1
 
@@ -499,3 +505,14 @@ Critic verificó solo el P0 de la iteración 3, sin abrir una iteración nueva.
 | B6-b | critic (P0) | aceptado | La 3.4b navega cambiando un query param y afirma que llegó un `NavigationEnd`: con la misma URL el router emite `NavigationSkipped` y el caso no podía fallar. Corrección de dos líneas en la tarea. |
 
 Convergencia: SI (iteración 3 más verificación puntual: critic P0 0 tras corregir B6-b, business V0 0; Q1 pendiente del owner).
+
+## Respuestas del owner y aprobación
+
+Fecha: 2026-10-29. Aprobación humana del change tras la convergencia de la iteración 3 y la verificación puntual de I2
+(«Toma las recomendaciones»: se acepta la opción recomendada de cada pregunta abierta).
+
+- **Q1 = (a):** el change entero se fusiona después de la 11.6 de 35b y antes de su 10.7, repitiendo la 9.4 de
+  `e2e-suite` sobre el commit desplegado, con las tres clases de fusión de D14. Anotada en ADR-059 §1 (tarea 0.1).
+- **Q2 = (a):** sin `push`, `externalAi` ni `byokVault` en el contrato hasta tener consumidor.
+- **Q3 = (a):** sin atajo global «Guardar link» hasta ver los datos del día 7 de 35b.
+- **Q4 = (a):** el aviso de invitación de 35b no se toca.

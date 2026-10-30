@@ -3,14 +3,17 @@
 Cada tarea cabe en menos de una hora. Los nombres entre comillas son los títulos de los casos de prueba (`it(...)`) que
 el implementador crea tal cual; cada uno sale de un escenario de `specs/`.
 
-- [ ] 0.1 [infra] Q1 respondida por el owner y anotada con fecha en ADR-059 §1, en una línea que empieza por
+- [x] 0.1 [infra] Q1 respondida por el owner y anotada con fecha en ADR-059 §1, en una línea que empieza por
   «Respuesta del owner (Q1), AAAA-MM-DD:», y en `design.md`. Si Q1 = (b), el change no pasa de aquí hasta archivar
   35c; si Q1 = (c), se aplican 1, 2, 3.1, 3.2a, 3.2b, 4, 5.1, 6.2-6.6 y 7, sin la barra compacta (3.3a-3.6), sin la
   5.2 ni el ayudante 6.1; si Q1 = (d), la anotación incluye la excepción a «entre PR-1 y PR-2» y dónde quedó escrita
   en 35b. Verificar: `grep -cE "Respuesta del owner \(Q1\), 20[0-9]{2}-" docs/adr/ADR-059.md` devuelve `1`
-  (antes de anotarla devuelve `0`).
-- [ ] 0.2 [infra] Debate critic/business/reflect cerrado sin P0/V0 abiertos y aprobación humana registrada.
+  (antes de anotarla devuelve `0`). **Estado (2026-10-29):** Q1 = (a) («Toma las recomendaciones»), anotada en
+  ADR-059 §1 y en design.md (Open Questions y «Respuestas del owner y aprobación»); el `grep -cE` devuelve `1`.
+- [x] 0.2 [infra] Debate critic/business/reflect cerrado sin P0/V0 abiertos y aprobación humana registrada.
   Verificar: `design.md` lleva la sección del debate de la última iteración con la fecha de la aprobación.
+  **Estado (2026-10-29):** iteración 3 más verificación puntual de I2 con «Convergencia: SI» (critic P0 0, business V0
+  0); aprobación del owner del 2026-10-29 en la sección «Respuestas del owner y aprobación» de design.md.
 
 ## 1. Contrato y API (design D1-D4)
 

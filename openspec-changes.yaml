@@ -580,8 +580,8 @@ changes:
     scope: |
       **Propuesto como ∥ 35b, segunda excepción a la precedencia de la fila 35** (ADR-048 §Consecuencias, extendida a
       la fila entera por ADR-051 §1). ADR-055 §1 no la cubre: **abrirlo, aplicarlo y fusionarlo antes de invitar en
-      35b es la Q1 del change, del owner y bloqueante para `/opsx:apply`** (ADR-059 §1; recomendación: sí, antes de la
-      6.3 de 35b o repitiendo su 10.7 y la 9.4 de `e2e-suite`). Si la respuesta es no, espera a archivar 35c. No toca
+      35b es la Q1 del change, del owner y bloqueante para `/opsx:apply`** (ADR-059 §1). **Respondida el 2026-10-29:
+      Q1 = (a)**, fusión después de la 11.6 de 35b y antes de su 10.7, repitiendo la 9.4 de `e2e-suite` (design D14). No toca
       composes, workflows, variables de entorno ni requirements de `platform/ci-pipeline`, `platform/email` o
       `platform/production-deploy`.
       **Capacidades:** `GET /api/capabilities` con sesión, `{ search, discovery, push }` booleanos derivados de la

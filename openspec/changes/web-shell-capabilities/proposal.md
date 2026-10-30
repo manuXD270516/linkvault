@@ -63,6 +63,7 @@ PR-2 de 35b y su 11.6, ni durante su 9.1-9.4, ni los días 7 y 14 de la medició
 `e2e-remote` (D14). La alternativa es que el owner autorice
 expresamente una excepción a la regla «entre PR-1 y PR-2» de 35b, con riesgo para su 6.3 (Q1 (d)). Si el owner dice
 que no, el change espera a que cierre la 35c y entra como fila propia.
+**Respondida por el owner el 2026-10-29: Q1 = (a)** (ADR-059 §1; design, «Respuestas del owner y aprobación»).
 
 ## Capabilities
 
