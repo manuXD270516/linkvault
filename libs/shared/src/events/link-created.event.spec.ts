@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   ENRICH_LINK_QUEUE,
@@ -68,9 +70,7 @@ describe('linkCreatedEvent', () => {
 
 describe('linkCreatedJobId', () => {
   it('is deterministic for the same link and preview version', () => {
-    expect(linkCreatedJobId(payload)).toBe(
-      'enrich:66e9a0000000000000000001:1',
-    );
+    expect(linkCreatedJobId(payload)).toBe('enrich:66e9a0000000000000000001:1');
     expect(linkCreatedJobId(payload)).toBe(linkCreatedJobId({ ...payload }));
   });
 
@@ -84,5 +84,19 @@ describe('linkCreatedJobId', () => {
 describe('the queue of the event', () => {
   it('names the enrich-link queue', () => {
     expect(ENRICH_LINK_QUEUE).toBe('enrich-link');
+  });
+
+  it('is the queue the pause script of the egress guard targets', () => {
+    // `tools/queues/enrich-link-queue.mjs` no puede importar TypeScript: repite el nombre y este test lo ata a la constante.
+    const script = readFileSync(
+      join(
+        import.meta.dirname,
+        '../../../../tools/queues/enrich-link-queue.mjs',
+      ),
+      'utf8',
+    );
+    expect(script).toContain(
+      `const ENRICH_LINK_QUEUE = '${ENRICH_LINK_QUEUE}';`,
+    );
   });
 });
