@@ -1,3 +1,4 @@
+import { findEgressBlocked } from '../../../../infrastructure/egress/egress-blocked-error';
 import type {
   PageFetchOptions,
   PageFetchResult,
@@ -95,8 +96,18 @@ export class HttpPageFetcher implements PageFetcher {
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       return await this.follow(start, controller.signal, options.allowRedirect);
-    } catch {
-      // El único error que llega hasta aquí es el de la red o el del plazo; `AbortSignal` no distingue cuál con
+    } catch (error) {
+      // Un rechazo del filtro de salida (del conector o del `lookup`, en cualquier salto) viaja en la cadena de `cause`
+      // del error del cliente: no es un fallo de red y reintentar no cambia nada.
+      const blocked = findEgressBlocked(error);
+      if (blocked !== null) {
+        return {
+          ok: false,
+          reason: 'unsafe_destination',
+          category: blocked.category,
+        };
+      }
+      // El único otro error que llega hasta aquí es el de la red o el del plazo; `AbortSignal` no distingue cuál con
       // certeza, y para la persona los dos significan lo mismo.
       return {
         ok: false,

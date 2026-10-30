@@ -189,6 +189,20 @@ function apiCrossModulePatterns(moduleName, { allowPublicEntry }) {
   }));
 }
 
+/**
+ * Transporte de las descargas del enriquecimiento (change `enrichment-egress-guard`, D10): la página y el `robots.txt`
+ * salen siempre por el guardia de `apps/worker/src/infrastructure/egress`, que filtra el destino. Dentro del módulo no
+ * se llama al `fetch` global ni se importa un cliente HTTP.
+ */
+const ENRICHMENT_EGRESS_MESSAGE =
+  'Las descargas del enriquecimiento salen por el guardia de salida (infrastructure/egress): recibe el HttpFetch inyectado.';
+const ENRICHMENT_EGRESS_PATTERNS = [
+  {
+    regex: '^(?:node:)?https?$|^undici(?:/.*)?$',
+    message: ENRICHMENT_EGRESS_MESSAGE,
+  },
+];
+
 export default [
   ...nx.configs['flat/base'],
   ...nx.configs['flat/typescript'],
@@ -369,6 +383,43 @@ export default [
         {
           selector: `CallExpression[callee.name='require'][arguments.0.value=/${AI_SDK_MODULE_REGEX}/]`,
           message: AI_SDK_MESSAGE,
+        },
+      ],
+    },
+  },
+  // Enriquecimiento del worker (D10 de enrichment-egress-guard): ni `fetch` global ni clientes HTTP, salvo en los
+  // tests, que levantan servidores locales. ESLint no combina las opciones de una regla entre bloques (ADR-017), así
+  // que el dominio de este módulo tiene su propio bloque, **el último**, con la lista del dominio más estas rutas.
+  {
+    basePath: import.meta.dirname,
+    files: ['apps/worker/src/modules/enrichment/**/*.ts'],
+    ignores: ['**/*.spec.ts'],
+    rules: {
+      'no-restricted-globals': [
+        'error',
+        { name: 'fetch', message: ENRICHMENT_EGRESS_MESSAGE },
+      ],
+      'no-restricted-imports': [
+        'error',
+        { patterns: ENRICHMENT_EGRESS_PATTERNS },
+      ],
+    },
+  },
+  {
+    basePath: import.meta.dirname,
+    files: ['apps/worker/src/modules/enrichment/domain/**/*.ts'],
+    rules: {
+      'no-restricted-globals': [
+        'error',
+        { name: 'fetch', message: ENRICHMENT_EGRESS_MESSAGE },
+      ],
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            ...DOMAIN_RESTRICTED_PATTERNS,
+            ...ENRICHMENT_EGRESS_PATTERNS,
+          ],
         },
       ],
     },

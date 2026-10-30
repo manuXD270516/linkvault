@@ -135,6 +135,17 @@ describe('RequestLinkEnrichment', () => {
     },
   );
 
+  it('retry of an unsafe_destination link answers 409 and requests nothing', async () => {
+    const linkId = await failedLink('unsafe_destination');
+
+    await expect(requestEnrichment.execute(ANA, linkId)).rejects.toBeInstanceOf(
+      EnrichmentNotRetryable,
+    );
+    expect(outbox.size).toBe(0);
+    expect(limiter.consumed).toEqual([]);
+    expect((await links.findById(linkId))?.previewVersion).toBe(2);
+  });
+
   it('Demasiados reintentos', async () => {
     const linkId = await failedLink('rate_limited');
     limiter.exhaust({ kind: 'enrich-link', linkId });

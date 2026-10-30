@@ -52,7 +52,7 @@ DNS, y `PUBLIC_EGRESS_POLICY` tal cual para el negativo de puerto. No hay variab
   «classifies alternative IPv4 notations after WHATWG URL parsing» (el caso pasa por `new URL(...).hostname`),
   «classifies an IPv6 literal hostname once its brackets are stripped», «the public policy allows only names and public
   literals» y «the public policy allows only public addresses». Falsación: hacer que `PUBLIC_EGRESS_POLICY` permita
-  `dotless` y ver caer el quinto; que permita `link_local` y ver caer el sexto; restaurar. **Estado (2026-10-29):** `classifyHost`, `EgressPolicy`, `PUBLIC_EGRESS_POLICY` y `hostRejectionCategory` (categoría de un host rechazado, design D1). Los seis tests nombrados en verde. Falsaciones hechas: permitir `dotless` cae «the public policy allows only names and public literals»; permitir `link_local` cae «the public policy allows only public addresses»; restauradas.
+  `dotless` y ver caer el quinto; que permita `link_local` y ver caer el sexto; restaurar. **Estado (2026-10-29):** `classifyHost`, `EgressPolicy`, `PUBLIC_EGRESS_POLICY` y `hostRejectionCategory` (categoría de un host rechazado, design D1). Los seis tests nombrados en verde. Falsaciones hechas: permitir `dotless` cae «the public policy allows only names and public literals»; permitir `link_local` cae «the public policy allows only public addresses»; restauradas. `hostRejectionCategory` (helper añadido en `egress-address.ts`): devuelve la categoría de rechazo de un host (la clase del literal, `dotless` o `localhost`) y es lo que usa el conector del worker; aceptado por reflect.
 - [x] 1.4 [backend] `allowsPort(protocol, port, hostClass)` de `PUBLIC_EGRESS_POLICY`: puerto ausente u `80`/`443`, sea
   cual sea la clase del host; la decisión no depende de ninguna dirección resuelta. El puerto llega como cadena (la de
   `URL.port`, vacía si es el de por defecto), como número o ausente, según quién llame (P1-2). Verificar, con una
@@ -67,7 +67,7 @@ DNS, y `PUBLIC_EGRESS_POLICY` tal cual para el negativo de puerto. No hay variab
 
 ## 2. Guardia de salida del worker (design D3, D8)
 
-- [ ] 2.1 [backend] `undici` en `dependencies` y `selfsigned` en `devDependencies` del `package.json` raíz (las dos
+- [x] 2.1 [backend] `undici` en `dependencies` y `selfsigned` en `devDependencies` del `package.json` raíz (las dos
   con la versión del lockfile, sin `minimumReleaseAgeExclude`; `selfsigned` se importa solo desde ficheros `*.spec.ts`,
   nunca desde `test-support/`, que el build cuenta como código de producción), las tres políticas de test
   nombradas de design D8 en `apps/worker/src/test-support/` y
@@ -80,7 +80,7 @@ DNS, y `PUBLIC_EGRESS_POLICY` tal cual para el negativo de puerto. No hay variab
   dirección rechazada). Tras `pnpm nx run worker:build` (P1-4): `dist/apps/worker/package.json` contiene `undici` e
   `ipaddr.js` y no contiene `selfsigned` (`grep -c` anotado en el PR). Falsación: devolver solo las direcciones
   públicas en vez de rechazar y ver caer el primero; importar `selfsigned` desde un fichero de `test-support/`, volver
-  a construir y ver aparecer `selfsigned` en `dist/apps/worker/package.json`; restaurar. **Estado (2026-10-29):** parcial. Hecho: `undici` 7.29.1 en `dependencies` y `selfsigned` 5.5.0 en `devDependencies` (versiones del lockfile), las tres políticas nombradas en `apps/worker/src/test-support/egress-policies.ts`, `EgressBlockedError`/`findEgressBlocked`, `egress-lookup.ts` y los cinco tests de `egress-lookup.spec.ts` en verde. Falsación hecha: devolver solo las públicas en vez de rechazar cae «rejects when any resolved address is not public»; restaurada. **Pendiente**: la comprobación de `dist/apps/worker/package.json` y su falsación de `selfsigned` no son concluyentes todavía: el guardia aún no está cableado en `enrichment.module.ts` (3.2), así que importar `selfsigned` desde `test-support/` no aparece en el `package.json` generado (0 coincidencias). Hoy `undici` e `ipaddr.js` figuran en `dist/apps/worker/package.json` y `selfsigned` no (`grep -c` = 1, 1, 0); repetir con la falsación al cablear en 3.2.
+  a construir y ver aparecer `selfsigned` en `dist/apps/worker/package.json`; restaurar. **Estado (2026-10-29):** `undici` 7.29.1 en `dependencies` y `selfsigned` 5.5.0 en `devDependencies` (versiones del lockfile), las tres políticas nombradas en `apps/worker/src/test-support/egress-policies.ts`, `EgressBlockedError`/`findEgressBlocked`, `egress-lookup.ts` y los cinco tests de `egress-lookup.spec.ts` en verde. Falsación hecha: devolver solo las públicas en vez de rechazar cae «rejects when any resolved address is not public»; restaurada. Con el guardia ya cableado (3.2), tras `pnpm nx run worker:build`: `dist/apps/worker/package.json` contiene `undici` e `ipaddr.js` y no `selfsigned` (`grep -c` = 1, 1, 0). Nota sobre la falsación de `selfsigned`: importarlo desde `test-support/` (o desde un fichero alcanzable) NO lo hace aparecer mientras esté en `devDependencies`, porque el generador del `package.json` descarta las dependencias de desarrollo de la raíz (0 coincidencias en ambos casos); el guardia es esa colocación. Falsación equivalente ejecutada: con `selfsigned` movido a `dependencies`, importado desde un fichero alcanzable y también desde `test-support/`, aparece en `dist/apps/worker/package.json` (`grep -c` = 1 en los dos casos); restaurado a `devDependencies` (0).
 - [x] 2.2a [backend] Conector guardado en `egress/guarded-connector.ts`: envuelve `buildConnector({ lookup })` de
   `undici`; antes de delegar clasifica el host recibido sin corchetes (`classifyHost`, `allowsHost`) y el puerto
   (`allowsPort`) y, si no pasan, llama al callback con `EgressBlockedError` sin abrir socket. Verificar en
@@ -143,13 +143,13 @@ DNS, y `PUBLIC_EGRESS_POLICY` tal cual para el negativo de puerto. No hay variab
 
 ## 3. Descarga de la página (design D4, D10, D11)
 
-- [ ] 3.1 [backend] `PageFetchFailureReason` con `unsafe_destination` (y la categoría en el fallo, para el registro);
+- [x] 3.1 [backend] `PageFetchFailureReason` con `unsafe_destination` (y la categoría en el fallo, para el registro);
   `HttpPageFetcher` traduce `EgressBlockedError` (venga del conector o del `lookup`, en cualquier salto, buscándolo en
   la cadena de `cause` del error del cliente) a `unsafe_destination`, y un error de resolución a `http_error`. Verificar
   en `http-page-fetcher.spec.ts` con dobles de `HttpFetch`: «maps an egress rejection to unsafe_destination», «maps an
   egress rejection on a redirect hop to unsafe_destination» y «a name that does not resolve stays http_error».
-  Falsación: tratar todo error de red como `http_error` y ver caer el primero; restaurar.
-- [ ] 3.2 [backend] `enrichment.module.ts`: `PAGE_FETCHER` y el fetcher del `robots.txt` construidos sobre **un mismo**
+  Falsación: tratar todo error de red como `http_error` y ver caer el primero; restaurar. **Estado (2026-10-29):** `PageFetchFailureReason` con `unsafe_destination` y `PageFetchFailure.category` (también `ExtractionFailed.category`, que `extract-preview.service` propaga); `HttpPageFetcher` busca `EgressBlockedError` en la cadena de `cause` en cualquier salto y lo traduce; el resto de errores de red sigue siendo `http_error`. Los tres tests nombrados en `http-page-fetcher.spec.ts` en verde. Falsación hecha: anular la rama del rechazo cae los dos primeros; restaurada.
+- [x] 3.2 [backend] `enrichment.module.ts`: `PAGE_FETCHER` y el fetcher del `robots.txt` construidos sobre **un mismo**
   `createGuardedFetch` con `PUBLIC_EGRESS_POLICY`. En `eslint.config.mjs`, un bloque con `basePath` para
   `apps/worker/src/modules/enrichment/**` con `ignores: ['**/*.spec.ts']`, `no-restricted-globals` (`fetch`) y
   `no-restricted-imports` (`undici`, `node:http`, `node:https`, `http`, `https`); y, **al final del fichero**, otro
@@ -159,17 +159,17 @@ DNS, y `PUBLIC_EGRESS_POLICY` tal cual para el negativo de puerto. No hay variab
   `enrichment.module.spec.ts` (o el spec de arranque del worker): «page and robots fetchers share the guarded
   transport». Falsación: devolver `fetch as HttpFetch` al `PAGE_FETCHER` y ver fallar `worker:lint` con
   `no-restricted-globals`; añadir un `import 'undici'` en un fichero de `enrichment/domain/` y ver fallar `worker:lint`;
-  añadir un `import 'mongoose'` en ese mismo fichero y ver que la regla del dominio sigue fallando; restaurar.
-- [ ] 3.3 [backend] Registro del rechazo en el caso de uso del enriquecimiento: `warn` con `linkId`, `stage: 'page'` y
+  añadir un `import 'mongoose'` en ese mismo fichero y ver que la regla del dominio sigue fallando; restaurar. **Estado (2026-10-29):** `enrichment.module.ts`: un provider `ENRICHMENT_FETCH` (`createGuardedFetch` con `PUBLIC_EGRESS_POLICY`) que inyectan `PAGE_FETCHER` y `ROBOTS` (el fetcher del `robots.txt` recibe ahora el `HttpFetch`; sus redirecciones llegan en 4.1). `eslint.config.mjs`: bloque con `basePath` para `apps/worker/src/modules/enrichment/**` (`ignores: ['**/*.spec.ts']`, `no-restricted-globals` `fetch`, `no-restricted-imports` `undici`/`node:http`/`node:https`/`http`/`https`) y, al final del fichero, el de `enrichment/domain/**` con `DOMAIN_RESTRICTED_PATTERNS` más esas rutas. `pnpm nx run worker:lint` en verde (0 errores); «page and robots fetchers share the guarded transport» en `enrichment.module.spec.ts` en verde (los dos providers inyectan el mismo token y el transporte rechaza un literal de loopback con categoría `loopback`). Falsaciones hechas: `fetch as HttpFetch` en `PAGE_FETCHER` falla `eslint` con `no-restricted-globals`; `import 'undici'` en un fichero de `enrichment/domain/` falla con la regla de importaciones; `import 'mongoose'` en ese mismo fichero sigue fallando con el mensaje del dominio; restauradas. Encaje del tipo `GuardedFetch` con `HttpFetch`: verificado por typecheck (el guardia se inyecta directamente).
+- [x] 3.3 [backend] Registro del rechazo en el caso de uso del enriquecimiento: `warn` con `linkId`, `stage: 'page'` y
   `category`, sin URL, host ni dirección. Verificar en el spec del caso de uso con un logger que captura: «logs an
   unsafe destination with linkId, stage and category only» (afirma que ningún campo serializado contiene la URL ni el
-  host del link). Falsación: añadir `url` al objeto del `warn` y ver caer el test; restaurar.
-- [ ] 3.4 [backend] Escenarios del motivo. Verificar: en el spec del caso de uso del worker, «an internal page leaves
+  host del link). Falsación: añadir `url` al objeto del `warn` y ver caer el test; restaurar. **Estado (2026-10-29):** `EnrichLinkUseCase` recibe un `EnrichLinkLogger` (por defecto `Logger` de Nest) y escribe un `warn` con `event`, `linkId`, `stage: 'page'` y `category` cuando el intento falla con `unsafe_destination`. «logs an unsafe destination with linkId, stage and category only» en verde. Falsación hecha: añadir `url` al objeto del `warn` cae el test; restaurada.
+- [x] 3.4 [backend] Escenarios del motivo. Verificar: en el spec del caso de uso del worker, «an internal page leaves
   the link failed with unsafe_destination»; en `request-link-enrichment.usecase.spec.ts` (API), «retry of an
   unsafe_destination link answers 409 and requests nothing»; en el spec de cierre por relectura de frescura, «a
   freshness re-check ending in unsafe_destination does not close the job». Falsación: sacar `unsafe_destination` de
-  `NON_RETRYABLE_ENRICHMENT_REASONS` y ver caer el segundo; restaurar.
-- [ ] 3.5 [backend] Integración del fetcher real sobre el guardia real (E8, B7). Verificar en
+  `NON_RETRYABLE_ENRICHMENT_REASONS` y ver caer el segundo; restaurar. **Estado (2026-10-29):** En `enrich-link.usecase.spec.ts` «an internal page leaves the link failed with unsafe_destination»; en `request-link-enrichment.usecase.spec.ts` (API) «retry of an unsafe_destination link answers 409 and requests nothing»; en `freshness-close.spec.ts` «a freshness re-check ending in unsafe_destination does not close the job». Los tres en verde. Falsación hecha: sacar `unsafe_destination` de `NON_RETRYABLE_ENRICHMENT_REASONS` cae el de la API; restaurada.
+- [x] 3.5 [backend] Integración del fetcher real sobre el guardia real (E8, B7). Verificar en
   `http-page-fetcher.int.spec.ts`, con `HttpPageFetcher` sobre el `createGuardedFetch` real, una política de test
   completa y nombrada por test (P0-2), servidores que cuentan conexiones y un resolvedor inyectado, en `http://`: «a
   host resolving to a blocked address ends in unsafe_destination with no connection» (`PUBLIC_WITH_ANY_PORT_TEST_POLICY`;
@@ -179,12 +179,12 @@ DNS, y `PUBLIC_EGRESS_POLICY` tal cual para el negativo de puerto. No hay variab
   TLS de 2.2c confiado por `tls.ca` y `PERMISSIVE_TEST_POLICY`: «an approved https host is fetched over exactly one
   connection».
   Falsación: hacer que el fetcher no busque `EgressBlockedError` en la cadena de `cause` y ver caer el primero;
-  restaurar.
-- [ ] 3.6 [frontend] Tarjeta de un link con `unsafe_destination` (V2-2). Sin cambio de código en `link-status.ts`.
+  restaurar. **Estado (2026-10-29):** `http-page-fetcher.int.spec.ts` con `HttpPageFetcher` sobre el `createGuardedFetch` real, servidores contadores y resolvedor inyectado: los tres casos de `http://` (`PUBLIC_WITH_ANY_PORT_TEST_POLICY` en los dos negativos, categoría `loopback` y cero conexiones; `PERMISSIVE_TEST_POLICY` en el control positivo) y el único de `https://` con el certificado de `selfsigned` confiado por `tls.ca`, en verde (4 tests). Falsación hecha: no buscar `EgressBlockedError` en la cadena de `cause` cae el primero (y los dos de 3.1); restaurada.
+- [x] 3.6 [frontend] Tarjeta de un link con `unsafe_destination` (V2-2). Sin cambio de código en `link-status.ts`.
   Verificar en `apps/web/src/app/features/links/link-status.spec.ts`: «unsafe_destination needs a hand and offers no
   retry» (`needsHand: true`, `canRetry: false`, `pasteFirst: false`, texto genérico) con
   `pnpm nx run web:test --include="**/link-status.spec.ts" --skip-nx-cache`. Falsación: añadir temporalmente
-  `unsafe_destination` a `isClosedToUs` y ver caer el test (`pasteFirst` pasa a `true`); restaurar.
+  `unsafe_destination` a `isClosedToUs` y ver caer el test (`pasteFirst` pasa a `true`); restaurar. **Estado (2026-10-29):** Sin cambio de código en `link-status.ts`. «unsafe_destination needs a hand and offers no retry» en `link-status.spec.ts` (`needsHand: true`, `canRetry: false`, `pasteFirst: false`, texto «No pudimos leer esta oferta») con `pnpm nx run web:test --skip-nx-cache -- --include="**/link-status.spec.ts"`: 6 tests en verde. Falsación hecha: añadir `unsafe_destination` a `isClosedToUs` cae el test (`expected true to be false`); restaurada.
 
 ## 4. `robots.txt` (design D5)
 

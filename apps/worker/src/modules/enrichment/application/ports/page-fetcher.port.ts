@@ -1,4 +1,5 @@
 import type { EnrichmentFailureReason } from '@linkvault/shared';
+import type { EgressCategory } from '@linkvault/shared/net';
 
 // Puerto de descarga de la página (D6 de link-enrichment, ADR-003). Solo tipos y el token: se inyecta con
 // `{ provide: PAGE_FETCHER, useClass: HttpPageFetcher }`.
@@ -13,7 +14,8 @@ export const PAGE_FETCHER = Symbol('PAGE_FETCHER');
  * Motivos que puede producir una descarga, un subconjunto de los de D5. `blocked` es el sitio negándonos la petición
  * (`401`/`403`) y `rate_limited` el sitio pidiendo que volvamos más tarde (`429`): los dos son suyos, no nuestros, y
  * por eso se cuentan aparte de `http_error`. `robots_disallowed` es el destino de una redirección que el `robots.txt`
- * prohíbe: tampoco es un error nuestro, es el sitio diciendo que ahí no se entra.
+ * prohíbe: tampoco es un error nuestro, es el sitio diciendo que ahí no se entra. `unsafe_destination` es el filtro de
+ * salida rechazando el destino (red interna, puerto no web) en la página o en cualquier salto.
  */
 export type PageFetchFailureReason = Extract<
   EnrichmentFailureReason,
@@ -25,6 +27,7 @@ export type PageFetchFailureReason = Extract<
   | 'too_large'
   | 'timeout'
   | 'http_error'
+  | 'unsafe_destination'
 >;
 
 export interface PageFetchSuccess {
@@ -38,6 +41,8 @@ export interface PageFetchSuccess {
 export interface PageFetchFailure {
   readonly ok: false;
   readonly reason: PageFetchFailureReason;
+  /** Solo con `unsafe_destination`: la categoría del rechazo, para el registro (nunca la URL, el host ni la dirección). */
+  readonly category?: EgressCategory;
 }
 
 export type PageFetchResult = PageFetchSuccess | PageFetchFailure;

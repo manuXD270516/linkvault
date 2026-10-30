@@ -22,7 +22,9 @@ const LINK_ID = '507f1f77bcf86cd799439011';
 function extractOf(
   result: Awaited<ReturnType<ExtractPreviewService['run']>>,
 ): ExtractPreviewService {
-  return { run: () => Promise.resolve(result) } as unknown as ExtractPreviewService;
+  return {
+    run: () => Promise.resolve(result),
+  } as unknown as ExtractPreviewService;
 }
 
 describe('EnrichLinkUseCase freshness close signals', () => {
@@ -141,6 +143,50 @@ describe('EnrichLinkUseCase freshness close signals', () => {
           return Promise.resolve({ closed: true, alreadyClosed: false });
         },
       },
+    );
+
+    const result = await useCase.execute({
+      linkId: LINK_ID,
+      previewVersion: 2,
+      deferrals: 0,
+      triggeredBy: 'freshness',
+    });
+    expect(closed).toHaveLength(0);
+    expect(result).toMatchObject({ kind: 'done', previewStatus: 'failed' });
+    expect(links.peek(LINK_ID)?.closedAt).toBeUndefined();
+  });
+
+  it('a freshness re-check ending in unsafe_destination does not close the job', async () => {
+    const links = new InMemoryLinkRepository();
+    links.put({
+      id: LINK_ID,
+      displayUrl: 'https://www.getonbrd.com/jobs/1',
+      originalUrls: ['https://www.getonbrd.com/jobs/1'],
+      createdBy: 'u1',
+      previewStatus: 'enriched',
+      previewVersion: 2,
+      preview: { title: 'Backend', company: 'Acme' },
+      previewSources: {},
+    });
+    const closed: string[] = [];
+    const useCase = new EnrichLinkUseCase(
+      links,
+      extractOf({
+        kind: 'failed',
+        reason: 'unsafe_destination',
+        category: 'private',
+      }),
+      new InMemorySnapshotStore(),
+      new InMemoryEnrichmentNotifier(),
+      new FixedClock(NOW),
+      5_000,
+      {
+        execute: ({ linkId }) => {
+          closed.push(linkId);
+          return Promise.resolve({ closed: true, alreadyClosed: false });
+        },
+      },
+      { warn: () => undefined },
     );
 
     const result = await useCase.execute({

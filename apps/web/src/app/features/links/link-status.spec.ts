@@ -40,20 +40,27 @@ describe('linkCardStatus: una oferta legible con un fallo guardado', () => {
     ['manual', 'timeout'],
     ['enriched', 'no_data'],
     ['manual', 'no_data'],
-  ] as const)('says nothing and offers no retry when %s with %s', (previewStatus, reason) => {
-    const status = linkCardStatus(
-      { ...readable, previewStatus, lastEnrichmentError: { reason, at: '2026-09-18T10:00:00.000Z' } },
-      now,
-    );
+  ] as const)(
+    'says nothing and offers no retry when %s with %s',
+    (previewStatus, reason) => {
+      const status = linkCardStatus(
+        {
+          ...readable,
+          previewStatus,
+          lastEnrichmentError: { reason, at: '2026-09-18T10:00:00.000Z' },
+        },
+        now,
+      );
 
-    expect(status).toEqual({
-      text: null,
-      needsHand: false,
-      canRetry: false,
-      notAnOffer: false,
-      pasteFirst: false,
-    });
-  });
+      expect(status).toEqual({
+        text: null,
+        needsHand: false,
+        canRetry: false,
+        notAnOffer: false,
+        pasteFirst: false,
+      });
+    },
+  );
 
   /** Solo con título sigue sin leerse sola: releer es seguro porque la relectura no pisa lo pegado. */
   it('still offers a retry when the paste brought only the title', () => {
@@ -63,7 +70,10 @@ describe('linkCardStatus: una oferta legible con un fallo guardado', () => {
         previewStatus: 'partial',
         preview: { title: 'Ingeniera de datos' },
         previewSources: { title: { ...pastedBy, value: 'Ingeniera de datos' } },
-        lastEnrichmentError: { reason: 'no_data', at: '2026-09-18T10:00:00.000Z' },
+        lastEnrichmentError: {
+          reason: 'no_data',
+          at: '2026-09-18T10:00:00.000Z',
+        },
       },
       now,
     );
@@ -71,5 +81,26 @@ describe('linkCardStatus: una oferta legible con un fallo guardado', () => {
     expect(status.text).toBe('No pudimos leer esta oferta');
     expect(status.canRetry).toBe(true);
     expect(status.pasteFirst).toBe(false);
+  });
+});
+
+describe('linkCardStatus: destino que el filtro de salida rechazó', () => {
+  it('unsafe_destination needs a hand and offers no retry', () => {
+    const status = linkCardStatus(
+      {
+        ...base,
+        previewStatus: 'failed',
+        lastEnrichmentError: {
+          reason: 'unsafe_destination',
+          at: '2026-09-18T10:00:00.000Z',
+        },
+      },
+      now,
+    );
+
+    expect(status.needsHand).toBe(true);
+    expect(status.canRetry).toBe(false);
+    expect(status.pasteFirst).toBe(false);
+    expect(status.text).toBe('No pudimos leer esta oferta');
   });
 });

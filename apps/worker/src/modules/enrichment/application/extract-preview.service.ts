@@ -1,4 +1,5 @@
 import type { EnrichmentFailureReason, PreviewDraft } from '@linkvault/shared';
+import type { EgressCategory } from '@linkvault/shared/net';
 import type { ExtractionChain } from '../domain/extraction-chain';
 import {
   baseSalaryTextOf,
@@ -58,6 +59,8 @@ export interface ExtractionDeferred {
 export interface ExtractionFailed {
   readonly kind: 'failed';
   readonly reason: EnrichmentFailureReason;
+  /** Solo con `unsafe_destination`: categoría del rechazo del filtro de salida, para el registro. */
+  readonly category?: EgressCategory;
 }
 
 export type ExtractionAttempt =
@@ -170,7 +173,15 @@ export class ExtractPreviewService {
         allowRedirect: async (next: string) =>
           (await this.robots.decide(next)).allowed,
       });
-      if (!fetched.ok) return { kind: 'failed', reason: fetched.reason };
+      if (!fetched.ok) {
+        return {
+          kind: 'failed',
+          reason: fetched.reason,
+          ...(fetched.category === undefined
+            ? {}
+            : { category: fetched.category }),
+        };
+      }
       html = fetched.html;
     } finally {
       // El turno se suelta pase lo que pase —también cuando el `robots.txt` niega la ruta—, y se convierte en la

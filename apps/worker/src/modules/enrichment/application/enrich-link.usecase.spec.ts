@@ -15,7 +15,10 @@ import {
   ExtractPreviewService,
   type ExtractPreviewOptions,
 } from './extract-preview.service';
-import { EnrichLinkUseCase } from './enrich-link.usecase';
+import {
+  EnrichLinkUseCase,
+  type EnrichLinkLogger,
+} from './enrich-link.usecase';
 import {
   FakeHostMutex,
   FakePageFetcher,
@@ -98,6 +101,7 @@ function harnessOf({
   robots = new FakeRobots(),
   mutex = new FakeHostMutex(),
   snapshots = new InMemorySnapshotStore(),
+  logger = { warn: () => undefined },
   extractors,
   writeWins = true,
 }: {
@@ -106,6 +110,7 @@ function harnessOf({
   robots?: FakeRobots;
   mutex?: FakeHostMutex;
   snapshots?: InMemorySnapshotStore;
+  logger?: EnrichLinkLogger;
   extractors?: readonly ExtractorStrategy[];
   /** `false` finge que otro ganó la escritura condicionada entre la lectura y la escritura. */
   writeWins?: boolean;
@@ -141,6 +146,8 @@ function harnessOf({
       notifier,
       clock,
       DEADLINE_MS,
+      null,
+      logger,
     ),
     links,
     snapshots,
@@ -483,6 +490,50 @@ describe('La bolsa prohíbe la lectura', () => {
       'robots_disallowed',
     );
     expect(links.peek(LINK_ID)?.previewStatus).toBe('failed');
+  });
+});
+
+describe('Destino que el filtro de salida rechaza', () => {
+  it('an internal page leaves the link failed with unsafe_destination', async () => {
+    const { useCase, links, snapshots } = harnessOf({
+      response: {
+        ok: false,
+        reason: 'unsafe_destination',
+        category: 'private',
+      },
+    });
+
+    await useCase.execute({ linkId: LINK_ID, previewVersion: 1, deferrals: 0 });
+
+    expect(links.writes[0].write.lastEnrichmentError?.reason).toBe(
+      'unsafe_destination',
+    );
+    expect(links.peek(LINK_ID)?.previewStatus).toBe('failed');
+    expect(snapshots.objects.size).toBe(0);
+  });
+
+  it('logs an unsafe destination with linkId, stage and category only', async () => {
+    const logged: unknown[] = [];
+    const { useCase } = harnessOf({
+      response: {
+        ok: false,
+        reason: 'unsafe_destination',
+        category: 'private',
+      },
+      logger: { warn: (entry) => logged.push(entry) },
+    });
+
+    await useCase.execute({ linkId: LINK_ID, previewVersion: 1, deferrals: 0 });
+
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toMatchObject({
+      linkId: LINK_ID,
+      stage: 'page',
+      category: 'private',
+    });
+    const serialized = JSON.stringify(logged);
+    expect(serialized).not.toContain('bolsa.example');
+    expect(serialized).not.toContain('https://');
   });
 });
 

@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import {
   ENRICH_TRIGGERED_BY_FRESHNESS,
   applySalaryTextParse,
@@ -49,9 +50,7 @@ export interface EnrichLinkDeferred {
 }
 
 export type EnrichLinkResult =
-  | EnrichLinkDone
-  | EnrichLinkSkipped
-  | EnrichLinkDeferred;
+  EnrichLinkDone | EnrichLinkSkipped | EnrichLinkDeferred;
 
 /** Cierre de vacante por relectura (calendar vive en el detector). */
 export interface CloseVacancyForRecheck {
@@ -59,6 +58,11 @@ export interface CloseVacancyForRecheck {
     readonly linkId: string;
     readonly reason: 'recheck';
   }): Promise<unknown>;
+}
+
+/** Lo que el caso de uso necesita de un logger; `Logger` de Nest lo cumple. */
+export interface EnrichLinkLogger {
+  warn(entry: Record<string, string>): void;
 }
 
 export class EnrichLinkUseCase {
@@ -71,6 +75,9 @@ export class EnrichLinkUseCase {
     /** `ENRICH_DEADLINE_MS`: plazo total por link, repartido entre las etapas de la cadena. */
     private readonly deadlineMs: number,
     private readonly closeVacancy: CloseVacancyForRecheck | null = null,
+    private readonly logger: EnrichLinkLogger = new Logger(
+      EnrichLinkUseCase.name,
+    ),
   ) {}
 
   async execute(job: EnrichLinkJob): Promise<EnrichLinkResult> {
@@ -101,6 +108,17 @@ export class EnrichLinkUseCase {
         deferrals: attempt.deferrals,
         waitMs: attempt.waitMs,
       };
+    }
+
+    // El filtro de salida rechazó el destino: queda registrado con el link y la categoría, nunca la URL, el host ni la
+    // dirección (links/enrichment ya prohíbe registrar la URL del usuario).
+    if (attempt.kind === 'failed' && attempt.reason === 'unsafe_destination') {
+      this.logger.warn({
+        event: 'egress_blocked',
+        linkId: link.id,
+        stage: 'page',
+        category: attempt.category ?? 'unknown',
+      });
     }
 
     const at = this.clock.now();
@@ -254,12 +272,7 @@ function applySalaryParseAfterMerge(
   const text =
     fromJsonLd !== '' ? fromJsonLd : (state.preview.summary?.trim() ?? '');
   if (text === '') return state;
-  const result = applySalaryTextParse(
-    state.preview,
-    state.sources,
-    text,
-    at,
-  );
+  const result = applySalaryTextParse(state.preview, state.sources, text, at);
   if (!result.applied) return state;
   return { preview: result.preview, sources: result.sources };
 }

@@ -1,3 +1,4 @@
+import type { HttpFetch } from '../http/http-page-fetcher';
 import type { RobotsFetcher, RobotsResponse } from './redis-cached-robots';
 
 // Petición real del `robots.txt` (D6 de link-enrichment). Vive aparte de `RedisCachedRobots` porque es lo único de esa
@@ -19,12 +20,14 @@ export interface HttpRobotsFetcherOptions {
  * un `robots.txt` que redirige dentro del mismo sitio es normal, y `fetch` la resuelve solo.
  */
 export function createHttpRobotsFetcher(
+  httpFetch: HttpFetch,
   options: HttpRobotsFetcherOptions,
 ): RobotsFetcher {
   return async (robotsUrl: string): Promise<RobotsResponse | null> => {
     try {
-      const response = await fetch(robotsUrl, {
-        redirect: 'follow',
+      const response = await httpFetch(robotsUrl, {
+        method: 'GET',
+        redirect: 'manual',
         headers: { 'user-agent': options.userAgent, accept: 'text/plain' },
         signal: AbortSignal.timeout(options.timeoutMs),
       });

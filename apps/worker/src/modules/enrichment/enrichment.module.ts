@@ -1,4 +1,5 @@
 import { RUN_TASK, type RunTaskFn } from '@linkvault/ai';
+import { PUBLIC_EGRESS_POLICY } from '@linkvault/shared/net';
 import { type DynamicModule, Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import type { Redis } from 'ioredis';
@@ -46,6 +47,7 @@ import { ExtractionChain } from './domain/extraction-chain';
 import { HeadlessExtractor } from './domain/extractors/headless.extractor';
 import { JsonLdExtractor } from './domain/extractors/json-ld.extractor';
 import { MetadataExtractor } from './domain/extractors/metadata.extractor';
+import { createGuardedFetch } from '../../infrastructure/egress/guarded-fetch';
 import { parsePageContent } from './infrastructure/html/page-content';
 import {
   HttpPageFetcher,
@@ -84,6 +86,9 @@ import { SystemClock } from './infrastructure/system-clock';
 // worker no tiene ninguno: todo lo demás del módulo sí se construye, así que los tests de inyección siguen
 // comprobando que el grafo resuelve. Fuera de los tests el consumidor existe siempre; que la cola tenga trabajo o no
 // es otra cosa. El cron del barrido de snapshots sigue la misma regla que los demás cron del `worker`.
+
+/** Token del `HttpFetch` con filtro de salida que comparten la página y el `robots.txt`. */
+export const ENRICHMENT_FETCH = Symbol('ENRICHMENT_FETCH');
 
 /** La cadena de D3, en su orden. El orden es el contrato: es lo que decide los empates del merge. */
 function extractionChainOf(
@@ -134,12 +139,24 @@ export class EnrichmentModule {
         EnrichmentRedisConnection,
         { provide: LINK_REPOSITORY, useClass: MongoLinkRepository },
         {
+          // Un único transporte con el filtro de salida (change `enrichment-egress-guard`): la página y el `robots.txt`
+          // comparten el mismo `createGuardedFetch`, con la única política de producción. Ninguno llama al `fetch` global
+          // (lo impide una regla de ESLint sobre este módulo).
+          provide: ENRICHMENT_FETCH,
+          useFactory: (): HttpFetch =>
+            createGuardedFetch({ policy: PUBLIC_EGRESS_POLICY }),
+        },
+        {
           provide: ROBOTS,
-          inject: [ENRICHMENT_REDIS, APP_CONFIG],
-          useFactory: (redis: Redis, worker: WorkerConfig) =>
+          inject: [ENRICHMENT_REDIS, APP_CONFIG, ENRICHMENT_FETCH],
+          useFactory: (
+            redis: Redis,
+            worker: WorkerConfig,
+            httpFetch: HttpFetch,
+          ) =>
             new RedisCachedRobots(
               redis,
-              createHttpRobotsFetcher({
+              createHttpRobotsFetcher(httpFetch, {
                 userAgent: worker.ENRICH_USER_AGENT,
                 timeoutMs: worker.ENRICH_FETCH_TIMEOUT_MS,
               }),
@@ -157,9 +174,9 @@ export class EnrichmentModule {
         },
         {
           provide: PAGE_FETCHER,
-          inject: [APP_CONFIG],
-          useFactory: (worker: WorkerConfig) =>
-            new HttpPageFetcher(fetch as HttpFetch, {
+          inject: [APP_CONFIG, ENRICHMENT_FETCH],
+          useFactory: (worker: WorkerConfig, httpFetch: HttpFetch) =>
+            new HttpPageFetcher(httpFetch, {
               userAgent: worker.ENRICH_USER_AGENT,
               timeoutMs: worker.ENRICH_FETCH_TIMEOUT_MS,
               maxBytes: worker.ENRICH_MAX_BYTES,

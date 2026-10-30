@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { EgressBlockedError } from '../../../../infrastructure/egress/egress-blocked-error';
 import {
   HttpPageFetcher,
   MAX_REDIRECTS,
@@ -351,8 +352,12 @@ describe('Redirecciones', () => {
   it('asks for permission at every hop, and follows the ones allowed', async () => {
     const httpFetch = fetcherOf({
       'https://bolsa.example/jobs/1': () =>
-        new Response(null, { status: 301, headers: { location: '/jobs/1/es' } }),
-      'https://bolsa.example/jobs/1/es': () => html('<html><h1>Oferta</h1></html>'),
+        new Response(null, {
+          status: 301,
+          headers: { location: '/jobs/1/es' },
+        }),
+      'https://bolsa.example/jobs/1/es': () =>
+        html('<html><h1>Oferta</h1></html>'),
     });
     const asked: string[] = [];
 
@@ -416,5 +421,68 @@ describe('Redirecciones', () => {
     expect(
       await pageFetcherOf(httpFetch).fetchPage('https://bolsa.example/jobs/1'),
     ).toEqual({ ok: false, reason: 'http_error' });
+  });
+});
+
+describe('Destinos que el filtro de salida rechaza', () => {
+  // El error real del cliente envuelve el original en `cause`: `TypeError: fetch failed` con el rechazo dentro.
+  function wrapped(category: 'loopback' | 'private'): Error {
+    return new TypeError('fetch failed', {
+      cause: new EgressBlockedError(category),
+    });
+  }
+
+  it('maps an egress rejection to unsafe_destination', async () => {
+    const httpFetch: HttpFetch = () => Promise.reject(wrapped('loopback'));
+
+    const result = await pageFetcherOf(httpFetch).fetchPage(
+      'https://bolsa.example/jobs/1',
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      reason: 'unsafe_destination',
+      category: 'loopback',
+    });
+  });
+
+  it('maps an egress rejection on a redirect hop to unsafe_destination', async () => {
+    let calls = 0;
+    const httpFetch: HttpFetch = () => {
+      calls += 1;
+      if (calls === 1) {
+        return Promise.resolve(
+          new Response(null, {
+            status: 302,
+            headers: { location: 'https://bolsa.example/jobs/2' },
+          }),
+        );
+      }
+      return Promise.reject(wrapped('private'));
+    };
+
+    const result = await pageFetcherOf(httpFetch).fetchPage(
+      'https://bolsa.example/jobs/1',
+    );
+
+    expect(calls).toBe(2);
+    expect(result).toEqual({
+      ok: false,
+      reason: 'unsafe_destination',
+      category: 'private',
+    });
+  });
+
+  it('a name that does not resolve stays http_error', async () => {
+    const notFound: NodeJS.ErrnoException = new Error('getaddrinfo ENOTFOUND');
+    notFound.code = 'ENOTFOUND';
+    const httpFetch: HttpFetch = () =>
+      Promise.reject(new TypeError('fetch failed', { cause: notFound }));
+
+    const result = await pageFetcherOf(httpFetch).fetchPage(
+      'https://bolsa.example/jobs/1',
+    );
+
+    expect(result).toEqual({ ok: false, reason: 'http_error' });
   });
 });
