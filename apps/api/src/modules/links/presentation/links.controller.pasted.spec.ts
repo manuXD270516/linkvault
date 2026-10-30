@@ -616,12 +616,22 @@ class SwitchableCounter implements FixedWindowCounter {
 
 describe('pasting a description when the AI or the counter fail', () => {
   const counter = new SwitchableCounter();
-  let degradeFor: 'providers_failed' | 'quota_exceeded' = 'providers_failed';
+  let degradeFor:
+    | 'providers_failed'
+    | 'quota_exceeded'
+    | 'no_providers'
+    | 'consent_required' = 'providers_failed';
+  /** Lo que acompaña al degradado: la condición del proveedor o el instante de vuelta de la cuota. */
+  let alongside: Record<string, unknown> = {};
   let calls = 0;
   // `RUN_TASK` sustituido: la IA degrada con el motivo que el test elija. Nunca `synth`.
   const runTask = (() => {
     calls += 1;
-    return Promise.resolve({ status: 'degraded', reason: degradeFor });
+    return Promise.resolve({
+      status: 'degraded',
+      reason: degradeFor,
+      ...alongside,
+    });
   }) as RunTaskFn;
   let fx: PasteFixture;
 
@@ -659,6 +669,132 @@ describe('pasting a description when the AI or the counter fail', () => {
     expect(response.statusCode).toBe(429);
     expect(response.json<{ code: string }>().code).toBe('ai_quota_exceeded');
     expect(response.headers['retry-after']).toBe('86400');
+  });
+
+  /** Cada caso de ADR-060 §5, con el degradado que lo produce. */
+  const PASTE_CASES = [
+    {
+      name: '503 ai_capacity_exhausted without Retry-After',
+      reason: 'providers_failed',
+      alongside: { providerCondition: { kind: 'rate_limited' } },
+      status: 503,
+      code: 'ai_capacity_exhausted',
+    },
+    {
+      name: '503 extraction_disabled without Retry-After',
+      reason: 'providers_failed',
+      alongside: { providerCondition: { kind: 'rejected' } },
+      status: 503,
+      code: 'extraction_disabled',
+    },
+    {
+      name: '503 extraction_disabled without Retry-After when no AI is capable',
+      reason: 'no_providers',
+      alongside: {},
+      status: 503,
+      code: 'extraction_disabled',
+    },
+    {
+      name: '409 ai_consent_required',
+      reason: 'consent_required',
+      alongside: {},
+      status: 409,
+      code: 'ai_consent_required',
+    },
+    {
+      name: '409 ai_consent_required when the external circuit is open',
+      reason: 'no_providers',
+      alongside: { providerCondition: { kind: 'consent_missing' } },
+      status: 409,
+      code: 'ai_consent_required',
+    },
+  ] as const;
+
+  it.each(PASTE_CASES)(
+    '$name, and the link is unchanged',
+    async ({ reason, alongside: extra, status, code }) => {
+      counter.mode = 'up';
+      degradeFor = reason;
+      alongside = extra;
+      const linkId = await sharedLink(fx);
+      const before = await storedLink(fx, linkId);
+
+      const response = await paste(fx, fx.beto, linkId, { text: 'Oferta.' });
+
+      expect(response.statusCode).toBe(status);
+      expect(response.json<{ code: string }>().code).toBe(code);
+      expect(response.headers['retry-after']).toBeUndefined();
+      expect(await storedLink(fx, linkId)).toEqual(before);
+      alongside = {};
+    },
+  );
+
+  it('CapacityExhausted answers 503 without Retry-After', async () => {
+    counter.mode = 'up';
+    degradeFor = 'providers_failed';
+    alongside = { providerCondition: { kind: 'rate_limited' } };
+    const linkId = await sharedLink(fx);
+
+    const response = await paste(fx, fx.beto, linkId, { text: 'Oferta.' });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.headers).not.toHaveProperty('retry-after');
+    alongside = {};
+  });
+
+  it('429 ai_quota_exceeded with the real Retry-After, and the link is unchanged', async () => {
+    counter.mode = 'up';
+    degradeFor = 'quota_exceeded';
+    // Dentro de 3 horas se libera la ejecución contada más antigua.
+    alongside = {
+      aiQuotaRetryAt: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(),
+    };
+    const linkId = await sharedLink(fx);
+    const before = await storedLink(fx, linkId);
+
+    const response = await paste(fx, fx.beto, linkId, { text: 'Oferta.' });
+
+    expect(response.statusCode).toBe(429);
+    expect(response.json<{ code: string }>().code).toBe('ai_quota_exceeded');
+    const retryAfter = Number(response.headers['retry-after']);
+    expect(retryAfter).toBeGreaterThan(3 * 60 * 60 - 60);
+    expect(retryAfter).toBeLessThanOrEqual(3 * 60 * 60);
+    expect(await storedLink(fx, linkId)).toEqual(before);
+    alongside = {};
+  });
+
+  it('ni el cupo, ni la cuota, ni la falta de permiso gastan un pegado', async () => {
+    counter.mode = 'up';
+    const linkId = await sharedLink(fx);
+    const attempts: [typeof degradeFor, Record<string, unknown>][] = [
+      ['providers_failed', { providerCondition: { kind: 'rate_limited' } }],
+      ['providers_failed', { providerCondition: { kind: 'rejected' } }],
+      ['consent_required', {}],
+      ['quota_exceeded', {}],
+    ];
+
+    // Más intentos que los diez de la ventana: como cada respuesta devuelve el suyo, ninguno llega al 429 de la ventana.
+    const codes = new Set<string>();
+    for (let round = 0; round < 12; round += 1) {
+      for (const [reason, extra] of attempts) {
+        degradeFor = reason;
+        alongside = extra;
+        const response = await paste(fx, fx.ana, linkId, { text: 'Oferta.' });
+        codes.add(response.json<{ code: string }>().code);
+      }
+    }
+
+    expect(codes).not.toContain('too_many_attempts');
+    expect(codes).toEqual(
+      new Set([
+        'ai_capacity_exhausted',
+        'extraction_disabled',
+        'ai_consent_required',
+        'ai_quota_exceeded',
+      ]),
+    );
+    alongside = {};
+    degradeFor = 'providers_failed';
   });
 
   it('Un fallo de la IA no gasta un pegado', async () => {

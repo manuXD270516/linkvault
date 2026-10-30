@@ -20,7 +20,10 @@ export type LinksErrorCode =
   | 'validation_error'
   | 'not_a_job_posting'
   | 'extraction_unavailable'
-  | 'ai_quota_exceeded';
+  | 'ai_quota_exceeded'
+  | 'ai_consent_required'
+  | 'ai_capacity_exhausted'
+  | 'extraction_disabled';
 
 export abstract class LinksError extends Error {
   abstract readonly code: LinksErrorCode;
@@ -72,7 +75,9 @@ export class LinkRemovalForbidden extends LinksError {
   readonly code = 'forbidden';
 
   constructor() {
-    super('Only the member who shared the link or the group owner can remove it');
+    super(
+      'Only the member who shared the link or the group owner can remove it',
+    );
   }
 }
 
@@ -169,12 +174,52 @@ export class ExtractionUnavailable extends LinksError {
 export class AiQuotaExceeded extends LinksError {
   override readonly name = 'AiQuotaExceeded';
   readonly code = 'ai_quota_exceeded';
-  /** Segundos que se anuncian en `Retry-After`: la ventana entera de la cuota, porque la política solo dice sí o no. */
+  /** Segundos que se anuncian en `Retry-After`: la espera real hasta que se libere la cuota; sin ese dato, la ventana entera. */
   readonly retryAfterSeconds: number;
 
   constructor(retryAfterSeconds: number) {
     super('The daily AI quota is exhausted');
     this.retryAfterSeconds = Math.max(1, Math.ceil(retryAfterSeconds));
+  }
+}
+
+/**
+ * La IA no leyó lo pegado porque falta el permiso de quien pega para enviar datos a proveedores externos (409,
+ * ADR-060 §5). Es una precondición que la persona arregla, no un fallo del servidor; sin `Retry-After`. No gasta el
+ * intento. Ninguno de estos tres errores lleva el texto pegado.
+ */
+export class AiConsentRequired extends LinksError {
+  override readonly name = 'AiConsentRequired';
+  readonly code = 'ai_consent_required';
+
+  constructor() {
+    super('Reading the pasted text needs the permission to use external AI');
+  }
+}
+
+/**
+ * El proveedor de IA agotó su cupo (503, ADR-060 §5). No se sabe cuándo vuelve, así que no lleva `Retry-After`: omitirlo
+ * es lo honesto (RFC 9110). No gasta el intento.
+ */
+export class CapacityExhausted extends LinksError {
+  override readonly name = 'CapacityExhausted';
+  readonly code = 'ai_capacity_exhausted';
+
+  constructor() {
+    super('The AI provider has run out of capacity for now');
+  }
+}
+
+/**
+ * La lectura automática no está disponible por configuración o por política de datos (503, ADR-060 §5): reintentar no
+ * lo cambia, así que no lleva `Retry-After`. No gasta el intento.
+ */
+export class ExtractionDisabled extends LinksError {
+  override readonly name = 'ExtractionDisabled';
+  readonly code = 'extraction_disabled';
+
+  constructor() {
+    super('Automatic reading of the pasted text is not available');
   }
 }
 
@@ -256,7 +301,9 @@ export class NoteRemovalForbidden extends LinksError {
   readonly code = 'forbidden';
 
   constructor() {
-    super('Only the member who shared the link or the group owner can remove its note');
+    super(
+      'Only the member who shared the link or the group owner can remove its note',
+    );
   }
 }
 

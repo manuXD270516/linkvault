@@ -173,6 +173,15 @@ export const apiErrorCodeSchema = z.enum([
   // 429, con `Retry-After`: quien pega agotó su cuota diaria de IA. Distinto de `too_many_attempts`, cuya ventana es de
   // minutos: decir "inténtalo en un rato" sería mentira cuando hay que esperar al día siguiente.
   'ai_quota_exceeded',
+  // 409: falta el permiso de quien pega para enviar datos a proveedores externos, y ese permiso es lo primero que falta
+  // (ADR-060 §5). Sin `Retry-After`: lo arregla la persona, no el tiempo. El SPA no la lleva al permiso de Perfil, que
+  // habla solo del CV.
+  'ai_consent_required',
+  // 503, sin `Retry-After`: el proveedor de IA agotó su cupo y no se sabe cuándo vuelve (ADR-060 §5).
+  'ai_capacity_exhausted',
+  // 503, sin `Retry-After`: la lectura automática no está disponible por configuración o por política de datos, y
+  // reintentar no lo cambia (ADR-060 §5).
+  'extraction_disabled',
   // 404: la postulación no existe, es de otra persona o su `:id` no tiene formato de identificador (mismo cuerpo).
   'application_not_found',
   // 409: el estado o la etapa cambiaron desde otra pestaña desde que se pintó (`version` distinta).

@@ -5,7 +5,10 @@ import type {
 } from '@linkvault/shared';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
+  AiConsentRequired,
   AiQuotaExceeded,
+  CapacityExhausted,
+  ExtractionDisabled,
   ExtractionUnavailable,
   LinkNotFound,
   NotAJobPosting,
@@ -246,11 +249,115 @@ describe('PasteDescription: what the AI answers', () => {
     });
 
     await expect(attempt).rejects.toBeInstanceOf(AiQuotaExceeded);
+    // Sin el instante de la IA, la ventana entera.
     await expect(attempt).rejects.toMatchObject({
       retryAfterSeconds: 86_400,
     });
-    // La cuota de IA no es un fallo transitorio: el intento no se devuelve.
+  });
+
+  it('quota exceeded announces the real wait, not 24 hours', async () => {
+    const linkId = await blockedLink();
+    extraction.answering({
+      outcome: 'quota_exceeded',
+      retryAt: new Date(clock.now().getTime() + 3 * 60 * 60 * 1000),
+    });
+
+    const attempt = pasteDescription.execute(BETO, linkId, {
+      text: PASTED_TEXT,
+    });
+
+    await expect(attempt).rejects.toBeInstanceOf(AiQuotaExceeded);
+    await expect(attempt).rejects.toMatchObject({
+      retryAfterSeconds: 3 * 60 * 60,
+    });
+  });
+
+  it('quota exceeded never announces less than one second', async () => {
+    const linkId = await blockedLink();
+    extraction.answering({
+      outcome: 'quota_exceeded',
+      retryAt: new Date(clock.now().getTime() - 5_000),
+    });
+
+    await expect(
+      pasteDescription.execute(BETO, linkId, { text: PASTED_TEXT }),
+    ).rejects.toMatchObject({ retryAfterSeconds: 1 });
+  });
+
+  it('quota exceeded refunds the paste', async () => {
+    const linkId = await blockedLink();
+    extraction.answering({ outcome: 'quota_exceeded' });
+
+    await expect(
+      pasteDescription.execute(BETO, linkId, { text: PASTED_TEXT }),
+    ).rejects.toBeInstanceOf(AiQuotaExceeded);
+
+    expect(limiter.refunded).toEqual([
+      { kind: 'paste-description', userId: BETO },
+    ]);
+  });
+
+  it.each([
+    [
+      'capacity exhausted',
+      { outcome: 'capacity_exhausted' },
+      CapacityExhausted,
+    ],
+    ['disabled', { outcome: 'disabled' }, ExtractionDisabled],
+    ['consent required', { outcome: 'consent_required' }, AiConsentRequired],
+  ] as const)(
+    '%s refunds the paste and leaves the link as it was',
+    async (_name, answer, error) => {
+      const linkId = await blockedLink();
+      const before = await links.findById(linkId);
+      extraction.answering(answer);
+
+      await expect(
+        pasteDescription.execute(BETO, linkId, { text: PASTED_TEXT }),
+      ).rejects.toBeInstanceOf(error);
+
+      expect(limiter.refunded).toEqual([
+        { kind: 'paste-description', userId: BETO },
+      ]);
+      expect(await links.findById(linkId)).toEqual(before);
+      expect(publisher.published).toEqual([]);
+    },
+  );
+
+  it('not a job posting does not refund the paste', async () => {
+    const linkId = await readLink();
+    extraction.answering({ outcome: 'not_a_job_posting' });
+
+    await expect(
+      pasteDescription.execute(BETO, linkId, { text: PASTED_TEXT }),
+    ).rejects.toBeInstanceOf(NotAJobPosting);
+
     expect(limiter.refunded).toEqual([]);
+  });
+
+  it('no error carries the pasted text', async () => {
+    const secret = 'SECRETO-DE-LA-OFERTA-7Q2';
+    const linkId = await blockedLink();
+    const answers = [
+      { outcome: 'quota_exceeded' },
+      { outcome: 'consent_required' },
+      { outcome: 'capacity_exhausted' },
+      { outcome: 'disabled' },
+      { outcome: 'unavailable' },
+      { outcome: 'not_a_job_posting' },
+    ] as const;
+
+    for (const answer of answers) {
+      extraction.answering(answer);
+      const error: unknown = await pasteDescription
+        .execute(BETO, linkId, { text: `${PASTED_TEXT} ${secret}` })
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(Error);
+      const serialized = JSON.stringify(error) + String(error);
+      expect(serialized).not.toContain(secret);
+      expect((error as Error).stack ?? '').not.toContain(secret);
+    }
   });
 
   it('Un fallo de la IA no gasta un pegado', async () => {

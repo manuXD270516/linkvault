@@ -158,23 +158,94 @@ describe('RunTaskPastedExtraction', () => {
     });
   });
 
-  it.each([
-    ['providers_failed', 'unavailable'],
-    ['no_providers', 'unavailable'],
-    ['quota_exceeded', 'quota_exceeded'],
-  ] as const)(
-    'a degraded answer for %s is %s, without throwing',
-    async (reason, outcome) => {
-      const { runTask } = runTaskDouble(() =>
-        Promise.resolve({ status: 'degraded', reason }),
-      );
-      const adapter = new RunTaskPastedExtraction(runTask, directory, 20_000);
+  /** Un degradado de `runTask`, con la condición del proveedor si la hay. */
+  function degraded(
+    reason: 'providers_failed' | 'no_providers' | 'consent_required',
+    kind?: 'consent_missing' | 'unavailable' | 'rate_limited' | 'rejected',
+  ): AiResult<ExtractJobOutput> {
+    return {
+      status: 'degraded',
+      reason,
+      ...(kind === undefined ? {} : { providerCondition: { kind } }),
+    };
+  }
 
-      expect(await adapter.extract({ userId: ANA, text: 'Oferta.' })).toEqual({
-        outcome,
-      });
-    },
-  );
+  it.each([
+    [
+      'consent_required is consent_required',
+      degraded('consent_required'),
+      'consent_required',
+    ],
+    [
+      'no_providers with consent_missing condition is consent_required',
+      degraded('no_providers', 'consent_missing'),
+      'consent_required',
+    ],
+    [
+      'rate_limited is capacity_exhausted',
+      degraded('providers_failed', 'rate_limited'),
+      'capacity_exhausted',
+    ],
+    [
+      'rate_limited with the circuit open is capacity_exhausted',
+      degraded('no_providers', 'rate_limited'),
+      'capacity_exhausted',
+    ],
+    [
+      'rejected is disabled',
+      degraded('providers_failed', 'rejected'),
+      'disabled',
+    ],
+    [
+      'no_providers without condition is disabled',
+      degraded('no_providers'),
+      'disabled',
+    ],
+    [
+      'unavailable condition is unavailable',
+      degraded('providers_failed', 'unavailable'),
+      'unavailable',
+    ],
+    [
+      'providers_failed without condition is unavailable',
+      degraded('providers_failed'),
+      'unavailable',
+    ],
+  ] as const)('%s', async (_title, answer, outcome) => {
+    const { runTask } = runTaskDouble(() => Promise.resolve(answer));
+    const adapter = new RunTaskPastedExtraction(runTask, directory, 20_000);
+
+    expect(await adapter.extract({ userId: ANA, text: 'Oferta.' })).toEqual({
+      outcome,
+    });
+  });
+
+  it('quota_exceeded carries aiQuotaRetryAt', async () => {
+    const { runTask } = runTaskDouble(() =>
+      Promise.resolve({
+        status: 'degraded',
+        reason: 'quota_exceeded',
+        aiQuotaRetryAt: '2026-10-30T13:00:00.000Z',
+      }),
+    );
+    const adapter = new RunTaskPastedExtraction(runTask, directory, 20_000);
+
+    expect(await adapter.extract({ userId: ANA, text: 'Oferta.' })).toEqual({
+      outcome: 'quota_exceeded',
+      retryAt: new Date('2026-10-30T13:00:00.000Z'),
+    });
+  });
+
+  it('quota_exceeded without an instant has no retryAt', async () => {
+    const { runTask } = runTaskDouble(() =>
+      Promise.resolve({ status: 'degraded', reason: 'quota_exceeded' }),
+    );
+    const adapter = new RunTaskPastedExtraction(runTask, directory, 20_000);
+
+    expect(await adapter.extract({ userId: ANA, text: 'Oferta.' })).toEqual({
+      outcome: 'quota_exceeded',
+    });
+  });
 
   it('gives up when the deadline passes, as unavailable', async () => {
     // Como `runTask`: espera al proveedor hasta que la señal se aborta, y entonces degrada.

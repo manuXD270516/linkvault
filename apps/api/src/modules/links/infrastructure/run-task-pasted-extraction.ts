@@ -76,14 +76,47 @@ export class RunTaskPastedExtraction implements PastedExtractionPort {
     });
 
     if (result.status === 'degraded') {
-      return result.reason === 'quota_exceeded'
-        ? { outcome: 'quota_exceeded' }
-        : { outcome: 'unavailable' };
+      return this.degradedOutcome(result);
     }
     if (!result.output.isJobPosting) {
       return { outcome: 'not_a_job_posting' };
     }
     return { outcome: 'extracted', fields: result.output.preview ?? {} };
+  }
+
+  /**
+   * Un degradado de `runTask` a la variante del puerto (D5 de paste-fallback-honest, ADR-060 §5). Cuota y permiso
+   * primero; después la condición del proveedor; `no_providers` sin condición es «ninguna IA capaz». Todo lo que no
+   * tiene fila propia es `unavailable`: ante la duda, el mensaje que invita a reintentar es el menos dañino.
+   */
+  private degradedOutcome(degraded: {
+    reason: string;
+    aiQuotaRetryAt?: string;
+    providerCondition?: { kind: string };
+  }): PastedExtraction {
+    if (degraded.reason === 'quota_exceeded') {
+      const retryAt = parseInstant(degraded.aiQuotaRetryAt);
+      return retryAt === undefined
+        ? { outcome: 'quota_exceeded' }
+        : { outcome: 'quota_exceeded', retryAt };
+    }
+    if (degraded.reason === 'consent_required') {
+      return { outcome: 'consent_required' };
+    }
+    switch (degraded.providerCondition?.kind) {
+      case 'consent_missing':
+        return { outcome: 'consent_required' };
+      case 'rate_limited':
+        return { outcome: 'capacity_exhausted' };
+      case 'rejected':
+        return { outcome: 'disabled' };
+      case 'unavailable':
+        return { outcome: 'unavailable' };
+      default:
+        return degraded.reason === 'no_providers'
+          ? { outcome: 'disabled' }
+          : { outcome: 'unavailable' };
+    }
   }
 
   /** El consentimiento de quien pega, o `null` si no se pudo leer. Se registra el nombre del error, nunca el usuario. */
@@ -106,4 +139,11 @@ export class RunTaskPastedExtraction implements PastedExtractionPort {
       ? timeout
       : AbortSignal.any([timeout, clientClosed]);
   }
+}
+
+/** Un instante ISO-8601 de `runTask`, o `undefined` si falta o no se puede leer. */
+function parseInstant(value: string | undefined): Date | undefined {
+  if (value === undefined) return undefined;
+  const instant = new Date(value);
+  return Number.isNaN(instant.getTime()) ? undefined : instant;
 }

@@ -263,9 +263,9 @@ describe('extensionSessionResponseSchema', () => {
 
 describe('extensionRefreshRequestSchema', () => {
   it('requires a non-empty refreshToken', () => {
-    expect(
-      extensionRefreshRequestSchema.parse({ refreshToken: 'r1' }),
-    ).toEqual({ refreshToken: 'r1' });
+    expect(extensionRefreshRequestSchema.parse({ refreshToken: 'r1' })).toEqual(
+      { refreshToken: 'r1' },
+    );
     expect(extensionRefreshRequestSchema.safeParse({}).success).toBe(false);
     expect(
       extensionRefreshRequestSchema.safeParse({ refreshToken: '' }).success,
@@ -304,6 +304,9 @@ describe('api error contract', () => {
       'not_a_job_posting',
       'extraction_unavailable',
       'ai_quota_exceeded',
+      'ai_consent_required',
+      'ai_capacity_exhausted',
+      'extraction_disabled',
       'application_not_found',
       'application_conflict',
       'cv_not_found',
@@ -325,6 +328,16 @@ describe('api error contract', () => {
       'discovery_disabled',
       'internal_error',
     ]);
+  });
+
+  it('accepts the paste error codes', () => {
+    for (const code of [
+      'ai_consent_required',
+      'ai_capacity_exhausted',
+      'extraction_disabled',
+    ]) {
+      expect(apiErrorCodeSchema.safeParse(code).success).toBe(true);
+    }
   });
 
   it('keeps analysis_not_found apart from link_not_found', () => {

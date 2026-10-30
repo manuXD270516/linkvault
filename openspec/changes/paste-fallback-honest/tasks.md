@@ -205,16 +205,20 @@ implementador crea. Ninguna prueba llama a un proveedor real: `AI_CHAIN=mock` y 
 
 ## 3. API: errores del pegado (design D5)
 
-- [ ] 3.1 [backend] `libs/shared/src/schemas/auth.schema.ts`: códigos `ai_capacity_exhausted`, `extraction_disabled` y
+- [x] 3.1 [backend] `libs/shared/src/schemas/auth.schema.ts`: códigos `ai_capacity_exhausted`, `extraction_disabled` y
   `ai_consent_required`, cada uno con su comentario de estado y significado. `apps/api/src/presentation/http/api-error.ts`:
   estados `503`, `503` y `409`, y mensajes fijos en inglés sin datos. Verificar en `auth.schema.spec.ts`
   («accepts the paste error codes») y en el spec del filtro de errores («maps the new paste codes to 503, 503 and
   409»).
-- [ ] 3.2 [backend] `links/domain/errors.ts`: `CapacityExhausted`, `ExtractionDisabled` y `AiConsentRequired`, ninguno
+
+  **Estado (2026-10-30):** hecha. Códigos `ai_consent_required` (409), `ai_capacity_exhausted` (503) y `extraction_disabled` (503) en `libs/shared/src/schemas/auth.schema.ts`, con `API_ERROR_STATUS` y `API_ERROR_MESSAGES` (mensajes fijos en inglés, sin datos) en `api-error.ts`. Verificado: «accepts the paste error codes» en `auth.schema.spec.ts` (`pnpm nx run shared:test -- auth.schema`, 36 tests en verde), la tabla de estados en `api-error.spec.ts` y «maps the new paste codes to 503, 503 and 409» en `api-exception.filter.spec.ts`. No se tocó el SPA: `API_ERROR_COPY` (`apps/web/src/app/shared/ui/api-error-copy.ts`) no existe todavía en esta rama (lo cubre la 4.1).
+- [x] 3.2 [backend] `links/domain/errors.ts`: `CapacityExhausted`, `ExtractionDisabled` y `AiConsentRequired`, ninguno
   con `Retry-After`; `ExtractionUnavailable` sigue igual. El filtro HTTP pone `Retry-After` solo cuando el error lo
   trae. Verificar en `links.controller.pasted.spec.ts`: «CapacityExhausted answers 503 without Retry-After».
   Falsación: poner siempre `Retry-After: 60` y verlo caer; restaurar.
-- [ ] 3.3 [backend] Puerto `PastedExtraction` y adaptador `RunTaskPastedExtraction` con la tabla de D5. Verificar en
+
+  **Estado (2026-10-30):** hecha. `AiConsentRequired`, `CapacityExhausted` y `ExtractionDisabled` en `links/domain/errors.ts`, sin `retryAfterSeconds`; el filtro ya pone `Retry-After` solo en los errores que lo traen (las tres caen en la rama de `LinksError`). Verificado: «CapacityExhausted answers 503 without Retry-After» en `links.controller.pasted.spec.ts` y el `it.each` del filtro con `retry-after` indefinido. Falsación ejecutada: poner siempre `Retry-After: 60` en la rama de `LinksError` hizo caer 20 casos (los tres códigos nuevos, el de la controladora y los de errores sin cabecera); restaurado.
+- [x] 3.3 [backend] Puerto `PastedExtraction` y adaptador `RunTaskPastedExtraction` con la tabla de D5. Verificar en
   `run-task-pasted-extraction.spec.ts`, ampliando el `it.each` actual:
   - «consent_required is consent_required»
   - «no_providers with consent_missing condition is consent_required»
@@ -226,7 +230,9 @@ implementador crea. Ninguna prueba llama a un proveedor real: `AI_CHAIN=mock` y 
   - «quota_exceeded carries aiQuotaRetryAt»
 
   Falsación: mapear `consent_required` a `unavailable` (lo de hoy) y ver caer el primero; restaurar.
-- [ ] 3.4 [backend] `PasteDescription.fieldsOf`:
+
+  **Estado (2026-10-30):** hecha. Variantes `consent_required`, `capacity_exhausted` y `disabled` (y `retryAt?` en `quota_exceeded`) en `pasted-extraction.port.ts`, y la tabla de D5 en `RunTaskPastedExtraction.degradedOutcome`. Verificado en `run-task-pasted-extraction.spec.ts`: los siete casos del enunciado más «rate_limited with the circuit open is capacity_exhausted», «quota_exceeded carries aiQuotaRetryAt» y su caso sin instante. Falsación ejecutada: mapear `consent_required` a `unavailable` hizo caer «consent_required is consent_required» y dos casos HTTP; restaurado.
+- [x] 3.4 [backend] `PasteDescription.fieldsOf`:
   - cada `outcome` produce su error;
   - el intento se devuelve en `quota_exceeded`, `consent_required`, `capacity_exhausted`, `disabled` y `unavailable`;
   - `AiQuotaExceeded` usa `retryAt - now`, con mínimo 1 s y 24 h si falta el dato.
@@ -241,7 +247,9 @@ implementador crea. Ninguna prueba llama a un proveedor real: `AI_CHAIN=mock` y 
   - «no error carries the pasted text»
 
   Falsación: no devolver el intento en `quota_exceeded` (lo de hoy) y ver caer el segundo; restaurar.
-- [ ] 3.5 [backend] Integración HTTP en `links.controller.pasted.spec.ts`, con `runTask` doble que devuelve cada
+
+  **Estado (2026-10-30):** hecha. `PasteDescription.fieldsOf` traduce cada `outcome` a su error y devuelve el intento en `quota_exceeded`, `consent_required`, `capacity_exhausted`, `disabled` y `unavailable`; `AiQuotaExceeded` usa `retryAt - now` (mínimo 1 s; 24 h si falta). Verificado en `paste-description.usecase.spec.ts`: los siete casos del enunciado (más «quota exceeded never announces less than one second»); el caso antiguo «Cuota de IA agotada» ya no afirma que el intento no se devuelve (se invirtió esa afirmación, que es lo que cambia C10). Falsación ejecutada: no devolver el intento en `quota_exceeded` hizo caer «quota exceeded refunds the paste» y, por HTTP, «ni el cupo, ni la cuota, ni la falta de permiso gastan un pegado»; restaurado.
+- [x] 3.5 [backend] Integración HTTP en `links.controller.pasted.spec.ts`, con `runTask` doble que devuelve cada
   degradado:
   - «503 ai_capacity_exhausted without Retry-After»
   - «503 extraction_disabled without Retry-After»
@@ -250,6 +258,8 @@ implementador crea. Ninguna prueba llama a un proveedor real: `AI_CHAIN=mock` y 
   - «the link is unchanged after each of them»
 
   Verificar con `pnpm nx run api:test` y `--include` del fichero.
+
+  **Estado (2026-10-30):** hecha. En `links.controller.pasted.spec.ts` (app completa, `RUN_TASK` doble que devuelve cada degradado): `it.each` con «503 ai_capacity_exhausted without Retry-After», «503 extraction_disabled without Retry-After» (con condición `rejected` y con `no_providers` sin condición), «409 ai_consent_required» (motivo `consent_required` y `no_providers` con condición `consent_missing`), «429 ai_quota_exceeded with the real Retry-After» (3 h, no 24) y, en cada uno, el link sin cambios; más «ni el cupo, ni la cuota, ni la falta de permiso gastan un pegado» (48 pegados sin llegar a `too_many_attempts`). `pnpm nx run api:test -- api-exception.filter api-error run-task-pasted-extraction paste-description links/domain/errors links.controller.pasted`: 6 ficheros, 226 tests en verde.
 
 ## 4. SPA: textos verdaderos (design D6, D8)
 

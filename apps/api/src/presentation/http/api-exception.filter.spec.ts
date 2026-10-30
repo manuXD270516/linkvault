@@ -81,6 +81,9 @@ import {
   NotAJobPosting,
   ExtractionUnavailable,
   AiQuotaExceeded,
+  AiConsentRequired,
+  CapacityExhausted,
+  ExtractionDisabled,
 } from '../../modules/links/domain/errors';
 import {
   CvFileTooLarge,
@@ -152,6 +155,9 @@ const THROWN: Record<string, () => unknown> = {
   'not-a-job-posting': () => new NotAJobPosting(),
   'extraction-unavailable': () => new ExtractionUnavailable(60),
   'ai-quota-exceeded': () => new AiQuotaExceeded(86_400),
+  'ai-consent-required': () => new AiConsentRequired(),
+  'ai-capacity-exhausted': () => new CapacityExhausted(),
+  'extraction-disabled': () => new ExtractionDisabled(),
   'invalid-comment-text': () => new InvalidCommentText(),
   'invalid-share-note': () => new InvalidShareNote(),
   'comment-not-found': () => new CommentNotFound(),
@@ -503,6 +509,21 @@ describe('ApiExceptionFilter', () => {
       message: expect.any(String),
     });
   });
+
+  it.each([
+    ['ai-consent-required', 409, 'ai_consent_required'],
+    ['ai-capacity-exhausted', 503, 'ai_capacity_exhausted'],
+    ['extraction-disabled', 503, 'extraction_disabled'],
+  ])(
+    'maps the new paste codes to 503, 503 and 409: %s answers %i %s without Retry-After',
+    async (name, status, code) => {
+      const response = await get(name);
+
+      expect(response.statusCode).toBe(status);
+      expect(response.json()).toEqual({ code, message: expect.any(String) });
+      expect(response.headers['retry-after']).toBeUndefined();
+    },
+  );
 
   it.each([
     ['extraction-unavailable', 503, 'extraction_unavailable', '60'],

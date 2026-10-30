@@ -5,7 +5,10 @@ import {
 } from '@linkvault/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import {
+  AiConsentRequired,
   AiQuotaExceeded,
+  CapacityExhausted,
+  ExtractionDisabled,
   ExtractionUnavailable,
   LinkNotFound,
   NotAJobPosting,
@@ -76,8 +79,10 @@ import {
  * 2. **Texto vacío tras la higiene** (422): un pegado que solo tenía un teléfono no gasta límite ni IA.
  * 3. **Límite de pegados**: con el contador caído, 503 —no "pegaste demasiadas" a quien no pegó ninguna—, y sin IA;
  *    agotado, 429.
- * 4. **La IA**: `isJobPosting: false` → 422 sin escribir; degradación o plazo agotado → 503, y el intento se devuelve;
- *    cuota diaria agotada → 429 `ai_quota_exceeded`.
+ * 4. **La IA**: `isJobPosting: false` → 422 sin escribir (la IA leyó, el intento se gasta). Si la IA no leyó el texto, el
+ *    intento se devuelve y la respuesta dice por qué (ADR-060 §5): cuota propia → 429 `ai_quota_exceeded` con la espera
+ *    real; falta el permiso → 409 `ai_consent_required`; cupo del proveedor → 503 `ai_capacity_exhausted`; lectura no
+ *    disponible → 503 `extraction_disabled`; todo lo demás → 503 `extraction_unavailable` con `Retry-After`.
  *
  * La escritura va **condicionada a la versión leída** y la sube, como la edición manual. Si otra escritura gana la
  * carrera, la mezcla se rehace sobre lo recién escrito **con la misma extracción**: volver a llamar a la IA gastaría
@@ -166,12 +171,29 @@ export class PasteDescription {
       case 'not_a_job_posting':
         throw new NotAJobPosting();
       case 'quota_exceeded':
-        throw new AiQuotaExceeded(AI_QUOTA_RETRY_AFTER_SECONDS);
+        // El contador se consumió antes de llamar a la IA y la IA no leyó nada: el intento se devuelve (C10).
+        await this.limiter.refund(limitKey);
+        throw new AiQuotaExceeded(this.quotaWaitSeconds(extraction.retryAt));
+      case 'consent_required':
+        await this.limiter.refund(limitKey);
+        throw new AiConsentRequired();
+      case 'capacity_exhausted':
+        await this.limiter.refund(limitKey);
+        throw new CapacityExhausted();
+      case 'disabled':
+        await this.limiter.refund(limitKey);
+        throw new ExtractionDisabled();
       case 'unavailable':
         // La persona no pierde uno de sus pegados porque el proveedor no respondió.
         await this.limiter.refund(limitKey);
         throw new ExtractionUnavailable(PASTE_UNAVAILABLE_RETRY_AFTER_SECONDS);
     }
+  }
+
+  /** La espera real hasta que se libere la cuota, o la ventana entera si la IA no dio el instante. */
+  private quotaWaitSeconds(retryAt: Date | undefined): number {
+    if (retryAt === undefined) return AI_QUOTA_RETRY_AFTER_SECONDS;
+    return (retryAt.getTime() - this.clock.now().getTime()) / 1000;
   }
 
   /**
