@@ -748,6 +748,32 @@ Se completa aquí durante `/opsx:apply`, con fecha: cuánto añade a `worker-iso
 `arm64` (7.4) y en el host de staging (Migration Plan); y `ulimit -c` del contenedor y `core_pattern` del host (R12).
 Hasta la iteración 1 esta sección se llamaba «D3 · Estado» y recogía el spike, que pasó a `cv-pdf-library-upgrade`.
 
+Medido durante `/opsx:apply` (2026-10-30, win32 con Node 22.23.1 y Linux en `node:22.23.2-alpine`):
+
+- **Mongo heredado por `worker-isolation` (1.0):** `MongoMemoryReplSet` con el binario ya descargado tarda ~510 ms en
+  arrancar y ~1,1 s en cerrarse (3 medidas, `mongo_setup_ms=513/506/512`). Muy por debajo de los 10 s: el preset se
+  queda en la raíz y el proyecto lo hereda.
+- **Compilación del hijo de los tests (3.5):** `tsc -p apps/worker/tsconfig.cv-child-test.json` tarda ~0,8 s.
+- **`package.json` del ámbito del script (3.5):** **no entra en la lista de lecturas.** El hijo lee el PDF y el DOCX de los
+  fixtures con solo `[script o directorio, raíz de node_modules]` en win32 y en Linux, y el de producción hace lo mismo
+  (`node dist/apps/worker/cv-extract-probe.js` y, dentro de la imagen, `/app/cv-extract-child.js` + `/app/node_modules`:
+  `pdf chars=214 docx chars=217`). La lista de producción queda en dos rutas.
+- **Asignación enorme (1.6, Linux):** `Buffer.alloc(256 MiB)` en bucle acotado → `{ unreadable, memory_ceiling }` a los
+  454 ms; el RSS del proceso de test creció 1 MiB. Con la vigilancia por `VmRSS` de `/proc/<pid>/status` (no `statm`:
+  evita depender del tamaño de página; el dato es el mismo).
+- **Aborto por heap (1.4b):** en win32 el hijo sale con código 134 (sin señal); en Linux por `SIGABRT`. El adaptador
+  clasifica las dos como `heap_limit`.
+- **Arranque del hijo (7.1, N8/R11), solo `amd64`:** `boot_p50_ms=105 boot_p95_ms=123` dentro de la imagen del worker
+  construida en local (Docker Desktop/WSL2); `boot_p50_ms=230 boot_p95_ms=334` en la corrida de `verify-artifact.sh`
+  con la pila entera levantada; `102/116` en win32 sobre `dist/`. **`arm64` (7.3/7.4): pendiente**; exige
+  `workflow_dispatch` de `cd-staging` y el encargo prohibía lanzarlo.
+- **Profundo anidamiento y entidades XML (5.3, 5.6):** `unreadable`/`parse_error` en 177-230 ms, en win32 y en Linux.
+- **R12 (volcados):** `ulimit -c` dentro del contenedor de la imagen construida en local = **0**. El `core_pattern` de ese
+  host (`|/wsl-capture-crash %t %E %p %s`, Docker Desktop) no es el del host de staging: **pendiente** de leerlo en el
+  despliegue (`cat /proc/sys/kernel/core_pattern` y `ulimit -c` del contenedor `worker`). Sin editar `staging-host`.
+- **Reentregas por `stalled` (2.3):** el procesador corrió 2 veces y el CV acabó en `failed`/`internal_error`
+  (`tmp/cvx/stalled-pass.out`, BullMQ 6.3.6 con relojes acortados).
+
 ## Debate — iteración 1
 
 Fecha: 2026-10-28. `critic`: 1 P0 (H1), H2-H13. `business`: 0 V0, PO-01 a PO-08. Decisiones de `reflect` aplicadas en
