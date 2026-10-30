@@ -757,6 +757,6 @@ changes:
       MODIFIED del requirement de perfiles de `platform/e2e-suite` que lo exige («una prueba apta para remoto que
       intente cualquiera de esas operaciones SHALL fallar nombrando la operación»), que `e2e-suite` retiró.
       **Lote 2 del plan de `e2e-suite` D14:** cuenta y salida (catálogo 2 y 4 con Mailpit, solo `local`; 5, 6 y 44).
-      **Diferido desde `usage-guide-fixes` (iteración 1 de su debate, 2026-10-08):** H3 de la guía de uso —guardar una
-      clave BYOK sin bóveda (`503 vault_unavailable`) muestra el genérico «Algo salió mal»—, junto con H11 (`AI_VAULT_KEY`
-      vacía en `e2e.env`): con la bóveda obligatoria en producción solo se ve en pilas de prueba.
+      **Diferido desde `usage-guide-fixes` (iteración 1 de su debate, 2026-10-08):** H11 de la guía de uso
+      (`AI_VAULT_KEY` vacía en `e2e.env`, que hace fallar `byok.spec.ts`). El genérico al guardar una clave sin
+      bóveda lo corrige `web-error-copy-coverage`.

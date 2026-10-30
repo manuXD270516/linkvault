@@ -2625,9 +2625,45 @@
         <source>No pudimos conectar con LinkVault. Revisa tu conexión</source>
         <target>We couldn't connect to LinkVault. Check your connection</target>
       </trans-unit>
+      <trans-unit id="error.memberNotFound" datatype="html">
+        <source>Esa persona ya no está en el grupo. Recarga la página para ver la lista actual</source>
+        <target>That person is no longer in the group. Reload the page to see the current list</target>
+      </trans-unit>
+      <trans-unit id="error.ownerCannotLeave" datatype="html">
+        <source>Ahora eres propietario de este grupo. Recarga la página y nombra propietario a otro miembro para poder salir</source>
+        <target>You are now the owner of this group. Reload the page and make another member the owner to leave</target>
+      </trans-unit>
+      <trans-unit id="error.consentTextOutdated" datatype="html">
+        <source>El texto del permiso cambió. Recarga la página para leer la versión vigente</source>
+        <target>The consent text changed. Reload the page to read the current version</target>
+      </trans-unit>
+      <trans-unit id="error.vaultUnavailable" datatype="html">
+        <source>LinkVault no tiene activado el guardado de claves de IA. Tu clave no se guardó</source>
+        <target>Saving AI keys is not enabled in LinkVault. Your key was not saved</target>
+      </trans-unit>
+      <trans-unit id="error.unavailable" datatype="html">
+        <source>LinkVault no está disponible en este momento. Inténtalo en unos minutos</source>
+        <target>LinkVault is not available right now. Try again in a few minutes</target>
+      </trans-unit>
       <trans-unit id="error.unknown" datatype="html">
         <source>Algo salió mal. Inténtalo de nuevo</source>
         <target>Something went wrong. Please try again</target>
+      </trans-unit>
+      <trans-unit id="error.reference" datatype="html">
+        <source>Si lo reportas, menciona: <x id="START_TAG_SPAN" ctype="x-span" equiv-text="&lt;span class=&quot;whitespace-nowrap&quot;
+              &gt;"/><x id="INTERPOLATION" equiv-text="{{ ref.status }}"/> · <x id="INTERPOLATION_1" equiv-text="{{ ref.code }}"/><x id="CLOSE_TAG_SPAN" ctype="x-span" equiv-text="&lt;/span
+            &gt;"/></source>
+        <target>If you report it, mention: <x id="START_TAG_SPAN" ctype="x-span" equiv-text="&lt;span class=&quot;whitespace-nowrap&quot;
+              &gt;"/><x id="INTERPOLATION" equiv-text="{{ ref.status }}"/> · <x id="INTERPOLATION_1" equiv-text="{{ ref.code }}"/><x id="CLOSE_TAG_SPAN" ctype="x-span" equiv-text="&lt;/span
+            &gt;"/></target>
+      </trans-unit>
+      <trans-unit id="error.referenceStatusOnly" datatype="html">
+        <source>Si lo reportas, menciona: <x id="START_TAG_SPAN" ctype="x-span" equiv-text="&lt;span class=&quot;whitespace-nowrap&quot;&gt;"/><x id="INTERPOLATION" equiv-text="{{
+              ref.status
+            }}"/><x id="CLOSE_TAG_SPAN" ctype="x-span" equiv-text="&lt;/span&gt;"/></source>
+        <target>If you report it, mention: <x id="START_TAG_SPAN" ctype="x-span" equiv-text="&lt;span class=&quot;whitespace-nowrap&quot;&gt;"/><x id="INTERPOLATION" equiv-text="{{
+              ref.status
+            }}"/><x id="CLOSE_TAG_SPAN" ctype="x-span" equiv-text="&lt;/span&gt;"/></target>
       </trans-unit>
       <trans-unit id="notifications.back" datatype="html">
         <source>← Volver al perfil</source>

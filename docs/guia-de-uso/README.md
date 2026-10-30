@@ -695,6 +695,7 @@ Qué no funcionó, qué se vio mal y qué no se pudo probar en local. No se ha c
 - **H3. Error genérico al guardar una clave de IA sin bóveda.** Con la API respondiendo 503 (sin `AI_VAULT_KEY`), el
   perfil muestra «Algo salió mal. Inténtalo de nuevo» en vez de decir que las claves propias no están disponibles (081).
   **Diferido por el change `usage-guide-fixes`** a `e2e-suite-lot-2`, junto con H11: con `AI_VAULT_KEY` obligatoria en producción nadie lo verá.
+  **Corregido por el change `web-error-copy-coverage`:** el perfil dice «LinkVault no tiene activado el guardado de claves de IA. Tu clave no se guardó» (texto común de `vault_unavailable`); H11 sigue en `e2e-suite-lot-2`.
 - **H4. Aviso de lectura que no se actualiza.** El formulario de guardar sigue diciendo «Todavía estamos leyendo la oferta:
   si lo envías ahora, la tarjeta saldrá sin datos», aunque la lectura ya terminó en «No pudimos leer esta oferta» y aunque
   la oferta ya se completó a mano (030, 033, 035).

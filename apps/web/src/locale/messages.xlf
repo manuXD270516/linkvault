@@ -5116,35 +5116,88 @@
         <source>Demasiados intentos. Vuelve a intentarlo en <x id="INTERPOLATION" equiv-text="{{ minutes }}"/> <x id="ICU" equiv-text="{minutes, plural, =1 {minuto} other {minutos}}" xid="4693155463045116188"/></source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/shared/ui/request-error.ts</context>
-          <context context-type="linenumber">17,19</context>
+          <context context-type="linenumber">46,48</context>
         </context-group>
       </trans-unit>
       <trans-unit id="4693155463045116188" datatype="html">
         <source>{VAR_PLURAL, plural, =1 {minuto} other {minutos}}</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/shared/ui/request-error.ts</context>
-          <context context-type="linenumber">18</context>
+          <context context-type="linenumber">47</context>
         </context-group>
       </trans-unit>
       <trans-unit id="error.tooManyAttemptsLater" datatype="html">
         <source>Demasiados intentos. Vuelve a intentarlo más tarde</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/shared/ui/request-error.ts</context>
-          <context context-type="linenumber">22,25</context>
+          <context context-type="linenumber">51,54</context>
         </context-group>
       </trans-unit>
       <trans-unit id="error.offline" datatype="html">
         <source>No pudimos conectar con LinkVault. Revisa tu conexión</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/shared/ui/request-error.ts</context>
-          <context context-type="linenumber">28,30</context>
+          <context context-type="linenumber">57,59</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="error.memberNotFound" datatype="html">
+        <source>Esa persona ya no está en el grupo. Recarga la página para ver la lista actual</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/shared/ui/request-error.ts</context>
+          <context context-type="linenumber">62,64</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="error.ownerCannotLeave" datatype="html">
+        <source>Ahora eres propietario de este grupo. Recarga la página y nombra propietario a otro miembro para poder salir</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/shared/ui/request-error.ts</context>
+          <context context-type="linenumber">68,70</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="error.consentTextOutdated" datatype="html">
+        <source>El texto del permiso cambió. Recarga la página para leer la versión vigente</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/shared/ui/request-error.ts</context>
+          <context context-type="linenumber">74,77</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="error.vaultUnavailable" datatype="html">
+        <source>LinkVault no tiene activado el guardado de claves de IA. Tu clave no se guardó</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/shared/ui/request-error.ts</context>
+          <context context-type="linenumber">80,82</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="error.unavailable" datatype="html">
+        <source>LinkVault no está disponible en este momento. Inténtalo en unos minutos</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/shared/ui/request-error.ts</context>
+          <context context-type="linenumber">86,88</context>
         </context-group>
       </trans-unit>
       <trans-unit id="error.unknown" datatype="html">
         <source>Algo salió mal. Inténtalo de nuevo</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/shared/ui/request-error.ts</context>
-          <context context-type="linenumber">32,34</context>
+          <context context-type="linenumber">92,94</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="error.reference" datatype="html">
+        <source>Si lo reportas, menciona: <x id="START_TAG_SPAN" ctype="x-span" equiv-text="&lt;span class=&quot;whitespace-nowrap&quot;
+              &gt;"/><x id="INTERPOLATION" equiv-text="{{ ref.status }}"/> · <x id="INTERPOLATION_1" equiv-text="{{ ref.code }}"/><x id="CLOSE_TAG_SPAN" ctype="x-span" equiv-text="&lt;/span
+            &gt;"/></source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/shared/ui/request-error.ts</context>
+          <context context-type="linenumber">104,108</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="error.referenceStatusOnly" datatype="html">
+        <source>Si lo reportas, menciona: <x id="START_TAG_SPAN" ctype="x-span" equiv-text="&lt;span class=&quot;whitespace-nowrap&quot;&gt;"/><x id="INTERPOLATION" equiv-text="{{
+              ref.status
+            }}"/><x id="CLOSE_TAG_SPAN" ctype="x-span" equiv-text="&lt;/span&gt;"/></source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/shared/ui/request-error.ts</context>
+          <context context-type="linenumber">111,115</context>
         </context-group>
       </trans-unit>
     </body>
