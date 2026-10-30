@@ -1582,8 +1582,8 @@
         <target>You pasted too many job posts in a row, wait a little</target>
       </trans-unit>
       <trans-unit id="links.paste.quotaExceeded" datatype="html">
-        <source>Llegaste al límite de lecturas de hoy, vuelve mañana</source>
-        <target>You reached today's reading limit, come back tomorrow</target>
+        <source>Llegaste a tu límite de lecturas con IA. Podrás volver a pegar en 24 horas como mucho</source>
+        <target>You've reached your limit of AI reads. You can paste again within 24 hours at most</target>
       </trans-unit>
       <trans-unit id="links.paste.cancel" datatype="html">
         <source> Cancelar </source>
@@ -1592,6 +1592,42 @@
       <trans-unit id="links.paste.submit" datatype="html">
         <source> Completar la oferta </source>
         <target>Complete the job post</target>
+      </trans-unit>
+      <trans-unit id="links.paste.capacityExhausted" datatype="html">
+        <source>La IA no admite más lecturas por ahora y no sabemos cuándo vuelve. Puedes completarla a mano</source>
+        <target>The AI can't take more reads for now and we don't know when it will be back. You can fill it in by hand</target>
+      </trans-unit>
+      <trans-unit id="links.paste.disabled" datatype="html">
+        <source>La lectura automática no está disponible. Puedes completarla a mano</source>
+        <target>Automatic reading isn't available. You can fill it in by hand</target>
+      </trans-unit>
+      <trans-unit id="links.paste.consentRequired" datatype="html">
+        <source>Para leerla con IA externa falta tu permiso. Puedes completarla a mano</source>
+        <target>Reading it with an external AI needs your permission. You can fill it in by hand</target>
+      </trans-unit>
+      <trans-unit id="links.paste.quotaExceededUntil" datatype="html">
+        <source>Llegaste a tu límite de lecturas con IA. Podrás volver a pegar <x id="INTERPOLATION" equiv-text="{{ when }}"/></source>
+        <target>You've reached your limit of AI reads. You can paste again <x id="INTERPOLATION" equiv-text="{{ when }}"/></target>
+      </trans-unit>
+      <trans-unit id="links.paste.completeByHand" datatype="html">
+        <source> Completar a mano </source>
+        <target>Fill in by hand</target>
+      </trans-unit>
+      <trans-unit id="links.paste.retry" datatype="html">
+        <source> Reintentar </source>
+        <target>Try again</target>
+      </trans-unit>
+      <trans-unit id="links.paste.when.today" datatype="html">
+        <source>hoy a las <x id="time" equiv-text="time"/></source>
+        <target>today at <x id="time" equiv-text="time"/></target>
+      </trans-unit>
+      <trans-unit id="links.paste.when.tomorrow" datatype="html">
+        <source>mañana a las <x id="time" equiv-text="time"/></source>
+        <target>tomorrow at <x id="time" equiv-text="time"/></target>
+      </trans-unit>
+      <trans-unit id="links.paste.edit.reference" datatype="html">
+        <source> Lo que pegaste (solo para consultar: no se guarda ni se envía) </source>
+        <target>What you pasted (for reference only: it isn't saved or sent)</target>
       </trans-unit>
       <trans-unit id="links.save.url" datatype="html">
         <source>Pega el enlace de una oferta</source>

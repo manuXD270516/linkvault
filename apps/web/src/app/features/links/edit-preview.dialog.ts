@@ -22,6 +22,12 @@ import { fieldOrigin, originText } from './link-preview';
 /** El link que se va a corregir, con su preview y la procedencia de cada campo tal como los devolvió la API. */
 export interface EditPreviewDialogData {
   link: JobLinkSummary;
+  /**
+   * Lo que la persona pegó antes de pasar a completar a mano (spec web/links, «Completar a mano desde el pegado»). El
+   * texto solo se enseña como referencia copiable: no se guarda ni se envía. El título y la empresa son los que cambió en
+   * el pegado y entran como valores ya modificados del formulario.
+   */
+  reference?: { text: string; title?: string; company?: string };
 }
 
 /**
@@ -70,14 +76,17 @@ export class EditPreviewDialog {
   private readonly store = inject(LinksStore);
   private readonly dialogRef =
     inject<MatDialogRef<EditPreviewDialog, JobLinkSummary | undefined>>(MatDialogRef);
-  private readonly link = inject<EditPreviewDialogData>(MAT_DIALOG_DATA).link;
+  private readonly data = inject<EditPreviewDialogData>(MAT_DIALOG_DATA);
+  private readonly link = this.data.link;
+  /** Lo pegado, solo para consultar. Vive en la memoria de este diálogo y desaparece al cerrarlo. */
+  protected readonly reference = this.data.reference;
 
   private readonly preview: StoredPreview = this.link.preview ?? {};
   private readonly sources = this.link.previewSources ?? {};
 
   protected readonly form = inject(NonNullableFormBuilder).group({
-    title: [this.preview.title ?? ''],
-    company: [this.preview.company ?? ''],
+    title: [this.reference?.title ?? this.preview.title ?? ''],
+    company: [this.reference?.company ?? this.preview.company ?? ''],
     location: [this.preview.location ?? ''],
     modality: [this.preview.modality ?? 'unknown'],
     seniority: [this.preview.seniority ?? 'unknown'],

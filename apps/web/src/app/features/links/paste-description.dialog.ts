@@ -1,6 +1,18 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  LOCALE_ID,
+  computed,
+  inject,
+  signal,
+} from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
-import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
+import {
+  MAT_DIALOG_DATA,
+  MatDialog,
+  MatDialogModule,
+  MatDialogRef,
+} from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import {
@@ -11,6 +23,8 @@ import {
 import { type RequestFailure, isApiFailure, toRequestFailure } from '../../core/api/api-error';
 import { LinksStore } from '../../core/links/links.store';
 import { RequestError } from '../../shared/ui/request-error';
+import { EditPreviewDialog, type EditPreviewDialogData } from './edit-preview.dialog';
+import { whenText } from './paste-when';
 
 /**
  * El link que se va a completar, tal y como lo tiene la pantalla que abre el diálogo. El diálogo no sabe de qué lista
@@ -42,6 +56,8 @@ export class PasteDescriptionDialog {
   private readonly store = inject(LinksStore);
   private readonly dialogRef =
     inject<MatDialogRef<PasteDescriptionDialog, JobLinkSummary | undefined>>(MatDialogRef);
+  private readonly dialog = inject(MatDialog);
+  private readonly locale = inject(LOCALE_ID);
   private readonly link = inject<PasteDescriptionDialogData>(MAT_DIALOG_DATA).link;
 
   /** Lo que la tarjeta ya dice: es contra lo que se decide si la persona cambió el título o la empresa. */
@@ -66,8 +82,9 @@ export class PasteDescriptionDialog {
 
   /**
    * Cuál de los mensajes propios del pegado toca, o `null` si el fallo es de los comunes (sin conexión, error genérico).
-   * Hay dos `429` y se dicen distinto: pegar demasiado seguido se arregla esperando un poco; agotar la cuota de IA del
-   * día, no hasta mañana, y decir "espera un poco" ahí sería mentir.
+   * Cada código dice lo que pasa de verdad: solo `extraction_unavailable` invita a reintentar «en un rato». Hay dos `429`
+   * y se dicen distinto: pegar demasiado seguido se arregla esperando un poco; agotar la cuota de IA, no antes de la hora
+   * que anuncia la API.
    */
   protected readonly problem = computed(() => {
     const failure = this.failure();
@@ -77,6 +94,15 @@ export class PasteDescriptionDialog {
     if (isApiFailure(failure, 503, 'extraction_unavailable')) {
       return 'unavailable';
     }
+    if (isApiFailure(failure, 503, 'ai_capacity_exhausted')) {
+      return 'capacityExhausted';
+    }
+    if (isApiFailure(failure, 503, 'extraction_disabled')) {
+      return 'disabled';
+    }
+    if (isApiFailure(failure, 409, 'ai_consent_required')) {
+      return 'consentRequired';
+    }
     if (isApiFailure(failure, 429, 'too_many_attempts')) {
       return 'tooManyPastes';
     }
@@ -85,6 +111,35 @@ export class PasteDescriptionDialog {
     }
     return null;
   });
+
+  /**
+   * Cuándo se podrá volver a pegar, solo con `ai_quota_exceeded`; `null` si no hay `Retry-After` o la hora cae más allá
+   * de mañana (el diálogo usa entonces el texto sin hora). `ai_capacity_exhausted` ignora el `Retry-After` a propósito.
+   */
+  protected readonly quotaWhen = computed(() => {
+    const failure = this.failure();
+    if (this.problem() !== 'quotaExceeded' || failure?.kind !== 'api') {
+      return null;
+    }
+    return whenText(new Date(), failure.retryAfterMinutes, this.locale);
+  });
+
+  /** Donde reenviar no arregla nada o casi seguro vuelve a fallar, «Completar a mano» es la acción principal. */
+  protected readonly handIsPrimary = computed(() => {
+    const reason = this.problem();
+    return (
+      reason === 'capacityExhausted' ||
+      reason === 'quotaExceeded' ||
+      reason === 'disabled' ||
+      reason === 'consentRequired'
+    );
+  });
+
+  /** Reenviar como acción secundaria («Reintentar»): solo ante el cupo de la IA, que a veces se libera en segundos. */
+  protected readonly offersRetry = computed(() => this.problem() === 'capacityExhausted');
+
+  /** Tras cualquier fallo del envío, propio del pegado o común, se puede seguir a mano sin cerrar nada. */
+  protected readonly canCompleteByHand = computed(() => this.failure() !== null && !this.submitting());
 
   protected onText(event: Event): void {
     this.text.set((event.target as HTMLTextAreaElement).value);
@@ -114,6 +169,27 @@ export class PasteDescriptionDialog {
       this.submitting.set(false);
       this.dialogRef.disableClose = false;
     }
+  }
+
+  /**
+   * Cierra este diálogo y abre la corrección a mano del mismo link, con lo pegado como referencia que solo vive en la
+   * memoria de ese diálogo (no entra en el store ni viaja en la petición). El título y la empresa pasan solo si la persona
+   * los cambió aquí, con la misma regla de `changed()`, y entran como valores ya modificados.
+   */
+  protected completeByHand(): void {
+    const reference: NonNullable<EditPreviewDialogData['reference']> = { text: this.text() };
+    const title = changed(this.title(), this.knownTitle);
+    if (title !== null) {
+      reference.title = title;
+    }
+    const company = changed(this.company(), this.knownCompany);
+    if (company !== null) {
+      reference.company = company;
+    }
+    this.dialogRef.close(undefined);
+    this.dialog.open<EditPreviewDialog, EditPreviewDialogData>(EditPreviewDialog, {
+      data: { link: this.link, reference },
+    });
   }
 
   /** El texto tal cual y, de la cabecera, solo lo que la persona cambió respecto de la tarjeta. */

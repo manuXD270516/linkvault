@@ -250,21 +250,6 @@ describe('PasteDescriptionDialog', () => {
     expect(field('text').value).toBe('Ana: mira esta oferta\nBeto: gracias, la reviso mañana');
   });
 
-  it('Límite de lecturas del día', async () => {
-    await showList([blocked]);
-    await openDialog();
-    await pasteAndSubmit();
-
-    const { body, options } = apiError('ai_quota_exceeded', 429, { 'Retry-After': '36000' });
-    http.expectOne({ method: 'POST', url: PASTED_URL }).flush(body, options);
-    await settle();
-    await fixture.whenStable();
-
-    expect(dialog().textContent).toContain('Llegaste al límite de lecturas de hoy, vuelve mañana');
-    expect(dialog().textContent).not.toContain('espera un poco');
-    expect(field('text').value).toBe(PASTED_TEXT);
-  });
-
   it.each([
     ['too_many_attempts', 429, 'Pegaste demasiadas ofertas seguidas, espera un poco'],
     ['extraction_unavailable', 503, 'No pudimos leerla ahora, inténtalo en un rato'],
@@ -352,5 +337,290 @@ describe('PasteDescriptionDialog', () => {
 
     expect(host().querySelector('[data-testid="link-location"]')).toBeNull();
     expect(host().querySelector('[data-testid="link-undo-paste"]')).toBeNull();
+  });
+
+  /** Responde al pegado con un error de la API y espera a que el diálogo lo muestre. */
+  async function failWith(
+    code: string,
+    status: number,
+    headers: Record<string, string> = {},
+  ): Promise<void> {
+    const { body, options } = apiError(code, status, headers);
+    http.expectOne({ method: 'POST', url: PASTED_URL }).flush(body, options);
+    await settle();
+    await fixture.whenStable();
+  }
+
+  function actions(): string[] {
+    return Array.from(dialog().querySelectorAll('mat-dialog-actions button')).map(
+      (button) => button.textContent?.trim() ?? '',
+    );
+  }
+
+  function error(): string {
+    return (
+      dialog().querySelector('[data-testid="paste-error"]')?.textContent?.replace(/\s+/g, ' ').trim() ??
+      ''
+    );
+  }
+
+  const CAPACITY =
+    'La IA no admite más lecturas por ahora y no sabemos cuándo vuelve. Puedes completarla a mano';
+
+  describe('errors that tell the truth', () => {
+    afterEach(() => vi.useRealTimers());
+
+    it('503 ai_capacity_exhausted says no sabemos cuándo vuelve and Puedes completarla a mano', async () => {
+      await showList([blocked]);
+      await openDialog();
+      await pasteAndSubmit();
+      await failWith('ai_capacity_exhausted', 503);
+
+      expect(error()).toBe(CAPACITY);
+      expect(dialog().textContent).not.toContain('inténtalo en un rato');
+      expect(field('text').value).toBe(PASTED_TEXT);
+    });
+
+    it('503 ai_capacity_exhausted ignores Retry-After', async () => {
+      await showList([blocked]);
+      await openDialog();
+      await pasteAndSubmit();
+      await failWith('ai_capacity_exhausted', 503, { 'Retry-After': '46800' });
+
+      expect(error()).toBe(CAPACITY);
+      expect(error()).not.toMatch(/\d{1,2}:\d{2}/);
+    });
+
+    it('503 extraction_disabled says Puedes completarla a mano', async () => {
+      await showList([blocked]);
+      await openDialog();
+      await pasteAndSubmit();
+      await failWith('extraction_disabled', 503);
+
+      expect(error()).toBe('La lectura automática no está disponible. Puedes completarla a mano');
+      expect(dialog().textContent).not.toContain('inténtalo en un rato');
+    });
+
+    it('409 ai_consent_required says falta tu permiso and offers no link to /perfil', async () => {
+      await showList([blocked]);
+      await openDialog();
+      await pasteAndSubmit();
+      await failWith('ai_consent_required', 409);
+
+      expect(error()).toBe('Para leerla con IA externa falta tu permiso. Puedes completarla a mano');
+      expect(dialog().querySelector('a')).toBeNull();
+      expect(dialog().innerHTML).not.toContain('/perfil');
+    });
+
+    it.each([
+      ['not_a_job_posting', 422],
+      ['too_many_attempts', 429],
+      ['ai_quota_exceeded', 429],
+      ['ai_capacity_exhausted', 503],
+      ['extraction_disabled', 503],
+      ['ai_consent_required', 409],
+    ])('no message other than extraction_unavailable says en un rato (%s)', async (code, status) => {
+      await showList([blocked]);
+      await openDialog();
+      await pasteAndSubmit();
+      await failWith(code, status, { 'Retry-After': '60' });
+
+      expect(dialog().textContent).not.toContain('en un rato');
+    });
+
+    it('quota exceeded tells the real time, not mañana', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date(2026, 9, 30, 10, 0, 0, 0));
+      await showList([blocked]);
+      await openDialog();
+      await pasteAndSubmit();
+      await failWith('ai_quota_exceeded', 429, { 'Retry-After': '10800' });
+
+      expect(error()).toBe(
+        'Llegaste a tu límite de lecturas con IA. Podrás volver a pegar hoy a las 13:00',
+      );
+      expect(dialog().textContent).not.toContain('vuelve mañana');
+      expect(actions()).toEqual(['Completar a mano', 'Cancelar']);
+      expect(field('text').value).toBe(PASTED_TEXT);
+    });
+
+    it('quota exceeded rounds the time up to the next minute', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date(2026, 9, 30, 10, 0, 30, 0));
+      await showList([blocked]);
+      await openDialog();
+      await pasteAndSubmit();
+      await failWith('ai_quota_exceeded', 429, { 'Retry-After': '10800' });
+
+      expect(error()).toContain('hoy a las 13:01');
+    });
+
+    it('quota exceeded past tomorrow says en 24 horas como mucho', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date(2026, 9, 30, 23, 59, 30, 0));
+      await showList([blocked]);
+      await openDialog();
+      await pasteAndSubmit();
+      await failWith('ai_quota_exceeded', 429, { 'Retry-After': '86400' });
+
+      expect(error()).toBe(
+        'Llegaste a tu límite de lecturas con IA. Podrás volver a pegar en 24 horas como mucho',
+      );
+      expect(error()).not.toMatch(/\d{1,2}:\d{2}/);
+    });
+
+    it('quota exceeded without Retry-After says en 24 horas como mucho', async () => {
+      await showList([blocked]);
+      await openDialog();
+      await pasteAndSubmit();
+      await failWith('ai_quota_exceeded', 429);
+
+      expect(error()).toContain('en 24 horas como mucho');
+    });
+  });
+
+  describe('Completar a mano', () => {
+    it('offers Completar a mano after not_a_job_posting and when offline', async () => {
+      await showList([blocked]);
+      await openDialog();
+      await pasteAndSubmit();
+      await failWith('not_a_job_posting', 422);
+      expect(dialog().querySelector('[data-testid="paste-complete-by-hand"]')).not.toBeNull();
+
+      submitButton().click();
+      await settle();
+      http.expectOne({ method: 'POST', url: PASTED_URL }).error(new ProgressEvent('error'));
+      await settle();
+      await fixture.whenStable();
+
+      expect(dialog().textContent).toContain('No pudimos conectar con LinkVault');
+      expect(dialog().querySelector('[data-testid="paste-complete-by-hand"]')).not.toBeNull();
+      expect(field('text').value).toBe(PASTED_TEXT);
+    });
+
+    it('does not offer Completar a mano before any failure', async () => {
+      await showList([blocked]);
+      await openDialog();
+      expect(dialog().querySelector('[data-testid="paste-complete-by-hand"]')).toBeNull();
+    });
+
+    it('Completar a mano opens the edit dialog with the pasted text and the changed company', async () => {
+      await showList([blocked]);
+      await openDialog();
+      typeInto(dialog(), '[data-testid="paste-company"]', 'Acme');
+      await pasteAndSubmit();
+      await failWith('ai_capacity_exhausted', 503);
+
+      dialog().querySelector<HTMLButtonElement>('[data-testid="paste-complete-by-hand"]')?.click();
+      await settle();
+      await fixture.whenStable();
+      await vi.waitFor(() =>
+        expect(
+          document.body.querySelector('[data-testid="edit-paste-reference-text"]'),
+        ).not.toBeNull(),
+      );
+
+      // El de pegar se cierra con su animación y queda solo la corrección a mano.
+      await vi.waitFor(() =>
+        expect(document.body.querySelectorAll('mat-dialog-container')).toHaveLength(1),
+      );
+      const reference = document.body.querySelector<HTMLTextAreaElement>(
+        '[data-testid="edit-paste-reference-text"]',
+      );
+      expect(reference?.value).toBe(PASTED_TEXT);
+      expect(reference?.hasAttribute('disabled')).toBe(false);
+      expect(
+        document.body.querySelector<HTMLInputElement>('[data-testid="preview-company"]')?.value,
+      ).toBe('Acme');
+      // El título no se tocó en el pegado: el formulario conserva el de la tarjeta (ninguno).
+      expect(
+        document.body.querySelector<HTMLInputElement>('[data-testid="preview-title"]')?.value,
+      ).toBe('');
+    });
+
+    it('the pasted text is not written to the links store', async () => {
+      await showList([blocked]);
+      await openDialog();
+      await pasteAndSubmit();
+      await failWith('extraction_disabled', 503);
+
+      dialog().querySelector<HTMLButtonElement>('[data-testid="paste-complete-by-hand"]')?.click();
+      await settle();
+      await fixture.whenStable();
+
+      const store = TestBed.inject(LinksStore);
+      expect(JSON.stringify(store.items())).not.toContain('Airflow');
+      expect(JSON.stringify(store.items())).toEqual(JSON.stringify([blocked]));
+    });
+  });
+
+  describe('actions', () => {
+    it('capacity exhausted makes Completar a mano primary and Reintentar secondary', async () => {
+      await showList([blocked]);
+      await openDialog();
+      await pasteAndSubmit();
+      await failWith('ai_capacity_exhausted', 503);
+
+      expect(dialog().querySelector('[data-testid="paste-complete-by-hand"]')?.className).toContain(
+        'mat-mdc-unelevated-button',
+      );
+      expect(dialog().querySelector('[data-testid="paste-retry"]')?.className).toContain(
+        'mat-mdc-outlined-button',
+      );
+      expect(dialog().querySelector('[data-testid="paste-submit"]')).toBeNull();
+
+      // Reintentar vuelve a enviar lo mismo, sin pegar de nuevo.
+      dialog().querySelector<HTMLButtonElement>('[data-testid="paste-retry"]')?.click();
+      await settle();
+      const retried = http.expectOne({ method: 'POST', url: PASTED_URL });
+      expect(retried.request.body).toEqual({ text: PASTED_TEXT });
+      retried.flush(completed);
+      await settle();
+      await closed();
+    });
+
+    it.each([
+      ['ai_quota_exceeded', 429],
+      ['extraction_disabled', 503],
+      ['ai_consent_required', 409],
+    ])('quota exceeded, disabled and consent required hide resend (%s)', async (code, status) => {
+      await showList([blocked]);
+      await openDialog();
+      await pasteAndSubmit();
+      await failWith(code, status, { 'Retry-After': '3600' });
+
+      expect(dialog().querySelector('[data-testid="paste-retry"]')).toBeNull();
+      expect(dialog().querySelector('[data-testid="paste-submit"]')).toBeNull();
+      expect(dialog().querySelector('[data-testid="paste-complete-by-hand"]')?.className).toContain(
+        'mat-mdc-unelevated-button',
+      );
+    });
+
+    it('extraction_unavailable keeps resend primary', async () => {
+      await showList([blocked]);
+      await openDialog();
+      await pasteAndSubmit();
+      await failWith('extraction_unavailable', 503, { 'Retry-After': '60' });
+
+      expect(submitButton().className).toContain('mat-mdc-unelevated-button');
+      expect(submitButton().disabled).toBe(false);
+      expect(dialog().querySelector('[data-testid="paste-complete-by-hand"]')?.className).toContain(
+        'mat-mdc-outlined-button',
+      );
+    });
+
+    it.each([
+      ['ai_capacity_exhausted', 503, ['Completar a mano', 'Reintentar', 'Cancelar']],
+      ['ai_quota_exceeded', 429, ['Completar a mano', 'Cancelar']],
+      ['extraction_disabled', 503, ['Completar a mano', 'Cancelar']],
+      ['extraction_unavailable', 503, ['Completar la oferta', 'Completar a mano', 'Cancelar']],
+    ])('actions are ordered primary, secondary, cancel (%s)', async (code, status, order) => {
+      await showList([blocked]);
+      await openDialog();
+      await pasteAndSubmit();
+      await failWith(code, status);
+
+      expect(actions()).toEqual(order);
+    });
   });
 });

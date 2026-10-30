@@ -19,6 +19,7 @@ import {
   sessionWith,
   settle,
   testUser,
+  typeInto,
   verifyNoPendingRequests,
 } from '../../../testing/auth-testing';
 import { SessionStore } from '../../core/auth/session.store';
@@ -352,6 +353,54 @@ describe('MatchDialog', () => {
       'Todavía no hemos leído esta oferta, así que no hay con qué comparar tu CV.',
     );
     expect(dialog().querySelector('[data-testid="match-paste-description"]')).not.toBeNull();
+  });
+
+  it('complete by hand from the paste dialog opened in the match dialog', async () => {
+    await openDialog();
+    await flushOpen();
+    click('match-analyze');
+    await settle();
+    const rejected = apiError('job_not_ready', 422);
+    http.expectOne({ method: 'POST', url: MATCH_URL }).flush(rejected.body, rejected.options);
+    await settle();
+    TestBed.tick();
+
+    click('match-paste-description');
+    await settle();
+    TestBed.tick();
+    const paste = (): HTMLElement => {
+      const element = document.body.querySelector<HTMLElement>('lv-paste-description-dialog');
+      if (!element) {
+        throw new Error('Paste dialog not opened');
+      }
+      return element;
+    };
+    typeInto(paste(), '[data-testid="paste-text"]', 'Texto de la oferta MARCA-ENCAJE');
+    TestBed.tick();
+    await settle();
+    paste().querySelector<HTMLButtonElement>('[data-testid="paste-submit"]')?.click();
+    await settle();
+    const capacity = apiError('ai_capacity_exhausted', 503);
+    http
+      .expectOne({ method: 'POST', url: `/api/links/${LINK_ID}/pasted` })
+      .flush(capacity.body, capacity.options);
+    await settle();
+    TestBed.tick();
+
+    paste().querySelector<HTMLButtonElement>('[data-testid="paste-complete-by-hand"]')?.click();
+    await settle();
+    TestBed.tick();
+
+    await vi.waitFor(() =>
+      expect(
+        document.body.querySelector<HTMLTextAreaElement>('[data-testid="edit-paste-reference-text"]')
+          ?.value,
+      ).toBe('Texto de la oferta MARCA-ENCAJE'),
+    );
+    expect(document.body.querySelector('lv-edit-preview-dialog')).not.toBeNull();
+    await vi.waitFor(() =>
+      expect(document.body.querySelector('lv-paste-description-dialog')).toBeNull(),
+    );
   });
 
   it('Se acabó la paciencia', async () => {

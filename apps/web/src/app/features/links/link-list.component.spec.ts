@@ -1,12 +1,15 @@
 import { HttpTestingController, type TestRequest } from '@angular/common/http/testing';
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
+import { MatDialog } from '@angular/material/dialog';
 import type { JobLinkSummary, LinkPage } from '@linkvault/shared';
 import {
+  apiError,
   buttonWithText,
   providePageTesting,
   sessionWith,
   settle,
+  typeInto,
   verifyNoPendingRequests,
 } from '../../../testing/auth-testing';
 import { SessionStore } from '../../core/auth/session.store';
@@ -419,4 +422,68 @@ describe('LinkList al reintentar la lectura', () => {
     );
     expect(host().querySelector('[data-testid="link-paste"]')).not.toBeNull();
   });
+});
+
+/** Un link que la bolsa no deja leer: lo único que lo completa es pegar su descripción o corregirlo a mano. */
+const unreadable: JobLinkSummary = {
+  ...linkedin,
+  id: 'l1',
+  previewStatus: 'failed',
+  lastEnrichmentError: { reason: 'robots_disallowed', at: '2026-09-17T10:01:00.000Z' },
+};
+
+describe('LinkList al completar a mano desde el pegado', () => {
+  afterEach(() => TestBed.inject(MatDialog).closeAll());
+
+  it.each([
+    ['a group', { kind: 'group', groupId: 'g1' }, GROUP_PAGE, 'group'],
+    ['/mis-links', { kind: 'mine' }, MINE_PAGE, 'mine'],
+  ] as const)(
+    'complete by hand from the paste dialog works in %s',
+    async (_name, source, page, scope) => {
+      TestBed.configureTestingModule({ providers: providePageTesting() });
+      const http = TestBed.inject(HttpTestingController);
+      TestBed.inject(SessionStore).setSession(sessionWith('token-1'));
+      const store = TestBed.inject(LinksStore);
+      const opening = store.open(source);
+      http.expectOne(page).flush({ items: [unreadable], total: 1 } satisfies LinkPage);
+      await opening;
+
+      const fixture = TestBed.createComponent(RemoveHost);
+      fixture.componentInstance.scope.set(scope);
+      await fixture.whenStable();
+      const host = fixture.nativeElement as HTMLElement;
+
+      host.querySelector<HTMLButtonElement>('[data-testid="link-paste"]')?.click();
+      await settle();
+      await fixture.whenStable();
+      const dialog = (): HTMLElement => {
+        const container = document.body.querySelector<HTMLElement>('mat-dialog-container');
+        if (!container) {
+          throw new Error('Dialog not opened');
+        }
+        return container;
+      };
+      typeInto(dialog(), '[data-testid="paste-text"]', 'Texto de la oferta MARCA-LISTA');
+      await fixture.whenStable();
+      dialog().querySelector<HTMLButtonElement>('[data-testid="paste-submit"]')?.click();
+      await settle();
+      const { body, options } = apiError('ai_capacity_exhausted', 503);
+      http.expectOne({ method: 'POST', url: '/api/links/l1/pasted' }).flush(body, options);
+      await settle();
+      await fixture.whenStable();
+
+      dialog().querySelector<HTMLButtonElement>('[data-testid="paste-complete-by-hand"]')?.click();
+      await settle();
+      await fixture.whenStable();
+      await vi.waitFor(() =>
+        expect(
+          document.body.querySelector<HTMLTextAreaElement>('[data-testid="edit-paste-reference-text"]')
+            ?.value,
+        ).toBe('Texto de la oferta MARCA-LISTA'),
+      );
+      expect(document.body.querySelector('[data-testid="preview-save"]')).not.toBeNull();
+      verifyNoPendingRequests(http);
+    },
+  );
 });

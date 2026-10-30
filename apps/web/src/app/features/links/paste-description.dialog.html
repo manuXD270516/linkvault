@@ -76,10 +76,33 @@
               >Pegaste demasiadas ofertas seguidas, espera un poco</ng-container
             >
           }
-          @case ('quotaExceeded') {
-            <ng-container i18n="@@links.paste.quotaExceeded"
-              >Llegaste al límite de lecturas de hoy, vuelve mañana</ng-container
+          @case ('capacityExhausted') {
+            <ng-container i18n="@@links.paste.capacityExhausted"
+              >La IA no admite más lecturas por ahora y no sabemos cuándo vuelve. Puedes completarla a
+              mano</ng-container
             >
+          }
+          @case ('disabled') {
+            <ng-container i18n="@@links.paste.disabled"
+              >La lectura automática no está disponible. Puedes completarla a mano</ng-container
+            >
+          }
+          @case ('consentRequired') {
+            <ng-container i18n="@@links.paste.consentRequired"
+              >Para leerla con IA externa falta tu permiso. Puedes completarla a mano</ng-container
+            >
+          }
+          @case ('quotaExceeded') {
+            @if (quotaWhen(); as when) {
+              <ng-container i18n="@@links.paste.quotaExceededUntil"
+                >Llegaste a tu límite de lecturas con IA. Podrás volver a pegar {{ when }}</ng-container
+              >
+            } @else {
+              <ng-container i18n="@@links.paste.quotaExceeded"
+                >Llegaste a tu límite de lecturas con IA. Podrás volver a pegar en 24 horas como
+                mucho</ng-container
+              >
+            }
           }
         }
       </p>
@@ -89,7 +112,53 @@
   }
 </mat-dialog-content>
 
-<mat-dialog-actions>
+<!-- Orden de lectura: la principal, la secundaria si la hay y cancelar (también a 360 px de ancho). -->
+<mat-dialog-actions align="start">
+  @if (handIsPrimary()) {
+    <button
+      mat-flat-button
+      type="button"
+      (click)="completeByHand()"
+      data-testid="paste-complete-by-hand"
+      i18n="@@links.paste.completeByHand"
+    >
+      Completar a mano
+    </button>
+    @if (offersRetry()) {
+      <button
+        mat-stroked-button
+        type="button"
+        [disabled]="!canSubmit()"
+        (click)="submit()"
+        data-testid="paste-retry"
+        i18n="@@links.paste.retry"
+      >
+        Reintentar
+      </button>
+    }
+  } @else {
+    <button
+      mat-flat-button
+      type="button"
+      [disabled]="!canSubmit()"
+      (click)="submit()"
+      data-testid="paste-submit"
+      i18n="@@links.paste.submit"
+    >
+      Completar la oferta
+    </button>
+    @if (canCompleteByHand()) {
+      <button
+        mat-stroked-button
+        type="button"
+        (click)="completeByHand()"
+        data-testid="paste-complete-by-hand"
+        i18n="@@links.paste.completeByHand"
+      >
+        Completar a mano
+      </button>
+    }
+  }
   <button
     mat-button
     type="button"
@@ -98,15 +167,5 @@
     i18n="@@links.paste.cancel"
   >
     Cancelar
-  </button>
-  <button
-    mat-flat-button
-    type="button"
-    [disabled]="!canSubmit()"
-    (click)="submit()"
-    data-testid="paste-submit"
-    i18n="@@links.paste.submit"
-  >
-    Completar la oferta
   </button>
 </mat-dialog-actions>

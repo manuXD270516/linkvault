@@ -2125,11 +2125,18 @@
           <context context-type="linenumber">5,8</context>
         </context-group>
       </trans-unit>
+      <trans-unit id="links.paste.edit.reference" datatype="html">
+        <source> Lo que pegaste (solo para consultar: no se guarda ni se envía) </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
+          <context context-type="linenumber">12,15</context>
+        </context-group>
+      </trans-unit>
       <trans-unit id="links.field.title" datatype="html">
         <source>Puesto</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
-          <context context-type="linenumber">10,11</context>
+          <context context-type="linenumber">26,27</context>
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/paste-description.dialog.html</context>
@@ -2140,7 +2147,7 @@
         <source>Empresa</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
-          <context context-type="linenumber">16,17</context>
+          <context context-type="linenumber">32,33</context>
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/paste-description.dialog.html</context>
@@ -2151,36 +2158,36 @@
         <source>Ubicación</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
-          <context context-type="linenumber">22,23</context>
+          <context context-type="linenumber">38,39</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.field.modality" datatype="html">
         <source>Modalidad</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
-          <context context-type="linenumber">28,29</context>
+          <context context-type="linenumber">44,45</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.field.unknown" datatype="html">
         <source>No lo dice</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
-          <context context-type="linenumber">30,31</context>
+          <context context-type="linenumber">46,47</context>
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
-          <context context-type="linenumber">41,42</context>
+          <context context-type="linenumber">57,58</context>
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
-          <context context-type="linenumber">72,73</context>
+          <context context-type="linenumber">88,89</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.modality.remote" datatype="html">
         <source>Remoto</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
-          <context context-type="linenumber">31,32</context>
+          <context context-type="linenumber">47,48</context>
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
@@ -2191,7 +2198,7 @@
         <source>Híbrido</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
-          <context context-type="linenumber">32,33</context>
+          <context context-type="linenumber">48,49</context>
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
@@ -2202,7 +2209,7 @@
         <source>Presencial</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
-          <context context-type="linenumber">33,35</context>
+          <context context-type="linenumber">49,51</context>
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
@@ -2213,14 +2220,14 @@
         <source>Experiencia</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
-          <context context-type="linenumber">39,40</context>
+          <context context-type="linenumber">55,56</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.seniority.intern" datatype="html">
         <source>Prácticas</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
-          <context context-type="linenumber">42,43</context>
+          <context context-type="linenumber">58,59</context>
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
@@ -2231,7 +2238,7 @@
         <source>Junior</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
-          <context context-type="linenumber">43,44</context>
+          <context context-type="linenumber">59,60</context>
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
@@ -2242,7 +2249,7 @@
         <source>Intermedio</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
-          <context context-type="linenumber">44,45</context>
+          <context context-type="linenumber">60,61</context>
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
@@ -2253,7 +2260,7 @@
         <source>Senior</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
-          <context context-type="linenumber">45,46</context>
+          <context context-type="linenumber">61,62</context>
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
@@ -2264,7 +2271,7 @@
         <source>Líder</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
-          <context context-type="linenumber">46,48</context>
+          <context context-type="linenumber">62,64</context>
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
@@ -2275,35 +2282,35 @@
         <source>Salario desde</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
-          <context context-type="linenumber">53,54</context>
+          <context context-type="linenumber">69,70</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.field.salaryMax" datatype="html">
         <source>Salario hasta</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
-          <context context-type="linenumber">57,58</context>
+          <context context-type="linenumber">73,74</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.field.currency" datatype="html">
         <source>Moneda</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
-          <context context-type="linenumber">61,63</context>
+          <context context-type="linenumber">77,79</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.field.period" datatype="html">
         <source>Periodo</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
-          <context context-type="linenumber">70,71</context>
+          <context context-type="linenumber">86,87</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.salary.month" datatype="html">
         <source>al mes</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
-          <context context-type="linenumber">73,74</context>
+          <context context-type="linenumber">89,90</context>
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
@@ -2314,7 +2321,7 @@
         <source>al año</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
-          <context context-type="linenumber">74,75</context>
+          <context context-type="linenumber">90,91</context>
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
@@ -2325,7 +2332,7 @@
         <source>por hora</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
-          <context context-type="linenumber">75,76</context>
+          <context context-type="linenumber">91,92</context>
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/link-preview.ts</context>
@@ -2336,21 +2343,21 @@
         <source>Resumen</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
-          <context context-type="linenumber">82,83</context>
+          <context context-type="linenumber">98,99</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.field.postedAt" datatype="html">
         <source>Publicada el</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
-          <context context-type="linenumber">89,90</context>
+          <context context-type="linenumber">105,106</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.field.expiresAt" datatype="html">
         <source>Cierra el</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
-          <context context-type="linenumber">93,94</context>
+          <context context-type="linenumber">109,110</context>
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/reopen-expires.dialog.html</context>
@@ -2361,21 +2368,21 @@
         <source>Cancelar</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
-          <context context-type="linenumber">107,109</context>
+          <context context-type="linenumber">123,125</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.edit.save" datatype="html">
         <source> Guardar </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
-          <context context-type="linenumber">116,118</context>
+          <context context-type="linenumber">132,134</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.edit.revert" datatype="html">
         <source> Volver a lo anterior </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/edit-preview.dialog.html</context>
-          <context context-type="linenumber">139,142</context>
+          <context context-type="linenumber">155,158</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.public.copyUnread" datatype="html">
@@ -3168,25 +3175,85 @@
           <context context-type="linenumber">76,78</context>
         </context-group>
       </trans-unit>
-      <trans-unit id="links.paste.quotaExceeded" datatype="html">
-        <source>Llegaste al límite de lecturas de hoy, vuelve mañana</source>
+      <trans-unit id="links.paste.capacityExhausted" datatype="html">
+        <source>La IA no admite más lecturas por ahora y no sabemos cuándo vuelve. Puedes completarla a mano</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/paste-description.dialog.html</context>
-          <context context-type="linenumber">81,83</context>
+          <context context-type="linenumber">81,84</context>
         </context-group>
       </trans-unit>
-      <trans-unit id="links.paste.cancel" datatype="html">
-        <source> Cancelar </source>
+      <trans-unit id="links.paste.disabled" datatype="html">
+        <source>La lectura automática no está disponible. Puedes completarla a mano</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/paste-description.dialog.html</context>
-          <context context-type="linenumber">100,103</context>
+          <context context-type="linenumber">87,89</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.paste.consentRequired" datatype="html">
+        <source>Para leerla con IA externa falta tu permiso. Puedes completarla a mano</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/paste-description.dialog.html</context>
+          <context context-type="linenumber">92,95</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.paste.quotaExceededUntil" datatype="html">
+        <source>Llegaste a tu límite de lecturas con IA. Podrás volver a pegar <x id="INTERPOLATION" equiv-text="{{ when }}"/></source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/paste-description.dialog.html</context>
+          <context context-type="linenumber">98,99</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.paste.quotaExceeded" datatype="html">
+        <source>Llegaste a tu límite de lecturas con IA. Podrás volver a pegar en 24 horas como mucho</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/paste-description.dialog.html</context>
+          <context context-type="linenumber">102,104</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.paste.completeByHand" datatype="html">
+        <source> Completar a mano </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/paste-description.dialog.html</context>
+          <context context-type="linenumber">125,127</context>
+        </context-group>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/paste-description.dialog.html</context>
+          <context context-type="linenumber">158,162</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.paste.retry" datatype="html">
+        <source> Reintentar </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/paste-description.dialog.html</context>
+          <context context-type="linenumber">136,139</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.paste.submit" datatype="html">
         <source> Completar la oferta </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/paste-description.dialog.html</context>
-          <context context-type="linenumber">110,112</context>
+          <context context-type="linenumber">148,150</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.paste.cancel" datatype="html">
+        <source> Cancelar </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/paste-description.dialog.html</context>
+          <context context-type="linenumber">169,171</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.paste.when.today" datatype="html">
+        <source>hoy a las <x id="time" equiv-text="time"/></source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/paste-when.ts</context>
+          <context context-type="linenumber">25</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="links.paste.when.tomorrow" datatype="html">
+        <source>mañana a las <x id="time" equiv-text="time"/></source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/links/paste-when.ts</context>
+          <context context-type="linenumber">28</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.reopen.expiresTitle" datatype="html">

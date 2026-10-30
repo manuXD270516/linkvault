@@ -263,7 +263,7 @@ implementador crea. Ninguna prueba llama a un proveedor real: `AI_CHAIN=mock` y 
 
 ## 4. SPA: textos verdaderos (design D6, D8)
 
-- [ ] 4.1 [frontend] `paste-description.dialog.ts`: `problem()` distingue `capacityExhausted`, `disabled` y
+- [x] 4.1 [frontend] `paste-description.dialog.ts`: `problem()` distingue `capacityExhausted`, `disabled` y
   `consentRequired`, además de los de hoy, con los textos de D6 (B3-1, B3-4). `ai_capacity_exhausted` tiene un solo
   texto e **ignora `Retry-After`** (N7). Un ayudante puro `whenText(now, retryAfterMinutes, locale)`, usado **solo** con
   `ai_quota_exceeded`, redondea hacia arriba al minuto siguiente si el instante no cae en un minuto exacto (segundos o
@@ -296,18 +296,23 @@ implementador crea. Ninguna prueba llama a un proveedor real: `AI_CHAIN=mock` y 
   o `apps/web/src/app/shared/ui/api-error-copy.ts` desde la última corrida. Verificar, si el fichero existe:
   `pnpm nx run web:typecheck` y `pnpm nx run web:test --include="**/api-error-copy.spec.ts" --skip-nx-cache` en verde, y
   `grep -c "paste-description.dialog.ts" apps/web/src/app/shared/ui/api-error-copy.ts` devuelve al menos `3`.
-- [ ] 4.2 [frontend] `429` `ai_quota_exceeded` con su hora («Podrás volver a pegar hoy a las 13:00», con el reloj en
+
+  **Estado (2026-10-30):** hecha. `paste-description.dialog.{ts,html}`: `problem()` distingue `capacityExhausted`, `disabled` y `consentRequired` con los textos de D6; `ai_capacity_exhausted` ignora `Retry-After`; `quotaWhen` usa el ayudante puro `whenText(now, retryAfterMinutes, locale)` de `paste-when.ts` (redondea hacia arriba al minuto siguiente si hay segundos o milisegundos; sin rama de fecha; `null` más allá de mañana o sin `Retry-After`, y el diálogo usa `@@links.paste.quotaExceeded`). Verificado en `paste-description.dialog.spec.ts` (los cinco casos del enunciado, más «quota exceeded without Retry-After…» y el redondeo) y en `paste-when.spec.ts` (los seis del enunciado). Falsaciones ejecutadas: truncar en vez de redondear hizo caer «rounds up to the next minute», «milliseconds alone round up» y «past tomorrow gives no time»; redondear solo por segundos hizo caer «milliseconds alone round up»; restaurado. Coordinación con `web-error-copy-coverage`: `apps/web/src/app/shared/ui/api-error-copy.ts` NO existe ni en esta rama ni en `origin/main` (`git ls-tree -r origin/main --name-only | grep api-error-copy` vacío), así que, por la forma (a) de su 0.3, las tres entradas `local` las añade ese change y aquí no hay nada que tocar; la verificación condicionada a que el fichero exista (`api-error-copy.spec.ts`, `grep -c`) no aplica. Queda para la fusión (6.3): si `main` ya trae ese fichero cuando se fusione, hay que añadir las entradas y actualizar la cabeza del PR (C4).
+- [x] 4.2 [frontend] `429` `ai_quota_exceeded` con su hora («Podrás volver a pegar hoy a las 13:00», con el reloj en
   10:00:00.000) y sin ella. Verificar en `paste-description.dialog.spec.ts`:
   - «quota exceeded tells the real time, not mañana»
   - «quota exceeded past tomorrow says en 24 horas como mucho» (23:59:30 y `Retry-After: 86400`)
-- [ ] 4.3 [frontend] i18n según ADR-050: `pnpm nx run web:extract-i18n`; traducciones y `source` en `messages.en.xlf`
+
+  **Estado (2026-10-30):** hecha. En `paste-description.dialog.spec.ts`, con el reloj falso solo para `Date`: «quota exceeded tells the real time, not mañana» (10:00:00.000 y `Retry-After: 10800` → «…pegar hoy a las 13:00», sin «vuelve mañana», acciones «Completar a mano» y «Cancelar»), «quota exceeded rounds the time up to the next minute» (13:01), «quota exceeded past tomorrow says en 24 horas como mucho» (23:59:30 y `Retry-After: 86400`, sin ninguna hora) y «quota exceeded without Retry-After…». Se eliminó el caso antiguo «Límite de lecturas del día», que afirmaba el texto «vuelve mañana» (el texto cambia con esta tarea).
+- [x] 4.3 [frontend] i18n según ADR-050: `pnpm nx run web:extract-i18n`; traducciones y `source` en `messages.en.xlf`
   para los ids de D8 (con las traducciones EN previstas allí), con `@@links.paste.quotaExceeded` actualizado y sin
   `links.paste.when.date`. Verificar: `pnpm nx run web:i18n-check` en verde, `grep -c "links.paste.when.date"
   apps/web/src/locale/messages.xlf` devuelve `0`, y `git diff --stat apps/web/src/locale` solo toca los dos catálogos.
 
+  **Estado (2026-10-30):** hecha. `pnpm nx run web:extract-i18n` regeneró `messages.xlf` (solo `links.paste.*` nuevos y los números de línea que mueve la plantilla de edición); `messages.en.xlf` gana `capacityExhausted`, `disabled`, `consentRequired`, `quotaExceededUntil`, `completeByHand`, `retry`, `when.today`, `when.tomorrow` y `edit.reference` con las traducciones previstas de D8, y `quotaExceeded` conserva su id con el texto sin hora y su traducción. `pnpm nx run web:i18n-check` sale con 0 («messages.xlf is the output of the extraction»); `grep -c "links.paste.when.date" apps/web/src/locale/messages.xlf` devuelve `0`; `git diff --stat apps/web/src/locale` solo toca los dos catálogos.
 ## 5. SPA: «Completar a mano» desde el pegado (design D6, D7)
 
-- [ ] 5.1 [frontend] `EditPreviewDialogData.reference?: { text; title?; company? }`. El título y la empresa de la
+- [x] 5.1 [frontend] `EditPreviewDialogData.reference?: { text; title?; company? }`. El título y la empresa de la
   referencia entran como valores modificados. El texto va en un panel plegable (`data-testid="edit-paste-reference"`)
   como texto plano o `<textarea readonly>`, **nunca** `disabled`, para que se pueda seleccionar y copiar (B4).
   Verificar en `edit-preview.dialog.spec.ts`:
@@ -319,13 +324,17 @@ implementador crea. Ninguna prueba llama a un proveedor real: `AI_CHAIN=mock` y 
 
   Falsación: renderizar el texto en un `<textarea disabled>` y ver caer el segundo; restaurar. Añadir el texto a la
   petición y ver caer el tercero; restaurar.
-- [ ] 5.2 [frontend] Botón «Completar a mano» (`data-testid="paste-complete-by-hand"`) tras cualquier fallo. Cierra el
+
+  **Estado (2026-10-30):** hecha. `EditPreviewDialogData.reference?: { text; title?; company? }`; el título y la empresa de la referencia son el valor inicial del formulario (así `changedFields` los compara con la tarjeta y viajan como edición manual); el texto va en un `<details data-testid="edit-paste-reference">` con un `<textarea readonly>` (`edit-paste-reference-text`), nunca `disabled`, titulado «Lo que pegaste (solo para consultar: no se guarda ni se envía)» (`@@links.paste.edit.reference`). Verificado en `edit-preview.dialog.spec.ts`: «reference title and company start as changed values», «reference text is selectable and never disabled» y «saving never sends the reference text» (más «does not show the panel without a reference»). Falsaciones ejecutadas: cambiar `readonly` por `disabled` hizo caer «reference text is selectable and never disabled»; añadir el texto a la petición hizo caer «saving never sends the reference text» y «reference title and company start as changed values»; restaurado.
+- [x] 5.2 [frontend] Botón «Completar a mano» (`data-testid="paste-complete-by-hand"`) tras cualquier fallo. Cierra el
   diálogo y abre `EditPreviewDialog` con el link y la referencia (solo el título y la empresa cambiados, con la
   `changed()` de hoy). Verificar en `paste-description.dialog.spec.ts`:
   - «offers Completar a mano after not_a_job_posting and when offline»
   - «Completar a mano opens the edit dialog with the pasted text and the changed company»
   - «the pasted text is not written to the links store»
-- [ ] 5.3 [frontend] Jerarquía de acciones (B5, B3-2, B3-3): con los cuatro errores de D6 («Completar a mano»
+
+  **Estado (2026-10-30):** hecha. `completeByHand()` en `paste-description.dialog.ts`: cierra el diálogo, y abre `EditPreviewDialog` con el link y la referencia (solo el título y la empresa cambiados, con la `changed()` de hoy). El botón (`data-testid="paste-complete-by-hand"`) aparece tras cualquier fallo del envío y no mientras se envía. Verificado en `paste-description.dialog.spec.ts`: «offers Completar a mano after not_a_job_posting and when offline», «Completar a mano opens the edit dialog with the pasted text and the changed company», «the pasted text is not written to the links store» (más «does not offer Completar a mano before any failure»).
+- [x] 5.3 [frontend] Jerarquía de acciones (B5, B3-2, B3-3): con los cuatro errores de D6 («Completar a mano»
   principal), reenviar solo se ofrece ante `ai_capacity_exhausted`, como secundaria y con el texto «Reintentar»
   (`data-testid="paste-retry"`, `@@links.paste.retry`); con el resto de errores, reenviar sigue siendo la principal.
   Verificar en `paste-description.dialog.spec.ts`:
@@ -334,16 +343,24 @@ implementador crea. Ninguna prueba llama a un proveedor real: `AI_CHAIN=mock` y 
   - «extraction_unavailable keeps resend primary»
 
   Falsación: mostrar reenviar con `ai_quota_exceeded` (lo de la iteración 2) y ver caer el segundo; restaurar.
-- [ ] 5.4 [frontend] Comprobar que funciona desde la lista de links. Verificar en `link-list.component.spec.ts`:
+
+  **Estado (2026-10-30):** hecha. Con `ai_capacity_exhausted`, `ai_quota_exceeded`, `extraction_disabled` y `ai_consent_required` «Completar a mano» es el botón relleno; «Reintentar» (`paste-retry`, `@@links.paste.retry`) solo existe ante `ai_capacity_exhausted`, como secundaria; con el resto de errores reenviar sigue siendo la principal. Verificado en `paste-description.dialog.spec.ts`: «capacity exhausted makes Completar a mano primary and Reintentar secondary» (incluye que Reintentar reenvía lo mismo sin pegar de nuevo), «quota exceeded, disabled and consent required hide resend» (`it.each`) y «extraction_unavailable keeps resend primary». Falsación ejecutada: ofrecer Reintentar también con `ai_quota_exceeded` hizo caer 3 casos (entre ellos el segundo); restaurado.
+- [x] 5.4 [frontend] Comprobar que funciona desde la lista de links. Verificar en `link-list.component.spec.ts`:
   «complete by hand from the paste dialog works in a group and in /mis-links».
-- [ ] 5.5 [frontend] Comprobar que funciona desde el encaje (C9). Verificar en `match.dialog.spec.ts`: «complete by
+
+  **Estado (2026-10-30):** hecha. «complete by hand from the paste dialog works in a group and in /mis-links» en `link-list.component.spec.ts` (`it.each` sobre `a group` y `/mis-links`, con el `RemoveHost`): pegar, `503 ai_capacity_exhausted`, «Completar a mano» y la corrección con el texto pegado como referencia.
+- [x] 5.5 [frontend] Comprobar que funciona desde el encaje (C9). Verificar en `match.dialog.spec.ts`: «complete by
   hand from the paste dialog opened in the match dialog».
-- [ ] 5.6a [frontend] Orden de las acciones en el DOM (B2-10, B3-2). Verificar en `paste-description.dialog.spec.ts`:
+
+  **Estado (2026-10-30):** hecha. «complete by hand from the paste dialog opened in the match dialog» en `match.dialog.spec.ts`: `job_not_ready` ofrece pegar, `503 ai_capacity_exhausted` y «Completar a mano» abre la corrección del mismo link con lo pegado; el diálogo de pegar desaparece.
+- [x] 5.6a [frontend] Orden de las acciones en el DOM (B2-10, B3-2). Verificar en `paste-description.dialog.spec.ts`:
   «actions are ordered primary, secondary, cancel», con `it.each` sobre `ai_capacity_exhausted` («Completar a mano»,
   «Reintentar», «Cancelar»), `ai_quota_exceeded` («Completar a mano», «Cancelar»), `extraction_disabled` («Completar a
   mano», «Cancelar») y `extraction_unavailable` («Completar la oferta», «Completar a mano», «Cancelar»), leyendo los
   nombres accesibles de los botones en orden de DOM. Falsación: poner «Cancelar» antes que «Reintentar» y ver caer el
   primer caso; restaurar.
+
+  **Estado (2026-10-30):** hecha. «actions are ordered primary, secondary, cancel» en `paste-description.dialog.spec.ts`, con `it.each` sobre los cuatro códigos del enunciado, leyendo el texto de los botones de `mat-dialog-actions` en orden de DOM; el orden de las acciones del diálogo es ahora principal, secundaria y cancelar (antes «Cancelar» iba primero). Falsación ejecutada: poner «Cancelar» antes que «Reintentar» hizo caer los casos de `ai_capacity_exhausted` y `extraction_unavailable`; restaurado.
 - [ ] 5.6b [frontend] 360 px en la suite reproducible (P1-9, design D10). En `apps/web-e2e/src/links.spec.ts`, un caso
   nuevo «paste error actions fit and keep their order at 360 px» con `{ tag: ['@lot1', '@paste-actions'] }` y **sin**
   `@remote-safe` (solo perfil `local`). Usa solo lo que admite la suite: origen y API de `support/profile.ts`, sin
@@ -357,6 +374,8 @@ implementador crea. Ninguna prueba llama a un proveedor real: `AI_CHAIN=mock` y 
     no lista el caso (el perfil `remote` no lo toma).
 
   Falsación: poner «Cancelar» antes que «Reintentar» en la plantilla y ver caer el caso; restaurar.
+
+  **Estado (2026-10-30), SIN MARCAR:** escrito pero no ejecutado. El caso está en `apps/web-e2e/src/links.spec.ts` (con `{ tag: ['@lot1', '@paste-actions'] }`, sin `@remote-safe`; registra la cuenta por la interfaz, crea el link por la API pública con el token de la sesión, abre la lista «Solo para mí», fija 360 px, responde al pegado con `page.route` y comprueba visibilidad, orden de lectura, que nada se sale de los 360 px y `scrollWidth <= 360`). Verificado: `web-e2e:lint` y `web-e2e:typecheck` en verde; `playwright test --list --grep "(?=.*@lot1)(?=.*@remote-safe)"` solo lista el camino crítico (no el caso) y `--list --grep "(?=.*@lot1)(?=.*@paste-actions)"` lista un solo caso en `chromium`. NO se pudo correr `web-e2e:e2e-stack -- --project=chromium --grep @paste-actions`: el clasificador de permisos de la sesión denegó el lanzamiento de la pila (levanta Docker) y no se rodeó. Faltan la ejecución en verde y la falsación del orden en la plantilla.
 - [ ] 5.6c [infra] Admisión del caso y presupuesto de registro (README de `apps/web-e2e`, «Cómo admitir una prueba»).
   Admitirlo con carga en `chromium` y perfil `local` (el `mobile` solo ejecuta `critical-path.spec.ts` y el caso no es
   `@remote-safe`): `pnpm nx run web-e2e:e2e-stack -- --project=chromium --repeat-each=5 --grep @paste-actions`, cinco de
@@ -365,6 +384,8 @@ implementador crea. Ninguna prueba llama a un proveedor real: `AI_CHAIN=mock` y 
   de registro»; y añadir `--grep @critical-path` a la orden de readmisión del camino crítico con `--repeat-each=5`, que
   si no pasaría de 10. Verificar: `grep -n "@paste-actions" apps/web-e2e/README.md` devuelve la línea de la admisión, y
   `pnpm nx run web-e2e:e2e-stack` completo (sin `--grep`) en verde, sin `429` de registro.
+
+  **Estado (2026-10-30), SIN MARCAR:** pendiente de la 5.6b: la admisión con carga (cinco de cinco), la anotación en «Admisiones», el +1 en «Presupuesto de intentos de registro» y el `--grep @critical-path` de la readmisión se hacen con la pila corriendo. No se tocó `apps/web-e2e/README.md`.
 
 ## 6. Cierre
 
@@ -394,8 +415,12 @@ implementador crea. Ninguna prueba llama a un proveedor real: `AI_CHAIN=mock` y 
 
 ## 7. Documentación
 
-- [ ] 7.1 [infra] ADR-060 pasa de «Propuesto» a «Aceptado» con la fecha de la aprobación de 0.2. Verificar: `head -3 docs/adr/ADR-060.md`.
-- [ ] 7.2 [infra] Si cambia algo de lo que dice ADR-018 §Enmiendas (la línea de este change), actualizarla. Verificar: `grep -n "ADR-060" docs/adr/ADR-018.md`.
+- [x] 7.1 [infra] ADR-060 pasa de «Propuesto» a «Aceptado» con la fecha de la aprobación de 0.2. Verificar: `head -3 docs/adr/ADR-060.md`.
+
+  **Estado (2026-10-30):** hecha. `docs/adr/ADR-060.md` línea 3: «Estado: Aceptado (2026-10-29: aprobación del owner, «Toma las recomendaciones»)».
+- [x] 7.2 [infra] Si cambia algo de lo que dice ADR-018 §Enmiendas (la línea de este change), actualizarla. Verificar: `grep -n "ADR-060" docs/adr/ADR-018.md`.
+
+  **Estado (2026-10-30):** hecha. `docs/adr/ADR-018.md` línea 50: la línea de ADR-060 pasa de «propuesto» a «aceptado el 2026-10-29»; `grep -n "ADR-060" docs/adr/ADR-018.md` la devuelve.
 - [ ] 7.3 [infra] **PR de archivo** (design D11, clase 2): lleva las anotaciones posteriores a la fusión (6.4 y
   casillas). Se fusiona **después de la 10.7** de 35b, nunca entre el PR-2 de 35b y su 11.6, nunca durante su 9.1-9.4,
   nunca los días 7 y 14 de la medición y nunca el día de una corrida `e2e-remote`. Verificar, justo antes de fusionar:

@@ -1,6 +1,7 @@
 import { HttpTestingController } from '@angular/common/http/testing';
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
+import { MatDialog } from '@angular/material/dialog';
 import type { JobLinkSummary, LinkPage } from '@linkvault/shared';
 import {
   buttonWithText,
@@ -12,6 +13,7 @@ import {
 } from '../../../testing/auth-testing';
 import { SessionStore } from '../../core/auth/session.store';
 import { LinksStore } from '../../core/links/links.store';
+import { EditPreviewDialog, type EditPreviewDialogData } from './edit-preview.dialog';
 import { LinkList, type LinkListScope } from './link-list.component';
 
 const GROUP_PAGE = '/api/groups/g1/links?limit=20';
@@ -355,5 +357,86 @@ describe('EditPreviewDialog', () => {
     expect(host().querySelector('[data-testid="note-title"]')?.textContent?.trim()).toBe(
       'Descripción pegada por Beto',
     );
+  });
+  describe('with the pasted text as reference', () => {
+    const MARK = 'MARCA-PEGADA-7f3a';
+    const reference = {
+      text: `Acerca del empleo\nSalario: 9000 BOB. ${MARK}`,
+      company: 'Acme Bolivia',
+    };
+
+    function openWithReference(): void {
+      TestBed.inject(MatDialog).open<EditPreviewDialog, EditPreviewDialogData>(EditPreviewDialog, {
+        data: { link, reference },
+      });
+    }
+
+    function referenceText(): HTMLTextAreaElement {
+      const element = dialog().querySelector<HTMLTextAreaElement>(
+        '[data-testid="edit-paste-reference-text"]',
+      );
+      if (!element) {
+        throw new Error('Reference text not found');
+      }
+      return element;
+    }
+
+    it('reference title and company start as changed values', async () => {
+      TestBed.inject(MatDialog).open<EditPreviewDialog, EditPreviewDialogData>(EditPreviewDialog, {
+        data: { link, reference: { ...reference, title: 'Ingeniera de datos senior' } },
+      });
+      await settle();
+      await fixture.whenStable();
+
+      expect(valueOf('title')).toBe('Ingeniera de datos senior');
+      expect(valueOf('company')).toBe('Acme Bolivia');
+      await save();
+
+      // Entran como edición manual: viajan en la petición aunque la persona no toque nada más.
+      const request = http.expectOne({ method: 'PATCH', url: PREVIEW_URL });
+      expect(request.request.body).toEqual({
+        fields: { title: 'Ingeniera de datos senior', company: 'Acme Bolivia' },
+      });
+      request.flush({ ...link, previewVersion: 4 } satisfies JobLinkSummary);
+      await settle();
+      await closed();
+    });
+
+    it('reference text is selectable and never disabled', async () => {
+      openWithReference();
+      await settle();
+      await fixture.whenStable();
+
+      const text = referenceText();
+      expect(text.value).toBe(reference.text);
+      expect(text.hasAttribute('disabled')).toBe(false);
+      expect(text.hasAttribute('readonly')).toBe(true);
+      expect(dialog().querySelector('[data-testid="edit-paste-reference"]')?.tagName).toBe('DETAILS');
+      expect(dialog().querySelector('[data-testid="edit-paste-reference"] summary')?.textContent).toContain(
+        'Lo que pegaste (solo para consultar: no se guarda ni se envía)',
+      );
+    });
+
+    it('saving never sends the reference text', async () => {
+      openWithReference();
+      await settle();
+      await fixture.whenStable();
+      typeInto(dialog(), '[data-testid="preview-title"]', 'Ingeniera de datos senior');
+      await save();
+
+      const request = http.expectOne({ method: 'PATCH', url: PREVIEW_URL });
+      expect(request.request.body).toEqual({
+        fields: { title: 'Ingeniera de datos senior', company: 'Acme Bolivia' },
+      });
+      expect(JSON.stringify(request.request.body)).not.toContain(MARK);
+      request.flush({ ...link, previewVersion: 4 } satisfies JobLinkSummary);
+      await settle();
+      await closed();
+    });
+
+    it('does not show the panel without a reference', async () => {
+      await openDialog();
+      expect(dialog().querySelector('[data-testid="edit-paste-reference"]')).toBeNull();
+    });
   });
 });

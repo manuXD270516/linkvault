@@ -5,6 +5,22 @@
     Lo que corrijas aquí lo verán las demás personas del grupo, con tu nombre.
   </p>
 
+  @if (reference; as pasted) {
+    <!-- Texto plano y de solo lectura (nunca "disabled", que impide seleccionarlo): se puede copiar el salario o la modalidad. -->
+    <details class="mb-2" data-testid="edit-paste-reference">
+      <summary class="cursor-pointer" i18n="@@links.paste.edit.reference">
+        Lo que pegaste (solo para consultar: no se guarda ni se envía)
+      </summary>
+      <textarea
+        class="mt-2 w-full rounded border p-2 text-sm"
+        rows="8"
+        readonly
+        [value]="pasted.text"
+        data-testid="edit-paste-reference-text"
+      ></textarea>
+    </details>
+  }
+
   <form class="flex flex-col gap-2" [formGroup]="form" (ngSubmit)="submit()" novalidate>
     <mat-form-field>
       <mat-label i18n="@@links.field.title">Puesto</mat-label>
