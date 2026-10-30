@@ -32,6 +32,15 @@ export interface AiSuccess<O> {
   cached: boolean;
 }
 
+/**
+ * Condición agregada de los proveedores afectados (ADR-060 §4). `consent_missing` significa «falta el permiso de quien
+ * ejecuta y ese permiso es necesario para al menos un proveedor de la cadena hipotética»: NO implica
+ * `consentWouldEnable` ni el motivo `consent_required`.
+ */
+export interface ProviderCondition {
+  kind: 'consent_missing' | 'unavailable' | 'rate_limited' | 'rejected';
+}
+
 export interface AiDegraded<O> {
   status: 'degraded';
   reason: DegradedReason;
@@ -42,6 +51,11 @@ export interface AiDegraded<O> {
    * es el momento en que la ejecución contada más antigua sale de la ventana.
    */
   aiQuotaRetryAt?: string;
+  /**
+   * Por qué fallaron los proveedores. Solo acompaña a `providers_failed` y `no_providers`, y solo si hubo proveedores
+   * afectados; nunca a `quota_exceeded` ni a `consent_required`. Sin instante.
+   */
+  providerCondition?: ProviderCondition;
 }
 
 export type AiResult<O> = AiSuccess<O> | AiDegraded<O>;

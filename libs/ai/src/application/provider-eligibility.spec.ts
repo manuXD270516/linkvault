@@ -29,15 +29,14 @@ function provider(
   };
 }
 
-function breakerWith(
-  openIds: ReadonlySet<string> | null,
-): CircuitBreaker {
+function breakerWith(openIds: ReadonlySet<string> | null): CircuitBreaker {
   return {
     openIds: async () => openIds ?? new Set(),
     snapshotOpenIds: async () => openIds,
     tryAcquire: async () => true,
     recordSuccess: async () => undefined,
     recordFailure: async () => undefined,
+    openConditions: async () => new Map(),
     release: async () => undefined,
   };
 }
@@ -133,8 +132,7 @@ describe('DefaultProviderEligibility', () => {
       platformProviders: [platform],
       breaker: breakerWith(new Set()),
       byokFactory: {
-        providersFor: async (userId) =>
-          userId === 'ana' ? [anaByok] : [],
+        providersFor: async (userId) => (userId === 'ana' ? [anaByok] : []),
       },
     });
 
@@ -173,8 +171,7 @@ describe('DefaultProviderEligibility', () => {
       platformProviders: [],
       breaker: breakerWith(new Set()),
       byokFactory: {
-        providersFor: async (userId) =>
-          userId === 'ana' ? [anaByok] : [],
+        providersFor: async (userId) => (userId === 'ana' ? [anaByok] : []),
       },
     });
 

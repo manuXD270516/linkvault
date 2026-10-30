@@ -25,7 +25,7 @@ implementador crea. Ninguna prueba llama a un proveedor real: `AI_CHAIN=mock` y 
 
 ## 1. `libs/ai`: clase del fallo (design D1)
 
-- [ ] 1.1 [ai] `domain/errors.ts`: `ProviderUnavailable` gana `kind`, derivado de `httpStatus`: `429` →
+- [x] 1.1 [ai] `domain/errors.ts`: `ProviderUnavailable` gana `kind`, derivado de `httpStatus`: `429` →
   `rate_limited`; `401`/`402`/`403`/`404` → `rejected`; resto o ausente → `unavailable`. El mensaje sigue sin cuerpo
   ni credencial. Verificar en `domain/errors.spec.ts` (nuevo si no existe):
   - «429 is rate_limited»
@@ -33,13 +33,17 @@ implementador crea. Ninguna prueba llama a un proveedor real: `AI_CHAIN=mock` y 
   - «5xx and missing status are unavailable»
 
   Falsación: mapear `404` a `unavailable` y ver caer el segundo; restaurar.
-- [ ] 1.2 [ai] Comprobar que los demás proveedores heredan la clase sin cambios. Verificar con un caso por proveedor en
+
+  **Estado (2026-10-30):** hecha. `providerFailureKindOf` y `ProviderUnavailable.kind` en `domain/errors.ts`; `errors.spec.ts` (3 casos del enunciado más el del mensaje sin cuerpo). Falsación ejecutada: quitar el `404` de `rejected` hizo caer «401, 402, 403 and 404 are rejected» y los tres «a 404 answer throws rejected» de los proveedores; restaurado.
+- [x] 1.2 [ai] Comprobar que los demás proveedores heredan la clase sin cambios. Verificar con un caso por proveedor en
   `ollama.provider.spec.ts`, `openai.provider.spec.ts` y `anthropic.provider.spec.ts`: «a 429 answer throws
   rate_limited» y «a 404 answer throws rejected».
 
+  **Estado (2026-10-30):** hecha. Casos «a 429 answer throws rate_limited» y «a 404 answer throws rejected» en `ollama`, `openai` y `anthropic` (`*.provider.spec.ts`), sin tocar ningún proveedor: `pnpm nx run ai:test -- errors.spec provider.spec` 8 ficheros, 63 tests en verde.
+
 ## 2. `libs/ai`: breaker y degradado (design D3, D4)
 
-- [ ] 2.1a [ai] Contrato y dobles (D3, P1-10). `domain/ports/circuit-breaker.port.ts`: el tipo `ProviderFailure`;
+- [x] 2.1a [ai] Contrato y dobles (D3, P1-10). `domain/ports/circuit-breaker.port.ts`: el tipo `ProviderFailure`;
   `recordFailure(id, failure?)`, que sin argumento vale `{ kind: 'unavailable' }`; y
   `openConditions(): Promise<ReadonlyMap<string, ProviderFailure>>`. Ajustar, sin cambiar lo que ya afirman, todos los
   que implementan `CircuitBreaker`:
@@ -56,7 +60,9 @@ implementador crea. Ninguna prueba llama a un proveedor real: `AI_CHAIN=mock` y 
   `InMemoryCircuitBreaker` y `RedisCircuitBreaker` reciben aquí solo el método con un mapa vacío; su lógica es de la 2.1b,
   la 2.1c y la 2.2a. Verificar: `pnpm nx run ai:typecheck` y `pnpm nx run ai:test` en verde sin tocar ninguna
   aserción existente.
-- [ ] 2.1b [ai] `InMemoryCircuitBreaker`: la ventana con clases y la apertura (D3, N4). Todas las clases cuentan igual;
+
+  **Estado (2026-10-30):** hecha. `ProviderFailure`, `recordFailure(id, failure?)` y `openConditions()` en `circuit-breaker.port.ts`; dobles ajustados (`RecordingNullCircuitBreaker` con `failureKinds` en paralelo, `NullCircuitBreaker`, `breakerWith` de `provider-eligibility.spec.ts`; los de `run-task.usecase.spec.ts` usan el recording y los `InMemoryCircuitBreaker` reales). `ai:typecheck` y `ai:test` en verde. Nota: varias aserciones `toEqual` de degradados que fallan por avería (`run-task.usecase.spec.ts`, `openrouter.run-task.spec.ts`, `run-cases.spec.ts`) ganaron `providerCondition: { kind: 'unavailable' | … }`, porque el resultado ahora la lleva; no cambió ninguna otra afirmación.
+- [x] 2.1b [ai] `InMemoryCircuitBreaker`: la ventana con clases y la apertura (D3, N4). Todas las clases cuentan igual;
   cada fallo de la ventana guarda su clase junto a su instante; los que salen de la ventana se descartan con su clase;
   al abrir se recuerda la **dominante** (`unavailable` > `rate_limited` > `rejected`). Verificar en
   `in-memory-circuit-breaker.spec.ts`:
@@ -66,7 +72,9 @@ implementador crea. Ninguna prueba llama a un proveedor real: `AI_CHAIN=mock` y 
 
   Falsación: guardar la clase del último fallo y ver caer el segundo; restaurar. No contar el `rate_limited` en la
   ventana y ver caer el primero; restaurar.
-- [ ] 2.1c [ai] `InMemoryCircuitBreaker`: half-open, borrado y `openConditions()` (D3, N5). La prueba fallida deja la
+
+  **Estado (2026-10-30):** hecha. Ventana con clases y clase dominante en `InMemoryCircuitBreaker`; tres casos del enunciado más «remembers the dominant…» etc. en `in-memory-circuit-breaker.spec.ts`. Falsaciones ejecutadas: guardar la clase del último fallo hizo caer «remembers the dominant kind of the window, not the last»; no contar el `rate_limited` en la ventana hizo caer 5 casos (entre ellos «five 429 open the circuit like any failure»); restaurado.
+- [x] 2.1c [ai] `InMemoryCircuitBreaker`: half-open, borrado y `openConditions()` (D3, N5). La prueba fallida deja la
   clase de ese fallo; la clase se borra solo donde hoy se borra el circuito; un éxito con el circuito cerrado no toca la
   ventana; `openConditions()` devuelve la clase de cada circuito abierto según la regla de `snapshotOpenIds()`.
   Verificar en `in-memory-circuit-breaker.spec.ts`:
@@ -77,7 +85,9 @@ implementador crea. Ninguna prueba llama a un proveedor real: `AI_CHAIN=mock` y 
   - «openConditions returns the kind of each open circuit»
 
   Falsación: borrar la ventana en `recordSuccess` con el circuito cerrado y ver caer el tercero; restaurar.
-- [ ] 2.2a [ai] `RedisCircuitBreaker` (D3, N5, P1-1): las clases van **en el mismo JSON** (`StoredCircuit`): las de la
+
+  **Estado (2026-10-30):** hecha. Half-open, borrado y `openConditions()` en memoria; los cinco casos del enunciado en `in-memory-circuit-breaker.spec.ts`. Falsación ejecutada: borrar el circuito en `recordSuccess` también con el circuito cerrado hizo caer «a success on a closed circuit keeps the failure window»; restaurado.
+- [x] 2.2a [ai] `RedisCircuitBreaker` (D3, N5, P1-1): las clases van **en el mismo JSON** (`StoredCircuit`): las de la
   ventana en paralelo a `failures` y la del circuito abierto junto a `openedAt`. Se escriben solo en los fallos que hoy
   cambian el estado (cerrado y prueba de half-open) y se borran solo en `clear` (éxito de la prueba o circuito vacío).
   En `load`, el filtro que descarta un instante que no es número descarta también su clase; al podar la ventana o al
@@ -96,24 +106,32 @@ implementador crea. Ninguna prueba llama a un proveedor real: `AI_CHAIN=mock` y 
 
   Falsación: guardar la clase del último fallo y ver caer el primero; restaurar. Completar las clases que faltan por
   el final y ver caer «kinds shorter than failures are padded as unavailable»; restaurar.
-- [ ] 2.2b [ai] `RedisCircuitBreaker.openConditions()`: lee las clases de los circuitos abiertos y falla abierto.
+
+  **Estado (2026-10-30):** hecha. `StoredCircuit` con `failureKinds` y `openKind` en el mismo JSON, relleno desde el principio con `unavailable` si faltan clases, sin TTL nuevo; los siete casos del enunciado en `redis-circuit-breaker.spec.ts`. Falsaciones ejecutadas: guardar la clase del último fallo hizo caer 3 casos (dominante, entre instancias y relleno); completar las clases que faltan por el final hizo caer «kinds shorter than failures are padded as unavailable»; restaurado.
+- [x] 2.2b [ai] `RedisCircuitBreaker.openConditions()`: lee las clases de los circuitos abiertos y falla abierto.
   Verificar en `redis-circuit-breaker.spec.ts`:
   - «openConditions returns the kind of each open circuit»
   - «openConditions returns an empty map when Redis fails»
 
   Falsación: lanzar en vez de devolver vacío y ver caer el segundo; restaurar.
-- [ ] 2.3 [ai] `openrouter.provider.spec.ts` (sin cambios en `openrouter.provider.ts`): con `fetch` sustituido,
+
+  **Estado (2026-10-30):** hecha. `RedisCircuitBreaker.openConditions()` falla abierto; «openConditions returns the kind of each open circuit» y «openConditions returns an empty map when Redis fails». Falsación ejecutada: lanzar en vez de devolver vacío hizo caer el segundo; restaurado.
+- [x] 2.3 [ai] `openrouter.provider.spec.ts` (sin cambios en `openrouter.provider.ts`): con `fetch` sustituido,
   - «429 throws rate_limited without the body»: el cuerpo repite un prompt sembrado, y ni `String(error)`, ni
     `error.cause`, ni lo que reciba el logger lo contienen;
   - «404 no endpoints throws rejected».
 
   Falsación: propagar el texto del cuerpo en `cause` y ver caer el primero; restaurar.
-- [ ] 2.4 [ai] Documentar en `openrouter.provider.spec.ts`, arriba del bloque de 2.3, la URL de la documentación de
+
+  **Estado (2026-10-30):** hecha. «429 throws rate_limited without the body» (cuerpo con el prompt sembrado; ni `String(error)`, ni `inspect`, ni `cause` lo contienen) y «404 no endpoints throws rejected» en `openrouter.provider.spec.ts`, sin tocar `openrouter.provider.ts`. Falsación ejecutada: propagar el texto del cuerpo en `cause` hizo caer el primero y «Error de la API»; restaurado.
+- [x] 2.4 [ai] Documentar en `openrouter.provider.spec.ts`, arriba del bloque de 2.3, la URL de la documentación de
   errores de OpenRouter y la fecha de la consulta, con lo que dice de `429` y del «no endpoints» (`404`). Si no
   confirma el `404`, anotarlo como pendiente en el mismo comentario y en el debate de `design.md`. Verificar:
   `grep -n "openrouter.ai/docs" libs/ai/src/infrastructure/providers/openrouter.provider.spec.ts` devuelve al menos
   una línea.
-- [ ] 2.5a [ai] `domain/ai-result.ts`: `AiDegraded.providerCondition?: { kind: 'consent_missing' | 'unavailable' |
+
+  **Estado (2026-10-30):** hecha, con un hallazgo pendiente. Comentario en `openrouter.provider.spec.ts` con la URL y la fecha de la consulta (2026-10-30). La documentación confirma el `429` (límite de ritmo, con `Retry-After`) y los `401/402/403`, pero NO confirma que «No endpoints found matching your data policy» llegue como `404`: solo lista «There is no available model provider that meets your routing requirements» (código numérico ausente del texto de la página). Anotado como pendiente en el comentario y en `design.md` (sección «Hallazgos de la implementación»); lo confirma la 8.1 de 35b. `grep -n "openrouter.ai/docs" libs/ai/src/infrastructure/providers/openrouter.provider.spec.ts` devuelve 1 línea.
+- [x] 2.5a [ai] `domain/ai-result.ts`: `AiDegraded.providerCondition?: { kind: 'consent_missing' | 'unavailable' |
   'rate_limited' | 'rejected' }`, con un comentario que diga que `consent_missing` es «falta el permiso y es
   necesario» y no implica `consentWouldEnable`. En `domain/`, una función pura `aggregateProviderCondition(reason, affected)` con la
   agregación de D4. Verificar en `domain/provider-condition.spec.ts`:
@@ -124,14 +142,18 @@ implementador crea. Ninguna prueba llama a un proveedor real: `AI_CHAIN=mock` y 
   - «no affected providers give no condition»
 
   Falsación: dejar que `consent_missing` gane también con `providers_failed` y ver caer el cuarto; restaurar.
-- [ ] 2.5b [ai] `run-task.usecase.ts`: registrar en el breaker la `ProviderFailure` de cada error
+
+  **Estado (2026-10-30):** hecha. `AiDegraded.providerCondition`, `ProviderCondition` y `domain/provider-condition.ts` (`aggregateProviderCondition`, `dominantFailureKind`); `provider-condition.spec.ts` con los cinco casos del enunciado. Falsación ejecutada: dejar que `consent_missing` gane también con `providers_failed` hizo caer «consent_missing does not count with providers_failed» y dos casos de `run-task`; restaurado.
+- [x] 2.5b [ai] `run-task.usecase.ts`: registrar en el breaker la `ProviderFailure` de cada error
   (`recordFailure(id, { kind })`), y anotar por proveedor de la ejecución su resultado (fallido con clase,
   `schema_error`/cancelación como `unavailable`, saltado por `tryAcquire` como `unavailable`). Verificar en
   `run-task.usecase.spec.ts`, con un breaker doble que **cambia de estado entre `openIds()` y `tryAcquire()`** (N3):
   - «a 429 records a rate_limited failure in the breaker»
   - «a provider eligible in the snapshot but skipped by tryAcquire is an affected unavailable»
   - «a schema error counts as unavailable»
-- [ ] 2.5c-i [ai] `run-task.usecase.ts`: cadena hipotética y afectados (D4, P1-2, P1-3, P1-4). Componer la cadena
+
+  **Estado (2026-10-30):** hecha. `runTask` registra `recordFailure(id, { kind })` y anota por proveedor su resultado; casos «a 429 records a rate_limited failure in the breaker», «a provider eligible in the snapshot but skipped by tryAcquire is an affected unavailable» (con un `ScriptedBreaker` que cambia entre `openIds()` y `tryAcquire()`) y «a schema error counts as unavailable» en `run-task.usecase.spec.ts`.
+- [x] 2.5c-i [ai] `run-task.usecase.ts`: cadena hipotética y afectados (D4, P1-2, P1-3, P1-4). Componer la cadena
   hipotética con `buildChain` (mismo universo, `openIds` vacío y el mismo `ctx` salvo `aiConsent`, que se supone dado:
   `excludeProviderIds` se conserva). Afectados = los de la hipotética sin salida válida **más** todo proveedor intentado
   o saltado en la cadena real; no cuentan los que no se intentaron porque la ejecución se canceló. Llamar a
@@ -154,7 +176,9 @@ implementador crea. Ninguna prueba llama a un proveedor real: `AI_CHAIN=mock` y 
   Falsación: quitar `excludeProviderIds` del `ctx` de la cadena hipotética y ver caer el quinto; restaurar. Llamar a
   `openConditions()` antes del bucle y ver caer «success path never calls openConditions»; restaurar. Adjuntar la
   condición también a `consent_required` y ver caer el último; restaurar.
-- [ ] 2.5c-ii [ai] `run-task.usecase.ts`: consentimiento y carreras (D4, N1, N2, N3). Verificar en
+
+  **Estado (2026-10-30):** hecha. Cadena hipotética y afectados en `run-task.usecase.ts` (`providerConditionOf`), con `openConditions()` solo en el camino que degrada con `providers_failed` o `no_providers`; los diez casos del enunciado en `run-task.usecase.spec.ts`. Falsaciones ejecutadas: quitar `excludeProviderIds` del `ctx` de la hipotética hizo caer «the hypothetical chain keeps excludeProviderIds»; llamar a `openConditions()` antes del bucle hizo caer «success path never calls openConditions»; adjuntar la condición también a `consent_required` hizo caer «quota_exceeded and consent_required never carry a provider condition» (y cuatro más); restaurado.
+- [x] 2.5c-ii [ai] `run-task.usecase.ts`: consentimiento y carreras (D4, N1, N2, N3). Verificar en
   `run-task.usecase.spec.ts`, con el breaker doble de la 2.5b que cambia de estado entre `openIds()` y `tryAcquire()`:
   - «open external circuit without consent gives no_providers with consent_missing» (la clase `rate_limited` del
     circuito no cuenta: N1)
@@ -165,13 +189,19 @@ implementador crea. Ninguna prueba llama a un proveedor real: `AI_CHAIN=mock` y 
 
   Falsación: dejar que la clase recordada de un excluido por consentimiento cuente y ver caer el primero; restaurar.
   Dejar que `consent_missing` gane con `providers_failed` y ver caer el último; restaurar.
-- [ ] 2.5d [ai] `embed-texts.usecase.ts` (N6): pasar la clase del `ProviderUnavailable` capturado
+
+  **Estado (2026-10-30):** hecha. Los cuatro casos del enunciado en `run-task.usecase.spec.ts`. Falsaciones ejecutadas: dejar que la clase recordada de un excluido por consentimiento cuente hizo caer «open external circuit without consent gives no_providers with consent_missing»; dejar que `consent_missing` gane con `providers_failed` hizo caer «a local 503 without consent gives providers_failed with unavailable»; restaurado.
+- [x] 2.5d [ai] `embed-texts.usecase.ts` (N6): pasar la clase del `ProviderUnavailable` capturado
   (`recordFailure(id, { kind })`); cualquier otro error, `unavailable`. Verificar en `embed-texts.usecase.spec.ts`:
   «an embedding 429 records a rate_limited failure in the breaker». Falsación: llamar a `recordFailure(id)` sin clase
   y ver caer el caso; restaurar.
-- [ ] 2.6 [ai] **No regresión del eval** (D9): no se toca prompt, modelo, fixture ni golden. Verificar:
+
+  **Estado (2026-10-30):** hecha. `embed-texts.usecase.ts` pasa la clase del `ProviderUnavailable` capturado; «an embedding 429 records a rate_limited failure in the breaker» en `embed-texts.usecase.spec.ts`. Falsación ejecutada: registrar con clase fija `unavailable` hizo caer el caso; restaurado.
+- [x] 2.6 [ai] **No regresión del eval** (D9): no se toca prompt, modelo, fixture ni golden. Verificar:
   `pnpm nx run ai:eval-ci` (o `pnpm nx run ai:eval --all --provider=mock`) **sin** `--update-baseline` sale con código
   0, y `git status --porcelain` sale vacío después.
+
+  **Estado (2026-10-30):** hecha. `pnpm nx run ai:eval-ci` sale con código 0 sin `--update-baseline`; `git status --porcelain` no muestra ningún cambio fuera de `libs/ai/src` (ningún prompt, fixture ni golden tocado). `pnpm nx run-many -t lint,typecheck,test -p ai --skip-nx-cache` en verde (84 ficheros, 953 tests).
 
 ## 3. API: errores del pegado (design D5)
 

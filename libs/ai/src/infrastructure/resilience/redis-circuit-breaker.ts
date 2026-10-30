@@ -1,4 +1,9 @@
-import type { CircuitBreaker } from '../../domain/ports/circuit-breaker.port';
+import type { ProviderFailureKind } from '../../domain/errors';
+import type {
+  CircuitBreaker,
+  ProviderFailure,
+} from '../../domain/ports/circuit-breaker.port';
+import { dominantFailureKind } from '../../domain/provider-condition';
 import type { Clock } from '../../domain/ports/clock.port';
 import {
   DEFAULT_FAILURE_THRESHOLD,
@@ -22,9 +27,27 @@ export function circuitProbeKey(providerId: string): string {
   return `${AI_CIRCUIT_KEY_PREFIX}${providerId}:probe`;
 }
 
+/**
+ * Estado compartido de un circuito. `failureKinds` va en paralelo a `failures` y `openKind` junto a `openedAt`
+ * (ADR-060 §3). Un JSON anterior sin esos campos se lee como `unavailable`.
+ */
 interface StoredCircuit {
   failures: number[];
+  failureKinds: ProviderFailureKind[];
   openedAt: number | null;
+  openKind: ProviderFailureKind;
+}
+
+const FAILURE_KINDS: readonly string[] = [
+  'rate_limited',
+  'rejected',
+  'unavailable',
+];
+
+function asKind(value: unknown): ProviderFailureKind {
+  return typeof value === 'string' && FAILURE_KINDS.includes(value)
+    ? (value as ProviderFailureKind)
+    : 'unavailable';
 }
 
 /**
@@ -80,7 +103,8 @@ export class RedisCircuitBreaker implements CircuitBreaker {
       for (const id of ids) {
         const circuit = await this.load(id);
         if (circuit === null || circuit.openedAt === null) continue;
-        const probeInFlight = (await this.client.exists(circuitProbeKey(id))) > 0;
+        const probeInFlight =
+          (await this.client.exists(circuitProbeKey(id))) > 0;
         if (!this.admitsProbe(circuit.openedAt, probeInFlight, now)) {
           open.add(id);
         }
@@ -88,6 +112,27 @@ export class RedisCircuitBreaker implements CircuitBreaker {
       return open;
     } catch {
       return null;
+    }
+  }
+
+  async openConditions(): Promise<ReadonlyMap<string, ProviderFailure>> {
+    try {
+      const ids = await this.client.smembers(AI_CIRCUIT_IDS_KEY);
+      const conditions = new Map<string, ProviderFailure>();
+      const now = this.clock.now();
+      for (const id of ids) {
+        const circuit = await this.load(id);
+        if (circuit === null || circuit.openedAt === null) continue;
+        const probeInFlight =
+          (await this.client.exists(circuitProbeKey(id))) > 0;
+        if (!this.admitsProbe(circuit.openedAt, probeInFlight, now)) {
+          conditions.set(id, { kind: circuit.openKind });
+        }
+      }
+      return conditions;
+    } catch {
+      // Falla abierta: sin clases, el degradado no lleva condición y dice lo de siempre.
+      return new Map();
     }
   }
 
@@ -124,12 +169,17 @@ export class RedisCircuitBreaker implements CircuitBreaker {
     }
   }
 
-  async recordFailure(providerId: string): Promise<void> {
+  async recordFailure(
+    providerId: string,
+    failure: ProviderFailure = { kind: 'unavailable' },
+  ): Promise<void> {
     try {
       const now = this.clock.now();
-      const circuit = (await this.load(providerId)) ?? {
+      const circuit: StoredCircuit = (await this.load(providerId)) ?? {
         failures: [],
+        failureKinds: [],
         openedAt: null,
+        openKind: 'unavailable',
       };
 
       if (circuit.openedAt !== null) {
@@ -137,18 +187,25 @@ export class RedisCircuitBreaker implements CircuitBreaker {
         const probeInFlight = (await this.client.exists(probeKey)) > 0;
         if (probeInFlight) {
           circuit.openedAt = now;
+          circuit.openKind = failure.kind;
           await this.client.del(probeKey);
           await this.save(providerId, circuit);
         }
         return;
       }
 
-      circuit.failures = circuit.failures.filter(
-        (at) => now - at < this.windowMs,
-      );
+      // La clase sigue a su instante: se poda y se vacía junto con `failures`.
+      const kept = circuit.failures
+        .map((at, index) => ({ at, kind: circuit.failureKinds[index] }))
+        .filter(({ at }) => now - at < this.windowMs);
+      circuit.failures = kept.map(({ at }) => at);
+      circuit.failureKinds = kept.map(({ kind }) => kind ?? 'unavailable');
       circuit.failures.push(now);
+      circuit.failureKinds.push(failure.kind);
       if (circuit.failures.length >= this.failureThreshold) {
+        circuit.openKind = dominantFailureKind(circuit.failureKinds);
         circuit.failures = [];
+        circuit.failureKinds = [];
         circuit.openedAt = now;
         await this.client.del(circuitProbeKey(providerId));
       }
@@ -173,9 +230,7 @@ export class RedisCircuitBreaker implements CircuitBreaker {
     probeInFlight: boolean,
     now: number,
   ): boolean {
-    return (
-      now - openedAt >= this.halfOpenAfterMs && !probeInFlight
-    );
+    return now - openedAt >= this.halfOpenAfterMs && !probeInFlight;
   }
 
   private async load(providerId: string): Promise<StoredCircuit | null> {
@@ -189,9 +244,33 @@ export class RedisCircuitBreaker implements CircuitBreaker {
     ) {
       return null;
     }
-    const circuit = parsed as StoredCircuit;
+    const circuit = parsed as Partial<StoredCircuit> & { failures: unknown[] };
+    // Las clases siguen a `failures` posición por posición. Si faltan, se completan con `unavailable` desde el
+    // principio (las guardadas quedan con los errores más recientes); si sobran, valen las más recientes.
+    const storedKinds = Array.isArray(circuit.failureKinds)
+      ? (circuit.failureKinds as unknown[]).map(asKind)
+      : [];
+    const total = circuit.failures.length;
+    const aligned: ProviderFailureKind[] =
+      storedKinds.length >= total
+        ? storedKinds.slice(storedKinds.length - total)
+        : [
+            ...Array<ProviderFailureKind>(total - storedKinds.length).fill(
+              'unavailable',
+            ),
+            ...storedKinds,
+          ];
+    const failures: number[] = [];
+    const failureKinds: ProviderFailureKind[] = [];
+    circuit.failures.forEach((at, index) => {
+      if (typeof at !== 'number') return;
+      failures.push(at);
+      failureKinds.push(aligned[index] ?? 'unavailable');
+    });
     return {
-      failures: circuit.failures.filter((at) => typeof at === 'number'),
+      failures,
+      failureKinds,
+      openKind: asKind(circuit.openKind),
       openedAt:
         typeof circuit.openedAt === 'number' || circuit.openedAt === null
           ? circuit.openedAt
@@ -203,8 +282,7 @@ export class RedisCircuitBreaker implements CircuitBreaker {
     providerId: string,
     circuit: StoredCircuit,
   ): Promise<void> {
-    const empty =
-      circuit.openedAt === null && circuit.failures.length === 0;
+    const empty = circuit.openedAt === null && circuit.failures.length === 0;
     if (empty) {
       await this.clear(providerId);
       return;

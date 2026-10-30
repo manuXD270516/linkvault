@@ -1,4 +1,9 @@
-import type { CircuitBreaker } from '../../domain/ports/circuit-breaker.port';
+import type { ProviderFailureKind } from '../../domain/errors';
+import type {
+  CircuitBreaker,
+  ProviderFailure,
+} from '../../domain/ports/circuit-breaker.port';
+import { dominantFailureKind } from '../../domain/provider-condition';
 import type { Clock } from '../../domain/ports/clock.port';
 
 // Circuit breaker en memoria por proceso y por proveedor (D10 de ai-gateway-core, ADR-018 §7).
@@ -22,6 +27,10 @@ export const DEFAULT_HALF_OPEN_AFTER_MS = 30_000;
 interface ProviderCircuit {
   /** Marcas de error (ms) dentro de la ventana, solo mientras está cerrado. */
   failures: number[];
+  /** Clase de cada error de `failures`, posición por posición. */
+  failureKinds: ProviderFailureKind[];
+  /** Clase dominante de la ventana al abrir (o la de la prueba fallida); solo con `openedAt` no nulo. */
+  openKind: ProviderFailureKind;
   /** Instante de apertura (ms); `null` si está cerrado. */
   openedAt: number | null;
   /** Hay un permiso de prueba concedido cuyo resultado aún no se ha registrado. */
@@ -74,7 +83,10 @@ export class InMemoryCircuitBreaker implements CircuitBreaker {
     return Promise.resolve();
   }
 
-  recordFailure(providerId: string): Promise<void> {
+  recordFailure(
+    providerId: string,
+    failure: ProviderFailure = { kind: 'unavailable' },
+  ): Promise<void> {
     const now = this.clock.now();
     const circuit = this.circuitOf(providerId);
 
@@ -82,17 +94,24 @@ export class InMemoryCircuitBreaker implements CircuitBreaker {
       // Solo la prueba en half-open reabre; un error tardío de una petición previa a la apertura no alarga la espera.
       if (circuit.probeInFlight) {
         circuit.openedAt = now;
+        circuit.openKind = failure.kind;
         circuit.probeInFlight = false;
       }
       return Promise.resolve();
     }
 
-    circuit.failures = circuit.failures.filter(
-      (at) => now - at < this.windowMs,
-    );
+    // La clase sigue a su instante: los que salen de la ventana se descartan juntos.
+    const kept = circuit.failures
+      .map((at, index) => ({ at, kind: circuit.failureKinds[index] }))
+      .filter(({ at }) => now - at < this.windowMs);
+    circuit.failures = kept.map(({ at }) => at);
+    circuit.failureKinds = kept.map(({ kind }) => kind ?? 'unavailable');
     circuit.failures.push(now);
+    circuit.failureKinds.push(failure.kind);
     if (circuit.failures.length >= this.failureThreshold) {
+      circuit.openKind = dominantFailureKind(circuit.failureKinds);
       circuit.failures = [];
+      circuit.failureKinds = [];
       circuit.openedAt = now;
       circuit.probeInFlight = false;
     }
@@ -107,6 +126,17 @@ export class InMemoryCircuitBreaker implements CircuitBreaker {
     // Devuelve el permiso sin reabrir ni contar un error: el circuito sigue en half-open.
     circuit.probeInFlight = false;
     return Promise.resolve();
+  }
+
+  openConditions(): Promise<ReadonlyMap<string, ProviderFailure>> {
+    const now = this.clock.now();
+    const conditions = new Map<string, ProviderFailure>();
+    for (const [id, circuit] of this.circuits) {
+      if (circuit.openedAt !== null && !this.admitsProbe(circuit, now)) {
+        conditions.set(id, { kind: circuit.openKind });
+      }
+    }
+    return Promise.resolve(conditions);
   }
 
   private computeOpenIds(): ReadonlySet<string> {
@@ -131,7 +161,13 @@ export class InMemoryCircuitBreaker implements CircuitBreaker {
   private circuitOf(providerId: string): ProviderCircuit {
     let circuit = this.circuits.get(providerId);
     if (circuit === undefined) {
-      circuit = { failures: [], openedAt: null, probeInFlight: false };
+      circuit = {
+        failures: [],
+        failureKinds: [],
+        openKind: 'unavailable',
+        openedAt: null,
+        probeInFlight: false,
+      };
       this.circuits.set(providerId, circuit);
     }
     return circuit;

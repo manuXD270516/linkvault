@@ -177,4 +177,29 @@ describe('embedTexts', () => {
     });
     expect(result.status).toBe('success');
   });
+
+  it('an embedding 429 records a rate_limited failure in the breaker', async () => {
+    const limited: EmbeddingProvider = {
+      id: 'ollama',
+      capabilities: {
+        embeddings: true,
+        dimensions: 4,
+        external: false,
+        costPer1kTokens: 0,
+      },
+      embed: async () => {
+        throw new ProviderUnavailable('ollama', 429);
+      },
+      healthy: () => Promise.resolve(true),
+    };
+    const { embedTexts, breaker } = harness([limited]);
+
+    await embedTexts.execute(['texto'], {
+      userId: 'ana',
+      aiConsent: { externalProviders: false },
+    });
+
+    expect(breaker.failures).toEqual(['ollama']);
+    expect(breaker.failureKinds).toEqual([{ kind: 'rate_limited' }]);
+  });
 });

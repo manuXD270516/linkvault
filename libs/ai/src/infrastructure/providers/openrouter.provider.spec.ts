@@ -395,4 +395,63 @@ describe('OpenRouterProvider', () => {
     servers.splice(servers.indexOf(server), 1);
     await expect(provider.healthy()).resolves.toBe(false);
   });
+
+  // Clase del fallo (paste-fallback-honest D1, ADR-060 §2). Documentación de errores de OpenRouter, consultada el
+  // 2026-10-30: https://openrouter.ai/docs/api-reference/errors
+  //  - Lista, en el orden estándar de la tabla (los números no constan en el texto de la página): petición inválida,
+  //    credenciales inválidas (401), créditos insuficientes (402), prohibido (403), plazo, límite de ritmo (429, con
+  //    `Retry-After`), modelo caído y «sin proveedor disponible». 401, 402 y 403 son `rejected`; 429, `rate_limited`.
+  //  - PENDIENTE: la página NO confirma que «No endpoints found matching your data policy» llegue como 404. Solo
+  //    documenta «There is no available model provider that meets your routing requirements» (su código numérico no
+  //    consta en el texto de la página). Si la forma real difiere (p. ej. 503), el resultado es `unavailable`, es
+  //    decir, el mensaje de antes. Lo confirma la tarea 8.1 de 35b (staging-host), con una respuesta real.
+  it('429 throws rate_limited without the body', async () => {
+    const seeded = `${SYSTEM_PROMPT} ${USER_PROMPT}`;
+    const server = await startServer((_req, res) =>
+      json(res, 429, {
+        error: {
+          code: 429,
+          message: `Rate limit exceeded for ${seeded}`,
+          metadata: { raw: seeded },
+        },
+      }),
+    );
+    const provider = new OpenRouterProvider(
+      options({ baseUrl: server.baseUrl }),
+    );
+
+    const error = await provider
+      .complete({ system: SYSTEM_PROMPT, user: USER_PROMPT })
+      .catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(ProviderUnavailable);
+    expect(error).toMatchObject({ httpStatus: 429, kind: 'rate_limited' });
+    const dump = `${String(error)} ${inspect(error, { depth: 10 })}`;
+    expect(dump).not.toContain('Rate limit exceeded');
+    expect(dump).not.toContain(USER_PROMPT);
+    expect(dump).not.toContain(API_KEY);
+    expect((error as Error).cause).toBeUndefined();
+  });
+
+  it('404 no endpoints throws rejected', async () => {
+    const server = await startServer((_req, res) =>
+      json(res, 404, {
+        error: {
+          code: 404,
+          message: 'No endpoints found matching your data policy',
+        },
+      }),
+    );
+    const provider = new OpenRouterProvider(
+      options({ baseUrl: server.baseUrl }),
+    );
+
+    const error = await provider
+      .complete({ system: SYSTEM_PROMPT, user: USER_PROMPT })
+      .catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(ProviderUnavailable);
+    expect(error).toMatchObject({ httpStatus: 404, kind: 'rejected' });
+    expect(String(error)).not.toContain('data policy');
+  });
 });

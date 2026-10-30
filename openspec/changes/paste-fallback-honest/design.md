@@ -574,3 +574,13 @@ Cambios posteriores a la aprobación:
 | 0.3 de `web-error-copy-coverage` (C3) | critic de `web-error-copy-coverage`, con la conformidad del owner del 2026-10-29 | Aceptado: la 4.1 añade las tres entradas `local` (`ai_consent_required`, `ai_capacity_exhausted`, `extraction_disabled`) a `API_ERROR_COPY` con `features/links/paste-description.dialog.ts`, si `web-error-copy-coverage` ya está en `main`; si no, lo hace ese change (ADR-062 §3) | El que llega segundo completa la tabla; si no, el `Record` tipado rompe `web:typecheck` |
 | C4 de `web-error-copy-coverage` | critic de `web-error-copy-coverage`, con la conformidad del owner del 2026-10-29 | Aceptado: antes de fusionar, actualizar la cabeza del PR y esperar CI verde si `main` cambió `apps/web/src/locale/messages.xlf`, `libs/shared/src/schemas/auth.schema.ts` o `apps/web/src/app/shared/ui/api-error-copy.ts` desde la última corrida (4.1 y 6.3) | Dos PR verdes por separado pueden dejar `main` en rojo (ADR-050 §5) |
 | Q7 | owner, 2026-10-29 | Registrado: fila candidata `paste-consent-scope` en `openspec-changes.yaml`, sin directorio | Decisión del owner; el alcance de este change no cambia |
+
+## Hallazgos de la implementación (2026-10-30)
+
+- **El `404` de «no endpoints» sigue sin confirmar (tarea 2.4).** La documentación de errores de OpenRouter
+  (https://openrouter.ai/docs/api-reference/errors, consultada el 2026-10-30) confirma el `429` (límite de ritmo, con
+  `Retry-After`) y los `401`, `402` y `403`, pero no dice que «No endpoints found matching your data policy» llegue como
+  `404`: lista «There is no available model provider that meets your routing requirements», sin código numérico en el
+  texto de la página. Si en la práctica llega como `503`, la clase es `unavailable` y el resultado es el de antes
+  (`extraction_unavailable`), nunca algo peor (ver Riesgos). Queda pendiente de la 8.1 de 35b, como ya dice ADR-060
+  §Consecuencias.

@@ -8,10 +8,7 @@ import type { AddressInfo } from 'node:net';
 import { inspect } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ProviderUnavailable } from '../../domain/errors';
-import {
-  OpenAIProvider,
-  type OpenAIProviderOptions,
-} from './openai.provider';
+import { OpenAIProvider, type OpenAIProviderOptions } from './openai.provider';
 
 const API_KEY = 'sk-openai-test-credential-9f8e7d6c5b4a';
 const SYSTEM_PROMPT = 'You classify professional skills.';
@@ -159,5 +156,33 @@ describe('OpenAIProvider', () => {
     expect(error).toBeInstanceOf(ProviderUnavailable);
     expect((error as ProviderUnavailable).httpStatus).toBe(429);
     expect(inspect(error, { depth: 10 })).not.toContain(API_KEY);
+  });
+
+  it('a 429 answer throws rate_limited', async () => {
+    const server = await startServer((_req, res) =>
+      json(res, 429, { error: { message: 'slow down' } }),
+    );
+    const provider = new OpenAIProvider(options({ baseUrl: server.baseUrl }));
+
+    const error = await provider
+      .complete({ system: SYSTEM_PROMPT, user: USER_PROMPT })
+      .catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(ProviderUnavailable);
+    expect((error as ProviderUnavailable).kind).toBe('rate_limited');
+  });
+
+  it('a 404 answer throws rejected', async () => {
+    const server = await startServer((_req, res) =>
+      json(res, 404, { error: { message: 'no such model' } }),
+    );
+    const provider = new OpenAIProvider(options({ baseUrl: server.baseUrl }));
+
+    const error = await provider
+      .complete({ system: SYSTEM_PROMPT, user: USER_PROMPT })
+      .catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(ProviderUnavailable);
+    expect((error as ProviderUnavailable).kind).toBe('rejected');
   });
 });

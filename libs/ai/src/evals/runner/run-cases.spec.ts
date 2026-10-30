@@ -254,6 +254,7 @@ describe('runCases with a failing provider', () => {
       expect(result.result).toEqual({
         status: 'degraded',
         reason: 'providers_failed',
+        providerCondition: { kind: 'unavailable' },
       });
       expect(result.usage.outcomes).toEqual(['provider_error', 'degraded']);
     }

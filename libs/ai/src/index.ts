@@ -3,9 +3,13 @@ export type {
   AiResult,
   AiSuccess,
   DegradedReason,
+  ProviderCondition,
 } from './domain/ai-result';
 export type { AiLogFields, AiLogger } from './domain/ports/ai-logger.port';
-export type { CircuitBreaker } from './domain/ports/circuit-breaker.port';
+export type {
+  CircuitBreaker,
+  ProviderFailure,
+} from './domain/ports/circuit-breaker.port';
 export type { Clock } from './domain/ports/clock.port';
 export type {
   EmbeddingCapabilities,
@@ -56,6 +60,7 @@ export type {
   DataSensitivity,
   Rng,
 } from './domain/task';
+export type { ProviderFailureKind } from './domain/errors';
 export {
   AiProgrammingError,
   FixtureMissing,

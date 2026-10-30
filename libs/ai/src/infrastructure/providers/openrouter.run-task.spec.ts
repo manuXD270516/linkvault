@@ -251,6 +251,17 @@ describe('no secrets or prompts in logs, errors, results or ledger', () => {
     };
   }
 
+  const CONDITION_BY_STATUS: Record<
+    number,
+    'rejected' | 'rate_limited' | 'unavailable'
+  > = {
+    401: 'rejected',
+    404: 'rejected',
+    429: 'rate_limited',
+    500: 'unavailable',
+    200: 'unavailable',
+  };
+
   it.each([401, 404, 429, 500, 200])(
     'Log de una petición a OpenRouter (HTTP %i con un cuerpo que repite prompt y credencial)',
     async (status) => {
@@ -268,6 +279,7 @@ describe('no secrets or prompts in logs, errors, results or ledger', () => {
       expect(result).toEqual({
         status: 'degraded',
         reason: 'providers_failed',
+        providerCondition: { kind: CONDITION_BY_STATUS[status] },
       });
       // El logger en memoria captura todos los niveles, incluido debug; hubo al menos el aviso del proveedor.
       expect(logger.warnings.map((w) => w.fields)).toContainEqual(

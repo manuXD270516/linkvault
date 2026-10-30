@@ -23,11 +23,35 @@ export class SchemaViolation extends Error {
 }
 
 /**
+ * Clase del fallo de un proveedor (ADR-060 §2): `rate_limited` (429), `rejected` (401, 402, 403, 404: con esta
+ * credencial, modelo o política de datos el proveedor no va a atender) y `unavailable` (el resto, o sin código).
+ */
+export type ProviderFailureKind = 'rate_limited' | 'rejected' | 'unavailable';
+
+/** Única regla que deriva la clase del código HTTP; no mira ningún cuerpo (ADR-018 §12). */
+export function providerFailureKindOf(
+  httpStatus: number | undefined,
+): ProviderFailureKind {
+  if (httpStatus === 429) return 'rate_limited';
+  if (
+    httpStatus === 401 ||
+    httpStatus === 402 ||
+    httpStatus === 403 ||
+    httpStatus === 404
+  ) {
+    return 'rejected';
+  }
+  return 'unavailable';
+}
+
+/**
  * El proveedor falló, expiró o tiene el circuit breaker abierto. `httpStatus` distingue una caída de un rechazo
- * (D6 de ai-gateway-core). Nunca lleva el cuerpo de la respuesta, la petición, cabeceras ni credenciales.
+ * (D6 de ai-gateway-core) y de él se deriva `kind` (D1 de paste-fallback-honest). Nunca lleva el cuerpo de la
+ * respuesta, la petición, cabeceras ni credenciales.
  */
 export class ProviderUnavailable extends Error {
   override readonly name = 'ProviderUnavailable';
+  readonly kind: ProviderFailureKind;
 
   constructor(
     readonly providerId: string,
@@ -38,6 +62,7 @@ export class ProviderUnavailable extends Error {
         ? `Provider "${providerId}" is unavailable`
         : `Provider "${providerId}" is unavailable (HTTP ${httpStatus})`,
     );
+    this.kind = providerFailureKindOf(httpStatus);
   }
 }
 

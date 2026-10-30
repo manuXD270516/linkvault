@@ -1,5 +1,8 @@
 import type { AiLogFields, AiLogger } from '../../domain/ports/ai-logger.port';
-import type { CircuitBreaker } from '../../domain/ports/circuit-breaker.port';
+import type {
+  CircuitBreaker,
+  ProviderFailure,
+} from '../../domain/ports/circuit-breaker.port';
 import type {
   QuotaDecision,
   QuotaPolicy,
@@ -81,6 +84,10 @@ export class NullCircuitBreaker implements CircuitBreaker {
 
   release(): Promise<void> {
     return Promise.resolve();
+  }
+
+  openConditions(): Promise<ReadonlyMap<string, ProviderFailure>> {
+    return Promise.resolve(new Map());
   }
 }
 

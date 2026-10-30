@@ -163,4 +163,36 @@ describe('AnthropicProvider', () => {
     expect(error).toBeInstanceOf(ProviderUnavailable);
     expect(inspect(error, { depth: 10 })).not.toContain(API_KEY);
   });
+
+  it('a 429 answer throws rate_limited', async () => {
+    const server = await startServer((_req, res) =>
+      json(res, 429, { error: { message: 'slow down' } }),
+    );
+    const provider = new AnthropicProvider(
+      options({ baseUrl: server.baseUrl }),
+    );
+
+    const error = await provider
+      .complete({ system: SYSTEM_PROMPT, user: USER_PROMPT })
+      .catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(ProviderUnavailable);
+    expect((error as ProviderUnavailable).kind).toBe('rate_limited');
+  });
+
+  it('a 404 answer throws rejected', async () => {
+    const server = await startServer((_req, res) =>
+      json(res, 404, { error: { message: 'no such model' } }),
+    );
+    const provider = new AnthropicProvider(
+      options({ baseUrl: server.baseUrl }),
+    );
+
+    const error = await provider
+      .complete({ system: SYSTEM_PROMPT, user: USER_PROMPT })
+      .catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(ProviderUnavailable);
+    expect((error as ProviderUnavailable).kind).toBe('rejected');
+  });
 });

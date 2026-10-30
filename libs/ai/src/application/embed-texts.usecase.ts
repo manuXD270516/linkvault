@@ -170,13 +170,12 @@ export class EmbedTexts {
     | { kind: 'skipped' }
     | { kind: 'cancelled' }
   > {
-    const outbound =
-      provider.capabilities.external
-        ? this.redactor.redact(canonical, {
-            redactName: ctx.redactName,
-            personName: ctx.personName,
-          }).value
-        : canonical;
+    const outbound = provider.capabilities.external
+      ? this.redactor.redact(canonical, {
+          redactName: ctx.redactName,
+          personName: ctx.personName,
+        }).value
+      : canonical;
 
     let acquired = false;
     let startedAt = 0;
@@ -193,15 +192,19 @@ export class EmbedTexts {
       acquired = true;
       startedAt = this.deps.clock.now();
 
-      const result = await this.embedWithDeadline(provider, {
-        texts: outbound,
-        signal: undefined,
-        trace: {
-          operation: EMBED_OPERATION,
-          key,
-          ...(provider.id === 'mock' ? { texts: canonical } : {}),
+      const result = await this.embedWithDeadline(
+        provider,
+        {
+          texts: outbound,
+          signal: undefined,
+          trace: {
+            operation: EMBED_OPERATION,
+            key,
+            ...(provider.id === 'mock' ? { texts: canonical } : {}),
+          },
         },
-      }, ctx.signal);
+        ctx.signal,
+      );
 
       await this.deps.breaker.recordSuccess(provider.id);
       this.record(ctx, key, 'success', {
@@ -217,7 +220,10 @@ export class EmbedTexts {
         return { kind: 'cancelled' };
       }
       if (acquired) {
-        await this.deps.breaker.recordFailure(provider.id);
+        await this.deps.breaker.recordFailure(provider.id, {
+          kind:
+            error instanceof ProviderUnavailable ? error.kind : 'unavailable',
+        });
         this.record(ctx, key, 'provider_error', {
           provider,
           model: null,
@@ -242,16 +248,13 @@ export class EmbedTexts {
     callerSignal: AbortSignal | undefined,
   ): Promise<EmbedResult> {
     const signal = AbortSignal.any(
-      [
-        AbortSignal.timeout(this.timeoutFor(provider.id)),
-        callerSignal,
-      ].filter((c): c is AbortSignal => c !== undefined),
+      [AbortSignal.timeout(this.timeoutFor(provider.id)), callerSignal].filter(
+        (c): c is AbortSignal => c !== undefined,
+      ),
     );
     if (signal.aborted) {
       return Promise.reject(
-        signal.reason instanceof Error
-          ? signal.reason
-          : new Error('aborted'),
+        signal.reason instanceof Error ? signal.reason : new Error('aborted'),
       );
     }
     return provider.embed({ ...request, signal });

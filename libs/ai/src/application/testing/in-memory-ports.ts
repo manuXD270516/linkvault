@@ -1,5 +1,8 @@
 import type { AiLogFields, AiLogger } from '../../domain/ports/ai-logger.port';
-import type { CircuitBreaker } from '../../domain/ports/circuit-breaker.port';
+import type {
+  CircuitBreaker,
+  ProviderFailure,
+} from '../../domain/ports/circuit-breaker.port';
 import type { Clock } from '../../domain/ports/clock.port';
 import type {
   PromptRef,
@@ -128,9 +131,20 @@ export class RecordingNullCircuitBreaker implements CircuitBreaker {
     return Promise.resolve();
   }
 
-  recordFailure(providerId: string): Promise<void> {
+  /** Clases registradas, en paralelo a `failures`. */
+  readonly failureKinds: ProviderFailure[] = [];
+
+  recordFailure(
+    providerId: string,
+    failure: ProviderFailure = { kind: 'unavailable' },
+  ): Promise<void> {
     this.failures.push(providerId);
+    this.failureKinds.push(failure);
     return Promise.resolve();
+  }
+
+  openConditions(): Promise<ReadonlyMap<string, ProviderFailure>> {
+    return Promise.resolve(new Map());
   }
 
   readonly released: string[] = [];

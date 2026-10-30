@@ -41,6 +41,9 @@ class FakeRedis implements CircuitBreakerRedisClient {
     return this.liveString(key)?.value ?? null;
   }
 
+  /** Cada `set` recibido, para comprobar que solo la clave del permiso lleva caducidad. */
+  readonly setCalls: { key: string; px: number | undefined }[] = [];
+
   async set(
     key: string,
     value: string,
@@ -48,6 +51,7 @@ class FakeRedis implements CircuitBreakerRedisClient {
     ms?: number,
     condition?: 'NX',
   ): Promise<'OK' | null> {
+    this.setCalls.push({ key, px: mode === 'PX' ? ms : undefined });
     if (condition === 'NX' && this.liveString(key) !== null) {
       return null;
     }
@@ -315,5 +319,223 @@ describe('RedisCircuitBreaker', () => {
     // openIds falla abierto: conjunto vacío para no bloquear runTask.
     redis.failNext = true;
     expect(await breaker.openIds()).toEqual(new Set());
+  });
+
+  it('five 429 open the circuit like any failure', async () => {
+    const clock = new FakeClock();
+    const breaker = new RedisCircuitBreaker(new FakeRedis(clock), clock);
+    const rateLimited = { kind: 'rate_limited' } as const;
+
+    for (let i = 0; i < 4; i++)
+      await breaker.recordFailure('ollama', rateLimited);
+    expect((await breaker.openIds()).size).toBe(0);
+    await breaker.recordFailure('ollama', rateLimited);
+
+    expect(await breaker.openIds()).toEqual(new Set(['ollama']));
+    expect((await breaker.openConditions()).get('ollama')).toEqual(rateLimited);
+    clock.advance(30_000);
+    expect(await breaker.tryAcquire('ollama')).toBe(true);
+  });
+
+  it('remembers the dominant kind of the window (shared between instances)', async () => {
+    const clock = new FakeClock();
+    const breaker = new RedisCircuitBreaker(new FakeRedis(clock), clock);
+
+    await breaker.recordFailure('ollama', { kind: 'unavailable' });
+    for (let i = 0; i < 4; i++) {
+      await breaker.recordFailure('ollama', { kind: 'rate_limited' });
+    }
+
+    expect((await breaker.openConditions()).get('ollama')).toEqual({
+      kind: 'unavailable',
+    });
+  });
+
+  it('a failure outside the window does not count for the kind', async () => {
+    const clock = new FakeClock();
+    const breaker = new RedisCircuitBreaker(new FakeRedis(clock), clock);
+
+    await breaker.recordFailure('ollama', { kind: 'unavailable' });
+    clock.advance(61_000);
+    for (let i = 0; i < 5; i++) {
+      await breaker.recordFailure('ollama', { kind: 'rate_limited' });
+    }
+
+    expect((await breaker.openConditions()).get('ollama')).toEqual({
+      kind: 'rate_limited',
+    });
+  });
+
+  it('a failed half-open probe remembers the probe kind', async () => {
+    const clock = new FakeClock();
+    const breaker = new RedisCircuitBreaker(new FakeRedis(clock), clock);
+    for (let i = 0; i < 5; i++) {
+      await breaker.recordFailure('ollama', { kind: 'unavailable' });
+    }
+    clock.advance(30_000);
+
+    expect(await breaker.tryAcquire('ollama')).toBe(true);
+    await breaker.recordFailure('ollama', { kind: 'rejected' });
+
+    expect((await breaker.openConditions()).get('ollama')).toEqual({
+      kind: 'rejected',
+    });
+  });
+
+  it('recordSuccess on an open circuit forgets the remembered kind', async () => {
+    const clock = new FakeClock();
+    const breaker = new RedisCircuitBreaker(new FakeRedis(clock), clock);
+    for (let i = 0; i < 5; i++) {
+      await breaker.recordFailure('ollama', { kind: 'rejected' });
+    }
+    clock.advance(30_000);
+    expect(await breaker.tryAcquire('ollama')).toBe(true);
+    await breaker.recordSuccess('ollama');
+
+    expect((await breaker.openConditions()).size).toBe(0);
+    // Cerrado con la ventana vacía: 4 errores de otra clase no abren, y al quinto la clase es la nueva.
+    for (let i = 0; i < 4; i++) {
+      await breaker.recordFailure('ollama', { kind: 'rate_limited' });
+    }
+    expect((await breaker.openIds()).size).toBe(0);
+    await breaker.recordFailure('ollama', { kind: 'rate_limited' });
+    expect((await breaker.openConditions()).get('ollama')).toEqual({
+      kind: 'rate_limited',
+    });
+  });
+
+  it('a success on a closed circuit keeps the failure window', async () => {
+    const clock = new FakeClock();
+    const breaker = new RedisCircuitBreaker(new FakeRedis(clock), clock);
+
+    for (let i = 0; i < 4; i++) await breaker.recordFailure('ollama');
+    await breaker.recordSuccess('ollama');
+    await breaker.recordFailure('ollama');
+
+    expect(await breaker.openIds()).toEqual(new Set(['ollama']));
+  });
+
+  it('a closed circuit has no condition', async () => {
+    const clock = new FakeClock();
+    const breaker = new RedisCircuitBreaker(new FakeRedis(clock), clock);
+
+    for (let i = 0; i < 4; i++) {
+      await breaker.recordFailure('ollama', { kind: 'rate_limited' });
+    }
+
+    expect((await breaker.openConditions()).size).toBe(0);
+  });
+
+  it('openConditions returns the kind of each open circuit', async () => {
+    const clock = new FakeClock();
+    const breaker = new RedisCircuitBreaker(new FakeRedis(clock), clock);
+    for (let i = 0; i < 5; i++) {
+      await breaker.recordFailure('ollama', { kind: 'rate_limited' });
+      await breaker.recordFailure('openrouter', { kind: 'rejected' });
+    }
+    for (let i = 0; i < 2; i++) await breaker.recordFailure('other');
+
+    expect(await breaker.openConditions()).toEqual(
+      new Map([
+        ['ollama', { kind: 'rate_limited' }],
+        ['openrouter', { kind: 'rejected' }],
+      ]),
+    );
+    // Misma regla que snapshotOpenIds: con el permiso de prueba tomado sigue contando; sin tomarlo y vencido, no.
+    clock.advance(30_000);
+    expect((await breaker.openConditions()).size).toBe(0);
+    expect(await breaker.tryAcquire('ollama')).toBe(true);
+    expect((await breaker.openConditions()).get('ollama')).toEqual({
+      kind: 'rate_limited',
+    });
+  });
+
+  it('remembers the dominant kind across instances sharing the store', async () => {
+    const clock = new FakeClock();
+    const redis = new FakeRedis(clock);
+    const writer = new RedisCircuitBreaker(redis, clock);
+    const reader = new RedisCircuitBreaker(redis, clock);
+
+    await writer.recordFailure('ollama', { kind: 'unavailable' });
+    for (let i = 0; i < 4; i++) {
+      await new RedisCircuitBreaker(redis, clock).recordFailure('ollama', {
+        kind: 'rate_limited',
+      });
+    }
+
+    expect((await reader.openConditions()).get('ollama')).toEqual({
+      kind: 'unavailable',
+    });
+  });
+
+  it('a stored circuit without kinds reads as unavailable', async () => {
+    const clock = new FakeClock();
+    const redis = new FakeRedis(clock);
+    const breaker = new RedisCircuitBreaker(redis, clock);
+    await redis.set(
+      circuitStateKey('ollama'),
+      JSON.stringify({ failures: [], openedAt: clock.now() }),
+    );
+    await redis.sadd(AI_CIRCUIT_IDS_KEY, 'ollama');
+
+    expect((await breaker.openConditions()).get('ollama')).toEqual({
+      kind: 'unavailable',
+    });
+  });
+
+  it('kinds shorter than failures are padded as unavailable', async () => {
+    const clock = new FakeClock();
+    const redis = new FakeRedis(clock);
+    const breaker = new RedisCircuitBreaker(redis, clock);
+    const t0 = clock.now();
+    await redis.set(
+      circuitStateKey('ollama'),
+      JSON.stringify({
+        failures: [t0 - 50_000, t0 - 45_000, t0 - 30_000, t0 - 25_000],
+        failureKinds: ['rate_limited', 'rate_limited'],
+        openedAt: null,
+      }),
+    );
+    await redis.sadd(AI_CIRCUIT_IDS_KEY, 'ollama');
+
+    // Salen de la ventana los dos más antiguos (los completados con `unavailable`).
+    clock.advance(20_000);
+    for (let i = 0; i < 3; i++) {
+      await breaker.recordFailure('ollama', { kind: 'rejected' });
+    }
+
+    expect((await breaker.openConditions()).get('ollama')).toEqual({
+      kind: 'rate_limited',
+    });
+  });
+
+  it('no new key gets an expiry', async () => {
+    const clock = new FakeClock();
+    const redis = new FakeRedis(clock);
+    const breaker = new RedisCircuitBreaker(redis, clock);
+    for (let i = 0; i < 5; i++) {
+      await breaker.recordFailure('ollama', { kind: 'rate_limited' });
+    }
+    clock.advance(30_000);
+    await breaker.tryAcquire('ollama');
+    await breaker.recordFailure('ollama', { kind: 'rejected' });
+    await breaker.openConditions();
+
+    const expiring = redis.setCalls.filter((call) => call.px !== undefined);
+    expect(expiring.length).toBeGreaterThan(0);
+    expect(
+      expiring.every((call) => call.key === circuitProbeKey('ollama')),
+    ).toBe(true);
+  });
+
+  it('openConditions returns an empty map when Redis fails', async () => {
+    const clock = new FakeClock();
+    const redis = new FakeRedis(clock);
+    const breaker = new RedisCircuitBreaker(redis, clock);
+    for (let i = 0; i < 5; i++) await breaker.recordFailure('ollama');
+
+    redis.failNext = true;
+
+    expect(await breaker.openConditions()).toEqual(new Map());
   });
 });

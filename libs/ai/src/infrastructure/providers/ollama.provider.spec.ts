@@ -253,4 +253,40 @@ describe('OllamaProvider', () => {
 
     await expect(provider.healthy()).resolves.toBe(false);
   });
+
+  it('a 429 answer throws rate_limited', async () => {
+    const server = await startServer((_req, res) =>
+      json(res, 429, { error: 'busy' }),
+    );
+    const provider = new OllamaProvider({
+      baseUrl: server.baseUrl,
+      model: 'qwen2.5:7b',
+      maxContextTokens: 8192,
+    });
+
+    const error = await provider
+      .complete({ system: 's', user: 'u' })
+      .catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(ProviderUnavailable);
+    expect((error as ProviderUnavailable).kind).toBe('rate_limited');
+  });
+
+  it('a 404 answer throws rejected', async () => {
+    const server = await startServer((_req, res) =>
+      json(res, 404, { error: 'model not found' }),
+    );
+    const provider = new OllamaProvider({
+      baseUrl: server.baseUrl,
+      model: 'qwen2.5:7b',
+      maxContextTokens: 8192,
+    });
+
+    const error = await provider
+      .complete({ system: 's', user: 'u' })
+      .catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(ProviderUnavailable);
+    expect((error as ProviderUnavailable).kind).toBe('rejected');
+  });
 });

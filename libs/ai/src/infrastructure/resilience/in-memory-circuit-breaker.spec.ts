@@ -243,4 +243,133 @@ describe('InMemoryCircuitBreaker', () => {
     expect(await breaker.openIds()).toEqual(new Set(['ollama']));
     expect(await breaker.tryAcquire('openrouter')).toBe(true);
   });
+
+  it('five 429 open the circuit like any failure', async () => {
+    const clock = new FakeClock();
+    const breaker = new InMemoryCircuitBreaker(clock);
+    const rateLimited = { kind: 'rate_limited' } as const;
+
+    for (let i = 0; i < 4; i++)
+      await breaker.recordFailure('ollama', rateLimited);
+    expect((await breaker.openIds()).size).toBe(0);
+    await breaker.recordFailure('ollama', rateLimited);
+
+    expect(await breaker.openIds()).toEqual(new Set(['ollama']));
+    expect((await breaker.openConditions()).get('ollama')).toEqual(rateLimited);
+    clock.advance(30_000);
+    expect(await breaker.tryAcquire('ollama')).toBe(true);
+  });
+
+  it('remembers the dominant kind of the window, not the last', async () => {
+    const clock = new FakeClock();
+    const breaker = new InMemoryCircuitBreaker(clock);
+
+    await breaker.recordFailure('ollama', { kind: 'unavailable' });
+    for (let i = 0; i < 4; i++) {
+      await breaker.recordFailure('ollama', { kind: 'rate_limited' });
+    }
+
+    expect((await breaker.openConditions()).get('ollama')).toEqual({
+      kind: 'unavailable',
+    });
+  });
+
+  it('a failure outside the window does not count for the kind', async () => {
+    const clock = new FakeClock();
+    const breaker = new InMemoryCircuitBreaker(clock);
+
+    await breaker.recordFailure('ollama', { kind: 'unavailable' });
+    clock.advance(61_000);
+    for (let i = 0; i < 5; i++) {
+      await breaker.recordFailure('ollama', { kind: 'rate_limited' });
+    }
+
+    expect((await breaker.openConditions()).get('ollama')).toEqual({
+      kind: 'rate_limited',
+    });
+  });
+
+  it('a failed half-open probe remembers the probe kind', async () => {
+    const clock = new FakeClock();
+    const breaker = new InMemoryCircuitBreaker(clock);
+    for (let i = 0; i < 5; i++) {
+      await breaker.recordFailure('ollama', { kind: 'unavailable' });
+    }
+    clock.advance(30_000);
+
+    expect(await breaker.tryAcquire('ollama')).toBe(true);
+    await breaker.recordFailure('ollama', { kind: 'rejected' });
+
+    expect((await breaker.openConditions()).get('ollama')).toEqual({
+      kind: 'rejected',
+    });
+  });
+
+  it('recordSuccess on an open circuit forgets the remembered kind', async () => {
+    const clock = new FakeClock();
+    const breaker = new InMemoryCircuitBreaker(clock);
+    for (let i = 0; i < 5; i++) {
+      await breaker.recordFailure('ollama', { kind: 'rejected' });
+    }
+    clock.advance(30_000);
+    expect(await breaker.tryAcquire('ollama')).toBe(true);
+    await breaker.recordSuccess('ollama');
+
+    expect((await breaker.openConditions()).size).toBe(0);
+    // Cerrado con la ventana vacía: 4 errores de otra clase no abren, y al quinto la clase es la nueva.
+    for (let i = 0; i < 4; i++) {
+      await breaker.recordFailure('ollama', { kind: 'rate_limited' });
+    }
+    expect((await breaker.openIds()).size).toBe(0);
+    await breaker.recordFailure('ollama', { kind: 'rate_limited' });
+    expect((await breaker.openConditions()).get('ollama')).toEqual({
+      kind: 'rate_limited',
+    });
+  });
+
+  it('a success on a closed circuit keeps the failure window', async () => {
+    const clock = new FakeClock();
+    const breaker = new InMemoryCircuitBreaker(clock);
+
+    for (let i = 0; i < 4; i++) await breaker.recordFailure('ollama');
+    await breaker.recordSuccess('ollama');
+    await breaker.recordFailure('ollama');
+
+    expect(await breaker.openIds()).toEqual(new Set(['ollama']));
+  });
+
+  it('a closed circuit has no condition', async () => {
+    const clock = new FakeClock();
+    const breaker = new InMemoryCircuitBreaker(clock);
+
+    for (let i = 0; i < 4; i++) {
+      await breaker.recordFailure('ollama', { kind: 'rate_limited' });
+    }
+
+    expect((await breaker.openConditions()).size).toBe(0);
+  });
+
+  it('openConditions returns the kind of each open circuit', async () => {
+    const clock = new FakeClock();
+    const breaker = new InMemoryCircuitBreaker(clock);
+    for (let i = 0; i < 5; i++) {
+      await breaker.recordFailure('ollama', { kind: 'rate_limited' });
+      await breaker.recordFailure('openrouter', { kind: 'rejected' });
+    }
+    for (let i = 0; i < 2; i++) await breaker.recordFailure('other');
+
+    expect(await breaker.openConditions()).toEqual(
+      new Map([
+        ['ollama', { kind: 'rate_limited' }],
+        ['openrouter', { kind: 'rejected' }],
+      ]),
+    );
+    // Misma regla que snapshotOpenIds: con el permiso de prueba tomado sigue contando; sin tomarlo y vencido, no.
+    clock.advance(30_000);
+    expect((await breaker.openConditions()).size).toBe(0);
+    expect(await breaker.tryAcquire('ollama')).toBe(true);
+    expect((await breaker.openConditions()).get('ollama')).toEqual({
+      kind: 'rate_limited',
+    });
+  });
 });

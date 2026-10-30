@@ -3,6 +3,7 @@ import type {
   AiResult,
   AiSuccess,
   DegradedReason,
+  ProviderCondition,
 } from '../domain/ai-result';
 import {
   AiProgrammingError,
@@ -10,6 +11,7 @@ import {
   InvalidDegradeOutput,
   InvalidPrompt,
   ProviderUnavailable,
+  type ProviderFailureKind,
 } from '../domain/errors';
 import type { AiLogger } from '../domain/ports/ai-logger.port';
 import type { CircuitBreaker } from '../domain/ports/circuit-breaker.port';
@@ -30,6 +32,10 @@ import type {
   UsageOutcome,
   UsageRecord,
 } from '../domain/ports/usage-ledger.port';
+import {
+  aggregateProviderCondition,
+  type AffectedKind,
+} from '../domain/provider-condition';
 import { MOCK_PROVIDER_ID } from '../domain/provider-ids';
 import { buildChain } from '../domain/routing-policy';
 import {
@@ -105,12 +111,24 @@ type AttemptOutcome<O> =
       model: string;
     }
   | { kind: 'schema_error' }
-  | { kind: 'provider_error' }
+  | { kind: 'provider_error'; failureKind: ProviderFailureKind }
   | { kind: 'skipped' }
   | { kind: 'cancelled' };
 
 /** Plazo por petición a un proveedor sin plazo configurado (D10). */
 export const DEFAULT_PROVIDER_TIMEOUT_MS = 30_000;
+
+/** Lo que `providerConditionOf` necesita de una ejecución que degrada. */
+interface ConditionScope {
+  task: AiTask<unknown, unknown>;
+  ctx: RunContext;
+  /** Universo de la ejecución (restringido a BYOK si la cuota lo restringió). */
+  universe: readonly LlmProvider[];
+  /** Instantánea de circuitos abiertos con la que se compuso la cadena real. */
+  openIds: ReadonlySet<string>;
+  /** Intentados o saltados en la cadena real, con su clase. */
+  tried: ReadonlyMap<string, ProviderFailureKind>;
+}
 
 const NO_USAGE: CompletionUsage = { inputTokens: 0, outputTokens: 0 };
 
@@ -185,14 +203,29 @@ export class RunTask {
       providers: universe,
       openIds,
     });
+    // Proveedores intentados o saltados en la cadena real y cómo contó cada uno (ADR-060 §4).
+    const tried = new Map<string, ProviderFailureKind>();
+    const conditionScope: ConditionScope = {
+      task,
+      ctx,
+      universe,
+      openIds,
+      tried,
+    };
+
     if (chain.length === 0) {
       // Con cadena vacía: consentimiento solo si la política dice que el permiso habría cambiado algo.
       // `runTask` NO recalcula `consentWouldEnable` por su cuenta.
+      const reason: DegradedReason = consentWouldEnable
+        ? 'consent_required'
+        : 'no_providers';
       return this.degrade(
         task,
         parsedInput,
-        consentWouldEnable ? 'consent_required' : 'no_providers',
+        reason,
         execution,
+        undefined,
+        await this.providerConditionOf(reason, conditionScope),
       );
     }
 
@@ -200,7 +233,14 @@ export class RunTask {
     for (const provider of chain) {
       // Cancelación del llamador (D10): se interrumpe la cadena con un único `degraded` `providers_failed`.
       if (ctx.signal?.aborted) {
-        return this.degrade(task, parsedInput, 'providers_failed', execution);
+        return this.degrade(
+          task,
+          parsedInput,
+          'providers_failed',
+          execution,
+          undefined,
+          await this.providerConditionOf('providers_failed', conditionScope),
+        );
       }
       const outcome = await this.attempt(
         provider,
@@ -210,7 +250,21 @@ export class RunTask {
         execution,
       );
       if (outcome.kind === 'cancelled') {
-        return this.degrade(task, parsedInput, 'providers_failed', execution);
+        // El proveedor cuya petición se canceló cuenta como `unavailable`; los siguientes ni se intentan.
+        tried.set(provider.id, 'unavailable');
+        return this.degrade(
+          task,
+          parsedInput,
+          'providers_failed',
+          execution,
+          undefined,
+          await this.providerConditionOf('providers_failed', conditionScope),
+        );
+      }
+      if (outcome.kind === 'skipped' || outcome.kind === 'schema_error') {
+        tried.set(provider.id, 'unavailable');
+      } else if (outcome.kind === 'provider_error') {
+        tried.set(provider.id, outcome.failureKind);
       }
       if (outcome.kind !== 'skipped') attempted++;
       if (outcome.kind === 'success') {
@@ -237,13 +291,91 @@ export class RunTask {
     }
     // Si ningún proveedor llegó a contactarse (todos sin permiso del breaker), no hubo proveedores disponibles.
     // `providers_failed` solo cuando hubo al menos un intento, aunque conceder el permiso hubiera añadido a otro.
+    const finalReason: DegradedReason =
+      attempted === 0 ? 'no_providers' : 'providers_failed';
     return this.degrade(
       task,
       parsedInput,
-      attempted === 0 ? 'no_providers' : 'providers_failed',
+      finalReason,
       execution,
+      undefined,
+      await this.providerConditionOf(finalReason, conditionScope),
     );
   };
+
+  /**
+   * Condición de los proveedores afectados (D4, ADR-060 §4). Solo para `providers_failed` y `no_providers`, y solo
+   * después de recorrer la cadena. Los afectados son la unión de la cadena hipotética (sin circuitos abiertos y con el
+   * consentimiento supuesto; el resto del contexto, `excludeProviderIds` incluido, se conserva) y de todo proveedor
+   * intentado o saltado en la real. Los que no se intentaron por una cancelación no cuentan.
+   */
+  private async providerConditionOf(
+    reason: DegradedReason,
+    scope: ConditionScope,
+  ): Promise<ProviderCondition | undefined> {
+    if (reason !== 'no_providers' && reason !== 'providers_failed') {
+      return undefined;
+    }
+    const { task, ctx, universe, openIds, tried } = scope;
+    // Misma política, mismo universo y mismo contexto (`excludeProviderIds` incluido) salvo el consentimiento.
+    const chainWithConsent = (externalProviders: boolean): LlmProvider[] =>
+      buildChain({
+        task,
+        ctx: { ...ctx, aiConsent: { ...ctx.aiConsent, externalProviders } },
+        providers: universe,
+        openIds: new Set(),
+      }).providers;
+    const hypothetical = chainWithConsent(true);
+    // Con el consentimiento real y sin circuitos: lo que la hipotética añade lo añade el permiso.
+    const realWithoutCircuits = new Set(
+      chainWithConsent(ctx.aiConsent.externalProviders).map(
+        (provider) => provider.id,
+      ),
+    );
+
+    const affected: AffectedKind[] = [];
+    const circuitOpen: string[] = [];
+    for (const provider of hypothetical) {
+      const failure = tried.get(provider.id);
+      if (failure !== undefined) {
+        affected.push(failure);
+      } else if (!realWithoutCircuits.has(provider.id)) {
+        affected.push('consent_missing');
+      } else if (openIds.has(provider.id)) {
+        circuitOpen.push(provider.id);
+      }
+      // Elegible y no intentado (cancelación): no cuenta.
+    }
+    // Intentados o saltados que la hipotética no incluye (p. ej. por `excludeProviderIds`): cuentan igual.
+    const hypotheticalIds = new Set(
+      hypothetical.map((provider) => provider.id),
+    );
+    for (const [id, failure] of tried) {
+      if (!hypotheticalIds.has(id)) affected.push(failure);
+    }
+
+    if (circuitOpen.length > 0) {
+      const conditions = await this.openConditionsOf();
+      for (const id of circuitOpen) {
+        affected.push(conditions.get(id)?.kind ?? 'unavailable');
+      }
+    }
+    return aggregateProviderCondition(reason, affected);
+  }
+
+  /** Falla abierta: sin clases recordadas, el circuito abierto cuenta como `unavailable`. */
+  private async openConditionsOf(): Promise<
+    ReadonlyMap<string, { kind: ProviderFailureKind }>
+  > {
+    try {
+      return await this.deps.breaker.openConditions();
+    } catch (error) {
+      this.deps.logger.warn('AI breaker conditions read failed', {
+        error: error instanceof Error ? error.name : 'unknown',
+      });
+      return new Map();
+    }
+  }
 
   /**
    * Lectura de caché antes de la cadena. Una tarea no cacheable nunca lee. Un fallo del almacén, una entrada de otra
@@ -289,9 +421,7 @@ export class RunTask {
   private async quotaDecision(
     userId: string,
     task: AiTask<unknown, unknown>,
-  ): Promise<
-    { allowed: true } | { allowed: false; retryAt: Date }
-  > {
+  ): Promise<{ allowed: true } | { allowed: false; retryAt: Date }> {
     try {
       return await this.deps.quota.allows(userId, task.name);
     } catch (error) {
@@ -408,7 +538,11 @@ export class RunTask {
       if (result.status === 'valid') {
         this.record(execution, 'success', base);
         if (redaction === undefined) {
-          return { kind: 'success', output: result.output, model: result.model };
+          return {
+            kind: 'success',
+            output: result.output,
+            model: result.model,
+          };
         }
         const reinjected = redaction.reinject(result.output);
         // ADR-031: el juez necesita marcadores; la reinyección es para persistir/GET (D10).
@@ -458,7 +592,9 @@ export class RunTask {
         await this.deps.breaker.release(provider.id);
         return { kind: 'cancelled' };
       }
-      await this.deps.breaker.recordFailure(provider.id);
+      const failureKind: ProviderFailureKind =
+        cause instanceof ProviderUnavailable ? cause.kind : 'unavailable';
+      await this.deps.breaker.recordFailure(provider.id, { kind: failureKind });
       this.record(execution, 'provider_error', {
         provider,
         model: null,
@@ -475,7 +611,7 @@ export class RunTask {
           cause instanceof ProviderUnavailable ? cause.httpStatus : undefined,
         error: cause instanceof Error ? cause.name : 'unknown',
       });
-      return { kind: 'provider_error' };
+      return { kind: 'provider_error', failureKind };
     }
   }
 
@@ -558,6 +694,7 @@ export class RunTask {
     reason: DegradedReason,
     execution: Execution,
     retryAt?: Date,
+    providerCondition?: ProviderCondition,
   ): AiDegraded<O> {
     this.record(execution, reason === 'quota_exceeded' ? 'quota' : 'degraded', {
       provider: null,
@@ -570,9 +707,11 @@ export class RunTask {
       reason === 'quota_exceeded' && retryAt !== undefined
         ? { aiQuotaRetryAt: retryAt.toISOString() }
         : {};
+    const conditionField =
+      providerCondition === undefined ? {} : { providerCondition };
 
     if (task.degrade === undefined) {
-      return { status: 'degraded', reason, ...retryField };
+      return { status: 'degraded', reason, ...retryField, ...conditionField };
     }
 
     const parsed = task.outputSchema.safeParse(task.degrade(parsedInput));
@@ -589,6 +728,7 @@ export class RunTask {
       reason,
       output: parsed.data,
       ...retryField,
+      ...conditionField,
     };
   }
 
