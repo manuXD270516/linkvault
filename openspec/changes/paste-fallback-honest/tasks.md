@@ -361,7 +361,7 @@ implementador crea. Ninguna prueba llama a un proveedor real: `AI_CHAIN=mock` y 
   primer caso; restaurar.
 
   **Estado (2026-10-30):** hecha. «actions are ordered primary, secondary, cancel» en `paste-description.dialog.spec.ts`, con `it.each` sobre los cuatro códigos del enunciado, leyendo el texto de los botones de `mat-dialog-actions` en orden de DOM; el orden de las acciones del diálogo es ahora principal, secundaria y cancelar (antes «Cancelar» iba primero). Falsación ejecutada: poner «Cancelar» antes que «Reintentar» hizo caer los casos de `ai_capacity_exhausted` y `extraction_unavailable`; restaurado.
-- [ ] 5.6b [frontend] 360 px en la suite reproducible (P1-9, design D10). En `apps/web-e2e/src/links.spec.ts`, un caso
+- [x] 5.6b [frontend] 360 px en la suite reproducible (P1-9, design D10). En `apps/web-e2e/src/links.spec.ts`, un caso
   nuevo «paste error actions fit and keep their order at 360 px» con `{ tag: ['@lot1', '@paste-actions'] }` y **sin**
   `@remote-safe` (solo perfil `local`). Usa solo lo que admite la suite: origen y API de `support/profile.ts`, sin
   `localhost` escrito a mano, sin `MongoClient`, sin `docker` ni `resetRegisterLimit`, sin esperas fijas. Registra una
@@ -376,6 +376,8 @@ implementador crea. Ninguna prueba llama a un proveedor real: `AI_CHAIN=mock` y 
   Falsación: poner «Cancelar» antes que «Reintentar» en la plantilla y ver caer el caso; restaurar.
 
   **Estado (2026-10-30), SIN MARCAR:** escrito pero no ejecutado. El caso está en `apps/web-e2e/src/links.spec.ts` (con `{ tag: ['@lot1', '@paste-actions'] }`, sin `@remote-safe`; registra la cuenta por la interfaz, crea el link por la API pública con el token de la sesión, abre la lista «Solo para mí», fija 360 px, responde al pegado con `page.route` y comprueba visibilidad, orden de lectura, que nada se sale de los 360 px y `scrollWidth <= 360`). Verificado: `web-e2e:lint` y `web-e2e:typecheck` en verde; `playwright test --list --grep "(?=.*@lot1)(?=.*@remote-safe)"` solo lista el camino crítico (no el caso) y `--list --grep "(?=.*@lot1)(?=.*@paste-actions)"` lista un solo caso en `chromium`. NO se pudo correr `web-e2e:e2e-stack -- --project=chromium --grep @paste-actions`: el clasificador de permisos de la sesión denegó el lanzamiento de la pila (levanta Docker) y no se rodeó. Faltan la ejecución en verde y la falsación del orden en la plantilla.
+
+  **Corrida en runner limpio (2026-10-30), cierra la tarea:** workflow `e2e` con `target=local` sobre `a93177e`, corrida 41020516125: job `e2e-stack (local)` en `success`, `3 passed (44.2s)`. El workflow no admite `--grep`, así que el caso corrió dentro de la suite y no solo; la pila local no se levantó en esta máquina. Falsación hecha en la rama temporal `tmp/paste-falsacion-orden`, ya borrada, con «Reintentar» después de «Cancelar»: corrida 41020930634 en `failure`, `1 failed` («paste error actions fit and keep their order at 360 px»), `2 passed`.
 - [ ] 5.6c [infra] Admisión del caso y presupuesto de registro (README de `apps/web-e2e`, «Cómo admitir una prueba»).
   Admitirlo con carga en `chromium` y perfil `local` (el `mobile` solo ejecuta `critical-path.spec.ts` y el caso no es
   `@remote-safe`): `pnpm nx run web-e2e:e2e-stack -- --project=chromium --repeat-each=5 --grep @paste-actions`, cinco de
@@ -386,6 +388,8 @@ implementador crea. Ninguna prueba llama a un proveedor real: `AI_CHAIN=mock` y 
   `pnpm nx run web-e2e:e2e-stack` completo (sin `--grep`) en verde, sin `429` de registro.
 
   **Estado (2026-10-30), SIN MARCAR:** pendiente de la 5.6b: la admisión con carga (cinco de cinco), la anotación en «Admisiones», el +1 en «Presupuesto de intentos de registro» y el `--grep @critical-path` de la readmisión se hacen con la pila corriendo. No se tocó `apps/web-e2e/README.md`.
+
+  **Corrida completa (2026-10-30):** la suite sin `--grep` en verde, corrida 41020516125 (ver 5.6b). Sigue abierta: faltan los cinco de cinco con `--repeat-each=5`, la comprobación de `429` de registro y las anotaciones del README.
 
 ## 6. Cierre
 
