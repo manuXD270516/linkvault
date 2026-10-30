@@ -1013,6 +1013,70 @@ necesitas saber "de quién es este CV", basta con su `userId`.
   el change `object-store` el almacén lo cifra por defecto con `OBJECT_STORE_SSE_KEY`, también en local
   ([ADR-052](adr/ADR-052.md)).
 
+- **La lectura de un CV corre aislada, en un proceso hijo** (`cv-extract-isolation`, [ADR-058](adr/ADR-058.md)). Cada CV
+  se lee en un proceso Node nuevo (`cv-extract-child.js`, junto a `main.js` en la imagen) con `pdf-parse` y `mammoth`, y
+  se mata al terminar. El hijo arranca **sin variables de entorno**, con el modelo de permisos de Node (solo lee su
+  script y la raíz de `node_modules`: no ve `/proc/<pid>/environ` del worker ni escribe, ni lanza procesos o hilos), sin
+  `eval` y con el heap acotado a 256 MB. Por eso el worker ya no se cuelga con un archivo patológico: el plazo
+  (`CV_EXTRACTION_TIMEOUT_MS`, desde que el hijo se anuncia listo) lo mata de verdad.
+  - **Qué se reintenta y qué no.** Lo que pasa **antes** de que el hijo se anuncie listo es nuestro (el script ausente,
+    una biblioteca que no carga, 5 s sin responder): el job falla y se reintenta tres veces; agotadas, el CV queda en
+    `internal_error` ("No pudimos leerlo ahora"). Lo que pasa **después** es del archivo (plazo, heap, memoria, un tope
+    de entrada, una excepción del parser): `unreadable_file`, sin reintento.
+  - **El contador y sus causas.** `GET /metrics` del worker publica
+    `linkvault_cv_extractions_total{format,outcome,cause}` (`format` ∈ `pdf`, `docx`; `outcome` ∈ `text`, `unreadable`,
+    `machinery_error`). Causas de `unreadable`: `parse_error`, `password`, `timeout`, `heap_limit`, `memory_ceiling`,
+    `child_exit`, `input_budget`, `protocol`; de `machinery_error`: `boot_error`, `boot_timeout`, `protocol`; de `text`:
+    `none`, `pages_capped`, `raw_text_capped`. Por cada lectura que no termina en texto hay una línea de registro con
+    formato, causa, duración y tamaño en bytes (nunca texto, nombre de archivo ni mensajes del parser). Un `boot_error`
+    o `boot_timeout` que se repite quiere decir una imagen mal construida: la sonda de abajo lo detecta antes de
+    publicar. La latencia del event loop (`nodejs_eventloop_lag_seconds`) es la que demuestra en producción que el
+    aislamiento funciona.
+  - **Si aparece `cause="memory_ceiling"`.** Un archivo pidió más de 512 MiB de memoria residente fuera del heap sobre
+    la que tenía el hijo al anunciarse listo; el vigía lo mató y el CV quedó en `unreadable_file`. Uno aislado es un
+    archivo hostil o enorme y no hay nada que hacer. **Varios seguidos** piden mirar el aviso de concurrencia (con
+    `CV_EXTRACT_CONCURRENCY` > 1 la memoria de lectura puede llegar a N × (256 MB de heap + 512 MiB de techo + ~40 MB de
+    arranque)) y el `mem_limit` del contenedor, que es un change propio posterior a la fila 35 (Q5 del design). Si en la
+    medición de 35b aparece algún `unreadable` con `timeout`, `heap_limit` o `memory_ceiling`, se reabre el texto de
+    `/mi-cv` (Q2).
+  - **`--disable-sigusr1`, en el `CMD` y en `NODE_OPTIONS`, y por qué no se quitan.** El hijo comparte usuario con el
+    worker y tiene red. Sin el flag, un `SIGUSR1` del hijo abre el inspector del proceso señalado en `127.0.0.1:9229` y
+    el hijo podría ejecutar código **allí**, con el entorno y las credenciales de ese proceso. La imagen lo pone en el
+    `CMD` (`node --disable-sigusr1 main.js`) y en `ENV NODE_OPTIONS=--disable-sigusr1` (lo heredan los dos healthchecks
+    `node -e`, la sonda y cualquier `docker compose exec worker node …`). **No pongas otro `NODE_OPTIONS` en el
+    `environment` del `worker` del compose**: sustituiría al de la imagen y los healthchecks quedarían sin el flag (una
+    guardia, `worker-launch-flags.spec.ts`, lo vigila). Comprobación tras desplegar:
+    `docker compose exec worker sh -c 'echo $NODE_OPTIONS'` imprime `--disable-sigusr1` y `/proc/1/cmdline` lo
+    contiene. **No se promete** impedir otras señales: un `SIGTERM` del hijo provoca el cierre ordenado y el reinicio
+    del worker, una denegación de servicio aceptada y acotada (`maxStalledCount: 1`: como mucho dos aperturas del
+    archivo y el CV queda en `internal_error`).
+  - **`nx serve worker` sin inspector.** `serve` arranca con `--disable-sigusr1` y `inspect: false`, porque el ejecutor
+    abre el inspector en el 9229 por defecto y un hijo con red podría conectarse sin mandar señal. Para depurar a
+    propósito: `pnpm nx serve worker --inspect=inspect`. El proceso de `nx` que vigila el worker queda fuera de esta
+    protección (riesgo de desarrollo aceptado).
+  - **Hijos huérfanos en desarrollo.** Un `nx serve` matado con `SIGKILL` puede dejar vivo un hijo que estuviera
+    leyendo (los de la imagen mueren con el contenedor). Busca procesos `node` con `cv-extract-child` en su línea de
+    órdenes y mátalos a mano.
+  - **Paso local de las reentregas por `stalled`** (tarea 2.3 de `cv-extract-isolation`; precedente: ADR-028 §9). Contra
+    un Redis real y propio (un contenedor desechable en un puerto libre), un job de `extract-cv` cuyo procesador se
+    cuelga, con el proceso muerto dos veces. Resultado medido (2026-10-30, BullMQ 6.3.6, relojes acortados a 1,5 s de
+    bloqueo y 1 s de revisión): el procesador corrió **dos** veces, no tres; la tercera entrega la falló BullMQ con
+    `deferredFailure` + `UnrecoverableError` sin llamar al procesador y el CV quedó en `failed`/`internal_error`.
+  - **Volcados de memoria con el CV en claro (R12).** Si un hijo agota su heap, V8 aborta con `SIGABRT`; si el
+    contenedor permite volcados (`ulimit -c` distinto de 0) y el host los escribe (`core_pattern`), el volcado lleva en
+    claro los bytes y el texto del CV. Medido el 2026-10-30 con la imagen del worker construida en local (Docker
+    Desktop, WSL2): `ulimit -c` dentro del contenedor = **0**; el `core_pattern` de ese host (`|/wsl-capture-crash …`)
+    no es el de staging. **Pendiente** (sin editar `staging-host`): leer `cat /proc/sys/kernel/core_pattern` en el host
+    de staging y `ulimit -c` en su contenedor `worker`; si hay volcados posibles, la corrección (`ulimits: { core: 0 }`
+    en el servicio `worker` del compose de producción) es de 35b o del change de `mem_limit`.
+  - **La sonda de la imagen y el arranque medido.** `node cv-extract-probe.js` (entrada del build de `worker`, la
+    ejecuta `infra/ci/verify-artifact.sh`) lee un PDF y un DOCX generados con el adaptador aislado real y sale 0 solo si
+    los dos devuelven el texto esperado; imprime `pdf chars=<n> docx chars=<n>` y después
+    `boot_p50_ms=<n> boot_p95_ms=<n>` (20 hijos hasta `ready`). La sonda **no falla por el valor**: el criterio es
+    **p95 ≤ 1.500 ms en `arm64`** y se lee en la corrida `arm64` y en el host de staging
+    (`docker compose run --rm --no-deps worker node cv-extract-probe.js`). Medido en `amd64` (Docker Desktop,
+    2026-10-30): `boot_p50_ms=105 boot_p95_ms=123`.
+
 ## Paso 6 nonies — Operar los análisis de encaje
 
 Desde `cv-match-suggestions`, cada persona puede pedir un análisis de su CV contra una oferta

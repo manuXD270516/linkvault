@@ -1,7 +1,9 @@
 # Fixtures de la extracción de CV
 
 `apps/worker/src/modules/cv/infrastructure/extractors/fixtures/cv-fixtures.ts` genera los archivos con los que se prueban los extractores del worker
-(`apps/worker/src/modules/cv/infrastructure/extractors/`). **No añade ninguna dependencia**: un PDF mínimo es texto
+(`apps/worker/src/modules/cv/infrastructure/extractors/`, que los leen dentro del proceso hijo aislado de
+`infrastructure/isolation/`). Los archivos **patológicos** (PDF de 200 páginas, bombas de ZIP, etc.) se generan en el
+test, por streaming, desde `fixtures/pathological-fixtures.ts`; ninguno se commitea. **No añade ninguna dependencia**: un PDF mínimo es texto
 plano con su tabla de referencias cruzadas, y un DOCX es un ZIP sin comprimir, que `node:zlib` sabe firmar con su
 `crc32`.
 
@@ -30,8 +32,9 @@ node --experimental-strip-types tools/cv-fixtures/make-fixtures.ts <carpeta>
    veinte bytes, `pdf-parse` rechaza el archivo. Es lo que hace `assemblePdf`.
 2. **`pdf-parse` lee mal un búfer que viene del *pool* de Node.** Con `byteOffset` distinto de cero —lo normal en
    objetos pequeños, porque Node los saca de un búfer compartido— el parser lee las posiciones de la tabla `xref`
-   desplazadas y falla con `bad XRef entry`. Por eso el adaptador copia los bytes a una vista de desplazamiento cero
-   antes de llamarlo, y tiene su propio test con un PDF pequeño. Se reprodujo por debajo de ~4 kB; más arriba Node
+   desplazadas y falla con `bad XRef entry`. Por eso la lectura de PDF (`withOwnBuffer`, dentro del proceso hijo aislado
+   de `cv-extract-isolation`) copia los bytes a una vista de desplazamiento cero antes de llamarlo, y tiene su propio test
+   con un PDF pequeño. Se reprodujo por debajo de ~4 kB; más arriba Node
    deja de usar el *pool* y el fallo desaparece, que es lo que lo hace tan fácil de no ver.
 
 ## El PDF cifrado

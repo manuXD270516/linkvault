@@ -1554,7 +1554,8 @@ formado responde el mismo `404 cv_not_found`, con el mismo cuerpo en los tres ca
 
 ### Estados de la lectura
 
-La extracción la hace el worker en su cola `extract-cv` (`pdf-parse` para PDF, `mammoth` para DOCX), a partir del evento
+La extracción la hace el worker en su cola `extract-cv` (`pdf-parse` para PDF, `mammoth` para DOCX, **dentro de un
+proceso hijo aislado**, uno por CV: [ADR-058](docs/adr/ADR-058.md)), a partir del evento
 `CvUploaded.v1` que el alta escribe en `outbox_events` **dentro de su transacción**. Un archivo ilegible o sin texto
 **no es un error del job**: es un resultado, y se enseña.
 
@@ -1562,13 +1563,18 @@ La extracción la hace el worker en su cola `extract-cv` (`pdf-parse` para PDF, 
 | ------ | ------ | -------------------- |
 | `pending` | Desde el `201` hasta que el worker escribe | "Estamos leyendo tu CV…" |
 | `extracted` | Texto útil: al menos 100 caracteres tras normalizar | "Listo · tu CV se leyó bien", con "Ver lo que leímos" |
-| `failed` · `unreadable_file` | El parser no pudo abrirlo: corrupto, cifrado, un ZIP que no es DOCX, o venció el plazo | "No pudimos abrir este archivo. Si tiene contraseña, quítasela y vuelve a subirlo." |
+| `failed` · `unreadable_file` | El parser no pudo abrirlo: corrupto, cifrado, un ZIP que no es DOCX, o la lectura agotó el plazo, la memoria o un tope de entrada | "No pudimos abrir este archivo. Si tiene contraseña, quítasela; si no, vuelve a exportarlo desde tu editor (en PDF o DOCX) y súbelo otra vez." |
 | `failed` · `no_text` | Se abrió, pero no hay texto: un escaneo o imágenes | "Este archivo no tiene texto…", con el consejo según el formato (PDF o DOCX) |
 | `failed` · `internal_error` | Un fallo nuestro que agotó los tres intentos, o el archivo no estaba en el almacén | "No pudimos leerlo ahora. Vuelve a subirlo en un rato." |
 
 - **Nunca se queda en `pending` para siempre:** agotados los reintentos, el consumidor lo deja en `failed` con
   `internal_error`. El SPA sondea la lista cada 2 s mientras alguno esté `pending`, hasta 60 s, y después ofrece
   "Actualizar", que reanuda otra ventana.
+- **La lectura corre aislada** ([ADR-058](docs/adr/ADR-058.md)): un proceso Node hijo por CV, sin variables de entorno,
+  con el modelo de permisos de Node (sin leer fuera de su script y de `node_modules`, ni escribir, ni lanzar procesos),
+  con el heap acotado y un plazo que lo **mata** (`CV_EXTRACTION_TIMEOUT_MS`, desde que se anuncia listo). Un archivo
+  patológico no cuelga al worker: acaba en `unreadable_file`. Topes: 50 páginas de PDF, 1.000.000 de caracteres crudos,
+  64 MiB inflados y 2.000 entradas por DOCX. Cómo operarlo: [RUNBOOK](docs/RUNBOOK.md#paso-6-octies--operar-los-cv).
 - **El texto se guarda normalizado** (`\r\n` → `\n`, sin caracteres de control, sin líneas en blanco repetidas) y
   **acotado a 200.000 caracteres**; si sobra, se recorta y se marca en la base, marca que no sale en ninguna respuesta.
 - **Un `failed` no borra nada**: el documento y el archivo siguen ahí, se puede marcar por defecto y eliminar como
