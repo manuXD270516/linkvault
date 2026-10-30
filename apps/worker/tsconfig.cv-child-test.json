@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "../../tmp/cv-child-test",
+    "rootDir": "src/modules/cv",
+    "module": "commonjs",
+    "moduleResolution": "bundler",
+    "types": ["node"],
+    "target": "es2021",
+    "sourceMap": false,
+    "declaration": false,
+    "experimentalDecorators": false,
+    "emitDecoratorMetadata": false
+  },
+  "include": [],
+  "files": [
+    "src/modules/cv/infrastructure/isolation/child/cv-extract.child.ts",
+    "src/modules/cv/infrastructure/extractors/pdf-parse-lib.d.ts"
+  ]
+}

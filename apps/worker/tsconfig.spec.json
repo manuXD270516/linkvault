@@ -12,6 +12,9 @@
     "vitest.config.mts",
     "src/**/*.spec.ts",
     "src/**/*.test.ts",
-    "src/**/*.d.ts"
+    "src/**/*.d.ts",
+    "src/**/isolation-test-*.ts",
+    "src/**/isolation-global-setup.ts",
+    "src/**/*.fixture.ts"
   ]
 }

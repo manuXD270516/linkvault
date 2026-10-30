@@ -54,10 +54,18 @@ COPY --from=build --chown=linkvault:linkvault /workspace/dist/apps/worker ./
 USER linkvault
 ENV NODE_ENV=production
 ENV AI_PROMPTS_DIR=/app/assets/ai/prompts
+# Una señal del proceso hijo de lectura de CV no debe abrir el depurador de ningún Node del contenedor (ADR-058, D7 de
+# `cv-extract-isolation`): sin esto, `SIGUSR1` abre el inspector en 127.0.0.1:9229 y el hijo, que tiene red, ejecutaría
+# código con el entorno (y las credenciales) del proceso señalado. `NODE_OPTIONS` lo heredan el PID 1, el healthcheck
+# `node -e`, la sonda `cv-extract-probe.js` y cualquier `docker compose exec worker node …`; el hijo de lectura arranca
+# con `env: {}` y no lo hereda (ni le hace falta). Quien ponga un `NODE_OPTIONS` propio en el `environment` del compose
+# lo sustituye: la guardia `worker-launch-flags.spec.ts` lo vigila.
+ENV NODE_OPTIONS=--disable-sigusr1
 EXPOSE 3001
 
 # Liveness only in the image; compose readiness uses GET /health (platform/runtime-health).
 HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.WORKER_HEALTH_PORT||3001)+'/health/live').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
-CMD ["node", "main.js"]
+# El flag también va en el `CMD`: segunda barrera del PID 1 si alguien pusiera un `NODE_OPTIONS` propio en el compose.
+CMD ["node", "--disable-sigusr1", "main.js"]

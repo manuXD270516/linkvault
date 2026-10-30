@@ -1,11 +1,12 @@
 import { Controller, Get, Header, Res } from '@nestjs/common';
-import { collectDefaultMetrics, Registry } from 'prom-client';
+import { collectDefaultMetrics } from 'prom-client';
+import { workerMetricsRegistry } from '../../infrastructure/metrics/worker-metrics-registry';
 
 /**
  * `GET /metrics` Prometheus en el worker (D6 / ADR-033). Sin auth de aplicación; solo métricas de proceso
  * por defecto, sin labels con PII ni secretos.
  */
-export const workerMetricsRegistry = new Registry();
+export { workerMetricsRegistry };
 
 let defaultsRegistered = false;
 

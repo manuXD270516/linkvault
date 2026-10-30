@@ -15,5 +15,12 @@
     "noFallthroughCasesInSwitch": true
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["vitest.config.mts", "src/**/*.spec.ts", "src/**/*.test.ts"]
+  "exclude": [
+    "vitest.config.mts",
+    "src/**/*.spec.ts",
+    "src/**/*.test.ts",
+    "src/**/isolation-test-*.ts",
+    "src/**/isolation-global-setup.ts",
+    "src/**/*.fixture.ts"
+  ]
 }
