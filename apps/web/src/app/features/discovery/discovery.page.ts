@@ -12,7 +12,9 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import type { DiscoveryBoard, DiscoveryHit, GroupSummary } from '@linkvault/shared';
+import { RouterLink } from '@angular/router';
 import { isApiFailure } from '../../core/api/api-error';
+import { CapabilitiesStore } from '../../core/capabilities/capabilities.store';
 import {
   DiscoveryStore,
   type DiscoverySaveOutcome,
@@ -48,6 +50,7 @@ type SavedDestinationView =
     MatInputModule,
     MatSelectModule,
     RequestError,
+    RouterLink,
   ],
   providers: [DiscoveryStore],
   templateUrl: './discovery.page.html',
@@ -56,6 +59,7 @@ type SavedDestinationView =
 export class DiscoveryPage implements OnInit {
   private readonly store = inject(DiscoveryStore);
   private readonly groupsStore = inject(GroupsStore);
+  protected readonly capabilities = inject(CapabilitiesStore);
 
   /** `true` tras al menos un intento de cargar grupos (éxito o fallo). */
   protected readonly groupsLoadAttempted = signal(false);
@@ -91,6 +95,8 @@ export class DiscoveryPage implements OnInit {
   );
 
   async ngOnInit(): Promise<void> {
+    // Comparte la petición que ya hizo el Shell (o la hace, si la página se abre por enlace directo en frío).
+    void this.capabilities.ensureLoaded();
     await this.groupsStore.load();
     this.groupsLoadAttempted.set(true);
     this.store.ensureDestinationAllowed(this.groups().map((group) => group.id));

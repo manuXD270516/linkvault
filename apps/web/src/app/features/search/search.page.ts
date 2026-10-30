@@ -21,6 +21,7 @@ import {
   type SearchHit,
 } from '@linkvault/shared';
 import { isApiFailure } from '../../core/api/api-error';
+import { CapabilitiesStore } from '../../core/capabilities/capabilities.store';
 import { GroupsStore } from '../../core/groups/groups.store';
 import {
   SearchStore,
@@ -61,6 +62,7 @@ const SALARY_CURRENCIES: readonly SearchSalaryCurrency[] = ['BOB', 'USD'];
 export class SearchPage {
   private readonly store = inject(SearchStore);
   private readonly groups = inject(GroupsStore);
+  protected readonly capabilities = inject(CapabilitiesStore);
 
   protected readonly queryDraft = signal('');
   protected readonly emptyDraft = signal(false);
@@ -91,6 +93,8 @@ export class SearchPage {
   );
 
   constructor() {
+    // Comparte la petición que ya hizo el Shell (o la hace, si la página se abre por enlace directo en frío).
+    void this.capabilities.ensureLoaded();
     void this.groups.load();
   }
 

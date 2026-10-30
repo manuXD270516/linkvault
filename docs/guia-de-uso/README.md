@@ -563,7 +563,7 @@ verificación y de restablecimiento a partir de la API de Mailpit del bloque.
 Inicio de sesión de Ana, «Tus grupos», detalle del grupo (página completa) y tablero de postulaciones.
 
 - **Visto:**
-  - la barra superior ocupa tres filas y no se desborda;
+  - la barra superior ocupa una sola fila, con la marca y el botón «Menú», que despliega las entradas bajo ella;
   - el tablero apila las columnas y muestra en la tarjeta «80 · Encaje alto», además de «Prueba técnica», «Postulaste hoy»
     y «Compartida con tus grupos».
 - **Prueba:** `critical-path.spec.ts` en el proyecto `mobile` (pasa).
@@ -572,6 +572,8 @@ Inicio de sesión de Ana, «Tus grupos», detalle del grupo (página completa) y
 ![Móvil: tus grupos](img/088-movil-grupos.png)
 ![Móvil: detalle del grupo](img/089-movil-detalle-grupo.png)
 ![Móvil: postulaciones](img/090-movil-postulaciones.png)
+
+Las capturas 088, 089 y 090 siguen mostrando la barra de entradas en varias filas y sin «Menú»: captura con la barra anterior a `web-shell-capabilities`.
 
 ## 28. Cerrar sesión, iniciar sesión y recuperar la contraseña
 

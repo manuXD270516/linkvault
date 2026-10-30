@@ -3,6 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { RouterTestingHarness } from '@angular/router/testing';
 import type {
+  CapabilitiesResponse,
   DiscoveryHit,
   DiscoverySearchResponse,
   GroupSummary,
@@ -17,6 +18,7 @@ import {
   verifyNoPendingRequests,
 } from '../../../testing/auth-testing';
 import { SessionStore } from '../../core/auth/session.store';
+import { CapabilitiesApi } from '../../core/capabilities/capabilities.api';
 import { DISCOVERY_PAGE_SIZE } from '../../core/discovery/discovery.api';
 import { DiscoveryStore } from '../../core/discovery/discovery.store';
 import { GroupsStore } from '../../core/groups/groups.store';
@@ -427,5 +429,136 @@ describe('DiscoveryPage', () => {
   it('shows destination selector defaulting to private', async () => {
     expect(host().querySelector('[data-testid="discovery-destination"]')).not.toBeNull();
     expect(host().textContent).toContain('Solo para mí');
+  });
+});
+
+describe('DiscoveryPage with capabilities', () => {
+  let http: HttpTestingController;
+  let harness: RouterTestingHarness;
+  let capabilities: ReturnType<HttpTestingController['expectOne']>;
+
+  async function open(): Promise<void> {
+    TestBed.configureTestingModule({
+      providers: [...providePageTesting(), CapabilitiesApi],
+    });
+    http = TestBed.inject(HttpTestingController);
+    TestBed.inject(SessionStore).setSession(sessionWith('token-1'));
+    harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl('/descubrir', Shell);
+    // El Shell y la página piden las capacidades a la vez y comparten una sola petición.
+    capabilities = http.expectOne('/api/capabilities');
+    http.expectOne({ method: 'GET', url: '/api/groups' }).flush([]);
+    await settle();
+  }
+
+  async function answer(body: CapabilitiesResponse): Promise<void> {
+    capabilities.flush(body);
+    await settle();
+    await harness.fixture.whenStable();
+  }
+
+  /** Raíz de la página: `routeNativeElement` es el Shell entero, con los enlaces de la barra. */
+  function host(): HTMLElement {
+    const page = (
+      harness.routeNativeElement as HTMLElement
+    ).querySelector<HTMLElement>('[data-testid="discovery-page"]');
+    if (!page) {
+      throw new Error('discovery page not rendered');
+    }
+    return page;
+  }
+
+  afterEach(() => verifyNoPendingRequests(http));
+
+  it('shows the not-included state when discovery is off', async () => {
+    await open();
+    await answer({ search: false, discovery: false });
+
+    expect(host().querySelector('[role="status"]')?.textContent).toContain(
+      'Descubrir vacantes no está incluido en esta versión de LinkVault.',
+    );
+    expect(host().querySelector('[data-testid="discovery-form"]')).toBeNull();
+    expect(host().querySelector('[data-testid="discovery-query"]')).toBeNull();
+    expect(host().querySelector('[data-testid="discovery-board"]')).toBeNull();
+    expect(host().querySelector('mat-select')).toBeNull();
+  });
+
+  it('does not request /api/discovery/search when discovery is off', async () => {
+    await open();
+    await answer({ search: false, discovery: false });
+
+    http.expectNone((request) => request.url.startsWith('/api/discovery'));
+  });
+
+  it('links to /mis-links and /grupos from the not-included state', async () => {
+    await open();
+    await answer({ search: false, discovery: false });
+
+    expect(host().querySelector('a[href="/mis-links"]')?.textContent).toContain(
+      'Ver Solo para mí',
+    );
+    expect(host().querySelector('a[href="/grupos"]')?.textContent).toContain(
+      'Ir a mis grupos',
+    );
+  });
+
+  it('shows a neutral state without the form while capabilities are loading', async () => {
+    await open();
+    await settle();
+
+    expect(host().querySelector('h1')?.textContent).toContain('Descubrir');
+    expect(host().querySelector('[aria-busy="true"]')).not.toBeNull();
+    expect(host().querySelector('form')).toBeNull();
+    expect(host().querySelector('a')).toBeNull();
+    expect(host().querySelector('button')).toBeNull();
+    expect(host().querySelector('[role="status"]')).toBeNull();
+    capabilities.flush({ search: true, discovery: true });
+    await settle();
+  });
+
+  it('shows the board and destination selectors when discovery is on', async () => {
+    await open();
+    await answer({ search: false, discovery: true });
+
+    expect(
+      host().querySelector('[data-testid="discovery-query"]'),
+    ).not.toBeNull();
+    expect(
+      host().querySelector('[data-testid="discovery-board"]'),
+    ).not.toBeNull();
+    expect(host().querySelector('[aria-busy="true"]')).toBeNull();
+    expect(host().querySelector('[role="status"]')).toBeNull();
+  });
+
+  it('keeps the discovery_disabled empty state when capabilities failed', async () => {
+    await open();
+    capabilities.flush(null, { status: 500, statusText: 'Server Error' });
+    await settle();
+    await harness.fixture.whenStable();
+
+    const input = host().querySelector<HTMLInputElement>(
+      '[data-testid="discovery-query"]',
+    );
+    expect(input).not.toBeNull();
+    input!.value = 'Nest';
+    input!.dispatchEvent(new Event('input'));
+    await settle();
+    host()
+      .querySelector<HTMLButtonElement>('[data-testid="discovery-submit"]')!
+      .click();
+    await settle();
+    const error = apiError('discovery_disabled', 503);
+    http
+      .expectOne(
+        (request) =>
+          request.method === 'GET' && request.url === '/api/discovery/search',
+      )
+      .flush(error.body, error.options);
+    await settle();
+    await harness.fixture.whenStable();
+
+    expect(
+      host().querySelector('[data-testid="discovery-disabled"]'),
+    ).not.toBeNull();
   });
 });

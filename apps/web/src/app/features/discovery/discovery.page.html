@@ -1,5 +1,20 @@
 <section class="mx-auto flex max-w-2xl flex-col gap-6 p-6" data-testid="discovery-page">
   <h1 class="text-2xl font-medium" i18n="@@discovery.title">Descubrir</h1>
+  @if (capabilities.state() === 'loading') {
+    <!-- Estado neutro: sin búsqueda, selectores ni nada accionable hasta saber si Descubrir existe (D5). -->
+    <div aria-busy="true" data-testid="discovery-capabilities-loading"></div>
+  } @else if (capabilities.discoveryOff()) {
+    <div class="flex flex-col gap-3" role="status" data-testid="discovery-not-enabled">
+      <p class="m-0" i18n="@@discovery.notEnabled">
+        Descubrir vacantes no está incluido en esta versión de LinkVault. Puedes guardar una oferta
+        pegando su enlace en Solo para mí o en un grupo.
+      </p>
+      <div class="flex flex-wrap gap-2">
+        <a mat-button routerLink="/mis-links" i18n="@@discovery.notEnabled.myLinks">Ver Solo para mí</a>
+        <a mat-button routerLink="/grupos" i18n="@@discovery.notEnabled.groups">Ir a mis grupos</a>
+      </div>
+    </div>
+  } @else {
   <p class="m-0 text-(--mat-sys-on-surface-variant)" i18n="@@discovery.intro">
     Busca vacantes en bolsas públicas y guárdalas en tus links sin salir de LinkVault.
   </p>
@@ -256,5 +271,6 @@
         </li>
       }
     </ul>
+  }
   }
 </section>

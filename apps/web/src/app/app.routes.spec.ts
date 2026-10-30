@@ -11,6 +11,7 @@ import { RouterTestingHarness } from '@angular/router/testing';
 import type { SessionResponse } from '@linkvault/shared';
 import {
   flushGroupDetail,
+  provideCapabilitiesAllOn,
   verifyNoPendingRequests,
 } from '../testing/auth-testing';
 import { appRoutes } from './app.routes';
@@ -132,6 +133,7 @@ describe('appRoutes', () => {
           provideHttpClient(withInterceptors([authInterceptor])),
           provideHttpClientTesting(),
           provideRouter(appRoutes),
+          provideCapabilitiesAllOn(),
         ],
       });
       http = TestBed.inject(HttpTestingController);

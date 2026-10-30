@@ -1,5 +1,16 @@
 <section class="mx-auto flex max-w-2xl flex-col gap-6 p-6" data-testid="search-page">
   <h1 class="text-2xl font-medium" i18n="@@search.title">Buscar</h1>
+  @if (capabilities.state() === 'loading') {
+    <!-- Estado neutro: sin formulario ni nada accionable hasta saber si la búsqueda existe (D5). -->
+    <div aria-busy="true" data-testid="search-capabilities-loading"></div>
+  } @else if (capabilities.searchOff()) {
+    <div class="flex flex-col gap-3" role="status" data-testid="search-not-enabled">
+      <p class="m-0" i18n="@@search.notEnabled">
+        La búsqueda no está incluida en esta versión de LinkVault.
+      </p>
+      <a mat-button routerLink="/mis-links" i18n="@@search.notEnabled.myLinks">Ver Solo para mí</a>
+    </div>
+  } @else {
   <p class="m-0 text-(--mat-sys-on-surface-variant)" i18n="@@search.intro">
     Encuentra vacantes, postulaciones, comentarios, notas, CVs y planes de estudio que puedas ver.
   </p>
@@ -320,5 +331,6 @@
         </li>
       }
     </ul>
+  }
   }
 </section>

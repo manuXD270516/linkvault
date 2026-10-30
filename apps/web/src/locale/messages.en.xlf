@@ -2301,6 +2301,38 @@
         <source> No hace falta verificarlo para empezar a usar LinkVault. Si no encuentras el correo, revisa la carpeta de spam. </source>
         <target> You don't need to verify it to start using LinkVault. If you can't find the email, check your spam folder. </target>
       </trans-unit>
+      <trans-unit id="shell.groups" datatype="html">
+        <source>Grupos</source>
+        <target>Groups</target>
+      </trans-unit>
+      <trans-unit id="shell.menu" datatype="html">
+        <source> Menú </source>
+        <target>Menu</target>
+      </trans-unit>
+      <trans-unit id="shell.navLabel" datatype="html">
+        <source>Navegación principal</source>
+        <target>Main navigation</target>
+      </trans-unit>
+      <trans-unit id="search.notEnabled" datatype="html">
+        <source> La búsqueda no está incluida en esta versión de LinkVault. </source>
+        <target>Search isn't available in this version of LinkVault.</target>
+      </trans-unit>
+      <trans-unit id="search.notEnabled.myLinks" datatype="html">
+        <source>Ver Solo para mí</source>
+        <target>Go to Just for me</target>
+      </trans-unit>
+      <trans-unit id="discovery.notEnabled" datatype="html">
+        <source> Descubrir vacantes no está incluido en esta versión de LinkVault. Puedes guardar una oferta pegando su enlace en Solo para mí o en un grupo. </source>
+        <target>Job discovery isn't available in this version of LinkVault. You can save a job by pasting its link in Just for me or in a group.</target>
+      </trans-unit>
+      <trans-unit id="discovery.notEnabled.myLinks" datatype="html">
+        <source>Ver Solo para mí</source>
+        <target>Go to Just for me</target>
+      </trans-unit>
+      <trans-unit id="discovery.notEnabled.groups" datatype="html">
+        <source>Ir a mis grupos</source>
+        <target>Go to my groups</target>
+      </trans-unit>
       <trans-unit id="shell.brand" datatype="html">
         <source>LinkVault</source>
         <target>LinkVault</target>

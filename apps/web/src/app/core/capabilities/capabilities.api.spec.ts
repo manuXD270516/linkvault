@@ -14,7 +14,9 @@ describe('CapabilitiesApi', () => {
   let http: HttpTestingController;
 
   beforeEach(() => {
-    TestBed.configureTestingModule({ providers: providePageTesting() });
+    TestBed.configureTestingModule({
+      providers: [...providePageTesting(), CapabilitiesApi],
+    });
     api = TestBed.inject(CapabilitiesApi);
     http = TestBed.inject(HttpTestingController);
     TestBed.inject(SessionStore).setSession(sessionWith('token-1'));

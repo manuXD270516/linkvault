@@ -2,7 +2,12 @@ import { HttpTestingController } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { RouterTestingHarness } from '@angular/router/testing';
-import type { GroupSummary, SearchHit, SearchResponse } from '@linkvault/shared';
+import type {
+  CapabilitiesResponse,
+  GroupSummary,
+  SearchHit,
+  SearchResponse,
+} from '@linkvault/shared';
 import {
   apiError,
   providePageTesting,
@@ -11,6 +16,7 @@ import {
   verifyNoPendingRequests,
 } from '../../../testing/auth-testing';
 import { SessionStore } from '../../core/auth/session.store';
+import { CapabilitiesApi } from '../../core/capabilities/capabilities.api';
 import { SEARCH_PAGE_SIZE } from '../../core/search/search.api';
 import { Shell } from '../../layout/shell/shell';
 import { SearchPage } from './search.page';
@@ -325,5 +331,124 @@ describe('SearchPage', () => {
       offset: 0,
     } satisfies SearchResponse);
     await settle();
+  });
+});
+
+describe('SearchPage with capabilities', () => {
+  let http: HttpTestingController;
+  let harness: RouterTestingHarness;
+  let capabilities: ReturnType<HttpTestingController['expectOne']>;
+
+  async function open(): Promise<void> {
+    TestBed.configureTestingModule({
+      providers: [...providePageTesting(), CapabilitiesApi],
+    });
+    http = TestBed.inject(HttpTestingController);
+    TestBed.inject(SessionStore).setSession(sessionWith('token-1'));
+    harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl('/buscar', Shell);
+    // El Shell y la página piden las capacidades a la vez y comparten una sola petición.
+    capabilities = http.expectOne('/api/capabilities');
+    http.expectOne({ method: 'GET', url: '/api/groups' }).flush([]);
+    await settle();
+  }
+
+  async function answer(body: CapabilitiesResponse): Promise<void> {
+    capabilities.flush(body);
+    await settle();
+    await harness.fixture.whenStable();
+  }
+
+  /** Raíz de la página: `routeNativeElement` es el Shell entero, con los enlaces de la barra. */
+  function host(): HTMLElement {
+    const page = (
+      harness.routeNativeElement as HTMLElement
+    ).querySelector<HTMLElement>('[data-testid="search-page"]');
+    if (!page) {
+      throw new Error('search page not rendered');
+    }
+    return page;
+  }
+
+  afterEach(() => verifyNoPendingRequests(http));
+
+  it('shows the not-included state when search is off', async () => {
+    await open();
+    await answer({ search: false, discovery: false });
+
+    const status = host().querySelector('[role="status"]');
+    expect(status?.textContent).toContain(
+      'La búsqueda no está incluida en esta versión de LinkVault.',
+    );
+    expect(host().querySelector('[data-testid="search-form"]')).toBeNull();
+    expect(host().querySelector('[data-testid="search-query"]')).toBeNull();
+  });
+
+  it('does not request /api/search when search is off', async () => {
+    await open();
+    await answer({ search: false, discovery: false });
+
+    http.expectNone((request) => request.url.startsWith('/api/search'));
+  });
+
+  it('links to /mis-links from the not-included state', async () => {
+    await open();
+    await answer({ search: false, discovery: false });
+
+    const link = host().querySelector<HTMLAnchorElement>(
+      'a[href="/mis-links"]',
+    );
+    expect(link?.textContent).toContain('Ver Solo para mí');
+  });
+
+  it('shows a neutral state without the form while capabilities are loading', async () => {
+    await open();
+    await settle();
+
+    expect(host().querySelector('h1')?.textContent).toContain('Buscar');
+    expect(host().querySelector('[aria-busy="true"]')).not.toBeNull();
+    expect(host().querySelector('form')).toBeNull();
+    expect(host().querySelector('a')).toBeNull();
+    expect(host().querySelector('button')).toBeNull();
+    expect(host().querySelector('[role="status"]')).toBeNull();
+    capabilities.flush({ search: true, discovery: true });
+    await settle();
+  });
+
+  it('shows the form when search is on', async () => {
+    await open();
+    await answer({ search: true, discovery: false });
+
+    expect(host().querySelector('[data-testid="search-query"]')).not.toBeNull();
+    expect(host().querySelector('[aria-busy="true"]')).toBeNull();
+  });
+
+  it('keeps the 503 message when capabilities failed', async () => {
+    await open();
+    capabilities.flush(null, { status: 500, statusText: 'Server Error' });
+    await settle();
+    await harness.fixture.whenStable();
+
+    const input = host().querySelector<HTMLInputElement>(
+      '[data-testid="search-query"]',
+    );
+    expect(input).not.toBeNull();
+    input!.value = 'Nest';
+    input!.dispatchEvent(new Event('input'));
+    await settle();
+    host()
+      .querySelector<HTMLButtonElement>('[data-testid="search-submit"]')!
+      .click();
+    await settle();
+    const error = apiError('search_unavailable', 503);
+    http
+      .expectOne((request) => request.url === '/api/search')
+      .flush(error.body, error.options);
+    await settle();
+    await harness.fixture.whenStable();
+
+    expect(
+      host().querySelector('[data-testid="search-unavailable"]'),
+    ).not.toBeNull();
   });
 });

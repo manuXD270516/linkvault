@@ -12,10 +12,11 @@ import {
   type SessionResponse,
   type UserProfile,
 } from '@linkvault/shared';
-import { filter, firstValueFrom } from 'rxjs';
+import { filter, firstValueFrom, of } from 'rxjs';
 import { appRoutes } from '../app/app.routes';
 import { authInterceptor } from '../app/core/auth/auth.interceptor';
 import { REFRESH_LOCKS } from '../app/core/auth/refresh-coordination';
+import { CapabilitiesApi } from '../app/core/capabilities/capabilities.api';
 import { EventsChannel } from '../app/core/events/events.channel';
 
 /** Utilidades compartidas por los tests de páginas de `web`. No las importa código de producción. */
@@ -55,6 +56,17 @@ export function apiError(
   };
 }
 
+/**
+ * El Shell pide las capacidades al crearse. Por defecto, en los specs las dos funciones están encendidas y la petición
+ * no sale; los que ejercitan las capacidades añaden `CapabilitiesApi` (la clase real) al final de la lista de providers.
+ */
+export function provideCapabilitiesAllOn(): Provider {
+  return {
+    provide: CapabilitiesApi,
+    useValue: { get: () => of({ search: true, discovery: true }) },
+  };
+}
+
 /** Rutas reales, interceptor real y API simulada con `HttpTestingController`. */
 export function providePageTesting(): (Provider | EnvironmentProviders)[] {
   return [
@@ -63,6 +75,7 @@ export function providePageTesting(): (Provider | EnvironmentProviders)[] {
     provideHttpClientTesting(),
     provideRouter(appRoutes),
     { provide: REFRESH_LOCKS, useValue: null },
+    provideCapabilitiesAllOn(),
   ];
 }
 

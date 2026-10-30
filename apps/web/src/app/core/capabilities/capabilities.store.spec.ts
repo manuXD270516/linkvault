@@ -6,6 +6,7 @@ import {
   verifyNoPendingRequests,
 } from '../../../testing/auth-testing';
 import { SessionStore } from '../auth/session.store';
+import { CapabilitiesApi } from './capabilities.api';
 import {
   CAPABILITIES_TIMEOUT_MS,
   CapabilitiesStore,
@@ -16,7 +17,9 @@ describe('CapabilitiesStore', () => {
   let http: HttpTestingController;
 
   beforeEach(() => {
-    TestBed.configureTestingModule({ providers: providePageTesting() });
+    TestBed.configureTestingModule({
+      providers: [...providePageTesting(), CapabilitiesApi],
+    });
     store = TestBed.inject(CapabilitiesStore);
     http = TestBed.inject(HttpTestingController);
     TestBed.inject(SessionStore).setSession(sessionWith('token-1'));
