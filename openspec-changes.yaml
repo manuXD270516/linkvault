@@ -574,6 +574,35 @@ changes:
       Textos nuevos en ES y EN con el catálogo re-extraído (ADR-050).
       Fuera: H3 (a `e2e-suite-lot-2`, con H11), H7 (a un change con datos reales de 35b) y H8-H17 (pruebas y
       configuración de la pila e2e; su sitio es `e2e-suite-lot-2` o un change de fixtures).
+  - name: cv-extract-isolation
+    adrs: [058, 028, 030, 048, 051]
+    agents: [backend-dev, devops, frontend-dev]
+    scope: |
+      **Cuándo entra: excepción a la precedencia de la fila 35 decidida por el owner el 2026-10-29 (Q1 = (a);
+      ADR-058 y ADR-048 §Consecuencias).** Se aplica en paralelo a 35b; toda fusión previa a la 10.7 de 35b (el change,
+      un arreglo o una vuelta atrás) va después de la 11.6 y antes de la 10.7 de 35b, con las comprobaciones repetidas
+      sobre el último commit; el PR de archivo y lo posterior a la 10.7, con las reglas de las clases 2 y 3 (design Q1).
+      No cambia el orden de la fila ni libera la precedencia para ningún otro change; no bloquea la 10.7 de 35b (PO-04).
+      Origen: auditoría de `critic` del 2026-10-28; **ADR-058** (Propuesto; enmienda ADR-028 §7).
+      La lectura del CV sale del worker: un proceso hijo nuevo por CV con `env: {}`, el modelo de permisos de Node
+      (`--permission`, lectura solo de su script y sus bibliotecas), heap acotado por flags, salida descartada, canal
+      propio por pipe y un plazo (`CV_EXTRACTION_TIMEOUT_MS`, desde `ready`) que **corta** con `SIGKILL`; topes de
+      entrada como constantes (50 páginas, 1.000.000 de caracteres crudos, DOCX inflado con tope propio de 64 MiB y
+      2.000 entradas) y un vigía del RSS del hijo (+512 MiB). Después de `ready` → `unreadable_file` sin reintento;
+      antes (el hijo no arranca) → reintento y `internal_error`. `maxStalledCount: 1` explícito y un `stalled`
+      agotado deja el CV en `failed`. Con las bibliotecas de hoy (`pdf-parse` 1.1.4 y `mammoth`) dentro del hijo,
+      con `--disallow-code-generation-from-strings`; el worker arranca con `--disable-sigusr1` (`CMD` de
+      `docker/worker.Dockerfile` y `runtimeArgs` de `nx serve`, con `inspect: false`), y todo Node del contenedor lo
+      hereda por `ENV NODE_OPTIONS=--disable-sigusr1` (healthchecks, sonda, `exec`), para que una señal del hijo no le
+      abra el depurador ni al worker ni a un proceso hermano con su entorno.
+      Un contador por formato, desenlace y causa sin texto del CV; el texto de `unreadable_file` en `/mi-cv` se
+      reescribe (ES/EN); sonda `cv-extract-probe.js` en `verify-artifact.sh`, que mide además el arranque del hijo
+      (p95 ≤ 1,5 s en `arm64`). Pruebas con archivos patológicos generados en el test, nunca muestras reales. El
+      puerto `CvTextExtractor`, los estados de `cv/extraction`, el compose y `.env.example` no cambian.
+      **Pendiente para 35b o el change de Q5** (R12 del design, sin editar `staging-host`): si `ulimit -c` del
+      contenedor o el `core_pattern` del host permiten volcados, `ulimits: { core: 0 }` en el `worker` del compose.
+      Fuera: sustituir `pdf-parse` (→ `cv-pdf-library-upgrade`, B2-01), motivo nuevo en `/mi-cv`, `mem_limit` del
+      contenedor (Q5), cortar la red del hijo (Q7), OCR, re-extracción de CV ya leídos.
   - name: staging-host
     adrs: [051, 048, 033, 034, 035, 032]
     agents: [devops, backend-dev, frontend-dev, ai-engineer]
@@ -695,38 +724,6 @@ changes:
       `WAIT_TIMEOUT="${VERIFY_WAIT_TIMEOUT:-<n>}"` de `infra/ci/verify-artifact.sh` (validado con `^[0-9]{2,4}$`, como
       en 35b) en vez del `--wait-timeout` literal de hoy.
       Fuera: despliegue a un host de producción, matriz multiarquitectura.
-  - name: cv-extract-isolation
-    adrs: [058, 028, 030, 048, 051]
-    agents: [backend-dev, devops, frontend-dev]
-    scope: |
-      **Cuándo entra: pendiente de la Q1 del change (bloqueante para `/opsx:apply`).** Sin fila en
-      `docs/design-v0.2.md` §6 hasta que el owner responda. Mientras no haya respuesta va aquí, **justo después de
-      35c**, porque la precedencia de la fila 35 (ADR-048 §Consecuencias, ADR-051 §1) sigue vigente; la recomendación
-      del design es una excepción como la de ADR-055 —fusionar el change **después de la 11.6 y antes de la 10.7 de
-      35b**, con toda fusión previa a la 10.7 (el change, un arreglo o una vuelta atrás) en esa ventana y con las
-      comprobaciones repetidas sobre el último commit, y el PR de archivo y lo posterior bajo sus propias reglas (Q1,
-      tres clases)— porque el riesgo nace con los primeros archivos subidos por usuarios no-autor. Si el owner la concede,
-      esta entrada se mueve delante de `staging-host` y la respuesta se anota en ADR-058 y ADR-048.
-      Origen: auditoría de `critic` del 2026-10-28; **ADR-058** (Propuesto; enmienda ADR-028 §7).
-      La lectura del CV sale del worker: un proceso hijo nuevo por CV con `env: {}`, el modelo de permisos de Node
-      (`--permission`, lectura solo de su script y sus bibliotecas), heap acotado por flags, salida descartada, canal
-      propio por pipe y un plazo (`CV_EXTRACTION_TIMEOUT_MS`, desde `ready`) que **corta** con `SIGKILL`; topes de
-      entrada como constantes (50 páginas, 1.000.000 de caracteres crudos, DOCX inflado con tope propio de 64 MiB y
-      2.000 entradas) y un vigía del RSS del hijo (+512 MiB). Después de `ready` → `unreadable_file` sin reintento;
-      antes (el hijo no arranca) → reintento y `internal_error`. `maxStalledCount: 1` explícito y un `stalled`
-      agotado deja el CV en `failed`. Con las bibliotecas de hoy (`pdf-parse` 1.1.4 y `mammoth`) dentro del hijo,
-      con `--disallow-code-generation-from-strings`; el worker arranca con `--disable-sigusr1` (`CMD` de
-      `docker/worker.Dockerfile` y `runtimeArgs` de `nx serve`, con `inspect: false`), y todo Node del contenedor lo
-      hereda por `ENV NODE_OPTIONS=--disable-sigusr1` (healthchecks, sonda, `exec`), para que una señal del hijo no le
-      abra el depurador ni al worker ni a un proceso hermano con su entorno.
-      Un contador por formato, desenlace y causa sin texto del CV; el texto de `unreadable_file` en `/mi-cv` se
-      reescribe (ES/EN); sonda `cv-extract-probe.js` en `verify-artifact.sh`, que mide además el arranque del hijo
-      (p95 ≤ 1,5 s en `arm64`). Pruebas con archivos patológicos generados en el test, nunca muestras reales. El
-      puerto `CvTextExtractor`, los estados de `cv/extraction`, el compose y `.env.example` no cambian.
-      **Pendiente para 35b o el change de Q5** (R12 del design, sin editar `staging-host`): si `ulimit -c` del
-      contenedor o el `core_pattern` del host permiten volcados, `ulimits: { core: 0 }` en el `worker` del compose.
-      Fuera: sustituir `pdf-parse` (→ `cv-pdf-library-upgrade`, B2-01), motivo nuevo en `/mi-cv`, `mem_limit` del
-      contenedor (Q5), cortar la red del hijo (Q7), OCR, re-extracción de CV ya leídos.
   - name: cv-pdf-library-upgrade
     adrs: [058, 028]
     agents: [backend-dev, devops]
@@ -758,6 +755,15 @@ changes:
       Fuera: cambiar `mammoth`, re-extraer CV ya leídos, OCR.
       **Excepción a «sin excepción»** (B3-03 del debate de `cv-extract-isolation`, 2026-10-28): salvo un fallo
       publicado de pdf.js ≤ 1.10 que no acoten los flags del hijo; decide el owner.
+  - name: datastore-auth
+    adrs: [058, 056, 051]
+    agents: [devops, backend-dev]
+    scope: |
+      **Candidato, después de la fila 35** (decisión del owner del 2026-10-29: Q7 (b) de `cv-extract-isolation`).
+      Autenticación de MongoDB (keyFile, que exige el replset, con el healthcheck reescrito) y `requirepass` en Redis,
+      en el compose de producción y en el de desarrollo, con las credenciales en el `.env` de cada entorno. Cierra el
+      riesgo aceptado R8 de ADR-058 (el hijo de lectura de CV tiene red) y la defensa en profundidad de ADR-056 frente
+      a una falla del filtro de salida. Aparte: el flag de red de Node (`--allow-net`) para el hijo, al subir a Node 26 LTS.
   - name: golden-sets-reales
     adrs: [019, 018, 030]
     agents: [ai-engineer]

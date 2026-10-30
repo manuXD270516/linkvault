@@ -682,9 +682,13 @@ Q3 (umbral de crecimiento de la imagen) y Q6 (alertas de Renovate para los parse
     `staging-host/tasks.md` junto a la regla. Las clases 2 y 3 no cambian.
   - **Recomendación: (a).** El riesgo nace con las invitaciones de 35b, la ventana existe sin tocar ninguna regla de 35b,
     y el change no toca nada de lo que la fila modifica salvo una sección de un script de CI y su gemela en
-    `infra/README.md`. Respuesta del owner: pendiente. Se anota aquí y en ADR-058 en una línea que empiece por
-    «Respuesta del owner (Q1), AAAA-MM-DD:», que nombra las tres clases; si es (a), (c) o (d), además una línea en
-    ADR-048 §Consecuencias como las de ADR-053 y ADR-055.
+    `infra/README.md`. La respuesta se anota aquí y en ADR-058 en una línea con el formato que pide la tarea 0.1, que
+    nombra las tres clases; con (a), (c) o (d), además una línea en ADR-048 §Consecuencias como las de ADR-053 y
+    ADR-055.
+  - Respuesta del owner (Q1), 2026-10-29: (a), «Toma las recomendaciones». Se aplica en paralelo; las tres clases de
+    fusión quedan como están escritas arriba: (1) toda fusión antes de la 10.7 de 35b, después de su 11.6, con
+    (i)-(iii) repetidos sobre el último commit; (2) el PR de archivo, después de la 10.7; (3) arreglos y vueltas atrás
+    posteriores a la 10.7 y su vuelta. Anotada en ADR-058 y en ADR-048 §Consecuencias.
 
   **Cómo se comprueba cada fusión (tareas 11.2-11.5).** La casilla de la 10.7 de 35b se marca recién en el PR de
   archivo de 35b, después de invitar, así que no sirve para saber si la 10.7 está hecha. El estado de la 9.1-9.4, la
@@ -705,9 +709,12 @@ Q3 (umbral de crecimiento de la imagen) y Q6 (alertas de Renovate para los parse
 - **Q4 [no bloqueante] — ¿Fijar `CV_EXTRACT_CONCURRENCY` a 1?** Con el vigía por hijo ya no hay daño colateral; queda
   la suma de memoria (R4). Opciones: (a) dejar el rango 1-4 con el `warn` de D5 y el RUNBOOK; (b) bajar el máximo a 1.
   **Recomendación: (a)**: el rango es un contrato de configuración vigilado y el valor real es 1.
+  Respuesta del owner (Q4), 2026-10-29: (a), la recomendada; el rango 1-4 se mantiene.
 - **Q5 [no bloqueante] — `mem_limit` del contenedor del worker.** Segunda barrera para R3. Toca el compose de
   producción. **Recomendación:** después de la fila 35, en un change propio con medición de memoria en staging; ese
   change es también candidato a llevar `ulimits: { core: 0 }` si la comprobación de R12 encuentra volcados posibles.
+  Respuesta del owner (Q5), 2026-10-29: la recomendada; `mem_limit` en un change propio después de la fila 35, con
+  medición de memoria en staging.
 - **Q7 [no bloqueante] — ¿Cómo se corta la red del hijo, y cuándo?** (R8). Opciones: (a) aceptar el riesgo hasta subir
   de línea de Node, y en el change de la subida comprobar que el modelo de permisos deja al hijo sin red (sin
   `--allow-net`); (b) un change propio, después de la fila 35, que ponga autenticación a MongoDB y Redis (toca compose
@@ -717,6 +724,10 @@ Q3 (umbral de crecimiento de la imagen) y Q6 (alertas de Renovate para los parse
   actualización menor.
   **Voto de la iteración 2 (B2-05): (a) sí y (b) sí —(b) como fila propia del manifiesto, después de la 35—; (c) no y
   (d) no.** La decisión sigue siendo del owner; la fila de (b) no se crea hasta que la apruebe.
+  Respuesta del owner (Q7), 2026-10-29: (a) y (b), la recomendada. El flag de red se agrega al subir a Node 26 LTS (en
+  ese change se comprueba que el hijo queda sin red, sin `--allow-net`), y la autenticación de MongoDB y Redis va en
+  un change propio después de la fila 35. Ninguno de los dos entra en este change; la fila del manifiesto para (b)
+  queda por crear.
 - **Q8 [resuelta en la iteración 3 por `reflect`, 2026-10-28; el owner la puede revertir] — El inspector de `nx serve`
   del worker.** **Decisión (C3-06, en la versión recortada de B3-04):** solo `"inspect": false` en `serve.options`, sin
   configuración `debug`; para depurar, `pnpm nx serve worker --inspect=inspect` (RUNBOOK, 10.1). El proceso de `nx`
@@ -728,6 +739,7 @@ Q3 (umbral de crecimiento de la imagen) y Q6 (alertas de Renovate para los parse
   aleatorio (no lo cierra, solo lo esconde). **Recomendación: (a)**: cuesta dos líneas de `apps/worker/project.json`,
   que este change ya toca por N1, y deja el depurador a un `--configuration=debug` de distancia. Si el owner elige (a),
   entra como parte de la 1.10.
+  Ya resuelta en la iteración 3 (C3-06); el owner no la revierte (2026-10-29).
 
 ## Estado de las mediciones
 
@@ -836,3 +848,18 @@ Critic verificó solo los tres P0 de la iteración 3, sin abrir una iteración n
 | N-01 | critic (P1) | aceptado | La clase 3 de la guardia pasa a llamarse `post-10.7` y exige la 10.7 hecha, con falsación: una vuelta atrás o un arreglo antes de la 10.7 no puede pasar por ella. |
 
 Convergencia: SI (iteración 3 más verificación puntual: critic P0 0, business V0 0; Q1 pendiente del owner).
+
+## Respuestas del owner y aprobación
+
+Fecha: 2026-10-29. Aprobación humana del change tras la convergencia de la iteración 3 y la verificación puntual de
+C3-01, C3-02 y C3-03 («Toma las recomendaciones»: se acepta la opción recomendada de cada pregunta abierta).
+
+- **Q1 = (a):** excepción a la precedencia de la fila 35 para las tres clases de fusión, como están escritas en la
+  Q1. Anotada aquí, en ADR-058 (Decisión 11) y en ADR-048 §Consecuencias (tarea 0.1). La entrada del manifiesto pasa
+  delante de `staging-host`.
+- **Q2:** cerrada en el debate (c), sin cambios.
+- **Q4 = (a):** el rango 1-4 de `CV_EXTRACT_CONCURRENCY` se mantiene.
+- **Q5:** `mem_limit` en un change propio después de la fila 35.
+- **Q7 = (a) y (b):** el flag de red al subir a Node 26 LTS; la autenticación de MongoDB y Redis en un change propio
+  después de la fila 35 (fila del manifiesto por crear).
+- **Q8:** resuelta en la iteración 3 (C3-06); se mantiene.

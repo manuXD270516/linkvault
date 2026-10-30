@@ -134,6 +134,9 @@ desplegar), el PR de archivo, y los arreglos y vueltas atrás posteriores—, ca
 Si la respuesta es **no**, el change entra **justo después de 35c** y antes de `golden-sets-reales`, que es donde está
 en `openspec-changes.yaml` mientras Q1 no tenga respuesta: la posición conservadora respeta la precedencia vigente.
 
+**Respondida por el owner el 2026-10-29: Q1 = (a)** (ADR-058 Decisión 11, ADR-048 §Consecuencias; design, «Respuestas del
+owner y aprobación»). La entrada de `openspec-changes.yaml` pasa delante de `staging-host`.
+
 ## Fuera de alcance
 
 - **Sustituir `pdf-parse` por un pdf.js mantenido**: spike con criterio de parada, sustitución, medición del owner con
