@@ -1,5 +1,6 @@
 import { CV_MIN_TEXT_CHARS, cvFileKey } from '@linkvault/shared';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { cvLockDurationFor } from '../infrastructure/queue/extract-cv.consumer';
 import { ExtractCvUseCase } from './extract-cv.usecase';
 import {
   InMemoryCvFileReader,
@@ -95,7 +96,8 @@ describe('ExtractCvUseCase, the four outcomes', () => {
       files.withObject(KEY, new Uint8Array([0x25]));
 
       const running = useCaseWith('never', 30_000).execute(PAYLOAD);
-      await vi.advanceTimersByTimeAsync(30_001);
+      // La red exterior es el plazo de contenido + el de arranque del hijo + la gracia (30 s + 5 s + 2 s).
+      await vi.advanceTimersByTimeAsync(30_000 + 5_000 + 2_000 + 1);
 
       await expect(running).resolves.toEqual({
         kind: 'failed',
@@ -103,6 +105,49 @@ describe('ExtractCvUseCase, the four outcomes', () => {
       });
     } finally {
       vi.useRealTimers();
+    }
+  });
+
+  it('the outer deadline leaves room for boot and content deadlines', async () => {
+    vi.useFakeTimers();
+    try {
+      repository.withCv(CV_ID, { userId: USER_ID });
+      files.withObject(KEY, new Uint8Array([0x25]));
+      const slow = {
+        extract: () =>
+          new Promise<{ kind: 'text'; text: string }>((resolve) => {
+            setTimeout(
+              () => resolve({ kind: 'text', text: GOOD_TEXT }),
+              30_000 + 6_000,
+            );
+          }),
+      };
+      const useCase = new ExtractCvUseCase(
+        repository,
+        files,
+        { pdf: slow, docx: slow },
+        clock,
+        { timeoutMs: 30_000 },
+        noopSearch,
+      );
+
+      const running = useCase.execute(PAYLOAD);
+      await vi.advanceTimersByTimeAsync(30_000 + 6_000 + 1);
+
+      await expect(running).resolves.toEqual({
+        kind: 'extracted',
+        chars: expect.any(Number) as number,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('the outer deadline stays below the lock duration', () => {
+    for (const timeoutMs of [1_000, 30_000, 120_000]) {
+      expect(timeoutMs + 5_000 + 2_000).toBeLessThan(
+        cvLockDurationFor(timeoutMs),
+      );
     }
   });
 
@@ -166,10 +211,13 @@ describe('ExtractCvUseCase, the four idempotency cuts', () => {
   it('El bucket de CV no existe: throws, so the queue retries, and the CV stays pending', async () => {
     // Design D15 de `object-store`: el lector relanza `NoSuchBucket` en vez de dar `null`.
     repository.withCv(CV_ID, { userId: USER_ID });
-    files.failure = Object.assign(new Error('The specified bucket does not exist'), {
-      name: 'NoSuchBucket',
-      $metadata: { httpStatusCode: 404 },
-    });
+    files.failure = Object.assign(
+      new Error('The specified bucket does not exist'),
+      {
+        name: 'NoSuchBucket',
+        $metadata: { httpStatusCode: 404 },
+      },
+    );
 
     await expect(
       useCaseWith({ kind: 'text', text: GOOD_TEXT }).execute(PAYLOAD),

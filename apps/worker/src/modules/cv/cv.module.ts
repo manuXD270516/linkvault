@@ -21,8 +21,9 @@ import {
   SEARCH_INDEX_JOB_PUBLISHER,
   type SearchIndexJobPublisher,
 } from '../search/application/ports/search-index-job-publisher.port';
-import { DocxTextExtractor } from './infrastructure/extractors/docx-text.extractor';
-import { PdfTextExtractor } from './infrastructure/extractors/pdf-text.extractor';
+import { childLocationFor } from './infrastructure/isolation/child-command';
+import { IsolatedCvTextExtractor } from './infrastructure/isolation/isolated-cv-text-extractor';
+import { IsolatedExtractionRunner } from './infrastructure/isolation/isolated-extraction.runner';
 import {
   CV_DOCUMENT_MODEL_NAME,
   cvDocumentSchema,
@@ -86,11 +87,23 @@ export class CvModule {
             ),
         },
         {
+          // La lectura corre en un proceso hijo nuevo por CV (D1 de cv-extract-isolation). El runner lleva el conjunto de
+          // hijos vivos y los mata en el cierre ordenado (`onApplicationShutdown`).
+          provide: IsolatedExtractionRunner,
+          inject: [APP_CONFIG],
+          useFactory: (worker: WorkerConfig) =>
+            new IsolatedExtractionRunner({
+              ...childLocationFor(__dirname),
+              contentTimeoutMs: worker.CV_EXTRACTION_TIMEOUT_MS,
+            }),
+        },
+        {
           // Un extractor por formato. Que la tabla los cubra todos lo garantiza el tipo del puerto.
           provide: CV_TEXT_EXTRACTORS,
-          useFactory: (): CvTextExtractors => ({
-            pdf: new PdfTextExtractor(),
-            docx: new DocxTextExtractor(),
+          inject: [IsolatedExtractionRunner],
+          useFactory: (runner: IsolatedExtractionRunner): CvTextExtractors => ({
+            pdf: new IsolatedCvTextExtractor('pdf', runner),
+            docx: new IsolatedCvTextExtractor('docx', runner),
           }),
         },
         {
@@ -130,10 +143,7 @@ export class CvModule {
               {
                 provide: ExtractCvConsumer,
                 inject: [ExtractCvUseCase, APP_CONFIG],
-                useFactory: (
-                  useCase: ExtractCvUseCase,
-                  worker: WorkerConfig,
-                ) =>
+                useFactory: (useCase: ExtractCvUseCase, worker: WorkerConfig) =>
                   new ExtractCvConsumer(useCase, {
                     redisUrl: worker.REDIS_URL,
                     concurrency: worker.CV_EXTRACT_CONCURRENCY,

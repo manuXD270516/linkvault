@@ -5,6 +5,10 @@ import {
 } from '@linkvault/shared';
 import { Logger } from '@nestjs/common';
 import { outcomeOfExtractedText } from '../domain/extraction-outcome';
+import {
+  CV_CHILD_BOOT_TIMEOUT_MS,
+  CV_ISOLATION_GRACE_MS,
+} from './extraction-deadlines';
 import type { SearchIndexJobPublisher } from '../../search/application/ports/search-index-job-publisher.port';
 import type { Clock } from './ports/clock.port';
 import type { CvFileReader } from './ports/cv-file-reader.port';
@@ -37,7 +41,10 @@ export type ExtractCvResult =
   | { readonly kind: 'lost_race' };
 
 export interface ExtractCvOptions {
-  /** Plazo de la extracción entera: un PDF malformado puede tener a un parser dando vueltas. */
+  /**
+   * Plazo de **contenido** de la extracción: lo cuenta el adaptador aislado desde que el proceso que lee el archivo se
+   * anuncia listo, y al vencer lo mata. Este caso de uso lo usa, más el arranque y la gracia, como red exterior.
+   */
   readonly timeoutMs: number;
 }
 
@@ -74,8 +81,8 @@ export class ExtractCvUseCase {
       return await this.resolveFailure(cv.id, 'internal_error');
     }
 
-    const attempt = await this.withDeadline(
-      () => this.extractors[cv.fileType].extract(bytes),
+    const attempt = await this.withDeadline(() =>
+      this.extractors[cv.fileType].extract(bytes),
     );
     if (attempt === 'timed_out') {
       // Para la persona es indistinguible de un archivo roto, y lo es.
@@ -132,19 +139,31 @@ export class ExtractCvUseCase {
       reason,
       this.clock.now(),
     );
+    if (written) {
+      // Una línea con el identificador del CV y el motivo; nada del archivo ni del parser (la causa fina vive en el
+      // contador y en la línea del adaptador, que no conoce el `cvId`).
+      this.logger.warn(`cv ${cvId}: extraction ended as ${reason}`);
+    }
     return written ? { kind: 'failed', reason } : { kind: 'lost_race' };
   }
 
   /**
-   * El plazo acota la extracción **entera**. No cancela el parser —no hay forma de hacerlo—, así que lo que hace es
-   * dejar de esperarlo: el job termina con su resultado y el trabajo colgado se lo lleva el proceso.
+   * Red **exterior** de la extracción (D2 de cv-extract-isolation): `timeoutMs` + el plazo de arranque del hijo + la
+   * gracia. En el camino normal gana siempre uno de los plazos del adaptador, que **detiene** el trabajo (mata al
+   * proceso hijo); esta carrera solo existe para que, si un defecto del adaptador no devolviera nunca, el job siga
+   * terminando. Deja de esperar, no cancela. `lockDuration` (plazo + 15 s) queda por encima de este total.
    */
   private async withDeadline<T>(
     work: () => Promise<T>,
   ): Promise<T | 'timed_out'> {
     let timer: NodeJS.Timeout | undefined;
     const deadline = new Promise<'timed_out'>((resolve) => {
-      timer = setTimeout(() => resolve('timed_out'), this.options.timeoutMs);
+      timer = setTimeout(
+        () => resolve('timed_out'),
+        this.options.timeoutMs +
+          CV_CHILD_BOOT_TIMEOUT_MS +
+          CV_ISOLATION_GRACE_MS,
+      );
       // `unref` para que un plazo pendiente no mantenga vivo el proceso al apagarse.
       timer.unref?.();
     });

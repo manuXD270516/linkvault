@@ -13,17 +13,18 @@ import {
   InMemoryCvRepository,
   MovableClock,
 } from './application/testing/cv-test-doubles';
-import { DocxTextExtractor } from './infrastructure/extractors/docx-text.extractor';
 import {
   docxWithText,
   pdfWithText,
 } from './infrastructure/extractors/fixtures/cv-fixtures';
-import { PdfTextExtractor } from './infrastructure/extractors/pdf-text.extractor';
+import { IsolatedCvTextExtractor } from './infrastructure/isolation/isolated-cv-text-extractor';
+import { realChildRunner } from './infrastructure/isolation/isolation-test-kit';
 
 // "Ningún envío externo" (spec `cv/extraction`, "La extracción no usa inteligencia artificial"). El CV no sale de
 // nuestra infraestructura, y aquí se comprueba de dos maneras que no se solapan:
 //
-// 1. **Vigilando el transporte**: se extrae un CV de verdad, con los extractores de producción, y toda salida de red de
+// 1. **Vigilando el transporte**: se extrae un CV de verdad, con el adaptador aislado de producción (proceso hijo
+//    real), y toda salida de red de
 //    Node queda interceptada. Las dos salidas legítimas —Mongo y el almacén de objetos— están puestas como dobles en
 //    memoria, así que cualquier socket, petición HTTP o resolución de nombre que se abriera durante la extracción
 //    sería una de más.
@@ -74,12 +75,16 @@ function useCaseFor(
     cvFileKey(USER_ID, CV_ID),
     bytes,
   );
+  const { runner } = realChildRunner();
   return {
     repository,
     useCase: new ExtractCvUseCase(
       repository,
       files,
-      { pdf: new PdfTextExtractor(), docx: new DocxTextExtractor() },
+      {
+        pdf: new IsolatedCvTextExtractor('pdf', runner),
+        docx: new IsolatedCvTextExtractor('docx', runner),
+      },
       new MovableClock(),
       { timeoutMs: 30_000 },
       { upsert: async () => undefined, delete: async () => undefined },
@@ -114,8 +119,8 @@ describe('the CV never leaves our infrastructure', () => {
     // El recorrido llegó de verdad hasta la infraestructura; si no, no estaría mirando nada.
     for (const file of [
       'extract-cv.usecase.ts',
-      'pdf-text.extractor.ts',
-      'docx-text.extractor.ts',
+      'isolated-cv-text-extractor.ts',
+      'isolated-extraction.runner.ts',
       'mongo-cv.repository.ts',
       's3-cv-file.reader.ts',
     ]) {

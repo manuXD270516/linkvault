@@ -132,6 +132,13 @@ const DOMAIN_RESTRICTED_PATTERNS = [
     message:
       'La capa de dominio no importa infraestructura: mueve este uso a infrastructure/ y expón un port.',
   },
+  // `child_process` (cv-extract-isolation, ADR-058): lanzar un proceso es infraestructura. La lectura aislada del CV
+  // arranca un proceso hijo desde `infrastructure/isolation/`; el dominio no sabe cómo se aísla nada.
+  {
+    regex: '^(?:node:)?child_process$',
+    message:
+      'La capa de dominio no lanza procesos: mueve este uso a infrastructure/ y expón un port.',
+  },
   // `domain` no importa de otras capas (D1 de ai-gateway-core). Anclado por segmento de ruta: el bloque
   // aplica a todo `**/domain/**` y `./application.entity` (módulo `applications`) es un import legítimo.
   {
