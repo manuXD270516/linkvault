@@ -48,14 +48,13 @@ verificó leyendo el código de `main` (`5b92d28`) y **es cierta en parte**:
 impide que un change de otra fila preceda a la fila 35 mientras no termine. 35b (`staging-host`) y 35c siguen
 abiertas. Este change **pide** una excepción como las de `e2e-suite` (ADR-053) y `usage-guide-fixes` (ADR-055 §1),
 porque lo van a ver justo las 3 a 5 personas que 35b invita, y con la IA de staging (D13) es el error más probable
-de su primer uso. **El owner no lo decidió todavía**: es la **Q1** de `design.md`, bloqueante para `/opsx:apply`.
-Mientras tanto, este change solo existe como spec. Si se aprueba, la excepción no cambia el orden de la fila
+de su primer uso. **El owner la concedió el 2026-10-29** (Q1 = (a) de `design.md`, ADR-060 §1). La excepción no cambia el orden de la fila
 (35b → 35c), no libera la precedencia para ningún otro change y no toca ficheros de despliegue, workflows ni
-requirements de `platform/*`. Y aun aprobada, la excepción cubre las tres clases de fusión del change (design D11): el PR
+requirements de `platform/*`. Y la excepción cubre las tres clases de fusión del change (design D11): el PR
 se fusiona **después de la 11.6 de 35b y antes de su 10.7**, según confirmación escrita y fechada del owner, repitiendo
 la 9.4 de `e2e-suite` y nunca con una corrida `e2e-remote` en curso; el PR de archivo y las vueltas atrás siguen reglas propias (nunca entre el PR-2 de 35b y su 11.6,
-nunca durante su 9.1-9.4, nunca los días 7 y 14 de la medición, nunca el día de una corrida `e2e-remote`). Fusionar
-antes exige que el owner autorice expresamente fusionar entre el PR-1 y el PR-2 de 35b (Q1 (d)).
+nunca durante su 9.1-9.4, nunca los días 7 y 14 de la medición, nunca el día de una corrida `e2e-remote`). El owner
+no autorizó fusionar entre el PR-1 y el PR-2 de 35b (Q1 (d)).
 
 ## What Changes
 

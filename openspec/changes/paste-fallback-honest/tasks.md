@@ -3,7 +3,7 @@
 Cada tarea cabe en menos de una hora. Los nombres entre comillas son los títulos de los casos de test que el
 implementador crea. Ninguna prueba llama a un proveedor real: `AI_CHAIN=mock` y `AI_MOCK_MODE=replay` en CI.
 
-- [ ] 0.1 [infra] Q1 respondida por el owner y anotada con fecha:
+- [x] 0.1 [infra] Q1 respondida por el owner y anotada con fecha:
   - en ADR-060 §1, en una línea que empiece por «Respuesta del owner (Q1), AAAA-MM-DD:»;
   - en `design.md`;
   - y, si la respuesta es (a), (b) o (d), con una línea en ADR-048 §Consecuencias, como hicieron ADR-053 y ADR-055.
@@ -11,8 +11,17 @@ implementador crea. Ninguna prueba llama a un proveedor real: `AI_CHAIN=mock` y 
 
   Con (b), el change no pasa de aquí hasta archivar 35c. Con (c), se cierra sin aplicar. Verificar:
   `grep -cE "Respuesta del owner \(Q1\), 20[0-9]{2}-" docs/adr/ADR-060.md` devuelve `1` (antes de anotarla, `0`).
-- [ ] 0.2 [infra] Debate critic/business/reflect cerrado sin P0/V0 abiertos y aprobación humana registrada. Verificar:
+
+  **Estado (2026-10-29):** hecha. Q1 = (a) («Toma las recomendaciones»), anotada en ADR-060 §1, en `design.md` (Open
+  Questions, con Q2, Q4, Q5, Q6 y Q7) y en ADR-048 §Consecuencias («Excepción de ADR-060 (2026-10-29)»); fila «∥ 35b»
+  en `docs/design-v0.2.md` §6. Salida de la verificación: `1`.
+- [x] 0.2 [infra] Debate critic/business/reflect cerrado sin P0/V0 abiertos y aprobación humana registrada. Verificar:
   `design.md` lleva la sección del debate de la última iteración, con «Convergencia: SI» y la fecha de la aprobación.
+
+  **Estado (2026-10-29):** hecha. Iteración 3 con «Convergencia: SI» (critic P0 0, business V0 0) y sección «Aprobación
+  humana (2026-10-29)» con los cambios posteriores (0.3 y C4 de `web-error-copy-coverage`, fila de Q7). Salida de
+  `grep -n "^Convergencia: SI\|^## Aprobación humana" design.md`: `562:Convergencia: SI (…)` y
+  `564:## Aprobación humana (2026-10-29)`.
 
 ## 1. `libs/ai`: clase del fallo (design D1)
 
@@ -237,6 +246,16 @@ implementador crea. Ninguna prueba llama a un proveedor real: `AI_CHAIN=mock` y 
 
   Falsación: truncar en vez de redondear y ver caer «rounds up to the next minute»; restaurar. Redondear solo por
   segundos y ver caer «milliseconds alone round up»; restaurar.
+
+  Coordinación con `web-error-copy-coverage` (su 0.3, forma (a); cambio posterior a la aprobación, con la conformidad
+  del owner del 2026-10-29): si `apps/web/src/app/shared/ui/api-error-copy.ts` existe en `main`, añadir a
+  `API_ERROR_COPY` (de `web-error-copy-coverage`) las entradas `local` de `ai_consent_required`,
+  `ai_capacity_exhausted` y `extraction_disabled` con `features/links/paste-description.dialog.ts` (ADR-062 §3); si
+  `web-error-copy-coverage` todavía no está en `main`, las añade ese change. Antes de fusionar, actualizar la cabeza
+  del PR y esperar CI verde si `main` cambió `apps/web/src/locale/messages.xlf`, `libs/shared/src/schemas/auth.schema.ts`
+  o `apps/web/src/app/shared/ui/api-error-copy.ts` desde la última corrida. Verificar, si el fichero existe:
+  `pnpm nx run web:typecheck` y `pnpm nx run web:test --include="**/api-error-copy.spec.ts" --skip-nx-cache` en verde, y
+  `grep -c "paste-description.dialog.ts" apps/web/src/app/shared/ui/api-error-copy.ts` devuelve al menos `3`.
 - [ ] 4.2 [frontend] `429` `ai_quota_exceeded` con su hora («Podrás volver a pegar hoy a las 13:00», con el reloj en
   10:00:00.000) y sin ella. Verificar en `paste-description.dialog.spec.ts`:
   - «quota exceeded tells the real time, not mañana»
@@ -322,6 +341,9 @@ implementador crea. Ninguna prueba llama a un proveedor real: `AI_CHAIN=mock` y 
     `e2e-remote (staging)` esté en marcha;
   - `git log --oneline origin/main` contiene el merge del PR-2 de 35b con el número que da la confirmación (`Merge pull
     request #NNN`);
+  - cabeza del PR actualizada y CI en verde sobre ella si `main` cambió `apps/web/src/locale/messages.xlf`,
+    `libs/shared/src/schemas/auth.schema.ts` o `apps/web/src/app/shared/ui/api-error-copy.ts` desde la última corrida
+    (C4 de `web-error-copy-coverage`, ADR-050 §5; cambio posterior a la aprobación, conformidad del owner del 2026-10-29);
   - con (d): la autorización expresa del owner está anotada con fecha en ADR-060 §1 y ADR-048 §Consecuencias, y
     `git log --oneline origin/main` confirma la posición del PR-1 de 35b (#86) respecto de este merge.
 

@@ -578,18 +578,18 @@ changes:
     adrs: [060, 018, 014, 030, 048, 051, 050]
     agents: [ai-engineer, backend-dev, frontend-dev]
     scope: |
-      **Pide una excepción a la precedencia de la fila 35** (ADR-048 §Consecuencias, extendida a la fila entera por
-      ADR-051 §1), como `e2e-suite` (ADR-053) y `usage-guide-fixes` (ADR-055 §1). **No está concedida**: es la Q1 de
-      su design, bloqueante para `/opsx:apply`, y su respuesta se anota con fecha en ADR-060 §1. No cambia el orden
-      de la fila (35b → 35c), no libera la precedencia para otro change y no toca despliegue, workflows ni
-      `platform/*`.
+      **Excepción a la precedencia de la fila 35** (ADR-048 §Consecuencias, extendida a la fila entera por ADR-051
+      §1), como `e2e-suite` (ADR-053) y `usage-guide-fixes` (ADR-055 §1), **concedida por el owner el 2026-10-29**
+      (Q1 = (a) de su design, ADR-060 §1). No cambia el orden de la fila (35b → 35c), no libera la precedencia para
+      otro change y no toca despliegue, workflows ni `platform/*`.
       Origen: hipótesis de business del 2026-10-28, verificada en el código (cierta en parte). En staging (IA
       OpenRouter `:free` con `data_collection: deny`, D13 de 35b), el cupo agotado (`429`), el «no endpoints» (`404`)
       y la falta de consentimiento acaban en `503 extraction_unavailable`, «inténtalo en un rato», y el error no
       lleva a «Completar a mano». Lo pegado ya se conservaba, y la cuota propia ya se distinguía, aunque con 24 h
       fijas.
       **`libs/ai` (ADR-060, enmienda ADR-018 §1 y §7):** clase del fallo en `ProviderUnavailable`
-      (`rate_limited`/`rejected`/`unavailable`); el breaker recuerda la clase del último fallo sin cambiar cuándo abre;
+      (`rate_limited`/`rejected`/`unavailable`); el breaker recuerda la clase dominante de su ventana sin cambiar
+      cuándo abre;
       `AiDegraded.providerCondition` (sin instante) acompaña solo a `providers_failed` y a `no_providers`. Los cuatro
       motivos, el ledger y la caché no cambian.
       **API:** `409 ai_consent_required`, `503 ai_capacity_exhausted` y `503 extraction_disabled` (sin
@@ -600,9 +600,25 @@ changes:
       ES/EN según ADR-050.
       **Fuera (B3, change posterior):** leer el reinicio del cupo de OpenRouter, la pausa del breaker hasta ese
       instante, el umbral de 5 min y el tope de 48 h, a la espera de la forma real del `429` (8.1 de 35b).
-      **Ventana de fusión:** solo después de la 11.6 de 35b y antes de su 10.7, repitiendo la 9.4 de `e2e-suite` y
-      nunca los días 7 y 14 de la medición, salvo excepción expresa del owner (Q1 (d)).
+      **Ventana de fusión (Q1 = (a), 2026-10-29):** solo después de la 11.6 de 35b y antes de su 10.7, repitiendo la
+      9.4 de `e2e-suite` y nunca con una corrida `e2e-remote` en curso; el PR de archivo, después de la 10.7, y las
+      vueltas atrás, con las reglas de ADR-060 §1. Sin (d): nada entre el PR-1 y el PR-2 de 35b.
+      **Coordinación con `web-error-copy-coverage`:** si ese change ya está en `main`, este añade a `API_ERROR_COPY`
+      sus tres entradas `local` y actualiza la cabeza del PR si `main` cambió el catálogo, el enum o la tabla (4.1, 6.3).
       Sin cambios de prompts, fixtures ni golden: el eval pasa sin `--update-baseline` (no regresión).
+      **Consentimiento del pegado (Q7 = (b), 2026-10-29):** fuera de este change; va en `paste-consent-scope`.
+  - name: paste-consent-scope
+    adrs: [060, 014, 018]
+    agents: [ai-engineer, frontend-dev]
+    scope: |
+      **Candidato**, sin directorio en `openspec/changes/` ni fila en `docs/design-v0.2.md` §6. Decisión del owner
+      2026-10-29 (Q7 de `paste-fallback-honest`). Planificar antes de la 10.7 de 35b si el owner lo prioriza; si se
+      adelanta a la fila 35, necesita su propia excepción (ADR-048 §Consecuencias).
+      Reclasificar la tarea `extract-pasted-job` como no `personal`: el pegado deja de pedir el permiso de IA externa
+      del Perfil, que habla solo del CV. Con `PiiRedactor` obligatorio sobre el texto pegado y `data_collection: deny`
+      en todo proveedor `external`. Requiere un **ADR propio** que enmiende ADR-014 y ADR-018 sobre la sensibilidad de
+      las tareas. Hasta que se aplique, rige la opción (d) de esa Q7: el pegado sin permiso termina en «Completar a
+      mano» (`409 ai_consent_required`, ADR-060 §5).
   - name: staging-host
     adrs: [051, 048, 033, 034, 035, 032]
     agents: [devops, backend-dev, frontend-dev, ai-engineer]

@@ -35,7 +35,7 @@ fichero y línea. En resumen, el camino del fallo es este:
 - Elegir otro proveedor o pagar cupo. Es una decisión de coste del owner, abierta en 35b (pago por uso).
 - Medir en el ledger la clase de fallo (Q6) y cambiar los textos de degradación de otras tareas (encaje, roadmap).
 - Decidir si `extract-pasted-job` debe pedir consentimiento, o si el texto del permiso de Perfil debe mencionar el
-  pegado (Q7, del owner).
+  pegado (Q7, del owner; respondida el 2026-10-29: (b), en el change propio `paste-consent-scope`).
 - Tocar despliegue, workflows o `platform/*` (condición de la excepción, Q1).
 
 ## Decisions
@@ -216,7 +216,7 @@ Textos en ES. Las traducciones EN siguen D8.
 
 - **Sin «Dar permiso en Perfil» (B1).** El permiso de Perfil habla solo del CV
   (`apps/web/src/app/features/profile/profile.page.html:147,154`): llevar allí a quien pega lo haría aceptar un texto
-  que no describe lo que va a pasar. Qué hacer con eso es la Q7.
+  que no describe lo que va a pasar. Qué hacer con eso es la Q7 (respondida el 2026-10-29: (b), en un change propio).
 - **Sin variante con hora para `ai_capacity_exhausted` (N7).** El SPA siempre dice «no sabemos cuándo vuelve» e
   ignora el `Retry-After` de esa respuesta. La variante con hora se reintroduce con D2, cuando la API sepa la hora.
 - **{cuándo}** solo existe para `ai_quota_exceeded`. `whenText(now, retryAfterMinutes, locale)` suma al instante actual
@@ -378,7 +378,7 @@ y la 7.3 verifica en `main` cada fusión de este change.
   pero el breaker sigue el umbral de siempre y se recupera en el half-open de 30 s. El coste es un mensaje pesimista
   durante segundos.
 - **[Quien no dio el permiso no tiene un camino para darlo desde el pegado]** → a propósito (B1): el permiso de Perfil
-  habla solo del CV. La Q7 decide si hace falta.
+  habla solo del CV. La Q7 (respondida el 2026-10-29) lo deja para el change propio `paste-consent-scope`.
 - **[«{cuándo}» con la hora del navegador]** → la persona ve su hora local. El `Retry-After` es relativo, así que no
   depende de la zona del servidor. En los bordes de D6 (redondeo que cruza a pasado mañana, cambio de hora) se dice
   «en 24 horas como mucho», que es verdad, en vez de inventar un día.
@@ -420,12 +420,20 @@ nuevos solo los produce este change, y un SPA viejo frente a una API nueva los m
 
   **Recomendación: (a).** Llega a tiempo para los invitados sin tocar la secuencia de 35b. Se registra con fecha en
   ADR-060 §1 y con una línea en ADR-048 §Consecuencias, como ADR-053 y ADR-055.
+
+  Respuesta del owner (Q1), 2026-10-29: (a), «Toma las recomendaciones». Excepción concedida con la ventana entre la
+  11.6 y la 10.7 de 35b y las tres clases de fusión de D11; no se autoriza (d). Anotada en ADR-060 §1 y en ADR-048
+  §Consecuencias.
 - **Q2 [no bloqueante] ¿«Completar a mano» también tras `not_a_job_posting`?** (a) Sí. (b) No, solo tras los
   errores de lectura. **Recomendación: (a)**: la IA puede equivocarse, y lo pegado sirve de referencia igual.
+  Respuesta del owner (Q2), 2026-10-29: (a), «Toma las recomendaciones». Sin cambios en D7 ni en las tareas, que ya
+  la daban por (a).
 - **Q3 [sin objeto]** Umbral entre espera corta y cupo agotado. Se difiere con D2 (B3).
 - **Q4 [no bloqueante] Textos de D6.** Los cambió reflect tras business (B1, B2, B6, B3-1, B3-4); el owner puede reescribirlos sin
   cambiar el diseño. **Recomendación:** aceptarlos y revisarlos en el móvil, como pide la línea de riesgo de D13 de
   35b («se comprueba en el móvil que se entiende»).
+  Respuesta del owner (Q4), 2026-10-29: aceptar los textos de D6 y D8 tal como están, «Toma las recomendaciones»;
+  la revisión en el móvil queda en la línea de riesgo de D13 de 35b.
 - **Q5 [no bloqueante] Lo pegado como referencia en la corrección a mano.**
   - (a) Panel plegable con texto copiable.
   - (b) No mostrarlo.
@@ -433,9 +441,11 @@ nuevos solo los produce este change, y un SPA viejo frente a una API nueva los m
 
   **Recomendación: (a)**: ayuda a copiar el salario o la modalidad sin ocupar la pantalla del móvil, y no se envía
   ni se guarda.
+  Respuesta del owner (Q5), 2026-10-29: (a), «Toma las recomendaciones». Panel plegable con texto copiable (D7, 5.1).
 - **Q6 [no bloqueante] ¿Registrar en el ledger la clase del fallo para medir el cupo en staging?** (a) No en este
   change: el log `AI provider error` ya lleva `httpStatus`. (b) Sí: un campo nuevo en `ai_usage`, con su
   migración de `enum`. **Recomendación: (a)**: (b) toca el ledger, que este change deja intacto a propósito.
+  Respuesta del owner (Q6), 2026-10-29: (a), «Toma las recomendaciones». El ledger no cambia.
 - **Q7 [no bloqueante para este change; decisión del owner] Consentimiento y pegado.** `extract-pasted-job` es
   `personal`, así que con `AI_CHAIN=openrouter` exige el permiso de IA externa, pero el permiso de Perfil
   («Permitir que un proveedor de IA externo analice mi CV», `profile.page.html:147,154`) solo habla del CV. Una oferta
@@ -455,6 +465,11 @@ nuevos solo los produce este change, y un SPA viejo frente a una API nueva los m
   **Voto de business (iteración 2, 2026-10-28):** (b) en un change propio con ADR, con `PiiRedactor` obligatorio y
   `data_collection: deny`, planificado **antes de la 10.7 de 35b**; mientras tanto, (d). Es un voto: Q7 sigue siendo
   decisión del owner.
+
+  Respuesta del owner (Q7), 2026-10-29: (b), «Toma las recomendaciones». La reclasificación de `extract-pasted-job`
+  como no `personal` va en un **change propio con ADR** (candidato `paste-consent-scope` en `openspec-changes.yaml`),
+  con `PiiRedactor` obligatorio y `data_collection: deny`, a planificar antes de la 10.7 de 35b si el owner lo
+  prioriza. Este change no cambia de alcance: mientras tanto rige (d). Anotada en ADR-060 §Consecuencias.
 
 ## Debate — iteración 1
 
@@ -545,3 +560,17 @@ Q1 (bloqueante) y Q7 siguen pendientes del owner; Q2, Q4, Q5 y Q6 son no bloquea
 recomendación.
 
 Convergencia: SI (iteración 3: critic P0 0, business V0 0; Q1 y Q7 pendientes del owner)
+
+## Aprobación humana (2026-10-29)
+
+Aprobado por el owner el 2026-10-29 («Toma las recomendaciones»): Q1 = (a), Q2 = (a), Q4 = textos aceptados,
+Q5 = (a), Q6 = (a) y Q7 = (b) en un change propio (`paste-consent-scope`, candidato). Ninguna respuesta cambia el
+diseño de este change.
+
+Cambios posteriores a la aprobación:
+
+| Id | Origen | Decisión | Motivo |
+| --- | --- | --- | --- |
+| 0.3 de `web-error-copy-coverage` (C3) | critic de `web-error-copy-coverage`, con la conformidad del owner del 2026-10-29 | Aceptado: la 4.1 añade las tres entradas `local` (`ai_consent_required`, `ai_capacity_exhausted`, `extraction_disabled`) a `API_ERROR_COPY` con `features/links/paste-description.dialog.ts`, si `web-error-copy-coverage` ya está en `main`; si no, lo hace ese change (ADR-062 §3) | El que llega segundo completa la tabla; si no, el `Record` tipado rompe `web:typecheck` |
+| C4 de `web-error-copy-coverage` | critic de `web-error-copy-coverage`, con la conformidad del owner del 2026-10-29 | Aceptado: antes de fusionar, actualizar la cabeza del PR y esperar CI verde si `main` cambió `apps/web/src/locale/messages.xlf`, `libs/shared/src/schemas/auth.schema.ts` o `apps/web/src/app/shared/ui/api-error-copy.ts` desde la última corrida (4.1 y 6.3) | Dos PR verdes por separado pueden dejar `main` en rojo (ADR-050 §5) |
+| Q7 | owner, 2026-10-29 | Registrado: fila candidata `paste-consent-scope` en `openspec-changes.yaml`, sin directorio | Decisión del owner; el alcance de este change no cambia |
