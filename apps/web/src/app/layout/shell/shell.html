@@ -1,23 +1,66 @@
-<mat-toolbar class="lv-shell-toolbar flex gap-2">
-  <a mat-button routerLink="/" i18n="@@shell.brand">LinkVault</a>
-  <span class="flex-1"></span>
-  <a mat-button routerLink="/buscar" i18n="@@shell.search">Buscar</a>
-  <a mat-button routerLink="/descubrir" i18n="@@shell.discovery">Descubrir</a>
-  <a mat-button routerLink="/postulaciones" i18n="@@shell.applications">Postulaciones</a>
-  <a mat-button routerLink="/mis-links" i18n="@@shell.myLinks">Solo para mí</a>
-  <a mat-button routerLink="/mi-cv" i18n="@@shell.myCv">Mi CV</a>
-  <a mat-button routerLink="/perfil" i18n="@@shell.profile">Perfil</a>
-  <button
-    mat-button
-    type="button"
-    [disabled]="loggingOut()"
-    (click)="logout()"
-    i18n="@@shell.logout"
+<!-- El header no es interactivo: solo recoge el Escape que sube desde los controles enfocables de la barra y del panel. -->
+<!-- eslint-disable-next-line @angular-eslint/template/interactive-supports-focus -->
+<header (keydown.escape)="onEscape()">
+  <mat-toolbar
+    class="lv-shell-toolbar flex gap-2"
+    [class.lv-shell-toolbar-compact]="compact()"
+    [attr.data-capabilities]="capabilities.state()"
   >
-    Cerrar sesión
-  </button>
-</mat-toolbar>
+    <a mat-button routerLink="/" i18n="@@shell.brand">LinkVault</a>
+    <span class="flex-1"></span>
+    @if (compact()) {
+    <button
+      #menuButton
+      mat-button
+      type="button"
+      [attr.aria-expanded]="menuOpen()"
+      [attr.aria-controls]="navPanelId"
+      (click)="toggleMenu()"
+      i18n="@@shell.menu"
+    >
+      Menú
+    </button>
+    } @else { @for (entry of entries(); track entry.route) {
+    <a mat-button [routerLink]="entry.route">{{ entry.label }}</a>
+    }
+    <button
+      mat-button
+      type="button"
+      [disabled]="loggingOut()"
+      (click)="logout()"
+      i18n="@@shell.logout"
+    >
+      Cerrar sesión
+    </button>
+    }
+  </mat-toolbar>
+  @if (compact()) {
+  <nav
+    #panel
+    class="lv-shell-panel"
+    [id]="navPanelId"
+    aria-label="Navegación principal"
+    i18n-aria-label="@@shell.navLabel"
+    [hidden]="!menuOpen()"
+  >
+    @for (entry of entries(); track entry.route) {
+    <a mat-button [routerLink]="entry.route" (click)="onPanelLink()"
+      >{{ entry.label }}</a
+    >
+    }
+    <button
+      mat-button
+      type="button"
+      [disabled]="loggingOut()"
+      (click)="logout()"
+      i18n="@@shell.logout"
+    >
+      Cerrar sesión
+    </button>
+  </nav>
+  }
+</header>
 <lv-email-unverified-banner />
-<main>
+<main #main tabindex="-1">
   <router-outlet />
 </main>

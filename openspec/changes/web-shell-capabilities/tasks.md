@@ -71,22 +71,25 @@ el implementador crea tal cual; cada uno sale de un escenario de `specs/`.
   **Estado (2026-10-30):** hecha. `capabilities.store.spec.ts`: 11 de 11 (los diez nombrados más «does not request again after failed» y «follows each flag once ready»). Falsaciones ejecutadas: (1) `failed` oculta las entradas: caen «shows them after a 500 (fails open)», «shows them after an invalid body» y «fails open after the timeout»; (2) sin plazo: caen «fails open after the timeout» y «cancels the request when the timeout expires» (5 s reales); (3) I3, `setTimeout` propio sin desuscribirse: cae solo «cancels the request when the timeout expires» (1 failed, 10 passed). Restaurado: 11 de 11.
 ## 3. La barra (design D5, D6, D8, D9)
 
-- [ ] 3.1 [frontend] `layout/shell/nav-entries.ts`: `NAV_ENTRIES` en el orden de D9, cada una con ruta, texto i18n
+- [x] 3.1 [frontend] `layout/shell/nav-entries.ts`: `NAV_ENTRIES` en el orden de D9, cada una con ruta, texto i18n
   (`$localize` con id `@@shell.groups`, `@@shell.myLinks`, …; se conservan los ids existentes) y capacidad opcional
   (`search` | `discovery`). Verificar en `nav-entries.spec.ts`: «lists the entries in the agreed order» y «only Buscar
   and Descubrir require a capability».
-- [ ] 3.2a [frontend] Depende de 2.2 y 3.1. Modo ancho del `Shell`: renderiza `NAV_ENTRIES` filtradas por el store,
+  **Estado (2026-10-30):** hecha. `nav-entries.spec.ts`: 2 de 2. Los ids `shell.*` existentes se conservan (`$localize` con el mismo id y texto); `shell.groups` es nuevo.
+- [x] 3.2a [frontend] Depende de 2.2 y 3.1. Modo ancho del `Shell`: renderiza `NAV_ENTRIES` filtradas por el store,
   llama a `ensureLoaded()` al crearse y pone en el `<mat-toolbar>` `[attr.data-capabilities]="store.state()"` (D5).
   Verificar en `shell.spec.ts`, con un doble de `BreakpointObserver` fijado en ancho: «hides Buscar and Descubrir when
   both capabilities are off», «shows Descubrir and hides Buscar when only discovery is on», «hides both while
   capabilities are loading», «shows both when the capabilities request fails», «toolbar reflects the capabilities
   state in data-capabilities». Falsación: fijar el atributo a `ready` sin mirar el store y ver caer «toolbar reflects
   the capabilities state in data-capabilities»; restaurar.
-- [ ] 3.2b [frontend] Depende de 3.2a. Ajustar los casos existentes de `shell.spec.ts` (siguen en verde, con la
+  **Estado (2026-10-30):** hecha. `shell.spec.ts` (doble de `BreakpointObserver` fijado en ancho): los cinco casos nombrados en verde (más uno que afirma `failed` tras un 500). Falsación: `data-capabilities="ready"` fijo hace caer «toolbar reflects the capabilities state in data-capabilities» y «toolbar reports failed…» (2 failed, 33 passed); restaurado.
+- [x] 3.2b [frontend] Depende de 3.2a. Ajustar los casos existentes de `shell.spec.ts` (siguen en verde, con la
   petición de capacidades atendida) y añadir: «renders the entries in the agreed order», «Grupos links to /grupos»,
   «Cerrar sesión comes after every entry». Verificar: `pnpm nx run web:test` del spec en verde
   (`--include="**/shell.spec.ts" --skip-nx-cache`).
-- [ ] 3.3a [frontend] Depende de 3.2b. Modo compacto (D8): constante
+  **Estado (2026-10-30):** hecha. Casos existentes ajustados (atienden la petición de capacidades) y añadidos «renders the entries in the agreed order», «Grupos links to /grupos» y «Cerrar sesión comes after every entry»: `web:test --skip-nx-cache --include="**/layout/shell/shell.spec.ts"` 35 de 35.
+- [x] 3.3a [frontend] Depende de 3.2b. Modo compacto (D8): constante
   `SHELL_COMPACT_QUERY = '(max-width: 1023.98px)'` en `layout/shell/shell-breakpoint.ts` (con comentario cruzado que
   nombra `SHELL_WIDE_MIN_WIDTH_PX` de `apps/web-e2e/src/support/shell-nav.ts` **sin repetir el número**; I5); signal con valor inicial
   `breakpointObserver.isMatched(SHELL_COMPACT_QUERY)`, actualizado con `observe(...)`; fila con la marca y el
@@ -94,14 +97,16 @@ el implementador crea tal cual; cada uno sale de un escenario de `specs/`.
   only the brand and the menu button», «wide mode has no menu button», «renders compact on the first change detection
   when the query already matches». Falsación (C7): inicializar la signal en `false` en vez de con `isMatched` y ver
   caer «renders compact on the first change detection when the query already matches»; restaurar.
-- [ ] 3.3b [frontend] Depende de 3.3a. Barra y panel envueltos en un `<header>` del Shell (hoy no existe).
+  **Estado (2026-10-30):** hecha. «compact bar shows only the brand and the menu button», «wide mode has no menu button» y «renders compact on the first change detection when the query already matches» en verde. El doble implementa `isMatched` y `observe`, y `observe` no repite el valor actual a propósito. Falsación C7: inicializar la signal en `false` hace caer «renders compact on the first change detection…» y, de paso, todos los casos compactos (el doble no emite al suscribirse, así que nada corrige el modo); restaurado. El comentario cruzado de `shell-breakpoint.ts` nombra `SHELL_WIDE_MIN_WIDTH_PX` sin repetir el número.
+- [x] 3.3b [frontend] Depende de 3.3a. Barra y panel envueltos en un `<header>` del Shell (hoy no existe).
   Panel: `<nav id="lv-shell-nav" aria-label="Navegación principal">` siempre en
   el DOM en modo compacto, con `[hidden]` cerrado; botón con `aria-expanded` y `aria-controls="lv-shell-nav"`; enlaces
   de las mismas entradas filtradas y «Cerrar sesión» al final; empuja el contenido (no superpuesto); `<main
   tabindex="-1">` en el Shell. Verificar en `shell.spec.ts`: «menu button starts with aria-expanded false and points to
   the nav», «the nav exists and is hidden while closed», «opening the menu lists the visible entries as links»,
   «compact panel hides Buscar and Descubrir when both are off».
-- [ ] 3.4a [frontend] Depende de 3.3b. Cierre del panel (D8, C6, N5, I2, I7): al `NavigationEnd` **solo si el panel
+  **Estado (2026-10-30):** hecha. Los cuatro casos nombrados en verde. `#menuButton` lleva `read: ElementRef` porque en un elemento con `mat-button` la referencia de plantilla es el componente, no el elemento (el foco al botón fallaba con `undefined`). `<header (keydown.escape)>` lleva un `eslint-disable-next-line` de `interactive-supports-focus` justificado en la plantilla (solo recoge el Escape que sube de controles enfocables).
+- [x] 3.4a [frontend] Depende de 3.3b. Cierre del panel (D8, C6, N5, I2, I7): al `NavigationEnd` **solo si el panel
   estaba abierto** (cierra y foco a `<main>` con `focus({ preventScroll: true })`), al pulsar cualquier enlace del
   panel con `(click)` (cierra y foco a `<main>`, también en la ruta actual), al volver a pulsar el botón (foco en el
   botón) y al pasar a modo ancho (cierra y, si el foco estaba dentro del panel, foco a `<main>` con
@@ -117,7 +122,8 @@ el implementador crea tal cual; cada uno sale de un escenario de `specs/`.
   focuses main when a navigation completes while it is open»; restaurar. Falsación (N5): quitar el `(click)` de los
   enlaces del panel y ver caer «tapping the current route's entry closes the panel»; restaurar. Falsación (I7): cerrar
   el panel al pasar a ancho sin mover el foco y ver caer «closes the panel when the viewport becomes wide»; restaurar.
-- [ ] 3.4b [frontend] Depende de 3.4a. Foco y Escape (D8, C6, B6, B8): con el panel cerrado o en modo ancho, un
+  **Estado (2026-10-30):** hecha. Los cinco casos nombrados en verde (router real con `{ path: 'mi-cv', component: PageStub }`). Falsaciones: sin la suscripción a `NavigationEnd` (filtro `&& false`) cae solo «closes the panel and focuses main when a navigation completes while it is open» (I2); sin el `(click)` cae solo «tapping the current route's entry closes the panel» (N5); cerrar al pasar a ancho sin mover el foco cae solo «closes the panel when the viewport becomes wide» (I7). Todas restauradas, 35 de 35.
+- [x] 3.4b [frontend] Depende de 3.4a. Foco y Escape (D8, C6, B6, B8): con el panel cerrado o en modo ancho, un
   `NavigationEnd` no toca el foco; Escape escuchado solo con el panel abierto y en el `<header>` del Shell (cierra y
   foco al botón). Verificar en `shell.spec.ts`: «focuses main after navigating from the panel», «focuses main without
   scrolling» (espía sobre `focus` de `<main>` llamado con `{ preventScroll: true }`), «does not move focus on
@@ -130,11 +136,13 @@ el implementador crea tal cual; cada uno sale de un escenario de `specs/`.
   `NavigationEnd`, sin mirar si el panel estaba abierto, y ver caer «does not move focus on NavigationEnd when the
   panel was closed»; restaurar. Falsación: mover el listener de Escape a `document` y ver caer «ignores Escape from
   outside the header»; restaurar.
-- [ ] 3.5 [frontend] Depende de 3.3b. `shell.scss`: estilos del modo compacto (una fila, panel en columna bajo la
+  **Estado (2026-10-30):** hecha. Los seis casos nombrados en verde. Falsaciones: enfocar `<main>` en todo `NavigationEnd` cae solo «does not move focus on NavigationEnd when the panel was closed» (B6; el caso afirma que llegó un `NavigationEnd` con `navigate([], { queryParams: { q: 'x' }, replaceUrl: true })`); Escape en `(document:keydown.escape)` cae solo «ignores Escape from outside the header». Restauradas.
+- [x] 3.5 [frontend] Depende de 3.3b. `shell.scss`: estilos del modo compacto (una fila, panel en columna bajo la
   barra) colgados de la clase que pone la signal, sin media query con el umbral (D8, N7), conservando el `flex-wrap` de
   5.4b en modo ancho, con el comentario actualizado; y `main:focus { outline: none }` (B8). Verificar:
   `grep -c "main:focus" apps/web/src/app/layout/shell/shell.scss` devuelve `1`, y `pnpm nx run web:lint` y
   `pnpm nx run web:build` en verde.
+  **Estado (2026-10-30):** hecha. `grep -c "main:focus" apps/web/src/app/layout/shell/shell.scss` devuelve 1; el SCSS no lleva el umbral; `web:lint` y `web:typecheck` en verde y `web:build` en verde (solo el aviso previo de presupuesto del bundle inicial).
 - [ ] 3.6 [frontend] Depende de 3.5. Evidencia del umbral (D8, C8, B5): con `nx serve web` y la pila local, capturas de
   `/grupos` guardadas fuera del repositorio con estos nombres: `wsc-412-es-off.png` (búsqueda y Descubrir apagados,
   como staging), `wsc-1024-es-on.png`, `wsc-1024-en-on.png`, `wsc-1280-es-on.png` y `wsc-1280-en-on.png` (las dos

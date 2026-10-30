@@ -1,11 +1,38 @@
-// Barra superior en pantallas estrechas (change `e2e-suite`, tarea 5.4b). En un móvil (Pixel 7, 412 px; o 375 px) las
-// ocho entradas no caben en una fila: con la altura fija de Material se salían de la pantalla y unas tapaban a otras
-// («Mi CV» no se podía pulsar). Aquí pasan a otra fila cuando no caben. En escritorio, donde caben, sigue siendo una
-// sola fila del alto de siempre. Va en la hoja del componente y no con utilidades de Tailwind porque la altura la fija
+// Barra superior (changes `e2e-suite` 5.4b y `web-shell-capabilities`).
+//
+// Modo ancho: las entradas no caben en una fila en algunos anchos de la pantalla ancha, así que la barra conserva el
+// `flex-wrap` de 5.4b como red de seguridad: con la altura fija de Material se salían de la pantalla y unas tapaban a
+// otras. Va en la hoja del componente y no con utilidades de Tailwind porque la altura la fija
 // `.mat-toolbar-single-row` sin capa, que gana a las utilidades (en capa); esta regla tiene más especificidad.
+//
+// Modo compacto: una sola fila (marca y «Menú») y el panel en columna bajo ella. Los estilos cuelgan de la clase que
+// pone el Shell según `SHELL_COMPACT_QUERY`; aquí no se repite el umbral, para que lo decida un solo sitio del SPA.
 .lv-shell-toolbar {
   flex-wrap: wrap;
   height: auto;
   min-height: var(--mat-toolbar-standard-height, 64px);
   padding-block: 4px;
+}
+
+.lv-shell-toolbar-compact {
+  flex-wrap: nowrap;
+}
+
+.lv-shell-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  padding: 4px 16px 12px;
+  background: var(--mat-sys-surface-container, transparent);
+}
+
+// Un `display` propio ganaría al atributo `hidden`: el panel cerrado tiene que seguir en el DOM y oculto.
+.lv-shell-panel[hidden] {
+  display: none;
+}
+
+// `<main tabindex="-1">` recibe el foco programático al navegar; sin contorno alrededor de toda la página.
+main:focus {
+  outline: none;
 }

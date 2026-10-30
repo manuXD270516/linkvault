@@ -32,13 +32,17 @@ describe('CapabilitiesStore', () => {
     const second = store.ensureLoaded();
 
     expect(second).toBe(first);
-    http.expectOne('/api/capabilities').flush({ search: true, discovery: true });
+    http
+      .expectOne('/api/capabilities')
+      .flush({ search: true, discovery: true });
     await Promise.all([first, second]);
   });
 
   it('does not request again after ready', async () => {
     const first = store.ensureLoaded();
-    http.expectOne('/api/capabilities').flush({ search: true, discovery: true });
+    http
+      .expectOne('/api/capabilities')
+      .flush({ search: true, discovery: true });
     await first;
 
     await store.ensureLoaded();
@@ -65,7 +69,9 @@ describe('CapabilitiesStore', () => {
 
     expect(store.showSearch()).toBe(false);
     expect(store.showDiscovery()).toBe(false);
-    http.expectOne('/api/capabilities').flush({ search: true, discovery: true });
+    http
+      .expectOne('/api/capabilities')
+      .flush({ search: true, discovery: true });
   });
 
   it('follows each flag once ready', async () => {
@@ -120,7 +126,9 @@ describe('CapabilitiesStore', () => {
     expect(store.state()).toBe('loading');
     const loaded = store.ensureLoaded();
     expect(store.state()).toBe('loading');
-    http.expectOne('/api/capabilities').flush({ search: true, discovery: true });
+    http
+      .expectOne('/api/capabilities')
+      .flush({ search: true, discovery: true });
     await loaded;
     expect(store.state()).toBe('ready');
   });
