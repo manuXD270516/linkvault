@@ -535,7 +535,7 @@ describe('DELETE /api/users/me account deletion cascade', () => {
     });
     await db().collection('push_subscriptions').insertOne({
       userId: anaOid,
-      endpoint: 'https://push.example/ana',
+      endpoint: 'https://fcm.googleapis.com/fcm/send/ana',
       p256dh: 'pk',
       auth: 'ak',
       createdAt: NOW,

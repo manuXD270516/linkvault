@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isKnownPushEndpoint } from '../notifications/push-services';
 
 // Preferencias de notificación de producto (change notifications, ADR-035;
 // digest: group-weekly-digest).
@@ -56,7 +57,13 @@ export type PatchNotificationPreferencesRequest = z.infer<
 >;
 
 export const pushSubscriptionRequestSchema = z.strictObject({
-  endpoint: z.string().url(),
+  // Solo servicios push conocidos, con un criterio de URL que los dos analizadores no puedan leer de forma distinta
+  // (D7 de enrichment-egress-guard): un endpoint de otro host es un `400 validation_error` que nombra `endpoint`.
+  // `refine` sobre la cadena cruda, antes de cualquier normalización de zod (que recortaría un espacio inicial): el
+  // predicado exige que el texto ya sea canónico y de un servicio conocido, así que tampoco hace falta `.url()`.
+  endpoint: z
+    .string()
+    .refine(isKnownPushEndpoint, { message: 'unknown_push_service' }),
   keys: z.strictObject({
     p256dh: z.string().min(1),
     auth: z.string().min(1),

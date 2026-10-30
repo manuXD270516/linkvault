@@ -1,5 +1,5 @@
 import { Injectable, inject, signal } from '@angular/core';
-import { type RequestFailure, toRequestFailure } from '../api/api-error';
+import { type RequestFailure, isApiFailure, toRequestFailure } from '../api/api-error';
 import { NotificationsApi } from './notifications.api';
 import {
   PushBrowser,
@@ -67,7 +67,23 @@ export class PushNotifications {
       if (subscription === null) {
         subscription = await this.browser.subscribe(ready, vapidKeyToBytes(publicKey));
       }
-      await this.api.registerPushSubscription(toPushSubscriptionRequest(subscription));
+      try {
+        await this.api.registerPushSubscription(toPushSubscriptionRequest(subscription));
+      } catch (error: unknown) {
+        // El servidor solo admite los servicios push conocidos (D11 de enrichment-egress-guard): ante un 400 del alta se
+        // cancela la suscripción del navegador, recién creada o previa, para que la pantalla no diga «activados» para un
+        // navegador al que el servidor nunca enviará nada. Se trata como navegador sin soporte, no como fallo.
+        if (isApiFailure(toRequestFailure(error), 400, 'validation_error')) {
+          try {
+            await subscription.unsubscribe();
+          } catch {
+            // Un fallo al cancelar no cambia el resultado.
+          }
+          this.subscribed.set(false);
+          return { kind: 'unsupported' };
+        }
+        throw error;
+      }
       this.subscribed.set(true);
       return { kind: 'enabled' };
     } catch (error: unknown) {

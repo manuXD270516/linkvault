@@ -224,4 +224,35 @@ describe('NotificationsPage', () => {
     expect(host().querySelector('[data-testid="pref-group-new-link"]')).not.toBeNull();
     expect(host().querySelector('[data-testid="notifications-save"]')).not.toBeNull();
   });
+
+  it('shows the unsupported browser text when enabling push answers unsupported', async () => {
+    const subscription = {
+      endpoint: 'https://fcm.googleapis.com/fcm/send/e1',
+      toJSON: () => ({
+        endpoint: 'https://fcm.googleapis.com/fcm/send/e1',
+        keys: { p256dh: 'p256', auth: 'auth' },
+      }),
+      unsubscribe: async () => true,
+    } as unknown as PushSubscription;
+    browser.subscribe.mockResolvedValue(subscription);
+
+    host().querySelector<HTMLElement>('[data-testid="push-enable"]')!.click();
+    const vapid = await vi.waitFor(() =>
+      http.expectOne('/api/notifications/push-vapid-public-key'),
+    );
+    vapid.flush({ publicKey: 'BAAA' });
+    const register = await vi.waitFor(() =>
+      http.expectOne({ method: 'POST', url: '/api/notifications/push-subscriptions' }),
+    );
+    register.flush(
+      { code: 'validation_error', message: 'Invalid request', fields: ['endpoint'] },
+      { status: 400, statusText: 'Bad Request' },
+    );
+    await settle();
+    await harness.fixture.whenStable();
+
+    const section = host().querySelector('[data-testid="notifications-push"]');
+    expect(section?.textContent).toContain('Este navegador no admite notificaciones push.');
+    expect(section?.querySelector('lv-request-error')).toBeNull();
+  });
 });

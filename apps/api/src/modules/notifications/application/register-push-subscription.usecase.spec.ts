@@ -12,7 +12,7 @@ import { fixedClock } from './testing/notifications-test-doubles';
 
 const NOW = new Date('2026-09-22T12:00:00.000Z');
 const ANA = '66e9a00000000000000000a1';
-const ENDPOINT = 'https://push.example/endpoint-1';
+const ENDPOINT = 'https://fcm.googleapis.com/fcm/send/endpoint-1';
 
 class InMemoryPushSubscriptions {
   private readonly rows = new Map<string, PushSubscription>();

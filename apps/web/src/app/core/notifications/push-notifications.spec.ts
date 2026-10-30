@@ -11,7 +11,7 @@ import { PushBrowser } from './push-browser';
 import { PushNotifications } from './push-notifications';
 
 /** Suscripción mínima tipada para mockear PushManager. */
-function fakeSubscription(endpoint = 'https://push.example/e1'): PushSubscription {
+function fakeSubscription(endpoint = 'https://fcm.googleapis.com/fcm/send/e1'): PushSubscription {
   return {
     endpoint,
     expirationTime: null,
@@ -86,7 +86,7 @@ describe('PushNotifications', () => {
       http.expectOne({ method: 'POST', url: '/api/notifications/push-subscriptions' }),
     );
     expect(register.request.body).toEqual({
-      endpoint: 'https://push.example/e1',
+      endpoint: 'https://fcm.googleapis.com/fcm/send/e1',
       keys: { p256dh: 'p256', auth: 'auth' },
     });
     register.flush(null, { status: 201, statusText: 'Created' });
@@ -125,11 +125,86 @@ describe('PushNotifications', () => {
           req.urlWithParams.includes('/api/notifications/push-subscriptions'),
       ),
     );
-    expect(remove.request.params.get('endpoint')).toBe('https://push.example/e1');
+    expect(remove.request.params.get('endpoint')).toBe('https://fcm.googleapis.com/fcm/send/e1');
     remove.flush(null, { status: 204, statusText: 'No Content' });
 
     await expect(disabling).resolves.toEqual({ kind: 'disabled' });
     expect(unsub).toHaveBeenCalled();
     expect(push.subscribed()).toBe(false);
+  });
+
+  /** Completa el alta con la respuesta dada: lleva `enable()` hasta el `POST` de la suscripción. */
+  async function enableWithRegistration(
+    respond: (request: ReturnType<HttpTestingController['expectOne']>) => void,
+  ) {
+    const enabling = push.enable();
+    const vapid = await vi.waitFor(() =>
+      http.expectOne('/api/notifications/push-vapid-public-key'),
+    );
+    vapid.flush({ publicKey: 'BAAA' });
+    const register = await vi.waitFor(() =>
+      http.expectOne({ method: 'POST', url: '/api/notifications/push-subscriptions' }),
+    );
+    respond(register);
+    return enabling;
+  }
+
+  function rejectEndpoint(request: ReturnType<HttpTestingController['expectOne']>): void {
+    const { body, options } = apiError('validation_error', 400);
+    request.flush(body, options);
+  }
+
+  it('unsubscribes the browser subscription and answers unsupported when the API rejects the endpoint', async () => {
+    const subscription = fakeSubscription();
+    const unsubscribe = vi.spyOn(subscription, 'unsubscribe');
+    browser.subscribe.mockResolvedValue(subscription);
+
+    const outcome = await enableWithRegistration(rejectEndpoint);
+
+    expect(outcome.kind).toBe('unsupported');
+    expect(push.subscribed()).toBe(false);
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+  });
+
+  it('unsubscribes an existing browser subscription when the API rejects the endpoint', async () => {
+    const existing = fakeSubscription();
+    const unsubscribe = vi.spyOn(existing, 'unsubscribe');
+    browser.getSubscription.mockResolvedValue(existing);
+
+    const outcome = await enableWithRegistration(rejectEndpoint);
+
+    expect(outcome.kind).toBe('unsupported');
+    expect(push.subscribed()).toBe(false);
+    expect(browser.subscribe).not.toHaveBeenCalled();
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+  });
+
+  it('still answers unsupported when unsubscribe rejects', async () => {
+    const subscription = fakeSubscription();
+    const unsubscribe = vi
+      .spyOn(subscription, 'unsubscribe')
+      .mockRejectedValue(new Error('unsubscribe failed'));
+    browser.subscribe.mockResolvedValue(subscription);
+
+    const outcome = await enableWithRegistration(rejectEndpoint);
+
+    expect(outcome.kind).toBe('unsupported');
+    expect(push.subscribed()).toBe(false);
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the browser subscription on a transient registration failure', async () => {
+    const subscription = fakeSubscription();
+    const unsubscribe = vi.spyOn(subscription, 'unsubscribe');
+    browser.subscribe.mockResolvedValue(subscription);
+
+    const outcome = await enableWithRegistration((request) => {
+      const { body, options } = apiError('internal_error', 500);
+      request.flush(body, options);
+    });
+
+    expect(outcome.kind).toBe('failed');
+    expect(push.subscribed()).toBe(false);
+    expect(unsubscribe).not.toHaveBeenCalled();
   });
 });

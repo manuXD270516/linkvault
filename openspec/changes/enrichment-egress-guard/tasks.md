@@ -228,7 +228,7 @@ DNS, y `PUBLIC_EGRESS_POLICY` tal cual para el negativo de puerto. No hay variab
 
 ## 6. Push (design D7, D11)
 
-- [ ] 6.1 [backend] `libs/shared/src/notifications/push-services.ts` con la lista de D7 e `isKnownPushEndpoint(raw)`:
+- [x] 6.1 [backend] `libs/shared/src/notifications/push-services.ts` con la lista de D7 e `isKnownPushEndpoint(raw)`:
   texto crudo sin espacios, controles ni barra invertida; `new URL(raw).href === raw`; host solo con letras ASCII,
   dígitos, guiones y puntos; `https`, sin credenciales, puerto 443 o ausente; host exacto o sufijo con punto. El
   `refine` de `pushSubscriptionRequestSchema` con `path: ['endpoint']`. Verificar en `notifications.schema.spec.ts`:
@@ -237,11 +237,11 @@ DNS, y `PUBLIC_EGRESS_POLICY` tal cual para el negativo de puerto. No hay variab
   not already in canonical WHATWG form or carries forbidden characters» (tabla de casos generados en el test por
   categoría: espacio, control, barra invertida, carácter fuera del juego permitido en el host, forma no canónica).
   Falsación: comparar con `endsWith(sufijo)` sin el punto y ver caer el cuarto; quitar la comparación con `href` y ver
-  caer el quinto; restaurar.
-- [ ] 6.2 [backend] API: los fixtures de push de `apps/api/**` pasan a hosts de la lista. Verificar en el spec del
+  caer el quinto; restaurar. **Estado (2026-10-30):** `libs/shared/src/notifications/push-services.ts` con la lista de D7 e `isKnownPushEndpoint(raw)` (texto crudo sin espacios, controles ni barra invertida; `new URL(raw).href === raw`, así que un puerto explícito, incluido `:443`, o mayúsculas se rechazan por no ser canónicos; host solo con letras ASCII, dígitos, guiones y puntos; `https`, sin credenciales; host exacto o sufijo con punto), exportado por el índice de `@linkvault/shared`. El `refine` de `pushSubscriptionRequestSchema` va sobre la cadena cruda y sustituye a `.url()`: con `.url()` previo, zod normaliza el texto (recorta un espacio inicial) antes del `refine` y el criterio crudo no se aplicaría. Los cinco tests nombrados de `notifications.schema.spec.ts` en verde (11 con `push-services.spec.ts`). Falsaciones hechas: `endsWith(sufijo)` sin el punto cae «rejects a host that ends with a known suffix without a label boundary»; quitar la comparación con `href` cae «rejects an endpoint that is not already in canonical WHATWG form or carries forbidden characters»; restauradas.
+- [x] 6.2 [backend] API: los fixtures de push de `apps/api/**` pasan a hosts de la lista. Verificar en el spec del
   controlador o de `register-push-subscription.usecase.spec.ts`: «an unknown push endpoint answers 400 validation_error
-  naming endpoint and stores nothing». Falsación: quitar el `refine` de 6.1 y ver caer el test; restaurar.
-- [ ] 6.3 [backend] `WebPushVapidSender` recibe la política de endpoints por constructor (por defecto
+  naming endpoint and stores nothing». Falsación: quitar el `refine` de 6.1 y ver caer el test; restaurar. **Estado (2026-10-30):** Los fixtures de push de `apps/api/**` pasan a hosts de la lista (`register-push-subscription.usecase.spec.ts`, `account-deletion.cascade.spec.ts`). Nuevo `notifications.controller.push.spec.ts` sobre la app completa: «an unknown push endpoint answers 400 validation_error naming endpoint and stores nothing» (`fields: ['endpoint']`, colección `push_subscriptions` vacía) y un control positivo que registra un endpoint conocido (`201`). 18 tests de `notifications` y del cascade en verde. Falsación hecha: sustituir el `refine` por `.url()` cae los dos tests; restaurada.
+- [x] 6.3 [backend] `WebPushVapidSender` recibe la política de endpoints por constructor (por defecto
   `isKnownPushEndpoint` más la igualdad del host de `url.parse` con el host WHATWG); un endpoint que no la cumple se
   borra con `deleteEndpoint` sin llamar a `web-push`, con un `warn` que lleva el host (o `unparseable`) y nunca el
   endpoint completo. Los specs que hoy usan servidores locales inyectan una política permisiva. Verificar en
@@ -249,8 +249,8 @@ DNS, y `PUBLIC_EGRESS_POLICY` tal cual para el negativo de puerto. No hay variab
   servidor local cuenta cero conexiones; el registro capturado contiene el host y no contiene el endpoint completo) y
   «deletes a stored subscription whose legacy-parsed host differs from the WHATWG host». Falsación: saltarse la
   comprobación con la política por defecto y ver caer el primero; quitar la igualdad de hosts y ver caer el segundo;
-  registrar el endpoint completo y ver caer el primero; restaurar.
-- [ ] 6.4 [frontend] `core/notifications/push-notifications.ts` (V1-1, N7, B3, B3-a): si `registerPushSubscription`
+  registrar el endpoint completo y ver caer el primero; restaurar. **Estado (2026-10-30):** `WebPushVapidSender` recibe la política por constructor (`PUSH_ENDPOINT_POLICY`, opcional; por defecto `createPushEndpointPolicy()` = `isKnownPushEndpoint` más la igualdad del host de `url.parse` con el de WHATWG); un endpoint que no la cumple se borra con `deleteEndpoint` sin llamar a `web-push`, con un `warn` `{ event, host }` (o `unparseable`) y nunca el endpoint completo. Los specs existentes del worker usaban dobles, no servidores locales, así que no necesitaron política permisiva; los nuevos la inyectan donde hace falta. «deletes a stored subscription outside the known push services without connecting» (servidor contador: con política permisiva el envío abre una conexión, con la de por defecto no abre ninguna más; el registro capturado contiene el host y no el endpoint) y «deletes a stored subscription whose legacy-parsed host differs from the WHATWG host» en verde. Falsaciones hechas: saltarse la comprobación cae los dos; quitar la igualdad de hosts cae el segundo; registrar el endpoint completo cae el primero; restauradas.
+- [x] 6.4 [frontend] `core/notifications/push-notifications.ts` (V1-1, N7, B3, B3-a): si `registerPushSubscription`
   falla con `400` y código `validation_error`, `enable()` llama a `subscription.unsubscribe()` sobre la suscripción
   del navegador, sea la recién creada o la que ya existía, y devuelve `{ kind: 'unsupported' }` (no `failed`), sin
   dejar el fallo en `failure`; `subscribed` queda en `false`. Un rechazo de `unsubscribe()` se ignora: el resultado
@@ -266,12 +266,12 @@ DNS, y `PUBLIC_EGRESS_POLICY` tal cual para el negativo de puerto. No hay variab
   `pnpm nx run web:test --include="**/push-notifications.spec.ts" --skip-nx-cache`, lo mismo con
   `--include="**/notifications.page.spec.ts"`, y `pnpm nx run web:i18n-check` en verde. Falsación: quitar la llamada
   a `unsubscribe()` y ver caer el primero; devolver `failed` ante el `400` y ver caer el primero; propagar el rechazo
-  de `unsubscribe()` y ver caer el tercero; llamarla ante cualquier fallo y ver caer el cuarto; restaurar.
+  de `unsubscribe()` y ver caer el tercero; llamarla ante cualquier fallo y ver caer el cuarto; restaurar. **Estado (2026-10-30):** `push-notifications.ts`: si `registerPushSubscription` responde `400` con código `validation_error`, `enable()` llama a `subscription.unsubscribe()` (recién creada o previa), ignora un fallo de la cancelación, deja `subscribed` en `false`, no escribe `failure` y devuelve `{ kind: 'unsupported' }`; el resto de fallos siguen siendo `failed` sin cancelar. Sin cambios de plantilla ni de catálogo. Con `pnpm nx run web:test --skip-nx-cache -- --include="**/push-notifications.spec.ts"` (9 tests) los cuatro nombrados en verde, y con `--include="**/notifications.page.spec.ts"` (9 tests) «shows the unsupported browser text when enabling push answers unsupported» (texto existente y ningún `lv-request-error` en la sección de push); `pnpm nx run web:i18n-check` en verde. Falsaciones hechas: quitar `unsubscribe()` cae los tres primeros; devolver `failed` ante el `400` cae los tres primeros; propagar el rechazo de `unsubscribe()` cae el tercero; cancelar ante cualquier fallo cae el cuarto; restauradas.
 - [ ] 6.5 [infra] Comprobación manual de la lista en local (`pnpm infra:up`, `nx serve api`, `nx serve web`) con los
   navegadores disponibles (al menos Chrome y Firefox; Edge y Safari si hay equipo): activar push en Notificaciones y
   anotar en el PR, por navegador, el **host** del endpoint (no el endpoint entero) y la respuesta `201`. Verificar: la
   nota del PR lista cada navegador probado con host y `201`; un navegador con `400` es un hallazgo que amplía la lista
-  en esta misma tarea.
+  en esta misma tarea. **Estado (2026-10-30):** No hecha en esta sesión: es la comprobación manual en navegadores reales (Chrome y Firefox, Edge y Safari si hay equipo) y la hace el owner. Anotar en el PR, por navegador, el host del endpoint (no el endpoint entero) y la respuesta `201`; un `400` es un hallazgo que amplía la lista de `push-services.ts`.
 
 ## 7. Documentación y cierre
 
