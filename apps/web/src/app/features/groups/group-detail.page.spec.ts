@@ -401,6 +401,43 @@ describe('GroupDetailPage', () => {
     expect(TestBed.inject(GroupsStore).groups()).toEqual([]);
   });
 
+  it('removing a member who already left shows the member text', async () => {
+    await openDetail(ownerDetail);
+
+    buttonWithText(page(), 'Expulsar').click();
+    await settle();
+    await harness.fixture.whenStable();
+    await answer('Expulsar');
+    (await awaitRequest('DELETE', '/api/groups/g1/members/u2')).flush(
+      { code: 'member_not_found', message: 'member_not_found' },
+      { status: 404, statusText: 'Not Found' },
+    );
+    await settle();
+    await harness.fixture.whenStable();
+
+    expect(text()).toContain('Esa persona ya no está en el grupo. Recarga la página para ver la lista actual');
+    expect(text()).not.toContain('Algo salió mal');
+  });
+
+  it('leaving as the new owner shows the reload text', async () => {
+    await openDetail(memberDetail);
+
+    await act('Salir del grupo');
+    await answer('Salir');
+    (await awaitRequest('DELETE', '/api/groups/g1/members/me')).flush(
+      { code: 'owner_cannot_leave', message: 'owner_cannot_leave' },
+      { status: 409, statusText: 'Conflict' },
+    );
+    await settle();
+    await harness.fixture.whenStable();
+
+    expect(text()).toContain(
+      'Ahora eres propietario de este grupo. Recarga la página y nombra propietario a otro miembro para poder salir',
+    );
+    expect(text()).not.toContain('Algo salió mal');
+    expect(page().querySelector('[data-testid="error-reference"]')).toBeNull();
+  });
+
   it('Cancelar el borrado', async () => {
     await openDetail(ownerDetail);
 

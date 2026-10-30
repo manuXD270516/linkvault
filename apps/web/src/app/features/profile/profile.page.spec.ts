@@ -402,6 +402,19 @@ describe('ProfilePage', () => {
       expect(store.user()?.aiConsent.externalProviders).toBe(false);
     });
 
+    it('granting consent with an outdated text shows the reload text', async () => {
+      consentButton().click();
+      await settle();
+      const { body, options } = apiError('consent_text_outdated', 409);
+      http.expectOne('/api/users/me').flush(body, options);
+      await settle();
+      await harness.fixture.whenStable();
+
+      expect(text()).toContain('El texto del permiso cambió. Recarga la página para leer la versión vigente');
+      expect(text()).not.toContain('Algo salió mal');
+      expect(host().querySelector('[data-testid="error-reference"]')).toBeNull();
+    });
+
     it('El texto cambió después de aceptarlo', async () => {
       store.setUser({
         ...testUser,
@@ -600,6 +613,26 @@ describe('ProfilePage', () => {
       );
       expect(byokKeyInput('openai').value).toBe('');
       expect(byokKeyInput('openai').type).toBe('password');
+    });
+
+    it('saving a key without vault shows the vault text and keeps the vendor unconfigured', async () => {
+      typeInto(host(), '[data-testid="profile-byok-key-anthropic"]', 'sk-ant-key-without-vault-16');
+      host().querySelector<HTMLButtonElement>('[data-testid="profile-byok-save-anthropic"]')?.click();
+      await settle();
+
+      const put = http.expectOne({ method: 'PUT', url: '/api/users/me/ai-keys/anthropic' });
+      const { body, options } = apiError('vault_unavailable', 503);
+      put.flush(body, options);
+      await settle();
+      await harness.fixture.whenStable();
+
+      expect(text()).toContain('LinkVault no tiene activado el guardado de claves de IA. Tu clave no se guardó');
+      expect(text()).not.toContain('Algo salió mal');
+      expect(text()).not.toContain('LinkVault no está disponible en este momento');
+      expect(host().querySelector('[data-testid="profile-byok-hint-anthropic"]')).toBeNull();
+      expect(host().querySelector('[data-testid="profile-byok-status-anthropic"]')?.textContent).not.toMatch(
+        /Configurada/,
+      );
     });
 
     it('Revoca Anthropic tras confirmar', async () => {

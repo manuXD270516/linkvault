@@ -212,6 +212,45 @@ describe('NotificationsPage', () => {
     await settle();
   });
 
+  async function enablePushAnswering(status: number, code: string): Promise<void> {
+    host().querySelector<HTMLElement>('[data-testid="push-enable"]')!.click();
+    await settle();
+    const request = await vi.waitFor(() =>
+      http.expectOne({ method: 'GET', url: '/api/notifications/push-vapid-public-key' }),
+    );
+    request.flush({ code, message: code }, { status, statusText: String(status) });
+    await settle();
+    await harness.fixture.whenStable();
+  }
+
+  it('vapid unavailable shows only the push notice', async () => {
+    await enablePushAnswering(503, 'vapid_unavailable');
+
+    expect(host().querySelector('[data-testid="push-vapid-unavailable"]')).not.toBeNull();
+    expect(host().querySelector('lv-request-error')).toBeNull();
+  });
+
+  it('returning to /notificaciones after vapid unavailable shows no common error', async () => {
+    await enablePushAnswering(503, 'vapid_unavailable');
+    expect(host().querySelector('lv-request-error')).toBeNull();
+
+    await harness.navigateByUrl('/perfil', Shell);
+    await settle();
+    http.expectOne({ method: 'GET', url: '/api/users/me/ai-keys' }).flush({ keys: [], vendors: [] });
+    await settle();
+    await harness.navigateByUrl('/notificaciones', Shell);
+    await flushBootstrap();
+
+    expect(host().querySelector('lv-request-error')).toBeNull();
+  });
+
+  it('another enable failure still shows the common error', async () => {
+    await enablePushAnswering(500, 'internal_error');
+
+    expect(host().querySelector('[data-testid="push-vapid-unavailable"]')).toBeNull();
+    expect(host().querySelector('lv-request-error')?.textContent).toContain('Algo salió mal');
+  });
+
   it('keeps email prefs editable when push permission is denied', async () => {
     browser.requestPermission.mockResolvedValue('denied');
 

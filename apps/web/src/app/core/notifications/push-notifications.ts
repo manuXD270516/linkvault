@@ -72,10 +72,12 @@ export class PushNotifications {
       return { kind: 'enabled' };
     } catch (error: unknown) {
       const failure = toRequestFailure(error);
-      this.failure.set(failure);
       if (failure.kind === 'api' && failure.status === 503) {
+        // Aviso propio de la página: no se guarda en `failure`, o `lv-request-error` lo repetiría («Algo salió mal»)
+        // y reaparecería al volver a /notificaciones, porque la señal vive en el servicio.
         return { kind: 'vapid_unavailable' };
       }
+      this.failure.set(failure);
       return { kind: 'failed', failure };
     }
   }
