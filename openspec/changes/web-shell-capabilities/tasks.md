@@ -203,7 +203,7 @@ el implementador crea tal cual; cada uno sale de un escenario de `specs/`.
   **Estado (2026-10-30):** hecha por la vía de marcar las capturas: §27 de `docs/guia-de-uso/README.md` dice ahora que la barra ocupa una sola fila con la marca y «Menú» y no contiene «tres filas» (`grep -n "tres filas"` vacío); las capturas 088, 089 y 090 no se rehicieron (exigen la pila) y quedan marcadas como «captura con la barra anterior a `web-shell-capabilities`» (`grep -c "barra anterior a"` devuelve 1). `bash infra/ci/repo-checks.sh`: ok.
 ## 6. Camino crítico (`@lot1`) y re-admisión (design D13)
 
-- [ ] 6.1 [frontend] `apps/web-e2e/src/support/shell-nav.ts`: constante `SHELL_WIDE_MIN_WIDTH_PX = 1024` (con
+- [x] 6.1 [frontend] `apps/web-e2e/src/support/shell-nav.ts`: constante `SHELL_WIDE_MIN_WIDTH_PX = 1024` (con
   comentario cruzado que nombra `SHELL_COMPACT_QUERY` sin repetir el número; I5) y `navigateByShell(page, name)`, que decide el modo por
   `page.viewportSize().width < SHELL_WIDE_MIN_WIDTH_PX`; en compacto lee `aria-expanded` del botón «Menú» y lo pulsa
   **solo si es `false`** (N4), y luego `getByRole('link', { name, exact: true })` dentro del `<nav>` «Navegación
@@ -214,7 +214,8 @@ el implementador crea tal cual; cada uno sale de un escenario de `specs/`.
   Falsación (N4): pulsar «Menú» sin mirar `aria-expanded` y abrir el panel antes de llamar al ayudante en un paso del
   recorrido; ver caer la corrida `mobile` al no encontrar el enlace (panel cerrado por el segundo clic); restaurar.
   **Estado (2026-10-30):** sin marcar: lo escrito y verificado sin pila. `apps/web-e2e/src/support/shell-nav.ts` con `SHELL_WIDE_MIN_WIDTH_PX` (comentario cruzado sin repetir el número), `isShellCompact`, `navigateByShell` (en compacto lee `aria-expanded` y pulsa «Menú» solo si es `false`, luego el enlace dentro del `<nav>` «Navegación principal»; en ancho, dentro de `mat-toolbar`), `armCapabilitiesResponse`, `readShellCapabilities` y `expectShellOptionalEntries`; `critical-path.spec.ts` usa `navigateByShell` para «Postulaciones», «Mi CV» y «Grupos» (en `backToGroup`, en lugar de la marca). `web-e2e:lint` y `web-e2e:typecheck` en verde; `grep -n aria-expanded` devuelve la lectura antes del clic (línea 60); `playwright test --list` lista el recorrido. Falta la corrida `web-e2e:e2e-stack -- --project=mobile` y la falsación N4 (necesitan la pila; denegada en esta sesión).
-- [ ] 6.2 [frontend] Depende de 6.1. Capacidades en el recorrido (C2, C3, I4): armar
+  **Corrida en runner limpio (2026-10-30), cierra la tarea:** workflow `e2e` con `target=local` sobre `13c4474`, corrida 41025239092: `2 passed (46.7s)` con `--grep @lot1`, el recorrido crítico en `chromium` y `mobile`. Falsación N4 en la rama temporal `tmp/wsc-falsa-n4`, ya borrada: corrida 41025785557 con `1 failed`, `1 passed`; cae al no encontrar el `<nav>` «Navegación principal» con el panel cerrado por el segundo clic.
+- [x] 6.2 [frontend] Depende de 6.1. Capacidades en el recorrido (C2, C3, I4): armar
   `page.waitForResponse(r => r.url().endsWith('/api/capabilities') && r.request().method() === 'GET' && r.status() === 200)`
   en `register()`, `enterWithTestAccount()` y `joinByInvitation()` antes del clic de «Crear cuenta» o «Entrar» (nunca
   `page.request.get`: el token vive en memoria); guardar la promesa en `Entry` (A) y pasar la de B a sus pasos 3-7; en
@@ -225,6 +226,7 @@ el implementador crea tal cual; cada uno sale de un escenario de `specs/`.
   Falsación (C3): dejar el store atascado en `loading` (que `ensureLoaded()` no resuelva nunca) y ver caer el
   recorrido en la espera de `ready`, no pasar; restaurar.
   **Estado (2026-10-30):** sin marcar: lo escrito y verificado sin pila. La espera de `GET /api/capabilities` se arma antes del clic en `register()`, `enterWithTestAccount()` y `joinByInvitation()` (`waitForResponse`, nunca `page.request`); la promesa vive en `Entry` (A) y se pasa la de B a `stepsThreeToSeven`; el paso 5, antes de «Postulaciones» y sin recargar, lee el cuerpo, espera `data-capabilities="ready"` y afirma «Buscar»/«Descubrir» si y solo si su capacidad es `true`. Lint y typecheck de `web-e2e` en verde. Falta `web-e2e:e2e-stack -- --project=chromium` y las dos falsaciones (invertir la condición; store atascado en `loading`), que necesitan la pila.
+  **Corrida en runner limpio (2026-10-30), cierra la tarea:** la misma corrida 41025239092. Falsaciones en ramas temporales, ya borradas: invertir la condición (`tmp/wsc-falsa-invert`, corrida 41025794825) da `2 failed` en «"Buscar" is in the shell because the target declares it»; store atascado en `loading` (`tmp/wsc-falsa-loading`, corrida 41025804194) da `2 failed` en la espera del atributo de `mat-toolbar`.
 - [ ] 6.3 [frontend] Depende de 6.2 y 6.6. Re-admisión con carga en `chromium`, perfil `local` y ensayo (dos
   invocaciones de `apps/web-e2e/README.md` «Cómo admitir una prueba», pila nueva cada una): cinco de cinco y ningún
   `429` de registro. Verificar anotando las dos filas con fecha y commit en un **bloque propio** de «Admisiones»
