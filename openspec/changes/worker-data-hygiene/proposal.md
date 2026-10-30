@@ -13,13 +13,16 @@ de una réplica del worker:
   (`docker-compose.prod.yml` sugiere `--scale worker=2`) y los `@Cron(EVERY_HOUR)` disparando a la vez en cada una,
   dos upserts concurrentes sin índice único pueden crear dos documentos de la misma clave y **ambas réplicas creen haber
   ganado**. `release` borra cualquier marca sin confirmar de esa clave, también la que tomó otra réplica. La marca de
-  frescura arrastra un comentario de diseño sin cerrar (`:210-220`) sobre qué significa `confirmed`.
+  frescura arrastra un comentario de diseño sin cerrar (`:210-220`) sobre qué significa `confirmed`. **Este defecto
+  no lo arregla este change** (Q5 = (a), 2026-10-29): lo hace el change posterior de marcas atómicas multi-réplica
+  (ver `openspec-changes.yaml` y ADR-061 §6), antes del primer `--scale worker=2`.
 - **Las marcas confirmadas de stale y ASN son el registro duradero de «ya se avisó»** (`notifications/stale-applications`,
   «Un aviso por estancamiento»): no se pueden caducar por tiempo sin reemitir avisos, pero tampoco se borran cuando su
   clave muere (la postulación cambió de estado o se borró la cuenta). Además, `listEligible` de stale toma 50
   postulaciones **antes** de descartar las ya avisadas: con más de 50 estancadas y avisadas, las nuevas no se ven nunca.
 - **La toma de una entrega vencida** en `notification_deliveries` hace `updateOne` sin condición tras leer: dos workers
-  que encuentran el mismo `claimed` vencido envían los dos.
+  que encuentran el mismo `claimed` vencido envían los dos. Con un solo worker no ocurre; también va al change
+  posterior de marcas atómicas multi-réplica.
 - **Una entrega en vuelo se pierde**: si el worker muere entre reclamar una entrega y completarla, BullMQ recupera el
   job, `claim` responde `in_flight` (la toma sigue dentro de sus 5 minutos) y los consumidores de `notify-fanout` y del
   digest **terminan el job**; la entrega queda `claimed` para siempre y el aviso no llega. Pasa con un solo worker.
@@ -32,7 +35,8 @@ ninguna de estas colecciones y el volumen de 3-5 personas en 14 días es desprec
 
 ## What Changes
 
-El change tiene dos partes (design, «Partición (Q5)»); el owner decide en Q5 si la B sale a un change posterior.
+El owner partió el change el 2026-10-29 (Q5 = (a); design, «Partición (Q5)»): este change es la parte A, lo que ve el
+usuario. Las marcas atómicas multi-réplica (antes parte B) van a un change posterior.
 
 **Parte A — lo que ve el usuario:**
 
@@ -46,28 +50,15 @@ El change tiene dos partes (design, «Partición (Q5)»); el owner decide en Q5 
 - **Cascada de frescura sin puntos ciegos** (Q2 = (a)): `listCascadePending` filtra los links cerrados antes del límite.
 - **Rastro de los avisos agotados** (Q3 = (a)): una línea `warn` por job agotado de `notify-fanout` y `group-digest`.
 
-**Parte B — marcas atómicas multi-réplica:**
-
-- **Marcas atómicas del worker** (capacidad nueva `platform/worker-claims`): una clave única por colección, toma con
-  un solo `findOneAndUpdate` con `upsert` cuya condición incluye el vencimiento (la toma ocupada cae en `E11000` y se
-  lee como «no tomada») y cuyo lease se cuenta desde el instante de la toma, un testigo por toma para que `release` solo
-  borre la propia, una confirmación duradera que sobrevive a la liberación ajena, `leaseUntil` como único campo de
-  caducidad (TTL de 24 h parcial sobre las no confirmadas), y en frescura una retención corta tras confirmar que impide
-  que otra réplica relea el mismo link en el mismo tick. Cierra el comentario de `:210-220`.
-- **Arranque de índices con migración**: antes del primer tick, el worker completa `leaseUntil` en los documentos
-  heredados, elimina duplicados de forma determinista (gana la confirmada) y crea los índices; nunca falla el arranque;
-  si no consigue el índice único, los detectores de esa colección **se saltan el tick** con un aviso y el resto del
-  worker sigue trabajando.
-- **Toma única de una entrega vencida** (ADDED en `notifications/dispatch`): la toma se condiciona al `claimedAt` leído.
-
-**Ambas:** ADR-061 (Propuesto) con la retención y el modelo de marcas; una línea en ADR-009. El barrido diario de las
+**Documentos:** ADR-061 (Propuesto) con la retención y el modelo de marcas (este change aplica §1, §5, §5b y la
+selección de stale; §2-§4 los aplica el change posterior); una línea en ADR-009. El barrido diario de las
 marcas duraderas muertas se retiró en el debate (B4): el RUNBOOK documenta el borrado manual de las huérfanas que deja
 la semilla.
 
 ## Encaje en la fase
 
-**Candidato posterior a la fila 35**, como `e2e-suite-lot-2`: sin fila en `docs/design-v0.2.md` §6 hasta que el owner
-la asigne (Q1). No pide excepción a la precedencia de ADR-048 §Consecuencias (extendida a la fila entera por ADR-051
+**Después de la fila 35** (Q1 = (a), respuesta del owner del 2026-10-29): justo después de 35c y antes de
+`golden-sets-reales`, con fila «tras 35c» en `docs/design-v0.2.md` §6. No pide excepción a la precedencia de ADR-048 §Consecuencias (extendida a la fila entera por ADR-051
 §Enmiendas 3), porque no hay riesgo real para la medición de 35b (design D10):
 
 - **Duplicados**: solo con dos réplicas del worker; staging corre una (`deploy.sh` hace `up -d` sin `--scale`) y
@@ -78,9 +69,7 @@ la asigne (Q1). No pide excepción a la precedencia de ADR-048 §Consecuencias (
   medición solo se estancan las creadas en los primeros 4.
 
 Adelantarlo, en cambio, obligaría a redesplegar staging antes de invitar y a repetir la 9.4 de `e2e-suite` sobre el
-nuevo commit (las reglas de ADR-056 §1). Si el owner lo quiere antes de la 10.7 de 35b, la Q1 (b) recoge desde el
-principio las tres clases de fusión, la confirmación escrita y fechada del owner en el PR y la repetición de las
-comprobaciones previas a invitar sobre el último commit desplegado.
+nuevo commit (las reglas de ADR-056 §1); por eso el owner no eligió la Q1 (b).
 
 **Seeds de `infra/staging/`**: compatibles. `seed-volume.mongosh.js` borra en `clean` los eventos del outbox cuyo
 payload nombra a un usuario del lote; el TTL solo quita publicados antiguos, que `clean` también habría borrado o que no
@@ -92,17 +81,15 @@ borrar postulaciones se borran a mano con el procedimiento del RUNBOOK (design R
 
 ### New Capabilities
 
-- `platform/worker-claims`: contrato de las marcas de los detectores periódicos del worker (frescura, ASN y stale):
-  clave única, toma atómica entre réplicas, testigo, caducidad de las tomas abandonadas y arranque de índices con
-  migración (parte B).
+Ninguna. La capacidad de plataforma de las marcas atómicas la crea el change posterior (Q5 = (a)).
 
 ### Modified Capabilities
 
 - `platform/outbox`: ADDED «Retención de los eventos publicados».
 - `notifications/stale-applications`: ADDED «Las postulaciones ya avisadas no consumen el lote».
-- `notifications/dispatch`: ADDED «Una entrega en vuelo se reintenta al vencer su lease» (parte A) y «Toma única de
-  una entrega vencida» (parte B); MODIFIED «Auto-expire de vacante cerrada sin outbox» (parte A: la selección de la
-  cascada se acota después de descartar los links abiertos y los ya avisados).
+- `notifications/dispatch`: ADDED «Una entrega en vuelo se reintenta al vencer su lease»; MODIFIED «Auto-expire de
+  vacante cerrada sin outbox» (la selección de la cascada se acota después de descartar los links abiertos y los ya
+  avisados).
 
 ## Impact
 
@@ -116,20 +103,11 @@ borrar postulaciones se borran a mano con el procedimiento del RUNBOOK (design R
 - `apps/worker/src/modules/freshness/`: `listCascadePending` con el filtro de cerrados y de ya avisados antes del
   límite.
 - Sin variables de entorno nuevas, sin cambios en `docker-compose*.yml`, workflows ni `libs/`. En `infra/`, solo una
-  línea de advertencia bajo «Escalar worker» de `infra/README.md` (no escalar `worker` hasta archivar la parte B), ya
+  línea de advertencia bajo «Escalar worker» de `infra/README.md` (no escalar `worker` hasta archivar el change
+  posterior de marcas), ya
   escrita en el debate (B6); la 5.2 la repone si 35b/35c reescriben la sección. La misma regla está en el `scope` de
   35c del manifiesto.
 - RUNBOOK: cómo comprobar el índice del outbox, listar sus agotados y borrar las marcas huérfanas de la semilla.
-
-**Parte B:**
-
-- `apps/worker/src/infrastructure/claims/` (nuevo, plataforma como el outbox de `api`): toma atómica genérica, arranque
-  de índices con migración y compuerta por colección.
-- `apps/worker/src/modules/freshness/` y `.../notifications/`: los adaptadores de marcas delegan en lo anterior; los
-  puertos `FreshnessLinkClaims`, `StatusGroupNotifyClaims` y `ApplicationStaleClaims` devuelven una toma con testigo en
-  vez de un booleano, y sus dobles en memoria y casos de uso se ajustan; la toma del ledger condicionada; los
-  schedulers consultan la compuerta.
-- RUNBOOK: índices de las colecciones de marcas y qué hacer con una compuerta cerrada.
 
 ## Fuera de alcance
 
@@ -140,3 +118,6 @@ borrar postulaciones se borran a mano con el procedimiento del RUNBOOK (design R
 - Barrido de las marcas confirmadas de stale y ASN cuya clave murió (retirado en el debate, B4; design D6).
 - Una cola de mensajes muertos o una colección de jobs fallidos (design D8).
 - Índices nuevos en `applications` (los dueños son de `api`).
+- Marcas atómicas multi-réplica (índice único, toma atómica con testigo, caducidad de tomas abandonadas, migración y
+  compuerta al arrancar) y toma única de una entrega vencida: change posterior (Q5 = (a), 2026-10-29; diseño debatido
+  en el commit `776e12a`).

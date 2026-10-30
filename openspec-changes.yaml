@@ -638,8 +638,7 @@ changes:
     agents: [devops]
     scope: |
       Fila 35c, última pieza de la fila 35 (ADR-051 §1). Tras archivar `staging-host` **y** `i18n-catalog-gate`.
-      No escalar `worker` hasta archivar `worker-data-hygiene` (o `worker-claims-multi-replica` si Q5 = (a));
-      ADR-061 §6. Incluye corregir el comentario `--scale worker=2` del servicio `worker` de `docker-compose.prod.yml`.
+      No escalar `worker` hasta archivar `worker-claims-multi-replica`; ADR-061 §6. Incluye corregir el comentario `--scale worker=2` del servicio `worker` de `docker-compose.prod.yml`.
       **(a)** Workflow reutilizable de `verify` (`workflow_call`, alcance `affected`/`all` y referencia), invocado
       por `ci.yml`, `cd-staging.yml` y `cd-prod.yml`, con `Check prompt assets` dentro (hoy solo lo ejecuta
       `ci.yml`). Se escribe como **MODIFIED** de «El CD verifica con las mismas etapas que la integración
@@ -697,6 +696,27 @@ changes:
       `WAIT_TIMEOUT="${VERIFY_WAIT_TIMEOUT:-<n>}"` de `infra/ci/verify-artifact.sh` (validado con `^[0-9]{2,4}$`, como
       en 35b) en vez del `--wait-timeout` literal de hoy.
       Fuera: despliegue a un host de producción, matriz multiarquitectura.
+  - name: worker-data-hygiene
+    adrs: [061, 009, 035, 037, 048]
+    agents: [backend-dev]
+    scope: |
+      **Después de la fila 35, justo tras 35c y antes de `golden-sets-reales`** (Q1 = (a), respuesta del owner del
+      2026-10-29; fila «tras 35c» en `docs/design-v0.2.md` §6). Sin excepción a la precedencia de ADR-048: con un solo
+      worker en staging, sin lectura de estas colecciones en la medición y con volumen despreciable, no hay riesgo real
+      para 35b (design D10). No se aplica hasta archivar 35c.
+      Origen: relevamiento del 2026-10-28, devuelto a planificación por la sesión de 35b.
+      **Partido (Q5 = (a), 2026-10-29):** este change es solo la parte A; las marcas atómicas multi-réplica (antes
+      parte B) van a `worker-claims-multi-replica`.
+      **(a) Outbox:** TTL parcial de 8 días sobre `publishedAt` de los publicados (≥ `removeOnFail` de todas las colas
+      del relay más un día, fijado por test); pendientes y agotados nunca se borran (ADR-061 §1, enmienda ADR-009).
+      **(b)** Stale elige entre las no avisadas (`$lookup`). **(c)** Entrega en vuelo: el job se aplaza hasta que vence
+      el lease (tope de 3) en vez de terminar (ADR-061 §5b). **(d)** `listCascadePending` filtra los cerrados y los ya
+      avisados antes del límite (Q2 = (a); MODIFIED de «Auto-expire de vacante cerrada sin outbox»). **(e)** Jobs
+      fallidos de BullMQ: sin cambio de retención (D8); línea `warn` en `notify-fanout`/`group-digest` (Q3 = (a)).
+      Verificación con `mongodb-memory-server` (replset).
+      Fuera: ficheros de despliegue (rotación de logs, recomendación para 35b en ADR-061, Q4; no escalar `worker`, nota
+      para 35c en ADR-061 §6), retención de `notification_deliveries`, barrido de marcas duraderas, índices en
+      `applications` y las marcas atómicas multi-réplica (`worker-claims-multi-replica`).
   - name: golden-sets-reales
     adrs: [019, 018, 030]
     agents: [ai-engineer]
@@ -731,36 +751,10 @@ changes:
       **Diferido desde `usage-guide-fixes` (iteración 1 de su debate, 2026-10-08):** H3 de la guía de uso —guardar una
       clave BYOK sin bóveda (`503 vault_unavailable`) muestra el genérico «Algo salió mal»—, junto con H11 (`AI_VAULT_KEY`
       vacía en `e2e.env`): con la bóveda obligatoria en producción solo se ve en pilas de prueba.
-  - name: worker-data-hygiene
-    adrs: [061, 009, 035, 037, 048]
+  - name: worker-claims-multi-replica
+    adrs: [061]
     agents: [backend-dev]
     scope: |
-      **Candidato posterior a la fila 35** (propuesto el 2026-10-28), sin fila en `docs/design-v0.2.md` §6 hasta que el
-      owner la asigne (Q1 del design, bloqueante para `/opsx:apply`; recomendación: justo después de 35c). No pide
-      excepción a la precedencia de ADR-048: con un solo worker en staging, sin lectura de estas colecciones en la
-      medición y con volumen despreciable, no hay riesgo real para 35b (design D10). Si el owner la pide, aplica desde
-      el principio las reglas de ADR-056 §1 (tres clases de fusión, confirmación fechada del owner con el PR-2 de 35b,
-      repetir la 9.4 de `e2e-suite` sobre el último commit desplegado).
-      Origen: relevamiento del 2026-10-28, devuelto a planificación por la sesión de 35b.
-      **Partición (Q5 del design, del owner antes de `/opsx:apply`; recomendación: partir).** Parte A (grupos 1-6 de
-      tareas) y parte B (grupos 7-11). Si Q5 = (a), la parte B sale a un change posterior que se llamaría
-      `worker-claims-multi-replica` (disparador: «antes del primer `--scale worker=2`»; se lleva `platform/worker-claims`,
-      la toma vencida del ledger y ADR-061 §2-§4); no se crea hasta que el owner responda.
-      **Parte A — (a) Outbox:** TTL parcial de 8 días sobre `publishedAt` de los publicados (≥ `removeOnFail` de todas
-      las colas del relay más un día, fijado por test); pendientes y agotados nunca se borran (ADR-061 §1, enmienda
-      ADR-009). **(b)** Stale elige entre las no avisadas (`$lookup`). **(c)** Entrega en vuelo: el job se aplaza hasta
-      que vence el lease (tope de 3) en vez de terminar (ADR-061 §5b). **(d)** `listCascadePending` filtra los cerrados
-      y los ya avisados antes del límite (Q2 = (a); MODIFIED de «Auto-expire de vacante cerrada sin outbox»). **(e)** Jobs fallidos de BullMQ: sin cambio de retención (D8); línea `warn` en
-      `notify-fanout`/`group-digest` (Q3 = (a)).
-      **Parte B — (f) Marcas del worker** (`link_freshness_claims`, `application_status_group_notify_claims`,
-      `application_stale_claims`; capacidad nueva `platform/worker-claims`): índice único por clave, toma con un
-      `findOneAndUpdate` + `upsert` cuyo filtro exige marca libre (ocupada → `E11000` → «no tomada») y lease contado
-      desde la toma, testigo por toma, confirmación duradera con `upsert`, `leaseUntil` con TTL de 24 h parcial sobre
-      `confirmed: false` (tomas abandonadas y frescura retenida 30 min); confirmadas de stale y ASN sin caducidad ni
-      barrido (retirado, B4). **(g) Migración al arrancar:** completar `leaseUntil`, quitar duplicados conservando la
-      confirmada, crear índices (TTL primero); nunca falla el arranque; sin índice único, solo los detectores de esa
-      colección (frescura: también la de ASN) se saltan el tick. **(h)** Toma vencida del ledger condicionada.
-      Verificación con `mongodb-memory-server` (replset) y pruebas de dos réplicas (dos conexiones).
-      Fuera: ficheros de despliegue (rotación de logs, recomendación para 35b en ADR-061, Q4; no escalar `worker`, nota
-      para 35c en ADR-061 §6), retención de `notification_deliveries`, barrido de marcas duraderas, índices en
-      `applications`.
+      **Candidato**, sin directorio en `openspec/changes/` ni fila en `docs/design-v0.2.md` §6 (Q5 = (a) de
+      `worker-data-hygiene`, respuesta del owner del 2026-10-29). Disparador: «antes del primer `--scale worker=2`».
+      Diseño debatido: commit `776e12a` (ADR-061 §2-§4 y §6).

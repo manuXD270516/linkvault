@@ -40,10 +40,11 @@ la marca no queda dura si el encolado falla).
 ## Goals / Non-Goals
 
 **Goals:** que `outbox_events` tenga un tamaño acotado por el uso vivo; que ninguna entrega de aviso se pierda porque
-su toma quedó en vuelo; que stale no deje de ver postulaciones nuevas; que tomar una marca sea correcto con N réplicas
-sin depender del `jobId` de BullMQ, y que las tomas abandonadas caduquen; que los datos existentes, con posibles
-duplicados, migren solos y sin perder ningún «ya se avisó»; que todo se verifique con `mongodb-memory-server` (replset),
-incluida una prueba con dos réplicas.
+su toma quedó en vuelo; que stale no deje de ver postulaciones nuevas; que todo se verifique con
+`mongodb-memory-server` (replset). Trasladados a `worker-claims-multi-replica` con la parte B (Q5 = (a), 2026-10-29):
+que tomar una marca sea correcto con N réplicas sin depender del `jobId` de BullMQ, y que las tomas abandonadas
+caduquen; que los datos existentes, con posibles duplicados, migren solos y sin perder ningún «ya se avisó»; y la
+prueba con dos réplicas.
 
 **Non-Goals:** cambiar qué se notifica o cuándo; retención de `notification_deliveries`; colas de mensajes muertos;
 ficheros de despliegue; observabilidad nueva; índices en colecciones de `api` que no sean el outbox; borrar las marcas
@@ -62,6 +63,11 @@ Con Q5 = (a), la parte B pasa a un change posterior (nombre propuesto `worker-cl
 disparado por «antes del primer `--scale worker=2`», que se lleva sus specs, sus grupos de tareas y ADR-061 §2-§4. La
 parte A no depende de B: el `$lookup` de D9 y de Q2 a las marcas confirmadas funciona sin `uniq_claim_key` (escanea la
 colección de marcas, que a esta escala son decenas o cientos de documentos) y B lo indexa después.
+
+**Decidido el 2026-10-29 (Q5 = (a)):** partido. Este change es la parte A (grupos 1-6). La parte B salió: sus grupos de
+tareas 7-11, `specs/platform/worker-claims/` y el requirement «Toma única de una entrega vencida» de
+`notifications/dispatch` ya no están en este change, y D2-D5, D7 y la viñeta del ledger de D9 quedan marcadas como
+trasladadas. Su texto debatido es el del commit `776e12a`, del que parte `worker-claims-multi-replica`.
 
 ## Decisions
 
@@ -104,7 +110,7 @@ outboxEventSchema.index(
 margen en el borde); retención de meses (sin uso que la pida); TTL también sobre `failedAt` (perdería el rastro que
 `platform/outbox` exige conservar).
 
-### D2. Una marca es un documento por clave con índice único, y tomarla es una sola operación *(parte B)*
+### D2. Una marca es un documento por clave con índice único, y tomarla es una sola operación *(parte B; trasladada a `worker-claims-multi-replica`, Q5 = (a), 2026-10-29)*
 
 Para cada colección, índice único sobre su clave (`{ linkId: 1 }` o `{ applicationId: 1, statusChangedAt: 1 }`,
 nombre `uniq_claim_key`) y toma con `findOneAndUpdate` + `upsert`, cuyo filtro incluye **la condición de que la marca
@@ -140,7 +146,7 @@ worker, el primer job puede haber terminado y desaparecido antes del segundo `ad
 Redis o Mongo (serializa réplicas enteras en vez de claves, y su vencimiento tiene los mismos problemas); elegir una
 sola réplica «líder» para los crons (otra pieza de coordinación para un problema que una clave única resuelve).
 
-### D3. Cada toma lleva un testigo; `release` solo borra la propia *(parte B)*
+### D3. Cada toma lleva un testigo; `release` solo borra la propia *(parte B; trasladada a `worker-claims-multi-replica`, Q5 = (a), 2026-10-29)*
 
 La toma genera `token = randomUUID()` y el puerto devuelve `ClaimLease { token } | null` en vez de `boolean`.
 
@@ -163,7 +169,7 @@ cambia. `isConfirmed` de ASN se conserva.
 *Descartado:* condicionar `release` al `claimedAt` leído (dos réplicas pueden escribir el mismo `now` en milisegundos;
 un testigo aleatorio no colisiona); `confirm` sin `upsert` (pierde el registro en la secuencia «B libera, A confirma»).
 
-### D4. La marca de frescura es solo un lease, con una retención corta tras confirmar *(parte B)*
+### D4. La marca de frescura es solo un lease, con una retención corta tras confirmar *(parte B; trasladada a `worker-claims-multi-replica`, Q5 = (a), 2026-10-29)*
 
 Cierra el comentario de `mongo-freshness.adapters.ts:210-220`: en frescura `confirmed` no significa nada y queda
 siempre en `false` (se escribe explícito en cada toma, para el filtro parcial de D5). Lo que importa es que, en **el
@@ -178,7 +184,7 @@ efecto). Hoy `confirm` borra el documento y deja esa ventana abierta.
 *Descartado:* borrar en `confirm` (la ventana de arriba); una marca duradera por cubeta de cadencia (duplica lo que ya
 dice `lastFreshnessCheckAt`).
 
-### D5. Caducidad: TTL sobre `leaseUntil`, solo para las no confirmadas *(parte B)*
+### D5. Caducidad: TTL sobre `leaseUntil`, solo para las no confirmadas *(parte B; trasladada a `worker-claims-multi-replica`, Q5 = (a), 2026-10-29)*
 
 En las tres colecciones, índice TTL `{ leaseUntil: 1 }`, `expireAfterSeconds: 86_400`, nombre `ttl_lease`, con
 `partialFilterExpression: { confirmed: false }` (H4).
@@ -213,7 +219,7 @@ huérfanas tras `seed-volume.sh clean` (tarea 5.1). Si algún día el volumen lo
 `applications` con `$convert` y `onError: null`, tandas acotadas, `deleteMany` con `confirmed: true`) sirve de
 punto de partida.
 
-### D7. Los índices se crean al arrancar, después de migrar, y su ausencia cierra solo a los detectores *(parte B)*
+### D7. Los índices se crean al arrancar, después de migrar, y su ausencia cierra solo a los detectores *(parte B; trasladada a `worker-claims-multi-replica`, Q5 = (a), 2026-10-29)*
 
 `ClaimIndexesBootstrap` (plataforma del worker), en `onModuleInit` y por colección:
 
@@ -295,7 +301,7 @@ alargar `removeOnFail` (Redis no es un almacén de auditoría y compite por memo
   garantiza orden: `{ $sort: { _id: 1 } }` va justo después del `$group` por `linkId` (N1), así la selección es
   determinista (primero los links más antiguos) y los tests de 4.1 y 4.2, que crean el link L el último, prueban que
   ningún `$limit` aplicado antes de filtrar lo deja afuera.
-- *(parte B)* `MongoNotifyDeliveryLedger.claim`, rama de toma vencida: `updateOne({ ...filter, status: 'claimed',
+- *(parte B; trasladada a `worker-claims-multi-replica`, Q5 = (a), 2026-10-29)* `MongoNotifyDeliveryLedger.claim`, rama de toma vencida: `updateOne({ ...filter, status: 'claimed',
   claimedAt: existing.claimedAt }, ...)` y `'claimed'` solo con `modifiedCount === 1`; si no, se vuelve a leer una vez
   y se responde según el estado nuevo (`in_flight` o `already_done`). Entre la lectura y la retoma, un método
   `protected async beforeRetake(): Promise<void>` vacío es el punto de inyección del test (H8): una subclase de test
@@ -315,8 +321,9 @@ Lo que tendría que pasar para que esto afecte a 35b, y por qué no pasa:
 | Medición | lectura de estas colecciones | `measure`/`uninvited` no las leen |
 
 Adelantarlo cuesta un redespliegue antes de invitar y repetir la 9.4 de `e2e-suite` (ADR-056 §1). Por eso el change es
-**candidato posterior a la fila 35** y Q1 pide al owner la fila. Para 35c (B2, B6): no escalar `worker` hasta archivar
-este change (o `worker-claims-multi-replica` si Q5 = (a)). La regla queda escrita ya, sin esperar a la 11.7, en el
+**candidato posterior a la fila 35** y Q1 pide al owner la fila (respondida el 2026-10-29: justo después de 35c y
+antes de `golden-sets-reales`). Para 35c (B2, B6): no escalar `worker` hasta archivar `worker-claims-multi-replica`
+(Q5 = (a)). La regla queda escrita ya, sin esperar a la 11.7, en el
 `scope` de `verify-reusable-workflow` (35c) del manifiesto y en una línea de advertencia bajo «Escalar worker» de
 `infra/README.md` (tarea 5.2); el comentario `--scale worker=2` de `docker-compose.prod.yml` es de despliegue y queda
 como pendiente para 35c en ADR-061 §6.
@@ -417,6 +424,9 @@ con el resultado del caso de uso); reducir el lease (no cambia que el job termin
     `e2e-suite` sobre el último commit desplegado antes de invitar. Además rompería la condición de los otros changes
     de excepción («no toca requirements de `platform/*`»): este añade a `platform/outbox` y crea `platform/worker-claims`.
   - La respuesta se anota en ADR-061 en una línea que empieza por «Respuesta del owner (Q1), AAAA-MM-DD:».
+  - Respuesta del owner (Q1), 2026-10-29: (a), «Toma las recomendaciones». Candidato posterior a la fila 35, sin
+    excepción: fila «tras 35c» en `docs/design-v0.2.md` §6, justo después de 35c y antes de `golden-sets-reales`, y la
+    fila del manifiesto en ese mismo lugar. Anotada en ADR-061 §6.
 - **Q2. Selector de la cascada de frescura.** `MongoFreshnessLinkStore.listCascadePending`
   (`mongo-freshness.adapters.ts`; `listForExpireCascade` es por link y sin límite, no cambia) agrupa `applications`
   por `linkId` con `$limit: 4 × límite` **antes** de filtrar los links cerrados: con más de 200 links con postulaciones
@@ -448,6 +458,9 @@ con el resultado del caso de uso); reducir el lease (no cambia que el job termin
   - Con (a), antes de aplicar: borrar los grupos 7-11 de `tasks.md`, mover `specs/platform/worker-claims/` y el
     requirement de la toma vencida al change nuevo cuando se cree, y dejar en ADR-061 §2-§4 la nota de que los aplica
     ese change. La respuesta se anota aquí en una línea que empieza por «Respuesta del owner (Q5), AAAA-MM-DD:».
+  - Respuesta del owner (Q5), 2026-10-29: (a), «Toma las recomendaciones». Partido según la tarea 0.2: la parte B sale
+    a `worker-claims-multi-replica` (fila candidata del manifiesto, solo con el disparador «antes del primer
+    `--scale worker=2`» y el commit `776e12a`); ADR-061 §2-§4 y sus dos consecuencias quedan para ese change.
 
 ## Debate — iteración 1
 
@@ -533,3 +546,10 @@ Critic verificó solo el P0 de la iteración 3, sin abrir una iteración nueva. 
 | N1-c | critic (P1) | aceptado | L lleva un `_id` explícito mayor que todos: el contador del `ObjectId` puede dar la vuelta dentro de un segundo. |
 
 Convergencia: SI (iteración 3 más verificación puntual: critic P0 0 tras corregir N1-bis, business V0 0; Q1 y Q5 pendientes del owner).
+
+## Aprobación humana (2026-10-29)
+
+Aprobado por el owner el 2026-10-29 («Toma las recomendaciones»): Q1 = (a), después de 35c y antes de
+`golden-sets-reales`, sin excepción; Q5 = (a), partir. Q2, Q3 y Q4 ya estaban resueltas en el debate (2026-10-28).
+La partición se aplicó tal como la escribió la tarea 0.2, sin decisiones nuevas: el change queda con 25 tareas (0.1-0.3
+y los grupos 1-6). El diseño debatido de la parte B está en el commit `776e12a`.
