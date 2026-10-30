@@ -241,6 +241,9 @@ importers:
       ioredis:
         specifier: 6.0.0
         version: 6.0.0(supports-color@7.2.0)
+      ipaddr.js:
+        specifier: 2.5.0
+        version: 2.5.0
       jose:
         specifier: ^6.2.12
         version: 6.2.12
@@ -286,6 +289,9 @@ importers:
       tslib:
         specifier: ^2.3.0
         version: 2.8.1
+      undici:
+        specifier: 7.29.1
+        version: 7.29.1
       web-push:
         specifier: ^3.6.7
         version: 3.6.7(supports-color@7.2.0)
@@ -434,6 +440,9 @@ importers:
       prettier:
         specifier: 3.9.6
         version: 3.9.6
+      selfsigned:
+        specifier: 5.5.0
+        version: 5.5.0
       smtp-server:
         specifier: ^3.19.16
         version: 3.19.16

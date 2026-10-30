@@ -348,7 +348,8 @@ export type UpdatePreviewRequest = z.infer<typeof updatePreviewRequestSchema>;
  * (`401`/`403`) y `rate_limited` el sitio pidiendo que volvamos más tarde (`429`). `host_busy` es nuestro turno que no
  * llegó a tiempo: el sitio no dijo nada, así que no es un bloqueo. `not_a_job` es lo compartido que no era una oferta,
  * distinto de `no_data`, que es la página leída de la que no salió ningún campo: una lleva a "quítalo" y la otra a
- * "reintenta o complétalo". El motivo nunca lleva el cuerpo de la respuesta ni la URL del usuario.
+ * "reintenta o complétalo". `unsafe_destination` es el destino que el filtro de salida no admite (red interna, puerto
+ * no web): no se nos permite conectar y reintentar no cambia nada. El motivo nunca lleva el cuerpo de la respuesta ni la URL del usuario.
  */
 export const enrichmentFailureReasonSchema = z.enum([
   'robots_disallowed',
@@ -357,6 +358,7 @@ export const enrichmentFailureReasonSchema = z.enum([
   'host_busy',
   'not_a_job',
   'not_found',
+  'unsafe_destination',
   'not_html',
   'too_large',
   'timeout',
@@ -370,7 +372,8 @@ export type EnrichmentFailureReason = z.infer<
 
 /**
  * Motivos que no se reintentan: volver a pedir la página no cambiaría nada, porque no se nos permite leerla, la oferta
- * ya no está (`not_found`, HTTP 404/410) o porque lo que hay no es una oferta. Todos los demás son transitorios,
+ * ya no está (`not_found`, HTTP 404/410), porque lo que hay no es una oferta o porque el destino no es público
+ * (`unsafe_destination`). Todos los demás son transitorios,
  * incluidos `rate_limited` y `host_busy`.
  */
 export const NON_RETRYABLE_ENRICHMENT_REASONS = [
@@ -378,6 +381,7 @@ export const NON_RETRYABLE_ENRICHMENT_REASONS = [
   'blocked',
   'not_a_job',
   'not_found',
+  'unsafe_destination',
 ] as const satisfies readonly EnrichmentFailureReason[];
 
 /** Si merece la pena volver a pedir la lectura de un link que falló por ese motivo. */

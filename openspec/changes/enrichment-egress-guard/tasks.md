@@ -35,8 +35,8 @@ DNS, y `PUBLIC_EGRESS_POLICY` tal cual para el negativo de puerto. No hay variab
   anotada en el PR) y `grep -rn "shared/net" apps/web/src` sin resultados. Tras `pnpm nx run api:build` y
   `pnpm nx run worker:build` (P1-4): `dist/apps/api/package.json` y `dist/apps/worker/package.json` contienen
   `ipaddr.js` y ninguno contiene `selfsigned` (`grep -c` anotado en el PR). Falsación: quitar `100.64.0.0/10` de la
-  tabla de rangos de la implementación y ver caer el primero; restaurar.
-- [ ] 1.2 [backend] `classifyAddress` para **IPv6** con lista de permitidos: público solo dentro de `2000::/3` y fuera
+  tabla de rangos de la implementación y ver caer el primero; restaurar. **Estado (2026-10-29):** parcial. Hecho: `ipaddr.js` 2.5.0 en `dependencies` raíz (versión del lockfile), `libs/shared/src/net/` publicado por `@linkvault/shared/net` (entrada en `tsconfig.base.json`), `egress-address.spec.ts` con los tres tests nombrados en verde (117 tests de `net`+`preview` en verde con `pnpm nx run shared:test --skip-nx-cache`), `grep -rn "shared/net" apps/web/src` sin resultados y `pnpm nx run web:build` sin avisos propios (el único es el presupuesto de bundle inicial, ya existente; web no importa la subruta). Falsación hecha: sin `100.64.0.0/10` cae «classifies every non-public IPv4 range of the spec» (`100.64.0.0/10 first: expected 'public' to be 'shared_cgnat'`); restaurada. **Pendiente**: la comprobación de `dist/apps/api/package.json` (`ipaddr.js`) y la de `selfsigned` solo tienen sentido cuando la API importe la subruta (5.1); hoy la API no la usa. En `dist/apps/worker/package.json` `ipaddr.js` ya figura y `selfsigned` no.
+- [x] 1.2 [backend] `classifyAddress` para **IPv6** con lista de permitidos: público solo dentro de `2000::/3` y fuera
   de los rangos de la spec (`::`, `::1`, `::/96`, `::ffff:0:0/96`, `100::/64`, `2001::/23`, `2001:db8::/32`,
   `3fff::/20`, `fc00::/7`, `fe80::/10`, `fec0::/10`, `ff00::/8`), y la IPv4 interna de `64:ff9b::/96` y `2002::/16`.
   Verificar, con literales copiados de la spec: «classifies every non-public IPv6 range of the spec» (incluye
@@ -44,26 +44,26 @@ DNS, y `PUBLIC_EGRESS_POLICY` tal cual para el negativo de puerto. No hay variab
   IPv4-mapped IPv6 address whatever it embeds» y «classifies a translated IPv6 address by its embedded IPv4» (pública →
   `public`, privada → `private`). Falsación: aceptar como `public` todo lo que no esté en la lista de prohibidos (sin
   la condición de `2000::/3`) y ver caer el segundo; quitar `3fff::/20` de la implementación y ver caer el primero;
-  clasificar `64:ff9b::/96` entero como `reserved` y ver caer el cuarto; restaurar.
-- [ ] 1.3 [backend] `classifyHost(hostname)` sobre el `hostname` **sin corchetes** (literal IPv4, literal IPv6, `dotless`
+  clasificar `64:ff9b::/96` entero como `reserved` y ver caer el cuarto; restaurar. **Estado (2026-10-29):** `classifyAddress` IPv6 por lista de permitidos (`2000::/3` menos los rangos enumerados; traducción `64:ff9b::/96` y `2002::/16` por su IPv4). Los cuatro tests nombrados en verde. Falsaciones hechas: sin la condición de `2000::/3` cae «rejects an IPv6 address outside 2000::/3 that is not a translation prefix» (`4000::1: expected 'public' to be 'reserved'`); sin `3fff::/20` cae «classifies every non-public IPv6 range of the spec»; `64:ff9b::/96` entero como `reserved` cae «classifies a translated IPv6 address by its embedded IPv4»; restauradas. Decisión menor dentro de la lista cerrada de clases: `::/96` (compatibles) se clasifica `ipv4_mapped`, igual que `::ffff:0:0/96`.
+- [x] 1.3 [backend] `classifyHost(hostname)` sobre el `hostname` **sin corchetes** (literal IPv4, literal IPv6, `dotless`
   tras quitar el punto final, `localhost` y `*.localhost`, `name`) y la interfaz `EgressPolicy` (`allowsHost`,
   `allowsAddress`, `allowsPort`) con su implementación `PUBLIC_EGRESS_POLICY` para hosts y direcciones. Verificar:
   «treats a single-label host as dotless with or without a trailing dot», «treats localhost subdomains as localhost»,
   «classifies alternative IPv4 notations after WHATWG URL parsing» (el caso pasa por `new URL(...).hostname`),
   «classifies an IPv6 literal hostname once its brackets are stripped», «the public policy allows only names and public
   literals» y «the public policy allows only public addresses». Falsación: hacer que `PUBLIC_EGRESS_POLICY` permita
-  `dotless` y ver caer el quinto; que permita `link_local` y ver caer el sexto; restaurar.
-- [ ] 1.4 [backend] `allowsPort(protocol, port, hostClass)` de `PUBLIC_EGRESS_POLICY`: puerto ausente u `80`/`443`, sea
+  `dotless` y ver caer el quinto; que permita `link_local` y ver caer el sexto; restaurar. **Estado (2026-10-29):** `classifyHost`, `EgressPolicy`, `PUBLIC_EGRESS_POLICY` y `hostRejectionCategory` (categoría de un host rechazado, design D1). Los seis tests nombrados en verde. Falsaciones hechas: permitir `dotless` cae «the public policy allows only names and public literals»; permitir `link_local` cae «the public policy allows only public addresses»; restauradas.
+- [x] 1.4 [backend] `allowsPort(protocol, port, hostClass)` de `PUBLIC_EGRESS_POLICY`: puerto ausente u `80`/`443`, sea
   cual sea la clase del host; la decisión no depende de ninguna dirección resuelta. El puerto llega como cadena (la de
   `URL.port`, vacía si es el de por defecto), como número o ausente, según quién llame (P1-2). Verificar, con una
   tabla escrita en el test: «allows the default port and explicit 80 and 443 in every representation» (`''`,
   `undefined`, `'80'`, `80` y `'443'`, cada uno con `http:` y `https:` y con hosts `name` y literal público) y
   «rejects any other port whatever the host class». Falsación: devolver `true` para cualquier puerto en un host
-  `name` y ver caer el segundo; tratar `''` como un puerto explícito no web y ver caer el primero; restaurar.
-- [ ] 1.5 [backend] `unsafe_destination` en `enrichmentFailureReasonSchema` y en `NON_RETRYABLE_ENRICHMENT_REASONS`
+  `name` y ver caer el segundo; tratar `''` como un puerto explícito no web y ver caer el primero; restaurar. **Estado (2026-10-29):** `allowsPort` de `PUBLIC_EGRESS_POLICY` (ausente, `''`, `'80'`, `80`, `'443'`, `443`; resto rechazado, incluidas formas no canónicas como `'080'`). Los dos tests nombrados en verde. Falsaciones hechas: `true` para cualquier puerto en un host `name` cae «rejects any other port whatever the host class»; tratar `''` como explícito no web cae «allows the default port and explicit 80 and 443 in every representation»; restauradas.
+- [x] 1.5 [backend] `unsafe_destination` en `enrichmentFailureReasonSchema` y en `NON_RETRYABLE_ENRICHMENT_REASONS`
   (`libs/shared/src/schemas/preview.schema.ts`), con su línea en el comentario de la lista. Verificar en
   `preview.schema.spec.ts`: «unsafe_destination is a known enrichment failure reason» y «unsafe_destination is not
-  retryable». Falsación: quitarlo de `NON_RETRYABLE_ENRICHMENT_REASONS` y ver caer el segundo; restaurar.
+  retryable». Falsación: quitarlo de `NON_RETRYABLE_ENRICHMENT_REASONS` y ver caer el segundo; restaurar. **Estado (2026-10-29):** `unsafe_destination` en `enrichmentFailureReasonSchema` y `NON_RETRYABLE_ENRICHMENT_REASONS`, con su línea en los comentarios. «unsafe_destination is a known enrichment failure reason» y «unsafe_destination is not retryable» en verde (y las listas cerradas del spec existente actualizadas). Falsación hecha: quitarlo de `NON_RETRYABLE_ENRICHMENT_REASONS` cae «unsafe_destination is not retryable» (y «only refuses a retry…»); restaurada.
 
 ## 2. Guardia de salida del worker (design D3, D8)
 

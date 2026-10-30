@@ -22,6 +22,7 @@
     "forceConsistentCasingInFileNames": true,
     "paths": {
       "@linkvault/shared": ["./libs/shared/src/index.ts"],
+      "@linkvault/shared/net": ["./libs/shared/src/net/index.ts"],
       "@linkvault/ai": ["./libs/ai/src/index.ts"],
       "@linkvault/test-env": ["./tools/test-env/src/index.ts"],
       "@linkvault/testing": ["./tools/testing/src/index.ts"],

@@ -616,6 +616,7 @@ describe('enrichmentFailureReasonSchema', () => {
       'host_busy',
       'not_a_job',
       'not_found',
+      'unsafe_destination',
       'not_html',
       'too_large',
       'timeout',
@@ -634,6 +635,7 @@ describe('enrichmentFailureReasonSchema', () => {
       'blocked',
       'not_a_job',
       'not_found',
+      'unsafe_destination',
     ]);
     expect(isRetryableEnrichmentReason('rate_limited')).toBe(true);
     expect(isRetryableEnrichmentReason('host_busy')).toBe(true);
@@ -643,6 +645,18 @@ describe('enrichmentFailureReasonSchema', () => {
     expect(isRetryableEnrichmentReason('robots_disallowed')).toBe(false);
     expect(isRetryableEnrichmentReason('not_a_job')).toBe(false);
     expect(isRetryableEnrichmentReason('not_found')).toBe(false);
+  });
+});
+
+describe('unsafe_destination', () => {
+  it('unsafe_destination is a known enrichment failure reason', () => {
+    expect(
+      enrichmentFailureReasonSchema.safeParse('unsafe_destination').success,
+    ).toBe(true);
+  });
+
+  it('unsafe_destination is not retryable', () => {
+    expect(isRetryableEnrichmentReason('unsafe_destination')).toBe(false);
   });
 });
 
