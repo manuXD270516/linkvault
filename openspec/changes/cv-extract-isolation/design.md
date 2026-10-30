@@ -282,7 +282,7 @@ sustituir `mammoth` (no hay motivo: está mantenido).
 | Arranque hasta `ready` | 5 s | adaptador | fallo de maquinaria (`boot_timeout`) |
 | Marco del canal | 8 MiB por línea y en total | adaptador | `protocol` (D6) |
 
-- **El vigía mide el RSS del hijo**, no el del worker: lee `/proc/<pid>/statm` (segundo campo × tamaño de página), que
+- **El vigía mide el RSS del hijo**, no el del worker: lee `VmRSS` de `/proc/<pid>/status`, que
   el worker puede leer (el modelo de permisos solo se aplica al hijo). Comprobado el 2026-10-28 en Alpine: un hijo que
   reserva búferes de 256 MiB en bucle se mata al cruzar el umbral con un exceso de ~36 MiB en una muestra de 100 ms,
   y el worker sigue en ~48 MiB de RSS. Ventajas sobre la versión con hilo (H12, Q4):
