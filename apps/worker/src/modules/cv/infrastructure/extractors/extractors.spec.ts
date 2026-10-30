@@ -1,25 +1,29 @@
 import { CV_MIN_TEXT_CHARS } from '@linkvault/shared';
 import { describe, expect, it } from 'vitest';
+import { outcomeOfExtractedText } from '../../domain/extraction-outcome';
+import { realChildRunner } from '../isolation/isolation-test-kit';
+import { IsolatedCvTextExtractor } from '../isolation/isolated-cv-text-extractor';
+import { withOwnBuffer } from '../isolation/child/pdf-extract';
 import {
   corruptPdf,
   docxWithText,
+  docxWithTextDeflated,
   encryptedPdf,
   pdfWithText,
   pdfWithoutText,
   zipThatIsNotDocx,
 } from './fixtures/cv-fixtures';
-import { outcomeOfExtractedText } from '../../domain/extraction-outcome';
-import { DocxTextExtractor } from './docx-text.extractor';
-import { PdfTextExtractor, withOwnBuffer } from './pdf-text.extractor';
 
-// Los extractores contra los fixtures generados (tareas 7.5 y 7.6). Los fixtures se generan en cada ejecución, así que
-// no hay ningún binario en el repositorio y ningún CV real en un test.
+// Los extractores contra los fixtures generados (tareas 7.5 y 7.6 de cv-upload-extract), ahora **a través del hijo real**
+// compilado a `tmp/cv-child-test/` con los flags de producción (3.4 y 3.5 de cv-extract-isolation). Los fixtures se
+// generan en cada ejecución: ningún binario en el repositorio y ningún CV real en un test.
 
-const pdf = new PdfTextExtractor();
-const docx = new DocxTextExtractor();
+const { runner } = realChildRunner();
+const pdf = new IsolatedCvTextExtractor('pdf', runner);
+const docx = new IsolatedCvTextExtractor('docx', runner);
 
-describe('PdfTextExtractor', () => {
-  it('reads a PDF with a text layer', async () => {
+describe('PDF through the isolated child', () => {
+  it('extracts the fixture PDF with the expected text', async () => {
     const attempt = await pdf.extract(pdfWithText());
 
     expect(attempt.kind).toBe('text');
@@ -39,14 +43,22 @@ describe('PdfTextExtractor', () => {
     }
   });
 
-  it('calls a corrupt file unreadable instead of throwing', async () => {
-    await expect(pdf.extract(corruptPdf())).resolves.toEqual({
+  it('an encrypted PDF fails as password', async () => {
+    expect(await runner.run('pdf', encryptedPdf())).toEqual({
+      kind: 'unreadable',
+      cause: 'password',
+    });
+    await expect(pdf.extract(encryptedPdf())).resolves.toEqual({
       kind: 'unreadable_file',
     });
   });
 
-  it('calls a password protected file unreadable', async () => {
-    await expect(pdf.extract(encryptedPdf())).resolves.toEqual({
+  it('a corrupt PDF fails as parse_error', async () => {
+    expect(await runner.run('pdf', corruptPdf())).toEqual({
+      kind: 'unreadable',
+      cause: 'parse_error',
+    });
+    await expect(pdf.extract(corruptPdf())).resolves.toEqual({
       kind: 'unreadable_file',
     });
   });
@@ -59,8 +71,6 @@ describe('PdfTextExtractor', () => {
 
   it('reads a small PDF that arrives in a pooled buffer', async () => {
     // El caso real: el adaptador S3 devuelve un `Buffer` sacado del *pool*, con `byteOffset` distinto de cero.
-    // Sin la copia a desplazamiento cero, `pdf-parse` lee la tabla `xref` desplazada y este CV legible acabaría en
-    // `failed`.
     const source = pdfWithText();
     const pool = Buffer.allocUnsafe(source.byteLength + 128);
     const pooled = pool.subarray(128);
@@ -87,7 +97,7 @@ describe('PdfTextExtractor', () => {
   });
 });
 
-describe('DocxTextExtractor', () => {
+describe('DOCX through the isolated child', () => {
   it('reads a DOCX with text', async () => {
     const attempt = await docx.extract(docxWithText());
 
@@ -96,6 +106,13 @@ describe('DocxTextExtractor', () => {
       expect(attempt.text).toContain('Nadia Quispe Almaraz');
       expect(outcomeOfExtractedText(attempt.text).kind).toBe('extracted');
     }
+  });
+
+  it('reads the same text from a deflated DOCX', async () => {
+    const stored = await docx.extract(docxWithText());
+    const deflated = await docx.extract(docxWithTextDeflated());
+
+    expect(deflated).toEqual(stored);
   });
 
   it('calls a ZIP that is not a DOCX unreadable, which is the second gate of D2', async () => {

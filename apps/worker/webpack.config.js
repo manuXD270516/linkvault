@@ -16,7 +16,21 @@ module.exports = {
       main: './src/main.ts',
       // Punto de entrada adicional (tarea 7.5 de `object-store`, design D4): `node s3-probe.js` con la imagen de `worker`,
       // que comprueba el bucket de CV con la fábrica y el lector de CV del propio `worker`. No importa `AppModule`.
-      additionalEntryPoints: [{ entryName: 's3-probe', entryPath: './src/s3-probe.ts' }],
+      additionalEntryPoints: [
+        { entryName: 's3-probe', entryPath: './src/s3-probe.ts' },
+        // Script del proceso hijo de lectura de CV (D1 de `cv-extract-isolation`): un solo fichero que no importa nada
+        // del worker (ni `@nestjs/*`, ni `pino`, ni la configuración); lo vigila `cv-extract-child.bundle.spec.ts`.
+        {
+          entryName: 'cv-extract-child',
+          entryPath:
+            './src/modules/cv/infrastructure/isolation/child/cv-extract.child.ts',
+        },
+        // Sonda de la imagen (D11): lee un PDF y un DOCX con el adaptador aislado real. `node cv-extract-probe.js`.
+        {
+          entryName: 'cv-extract-probe',
+          entryPath: './src/cv-extract-probe.ts',
+        },
+      ],
       // Ruta **absoluta** a propósito (ADR-048): `GeneratePackageJsonPlugin` de Nx 23.2.1 llama a
       // `readTsConfig(options.tsConfig)` con el valor **tal cual** —a diferencia del resto de consumidores, que
       // hacen `path.isAbsolute(tsConfig) ? tsConfig : path.join(options.root, tsConfig)`

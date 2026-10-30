@@ -1,8 +1,12 @@
-import { crc32 } from 'node:zlib';
+import { crc32, deflateRawSync } from 'node:zlib';
 
 // Fixtures de la extracción de CV (D9 de cv-upload-extract, ADR-028 "Pruebas"). Se **generan**, no se commitean, y no
 // añaden ninguna dependencia: un PDF mínimo es texto plano con su tabla de referencias cruzadas, y un DOCX es un ZIP
 // sin comprimir, que `node:zlib` sabe firmar con su `crc32`.
+//
+// Estos fixtures se leen **dentro del proceso hijo aislado** (`infrastructure/isolation/`, ADR-058), no en el hilo
+// principal del worker: los tests de extracción los pasan por el hijo real compilado. Los archivos patológicos (bombas,
+// páginas de más, anidamiento) viven aparte, en `pathological-fixtures.ts`, y también se generan.
 //
 // **Ningún fixture lleva datos personales.** El texto es el de un CV inventado, con un nombre que no existe: ningún CV
 // real entra en este repositorio, ni siquiera en un test.
@@ -170,15 +174,17 @@ export function corruptPdf(): Uint8Array {
   return concat([bytes('%PDF-1.4\n'), junk]);
 }
 
-/** DOCX mínimo: un ZIP **sin comprimir** con las tres entradas que `mammoth` necesita. */
-export function docxWithText(
-  lines: readonly string[] = FIXTURE_CV_LINES,
-): Uint8Array {
+/** Las tres entradas que `mammoth` necesita para leer un DOCX mínimo. */
+function docxEntries(
+  lines: readonly string[],
+  options: Pick<ZipOptions, 'method' | 'zip64Extra'> = {},
+): ZipEntry[] {
   const paragraphs = lines
     .map((line) => `<w:p><w:r><w:t>${escapeXml(line)}</w:t></w:r></w:p>`)
     .join('');
-  return zipOf([
+  return [
     {
+      ...options,
       name: '[Content_Types].xml',
       content:
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
@@ -188,6 +194,7 @@ export function docxWithText(
         '</Types>',
     },
     {
+      ...options,
       name: '_rels/.rels',
       content:
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
@@ -196,6 +203,7 @@ export function docxWithText(
         '</Relationships>',
     },
     {
+      ...options,
       name: 'word/document.xml',
       content:
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
@@ -203,7 +211,31 @@ export function docxWithText(
         `<w:body>${paragraphs}</w:body>` +
         '</w:document>',
     },
-  ]);
+  ];
+}
+
+/** DOCX mínimo: un ZIP **sin comprimir** con las tres entradas que `mammoth` necesita. */
+export function docxWithText(
+  lines: readonly string[] = FIXTURE_CV_LINES,
+): Uint8Array {
+  return zipOf(docxEntries(lines));
+}
+
+/** El mismo DOCX con sus entradas comprimidas con `deflate`, como lo escribe Word. */
+export function docxWithTextDeflated(
+  lines: readonly string[] = FIXTURE_CV_LINES,
+): Uint8Array {
+  return zipOf(docxEntries(lines, { method: 'deflate' }));
+}
+
+/**
+ * El mismo DOCX con un **campo extra ZIP64** en cada entrada, con valores que caben en 32 bits: lo escriben algunas
+ * bibliotecas por defecto (PO-01). No es un ZIP64 de verdad: los campos de tamaño y desplazamiento no están saturados.
+ */
+export function docxWithZip64Extra(
+  lines: readonly string[] = FIXTURE_CV_LINES,
+): Uint8Array {
+  return zipOf(docxEntries(lines, { method: 'deflate', zip64Extra: true }));
 }
 
 /** ZIP que **no** es un DOCX: pasa la puerta de la API (`PK\x03\x04`) y muere en la extracción. */
@@ -213,9 +245,26 @@ export function zipThatIsNotDocx(): Uint8Array {
   ]);
 }
 
-interface ZipEntry {
+interface ZipOptions {
+  readonly method?: 'stored' | 'deflate';
+  /** Campo extra ZIP64 (id 0x0001) con tamaños de 32 bits, en la cabecera local y en la central. */
+  readonly zip64Extra?: boolean;
+}
+
+interface ZipEntry extends ZipOptions {
   readonly name: string;
-  readonly content: string;
+  readonly content: string | Uint8Array;
+}
+
+/** Campo extra ZIP64: id, longitud y dos valores de 8 bytes (tamaño original y comprimido). */
+function zip64ExtraField(size: number, compressed: number): Uint8Array {
+  const field = new Uint8Array(20);
+  const view = new DataView(field.buffer);
+  view.setUint16(0, 0x0001, true);
+  view.setUint16(2, 16, true);
+  view.setBigUint64(4, BigInt(size), true);
+  view.setBigUint64(12, BigInt(compressed), true);
+  return field;
 }
 
 /**
@@ -228,45 +277,57 @@ function zipOf(entries: readonly ZipEntry[]): Uint8Array {
   let offset = 0;
   for (const entry of entries) {
     const name = bytes(entry.name);
-    const content = bytes(entry.content);
-    const checksum = crc32(Buffer.from(content));
-    const local = new Uint8Array(30 + name.byteLength + content.byteLength);
+    const original =
+      typeof entry.content === 'string' ? bytes(entry.content) : entry.content;
+    const checksum = crc32(Buffer.from(original));
+    const method = entry.method === 'deflate' ? 8 : 0;
+    const content =
+      method === 8 ? new Uint8Array(deflateRawSync(original)) : original;
+    const extra =
+      entry.zip64Extra === true
+        ? zip64ExtraField(original.byteLength, content.byteLength)
+        : new Uint8Array(0);
+    const local = new Uint8Array(
+      30 + name.byteLength + extra.byteLength + content.byteLength,
+    );
     const localView = new DataView(local.buffer);
     localView.setUint32(0, 0x04034b50, true);
     localView.setUint16(4, 20, true); // versión mínima
     localView.setUint16(6, 0, true); // sin banderas
-    localView.setUint16(8, 0, true); // método 0: almacenado
+    localView.setUint16(8, method, true); // 0: almacenado, 8: deflate
     localView.setUint16(10, 0, true); // hora
     localView.setUint16(12, 0x21, true); // fecha fija: un fixture no cambia entre ejecuciones
     localView.setUint32(14, checksum, true);
     localView.setUint32(18, content.byteLength, true);
-    localView.setUint32(22, content.byteLength, true);
+    localView.setUint32(22, original.byteLength, true);
     localView.setUint16(26, name.byteLength, true);
-    localView.setUint16(28, 0, true);
+    localView.setUint16(28, extra.byteLength, true);
     local.set(name, 30);
-    local.set(content, 30 + name.byteLength);
+    local.set(extra, 30 + name.byteLength);
+    local.set(content, 30 + name.byteLength + extra.byteLength);
     locals.push(local);
 
-    const header = new Uint8Array(46 + name.byteLength);
+    const header = new Uint8Array(46 + name.byteLength + extra.byteLength);
     const headerView = new DataView(header.buffer);
     headerView.setUint32(0, 0x02014b50, true);
     headerView.setUint16(4, 20, true);
     headerView.setUint16(6, 20, true);
     headerView.setUint16(8, 0, true);
-    headerView.setUint16(10, 0, true);
+    headerView.setUint16(10, method, true);
     headerView.setUint16(12, 0, true);
     headerView.setUint16(14, 0x21, true);
     headerView.setUint32(16, checksum, true);
     headerView.setUint32(20, content.byteLength, true);
-    headerView.setUint32(24, content.byteLength, true);
+    headerView.setUint32(24, original.byteLength, true);
     headerView.setUint16(28, name.byteLength, true);
-    headerView.setUint16(30, 0, true);
+    headerView.setUint16(30, extra.byteLength, true);
     headerView.setUint16(32, 0, true);
     headerView.setUint16(34, 0, true);
     headerView.setUint16(36, 0, true);
     headerView.setUint32(38, 0, true);
     headerView.setUint32(42, offset, true);
     header.set(name, 46);
+    header.set(extra, 46 + name.byteLength);
     central.push(header);
     offset += local.byteLength;
   }

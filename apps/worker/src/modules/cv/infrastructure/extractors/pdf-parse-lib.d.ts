@@ -6,12 +6,33 @@
 // `pdf-parse/lib/pdf-parse.js`, que es la función y nada más.
 
 declare module 'pdf-parse/lib/pdf-parse.js' {
+  interface PdfTextItem {
+    readonly str: string;
+    readonly transform: readonly number[];
+  }
+
+  interface PdfPageData {
+    getTextContent(options: {
+      normalizeWhitespace: boolean;
+      disableCombineTextItems: boolean;
+    }): Promise<{ readonly items: readonly PdfTextItem[] }>;
+  }
+
+  interface PdfParseOptions {
+    /** Páginas que se leen; `0` o ausente, todas. */
+    readonly max?: number;
+    readonly pagerender?: (page: PdfPageData) => Promise<string>;
+  }
+
   interface PdfParseResult {
     readonly numpages: number;
     readonly text: string;
   }
 
-  function pdfParse(data: Uint8Array): Promise<PdfParseResult>;
+  function pdfParse(
+    data: Uint8Array,
+    options?: PdfParseOptions,
+  ): Promise<PdfParseResult>;
 
   export = pdfParse;
 }
