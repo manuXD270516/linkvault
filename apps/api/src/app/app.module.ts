@@ -30,6 +30,7 @@ import {
 import { AccountDeletionController } from '../modules/users/presentation/account-deletion.controller';
 import { AiKeysModule } from '../modules/users/presentation/ai-keys.module';
 import { UsersModule } from '../modules/users/presentation/users.module';
+import { CapabilitiesModule } from '../presentation/http/capabilities.module';
 import { EventsModule } from '../presentation/http/events.module';
 import { HealthModule } from '../presentation/http/health.module';
 import { MetricsModule } from '../presentation/http/metrics.module';
@@ -79,6 +80,7 @@ export class AppModule {
         RedisHealthModule,
         HealthModule,
         MetricsModule,
+        CapabilitiesModule,
         EventsModule,
         UsersModule,
         AiKeysModule.register(aiModule),

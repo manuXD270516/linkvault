@@ -17,31 +17,34 @@ el implementador crea tal cual; cada uno sale de un escenario de `specs/`.
 
 ## 1. Contrato y API (design D1-D4)
 
-- [ ] 1.1 [backend] `libs/shared/src/schemas/capabilities.schema.ts`: `capabilitiesResponseSchema`
+- [x] 1.1 [backend] `libs/shared/src/schemas/capabilities.schema.ts`: `capabilitiesResponseSchema`
   (`z.object({ search: z.boolean(), discovery: z.boolean() })`, **no** estricto),
   `strictCapabilitiesResponseSchema` (`.strict()`, para la API) y el tipo `CapabilitiesResponse`; export en
   `libs/shared/src/index.ts`. Verificar en `capabilities.schema.spec.ts`: «accepts the two booleans», «rejects a
   non-boolean value», «client schema accepts and strips an unknown key» y «strict schema rejects an unknown key».
   Falsación: poner `.strict()` en el schema del cliente y ver caer «client schema accepts and strips an unknown key»;
   restaurar.
-- [ ] 1.2 [backend] `apps/api/src/infrastructure/config/capabilities.ts`: función pura
+  **Estado (2026-10-30):** hecha. `shared` vitest capabilities.schema: 4 de 4. Falsación: con `strictObject` en el schema del cliente cae «client schema accepts and strips an unknown key» (1 failed, 3 passed); restaurado, 4 de 4.
+- [x] 1.2 [backend] `apps/api/src/infrastructure/config/capabilities.ts`: función pura
   `deriveCapabilities(config: ApiConfig): CapabilitiesResponse` según D2. Verificar en `capabilities.spec.ts` (con
   `test-support/test-config.ts`): «all off with the default test config», «search needs both the flag and a Meili
   host», «search is off with the flag and an empty host», «discovery follows its flag». Falsación: derivar `search`
   solo de `FEATURE_SEARCH` y ver caer «search is off with the flag and an empty host»; restaurar.
-- [ ] 1.3 [backend] Depende de 1.1 y 1.2. `apps/api/src/presentation/http/capabilities.controller.ts` (sin
+  **Estado (2026-10-30):** hecha. `capabilities.spec.ts`: 4 de 4. Falsación: `search` solo de `FEATURE_SEARCH` hace caer «search is off with the flag and an empty host» (1 failed, 3 passed); restaurado.
+- [x] 1.3 [backend] Depende de 1.1 y 1.2. `apps/api/src/presentation/http/capabilities.controller.ts` (sin
   `@Public()`; calcula el objeto una vez en el constructor con `strictCapabilitiesResponseSchema.parse`;
   `@Header('Cache-Control', 'private, no-store')`) y `capabilities.module.ts`, registrado en el módulo raíz como
   `health`/`metrics`. Verificar: `grep -n "Public" apps/api/src/presentation/http/capabilities.controller.ts` no
   devuelve nada, `grep -c "private, no-store"` sobre el controlador devuelve `1`, y `pnpm nx run api:typecheck` en
   verde.
-- [ ] 1.4 [backend] Depende de 1.3. `capabilities.controller.spec.ts` con la app Nest de prueba y el guard global real
+  **Estado (2026-10-30):** hecha. `grep -n Public` sobre el controlador no devuelve nada; `grep -c "private, no-store"` devuelve 1; `api:typecheck` y `api:lint` en verde. `CapabilitiesModule` registrado en `AppModule` junto a `MetricsModule`.
+- [x] 1.4 [backend] Depende de 1.3. `capabilities.controller.spec.ts` con la app Nest de prueba y el guard global real
   (patrón de `test-support/auth-test-app.ts`): «responds 401 without an access token», «responds 200 with the derived
   capabilities for a signed-in user», «body has exactly search and discovery, both booleans» y «sends Cache-Control
   private, no-store». Falsación (guardia D3): añadir `meiliHost: config.MEILI_HOST` al objeto del controlador y ver
   caer «body has exactly search and discovery, both booleans» (y el `parse` estricto); restaurar. Falsación (C5):
   cambiar la cabecera a `private, max-age=300` y ver caer «sends Cache-Control private, no-store»; restaurar.
-
+  **Estado (2026-10-30):** hecha. `capabilities.controller.spec.ts` (app de Descubrir con guard real, Mongo en memoria): 4 de 4. Falsación D3: añadir `meiliHost` al objeto hace caer el `parse` estricto (ZodError `unrecognized_keys`) al construir el controlador: la app no arranca, los 4 casos quedan sin ejecutar y la suite falla; restaurado. Falsación C5: `private, max-age=300` hace caer «sends Cache-Control private, no-store» (1 failed, 3 passed); restaurado, 8 de 8 entre ambos specs.
 ## 2. Capacidades en el SPA (design D4, D5)
 
 - [ ] 2.1 [frontend] `apps/web/src/app/core/capabilities/capabilities.api.ts`: `get()` sobre
