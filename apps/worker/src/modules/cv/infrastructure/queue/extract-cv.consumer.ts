@@ -8,7 +8,7 @@ import {
   type OnApplicationShutdown,
   type OnModuleInit,
 } from '@nestjs/common';
-import type { Job, WorkerOptions } from 'bullmq';
+import { UnrecoverableError, type Job, type WorkerOptions } from 'bullmq';
 import type { ExtractCvUseCase } from '../../application/extract-cv.usecase';
 import {
   bullmqWorkerFactory,
@@ -25,6 +25,13 @@ import {
 //
 // `lockDuration` **por encima** del plazo de la extracción: un CV puede tardar legítimamente todo el plazo, y con un
 // bloqueo más corto BullMQ lo daría por `stalled` y lo reentregaría. Ese duplicado abriría dos veces el mismo archivo.
+
+/**
+ * Reentregas por `stalled` que BullMQ tolera (D8 de cv-extract-isolation): **explícito** en vez del valor por defecto
+ * implícito. Con 1, una muerte del proceso a mitad de lectura reabre el archivo como mucho una vez más: la segunda
+ * detección no lo reabre, lo falla con `deferredFailure` + `UnrecoverableError` (BullMQ 6.3.6).
+ */
+export const CV_MAX_STALLED_COUNT = 1;
 
 /** Holgura sobre el plazo: lo que tarda en escribir el resultado, más margen. El mismo que `enrich-link`. */
 export const CV_LOCK_DURATION_MARGIN_MS = 15_000;
@@ -56,6 +63,13 @@ export class ExtractCvConsumer implements OnModuleInit, OnApplicationShutdown {
   ) {}
 
   onModuleInit(): void {
+    if (this.options.concurrency > 1) {
+      // H12 / D5 de cv-extract-isolation: cada lectura es un proceso hijo con su heap y su techo. Solo la cuenta, sin
+      // datos de ningún CV; el RUNBOOK explica `memory_ceiling`.
+      this.logger.warn(
+        `extract-cv concurrency is ${this.options.concurrency}: CV read memory can reach ${this.options.concurrency} x (256 MB heap + 512 MiB resident ceiling + ~40 MB startup)`,
+      );
+    }
     this.worker = this.createWorker(
       EXTRACT_CV_QUEUE,
       (job) => this.handle(job),
@@ -66,11 +80,12 @@ export class ExtractCvConsumer implements OnModuleInit, OnApplicationShutdown {
         },
         concurrency: this.options.concurrency,
         lockDuration: cvLockDurationFor(this.options.timeoutMs),
+        maxStalledCount: CV_MAX_STALLED_COUNT,
       } as WorkerOptions,
     );
     // Sin oyente de `failed`, un job que agota sus reintentos dejaría el CV en `pending` para siempre.
-    this.worker.on('failed', (job) => {
-      void this.onJobFailed(job);
+    this.worker.on('failed', (job, error) => {
+      void this.onJobFailed(job, error);
     });
   }
 
@@ -91,15 +106,22 @@ export class ExtractCvConsumer implements OnModuleInit, OnApplicationShutdown {
   }
 
   /**
-   * Un job que agota sus reintentos deja el CV en `failed` con `internal_error`, nunca en `pending` para siempre (D8).
+   * Un job **sin reintento pendiente** deja el CV en `failed` con `internal_error`, nunca en `pending` para siempre
+   * (D8). Sin reintento pendiente es: haber agotado los intentos, **o** haber fallado con un `UnrecoverableError` (lo que
+   * BullMQ 6.3.6 hace con un job que supera `maxStalledCount`: lo falla con `deferredFailure` sin gastar intentos), **o**
+   * tener `finishedOn` puesto (el job está en el conjunto `failed`, no en `delayed`). No se mira el texto del error.
    * Mientras le queden intentos no se toca el CV: el siguiente puede salir bien.
    */
-  async onJobFailed(job: Job | undefined): Promise<void> {
+  async onJobFailed(job: Job | undefined, error?: Error): Promise<void> {
     if (job === undefined) {
       return;
     }
     const attempts = job.opts.attempts ?? 1;
-    if (job.attemptsMade < attempts) {
+    const noRetryPending =
+      job.attemptsMade >= attempts ||
+      error instanceof UnrecoverableError ||
+      typeof job.finishedOn === 'number';
+    if (!noRetryPending) {
       return;
     }
     const payload = this.payloadOf(job);

@@ -4,8 +4,9 @@ import {
   EXTRACT_CV_QUEUE,
   cvFileKey,
 } from '@linkvault/shared';
-import type { Job, WorkerOptions } from 'bullmq';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { UnrecoverableError, type Job, type WorkerOptions } from 'bullmq';
+import { Logger } from '@nestjs/common';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DeleteCvFileUseCase } from '../../application/delete-cv-file.usecase';
 import { ExtractCvUseCase } from '../../application/extract-cv.usecase';
 import {
@@ -70,8 +71,15 @@ function jobOf(
   data: unknown,
   attemptsMade = 0,
   attempts = 3,
+  finishedOn?: number,
 ): Job {
-  return { id: 'j1', data, attemptsMade, opts: { attempts } } as unknown as Job;
+  return {
+    id: 'j1',
+    data,
+    attemptsMade,
+    opts: { attempts },
+    ...(finishedOn !== undefined ? { finishedOn } : {}),
+  } as unknown as Job;
 }
 
 beforeEach(() => {
@@ -84,6 +92,7 @@ beforeEach(() => {
 function extractConsumer(
   extractor: ConstructorParameters<typeof StubExtractor>[0],
   timeoutMs = 30_000,
+  concurrency = 1,
 ): ExtractCvConsumer {
   const useCase = new ExtractCvUseCase(
     repository,
@@ -95,7 +104,7 @@ function extractConsumer(
   );
   return new ExtractCvConsumer(
     useCase,
-    { redisUrl: 'redis://127.0.0.1:1', concurrency: 1, timeoutMs },
+    { redisUrl: 'redis://127.0.0.1:1', concurrency, timeoutMs },
     factory,
   );
 }
@@ -114,6 +123,48 @@ describe('ExtractCvConsumer', () => {
     expect(registered[0]?.options.lockDuration).toBe(
       45_000 + CV_LOCK_DURATION_MARGIN_MS,
     );
+  });
+
+  describe('the concurrency warning', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('warns when cv extraction concurrency is above one', () => {
+      const warn = vi
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+
+      extractConsumer(
+        { kind: 'text', text: GOOD_TEXT },
+        30_000,
+        2,
+      ).onModuleInit();
+
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0]?.[0])).toMatch(/concurrency is 2/);
+      expect(String(warn.mock.calls[0]?.[0])).not.toContain(CV_ID);
+    });
+
+    it('does not warn with concurrency one', () => {
+      const warn = vi
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+
+      extractConsumer(
+        { kind: 'text', text: GOOD_TEXT },
+        30_000,
+        1,
+      ).onModuleInit();
+
+      expect(warn).not.toHaveBeenCalled();
+    });
+  });
+
+  it('declares maxStalledCount 1', () => {
+    extractConsumer({ kind: 'text', text: GOOD_TEXT }).onModuleInit();
+
+    expect(registered[0]?.options.maxStalledCount).toBe(1);
   });
 
   it('keeps the lock above the deadline, so a slow CV is not re-delivered', () => {
@@ -163,6 +214,57 @@ describe('ExtractCvConsumer', () => {
     const consumer = extractConsumer({ kind: 'text', text: GOOD_TEXT });
 
     await consumer.onJobFailed(jobOf(PAYLOAD, 1, 3));
+
+    expect(repository.failures.size).toBe(0);
+    expect(repository.statusOf(CV_ID)).toBe('pending');
+  });
+
+  it('a job failed by the stalled limit leaves the CV in internal_error', async () => {
+    // La forma que BullMQ 6.3.6 le da a un job que supera `maxStalledCount` (D8): `deferredFailure` →
+    // `UnrecoverableError`, `finishedOn` puesto y `attemptsMade` por debajo de `attempts`.
+    repository.withCv(CV_ID, { userId: USER_ID });
+    const consumer = extractConsumer({ kind: 'text', text: GOOD_TEXT });
+    consumer.onModuleInit();
+    const listener = registered[0]?.failedListeners[0];
+
+    listener?.(
+      jobOf(PAYLOAD, 1, 3, Date.now()),
+      new UnrecoverableError('job stalled more than allowable limit'),
+    );
+    await vi.waitFor(() => {
+      expect(repository.failures.get(CV_ID)).toBe('internal_error');
+    });
+  });
+
+  it('an unrecoverable error without finishedOn is also marked', async () => {
+    repository.withCv(CV_ID, { userId: USER_ID });
+    const consumer = extractConsumer({ kind: 'text', text: GOOD_TEXT });
+
+    await consumer.onJobFailed(
+      jobOf(PAYLOAD, 0, 3),
+      new UnrecoverableError('x'),
+    );
+
+    expect(repository.failures.get(CV_ID)).toBe('internal_error');
+  });
+
+  it('a finished job without an unrecoverable error is also marked', async () => {
+    repository.withCv(CV_ID, { userId: USER_ID });
+    const consumer = extractConsumer({ kind: 'text', text: GOOD_TEXT });
+
+    await consumer.onJobFailed(
+      jobOf(PAYLOAD, 1, 3, Date.now()),
+      new Error('x'),
+    );
+
+    expect(repository.failures.get(CV_ID)).toBe('internal_error');
+  });
+
+  it('a job with attempts left is not marked', async () => {
+    repository.withCv(CV_ID, { userId: USER_ID });
+    const consumer = extractConsumer({ kind: 'text', text: GOOD_TEXT });
+
+    await consumer.onJobFailed(jobOf(PAYLOAD, 1, 3), new Error('transient'));
 
     expect(repository.failures.size).toBe(0);
     expect(repository.statusOf(CV_ID)).toBe('pending');
