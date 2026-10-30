@@ -276,23 +276,22 @@ vez con `node` en la tarea que crea la lista.
   volvería a construir y a publicar el mismo `sha-<12>`, y el build no es reproducible bit a bit. **Hasta 35c eso es
   procedimiento, no guardia:** el guardia de `publish-artifact.sh` que lo rechaza es de 35c (su diseño está en el
   `scope` de `verify-reusable-workflow`).
-- **Relanzar tiene plazo: 30 días.** GitHub solo deja relanzar jobs de una corrida **hasta 30 días después de la
-  corrida inicial** (cuenta desde que se creó la corrida, no desde el último relanzamiento). Pasado el plazo, relanzar
-  deja de ser un camino para esa corrida. Por eso 9.4 y 11.6 llevan como precondición «≤ 30 días desde la corrida de
-  6.3», que es la del push de PR-1; si no se cumple, se despliega o se vuelve atrás desde el host, como abajo, y se
-  anota.
-- **El primer despliegue relanza el preflight de la corrida del push de PR-1** (6.3). Esa corrida ya verificó y publicó
-  su `sha-<12>`, con el preflight en `none` porque aún no había secretos. Relanzar su job `preflight` (`gh run rerun
-  <run> --job <id del preflight>`) lo evalúa de nuevo con los secretos ya puestos, y GitHub relanza con él los jobs que
-  dependen de él, `deploy-staging` y `report`, que reutilizan la salida de `build-verify-publish`. Ese job **no**
-  depende del preflight y no se vuelve a ejecutar, así que no se republica nada. Se verifica que el digest de
-  `sha-<12>` es el mismo antes y después y que `build-verify-publish` no se ejecutó en el intento nuevo.
-  **Alternativa escrita:** si GitHub no relanza los dependientes, o si han pasado más de 30 días desde el push de PR-1,
-  se vuelve al plan anterior: un `workflow_dispatch` real sobre `main` que republica **una vez** el `sha-<12>` de ese
-  commit con otro digest, antes de que nada lo haya desplegado. Solo en ese caso aplican las notas de excepción de
-  «Risks / Trade-offs» y del `scope` de `verify-reusable-workflow`.
+- **Relanzar tiene plazo: 30 días.** GitHub solo deja relanzar jobs de una corrida **hasta 30 días después de la corrida
+  inicial** (cuenta desde que se creó la corrida, no desde el último relanzamiento). Pasado el plazo, relanzar deja de
+  ser un camino para esa corrida. Por eso 9.4 y 11.6 llevan como precondición «≤ 30 días desde la corrida de 6.3», que
+  es la del push de PR-1b (D18); si no se cumple, se despliega o se vuelve atrás desde el host, como abajo, y se anota.
+- **El primer despliegue relanza el preflight de la corrida del push de PR-1b** (6.3; D18). Esa corrida ya verificó y
+  publicó su `sha-<12>`, con el preflight en `none` porque aún no había secretos. Relanzar su job `preflight` (`gh run
+  rerun <run> --job <id del preflight>`) lo evalúa de nuevo con los secretos ya puestos, y GitHub relanza con él los
+  jobs que dependen de él, `deploy-staging` y `report`, que reutilizan la salida de `build-verify-publish`. Ese job
+  **no** depende del preflight y no se vuelve a ejecutar, así que no se republica nada. Se verifica que el digest de
+  `sha-<12>` es el mismo antes y después y que `build-verify-publish` no se ejecutó en el intento nuevo. **Alternativa
+  escrita:** si GitHub no relanza los dependientes, o si han pasado más de 30 días desde el push de PR-1b, se vuelve al
+  plan anterior: un `workflow_dispatch` real sobre `main` que republica **una vez** el `sha-<12>` de ese commit con otro
+  digest, antes de que nada lo haya desplegado. Solo en ese caso aplican las notas de excepción de «Risks / Trade-offs»
+  y del `scope` de `verify-reusable-workflow`.
 - **Vuelta atrás por GitHub:** relanzar solo el job de despliegue de una corrida anterior de `main`, dentro de sus 30
-  días. Se ejercita en 11.6, cuando hay dos commits de `main` desplegados (el de PR-1 y el de PR-2).
+  días. Se ejercita en 11.6, cuando hay dos commits de `main` desplegados (el de PR-1b y el de PR-2).
 - **Vuelta atrás sin GitHub:** en el host, `install-config.sh` desde el `.incoming-<sha anterior>` guardado e
   `IMAGE_TAG=sha-<anterior> … up -d --wait`. Queda como **procedimiento escrito** en el RUNBOOK (11.2), no como ensayo:
   sus piezas (`install-config.sh` y la retención) ya se verifican en 4.2 y 4.3, y ensayarlo entero añadía una tarea sin
@@ -538,7 +537,7 @@ change **posterior a 35c**, y no retiene el archivado de 35b. La señal para dec
   **lista de ids excluidos: autor + cuentas E2E** (las cuentas de prueba persistentes de `e2e-suite`, alias `+e2e`,
   sin email verificado ni permiso de IA; ADR-053 §1.4, decidido por el usuario el 2026-09-26). No basta con quitarlas
   del recuento de cuentas: sus grupos, links, postulaciones, CV y análisis tampoco cuentan. La lista vive **fuera del
-  repositorio** y se pasa a `run.sh`. **Mongo no tiene autenticación**, así que no existe un usuario de rol
+  repositorio** y se pasa a `run.sh`. **Mongo solo tiene el usuario raíz** (D18), así que no existe un usuario de rol
   `read` con el que ejecutarlos: se ejecutan con `mongosh` dentro del contenedor `mongo`, **el operador tiene acceso
   total**, y así se escribe en el RUNBOOK. La garantía de solo lectura es una **comprobación estática**,
   `infra/staging/assert-readonly.mjs`, que falla nombrando cualquier operación de escritura: `insert*`, `update*`,
@@ -676,6 +675,79 @@ una cuenta si el lote llegara a un entorno compartido (las guardias 1-4 lo impid
   (recomendada: con 5 personas el volumen real es mínimo y el dato sirve de referencia); (b) un tope, p. ej. 30 s, que
   si se pasa abre un change de índices. Sin respuesta, (a).
 
+### D18. Defensa en profundidad del despliegue (ADR-056 §6)
+
+**Origen:** ADR-056 §6 de `enrichment-egress-guard`. Respuesta del owner a su Q3 (2026-10-29): la recomendada, un PR
+solo de spec con el texto de esa sección y sin cambiar el orden de las tareas de 35b. El filtro de ADR-056 protege solo
+las conexiones que parten de URLs de usuario; estas medidas acotan lo que alcanza un proceso comprometido o un camino
+que ese filtro no ve. Tareas 12.1-12.7; debate critic/business del 2026-10-29 incorporado.
+
+**Hallazgo al trasladarla (2026-10-29):** `api` y `worker` solo están en `internal` y `object-store-net`, y las dos
+redes son `internal: true`: **la pila no tiene salida a Internet**. Sin ella no funcionan el SMTP (D6, D12), OpenRouter
+(D13) ni las descargas del enriquecimiento, y 7.10, 7.12, 8.1 y 9.8 no pueden pasar. Ningún camino de CI lo vio: usan el
+mock de IA y no envían correo real ni descargan páginas externas. Por eso el grupo 12 va **antes de 6.1** y queda una
+guardia que lo comprueba en cada despliegue.
+
+1. **Redes por proceso: `api` y `worker` no comparten ninguna.**
+   - `internal` (sin salida): `traefik`, `web` y `api`. Traefik llega a `api` y a `web` por ella.
+   - `data-api` y `data-worker` (`internal: true`): `mongo` y `redis` en las dos; `api` en la primera, `worker` en
+     la segunda. Mongo y Redis salen de `internal`.
+   - `store-api` y `store-worker` (`internal: true`): `object-store` en las dos. Sustituyen a `object-store-net` y
+     mantienen D14 de `object-store`: al almacén solo llegan `api` y `worker`.
+   - `api-egress` y `worker-egress` (`bridge` con salida), una por proceso.
+
+   Traefik sigue siendo el único servicio que publica puertos. `worker` no resuelve el nombre de `api` ni alcanza
+   `/metrics` (medida 4). Los caminos que levantan la pila y la sondean cambian con ella: `infra/ci/verify-artifact.sh`
+   (hoy sondea `worker:3001` desde `web`; pasa a sondearlo desde `object-store`, que tiene `curl` y está en
+   `store-worker`), `cd-prod.yml` y la pila local de `infra/README.md`.
+2. **Interfaces del almacén.** El `mini` de SeaweedFS 4.47 expone en sus redes el filer (8888), el maestro (9333), el
+   volumen (9340) y sus gRPC (18888, 19333, 19340 y 33646) sin autenticación; solo S3 (8333) pide claves. La matriz
+   (`docs/object-store-matrix/matriz.md`, medido el 2026-09-26) dejó dos datos: `mini` no tiene enlace por
+   componente, y `-ip.bind=127.0.0.1` deja también a S3 fuera de alcance (`provision` sale 1). **Se adopta
+   `-disableHttp`**, también medido: la pasarela S3 sigue sirviendo y el filer deja de servir objetos por HTTP.
+   - **Riesgo residual escrito:** el maestro, el volumen y los gRPC siguen escuchando sin autenticación. Solo los
+     alcanzan `api` y `worker`, por las redes del almacén.
+   - La firma JWT queda fuera. Con `security.toml` sería un fichero con secreto montado, que la forma de C3 no admite;
+     por `WEED_JWT_*` no está medida.
+   - Es **otra configuración** del servicio `object-store`, así que la matriz exige repetir sobre ella C3-C5 y C7-C9
+     antes de adoptarla. La imagen no cambia y el digest que compara `deploy.sh` tampoco.
+3. **Contraseñas en Redis y Mongo.** Redis con `requirepass` (`REDIS_PASSWORD`) y Mongo con autenticación
+   (`MONGO_ROOT_USER` y `MONGO_ROOT_PASSWORD`).
+   - Viven solo en `.env.staging` (regla de la copia de 5.8). No son secretos de GitHub: los seis de D3 y D8 no cambian.
+   - **Ninguna contraseña aparece en los argumentos de un proceso** (D3):
+     - Redis lee la suya de un fichero de configuración que escribe al arrancar.
+     - `redis-cli` usa `REDISCLI_AUTH`.
+     - `mongosh` (healthcheck, `rs.initiate`, `run.sh` y `verify-artifact.sh`) se autentica dentro de `--eval` con
+       `db.getSiblingDB('admin').auth(…)` leyendo `process.env`.
+     - En los `command` y healthchecks del compose se escribe `$$VAR`, que expande el shell del contenedor. En
+       `MONGO_URI` y `REDIS_URL` sigue `${VAR:?}`: Compose no expande el entorno del contenedor, y es la forma que
+       detectan `check-env-file.mjs` y `compose-env-contract` como obligatoria.
+   - El `keyFile` que exige un replica set con autenticación **se genera dentro del contenedor al arrancar** (uid 999,
+     modo 400) antes del `docker-entrypoint.sh`. En un nodo único no hace falta conservarlo: no es un secreto ni se
+     copia, y funciona igual en CI y en la pila local.
+   - El usuario raíz solo se crea sobre un **volumen vacío**. Staging parte de uno vacío, y también el ensayo de D14.
+     Una pila local o de `cd-prod` con un volumen anterior se queda sin usuario y su healthcheck falla; el README lo
+     dice y da `down -v`.
+   - `MONGO_URI` lleva credenciales y `authSource=admin`; `REDIS_URL` lleva la contraseña. Los caminos de CI que
+     levantan `docker-compose.prod.yml` reciben valores de prueba (`infra/ci/verify.env`).
+   - Consecuencia en D15: Mongo deja de no tener autenticación, pero sigue sin un usuario de rol `read`. `run.sh` se
+     conecta con el usuario raíz leído en el host, el operador sigue teniendo acceso total y la garantía de solo lectura
+     sigue siendo `assert-readonly.mjs`. La semilla de D17 no cambia: corre contra un Mongo local.
+4. **Métricas de la API no alcanzables desde el worker:** sale de la medida 1.
+5. **Dirección de metadatos del proveedor.** Una regla en la cadena `DOCKER-USER` del host descarta el tráfico de los
+   contenedores hacia `169.254.169.254`; ningún servicio la necesita. Persiste como las reglas de 5.5 y la repite la
+   9.3 del ensayo de reconstrucción.
+
+**Lo que no cubre:** un proceso comprometido en `api` o `worker` sigue alcanzando Internet y los servicios de sus
+redes, entre ellos las interfaces del almacén del riesgo residual de la medida 2. La salida no se filtra por destino,
+porque no hay proxy de salida (ADR-056 §5).
+
+**Va en un PR propio, PR-1b**, fusionado en una ventana autorizada por el usuario **antes de 6.1**, es decir, antes de
+que existan los secretos. Así su push no despliega, y **6.3 relanza la corrida de ese push**, no la de PR-1. Como la
+configuración llega al host desde el commit desplegado (D4), es la única manera de que el primer despliegue real lleve
+la salida a Internet. Los 30 días de 9.4 y 11.6 cuentan desde esa corrida. No cambia el orden de las tareas, solo qué
+corrida relanza 6.3. La regla del host (12.7) se aplica con 5.5.
+
 ## Risks / Trade-offs
 
 - [Un `dry_run` sobre `main` despliega si los secretos llegan antes que D1] → D1 va en PR-1 y la tarea de secretos
@@ -702,13 +774,13 @@ una cuenta si el lote llegara a un entorno compartido (las guardias 1-4 lo impid
   al job que publica (3.5); fijar por SHA los `uses:` de ese job es de 35c.
 - [`AI_VAULT_KEY` solo en el host] → copia de `.env.staging` fuera del host, comprobada por suma, y restaurada en el
   ensayo de reconstrucción.
-- [**Mongo sin autenticación**: el operador lo lee y lo escribe todo] → escrito en el RUNBOOK; los scripts de medición
-  pasan por una comprobación estática antes de ejecutarse.
+- [**Mongo solo con usuario raíz** (D18): el operador lo lee y lo escribe todo] → escrito en el RUNBOOK; los scripts de
+  medición pasan por una comprobación estática antes de ejecutarse.
 - [Datos personales reales en un entorno desechable] → aviso ampliado antes del alta; sin copias; borrado de cuenta del
   producto.
 - [Relanzar la corrida entera publicaría otro digest bajo el mismo `sha-<12>`] → se relanza solo el job; hasta 35c es
-  procedimiento. El primer despliegue (6.3) relanza el preflight de la corrida del push de PR-1 y no republica. **Solo
-  si ese camino falla** (GitHub no relanza los dependientes, o han pasado más de 30 días), 6.3 cae a un
+  procedimiento. El primer despliegue (6.3) relanza el preflight de la corrida del push de PR-1b (D18) y no republica.
+  **Solo si ese camino falla** (GitHub no relanza los dependientes, o han pasado más de 30 días), 6.3 cae a un
   `workflow_dispatch` que republica una vez, a sabiendas, antes de que nada haya desplegado ese tag.
 - [GitHub solo deja relanzar jobs hasta 30 días después de la corrida inicial] → 9.4 y 11.6 lo llevan como
   precondición; si no se cumple, se despliega o se vuelve atrás desde el host o la máquina del operador, y se anota.
@@ -724,12 +796,13 @@ una cuenta si el lote llegara a un entorno compartido (las guardias 1-4 lo impid
 2. **35b, este change**, en dos PR:
    1. **PR-1** — guardias sin secretos (grupos 2-4) y código de correo (7.1-7.8, 7.13), fusionado en su ventana con el
       CD en "verificado sin destino".
-   2. Sin fusionar nada: host (grupo 5), secretos y primer despliegue real relanzando el preflight de la corrida del push
-      de PR-1, dentro de sus 30 días (grupo 6, D4), correo real (7.9-7.12, 7.14), IA (grupo 8), antes de invitar (grupo
-      9), medición (10.1-10.6), documentación (11.1-11.5).
+   2. **PR-1b** — el grupo 12 (D18), fusionado en su ventana **antes de 6.1**. Después, sin fusionar nada: host (grupo
+      5), secretos y primer despliegue real relanzando el preflight de la corrida del push de PR-1b, dentro de sus 30
+      días (grupo 6, D4), correo real (7.9-7.12, 7.14), IA (grupo 8), antes de invitar (grupo 9), medición (10.1-10.6),
+      documentación (11.1-11.5).
    3. **PR-2** — el cierre, fusionado en su ventana; su push es el primer despliegue por merge.
    4. Con PR-2 en `main`: vuelta atrás por GitHub entre los dos commits desplegados (11.6, dentro de los 30 días de la
-      corrida de PR-1) e invitación (10.7), bloqueada por el usuario. `/opsx:verify` sobre todo el change y PR de
+      corrida de PR-1b) e invitación (10.7), bloqueada por el usuario. `/opsx:verify` sobre todo el change y PR de
       archivo.
 3. **35c `verify-reusable-workflow`**, tras archivar `i18n-catalog-gate`: workflow reutilizable, post-merge, release
    `v0.1.0` solo `arm64`, guardias diferidos y la parte de `cd-prod`.
@@ -753,6 +826,7 @@ aprobar el design antes de `/opsx:apply`.
 | **Q4**: quiénes (3-5 que buscan empleo ahora, 2-3 en un mismo grupo) — **decidido el 2026-10-08**: 5 por defecto, configurable, y las 5 en el grupo del autor (interpretación de «respetemos 5», D15); falta la lista nominal, fuera del repositorio | el usuario | 9.7, 9.8, 10.1, PR-2 y 10.7 | invitación con el código de unión del grupo del autor |
 | **Umbral del correo** (7.10): bandeja de entrada en al menos 2 de 3 proveedores | la medición; si no se cumple, el usuario | 10.7 | cumplido: nada; no cumplido: dominio propio con su coste, o riesgo aceptado por escrito |
 | **Ventana de fusión de PR-1** | el usuario | la fusión de PR-1 y, tras ella, 6.1 | fusión a mano con el CI en verde |
+| **Ventana de fusión de PR-1b** (D18) | el usuario | la fusión de PR-1b y, tras ella, 6.1 y 6.3 | fusión a mano con el CI en verde, antes de configurar ningún secreto |
 | **Ventana de fusión de PR-2** | el usuario, pedida **junto con Q4** | la fusión de PR-2 y, tras ella, 11.6 y 10.7 | fusión a mano con el CI en verde |
 | **Precondición de invitar de `e2e-suite`** (origen: ADR-053 §1.3; ejecución: D14) | la corrida `e2e-remote` contra staging; si no puede lanzarse, el usuario | 10.7 | en verde en los dos proyectos sobre el commit desplegado —desde `main` o, sin el PR-1 de `e2e-suite` en `main`, desde la cabeza de la rama de ese PR—: nada; si falla, no se invita hasta que pase; un `429`: se repite otro día; sin respaldo local; último recurso, esperar o la alternativa manual de D14, anotada paso a paso |
 
