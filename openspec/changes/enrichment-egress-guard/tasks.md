@@ -24,7 +24,7 @@ DNS, y `PUBLIC_EGRESS_POLICY` tal cual para el negativo de puerto. No hay variab
 
 ## 1. Clasificador compartido (`libs/shared`, design D1, D2)
 
-- [ ] 1.1 [backend] `ipaddr.js` como dependencia directa en `dependencies` del `package.json` raíz (la versión del
+- [x] 1.1 [backend] `ipaddr.js` como dependencia directa en `dependencies` del `package.json` raíz (la versión del
   lockfile, sin `minimumReleaseAgeExclude`) y
   `libs/shared/src/net/egress-address.ts` con `classifyAddress` para **IPv4**, publicado por la subruta
   `@linkvault/shared/net` (`libs/shared/src/net/index.ts` y su entrada en `tsconfig.base.json`), **no** desde el índice
@@ -35,7 +35,7 @@ DNS, y `PUBLIC_EGRESS_POLICY` tal cual para el negativo de puerto. No hay variab
   anotada en el PR) y `grep -rn "shared/net" apps/web/src` sin resultados. Tras `pnpm nx run api:build` y
   `pnpm nx run worker:build` (P1-4): `dist/apps/api/package.json` y `dist/apps/worker/package.json` contienen
   `ipaddr.js` y ninguno contiene `selfsigned` (`grep -c` anotado en el PR). Falsación: quitar `100.64.0.0/10` de la
-  tabla de rangos de la implementación y ver caer el primero; restaurar. **Estado (2026-10-29):** parcial. Hecho: `ipaddr.js` 2.5.0 en `dependencies` raíz (versión del lockfile), `libs/shared/src/net/` publicado por `@linkvault/shared/net` (entrada en `tsconfig.base.json`), `egress-address.spec.ts` con los tres tests nombrados en verde (117 tests de `net`+`preview` en verde con `pnpm nx run shared:test --skip-nx-cache`), `grep -rn "shared/net" apps/web/src` sin resultados y `pnpm nx run web:build` sin avisos propios (el único es el presupuesto de bundle inicial, ya existente; web no importa la subruta). Falsación hecha: sin `100.64.0.0/10` cae «classifies every non-public IPv4 range of the spec» (`100.64.0.0/10 first: expected 'public' to be 'shared_cgnat'`); restaurada. **Pendiente**: la comprobación de `dist/apps/api/package.json` (`ipaddr.js`) y la de `selfsigned` solo tienen sentido cuando la API importe la subruta (5.1); hoy la API no la usa. En `dist/apps/worker/package.json` `ipaddr.js` ya figura y `selfsigned` no.
+  tabla de rangos de la implementación y ver caer el primero; restaurar. **Estado (2026-10-29):** `ipaddr.js` 2.5.0 en `dependencies` raíz (versión del lockfile), `libs/shared/src/net/` publicado por `@linkvault/shared/net` (entrada en `tsconfig.base.json`), `egress-address.spec.ts` con los tres tests nombrados en verde, `grep -rn "shared/net" apps/web/src` sin resultados y `pnpm nx run web:build` sin avisos propios (el único es el presupuesto de bundle inicial, ya existente; web no importa la subruta). Con la API ya importando la subruta (5.1), tras `pnpm nx run api:build` y `pnpm nx run worker:build`: `dist/apps/api/package.json` contiene `ipaddr.js` y no `selfsigned` (`grep -c` = 1 y 0); `dist/apps/worker/package.json`, lo mismo (1 y 0). Falsación hecha: sin `100.64.0.0/10` cae «classifies every non-public IPv4 range of the spec» (`100.64.0.0/10 first: expected 'public' to be 'shared_cgnat'`); restaurada.
 - [x] 1.2 [backend] `classifyAddress` para **IPv6** con lista de permitidos: público solo dentro de `2000::/3` y fuera
   de los rangos de la spec (`::`, `::1`, `::/96`, `::ffff:0:0/96`, `100::/64`, `2001::/23`, `2001:db8::/32`,
   `3fff::/20`, `fc00::/7`, `fe80::/10`, `fec0::/10`, `ff00::/8`), y la IPv4 interna de `64:ff9b::/96` y `2002::/16`.
@@ -212,7 +212,7 @@ DNS, y `PUBLIC_EGRESS_POLICY` tal cual para el negativo de puerto. No hay variab
 
 ## 5. Rechazo sintáctico en la API (design D6)
 
-- [ ] 5.1 [backend] Rechazo como no reconocida de hosts sin punto, `localhost`/`*.localhost` y literales no públicos,
+- [x] 5.1 [backend] Rechazo como no reconocida de hosts sin punto, `localhost`/`*.localhost` y literales no públicos,
   en `normalizeUrl`, con `classifyHost` y `allowsHost`/`allowsAddress` de `PUBLIC_EGRESS_POLICY` usada directamente
   (P1-5): función pura de `@linkvault/shared/net`, sin token ni configuración. El puerto **no** se juzga al guardar
   (B2). Sin DNS. Verificar en `url.spec.ts`: «rejects a literal private or loopback host as unrecognized», «rejects a
@@ -224,7 +224,7 @@ DNS, y `PUBLIC_EGRESS_POLICY` tal cual para el negativo de puerto. No hay variab
   de «a non-web port opens no connection» (2.2a, categoría `port`) y «maps an egress rejection to unsafe_destination»
   (3.1); no se suma un caso de punta a punta (B2-a). Falsación: no aplicar la política en `normalizeUrl` y ver caer los
   dos primeros; rechazar los puertos no web al guardar y ver caer el tercero y el cuarto; añadir una llamada a
-  `dns.lookup` en la ruta de guardado y ver caer el quinto; restaurar.
+  `dns.lookup` en la ruta de guardado y ver caer el quinto; restaurar. **Estado (2026-10-29):** `normalizeUrl` (`parseSupportedUrl`) rechaza como no reconocida un host sin punto, `localhost`/`*.localhost` o un literal no público con `classifyHost` y `PUBLIC_EGRESS_POLICY.allowsHost` de `@linkvault/shared/net`, usada directamente (sin token ni configuración, sin DNS); el puerto no se juzga. Tests en verde (80 en los tres ficheros): en `url.spec.ts` «rejects a literal private or loopback host as unrecognized», «rejects a dotless host as unrecognized», «accepts a dotted name with a non-web port», «accepts a public IP literal with a non-web port» y «does not resolve names when saving» (`vi.mock('node:dns')` y `node:dns/promises`); en `save-link.usecase.spec.ts` «saving an internal literal host answers invalid_url and creates nothing» y «saving a dotted name with a non-web port creates the link»; en `import-links.usecase.spec.ts` «an internal URL in an import counts as unrecognized». Falsaciones hechas: no aplicar la política cae los dos primeros de `url.spec`, el de `save-link` y el de importación; rechazar los puertos no web cae los dos de puerto de `url.spec` y el de `save-link`; llamar a `dns.lookup` en la ruta de guardado cae «does not resolve names when saving»; restauradas.
 
 ## 6. Push (design D7, D11)
 

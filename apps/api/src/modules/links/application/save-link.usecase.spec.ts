@@ -162,6 +162,31 @@ describe('SaveLink', () => {
     expect(outbox.size).toBe(0);
   });
 
+  it('saving an internal literal host answers invalid_url and creates nothing', async () => {
+    for (const url of [
+      'http://127.0.0.1/jobs/1',
+      'https://10.0.0.5/jobs/1',
+      'http://169.254.169.254/latest/meta-data',
+      'http://intranet/jobs/1',
+    ]) {
+      await expect(
+        saveLink.execute(ANA, { url, groupId: BACKEND }),
+      ).rejects.toBeInstanceOf(InvalidUrl);
+    }
+
+    expect(links.size).toBe(0);
+    expect(outbox.size).toBe(0);
+  });
+
+  it('saving a dotted name with a non-web port creates the link', async () => {
+    const response = await saveLink.execute(ANA, {
+      url: 'https://bolsa.example:8443/jobs/1',
+    });
+
+    expect(response.created).toBe(true);
+    expect(links.size).toBe(1);
+  });
+
   it('rejects a url longer than the maximum with invalid_url too', async () => {
     const tooLong = `https://example.com/${'a'.repeat(2048)}`;
 

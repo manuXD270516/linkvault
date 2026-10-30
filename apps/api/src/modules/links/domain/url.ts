@@ -1,4 +1,5 @@
 import { isCampaignParam } from '@linkvault/shared';
+import { PUBLIC_EGRESS_POLICY, classifyHost } from '@linkvault/shared/net';
 import { createHash } from 'node:crypto';
 
 // Normalización de URL (D2 de job-links). La URL normalizada es SOLO identidad: forzar `https` o quitar `ref`/`trk`
@@ -40,7 +41,12 @@ export function urlHashOf(normalizedUrl: string): string {
   return createHash('sha256').update(normalizedUrl).digest('hex');
 }
 
-/** URL analizada si es `http(s)` y tiene host; `null` en cualquier otro caso, incluida una cadena que no es una URL. */
+/**
+ * URL analizada si es `http(s)` y tiene un host que se puede leer desde Internet pública; `null` en cualquier otro caso,
+ * incluida una cadena que no es una URL. Rechaza, sin resolver ningún nombre, un host sin punto, `localhost` o una
+ * dirección literal no pública (D6 de enrichment-egress-guard): la política es la pública de siempre, sin configuración.
+ * El puerto no se juzga aquí: la persona conserva su link y el worker lo marca `unsafe_destination`.
+ */
 function parseSupportedUrl(raw: string): URL | null {
   let url: URL;
   try {
@@ -49,6 +55,11 @@ function parseSupportedUrl(raw: string): URL | null {
     return null;
   }
   if (!SUPPORTED_PROTOCOLS.has(url.protocol) || url.hostname === '') {
+    return null;
+  }
+  // `hostname` conserva los corchetes de un literal IPv6; el clasificador los espera quitados.
+  const hostname = url.hostname.replace(/^\[|\]$/g, '');
+  if (!PUBLIC_EGRESS_POLICY.allowsHost(classifyHost(hostname))) {
     return null;
   }
   return url;

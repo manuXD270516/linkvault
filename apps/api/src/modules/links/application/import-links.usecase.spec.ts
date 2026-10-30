@@ -244,6 +244,27 @@ describe('ImportLinks', () => {
     });
   });
 
+  it('an internal URL in an import counts as unrecognized', async () => {
+    const chat = [
+      'Ana: http://127.0.0.1/admin',
+      'Beto: http://intranet/jobs/1',
+      'Ana: http://169.254.169.254/latest/meta-data',
+      `Ana: esta sí ${JOB_PAGE}`,
+    ].join('\n');
+
+    const response = await importLinks.execute(ANA, {
+      text: chat,
+      groupId: BACKEND,
+    });
+
+    expect(response).toMatchObject({
+      created: 1,
+      existing: 0,
+      unrecognized: 3,
+      skipped: 0,
+    });
+  });
+
   it('counts a link it could not save in unrecognized, and saves the rest', async () => {
     // `unrecognized` cuenta lo que no se pudo **leer ni guardar** (spec links/sharing): una escritura que falla —una
     // carrera perdida, una transacción rechazada— no puede tirar la importación entera ni desaparecer del resumen.
