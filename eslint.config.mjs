@@ -288,6 +288,36 @@ export default [
         ];
   }),
 
+  // Parsers de documentos del worker (cv-extract-isolation, ADR-058): `pdf-parse` y `mammoth` abren archivos hostiles y
+  // solo pueden vivir en el proceso hijo (`infrastructure/isolation/child/**`); en el hilo del worker un import
+  // suyo anularía el aislamiento. El dominio ya los prohíbe en `DOMAIN_RESTRICTED_PATTERNS`, y ESLint no combina las
+  // opciones de una regla entre bloques (ADR-017): este bloque, posterior, reemplazaría la lista del dominio sobre
+  // `**/domain/**`, así que lo excluye en `ignores` y el dominio conserva sus patrones. Ningún otro bloque declara
+  // `no-restricted-imports` sobre el resto del worker, por eso la lista aquí es solo la de los parsers. Los tests y
+  // fixtures del worker no importan los paquetes (los nombran como cadenas), así que no hay otra excepción.
+  {
+    basePath: import.meta.dirname,
+    files: ['apps/worker/**/*.ts'],
+    ignores: [
+      'apps/worker/src/modules/cv/infrastructure/isolation/child/**',
+      'apps/worker/**/domain/**',
+    ],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              regex: '^(?:pdf-parse|mammoth)(?:/.*)?$',
+              message:
+                'pdf-parse y mammoth solo se importan en apps/worker/src/modules/cv/infrastructure/isolation/child (ADR-058): el worker lee el CV por el proceso hijo aislado.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
   // Eval harness (D1 de ai-eval-harness, ADR-019): `libs/ai/src/evals` corre fuera de Nest con `node --import tsx`, así que
   // no importa framework ni infraestructura, ni el barrel de libs/ai (arrastraría ai.module), ni los dobles de test de
   // application/testing. Usa la regla base `no-restricted-imports`, como el dominio: la de typescript-eslint ya lleva los SDKs
