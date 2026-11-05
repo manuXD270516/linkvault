@@ -49,3 +49,42 @@ disco.
 - **WHEN** un operador busca en `infra/README.md` quién puede desplegar a staging
 - **THEN** SHALL encontrar que quien tiene escritura en el repositorio tiene root en staging
 - **AND** SHALL encontrar quién tiene hoy ese permiso, incluidas las claves de despliegue y las aplicaciones instaladas
+
+### Requirement: La pila de staging separa la red de cada proceso y no deja datos sin credenciales
+
+Defensa en profundidad del lado del despliegue (ADR-056 §6), además del filtro de salida de las descargas iniciadas por
+datos de usuario.
+
+- `api` y `worker` SHALL tener salida a Internet, cada uno por una red propia, y NO SHALL compartir ninguna red.
+- Cada despliegue SHALL comprobar esa salida y fallar nombrando el servicio si no la tiene.
+- Mongo y Redis NO SHALL aceptar operaciones sin credenciales, y ninguna contraseña SHALL aparecer en los argumentos de
+  un proceso.
+- El filer del almacén NO SHALL servir objetos por HTTP. Las interfaces del almacén que siguen sin autenticación SHALL
+  ser alcanzables solo desde `api` y `worker`, y SHALL constar como riesgo residual.
+- Ningún contenedor SHALL alcanzar la dirección de metadatos del proveedor.
+
+#### Scenario: El worker sale a Internet pero no alcanza la API
+
+- **GIVEN** la pila de staging arriba
+- **WHEN** el worker resuelve el nombre de `api` y abre una conexión HTTPS a un sitio público
+- **THEN** la resolución SHALL fallar
+- **AND** la conexión externa SHALL responder
+
+#### Scenario: Un despliegue sin salida a Internet falla
+
+- **GIVEN** una versión de la pila en la que `worker` no tiene salida a Internet
+- **WHEN** se despliega
+- **THEN** la comprobación posterior al despliegue SHALL fallar nombrando a `worker`
+
+#### Scenario: Sin credenciales no se entra a los datos
+
+- **GIVEN** la pila de staging arriba
+- **WHEN** `worker` se conecta sin credenciales a Mongo o a Redis, o pide un objeto al filer por HTTP
+- **THEN** Mongo y Redis SHALL rechazar la operación
+- **AND** el filer NO SHALL devolver el objeto
+
+#### Scenario: La dirección de metadatos no responde a los contenedores
+
+- **GIVEN** el host respondiendo a la dirección de metadatos
+- **WHEN** `api` o `worker` piden `http://169.254.169.254/`
+- **THEN** la petición SHALL terminar en error de conexión o de plazo, también después de reiniciar el host
