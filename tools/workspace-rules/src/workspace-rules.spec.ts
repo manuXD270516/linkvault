@@ -199,11 +199,19 @@ const rows: readonly RuleRow[] = [
     expectedRuleIds: [DOMAIN_IMPORTS],
   },
   {
-    name: 'an infrastructure folder of the worker imports a document extractor',
-    filePath: 'apps/worker/src/modules/cv/infrastructure/probe.ts',
+    // cv-extract-isolation (ADR-058): solo el proceso hijo aislado abre documentos.
+    name: 'the isolated child folder of the worker imports a document extractor',
+    filePath:
+      'apps/worker/src/modules/cv/infrastructure/isolation/child/probe.ts',
     code: "import pdfParse from 'pdf-parse/lib/pdf-parse.js';\nimport mammoth from 'mammoth';\n\nexport const probe = [pdfParse, mammoth];\n",
     expectedRuleIds: [],
     unexpectedRuleIds: [DOMAIN_IMPORTS],
+  },
+  {
+    name: 'an infrastructure folder of the worker outside the child imports a document extractor',
+    filePath: 'apps/worker/src/modules/cv/infrastructure/probe.ts',
+    code: "import pdfParse from 'pdf-parse/lib/pdf-parse.js';\nimport mammoth from 'mammoth';\n\nexport const probe = [pdfParse, mammoth];\n",
+    expectedRuleIds: ['no-restricted-imports'],
   },
   {
     name: 'libs/ai domain imports the application layer',
