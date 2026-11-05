@@ -608,10 +608,14 @@ changes:
       Sin cambios de prompts, fixtures ni golden: el eval pasa sin `--update-baseline` (no regresión).
       **Consentimiento del pegado (Q7 = (b), 2026-10-29):** fuera de este change; va en `paste-consent-scope`.
   - name: paste-consent-scope
-    adrs: [060, 014, 018]
-    agents: [ai-engineer, frontend-dev]
+    adrs: [063, 060, 014, 018, 023]
+    agents: [ai-engineer, backend-dev, frontend-dev]
     scope: |
-      **Candidato**, sin directorio en `openspec/changes/` ni fila en `docs/design-v0.2.md` §6. Decisión del owner
+      **Solo spec desde el 2026-11-04** (pedido del owner: adelantar en paralelo la especificación de lo que sigue a
+      los siete de robustez), en `openspec/changes/paste-consent-scope/`, con ADR-063 «Propuesto»; sin fila en
+      `docs/design-v0.2.md` §6 hasta que el owner responda su Q1 (esperar a la fila 35 o excepción propia). Diseño:
+      tercera sensibilidad `incidental` (sin consentimiento, con redacción y sin caché), `dataCollectionDenied` en las
+      capacidades del proveedor y aviso en el diálogo; sin cambios de prompt ni `--update-baseline`. Decisión del owner
       2026-10-29 (Q7 de `paste-fallback-honest`). Planificar antes de la 10.7 de 35b si el owner lo prioriza; si se
       adelanta a la fila 35, necesita su propia excepción (ADR-048 §Consecuencias).
       Reclasificar la tarea `extract-pasted-job` como no `personal`: el pegado deja de pedir el permiso de IA externa
