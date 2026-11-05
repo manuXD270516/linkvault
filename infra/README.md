@@ -143,6 +143,38 @@ de la VCN sobrevive a un reemplazo del volumen de arranque; las reglas `iptables
   `27017`, `6379` y `8080` fallan; tras reiniciar, lo mismo.
 - **`sudo iptables -S INPUT`:** Pendiente (5.5).
 
+### Redes de la pila y dirección de metadatos (design D18)
+
+Cada proceso tiene sus redes, y `api` y `worker` no comparten ninguna: el worker no resuelve `api` ni llega a sus
+métricas (ADR-056 §6).
+
+| Red | Salida a Internet | Servicios |
+|---|---|---|
+| `edge` | sí | `traefik` (publica 80 y 443) |
+| `internal` | no | `traefik`, `web` y `api` |
+| `data-api` | no | `mongo`, `redis` y `api` |
+| `data-worker` | no | `mongo`, `redis` y `worker` |
+| `store-api` | no | `object-store` y `api` |
+| `store-worker` | no | `object-store` y `worker` |
+| `api-egress` | sí | `api` (correo, IA) |
+| `worker-egress` | sí | `worker` (enriquecimiento, correo, push) |
+
+- **La salida se comprueba en cada despliegue:** `infra/deploy/smoke.sh`, después del `/health`, abre desde `api` y
+  desde `worker` una conexión TCP con 5 s de plazo a `smtp-relay.brevo.com:587` y a `openrouter.ai:443`, y falla
+  nombrando el servicio y el destino (tarea 12.2). Antes de D18 la pila no tenía salida y nada lo detectaba.
+- **Dirección de metadatos del proveedor (`169.254.169.254`):** ningún contenedor la necesita, así que una regla en la
+  cadena `DOCKER-USER` descarta su tráfico hacia ella:
+
+  ```bash
+  sudo iptables -I DOCKER-USER -d 169.254.169.254/32 -j DROP
+  ```
+
+  Tiene que sobrevivir a un reinicio. **No** con `netfilter-persistent save` con Docker arriba, porque guardaría también
+  las cadenas que Docker regenera. La forma exacta (por ejemplo, una unidad de systemd que la aplica después de
+  `docker.service`) se fija y se anota en 12.7. No sobrevive al reemplazo del volumen de arranque: se rehace en 9.3. El
+  host sí sigue llegando a la dirección (control positivo de 12.7).
+- **Comprobación de la regla (12.7):** Pendiente.
+
 ### Docker
 
 Docker Engine con los plugins de **Compose y Buildx** desde el **repositorio oficial de Docker** para `arm64`, no el
@@ -208,13 +240,17 @@ con permisos `600`, en el directorio fijo. **Nunca** está en el repositorio ni 
   `MAIL_SMTP_SECURE=false`), provisional y sin credenciales hasta 7.9;
 - `AI_CHAIN=openrouter` y **sin** `AI_EMBED_CHAIN`: staging no tiene búsqueda (design D13);
 - los secretos (`AUTH_JWT_SECRET`, `AI_VAULT_KEY`, `OBJECT_STORE_SSE_KEY`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`), generados
-  con las órdenes de este README.
+  con las órdenes de este README;
+- las credenciales de datos (`REDIS_PASSWORD`, `MONGO_ROOT_USER` y `MONGO_ROOT_PASSWORD`), con `openssl rand -hex 32`:
+  van sin codificar en `MONGO_URI` y `REDIS_URL`, y `check-env-file.mjs` exige el formato apto para URI (design D18).
 
 Comprobación (5.7): `stat -c %a .env.staging` → `600` y
 `docker compose -f docker-compose.prod.yml --env-file .env.staging config -q` sale 0.
 
 **Copia fuera del host**, comprobada por suma SHA-256: contiene `AI_VAULT_KEY` (sin ella no se descifran las claves BYOK)
-y `OBJECT_STORE_SSE_KEY` (sin ella no se descifran los CV). Toda tarea que edita `.env.staging` actualiza la copia.
+y `OBJECT_STORE_SSE_KEY` (sin ella no se descifran los CV), y `MONGO_ROOT_PASSWORD` (el usuario raíz vive en el
+volumen de Mongo: con otra contraseña, la pila no entra a sus datos). Toda tarea que edita `.env.staging` actualiza la
+copia.
 
 - **Dónde está la copia:** Pendiente (5.8).
 
@@ -248,6 +284,8 @@ Staging es **desechable**: sus datos no tienen copia (ADR-051 §2). Lo único co
 | Qué | Dónde | Qué se pierde si se pierde el host |
 |---|---|---|
 | `.env.staging` | directorio fijo | nada, si la copia está al día: se restaura y se compara su suma |
+| `REDIS_PASSWORD` y `MONGO_ROOT_PASSWORD` | `.env.staging` | con la copia, nada. Sin ella, Redis arranca con una nueva; Mongo no, porque su usuario raíz vive en `mongo-data` con la anterior, y sin ella esos datos solo se dejan atrás con `down -v` |
+| `keyFile` de Mongo | `/tmp` del contenedor `mongo` | nada: se genera en cada arranque y no es un secreto (con un solo nodo no hace falta conservarlo) |
 | datos de MongoDB | volumen `mongo-data` | cuentas, grupos, links, postulaciones y análisis, sin copia |
 | almacén de objetos | volumen `object-store-data` | los CV y los snapshots, sin copia |
 | colas de Redis | volumen `redis-data` | los trabajos en vuelo |
@@ -548,6 +586,11 @@ comparten ninguna red (design D18 de `staging-host`). Este camino responde a «�
 es justo lo que el CD verifica, y **no** a «¿puedo usar la aplicación?». Para desarrollar, usa el `docker compose up` +
 `nx serve` del [README raíz](../README.md). Para un destino usable de verdad —con Traefik, DNS y TLS— hace falta un
 host, y eso es la **fila 35** del plan (`staging-host`), que sigue abierta.
+
+**Un volumen de Mongo anterior a D18** (sin usuario raíz) deja a `mongo` sin llegar a `healthy`
+(`Authentication failed.`) y `up --wait` falla: el usuario raíz solo se crea sobre un volumen vacío. Se arregla con el
+`down -v` del final y volviendo a levantar. Lo mismo con el almacén: `weed mini` guarda `-disableHttp` en el volumen,
+así que para ver el filer sin esa opción hace falta un volumen nuevo.
 
 <!-- repo-check: stack-up — este bloque se compara con infra/ci/verify-artifact.sh (tools/repo-checks/src/docs-stack-up.check.mjs). Si cambias uno, cambia el otro. -->
 
