@@ -725,12 +725,13 @@ changes:
       en 35b) en vez del `--wait-timeout` literal de hoy.
       Fuera: despliegue a un host de producción, matriz multiarquitectura.
   - name: cv-pdf-library-upgrade
-    adrs: [058, 028]
+    adrs: [064, 058, 028]
     agents: [backend-dev, devops]
     scope: |
       **Trasladado desde `cv-extract-isolation` (B2-01, 2026-10-28).** Entra **después de 35c** y de archivar
-      `cv-extract-isolation`, **sin excepción** a la precedencia de la fila 35. Sin directorio de change ni fila en
-      `docs/design-v0.2.md` §6 hasta que se abra con `/opsx:new`.
+      `cv-extract-isolation`, **sin excepción** a la precedencia de la fila 35. **Especificado por adelantado el
+      2026-11-04** (pedido del owner; solo spec, rama `spec/cv-pdf-library-upgrade`): `openspec/changes/cv-pdf-library-upgrade/`,
+      fila «tras 35c» en `docs/design-v0.2.md` §6 y **ADR-064** (Propuesto). El apply espera a sus precondiciones (tarea 0.3).
       Sustituye `pdf-parse` 1.1.4 (pdf.js 1.10.100 de 2017, sin correcciones) por un pdf.js mantenido, dentro del
       proceso hijo aislado de ADR-058, por la costura `PdfTextSource` que deja aquel change.
       **Spike con criterio de parada** (design D3 de `cv-extract-isolation` en la iteración 1, commit `5f802d4`):
