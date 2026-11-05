@@ -6,7 +6,8 @@
 # Corre en el host: `ssh … "bash <dir fijo>/.incoming-<sha12>/infra/deploy/smoke.sh"`. Exige la readiness de Nest
 # (`"status":"up"` con las comprobaciones de mongo y redis), nunca HTML: un HTML significa que respondió el SPA y no la
 # API. Antes era JavaScript dentro de una orden de shell dentro de un `script:` del workflow; como fichero se lee, se
-# prueba en local con un `docker` falso y viaja con el resto de la configuración.
+# prueba en local con un `docker` falso y viaja con el resto de la configuración. Al final comprueba también que `api`
+# y `worker` salen a Internet (guardia de la tarea 12.2, más abajo).
 # ===================================================================================================================
 set -euo pipefail
 
@@ -49,3 +50,31 @@ for needle in '"mongo":{"status":"up"}' '"redis":{"status":"up"}'; do
   esac
 done
 printf 'smoke: api sana (mongo y redis up)\n'
+
+# ===================================================================================================================
+# Guardia de salida a Internet (design D18 de `staging-host`, tarea 12.2; ADR-048 §7: guardia permanente)
+# ===================================================================================================================
+# `api` y `worker` no comparten red y solo `api-egress` y `worker-egress` tienen salida. Si alguien las quita, o pone un
+# proceso solo en redes `internal: true`, ningún camino de CI lo ve (usan el mock de IA y no envían correo real ni
+# descargan páginas externas) y el SMTP, OpenRouter y las descargas del enriquecimiento fallan en producción. Esta
+# comprobación lo ve en cada despliegue: desde cada proceso se resuelve el nombre y se abre una conexión TCP (5 s de
+# plazo en total) a los destinos que ese proceso necesita. Solo conecta: sin TLS, sin autenticarse y sin enviar nada.
+# Destino y puerto viajan como argumentos de `node`, no dentro del texto del programa.
+egress_probe='const dns = require("dns"), net = require("net"); const [host, port] = process.argv.slice(1); const fail = (m) => { console.error(m); process.exit(1); }; const timer = setTimeout(() => fail("plazo de 5 s agotado"), 5000); dns.lookup(host, (e) => { if (e) fail("no resuelve el nombre (" + (e.code || e.message) + ")"); const s = net.connect({ host, port: Number(port) }, () => { clearTimeout(timer); s.destroy(); console.log("ok"); }); s.on("error", (err) => fail("no conecta (" + (err.code || err.message) + ")")); })'
+
+egress_failed=0
+for service in api worker; do
+  for target in smtp-relay.brevo.com:587 openrouter.ai:443; do
+    if detail="$(docker compose -f docker-compose.prod.yml --env-file .env.staging exec -T "$service" node -e "$egress_probe" "${target%:*}" "${target##*:}" 2>&1)"; then
+      printf 'smoke: %s alcanza %s\n' "$service" "$target"
+    else
+      printf 'smoke: %s no tiene salida a Internet hacia %s: %s\n' "$service" "$target" "${detail:-sin detalle}" >&2
+      egress_failed=1
+    fi
+  done
+done
+if [ "$egress_failed" -ne 0 ]; then
+  printf 'smoke: falta la salida a Internet de api o worker (redes api-egress y worker-egress de docker-compose.prod.yml)\n' >&2
+  exit 1
+fi
+printf 'smoke: api y worker con salida a Internet (smtp-relay.brevo.com:587 y openrouter.ai:443)\n'
