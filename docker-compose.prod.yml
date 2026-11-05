@@ -102,11 +102,34 @@ services:
       retries: 6
       start_period: 15s
 
+  # Mongo con autenticación (design D18 de `staging-host`, medida 3): replica set de un nodo (`rs0`) con usuario raíz.
+  # - `MONGO_INITDB_ROOT_*` crea el usuario raíz **solo sobre un volumen vacío**; el `docker-entrypoint.sh` de la imagen
+  #   arranca un `mongod` temporal sin `--replSet` ni `--keyFile` para crearlo y después arranca el definitivo con ellos.
+  #   Un volumen anterior se queda sin usuario (`down -v`; ver infra/README.md).
+  # - Un replica set con autenticación exige `--keyFile`. Se genera **dentro del contenedor al arrancar**, antes del
+  #   `docker-entrypoint.sh`, con uid 999 (`mongodb`) y modo 400. En un nodo único no hace falta conservarlo: no es un
+  #   secreto, no se copia y funciona igual en CI y en la pila local. Vive en `/tmp`, no en el volumen.
+  # - Ninguna contraseña en los argumentos de un proceso: la healthcheck se autentica **dentro** de `--eval`, leyendo
+  #   `process.env`; no hay `-u` ni `-p`. `MONGO_ROOT_USER` y `MONGO_ROOT_PASSWORD` van sin codificar dentro de
+  #   `MONGO_URI` (formato apto para URI: `infra/ci/check-env-file.mjs`).
   mongo:
     image: mongo:7.0.43
     hostname: mongo
     restart: unless-stopped
-    command: ['--replSet', 'rs0', '--bind_ip_all']
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |-
+        umask 077
+        openssl rand -base64 756 >/tmp/mongo-keyfile
+        chown 999:999 /tmp/mongo-keyfile
+        chmod 400 /tmp/mongo-keyfile
+        exec /usr/local/bin/docker-entrypoint.sh "$$@"
+      - mongo-keyfile
+    command: ['--replSet', 'rs0', '--bind_ip_all', '--keyFile', '/tmp/mongo-keyfile']
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:?set MONGO_ROOT_USER (1-64 characters [A-Za-z0-9._~-])}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?set MONGO_ROOT_PASSWORD (32-128 characters [A-Za-z0-9._~-]; openssl rand -hex 32)}
     volumes:
       - mongo-data:/data/db
     networks:
@@ -119,6 +142,7 @@ services:
         - --quiet
         - --eval
         - >-
+          db.getSiblingDB('admin').auth(process.env.MONGO_INITDB_ROOT_USERNAME, process.env.MONGO_INITDB_ROOT_PASSWORD);
           try { rs.status(); } catch (e) {
             if (e.codeName === 'NotYetInitialized' || e.code === 94) {
               rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'mongo:27017' }] });
@@ -245,7 +269,7 @@ services:
       NODE_ENV: production
       LOG_LEVEL: ${LOG_LEVEL:-info}
       API_PORT: 3000
-      MONGO_URI: mongodb://mongo:27017/linkvault?replicaSet=rs0
+      MONGO_URI: mongodb://${MONGO_ROOT_USER:?set MONGO_ROOT_USER}:${MONGO_ROOT_PASSWORD:?set MONGO_ROOT_PASSWORD}@mongo:27017/linkvault?replicaSet=rs0&authSource=admin
       REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD}@redis:6379
       # Exactamente una api con relay (ADR-033 D8). No dupliques este servicio con true.
       OUTBOX_RELAY_ENABLED: 'true'
@@ -343,7 +367,7 @@ services:
       NODE_ENV: production
       LOG_LEVEL: ${LOG_LEVEL:-info}
       WORKER_HEALTH_PORT: 3001
-      MONGO_URI: mongodb://mongo:27017/linkvault?replicaSet=rs0
+      MONGO_URI: mongodb://${MONGO_ROOT_USER:?set MONGO_ROOT_USER}:${MONGO_ROOT_PASSWORD:?set MONGO_ROOT_PASSWORD}@mongo:27017/linkvault?replicaSet=rs0&authSource=admin
       REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD}@redis:6379
       AI_PROMPTS_DIR: /app/assets/ai/prompts
       AI_CHAIN: ${AI_CHAIN:?}

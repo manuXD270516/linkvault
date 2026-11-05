@@ -21,9 +21,10 @@
 // la comprobación falla en lugar de pasar sin haber comparado. Por eso `infra/ci/verify.env` ya no pasa entero: es
 // relleno de CI, no un env file de despliegue, y ningún paso lo revisa con este script.
 //
-// Las contraseñas de los datos (`REDIS_PASSWORD`; design D18 de `staging-host`) van **sin codificar** dentro de
-// `REDIS_URL`, así que un `/`, `+`, `=`, `@` o `:` la rompe o cambia su lectura. Se exige el formato apto para URI
-// (32-128 caracteres de `[A-Za-z0-9._~-]`, lo que da `openssl rand -hex 32`) y que no sea la de relleno de CI ni la de
+// Las credenciales de los datos (`REDIS_PASSWORD`, `MONGO_ROOT_USER` y `MONGO_ROOT_PASSWORD`; design D18 de
+// `staging-host`) van **sin codificar** dentro de `REDIS_URL` y `MONGO_URI`, así que un `/`, `+`, `=`, `@` o `:` las
+// rompe o cambia su lectura. Se exige el formato apto para URI (contraseñas: 32-128 caracteres de `[A-Za-z0-9._~-]`, lo
+// que da `openssl rand -hex 32`; usuario: 1-64 de los mismos) y que no sean las de relleno de CI ni las de
 // `.env.example`. El fallo nombra la variable y nunca imprime el valor.
 // =====================================================================================================================
 import { existsSync, readFileSync } from 'node:fs';
@@ -110,14 +111,16 @@ check(
   Boolean(ciSseKey) && has(SSE_KEY) && env[SSE_KEY] !== ciSseKey,
 );
 
-// Contraseñas de Redis (y, en el siguiente paso de D18, de Mongo): formato apto para URI y distintas de los dos valores
-// versionados. Se evalúa el valor tal cual, sin imprimirlo en ningún caso.
+// Credenciales de Redis y Mongo: formato apto para URI y distintas de los dos valores versionados. Se evalúa el valor
+// tal cual, sin imprimirlo en ningún caso.
 const URI_SAFE_SECRET = /^[A-Za-z0-9._~-]{32,128}$/;
+const URI_SAFE_USER = /^[A-Za-z0-9._~-]{1,64}$/;
 const ciEnv = existsSync(verifyEnvPath) ? parseEnv(verifyEnvPath) : {};
-for (const name of ['REDIS_PASSWORD']) {
+for (const name of ['REDIS_PASSWORD', 'MONGO_ROOT_PASSWORD']) {
   check(`${name} is 32-128 characters [A-Za-z0-9._~-] (URI-safe, it goes unencoded in a URL)`, URI_SAFE_SECRET.test(env[name] ?? ''));
   check(`${name} is not the CI filler of infra/ci/verify.env`, Boolean(ciEnv[name]) && has(name) && env[name] !== ciEnv[name]);
 }
+check('MONGO_ROOT_USER is 1-64 characters [A-Za-z0-9._~-] (URI-safe, it goes unencoded in a URL)', URI_SAFE_USER.test(env.MONGO_ROOT_USER ?? ''));
 
 const secrets = [
   'AUTH_JWT_SECRET',
@@ -127,6 +130,7 @@ const secrets = [
   SSE_KEY,
   'MAIL_SMTP_PASSWORD',
   'REDIS_PASSWORD',
+  'MONGO_ROOT_PASSWORD',
 ];
 check('no secret keeps its .env.example value', secrets.every((name) => !has(name) || env[name] !== example[name]));
 

@@ -329,8 +329,12 @@ printf 'traefik no se levantó (correcto: el borde queda fuera del alcance)\n'
 
 # --- 5.8: mongo como replica set de un nodo, igual que en producción -----------------------------------------------
 # Con instancia suelta cualquier transacción multi-documento fallaría **solo** en el despliegue real.
+# Mongo tiene autenticación (design D18 de `staging-host`): `mongosh` se autentica **dentro** de `--eval`, leyendo el
+# usuario y la contraseña de `process.env` del contenedor; nada de `-u` ni `-p`, que dejarían la contraseña en los
+# argumentos del proceso.
 section 'mongo: replica set de un nodo y primario escribible'
 dc exec -T mongo mongosh --quiet --eval '
+  db.getSiblingDB("admin").auth(process.env.MONGO_INITDB_ROOT_USERNAME, process.env.MONGO_INITDB_ROOT_PASSWORD);
   const s = rs.status();
   if (s.set !== "rs0") { print("[FAIL] el replica set es " + s.set + ", no rs0"); quit(1); }
   if (s.members.length !== 1) { print("[FAIL] miembros: " + s.members.length + ", se esperaba 1"); quit(1); }
