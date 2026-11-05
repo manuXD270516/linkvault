@@ -714,6 +714,11 @@ guardia que lo comprueba en cada despliegue.
 3. **Contraseñas en Redis y Mongo.** Redis con `requirepass` (`REDIS_PASSWORD`) y Mongo con autenticación
    (`MONGO_ROOT_USER` y `MONGO_ROOT_PASSWORD`).
    - Viven solo en `.env.staging` (regla de la copia de 5.8). No son secretos de GitHub: los seis de D3 y D8 no cambian.
+   - **Formato apto para URI:** las dos contraseñas y `MONGO_ROOT_USER` van sin codificar dentro de `MONGO_URI` y
+     `REDIS_URL`, así que un `/`, `+`, `=`, `@` o `:` las rompe o cambia su lectura. Se generan con
+     `openssl rand -hex 32` y `infra/ci/check-env-file.mjs` exige 32-128 caracteres de `[A-Za-z0-9._~-]` (las
+     contraseñas) y 1-64 (el usuario), fallando antes del `up` con el nombre de la variable y sin imprimir el valor.
+     Mismo criterio que la spec de `datastore-auth`, que parte de esta medida.
    - **Ninguna contraseña aparece en los argumentos de un proceso** (D3):
      - Redis lee la suya de un fichero de configuración que escribe al arrancar.
      - `redis-cli` usa `REDISCLI_AUTH`.
