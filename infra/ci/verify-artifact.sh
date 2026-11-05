@@ -14,11 +14,13 @@
 # variable: NO se añade ni se retira ninguna variable de ningún servicio para que esto pase, porque ahí es justo donde
 # vivía el defecto que esta verificación existe para encontrar.
 #
-# Y NO se publican puertos: la red `internal` es `internal: true` y ningún servicio de aplicación publica nada, así
-# que desde el corredor no se alcanza ninguno. Se entra con `docker compose exec`. Abrir puertos para poder comprobar
-# cambiaría la configuración que se está verificando. Pero preguntar desde dentro de un contenedor no prueba que otro
-# llegue a él, así que `api` y `worker` se piden además por su nombre de servicio desde `web`, otro contenedor de la
-# red `internal` (tarea 7.10 de `object-store`; ver esa sección, más abajo).
+# Y NO se publican puertos: las redes de la pila son `internal: true` (salvo las dos de salida a Internet, una por
+# proceso) y ningún servicio de aplicación publica nada, así que desde el corredor no se alcanza ninguno. Se entra con
+# `docker compose exec`. Abrir puertos para poder comprobar cambiaría la configuración que se está verificando. Pero
+# preguntar desde dentro de un contenedor no prueba que otro llegue a él, así que `api` y `worker` se piden además por
+# su nombre de servicio desde otro contenedor que comparte red con cada uno: `api` desde `web` (red `internal`) y
+# `worker` desde `object-store` (red `store-worker`); `api` y `worker` no comparten ninguna (design D18 de
+# `staging-host`, tarea 12.1; ver esa sección, más abajo).
 #
 # El `GET /health` de `api` y de `worker` declara indicadores de **mongo y redis**, y ninguno de los dos mira el almacén
 # de objetos: el almacén se levanta porque `api` y `worker` dependen de su `service_healthy`, y su healthcheck es de
@@ -300,8 +302,8 @@ done
 # --- El almacén de objetos: aprovisionado y comprobado por la API S3, con la imagen de `api` (design D4) -----------
 # El orden es `up` → `provision` → `verify`: la readiness de `api` y `worker` no necesita los buckets. `provision` crea
 # los dos buckets, pone el cifrado por defecto del de CV y quita reglas de ciclo de vida y políticas; `verify` lo lee
-# sin escribir y exige además que las peticiones anónimas se rechacen. `run --no-deps` hereda las redes del servicio,
-# `object-store-net` incluida.
+# sin escribir y exige además que las peticiones anónimas se rechacen. `run --no-deps` hereda las redes del servicio
+# (`store-api` para `api`, `store-worker` para `worker`).
 section 'object-store: provision (run --rm --no-deps api node object-store.js provision)'
 dc_bounded run --rm --no-deps api node object-store.js provision \
   || fail "object-store provision salió ≠0 (o superó ${RUN_TIMEOUT} s): el almacén no quedó aprovisionado"
@@ -369,33 +371,45 @@ dc exec -T worker node -e '
   }).catch((e) => { console.error("[FAIL] worker /health inalcanzable: " + e); process.exit(1); });
 ' || fail 'worker no responde readiness con mongo y redis'
 
-# --- api y worker, alcanzados desde OTRO contenedor de la red `internal` (tarea 7.10 de `object-store`) -------------
+# --- api y worker, alcanzados desde OTRO contenedor de su red (tarea 7.10 de `object-store`; design D18, tarea 12.1) ---
 # Las dos comprobaciones de arriba, y los healthchecks del compose, preguntan desde **dentro** del contenedor
 # (`127.0.0.1`): una imagen que solo escucha en loopback las pasa todas y nadie más la alcanza. Es lo que encontró el
 # smoke local del 2026-09-28: `api` escuchaba solo en `127.0.0.1:3000` y el borde, que la busca en `http://api:3000`,
 # recibía `ECONNREFUSED` (spec `platform/runtime-health`, «Liveness»; ADR-052 «Decisiones del usuario tras el punto de
-# revisión», 5). Aquí se pide `GET /health` por el nombre del servicio desde `web`, que está **solo** en `internal`,
-# igual que Traefik ve la pila; se exige `200` en la primera línea de estado. `wget` de busybox viene en nginx:alpine
-# (el healthcheck de `web` ya lo usa), y la petición lleva su propio plazo además del de `dc_bounded`.
-probe_from_internal() {
-  local service="$1" url="$2" out status
-  if ! out="$(dc_bounded exec -T web wget -S -q -O /dev/null -T 10 "$url" 2>&1)"; then
+# revisión», 5). Aquí se pide `GET /health` por el nombre del servicio desde un contenedor que comparte red con él; se
+# exige `200` en la primera línea de estado.
+#
+# Desde D18 `api` y `worker` no comparten ninguna red, así que ya no vale un mismo origen para los dos:
+#   - `api` se pide desde `web`, que está **solo** en `internal`, igual que Traefik ve la pila. `wget` de busybox viene
+#     en nginx:alpine (el healthcheck de `web` ya lo usa);
+#   - `worker` se pide desde `object-store`, que comparte con él `store-worker` y trae `curl` (su healthcheck lo usa).
+#     Ni `web` ni Traefik llegan a `worker`, y eso es lo que se quiere.
+# La petición lleva su propio plazo además del de `dc_bounded`.
+probe_http() {
+  local service="$1" from="$2" url="$3" network="$4" out status
+  local -a probe
+  case "$from" in
+    web) probe=(wget -S -q -O /dev/null -T 10 "$url") ;;
+    object-store) probe=(curl -sS -D - -o /dev/null --max-time 10 "$url") ;;
+    *) fail "probe_http: origen desconocido '${from}'" artifact ;;
+  esac
+  if ! out="$(dc_bounded exec -T "$from" "${probe[@]}" 2>&1)"; then
     printf '%s\n' "$out"
-    fail "${service} no responde a otro contenedor de la red internal (GET ${url} desde web): conexión rechazada, plazo agotado o estado de error; ¿escucha solo en loopback?" artifact
+    fail "${service} no responde a otro contenedor de la red ${network} (GET ${url} desde ${from}): conexión rechazada, plazo agotado o estado de error; ¿escucha solo en loopback?" artifact
   fi
   printf '%s\n' "$out"
   status="$(printf '%s\n' "$out" | grep -m1 'HTTP/' | awk '{print $2}')"
   if [ "$status" != '200' ]; then
-    fail "${service} respondió '${status:-sin estado}' a otro contenedor de la red internal (GET ${url} desde web); se exige 200" artifact
+    fail "${service} respondió '${status:-sin estado}' a otro contenedor de la red ${network} (GET ${url} desde ${from}); se exige 200" artifact
   fi
-  printf '%s alcanzable desde otro contenedor de la red internal: %s -> %s\n' "$service" "$url" "$status"
+  printf '%s alcanzable desde otro contenedor de la red %s: %s -> %s\n' "$service" "$network" "$url" "$status"
 }
 
 section 'api: GET http://api:3000/health desde otro contenedor de la red internal (web)'
-probe_from_internal api 'http://api:3000/health'
+probe_http api web 'http://api:3000/health' internal
 
-section 'worker: GET http://worker:3001/health desde otro contenedor de la red internal (web)'
-probe_from_internal worker 'http://worker:3001/health'
+section 'worker: GET http://worker:3001/health desde otro contenedor de la red store-worker (object-store)'
+probe_http worker object-store 'http://worker:3001/health' store-worker
 
 # --- 5.11: web sirve el documento del SPA --------------------------------------------------------------------------
 # No un 200: un nginx con el directorio vacío responde 200. Se exige la raíz de la aplicación Angular, `<lv-root>`

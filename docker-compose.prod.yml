@@ -9,16 +9,43 @@
 # TRUST_PROXY=true solo aquí (detrás de Traefik); ausente en docker-compose.yml local.
 name: linkvault-prod
 
+# Redes por proceso (design D18 de `staging-host`, medida 1): `api` y `worker` NO comparten ninguna, así que un
+# proceso comprometido en uno no resuelve ni alcanza al otro. Traefik sigue siendo el único servicio que publica puertos.
+#
+#   red            internal  miembros
+#   edge           no        traefik (el puerto 80/443 del host)
+#   internal       sí        traefik, web, api (el borde llega a `api` y a `web` por aquí; sin salida)
+#   data-api       sí        mongo, redis, api
+#   data-worker    sí        mongo, redis, worker
+#   store-api      sí        object-store, api   (sustituye a `object-store-net`; D14 de `object-store`)
+#   store-worker   sí        object-store, worker
+#   api-egress     no        api     (salida a Internet: SMTP, OpenRouter)
+#   worker-egress  no        worker  (salida a Internet: descargas del enriquecimiento, SMTP, OpenRouter)
 networks:
   edge:
     driver: bridge
   internal:
     driver: bridge
     internal: true
-  # Red propia del almacén (design D14 de `object-store`): solo `object-store`, `api` y `worker`.
-  object-store-net:
+  data-api:
     driver: bridge
     internal: true
+  data-worker:
+    driver: bridge
+    internal: true
+  # Redes del almacén (design D14 de `object-store`, repartidas por proceso en D18): al almacén solo llegan `api` y
+  # `worker`, cada uno por la suya.
+  store-api:
+    driver: bridge
+    internal: true
+  store-worker:
+    driver: bridge
+    internal: true
+  # Las dos únicas con salida a Internet. Una por proceso: así `worker` sale sin compartir red con `api`.
+  api-egress:
+    driver: bridge
+  worker-egress:
+    driver: bridge
 
 volumes:
   mongo-data:
@@ -83,7 +110,8 @@ services:
     volumes:
       - mongo-data:/data/db
     networks:
-      - internal
+      - data-api
+      - data-worker
     healthcheck:
       test:
         - CMD
@@ -110,7 +138,8 @@ services:
     volumes:
       - redis-data:/data
     networks:
-      - internal
+      - data-api
+      - data-worker
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
@@ -127,10 +156,11 @@ services:
   # valor por defecto: sin la clave, `weed mini` generaría una propia y la guardaría junto a los datos (design D16).
   # No aprovisiona: los buckets, el cifrado del bucket de CV y la ausencia de reglas los pone `object-store provision`
   # (`docker compose … run --rm --no-deps api node object-store.js provision`, y después `verify`) tras el `up`.
-  # Red propia (design D14): el filer (8888), el maestro (9333), el volumen (9340) y sus gRPC escuchan sin
-  # autenticación, así que el almacén vive solo en `object-store-net` (interna, sin puertos publicados), con `api` y
-  # `worker` como únicos otros miembros; mongo, redis, `web` y Traefik no llegan a él. Sin `depends_on`: así
-  # `config --images object-store` da una sola línea, la que lee el `deploy.sh` de 35b para comparar el digest.
+  # Redes propias (design D14, por proceso en D18): el filer (8888), el maestro (9333), el volumen (9340) y sus gRPC
+  # escuchan sin autenticación, así que el almacén vive solo en `store-api` y `store-worker` (internas, sin puertos
+  # publicados), con `api` y `worker` como únicos otros miembros, cada uno en la suya; mongo, redis, `web` y Traefik no
+  # llegan a él. Sin `depends_on`: así `config --images object-store` da una sola línea, la que lee el `deploy.sh`
+  # de 35b para comparar el digest.
   object-store:
     image: ${OBJECT_STORE_IMAGE:-chrislusf/seaweedfs}:${OBJECT_STORE_IMAGE_TAG:-4.47}
     restart: unless-stopped
@@ -169,7 +199,8 @@ services:
     volumes:
       - object-store-data:/data
     networks:
-      - object-store-net
+      - store-api
+      - store-worker
     healthcheck:
       test: ['CMD', 'curl', '-fsS', '-o', '/dev/null', '--max-time', '3', 'http://127.0.0.1:8333/healthz']
       interval: 10s
@@ -257,9 +288,13 @@ services:
       S3_BUCKET: ${S3_BUCKET:-cvs}
       S3_SNAPSHOTS_BUCKET: ${S3_SNAPSHOTS_BUCKET:-snapshots}
       FEATURE_HEADLESS_EXTRACTION: ${FEATURE_HEADLESS_EXTRACTION:-false}
+    # Red propia de cada dependencia y salida propia (design D18): `internal` para Traefik, y ninguna compartida con
+    # `worker`.
     networks:
       - internal
-      - object-store-net
+      - data-api
+      - store-api
+      - api-egress
     # Readiness for compose --wait; image HEALTHCHECK is liveness (/health/live).
     healthcheck:
       test:
@@ -345,9 +380,12 @@ services:
       S3_BUCKET: ${S3_BUCKET:-cvs}
       S3_SNAPSHOTS_BUCKET: ${S3_SNAPSHOTS_BUCKET:-snapshots}
       FEATURE_HEADLESS_EXTRACTION: ${FEATURE_HEADLESS_EXTRACTION:-false}
+    # Sin `internal`: no comparte red con `api` ni con Traefik (design D18), así que no resuelve `api` ni alcanza su
+    # `/metrics`. La salida a Internet (descargas del enriquecimiento, SMTP, OpenRouter) es la suya.
     networks:
-      - internal
-      - object-store-net
+      - data-worker
+      - store-worker
+      - worker-egress
     # Readiness **idéntica** a la de `api`: el que decide es el **contenido** (`status`, `checks.mongo`,
     # `checks.redis`), y el `!r.ok` sobra para distinguir sano de degradado — está por simetría, no porque haga
     # falta. La versión anterior solo hacía `JSON.parse` del cuerpo y acertaba por accidente, apoyada en que hoy el

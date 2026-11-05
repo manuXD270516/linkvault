@@ -521,8 +521,9 @@ nombrando la diferencia.
 
 **Lee esto antes de ejecutarlo, porque es la mitad que se suele omitir.** Al terminar tendrás **seis servicios sanos**
 —`mongo`, `redis`, `object-store`, `api`, `worker` y `web`— y **ninguna URL que abrir**. En `docker-compose.prod.yml`
-**Traefik es el único servicio que publica puertos** (80 y 443); los seis de abajo viven en la red `internal`, que es
-`internal: true`, y no publican ninguno. Este camino responde a «¿arranca el artefacto con su configuración real?», que
+**Traefik es el único servicio que publica puertos** (80 y 443); los seis de abajo viven en redes `internal: true` (salvo
+las dos de salida a Internet, una por proceso: `api-egress` y `worker-egress`) y no publican ninguno. `api` y `worker` no
+comparten ninguna red (design D18 de `staging-host`). Este camino responde a «¿arranca el artefacto con su configuración real?», que
 es justo lo que el CD verifica, y **no** a «¿puedo usar la aplicación?». Para desarrollar, usa el `docker compose up` +
 `nx serve` del [README raíz](../README.md). Para un destino usable de verdad —con Traefik, DNS y TLS— hace falta un
 host, y eso es la **fila 35** del plan (`staging-host`), que sigue abierta.
@@ -590,10 +591,12 @@ dc exec -T api    node -e "fetch('http://127.0.0.1:3000/health').then(async r=>c
 dc exec -T worker node -e "fetch('http://127.0.0.1:3001/health').then(async r=>console.log(r.status, await r.text()))"
 
 # Preguntar desde dentro no prueba que otro contenedor llegue: una imagen que solo escucha en loopback da 200 arriba y
-# el borde recibe `ECONNREFUSED`. Desde `web` (solo en `internal`, como ve la pila Traefik), las dos tienen que dar
-# `HTTP/1.1 200 OK`; es la misma comprobación que hace `infra/ci/verify-artifact.sh` (tarea 7.10 de `object-store`).
+# el borde recibe `ECONNREFUSED`. `api` y `worker` no comparten red, así que cada una se pide desde un contenedor de la
+# suya: `api` desde `web` (solo en `internal`, como ve la pila Traefik) y `worker` desde `object-store` (que está en
+# `store-worker` y trae `curl`). Las dos tienen que dar `HTTP/1.1 200 OK`; es la misma comprobación que hace
+# `infra/ci/verify-artifact.sh` (tarea 7.10 de `object-store`; design D18, tarea 12.1).
 dc exec -T web wget -S -q -O /dev/null -T 10 http://api:3000/health
-dc exec -T web wget -S -q -O /dev/null -T 10 http://worker:3001/health
+dc exec -T object-store curl -sS -D - -o /dev/null --max-time 10 http://worker:3001/health
 
 # `web` no se comprueba con un 200: un nginx sirviendo otra cosa también responde 200. Se exige la raíz de la
 # aplicación Angular en el cuerpo, igual que hace el healthcheck del compose y la verificación del artefacto.
@@ -670,9 +673,9 @@ Qué levanta exactamente esa verificación, y qué deja fuera:
 - `mongo`, `redis` y `object-store` como dependencias, y `api`, `worker` y `web` como lo que se verifica; **mongo queda
   como replica set de un nodo** (`rs0`, primario escribible), igual que en producción, porque con instancia suelta una
   transacción multi-documento fallaría **solo** en el despliegue real;
-- **sin Traefik y sin certificados** (exigen DNS y ACME, fuera de alcance) y **sin publicar ni un puerto**: la red
-  `internal` es `internal: true` y ningún servicio de aplicación publica nada, así que la readiness se comprueba desde
-  dentro con `docker compose exec`. Abrir puertos para poder mirar cambiaría la configuración que se está verificando;
+- **sin Traefik y sin certificados** (exigen DNS y ACME, fuera de alcance) y **sin publicar ni un puerto**: las redes
+  son `internal: true` (salvo `api-egress` y `worker-egress`, las de salida a Internet) y ningún servicio de aplicación
+  publica nada, así que la readiness se comprueba desde dentro con `docker compose exec`. Abrir puertos para poder mirar cambiaría la configuración que se está verificando;
 - el env file es `infra/ci/verify.env`, **versionado y de relleno**, con `AI_CHAIN=none` porque `mock` está prohibido
   con el `NODE_ENV=production` que las imágenes hornean. Ese fichero **no sirve para desplegar** y lo dice en su
   cabecera.
