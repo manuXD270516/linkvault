@@ -20,6 +20,11 @@
 // Las dos se leen de esos ficheros (junto a este script, en el repositorio), no se copian aquí; si no se encuentran,
 // la comprobación falla en lugar de pasar sin haber comparado. Por eso `infra/ci/verify.env` ya no pasa entero: es
 // relleno de CI, no un env file de despliegue, y ningún paso lo revisa con este script.
+//
+// Las contraseñas de los datos (`REDIS_PASSWORD`; design D18 de `staging-host`) van **sin codificar** dentro de
+// `REDIS_URL`, así que un `/`, `+`, `=`, `@` o `:` la rompe o cambia su lectura. Se exige el formato apto para URI
+// (32-128 caracteres de `[A-Za-z0-9._~-]`, lo que da `openssl rand -hex 32`) y que no sea la de relleno de CI ni la de
+// `.env.example`. El fallo nombra la variable y nunca imprime el valor.
 // =====================================================================================================================
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -105,7 +110,24 @@ check(
   Boolean(ciSseKey) && has(SSE_KEY) && env[SSE_KEY] !== ciSseKey,
 );
 
-const secrets = ['AUTH_JWT_SECRET', 'AI_VAULT_KEY', 'S3_ACCESS_KEY', 'S3_SECRET_KEY', SSE_KEY, 'MAIL_SMTP_PASSWORD'];
+// Contraseñas de Redis (y, en el siguiente paso de D18, de Mongo): formato apto para URI y distintas de los dos valores
+// versionados. Se evalúa el valor tal cual, sin imprimirlo en ningún caso.
+const URI_SAFE_SECRET = /^[A-Za-z0-9._~-]{32,128}$/;
+const ciEnv = existsSync(verifyEnvPath) ? parseEnv(verifyEnvPath) : {};
+for (const name of ['REDIS_PASSWORD']) {
+  check(`${name} is 32-128 characters [A-Za-z0-9._~-] (URI-safe, it goes unencoded in a URL)`, URI_SAFE_SECRET.test(env[name] ?? ''));
+  check(`${name} is not the CI filler of infra/ci/verify.env`, Boolean(ciEnv[name]) && has(name) && env[name] !== ciEnv[name]);
+}
+
+const secrets = [
+  'AUTH_JWT_SECRET',
+  'AI_VAULT_KEY',
+  'S3_ACCESS_KEY',
+  'S3_SECRET_KEY',
+  SSE_KEY,
+  'MAIL_SMTP_PASSWORD',
+  'REDIS_PASSWORD',
+];
 check('no secret keeps its .env.example value', secrets.every((name) => !has(name) || env[name] !== example[name]));
 
 let failed = 0;

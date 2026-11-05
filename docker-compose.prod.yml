@@ -131,17 +131,35 @@ services:
       start_period: 30s
       start_interval: 2s
 
+  # Redis con contraseña (design D18 de `staging-host`, medida 3). `requirepass` va en un fichero de configuración que se
+  # escribe al arrancar, en `/tmp` (no en el volumen) y con modo 600 para el usuario `redis`: la contraseña nunca está en
+  # los argumentos del proceso (`docker top`, `/proc/<pid>/cmdline`), solo en su entorno. El `exec` pasa por el
+  # `docker-entrypoint.sh` de la imagen, que cede el proceso al usuario `redis`. `REDIS_PASSWORD` la valida
+  # `infra/ci/check-env-file.mjs` con el formato apto para URI (32-128 caracteres de [A-Za-z0-9._~-]): va sin codificar
+  # dentro de `REDIS_URL`.
   redis:
     image: redis:7.4.11
     restart: unless-stopped
-    command: ['redis-server', '--appendonly', 'yes']
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD (32-128 characters [A-Za-z0-9._~-]; openssl rand -hex 32)}
+    command:
+      - /bin/sh
+      - -c
+      - |-
+        umask 077
+        printf 'requirepass %s\n' "$$REDIS_PASSWORD" >/tmp/redis-auth.conf
+        chown redis:redis /tmp/redis-auth.conf
+        exec /usr/local/bin/docker-entrypoint.sh redis-server /tmp/redis-auth.conf --appendonly yes
     volumes:
       - redis-data:/data
     networks:
       - data-api
       - data-worker
+    # `REDISCLI_AUTH` es la forma de pasarle la contraseña a `redis-cli` sin `-a` (que la dejaría en los argumentos). Se
+    # exige `PONG` en la salida y no solo el código de salida: sin ella, la respuesta es `NOAUTH` y el estado pasa a
+    # `unhealthy`.
     healthcheck:
-      test: ['CMD', 'redis-cli', 'ping']
+      test: ['CMD-SHELL', 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep -q PONG']
       interval: 5s
       timeout: 3s
       retries: 10
@@ -228,7 +246,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       API_PORT: 3000
       MONGO_URI: mongodb://mongo:27017/linkvault?replicaSet=rs0
-      REDIS_URL: redis://redis:6379
+      REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD}@redis:6379
       # Exactamente una api con relay (ADR-033 D8). No dupliques este servicio con true.
       OUTBOX_RELAY_ENABLED: 'true'
       OUTBOX_RELAY_INTERVAL_MS: ${OUTBOX_RELAY_INTERVAL_MS:-1000}
@@ -326,7 +344,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       WORKER_HEALTH_PORT: 3001
       MONGO_URI: mongodb://mongo:27017/linkvault?replicaSet=rs0
-      REDIS_URL: redis://redis:6379
+      REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD}@redis:6379
       AI_PROMPTS_DIR: /app/assets/ai/prompts
       AI_CHAIN: ${AI_CHAIN:?}
       AI_VAULT_KEY: ${AI_VAULT_KEY:?}

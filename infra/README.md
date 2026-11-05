@@ -334,7 +334,7 @@ Son **30 obligatorias por proceso** —29 del esquema zod más `AI_VAULT_KEY`, c
 [`inventarios.md`](../openspec/changes/deploy-image-verification/inventarios.md) del change `deploy-image-verification`—,
 pero casi todas las fija el propio `docker-compose.prod.yml` con un valor razonable o con uno literal que no depende
 del operador (`NODE_ENV`, `MONGO_URI`, `REDIS_URL`, `S3_ENDPOINT`, `AI_PROMPTS_DIR`, `TRUST_PROXY`,
-`OUTBOX_RELAY_ENABLED`…). **Lo que el env file tiene que aportar sí o sí son estas trece**, declaradas como
+`OUTBOX_RELAY_ENABLED`…). **Lo que el env file tiene que aportar sí o sí son estas catorce**, declaradas como
 `${VAR:?}`: sin ellas el `up` aborta nombrando la variable, antes de crear nada.
 
 | Variable | Servicios que la exigen | Forma |
@@ -350,6 +350,7 @@ del operador (`NODE_ENV`, `MONGO_URI`, `REDIS_URL`, `S3_ENDPOINT`, `AI_PROMPTS_D
 | `MAIL_FROM` | api, worker | remitente visible, p. ej. `LinkVault <noreply@tu-dominio>` |
 | `S3_ACCESS_KEY` | api, worker, object-store | credencial del almacén de objetos |
 | `S3_SECRET_KEY` | api, worker, object-store | ídem |
+| `REDIS_PASSWORD` | redis, api, worker | **32-128 caracteres de `[A-Za-z0-9._~-]`** (`openssl rand -hex 32`): va sin codificar dentro de `REDIS_URL`, así que un `/`, `+`, `=`, `@` o `:` la rompe; `infra/ci/check-env-file.mjs` lo comprueba sin imprimir el valor (design D18 de `staging-host`) |
 | `OBJECT_STORE_SSE_KEY` | object-store | **64 hexadecimales en minúscula**: la clave del cifrado del bucket de CV (ver [«Almacén de objetos»](#almacén-de-objetos-cv-y-snapshots)) |
 | `ENRICH_USER_AGENT` | worker | `User-Agent` identificable del extractor (obligación de la spec de extracción) |
 
@@ -551,6 +552,7 @@ AI_CHAIN=none
 AUTH_JWT_SECRET=$(node -e "process.stdout.write(require('crypto').randomBytes(48).toString('base64url'))")
 AI_VAULT_KEY=$(node -e "process.stdout.write(require('crypto').randomBytes(32).toString('base64'))")
 OBJECT_STORE_SSE_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
+REDIS_PASSWORD=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
 EOF
 
 # 3) Qué imágenes usa el compose: las recién construidas, no las de GHCR.
