@@ -507,6 +507,24 @@ o mal formada) o `65` (el volumen tiene `.mini_sse_kek`, la clave que SeaweedFS 
 Qué hacer en cada caso, y por qué nunca se borra ese fichero sin saber con qué clave se cifraron los objetos:
 [RUNBOOK, «Operar los CV»](../docs/RUNBOOK.md#paso-6-octies--operar-los-cv).
 
+**Qué queda sin autenticación, y quién lo alcanza (riesgo residual escrito; design D18 de `staging-host`, medida 2).**
+`weed mini` arranca maestro, volumen, filer y pasarela S3 en un proceso y solo la pasarela (8333) pide claves.
+El servicio lleva `-disableHttp`, así que **el filer (8888) ya no sirve objetos por HTTP** (desde `api` y desde `worker`,
+`http://object-store:8888/` da 404 y la pasarela S3 sigue sirviendo con sus claves). Pero `mini` no tiene enlace por
+componente y `-ip.bind=127.0.0.1` cierra también la pasarela (`provision` sale 1), así que **siguen escuchando, sin
+autenticación**: el maestro (**9333**), el volumen (**9340**) y los gRPC (**18888**, **19333**, **19340** y **33646**;
+medido además, **18333** y **23646**). **Solo los alcanzan `api` y `worker`**, cada uno por su red (`store-api` y
+`store-worker`, ambas `internal: true` y sin puertos publicados): `web`, Traefik, Mongo y Redis ni siquiera resuelven
+`object-store`. Un proceso comprometido en `api` o en `worker` puede, por tanto, hablar con esas interfaces; no se
+filtra por destino (ADR-056 §5) y la firma JWT con `security.toml` queda fuera, porque sería un fichero con secreto
+montado y la forma del servicio (ADR-052) no lo admite. La evidencia está en
+[`matriz.md`](../docs/object-store-matrix/matriz.md), «Configuración con `-disableHttp` (35b D18)», y la decisión, en
+[ADR-052](../docs/adr/ADR-052.md), «Consecuencias».
+
+**`weed mini` guarda `-disableHttp` en el volumen** (`/data/mini.options`). Quitar la opción del compose no vuelve a
+abrir el filer hasta el *segundo* arranque del almacén, y una prueba de que el filer responde sin ella tiene que partir
+de un volumen nuevo. En staging no importa (parte de un volumen vacío con la opción puesta).
+
 Comprobar el almacén, sin escribir nada (buckets, sin reglas de caducidad, cifrado del de CV, ningún snapshot de más de
 31 días y acceso anónimo rechazado):
 

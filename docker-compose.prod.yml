@@ -203,6 +203,10 @@ services:
   # publicados), con `api` y `worker` como únicos otros miembros, cada uno en la suya; mongo, redis, `web` y Traefik no
   # llegan a él. Sin `depends_on`: así `config --images object-store` da una sola línea, la que lee el `deploy.sh`
   # de 35b para comparar el digest.
+  # `-disableHttp` (design D18, medida 2): el filer (8888) no sirve objetos por HTTP; la pasarela S3 sigue. Siguen sin
+  # autenticación el maestro (9333), el volumen (9340) y los gRPC (18888, 19333, 19340 y 33646), solo alcanzables desde
+  # `api` y `worker` (riesgo residual escrito en `infra/README.md` y en ADR-052). Está también en el compose de la matriz
+  # y en el de desarrollo: `command` se compara entero.
   object-store:
     image: ${OBJECT_STORE_IMAGE:-chrislusf/seaweedfs}:${OBJECT_STORE_IMAGE_TAG:-4.47}
     restart: unless-stopped
@@ -232,6 +236,7 @@ services:
       - '-s3.port.iceberg=0'
       - '-s3.port.lance=0'
       - '-master.telemetry=false'
+      - '-disableHttp'
     environment:
       AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY:?}
       AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:?}
