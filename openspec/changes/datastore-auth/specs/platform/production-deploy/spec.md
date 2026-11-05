@@ -3,12 +3,14 @@
 ### Requirement: Las aplicaciones entran a Mongo con un usuario de mínimo privilegio
 
 `api` y `worker` SHALL conectarse a MongoDB con un usuario de aplicación cuyo único rol sea lectura y escritura sobre la
-base de la aplicación. Las credenciales de la raíz NO SHALL estar en el entorno de `api` ni de `worker`; solo las tiene
-el servicio `mongo`.
+base de la aplicación. Las credenciales de la raíz NO SHALL estar en el entorno de `api` ni de `worker`, y la contraseña
+del usuario de aplicación solo SHALL llegarles dentro de `MONGO_URI`.
 
-El healthcheck de `mongo` SHALL asegurar ese usuario de forma idempotente en cada evaluación: crearlo si falta,
-dejarle exactamente ese rol y la contraseña del fichero de entorno, y dar sano solo después. Su salida NO SHALL
-contener ningún valor de credencial.
+El healthcheck de `mongo` SHALL, en este orden: comprobar que el servidor responde sin pedir privilegios, autenticarse
+como raíz, asegurar el replica set, asegurar el usuario de aplicación (crearlo si falta, dejarle exactamente ese rol y,
+comprobándolo en una conexión aparte, la contraseña del fichero de entorno) y dar sano solo con primario escribible. NO
+SHALL crear la raíz. Ante un error que no sea de reintento SHALL dar no sano imprimiendo solo el código del error. Su
+salida NO SHALL contener ningún valor de credencial.
 
 #### Scenario: El usuario de aplicación escribe en su base
 
@@ -28,37 +30,53 @@ contener ningún valor de credencial.
 - **THEN** ninguna variable de la raíz de MongoDB SHALL figurar en el entorno de `api` ni de `worker`
 - **AND** su `MONGO_URI` SHALL nombrar al usuario de aplicación
 
-#### Scenario: El healthcheck no muestra credenciales
+#### Scenario: El healthcheck impone la contraseña del fichero de entorno sin mostrarla
 
 - **GIVEN** un `mongo` cuyo usuario de aplicación tiene una contraseña distinta de la del fichero de entorno
 - **WHEN** se evalúa el healthcheck y se lee su salida guardada por Docker
 - **THEN** el usuario de aplicación SHALL autenticar con la contraseña del fichero de entorno
 - **AND** la salida NO SHALL contener ninguna de las dos contraseñas
 
+#### Scenario: Latido sin cambios
+
+- **GIVEN** un `mongo` sano con el usuario de aplicación ya asegurado
+- **WHEN** se evalúa otra vez el healthcheck
+- **THEN** la huella de los usuarios y sus credenciales SHALL ser la misma que antes
+
 ### Requirement: Las credenciales de los almacenes se generan y se guardan fuera del repositorio
 
-Las contraseñas de Redis, de la raíz de MongoDB y del usuario de aplicación SHALL generarse con un generador
-criptográfico, tener entre 32 y 128 caracteres del conjunto no reservado de las URI (letras, dígitos, `.`, `_`, `~` y
-`-`) y vivir solo en el fichero de entorno del host y en su copia fuera del host. NO SHALL ser secretos del
-repositorio en GitHub ni aparecer en ningún fichero versionado, salvo los valores de relleno de desarrollo, de la suite
-e2e y de la verificación en CI, que SHALL ser reconocibles como tales.
+Las contraseñas de la lista cerrada —la de Redis, la de la raíz de MongoDB y la del usuario de aplicación— SHALL
+generarse con un generador criptográfico sin mostrarse, cumplir el formato apto para URI que fija la defensa en
+profundidad de staging (32 a 128 caracteres de letras, dígitos, `.`, `_`, `~` y `-`) y vivir solo en el fichero de
+entorno del host y en su copia fuera del host. NO SHALL ser secretos del repositorio en GitHub ni aparecer en ningún
+fichero versionado, salvo los valores de relleno de la verificación en CI. La contraseña SMTP queda fuera de la lista
+cerrada porque el modo relay la admite vacía.
 
-El compose de producción NO SHALL dar valor por defecto a ninguna contraseña: cada variable cuyo nombre termine en
-`_PASSWORD` SHALL usar la forma que aborta el `up` nombrándola, y una comprobación del repositorio SHALL fallar
-nombrando la variable que no la use.
+En el compose de producción, toda referencia de Compose a una contraseña de la lista cerrada SHALL usar la forma que
+aborta el `up` nombrándola, y cada una SHALL estar declarada en `.env.example`. Una comprobación del repositorio SHALL
+fallar nombrando la variable que incumpla cualquiera de las dos reglas.
 
-La revisión de un fichero de entorno de despliegue SHALL rechazar, sin imprimir ningún valor, una contraseña con otro
-formato, igual a un valor de relleno versionado o repetida entre las tres.
+La revisión de un fichero de entorno de despliegue SHALL rechazar, sin imprimir ningún valor, una contraseña de la lista
+cerrada con otro formato, igual a un valor de relleno versionado (también el que va dentro de una URI de ejemplo) o
+repetida entre las tres.
 
 #### Scenario: Una contraseña con valor por defecto en el compose de producción
 
-- **GIVEN** el compose de producción con una variable `_PASSWORD` que tiene valor por defecto
+- **GIVEN** el compose de producción con una referencia a una contraseña de la lista cerrada que tiene valor por
+  defecto
 - **WHEN** corre la comprobación del repositorio
 - **THEN** SHALL fallar nombrando esa variable
 
-#### Scenario: Un valor de desarrollo en el fichero de entorno del host
+#### Scenario: Una contraseña de la lista cerrada sin declarar en el ejemplo
 
-- **GIVEN** un fichero de entorno de despliegue cuya contraseña de Redis es la de relleno de desarrollo
+- **GIVEN** el compose de producción usando una contraseña de la lista cerrada que `.env.example` no declara
+- **WHEN** corre la comprobación del repositorio
+- **THEN** SHALL fallar nombrando esa variable
+
+#### Scenario: Un valor de relleno en el fichero de entorno del host
+
+- **GIVEN** un fichero de entorno de despliegue cuya contraseña del usuario de aplicación es la de relleno de la
+  verificación en CI
 - **WHEN** se revisa con la herramienta de revisión de ficheros de entorno
 - **THEN** SHALL salir con código distinto de cero nombrando la comprobación
 - **AND** su salida NO SHALL contener el valor
@@ -67,20 +85,20 @@ formato, igual a un valor de relleno versionado o repetida entre las tres.
 
 - **GIVEN** un fichero de entorno de despliegue cuya contraseña del usuario de aplicación contiene `/`
 - **WHEN** se revisa
-- **THEN** SHALL fallar nombrando la comprobación de formato, sin imprimir el valor
+- **THEN** SHALL fallar nombrando `MONGO_APP_PASSWORD`, sin imprimir el valor
 
 ### Requirement: Las credenciales de Mongo y Redis se rotan sin perder datos
 
-Cada una de las tres credenciales SHALL tener un procedimiento de rotación escrito en el RUNBOOK y ensayado, que
-conserve los datos y deje de aceptar el valor anterior:
-
-- la del usuario de aplicación y la de Redis, editando el fichero de entorno y recreando los servicios afectados;
-- la de la raíz de MongoDB, con un script versionado que lee la nueva sin eco, la aplica autenticándose con la actual y
-  NO SHALL pasarla en los argumentos de ningún proceso.
+Cada una de las tres credenciales SHALL tener un procedimiento de rotación escrito en el RUNBOOK que conserve los datos
+y deje de aceptar el valor anterior. Los de la contraseña del usuario de aplicación y de Redis —editar el fichero de
+entorno y su copia y recrear los servicios afectados— SHALL estar ensayados. El de la raíz SHALL actualizar primero el
+fichero de entorno y su copia, cambiar después la contraseña autenticándose con la actual del entorno del contenedor y
+leyendo la nueva por la entrada estándar, y recrear `mongo` al final; ninguna orden del procedimiento SHALL llevar una
+contraseña en sus argumentos.
 
 #### Scenario: Rotar la contraseña del usuario de aplicación
 
-- **GIVEN** la pila arriba con datos y una contraseña nueva en el fichero de entorno
+- **GIVEN** la pila arriba con datos y una contraseña nueva del usuario de aplicación en el fichero de entorno
 - **WHEN** se recrean `mongo`, `api` y `worker`
 - **THEN** `api` y `worker` SHALL quedar sanos
 - **AND** el número de documentos de cada colección SHALL ser el mismo que antes
@@ -94,29 +112,34 @@ conserve los datos y deje de aceptar el valor anterior:
 - **THEN** el job SHALL procesarse
 - **AND** la contraseña anterior NO SHALL autenticar
 
-#### Scenario: Rotar la raíz sin exponerla
+#### Scenario: El procedimiento de la raíz no pasa contraseñas por argumentos
 
-- **GIVEN** la pila arriba y un muestreo de los argumentos de todos los procesos del host y del contenedor `mongo`
-- **WHEN** se ejecuta el script de rotación de la raíz y después se recrea `mongo` con el fichero de entorno actualizado
-- **THEN** `mongo` SHALL quedar sano
-- **AND** ninguna muestra SHALL contener la contraseña nueva ni la anterior
+- **WHEN** se revisan las órdenes de la sección de rotación de la raíz del RUNBOOK
+- **THEN** ninguna SHALL llevar una contraseña o una expansión de una contraseña como argumento
+- **AND** la contraseña nueva SHALL llegar al contenedor por la entrada estándar
 
-### Requirement: Un despliegue existente adopta la autenticación sin perder datos
+### Requirement: Un despliegue existente adopta el usuario de aplicación sin perder datos
 
-Un despliegue cuyo volumen de MongoDB ya tenga datos SHALL adoptar este change con un `up` normal, sin borrar el
-volumen:
-
-- con la raíz ya creada, el healthcheck SHALL crear el usuario de aplicación;
-- sin ningún usuario, el healthcheck SHALL crear la raíz y el usuario de aplicación.
-
-Si falta la contraseña del usuario de aplicación en el fichero de entorno, el `up` SHALL abortar nombrándola antes de
-recrear ningún contenedor. Volver a la versión anterior del compose NO SHALL perder datos.
+Un despliegue cuyo volumen de MongoDB ya tenga datos y la raíz SHALL adoptar este change con un `up` normal, sin borrar
+el volumen: el healthcheck SHALL crear el usuario de aplicación y `api` y `worker` SHALL pasar a usarlo. Antes de
+fusionar SHALL existir una copia del volumen guardada fuera del host. Un volumen con datos y **sin** usuarios NO SHALL
+darse por sano ni modificarse solo: el healthcheck SHALL dar no sano con el código de fallo de autenticación, y el
+README SHALL describir el procedimiento manual. Si falta la contraseña del usuario de aplicación en el fichero de
+entorno, el `up` SHALL abortar nombrándola antes de recrear ningún contenedor. Volver a la versión anterior del compose
+NO SHALL perder datos.
 
 #### Scenario: Staging con la raíz de antes
 
 - **GIVEN** un volumen con datos y la raíz, y `api` y `worker` conectados como raíz
 - **WHEN** se despliega este change con la contraseña del usuario de aplicación en el fichero de entorno
 - **THEN** `api` y `worker` SHALL quedar sanos conectados como el usuario de aplicación
+- **AND** el número de documentos de cada colección SHALL ser el mismo que antes
+
+#### Scenario: Volumen con datos y sin usuarios
+
+- **GIVEN** un volumen con datos creado sin autenticación
+- **WHEN** se levanta el compose de producción sobre él
+- **THEN** el healthcheck de `mongo` SHALL dar no sano imprimiendo solo `AuthenticationFailed`
 - **AND** el número de documentos de cada colección SHALL ser el mismo que antes
 
 #### Scenario: Falta la contraseña nueva
@@ -129,19 +152,25 @@ recrear ningún contenedor. Volver a la versión anterior del compose NO SHALL p
 #### Scenario: Vuelta atrás tras migrar
 
 - **GIVEN** un volumen ya migrado
-- **WHEN** se despliega la versión anterior del compose
+- **WHEN** se despliega el compose del commit anterior
 - **THEN** `api` y `worker` SHALL quedar sanos
 - **AND** el número de documentos de cada colección SHALL ser el mismo que antes
 
-### Requirement: La verificación del artefacto comprueba las credenciales
+### Requirement: Una sola comprobación de credenciales para CI y para el host
 
-La verificación de la pila entera en CI SHALL comprobar, sin imprimir ningún valor, que MongoDB y Redis rechazan una
-conexión sin credenciales, que el usuario de aplicación escribe en su base y no puede administrar el servidor, y que la
-raíz no está en el entorno de `api` ni de `worker`. Cualquiera de esas comprobaciones que falle SHALL hacer fallar la
-verificación nombrándola.
+Una orden versionada, instalada en el host con cada despliegue, SHALL comprobar sin imprimir ningún valor que MongoDB y
+Redis rechazan una conexión sin credenciales, que el usuario de aplicación escribe en su base y no puede administrar el
+servidor, y que la raíz no está en el entorno de `api` ni de `worker`. La verificación de la pila entera en CI SHALL
+ejecutarla, y cualquiera de sus comprobaciones que falle SHALL hacer fallar la verificación nombrándola.
 
 #### Scenario: Redis sin contraseña en la pila verificada
 
 - **GIVEN** una versión del compose de producción en la que Redis arranca sin contraseña
 - **WHEN** corre la verificación del artefacto
 - **THEN** SHALL fallar nombrando a Redis y la comprobación de la conexión sin credenciales
+
+#### Scenario: La raíz en el entorno del worker
+
+- **GIVEN** una versión del compose de producción que pasa la contraseña de la raíz a `worker`
+- **WHEN** corre la orden de comprobación
+- **THEN** SHALL fallar nombrando a `worker`, sin imprimir el valor
