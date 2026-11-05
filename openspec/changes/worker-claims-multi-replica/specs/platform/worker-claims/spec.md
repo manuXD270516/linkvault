@@ -131,13 +131,16 @@ aviso ya se emitió.
 
 Por cada colección de marcas, el worker SHALL completar el instante de caducidad de las marcas existentes sin confirmar
 que no lo tengan, eliminar los duplicados de una misma clave conservando de forma determinista una confirmada si la hay,
-y crear sus índices. Esta migración NO SHALL retrasar el arranque ni la liveness del worker (`platform/runtime-health`,
-«Arranque independiente de las dependencias») y ningún error suyo SHALL impedir que el worker arranque. Ningún detector
-que use una colección de marcas SHALL ejecutar su tick mientras no exista el índice único de esa colección —el de
-frescura usa también la de ASN—: en ese caso SHALL registrar un aviso que nombra la colección, SHALL reintentar la
-migración en ese mismo tick y, si no la consigue, saltarse el tick; el resto del worker SHALL seguir procesando sus
-colas. Una marca escrita por la versión anterior, sin instante de caducidad, SHALL poder tomarse cuando su lease contado
-desde su `claimedAt` haya vencido.
+y crear sus índices; al terminar con el índice único creado SHALL registrar una línea que contiene el texto fijo
+`claims migration complete` y el nombre de la colección. Esta migración NO SHALL retrasar el arranque ni la liveness del
+worker (`platform/runtime-health`, «Arranque independiente de las dependencias») y ningún error suyo SHALL impedir que
+el worker arranque. **Ninguna toma** de una colección de marcas SHALL tener éxito mientras no exista el índice único de
+esa colección, venga de un detector periódico o de cualquier otro camino del worker (por ejemplo, la cascada de
+expiración que dispara el cierre de un link desde el enriquecimiento): la toma SHALL responder «no tomada». Un detector
+que use una colección sin índice único —el de frescura usa también la de ASN— SHALL registrar un aviso que contiene el
+texto fijo `claims gate closed` y el nombre de la colección, SHALL reintentar la migración en ese mismo tick y, si no la
+consigue, saltarse el tick; el resto del worker SHALL seguir procesando sus colas. Una marca escrita por la versión
+anterior, sin instante de caducidad, SHALL poder tomarse cuando su lease contado desde su `claimedAt` haya vencido.
 
 #### Scenario: Duplicados heredados con una confirmada
 
@@ -145,6 +148,7 @@ desde su `claimedAt` haya vencido.
 - **WHEN** arranca el worker y termina la migración
 - **THEN** SHALL quedar un solo documento, el confirmado
 - **AND** SHALL existir el índice único de la clave
+- **AND** SHALL registrarse una línea con `claims migration complete` que nombra `application_stale_claims`
 
 #### Scenario: Dos réplicas arrancan a la vez sobre duplicados
 
@@ -158,7 +162,7 @@ desde su `claimedAt` haya vencido.
 - **GIVEN** MongoDB detenido y los detectores del worker habilitados
 - **WHEN** arranca el worker
 - **THEN** el proceso SHALL terminar de arrancar y su liveness SHALL responder sin esperar a la migración
-- **AND** ningún detector que use marcas SHALL ejecutar su tick hasta que la migración haya creado el índice único de sus colecciones
+- **AND** ninguna toma de marcas SHALL tener éxito hasta que la migración haya creado el índice único de su colección
 
 #### Scenario: El primer tick llega antes de que termine la migración
 
@@ -172,8 +176,15 @@ desde su `claimedAt` haya vencido.
 - **GIVEN** que la creación del índice único de `application_stale_claims` falla en cada intento
 - **WHEN** llega el tick del detector de stale
 - **THEN** el detector NO SHALL encolar ningún aviso en ese tick
-- **AND** SHALL registrarse un aviso que nombra la colección
+- **AND** SHALL registrarse un aviso con `claims gate closed` que nombra la colección
 - **AND** las colas de enriquecimiento SHALL seguir consumiéndose
+
+#### Scenario: Cascada desde el enriquecimiento con la compuerta de ASN cerrada
+
+- **GIVEN** que no existe el índice único de `application_status_group_notify_claims` y una postulación de grupo ya `expired` de un link cerrado cuya marca de ASN no está confirmada
+- **WHEN** un re-check de enriquecimiento cierra ese link y su cascada intenta tomar la marca de ASN
+- **THEN** la toma SHALL responder «no tomada» y NO SHALL crearse un segundo documento para esa clave
+- **AND** cuando la compuerta se abra, una pasada posterior de la cascada de frescura SHALL encolar ese aviso una sola vez
 
 #### Scenario: Error inesperado al crear un índice
 
@@ -187,7 +198,7 @@ desde su `claimedAt` haya vencido.
 - **GIVEN** que no existe el índice único de `application_status_group_notify_claims` y sí el de `link_freshness_claims`
 - **WHEN** llega el tick del detector de frescura
 - **THEN** el detector NO SHALL ejecutar el tick
-- **AND** SHALL registrarse un aviso que nombra `application_status_group_notify_claims`
+- **AND** SHALL registrarse un aviso con `claims gate closed` que nombra `application_status_group_notify_claims`
 
 #### Scenario: Marca heredada sin caducidad
 
@@ -197,18 +208,32 @@ desde su `claimedAt` haya vencido.
 
 ### Requirement: Cada cron del worker declara qué lo protege con varias réplicas
 
-Cada tarea programada (`@Cron`) del worker SHALL figurar en un inventario versionado con el mecanismo que impide que
-varias réplicas que la disparan a la vez dupliquen su efecto visible: marcas atómicas de este capability (stale,
-frescura y su cascada de ASN), trabajo raíz de un solo vuelo más el registro de idempotencia de entregas (digest semanal
-de grupo) o un caso de uso idempotente frente a dos ejecuciones simultáneas (barrido de snapshots, `cv/documents`). Una
-tarea programada nueva sin entrada en el inventario SHALL hacer fallar la verificación del worker, nombrando el fichero
-que la declara.
+Cada tarea programada del worker —declarada con `@Cron`, `@Interval` o `@Timeout`, registrada con `addCronJob`,
+`addInterval` o `addTimeout`, o como job repetible de BullMQ (`repeat:` o `upsertJobScheduler`)— SHALL figurar en un
+inventario versionado, por fichero y con su número de declaraciones, junto con el mecanismo que impide que varias
+réplicas que la disparan a la vez dupliquen su efecto visible: marcas atómicas de este capability (stale, frescura y su
+cascada de ASN), trabajo raíz de un solo vuelo más el registro de idempotencia de entregas (digest semanal de grupo) o
+un caso de uso idempotente frente a dos ejecuciones simultáneas (barrido de snapshots, `cv/documents`). Las menciones
+dentro de comentarios NO SHALL contar como declaraciones. Una declaración que no cuadre con el inventario SHALL hacer
+fallar la verificación del worker, nombrando el fichero.
 
 #### Scenario: Cron nuevo sin inventariar
 
 - **GIVEN** un fichero del worker que declara una tarea programada que no figura en el inventario
 - **WHEN** corre la verificación del worker
 - **THEN** SHALL fallar nombrando ese fichero
+
+#### Scenario: Declaración extra en un fichero inventariado
+
+- **GIVEN** un fichero inventariado con una declaración que pasa a tener dos
+- **WHEN** corre la verificación del worker
+- **THEN** SHALL fallar nombrando ese fichero
+
+#### Scenario: Una mención en un comentario no es una declaración
+
+- **GIVEN** un fichero del worker cuyo único `@Cron(` está dentro de un comentario
+- **WHEN** corre la verificación del worker
+- **THEN** ese fichero NO SHALL contar como declarante
 
 #### Scenario: Dos réplicas disparan el digest semanal
 

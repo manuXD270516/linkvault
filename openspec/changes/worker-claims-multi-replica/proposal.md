@@ -36,8 +36,10 @@ Nada de esto ocurre con un solo worker, que es lo que corre staging (`deploy.sh`
   caducan nunca.
 - **Migración e índices al arrancar, sin bloquear el arranque** (precisión de ADR-061 §4, design D6): completar
   `leaseUntil` heredado, deduplicar con superviviente determinista, `ttl_lease` y después `uniq_claim_key`; la migración
-  corre en segundo plano y la **compuerta** de cada colección nace cerrada, así que ningún detector toma una marca antes
-  de que exista su índice único y la liveness no espera a Mongo.
+  corre en segundo plano y la **compuerta** de cada colección nace cerrada y se consulta **en la toma**, así que ningún
+  camino —tampoco la cascada de ASN que dispara el enriquecimiento al cerrar un link— toma una marca antes de que exista
+  su índice único, y la liveness no espera a Mongo. Líneas de log fijas (`claims migration complete`, `claims gate
+  closed`) para comprobarlo antes de escalar.
 - **Toma única de una entrega vencida** (ADDED en `notifications/dispatch`): retoma condicionada a la toma leída.
 - **Inventario de crons con varias réplicas** (ADDED en `platform/worker-claims`; Q2): un test lista los `@Cron` del
   worker con su mecanismo y falla ante uno nuevo sin inventariar; prueba de dos réplicas del digest semanal.
@@ -50,8 +52,10 @@ ni §5b, que aplica `worker-data-hygiene`.
 
 ## Encaje en la fase
 
-**Candidato posterior a `worker-data-hygiene`**, sin fila en `docs/design-v0.2.md` §6 hasta que el owner la asigne
-(Q1, bloqueante para `/opsx:apply`). Precondición dura: **`worker-data-hygiene` archivado** antes de aplicar, porque este
+**Candidato posterior a `worker-data-hygiene`**, sin fila en `docs/design-v0.2.md` §6 hasta que el owner responda Q1
+(bloqueante para `/opsx:apply`): fila ejecutable o candidata con disparador, como `web-english-locale`
+(recomendación de reflect en la iteración 1: candidata, porque el valor para el usuario es nulo hasta escalar). Si se
+aplica, llega a staging por el CD normal de `main`. Precondición dura: **`worker-data-hygiene` archivado** antes de aplicar, porque este
 change parte de lo que aquel deja en `main` (`NOTIFY_DELIVERY_LEASE_MS`, `mongo-notify.adapters.spec.ts`, el `$lookup`
 de stale y de la cascada a las marcas confirmadas, que `uniq_claim_key` pasa a indexar, y la retoma de 3.6). Sin
 excepción a ADR-048: la fila 35 habrá terminado para entonces (worker-data-hygiene va «tras 35c»).

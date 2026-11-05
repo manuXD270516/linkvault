@@ -5,7 +5,8 @@
 Cuando una entrega del registro de idempotencia está `claimed` y su lease venció, retomarla SHALL ser una operación
 condicionada a que siga siendo la misma toma vencida que se leyó. Si dos workers intentan retomarla a la vez, SHALL
 retomarla exactamente uno; el otro SHALL tratarla como en vuelo o como terminada, según el estado que lea después, y NO
-SHALL enviar.
+SHALL enviar. Si al releer la entrega ya no existe (por ejemplo, la borró el borrado de cuenta), SHALL tratarse como
+terminada y NO SHALL enviarse.
 
 #### Scenario: Dos workers retoman la misma entrega vencida
 
@@ -20,3 +21,10 @@ SHALL enviar.
 - **GIVEN** una entrega en `claimed` con el lease vencido y ningún otro worker
 - **WHEN** un worker la intenta retomar
 - **THEN** SHALL obtener `claimed`
+
+#### Scenario: La entrega desapareció antes de retomarla
+
+- **GIVEN** una entrega en `claimed` con el lease vencido que se borra entre la lectura y la retoma
+- **WHEN** el worker intenta retomarla
+- **THEN** SHALL obtener `already_done`
+- **AND** NO SHALL enviarse el aviso

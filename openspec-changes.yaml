@@ -762,7 +762,7 @@ changes:
       **Precondición:** `worker-data-hygiene` archivado. Aplica ADR-061 §2-§4 (toma atómica con `uniq_claim_key` y
       testigo, frescura como lease con 30 min de retención, `ttl_lease` parcial sobre `confirmed: false`, migración e
       índices al arrancar) y la toma vencida del ledger; **precisa §4**: la migración corre en segundo plano y la
-      compuerta nace cerrada, para no retrasar la liveness (`platform/runtime-health`). Con Q2 = (a), inventario de los
+      compuerta nace cerrada y se consulta en cada toma, para no retrasar la liveness (`platform/runtime-health`) ni tomar sin índice único. Con Q2 = (a), inventario de los
       cuatro `@Cron` del worker con su mecanismo y prueba de dos réplicas del digest. Al archivar, la regla «No escalar
       `worker` hasta archivar…» de `infra/README.md` pasa a «solo con todas las réplicas en una imagen que incluya este
       change» (Q4 para el comentario de `docker-compose.prod.yml`). Verificación con `mongodb-memory-server` (replset) y

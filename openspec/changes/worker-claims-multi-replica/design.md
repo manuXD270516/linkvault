@@ -30,8 +30,9 @@ Estado de `main` en `5b92d28` (2026-11-04), sin cambios en el worker desde el re
   llamador** (solo se usa su `deleteByUserId` en el borrado de cuenta; Q3).
 - **Arranque**: la conexión de Mongoose del worker es **perezosa** (`lazyConnection: true`, `MongoPersistenceModule`) y
   `platform/runtime-health` («Arranque independiente de las dependencias») exige servir la liveness con Mongo caído. Una
-  operación de Mongo esperada en `onModuleInit` con Mongo caído queda en el búfer de Mongoose hasta `bufferTimeoutMS` y
-  la selección de servidor (30 s por defecto): el `app.init()` no termina y el puerto de salud no abre. El test
+  operación de Mongo esperada en `onModuleInit` con Mongo caído queda en el búfer de Mongoose y falla a los
+  `bufferTimeoutMS` (10 s por defecto; los 30 s son la selección de servidor del driver, que corre aparte): durante ese
+  tiempo el `app.init()` no termina y el puerto de salud no abre. El test
   `startup-without-dependencies.spec.ts` corre con `NODE_ENV=test`, donde los schedulers no se registran, así que **no**
   lo detectaría.
 - **Despliegue**: staging con un worker; `infra/README.md` bajo «Escalar worker» dice «No escalar `worker` hasta archivar
@@ -121,8 +122,19 @@ filter = { ...key, confirmed: false, $or: [
   { leaseUntil: { $lte: now } },
   { leaseUntil: { $exists: false }, claimedAt: { $lte: new Date(now - leaseMs) } }, // heredado (D5)
 ]};
-update = { $set: { claimedAt: now, leaseUntil: new Date(now + leaseMs), token, confirmed: false } };
+update = { $set: { claimedAt: now, leaseUntil: new Date(now + leaseMs), token, holder, confirmed: false } };
 ```
+
+- **Compuerta en la toma (C1 del debate)**: antes del `findOneAndUpdate`, `take` hace `await gate.ensure()` de su
+  colección (D6) y, si queda cerrada, devuelve `null` sin escribir. Sin `uniq_claim_key`, el filtro de arriba no casa con
+  una marca vigente y el `upsert` **insertaría un duplicado y ganaría**: por eso la compuerta no puede vivir solo en los
+  schedulers. Hay un camino que no pasa por ellos: `enrich-link.usecase.ts:114` → `close-job-link.usecase.ts:63` →
+  `ExpireApplicationsForClosedLinkUseCase` (`:78`), que toma marcas de ASN desde el consumidor de enriquecimiento, y
+  `listForExpireCascade` devuelve también postulaciones ya `expired` con su ASN sin confirmar. Sería una regresión
+  incluso con un solo worker. Una toma rechazada por la compuerta no pierde el aviso: la postulación queda `expired` de
+  grupo sin ASN confirmada y la recoge `listCascadePending` en una pasada posterior.
+- **`holder` (B5)**: `os.hostname()` del proceso (el id del contenedor en Docker), leído una vez al construir. Solo es
+  diagnóstico (qué réplica tiene una toma sin confirmar); ninguna lógica lo lee. No es un dato personal.
 
 - **Libre o vencida** → el filtro casa, se actualiza y la réplica gana.
 - **No existe** → `upsert` inserta (copia la clave y `confirmed: false` del filtro) y la réplica gana.
@@ -192,82 +204,102 @@ En las tres colecciones, índice TTL `{ leaseUntil: 1 }`, `expireAfterSeconds: 8
 *Descartado:* TTL sobre `claimedAt`; TTL sin filtro parcial confiando en el `$unset`; TTL largo sobre las confirmadas
 (contradice «Un aviso por estancamiento»).
 
-### D6. Migración e índices sin bloquear el arranque; la compuerta nace cerrada *(precisa ADR-061 §4 y D7 de `776e12a`)*
+### D6. Migración e índices sin bloquear el arranque; la compuerta nace cerrada y vive en la toma *(precisa ADR-061 §4 y D7 de `776e12a`)*
 
-`ClaimIndexesBootstrap` (plataforma del worker) con `ensure(collection): Promise<boolean>` **de un solo vuelo** por
-colección (una llamada en curso se comparte; resuelta abierta, no se repite) y `ClaimIndexesGate` por colección, que
-**nace cerrada**. `migrate(collection)`, el cuerpo de `ensure`, es el de `776e12a` D7:
+`ClaimIndexesBootstrap` (plataforma del worker) con `ensure(collection): Promise<boolean>` y `ClaimIndexesGate` por
+colección, que **nace cerrada**. Semántica de `ensure` (C10):
+
+- compuerta abierta → `true` sin tocar Mongo (queda **cacheada** abierta para la vida del proceso);
+- hay una migración en curso → se une a ella y devuelve su resultado; **unirse cuenta como el intento**: quien se unió a
+  un vuelo que terminó cerrado no lanza otro;
+- cerrada y sin vuelo → lanza un intento nuevo (`migrate`) y devuelve su resultado.
+
+`migrate(collection)` es el de `776e12a` D7:
 
 1. **Completar heredados**: `updateMany({ leaseUntil: { $exists: false }, confirmed: { $ne: true } }, [{ $set:
-   { confirmed: false, leaseUntil: { $add: [{ $ifNull: ['$claimedAt', now] }, leaseMs] } } }])`.
+   { confirmed: false, leaseUntil: { $add: [{ $ifNull: ['$claimedAt', now] }, leaseMs] } } }])`. En la colección de
+   **modo lease** (frescura), además (C15): `updateMany({ confirmed: true }, { $set: { confirmed: false, leaseUntil: now
+   } })`, para que ninguna marca de frescura quede confirmada fuera del TTL y bloqueando para siempre.
 2. **Quitar duplicados**: agregación con `maxTimeMS` que agrupa por clave con más de un documento y conserva el
    confirmado, después el de `claimedAt` más reciente, después el de `_id` menor; borra el resto por `_id`. Dos réplicas
    calculan el mismo superviviente. Nunca se pierde un «ya se avisó».
 3. **Crear** con un `createIndex` por índice, **`ttl_lease` primero** y `uniq_claim_key` después.
 4. **Comprobar** con `listIndexes` que la clave única existe con `unique: true` y la clave esperada; si sí, abre la
-   compuerta.
+   compuerta y registra `log` con el texto fijo **`claims migration complete: <colección> (platform/worker-claims)`**
+   (B3).
 
 Si 3 falla con `E11000` (un escritor heredado insertó un duplicado entre 2 y 3), se repiten 2-4 hasta tres veces.
-**`migrate` nunca lanza**: cualquier otro error se captura, deja la compuerta cerrada y registra un `warn` con la
-colección y `code`/`codeName`, sin documentos ni claves.
+**`migrate` nunca lanza**: cualquier otro error se captura, deja la compuerta cerrada y registra un `warn` con el texto
+fijo **`claims gate closed: <colección> (<codeName|code>)`** (B4), sin documentos ni claves.
 
-**Lo nuevo respecto de `776e12a`: cuándo corre.** `776e12a` la esperaba en `onModuleInit` y apoyaba el «antes del
-primer tick» en que los crons se montan en `onApplicationBootstrap`. Con la conexión perezosa y Mongo caído, ese
-`await` deja `app.init()` colgado hasta que Mongoose agota el búfer y la selección de servidor, y el worker no sirve su
-liveness: rompe «Arranque independiente de las dependencias», y ningún test de hoy lo vería (el de arranque sin
-dependencias corre en `test`, sin schedulers). Por eso:
+**Dónde se consulta la compuerta (C1).** En **la toma**: `MongoLeaseClaims.take` hace `await ensure()` de su colección y
+devuelve `null` si queda cerrada (D2). Así ningún camino toma una marca sin el índice único, tampoco la cascada de ASN
+que dispara el consumidor de enriquecimiento al cerrar un link. Los schedulers, además, hacen `ensure` al empezar el
+tick (`StaleApplicationsScheduler`: `application_stale_claims`; `LinkFreshnessScheduler`: `link_freshness_claims` **y**
+`application_status_group_notify_claims`, H6) para registrar el `warn` y saltarse el tick entero en vez de recorrer un
+lote cuyas tomas responderían todas `null`. Con la compuerta cacheada abierta, el `ensure` de cada toma no toca Mongo.
 
-- `ClaimIndexesBootstrap.onApplicationBootstrap()` lanza `ensure` de las tres colecciones **sin esperarlo** (`void`, con
-  el error ya capturado dentro de `migrate`). El arranque termina enseguida.
-- **El «antes del primer tick» lo garantiza la compuerta, no el orden del ciclo de vida.** Cada scheduler, al empezar su
-  tick, hace `await bootstrap.ensure(c)` de sus colecciones (`StaleApplicationsScheduler`: `application_stale_claims`;
-  `LinkFreshnessScheduler`: `link_freshness_claims` **y** `application_status_group_notify_claims`, H6). Si la migración
-  de arranque sigue en curso, la espera (un solo vuelo); si terminó cerrada, la reintenta una vez; si al final alguna
-  está cerrada, `warn` con el nombre de la colección y se salta el tick. Un detector nunca toma una marca sin el índice
-  único de su colección.
-- El módulo de marcas solo se registra cuando los consumidores están habilitados (`NODE_ENV !== 'test'`), como los
-  schedulers; así `startup-without-dependencies.spec.ts` no cambia.
-- El apagado no espera a una migración en curso: `MongoInitialConnectRetry.beforeApplicationShutdown` ya cierra el
-  cliente si la conexión sigue pendiente, y una operación abortada cae en el `catch` de `migrate`.
+**Cuándo corre la migración (lo nuevo respecto de `776e12a`).** `776e12a` la esperaba en `onModuleInit` y apoyaba el
+«antes del primer tick» en que los crons se montan en `onApplicationBootstrap`. Con la conexión perezosa y Mongo caído,
+ese `await` deja `app.init()` colgado hasta que el búfer de Mongoose falla (`bufferTimeoutMS`, 10 s por defecto) y el
+worker no sirve su liveness: rompe «Arranque independiente de las dependencias», y ningún test de hoy lo vería. Por eso:
 
-El resto del worker (enriquecimiento, CV, match, búsqueda, avisos) no consulta compuertas.
+- `ClaimsModule` (`apps/worker/src/infrastructure/claims/claims.module.ts`) es **estático y `@Global()`**, importado una
+  sola vez en `AppModule` (C11): una única instancia de `ClaimIndexesBootstrap` y de cada compuerta para los schedulers y
+  para los adaptadores de los dos módulos. Existe también en `test`, porque los adaptadores lo necesitan.
+- `ClaimIndexesBootstrap.onApplicationBootstrap()`, **solo con los consumidores habilitados** (`NODE_ENV !== 'test'`, leído
+  de `APP_CONFIG`), lanza `ensure` de las tres colecciones **sin esperarlo** (`void`; el error ya lo captura `migrate`).
+  En `test` no lanza nada y la migración corre perezosa en la primera toma; `startup-without-dependencies.spec.ts` no
+  cambia.
+- **El «antes del primer tick» lo garantiza la compuerta, no el ciclo de vida**: el primer tick se une a la migración de
+  arranque o la reintenta; si queda cerrada, `warn` y salto.
+- El apagado no espera a una migración en curso: `MongoInitialConnectRetry.beforeApplicationShutdown` cierra el cliente
+  si la conexión sigue pendiente, y la operación abortada cae en el `catch` de `migrate`.
+- **Una compuerta abierta no se vuelve a cerrar sola**: si alguien borra un índice (`dropIndex`) o restaura la base, los
+  workers siguen creyéndola abierta hasta reiniciarse. El RUNBOOK lo dice (C12).
 
-*Descartado:* esperar la migración en `onModuleInit` (bloquea el arranque con Mongo caído, arriba); esperar al evento
-`connected` de la conexión antes de lanzarla (añade un camino propio de reconexión que `ensure` en cada tick ya cubre);
-esquemas de Mongoose con `autoIndex` (un índice único que falla por duplicados lo hace en silencio); una migración
-manual por `mongosh`; que el worker no arranque; `createIndexes` de los dos índices a la vez.
+*Descartado:* esperar la migración en `onModuleInit` (bloquea el arranque con Mongo caído); la compuerta solo en los
+schedulers (deja abierta la cascada desde el enriquecimiento, C1); volver a comprobar los índices en cada toma (una
+consulta por toma para un caso de operación manual que cubre el reinicio); esperar al evento `connected` antes de
+lanzarla; esquemas de Mongoose con `autoIndex`; una migración manual por `mongosh`; que el worker no arranque;
+`createIndexes` de los dos índices a la vez.
 
 ### D7. La toma vencida del ledger es de uno solo
 
 `MongoNotifyDeliveryLedger.claim`, rama de toma vencida: `updateOne({ ...filter, status: 'claimed', claimedAt:
 existing.claimedAt }, ...)` y `'claimed'` solo con `modifiedCount === 1`; si no, se vuelve a leer una vez y se responde
-según el estado nuevo (`in_flight` o `already_done`). Entre la lectura y la retoma, un método `protected async
+según el estado nuevo (`in_flight` o `already_done`); si la relectura **no encuentra documento** (lo borró el borrado de
+cuenta entre la lectura y la retoma), `already_done` (C19). Entre la lectura y la retoma, un método `protected async
 beforeRetake(): Promise<void>` vacío es el punto de inyección del test (H8). Con la entrega en vuelo de la parte A
 (§5b), el perdedor que obtiene `in_flight` aplaza su job y en la vuelta encuentra `already_done`: nadie envía dos veces y
 nadie pierde el aviso.
 
 La copia de `api` (`MongoNotificationDeliveryRepository.claim`) tiene el mismo defecto pero ningún llamador; queda
-fuera (Q3).
+fuera (Q3) y se anota como candidato en el manifiesto (tarea 10.4).
 
 ### D8. Inventario de crons con varias réplicas *(Q2; con Q2 = (b) sale)*
 
 Las marcas cubren tres de los cuatro crons del worker. Los otros dos ya son seguros por otro mecanismo, y este change
 lo deja escrito y vigilado en vez de suponerlo:
 
-| Cron | Fichero | Mecanismo con N réplicas |
-|---|---|---|
-| frescura (`EVERY_HOUR`) | `freshness/infrastructure/queue/link-freshness.scheduler.ts` | marcas `link_freshness_claims` + ASN (D2-D6) |
-| stale (`EVERY_HOUR`) | `notifications/infrastructure/queue/stale-applications.scheduler.ts` | marcas `application_stale_claims` (D2-D6) |
-| digest semanal (`GROUP_DIGEST_CRON`) | `notifications/notifications.module.ts` (host dinámico) | job raíz de un solo vuelo (`digest:week:{weekKey}`) + ledger por entrega (D7) + entrega en vuelo (§5b) |
-| barrido de snapshots (diario) | `enrichment/infrastructure/schedule/snapshot-sweep.scheduler.ts` | caso de uso idempotente (`cv/documents`, «Dos réplicas barren a la vez») |
+| Cron | Fichero | Declaraciones | Mecanismo con N réplicas |
+|---|---|---|---|
+| frescura (`EVERY_HOUR`) | `freshness/infrastructure/queue/link-freshness.scheduler.ts` | 1 | marcas `link_freshness_claims` + ASN (D2-D6) |
+| stale (`EVERY_HOUR`) | `notifications/infrastructure/queue/stale-applications.scheduler.ts` | 1 | marcas `application_stale_claims` (D2-D6) |
+| digest semanal (`GROUP_DIGEST_CRON`) | `notifications/notifications.module.ts` (host dinámico) | 1 | job raíz de un solo vuelo (`digest:week:{weekKey}`) + ledger por entrega (D7) + entrega en vuelo (§5b) |
+| barrido de snapshots (diario) | `enrichment/infrastructure/schedule/snapshot-sweep.scheduler.ts` | 1 | caso de uso idempotente (`cv/documents`, «Dos réplicas barren a la vez») |
 
 - **Guardia**: `apps/worker/src/app/worker-crons.inventory.spec.ts` recorre los `.ts` no `spec` de `apps/worker/src`,
-  busca `@Cron(` y compara el conjunto de ficheros con una tabla exportada del propio test (fichero → mecanismo). Falla
-  nombrando el fichero que sobra o el que falta. Es un test de Vitest del proyecto `worker`, así que su caché de Nx
-  depende de los fuentes del worker, que es justo lo que inspecciona.
+  **quita los comentarios** (`/* … */`, `/** … */` y `// …`; C2: `group-digest.scheduler.ts:12` menciona `@Cron(` en un
+  JSDoc) y cuenta por fichero las apariciones de `@Cron(`, `@Interval(`, `@Timeout(`, `addCronJob(`, `addInterval(`,
+  `addTimeout(`, `repeat:` y `upsertJobScheduler(` (C4). Compara el mapa fichero → número con la tabla exportada del
+  propio test (C3) y falla nombrando el fichero que sobra, el que falta o el que no cuadra. Es un test de Vitest del
+  proyecto `worker`: su caché de Nx depende de los fuentes del worker, que es lo que inspecciona.
 - **Digest con dos réplicas**: si los dos crons encolan la misma `weekKey` y el primer job ya terminó y se borró, corre
   un segundo; el ledger responde `already_done` (o `in_flight` y aplaza). Un test de integración con dos
-  `ProcessGroupWeeklyDigest` y dos conexiones lo fija (tarea 9.2).
+  `ProcessGroupWeeklyDigest` y dos conexiones lo fija (tarea 9.2); como el índice único de `notification_deliveries` lo
+  declara el esquema de `api`, el setup lo crea igual, con un comentario que apunta a
+  `apps/api/src/modules/notifications/infrastructure/notification-delivery.schemas.ts` (C6).
 
 *Descartado:* un lint o un `grep` en `repo-checks` (más frágil ante el host dinámico del digest y fuera del proyecto
 que lo usa); marcas también para el digest (duplicaría lo que el ledger ya garantiza).
@@ -278,19 +310,24 @@ La regla existe porque escalar sin este change duplica avisos. Al archivar:
 
 - `infra/README.md`, bajo «Escalar worker»: la línea «No escalar `worker` hasta archivar `worker-claims-multi-replica`;
   ADR-061 §6» pasa a «Escalar `worker` solo cuando todas las réplicas corran una imagen que incluya
-  `worker-claims-multi-replica` (ADR-061 §2-§4); el primer arranque migra los índices de las marcas: comprobarlo antes
-  de escalar (RUNBOOK)». Archivar no es desplegar: la condición es la imagen, no el archivo.
-- Con versiones mezcladas durante un despliegue escalado (R6) no hay duplicados una vez creado `uniq_claim_key`, así que
-  la condición se refiere a escalar a propósito, no a la recreación de contenedores.
-- `docker-compose.prod.yml`, comentario del servicio `worker`: Q4.
+  `worker-claims-multi-replica` (ADR-061 §2-§4)», seguida de los **dos chequeos** antes de `--scale … --no-recreate`
+  (B3, C5): (1) `docker compose … ps` / `images` muestra que la réplica existente corre el `IMAGE_TAG` desplegado
+  después del PR de este change; (2) su log contiene `claims migration complete` para las tres colecciones. Archivar no
+  es desplegar: la condición es la imagen, no el archivo.
+- **Versiones mezcladas** (R6, C5): con `uniq_claim_key` creado no hay **documentos duplicados**, pero una réplica vieja
+  sigue con «leer y después upsert» y **puede repetirse un aviso** mientras convivan. Por eso los chequeos van antes de
+  escalar, y la recreación de contenedores de un despliegue normal (un worker, el viejo se para antes) no es un riesgo.
+- `docker-compose.prod.yml`, comentario del servicio `worker` (Q4 = (a)), en inglés como el resto del fichero:
+  `# Scale only when every worker replica runs an image that includes worker-claims-multi-replica (see infra/README.md)`.
 - ADR-061 §6 «Para 35c»: la regla queda como histórica con una anotación de una línea (tarea 11.7).
 
-### D10. Encaje: después de `worker-data-hygiene`, con fila del owner
+### D10. Encaje: después de `worker-data-hygiene`; la fila la decide el owner
 
-Disparador del owner: «antes del primer `--scale worker=2`». Hoy no hay host de producción ni plan de escalar staging,
-así que no hay urgencia técnica; el costo de no tener fila es el de B12 de `worker-data-hygiene`: la regla de no escalar
-queda vigente sin fecha. Q1 pide la fila. Precondición dura en cualquier caso: `worker-data-hygiene` archivado (0.3).
-No hay excepción a ADR-048 que pedir: la fila 35 termina antes que `worker-data-hygiene`.
+Disparador del owner: «antes del primer `--scale worker=2`». Hoy no hay host de producción ni plan de escalar staging:
+el valor para el usuario es nulo hasta que se escale, y la spec ya queda escrita. Q1 decide si entra como fila
+ejecutable o queda como candidato. Precondición dura en cualquier caso: `worker-data-hygiene` archivado (0.3). Si se
+aplica, llega a staging por el CD normal de `main` (no tiene despliegue propio); la 11.6 comprueba ese despliegue. No hay
+excepción a ADR-048 que pedir: la fila 35 termina antes que `worker-data-hygiene`.
 
 ### D11. Cómo se prueba la concurrencia
 
@@ -299,14 +336,15 @@ No hay excepción a ADR-048 que pedir: la fila 35 termina antes que `worker-data
   misma URI y base), cada una con su adaptador o caso de uso.
 - **Sin esperas fijas.** Las carreras se fijan de dos maneras: (a) propiedades que valen para cualquier intercalado
   (`Promise.all` de dos tomas → exactamente una gana, un documento por clave), repetidas 50 rondas; (b) intercalados
-  forzados con puntos de inyección (`beforeRetake` del ledger, dobles cuya promesa resuelve el test). Las falsaciones de
-  las carreras son **secuenciales** (H8): sin `uniq_claim_key`, A toma y luego B toma la misma clave.
+  forzados con puntos de inyección (`beforeRetake` del ledger, dobles de `migrate` con **promesa diferida** que resuelve
+  el test, C8). Las falsaciones de las carreras son **secuenciales** (H8): sin `uniq_claim_key`, A toma y luego B toma la
+  misma clave.
+- Fixtures con **`_id` explícitos** (C14) donde el orden importa (superviviente por `_id` menor, orden de inserción).
 - Los tests del monitor TTL arrancan su propio `MongoMemoryServer` con `ttlMonitorSleepSecs=1` y sondean cada 250 ms con
-  tope de 10 s un **centinela** que tiene que desaparecer antes de afirmar que algo no desapareció (H9). Si
-  `worker-data-hygiene` dejó un helper para su `outbox-ttl.spec.ts`, se reutiliza; es un `api` distinto, así que lo
-  normal es copiar las cuatro líneas de arranque.
-- Las pruebas de arranque y de compuerta usan dobles cuya promesa controla el test, y `setImmediate` para observar el
-  orden; ningún `setTimeout` con milisegundos.
+  tope de 10 s un **centinela** que tiene que desaparecer antes de afirmar que algo no desapareció (H9).
+- Las pruebas de arranque usan un módulo de testing con `app.init()`, **sin adaptador HTTP** (C8), y la de Mongo caído
+  (C7) usa el `ClaimIndexesBootstrap` real con una conexión perezosa a un puerto sin servidor y `bufferTimeoutMS` bajo
+  (200 ms): el test espera la promesa de `ensure`, no un reloj.
 
 ## Risks / Trade-offs
 
@@ -314,70 +352,115 @@ No hay excepción a ADR-048 que pedir: la fila 35 termina antes que `worker-data
   solo tienen `_id`, `uniq_claim_key` y `ttl_lease`; el adaptador comprueba que el `keyPattern` del error es la clave y
   relanza cualquier otro (test con un índice único extra).
 - **R2. Compuerta cerrada en silencio prolongado**: si la migración no converge, stale, ASN y frescura no corren.
-  Mitigación: un `warn` por tick con la colección y el código; RUNBOOK con la consulta de índices y qué hacer.
-- **R3. Primer tick tras un arranque con Mongo caído** *(nuevo, por D6)*: el tick espera la migración dentro de su
-  propio tiempo; con Mongo todavía caído, el `ensure` falla tras el búfer de Mongoose y el tick se salta con un `warn`.
-  Es el comportamiento querido (sin índice no se toma), con un `warn` por hora hasta que vuelva Mongo.
+  Mitigación: `warn` con texto fijo (`claims gate closed`) por tick; RUNBOOK con el `grep` exacto, la consulta de
+  índices y la tabla causa → acción por `codeName`.
+- **R3. Primer tick tras un arranque con Mongo caído** *(por D6)*: el tick se une a la migración o la reintenta; con
+  Mongo caído falla a los `bufferTimeoutMS` y el tick se salta con un `warn`, una vez por hora hasta que vuelva Mongo.
 - **R4. `listEligible` y `listCascadePending` con `uniq_claim_key`**: el `$lookup` de la parte A pasa a usar el índice;
   no cambia su resultado. Lo cubren los tests de la parte A, que siguen en verde (7.3).
 - **R5. Dos réplicas migrando a la vez**: las dos calculan el mismo superviviente y `createIndex` es idempotente; lo fija
-  la 3.4.
-- **R6. Despliegue escalado con versiones mezcladas**: una réplica vieja hace upsert por igualdad de clave; con el índice
-  único Mongo lo reintenta sin duplicar, y la rama heredada del filtro evita que bloquee a las nuevas. Una confirmación
-  vieja sobre una toma nueva deja un `leaseUntil` pasado en una confirmada: el filtro parcial la deja fuera del TTL. Lo
-  cubren tests con un escritor heredado (8.6).
+  la 3.5.
+- **R6. Despliegue escalado con versiones mezcladas** (C5): con el índice único, el upsert por igualdad de la réplica
+  vieja se reintenta sin crear **documentos duplicados**, y la rama heredada del filtro evita que bloquee a las nuevas;
+  pero la réplica vieja sigue decidiendo en memoria tras leer, así que **puede repetirse un aviso** mientras convivan.
+  Una confirmación vieja sobre una toma nueva deja un `leaseUntil` pasado en una confirmada: el filtro parcial la deja
+  fuera del TTL (5.1). Mitigación: los chequeos de D9 antes de escalar; 8.6 fija que una réplica nueva toma una clave que
+  dejó una vieja.
 - **R7. Vuelta atrás** con el ledger: la versión anterior retoma sin condición, como hoy; no rompe nada que hoy funcione.
-- **R8. El inventario de crons como guardia textual** *(D8)*: un cron declarado de forma que el patrón `@Cron(` no vea
-  (por ejemplo, registrado con `SchedulerRegistry.addCronJob`) se escaparía. Mitigación: el test busca también
-  `addCronJob(`; hoy no hay ninguno.
+- **R8. El inventario de crons como guardia textual** *(D8)*: un cron declarado de una forma que ningún patrón vea se
+  escaparía. Mitigación: ocho patrones (decoradores, registro dinámico y jobs repetibles de BullMQ), comentarios fuera.
+- **R9. Toma con la compuerta cerrada fuera de un tick** *(por C1)*: cada toma del camino de enriquecimiento con la
+  compuerta cerrada lanza o se une a un intento de migración. Es un estado anómalo y el vuelo único comparte el intento
+  entre tomas simultáneas; el aviso no se pierde (lo recoge `listCascadePending`).
+- **R10. Compuerta cacheada tras un `dropIndex`** *(por D6)*: los workers no lo notan hasta reiniciarse. Mitigación:
+  RUNBOOK (C12).
 
 ## Migration Plan
 
 1. **Apply y CI**: todo con `mongodb-memory-server` (replset del preset), incluidas la migración de heredados con
    duplicados, dos réplicas migrando y la prueba de dos réplicas por cada detector y por el digest.
-2. **Despliegue** (con un worker): el primer arranque del worker nuevo sirve la liveness enseguida y migra en segundo
-   plano; el primer tick de cada detector espera la migración. Sin scripts ni paradas.
+2. **Despliegue** por el CD normal de `main` (con un worker): el worker nuevo sirve la liveness enseguida y migra en
+   segundo plano; ninguna toma corre antes de que exista el índice único. Sin scripts ni paradas.
 3. **Comprobación tras desplegar** (RUNBOOK): `getIndexes()` de las tres colecciones con `uniq_claim_key` y `ttl_lease`
-   (con su filtro parcial) y ningún `warn` de compuerta en el log del worker tras el primer tick.
-4. **Escalar**: solo después de 3, con todas las réplicas en la imagen nueva (D9).
+   (con su filtro parcial), tres líneas `claims migration complete` y ningún `claims gate closed` en
+   `docker compose logs worker`.
+4. **Escalar**: solo después de 3 y de los dos chequeos de D9.
 5. **Vuelta atrás**: revertir el código. Los índices no estorban a la versión anterior: con el único, su upsert por
    igualdad se reintenta sin error; con `ttl_lease` parcial, sus tomas sin `leaseUntil` no caducan, las que dejó el
    código nuevo caducan como abandonadas y las confirmadas quedan fuera. **Antes de revertir, volver a un worker** (la
    versión anterior duplica avisos con dos). Si hiciera falta quitarlos: `dropIndex('uniq_claim_key')`,
-   `dropIndex('ttl_lease')`.
+   `dropIndex('ttl_lease')`, y reiniciar los workers que sigan con la versión nueva (R10).
 
 ## Open Questions
 
-- **Q1 [bloqueante para `/opsx:apply`]. Fila del plan.**
-  - (a) **Fila «tras `worker-data-hygiene`»** en `docs/design-v0.2.md` §6, justo después de ella y antes de la 36
-    (`golden-sets-reales`), sin renumerar y sin excepción a ADR-048 —**recomendación**: cierra B12 (la regla de no
-    escalar deja de ser indefinida), son unas 30 tareas de backend sin despliegue propio y la 36 depende de uso real, que
-    lleva semanas igual—.
-  - (b) **Seguir candidato sin fila** y aplicar solo cuando se planifique el primer `--scale worker=2`. *Costo:* la regla
-    de no escalar sigue sin fecha y el diseño envejece contra el código.
-  - (c) Fila después de la 36. *Costo:* el de (b), acotado.
+- **Q1 [bloqueante para `/opsx:apply`]. Fila del plan.** En cualquier opción, si se aplica, llega a staging por el CD
+  normal de `main`, sin despliegue propio; la 11.6 comprueba ese despliegue.
+  - (a) **Fila ejecutable «tras `worker-data-hygiene`»**: la 0.1 mueve la fila de `openspec-changes.yaml` justo después
+    de `worker-data-hygiene` y antes de `golden-sets-reales`, y añade la fila en `docs/design-v0.2.md` §6, sin
+    renumerar y sin excepción a ADR-048. *Argumento:* aprovecha capacidad ociosa mientras la 36 espera uso real.
+    *Costo:* unas 42 tareas de backend e infra (45 con el grupo 0) sin valor visible hasta que se escale.
+  - (b) **Candidato con disparador** —**recomendación de reflect (iteración 1)**: el valor para el usuario es nulo
+    hasta escalar y la spec ya queda escrita—. La 0.1 **saca la fila de `openspec-changes.yaml`** como fila ejecutable
+    (para que `/lv:new next` y `scripts/autopilot.sh` no la tomen) y la anota en `docs/design-v0.2.md` §6 como
+    **candidata** con su disparador «antes del primer `--scale worker=2`», como `web-english-locale` (fila 37: «No está
+    en `openspec-changes.yaml` a propósito»). El directorio del change queda en `openspec/changes/`. *Costo:* la regla de
+    no escalar sigue vigente sin fecha y el diseño puede envejecer contra el código (la 0.3 lo vuelve a comprobar).
+  - (c) Fila ejecutable después de la 36: la 0.1 la mueve detrás de `golden-sets-reales` en el manifiesto y en §6.
+    *Costo:* el de (b), acotado.
   - La respuesta se anota aquí en una línea que empieza por «Respuesta del owner (Q1), AAAA-MM-DD:» y en ADR-061 §6
     con «Respuesta del owner (Q1 de `worker-claims-multi-replica`), AAAA-MM-DD:» (ADR-061 ya tiene la Q1 de
     `worker-data-hygiene`). Q2-Q4 se anotan aquí con la misma forma.
 - **Q2 [no bloqueante]. Inventario de crons y digest con dos réplicas (D8).**
   - (a) **Incluirlo** (grupo 9 de tareas y el requirement «Cada cron del worker declara qué lo protege con varias
-    réplicas») —**recomendación**: es lo que convierte «se puede escalar» en algo comprobado para los cuatro crons, no
-    solo para tres; dos tareas sin código de producción—.
+    réplicas») —**recomendación**: convierte «se puede escalar» en algo comprobado para los cuatro crons; dos tareas sin
+    código de producción—.
   - (b) Alcance estricto de `776e12a`: quitar el grupo 9 y ese requirement en la 0.1.
 - **Q3 [no bloqueante]. Copia del ledger en `api`.** `MongoNotificationDeliveryRepository.claim`/`markCompleted`/
   `markFailed` tienen la toma vencida sin condición y ningún llamador (solo se usa `deleteByUserId`).
-  - (a) **Fuera**, anotado como candidato de limpieza de `notifications` en `api` —**recomendación**: no hay defecto
-    observable y tocar `api` amplía el change a otro proceso—.
+  - (a) **Fuera**, anotado como candidato de limpieza de `notifications` en `api` (tarea 10.4) —**recomendación**,
+    mantenida en la iteración 1 (B9): no hay defecto observable y tocar `api` amplía el change a otro proceso—.
   - (b) Aplicar aquí la misma condición de D7.
   - (c) Borrar aquí los tres métodos sin uso del puerto de `api`.
 - **Q4 [no bloqueante]. Comentario `--scale worker=2` de `docker-compose.prod.yml`.**
-  - (a) **Este change lo ajusta en su cierre** (solo el comentario del servicio `worker`), sobre el texto que deje 35c,
-    para que diga la misma condición que `infra/README.md` (D9) —**recomendación**: un comentario no cambia el despliegue
-    y deja una sola regla en los dos sitios—.
+  - (a) **Este change lo ajusta en su cierre** (solo el comentario del servicio `worker`, texto de D9), sobre el que
+    deje 35c —**recomendación**: un comentario no cambia el despliegue y deja una sola regla en los dos sitios—.
   - (b) Dejarlo al siguiente change de despliegue; el README manda mientras tanto.
 
-## Debate
+## Debate iteración 1 (2026-11-04)
 
-Pendiente: lo orquesta la sesión principal con `/lv:debate` (critic, business; la sesión principal como reflect). El
-diseño de D2-D5, D7 y la mayor parte de D6 ya convergió en `worker-data-hygiene` (iteraciones 1-3 y verificación de
-N1); lo nuevo a debatir es D6 (cuándo corre la migración), D8, D9, D10 y Q1-Q4.
+Critic: P0 0, P1 C1 y C2-C19. Business: V0 0, B1-B9. Reflect: la sesión principal.
+
+| id | decisión | motivo |
+|---|---|---|
+| C1 | aceptado: compuerta en `MongoLeaseClaims.take` (`ensure` de un solo vuelo, cacheado abierto; `null` si cerrada); scheduler conserva `warn` y salto; spec «Ninguna toma…»; test 1.4 con falsación y escenario de la cascada desde el enriquecimiento (7.2) | la cascada de ASN desde `enrich-link` → `close-job-link` → `expire-applications` tomaba sin compuerta e insertaba un duplicado que «ganaba», aun con un worker |
+| C2 | aceptado: la guardia quita comentarios antes de buscar (D8, 9.1) | `group-digest.scheduler.ts:12` menciona `@Cron(` en un JSDoc |
+| C3 | aceptado: inventario fichero → número de declaraciones; segunda falsación en un fichero ya inventariado (9.1) | por fichero no veía un cron extra en un fichero conocido |
+| C4 | aceptado: patrones `@Interval(`, `@Timeout(`, `addInterval(`, `addTimeout(`, `repeat:`, `upsertJobScheduler(` (D8, spec) | había formas de programar trabajo que la guardia no veía |
+| C5 | aceptado (= B2): R6 y D9 dicen «sin documentos duplicados; con versiones mezcladas puede repetirse un aviso»; README con chequeo de `ps`/`images` antes de `--scale … --no-recreate` (10.2) | el texto prometía más de lo que da una réplica vieja |
+| C6 | aceptado: el setup de 9.2 crea el índice único de `notification_deliveries` con comentario a su esquema de `api` | el worker no declara ese índice; sin él la prueba no prueba |
+| C7 | aceptado: 4.5 «boots and closes the gate when MongoDB is unreachable», bootstrap real, conexión perezosa a un puerto sin servidor, `bufferTimeoutMS` bajo | el doble no probaba el búfer de Mongoose real |
+| C8 | aceptado: dobles de `migrate` con promesa diferida; módulo de testing sin adaptador HTTP (4.4) | `setImmediate` como reloj era frágil y el HTTP sobraba |
+| C9 | aceptado: el test tautológico de la antigua 4.4 se sustituye por el de C1 (1.4) | afirmaba algo que ningún código podía romper |
+| C10 | aceptado: unirse a un vuelo en curso cuenta como el intento (D6), test en 4.2 | evitaba dobles migraciones por tick, sin definir |
+| C11 | aceptado: `ClaimsModule` estático `@Global()`, importado una vez en `AppModule`; test de misma instancia (4.4) | dos instancias tendrían compuertas distintas |
+| C12 | aceptado: RUNBOOK, reiniciar los workers tras `dropIndex` o restauración (10.1, R10) | la compuerta queda cacheada abierta |
+| C13 | aceptado: 1.1, 3.3, 4.2 y 8.6 partidas (8.6 combinada con B6) | tareas de más de una hora |
+| C14 | aceptado: `_id` explícitos en los fixtures donde el orden importa (D11, 3.2) | el `ObjectId` puede no ordenar como se inserta |
+| C15 | aceptado: en modo lease, el paso 1 normaliza `confirmed: true` → `false` con `leaseUntil: now` (D6, 3.1) | una frescura confirmada heredada quedaba fuera del TTL y bloqueando |
+| C16 | aceptado: 10.3 verifica con `grep` el texto nuevo del comentario, en inglés | «solo comentarios» no comprobaba qué decía |
+| C17 | aceptado: 11.7 cambia también la línea «Precisión propuesta por…» de ADR-061 §4 | quedaba «propuesta» tras archivar |
+| C18 | aceptado: 10.4 anota en `openspec-changes.yaml` el candidato de limpieza de `api` | Q3 (a) sin rastro se pierde |
+| C19 | aceptado: documento ausente en la relectura → `already_done` (D7, spec, 6.1) | caso no definido tras un borrado de cuenta |
+| C-prec | aceptado: el búfer de Mongoose falla a los `bufferTimeoutMS` (10 s); los 30 s son la selección de servidor (Context, D6) | cifra mal atribuida |
+| C-Q1 | aceptado: Q1 aclara que va por el CD normal | «sin despliegue propio» chocaba con la 11.6 |
+| B1 | aceptado: cada opción de Q1 dice qué pasa con la fila; recomendación de reflect (b), precedente `web-english-locale` | el owner decide viendo el efecto en el manifiesto |
+| B2 | aceptado (= C5) | — |
+| B3 | aceptado: línea fija `claims migration complete` (spec, 3.4, 11.3) y los dos chequeos en el README (10.2) | escalar necesita una condición comprobable |
+| B4 | aceptado: `warn` estable `claims gate closed` (spec, 3.4, 4.2); `grep` exacto en el RUNBOOK, usado en 11.6 | un mensaje variable no se puede buscar |
+| B5 | aceptado: la toma escribe `holder` (`os.hostname()`); RUNBOOK con la consulta de tomas vivas (D2, 1.2, 10.1) | diagnosticar qué réplica tiene una toma |
+| B6 | aceptado: 8.6 reducida a «a new replica takes a key last written by a legacy writer after its lease» | el adaptador heredado completo costaba más de lo que probaba |
+| B7 | aceptado: RUNBOOK con salida esperada de `getIndexes()`, agregación de duplicados y tabla causa → acción por `codeName` (10.1) | el operador no tenía qué comparar |
+| B8 | aceptado: la cifra pasa a «unas 42 tareas de backend e infra (45 con el grupo 0)» (Q1) | la cifra anterior era vieja |
+| B9 | rechazo de business mantenido: Q3 sigue con recomendación (a) | — |
+
+Convergencia: pendiente de la iteración 2.
