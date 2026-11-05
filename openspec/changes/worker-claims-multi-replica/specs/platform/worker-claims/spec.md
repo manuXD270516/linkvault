@@ -134,9 +134,11 @@ que no lo tengan, eliminar los duplicados de una misma clave conservando de form
 y crear sus índices; al terminar con el índice único creado SHALL registrar una línea que contiene el texto fijo
 `claims migration complete` y el nombre de la colección. Esta migración NO SHALL retrasar el arranque ni la liveness del
 worker (`platform/runtime-health`, «Arranque independiente de las dependencias») y ningún error suyo SHALL impedir que
-el worker arranque. **Ninguna toma** de una colección de marcas SHALL tener éxito mientras no exista el índice único de
-esa colección, venga de un detector periódico o de cualquier otro camino del worker (por ejemplo, la cascada de
-expiración que dispara el cierre de un link desde el enriquecimiento): la toma SHALL responder «no tomada». Un detector
+el worker arranque. **Ninguna toma** de una colección de marcas SHALL tener éxito mientras el worker no haya comprobado,
+desde su arranque, que existe el índice único de esa colección, venga de un detector periódico o de cualquier otro
+camino del worker (por ejemplo, la cascada de expiración que dispara el cierre de un link desde el enriquecimiento): la
+toma SHALL responder «no tomada». Tras un `dropIndex` o una restauración de la base, los workers SHALL reiniciarse para
+volver a comprobarlo, como indica el RUNBOOK. Un detector
 que use una colección sin índice único —el de frescura usa también la de ASN— SHALL registrar un aviso que contiene el
 texto fijo `claims gate closed` y el nombre de la colección, SHALL reintentar la migración en ese mismo tick y, si no la
 consigue, saltarse el tick; el resto del worker SHALL seguir procesando sus colas. Una marca escrita por la versión

@@ -117,15 +117,20 @@ propio `MongoMemoryServer`.
 ## 4. Compuerta y arranque sin bloqueo (design D6)
 
 - [ ] 4.1 [backend] `ClaimIndexesGate` por colección, que nace cerrada, y `ClaimIndexesBootstrap.ensure(collection)`
-  con la semántica de design D6 (abierta → cacheada; en vuelo → unirse; cerrada sin vuelo → intento nuevo). Verificar en
-  `claim-indexes.bootstrap.spec.ts`, con un `migrate` doble de promesa diferida: «starts with every claims gate
-  closed», «shares one migration between concurrent ensure calls» (dos `ensure` simultáneos → una llamada a `migrate`)
-  y «does not migrate again once the gate is open». Falsación: quitar el vuelo único y ver caer el segundo (dos
-  llamadas); restaurar.
+  con la semántica de design D6 (abierta → cacheada; en vuelo → unirse; cerrada dentro de
+  `CLAIMS_GATE_RETRY_COOLDOWN_MS = 60_000` → `false` sin tocar Mongo; cerrada fuera del enfriamiento → intento nuevo),
+  con el reloj inyectado. Verificar en `claim-indexes.bootstrap.spec.ts`, con un `migrate` doble de promesa diferida:
+  «starts with every claims gate closed», «shares one migration between concurrent ensure calls» (dos `ensure`
+  simultáneos → una llamada a `migrate`), «does not migrate again once the gate is open», «does not launch another
+  migration within the cooldown after a closed result» (F1: primer `migrate` cerrado; reloj +30 s → `ensure` devuelve
+  `false` y `migrate` sigue con una llamada; reloj +61 s → segunda llamada). Falsación 1: quitar el vuelo único y ver
+  caer el segundo (dos llamadas); restaurar. Falsación 2 (F1): quitar el enfriamiento y ver caer el cuarto (dos
+  llamadas a `migrate` a los +30 s); restaurar.
 - [ ] 4.2 [backend] `StaleApplicationsScheduler` hace `await ensure('application_stale_claims')` al empezar el tick;
   cerrada → `warn` `claims gate closed` con la colección y salto. Verificar en `stale-applications.scheduler.spec.ts`
   (nuevo, caso de uso como espía): «skips the stale tick and warns naming the collection when the unique index is
-  missing» (escenario «Índice imposible de crear»), «runs the tick once the gate opens on retry», «never runs a
+  missing» (escenario «Índice imposible de crear»), «runs the tick once the gate opens on retry» (el reloj inyectado
+  avanza una hora entre los dos ticks, fuera del enfriamiento de F1), «never runs a
   detector tick before the claims migration opened the gate» (el `ensure` doble queda pendiente con promesa diferida y
   el espía no se llama hasta que el test lo resuelve abierto; escenario «El primer tick llega antes de que termine la
   migración») y «counts joining an in-flight migration as the tick's attempt» (C10: el tick se une a un vuelo que
@@ -138,16 +143,17 @@ propio `MongoMemoryServer`.
 - [ ] 4.4 [backend] `ClaimsModule` estático `@Global()` (`apps/worker/src/infrastructure/claims/claims.module.ts`),
   importado una vez en `AppModule` (C11); `ClaimIndexesBootstrap.onApplicationBootstrap()` lanza `ensure` de las tres
   colecciones sin esperarlo, solo con `NODE_ENV !== 'test'`. Verificar en `apps/worker/src/app/claims-gate-startup.spec.ts`
-  (nuevo; módulo de testing con `app.init()`, sin adaptador HTTP, C8): «boots without awaiting the claims migration»
-  (con un `migrate` doble de promesa diferida, `app.init()` resuelve mientras `migrate` sigue pendiente),
-  «injects the same claims gate into the schedulers and the claim adapters» (misma instancia por `===`) y «boots the
-  worker when migrate fails» (`migrate` con error interno; `init` resuelve). Falsación: `await` de `ensure` en
-  `onModuleInit` y ver caer el primero (no resuelve hasta que el test resuelve `migrate`; el test lo detecta porque
-  comprueba el estado de la promesa de `init` antes de resolver); restaurar. `startup-without-dependencies.spec.ts`
-  sigue en verde sin cambios.
+  (nuevo; módulo de testing con `app.init()`, sin adaptador HTTP, C8), con `APP_CONFIG` =
+  `workerTestConfig({ NODE_ENV: 'production' })` (F2; precedente `enrich-link-consumer.spec.ts:125`): «boots without
+  awaiting the claims migration» (F3: `await app.init()` directo, con timeout propio del `it` de 2 s; después, el
+  `migrate` doble de promesa diferida se llamó 3 veces —una por colección— y su promesa sigue pendiente; solo entonces
+  el test la resuelve), «injects the same claims gate into the schedulers and the claim adapters» (misma instancia por
+  `===`) y «boots the worker when migrate fails» (`migrate` con error interno; `init` resuelve). Falsación: `await` de
+  `ensure` en `onModuleInit` y ver caer el primero por su timeout de 2 s (el `init` no resuelve mientras la promesa
+  diferida siga pendiente); restaurar. `startup-without-dependencies.spec.ts` sigue en verde sin cambios.
 - [ ] 4.5 [backend] Mongo inalcanzable (C7): `ClaimIndexesBootstrap` real sobre una conexión perezosa a
-  `mongodb://127.0.0.1:<puerto libre>` con `bufferTimeoutMS: 200` y `serverSelectionTimeoutMS: 200`. Verificar en el
-  mismo spec: «boots and closes the gate when MongoDB is unreachable» (`app.init()` resuelve; el test espera la promesa
+  `mongodb://127.0.0.1:<puerto libre>` con `bufferTimeoutMS: 200` y `serverSelectionTimeoutMS: 200`, y `APP_CONFIG` =
+  `workerTestConfig({ NODE_ENV: 'production' })` (F2). Verificar en el mismo spec: «boots and closes the gate when MongoDB is unreachable» (`app.init()` resuelve; el test espera la promesa
   de `ensure`, que resuelve `false`; el `warn` empieza por `claims gate closed:`; escenario «Arranque con MongoDB
   caído»).
 

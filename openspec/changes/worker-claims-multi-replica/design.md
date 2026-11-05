@@ -212,7 +212,12 @@ colección, que **nace cerrada**. Semántica de `ensure` (C10):
 - compuerta abierta → `true` sin tocar Mongo (queda **cacheada** abierta para la vida del proceso);
 - hay una migración en curso → se une a ella y devuelve su resultado; **unirse cuenta como el intento**: quien se unió a
   un vuelo que terminó cerrado no lanza otro;
-- cerrada y sin vuelo → lanza un intento nuevo (`migrate`) y devuelve su resultado.
+- cerrada y sin vuelo, **dentro del enfriamiento** (F1) → `false` sin tocar Mongo: tras un resultado cerrado,
+  `ClaimIndexesGate` no admite otro intento durante `CLAIMS_GATE_RETRY_COOLDOWN_MS = 60_000`, medido con el reloj
+  inyectado. Sin esto, el bucle secuencial de la cascada (`expire-applications-for-closed-link.usecase.ts:59-83`)
+  lanzaría una migración entera por postulación con la compuerta cerrada de forma persistente y Mongo vivo. El tick
+  horario de los detectores siempre queda fuera del enfriamiento;
+- cerrada, sin vuelo y fuera del enfriamiento → lanza un intento nuevo (`migrate`) y devuelve su resultado.
 
 `migrate(collection)` es el de `776e12a` D7:
 
@@ -370,8 +375,9 @@ excepción a ADR-048 que pedir: la fila 35 termina antes que `worker-data-hygien
 - **R8. El inventario de crons como guardia textual** *(D8)*: un cron declarado de una forma que ningún patrón vea se
   escaparía. Mitigación: ocho patrones (decoradores, registro dinámico y jobs repetibles de BullMQ), comentarios fuera.
 - **R9. Toma con la compuerta cerrada fuera de un tick** *(por C1)*: cada toma del camino de enriquecimiento con la
-  compuerta cerrada lanza o se une a un intento de migración. Es un estado anómalo y el vuelo único comparte el intento
-  entre tomas simultáneas; el aviso no se pierde (lo recoge `listCascadePending`).
+  compuerta cerrada lanza o se une a un intento de migración, **como mucho un intento por minuto** por colección
+  (`CLAIMS_GATE_RETRY_COOLDOWN_MS`, F1); el vuelo único comparte el intento entre tomas simultáneas y el aviso no se
+  pierde (lo recoge `listCascadePending`).
 - **R10. Compuerta cacheada tras un `dropIndex`** *(por D6)*: los workers no lo notan hasta reiniciarse. Mitigación:
   RUNBOOK (C12).
 
@@ -463,4 +469,15 @@ Critic: P0 0, P1 C1 y C2-C19. Business: V0 0, B1-B9. Reflect: la sesión princip
 | B8 | aceptado: la cifra pasa a «unas 42 tareas de backend e infra (45 con el grupo 0)» (Q1) | la cifra anterior era vieja |
 | B9 | rechazo de business mantenido: Q3 sigue con recomendación (a) | — |
 
-Convergencia: pendiente de la iteración 2.
+## Verificación iteración 2 (2026-11-04)
+
+Critic, verificación puntual: P0 0, P1 F1-F4. Reflect: aceptados los cuatro.
+
+| id | decisión | motivo |
+|---|---|---|
+| F1 | aceptado: tras un resultado cerrado, `ensure` devuelve `false` sin tocar Mongo durante `CLAIMS_GATE_RETRY_COOLDOWN_MS = 60_000` con el reloj inyectado (D6); R9 dice «como mucho un intento por minuto»; test en 4.1 con falsación | el bucle secuencial de la cascada lanzaba una migración entera por postulación con la compuerta cerrada y Mongo vivo |
+| F2 | aceptado: 4.4 y 4.5 usan `workerTestConfig({ NODE_ENV: 'production' })` (precedente `enrich-link-consumer.spec.ts:125`); 4.4 afirma 3 llamadas a `migrate` antes de resolverlo | con `NODE_ENV=test` el arranque no lanza la migración y los tests pasaban sin probar nada |
+| F3 | aceptado: caso positivo de 4.4 con `await app.init()` directo y timeout propio de 2 s; después, `migrate` llamado y su promesa diferida pendiente; la falsación cae por el timeout | vaciar microtareas para leer el estado de una promesa era frágil |
+| F4 | aceptado: la spec dice «mientras el worker no haya comprobado, desde su arranque, que existe el índice único» y remite al RUNBOOK para `dropIndex` o restauración | «mientras no exista» prometía detectar un borrado que la compuerta cacheada no ve |
+
+Convergencia: SI
