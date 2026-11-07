@@ -49,11 +49,11 @@ Las contraseñas de la lista cerrada —la de Redis, la de la raíz de MongoDB y
 generarse con un generador criptográfico sin mostrarse, cumplir el formato apto para URI que fija la defensa en
 profundidad de staging (32 a 128 caracteres de letras, dígitos, `.`, `_`, `~` y `-`) y vivir solo en el fichero de
 entorno del host y en su copia fuera del host. NO SHALL ser secretos del repositorio en GitHub ni aparecer en ningún
-fichero versionado, salvo los valores de relleno de la verificación en CI. La contraseña SMTP queda fuera de la lista
+fichero versionado, salvo los valores de relleno de la verificación en CI y de `.env.example`. La contraseña SMTP queda fuera de la lista
 cerrada porque el modo relay la admite vacía.
 
 En el compose de producción, toda referencia de Compose a una contraseña de la lista cerrada SHALL usar la forma que
-aborta el `up` nombrándola, y cada una SHALL estar declarada en `.env.example`. Una comprobación del repositorio SHALL
+aborta el `up` nombrándola, y cada una SHALL estar declarada en `.env.example` con un valor de relleno. Una comprobación del repositorio SHALL
 fallar nombrando la variable que incumpla cualquiera de las dos reglas.
 
 La revisión de un fichero de entorno de despliegue SHALL rechazar, sin imprimir ningún valor, una contraseña de la lista
@@ -89,12 +89,18 @@ repetida entre las tres.
 
 ### Requirement: Las credenciales de Mongo y Redis se rotan sin perder datos
 
-Cada una de las tres credenciales SHALL tener un procedimiento de rotación escrito en el RUNBOOK que conserve los datos
-y deje de aceptar el valor anterior. Los de la contraseña del usuario de aplicación y de Redis —editar el fichero de
-entorno y su copia y recrear los servicios afectados— SHALL estar ensayados. El de la raíz SHALL actualizar primero el
-fichero de entorno y su copia, cambiar después la contraseña autenticándose con la actual del entorno del contenedor y
-leyendo la nueva por la entrada estándar, y recrear `mongo` al final; ninguna orden del procedimiento SHALL llevar una
-contraseña en sus argumentos.
+Cada una de las tres credenciales SHALL tener un procedimiento de rotación escrito en el RUNBOOK y ensayado, que
+conserve los datos y deje de aceptar el valor anterior:
+
+- la del usuario de aplicación y la de Redis, editando el fichero de entorno y su copia y recreando los servicios
+  afectados;
+- la de la raíz, en este orden: generar la nueva en un fichero temporal legible solo por su dueño; cambiarla
+  autenticándose con la actual del entorno del contenedor y leyendo la nueva por la entrada estándar; y solo después
+  escribirla en el fichero de entorno y en su copia, borrar el temporal y recrear `mongo`. Si el cambio falla, NO SHALL
+  quedar nada cambiado; si el cambio se hizo, el temporal NO SHALL borrarse antes de que la nueva esté en el fichero de
+  entorno y en su copia.
+
+Ninguna orden de estos procedimientos SHALL llevar una contraseña en sus argumentos.
 
 #### Scenario: Rotar la contraseña del usuario de aplicación
 
@@ -112,6 +118,20 @@ contraseña en sus argumentos.
 - **THEN** el job SHALL procesarse
 - **AND** la contraseña anterior NO SHALL autenticar
 
+#### Scenario: Rotar la raíz
+
+- **GIVEN** la pila arriba con datos
+- **WHEN** se sigue el procedimiento de rotación de la raíz del RUNBOOK
+- **THEN** después del cambio la contraseña nueva SHALL autenticar y la anterior NO SHALL autenticar
+- **AND** después de recrear `mongo`, el servicio SHALL quedar sano con el mismo número de documentos en cada colección
+
+#### Scenario: Falla el cambio de la raíz
+
+- **GIVEN** una contraseña actual de la raíz incorrecta en el entorno del contenedor
+- **WHEN** se ejecuta el paso de cambio del procedimiento
+- **THEN** SHALL fallar sin cambiar la raíz
+- **AND** la contraseña actual del volumen SHALL seguir autenticando
+
 #### Scenario: El procedimiento de la raíz no pasa contraseñas por argumentos
 
 - **WHEN** se revisan las órdenes de la sección de rotación de la raíz del RUNBOOK
@@ -124,7 +144,8 @@ Un despliegue cuyo volumen de MongoDB ya tenga datos y la raíz SHALL adoptar es
 el volumen: el healthcheck SHALL crear el usuario de aplicación y `api` y `worker` SHALL pasar a usarlo. Antes de
 fusionar SHALL existir una copia del volumen guardada fuera del host. Un volumen con datos y **sin** usuarios NO SHALL
 darse por sano ni modificarse solo: el healthcheck SHALL dar no sano con el código de fallo de autenticación, y el
-README SHALL describir el procedimiento manual. Si falta la contraseña del usuario de aplicación en el fichero de
+README SHALL describir el procedimiento manual: volcar los datos de la pila anterior y restaurar solo la base de la
+aplicación en un volumen nuevo, o borrar el volumen, que pierde los datos. Si falta la contraseña del usuario de aplicación en el fichero de
 entorno, el `up` SHALL abortar nombrándola antes de recrear ningún contenedor. Volver a la versión anterior del compose
 NO SHALL perder datos.
 
@@ -158,9 +179,10 @@ NO SHALL perder datos.
 
 ### Requirement: Una sola comprobación de credenciales para CI y para el host
 
-Una orden versionada, instalada en el host con cada despliegue, SHALL comprobar sin imprimir ningún valor que MongoDB y
-Redis rechazan una conexión sin credenciales, que el usuario de aplicación escribe en su base y no puede administrar el
-servidor, y que la raíz no está en el entorno de `api` ni de `worker`. La verificación de la pila entera en CI SHALL
+Una orden versionada, instalada en el host con cada despliegue y que recibe el compose y el fichero de entorno, SHALL
+comprobar
+Redis rechazan una conexión sin credenciales, que el usuario de aplicación escribe en su base —en una colección de control
+que SHALL borrar entera al terminar— y no puede administrar el servidor, y que la raíz no está en el entorno de `api` ni de `worker`. La verificación de la pila entera en CI SHALL
 ejecutarla, y cualquiera de sus comprobaciones que falle SHALL hacer fallar la verificación nombrándola.
 
 #### Scenario: Redis sin contraseña en la pila verificada

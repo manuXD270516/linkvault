@@ -1,8 +1,8 @@
 ## Why
 
-MongoDB y Redis responden **sin autenticación** a cualquiera que llegue a su red: en `docker-compose.yml`, con todos
-los puertos publicados en todas las interfaces del host, y, hasta que entre la defensa en profundidad de 35b, también en
-`docker-compose.prod.yml`. Tres decisiones ya tomadas apuntan a cerrarlo:
+MongoDB y Redis responden **sin autenticación** en `docker-compose.yml`, con todos los puertos publicados en todas las
+interfaces del host. En `docker-compose.prod.yml` la defensa en profundidad de 35b ya puso contraseñas (2026-11-07), pero
+`api` y `worker` entran como raíz. Tres decisiones ya tomadas apuntan a cerrarlo:
 
 - **ADR-058, riesgo aceptado R8** (`cv-extract-isolation`): el hijo que lee los CV tiene red, porque en Node 22 el
   modelo de permisos no restringe sockets, «y en la red interna del compose MongoDB y Redis responden sin
@@ -11,7 +11,7 @@ los puertos publicados en todas las interfaces del host, y, hasta que entre la d
   MongoDB y Redis va en un change propio después de la fila 35**. Este es ese change.
 - **ADR-056 §6** (`enrichment-egress-guard`): «contraseñas en Redis y Mongo aunque estén en una red privada». Respuesta
   del owner a su Q3, 2026-10-29: trasladarla a 35b, que la escribió como su D18, medida 3 (PR #92,
-  `spec/staging-host-defense-in-depth`, abierto al 2026-11-04).
+  fusionado en `556c7b6`; implementada en el PR #93, `b493986`).
 - **ADR-051, riesgos aceptados**: «Mongo de producción no tiene autenticación […] autenticar Mongo queda fuera de la
   fila».
 
@@ -66,8 +66,8 @@ Ninguna.
 
 - **Ficheros**: `docker-compose.yml` (solo `ports`), `docker-compose.prod.yml`, `.env.example`, `infra/ci/verify.env`,
   `infra/ci/verify-artifact.sh`, `infra/ci/check-env-file.mjs`, `infra/deploy/config-files.txt`, nuevos
-  `infra/deploy/check-auth.sh`, `infra/datastore/mongo-shell.sh` e `infra/staging/counts.mongosh.js`,
-  `infra/staging/run.sh` y `seed-volume.sh`, `tools/repo-checks`, los esquemas de configuración y los módulos de
+  `infra/deploy/check-auth.sh`, `infra/datastore/mongo-shell.sh` e `infra/staging/counts.mongosh.js` e
+  `infra/datastore/seed-sample.mongosh.js`, `tools/repo-checks`, los esquemas de configuración y los módulos de
   conexión de `api` y `worker`, `logger-params.ts`, `apps/web-e2e/scripts/`, `docs/RUNBOOK.md` e `infra/README.md`.
 - **Fuera de alcance**: el flag de red de Node (`--allow-net`), que llega con la subida a Node 26 LTS por decisión del
   owner (Q7 (a) de `cv-extract-isolation`, 2026-10-29); autenticación en desarrollo con Q5 (a); TLS entre servicios;
