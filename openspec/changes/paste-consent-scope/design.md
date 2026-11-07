@@ -84,13 +84,16 @@ para `extract-pasted-job` y enmienda en ese sentido ADR-023 §2, §Consecuencias
 
 Ningún fichero de `libs/ai/src` fuera de `domain/task.ts` (y de los `*.spec.ts`) decide nada por la sensibilidad.
 Lo comprueba `domain/task-sensitivity.guard.spec.ts` (C1), que no busca comparaciones, porque una comparación sobre
-una variable local o un `switch` se le escaparían. Recorre los `.ts` de `libs/ai/src` que no son specs y falla
-nombrando fichero y línea si, fuera de `domain/task.ts`, encuentra:
+una variable local o un `switch` se le escaparían. Recorre el **AST** de cada `.ts` de `libs/ai/src` que no es spec,
+con `ts.createSourceFile` (V2-02), y falla nombrando fichero y línea si, fuera de `domain/task.ts`, encuentra:
 
-- un literal `'personal'`, `'incidental'` o `'public'`, entre comillas simples o dobles;
-- o el identificador `DEFAULT_DATA_SENSITIVITY`.
+- un nodo `StringLiteral` o `NoSubstitutionTemplateLiteral` cuyo valor sea `personal`, `incidental` o `public` (así
+  cuentan las comillas simples, las dobles y las plantillas sin sustituciones, y **no** los comentarios);
+- o el identificador `DEFAULT_DATA_SENSITIVITY`. Es un caso aparte, con su falsación (V2-03).
 
-La **única excepción** es la propiedad `dataSensitivity: '…'` de la declaración de cada tarea en `tasks/*.task.ts`.
+La **única excepción** es el inicializador de la propiedad `dataSensitivity` del objeto de la tarea (el
+`PropertyAssignment` llamado `dataSensitivity` dentro del objeto exportado de `tasks/*.task.ts`). Otro literal en el
+mismo fichero no está exceptuado.
 Hoy hay comparaciones sueltas en `routing-policy.ts` (`:75`, `:111`),
 `run-task.usecase.ts` (`:479`, `:679`), `task-registry.ts` (`:53`), `record-fixtures.ts` (`:83`, `:136`) y
 `audit-personal-fixtures.ts` (`:41`). Las tres de `evals/recording/` leen el campo crudo (`task.dataSensitivity ===
@@ -110,7 +113,7 @@ declare queda fuera de las tareas `incidental` (falla segura) y los dobles de te
 servicios que declaran no recolectar ni conservar los datos. Es lo que hace `data_collection: "deny"` en OpenRouter:
 una restricción del enrutamiento a proveedores que lo declaran, no una garantía comprobable. Aparte queda la
 configuración de la cuenta de OpenRouter de la plataforma (el registro de prompts de la propia cuenta), que el código no
-controla. La verifica el owner y la anota con fecha en el RUNBOOK (tarea 4.2).
+controla. La verifica el owner y la anota con fecha en el RUNBOOK (tarea 4.2b).
 
 **`requires` no puede pedirlo (C9).** `AiTask.requires` pasa a `Partial<Pick<ProviderCapabilities, 'jsonMode' |
 'toolUse' | 'maxContextTokens'>>`. Así ninguna tarea puede «requerir» `external`, los costes ni
@@ -156,18 +159,41 @@ Consecuencias:
   extraction_unavailable`, como hoy: un change de privacidad no cambia el modo de fallo de la petición. La viñeta de
   cabecera del adaptador se reescribe con este motivo (tarea 2.1). Con la Q2 = (a), esa lectura y su `503` pueden
   quitarse en un change posterior.
-- **`409 ai_consent_required` se conserva**, con su fila en el adaptador, su error de dominio y su texto en el SPA.
-  Para esta tarea ya no hay camino que lo produzca (D5), pero quitarlo exigiría modificar requirements que
-  `paste-fallback-honest` todavía no archivó, y el código protege a la próxima tarea del pegado que fuera `personal`.
-  Sus tests con `runTask` doble siguen valiendo.
+- **`409 ai_consent_required` se conserva como defensa**, con su fila en el adaptador, su error de dominio y su texto
+  en el SPA. Para esta tarea ya no hay camino que lo produzca (D5). El código protege a una lectura futura del pegado
+  que volviera a exigir el permiso, y sus tests con `runTask` doble siguen valiendo. **El spec sí cambia (V2-01):** dos
+  escenarios de «Lo pegado tiene que parecer una oferta» de `paste-fallback-honest` exigían `409` al pegar sin permiso.
+  Este change lo modifica (`MODIFIED`, con el texto de `paste-fallback-honest`):
+  - la viñeta del `409` queda como defensa;
+  - «Sin permiso y con un externo que no pide no recolectar» responde `503 extraction_disabled`;
+  - «Sin permiso y con el circuito abierto» responde `503` con el código de la condición que recuerda el circuito.
 - Los tests del adaptador que simulan la regla vieja (`run-task-pasted-extraction.spec.ts`, bloque «consent of whoever
   pastes») se reescriben: ya no afirman qué proveedor se elige según el permiso, sino que el adaptador ejecuta la
   tarea `incidental` y sigue pasando el permiso del perfil. La regla de routing real se prueba con el `runTask` de
   verdad y proveedores falsos en `libs/ai/src/tasks/extract-pasted-job.task.spec.ts` (tarea 1.8): un doble de
   `runTask` en `apps/api` solo repetiría la regla que dice probar. La suite del controlador
-  (`links.controller.pasted.spec.ts`, IA de la suite en `replay`) comprueba la respuesta HTTP (tarea 2.2). Además, con
-  un `RUN_TASK` construido con el `runTask` real sobre un proveedor falso `external: true, dataCollectionDenied: true`
-  inyectado en esa suite, se prueba el pegado sin permiso de punta a punta, con su falsación (tarea 2.3, C7).
+  (`links.controller.pasted.spec.ts`, IA de la suite en `replay`) mantiene un caso de no regresión de la respuesta HTTP
+  (tarea 2.2). El pegado sin permiso se prueba de punta a punta en esa suite (tarea 2.3, C7), con un `RUN_TASK`
+  construido con el `runTask` real sobre un proveedor falso `external: true, dataCollectionDenied: true`, con
+  redacción afirmada y su falsación. Ese `RUN_TASK` sale de la subruta solo de tests de D13.
+
+### D13. Subruta `@linkvault/ai/testing`, solo para tests (V2-08, decisión de reflect)
+
+La entrada pública de `@linkvault/ai` (`libs/ai/src/index.ts`) **no cambia**. Se añade una subruta solo para tests,
+`@linkvault/ai/testing`, como `@linkvault/shared/net` en `enrichment-egress-guard`:
+
+- `libs/ai/src/testing/index.ts`, con su entrada en `tsconfig.base.json` (`"@linkvault/ai/testing":
+  ["./libs/ai/src/testing/index.ts"]`). Las libs del monorepo no tienen `package.json` propio (se resuelven por los
+  paths de `tsconfig.base.json`), así que no hay un campo `exports` que tocar. Si al aplicar existiera uno, se añade
+  ahí la misma subruta.
+- Exporta `composeTestRunTask(providers, options?)`: devuelve un `RunTaskFn` construido con `RunTask`, los puertos en
+  memoria de `application/testing/in-memory-ports.ts` y los proveedores que se le pasan. Exporta también
+  `FakeLlmProvider`. **No hay token `AI_PROVIDERS`** en `ai.tokens.ts`, así que no se crea uno: la suite sustituye
+  `RUN_TASK`, como ya permite `links-test-app.ts`.
+- **Guardia de lint:** `@linkvault/ai/testing` solo puede importarse desde `**/*.spec.ts` y `**/test-support/**`. Va
+  en `no-restricted-imports`, en cada bloque de `eslint.config.mjs` que ya define esa regla, porque ESLint no combina
+  las opciones de una regla entre bloques. La falsación importa la subruta desde un fichero de producción de `apps/api`
+  y ve fallar `api:lint`.
 
 ### D7. El diálogo avisa, antes de enviar, adónde puede ir lo pegado
 
@@ -218,12 +244,17 @@ Reglas:
 - **Código.** Usa `providerCondition` (ADR-060 §4), el `503 extraction_disabled` y el `409 ai_consent_required` del
   pegado (ADR-060 §5), y toca los mismos ficheros del adaptador y del diálogo. La rama de aplicación se corta de
   `main` **después** de que `paste-fallback-honest` esté fusionado (tarea 0.3).
-- **Specs.** Ningún delta de este change toca un requirement que `paste-fallback-honest` modifica o añade: este
-  modifica «Sensibilidad de datos por tarea» y «Filtrado por capacidades, consentimiento y circuitos abiertos»; renombra
-  y modifica «El texto pegado es un dato personal», que pasa a «El texto pegado puede traer datos personales» (C11:
-  el título viejo decía lo contrario de la regla nueva); y añade «Declaración de no recolección de datos» y «Aviso de adónde va lo
-  pegado». Aun así, los escenarios citan códigos que solo existen con `paste-fallback-honest`, así que **se archiva
-  después** que él.
+- **Specs.** Este change:
+  - modifica «Sensibilidad de datos por tarea» y «Filtrado por capacidades, consentimiento y circuitos abiertos»;
+  - renombra y modifica «El texto pegado es un dato personal», que pasa a «El texto pegado puede traer datos
+    personales» (C11: el título viejo decía lo contrario de la regla nueva);
+  - añade «Declaración de no recolección de datos» y «Aviso de adónde va lo pegado»;
+  - y **modifica «Lo pegado tiene que parecer una oferta», que `paste-fallback-honest` también modifica (V2-01)**. Su
+    `MODIFIED` parte del texto de `paste-fallback-honest`, con todos sus escenarios, y reescribe solo la viñeta del
+    `409` y los dos escenarios del pegado sin permiso.
+
+  Por eso **se archiva estrictamente después** que `paste-fallback-honest`: archivado antes, este `MODIFIED` quedaría
+  pisado por el suyo, que todavía exige `409`. La 6.3 lo comprueba.
 - **`web-error-copy-coverage`.** Este change no añade códigos de error, así que no toca `API_ERROR_COPY`.
 
 ### D10. Ventana de fusión, según la Q1
@@ -251,8 +282,10 @@ comportamiento a mitad de la medición, y las semanas de antes y de después dej
 ### D11. Cupo compartido en staging y cuota propia del pegado (C6, B4)
 
 En staging, todos los invitados pegan contra el mismo modelo `:free` de la misma cuenta de OpenRouter. El breaker es
-**por proveedor y por proceso**, y lo comparten todas las tareas que usan ese proveedor, `match-cv` incluida: una ráfaga
-de pegados que agote el cupo o abra el circuito deja sin IA también el encaje, y al revés.
+**por proveedor**, y con `AI_CHAIN=openrouter` **se comparte entre procesos vía Redis** (`RedisCircuitBreaker`, ADR-030
+§8; V2-10): `api` (pegado) y `worker` (encaje) ven el mismo circuito. Lo comparten todas las tareas que usan ese
+proveedor, `match-cv` incluida: una ráfaga de pegados que agote el cupo o abra el circuito deja sin IA también el
+encaje, y al revés.
 
 - **Medida:** una cuota diaria propia del pegado en staging, `extract-pasted-job=N` dentro de `AI_QUOTAS` (ADR-018
   §9: por usuario y tarea, sobre el ledger). `docker-compose.prod.yml` ya pasa `AI_QUOTAS` a `api` y a `worker`
@@ -261,6 +294,10 @@ de pegados que agote el cupo o abra el circuito deja sin IA también el encaje, 
   N es la Q5.
 - **El RUNBOOK lo dice:** el cupo de OpenRouter y el circuito son compartidos entre tareas y entre personas, y un `503
   ai_capacity_exhausted` del pegado puede venir de lecturas que no son de pegar (tarea 4.2).
+- **N acota lecturas con éxito, no peticiones (V2-10).** La cuota cuenta en el ledger los `success` de las últimas
+  24 h. Un pegado puede costar hasta dos peticiones al proveedor (`maxAttempts: 2`, una reparación), y las que fallan
+  no cuentan. El cupo de OpenRouter que anota la 8.1 de 35b está en peticiones, así que la comparación se hace en
+  peticiones: hasta 2 × N × invitados por día para el pegado, más lo que gaste el encaje.
 - La cuota propia no reparte el cupo de la cuenta: acota lo que cada persona puede gastar por pegar. Repartir el cupo
   entre tareas es un change posterior, con datos de la medición.
 
@@ -295,16 +332,21 @@ posterior (o de 35b), no de este: aquí solo se anota como pendiente en el PR.
   no cambia. Lo decide la Q2.
 - **[Fusión en una ventana compartida]** → con la Q1 = (b), este PR se suma a los de `paste-fallback-honest` y a los
   de robustez entre la 11.6 y la 10.7. Si no cabe, espera a 35c (D10); nunca entra con prisa a mitad de la medición.
-- **[Conflictos con `paste-fallback-honest`]** → la rama se corta después de su fusión (tarea 0.3), y sus specs no se
-  pisan (D9).
+- **[Conflictos con `paste-fallback-honest`]** → la rama se corta después de su fusión (tarea 0.3). Los dos changes
+  modifican «Lo pegado tiene que parecer una oferta»: este parte del texto de aquel y se archiva estrictamente después
+  (D9, 6.3).
 - **[Cupo y circuito compartidos en staging (C6)]** → todos los invitados pegan contra el mismo `:free`, y el breaker,
-  por proveedor, lo comparte el pegado con `match-cv`. Más lecturas del pegado (todas, ya sin el freno del permiso)
+  por proveedor y compartido entre `api` y `worker` vía Redis (V2-10), lo comparte el pegado con `match-cv`. Más lecturas del pegado (todas, ya sin el freno del permiso)
   pueden agotar el cupo diario o abrir el circuito del encaje. Se acota con la cuota propia del pegado (D11, Q5) y se
   documenta en el RUNBOOK. Si aun así pasa, el pegado y el encaje lo dicen con los textos de `paste-fallback-honest`
   (`ai_capacity_exhausted`), no con un error falso.
 - **[Lo que se pide al proveedor no puede comprobarse (C5)]** → `data_collection: deny` restringe el enrutamiento a
   servicios que declaran no recolectar, y la cuenta de la plataforma tiene su propia configuración de registro. El
-  aviso lo dice («aunque no podemos comprobarlo»), y la tarea 4.2 deja anotada con fecha la configuración de la cuenta.
+  aviso lo dice («aunque no podemos comprobarlo»), y la tarea 4.2b deja anotada con fecha la configuración de la cuenta.
+- **[BYOK `:free` y el registro de prompts de la cuenta propia (V2-11)]** → el BYOK de OpenRouter con modelo `:free`
+  declara `dataCollectionDenied` y puede leer lo pegado. El registro de prompts de esa cuenta lo configura la persona
+  dueña de la clave, y ni LinkVault ni el owner lo controlan. La petición sigue restringiendo el enrutamiento, como
+  con la cuenta de la plataforma, y el aviso ya dice que no puede comprobarse.
 
 ## Migration Plan
 
@@ -361,13 +403,14 @@ documentación (grupo 4). Todo cabe en un PR. Rollback: revertir el PR (D10, cla
 - **Q5 [no bloqueante para aplicar; con la Q1 = (b), se fija antes de la 10.7] Cuota diaria propia del pegado en
   staging (`AI_QUOTAS=…,extract-pasted-job=N`, D11).**
   - (a) N = 10 por persona y día, igual que `match-cv` y `build-roadmap` en `.env.example`. Con 3 a 5 invitados son 30
-    a 50 lecturas de pegado al día como máximo. La cuota cuenta lecturas con éxito de las últimas 24 h.
+    a 50 lecturas de pegado al día como máximo. La cuota cuenta **lecturas con éxito** de las últimas 24 h, **no
+    peticiones** (V2-10): cada lectura puede costar hasta dos peticiones (una reparación), y las fallidas no cuentan.
   - (b) N = 20: más margen para quien está buscando activamente, más riesgo de agotar el cupo compartido.
   - (c) Sin cuota propia: solo rigen el límite de 10 pegados cada 15 min y el cupo de la cuenta.
 
   **Recomendación: (a), N = 10**, revisable con el ledger tras el día 7 de la medición. El cupo diario real de la
-  cuenta `:free` lo anota la 8.1 de 35b en el RUNBOOK: si es menor que 10 × invitados más lo que gasta el encaje, se
-  baja N antes de invitar.
+  cuenta `:free` lo anota la 8.1 de 35b en el RUNBOOK, **en peticiones**: si es menor que 2 × 10 × invitados (el peor
+  caso en peticiones) más lo que gasta el encaje, se baja N antes de invitar.
 
 - **Q6 [bloqueante] Nombres de terceros sin redactar (B3).** El owner tiene que confirmar, con su fecha, esta línea:
   «Acepto que los nombres de terceros de lo pegado lleguen sin redactar a OpenRouter con `data_collection: deny`».
@@ -388,7 +431,7 @@ Los nombres entre comillas son los títulos que el implementador da a los tests 
 | Grabar fixtures de una tarea incidental | «an incidental task cannot be recorded against a real upstream» | `libs/ai/src/evals/recording/record-fixtures.spec.ts` |
 | Auditoría de fixtures de una tarea incidental | «the audit also checks incidental tasks» | `libs/ai/src/evals/recording/audit-personal-fixtures.spec.ts` |
 | Sensibilidad por defecto y predicados | «personal, incidental and public map to their rules» | `libs/ai/src/domain/task.spec.ts` |
-| Sin comparaciones sueltas (D3) | «no file outside domain/task.ts compares data sensitivity» | `libs/ai/src/domain/task-sensitivity.guard.spec.ts` |
+| Sin valor por defecto suelto (D3, V2-03) | «DEFAULT_DATA_SENSITIVITY is not used outside domain/task.ts» | `libs/ai/src/domain/task-sensitivity.guard.spec.ts` |
 | Tarea incidental sin consentimiento (`ai/provider-routing`) | «Tarea incidental sin consentimiento» | `libs/ai/src/domain/routing-policy.spec.ts` |
 | Ni con consentimiento entra un externo que no pide no recolectar | «Tarea incidental: el externo que no pide no recolectar queda fuera aun con permiso» | `libs/ai/src/domain/routing-policy.spec.ts` |
 | El permiso nunca habilita una tarea incidental | «consentWouldEnable is false for an incidental task» | `libs/ai/src/domain/routing-policy.spec.ts` |
@@ -398,15 +441,19 @@ Los nombres entre comillas son los títulos que el implementador da a los tests 
 | Pegado sin permiso con un externo que pide no recolectar (`links/pasted-description`) | «Sin consentimiento, el externo que pide no recolectar lee lo pegado» | `libs/ai/src/tasks/extract-pasted-job.task.spec.ts` |
 | Ni con permiso a un externo que no lo pide | «Ni con consentimiento va a un externo que no pide no recolectar» | `libs/ai/src/tasks/extract-pasted-job.task.spec.ts` |
 | Solo hay externos que no lo piden | «Solo externos que no piden no recolectar: no_providers sin condición» (`libs/ai`) y «no_providers without condition answers 503 extraction_disabled» (ya de `paste-fallback-honest`, se comprueba que sigue) | `libs/ai/src/tasks/extract-pasted-job.task.spec.ts`, `apps/api/src/modules/links/infrastructure/run-task-pasted-extraction.spec.ts` |
-| Sin permiso nunca 409 | «Sin consentimiento, el pegado nunca degrada por falta de permiso» (`libs/ai`, con una cadena solo de un externo que pide no recolectar y otra solo de uno que no lo pide) y «a paste without consent reads with the suite AI» (HTTP `200`) | `libs/ai/src/tasks/extract-pasted-job.task.spec.ts`, `apps/api/src/modules/links/presentation/links.controller.pasted.spec.ts` |
+| Sin permiso nunca 409 | «Sin consentimiento, el pegado nunca degrada por falta de permiso» (`libs/ai`, con una cadena solo de un externo que pide no recolectar y otra solo de uno que no lo pide) y «a paste without consent reaches the injected no-data-collection external provider» (HTTP `200`, tarea 2.3; V2-09) | `libs/ai/src/tasks/extract-pasted-job.task.spec.ts`, `apps/api/src/modules/links/presentation/links.controller.pasted.spec.ts` |
+| Sin permiso y con un externo que no pide no recolectar (`links/pasted-description`, V2-01) | «paste without consent and only a non-denying external answers 503 extraction_disabled» | `apps/api/src/modules/links/infrastructure/run-task-pasted-extraction.spec.ts` (degradado `no_providers` sin condición) y `libs/ai/src/tasks/extract-pasted-job.task.spec.ts` (que lo produce) |
+| Sin permiso y con el circuito abierto (V2-01) | «paste without consent and an open circuit answers by the remembered condition» (`rate_limited`, `rejected` y `unavailable`; sin clase recordada cuenta como `unavailable`) | `apps/api/src/modules/links/infrastructure/run-task-pasted-extraction.spec.ts` |
+| No regresión HTTP del pegado (V2-09) | «a paste without consent reads with the suite AI» | `apps/api/src/modules/links/presentation/links.controller.pasted.spec.ts` |
 | Aviso visible antes de enviar (`web/links`) | «shows where the pasted text may go before sending» | `apps/web/src/app/features/links/paste-description.dialog.spec.ts` |
 | El aviso no promete anonimato ni enumera | «El aviso del pegado no promete anonimato ni enumera lo que se sustituye» | `apps/web/src/locale/privacy-text.spec.ts` |
 | Aviso en inglés | «the paste notice is translated» (cubierto por `web:i18n-check`) | `messages.en.xlf` |
 | El aviso dice «tal cual» (C4) | «El aviso del pegado dice que el resto se envía tal cual» | `apps/web/src/locale/privacy-text.spec.ts` |
 | El aviso no enumera (C2) | «namedRedactedTypes returns no type for the paste notice» | `apps/web/src/locale/privacy-text.spec.ts` |
 | Invariante del permiso en `incidental` (C8) | «an incidental chain does not depend on consent» (mismos ids con el permiso en `true` y en `false`, en todos los universos del spec) | `libs/ai/src/domain/routing-policy.spec.ts` |
-| Pegado sin permiso con un externo real de la suite (C7) | «a paste without consent reaches the injected no-data-collection external provider» | `apps/api/src/modules/links/presentation/links.controller.pasted.spec.ts` |
-| Literales de sensibilidad (C1) | «no sensitivity literal outside domain/task.ts» | `libs/ai/src/domain/task-sensitivity.guard.spec.ts` |
+| Pegado sin permiso con un externo real de la suite (C7, V2-07) | «a paste without consent reaches the injected no-data-collection external provider» (afirma `[URL_1]` en lo recibido) | `apps/api/src/modules/links/presentation/links.controller.pasted.spec.ts` |
+| Literales de sensibilidad (C1, V2-02) | «no sensitivity literal outside domain/task.ts» (AST: `StringLiteral` y `NoSubstitutionTemplateLiteral`) | `libs/ai/src/domain/task-sensitivity.guard.spec.ts` |
+| Subruta solo de tests (V2-08) | lint: `@linkvault/ai/testing` fuera de `*.spec.ts` y `test-support` falla | `eslint.config.mjs` |
 
 ## Debate iteración 1 (2026-11-04)
 
@@ -438,3 +485,26 @@ arquitecto el 2026-11-04.
 Q1 y Q6 (bloqueantes) y Q2-Q5 (no bloqueantes) siguen pendientes del owner.
 
 Convergencia: pendiente de la iteración 2.
+
+## Verificación iteración 2 (2026-11-07)
+
+Resultado: critic P0 0 / P1 11 (V2-01 a V2-11), todos aceptados por reflect y aplicados por el arquitecto el
+2026-11-07.
+
+| Id | Decisión | Motivo |
+| --- | --- | --- |
+| V2-01 | Aceptado | `MODIFIED` de «Lo pegado tiene que parecer una oferta» con el texto de `paste-fallback-honest`: la viñeta del `409` queda como defensa, y los dos escenarios del pegado sin permiso dan `503 extraction_disabled` (externo que no pide no recolectar) o `503` según la condición recordada (circuito abierto). Se archiva estrictamente después (D6, D9, spec, 6.3). |
+| V2-02 | Aceptado | El guardia recorre el AST (`ts.createSourceFile`) y mira `StringLiteral` y `NoSubstitutionTemplateLiteral`; ignora comentarios; la excepción se acota al inicializador de la propiedad `dataSensitivity` del objeto de la tarea; cuarta falsación con plantilla (D3, 1.4). |
+| V2-03 | Aceptado | El segundo caso del guardia pasa a `DEFAULT_DATA_SENSITIVITY`, con su falsación (D3, 1.4, tabla). |
+| V2-04 | Aceptado | Única excepción a «sin tocar ningún test existente» en la 1.2: `task-registry.spec.ts:143` pasa a `treatsInputAsPersonal(registered)`. |
+| V2-05 | Aceptado | La lista de lo que cae en la primera falsación de la 1.6 se corrige, y la 1.8 nombra los casos por título. |
+| V2-06 | Aceptado | La 3.3 usa «sent anonymously» en el `target` EN y «de forma anónima» en el `source` ES, nombrando el idioma. |
+| V2-07 | Aceptado | La 2.3 siembra una URL `https://…` (que `scrubContactDetails` deja pasar y `PiiRedactor` sustituye) y afirma `[URL_1]`; falsación: devolver la rama de redacción a `requiresExternalConsent`. |
+| V2-08 | Aceptado (decisión de reflect) | Subruta solo de tests `@linkvault/ai/testing` (path en `tsconfig.base.json`; las libs no tienen `package.json` propio), con `composeTestRunTask` y `FakeLlmProvider`. No existe un token `AI_PROVIDERS`. Guardia de lint fuera de `*.spec.ts` y `test-support`. La 2.3 entra en la hora y la 2.3b sale (D13, 1.10, 2.3). |
+| V2-09 | Aceptado | La 2.2 queda como no regresión y sale de la fila «Sin permiso nunca 409», que prueba la 2.3. |
+| V2-10 | Aceptado | El breaker se comparte entre procesos vía Redis con `AI_CHAIN=openrouter` (D11, Risks, ADR-063 §6); N acota lecturas con éxito, no peticiones, y se compara con la 8.1 de 35b en peticiones (Q5, 4.2). |
+| V2-11 | Aceptado | Grep fechado en la 0.2; línea en Risks y en ADR-063 §3 sobre el BYOK `:free` y el registro de prompts de la cuenta propia; paso del owner separado en la 4.2b `[owner]`, con la etiqueta explicada al principio de `tasks.md`. |
+
+Q1 y Q6 (bloqueantes) y Q2-Q5 (no bloqueantes) siguen pendientes del owner.
+
+Convergencia: SI

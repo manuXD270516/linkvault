@@ -2,7 +2,11 @@
 
 Cada tarea cabe en menos de una hora. Los nombres entre comillas son los títulos de los casos de test que el
 implementador crea (ver la tabla «Casos de prueba derivados de los escenarios» de `design.md`). Ninguna prueba llama a
-un proveedor real: `AI_CHAIN=mock` y `AI_MOCK_MODE=replay` en CI.
+un proveedor real: `AI_CHAIN=mock` y `AI_MOCK_MODE=replay` en CI. «Falsación», en los guardias, es el cambio a
+propósito que tiene que ponerlos en rojo, y se deshace después.
+
+La etiqueta `[owner]` marca las tareas que hace el owner en persona (V2-11 de la verificación de la iteración 2): llevan
+su tiempo estimado y no las ejecuta ningún agente.
 
 - [ ] 0.1 [infra] Q1 respondida por el owner y anotada con fecha:
   - en ADR-063 §1, en una línea que empiece por «Respuesta del owner (Q1), AAAA-MM-DD:»;
@@ -18,9 +22,9 @@ un proveedor real: `AI_CHAIN=mock` y `AI_MOCK_MODE=replay` en CI.
   lleguen sin redactar a OpenRouter con `data_collection: deny`». La Q7 de `paste-fallback-honest` no vale como esa
   confirmación. Verificar: `design.md` lleva la sección del debate de la última iteración, con «Convergencia: SI», y
   una sección «Aprobación humana (AAAA-MM-DD)»: `grep -n "^Convergencia: SI\|^## Aprobación humana"
-  openspec/changes/paste-consent-scope/design.md` devuelve las dos líneas, y `grep -c "Acepto que los nombres de
-  terceros de lo pegado lleguen sin redactar" docs/adr/ADR-063.md` devuelve `1`, en la línea fechada de §Riesgos
-  aceptados. Falsación: sin esa línea, o si el owner la rechaza, el change no pasa de aquí y vuelve al debate (Q6).
+  openspec/changes/paste-consent-scope/design.md` devuelve las dos líneas, y `grep -cE "20[0-9]{2}-[0-9]{2}-[0-9]{2}.*Acepto
+  que los nombres de terceros de lo pegado lleguen sin redactar" docs/adr/ADR-063.md` devuelve `1` (la línea fechada de
+  §Riesgos aceptados; la mención sin fecha que ya hay en ese apartado no cuenta). Falsación: sin esa línea, o si el owner la rechaza, el change no pasa de aquí y vuelve al debate (Q6).
 - [ ] 0.3 [infra] `paste-fallback-honest` está fusionado en `main` y la rama de aplicación se corta de `main` después
   de esa fusión (design D9). Verificar: `git log --oneline --merges origin/main | grep -i "paste-fallback-honest"`
   devuelve su merge, y `git merge-base --is-ancestor <sha de ese merge> HEAD` sale con `0`. Falsación: desde una rama
@@ -31,7 +35,7 @@ un proveedor real: `AI_CHAIN=mock` y `AI_MOCK_MODE=replay` en CI.
   D:/projects/linkvault/node_modules/@fission-ai/openspec/bin/openspec.js validate paste-consent-scope --strict
   --no-interactive` en verde y la respuesta de Q2 anotada en `design.md`.
 
-## 1. `libs/ai`: sensibilidad `incidental` (design D2-D5, D8)
+## 1. `libs/ai`: sensibilidad `incidental` (design D2-D5, D8, D13)
 
 - [ ] 1.1 [ai] `domain/task.ts`: `DataSensitivity = 'personal' | 'incidental' | 'public'` (por defecto `personal`) y los
   tres predicados de D3: `requiresExternalConsent`, `treatsInputAsPersonal` y `requiresNoDataCollection`, sobre
@@ -45,25 +49,37 @@ un proveedor real: `AI_CHAIN=mock` y `AI_MOCK_MODE=replay` en CI.
   comportamiento de `personal` ni de `public`: `routing-policy.ts` (`:75`, `:111`), `run-task.usecase.ts` (`:479`,
   `:679`) y `task-registry.ts` (`:53`, mensaje «a personal or incidental task cannot be cacheable»). Verificar:
   `pnpm nx run ai:test -- routing-policy.spec run-task.usecase.spec task-registry.spec` en verde sin tocar ningún
-  test existente, y «Tarea incidental declarada cacheable» nuevo en `task-registry.spec.ts`.
+  test existente, con **una única excepción (V2-04)**: `task-registry.spec.ts:143` (`if (dataSensitivityOf(registered)
+  === 'personal')`) pasa a `if (treatsInputAsPersonal(registered))`, para que el arranque real compruebe también las
+  `incidental`. Y «Tarea incidental declarada cacheable», nuevo en `task-registry.spec.ts`.
 - [ ] 1.3 [ai] Lo mismo en `evals/recording/record-fixtures.ts` (`:83`, `:136`) y `audit-personal-fixtures.ts`
   (`:41`), que hoy leen el campo crudo (D3). El rechazo nombra la sensibilidad efectiva. Verificar con
   `record-fixtures.spec.ts`: «an incidental task cannot be recorded against a real upstream», y con
   `audit-personal-fixtures.spec.ts`: «the audit also checks incidental tasks» (un fixture `recorded:openrouter:…` de
   una tarea `incidental` da un problema que nombra tarea y fichero). `pnpm nx run ai:test -- record-fixtures.spec
   audit-personal-fixtures.spec` en verde.
-- [ ] 1.4 [ai] Guardia de D3 (C1): `domain/task-sensitivity.guard.spec.ts` recorre los `.ts` de `libs/ai/src` que no
-  son `*.spec.ts` y falla nombrando fichero y línea si, fuera de `domain/task.ts`, encuentra un literal `'personal'`,
-  `'incidental'` o `'public'` (comillas simples o dobles) o el identificador `DEFAULT_DATA_SENSITIVITY`. La única
-  excepción es la propiedad `dataSensitivity: '…'` de `tasks/*.task.ts`. Casos: «no sensitivity literal outside
-  domain/task.ts» y «no file outside domain/task.ts compares data sensitivity». Verificar: `pnpm nx run ai:test --
-  task-sensitivity.guard` en verde. Falsaciones, restaurando cada una:
-  - `task.dataSensitivity === 'personal'` en `record-fixtures.ts`: el test falla nombrando
+- [ ] 1.4 [ai] Guardia de D3 (C1, V2-02, V2-03): `domain/task-sensitivity.guard.spec.ts` recorre el **AST** de cada
+  `.ts` de `libs/ai/src` que no es `*.spec.ts` (`ts.createSourceFile` del paquete `typescript` y un recorrido con
+  `ts.forEachChild`). Falla nombrando fichero y línea si, fuera de `domain/task.ts`, encuentra un nodo `StringLiteral`
+  o `NoSubstitutionTemplateLiteral` con valor `personal`, `incidental` o `public`. Los comentarios no cuentan, porque no
+  son nodos del AST. La única excepción es el inicializador del `PropertyAssignment` `dataSensitivity` del objeto de la
+  tarea en `tasks/*.task.ts`. Dos casos:
+  - «no sensitivity literal outside domain/task.ts» (los literales);
+  - «DEFAULT_DATA_SENSITIVITY is not used outside domain/task.ts» (un nodo `Identifier` con ese nombre).
+
+  Verificar: `pnpm nx run ai:test -- task-sensitivity.guard` en verde. Falsaciones, restaurando cada una:
+  - `task.dataSensitivity === 'personal'` en `record-fixtures.ts`: el primer caso falla nombrando
     `evals/recording/record-fixtures.ts` y la línea;
   - `const s = dataSensitivityOf(task); if (s !== 'personal') …` en `run-task.usecase.ts` (comparación sobre una
-    variable local): falla nombrando `application/run-task.usecase.ts`;
-  - `switch (dataSensitivityOf(task)) { case 'incidental': … }` en `task-registry.ts`: falla nombrando
-    `application/task-registry.ts`.
+    variable local): el primero falla nombrando `application/run-task.usecase.ts`;
+  - `switch (dataSensitivityOf(task)) { case 'incidental': … }` en `task-registry.ts`: el primero falla nombrando
+    `application/task-registry.ts`;
+  - ``if (dataSensitivityOf(task) === `public`)`` (template literal sin sustituciones) en `routing-policy.ts`: el primero
+    falla nombrando `domain/routing-policy.ts`;
+  - `import { DEFAULT_DATA_SENSITIVITY } from '../domain/task'` y un uso en `record-fixtures.ts`: el segundo falla
+    nombrando ese fichero;
+  - y, para comprobar que los comentarios no cuentan, `// 'personal'` en un comentario de `run-task.usecase.ts`: los
+    dos casos siguen en verde.
 - [ ] 1.5 [ai] `domain/ports/llm-provider.port.ts`: `dataCollectionDenied?: boolean` en `ProviderCapabilities`,
   documentado como dato de política con la definición de C5 (cada petición restringe el enrutamiento a servicios que
   declaran no recolectar ni conservar los datos); `satisfies()` no lo mira. `AiTask.requires` pasa a
@@ -83,9 +99,13 @@ un proveedor real: `AI_CHAIN=mock` y `AI_MOCK_MODE=replay` en CI.
   depend on consent»: con una tarea `incidental`, `buildChain` devuelve los mismos ids, en el mismo orden, con el
   permiso en `true` y en `false`, recorriendo **todos los universos de los escenarios del spec** de `ai/provider-routing`
   (local solo, externo con y sin `dataCollectionDenied`, BYOK, circuito abierto, capacidades insuficientes). `pnpm nx
-  run ai:test -- routing-policy.spec` en verde. Falsaciones, restaurando cada una: quitar la condición
-  `requiresNoDataCollection` del filtro y ver caer el segundo, el tercero y el invariante; aplicar a `incidental` el
-  filtro del permiso y ver caer «Tarea incidental sin consentimiento» y el invariante.
+  run ai:test -- routing-policy.spec` en verde. Falsaciones, restaurando cada una (V2-05):
+  - quitar la condición `requiresNoDataCollection` del filtro: caen «Tarea incidental: el externo que no pide no
+    recolectar queda fuera aun con permiso», «Tarea incidental cuyo único externo no pide no recolectar» y «a provider
+    that does not declare dataCollectionDenied is treated as not denying». El invariante **no** cae: sin ese filtro, la
+    cadena incidental sigue sin depender del permiso;
+  - aplicar a `incidental` el filtro del permiso (`requiresExternalConsent` → `true` para `incidental` en la tabla):
+    caen «Tarea incidental sin consentimiento» y «an incidental chain does not depend on consent».
 - [ ] 1.7 [ai] `runTask` con una tarea `incidental` (sin cambios de código si 1.2 y 1.6 están bien; esta tarea los
   prueba juntos). Verificar con `run-task.usecase.spec.ts`: «incidental task reaches a no-data-collection external
   provider without consent, redacted» (el `user` enviado lleva `[EMAIL_1]` y no el email), «an incidental task without
@@ -99,13 +119,24 @@ un proveedor real: `AI_CHAIN=mock` y `AI_MOCK_MODE=replay` en CI.
   consentimiento, el proveedor externo es elegible» conservan su título y cambian como sus escenarios de
   `links/pasted-description` (el externo del primero no declara `dataCollectionDenied`, el del segundo sí), y se añaden
   «Sin consentimiento, el externo que pide no recolectar lee lo pegado» (redactado), «Ni con consentimiento va a un
-  externo que no pide no recolectar», «Solo
-  externos que no piden no recolectar: no_providers sin condición» y «Sin consentimiento, el pegado nunca degrada por
-  falta de permiso». `pnpm nx run ai:test -- extract-pasted-job` en verde. Falsación: volver a `personal` y ver caer el
-  primero y el último; restaurar.
+  externo que no pide no recolectar», «Solo externos que no piden no recolectar: no_providers sin condición» (sin
+  permiso) y «Sin consentimiento, el pegado nunca degrada por falta de permiso». `pnpm nx run ai:test --
+  extract-pasted-job` en verde. Falsación (V2-05): volver a `personal` y ver caer «declares the task contract of D2»,
+  «Sin consentimiento, el externo que pide no recolectar lee lo pegado», «Ni con consentimiento va a un externo que no
+  pide no recolectar», «Solo externos que no piden no recolectar: no_providers sin condición» (aparece la condición
+  `consent_missing`) y «Sin consentimiento, el pegado nunca degrada por falta de permiso»; restaurar.
 - [ ] 1.9 [ai] Comprobación de no regresión del eval (D8), sin `--update-baseline`: `pnpm nx run ai:eval-ci` con salida
   0, y `git status --porcelain` limpio después. Si sale distinto, no se actualiza la línea base: se para y se vuelve al
   debate (D8).
+- [ ] 1.10 [ai] Subruta solo de tests `@linkvault/ai/testing` (design D13, V2-08). `libs/ai/src/testing/index.ts`
+  exporta `composeTestRunTask(providers, options?)`, un `RunTaskFn` hecho con `RunTask`, los puertos en memoria de
+  `application/testing/in-memory-ports.ts` y los proveedores dados, y `FakeLlmProvider`. Path en `tsconfig.base.json`;
+  la entrada pública `libs/ai/src/index.ts` no cambia. En `eslint.config.mjs`, `no-restricted-imports` de
+  `@linkvault/ai/testing` fuera de `**/*.spec.ts` y `**/test-support/**`, en cada bloque que ya define esa regla.
+  Verificar: `git diff --stat libs/ai/src/index.ts` vacío; `pnpm nx run ai:test -- testing` con un caso «composeTestRunTask
+  runs a task against the given providers»; y `pnpm nx run api:lint` en verde. Falsación: importar
+  `@linkvault/ai/testing` desde `apps/api/src/modules/links/infrastructure/run-task-pasted-extraction.ts` y ver fallar
+  `api:lint` nombrando la subruta; restaurar.
 
 ## 2. API: el pegado ya no depende del permiso (design D6)
 
@@ -115,22 +146,28 @@ un proveedor real: `AI_CHAIN=mock` y `AI_MOCK_MODE=replay` en CI.
   `extract-pasted-job` (`incidental`, ADR-063) no decide la cadena, y se conserva para que la (b) de la Q2 siga siendo
   posible. Sin cambios de comportamiento. En `run-task-pasted-extraction.spec.ts`, el bloque «consent of whoever pastes» deja de
   simular la regla vieja (`:322-358`): «the paste runs the incidental task», «the consent of whoever pastes is still
-  passed in the context» (con y sin permiso) y, sin cambios, los casos del `409` de `paste-fallback-honest`. Ajustar
-  el `dataSensitivity: 'personal'` del doble (`:100`). Verificar: `pnpm nx run api:test --
+  passed in the context» (con y sin permiso) y, sin cambios, los casos del `409` de `paste-fallback-honest`, que
+  quedan como defensa. Casos nuevos de los escenarios reescritos (V2-01): «paste without consent and only a
+  non-denying external answers 503 extraction_disabled» (degradado `no_providers` sin condición) y «paste without
+  consent and an open circuit answers by the remembered condition» (`rate_limited` → `ai_capacity_exhausted`,
+  `rejected` → `extraction_disabled`, `unavailable` → `extraction_unavailable` con `Retry-After: 60`; un circuito abierto sin clase recordada llega como `unavailable`, ADR-060 §4).
+  Ajustar el `dataSensitivity: 'personal'` del doble (`:100`). Verificar: `pnpm nx run api:test --
   run-task-pasted-extraction.spec` en verde.
-- [ ] 2.2 [backend] `links.controller.pasted.spec.ts` (IA de la suite en `replay`): «a paste without consent reads with
-  the suite AI» (usuario sin permiso, `200` con los campos del golden). Verificar: `pnpm nx run api:test --
+- [ ] 2.2 [backend] **No regresión** (V2-09) en `links.controller.pasted.spec.ts` (IA de la suite en `replay`): «a
+  paste without consent reads with the suite AI» (usuario sin permiso, `200` con los campos del golden). La regla
+  «sin permiso nunca 409» la prueba la 2.3. Verificar: `pnpm nx run api:test --
   links.controller.pasted.spec` en verde. Si falla solo por los tiempos de carga local conocidos, repetir aislado con
   `--parallel=1 --skip-nx-cache`; manda el CI.
-- [ ] 2.3 [backend] Prueba de punta a punta del pegado con un externo (C7). En la suite del controlador
-  (`links-test-app.ts`, que ya admite sustituir `RUN_TASK`), un `RUN_TASK` construido con el `runTask` **real** de
-  `libs/ai` sobre un proveedor falso `external: true, dataCollectionDenied: true` (como `FakeLlmProvider` de
-  `libs/ai/src/application/testing/`, exportado para tests si hace falta). Caso: «a paste without consent reaches the
-  injected no-data-collection external provider» (usuario sin permiso, `200`; el proveedor recibió una petición, sin
-  el email que llevaba lo pegado). Verificar: `pnpm nx run api:test -- links.controller.pasted.spec` en verde.
-  Falsación: devolver `extract-pasted-job` a `personal` y ver el caso responder `409 ai_consent_required`; restaurar.
-  **Si montar ese `RUN_TASK` pasa de una hora**, la tarea se declara regresión (prueba de regresión aparte, en una
-  tarea 2.3b que se añade aquí) y se dice en el PR. No se recorta la falsación.
+- [ ] 2.3 [backend] Prueba de punta a punta del pegado con un externo (C7, V2-07, V2-08). En la suite del controlador
+  (`links-test-app.ts`, que ya admite sustituir `RUN_TASK`), un `RUN_TASK` de `composeTestRunTask` (1.10) sobre un
+  `FakeLlmProvider` `external: true, dataCollectionDenied: true`. Lo pegado lleva sembrada una URL
+  `https://ejemplo.invalid/oferta-123`, que `scrubContactDetails` deja pasar y `PiiRedactor` sustituye. Caso: «a paste
+  without consent reaches the injected no-data-collection external provider»: usuario sin permiso, `200`; el
+  proveedor recibió una petición cuyo `user` contiene `[URL_1]` y no contiene la URL sembrada. Verificar: `pnpm nx run
+  api:test -- links.controller.pasted.spec` en verde. Falsaciones, restaurando cada una:
+  - devolver `extract-pasted-job` a `personal`: el caso responde `409 ai_consent_required`;
+  - devolver la rama de redacción de `attempt` (`run-task.usecase.ts`) a `requiresExternalConsent`: el caso falla
+    porque la URL llega sin `[URL_1]`.
 
 ## 3. SPA: aviso de adónde va lo pegado (design D7)
 
@@ -153,8 +190,9 @@ un proveedor real: `AI_CHAIN=mock` y `AI_MOCK_MODE=replay` en CI.
     personas» y en EN «the rest is sent as-is and may identify people»).
 
   Verificar: `pnpm nx run web:test -- --include="**/privacy-text.spec.ts" --skip-nx-cache` en verde. Falsaciones,
-  restaurando cada una: añadir «de forma anónima» al `target` inglés y ver caer el primero, nombrando `en` y
-  `links.paste.externalNotice`; cambiar «datos de contacto» por «tu email» en el `source` y ver que
+  restaurando cada una (V2-06): añadir «sent anonymously» al `target` inglés y ver caer el primero, nombrando `en` y
+  `links.paste.externalNotice`; añadir «de forma anónima» al `source` español y ver caer el primero, nombrando `es`;
+  cambiar «datos de contacto» por «tu email» en el `source` y ver que
   `namedRedactedTypes` devuelve `['email']` y el caso falla nombrando unidad, idioma (`es`) y tipo (`email`); quitar
   la frase de «tal cual» del `target` inglés y ver caer el tercero, nombrando `en`.
 - [ ] 3.4 [frontend] Revisión a 360 px (Q3): el diálogo con el aviso, en el móvil emulado o con la ventana a 360 px,
@@ -171,19 +209,27 @@ un proveedor real: `AI_CHAIN=mock` y `AI_MOCK_MODE=replay` en CI.
   `503 extraction_unavailable` del pegado, que todavía dice «hasta que exista `ai_consent_required`»):
   - la misma corrección que la 4.1;
   - qué pasa si `AI_CHAIN` solo tiene externos que no piden no recolectar (`503 extraction_disabled`);
-  - **cupo y circuito compartidos (C6):** el cupo de la cuenta de OpenRouter y el circuito del proveedor los comparten
-    todas las tareas y todas las personas, y un `ai_capacity_exhausted` del pegado puede venir de lecturas del encaje;
+  - **cupo y circuito compartidos (C6, V2-10):** el cupo de la cuenta de OpenRouter y el circuito del proveedor los
+    comparten todas las tareas y todas las personas, y con `AI_CHAIN=openrouter` el circuito se comparte entre `api` y
+    `worker` vía Redis. Un `ai_capacity_exhausted` del pegado puede venir de lecturas del encaje;
   - **cuota propia del pegado en staging (D11, Q5):** `AI_QUOTAS=…,extract-pasted-job=N` en `.env.staging`, con el N
     que decida el owner y la regla de `.env.staging` de 35b (copia fuera del host actualizada). El compose ya pasa
-    `AI_QUOTAS`: no se toca ningún fichero del repositorio;
-  - **paso del owner (C5):** comprobar en la configuración de la cuenta de OpenRouter de la plataforma que no registra
-    los prompts, y anotarlo con fecha («Cuenta de OpenRouter de la plataforma sin registro de prompts, comprobado el
-    AAAA-MM-DD»).
+    `AI_QUOTAS`: no se toca ningún fichero del repositorio. **N acota lecturas con éxito, no peticiones (V2-10):** cada
+    lectura puede costar hasta dos peticiones y las fallidas no cuentan, así que la comparación con el cupo de la 8.1
+    de 35b, que está en peticiones, se hace con 2 × N × invitados más el encaje;
+  - un hueco para la línea del owner de la 4.2b.
 
   Verificar: `grep -n "consentimiento de quien pega\|hasta que exista .ai_consent_required." docs/RUNBOOK.md` no
   devuelve nada; `grep -n "ADR-063" docs/RUNBOOK.md` devuelve la viñeta; `grep -n "extract-pasted-job=" docs/RUNBOOK.md`
-  devuelve la cuota; y `grep -nE "sin registro de prompts, comprobado el 20[0-9]{2}-" docs/RUNBOOK.md` devuelve la
-  línea del owner. Con la Q1 = (b), las dos últimas se cumplen antes de la 10.7.
+  devuelve la cuota; y `grep -n "no peticiones" docs/RUNBOOK.md` devuelve la aclaración. Con la Q1 = (b), la cuota
+  queda puesta en `.env.staging` antes de la 10.7.
+- [ ] 4.2b [owner] **La hace el owner, en la web de OpenRouter** (unos 10 minutos; V2-11, C5): comprobar en la
+  configuración de la cuenta de OpenRouter de la plataforma que no registra los prompts, y anotarlo con fecha en el
+  hueco de la 4.2: «Cuenta de OpenRouter de la plataforma sin registro de prompts, comprobado el AAAA-MM-DD». La cuenta
+  de un BYOK `:free` la configura su dueño y queda fuera (design, Risks). Verificar: `grep -nE "sin registro de
+  prompts, comprobado el 20[0-9]{2}-[0-9]{2}-[0-9]{2}" docs/RUNBOOK.md` devuelve la línea. Con la Q1 = (b), antes de la
+  10.7. Falsación: sin la línea, o con la cuenta registrando prompts, no se invita con este change en `main` hasta
+  corregirlo o hasta que el owner acepte el riesgo por escrito.
 - [ ] 4.3 [infra] `docs/catalogo-de-uso.md` y `docs/guia-de-uso/README.md`: si alguno dice que el pegado necesita el
   permiso de IA externa, corregirlo. Verificar: `grep -n -i "pega" docs/catalogo-de-uso.md docs/guia-de-uso/README.md
   | grep -i "permiso\|consentim"` no devuelve ninguna línea que lo afirme (anotar la salida).
@@ -220,7 +266,11 @@ un proveedor real: `AI_CHAIN=mock` y `AI_MOCK_MODE=replay` en CI.
   contiene, D10). Verificar: el resultado, con el SHA del commit desplegado, queda anotado en el PR de archivo (6.3).
   Con la (a), no aplica.
 - [ ] 6.3 [infra] **PR de archivo** (clase 2 de D10): lleva las anotaciones posteriores a la fusión y se fusiona
-  después del PR de archivo de `paste-fallback-honest` (D9). Con la (b): después de la 10.7, nunca entre el
+  **estrictamente después** del PR de archivo de `paste-fallback-honest` (D9, V2-01): los dos modifican «Lo pegado
+  tiene que parecer una oferta», y archivado antes, el de aquel pisaría este con su `409`. Antes de fusionar, `grep -n
+  "Sin permiso y con un externo que no pide no recolectar"
+  openspec/specs/links/pasted-description/spec.md` tras archivar en local devuelve el escenario. Con la (b): después de
+  la 10.7, nunca entre el
   PR-2 de 35b y su 11.6, nunca durante su 9.1-9.4, nunca los días 7 y 14 de la medición y nunca el día de una corrida
   `e2e-remote`, con la confirmación del owner del día en la forma «10.7 hecha el AAAA-MM-DD; PR-2 de 35b = #NNN; 9.1-9.4
   no en curso; sin `e2e-remote` hoy». Verificar: `ls openspec/changes/archive | grep paste-fallback-honest` devuelve

@@ -55,7 +55,9 @@ Ninguna.
 - `ai/provider-routing`: «Filtrado por capacidades, consentimiento y circuitos abiertos» (filtro de las tareas
   `incidental`) y nuevo requirement «Declaración de no recolección de datos».
 - `links/pasted-description`: «El texto pegado es un dato personal», renombrado a «El texto pegado puede traer datos
-  personales» (sin consentimiento; solo externos que piden no recolectar).
+  personales» (sin consentimiento; solo externos que piden no recolectar), y «Lo pegado tiene que parecer una oferta»,
+  sobre el texto de `paste-fallback-honest`: el `409` queda como defensa y el pegado sin permiso responde `503` según
+  la causa. Por eso este change se archiva estrictamente después de aquel.
 - `web/links`: nuevo requirement «Aviso de adónde va lo pegado».
 
 ## Impact
@@ -65,7 +67,9 @@ Ninguna.
   `infrastructure/providers/openrouter.provider.ts`, `tasks/extract-pasted-job.task.ts` y sus specs. Un test de
   guardia nuevo en `domain/`.
 - `apps/api`: `links/infrastructure/run-task-pasted-extraction.ts` (solo comentario) y sus specs, que hoy simulan la
-  regla vieja.
+  regla vieja, y `links.controller.pasted.spec.ts` (prueba de punta a punta con un externo inyectado).
+- Subruta solo de tests `@linkvault/ai/testing` (`libs/ai/src/testing/index.ts`, path en `tsconfig.base.json` y guardia
+  en `eslint.config.mjs`). La entrada pública de `@linkvault/ai` no cambia (design D13).
 - `apps/web`: `paste-description.dialog.html` (un párrafo), su spec, `locale/privacy-text.ts` y su spec, y los
   catálogos `messages.xlf` / `messages.en.xlf`.
 - Sin migraciones, sin cambios en el ledger, en la caché, en `libs/shared`, en prompts, en fixtures ni en el golden.
