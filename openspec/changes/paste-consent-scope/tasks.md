@@ -5,9 +5,6 @@ implementador crea (ver la tabla «Casos de prueba derivados de los escenarios»
 un proveedor real: `AI_CHAIN=mock` y `AI_MOCK_MODE=replay` en CI. «Falsación», en los guardias, es el cambio a
 propósito que tiene que ponerlos en rojo, y se deshace después.
 
-La etiqueta `[owner]` marca las tareas que hace el owner en persona (V2-11 de la verificación de la iteración 2): llevan
-su tiempo estimado y no las ejecuta ningún agente.
-
 - [ ] 0.1 [infra] Q1 respondida por el owner y anotada con fecha:
   - en ADR-063 §1, en una línea que empiece por «Respuesta del owner (Q1), AAAA-MM-DD:»;
   - en `design.md` (Open Questions);
@@ -223,10 +220,11 @@ su tiempo estimado y no las ejecuta ningún agente.
   devuelve nada; `grep -n "ADR-063" docs/RUNBOOK.md` devuelve la viñeta; `grep -n "extract-pasted-job=" docs/RUNBOOK.md`
   devuelve la cuota; y `grep -n "no peticiones" docs/RUNBOOK.md` devuelve la aclaración. Con la Q1 = (b), la cuota
   queda puesta en `.env.staging` antes de la 10.7.
-- [ ] 4.2b [owner] **La hace el owner, en la web de OpenRouter** (unos 10 minutos; V2-11, C5): comprobar en la
-  configuración de la cuenta de OpenRouter de la plataforma que no registra los prompts, y anotarlo con fecha en el
-  hueco de la 4.2: «Cuenta de OpenRouter de la plataforma sin registro de prompts, comprobado el AAAA-MM-DD». La cuenta
-  de un BYOK `:free` la configura su dueño y queda fuera (design, Risks). Verificar: `grep -nE "sin registro de
+- [ ] 4.2b [infra] **Owner:** comprueba en la web de OpenRouter (unos 10 minutos; V2-11, C5) que la cuenta de
+  OpenRouter de la plataforma no registra los prompts. La tarea del agente es pedirle ese dato con su fecha, sin
+  entrar él en la cuenta, y anotarlo en el hueco de la 4.2: «Cuenta de OpenRouter de la plataforma sin registro de
+  prompts, comprobado el AAAA-MM-DD». Después lo verifica. La cuenta de un BYOK `:free` la configura su dueño y queda
+  fuera (design, Risks). Verificar: `grep -nE "sin registro de
   prompts, comprobado el 20[0-9]{2}-[0-9]{2}-[0-9]{2}" docs/RUNBOOK.md` devuelve la línea. Con la Q1 = (b), antes de la
   10.7. Falsación: sin la línea, o con la cuenta registrando prompts, no se invita con este change en `main` hasta
   corregirlo o hasta que el owner acepte el riesgo por escrito.

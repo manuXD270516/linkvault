@@ -503,7 +503,7 @@ Resultado: critic P0 0 / P1 11 (V2-01 a V2-11), todos aceptados por reflect y ap
 | V2-08 | Aceptado (decisión de reflect) | Subruta solo de tests `@linkvault/ai/testing` (path en `tsconfig.base.json`; las libs no tienen `package.json` propio), con `composeTestRunTask` y `FakeLlmProvider`. No existe un token `AI_PROVIDERS`. Guardia de lint fuera de `*.spec.ts` y `test-support`. La 2.3 entra en la hora y la 2.3b sale (D13, 1.10, 2.3). |
 | V2-09 | Aceptado | La 2.2 queda como no regresión y sale de la fila «Sin permiso nunca 409», que prueba la 2.3. |
 | V2-10 | Aceptado | El breaker se comparte entre procesos vía Redis con `AI_CHAIN=openrouter` (D11, Risks, ADR-063 §6); N acota lecturas con éxito, no peticiones, y se compara con la 8.1 de 35b en peticiones (Q5, 4.2). |
-| V2-11 | Aceptado | Grep fechado en la 0.2; línea en Risks y en ADR-063 §3 sobre el BYOK `:free` y el registro de prompts de la cuenta propia; paso del owner separado en la 4.2b `[owner]`, con la etiqueta explicada al principio de `tasks.md`. |
+| V2-11 | Aceptado | Grep fechado en la 0.2; línea en Risks y en ADR-063 §3 sobre el BYOK `:free` y el registro de prompts de la cuenta propia; paso del owner separado en la 4.2b, `[infra]` con el prefijo «**Owner:**» (los comandos `/lv:*` solo aceptan las cuatro etiquetas del manifiesto; ajuste posterior de reflect, 2026-11-07). |
 
 Q1 y Q6 (bloqueantes) y Q2-Q5 (no bloqueantes) siguen pendientes del owner.
 
