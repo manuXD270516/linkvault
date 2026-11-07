@@ -120,9 +120,9 @@ Con `C="docker compose -f docker-compose.prod.yml --env-file <env-file>"` en el 
 | Todo sano | `up --wait` solo espera a lo que tiene healthcheck | `$C ps --format '{{.Service}} {{.Status}}'` | Todos `healthy` |
 | Readiness interna | README «Checklist pre-prod» | El `node -e … fetch('http://127.0.0.1:3000/health')` del README, con `$C exec -T api` | `200` y JSON con `status: up` |
 | Un solo relay del outbox | README «relay único» | `$C config \| grep -n OUTBOX_RELAY_ENABLED` | `true` solo en `api`, y una sola réplica de `api` |
-| Replica set de Mongo | Las transacciones lo exigen (21 ficheros usan sesiones) | `$C exec -T mongo mongosh --quiet --eval 'rs.status().ok'` | `1` |
-| Redis sin desalojo | BullMQ exige `noeviction`, y el compose no lo fija: vale el valor por defecto de Redis | `$C exec -T redis redis-cli CONFIG GET maxmemory-policy` | `noeviction` |
-| Redis persiste | El compose arranca con AOF | `$C exec -T redis redis-cli CONFIG GET appendonly` | `yes` |
+| Replica set de Mongo | Las transacciones lo exigen (21 ficheros usan sesiones) | `$C exec -T mongo mongosh --quiet --eval "db.getSiblingDB('admin').auth(process.env.MONGO_INITDB_ROOT_USERNAME, process.env.MONGO_INITDB_ROOT_PASSWORD); rs.status().ok"` | `1` |
+| Redis sin desalojo | BullMQ exige `noeviction`, y el compose no lo fija: vale el valor por defecto de Redis | `$C exec -T redis sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli CONFIG GET maxmemory-policy'` | `noeviction` |
+| Redis persiste | El compose arranca con AOF | `$C exec -T redis sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli CONFIG GET appendonly'` | `yes` |
 | Almacén: buckets, cifrado del de CV y retención de snapshots | README «Almacén de objetos (CV y snapshots)»; ADR-052 §4 y §7 (la retención es el barrido diario del `worker`, no una regla del almacén) | `docker compose -f docker-compose.prod.yml --env-file <env-file> run --rm --no-deps api node object-store.js verify` (no escribe nada) | `verify: ok`: los dos buckets presentes, **ninguna** regla de ciclo de vida, cifrado por defecto en el de CV, ningún snapshot de más de 31 días y acceso anónimo rechazado |
 
 ## 8. Correo [hoy, 35b]

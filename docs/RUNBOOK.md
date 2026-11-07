@@ -1526,6 +1526,7 @@ incidente). En condiciones normales la persona usa forgot-password → enlace �
    ```bash
    docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T mongo \
      mongosh "mongodb://mongo:27017/linkvault?replicaSet=rs0" --quiet --eval '
+       db.getSiblingDB("admin").auth(process.env.MONGO_INITDB_ROOT_USERNAME, process.env.MONGO_INITDB_ROOT_PASSWORD);
        const email = "<email>".toLowerCase();
        const passwordHash = "<pegado del paso 1>";
        const u = db.users.findOne({ email }, { _id: 1 });
@@ -1770,7 +1771,9 @@ que había guardado y no lo encontró.
 
 ### Scripts de lectura en el Mongo de staging
 
-**Mongo no tiene autenticación.** No hay un usuario de rol `read`: quien entra en el host (el usuario de despliegue o el
+**Mongo solo tiene el usuario raíz** (design D18 de `staging-host`). Las órdenes contra el compose de producción se
+autentican dentro de `--eval` con las variables del contenedor (`MONGO_INITDB_ROOT_*`), así que la contraseña no
+aparece en ningún argumento de proceso; `run.sh` lo hace solo. No hay un usuario de rol `read`: quien entra en el host (el usuario de despliegue o el
 de administración) llega al contenedor `mongo` con **acceso total**, y el operador lo tiene. La garantía de que un
 script de medición **no escribe** es una comprobación estática, `infra/staging/assert-readonly.mjs`, que falla
 nombrando cualquier operación de escritura de la lista de design D15 (`insert*`, `update*`, `replace*`, `delete*`,
@@ -1803,7 +1806,8 @@ falta o está mal la lista de invitados.
   ```bash
   docker compose -f docker-compose.prod.yml --env-file .env.staging exec -T mongo \
     mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet \
-    --eval 'print(db.users.findOne({ email: "<email>" }, { _id: 1 })._id.toHexString())'
+    --eval 'db.getSiblingDB("admin").auth(process.env.MONGO_INITDB_ROOT_USERNAME, process.env.MONGO_INITDB_ROOT_PASSWORD);
+      print(db.users.findOne({ email: "<email>" }, { _id: 1 })._id.toHexString())'
   ```
 
 - **Salida**: una sola línea JSON en la salida estándar, solo con números; el informe de la comprobación y los avisos
@@ -1826,7 +1830,8 @@ la lista de invitados ni en la de excluidos. Con 0, nada que hacer. Con más de 
    inv=$(grep -E '^[0-9a-f]{24}$' invited-ids.txt | sed "s/.*/ObjectId('&')/" | paste -sd, -)
    docker compose -f docker-compose.prod.yml --env-file .env.staging exec -T mongo \
      mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet \
-     --eval "db.users.find({ _id: { \$nin: [${inv:+$inv,}ObjectId('<id del autor>'), ObjectId('<id de cada cuenta E2E>')] } }, { email: 1, createdAt: 1 }).toArray()"
+     --eval "db.getSiblingDB('admin').auth(process.env.MONGO_INITDB_ROOT_USERNAME, process.env.MONGO_INITDB_ROOT_PASSWORD);
+       db.users.find({ _id: { \$nin: [${inv:+$inv,}ObjectId('<id del autor>'), ObjectId('<id de cada cuenta E2E>')] } }, { email: 1, createdAt: 1 }).toArray()"
    ```
 
 2. **Si es una persona invitada** que se dio de alta con otra dirección, no se borra nada: su id se añade a
