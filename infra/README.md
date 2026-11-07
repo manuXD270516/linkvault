@@ -143,6 +143,38 @@ de la VCN sobrevive a un reemplazo del volumen de arranque; las reglas `iptables
   `27017`, `6379` y `8080` fallan; tras reiniciar, lo mismo.
 - **`sudo iptables -S INPUT`:** Pendiente (5.5).
 
+### Redes de la pila y dirección de metadatos (design D18)
+
+Cada proceso tiene sus redes, y `api` y `worker` no comparten ninguna: el worker no resuelve `api` ni llega a sus
+métricas (ADR-056 §6).
+
+| Red | Salida a Internet | Servicios |
+|---|---|---|
+| `edge` | sí | `traefik` (publica 80 y 443) |
+| `internal` | no | `traefik`, `web` y `api` |
+| `data-api` | no | `mongo`, `redis` y `api` |
+| `data-worker` | no | `mongo`, `redis` y `worker` |
+| `store-api` | no | `object-store` y `api` |
+| `store-worker` | no | `object-store` y `worker` |
+| `api-egress` | sí | `api` (correo, IA) |
+| `worker-egress` | sí | `worker` (enriquecimiento, correo, push) |
+
+- **La salida se comprueba en cada despliegue:** `infra/deploy/smoke.sh`, después del `/health`, abre desde `api` y
+  desde `worker` una conexión TCP con 5 s de plazo a `smtp-relay.brevo.com:587` y a `openrouter.ai:443`, y falla
+  nombrando el servicio y el destino (tarea 12.2). Antes de D18 la pila no tenía salida y nada lo detectaba.
+- **Dirección de metadatos del proveedor (`169.254.169.254`):** ningún contenedor la necesita, así que una regla en la
+  cadena `DOCKER-USER` descarta su tráfico hacia ella:
+
+  ```bash
+  sudo iptables -I DOCKER-USER -d 169.254.169.254/32 -j DROP
+  ```
+
+  Tiene que sobrevivir a un reinicio. **No** con `netfilter-persistent save` con Docker arriba, porque guardaría también
+  las cadenas que Docker regenera. La forma exacta (por ejemplo, una unidad de systemd que la aplica después de
+  `docker.service`) se fija y se anota en 12.7. No sobrevive al reemplazo del volumen de arranque: se rehace en 9.3. El
+  host sí sigue llegando a la dirección (control positivo de 12.7).
+- **Comprobación de la regla (12.7):** Pendiente.
+
 ### Docker
 
 Docker Engine con los plugins de **Compose y Buildx** desde el **repositorio oficial de Docker** para `arm64`, no el
@@ -208,13 +240,17 @@ con permisos `600`, en el directorio fijo. **Nunca** está en el repositorio ni 
   `MAIL_SMTP_SECURE=false`), provisional y sin credenciales hasta 7.9;
 - `AI_CHAIN=openrouter` y **sin** `AI_EMBED_CHAIN`: staging no tiene búsqueda (design D13);
 - los secretos (`AUTH_JWT_SECRET`, `AI_VAULT_KEY`, `OBJECT_STORE_SSE_KEY`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`), generados
-  con las órdenes de este README.
+  con las órdenes de este README;
+- las credenciales de datos (`REDIS_PASSWORD`, `MONGO_ROOT_USER` y `MONGO_ROOT_PASSWORD`), con `openssl rand -hex 32`:
+  van sin codificar en `MONGO_URI` y `REDIS_URL`, y `check-env-file.mjs` exige el formato apto para URI (design D18).
 
 Comprobación (5.7): `stat -c %a .env.staging` → `600` y
 `docker compose -f docker-compose.prod.yml --env-file .env.staging config -q` sale 0.
 
 **Copia fuera del host**, comprobada por suma SHA-256: contiene `AI_VAULT_KEY` (sin ella no se descifran las claves BYOK)
-y `OBJECT_STORE_SSE_KEY` (sin ella no se descifran los CV). Toda tarea que edita `.env.staging` actualiza la copia.
+y `OBJECT_STORE_SSE_KEY` (sin ella no se descifran los CV), y `MONGO_ROOT_PASSWORD` (el usuario raíz vive en el
+volumen de Mongo: con otra contraseña, la pila no entra a sus datos). Toda tarea que edita `.env.staging` actualiza la
+copia.
 
 - **Dónde está la copia:** Pendiente (5.8).
 
@@ -248,6 +284,8 @@ Staging es **desechable**: sus datos no tienen copia (ADR-051 §2). Lo único co
 | Qué | Dónde | Qué se pierde si se pierde el host |
 |---|---|---|
 | `.env.staging` | directorio fijo | nada, si la copia está al día: se restaura y se compara su suma |
+| `REDIS_PASSWORD` y `MONGO_ROOT_PASSWORD` | `.env.staging` | con la copia, nada. Sin ella, Redis arranca con una nueva; Mongo no, porque su usuario raíz vive en `mongo-data` con la anterior, y sin ella esos datos solo se dejan atrás con `down -v` |
+| `keyFile` de Mongo | `/tmp` del contenedor `mongo` | nada: se genera en cada arranque y no es un secreto (con un solo nodo no hace falta conservarlo) |
 | datos de MongoDB | volumen `mongo-data` | cuentas, grupos, links, postulaciones y análisis, sin copia |
 | almacén de objetos | volumen `object-store-data` | los CV y los snapshots, sin copia |
 | colas de Redis | volumen `redis-data` | los trabajos en vuelo |
@@ -334,7 +372,7 @@ Son **30 obligatorias por proceso** —29 del esquema zod más `AI_VAULT_KEY`, c
 [`inventarios.md`](../openspec/changes/deploy-image-verification/inventarios.md) del change `deploy-image-verification`—,
 pero casi todas las fija el propio `docker-compose.prod.yml` con un valor razonable o con uno literal que no depende
 del operador (`NODE_ENV`, `MONGO_URI`, `REDIS_URL`, `S3_ENDPOINT`, `AI_PROMPTS_DIR`, `TRUST_PROXY`,
-`OUTBOX_RELAY_ENABLED`…). **Lo que el env file tiene que aportar sí o sí son estas trece**, declaradas como
+`OUTBOX_RELAY_ENABLED`…). **Lo que el env file tiene que aportar sí o sí son estas dieciséis**, declaradas como
 `${VAR:?}`: sin ellas el `up` aborta nombrando la variable, antes de crear nada.
 
 | Variable | Servicios que la exigen | Forma |
@@ -350,6 +388,9 @@ del operador (`NODE_ENV`, `MONGO_URI`, `REDIS_URL`, `S3_ENDPOINT`, `AI_PROMPTS_D
 | `MAIL_FROM` | api, worker | remitente visible, p. ej. `LinkVault <noreply@tu-dominio>` |
 | `S3_ACCESS_KEY` | api, worker, object-store | credencial del almacén de objetos |
 | `S3_SECRET_KEY` | api, worker, object-store | ídem |
+| `REDIS_PASSWORD` | redis, api, worker | **32-128 caracteres de `[A-Za-z0-9._~-]`** (`openssl rand -hex 32`): va sin codificar dentro de `REDIS_URL`, así que un `/`, `+`, `=`, `@` o `:` la rompe; `infra/ci/check-env-file.mjs` lo comprueba sin imprimir el valor (design D18 de `staging-host`) |
+| `MONGO_ROOT_USER` | mongo, api, worker | 1-64 caracteres de `[A-Za-z0-9._~-]`: el usuario raíz de Mongo, sin codificar dentro de `MONGO_URI` |
+| `MONGO_ROOT_PASSWORD` | mongo, api, worker | **32-128 caracteres de `[A-Za-z0-9._~-]`** (`openssl rand -hex 32`), por la misma razón que `REDIS_PASSWORD`. El usuario raíz solo se crea sobre un **volumen de Mongo vacío**: con uno anterior, la healthcheck falla y hay que partir de `down -v` |
 | `OBJECT_STORE_SSE_KEY` | object-store | **64 hexadecimales en minúscula**: la clave del cifrado del bucket de CV (ver [«Almacén de objetos»](#almacén-de-objetos-cv-y-snapshots)) |
 | `ENRICH_USER_AGENT` | worker | `User-Agent` identificable del extractor (obligación de la spec de extracción) |
 
@@ -504,6 +545,24 @@ o mal formada) o `65` (el volumen tiene `.mini_sse_kek`, la clave que SeaweedFS 
 Qué hacer en cada caso, y por qué nunca se borra ese fichero sin saber con qué clave se cifraron los objetos:
 [RUNBOOK, «Operar los CV»](../docs/RUNBOOK.md#paso-6-octies--operar-los-cv).
 
+**Qué queda sin autenticación, y quién lo alcanza (riesgo residual escrito; design D18 de `staging-host`, medida 2).**
+`weed mini` arranca maestro, volumen, filer y pasarela S3 en un proceso y solo la pasarela (8333) pide claves.
+El servicio lleva `-disableHttp`, así que **el filer (8888) ya no sirve objetos por HTTP** (desde `api` y desde `worker`,
+`http://object-store:8888/` da 404 y la pasarela S3 sigue sirviendo con sus claves). Pero `mini` no tiene enlace por
+componente y `-ip.bind=127.0.0.1` cierra también la pasarela (`provision` sale 1), así que **siguen escuchando, sin
+autenticación**: el maestro (**9333**), el volumen (**9340**) y los gRPC (**18888**, **19333**, **19340** y **33646**;
+medido además, **18333** y **23646**). **Solo los alcanzan `api` y `worker`**, cada uno por su red (`store-api` y
+`store-worker`, ambas `internal: true` y sin puertos publicados): `web`, Traefik, Mongo y Redis ni siquiera resuelven
+`object-store`. Un proceso comprometido en `api` o en `worker` puede, por tanto, hablar con esas interfaces; no se
+filtra por destino (ADR-056 §5) y la firma JWT con `security.toml` queda fuera, porque sería un fichero con secreto
+montado y la forma del servicio (ADR-052) no lo admite. La evidencia está en
+[`matriz.md`](../docs/object-store-matrix/matriz.md), «Configuración con `-disableHttp` (35b D18)», y la decisión, en
+[ADR-052](../docs/adr/ADR-052.md), «Consecuencias».
+
+**`weed mini` guarda `-disableHttp` en el volumen** (`/data/mini.options`). Quitar la opción del compose no vuelve a
+abrir el filer hasta el *segundo* arranque del almacén, y una prueba de que el filer responde sin ella tiene que partir
+de un volumen nuevo. En staging no importa (parte de un volumen vacío con la opción puesta).
+
 Comprobar el almacén, sin escribir nada (buckets, sin reglas de caducidad, cifrado del de CV, ningún snapshot de más de
 31 días y acceso anónimo rechazado):
 
@@ -521,11 +580,17 @@ nombrando la diferencia.
 
 **Lee esto antes de ejecutarlo, porque es la mitad que se suele omitir.** Al terminar tendrás **seis servicios sanos**
 —`mongo`, `redis`, `object-store`, `api`, `worker` y `web`— y **ninguna URL que abrir**. En `docker-compose.prod.yml`
-**Traefik es el único servicio que publica puertos** (80 y 443); los seis de abajo viven en la red `internal`, que es
-`internal: true`, y no publican ninguno. Este camino responde a «¿arranca el artefacto con su configuración real?», que
+**Traefik es el único servicio que publica puertos** (80 y 443); los seis de abajo viven en redes `internal: true` (salvo
+las dos de salida a Internet, una por proceso: `api-egress` y `worker-egress`) y no publican ninguno. `api` y `worker` no
+comparten ninguna red (design D18 de `staging-host`). Este camino responde a «¿arranca el artefacto con su configuración real?», que
 es justo lo que el CD verifica, y **no** a «¿puedo usar la aplicación?». Para desarrollar, usa el `docker compose up` +
 `nx serve` del [README raíz](../README.md). Para un destino usable de verdad —con Traefik, DNS y TLS— hace falta un
 host, y eso es la **fila 35** del plan (`staging-host`), que sigue abierta.
+
+**Un volumen de Mongo anterior a D18** (sin usuario raíz) deja a `mongo` sin llegar a `healthy`
+(`Authentication failed.`) y `up --wait` falla: el usuario raíz solo se crea sobre un volumen vacío. Se arregla con el
+`down -v` del final y volviendo a levantar. Lo mismo con el almacén: `weed mini` guarda `-disableHttp` en el volumen,
+así que para ver el filer sin esa opción hace falta un volumen nuevo.
 
 <!-- repo-check: stack-up — este bloque se compara con infra/ci/verify-artifact.sh (tools/repo-checks/src/docs-stack-up.check.mjs). Si cambias uno, cambia el otro. -->
 
@@ -550,6 +615,9 @@ AI_CHAIN=none
 AUTH_JWT_SECRET=$(node -e "process.stdout.write(require('crypto').randomBytes(48).toString('base64url'))")
 AI_VAULT_KEY=$(node -e "process.stdout.write(require('crypto').randomBytes(32).toString('base64'))")
 OBJECT_STORE_SSE_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
+REDIS_PASSWORD=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
+MONGO_ROOT_USER=linkvault
+MONGO_ROOT_PASSWORD=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
 EOF
 
 # 3) Qué imágenes usa el compose: las recién construidas, no las de GHCR.
@@ -590,10 +658,12 @@ dc exec -T api    node -e "fetch('http://127.0.0.1:3000/health').then(async r=>c
 dc exec -T worker node -e "fetch('http://127.0.0.1:3001/health').then(async r=>console.log(r.status, await r.text()))"
 
 # Preguntar desde dentro no prueba que otro contenedor llegue: una imagen que solo escucha en loopback da 200 arriba y
-# el borde recibe `ECONNREFUSED`. Desde `web` (solo en `internal`, como ve la pila Traefik), las dos tienen que dar
-# `HTTP/1.1 200 OK`; es la misma comprobación que hace `infra/ci/verify-artifact.sh` (tarea 7.10 de `object-store`).
+# el borde recibe `ECONNREFUSED`. `api` y `worker` no comparten red, así que cada una se pide desde un contenedor de la
+# suya: `api` desde `web` (solo en `internal`, como ve la pila Traefik) y `worker` desde `object-store` (que está en
+# `store-worker` y trae `curl`). Las dos tienen que dar `HTTP/1.1 200 OK`; es la misma comprobación que hace
+# `infra/ci/verify-artifact.sh` (tarea 7.10 de `object-store`; design D18, tarea 12.1).
 dc exec -T web wget -S -q -O /dev/null -T 10 http://api:3000/health
-dc exec -T web wget -S -q -O /dev/null -T 10 http://worker:3001/health
+dc exec -T object-store curl -sS -D - -o /dev/null --max-time 10 http://worker:3001/health
 
 # `web` no se comprueba con un 200: un nginx sirviendo otra cosa también responde 200. Se exige la raíz de la
 # aplicación Angular en el cuerpo, igual que hace el healthcheck del compose y la verificación del artefacto.
@@ -670,9 +740,9 @@ Qué levanta exactamente esa verificación, y qué deja fuera:
 - `mongo`, `redis` y `object-store` como dependencias, y `api`, `worker` y `web` como lo que se verifica; **mongo queda
   como replica set de un nodo** (`rs0`, primario escribible), igual que en producción, porque con instancia suelta una
   transacción multi-documento fallaría **solo** en el despliegue real;
-- **sin Traefik y sin certificados** (exigen DNS y ACME, fuera de alcance) y **sin publicar ni un puerto**: la red
-  `internal` es `internal: true` y ningún servicio de aplicación publica nada, así que la readiness se comprueba desde
-  dentro con `docker compose exec`. Abrir puertos para poder mirar cambiaría la configuración que se está verificando;
+- **sin Traefik y sin certificados** (exigen DNS y ACME, fuera de alcance) y **sin publicar ni un puerto**: las redes
+  son `internal: true` (salvo `api-egress` y `worker-egress`, las de salida a Internet) y ningún servicio de aplicación
+  publica nada, así que la readiness se comprueba desde dentro con `docker compose exec`. Abrir puertos para poder mirar cambiaría la configuración que se está verificando;
 - el env file es `infra/ci/verify.env`, **versionado y de relleno**, con `AI_CHAIN=none` porque `mock` está prohibido
   con el `NODE_ENV=production` que las imágenes hornean. Ese fichero **no sirve para desplegar** y lo dice en su
   cabecera.

@@ -9,16 +9,43 @@
 # TRUST_PROXY=true solo aquí (detrás de Traefik); ausente en docker-compose.yml local.
 name: linkvault-prod
 
+# Redes por proceso (design D18 de `staging-host`, medida 1): `api` y `worker` NO comparten ninguna, así que un
+# proceso comprometido en uno no resuelve ni alcanza al otro. Traefik sigue siendo el único servicio que publica puertos.
+#
+#   red            internal  miembros
+#   edge           no        traefik (el puerto 80/443 del host)
+#   internal       sí        traefik, web, api (el borde llega a `api` y a `web` por aquí; sin salida)
+#   data-api       sí        mongo, redis, api
+#   data-worker    sí        mongo, redis, worker
+#   store-api      sí        object-store, api   (sustituye a `object-store-net`; D14 de `object-store`)
+#   store-worker   sí        object-store, worker
+#   api-egress     no        api     (salida a Internet: SMTP, OpenRouter)
+#   worker-egress  no        worker  (salida a Internet: descargas del enriquecimiento, SMTP, OpenRouter)
 networks:
   edge:
     driver: bridge
   internal:
     driver: bridge
     internal: true
-  # Red propia del almacén (design D14 de `object-store`): solo `object-store`, `api` y `worker`.
-  object-store-net:
+  data-api:
     driver: bridge
     internal: true
+  data-worker:
+    driver: bridge
+    internal: true
+  # Redes del almacén (design D14 de `object-store`, repartidas por proceso en D18): al almacén solo llegan `api` y
+  # `worker`, cada uno por la suya.
+  store-api:
+    driver: bridge
+    internal: true
+  store-worker:
+    driver: bridge
+    internal: true
+  # Las dos únicas con salida a Internet. Una por proceso: así `worker` sale sin compartir red con `api`.
+  api-egress:
+    driver: bridge
+  worker-egress:
+    driver: bridge
 
 volumes:
   mongo-data:
@@ -75,15 +102,39 @@ services:
       retries: 6
       start_period: 15s
 
+  # Mongo con autenticación (design D18 de `staging-host`, medida 3): replica set de un nodo (`rs0`) con usuario raíz.
+  # - `MONGO_INITDB_ROOT_*` crea el usuario raíz **solo sobre un volumen vacío**; el `docker-entrypoint.sh` de la imagen
+  #   arranca un `mongod` temporal sin `--replSet` ni `--keyFile` para crearlo y después arranca el definitivo con ellos.
+  #   Un volumen anterior se queda sin usuario (`down -v`; ver infra/README.md).
+  # - Un replica set con autenticación exige `--keyFile`. Se genera **dentro del contenedor al arrancar**, antes del
+  #   `docker-entrypoint.sh`, con uid 999 (`mongodb`) y modo 400. En un nodo único no hace falta conservarlo: no es un
+  #   secreto, no se copia y funciona igual en CI y en la pila local. Vive en `/tmp`, no en el volumen.
+  # - Ninguna contraseña en los argumentos de un proceso: la healthcheck se autentica **dentro** de `--eval`, leyendo
+  #   `process.env`; no hay `-u` ni `-p`. `MONGO_ROOT_USER` y `MONGO_ROOT_PASSWORD` van sin codificar dentro de
+  #   `MONGO_URI` (formato apto para URI: `infra/ci/check-env-file.mjs`).
   mongo:
     image: mongo:7.0.43
     hostname: mongo
     restart: unless-stopped
-    command: ['--replSet', 'rs0', '--bind_ip_all']
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |-
+        umask 077
+        openssl rand -base64 756 >/tmp/mongo-keyfile
+        chown 999:999 /tmp/mongo-keyfile
+        chmod 400 /tmp/mongo-keyfile
+        exec /usr/local/bin/docker-entrypoint.sh "$$@"
+      - mongo-keyfile
+    command: ['--replSet', 'rs0', '--bind_ip_all', '--keyFile', '/tmp/mongo-keyfile']
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:?set MONGO_ROOT_USER (1-64 characters [A-Za-z0-9._~-])}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?set MONGO_ROOT_PASSWORD (32-128 characters [A-Za-z0-9._~-]; openssl rand -hex 32)}
     volumes:
       - mongo-data:/data/db
     networks:
-      - internal
+      - data-api
+      - data-worker
     healthcheck:
       test:
         - CMD
@@ -91,6 +142,7 @@ services:
         - --quiet
         - --eval
         - >-
+          db.getSiblingDB('admin').auth(process.env.MONGO_INITDB_ROOT_USERNAME, process.env.MONGO_INITDB_ROOT_PASSWORD);
           try { rs.status(); } catch (e) {
             if (e.codeName === 'NotYetInitialized' || e.code === 94) {
               rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'mongo:27017' }] });
@@ -103,16 +155,35 @@ services:
       start_period: 30s
       start_interval: 2s
 
+  # Redis con contraseña (design D18 de `staging-host`, medida 3). `requirepass` va en un fichero de configuración que se
+  # escribe al arrancar, en `/tmp` (no en el volumen) y con modo 600 para el usuario `redis`: la contraseña nunca está en
+  # los argumentos del proceso (`docker top`, `/proc/<pid>/cmdline`), solo en su entorno. El `exec` pasa por el
+  # `docker-entrypoint.sh` de la imagen, que cede el proceso al usuario `redis`. `REDIS_PASSWORD` la valida
+  # `infra/ci/check-env-file.mjs` con el formato apto para URI (32-128 caracteres de [A-Za-z0-9._~-]): va sin codificar
+  # dentro de `REDIS_URL`.
   redis:
     image: redis:7.4.11
     restart: unless-stopped
-    command: ['redis-server', '--appendonly', 'yes']
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD (32-128 characters [A-Za-z0-9._~-]; openssl rand -hex 32)}
+    command:
+      - /bin/sh
+      - -c
+      - |-
+        umask 077
+        printf 'requirepass %s\n' "$$REDIS_PASSWORD" >/tmp/redis-auth.conf
+        chown redis:redis /tmp/redis-auth.conf
+        exec /usr/local/bin/docker-entrypoint.sh redis-server /tmp/redis-auth.conf --appendonly yes
     volumes:
       - redis-data:/data
     networks:
-      - internal
+      - data-api
+      - data-worker
+    # `REDISCLI_AUTH` es la forma de pasarle la contraseña a `redis-cli` sin `-a` (que la dejaría en los argumentos). Se
+    # exige `PONG` en la salida y no solo el código de salida: sin ella, la respuesta es `NOAUTH` y el estado pasa a
+    # `unhealthy`.
     healthcheck:
-      test: ['CMD', 'redis-cli', 'ping']
+      test: ['CMD-SHELL', 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep -q PONG']
       interval: 5s
       timeout: 3s
       retries: 10
@@ -127,10 +198,15 @@ services:
   # valor por defecto: sin la clave, `weed mini` generaría una propia y la guardaría junto a los datos (design D16).
   # No aprovisiona: los buckets, el cifrado del bucket de CV y la ausencia de reglas los pone `object-store provision`
   # (`docker compose … run --rm --no-deps api node object-store.js provision`, y después `verify`) tras el `up`.
-  # Red propia (design D14): el filer (8888), el maestro (9333), el volumen (9340) y sus gRPC escuchan sin
-  # autenticación, así que el almacén vive solo en `object-store-net` (interna, sin puertos publicados), con `api` y
-  # `worker` como únicos otros miembros; mongo, redis, `web` y Traefik no llegan a él. Sin `depends_on`: así
-  # `config --images object-store` da una sola línea, la que lee el `deploy.sh` de 35b para comparar el digest.
+  # Redes propias (design D14, por proceso en D18): el filer (8888), el maestro (9333), el volumen (9340) y sus gRPC
+  # escuchan sin autenticación, así que el almacén vive solo en `store-api` y `store-worker` (internas, sin puertos
+  # publicados), con `api` y `worker` como únicos otros miembros, cada uno en la suya; mongo, redis, `web` y Traefik no
+  # llegan a él. Sin `depends_on`: así `config --images object-store` da una sola línea, la que lee el `deploy.sh`
+  # de 35b para comparar el digest.
+  # `-disableHttp` (design D18, medida 2): el filer (8888) no sirve objetos por HTTP; la pasarela S3 sigue. Siguen sin
+  # autenticación el maestro (9333), el volumen (9340) y los gRPC (18888, 19333, 19340 y 33646), solo alcanzables desde
+  # `api` y `worker` (riesgo residual escrito en `infra/README.md` y en ADR-052). Está también en el compose de la matriz
+  # y en el de desarrollo: `command` se compara entero.
   object-store:
     image: ${OBJECT_STORE_IMAGE:-chrislusf/seaweedfs}:${OBJECT_STORE_IMAGE_TAG:-4.47}
     restart: unless-stopped
@@ -160,6 +236,7 @@ services:
       - '-s3.port.iceberg=0'
       - '-s3.port.lance=0'
       - '-master.telemetry=false'
+      - '-disableHttp'
     environment:
       AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY:?}
       AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:?}
@@ -169,7 +246,8 @@ services:
     volumes:
       - object-store-data:/data
     networks:
-      - object-store-net
+      - store-api
+      - store-worker
     healthcheck:
       test: ['CMD', 'curl', '-fsS', '-o', '/dev/null', '--max-time', '3', 'http://127.0.0.1:8333/healthz']
       interval: 10s
@@ -196,8 +274,8 @@ services:
       NODE_ENV: production
       LOG_LEVEL: ${LOG_LEVEL:-info}
       API_PORT: 3000
-      MONGO_URI: mongodb://mongo:27017/linkvault?replicaSet=rs0
-      REDIS_URL: redis://redis:6379
+      MONGO_URI: mongodb://${MONGO_ROOT_USER:?set MONGO_ROOT_USER}:${MONGO_ROOT_PASSWORD:?set MONGO_ROOT_PASSWORD}@mongo:27017/linkvault?replicaSet=rs0&authSource=admin
+      REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD}@redis:6379
       # Exactamente una api con relay (ADR-033 D8). No dupliques este servicio con true.
       OUTBOX_RELAY_ENABLED: 'true'
       OUTBOX_RELAY_INTERVAL_MS: ${OUTBOX_RELAY_INTERVAL_MS:-1000}
@@ -257,9 +335,13 @@ services:
       S3_BUCKET: ${S3_BUCKET:-cvs}
       S3_SNAPSHOTS_BUCKET: ${S3_SNAPSHOTS_BUCKET:-snapshots}
       FEATURE_HEADLESS_EXTRACTION: ${FEATURE_HEADLESS_EXTRACTION:-false}
+    # Red propia de cada dependencia y salida propia (design D18): `internal` para Traefik, y ninguna compartida con
+    # `worker`.
     networks:
       - internal
-      - object-store-net
+      - data-api
+      - store-api
+      - api-egress
     # Readiness for compose --wait; image HEALTHCHECK is liveness (/health/live).
     healthcheck:
       test:
@@ -290,8 +372,8 @@ services:
       NODE_ENV: production
       LOG_LEVEL: ${LOG_LEVEL:-info}
       WORKER_HEALTH_PORT: 3001
-      MONGO_URI: mongodb://mongo:27017/linkvault?replicaSet=rs0
-      REDIS_URL: redis://redis:6379
+      MONGO_URI: mongodb://${MONGO_ROOT_USER:?set MONGO_ROOT_USER}:${MONGO_ROOT_PASSWORD:?set MONGO_ROOT_PASSWORD}@mongo:27017/linkvault?replicaSet=rs0&authSource=admin
+      REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD}@redis:6379
       AI_PROMPTS_DIR: /app/assets/ai/prompts
       AI_CHAIN: ${AI_CHAIN:?}
       AI_VAULT_KEY: ${AI_VAULT_KEY:?}
@@ -345,9 +427,12 @@ services:
       S3_BUCKET: ${S3_BUCKET:-cvs}
       S3_SNAPSHOTS_BUCKET: ${S3_SNAPSHOTS_BUCKET:-snapshots}
       FEATURE_HEADLESS_EXTRACTION: ${FEATURE_HEADLESS_EXTRACTION:-false}
+    # Sin `internal`: no comparte red con `api` ni con Traefik (design D18), así que no resuelve `api` ni alcanza su
+    # `/metrics`. La salida a Internet (descargas del enriquecimiento, SMTP, OpenRouter) es la suya.
     networks:
-      - internal
-      - object-store-net
+      - data-worker
+      - store-worker
+      - worker-egress
     # Readiness **idéntica** a la de `api`: el que decide es el **contenido** (`status`, `checks.mongo`,
     # `checks.redis`), y el `!r.ok` sobra para distinguir sano de degradado — está por simetría, no porque haga
     # falta. La versión anterior solo hacía `JSON.parse` del cuerpo y acertaba por accidente, apoyada en que hoy el
