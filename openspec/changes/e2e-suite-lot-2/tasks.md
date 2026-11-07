@@ -94,8 +94,10 @@
   `apps/web-e2e` como directorio de trabajo. Falsaciones, y restaurar:
   (e) el `import` de (a) en `home.spec.ts`, exento: sin error; al marcar su prueba `admitted` en el JSON, el error
   aparece;
-  (f) un `setTimeout(…)` en `home.spec.ts` y otro en `local-only/index.ts`: error de esperas fijas en los dos (C8);
-  (g) `import { resetRegisterLimit } from './support/register-limit'` en `account.spec.ts`: error del patrón
+  (f) un `setTimeout(…)` en `home.spec.ts` y otro en `local-only/index.ts`: error de esperas fijas en los dos (C8); y un
+  `'http://localhost:8125'` en `local-only/index.ts`: error del selector de bucle local (H3);
+  (g) `import { resetRegisterLimit } from './support/register-limit'` en `account.spec.ts` (o, antes de la 4.2, en
+  `critical-path.spec.ts`): error del patrón
   `**/support/register-limit` (R2-1); y quitar `exemptSupport` del JSON: el error aparece en
   `support/register-limit.ts` por `node:child_process`.
 - [ ] 2.4 [frontend] Depende de 2.2. Guardia en Playwright: una prueba temporal `@lot9 @remote-safe` que llama a
@@ -169,7 +171,7 @@
   la 5.2 sale con `0`; las cifras coinciden con `--list` y con los 46 títulos del catálogo; `web-e2e:lint` sigue en
   verde (la exención sale del inventario real).
 - [ ] 5.4 [infra] Depende de 5.3. `tools/repo-checks/project.json`: target `check-catalog-coverage` (`cache: true`,
-  `inputs` de D3, con `externalDependencies`) en el `dependsOn` del agregador; cabecera de `infra/ci/repo-checks.sh`
+  `inputs` de D3, con `externalDependencies` `@playwright/test`, `tsx` y `typescript`) en el `dependsOn` del agregador; cabecera de `infra/ci/repo-checks.sh`
   (C16). Verificar: `bash infra/ci/repo-checks.sh` en verde y su línea final cuenta una comprobación más. Falsación:
   sacar el target del `dependsOn` y ver que el agregador falla nombrándolo; restaurar.
 - [ ] 5.5 [infra] Depende de 5.4. Falsaciones por `repo-checks`, cada una restaurada:
@@ -181,10 +183,13 @@
   (e) añadir una prueba temporal `@lot2` sin entrada y ver «admitted test cited by no entry»;
   (f) un comentario en `apps/web-e2e/scripts/lib/remote.ts`: la segunda corrida no sale de la caché (C3).
   Verificar: la salida de cada una, en el scratchpad.
-- [ ] 5.6 [frontend] Depende de 5.1. Apoyos exentos en la comprobación (R2-1): `evaluateCoverage` recibe además, por
-  fichero de `src/`, sus `import` relativos (leídos con el compilador de TypeScript, solo los especificadores) y falla si
-  una clave de `exemptSupport` no existe o si la importa un fichero que no está exento. Casos en `coverage.spec.ts`:
-  «exempt support that does not exist fails» y «exempt support imported by a non-exempt file fails». Verificar:
+- [ ] 5.6 [frontend] Depende de 5.4, 2.3b y 4.2 (H1). Apoyos exentos en la comprobación (R2-1): `evaluateCoverage`
+  recibe además, por fichero de `src/`, sus `import` relativos (leídos con el compilador de TypeScript, solo los
+  especificadores), **resueltos desde la carpeta del fichero que importa** a una ruta relativa a `src/` (H4), y falla
+  si una clave de `exemptSupport` no existe o si la importa un fichero que no está exento. Casos en
+  `coverage.spec.ts`: «exempt support that does not exist fails» y «exempt support imported by a non-exempt file
+  fails», este con dos importadores no exentos: un spec con `./support/register-limit` y un fichero de `support/` con
+  `./register-limit`. Verificar:
   `pnpm nx run web-e2e:test --skip-nx-cache` y `bash infra/ci/repo-checks.sh` en verde. Falsación: con la 2.3b
   hecha, desactivar en una línea el lint del patrón y añadir el `import` de (g) a `account.spec.ts`: la comprobación
   falla nombrando los dos ficheros; restaurar.

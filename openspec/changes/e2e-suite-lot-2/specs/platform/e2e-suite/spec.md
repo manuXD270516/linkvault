@@ -270,8 +270,8 @@ para remoto que intente cualquiera de esas operaciones SHALL fallar nombrando la
 también en `local` y en la integración continua, y **antes** de conectar con nada; y cualquier prueba que lo intente
 con el perfil `remote` SHALL fallar igual. El lint del proyecto de la suite SHALL rechazar, fuera de esos ayudantes y
 de los ficheros que el inventario exime, el acceso directo a esas operaciones —por importación estática o dinámica— y
-la lectura de sus direcciones del entorno, y en todo el proyecto, salvo esos mismos ficheros exentos, los orígenes de
-bucle local escritos a mano. Los ficheros exentos son los que el inventario declara: los que tienen alguna prueba no
+la lectura de sus direcciones del entorno, y en sus pruebas y apoyos (`src/`), salvo esos mismos ficheros exentos,
+los orígenes de bucle local escritos a mano, también dentro de los ayudantes. Los ficheros exentos son los que el inventario declara: los que tienen alguna prueba no
 admitida y los apoyos que el inventario declara solo para ellos.
 
 El perfil `remote` SHALL poder **ensayarse** contra la pila local que arranca el comando de la suite, **cuando se

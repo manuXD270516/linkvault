@@ -138,7 +138,8 @@ Un fichero con dos claves, para que una sola comprobación vea las dos caras:
     configuración;
   - `{workspaceRoot}/libs/shared/**/*` (los specs importan sus esquemas) y `{workspaceRoot}/tsconfig.base.json` (las
     rutas `@linkvault/*`);
-  - `{ "externalDependencies": ["@playwright/test", "tsx"] }`;
+  - `{ "externalDependencies": ["@playwright/test", "tsx", "typescript"] }` (`typescript`, porque la 5.6 lee los
+    especificadores de importación con su compilador, H1);
   - y se añade al `dependsOn` del agregador (si no, el guardia del agregador lo rechaza).
 
   Corre **siempre** en `ci.yml` (paso «Repo checks», incondicional), y en local un cambio solo del catálogo o de un
@@ -206,7 +207,7 @@ de `tag`, las de `describe` y las escritas en el título), y deduplica por proye
   | Orden | Bloque (`files`) | `no-restricted-syntax` | `no-restricted-imports` |
   |---|---|---|---|
   | 1 | `src/**/*.ts` | base (SDKs de IA) + esperas fijas + bucle local + acceso local (C7) | `mongodb`, `child_process`, `node:child_process`, `ioredis` y el patrón `**/support/register-limit` |
-  | 2 | `src/support/local-only/**` | base + esperas fijas (lista completa) | `'off'` |
+  | 2 | `src/support/local-only/**` | base + esperas fijas + bucle local (lista completa; H3) | `'off'` |
   | 3 | `EXEMPT_FILES` | base + esperas fijas (lista completa) | `'off'` |
 
   El patrón `**/support/register-limit` hace que solo los ficheros exentos puedan importar ese apoyo (R2-1).
@@ -460,4 +461,18 @@ Critic: 1 P0 (nacido del recorte de B1) y 8 P1, todos aceptados. Con un P0 en es
 | R2-8 | La 2.2 añade `E2E_MAILPIT_URL=<url>` a la descripción del perfil `local` (no a la del ensayo), y el `node -e` la busca en las dos líneas | El runner no registra el entorno de Playwright: la descripción del perfil sí está en `runner.log` |
 | R2-9 | En la 1.2, una segunda prueba temporal `@lot1` | Cubre el escenario de C13 aunque `@paste-actions` no esté en `main` |
 
-Pendiente: la verificación siguiente y la aprobación humana.
+### Verificación iteración 3 (2026-11-07)
+
+Critic: 0 P0 y 4 P1, aceptados. R2-1 cerrado: el critic recorrió `support/` entero y solo `register-limit.ts`
+necesitaba exención.
+
+| id | Decisión | Motivo |
+|---|---|---|
+| H1 | La 5.6 depende de 5.4, 2.3b y 4.2; `typescript` en `externalDependencies` (D3 y 5.4) | La 5.6 usa el target, la exención y `account.spec.ts`, y lee importaciones con el compilador de TypeScript |
+| H2 | La falsación (g) de la 2.3b lleva el inciso «o, antes de la 4.2, en `critical-path.spec.ts`» | Sin la 4.2 no existe `account.spec.ts` |
+| H3 | Delta: «en todo el proyecto» pasa a «en sus pruebas y apoyos (`src/`)»; los selectores de bucle local también en el bloque 2 (`local-only`); tabla de D5 y ADR-067 §3 ajustados | El fixture lee su dirección por variable y no necesita un origen escrito; la frase del delta prometía más que el lint |
+| H4 | La 5.6 resuelve cada especificador desde la carpeta del fichero que importa; el caso «exempt support imported by a non-exempt file fails» incluye un importador en `support/` con `./register-limit` | Comparar el texto del especificador dejaba pasar una importación relativa desde `support/` |
+
+Convergencia: SI
+
+Pendiente: la aprobación humana.
