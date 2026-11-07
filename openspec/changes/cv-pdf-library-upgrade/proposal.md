@@ -25,25 +25,28 @@ Tres hechos hacen que valga la pena el change aunque el aislamiento ya acote el 
 - **Spike con criterio de parada** (design D2-D3). Primero `pdfjs-dist` (build `legacy`, versión exacta,
   `isEvalSupported: false`, sin canvas ni `Worker` anidado, sin fuentes del sistema ni URL remota, `@napi-rs/canvas`
   excluido de la instalación, cargado solo por `require(esm)`) y, si falla en (a), (b) o (c), `unpdf` como alternativa
-  escrita. Un fallo de paridad no pasa a `unpdf`: vuelve al debate. Una candidata se adopta si cumple cuatro
-  condiciones:
+  escrita (adoptar `unpdf`, cuyas alertas no llegan, exige además un sí del owner a Q11). Un fallo de paridad no pasa a
+  `unpdf`: vuelve al debate. Una candidata se adopta si cumple cuatro condiciones:
   - (a) carga y lee dentro del hijo con sus flags, desde el bundle y desde la imagen;
   - (b) el crecimiento de la imagen del worker, medido después de la poda, no pasa el umbral de Q3;
   - (c) todas las licencias de su árbol son permisivas;
   - (d) pasa la paridad.
 
-  **El tope es de 4 h por biblioteca**, partido en tareas de menos de una hora, con corte explícito. Si las dos fallan,
+  **El tope es de 4 h por biblioteca** (más 2 h de esperas de build), partido en tareas de menos de una hora, con
+  corte explícito. Si las dos fallan,
   `pdf-parse` 1.1.4 se queda aislado y la decisión vuelve al owner (D13).
 - **Paridad** (D7):
   - igualdad exacta sobre los fixtures sintéticos;
-  - recall de tokens ≥ 0,98 y el mismo orden de bloques sobre PDF de productores reales: una sola fuente inventada,
-    commiteada en texto plano y sin metadatos, que el implementador exporta por CLI (LaTeX, LibreOffice, dos columnas)
-    y el owner desde Word y Google Docs;
-  - lo mismo sobre 5 o 6 CV reales que el owner pasa **en su máquina**, con una orden de PowerShell concreta. Los CV
-    son del owner o de personas que se los dieron para esto; nunca se descargan de staging ni de producción. No se
-    commitea nada y se anotan solo dos líneas de agregados.
+  - recall de tokens ≥ 0,98 y el mismo orden de bloques sobre cinco PDF de productores reales, medidos dentro del
+    spike: una sola fuente inventada, commiteada en texto plano y sin metadatos, que el implementador exporta con
+    contenedores públicos (LaTeX, LibreOffice, dos columnas) y el owner, antes del spike, desde Word y Google Docs;
+  - lo mismo sobre 5 o 6 CV reales que el owner pasa **en su máquina**, desde una terminal de PowerShell propia y con
+    una orden concreta. **Solo CV cuyo origen controla el owner** (los suyos o los que generó él), porque la paridad
+    corre fuera del aislamiento; **nunca se descargan del almacén de staging ni de producción**. No se commitea nada y
+    se anotan solo dos líneas de agregados.
   - Se decide `disableNormalization`, y la medición del owner se repite con la candidata adoptada (PO-03, PO-08).
-  - **Sin la medición del owner no hay sustitución**; a los 14 días sin ella, el change queda «en pausa por la 3.1».
+  - **Sin la medición del owner no hay sustitución**; la fecha límite (14 días) queda en el PR y en el manifiesto, y
+    si llega sin la medición el change queda «en pausa por la 3.1».
 - **Sustitución** (D4, D10):
   - `PdfTextSource` pasa a la biblioteca adoptada;
   - los dos módulos de pdf.js (el principal y el del «worker falso») se cargan, y sus CMaps y fuentes estándar se
