@@ -24,8 +24,9 @@ Tres hechos hacen que valga la pena el change aunque el aislamiento ya acote el 
 
 - **Spike con criterio de parada** (design D2-D3). Primero `pdfjs-dist` (build `legacy`, versión exacta,
   `isEvalSupported: false`, sin canvas ni `Worker` anidado, sin fuentes del sistema ni URL remota, `@napi-rs/canvas`
-  excluido de la instalación) y, si no cumple, `unpdf` como alternativa escrita. Una candidata se adopta si cumple
-  cuatro condiciones:
+  excluido de la instalación, cargado solo por `require(esm)`) y, si falla en (a), (b) o (c), `unpdf` como alternativa
+  escrita. Un fallo de paridad no pasa a `unpdf`: vuelve al debate. Una candidata se adopta si cumple cuatro
+  condiciones:
   - (a) carga y lee dentro del hijo con sus flags, desde el bundle y desde la imagen;
   - (b) el crecimiento de la imagen del worker, medido después de la poda, no pasa el umbral de Q3;
   - (c) todas las licencias de su árbol son permisivas;
@@ -35,15 +36,19 @@ Tres hechos hacen que valga la pena el change aunque el aislamiento ya acote el 
   `pdf-parse` 1.1.4 se queda aislado y la decisión vuelve al owner (D13).
 - **Paridad** (D7):
   - igualdad exacta sobre los fixtures sintéticos;
-  - recall de tokens ≥ 0,98 y el mismo orden de bloques sobre PDF de productores reales (una persona inventada,
-    exportada desde Word, LibreOffice, Google Docs, LaTeX y una plantilla a dos columnas);
-  - lo mismo sobre 5 o 6 CV reales que el owner pasa **en su máquina**. No se commitea nada y se anotan solo
-    agregados.
+  - recall de tokens ≥ 0,98 y el mismo orden de bloques sobre PDF de productores reales: una sola fuente inventada,
+    commiteada en texto plano y sin metadatos, que el implementador exporta por CLI (LaTeX, LibreOffice, dos columnas)
+    y el owner desde Word y Google Docs;
+  - lo mismo sobre 5 o 6 CV reales que el owner pasa **en su máquina**, con una orden de PowerShell concreta. Los CV
+    son del owner o de personas que se los dieron para esto; nunca se descargan de staging ni de producción. No se
+    commitea nada y se anotan solo dos líneas de agregados.
   - Se decide `disableNormalization`, y la medición del owner se repite con la candidata adoptada (PO-03, PO-08).
+  - **Sin la medición del owner no hay sustitución**; a los 14 días sin ella, el change queda «en pausa por la 3.1».
 - **Sustitución** (D4, D10):
   - `PdfTextSource` pasa a la biblioteca adoptada;
-  - los dos módulos de pdf.js (el principal y el del «worker falso») se cargan **antes** de `ready`, así que una
-    biblioteca que falta es un fallo de maquinaria y no un `unreadable_file`;
+  - los dos módulos de pdf.js (el principal y el del «worker falso») se cargan, y sus CMaps y fuentes estándar se
+    comprueban, **antes** de `ready`, así que una biblioteca incompleta es un fallo de maquinaria y no un
+    `unreadable_file`;
   - salen `pdf-parse`, `@types/pdf-parse` y `pdf-parse-lib.d.ts`;
   - se actualizan la regla de lint de la capa de dominio y la del hijo;
   - un test comprueba que la dependencia vieja no vuelve.
@@ -57,7 +62,7 @@ Tres hechos hacen que valga la pena el change aunque el aislamiento ya acote el 
 - **Renovate** (Q6): alertas de vulnerabilidad sin aprobación del Dashboard para la biblioteca adoptada, `mammoth`,
   `@xmldom/xmldom` y `jszip`, si el owner lo aprueba (D11).
 - **Los CV ya leídos no se vuelven a leer** (R6, D12): dos CV iguales subidos antes y después del cambio pueden diferir
-  en el texto guardado.
+  en el texto guardado. Lo dice una oración del requirement y se revisa sobre el diff, sin escenario propio.
 
 ## Capabilities
 
@@ -69,19 +74,21 @@ Ninguna.
 
 - `cv/extraction`: se modifica «Texto extraído, normalizado y acotado», donde el PDF pasa a leerse con un pdf.js
   mantenido. Se añaden dos requirements: «La biblioteca de PDF es un pdf.js mantenido, fijado y sin evaluación de
-  código», con el escenario «La dependencia vieja no vuelve», y «El cambio de biblioteca conserva el texto de los
-  fixtures y no relee CV».
-- `platform/workspace`: se modifica «Aislamiento de la capa de dominio». La lista cerrada nombra la biblioteca de PDF
-  nueva, y el escenario «La infraestructura importa un extractor de documentos» pasa al directorio del hijo aislado,
-  que es donde la regla de lint de `cv-extract-isolation` (commit `628923d`) ya los permite.
+  código», con los escenarios «La dependencia vieja no vuelve» y «Faltan los mapas de caracteres de pdf.js», y «El
+  cambio de biblioteca conserva el texto de los fixtures y no relee CV».
+- `platform/workspace`: se modifica «Aislamiento de la capa de dominio», **a partir del MODIFIED de
+  `cv-extract-isolation`** (`7c1d475`), que ya admite los parsers solo en `isolation/child/`. Aquí solo se suman
+  `pdfjs-dist` y `unpdf` a la lista cerrada y a esa regla, y los escenarios de extractores pasan a importar
+  `pdfjs-dist`.
 
 ## Impact
 
 - **Código** (`apps/worker`):
   - `infrastructure/isolation/child/pdf-extract.ts`: implementación nueva de `PdfTextSource`;
-  - `child-command.ts`: `resolveNodeModulesRoot` busca la biblioteca nueva;
+  - `child-command.ts`: `resolveNodeModulesRoot` busca la biblioteca nueva, y un test de que nunca concede
+    `--allow-addons`;
   - `cv-extract-child.bundle.spec.ts`: fija la versión de la biblioteca nueva;
-  - `extractors/pdf-parse-lib.d.ts`: se borra;
+  - `extractors/pdf-parse-lib.d.ts`: se borra, y sale de `tsconfig.cv-child-test.json` si lo nombra;
   - `extractors/fixtures/expected-texts.ts`: nuevo;
   - un spec de paridad temporal, que se borra al sustituir;
   - `no-pdf-parse.spec.ts`: nuevo.
@@ -90,6 +97,7 @@ Ninguna.
   - `pnpm-workspace.yaml`, para excluir `@napi-rs/canvas`;
   - `eslint.config.mjs`, con dos patrones;
   - `tools/workspace-rules/src/workspace-rules.spec.ts`;
+  - `tools/cv-fixtures/parity-source/`: la fuente inventada del corpus de productores, en texto plano (nueva);
   - `renovate.json`, si Q6 = sí.
 - **Imagen**: `docker/worker.Dockerfile`, con la poda del paquete en la etapa `build` si hace falta para cumplir Q3. No
   cambian el `CMD`, el `ENV` ni la etapa `runner`.
@@ -97,12 +105,14 @@ Ninguna.
   - el puerto `CvTextExtractor`, `ExtractionAttempt`, los estados y motivos de `cv/extraction`, `libs/shared`, la API
     y el SPA;
   - las constantes de `extraction-limits.ts`, el protocolo del hijo y sus flags;
-  - `verify-artifact.sh`, el compose y `.env.example`.
+  - la lógica de `verify-artifact.sh` (solo cambia su comentario), el compose y `.env.example`.
 - **Documentación**:
   - `README.md` (§ de la extracción);
-  - `docs/RUNBOOK.md` («Operar los CV»);
+  - `docs/RUNBOOK.md` («Operar los CV», con una línea sobre cómo repetir la paridad);
+  - `tools/cv-fixtures/README.md`;
   - comentarios que nombran `pdf-parse` en `cv-fixtures.ts`, `apps/web-e2e/src/support/cv-files.ts`,
-    `apps/web-e2e/src/cv.spec.ts`, `apps/web-e2e/src/match.spec.ts` y `cv-text-extractors.port.ts`;
+    `apps/web-e2e/src/cv.spec.ts`, `apps/web-e2e/src/match.spec.ts`, `cv-text-extractors.port.ts` e
+    `infra/ci/verify-artifact.sh`;
   - ADR-064 (nuevo, Propuesto) y anotaciones de una línea en ADR-058 (Decisión 7) y en ADR-028 (§Consecuencias,
     «Dependencias»).
 

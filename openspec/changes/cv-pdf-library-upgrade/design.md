@@ -27,10 +27,12 @@ documentos», dice que en ese directorio el lint SHALL pasar, y el caso tabular
 `an infrastructure folder of the worker imports a document extractor` de
 `tools/workspace-rules/src/workspace-rules.spec.ts` (archivo virtual
 `apps/worker/src/modules/cv/infrastructure/probe.ts`, `unexpectedRuleIds: ['no-restricted-imports']`) espera que no se
-reporte esa regla. Por la lectura del código, ese caso debería estar en rojo en `change/cv-extract-isolation`: no se
-ejecutó, porque el worktree no tiene dependencias instaladas. Si `cv-extract-isolation` lo corrige antes de archivar
-(MODIFIED de `platform/workspace` y caso del test movidos a `isolation/child/`), el MODIFIED de este change se rehace
-sobre ese texto (tarea 0.3). Si no lo corrige, lo corrige este change (D10).
+reporte esa regla. **Estado (iteración 1, C1-16):** `cv-extract-isolation` lo está corrigiendo en su rama, con un
+MODIFIED de `platform/workspace` que admite los parsers en `isolation/child/` y los rechaza en el resto de
+`infrastructure/` (escenario «La infraestructura fuera del hijo importa un extractor de documentos»), y con el caso del
+test ajustado. El MODIFIED de este change **parte de ese texto**: solo añade `pdfjs-dist` y `unpdf` a la lista y a la
+oración del hijo, y cambia los `WHEN` de los tres escenarios de extractores. La 0.3 lo vuelve a comparar con el texto
+archivado.
 
 Restricciones:
 
@@ -120,20 +122,46 @@ cara que la anterior:
   los PDF de productores. También tienen que seguir en verde las suites de aislamiento y de archivos patológicos que
   dejó `cv-extract-isolation`.
 
-**Tope: 4 h por biblioteca**, repartidas en las tareas 1.1-1.5 (`pdfjs-dist`) y 2.1-2.5 (`unpdf`), cada una de menos de
-una hora. Cada tarea anota cuándo empezó y cuándo terminó en «Estado del spike y de las mediciones». El **corte** de una
-biblioteca es explícito y se da en el primero de estos casos:
+**Corpus de productores (C1-01).** Sale de **una sola fuente inventada**, commiteada en texto plano y sin metadatos
+(`tools/cv-fixtures/parity-source/persona-inventada.tex` y `.fodt`, con un nombre, una empresa y una trayectoria
+inventados). Tiene dos partes:
 
-1. una condición falla de forma que no se arregla dentro de la tarea (por ejemplo, una licencia GPL en el árbol o un
-   `ERR_ACCESS_DENIED` que solo se resuelve ampliando la lista de lecturas fuera de `node_modules`);
-2. la suma de las tareas de esa biblioteca llega a 4 h sin cumplir (a)-(d);
-3. la paridad cae un 5 % o más en cualquier PDF de productor (recall < 0,95 u orden < 0,95). En ese caso no se pasa a
-   la candidata siguiente: **se para el spike y se vuelve al debate**, porque una caída así dice más del corpus o de
-   la métrica que de la biblioteca.
+- **(i) la genera el implementador** (0.5a), fuera del repositorio y por CLI: `pdflatex` para el PDF de LaTeX y
+  `soffice --headless --convert-to pdf` para el de LibreOffice y el de la plantilla a dos columnas (la misma `.fodt` con
+  dos columnas). Si en su máquina no están `pdflatex` o `soffice`, la tarea lo anota y esos PDF pasan al owner, junto con
+  los de la (ii);
+- **(ii) la genera el owner** (0.5b, `[owner]`): exporta la misma fuente desde Word y desde Google Docs, en la misma
+  sesión que la 3.1.
 
-En los casos 1 y 2 se cierra la biblioteca (tarea 1.6 o 2.6) y se pasa a la siguiente. Si la candidata cumple (a)-(d),
-el owner pasa sus CV reales (tarea 3.1). Si su medición no cumple, esa candidata también se cierra y se pasa a la
-siguiente, y la medición del owner **se repite con la que se adopte** (PO-08). Si fallan las dos, se aplica D13.
+Por eso **(d) queda provisional con 3 productores** (LaTeX, LibreOffice y dos columnas) al cerrar el grupo 1 o el 2, y se
+completa con Word y Google Docs en la 3.1. Si en la 3.1 esos dos no cumplen, se trata igual que una medición del owner
+que no cumple.
+
+**Tope: 4 h por biblioteca**, repartidas en las tareas 1.1a-1.5b (`pdfjs-dist`) y 2.1-2.5 (`unpdf`), cada una de menos
+de una hora. Cada tarea anota cuándo empezó y cuándo terminó en «Estado del spike y de las mediciones». **La espera de
+un build** (`docker build`, `nx build`) **no cuenta para el tope** si el implementador no trabaja en la biblioteca
+mientras espera, pero se anota aparte. Una espera de más de 30 minutos se anota como hallazgo, porque también es costo
+de mantener la biblioteca. Las falsaciones de imagen que no deciden la adopción (C1-10) se hacen en la 4.5, después del
+spike.
+
+El **corte** de una biblioteca es explícito y se da en el primero de estos casos:
+
+1. **(a), (b) o (c) fallan** de forma que no se arregla dentro de la tarea. Por ejemplo: una licencia GPL en el árbol, un
+   `ERR_ACCESS_DENIED` que solo se resuelve ampliando la lista de lecturas fuera de `node_modules`, o `require(esm)` que
+   no carga (D5);
+2. la suma de las tareas de esa biblioteca llega a 4 h sin cumplir (a)-(c);
+3. **(d) falla**: un sintético que difiere (C1-14: se anota el diff línea a línea) o un productor por debajo del
+   criterio de D7.
+
+**Solo los cortes 1 y 2 pasan a `unpdf`** (C1-09). Lo mismo vale si `pdfjs-dist` falla por tiempo. Un corte 3, o una
+medición del owner (3.1) que no cumple, **para el spike y vuelve al debate**, sin pasar a la otra candidata. `unpdf`
+reempaqueta el mismo pdf.js, así que un problema de texto de uno sería, casi seguro, el del otro; y una diferencia en los
+sintéticos dice más de la unión de líneas que de la biblioteca.
+
+**Puerta dura (B1-03): sin la 3.1 hecha, el grupo 4 no empieza.** Si la 3.1 no se hizo a los 14 días de cerrar la 1.6
+(o la 2.6), el design anota «en pausa por la 3.1» con la fecha, y el change espera sin otra tarea en curso. Si se adopta
+la candidata que no midió el owner, la 3.1 se repite con ella (PO-08). Si fallan las dos por cortes 1 o 2, se aplica
+D13.
 
 *Alternativas descartadas:*
 
@@ -154,7 +182,18 @@ es la única que conoce la biblioteca.
   - El motivo es la clasificación de ADR-058 §5. Si el módulo del worker se cargara perezosamente, faltar en la imagen
     convertiría **todo** PDF en `unreadable_file`, que es un desenlace de contenido sin reintento, en vez de un fallo
     de maquinaria con `internal_error` visible en el contador.
-  - Test «a missing pdf.js worker module is a boot error» (1.1).
+  - Test «a missing pdf.js worker module is a boot error» (1.1b). El hijo compilado del test vive **dentro** de un
+    árbol falso de `node_modules` en `os.tmpdir()`, con `allowRead=<tmp>`, y el test afirma `ERR_MODULE_NOT_FOUND` o
+    `MODULE_NOT_FOUND` como código del `boot_error`, **nunca** `ERR_ACCESS_DENIED`: así se prueba la ausencia del módulo
+    y no el modelo de permisos (C1-11).
+- **CMaps y fuentes estándar antes de `ready` (C1-03).** Sus directorios se resuelven con
+  `createRequire(__filename).resolve('<paquete>/package.json')` y `dirname` (C1-04), sin ninguna ruta escrita a mano.
+  Antes de `ready`, el módulo hace `statSync` de un fichero conocido de `cmaps/` y de otro de `standard_fonts/`: un
+  error ahí es `boot_error` (maquinaria), no un PDF ilegible. Test del hijo «pdf.js data paths resolve under the allowed
+  node_modules root»: las dos rutas, pasadas por `realpath`, quedan bajo la raíz de `node_modules` que recibe el hijo.
+- **Las opciones salen de una función pura (C1-15):** `pdfDocumentOptions(bytes, paths)` devuelve el objeto que recibe
+  `getDocument`, y su test lo compara con `toEqual` contra el objeto exacto que fija esta lista, con aserciones aparte
+  de las dos rutas. Así una opción añadida o quitada rompe el test.
 - **Opciones de `getDocument`:**
   - `data`: los bytes copiados con `withOwnBuffer`, como `Uint8Array` propio y no como `Buffer`;
   - `isEvalSupported: false`;
@@ -163,15 +202,21 @@ es la única que conoce la biblioteca.
   - `enableXfa: false`;
   - `useWorkerFetch: false`;
   - `isOffscreenCanvasSupported: false`;
-  - `verbosity` en errores;
+  - `verbosity: 0` (solo errores, que de todos modos se descartan con la salida del hijo);
   - `cMapUrl`, `cMapPacked: true` y `standardFontDataUrl`, apuntando a los directorios del propio paquete, resueltos
-    desde su `package.json` y no por una ruta escrita a mano;
+    como se explica arriba;
   - sin `url` ni ninguna fuente remota.
 
   `--disallow-code-generation-from-strings` sigue en la línea de órdenes, como segunda barrera.
 - **Sin canvas y sin `Worker` anidado.** `@napi-rs/canvas` se excluye de la instalación en `pnpm-workspace.yaml`, con la
   opción de pnpm que excluye dependencias opcionales (`ignoredOptionalDependencies`, que se confirma con pnpm 12.4.2 en
-  la 1.3). El «worker falso» corre dentro del propio hijo. El modelo de permisos ya deniega `new Worker`.
+  la 1.3a). La comprobación se hace **dentro de la imagen**: `/app/node_modules/.pnpm` no tiene ninguna entrada
+  `@napi-rs+canvas*` (C1-05). Si la exclusión choca con `pnpm install --frozen-lockfile` de la imagen (el candado
+  generado por Nx no la refleja), la alternativa, en este orden, es: regenerar el candado de `dist/` con la exclusión ya
+  aplicada en el workspace, y si no alcanza, borrar el paquete en la etapa `build` después de instalar, con la
+  comprobación de `.pnpm` como guardia. La segunda barrera, aunque el paquete llegara a instalarse, es que el hijo no
+  tiene `--allow-addons` y no puede cargar código nativo. Test «the child command never allows addons» sobre
+  `buildChildCommand`. El «worker falso» corre dentro del propio hijo. El modelo de permisos ya deniega `new Worker`.
 - **Texto:**
   - recorre las páginas `1..min(numPages, CV_MAX_PDF_PAGES)`;
   - por página pide `getTextContent({ disableNormalization })`, con el valor que decide D7;
@@ -195,18 +240,21 @@ del contenido y rompería la frontera de ADR-058.
 ### D5. ESM desde un bundle `commonjs` (R2)
 
 El build `legacy` de pdf.js es ESM. El bundle del hijo es `commonjs` (webpack con `compiler: 'tsc'`) y deja las
-dependencias de `node_modules` como externas. El spike prueba, en este orden, y se queda con la primera vía que pase
-(a):
+dependencias de `node_modules` como externas.
 
-1. **`require(esm)`** de Node 22.23. Funciona si el módulo no usa `await` de nivel superior. Si lo usa, falla con
-   `ERR_REQUIRE_ASYNC_MODULE` en el arranque, y eso ya es `boot_error`.
-2. **`import()` dinámico que el compilador no reescriba**, con una cadena literal para que el grafo de Nx y el
-   generador del `package.json` vean la dependencia. La 1.1 anota cómo queda en el bundle y que
-   `dist/apps/worker/package.json` lista la biblioteca con versión exacta, que es la aserción de
-   `cv-extract-child.bundle.spec.ts`.
+**La única vía es `require(esm)` de Node 22.23 (C1-02).** Webpack deja el `require` de la dependencia externa con una
+cadena literal, que el grafo de Nx y el generador del `package.json` ven. Funciona si los módulos no usan `await` de
+nivel superior; si lo usan, falla con `ERR_REQUIRE_ASYNC_MODULE`.
 
-Las dos vías conservan las tres aserciones del test del bundle: un solo fichero, sin `__webpack_require__.e` y sin
-`require("./…")`. El riesgo de que funcione en Vitest y no en la imagen lo cierra la sonda dentro de la imagen (1.2).
+- **El primer paso de la 1.1a**, antes de escribir código, es `node -e "require('pdfjs-dist/legacy/build/pdf.mjs');
+  require('pdfjs-dist/legacy/build/pdf.worker.mjs')"` con Node 22.23 desde la raíz del workspace. Si falla, es **corte
+  1** de esa biblioteca.
+- **Un `import()` dinámico que el compilador no reescriba no se usa**: exigiría un mecanismo de compilación que el
+  Impact no nombra (un comentario mágico de webpack o un `new Function` prohibido por el propio flag del hijo). Solo
+  entra si el debate acepta un MODIFIED del Impact que nombre ese mecanismo.
+
+Las tres aserciones del test del bundle siguen igual: un solo fichero, sin `__webpack_require__.e` y sin
+`require("./…")`. El riesgo de que funcione en Vitest y no en la imagen lo cierra la sonda dentro de la imagen (1.2a).
 
 ### D6. La lista de lecturas no crece; si tuviera que crecer, vuelve al debate
 
@@ -216,9 +264,10 @@ script del hijo y **la raíz de `node_modules`**. Con pnpm, `node_modules/pdfjs-
 `node_modules/.pnpm/…`, dentro de la misma raíz, así que los CMaps (`cmaps/`), las fuentes estándar
 (`standard_fonts/`) y el módulo del worker falso ya son legibles **sin añadir nada**.
 
-- La 1.2 lo demuestra dentro de la imagen, con la lista de producción sin cambios y un PDF que necesita un CMap
+- La 1.2a lo demuestra dentro de la imagen, con la lista de producción sin cambios y un PDF que necesita un CMap
   predefinido (fixture nuevo `pdfWithPredefinedCMap()`, si se puede generar en la tarea; si no, se anota y la
-  comprobación queda en el PDF de productor que lo necesite).
+  comprobación queda en el PDF de productor que lo necesite). Además, el `statSync` previo a `ready` (D4) hace que un
+  paquete sin `cmaps/` o sin `standard_fonts/` falle en el arranque, y la sonda lo detecta (falsación en la 4.5).
 - **Si hiciera falta una ruta fuera de `node_modules`**, el change vuelve al debate con un MODIFIED de «La lectura corre
   aislada del proceso del worker», que remite a la lista del design de `cv-extract-isolation`. Este change no lo
   modifica mientras la lista no cambie.
@@ -230,7 +279,7 @@ la raíz de `node_modules` no contiene secretos.
 
 ### D7. Paridad: qué se mide, sobre qué, cómo se anota sin datos personales
 
-**Definiciones** (fijas antes de medir; las implementa el spec de paridad de la 1.5):
+**Definiciones** (fijas antes de medir; las implementa el spec de paridad de la 1.5a):
 
 - **Texto comparado**: el de cada `PdfTextSource` pasado por `prepareCvText` (la normalización que se guarda), sin el
   recorte de 200.000 caracteres.
@@ -248,8 +297,12 @@ la raíz de `node_modules` no contiene secretos.
 | Corpus | Dónde vive | Criterio |
 |---|---|---|
 | Sintéticos: `pdfWithText()` y `pdfWithoutText()` de `cv-fixtures.ts`, `pdfWithPageMarks(60)` de `pathological-fixtures.ts`, y `minimalPdf()` de `apps/web-e2e/src/support/cv-files.ts` | generados en el test | **igualdad exacta**, línea a línea, contra `extractors/fixtures/expected-texts.ts`, capturado con `pdf-parse` en la 0.4 (texto inventado, sin datos personales) |
-| Productores: una persona inventada exportada desde Word, LibreOffice, Google Docs, LaTeX y una plantilla a dos columnas (≥ 5 PDF) | **fuera del repositorio**, en un directorio de quien mide | recall ≥ 0,98 y orden = 1,00 en cada PDF; recall < 0,95 u orden < 0,95 en cualquiera → corte 3 de D3 |
+| Productores: la fuente inventada de D3, exportada desde LaTeX, LibreOffice y LibreOffice a dos columnas (0.5a) y desde Word y Google Docs (0.5b) | la fuente, en el repositorio en texto plano; los PDF, **fuera del repositorio**, en un directorio de quien los genera | recall ≥ 0,98 y orden = 1,00 en cada PDF; si no, corte 3 de D3 |
 | CV reales del owner (5 o 6) | **solo en la máquina del owner** | el mismo criterio que los productores, con la candidata adoptada |
+
+**Origen de los CV reales (B0-01).** Los CV son del owner o de personas que se los dieron para esto. **Nunca** se
+descargan del almacén de staging ni del de producción. Se busca variedad de herramientas: al menos 3 distintas, si las
+hay.
 
 **`disableNormalization`:** se mide con `true` y con `false`. Se elige `true` si la normalización de pdf.js baja el
 recall mínimo frente a `pdf-parse`, y `false` (el valor por defecto de pdf.js) si lo mejora o lo deja igual. Con la
@@ -258,29 +311,57 @@ CV.
 
 **El instrumento** es un spec de Vitest, `child/pdf-parity.spec.ts`, en el proyecto `worker-isolation`. Corre las dos
 implementaciones de `PdfTextSource` en el proceso de test, que es donde vive la comparación de texto; el aislamiento ya
-se prueba aparte. Se salta si no hay `CV_PARITY_DIR`, así que CI nunca lo ejecuta. Con la variable puesta:
+se prueba aparte. Las reglas que siguen son de la iteración 1 del debate (C1-06, C1-07, C1-08, B1-04):
 
-- **se niega a leer un directorio dentro del repositorio**: si `CV_PARITY_DIR` resuelto (`realpath`) está bajo la raíz
-  del workspace, falla con «CV_PARITY_DIR must be outside the repository». Es un guardia con falsación (1.5) que evita
-  que un CV acabe en `git status`;
-- **no escribe nada en disco** y no imprime nombres de archivo, texto, tokens, metadatos ni hashes. Etiqueta cada
-  archivo como `doc-1..n` en un orden aleatorio por corrida;
-- **imprime una sola línea de agregados**:
+- **Fuera de cualquier repositorio.** `assertOutsideAnyRepository(dir)` es una función pura del mismo fichero. Rechaza
+  `dir` si alguno de sus ancestros, él incluido, después de `realpath`, contiene un `.git` (directorio o fichero, para
+  cubrir los worktrees). También lo rechaza si `path.relative(raízDelWorkspace, dir)` no sale de la raíz. En win32
+  compara en minúsculas. Se llama **antes de cualquier `readdir`**. Su test, «parity refuses a directory inside any
+  repository», corre **fuera** del `describe.runIf`, en CI y siempre, sobre árboles temporales con y sin `.git`. Su
+  falsación es real: quitar la búsqueda de `.git` y ver que el caso del árbol con `.git` deja de fallar.
+- **Se salta si no hay `CV_PARITY_DIR`** (`describe.runIf`), así que CI nunca lee PDF de nadie.
+- **Silencio.** Mientras corre, `console.log`, `console.warn` y `console.error` se sustituyen por funciones vacías, y
+  `verbosity: 0`. Lo único que se escribe es la salida de abajo, por `process.stdout.write`.
+- **Ningún `expect` sobre texto ni tokens**, solo sobre agregados. Una aserción que falla imprime lo que compara, y aquí
+  eso sería el CV. El test «a failing parity read leaves no text in the output» captura la salida con un PDF inventado
+  que no se puede leer y comprueba que no contiene ninguna palabra de su texto. Falsación: añadir un `expect` sobre el
+  texto y ver que el test falla.
+- **No escribe nada en disco.** No imprime nombres de archivo, texto, tokens, metadatos ni hashes, salvo lo que permite
+  `CV_PARITY_PER_DOC`.
+- **Los dos valores de `disableNormalization` en una sola corrida**, en dos líneas:
 
   ```
-  parity source=<biblioteca>@<versión> normalization=<true|false> docs=<n> recall_min=<0.000> recall_mean=<0.000> order_ok=<k>/<n> failed_reads=<m>
+  parity run=<uuid> source=<biblioteca>@<versión> normalization=false docs=<n> recall_min=<0.000> recall_mean=<0.000> order_ok=<k>/<n> failed_reads=<m> failed_reads_ref=<r>
+  parity run=<uuid> source=<biblioteca>@<versión> normalization=true  docs=<n> recall_min=<0.000> recall_mean=<0.000> order_ok=<k>/<n> failed_reads=<m> failed_reads_ref=<r>
   ```
 
-  y, para los productores, una línea por archivo con `doc-i recall=<x> order=<y>`. El productor lo anota a mano quien
-  mide, porque el nombre del archivo no se imprime.
+  - `failed_reads` cuenta los PDF que la candidata no pudo leer (excepción o contraseña);
+  - `failed_reads_ref` cuenta los que no pudo leer `pdf-parse`;
+  - un PDF que no lee ninguna de las dos no entra en `docs` ni en los promedios;
+  - uno que lee solo `pdf-parse` cuenta con recall 0;
+  - uno que lee solo la candidata no entra en los promedios, porque no tiene referencia.
+- **Detalle por documento, solo para productores**: con `CV_PARITY_PER_DOC=1`, se añade una línea por archivo,
+  `doc=<nombre del fichero> recall=<x> order=<y>`, con el nombre del fichero inventado como etiqueta (`latex.pdf`,
+  `word.pdf`…). Sin esa variable, que es como corre la 3.1, solo salen las dos líneas agregadas.
+- **La orden es una sola, para PowerShell**, y la usan igual la 1.5b (productores) y la 3.1 (owner):
+
+  ```powershell
+  $env:CV_PARITY_DIR='C:\ruta\fuera\del\repo'; pnpm nx run worker:test --skip-nx-cache -- <filtro comprobado en la 1.5a>; Remove-Item Env:CV_PARITY_DIR
+  ```
+
+  La 1.5a fija el filtro exacto (el de Vitest para un solo fichero en este workspace) y lo escribe aquí. `--skip-nx-cache`
+  hace falta porque, si no, Nx devuelve una corrida anterior desde su caché. El `run=<uuid>` de cada línea permite saber
+  que dos líneas pegadas salen de la misma corrida. La 1.5b anota cuánto tardó la orden, para que la 3.1 diga un tiempo
+  real.
 
 **Cómo se anota la medición del owner (3.1).** El owner pega en «Estado del spike y de las mediciones» (o en un
-comentario del PR, que el implementador copia) **solo** la línea `parity …` de cada corrida, con la fecha y, si quiere,
-cuántos de sus CV vienen de cada tipo de herramienta («Word: 3, Google Docs: 2, desconocido: 1»). Nunca nombres,
+comentario del PR, que el implementador copia) **solo** las dos líneas `parity …` de la corrida, con la fecha y, si
+quiere, cuántos de sus CV vienen de cada tipo de herramienta («Word: 3, Google Docs: 2, desconocido: 1»). Nunca nombres,
 empresas, fechas del CV, fragmentos, número de páginas por archivo ni capturas de pantalla.
 
 El spec de paridad importa `pdf-parse`, así que **se borra en la sustitución** (4.1). Queda en el historial de la rama
-y no tiene datos.
+y no tiene datos. La fuente inventada (`tools/cv-fixtures/parity-source/`) se queda, para repetir la paridad cuando se
+actualice la biblioteca (RUNBOOK).
 
 *Alternativas descartadas:*
 
@@ -293,19 +374,21 @@ y no tiene datos.
 
 ### D8. Costo: tamaño de la imagen tras la poda y licencias
 
-- **Medida**: `docker image inspect --format '{{.Size}}'` de la imagen del worker construida en local con
-  `docker/worker.Dockerfile`, antes del cambio (con `pdf-parse`) y después (con la candidata, `pdf-parse` todavía
-  instalado para la paridad, **restado aparte**). El delta que cuenta para Q3 es el de la imagen final, sin
-  `pdf-parse`. Se anota en bytes y en MB.
+- **Medida**: `docker image inspect --format '{{.Size}}'` de la imagen del worker construida con
+  `docker/worker.Dockerfile`, antes del cambio (con `pdf-parse`) y después (con la candidata, con `pdf-parse` todavía
+  instalado para la paridad y **restado aparte**). El delta que cuenta para Q3 es el de la imagen final, sin
+  `pdf-parse`. Se anota en bytes y en MB. **Las dos imágenes se construyen en la misma máquina y con el mismo almacén de
+  imágenes de Docker** (C1-18, B2-05), y se anota cuáles fueron (por ejemplo, «Docker Desktop/WSL2, containerd» o
+  «Docker Engine, overlay2»), porque el tamaño que informa `inspect` cambia de un almacén a otro.
 - **Poda**, solo si hace falta para cumplir Q3. En la etapa `build`, después de `pnpm install --prod`, se borran del
   paquete adoptado los directorios que el hijo no carga: el build no `legacy`, el visor `web/`, los `*.map` y los
   `types/`. Se hace con una línea de `rm -rf` cuyas rutas se resuelven desde el `package.json` del paquete. La sonda
-  dentro de la imagen podada (1.2 repetida) es la que demuestra que no se borró nada necesario.
+  dentro de la imagen podada (1.2a repetida) es la que demuestra que no se borró nada necesario.
 - **Licencias**: `pnpm licenses list --prod --json` filtrado al árbol que entra por la candidata, comparado con una
   lista blanca (MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD). Cualquier otra licencia se anota y se trata
   como corte 1 de D3, salvo que el owner la acepte por escrito.
-- **`@napi-rs/canvas` fuera**: `dist/apps/worker/pnpm-lock.yaml`, el candado que genera Nx y que instala la imagen, no
-  lo contiene.
+- **`@napi-rs/canvas` fuera** de dos sitios: de `dist/apps/worker/pnpm-lock.yaml`, el candado que genera Nx y que
+  instala la imagen, y de `/app/node_modules/.pnpm` dentro de la imagen (D4, C1-05).
 
 ### D9. Arranque del hijo en `arm64`
 
@@ -337,14 +420,10 @@ y no tiene datos.
 
   Las dos candidatas entran en los dos patrones, sea cual sea la adoptada, para que cambiar de una a otra no abra un
   hueco. `pdf-parse` se queda en los patrones: no cuesta nada y da un mensaje claro si alguien lo reinstala.
-- **`tools/workspace-rules/src/workspace-rules.spec.ts`**:
-  - el caso del dominio importa la biblioteca adoptada;
-  - el caso de infraestructura pasa a un archivo virtual bajo `apps/worker/src/modules/cv/infrastructure/isolation/child/`
-    (debe pasar);
-  - se añade `a worker infrastructure file outside the isolated child imports a document extractor`
-    (`apps/worker/src/modules/cv/infrastructure/probe.ts`, debe fallar).
-
-  Así queda el delta de `platform/workspace`.
+- **`tools/workspace-rules/src/workspace-rules.spec.ts`** (C1-16): los casos de infraestructura (dentro y fuera de
+  `isolation/child/`) ya los deja `cv-extract-isolation` (`7c1d475`). Aquí solo cambia el paquete que importan los tres
+  casos de extractores: la biblioteca adoptada en lugar de `pdf-parse`. Así queda el delta de `platform/workspace`, que
+  parte del texto de aquel change.
 - **`no-pdf-parse.spec.ts`** (worker): el `package.json` raíz no nombra `pdf-parse` ni `@types/pdf-parse`;
   `pnpm-lock.yaml` no contiene `pdf-parse@`; la biblioteca adoptada está en `dependencies` con versión exacta (sin `^`
   ni `~`). Es el escenario «La dependencia vieja no vuelve».
@@ -372,21 +451,32 @@ prueba si hace falta.
 - Dos CV con el mismo archivo, subidos antes y después, pueden diferir en el texto guardado. Se acepta: el análisis de
   encaje se pide sobre un CV concreto y no compara versiones.
 
-Escenario «Un CV ya leído no se vuelve a leer».
+Lo dice una oración del requirement «El cambio de biblioteca conserva el texto de los fixtures y no relee CV», **sin
+escenario ni test propio** (C1-17, B1-05): probar que no ocurre algo que ningún código hace sería un test que no puede
+fallar. En su lugar, la 8.1 revisa el diff del change buscando migraciones, re-encolados o cambios en el consumidor de
+`extract-cv`.
 
 ### D13. Si fallan las dos candidatas
 
-1. En la rama del change, `defaultPdfTextSource` vuelve a `PdfParseTextSource`, se desinstalan las candidatas, se quita
-   la exclusión de canvas y se borra el spec de paridad. `git diff` contra el `main` del momento queda solo en este
-   directorio de change y en los documentos.
-2. El design anota el resultado del spike (las condiciones que fallaron, con medición y fecha), y una **pregunta nueva
-   al owner** en Open Questions con estas opciones: (a) seguir con `pdf-parse` aislado y reintentar al publicarse una
-   versión nueva; (b) aceptar un umbral de imagen mayor; (c) un contenedor de extracción aparte, que es la evolución
-   anotada en ADR-058.
-3. Los deltas de `specs/` se **retiran** del change, porque describen una biblioteca que no se adoptó.
-4. ADR-064 pasa a **Rechazado**, con el resultado.
-5. El change se archiva con `openspec archive cv-pdf-library-upgrade --skip-specs`, para que el spike quede en el
-   archivo.
+Solo se llega aquí por cortes 1 o 2 en las dos candidatas: un corte 3 o una 3.1 que no cumple vuelven al debate (D3).
+
+**Qué queda (una sola lista, C1-13):**
+
+| Pieza | Queda | Sale |
+|---|---|---|
+| `defaultPdfTextSource` | `PdfParseTextSource` | `PdfJsTextSource` y la de `unpdf` |
+| Dependencias | `pdf-parse`, `@types/pdf-parse`, `mammoth` | las candidatas y la exclusión de canvas de `pnpm-workspace.yaml` |
+| Tests | `expected-texts.ts` y «synthetic pdfs keep the recorded text» (0.4), como regresión | `child/pdf-parity.spec.ts` |
+| Fuente inventada | `tools/cv-fixtures/parity-source/` | — |
+| `docker/worker.Dockerfile` | sin cambios | cualquier poda |
+| Deltas de `specs/` | ninguno: describen una biblioteca que no se adoptó | los dos |
+| ADR-064 | **Rechazado**, con el resultado | — |
+| Design | resultado de los dos spikes, con medición y fecha, y una **pregunta nueva al owner**: (a) seguir con `pdf-parse` aislado y reintentar al publicarse una versión nueva; (b) aceptar un umbral de imagen mayor; (c) un contenedor de extracción aparte, que es la evolución anotada en ADR-058 | — |
+
+El change se archiva con `openspec archive cv-pdf-library-upgrade --skip-specs`. Qué hace `openspec validate --strict`
+con un change sin deltas (si lo acepta, avisa o falla) **se comprueba en la 0.3** con un change de prueba en el
+scratchpad, y la 9.2 sigue lo que se haya visto: si falla, el PR de la 9.3 conserva un delta mínimo, el ADDED del
+requirement de los sintéticos con `pdf-parse` como biblioteca.
 
 ### D14. Fusión
 
@@ -406,35 +496,45 @@ para no chocar con R3-R12 de aquel change.
 - **R1 — Tamaño de la imagen.** `pdfjs-dist` sin podar pesa bastante más que `pdf-parse`: trae el build moderno y el
   `legacy`, el visor, mapas de fuente y tipos. Mitigación: excluir `@napi-rs/canvas`, podar antes de medir y parar en el
   umbral de Q3 (D8). `unpdf` es la alternativa si el tamaño no baja.
-- **R2 — ESM desde un bundle `commonjs`.** `ERR_REQUIRE_ASYNC_MODULE` si hay `await` de nivel superior, y un `import()`
-  que el compilador podría reescribir. Mitigación: D5, la sonda en la imagen y la aserción del manifiesto generado.
+- **R2 — ESM desde un bundle `commonjs`.** `ERR_REQUIRE_ASYNC_MODULE` si hay `await` de nivel superior. Mitigación: D5
+  (solo `require(esm)`, comprobado con un `node -e` antes de escribir código), la sonda en la imagen y la aserción del
+  manifiesto generado.
 - **R6 — El pdf.js nuevo puede leer distinto que el de 2017.** Puede cambiar la unión de líneas, las ligaduras, la
   normalización Unicode o el orden en columnas. Mitigación: paridad de D7 sobre tres corpus y la decisión de
   `disableNormalization`. Los CV ya leídos no se re-extraen (D12).
 - **R13 — Fallos de carga de pdf.js mal clasificados.** Si una parte de la biblioteca se cargara después de `ready`, su
-  ausencia daría `unreadable_file`. Mitigación: los dos módulos se cargan antes de `ready` (D4), con un test con
-  falsación. Los CMaps y las fuentes estándar se leen después, a demanda; si faltaran en la imagen, solo fallarían los
-  PDF que los necesitan. Por eso la sonda los ejerce (D6).
+  ausencia daría `unreadable_file`. Mitigación: los dos módulos se cargan antes de `ready` y los directorios de CMaps y
+  fuentes estándar se comprueban con `statSync` antes de `ready` (D4, C1-03), con tests y falsación. Los ficheros
+  concretos de CMap se leen después, a demanda: un CMap concreto que faltara con el directorio presente solo afectaría a
+  los PDF que lo necesitan.
 - **R14 — El PDF cifrado generado puede comportarse distinto.** El fixture declara el diccionario de cifrado sin cifrar
   de verdad. Un pdf.js más estricto podría darlo por corrupto (`parse_error`) en vez de pedir contraseña. Mitigación:
   se ajusta el fixture para que declare un cifrado válido con contraseña de usuario no vacía, sin escribir un cifrador
   si se puede evitar (ADR-028), y el escenario no cambia.
 - **R15 — Partes de pdf.js que el hijo no puede usar.** Las versiones recientes de pdf.js cargan módulos opcionales,
   como decodificadores de imagen o gestión de color, algunos en WebAssembly. La extracción de texto no decodifica
-  imágenes, así que **se espera** que no se carguen. Es una hipótesis que la 1.1 confirma. Si alguno se carga y el
-  modelo de permisos o los flags lo impiden, se desactiva por opción o se trata como corte 1.
+  imágenes, así que **se espera** que no se carguen. Es una hipótesis que la 1.1c confirma. Si alguno se carga y el
+  modelo de permisos o los flags lo impiden, se desactiva por opción o se trata como corte 1. Segunda barrera para el
+  código nativo (C1-05): el hijo no tiene `--allow-addons`, así que ni `@napi-rs/canvas` ni otro addon pueden cargarse
+  aunque llegaran a instalarse. Test «the child command never allows addons».
 - **R16 — El arranque del hijo sube.** Cargar pdf.js entero antes de `ready` cuesta más que `pdf-parse`. Mitigación:
   criterio de D9 medido en `arm64` antes de fusionar, con la poda como palanca.
 - **R17 — `pdf-parse` 1.1.4 sigue en producción hasta que este change entre.** Es la R7 de `cv-extract-isolation`, que
   se mantiene. El aislamiento acota el daño, y la salvedad de D1 con Q9 es la única vía para adelantar la sustitución.
-- **R18 — La medición del owner depende de su tiempo y de su máquina.** Sin ella no se adopta ninguna candidata (D3).
-  Mitigación: el instrumento es un comando y una línea de salida (D7), y la tarea 3.1 dice exactamente qué pegar.
+- **R18 — La medición del owner depende de su tiempo y de su máquina.** Sin ella no se adopta ninguna candidata y el
+  grupo 4 no empieza (D3, puerta dura). Mitigación: el instrumento es una orden de PowerShell y dos líneas de salida
+  (D7), la 1.5b mide cuánto tarda y la 3.1 lo dice; a los 14 días sin la 3.1 se anota «en pausa por la 3.1».
 - **R19 — Los MODIFIED se escriben antes de que exista el texto sobre el que se aplican.** «Texto extraído, normalizado
   y acotado» se escribe sobre el texto del delta de `cv-extract-isolation`, y «Aislamiento de la capa de dominio» sobre
-  la spec vigente, que aquel change quizá modifique (Context, hallazgo). Mitigación: la 0.3 rehace los dos sobre el
-  texto archivado antes del apply y `openspec validate --strict` lo confirma.
+  su delta de `platform/workspace` (`7c1d475`). Mitigación: la 0.3 los compara, escenario por escenario, con el texto
+  archivado antes del apply, y `openspec validate --strict` lo confirma.
 - **R20 — La regla de Renovate (Q6) podría no tener la precedencia que se espera.** Mitigación: D11 la confirma al
-  escribirla. Si no funciona como se espera, se retira y Q6 vuelve al owner con el dato.
+  escribirla, con un tope de 1 h (B2-02). Si no funciona como se espera, se retira y Q6 vuelve al owner con el dato.
+- **R21 — Si se adopta `unpdf`, las alertas no llegan (C1-09).** `unpdf` lleva pdf.js reempaquetado dentro, igual que
+  `pdf-parse`: un aviso publicado contra `pdfjs-dist` no salta en el repositorio. Se acepta solo en ese caso, con dos
+  mitigaciones: la consulta de Q9 (a) sigue viva después de fusionar, ahora con `unpdf`; y un test, «the bundled pdf.js
+  is at least the audited version», lee la versión de pdf.js que declara `unpdf` y exige que sea ≥ la registrada en la
+  3.2, para que una actualización no traiga un pdf.js más viejo.
 
 ## Migration Plan
 
@@ -444,22 +544,27 @@ para no chocar con R3-R12 de aquel change.
    - subir un CV PDF con la cuenta e2e y ver `linkvault_cv_extractions_total{format="pdf",outcome="text"}` subir en
      `/metrics` desde la red interna;
    - `node cv-extract-probe.js` dentro del contenedor `worker` del host (`run --rm --no-deps`): `pdf chars=` igual al de
-     antes y `boot_p95_ms` ≤ 1.500, anotado con fecha;
-   - `docker compose exec worker sh -c 'ls node_modules | grep -c pdf-parse'` imprime `0`.
+     antes y `boot_p95_ms` ≤ 1.500, anotado con fecha.
+
+   Que `pdf-parse` no está en la imagen ya lo demuestran `no-pdf-parse.spec.ts` y el candado generado; no se repite en
+   el host (C1-18, B2-05).
 4. **Vuelta atrás**: revertir el PR y redesplegar la imagen anterior, con el procedimiento de 35b. Los CV leídos con el
    parser nuevo se quedan como están. Un CV en `pending` lo lee la imagen que lo tome.
 
 ## Costo estimado
 
-34 tareas de menos de una hora (`tasks.md`), de las que se ejecutan entre 24 y 31:
+43 tareas de menos de una hora (`tasks.md`; eran 34 antes de la iteración 1, que partió la 1.1, la 1.2, la 1.3 y la 1.5
+y añadió la 0.5a, la 0.5b, la 3.1b y la 6.1b). Se ejecutan entre 26 (fallan las dos candidatas) y 40 (`unpdf` adoptada
+y Q6 = sí):
 
-- el grupo 2 (`unpdf`, 6 tareas) solo corre si `pdfjs-dist` no se adopta;
+- el grupo 2 (`unpdf`, 6 tareas) solo corre si `pdfjs-dist` termina en corte 1 o 2;
 - el grupo 9 (salida sin sustitución, 3 tareas) solo corre si fallan las dos candidatas;
 - la 5.1 solo corre si Q6 = sí.
 
-El spike tiene un techo de 8 h (4 h por biblioteca). La sustitución y el cierre, unas 6-8 h. Fuera de ese cálculo
-quedan dos tiempos del owner: unos 30 minutos para la 3.1 (sus CV) y el disparo de `cd-staging` en modo de prueba
-(6.1).
+El spike tiene un techo de 8 h (4 h por biblioteca), sin contar la espera de los builds (D3). La sustitución y el
+cierre, unas 6-8 h. Las tareas del owner (`[owner]`: 0.5b, 3.1 y 6.1) llevan su tiempo estimado dentro: unos 45
+minutos en total para exportar la fuente desde Word y Google Docs y pasar sus CV en la misma sesión, y unos minutos
+para disparar `cd-staging`.
 
 ## Open Questions
 
@@ -481,24 +586,18 @@ change llegó a Q8.
 
   **Recomendación: (a).** Con (b), la tarea 5.1 no se hace.
 - **Q9 [no bloqueante] — ¿Cómo se vigila la salvedad de B3-03 hasta que el change entre?** (D1, R17). Opciones:
-  - (a) una consulta fechada de la base pública de avisos (GitHub Advisory Database y NVD, buscando «pdf.js» y
-    `pdfjs-dist` con rango que incluya 1.10) en tres momentos fijos: la aprobación de este change (0.2), antes de la
-    10.7 de 35b y al abrir 35c. Si aparece un aviso, el arquitecto lo evalúa contra los flags del hijo y el owner
+  - (a) una consulta fechada de la base pública de avisos (GitHub Advisory Database y NVD, buscando «pdf.js»,
+    `pdfjs-dist` con rango que incluya 1.10 y `pdf-parse` (B2-03 de la iteración 1)) en tres momentos fijos: la
+    aprobación de este change (0.2), antes de la 10.7 de 35b y al abrir 35c. Si aparece un aviso, el arquitecto lo evalúa contra los flags del hijo y el owner
     decide;
   - (b) un workflow programado que consulte la base y abra un issue: toca `.github/workflows` mientras la fila 35 está
     abierta;
   - (c) sin vigilancia: se acepta esperar a 35c.
 
   **Recomendación: (a)**, que no toca nada de la fila 35 y cuesta minutos.
-- **Q10 [bloqueante para 0.2, para la sesión principal] — Texto de B2-03.** El `scope` trae «También B2-03 del debate
-  de `cv-extract-isolation`». Pero el design de aquel change solo lo registra como «Trasladado a
-  `cv-pdf-library-upgrade`; anotado en su `scope`. Trata de la biblioteca nueva», y su contenido no consta en el
-  repositorio ni en el historial de la rama (commit `d96a4a0`). Opciones:
-  - (a) la sesión principal lo recupera del registro del debate y se incorpora antes de convocar a `critic` y
-    `business`;
-  - (b) si no se recupera, `business` lo vuelve a plantear en la iteración 1 de este debate.
 
-  **Recomendación: (a), y si no aparece, (b).**
+Q10 (texto de B2-03) quedó resuelta en la iteración 1: la sesión principal recuperó el texto de la transcripción. Ver
+«Debate iteración 1 (2026-11-04)».
 
 ## Estado del spike y de las mediciones
 
@@ -506,11 +605,14 @@ Se completa durante `/opsx:apply`, con fecha:
 
 - la consulta de avisos de Q9;
 - la línea base (0.4);
-- por biblioteca: versión, hora de inicio y de fin de cada tarea, cómo se cargó (D5), cómo se resolvió el worker falso,
-  si se cargó algún módulo opcional (R15), arranque local, delta de imagen antes y después de la poda, licencias,
-  paridad sintética, tabla de productores (`doc-i`, productor, recall y orden, por cada valor de
-  `disableNormalization`) y el corte o la adopción;
-- la línea `parity …` del owner (3.1);
+- si `pdflatex` y `soffice` estaban en la máquina del implementador (0.5a);
+- qué hace `validate --strict` con un change sin deltas (0.3, D13);
+- por biblioteca: versión, hora de inicio y de fin de cada tarea, esperas de build aparte, resultado del `node -e` de
+  D5, cómo se resolvió el worker falso, si se cargó algún módulo opcional (R15), arranque local, delta de imagen antes y
+  después de la poda (con máquina y almacén de Docker), licencias, paridad sintética, tabla de productores (`doc=`,
+  recall y orden, por cada valor de `disableNormalization`), cuánto tardó la orden de paridad (1.5b) y el corte o la
+  adopción provisional;
+- las dos líneas `parity …` del owner (3.1), o «en pausa por la 3.1» con fecha si pasaron 14 días;
 - la decisión de `disableNormalization`;
 - `boot_p50_ms`/`boot_p95_ms` en `arm64` (6.1) y en el host (8.3).
 
@@ -523,13 +625,54 @@ Nada de esto lleva texto, nombres de archivo ni metadatos de ningún PDF.
 | Las líneas de un PDF se unen por su altura | «text items on the same y share a line» | `extractors/extractors.spec.ts` | 4.4 |
 | PDF con texto, Un PDF de muchas páginas, Un PDF con texto sin fin (heredados) | los de `extractors.spec.ts` y `pathological.spec.ts`, sin cambios | `worker` y `worker-isolation` | 1.4 |
 | La dependencia vieja no vuelve | «the root manifest does not list pdf-parse», «the lockfile does not resolve pdf-parse», «the pdf library is pinned to an exact version» | `no-pdf-parse.spec.ts` | 4.2 |
-| El manifiesto del worker fija la biblioteca de PDF | «dist package.json pins the parser libraries» (con la adoptada) y «the worker lockfile has no native canvas» | `cv-extract-child.bundle.spec.ts` | 1.1, 1.3, 4.1 |
-| La evaluación de código está desactivada al abrir el PDF | «eval is disabled when the pdf is opened» | `child/pdf-extract.spec.ts` (nuevo) | 4.4 |
-| Falta el módulo de worker de pdf.js | «a missing pdf.js worker module is a boot error» | `isolated-extraction.runner.spec.ts` | 1.1 |
+| El manifiesto del worker fija la biblioteca de PDF | «dist package.json pins the parser libraries» (con la adoptada) y «the worker lockfile has no native canvas» | `cv-extract-child.bundle.spec.ts` | 1.1a, 1.3a, 4.1 |
+| La evaluación de código está desactivada al abrir el PDF | «pdf document options are exactly the audited ones» (`pdfDocumentOptions` con `toEqual`) y «pdf.js data paths resolve under the allowed node_modules root» | `child/pdf-extract.spec.ts` (nuevo) | 1.1c, 4.4 |
+| Falta el módulo de worker de pdf.js | «a missing pdf.js worker module is a boot error» (árbol falso, `MODULE_NOT_FOUND`, nunca `ERR_ACCESS_DENIED`) | `isolated-extraction.runner.spec.ts` | 1.1b |
+| Faltan los mapas de caracteres de pdf.js | falsación de la sonda sin `cmaps/` en la imagen (sale con 1) | `verify-artifact.sh` local | 4.5 |
 | Un PDF protegido con contraseña con la biblioteca nueva | «an encrypted PDF fails as password» | `extractors/extractors.spec.ts` | 1.4 |
 | Los PDF sintéticos se leen igual que antes | «synthetic pdfs keep the recorded text» | `extractors/extractors.spec.ts` | 0.4, 1.4 |
-| Un CV ya leído no se vuelve a leer | «an extracted cv is not re-read when the worker starts» (worker real con Mongo en memoria: un CV `extracted` sembrado, sin job en `extract-cv` tras el arranque y con el documento intacto) | `extract-cv.consumer` (integración) | 4.4 |
-| La infraestructura importa un extractor de documentos (MODIFIED) | «an infrastructure folder of the worker imports a document extractor», movido a `isolation/child/` | `workspace-rules.spec.ts` | 4.3 |
-| Otra parte del worker importa un extractor de documentos | «a worker infrastructure file outside the isolated child imports a document extractor» | `workspace-rules.spec.ts` | 4.3 |
+| La infraestructura importa un extractor de documentos (MODIFIED) | el caso de `cv-extract-isolation` (`7c1d475`), con la adoptada | `workspace-rules.spec.ts` | 4.3 |
+| La infraestructura fuera del hijo importa un extractor de documentos (MODIFIED) | el caso de `cv-extract-isolation` (`7c1d475`), con la adoptada | `workspace-rules.spec.ts` | 4.3 |
 | El dominio importa un extractor de documentos (MODIFIED) | «a domain folder of the worker imports a document extractor», con la adoptada | `workspace-rules.spec.ts` | 4.3 |
-| (guardia de D7, sin escenario) | «parity refuses a directory inside the repository» | `child/pdf-parity.spec.ts`, temporal | 1.5 |
+| (R15, sin escenario) | «the child command never allows addons» | `child-command.spec.ts` | 1.3a |
+| (R21, solo si `unpdf`) | «the bundled pdf.js is at least the audited version» | `no-pdf-parse.spec.ts` | 4.2 |
+| (guardias de D7, sin escenario) | «parity refuses a directory inside any repository» (siempre, fuera del `runIf`) y «a failing parity read leaves no text in the output» | `child/pdf-parity.spec.ts`, temporal | 1.5a |
+
+«Un CV ya leído no se vuelve a leer» salió del delta en la iteración 1 (C1-17): queda como oración del requirement y
+como revisión del diff en la 8.1.
+
+## Debate iteración 1 (2026-11-04)
+
+`critic`: 1 P0 (C1-01) y C1-02 a C1-18 como P1/P2. `business`: 1 V0 (B0-01) y B1-01 a B1-06, B2-01 a B2-05. Decisiones
+de `reflect` aplicadas en este design, los dos deltas, `tasks.md`, ADR-064 y la proposal.
+
+| id | decisión | motivo |
+|---|---|---|
+| C1-01 (P0) | Aceptado: corpus de productores desde una fuente inventada en texto plano (`.tex`/`.fodt`, sin metadatos). 0.5a (implementador, por CLI con `pdflatex` y `soffice`; si faltan, pasa al owner) y 0.5b (`[owner]`, Word y Google Docs, en la sesión de la 3.1). (d) es provisional con 3 productores y se completa en la 3.1 (D3) | Sin fuente común, los productores medían documentos distintos, y nadie tenía asignado generarlos |
+| B0-01 (V0) | Aceptado: los CV reales son del owner o de personas que se los dieron para esto; nunca se descargan del almacén de staging ni del de producción; al menos 3 herramientas distintas si las hay (D7, 3.1) | La medición no puede convertirse en una vía de acceso a CV de usuarios |
+| Q10 / B2-03 | Resuelta: el texto apareció en la transcripción. Lo cierran B1-01 (etiqueta `[owner]`), B1-02/C1-08 (ruta y orden concretas), B1-03 (puerta dura y pausa a los 14 días) y B1-04 (tiempo medido en la 1.5b). Su opción «si se parte, pasa a B» no aplica: aquí no hay otro change al que pasarla, porque sin la medición del owner no se adopta ninguna candidata (D3) | El hueco que señalaba (cómo recibe el owner el script, cuánto tarda, qué pasa si no lo corre) queda cubierto por esas cuatro decisiones |
+| C1-02 | Aceptado: la única vía es `require(esm)`; primer paso de la 1.1a con un `node -e`; si falla, corte 1, salvo un MODIFIED del Impact aceptado en debate (D5) | Un `import()` que el compilador no reescriba exige un mecanismo que el Impact no nombra |
+| C1-03 | Aceptado: `statSync` de un fichero de `cmaps/` y otro de `standard_fonts/` antes de `ready` (`boot_error` si falla); test de rutas bajo la raíz por `realpath`; falsación en la imagen (4.5) y escenario nuevo «Faltan los mapas de caracteres de pdf.js» (D4, D6) | Sin esto, un paquete incompleto daba `unreadable_file` solo en los PDF que necesitan CMaps |
+| C1-04 | Aceptado: `createRequire(__filename).resolve('<paquete>/package.json')` (D4) | Una sola forma de resolver, sin rutas a mano |
+| C1-05 | Aceptado: inspección de `/app/node_modules/.pnpm` en la imagen; alternativa si la exclusión choca con el candado congelado; `--allow-addons` ausente como segunda barrera, con test (D4, D8, R15) | El candado de `dist/` podía no reflejar la exclusión |
+| C1-06 | Aceptado: `assertOutsideAnyRepository(dir)` pura, busca `.git` en los ancestros, `path.relative`, minúsculas en win32, antes de `readdir`, testeada fuera del `runIf` con falsación real (D7) | El guardia anterior solo miraba la raíz de este workspace |
+| C1-07 (+ B1-06, B2-04) | Aceptado: `CV_PARITY_PER_DOC=1` solo para productores; `console` silenciado y `verbosity: 0`; ningún `expect` sobre texto, con test de que un fallo no deja texto; las dos normalizaciones en una corrida; `failed_reads` definido y `failed_reads_ref` (D7) | Una aserción que falla imprime lo que compara |
+| C1-08 (= B1-02) | Aceptado: orden de PowerShell única, con `--skip-nx-cache`, `Remove-Item` y `run=<uuid>` (D7) | El owner trabaja en Windows y la caché de Nx devolvía corridas viejas |
+| C1-09 | Aceptado: `unpdf` solo ante fallos de (a), (b) o (c); (d) o la 3.1 vuelven al debate; si se adopta `unpdf`, R21 con la consulta de Q9 viva y un test de versión mínima de su pdf.js (D3, R21) | `unpdf` reempaqueta el mismo pdf.js: un problema de texto sería el mismo |
+| C1-10 | Aceptado: 1.1a/b/c, 1.2a/b, 1.3a/b y 1.5a/b; las falsaciones de imagen que no deciden la adopción, a la 4.5; la espera de builds no cuenta para el tope, se anota aparte, y > 30 min es hallazgo (D3) | Tareas de más de una hora y un tope ambiguo |
+| C1-11 | Aceptado: el hijo del test vive dentro del árbol falso, con `allowRead=<tmp>`, y afirma `MODULE_NOT_FOUND`, nunca `ERR_ACCESS_DENIED` (D4, 1.1b) | El test probaba el modelo de permisos en vez de la ausencia del módulo |
+| C1-12 | Aceptado: `tsconfig.cv-child-test.json`, `verify-artifact.sh` y `tools/cv-fixtures/README.md` en la 4.1 y la 7.1; `grep` ampliado a `infra` | Quedaban menciones de `pdf-parse` fuera de la lista |
+| C1-13 | Aceptado: tabla única de qué queda en D13; la 0.3 comprueba qué hace `validate --strict` sin deltas | La salida sin sustitución estaba repartida en tres sitios |
+| C1-14 | Aceptado: un sintético que difiere se anota con su diff y vuelve al debate, sin pasar a `unpdf` (D3) | Dice más de la unión de líneas que de la biblioteca |
+| C1-15 | Aceptado: `pdfDocumentOptions(bytes, paths)` pura, con `toEqual` exacto y aserciones de rutas (D4, delta) | El doble del cargador solo comprobaba dos opciones |
+| C1-16 | Aceptado: el MODIFIED de `platform/workspace` parte del delta de `cv-extract-isolation` (`7c1d475`); fuera la rama «si no lo corrige» de D10; la 4.3 se reduce; la 0.3 compara escenario por escenario | El arreglo ya está en la rama de aquel change |
+| C1-17 (= B1-05) | Aceptado: fuera el escenario «Un CV ya leído no se vuelve a leer» y su test; queda la oración y la revisión del diff en la 8.1 (D12) | Un test de algo que ningún código hace no puede fallar |
+| C1-18 + B2-05 | Aceptado: el tamaño se mide en la misma máquina y el mismo almacén, anotados; fuera la comprobación de `pdf-parse` en el host (D8, Migration Plan) | `inspect` depende del almacén; la otra comprobación ya la cubre un test |
+| B1-01 | Aceptado: 0.5b, 3.1 y 6.1 con etiqueta `[owner]`, y una 3.1b `[backend]` para leer y decidir | Las hace el owner, no el implementador |
+| B1-03 | Aceptado: puerta dura, sin la 3.1 no empieza el grupo 4; a los 14 días, «en pausa por la 3.1»; tiempo estimado dentro de la tarea (D3) | Sin plazo, el change quedaba a medias sin estado |
+| B1-04 | Aceptado: la 1.5b corre los productores con la misma orden que la 3.1 y anota cuánto tardó | La 3.1 tiene que decir un tiempo real |
+| B2-01 | Aceptado: una línea en el RUNBOOK, «Operar los CV», sobre cómo repetir la paridad (7.1) | Se repite al actualizar la biblioteca |
+| B2-02 | Aceptado: tope de 1 h para la 5.1 (R20) | Que confirmar la precedencia de Renovate no se coma la sustitución |
+| B2-03 | Aceptado: `pdf-parse` entra en la consulta de Q9 (a) | Un aviso puede publicarse contra el paquete y no contra pdf.js |
+
+Convergencia: pendiente de la verificación de `critic` y `business` sobre esta iteración.

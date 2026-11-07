@@ -5,15 +5,16 @@
 Ningún archivo bajo una carpeta `domain/` de cualquier proyecto SHALL importar paquetes de infraestructura. La lista
 prohibida SHALL ser cerrada e incluir al menos `@nestjs/*`, `mongoose`, `mongodb`, `bullmq`, `ioredis`, `fastify`,
 `@fastify/*`, `@aws-sdk/*`, `minio`, `pdfjs-dist`, `unpdf`, `pdf-parse`, `mammoth`, `pino` y `nestjs-pino`.
-Además, ningún archivo bajo `apps/api/src/modules/<módulo>/{domain,application,infrastructure}/` SHALL importar código de otro módulo de
-`apps/api/src/modules/`, salvo, **solo desde `application/` e `infrastructure/`**, su facade de aplicación
+Además, ningún archivo bajo `apps/api/src/modules/<módulo>/{domain,application,infrastructure}/` SHALL importar
+código de otro módulo de `apps/api/src/modules/`, salvo, **solo desde `application/` e `infrastructure/`**, su facade de aplicación
 (`**/application/*.facade`), sus errores de dominio (`**/domain/errors`) y sus dobles de test
 (`**/application/testing/**`), que son su única entrada pública. La capa `domain/` mantiene la prohibición absoluta: no
 puede importar nada de otro módulo. La capa
 `presentation/` SHALL poder importar el módulo Nest de otro (`**/presentation/*.module`) para el cableado de la
-inyección de dependencias. En `apps/worker`, los extractores de documentos (`pdfjs-dist`, `unpdf`, `pdf-parse` y
-`mammoth`) SHALL importarse solo desde `apps/worker/src/modules/cv/infrastructure/isolation/child/`, el código del
-proceso hijo aislado que lee el CV (ADR-058, ADR-064). El incumplimiento
+inyección de dependencias. Además, en `apps/worker`, los extractores de documentos (`pdfjs-dist`, `unpdf`, `pdf-parse`
+y `mammoth`) SHALL importarse solo bajo `apps/worker/src/modules/cv/infrastructure/isolation/child/` (el proceso hijo
+aislado de la lectura del CV, ADR-058 y ADR-064);
+en cualquier otro lugar del worker el lint SHALL fallar. El incumplimiento
 SHALL ser detectado por el lint.
 
 #### Scenario: El dominio importa el framework
@@ -40,9 +41,9 @@ SHALL ser detectado por el lint.
 - **WHEN** ese archivo importa `pdfjs-dist` o `mammoth`
 - **THEN** el lint SHALL pasar
 
-#### Scenario: Otra parte del worker importa un extractor de documentos
+#### Scenario: La infraestructura fuera del hijo importa un extractor de documentos
 
-- **GIVEN** un archivo bajo `apps/worker/src/modules/cv/infrastructure/` fuera de `isolation/child/`
+- **GIVEN** un archivo bajo `apps/worker/src/modules/cv/infrastructure/` pero fuera de `isolation/child/`
 - **WHEN** ese archivo importa `pdfjs-dist`, `pdf-parse` o `mammoth`
 - **THEN** el lint SHALL fallar
 
@@ -87,4 +88,3 @@ SHALL ser detectado por el lint.
 - **GIVEN** un archivo bajo `apps/api/src/modules/groups/infrastructure/`
 - **WHEN** ese archivo importa `users/application/testing/in-memory-user.repository`
 - **THEN** el lint SHALL pasar
-

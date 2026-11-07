@@ -81,7 +81,8 @@ Dentro del proceso hijo, la biblioteca SHALL:
 - leer los datos solo desde memoria, sin URL remota, sin fuentes del sistema, sin canvas ni dependencia nativa de
   dibujo y sin crear hilos;
 - leer los mapas de caracteres y las fuentes estándar que necesite solo desde su propio paquete, dentro de las rutas
-  que el proceso hijo ya tiene permitidas.
+  que el proceso hijo ya tiene permitidas, y comprobar **antes** de anunciarse listo que esos dos directorios existen y
+  se pueden leer: si no, el desenlace SHALL ser un fallo de maquinaria.
 
 Un PDF que pide contraseña SHALL seguir terminando en `unreadable_file` como protegido.
 
@@ -103,8 +104,10 @@ Un PDF que pide contraseña SHALL seguir terminando en `unreadable_file` como pr
 
 - **GIVEN** un doble del cargador de la biblioteca de PDF que registra las opciones con que se abre el documento
 - **WHEN** el hijo lee un PDF
-- **THEN** la opción de evaluación de código SHALL llegar desactivada
+- **THEN** las opciones SHALL ser exactamente las fijadas en el design (D4), con la evaluación de código desactivada
 - **AND** NO SHALL llegar ninguna URL de documento ni la opción de usar fuentes del sistema activada
+- **AND** las rutas de mapas de caracteres y de fuentes estándar, resueltas por `realpath`, SHALL quedar bajo la raíz
+  de `node_modules` permitida al proceso hijo
 
 #### Scenario: Falta el módulo de worker de pdf.js
 
@@ -113,6 +116,12 @@ Un PDF que pide contraseña SHALL seguir terminando en `unreadable_file` como pr
 - **THEN** el desenlace SHALL ser un fallo de maquinaria, que se reintenta y, agotado, deja el CV en `failed` con
   `internal_error`
 - **AND** el CV NO SHALL quedar en `unreadable_file`
+
+#### Scenario: Faltan los mapas de caracteres de pdf.js
+
+- **GIVEN** una imagen del worker cuyo paquete de pdf.js no tiene el directorio de mapas de caracteres
+- **WHEN** la verificación del artefacto ejecuta la sonda de lectura de CV
+- **THEN** la sonda SHALL salir con código distinto de 0
 
 #### Scenario: Un PDF protegido con contraseña con la biblioteca nueva
 
@@ -126,7 +135,8 @@ Un PDF que pide contraseña SHALL seguir terminando en `unreadable_file` como pr
 El texto normalizado que el worker guarda para los PDF sintéticos de las pruebas SHALL ser idéntico, línea a línea, al
 que guardaba `pdf-parse` 1.1.4, registrado como constante sin datos personales antes de la sustitución. Sustituir la
 biblioteca NO SHALL volver a leer ningún CV ya leído ni cambiar su texto, su estado ni su motivo: solo los CV que se
-leen después del despliegue usan la biblioteca nueva.
+leen después del despliegue usan la biblioteca nueva. Este change no añade migración ni re-extracción, y eso se revisa
+sobre su diff.
 
 #### Scenario: Los PDF sintéticos se leen igual que antes
 
@@ -134,10 +144,3 @@ leen después del despliegue usan la biblioteca nueva.
   `pdf-parse` 1.1.4 guardaba para ellos
 - **WHEN** el worker los lee con la biblioteca nueva
 - **THEN** el texto guardado de cada uno SHALL ser idéntico, línea a línea, al registrado
-
-#### Scenario: Un CV ya leído no se vuelve a leer
-
-- **GIVEN** un CV en `extracted` leído con `pdf-parse` antes del despliegue
-- **WHEN** arranca el worker con la biblioteca nueva
-- **THEN** NO SHALL encolarse ninguna lectura de ese CV
-- **AND** su texto, su estado y `textChars` SHALL seguir siendo los mismos
