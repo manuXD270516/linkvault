@@ -69,9 +69,11 @@ ADR-053 §4 y §7 aplazaron. Estado de partida:
   (C1). `e2e-stack.ts` la importa en vez de declarar `LOCAL_TAGS`/`REMOTE_TAGS`; `playwrightGrepArgs` acepta esas
   condiciones (ya escritas como expresión) y las combina con el `--grep` de quien ejecuta, igual que hoy: el filtro
   **acota**, nunca amplía. La 1.1 falsa rompiendo `profileGrepConditions`, no el runner.
-- **Ensayo sin pruebas (C23):** con `--rehearse-remote`, el runner lista antes del ensayo (`--list` con el `--grep` de
-  `remote`) y falla, sin reiniciar `worker`, si no queda ninguna prueba: «el filtro no deja ninguna prueba apta para
-  remoto».
+- **Ensayo sin pruebas (C23, R2-4):** con `--rehearse-remote`, el runner lista antes del ensayo (`--list` con el
+  `--grep` de `remote`; una lista sin resultados cuenta como vacía, salga Playwright con el código que salga) y, si no
+  queda ninguna prueba, falla nombrando el filtro **sin reiniciar `worker`**: «el filtro <grep> no deja ninguna prueba
+  apta para remoto». Sin esta comprobación la corrida también acaba en rojo, pero **después** de reiniciar `worker`
+  y con un «Playwright exited with code 1» que no dice por qué: el valor está en fallar antes y nombrando la causa.
 - **Proyecto `mobile`:** su `testMatch` pasa de un fichero a dos: el camino crítico y, si Q2 = (a), `account.spec.ts`.
 - *Descartado:* una etiqueta `@admitted` aparte del lote. Dos etiquetas que dicen lo mismo divergen. *Descartado:*
   acumular etiquetas (`@lot1 @lot2`): la comprobación rechaza más de una (D3).
@@ -100,6 +102,11 @@ Un fichero con dos claves, para que una sola comprobación vea las dos caras:
         "state": "not-admitted", "lot": 3, "reason": "escribe en Mongo; URL de linkedin.com (H17)" },
       { "test": "paste error actions fit and keep their order at 360 px", "state": "admitted" }
     ]
+  },
+  // Apoyos de `src/support/` que solo usan ficheros exentos (R2-1): entran en la exención del lint y solo los ficheros
+  // exentos pueden importarlos. Clave = ruta relativa a `src/`; valor = motivo y lote que lo borra.
+  "exemptSupport": {
+    "support/register-limit.ts": "docker exec a un contenedor de nombre fijo; lo borra el lote que admita links, match o freshness (lote 3)"
   }
 }
 ```
@@ -140,7 +147,8 @@ Un fichero con dos claves, para que una sola comprobación vea las dos caras:
   citada inexistente; entrada `covered`/`partial` sin pruebas o con una no admitida; entrada `planned`/`undecided` con
   pruebas; `lot` escrito en una entrada `covered`/`partial`; prueba admitida sin ninguna entrada que la cite; prueba sin
   inventario o inventario de una prueba inexistente; `state` que no coincide con la etiqueta; una prueba con más de una
-  etiqueta de lote.
+  etiqueta de lote; y (R2-1, tarea 5.6) una clave de `exemptSupport` cuyo fichero no existe, o que importa un fichero
+  que no está exento.
 - **Cabecera de `infra/ci/repo-checks.sh`** (C16): una línea que dice que `check-catalog-coverage` ejecuta la lógica de
   `apps/web-e2e` y lanza Playwright en modo lista, para que nadie lo busque en `tools/repo-checks/src`.
 - **Corrige la premisa de C13** de `e2e-suite`: queda en ADR-067 §2.
@@ -184,24 +192,30 @@ de `tag`, las de `describe` y las escritas en el título), y deduplica por proye
   falta la variable, el método falla **nombrándola** (C21). Un fixture de ámbito de prueba no se puede usar en
   `beforeAll`/`afterAll`, así que el guardia siempre ve las etiquetas de una sola prueba. `mongo()` y
   `resetRegisterLimit()` llegan con el lote que admita `links`, `match` o `freshness`, sobre el mismo guardia.
-- **Exención por inventario (B1):** `eslint.config.mjs` lee `catalog-coverage.json` y calcula `EXEMPT_FILES` = los
-  ficheros con **alguna** prueba `not-admitted`. No hay lista a mano: la comprobación de D3 hace que el inventario diga
-  la verdad (un estado que no coincide con la etiqueta es rojo), y quitar la exención exige admitir o retirar las
-  pruebas. El `lint` de `web-e2e` ya tiene el JSON entre sus `inputs` (está dentro del proyecto).
-- **Composición de bloques de ESLint** (C8). ESLint no combina las opciones de `no-restricted-syntax` entre bloques: el
-  último bloque que casa con un fichero gana entero. Por eso cada bloque lleva **su lista completa**:
+- **Exención por inventario (B1, R2-1, R2-3):** `eslint.config.mjs` lee `catalog-coverage.json` con una ruta relativa
+  a `import.meta.dirname` (no al directorio de trabajo) y calcula `EXEMPT_FILES` = `src/<clave>` de los ficheros con
+  **alguna** prueba `not-admitted` **y** de las claves de `exemptSupport`: los apoyos que solo usan esos ficheros, como
+  `support/register-limit.ts` (importa `node:child_process` y lo importan los specs no admitidos; no es una prueba, así
+  que el inventario de pruebas no lo cubría). No hay lista a mano: la comprobación de D3 hace que el inventario diga la
+  verdad, y comprueba que cada apoyo exento exista y solo lo importen ficheros exentos. El `lint` de `web-e2e` ya tiene
+  el JSON entre sus `inputs` (está dentro del proyecto).
+- **Composición de bloques de ESLint** (C8, R2-3). ESLint no combina las opciones de `no-restricted-syntax` entre
+  bloques: el último bloque que casa con un fichero gana entero. Por eso cada bloque lleva **su lista completa**, y los
+  dos bloques exentos van **después** de `src/**`, **sin `ignores`** en ninguno (el orden decide):
 
-  | Bloque (`files` / `ignores`) | `no-restricted-syntax` | `no-restricted-imports` |
-  |---|---|---|
-  | `src/**/*.ts` | base (SDKs de IA) + esperas fijas + bucle local + acceso local (C7) | `mongodb`, `child_process`, `node:child_process`, `ioredis` |
-  | `src/support/local-only/**` | base + esperas fijas | — |
-  | `EXEMPT_FILES` | base + esperas fijas | — |
+  | Orden | Bloque (`files`) | `no-restricted-syntax` | `no-restricted-imports` |
+  |---|---|---|---|
+  | 1 | `src/**/*.ts` | base (SDKs de IA) + esperas fijas + bucle local + acceso local (C7) | `mongodb`, `child_process`, `node:child_process`, `ioredis` y el patrón `**/support/register-limit` |
+  | 2 | `src/support/local-only/**` | base + esperas fijas (lista completa) | `'off'` |
+  | 3 | `EXEMPT_FILES` | base + esperas fijas (lista completa) | `'off'` |
+
+  El patrón `**/support/register-limit` hace que solo los ficheros exentos puedan importar ese apoyo (R2-1).
 
   - **Bucle local:** literales y plantillas con `localhost`, `127.0.0.1` o `[::1]`.
   - **Acceso local (C7):** `ImportExpression` y `require(…)` de `mongodb`, `child_process`, `node:child_process` e
     `ioredis`; y `process.env.X` / `process.env['X']` con `E2E_MAILPIT_URL`, `MONGO_URI`, `REDIS_URL` y
     `COMPOSE_PROJECT_NAME`.
-  - Las esperas fijas siguen en **los tres** bloques: la 2.3 lo falsa con un `setTimeout` en `home.spec.ts` (exento) y
+  - Las esperas fijas siguen en **los tres** bloques: la 2.3b lo falsa con un `setTimeout` en `home.spec.ts` (exento) y
     otro en `local-only/index.ts`.
 - *Descartado:* funciones sueltas con `test.info()`: en un `beforeAll` hay `testInfo`, pero no el de una prueba.
   *Descartado:* una lista de exención escrita a mano en la configuración: se quedaría atrás del inventario.
@@ -222,7 +236,7 @@ de `tag`, las de `describe` y las escritas en el título), y deduplica por proye
 | 4 | Perfil: «Guardar nombre» → «Nombre guardado»; contraseña actual errónea → su error; correcta → «Contraseña cambiada…» | 5 |
 | 5 | «aviso de privacidad» desde `/perfil` → la misma página | 6 |
 | 6 | Segundo contexto con sesión; en el primero, «Cerrar sesión» → «Olvidé mi contraseña» → «Enviar instrucciones» → correo «Restablece tu contraseña de LinkVault» → «Guardar contraseña» → «Tu contraseña se ha actualizado…»; entrar con la nueva; el segundo contexto, al recargar, acaba en `/login` | 3, 4 |
-| 7 | «Zona de peligro» → «Borrar mi cuenta» → contraseña → «Borrar cuenta» → `/login`; entrar con esas credenciales → «Email o contraseña incorrectos» | 44 |
+| 7 | «Zona de peligro» → «Borrar mi cuenta» → contraseña → «Borrar cuenta» → `/login`; en un contexto nuevo (`browser.newContext()`, porque `/login` tiene `guestGuard`: en el contexto original, con la cookie de refresco ya inválida, la redirección depende del orden de las respuestas), entrar con esas credenciales → «Email o contraseña incorrectos» | 44 |
 
 - Absorbe todo lo que afirman `auth.spec.ts` (incluido el token y `returnUrl`), `auth-email-recovery.spec.ts` y
   `deploy-prod.spec.ts`, que **se borran**: dos copias no reproducibles de lo mismo envejecen distinto. Los textos se
@@ -337,17 +351,18 @@ Derivados de los escenarios del delta; los nombres son los títulos que se crean
 | Cambio solo del catálogo / de un módulo de la suite | falsaciones (a) y (f) de la 5.5 (segunda corrida sin `[local cache]`) |
 | Prueba nueva sin inventario | `coverage.spec.ts`: «test missing from inventory is named» |
 | Estado que no coincide con la etiqueta | `coverage.spec.ts`: «inventory state contradicting the lot tag fails» |
-| Un fichero solo con pruebas admitidas no queda exento | falsaciones (b) y (e) de la 2.3 |
+| Un fichero solo con pruebas admitidas no queda exento | falsación (b) de la 2.3a y (e) de la 2.3b |
+| Apoyo exento importado por un fichero no exento | falsación (g) de la 2.3b; `coverage.spec.ts`: «exempt support imported by a non-exempt file fails», «exempt support that does not exist fails» (5.6) |
 | (reglas extra) | `coverage.spec.ts`: «only the Recorrido headings count», «renumbering alone changes nothing», «lot written on a covered entry fails», «two lot tags on one test fail» |
 | Aviso de privacidad por URL directa / Verificación / Recuperación / Borrado | `account.spec.ts`: «account: privacy, sign up, verify email, profile, recover password and delete» (pasos 0, 3, 6, 7) |
 | Enlace del correo hacia otro origen | `local-only.spec.ts`: «mail link outside the app origin is rejected» |
 | (selección del correo) | `local-only.spec.ts`: «pickLatest ignores mail older than after», «pickLatest picks the newest for that address and subject» |
 | Guardar una clave propia en la pila de la suite | 4.1 con `byok.spec.ts` sobre la pila del runner |
-| Prueba apta para remoto que lee el correo, en local | `local-only.spec.ts`: «remote-safe test cannot read mailpit», «guard throws before the connector is invoked» (espía con cero llamadas); 2.4 en Playwright |
+| Prueba apta para remoto que lee el correo, en local | `local-only.spec.ts`: «remote-safe test cannot read mailpit», «guard throws before the connector is invoked» (espía con cero llamadas: es lo que prueba «ninguna petición a Mailpit»); 2.4 en Playwright, por el mensaje |
 | Ayudante local con el perfil remoto | `local-only.spec.ts`: «remote profile cannot use mailpit», más «remote-safe test cannot use mongo» y «remote profile cannot use redis-docker» (las tres operaciones, B1) |
 | Ayudante sin la dirección de la pila | `local-only.spec.ts`: «missing E2E_MAILPIT_URL is named» |
-| Acceso directo / lectura de la dirección / origen escrito a mano | falsaciones (a), (b), (c) y (d) de la 2.3 |
-| Otra prueba admitida en el primer lote | la corrida de la 7.2 con `@paste-actions` en `main` |
+| Acceso directo / lectura de la dirección / origen escrito a mano | falsaciones (a), (b), (c) y (d) de la 2.3a |
+| Otra prueba admitida en el primer lote | 1.2, con la segunda prueba temporal `@lot1` (R2-9); y la corrida de la 7.2 si `@paste-actions` está en `main` |
 
 ## Risks / Trade-offs
 
@@ -425,8 +440,24 @@ Critic: 0 P0. Business: 0 V0. Reflect: el recorte de business es la base; de cri
 | C20 | La 6.2 apunta las referencias de la guía a `account.spec.ts` | La guía cita los tres ficheros borrados |
 | C21 | Línea en el README sobre lo que exige el camino antiguo; el fixture nombra la variable que falta | `account.spec.ts` por el camino antiguo fallaría sin decir por qué |
 | C22 | Línea en el presupuesto: un `429` en un reintento de CI es consecuencia | Evita perseguir el `429` en vez del primer fallo |
-| C23 | El runner falla antes del ensayo si el filtro no deja ninguna prueba apta para remoto | Un ensayo de cero pruebas saldría en verde |
+| C23 | El runner falla antes del ensayo si el filtro no deja ninguna prueba apta para remoto | Sin la comprobación la corrida ya acaba en rojo, pero tras reiniciar `worker` y sin decir por qué (corregido en R2-4) |
 | C24 | (a) frase de `shell-nav.ts` corregida (apoyo, no prueba); (b) Q1 (b) espera también el archivo de `e2e-suite` | Precisión |
 | C2, C4, C5 | Sin efecto | Hablaban de la limpieza de D6, retirada por B1 |
 
-Pendiente: iteración 2 si critic o business la piden, y aprobación humana.
+### Verificación iteración 2 (2026-11-07)
+
+Critic: 1 P0 (nacido del recorte de B1) y 8 P1, todos aceptados. Con un P0 en esta pasada, viene una verificación más.
+
+| id | Decisión | Motivo |
+|---|---|---|
+| R2-1 (P0) | `exemptSupport` en el JSON con `support/register-limit.ts`, que entra en `EXEMPT_FILES`; patrón `**/support/register-limit` en el `no-restricted-imports` de `src/**`; la comprobación valida que cada apoyo exento exista y solo lo importen ficheros exentos (tarea 5.6); delta y ADR-067 dicen «los ficheros con alguna prueba no admitida y los apoyos que el inventario declara solo para ellos»; falsación (g) de la 2.3b | `register-limit.ts` importa `node:child_process` y no es una prueba: la exención por pruebas no lo cubría y `web-e2e:lint` daba rojo desde la 2.3 |
+| R2-2 | La 4.2 quita `resetRegisterLimit` y su import de `account.spec.ts` | Los heredaba de `auth.spec.ts`, y un fichero admitido no puede importarlo |
+| R2-3 | Bloques exentos después de `src/**`, sin `ignores`, con `no-restricted-imports: 'off'` y la lista completa de `no-restricted-syntax`; `EXEMPT_FILES` como `src/<clave>`; JSON leído relativo a `import.meta.dirname` | La composición tiene que poder leerse sin probarla, y la ruta no puede depender del directorio de trabajo |
+| R2-4 | Falsación de la 1.3 corregida y motivo de C23 reescrito; `--list` sin resultados = lista vacía | Sin la comprobación, la corrida ya fallaba, pero tras reiniciar `worker` y con «Playwright exited with code 1» |
+| R2-5 | Paso 7: la entrada con las credenciales borradas, desde `browser.newContext()`; falsación de la 4.5 ajustada | `/login` tiene `guestGuard` |
+| R2-6 | Fuera la aserción sobre el log de Mailpit en la 2.4 | Ya lo prueba el espía de la 2.1; un log no es un contador |
+| R2-7 | 2.3 partida en 2.3a (bloque `src/**`, falsaciones a-d) y 2.3b (exención, `local-only`, e-g) | Cada una cabe en menos de una hora |
+| R2-8 | La 2.2 añade `E2E_MAILPIT_URL=<url>` a la descripción del perfil `local` (no a la del ensayo), y el `node -e` la busca en las dos líneas | El runner no registra el entorno de Playwright: la descripción del perfil sí está en `runner.log` |
+| R2-9 | En la 1.2, una segunda prueba temporal `@lot1` | Cubre el escenario de C13 aunque `@paste-actions` no esté en `main` |
+
+Pendiente: la verificación siguiente y la aprobación humana.

@@ -108,8 +108,10 @@ El repositorio SHALL mantener, junto al mapa de cobertura, un **inventario** con
 la suite, por fichero, admitidas o no, con su estado (admitida; no admitida, con lote previsto opcional y motivo; o
 informativa, con motivo). La comprobación del mapa SHALL fallar si una prueba existe y no está en el inventario, si el
 inventario cita una prueba que no existe o si el estado de una prueba en el inventario no coincide con su etiqueta de
-lote. Los ficheros con alguna prueba **no admitida** del inventario SHALL ser los únicos exentos de las reglas de lint
-que reservan a los ayudantes `local-only` el acceso a la infraestructura y prohíben los orígenes escritos a mano.
+lote. Los ficheros con alguna prueba **no admitida** del inventario y los ficheros de apoyo que el inventario declara
+como usados **solo** por ellos SHALL ser los únicos exentos de las reglas de lint que reservan a los ayudantes
+`local-only` el acceso a la infraestructura y prohíben los orígenes escritos a mano. La comprobación SHALL fallar si
+un apoyo declarado no existe o si lo importa un fichero que no está exento.
 
 #### Scenario: Prueba nueva sin inventario
 
@@ -122,6 +124,13 @@ que reservan a los ayudantes `local-only` el acceso a la infraestructura y proh�
 - **GIVEN** una prueba etiquetada `@lot2` que el inventario da como no admitida
 - **WHEN** se ejecuta la comprobación
 - **THEN** SHALL fallar nombrando la prueba y los dos estados
+
+#### Scenario: Apoyo exento importado por un fichero no exento
+
+- **GIVEN** un fichero de apoyo declarado exento en el inventario y un fichero cuyas pruebas están todas admitidas que lo
+  importa
+- **WHEN** se ejecutan el lint del proyecto de la suite y la comprobación
+- **THEN** los dos SHALL fallar nombrando el fichero que lo importa
 
 #### Scenario: Un fichero solo con pruebas admitidas no queda exento
 
@@ -262,7 +271,8 @@ también en `local` y en la integración continua, y **antes** de conectar con n
 con el perfil `remote` SHALL fallar igual. El lint del proyecto de la suite SHALL rechazar, fuera de esos ayudantes y
 de los ficheros que el inventario exime, el acceso directo a esas operaciones —por importación estática o dinámica— y
 la lectura de sus direcciones del entorno, y en todo el proyecto, salvo esos mismos ficheros exentos, los orígenes de
-bucle local escritos a mano.
+bucle local escritos a mano. Los ficheros exentos son los que el inventario declara: los que tienen alguna prueba no
+admitida y los apoyos que el inventario declara solo para ellos.
 
 El perfil `remote` SHALL poder **ensayarse** contra la pila local que arranca el comando de la suite, **cuando se
 pide** con una opción explícita, para ensayar un destino remoto antes de que exista. Sin esa opción, el comando NO SHALL

@@ -7,8 +7,9 @@
 > los tests que se crean. «Admitir» sigue «Cómo admitir una prueba» de `apps/web-e2e/README.md` (CPU cargada, una
 > invocación por proyecto, pila nueva, cinco de cinco y ningún `429` de registro en `stack-logs/api.log`).
 >
-> **Grupos:** 0 (antes de aplicar, 4 tareas), 1 (selección de lotes, 3), 2 (guardia, fixture y lint, 4), 4 (lote 2 y
-> H11, 11 con la 4.6b, 4.9a y 4.9b), 5 (mapa e inventario, 5), 6 (documentación, 2) y 7 (cierre, 4): **33 tareas**. El
+> **Grupos:** 0 (antes de aplicar, 4 tareas), 1 (selección de lotes, 3), 2 (guardia, fixture y lint, 5 con la 2.3a y
+> la 2.3b), 4 (lote 2 y H11, 11 con la 4.6b, 4.9a y 4.9b), 5 (mapa e inventario, 6), 6 (documentación, 2) y 7 (cierre,
+> 4): **35 tareas**. El
 > grupo 3 (limpieza de specs no admitidos) se retiró en la iteración 1 del debate (B1); la numeración no se rehace.
 
 ## 0. Antes de aplicar
@@ -44,18 +45,19 @@
   --skip-nx-cache` en verde; `node -e` sin `LOCAL_TAGS` ni `REMOTE_TAGS` en `e2e-stack.ts`. Falsación: que
   `profileGrepConditions('local')` devuelva `['@lot1']` y ver caer «local grep admits every lot tag»; quitar el lookahead
   de `ADMITTED` y ver caer «@lot1x is not»; restaurar.
-- [ ] 1.2 [frontend] Depende de 1.1. Selección real, sin montar la pila (C18): una prueba temporal `@lot2` vacía y
-  Playwright directo, `playwright test -c apps/web-e2e/playwright.config.mts --list --grep "<grep de
-  profileGrepConditions('local')>"` con `E2E_BASE_URL=http://coverage.invalid`. Verificar: lista el camino crítico y la
-  temporal; con el `--grep` combinado con `@critical-path`, solo el primero; con el de `remote`, solo el camino crítico.
-  Borrar la temporal; salidas en el scratchpad.
-- [ ] 1.3 [frontend] Depende de 1.1. Ensayo sin pruebas aptas (C23): antes de reiniciar `worker`, el runner lista con el
-  `--grep` de `remote` y falla si sale vacío. Verificar: `pnpm nx run web-e2e:e2e-stack -- --rehearse-remote
-  --skip-local --grep @account` (con la 4.2 hecha; si no, con una etiqueta inexistente) sale con ≠0 en la fase «suite»
-  con «el filtro no deja ninguna prueba apta para remoto» y `stack-logs/worker.log` **no** tiene la línea «ensayo:
-  worker reiniciado». Falsación: quitar la comprobación y ver que la misma orden termina en verde con cero pruebas
-  ejecutadas en el informe del ensayo; restaurar.
-
+- [ ] 1.2 [frontend] Depende de 1.1. Selección real, sin montar la pila (C18): **dos** pruebas temporales vacías, una
+  `@lot2` y otra `@lot1` que no es el camino crítico (R2-9, escenario de C13), y Playwright directo, `playwright test -c
+  apps/web-e2e/playwright.config.mts --list --grep "<grep de profileGrepConditions('local')>"` con
+  `E2E_BASE_URL=http://coverage.invalid`. Verificar: lista el camino crítico y las dos temporales; con el `--grep`
+  combinado con `@critical-path`, solo el primero; con el de `remote`, solo el camino crítico. Borrar las temporales;
+  salidas en el scratchpad.
+- [ ] 1.3 [frontend] Depende de 1.1. Ensayo sin pruebas aptas (C23, R2-4): antes de reiniciar `worker`, el runner lista con
+  el `--grep` de `remote` y falla si la lista sale vacía (una lista sin resultados cuenta como vacía, con el código de
+  salida que dé Playwright). Verificar: `pnpm nx run web-e2e:e2e-stack -- --rehearse-remote --skip-local --grep
+  @account` (con la 4.2 hecha; si no, con una etiqueta inexistente) sale con ≠0 en la fase «suite» nombrando el filtro
+  («el filtro @account no deja ninguna prueba apta para remoto») y `stack-logs/worker.log` **no** tiene la línea
+  «ensayo: worker reiniciado». Falsación: quitar la comprobación; la misma orden falla igual, pero con «Playwright
+  exited with code 1» y **después** de que `worker.log` registre «ensayo: worker reiniciado»; restaurar.
 ## 2. Guardia, fixture de Mailpit y lint (design D5)
 
 - [ ] 2.1 [frontend] `scripts/lib/local-only.ts`: `assertLocalOnly`, `createMailpit({ baseUrl, fetch, guard })`,
@@ -70,50 +72,60 @@
   restaurar.
 - [ ] 2.2 [frontend] Depende de 2.1. `src/support/local-only/index.ts`: `test = base.extend<{ localOnly }>` (ámbito de
   prueba) con `localOnly.mailpit`, que lee `E2E_MAILPIT_URL` dentro del fixture, nunca a nivel de módulo (C9). El
-  runner pasa `E2E_MAILPIT_URL` al perfil `local` y no al `remote`. Verificar: `web-e2e:typecheck` y `web-e2e:lint` en
-  verde; `node -e` sobre `stack-logs/runner.log` de una corrida con `--rehearse-remote` muestra la variable en el
-  entorno del perfil `local` y no en el del ensayo.
-- [ ] 2.3 [frontend] `eslint.config.mjs` con los tres bloques de D5 (`src/**`; `src/support/local-only/**`;
-  `EXEMPT_FILES`, calculado de `catalog-coverage.json`). Hasta la 5.3, la exención se prueba con un inventario mínimo
-  que marca `not-admitted` los specs que hoy rompen las reglas. Verificar: `pnpm nx run web-e2e:lint` en verde.
-  Falsaciones (cada una con el error en el fichero y la línea dichos; restaurar después):
-  (a) `import { MongoClient } from 'mongodb'` en `account.spec.ts` (o, antes de la 4.2, en `critical-path.spec.ts`):
-  error de `no-restricted-imports`;
-  (b) `const x = 'http://localhost:4300'` en el mismo fichero: error del selector de bucle local; y el mismo literal en un
-  comentario, sin error;
-  (c) `await import('mongodb')` en el mismo fichero: error del selector de `ImportExpression` (C7);
-  (d) `process.env['MONGO_URI']` y `process.env.E2E_MAILPIT_URL` en el mismo fichero: error del selector de entorno (C7);
-  (e) el mismo `import` de (a) en `home.spec.ts`, exento: **sin** error; y al marcar en el inventario su prueba como
-  `admitted`, el error aparece;
-  (f) un `setTimeout(…)` en `home.spec.ts` y otro en `local-only/index.ts`: error de esperas fijas en los dos (C8).
+  runner pasa `E2E_MAILPIT_URL` al perfil `local` y no al `remote`, y la añade como `E2E_MAILPIT_URL=<url>` a la
+  descripción del perfil `local` que escribe en `runner.log` (la del ensayo no la lleva, R2-8). Verificar:
+  `web-e2e:typecheck` y `web-e2e:lint` en verde; un `node -e` sobre `stack-logs/runner.log` de una corrida con
+  `--rehearse-remote` busca `E2E_MAILPIT_URL=` en las dos líneas «suite: playwright …»: está en la del perfil
+  `local` y no en la del ensayo.
+- [ ] 2.3a [frontend] `eslint.config.mjs`, bloque 1 de D5 (`src/**/*.ts`): esperas fijas, bucle local, acceso local (C7) y
+  `no-restricted-imports` con el patrón `**/support/register-limit`. Verificar: con un bloque exento provisional que
+  liste a mano los ficheros que hoy rompen las reglas (lo sustituye la 2.3b), `pnpm nx run web-e2e:lint` en verde.
+  Falsaciones en `account.spec.ts` (o, antes de la 4.2, en `critical-path.spec.ts`), cada una con el error en esa
+  línea, y restaurar:
+  (a) `import { MongoClient } from 'mongodb'`: `no-restricted-imports`;
+  (b) `const x = 'http://localhost:4300'`: selector de bucle local; el mismo literal en un comentario, sin error;
+  (c) `await import('mongodb')`: selector de `ImportExpression` (C7);
+  (d) `process.env['MONGO_URI']` y `process.env.E2E_MAILPIT_URL`: selector de entorno (C7).
+- [ ] 2.3b [frontend] Depende de 2.3a. Bloques 2 y 3 de D5, después del 1 y sin `ignores`, con `no-restricted-imports:
+  'off'` y la lista completa de `no-restricted-syntax`; `EXEMPT_FILES` = `src/<clave>` de los ficheros con alguna prueba
+  `not-admitted` y de `exemptSupport`, con el JSON leído relativo a `import.meta.dirname` (R2-3). Hasta la 5.3, un
+  `catalog-coverage.json` mínimo con esos ficheros y `"exemptSupport": { "support/register-limit.ts": … }` (R2-1)
+  sustituye la lista provisional de la 2.3a. Verificar: `pnpm nx run web-e2e:lint` en verde, también lanzado desde
+  `apps/web-e2e` como directorio de trabajo. Falsaciones, y restaurar:
+  (e) el `import` de (a) en `home.spec.ts`, exento: sin error; al marcar su prueba `admitted` en el JSON, el error
+  aparece;
+  (f) un `setTimeout(…)` en `home.spec.ts` y otro en `local-only/index.ts`: error de esperas fijas en los dos (C8);
+  (g) `import { resetRegisterLimit } from './support/register-limit'` en `account.spec.ts`: error del patrón
+  `**/support/register-limit` (R2-1); y quitar `exemptSupport` del JSON: el error aparece en
+  `support/register-limit.ts` por `node:child_process`.
 - [ ] 2.4 [frontend] Depende de 2.2. Guardia en Playwright: una prueba temporal `@lot9 @remote-safe` que llama a
-  `localOnly.mailpit.latest(…)`. Verificar: `pnpm nx run web-e2e:e2e-stack -- --grep @lot9 --project=chromium` falla en
-  esa prueba con `local-only helper "mailpit"` y el log de Mailpit (`docker compose -p <proyecto> logs mailpit` con
-  `--keep-stack`) no registra ninguna petición de la API en esa corrida; quitar `@remote-safe` y ver que pasa. Borrar la
-  prueba y comprobar con `git status` que no queda nada.
-
+  `localOnly.mailpit.latest(…)`. Verificar: `pnpm nx run web-e2e:e2e-stack -- --grep @lot9 --project=chromium` falla
+  en esa prueba con `local-only helper "mailpit"` en el informe; quitar `@remote-safe` y ver que la llamada llega a
+  Mailpit (la prueba pasa o falla por no encontrar el correo, no por el guardia). Que no se hace ninguna petición lo
+  prueba el espía de la 2.1 (R2-6). Borrar la prueba y comprobar con `git status` que no queda nada.
 ## 4. Lote 2: cuenta y salida, y H11 (design D7, D8, D9)
 
 - [ ] 4.1 [infra] H11: `AI_VAULT_KEY` en `e2e.env` (32 bytes en base64 de un texto que dice que es de relleno), con
   comentario. Verificar: pila del runner con `--keep-stack` y `byok.spec.ts` con Playwright directo: el `PUT
   /api/users/me/ai-keys/<vendor>` no responde `503` (informe en el scratchpad). Falsación: quitar la línea, repetir y
   ver el `503 vault_unavailable` en ese `PUT`; restaurar. Además, `pnpm nx run web-e2e:e2e-stack` en verde con la clave.
-- [ ] 4.2 [frontend] Depende de 2.2. `git mv src/auth.spec.ts src/account.spec.ts`; prueba «account: privacy, sign up,
-  verify email, profile, recover password and delete» con `@lot2 @account`, pasos 0-3 de D7 (privacidad por URL directa
-  sin sesión, registro, sesión restaurada y token fuera del almacenamiento, verificación por Mailpit con `after` y el
-  enlace usado rechazado). Verificar: `pnpm nx run web-e2e:e2e-stack -- --grep @account --project=chromium` en verde
-  hasta el paso 3.
+- [ ] 4.2 [frontend] Depende de 2.2. `git mv src/auth.spec.ts src/account.spec.ts`; quitar el `beforeAll` con
+  `resetRegisterLimit` y su `import`, que hereda de `auth.spec.ts` (R2-2); prueba «account: privacy, sign up, verify
+  email, profile, recover password and delete» con `@lot2 @account`, pasos 0-3 de D7 (privacidad por URL directa sin
+  sesión, registro, sesión restaurada y token fuera del almacenamiento, verificación por Mailpit con `after` y el
+  enlace usado rechazado). Verificar: `node -e` sin `register-limit` en `account.spec.ts`; `pnpm nx run
+  web-e2e:e2e-stack -- --grep @account --project=chromium` en verde hasta el paso 3.
 - [ ] 4.3 [frontend] Depende de 4.2. Pasos 4 y 5 (nombre, contraseña errónea y correcta, privacidad desde el perfil).
   Verificar: la misma orden en verde.
 - [ ] 4.4 [frontend] Depende de 4.3. Paso 6 (segundo contexto con sesión, recuperación por Mailpit, entrada con la
   nueva, el segundo contexto acaba en `/login` al recargar). Verificar: la misma orden en verde. Falsación: abrir la
   sesión del segundo contexto **después** de la recuperación; la prueba cae en la aserción `toHaveURL(/\/login/)` del
   segundo contexto en el paso 6, con su página en `/grupos`; restaurar.
-- [ ] 4.5 [frontend] Depende de 4.4. Paso 7 (borrado y credenciales rechazadas). Verificar: la misma orden en verde y
+- [ ] 4.5 [frontend] Depende de 4.4. Paso 7: borrado y, en un contexto nuevo (`browser.newContext()`, porque `/login`
+  tiene `guestGuard`, R2-5), entrada con esas credenciales rechazada. Verificar: la misma orden en verde y
   `stack-logs/api.log` con un solo `POST /api/auth/register` de esta prueba. Falsación: quitar el clic de «Borrar
-  cuenta»; la prueba cae en el paso 7, en la aserción de «Email o contraseña incorrectos», con la página en `/grupos`
-  porque la entrada prosperó (y no antes: la espera de `/login` del paso se arma tras el clic que se quitó, así que se
-  quita también); restaurar.
+  cuenta» y la espera de `/login` que se arma con él; la prueba cae en el paso 7, en el contexto nuevo, en la aserción
+  de «Email o contraseña incorrectos», con esa página en `/grupos` porque la entrada prosperó; restaurar.
 - [ ] 4.6b [frontend] (Si Q2 = (a).) `testMatch` del proyecto `mobile`: el camino crítico y `account.spec.ts`.
   Verificar: `playwright test -c apps/web-e2e/playwright.config.mts --list --project=mobile` (con
   `E2E_BASE_URL=http://coverage.invalid`) lista las dos pruebas y ninguna más.
@@ -153,7 +165,7 @@
   no queda. Falsación: leer `E2E_MAILPIT_URL` a nivel de módulo en `local-only/index.ts` y ver que `--list` falla al
   cargar `account.spec.ts`; restaurar.
 - [ ] 5.3 [frontend] Depende de 5.2 y de la 0.4. `catalog-coverage.json` con el contenido de D10 rehecho contra el
-  `main` del día y el inventario de todas las pruebas; sustituye al inventario mínimo de la 2.3. Verificar: la orden de
+  `main` del día y el inventario de todas las pruebas; sustituye al inventario mínimo de la 2.3b. Verificar: la orden de
   la 5.2 sale con `0`; las cifras coinciden con `--list` y con los 46 títulos del catálogo; `web-e2e:lint` sigue en
   verde (la exención sale del inventario real).
 - [ ] 5.4 [infra] Depende de 5.3. `tools/repo-checks/project.json`: target `check-catalog-coverage` (`cache: true`,
@@ -169,6 +181,13 @@
   (e) añadir una prueba temporal `@lot2` sin entrada y ver «admitted test cited by no entry»;
   (f) un comentario en `apps/web-e2e/scripts/lib/remote.ts`: la segunda corrida no sale de la caché (C3).
   Verificar: la salida de cada una, en el scratchpad.
+- [ ] 5.6 [frontend] Depende de 5.1. Apoyos exentos en la comprobación (R2-1): `evaluateCoverage` recibe además, por
+  fichero de `src/`, sus `import` relativos (leídos con el compilador de TypeScript, solo los especificadores) y falla si
+  una clave de `exemptSupport` no existe o si la importa un fichero que no está exento. Casos en `coverage.spec.ts`:
+  «exempt support that does not exist fails» y «exempt support imported by a non-exempt file fails». Verificar:
+  `pnpm nx run web-e2e:test --skip-nx-cache` y `bash infra/ci/repo-checks.sh` en verde. Falsación: con la 2.3b
+  hecha, desactivar en una línea el lint del patrón y añadir el `import` de (g) a `account.spec.ts`: la comprobación
+  falla nombrando los dos ficheros; restaurar.
 
 ## 6. Documentación
 
