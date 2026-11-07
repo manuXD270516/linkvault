@@ -17,9 +17,12 @@ Toda regla que esta capacidad, `ai/deterministic-mock` o `ai/eval-harness` fijen
 del consentimiento, SHALL aplicarse igual a las tareas `incidental`: la redacción de PII hacia proveedores externos, la
 prohibición de declararlas cacheables y de leer o escribir su resultado en una caché compartida, el registro de entradas
 pendientes de fixture sin la entrada, la grabación de fixtures solo contra el mock y la auditoría de sus fixtures con el
-redactor de proveedor externo. Las reglas SHALL decidirse en un único lugar del dominio a partir de la sensibilidad
-declarada, y ningún otro módulo SHALL comparar la sensibilidad directamente; una comprobación automatizada SHALL fallar
-nombrando el fichero que lo haga.
+redactor de proveedor externo. Las reglas SHALL decidirse en un único lugar del dominio, con una sola tabla que dé las
+reglas de cada sensibilidad, y ningún otro módulo SHALL mencionar un valor de sensibilidad ni el valor por defecto. La
+única excepción es la declaración de la sensibilidad de cada tarea. Una comprobación automatizada SHALL fallar nombrando
+el fichero y la línea que lo hagan, sea una comparación, una variable intermedia o un `switch`. Declarar una tarea
+`incidental`, igual que declararla `public`, SHALL exigir una decisión registrada que diga por qué su contenido no es de
+quien ejecuta; sin ella, la tarea SHALL quedar en `personal`.
 
 #### Scenario: Tarea sin sensibilidad declarada
 
@@ -69,6 +72,12 @@ nombrando el fichero que lo haga.
 #### Scenario: Una comparación suelta de la sensibilidad
 
 - **GIVEN** un módulo de la IA, fuera del lugar del dominio que decide las reglas, que compara la sensibilidad de una
-  tarea con un valor
+  tarea con un valor, la guarda en una variable y la compara después, o decide con un `switch` sobre ella
 - **WHEN** se ejecuta la comprobación automatizada
-- **THEN** SHALL fallar nombrando ese fichero
+- **THEN** SHALL fallar nombrando ese fichero y la línea
+
+#### Scenario: Un valor de sensibilidad sin reglas
+
+- **GIVEN** un valor nuevo de sensibilidad sin su fila en la tabla de reglas
+- **WHEN** se compila la librería de IA
+- **THEN** la compilación SHALL fallar

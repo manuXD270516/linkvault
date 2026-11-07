@@ -1,6 +1,11 @@
+## RENAMED Requirements
+
+- FROM: `### Requirement: El texto pegado es un dato personal`
+- TO: `### Requirement: El texto pegado puede traer datos personales`
+
 ## MODIFIED Requirements
 
-### Requirement: El texto pegado es un dato personal
+### Requirement: El texto pegado puede traer datos personales
 
 El texto recibido NO SHALL persistirse en ninguna colección, cola, caché ni registro, ni aparecer en los logs, en el
 ledger de IA ni en los avisos del canal de eventos. Antes de la IA SHALL quitársele cualquier email y teléfono. SHALL

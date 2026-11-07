@@ -32,11 +32,14 @@ Lo que hay hoy, leído en `change/paste-fallback-honest` (`c9ea027`):
   `consentWouldEnable` es siempre `false` para ella.
 - **`extract-pasted-job` pasa a `incidental`** (enmienda ADR-023 §2). El adaptador del pegado sigue pasando el
   consentimiento, que ya no decide su cadena. `409 ai_consent_required` queda como defensa sin camino.
-- **Diálogo de pegado:** un aviso, antes de enviar, de que puede leerlo un proveedor de IA externo, sin enumerar lo
-  que se sustituye ni prometer anonimato, comprobado con las promesas prohibidas de `privacy-text`; i18n ES/EN según
-  ADR-050.
+- **Diálogo de pegado:** un aviso, antes de enviar, de que puede leerlo un proveedor de IA externo y de que lo que no
+  es un dato de contacto se envía tal cual, sin enumerar lo que se sustituye ni prometer anonimato, comprobado con
+  `privacy-text` (promesas prohibidas, frase de «tal cual» y ningún tipo nombrado); i18n ES/EN según ADR-050.
+- **Staging:** cuota diaria propia del pegado (`AI_QUOTAS=…,extract-pasted-job=N`) en `.env.staging`, sin tocar
+  ficheros del repositorio, porque el compose ya pasa `AI_QUOTAS` (design D11, Q5).
 - **Documentación:** README («Pegar la descripción») y RUNBOOK (Paso 6 ter) dejan de decir que el pegado pide el
-  consentimiento.
+  consentimiento; el RUNBOOK explica que el cupo y el circuito de OpenRouter son compartidos y anota la configuración de
+  la cuenta de la plataforma.
 - **Sin cambios de prompts, modelos, fixtures ni golden:** el eval se corre como comprobación de no regresión, **sin**
   `--update-baseline` (design D8).
 
@@ -51,8 +54,8 @@ Ninguna.
 - `ai/data-protection`: «Sensibilidad de datos por tarea» (tres valores y sus reglas).
 - `ai/provider-routing`: «Filtrado por capacidades, consentimiento y circuitos abiertos» (filtro de las tareas
   `incidental`) y nuevo requirement «Declaración de no recolección de datos».
-- `links/pasted-description`: «El texto pegado es un dato personal» (sin consentimiento; solo externos que piden no
-  recolectar).
+- `links/pasted-description`: «El texto pegado es un dato personal», renombrado a «El texto pegado puede traer datos
+  personales» (sin consentimiento; solo externos que piden no recolectar).
 - `web/links`: nuevo requirement «Aviso de adónde va lo pegado».
 
 ## Impact

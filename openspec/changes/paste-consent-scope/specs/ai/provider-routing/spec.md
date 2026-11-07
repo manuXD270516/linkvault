@@ -3,10 +3,12 @@
 ### Requirement: Declaración de no recolección de datos
 
 Cada proveedor SHALL poder declarar, entre sus capacidades, que pide no recolectar los datos que recibe
-(`dataCollectionDenied`). Un proveedor SHALL declararlo **solo** si **cada** petición que envía pide al servicio que no
-recolecte ni conserve los datos; un proveedor que no lo declare SHALL tratarse como si no lo pidiera. La declaración es
-un dato de política, como `external` y los costes: el filtro de capacidades requeridas por la tarea NO SHALL tenerla en
-cuenta. Hoy SHALL declararlo el proveedor OpenRouter que envía `data_collection: "deny"` (el de plataforma y el BYOK con
+(`dataCollectionDenied`). Un proveedor SHALL declararlo **solo** si **cada** petición que envía restringe el
+enrutamiento a servicios que declaran no recolectar ni conservar los datos; un proveedor que no lo declare SHALL
+tratarse como si no lo pidiera. La declaración describe lo que se pide, no una garantía comprobable de lo que hace el
+servicio. Es un dato de política, como `external` y los costes: el filtro de capacidades requeridas por la tarea NO
+SHALL tenerla en cuenta, y una tarea NO SHALL poder requerirla (ni `external` ni los costes) entre sus capacidades
+requeridas. Hoy SHALL declararlo el proveedor OpenRouter que envía `data_collection: "deny"` (el de plataforma y el BYOK con
 modelo `:free`), y NO SHALL declararlo el BYOK de OpenRouter sin forzar `data_collection`, ni los de OpenAI y
 Anthropic.
 
@@ -154,6 +156,12 @@ precedencia lo fija `ai/task-execution`.
 - **WHEN** se construye la cadena
 - **THEN** la cadena SHALL contener solo el proveedor local
 - **AND** `consentWouldEnable` SHALL ser `true`
+
+#### Scenario: La cadena de una tarea incidental no depende del permiso
+
+- **GIVEN** una tarea `incidental` y cualquier universo efectivo de candidatos y estado de circuitos
+- **WHEN** se construye la cadena con el contexto con `externalProviders: true` y, aparte, con `externalProviders: false`
+- **THEN** las dos cadenas SHALL contener los mismos proveedores en el mismo orden
 
 #### Scenario: Proveedor que no declara la no recolección
 
