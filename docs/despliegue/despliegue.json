@@ -1,0 +1,117 @@
+{
+  "version": 1,
+  "fecha": "2026-11-16",
+  "parametros": {
+    "ruta": ".",
+    "profundidad": "normal",
+    "presupuesto": 0,
+    "tarjeta": "si, solo para el alta o el pago por uso, sin cobros",
+    "audiencia": "equipo",
+    "audienciaDetalle": "3 a 5 invitados",
+    "datos": "sensibles",
+    "plataforma": "auto",
+    "candidatos": [
+      "oracle-free",
+      "casa-tunel",
+      "gestionado-gratis"
+    ],
+    "pesos": {
+      "costo": 15,
+      "ajuste": 20,
+      "seguridad": 20,
+      "operacion": 20,
+      "reversibilidad": 15,
+      "esfuerzo": 10
+    },
+    "jueces": [
+      "costo",
+      "seguridad",
+      "operacion"
+    ],
+    "ramas": "trunk",
+    "idioma": "es",
+    "salida": "docs/despliegue",
+    "modo": "proponer"
+  },
+  "panel": {
+    "agentes": 9,
+    "panelAprobadoPorOwner": "2026-11-16",
+    "tabla": [
+      {
+        "candidato": "oracle-free",
+        "puntaje": 2.97,
+        "borda": 6,
+        "primerosPuestos": 3,
+        "vetadoPorScript": true
+      },
+      {
+        "candidato": "casa-tunel",
+        "puntaje": 2.57,
+        "borda": 3,
+        "primerosPuestos": 0,
+        "vetadoPorScript": false
+      },
+      {
+        "candidato": "gestionado-gratis",
+        "puntaje": 1.93,
+        "borda": 0,
+        "primerosPuestos": 0,
+        "vetadoPorScript": false
+      }
+    ],
+    "resultadoDelScript": {
+      "ganador": "casa-tunel",
+      "planB": "gestionado-gratis",
+      "consenso": 0,
+      "requiereArbitro": true
+    }
+  },
+  "decision": {
+    "estado": "propuesta, pendiente de aprobacion del owner. No terminado hasta C1: sin respaldo fuera de Oracle ni restauracion probada",
+    "ganador": "oracle-free",
+    "planB": "casa-tunel",
+    "tercero": "gestionado-gratis",
+    "consenso": "3 de 3",
+    "arbitraje": "El veto del script venia de dos declaraciones del propio proponente en 'incumple' (0 USD practico y no contractual en pago por uso; falta respaldo fuera del host). Ninguna es incompatibilidad: la primera pasa a regla de corte (cuotas, alerta de 1 USD y de pronostico, estimador antes del pago por uso) y la segunda se cierra con un change de respaldo antes de invitar, comun a los tres candidatos.",
+    "disparadoresPlanB": [
+      "Oracle no da capacidad A1",
+      "Oracle pide un cobro o muestra un cargo",
+      "Oracle recupera la instancia o cierra la cuenta",
+      "El owner no puede cumplir las reglas de corte de costo"
+    ],
+    "condicionesAntesDeInvitar": [
+      "Respaldo con contenedor dedicado, usuario de Mongo y identidad S3 de solo lectura propios, redes que no deshagan D18",
+      "Copia fuera de Oracle automatizada",
+      "Borrado de respaldos protegido con retencion o bloqueo, sin versionado sin ciclo de vida",
+      "Aviso de respaldo faltante",
+      "Restauracion ensayada",
+      "SSH endurecido",
+      "Exencion de inactividad confirmada, o riesgo aceptado por escrito, o plan B",
+      "RPO de 24 h aceptado (intervalo del dump a decision del owner)",
+      "enrichment-egress-guard fusionado"
+    ],
+    "documentos": [
+      "docs/despliegue/DECISION-DESPLIEGUE.md",
+      "docs/despliegue/RUNBOOK-DESPLIEGUE.md",
+      "docs/despliegue/perfil-despliegue.json",
+      "docs/despliegue/despliegue.json"
+    ],
+    "preguntasAbiertas": [
+      "Q1",
+      "Q2",
+      "Q3",
+      "Q4",
+      "Q5",
+      "Q6"
+    ],
+    "condicionesNota": "9 condiciones: las 8 del disenso de los jueces mas C2 (enrichment-egress-guard), igual que en DECISION-DESPLIEGUE.md"
+  },
+  "estadoDespliegue": {
+    "desplegado": false,
+    "nota": "El estado por fase vive en RUNBOOK-DESPLIEGUE.md; este JSON solo se actualiza al cierre",
+    "corridaParaElPrimerDespliegue": "42344081533",
+    "plazoParaRelanzarla": "2026-12-07"
+  },
+  "ubicacion": "docs/despliegue/despliegue.json (no en la raiz: un archivo en la raiz dispararia cd-staging al fusionarse; docs/** esta en su paths-ignore)",
+  "fusion": "Este PR no se fusiona hasta la ventana del PR-2 de staging-host; mientras tanto el owner lo lee desde la rama docs/estrategia-despliegue"
+}
