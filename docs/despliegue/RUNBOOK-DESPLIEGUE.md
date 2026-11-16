@@ -5,8 +5,13 @@
 `https://<ip-con-guiones>.sslip.io` con certificado de Let's Encrypt. Costo: 0 USD por mes, sostenido por las reglas de
 corte de costo de la [fase 1](#fase-1-cuenta-y-reglas-de-costo-vos).
 
+**No terminado hasta C1: sin respaldo fuera de Oracle ni restauración probada.**
+
 **Estado al 2026-11-16:** sin desplegar. El destino está a medio preparar por el change `staging-host` (35b). La
-decisión de plataforma y sus condiciones están en [DECISION-DESPLIEGUE.md](DECISION-DESPLIEGUE.md).
+decisión de plataforma y sus condiciones están en [DECISION-DESPLIEGUE.md](DECISION-DESPLIEGUE.md). El estado de cada
+fase se marca **acá**, en la [lista de cierre](#cierre-del-despliegue); [`despliegue.json`](despliegue.json) solo se
+actualiza al cierre. Este documento no se fusiona a `main` hasta la ventana del PR-2 de 35b: mientras tanto se lee
+desde la rama `docs/estrategia-despliegue`.
 
 **Este runbook no repite el de Oracle.** Los pasos de consola están en
 [`docs/runbooks/oracle-cloud-a1.md`](../runbooks/oracle-cloud-a1.md) (citado como «runbook de Oracle §N»), cómo está
@@ -33,13 +38,25 @@ respaldo y lo que endurece el plan.
 | Lista de invitados y entrevistas | Falta, **Vos** | 35b 9.7 y 10.1 |
 | `.env.staging` y su copia fuera del host | Falta, **Vos con Claude** | 35b 5.7-5.8 |
 | Reglas de corte de costo (cuotas, alertas, estimador) | **Nuevo** | Fase 1 de este runbook |
-| Change de respaldo (contenedor dedicado, dos destinos, aviso, restauración ensayada) | **Nuevo** | Cambio C1 de la decisión; fase 7 |
+| Change de respaldo (contenedor dedicado, dos destinos, aviso, restauración ensayada) | **Nuevo** | Cambio C1 de la decisión; fases 8 y 9 |
 | SSH endurecido | **Nuevo** | Cambio C3; fase 2 |
-| Filtro de salida del worker (`enrichment-egress-guard`) | Implementado en su rama, **sin fusionar** | Cambio C2; fase 8 |
+| PR-2 de 35b fusionado en su ventana | Falta; depende de Q4 de 35b (invitados) y de 5.10 (pago por uso) | Fase 7 |
+| Filtro de salida del worker (`enrichment-egress-guard`) | Implementado en su rama, **sin fusionar**; entra en la ventana posterior a la 11.6 | Cambio C2; fase 8 |
 
-**Plazo que corre:** el primer despliegue relanza el `preflight` de la corrida `42344081533` (35b 6.3), y GitHub lo
-permite hasta 30 días después de creada: **hasta el 2026-12-07**. Pasado ese día vale la alternativa escrita de 6.3
-(una corrida nueva sobre `main`).
+**Congelación de `main`:** entre PR-1b y PR-2 de 35b no se fusiona nada a `main`, y en particular nada durante el
+ensayo de reconstrucción 9.1-9.4 (`tasks.md` de 35b). Por eso el respaldo (C1) y el filtro de salida (C2) entran recién
+en la ventana posterior a la 11.6 (fase 8).
+
+**Plazo que corre:** GitHub deja relanzar jobs de una corrida hasta 30 días después de creada. La corrida `42344081533`
+(push de PR-1b, creada el 2026-11-07) vence el **2026-12-07**, y estas tareas la relanzan:
+
+| Tarea de 35b | Qué relanza | Alternativa si venció |
+|---|---|---|
+| 6.3 | El `preflight` (primer despliegue) | La alternativa escrita de 6.3: `cd-staging` a mano sobre `main` fuera del modo de prueba. **Desde entonces el plazo se cuenta desde esa corrida nueva** |
+| 6.5, 6.6 y 6.7 | Solo el job de despliegue (token fuera de `ps`, inyección, clave del host) | Lo mismo sobre la corrida de 6.3 vigente; si también venció, una corrida nueva sobre `main` |
+| 9.4 | Solo el job de despliegue, tras reconstruir | Las dos órdenes del job desde la máquina del operador (`infra/README.md`, reconstrucción, paso 5) |
+| 11.6 | El job de despliegue de la corrida de 6.3 y después el de PR-2 | La vuelta atrás desde el host de 11.2, anotada |
+| Vuelta atrás por GitHub | Solo el job de despliegue de una corrida anterior | [Vuelta atrás sin GitHub](#volver-atrás) |
 
 ## Reglas de corte
 
@@ -55,15 +72,16 @@ Parate y no sigas si pasa algo de esto:
    sigue hasta que el pronóstico vuelva a 0.
 5. **Una verificación de seguridad de la fase 5 da otro resultado** (ruta protegida sin `401`, puerto de datos abierto,
    `/metrics` público, dirección de metadatos alcanzable).
-6. **La exención de inactividad no está confirmada** (Q5 de la decisión) al llegar a la fase 10: o se confirma, o se
+6. **La exención de inactividad no está confirmada** (Q5 de la decisión) al llegar a la fase 11: o se confirma, o se
    acepta el riesgo por escrito, o plan B.
-7. **El respaldo no corrió, no avisó o no se pudo restaurar** en la fase 7 o en la 8. No se invita sin respaldo probado.
+7. **El respaldo no corrió, no avisó o no se pudo restaurar** en la fase 8 o en la 9. No se invita sin respaldo probado.
 8. **Un destino de respaldo tiene versionado sin regla de ciclo de vida**, o la credencial que vive en el host puede
    borrar instantáneas.
 9. **Aparece un dato real o un secreto** en un archivo versionado, en un comando guardado en el historial o en el
    chat.
 
-No entran datos reales (invitados) hasta terminar la fase de prueba con datos ficticios y la fase 8.
+No entran datos reales (invitados) hasta terminar las fases 9 (restauración ensayada) y 10 (prueba con datos
+ficticios).
 
 ## Valores que vas a necesitar
 
@@ -77,15 +95,20 @@ No entran datos reales (invitados) hasta terminar la fase de prueba con datos fi
 | Credencial de poda de respaldos (nueva) | Clave del destino con permiso de borrar | Solo tu gestor de contraseñas, **nunca** en el host |
 | Región de origen | por ejemplo `sa-saopaulo-1` | Consola de Oracle; `infra/README.md`. Irreversible |
 
-Los comandos de tu PC usan Git Bash desde la raíz del repositorio. Los del host corren por SSH, en `bash`, desde
-`/srv/linkvault-staging`. En los del host, `<sha12>` es el commit desplegado (`docker compose … images` lo muestra).
+Los comandos de tu PC usan Git Bash desde la raíz del repositorio, salvo los `gh secret set`, que van en PowerShell
+o Windows Terminal (fase 3). Los del host corren por SSH, en `bash`, desde `/srv/linkvault-staging`. En los del host,
+`<sha12>` es el commit desplegado (`docker compose … images` lo muestra).
+
+En tu PC, para las comprobaciones desde fuera:
 
 ```bash
 BASE=https://<ip-con-guiones>.sslip.io
 ```
 
+En **cada** sesión del host, antes de cualquier orden de Compose:
+
 ```bash
-DC="docker compose -f docker-compose.prod.yml --env-file .env.staging"
+cd /srv/linkvault-staging && DC="docker compose -f docker-compose.prod.yml --env-file .env.staging"
 ```
 
 ## Fase 0: repositorio listo (Claude)
@@ -122,8 +145,9 @@ Ya está casi todo hecho; se comprueba que siga así.
    cargá exactamente lo del plan: A1 con 2 OCPU y 12 GB, un volumen de arranque de 50 a 100 GB, una IP pública
    reservada y Object Storage Standard por debajo de 10 GB. Anotá fuera del repositorio el total. **Si no es 0, regla
    de corte 3.**
-3. **Pago por uso (35b 5.10, decisión tuya).** El panel recomienda pasar, para tener prioridad de capacidad A1 y
-   evitar la reclamación por inactividad (que esa exención exista es la Q5). Runbook de Oracle §11 y §13.2, con dos
+3. **Pago por uso (35b 5.10, decisión tuya).** El panel recomienda pasar, para evitar la reclamación por
+   inactividad (que esa exención exista es la Q5) y por una posible prioridad de capacidad A1. Esa prioridad es un
+   **supuesto**: la afirma el runbook de Oracle, no una fuente oficial citada. Runbook de Oracle §11 y §13.2, con dos
    correcciones: en pago por uso **no** hay 4/24 gratis (la cifra es 2/12 para todas las cuentas), y el presupuesto se
    crea con las dos alertas del paso 4. Si decidís no pasar, anotá por escrito que aceptás el riesgo de reclamación.
 4. **Presupuesto con dos alertas (endurece §11).** *Billing & Cost Management → Budgets → Create Budget*, sobre el
@@ -143,7 +167,7 @@ Ya está casi todo hecho; se comprueba que siga así.
    ```
 
    Las cuotas no frenan los GB ni las peticiones de Object Storage: eso lo vigila el respaldo con su tope de tamaño
-   (fase 7) y la revisión mensual de consumo ([Mantenimiento](#mantenimiento)).
+   (fase 8) y la revisión mensual de consumo ([Mantenimiento](#mantenimiento)).
 6. **Exención de inactividad (Q5).** Buscá en la documentación de Always Free de Oracle, o preguntá a soporte, si una
    cuenta de pago por uso queda exenta de la reclamación de instancias inactivas. Guardá la respuesta fuera del
    repositorio, sin datos de la cuenta. No bloquea las fases 2 a 9; bloquea la 10.
@@ -159,7 +183,7 @@ familias de cómputo; el total del estimador anotado es 0; la decisión de 5.10 
    desde la consola). Si sale «Out of host capacity», runbook de Oracle §6; tras tres días, regla de corte 1.
 2. **Regla de la dirección de metadatos:** 35b 12.7 (`infra/README.md`, «Redes de la pila y dirección de metadatos»).
 3. **SSH endurecido (nuevo, cambio C3).** En el host, por SSH con tu usuario de administración. Limitar quién entra
-   (reemplazá `<usuario-admin>` por el tuyo, en la imagen de Oracle es `ubuntu`):
+   (reemplazá `<usuario-admin>` por el tuyo; en la imagen de Oracle es `ubuntu`):
 
    ```bash
    echo 'AllowUsers <usuario-admin> deploy' | sudo tee -a /etc/ssh/sshd_config.d/99-linkvault.conf
@@ -189,43 +213,94 @@ Nunca pongas estos valores en un archivo versionado, en el repositorio ni en el 
 1. **`.env.staging` y su copia:** 35b 5.7 y 5.8 (Claude te da los comandos de generación de `infra/README.md`; vos los
    corrés en el host y guardás la copia).
 2. **Credencial del registro:** 35b 5.9 (token clásico solo con `read:packages`, con caducidad).
-3. **Secretos del CD:** 35b 6.1, con PR-1 y PR-1b ya en `main` (lo están). Cada uno se carga por la entrada estándar,
-   sin el valor en la línea de comandos:
+3. **Secretos del CD:** 35b 6.1, con PR-1 y PR-1b ya en `main` (lo están). Desde **PowerShell o Windows Terminal**, en
+   la raíz del repositorio: `gh` pide el valor sin mostrarlo y no queda en el historial. En Git Bash el aviso no
+   funciona bien; ahí solo vale la redirección desde un archivo.
 
-   ```bash
+   ```powershell
    gh secret set STAGING_HOST
    ```
 
-   Lo mismo con `STAGING_SSH_USER`, `STAGING_SSH_KEY`, `STAGING_SSH_HOST_KEY`, `GHCR_READ_USER` y `GHCR_READ_TOKEN`
-   (para la clave privada: `gh secret set STAGING_SSH_KEY < <ruta de la clave>`).
-
-4. **Revisión del env file en el host** (no imprime valores; comprueba las variables obligatorias del compose):
+   Lo mismo con `STAGING_SSH_USER`, `STAGING_SSH_HOST_KEY`, `GHCR_READ_USER` y `GHCR_READ_TOKEN`. La clave privada de
+   despliegue se carga redirigiendo su archivo, que vive fuera del repositorio (desde Git Bash):
 
    ```bash
-   cd /srv/linkvault-staging && $DC config -q
+   gh secret set STAGING_SSH_KEY < ~/.ssh/<clave de despliegue>
    ```
 
-   La revisión completa (formatos y valores prohibidos en producción) es `check-env-file.mjs`, paso 2 de
-   [`infra/revision-despliegue.md`](../../infra/revision-despliegue.md). Necesita el repositorio junto al archivo, y
-   el script no viaja con el despliegue (`config-files.txt` no lo lleva): Claude te dice dónde correrlo sin sacar el
-   archivo de un lugar seguro.
+   Si para algún otro valor usás un archivo temporal, que esté fuera del repositorio y borralo apenas termina el
+   comando.
+
+4. **Configuración de `main` y revisión del env file (Claude te pasa la orden, vos la corrés en el host).** Es la copia
+   manual de 35b 5.7, una sola vez, y la revisión completa de `check-env-file.mjs` (paso 2 de
+   [`infra/revision-despliegue.md`](../../infra/revision-despliegue.md)). El script lee del repositorio
+   `docker-compose.prod.yml`, `docker-compose.yml`, `infra/ci/verify.env` y `.env.example`, y no viaja con el
+   despliegue: se clona el repositorio público en un directorio temporal del host, se corre con los dos montados de
+   solo lectura y sin red, y se borra. `<commit>` es el de `main` que se va a desplegar (el de la corrida
+   `42344081533`, o el de la corrida nueva si se usó la alternativa de 6.3). `git` viene en la imagen de Ubuntu; si
+   falta, `sudo apt-get install -y git`.
+
+   ```bash
+   cd /srv/linkvault-staging && DC="docker compose -f docker-compose.prod.yml --env-file .env.staging"
+   ```
+
+   ```bash
+   TMP=$(mktemp -d) && git clone --quiet https://github.com/<owner>/linkvault.git "$TMP/repo" && git -C "$TMP/repo" checkout --quiet <commit>
+   ```
+
+   ```bash
+   (cd "$TMP/repo" && tar -cf - -T infra/deploy/config-files.txt) | tar -xf - -C /srv/linkvault-staging
+   ```
+
+   ```bash
+   $DC config -q
+   ```
+
+   Antes del primer despliegue la imagen de `api` todavía no está en el host: se usa la imagen pública de Node de la
+   misma versión mayor (la 22). Después del primer despliegue, en la fase 5, se usa la de `api`.
+
+   ```bash
+   docker run --rm --network none --read-only --user "$(id -u):$(id -g)" -v "$TMP/repo":/repo:ro -v /srv/linkvault-staging/.env.staging:/env/.env.staging:ro -w /repo node:22-slim node infra/ci/check-env-file.mjs /env/.env.staging
+   ```
+
+   ```bash
+   cut -d= -f1 .env.staging | grep -v -e '^#' -e '^$' | sort
+   ```
+
+   ```bash
+   rm -rf "$TMP"
+   ```
 
 **Terminada cuando:** `gh secret list` muestra los seis nombres; la corrida de modo de prueba sobre `main` de 35b 6.1
 dice `full` en el preflight y no despliega; `stat -c %a .env.staging` da `600`; la suma SHA-256 de la copia coincide
-con la del original (35b 5.8).
+con la del original (35b 5.8); `$DC config -q` sale 0; `check-env-file.mjs` termina en `all checks passed`; el listado
+de nombres coincide con los de la tabla de valores; y el directorio temporal ya no existe.
 
 ## Fase 4: primer despliegue (Claude, con tu confirmación)
 
 1. Corrida desde una rama fuera del modo de prueba: no despliega (35b 6.2).
 2. **Primer despliegue real:** relanzar el `preflight` de la corrida `42344081533`, **antes del 2026-12-07** (35b 6.3,
-   con su alternativa escrita si vence el plazo).
+   con su alternativa escrita si vence el plazo; ver [Plazo que corre](#dónde-estamos)).
 3. Host después del despliegue, memoria en régimen y falsaciones del token y de la clave del host: 35b 6.4-6.7.
 4. Nombre y TLS: primero contra ACME *staging*, después producción (35b 6.8-6.9). Enrutado y `Referrer-Policy`: 35b
    6.10-6.11.
 
-**Terminada cuando:** el reporte de la corrida dice «artefacto verificado y desplegado a staging», `$DC ps` muestra
-todos los servicios `healthy`, `curl -sI "$BASE/"` responde con certificado de Let's Encrypt de producción y la memoria
-en régimen quedó anotada (35b 6.4).
+El emisor del certificado (en tu PC, `<nombre>` es `<ip-con-guiones>.sslip.io`):
+
+```bash
+openssl s_client -connect <nombre>:443 -servername <nombre> </dev/null 2>/dev/null | openssl x509 -noout -issuer
+```
+
+La memoria, en el host, al menos 30 minutos después del despliegue y sin actividad:
+
+```bash
+free -m
+```
+
+**Terminada cuando:** el reporte de la corrida dice «artefacto verificado y desplegado a staging»; `$DC ps` muestra
+todos los servicios `healthy`; el emisor es de Let's Encrypt de producción (sin `STAGING` ni `Fake` en el nombre); y en
+`free -m` la columna `used` está **por debajo del 75 %** de `total` (si no, regla de corte: la pila no entra con
+margen, y se revisa antes de seguir). La cifra queda anotada en 35b 6.4.
 
 ## Fase 5: verificación sin login (Claude)
 
@@ -233,16 +308,52 @@ en régimen quedó anotada (35b 6.4).
 |---|---|---|
 | 1 | `curl -s -o /dev/null -w "%{http_code}\n" "$BASE/"` | `200` |
 | 2 | `curl -s -o /dev/null -w "%{http_code}\n" "$BASE/api/users/me"` (ruta protegida, sin sesión) | `401` |
-| 3 | Atajos de desarrollo apagados: `check-env-file.mjs` de la fase 3 (IA `mock`, correo `capture`, claves de desarrollo). La semilla de demostración es un target de Nx (`api:seed-demo`) que el despliegue nunca ejecuta | `all checks passed` |
+| 3 | Atajos de desarrollo apagados: el `check-env-file.mjs` de la fase 3.4 repetido con la imagen de `api` en vez de la de Node (abajo). Revisa IA `mock`, correo `capture` y claves de desarrollo. La semilla de demostración es un target de Nx (`api:seed-demo`) que el despliegue nunca ejecuta | `all checks passed` |
 | 4 | `/metrics`, `/health` y `/health/live` desde fuera (35b 9.5) | Ninguno devuelve el cuerpo de `api` |
-| 5 | `curl -sI "$BASE/unirse"` | `Referrer-Policy: no-referrer` y `X-Content-Type-Options: nosniff`. El resto de las cabeceras llega con `edge-security-headers` (fase 8) |
-| 6 | `nc -zvw3 <ip> 27017`, `6379` y `8080` desde fuera (35b 5.5) | Los tres fallan |
-| 7 | Regla de metadatos (35b 12.7) | Ningún contenedor llega a la dirección de metadatos; el host sí |
-| 8 | Códigos de invitación fuera de los logs (35b 9.6) | No aparecen |
+| 5 | `curl -sI "$BASE/unirse"` | Hoy: `Referrer-Policy: no-referrer`. Las demás cabeceras llegan con `edge-security-headers` y se comprueban una por una en la fase 9 |
+| 6 | Puertos de datos desde fuera (35b 5.5), un bloque por puerto, abajo | Los tres fallan (sin conexión) |
+| 7 | En el host, `sudo ss -tlnp` | Fuera de loopback (`127.0.0.0/8`, `::1`) solo escuchan 22, 80 y 443 |
+| 8 | Regla de metadatos (35b 12.7) | Ningún contenedor llega a la dirección de metadatos; el host sí |
+| 9 | Códigos de invitación fuera de los logs (35b 9.6) | No aparecen |
 
-**Regla de corte:** si 2, 4, 6 o 7 no coinciden, parate (regla 5).
+Fila 3, en el host: los mismos pasos de la fase 3.4 (clonar en `$TMP`, correr y borrar), con `<commit>` el
+desplegado. Lo único que cambia es la orden del medio:
 
-**Terminada cuando:** las ocho filas coinciden, con las salidas guardadas en la nota del grupo 6 o 9 de 35b.
+```bash
+docker run --rm --network none --read-only --user "$(id -u):$(id -g)" -v "$TMP/repo":/repo:ro -v /srv/linkvault-staging/.env.staging:/env/.env.staging:ro -w /repo --entrypoint node "$($DC images -q api)" infra/ci/check-env-file.mjs /env/.env.staging
+```
+
+Fila 6, desde tu PC (Git Bash); cada orden tiene que **fallar** (tiempo agotado o conexión rechazada):
+
+```bash
+curl -sv --max-time 3 telnet://<ip>:27017
+```
+
+```bash
+curl -sv --max-time 3 telnet://<ip>:6379
+```
+
+```bash
+curl -sv --max-time 3 telnet://<ip>:8080
+```
+
+O desde PowerShell, con `TcpTestSucceeded : False` en cada uno:
+
+```powershell
+Test-NetConnection <ip> -Port 27017
+```
+
+```powershell
+Test-NetConnection <ip> -Port 6379
+```
+
+```powershell
+Test-NetConnection <ip> -Port 8080
+```
+
+**Regla de corte:** si 2, 4, 6, 7 u 8 no coinciden, parate (regla 5).
+
+**Terminada cuando:** las nueve filas coinciden, con las salidas guardadas en la nota del grupo 6 o 9 de 35b.
 
 ## Fase 6: servicios externos (Vos)
 
@@ -251,27 +362,47 @@ en régimen quedó anotada (35b 6.4).
 2. **IA:** llamada real por OpenRouter `:free` con `data_collection: deny` y degradación comprensible (35b 8.1 y 9.9).
 3. **Aviso de respaldo faltante (nuevo):** creá una cuenta gratuita en un monitor de tareas programadas (por ejemplo
    healthchecks.io), un chequeo con período de 1 día y gracia de 2 horas, y avisos a tu correo. Su URL de ping es un
-   secreto: va como `BACKUP_PING_URL` en `.env.staging` y en su copia.
+   secreto: va como `BACKUP_PING_URL` en `.env.staging` y en su copia (eso se hace en la fase 8, con C1).
 
 **Terminada cuando:** 7.10 tiene su umbral cumplido o el riesgo aceptado; 8.1 anotó una respuesta real; el monitor
 existe y muestra el chequeo en estado «nuevo» (todavía sin pings).
 
-## Fase 7: respaldo (nuevo; Claude implementa, Vos crea los destinos)
+## Fase 7: cierre de 35b hasta la 11.6 (Claude y Vos)
 
-Requiere Q1 y Q2 respondidas y el change de respaldo (C1) aprobado en su debate. Los nombres de servicio y de
-variables son los que propone C1; si su design los cambia, se actualizan acá.
+`main` sigue congelado: entre PR-1b y PR-2 no se fusiona nada.
 
-1. **Destino en Oracle (Vos).** *Storage → Buckets → Create Bucket*: privado, nivel Standard, **sin versionado**, con
-   una regla de retención que impida borrar objetos antes de su plazo (el plazo lo fija el design de C1 según la
+1. **Ensayo de reconstrucción, como lo escribe 35b:** 9.1-9.4 («Replace boot volume»), con la pila vacía. No se
+   restaura nada (todavía no hay respaldo) y no se fusiona nada a `main` mientras dure.
+2. **PR-2 de 35b fusionado en su ventana.** Depende de Q4 de 35b (invitados: lista y entrevistas, 9.7 y 10.1) y de la
+   decisión de pago por uso (5.10), porque lleva sus anotaciones. La ventana la autoriza el owner. El PR de esta
+   propuesta (`docs/estrategia-despliegue`) se fusiona en esa misma ventana, no antes.
+3. **35b 11.6:** despliegue por merge de PR-2 y vuelta atrás por GitHub (dentro de su plazo; si venció, desde el host,
+   anotado).
+
+**Terminada cuando:** las notas de 9.1-9.4 están cerradas con el tiempo del ensayo; `gh pr view <número de PR-2>
+--json state,mergedAt` da `MERGED`; la corrida del push de PR-2 dice «artefacto verificado y desplegado a staging»; y
+la 11.6 está anotada con cada `sha-<12>` visto en el host.
+
+## Fase 8: ventana posterior a la 11.6: filtro de salida y respaldo (Claude implementa, Vos crea los destinos)
+
+Requiere Q1 y Q2 de la decisión respondidas y los changes C1 y C2 aprobados en su debate, cada uno con su propio PR.
+Los nombres de servicio y de variables son los que propone C1; si su design los cambia, se actualizan acá.
+
+1. **Filtro de salida del worker (C2):** `enrichment-egress-guard` fusionado y desplegado. Comprobación: guardar un
+   link a una dirección privada o a un nombre sin punto es rechazado como URL no válida, y el enriquecimiento de un
+   link público sigue funcionando.
+2. **Destino en Oracle (Vos).** *Storage → Buckets → Create Bucket*: **privado**, nivel Standard, **sin versionado**,
+   con una regla de retención que impida borrar objetos antes de su plazo (el plazo lo fija el design de C1 según la
    retención de Q3). Un usuario IAM dedicado al respaldo con una política limitada a ese bucket y su *Customer Secret
    Key*; los permisos exactos (sin borrado) los fija C1.
-2. **Destino fuera de Oracle (Vos):** el que salga de Q2, con las mismas condiciones: privado, sin cobro posible y
+3. **Destino fuera de Oracle (Vos):** el que salga de Q2, con las mismas condiciones: privado, sin cobro posible y
    con el borrado protegido. Si pide una cuenta, una tarjeta o tiene costo, decidís vos antes de seguir.
-3. **Credencial de poda (Vos):** la que puede borrar en cada destino. Solo en tu gestor de contraseñas.
-4. **Secretos en el host (Vos):** los del respaldo en `.env.staging`, y la copia fuera del host actualizada (35b 5.8).
-5. **Despliegue del change (Claude, con tu confirmación):** por el camino normal de
+4. **Credencial de poda (Vos):** la que puede borrar en cada destino. Solo en tu gestor de contraseñas.
+5. **Secretos en el host (Vos):** los del respaldo y `BACKUP_PING_URL` en `.env.staging`, y la copia fuera del host
+   actualizada (35b 5.8).
+6. **Despliegue de C1 (Claude, con tu confirmación):** por el camino normal de
    [Publicar una actualización](#publicar-una-actualización).
-6. **Primer respaldo a mano (Claude, en el host):**
+7. **Primer respaldo a mano (Claude, en el host, con `DC` definido):**
 
    ```bash
    $DC run --rm backup
@@ -281,69 +412,109 @@ variables son los que propone C1; si su design los cambia, se actualizan acá.
    $DC run --rm backup restic snapshots
    ```
 
-7. **Falsaciones de C1 (Claude):** desde `backup`, `api` no resuelve; el usuario de Mongo de respaldo no puede
+8. **El bucket es privado (Claude, desde tu PC):** un pedido sin credenciales al listado del bucket no puede dar `200`
+   (`<región>`, `<namespace>` y `<bucket>` los ves en la consola; no se anotan en el repositorio):
+
+   ```bash
+   curl -s -o /dev/null -w "%{http_code}\n" "https://objectstorage.<región>.oraclecloud.com/n/<namespace>/b/<bucket>/o"
+   ```
+
+9. **Falsaciones de C1 (Claude):** desde `backup`, `api` no resuelve; el usuario de Mongo de respaldo no puede
    escribir; la identidad S3 de respaldo no puede escribir ni borrar; la credencial del host no puede borrar un paquete
    del repositorio; un umbral de tamaño de prueba hace fallar el respaldo y llega el aviso.
-8. **Aviso de falla real (Vos):** dejá pasar una ventana sin respaldo (Claude desactiva el programador una noche) y
-   comprobá que llega el correo del monitor; después se reactiva.
+10. **Aviso de falla real (Vos):** dejá pasar una ventana sin respaldo (Claude desactiva el programador una noche) y
+    comprobá que llega el correo del monitor; después se reactiva.
 
-**Terminada cuando:** cada destino lista al menos dos instantáneas de días distintos; el monitor muestra pings de
-éxito diarios y mandó el aviso de la prueba 8; las cinco falsaciones fallaron como debían; el tamaño del repositorio
-en Oracle está anotado.
+**Terminada cuando:** C2 y C1 están fusionados y desplegados (reportes de sus corridas); cada destino lista al menos
+dos instantáneas de días distintos; el monitor muestra pings de éxito diarios y mandó el aviso del paso 10; el pedido
+anónimo al bucket no da `200`; las cinco falsaciones fallaron como debían; el tamaño del repositorio en Oracle está
+anotado.
 
-## Fase 8: antes de invitar (Claude y Vos)
+## Fase 9: restauración ensayada y resto de lo previo a invitar (Claude y Vos)
 
-Todo esto va antes de la fase 10 y la condiciona (35b 10.7).
+1. **Ensayo de restauración nuevo, sobre el host real** (cambio C1): con el volumen que ya tiene y **sin** repetir
+   «Replace boot volume». Se restaura la última instantánea en un proyecto de Compose aparte, con el override de C1
+   que no publica puertos ni tiene Traefik, y se lo baja con `down -v` al terminar. La pila de staging sigue arriba y
+   no se toca. Con `DC` definido:
 
-1. **Filtro de salida del worker (C2):** `enrichment-egress-guard` fusionado en su ventana (después de 35b 11.6) y
-   desplegado. Comprobación: guardar un link a una dirección privada o sin punto es rechazado como URL no válida, y el
-   enriquecimiento de un link público sigue funcionando.
-2. **Cabeceras del borde:** lo que 35b 10.7 exige de `edge-security-headers`.
-3. **Ensayo de reconstrucción con restauración:** 35b 9.1-9.4 («Replace boot volume»), y, en vez de terminar con la pila
-   vacía, restaurar desde el respaldo con el procedimiento de [Volver atrás → Base de datos](#volver-atrás). Se
-   comprueban las cuentas, los links y un CV descargable de las cuentas de prueba, y se anota el tiempo total (RTO).
-   Durante el ensayo no se fusiona nada a `main`.
-4. **Despliegue por merge y vuelta atrás por GitHub:** 35b 11.6.
-5. **Superficie expuesta:** 35b 9.5, 9.6 y 9.12 (cuentas no invitadas).
-6. **Q5 respondida** (regla de corte 6).
+   ```bash
+   RDC="docker compose -p linkvault-restore -f docker-compose.prod.yml -f infra/backup/docker-compose.restore.yml --env-file .env.staging"
+   ```
 
-**Terminada cuando:** las seis casillas están cerradas, con la restauración del paso 3 hecha sobre el host real y su
-informe de conciliación sin faltantes.
+   La restauración en sí es `infra/backup/restore.sh` contra ese proyecto, con la invocación que deje C1. Se comprueban
+   las cuentas, los links y un CV descargable de las cuentas de prueba, y el informe de conciliación. Después:
 
-## Fase 9: prueba con datos ficticios (Vos y Claude)
+   ```bash
+   $RDC down -v
+   ```
 
-**Este paso decide si se puede confiar en el despliegue.** Solo cuentas de prueba y datos inventados.
+   ```bash
+   docker compose ls && docker volume ls
+   ```
+
+2. **Cabeceras del borde completas:** con `edge-security-headers` fusionado en su ventana, su 9.1 y su 9.3a sobre el
+   commit desplegado, como exige 35b 10.7. La comprobación desde fuera, una orden por cabecera (en la SPA, `/unirse`;
+   en la API, `/api/users/me`):
+
+   | Cabecera | Orden | SPA | API |
+   |---|---|---|---|
+   | `Strict-Transport-Security` | `curl -sI "$BASE/unirse" \| grep -i '^strict-transport-security:'` | `max-age=604800; includeSubDomains`, sin `preload` | Igual (`$BASE/api/users/me`) |
+   | `Content-Security-Policy` | `curl -sI "$BASE/unirse" \| grep -i '^content-security-policy:'` | La política del SPA, con `frame-ancestors 'none'` | `default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'` |
+   | `X-Frame-Options` | `curl -sI "$BASE/unirse" \| grep -i '^x-frame-options:'` | `DENY` | `DENY` |
+   | `X-Content-Type-Options` | `curl -sI "$BASE/unirse" \| grep -i '^x-content-type-options:'` | `nosniff` | `nosniff` |
+   | `Referrer-Policy` | `curl -sI "$BASE/unirse" \| grep -i '^referrer-policy:'` | `no-referrer` | `no-referrer` |
+   | `Permissions-Policy` | `curl -sI "$BASE/unirse" \| grep -i '^permissions-policy:'` | Presente | No aplica |
+   | `Cross-Origin-Opener-Policy` | `curl -sI "$BASE/unirse" \| grep -i '^cross-origin-opener-policy:'` | `same-origin` | No aplica |
+
+   `/p/<slug>` conserva su CSP propia (ADR-027) y suma `X-Frame-Options: DENY`. Para la API se repite cada orden
+   cambiando `/unirse` por `/api/users/me`.
+3. **Superficie expuesta:** 35b 9.5, 9.6 y 9.12 (cuentas no invitadas).
+4. **Q5 respondida** (regla de corte 6).
+
+**Terminada cuando:** la restauración del paso 1 terminó con las comprobaciones en verde y el informe de conciliación
+sin faltantes, su tiempo (RTO) está anotado, y después de `down -v` ni `docker compose ls` ni `docker volume ls`
+muestran nada de `linkvault-restore`; las siete cabeceras coinciden en la SPA y las que aplican en la API; 9.5, 9.6
+y 9.12 están cerradas; Q5 tiene respuesta escrita.
+
+## Fase 10: prueba con datos ficticios (Vos y Claude)
+
+**Este paso decide si se puede confiar en el despliegue.** Solo cuentas de prueba y datos inventados. Se hace sobre el
+commit desplegado final: si después se fusiona algo antes de invitar, se repiten la fila 5 y la 9.3a de
+`edge-security-headers`.
 
 | # | Prueba | Resultado esperado |
 |---|---|---|
-| 1 | Recorrido completo con una cuenta de prueba y un buzón ajeno (35b 10.5): registro, correo, verificación, login, recuperación de contraseña, link, postulación, CV, análisis, borrado de cuenta | Cada paso funciona |
-| 2 | Otra cuenta no entra: con una segunda cuenta de prueba, pedir el link y el CV de la primera por la API | `404` o `403`, nunca el dato |
+| 1 | Recorrido completo con una cuenta de prueba A y un buzón ajeno (35b 10.5): registro, correo, verificación, login, recuperación de contraseña, link, postulación, CV, análisis, borrado de cuenta | Cada paso funciona |
+| 2 | Otra cuenta no entra: con el token de una cuenta de prueba B, sin grupo en común con A, pedir los recursos de A: `GET /api/cv/<id de CV de A>/text-preview`, `GET /api/applications/<id de postulación de A>/events`, `GET /api/links/<id de link de A>/match` y `GET /api/groups/<id de grupo de A>/links` | `404` o `403` en las cuatro, nunca el dato |
 | 3 | Segundo dispositivo (móvil, 35b 9.8 con links de prueba) | Mismos datos |
-| 4 | **Peor caso de carga:** subir un CV cerca del tope de tamaño y pedir un análisis de encaje mientras el worker enriquece links; después `docker stats --no-stream` en el host | Sin reinicios, memoria total por debajo de 12 GB con margen; el dato junto al de 35b 6.4 |
+| 4 | **Peor caso de carga:** subir un CV cerca del tope de tamaño y pedir un análisis de encaje mientras el worker enriquece links; después `free -m` y `docker stats --no-stream` en el host | Sin reinicios; `used` por debajo del 75 % de `total` en `free -m` |
 | 5 | Suite remota contra staging (precondición de 35b 10.7: `e2e-remote` en `chromium` y `mobile`, sobre el commit desplegado) | Verde |
 | 6 | Recargar y reiniciar la pila (`$DC restart`) | Los datos siguen |
-| 7 | Respaldo de la noche siguiente y restauración en una pila local limpia | Los datos de prueba aparecen restaurados |
+| 7 | Respaldo de la noche siguiente y restauración **en el host**, en el proyecto aparte de la fase 9 y con `down -v` al terminar (nunca en tu PC) | Los datos de prueba aparecen restaurados |
 
 **Terminada cuando:** las siete pasan. Después, 35b 10.6: borrar las cuentas de prueba con el borrado de cuenta del
 producto y tomar la línea base de la medición.
 
-## Fase 10: invitados (Vos)
+## Fase 11: invitados (Vos)
 
 No hay datos reales previos que migrar: los datos reales son los que crean los invitados. Esta fase reemplaza a la
 «migración».
 
 1. Lista nominal y entrevistas (35b 9.7 y 10.1), fuera del repositorio.
 2. El aviso a los invitados, ya con el texto nuevo sobre las copias cifradas y su retención (cambio C1 y 35b 9.10).
-3. Invitar (35b 10.7), con todas sus condiciones y las de la fase 8.
+3. Invitar (35b 10.7), con todas sus condiciones y las de las fases 8 y 9.
 
 **Terminada cuando:** `infra/staging/measure.mongosh.js` (por `infra/staging/run.sh`) cuenta en `users` exactamente las
 personas de la lista del host, y el primer respaldo con invitados aparece en los dos destinos.
 
 ## Publicar una actualización
 
-1. PR a `main` con el CI en verde (`lint`, `typecheck`, `test`, `build`, `repo-checks`). Merge commit.
-2. Las migraciones de LinkVault corren dentro de la aplicación al arrancar y solo agregan. Si un change trae una que
-   transforma datos, el respaldo de esa noche tiene que estar en verde antes del merge (mirá el monitor).
+1. PR a `main` con el CI en verde (`lint`, `typecheck`, `test`, `build`, `repo-checks`). Merge commit, solo en una
+   ventana autorizada mientras dure la congelación de 35b.
+2. **Datos.** El repositorio no tiene un framework de migraciones: Mongoose crea los índices al arrancar. Un change que
+   agregue un índice único (puede fallar con datos que ya lo violan) o que transforme datos trae su propio script,
+   revisado en su debate, y **antes del merge** se hace un respaldo a mano (`$DC run --rm backup`) y se comprueba que
+   llegó a los dos destinos. El script corre después del despliegue, con la vuelta atrás de la base a mano.
 3. El push a `main` dispara `cd-staging`: construye, verifica, publica por digest y despliega por SSH (`deploy.sh`).
    Ventanas de fusión: las que fije el owner (35b, ADR-056 §1 para `enrichment-egress-guard`).
 4. Repetir las filas 1, 2 y 4 de la fase 5 y mirar el reporte de la corrida.
@@ -360,7 +531,29 @@ personas de la lista del host, y el primer respaldo con invitados aparece en los
   gh run rerun <id de la corrida anterior> --job <id del job deploy-staging>
   ```
 
-- Pasados los 30 días, o sin GitHub: en el host, desde el `.incoming-<sha12>` anterior (se conservan cinco):
+- Pasados los 30 días, o sin GitHub: en el host, con `DC` definido, desde el `.incoming-<sha12>` anterior (se
+  conservan cinco). Primero, que la imagen anterior siga en el host:
+
+  ```bash
+  docker image ls --format '{{.Repository}}:{{.Tag}}' | grep ':sha-<sha12 anterior>$'
+  ```
+
+  Si la lista sale vacía, hay que bajarla con la credencial de lectura del registro. El token se teclea (o se pega) en
+  la entrada estándar, nunca en la orden:
+
+  ```bash
+  docker login ghcr.io -u <usuario> --password-stdin
+  ```
+
+  ```bash
+  IMAGE_TAG=sha-<sha12 anterior> $DC pull
+  ```
+
+  ```bash
+  docker logout ghcr.io
+  ```
+
+  Después, la configuración y el arranque:
 
   ```bash
   bash /srv/linkvault-staging/.incoming-<sha12 anterior>/infra/deploy/install-config.sh /srv/linkvault-staging
@@ -370,12 +563,15 @@ personas de la lista del host, y el primer respaldo con invitados aparece en los
   IMAGE_TAG=sha-<sha12 anterior> $DC up -d --wait
   ```
 
+  **Nota para 35b:** su 11.2 tiene el mismo hueco (no comprueba que la imagen esté en el host ni dice cómo bajarla).
+  Queda anotado en la decisión (C4) para pasárselo a su sesión; este runbook no edita 35b.
+
 **Base de datos.** Sobrescribe todo lo que haya cambiado desde la instantánea elegida: lo posterior se pierde.
-Antes, un respaldo a mano del estado actual (`$DC run --rm backup`), para poder volver. El procedimiento es el de
-`infra/backup/restore.sh` (cambio C1): para `api` y `worker`, deja `mongo` solo, `mongorestore --drop --oplogReplay`
-sin restaurar `admin.*`, recarga los objetos con la misma `OBJECT_STORE_SSE_KEY`, arranca la pila e imprime la
-conciliación (CV sin objeto y objetos sin documento). Hasta que C1 esté fusionado, **no hay vuelta atrás de datos**: es
-otra razón para no invitar antes.
+Antes, un respaldo a mano del estado actual (`$DC run --rm backup`), para poder volver, y un ensayo en el proyecto
+aparte de la fase 9 con la misma instantánea. El procedimiento es el de `infra/backup/restore.sh` (cambio C1): para
+`api` y `worker`, deja `mongo` solo, `mongorestore --drop --oplogReplay` sin restaurar `admin.*`, recarga los objetos
+con la misma `OBJECT_STORE_SSE_KEY`, arranca la pila e imprime la conciliación (CV sin objeto y objetos sin
+documento). Hasta que C1 esté fusionado, **no hay vuelta atrás de datos**: es otra razón para no invitar antes.
 
 **Aplicación fuera de servicio.** Sin el host no funciona nada: ni la web, ni la API, ni el correo ni los avisos. Los
 datos siguen en los dos destinos del respaldo, y las imágenes en GHCR.
@@ -392,9 +588,9 @@ datos siguen en los dos destinos del respaldo, y las imágenes en GHCR.
 Redis no se respalda: guarda colas y caché, y el outbox de Mongo vuelve a encolar lo que no se publicó.
 
 Una vez por mes, restaurá la última instantánea en una pila limpia y comprobá que abre una cuenta de prueba y un CV.
-Con invitados, el respaldo tiene CV reales: la prueba se hace **en el host**, en un proyecto de Compose aparte, sin
-puertos publicados y con `down -v` al terminar (el procedimiento exacto lo deja C1), no en tu PC. Un respaldo que nunca
-se probó no cuenta.
+La prueba se hace **siempre en el host**, en el proyecto de Compose aparte de la fase 9 (override de C1 sin Traefik ni
+puertos) y con `down -v` al terminar, **nunca en tu PC**: con invitados el respaldo tiene CV reales. Un respaldo que
+nunca se probó no cuenta.
 
 ## Límites del plan
 
@@ -427,6 +623,7 @@ Revisá esta tabla cuando Oracle anuncie cambios de Always Free y en la revisió
 | Revisar los cambios de Always Free, Brevo y OpenRouter | Trimestral |
 | Rotar el token del registro antes de su caducidad (35b 5.9) | Según la caducidad anotada |
 | Rotar la clave de despliegue SSH y las credenciales del respaldo | Anual, o si se sospecha una filtración |
+| Rotar `AUTH_JWT_SECRET` (cierra todas las sesiones) y `AI_VAULT_KEY` (exige volver a cifrar las claves BYOK guardadas) | Solo si se sospecha una filtración |
 | Recuento de cuentas no invitadas (35b 9.12) | Semanal mientras dure la prueba |
 
 ## Problemas frecuentes
@@ -444,6 +641,7 @@ Revisá esta tabla cuando Oracle anuncie cambios de Always Free y en la revisió
 | Alerta de presupuesto o de pronóstico | Algo fuera de Always Free | Regla de corte 4: *Cost Analysis*, borrar el recurso |
 | La instancia aparece detenida o recuperada por Oracle | Reclamación por inactividad | Plan B o reconstrucción y restauración; revisar Q5 |
 | `smoke.sh` falla en la salida a Brevo u OpenRouter | Red de salida rota o el proveedor caído | Mensaje del smoke (nombra servicio y destino) |
+| `mongo` no llega a `healthy` tras restaurar | El volumen quedó sin usuario raíz: se restauró sobre un volumen nuevo sin inicializar, o se pisó `admin.*` | Restaurar sin `admin.*` (lo hace `restore.sh`), con `MONGO_ROOT_USER` y `MONGO_ROOT_PASSWORD` de la copia de `.env.staging`, sobre un volumen que `mongo` inicializó con ellos |
 
 Para ver los errores de producción, en el host:
 
@@ -458,7 +656,9 @@ con la regla de corte 1, 3, 4 o 6, o si Oracle recupera la instancia o cierra la
 
 Qué se lleva: todo. La base y los objetos están en los dos destinos del respaldo, la configuración en el repositorio,
 las imágenes en GHCR y los secretos en la copia de `.env.staging`. Qué es irreversible: la región de origen de la
-cuenta de Oracle, y lo que se haya perdido después del último respaldo.
+cuenta de Oracle, lo que se haya perdido después del último respaldo, y el bucket de respaldo de Oracle, que **no se
+puede borrar hasta que vence su regla de retención**: hasta entonces sigue ocupando espacio (dentro de Always Free si
+no pasa de 10 GB).
 
 Antes de mover datos reales al plan B hacen falta estos cambios, que su crítico encontró (cada uno, su change y su
 debate):
@@ -478,7 +678,7 @@ debate):
 Pasos de la salida: (1) un respaldo a mano y comprobar que llegó a los dos destinos; (2) levantar la pila en el destino
 nuevo; (3) restaurar `.env.staging` y los datos con `restore.sh`; (4) cambiar `PUBLIC_HOST` y las URL base, y avisar a
 los invitados de la URL nueva; (5) en Oracle, terminar la instancia, liberar la IP reservada y borrar el bucket
-(después de comprobar el paso 3), y volver a mirar *Cost Analysis* al mes siguiente.
+cuando venza su retención (después de comprobar el paso 3), y volver a mirar *Cost Analysis* al mes siguiente.
 
 ## Cierre del despliegue
 
@@ -489,8 +689,12 @@ los invitados de la URL nueva; (5) en Oracle, terminar la instancia, liberar la 
 - [ ] Fase 4: primer despliegue antes del 2026-12-07 (o la alternativa de 35b 6.3).
 - [ ] Fase 5: verificación sin login.
 - [ ] Fase 6: correo medido, IA real, monitor de respaldos creado.
-- [ ] Fase 7: respaldo en dos destinos, borrado protegido, aviso probado.
-- [ ] Fase 8: filtro de salida fusionado, reconstrucción con restauración ensayada, Q5 respondida.
-- [ ] Fase 9: prueba con datos ficticios superada y cuentas de prueba borradas.
-- [ ] Fase 10: invitados dados de alta y primer respaldo con datos reales en los dos destinos.
+- [ ] Fase 7: ensayo 9.1-9.4 con la pila vacía, PR-2 de 35b fusionado en su ventana, 11.6.
+- [ ] Fase 8: C2 y C1 fusionados en la ventana posterior a la 11.6; respaldo en dos destinos, bucket privado, borrado
+  protegido, aviso probado.
+- [ ] Fase 9: restauración ensayada en el host con el volumen existente, en proyecto aparte; cabeceras completas; Q5
+  respondida.
+- [ ] Fase 10: prueba con datos ficticios superada y cuentas de prueba borradas.
+- [ ] Fase 11: invitados dados de alta y primer respaldo con datos reales en los dos destinos.
+- [ ] `despliegue.json` actualizado al cierre.
 - [ ] Recordatorios creados: restauración mensual, poda mensual, revisión de costo mensual.

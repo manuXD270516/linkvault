@@ -5,6 +5,14 @@ comprobando sus supuestos contra la documentación vigente y el repositorio, 3 j
 seguridad y operación) puntuaron y votaron sin verse entre sí, y un árbitro revisó el resultado: 9 agentes en total,
 aprobados por el owner. Profundidad: `normal`. Modo: `proponer` (no se desplegó ni se creó nada).
 
+**No terminado hasta C1: sin respaldo fuera de Oracle ni restauración probada.**
+
+**Fusión de este documento:** el PR que lo trae **no se fusiona hasta la ventana del PR-2 de 35b** (entre PR-1b y PR-2
+no se fusiona nada a `main`); mientras tanto el owner lo lee desde la rama `docs/estrategia-despliegue`. Los
+parámetros y la decisión, sin secretos, están en [`despliegue.json`](despliegue.json): va en `docs/despliegue/` y no en
+la raíz porque un archivo en la raíz dispararía `cd-staging` al fusionarse (`docs/**` está en su `paths-ignore`). El
+estado por fase vive en el runbook; el JSON solo se actualiza al cierre.
+
 **Estado:** propuesta, pendiente de aprobación del owner. No reemplaza a ningún ADR: confirma el destino de
 [ADR-051](../adr/ADR-051.md) y le agrega condiciones. Lo que enmienda a ADR-051 §2 («sin copias de seguridad de datos»)
 entra al repositorio por el change de respaldo y su ADR (ver [Cambios de código](#cambios-de-código-que-el-despliegue-necesita)),
@@ -47,7 +55,7 @@ revisó las dos y ninguna es una incompatibilidad con una restricción dura: las
 veto no aplica y gana el candidato con más Borda y más puntaje.
 
 1. **«El 0 USD es práctico y no contractual en pago por uso.»** Es cierto, y pasa a **regla de corte**: cuotas de
-   compartimento que impiden crear algo fuera de lo gratuito, una alerta de presupuesto de 1 USD y una alerta de
+   compartimento que impiden crear algo fuera de lo gratuito, una alerta de presupuesto de 1 en la moneda de la cuenta y una alerta de
    pronóstico, y la comprobación en el estimador de que cada recurso cuesta 0 **antes** de pasar a pago por uso. El
    owner aceptó la tarjeta justamente para el alta o el pago por uso sin cobros (2026-11-16); lo que no aceptó es un
    cobro, y eso es lo que las reglas de corte detienen.
@@ -124,11 +132,11 @@ Lo que encontraron los críticos y pasa a ser una regla de corte, una prueba obl
 |---|---|---|---|
 | H1 | El respaldo propuesto no puede correr: un timer en el host no llega al almacén, cuyas redes son `internal` y solo tienen a `api` y `worker`; y un proceso con Mongo, S3 e Internet sería el más privilegiado de la pila y desharía D18 (alta) | Contenedor de respaldo dedicado con redes propias, usuario de Mongo de solo lectura e identidad S3 de solo lectura propia | Cambio C1 |
 | H2 | Una clave de solo escritura no sirve para restic (`prune`, `check` y los locks leen, listan y borran), y si se le da borrado, quien compromete el host borra los respaldos. El versionado sin ciclo de vida acumula y cobra (alta) | Borrado protegido por retención o bloqueo de objetos; la poda con una credencial que no vive en el host; nada de versionado sin ciclo de vida | Cambio C1, regla de corte 8 |
-| H3 | Las cuotas de compartimento frenan crear cómputo y volúmenes, no los GB ni las peticiones de Object Storage; la alerta de 1 USD avisa, no corta (alta) | Tope de tamaño del repositorio de respaldo comprobado por el propio respaldo, alerta de pronóstico y revisión mensual de consumo | Cambio C1, fase 1, Mantenimiento |
+| H3 | Las cuotas de compartimento frenan crear cómputo y volúmenes, no los GB ni las peticiones de Object Storage; la alerta de presupuesto (1 en la moneda de la cuenta) avisa, no corta (alta) | Tope de tamaño del repositorio de respaldo comprobado por el propio respaldo, alerta de pronóstico y revisión mensual de consumo | Cambio C1, fase 1, Mantenimiento |
 | H4 | Que el pago por uso exima de la reclamación por inactividad no está en la documentación oficial (alta) | Regla de corte: el owner lo confirma con documentación o soporte; si no, acepta el riesgo por escrito o va al plan B | Regla de corte 6, Q5 |
 | H5 | Un respaldo nocturno pierde hasta 24 h; `mongodump` y la copia de objetos no son atómicos entre sí (alta) | RPO de 24 h como costo aceptado (Q4); orden fijo Mongo → objetos y conciliación al restaurar | Costos aceptados, cambio C1 |
 | H6 | La copia semanal fuera de Oracle era manual y sin alarma (alta) | Copia fuera de Oracle automatizada desde el mismo contenedor, con aviso de respaldo faltante | Cambio C1, Q2 |
-| H7 | La restauración estaba subespecificada: `admin.system.users` choca con el usuario raíz, el usuario de respaldo solo se crearía sobre volumen vacío, los objetos exigen la misma `OBJECT_STORE_SSE_KEY` (media) | Restauración ensayada sobre un host con volumen viejo, no solo en una pila limpia, antes de invitar | Cambio C1, fase 8 |
+| H7 | La restauración estaba subespecificada: `admin.system.users` choca con el usuario raíz, el usuario de respaldo solo se crearía sobre volumen vacío, los objetos exigen la misma `OBJECT_STORE_SSE_KEY` (media) | Restauración ensayada sobre el host real con el volumen existente, en un proyecto de Compose aparte, antes de invitar | Cambio C1, fase 9 |
 | H8 | El SSH queda abierto a todo Internet porque el CD sale de runners con IP variable, y ahora conviven en el host la clave del respaldo y `RESTIC_PASSWORD` (media) | SSH endurecido y comprobado | Cambio C3, fase 2 |
 | H9 | La IP reservada y otros recursos se comprobaban «después» de pasar a pago por uso (media) | Estimador **antes** de pasar a pago por uso | Fase 1, regla de corte 3 |
 | H10 | Del crítico de `casa-tunel`, aplica también a Oracle: el worker descarga URLs de usuarios sin filtro de destinos internos (SSRF). En Oracle llega a la VCN, a la dirección de metadatos y a servicios internos | Dependencia antes de invitar: `enrichment-egress-guard` fusionado. Está implementado en la rama `change/enrichment-egress-guard`, sin fusionar; su ventana, decidida por el owner el 2026-10-29, es después de la 11.6 y antes de la 10.7 de 35b (ADR-056 §1 de esa rama) | Cambio C2, fase 8 |
@@ -139,7 +147,7 @@ Lo que encontraron los críticos y pasa a ser una regla de corte, una prueba obl
 ## Costos aceptados
 
 - **El 0 USD es práctico, no contractual.** En pago por uso, Oracle cobra lo que exceda Always Free. Se mitiga con
-  cuotas, alerta de 1 USD y de pronóstico, estimador previo, un solo administrador con MFA y ninguna clave de la API de
+  cuotas, alerta de presupuesto (1 en la moneda de la cuenta) y de pronóstico, estimador previo, un solo administrador con MFA y ninguna clave de la API de
   OCI fuera de la máquina del owner. Si aparece un cargo, es regla de corte.
 - **RPO de 24 horas** con el respaldo nocturno: si se pierde el host, se pierden hasta 24 h de postulaciones, CV y
   análisis. El owner puede acortar el intervalo del dump (Q4). Si se pierde la cuenta entera de Oracle, la copia fuera
@@ -166,11 +174,29 @@ Los tres jueces pusieron primero a `oracle-free`, pero cada uno con una preocupa
 | Seguridad | El respaldo, tal como estaba, rompía el aislamiento de D18 o no funcionaba; quien compromete el host podría borrar los respaldos; SSH abierto | Contenedor dedicado con usuario de Mongo e identidad S3 de solo lectura propios y redes que no deshagan D18; borrado protegido; SSH endurecido; copia fuera de Oracle automática |
 | Operación | La protección de los datos dependía de la disciplina de una persona: copia manual, sin alarma, restauración no ensayada | Copia fuera de Oracle automatizada; aviso de respaldo faltante (ping de monitoreo, por ejemplo healthchecks.io gratuito); restauración ensayada sobre un host con volumen viejo |
 
-Las ocho condiciones, juntas: (1) respaldo con contenedor dedicado, usuario de Mongo de solo lectura, identidad S3 de
+Son **nueve condiciones antes de invitar**: las ocho que salen del disenso y la (9), que viene del hallazgo H10 y
+no de un juez. Las mismas nueve están en [`despliegue.json`](despliegue.json). (1) respaldo con contenedor dedicado, usuario de Mongo de solo lectura, identidad S3 de
 solo lectura propia y una red que no deshaga el aislamiento por proceso de D18; (2) copia fuera de Oracle
 automatizada; (3) borrado de respaldos protegido con retención o bloqueo, sin versionado sin ciclo de vida; (4) aviso
 de respaldo faltante; (5) restauración ensayada; (6) SSH endurecido; (7) exención de inactividad confirmada, o riesgo
-aceptado por escrito, o plan B; (8) RPO de 24 h aceptado, con la opción de acortar el intervalo como decisión del owner.
+aceptado por escrito, o plan B; (8) RPO de 24 h aceptado, con la opción de acortar el intervalo como decisión del
+owner; (9) `enrichment-egress-guard` fusionado y desplegado (cambio C2).
+
+## Orden hasta invitar
+
+35b congela `main` entre PR-1b y PR-2 (`openspec/changes/staging-host/tasks.md`, encabezado y tarea 9.1): no se fusiona
+nada, y menos durante el ensayo de reconstrucción. Por eso el respaldo y el filtro de salida entran **después** de la
+11.6, y el orden es este:
+
+1. Ensayo de reconstrucción de 35b 9.1-9.4, como lo escribe 35b: con la pila vacía, sin respaldo que restaurar.
+2. PR-2 de 35b fusionado en su ventana. Depende de Q4 de 35b (invitados) y de 5.10 (pago por uso), porque lleva sus
+   anotaciones.
+3. 35b 11.6: despliegue por merge y vuelta atrás por GitHub.
+4. En la ventana posterior a la 11.6: C2 (`enrichment-egress-guard`) y C1 (respaldo), cada uno con su propio PR.
+5. Respaldo desplegado y funcionando (fase 8 del runbook).
+6. Ensayo de restauración nuevo sobre el host real, con el volumen que ya tiene, en un proyecto de Compose aparte y
+   **sin** repetir «Replace boot volume».
+7. 35b 10.7: invitar.
 
 **Riesgos que quedan abiertos:** que Oracle cierre la cuenta (mitigado, no eliminado), que no haya capacidad A1 en la
 región elegida, y que el destino gratuito de la copia fuera de Oracle exija una cuenta o una tarjeta (Q2).
@@ -182,7 +208,8 @@ debate; acá solo se fija qué hace falta y cómo se comprueba.
 
 ### C1. Change de respaldo (nuevo; nombre provisional `staging-backups`)
 
-Va **antes de invitar** (10.7). Su lugar en el plan es la Q1.
+Se fusiona en la ventana posterior a la 11.6 de 35b y antes de la 10.7 (ver [Orden hasta invitar](#orden-hasta-invitar)).
+Su lugar en el plan es la Q1.
 
 - [ ] `[infra]` ADR nuevo con el siguiente número libre al abrir el change (las ramas sin fusionar ya usan hasta
   ADR-062) que enmienda ADR-051 §2 («No hay copias de seguridad de datos») por respaldo cifrado fuera del host, con
@@ -214,15 +241,21 @@ Va **antes de invitar** (10.7). Su lugar en el plan es la Q1.
   healthchecks.io) con su URL como secreto `BACKUP_PING_URL`. **Falsar**: un respaldo que no corre en su ventana
   produce el aviso por correo.
 - [ ] `[infra]` Programación (timer de systemd en el host o programador en el contenedor, a decidir en el design) que
-  sobreviva a un reinicio y que el ensayo de reconstrucción (9.1-9.4) rehaga desde `infra/README.md`.
+  sobreviva a un reinicio y que una reconstrucción futura rehaga desde `infra/README.md` (el ensayo 9.1-9.4 de 35b es
+  anterior a este change y no la cubre).
 - [ ] `[infra]` `infra/backup/restore.sh`: parar `api` y `worker`; `mongo` solo; `mongorestore --drop --oplogReplay`
   sin restaurar `admin.*`; recarga de objetos con la misma `OBJECT_STORE_SSE_KEY`; arranque; informe de conciliación
   (CV en Mongo sin objeto y objetos sin documento). Verificar con el ensayo de la tarea siguiente.
-- [ ] `[infra]` Ensayo de restauración sobre el host real con volumen viejo, encadenado al ensayo de reconstrucción de
-  35b: tras «Replace boot volume», restaurar desde el respaldo y comprobar cuentas, links y un CV descargable de las
-  cuentas de prueba, con el tiempo total anotado (RTO medido).
-- [ ] `[infra]` Prueba mensual de restauración **en el host**, en un proyecto de Compose aparte, sin puertos publicados y
-  con `down -v` al terminar: con invitados el respaldo tiene CV reales y no se bajan a otra máquina. Verificar con
+- [ ] `[infra]` Override de Compose para restaurar (por ejemplo `infra/backup/docker-compose.restore.yml`): un proyecto
+  aparte (`-p linkvault-restore`) con sus propios volúmenes, **sin** Traefik ni los puertos 80 y 443 (con `!reset` o un
+  compose propio, porque `ports` se suma entre archivos) y sin salida a Internet. Verificar con `docker compose config`
+  leído con `node`: ningún `ports` y ningún volumen compartido con el proyecto de staging.
+- [ ] `[infra]` Ensayo de restauración sobre el host real, **con el volumen existente** y sin repetir «Replace boot
+  volume»: después de la 11.6 y con el respaldo ya desplegado, restaurar la última instantánea en el proyecto aparte,
+  comprobar cuentas, links y un CV descargable de las cuentas de prueba, anotar el tiempo total (RTO medido) y terminar
+  con `down -v`. Verificar además que la pila de staging no se reinició (`docker compose ps` con el mismo `CreatedAt`).
+- [ ] `[infra]` Prueba mensual de restauración con el mismo procedimiento: siempre en el host, en el proyecto aparte y
+  con `down -v` al terminar, **nunca** en la PC del owner (con invitados el respaldo tiene CV reales). Verificar con
   `docker compose ls` y `docker volume ls` antes y después (sin restos del proyecto de prueba).
 - [ ] `[infra]` Variables nuevas en `.env.example` con valores ficticios y en `infra/ci/check-env-file.mjs`
   (`RESTIC_PASSWORD`, repositorios y credenciales de los dos destinos, usuario y contraseña de Mongo de respaldo,
@@ -238,7 +271,7 @@ Va **antes de invitar** (10.7). Su lugar en el plan es la Q1.
 
 - [ ] `[backend]` Fusionar `enrichment-egress-guard` (rama `change/enrichment-egress-guard`) en su ventana: después de
   la 11.6 y antes de la 10.7 de 35b. Verificar con su propio `/opsx:verify` y, ya desplegado, con la prueba de la
-  fase 5 del runbook.
+  fase 8 del runbook.
 
 ### C3. SSH endurecido (dentro de 35b o del change de respaldo, Q6)
 
@@ -251,8 +284,13 @@ Va **antes de invitar** (10.7). Su lugar en el plan es la Q1.
 
 - [ ] `[infra]` `docs/runbooks/oracle-cloud-a1.md` §11 y §13.2: quitar «en PAYG Oracle mantiene 4 OCPU / 24 GB
   gratuitos», sumar las cuotas de compartimento, la alerta de pronóstico, el estimador antes de pasar y la regla de
-  confirmar la exención de inactividad. Verificar con `node -e` que ya no aparece «4 OCPU / 24 GB gratuitos» y sí cada
-  paso nuevo.
+  confirmar la exención de inactividad; cambiar «alerta a 1 €» por «alerta de 1 en la moneda de la cuenta» (§11, §13.2
+  y la lista de comprobación), y marcar como supuesto que el pago por uso dé prioridad de capacidad A1. Verificar con
+  `node -e` que ya no aparecen «4 OCPU / 24 GB gratuitos» ni «1 €», y sí cada paso nuevo.
+- [ ] `[infra]` Nota para 35b, sin editarla desde acá: la vuelta atrás sin GitHub de la 11.2 tiene el mismo hueco que
+  corrige el runbook de esta propuesta. Si la imagen anterior ya no está en el host, el `up` falla sin credencial del
+  registro; hace falta comprobarla con `docker image ls` y, si falta, `docker login` con el token por la entrada
+  estándar y `docker logout` al final. Se le pasa a la sesión dueña de 35b.
 
 ## Qué reabriría esta decisión
 
