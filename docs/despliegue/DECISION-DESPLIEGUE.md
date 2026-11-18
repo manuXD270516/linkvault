@@ -13,7 +13,7 @@ parámetros y la decisión, sin secretos, están en [`despliegue.json`](desplieg
 la raíz porque un archivo en la raíz dispararía `cd-staging` al fusionarse (`docs/**` está en su `paths-ignore`). El
 estado por fase vive en el runbook; el JSON solo se actualiza al cierre.
 
-**Estado:** propuesta, pendiente de aprobación del owner. No reemplaza a ningún ADR: confirma el destino de
+**Estado:** aprobada por el owner el 2026-11-18 («Aprobada»); las preguntas Q1-Q6 siguen abiertas. No reemplaza a ningún ADR: confirma el destino de
 [ADR-051](../adr/ADR-051.md) y le agrega condiciones. Lo que enmienda a ADR-051 §2 («sin copias de seguridad de datos»)
 entra al repositorio por el change de respaldo y su ADR (ver [Cambios de código](#cambios-de-código-que-el-despliegue-necesita)),
 no por este documento.

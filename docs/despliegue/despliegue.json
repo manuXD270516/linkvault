@@ -67,7 +67,7 @@
     }
   },
   "decision": {
-    "estado": "propuesta, pendiente de aprobacion del owner. No terminado hasta C1: sin respaldo fuera de Oracle ni restauracion probada",
+    "estado": "aprobada por el owner el 2026-11-18; preguntas Q1-Q6 pendientes. No terminado hasta C1: sin respaldo fuera de Oracle ni restauracion probada",
     "ganador": "oracle-free",
     "planB": "casa-tunel",
     "tercero": "gestionado-gratis",
