@@ -660,8 +660,9 @@ changes:
       **(d)** Tope de tamaño (4 GiB por destino por defecto) que hace fallar y avisar; pings de inicio, éxito y falla
       a un monitor gratuito (`BACKUP_PING_URL`); timer de systemd persistente, reinstalado en la reconstrucción.
       **(e)** `restore.sh` sin `admin.*`, con reencolado del outbox de las 24 h previas al volcado y conciliación;
-      ensayo en el host en un proyecto aparte sin Traefik, `web`, `worker`, puertos ni salida, con `down -v`, antes
-      de invitar y cada mes; nunca en la PC del owner.
+      ensayo en el host en un proyecto aparte sin Traefik, `web`, `worker` ni puertos, con `down -v`, antes de
+      invitar (desde el destino de fuera de Oracle), mensual dos meses y después trimestral; nunca en la PC del owner.
+      Servicios del respaldo con `logging: none`; identidad S3 por la API IAM de la pasarela (excepción acotada).
       **(f)** `/privacidad` y el aviso a los invitados dicen cuánto duran los datos borrados en las copias.
       Fuera: Q5 de la decisión (exención de inactividad, del owner), Q6 (SSH endurecido, en 35b), respaldar Redis,
       RPO menor a 24 h, `cd-prod`, y cambios en `apps/api`, `apps/worker` o `libs/**`.

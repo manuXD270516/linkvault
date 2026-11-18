@@ -5,21 +5,24 @@ respuestas a Q1-Q6 («Toma las recomendaciones»). Sin este change el runbook qu
 (regla de corte 7; condiciones 1-5 y 8 del disenso).
 
 **Cómo se citan las preguntas:** «Q2 de la decisión» es una pregunta de `DECISION-DESPLIEGUE.md`, ya respondida; «Q2» a
-secas es una pregunta de este change (sección «Open Questions»).
+secas es una pregunta de este change (sección «Open Questions»). Los identificadores `C<n>` y `B<n>` remiten a la tabla
+del debate (sección «Debate iteración 1»).
 
 **Estado de partida, leído en el repositorio (`origin/main` 59617ac4):**
 
-- `docker-compose.prod.yml` ya tiene las redes por proceso de D18 de 35b: `data-api` y `data-worker` (internas, con
-  `mongo` y `redis`), `store-api` y `store-worker` (internas, con `object-store`), `api-egress` y `worker-egress` (con
-  salida). Mongo tiene usuario raíz (`MONGO_ROOT_*`), creado **solo sobre volumen vacío**; Redis, contraseña.
+- `docker-compose.prod.yml` (proyecto **`linkvault-prod`**, por su `name:`) ya tiene las redes por proceso de D18 de
+  35b: `data-api` y `data-worker` (internas, con `mongo` y `redis`), `store-api` y `store-worker` (internas, con
+  `object-store`), `api-egress` y `worker-egress` (con salida). Mongo tiene usuario raíz (`MONGO_ROOT_*`), creado
+  **solo sobre volumen vacío**; Redis, contraseña.
 - El almacén es SeaweedFS 4.47 `mini` con `-disableHttp`. Su pasarela S3 (8333) pide claves; el maestro, el volumen y
   los gRPC escuchan **sin autenticación**, alcanzables solo desde `api` y `worker` (riesgo residual de ADR-052 y D18).
-  Tiene una sola identidad S3, la de la aplicación (`S3_ACCESS_KEY`/`S3_SECRET_KEY`).
+  Tiene una sola identidad S3, la de la aplicación (`S3_ACCESS_KEY`/`S3_SECRET_KEY`). La spec `platform/object-store`
+  exige hablar con él **solo por la API S3**, sin CLI ni API de administración del producto.
 - `tools/repo-checks` exige healthcheck a **todo** servicio de `docker-compose.prod.yml` (`compose-healthchecks`) y
   `check-env-file.mjs` toma las obligatorias de los `${VAR:?}` de ese fichero.
 - El despliegue lleva al host los ficheros de `infra/deploy/config-files.txt` desde el commit desplegado (D4 de 35b).
-- El outbox marca cada evento publicado con `publishedAt` y la spec `platform/outbox` exige consumidores idempotentes
-  («Entrega idempotente», «El trabajo encolado no se pierde»).
+- El outbox (`apps/api/src/infrastructure/outbox/outbox-event.schemas.ts`) tiene `publishedAt`, `failedAt`,
+  `attempts` y `nextAttemptAt`; la spec `platform/outbox` exige consumidores idempotentes.
 - El host corre con el usuario de despliegue en el grupo `docker` (equivale a root, ADR-051 §4); el operador tiene un
   usuario de administración con `sudo`.
 - 35b está en curso: PR-1 y PR-1b en `main`; entre PR-1b y PR-2 no se fusiona nada (`staging-host/tasks.md`,
@@ -34,14 +37,14 @@ secas es una pregunta de este change (sección «Open Questions»).
 - Que el respaldo no sea el proceso más privilegiado de la pila ni deshaga D18.
 - Que quien comprometa el host no pueda destruir los respaldos.
 - Que un respaldo que falla o que falta se entere el owner sin mirar nada.
-- Que la restauración esté escrita, probada en el host antes de invitar y repetida cada mes.
+- Que la restauración esté escrita, probada en el host antes de invitar y repetida con un calendario fijo.
 
 **Non-Goals**
 
 - RPO menor a 24 h, réplicas o alta disponibilidad (Q4 de la decisión).
 - Respaldar Redis (D12), `.env.staging` (35b 5.8) o `acme.json` (35b 6.9).
 - SSH endurecido (Q6 de la decisión: va en 35b) y exención de inactividad (Q5: la resuelve el owner).
-- Automatizar el ensayo mensual de restauración: queda como procedimiento con script y recordatorio.
+- Automatizar el ensayo de restauración: queda como procedimiento con script y recordatorio.
 - Cambiar código de `apps/api`, `apps/worker` o `libs/**`.
 
 ## Decisions
@@ -67,43 +70,60 @@ El estado de 35b sale de una **confirmación escrita y fechada del owner en cada
 AAAA-MM-DD; 10.7 no hecha; sin `e2e-remote` hoy»), no de las casillas de `staging-host/tasks.md`, y se contrasta con
 `git log --first-parent origin/main`. La confirmación lleva la fecha del día de la fusión.
 
+**Precondiciones de la fusión de clase 1 (C14, C17):** los secretos del respaldo ya están en `.env.staging` y en su
+copia (tarea 10.1, con el procedimiento de la fase 3 del runbook), porque el compose de producción pasa a exigir
+`MONGO_BACKUP_*` y el `up` del despliegue fallaría sin ellas; y la 9.10 de 35b está enmendada con el aviso nuevo.
+
 **Orden con `enrichment-egress-guard`:** comparten ventana y cada uno va en su PR. No hay dependencia de código entre
 ellos; el orden lo elige el owner. Cada fusión de clase 1 de cualquiera de los dos obliga a repetir la 9.4.
 
-### D2. Dos lectores sin salida y un empujador sin datos, unidos por una tubería del host
+### D2. Lectores sin salida, un empujador que no puede consultar los datos, unidos por una tubería del host
 
 El panel pidió «un contenedor de respaldo dedicado con redes que no deshagan D18» (H1). Un solo contenedor con la red de
-Mongo, la del almacén y salida a Internet **sería** el proceso más privilegiado de la pila. Se parte en tres servicios
-efímeros (`docker compose run --rm`), que solo existen mientras dura la corrida:
+Mongo, la del almacén y salida a Internet **sería** el proceso más privilegiado de la pila. Se parte en servicios
+efímeros (`docker compose run --rm --no-deps -T`), que solo existen mientras dura la corrida o la restauración:
 
-| Servicio | Imagen (fijada por digest, `arm64`) | Redes | Qué tiene |
-|---|---|---|---|
-| `backup-mongo` | `mongo:7.0.43` (la misma de la pila) | `data-backup` (interna: `mongo` y él) | `MONGO_BACKUP_*` |
-| `backup-objects` | `rclone/rclone` | `store-backup` (interna: `object-store` y él) | `S3_BACKUP_*` |
-| `backup-push` | `restic/restic` | `backup-egress` (con salida, solo él) | `RESTIC_PASSWORD` y credenciales de los destinos |
+| Servicio | Imagen (fijada por digest, `arm64`) | Redes | Qué tiene | Cuándo |
+|---|---|---|---|---|
+| `backup-mongo` | `mongo:7.0.43` (la misma de la pila) | `data-backup` (interna: `mongo` y él) | `MONGO_BACKUP_*` | Respaldo |
+| `backup-objects` | `rclone/rclone` | `store-backup` (interna: `object-store` y los dos de objetos) | `S3_BACKUP_*` | Respaldo |
+| `backup-push` | `restic/restic` | `backup-egress` (con salida, solo él) | `RESTIC_PASSWORD` y credenciales de los destinos | Respaldo y restauración |
+| `restore-objects` | `rclone/rclone` | `store-backup` | Identidad de la aplicación (`S3_ACCESS_KEY`) | Solo restauración |
 
 El orquestador (`infra/backup/run-backup.sh`, en el host, como el usuario de despliegue) encadena
-`run backup-mongo … | run -T backup-push …`: los datos pasan por una tubería del host y **ningún proceso tiene a la vez
-datos y salida**. El lector sin salida no puede exfiltrar; el empujador solo ve un flujo que restic cifra antes de
-enviar.
+`run backup-mongo … | run backup-push …`: los datos pasan por una tubería del host. **Ningún proceso puede consultar
+los datos y además salir a Internet** (C3): los lectores y el cargador consultan Mongo o el almacén y no tienen salida;
+`backup-push` tiene salida y no alcanza ni Mongo ni el almacén, pero **sí ve en claro el flujo que recibe** antes de
+cifrarlo. Ese es un riesgo residual de la imagen de restic, escrito en ADR-066: se mitiga con la imagen oficial fijada
+por digest y comprobada por plataforma (C26).
 
-- Los tres van en **`infra/backup/docker-compose.backup.yml`**, que se suma con `-f` solo para respaldar y restaurar.
+- **Sin registros de datos (C1, P0):** todos los servicios de este fichero llevan `logging: { driver: none }`. Su
+  salida estándar **es** el volcado de la base o el `tar` de los objetos (o, en `backup-push`, el `restic dump` de una
+  restauración); con el controlador por defecto de Docker (`json-file`) quedaría escrita **en claro** en
+  `/var/lib/docker/containers/<id>/…-json.log`. La tubería de `run -T` sigue funcionando con `none`: la conexión
+  (`attach`) no pasa por el controlador de registros, y la tarea 2.5 lo comprueba.
+- Los cuatro van en **`infra/backup/docker-compose.backup.yml`**, que se suma con `-f` solo para respaldar y restaurar.
   No van en `docker-compose.prod.yml` porque `compose-healthchecks` exige healthcheck a todo servicio de ese fichero y
   un trabajo de un solo uso no tiene uno honesto (el mismo motivo por el que ADR-052 §4 descartó un servicio de
   aprovisionamiento).
 - Las redes `data-backup` y `store-backup` **sí** van en `docker-compose.prod.yml`, porque `mongo` y `object-store`
   tienen que estar unidos a ellas cuando corren; `backup-egress`, en el fichero del respaldo.
-- Endurecimiento de los tres: `read_only: true`, `cap_drop: [ALL]`, `security_opt: [no-new-privileges:true]`, usuario no
-  root cuando la imagen lo permite y `tmpfs` como única área de escritura.
-- Las imágenes de terceros se comprueban con `infra/deploy/check-image-platforms.sh` antes de usarlas y se fijan por
-  digest; las nuevas son las oficiales de restic y rclone.
-- Una comprobación permanente de repositorio (`backup-isolation`) lee la configuración resuelta y falla si un servicio
-  del respaldo mezcla redes de datos y de salida, si comparte red con `api` o `worker`, o si las redes de datos del
-  respaldo tienen otros miembros.
+- Endurecimiento: `read_only: true`, `cap_drop: [ALL]`, `security_opt: [no-new-privileges:true]`, usuario no root
+  cuando la imagen lo permite, `tmpfs` como única área de escritura, `networks` explícitas, sin `network_mode` y sin
+  `ports`.
+- **Guardia `backup-isolation` (C4):** en CI lee `docker compose -f docker-compose.prod.yml -f
+  infra/backup/docker-compose.backup.yml [-f infra/backup/docker-compose.restore.yml] --env-file infra/ci/verify.env
+  config --format json`, volcado a fichero y leído con `node`. Donde no hay `docker` (y solo fuera de CI) aplica las
+  mismas reglas sobre los ficheros crudos. Reglas: cada servicio `backup-*`/`restore-*` declara `networks` explícitas,
+  no tiene `network_mode`, no está en la red `default`, no tiene `ports` y lleva `logging.driver: none`; ninguno está a
+  la vez en una red con salida y en una de datos; ninguno comparte red con `api` ni `worker`; `data-backup` y
+  `store-backup` son `internal: true`, y sus miembros son exactamente `mongo`+`backup-mongo` y
+  `object-store`+`backup-objects`+`restore-objects`; en el override de restauración, el único servicio en una red con
+  salida es `backup-push`, sin redes de datos (C6).
 
-**Riesgo residual que se extiende (ADR-066 §Enmiendas, punto 3):** `backup-objects` alcanza las interfaces sin
-autenticación del almacén (maestro, volumen y gRPC), como `api` y `worker`. Se acepta porque no tiene salida, corre
-unos minutos por noche con una imagen fijada y nada de él lee datos de usuario.
+**Riesgo residual que se extiende (ADR-066 §Enmiendas, punto 3):** `backup-objects` y `restore-objects` alcanzan las
+interfaces sin autenticación del almacén (maestro, volumen y gRPC), como `api` y `worker`. Se acepta porque no tienen
+salida y solo existen unos minutos, con una imagen fijada.
 
 *Descartado:* un contenedor con las tres redes (deshace D18, H1); un timer del host que vuelca con `docker exec` en
 `mongo` y `object-store` (el host no llega al almacén por la red, y `exec` en el almacén usaría la identidad de la
@@ -113,8 +133,8 @@ clave); servicios con `profiles:` dentro de `docker-compose.prod.yml` (chocan co
 ### D3. Credenciales de solo lectura propias
 
 - **Mongo:** usuario `MONGO_BACKUP_USER` con el rol integrado `backup` sobre `admin` (permite `mongodump --oplog` y no
-  escribe). Se **asegura en cada corrida y en cada restauración**: `docker compose exec -T mongo mongosh` con un
-  `--eval` que lee `process.env` (raíz y respaldo) y hace `createUser` o `updateUser` idempotente. Por eso
+  escribe). Se **asegura en cada corrida y en cada restauración**: `docker compose exec -T mongo mongosh --file` con un
+  script que lee `process.env` (raíz y respaldo) y hace `createUser` o `updateUser` idempotente. Por eso
   `MONGO_BACKUP_USER` y `MONGO_BACKUP_PASSWORD` van en el entorno del servicio `mongo` con `${VAR:?}`, con el formato
   apto para URI de D18. Cubre los volúmenes viejos (H7) y la rotación de la contraseña.
   *Descartado:* crearlo en el healthcheck (un healthcheck que escribe, el mismo rechazo de ADR-052 §4); un `post_start`
@@ -123,19 +143,35 @@ clave); servicios con `profiles:` dentro de `docker-compose.prod.yml` (chocan co
 - **`mongodump` sin contraseña en los argumentos:** el lector escribe un fichero de configuración (`--config`) en su
   `tmpfs` desde su entorno, con modo 600, y lo pasa por ruta. Nunca una URI con credenciales en la orden.
 - **Almacén:** identidad S3 propia (`S3_BACKUP_ACCESS_KEY`/`S3_BACKUP_SECRET_KEY`) con solo `List` y `Read` sobre los
-  dos buckets. **El mecanismo se mide antes de implementar** (tarea 1.7), con estos criterios: (1) no monta un fichero
-  con secreto en el servicio `object-store` (la forma de C3 de ADR-052 no lo admite); (2) no cambia `command`,
-  `environment` ni volumen del servicio, o si los cambia se repiten C3-C5 y C7-C9 de la matriz antes de adoptarlo
-  (ADR-052 §2); (3) la identidad sobrevive a un reinicio del almacén y se asegura de forma idempotente en cada corrida;
-  (4) `PutObject` y `DeleteObject` con ella fallan. Candidatos, en orden: la API IAM embebida en la pasarela S3, llamada
-  con la identidad de la aplicación desde un contenedor de un solo uso en `store-backup`; y la configuración de
-  identidades del filer por `weed shell` dentro del contenedor del almacén. Si ninguno cumple, decide el owner (Q3).
+  dos buckets, asegurada por `infra/backup/ensure-backup-identity.sh`. **El mecanismo se mide antes de implementar**
+  (tareas 1.7a y 1.7b) con seis criterios:
+  1. no monta un fichero con secreto en el servicio `object-store`;
+  2. no cambia `command`, `environment` ni volumen del servicio (si los cambia, se repiten C3-C5 y C7-C9 de la matriz
+     antes de adoptarlo, ADR-052 §2);
+  3. la identidad sobrevive a un reinicio del almacén y se asegura de forma idempotente en cada corrida;
+  4. `PutObject` y `DeleteObject` con ella fallan;
+  5. **(C2, P0)** después de asegurarla y de `docker compose restart object-store`, `node object-store.js verify` con
+     la imagen de `api` sale 0, y `PutObject` y `DeleteObject` con la identidad de **la aplicación** siguen
+     funcionando: crear una identidad no puede degradar la de la aplicación (un almacén que pasa de «una identidad
+     administradora implícita» a «lista de identidades» puede dejar a la aplicación sin permisos);
+  6. **(C2, P0)** el listado de identidades antes y después difiere **solo** en la del respaldo.
+  Si alguno falla, se pasa a Q3.
+- **Mecanismo candidato (C19):** solo la **API IAM** que expone la pasarela S3, llamada con la identidad de la
+  aplicación desde un contenedor de un solo uso en `store-backup`. Tiene la forma de la API IAM de AWS, así que un
+  almacén sustituto que la ofrezca no obliga a reescribir el script; aun así es una API de administración, y la spec
+  `platform/object-store` («El almacén se usa solo por la API S3») se **modifica** con una excepción acotada a
+  `ensure-backup-identity`, aislada en un solo script que es lo único a reescribir si cambia el producto. Se
+  **descarta `weed shell`**: es la CLI de un producto concreto y exigiría ejecutar dentro del contenedor del almacén,
+  dos cosas que esa spec prohíbe sin excepción posible acotada. Si la API IAM no cumple los seis criterios, Q3.
 - `rclone` recibe todo por variables de entorno (`RCLONE_CONFIG_STORE_*`), sin fichero de configuración.
 
 ### D4. Formato, orden y manifiesto de una corrida
 
 Una corrida tiene un identificador (`<AAAAMMDD>T<HHMMSS>Z`) y, **por destino**, este orden fijo (H5):
 
+0. **Preparación (C26, C27):** espera a que `mongo` y `object-store` estén sanos (plazo de 10 minutos; si no,
+   `stack_unhealthy`); `docker compose pull` de las cuatro imágenes del respaldo y `check-image-platforms.sh` sobre
+   ellas (si no, `images`).
 1. **Base:** `mongodump --archive --gzip --oplog` con el usuario de respaldo → tubería → `restic backup --stdin
    --stdin-filename mongo.archive.gz --tag run:<id> --tag kind:mongo --host linkvault-staging`.
 2. **Objetos:** `rclone copy` de los dos buckets al `tmpfs` del lector (tope `BACKUP_OBJECTS_MAX_BYTES`, por defecto
@@ -144,12 +180,21 @@ Una corrida tiene un identificador (`<AAAAMMDD>T<HHMMSS>Z`) y, **por destino**, 
    en la copia, y lo que sobra lo dice la conciliación (D11).
 3. **Manifiesto:** en el host, cada flujo pasa por `tee` hacia `sha256sum` y un contador de bytes, y al terminar los dos
    el orquestador emite un JSON (`manifest.json`, `--tag kind:manifest`) con el identificador, las horas UTC, bytes y
-   SHA-256 de cada flujo, el número de objetos por bucket, los digests de las tres imágenes y la versión del formato.
-   **Una corrida sin manifiesto no es un respaldo** (requirement «Respaldo nocturno…»): la restauración solo parte de
-   corridas con manifiesto cuyas sumas coinciden.
+   SHA-256 de cada flujo, el número de objetos por bucket, los digests de las imágenes y la versión del formato.
+   **Una corrida sin manifiesto no es un respaldo**: la restauración solo parte de corridas con manifiesto cuyas sumas
+   coinciden. Dos manifiestos, o dos instantáneas del mismo tipo, con el mismo identificador son un **error** al
+   restaurar (C25), no se elige uno.
 
-Ningún dato en claro toca un disco: la base y los objetos viajan por tuberías; el área de trabajo de los objetos es
-memoria (`tmpfs`). Como un `tmpfs` puede ir a swap, la tarea 2.2 comprueba que el host no tiene swap o que está cifrada.
+Ningún dato en claro toca un disco: la base y los objetos viajan por tuberías, sin registros de Docker (D2); el área de
+trabajo de los objetos es memoria (`tmpfs`). Como un `tmpfs` puede ir a swap, la tarea 2.2 comprueba que el host no
+tiene swap o que está cifrada.
+
+**Estructura del script (C13):** todo el cuerpo de `run-backup.sh` y de `restore.sh` va dentro de `main() { … }` y la
+última línea es `main "$@"`, para que reemplazarlo durante un despliegue no cambie lo que ejecuta una corrida en curso.
+
+**Aviso de poda vencida (B3):** al terminar bien, el script mira la instantánea más vieja de cada destino; si pasa de
+**65 días** (34 de la retención más 31 de la poda mensual), manda `fail prune_overdue` **después** de haber respaldado:
+el respaldo se hizo, y el correo del monitor le recuerda al owner la sesión mensual.
 
 *Descartado:* `restic backup` de un directorio en disco (texto en claro en disco); un solo `tar` con la base y los
 objetos (no permite restaurar la base sola ni verificar cada parte); `restic tag` para marcar la corrida buena (reescribe
@@ -159,7 +204,8 @@ la instantánea, es decir, borra, y choca con D6).
 
 Q2 de la decisión (2026-11-18): destino 1, un **bucket privado de OCI Object Storage**; destino 2, **fuera de Oracle**,
 (a) un almacenamiento de objetos con plan gratuito sin tarjeta y con bloqueo de objetos, si se verifica, y si no (b)
-una cuenta de Google Drive **dedicada** con su cliente OAuth publicado (para que el token no venza a los 7 días).
+una cuenta de Google Drive **dedicada** con su cliente OAuth publicado (para que el token no venza a los 7 días) y el
+alcance `drive.file` (B12): la aplicación solo ve lo que ella misma creó.
 
 La corrida hace **una pasada completa (D4) por destino**, primero OCI y después el de fuera, con el mismo identificador.
 Las dos son independientes: si una falla, la otra sigue, y la corrida termina en falla nombrando el destino.
@@ -167,7 +213,10 @@ Las dos son independientes: si una falla, la otra sigue, y la corrida termina en
 - Con (b), restic usa su backend `rclone`, que necesita el binario de rclone junto a restic. Como ninguna imagen
   oficial trae los dos, `backup-push` levanta un `rclone serve restic` efímero en una red interna propia y restic habla
   con él por `rest:`. Se diseña en la tarea 1.2 solo si Q2 cae en (b).
-- La verificación del destino es **la primera tarea, del owner** (1.1), con criterio de corte (tasks).
+- La verificación del destino es **tarea del owner** (1.1), con criterio de corte, y va **después de la 1.5a** (nota de
+  business): si OCI no admite el modelo V, cambia el reparto de destinos y lo que se le pide al de fuera.
+- Q5 (propuesta, B7): si la 1.1 termina en (a), quedarse con un solo destino. Reabre la respuesta del owner a Q2 de la
+  decisión, así que va como propuesta con recomendación, no como decisión.
 
 *Descartado:* `restic copy` de OCI al otro destino (el segundo dependería del primero y su credencial tendría que leer
 OCI); `tee` hacia dos empujadores (una falla de uno corta al otro); el destino (c) de Q2, la PC del owner (solo con la
@@ -181,22 +230,33 @@ de escritura» no sirve (H2). El modelo que se adopta, por destino:
 - **Modelo V (preferido):** bucket con **versionado** y **retención o bloqueo de objetos** de `P` días (por defecto 30,
   Q1), más una **regla de ciclo de vida que expira las versiones no actuales** a los `P + 1` días. La credencial del
   host puede crear, leer, listar y «borrar» (en un bucket versionado eso deja un marcador y la versión queda retenida),
-  pero **no** puede borrar versiones, cambiar la retención, el versionado ni el ciclo de vida. Así restic funciona
-  (bloqueos, `backup`, `check`) y lo que borre un atacante con esa credencial sigue recuperable `P` días.
+  pero **no** puede borrar versiones (borrado con `versionId`), suspender el versionado, cambiar el ciclo de vida ni
+  tocar la retención. Así restic funciona (bloqueos, `backup`, `check`) y lo que borre un atacante con esa credencial
+  sigue recuperable `P` días.
+- **Retención no bloqueada (C16):** la regla de retención se crea **sin bloquear** (en OCI, sin fecha de bloqueo): el
+  owner, con su usuario administrador, puede quitarla; la credencial del host no. Así la regla de corte 4 del runbook
+  (alerta de costo → borrar el recurso) sigue siendo posible. Se escribe en esa regla: «un bucket con retención se
+  vacía quitando primero la regla, con el usuario administrador».
 - **Modelo R (alternativa):** regla de retención sin versionado, que impide borrar a cualquiera durante `P` días. Solo
-  si las tareas 1.5a y 1.5b demuestran que restic `backup`, `check` y la poda terminan en 0 con él (los bloqueos y los paquetes
-  recientes no se pueden borrar).
+  si las tareas 1.5a y 1.5b demuestran que restic `backup`, `check` y la poda terminan en 0 con él.
 - **Nunca versionado sin ciclo de vida** (regla de corte 8 del runbook): acumula versiones y cobra (H2, H3).
 - **La credencial de poda** (la que puede borrar versiones o podar) vive **solo** en el gestor de contraseñas del owner y
   se usa desde su PC (Q2). La poda es `restic forget --keep-daily 7 --keep-weekly 4 --prune --max-unused unlimited
   --no-cache`: no reempaqueta, así que no descarga datos a la PC; solo índices y metadatos, cifrados.
-- **Verificación fuera del host** en la misma sesión mensual: desde la PC, `restic snapshots` de cada destino tiene que
-  mostrar una corrida con manifiesto por cada uno de los últimos 7 días y una por cada una de las últimas 4 semanas.
-  Detecta lo que el monitor de pings no ve: un atacante con el host puede seguir mandando pings de éxito.
+- **En la PC solo `snapshots`, `forget --prune`, `stats` y `check` (B9)**, nunca `restore`, `dump` ni `mount`: esas
+  órdenes traerían datos en claro a la PC. El `RUNBOOK` lo dice junto a las órdenes.
+- **Verificación fuera del host cada ≤ `P` − 7 días (C15):** un `restic snapshots` **quincenal** de cada destino, de
+  unos 5 minutos, desde la PC. Criterio simple (B5): la última corrida con manifiesto es de hoy o de ayer, y hay al menos
+  7 en los últimos 7 días. Detecta lo que el monitor de pings no ve (un atacante con el host puede seguir mandando
+  éxitos) a tiempo para recuperar dentro de la ventana `P`. Una vez por mes, además, `restic check` por destino (solo
+  metadatos, C7).
+- **«Recuperar tras un borrado» (C15):** sección del RUNBOOK con el procedimiento del owner, con su usuario
+  administrador: listar las versiones no actuales de los prefijos de restic, restaurar la última versión de cada objeto
+  borrado (quitar el marcador), y comprobar con `restic snapshots` y `restic check`. Dentro de la ventana `P`.
 
-Qué modelo admite cada destino (OCI y el de fuera) **se mide** en las tareas 1.5a y 1.5b con un repositorio de prueba y la
-credencial del host, incluida la falsación «borrar de forma definitiva un paquete falla». No se da por hecho desde la
-documentación del proveedor.
+Qué modelo admite cada destino **se mide** en las tareas 1.5a y 1.5b con un repositorio de prueba y la credencial del
+host, con cinco falsaciones: borrar de forma definitiva un paquete, borrar con `versionId`, suspender el versionado,
+cambiar el ciclo de vida y tocar la retención. No se da por hecho desde la documentación del proveedor.
 
 Con (b) de Q2 (Drive) el destino de fuera **no** tiene borrado protegido frente al host: el token que vive en el host
 puede vaciar la papelera. La copia protegida es la de OCI; la de Drive cubre la pérdida de la cuenta de Oracle. Es la
@@ -204,9 +264,9 @@ Q4, bloqueante solo si Q2 cae en (b).
 
 ### D7. Retención, poda y plazo máximo de un dato borrado en las copias
 
-Retención: 7 diarios y 4 semanales (Q3 de la decisión, 2026-11-18). La poda es mensual desde la PC (Q2 de este change, por defecto),
-nunca diaria (peticiones de Object Storage). El **plazo máximo** durante el que un dato borrado (un CV, una cuenta)
-sigue en alguna copia es la suma de tres términos:
+Retención: 7 diarios y 4 semanales (Q3 de la decisión, 2026-11-18). La poda es mensual desde la PC (Q2 de este change,
+por defecto), nunca diaria (peticiones de Object Storage). El **plazo máximo** durante el que un dato borrado (un CV,
+una cuenta) sigue en alguna copia es la suma de estos términos:
 
 | Término | Peor caso |
 |---|---|
@@ -214,69 +274,92 @@ sigue en alguna copia es la suma de tres términos:
 | Hasta la siguiente poda (mensual) | 31 días |
 | Ventana de protección `P` (versiones retenidas) | 30 días |
 | **Total** | **95 días: «hasta 14 semanas»** |
+| Si el destino de fuera es Drive (Q2 de la decisión en (b)): papelera (C29) | + 30 días: «hasta 18 semanas» |
 
 Con `P` = 14 y poda mensual son 79 días («hasta 12 semanas»); con `P` = 14 y poda semanal, 55 («hasta 8 semanas»). El
-número final lo fijan Q1 y Q2 y se escribe en tres sitios que se comprueban juntos (tarea 8.4): `infra/backup/README.md`,
-el aviso a los invitados (9.10 de 35b) y `/privacidad`.
+número final lo fijan Q1, Q2 y la 1.1, y se escribe en cuatro sitios que un guardia compara (C32, tarea 8.6):
+`infra/backup/README.md`, el aviso de `docs/RUNBOOK.md`, el aviso a los invitados (9.10 de 35b) y `/privacidad`.
 
 ### D8. Tope de tamaño
 
-Antes de cada pasada, `backup-push` mide el repositorio del destino (`restic stats --mode raw-data --json`) y, si pasa
-`BACKUP_MAX_REPO_BYTES` (por defecto **4 GiB**), la pasada falla con clase `size_cap` sin enviar nada. 4 GiB y no 5:
-con el modelo V, las versiones retenidas durante `P` días también ocupan, y el nivel gratuito de OCI es de 10 GB por
-nivel en cuenta de pago (H3). La revisión mensual mira además el tamaño del bucket en la consola (versiones incluidas).
-El lector de objetos tiene su propio tope (D4).
+Antes de cada pasada, `backup-push` mide el repositorio del destino y, si pasa `BACKUP_MAX_REPO_BYTES` (por defecto
+**4 GiB**), la pasada falla con clase `size_cap` sin enviar nada. La medida preferida suma todas las versiones del
+bucket (`ListObjectVersions`), si la credencial del host puede listarlas (C16); si no, `restic stats --mode raw-data
+--json`, que no ve las versiones retenidas. Por eso 4 GiB y no 5: con el modelo V, las versiones retenidas durante `P`
+días también ocupan, y el nivel gratuito de OCI es de 10 GB por nivel en cuenta de pago (H3). La revisión mensual mira
+además el tamaño del bucket en la consola. El lector de objetos tiene su propio tope (D4).
 
 ### D9. Aviso: pings desde el host a un monitor gratuito
 
 El orquestador manda `start` al empezar, éxito al terminar las dos pasadas con manifiesto y `fail` con un cuerpo de una
-línea (identificador de la corrida y clase: `lock_busy`, `ensure_user`, `mongo_dump`, `objects_read`,
-`objects_too_large`, `size_cap`, `push_oci`, `push_offsite`, `manifest`) a `BACKUP_PING_URL` (por ejemplo,
-healthchecks.io, plan gratuito). El monitor se configura con un periodo de un día y un margen de 3 horas, y avisa por
-correo de una falla y de un éxito que no llega.
+línea (identificador de la corrida y clase: `lock_busy`, `stack_unhealthy`, `images`, `ensure_user`,
+`ensure_identity`, `mongo_dump`, `objects_read`, `objects_too_large`, `size_cap`, `push_oci`, `push_offsite`,
+`manifest`, `prune_overdue`) a `BACKUP_PING_URL` (por ejemplo, healthchecks.io, plan gratuito). El monitor se
+configura con un periodo de un día y un **margen de 3 horas**, y avisa por correo de una falla y de un éxito que no
+llega.
 
 - Los pings salen **del host** con `curl`, no de un contenedor: así también avisan si Docker no arranca, y la imagen de
   restic no necesita cliente HTTP.
 - La dirección del monitor es un secreto (quien la tiene puede mandar éxitos falsos): `curl` la recibe por
   `--config -` en la entrada estándar, nunca en los argumentos, y el orquestador la lee de `.env.staging` sin
-  `source` (solo esa clave).
+  `source` (solo esa clave). Es obligatoria aunque ningún compose la use, así que `check-env-file.mjs` la exige de
+  forma explícita (C23).
 
 ### D10. Programación: timer de systemd del host
 
-`infra/backup/systemd/linkvault-backup@.service` (`Type=oneshot`, `User=%i`, ejecuta
-`/srv/linkvault-staging/infra/backup/run-backup.sh`) y `linkvault-backup@.timer` (`OnCalendar=*-*-* 06:30:00 UTC`,
-alrededor de las 03:30 en Argentina, `RandomizedDelaySec=15min`, `Persistent=true`). La instancia es el nombre del
-usuario de despliegue. Las unidades las instala una vez el operador con `sudo` (el usuario de despliegue no tiene
-`sudo`), siguiendo `infra/README.md`, y la reconstrucción del host lo repite. El script llega al host con cada
-despliegue (`config-files.txt`). `flock` sobre un fichero del directorio fijo impide dos corridas a la vez.
+`infra/backup/systemd/linkvault-backup@.service` (`Type=oneshot`, `User=%i`, `Wants=` y `After=docker.service`,
+`TimeoutStartSec=2h`, `ExecStart=/bin/bash /srv/linkvault-staging/infra/backup/run-backup.sh`, C13 y C27) y
+`linkvault-backup@.timer` (`OnCalendar=*-*-* 06:30:00 UTC`, alrededor de las 03:30 en Argentina,
+`RandomizedDelaySec=15min`, `Persistent=true`). La instancia es el nombre del usuario de despliegue. Las unidades las
+instala una vez el operador con `sudo` (el usuario de despliegue no tiene `sudo`) **siguiendo solo la sección de
+`infra/README.md`**, y cada paso que falte se cuenta como defecto (C18); la reconstrucción del host lo repite. El script
+llega al host con cada despliegue (`config-files.txt`).
+
+**Un solo candado (C13):** `run-backup.sh`, `restore.sh` y `restore-drill.sh` toman el mismo `flock` sobre
+`/srv/linkvault-staging/.backup.lock`. **Despliegues:** `deploy.sh` no se toca (es de 35b, con sus pruebas y sus
+clases de reporte); se documenta una **franja sin despliegues** de 06:15 a 08:45 UTC en `infra/README.md` y en el
+runbook. Un despliegue dentro de la franja que recree `mongo` u `object-store` solo hace fallar esa corrida, con su
+aviso; la siguiente noche respalda normal.
 
 *Descartado:* un programador dentro de un contenedor (tendría que vivir siempre, con datos y salida o con el socket de
-Docker); `cron` del host (no recupera una corrida perdida con el host apagado).
+Docker); `cron` del host (no recupera una corrida perdida con el host apagado); que `deploy.sh` espere el candado (toca
+un fichero de 35b para evitar una falla que ya avisa sola).
 
 ### D11. Restauración y conciliación
 
-`infra/backup/restore.sh --project <nombre> [--run <id>]`, para el proyecto de staging (vuelta atrás de datos) y para el
-proyecto de ensayo:
+`infra/backup/restore.sh --project <nombre> --from oci|offsite [--run <id>] [--confirm-host]`, para el proyecto de
+staging (`linkvault-prod`, vuelta atrás de datos) y para el de ensayo (`linkvault-restore`):
 
-1. Elige la última corrida con manifiesto (o la pedida) y **verifica las sumas** bajando los flujos una vez antes de
-   tocar nada.
-2. Para `api` y `worker`; deja `mongo` solo, sano y con el usuario raíz del fichero de entorno (un volumen nuevo lo
+1. Toma el candado (D10). Lee la etiqueta de la imagen de la `api` que corre en `linkvault-prod` y **falla si no es
+   `sha-<12>`** (C12): el proyecto que se restaura usa ese mismo `IMAGE_TAG`, nunca `:latest`.
+2. Elige la última corrida con manifiesto del destino pedido (o la pedida) y **verifica las sumas** bajando los flujos
+   una vez antes de tocar nada; manifiestos o instantáneas duplicados son error.
+3. Para `api` y `worker`; deja `mongo` solo, sano y con el usuario raíz del fichero de entorno (un volumen nuevo lo
    inicializa la propia imagen con él).
-3. `mongorestore --archive --gzip --drop --oplogReplay --nsExclude 'admin.*'` desde la tubería. No se pisa
-   `admin.system.users` (H7).
-4. Asegura el usuario de respaldo (D3).
-5. Aprovisiona los buckets (`run --rm --no-deps api node object-store.js provision`) y recarga los objetos por la API S3
-   con un contenedor de un solo uso con la identidad de la aplicación, en la red del almacén del proyecto, sin salida.
-   El almacén cifra con la `OBJECT_STORE_SSE_KEY` del fichero de entorno: la copia guarda los objetos **descifrados**
-   (cifrados por restic), así que la clave del almacén de destino puede ser la misma u otra; lo que sí exige la misma
-   copia de `.env.staging` es `AI_VAULT_KEY` (las claves BYOK de la base).
-6. Reencola el outbox (D12) e imprime la conciliación: CV de la base sin objeto, objetos sin documento (con el
-   procedimiento de dos pasos del RUNBOOK, «Paso 6 octies», para borrarlos), eventos reencolados.
+4. **Restaura la base dentro de `mongo` (C5):** `restic dump` en `backup-push` → tubería → `docker compose exec -T mongo`
+   con un `sh -c` que escribe en el `/tmp` del contenedor un `--config` con las credenciales raíz leídas de su entorno y
+   ejecuta `mongorestore --config … --archive --gzip --drop --oplogReplay --nsExclude 'admin.*'`. No se pisa
+   `admin.system.users` (H7) y ninguna credencial pasa por argumentos.
+5. Asegura el usuario de respaldo y la identidad S3 (D3).
+6. Aprovisiona los buckets (`run --rm --no-deps api node object-store.js provision`) y recarga los objetos con
+   `restore-objects` (D2): `restic dump` → tubería → `tar -x` en su `tmpfs` y `rclone copy` con la identidad de la
+   aplicación. El almacén cifra con la `OBJECT_STORE_SSE_KEY` del fichero de entorno: la copia guarda los objetos
+   **descifrados** (cifrados por restic), así que lo que exige la misma copia de `.env.staging` es `AI_VAULT_KEY` (las
+   claves BYOK de la base).
+7. Reencola el outbox (D12) e imprime la conciliación: CV de la base sin objeto, objetos sin documento (con el
+   procedimiento de dos pasos del RUNBOOK, «Paso 6 octies», para borrarlos), eventos reencolados por tipo, y las
+   cabeceras (`Content-Type`, `Content-Length` y metadatos de usuario) de cada CV comparadas con las del manifiesto
+   (C28).
+8. **Paso posterior (B4):** el script termina recordando que el owner vuelva a aplicar los **borrados de cuenta o de CV
+   que le consten** posteriores al volcado (por correo o por su registro): una restauración devuelve lo borrado en las
+   últimas 24 h. El aviso a los invitados y `/privacidad` lo dicen.
 
-**Guardia «nunca en la PC del owner»:** fuera del host (sin `/srv/linkvault-staging/.env.staging` o con una
-arquitectura distinta de `aarch64`), el script se niega a usar un repositorio que no sea un directorio local; así las
-pruebas de desarrollo usan un repositorio local con datos sintéticos y uno remoto con datos reales no se puede
-restaurar en otra máquina por accidente.
+**Destino de la restauración (C7, B6):** antes de invitar, el ensayo restaura **desde `offsite`**, el destino que
+cubre la pérdida de la cuenta de Oracle y el menos ejercitado; después, cada ensayo **alterna** el destino.
+
+**Guardia «nunca en la PC del owner» (B1):** el script se niega a usar un repositorio remoto si no existe
+`/srv/linkvault-staging/.env.staging` **y** no se pasó `--confirm-host`. No mira la arquitectura (un plan B `amd64`
+también es un host). Fuera del host, las pruebas de desarrollo usan un repositorio local con datos sintéticos.
 
 ### D12. Redis no se respalda; el outbox vuelve a publicar lo que estaba en vuelo
 
@@ -284,20 +367,25 @@ Redis guarda colas y caché. El relay solo publica los eventos con `publishedAt:
 publicado** cuyo job no se había consumido al volcar se pierde con Redis: un enriquecimiento que no llega, un CV que no
 se extrae, un `cv-deleted` que deja un objeto huérfano (hallazgo del critic de `gestionado-gratis`).
 
-**Decisión:** la restauración vuelve a poner como pendientes (`publishedAt: null`, intentos y espera a cero) los eventos
-publicados en las **24 h anteriores al volcado** (`BACKUP_REQUEUE_WINDOW_HOURS`, por defecto 24). La spec
-`platform/outbox` exige consumidores idempotentes («Entrega idempotente», «Evento republicado tras la retención»), así
-que repetir un evento ya consumido no duplica su efecto. El mismo script sirve suelto si se pierde solo Redis
-(`infra/backup/requeue-outbox.sh --since <hora>`).
+**Decisión (C8, B2, C24):**
 
-**Qué implica para el RPO:** el RPO de los **datos** sigue siendo 24 h. El de los **efectos** (correos, push,
-enriquecimientos, extracciones) queda cubierto «al menos una vez» por el reencolado; el riesgo residual es un correo o un
-push repetido si algún consumidor no cumpliera la idempotencia que su spec exige. En el **ensayo** no corre `worker`
-(D13), así que nada sale: solo se cuenta cuántos eventos quedaron pendientes.
+- La restauración pone como pendientes (`publishedAt: null`, `attempts: 0`, `nextAttemptAt` = ahora) los eventos
+  publicados en la **última hora antes del volcado** (`BACKUP_REQUEUE_WINDOW_HOURS`, por defecto **1**), sin tocar los
+  `failed`. Una hora cubre de sobra la latencia normal de las colas; si la revisión de las dos semanas (11.2) mide una
+  latencia máxima mayor (reintentos, diferimientos por dominio), la ventana sube a esa cifra.
+- **En `linkvault-prod`, antes de reencolar**, `restore.sh` para `api` y `worker` y **recrea el volumen de Redis**: los
+  jobs que quedaron en Redis corresponden a un estado posterior al volcado y no deben correr sobre la base restaurada.
+- El script muestra el **recuento por tipo de evento** y pide confirmación escrita antes de reencolar; en el ensayo
+  **solo cuenta** y no reencola.
+- `infra/backup/requeue-outbox.sh --since <hora>` sirve suelto si se pierde solo Redis.
+- **Constantes fijas (C9):** el script lleva el nombre de la colección y de los campos como constantes, y un test
+  permanente de `repo-checks` las compara con `outbox-event.schemas.ts`; renombrar un campo lo hace fallar.
 
-El script depende de los campos del outbox (`publishedAt`, `failedAt`, `attempts`, `nextAttemptAt` o como se llamen en
-`apps/api/src/infrastructure/outbox/mongo-outbox.ts`): la tarea 6.3 los lee del código y una prueba local comprueba que
-el relay publica lo reencolado. Los eventos `failed` no se tocan.
+**Qué implica para el RPO:** el RPO de los **datos** sigue siendo 24 h. Para los **efectos**, el reencolado cubre los
+eventos en vuelo al volcar. Un efecto **duplicado es esperable** (no un fallo de idempotencia) para lo consumido entre
+el volcado y la pérdida: la base restaurada no guarda el rastro de ese consumo, así que un correo o un push puede salir
+dos veces. Y los jobs que **no pasan por el outbox** (los programados del worker, que se registran al arrancar, y
+cualquier encolado directo) no se reencolan: los programados vuelven solos; un encolado directo en vuelo se pierde.
 
 ### D13. Ensayo de restauración en el host, en un proyecto aparte
 
@@ -308,32 +396,50 @@ respaldo:
   ficheros; `!reset` exige Compose ≥ 2.24, que la tarea 6.2 comprueba en el host);
 - `api` solo en sus redes internas (`networks: !reset`, sin `api-egress`);
 - `mongo` con `--wiredTigerCacheSizeGB 0.5`, para que dos `mongod` quepan en 12 GB junto a staging;
-- volúmenes del proyecto (`linkvault-restore_*`), nunca los de staging.
+- volúmenes del proyecto (`linkvault-restore_*`), nunca los de `linkvault-prod`;
+- el único servicio en una red con salida es `backup-push`, sin redes de datos (C6).
 
-`infra/backup/restore-drill.sh` mide el tiempo total (RTO), levanta `mongo`, `redis`, `object-store` y `api` del
-proyecto aparte, restaura con D11, comprueba **por la API del proyecto aparte** (`exec api` con `fetch` a
-`127.0.0.1:3000`) el login de una cuenta de prueba (credenciales tecleadas, nunca guardadas), sus links y la descarga de
-su CV, imprime la conciliación y termina con `down -v`. Antes y después anota `CreatedAt` de los contenedores de staging
-y falla si cambió alguno.
+`infra/backup/restore-drill.sh` toma el candado, anota la memoria libre y, de cada contenedor de `linkvault-prod`, `Id`,
+`State.StartedAt` y `RestartCount` (C10); mide el tiempo total (RTO); levanta `mongo`, `redis`, `object-store` y `api`
+del proyecto aparte; restaura con D11 (sin reencolar, solo cuenta); comprueba **por la API del proyecto aparte**
+(`exec api` con `fetch` a `127.0.0.1:3000`) el login de la **cuenta permanente de ensayo** (C11), sus links y la
+descarga de su CV; imprime la conciliación; termina con `down -v`; y falla si cambió cualquiera de los tres valores de
+algún contenedor de `linkvault-prod`.
 
-Calendario: el primer ensayo, **después de desplegar este change y antes de la 10.7** (fase 9 del runbook, sobre el
-volumen existente y **sin** «Replace boot volume»); después, **cada mes**, en la misma sesión que la poda y la
-verificación fuera del host (D6). Siempre en el host; **nunca** en la PC del owner (con invitados hay CV reales).
+**Cuenta permanente de ensayo (C11):** una cuenta con datos sintéticos (links y un CV inventado), creada una vez en
+staging, cuyo `userId` se anota en `infra/backup/README.md` y se le pasa a 35b para que su medición la excluya, como a
+las cuentas E2E. Su contraseña vive en el gestor del owner y el script la lee por la entrada estándar (`read -s`).
+
+**Calendario (B10):** el primer ensayo, **después de desplegar este change y antes de la 10.7** (fase 9 del runbook,
+sobre el volumen existente, **sin** «Replace boot volume», desde `offsite`); después, **mensual los dos primeros
+meses**, y luego **trimestral**, más uno **extra** cada vez que suba la imagen de `mongo` o del almacén o cambie
+`infra/backup/`. Siempre en el host; **nunca** en la PC del owner. El `restic snapshots` quincenal y el `restic check`
+mensual (D6) siguen igual.
+
+**Sesión mensual (B5, ≈ 1 h):** un solo procedimiento en `docs/RUNBOOK.md`, en orden fijo: (1) verificar (`snapshots` y
+`check` de cada destino, con el criterio de D6); (2) podar; (3) costo (*Cost Analysis* en 0 y tamaño de los buckets);
+(4) ensayo de restauración, los meses que toca. Con las órdenes para PowerShell y para Bash y la salida esperada de cada
+una.
 
 ### D14. Coordinación con 35b: specs, aviso y orden de archivo
 
 - El delta de `platform/production-deploy` de este change **modifica dos requirements que añade 35b** («El destino de
   staging se puede reconstruir…» y «La pila de staging separa la red…»). Hoy no están en `openspec/specs`, así que
   **el PR de archivo de este change va después del archivo de 35b**. Si al archivar 35b ya hubiera cambiado su texto,
-  este delta se rehace sobre el texto archivado antes de archivar.
+  este delta se rehace sobre el texto archivado antes de archivar. **Plazo de revisión (R11):** si a los **60 días** de
+  fusionar este change 35b sigue sin archivar, se revisa ADR-066 y se decide con el owner entre esperar o archivar este
+  change sin el delta de `production-deploy`, pasándoselo a 35b.
 - La 9.10 de 35b (aviso a los invitados) dice «entorno desechable y sin copias». Este change **no** edita 35b: la tarea
-  8.5 deja la nota para su sesión, con el texto nuevo (copias cifradas, plazo de D7, borrado de cuenta).
+  8.5 deja la nota para su sesión, con el texto nuevo, y **«9.10 de 35b enmendada» es precondición de la fusión** (D1).
+- **Este change sí edita el aviso de `docs/RUNBOOK.md`** (C17), que no es de 35b.
 - La línea «Fuera: copias de seguridad de datos (staging es desechable)» del `scope` de `staging-host` en
   `openspec-changes.yaml` se anota en el PR de fusión de este change (tarea 8.5), no antes, para no chocar con el PR-2
   de 35b.
-- Una entrada nueva del registro de afirmaciones (`staging-sin-copias`, ADR-048 §5) hace fallar `repo-checks` si
-  `infra/README.md`, `docs/RUNBOOK.md`, `docs/despliegue/` o `apps/web/src` siguen diciendo «sin copias» o
-  «desechable» con `infra/backup/run-backup.sh` en el árbol.
+- **Registro de afirmaciones (C17):** una entrada `staging-sin-copias` (ADR-048 §5) con patrones **afirmativos y
+  específicos** («staging es desechable», «sus datos no tienen copia», «entorno desechable y sin copias», «no hay
+  copias de seguridad de datos») sobre `infra/README.md`, `docs/RUNBOOK.md`, `docs/despliegue/RUNBOOK-DESPLIEGUE.md` y
+  `apps/web/src`, con `infra/backup/run-backup.sh` como símbolo que la desmiente. `DECISION-DESPLIEGUE.md` queda fuera:
+  es un registro histórico.
 
 ### D15. El despliegue de este change recrea `mongo` y `object-store`
 
@@ -351,44 +457,48 @@ atrás de código de 35b: las redes nuevas sobran sin efecto.
 | `RESTIC_PASSWORD` | compose del respaldo | ≥ 32 caracteres, `openssl rand -hex 32` |
 | `BACKUP_OCI_REPOSITORY`, `BACKUP_OCI_ACCESS_KEY_ID`, `BACKUP_OCI_SECRET_ACCESS_KEY` | compose del respaldo | `s3:https://…` |
 | `BACKUP_OFFSITE_*` | compose del respaldo | Nombres finales tras Q2 (tarea 1.2) |
-| `BACKUP_PING_URL` | solo el host (`run-backup.sh`) | `https://…` |
+| `BACKUP_PING_URL` | solo el host (`run-backup.sh`); obligatoria explícita en `check-env-file.mjs` | `https://…` |
 | `BACKUP_MAX_REPO_BYTES`, `BACKUP_OBJECTS_MAX_BYTES`, `BACKUP_REQUEUE_WINDOW_HOURS` | compose del respaldo, con defecto | Enteros |
 
 Todas en `.env.staging` y en su copia fuera del host (regla de 35b 5.8); **`RESTIC_PASSWORD` sin copia no hay
 respaldo que valga**. La credencial de poda, solo en el gestor de contraseñas del owner. `.env.example` lleva valores
-ficticios; `infra/ci/verify.env`, relleno para `MONGO_BACKUP_*`; `check-env-file.mjs` lee también los `${VAR:?}` del
-compose del respaldo y aplica los formatos.
+ficticios; `infra/ci/verify.env`, relleno para `MONGO_BACKUP_*`; `check-env-file.mjs` recibe el compose del respaldo
+como **cuarto argumento** opcional (C23), lee sus `${VAR:?}` y aplica los formatos.
 
 ## Risks / Trade-offs
 
-- **[R1] La identidad S3 de solo lectura puede no existir sin cambiar la configuración del almacén.** → Tarea 1.7 antes
-  de nada; si exige otra configuración, repetir celdas de la matriz (días) o Q3 al owner.
-- **[R2] OCI o el destino de fuera pueden no admitir el modelo V.** → Tareas 1.5a y 1.5b miden el modelo por destino; el modelo R
-  solo si restic funciona con él; si ninguno, el destino no es apto y vuelve al owner.
+- **[R1] La identidad S3 de solo lectura puede no existir sin cambiar la configuración del almacén o sin degradar la de
+  la aplicación.** → Tareas 1.7a y 1.7b antes de nada, con los seis criterios de D3; si fallan, Q3.
+- **[R2] OCI o el destino de fuera pueden no admitir el modelo V.** → Tareas 1.5a (primero) y 1.5b; el modelo R solo si
+  restic funciona con él; si ninguno, el destino no es apto y vuelve al owner.
 - **[R3] Peticiones de OCI Object Storage (50.000 al mes).** Una corrida son decenas a cientos de peticiones por
-  destino; la tarea 7.6 las mide en la consola tras una semana y la revisión de Q4 a las dos semanas las vuelve a mirar.
-- **[R4] Un atacante con el host manda pings de éxito falsos.** → Verificación mensual fuera del host (D6) y ventana `P`
-  de 30 días que la cubre.
-- **[R5] Plazo largo de los datos borrados en las copias (hasta 14 semanas por defecto).** → Escrito en `/privacidad` y
-  en el aviso; acortarlo es Q1 y Q2.
-- **[R6] Reencolar puede repetir un correo o un push** si un consumidor no cumple su idempotencia. → Aceptado; el ensayo
-  no corre `worker`.
-- **[R7] Dos `mongod` en 12 GB durante el ensayo.** → Caché de 0,5 GB en el proyecto aparte y memoria libre anotada
-  antes de empezar.
+  destino; la tarea 10.7 las mide en la consola tras una semana y la revisión de las dos semanas las vuelve a mirar.
+- **[R4] Un atacante con el host manda pings de éxito falsos y oculta copias.** → `restic snapshots` quincenal desde la
+  PC (≤ `P` − 7 días) y procedimiento «Recuperar tras un borrado».
+- **[R5] Plazo largo de los datos borrados en las copias (hasta 14 semanas por defecto, 18 con Drive).** → Escrito en
+  `/privacidad` y en el aviso; acortarlo es Q1 y Q2.
+- **[R6] Efectos duplicados tras restaurar** para lo consumido entre el volcado y la pérdida. → Aceptado y escrito
+  (D12); confirmación por tipo antes de reencolar; el ensayo no reencola.
+- **[R7] Dos `mongod` en 12 GB durante el ensayo.** → Caché de 0,5 GB en el proyecto aparte y memoria libre anotada.
 - **[R8] `tmpfs` y swap.** → Tarea 2.2: sin swap o swap cifrada; si no, se decide antes de desplegar.
 - **[R9] Con Drive (Q2 b) la copia de fuera no tiene borrado protegido.** → Q4.
-- **[R10] El lector de objetos amplía el riesgo residual del almacén.** → Sin salida, efímero, imagen fijada (D2).
-- **[R11] El archivo depende del archivo de 35b.** → D14; si 35b se retrasa, el PR de archivo espera.
+- **[R10] Los lectores y el cargador de objetos amplían el riesgo residual del almacén.** → Sin salida, efímeros, imagen
+  fijada (D2).
+- **[R11] El archivo depende del archivo de 35b.** → D14, con revisión a los 60 días.
+- **[R12] La imagen de restic ve los datos en claro antes de cifrarlos.** → Imagen oficial fijada por digest y
+  comprobada por plataforma; escrito en ADR-066.
+- **[R13] Una restauración devuelve borrados de las últimas 24 h.** → Paso posterior del owner (D11, paso 8) y aviso.
 
 ## Migration Plan
 
-1. Tareas del owner del grupo 1 (destinos, monitor) y la medición 1.5a, 1.5b y 1.7, en paralelo a 35b: no tocan `main`.
+1. 1.5a primero; después el resto del grupo 1 (destinos, monitor, 1.7a y 1.7b), en paralelo a 35b: no tocan `main`.
 2. Implementación en la rama del change; pruebas con pila local y repositorio local con datos sintéticos.
-3. Fusión en la ventana de D1 (después de la 11.6, antes de la 10.7); despliegue normal (D15).
-4. Secretos en `.env.staging` y su copia; unidades instaladas; primer respaldo a mano; dos noches seguidas; falsaciones
-   en el host (fase 8 del runbook).
-5. Ensayo de restauración en el host (fase 9), con RTO anotado.
-6. Recién entonces, la 10.7 de 35b.
+3. Antes de fusionar: secretos en `.env.staging` y su copia (10.1) y 9.10 de 35b enmendada.
+4. Fusión en la ventana de D1 (después de la 11.6, antes de la 10.7); despliegue normal (D15).
+5. Unidades instaladas siguiendo solo el README; primer respaldo a mano; dos noches seguidas; falsaciones en el host
+   (fase 8 del runbook).
+6. Ensayo de restauración en el host desde `offsite` (fase 9), con RTO anotado.
+7. Recién entonces, la 10.7 de 35b.
 
 **Vuelta atrás:** revertir el PR deja la pila sin las redes del respaldo (recrea `mongo` y `object-store` otra vez) y el
 timer fallando con aviso hasta que se desactive (`systemctl disable --now`). Los respaldos ya hechos siguen en los
@@ -399,29 +509,91 @@ destinos y se pueden restaurar con el `restore.sh` del commit anterior a la reve
 Las Q1-Q6 de la decisión de despliegue están respondidas (2026-11-18). Estas son nuevas, de este change:
 
 **Q1. Ventana de protección `P` del borrado.** **[no bloqueante; el change trae 30 días por defecto]**
-(a) 30 días: cubre la verificación mensual fuera del host; (b) 14 días; (c) 7 días. Menos días acortan el plazo de los
-datos borrados (D7) y lo que ocupan las versiones, pero un borrado malicioso podría no detectarse a tiempo.
+(a) 30 días; (b) 14 días; (c) 7 días. Menos días acortan el plazo de los datos borrados (D7) y lo que ocupan las
+versiones, y obligan a verificar más seguido (cada ≤ `P` − 7 días: con 14, semanal; con 7, no hay margen).
 **Recomendación: (a).**
 
 **Q2. Dónde y cada cuánto se poda.** **[no bloqueante; por defecto (a)]**
-(a) Mensual, desde la PC del owner, en la misma sesión que el ensayo de restauración y la verificación fuera del host;
-(b) semanal, desde la PC (plazo de D7 más corto, una tarea más por semana); (c) semanal, con un workflow programado de
-GitHub Actions y la credencial de poda como secreto del repositorio (automático, pero junta en GitHub la credencial que
-destruye los respaldos con la clave SSH que da root en el host). **Recomendación: (a).**
+(a) Mensual, desde la PC del owner, en la sesión mensual; (b) semanal, desde la PC (plazo de D7 más corto, una tarea
+más por semana); (c) semanal, con un workflow programado de GitHub Actions y la credencial de poda como secreto del
+repositorio (automático, pero junta en GitHub la credencial que destruye los respaldos con la clave SSH que da root en
+el host). **Recomendación: (a).**
 
-**Q3. Si no hay identidad S3 de solo lectura sin cambiar la configuración del almacén.** **[bloqueante solo si la
-tarea 1.7 no encuentra un mecanismo que cumpla sus cuatro criterios]**
-(a) Adoptar la configuración que la dé y repetir C3-C5 y C7-C9 de la matriz (ADR-052 §2); (b) aceptar por escrito que
-el lector de objetos use la identidad de la aplicación (sin salida, efímero), lo que relaja la condición (1) del
-disenso. **Recomendación: (a)**, salvo que la repetición de la matriz pase de dos días.
+**Q3. Si no hay identidad S3 de solo lectura que cumpla los seis criterios de D3.** **[bloqueante solo si fallan la
+1.7a o la 1.7b]**
+(a) Adoptar la configuración del almacén que la dé y repetir C3-C5 y C7-C9 de la matriz (ADR-052 §2); (b) aceptar por
+escrito que el lector de objetos use la identidad de la aplicación (sin salida, efímero), lo que relaja la condición
+(1) del disenso. **Recomendación (B8): (a) solo si la repetición de la matriz cabe en un día; si no, (b) aceptada por
+escrito.**
 
 **Q4. Si el destino de fuera de Oracle es Google Drive.** **[bloqueante solo si Q2 de la decisión cae en (b)]**
-(a) Aceptar por escrito que esa copia no tiene borrado protegido frente al host (la de OCI sí lo tiene); (b) seguir
-buscando un destino (a). **Recomendación: (a)**: Drive cubre la pérdida de la cuenta de Oracle, que es su función.
+(a) Aceptar por escrito que esa copia no tiene borrado protegido frente al host (la de OCI sí lo tiene) y que suma 30
+días de papelera al plazo de D7; (b) seguir buscando un destino (a). **Recomendación: (a)**: Drive cubre la pérdida de
+la cuenta de Oracle, que es su función.
+
+**Q5 (propuesta, B7). Si la 1.1 termina en (a), ¿un solo destino?** **[no bloqueante; reabre la respuesta del owner a
+Q2 de la decisión, por eso es una propuesta]**
+(a) Mantener los dos destinos, como respondió el owner; (b) quedarse solo con el destino de fuera de Oracle, que ya
+cubre la pérdida del host y de la cuenta, y simplificar la sesión mensual y las peticiones. **Recomendación: (a)**: dos
+proveedores independientes significan que perder una cuenta o un proveedor no deja sin copia; el costo es configuración
+y la mitad de la sesión quincenal, que es de 5 minutos.
 
 ## Respuestas del owner y aprobación
 
 - **2026-11-18, decisión de despliegue:** Q1 (a), Q2 (a) si se verifica y si no (b), Q3 (a), Q4 (a) con revisión a las
   dos semanas, Q5 (a) y si no hay respuesta en una semana (b), Q6 (a). «Toma las recomendaciones».
-- **Q1-Q4 de este change:** pendientes (tarea 0.1).
-- **Debate critic/business/reflect y aprobación:** pendientes (tarea 0.2).
+- **Q1-Q5 de este change:** pendientes (tarea 0.1).
+- **Debate critic/business/reflect y aprobación:** iteración 1 aplicada (abajo); pendiente la siguiente (tarea 0.2).
+
+## Debate iteración 1 (2026-11-18)
+
+Critic: 2 P0, 18 P1, 12 P2. Business: 0 V0. Reflect de la sesión principal: aceptados todos. Sin «Convergencia»: había
+P0 abiertos al empezar la iteración.
+
+| id | Decisión | Motivo |
+|---|---|---|
+| C1 (P0) | `logging: none` en todo servicio del respaldo y la restauración; `backup-isolation` lo exige; 2.5 y 10.5 lo comprueban con `docker inspect` y sin fichero de log | Con `json-file`, la salida estándar (el volcado) queda en claro en `/var/lib/docker` (D2) |
+| C2 (P0) | Criterios 5 y 6 en 1.7a/1.7b, 3.2 y 10.5; si fallan, Q3 | Crear una identidad podría degradar la de la aplicación (D3) |
+| C3 | Redacción «ningún proceso puede consultar los datos y además salir»; riesgo de la imagen de restic en ADR-066 | `backup-push` ve el flujo en claro (D2, R12) |
+| C4 | Guardia sobre `config --format json` en CI, ficheros crudos fuera de CI; reglas de redes explícitas, sin `network_mode`, `default` ni `ports`; redes de datos internas | Lo resuelto por Compose es lo que corre (D2) |
+| C5 | `mongorestore` con `exec -T mongo` y `--config` en su `/tmp`; servicio `restore-objects` aparte | Sin escritor de datos con credenciales en argumentos; el cargador, declarado y vigilado (D11, D2) |
+| C6 | El escenario del override nombra la excepción de `backup-push` | Precisión del escenario (spec) |
+| C7 = B6 | `restore.sh --from oci\|offsite`; primer ensayo desde `offsite`, después alterna; `restic check` mensual por destino | Ejercitar el destino que cubre la pérdida de la cuenta (D11, D6) |
+| C8 + B2 + C24 | Ventana de 1 h (o la latencia máxima medida); Redis recreado en `linkvault-prod`; recuento por tipo y confirmación; el ensayo solo cuenta; texto de duplicados corregido; prueba con un Redis que ya tenía el job | El reencolado amplio duplicaba efectos (D12) |
+| C9 | Constantes fijas y test contra `outbox-event.schemas.ts` | Acoplamiento con el esquema, vigilado (D12) |
+| C10 | Se comparan `Id`, `State.StartedAt` y `RestartCount` | `CreatedAt` no ve un reinicio (D13) |
+| C11 | Cuenta permanente de ensayo sintética, excluida de la medición de 35b; contraseña por la entrada estándar | Comprobación repetible sin datos reales (D13) |
+| C12 | `restore.sh` toma la etiqueta `sha-<12>` de la `api` de staging o falla | Nunca `:latest` (D11) |
+| C13 | `ExecStart=/bin/bash`; `main(){…}; main "$@"`; candado común; franja sin despliegues documentada (sin tocar `deploy.sh`) | Scripts reemplazados en caliente y corridas solapadas (D4, D10) |
+| C14 | 10.1 es precondición de la fusión, con la fase 3 del runbook | El compose exige `MONGO_BACKUP_*` (D1) |
+| C15 | Cinco falsaciones en 1.5a/1.5b; «Recuperar tras un borrado»; `snapshots` quincenal (≤ `P` − 7) | La protección se mide y se usa (D6) |
+| C16 | Retención no bloqueada, que quita el owner y no la credencial del host; regla de corte 4; tope con `ListObjectVersions` si se puede | Poder borrar el recurso ante un cargo (D6, D8) |
+| C17 | Patrones afirmativos y específicos; `DECISION` excluida; este change edita el aviso de `docs/RUNBOOK.md`; «9.10 enmendada» en 12.1 | Evitar falsos positivos y huecos (D14) |
+| C18 | 10.3 sigue solo el README y cuenta defectos; requirement redactado así | La programación es parte de la reconstrucción (D10, spec) |
+| C19 | Solo la API IAM, con excepción acotada en `platform/object-store`; `weed shell` descartado | `weed shell` es CLI del producto dentro del almacén (D3) |
+| C20 | 1.7, 3.3, 6.4 y 6.6 partidas | Tareas de menos de una hora |
+| C21 | 4.7a comprueba `-T` y `--no-deps` | Sin `-T` la tubería se corrompe; sin `--no-deps`, `run` toca la pila |
+| C22 | Runbook alineado (margen 3 h, modelo V, `run-backup.sh`, «Publicar una actualización») en 8.3 | Coherencia de nombres |
+| C23 | Cuarto argumento de `check-env-file.mjs`; `BACKUP_PING_URL` obligatoria explícita | No está en ningún compose (D9, D16) |
+| C25 | Falsaciones de 4.4 y 6.1 con datos grandes y suma alterada; duplicados son error | Un corte a mitad con datos chicos no se ve (D4) |
+| C26 | Pull y comprobación de plataformas de las imágenes del respaldo | Sin el despliegue, nadie las comprobaba (D4) |
+| C27 | `TimeoutStartSec=2h`, `After=docker.service` y espera de salud | Corrida al arrancar el host (D10, D4) |
+| C28 | Cabeceras del CV comparadas al restaurar | Un CV sin `Content-Type` no se descarga bien (D11) |
+| C29 | Papelera de Drive suma 30 días al plazo | Plazo honesto (D7) |
+| C30 | El proyecto es `linkvault-prod` | Nombre real del compose |
+| C31 | `backup-push` no alcanza la dirección de metadatos | Es el único con salida del respaldo (2.5, 10.5) |
+| C32 | Guardia del plazo en semanas en los cuatro sitios | El número no puede divergir (D7) |
+| R11 | Revisión a los 60 días si 35b sigue sin archivar | Plazo para no quedar colgado (D14) |
+| B1 | Guardia: `.env.staging` del host o `--confirm-host`, sin mirar la arquitectura | Un plan B `amd64` también es host (D11) |
+| B3 | `prune_overdue` a los 65 días sin cortar el respaldo | Recordatorio de la sesión mensual (D4) |
+| B4 | Paso posterior: el owner reaplica los borrados que le consten; el aviso lo dice | Una restauración devuelve borrados (D11) |
+| B5 | Sesión mensual única en la 8.2, orden fijo, PowerShell y Bash, criterio simple | Operable por una persona (D13) |
+| B7 | Q5 como propuesta | Reabre una respuesta del owner |
+| B8 | Q3 recomienda (a) solo si cabe en 1 día | Costo de la matriz |
+| B9 | En la PC solo `snapshots`, `forget --prune`, `stats`, `check` | Nunca datos en claro en la PC (D6) |
+| B10 | Ensayo mensual dos meses, después trimestral más extras | Carga sostenible (D13) |
+| B11 | La 1.1 corta a los 7 días o a las 3 h de búsqueda | Acotar el esfuerzo del owner |
+| B12 | Alcance `drive.file` | Mínimo privilegio (D5) |
+| B13 | `/privacidad` con los cuatro puntos | Aviso honesto (spec `web/privacy`) |
+| B14 | La 1.3 sigue design D6, no la fase 8 paso 2 | El runbook es anterior al design |
+| Nota business | 1.5a primero en el grupo 1 | Si OCI no admite V, cambia el reparto |

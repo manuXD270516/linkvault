@@ -25,7 +25,8 @@ disco.
   como caminos soportados: el camino soportado sigue siendo el compose con Traefik.
 - La reconstrucción SHALL haberse **ensayado** siguiendo solo la documentación, y cada paso que faltara SHALL haberse
   corregido en el texto. Una documentación de reconstrucción que nadie ha seguido es una afirmación sin comprobar. La
-  reconstrucción SHALL incluir reinstalar la programación del respaldo.
+  reconstrucción SHALL incluir reinstalar la programación del respaldo siguiendo solo su sección, y SHALL constar la
+  franja horaria sin despliegues.
 
 #### Scenario: Reconstruir staging siguiendo solo la documentación
 
@@ -69,8 +70,8 @@ datos de usuario.
 - Mongo y Redis NO SHALL aceptar operaciones sin credenciales, y ninguna contraseña SHALL aparecer en los argumentos de
   un proceso.
 - El filer del almacén NO SHALL servir objetos por HTTP. Las interfaces del almacén que siguen sin autenticación SHALL
-  ser alcanzables solo desde `api`, `worker` y el lector de objetos del respaldo, que no tiene salida a Internet ni
-  existe fuera de la corrida (`platform/backups`), y SHALL constar como riesgo residual.
+  ser alcanzables solo desde `api`, `worker` y los procesos de objetos del respaldo y de la restauración, que no tienen
+  salida a Internet ni existen fuera de la corrida (`platform/backups`), y SHALL constar como riesgo residual.
 - Ningún contenedor SHALL alcanzar la dirección de metadatos del proveedor.
 
 #### Scenario: El worker sale a Internet pero no alcanza la API
