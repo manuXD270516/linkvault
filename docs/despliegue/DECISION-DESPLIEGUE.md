@@ -13,7 +13,7 @@ parámetros y la decisión, sin secretos, están en [`despliegue.json`](desplieg
 la raíz porque un archivo en la raíz dispararía `cd-staging` al fusionarse (`docs/**` está en su `paths-ignore`). El
 estado por fase vive en el runbook; el JSON solo se actualiza al cierre.
 
-**Estado:** aprobada por el owner el 2026-11-18 («Aprobada»); las preguntas Q1-Q6 siguen abiertas. No reemplaza a ningún ADR: confirma el destino de
+**Estado:** aprobada por el owner el 2026-11-18 («Aprobada»); Q1-Q6 respondidas el mismo día con las recomendaciones. No reemplaza a ningún ADR: confirma el destino de
 [ADR-051](../adr/ADR-051.md) y le agrega condiciones. Lo que enmienda a ADR-051 §2 («sin copias de seguridad de datos»)
 entra al repositorio por el change de respaldo y su ADR (ver [Cambios de código](#cambios-de-código-que-el-despliegue-necesita)),
 no por este documento.
@@ -303,7 +303,17 @@ Su lugar en el plan es la Q1.
 - El owner quiere eliminar la tarjeta de la cuenta, o cambia el presupuesto.
 - Una medición real (6.4) muestra que la pila no entra en 12 GB.
 
-## Preguntas abiertas para el owner
+## Preguntas para el owner
+
+**Respuestas del owner, 2026-11-18:** «Toma las recomendaciones».
+- **Q1:** (a), change propio `staging-backups`.
+- **Q2:** (a), si se verifica sin tarjeta y con bloqueo de objetos; si no, (b).
+- **Q3:** (a), 7 diarios y 4 semanales.
+- **Q4:** (a), nocturno, con revisión a las dos semanas.
+- **Q5:** (a), y si no hay respuesta en una semana, (b). Lo hace el owner.
+- **Q6:** (a), el SSH en 35b.
+
+Las opciones se conservan abajo como registro.
 
 **Q1. ¿Dónde va el respaldo en el plan?** **[bloqueante para abrir el change de respaldo]**
 (a) Change propio (`staging-backups`) con una excepción a la precedencia de la fila 35 (ADR-048), fusionado en la misma
