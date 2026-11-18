@@ -18,10 +18,11 @@ fallo de uno no impida el otro.
 - El volcado de la base SHALL ser consistente en un instante (con el registro de operaciones del replica set) y SHALL
   hacerse **antes** que la lectura de los objetos, para que todo objeto que la base referencia esté en la copia.
 - Ningún dato en claro SHALL escribirse en un disco del host ni de un contenedor, **incluidos los registros de
-  Docker**: los datos viajan por tuberías, los servicios que los sacan por su salida estándar no guardan registros, y
-  el área de trabajo, si hace falta, es memoria con tope.
-- Una corrida SHALL valer solo si deja en el destino su **manifiesto**: identificador de la corrida, hora, y tamaño y
-  suma SHA-256 de cada flujo, comprobados al restaurar. Una corrida sin manifiesto NO SHALL contarse como respaldo.
+  Docker**: los datos viajan por tuberías, los servicios que los sacan por su salida estándar no guardan registros, el
+  orquestador no reproduce el flujo en su propia salida ni en su registro, y el área de trabajo, si hace falta, es
+  memoria con tope.
+- Una corrida SHALL valer solo si deja en el destino su **manifiesto**: identificador de la corrida, horas de inicio y
+  fin del volcado de la base en ese destino, y tamaño y suma SHA-256 de cada flujo, comprobados al restaurar. Una corrida sin manifiesto NO SHALL contarse como respaldo.
 - El intervalo SHALL ser nocturno (RPO de 24 h, aceptado por el owner el 2026-11-18), con una revisión con el tamaño
   real del repositorio a las dos semanas de tener invitados.
 
@@ -46,6 +47,12 @@ fallo de uno no impida el otro.
 - **WHEN** corre el respaldo
 - **THEN** el destino fuera de Oracle SHALL recibir su corrida completa con manifiesto
 - **AND** el respaldo SHALL terminar con error nombrando el destino que falló
+
+#### Scenario: El orquestador no reproduce los datos en su salida
+
+- **GIVEN** un flujo del respaldo con un marcador binario conocido
+- **WHEN** corre el respaldo
+- **THEN** el marcador NO SHALL aparecer en la salida estándar ni en la de errores del orquestador
 
 #### Scenario: Los datos no quedan en los registros de Docker
 
@@ -113,7 +120,13 @@ aplicación ni las del usuario raíz.
 - La identidad S3 SHALL sobrevivir a un reinicio del almacén, y su creación NO SHALL cambiar la configuración medida
   del almacén sin repetir las celdas de la matriz que ADR-052 §2 exige.
 - Crear la identidad S3 NO SHALL alterar ninguna otra identidad: la de la aplicación SHALL seguir pudiendo leer,
-  escribir y borrar, y la comprobación del aprovisionamiento SHALL seguir pasando.
+  escribir y borrar, y la comprobación del aprovisionamiento SHALL seguir pasando. Cada corrida SHALL ejecutar esa
+  comprobación después de asegurar la identidad y, si falla, SHALL terminar con una falla urgente antes de leer
+  objetos. La documentación SHALL tener el procedimiento para revertir la identidad de respaldo.
+- Si el almacén no permite fijar la clave de la identidad, la identidad SHALL ser efímera: se crea al empezar la
+  corrida, su clave llega al lector solo por su entorno y se borra al terminar, también si la corrida falla.
+- La identidad de solo lectura evita escrituras por error; NO SHALL presentarse como contención de un lector
+  comprometido mientras las interfaces internas del almacén sigan sin autenticación.
 
 #### Scenario: El usuario de respaldo no puede escribir
 
@@ -133,6 +146,12 @@ aplicación ni las del usuario raíz.
 - **WHEN** intenta subir un objeto y borrar otro en el bucket de CV
 - **THEN** las dos operaciones SHALL rechazarse
 - **AND** listar y leer un objeto de cada bucket SHALL funcionar
+
+#### Scenario: Una identidad que degrada la de la aplicación corta la corrida
+
+- **GIVEN** un almacén en el que asegurar la identidad de respaldo deja a la aplicación sin permiso de escritura
+- **WHEN** corre el respaldo
+- **THEN** la corrida SHALL terminar con la falla urgente de la identidad antes de leer objetos
 
 #### Scenario: La identidad de la aplicación no cambia
 
@@ -232,8 +251,9 @@ El respaldo SHALL programarse en el host de modo que siga activo tras un reinici
 corrida perdida por estar el host apagado se recupere al arrancar. La programación SHALL instalarse siguiendo **solo**
 la sección correspondiente de `infra/README.md`, y cada paso que haga falta y no esté escrito SHALL contarse como
 defecto de la documentación y corregirse; la reconstrucción del host SHALL incluir ese paso y comprobar el siguiente
-disparo. El respaldo, la restauración y su ensayo SHALL compartir un candado: dos de ellos NO SHALL solaparse. La
-documentación SHALL escribir la franja horaria sin despliegues.
+disparo. El respaldo, la restauración y su ensayo SHALL compartir un candado: dos de ellos NO SHALL solaparse; y cada uno SHALL
+ejecutar una copia de sus scripts y de sus ficheros de Compose hecha al tomar el candado, de modo que un despliegue a
+mitad de camino no cambie lo que ejecuta. La documentación SHALL escribir la franja horaria sin despliegues.
 
 #### Scenario: Tras reiniciar el host el respaldo sigue programado
 
@@ -260,14 +280,16 @@ La restauración SHALL elegir el destino del que restaura y partir de la última
 coinciden, o de la que se elija; manifiestos o instantáneas duplicados de una misma corrida SHALL ser un error. SHALL:
 
 - usar para el proyecto que restaura la misma imagen etiquetada por commit que corre en staging, y fallar si no la hay;
+- en staging, exigir la confirmación escrita de que el despliegue continuo está desactivado;
 - detener `api` y `worker` antes de tocar la base, y dejar `mongo` solo;
 - restaurar la base dentro del propio contenedor de la base, **sin** las colecciones de usuarios del sistema
   (`admin.*`), sobre un volumen que la propia base inicializó con el usuario raíz del fichero de entorno, sin
   credenciales en los argumentos;
-- volver a cargar los objetos por la API S3, con un proceso sin salida y sin registros;
+- aprovisionar los buckets, después asegurar la identidad de respaldo y comprobar que lista los dos buckets, y recién
+  entonces volver a cargar los objetos por la API S3, con un proceso sin salida y sin registros;
 - en staging, recrear la cola antes de reencolar, mostrar cuántos eventos se reencolarían por tipo y pedir
-  confirmación; marcar como pendientes los eventos del outbox publicados en la ventana anterior al volcado (por defecto
-  una hora); en el ensayo, solo contar;
+  confirmación; marcar como pendientes los eventos del outbox publicados desde la hora de inicio del volcado del
+  destino restaurado menos la ventana (por defecto una hora); en el ensayo, solo contar;
 - imprimir un informe de conciliación: CV de la base sin objeto, objetos sin documento, eventos reencolados y cabeceras
   de los CV distintas de las del manifiesto;
 - recordar al terminar que el owner vuelva a aplicar los borrados que le consten posteriores al volcado.
@@ -292,6 +314,18 @@ coinciden, o de la que se elija; manifiestos o instantáneas duplicados de una m
 - **WHEN** se restaura en staging y se confirma el reencolado
 - **THEN** la cola SHALL recrearse antes de reencolar
 - **AND** cada evento de la ventana SHALL quedar con un solo job
+
+#### Scenario: Un evento publicado durante el volcado se reencola
+
+- **GIVEN** un evento publicado después de empezar el volcado de la base y antes del manifiesto, que quedó en el volcado
+  como publicado
+- **WHEN** se restaura en staging y se confirma el reencolado
+- **THEN** ese evento SHALL quedar pendiente
+
+#### Scenario: Restaurar staging sin desactivar el despliegue continuo se rechaza
+
+- **WHEN** se pide restaurar en staging sin escribir la confirmación de que el despliegue continuo está desactivado
+- **THEN** la restauración SHALL terminar sin tocar nada
 
 #### Scenario: El ensayo no reencola
 
@@ -374,8 +408,9 @@ del fichero de entorno SHALL fallar nombrando la variable que falte o tenga mal 
 
 El plazo máximo durante el que un dato borrado sigue en alguna copia SHALL calcularse con la retención, la frecuencia
 de la poda, la ventana de protección y, si la hay, la papelera del destino, y SHALL escribirse en semanas, con el mismo
-número, en la documentación del respaldo, en el aviso de operación, en el aviso a los invitados y en el aviso de
-privacidad. Una comprobación permanente SHALL fallar si los números difieren.
+número, en la documentación del respaldo, en el aviso de operación y en el aviso de privacidad; una comprobación
+permanente SHALL fallar si esos tres números difieren. El aviso a los invitados SHALL llevar el mismo número, y se
+comprueba antes de fusionar.
 
 #### Scenario: Un plazo distinto en un aviso rompe la comprobación
 

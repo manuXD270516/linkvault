@@ -10,7 +10,8 @@ código ni esos procedimientos.
 
 **Única excepción, acotada:** asegurar la identidad S3 de solo lectura del respaldo (`platform/backups`) MAY usar la API
 de identidades que expone la pasarela del almacén, con la forma de la API IAM de AWS, **solo** desde un script aislado
-(`infra/backup/ensure-backup-identity.sh`) que es lo único a reescribir si cambia el producto. Ningún otro paso SHALL
+(`infra/backup/ensure-backup-identity.sh`, ejecutado desde un proceso efímero sin salida en la red del almacén) que es
+lo único a reescribir si cambia el producto. Ningún otro paso SHALL
 usarla, y NO SHALL usarse la CLI del producto ni ejecutarse órdenes dentro del contenedor del almacén para ello.
 
 Los procedimientos de operación del RUNBOOK que todavía usen la CLI de un producto anterior (listar y borrar objetos,
@@ -58,9 +59,10 @@ fichero que contenga un secreto del almacén de un entorno real.
 El servicio del almacén SHALL vivir en **redes de contenedores propias**, porque un producto puede escuchar en puertos
 internos sin autenticación que su configuración no permite cerrar. En el compose de **producción**, a esas redes SHALL
 pertenecer **solo** el almacén, los procesos de la aplicación que lo usan (`api` y `worker`), el **lector de objetos
-del respaldo** y el **cargador de objetos de la restauración** (`platform/backups`); cada una SHALL ser una red sin
+del respaldo**, el **proceso que asegura su identidad** y el **cargador de objetos de la restauración**
+(`platform/backups`); cada una SHALL ser una red sin
 salida ni puertos publicados, y el almacén NO SHALL pertenecer a ninguna otra. El lector del respaldo SHALL leer con
-una identidad S3 de solo lectura propia; el lector y el cargador NO SHALL tener salida a Internet, ni compartir red con
+una identidad S3 de solo lectura propia; esos tres procesos NO SHALL tener salida a Internet, ni compartir red con
 `api` o `worker`, ni guardar registros, y SHALL existir solo mientras dura la corrida o la restauración. Ningún otro
 servicio (base de datos, cola, `web`, proxy de entrada, el proceso que envía los respaldos) SHALL poder alcanzar
 **ningún** puerto del almacén. En el compose de **desarrollo**, donde la aplicación corre en el host, el almacén SHALL

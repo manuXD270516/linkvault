@@ -89,6 +89,7 @@ efímeros (`docker compose run --rm --no-deps -T`), que solo existen mientras du
 | `backup-objects` | `rclone/rclone` | `store-backup` (interna: `object-store` y los dos de objetos) | `S3_BACKUP_*` | Respaldo |
 | `backup-push` | `restic/restic` | `backup-egress` (con salida, solo él) | `RESTIC_PASSWORD` y credenciales de los destinos | Respaldo y restauración |
 | `restore-objects` | `rclone/rclone` | `store-backup` | Identidad de la aplicación (`S3_ACCESS_KEY`) | Solo restauración |
+| `backup-identity` | cliente SigV4 `arm64` fijado por digest (lo elige la 1.7a) | `store-backup` | Identidad de la aplicación, para asegurar la de respaldo | Respaldo y restauración |
 
 El orquestador (`infra/backup/run-backup.sh`, en el host, como el usuario de despliegue) encadena
 `run backup-mongo … | run backup-push …`: los datos pasan por una tubería del host. **Ningún proceso puede consultar
@@ -100,9 +101,13 @@ por digest y comprobada por plataforma (C26).
 - **Sin registros de datos (C1, P0):** todos los servicios de este fichero llevan `logging: { driver: none }`. Su
   salida estándar **es** el volcado de la base o el `tar` de los objetos (o, en `backup-push`, el `restic dump` de una
   restauración); con el controlador por defecto de Docker (`json-file`) quedaría escrita **en claro** en
-  `/var/lib/docker/containers/<id>/…-json.log`. La tubería de `run -T` sigue funcionando con `none`: la conexión
-  (`attach`) no pasa por el controlador de registros, y la tarea 2.5 lo comprueba.
-- Los cuatro van en **`infra/backup/docker-compose.backup.yml`**, que se suma con `-f` solo para respaldar y restaurar.
+  `/var/lib/docker/containers/<id>/…-json.log`. Que la tubería de `run -T` siga entregando los bytes íntegros con
+  `none` es un supuesto **medido en la tarea 1.8** (C1-a): 64 MiB aleatorios generados en el `tmpfs` de un contenedor
+  con `logging: none` dan la misma suma dentro y fuera, `LogPath` queda vacío y `docker logs` da error.
+- **El orquestador tampoco filtra datos (C1-b):** `run-backup.sh` y `restore.sh` nunca reproducen el flujo en su
+  propia salida ni en la de systemd: sin `set -x`, sin `tee` a la salida estándar. La prueba de la 4.7a lo vigila con
+  un marcador binario.
+- Los cinco van en **`infra/backup/docker-compose.backup.yml`**, que se suma con `-f` solo para respaldar y restaurar.
   No van en `docker-compose.prod.yml` porque `compose-healthchecks` exige healthcheck a todo servicio de ese fichero y
   un trabajo de un solo uso no tiene uno honesto (el mismo motivo por el que ADR-052 §4 descartó un servicio de
   aprovisionamiento).
@@ -118,10 +123,11 @@ por digest y comprobada por plataforma (C26).
   no tiene `network_mode`, no está en la red `default`, no tiene `ports` y lleva `logging.driver: none`; ninguno está a
   la vez en una red con salida y en una de datos; ninguno comparte red con `api` ni `worker`; `data-backup` y
   `store-backup` son `internal: true`, y sus miembros son exactamente `mongo`+`backup-mongo` y
-  `object-store`+`backup-objects`+`restore-objects`; en el override de restauración, el único servicio en una red con
+  `object-store`+`backup-objects`+`restore-objects`+`backup-identity`; en el override de restauración, el único servicio en una red con
   salida es `backup-push`, sin redes de datos (C6).
 
-**Riesgo residual que se extiende (ADR-066 §Enmiendas, punto 3):** `backup-objects` y `restore-objects` alcanzan las
+**Riesgo residual que se extiende (ADR-066 §Enmiendas, punto 3):** `backup-objects`, `restore-objects` y
+`backup-identity` alcanzan las
 interfaces sin autenticación del almacén (maestro, volumen y gRPC), como `api` y `worker`. Se acepta porque no tienen
 salida y solo existen unos minutos, con una imagen fijada.
 
@@ -133,8 +139,9 @@ clave); servicios con `profiles:` dentro de `docker-compose.prod.yml` (chocan co
 ### D3. Credenciales de solo lectura propias
 
 - **Mongo:** usuario `MONGO_BACKUP_USER` con el rol integrado `backup` sobre `admin` (permite `mongodump --oplog` y no
-  escribe). Se **asegura en cada corrida y en cada restauración**: `docker compose exec -T mongo mongosh --file` con un
-  script que lee `process.env` (raíz y respaldo) y hace `createUser` o `updateUser` idempotente. Por eso
+  escribe). Se **asegura en cada corrida y en cada restauración**: `docker compose exec -T mongo mongosh` con el script
+  **por la entrada estándar** (`--file /dev/stdin` o el equivalente que mida la 3.1; D3-a), sin montajes nuevos en
+  `mongo`; el script lee `process.env` (raíz y respaldo) y hace `createUser` o `updateUser` idempotente. Por eso
   `MONGO_BACKUP_USER` y `MONGO_BACKUP_PASSWORD` van en el entorno del servicio `mongo` con `${VAR:?}`, con el formato
   apto para URI de D18. Cubre los volúmenes viejos (H7) y la rotación de la contraseña.
   *Descartado:* crearlo en el healthcheck (un healthcheck que escribe, el mismo rechazo de ADR-052 §4); un `post_start`
@@ -143,8 +150,8 @@ clave); servicios con `profiles:` dentro de `docker-compose.prod.yml` (chocan co
 - **`mongodump` sin contraseña en los argumentos:** el lector escribe un fichero de configuración (`--config`) en su
   `tmpfs` desde su entorno, con modo 600, y lo pasa por ruta. Nunca una URI con credenciales en la orden.
 - **Almacén:** identidad S3 propia (`S3_BACKUP_ACCESS_KEY`/`S3_BACKUP_SECRET_KEY`) con solo `List` y `Read` sobre los
-  dos buckets, asegurada por `infra/backup/ensure-backup-identity.sh`. **El mecanismo se mide antes de implementar**
-  (tareas 1.7a y 1.7b) con seis criterios:
+  dos buckets, asegurada por `infra/backup/ensure-backup-identity.sh` desde el servicio `backup-identity` (D2).
+  **El mecanismo se mide antes de implementar** (tareas 1.7a y 1.7b) con siete criterios:
   1. no monta un fichero con secreto en el servicio `object-store`;
   2. no cambia `command`, `environment` ni volumen del servicio (si los cambia, se repiten C3-C5 y C7-C9 de la matriz
      antes de adoptarlo, ADR-052 §2);
@@ -154,15 +161,26 @@ clave); servicios con `profiles:` dentro de `docker-compose.prod.yml` (chocan co
      la imagen de `api` sale 0, y `PutObject` y `DeleteObject` con la identidad de **la aplicación** siguen
      funcionando: crear una identidad no puede degradar la de la aplicación (un almacén que pasa de «una identidad
      administradora implícita» a «lista de identidades» puede dejar a la aplicación sin permisos);
-  6. **(C2, P0)** el listado de identidades antes y después difiere **solo** en la del respaldo.
-  Si alguno falla, se pasa a Q3.
+  6. **(C2, P0)** el listado de identidades antes y después difiere **solo** en la del respaldo;
+  7. **(C19-a)** la clave de la identidad se puede **fijar desde el entorno** (`S3_BACKUP_*`). Si el almacén solo la
+     genera él, se adopta la **variante efímera**: la identidad se crea al empezar cada corrida, su clave pasa a
+     `backup-objects` por entorno (nunca por `argv`) y se borra al terminar, también si la corrida falla; en ese caso
+     `S3_BACKUP_*` sale de D16, de la 7.2 y de la 10.1.
+  Si fallan los criterios, o ninguna de las dos variantes sirve, se pasa a Q3.
+- **Defensa en cada corrida (C2-a):** después de `ensure-backup-identity`, `run-backup.sh` ejecuta
+  `run --rm --no-deps api node object-store.js verify`; si falla, la corrida termina con `fail ensure_identity`, que el
+  RUNBOOK trata como **urgente** (la aplicación podría haber perdido permisos). El RUNBOOK tiene «Revertir la identidad
+  de respaldo», probada en la 1.7b.
+- **Alcance real de la identidad de solo lectura (C19-b):** **evita escrituras por error; no contiene a un lector
+  comprometido**, porque el gRPC del filer y las demás interfaces internas del almacén siguen sin autenticación y el
+  lector las alcanza. Se escribe así en ADR-066.
 - **Mecanismo candidato (C19):** solo la **API IAM** que expone la pasarela S3, llamada con la identidad de la
   aplicación desde un contenedor de un solo uso en `store-backup`. Tiene la forma de la API IAM de AWS, así que un
   almacén sustituto que la ofrezca no obliga a reescribir el script; aun así es una API de administración, y la spec
   `platform/object-store` («El almacén se usa solo por la API S3») se **modifica** con una excepción acotada a
   `ensure-backup-identity`, aislada en un solo script que es lo único a reescribir si cambia el producto. Se
   **descarta `weed shell`**: es la CLI de un producto concreto y exigiría ejecutar dentro del contenedor del almacén,
-  dos cosas que esa spec prohíbe sin excepción posible acotada. Si la API IAM no cumple los seis criterios, Q3.
+  dos cosas que esa spec prohíbe sin excepción posible acotada. Si la API IAM no cumple los siete criterios, Q3.
 - `rclone` recibe todo por variables de entorno (`RCLONE_CONFIG_STORE_*`), sin fichero de configuración.
 
 ### D4. Formato, orden y manifiesto de una corrida
@@ -179,8 +197,8 @@ Una corrida tiene un identificador (`<AAAAMMDD>T<HHMMSS>Z`) y, **por destino**, 
    --stdin-filename objects.tar --tag kind:objects`. Va **después** de la base: todo objeto que la base referencia está
    en la copia, y lo que sobra lo dice la conciliación (D11).
 3. **Manifiesto:** en el host, cada flujo pasa por `tee` hacia `sha256sum` y un contador de bytes, y al terminar los dos
-   el orquestador emite un JSON (`manifest.json`, `--tag kind:manifest`) con el identificador, las horas UTC, bytes y
-   SHA-256 de cada flujo, el número de objetos por bucket, los digests de las imágenes y la versión del formato.
+   el orquestador emite un JSON (`manifest.json`, `--tag kind:manifest`) con el identificador, las horas UTC
+   (entre ellas `mongoDumpStartedAt` y `mongoDumpFinishedAt` **de ese destino**, C8-a), bytes y SHA-256 de cada flujo, el número de objetos por bucket, los digests de las imágenes y la versión del formato.
    **Una corrida sin manifiesto no es un respaldo**: la restauración solo parte de corridas con manifiesto cuyas sumas
    coinciden. Dos manifiestos, o dos instantáneas del mismo tipo, con el mismo identificador son un **error** al
    restaurar (C25), no se elige uno.
@@ -189,8 +207,12 @@ Ningún dato en claro toca un disco: la base y los objetos viajan por tuberías,
 trabajo de los objetos es memoria (`tmpfs`). Como un `tmpfs` puede ir a swap, la tarea 2.2 comprueba que el host no
 tiene swap o que está cifrada.
 
-**Estructura del script (C13):** todo el cuerpo de `run-backup.sh` y de `restore.sh` va dentro de `main() { … }` y la
-última línea es `main "$@"`, para que reemplazarlo durante un despliegue no cambie lo que ejecuta una corrida en curso.
+**Estructura del script (C13, C13-a):** todo el cuerpo de `run-backup.sh` y de `restore.sh` va dentro de
+`main() { … }` y la última línea es `main "$@"; exit $?`. Además, al tomar el candado, cada uno **copia
+`infra/backup/` y los dos compose a `.backup-run-<id>/`** en el directorio fijo y ejecuta desde esa copia (la borra al
+terminar): un despliegue que reemplaza los ficheros a mitad de corrida no cambia lo que la corrida usa.
+
+**Identidad verificada (C2-a):** entre `ensure-backup-identity` y la lectura de los objetos va el `verify` de D3.
 
 **Aviso de poda vencida (B3):** al terminar bien, el script mira la instantánea más vieja de cada destino; si pasa de
 **65 días** (34 de la retención más 31 de la poda mensual), manda `fail prune_overdue` **después** de haber respaldado:
@@ -277,8 +299,9 @@ una cuenta) sigue en alguna copia es la suma de estos términos:
 | Si el destino de fuera es Drive (Q2 de la decisión en (b)): papelera (C29) | + 30 días: «hasta 18 semanas» |
 
 Con `P` = 14 y poda mensual son 79 días («hasta 12 semanas»); con `P` = 14 y poda semanal, 55 («hasta 8 semanas»). El
-número final lo fijan Q1, Q2 y la 1.1, y se escribe en cuatro sitios que un guardia compara (C32, tarea 8.6):
-`infra/backup/README.md`, el aviso de `docs/RUNBOOK.md`, el aviso a los invitados (9.10 de 35b) y `/privacidad`.
+número final lo fijan Q1, Q2 y la 1.1, y se escribe en **tres sitios comparados por el guardia** (C32, T-2, tarea
+8.6): `infra/backup/README.md`, el aviso de `docs/RUNBOOK.md` y `/privacidad`. El aviso a los invitados de la 9.10
+de 35b, que no es de este change, se comprueba con `node -e` como precondición de la fusión (12.1).
 
 ### D8. Tope de tamaño
 
@@ -319,7 +342,13 @@ llega al host con cada despliegue (`config-files.txt`).
 `/srv/linkvault-staging/.backup.lock`. **Despliegues:** `deploy.sh` no se toca (es de 35b, con sus pruebas y sus
 clases de reporte); se documenta una **franja sin despliegues** de 06:15 a 08:45 UTC en `infra/README.md` y en el
 runbook. Un despliegue dentro de la franja que recree `mongo` u `object-store` solo hace fallar esa corrida, con su
-aviso; la siguiente noche respalda normal.
+aviso; la siguiente noche respalda normal. `Persistent=true` puede disparar una corrida perdida **fuera de la franja**
+(al arrancar el host tras un apagado): el peor caso es el mismo, una corrida fallida con aviso.
+
+**Restaurar en `linkvault-prod` con el CD apagado (C13-b):** el procedimiento del RUNBOOK empieza con
+`gh workflow disable cd-staging` y termina con `gh workflow enable cd-staging`, y `restore.sh --project
+linkvault-prod` pide escribir «CD DESACTIVADO» antes de tocar nada. Un despliegue a mitad de una restauración
+recrearía `api` y `worker` sobre una base a medio restaurar.
 
 *Descartado:* un programador dentro de un contenedor (tendría que vivir siempre, con datos y salida o con el socket de
 Docker); `cron` del host (no recupera una corrida perdida con el host apagado); que `deploy.sh` espere el candado (toca
@@ -330,7 +359,8 @@ un fichero de 35b para evitar una falla que ya avisa sola).
 `infra/backup/restore.sh --project <nombre> --from oci|offsite [--run <id>] [--confirm-host]`, para el proyecto de
 staging (`linkvault-prod`, vuelta atrás de datos) y para el de ensayo (`linkvault-restore`):
 
-1. Toma el candado (D10). Lee la etiqueta de la imagen de la `api` que corre en `linkvault-prod` y **falla si no es
+1. Toma el candado (D10) y ejecuta desde su copia `.backup-run-<id>/` (D4). En `linkvault-prod`, pide la
+   confirmación «CD DESACTIVADO» (D10). Lee la etiqueta de la imagen de la `api` que corre en `linkvault-prod` y **falla si no es
    `sha-<12>`** (C12): el proyecto que se restaura usa ese mismo `IMAGE_TAG`, nunca `:latest`.
 2. Elige la última corrida con manifiesto del destino pedido (o la pedida) y **verifica las sumas** bajando los flujos
    una vez antes de tocar nada; manifiestos o instantáneas duplicados son error.
@@ -340,8 +370,9 @@ staging (`linkvault-prod`, vuelta atrás de datos) y para el de ensayo (`linkvau
    con un `sh -c` que escribe en el `/tmp` del contenedor un `--config` con las credenciales raíz leídas de su entorno y
    ejecuta `mongorestore --config … --archive --gzip --drop --oplogReplay --nsExclude 'admin.*'`. No se pisa
    `admin.system.users` (H7) y ninguna credencial pasa por argumentos.
-5. Asegura el usuario de respaldo y la identidad S3 (D3).
-6. Aprovisiona los buckets (`run --rm --no-deps api node object-store.js provision`) y recarga los objetos con
+5. Asegura el usuario de respaldo (D3).
+6. **En este orden (D11-a):** aprovisiona los buckets (`run --rm --no-deps api node object-store.js provision`);
+   asegura la identidad S3 de respaldo y comprueba que lista los dos buckets; y recarga los objetos con
    `restore-objects` (D2): `restic dump` → tubería → `tar -x` en su `tmpfs` y `rclone copy` con la identidad de la
    aplicación. El almacén cifra con la `OBJECT_STORE_SSE_KEY` del fichero de entorno: la copia guarda los objetos
    **descifrados** (cifrados por restic), así que lo que exige la misma copia de `.env.staging` es `AI_VAULT_KEY` (las
@@ -369,10 +400,13 @@ se extrae, un `cv-deleted` que deja un objeto huérfano (hallazgo del critic de 
 
 **Decisión (C8, B2, C24):**
 
-- La restauración pone como pendientes (`publishedAt: null`, `attempts: 0`, `nextAttemptAt` = ahora) los eventos
-  publicados en la **última hora antes del volcado** (`BACKUP_REQUEUE_WINDOW_HOURS`, por defecto **1**), sin tocar los
-  `failed`. Una hora cubre de sobra la latencia normal de las colas; si la revisión de las dos semanas (11.2) mide una
-  latencia máxima mayor (reintentos, diferimientos por dominio), la ventana sube a esa cifra.
+- La restauración pone como pendientes (`publishedAt: null`, `attempts: 0`, `nextAttemptAt` = ahora) los eventos con
+  **`publishedAt ≥ mongoDumpStartedAt − W`**, donde `mongoDumpStartedAt` es el del manifiesto **del destino que se
+  restaura** (C8-a) y `W` es `BACKUP_REQUEUE_WINDOW_HOURS` (por defecto **1**), sin tocar los `failed`. Así entra
+  también un evento publicado mientras corría el volcado y que quedó en él como publicado. Una hora cubre de sobra la latencia normal de las colas; si la revisión de las dos semanas (11.2) mide una
+  latencia máxima mayor (reintentos, diferimientos por dominio), la ventana sube a esa cifra. La latencia se mide con
+  un script de un solo uso que lee los jobs completados de las colas (`finishedOn − timestamp`), y el número va a
+  ADR-066 (C8-b).
 - **En `linkvault-prod`, antes de reencolar**, `restore.sh` para `api` y `worker` y **recrea el volumen de Redis**: los
   jobs que quedaron en Redis corresponden a un estado posterior al volcado y no deben correr sobre la base restaurada.
 - El script muestra el **recuento por tipo de evento** y pide confirmación escrita antes de reencolar; en el ensayo
@@ -453,7 +487,7 @@ atrás de código de 35b: las redes nuevas sobran sin efecto.
 | Variable | Dónde | Formato |
 |---|---|---|
 | `MONGO_BACKUP_USER`, `MONGO_BACKUP_PASSWORD` | `docker-compose.prod.yml` (servicio `mongo`, `${VAR:?}`) y el del respaldo | Apto para URI, como D18 |
-| `S3_BACKUP_ACCESS_KEY`, `S3_BACKUP_SECRET_KEY` | compose del respaldo | Como `S3_ACCESS_KEY` |
+| `S3_BACKUP_ACCESS_KEY`, `S3_BACKUP_SECRET_KEY` | compose del respaldo; **no existen** con la variante efímera de D3 | Como `S3_ACCESS_KEY` |
 | `RESTIC_PASSWORD` | compose del respaldo | ≥ 32 caracteres, `openssl rand -hex 32` |
 | `BACKUP_OCI_REPOSITORY`, `BACKUP_OCI_ACCESS_KEY_ID`, `BACKUP_OCI_SECRET_ACCESS_KEY` | compose del respaldo | `s3:https://…` |
 | `BACKUP_OFFSITE_*` | compose del respaldo | Nombres finales tras Q2 (tarea 1.2) |
@@ -519,12 +553,13 @@ más por semana); (c) semanal, con un workflow programado de GitHub Actions y la
 repositorio (automático, pero junta en GitHub la credencial que destruye los respaldos con la clave SSH que da root en
 el host). **Recomendación: (a).**
 
-**Q3. Si no hay identidad S3 de solo lectura que cumpla los seis criterios de D3.** **[bloqueante solo si fallan la
+**Q3. Si no hay identidad S3 de solo lectura que cumpla los siete criterios de D3.** **[bloqueante solo si fallan la
 1.7a o la 1.7b]**
-(a) Adoptar la configuración del almacén que la dé y repetir C3-C5 y C7-C9 de la matriz (ADR-052 §2); (b) aceptar por
-escrito que el lector de objetos use la identidad de la aplicación (sin salida, efímero), lo que relaja la condición
-(1) del disenso. **Recomendación (B8): (a) solo si la repetición de la matriz cabe en un día; si no, (b) aceptada por
-escrito.**
+(a) Adoptar la configuración del almacén que la dé y repetir las celdas de la matriz (ADR-052 §2); (b) aceptar por
+escrito que el lector de objetos use la identidad de la aplicación (sin salida, efímero). Como la identidad de solo
+lectura evita escrituras por error pero no contiene a un lector comprometido (D3), (b) pierde poco. **Recomendación
+(C19-b, B8): (b), aceptada por escrito, si fallan los criterios; (a) solo si la configuración que la da no cambia
+`command` del almacén y la repetición cabe en un día.**
 
 **Q4. Si el destino de fuera de Oracle es Google Drive.** **[bloqueante solo si Q2 de la decisión cae en (b)]**
 (a) Aceptar por escrito que esa copia no tiene borrado protegido frente al host (la de OCI sí lo tiene) y que suma 30
@@ -543,7 +578,8 @@ y la mitad de la sesión quincenal, que es de 5 minutos.
 - **2026-11-18, decisión de despliegue:** Q1 (a), Q2 (a) si se verifica y si no (b), Q3 (a), Q4 (a) con revisión a las
   dos semanas, Q5 (a) y si no hay respuesta en una semana (b), Q6 (a). «Toma las recomendaciones».
 - **Q1-Q5 de este change:** pendientes (tarea 0.1).
-- **Debate critic/business/reflect y aprobación:** iteración 1 aplicada (abajo); pendiente la siguiente (tarea 0.2).
+- **Debate critic/business/reflect:** iteraciones 1 y 2 aplicadas (abajo); convergencia en la 2. Pendiente la
+  aprobación del owner (tarea 0.2).
 
 ## Debate iteración 1 (2026-11-18)
 
@@ -597,3 +633,27 @@ P0 abiertos al empezar la iteración.
 | B13 | `/privacidad` con los cuatro puntos | Aviso honesto (spec `web/privacy`) |
 | B14 | La 1.3 sigue design D6, no la fase 8 paso 2 | El runbook es anterior al design |
 | Nota business | 1.5a primero en el grupo 1 | Si OCI no admite V, cambia el reparto |
+
+## Debate iteración 2 (2026-11-18)
+
+Critic: 0 P0 (C1 y C2 cerrados), 16 P1. Reflect de la sesión principal: aceptados todos.
+
+| id | Decisión | Motivo |
+|---|---|---|
+| C1-a | Tarea 1.8 antes del grupo 2: 64 MiB aleatorios en `tmpfs` con `logging: none`, misma suma dentro y por `run -T … \| sha256sum`, `LogPath` vacío y `docker logs` con error; la 2.5 deja la comparación con `mongodump`; D2 dice «medido en 1.8» | El transporte sin registros era un supuesto |
+| C1-b | La 4.7a emite un marcador binario y exige que no aparezca en la salida de `run-backup.sh`; falsación con `tee`; `set -x` prohibido | El orquestador tampoco puede filtrar datos a systemd |
+| C2-a | `object-store.js verify` tras `ensure-backup-identity` en cada corrida, `fail ensure_identity` urgente; orden de la 10.4; «Revertir la identidad de respaldo» probada en la 1.7b | Detectar y deshacer una degradación de la identidad de la app |
+| C19-a | Criterio 7: clave fijable desde el entorno o variante efímera (sin `S3_BACKUP_*`); si no, Q3 | El almacén puede generar la clave él |
+| C19-b | Alcance escrito: evita escrituras por error, no contiene un lector comprometido; Q3 reformulada | gRPC del filer sin autenticación |
+| C19-c | Servicio `backup-identity` declarado (cliente SigV4 `arm64`, `store-backup`, `logging: none`, sin salida), en el guardia, C26, 2.2 y 2.3 | El proceso que asegura la identidad también es un miembro de la red del almacén |
+| D11-a | Restaurar: `provision` → identidad → recarga; 6.1b y 6.4a verifican que la identidad lista los dos buckets | Sobre un almacén nuevo la identidad no existe hasta aprovisionar |
+| D3-a | Script de `mongosh` por la entrada estándar, medido en 3.1, sin montajes nuevos | No cambiar el servicio `mongo` |
+| C13-a | Copia a `.backup-run-<id>/` al tomar el candado; `main "$@"; exit $?` comprobado en 4.7a | Un despliegue reemplaza ficheros a mitad de corrida |
+| C13-b | Restaurar en `linkvault-prod` con `gh workflow disable/enable cd-staging` y confirmación «CD DESACTIVADO»; `Persistent` fuera de la franja anotado | Un despliegue durante una restauración |
+| C8-a | Manifiesto por destino con `mongoDumpStartedAt`/`mongoDumpFinishedAt`; ventana `publishedAt ≥ mongoDumpStartedAt − W`; caso de un evento publicado durante el volcado | La ventana se contaba desde una hora posterior al volcado |
+| C8-b | La 11.2 mide la latencia con `finishedOn − timestamp` de los jobs completados; número en ADR-066 | Fijar `W` con un dato |
+| T-1 | 2.5 partida (registros a 1.8), 6.1 en a/b, 8.2 en a/b/c | Tareas de menos de una hora |
+| T-2 | D7: tres sitios comparados por el guardia; la 9.10 de 35b con `node -e` en la 12.1 | El aviso de 35b no es de este change |
+| T-3 | La 10.1 usa la invocación con contenedor de la fase 3.4 del RUNBOOK, con el cuarto argumento | Es la forma documentada en el host |
+
+**Convergencia: SI** (critic P0 0, business V0 0).

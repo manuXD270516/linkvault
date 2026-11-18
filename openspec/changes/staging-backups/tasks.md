@@ -30,7 +30,7 @@
 
 ## 1. Destinos, monitor y mediciones previas (design D3, D5, D6, D9)
 
-**Orden del grupo** (nota de business): 1.3 → **1.5a** → 1.1 → 1.2 → 1.4 → 1.5b → 1.6 → 1.7a → 1.7b. Si la 1.5a dice
+**Orden del grupo** (nota de business): 1.3 → **1.5a** → 1.1 → 1.2 → 1.4 → 1.5b → 1.6 → 1.7a → 1.7b → 1.8. Si la 1.5a dice
 que OCI no admite el modelo V, se para y vuelve al owner antes de buscar el destino de fuera.
 
 - [ ] 1.3 [infra] **Owner:** en OCI, siguiendo **design D6** (no la fase 8, paso 2 del runbook, que es anterior; B14):
@@ -77,16 +77,27 @@ que OCI no admite el modelo V, se para y vuelve al owner antes de buscar el dest
   no se pega en el chat.
 - [ ] 1.7a [infra] Medir la identidad S3 de solo lectura por la **API IAM** de la pasarela de SeaweedFS 4.47 `mini`
   con `-disableHttp` (design D3, C19), en una pila local (el compose de producción con `infra/ci/verify.env`), desde un
-  contenedor de un solo uso en la red del almacén con la identidad de la aplicación. Criterios 1-4 de D3: sin fichero
-  con secreto montado; sin cambio de `command`, `environment` ni volumen del servicio; la identidad sobrevive a
+  contenedor de un solo uso en la red del almacén con la identidad de la aplicación; en la misma tarea se elige la
+  imagen del cliente SigV4 `arm64` de `backup-identity` (C19-c). Criterios 1-4 de D3: sin fichero con secreto
+  montado; sin cambio de `command`, `environment` ni volumen del servicio; la identidad sobrevive a
   `docker compose restart object-store`; con ella `ListObjectsV2` y `GetObject` funcionan en los dos buckets y
-  **(falsación)** `PutObject` y `DeleteObject` fallan con `AccessDenied`. Verificar: salida anotada en design D3
-  («Medido»). `weed shell` no se prueba (descartado en D3).
+  **(falsación)** `PutObject` y `DeleteObject` fallan con `AccessDenied`. Criterio 7 (C19-a): si la clave se puede
+  fijar desde el entorno, se anota; si no, se prueba la **variante efímera** (crear la identidad, leer con ella, borrarla,
+  y comprobar que borrada ya no lista). Verificar: salida anotada en design D3 («Medido»), con la variante elegida.
+  `weed shell` no se prueba (descartado en D3).
 - [ ] 1.7b [infra] Criterios 5 y 6 de D3 (C2) sobre la misma pila: guardar el listado de identidades antes; asegurar la
   identidad; `docker compose restart object-store`; `run --rm --no-deps api node object-store.js verify` sale 0;
   `PutObject` y `DeleteObject` con la identidad de la **aplicación** funcionan; el listado de identidades después
-  difiere del de antes **solo** en la del respaldo (comparado con `node`). Verificar: salidas anotadas en design D3. Si
-  falla cualquiera de los seis criterios, Q3 pasa a bloqueante y el grupo 3 espera su respuesta.
+  difiere del de antes **solo** en la del respaldo (comparado con `node`). Además se **ensaya «Revertir la identidad de
+  respaldo»** (C2-a): borrarla con las órdenes que irán al RUNBOOK y comprobar que el listado vuelve a ser el de antes y
+  que `verify` sigue en 0. Verificar: salidas y órdenes anotadas en design D3. Si falla cualquiera de los siete
+  criterios, Q3 pasa a bloqueante y el grupo 3 espera su respuesta.
+- [ ] 1.8 [infra] Medir el transporte sin registros (C1-a; supuesto de D2), antes del grupo 2: en un contenedor efímero
+  con `logging: { driver: none }`, generar en su `tmpfs` un fichero aleatorio de 64 MiB y anotar su `sha256sum`
+  dentro; después, `docker compose run --rm --no-deps -T <servicio> cat <fichero> | sha256sum` en el host da la misma
+  suma. Con el contenedor en marcha (`run -d`), `docker inspect` da `HostConfig.LogConfig.Type = none` y `LogPath`
+  vacío, y `docker logs <id>` termina con error. Verificar: las dos sumas, la salida de `inspect` y el error de
+  `docker logs`, anotados en design D2. Si las sumas difieren, se para y se rediseña el transporte antes del grupo 2.
 
 ## 2. Redes y servicios del respaldo (design D2)
 
@@ -96,48 +107,55 @@ que OCI no admite el modelo V, se para y vuelve al owner antes de buscar el dest
   leído con `node`: `data-backup` y `store-backup` con `internal: true`; `mongo` en `data-api`, `data-worker` y
   `data-backup`; `object-store` en `store-api`, `store-worker` y `store-backup`; ningún otro servicio de ese fichero en
   ellas.
-- [ ] 2.2 [infra] `infra/backup/docker-compose.backup.yml` con `backup-mongo`, `backup-objects`, `backup-push` y
-  `restore-objects` como la tabla de D2: imágenes fijadas por digest, **`logging: { driver: none }` en los cuatro**
-  (C1), `read_only: true`, `cap_drop: [ALL]`, `no-new-privileges`, `networks` explícitas, sin `ports`, `tmpfs` con
-  tamaño (`BACKUP_OBJECTS_MAX_BYTES` en los de objetos), red `backup-egress` definida aquí, y los scripts de
-  `infra/backup/` montados en solo lectura. En el host, `swapon --show` vacío o swap cifrada (D4, R8). Verificar:
-  `config --format json` de los dos ficheros juntos, leído con `node`, con redes y `logging` de cada servicio como la
-  tabla; y `bash infra/deploy/check-image-platforms.sh --platform linux/arm64 <las imágenes>` sale 0.
+- [ ] 2.2 [infra] `infra/backup/docker-compose.backup.yml` con `backup-mongo`, `backup-objects`, `backup-push`,
+  `restore-objects` y `backup-identity` como la tabla de D2: imágenes fijadas por digest, **`logging: { driver: none }`
+  en los cinco** (C1), `read_only: true`, `cap_drop: [ALL]`, `no-new-privileges`, `networks` explícitas, sin
+  `ports`, `tmpfs` con tamaño (`BACKUP_OBJECTS_MAX_BYTES` en los de objetos), red `backup-egress` definida aquí, y los
+  scripts de `infra/backup/` montados en solo lectura. En el host, `swapon --show` vacío o swap cifrada (D4, R8).
+  Verificar: `config --format json` de los dos ficheros juntos, leído con `node`, con redes y `logging` de cada
+  servicio como la tabla; y `bash infra/deploy/check-image-platforms.sh --platform linux/arm64 <las imágenes>` sale 0,
+  incluida la de `backup-identity` (C26).
 - [ ] 2.3 [infra] Comprobación permanente `tools/repo-checks/src/backup-isolation.check.mjs`, sumada al agregador, con
-  las reglas de D2 (C4): en CI lee `config --format json` de los ficheros con `infra/ci/verify.env` volcado a fichero;
-  fuera de CI y sin `docker`, los ficheros crudos. Verificar: `bash infra/ci/repo-checks.sh` en verde con una
-  comprobación más. **Falsaciones**, cada una sobre el fichero y restaurada: `backup-mongo` también en `backup-egress`
-  → falla nombrando servicio y red; `worker` en `store-backup` → falla; `backup-push` en `data-backup` → falla; quitar
-  `networks` a `backup-mongo` → falla; quitar `logging` a `backup-objects` → falla; `internal: true` fuera de
-  `data-backup` → falla.
+  las reglas de D2 (C4), incluido `backup-identity` entre los miembros exactos de `store-backup` (C19-c): en CI lee
+  `config --format json` de los ficheros con `infra/ci/verify.env` volcado a fichero; fuera de CI y sin `docker`, los
+  ficheros crudos. Verificar: `bash infra/ci/repo-checks.sh` en verde con una comprobación más. **Falsaciones**, cada
+  una sobre el fichero y restaurada: `backup-mongo` también en `backup-egress` → falla nombrando servicio y red;
+  `worker` en `store-backup` → falla; `backup-push` en `data-backup` → falla; quitar `networks` a `backup-mongo` →
+  falla; quitar `logging` a `backup-objects` → falla; quitar `logging` a `backup-identity` → falla; `backup-identity`
+  en `backup-egress` → falla; `internal: true` fuera de `data-backup` → falla.
 - [ ] 2.4 [infra] `infra/deploy/config-files.txt` suma `infra/backup/docker-compose.backup.yml`,
   `infra/backup/docker-compose.restore.yml` y los scripts de `infra/backup/` que se ejecutan en el host. Verificar con
   `node -e` que cada fichero de la lista existe en el árbol y que el guardia de `repo-checks` sobre la lista (si 35c ya
   lo trajo) sigue en verde.
-- [ ] 2.5 [infra] Prueba de aislamiento y de registros en una pila local con los dos ficheros: con `backup-mongo` en
-  marcha (`run -d` con `sleep`), resolver `api` y abrir `https://example.com` fallan y `mongo:27017` responde; desde
-  `backup-push`, resolver `mongo`, `object-store` y `api` falla, la salida HTTPS responde y `http://169.254.169.254/`
-  termina en error de conexión o de plazo (C31; en local se anota que la regla es del host, 12.7 de 35b); desde
-  `worker`, resolver `backup-mongo` falla. Registros (C1): `docker inspect` de cada contenedor del respaldo da
-  `HostConfig.LogConfig.Type = none` y `LogPath` vacío, y una tubería `run -T backup-mongo … | sha256sum` da la misma
-  suma que el volcado hecho dentro del contenedor (la conexión funciona sin registros). Verificar: las salidas,
-  anotadas en el PR; los contenedores de prueba borrados (`docker ps -a` sin `backup-*`).
+- [ ] 2.5 [infra] Prueba de aislamiento en una pila local con los dos ficheros (los registros ya los midió la 1.8; T-1): con
+  `backup-mongo` en marcha (`run -d` con `sleep`), resolver `api` y abrir `https://example.com` fallan y
+  `mongo:27017` responde; desde `backup-push`, resolver `mongo`, `object-store` y `api` falla, la salida HTTPS
+  responde y `http://169.254.169.254/` termina en error de conexión o de plazo (C31; en local se anota que la regla es
+  del host, 12.7 de 35b); desde `backup-identity`, la salida HTTPS falla y `object-store:8333` responde; desde
+  `worker`, resolver `backup-mongo` falla. Verificar: las salidas, anotadas en el PR; los contenedores de prueba
+  borrados (`docker ps -a` sin `backup-*`).
 
 ## 3. Credenciales de solo lectura (design D3)
 
 - [ ] 3.1 [infra] `infra/backup/ensure-backup-user.js` (script de `mongosh`) y su invocación por
-  `docker compose exec -T mongo mongosh --quiet --file …`: autentica como raíz y crea o actualiza `MONGO_BACKUP_USER`
-  con el rol `backup`, todo desde `process.env`; `MONGO_BACKUP_USER` y `MONGO_BACKUP_PASSWORD` en el entorno del
-  servicio `mongo` con `${VAR:?}`, y relleno en `infra/ci/verify.env`. Verificar en la pila local: dos ejecuciones
-  seguidas terminan en 0; `mongodump --archive` con ese usuario termina en 0; con un volumen creado **antes** del cambio
-  (sin el usuario), la primera ejecución lo crea. **Falsación:** un `insertOne` con el usuario de respaldo falla con
-  `Unauthorized`; cambiar la contraseña en el entorno y repetir deja la nueva vigente (la vieja falla).
-- [ ] 3.2 [infra] `infra/backup/ensure-backup-identity.sh` con el mecanismo de 1.7a, idempotente, invocado en cada
-  corrida y restauración, desde un contenedor de un solo uso sin salida y sin registros. Verificar en la pila local los
-  **seis** criterios de D3: dos ejecuciones terminan en 0; con `S3_BACKUP_*`, listar y leer un objeto de cada bucket
-  funciona; tras `restart object-store` sigue funcionando; `object-store.js verify` sale 0; la aplicación sube y borra;
-  el listado de identidades difiere solo en la del respaldo. **Falsación:** `PutObject` y `DeleteObject` con la
-  identidad de respaldo fallan; si se le da escritura a mano, la prueba lo detecta (restaurar).
+  `docker compose exec -T mongo mongosh --quiet --file /dev/stdin < ensure-backup-user.js`, o el equivalente que
+  funcione por la entrada estándar (D3-a; se mide aquí y se anota), **sin montajes nuevos en `mongo`**: autentica como
+  raíz y crea o actualiza `MONGO_BACKUP_USER` con el rol `backup`, todo desde `process.env`; `MONGO_BACKUP_USER` y
+  `MONGO_BACKUP_PASSWORD` en el entorno del servicio `mongo` con `${VAR:?}`, y relleno en `infra/ci/verify.env`.
+  Verificar en la pila local: dos ejecuciones seguidas terminan en 0; `mongodump --archive` con ese usuario termina en
+  0; con un volumen creado **antes** del cambio (sin el usuario), la primera ejecución lo crea. **Falsación:** un
+  `insertOne` con el usuario de respaldo falla con `Unauthorized`; cambiar la contraseña en el entorno y repetir deja la
+  nueva vigente (la vieja falla).
+- [ ] 3.2 [infra] `infra/backup/ensure-backup-identity.sh` con el mecanismo y la variante de 1.7a, idempotente,
+  ejecutado desde `backup-identity` en cada corrida y restauración; con la variante efímera, además
+  `remove-backup-identity` al final por `trap`, y la clave pasada a `backup-objects` solo por su entorno. Verificar en
+  la pila local los **siete** criterios de D3: dos ejecuciones terminan en 0; con la identidad de respaldo, listar y leer
+  un objeto de cada bucket funciona; tras `restart object-store` sigue funcionando (o, efímera, se vuelve a crear);
+  `object-store.js verify` sale 0; la aplicación sube y borra; el listado de identidades difiere solo en la del
+  respaldo (efímera: ninguno al terminar); y `node -e` no encuentra llamadas a la API de identidades fuera de este
+  script. **Falsación:** `PutObject` y `DeleteObject` con la identidad de respaldo fallan; si se le da escritura a mano,
+  la prueba lo detecta (restaurar); con la variante efímera, matar la corrida a mitad deja la identidad borrada por el
+  `trap`.
 - [ ] 3.3a [infra] Si el mecanismo cambió la configuración del servicio `object-store` (criterio 2 de D3): repetir C3-C5
   de `docs/object-store-matrix/matriz.md` sobre ella y anotarlas. Si no la cambió, anotar en ADR-052 «Consecuencias
   para 35b y 35c» que la configuración medida no cambió y cerrar también la 3.3b. Verificar con `node -e` que la
@@ -147,29 +165,33 @@ que OCI no admite el modelo V, se para y vuelve al owner antes de buscar el dest
 
 ## 4. Corrida de respaldo (design D4, D5, D8, D9)
 
-- [ ] 4.1 [infra] Esqueleto de `infra/backup/run-backup.sh`: todo dentro de `main() { … }` y `main "$@"` al final
-  (C13); `set -euo pipefail`; `flock` no bloqueante sobre `/srv/linkvault-staging/.backup.lock` (o el directorio que
-  reciba); lectura de `BACKUP_PING_URL` desde `.env.staging` sin `source` (solo esa clave); `ping start|success|fail
-  <clase>` con `curl --config -` por la entrada estándar y plazo de 10 s; identificador de corrida UTC; `trap` que
-  manda `fail` con la última clase; espera de salud de `mongo` y `object-store` (10 minutos, `stack_unhealthy`) y
-  `pull` + `check-image-platforms.sh` de las imágenes del respaldo (`images`) (C26, C27); todas las órdenes `run` con
-  `--rm --no-deps -T`. Verificar con la prueba de 4.7a.
+- [ ] 4.1 [infra] Esqueleto de `infra/backup/run-backup.sh`: todo dentro de `main() { … }` y `main "$@"; exit $?` como
+  última línea (C13, C13-a); al tomar el `flock` no bloqueante sobre `/srv/linkvault-staging/.backup.lock`, copia
+  `infra/backup/` y los dos compose a `.backup-run-<id>/` y ejecuta desde ahí, borrándola al terminar; `set -euo
+  pipefail` y **nunca `set -x`**; lectura de `BACKUP_PING_URL` desde `.env.staging` sin `source` (solo esa clave);
+  `ping start|success|fail <clase>` con `curl --config -` por la entrada estándar y plazo de 10 s; identificador de
+  corrida UTC; `trap` que manda `fail` con la última clase; espera de salud de `mongo` y `object-store` (10 minutos,
+  `stack_unhealthy`) y `pull` + `check-image-platforms.sh` de las imágenes del respaldo (`images`) (C26, C27); todas
+  las órdenes `run` con `--rm --no-deps -T`. Verificar con la prueba de 4.7a.
 - [ ] 4.2 [infra] Pasada de la base (D4, paso 1): `ensure-backup-user`, después `run backup-mongo` con
   `mongodump --config <tmpfs> --archive --gzip --oplog` → `tee` a `sha256sum` y contador de bytes en el host →
   `run backup-push` con `restic backup --stdin --stdin-filename mongo.archive.gz` y las etiquetas de D4. Verificar en
   la pila local con un repositorio restic **local** montado en `backup-push`: `restic snapshots --tag kind:mongo` lista
   una; `restic dump` de ella tiene la misma suma que el host calculó.
-- [ ] 4.3 [infra] Pasada de los objetos (D4, paso 2): `ensure-backup-identity`, después `run backup-objects` con
-  `rclone copy` de los dos buckets al `tmpfs` y `tar -c` a la salida estándar → `tee` → `backup-push` con
-  `objects.tar`; fallo `objects_too_large` si el `tmpfs` se llena. Verificar en la pila local con tres CV y dos
-  snapshots sintéticos: el `tar` de la instantánea lista los cinco objetos con sus rutas `bucket/clave`. **Falsación:**
-  `BACKUP_OBJECTS_MAX_BYTES` menor que los objetos → clase `objects_too_large`, sin instantánea de objetos.
-- [ ] 4.4 [infra] Manifiesto (D4, paso 3): JSON con identificador, horas UTC, bytes y SHA-256 de cada flujo, objetos
-  por bucket con sus cabeceras (`Content-Type`, `Content-Length`, metadatos de usuario, C28), digests de las imágenes y
-  `formatVersion: 1`, enviado como `manifest.json` solo si las dos pasadas anteriores terminaron en 0. Verificar: en la
-  pila local, el manifiesto lista sumas iguales a las de `restic dump`. **Falsación (C25):** con una base sintética de
-  al menos 50 MB, matar `backup-mongo` a mitad (`docker kill`) → la corrida termina en `mongo_dump` y no hay manifiesto
-  con ese identificador.
+- [ ] 4.3 [infra] Pasada de los objetos (D4, paso 2): `ensure-backup-identity`, después
+  `run --rm --no-deps api node object-store.js verify` (si falla, `fail ensure_identity`, urgente; C2-a), después
+  `run backup-objects` con `rclone copy` de los dos buckets al `tmpfs` y `tar -c` a la salida estándar → `tee` →
+  `backup-push` con `objects.tar`; fallo `objects_too_large` si el `tmpfs` se llena. Verificar en la pila local con
+  tres CV y dos snapshots sintéticos: el `tar` de la instantánea lista los cinco objetos con sus rutas `bucket/clave`.
+  **Falsaciones:** `BACKUP_OBJECTS_MAX_BYTES` menor que los objetos → clase `objects_too_large`, sin instantánea de
+  objetos; un `verify` que sale ≠0 (con un `api` falso) → `fail ensure_identity` sin leer objetos.
+- [ ] 4.4 [infra] Manifiesto (D4, paso 3): JSON con identificador, horas UTC, **`mongoDumpStartedAt` y
+  `mongoDumpFinishedAt` de ese destino** (C8-a), bytes y SHA-256 de cada flujo, objetos por bucket con sus cabeceras
+  (`Content-Type`, `Content-Length`, metadatos de usuario, C28), digests de las imágenes y `formatVersion: 1`, enviado
+  como `manifest.json` solo si las dos pasadas anteriores terminaron en 0. Verificar: en la pila local, el manifiesto
+  lista sumas iguales a las de `restic dump` y las dos horas del volcado, con inicio < fin < hora del manifiesto.
+  **Falsación (C25):** con una base sintética de al menos 50 MB, matar `backup-mongo` a mitad (`docker kill`) → la
+  corrida termina en `mongo_dump` y no hay manifiesto con ese identificador.
 - [ ] 4.5 [infra] Dos destinos (D5): la pasada completa (4.2-4.4) se repite para el destino de fuera con sus
   credenciales; un fallo en uno no impide el otro y la corrida termina en `push_oci` o `push_offsite`. Verificar en la
   pila local con dos repositorios locales: una corrida deja tres instantáneas con el mismo `run:` en cada uno.
@@ -181,10 +203,13 @@ que OCI no admite el modelo V, se para y vuelve al owner antes de buscar el dest
   local: `BACKUP_MAX_REPO_BYTES=1` → clase `size_cap` y ninguna instantánea nueva.
 - [ ] 4.7a [infra] Prueba permanente `infra/backup/test-run-backup.sh` con un `docker` y un `curl` falsos (como
   `infra/ci/test-report-cd-outcome.sh`) que registran su `argv` y contestan por guion. Casos: corrida buena (pings
-  `start` y `success`, manifiesto después de los dos flujos), `lock_busy`, `mongo_dump`, y **cada `run` lleva `-T` y
-  `--no-deps`** (C21). Verificar: `bash infra/backup/test-run-backup.sh` sale 0. **Falsación:** mover el envío del
-  manifiesto antes de la pasada de objetos → el caso de la corrida buena falla; quitar `-T` de un `run` → falla;
-  restaurar.
+  `start` y `success`, manifiesto después de los dos flujos), `lock_busy`, `mongo_dump`; **cada `run` lleva `-T` y
+  `--no-deps`** (C21); la última línea del script es `main "$@"; exit $?` y las órdenes se ejecutan desde
+  `.backup-run-<id>/` (C13-a); el script no contiene `set -x`; y el `docker` falso emite en los flujos un **marcador
+  binario** que **no** puede aparecer en la salida estándar ni en la de errores de `run-backup.sh` (C1-b). Verificar:
+  `bash infra/backup/test-run-backup.sh` sale 0. **Falsaciones:** mover el envío del manifiesto antes de la pasada de
+  objetos → el caso de la corrida buena falla; quitar `-T` de un `run` → falla; añadir un `tee /dev/stdout` a la
+  tubería de la base → el caso del marcador falla; añadir `set -x` → falla; restaurar.
 - [ ] 4.7b [infra] Casos restantes de la misma prueba: `size_cap`; un destino que falla y el otro no; `prune_overdue`
   (4.8); **ningún secreto en los argumentos** (busca en el `argv` registrado los valores de prueba de
   `RESTIC_PASSWORD`, `BACKUP_PING_URL` y las credenciales); y la comprobación `backup-run-script` de `repo-checks` que
@@ -210,16 +235,20 @@ que OCI no admite el modelo V, se para y vuelve al owner antes de buscar el dest
 
 ## 6. Restauración (design D11, D12, D13)
 
-- [ ] 6.1 [infra] `infra/backup/restore.sh --project <nombre> --from oci|offsite [--run <id>] [--confirm-host]`, pasos
-  1-5 de D11, dentro de `main() { … }; main "$@"` y con el candado común: etiqueta `sha-<12>` de la `api` de
+- [ ] 6.1a [infra] `infra/backup/restore.sh --project <nombre> --from oci|offsite [--run <id>] [--confirm-host]`,
+  parte 1 (D11, pasos 1-2): `main() { … }; main "$@"; exit $?`, candado común y copia a `.backup-run-<id>/`; con
+  `--project linkvault-prod`, la confirmación escrita «CD DESACTIVADO» (C13-b); etiqueta `sha-<12>` de la `api` de
   `linkvault-prod` o error; elegir corrida con manifiesto; verificar sumas antes de tocar nada; manifiestos o
-  instantáneas duplicados son error; parar `api` y `worker`; `restic dump` → `exec -T mongo` con `--config` escrito en
-  el `/tmp` de `mongo` y `mongorestore --archive --gzip --drop --oplogReplay --nsExclude 'admin.*'` (C5);
-  `ensure-backup-user` y `ensure-backup-identity`. Verificar en una pila local de prueba (`-p linkvault-bktest`) con
-  datos sintéticos y repositorio local: tras restaurar, las cuentas y links sintéticos están y `mongo` está sano con el
-  usuario raíz. **Falsaciones (C25):** con un flujo de la base de al menos 50 MB, otra instantánea del mismo `run:` con
-  un byte cambiado → error antes de parar nada; un segundo manifiesto con el mismo `run:` → error; una `api` con
-  `:latest` → error.
+  instantáneas duplicados son error. Verificar en una pila local de prueba (`-p linkvault-bktest`) con repositorio
+  local: con una corrida buena, el script llega al paso 3 sin errores. **Falsaciones (C25):** con un flujo de la base de
+  al menos 50 MB, otra instantánea del mismo `run:` con un byte cambiado → error antes de parar nada; un segundo
+  manifiesto con el mismo `run:` → error; una `api` con `:latest` → error; `--project linkvault-prod` sin escribir
+  «CD DESACTIVADO» → termina sin tocar nada.
+- [ ] 6.1b [infra] `restore.sh`, parte 2 (D11, pasos 3-5): parar `api` y `worker`; `restic dump` → `exec -T mongo`
+  con `--config` escrito en el `/tmp` de `mongo` y `mongorestore --archive --gzip --drop --oplogReplay --nsExclude
+  'admin.*'` (C5); `ensure-backup-user`. Verificar en `linkvault-bktest` con datos sintéticos: tras restaurar, las
+  cuentas y links sintéticos están, `mongo` está sano con el usuario raíz, el usuario de respaldo existe, y ninguna
+  credencial aparece en `ps -ef` del host durante la restauración.
 - [ ] 6.2 [infra] `infra/backup/docker-compose.restore.yml` como D13 y reglas en `backup-isolation` (2.3) sobre
   `-p linkvault-restore`: ningún `ports`; el único servicio en una red con salida es `backup-push`, sin redes de datos
   (C6); `traefik`, `web` y `worker` deshabilitados; volúmenes con el prefijo del proyecto. En el host,
@@ -234,15 +263,20 @@ que OCI no admite el modelo V, se para y vuelve al owner antes de buscar el dest
   y uno `failed`, el script deja tres pendientes y el relay de `api` los publica; con `--count-only` no cambia ninguno.
   **Falsaciones:** una hora posterior a todos → cero; renombrar un campo en una copia de las constantes → el test de
   `repo-checks` falla; restaurar.
-- [ ] 6.3b [infra] Reencolado dentro de `restore.sh` (C8, B2, C24): en `linkvault-prod`, con `api` y `worker`
-  parados, **recrear el volumen de Redis**; mostrar el recuento por tipo con la ventana `BACKUP_REQUEUE_WINDOW_HOURS`
-  (por defecto 1) contada desde la hora del manifiesto y pedir que se escriba `REENCOLAR`; en `linkvault-restore`, solo
+- [ ] 6.3b [infra] Reencolado dentro de `restore.sh` (C8, C8-a, B2, C24): en `linkvault-prod`, con `api` y `worker`
+  parados, **recrear el volumen de Redis**; mostrar el recuento por tipo de los eventos con
+  `publishedAt ≥ mongoDumpStartedAt − W`, con `mongoDumpStartedAt` del manifiesto **del destino restaurado** y `W` =
+  `BACKUP_REQUEUE_WINDOW_HOURS` (por defecto 1), y pedir que se escriba `REENCOLAR`; en `linkvault-restore`, solo
   `--count-only`. Verificar en `linkvault-bktest`: con un Redis que **ya tenía** el job de uno de los eventos de la
-  ventana, tras restaurar y confirmar hay **un solo** job por evento; sin la confirmación, nada cambia.
-- [ ] 6.4a [infra] Paso 6 de D11 en `restore.sh`: `provision` del almacén y recarga de objetos con `restore-objects`
-  (`restic dump` → `tar -x` en su `tmpfs` → `rclone copy` con la identidad de la aplicación), sin salida y sin
-  registros. Verificar en `linkvault-bktest`: un CV sintético se descarga con la misma suma que el original, y sus
-  cabeceras (`Content-Type`, `Content-Length`, metadatos) coinciden con las del manifiesto (C28).
+  ventana, tras restaurar y confirmar hay **un solo** job por evento; un evento publicado **entre el inicio del volcado
+  y el manifiesto** (que quedó en el volcado como publicado) queda pendiente; sin la confirmación, nada cambia.
+- [ ] 6.4a [infra] Paso 6 de D11 en `restore.sh`, en el orden de D11-a: `provision` del almacén; después
+  `ensure-backup-identity` y una comprobación de que la identidad de respaldo **lista los dos buckets**; después la
+  recarga de objetos con `restore-objects` (`restic dump` → `tar -x` en su `tmpfs` → `rclone copy` con la identidad de
+  la aplicación), sin salida y sin registros. Verificar en `linkvault-bktest` sobre un almacén vacío: la identidad lista
+  los dos buckets antes de la recarga; un CV sintético se descarga con la misma suma que el original, y sus cabeceras
+  (`Content-Type`, `Content-Length`, metadatos) coinciden con las del manifiesto (C28). **Falsación:** invertir
+  `provision` y la identidad → la comprobación de los dos buckets falla.
 - [ ] 6.4b [infra] Pasos 7 y 8 de D11: informe de conciliación (CV sin objeto, objetos sin documento con referencia al
   «Paso 6 octies» del RUNBOOK, eventos por tipo, cabeceras distintas) y el recordatorio final de reaplicar los borrados
   que consten (B4). Verificar en `linkvault-bktest`: el informe sale con ceros y el recordatorio aparece.
@@ -253,7 +287,7 @@ que OCI no admite el modelo V, se para y vuelve al owner antes de buscar el dest
   guardia y sin ninguna petición. **Falsación:** comentar el guardia → el script intenta conectar; restaurar.
 - [ ] 6.6a [infra] `infra/backup/restore-drill.sh`, parte 1 (D13): candado común; memoria libre; `Id`,
   `State.StartedAt` y `RestartCount` de cada contenedor de `linkvault-prod` antes (C10); `up -d mongo redis
-  object-store api` en `linkvault-restore` con la etiqueta de la 6.1; `restore.sh` con `--count-only`; `down -v`;
+  object-store api` en `linkvault-restore` con la etiqueta de la 6.1a; `restore.sh` con `--count-only`; `down -v`;
   los tres valores después, con error si cambió alguno. Verificar en la pila local con dos proyectos
   (`linkvault-bktest` como «staging» y `linkvault-restore`): termina en 0; `docker compose ls` y `docker volume ls` sin
   restos de `linkvault-restore`. **Falsación:** `docker restart` de un contenedor del proyecto «staging» durante el
@@ -269,10 +303,11 @@ que OCI no admite el modelo V, se para y vuelve al owner antes de buscar el dest
   de cómo se genera cada una. Verificar con `node -e` que están todas las de D16.
 - [ ] 7.2 [infra] `infra/ci/check-env-file.mjs` acepta el compose del respaldo como **cuarto argumento** opcional (C23),
   lee sus `${VAR:?}` y aplica: formato apto para URI a `MONGO_BACKUP_*` (como D18), ≥ 32 caracteres a
-  `RESTIC_PASSWORD`, `BACKUP_PING_URL` **obligatoria explícita** con `https://`, enteros positivos a los topes, y que
-  ninguno sea el de `.env.example` ni el relleno de CI. Verificar: con un fichero de prueba completo sale 0; con uno al
-  que le falta **cada** variable, por turnos, sale ≠0 nombrándola y sin imprimir ningún valor. Es guardia:
-  **falsación** quitando la regla de `BACKUP_PING_URL` → el fichero sin ella pasa; restaurar.
+  `RESTIC_PASSWORD`, `BACKUP_PING_URL` **obligatoria explícita** con `https://`, enteros positivos a los topes,
+  `S3_BACKUP_*` solo si la 1.7a no eligió la variante efímera (C19-a), y que ninguno sea el de `.env.example` ni el
+  relleno de CI. Verificar: con un fichero de prueba completo sale 0; con uno al que le falta **cada** variable, por
+  turnos, sale ≠0 nombrándola y sin imprimir ningún valor. Es guardia: **falsación** quitando la regla de
+  `BACKUP_PING_URL` → el fichero sin ella pasa; restaurar.
 
 ## 8. Documentación y coordinación (design D6, D7, D13, D14)
 
@@ -280,14 +315,19 @@ que OCI no admite el modelo V, se para y vuelve al owner antes de buscar el dest
   retención; Redis y los registros sin copia); la tabla de redes con `data-backup`, `store-backup` y `backup-egress`;
   el riesgo residual del almacén con los procesos de objetos del respaldo; las variables nuevas en «`.env.staging`».
   Verificar con `node -e` que ya no dice «sus datos no tienen copia» y sí cada afirmación nueva.
-- [ ] 8.2 [infra] `infra/backup/README.md` (qué se respalda, cuándo, dónde, el modelo medido, el plazo de D7 en semanas,
-  las clases de falla y qué hacer con cada una, el `userId` de la cuenta de ensayo, RTO medidos) y `docs/RUNBOOK.md`,
-  «Operar staging»: respaldo a mano (`run-backup.sh`), restauración, **«Sesión mensual (≈ 1 h)»** (B5) en orden fijo
-  —verificar, podar, costo, ensayo cuando toca (B10)— con las órdenes para **PowerShell y para Bash** y su salida
-  esperada y el criterio simple de D6; la **verificación quincenal** de 5 minutos; **«Recuperar tras un borrado»**
-  (C15); la lista de órdenes permitidas en la PC y las prohibidas (B9); y el aviso a los invitados actualizado (C17).
-  Verificar con `node -e` que cada sección existe, que no aparecen `restic restore`, `restic dump` ni `restic mount`
-  en las órdenes para la PC, y que el plazo coincide con el de design D7 (lo comprueba además 8.6).
+- [ ] 8.2a [infra] `infra/backup/README.md`: qué se respalda, cuándo, dónde, el modelo medido, el plazo de D7 en semanas
+  (línea marcada para 8.6), las clases de falla y qué hacer con cada una (`ensure_identity` como urgente), el `userId`
+  de la cuenta de ensayo y los RTO medidos. Verificar con `node -e` que cada sección existe.
+- [ ] 8.2b [infra] `docs/RUNBOOK.md`, «Operar staging», parte 1: respaldo a mano (`run-backup.sh`); restauración en
+  `linkvault-prod`, que **empieza con `gh workflow disable cd-staging` y termina con `gh workflow enable cd-staging`**
+  (C13-b); **«Revertir la identidad de respaldo»** con las órdenes ensayadas en la 1.7b (C2-a); **«Recuperar tras un
+  borrado»** (C15); y el aviso a los invitados actualizado (C17). Verificar con `node -e` que cada sección existe y que la
+  de restauración contiene las dos órdenes de `gh`.
+- [ ] 8.2c [infra] `docs/RUNBOOK.md`, parte 2: **«Sesión mensual (≈ 1 h)»** (B5) en orden fijo —verificar, podar,
+  costo, ensayo cuando toca (B10)— con las órdenes para **PowerShell y para Bash** y su salida esperada y el criterio
+  simple de D6; la **verificación quincenal** de 5 minutos; y la lista de órdenes permitidas en la PC y las prohibidas
+  (B9). Verificar con `node -e` que las secciones existen y que no aparecen `restic restore`, `restic dump` ni
+  `restic mount` en las órdenes para la PC.
 - [ ] 8.3 [infra] `docs/despliegue/RUNBOOK-DESPLIEGUE.md` (C22): fases 8 y 9, «Respaldos», «Volver atrás»,
   «Mantenimiento» y «Publicar una actualización» con los nombres finales (`run-backup.sh` en vez de
   `$DC run --rm backup`, `restore.sh --from`, `restore-drill.sh`), margen de 3 h del monitor, modelo V, calendario de
@@ -308,11 +348,11 @@ que OCI no admite el modelo V, se para y vuelve al owner antes de buscar el dest
   este change, anotar en el `scope` de `staging-host` de `openspec-changes.yaml` que las copias de datos pasaron a
   `staging-backups` (ADR-066). Verificar: la nota citada en la descripción del PR y `node -e` sobre
   `openspec-changes.yaml` que encuentra «staging-backups» en el `scope` de `staging-host`.
-- [ ] 8.6 [infra] Guardia permanente `backup-retention-claim` en `repo-checks` (C32): extrae el número de semanas del
-  plazo máximo de `infra/backup/README.md` (línea marcada), de `docs/RUNBOOK.md` y del `source` de
-  `@@privacy.backups.retention` en `apps/web/src/locale/messages.xlf`, y falla si difieren, nombrando ficheros y
-  números. Verificar: `bash infra/ci/repo-checks.sh` en verde. **Falsación:** cambiar el número en `docs/RUNBOOK.md` →
-  falla; restaurar.
+- [ ] 8.6 [infra] Guardia permanente `backup-retention-claim` en `repo-checks` (C32, T-2): extrae el número de semanas del
+  plazo máximo de los **tres sitios** de D7 —`infra/backup/README.md` (línea marcada), `docs/RUNBOOK.md` y el `source`
+  de `@@privacy.backups.retention` en `apps/web/src/locale/messages.xlf`— y falla si difieren, nombrando ficheros y
+  números. El aviso de la 9.10 de 35b no entra aquí: lo comprueba la 12.1. Verificar: `bash infra/ci/repo-checks.sh` en
+  verde. **Falsación:** cambiar el número en `docs/RUNBOOK.md` → falla; restaurar.
 
 ## 9. Aviso de privacidad (design D7)
 
@@ -329,9 +369,10 @@ que OCI no admite el modelo V, se para y vuelve al owner antes de buscar el dest
 
 - [ ] 10.1 [infra] **Owner, antes de fusionar (precondición de la 12.1, C14):** secretos del respaldo en
   `.env.staging`, generados con las órdenes de `.env.example` y cargados con el procedimiento de la **fase 3** del
-  runbook, y la copia fuera del host actualizada (regla de 35b 5.8, sumas comparadas con `node`). Verificar:
-  `node infra/ci/check-env-file.mjs .env.staging docker-compose.prod.yml .env.example infra/backup/docker-compose.backup.yml`
-  sale 0 en el host, con el compose de la rama del change copiado a un directorio temporal del host (no al fijo).
+  runbook, y la copia fuera del host actualizada (regla de 35b 5.8, sumas comparadas con `node`); `S3_BACKUP_*` solo si
+  la 1.7a no eligió la variante efímera. Verificar en el host con la **invocación con contenedor de la fase 3.4** del
+  runbook (T-3), sobre una copia del compose de la rama del change en un directorio temporal del host (no en el fijo) y
+  con el compose del respaldo como **cuarto argumento**: sale 0.
 - [ ] 10.2 [infra] Despliegue del commit del change por el camino normal; `mongo` y `object-store` recreados (D15) y
   smoke en verde; 9.4 de `e2e-suite` sobre el hash desplegado (D1). Verificar: reporte de la corrida, `CreatedAt` nuevo
   de los dos servicios y el id de la corrida de la 9.4 en la descripción del PR.
@@ -339,9 +380,12 @@ que OCI no admite el modelo V, se para y vuelve al owner antes de buscar el dest
   (C18); cada paso que falte o confunda se anota como defecto y se corrige en el README en el PR de archivo. Verificar:
   `systemctl list-timers 'linkvault-backup@*'` volcado a fichero y leído con `node` muestra el siguiente disparo, y la
   lista de defectos (o «ninguno») en el PR de archivo.
-- [ ] 10.4 [infra] Primer respaldo a mano en el host (`systemctl start linkvault-backup@<usuario>.service`). Verificar:
-  `restic snapshots --tag run:<id>` en cada destino (desde `backup-push`) lista las tres instantáneas; el monitor
-  muestra `start` y éxito; el tamaño de cada repositorio queda anotado.
+- [ ] 10.4 [infra] Primer respaldo, en este orden (C2-a): (1) `ensure-backup-identity` solo; (2)
+  `run --rm --no-deps api node object-store.js verify` sale 0, y una subida y un borrado con la aplicación (subir y
+  borrar un CV de la cuenta de ensayo, o un objeto de prueba por la API S3 con la identidad de la aplicación)
+  funcionan; (3) recién entonces la corrida (`systemctl start linkvault-backup@<usuario>.service`). Verificar: los tres
+  pasos anotados; `restic snapshots --tag run:<id>` en cada destino (desde `backup-push`) lista las tres instantáneas;
+  el monitor muestra `start` y éxito; el tamaño de cada repositorio queda anotado.
 - [ ] 10.5 [infra] Falsaciones en el host (fase 8, paso 9 del runbook): desde `backup-push`, `api` no resuelve y la
   dirección de metadatos no responde (C31); `docker inspect` de un contenedor del respaldo con `LogConfig.Type = none`
   y sin fichero en `/var/lib/docker/containers/<id>/` (C1); el usuario de respaldo no inserta; la identidad S3 de
@@ -374,9 +418,11 @@ que OCI no admite el modelo V, se para y vuelve al owner antes de buscar el dest
 - [ ] 11.1 [infra] `pnpm exec openspec validate --all --strict --no-interactive`, `bash infra/ci/repo-checks.sh` y
   `pnpm nx affected -t lint,typecheck,test,i18n-check` en verde. Verificar: salidas anotadas en el PR.
 - [ ] 11.2 [infra] Revisión a las dos semanas con invitados (Q4 de la decisión): tamaño de cada repositorio, peticiones
-  de OCI del mes, si el intervalo nocturno sigue bastando y la latencia máxima de las colas (de los registros del
-  worker), que fija `BACKUP_REQUEUE_WINDOW_HOURS` si pasa de 1 h (D12); la decisión del owner, anotada con fecha en
-  ADR-066. Verificar con `node -e` que ADR-066 contiene «Revisión del intervalo (Q4 de la decisión), 20».
+  de OCI del mes, si el intervalo nocturno sigue bastando y la **latencia máxima de las colas**, medida con un script de
+  un solo uso que lee los jobs completados de cada cola de BullMQ y calcula `finishedOn − timestamp` (C8-b); si pasa de
+  1 h, fija `BACKUP_REQUEUE_WINDOW_HOURS` (D12). La decisión del owner y la latencia medida, anotadas con fecha en
+  ADR-066. Verificar con `node -e` que ADR-066 contiene «Revisión del intervalo (Q4 de la decisión), 20» y «Latencia
+  máxima de cola medida».
 - [ ] 11.3 [infra] Al archivar (después de 35b, D14): ADR-066 pasa a «Aceptado» con la fecha y el PR; la línea «No
   terminado hasta C1» del runbook y de la decisión se sustituye por el estado; `despliegue.json`, condiciones 1-5 y 8
   marcadas. Verificar con `node -e` sobre los tres ficheros.
@@ -388,7 +434,8 @@ que OCI no admite el modelo V, se para y vuelve al owner antes de buscar el dest
 
 - [ ] 12.1 [infra] **Fusiones de clase 1** (la del change y cualquier correctiva antes de la 10.7), comprobadas justo
   antes de cada una: (0) **precondiciones**: la 10.1 hecha (check de `.env.staging` en 0) y **la 9.10 de 35b
-  enmendada** con el aviso nuevo (C14, C17); (1) confirmación escrita y fechada del owner en el PR, «PR-2 de 35b = #NN;
+  enmendada** con el aviso nuevo, comprobada con un `node -e` que encuentra en ese aviso los cuatro puntos de B13 y el
+  mismo número de semanas que `infra/backup/README.md` (C14, C17, T-2); (1) confirmación escrita y fechada del owner en el PR, «PR-2 de 35b = #NN;
   11.6 hecha el AAAA-MM-DD; 10.7 no hecha; sin `e2e-remote` hoy»; (2) `git log --first-parent --oneline origin/main`
   volcado a fichero con el merge del PR-2 de 35b y ese número; (3) «en ventana» solo si el PR-2 está en `main`, la
   11.6 hecha y la 10.7 no; (4) después de desplegar, la 9.4 de `e2e-suite` sobre el hash desplegado, con el hash y el
@@ -415,7 +462,8 @@ verificación manual). Un escenario puede cubrirse en más de un sitio.
 | backups · Una corrida completa deja tres instantáneas y su manifiesto | `run-backup: good run pings start and success and writes the manifest last` | 4.7a; 4.4; 10.4 |
 | backups · Un volcado interrumpido no deja una corrida válida | `run-backup: killed 50 MB mongo dump leaves no manifest and pings fail mongo_dump` | 4.7a; 4.4 |
 | backups · Un destino caído no impide el otro | `run-backup: failing oci destination still completes offsite and pings fail push_oci` | 4.7b; 4.5 |
-| backups · Los datos no quedan en los registros de Docker | `backup services use log driver none and leave no log file` | 2.5; 10.5 |
+| backups · Los datos no quedan en los registros de Docker | `backup services use log driver none and leave no log file` | 1.8; 10.5 |
+| backups · El orquestador no reproduce los datos en su salida | `run-backup: binary marker never reaches stdout or stderr` | 4.7a |
 | backups · El lector de la base no sale a Internet ni ve a la API | `isolation: backup-mongo resolves mongo but not api and has no egress` | 2.5; 10.5 |
 | backups · El que envía no alcanza los datos ni la dirección de metadatos | `isolation: backup-push cannot resolve data services nor reach metadata` | 2.5; 10.5 |
 | backups · El worker no ve a los procesos del respaldo | `isolation: worker cannot resolve backup services` | 2.5 |
@@ -424,6 +472,7 @@ verificación manual). Un escenario puede cubrirse en más de un sitio.
 | backups · El usuario de respaldo no puede escribir | `mongo backup user insert is unauthorized` | 3.1; 10.5 |
 | backups · El usuario de respaldo existe sobre un volumen viejo | `ensure-backup-user creates the user on a pre-existing volume` | 3.1 |
 | backups · La identidad S3 de respaldo no puede escribir ni borrar | `s3 backup identity can list and get but not put or delete` | 1.7a; 3.2; 10.5 |
+| backups · Una identidad que degrada la de la aplicación corta la corrida | `run-backup: failing verify after ensure-backup-identity pings fail ensure_identity before reading objects` | 4.3; 10.4 |
 | backups · La identidad de la aplicación no cambia | `app identity still verifies, puts and deletes; identity list differs only by backup` | 1.7b; 3.2; 10.5 |
 | backups · La credencial del host no destruye un paquete | `host credential cannot permanently delete a pack or its version` | 1.5a; 1.5b; 10.5 |
 | backups · La credencial del host no cambia la protección | `host credential cannot suspend versioning, change lifecycle or retention` | 1.5a; 1.5b |
@@ -434,14 +483,16 @@ verificación manual). Un escenario puede cubrirse en más de un sitio.
 | backups · Una falla avisa con su clase | `run-backup: fail ping carries run id and class only` | 4.7a; 4.7b |
 | backups · Un respaldo que no corre produce un aviso | `monitor emails when no success arrives in its window` | 10.6 |
 | backups · Tras reiniciar el host el respaldo sigue programado | `timer stays scheduled after host reboot` | 10.6 |
-| backups · Dos corridas no se solapan | `run-backup: second run or restore exits lock_busy without touching anything` | 4.7a; 6.1 |
+| backups · Dos corridas no se solapan | `run-backup: second run or restore exits lock_busy without touching anything` | 4.7a; 6.1a |
 | backups · La instalación sigue solo el README | `timer installed following only the README section, defects listed` | 5.2; 10.3 |
-| backups · Restaurar no deja a la base sin usuario raíz | `restore keeps root user and ensures backup user on a fresh volume` | 6.1 |
-| backups · Una corrida con sumas que no coinciden no se restaura | `restore refuses a mismatched hash or a duplicate manifest before stopping services` | 6.1 |
+| backups · Restaurar no deja a la base sin usuario raíz | `restore keeps root user and ensures backup user on a fresh volume` | 6.1a; 6.1b |
+| backups · Una corrida con sumas que no coinciden no se restaura | `restore refuses a mismatched hash or a duplicate manifest before stopping services` | 6.1a; 6.1b |
 | backups · El trabajo en vuelo al volcar se vuelve a publicar una vez | `restore recreates redis and leaves one job per requeued event` | 6.3b |
+| backups · Un evento publicado durante el volcado se reencola | `requeue window starts at mongoDumpStartedAt minus W and includes events published mid-dump` | 6.3b |
+| backups · Restaurar staging sin desactivar el despliegue continuo se rechaza | `restore on linkvault-prod without CD DESACTIVADO touches nothing` | 6.1a |
 | backups · El ensayo no reencola | `restore drill counts requeue candidates by type and changes none` | 6.3a; 6.6a |
 | backups · El informe de conciliación sale aunque no haya diferencias | `restore prints a zero reconciliation report` | 6.4b |
-| backups · Sin imagen etiquetada por commit no se restaura | `restore refuses when staging api is not sha-<12>` | 6.1 |
+| backups · Sin imagen etiquetada por commit no se restaura | `restore refuses when staging api is not sha-<12>` | 6.1a; 6.1b |
 | backups · El ensayo restaura sin tocar staging | `restore-drill fails if a staging container Id, StartedAt or RestartCount changes` | 6.6a; 10.9 |
 | backups · El override de restauración no publica nada | `backup-isolation: restore override has no ports and only backup-push has egress` | 6.2 |
 | backups · El ensayo no deja restos | `restore-drill leaves no linkvault-restore project or volume` | 6.6a; 10.9 |
