@@ -633,6 +633,38 @@ changes:
       Fuera: `cd-prod` a un host de producción, escalado, observabilidad nueva, copias de seguridad de datos
       (staging es desechable), registro restringido, la extensión para estos usuarios, límites `413`/`429` en el
       borde y el aviso de registro abierto en la app (V2).
+  - name: staging-backups
+    adrs: [066, 051, 052, 048, 033, 009]
+    agents: [devops, frontend-dev]
+    scope: |
+      **Propuesto el 2026-11-18; excepción a la precedencia de la fila 35 (ADR-048) concedida por el owner el
+      2026-11-18: Q1 de la decisión de despliegue = (a), fusión tras la 11.6 de 35b y antes de su 10.7, en la misma
+      ventana que `enrichment-egress-guard`, con las tres clases de fusión (ADR-066 §1).** No es una pieza de la fila
+      ni cambia su orden (35b → 35c); no libera la precedencia para ningún otro change. Su PR de archivo va después del
+      archivo de 35b, porque modifica dos requirements que 35b añade.
+      Origen: tarea C1 de `docs/despliegue/DECISION-DESPLIEGUE.md` (hallazgos H1-H7, condiciones 1-5 y 8): sin
+      respaldo fuera de Oracle ni restauración probada el despliegue queda «no terminado» y no se invita (regla de
+      corte 7 del runbook). Enmienda ADR-051 §2 («sin copias») e `infra/README.md` «Qué vive solo en el host».
+      **(a)** Respaldo nocturno cifrado con restic, sin texto en claro en disco: `mongodump --oplog` primero, los
+      objetos de CV y snapshots después, y un manifiesto con sumas que hace válida la corrida. Dos destinos con una
+      pasada cada uno: un bucket privado de OCI Object Storage y uno fuera de Oracle (Q2 de la decisión: objetos
+      gratuitos sin tarjeta y con bloqueo si se verifica, primera tarea y del owner, con corte a los 7 días; si no,
+      Google Drive dedicado). RPO de 24 h (Q4 de la decisión, revisión a las dos semanas con invitados).
+      **(b)** Dos lectores efímeros sin salida (uno con `mongo`, otro con `object-store`) y un empujador sin redes de
+      datos, unidos por una tubería del host, en `infra/backup/docker-compose.backup.yml`; ninguno comparte red con
+      `api` ni `worker`, y una comprobación de `repo-checks` lo vigila. Usuario de Mongo con rol `backup` asegurado en
+      cada corrida e identidad S3 de solo lectura propia, cuyo mecanismo se mide antes de implementar.
+      **(c)** Borrado protegido: la credencial del host no destruye nada antes de la ventana de protección; nunca
+      versionado sin ciclo de vida; poda (7 diarios y 4 semanales, Q3 de la decisión) con una credencial que vive solo
+      fuera del host, más una verificación mensual de continuidad desde la PC del owner.
+      **(d)** Tope de tamaño (4 GiB por destino por defecto) que hace fallar y avisar; pings de inicio, éxito y falla
+      a un monitor gratuito (`BACKUP_PING_URL`); timer de systemd persistente, reinstalado en la reconstrucción.
+      **(e)** `restore.sh` sin `admin.*`, con reencolado del outbox de las 24 h previas al volcado y conciliación;
+      ensayo en el host en un proyecto aparte sin Traefik, `web`, `worker`, puertos ni salida, con `down -v`, antes
+      de invitar y cada mes; nunca en la PC del owner.
+      **(f)** `/privacidad` y el aviso a los invitados dicen cuánto duran los datos borrados en las copias.
+      Fuera: Q5 de la decisión (exención de inactividad, del owner), Q6 (SSH endurecido, en 35b), respaldar Redis,
+      RPO menor a 24 h, `cd-prod`, y cambios en `apps/api`, `apps/worker` o `libs/**`.
   - name: verify-reusable-workflow
     adrs: [051, 048, 050, 033]
     agents: [devops]
