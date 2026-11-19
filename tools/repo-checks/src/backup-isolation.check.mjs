@@ -24,6 +24,7 @@ import { spawnSync } from 'node:child_process';
 import {
   existsSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -367,10 +368,40 @@ export function readOnlyFindings(
   return out;
 }
 
+/**
+ * Q3 (b): no hay identidad S3 de respaldo, así que NADA de `infra/backup/**` puede llamar a la API de identidades del almacén (ni
+ * con el cliente `iam` del aws-cli ni por sus acciones). Se leen todos los ficheros de la carpeta.
+ */
+const IDENTITY_API =
+  /\biam\s+[a-z]+-[a-z-]+|\b(?:CreateUser|PutUserPolicy|CreateAccessKey|DeleteUser|DeleteAccessKey|DeleteUserPolicy)\b/;
+export function identityApiFindings(
+  root = join(WORKSPACE_ROOT, 'infra/backup'),
+) {
+  const out = [];
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else {
+        readFileSync(full, 'utf8')
+          .split(/\r?\n/)
+          .forEach((line, index) => {
+            if (IDENTITY_API.test(line))
+              out.push(
+                `${relativeToRoot(full)}:${index + 1}: llama a la API de identidades del almacén (Q3 (b): no hay identidad de respaldo)`,
+              );
+          });
+      }
+    }
+  };
+  walk(root);
+  return out;
+}
+
 const findings = [];
 const scopes = [];
 try {
-  findings.push(...readOnlyFindings());
+  findings.push(...readOnlyFindings(), ...identityApiFindings());
   const backupFiles = [PROD, BACKUP];
   const restoreFiles = existsSync(RESTORE)
     ? [PROD, BACKUP, RESTORE]

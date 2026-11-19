@@ -7,8 +7,7 @@ corte de costo de la [fase 1](#fase-1-cuenta-y-reglas-de-costo-vos).
 
 **Estado del respaldo (C1, change `staging-backups`, 2026-11-18):** la parte local está implementada y probada en su rama
 (`infra/backup/run-backup.sh`, `restore.sh`, `restore-drill.sh`, aislamiento por proceso y credencial de solo lectura de Mongo),
-pero **sin fusionar ni desplegar**: faltan los destinos y el monitor que crea el dueño (fases 6 y 8), la decisión sobre la
-identidad S3 de solo lectura (Q3 del change) y el ensayo en el host (fase 9). **No terminado hasta que la fase 9 cierre con una
+pero **sin fusionar ni desplegar**: faltan los destinos y el monitor que crea el dueño (fases 6 y 8), el ensayo en el host (fase 9). **No terminado hasta que la fase 9 cierre con una
 restauración probada en el host.**
 
 **Estado al 2026-11-16:** sin desplegar. El destino está a medio preparar por el change `staging-host` (35b). La
@@ -96,7 +95,7 @@ ficticios).
 | IP pública reservada | `<a.b.c.d>` | Consola de Oracle; `infra/README.md` (35b 5.2) |
 | Seis secretos del CD | `STAGING_HOST`, `STAGING_SSH_USER`, `STAGING_SSH_KEY`, `STAGING_SSH_HOST_KEY`, `GHCR_READ_USER`, `GHCR_READ_TOKEN` | Secretos de GitHub del repositorio (35b 6.1) |
 | Secretos de la aplicación | `AUTH_JWT_SECRET`, `AI_VAULT_KEY`, `OBJECT_STORE_SSE_KEY`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `REDIS_PASSWORD`, `MONGO_ROOT_USER`, `MONGO_ROOT_PASSWORD`, `VAPID_PRIVATE_KEY`, `MAIL_SMTP_USER`, `MAIL_SMTP_PASSWORD`, `OPENROUTER_API_KEY` | `/srv/linkvault-staging/.env.staging` (permisos `600`) y su copia en tu gestor de contraseñas (35b 5.8) |
-| Secretos del respaldo (nuevos) | `RESTIC_PASSWORD`, credenciales de los dos destinos, usuario de Mongo de respaldo, identidad S3 de respaldo, `BACKUP_PING_URL` (nombres finales en el change C1) | `.env.staging` y su copia fuera del host. Sin `RESTIC_PASSWORD` los respaldos no se descifran |
+| Secretos del respaldo (nuevos) | `RESTIC_PASSWORD`, credenciales de los dos destinos, usuario de Mongo de respaldo, `BACKUP_PING_URL` (nombres finales en el change C1) | `.env.staging` y su copia fuera del host. Sin `RESTIC_PASSWORD` los respaldos no se descifran |
 | Credencial de poda de respaldos (nueva) | Clave del destino con permiso de borrar | Solo tu gestor de contraseñas, **nunca** en el host |
 | Región de origen | por ejemplo `sa-saopaulo-1` | Consola de Oracle; `infra/README.md`. Irreversible |
 
@@ -428,7 +427,7 @@ Los nombres de servicio y de variables son los de `staging-backups`: `run-backup
    ```
 
 9. **Falsaciones de C1 (Claude):** desde `backup-push`, `api` no resuelve y la dirección de metadatos no responde; el usuario de Mongo de respaldo no puede
-   escribir; la identidad S3 de respaldo no puede escribir ni borrar; la credencial del host no puede borrar un paquete
+   escribir; el lector de objetos no escribe (`backup-isolation` en verde); la credencial del host no puede borrar un paquete
    del repositorio; un umbral de tamaño de prueba hace fallar el respaldo y llega el aviso.
 10. **Aviso de falla real (Vos):** dejá pasar una ventana sin respaldo (Claude desactiva el programador una noche) y
     comprobá que llega el correo del monitor; después se reactiva.

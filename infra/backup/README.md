@@ -53,7 +53,6 @@ si aplica, el destino (`push_oci`, `mongo_dump@offsite`).
 | `stack_unhealthy` | `mongo` u `object-store` no llegaron a sanos en 10 min | mirar `docker compose ps`; ¿un despliegue dentro de la franja 06:15-08:45 UTC? la noche siguiente respalda normal |
 | `images` | `pull` o la plataforma de las imágenes del respaldo | `bash infra/deploy/check-image-platforms.sh --platform linux/arm64 <imágenes>`; el registro puede estar limitando |
 | `ensure_user` | no se pudo asegurar el usuario de respaldo de Mongo | revisar `MONGO_BACKUP_*` y el entorno de `mongo` |
-| `ensure_identity` | **urgente:** la identidad S3 de respaldo degradó la de la aplicación | solo cuando se adopte la identidad por la API de identidades (Q3 del change): seguir «Revertir la identidad de respaldo» del RUNBOOK |
 | `mongo_dump` | el volcado de la base falló o se cortó | sin manifiesto de esa corrida; ver el estado de `mongo` y repetir a mano |
 | `objects_read` | el lector de objetos falló | ver `object-store` y repetir |
 | `objects_too_large` | los objetos pasan de `BACKUP_OBJECTS_MAX_BYTES` (1 GiB por defecto) | subir el tope **con cuidado**: es memoria del host (`tmpfs`) |

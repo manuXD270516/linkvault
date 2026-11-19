@@ -86,10 +86,9 @@ efímeros (`docker compose run --rm --no-deps -T`), que solo existen mientras du
 | Servicio | Imagen (fijada por digest, `arm64`) | Redes | Qué tiene | Cuándo |
 |---|---|---|---|---|
 | `backup-mongo` | `mongo:7.0.43` (la misma de la pila) | `data-backup` (interna: `mongo` y él) | `MONGO_BACKUP_*` | Respaldo |
-| `backup-objects` | `rclone/rclone` | `store-backup` (interna: `object-store` y los dos de objetos) | `S3_BACKUP_*` | Respaldo |
+| `backup-objects` | `rclone/rclone` | `store-backup` (interna: `object-store` y los dos de objetos) | Identidad de la aplicación (`S3_ACCESS_KEY`), Q3 (b) | Respaldo |
 | `backup-push` | `restic/restic` | `backup-egress` (con salida, solo él) | `RESTIC_PASSWORD` y credenciales de los destinos | Respaldo y restauración |
 | `restore-objects` | `rclone/rclone` | `store-backup` | Identidad de la aplicación (`S3_ACCESS_KEY`) | Solo restauración |
-| `backup-identity` | cliente SigV4 `arm64` fijado por digest (lo elige la 1.7a) | `store-backup` | Identidad de la aplicación, para asegurar la de respaldo | Respaldo y restauración |
 
 El orquestador (`infra/backup/run-backup.sh`, en el host, como el usuario de despliegue) encadena
 `run backup-mongo … | run backup-push …`: los datos pasan por una tubería del host. **Ningún proceso puede consultar
@@ -136,11 +135,10 @@ El supuesto de D2 se cumple: la tubería entrega los bytes íntegros con `loggin
   no tiene `network_mode`, no está en la red `default`, no tiene `ports` y lleva `logging.driver: none`; ninguno está a
   la vez en una red con salida y en una de datos; ninguno comparte red con `api` ni `worker`; `data-backup` y
   `store-backup` son `internal: true`, y sus miembros son exactamente `mongo`+`backup-mongo` y
-  `object-store`+`backup-objects`+`restore-objects`+`backup-identity`; en el override de restauración, el único servicio en una red con
+  `object-store`+`backup-objects`+`restore-objects`; en el override de restauración, el único servicio en una red con
   salida es `backup-push`, sin redes de datos (C6).
 
-**Riesgo residual que se extiende (ADR-066 §Enmiendas, punto 3):** `backup-objects`, `restore-objects` y
-`backup-identity` alcanzan las
+**Riesgo residual que se extiende (ADR-066 §Enmiendas, punto 3):** `backup-objects` y `restore-objects` alcanzan las
 interfaces sin autenticación del almacén (maestro, volumen y gRPC), como `api` y `worker`. Se acepta porque no tienen
 salida y solo existen unos minutos, con una imagen fijada.
 
@@ -265,8 +263,6 @@ tiene swap o que está cifrada.
 `infra/backup/` y los dos compose a `.backup-run-<id>/`** en el directorio fijo y ejecuta desde esa copia (la borra al
 terminar): un despliegue que reemplaza los ficheros a mitad de corrida no cambia lo que la corrida usa.
 
-**Identidad verificada (C2-a):** entre `ensure-backup-identity` y la lectura de los objetos va el `verify` de D3.
-
 **Aviso de poda vencida (B3):** al terminar bien, el script mira la instantánea más vieja de cada destino; si pasa de
 **65 días** (34 de la retención más 31 de la poda mensual), manda `fail prune_overdue` **después** de haber respaldado:
 el respaldo se hizo, y el correo del monitor le recuerda al owner la sesión mensual.
@@ -369,7 +365,7 @@ además el tamaño del bucket en la consola. El lector de objetos tiene su propi
 
 El orquestador manda `start` al empezar, éxito al terminar las dos pasadas con manifiesto y `fail` con un cuerpo de una
 línea (identificador de la corrida y clase: `lock_busy`, `stack_unhealthy`, `images`, `ensure_user`,
-`ensure_identity`, `mongo_dump`, `objects_read`, `objects_too_large`, `size_cap`, `push_oci`, `push_offsite`,
+`mongo_dump`, `objects_read`, `objects_too_large`, `size_cap`, `push_oci`, `push_offsite`,
 `manifest`, `prune_overdue`) a `BACKUP_PING_URL` (por ejemplo, healthchecks.io, plan gratuito). El monitor se
 configura con un periodo de un día y un **margen de 3 horas**, y avisa por correo de una falla y de un éxito que no
 llega.
@@ -570,8 +566,7 @@ como **cuarto argumento** opcional (C23), lee sus `${VAR:?}` y aplica los format
 
 ## Risks / Trade-offs
 
-- **[R1] La identidad S3 de solo lectura puede no existir sin cambiar la configuración del almacén o sin degradar la de
-  la aplicación.** → Tareas 1.7a y 1.7b antes de nada, con los seis criterios de D3; si fallan, Q3.
+- **[R1] El lector de objetos usa la identidad de la aplicación, que puede escribir** (Q3 resuelta en (b)). → `backup-isolation` y `test-run-backup.sh` vigilan que sus scripts solo lean y que no haya llamadas a la API de identidades.
 - **[R2] OCI o el destino de fuera pueden no admitir el modelo V.** → Tareas 1.5a (primero) y 1.5b; el modelo R solo si
   restic funciona con él; si ninguno, el destino no es apto y vuelve al owner.
 - **[R3] Peticiones de OCI Object Storage (50.000 al mes).** Una corrida son decenas a cientos de peticiones por

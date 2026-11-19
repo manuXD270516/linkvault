@@ -354,14 +354,14 @@ que OCI no admite el modelo V, se para y vuelve al owner antes de buscar el dest
   números. El aviso de la 9.10 de 35b no entra aquí: lo comprueba la 12.1. Verificar: `bash infra/ci/repo-checks.sh` en
   verde. **Falsación:** cambiar el número en `docs/RUNBOOK.md` → falla; restaurar. **Estado (2026-11-18): hecha.** `backup-retention-claim` en `repo-checks`: compara el número de semanas de `infra/backup/README.md` (línea marcada), de **todas** las líneas marcadas de `docs/RUNBOOK.md` y del `source` de `privacy.backups.retention` en `messages.xlf` (hoy 14 en las 4 apariciones). Falsación: 12 en una línea de `docs/RUNBOOK.md` → falla nombrando los ficheros y los números; restaurado. El aviso de la 9.10 de 35b queda para la 12.1**
 
-- [ ] 8.7 [infra] Alinear la documentación con la Q3 (b) (design D3, ADR-066 §3): quitar de `infra/backup/README.md`
+- [x] 8.7 [infra] Alinear la documentación con la Q3 (b) (design D3, ADR-066 §3): quitar de `infra/backup/README.md`
   la fila de la clase `ensure_identity`; quitar de `docs/RUNBOOK.md` «Revertir la identidad de respaldo» (o dejar una
   línea que diga que no aplica porque no hay identidad de respaldo); en `docs/despliegue/RUNBOOK-DESPLIEGUE.md`,
   cambiar «identidad S3 de respaldo» por «el lector de objetos no escribe (`backup-isolation` en verde)» en la fase 8,
   paso 9, y sacarla de la lista de secretos del respaldo y del estado de la cabecera. `docs/despliegue/DECISION-DESPLIEGUE.md`
   no se toca (es el registro de la decisión). Verificar con `node -e` que `ensure_identity`, `backup-identity`,
   `S3_BACKUP_` e «identidad S3 de respaldo» no aparecen en esos tres ficheros, y `bash infra/ci/repo-checks.sh` en verde
-  (el guardia `backup-retention-claim` lee `infra/backup/README.md` y `docs/RUNBOOK.md`).
+  (el guardia `backup-retention-claim` lee `infra/backup/README.md` y `docs/RUNBOOK.md`). **Estado (2026-11-18): hecha.** Quitadas las menciones a la identidad de respaldo de `infra/backup/README.md` (fila `ensure_identity`), `docs/RUNBOOK.md` («Revertir la identidad de respaldo» pasa a una línea que remite a ADR-066 §3) y `docs/despliegue/RUNBOOK-DESPLIEGUE.md` (cabecera, secretos y paso 9 de la fase 8), y de design D2, D2 (miembros y riesgo residual), D4, D9 y R1 (D11 y las filas del debate, intactos). `node -e`/`git grep` no encuentran `ensure_identity`, `backup-identity` ni `ensure-backup-identity` fuera de la historia. Nueva comprobación en `backup-isolation`: falla si `infra/backup/**` llama a la API de identidades (`iam <acción>` del aws-cli o `CreateUser`, `PutUserPolicy`, `CreateAccessKey`, `DeleteUser`, `DeleteAccessKey`, `DeleteUserPolicy`); falsada con `aws iam create-user` y con `CreateAccessKey` y restaurada**
 
 ## 9. Aviso de privacidad (design D7)
 

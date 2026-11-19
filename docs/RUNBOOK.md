@@ -1919,25 +1919,9 @@ login, los links y el CV de la cuenta de ensayo por la API del proyecto aparte, 
 `down -v` y **falla si cambió el `Id`, el `StartedAt` o el `RestartCount` de algún contenedor de staging**. Anotá el RTO en
 `infra/backup/README.md`.
 
-#### Revertir la identidad de respaldo
+#### Identidad de respaldo
 
-> Solo aplica cuando el change adopte la identidad S3 de solo lectura por la API de identidades del almacén (Q3 de
-> `staging-backups`; hoy esa identidad no está implementada). Ensayado en la tarea 1.7b.
-
-Si `run-backup.sh` termina con la clase **`ensure_identity`** (urgente: la aplicación podría haber perdido permisos), se borra la
-identidad de respaldo con las credenciales de la aplicación y se comprueba que todo vuelve a como estaba:
-
-```bash
-# En el host. Las credenciales de la aplicación llegan por el entorno del proceso, nunca por argumentos.
-read -r -p "S3_ACCESS_KEY: " AWS_ACCESS_KEY_ID; read -rs -p "S3_SECRET_KEY: " AWS_SECRET_ACCESS_KEY; echo   # del gestor de contraseñas
-export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_DEFAULT_REGION=us-east-1
-AWS="docker run --rm --network linkvault-prod_store-api -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_DEFAULT_REGION amazon/aws-cli:2.37.8"
-$AWS iam delete-access-key --user-name <usuario de respaldo> --access-key-id <clave de respaldo> --endpoint-url http://object-store:8333
-$AWS iam delete-user-policy --user-name <usuario de respaldo> --policy-name <política> --endpoint-url http://object-store:8333
-$AWS iam delete-user --user-name <usuario de respaldo> --endpoint-url http://object-store:8333
-$AWS iam list-users --endpoint-url http://object-store:8333        # solo la identidad de la aplicación
-docker compose -f docker-compose.prod.yml --env-file .env.staging run --rm --no-deps api node object-store.js verify   # sale 0
-```
+No existe: el lector de objetos usa la identidad de la aplicación (ADR-066 §3, Q3 resuelta en (b)), así que no hay nada que asegurar ni que revertir.
 
 #### Recuperar tras un borrado (dentro de la ventana de protección)
 

@@ -21,7 +21,7 @@
 #
 # Avisos (design D9): `start`, éxito o `fail` con un cuerpo de una línea (identificador y clase) a `BACKUP_PING_URL`.
 # Clases: lock_busy, stack_unhealthy, images, ensure_user, mongo_dump, objects_read, objects_too_large, size_cap, push_oci,
-# push_offsite, manifest, prune_overdue. (`ensure_identity` espera a la Q3 del change: ver design D3.)
+# push_offsite, manifest, prune_overdue.
 #
 # Estructura (design D4, C13): TODO el cuerpo va dentro de `main() { … }` y la última línea es `main "$@"; exit $?`: bash lee un
 # script mientras lo ejecuta, y un despliegue que lo reemplace a mitad de corrida no puede mezclar dos versiones. Además, al
