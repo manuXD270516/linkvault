@@ -14,14 +14,14 @@
 
 ## 0. Antes de aplicar
 
-- [ ] 0.1 [infra] Q1-Q5 del design respondidas por el owner, o aceptados sus valores por defecto (Q1, Q2 y Q5 no
+- [x] 0.1 [infra] Q1-Q5 del design respondidas por el owner, o aceptados sus valores por defecto (Q1, Q2 y Q5 no
   bloquean; Q3 solo si fallan la 1.7a o la 1.7b; Q4 solo si la 1.1 termina en (b)), y anotadas con fecha en design.md
   («Respuestas del owner y aprobación») y en ADR-066 («Respuestas del owner»). Con Q1, Q2 y la 1.1 cerradas, el plazo
   máximo de D7 queda fijado como número de semanas. Verificar con `node -e` que la línea «Q1-Q5 de este change:» de
-  design.md y la línea «Q1-Q5 del change:» de ADR-066 ya no dicen «pendientes» y llevan una fecha `2026-`.
-- [ ] 0.2 [infra] Debate critic/business/reflect (`/lv:debate`) cerrado sin P0/V0 abiertos y aprobación humana
+  design.md y la línea «Q1-Q5 del change:» de ADR-066 ya no dicen «pendientes» y llevan una fecha `2026-`. **Estado (2026-11-18): hecha.** Respuestas con las recomendaciones; P = 30 días y poda mensual. El número de semanas de D7 queda fijado con la 1.1.
+- [x] 0.2 [infra] Debate critic/business/reflect (`/lv:debate`) cerrado sin P0/V0 abiertos y aprobación humana
   registrada en design.md con su fecha; ADR-066 sigue «Propuesto» hasta el archivo. Verificar: la sección del debate
-  de la última iteración dice «Convergencia: SI».
+  de la última iteración dice «Convergencia: SI». **Estado (2026-11-18): hecha.** Convergencia en la iteración 2 y aprobación del owner («Aprobado») anotada en design.md.
 - [x] 0.3 [infra] ADR-066 «Propuesto» y sus anotaciones de una línea en ADR-051 §2, ADR-048 §Consecuencias (excepción)
   y ADR-052 (riesgo residual del almacén); fila del change en `openspec-changes.yaml` y en `docs/design-v0.2.md` §6.
   Verificar con `node -e` que ADR-051, ADR-048 y ADR-052 contienen `](ADR-066.md)`, que `openspec-changes.yaml`

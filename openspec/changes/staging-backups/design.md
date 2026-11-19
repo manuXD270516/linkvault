@@ -577,9 +577,8 @@ y la mitad de la sesión quincenal, que es de 5 minutos.
 
 - **2026-11-18, decisión de despliegue:** Q1 (a), Q2 (a) si se verifica y si no (b), Q3 (a), Q4 (a) con revisión a las
   dos semanas, Q5 (a) y si no hay respuesta en una semana (b), Q6 (a). «Toma las recomendaciones».
-- **Q1-Q5 de este change:** pendientes (tarea 0.1).
-- **Debate critic/business/reflect:** iteraciones 1 y 2 aplicadas (abajo); convergencia en la 2. Pendiente la
-  aprobación del owner (tarea 0.2).
+- **Q1-Q5 de este change:** 2026-11-18: «Aprobado», con las recomendaciones. Q1 (a), P = 30 días; Q2 (a), poda mensual desde la PC; Q3: si fallan los criterios, (b) aceptada por escrito, y (a) solo si no cambia `command` y cabe en un día; Q4 (a), Drive sin borrado protegido; Q5: mantener los dos destinos.
+- **Debate critic/business/reflect:** iteraciones 1 y 2 aplicadas (abajo); convergencia en la 2. **Aprobación del owner: 2026-11-18** («Aprobado»).
 
 ## Debate iteración 1 (2026-11-18)
 
