@@ -52,6 +52,10 @@
       "// inputs": "El alcance declarado en claims.registry.mjs, escrito aquí GLOB A GLOB: es el producto de sus 'roots' (docs, apps, libs) por sus 'extensions' (.md, .ts, .html), menos 'excludePrefixes' (docs/adr/). Los símbolos que desmienten la afirmación viven en apps/**/*.ts y quedan dentro. Sin esta lista Nx restauraría un verde cacheado justo cuando cambia el fichero que la comprobación mira (ADR-048 §5).",
       "// inputs (por qué los nueve y no tres)": "La lista anterior declaraba solo docs/**/*.md, apps/**/*.ts y libs/**/*.ts, y la comprobación lee 46 ficheros más (40 plantillas apps/**/*.html y 6 libs/**/*.md, medidos en la tarea 11.1): una afirmación escrita en una plantilla de Angular o en un README de libs/ se leía pero NO cambiaba el hash, así que Nx restauraba el verde anterior. Los globs que hoy no casan con nada (docs/**/*.ts, docs/**/*.html) van igual, para que el día que exista uno el registro no se quede fuera en silencio.",
       "inputs": [
+        "{workspaceRoot}/infra/**/*.md",
+        "{workspaceRoot}/infra/**/*.ts",
+        "{workspaceRoot}/infra/**/*.html",
+        "{workspaceRoot}/infra/backup/run-backup.sh",
         "{workspaceRoot}/docs/**/*.md",
         "{workspaceRoot}/docs/**/*.ts",
         "{workspaceRoot}/docs/**/*.html",
@@ -71,7 +75,8 @@
         "cwd": "{workspaceRoot}",
         "parallel": false,
         "commands": ["node tools/repo-checks/src/claims-registry.check.mjs"]
-      }
+      },
+      "// inputs (infra)": "El alcance de la entrada `staging-sin-copias` suma `infra/` (`infra/README.md`, `infra/backup/README.md`) y su símbolo, `infra/backup/run-backup.sh` (ADR-066)."
     },
     "check-stale-defaults": {
       "executor": "nx:run-commands",
@@ -164,6 +169,44 @@
         ]
       }
     },
+    "check-backup-env-file": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "// inputs": "El revisor del fichero de entorno, su prueba, los dos compose de los que lee las obligatorias, el relleno de CI y `.env.example`. Sin la lista, cambiar una regla del respaldo no cambiaría el hash y Nx daría el verde anterior (ADR-048 §5).",
+      "inputs": [
+        "{workspaceRoot}/infra/ci/check-env-file.mjs",
+        "{workspaceRoot}/infra/ci/test-check-env-file-backup.mjs",
+        "{workspaceRoot}/infra/ci/verify.env",
+        "{workspaceRoot}/.env.example",
+        "{workspaceRoot}/docker-compose.prod.yml",
+        "{workspaceRoot}/infra/backup/docker-compose.backup.yml"
+      ],
+      "options": {
+        "cwd": "{workspaceRoot}",
+        "parallel": false,
+        "commands": ["node infra/ci/test-check-env-file-backup.mjs"]
+      }
+    },
+    "check-backup-retention-claim": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "// inputs": "Los tres sitios que comparan el plazo máximo de los datos borrados en las copias (design D7): el README del respaldo, el RUNBOOK y el catálogo de i18n (el `source` de `@@privacy.backups.retention`), más su propio código.",
+      "inputs": [
+        "{workspaceRoot}/infra/backup/README.md",
+        "{workspaceRoot}/docs/RUNBOOK.md",
+        "{workspaceRoot}/apps/web/src/locale/messages.xlf",
+        "{projectRoot}/src/backup-retention-claim.check.mjs",
+        "{projectRoot}/src/lib/compose.mjs",
+        "{projectRoot}/src/lib/report.mjs"
+      ],
+      "options": {
+        "cwd": "{workspaceRoot}",
+        "parallel": false,
+        "commands": [
+          "node tools/repo-checks/src/backup-retention-claim.check.mjs"
+        ]
+      }
+    },
     "check": {
       "executor": "nx:run-commands",
       "cache": false,
@@ -175,7 +218,9 @@
         "check-docs-stack-up",
         "check-backup-isolation",
         "check-backup-run-script",
-        "check-backup-outbox-contract"
+        "check-backup-outbox-contract",
+        "check-backup-env-file",
+        "check-backup-retention-claim"
       ],
       "options": {
         "cwd": "{workspaceRoot}",

@@ -1653,8 +1653,12 @@ consentimiento dentro de la aplicación es de la fila 36; esto es el aviso de la
 > - **La dirección es esta, y es legítima:** Pendiente (5.2). Termina en `.sslip.io` porque la prueba no tiene dominio
 >   propio: `sslip.io` es un servicio que convierte la IP del servidor en un nombre. El candado del navegador es un
 >   certificado normal de Let's Encrypt. No te pediremos datos por ninguna otra dirección.
-> - **Es un entorno desechable y sin copias.** Puede borrarse o perderse en cualquier momento, con todo lo que hayas
->   guardado. No guardes aquí nada que no tengas en otro sitio.
+> - **Hay copias de seguridad, pero es un entorno de prueba.** Guardamos copias de seguridad cifradas con una clave propia,
+>   fuera del servidor, en servicios de almacenamiento de terceros. <!-- plazo-maximo --> Lo que borras desaparece de
+>   inmediato de la aplicación y de las copias en un plazo máximo de 14 semanas; no podemos acelerar ese plazo. Si hubiera
+>   que recuperar el servicio desde una copia, podrías perder los cambios de las últimas 24 horas, y algo que hayas
+>   borrado justo antes de la recuperación podría volver: en ese caso, lo vuelvo a borrar. No guardes aquí nada que no
+>   tengas en otro sitio.
 > - **El correo puede ir a spam y no es obligatorio.** Los correos salen sin dominio propio y a veces acaban en la
 >   carpeta de spam. Verificar el correo no hace falta para empezar ni para usar la aplicación.
 > - **La IA usa OpenRouter en su modalidad gratuita**, y solo si le das permiso en Perfil. Antes de enviar nada se
@@ -1663,14 +1667,14 @@ consentimiento dentro de la aplicación es de la fila 36; esto es el aviso de la
 >   `data_collection: deny`: solo se aceptan proveedores que declaran no guardar ni usar lo que se les envía.
 > - **La búsqueda no está disponible en esta prueba.** La pantalla de búsqueda dice que «no está disponible en este
 >   momento», pero en esta prueba no volverá: no es una avería pasajera.
-> - **Si subes tu CV, se guarda cifrado; este entorno puede perderse sin copia; puedes borrarlo en Mi CV.**
+> - **Si subes tu CV, se guarda cifrado y entra en las copias de seguridad de arriba; puedes borrarlo en Mi CV.**
 > - **Puedes borrar tu cuenta cuando quieras**, desde Perfil («Borrar tu cuenta»): se eliminan tu usuario, tus
 >   sesiones, tu CV, tus análisis y el resto de tus datos.
 > - **Feedback:** escríbeme por este mismo canal, el de esta invitación. Cualquier cosa vale: lo que no entiendas, lo
 >   que no funcione o lo que eches de menos.
 > - **Solo si la cuenta de Oracle sigue gratuita** (decisión de la tarea 5.10, Pendiente (5.10); si pasa a pago por
 >   uso, esta línea se quita antes de invitar): el servidor está en la capa gratuita de Oracle Cloud, que puede
->   reclamar una instancia tras 7 días de poco uso. Si pasa, la prueba se para hasta reconstruirlo, sin tus datos.
+>   reclamar una instancia tras 7 días de poco uso. Si pasa, la prueba se para hasta reconstruirlo y restaurar la última copia de seguridad (pueden perderse las últimas 24 horas).
 >
 > **Una pregunta aparte, que puedes dejar sin responder:** ¿nos dejas usar tus datos, anonimizados, para el conjunto
 > de evaluación con el que se mide la calidad de la IA (el *golden set* de la fila 36)? Si no respondes, la respuesta
@@ -1854,6 +1858,147 @@ la lista de invitados ni en la de excluidos. Con 0, nada que hacer. Con más de 
    4. comprobar con `run.sh` y `uninvited.mongosh.js` que `uninvitedUsers` bajó, y en el host que
       `db.users.countDocuments({ _id: ObjectId('<id>') })` da 0;
    5. anotar la fecha y cuántas cuentas se borraron **fuera del repositorio**, sin datos de nadie.
+
+### Respaldo y restauración de staging (staging-backups / ADR-066)
+
+El respaldo nocturno, su programación y qué hacer con cada clase de falla están en
+[`infra/backup/README.md`](../infra/backup/README.md); cómo se instala el timer, en
+[`infra/README.md`, «Respaldo programado»](../infra/README.md#respaldo-programado). <!-- plazo-maximo --> Plazo máximo en que un dato
+borrado sigue en alguna copia: **hasta 14 semanas** (el mismo número que `/privacidad` y el README del respaldo; lo compara la
+comprobación `backup-retention-claim`). **Franja sin despliegues: 06:15 a 08:45 UTC.**
+
+**Respaldo a mano** (en el host, como el usuario de despliegue; toma el mismo candado que el timer):
+
+```bash
+bash /srv/linkvault-staging/infra/backup/run-backup.sh
+```
+
+Sale 0 con «corrida <id> completa», o ≠0 con la clase de la falla (la misma que llega al monitor).
+
+#### Restaurar en `linkvault-prod` (vuelta atrás de datos)
+
+Una restauración pisa la base y los objetos de staging con el último respaldo del destino elegido, y devuelve **lo borrado en las
+últimas 24 h**. Un despliegue a mitad de una restauración recrearía `api` y `worker` sobre una base a medio restaurar, así que
+**empieza desactivando el despliegue continuo y termina reactivándolo**:
+
+```bash
+# 1) En la PC del owner (o donde tengas `gh`): que ningún despliegue arranque mientras restauras.
+gh workflow disable cd-staging
+
+# 2) En el host, como el usuario de despliegue. Pide escribir «CD DESACTIVADO» antes de tocar nada.
+bash /srv/linkvault-staging/infra/backup/restore.sh --project linkvault-prod --from oci   # o --from offsite; opcional: --run <id>
+
+# 3) Revisar el informe de conciliación (CV sin objeto, objetos sin documento, cabeceras distintas, eventos reencolados),
+#    levantar la pila y volver a aplicar los borrados que te consten posteriores al volcado.
+cd /srv/linkvault-staging && docker compose -f docker-compose.prod.yml --env-file .env.staging up -d
+
+# 4) Reactivar el despliegue continuo.
+gh workflow enable cd-staging
+```
+
+- `restore.sh` usa la **misma imagen `sha-<12>`** que corre la `api` de staging, o falla: nunca `:latest`.
+- Verifica las sumas de la corrida antes de parar nada; manifiestos o instantáneas duplicados son error.
+- Recrea el volumen de Redis y, tras mostrar el recuento por tipo, pide escribir `REENCOLAR` para volver a poner como pendientes los
+  eventos del outbox publicados desde una hora antes del volcado. Un efecto duplicado (un correo, un push) es esperable.
+- **Nunca en la PC del owner:** `restore.sh` se niega a usar un repositorio remoto si no existe `/srv/linkvault-staging/.env.staging`
+  y no se pasó `--confirm-host`. Una restauración baja datos en claro.
+
+#### Ensayo de restauración (en el host, aparte)
+
+Calendario: antes de invitar (**desde `offsite`**), mensual los dos primeros meses, después trimestral alternando destino, y uno
+extra cada vez que cambia la imagen de `mongo` o del almacén o `infra/backup/`. Siempre en el host:
+
+```bash
+# La contraseña de la cuenta de ensayo llega por la entrada estándar (nunca como argumento).
+read -rs LV_DRILL_PASSWORD; printf "%s\n" "$LV_DRILL_PASSWORD" | BACKUP_DRILL_EMAIL=<correo de la cuenta de ensayo> \
+  bash /srv/linkvault-staging/infra/backup/restore-drill.sh --from offsite; unset LV_DRILL_PASSWORD
+```
+
+Restaura en el proyecto `linkvault-restore` (sin Traefik, `web`, `worker` ni puertos; solo `backup-push` con salida), comprueba el
+login, los links y el CV de la cuenta de ensayo por la API del proyecto aparte, imprime la conciliación y el RTO, termina con
+`down -v` y **falla si cambió el `Id`, el `StartedAt` o el `RestartCount` de algún contenedor de staging**. Anotá el RTO en
+`infra/backup/README.md`.
+
+#### Revertir la identidad de respaldo
+
+> Solo aplica cuando el change adopte la identidad S3 de solo lectura por la API de identidades del almacén (Q3 de
+> `staging-backups`; hoy esa identidad no está implementada). Ensayado en la tarea 1.7b.
+
+Si `run-backup.sh` termina con la clase **`ensure_identity`** (urgente: la aplicación podría haber perdido permisos), se borra la
+identidad de respaldo con las credenciales de la aplicación y se comprueba que todo vuelve a como estaba:
+
+```bash
+# En el host. Las credenciales de la aplicación llegan por el entorno del proceso, nunca por argumentos.
+read -r -p "S3_ACCESS_KEY: " AWS_ACCESS_KEY_ID; read -rs -p "S3_SECRET_KEY: " AWS_SECRET_ACCESS_KEY; echo   # del gestor de contraseñas
+export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_DEFAULT_REGION=us-east-1
+AWS="docker run --rm --network linkvault-prod_store-api -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_DEFAULT_REGION amazon/aws-cli:2.37.8"
+$AWS iam delete-access-key --user-name <usuario de respaldo> --access-key-id <clave de respaldo> --endpoint-url http://object-store:8333
+$AWS iam delete-user-policy --user-name <usuario de respaldo> --policy-name <política> --endpoint-url http://object-store:8333
+$AWS iam delete-user --user-name <usuario de respaldo> --endpoint-url http://object-store:8333
+$AWS iam list-users --endpoint-url http://object-store:8333        # solo la identidad de la aplicación
+docker compose -f docker-compose.prod.yml --env-file .env.staging run --rm --no-deps api node object-store.js verify   # sale 0
+```
+
+#### Recuperar tras un borrado (dentro de la ventana de protección)
+
+Si alguien con la credencial del host (o un fallo) borró paquetes del repositorio de un destino, el bucket **retiene las versiones**
+durante la ventana de protección (30 días). Con **tu usuario administrador** del destino (no la credencial del host):
+
+1. Listar las versiones y los marcadores de borrado de los prefijos de restic (`data/`, `index/`, `snapshots/`, `keys/`, `locks/`)
+   con `list-object-versions` de la API S3 del destino.
+2. Quitar los **marcadores de borrado** (`delete-object` con el `versionId` del marcador) para que reaparezca la última versión
+   de cada objeto borrado.
+3. Comprobar desde la PC con `restic snapshots` y `restic check`: las instantáneas vuelven y no hay errores.
+
+Pasada la ventana, lo que borró la credencial del host ya no se recupera: por eso la verificación quincenal (abajo) se hace antes.
+
+#### Verificación quincenal (5 minutos, desde la PC)
+
+Detecta lo que el monitor de pings no ve (un atacante con el host puede seguir mandando éxitos) a tiempo para recuperar dentro de la
+ventana. En cada destino, con `restic snapshots`: **la última corrida con manifiesto es de hoy o de ayer, y hay al menos 7 en los
+últimos 7 días.** Si no, «Recuperar tras un borrado».
+
+#### Sesión mensual (≈ 1 h)
+
+Un solo procedimiento, en este orden: **(1) verificar, (2) podar, (3) costo, (4) ensayo de restauración** los meses que toca (dos
+primeros meses, después trimestral). Las órdenes de la PC cargan **solo en el entorno de la sesión** (no se pegan en ningún chat)
+`RESTIC_REPOSITORY`, `RESTIC_PASSWORD`, `AWS_ACCESS_KEY_ID` y `AWS_SECRET_ACCESS_KEY` del destino que toque, leídas de tu gestor de
+contraseñas (la credencial de poda solo en el paso 2).
+
+**PowerShell:**
+
+```powershell
+$env:RESTIC_REPOSITORY = Read-Host "Repositorio (s3:https://...)"
+$env:RESTIC_PASSWORD = Read-Host "RESTIC_PASSWORD"
+$env:AWS_ACCESS_KEY_ID = Read-Host "Access key"
+$env:AWS_SECRET_ACCESS_KEY = Read-Host "Secret key"
+restic snapshots --compact          # (1) la última corrida es de hoy o de ayer; hay >= 7 en los últimos 7 días
+restic check                        # (1) una vez por mes: solo metadatos; "no errors were found"
+restic stats --mode raw-data        # (3) tamaño del repositorio
+# (2) con la credencial de PODA cargada en lugar de la del host:
+restic forget --keep-daily 7 --keep-weekly 4 --prune --max-unused unlimited --no-cache
+```
+
+**Bash:**
+
+```bash
+read -r  -p "Repositorio (s3:https://...): " RESTIC_REPOSITORY; read -rs -p "RESTIC_PASSWORD: " RESTIC_PASSWORD; echo
+read -r  -p "Access key: " AWS_ACCESS_KEY_ID; read -rs -p "Secret key: " AWS_SECRET_ACCESS_KEY; echo
+export RESTIC_REPOSITORY RESTIC_PASSWORD AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
+restic snapshots --compact          # (1) la última corrida es de hoy o de ayer; hay >= 7 en los últimos 7 días
+restic check                        # (1) una vez por mes: solo metadatos; "no errors were found"
+restic stats --mode raw-data        # (3) tamaño del repositorio
+# (2) con la credencial de PODA cargada en lugar de la del host:
+restic forget --keep-daily 7 --keep-weekly 4 --prune --max-unused unlimited --no-cache
+```
+
+- **Salida esperada:** `snapshots` lista tres instantáneas por corrida (`kind:mongo`, `kind:objects`, `kind:manifest`) con el mismo
+  `run:`; `forget … --prune` termina en 0 y deja a lo sumo 7 diarias y 4 semanales; `check` dice que no encontró errores.
+- **Costo:** *Cost Analysis* de OCI en 0 y el tamaño de cada bucket en la consola, por debajo del tope (`BACKUP_MAX_REPO_BYTES`,
+  4 GiB; el nivel gratuito de OCI es de 10 GB).
+- **En la PC solo se permiten** `snapshots`, `forget … --prune`, `stats` y `check`. **Nunca** `restore`, `dump` ni `mount`: traerían
+  datos en claro a la PC. La poda no reempaqueta (`--max-unused unlimited`), así que no descarga datos, solo índices y metadatos.
+- Si un respaldo avisó **`prune_overdue`**, la poda está vencida (más de 65 días): hacela en esta sesión.
 
 ## Paso 7 — Definition of Done (pégalo en cada PR)
 

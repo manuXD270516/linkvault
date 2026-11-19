@@ -227,11 +227,11 @@ que OCI no admite el modelo V, se para y vuelve al owner antes de buscar el dest
   y `linkvault-backup@.timer` (`OnCalendar=*-*-* 06:30:00 UTC`, `RandomizedDelaySec=15min`, `Persistent=true`), como
   D10. Verificar con `systemd-analyze verify` sobre los dos ficheros en un Linux con systemd (el host o un contenedor de
   Ubuntu 24.04), con la salida anotada. **Estado (2026-11-18): hecha.** `infra/backup/systemd/linkvault-backup@.service` y `.timer` como D10; `systemd-analyze verify` (systemd 255, `ubuntu:24.04`) sale 0 sobre los dos ficheros, y `systemd-analyze calendar "*-*-* 06:30:00 UTC"` da el siguiente disparo**
-- [ ] 5.2 [infra] Sección «Respaldo programado» en `infra/README.md`, escrita para seguirse **sola** (C18): copiar las
+- [x] 5.2 [infra] Sección «Respaldo programado» en `infra/README.md`, escrita para seguirse **sola** (C18): copiar las
   unidades, `systemctl daemon-reload`, `systemctl enable --now linkvault-backup@<usuario>.timer`, comprobar con
   `systemctl list-timers`; el paso nuevo en «Reconstrucción por reemplazo del volumen de arranque»; y la **franja sin
   despliegues** de 06:15 a 08:45 UTC (D10). Verificar con `node -e` que el README contiene `linkvault-backup@` en las
-  dos secciones, la franja, y `Persistent=true` en la unidad.
+  dos secciones, la franja, y `Persistent=true` en la unidad. **Estado (2026-11-18): hecha.** `infra/README.md`: sección «Respaldo programado» escrita para seguirse sola (copiar las unidades, `daemon-reload`, `enable --now`, `list-timers`), el paso 6 nuevo en «Reconstrucción por reemplazo del volumen de arranque» y la franja sin despliegues de 06:15 a 08:45 UTC; `node -e` confirma `linkvault-backup@` en las dos secciones, la franja y `Persistent=true` en la unidad. La instalación real siguiendo solo el README es la 10.3 (del owner, en el host)**
 
 ## 6. Restauración (design D11, D12, D13)
 
@@ -299,71 +299,71 @@ que OCI no admite el modelo V, se para y vuelve al owner antes de buscar el dest
 
 ## 7. Variables (design D16)
 
-- [ ] 7.1 [infra] `.env.example` con las variables de D16 y valores ficticios (sin un solo valor real), y comentarios
-  de cómo se genera cada una. Verificar con `node -e` que están todas las de D16.
-- [ ] 7.2 [infra] `infra/ci/check-env-file.mjs` acepta el compose del respaldo como **cuarto argumento** opcional (C23),
+- [x] 7.1 [infra] `.env.example` con las variables de D16 y valores ficticios (sin un solo valor real), y comentarios
+  de cómo se genera cada una. Verificar con `node -e` que están todas las de D16. **Estado (2026-11-18): hecha.** `.env.example` con todas las variables de D16 (valores ficticios `dev-only-…`, comentarios de cómo se genera cada una); `node -e` confirma las 15 (`MONGO_BACKUP_*`, `S3_BACKUP_*`, `RESTIC_PASSWORD`, `BACKUP_OCI_*`, `BACKUP_OFFSITE_*` —nombres provisionales hasta la 1.1/1.2—, `BACKUP_PING_URL` y los tres topes)**
+- [x] 7.2 [infra] `infra/ci/check-env-file.mjs` acepta el compose del respaldo como **cuarto argumento** opcional (C23),
   lee sus `${VAR:?}` y aplica: formato apto para URI a `MONGO_BACKUP_*` (como D18), ≥ 32 caracteres a
   `RESTIC_PASSWORD`, `BACKUP_PING_URL` **obligatoria explícita** con `https://`, enteros positivos a los topes,
   `S3_BACKUP_*` solo si la 1.7a no eligió la variante efímera (C19-a), y que ninguno sea el de `.env.example` ni el
   relleno de CI. Verificar: con un fichero de prueba completo sale 0; con uno al que le falta **cada** variable, por
   turnos, sale ≠0 nombrándola y sin imprimir ningún valor. Es guardia: **falsación** quitando la regla de
-  `BACKUP_PING_URL` → el fichero sin ella pasa; restaurar.
+  `BACKUP_PING_URL` → el fichero sin ella pasa; restaurar. **Estado (2026-11-18): hecha.** `check-env-file.mjs` acepta el compose del respaldo como cuarto argumento y aplica los formatos de D16 (también `BACKUP_PING_URL` obligatoria explícita con `https://`). Prueba permanente `infra/ci/test-check-env-file-backup.mjs` (22 casos, en `repo-checks` como `check-backup-env-file`): el fichero completo sale 0 y cada una de las 12 variables del respaldo ausente, por turnos, sale ≠0 nombrándola sin imprimir ningún valor. Falsación: sin la regla de `BACKUP_PING_URL` el fichero sin ella pasa y la prueba falla (restaurado). `S3_BACKUP_*` siguen exigidas porque el compose las declara: salen solas si la Q3 adopta la variante efímera**
 
 ## 8. Documentación y coordinación (design D6, D7, D13, D14)
 
-- [ ] 8.1 [infra] `infra/README.md`: «Qué vive solo en el host» con la enmienda de ADR-066 (datos con respaldo, RPO y
+- [x] 8.1 [infra] `infra/README.md`: «Qué vive solo en el host» con la enmienda de ADR-066 (datos con respaldo, RPO y
   retención; Redis y los registros sin copia); la tabla de redes con `data-backup`, `store-backup` y `backup-egress`;
   el riesgo residual del almacén con los procesos de objetos del respaldo; las variables nuevas en «`.env.staging`».
-  Verificar con `node -e` que ya no dice «sus datos no tienen copia» y sí cada afirmación nueva.
-- [ ] 8.2a [infra] `infra/backup/README.md`: qué se respalda, cuándo, dónde, el modelo medido, el plazo de D7 en semanas
+  Verificar con `node -e` que ya no dice «sus datos no tienen copia» y sí cada afirmación nueva. **Estado (2026-11-18): hecha.** `infra/README.md`: «Qué vive solo en el host» con la enmienda de ADR-066 (RPO de 24 h, 7 diarias y 4 semanales, plazo de 14 semanas, sin copia Redis ni registros ni configuración de despliegues), tabla de redes con `data-backup`, `store-backup` y `backup-egress`, riesgo residual del almacén con `backup-objects` y `restore-objects`, y las variables nuevas en «`.env.staging`»; `node -e` confirma que ya no dice «sus datos no tienen copia» y sí cada afirmación nueva**
+- [x] 8.2a [infra] `infra/backup/README.md`: qué se respalda, cuándo, dónde, el modelo medido, el plazo de D7 en semanas
   (línea marcada para 8.6), las clases de falla y qué hacer con cada una (`ensure_identity` como urgente), el `userId`
-  de la cuenta de ensayo y los RTO medidos. Verificar con `node -e` que cada sección existe.
-- [ ] 8.2b [infra] `docs/RUNBOOK.md`, «Operar staging», parte 1: respaldo a mano (`run-backup.sh`); restauración en
+  de la cuenta de ensayo y los RTO medidos. Verificar con `node -e` que cada sección existe. **Estado (2026-11-18): hecha.** `infra/backup/README.md`: qué se respalda, cuándo y dónde, plazo máximo en semanas (línea marcada `<!-- plazo-maximo -->`), modelo de borrado protegido (medición 1.5 pendiente del owner), clases de falla con qué hacer (`ensure_identity` como urgente, a la espera de la Q3), RTO medido en desarrollo (58 s) y el hueco del `userId` de la cuenta de ensayo (10.8, del owner)**
+- [x] 8.2b [infra] `docs/RUNBOOK.md`, «Operar staging», parte 1: respaldo a mano (`run-backup.sh`); restauración en
   `linkvault-prod`, que **empieza con `gh workflow disable cd-staging` y termina con `gh workflow enable cd-staging`**
   (C13-b); **«Revertir la identidad de respaldo»** con las órdenes ensayadas en la 1.7b (C2-a); **«Recuperar tras un
   borrado»** (C15); y el aviso a los invitados actualizado (C17). Verificar con `node -e` que cada sección existe y que la
-  de restauración contiene las dos órdenes de `gh`.
-- [ ] 8.2c [infra] `docs/RUNBOOK.md`, parte 2: **«Sesión mensual (≈ 1 h)»** (B5) en orden fijo —verificar, podar,
+  de restauración contiene las dos órdenes de `gh`. **Estado (2026-11-18): hecha.** `docs/RUNBOOK.md`, «Respaldo y restauración de staging» (en «Operar staging»): respaldo a mano, restauración en `linkvault-prod` que **empieza con `gh workflow disable cd-staging` y termina con `gh workflow enable cd-staging`**, ensayo, «Revertir la identidad de respaldo» (con las órdenes ensayadas en la 1.7b; aplica solo si se adopta la identidad, Q3), «Recuperar tras un borrado» y el aviso a los invitados actualizado (ya no «desechable y sin copias»); `node -e` confirma cada sección y las dos órdenes de `gh` en el orden correcto**
+- [x] 8.2c [infra] `docs/RUNBOOK.md`, parte 2: **«Sesión mensual (≈ 1 h)»** (B5) en orden fijo —verificar, podar,
   costo, ensayo cuando toca (B10)— con las órdenes para **PowerShell y para Bash** y su salida esperada y el criterio
   simple de D6; la **verificación quincenal** de 5 minutos; y la lista de órdenes permitidas en la PC y las prohibidas
   (B9). Verificar con `node -e` que las secciones existen y que no aparecen `restic restore`, `restic dump` ni
-  `restic mount` en las órdenes para la PC.
-- [ ] 8.3 [infra] `docs/despliegue/RUNBOOK-DESPLIEGUE.md` (C22): fases 8 y 9, «Respaldos», «Volver atrás»,
+  `restic mount` en las órdenes para la PC. **Estado (2026-11-18): hecha.** `docs/RUNBOOK.md`: «Sesión mensual (≈ 1 h)» en orden fijo (verificar, podar, costo, ensayo cuando toca) con las órdenes para **PowerShell y Bash** y su salida esperada, la «Verificación quincenal» de 5 minutos con su criterio simple, y las órdenes permitidas en la PC (`snapshots`, `forget --prune`, `stats`, `check`) frente a las prohibidas (`restore`, `dump`, `mount`); `node -e` confirma que `restic restore`, `restic dump` y `restic mount` no aparecen en las órdenes de la PC**
+- [x] 8.3 [infra] `docs/despliegue/RUNBOOK-DESPLIEGUE.md` (C22): fases 8 y 9, «Respaldos», «Volver atrás»,
   «Mantenimiento» y «Publicar una actualización» con los nombres finales (`run-backup.sh` en vez de
   `$DC run --rm backup`, `restore.sh --from`, `restore-drill.sh`), margen de 3 h del monitor, modelo V, calendario de
   B10, franja sin despliegues; regla de corte 4 con «un bucket con retención se vacía quitando primero la regla, con el
   usuario administrador» (C16); y la línea «No terminado hasta C1» sustituida por el estado real al cierre. Verificar
   con `node -e` que cada nombre del runbook existe en el árbol o en `.env.example` y que ya no aparece
-  `run --rm backup`.
-- [ ] 8.4 [infra] Entrada `staging-sin-copias` en `tools/repo-checks/src/claims.registry.mjs` (design D14, C17):
+  `run --rm backup`. **Estado (2026-11-18): hecha.** `docs/despliegue/RUNBOOK-DESPLIEGUE.md`: fases 6, 8 y 9, «Publicar una actualización», «Volver atrás», «Respaldos» y «Mantenimiento» con los nombres finales (`run-backup.sh`, `restore.sh --from`, `restore-drill.sh`, `docker-compose.backup.yml` y `.restore.yml`), margen de 3 h del monitor, modelo V, calendario del ensayo, franja sin despliegues y la regla de corte 4 con «un bucket con retención se vacía quitando primero la regla, con el usuario administrador»; la línea «No terminado hasta C1» pasa al estado real de hoy (implementado en rama, sin fusionar). `node -e` confirma que cada nombre existe en el árbol y que ya no aparece `run --rm backup`. El estado al cierre se actualiza en la 11.3**
+- [x] 8.4 [infra] Entrada `staging-sin-copias` en `tools/repo-checks/src/claims.registry.mjs` (design D14, C17):
   patrones afirmativos y específicos («staging es desechable», «sus datos no tienen copia», «entorno desechable y sin
   copias», «no hay copias de seguridad de datos») en `infra/README.md`, `docs/RUNBOOK.md`,
   `docs/despliegue/RUNBOOK-DESPLIEGUE.md` y `apps/web/src`, sin `DECISION-DESPLIEGUE.md`; símbolo que la desmiente,
   `infra/backup/run-backup.sh`. Verificar: `bash infra/ci/repo-checks.sh` en verde. **Falsación:** volver a escribir
-  «sus datos no tienen copia» en `infra/README.md` → falla nombrando la entrada; restaurar.
+  «sus datos no tienen copia» en `infra/README.md` → falla nombrando la entrada; restaurar. **Estado (2026-11-18): hecha.** Entrada `staging-sin-copias` en `claims.registry.mjs` (cuatro patrones afirmativos, alcance `infra/`, `docs/` y `apps/` sin `docs/adr/` ni `DECISION-DESPLIEGUE.md`, símbolo `infra/backup/run-backup.sh`); al activarla encontró y se corrigió una afirmación en `docs/runbooks/oracle-cloud-a1.md`. `repo-checks` en verde (10 comprobaciones). Falsación: volver a escribir «sus datos no tienen copia» en `infra/README.md` → falla nombrando `staging-sin-copias` y `infra/README.md:873`; restaurado**
 - [ ] 8.5 [infra] Notas para 35b, sin editar `openspec/changes/staging-host/`: (1) el texto nuevo de su 9.10, con los
   cuatro puntos de B13 y el plazo de D7; (2) el `userId` de la cuenta permanente de ensayo, para excluirla de la
   medición como a las cuentas E2E (C11); (3) que este change modifica sus dos requirements de
   `platform/production-deploy` y se archiva después (D14). Se le pasan a la sesión dueña de 35b. En el PR de fusión de
   este change, anotar en el `scope` de `staging-host` de `openspec-changes.yaml` que las copias de datos pasaron a
   `staging-backups` (ADR-066). Verificar: la nota citada en la descripción del PR y `node -e` sobre
-  `openspec-changes.yaml` que encuentra «staging-backups» en el `scope` de `staging-host`.
-- [ ] 8.6 [infra] Guardia permanente `backup-retention-claim` en `repo-checks` (C32, T-2): extrae el número de semanas del
+  `openspec-changes.yaml` que encuentra «staging-backups» en el `scope` de `staging-host`. **Estado (2026-11-18): sin hacer: la nota para la sesión dueña de 35b (texto nuevo de la 9.10, `userId` de la cuenta de ensayo —que sale de la 10.8, del owner— y que este change modifica dos requirements de `platform/production-deploy` y se archiva después) va en el informe de esta implementación; la anotación en `openspec-changes.yaml` es del PR de fusión**
+- [x] 8.6 [infra] Guardia permanente `backup-retention-claim` en `repo-checks` (C32, T-2): extrae el número de semanas del
   plazo máximo de los **tres sitios** de D7 —`infra/backup/README.md` (línea marcada), `docs/RUNBOOK.md` y el `source`
   de `@@privacy.backups.retention` en `apps/web/src/locale/messages.xlf`— y falla si difieren, nombrando ficheros y
   números. El aviso de la 9.10 de 35b no entra aquí: lo comprueba la 12.1. Verificar: `bash infra/ci/repo-checks.sh` en
-  verde. **Falsación:** cambiar el número en `docs/RUNBOOK.md` → falla; restaurar.
+  verde. **Falsación:** cambiar el número en `docs/RUNBOOK.md` → falla; restaurar. **Estado (2026-11-18): hecha.** `backup-retention-claim` en `repo-checks`: compara el número de semanas de `infra/backup/README.md` (línea marcada), de **todas** las líneas marcadas de `docs/RUNBOOK.md` y del `source` de `privacy.backups.retention` en `messages.xlf` (hoy 14 en las 4 apariciones). Falsación: 12 en una línea de `docs/RUNBOOK.md` → falla nombrando los ficheros y los números; restaurado. El aviso de la 9.10 de 35b queda para la 12.1**
 
 ## 9. Aviso de privacidad (design D7)
 
-- [ ] 9.1 [frontend] `/privacidad`, sección nueva «Copias de seguridad» con los **cuatro puntos** de B13 y la spec
+- [x] 9.1 [frontend] `/privacidad`, sección nueva «Copias de seguridad» con los **cuatro puntos** de B13 y la spec
   `web/privacy` (copias cifradas con clave propia fuera del servidor, en servicios de almacenamiento de terceros; borrado
   inmediato en la app y en las copias en ≤ N semanas, sin poder acelerarlo; pérdida posible de las últimas 24 h; lo
   borrado justo antes de una recuperación puede volver y el responsable lo vuelve a borrar), con ids i18n nuevos
   (`@@privacy.backups.*`, entre ellos `@@privacy.backups.retention`); catálogo re-extraído con
   `pnpm nx run web:extract-i18n` y traducción en `messages.en.xlf` (ADR-050). Test en `privacy.page.spec.ts`:
   «renders the backup notice with the four points and the documented maximum». Verificar: `pnpm nx run web:test` con
-  ese spec y `pnpm nx run web:i18n-check` en verde.
+  ese spec y `pnpm nx run web:i18n-check` en verde. **Estado (2026-11-18): hecha.** `/privacidad`, sección «Copias de seguridad» con los cuatro puntos (copias cifradas con clave propia fuera del servidor en servicios de terceros; borrado inmediato en la app y en las copias en un plazo máximo de 14 semanas que no se puede acelerar; pérdida posible de las últimas 24 h; lo borrado justo antes de una recuperación puede volver), ids `@@privacy.backups.*` (incluido `@@privacy.backups.retention`), catálogo re-extraído con `pnpm nx run web:extract-i18n` y traducción en `messages.en.xlf`. Test «renders the backup notice with the four points and the documented maximum» visto fallar antes de la plantilla y pasar después; `web:i18n-check` en verde**
 
 ## 10. Despliegue y ensayo en el host (design D1, D13, D15; fases 8 y 9 del runbook)
 

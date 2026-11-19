@@ -5,7 +5,11 @@
 `https://<ip-con-guiones>.sslip.io` con certificado de Let's Encrypt. Costo: 0 USD por mes, sostenido por las reglas de
 corte de costo de la [fase 1](#fase-1-cuenta-y-reglas-de-costo-vos).
 
-**No terminado hasta C1: sin respaldo fuera de Oracle ni restauración probada.**
+**Estado del respaldo (C1, change `staging-backups`, 2026-11-18):** la parte local está implementada y probada en su rama
+(`infra/backup/run-backup.sh`, `restore.sh`, `restore-drill.sh`, aislamiento por proceso y credencial de solo lectura de Mongo),
+pero **sin fusionar ni desplegar**: faltan los destinos y el monitor que crea el dueño (fases 6 y 8), la decisión sobre la
+identidad S3 de solo lectura (Q3 del change) y el ensayo en el host (fase 9). **No terminado hasta que la fase 9 cierre con una
+restauración probada en el host.**
 
 **Estado al 2026-11-16:** sin desplegar. El destino está a medio preparar por el change `staging-host` (35b). La
 decisión de plataforma y sus condiciones están en [DECISION-DESPLIEGUE.md](DECISION-DESPLIEGUE.md). El estado de cada
@@ -69,7 +73,8 @@ Parate y no sigas si pasa algo de esto:
 3. **El estimador de costos muestra un importe distinto de 0** para algún recurso del plan (A1 2/12, volumen de
    arranque, IP reservada, Object Storage por debajo de 10 GB) **antes** de pasar a pago por uso.
 4. **Una alerta de presupuesto o de pronóstico se dispara.** Se busca el recurso en *Cost Analysis*, se borra, y no se
-   sigue hasta que el pronóstico vuelva a 0.
+   sigue hasta que el pronóstico vuelva a 0. **Un bucket con retención se vacía quitando primero la regla, con el usuario
+   administrador** (la retención no se bloquea: la quita el dueño de la cuenta, nunca la credencial del host).
 5. **Una verificación de seguridad de la fase 5 da otro resultado** (ruta protegida sin `401`, puerto de datos abierto,
    `/metrics` público, dirección de metadatos alcanzable).
 6. **La exención de inactividad no está confirmada** (Q5 de la decisión) al llegar a la fase 11: o se confirma, o se
@@ -361,8 +366,9 @@ Test-NetConnection <ip> -Port 8080
    bandeja de entrada en 2 de 3 proveedores, o riesgo aceptado por escrito.
 2. **IA:** llamada real por OpenRouter `:free` con `data_collection: deny` y degradación comprensible (35b 8.1 y 9.9).
 3. **Aviso de respaldo faltante (nuevo):** creá una cuenta gratuita en un monitor de tareas programadas (por ejemplo
-   healthchecks.io), un chequeo con período de 1 día y gracia de 2 horas, y avisos a tu correo. Su URL de ping es un
-   secreto: va como `BACKUP_PING_URL` en `.env.staging` y en su copia (eso se hace en la fase 8, con C1).
+   healthchecks.io), un chequeo con período de 1 día y **margen de 3 horas**, y avisos a tu correo. Su URL de ping es un
+   secreto: va como `BACKUP_PING_URL` en `.env.staging` y en su copia (eso se hace en la fase 8, con C1). `run-backup.sh` manda `start`,
+   éxito o `fail` (con la clase de la falla) desde el host.
 
 **Terminada cuando:** 7.10 tiene su umbral cumplido o el riesgo aceptado; 8.1 anotó una respuesta real; el monitor
 existe y muestra el chequeo en estado «nuevo» (todavía sin pings).
@@ -386,15 +392,17 @@ la 11.6 está anotada con cada `sha-<12>` visto en el host.
 ## Fase 8: ventana posterior a la 11.6: filtro de salida y respaldo (Claude implementa, Vos crea los destinos)
 
 Requiere Q1 y Q2 de la decisión respondidas y los changes C1 y C2 aprobados en su debate, cada uno con su propio PR.
-Los nombres de servicio y de variables son los que propone C1; si su design los cambia, se actualizan acá.
+Los nombres de servicio y de variables son los de `staging-backups`: `run-backup.sh`, `restore.sh --from`, `restore-drill.sh`,
+`docker-compose.backup.yml` y `.env.example`.
 
 1. **Filtro de salida del worker (C2):** `enrichment-egress-guard` fusionado y desplegado. Comprobación: guardar un
    link a una dirección privada o a un nombre sin punto es rechazado como URL no válida, y el enriquecimiento de un
    link público sigue funcionando.
-2. **Destino en Oracle (Vos).** *Storage → Buckets → Create Bucket*: **privado**, nivel Standard, **sin versionado**,
-   con una regla de retención que impida borrar objetos antes de su plazo (el plazo lo fija el design de C1 según la
-   retención de Q3). Un usuario IAM dedicado al respaldo con una política limitada a ese bucket y su *Customer Secret
-   Key*; los permisos exactos (sin borrado) los fija C1.
+2. **Destino en Oracle (Vos).** *Storage → Buckets → Create Bucket*: **privado**, nivel Standard, **con versionado**
+   (modelo V del design D6), una retención de 30 días **sin bloquear** y una **regla de ciclo de vida que expira las versiones
+   no actuales a los 31 días** (nunca versionado sin ciclo de vida). Un usuario IAM dedicado al respaldo con una política
+   limitada a ese bucket **sin** borrar versiones ni cambiar el versionado, el ciclo de vida o la retención, y su *Customer
+   Secret Key*.
 3. **Destino fuera de Oracle (Vos):** el que salga de Q2, con las mismas condiciones: privado, sin cobro posible y
    con el borrado protegido. Si pide una cuenta, una tarjeta o tiene costo, decidís vos antes de seguir.
 4. **Credencial de poda (Vos):** la que puede borrar en cada destino. Solo en tu gestor de contraseñas.
@@ -405,12 +413,12 @@ Los nombres de servicio y de variables son los que propone C1; si su design los 
 7. **Primer respaldo a mano (Claude, en el host, con `DC` definido):**
 
    ```bash
-   $DC run --rm backup
+   bash /srv/linkvault-staging/infra/backup/run-backup.sh
    ```
 
-   ```bash
-   $DC run --rm backup restic snapshots
-   ```
+   Las unidades del timer se instalan siguiendo solo `infra/README.md`, «Respaldo programado» (y la **franja sin despliegues**
+   de 06:15 a 08:45 UTC). Después, desde tu PC con la credencial del host, `restic snapshots --compact` de cada destino: tres
+   instantáneas por corrida (`kind:mongo`, `kind:objects`, `kind:manifest`).
 
 8. **El bucket es privado (Claude, desde tu PC):** un pedido sin credenciales al listado del bucket no puede dar `200`
    (`<región>`, `<namespace>` y `<bucket>` los ves en la consola; no se anotan en el repositorio):
@@ -419,7 +427,7 @@ Los nombres de servicio y de variables son los que propone C1; si su design los 
    curl -s -o /dev/null -w "%{http_code}\n" "https://objectstorage.<región>.oraclecloud.com/n/<namespace>/b/<bucket>/o"
    ```
 
-9. **Falsaciones de C1 (Claude):** desde `backup`, `api` no resuelve; el usuario de Mongo de respaldo no puede
+9. **Falsaciones de C1 (Claude):** desde `backup-push`, `api` no resuelve y la dirección de metadatos no responde; el usuario de Mongo de respaldo no puede
    escribir; la identidad S3 de respaldo no puede escribir ni borrar; la credencial del host no puede borrar un paquete
    del repositorio; un umbral de tamaño de prueba hace fallar el respaldo y llega el aviso.
 10. **Aviso de falla real (Vos):** dejá pasar una ventana sin respaldo (Claude desactiva el programador una noche) y
@@ -433,20 +441,20 @@ anotado.
 ## Fase 9: restauración ensayada y resto de lo previo a invitar (Claude y Vos)
 
 1. **Ensayo de restauración nuevo, sobre el host real** (cambio C1): con el volumen que ya tiene y **sin** repetir
-   «Replace boot volume». Se restaura la última instantánea en un proyecto de Compose aparte, con el override de C1
-   que no publica puertos ni tiene Traefik, y se lo baja con `down -v` al terminar. La pila de staging sigue arriba y
-   no se toca. Con `DC` definido:
+   «Replace boot volume». Se restaura la última instantánea **desde `offsite`** (el destino que cubre la pérdida de la cuenta
+   de Oracle) en un proyecto de Compose aparte, con el override `docker-compose.restore.yml` que no publica puertos ni tiene
+   Traefik, y se lo baja con `down -v` al terminar. La pila de staging sigue arriba y no se toca:
 
    ```bash
-   RDC="docker compose -p linkvault-restore -f docker-compose.prod.yml -f infra/backup/docker-compose.restore.yml --env-file .env.staging"
+   read -rs LV_DRILL_PASSWORD; printf "%s\n" "$LV_DRILL_PASSWORD" | BACKUP_DRILL_EMAIL=<correo de la cuenta de ensayo> \
+     bash /srv/linkvault-staging/infra/backup/restore-drill.sh --from offsite; unset LV_DRILL_PASSWORD
    ```
 
-   La restauración en sí es `infra/backup/restore.sh` contra ese proyecto, con la invocación que deje C1. Se comprueban
-   las cuentas, los links y un CV descargable de las cuentas de prueba, y el informe de conciliación. Después:
-
-   ```bash
-   $RDC down -v
-   ```
+   `restore-drill.sh` comprueba por la API del proyecto aparte el login, los links y el CV de la **cuenta permanente de ensayo**,
+   imprime el informe de conciliación y el RTO, y falla si cambió el `Id`, el `StartedAt` o el `RestartCount` de algún contenedor
+   de staging. Calendario del ensayo: este primero (antes de invitar y de la 10.7 de 35b), mensual los dos primeros meses y
+   después trimestral alternando destino, más uno extra cada vez que sube la imagen de `mongo` o del almacén o cambia
+   `infra/backup/`. Después:
 
    ```bash
    docker compose ls && docker volume ls
@@ -513,8 +521,8 @@ personas de la lista del host, y el primer respaldo con invitados aparece en los
    ventana autorizada mientras dure la congelación de 35b.
 2. **Datos.** El repositorio no tiene un framework de migraciones: Mongoose crea los índices al arrancar. Un change que
    agregue un índice único (puede fallar con datos que ya lo violan) o que transforme datos trae su propio script,
-   revisado en su debate, y **antes del merge** se hace un respaldo a mano (`$DC run --rm backup`) y se comprueba que
-   llegó a los dos destinos. El script corre después del despliegue, con la vuelta atrás de la base a mano.
+   revisado en su debate, y **antes del merge** se hace un respaldo a mano (`bash /srv/linkvault-staging/infra/backup/run-backup.sh`) y se comprueba que
+   llegó a los dos destinos. Nada se despliega entre las 06:15 y las 08:45 UTC (franja del respaldo). El script corre después del despliegue, con la vuelta atrás de la base a mano.
 3. El push a `main` dispara `cd-staging`: construye, verifica, publica por digest y despliega por SSH (`deploy.sh`).
    Ventanas de fusión: las que fije el owner (35b, ADR-056 §1 para `enrichment-egress-guard`).
 4. Repetir las filas 1, 2 y 4 de la fase 5 y mirar el reporte de la corrida.
@@ -567,11 +575,13 @@ personas de la lista del host, y el primer respaldo con invitados aparece en los
   Queda anotado en la decisión (C4) para pasárselo a su sesión; este runbook no edita 35b.
 
 **Base de datos.** Sobrescribe todo lo que haya cambiado desde la instantánea elegida: lo posterior se pierde.
-Antes, un respaldo a mano del estado actual (`$DC run --rm backup`), para poder volver, y un ensayo en el proyecto
-aparte de la fase 9 con la misma instantánea. El procedimiento es el de `infra/backup/restore.sh` (cambio C1): para
-`api` y `worker`, deja `mongo` solo, `mongorestore --drop --oplogReplay` sin restaurar `admin.*`, recarga los objetos
-con la misma `OBJECT_STORE_SSE_KEY`, arranca la pila e imprime la conciliación (CV sin objeto y objetos sin
-documento). Hasta que C1 esté fusionado, **no hay vuelta atrás de datos**: es otra razón para no invitar antes.
+Antes, un respaldo a mano del estado actual (`bash /srv/linkvault-staging/infra/backup/run-backup.sh`), para poder volver, y un ensayo en el
+proyecto aparte de la fase 9 con la misma instantánea. El procedimiento es el de `infra/backup/restore.sh --project
+linkvault-prod --from oci|offsite` (cambio C1), con `gh workflow disable cd-staging` antes y `gh workflow enable cd-staging` al
+terminar (pide escribir «CD DESACTIVADO»): para `api` y `worker`, deja `mongo` solo, `mongorestore --drop` sin restaurar
+`admin.*`, recarga los objetos con la misma `OBJECT_STORE_SSE_KEY`, recrea Redis y reencola el outbox con tu confirmación, e
+imprime la conciliación (CV sin objeto y objetos sin documento). Hasta que C1 esté fusionado, **no hay vuelta atrás de
+datos**: es otra razón para no invitar antes. Detalle en `docs/RUNBOOK.md`, «Respaldo y restauración de staging».
 
 **Aplicación fuera de servicio.** Sin el host no funciona nada: ni la web, ni la API, ni el correo ni los avisos. Los
 datos siguen en los dos destinos del respaldo, y las imágenes en GHCR.
@@ -580,16 +590,16 @@ datos siguen en los dos destinos del respaldo, y las imágenes en GHCR.
 
 | Respaldo | Cuándo | Cubre | Límite |
 |---|---|---|---|
-| Restic a OCI Object Storage (C1) | Nocturno (Q4) | Mongo entero y los objetos de CV y snapshots, cifrados por restic | RPO de 24 h; misma cuenta de Oracle; tope de 10 GB por nivel |
+| Restic a OCI Object Storage (C1) | Nocturno, 06:30 UTC (Q4) | Mongo entero y los objetos de CV y snapshots, cifrados por restic, **modelo V** (versionado + ciclo de vida) | RPO de 24 h; misma cuenta de Oracle; tope de 4 GiB (`BACKUP_MAX_REPO_BYTES`) bajo los 10 GB por nivel |
 | Restic al destino fuera de Oracle (C1, Q2) | En la misma corrida | Lo mismo | RPO de 24 h; límites del destino elegido |
 | Copia de `.env.staging` (35b 5.8) | Cada vez que cambia | Claves de cifrado, contraseñas de datos y `RESTIC_PASSWORD` | Manual: toda tarea que edita el archivo actualiza la copia |
 | `acme.json` (35b 6.9) | Al emitir el certificado de producción | Certificado y cuenta ACME | Se puede reemitir, con límites de Let's Encrypt |
 
 Redis no se respalda: guarda colas y caché, y el outbox de Mongo vuelve a encolar lo que no se publicó.
 
-Una vez por mes, restaurá la última instantánea en una pila limpia y comprobá que abre una cuenta de prueba y un CV.
-La prueba se hace **siempre en el host**, en el proyecto de Compose aparte de la fase 9 (override de C1 sin Traefik ni
-puertos) y con `down -v` al terminar, **nunca en tu PC**: con invitados el respaldo tiene CV reales. Un respaldo que
+Una vez por mes (los dos primeros meses; después, trimestral), restaurá la última instantánea en una pila limpia y comprobá que
+abre una cuenta de prueba y un CV, con `restore-drill.sh`. La prueba se hace **siempre en el host**, en el proyecto de Compose
+aparte de la fase 9 (`docker-compose.restore.yml`, sin Traefik ni puertos) y con `down -v` al terminar, **nunca en tu PC**: con invitados el respaldo tiene CV reales. Un respaldo que
 nunca se probó no cuenta.
 
 ## Límites del plan
@@ -616,7 +626,8 @@ Revisá esta tabla cuando Oracle anuncie cambios de Always Free y en la revisió
 |---|---|
 | Mirar el monitor de respaldos (los avisos llegan solos; esto es comprobar que el monitor sigue vivo) | Semanal |
 | Restaurar un respaldo en una pila limpia, en el host (ver [Respaldos](#respaldos)) | Mensual |
-| Poda de los repositorios con la credencial de poda, desde tu PC | Mensual (o lo que fije C1) |
+| Poda de los repositorios con la credencial de poda, desde tu PC (sesión mensual de `docs/RUNBOOK.md`) | Mensual |
+| Verificación de las copias desde la PC (`restic snapshots`) | Quincenal (5 minutos) |
 | *Cost Analysis* de Oracle en 0 y tamaño del bucket de respaldo | Mensual |
 | Actualizaciones de Ubuntu (`unattended-upgrades` ya activo) y reinicio si lo pide (`/var/run/reboot-required`) | Mensual |
 | Dependencias e imágenes: Renovate en el repo, CI en verde, despliegue por merge | Según los PR |

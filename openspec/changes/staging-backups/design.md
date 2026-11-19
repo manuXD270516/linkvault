@@ -432,6 +432,22 @@ cubre la pérdida de la cuenta de Oracle y el menos ejercitado; después, cada e
 `/srv/linkvault-staging/.env.staging` **y** no se pasó `--confirm-host`. No mira la arquitectura (un plan B `amd64`
 también es un host). Fuera del host, las pruebas de desarrollo usan un repositorio local con datos sintéticos.
 
+**Medido al implementar la restauración (tareas 6.1b y 6.4a, 2026-11-18; sin decidir nada nuevo):**
+
+- **`mongorestore` rechaza `--oplogReplay` junto a `--nsExclude` y a `--nsInclude`** (`mongorestore` de `mongo:7.0.43`: «cannot use
+  --oplogReplay with excludes specified» y «… with includes specified»). El paso 4 tal como está escrito (`--drop --oplogReplay
+  --nsExclude 'admin.*'`) no se puede ejecutar. La implementación restaura con `--drop --nsExclude "admin.*"` **sin**
+  `--oplogReplay`: se conserva lo que la spec exige (sin `admin.*`, H7) y se pierde que los datos queden en un instante único (el
+  volcado sigue llevando `--oplog`). **Pregunta abierta P1 del informe de la implementación**: o se acepta así, o se restaura todo
+  (también `admin.*`) con `--oplogReplay`, o el volcado se hace sin `--oplog` y se documenta la inconsistencia posible.
+- **El `Content-Type` de cada CV hay que llevarlo en el `tar`:** `rclone copy` de un fichero sin extensión (las claves de CV son
+  `<userId>/<cvId>`) lo sube como `application/octet-stream`, y la conciliación de C28 lo detecta. `read-objects.sh` escribe
+  `/.lv-content-types` (bucket, clave y tipo) dentro del `tar` y `load-objects.sh` sube cada objeto con `--header-upload
+  "Content-Type: …"`.
+- **La API no tiene endpoint de descarga de CV** (solo `GET /api/cv` y `GET /api/cv/:id/text-preview`): el ensayo comprueba login,
+  `GET /api/links/mine` y `GET /api/cv` de la cuenta de ensayo, y el fichero del CV lo cubre la conciliación (cero CV sin objeto).
+  **Pregunta abierta P2.**
+
 ### D12. Redis no se respalda; el outbox vuelve a publicar lo que estaba en vuelo
 
 Redis guarda colas y caché. El relay solo publica los eventos con `publishedAt: null`, así que un evento **ya

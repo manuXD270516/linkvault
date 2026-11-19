@@ -286,8 +286,9 @@ del paso 12 (región, AD, `nproc`/`free -g`, IP reservada, usuario `deploy`, rut
 La comparación está en el paso 11. Resumen para decidir:
 
 - **No pasar:** sigue costando 0 €, pero Oracle puede **reclamar** la instancia si en 7 días queda por debajo del
-  20 % de uso (CPU, red y memoria). Staging es desechable y se reconstruye, así que el riesgo es perder tiempo, no
-  datos de nadie: el aviso a las personas invitadas ya dice que el entorno puede perderse.
+  20 % de uso (CPU, red y memoria). Staging se reconstruye y se restaura desde el último respaldo (ADR-066), así que el riesgo
+  es perder tiempo y, como mucho, las últimas 24 h de cambios: el aviso a las personas invitadas ya dice que el entorno
+  puede perderse y que hay copias de seguridad.
 - **Pasar:** también 0 € mientras no salgas de Always Free, sin reclamación por inactividad y con más facilidad para
   conseguir capacidad ARM. El riesgo es un cobro si alguien crea algo fuera de lo gratuito; por eso, **en el mismo
   momento**, el presupuesto con alerta a 1 € del paso 11.

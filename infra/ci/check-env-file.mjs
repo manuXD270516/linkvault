@@ -30,9 +30,9 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-const [envPath, composePath = 'docker-compose.prod.yml', examplePath = '.env.example'] = process.argv.slice(2);
+const [envPath, composePath = 'docker-compose.prod.yml', examplePath = '.env.example', backupComposePath] = process.argv.slice(2);
 if (!envPath) {
-  process.stderr.write('usage: node infra/ci/check-env-file.mjs <env-file> [compose-file] [.env.example]\n');
+  process.stderr.write('usage: node infra/ci/check-env-file.mjs <env-file> [compose-file] [.env.example] [backup-compose-file]\n');
   process.exit(2);
 }
 
@@ -49,7 +49,15 @@ function parseEnv(path) {
 const env = parseEnv(envPath);
 const example = parseEnv(examplePath);
 const compose = readFileSync(composePath, 'utf8');
-const required = [...new Set([...compose.matchAll(/\$\{([A-Z0-9_]+):\?/g)].map((match) => match[1]))].sort();
+// Las obligatorias salen de los `${VAR:?}` del compose de producción y, si se pasa como cuarto argumento, del compose del
+// respaldo (`infra/backup/docker-compose.backup.yml`; ADR-066, design D16 y C23). Sin ese argumento, las del respaldo no se
+// revisan: el despliegue de 35b revisa solo lo que el `up` exige.
+const backupCompose = backupComposePath ? readFileSync(backupComposePath, 'utf8') : '';
+const required = [
+  ...new Set(
+    [...compose.matchAll(/\$\{([A-Z0-9_]+):\?/g), ...backupCompose.matchAll(/\$\{([A-Z0-9_]+):\?/g)].map((match) => match[1]),
+  ),
+].sort();
 const declared = (name) => new RegExp(`\\b${name}\\b`).test(compose);
 
 const has = (name) => (env[name] ?? '').trim() !== '';
@@ -59,7 +67,10 @@ const chain = (name) => (env[name] ?? '').split(',').map((item) => item.trim()).
 const results = [];
 const check = (name, ok) => results.push([name, Boolean(ok)]);
 
-for (const name of required) check(`${name} is set (required by ${composePath})`, has(name));
+for (const name of required) {
+  const source = compose.includes('${' + name + ':?') ? composePath : backupComposePath;
+  check(`${name} is set (required by ${source})`, has(name));
+}
 
 check('PUBLIC_PAGE_BASE_URL is an absolute URL without trailing slash', absoluteUrlWithoutTrailingSlash('PUBLIC_PAGE_BASE_URL'));
 check('WEB_BASE_URL is an absolute URL without trailing slash', absoluteUrlWithoutTrailingSlash('WEB_BASE_URL'));
@@ -122,6 +133,27 @@ for (const name of ['REDIS_PASSWORD', 'MONGO_ROOT_PASSWORD']) {
 }
 check('MONGO_ROOT_USER is 1-64 characters [A-Za-z0-9._~-] (URI-safe, it goes unencoded in a URL)', URI_SAFE_USER.test(env.MONGO_ROOT_USER ?? ''));
 
+// Respaldo (ADR-066, design D16): solo si se pasó el compose del respaldo. `BACKUP_PING_URL` no está en ningún compose (la lee
+// `run-backup.sh` del fichero de entorno) y por eso es obligatoria **explícita** (C23). Nada se imprime salvo el nombre.
+if (backupComposePath) {
+  const positiveInteger = (name) => /^[1-9][0-9]*$/.test(env[name] ?? '');
+  check('MONGO_BACKUP_PASSWORD is 32-128 characters [A-Za-z0-9._~-] (URI-safe, it goes unencoded in a URL)', URI_SAFE_SECRET.test(env.MONGO_BACKUP_PASSWORD ?? ''));
+  check('MONGO_BACKUP_PASSWORD is not the CI filler of infra/ci/verify.env', Boolean(ciEnv.MONGO_BACKUP_PASSWORD) && has('MONGO_BACKUP_PASSWORD') && env.MONGO_BACKUP_PASSWORD !== ciEnv.MONGO_BACKUP_PASSWORD);
+  check('MONGO_BACKUP_USER is 1-64 characters [A-Za-z0-9._~-] (URI-safe, it goes unencoded in a URL)', URI_SAFE_USER.test(env.MONGO_BACKUP_USER ?? ''));
+  check('MONGO_BACKUP_USER differs from MONGO_ROOT_USER', has('MONGO_BACKUP_USER') && env.MONGO_BACKUP_USER !== env.MONGO_ROOT_USER);
+  check('RESTIC_PASSWORD has >= 32 characters (openssl rand -hex 32)', (env.RESTIC_PASSWORD ?? '').length >= 32);
+  check('RESTIC_PASSWORD is not the CI filler of infra/ci/verify.env', Boolean(ciEnv.RESTIC_PASSWORD) && has('RESTIC_PASSWORD') && env.RESTIC_PASSWORD !== ciEnv.RESTIC_PASSWORD);
+  check('BACKUP_PING_URL is set (explicitly required: no compose reads it)', has('BACKUP_PING_URL'));
+  check('BACKUP_PING_URL is an https:// URL', /^https:\/\/\S+$/.test(env.BACKUP_PING_URL ?? ''));
+  for (const name of ['BACKUP_OCI_REPOSITORY', 'BACKUP_OCI_ACCESS_KEY_ID', 'BACKUP_OCI_SECRET_ACCESS_KEY', 'BACKUP_OFFSITE_REPOSITORY', 'BACKUP_OFFSITE_ACCESS_KEY_ID', 'BACKUP_OFFSITE_SECRET_ACCESS_KEY']) {
+    check(`${name} is set (explicitly required: run-backup.sh reads the destinations from the env file)`, has(name));
+  }
+  check('BACKUP_OCI_REPOSITORY is an s3:https:// repository', /^s3:https:\/\/\S+$/.test(env.BACKUP_OCI_REPOSITORY ?? ''));
+  for (const name of ['BACKUP_MAX_REPO_BYTES', 'BACKUP_OBJECTS_MAX_BYTES', 'BACKUP_REQUEUE_WINDOW_HOURS']) {
+    if (has(name)) check(`${name} is a positive integer`, positiveInteger(name));
+  }
+}
+
 const secrets = [
   'AUTH_JWT_SECRET',
   'AI_VAULT_KEY',
@@ -131,6 +163,9 @@ const secrets = [
   'MAIL_SMTP_PASSWORD',
   'REDIS_PASSWORD',
   'MONGO_ROOT_PASSWORD',
+  'MONGO_BACKUP_PASSWORD',
+  'RESTIC_PASSWORD',
+  'S3_BACKUP_SECRET_KEY',
 ];
 check('no secret keeps its .env.example value', secrets.every((name) => !has(name) || env[name] !== example[name]));
 

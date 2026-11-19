@@ -62,7 +62,8 @@ export const CLAIMS_REGISTRY = [
           '"es el resto del borrado de cuenta de `deploy-prod`" (lo que el procedimiento manual deja fuera)',
       },
       {
-        regex: /cascada\s+al\s+borrar\s+(?:una|la)\s+cuenta\s+est[aá]\s+pendiente/gi,
+        regex:
+          /cascada\s+al\s+borrar\s+(?:una|la)\s+cuenta\s+est[aá]\s+pendiente/gi,
         recognises: '"la cascada al borrar una cuenta está pendiente"',
       },
       {
@@ -111,5 +112,46 @@ export const CLAIMS_REGISTRY = [
       },
     ],
     fix: 'nombra `DELETE /api/users/me` como camino primero y deja el procedimiento manual con `mongosh` como excepcional, diciendo a qué operación sustituye',
+  },
+  {
+    id: 'staging-sin-copias',
+    claim:
+      'que staging es desechable y sus datos no tienen copia: con `staging-backups` (ADR-066, que enmienda ADR-051 §2) los datos de Mongo y del almacén tienen respaldo cifrado nocturno fuera del host en dos destinos',
+    patterns: [
+      {
+        regex: /staging\s+es\s+\**desechable/gi,
+        recognises: '"staging es desechable"',
+      },
+      {
+        regex: /sus\s+datos\s+no\s+tienen\s+copia/gi,
+        recognises: '"sus datos no tienen copia"',
+      },
+      {
+        regex: /entorno\s+desechable\s+y\s+sin\s+copias/gi,
+        recognises:
+          '"entorno desechable y sin copias" (el aviso a los invitados de antes del respaldo)',
+      },
+      {
+        regex: /no\s+hay\s+copias\s+de\s+seguridad\s+de\s+datos/gi,
+        recognises:
+          '"no hay copias de seguridad de datos" (ADR-051 §2, antes de ADR-066)',
+      },
+    ],
+    scope: {
+      // `infra/README.md`, el RUNBOOK, el runbook de despliegue y `apps/web/src` (la página `/privacidad`), que son donde se
+      // le dice a una persona qué pasa con sus datos. `DECISION-DESPLIEGUE.md` es un registro histórico de lo que se decidió
+      // el 2026-11-16 y no se reescribe; los ADR, igual.
+      roots: ['infra', 'docs', 'apps'],
+      extensions: ['.md', '.ts', '.html'],
+      excludePrefixes: ['docs/adr/', 'docs/despliegue/DECISION-DESPLIEGUE.md'],
+    },
+    symbols: [
+      {
+        file: 'infra/backup/run-backup.sh',
+        regex: /^main\(\) \{/m,
+        what: 'el orquestador del respaldo nocturno `infra/backup/run-backup.sh`',
+      },
+    ],
+    fix: 'di que los datos de Mongo y del almacén tienen respaldo cifrado fuera del host (RPO de 24 h, plazo máximo de borrado en las copias) y que lo único sin copia es Redis, los registros de acceso y la configuración de los despliegues (ADR-066)',
   },
 ];

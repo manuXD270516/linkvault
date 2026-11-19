@@ -156,8 +156,11 @@ métricas (ADR-056 §6).
 | `data-worker` | no | `mongo`, `redis` y `worker` |
 | `store-api` | no | `object-store` y `api` |
 | `store-worker` | no | `object-store` y `worker` |
+| `data-backup` | no | `mongo` y `backup-mongo` (solo durante un respaldo; ADR-066) |
+| `store-backup` | no | `object-store`, `backup-objects` y `restore-objects` (solo durante un respaldo o una restauración; ADR-066) |
 | `api-egress` | sí | `api` (correo, IA) |
 | `worker-egress` | sí | `worker` (enriquecimiento, correo, push) |
+| `backup-egress` | sí | `backup-push`, el único proceso del respaldo con salida y sin ninguna red de datos (compose del respaldo) |
 
 - **La salida se comprueba en cada despliegue:** `infra/deploy/smoke.sh`, después del `/health`, abre desde `api` y
   desde `worker` una conexión TCP con 5 s de plazo a `smtp-relay.brevo.com:587` y a `openrouter.ai:443`, y falla
@@ -242,13 +245,18 @@ con permisos `600`, en el directorio fijo. **Nunca** está en el repositorio ni 
 - los secretos (`AUTH_JWT_SECRET`, `AI_VAULT_KEY`, `OBJECT_STORE_SSE_KEY`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`), generados
   con las órdenes de este README;
 - las credenciales de datos (`REDIS_PASSWORD`, `MONGO_ROOT_USER` y `MONGO_ROOT_PASSWORD`), con `openssl rand -hex 32`:
-  van sin codificar en `MONGO_URI` y `REDIS_URL`, y `check-env-file.mjs` exige el formato apto para URI (design D18).
+  van sin codificar en `MONGO_URI` y `REDIS_URL`, y `check-env-file.mjs` exige el formato apto para URI (design D18);
+- las del **respaldo** (ADR-066): `MONGO_BACKUP_USER` y `MONGO_BACKUP_PASSWORD` (mismo formato), `S3_BACKUP_ACCESS_KEY` y
+  `S3_BACKUP_SECRET_KEY`, `RESTIC_PASSWORD` (32 o más caracteres: `openssl rand -hex 32`; **sin copia no hay respaldo que
+  valga**), las credenciales de los dos destinos (`BACKUP_OCI_*` y `BACKUP_OFFSITE_*`), `BACKUP_PING_URL` y los topes
+  (`BACKUP_MAX_REPO_BYTES`, `BACKUP_OBJECTS_MAX_BYTES`, `BACKUP_REQUEUE_WINDOW_HOURS`). Se revisan con el compose del respaldo
+  como **cuarto argumento** de `check-env-file.mjs`. Detalle en [`infra/backup/README.md`](backup/README.md).
 
 Comprobación (5.7): `stat -c %a .env.staging` → `600` y
 `docker compose -f docker-compose.prod.yml --env-file .env.staging config -q` sale 0.
 
-**Copia fuera del host**, comprobada por suma SHA-256: contiene `AI_VAULT_KEY` (sin ella no se descifran las claves BYOK)
-y `OBJECT_STORE_SSE_KEY` (sin ella no se descifran los CV), y `MONGO_ROOT_PASSWORD` (el usuario raíz vive en el
+**Copia fuera del host**, comprobada por suma SHA-256: contiene `AI_VAULT_KEY` (sin ella no se descifran las claves BYOK),
+`OBJECT_STORE_SSE_KEY` (sin ella no se descifran los CV), `RESTIC_PASSWORD` (sin ella no se descifran las copias de seguridad) y `MONGO_ROOT_PASSWORD` (el usuario raíz vive en el
 volumen de Mongo: con otra contraseña, la pila no entra a sus datos). Toda tarea que edita `.env.staging` actualiza la
 copia.
 
@@ -279,16 +287,22 @@ Certificate Transparency al emitir el certificado.
 
 ### Qué vive solo en el host
 
-Staging es **desechable**: sus datos no tienen copia (ADR-051 §2). Lo único con copia fuera es `.env.staging`.
+Los datos de MongoDB y del almacén tienen **respaldo cifrado fuera del host**, en dos destinos (uno fuera de Oracle): una copia
+nocturna, **RPO de 24 h**, retención de 7 diarias y 4 semanales y restauración ensayada en el host (ADR-066, que enmienda
+ADR-051 §2). **No** tienen copia las colas de Redis (las repone el outbox al restaurar), los registros de acceso de Traefik
+y la configuración de los últimos despliegues. Lo que se borra sigue en las copias hasta el plazo máximo de
+[`infra/backup/README.md`](backup/README.md): **hasta 14 semanas**. Con el host se pierde también `.env.staging`, que tiene su
+copia aparte, igual que `RESTIC_PASSWORD`.
 
 | Qué | Dónde | Qué se pierde si se pierde el host |
 |---|---|---|
 | `.env.staging` | directorio fijo | nada, si la copia está al día: se restaura y se compara su suma |
 | `REDIS_PASSWORD` y `MONGO_ROOT_PASSWORD` | `.env.staging` | con la copia, nada. Sin ella, Redis arranca con una nueva; Mongo no, porque su usuario raíz vive en `mongo-data` con la anterior, y sin ella esos datos solo se dejan atrás con `down -v` |
 | `keyFile` de Mongo | `/tmp` del contenedor `mongo` | nada: se genera en cada arranque y no es un secreto (con un solo nodo no hace falta conservarlo) |
-| datos de MongoDB | volumen `mongo-data` | cuentas, grupos, links, postulaciones y análisis, sin copia |
-| almacén de objetos | volumen `object-store-data` | los CV y los snapshots, sin copia |
-| colas de Redis | volumen `redis-data` | los trabajos en vuelo |
+| datos de MongoDB | volumen `mongo-data` | hasta las últimas 24 h de cuentas, grupos, links, postulaciones y análisis (el respaldo nocturno los conserva) |
+| almacén de objetos | volumen `object-store-data` | hasta las últimas 24 h de CV y snapshots (el respaldo nocturno los conserva) |
+| colas de Redis | volumen `redis-data` | los trabajos en vuelo, sin copia: al restaurar, el reencolado del outbox repone los publicados poco antes del volcado |
+| `RESTIC_PASSWORD` | `.env.staging` | con la copia, nada; sin ella las copias de seguridad no se pueden descifrar |
 | certificados y cuenta ACME | volumen `traefik-letsencrypt` (`acme.json`) | nada que no se recupere: se emite de nuevo contra producción, y cuenta en sus límites |
 | `access.log` de Traefik | volumen `traefik-logs` | el registro de accesos |
 | configuración de los últimos despliegues | `.incoming-<sha12>/` (los cinco últimos) | la vuelta atrás sin GitHub, hasta el siguiente despliegue |
@@ -310,15 +324,54 @@ host a medio reconstruir. Orden, cada paso en su apartado de arriba:
    [credencial del registro](#credencial-del-registro);
 5. relanzar **solo el job de despliegue** de la última corrida desplegada (GitHub lo deja hasta 30 días después de la
    corrida inicial) o, pasado ese plazo, las mismas dos órdenes del job desde la máquina del operador; el certificado
-   se emite de nuevo contra producción.
+   se emite de nuevo contra producción;
+6. reinstalar [la programación del respaldo](#respaldo-programado) (`linkvault-backup@<usuario>.timer`) y comprobar su siguiente
+   disparo con `systemctl list-timers`; después, restaurar los datos con `infra/backup/restore.sh` (ver
+   [`infra/backup/README.md`](backup/README.md) y `docs/RUNBOOK.md`).
 
 Con pago por uso hay margen para crear la instancia nueva **antes** de terminar la vieja; es una variante que no se
 ensaya.
 
 - **Pasos que faltaban (defectos corregidos en este texto) y tiempo total del ensayo:** Pendiente (9.1-9.4).
 
-### Quién puede desplegar a staging
+### Respaldo programado
 
+El respaldo nocturno (ADR-066) lo lanza un **timer de systemd del host** (`linkvault-backup@<usuario>.timer`, a las 06:30 UTC,
+alrededor de las 03:30 en Argentina, con hasta 15 minutos de retraso aleatorio y `Persistent=true`: si el host estaba apagado,
+la corrida perdida se hace al arrancar). La instancia es el nombre del **usuario de despliegue**. Las unidades llegan al host con
+cada despliegue (están en `infra/deploy/config-files.txt`); instalarlas es una vez, con `sudo`, porque el usuario de despliegue
+no lo tiene. Con el usuario de administración, y **siguiendo solo estos pasos** (cada paso que falte es un defecto de esta
+documentación):
+
+```bash
+# 1) Copiar las dos unidades desde el directorio fijo (llegaron con el último despliegue).
+sudo cp /srv/linkvault-staging/infra/backup/systemd/linkvault-backup@.service /etc/systemd/system/
+sudo cp /srv/linkvault-staging/infra/backup/systemd/linkvault-backup@.timer /etc/systemd/system/
+# 2) Que systemd las lea y activar el timer para el usuario de despliegue (sustituí <usuario> por su nombre).
+sudo systemctl daemon-reload
+sudo systemctl enable --now linkvault-backup@<usuario>.timer
+# 3) Comprobar que quedó programado: la columna NEXT tiene que mostrar el siguiente disparo.
+systemctl list-timers 'linkvault-backup@*'
+```
+
+El servicio ejecuta `/bin/bash /srv/linkvault-staging/infra/backup/run-backup.sh` como ese usuario, con `After=docker.service` y
+`TimeoutStartSec=2h`. Un respaldo a mano: `bash /srv/linkvault-staging/infra/backup/run-backup.sh` (o
+`sudo systemctl start linkvault-backup@<usuario>.service`). La unidad del timer lleva `Persistent=true`.
+
+- **Franja sin despliegues: de 06:15 a 08:45 UTC.** `deploy.sh` no espera el candado del respaldo (es de 35b y no se toca): un
+  despliegue dentro de la franja que recree `mongo` u `object-store` hace fallar **esa** corrida, con su aviso, y la noche
+  siguiente respalda normal. `Persistent=true` puede disparar una corrida perdida fuera de la franja (al arrancar el host tras
+  un apagado): el peor caso es el mismo, una corrida fallida con aviso.
+- **Un solo candado:** `run-backup.sh`, `restore.sh` y `restore-drill.sh` toman `flock` sobre
+  `/srv/linkvault-staging/.backup.lock`; el segundo sale sin tocar nada.
+- **Swap:** el área de trabajo de los objetos es un `tmpfs` (memoria); un `tmpfs` puede ir a swap, así que `swapon --show` tiene
+  que salir vacío o con swap cifrada (ADR-066, R8). Antes de desplegar este cambio, anotarlo aquí.
+- **Compose ≥ 2.24** en el host (por `!reset` y `!override` del ensayo de restauración): `docker compose version`.
+
+Qué se respalda, dónde, qué hacer con cada clase de falla y los tiempos medidos de restauración:
+[`infra/backup/README.md`](backup/README.md). Restaurar y operar: `docs/RUNBOOK.md`, «Operar staging».
+
+### Quién puede desplegar a staging
 El guardia de `cd-staging` (solo una corrida de `main`, fuera del modo de prueba y con preflight `full`, despliega)
 **evita accidentes**: un `dry_run` que despliega de verdad, una rama que pisa staging. **No autoriza**: no es un
 control de acceso (ADR-051 §4). Quien tiene escritura en el repositorio puede escribir en una rama un workflow que lea
@@ -353,7 +406,7 @@ podría escribir en una rama un workflow que lea los secretos de staging, así q
 autor» (ADR-051 §4) **no se cumple al pie de la letra**: tiene escritura el autor y, a través de su instalación, cada una
 de estas cinco aplicaciones. Se le ofrecieron tres salidas (restringir las aplicaciones a sus repositorios activos,
 darles acceso a todos menos a `linkvault`, o desinstalar las que no usa) y eligió **aceptar el riesgo sin tocar la
-configuración de las aplicaciones**. Staging es desechable y sin copias, pero sus secretos dan root en el host y
+configuración de las aplicaciones**. Staging tiene copias cifradas fuera del host, pero sus secretos dan root en el host y
 `.env.staging` contiene `AI_VAULT_KEY`. Si cambian las aplicaciones o sus permisos, esta sección se rehace con la misma
 comprobación.
 
@@ -551,9 +604,12 @@ El servicio lleva `-disableHttp`, así que **el filer (8888) ya no sirve objetos
 `http://object-store:8888/` da 404 y la pasarela S3 sigue sirviendo con sus claves). Pero `mini` no tiene enlace por
 componente y `-ip.bind=127.0.0.1` cierra también la pasarela (`provision` sale 1), así que **siguen escuchando, sin
 autenticación**: el maestro (**9333**), el volumen (**9340**) y los gRPC (**18888**, **19333**, **19340** y **33646**;
-medido además, **18333** y **23646**). **Solo los alcanzan `api` y `worker`**, cada uno por su red (`store-api` y
-`store-worker`, ambas `internal: true` y sin puertos publicados): `web`, Traefik, Mongo y Redis ni siquiera resuelven
-`object-store`. Un proceso comprometido en `api` o en `worker` puede, por tanto, hablar con esas interfaces; no se
+medido además, **18333** y **23646**). **Los alcanzan `api` y `worker`**, cada uno por su red (`store-api` y
+`store-worker`, ambas `internal: true` y sin puertos publicados), **y, mientras dura un respaldo o una restauración, el
+lector de objetos del respaldo (`backup-objects`) y el cargador de la restauración (`restore-objects`)** por `store-backup`
+(ADR-066, enmienda 3): sin salida a Internet, sin registros y con la imagen fijada por digest. `web`, Traefik, Mongo, Redis y
+`backup-push` (el que envía los respaldos) ni siquiera resuelven `object-store`. Un proceso comprometido en `api`, en
+`worker` o en uno de esos lectores puede, por tanto, hablar con esas interfaces; no se
 filtra por destino (ADR-056 §5) y la firma JWT con `security.toml` queda fuera, porque sería un fichero con secreto
 montado y la forma del servicio (ADR-052) no lo admite. La evidencia está en
 [`matriz.md`](../docs/object-store-matrix/matriz.md), «Configuración con `-disableHttp` (35b D18)», y la decisión, en
