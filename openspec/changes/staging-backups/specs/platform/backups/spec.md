@@ -109,24 +109,26 @@ Ningún proceso del respaldo ni de la restauración SHALL poder consultar los da
 - **WHEN** corre la comprobación de repositorio del aislamiento del respaldo
 - **THEN** SHALL fallar nombrando el servicio y la regla
 
-### Requirement: El respaldo lee con credenciales de solo lectura propias
+### Requirement: El respaldo lee sin escribir: usuario de solo lectura en la base, identidad de la aplicación en el almacén
 
-El lector de la base SHALL autenticarse con un usuario propio que solo puede leer y volcar, y el lector del almacén con
-una identidad S3 propia que solo puede listar y leer los dos buckets. Ninguno SHALL usar las credenciales de la
-aplicación ni las del usuario raíz.
+El lector de la base SHALL autenticarse con un usuario propio que solo puede leer y volcar, nunca con las credenciales
+de la aplicación ni con las del usuario raíz. El lector del almacén SHALL autenticarse con la **identidad S3 de la
+aplicación** (las mismas variables que usa `api`), recibida solo por su entorno y nunca impresa ni pasada en los
+argumentos de un proceso: el almacén medido no admite una identidad propia de solo lectura sin cambiar su
+configuración (Q3 del change resuelta en (b) el 2026-11-18, ADR-066 §3).
 
 - El usuario de la base SHALL asegurarse (crearse o actualizarse) de forma idempotente **en cada corrida** y en cada
   restauración, no solo sobre un volumen vacío.
-- La identidad S3 SHALL sobrevivir a un reinicio del almacén, y su creación NO SHALL cambiar la configuración medida
-  del almacén sin repetir las celdas de la matriz que ADR-052 §2 exige.
-- Crear la identidad S3 NO SHALL alterar ninguna otra identidad: la de la aplicación SHALL seguir pudiendo leer,
-  escribir y borrar, y la comprobación del aprovisionamiento SHALL seguir pasando. Cada corrida SHALL ejecutar esa
-  comprobación después de asegurar la identidad y, si falla, SHALL terminar con una falla urgente antes de leer
-  objetos. La documentación SHALL tener el procedimiento para revertir la identidad de respaldo.
-- Si el almacén no permite fijar la clave de la identidad, la identidad SHALL ser efímera: se crea al empezar la
-  corrida, su clave llega al lector solo por su entorno y se borra al terminar, también si la corrida falla.
-- La identidad de solo lectura evita escrituras por error; NO SHALL presentarse como contención de un lector
-  comprometido mientras las interfaces internas del almacén sigan sin autenticación.
+- El lector del almacén NO SHALL tener salida a Internet ni compartir red con `api` o `worker`, NO SHALL guardar
+  registros y SHALL existir solo mientras dura la corrida.
+- Los scripts que ejecuta el lector del almacén NO SHALL usar órdenes de escritura de su herramienta S3 (borrar,
+  purgar, sincronizar, mover, crear o subir) ni copiar con el almacén como destino. La comprobación de repositorio del
+  aislamiento del respaldo SHALL fallar, nombrando el fichero y la línea, si alguno lo hace.
+- Ningún paso del respaldo ni de la restauración SHALL crear, cambiar ni borrar identidades del almacén, ni cambiar la
+  configuración medida del almacén.
+- Esta garantía evita escrituras **solo por la construcción de los scripts**: la identidad que usa el lector puede
+  escribir y borrar, y las interfaces internas del almacén siguen sin autenticación. NO SHALL presentarse como
+  contención de un lector comprometido.
 
 #### Scenario: El usuario de respaldo no puede escribir
 
@@ -140,26 +142,30 @@ aplicación ni las del usuario raíz.
 - **WHEN** corre el respaldo
 - **THEN** el volcado SHALL hacerse con el usuario de respaldo
 
-#### Scenario: La identidad S3 de respaldo no puede escribir ni borrar
+#### Scenario: El lector de objetos lee con la identidad de la aplicación sin salir a Internet
 
-- **GIVEN** la identidad S3 de respaldo
-- **WHEN** intenta subir un objeto y borrar otro en el bucket de CV
-- **THEN** las dos operaciones SHALL rechazarse
-- **AND** listar y leer un objeto de cada bucket SHALL funcionar
+- **GIVEN** la pila levantada y el lector de objetos del respaldo en marcha con la identidad S3 de la aplicación
+- **WHEN** lista los dos buckets, lee un objeto de cada uno y abre una conexión a un sitio público
+- **THEN** el listado y las lecturas SHALL funcionar
+- **AND** la conexión externa SHALL fallar
 
-#### Scenario: Una identidad que degrada la de la aplicación corta la corrida
+#### Scenario: Un lector de objetos que borra rompe la comprobación
 
-- **GIVEN** un almacén en el que asegurar la identidad de respaldo deja a la aplicación sin permiso de escritura
-- **WHEN** corre el respaldo
-- **THEN** la corrida SHALL terminar con la falla urgente de la identidad antes de leer objetos
+- **GIVEN** una copia de los scripts del lector de objetos con una orden de borrado sobre el bucket de CV
+- **WHEN** corre la comprobación de repositorio del aislamiento del respaldo
+- **THEN** SHALL fallar nombrando el fichero y la línea
 
-#### Scenario: La identidad de la aplicación no cambia
+#### Scenario: Un lector de objetos que copia hacia el almacén rompe la comprobación
 
-- **GIVEN** la identidad S3 de respaldo asegurada y el almacén reiniciado
-- **WHEN** se ejecuta la comprobación del aprovisionamiento con la imagen de la aplicación y la aplicación sube y borra
-  un objeto
-- **THEN** las tres operaciones SHALL funcionar
-- **AND** el listado de identidades SHALL diferir del anterior solo en la del respaldo
+- **GIVEN** una copia de los scripts del lector de objetos con una copia cuyo destino es el almacén
+- **WHEN** corre la comprobación de repositorio del aislamiento del respaldo
+- **THEN** SHALL fallar nombrando el fichero y la línea
+
+#### Scenario: El respaldo no administra identidades del almacén
+
+- **WHEN** se buscan en `infra/backup/` llamadas a la API de identidades del almacén o a su CLI
+- **THEN** NO SHALL aparecer ninguna
+- **AND** la configuración de Compose resuelta NO SHALL tener ningún servicio que asegure una identidad de respaldo
 
 ### Requirement: El borrado de los respaldos está protegido y la poda se hace fuera del host
 
@@ -285,8 +291,8 @@ coinciden, o de la que se elija; manifiestos o instantáneas duplicados de una m
 - restaurar la base dentro del propio contenedor de la base, **sin** las colecciones de usuarios del sistema
   (`admin.*`), sobre un volumen que la propia base inicializó con el usuario raíz del fichero de entorno, sin
   credenciales en los argumentos;
-- aprovisionar los buckets, después asegurar la identidad de respaldo y comprobar que lista los dos buckets, y recién
-  entonces volver a cargar los objetos por la API S3, con un proceso sin salida y sin registros;
+- aprovisionar los buckets y recién entonces volver a cargar los objetos por la API S3 con la identidad de la
+  aplicación, con un proceso sin salida y sin registros;
 - en staging, recrear la cola antes de reencolar, mostrar cuántos eventos se reencolarían por tipo y pedir
   confirmación; marcar como pendientes los eventos del outbox publicados desde la hora de inicio del volcado del
   destino restaurado menos la ventana (por defecto una hora); en el ensayo, solo contar;
@@ -386,8 +392,8 @@ sintéticos, cuya contraseña se lee por la entrada estándar.
 
 ### Requirement: Los secretos del respaldo existen solo por nombre en el repositorio
 
-Las credenciales de los destinos, la clave del repositorio de respaldo, el usuario de respaldo de la base, la identidad
-S3 de respaldo y la dirección del monitor SHALL vivir solo en el fichero de entorno del host y en su copia fuera del
+Las credenciales de los destinos, la clave del repositorio de respaldo, el usuario de respaldo de la base y la
+dirección del monitor SHALL vivir solo en el fichero de entorno del host y en su copia fuera del
 host; la credencial de poda, solo fuera del host. En el repositorio SHALL aparecer solo por nombre, con valores
 ficticios en `.env.example`. Ningún script SHALL imprimirlas ni pasarlas en los argumentos de un proceso. La revisión
 del fichero de entorno SHALL fallar nombrando la variable que falte o tenga mal formato, sin imprimir su valor.

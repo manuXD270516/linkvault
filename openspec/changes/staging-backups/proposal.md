@@ -31,7 +31,9 @@ El panel de la decisión encontró además que el respaldo «obvio» no sirve:
   la corrida. RPO de 24 h, aceptado (Q4), con revisión a las dos semanas con invitados.
 - **Procesos del respaldo que no deshacen D18**: dos lectores efímeros sin salida a Internet (uno con Mongo, otro con
   el almacén) y un empujador sin acceso a los datos, unidos por una tubería en el host. Ninguno comparte red con `api` ni
-  con `worker`. Usuario de Mongo de solo lectura (rol `backup`) e identidad S3 de solo lectura propia.
+  con `worker`. Usuario de Mongo de solo lectura (rol `backup`); el lector de objetos usa la identidad S3 de la
+  aplicación (Q3 resuelta en (b): una propia exigía cambiar `command` del almacén) y solo lee por construcción de sus
+  scripts, que vigila `repo-checks`.
 - **Borrado protegido**: la credencial que vive en el host no puede destruir respaldos antes de la ventana de
   protección; nada de versionado sin ciclo de vida; la poda la corre una credencial que **no** vive en el host.
   Retención de 7 diarios y 4 semanales (Q3).
@@ -66,7 +68,8 @@ El panel de la decisión encontró además que el respaldo «obvio» no sirve:
 ### Modified Capabilities
 
 - `platform/object-store`: «Solo la aplicación alcanza el almacén por la red» admite al lector de objetos del respaldo,
-  sin salida a Internet y con identidad de solo lectura.
+  sin salida a Internet y con la identidad de la aplicación, limitado a leer por sus scripts. «El almacén se usa solo
+  por la API S3» no cambia.
 - `platform/production-deploy`: los dos requirements que añade 35b dejan de declarar staging como desechable y suman
   al lector del respaldo como tercer proceso que alcanza el almacén. **Este delta se aplica después de archivar 35b**
   (design D14).

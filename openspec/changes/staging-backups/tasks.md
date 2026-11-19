@@ -354,6 +354,15 @@ que OCI no admite el modelo V, se para y vuelve al owner antes de buscar el dest
   números. El aviso de la 9.10 de 35b no entra aquí: lo comprueba la 12.1. Verificar: `bash infra/ci/repo-checks.sh` en
   verde. **Falsación:** cambiar el número en `docs/RUNBOOK.md` → falla; restaurar. **Estado (2026-11-18): hecha.** `backup-retention-claim` en `repo-checks`: compara el número de semanas de `infra/backup/README.md` (línea marcada), de **todas** las líneas marcadas de `docs/RUNBOOK.md` y del `source` de `privacy.backups.retention` en `messages.xlf` (hoy 14 en las 4 apariciones). Falsación: 12 en una línea de `docs/RUNBOOK.md` → falla nombrando los ficheros y los números; restaurado. El aviso de la 9.10 de 35b queda para la 12.1**
 
+- [ ] 8.7 [infra] Alinear la documentación con la Q3 (b) (design D3, ADR-066 §3): quitar de `infra/backup/README.md`
+  la fila de la clase `ensure_identity`; quitar de `docs/RUNBOOK.md` «Revertir la identidad de respaldo» (o dejar una
+  línea que diga que no aplica porque no hay identidad de respaldo); en `docs/despliegue/RUNBOOK-DESPLIEGUE.md`,
+  cambiar «identidad S3 de respaldo» por «el lector de objetos no escribe (`backup-isolation` en verde)» en la fase 8,
+  paso 9, y sacarla de la lista de secretos del respaldo y del estado de la cabecera. `docs/despliegue/DECISION-DESPLIEGUE.md`
+  no se toca (es el registro de la decisión). Verificar con `node -e` que `ensure_identity`, `backup-identity`,
+  `S3_BACKUP_` e «identidad S3 de respaldo» no aparecen en esos tres ficheros, y `bash infra/ci/repo-checks.sh` en verde
+  (el guardia `backup-retention-claim` lee `infra/backup/README.md` y `docs/RUNBOOK.md`).
+
 ## 9. Aviso de privacidad (design D7)
 
 - [x] 9.1 [frontend] `/privacidad`, sección nueva «Copias de seguridad» con los **cuatro puntos** de B13 y la spec
@@ -369,8 +378,9 @@ que OCI no admite el modelo V, se para y vuelve al owner antes de buscar el dest
 
 - [ ] 10.1 [infra] **Owner, antes de fusionar (precondición de la 12.1, C14):** secretos del respaldo en
   `.env.staging`, generados con las órdenes de `.env.example` y cargados con el procedimiento de la **fase 3** del
-  runbook, y la copia fuera del host actualizada (regla de 35b 5.8, sumas comparadas con `node`); `S3_BACKUP_*` solo si
-  la 1.7a no eligió la variante efímera. Verificar en el host con la **invocación con contenedor de la fase 3.4** del
+  runbook, y la copia fuera del host actualizada (regla de 35b 5.8, sumas comparadas con `node`). No hay `S3_BACKUP_*`
+  (Q3 (b)): `backup-objects` usa `S3_ACCESS_KEY` y `S3_SECRET_KEY`, que ya están. Verificar en el host con la
+  **invocación con contenedor de la fase 3.4** del
   runbook (T-3), sobre una copia del compose de la rama del change en un directorio temporal del host (no en el fijo) y
   con el compose del respaldo como **cuarto argumento**: sale 0.
 - [ ] 10.2 [infra] Despliegue del commit del change por el camino normal; `mongo` y `object-store` recreados (D15) y
@@ -380,16 +390,17 @@ que OCI no admite el modelo V, se para y vuelve al owner antes de buscar el dest
   (C18); cada paso que falte o confunda se anota como defecto y se corrige en el README en el PR de archivo. Verificar:
   `systemctl list-timers 'linkvault-backup@*'` volcado a fichero y leído con `node` muestra el siguiente disparo, y la
   lista de defectos (o «ninguno») en el PR de archivo.
-- [ ] 10.4 [infra] Primer respaldo, en este orden (C2-a): (1) `ensure-backup-identity` solo; (2)
-  `run --rm --no-deps api node object-store.js verify` sale 0, y una subida y un borrado con la aplicación (subir y
-  borrar un CV de la cuenta de ensayo, o un objeto de prueba por la API S3 con la identidad de la aplicación)
-  funcionan; (3) recién entonces la corrida (`systemctl start linkvault-backup@<usuario>.service`). Verificar: los tres
-  pasos anotados; `restic snapshots --tag run:<id>` en cada destino (desde `backup-push`) lista las tres instantáneas;
-  el monitor muestra `start` y éxito; el tamaño de cada repositorio queda anotado.
+- [ ] 10.4 [infra] Primer respaldo: (1) contar los objetos y bytes de los dos buckets con `rclone size` desde
+  `backup-objects` (`--entrypoint rclone`, sin actividad de usuarios en la franja); (2) la corrida
+  (`systemctl start linkvault-backup@<usuario>.service`); (3) repetir el conteo. El orden de C2-a (asegurar la identidad
+  y `object-store.js verify` antes de leer) no aplica: Q3 resuelta en (b) el 2026-11-18. Verificar: los conteos de (1) y
+  (3) iguales (el lector no escribió); `restic snapshots --tag run:<id>` en cada destino (desde `backup-push`) lista las
+  tres instantáneas; el monitor muestra `start` y éxito; el tamaño de cada repositorio queda anotado.
 - [ ] 10.5 [infra] Falsaciones en el host (fase 8, paso 9 del runbook): desde `backup-push`, `api` no resuelve y la
   dirección de metadatos no responde (C31); `docker inspect` de un contenedor del respaldo con `LogConfig.Type = none`
-  y sin fichero en `/var/lib/docker/containers/<id>/` (C1); el usuario de respaldo no inserta; la identidad S3 de
-  respaldo no sube ni borra, `object-store.js verify` sale 0 y la aplicación sube y borra (C2); la credencial del host
+  y sin fichero en `/var/lib/docker/containers/<id>/` (C1); el usuario de respaldo no inserta; desde `backup-objects`,
+  la salida HTTPS falla y `object-store:8333` responde, y `docker compose config` de la pila con el compose del respaldo
+  no tiene ningún servicio `backup-identity` (Q3 (b)); la credencial del host
   no destruye un paquete ni cambia la protección; `BACKUP_MAX_REPO_BYTES=1` hace fallar con `size_cap` y llega el
   correo del monitor. Y el pedido anónimo al listado del bucket de OCI no da `200` (fase 8, paso 8). Verificar: las
   salidas, anotadas en el PR de archivo.
@@ -471,9 +482,10 @@ verificación manual). Un escenario puede cubrirse en más de un sitio.
 | backups · Un servicio del respaldo sin redes explícitas o con registros rompe la comprobación | `backup-isolation: missing networks or logging driver fails` | 2.3 |
 | backups · El usuario de respaldo no puede escribir | `mongo backup user insert is unauthorized` | 3.1; 10.5 |
 | backups · El usuario de respaldo existe sobre un volumen viejo | `ensure-backup-user creates the user on a pre-existing volume` | 3.1 |
-| backups · La identidad S3 de respaldo no puede escribir ni borrar | `s3 backup identity can list and get but not put or delete` | 1.7a; 3.2; 10.5 |
-| backups · Una identidad que degrada la de la aplicación corta la corrida | `run-backup: failing verify after ensure-backup-identity pings fail ensure_identity before reading objects` | 4.3; 10.4 |
-| backups · La identidad de la aplicación no cambia | `app identity still verifies, puts and deletes; identity list differs only by backup` | 1.7b; 3.2; 10.5 |
+| backups · El lector de objetos lee con la identidad de la aplicación sin salir a Internet | `isolation: backup-objects lists and gets both buckets with app identity and has no egress` | 2.5; 10.5 |
+| backups · Un lector de objetos que borra rompe la comprobación | `backup-isolation: rclone delete in read-objects.sh fails naming file and line` | 2.3; 4.7a (`test-run-backup.sh`) |
+| backups · Un lector de objetos que copia hacia el almacén rompe la comprobación | `backup-isolation: rclone copy with store: as destination fails naming file and line` | 2.3; 4.7a (`test-run-backup.sh`) |
+| backups · El respaldo no administra identidades del almacén | `no identity admin API or store CLI in infra/backup and no backup-identity service` | 2.3; 10.5 |
 | backups · La credencial del host no destruye un paquete | `host credential cannot permanently delete a pack or its version` | 1.5a; 1.5b; 10.5 |
 | backups · La credencial del host no cambia la protección | `host credential cannot suspend versioning, change lifecycle or retention` | 1.5a; 1.5b |
 | backups · La poda con la credencial de poda aplica la retención | `prune credential applies keep-daily 7 keep-weekly 4` | 1.5a; 1.5b; 10.10 |
@@ -500,8 +512,7 @@ verificación manual). Un escenario puede cubrirse en más de un sitio.
 | backups · Falta una variable del respaldo | `check-env-file names each missing backup variable, BACKUP_PING_URL included` | 7.2 |
 | backups · Ninguna credencial en los argumentos | `run-backup: no secret value appears in docker or curl argv` | 4.7b |
 | backups · Un plazo distinto en un aviso rompe la comprobación | `backup-retention-claim: differing week counts fail` | 8.6 |
-| object-store · La API de identidades solo la usa el script del respaldo | `identity admin API only in ensure-backup-identity.sh` | 3.2 (búsqueda con `node -e`) |
-| object-store · El lector del respaldo alcanza el almacén y nada más | `isolation: backup-objects lists buckets and has no egress` | 2.5; 3.2 |
+| object-store · El lector del respaldo alcanza el almacén y nada más | `isolation: backup-objects lists buckets and has no egress` | 2.5; 10.5 |
 | object-store · El que envía los respaldos no alcanza el almacén | `isolation: backup-push cannot resolve object-store` | 2.5 |
 | object-store · (escenarios existentes) | sin cambios; `backup-isolation` comprueba las redes | 2.3 |
 | production-deploy · La reconstrucción reinstala el respaldo | `README rebuild section installs the backup timer` | 5.2 |
