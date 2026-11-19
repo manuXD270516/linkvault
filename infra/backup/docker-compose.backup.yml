@@ -75,6 +75,7 @@ services:
       driver: none
     environment:
       RCLONE_CONFIG_STORE_TYPE: s3
+      RCLONE_LOG_LEVEL: ERROR
       RCLONE_CONFIG_STORE_PROVIDER: Other
       RCLONE_CONFIG_STORE_ENDPOINT: http://object-store:8333
       RCLONE_CONFIG_STORE_REGION: ${S3_REGION:-us-east-1}
@@ -104,6 +105,7 @@ services:
       driver: none
     environment:
       RCLONE_CONFIG_STORE_TYPE: s3
+      RCLONE_LOG_LEVEL: ERROR
       RCLONE_CONFIG_STORE_PROVIDER: Other
       RCLONE_CONFIG_STORE_ENDPOINT: http://object-store:8333
       RCLONE_CONFIG_STORE_REGION: ${S3_REGION:-us-east-1}

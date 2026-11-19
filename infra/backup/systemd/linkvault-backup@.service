@@ -1,0 +1,16 @@
+# Respaldo nocturno de staging (ADR-066, design D10 de `staging-backups`). Plantilla: la instancia es el nombre del usuario de
+# despliegue (`systemctl enable --now linkvault-backup@<usuario>.timer`; ver `infra/README.md`, «Respaldo programado»).
+#
+# `ExecStart` lleva `/bin/bash` explícito: el script llega al host por `tar` sin bit de ejecución garantizado. `TimeoutStartSec=2h`
+# acota una corrida colgada. `After=docker.service` y `Wants=`: una corrida que dispara `Persistent=true` al arrancar el host no
+# empieza antes que Docker (el script además espera la salud de `mongo` y del almacén).
+[Unit]
+Description=LinkVault staging backup (%i)
+Wants=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=%i
+TimeoutStartSec=2h
+ExecStart=/bin/bash /srv/linkvault-staging/infra/backup/run-backup.sh

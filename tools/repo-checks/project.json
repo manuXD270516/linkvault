@@ -128,6 +128,42 @@
         "commands": ["node tools/repo-checks/src/backup-isolation.check.mjs"]
       }
     },
+    "check-backup-run-script": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "// inputs": "El orquestador, su prueba y todo lo que la prueba copia de `infra/backup/` (la prueba arma una raíz de pruebas con esa carpeta entera). Sin la lista, cambiar un script del respaldo no cambiaría el hash y Nx daría el verde anterior (ADR-048 §5).",
+      "inputs": [
+        "{workspaceRoot}/infra/backup/**/*",
+        "{projectRoot}/src/backup-run-script.check.mjs",
+        "{projectRoot}/src/lib/compose.mjs",
+        "{projectRoot}/src/lib/report.mjs"
+      ],
+      "options": {
+        "cwd": "{workspaceRoot}",
+        "parallel": false,
+        "commands": ["node tools/repo-checks/src/backup-run-script.check.mjs"]
+      }
+    },
+    "check-backup-outbox-contract": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "// inputs": "Los tres ficheros que compara —las constantes del reencolado, el esquema del outbox y el compose (la base de `MONGO_URI`)— y su propio código. Sin el esquema entre los inputs, renombrar un campo no cambiaría el hash y Nx daría el verde anterior (ADR-048 §5).",
+      "inputs": [
+        "{workspaceRoot}/infra/backup/requeue-outbox.js",
+        "{workspaceRoot}/apps/api/src/infrastructure/outbox/outbox-event.schemas.ts",
+        "{workspaceRoot}/docker-compose.prod.yml",
+        "{projectRoot}/src/backup-outbox-contract.check.mjs",
+        "{projectRoot}/src/lib/compose.mjs",
+        "{projectRoot}/src/lib/report.mjs"
+      ],
+      "options": {
+        "cwd": "{workspaceRoot}",
+        "parallel": false,
+        "commands": [
+          "node tools/repo-checks/src/backup-outbox-contract.check.mjs"
+        ]
+      }
+    },
     "check": {
       "executor": "nx:run-commands",
       "cache": false,
@@ -137,7 +173,9 @@
         "check-claims-registry",
         "check-stale-defaults",
         "check-docs-stack-up",
-        "check-backup-isolation"
+        "check-backup-isolation",
+        "check-backup-run-script",
+        "check-backup-outbox-contract"
       ],
       "options": {
         "cwd": "{workspaceRoot}",

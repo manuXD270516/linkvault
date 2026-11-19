@@ -5,3 +5,17 @@ infra/deploy/deploy.sh
 infra/deploy/install-config.sh
 infra/deploy/smoke.sh
 infra/deploy/check-image-platforms.sh
+infra/backup/docker-compose.backup.yml
+infra/backup/docker-compose.restore.yml
+infra/backup/dump-mongo.sh
+infra/backup/read-objects.sh
+infra/backup/list-objects.sh
+infra/backup/load-objects.sh
+infra/backup/ensure-backup-user.js
+infra/backup/requeue-outbox.js
+infra/backup/requeue-outbox.sh
+infra/backup/run-backup.sh
+infra/backup/restore.sh
+infra/backup/restore-drill.sh
+infra/backup/systemd/linkvault-backup@.service
+infra/backup/systemd/linkvault-backup@.timer

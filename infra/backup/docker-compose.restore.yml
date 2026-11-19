@@ -1,0 +1,39 @@
+# Ensayo de restauración EN EL HOST, en un proyecto aparte (ADR-066, design D13 de `staging-backups`).
+#
+# Se suma al compose de producción y al del respaldo, con otro nombre de proyecto, para no tocar ni un contenedor, ni una red, ni
+# un volumen de `linkvault-prod`:
+#
+#   docker compose -p linkvault-restore -f docker-compose.prod.yml -f infra/backup/docker-compose.backup.yml \
+#     -f infra/backup/docker-compose.restore.yml --env-file .env.staging up -d mongo redis object-store api
+#
+# Lo orquesta `infra/backup/restore-drill.sh`. Requiere Compose >= 2.24 por `!reset` y `!override` (lo comprueba el script).
+#
+#   - `traefik`, `web` y `worker` deshabilitados (perfil `never`: nadie lo activa), y `traefik` sin puertos: los `ports` se SUMAN
+#     entre ficheros, así que hace falta `!reset`. Ningún servicio de este proyecto publica nada.
+#   - `api` solo en sus redes internas, sin `api-egress`: la API del ensayo no sale a Internet (correo, OpenRouter…).
+#   - `mongo` con un caché de WiredTiger de 0,5 GB: dos `mongod` tienen que caber en 12 GB junto a staging.
+#   - el único servicio en una red con salida es `backup-push` (del compose del respaldo), sin ninguna red de datos.
+#   - los volúmenes son del proyecto (`linkvault-restore_*`): ningún nombre fijo ni volumen externo. La comprobación
+#     `backup-isolation` de `tools/repo-checks` lo vigila sobre la configuración resuelta.
+services:
+  traefik:
+    profiles: [never]
+    ports: !reset []
+  web:
+    profiles: [never]
+  worker:
+    profiles: [never]
+  api:
+    networks: !override
+      - internal
+      - data-api
+      - store-api
+  mongo:
+    command: !override
+      - '--replSet'
+      - 'rs0'
+      - '--bind_ip_all'
+      - '--keyFile'
+      - '/tmp/mongo-keyfile'
+      - '--wiredTigerCacheSizeGB'
+      - '0.5'

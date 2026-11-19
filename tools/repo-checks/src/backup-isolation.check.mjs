@@ -249,7 +249,10 @@ export function evaluate(model, { restore, project }) {
         findings.push(
           `${name}: publica puertos en el override de restauración (regla: ningún servicio publica puertos)`,
         );
-      const egress = svc.networks.filter(isEgress);
+      // Un servicio deshabilitado (perfil `never`) no arranca: sus redes no cuentan, pero sus puertos sí (arriba).
+      const egress = svc.profiles.includes('never')
+        ? []
+        : svc.networks.filter(isEgress);
       if (egress.length > 0 && name !== 'backup-push') {
         findings.push(
           `${name}: está en la red con salida '${egress[0]}' en la restauración (regla: el único servicio con salida es backup-push)`,
