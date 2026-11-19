@@ -40,6 +40,7 @@ fallo de uno no impida el otro.
 - **WHEN** corre el respaldo
 - **THEN** ese destino NO SHALL tener manifiesto de esa corrida
 - **AND** el respaldo SHALL terminar con error y avisar la falla
+- **NOTE** restic puede dejar una **instantánea parcial** (o vacía) del flujo cuando el productor muere a mitad, porque guarda lo que alcanzó a leer; esa instantánea **sin manifiesto no cuenta como respaldo** y `restore.sh` la ignora: solo parte de corridas con manifiesto.
 
 #### Scenario: Un destino caído no impide el otro
 

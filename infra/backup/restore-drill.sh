@@ -127,16 +127,16 @@ main() {
     (async () => {
       const json = { "content-type": "application/json", "x-requested-with": "linkvault" };
       const login = await fetch(base + "/auth/login", { method: "POST", headers: json, body: JSON.stringify({ email, password }) });
-      if (login.status !== 200) { console.log("login: HTTP " + login.status); process.exit(10); }
+      if (login.status !== 200) { process.stdout.write("login: HTTP " + login.status + "\n"); process.exit(10); }
       const { accessToken } = await login.json();
       const auth = { authorization: "Bearer " + accessToken };
       const links = await fetch(base + "/links/mine", { headers: auth });
       const linkItems = links.status === 200 ? (await links.json()).items.length : -1;
       const cvs = await fetch(base + "/cv", { headers: auth });
       const cvItems = cvs.status === 200 ? (await cvs.json()).items.length : -1;
-      console.log("login: ok; links: " + linkItems + "; cv: " + cvItems);
+      process.stdout.write("login: ok; links: " + linkItems + "; cv: " + cvItems + "\n");
       process.exit(linkItems >= minLinks && cvItems >= 1 ? 0 : 11);
-    })().catch((error) => { console.log("error: " + error.message); process.exit(12); });'
+    })().catch((error) => { process.stdout.write("error: " + error.message + "\n"); process.exit(12); });'
   local api_out api_rc=0
   api_out="$(printf '%s\n' "$PASSWORD" | docker exec -i "$cid" node -e "$check_script" "$EMAIL" "$MIN_LINKS" 2>&1)" || api_rc=$?
   PASSWORD=''

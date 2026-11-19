@@ -263,6 +263,8 @@ tiene swap o que está cifrada.
 `infra/backup/` y los dos compose a `.backup-run-<id>/`** en el directorio fijo y ejecuta desde esa copia (la borra al
 terminar): un despliegue que reemplaza los ficheros a mitad de corrida no cambia lo que la corrida usa.
 
+**Instantánea parcial (4.3):** restic puede dejar una **instantánea parcial** (o vacía) del flujo cuando el productor muere a mitad, porque guarda lo que alcanzó a leer; esa instantánea **sin manifiesto no cuenta como respaldo** y `restore.sh` la ignora: solo parte de corridas con manifiesto. Por eso la clase de la falla (`mongo_dump`, `objects_read`, `objects_too_large`) avisa y el manifiesto se envía solo si las dos pasadas terminaron en 0.
+
 **Aviso de poda vencida (B3):** al terminar bien, el script mira la instantánea más vieja de cada destino; si pasa de
 **65 días** (34 de la retención más 31 de la poda mensual), manda `fail prune_overdue` **después** de haber respaldado:
 el respaldo se hizo, y el correo del monitor le recuerda al owner la sesión mensual.

@@ -149,6 +149,24 @@
         "commands": ["node tools/repo-checks/src/backup-run-script.check.mjs"]
       }
     },
+    "check-backup-restore-script": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "// inputs": "El script, su prueba y todo `infra/backup/` (la prueba copia esa carpeta a una raíz de pruebas). Sin la lista, cambiar una guarda de restore.sh no cambiaría el hash y Nx daría el verde anterior (ADR-048 §5).",
+      "inputs": [
+        "{workspaceRoot}/infra/backup/**/*",
+        "{projectRoot}/src/backup-restore-script.check.mjs",
+        "{projectRoot}/src/lib/compose.mjs",
+        "{projectRoot}/src/lib/report.mjs"
+      ],
+      "options": {
+        "cwd": "{workspaceRoot}",
+        "parallel": false,
+        "commands": [
+          "node tools/repo-checks/src/backup-restore-script.check.mjs"
+        ]
+      }
+    },
     "check-backup-outbox-contract": {
       "executor": "nx:run-commands",
       "cache": true,
@@ -220,7 +238,8 @@
         "check-backup-run-script",
         "check-backup-outbox-contract",
         "check-backup-env-file",
-        "check-backup-retention-claim"
+        "check-backup-retention-claim",
+        "check-backup-restore-script"
       ],
       "options": {
         "cwd": "{workspaceRoot}",
