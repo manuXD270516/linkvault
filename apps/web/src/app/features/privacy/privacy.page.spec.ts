@@ -64,6 +64,29 @@ describe('PrivacyPage', () => {
     expect(encryption).not.toMatch(/proveedor|SSE|bucket/i);
   });
 
+  it('renders the backup notice with the four points and the documented maximum', async () => {
+    await harness.navigateByUrl('/privacidad', PrivacyPage);
+    const section = host().querySelector('[data-testid="privacy-backups"]');
+    const body = section?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+
+    expect(section).not.toBeNull();
+    // 1. copias cifradas con clave propia, fuera del servidor, en servicios de terceros (sin nombrar cuentas).
+    expect(body).toMatch(/copias de seguridad cifradas con una clave propia/i);
+    expect(body).toMatch(/fuera del servidor/i);
+    expect(body).toMatch(/servicios de almacenamiento de terceros/i);
+    // 2. lo borrado desaparece de inmediato de la app y de las copias en un plazo máximo, y no se puede acelerar.
+    expect(body).toMatch(/de inmediato de la aplicación/i);
+    expect(body).toMatch(/plazo máximo de 14 semanas/i);
+    expect(body).toMatch(/no podemos acelerar/i);
+    // 3. se pueden perder las últimas 24 horas.
+    expect(body).toMatch(/últimas 24 horas/i);
+    // 4. algo borrado justo antes de una recuperación puede volver.
+    expect(body).toMatch(/justo antes de una recuperación/i);
+    expect(body).toMatch(/volver/i);
+    // No inventa garantías: nunca dice que lo borrado desaparece de inmediato de todas partes.
+    expect(body).not.toMatch(/de inmediato de todas partes|desaparece de todas partes/i);
+  });
+
   it('muestra el enlace a iniciar sesión', async () => {
     await harness.navigateByUrl('/privacidad', PrivacyPage);
     const link = host().querySelector<HTMLAnchorElement>('[data-testid="privacy-login-link"]');

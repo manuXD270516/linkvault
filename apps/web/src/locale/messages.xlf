@@ -4047,11 +4047,46 @@
           <context context-type="linenumber">35,40</context>
         </context-group>
       </trans-unit>
+      <trans-unit id="privacy.backups.title" datatype="html">
+        <source>Copias de seguridad</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/privacy/privacy.page.html</context>
+          <context context-type="linenumber">44,45</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="privacy.backups.encrypted" datatype="html">
+        <source> Guardamos copias de seguridad cifradas con una clave propia, fuera del servidor, en servicios de almacenamiento de terceros. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/privacy/privacy.page.html</context>
+          <context context-type="linenumber">46,49</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="privacy.backups.retention" datatype="html">
+        <source> Lo que borras desaparece de inmediato de la aplicación y de las copias de seguridad en un plazo máximo de 14 semanas; no podemos acelerar ese plazo. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/privacy/privacy.page.html</context>
+          <context context-type="linenumber">50,53</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="privacy.backups.loss" datatype="html">
+        <source> Si hubiera que recuperar el servicio desde una copia, se podrían perder los cambios de las últimas 24 horas. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/privacy/privacy.page.html</context>
+          <context context-type="linenumber">54,57</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="privacy.backups.restored" datatype="html">
+        <source> Algo que borres justo antes de una recuperación podría volver; en ese caso, la persona responsable del servicio lo volverá a borrar. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/privacy/privacy.page.html</context>
+          <context context-type="linenumber">58,63</context>
+        </context-group>
+      </trans-unit>
       <trans-unit id="privacy.login" datatype="html">
         <source>Ir a iniciar sesión</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/privacy/privacy.page.html</context>
-          <context context-type="linenumber">45,49</context>
+          <context context-type="linenumber">65,69</context>
         </context-group>
       </trans-unit>
       <trans-unit id="profile.delete.title" datatype="html">

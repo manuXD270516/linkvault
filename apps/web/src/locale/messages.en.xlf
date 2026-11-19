@@ -1937,6 +1937,26 @@
         <source> Desde Perfil, en la zona de peligro, puedes borrar tu cuenta. Te pediremos confirmación y tu contraseña. Al completarse se eliminan tu usuario, sesiones, CV, claves de IA, análisis y el resto de datos personales asociados. Si eres el único propietario de un grupo con otros miembros, deberás transferir la propiedad o abandonar ese grupo antes. Tras el borrado se cierra la sesión y vuelves a la pantalla de inicio de sesión. </source>
         <target>From Profile, in the danger zone, you can delete your account. We will ask for confirmation and your password. When it completes, your user, sessions, CVs, AI keys, analyses and other personal data tied to you are removed. If you are the sole owner of a group with other members, you must transfer ownership or leave that group first. After deletion the session ends and you return to the sign-in screen.</target>
       </trans-unit>
+      <trans-unit id="privacy.backups.title" datatype="html">
+        <source>Copias de seguridad</source>
+        <target>Backups</target>
+      </trans-unit>
+      <trans-unit id="privacy.backups.encrypted" datatype="html">
+        <source> Guardamos copias de seguridad cifradas con una clave propia, fuera del servidor, en servicios de almacenamiento de terceros. </source>
+        <target>We keep backups encrypted with our own key, outside the server, on third-party storage services.</target>
+      </trans-unit>
+      <trans-unit id="privacy.backups.retention" datatype="html">
+        <source> Lo que borras desaparece de inmediato de la aplicación y de las copias de seguridad en un plazo máximo de 14 semanas; no podemos acelerar ese plazo. </source>
+        <target>What you delete disappears immediately from the application and from the backups within a maximum of 14 weeks; we cannot speed that period up.</target>
+      </trans-unit>
+      <trans-unit id="privacy.backups.loss" datatype="html">
+        <source> Si hubiera que recuperar el servicio desde una copia, se podrían perder los cambios de las últimas 24 horas. </source>
+        <target>If the service had to be recovered from a backup, the changes of the last 24 hours could be lost.</target>
+      </trans-unit>
+      <trans-unit id="privacy.backups.restored" datatype="html">
+        <source> Algo que borres justo antes de una recuperación podría volver; en ese caso, la persona responsable del servicio lo volverá a borrar. </source>
+        <target>Something you delete just before a recovery could come back; in that case, the person responsible for the service will delete it again.</target>
+      </trans-unit>
       <trans-unit id="privacy.login" datatype="html">
         <source>Ir a iniciar sesión</source>
         <target>Go to sign in</target>
