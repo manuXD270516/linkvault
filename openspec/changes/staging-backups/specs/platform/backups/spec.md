@@ -15,8 +15,7 @@ fallo de uno no impida el otro.
 
 - Antes de respaldar, la corrida SHALL esperar a que la base y el almacén estén sanos y SHALL comprobar la plataforma de
   las imágenes del respaldo.
-- El volcado de la base SHALL ser consistente en un instante (con el registro de operaciones del replica set) y SHALL
-  hacerse **antes** que la lectura de los objetos, para que todo objeto que la base referencia esté en la copia.
+- El volcado de la base SHALL hacerse **antes** que la lectura de los objetos, para que todo objeto que la base referencia esté en la copia. La base restaurada NO SHALL presentarse como un instante único: cada colección queda como estaba cuando se volcó, entre las horas de inicio y fin del volcado del manifiesto, y la ventana de reencolado del outbox lo cubre.
 - Ningún dato en claro SHALL escribirse en un disco del host ni de un contenedor, **incluidos los registros de
   Docker**: los datos viajan por tuberías, los servicios que los sacan por su salida estándar no guardan registros, el
   orquestador no reproduce el flujo en su propia salida ni en su registro, y el área de trabajo, si hace falta, es

@@ -5,7 +5,7 @@
 //
 // Idempotente: crea el usuario si no existe y, si existe, le fija la contraseña y el rol vigentes (cubre un volumen anterior
 // al cambio, que `MONGO_INITDB_*` no vuelve a inicializar, y la rotación de la contraseña). Rol integrado `backup` sobre
-// `admin`: permite `mongodump --oplog` y no escribe. Todo sale de `process.env` (la raíz y el respaldo); NUNCA se imprime
+// `admin`: permite `mongodump` y no escribe. Todo sale de `process.env` (la raíz y el respaldo); NUNCA se imprime
 // una credencial.
 const env = process.env;
 const rootUser = env.MONGO_INITDB_ROOT_USERNAME;

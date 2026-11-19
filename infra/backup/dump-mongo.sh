@@ -5,4 +5,4 @@ set -eu
 umask 077
 conf=/tmp/mongodump.yml
 printf 'uri: mongodb://%s:%s@mongo:27017/?replicaSet=rs0&authSource=admin\n' "$MONGO_BACKUP_USER" "$MONGO_BACKUP_PASSWORD" >"$conf"
-exec mongodump --quiet --config "$conf" --archive --gzip --oplog
+exec mongodump --quiet --config "$conf" --archive --gzip

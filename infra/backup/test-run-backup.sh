@@ -331,6 +331,10 @@ grep -Eq 'rclone[[:space:]]+(delete|deletefile|purge|rmdir|rmdirs|sync|move|move
 check 'backup-objects scripts use no rclone write command' $(( $? == 0 ))
 grep -Eq 'rclone[[:space:]]+copy[[:space:]]+[^[:space:]]+[[:space:]]+"?store:' "$here/read-objects.sh" "$here/list-objects.sh"
 check 'backup-objects scripts never copy towards the store' $(( $? == 0 ))
+grep -Eq 'mongodump.*--oplog' "$here/dump-mongo.sh"
+check 'the mongodump never uses --oplog (D11 (a))' $(( $? == 0 ))
+grep -Eq '^[^#]*mongorestore.*--oplogReplay' "$here/restore.sh"
+check 'the mongorestore never uses --oplogReplay (D11 (a))' $(( $? == 0 ))
 grep -q 'S3_BACKUP' "$here/docker-compose.backup.yml" "$here/run-backup.sh"
 check 'no S3_BACKUP_* variable is left (Q3 b)' $(( $? == 0 ))
 

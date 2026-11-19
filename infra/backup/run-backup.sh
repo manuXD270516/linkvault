@@ -7,7 +7,7 @@
 #
 # Una corrida tiene un identificador (`AAAAMMDDTHHMMSSZ`) y, POR DESTINO (primero `oci`, después `offsite`), una pasada completa
 # con este orden fijo:
-#   1. base:      `backup-mongo` (mongodump --archive --gzip --oplog) → tubería del host → `backup-push` (restic --stdin)
+#   1. base:      `backup-mongo` (mongodump --archive --gzip, sin --oplog) → tubería del host → `backup-push` (restic --stdin)
 #   2. objetos:   `backup-objects` (rclone copy a su tmpfs y `tar`) → tubería del host → `backup-push`
 #   3. manifiesto: JSON con el identificador, las horas del volcado, bytes y SHA-256 de cada flujo medidos EN EL HOST, objetos por
 #      bucket con sus cabeceras, digests de las imágenes y `formatVersion`. Una corrida sin manifiesto NO es un respaldo.

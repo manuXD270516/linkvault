@@ -26,7 +26,7 @@ El panel de la decisión encontró además que el respaldo «obvio» no sirve:
 
 - **Respaldo nocturno cifrado fuera del host, en dos destinos** (Q2 y Q4 de la decisión): un bucket privado de OCI
   Object Storage y un destino fuera de Oracle, el (a) de Q2 —almacenamiento de objetos gratuito, sin tarjeta y con
-  bloqueo de objetos— si se verifica, y si no el (b), un Google Drive dedicado. Cada noche, `mongodump --oplog` primero
+  bloqueo de objetos— si se verifica, y si no el (b), un Google Drive dedicado. Cada noche, `mongodump` primero
   y los objetos de CV y snapshots después, en `restic`, sin texto en claro en disco, y un **manifiesto** que hace válida
   la corrida. RPO de 24 h, aceptado (Q4), con revisión a las dos semanas con invitados.
 - **Procesos del respaldo que no deshacen D18**: dos lectores efímeros sin salida a Internet (uno con Mongo, otro con

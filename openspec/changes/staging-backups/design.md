@@ -162,7 +162,7 @@ escribir en el almacén; lo único que lo impide es lo que hacen sus scripts. Po
 la (b) ya no crea ninguna identidad, desaparecen la comprobación `object-store.js verify` de cada corrida, la clase `ensure_identity`,
 «Revertir la identidad de respaldo» y la excepción a la spec `platform/object-store` (la API de identidades no se usa).
 
-- **Mongo:** usuario `MONGO_BACKUP_USER` con el rol integrado `backup` sobre `admin` (permite `mongodump --oplog` y no
+- **Mongo:** usuario `MONGO_BACKUP_USER` con el rol integrado `backup` sobre `admin` (permite `mongodump` y no
   escribe). Se **asegura en cada corrida y en cada restauración**: `docker compose exec -T mongo mongosh` con el script
   **por la entrada estándar** (`--file /dev/stdin` o el equivalente que mida la 3.1; D3-a), sin montajes nuevos en
   `mongo`; el script lee `process.env` (raíz y respaldo) y hace `createUser` o `updateUser` idempotente. Por eso
@@ -241,7 +241,7 @@ Una corrida tiene un identificador (`<AAAAMMDD>T<HHMMSS>Z`) y, **por destino**, 
 0. **Preparación (C26, C27):** espera a que `mongo` y `object-store` estén sanos (plazo de 10 minutos; si no,
    `stack_unhealthy`); `docker compose pull` de las cuatro imágenes del respaldo y `check-image-platforms.sh` sobre
    ellas (si no, `images`).
-1. **Base:** `mongodump --archive --gzip --oplog` con el usuario de respaldo → tubería → `restic backup --stdin
+1. **Base:** `mongodump --archive --gzip` (sin `--oplog`, D11) con el usuario de respaldo → tubería → `restic backup --stdin
    --stdin-filename mongo.archive.gz --tag run:<id> --tag kind:mongo --host linkvault-staging`.
 2. **Objetos:** `rclone copy` de los dos buckets al `tmpfs` del lector (tope `BACKUP_OBJECTS_MAX_BYTES`, por defecto
    1 GiB; pasarlo es una falla de clase `objects_too_large`), y `tar` a la salida estándar → `restic backup --stdin
@@ -419,7 +419,7 @@ staging (`linkvault-prod`, vuelta atrás de datos) y para el de ensayo (`linkvau
    inicializa la propia imagen con él).
 4. **Restaura la base dentro de `mongo` (C5):** `restic dump` en `backup-push` → tubería → `docker compose exec -T mongo`
    con un `sh -c` que escribe en el `/tmp` del contenedor un `--config` con las credenciales raíz leídas de su entorno y
-   ejecuta `mongorestore --config … --archive --gzip --drop --oplogReplay --nsExclude 'admin.*'`. No se pisa
+   ejecuta `mongorestore --config … --archive --gzip --drop --nsExclude 'admin.*'` (sin `--oplogReplay`, que `mongorestore` no admite junto a `--nsExclude`). No se pisa
    `admin.system.users` (H7) y ninguna credencial pasa por argumentos.
 5. Asegura el usuario de respaldo (D3).
 6. **En este orden (D11-a):** aprovisiona los buckets (`run --rm --no-deps api node object-store.js provision`);
@@ -445,12 +445,7 @@ también es un host). Fuera del host, las pruebas de desarrollo usan un reposito
 
 **Medido al implementar la restauración (tareas 6.1b y 6.4a, 2026-11-18; sin decidir nada nuevo):**
 
-- **`mongorestore` rechaza `--oplogReplay` junto a `--nsExclude` y a `--nsInclude`** (`mongorestore` de `mongo:7.0.43`: «cannot use
-  --oplogReplay with excludes specified» y «… with includes specified»). El paso 4 tal como está escrito (`--drop --oplogReplay
-  --nsExclude 'admin.*'`) no se puede ejecutar. La implementación restaura con `--drop --nsExclude "admin.*"` **sin**
-  `--oplogReplay`: se conserva lo que la spec exige (sin `admin.*`, H7) y se pierde que los datos queden en un instante único (el
-  volcado sigue llevando `--oplog`). **Pregunta abierta P1 del informe de la implementación**: o se acepta así, o se restaura todo
-  (también `admin.*`) con `--oplogReplay`, o el volcado se hace sin `--oplog` y se documenta la inconsistencia posible.
+- **D11 resuelta en (a) por el owner el 2026-11-19** («D11 (a), tomá la recomendación»). `mongorestore` rechaza `--oplogReplay` junto a `--nsExclude` y a `--nsInclude` (`mongorestore` de `mongo:7.0.43`: «cannot use --oplogReplay with excludes specified» y «… with includes specified»), así que el volcado se hace **sin `--oplog`** y la restauración con `--drop --nsExclude "admin.*"`, sin `--oplogReplay` ni `oplog.bson`. Consecuencia aceptada: la base restaurada **no queda en un instante único**: cada colección queda como estaba en el momento en que se volcó, entre `mongoDumpStartedAt` y `mongoDumpFinishedAt`. Lo cubre la ventana de reencolado del outbox (`publishedAt ≥ mongoDumpStartedAt − 1 h`, D12).
 - **El `Content-Type` de cada CV hay que llevarlo en el `tar`:** `rclone copy` de un fichero sin extensión (las claves de CV son
   `<userId>/<cvId>`) lo sube como `application/octet-stream`, y la conciliación de C28 lo detecta. `read-objects.sh` escribe
   `/.lv-content-types` (bucket, clave y tipo) dentro del `tar` y `load-objects.sh` sube cada objeto con `--header-upload

@@ -9,7 +9,7 @@ Cómo se opera (restaurar, sesión mensual, recuperar tras un borrado): [`docs/R
 
 | Qué | Cómo | Dónde |
 |---|---|---|
-| Base de datos entera (Mongo) | `mongodump --archive --gzip --oplog` con el usuario de respaldo (rol `backup`, solo lectura) | instantánea `kind:mongo` |
+| Base de datos entera (Mongo) | `mongodump --archive --gzip` (sin `--oplog`) con el usuario de respaldo (rol `backup`, solo lectura) | instantánea `kind:mongo` |
 | Objetos de los dos buckets (`cvs` y `snapshots`) | `rclone copy` al `tmpfs` del lector y `tar` | instantánea `kind:objects` |
 | Manifiesto de la corrida | JSON con identificador, horas del volcado, bytes y SHA-256 de cada flujo medidos **en el host**, objetos por bucket con sus cabeceras y digests de las imágenes | instantánea `kind:manifest` |
 

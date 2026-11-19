@@ -12,7 +12,7 @@
 #
 # Orden (design D11): candado y copia de los scripts → confirmación del CD → etiqueta `sha-<12>` de la `api` de staging → elegir la
 # corrida con manifiesto y VERIFICAR LAS SUMAS bajando los flujos una vez (todo esto antes de tocar nada) → parar `api` y `worker`,
-# dejar `mongo` solo → `mongorestore` DENTRO de `mongo` (sin `admin.*` y sin `--oplogReplay`, que `mongorestore` no admite junto a `--nsExclude`: ver la nota en el código;
+# dejar `mongo` solo → `mongorestore` DENTRO de `mongo` (sin `admin.*` y sin `--oplogReplay` (D11 resuelta en (a): el volcado va sin `--oplog`);
 # credenciales raíz leídas de su entorno, nada en los argumentos) → asegurar el usuario de respaldo → aprovisionar los buckets y recargar los objetos por la API S3 con un proceso sin
 # salida → recrear Redis y reencolar el outbox (con recuento por tipo y confirmación) → informe de conciliación → recordatorio.
 #
@@ -226,9 +226,9 @@ main() {
 
   # Base: `mongorestore` dentro de `mongo`, con un `--config` escrito en su /tmp desde su propio entorno (raíz del fichero de
   # entorno). Sin `admin.*`: no se pisa `admin.system.users` (design D11, H7).
-  # PENDIENTE (design D11 dice `--oplogReplay`): medido en la tarea 6.1b, `mongorestore` 100.x rechaza `--oplogReplay` junto a
-  # `--nsExclude` y a `--nsInclude` («cannot use --oplogReplay with excludes specified»). Se restaura sin reproducir el oplog
-  # (los datos quedan como al empezar el volcado, no en un instante único); ver el informe de la tarea 6.1b.
+  # D11 resuelta en (a) por el owner (2026-11-19): `mongorestore` no admite `--oplogReplay` junto a `--nsExclude`, así que el volcado va sin
+  # `--oplog` y aquí no se reproduce ninguno. La base restaurada no es un instante único (cada colección, como al volcarse); lo cubre la
+  # ventana de reencolado del outbox.
   say 'restaurando la base dentro de mongo (sin admin.*)'
   # shellcheck disable=SC2016
   local restore_script='umask 077
