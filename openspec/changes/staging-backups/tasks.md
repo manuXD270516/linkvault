@@ -75,7 +75,7 @@ que OCI no admite el modelo V, se para y vuelve al owner antes de buscar el dest
   día, **margen de 3 horas** y aviso por correo; su dirección será `BACKUP_PING_URL`. Verificar: el owner confirma
   «monitor creado, periodo 1 d, margen 3 h» y que mandó un ping de prueba desde su PC y lo vio en el panel; la dirección
   no se pega en el chat.
-- [ ] 1.7a [infra] Medir la identidad S3 de solo lectura por la **API IAM** de la pasarela de SeaweedFS 4.47 `mini`
+- [x] 1.7a [infra] Medir la identidad S3 de solo lectura por la **API IAM** de la pasarela de SeaweedFS 4.47 `mini`
   con `-disableHttp` (design D3, C19), en una pila local (el compose de producción con `infra/ci/verify.env`), desde un
   contenedor de un solo uso en la red del almacén con la identidad de la aplicación; en la misma tarea se elige la
   imagen del cliente SigV4 `arm64` de `backup-identity` (C19-c). Criterios 1-4 de D3: sin fichero con secreto
@@ -84,29 +84,29 @@ que OCI no admite el modelo V, se para y vuelve al owner antes de buscar el dest
   **(falsación)** `PutObject` y `DeleteObject` fallan con `AccessDenied`. Criterio 7 (C19-a): si la clave se puede
   fijar desde el entorno, se anota; si no, se prueba la **variante efímera** (crear la identidad, leer con ella, borrarla,
   y comprobar que borrada ya no lista). Verificar: salida anotada en design D3 («Medido»), con la variante elegida.
-  `weed shell` no se prueba (descartado en D3).
-- [ ] 1.7b [infra] Criterios 5 y 6 de D3 (C2) sobre la misma pila: guardar el listado de identidades antes; asegurar la
+  `weed shell` no se prueba (descartado en D3). **Estado (2026-11-18): medida; **falla el criterio 2 (y el 7).** La API de identidades de la pasarela existe pero el almacén 4.47 la arranca en solo lectura (`-s3.iam.readOnly=true` por defecto): crear exige cambiar `command`. Con ese único argumento añadido en una copia de la pila (nunca en el repositorio) cumplen 1, 3 y 4; la clave la genera el almacén (no se fija desde el entorno). Cliente SigV4 `arm64` candidato: `amazon/aws-cli:2.37.8`. Salidas en design D3 («Medido»). **Pasa a Q3; no se decide aquí****
+- [x] 1.7b [infra] Criterios 5 y 6 de D3 (C2) sobre la misma pila: guardar el listado de identidades antes; asegurar la
   identidad; `docker compose restart object-store`; `run --rm --no-deps api node object-store.js verify` sale 0;
   `PutObject` y `DeleteObject` con la identidad de la **aplicación** funcionan; el listado de identidades después
   difiere del de antes **solo** en la del respaldo (comparado con `node`). Además se **ensaya «Revertir la identidad de
   respaldo»** (C2-a): borrarla con las órdenes que irán al RUNBOOK y comprobar que el listado vuelve a ser el de antes y
   que `verify` sigue en 0. Verificar: salidas y órdenes anotadas en design D3. Si falla cualquiera de los siete
-  criterios, Q3 pasa a bloqueante y el grupo 3 espera su respuesta.
-- [ ] 1.8 [infra] Medir el transporte sin registros (C1-a; supuesto de D2), antes del grupo 2: en un contenedor efímero
+  criterios, Q3 pasa a bloqueante y el grupo 3 espera su respuesta. **Estado (2026-11-18): medida con el mismo override; los criterios 5 y 6 **cumplen** (tras asegurarla y reiniciar, `verify` sale 0, la aplicación sube y borra, y el listado difiere solo en la identidad de respaldo) y «Revertir la identidad de respaldo» quedó ensayada (listado idéntico al de antes, `verify` en 0). Como los criterios 2 y 7 de la 1.7a fallan, **Q3 pasa a bloqueante** para la 3.2, la 3.3 y la parte de identidad de la 4.3 y la 6.4a**
+- [x] 1.8 [infra] Medir el transporte sin registros (C1-a; supuesto de D2), antes del grupo 2: en un contenedor efímero
   con `logging: { driver: none }`, generar en su `tmpfs` un fichero aleatorio de 64 MiB y anotar su `sha256sum`
   dentro; después, `docker compose run --rm --no-deps -T <servicio> cat <fichero> | sha256sum` en el host da la misma
   suma. Con el contenedor en marcha (`run -d`), `docker inspect` da `HostConfig.LogConfig.Type = none` y `LogPath`
   vacío, y `docker logs <id>` termina con error. Verificar: las dos sumas, la salida de `inspect` y el error de
-  `docker logs`, anotados en design D2. Si las sumas difieren, se para y se rediseña el transporte antes del grupo 2.
+  `docker logs`, anotados en design D2. Si las sumas difieren, se para y se rediseña el transporte antes del grupo 2. **Estado (2026-11-18): hecha.** Las dos sumas coinciden (`331299f9…352ef`), `LogConfig.Type = none`, `LogPath` vacío y `docker logs` falla; salidas en design D2 («Medido»). `logging: none` entrega los bytes íntegros por `run -T`**
 
 ## 2. Redes y servicios del respaldo (design D2)
 
-- [ ] 2.1 [infra] En `docker-compose.prod.yml`: redes `data-backup` y `store-backup` (`internal: true`), `mongo` en
+- [x] 2.1 [infra] En `docker-compose.prod.yml`: redes `data-backup` y `store-backup` (`internal: true`), `mongo` en
   `data-backup` y `object-store` en `store-backup`; la tabla de redes del comentario de cabecera, actualizada. Verificar:
   `docker compose -f docker-compose.prod.yml --env-file infra/ci/verify.env config --format json` volcado a fichero y
   leído con `node`: `data-backup` y `store-backup` con `internal: true`; `mongo` en `data-api`, `data-worker` y
   `data-backup`; `object-store` en `store-api`, `store-worker` y `store-backup`; ningún otro servicio de ese fichero en
-  ellas.
+  ellas. **Estado (2026-11-18): hecha.** `config --format json` de `docker-compose.prod.yml` con `infra/ci/verify.env`, leído con `node`: `data-backup` y `store-backup` con `internal=true`; `mongo` en `data-api,data-backup,data-worker`; `object-store` en `store-api,store-backup,store-worker`; únicos miembros de ese fichero: `mongo` y `object-store`. Tabla de la cabecera actualizada**
 - [ ] 2.2 [infra] `infra/backup/docker-compose.backup.yml` con `backup-mongo`, `backup-objects`, `backup-push`,
   `restore-objects` y `backup-identity` como la tabla de D2: imágenes fijadas por digest, **`logging: { driver: none }`
   en los cinco** (C1), `read_only: true`, `cap_drop: [ALL]`, `no-new-privileges`, `networks` explícitas, sin
@@ -114,7 +114,7 @@ que OCI no admite el modelo V, se para y vuelve al owner antes de buscar el dest
   scripts de `infra/backup/` montados en solo lectura. En el host, `swapon --show` vacío o swap cifrada (D4, R8).
   Verificar: `config --format json` de los dos ficheros juntos, leído con `node`, con redes y `logging` de cada
   servicio como la tabla; y `bash infra/deploy/check-image-platforms.sh --platform linux/arm64 <las imágenes>` sale 0,
-  incluida la de `backup-identity` (C26).
+  incluida la de `backup-identity` (C26). **Estado (2026-11-18): avanzada, **sin cerrar.** Declarados `backup-mongo`, `backup-objects`, `restore-objects` y `backup-push` en `infra/backup/docker-compose.backup.yml` (digest, `logging: none`, `read_only`, `cap_drop: [ALL]`, `no-new-privileges`, redes explícitas, sin `ports`, `tmpfs` con tamaño, `backup-egress` aquí); `config --format json` leído con `node` y `check-image-platforms.sh --platform linux/arm64` en 0 para las tres imágenes. Falta `backup-identity` (espera a la Q3) y el `swapon --show` del host (grupo 10)**
 - [ ] 2.3 [infra] Comprobación permanente `tools/repo-checks/src/backup-isolation.check.mjs`, sumada al agregador, con
   las reglas de D2 (C4), incluido `backup-identity` entre los miembros exactos de `store-backup` (C19-c): en CI lee
   `config --format json` de los ficheros con `infra/ci/verify.env` volcado a fichero; fuera de CI y sin `docker`, los
@@ -122,7 +122,7 @@ que OCI no admite el modelo V, se para y vuelve al owner antes de buscar el dest
   una sobre el fichero y restaurada: `backup-mongo` también en `backup-egress` → falla nombrando servicio y red;
   `worker` en `store-backup` → falla; `backup-push` en `data-backup` → falla; quitar `networks` a `backup-mongo` →
   falla; quitar `logging` a `backup-objects` → falla; quitar `logging` a `backup-identity` → falla; `backup-identity`
-  en `backup-egress` → falla; `internal: true` fuera de `data-backup` → falla.
+  en `backup-egress` → falla; `internal: true` fuera de `data-backup` → falla. **Estado (2026-11-18): hecha salvo lo que espera a la Q3.** `tools/repo-checks/src/backup-isolation.check.mjs` en el agregador (`check-backup-isolation`), con `config --format json` en CI y ficheros crudos sin `docker` (en CI sin `docker` falla). Falsificaciones ejecutadas y restauradas (compose idéntico con `cmp`): `backup-mongo` en `backup-egress` → falla nombrando servicio y red; `worker` en `store-backup` → falla; `backup-push` en `data-backup` → falla; sin `networks` en `backup-mongo` → falla; `logging: json-file` en `backup-objects` → falla; `data-backup` sin `internal` → falla. Sin ejecutar: las dos de `backup-identity` (servicio inexistente hasta la Q3; la regla ya lo admite como miembro opcional de `store-backup`)**
 - [ ] 2.4 [infra] `infra/deploy/config-files.txt` suma `infra/backup/docker-compose.backup.yml`,
   `infra/backup/docker-compose.restore.yml` y los scripts de `infra/backup/` que se ejecutan en el host. Verificar con
   `node -e` que cada fichero de la lista existe en el árbol y que el guardia de `repo-checks` sobre la lista (si 35c ya
@@ -133,11 +133,11 @@ que OCI no admite el modelo V, se para y vuelve al owner antes de buscar el dest
   responde y `http://169.254.169.254/` termina en error de conexión o de plazo (C31; en local se anota que la regla es
   del host, 12.7 de 35b); desde `backup-identity`, la salida HTTPS falla y `object-store:8333` responde; desde
   `worker`, resolver `backup-mongo` falla. Verificar: las salidas, anotadas en el PR; los contenedores de prueba
-  borrados (`docker ps -a` sin `backup-*`).
+  borrados (`docker ps -a` sin `backup-*`). **Estado (2026-11-18): hecha salvo `backup-identity` (Q3).** Pila local `sbk-bk` (redes con subredes explícitas: el pool de Docker de esta máquina está agotado), `api` y `worker` sustituidos por contenedores `busybox` con sus redes reales. `backup-mongo`: `api` no resuelve, HTTPS externo falla, `mongo:27017` responde. `backup-push`: `mongo`, `object-store` y `api` no resuelven, HTTPS responde, `169.254.169.254` termina en error de conexión (en local la regla es del host, 12.7 de 35b). `backup-objects`: `object-store:8333` responde, `rclone lsd` lista `cvs` y `snapshots`, HTTPS externo falla, `mongo` y `api` no resuelven. `worker` y `api`: `backup-mongo`, `backup-objects` y `backup-push` no resuelven. Contenedores de prueba borrados. Falta solo la comprobación de `backup-identity`, que no existe hasta la Q3**
 
 ## 3. Credenciales de solo lectura (design D3)
 
-- [ ] 3.1 [infra] `infra/backup/ensure-backup-user.js` (script de `mongosh`) y su invocación por
+- [x] 3.1 [infra] `infra/backup/ensure-backup-user.js` (script de `mongosh`) y su invocación por
   `docker compose exec -T mongo mongosh --quiet --file /dev/stdin < ensure-backup-user.js`, o el equivalente que
   funcione por la entrada estándar (D3-a; se mide aquí y se anota), **sin montajes nuevos en `mongo`**: autentica como
   raíz y crea o actualiza `MONGO_BACKUP_USER` con el rol `backup`, todo desde `process.env`; `MONGO_BACKUP_USER` y
@@ -145,7 +145,7 @@ que OCI no admite el modelo V, se para y vuelve al owner antes de buscar el dest
   Verificar en la pila local: dos ejecuciones seguidas terminan en 0; `mongodump --archive` con ese usuario termina en
   0; con un volumen creado **antes** del cambio (sin el usuario), la primera ejecución lo crea. **Falsación:** un
   `insertOne` con el usuario de respaldo falla con `Unauthorized`; cambiar la contraseña en el entorno y repetir deja la
-  nueva vigente (la vieja falla).
+  nueva vigente (la vieja falla). **Estado (2026-11-18): hecha.** `infra/backup/ensure-backup-user.js` ejecutado con `docker compose exec -T mongo mongosh --quiet --file /dev/stdin < …` (D3-a: funciona por la entrada estándar en mongosh de `mongo:7.0.43`, sin montajes nuevos). Sobre un volumen creado con el compose anterior (sin el usuario): 1.ª ejecución `usuario de respaldo creado`, 2.ª `actualizado`, ambas con salida 0; `backup-mongo` (`mongodump --archive --gzip --oplog` con el usuario de respaldo) terminó en 0 con los documentos sintéticos. Falsaciones: `insertOne` con el usuario de respaldo → `Unauthorized`; contraseña rotada en el entorno y repetido → la nueva autentica y la vieja da `AuthenticationFailed`. `MONGO_BACKUP_*` con `${VAR:?}` en el servicio `mongo` y relleno en `infra/ci/verify.env`**
 - [ ] 3.2 [infra] `infra/backup/ensure-backup-identity.sh` con el mecanismo y la variante de 1.7a, idempotente,
   ejecutado desde `backup-identity` en cada corrida y restauración; con la variante efímera, además
   `remove-backup-identity` al final por `trap`, y la clave pasada a `backup-objects` solo por su entorno. Verificar en

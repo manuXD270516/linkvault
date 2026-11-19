@@ -107,6 +107,19 @@ por digest y comprobada por plataforma (C26).
 - **El orquestador tampoco filtra datos (C1-b):** `run-backup.sh` y `restore.sh` nunca reproducen el flujo en su
   propia salida ni en la de systemd: sin `set -x`, sin `tee` a la salida estándar. La prueba de la 4.7a lo vigila con
   un marcador binario.
+
+**Medido (tarea 1.8, 2026-11-18; Docker 29.9.3 y Compose v5.7.0 sobre Docker Desktop, Linux amd64).** Un contenedor efímero
+con `logging: { driver: none }`, `read_only` y un `tmpfs` de 128 MiB generó 64 MiB aleatorios y los sacó por su salida
+estándar con `docker compose run --rm --no-deps -T`:
+
+| Medida | Resultado |
+|---|---|
+| `sha256sum` dentro del contenedor | `331299f928777dccf33b054dd1e01ef2ad063ab7e17ec2f881434eb7c64352ef` |
+| `sha256sum` del flujo en el host (`run -T … | sha256sum`) | `331299f928777dccf33b054dd1e01ef2ad063ab7e17ec2f881434eb7c64352ef` (igual) |
+| `docker inspect` (`run -d`) | `HostConfig.LogConfig.Type = none`, `LogPath = []` (vacío) |
+| `docker logs <id>` | error: `configured logging driver does not support reading` (código 1) |
+
+El supuesto de D2 se cumple: la tubería entrega los bytes íntegros con `logging: none`.
 - Los cinco van en **`infra/backup/docker-compose.backup.yml`**, que se suma con `-f` solo para respaldar y restaurar.
   No van en `docker-compose.prod.yml` porque `compose-healthchecks` exige healthcheck a todo servicio de ese fichero y
   un trabajo de un solo uso no tiene uno honesto (el mismo motivo por el que ADR-052 §4 descartó un servicio de
@@ -181,6 +194,33 @@ clave); servicios con `profiles:` dentro de `docker-compose.prod.yml` (chocan co
   `ensure-backup-identity`, aislada en un solo script que es lo único a reescribir si cambia el producto. Se
   **descarta `weed shell`**: es la CLI de un producto concreto y exigiría ejecutar dentro del contenedor del almacén,
   dos cosas que esa spec prohíbe sin excepción posible acotada. Si la API IAM no cumple los siete criterios, Q3.
+
+**Medido (tareas 1.7a y 1.7b, 2026-11-18; SeaweedFS 4.47 `mini` con `-disableHttp`, la pila de producción con
+`infra/ci/verify.env`, cliente SigV4 `amazon/aws-cli:2.37.8`, que tiene `arm64`, desde un contenedor en `store-api`):**
+la API de identidades **existe** en la pasarela (`iam list-users` con la identidad de la aplicación lista `admin-linkvaul`), pero
+**con la configuración medida está en solo lectura**: `weed mini -h` documenta `-s3.iam.readOnly` con valor por defecto `true`, y
+`CreateUser`, `PutUserPolicy` y `CreateAccessKey` terminan en `AccessDenied: IAM write operations are disabled on this
+server`. Escribir exige `-s3.iam.readOnly=false` en el `command` del almacén. Para dar datos a la decisión, el resto de los
+criterios se midió **en una copia de la pila con ese único argumento añadido** (un override en el directorio de trabajo, nunca
+en el repositorio):
+
+| Criterio de D3 | Resultado |
+|---|---|
+| 1. sin fichero con secreto montado | cumple (todo por la API, nada montado) |
+| 2. sin cambio de `command`, `environment` ni volumen | **NO cumple**: hace falta `-s3.iam.readOnly=false` en `command` (también para borrar la identidad) |
+| 3. sobrevive a `restart object-store` | cumple (con el argumento) |
+| 4. `PutObject` y `DeleteObject` con ella fallan | cumple: `AccessDenied` en los dos; `ListObjectsV2` y `GetObject` funcionan en `cvs` y `snapshots` |
+| 5. (C2) tras asegurarla y reiniciar: `verify` en 0 y la aplicación sigue subiendo y borrando | cumple |
+| 6. (C2) el listado de identidades difiere solo en la del respaldo | cumple (`admin-linkvaul` → `admin-linkvaul`, `lv-backup-ro`) |
+| 7. (C19-a) clave fijable desde el entorno | **NO**: `CreateAccessKey` la genera el almacén (20 + 40 caracteres) |
+
+Política de la identidad medida: `s3:ListBucket`, `s3:GetObject`, `s3:GetObjectTagging` y `s3:GetBucketLocation` sobre los dos buckets.
+**«Revertir la identidad de respaldo» ensayado** con `iam delete-access-key`, `iam delete-user-policy` y `iam delete-user`: el
+listado vuelve a ser idéntico al de antes, la clave borrada responde `InvalidAccessKeyId` y `verify` sale 0. `CreateUser` de un
+usuario existente responde `EntityAlreadyExists` (el script idempotente lo tiene que tolerar). **Resultado: los criterios 2 y 7 fallan
+con el almacén tal como está medido, así que el mecanismo pasa a la Q3.** La respuesta del owner registrada en «Respuestas del
+owner y aprobación» dice (b) si fallan los criterios y (a) solo si no cambia `command`; esa decisión no se toma en la 1.7: la
+implementación sigue sin `backup-identity` ni `ensure-backup-identity.sh` hasta que se confirme (tareas 3.2, 3.3 y la mitad de la 4.3).
 - `rclone` recibe todo por variables de entorno (`RCLONE_CONFIG_STORE_*`), sin fichero de configuración.
 
 ### D4. Formato, orden y manifiesto de una corrida

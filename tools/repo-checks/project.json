@@ -109,6 +109,25 @@
         "commands": ["node tools/repo-checks/src/docs-stack-up.check.mjs"]
       }
     },
+    "check-backup-isolation": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "// inputs": "El compose de producción, el del respaldo y el override de restauración (si existe), el relleno de CI con el que se resuelven (`infra/ci/verify.env`) y su propio código. Sin la lista, un servicio del respaldo que cambie de red no cambiaría el hash y Nx daría el verde anterior (ADR-048 §5).",
+      "inputs": [
+        "{workspaceRoot}/docker-compose.prod.yml",
+        "{workspaceRoot}/infra/backup/docker-compose.backup.yml",
+        "{workspaceRoot}/infra/backup/docker-compose.restore.yml",
+        "{workspaceRoot}/infra/ci/verify.env",
+        "{projectRoot}/src/backup-isolation.check.mjs",
+        "{projectRoot}/src/lib/compose.mjs",
+        "{projectRoot}/src/lib/report.mjs"
+      ],
+      "options": {
+        "cwd": "{workspaceRoot}",
+        "parallel": false,
+        "commands": ["node tools/repo-checks/src/backup-isolation.check.mjs"]
+      }
+    },
     "check": {
       "executor": "nx:run-commands",
       "cache": false,
@@ -117,7 +136,8 @@
         "check-compose-env-contract",
         "check-claims-registry",
         "check-stale-defaults",
-        "check-docs-stack-up"
+        "check-docs-stack-up",
+        "check-backup-isolation"
       ],
       "options": {
         "cwd": "{workspaceRoot}",

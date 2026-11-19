@@ -19,8 +19,12 @@ name: linkvault-prod
 #   data-worker    sí        mongo, redis, worker
 #   store-api      sí        object-store, api   (sustituye a `object-store-net`; D14 de `object-store`)
 #   store-worker   sí        object-store, worker
+#   data-backup    sí        mongo, backup-mongo            (respaldo; solo existe mientras corre un respaldo, ADR-066)
+#   store-backup   sí        object-store, backup-objects, restore-objects   (ídem; `infra/backup/docker-compose.backup.yml`)
 #   api-egress     no        api     (salida a Internet: SMTP, OpenRouter)
 #   worker-egress  no        worker  (salida a Internet: descargas del enriquecimiento, SMTP, OpenRouter)
+#   backup-egress  no        backup-push (solo en `infra/backup/docker-compose.backup.yml`: el único proceso del respaldo con
+#                            salida; no está en ninguna red de datos)
 networks:
   edge:
     driver: bridge
@@ -41,7 +45,17 @@ networks:
   store-worker:
     driver: bridge
     internal: true
-  # Las dos únicas con salida a Internet. Una por proceso: así `worker` sale sin compartir red con `api`.
+  # Redes del respaldo (ADR-066, design D2 de `staging-backups`): internas, sin salida y sin `api` ni `worker`. `mongo` y
+  # `object-store` tienen que estar unidos a ellas cuando corren; los procesos que se unen (`backup-mongo`,
+  # `backup-objects`, `restore-objects`) viven en `infra/backup/docker-compose.backup.yml` y solo existen durante una
+  # corrida o una restauración. La comprobación `backup-isolation` de `tools/repo-checks` vigila sus miembros.
+  data-backup:
+    driver: bridge
+    internal: true
+  store-backup:
+    driver: bridge
+    internal: true
+  # Las dos únicas con salida a Internet de la aplicación. Una por proceso: así `worker` sale sin compartir red con `api`.
   api-egress:
     driver: bridge
   worker-egress:
@@ -130,11 +144,17 @@ services:
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:?set MONGO_ROOT_USER (1-64 characters [A-Za-z0-9._~-])}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?set MONGO_ROOT_PASSWORD (32-128 characters [A-Za-z0-9._~-]; openssl rand -hex 32)}
+      # Usuario de respaldo (rol `backup`, solo lectura; ADR-066, design D3 de `staging-backups`). `mongo` NO lo crea: lo
+      # asegura `infra/backup/ensure-backup-user.js` (idempotente, en cada corrida y en cada restauración), que lee estas dos
+      # variables de `process.env` dentro del contenedor. Por eso están aquí y no solo en el compose del respaldo.
+      MONGO_BACKUP_USER: ${MONGO_BACKUP_USER:?set MONGO_BACKUP_USER (1-64 characters [A-Za-z0-9._~-])}
+      MONGO_BACKUP_PASSWORD: ${MONGO_BACKUP_PASSWORD:?set MONGO_BACKUP_PASSWORD (32-128 characters [A-Za-z0-9._~-]; openssl rand -hex 32)}
     volumes:
       - mongo-data:/data/db
     networks:
       - data-api
       - data-worker
+      - data-backup
     healthcheck:
       test:
         - CMD
@@ -248,6 +268,7 @@ services:
     networks:
       - store-api
       - store-worker
+      - store-backup
     healthcheck:
       test: ['CMD', 'curl', '-fsS', '-o', '/dev/null', '--max-time', '3', 'http://127.0.0.1:8333/healthz']
       interval: 10s

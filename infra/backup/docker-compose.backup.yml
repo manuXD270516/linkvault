@@ -1,0 +1,144 @@
+# Respaldo y restauración de staging (ADR-066, change `staging-backups`, design D2).
+#
+# Se suma con `-f` al compose de producción SOLO para respaldar o restaurar:
+#
+#   docker compose -f docker-compose.prod.yml -f infra/backup/docker-compose.backup.yml --env-file .env.staging \
+#     run --rm --no-deps -T <servicio> …
+#
+# No va en `docker-compose.prod.yml` porque la comprobación `compose-healthchecks` exige healthcheck a todo servicio de
+# ese fichero y un trabajo de un solo uso no tiene uno honesto (el mismo motivo por el que ADR-052 §4 descartó un
+# servicio de aprovisionamiento). Lo orquesta `infra/backup/run-backup.sh` (respaldo) y `infra/backup/restore.sh`.
+#
+# Regla de fondo: **ningún proceso puede consultar los datos y además salir a Internet**. Por eso son servicios
+# distintos, todos efímeros (`run --rm --no-deps -T`), unidos por una tubería del host:
+#
+#   servicio         redes           qué ve
+#   backup-mongo     data-backup     mongo (usuario de respaldo, solo lectura); sin salida
+#   backup-objects   store-backup    object-store (identidad S3 de respaldo); sin salida
+#   restore-objects  store-backup    object-store (identidad de la aplicación); sin salida; solo al restaurar
+#   backup-push      backup-egress   Internet; NINGUNA red de datos; recibe el flujo EN CLARO antes de cifrarlo
+#                                    (riesgo residual de la imagen de restic, ADR-066 «Riesgos aceptados»)
+#
+# **Sin registros de datos:** su salida estándar ES el volcado o el `tar` de los objetos (o el `restic dump` de una
+# restauración). Con el controlador por defecto (`json-file`) quedaría escrita en claro en
+# `/var/lib/docker/containers/<id>/…-json.log`. Todos llevan `logging: { driver: none }`; que la tubería de `run -T`
+# entregue los bytes íntegros con `none` se midió en la tarea 1.8 (design D2). `backup-isolation` lo exige.
+#
+# Cada servicio repite su endurecimiento a propósito (sin anclas de YAML): la comprobación de repositorio lee el
+# fichero también sin `docker`, y un cambio en uno no debe arrastrar a los demás sin que se vea.
+#
+# `backup-identity` (identidad S3 de solo lectura asegurada por la API de identidades del almacén, design D3) NO está
+# aquí: la 1.7a midió que el almacén 4.47 deja esa API en solo lectura por defecto (`-s3.iam.readOnly=true`) y crear la
+# identidad exige cambiar `command` del almacén (criterio 2 de D3). Queda a la espera de la Q3 (design, «Open Questions»).
+#
+# Imágenes fijadas por digest del índice (arm64 comprobado con `infra/deploy/check-image-platforms.sh`, tarea 2.2).
+networks:
+  # La única red con salida del respaldo, y de un solo miembro: `backup-push`.
+  backup-egress:
+    driver: bridge
+
+services:
+  # Lector de la base. El usuario `MONGO_BACKUP_USER` (rol `backup`) lo asegura `ensure-backup-user.js` en cada corrida.
+  # La contraseña nunca va en los argumentos: `dump-mongo.sh` escribe un `--config` en su `tmpfs` desde el entorno.
+  backup-mongo:
+    image: mongo:7.0.43@sha256:1f995ad6fdb93244a1addab1b58f934a0bc2f5643c38e02f5e9d7f0c7d227a7b
+    entrypoint: ['/bin/sh', '/backup/dump-mongo.sh']
+    restart: 'no'
+    user: '999:999'
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    logging:
+      driver: none
+    environment:
+      MONGO_BACKUP_USER: ${MONGO_BACKUP_USER:?set MONGO_BACKUP_USER (1-64 characters [A-Za-z0-9._~-])}
+      MONGO_BACKUP_PASSWORD: ${MONGO_BACKUP_PASSWORD:?set MONGO_BACKUP_PASSWORD (32-128 characters [A-Za-z0-9._~-]; openssl rand -hex 32)}
+    volumes:
+      - ./infra/backup:/backup:ro
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    networks:
+      - data-backup
+
+  # Lector de los objetos: copia los dos buckets a su `tmpfs` (memoria, con tope) y los saca como `tar`. `rclone` recibe
+  # todo por entorno (`RCLONE_CONFIG_STORE_*`), sin fichero de configuración.
+  # La identidad es la de respaldo (`S3_BACKUP_*`); su mecanismo espera a la Q3 (ver arriba).
+  backup-objects:
+    image: rclone/rclone:1.70.3@sha256:34c729127386abec1c610b2aa024e39b4498dc2b4a72a0798ae21fbdc1b0493b
+    entrypoint: ['/bin/sh', '/backup/read-objects.sh']
+    restart: 'no'
+    user: '65534:65534'
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    logging:
+      driver: none
+    environment:
+      RCLONE_CONFIG_STORE_TYPE: s3
+      RCLONE_CONFIG_STORE_PROVIDER: Other
+      RCLONE_CONFIG_STORE_ENDPOINT: http://object-store:8333
+      RCLONE_CONFIG_STORE_REGION: ${S3_REGION:-us-east-1}
+      RCLONE_CONFIG_STORE_ACCESS_KEY_ID: ${S3_BACKUP_ACCESS_KEY:?set S3_BACKUP_ACCESS_KEY}
+      RCLONE_CONFIG_STORE_SECRET_ACCESS_KEY: ${S3_BACKUP_SECRET_KEY:?set S3_BACKUP_SECRET_KEY}
+      BACKUP_BUCKETS: ${S3_BUCKET:-cvs} ${S3_SNAPSHOTS_BUCKET:-snapshots}
+      BACKUP_OBJECTS_MAX_BYTES: ${BACKUP_OBJECTS_MAX_BYTES:-1073741824}
+    volumes:
+      - ./infra/backup:/backup:ro
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+      - /work:size=${BACKUP_OBJECTS_MAX_BYTES:-1073741824},mode=1777
+    networks:
+      - store-backup
+
+  # Cargador de los objetos al restaurar: recibe el `tar` por la entrada estándar y lo sube con la identidad de la
+  # APLICACIÓN (la única que puede escribir). Sin salida, sin registros, solo existe durante la restauración.
+  restore-objects:
+    image: rclone/rclone:1.70.3@sha256:34c729127386abec1c610b2aa024e39b4498dc2b4a72a0798ae21fbdc1b0493b
+    entrypoint: ['/bin/sh', '/backup/load-objects.sh']
+    restart: 'no'
+    user: '65534:65534'
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    logging:
+      driver: none
+    environment:
+      RCLONE_CONFIG_STORE_TYPE: s3
+      RCLONE_CONFIG_STORE_PROVIDER: Other
+      RCLONE_CONFIG_STORE_ENDPOINT: http://object-store:8333
+      RCLONE_CONFIG_STORE_REGION: ${S3_REGION:-us-east-1}
+      RCLONE_CONFIG_STORE_ACCESS_KEY_ID: ${S3_ACCESS_KEY:?}
+      RCLONE_CONFIG_STORE_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:?}
+      BACKUP_BUCKETS: ${S3_BUCKET:-cvs} ${S3_SNAPSHOTS_BUCKET:-snapshots}
+    volumes:
+      - ./infra/backup:/backup:ro
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+      - /work:size=${BACKUP_OBJECTS_MAX_BYTES:-1073741824},mode=1777
+    networks:
+      - store-backup
+
+  # Quien envía a los destinos: imagen oficial de restic. Tiene salida a Internet y NINGUNA red de datos. El repositorio
+  # y las credenciales del destino de la pasada llegan por el entorno del orquestador (`BACKUP_DEST_*`), que las lee de
+  # `.env.staging` sin `source` y las exporta; nunca por argumentos.
+  backup-push:
+    image: restic/restic:0.18.1@sha256:39d9072fb5651c80d75c7a811612eb60b4c06b32ffe87c2e9f3c7222e1797e76
+    entrypoint: ['restic']
+    restart: 'no'
+    user: '65534:65534'
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    logging:
+      driver: none
+    environment:
+      RESTIC_PASSWORD: ${RESTIC_PASSWORD:?set RESTIC_PASSWORD (>= 32 characters; openssl rand -hex 32)}
+      RESTIC_REPOSITORY: ${BACKUP_DEST_REPOSITORY:-}
+      AWS_ACCESS_KEY_ID: ${BACKUP_DEST_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${BACKUP_DEST_SECRET_ACCESS_KEY:-}
+      RESTIC_CACHE_DIR: /tmp/restic-cache
+      HOME: /tmp
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    networks:
+      - backup-egress
