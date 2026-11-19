@@ -165,7 +165,6 @@ const secrets = [
   'MONGO_ROOT_PASSWORD',
   'MONGO_BACKUP_PASSWORD',
   'RESTIC_PASSWORD',
-  'S3_BACKUP_SECRET_KEY',
 ];
 check('no secret keeps its .env.example value', secrets.every((name) => !has(name) || env[name] !== example[name]));
 

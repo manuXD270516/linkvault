@@ -151,6 +151,19 @@ clave); servicios con `profiles:` dentro de `docker-compose.prod.yml` (chocan co
 
 ### D3. Credenciales de solo lectura propias
 
+**Q3 resuelta en (b) el 2026-11-18 por la respuesta condicional del owner** («si fallan los criterios, (b) aceptada por escrito, y (a)
+solo si no cambia `command`»): los criterios 2 y 7 fallaron (medición 1.7a/1.7b, abajo, que queda como evidencia) y la (a) exige
+cambiar `command` del almacén. En consecuencia: **no hay identidad S3 de respaldo, ni `backup-identity`, ni
+`ensure-backup-identity.sh`, ni `S3_BACKUP_*`**. `backup-objects` (efímero, sin salida y fuera de toda red con egress) lee con la
+identidad S3 **de la aplicación**, con las mismas variables que usa `api` (`S3_ACCESS_KEY` y `S3_SECRET_KEY`), solo por entorno y
+nunca impresas.
+
+**Alcance, escrito:** la identidad de la aplicación **puede escribir y borrar**, así que un error o un compromiso del lector podría
+escribir en el almacén; lo único que lo impide es lo que hacen sus scripts. Por eso `backup-isolation` falla si `read-objects.sh` o
+`list-objects.sh` usan una orden de escritura de `rclone` o copian hacia `store:`, y `test-run-backup.sh` lo comprueba también. Como
+la (b) ya no crea ninguna identidad, desaparecen la comprobación `object-store.js verify` de cada corrida, la clase `ensure_identity`,
+«Revertir la identidad de respaldo» y la excepción a la spec `platform/object-store` (la API de identidades no se usa).
+
 - **Mongo:** usuario `MONGO_BACKUP_USER` con el rol integrado `backup` sobre `admin` (permite `mongodump --oplog` y no
   escribe). Se **asegura en cada corrida y en cada restauración**: `docker compose exec -T mongo mongosh` con el script
   **por la entrada estándar** (`--file /dev/stdin` o el equivalente que mida la 3.1; D3-a), sin montajes nuevos en
@@ -162,7 +175,7 @@ clave); servicios con `profiles:` dentro de `docker-compose.prod.yml` (chocan co
   volumen vacío).
 - **`mongodump` sin contraseña en los argumentos:** el lector escribe un fichero de configuración (`--config`) en su
   `tmpfs` desde su entorno, con modo 600, y lo pasa por ruta. Nunca una URI con credenciales en la orden.
-- **Almacén:** identidad S3 propia (`S3_BACKUP_ACCESS_KEY`/`S3_BACKUP_SECRET_KEY`) con solo `List` y `Read` sobre los
+- **Almacén (reemplazado por la Q3 (b), arriba; texto original conservado):** identidad S3 propia (`S3_BACKUP_ACCESS_KEY`/`S3_BACKUP_SECRET_KEY`) con solo `List` y `Read` sobre los
   dos buckets, asegurada por `infra/backup/ensure-backup-identity.sh` desde el servicio `backup-identity` (D2).
   **El mecanismo se mide antes de implementar** (tareas 1.7a y 1.7b) con siete criterios:
   1. no monta un fichero con secreto en el servicio `object-store`;
@@ -543,7 +556,7 @@ atrás de código de 35b: las redes nuevas sobran sin efecto.
 | Variable | Dónde | Formato |
 |---|---|---|
 | `MONGO_BACKUP_USER`, `MONGO_BACKUP_PASSWORD` | `docker-compose.prod.yml` (servicio `mongo`, `${VAR:?}`) y el del respaldo | Apto para URI, como D18 |
-| `S3_BACKUP_ACCESS_KEY`, `S3_BACKUP_SECRET_KEY` | compose del respaldo; **no existen** con la variante efímera de D3 | Como `S3_ACCESS_KEY` |
+| ~~`S3_BACKUP_ACCESS_KEY`, `S3_BACKUP_SECRET_KEY`~~ | **No existen** (Q3 resuelta en (b) el 2026-11-18): `backup-objects` recibe `S3_ACCESS_KEY` y `S3_SECRET_KEY` de la aplicación | — |
 | `RESTIC_PASSWORD` | compose del respaldo | ≥ 32 caracteres, `openssl rand -hex 32` |
 | `BACKUP_OCI_REPOSITORY`, `BACKUP_OCI_ACCESS_KEY_ID`, `BACKUP_OCI_SECRET_ACCESS_KEY` | compose del respaldo | `s3:https://…` |
 | `BACKUP_OFFSITE_*` | compose del respaldo | Nombres finales tras Q2 (tarea 1.2) |
@@ -609,7 +622,7 @@ más por semana); (c) semanal, con un workflow programado de GitHub Actions y la
 repositorio (automático, pero junta en GitHub la credencial que destruye los respaldos con la clave SSH que da root en
 el host). **Recomendación: (a).**
 
-**Q3. Si no hay identidad S3 de solo lectura que cumpla los siete criterios de D3.** **[bloqueante solo si fallan la
+**Q3 (RESUELTA en (b) el 2026-11-18 por la respuesta condicional del owner; ver D3). Si no hay identidad S3 de solo lectura que cumpla los siete criterios de D3.** **[bloqueante solo si fallan la
 1.7a o la 1.7b]**
 (a) Adoptar la configuración del almacén que la dé y repetir las celdas de la matriz (ADR-052 §2); (b) aceptar por
 escrito que el lector de objetos use la identidad de la aplicación (sin salida, efímero). Como la identidad de solo

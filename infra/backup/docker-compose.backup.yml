@@ -27,9 +27,8 @@
 # Cada servicio repite su endurecimiento a propósito (sin anclas de YAML): la comprobación de repositorio lee el
 # fichero también sin `docker`, y un cambio en uno no debe arrastrar a los demás sin que se vea.
 #
-# `backup-identity` (identidad S3 de solo lectura asegurada por la API de identidades del almacén, design D3) NO está
-# aquí: la 1.7a midió que el almacén 4.47 deja esa API en solo lectura por defecto (`-s3.iam.readOnly=true`) y crear la
-# identidad exige cambiar `command` del almacén (criterio 2 de D3). Queda a la espera de la Q3 (design, «Open Questions»).
+# Q3 resuelta en (b) (design D3): `backup-objects` lee con la identidad S3 de la APLICACIÓN (`S3_ACCESS_KEY`), efímero y sin
+# salida; no hay `backup-identity`. Esa identidad PUEDE escribir: por eso `backup-isolation` vigila que sus scripts solo lean.
 #
 # Imágenes fijadas por digest del índice (arm64 comprobado con `infra/deploy/check-image-platforms.sh`, tarea 2.2).
 networks:
@@ -62,7 +61,8 @@ services:
 
   # Lector de los objetos: copia los dos buckets a su `tmpfs` (memoria, con tope) y los saca como `tar`. `rclone` recibe
   # todo por entorno (`RCLONE_CONFIG_STORE_*`), sin fichero de configuración.
-  # La identidad es la de respaldo (`S3_BACKUP_*`); su mecanismo espera a la Q3 (ver arriba).
+  # Lee con la identidad de la aplicación (Q3 (b)): las mismas variables que `api`, solo por entorno y nunca impresas. Esa
+  # identidad puede escribir; este servicio solo lee (lo vigila `backup-isolation`).
   backup-objects:
     image: rclone/rclone:1.70.3@sha256:34c729127386abec1c610b2aa024e39b4498dc2b4a72a0798ae21fbdc1b0493b
     entrypoint: ['/bin/sh', '/backup/read-objects.sh']
@@ -79,8 +79,8 @@ services:
       RCLONE_CONFIG_STORE_PROVIDER: Other
       RCLONE_CONFIG_STORE_ENDPOINT: http://object-store:8333
       RCLONE_CONFIG_STORE_REGION: ${S3_REGION:-us-east-1}
-      RCLONE_CONFIG_STORE_ACCESS_KEY_ID: ${S3_BACKUP_ACCESS_KEY:?set S3_BACKUP_ACCESS_KEY}
-      RCLONE_CONFIG_STORE_SECRET_ACCESS_KEY: ${S3_BACKUP_SECRET_KEY:?set S3_BACKUP_SECRET_KEY}
+      RCLONE_CONFIG_STORE_ACCESS_KEY_ID: ${S3_ACCESS_KEY:?}
+      RCLONE_CONFIG_STORE_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:?}
       BACKUP_BUCKETS: ${S3_BUCKET:-cvs} ${S3_SNAPSHOTS_BUCKET:-snapshots}
       BACKUP_OBJECTS_MAX_BYTES: ${BACKUP_OBJECTS_MAX_BYTES:-1073741824}
     volumes:

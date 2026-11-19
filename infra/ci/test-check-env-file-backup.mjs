@@ -41,8 +41,6 @@ Object.assign(complete, {
   S3_SECRET_KEY: hex(20),
   MONGO_BACKUP_USER: 'lvbackup',
   MONGO_BACKUP_PASSWORD: hex(32),
-  S3_BACKUP_ACCESS_KEY: 'lvbk',
-  S3_BACKUP_SECRET_KEY: hex(20),
   RESTIC_PASSWORD: hex(32),
   BACKUP_PING_URL: `https://hc-ping.example.invalid/${hex(8)}`,
   BACKUP_OCI_REPOSITORY:
@@ -113,8 +111,6 @@ check(
 const backupVariables = [
   'MONGO_BACKUP_USER',
   'MONGO_BACKUP_PASSWORD',
-  'S3_BACKUP_ACCESS_KEY',
-  'S3_BACKUP_SECRET_KEY',
   'RESTIC_PASSWORD',
   'BACKUP_PING_URL',
   'BACKUP_OCI_REPOSITORY',

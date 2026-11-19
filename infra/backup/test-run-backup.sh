@@ -326,6 +326,15 @@ run_case FAKE_OLDEST_TIME="$(date -u -d '30 days ago' +%Y-%m-%dT%H:%M:%SZ)"
 check 'run-backup: a 30-day-old snapshot does not warn' $?
 
 # ---------------------------------------------------------------------------------------------------------------------
+printf 'run-backup: el lector de objetos solo lee (Q3 b: usa la identidad de la aplicación)\n'
+grep -Eq 'rclone[[:space:]]+(delete|deletefile|purge|rmdir|rmdirs|sync|move|moveto|rcat|mkdir|copyto|touch|cleanup)' "$here/read-objects.sh" "$here/list-objects.sh"
+check 'backup-objects scripts use no rclone write command' $(( $? == 0 ))
+grep -Eq 'rclone[[:space:]]+copy[[:space:]]+[^[:space:]]+[[:space:]]+"?store:' "$here/read-objects.sh" "$here/list-objects.sh"
+check 'backup-objects scripts never copy towards the store' $(( $? == 0 ))
+grep -q 'S3_BACKUP' "$here/docker-compose.backup.yml" "$here/run-backup.sh"
+check 'no S3_BACKUP_* variable is left (Q3 b)' $(( $? == 0 ))
+
+# ---------------------------------------------------------------------------------------------------------------------
 if command -v flock >/dev/null 2>&1; then
   printf 'run-backup: candado real (flock)\n'
   new_case reallock

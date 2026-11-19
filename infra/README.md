@@ -246,8 +246,7 @@ con permisos `600`, en el directorio fijo. **Nunca** está en el repositorio ni 
   con las órdenes de este README;
 - las credenciales de datos (`REDIS_PASSWORD`, `MONGO_ROOT_USER` y `MONGO_ROOT_PASSWORD`), con `openssl rand -hex 32`:
   van sin codificar en `MONGO_URI` y `REDIS_URL`, y `check-env-file.mjs` exige el formato apto para URI (design D18);
-- las del **respaldo** (ADR-066): `MONGO_BACKUP_USER` y `MONGO_BACKUP_PASSWORD` (mismo formato), `S3_BACKUP_ACCESS_KEY` y
-  `S3_BACKUP_SECRET_KEY`, `RESTIC_PASSWORD` (32 o más caracteres: `openssl rand -hex 32`; **sin copia no hay respaldo que
+- las del **respaldo** (ADR-066): `MONGO_BACKUP_USER` y `MONGO_BACKUP_PASSWORD` (mismo formato), `RESTIC_PASSWORD` (32 o más caracteres: `openssl rand -hex 32`; **sin copia no hay respaldo que
   valga**), las credenciales de los dos destinos (`BACKUP_OCI_*` y `BACKUP_OFFSITE_*`), `BACKUP_PING_URL` y los topes
   (`BACKUP_MAX_REPO_BYTES`, `BACKUP_OBJECTS_MAX_BYTES`, `BACKUP_REQUEUE_WINDOW_HOURS`). Se revisan con el compose del respaldo
   como **cuarto argumento** de `check-env-file.mjs`. Detalle en [`infra/backup/README.md`](backup/README.md).

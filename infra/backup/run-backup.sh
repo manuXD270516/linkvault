@@ -163,8 +163,7 @@ main() {
   # --- Usuario de respaldo de Mongo: se asegura en cada corrida (design D3) ---
   dc exec -T mongo mongosh --quiet --file /dev/stdin <"$RUN_DIR/infra/backup/ensure-backup-user.js" >/dev/null || abort ensure_user
 
-  # La identidad S3 de solo lectura y su comprobación (`object-store.js verify`, C2-a) esperan a la Q3 del change (design D3):
-  # `backup-objects` lee con `S3_BACKUP_*`, que hoy es lo que el compose del respaldo pide.
+  # Q3 (b): `backup-objects` lee con la identidad de la aplicación; no hay identidad de respaldo que asegurar ni comprobar.
 
   # Espera a que un fichero lo escriba un consumidor de una sustitución de procesos (termina un instante después que la
   # tubería). Un consumidor que no escribe nunca es un error, no una espera infinita.

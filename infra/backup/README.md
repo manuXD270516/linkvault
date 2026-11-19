@@ -88,6 +88,6 @@ de ensayo con datos sintéticos**, que se crea una vez en staging (tarea 10.8, l
 | `dump-mongo.sh`, `read-objects.sh`, `list-objects.sh`, `load-objects.sh` | lo que corre dentro de cada servicio |
 | `systemd/` | la unidad y el timer del host |
 
-Pendiente de la **Q3** del change: la identidad S3 de solo lectura (`backup-identity`, `ensure-backup-identity.sh`). Con el almacén
-SeaweedFS 4.47 medido, su API de identidades arranca en solo lectura y crearla exige cambiar `command` del servicio: ver el
-design (D3, «Medido»).
+La **Q3** quedó resuelta en (b) (design D3): el lector de objetos usa la identidad S3 de la aplicación, efímero y sin salida. Esa identidad
+puede escribir, así que `backup-isolation` y `test-run-backup.sh` vigilan que sus scripts solo lean. Con SeaweedFS 4.47 la API de
+identidades arranca en solo lectura y una identidad propia exigiría cambiar `command` del almacén (medición 1.7: design D3, «Medido»).

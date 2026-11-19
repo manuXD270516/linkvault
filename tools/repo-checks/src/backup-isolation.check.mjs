@@ -11,7 +11,7 @@
  *  4. ninguno está a la vez en una red con salida y en una de datos (`data-*`, `store-*`);
  *  5. ninguno comparte red con `api` ni con `worker`;
  *  6. `data-backup` y `store-backup` son `internal: true` y sus miembros son EXACTAMENTE `mongo`+`backup-mongo` y
- *     `object-store`+`backup-objects`+`restore-objects` (+ `backup-identity` si existe: su mecanismo espera a la Q3);
+ *     `object-store`+`backup-objects`+`restore-objects` (Q3 (b): no hay `backup-identity`);
  *  7. en el override de restauración (`-p linkvault-restore`): ningún servicio publica puertos, el único en una red con salida es
  *     `backup-push` (y sin redes de datos), `traefik`, `web` y `worker` están deshabilitados (perfil `never`) y ningún
  *     volumen se comparte con otro proyecto.
@@ -51,7 +51,7 @@ const EXPECTED_MEMBERS = {
   'store-backup': {
     fixed: ['object-store'],
     backup: ['backup-objects', 'restore-objects'],
-    optional: ['backup-identity'],
+    optional: [],
   },
 };
 
@@ -333,9 +333,44 @@ if (inCi && !useDocker) {
   );
 }
 
+/**
+ * Q3 (b), design D3: `backup-objects` lee con la identidad S3 de la APLICACIÓN, que PUEDE escribir y borrar. Lo único que lo
+ * impide es lo que hacen sus scripts, así que se vigila que `read-objects.sh` y `list-objects.sh` solo lean del almacén: ninguna orden
+ * de escritura de `rclone`, y `rclone copy` solo con `store:` como ORIGEN.
+ */
+const READER_SCRIPTS = [
+  'infra/backup/read-objects.sh',
+  'infra/backup/list-objects.sh',
+];
+const WRITE_VERBS =
+  /\brclone\s+(?:delete|deletefile|purge|rmdir|rmdirs|sync|move|moveto|rcat|mkdir|copyto|touch|cleanup|bisync|settier)\b/;
+export function readOnlyFindings(
+  readFile = (file) => readFileSync(join(WORKSPACE_ROOT, file), 'utf8'),
+) {
+  const out = [];
+  for (const file of READER_SCRIPTS) {
+    readFile(file)
+      .split(/\r?\n/)
+      .forEach((line, index) => {
+        const code = line.replace(/#.*$/, '');
+        if (WRITE_VERBS.test(code))
+          out.push(
+            `${file}:${index + 1}: el lector de objetos usa una orden de escritura de rclone (lee con la identidad de la aplicación, que puede escribir)`,
+          );
+        const copy = code.match(/\brclone\s+copy\s+(\S+)\s+(\S+)/);
+        if (copy && /^"?store:/.test(copy[2]))
+          out.push(
+            `${file}:${index + 1}: \`rclone copy\` con el almacén como destino (el lector solo lee)`,
+          );
+      });
+  }
+  return out;
+}
+
 const findings = [];
 const scopes = [];
 try {
+  findings.push(...readOnlyFindings());
   const backupFiles = [PROD, BACKUP];
   const restoreFiles = existsSync(RESTORE)
     ? [PROD, BACKUP, RESTORE]
