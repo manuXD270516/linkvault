@@ -645,7 +645,7 @@ changes:
       Origen: tarea C1 de `docs/despliegue/DECISION-DESPLIEGUE.md` (hallazgos H1-H7, condiciones 1-5 y 8): sin
       respaldo fuera de Oracle ni restauración probada el despliegue queda «no terminado» y no se invita (regla de
       corte 7 del runbook). Enmienda ADR-051 §2 («sin copias») e `infra/README.md` «Qué vive solo en el host».
-      **(a)** Respaldo nocturno cifrado con restic, sin texto en claro en disco: `mongodump --oplog` primero, los
+      **(a)** Respaldo nocturno cifrado con restic, sin texto en claro en disco: `mongodump` (sin `--oplog`, D11) primero, los
       objetos de CV y snapshots después, y un manifiesto con sumas que hace válida la corrida. Dos destinos con una
       pasada cada uno: un bucket privado de OCI Object Storage y uno fuera de Oracle (Q2 de la decisión: objetos
       gratuitos sin tarjeta y con bloqueo si se verifica, primera tarea y del owner, con corte a los 7 días; si no,
