@@ -126,7 +126,7 @@
 
 ## 2. Build del SPA compatible con la CSP (design D3)
 
-- [ ] 2.1 [frontend] `apps/web/project.json`, `build.configurations.production`: `"optimization": { "scripts": true,
+- [x] 2.1 [frontend] `apps/web/project.json`, `build.configurations.production`: `"optimization": { "scripts": true,
   "styles": { "minify": true, "inlineCritical": false }, "fonts": true }`. Verificar con `pnpm nx run web:build
   --configuration=production --skip-nx-cache` redirigido a fichero y un `node -e` sobre
   `dist/apps/web/browser/index.html`: cero `onload=`, cero `<script` sin `src`, cero `<style`, y un `<link
@@ -144,6 +144,12 @@
   `media="print"` y `index.html` de 9 907 bytes. Hoja de estilos: `styles-RE2G6IE3.css` de 17 307 bytes con y sin el cambio
   (el CSS crítico se copiaba a `index.html`, que pasa de 9 907 a 1 422 bytes; el primer pintado se mide en la 3.3). Copia del
   `dist` y del `nginx.conf` base en el scratchpad para la 3.3. Falta la falsación posterior a la 7.1a (se cierra con el grupo 7).
+  **Estado (2026-11-23):** cerrada. Falsación con el script de 7.1a (control positivo registrado) sobre `/login` servido por el `nginx` real con
+  `inlineCritical: true` (build de producción, sin inyectar cabeceras): violación `script-src-elem` / `inline` (el `<script>`
+  en línea de Beasties que cambia el `media`) y la hoja con `media="print"`, es decir, la página sin estilos; restaurado a
+  `false` y reconstruido: sin violación y con la hoja aplicada. (La que cita la tarea como `script-src-attr` por el `onload`
+  es la del build medido en el design; el build actual de Angular 22 emite un `<script>` en línea con
+  `data-beasties-media`: el efecto y la causa, `inlineCritical`, son los mismos.)
 - [ ] 2.2 [frontend] `apps/web/src/zod-csp.ts` con `z.config({ jitless: true })` y `import './zod-csp';` como **primera
   línea** de `apps/web/src/main.ts`, con un comentario que remita a ADR-057. Verificar con
   `apps/web/src/zod-csp.spec.ts`: «configures zod as jitless» (importa el módulo y lee `z.config().jitless`) y con un
@@ -153,6 +159,11 @@
   **Estado (2026-11-23), parcial:** `apps/web/src/zod-csp.ts` (`z.config({ jitless: true })`, comentario que remite a ADR-057) y `import './zod-csp';` como primera
   sentencia de `main.ts` (un `node` lo comprueba: «first statement: import './zod-csp';»). `zod-csp.spec.ts` en verde; con
   la llamada comentada cae «configures zod as jitless»; restaurada. Falta la falsación posterior a la 7.1a (grupo 7).
+  **Estado (2026-11-23), parcial:** **sigue abierta**: la falsación pedida («retirar el `import` y ver la violación») no distingue, porque con el `import` en la
+  primera línea la violación `script-src`/`eval` ya aparece en cada carga (ver 7.1b): el módulo no llega a tiempo en el build
+  de producción. Con la variante de `import()` dinámico, la violación desaparece al ponerlo y reaparece (en `chunk-*.js`,
+  `script-src`/`eval`) al retirar el `import`, es decir, la falsación sí funciona con esa variante. Decisión pendiente del
+  design (pregunta en la 7.1b).
 - [x] 2.3 [frontend] Inventario del build de 2.1, anotado en esta tarea: un `node` de un solo uso (scratchpad) que
   recorra `dist/apps/web/browser/*.{js,css}` y cuente `url(data:`, `data:image`, `new Function`, `eval(`, `http://` y
   `https://` (con el contexto de cada aparición), y liste las URL absolutas encontradas. Cada aparición se clasifica:
@@ -220,6 +231,9 @@
   `60 * 2.75` = 165 ms. Base (`bdb106ef`, build y `nginx.conf` de `origin/main`): 1296, 1220, 1236, 1232, 1216 ms; media 1240,
   mediana 1232. Con el change: 1280, 1292, 1284, 1276, 1280 ms; media 1282,4, mediana 1280. **Regresión: media +42,4 ms, mediana
   +48,0 ms; umbral 300 ms: pasa.** Contenedores apagados.
+  **Nota posterior (2026-11-23):** repetida con la variante de `import()` dinámico de la 7.1b: base 1312, 1224, 1220, 1216,
+  1228 ms (media 1240, mediana 1224); variante 1648, 1640, 1652, 1628, 1652 ms (media 1644, mediana 1648): **+404,0 ms de media,
+  +424 de mediana, por encima del umbral**. El resultado de arriba es el del código spec-literal, que queda en el commit.
 
 ## 4. HSTS en el borde (design D7, D10)
 
@@ -309,7 +323,7 @@ y pasan al change posterior de la Q3. Este change no toca `apps/web-e2e/**`. La 
 
 ## 7. Barrido de todas las rutas del SPA (design D4, D8)
 
-- [ ] 7.1a [frontend] Script de Playwright de un solo uso (scratchpad, no queda en el repositorio) sobre la pila de la
+- [x] 7.1a [frontend] Script de Playwright de un solo uso (scratchpad, no queda en el repositorio) sobre la pila de la
   suite (`pnpm nx run web-e2e:e2e-stack` con la pila conservada, redirigido a fichero), como describe D8: lee los
   `add_header` del bloque `server` de `docker/web/nginx.conf` salvo `Cache-Control`; `context.route` solo sobre
   navegaciones principales con `route.fetch()` + `route.fulfill()` añadiéndolas (el resto, `route.fallback()`);
@@ -321,6 +335,18 @@ y pasan al change posterior de la Q3. Este change no toca `apps/web-e2e/**`. La 
   violación (F6): `effectiveDirective === 'script-src-elem'` (o `'script-src'` como alternativa), `blockedURI ===
   'inline'` y `documentURI` cuya ruta es `/login`. Si no la registra, el script no vale y no se pasa a 7.1b. El script
   admite un modo **sin inyección** (`--no-inject`) y una URL base, que usa la 9.3a contra staging.
+  **Estado (2026-11-23):** script de un solo uso en el scratchpad (no queda en el repositorio) sobre la pila de la suite
+  (`pnpm nx run web-e2e:e2e-stack -- --keep-stack` con un bloque de puertos propio: web 4350, api 3150, worker 3151, mongo
+  27150, redis 6450, S3 9150, mailpit 1150/8150; proyecto de compose `linkvault-e2e-638497fe`; el `@lot1` pasó antes de
+  conservarla, 1 passed): lee los `add_header` del `server` de `nginx.conf` salvo `Cache-Control` (6 cabeceras), `context.route`
+  solo sobre navegaciones principales con `route.fetch()` + `route.fulfill()`, `securitypolicyviolation` como criterio,
+  escuchador de consola de apoyo («Refused to», «Content Security Policy», «Content-Security-Policy», «Permissions-Policy»),
+  y mide `@vite/client`: **sí aparece** en el documento del servidor de desarrollo (`/@vite/client`, un script del mismo origen
+  que la política admite; no produjo violaciones). Control positivo en `/login` (Chromium 153.0.8010.12): `<script>` en línea
+  creado desde el DOM → exactamente `effectiveDirective: 'script-src-elem'`, `blockedURI: 'inline'`, `documentURI` con ruta
+  `/login`, no se ejecuta; en escritorio y en `Pixel 7`. Control de `Permissions-Policy`: una función inexistente produce
+  «Error with Permissions-Policy header: Unrecognized feature» en consola y el valor de nginx (incluida `browsing-topics`) no
+  produce nada, así que la señal funciona y `browsing-topics` se reconoce. Admite `--no-inject` y una URL base.
 - [ ] 7.1b [frontend] Con el script de 7.1a y una cuenta creada por la interfaz, visitar en escritorio y en `Pixel 7`
   **cada ruta de `apps/web/src/app/app.routes.ts`**, las del lote 1 incluidas: `/login`, `/registro`,
   `/recuperar-contrasena`, `/restablecer-contrasena`, `/verificar-email`, `/privacidad`, `/oferta/:slug` (con un link
@@ -333,6 +359,26 @@ y pasan al change posterior de la Q3. Este change no toca `apps/web-e2e/**`. La 
   aparece como no reconocida (E10), se quita de `nginx.conf`, de D5 y del requirement, y se repite la ruta. Cualquier
   otra violación detiene la tarea y vuelve al design (como en 2.3); una atribuible al servidor de desarrollo, también.
   Anotar rutas, proyectos y resultado.
+  **Estado (2026-11-23), parcial:** **detenida y vuelve al design (pregunta al final de este Estado).** Barrido de las rutas de `app.routes.ts` en escritorio y `Pixel 7`, cuenta
+  creada por la interfaz (`/registro`), un grupo y un link publicado, y en cada ruta se abren los diálogos y menús principales
+  (botones de acción permitidos, nunca los destructivos): `/login`, `/registro`, `/recuperar-contrasena`,
+  `/restablecer-contrasena`, `/verificar-email`, `/privacidad`, `/oferta/:slug`, `/grupos`, `/grupos/:id`, `/unirse`,
+  `/mis-links`, `/postulaciones`, `/buscar`, `/descubrir`, `/mi-cv`, `/perfil` y `/notificaciones` (17 rutas por proyecto;
+  `/plan/:analysisId` **no se visitó**: el barrido no encadena el análisis). Resultado con el código spec-literal (`import
+  './zod-csp'` como primera línea de `main.ts`): cero errores de consola de `Permissions-Policy` y de CSP, y **una violación
+  `script-src` / `eval` por cada carga de documento** (17 de 17 rutas, los dos proyectos), que es la sonda `new Function('')` de
+  zod: **`z.config({ jitless: true })` llega tarde en el build de producción.** Causa medida: zod y los esquemas de
+  `@linkvault/shared` caen en un chunk compartido que el bundler evalúa antes del cuerpo de `main`, donde está `zod-csp`
+  (en `main-*.js`, la llamada `config` queda después de los `z.object(...)` de `@linkvault/shared`); el orden de los `import`
+  de `main.ts` no cambia eso. Con `jitless` tarde, zod calcula `fastEnabled` al construir cada esquema y sondea. Esto
+  contradice el escenario «Validar con zod no viola la política» y deja la señal del barrido y de la 9.3a con ruido (D3).
+  Alternativas probadas (no decididas): (a) `main.ts` con `import './zod-csp'` y `import('./bootstrap')` dinámico: cero
+  violaciones en las 17 rutas × 2 proyectos y el control positivo registrado, pero el primer pintado sube **+404 ms de media
+  (+424 ms de mediana)** frente a la base en «Fast 4G» (umbral 300 ms de la 3.3); parche en el scratchpad; (b) `zod-csp.ts`
+  como entrada de `polyfills`: duplica zod (otro `globalConfig`) y rompe el presupuesto de `initial` (1,26 MB), descartada.
+  **Pregunta para el design:** ¿se acepta (a) y se sube el umbral de la 3.3, se corrige el orden en otro sitio (p. ej. que
+  `@linkvault/shared` no construya esquemas al cargarse o que cargue `jitless` antes que ellos, lo que sale de este change), o
+  se acepta el ruido de zod y se anota en la 7.1b y la 9.3a?
 - 7.2 (retirada en la iteración 2 del debate, V2-a; el push a mano de la 9.3b también se retiró en la iteración 3,
   B9-1: la medida del push contra staging la hace la 9.3a; se conserva el número.)
 
