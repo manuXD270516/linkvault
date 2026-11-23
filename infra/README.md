@@ -16,7 +16,7 @@ responde.
 | `docker/worker.Dockerfile` | Imagen `worker` |
 | `docker/web.Dockerfile` | SPA Angular vía nginx |
 | `docker-compose.prod.yml` | Stack completo: api, worker (≥1), web, mongo `rs0`, redis, almacén de objetos (`object-store`, SeaweedFS), Traefik |
-| `infra/traefik/dynamic.yml` | Rutas `/p/`+`/api/`→api, else→web; CV rate/body; Referrer-Policy |
+| `infra/traefik/dynamic.yml` | Rutas `/p/`+`/api/`→api, else→web; CV rate/body; Referrer-Policy; HSTS (`edge-hsts`) |
 | `infra/traefik/access-log-no-query.md` | Logs sin query (`RequestURI` drop) |
 | `object-store.js` (imagen de `api`) | `provision` y `verify` del almacén por la API S3 (ADR-052 §4): buckets, cifrado del de CV, sin reglas de caducidad |
 | `infra/deploy/check-image-platforms.sh` | Comprueba en el registro que las imágenes existen para la plataforma del destino (ADR-052 §9) |

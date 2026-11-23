@@ -384,7 +384,7 @@ y pasan al change posterior de la Q3. Este change no toca `apps/web-e2e/**`. La 
 
 ## 8. Documentación y ADR
 
-- [ ] 8.1 [infra] `docs/RUNBOOK.md`: sección nueva «Paso 6 septendecies — Cabeceras de seguridad del borde
+- [x] 8.1 [infra] `docs/RUNBOOK.md`: sección nueva «Paso 6 septendecies — Cabeceras de seguridad del borde
   (edge-security-headers / ADR-057)», insertada **antes** de «Paso 6 sexdecies» (que es de 35b), con: qué cabecera
   vive dónde (tabla de D1); cómo comprobarlas con `curl -sSI`; **síntomas, empezando por «página sin estilos»** (B4),
   asociado a `inlineCritical` y al `onload` bloqueado; la vuelta atrás de D9 con sus dos caminos y lo que implica cada
@@ -399,12 +399,29 @@ y pasan al change posterior de la Q3. Este change no toca `apps/web-e2e/**`. La 
   `página sin estilos`, `inlineCritical`, `Report-Only`, `csp-report-only`, `puente`, `.incoming-`, `30 días`,
   `sin vuelta atrás`, `se arregla el certificado` y `edge-hsts`, con `página sin estilos` antes que las otras,
   **ninguna** `hsts-rollback` (G8: es la única cadena prohibida), y `edge-hsts` en la fila de `infra/README.md`.
-- [ ] 8.2 [infra] Tras la aprobación: ADR-057 pasa a «Aceptado» con la fecha; ADR-048 §Consecuencias gana su línea
+  **Estado (2026-11-23):** sección «Paso 6 septendecies — Cabeceras de seguridad del borde (edge-security-headers / ADR-057)» en `docs/RUNBOOK.md`,
+  antes de «Paso 6 sexdecies» (tabla de D1, comprobación con `curl -sSI`, síntomas empezando por «página sin estilos» y
+  `inlineCritical`, vuelta atrás (i) y (ii) con sus reglas y el puente de 30 días con el `.incoming-*`, y HSTS sin vuelta atrás).
+  `infra/README.md`: la fila de `infra/traefik/dynamic.yml` añade «HSTS (`edge-hsts`)». Un `node -e` encuentra el encabezado
+  nuevo antes de «Paso 6 sexdecies», todas las cadenas pedidas en la sección (con `página sin estilos` antes que las demás),
+  ninguna `hsts-rollback`, y `edge-hsts` en la fila de `infra/README.md`.
+- [x] 8.2 [infra] Tras la aprobación: ADR-057 pasa a «Aceptado» con la fecha; ADR-048 §Consecuencias gana su línea
   «· **Excepción de ADR-057 (AAAA-MM-DD), por decisión del owner.** …» tras la de ADR-055; `docs/design-v0.2.md` §6 gana
   la fila «∥ 35b `edge-security-headers`»; la nota de la fila de `openspec-changes.yaml` pasa de «propuesto» a la
   decisión con su fecha; y `openspec-changes.yaml` gana el **candidato de la Q3** (`nonce`, Trusted Types y guardia
   dinámico, después de 35c), marcado como propuesto y pendiente del owner, con la nota «trae el guardia dinámico de
   CSP (B1 de `edge-security-headers`)» (V2-d). Verificar con un `node -e` que encuentre las cinco cosas.
+  **Estado (2026-11-23):** ADR-057 pasa a «Aceptado (2026-10-29, aprobación del owner; Q1 = (a))»; ADR-048 §Consecuencias gana «· **Excepción de ADR-057
+  (2026-10-29), por decisión del owner.** …» justo después de la de ADR-055; `docs/design-v0.2.md` §6 gana la fila «∥ 35b
+  `edge-security-headers`» tras la de `usage-guide-fixes`; la nota de la fila de `openspec-changes.yaml` pasa de «propuesto»
+  a la decisión con su fecha (y se corrige «el push, a mano» por la medida del push en `chromium`, como dice el design);
+  `openspec-changes.yaml` gana el candidato `csp-nonce-trusted-types` de la Q3, propuesto y pendiente del owner, con la nota
+  «trae el guardia dinámico de CSP (B1 de `edge-security-headers`)» (y la mención de que debe resolver el orden de `zod`
+  jitless si sigue abierto). Un `node -e` encuentra las cinco cosas. **Comprobación contra `origin/main`** (`bdb106ef`, tal
+  como está, leída con `git show origin/main:<fichero>`): `ADR-048.md` tiene la línea de ADR-055 tras la cual se añade la nueva
+  y ninguna de ADR-057; `design-v0.2.md` tiene la fila `∥ 35b | usage-guide-fixes` y ninguna de `edge-security-headers`; el
+  manifiesto de `origin/main` **no** tiene todavía la entrada `edge-security-headers` (la trae la rama del change, que es la
+  que se edita), así que el texto «propuesto» que se actualiza vive solo en la rama.
 
 ## 9. Staging (bloqueado por el primer despliegue que contenga este change; todo antes de la 10.7 de 35b)
 

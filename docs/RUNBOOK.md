@@ -1579,6 +1579,68 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T api \
 `GET https://$PUBLIC_HOST/health` **no** es smoke válido: Traefik no expone `/health*` ni `/metrics` al entrypoint
 público (van a 404 del SPA o no enrutan a api).
 
+## Paso 6 septendecies — Cabeceras de seguridad del borde (edge-security-headers / ADR-057)
+
+Qué cabecera de seguridad sirve cada superficie y dónde vive. El síntoma más probable de un problema es una **página sin estilos** (ver «Síntomas»). Decisiones en [ADR-057](adr/ADR-057.md); el guardia estático
+`check-edge-security-headers` (`tools/repo-checks`) falla si alguna se pierde.
+
+| Cabecera | SPA | API y `/p/:slug` | Dónde vive |
+|---|---|---|---|
+| `Strict-Transport-Security` (`max-age=604800; includeSubDomains`, sin `preload`) | sí | sí | Traefik, middleware `edge-hsts` de `infra/traefik/dynamic.yml` |
+| `Content-Security-Policy` | la del SPA (`'self'` en todo, `style-src 'unsafe-inline'`, `frame-ancestors 'none'`) | `default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'`; `/p/:slug` conserva la suya (ADR-027) | `docker/web/nginx.conf` / `apps/api` |
+| `X-Frame-Options: DENY` | sí | sí | nginx / `apps/api` |
+| `X-Content-Type-Options: nosniff` | sí | sí (y en el flujo SSE) | nginx / `apps/api` |
+| `Referrer-Policy: no-referrer` | sí (además de Traefik) | sí | nginx y Traefik / `apps/api` |
+| `Permissions-Policy` y `Cross-Origin-Opener-Policy: same-origin` | sí | no | nginx |
+
+Las del SPA están en el bloque `server` de `docker/web/nginx.conf` con `always` y **ningún `location` declara un
+`add_header`**: nginx no hereda los del `server` en un `location` que tenga los suyos. `Cache-Control` sale de un `map` y es
+la única cabecera sin `always`, para que un 404 no reciba `immutable`.
+
+### Comprobarlas
+
+Sin `-k`: un certificado no confiable es un hallazgo, no algo que saltar.
+
+```bash
+curl -sSI https://$PUBLIC_HOST/            # SPA: HSTS y las seis del SPA
+curl -sSI https://$PUBLIC_HOST/unirse
+curl -sSI https://$PUBLIC_HOST/api/health  # 404 de la API: lleva HSTS y las cuatro de la API
+curl -sSI https://$PUBLIC_HOST/p/no-existe # la CSP de ADR-027, X-Frame-Options y HSTS
+```
+
+### Síntomas
+
+1. **Página sin estilos** (el primero que se mira). Casi seguro `inlineCritical`: con el CSS crítico en línea el build mete un manejador `onload` (un
+   script en línea) que la CSP bloquea, y la hoja queda en `media="print"`. `apps/web/project.json` debe tener
+   `optimization.styles.inlineCritical: false` en producción (el guardia lo exige). En la consola del navegador aparece una
+   violación de `script-src`.
+2. **Algo del SPA deja de funcionar** (un botón, la descarga del plan, una imagen o una fuente) y la consola nombra
+   «Refused to …» o `Content Security Policy`: la política bloquea un origen o un `eval`. Lo normal es que el cambio reciente
+   haya añadido un recurso de otro origen, un script en línea o una evaluación de código.
+3. **El SPA se ve normal pero la consola avisa de `Permissions-Policy`:** una función de la lista no se reconoce en ese
+   navegador; se quita de `nginx.conf`.
+4. **El navegador no abre `https://` y no deja saltar el aviso de certificado:** es HSTS, ver «Vuelta atrás» abajo.
+
+### Vuelta atrás
+
+- **La CSP rompe algo en staging**, dos caminos:
+  - **(i) Por fusión (clase 3 de la excepción de ADR-057).** En `docker/web/nginx.conf`, cambiar el nombre de la cabecera a
+    `Content-Security-Policy-Report-Only` y añadir la línea `# csp-report-only: AAAA-MM-DD <motivo>`, que el guardia exige
+    (sin ella falla, y con una `Content-Security-Policy` aplicada la línea también falla). Es una fusión que despliega, así
+    que respeta sus reglas: **nunca** entre el PR-2 de 35b y su 11.6, **nunca** durante su 9.1-9.4, **nunca** los días 7 y 14
+    de la medición, **nunca** el día de una corrida `e2e-remote`. Implica que el SPA queda sin CSP aplicada hasta revertirlo
+    (la línea fechada solo lo deja visible), que `X-Frame-Options: DENY` sigue cubriendo el encuadre y que el regreso a la
+    aplicada es otra fusión de la misma clase.
+  - **(ii) Despliegue anterior, solo como puente.** Volver al despliegue anterior con el procedimiento de «Operar staging»
+    (paso 6 sexdecies): relanzar el job de despliegue de una corrida anterior de `main`. Retira el change entero de staging,
+    HSTS incluido para visitas nuevas. **No es un estado:** la siguiente fusión a `main` volvería a desplegar la CSP aplicada,
+    así que **antes de cualquier otra fusión** se aplica el camino (i). GitHub solo relanza jobs hasta 30 días después de la
+    corrida inicial; pasados 30 días, el puente es el `.incoming-*` anterior en el host con `install-config.sh` y el
+    `IMAGE_TAG` anterior (ver «Operar staging»).
+- **HSTS, sin vuelta atrás.** Publicar `max-age=0` solo la borra en quien vuelve a entrar por HTTPS **válido**, que es
+  justo lo que falta cuando el certificado está roto, y el guardia no lo admite. Si el certificado se rompe, se arregla el certificado; quien ya guardó la política espera, como mucho, los siete días del tope. `edge-hsts` solo sube con el
+  dominio propio (un año), nunca baja.
+
 ## Paso 6 sexdecies — Operar staging (staging-host / ADR-051)
 
 Staging es el host de Oracle con el nombre `<ip-con-guiones>.sslip.io` donde prueban los primeros usuarios invitados
