@@ -174,7 +174,14 @@
   `try_files` y se **quita `expires`** sin condición (su `Cache-Control` duplicaría el del `map`). Comentario de cabecera
   que remite a ADR-057 y explica la trampa de herencia de `add_header` y por qué `Cache-Control` va sin `always`.
   Verificar con 3.2 y con el guardia de 5.1.
-- [ ] 3.2 [infra] Prueba de un solo uso en un nginx real (scratchpad, no queda en el repositorio):
+  **Estado (2026-11-23), parcial:** `docker/web/nginx.conf` reescrito: `map $uri $lv_cache_control` a nivel de fichero (mismos valores de hoy), las seis cabeceras
+  del SPA con `always` en el `server`, `add_header Cache-Control $lv_cache_control;` sin `always`, sin `expires`, ningún
+  `add_header` en un `location`, comentario de cabecera que remite a ADR-057 y explica la trampa de herencia. **Anotación (no
+  estaba escrito):** el `location` por extensión de estáticos se conserva solo con `try_files $uri =404;` (sin `add_header`),
+  porque sin él un estático inexistente (`/no-existe.png`) caería en el fallback de `location /` y devolvería el `index.html`
+  con 200 en lugar del 404 de hoy, y la 3.2 exige ese 404. Verificado en la 3.2; el guardia de 5.1 lo cubre (se cierra con el
+  grupo 5).
+- [x] 3.2 [infra] Prueba de un solo uso en un nginx real (scratchpad, no queda en el repositorio):
   `docker run --rm -d -p 18080:80 -v <conf>:/etc/nginx/conf.d/default.conf:ro -v <dist>:/usr/share/nginx/html:ro
   nginx:1.27-alpine` con el `dist` de 2.1, `nginx -t` en el contenedor, y `curl -sSI` a `/`, `/index.html`, `/grupos/x`,
   un `.js` con hash, `/sw.js` y `/no-existe.png`, volcado a fichero y leído con `node`: las seis cabeceras en las seis
@@ -183,7 +190,15 @@
   `Cache-Control` y ninguna `Expires` en cada respuesta (E3). Apagar el contenedor. Anotar la salida resumida.
   Falsación: mover el `add_header` de CSP a un `location` en la copia, ver desaparecer la cabecera en ese tipo de
   respuesta, y restaurar; y, aparte, poner `always` en `Cache-Control` en la copia y ver `immutable` en el `404`.
-- [ ] 3.3 [frontend] Depende de 2.1 y 3.2. **Primer pintado contra nginx** (B6, V1-2), con un script de Playwright de
+  **Estado (2026-11-23):** `nginx:1.27-alpine` (el de `docker/web.Dockerfile`), `nginx -t` en el contenedor: «syntax is ok / test is successful», con el
+  `dist` de 2.1 y el `nginx.conf` nuevo en el puerto 18080; `curl -sSI` volcado a fichero y leído con `node`:
+  `/` 200 6/6 cabeceras, CC `no-cache`; `/index.html` 200 6/6, `no-cache`; `/grupos/x` 200 6/6, `no-cache`; el `main-*.js` 200 6/6,
+  `public, max-age=604800, immutable`; `/sw.js` 200 6/6, `public, max-age=604800, immutable`; `/no-existe.png` 404 6/6, sin
+  `Cache-Control`. Una sola línea `Cache-Control` como mucho y ninguna `Expires` en las seis. Falsación A: con un `add_header`
+  de CSP dentro de `location /`, `/` y `/grupos/x` pasan a 1/6 cabeceras (se pierden las otras cinco). Falsación B: con `always`
+  en `Cache-Control`, el 404 de `/no-existe.png` lleva `public, max-age=604800, immutable`. Restaurado (copias en el
+  scratchpad, el repositorio no se tocó); contenedores apagados.
+- [x] 3.3 [frontend] Depende de 2.1 y 3.2. **Primer pintado contra nginx** (B6, V1-2), con un script de Playwright de
   un solo uso (scratchpad): el contenedor de la 3.2 sirve primero el `dist` de `main` con el `nginx.conf` de `main`
   (base, el de la 2.1) y después el `dist` de 2.1 con el `nginx.conf` de 3.1; por cada uno, cinco cargas de `/login`,
   cada una en un **contexto nuevo** de Chromium en el que, **antes del `page.goto`** (G5), una sesión CDP
@@ -194,6 +209,14 @@
   con la salida volcada a fichero y leída con `node`: las diez medidas, la **media y la mediana** de cada lado y la
   regresión de las dos. **Umbral**: si la regresión media supera **300 ms**, la tarea se detiene y vuelve al design.
   Anotar valores del perfil, medidas, media, mediana y resultado. Apagar el contenedor.
+  **Estado (2026-11-23):** Chromium 153.0.8010.12 con Playwright, contextos nuevos con CDP (`Network.enable`, `setCacheDisabled`, `emulateNetworkConditions`)
+  antes del `goto`, `first-contentful-paint` con `PerformanceObserver` (`buffered: true`), cinco cargas de `/login` por lado,
+  intercaladas, servidas por dos contenedores `nginx:1.27-alpine`. Perfil «Fast 4G» copiado de `Fast4GConditions` en
+  `front_end/core/sdk/NetworkManager.ts` de https://github.com/ChromeDevTools/devtools-frontend (líneas 722-733, leído el
+  2026-11-23): bajada `9 * 1000 * 1000 / 8 * .9` = 1 012 500 B/s, subida `1.5 * 1000 * 1000 / 8 * .9` = 168 750 B/s, latencia
+  `60 * 2.75` = 165 ms. Base (`bdb106ef`, build y `nginx.conf` de `origin/main`): 1296, 1220, 1236, 1232, 1216 ms; media 1240,
+  mediana 1232. Con el change: 1280, 1292, 1284, 1276, 1280 ms; media 1282,4, mediana 1280. **Regresión: media +42,4 ms, mediana
+  +48,0 ms; umbral 300 ms: pasa.** Contenedores apagados.
 
 ## 4. HSTS en el borde (design D7, D10)
 
