@@ -156,14 +156,9 @@
   `node -e` que compruebe que la primera sentencia de `main.ts` es ese `import`. Falsación (después de 7.1a): retirar el
   `import` de `main.ts`, reconstruir y ver con el script de 7.1a, en `/login` tras un envío que valide con zod, la
   violación de `script-src` por `eval`; restaurar.
-  **Estado (2026-11-23), parcial:** `apps/web/src/zod-csp.ts` (`z.config({ jitless: true })`, comentario que remite a ADR-057) y `import './zod-csp';` como primera
-  sentencia de `main.ts` (un `node` lo comprueba: «first statement: import './zod-csp';»). `zod-csp.spec.ts` en verde; con
-  la llamada comentada cae «configures zod as jitless»; restaurada. Falta la falsación posterior a la 7.1a (grupo 7).
-  **Estado (2026-11-23), parcial:** **sigue abierta**: la falsación pedida («retirar el `import` y ver la violación») no distingue, porque con el `import` en la
-  primera línea la violación `script-src`/`eval` ya aparece en cada carga (ver 7.1b): el módulo no llega a tiempo en el build
-  de producción. Con la variante de `import()` dinámico, la violación desaparece al ponerlo y reaparece (en `chunk-*.js`,
-  `script-src`/`eval`) al retirar el `import`, es decir, la falsación sí funciona con esa variante. Decisión pendiente del
-  design (pregunta en la 7.1b).
+  **Historia (2026-11-23):** primero se hizo `apps/web/src/zod-csp.ts` con el `import` en la primera línea de `main.ts`; en el
+  build de producción llegaba tarde (una violación `script-src` / `eval` por carga, 17 de 17 rutas) y la falsación no distinguía,
+  así que quedó abierta hasta la decisión del owner.
   **Estado (2026-11-23), cerrada tras la decisión del owner «Apagar en shared»:** `libs/shared/src/zod-jitless.ts` (`z.config({
   jitless: true })` y `export { z }`); los 38 ficheros de esquemas de `libs/shared/src` importan `z` de él y no de `zod`, de modo
   que la configuración corre antes de construir cualquiera por dependencia directa (un `import './zod-jitless'` suelto en el
@@ -274,7 +269,7 @@
 
 ## 5. Guardia estático (design D8)
 
-- [x] 5.1 [infra] `tools/repo-checks/src/edge-security-headers.check.mjs` con las cinco reglas de D8, incluida la única
+- [x] 5.1 [infra] `tools/repo-checks/src/edge-security-headers.check.mjs` con las seis reglas de D8, incluida la única
   excepción fechada (`# csp-report-only:` en `nginx.conf`, válida solo sin ninguna `Content-Security-Policy` aplicada;
   HSTS **no** tiene excepción, F2) y la exención de `always` solo para `Cache-Control`, con mensajes que nombran
   fichero, router, `location` o directiva.

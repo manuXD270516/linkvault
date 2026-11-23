@@ -374,17 +374,19 @@ function checkSharedJitless() {
   for (const file of sharedSources(SHARED_SRC)) {
     if (file === jitlessFile) continue;
     looked += 1;
-    const lines = readFileSync(file, 'utf8').split(/\r?\n/);
-    lines.forEach((line, index) => {
-      if (/^import\s+(?!type\b)[^;]*from\s+['"]zod['"]/.test(line)) {
-        findings.push(
-          relativeToRoot(file) +
-            ':' +
-            (index + 1) +
-            ": importa 'zod' directamente: los esquemas de @linkvault/shared importan z de zod-jitless, que corre antes de construir ninguno (ADR-057)",
-        );
-      }
-    });
+    const text = readFileSync(file, 'utf8');
+    // Texto completo: import/export ... from 'zod' (también zod/v4 y subrutas), en una o varias líneas; import type queda fuera.
+    const pattern =
+      /\b(?:import|export)\s+(?!type\b)[^;'"]*?\bfrom\s*['"]zod(?:\/[^'"]*)?['"]|\bimport\s+['"]zod(?:\/[^'"]*)?['"]/g;
+    for (const match of text.matchAll(pattern)) {
+      const line = text.slice(0, match.index).split(/\r?\n/).length;
+      findings.push(
+        relativeToRoot(file) +
+          ':' +
+          line +
+          ": importa 'zod' directamente: los esquemas de @linkvault/shared importan z de zod-jitless, que corre antes de construir ninguno (ADR-057)",
+      );
+    }
   }
 }
 
