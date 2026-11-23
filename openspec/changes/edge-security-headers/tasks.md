@@ -475,9 +475,15 @@ y pasan al change posterior de la Q3. Este change no toca `apps/web-e2e/**`. La 
 
 ## 10. Cierre
 
-- [ ] 10.1 [infra] `pnpm nx affected -t lint,typecheck,test,i18n-check` redirigido a fichero y en verde; `bash
+- [x] 10.1 [infra] `pnpm nx affected -t lint,typecheck,test,i18n-check` redirigido a fichero y en verde; `bash
   infra/ci/repo-checks.sh` en verde; `pnpm exec openspec validate edge-security-headers --strict --no-interactive` y
   `validate --all --strict --no-interactive` en verde.
+  **Estado (2026-11-23):** `pnpm nx affected -t lint,typecheck,test,i18n-check --base=origin/main --parallel=2` a fichero: lint, typecheck, i18n-check y el test de
+  `web`, `web-e2e` y `repo-checks` en verde; `api:test` dio 23 ficheros con «Hook timed out in 10000ms» por la carga y se repitió
+  aislado con `nx run api:test --skip-nx-cache -- --maxWorkers=2`: 281 ficheros y 3 747 pruebas en verde. `nx affected -t eval-ci,build`
+  en verde (api y web). `bash infra/ci/repo-checks.sh`: «6 comprobaciones ejecutadas», verde. `openspec validate edge-security-headers
+  --strict` y `validate --all --strict --no-interactive` (78 de 78): verdes. El formato de los ficheros de código tocados pasa
+  Prettier; `docs/**`, `infra/README.md` y `dynamic.yml` ya no pasaban en `origin/main` y no se reformatearon (fuera de alcance).
 - [ ] 10.2 [infra] `/opsx:verify` sobre el change tras el grupo 9, y archivo con las casillas del grupo 9 marcadas en
   el PR de archivo, que es una fusión de **clase 2**: antes de fusionarlo, la guardia de la 0.3 con la regla de su
   clase (nunca entre el PR-2 de 35b y su 11.6, nunca durante su 9.1-9.4, nunca los días 7 y 14 de la medición, nunca
