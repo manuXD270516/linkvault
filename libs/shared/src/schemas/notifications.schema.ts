@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../zod-jitless';
 
 // Preferencias de notificación de producto (change notifications, ADR-035;
 // digest: group-weekly-digest).

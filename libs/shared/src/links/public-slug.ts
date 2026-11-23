@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../zod-jitless';
 
 // Slug del enlace público de un link compartido (D2 y D10 de public-preview-share, ADR-027 §2). Vive en `libs/shared`
 // porque lo necesitan a la vez la API —que lo genera y lo busca— y el SPA, que juzga el `?import=<slug>` que le llega

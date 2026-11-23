@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../zod-jitless';
 
 // Evento de integración del borrado (ADR-009, D8 de cv-upload-extract): `DELETE /api/cv/:id` borra el documento y
 // escribe este evento en la misma transacción; el worker borra el objeto del almacén desde la cola `delete-cv-file`.

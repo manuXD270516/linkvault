@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../zod-jitless';
 import { platformSchema, previewStatusSchema } from './link.schema';
 
 // Contratos HTTP del módulo `applications` (D10 de applications-tracking). Los identificadores que llegan en el cuerpo o

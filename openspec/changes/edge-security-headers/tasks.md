@@ -150,7 +150,7 @@
   `false` y reconstruido: sin violación y con la hoja aplicada. (La que cita la tarea como `script-src-attr` por el `onload`
   es la del build medido en el design; el build actual de Angular 22 emite un `<script>` en línea con
   `data-beasties-media`: el efecto y la causa, `inlineCritical`, son los mismos.)
-- [ ] 2.2 [frontend] `apps/web/src/zod-csp.ts` con `z.config({ jitless: true })` y `import './zod-csp';` como **primera
+- [x] 2.2 [frontend] `apps/web/src/zod-csp.ts` con `z.config({ jitless: true })` y `import './zod-csp';` como **primera
   línea** de `apps/web/src/main.ts`, con un comentario que remita a ADR-057. Verificar con
   `apps/web/src/zod-csp.spec.ts`: «configures zod as jitless» (importa el módulo y lee `z.config().jitless`) y con un
   `node -e` que compruebe que la primera sentencia de `main.ts` es ese `import`. Falsación (después de 7.1a): retirar el
@@ -164,6 +164,13 @@
   de producción. Con la variante de `import()` dinámico, la violación desaparece al ponerlo y reaparece (en `chunk-*.js`,
   `script-src`/`eval`) al retirar el `import`, es decir, la falsación sí funciona con esa variante. Decisión pendiente del
   design (pregunta en la 7.1b).
+  **Estado (2026-11-23), cerrada tras la decisión del owner «Apagar en shared»:** `libs/shared/src/zod-jitless.ts` (`z.config({
+  jitless: true })` y `export { z }`); los 38 ficheros de esquemas de `libs/shared/src` importan `z` de él y no de `zod`, de modo
+  que la configuración corre antes de construir cualquiera por dependencia directa (un `import './zod-jitless'` suelto en el
+  índice de shared se probó y no basta: el bundler lo evalúa después de los esquemas). Se retiran `apps/web/src/zod-csp.ts`, su spec y
+  el `import` de `main.ts` (una sola fuente). `libs/shared/src/zod-jitless.spec.ts` en verde («configures zod as jitless and
+  hands out the same z»). Falsación con el barrido: volviendo shared a `import { z } from 'zod'` reaparece `script-src` /
+  `eval` al cargar `/login`; restaurado, cero. Guardia: regla 6 de `check-edge-security-headers` (ver 5.1).
 - [x] 2.3 [frontend] Inventario del build de 2.1, anotado en esta tarea: un `node` de un solo uso (scratchpad) que
   recorra `dist/apps/web/browser/*.{js,css}` y cuente `url(data:`, `data:image`, `new Function`, `eval(`, `http://` y
   `https://` (con el contexto de cada aparición), y liste las URL absolutas encontradas. Cada aparición se clasifica:
@@ -233,7 +240,9 @@
   +48,0 ms; umbral 300 ms: pasa.** Contenedores apagados.
   **Nota posterior (2026-11-23):** repetida con la variante de `import()` dinámico de la 7.1b: base 1312, 1224, 1220, 1216,
   1228 ms (media 1240, mediana 1224); variante 1648, 1640, 1652, 1628, 1652 ms (media 1644, mediana 1648): **+404,0 ms de media,
-  +424 de mediana, por encima del umbral**. El resultado de arriba es el del código spec-literal, que queda en el commit.
+  +424 de mediana, por encima del umbral**. El resultado de arriba es el del código spec-literal. **Repetida el 2026-11-23 con la solución final («Apagar en shared»):**
+  base 1300, 1232, 1208, 1224, 1232 ms (media 1239,2, mediana 1232); con el change 1260, 1272, 1252, 1272, 1256 ms (media
+  1262,4, mediana 1260): **regresión +23,2 ms de media, +28 de mediana; umbral 300 ms: pasa.**
 
 ## 4. HSTS en el borde (design D7, D10)
 
@@ -302,6 +311,10 @@
   aplicada → falla; la línea con la aplicada y una `-Report-Only` adicional → falla, y la aplicada con una `-Report-Only`
   adicional sin la línea → **pasa**; `'unsafe-inline'` en `script-src` → falla nombrando la directiva; sin `frame-ancestors` →
   falla; `inlineCritical: true` → falla.
+  **Regla 6 (2026-11-23, «Apagar en shared»):** `zod-jitless.ts` debe llamar a `z.config({ jitless: true })` y ningún otro
+  fichero de `libs/shared/src` (salvo specs) importa `zod` como valor; los inputs del target incluyen `libs/shared/src/**/*.ts`.
+  Falsaciones, restauradas: un fichero de esquemas con `import { z } from 'zod'` → falla nombrando fichero y línea; quitar la
+  llamada `z.config` de `zod-jitless.ts` → falla nombrando el fichero; el árbol restaurado → «OK — 68 comprobaciones».
 - [x] 5.2 [infra] Target `check-edge-security-headers` en `tools/repo-checks/project.json` con `cache: true` e
   **inputs explícitos** (`infra/traefik/dynamic.yml`, `docker/web/nginx.conf`, `apps/web/project.json`, el `.check.mjs`
   y `src/lib/report.mjs`), y su entrada en el `dependsOn` del agregador `check`. Verificar con `bash
@@ -347,7 +360,7 @@ y pasan al change posterior de la Q3. Este change no toca `apps/web-e2e/**`. La 
   `/login`, no se ejecuta; en escritorio y en `Pixel 7`. Control de `Permissions-Policy`: una función inexistente produce
   «Error with Permissions-Policy header: Unrecognized feature» en consola y el valor de nginx (incluida `browsing-topics`) no
   produce nada, así que la señal funciona y `browsing-topics` se reconoce. Admite `--no-inject` y una URL base.
-- [ ] 7.1b [frontend] Con el script de 7.1a y una cuenta creada por la interfaz, visitar en escritorio y en `Pixel 7`
+- [x] 7.1b [frontend] Con el script de 7.1a y una cuenta creada por la interfaz, visitar en escritorio y en `Pixel 7`
   **cada ruta de `apps/web/src/app/app.routes.ts`**, las del lote 1 incluidas: `/login`, `/registro`,
   `/recuperar-contrasena`, `/restablecer-contrasena`, `/verificar-email`, `/privacidad`, `/oferta/:slug` (con un link
   publicado), `/grupos`, `/grupos/:id`, `/unirse`, `/mis-links`, `/postulaciones`, `/buscar`, `/descubrir`, `/mi-cv`,
@@ -376,9 +389,14 @@ y pasan al change posterior de la Q3. Este change no toca `apps/web-e2e/**`. La 
   violaciones en las 17 rutas × 2 proyectos y el control positivo registrado, pero el primer pintado sube **+404 ms de media
   (+424 ms de mediana)** frente a la base en «Fast 4G» (umbral 300 ms de la 3.3); parche en el scratchpad; (b) `zod-csp.ts`
   como entrada de `polyfills`: duplica zod (otro `globalConfig`) y rompe el presupuesto de `initial` (1,26 MB), descartada.
-  **Pregunta para el design:** ¿se acepta (a) y se sube el umbral de la 3.3, se corrige el orden en otro sitio (p. ej. que
+  **(Histórico, anterior a la decisión del owner.)** **Pregunta para el design:** ¿se acepta (a) y se sube el umbral de la 3.3, se corrige el orden en otro sitio (p. ej. que
   `@linkvault/shared` no construya esquemas al cargarse o que cargue `jitless` antes que ellos, lo que sale de este change), o
   se acepta el ruido de zod y se anota en la 7.1b y la 9.3a?
+  **Estado (2026-11-23), cerrada con «Apagar en shared» (2.2):** barrido repetido sobre la pila de la suite (`web` en producción,
+  política inyectada, Chromium 153): las 17 rutas en escritorio y en `Pixel 7`, **0 violaciones de CSP y 0 errores de consola**
+  (`Permissions-Policy` incluida), control positivo registrado (`script-src-elem` / `inline` en `/login`, no se ejecuta) y
+  sin violación al cargar `/login`. Con el `nginx` real y sus cabeceras (sin inyectar) en `/login`: cero violaciones y la hoja
+  aplicada. Sigue sin visitarse `/plan/:analysisId`.
 - 7.2 (retirada en la iteración 2 del debate, V2-a; el push a mano de la 9.3b también se retiró en la iteración 3,
   B9-1: la medida del push contra staging la hace la 9.3a; se conserva el número.)
 

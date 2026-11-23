@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../zod-jitless';
 import { matchStepSchema } from '../match/match-steps';
 
 // Contratos HTTP del análisis de encaje (D1, D6, D7; specs/cv/match). El informe se valida antes de guardarse y

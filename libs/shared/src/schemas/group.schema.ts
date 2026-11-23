@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../zod-jitless';
 
 // Contratos HTTP del módulo `groups` (D9 de groups). El formato estricto del código de invitación (longitud y alfabeto)
 // NO se valida aquí: lo juzga el dominio, para que un código mal pegado responda `invalid_invite_code` (404) y no el

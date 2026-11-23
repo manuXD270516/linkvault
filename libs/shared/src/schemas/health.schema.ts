@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../zod-jitless';
 
 /** Estado de una comprobación o del servicio completo (spec runtime-health). */
 export const healthStatusSchema = z.enum(['up', 'down']);

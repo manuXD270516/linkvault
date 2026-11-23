@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../zod-jitless';
 import { jobLinkSummarySchema, previewStatusSchema } from '../schemas/link.schema';
 
 // Aviso de que un link terminó su enriquecimiento (D9 de link-enrichment). Cruza procesos por un canal de Redis: el

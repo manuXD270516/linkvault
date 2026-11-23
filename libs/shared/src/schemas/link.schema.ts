@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../zod-jitless';
 import { publicSlugSchema } from '../links/public-slug';
 import { groupNameSchema } from './group.schema';
 import {

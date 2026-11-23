@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../zod-jitless';
 
 // Evento de integración que cruza procesos (ADR-009, D2): `api` lo escribe en `outbox_events` dentro de la
 // transacción del alta del análisis y el relay lo publica en la cola `analyze-match`, donde lo consume el worker.

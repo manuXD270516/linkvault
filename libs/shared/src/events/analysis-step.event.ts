@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../zod-jitless';
 import { matchStepSchema } from '../match/match-steps';
 
 // Aviso de que un análisis de encaje cambió de paso (cv-suggestions-review, design §6; platform/realtime).

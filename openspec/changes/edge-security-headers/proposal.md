@@ -83,8 +83,8 @@ crear un orden de archivo con 35b ni con 35c.
 
 - **Código** (`apps/**`, con el change activo): `apps/api/src/presentation/http/security-headers.ts` (nuevo),
   `apps/api/src/app/create-app.ts` (registro del hook), `apps/api/src/infrastructure/realtime/sse-stream.ts`
-  (`SSE_HEADERS`), `apps/web/project.json` (`optimization` de producción), `apps/web/src/main.ts` y un módulo
-  `zod-csp.ts`. **No** se toca `apps/web-e2e/**`.
+  (`SSE_HEADERS`), `apps/web/project.json` (`optimization` de producción), y un módulo
+  `libs/shared/src/zod-jitless.ts` (y los `import { z }` de shared). **No** se toca `apps/web-e2e/**`.
 - **Configuración servida**: `docker/web/nginx.conf` (viaja dentro de la imagen `web`) e `infra/traefik/dynamic.yml`
   (viaja al host con la configuración del commit desplegado, D4 de 35b).
 - **Herramientas**: `tools/repo-checks` gana un target `check-edge-security-headers` y su entrada en el agregador.

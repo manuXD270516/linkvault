@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../zod-jitless';
 import {
   COMMENT_TEXT_MAX_LENGTH,
   normalizeCommentText,

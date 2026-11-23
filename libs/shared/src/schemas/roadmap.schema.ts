@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../zod-jitless';
 import { missingSkillSchema, skillImportanceSchema } from './match.schema';
 
 // Contratos del roadmap de estudio (study-roadmap, design-v0.2 §4.7): plan por habilidad faltante con

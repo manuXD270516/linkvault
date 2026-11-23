@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../zod-jitless';
 import { applicationStatusSchema } from '../schemas/application.schema';
 
 // Fan-out al cambiar el estado canónico de una postulación con visibility=group (ADR-035).

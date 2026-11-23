@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../zod-jitless';
 
 // Contratos HTTP de discovery (ADR-043 / change job-discovery, D2).
 // `pageSize` es el cap de hits **por board**; con `board=all` la respuesta puede tener hasta 2×pageSize.

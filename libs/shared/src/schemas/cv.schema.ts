@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../zod-jitless';
 import { CV_FILE_TYPE_VALUES } from '../cv/cv-file';
 
 // Contratos HTTP del módulo `cv` (D1 y D6 de cv-upload-extract, ADR-028 §1 y §5).

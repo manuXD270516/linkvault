@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../zod-jitless';
 
 // Job de re-check de frescura (ADR-037): reutiliza la cola `enrich-link` con `triggeredBy: freshness` y un `jobId`
 // determinista por ventana de cadencia (`fresh:{linkId}:{bucket}`).

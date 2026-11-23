@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../zod-jitless';
 
 /** Longitud máxima de `displayName` tras eliminar espacios exteriores (spec auth/credentials y users/profile). */
 export const DISPLAY_NAME_MAX_LENGTH = 60;

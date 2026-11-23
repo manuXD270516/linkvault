@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../zod-jitless';
 
 // Evento de integración que cruza procesos: `api` lo escribe en `outbox_events` dentro de la transacción del alta y su
 // relay lo publica en BullMQ (ADR-009); el consumidor llega con `link-enrichment`. El contrato va versionado en el

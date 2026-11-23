@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../zod-jitless';
 import {
   LINK_CURSOR_INPUT_MAX_LENGTH,
   LINK_PAGE_DEFAULT_LIMIT,

@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../zod-jitless';
 
 // Conjunto cerrado de pasos del análisis de encaje (ADR-030 §9, D12; cv-suggestions-review §5). **Única definición**:
 // api, worker y web importan de aquí; repetir la lista en cada capa acabaría con tres pantallas que cuentan la espera

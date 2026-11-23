@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../zod-jitless';
 import {
   MATCH_SUGGESTIONS_MAX,
   missingSkillSchema,

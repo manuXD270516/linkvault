@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../zod-jitless';
 import { applicationStatusSchema } from './application.schema';
 import { jobModalitySchema } from './preview.schema';
 

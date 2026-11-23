@@ -117,6 +117,8 @@
         "{workspaceRoot}/infra/traefik/dynamic.yml",
         "{workspaceRoot}/docker/web/nginx.conf",
         "{workspaceRoot}/apps/web/project.json",
+        "{workspaceRoot}/libs/shared/src/**/*.ts",
+        "!{workspaceRoot}/libs/shared/src/**/*.spec.ts",
         "{projectRoot}/src/edge-security-headers.check.mjs",
         "{projectRoot}/src/lib/compose.mjs",
         "{projectRoot}/src/lib/report.mjs"

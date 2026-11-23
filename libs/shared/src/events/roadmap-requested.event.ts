@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../zod-jitless';
 
 // Evento de integración que dispara `build-roadmap` (study-roadmap, ADR-009).
 // `api` lo escribe en `outbox_events` desde el POST; el worker también puede encolar el mismo job

@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../zod-jitless';
 
 // Fan-out de notificación al crear una relación nueva link↔grupo (change notifications, ADR-035).
 // `api` lo escribe en outbox en la misma txn; el worker expande destinatarios. Solo identificadores.

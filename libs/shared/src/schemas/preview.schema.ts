@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../zod-jitless';
 
 // Contratos del preview de una vacante (D11 de link-enrichment). La forma del preview y la de su procedencia por campo
 // se definen aquí UNA sola vez: los schemas de Mongoose de `api` y del worker se derivan de esta definición, porque dos

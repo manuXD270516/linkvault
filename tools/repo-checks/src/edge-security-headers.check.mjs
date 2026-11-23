@@ -14,12 +14,15 @@
  *     `# csp-report-only: AAAA-MM-DD <motivo>`; esa línea solo vale si NO hay una `Content-Security-Policy` aplicada;
  *  4. la CSP de nginx (la aplicada o, bajo la excepción, la `-Report-Only`) lleva `frame-ancestors 'none'`, no tiene
  *     `'unsafe-eval'` y su `script-src` (o `default-src`, si falta) solo admite `'self'`/`'none'`;
- *  5. `apps/web/project.json` tiene `inlineCritical: false` en la configuración de producción.
+ *  5. `apps/web/project.json` tiene `inlineCritical: false` en la configuración de producción;
+ *  6. `libs/shared/src/zod-jitless.ts` llama a `z.config({ jitless: true })` y ningún otro fichero de `libs/shared/src`
+ *     importa `zod` como valor: los esquemas importan `z` de ese módulo, así la configuración corre antes de construir
+ *     ninguno (sin ella zod sondea `new Function('')` por carga y la CSP informa una violación).
  *
  * Qué NO comprueba: que la política sea buena para el SPA (eso lo mide el barrido de la tarea 7.1) ni que nginx la sirva
  * (tarea 3.2 y staging).
  */
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse } from 'yaml';
 import { WORKSPACE_ROOT, relativeToRoot } from './lib/compose.mjs';
@@ -29,6 +32,7 @@ const NAME = 'edge-security-headers';
 const DYNAMIC = join(WORKSPACE_ROOT, 'infra/traefik/dynamic.yml');
 const NGINX = join(WORKSPACE_ROOT, 'docker/web/nginx.conf');
 const WEB_PROJECT = join(WORKSPACE_ROOT, 'apps/web/project.json');
+const SHARED_SRC = join(WORKSPACE_ROOT, 'libs/shared/src');
 
 const HSTS_MIN_SECONDS = 604800;
 const CSP = 'content-security-policy';
@@ -344,9 +348,50 @@ function checkWebBuild() {
   }
 }
 
+function sharedSources(dir) {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) return sharedSources(full);
+    return entry.name.endsWith('.ts') && !entry.name.endsWith('.spec.ts')
+      ? [full]
+      : [];
+  });
+}
+
+function checkSharedJitless() {
+  const jitlessFile = join(SHARED_SRC, 'zod-jitless.ts');
+  looked += 1;
+  if (
+    !/z\.config\(\s*\{\s*jitless:\s*true\s*\}\s*\)/.test(
+      readFileSync(jitlessFile, 'utf8'),
+    )
+  ) {
+    findings.push(
+      relativeToRoot(jitlessFile) +
+        ': debe llamar a z.config({ jitless: true })',
+    );
+  }
+  for (const file of sharedSources(SHARED_SRC)) {
+    if (file === jitlessFile) continue;
+    looked += 1;
+    const lines = readFileSync(file, 'utf8').split(/\r?\n/);
+    lines.forEach((line, index) => {
+      if (/^import\s+(?!type\b)[^;]*from\s+['"]zod['"]/.test(line)) {
+        findings.push(
+          relativeToRoot(file) +
+            ':' +
+            (index + 1) +
+            ": importa 'zod' directamente: los esquemas de @linkvault/shared importan z de zod-jitless, que corre antes de construir ninguno (ADR-057)",
+        );
+      }
+    });
+  }
+}
+
 checkTraefik();
 checkNginx();
 checkWebBuild();
+checkSharedJitless();
 
 if (findings.length > 0) {
   fail(

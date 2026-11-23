@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../zod-jitless';
 
 // Claves BYOK por vendor (change ai-byok, ADR-032). Vistas HTTP sin plaintext ni ciphertext.
 //

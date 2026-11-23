@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../zod-jitless';
 
 // Configuración y rechazos del correo SMTP, **una vez** para `api` y `worker` (design D6 de `staging-host`, spec
 // `platform/email` «Adaptadores Resend, SMTP/Mailpit y captura»). Sin `nodemailer`: lo que sale de aquí son datos que

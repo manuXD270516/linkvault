@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../zod-jitless';
 import { commentsSummarySchema } from '../schemas/group-link-comment.schema';
 
 // Aviso de que cambiaron los comentarios de un link en un grupo (D9 de group-comments, ADR-026 §9). Viaja en dos tramos

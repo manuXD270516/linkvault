@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../zod-jitless';
 
 // Digest semanal de grupo (change group-weekly-digest, ADR-035 enmienda B10).
 // Job raíz en worker (sin outbox): single-flight por weekKey ISO W−1.

@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../zod-jitless';
 import type { ApiErrorCode } from './auth.schema';
 import { IMPORT_TEXT_MAX_LENGTH } from './link.schema';
 

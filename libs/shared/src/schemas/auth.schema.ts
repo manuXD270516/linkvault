@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../zod-jitless';
 import { displayNameSchema, userProfileSchema } from './user-profile.schema';
 
 /** Política de contraseñas (spec auth/credentials): longitud en caracteres, sin reglas de composición. */

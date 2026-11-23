@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../zod-jitless';
 
 // Contratos del flag «conozco a alguien ahí» en un link de grupo (D2 de know-someone-flag). Sin userIds ni nombres:
 // solo si quien mira lo marcó y cuántos lo marcaron. El SPA fusiona esta forma slim en el ítem de la lista.

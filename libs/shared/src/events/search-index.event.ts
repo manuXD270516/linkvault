@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../zod-jitless';
 import { searchDocTypeSchema } from '../schemas/search.schema';
 import { sha256Hex } from '../text/sha256';
 

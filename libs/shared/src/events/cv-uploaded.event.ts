@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../zod-jitless';
 
 // Evento de integración que cruza procesos (ADR-009, D8 de cv-upload-extract): `api` lo escribe en `outbox_events`
 // dentro de la transacción del alta y el relay lo publica en la cola `extract-cv`, donde lo consume el worker.

@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../zod-jitless';
 import { applicationStatusSchema } from '../schemas/application.schema';
 
 // Evento de integración de una postulación estancada (ADR-024 §10; productor en change `notifications`, ADR-035).

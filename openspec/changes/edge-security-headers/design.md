@@ -141,10 +141,18 @@ La política vive **una sola vez**, en `docker/web/nginx.conf`. El barrido de la
    `nginx.conf` de `main` (base) y otra con los de este change.
    Con `onload` bloqueado la página quedaría **sin estilos** (la hoja seguiría en `media="print"`), así que no es
    opcional; por eso «página sin estilos» es el primer síntoma del RUNBOOK (B4).
-2. **`zod` sin JIT en el navegador**: un módulo `apps/web/src/zod-csp.ts` que ejecuta `z.config({ jitless: true })`,
-   importado **en la primera línea** de `main.ts`, antes de cualquier esquema. Sin él, la sonda `new Function('')`
+2. **`zod` sin JIT, en `libs/shared`** (ampliación de alcance decidida por el owner el 2026-11-23, «Apagar en shared»): un
+   módulo `libs/shared/src/zod-jitless.ts` que ejecuta `z.config({ jitless: true })` y reexporta `z`; **todos** los esquemas de
+   `libs/shared/src` importan `z` de él y no de `zod`, así la configuración corre antes de construir cualquiera por
+   dependencia directa del módulo, sin depender de cómo el bundler reparta los chunks. Sustituye al `apps/web/src/zod-csp.ts`
+   importado en la primera línea de `main.ts`, que se retira (una sola fuente). Motivo, medido el 2026-11-23: con `import './zod-csp'` como primera línea de `main.ts`, el barrido de las 17 rutas del SPA (escritorio y `Pixel 7`) dio **17 de 17 con una violación `script-src` / `eval`** por carga de documento, porque el bundler de producción evalúa los esquemas de `@linkvault/shared` (en un chunk compartido) antes del cuerpo de `main`. Un `import './zod-jitless'` suelto
+   en el índice de shared tampoco bastó: el bundler lo evalúa después de los esquemas. API y worker también cargan shared y
+   `jitless` vale ahí igual (solo cambia el camino de validación; sus tests siguen en verde). Descartado: `import()` dinámico
+   del bootstrap (cero violaciones, pero +404 ms de primer pintado frente al umbral de 300) y `zod-csp` como entrada de
+   `polyfills` (duplica zod, otro `globalConfig`, y rompe el presupuesto `initial`). El guardia estático (D8, regla 6) vigila que
+   ningún otro fichero de shared importe `zod` como valor. Sin él, la sonda `new Function('')`
    dispara una violación por carga: no rompe nada, pero ensucia la señal del barrido y de la pasada de staging (D8), y una
-   señal que siempre tiene ruido acaba ignorada. La API y el worker no se tocan (no tienen CSP).
+   señal que siempre tiene ruido acaba ignorada.
 
 *Descartado:* **`'unsafe-hashes'` con el hash de `this.media='all'`**: abre una excepción de script para mantener una
 optimización. **`security.autoCsp` de Angular**: añade una CSP en `<meta>` con hashes de scripts en línea; un `<meta>`
@@ -254,7 +262,9 @@ línea o el router, si:
 4. la CSP de `nginx.conf` —la aplicada o, bajo la excepción, la `-Report-Only`— no tiene `frame-ancestors 'none'`, tiene
    `'unsafe-eval'`, o su `script-src` (o `default-src`, si falta `script-src`) admite `'unsafe-inline'`, `data:`,
    `blob:`, `*` o un esquema/host externo;
-5. la configuración de producción de `web` no tiene `inlineCritical: false`.
+5. la configuración de producción de `web` no tiene `inlineCritical: false`;
+6. `libs/shared/src/zod-jitless.ts` no llama a `z.config({ jitless: true })`, o algún otro fichero de `libs/shared/src` importa
+   `zod` como valor (ampliación del 2026-11-23, D3).
 
 **CSP — barrido único y pasada de staging** (sin guardia dinámico permanente, D4):
 
@@ -398,7 +408,7 @@ Derivados de los escenarios de `specs/platform/edge-security-headers/spec.md`, c
 **SSE** — `apps/api/src/infrastructure/realtime/sse-stream.spec.ts`:
 - «writes nosniff in the SSE head» (afirma el literal `'nosniff'`)
 
-**Web** — `apps/web/src/zod-csp.spec.ts`:
+**Shared** — `libs/shared/src/zod-jitless.spec.ts`:
 - «configures zod as jitless»
 
 **Repo** — `tools/repo-checks/src/edge-security-headers.check.mjs` (falsaciones en la tarea 5.1):
@@ -620,3 +630,7 @@ Fecha: 2026-10-29. Aprobación humana del change tras la convergencia de la iter
 - **Q2 = (a):** sin destino de informes de CSP.
 - **Q3 = (a):** change candidato posterior a 35c con `nonce`, Trusted Types y el guardia dinámico de CSP (tarea 8.2).
 - **Q4 = (a):** HSTS de un año al tener dominio propio.
+- **Ampliación de alcance (2026-11-23), «Apagar en shared»:** `zod` `jitless` se aplica en `libs/shared` (un fichero nuevo,
+  `zod-jitless.ts`, y el cambio de `import { z } from 'zod'` por el del módulo en los ficheros de esquemas de shared), no en
+  `apps/web`. Medición que la motivó: 17 de 17 rutas con una violación `script-src` / `eval` con el import en `main.ts`.
+  Descartadas: `import()` dinámico (+404 ms) y `polyfills` (duplica zod). Ver D3.
