@@ -109,6 +109,26 @@
         "commands": ["node tools/repo-checks/src/docs-stack-up.check.mjs"]
       }
     },
+    "check-edge-security-headers": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "// inputs": "Los tres ficheros que lee —la configuración dinámica de Traefik, el nginx de la imagen web y el project.json de web— y su propio código. Sin la lista, un stsSeconds que baja o una cabecera que pierde 'always' no cambiaría el hash y Nx daría el verde anterior (ADR-048 §5, ADR-057).",
+      "inputs": [
+        "{workspaceRoot}/infra/traefik/dynamic.yml",
+        "{workspaceRoot}/docker/web/nginx.conf",
+        "{workspaceRoot}/apps/web/project.json",
+        "{projectRoot}/src/edge-security-headers.check.mjs",
+        "{projectRoot}/src/lib/compose.mjs",
+        "{projectRoot}/src/lib/report.mjs"
+      ],
+      "options": {
+        "cwd": "{workspaceRoot}",
+        "parallel": false,
+        "commands": [
+          "node tools/repo-checks/src/edge-security-headers.check.mjs"
+        ]
+      }
+    },
     "check": {
       "executor": "nx:run-commands",
       "cache": false,
@@ -117,7 +137,8 @@
         "check-compose-env-contract",
         "check-claims-registry",
         "check-stale-defaults",
-        "check-docs-stack-up"
+        "check-docs-stack-up",
+        "check-edge-security-headers"
       ],
       "options": {
         "cwd": "{workspaceRoot}",

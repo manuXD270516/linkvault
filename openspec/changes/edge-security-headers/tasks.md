@@ -166,7 +166,7 @@
 
 ## 3. Cabeceras del SPA en nginx (design D1, D2, D5)
 
-- [ ] 3.1 [infra] `docker/web/nginx.conf`: un `map $uri $lv_cache_control` en el nivel del fichero (dentro de `http`,
+- [x] 3.1 [infra] `docker/web/nginx.conf`: un `map $uri $lv_cache_control` en el nivel del fichero (dentro de `http`,
   donde lo incluye `conf.d/default.conf`) que reproduce los valores de hoy (`/index.html` → `no-cache`; estáticos por
   extensión → `public, max-age=604800, immutable`; resto → vacío). En el bloque `server`, con `always`, las seis
   cabeceras del SPA de D1 con los valores de D2 y D5, y `add_header Cache-Control $lv_cache_control;` **sin `always`**
@@ -181,6 +181,9 @@
   porque sin él un estático inexistente (`/no-existe.png`) caería en el fallback de `location /` y devolvería el `index.html`
   con 200 en lugar del 404 de hoy, y la 3.2 exige ese 404. Verificado en la 3.2; el guardia de 5.1 lo cubre (se cierra con el
   grupo 5).
+  **Estado (2026-11-23):** cerrada: el guardia de 5.1 (reglas «nginx declares the six SPA headers at server level with always», «Cache-Control is the only
+  server header without always» y «no nginx location declares add_header») pasa sobre el árbol y falla al romperlas
+  (falsaciones de 5.1).
 - [x] 3.2 [infra] Prueba de un solo uso en un nginx real (scratchpad, no queda en el repositorio):
   `docker run --rm -d -p 18080:80 -v <conf>:/etc/nginx/conf.d/default.conf:ro -v <dist>:/usr/share/nginx/html:ro
   nginx:1.27-alpine` con el `dist` de 2.1, `nginx -t` en el contenedor, y `curl -sSI` a `/`, `/index.html`, `/grupos/x`,
@@ -220,7 +223,7 @@
 
 ## 4. HSTS en el borde (design D7, D10)
 
-- [ ] 4.1 [infra] `infra/traefik/dynamic.yml`: middleware `edge-hsts` (`headers.stsSeconds: 604800`,
+- [x] 4.1 [infra] `infra/traefik/dynamic.yml`: middleware `edge-hsts` (`headers.stsSeconds: 604800`,
   `stsIncludeSubdomains: true`, `stsPreload: false`) y su nombre **añadido** a `middlewares` de `web`, `api` y
   `api-cv-upload` (en `api`, la lista se crea); comentario de cabecera ampliado con «HSTS (ADR-057): siete días
   mientras el nombre sea `<ip>.sslip.io`; el año con el dominio propio (Q4); sin vuelta atrás: si el certificado se
@@ -243,10 +246,12 @@
   segundos: 71 líneas, 56 DBG, 9 INF, un solo ERR (el ACME del nombre de prueba, esperado), ninguno del proveedor de ficheros,
   middlewares ni routers; `edge-hsts` se crea en el log. Contenedor apagado. La falsación está cubierta por 5.1 (se cierra
   con el grupo 5).
+  **Estado (2026-11-23):** cerrada: la falsación cubierta por 5.1 (quitar `edge-hsts` de `api-cv-upload`, `stsPreload: true`, `stsSeconds: 300` y `0`,
+  quitar `spa-referrer-policy` de `web`) se vio fallar y se restauró.
 
 ## 5. Guardia estático (design D8)
 
-- [ ] 5.1 [infra] `tools/repo-checks/src/edge-security-headers.check.mjs` con las cinco reglas de D8, incluida la única
+- [x] 5.1 [infra] `tools/repo-checks/src/edge-security-headers.check.mjs` con las cinco reglas de D8, incluida la única
   excepción fechada (`# csp-report-only:` en `nginx.conf`, válida solo sin ninguna `Content-Security-Policy` aplicada;
   HSTS **no** tiene excepción, F2) y la exención de `always` solo para `Cache-Control`, con mensajes que nombran
   fichero, router, `location` o directiva.
@@ -271,13 +276,31 @@
   - `'unsafe-inline'` en `script-src` y, aparte, quitar `frame-ancestors` («the SPA CSP forbids inline and external
     scripts and framing»);
   - `inlineCritical: true` («web production build disables inlineCritical»).
-- [ ] 5.2 [infra] Target `check-edge-security-headers` en `tools/repo-checks/project.json` con `cache: true` e
+  **Estado (2026-11-23):** `tools/repo-checks/src/edge-security-headers.check.mjs` (reutiliza `lib/report.mjs`; analizador mínimo de bloques de nginx
+  que respeta comillas y comentarios). `node tools/repo-checks/src/edge-security-headers.check.mjs`: «OK — 8 comprobaciones».
+  Falsaciones, cada una sobre el árbol de trabajo con `git checkout --` tras cada una (script de un solo uso en el
+  scratchpad; las 17 con el resultado esperado, 0 desajustes, árbol restaurado y la comprobación en verde al final):
+  quitar `edge-hsts` de `api-cv-upload` → falla nombrando el router; `stsPreload: true` → falla; `stsSeconds: 300` → falla;
+  `stsSeconds: 0` → falla, y también con `# hsts-rollback: 2026-10-28 prueba` → falla («max-age 0 … no admite excepción»);
+  quitar `spa-referrer-policy` de `web` → falla; sin `always` en `X-Frame-Options` → falla (con línea); `always` en
+  `Cache-Control` → falla; `add_header` dentro de `location /` → falla nombrando el bloque y la línea; `Content-Security-Policy`
+  renombrada a `-Report-Only` sin línea → falla, con `# csp-report-only: 2026-10-28 prueba` → **pasa**, la línea con la
+  aplicada → falla; la línea con la aplicada y una `-Report-Only` adicional → falla, y la aplicada con una `-Report-Only`
+  adicional sin la línea → **pasa**; `'unsafe-inline'` en `script-src` → falla nombrando la directiva; sin `frame-ancestors` →
+  falla; `inlineCritical: true` → falla.
+- [x] 5.2 [infra] Target `check-edge-security-headers` en `tools/repo-checks/project.json` con `cache: true` e
   **inputs explícitos** (`infra/traefik/dynamic.yml`, `docker/web/nginx.conf`, `apps/web/project.json`, el `.check.mjs`
   y `src/lib/report.mjs`), y su entrada en el `dependsOn` del agregador `check`. Verificar con `bash
   infra/ci/repo-checks.sh` redirigido a fichero y leído con `node`: una comprobación más que antes, todas en verde.
   Falsación: dejar el target fuera del `dependsOn` y ver fallar el agregador (`aggregate.mjs`) nombrándolo; restaurar.
   Segunda falsación (caché): con el target en verde, cambiar `stsSeconds` a `300` en `dynamic.yml` y comprobar que
   `pnpm nx run repo-checks:check-edge-security-headers` **se ejecuta** (no `[local cache]`) y falla; restaurar.
+  **Estado (2026-11-23):** target `check-edge-security-headers` con `cache: true`, inputs explícitos (`dynamic.yml`, `nginx.conf`, `apps/web/project.json`,
+  el `.check.mjs`, `lib/compose.mjs` —de donde importa `WORKSPACE_ROOT`— y `lib/report.mjs`) y su entrada en `check.dependsOn`.
+  `bash infra/ci/repo-checks.sh` a fichero: «repo-checks: 6 comprobaciones ejecutadas» (eran 5), todas en verde. Falsación 1:
+  sacado el target del `dependsOn`, `aggregate.mjs` falla nombrando «el target 'check-edge-security-headers' existe pero no está
+  en 'check.dependsOn'»; restaurado. Falsación 2 (caché): con el target en verde, `stsSeconds: 300` en `dynamic.yml` →
+  `nx run repo-checks:check-edge-security-headers` **se ejecuta** (sin `[local cache]`) y falla; restaurado y de nuevo en verde.
 
 ## 6. (Retirado en la iteración 1 del debate)
 
