@@ -233,6 +233,16 @@
   de prueba y `--log.level=DEBUG`, unos segundos, volcado a fichero y leído con `node`: ningún error del proveedor de
   ficheros ni de middlewares o routers (el error ACME del nombre de prueba es esperado y no cuenta). Falsación:
   cubierta por 5.1.
+  **Estado (2026-11-23), parcial:** `infra/traefik/dynamic.yml`: middleware `edge-hsts` (`stsSeconds: 604800`, `stsIncludeSubdomains: true`, `stsPreload: false`),
+  su nombre añadido a `middlewares` de `web` (tras `spa-referrer-policy`), `api` (lista nueva) y `api-cv-upload` (primero),
+  y el comentario de cabecera ampliado. Un `node` con el `yaml` del repositorio compara el fichero de antes y el de después:
+  solo difieren `http.middlewares.edge-hsts` (añadido) y las tres listas `middlewares`; `spa-referrer-policy` igual. Con
+  `traefik:v3.3.5` y los flags del servicio `traefik` de `docker-compose.prod.yml` extraídos del fichero con `yaml`
+  (proveedor de fichero, `web`/`websecure` con redirección, resolver `letsencrypt` con almacenamiento en un volumen temporal
+  del contenedor, `caserver` de pruebas de Let's Encrypt, `httpchallenge`), `PUBLIC_HOST` de prueba y `--log.level=DEBUG`, ocho
+  segundos: 71 líneas, 56 DBG, 9 INF, un solo ERR (el ACME del nombre de prueba, esperado), ninguno del proveedor de ficheros,
+  middlewares ni routers; `edge-hsts` se crea en el log. Contenedor apagado. La falsación está cubierta por 5.1 (se cierra
+  con el grupo 5).
 
 ## 5. Guardia estático (design D8)
 

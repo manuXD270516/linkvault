@@ -10,6 +10,9 @@
 #
 # CV upload (D7): POST /api/cv → 10 req / 15 min per IP + body ≤ 6 MiB.
 # SPA (D13): Referrer-Policy: no-referrer (invite codes must not leak via Referer).
+#
+# HSTS (ADR-057): siete días mientras el nombre sea `<ip>.sslip.io`; el año con el dominio propio (Q4); sin vuelta
+# atrás: si el certificado se rompe, se arregla el certificado (design D7). `edge-hsts` va en los tres routers.
 
 http:
   middlewares:
@@ -17,6 +20,12 @@ http:
       headers:
         customResponseHeaders:
           Referrer-Policy: "no-referrer"
+
+    edge-hsts:
+      headers:
+        stsSeconds: 604800
+        stsIncludeSubdomains: true
+        stsPreload: false
 
     cv-upload-ratelimit:
       rateLimit:
@@ -39,6 +48,7 @@ http:
       rule: 'Host(`{{ env "PUBLIC_HOST" }}`) && Method(`POST`) && Path(`/api/cv`)'
       priority: 200
       middlewares:
+        - edge-hsts
         - cv-upload-ratelimit
         - cv-upload-body-limit
       service: api
@@ -50,6 +60,8 @@ http:
         - websecure
       rule: 'Host(`{{ env "PUBLIC_HOST" }}`) && (PathPrefix(`/api/`) || PathPrefix(`/p/`))'
       priority: 100
+      middlewares:
+        - edge-hsts
       service: api
       tls:
         certResolver: letsencrypt
@@ -61,6 +73,7 @@ http:
       priority: 1
       middlewares:
         - spa-referrer-policy
+        - edge-hsts
       service: web
       tls:
         certResolver: letsencrypt
