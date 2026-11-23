@@ -1,0 +1,421 @@
+{
+  "proyecto": {
+    "nombre": "@linkvault/source",
+    "ruta": "D:\\projects\\linkvault",
+    "version": "0.0.0",
+    "tipo": "multi-servicio en contenedores"
+  },
+  "stack": {
+    "lenguajes": [
+      "typescript"
+    ],
+    "gestor": "pnpm",
+    "frameworks": [
+      "vite",
+      "angular",
+      "nestjs"
+    ],
+    "runtime": null,
+    "monorepo": true,
+    "paquetes": [
+      "package.json",
+      "tools/test-env/package.json",
+      "tools/testing/package.json"
+    ]
+  },
+  "datos": {
+    "motores": [
+      "mongodb",
+      "redis",
+      "s3"
+    ],
+    "migraciones": []
+  },
+  "autenticacion": [
+    "jwt (jose)"
+  ],
+  "señales": {
+    "procesoPersistente": {
+      "activa": true,
+      "evidencia": [
+        "apps/api/src/app/create-app.ts:128",
+        "apps/worker/src/app/create-worker-app.ts:42",
+        "reports/smoke/link-enrichment/fixture-server.mjs:68",
+        "reports/smoke/paste-job-description/fixture-server.mjs:73"
+      ]
+    },
+    "websockets": {
+      "activa": true,
+      "evidencia": [
+        "libs/ai/src/application/pii-redactor.ts:143"
+      ]
+    },
+    "tareasProgramadas": {
+      "activa": true,
+      "evidencia": [
+        "apps/api/src/app/app.module.ts:40",
+        "apps/worker/src/app/app.module.ts:7",
+        "libs/shared/src/events/application-status-notify.event.ts:39",
+        "libs/shared/src/events/cv-deleted.event.ts:11",
+        "libs/shared/src/events/cv-uploaded.event.ts:10"
+      ]
+    },
+    "escribeEnDisco": {
+      "activa": true,
+      "evidencia": [
+        "docs/object-store-matrix/find-plaintext.mjs:126",
+        "reports/smoke/cv-match-suggestions/openrouter-17.8.mts:193",
+        "reports/smoke/fix-referer-log-redaction/http-smoke.mjs:38"
+      ]
+    },
+    "navegadorSinCabeza": {
+      "activa": false,
+      "evidencia": []
+    },
+    "dependenciasNativas": {
+      "activa": false,
+      "evidencia": []
+    },
+    "contenedores": {
+      "activa": true,
+      "evidencia": [
+        "docker-compose.prod.yml",
+        "docker-compose.yml"
+      ]
+    },
+    "renderEnServidor": {
+      "activa": false,
+      "evidencia": []
+    },
+    "pwa": {
+      "activa": true,
+      "evidencia": [
+        "apps/web/public/sw.js",
+        "graphify-out/manifest.json"
+      ]
+    },
+    "compatibleConBorde": {
+      "activa": false,
+      "evidencia": []
+    }
+  },
+  "contenedores": {
+    "compose": [
+      "docker-compose.prod.yml",
+      "docker-compose.yml"
+    ],
+    "servicios": [
+      "edge",
+      "internal",
+      "object-store-net",
+      "mongo-data",
+      "redis-data",
+      "object-store-data",
+      "traefik-letsencrypt",
+      "traefik-logs",
+      "traefik",
+      "mongo",
+      "redis",
+      "object-store",
+      "api",
+      "worker",
+      "web",
+      "mongo",
+      "redis",
+      "object-store",
+      "mailpit",
+      "ollama",
+      "meilisearch",
+      "mongo-data",
+      "redis-data",
+      "object-store-data",
+      "ollama-data",
+      "meili-data",
+      "object-store-net"
+    ],
+    "imagenes": [
+      "traefik:v3.3.5",
+      "mongo:7.0.43",
+      "redis:7.4.11",
+      "${OBJECT_STORE_IMAGE:-chrislusf/seaweedfs}:${OBJECT_STORE_IMAGE_TAG:-4.47}",
+      "${API_IMAGE:-ghcr.io/manuxd270516/linkvault-api}:${IMAGE_TAG:-latest}",
+      "${WORKER_IMAGE:-ghcr.io/manuxd270516/linkvault-worker}:${IMAGE_TAG:-latest}",
+      "${WEB_IMAGE:-ghcr.io/manuxd270516/linkvault-web}:${IMAGE_TAG:-latest}",
+      "axllent/mailpit:v1.27.7",
+      "ollama/ollama:0.34.0",
+      "getmeili/meilisearch:v1.14"
+    ]
+  },
+  "plataformasConfiguradas": [],
+  "configuracion": {
+    "variables": [
+      "NODE_ENV",
+      "LOG_LEVEL",
+      "MONGO_URI",
+      "REDIS_URL",
+      "FEATURE_HEADLESS_EXTRACTION",
+      "API_PORT",
+      "AUTH_JWT_SECRET",
+      "AUTH_ACCESS_TOKEN_TTL_SECONDS",
+      "AUTH_REFRESH_TTL_DAYS",
+      "AUTH_REFRESH_MAX_DAYS",
+      "OUTBOX_RELAY_ENABLED",
+      "OUTBOX_RELAY_INTERVAL_MS",
+      "PASTE_EXTRACTION_TIMEOUT_MS",
+      "PUBLIC_PAGE_BASE_URL",
+      "WEB_BASE_URL",
+      "MAIL_PROVIDER",
+      "MAIL_FROM",
+      "MAIL_SMTP_HOST",
+      "MAIL_SMTP_PORT",
+      "MAIL_SMTP_USER",
+      "MAIL_SMTP_PASSWORD",
+      "MAIL_SMTP_SECURE",
+      "RESEND_API_KEY",
+      "AUTH_VERIFY_TOKEN_TTL_HOURS",
+      "AUTH_RESET_TOKEN_TTL_SECONDS",
+      "VAPID_PUBLIC_KEY",
+      "VAPID_PRIVATE_KEY",
+      "VAPID_SUBJECT",
+      "EXTENSION_CORS_ORIGINS",
+      "WORKER_HEALTH_PORT",
+      "ENRICH_FETCH_TIMEOUT_MS",
+      "ENRICH_MAX_BYTES",
+      "ENRICH_DOMAIN_DELAY_MS",
+      "ENRICH_DEADLINE_MS",
+      "ENRICH_ROBOTS_TTL_SECONDS",
+      "ENRICH_USER_AGENT",
+      "ENRICH_CONCURRENCY",
+      "ENRICH_MAX_DEFERRALS",
+      "AI_CHAIN",
+      "AI_MOCK_MODE",
+      "AI_PROMPTS_DIR",
+      "AI_FIXTURES_DIR",
+      "AI_CACHE_TTL_SECONDS",
+      "AI_QUOTAS",
+      "OLLAMA_URL",
+      "OLLAMA_MODEL",
+      "OLLAMA_MAX_CONTEXT_TOKENS",
+      "OLLAMA_TIMEOUT_MS",
+      "OPENROUTER_BASE_URL",
+      "OPENROUTER_API_KEY",
+      "OPENROUTER_MODEL",
+      "OPENROUTER_MAX_CONTEXT_TOKENS",
+      "OPENROUTER_TIMEOUT_MS",
+      "BYOK_ANTHROPIC_MODEL",
+      "BYOK_OPENAI_MODEL",
+      "BYOK_OPENROUTER_MODEL",
+      "BYOK_ANTHROPIC_TIMEOUT_MS",
+      "BYOK_OPENAI_TIMEOUT_MS",
+      "BYOK_OPENROUTER_TIMEOUT_MS",
+      "MATCH_ANALYSES_PER_USER",
+      "MATCH_QUOTA_WINDOW_MS",
+      "MATCH_ANALYSIS_MAX_AGE_MS",
+      "MATCH_ANALYSIS_TIMEOUT_MS",
+      "MATCH_ANALYSIS_CONCURRENCY",
+      "S3_ENDPOINT",
+      "S3_REGION",
+      "S3_ACCESS_KEY",
+      "S3_SECRET_KEY",
+      "S3_SNAPSHOTS_BUCKET",
+      "S3_BUCKET",
+      "CV_EXTRACTION_TIMEOUT_MS",
+      "CV_EXTRACT_CONCURRENCY",
+      "FEATURE_SEARCH",
+      "MEILI_HOST",
+      "MEILI_MASTER_KEY",
+      "MEILI_INDEX",
+      "FEATURE_DISCOVERY",
+      "DISCOVERY_CHAIN",
+      "AI_EMBED_CHAIN",
+      "AI_EMBED_MODEL",
+      "SEARCH_SEMANTIC_RATIO",
+      "SEARCH_BACKFILL_RATE",
+      "FEATURE_LINK_FRESHNESS",
+      "LINK_FRESHNESS_INTERVAL_DAYS",
+      "LINK_FRESHNESS_BATCH_LIMIT",
+      "FEATURE_GROUP_DIGEST",
+      "GROUP_DIGEST_CRON"
+    ],
+    "archivosDeEjemplo": [
+      ".env.example"
+    ],
+    "archivosDeSecretos": [
+      {
+        "archivo": ".env",
+        "ignoradoPorGit": true
+      }
+    ]
+  },
+  "calidad": {
+    "scripts": [
+      "infra:up"
+    ],
+    "build": [],
+    "pruebas": [],
+    "ci": [
+      ".github/workflows/cd-prod.yml",
+      ".github/workflows/cd-staging.yml",
+      ".github/workflows/ci.yml",
+      ".github/workflows/e2e.yml"
+    ]
+  },
+  "git": {
+    "ramaActual": "docs/estrategia-despliegue",
+    "ramaPorDefecto": "main",
+    "ramasRemotas": 99
+  },
+  "documentos": [
+    "README.md"
+  ],
+  "avisos": [],
+  "estadoDespliegue": {
+    "desplegado": false,
+    "resumen": "No hay ningún despliegue en producción ni en staging. Hay un destino decidido y a medio preparar: Oracle Cloud Always Free (VM Ampere A1, 2 OCPU / 12 GB, Ubuntu 24.04 aarch64) con Docker Compose, Traefik y Let's Encrypt sobre sslip.io (ADR-051, change staging-host 35b). El CD a staging construye arm64, verifica y publica en GHCR, y despliega por SSH solo si hay destino configurado; hoy termina en 'verificado sin destino'.",
+    "evidencia": [
+      "docs/adr/ADR-051.md:1 (fila 35 sobre infraestructura gratuita)",
+      "infra/README.md:100-117 (Oracle Always Free, VM.Standard.A1.Flex 2 OCPU / 12 GB, aarch64)",
+      ".github/workflows/cd-staging.yml:2 (ssh/compose pull+up si hay destino) y :179 (runs-on ubuntu-24.04-arm)",
+      "corrida cd-staging 42344081533 del 2026-11-07: success, 'artefacto verificado — NO desplegado (sin destino de staging)'",
+      "docs/adr/ADR-054.md:1 (Fly.io evaluado y rechazado el 2026-09-30 por costo, ~20-25 USD/mes; especificación alternativa en docs/alternativas/fly-io/)"
+    ],
+    "bloqueosDelOwner": [
+      "Crear la VM de Oracle (runbook docs/runbooks/oracle-cloud-a1.md §1-10)",
+      "Cuenta de Brevo para SMTP",
+      "Decisión pago por uso o cuenta gratuita en Oracle (tarea 5.10 de staging-host)",
+      "Lista de invitados (Q4 de staging-host)"
+    ]
+  },
+  "correccionesAlDetector": [
+    {
+      "campo": "contenedores.servicios",
+      "correccion": "La lista mezcla redes y volúmenes. Servicios reales del compose de producción: traefik, mongo, redis, object-store (SeaweedFS), api, worker, web. El de desarrollo suma mailpit, ollama y meilisearch.",
+      "evidencia": "docker-compose.prod.yml:58,115,164,210,259,359,455"
+    },
+    {
+      "campo": "señales.websockets",
+      "correccion": "Falso positivo (pii-redactor.ts). No hay websockets; la API empuja eventos al navegador por SSE (text/event-stream), que igual exige conexiones largas.",
+      "evidencia": "apps/api/src/infrastructure/realtime/sse-stream.ts"
+    },
+    {
+      "campo": "señales.escribeEnDisco",
+      "correccion": "La evidencia es de scripts de reportes. Lo que sí persiste: volúmenes de Mongo, Redis y del almacén de objetos (CV y snapshots), más los certificados de Traefik.",
+      "evidencia": "docker-compose.prod.yml:51-55"
+    },
+    {
+      "campo": "stack.runtime",
+      "correccion": "Node 22 en las imágenes (Dockerfiles multi-stage), construidas para linux/arm64.",
+      "evidencia": "docker/worker.Dockerfile; .github/workflows/cd-staging.yml:179"
+    }
+  ],
+  "parametros": {
+    "presupuesto": 0,
+    "tarjeta": "si, sin cobros (solo alta o pago por uso con costo 0)",
+    "audiencia": "equipo (3-5 invitados)",
+    "datos": "sensibles",
+    "ramas": "trunk con PR a main; main despliega a staging por CD; cd-prod existe pero sin host"
+  },
+  "hechos": [
+    {
+      "pregunta": 1,
+      "hecho": "Mezcla: SPA Angular estática (contenedor web), API NestJS/Fastify y un worker NestJS con colas BullMQ, detrás de Traefik.",
+      "evidencia": "docker-compose.prod.yml:58,259,359,455"
+    },
+    {
+      "pregunta": 2,
+      "hecho": "Procesos persistentes: api y worker escuchan HTTP; el worker consume colas BullMQ sobre Redis y el outbox se releva por intervalo. La API mantiene conexiones SSE con el navegador.",
+      "evidencia": "apps/api/src/app/create-app.ts:128; apps/worker/src/app/create-worker-app.ts:42; apps/api/src/infrastructure/realtime/sse-stream.ts; .env.example OUTBOX_RELAY_INTERVAL_MS"
+    },
+    {
+      "pregunta": 3,
+      "hecho": "Cuatro tareas programadas dentro del worker (no cron externo): barrido de snapshots, frescura de links cada hora, postulaciones estancadas cada hora y resumen semanal de grupo.",
+      "evidencia": "apps/worker/src/modules/enrichment/infrastructure/schedule/snapshot-sweep.scheduler.ts:24; apps/worker/src/modules/freshness/infrastructure/queue/link-freshness.scheduler.ts:14; apps/worker/src/modules/notifications/infrastructure/queue/stale-applications.scheduler.ts:14; apps/worker/src/modules/notifications/notifications.module.ts:91"
+    },
+    {
+      "pregunta": 4,
+      "hecho": "Persisten en volúmenes: datos de Mongo (replica set de un nodo), Redis (colas), almacén S3 SeaweedFS con CV y snapshots cifrados, y certificados de Traefik.",
+      "evidencia": "docker-compose.prod.yml:51-55; docs/adr/ADR-052.md"
+    },
+    {
+      "pregunta": 5,
+      "hecho": "Sin navegador sin cabeza por defecto (FEATURE_HEADLESS_EXTRACTION apagado). La lectura de CV (pdf-parse, mammoth) corre en un proceso hijo aislado en el worker. Imágenes arm64.",
+      "evidencia": ".env.example FEATURE_HEADLESS_EXTRACTION; ADR-058 (change cv-extract-isolation, rama sin fusionar)"
+    },
+    {
+      "pregunta": 6,
+      "hecho": "MongoDB 7 con replica set obligatorio (transacciones y change streams del outbox), Redis 7 para BullMQ y caché, y almacenamiento compatible con S3. Cambiar de motor implica reescribir los repositorios.",
+      "evidencia": "CLAUDE.md §Persistencia; docker-compose.prod.yml:115,164,210"
+    },
+    {
+      "pregunta": 7,
+      "hecho": "Hay binarios: CV en PDF o DOCX con tope de tamaño por archivo (CV_MAX_FILE_BYTES) y cantidad por usuario (MAX_CV_DOCUMENTS), y snapshots de páginas.",
+      "evidencia": "apps/api/src/app/create-app.ts:56; apps/api/src/modules/cv/application/upload-cv.usecase.ts:79"
+    },
+    {
+      "pregunta": 8,
+      "hecho": "No hay datos reales todavía. Migraciones dentro de la aplicación; staging arranca con volumen vacío y la semilla de demostración solo corre fuera de producción.",
+      "evidencia": "infra/staging/seed-volume.sh; apps/api/src/seed/demo-seed.guards.ts"
+    },
+    {
+      "pregunta": 9,
+      "hecho": "Datos sensibles: CV con datos personales, postulaciones, claves BYOK cifradas. Repo público desde 2026-10-09: ningún secreto versionado.",
+      "evidencia": "CLAUDE.md §Seguridad y legal; ADR-012; ADR-052"
+    },
+    {
+      "pregunta": 13,
+      "hecho": "Monorepo Nx con pnpm; CI con lint, typecheck, test, build y repo-checks; suite e2e Playwright a demanda. CI verde en main (corrida 42344081558).",
+      "evidencia": ".github/workflows/ci.yml; .github/workflows/e2e.yml"
+    },
+    {
+      "pregunta": 14,
+      "hecho": "PR a main con merge commit; main dispara cd-staging; cd-prod existe y no tiene host. Imágenes identificadas por digest sha-<12>.",
+      "evidencia": ".github/workflows/cd-staging.yml; .github/workflows/cd-prod.yml; ADR-048"
+    },
+    {
+      "pregunta": 15,
+      "hecho": "Secretos solo en .env.staging del host (contraseñas de Mongo y Redis, JWT, S3, VAPID, SMTP, OpenRouter) y secretos de GitHub para el acceso SSH y GHCR. Ninguna variable llega al navegador salvo la clave pública VAPID.",
+      "evidencia": "infra/ci/check-env-file.mjs; .github/workflows/cd-staging.yml:391"
+    },
+    {
+      "pregunta": 16,
+      "hecho": "Servicios externos: OpenRouter (modelo :free, data_collection deny), SMTP de Brevo para correo, Web Push (VAPID). Los orígenes y URLs de retorno salen de WEB_BASE_URL y PUBLIC_PAGE_BASE_URL.",
+      "evidencia": ".env.example:56,160; ADR-051; ADR-034"
+    }
+  ],
+  "supuestos": [
+    {
+      "pregunta": 10,
+      "supuesto": "3 a 5 invitados, menos de 2.000 peticiones por día, desde Latinoamérica; no hace falta funcionar sin conexión (la PWA solo cachea el shell).",
+      "motivo": "Respuesta del owner del 2026-11-16 (audiencia) y plan de staging-host"
+    },
+    {
+      "pregunta": 11,
+      "supuesto": "La pila completa en reposo usa entre 1,5 y 3 GB de RAM (Mongo, Redis, SeaweedFS, tres apps Node); el pico es el análisis de encaje con IA, que espera al proveedor externo más que usar CPU.",
+      "motivo": "No medido en esta corrida; estimación por servicios. Medir con docker stats antes de elegir una plataforma con menos de 4 GB"
+    },
+    {
+      "pregunta": 12,
+      "supuesto": "Una caída de horas es tolerable; perder datos no.",
+      "motivo": "Staging con pocos invitados (ADR-051)"
+    },
+    {
+      "pregunta": 17,
+      "supuesto": "Sin dominio propio: subdominio sslip.io sobre la IP pública.",
+      "motivo": "Decisión 'sin dominio y gratis al principio' de ADR-051"
+    }
+  ],
+  "mediciones": [],
+  "restricciones": [
+    "Costo 0 USD por mes",
+    "Tarjeta: se acepta cargarla para el alta o el pago por uso, sin cobros",
+    "Procesos persistentes (api, worker con colas y crons, SSE): sin suspensión por inactividad",
+    "MongoDB con replica set, Redis y almacén S3 con cifrado; datos sensibles con respaldo fuera del host",
+    "Imágenes arm64 ya construidas por el CD; cambiar de arquitectura tiene costo",
+    "Repo público: secretos solo fuera del repo"
+  ],
+  "pendientesDelOwner": [
+    "Crear la VM de Oracle y decidir pago por uso (5.10)",
+    "Cuenta de Brevo",
+    "Lista de invitados"
+  ]
+}

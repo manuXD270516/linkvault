@@ -18,8 +18,14 @@
 # apagan las piezas que no usa LinkVault y que escuchan sin autenticación dentro de la red del compose (WebDAV, la
 # interfaz web de administración, los catálogos Iceberg y Lance) y la telemetría del maestro, que por defecto informa a
 # `telemetry.seaweedfs.com`. Siguen escuchando, sin publicar, el maestro (9333), el volumen (9340), el filer (8888),
-# sus gRPC y el servidor de administración sin interfaz (23646); el filer sirve los objetos sin autenticación dentro
+# sus gRPC y el servidor de administración sin interfaz (23646); el filer sirvió los objetos sin autenticación dentro
 # de la red (medido en la 3.1, `matriz.md`).
+#
+# `-disableHttp` (staging-host 35b, design D18 medida 2; ADR-051 §Enmiendas punto 4): desde el 2026-11-05 la orden lo
+# lleva, y el filer deja de servir objetos por HTTP (la pasarela S3 sigue sirviendo). Es **otra configuración** de
+# `weed mini`: C3-C5 y C7-C9 se repitieron sobre ella (`matriz.md`, «Configuración con `-disableHttp` (35b D18)»).
+# Las corridas anteriores al 2026-11-05 (grupos 3 y 4, 7) se midieron con la orden sin esa opción. Siguen sin
+# autenticación el maestro (9333), el volumen (9340) y los gRPC (18888, 19333, 19340 y 33646).
 #
 # Uso (con un nombre de proyecto propio y un puerto que no choque con el de desarrollo):
 #   OBJECT_STORE_PORT=19640 S3_ACCESS_KEY=… S3_SECRET_KEY=… OBJECT_STORE_SSE_KEY=… \
@@ -42,6 +48,7 @@ services:
       - '-s3.port.iceberg=0'
       - '-s3.port.lance=0'
       - '-master.telemetry=false'
+      - '-disableHttp'
     environment:
       AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY:?S3_ACCESS_KEY is required}
       AWS_SECRET_ACCESS_KEY: ${S3_SECRET_KEY:?S3_SECRET_KEY is required}

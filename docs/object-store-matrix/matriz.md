@@ -4979,3 +4979,352 @@ versión con `sha-0cc2c0e87ec4` en `linkvault-api` (6 versiones), `-worker` (6) 
 15 minutos `Actions Linux` (1 + 13 + 1, redondeo por job) + 6 `Actions Linux ARM` (job de 5 min 21 s). Leído al
 terminar: `actions_linux` 1935 (+15) y `actions_linux_arm` 21, sin la parte ARM todavía (la facturación llega con
 retraso): 1956 leídos, 1962 esperados.
+
+## Configuración con `-disableHttp` (35b D18)
+
+Tarea 12.3 de `staging-host`; design D18, medida 2; [ADR-051](../adr/ADR-051.md) §Enmiendas, punto 4. Corridas del
+**2026-11-05** con SeaweedFS 4.47 (`chrislusf/seaweedfs:4.47`, el mismo digest del índice de la 1.4: la imagen no
+cambia), Docker 29.9.2 y Compose v5.6.1 en la máquina de la matriz (Windows 11 + Docker Desktop, `amd64`).
+
+**Qué cambia.** El `command` del servicio `object-store` gana `-disableHttp`, la opción que `weed mini -h` documenta como
+«disable http requests, only gRPC operations are allowed» y que la medición de la sección «Preguntas abiertas al
+usuario» (2026-09-26, copia `os4-swbind`) ya había probado suelta: la pasarela S3 sigue sirviendo y el filer deja de
+servir objetos por HTTP. Es **otra configuración** de `weed mini`, así que esa sección exigía repetir sobre ella C3-C5
+y C7-C9 antes de adoptarla. El resto de la orden, el entorno, el volumen y el healthcheck son los de siempre.
+
+**Los tres composes llevan la opción, también el de la matriz.** La comparación matriz ↔ desarrollo de ADR-052 §2 deja
+`command` en la comparación estricta (solo se quitan `ports`, `healthcheck`, `networks`, el origen del volumen, los
+valores de las tres claves de `environment` y, aparte, `entrypoint`), y la de desarrollo ↔ producción también. Para que
+«lo que se entrega es lo que se midió» siga siendo cierto, `-disableHttp` va en
+`docs/object-store-matrix/seaweedfs.compose.yml`, en `docker-compose.yml` y en `docker-compose.prod.yml`, y no se
+amplía la lista cerrada. Consecuencia: **las celdas de los grupos 3, 4 y 7 (2026-09-26 y 2026-09-27) se midieron con la
+orden anterior, sin la opción**; quedan como están, con esa orden en el historial de git, y las de esta sección son las
+que valen para la configuración vigente.
+
+```text
+$ node <scratchpad>/pr1b-123/compare-service.cjs <matriz> <desarrollo> entrypoint        # config --format json de cada compose
+claves comparadas: command, environment, image, volumes
+comparación de servicios: ok (idénticos salvo la lista cerrada)
+$ node <scratchpad>/pr1b-123/compare-service.cjs <desarrollo> <producción>
+claves comparadas: command, entrypoint, environment, image, volumes
+comparación de servicios: ok (idénticos salvo la lista cerrada)
+# falsación: el compose de la matriz tal como estaba en HEAD (sin la opción) contra el de desarrollo
+FALLA command: ["mini","-dir=/data",…,"-master.telemetry=false"]  !=  ["mini","-dir=/data",…,"-master.telemetry=false","-disableHttp"]
+comparación de servicios: FALLA (1)
+exit=1
+```
+
+**Procedimiento.** El de cada celda original: proyecto de Compose propio (`os35-sw`, `os35-sw4`, `os35-swopen` y
+`os35-dev`), puertos del bloque 19840-19870 del host (el `9000` es el MinIO de desarrollo, que no se tocó),
+credenciales y `OBJECT_STORE_SSE_KEY` nuevas generadas en el scratchpad, y `S3_ENDPOINT`, `S3_REGION=us-east-1`,
+`S3_BUCKET=cvs` y `S3_SNAPSHOTS_BUCKET=snapshots` exportadas. Orden de las corridas: C3, C4 y C5 sobre un almacén
+(`os35-sw`); C8 sobre otro recién arrancado y sin aprovisionar (`os35-sw4`), C7 sobre ese mismo ya aprovisionado y C9.
+Las salidas de Nx se recortan a lo que imprime la orden.
+
+### Resumen
+
+| Celda | Resultado con `-disableHttp` |
+|---|---|
+| C3 | pasa |
+| C4 | pasa (y `verify` sigue saliendo ≠0 contra el arranque sin identidades) |
+| C5 | `nativo` (disco, (b) = b1, (c)); repetida sobre `docker-compose.yml`, también `nativo` |
+| C7 | pasa, con la política de checksums por defecto |
+| C8 | pasa |
+| C9 | 1,19 s, 1,22 s y 1,53 s; peor, 1,53 s |
+
+Ninguna celda dura cambia: **se adopta `-disableHttp`**.
+
+### C3 y C4
+
+```text
+$ docker compose -p os35-sw -f docs/object-store-matrix/seaweedfs.compose.yml up -d --wait
+ Container os35-sw-object-store-1 Healthy
+exit=0
+$ docker compose … config --format json                  # servicio object-store, command
+["mini","-dir=/data","-webdav=false","-admin.ui=false","-s3.port.iceberg=0","-s3.port.lance=0","-master.telemetry=false","-disableHttp"]
+$ docker exec os35-sw-object-store-1 netstat -tln         # el almacén sigue escuchando todo
+:::23646 :::33646 :::8888 :::8333 :::18333 :::9340 :::9333 :::19340 :::19333 :::18888
+$ node docs/object-store-matrix/list-buckets.mjs          # recién arrancado
+buckets (0):
+exit=0
+$ pnpm nx run api:object-store -- provision               # primera, y segunda con «bucket already exists»
+ok    cvs: bucket created
+ok    cvs: no lifecycle configuration (removed if there was one)
+ok    cvs: default encryption set (AES256)
+ok    cvs: no bucket policy
+ok    snapshots: bucket created
+ok    snapshots: no lifecycle configuration (removed if there was one)
+ok    snapshots: no bucket policy
+provision: ok
+exit=0 (las dos)
+```
+
+**C3: pasa.** Credenciales por variables, buckets creados por la API S3 con `object-store provision` (dos veces, las dos
+en 0) y cifrado por defecto del bucket de CV aceptado, sin CLI ni API de administración. Los objetos los ejercita la
+escritura de C5 (abajo) y el PUT/GET firmado de la verificación de la pila.
+
+```text
+$ pnpm nx run api:object-store -- verify                  # recién aprovisionado
+ok    cvs: bucket exists
+ok    snapshots: bucket exists
+ok    cvs: no lifecycle rule
+ok    cvs: default encryption (AES256)
+ok    snapshots: no lifecycle rule
+ok    snapshots: no snapshot older than 31 days (0 listed)
+ok    cvs: anonymous GET of a missing object rejected (HTTP 403 AccessDenied)
+ok    cvs: anonymous listing rejected (HTTP 403 AccessDenied)
+ok    cvs: anonymous PUT rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous GET of a missing object rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous listing rejected (HTTP 403 AccessDenied)
+ok    snapshots: anonymous PUT rejected (HTTP 403 AccessDenied)
+verify: ok
+exit=0
+$ pnpm nx run api:object-store -- verify                  # tras la escritura de C5, con objetos en los dos buckets
+(…las mismas doce líneas, con «anonymous GET of an existing object rejected» y «no snapshot older than 31 days (2 listed)»…)
+verify: ok
+exit=0
+$ node docs/object-store-matrix/list-buckets.mjs
+buckets (2):
+cvs
+snapshots
+exit=0
+```
+
+**C4: pasa.** Y el arranque sin identidades sigue detectándose: copia de `seaweedfs.compose.yml` sin las dos líneas de
+identidad (`environment` queda con `WEED_S3_SSE_KEK` solo; el `diff` contra el original son las dos líneas `AWS_*`),
+proyecto `os35-swopen`, puerto `19842`, volumen vacío. `provision` pasa con cualquier firma y `verify` falla en las seis
+peticiones sin firmar:
+
+```text
+$ pnpm nx run api:object-store -- provision
+provision: ok
+exit=0
+$ pnpm nx run api:object-store -- verify
+ok    cvs: bucket exists
+(…las cinco primeras, en verde…)
+FAIL  cvs: anonymous GET of a missing object: HTTP 404 NoSuchKey: the store let the anonymous request look for it
+FAIL  cvs: anonymous listing: access granted (HTTP 200)
+FAIL  cvs: anonymous PUT: access granted (HTTP 200)
+note  cvs: the anonymous probe object .verify-probe/b6117812-3985-419e-a195-f8f30bd1a15d was deleted with a signed request
+FAIL  snapshots: anonymous GET of a missing object: HTTP 404 NoSuchKey: the store let the anonymous request look for it
+FAIL  snapshots: anonymous listing: access granted (HTTP 200)
+FAIL  snapshots: anonymous PUT: access granted (HTTP 200)
+note  snapshots: the anonymous probe object .verify-probe/8f0847d6-579b-4468-bbaa-ddcf391ab819 was deleted with a signed request
+verify: FAILED (6): …
+exit=1
+$ docker compose -p os35-swopen -f <scratchpad>/pr1b-123/variants/seaweedfs.open.compose.yml down -v
+exit=0
+```
+
+### C5
+
+**`nativo`, con (b) = b1.** Sobre el almacén aprovisionado de `os35-sw`:
+
+```text
+$ C5_WORKDIR=<scratchpad>/pr1b-123/c5-sw bash docs/object-store-matrix/c5.sh docs/object-store-matrix/seaweedfs.compose.yml object-store-data
+c5: mode server, compose docs/object-store-matrix/seaweedfs.compose.yml, volume object-store-data, workdir <scratchpad>/pr1b-123/c5-sw
+c5: project os35-sw, docker volume os35-sw_object-store-data, key entry WEED_S3_SSE_KEK (from OBJECT_STORE_SSE_KEY)
+container ok: one volume (os35-sw_object-store-data), no writable bind
+c5: 1. contract suite, C5 server mode (vitest, output in <scratchpad>/pr1b-123/c5-sw/suite.log)
+   ✓ |api| src/infrastructure/storage/s3.s3-contract.spec.ts > S3 contract of api (real store) > C5 mode: writes A1/A2 to the CV bucket without SSE headers and B1/B2 to the snapshots bucket, and dumps them 569ms
+   Test Files  1 passed (1)
+   Tests  1 passed | 4 skipped (5)
+   A1 cvs 1048576 bytes, lo que dice el almacén: AES256
+   A2 cvs 1024 bytes, lo que dice el almacén: AES256
+   B1 snapshots 1048576 bytes, lo que dice el almacén: none reported
+   B2 snapshots 1024 bytes, lo que dice el almacén: none reported
+c5: 2. docker compose stop object-store
+c5:    tar of volume os35-sw_object-store-data with alpine:3
+c5: 3. find-plaintext
+   find-plaintext: vol.tar, 2289664 bytes leídos
+   A1 0/3  (1048576 bytes; ventanas de 64 bytes en 0, 524256, 1048512)
+   A2 0/3  (1024 bytes; ventanas de 64 bytes en 0, 480, 960)
+   B1 3/3  (1048576 bytes; ventanas de 64 bytes en 0, 524256, 1048512)
+   B2 3/3  (1024 bytes; ventanas de 64 bytes en 0, 480, 960)
+   clave 0/3  (textual no; decodificada (hex, 32 bytes) no; decodificada (base64, 48 bytes) no)
+c5: 4. disk reading
+c5:    disco: ok (A1 0/3, A2 0/3, B1 3/3, B2 3/3)
+c5:    (c) ok: la clave, 0/3 formas en el volumen (textual; decodificada (hex, 32 bytes); decodificada (base64, 48 bytes))
+c5: (b) copy project c5copy-32174c: container created with K2 (same format as K1), volume c5copy-32174c_object-store-data restored from vol.tar
+   K2 WEED_S3_SSE_KEK of the container: the expected key
+c5: (b) K2 on the copy
+c5:    original object-store still stopped: the endpoint reaches the copy
+   almacén listo en 0.0 s
+c5:    K2: started
+   K2 A1: rechazado sin bytes (HTTP 500 InternalError)
+   K2 B1: igual por bytes (1048576 bytes, sha256 23d34ca97b6322d6)
+   K2 log: object-store-1  | E1105 11:25:22.351374 s3api_object_handlers.go:883 GetObjectHandler: failed to stream cvs/567eddf75df519e9b1c3e75d/b455f84b7cbeb5ebc049b09a from volume servers: failed to decrypt DEK: failed to decrypt DEK: cipher: message authentication failed
+c5: (b) K1 on the same copy (the compose's own key: OBJECT_STORE_SSE_KEY as the compose resolves it)
+   K1 WEED_S3_SSE_KEK of the container: the expected key
+   almacén listo en 0.0 s
+c5:    K1: started
+   K1 A1: igual por bytes (1048576 bytes, sha256 eaa577ec23e21699)
+   K1 B1: igual por bytes (1048576 bytes, sha256 23d34ca97b6322d6)
+c5: copy project c5copy-32174c removed (container, network and volume)
+c5: original object-store started again (up -d --no-deps object-store)
+c5: (b) b1 (K2: arranca, A1 rechazado sin bytes, B1 leído; K1 sobre la misma copia: A1 y B1 idénticos)
+c5: (a) with the key in the environment the product uses that key: shown by (b) and (c)
+c5: resultado: nativo (disco: ok (A1 0/3, A2 0/3, B1 3/3, B2 3/3); (b) b1 (K2: arranca, A1 rechazado sin bytes, B1 leído; K1 sobre la misma copia: A1 y B1 idénticos); (c) ok: la clave, 0/3 formas en el volumen (textual; decodificada (hex, 32 bytes); decodificada (base64, 48 bytes)))
+exit=0
+```
+
+Después, el contenedor original vuelve a arrancar con la orden de la matriz (`docker inspect … .Config.Cmd` termina en
+`"-master.telemetry=false","-disableHttp"`).
+
+**Repetida sobre la configuración entregada** (`docker-compose.yml`, proyecto `os35-dev`, puerto `19860`, solo el
+servicio `object-store`, con su guardia de arranque en `entrypoint`): `provision` 0, `c5.sh` 0, `verify` 0.
+
+```text
+$ OBJECT_STORE_PORT=19860 COMPOSE_PROJECT_NAME=os35-dev docker compose -f docker-compose.yml up -d --wait object-store
+ Container os35-dev-object-store-1 Healthy
+$ C5_WORKDIR=<scratchpad>/pr1b-123/c5-dev bash docs/object-store-matrix/c5.sh docker-compose.yml object-store-data
+c5:    disco: ok (A1 0/3, A2 0/3, B1 3/3, B2 3/3)
+c5:    (c) ok: la clave, 0/3 formas en el volumen (textual; decodificada (hex, 32 bytes); decodificada (base64, 48 bytes))
+   K2 A1: rechazado sin bytes (HTTP 500 InternalError)
+   K1 A1: igual por bytes (1048576 bytes, sha256 de3ef25d3da20069)
+c5: (b) b1 (K2: arranca, A1 rechazado sin bytes, B1 leído; K1 sobre la misma copia: A1 y B1 idénticos)
+c5: resultado: nativo (…)
+exit=0
+```
+
+### C8
+
+Sobre el almacén recién arrancado (`os35-sw4`, `up -d --wait` con el healthcheck: `Container os35-sw4-object-store-1
+Healthy`) y **sin aprovisionar**, con la orden del healthcheck de siempre
+(`["CMD","curl","-fsS","-o","/dev/null","--max-time","3","http://127.0.0.1:8333/healthz"]`):
+
+```text
+$ node docs/object-store-matrix/list-buckets.mjs          # antes
+buckets (0):
+$ docker exec os35-sw4-object-store-1 curl -fsS -o /dev/null --max-time 3 http://127.0.0.1:8333/healthz      # x10
+run 1: exit=0
+run 2: exit=0
+run 3: exit=0
+run 4: exit=0
+run 5: exit=0
+run 6: exit=0
+run 7: exit=0
+run 8: exit=0
+run 9: exit=0
+run 10: exit=0
+$ docker exec os35-sw4-object-store-1 curl -fsS -o /dev/null --max-time 3 http://127.0.0.1:18399/healthz      # puerto sin servicio
+curl: (7) Failed to connect to 127.0.0.1:18399 after 0 ms: Could not connect to server
+exit=7
+$ docker exec os35-sw4-object-store-1 netstat -tln | grep -c ':18399 '
+0
+$ node docs/object-store-matrix/list-buckets.mjs          # después
+buckets (0):
+$ docker inspect os35-sw4-object-store-1 --format '{{json .State.Health}}'      # Status y último sondeo
+Status healthy, FailingStreak 0
+2026-11-05T11:27:09.840409528Z exit=0 output=""
+$ docker exec os35-sw4-object-store-1 curl -fsS -o /dev/null --max-time 3 http://127.0.0.1:8333/health      # ruta que la pasarela toma por bucket
+curl: (22) The requested URL returned error: 403
+exit=22
+```
+
+Sale 0 con el almacén sirviendo, ≠0 (7) contra un puerto sin servicio y ≠0 (22) ante un rechazo; la lista de buckets
+sigue **vacía** después. **C8: pasa.**
+
+### C7
+
+Almacén de C8 ya aprovisionado (`provision: ok`, exit 0) y las suites de contrato de la 2.7 y la 2.8 con la **política de
+checksums por defecto** (`S3_CONTRACT_CHECKSUM` sin definir):
+
+```text
+$ S3_CONTRACT=1 pnpm nx run api:test --skip-nx-cache -- s3.s3-contract --reporter=verbose
+ ✓ |api| …s3.s3-contract.spec.ts > S3 contract of api (real store) > runs with the checksum policy it was asked for 2ms
+ ✓ |api| …s3.s3-contract.spec.ts > S3 contract of api (real store) > uploads a CV with the real adapter and the same bytes come back 266ms
+ ✓ |api| …s3.s3-contract.spec.ts > S3 contract of api (real store) > deletes a prefix of 1001 keys in two DeleteObjects batches and leaves it empty 1657ms
+ ↓ |api| …s3.s3-contract.spec.ts > S3 contract of api (real store) > C5 mode: writes A1/A2 to the CV bucket without SSE headers and B1/B2 to the snapshots bucket, and dumps them
+ ↓ |api| …s3.s3-contract.spec.ts > S3 contract of api (real store) > C5 SSE-C mode: writes A1/A2 with SSE-C and requires the SSECustomerKeyMD5 echo, B1/B2 without SSE, and dumps them
+ Test Files  1 passed (1)
+      Tests  3 passed | 2 skipped (5)
+exit=0
+$ S3_CONTRACT=1 pnpm nx run worker:test --skip-nx-cache -- s3.s3-contract --reporter=verbose
+ ✓ |worker| …s3.s3-contract.spec.ts > S3 contract of worker (real store) > reads the bytes that were written 53ms
+ ✓ |worker| …s3.s3-contract.spec.ts > S3 contract of worker (real store) > deletes, and deleting again is still a success 33ms
+ ✓ |worker| …s3.s3-contract.spec.ts > S3 contract of worker (real store) > tells a missing object (null) apart from a store that is down (error) 126ms
+ ✓ |worker| …s3.s3-contract.spec.ts > S3 contract of worker (real store) > stores a gzipped snapshot in the snapshots bucket 218ms
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
+exit=0
+```
+
+(Los dos modos C5 de `api` los salta la suite sin `S3_CONTRACT_C5_DIR`, como en la 4.2.) Las peticiones llegaron a este
+SeaweedFS: su log registra 5 `DeleteObjectHandler` de las suites, y `verify` después las encuentra limpias
+(`verify: ok`, `no snapshot older than 31 days (0 listed)`, exit 0). **C7: pasa, con la política de checksums por
+defecto (`when_supported`)**, incluido el borrado por prefijo de 1001 claves en dos lotes.
+
+### C9
+
+Tres arranques en frío (`down -v` entre ellos), tiempo hasta `healthy` = fin del primer sondeo con salida 0 de
+`.State.Health.Log` menos `.State.StartedAt`, leídos de `docker inspect` con `node` (`<scratchpad>/pr1b-123/c9-read.cjs`):
+
+```text
+run 1: up -d --wait exit=0, reloj 2.3 s
+run 1: Status healthy; StartedAt 2026-11-05T11:28:42.250176973Z; primer sondeo con 0: 2026-11-05T11:28:43.444158227Z; sondeos fallidos antes: 0; tiempo hasta healthy: 1.19 s
+run 1: list-buckets tras healthy: buckets (0):
+run 2: up -d --wait exit=0, reloj 2.5 s
+run 2: Status healthy; StartedAt 2026-11-05T11:28:49.362058635Z; primer sondeo con 0: 2026-11-05T11:28:50.581653838Z; sondeos fallidos antes: 0; tiempo hasta healthy: 1.22 s
+run 2: list-buckets tras healthy: buckets (0):
+run 3: up -d --wait exit=0, reloj 6.6 s
+run 3: Status healthy; StartedAt 2026-11-05T11:29:00.037847346Z; primer sondeo con 0: 2026-11-05T11:29:01.567942825Z; sondeos fallidos antes: 0; tiempo hasta healthy: 1.53 s
+run 3: list-buckets tras healthy: buckets (0):
+```
+
+**C9 (local, `amd64`): 1,19 s, 1,22 s y 1,53 s; peor, 1,53 s** (la medición de 2026-09-26 dio 1,19 s de peor caso; en la
+tercera corrida de hoy el `up` tardó 6,6 s de reloj, con la máquina más cargada). En las tres, el **primer** sondeo ya
+sale 0. Informa D8, no aprueba ni suspende: la ventana de la matriz (`start_period` 60 s + 6 × 10 s = 120 s) sigue
+siendo mucho más de tres veces el peor, así que el plazo de arranque de la pila no cambia.
+
+### Lo que se midió además, para el riesgo residual
+
+**El filer ya no sirve objetos.** Sobre el almacén de `os35-sw` tras C5, desde un contenedor `alpine:3` de la red del
+proyecto (`wget -q -T 5`, con las rutas reales de los cuatro objetos de C5):
+
+```text
+8888: wget: server returned error: HTTP/1.1 404 Not Found
+/buckets/cvs/567eddf75df519e9b1c3e75d/85b7d6ca5d15bf206154538a: wget: server returned error: HTTP/1.1 404 Not Found
+/buckets/cvs/567eddf75df519e9b1c3e75d/b455f84b7cbeb5ebc049b09a: wget: server returned error: HTTP/1.1 404 Not Found
+/buckets/snapshots/c5-1a1ab74a442-5d8246d0/B1.bin: wget: server returned error: HTTP/1.1 404 Not Found
+/buckets/snapshots/c5-1a1ab74a442-5d8246d0/B2.bin: wget: server returned error: HTTP/1.1 404 Not Found
+POST /buckets/snapshots/probe/anon.bin: wget: server returned error: HTTP/1.1 404 Not Found
+18888: wget: error getting response: Connection reset by peer        # el gRPC del filer sigue aceptando conexiones
+8333: wget: server returned error: HTTP/1.1 403 Forbidden            # la pasarela S3 sigue sirviendo, y pide firma
+9333: (sin error)                                                     # el HTTP del maestro sigue respondiendo
+9340: wget: server returned error: HTTP/1.1 400 Bad Request           # el HTTP del volumen sigue respondiendo
+```
+
+Con la orden anterior (sin la opción), los mismos objetos daban `HTTP 200` en el filer (3.1) y `/` daba 200 (4.1).
+
+**Lo que sigue escuchando, sin autenticación**, medido desde `api` y desde `worker` de la pila de producción local
+(`node -e` con `net`, 4 s de plazo): conectan al almacén los puertos **9333** (maestro, HTTP 200 en `/`), **9340**
+(volumen, HTTP 400 en `/`), **18888** (gRPC del filer), **19333** (gRPC del maestro), **19340** (gRPC del volumen) y
+**33646** (gRPC del servidor de administración), y además **18333** (gRPC de la pasarela S3) y **23646** (servidor de
+administración sin interfaz). Desde `web`, `object-store` ni siquiera resuelve (D14). No se midió si esos puertos
+entregan o aceptan datos sin autenticación, ni la firma JWT por `security.toml` (fuera de D18): son el riesgo residual
+escrito en `infra/README.md` y en ADR-052 «Consecuencias».
+
+**Hallazgo: `weed mini` guarda `-disableHttp` en el volumen.** Al arrancar con la opción, `weed mini` escribe
+`disableHttp=true` en `/data/mini.options` (el fichero que «se carga al arrancar si existe») y lo aplica en el arranque
+siguiente aunque la orden ya no la lleve. Medido con `grep -c disableHttp /data/mini.options` y `curl` al filer desde
+dentro del contenedor:
+
+```text
+# volumen nuevo, orden sin -disableHttp
+GET http://127.0.0.1:8888/  -> 200
+# misma orden y volumen, recreado CON -disableHttp
+mini.options disableHttp lines: 1        GET / -> 404
+# recreado SIN -disableHttp (la orden de antes)
+mini.options disableHttp lines: 0        GET / -> 404      # el fichero se carga y se reescribe: esta primera vez sigue deshabilitado
+# docker restart
+mini.options disableHttp lines: 0        GET / -> 200      # a partir del segundo arranque, el filer vuelve a servir
+```
+
+Dos consecuencias, sin cambiar nada de lo entregado: (1) **una vuelta atrás** (quitar la opción del compose) no abre el
+filer hasta el *segundo* arranque del almacén; (2) **cualquier prueba de que el filer responde sin la opción tiene que
+partir de un volumen nuevo**, no de uno que ya arrancó con ella (la falsación de la tarea 12.3 se hizo así). Staging y
+el ensayo de reconstrucción (D14) parten de un volumen vacío con la opción puesta, así que no les afecta.
+
+Los proyectos `os35-*` se bajaron con `down -v` y no queda ninguno (`docker ps -a`, `docker volume ls` y `docker network
+ls` sin rastro de `os35-*` ni de `c5copy-*`).

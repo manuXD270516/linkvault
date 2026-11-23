@@ -7,8 +7,8 @@
 #   STAGING_SSH_DEST=<usuario>@<ip> STAGING_EXCLUDED_IDS_FILE=<fichero fuera del repositorio> \
 #     bash infra/staging/run.sh infra/staging/measure.mongosh.js
 #
-# Mongo no tiene autenticación y el operador tiene acceso total; la garantía de solo lectura es la comprobación
-# estática `infra/staging/assert-readonly.mjs`, y este envoltorio la aplica **antes de abrir ninguna sesión**: si no
+# Mongo solo tiene el usuario raíz (design D18) y el operador tiene acceso total; la garantía de solo lectura es la
+# comprobación estática `infra/staging/assert-readonly.mjs`, y este envoltorio la aplica **antes de abrir ninguna sesión**: si no
 # pasa, no se llama a `ssh`. Lo que se comprueba es una copia del script, y es esa copia la que se envía, para que el
 # texto revisado y el ejecutado sean el mismo.
 #
@@ -17,6 +17,11 @@
 # `docker compose … exec -T mongo mongosh --quiet --eval <listas> /dev/stdin` con las dos listas inyectadas por
 # `--eval`. El `/dev/stdin` explícito es necesario: con `--eval`, `mongosh` ignora la entrada estándar si no se le
 # nombra como fichero (medido con `mongosh` 2.10.0, el de `mongo:7.0.43`).
+#
+# La conexión usa el usuario raíz: el mismo `--eval` empieza por `db.getSiblingDB('admin').auth(process.env…)`, que
+# lee `MONGO_INITDB_ROOT_USERNAME` y `MONGO_INITDB_ROOT_PASSWORD` del entorno del **contenedor** (los que Compose le
+# pasó desde `.env.staging`). La contraseña no pasa por esta máquina, ni por el `ssh`, ni por los argumentos de ningún
+# proceso (`ps`, `docker top`).
 #
 # Entorno:
 #   STAGING_SSH_DEST           destino `ssh`: `usuario@host` o un alias de `~/.ssh/config`. La clave del host tiene que
@@ -95,7 +100,7 @@ f=__INVITED_FILE__
 if [ ! -f "$f" ]; then echo "run.sh (host): falta __STAGING_DIR__/$f" >&2; exit 3; fi
 if grep -qvE '^(#.*|[0-9a-f]{24})?$' "$f"; then echo "run.sh (host): __STAGING_DIR__/$f tiene líneas que no son ids" >&2; exit 3; fi
 inv=$(grep -E '^[0-9a-f]{24}$' "$f" | sed "s/.*/'&'/" | paste -sd, -)
-exec docker compose -f docker-compose.prod.yml --env-file .env.staging exec -T mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval "globalThis.LV_EXCLUDED_IDS=[__EXCLUDED__];globalThis.LV_INVITED_IDS=[$inv];void 0" /dev/stdin
+exec docker compose -f docker-compose.prod.yml --env-file .env.staging exec -T mongo mongosh "mongodb://localhost:27017/linkvault?directConnection=true" --quiet --eval "db.getSiblingDB('admin').auth(process.env.MONGO_INITDB_ROOT_USERNAME, process.env.MONGO_INITDB_ROOT_PASSWORD);globalThis.LV_EXCLUDED_IDS=[__EXCLUDED__];globalThis.LV_INVITED_IDS=[$inv];void 0" /dev/stdin
 REMOTE
 )
 remote="${remote//__STAGING_DIR__/$STAGING_DIR}"
