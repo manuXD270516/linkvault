@@ -16,6 +16,8 @@ export const SSE_HEADERS: Readonly<Record<string, string>> = {
   'Cache-Control': 'no-cache, no-transform',
   Connection: 'keep-alive',
   'X-Accel-Buffering': 'no',
+  // Respuesta secuestrada: no pasa por `onSend`, así que la cabecera de seguridad que le aplica va aquí (ADR-057 D6).
+  'X-Content-Type-Options': 'nosniff',
 };
 
 /** Lo que el flujo necesita de la respuesta cruda; `ServerResponse` de Node lo cumple. */

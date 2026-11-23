@@ -12,6 +12,7 @@ import { Logger } from 'nestjs-pino';
 import type { ApiConfig } from '../infrastructure/config/api-config.schema';
 import { authHeadersHook } from '../modules/auth/presentation/auth-headers';
 import { ApiExceptionFilter } from '../presentation/http/api-exception.filter';
+import { securityHeadersOnSend } from '../presentation/http/security-headers';
 import { AppModule } from './app.module';
 
 export const API_GLOBAL_PREFIX = 'api';
@@ -71,7 +72,8 @@ export interface ConfigureAppOptions {
  * Rutas bajo `/api` salvo la salud y la página pública, para que web y API compartan origen en desarrollo (D10 de
  * bootstrap-monorepo). Registra `@fastify/cookie` (cookie de refresh), `@fastify/multipart` con los límites de la
  * subida de CV, CORS allowlist de extensión si hay orígenes (ADR-038), el hook de cabeceras de `POST /api/auth/*`
- * (D5 de auth-users) y el filtro global de errores `{ code, message, fields? }` (D8). Debe ejecutarse antes de
+ * (D5 de auth-users), el hook `onSend` de cabeceras de seguridad por defecto (D6 de edge-security-headers, ADR-057:
+ * solo pone las que la ruta no puso ya) y el filtro global de errores `{ code, message, fields? }` (D8). Debe ejecutarse antes de
  * `app.init()`, que es cuando Nest registra las rutas.
  *
  * Registrar el plugin de multipart es **global**, y eso hay que decirlo: solo actúa cuando el `Content-Type` es
@@ -92,14 +94,12 @@ export async function configureApp(
     await app.register(fastifyCors, {
       origin: [...corsOrigins],
       methods: ['GET', 'POST', 'OPTIONS'],
-      allowedHeaders: [
-        'Authorization',
-        'Content-Type',
-        'X-Requested-With',
-      ],
+      allowedHeaders: ['Authorization', 'Content-Type', 'X-Requested-With'],
     });
   }
-  app.getHttpAdapter().getInstance().addHook('onRequest', authHeadersHook);
+  const fastify = app.getHttpAdapter().getInstance();
+  fastify.addHook('onRequest', authHeadersHook);
+  fastify.addHook('onSend', securityHeadersOnSend);
   app.useGlobalFilters(new ApiExceptionFilter(app.getHttpAdapter()));
 }
 

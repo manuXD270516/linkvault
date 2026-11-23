@@ -73,6 +73,14 @@ describe('openSseStream', () => {
     );
   });
 
+  it('writes nosniff in the SSE head', () => {
+    const response = new ResponseDouble();
+    open(response, new ManualTimer());
+
+    // El literal, no `SSE_HEADERS`: si alguien quita la entrada, el test no se mueve con ella (E4).
+    expect(response.headers['X-Content-Type-Options']).toBe('nosniff');
+  });
+
   it('Latido: sends a comment, not a message', () => {
     const response = new ResponseDouble();
     const timer = new ManualTimer();

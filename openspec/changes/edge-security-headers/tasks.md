@@ -90,27 +90,39 @@
 
 ## 1. API (design D6)
 
-- [ ] 1.1 [backend] `apps/api/src/presentation/http/security-headers.ts`: `API_SECURITY_HEADERS` (las cuatro de D6) y
+- [x] 1.1 [backend] `apps/api/src/presentation/http/security-headers.ts`: `API_SECURITY_HEADERS` (las cuatro de D6) y
   `export async function securityHeadersOnSend(request, reply, payload)`, que por cada cabecera la pone solo si
   `reply.hasHeader` es falso y devuelve el `payload` sin tocarlo. Sin dependencias nuevas. Verificar con
   `apps/api/src/presentation/http/security-headers.spec.ts`: «adds every default header to a response that has none»,
   «does not overwrite a header the route already set» y «resolves to the payload untouched» (con `await`). Falsación:
   quitar la comprobación de `hasHeader` y ver caer «does not overwrite a header the route already set»; restaurar.
-- [ ] 1.2 [backend] Registrar el hook en `configureApp` (`create-app.ts`) con `addHook('onSend', …)` junto al de
+  **Estado (2026-11-23):** `security-headers.ts` (`API_SECURITY_HEADERS` y `securityHeadersOnSend` async, sin dependencias) y su spec: 3 tests en verde
+  (`nx run api:test -- src/presentation/http/security-headers.spec.ts`). Falsación: con `if (true)` en lugar de
+  `!reply.hasHeader(name)` cae «does not overwrite a header the route already set» (y el caso de la página pública); restaurado.
+- [x] 1.2 [backend] Registrar el hook en `configureApp` (`create-app.ts`) con `addHook('onSend', …)` junto al de
   `authHeadersHook`, y actualizar el comentario JSDoc de `configureApp`. Verificar con
   `apps/api/src/app/security-headers.int.spec.ts` (`createApp` con la configuración de test e `inject`): «a JSON 200
   carries the API security headers», «an unknown /api route (404) carries the API security headers», «the auth CSRF
   rejection (403) carries the API security headers», «a validation error (400) carries the API security headers», «the
   extension CORS preflight carries the API security headers» (con `EXTENSION_CORS_ORIGINS` de prueba) y «the API never
   sends Strict-Transport-Security». Falsación: comentar el `addHook` y ver caer los cinco primeros; restaurar.
-- [ ] 1.3 [backend] Coexistencia con la página pública (ADR-027). Verificar en el mismo fichero de integración: «the
+  **Estado (2026-11-23):** `addHook('onSend', securityHeadersOnSend)` en `configureApp` junto al de auth, JSDoc actualizado. `security-headers.int.spec.ts`
+  (`createApp` + `inject`; 200 `/health/live`, 404, 403 CSRF, 400 de validación, preflight CORS con origen de extensión de
+  prueba, sin HSTS): 6 casos en verde. Falsación: con el `addHook` comentado caen los cinco primeros (más el de la página
+  pública, que pierde `X-Frame-Options`); restaurado.
+- [x] 1.3 [backend] Coexistencia con la página pública (ADR-027). Verificar en el mismo fichero de integración: «the
   public page keeps its own CSP and Referrer-Policy and gains X-Frame-Options», para un `200` (link publicado) y un
   `404` (slug inexistente), comparando la CSP con `PUBLIC_PAGE_SECURITY_HEADERS` importado, no con un literal.
   Falsación: forzar en el hook la escritura incondicional y ver caer el caso (la CSP pasa a la de la API); restaurar.
-- [ ] 1.4 [backend] `SSE_HEADERS` (`apps/api/src/infrastructure/realtime/sse-stream.ts`) gana
+  **Estado (2026-11-23):** Mismo fichero, `createLinksTestApp` con un link publicado (200) y un slug inexistente (404): la CSP y la `Referrer-Policy`
+  coinciden con `PUBLIC_PAGE_SECURITY_HEADERS` importado y `X-Frame-Options: DENY` aparece. Falsación: con la escritura
+  incondicional cae el caso (la CSP pasa a la de la API); restaurado.
+- [x] 1.4 [backend] `SSE_HEADERS` (`apps/api/src/infrastructure/realtime/sse-stream.ts`) gana
   `'X-Content-Type-Options': 'nosniff'`. Verificar con «writes nosniff in the SSE head» en `sse-stream.spec.ts` (sobre
   el doble de `SseResponse` que captura `writeHead`), que afirma el **literal** `'nosniff'`, no `SSE_HEADERS`.
   Falsación: quitar la entrada y ver caer el caso; restaurar.
+  **Estado (2026-11-23):** `SSE_HEADERS` gana `'X-Content-Type-Options': 'nosniff'`; «writes nosniff in the SSE head» afirma el literal. Falsación:
+  quitada la entrada, cae el caso; restaurada. `nx run-many -t lint,typecheck -p api` en verde.
 
 ## 2. Build del SPA compatible con la CSP (design D3)
 
