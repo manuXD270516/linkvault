@@ -137,17 +137,32 @@
   3.3. Falsación: cubierta por el guardia estático (5.1,
   «web production build disables inlineCritical»); y, después de 7.1a, con su script sobre `/login` y
   `inlineCritical: true`: violación de `script-src-attr` (el `onload`) y la página sin estilos; restaurar.
+  **Estado (2026-11-23), parcial:** hecho el cambio de `apps/web/project.json`. `pnpm nx run web:build --configuration=production --skip-nx-cache` en verde (salida en
+  el scratchpad); `node` sobre `dist/apps/web/browser/index.html`: cero `onload=`, cero `<script` sin `src`, cero `<style`, un
+  `<link rel="stylesheet" href="styles-RE2G6IE3.css">` sin `media="print"`. Antes (base, commit `bdb106ef` de `origin/main`,
+  construido en un worktree temporal con el mismo comando): un `<style>` en línea, un `<script>` sin `src`, el enlace con
+  `media="print"` y `index.html` de 9 907 bytes. Hoja de estilos: `styles-RE2G6IE3.css` de 17 307 bytes con y sin el cambio
+  (el CSS crítico se copiaba a `index.html`, que pasa de 9 907 a 1 422 bytes; el primer pintado se mide en la 3.3). Copia del
+  `dist` y del `nginx.conf` base en el scratchpad para la 3.3. Falta la falsación posterior a la 7.1a (se cierra con el grupo 7).
 - [ ] 2.2 [frontend] `apps/web/src/zod-csp.ts` con `z.config({ jitless: true })` y `import './zod-csp';` como **primera
   línea** de `apps/web/src/main.ts`, con un comentario que remita a ADR-057. Verificar con
   `apps/web/src/zod-csp.spec.ts`: «configures zod as jitless» (importa el módulo y lee `z.config().jitless`) y con un
   `node -e` que compruebe que la primera sentencia de `main.ts` es ese `import`. Falsación (después de 7.1a): retirar el
   `import` de `main.ts`, reconstruir y ver con el script de 7.1a, en `/login` tras un envío que valide con zod, la
   violación de `script-src` por `eval`; restaurar.
-- [ ] 2.3 [frontend] Inventario del build de 2.1, anotado en esta tarea: un `node` de un solo uso (scratchpad) que
+  **Estado (2026-11-23), parcial:** `apps/web/src/zod-csp.ts` (`z.config({ jitless: true })`, comentario que remite a ADR-057) y `import './zod-csp';` como primera
+  sentencia de `main.ts` (un `node` lo comprueba: «first statement: import './zod-csp';»). `zod-csp.spec.ts` en verde; con
+  la llamada comentada cae «configures zod as jitless»; restaurada. Falta la falsación posterior a la 7.1a (grupo 7).
+- [x] 2.3 [frontend] Inventario del build de 2.1, anotado en esta tarea: un `node` de un solo uso (scratchpad) que
   recorra `dist/apps/web/browser/*.{js,css}` y cuente `url(data:`, `data:image`, `new Function`, `eval(`, `http://` y
   `https://` (con el contexto de cada aparición), y liste las URL absolutas encontradas. Cada aparición se clasifica:
   inocua (texto, comentario de licencia, sonda en `try` ya resuelta por 2.2) o **necesita la política**; si alguna la
   necesita, la tarea **se detiene** y vuelve al design como decisión (no se añade una fuente a la CSP sin debate).
+  **Estado (2026-11-23):** inventario con un `node` de un solo uso sobre los 49 ficheros `.js`/`.css` de `dist/apps/web/browser`: `url(data:` 0,
+  `data:image` 0, `eval(` 0, `new Function` 1 (la sonda `new Function('')` de zod dentro de `try`, que la 2.2 resuelve con
+  `jitless`), `http://` 13 y `https://` 3, todas inocuas: espacios de nombres XML/SVG/MathML/XLink/XMLNS, identificadores de
+  esquema JSON (`json-schema.org`) y un enlace de documentación de Angular dentro de un mensaje de error; ninguna URL se carga en
+  tiempo de ejecución. Ninguna necesita la política: la tarea no se detiene.
 
 ## 3. Cabeceras del SPA en nginx (design D1, D2, D5)
 
