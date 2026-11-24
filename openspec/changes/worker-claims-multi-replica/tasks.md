@@ -11,7 +11,7 @@ las carreras se fijan por propiedades que valen para cualquier intercalado o por
 diferidas que resuelve el test); solo los tests del monitor TTL sondean (250 ms, tope 10 s) con un centinela, en su
 propio `MongoMemoryServer`.
 
-- [ ] 0.1 [infra] Q1-Q4 respondidas por el owner y anotadas en `design.md` (una línea por pregunta que empieza por
+- [x] 0.1 [infra] Q1-Q4 respondidas por el owner y anotadas en `design.md` (una línea por pregunta que empieza por
   «Respuesta del owner (Qn), AAAA-MM-DD:»); la de Q1, además, en ADR-061 §6 con la forma «Respuesta del owner (Q1 de
   `worker-claims-multi-replica`), AAAA-MM-DD:». Según Q1 (design, Open Questions): con (a), mover la fila de
   `openspec-changes.yaml` justo después de `worker-data-hygiene` y antes de `golden-sets-reales` y añadir la fila en
@@ -25,9 +25,20 @@ propio `MongoMemoryServer`.
   Q1 = (b), `grep -c "name: worker-claims-multi-replica" openspec-changes.yaml` devuelve `0` y
   `grep -c "worker-claims-multi-replica" docs/design-v0.2.md` al menos `1`; con (a) o (c), el primero devuelve `1`; y
   `openspec validate worker-claims-multi-replica --strict` sigue en verde.
-- [ ] 0.2 [infra] Debate critic/business/reflect (`/lv:debate`) cerrado sin P0/V0 abiertos y aprobación humana
+
+  **Estado (2026-11-23):** hecha. Q1 = (b), Q2 = (a), Q3 = (a) y Q4 = (a) («Aprobados, tomá las recomendaciones»),
+  anotadas en `design.md`; la de Q1, también en ADR-061 §6. Con Q1 = (b), la fila salió de `openspec-changes.yaml` y
+  quedó como **candidata** en `docs/design-v0.2.md` §6 (después de la 37) con el disparador «antes del primer
+  `--scale worker=2`» y «No está en `openspec-changes.yaml` a propósito»; `proposal.md` (Encaje en la fase) lo dice.
+  Q2-Q4 = (a) no borran tareas ni requirements. Salidas: `4`, `1`, `0` y `2`; `openspec validate
+  worker-claims-multi-replica --strict --no-interactive` → `Change 'worker-claims-multi-replica' is valid`.
+- [x] 0.2 [infra] Debate critic/business/reflect (`/lv:debate`) cerrado sin P0/V0 abiertos y aprobación humana
   registrada en `design.md` con su fecha. Verificar: la sección del debate de la última iteración dice
   «Convergencia: SI» y existe `## Aprobación humana (AAAA-MM-DD)`.
+
+  **Estado (2026-11-23):** hecha. Iteración 1 y verificación puntual de la iteración 2 (2026-11-04) con «Convergencia:
+  SI» y sección «Aprobación humana (2026-11-23)». Salida de `grep -n "^Convergencia: SI\|^## Aprobación humana"
+  design.md`: `493:Convergencia: SI` y `495:## Aprobación humana (2026-11-23)`.
 - [ ] 0.3 [infra] Precondición: `worker-data-hygiene` archivado en `main` y la rama del apply cortada de ese `main`.
   Verificar: `ls openspec/changes/archive | grep -c "worker-data-hygiene"` devuelve `1`;
   `grep -c "export const NOTIFY_DELIVERY_LEASE_MS" apps/worker/src/modules/notifications/infrastructure/persistence/mongo-notify.adapters.ts`

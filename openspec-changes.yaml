@@ -751,21 +751,3 @@ changes:
       **Diferido desde `usage-guide-fixes` (iteración 1 de su debate, 2026-10-08):** H3 de la guía de uso —guardar una
       clave BYOK sin bóveda (`503 vault_unavailable`) muestra el genérico «Algo salió mal»—, junto con H11 (`AI_VAULT_KEY`
       vacía en `e2e.env`): con la bóveda obligatoria en producción solo se ve en pilas de prueba.
-  - name: worker-claims-multi-replica
-    adrs: [061]
-    agents: [backend-dev]
-    scope: |
-      **Candidato**, sin fila en `docs/design-v0.2.md` §6 hasta que el owner responda su Q1 (Q5 = (a) de
-      `worker-data-hygiene`, respuesta del owner del 2026-10-29). Disparador: «antes del primer `--scale worker=2`».
-      Diseño debatido: commit `776e12a` (ADR-061 §2-§4 y §6). Especificado el 2026-11-04 en
-      `openspec/changes/worker-claims-multi-replica/` (spec-only; debate pendiente).
-      **Precondición:** `worker-data-hygiene` archivado. Aplica ADR-061 §2-§4 (toma atómica con `uniq_claim_key` y
-      testigo, frescura como lease con 30 min de retención, `ttl_lease` parcial sobre `confirmed: false`, migración e
-      índices al arrancar) y la toma vencida del ledger; **precisa §4**: la migración corre en segundo plano y la
-      compuerta nace cerrada y se consulta en cada toma, para no retrasar la liveness (`platform/runtime-health`) ni tomar sin índice único. Con Q2 = (a), inventario de los
-      cuatro `@Cron` del worker con su mecanismo y prueba de dos réplicas del digest. Al archivar, la regla «No escalar
-      `worker` hasta archivar…» de `infra/README.md` pasa a «solo con todas las réplicas en una imagen que incluya este
-      change» (Q4 para el comentario de `docker-compose.prod.yml`). Verificación con `mongodb-memory-server` (replset) y
-      dos conexiones, sin esperas fijas.
-      Fuera: todo lo de la parte A, escalar `api`, la copia sin uso del ledger en `api` (Q3), barrido de marcas
-      duraderas.

@@ -54,7 +54,9 @@ ni §5b, que aplica `worker-data-hygiene`.
 
 **Candidato posterior a `worker-data-hygiene`**, sin fila en `docs/design-v0.2.md` §6 hasta que el owner responda Q1
 (bloqueante para `/opsx:apply`): fila ejecutable o candidata con disparador, como `web-english-locale`
-(recomendación de reflect en la iteración 1: candidata, porque el valor para el usuario es nulo hasta escalar). Si se
+(recomendación de reflect en la iteración 1: candidata, porque el valor para el usuario es nulo hasta escalar).
+**Respuesta del owner (2026-11-23): Q1 = (b)**; queda como candidata en `docs/design-v0.2.md` §6 con el disparador
+«antes del primer `--scale worker=2`», fuera de `openspec-changes.yaml` a propósito. Si se
 aplica, llega a staging por el CD normal de `main`. Precondición dura: **`worker-data-hygiene` archivado** antes de aplicar, porque este
 change parte de lo que aquel deja en `main` (`NOTIFY_DELIVERY_LEASE_MS`, `mongo-notify.adapters.spec.ts`, el `$lookup`
 de stale y de la cascada a las marcas confirmadas, que `uniq_claim_key` pasa a indexar, y la retoma de 3.6). Sin

@@ -416,21 +416,31 @@ excepción a ADR-048 que pedir: la fila 35 termina antes que `worker-data-hygien
   - La respuesta se anota aquí en una línea que empieza por «Respuesta del owner (Q1), AAAA-MM-DD:» y en ADR-061 §6
     con «Respuesta del owner (Q1 de `worker-claims-multi-replica`), AAAA-MM-DD:» (ADR-061 ya tiene la Q1 de
     `worker-data-hygiene`). Q2-Q4 se anotan aquí con la misma forma.
+  - Respuesta del owner (Q1), 2026-11-23: (b), «Aprobados, tomá las recomendaciones». Candidato con disparador «antes
+    del primer `--scale worker=2`»: la fila sale de `openspec-changes.yaml` y queda anotada como candidata en
+    `docs/design-v0.2.md` §6 («No está en `openspec-changes.yaml` a propósito»), como `web-english-locale`; el
+    directorio del change sigue en `openspec/changes/`. Anotada también en ADR-061 §6.
 - **Q2 [no bloqueante]. Inventario de crons y digest con dos réplicas (D8).**
   - (a) **Incluirlo** (grupo 9 de tareas y el requirement «Cada cron del worker declara qué lo protege con varias
     réplicas») —**recomendación**: convierte «se puede escalar» en algo comprobado para los cuatro crons; dos tareas sin
     código de producción—.
   - (b) Alcance estricto de `776e12a`: quitar el grupo 9 y ese requirement en la 0.1.
+  - Respuesta del owner (Q2), 2026-11-23: (a), «Aprobados, tomá las recomendaciones». Se conservan el grupo 9 y el
+    requirement «Cada cron del worker declara qué lo protege con varias réplicas».
 - **Q3 [no bloqueante]. Copia del ledger en `api`.** `MongoNotificationDeliveryRepository.claim`/`markCompleted`/
   `markFailed` tienen la toma vencida sin condición y ningún llamador (solo se usa `deleteByUserId`).
   - (a) **Fuera**, anotado como candidato de limpieza de `notifications` en `api` (tarea 10.4) —**recomendación**,
     mantenida en la iteración 1 (B9): no hay defecto observable y tocar `api` amplía el change a otro proceso—.
   - (b) Aplicar aquí la misma condición de D7.
   - (c) Borrar aquí los tres métodos sin uso del puerto de `api`.
+  - Respuesta del owner (Q3), 2026-11-23: (a), «Aprobados, tomá las recomendaciones». La copia de `api` queda fuera; la
+    10.4 la anota como candidato de limpieza en la fila candidata de `docs/design-v0.2.md` §6 (Q1 = (b)).
 - **Q4 [no bloqueante]. Comentario `--scale worker=2` de `docker-compose.prod.yml`.**
   - (a) **Este change lo ajusta en su cierre** (solo el comentario del servicio `worker`, texto de D9), sobre el que
     deje 35c —**recomendación**: un comentario no cambia el despliegue y deja una sola regla en los dos sitios—.
   - (b) Dejarlo al siguiente change de despliegue; el README manda mientras tanto.
+  - Respuesta del owner (Q4), 2026-11-23: (a), «Aprobados, tomá las recomendaciones». Este change ajusta en su cierre el
+    comentario `--scale worker=2` del servicio `worker` de `docker-compose.prod.yml` (tarea 10.3).
 
 ## Debate iteración 1 (2026-11-04)
 
@@ -481,3 +491,12 @@ Critic, verificación puntual: P0 0, P1 F1-F4. Reflect: aceptados los cuatro.
 | F4 | aceptado: la spec dice «mientras el worker no haya comprobado, desde su arranque, que existe el índice único» y remite al RUNBOOK para `dropIndex` o restauración | «mientras no exista» prometía detectar un borrado que la compuerta cacheada no ve |
 
 Convergencia: SI
+
+## Aprobación humana (2026-11-23)
+
+Aprobado por el owner el 2026-11-23 («Aprobados, tomá las recomendaciones»): Q1 = (b), candidato con disparador «antes
+del primer `--scale worker=2`», fuera de `openspec-changes.yaml` y anotado en `docs/design-v0.2.md` §6; Q2 = (a), con el
+inventario de crons (grupo 9); Q3 = (a), la copia del ledger en `api` fuera (10.4); Q4 = (a), el comentario de
+`docker-compose.prod.yml` en el cierre (10.3). Ninguna respuesta borra tareas ni requirements. El change no pasa de la
+0.3: `worker-data-hygiene` archivado en `main` y el disparador cumplido (entra en el manifiesto cuando el owner lo
+decida).
