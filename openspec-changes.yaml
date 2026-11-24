@@ -748,8 +748,8 @@ changes:
       mismo orden de bloques sobre PDF de productores reales (persona inventada desde Word, LibreOffice, Google Docs,
       LaTeX y plantilla a dos columnas) y sobre 5 o 6 CV reales que el owner pasa **en su máquina**, sin commitear
       nada; decisión sobre `disableNormalization`; repetida con la candidata adoptada (PO-03, PO-08).
-      **Preguntas y riesgos heredados**: Q3 (umbral de crecimiento de la imagen: recomendación ≤ 30 MB sin preguntar),
-      Q6 (alertas de vulnerabilidad de Renovate sin aprobación del Dashboard para `pdfjs-dist`, `mammoth`,
+      **Preguntas y riesgos heredados**: Q3 (umbral de crecimiento de la imagen: ≤ 30 MB sin preguntar, respondida por el owner el 2026-11-23),
+      Q6 ((a), respondida el 2026-11-23: alertas de vulnerabilidad de Renovate sin aprobación del Dashboard para `pdfjs-dist`, `mammoth`,
       `@xmldom/xmldom` y `jszip`), R1 (tamaño de la imagen), R2 (ESM desde un bundle `commonjs`:
       `ERR_REQUIRE_ASYNC_MODULE` e `import()` dinámico) y R6 (el pdf.js nuevo puede leer distinto que el de 2017; los
       CV ya leídos no se re-extraen). También B2-03 del debate de `cv-extract-isolation`.
