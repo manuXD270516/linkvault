@@ -319,9 +319,9 @@ posterior (o de 35b), no de este: aquí solo se anota como pendiente en el PR.
 
 - **[Datos de terceros hacia un externo sin preguntar a nadie]** → lo pegado puede traer nombres de terceros, que el
   redactor no quita. Se acota con la petición de no recolectar, con el prompt que no reproduce nombres en el resumen y
-  con el aviso de D7. La petición de no recolectar no puede comprobarse. **Pendiente de la aceptación explícita del
-  owner (Q6, B3)**: la (b) de la Q7 no nombró este punto. ADR-063 §Riesgos aceptados cita esa línea cuando el owner la
-  confirme.
+  con el aviso de D7. La petición de no recolectar no puede comprobarse. **Aceptado explícitamente por el owner el
+  2026-11-24 (Q6, B3)**, en una línea propia, porque la (b) de la Q7 no nombró este punto; ADR-063 §Riesgos aceptados
+  la cita con su fecha.
 - **[Datos propios pegados por descuido]** → antes, quien no había dado el permiso estaba cubierto por la falta de
   permiso; ahora lo cubre solo el aviso. Se acepta: el permiso tampoco hablaba del pegado.
 - **[Una comparación suelta de la sensibilidad sobrevive al cambio]** → la tarea `incidental` caería en la rama de
@@ -438,8 +438,10 @@ documentación (grupo 4). Todo cabe en un PR. Rollback: revertir el PR (D10, cla
   change no pasa de la 0.2. Si el owner no la acepta, el change vuelve al debate: o se redactan los nombres (fuera de
   lo que hoy detecta el redactor), o el pegado sigue en la (d).
 
-  **Sin responder (2026-11-23).** La Q6 no tiene recomendación, y la aprobación del owner del 2026-11-23 («Aprobados,
-  tomá las recomendaciones») no la cubre: hace falta su confirmación literal, con fecha, de la frase de arriba.
+  Respuesta del owner (Q6), 2026-11-24: acepta la frase literal, «Aprobado, avancemos», en respuesta a «¿Aceptás, con
+  fecha de hoy, esta frase? «Acepto que los nombres de terceros de lo pegado lleguen sin redactar a OpenRouter con
+  `data_collection: deny`»». La aprobación del 2026-11-23 («tomá las recomendaciones») no la cubría, porque la Q6 no
+  tenía recomendación. Anotada con su fecha en ADR-063 §Riesgos aceptados.
 
 ## Casos de prueba derivados de los escenarios
 
@@ -504,7 +506,8 @@ arquitecto el 2026-11-04.
 | B7 | Aceptado | La (c) de la Q1 pasa a alternativas descartadas; fuera sus ramas de D10 y de la 6.1. |
 | B8 | Aceptado | En la Q2: en 35b ningún invitado tiene BYOK de pago, así que la (b) no tendría usuarios. |
 
-Q1 y Q6 (bloqueantes) y Q2-Q5 (no bloqueantes) siguen pendientes del owner.
+Q1 y Q6 (bloqueantes) y Q2-Q5 (no bloqueantes) quedaban pendientes del owner a esta fecha; respondidas el 2026-11-23
+(Q1-Q5) y el 2026-11-24 (Q6), ver «Aprobación humana».
 
 Convergencia: pendiente de la iteración 2.
 
@@ -527,18 +530,20 @@ Resultado: critic P0 0 / P1 11 (V2-01 a V2-11), todos aceptados por reflect y ap
 | V2-10 | Aceptado | El breaker se comparte entre procesos vía Redis con `AI_CHAIN=openrouter` (D11, Risks, ADR-063 §6); N acota lecturas con éxito, no peticiones, y se compara con la 8.1 de 35b en peticiones (Q5, 4.2). |
 | V2-11 | Aceptado | Grep fechado en la 0.2; línea en Risks y en ADR-063 §3 sobre el BYOK `:free` y el registro de prompts de la cuenta propia; paso del owner separado en la 4.2b, `[infra]` con el prefijo «**Owner:**» (los comandos `/lv:*` solo aceptan las cuatro etiquetas del manifiesto; ajuste posterior de reflect, 2026-11-07). |
 
-Q1 y Q6 (bloqueantes) y Q2-Q5 (no bloqueantes) siguen pendientes del owner.
+Q1 y Q6 (bloqueantes) y Q2-Q5 (no bloqueantes) quedaban pendientes del owner a esta fecha; respondidas el 2026-11-23
+(Q1-Q5) y el 2026-11-24 (Q6), ver «Aprobación humana».
 
 Convergencia: SI
 
 ## Aprobación humana (2026-11-23)
 
-Aprobado por el owner el 2026-11-23 («Aprobados, tomá las recomendaciones»), **salvo la Q6**: Q1 = (b), excepción
+Aprobado por el owner el 2026-11-23 («Aprobados, tomá las recomendaciones»), salvo la Q6: Q1 = (b), excepción
 propia con la fusión solo entre la 11.6 y la 10.7 de 35b, después de `paste-fallback-honest`, y caída a la (a) si no
 llega; Q2 = (a); Q3 = texto de D7 aceptado, a revisar a 360 px; Q4 = (a); Q5 = (a), N = 10. Ninguna respuesta cambia
 el diseño: todas coinciden con la recomendación.
 
-**La Q6 sigue abierta.** No tiene recomendación, y «tomá las recomendaciones» no la cubre: exige que el owner confirme
-con su fecha la frase literal «Acepto que los nombres de terceros de lo pegado lleguen sin redactar a OpenRouter con
-`data_collection: deny`», que se anota en ADR-063 §Riesgos aceptados. **El change no pasa de la tarea 0.2 hasta esa
-confirmación**; si el owner la rechaza, vuelve al debate (Q6). ADR-063 sigue «Propuesto» hasta entonces.
+**Q6 confirmada el 2026-11-24.** Sin recomendación, «tomá las recomendaciones» no la cubría. El owner respondió
+«Aprobado, avancemos» a la pregunta literal «¿Aceptás, con fecha de hoy, esta frase? «Acepto que los nombres de
+terceros de lo pegado lleguen sin redactar a OpenRouter con `data_collection: deny`»». La línea fechada está en
+ADR-063 §Riesgos aceptados y la tarea 0.2 queda hecha. Lo próximo es la 0.3: la fusión de `paste-fallback-honest` en
+`main` y la rama de aplicación cortada después. ADR-063 pasa a «Aceptado» en la tarea 5.3, con fecha 2026-11-24.

@@ -626,7 +626,8 @@ changes:
       **Respuestas del owner (2026-11-23, «Aprobados, tomá las recomendaciones»):** Q1 = (b), excepción propia
       (ADR-063 §1, fila «∥ 35b» en `docs/design-v0.2.md` §6): fusión solo entre la 11.6 y la 10.7 de 35b y después de
       `paste-fallback-honest`; si no llega, espera a archivar 35c. Q2 = (a), Q3 = texto de D7, Q4 = (a), Q5 = (a) con
-      N = 10. **Q6 sin responder:** no pasa de la 0.2 hasta la confirmación literal del owner.
+      N = 10. **Q6 confirmada el 2026-11-24** («Aprobado, avancemos» a la frase literal; ADR-063 §Riesgos aceptados):
+      tarea 0.2 hecha. Lo próximo es la 0.3, la fusión de `paste-fallback-honest` en `main`.
   - name: staging-host
     adrs: [051, 048, 033, 034, 035, 032]
     agents: [devops, backend-dev, frontend-dev, ai-engineer]

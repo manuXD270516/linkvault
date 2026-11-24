@@ -17,7 +17,7 @@ propósito que tiene que ponerlos en rojo, y se deshace después.
   Estado (2026-11-23): hecha. Q1 = (b), «Aprobados, tomá las recomendaciones»: anotada en ADR-063 §1, en `design.md`
   (D1 y Open Questions), en ADR-048 §Consecuencias y con la fila «∥ 35b» de `paste-consent-scope` en
   `docs/design-v0.2.md` §6. El grep de ADR-063 devuelve `1` (antes, `0`).
-- [ ] 0.2 [infra] Debate critic/business/reflect cerrado sin P0/V0 abiertos y aprobación humana registrada, con las
+- [x] 0.2 [infra] Debate critic/business/reflect cerrado sin P0/V0 abiertos y aprobación humana registrada, con las
   respuestas de Q2, Q3, Q4 y Q5 (o su recomendación tomada por defecto, anotada como tal) y, **en una línea propia que
   confirma el owner (Q6, B3)**, esta frase literal con su fecha: «Acepto que los nombres de terceros de lo pegado
   lleguen sin redactar a OpenRouter con `data_collection: deny`». La Q7 de `paste-fallback-honest` no vale como esa
@@ -27,9 +27,10 @@ propósito que tiene que ponerlos en rojo, y se deshace después.
   que los nombres de terceros de lo pegado lleguen sin redactar" docs/adr/ADR-063.md` devuelve `1` (la línea fechada de
   §Riesgos aceptados; la mención sin fecha que ya hay en ese apartado no cuenta). Falsación: sin esa línea, o si el owner la rechaza, el change no pasa de aquí y vuelve al debate (Q6).
 
-  Pendiente: confirmación literal de Q6 por el owner. Estado (2026-11-23): debate cerrado («Convergencia: SI», 2026-11-07)
-  y Q2-Q5 respondidas el 2026-11-23 («Aprobados, tomá las recomendaciones»), registradas en `design.md` con la sección
-  «Aprobación humana (2026-11-23)»; el grep de la línea fechada de ADR-063 devuelve `0`.
+  Estado (2026-11-24): hecha. Debate cerrado («Convergencia: SI», 2026-11-07); Q2-Q5 respondidas el 2026-11-23
+  («Aprobados, tomá las recomendaciones»), y la Q6 confirmada por el owner el 2026-11-24 («Aprobado, avancemos» a la
+  frase literal), registradas en `design.md` (Open Questions y «Aprobación humana (2026-11-23)»). El `grep -n` de
+  `design.md` devuelve las dos líneas, y el `grep -cE` de la línea fechada de ADR-063 devuelve `1` (antes, `0`).
 - [ ] 0.3 [infra] `paste-fallback-honest` está fusionado en `main` y la rama de aplicación se corta de `main` después
   de esa fusión (design D9). Verificar: `git log --oneline --merges origin/main | grep -i "paste-fallback-honest"`
   devuelve su merge, y `git merge-base --is-ancestor <sha de ese merge> HEAD` sale con `0`. Falsación: desde una rama
