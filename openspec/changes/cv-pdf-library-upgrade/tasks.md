@@ -12,17 +12,25 @@ su propio tope de 2 h por biblioteca (design D3). Cada tarea anota su hora de in
 las mediciones», y los cortes son los de design D3. El grupo 2 solo se ejecuta si el 1 termina en corte 1 o 2, y el grupo
 9 solo si terminan así los dos (o si Q11 = no). **Sin la 3.1 hecha, el grupo 4 no empieza.**
 
-- [ ] 0.1 [infra] **Owner:** responde Q3, Q6 y Q9 (Q11 solo si se llega a la 2.6). El agente las pide en el PR y las
+- [x] 0.1 [infra] **Owner:** responde Q3, Q6 y Q9 (Q11 solo si se llega a la 2.6). El agente las pide en el PR y las
   anota con fecha: en `design.md` (Open Questions, una línea «Respuesta del owner (Qn), AAAA-MM-DD:» por pregunta) y en
   ADR-064 §Preguntas al owner. Si Q6 = (b), la 5.1 se marca «no aplica». Verificar: `grep -cE "Respuesta del owner
   \(Q(3|6|9)\), 20[0-9]{2}-" docs/adr/ADR-064.md` devuelve `3` (antes de anotarlas, `0`).
-- [ ] 0.2 [infra] Debate critic/business/reflect cerrado sin P0/V0 abiertos y aprobación humana registrada. B2-03 de
+  **Estado (2026-11-23):** hecha. El owner respondió «Aprobados, tomá las recomendaciones»: Q3 = (a) ≤ 30 MB, Q6 = (a),
+  Q9 = (a) y Q11 = (a), anotada por adelantado. Líneas en `design.md` (Open Questions) y en ADR-064 §Preguntas al
+  owner. Q6 = (a): la 5.1 se hace. Evidencia: el `grep` de arriba devuelve `3` (antes `0`).
+- [x] 0.2 [infra] Debate critic/business/reflect cerrado sin P0/V0 abiertos y aprobación humana registrada. B2-03 de
   `cv-extract-isolation` (cómo recibe el owner el script, cuánto tarda y qué pasa si no lo corre a tiempo) queda
   cerrado por B1-01 (tareas del owner explícitas), B1-02 (ruta y orden concretas de PowerShell), B1-03 (puerta dura y
   pausa a los 14 días) y B1-04 (tiempo medido en la 1.5b) de la iteración 1, con los ajustes de la iteración 2 (C2-07,
   BV1-03, BV2-01, BV2-04). Su opción «si se parte, pasa a B» no aplica: sin la medición del owner no se adopta ninguna
   candidata (design D3), así que no hay un change B al que pasarla. Verificar: `design.md` lleva la sección del debate
   de la última iteración, con «Convergencia: SI» y la fecha de la aprobación.
+  **Estado (2026-11-23):** hecha. «Debate iteración 2 (2026-11-07)» cierra con «Convergencia: SI» (critic P0 0,
+  business V0 0) y, debajo, «Aprobación humana: 2026-11-23» con la frase literal del owner. La primera consulta de
+  avisos de Q9 (a), la de la aprobación, está hecha y fechada en «Estado del spike y de las mediciones»: sin avisos
+  nuevos contra pdf.js ≤ 1.10 ni contra `pdf-parse`. La 0.3 sigue abierta: espera 35c y `cv-extract-isolation`
+  archivados.
 - [ ] 0.3 [infra] Precondiciones de entrada (design D1, D9, D13, R19):
   - `openspec/changes/archive/*-verify-reusable-workflow/` y `openspec/changes/archive/*-cv-extract-isolation/` existen;
   - ADR-058 dice «Aceptado»;
@@ -35,7 +43,8 @@ las mediciones», y los cortes son los de design D3. El grupo 2 solo se ejecuta 
     pretende cambiar;
   - qué hace `pnpm exec openspec validate <change> --strict --no-interactive` con un change de prueba sin deltas, en el
     scratchpad (lo acepta, avisa o falla), anotado para la 9.2;
-  - la consulta de avisos de Q9, hecha y fechada en «Estado del spike y de las mediciones».
+  - la consulta de avisos de Q9, hecha y fechada en «Estado del spike y de las mediciones» (la de la aprobación se
+    hizo el 2026-11-23; la que cuenta aquí es la de «al abrir 35c»).
 
   Verificar: las dos listas de escenarios y su `diff` pegados en la tarea, y `pnpm exec openspec validate
   cv-pdf-library-upgrade --strict --no-interactive` verde.

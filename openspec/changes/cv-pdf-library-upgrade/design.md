@@ -623,6 +623,9 @@ change llegó a Q8.
   - (c) ≤ 10 MB, que probablemente deja fuera a `pdfjs-dist` y obliga a `unpdf`.
 
   **Recomendación: (a).** Bloqueante porque el spike no puede juzgar (b) sin un número.
+
+  Respuesta del owner (Q3), 2026-11-23: (a), «Aprobados, tomá las recomendaciones». Umbral de crecimiento de la imagen
+  del worker ≤ 30 MB tras la poda sin preguntar; si pasa de ahí, vuelve al owner.
 - **Q6 [no bloqueante] — ¿Alertas de vulnerabilidad de Renovate sin aprobación del Dashboard para los parsers?** Serían
   `vulnerabilityAlerts` con `dependencyDashboardApproval: false` para la biblioteca adoptada, `mammoth`,
   `@xmldom/xmldom` y `jszip` (D11). Contradice en parte la decisión del PR #88, así que la decide el owner. Opciones:
@@ -630,6 +633,9 @@ change llegó a Q8.
   - (b) no: todo por el Dashboard.
 
   **Recomendación: (a).** Con (b), la tarea 5.1 no se hace.
+
+  Respuesta del owner (Q6), 2026-11-23: (a), «Aprobados, tomá las recomendaciones». Alertas de seguridad de Renovate
+  sin aprobación del Dashboard solo para la biblioteca adoptada, `mammoth`, `@xmldom/xmldom` y `jszip`; la 5.1 se hace.
 - **Q9 [no bloqueante] — ¿Cómo se vigila la salvedad de B3-03 hasta que el change entre?** (D1, R17). Opciones:
   - (a) una consulta fechada de la base pública de avisos (GitHub Advisory Database y NVD, buscando «pdf.js»,
     `pdfjs-dist` con rango que incluya 1.10 y `pdf-parse` (B2-03 de la iteración 1)) en tres momentos fijos: la
@@ -640,6 +646,9 @@ change llegó a Q8.
   - (c) sin vigilancia: se acepta esperar a 35c.
 
   **Recomendación: (a)**, que no toca nada de la fila 35 y cuesta minutos.
+
+  Respuesta del owner (Q9), 2026-11-23: (a), «Aprobados, tomá las recomendaciones». Consulta fechada de avisos en la
+  aprobación (hecha el 2026-11-23, ver «Estado del spike y de las mediciones»), antes de la 10.7 de 35b y al abrir 35c.
 - **Q11 [no bloqueante hasta la 2.6] — ¿Se acepta `unpdf` sin alertas de dependencias?** (C2-08, R21). Solo importa si
   `pdfjs-dist` se corta y `unpdf` cumple (a)-(d). Opciones:
   - (a) sí, con la consulta de avisos en cada PR de Renovate de `unpdf` y una vez por trimestre, y el test de versión
@@ -648,6 +657,10 @@ change llegó a Q8.
 
   **Recomendación: (a).** Con las dos mitigaciones, el riesgo es menor que seguir con el pdf.js de 2017, que es lo que
   deja (b).
+
+  Respuesta del owner (Q11), 2026-11-23: (a), «Aprobados, tomá las recomendaciones». Anotada por adelantado; solo
+  cuenta si se llega a la 2.6. `unpdf` se acepta con la consulta de avisos en cada PR de Renovate de `unpdf` y una vez
+  por trimestre, y con el test de versión mínima de su pdf.js leída en tiempo de ejecución.
 
 Q10 (texto de B2-03) quedó resuelta en la iteración 1: la sesión principal recuperó el texto de la transcripción. Ver
 «Debate iteración 1 (2026-11-04)».
@@ -671,6 +684,27 @@ Se completa durante `/opsx:apply`, con fecha:
 - `boot_p50_ms`/`boot_p95_ms` en `arm64` (6.1) y en el host (8.3).
 
 Nada de esto lleva texto, nombres de archivo ni metadatos de ningún PDF.
+
+**Consulta de avisos de Q9, 1 de 3 (aprobación, 2026-11-23).** Fuentes públicas sin credenciales: GitHub Advisory
+Database (`gh api "advisories?ecosystem=npm&affects=<paquete>"`) para `pdfjs-dist`, `pdf-parse` y `unpdf`, y NVD
+(`keywordSearch=pdf.js`). Resultado:
+
+- `pdf-parse`: sin avisos. `unpdf`: sin avisos.
+- `pdfjs-dist`: tres avisos.
+  - GHSA-wgrm-67xf-hhpq / CVE-2024-4367 (`<= 4.1.392`): alcanza a la 1.10.100 de `pdf-parse`, pero ya es conocido y
+    es el que nombran proposal y ADR-064 §Contexto; lo acota `--disallow-code-generation-from-strings` en el hijo. No
+    es nuevo, así que no dispara la salvedad de B3-03.
+  - GHSA-7jg2-jgv3-fmr4 / CVE-2018-5158 (`< 1.10.100` y `>= 2.0.0, < 2.0.550`): la 1.10.100 que usa `pdf-parse` queda
+    fuera del rango. No dispara la salvedad.
+  - GHSA-hq66-cqwq-w95j / CVE-2026-16633, publicado el 2026-08-06 (`>= 5.6.83, < 6.2.108`, ejecución de JavaScript al
+    abrir un PDF; corregido en 6.2.108): no alcanza a pdf.js ≤ 1.10, así que **no dispara la salvedad**. Sí condiciona
+    el spike: la versión exacta de `pdfjs-dist` (y la del pdf.js que lleve `unpdf`, R21) que se fije en la 1.1 tiene
+    que ser ≥ 6.2.108 o anterior a 5.6.83; queda como dato para la 1.1, no como decisión nueva.
+- NVD con `keywordSearch=pdf.js`: 15 resultados, ninguno nuevo contra el núcleo de pdf.js ≤ 1.10 aparte de
+  CVE-2024-4367; no lista todavía CVE-2026-16633 bajo esa palabra clave.
+
+Conclusión: sin avisos nuevos contra pdf.js ≤ 1.10 ni contra `pdf-parse`; la salvedad de B3-03 no se activa. Próximas
+consultas: antes de la 10.7 de 35b y al abrir 35c.
 
 ## Casos de prueba por escenario
 
@@ -760,3 +794,7 @@ provisional (C1-01) y el origen de los CV (B0-01).
 | BV2-05 | Aceptado: fuera la falsación de la 6.1b | Leer un número no es un guardia |
 
 Convergencia: SI (iteración 2: critic P0 0, business V0 0; Q3, Q6, Q9 y Q11 pendientes del owner).
+
+Aprobación humana: 2026-11-23, el owner, con la frase literal «Aprobados, tomá las recomendaciones». Responde Q3 = (a),
+Q6 = (a), Q9 = (a) y Q11 = (a) (ver «Open Questions»). La aprobación no adelanta la entrada: el apply sigue esperando
+las precondiciones de la 0.3 (35c y `cv-extract-isolation` archivados).
