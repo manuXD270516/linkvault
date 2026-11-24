@@ -150,7 +150,7 @@ fallaría antes); scripts de `/docker-entrypoint-initdb.d` (solo con volumen vac
 el healthcheck escondía un aprovisionamiento a medias. Aquí cada paso es idempotente y el healthcheck no da sano hasta
 completarlos todos.
 
-### D4. Desarrollo: puertos solo en `127.0.0.1`, sin autenticación (Q5 (a))
+### D4. Desarrollo: puertos solo en `127.0.0.1`, sin autenticación (Q5 (a), decidida por el owner el 2026-11-23)
 
 Todos los `ports` de `docker-compose.yml` pasan a `'127.0.0.1:${…_PORT:-…}:<puerto>'`. Los procesos del host (`nx
 serve`, la suite e2e, los scripts) siguen llegando por `localhost`; nadie de la red del equipo llega. Mongo y Redis de
@@ -408,4 +408,19 @@ Convergencia: SI
 
 ## Respuestas del owner y aprobación
 
-Pendiente.
+El owner respondió el 2026-11-23 con la frase «Aprobados, tomá las recomendaciones»: valen las recomendaciones de
+«Open Questions». Q1 ya estaba cerrada por los hechos (2026-11-07, D1).
+
+- Respuesta del owner (Q2), 2026-11-23: (a), «Aprobados, tomá las recomendaciones». Fila «tras 35c» en
+  `docs/design-v0.2.md` §6, justo después de 35c y antes de `golden-sets-reales` (36), sin renumerar y sin excepción a
+  la precedencia de la fila 35; el `scope` de `openspec-changes.yaml` lo dice.
+- Respuesta del owner (Q3), 2026-11-23: (a), «Aprobados, tomá las recomendaciones». Sin usuario de solo lectura: las
+  mediciones (`run.sh`) siguen con la raíz y `assert-readonly.mjs`; no hay D11.
+- Respuesta del owner (Q4), 2026-11-23: (a), «Aprobados, tomá las recomendaciones». Rotación por evento (D6), sin
+  calendario.
+- Respuesta del owner (Q5), 2026-11-23: (a), «Aprobados, tomá las recomendaciones». Desarrollo con todos los puertos
+  en `127.0.0.1` y sin autenticación (D4); el design no vuelve a debate.
+
+**Aprobación humana (2026-11-23):** el owner aprobó el change con la misma frase, tras el debate cerrado en la
+iteración 2 con «Convergencia: SI». Antes de `/opsx:apply` falta la 0.3 (precondiciones: 35b, 35c y
+`cv-extract-isolation` archivados, y la confirmación escrita de D5 en el PR).

@@ -9,15 +9,22 @@ el propio test (design D10, F17). Las órdenes que tocan el host o un `.env` rea
 pilas locales del compose de producción parten del bloque de la pila local de `infra/README.md` (pasos 1-5), con su
 propio `--env-file` y proyecto de compose, y se apagan con `down -v` al terminar cada tarea.
 
-- [ ] 0.1 [infra] Q2-Q5 del design respondidas por el owner y anotadas con su fecha en «Respuestas del owner y
+- [x] 0.1 [infra] Q2-Q5 del design respondidas por el owner y anotadas con su fecha en «Respuestas del owner y
   aprobación» del design y, en una línea por pregunta, en ADR-065 («Respuesta del owner (Qn), AAAA-MM-DD:»). Q1 ya está
   cerrada por los hechos (design D1). Con Q5 = (b), el design vuelve a debate para sumar la autenticación en desarrollo
   antes de seguir. Con Q3 = (b), el design gana una D11. Con Q2 respondida, la fila en `docs/design-v0.2.md` §6 con el
   número que diga el owner. Verificar: `grep -cE "Respuesta del owner \(Q[2-5]\), 20" docs/adr/ADR-065.md` devuelve `4`
   (hoy `0`).
-- [ ] 0.2 [infra] Debate critic/business/reflect cerrado sin P0/V0 abiertos y aprobación humana registrada en el
+  **Estado (2026-11-23):** hecha. Q2 = Q3 = Q4 = Q5 = (a) («Aprobados, tomá las recomendaciones»), anotadas en el
+  design y en ADR-065; el `grep` devuelve `4`. Con Q5 = (a) el design no vuelve a debate y con Q3 = (a) no hay D11.
+  Fila «tras 35c» en `docs/design-v0.2.md` §6, entre 35c y la 36, sin renumerar (como la de `worker-data-hygiene`), y
+  `scope` de `openspec-changes.yaml` actualizado; la entrada ya estaba entre `verify-reusable-workflow` y
+  `golden-sets-reales`.
+- [x] 0.2 [infra] Debate critic/business/reflect cerrado sin P0/V0 abiertos y aprobación humana registrada en el
   design con su fecha. Verificar: la sección del debate de la última iteración dice «Convergencia: SI» y «Respuestas del
   owner y aprobación» tiene fecha.
+  **Estado (2026-11-23):** hecha. La iteración 2 (2026-11-07) cierra con «Convergencia: SI» (0 P0, 0 V0) y «Respuestas
+  del owner y aprobación» registra la aprobación del 2026-11-23.
 - [ ] 0.3 [infra] Precondiciones (design D1, B1, B10):
   1. `verify-reusable-workflow` (35c), `staging-host` (35b) y `cv-extract-isolation` archivados.
   2. El requirement «La pila de staging separa la red de cada proceso y no deja datos sin credenciales» en

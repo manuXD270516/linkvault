@@ -699,9 +699,13 @@ changes:
     adrs: [058, 056, 051]
     agents: [devops, backend-dev]
     scope: |
-      **Candidato, después de la fila 35** (decisión del owner del 2026-10-29: Q7 (b) de `cv-extract-isolation`).
+      **Fila «tras 35c»**: justo después de 35c y antes de `golden-sets-reales` (36), sin excepción a la precedencia
+      de la fila 35 (Q2 = (a), owner, 2026-11-23; antes, candidato por Q7 (b) de `cv-extract-isolation`, 2026-10-29).
+      Aprobado por el owner el 2026-11-23; se aplica tras archivar 35b, 35c y `cv-extract-isolation` (tarea 0.3).
       Autenticación de MongoDB (keyFile, que exige el replset, con el healthcheck reescrito) y `requirepass` en Redis,
-      en el compose de producción y en el de desarrollo, con las credenciales en el `.env` de cada entorno. Cierra el
+      en el compose de producción y en el de desarrollo, con las credenciales en el `.env` de cada entorno. Desarrollo
+      según Q5 = (a) (2026-11-23): puertos solo en `127.0.0.1` y sin autenticación; la letra «y en el de desarrollo» se
+      cumple en su intención (design D4, ADR-065 §4). Detalle en `openspec/changes/datastore-auth/`. Cierra el
       riesgo aceptado R8 de ADR-058 (el hijo de lectura de CV tiene red) y la defensa en profundidad de ADR-056 frente
       a una falla del filtro de salida. Aparte: el flag de red de Node (`--allow-net`) para el hijo, al subir a Node 26 LTS.
   - name: golden-sets-reales
