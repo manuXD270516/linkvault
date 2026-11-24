@@ -48,6 +48,9 @@ Mientras la fila 35 no termine, ningún change de otra fila la precede (ADR-048 
 change es **solo spec** hasta que el owner responda la Q1. Las dos salidas (esperar o pedir excepción propia) están
 en la Q1 con su costo. Con una excepción, las reglas de fusión son las de D10.
 
+Respuesta del owner (Q1), 2026-11-23: (b), excepción propia (ADR-063 §1). Rigen las reglas de D10 con la Q1 = (b), y
+la caída a la (a) si no llega antes de la 10.7.
+
 ### D2. `incidental`, un tercer valor de sensibilidad, y no `public`
 
 `DataSensitivity = 'personal' | 'incidental' | 'public'`, con `personal` por defecto (ADR-018 §11 enmendado por
@@ -377,6 +380,11 @@ documentación (grupo 4). Todo cabe en un PR. Rollback: revertir el PR (D10, cla
   externa termina en un permiso que no describe lo que pasa. Se anota con fecha en ADR-063 §1 y, con la (b), con una
   línea en ADR-048 §Consecuencias.
 
+  Respuesta del owner (Q1), 2026-11-23: (b), «Aprobados, tomá las recomendaciones». Excepción propia: fusión solo
+  entre la 11.6 y la 10.7 de 35b y después de la fusión de `paste-fallback-honest`, con las tres clases de fusión de
+  D10 y la 9.4 repetida; si no llega antes de la 10.7, cae a la (a) y espera a archivar 35c. Anotada en ADR-063 §1, en
+  ADR-048 §Consecuencias y con la fila «∥ 35b» en `docs/design-v0.2.md` §6.
+
 - **Q2 [no bloqueante] ¿Con el permiso de Perfil dado, el pegado puede ir también a externos que no piden no
   recolectar?** (BYOK de OpenAI, Anthropic u OpenRouter de pago.)
   - (a) No, nunca: es el alcance literal del owner («`data_collection: deny` en todo proveedor externo»).
@@ -388,9 +396,15 @@ documentación (grupo 4). Todo cabe en un PR. Rollback: revertir el PR (D10, cla
   de aplicar. Con la (a), la lectura del permiso en el adaptador (D6) deja de servir para algo y podría quitarse más
   adelante, en otro change (C10).
 
+  Respuesta del owner (Q2), 2026-11-23: (a), «Aprobados, tomá las recomendaciones». Con el permiso dado, el pegado
+  tampoco va a externos que no piden no recolectar. D5, ADR-063 y los deltas no cambian (tarea 0.4: nada que corregir).
+
 - **Q3 [no bloqueante] Texto del aviso de D7** (versión de la iteración 1). **Recomendación:** aceptarlo y revisarlo a
   360 px con la línea de riesgo de D13 de 35b. Si queda largo, el owner decide qué recortar, pero no la frase de «tal
   cual» (C4). Tampoco puede enumerar tipos de dato ni prometer anonimato.
+
+  Respuesta del owner (Q3), 2026-11-23: aceptar el texto de D7 tal como está, «Aprobados, tomá las recomendaciones»;
+  se revisa a 360 px con la línea de riesgo de D13 de 35b.
 
 - **Q4 [no bloqueante] ¿Perfil dice que el pegado no usa el permiso?**
   - (a) No se toca Perfil: su texto habla del CV y sigue siendo verdad.
@@ -399,6 +413,8 @@ documentación (grupo 4). Todo cabe en un PR. Rollback: revertir el PR (D10, cla
 
   **Recomendación: (a)**. El texto del permiso es versionado y comprobado (`ai/data-protection`), y una línea a su lado
   invita a leerla como parte de él. El aviso de D7 ya está donde se pega.
+
+  Respuesta del owner (Q4), 2026-11-23: (a), «Aprobados, tomá las recomendaciones». Perfil no se toca.
 
 - **Q5 [no bloqueante para aplicar; con la Q1 = (b), se fija antes de la 10.7] Cuota diaria propia del pegado en
   staging (`AI_QUOTAS=…,extract-pasted-job=N`, D11).**
@@ -412,12 +428,18 @@ documentación (grupo 4). Todo cabe en un PR. Rollback: revertir el PR (D10, cla
   cuenta `:free` lo anota la 8.1 de 35b en el RUNBOOK, **en peticiones**: si es menor que 2 × 10 × invitados (el peor
   caso en peticiones) más lo que gasta el encaje, se baja N antes de invitar.
 
+  Respuesta del owner (Q5), 2026-11-23: (a), N = 10, «Aprobados, tomá las recomendaciones». Se fija antes de la 10.7
+  (Q1 = (b)), revisable con el ledger tras el día 7 de la medición y a la baja si la 8.1 de 35b lo exige (tarea 4.2).
+
 - **Q6 [bloqueante] Nombres de terceros sin redactar (B3).** El owner tiene que confirmar, con su fecha, esta línea:
   «Acepto que los nombres de terceros de lo pegado lleguen sin redactar a OpenRouter con `data_collection: deny`».
   El redactor quita contactos, URLs, direcciones y documentos, pero no los nombres de terceros. La Q7 de
   `paste-fallback-honest` eligió la (b) sin nombrar este punto, así que no cuenta como confirmación. Sin esa línea el
   change no pasa de la 0.2. Si el owner no la acepta, el change vuelve al debate: o se redactan los nombres (fuera de
   lo que hoy detecta el redactor), o el pegado sigue en la (d).
+
+  **Sin responder (2026-11-23).** La Q6 no tiene recomendación, y la aprobación del owner del 2026-11-23 («Aprobados,
+  tomá las recomendaciones») no la cubre: hace falta su confirmación literal, con fecha, de la frase de arriba.
 
 ## Casos de prueba derivados de los escenarios
 
@@ -508,3 +530,15 @@ Resultado: critic P0 0 / P1 11 (V2-01 a V2-11), todos aceptados por reflect y ap
 Q1 y Q6 (bloqueantes) y Q2-Q5 (no bloqueantes) siguen pendientes del owner.
 
 Convergencia: SI
+
+## Aprobación humana (2026-11-23)
+
+Aprobado por el owner el 2026-11-23 («Aprobados, tomá las recomendaciones»), **salvo la Q6**: Q1 = (b), excepción
+propia con la fusión solo entre la 11.6 y la 10.7 de 35b, después de `paste-fallback-honest`, y caída a la (a) si no
+llega; Q2 = (a); Q3 = texto de D7 aceptado, a revisar a 360 px; Q4 = (a); Q5 = (a), N = 10. Ninguna respuesta cambia
+el diseño: todas coinciden con la recomendación.
+
+**La Q6 sigue abierta.** No tiene recomendación, y «tomá las recomendaciones» no la cubre: exige que el owner confirme
+con su fecha la frase literal «Acepto que los nombres de terceros de lo pegado lleguen sin redactar a OpenRouter con
+`data_collection: deny`», que se anota en ADR-063 §Riesgos aceptados. **El change no pasa de la tarea 0.2 hasta esa
+confirmación**; si el owner la rechaza, vuelve al debate (Q6). ADR-063 sigue «Propuesto» hasta entonces.
