@@ -407,6 +407,10 @@ runner; `repo-checks` pierde su target y su `dependsOn` en el mismo revert. Sin 
   Mongo de la antigua D6, a su lote** (B1); (b) además H16 aquí (las capturas a `dist/`). **Recomendación: (a)**
   (mantenida, B7).
 
+Respuesta del owner (Q1), 2026-11-23: (b), «Aprobados, tomá las recomendaciones». Fila «∥ 36» en `docs/design-v0.2.md` §6.
+Respuesta del owner (Q2), 2026-11-23: (a), «Aprobados, tomá las recomendaciones». Lote 2 en `chromium` y `mobile`.
+Respuesta del owner (Q4), 2026-11-23: (a), «Aprobados, tomá las recomendaciones». Aquí solo H11; el resto, como dice la opción (a).
+
 ## Debate
 
 ### Debate iteración 1 (2026-11-04)
@@ -475,4 +479,14 @@ necesitaba exención.
 
 Convergencia: SI
 
-Pendiente: la aprobación humana.
+### Respuestas del owner y aprobación
+
+Fecha: 2026-11-23. Aprobación humana del change tras la convergencia de la iteración 3, con la frase del owner
+«Aprobados, tomá las recomendaciones».
+
+- **Q1 = (b):** fila «∥ 36» de `docs/design-v0.2.md` §6, en paralelo a `golden-sets-reales`, tras archivar 35c y
+  `e2e-suite` (ADR-067).
+- **Q2 = (a):** `account.spec.ts` en `chromium` y `mobile`.
+- **Q4 = (a):** aquí solo H11 (D9).
+
+`/opsx:apply` sigue esperando las precondiciones de las tareas 0.3 y 0.4.

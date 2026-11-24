@@ -14,12 +14,17 @@
 
 ## 0. Antes de aplicar
 
-- [ ] 0.1 [infra] Q1, Q2 y Q4 respondidas por el owner y anotadas con fecha en ADR-067 («Respuesta del owner (Qn),
+- [x] 0.1 [infra] Q1, Q2 y Q4 respondidas por el owner y anotadas con fecha en ADR-067 («Respuesta del owner (Qn),
   AAAA-MM-DD: …», una línea cada una) y en `design.md` §Open Questions. Con Q1, la fila de `docs/design-v0.2.md` §6 en
   el sitio que diga el owner. Verificar: `node -e` que cuenta en `docs/adr/ADR-067.md` las líneas que empiezan por
-  «Respuesta del owner (Q» devuelve `3` (antes, `0`); `grep -n "e2e-suite-lot-2" docs/design-v0.2.md` da la fila de §6.
-- [ ] 0.2 [infra] Debate critic/business/reflect cerrado sin P0/V0 abiertos y aprobación humana registrada. Verificar:
-  `design.md` §Debate lleva la tabla de la última iteración y la fecha de la aprobación.
+  «Respuesta del owner (Q» devuelve `3` (antes, `0`); `grep -n "e2e-suite-lot-2" docs/design-v0.2.md` da la fila de §6. **Estado (2026-11-23):** Q1 = (b), Q2 = (a) y Q4 = (a), con la frase del owner «Aprobados, tomá
+  las recomendaciones», anotadas en ADR-067 §Preguntas abiertas del change y en design.md §Open Questions; el `node -e`
+  devuelve `3` (sobre `HEAD` previo, `0`); el grep da la fila «∥ 36» de §6 (línea 527). `openspec-changes.yaml` sin
+  tocar.
+- [x] 0.2 [infra] Debate critic/business/reflect cerrado sin P0/V0 abiertos y aprobación humana registrada. Verificar:
+  `design.md` §Debate lleva la tabla de la última iteración y la fecha de la aprobación. **Estado (2026-11-23):** iteración 3 con «Convergencia: SI»
+  (critic P0 0, business V0 0); aprobación del owner con fecha 2026-11-23 en «Respuestas del owner y aprobación» de
+  design.md §Debate.
 - [ ] 0.3 [infra] Precondiciones: 35c archivado y `e2e-suite` archivado. Comparar los **tres** requirements que este
   delta modifica («El entorno de la suite…», «Cada destino se declara…» y «El primer lote es el camino crítico…») con
   los de `openspec/specs/platform/e2e-suite/spec.md`, sin las líneas que añade este delta; si el archivo cambió algo, el
