@@ -1,0 +1,1136 @@
+[
+  {
+    "id": "S01",
+    "section": "1. Sin sesión",
+    "title": "Aviso de privacidad sin sesión",
+    "ok": true,
+    "seen": "Aviso con «Tu CV», «IA, OpenRouter y tus claves (BYOK)» y «Borrar tu cuenta».",
+    "shots": ["001-privacidad-sin-sesion.png"]
+  },
+  {
+    "id": "S02",
+    "section": "1. Sin sesión",
+    "title": "La raíz sin sesión lleva a «Iniciar sesión»",
+    "ok": true,
+    "seen": "`/` acaba en `/login` con «Iniciar sesión».",
+    "shots": ["002-login-vacio.png"]
+  },
+  {
+    "id": "S03",
+    "section": "1. Sin sesión",
+    "title": "Iniciar sesión: validación de campos vacíos",
+    "ok": true,
+    "seen": "«Introduce un email válido» e «Introduce tu contraseña»; no se envía nada.",
+    "shots": ["003-login-validacion.png"]
+  },
+  {
+    "id": "S04",
+    "section": "1. Sin sesión",
+    "title": "Iniciar sesión: credenciales incorrectas",
+    "ok": true,
+    "seen": "`POST /api/auth/login` → 401 y «Email o contraseña incorrectos».",
+    "shots": [
+      "004-login-incorrecto-relleno.png",
+      "005-login-incorrecto-error.png"
+    ]
+  },
+  {
+    "id": "S05",
+    "section": "1. Sin sesión",
+    "title": "Una ruta protegida sin sesión lleva a `/login?returnUrl=…`",
+    "ok": true,
+    "seen": "Redirige a `/login?returnUrl=%2Fpostulaciones`.",
+    "shots": ["006-ruta-protegida-login-returnurl.png"]
+  },
+  {
+    "id": "S06",
+    "section": "1. Sin sesión",
+    "title": "Una ruta que no existe vuelve a la raíz",
+    "ok": true,
+    "seen": "`/esto-no-existe` acaba en `/login` (sin sesión).",
+    "shots": []
+  },
+  {
+    "id": "S07",
+    "section": "1. Sin sesión",
+    "title": "Oferta pública que no existe",
+    "ok": true,
+    "seen": "«Este enlace ya no está disponible».",
+    "shots": ["007-oferta-publica-inexistente.png"]
+  },
+  {
+    "id": "S08",
+    "section": "1. Sin sesión",
+    "title": "Verificar email con un enlace inválido",
+    "ok": true,
+    "seen": "«Este enlace no es válido o ha caducado.» con la ayuda para pedir otro correo.",
+    "shots": ["008-verificar-email-enlace-invalido.png"]
+  },
+  {
+    "id": "S09",
+    "section": "1. Sin sesión",
+    "title": "Restablecer contraseña con un enlace inválido",
+    "ok": true,
+    "seen": "«Este enlace no es válido o ha caducado.» y «Solicitar un enlace nuevo».",
+    "shots": ["009-restablecer-enlace-invalido.png"]
+  },
+  {
+    "id": "R01",
+    "section": "2. Crear una cuenta",
+    "title": "Crear cuenta: formulario vacío y validaciones",
+    "ok": true,
+    "seen": "Tres errores de campo y no se envía el formulario.",
+    "shots": ["010-registro-vacio.png", "011-registro-validacion.png"]
+  },
+  {
+    "id": "R02",
+    "section": "2. Crear una cuenta",
+    "title": "Crear cuenta: la contraseña no puede ser el email",
+    "ok": true,
+    "seen": "«La contraseña no puede ser tu email».",
+    "shots": ["012-registro-contrasena-es-email.png"]
+  },
+  {
+    "id": "R03",
+    "section": "2. Crear una cuenta",
+    "title": "Crear cuenta: Ana se registra",
+    "ok": true,
+    "seen": "`POST /api/auth/register` → 201; «Tus grupos» con el aviso «Tu email aún no está verificado…» y «Reenviar correo».",
+    "shots": ["013-registro-relleno.png", "014-registro-hecho-aviso-email.png"]
+  },
+  {
+    "id": "R04",
+    "section": "2. Crear una cuenta",
+    "title": "Crear cuenta con un email que ya existe",
+    "ok": true,
+    "seen": "`409` y «Ya existe una cuenta con este email.» con «¿Quieres iniciar sesión?».",
+    "shots": ["015-registro-email-repetido.png"]
+  },
+  {
+    "id": "V01",
+    "section": "3. Verificar el email",
+    "title": "Reenviar el correo de verificación",
+    "ok": true,
+    "seen": "`POST /api/auth/verify-email/resend` → 2xx; el aviso confirma el reenvío.",
+    "shots": ["016-verificacion-aviso.png", "017-verificacion-reenviada.png"]
+  },
+  {
+    "id": "V02",
+    "section": "3. Verificar el email",
+    "title": "El correo «Verifica tu email en LinkVault» llega a Mailpit",
+    "ok": true,
+    "seen": "Correo «Verifica tu email en LinkVault» con un enlace `/verificar-email?token=…`.",
+    "shots": ["018-mailpit-bandeja.png"]
+  },
+  {
+    "id": "V03",
+    "section": "3. Verificar el email",
+    "title": "Abrir el enlace: «Email verificado»",
+    "ok": true,
+    "seen": "«Verificar email · Email verificado · Ir a la aplicación»; en `/grupos` ya no está el aviso.",
+    "shots": ["019-email-verificado.png", "020-grupos-sin-aviso.png"]
+  },
+  {
+    "id": "V04",
+    "section": "3. Verificar el email",
+    "title": "Abrir otra vez el mismo enlace (ya usado)",
+    "ok": true,
+    "seen": "Un enlace usado dice «Este enlace no es válido o ha caducado.».",
+    "shots": ["021-verificar-enlace-ya-usado.png"]
+  },
+  {
+    "id": "L01",
+    "section": "4. Sesión y contraseña olvidada",
+    "title": "Cerrar sesión",
+    "ok": true,
+    "seen": "`POST /api/auth/logout` → 2xx y vuelve a `/login`.",
+    "shots": ["022-sesion-cerrada.png"]
+  },
+  {
+    "id": "L02",
+    "section": "4. Sesión y contraseña olvidada",
+    "title": "Recuperar contraseña: validación, email inexistente y email real",
+    "ok": true,
+    "seen": "Con email inexistente o real, el mismo mensaje: «Si existe una cuenta con ese email, te hemos enviado instrucciones…».",
+    "shots": [
+      "023-recuperar-vacio.png",
+      "024-recuperar-validacion.png",
+      "025-recuperar-email-inexistente.png",
+      "026-recuperar-relleno.png",
+      "027-recuperar-enviado.png"
+    ]
+  },
+  {
+    "id": "L03",
+    "section": "4. Sesión y contraseña olvidada",
+    "title": "Restablecer la contraseña con el enlace del correo",
+    "ok": true,
+    "seen": "«Tu contraseña se ha actualizado. Ya puedes iniciar sesión con la nueva.»",
+    "shots": [
+      "028-restablecer-vacio.png",
+      "029-restablecer-validacion.png",
+      "030-restablecer-relleno.png",
+      "031-restablecer-hecho.png"
+    ]
+  },
+  {
+    "id": "L04",
+    "section": "4. Sesión y contraseña olvidada",
+    "title": "La contraseña vieja ya no entra y la nueva sí; la sesión sobrevive a recargar",
+    "ok": true,
+    "seen": "Contraseña vieja: «Email o contraseña incorrectos». La nueva entra; tras recargar sigue en «Tus grupos».",
+    "shots": [
+      "032-login-contrasena-vieja.png",
+      "033-login-relleno.png",
+      "034-login-hecho-sesion-restaurada.png"
+    ]
+  },
+  {
+    "id": "F01",
+    "section": "5. Perfil",
+    "title": "Perfil inicial",
+    "ok": true,
+    "seen": "Email de solo lectura, nombre, contraseña, «IA y privacidad», «Tus claves de IA», notificaciones y zona de peligro.",
+    "shots": ["035-perfil-inicial.png"]
+  },
+  {
+    "id": "F02",
+    "section": "5. Perfil",
+    "title": "Nombre: validación y guardado",
+    "ok": true,
+    "seen": "«Nombre guardado».",
+    "shots": [
+      "036-perfil-nombre-vacio.png",
+      "037-perfil-nombre-relleno.png",
+      "038-perfil-nombre-guardado.png"
+    ]
+  },
+  {
+    "id": "F03",
+    "section": "5. Perfil",
+    "title": "Contraseña: actual incorrecta, nueva demasiado corta y cambio correcto",
+    "ok": true,
+    "seen": "«La contraseña actual no es correcta»; «La nueva contraseña debe tener al menos 10 caracteres…»; «Contraseña cambiada. Cerramos tu sesión en los demás dispositivos.».",
+    "shots": [
+      "039-perfil-contrasena-actual-incorrecta.png",
+      "040-perfil-contrasena-nueva-corta.png",
+      "041-perfil-contrasena-rellena.png",
+      "042-perfil-contrasena-cambiada.png"
+    ]
+  },
+  {
+    "id": "F04",
+    "section": "5. Perfil",
+    "title": "IA y privacidad por defecto",
+    "ok": true,
+    "seen": "Permiso externo apagado, idioma «Español» y «Ocultar mi nombre a los proveedores externos» activado.",
+    "shots": ["043-perfil-ia-por-defecto.png"]
+  },
+  {
+    "id": "G01",
+    "section": "6. Grupos",
+    "title": "Tus grupos, sin ningún grupo",
+    "ok": true,
+    "seen": "Explica qué es un grupo y ofrece «Crear un grupo» y «Unirse con un código».",
+    "shots": ["044-grupos-vacio.png"]
+  },
+  {
+    "id": "G02",
+    "section": "6. Grupos",
+    "title": "Crear un grupo: validación y alta",
+    "ok": true,
+    "seen": "`POST /api/groups` → 201; detalle con «Propietario», el código (enmascarado) y «Eres el único miembro: para irte, borra el grupo».",
+    "shots": [
+      "045-grupo-crear-vacio.png",
+      "046-grupo-crear-validacion.png",
+      "047-grupo-crear-relleno.png",
+      "048-grupo-creado.png"
+    ]
+  },
+  {
+    "id": "G03",
+    "section": "6. Grupos",
+    "title": "Renombrar el grupo",
+    "ok": true,
+    "seen": "El título cambia a «Búsqueda backend (guía)».",
+    "shots": ["049-grupo-renombrar-relleno.png"]
+  },
+  {
+    "id": "G04",
+    "section": "6. Grupos",
+    "title": "Ajuste: los links nuevos se comparten con un enlace público",
+    "ok": true,
+    "seen": "Viene activado; se apaga y se vuelve a activar (`PATCH /api/groups/:id/settings` → 200). Se deja activado para el enlace público.",
+    "shots": [
+      "050-grupo-visibilidad-activada.png",
+      "051-grupo-visibilidad-apagada.png"
+    ]
+  },
+  {
+    "id": "G05",
+    "section": "6. Grupos",
+    "title": "Copiar la invitación",
+    "ok": true,
+    "seen": "«Invitación copiada»; el texto copiado lleva el enlace absoluto `/unirse?codigo=…` del origen de la web.",
+    "shots": ["052-invitacion-copiada.png"]
+  },
+  {
+    "id": "I01",
+    "section": "7. Invitar y unirse",
+    "title": "Beto abre la invitación sin sesión y se registra",
+    "ok": true,
+    "seen": "Tras el registro vuelve a `/unirse` con el código ya escrito en «Unirse a un grupo».",
+    "shots": [
+      "053-invitado-login-con-returnurl.png",
+      "054-invitado-registro-relleno.png",
+      "055-invitado-unirse-codigo-escrito.png"
+    ]
+  },
+  {
+    "id": "I02",
+    "section": "7. Invitar y unirse",
+    "title": "Beto pulsa «Unirme» y entra como miembro",
+    "ok": true,
+    "seen": "Beto ve «Salir del grupo» y no ve el código de invitación.",
+    "shots": ["056-invitado-dentro-del-grupo.png"]
+  },
+  {
+    "id": "I03",
+    "section": "7. Invitar y unirse",
+    "title": "Ana ve a Beto entre los miembros",
+    "ok": true,
+    "seen": "Ana ve a Beto con «Nombrar propietario» y «Expulsar».",
+    "shots": ["057-propietaria-ve-al-miembro.png"]
+  },
+  {
+    "id": "I04",
+    "section": "7. Invitar y unirse",
+    "title": "Unirse con un código inválido y con el campo vacío",
+    "ok": true,
+    "seen": "404 y «Ese código no corresponde a ningún grupo».",
+    "shots": ["058-unirse-codigo-vacio.png", "059-unirse-codigo-invalido.png"]
+  },
+  {
+    "id": "K01",
+    "section": "8. Guardar y completar ofertas",
+    "title": "Guardar una oferta en el grupo, con una nota",
+    "ok": true,
+    "seen": "`POST /api/links` → 201; tarjeta con «Leyendo la oferta…», «Enlace público», «Nota de Ana Guía de Uso» y el aviso «Cualquiera con este enlace verá la oferta, pero no el grupo; tu nombre solo lo verá quien ya comparta un grupo contigo.» con «Copiar enlace».",
+    "shots": [
+      "060-links-grupo-vacio.png",
+      "061-guardar-link-relleno.png",
+      "062-link-guardado-leyendo.png"
+    ]
+  },
+  {
+    "id": "K02",
+    "section": "8. Guardar y completar ofertas",
+    "title": "Guardar la misma URL otra vez",
+    "ok": true,
+    "seen": "«Ya estaba aquí, lo compartió Ana Guía de Uso»; no se crea otra tarjeta.",
+    "shots": ["063-link-repetido-ya-estaba.png"]
+  },
+  {
+    "id": "K03",
+    "section": "8. Guardar y completar ofertas",
+    "title": "URL inválida y nota demasiado larga",
+    "ok": true,
+    "seen": "«Eso no parece un enlace de una oferta»; «Máximo 280 caracteres» con el contador `300/280`.",
+    "shots": [
+      "064-guardar-link-url-invalida.png",
+      "065-guardar-link-nota-larga.png"
+    ]
+  },
+  {
+    "id": "K04",
+    "section": "8. Guardar y completar ofertas",
+    "title": "La oferta que no se puede leer: «No pudimos leer esta oferta» y «Reintentar»",
+    "ok": true,
+    "seen": "La lectura de un `.invalid` acaba en «No pudimos leer esta oferta» con «Completar a mano», «Pegar la descripción» y «Reintentar»; «Reintentar» vuelve a «Leyendo la oferta…» y acaba igual.",
+    "shots": ["066-link-no-leido.png", "067-link-reintento-leyendo.png"]
+  },
+  {
+    "id": "K05",
+    "section": "8. Guardar y completar ofertas",
+    "title": "Completar la oferta a mano",
+    "ok": true,
+    "seen": "`PATCH /api/links/:id/preview` → 200; puesto y empresa con «Escrito por Ana Guía de Uso».",
+    "shots": [
+      "068-corregir-oferta-vacio.png",
+      "069-corregir-oferta-relleno.png",
+      "070-oferta-completada-escrito-por.png"
+    ]
+  },
+  {
+    "id": "K06",
+    "section": "8. Guardar y completar ofertas",
+    "title": "Pegar la descripción: texto que no es una oferta y texto de una oferta",
+    "ok": true,
+    "seen": "Con un texto de chat: «Algo salió mal. Inténtalo de nuevo». Con la oferta del golden: tarjeta «Ingeniero de Soporte TI» de «Distribuidora Andina» con «Descripción pegada por Ana Guía de Uso» y «Deshacer lo que pegó Ana Guía de Uso».",
+    "shots": [
+      "071-pegar-descripcion-vacio.png",
+      "072-pegar-descripcion-error.png",
+      "073-pegar-descripcion-relleno.png",
+      "074-oferta-pegada.png"
+    ]
+  },
+  {
+    "id": "K07",
+    "section": "8. Guardar y completar ofertas",
+    "title": "Deshacer lo pegado",
+    "ok": true,
+    "seen": "La tarjeta vuelve a «No pudimos leer esta oferta».",
+    "shots": ["075-pegado-deshecho.png"]
+  },
+  {
+    "id": "K08",
+    "section": "8. Guardar y completar ofertas",
+    "title": "Importar un chat",
+    "ok": true,
+    "seen": "«2 guardadas, 0 ya estaban» (la URL repetida cuenta una vez); un texto sin enlaces: «No encontramos ninguna oferta en ese texto».",
+    "shots": [
+      "076-importar-chat-vacio.png",
+      "077-importar-chat-relleno.png",
+      "078-importar-chat-resumen.png",
+      "079-importar-chat-sin-ofertas.png"
+    ]
+  },
+  {
+    "id": "K09",
+    "section": "8. Guardar y completar ofertas",
+    "title": "Editar una oferta pegada y «Volver a lo anterior»",
+    "ok": true,
+    "seen": "Tras corregir el puesto de una oferta pegada, el editor ofrece «Volver a lo anterior»; al marcarlo recupera «Ingeniero de Soporte TI», con su origen anterior.",
+    "shots": [
+      "080-editar-oferta-volver-a-lo-anterior.png",
+      "081-editar-oferta-revertida.png"
+    ]
+  },
+  {
+    "id": "K10",
+    "section": "8. Guardar y completar ofertas",
+    "title": "Quitar una oferta del grupo",
+    "ok": true,
+    "seen": "La confirmación explica lo que se pierde; tras «Quitar» la tarjeta desaparece del grupo.",
+    "shots": ["082-quitar-oferta-confirmar.png", "083-oferta-quitada.png"]
+  },
+  {
+    "id": "A01",
+    "section": "9. Postulaciones",
+    "title": "Tablero vacío (persona sin postulaciones)",
+    "ok": true,
+    "seen": "«Aquí verás las ofertas que sigues…» con «Ir a tus grupos» e «Ir a Solo para mí».",
+    "shots": ["084-tablero-vacio.png"]
+  },
+  {
+    "id": "A02",
+    "section": "9. Postulaciones",
+    "title": "Insights sin postulaciones",
+    "ok": true,
+    "seen": "Insights vacío con enlaces para empezar.",
+    "shots": ["085-insights-vacio.png"]
+  },
+  {
+    "id": "A03",
+    "section": "9. Postulaciones",
+    "title": "«Postulé»: ¿cuándo postulaste?, fecha futura y «Hoy»",
+    "ok": true,
+    "seen": "`POST /api/applications` → 201; «Tu postulación: Postulada». Una fecha futura se rechaza.",
+    "shots": [
+      "086-postule-cuando.png",
+      "087-postule-fecha-futura.png",
+      "088-postule-otro-dia-relleno.png",
+      "089-postulada-aviso-compartir.png"
+    ]
+  },
+  {
+    "id": "A04",
+    "section": "9. Postulaciones",
+    "title": "Compartir el estado con el grupo: «Qué verán», «Compartir», «Deshacer»",
+    "ok": true,
+    "seen": "«Qué verán» explica qué ve el grupo; «Compartir» → «Compartido» con «Deshacer».",
+    "shots": [
+      "090-compartir-que-veran.png",
+      "091-estado-compartido-con-el-grupo.png"
+    ]
+  },
+  {
+    "id": "A05",
+    "section": "9. Postulaciones",
+    "title": "«Me interesa» en otra oferta y el aviso se cierra al navegar",
+    "ok": true,
+    "seen": "«Tu postulación: Interés»; el aviso de compartir no sigue en el tablero.",
+    "shots": ["092-me-interesa.png"]
+  },
+  {
+    "id": "A06",
+    "section": "9. Postulaciones",
+    "title": "Tablero con columnas",
+    "ok": true,
+    "seen": "Seis columnas («Interés», «Postuladas», «En proceso», «Con oferta», «Aceptadas», «Cerradas»); una tarjeta en cada una de las dos primeras.",
+    "shots": ["093-tablero-postuladas.png"]
+  },
+  {
+    "id": "A07",
+    "section": "9. Postulaciones",
+    "title": "Detalle: mover a «En proceso» con etapa, nota y compartir",
+    "ok": true,
+    "seen": "La tarjeta pasa a «En proceso · Prueba técnica»; el historial registra el cambio; «Nota guardada».",
+    "shots": [
+      "094-detalle-postulacion.png",
+      "095-mover-en-proceso-etapa.png",
+      "096-detalle-en-proceso-con-nota.png",
+      "097-tablero-en-proceso.png"
+    ]
+  },
+  {
+    "id": "A08",
+    "section": "9. Postulaciones",
+    "title": "Cerrar una postulación: «¿Cómo se cerró?»",
+    "ok": true,
+    "seen": "Pregunta «¿Cómo se cerró?» (Rechazada, Retirada…); la tarjeta pasa a «Cerradas».",
+    "shots": ["098-cerrar-como-se-cerro.png", "099-tablero-cerradas.png"]
+  },
+  {
+    "id": "A09",
+    "section": "9. Postulaciones",
+    "title": "Insights con postulaciones",
+    "ok": true,
+    "seen": "«Abiertas 1», «Cerradas 1» y «Ninguna postulación abierta lleva 10 días o más sin cambio de estado.».",
+    "shots": ["100-insights.png"]
+  },
+  {
+    "id": "A10",
+    "section": "9. Postulaciones",
+    "title": "Dejar de seguir",
+    "ok": true,
+    "seen": "Tras confirmar, la tarjeta desaparece del tablero; la oferta sigue en el grupo.",
+    "shots": [
+      "101-dejar-de-seguir-confirmar.png",
+      "102-dejar-de-seguir-hecho.png"
+    ]
+  },
+  {
+    "id": "C01",
+    "section": "10. Mi CV",
+    "title": "Mi CV vacío",
+    "ok": true,
+    "seen": "«Sube tu CV y LinkVault podrá comparar tus habilidades con cada vacante.» y «Ahora mismo no has dado ese permiso, así que tu CV no sale de LinkVault.».",
+    "shots": ["103-mi-cv-vacio.png"]
+  },
+  {
+    "id": "C02",
+    "section": "10. Mi CV",
+    "title": "Archivos que no se aceptan: tipo y tamaño",
+    "ok": true,
+    "seen": "«Solo aceptamos PDF o DOCX» y «Ese archivo pesa más de 5 MB»; no se envía nada.",
+    "shots": ["104-cv-error-tipo.png", "105-cv-error-tamano.png"]
+  },
+  {
+    "id": "C03",
+    "section": "10. Mi CV",
+    "title": "Subir el CV en PDF: «Estamos leyendo tu CV…» y «Listo»",
+    "ok": true,
+    "seen": "`POST /api/cv` → 201; de «Estamos leyendo tu CV…» a «Listo · tu CV se leyó bien» sin recargar, con «Este es el CV que compararemos con las vacantes».",
+    "shots": ["106-mi-cv-leyendo.png", "107-mi-cv-listo.png"]
+  },
+  {
+    "id": "C04",
+    "section": "10. Mi CV",
+    "title": "«Ver lo que leímos»",
+    "ok": true,
+    "seen": "El diálogo «Lo que leímos de tu CV» muestra el texto (enmascarado en la captura), sin copiar ni descargar.",
+    "shots": ["108-mi-cv-lo-que-leimos.png"]
+  },
+  {
+    "id": "C05",
+    "section": "10. Mi CV",
+    "title": "Un CV sin texto (escaneo) y «Usar el que sí se leyó»",
+    "ok": true,
+    "seen": "«Este archivo no tiene texto: parece un escaneo o una imagen.»; como CV por defecto avisa «No servirá para analizar vacantes» y ofrece «Usar el que sí se leyó».",
+    "shots": ["109-cv-sin-texto.png", "110-cv-por-defecto-inservible.png"]
+  },
+  {
+    "id": "C06",
+    "section": "10. Mi CV",
+    "title": "Eliminar un CV",
+    "ok": true,
+    "seen": "Tras confirmar, el CV escaneado desaparece y queda el CV leído como el de por defecto.",
+    "shots": ["111-cv-eliminar-confirmar.png", "112-cv-eliminado.png"]
+  },
+  {
+    "id": "M01",
+    "section": "11. Analizar mi encaje",
+    "title": "Sin CV: «Necesitas un CV guardado»",
+    "ok": false,
+    "seen": "Esperado «Necesitas un CV guardado…» (catálogo, paso 31); la API responde 409 no_cv y el diálogo dice «No pudimos analizar ahora.» con «Reintentar» (ver Hallazgos)",
+    "shots": ["113-encaje-sin-cv.png", "114-encaje-sin-cv-analizar.png"]
+  },
+  {
+    "id": "M02",
+    "section": "11. Analizar mi encaje",
+    "title": "Analizar mi encaje: informe del fixture de replay",
+    "ok": true,
+    "seen": "`POST /api/links/:id/match` → 202 y el informe: «80 · Encaje alto»; coinciden Node, NestJS, MongoDB, Redis y Vitest; «Tienes todas las habilidades que pide esta oferta»; una sugerencia de «Experiencia».",
+    "shots": [
+      "115-encaje-antes-de-analizar.png",
+      "116-encaje-analizando.png",
+      "117-encaje-informe.png"
+    ]
+  },
+  {
+    "id": "M03",
+    "section": "11. Analizar mi encaje",
+    "title": "Sugerencia: «Copiar» y «No me convence»",
+    "ok": true,
+    "seen": "«Copiado» y «Marcada».",
+    "shots": [
+      "118-encaje-sugerencia.png",
+      "119-encaje-copiado-y-no-me-convence.png"
+    ]
+  },
+  {
+    "id": "M04",
+    "section": "11. Analizar mi encaje",
+    "title": "El tablero muestra el badge de encaje",
+    "ok": true,
+    "seen": "La tarjeta de la postulación muestra «80 · Encaje alto».",
+    "shots": ["120-tablero-con-badge-encaje.png"]
+  },
+  {
+    "id": "M05",
+    "section": "11. Analizar mi encaje",
+    "title": "Plan de estudio: un análisis que no existe",
+    "ok": true,
+    "seen": "La pantalla del plan avisa que el análisis no existe. El plan con contenido no es alcanzable con `replay` (ver Hallazgos).",
+    "shots": ["121-plan-inexistente.png"]
+  },
+  {
+    "id": "N01",
+    "section": "12. Comentarios, «Conozco a alguien», fijar y etiquetas",
+    "title": "Beto ve la oferta con el estado compartido de Ana",
+    "ok": true,
+    "seen": "Beto ve la tarjeta de Ana con la nota, y el avatar «AG» con el estado compartido.",
+    "shots": ["122-miembro-ve-la-oferta-y-el-estado.png"]
+  },
+  {
+    "id": "N02",
+    "section": "12. Comentarios, «Conozco a alguien», fijar y etiquetas",
+    "title": "Comentar: validación y publicación",
+    "ok": true,
+    "seen": "`POST /api/groups/:id/links/:id/comments` → 201; el hilo muestra el comentario con «Borrar» y el aviso de que lo verán los miembros.",
+    "shots": [
+      "123-comentarios-vacio.png",
+      "124-comentario-demasiado-largo.png",
+      "125-comentario-relleno.png",
+      "126-comentario-publicado.png"
+    ]
+  },
+  {
+    "id": "N03",
+    "section": "12. Comentarios, «Conozco a alguien», fijar y etiquetas",
+    "title": "«Conozco a alguien ahí»",
+    "ok": true,
+    "seen": "«1 persona conoce a alguien ahí» y el botón «Ya marqué que conozco a alguien».",
+    "shots": ["127-conozco-a-alguien.png"]
+  },
+  {
+    "id": "N04",
+    "section": "12. Comentarios, «Conozco a alguien», fijar y etiquetas",
+    "title": "Ana ve el comentario y el conteo en vivo, y borra el comentario ajeno",
+    "ok": true,
+    "seen": "Ana ve el comentario y «1 persona conoce a alguien ahí»; al borrar lo ajeno la confirmación avisa que desaparece para todo el grupo.",
+    "shots": [
+      "128-propietaria-ve-comentario-y-conteo.png",
+      "129-comentario-borrar-confirmar.png"
+    ]
+  },
+  {
+    "id": "N05",
+    "section": "12. Comentarios, «Conozco a alguien», fijar y etiquetas",
+    "title": "Quitar la nota propia",
+    "ok": true,
+    "seen": "La nota desaparece de la tarjeta.",
+    "shots": ["130-nota-quitar-confirmar.png"]
+  },
+  {
+    "id": "N06",
+    "section": "12. Comentarios, «Conozco a alguien», fijar y etiquetas",
+    "title": "Fijar, etiquetar y filtrar",
+    "ok": true,
+    "seen": "«Fijado», los chips «backend» y «remoto», y con «Solo fijados» y la etiqueta `backend` solo queda esa oferta junto a «Quitar etiqueta».",
+    "shots": ["131-etiquetas-rellenas.png", "132-filtro-fijados-y-etiqueta.png"]
+  },
+  {
+    "id": "E01",
+    "section": "13. Enlace público",
+    "title": "Copiar el enlace público de una tarjeta",
+    "ok": true,
+    "seen": "Se copia `http://localhost:3100/p/<slug>` (el origen público de la API del bloque).",
+    "shots": ["133-enlace-publico-copiado.png"]
+  },
+  {
+    "id": "E02",
+    "section": "13. Enlace público",
+    "title": "Carla abre el enlace sin sesión",
+    "ok": true,
+    "seen": "La API redirige a `/oferta/:slug`: puesto, empresa, «Ver la oferta original», «Guardar en LinkVault» y «Entrar»; no aparece el grupo ni ningún nombre.",
+    "shots": ["134-vista-publica-sin-sesion.png"]
+  },
+  {
+    "id": "E03",
+    "section": "13. Enlace público",
+    "title": "Guardar desde el enlace público: registro y «Solo para mí»",
+    "ok": true,
+    "seen": "Acaba en «Solo para mí» con «Guardada en «Solo para mí». Compártela en un grupo cuando quieras.»; la tarjeta no revela el nombre de Ana (dice «Escrito por otra persona»).",
+    "shots": [
+      "135-registro-desde-enlace-publico.png",
+      "136-guardada-en-solo-para-mi.png"
+    ]
+  },
+  {
+    "id": "E04",
+    "section": "13. Enlace público",
+    "title": "Dejar de compartir",
+    "ok": true,
+    "seen": "La URL pública deja de funcionar: «Este enlace ya no está disponible · Pídeselo de nuevo a quien te lo envió».",
+    "shots": [
+      "137-dejar-de-compartir-confirmar.png",
+      "138-oferta-sin-enlace-publico.png",
+      "139-enlace-publico-ya-no-disponible.png"
+    ]
+  },
+  {
+    "id": "E05",
+    "section": "13. Enlace público",
+    "title": "Volver a compartir con un enlace público",
+    "ok": true,
+    "seen": "La oferta vuelve a tener «Copiar enlace» y «Dejar de compartir».",
+    "shots": ["140-compartir-enlace-publico-confirmar.png"]
+  },
+  {
+    "id": "P01",
+    "section": "14. Solo para mí",
+    "title": "Guardar una oferta en la lista privada",
+    "ok": true,
+    "seen": "La tarjeta no tiene fijar, etiquetas ni «Conozco a alguien ahí», porque no está en un grupo.",
+    "shots": ["141-solo-para-mi-relleno.png", "142-solo-para-mi-guardada.png"]
+  },
+  {
+    "id": "P02",
+    "section": "14. Solo para mí",
+    "title": "«Me interesa» y «Quitar»",
+    "ok": true,
+    "seen": "«Tu postulación: Interés»; «Se quita de tu lista; la oferta sigue disponible en tus grupos.»; al confirmar, la tarjeta desaparece.",
+    "shots": [
+      "143-solo-para-mi-me-interesa.png",
+      "144-solo-para-mi-quitar-confirmar.png",
+      "145-solo-para-mi-quitada.png"
+    ]
+  },
+  {
+    "id": "P03",
+    "section": "14. Solo para mí",
+    "title": "Oferta ya guardada en un grupo propio",
+    "ok": true,
+    "seen": "«Ya lo tienes en: Búsqueda backend (guía)».",
+    "shots": ["146-solo-para-mi-ya-en-un-grupo.png"]
+  },
+  {
+    "id": "P04",
+    "section": "14. Solo para mí",
+    "title": "Oferta cerrada y «Reabrir»",
+    "ok": true,
+    "seen": "La frescura automática está apagada en la pila, así que el cierre se siembra en Mongo (`job_links.closedAt`). «Oferta cerrada» → «Reabrir» → «Elige cuándo cierra» (la fecha de cierre ya pasó) → «Sin fecha de cierre» → «Oferta marcada como abierta…».",
+    "shots": [
+      "147-oferta-cerrada.png",
+      "148-reabrir-elige-cuando-cierra.png",
+      "149-oferta-reabierta.png"
+    ]
+  },
+  {
+    "id": "P05",
+    "section": "14. Solo para mí",
+    "title": "Pegar un chat en «Solo para mí»",
+    "ok": true,
+    "seen": "«1 guardada, 0 ya estaban».",
+    "shots": ["150-solo-para-mi-importar-chat.png"]
+  },
+  {
+    "id": "D01",
+    "section": "15. Descubrir y Buscar",
+    "title": "Descubrir vacantes (función apagada en la pila)",
+    "ok": true,
+    "seen": "«El descubrimiento de vacantes no está disponible en este momento.» (`FEATURE_DISCOVERY=false` en `e2e.env`). Los resultados no se pueden probar con esta pila.",
+    "shots": [
+      "151-descubrir-vacio.png",
+      "152-descubrir-relleno.png",
+      "153-descubrir-no-disponible.png"
+    ]
+  },
+  {
+    "id": "D02",
+    "section": "15. Descubrir y Buscar",
+    "title": "Buscar (función apagada en la pila)",
+    "ok": true,
+    "seen": "Consulta vacía: «Escribe algo para buscar…». Con texto: «La búsqueda no está disponible en este momento. Inténtalo más tarde.» (`FEATURE_SEARCH=false`).",
+    "shots": [
+      "154-buscar-vacio.png",
+      "155-buscar-consulta-vacia.png",
+      "156-buscar-no-disponible.png"
+    ]
+  },
+  {
+    "id": "T01",
+    "section": "16. Notificaciones y push",
+    "title": "Preferencias de aviso: guardar y comprobar que persisten",
+    "ok": true,
+    "seen": "«Preferencias guardadas»; tras recargar, «Nuevo link en un grupo» sigue apagado. Todas las demás vienen activadas.",
+    "shots": [
+      "157-notificaciones-inicial.png",
+      "158-notificaciones-guardadas.png"
+    ]
+  },
+  {
+    "id": "T02",
+    "section": "16. Notificaciones y push",
+    "title": "Grupo para avisos de estado",
+    "ok": true,
+    "seen": "Lista «Todos mis grupos» y los grupos de la persona; se guarda y queda elegido.",
+    "shots": [
+      "159-notificaciones-grupo-de-estado.png",
+      "160-notificaciones-grupo-guardado.png"
+    ]
+  },
+  {
+    "id": "T03",
+    "section": "16. Notificaciones y push",
+    "title": "Push del navegador (sin claves VAPID)",
+    "ok": true,
+    "seen": "En Chromium sin interfaz el permiso de notificaciones se deniega: «No diste permiso de notificaciones. Puedes seguir editando los avisos por email.». Con un navegador normal, y sin claves VAPID, sale «El push no está disponible ahora…».",
+    "shots": ["161-push-del-navegador.png"]
+  },
+  {
+    "id": "T04",
+    "section": "16. Notificaciones y push",
+    "title": "Avisos por email en Mailpit",
+    "ok": true,
+    "seen": "Mailpit tiene «Nuevo link en tu grupo» y «Actualización de postulación en el grupo» (avisos del worker; solo llegan a cuentas con email verificado).",
+    "shots": ["162-mailpit-avisos.png"]
+  },
+  {
+    "id": "B01",
+    "section": "17. IA externa y claves propias",
+    "title": "Conceder y retirar el permiso de IA externa",
+    "ok": true,
+    "seen": "«Concedido el … · versión …»; `/mi-cv` dice «ese permiso está activo»; al retirar, «Permiso retirado. Tus próximos análisis no saldrán de LinkVault…».",
+    "shots": [
+      "163-ia-permiso-concedido.png",
+      "164-mi-cv-permiso-activo.png",
+      "165-ia-permiso-retirado.png"
+    ]
+  },
+  {
+    "id": "B02",
+    "section": "17. IA externa y claves propias",
+    "title": "Idioma de los análisis y ocultar el nombre",
+    "ok": true,
+    "seen": "El idioma de los análisis pasa a «Inglés» y «Ocultar mi nombre…» se apaga; se restauran («No cambia el idioma de la interfaz.»).",
+    "shots": ["166-ia-idioma-ingles-y-nombre-visible.png"]
+  },
+  {
+    "id": "B03",
+    "section": "17. IA externa y claves propias",
+    "title": "Clave propia (BYOK): validación y guardado sin bóveda",
+    "ok": true,
+    "seen": "`PUT /api/users/me/ai-keys/anthropic` → 503 (`e2e.env` no trae `AI_VAULT_KEY`). La pantalla muestra «Algo salió mal. Inténtalo de nuevo».",
+    "shots": [
+      "167-clave-ia-corta.png",
+      "168-clave-ia-rellena.png",
+      "169-clave-ia-resultado.png"
+    ]
+  },
+  {
+    "id": "X01",
+    "section": "18. Administrar grupos",
+    "title": "Beto se une con un código desde «Unirse con un código»",
+    "ok": true,
+    "seen": "Beto entra al grupo como «Miembro».",
+    "shots": ["170-unirse-con-codigo-relleno.png", "171-unido-con-codigo.png"]
+  },
+  {
+    "id": "X02",
+    "section": "18. Administrar grupos",
+    "title": "El propietario no puede salir sin ceder la propiedad",
+    "ok": true,
+    "seen": "«Para salir, nombra propietario a otro miembro».",
+    "shots": ["172-propietario-no-puede-salir.png"]
+  },
+  {
+    "id": "X03",
+    "section": "18. Administrar grupos",
+    "title": "Expulsar y regenerar el código",
+    "ok": true,
+    "seen": "El diálogo de expulsión avisa que la persona dejará de ver el grupo; luego ofrece regenerar el código; el código nuevo es distinto del anterior.",
+    "shots": [
+      "173-expulsar-confirmar.png",
+      "174-expulsado-regenerar-codigo.png"
+    ]
+  },
+  {
+    "id": "X04",
+    "section": "18. Administrar grupos",
+    "title": "El código anterior ya no sirve",
+    "ok": true,
+    "seen": "«Ese código no corresponde a ningún grupo».",
+    "shots": ["175-codigo-anterior-no-sirve.png"]
+  },
+  {
+    "id": "X05",
+    "section": "18. Administrar grupos",
+    "title": "Regenerar el código a mano",
+    "ok": true,
+    "seen": "Tras «Regenerar», el código cambia.",
+    "shots": ["176-regenerar-codigo-dialogo.png"]
+  },
+  {
+    "id": "X06",
+    "section": "18. Administrar grupos",
+    "title": "Ceder la propiedad y salir",
+    "ok": true,
+    "seen": "Ana nombra propietario a Beto, ve «Salir del grupo» y sale; Beto queda como «Propietario».",
+    "shots": [
+      "177-nombrar-propietario-confirmar.png",
+      "178-propiedad-cedida.png",
+      "179-salir-del-grupo-confirmar.png"
+    ]
+  },
+  {
+    "id": "X07",
+    "section": "18. Administrar grupos",
+    "title": "Borrar el grupo",
+    "ok": true,
+    "seen": "La confirmación dice «Se borrará solo para ti. No se puede deshacer.»; vuelve a «Tus grupos».",
+    "shots": ["180-borrar-grupo-confirmar.png", "181-grupo-borrado.png"]
+  },
+  {
+    "id": "X08",
+    "section": "18. Administrar grupos",
+    "title": "Un grupo que no existe",
+    "ok": true,
+    "seen": "«Ese grupo no existe o ya no perteneces a él» y «Volver a tus grupos».",
+    "shots": ["182-grupo-inexistente.png"]
+  },
+  {
+    "id": "V01m",
+    "section": "19. En el móvil (Pixel 7)",
+    "title": "Móvil: aviso de privacidad e inicio de sesión",
+    "ok": true,
+    "seen": "Formularios a una columna; sin desbordes horizontales.",
+    "shots": [
+      "183-movil-login-vacio.png",
+      "184-movil-login-relleno.png",
+      "185-movil-privacidad.png"
+    ]
+  },
+  {
+    "id": "V02m",
+    "section": "19. En el móvil (Pixel 7)",
+    "title": "Móvil: /grupos",
+    "ok": true,
+    "seen": "Sin desborde horizontal (0 px).",
+    "shots": ["186-movil-grupos.png"]
+  },
+  {
+    "id": "V03m",
+    "section": "19. En el móvil (Pixel 7)",
+    "title": "Móvil: /grupos/6b0685dc439d6452ee3dfc78",
+    "ok": true,
+    "seen": "Sin desborde horizontal (0 px).",
+    "shots": ["187-movil-detalle-grupo.png"]
+  },
+  {
+    "id": "V04m",
+    "section": "19. En el móvil (Pixel 7)",
+    "title": "Móvil: /postulaciones",
+    "ok": true,
+    "seen": "Sin desborde horizontal (0 px).",
+    "shots": ["188-movil-postulaciones.png"]
+  },
+  {
+    "id": "V05m",
+    "section": "19. En el móvil (Pixel 7)",
+    "title": "Móvil: /mi-cv",
+    "ok": true,
+    "seen": "Sin desborde horizontal (0 px).",
+    "shots": ["189-movil-mi-cv.png"]
+  },
+  {
+    "id": "V06m",
+    "section": "19. En el móvil (Pixel 7)",
+    "title": "Móvil: /perfil",
+    "ok": true,
+    "seen": "Sin desborde horizontal (0 px).",
+    "shots": ["190-movil-perfil.png"]
+  },
+  {
+    "id": "V07m",
+    "section": "19. En el móvil (Pixel 7)",
+    "title": "Móvil: /notificaciones",
+    "ok": true,
+    "seen": "Sin desborde horizontal (0 px).",
+    "shots": ["191-movil-notificaciones.png"]
+  },
+  {
+    "id": "V08m",
+    "section": "19. En el móvil (Pixel 7)",
+    "title": "Móvil: /mis-links",
+    "ok": true,
+    "seen": "Sin desborde horizontal (0 px).",
+    "shots": ["192-movil-solo-para-mi.png"]
+  },
+  {
+    "id": "V09m",
+    "section": "19. En el móvil (Pixel 7)",
+    "title": "Móvil: /buscar",
+    "ok": true,
+    "seen": "Sin desborde horizontal (0 px).",
+    "shots": ["193-movil-buscar.png"]
+  },
+  {
+    "id": "V10m",
+    "section": "19. En el móvil (Pixel 7)",
+    "title": "Móvil: /descubrir",
+    "ok": true,
+    "seen": "Sin desborde horizontal (0 px).",
+    "shots": ["194-movil-descubrir.png"]
+  },
+  {
+    "id": "V11m",
+    "section": "19. En el móvil (Pixel 7)",
+    "title": "Móvil: el informe de encaje en pantalla completa",
+    "ok": true,
+    "seen": "El diálogo se adapta al ancho del móvil y se desplaza por dentro, sin desbordar de lado.",
+    "shots": ["195-movil-encaje-dialogo.png"]
+  },
+  {
+    "id": "V12m",
+    "section": "19. En el móvil (Pixel 7)",
+    "title": "Móvil: comentarios en pantalla completa",
+    "ok": true,
+    "seen": "El hilo de comentarios usa la pantalla completa.",
+    "shots": ["196-movil-comentarios.png"]
+  },
+  {
+    "id": "W01",
+    "section": "20. Inglés y modo oscuro",
+    "title": "Interfaz en inglés (build `--localize=en`): sin sesión",
+    "ok": true,
+    "seen": "El build en inglés se sirve aparte (puerto 4301, ver «Entorno»); las rutas siguen en español.",
+    "shots": ["197-en-login.png", "198-en-register.png", "199-en-privacy.png"]
+  },
+  {
+    "id": "W02",
+    "section": "20. Inglés y modo oscuro",
+    "title": "Inglés: grupos",
+    "ok": true,
+    "seen": "La pantalla se ve traducida al inglés.",
+    "shots": ["200-en-groups.png"]
+  },
+  {
+    "id": "W03",
+    "section": "20. Inglés y modo oscuro",
+    "title": "Inglés: detalle del grupo",
+    "ok": true,
+    "seen": "La pantalla se ve traducida al inglés.",
+    "shots": ["201-en-group-detail.png"]
+  },
+  {
+    "id": "W04",
+    "section": "20. Inglés y modo oscuro",
+    "title": "Inglés: postulaciones",
+    "ok": true,
+    "seen": "La pantalla se ve traducida al inglés.",
+    "shots": ["202-en-applications-board.png"]
+  },
+  {
+    "id": "W05",
+    "section": "20. Inglés y modo oscuro",
+    "title": "Inglés: mi-cv",
+    "ok": true,
+    "seen": "La pantalla se ve traducida al inglés.",
+    "shots": ["203-en-my-cv.png"]
+  },
+  {
+    "id": "W06",
+    "section": "20. Inglés y modo oscuro",
+    "title": "Inglés: perfil",
+    "ok": true,
+    "seen": "La pantalla se ve traducida al inglés.",
+    "shots": ["204-en-profile.png"]
+  },
+  {
+    "id": "W07",
+    "section": "20. Inglés y modo oscuro",
+    "title": "Inglés: notificaciones",
+    "ok": true,
+    "seen": "La pantalla se ve traducida al inglés.",
+    "shots": ["205-en-notifications.png"]
+  },
+  {
+    "id": "W08",
+    "section": "20. Inglés y modo oscuro",
+    "title": "Inglés: mis-links",
+    "ok": true,
+    "seen": "La pantalla se ve traducida al inglés.",
+    "shots": ["206-en-my-links.png"]
+  },
+  {
+    "id": "W09",
+    "section": "20. Inglés y modo oscuro",
+    "title": "Inglés: informe de encaje",
+    "ok": true,
+    "seen": "El diálogo y el informe en inglés (los textos de las sugerencias vienen del fixture, en español).",
+    "shots": ["207-en-match-dialog.png"]
+  },
+  {
+    "id": "W10",
+    "section": "20. Inglés y modo oscuro",
+    "title": "Modo oscuro: la aplicación no lo soporta",
+    "ok": true,
+    "seen": "Con `prefers-color-scheme: dark` la interfaz sigue clara: `styles.scss` fija `color-scheme: light` y no hay tema oscuro.",
+    "shots": ["208-modo-oscuro-grupos.png", "209-modo-oscuro-perfil.png"]
+  },
+  {
+    "id": "Z01",
+    "section": "21. Borrar la cuenta",
+    "title": "Diego se registra y crea un grupo con Beto dentro",
+    "ok": true,
+    "seen": "Preparación: Diego es el único propietario de un grupo con otro miembro.",
+    "shots": []
+  },
+  {
+    "id": "Z02",
+    "section": "21. Borrar la cuenta",
+    "title": "No se puede borrar la cuenta siendo el único propietario de un grupo con más miembros",
+    "ok": true,
+    "seen": "Contraseña vacía: «Introduce tu contraseña»; contraseña mala: error; con la correcta, «Eres el único propietario de un grupo con otros miembros…».",
+    "shots": [
+      "210-borrar-cuenta-vacio.png",
+      "211-borrar-cuenta-validacion.png",
+      "212-borrar-cuenta-clave-incorrecta.png",
+      "213-borrar-cuenta-unico-propietario.png"
+    ]
+  },
+  {
+    "id": "Z03",
+    "section": "21. Borrar la cuenta",
+    "title": "Ceder el grupo y borrar la cuenta",
+    "ok": true,
+    "seen": "`DELETE /api/users/me` → 2xx; vuelve a `/login` y la cuenta ya no entra («Email o contraseña incorrectos»).",
+    "shots": [
+      "214-borrar-cuenta-relleno.png",
+      "215-cuenta-borrada-ya-no-entra.png"
+    ]
+  }
+]
