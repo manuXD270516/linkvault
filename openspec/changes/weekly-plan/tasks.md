@@ -219,11 +219,11 @@ otra cosa.
   Verificar: capturas en la PR y puertos liberados al terminar.
 - [ ] 9.3 [infra] PR desde `change/weekly-plan` **sin fusionar**, con la etiqueta de candidata y la nota «no se fusiona
   hasta que el owner abra una ventana». Verificar: la PR existe en estado abierto y su descripción enlaza ADR-068.
-- [ ] 9.4 [infra] `docs/RUNBOOK.md`: sección «Plan semanal (`weekly_plan_decisions`)» con qué guarda la colección (sin
+- [x] 9.4 [infra] `docs/RUNBOOK.md`: sección «Plan semanal (`weekly_plan_decisions`)» con qué guarda la colección (sin
   texto), su TTL de 35 días, que los índices los crea `autoIndex` al arrancar la api, cómo comprobarlos
   (`db.weekly_plan_decisions.getIndexes()`), el rollback (revertir el PR; `drop()` opcional), que una sugerencia oculta vuelve a los 35 días si
   sigue aplicando (B10), y las consultas agregadas de la métrica (B3, B3'): numerador de `weekly_plan_decisions`
   (semanas-persona con algún `done`, también en número absoluto, y `done` vs `dismissed` por regla) y denominador de
   `applications` (semanas-persona con al menos una postulación abierta), sin `userId` en la salida, a correr antes de que
   venza el TTL (C12). Verificar: `grep -c "weekly_plan_decisions" docs/RUNBOOK.md` ≥ 3 y `bash
-  infra/ci/repo-checks.sh` en verde.
+  infra/ci/repo-checks.sh` en verde. **Estado (2026-11-25):** hecha; sección «Plan semanal (`weekly_plan_decisions`)» en `docs/RUNBOOK.md` (colección, índices y TTL, vuelta a los 35 días, rollback y consultas de la métrica sin `userId`); `grep -c` ≥ 3 y `repo-checks.sh` en verde. El denominador es una aproximación con el estado actual de `applications`.
