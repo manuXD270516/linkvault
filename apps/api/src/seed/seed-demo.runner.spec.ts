@@ -208,6 +208,58 @@ describe('runSeedDemo weekly plan dataset', () => {
   });
 });
 
+describe('runSeedDemo group brief dataset', () => {
+  function skillWrites(
+    deps: SeedDemoDeps,
+    linkId: string,
+  ): readonly (readonly string[])[] {
+    return vi
+      .mocked(deps.updatePreview.execute)
+      .mock.calls.filter(([, id]) => id === linkId)
+      .map(([, , request]) =>
+        ((request.fields?.['skills'] ?? []) as readonly { name: string }[]).map(
+          (skill) => skill.name,
+        ),
+      );
+  }
+
+  it('demo links carry the brief skills', async () => {
+    const deps = buildDeps();
+
+    const report = await runSeedDemo(deps);
+
+    expect(skillWrites(deps, report.linkIds['openSalary'] ?? '')).toEqual([
+      ['Docker', 'TypeScript', 'NestJS'],
+    ]);
+    expect(skillWrites(deps, report.linkIds['staleApp'] ?? '')).toEqual([
+      ['Docker', 'Kotlin'],
+    ]);
+    expect(skillWrites(deps, report.linkIds['closingSoon'] ?? '')).toEqual([
+      ['Docker', 'TypeScript', 'SQL'],
+    ]);
+    // Los demás links no llevan habilidades.
+    expect(skillWrites(deps, report.linkIds['rejectedApp'] ?? '')).toEqual([
+      [],
+    ]);
+  });
+
+  it('second run does not duplicate skills', async () => {
+    const deps = buildDeps();
+
+    const first = await runSeedDemo(deps);
+    await runSeedDemo({
+      ...deps,
+      now: new Date(NOW.getTime() + 24 * 3_600_000),
+    });
+
+    // Cada corrida fija el conjunto entero: la segunda escribe el mismo, no agrega a lo anterior.
+    expect(skillWrites(deps, first.linkIds['openSalary'] ?? '')).toEqual([
+      ['Docker', 'TypeScript', 'NestJS'],
+      ['Docker', 'TypeScript', 'NestJS'],
+    ]);
+  });
+});
+
 describe('seed-demo entrypoint source', () => {
   it('does not import the Meili client from the seed process', () => {
     const source = readFileSync(

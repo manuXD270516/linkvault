@@ -1741,42 +1741,42 @@
         <source> Solo fijados </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">50,51</context>
+          <context context-type="linenumber">52,53</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.filter.pinnedHint" datatype="html">
         <source> Muestra la lista corta del grupo. Fijar no cambia el orden del listado. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">53,55</context>
+          <context context-type="linenumber">55,57</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.filter.tagLabel" datatype="html">
         <source>Filtrar por etiqueta</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">57,59</context>
+          <context context-type="linenumber">59,61</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.filter.tagApply" datatype="html">
         <source> Filtrar </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">74,76</context>
+          <context context-type="linenumber">76,78</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.filter.tagClear" datatype="html">
         <source> Quitar etiqueta </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">84,85</context>
+          <context context-type="linenumber">86,87</context>
         </context-group>
       </trans-unit>
       <trans-unit id="links.more" datatype="html">
         <source> Ver más </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">107,108</context>
+          <context context-type="linenumber">109,110</context>
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/links/my-links.page.html</context>
@@ -1787,77 +1787,77 @@
         <source> Los links nuevos se comparten con un enlace público </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">127,129</context>
+          <context context-type="linenumber">129,131</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.publicDefaultHint" datatype="html">
         <source> Solo afecta a lo que se guarde a partir de ahora; los links que ya están no cambian. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">130,134</context>
+          <context context-type="linenumber">132,136</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.inviteTitle" datatype="html">
         <source>Código de invitación</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">137,138</context>
+          <context context-type="linenumber">139,140</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.inviteWarning" datatype="html">
         <source> Quien tenga este código puede entrar y ver los nombres de los miembros. Regenéralo si se filtró. </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">140,143</context>
+          <context context-type="linenumber">142,145</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.invitationCopied" datatype="html">
         <source>Invitación copiada</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">144,146</context>
+          <context context-type="linenumber">146,148</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.invitationFallback" datatype="html">
         <source> No pudimos usar el portapapeles. Copia este mensaje: </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">148,150</context>
+          <context context-type="linenumber">150,152</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.copyInvitation" datatype="html">
         <source> Copiar invitación </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">160,162</context>
+          <context context-type="linenumber">162,164</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.rename" datatype="html">
         <source> Renombrar </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">169,171</context>
+          <context context-type="linenumber">171,173</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.rotateInviteCode" datatype="html">
         <source> Regenerar el código </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">178,180</context>
+          <context context-type="linenumber">180,182</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.membersTitle" datatype="html">
         <source>Miembros</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">185,186</context>
+          <context context-type="linenumber">187,188</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.role.owner" datatype="html">
         <source>Propietario</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">192,193</context>
+          <context context-type="linenumber">194,195</context>
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/groups-list.page.html</context>
@@ -1868,7 +1868,7 @@
         <source>Miembro</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">194,196</context>
+          <context context-type="linenumber">196,198</context>
         </context-group>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/groups-list.page.html</context>
@@ -1879,168 +1879,308 @@
         <source>Desde el <x id="INTERPOLATION" equiv-text="{{ member.joinedAt | date: &apos;dd/MM/yyyy&apos; }}"/></source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">198,199</context>
+          <context context-type="linenumber">200,201</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.transfer" datatype="html">
         <source> Nombrar propietario </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">208,209</context>
+          <context context-type="linenumber">210,211</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.removeMember" datatype="html">
         <source> Expulsar </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">217,219</context>
+          <context context-type="linenumber">219,221</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.rotateAfterRemoval" datatype="html">
         <source> Regenerar el código para que no pueda volver a entrar </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">232,234</context>
+          <context context-type="linenumber">234,236</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.rotateOfferDismiss" datatype="html">
         <source> Ahora no </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">235,238</context>
+          <context context-type="linenumber">237,240</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.ownerLeaveHint" datatype="html">
         <source>Para salir, nombra propietario a otro miembro</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">246,248</context>
+          <context context-type="linenumber">248,250</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.ownerAloneHint" datatype="html">
         <source>Eres el único miembro: para irte, borra el grupo</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">250,253</context>
+          <context context-type="linenumber">252,255</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.delete" datatype="html">
         <source> Borrar el grupo </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">261,263</context>
+          <context context-type="linenumber">263,265</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.leave" datatype="html">
         <source> Salir del grupo </source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.html</context>
-          <context context-type="linenumber">271,275</context>
+          <context context-type="linenumber">273,277</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.leaveTitle" datatype="html">
         <source>Salir del grupo</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">191</context>
+          <context context-type="linenumber">193</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.leaveMessage" datatype="html">
         <source>Dejarás de ver este grupo. Para volver necesitarás el código de invitación.</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">192</context>
+          <context context-type="linenumber">194</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.leaveConfirm" datatype="html">
         <source>Salir</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">193</context>
+          <context context-type="linenumber">195</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.deleteTitle" datatype="html">
         <source>Borrar el grupo</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">207</context>
+          <context context-type="linenumber">209</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.deleteConfirm" datatype="html">
         <source>Borrar</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">209</context>
+          <context context-type="linenumber">211</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.rotateTitle" datatype="html">
         <source>Regenerar el código</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">245</context>
+          <context context-type="linenumber">247</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.rotateMessage" datatype="html">
         <source>Los miembros actuales siguen dentro; solo dejará de servir el código anterior</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">246</context>
+          <context context-type="linenumber">248</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.rotateConfirm" datatype="html">
         <source>Regenerar</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">247</context>
+          <context context-type="linenumber">249</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.invitationMessage" datatype="html">
         <source>Únete a «<x id="NAME" equiv-text="group.name"/>» en LinkVault: <x id="LINK" ctype="x-a" equiv-text="link"/> (código <x id="CODE" equiv-text="group.inviteCode"/>)</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">268</context>
+          <context context-type="linenumber">270</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.removeMemberTitle" datatype="html">
         <source>Expulsar del grupo</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">303</context>
+          <context context-type="linenumber">305</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.removeMemberMessage" datatype="html">
         <source><x id="NAME" equiv-text="member.displayName"/> dejará de ver este grupo. Podrá volver a entrar si consigue el código.</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">304</context>
+          <context context-type="linenumber">306</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.removeMemberConfirm" datatype="html">
         <source>Expulsar</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">305</context>
+          <context context-type="linenumber">307</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.transferTitle" datatype="html">
         <source>Nombrar propietario</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">328</context>
+          <context context-type="linenumber">330</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.transferMessage" datatype="html">
         <source>«<x id="NAME" equiv-text="member.displayName"/>» tendrá el rol de propietario de «<x id="GROUP" equiv-text="current.name"/>»: podrá renombrarlo, expulsar miembros y borrarlo. Tú seguirás como miembro y no podrás deshacerlo.</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">329</context>
+          <context context-type="linenumber">331</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.detail.transferConfirm" datatype="html">
         <source>Nombrar propietario</source>
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-detail.page.ts</context>
-          <context context-type="linenumber">330</context>
+          <context context-type="linenumber">332</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.title" datatype="html">
+        <source> La semana del grupo </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-weekly-brief-card.component.html</context>
+          <context context-type="linenumber">7,10</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.error" datatype="html">
+        <source>No pudimos cargar la semana del grupo.</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-weekly-brief-card.component.html</context>
+          <context context-type="linenumber">20,22</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.retry" datatype="html">
+        <source> Reintentar </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-weekly-brief-card.component.html</context>
+          <context context-type="linenumber">29,31</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.hideOffers" datatype="html">
+        <source>Ocultar ofertas</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-weekly-brief-card.component.html</context>
+          <context context-type="linenumber">53,54</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.footer" datatype="html">
+        <source> Solo cuenta datos de las ofertas, nunca lo que hace cada miembro. </source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-weekly-brief-card.component.html</context>
+          <context context-type="linenumber">103,106</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.bullet.closingOne" datatype="html">
+        <source>1 oferta cierra el <x id="DATE" equiv-text="firstExpiresAt"/>.</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-weekly-brief-text.ts</context>
+          <context context-type="linenumber">32</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.bullet.closingMany" datatype="html">
+        <source><x id="COUNT" equiv-text="fact.count"/> ofertas cierran en los próximos días; la primera, el <x id="DATE" equiv-text="firstExpiresAt"/>.</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-weekly-brief-text.ts</context>
+          <context context-type="linenumber">33</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.bullet.skill" datatype="html">
+        <source><x id="SKILL" equiv-text="skillLabel"/> aparece en <x id="COUNT" equiv-text="fact.count"/> de las <x id="TOTAL" equiv-text="fact.total"/> ofertas abiertas con habilidades detectadas.</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-weekly-brief-text.ts</context>
+          <context context-type="linenumber">37</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.bullet.sharedOne" datatype="html">
+        <source>Se compartió 1 oferta en el grupo la semana pasada.</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-weekly-brief-text.ts</context>
+          <context context-type="linenumber">41</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.bullet.sharedMany" datatype="html">
+        <source>Se compartieron <x id="COUNT" equiv-text="fact.count"/> ofertas en el grupo la semana pasada.</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-weekly-brief-text.ts</context>
+          <context context-type="linenumber">42</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.header.one" datatype="html">
+        <source>Actualizada el <x id="DATE" equiv-text="date"/> · 1 oferta abierta</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-weekly-brief-text.ts</context>
+          <context context-type="linenumber">50</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.header.many" datatype="html">
+        <source>Actualizada el <x id="DATE" equiv-text="date"/> · <x id="COUNT" equiv-text="openOffers"/> ofertas abiertas</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-weekly-brief-text.ts</context>
+          <context context-type="linenumber">51</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.offer.closes" datatype="html">
+        <source>cierra el <x id="DATE" equiv-text="date"/></source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-weekly-brief-text.ts</context>
+          <context context-type="linenumber">57</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.showOffers" datatype="html">
+        <source>Ver ofertas (<x id="COUNT" equiv-text="count"/>)</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-weekly-brief-text.ts</context>
+          <context context-type="linenumber">62</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.moreOne" datatype="html">
+        <source>y 1 más en el listado del grupo</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-weekly-brief-text.ts</context>
+          <context context-type="linenumber">68</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.moreMany" datatype="html">
+        <source>y <x id="COUNT" equiv-text="moreCount"/> más en el listado del grupo</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-weekly-brief-text.ts</context>
+          <context context-type="linenumber">69</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.missingOne" datatype="html">
+        <source>1 ya no está en el grupo</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-weekly-brief-text.ts</context>
+          <context context-type="linenumber">75</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.missingMany" datatype="html">
+        <source><x id="COUNT" equiv-text="missingCount"/> ya no están en el grupo</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-weekly-brief-text.ts</context>
+          <context context-type="linenumber">76</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.empty" datatype="html">
+        <source>Todavía no hay novedades para resumir esta semana.</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-weekly-brief-text.ts</context>
+          <context context-type="linenumber">81</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.emptyHint" datatype="html">
+        <source>Aparecen cuando una oferta del grupo cierra de hoy a 7 días, dos o más mencionan la misma habilidad o se compartieron ofertas la semana pasada. Se revisa cada mañana.</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-weekly-brief-text.ts</context>
+          <context context-type="linenumber">86</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.list.title" datatype="html">

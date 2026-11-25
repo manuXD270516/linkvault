@@ -276,6 +276,10 @@ async function ensurePreview(
   if ('salary' in seed && seed.salary !== undefined) {
     fields['salary'] = seed.salary;
   }
+  if ('skills' in seed) {
+    // Se fija el conjunto entero cada vez (no se agrega): una segunda corrida deja las mismas habilidades.
+    fields['skills'] = seed.skills.map((skill) => ({ ...skill }));
+  }
   if ('expiresInDays' in seed) {
     // Fecha sin hora, UTC de la corrida + N días (N3 de weekly-plan).
     fields['expiresAt'] = new Date(

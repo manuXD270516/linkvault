@@ -40,6 +40,12 @@ export const workerConfigSchema = z
       .enum(['true', 'false'])
       .default('false')
       .transform((value) => value === 'true'),
+    // Semana del grupo (change group-weekly-brief, D2/H7). A diferencia del digest, va ENCENDIDO por defecto: el compose
+    // de producción no reenvía al worker variables que no declara, y el trabajo no sale de Mongo (sin red, IA ni correo).
+    FEATURE_GROUP_BRIEF: z
+      .enum(['true', 'false'])
+      .default('true')
+      .transform((value) => value === 'true'),
     // Cron UTC del job raíz (default: lunes 14:00 → procesa W−1).
     GROUP_DIGEST_CRON: z
       .string()

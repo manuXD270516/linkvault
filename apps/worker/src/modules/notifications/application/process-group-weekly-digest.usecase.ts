@@ -1,6 +1,7 @@
 import {
   GROUP_WEEKLY_DIGEST_TYPE,
   groupDigestAggregateKey,
+  windowForWeekKey,
 } from '@linkvault/shared';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
@@ -8,7 +9,6 @@ import {
   digestHasContent,
 } from '../domain/digest-content';
 import { prefsOf, typeEnabled } from '../domain/fanout';
-import { windowForWeekKey } from '../domain/iso-week';
 import {
   GROUP_DIGEST_CATALOG,
   GROUP_DIGEST_ENABLED,
@@ -191,9 +191,7 @@ export class ProcessGroupWeeklyDigest {
             preferencesUrl,
             linkTitles,
             moreCount: withMore.moreCount,
-            ...(groupName === null || groupName === ''
-              ? {}
-              : { groupName }),
+            ...(groupName === null || groupName === '' ? {} : { groupName }),
           },
         });
         await this.ledger.markCompleted(key, this.clock.now());

@@ -1,4 +1,4 @@
-import { WEEKLY_PLAN_MAX_ACTIONS } from '@linkvault/shared';
+import { nextWeekKey, WEEKLY_PLAN_MAX_ACTIONS } from '@linkvault/shared';
 import { evaluateRules, RULE_ORDER } from './rules';
 import type {
   PlanCandidate,
@@ -7,7 +7,6 @@ import type {
   WeeklyPlanOutcome,
 } from './weekly-plan';
 import type { WeeklyPlanner } from './weekly-planner';
-import { nextWeekKey } from './week-key';
 
 /**
  * Planificador determinista (D1-D3, D5): una candidata por postulación, ocultas las que decidió la persona, y selección

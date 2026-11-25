@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isoWeekKeySchema } from '../time/iso-week';
 
 // Contrato HTTP de «Tu semana» (design D8 de weekly-plan, ADR-068). El texto del motivo no viaja: lo arma el SPA desde
 // `reason` con i18n. `planner` es un enum para que el corte LLM añada `'llm'` sin romper a los clientes.
@@ -24,7 +25,7 @@ export type WeeklyPlanRule = z.infer<typeof weeklyPlanRuleSchema>;
 export const weeklyPlanDecisionSchema = z.enum(['done', 'dismissed', 'snoozed']);
 export type WeeklyPlanDecision = z.infer<typeof weeklyPlanDecisionSchema>;
 
-export const weeklyPlanWeekKeySchema = z.string().regex(/^\d{4}-W\d{2}$/);
+export const weeklyPlanWeekKeySchema = isoWeekKeySchema;
 
 /** Solo se acota: el formato `<regla>:<applicationId>` lo juzga el dominio (404 uniforme). */
 export const weeklyPlanCandidateIdSchema = z.string().trim().min(1).max(96);
