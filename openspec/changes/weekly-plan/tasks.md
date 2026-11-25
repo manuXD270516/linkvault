@@ -201,10 +201,12 @@ otra cosa.
   alta por la API, un link seguido como `saved` con `expiresAt` hoy + 3 y otro `applied` con `statusChangedAt` hace 12
   días (escritos en Mongo como `links.spec.ts:182`). Verificar en `chromium`: «weekly plan card shows two actions and
   marks one done» (la acción marcada desaparece y aparece «¿Ya postulaste? Muévela a Postulada»).
+  Estado (2026-11-25): spec escrito en `apps/web-e2e/src/weekly-plan.spec.ts` (etiquetas `@lot1`, `@desktop-case`; `typecheck` y `lint` de `web-e2e` en verde; `playwright --list` lo asigna solo a `chromium`), pero SIN correr: la pila necesita las rutas del backend (4.5b) que aún no existen. No se marca hasta ejecutarlo con `pnpm nx run web-e2e:e2e-stack -- --project=chromium weekly-plan.spec.ts`.
 - [ ] 8.1b [frontend] Mismo fichero, caso de móvil y borrador. Verificar en `mobile`: «weekly plan card sits above the
   columns on mobile and copies a follow-up draft» (tarjeta por encima de la primera columna y botones ≥ 44 px por
   `boundingBox`; el portapapeles contiene «¿Me podrían contar en qué estado está el proceso de selección?»).
 
+  Estado (2026-11-25): caso escrito en el mismo fichero (`@lot1`, `@mobile-case`; `playwright.config.mts` lo asigna solo a `mobile` con `grepInvert`), pero SIN correr por la misma razón. No se marca hasta ejecutarlo con `--project=mobile`.
 ## 9. Cierre
 
 - [ ] 9.1 [infra] `pnpm nx affected -t lint,typecheck,test,i18n-check` en verde (salida a fichero, sin pipes), sin `any`

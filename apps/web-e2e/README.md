@@ -135,6 +135,7 @@ El producto limita el registro a **10 intentos de registro cada 15 minutos por I
 | Corrida | Intentos de registro |
 |---|---|
 | `e2e-stack`: perfil `local`, `chromium` y `mobile`, dos personas cada uno | 4 |
+| Más `weekly-plan.spec.ts` (`@lot1`, una persona por proyecto: `chromium` el caso de escritorio, `mobile` el de móvil) | +2 (6 en total) |
 | `e2e-stack --rehearse-remote`: lo anterior + la siembra de la cuenta del ensayo | 5 |
 | Admisión de `local` en **un** proyecto, `--repeat-each=5` (una invocación por proyecto, pila nueva) | 10, **justo el límite** |
 | Admisión del ensayo en un proyecto (`--rehearse-remote --skip-local`) | 1 |
