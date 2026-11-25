@@ -210,11 +210,12 @@ Todo en `group-brief/domain/`, puro, sin `@nestjs/*`, `mongoose` ni `bullmq`.
 
 ## 5. Seed demo (design D12, spec `platform/demo-seed`)
 
-- [ ] 5.1 [backend] `apps/api/src/seed/demo-seed.dataset.ts` y `seed-demo.runner.ts`: habilidades de D12 en
+- [x] 5.1 [backend] `apps/api/src/seed/demo-seed.dataset.ts` y `seed-demo.runner.ts`: habilidades de D12 en
   `openSalary`, `staleApp` y `closingSoon` por `ensurePreview`. Verificar en `seed-demo.runner.spec.ts`: «demo links
   carry the brief skills» y «second run does not duplicate skills»; y en `compute-group-weekly-briefs.int.spec.ts` (3.7)
   un caso con el mismo universo que el seed: «demo-like group yields closing, docker and typescript bullets in that
   relative order».
+  Estado (2026-11-25): demo-seed.dataset.ts (habilidades de D12 en openSalary, staleApp y closingSoon) y seed-demo.runner.ts (ensurePreview fija el conjunto entero de skills por el mismo camino de edición); seed-demo.runner.spec.ts: «demo links carry the brief skills» y «second run does not duplicate skills» en verde; compute-group-weekly-briefs.int.spec.ts (worker): «demo-like group yields closing, docker and typescript bullets in that relative order» en verde (Docker 3 de 3, TypeScript 2 de 3); falsaciones: sin escribir skills en ensurePreview fallan los 2 del seed; quitar TypeScript de la oferta closingSoon hace fallar el int del worker; restauradas.
 
 ## 6. Tarjeta en el SPA (design D9, spec `web/group-weekly-brief`)
 

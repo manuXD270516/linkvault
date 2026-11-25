@@ -53,12 +53,13 @@ async function addOffer(
   groupId: Types.ObjectId,
   sharedBy: Types.ObjectId,
   sharedAt: Date,
-  link: { expiresAt: string | null; skills: string[] },
+  link: { expiresAt: string | null; skills: string[]; closedAt?: Date },
 ): Promise<Types.ObjectId> {
   const linkId = new Types.ObjectId();
   await connection.collection('job_links').insertOne({
     _id: linkId,
     displayUrl: 'example.com/job',
+    ...(link.closedAt === undefined ? {} : { closedAt: link.closedAt }),
     preview: {
       title: 'Backend engineer',
       company: 'Acme',
@@ -203,6 +204,58 @@ describe('group weekly brief end to end', () => {
       expect(verifyGroupWeeklyBrief(brief)).toEqual({ ok: true });
       expect(brief.groupId).toBe(groupId.toHexString());
     }
+  });
+
+  it('demo-like group yields closing, docker and typescript bullets in that relative order', async () => {
+    // El mismo universo que el seed demo (D12): cinco links compartidos hoy, uno cerrado y uno sin habilidades.
+    const groupId = await addGroup();
+    const today = new Date('2026-11-25T03:00:00.000Z');
+    const closes = new Date(NOW.getTime() + 3 * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10);
+    await addOffer(groupId, ANA, today, {
+      expiresAt: null,
+      skills: ['Docker', 'TypeScript', 'NestJS'],
+    });
+    await addOffer(groupId, ANA, today, {
+      expiresAt: null,
+      skills: [],
+      closedAt: new Date('2026-09-20T12:00:00.000Z'),
+    });
+    await addOffer(groupId, ANA, today, { expiresAt: null, skills: [] });
+    await addOffer(groupId, ANA, today, {
+      expiresAt: null,
+      skills: ['Docker', 'Kotlin'],
+    });
+    await addOffer(groupId, ANA, today, {
+      expiresAt: closes,
+      skills: ['Docker', 'TypeScript', 'SQL'],
+    });
+
+    await useCase().execute(NOW);
+
+    const stored = await connection
+      .collection(GROUP_WEEKLY_BRIEFS_COLLECTION)
+      .findOne({ groupId });
+    const bullets = (stored?.['bullets'] as { factId: string }[]).map(
+      (b) => b.factId,
+    );
+    expect(bullets).toEqual([
+      'closing_soon',
+      'skill_demand:docker',
+      'skill_demand:typescript',
+    ]);
+    const facts = stored?.['facts'] as {
+      factId: string;
+      count: number;
+      total?: number;
+    }[];
+    expect(facts.find((f) => f.factId === 'skill_demand:docker')).toMatchObject(
+      { count: 3, total: 3 },
+    );
+    expect(
+      facts.find((f) => f.factId === 'skill_demand:typescript'),
+    ).toMatchObject({ count: 2, total: 3 });
   });
 
   it('second tick the same day writes nothing against the real store', async () => {
