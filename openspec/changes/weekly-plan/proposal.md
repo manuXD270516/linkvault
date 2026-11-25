@@ -18,8 +18,8 @@ unidad; la asistencia con revisión humana funciona y la acción automática en 
   detrás del puerto `WeeklyPlanner`. Tres reglas: **postular antes de que cierre** (guardada o «me interesa» que vence
   en 7 días o con encaje alto), **hacer seguimiento** (postulada o en proceso, quieta 10 días o más) y **alguien de tu
   grupo conoce a alguien** (solo el **conteo**). Sin cron, sin LLM y sin escrituras al leer.
-- **Decisiones del usuario** (`POST /api/applications/weekly-plan/decisions`): «Hecho», «Descartar» y «La semana que
-  viene», en una **colección propia** `weekly_plan_decisions` con clave `(userId, weekKey, candidateId)`. **Nunca**
+- **Decisiones del usuario** (`POST /api/applications/weekly-plan/decisions`): «Hecho», «Ahora no»
+  (solo esta semana) y «Ocultar sugerencia», en una **colección propia** `weekly_plan_decisions` con clave `(userId, weekKey, candidateId)`. **Nunca**
   cambian el estado de la postulación (sin dual-write) y caducan solas (TTL).
 - **Método de lote nuevo en `LinksFacade`** (`planSignalsOf`): frescura (`closedAt`, `preview.expiresAt`) y conteo de
   «conozco a alguien» en los grupos de quien pregunta, en un número fijo de consultas, sin identidades.

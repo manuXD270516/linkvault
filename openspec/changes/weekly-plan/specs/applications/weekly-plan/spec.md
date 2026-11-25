@@ -43,19 +43,20 @@ implementación en este change es `RuleBasedPlanner`, sin llamadas a `libs/ai`.
 ### Requirement: Reglas del plan
 
 Solo SHALL considerarse postulaciones del usuario que no estén cerradas ni `accepted` y cuyo link exista y no tenga
-`closedAt`, como mucho las 200 cambiadas más recientemente. Cada postulación SHALL producir como mucho una candidata,
+`closedAt`; si hay más de 200, SHALL considerarse las 200 con `statusChangedAt` más antiguo (desempate por identificador). Cada postulación SHALL producir como mucho una candidata,
 la de la primera regla que cumpla en este orden:
 
-1. `apply_before_close`: estado `saved` o `interested`, y `preview.expiresAt` entre hoy y hoy + 7 días (UTC, ambos
-   incluidos) —motivo `closing_soon` con `expiresAt` y `daysLeft`— o, si no, último encaje ≥ 75 —motivo `high_fit` con
-   `score`—.
+1. `apply_before_close`: estado `saved` o `interested`, `preview.expiresAt` ausente o no anterior a hoy, y
+   `preview.expiresAt` entre hoy y hoy + 7 días (UTC, ambos incluidos) —motivo `closing_soon` con `expiresAt` y
+   `daysLeft`— o, si no, último encaje ≥ 75 de un análisis no degradado —motivo `high_fit` con `score`—.
 2. `follow_up`: estado `applied` o `in_process` y al menos 10 días desde `statusChangedAt` —motivo `quiet` con
    `daysQuiet`, `status` y `appliedAt` si existe—.
 3. `ask_know_someone`: estado `saved`, `interested`, `applied` o `in_process`, y al menos una persona distinta de quien
    pide marcó «conozco a alguien» en ese link en un grupo del que quien pide es miembro —motivo `know_someone` con
-   `count` y `groupId`—.
+   `count` igual al número de esas personas en el grupo de quien pide con más marcas, y el `groupId` de ese grupo
+   (desempate por `groupId` ascendente)—.
 
-Un `expiresAt` anterior a hoy NO SHALL cumplir `closing_soon`. Dentro de cada regla el orden SHALL ser: `closing_soon`
+Un `expiresAt` anterior a hoy SHALL dejar la postulación fuera de `apply_before_close`, también por encaje. Dentro de cada regla el orden SHALL ser: `closing_soon`
 por `daysLeft` ascendente y después `high_fit` por `score` descendente; `follow_up` por `daysQuiet` descendente;
 `ask_know_someone` por `count` descendente; desempate por `applicationId` ascendente. La selección SHALL tomar por
 turnos la primera candidata visible de cada regla en el orden 1, 2, 3 hasta llegar a 3 o agotarlas. El `candidateId`
@@ -73,11 +74,29 @@ SHALL ser `<rule>:<applicationId>`.
 - **WHEN** Ana pide el plan
 - **THEN** esa postulación NO SHALL aparecer como `closing_soon`
 
+#### Scenario: Vencida con encaje alto
+
+- **GIVEN** una postulación `saved` cuyo link tiene `expiresAt` de ayer, sin `closedAt`, y último encaje 80 no degradado
+- **WHEN** Ana pide el plan
+- **THEN** NO SHALL incluir ninguna acción `apply_before_close` de esa postulación
+
+#### Scenario: Cierra hoy
+
+- **GIVEN** una postulación `interested` cuyo link tiene `expiresAt` igual a la fecha UTC de hoy
+- **WHEN** Ana pide el plan
+- **THEN** SHALL incluir una acción `apply_before_close` con motivo `closing_soon` y `daysLeft` 0
+
 #### Scenario: Encaje alto sin fecha de cierre
 
-- **GIVEN** una postulación `interested` sin `expiresAt` con último encaje 80
+- **GIVEN** una postulación `interested` sin `expiresAt` con último encaje 80 no degradado
 - **WHEN** Ana pide el plan
 - **THEN** SHALL incluir una acción `apply_before_close` con motivo `high_fit` y `score` 80
+
+#### Scenario: Encaje degradado no cuenta
+
+- **GIVEN** una postulación `interested` sin `expiresAt` cuyo último análisis dio 90 con `degraded` verdadero
+- **WHEN** Ana pide el plan
+- **THEN** NO SHALL incluir una acción `high_fit` de esa postulación
 
 #### Scenario: Postulación quieta
 
@@ -123,18 +142,24 @@ notas, comentarios ni estados de otras personas.
 - **THEN** la acción `ask_know_someone` SHALL tener `count` 2
 - **AND** el cuerpo de la respuesta NO SHALL contener el userId ni el `displayName` de Bob ni de Carla
 
+#### Scenario: Conteo del grupo elegido
+
+- **GIVEN** Ana miembro de G1 y G2 con el mismo link en los dos, Bob marcado en G1, Carla y Dan en G2, y Ana en G2
+- **WHEN** Ana pide el plan
+- **THEN** la acción `ask_know_someone` SHALL tener `count` 2 y `groupId` G2
+
 ### Requirement: Decisiones sobre una acción
 
 `POST /api/applications/weekly-plan/decisions`, autenticado, con `{ candidateId, decision }` validado por
 `weeklyPlanDecisionRequestSchema` (`decision` ∈ `done`, `dismissed`, `snoozed`), SHALL guardar la decisión en la
 colección `weekly_plan_decisions` con clave única `(userId, weekKey, candidateId)` —la última escritura gana— y SHALL
 responder `200` con el plan recalculado. El `candidateId` SHALL estar entre las candidatas elegibles de ese momento
-(antes del tope y de ocultar); si no, SHALL responder `404` con código `weekly_plan_action_not_found`, igual para un id
-inventado, ajeno o que ya no aplica. Un cuerpo inválido SHALL responder `400`. Una decisión NO SHALL modificar
+(antes del tope y de ocultar); si no, SHALL responder `404` con código `weekly_plan_action_not_found` —registrado en
+`apiErrorCodeSchema` de `libs/shared`—, igual para un id inventado, ajeno o que ya no aplica. Un cuerpo inválido SHALL responder `400`. Una decisión NO SHALL modificar
 `applications` ni `application_events`. Los documentos SHALL caducar a los 35 días de `decidedAt`.
 
-Al leer, una candidata SHALL ocultarse si tiene cualquier decisión en la semana en curso, o `done` o `dismissed` en la
-semana anterior; `snoozed` de la semana anterior NO SHALL ocultarla. `doneThisWeek` SHALL contar las decisiones `done`
+Al leer, una decisión `snoozed` SHALL ocultar la candidata solo en la semana de la decisión; `done` SHALL ocultarla en
+esa semana y en la siguiente; `dismissed` SHALL ocultarla mientras la decisión exista (hasta que caduque). `doneThisWeek` SHALL contar las decisiones `done`
 de la semana en curso.
 
 #### Scenario: Hecho oculta y entra la siguiente
@@ -157,11 +182,17 @@ de la semana en curso.
 - **WHEN** pide el plan en `2026-W48` y después en `2026-W49` con la candidata aún elegible
 - **THEN** en `2026-W48` NO SHALL aparecer y en `2026-W49` SHALL poder aparecer
 
-#### Scenario: Descartada no vuelve el lunes
+#### Scenario: Hecho no vuelve el lunes
+
+- **GIVEN** Ana marcó `done` una candidata en `2026-W48`
+- **WHEN** pide el plan en `2026-W49` y en `2026-W50` con la candidata aún elegible
+- **THEN** en `2026-W49` NO SHALL aparecer y en `2026-W50` SHALL poder aparecer
+
+#### Scenario: Ocultar sugerencia
 
 - **GIVEN** Ana marcó `dismissed` una candidata en `2026-W48`
-- **WHEN** pide el plan en `2026-W49` con la candidata aún elegible
-- **THEN** NO SHALL aparecer, y en `2026-W50` SHALL poder aparecer
+- **WHEN** pide el plan en `2026-W49`, `2026-W50` y `2026-W52` con la candidata aún elegible
+- **THEN** NO SHALL aparecer en ninguna de esas semanas
 
 #### Scenario: Candidata ajena o inventada
 

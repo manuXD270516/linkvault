@@ -46,7 +46,7 @@ Lo que ya existe y este change reutiliza (verificado en el código de `c45ee799`
 **Goals**
 
 - Que la persona vea arriba del tablero **como mucho 3 acciones** para esta semana, cada una con un motivo de una línea
-  en lenguaje llano, y pueda marcarlas «Hecho», «Descartar» o «La semana que viene».
+  en lenguaje llano, y pueda marcarlas «Hecho», «Ahora no» u «Ocultar sugerencia».
 - Cálculo **on-read, determinista y sin IA**, detrás de un puerto que admita después un planificador LLM sin tocar el
   contrato.
 - Cero datos de otros miembros salvo un **conteo**.
@@ -86,12 +86,19 @@ recientemente (`WEEKLY_PLAN_SCAN_MAX`), cuyo link existe y **no** tiene `closedA
 
 | Regla (`rule`) | Cumple si | Motivo (`reason.kind`) | Orden dentro de la regla |
 |---|---|---|---|
-| `apply_before_close` | estado `saved` o `interested`, y (`expiresAt` entre hoy y hoy+7 días UTC **o** encaje ≥ 75) | `closing_soon` (`expiresAt`, `daysLeft` 0-7) si vence; si no, `high_fit` (`score`) | `closing_soon` por `daysLeft` asc; luego `high_fit` por `score` desc |
+| `apply_before_close` | estado `saved` o `interested`, `expiresAt` ausente o ≥ hoy, y (`expiresAt` entre hoy y hoy+7 días UTC **o** último encaje ≥ 75 con `degraded === false`) | `closing_soon` (`expiresAt`, `daysLeft` 0-7) si vence; si no, `high_fit` (`score`) | `closing_soon` por `daysLeft` asc; luego `high_fit` por `score` desc |
 | `follow_up` | estado `applied` o `in_process`, y `now − statusChangedAt ≥ 10 días` | `quiet` (`daysQuiet`, `status`, `appliedAt?`) | `daysQuiet` desc |
 | `ask_know_someone` | estado `saved`, `interested`, `applied` o `in_process`, y conteo ≥ 1 | `know_someone` (`count`, `groupId`) | `count` desc |
 
 Desempate final en todas: `applicationId` ascendente. Un `expiresAt` anterior a hoy sin `closedAt` (el detector aún no
-pasó) **no** cumple `closing_soon`: es un cierre de calendario (ADR-041). Constantes en `libs/shared`:
+pasó) es un cierre de calendario (ADR-041): la postulación **no** es elegible para `apply_before_close` por ninguna de
+las dos vías, tampoco por encaje (C2). `high_fit` exige un análisis **no degradado** (C7): el `RuleBasedMatcher` no es
+señal suficiente para decir «encaja». `daysLeft` 0 se muestra como «Cierra hoy» (B7).
+
+**Universo y tope de 200 (C6).** Antes del tope, las postulaciones se ordenan por `statusChangedAt` **ascendente** (las
+más quietas primero, desempate `id`), no por `updatedAt`: así una edición de notas no saca del plan a una postulación
+quieta. La carga completa de `listByUser` es la misma que ya hace el embudo de ADR-039 y es aceptable con 3-5 usuarios;
+el tope solo acota las lecturas de la fachada. Constantes en `libs/shared`:
 `WEEKLY_PLAN_CLOSING_SOON_DAYS = 7`, `WEEKLY_PLAN_HIGH_FIT_SCORE = 75`, y se reutiliza `APPLICATION_STALE_AFTER_DAYS`.
 
 *Por qué `applied`/`in_process` y no los mismos estados que el embudo:* seguir a una empresa solo tiene sentido después
@@ -117,11 +124,13 @@ Colección `weekly_plan_decisions`: `{ userId: ObjectId, weekKey: string, candid
 sobre `decidedAt`. `POST /api/applications/weekly-plan/decisions` hace upsert (la última gana) y devuelve el plan
 recalculado, así el SPA pinta con una sola petición. **Ninguna** decisión toca `applications` ni `application_events`.
 
-Efecto al leer:
+Efecto al leer (iteración 1: B4 y C8):
 
-- cualquier decisión de la semana en curso oculta esa candidata esta semana;
-- `done` o `dismissed` de la semana anterior la ocultan también esta semana («no me lo repitas el lunes»);
-- `snoozed` de la semana anterior **no** la oculta: «La semana que viene» significa exactamente eso.
+- `snoozed` («Ahora no») oculta la candidata **solo** en la semana W de la decisión;
+- `done` («Hecho») la oculta en W y W+1 («no me lo repitas el lunes»);
+- `dismissed` («Ocultar sugerencia») la oculta mientras viva la decisión, es decir, **todo el TTL** (35 días): la
+  persona dijo que esa sugerencia no le sirve. Para leerlo, el caso de uso pide las decisiones de esa candidata sin
+  filtrar por semana (`listActive(userId)`, acotado por el TTL), no solo las de W y W−1.
 
 Al ocultar una, entra la siguiente candidata si la hay: la tarjeta sigue diciendo lo más útil. La respuesta trae
 `doneThisWeek` (conteo de `done` de la semana) para el «Hiciste N esta semana».
@@ -150,16 +159,20 @@ interface LinkPlanSignals {
   readonly id: string; readonly displayUrl: string; readonly title?: string; readonly company?: string;
   readonly closed: boolean;              // closedAt presente
   readonly expiresAt?: string;           // preview.expiresAt YYYY-MM-DD, ausente si null o sin preview
-  readonly knowSomeoneCount: number;     // personas distintas, sin contar a userId, en grupos de userId
-  readonly knowSomeoneGroupId?: string;  // grupo de userId con más marcas (desempate groupId asc); ausente si 0
+  readonly knowSomeoneCount: number;     // marcas del grupo elegido, sin contar a userId (C1)
+  readonly knowSomeoneGroupId?: string;  // grupo de userId con más marcas de otros (desempate groupId asc); ausente si 0
 }
 ```
+
+**Conteo (iteración 1, C1).** `knowSomeoneCount` es el conteo **del grupo elegido** —el máximo entre los grupos de
+quien pregunta, sin contarle—, no una unión entre grupos. Así el número coincide con el que la persona ve en el listado
+de ese grupo (menos su propia marca) cuando «Abrir» la lleva allí, y no suma personas que no están en ese grupo.
 
 Implementación: (1) `membership.groupsOf(userId)` (ya existe); (2) `JobLinkRepository.planCardsOf(linkIds)`: un `$in`
 con proyección `displayUrl`, `preview.title`, `preview.company`, `preview.expiresAt`, `closedAt`; (3)
 `GroupLinkRepository.knowSomeoneOf(groupIds, linkIds)`: un `find` por el índice único `(groupId, linkId)` con
-proyección `groupId`, `linkId`, `knowSomeoneUserIds`. El conteo deduplica `userId` entre grupos y excluye a quien
-pregunta. **Tres consultas** sea cual sea el número de links; con más de `WEEKLY_PLAN_SCAN_MAX` ids procesa los
+proyección `groupId`, `linkId`, `knowSomeoneUserIds`. Por cada link, el conteo es el del grupo de quien pregunta con
+más marcas de otras personas (sin contarle a él; desempate `groupId` asc), no una unión entre grupos. **Tres consultas** sea cual sea el número de links; con más de `WEEKLY_PLAN_SCAN_MAX` ids procesa los
 primeros y lo dice el comentario. Los ids mal formados o inexistentes no aportan nada (contrato de la fachada,
 `links/sharing` «Links disponibles para otros módulos»). **Nunca** devuelve userIds ni nombres: el tipo no los tiene.
 
@@ -202,12 +215,29 @@ Autenticadas como el resto del controlador; el usuario sale del token, nunca del
 corte 2 añada `'llm'` sin romper a los clientes que ya lo leen. El texto del motivo **no** viaja: lo arma el SPA desde
 `reason` con i18n (D10).
 
-### D9. Seguimiento por plantilla (C4 absorbida)
+**Código de error registrado (C3).** `weekly_plan_action_not_found` entra en `apiErrorCodeSchema`
+(`libs/shared/src/schemas/auth.schema.ts:112`, junto a `application_not_found` en `:177`), con su estado 404 y su
+mensaje en `apps/api/src/presentation/http/api-error.ts` (como `application_not_found`, `:37` y `:96`), en la unión de
+códigos del dominio (`applications/domain/errors.ts:5-7`) con su clase de error, y el filtro
+`api-exception.filter.ts` lo traduce por su `code` (`:99`). El SPA no muestra ese código al usuario: lo usa para
+recargar el plan (D10).
 
-En una acción `follow_up`, «Preparar seguimiento» despliega un texto de 3-4 líneas armado **en el SPA** con
-`$localize` y los datos de la acción (`title`, `company`, `appliedAt` o «hace N días»), en el idioma de la interfaz,
-con «Copiar» (CDK `Clipboard`). Sin LLM, sin destinatario, sin `mailto`, sin envío y sin guardar nada. Sin `title` ni
-`company`, la plantilla usa «la vacante» / «su empresa».
+### D9. Seguimiento por plantilla (C4 absorbida; texto fijado en la iteración 1, B6)
+
+En una acción `follow_up`, «Preparar seguimiento» despliega un texto armado **en el SPA** con `$localize` y los datos
+de la acción, en el idioma de la interfaz, con «Copiar» (CDK `Clipboard`). Sin LLM, sin destinatario, sin `mailto`,
+sin envío y sin guardar nada. El texto es exactamente este (`{título}` → «la vacante» / «the position» y `{empresa}` →
+«su empresa» / «your company» si faltan; la fecha en formato largo del idioma):
+
+| | Español | English |
+|---|---|---|
+| Línea 1 | `Hola:` | `Hello,` |
+| Línea 2 (con `appliedAt`) | `Me postulé a {título} en {empresa} el {fecha}. Sigo con mucho interés en el puesto.` | `I applied for {título} at {empresa} on {fecha}. I am still very interested in the role.` |
+| Línea 2 (sin `appliedAt`) | `Hace un tiempo me postulé a {título} en {empresa}. Sigo con mucho interés en el puesto.` | `I applied for {título} at {empresa} a while ago. I am still very interested in the role.` |
+| Línea 3 | `¿Me podrían contar en qué estado está el proceso de selección?` | `Could you tell me where the selection process currently stands?` |
+
+No dice «adjunto mi CV» ni «como conversamos» (no hay adjunto ni conversación que el sistema conozca) y cierra con una
+pregunta abierta sobre el estado del proceso.
 
 ### D10. Tarjeta «Tu semana» en el tablero
 
@@ -218,13 +248,40 @@ tablero está vacío (el tablero ya tiene su estado vacío y la tarjeta no tendr
 **no** bloquea el tablero.
 
 - Cargando: esqueleto de 3 líneas con `aria-busy="true"`.
-- Vacío: «No hay nada urgente esta semana.» y, si `doneThisWeek > 0`, «Hiciste N esta semana.».
-- Error: «No pudimos armar tu semana.» con «Reintentar»; el tablero sigue funcionando.
-- Acción: motivo en una línea (`i18n` con ICU `plural`), nombre de la oferta y botones «Abrir», «Hecho»,
-  «Descartar», «La semana que viene», con alto mínimo de 44 px (`min-h-11`). «Abrir» abre el detalle de la postulación
-  en la misma página (salida hacia `ApplicationsBoardPage.openDetail`); en `ask_know_someone` navega a
-  `/grupos/:groupId`. Nada abre la oferta externa automáticamente ni actúa hacia fuera.
+- Vacío: «No hay nada urgente esta semana.», la línea fija (B1) «Acá vas a ver cuando una oferta guardada esté por
+  cerrar, una postulación lleve 10 días sin novedades o alguien de tu grupo conozca a alguien.» (EN: «This is where
+  you will see when a saved offer is about to close, an application has gone 10 days without news, or someone in your
+  group knows someone there.») y, si `doneThisWeek > 0`, «Hiciste N esta semana.».
+- Error: «No pudimos armar tu semana.» con «Reintentar»; el tablero sigue funcionando y se pueden mover postulaciones.
+- Acción (B4): el **título** de la oferta (o `displayUrl`) es el enlace «Abrir»: abre el detalle de la postulación en la
+  misma página (salida hacia `ApplicationsBoardPage.openDetail`) y, en `ask_know_someone`, navega a `/grupos/:groupId`
+  (resaltar el link con `?linkId=` queda para el corte siguiente, C13). Debajo, el motivo en una línea y **tres**
+  botones con alto mínimo de 44 px (`min-h-11`): «Hecho» (`done`), «Ahora no» (`snoozed`, solo esta semana) y
+  «Ocultar sugerencia» (`dismissed`). Nada abre la oferta externa ni actúa hacia fuera.
+- Motivos (B2, B7), ES / EN:
+
+  | `reason` | Español | English |
+  |---|---|---|
+  | `closing_soon`, `daysLeft` 0 | `Cierra hoy: postulá hoy.` | `Closes today: apply today.` |
+  | `closing_soon`, `daysLeft` 1 | `Cierra en 1 día: postulá antes.` | `Closes in 1 day: apply before then.` |
+  | `closing_soon`, `daysLeft` N > 1 | `Cierra en N días: postulá antes.` | `Closes in N days: apply before then.` |
+  | `high_fit` | `Encaja N/100 según tu análisis: postulá.` | `Fits N/100 according to your analysis: apply.` |
+  | `quiet` | `N días sin novedades: mandá un seguimiento.` | `N days with no news: send a follow-up.` |
+  | `know_someone`, `count` 1 | `1 persona de tu grupo conoce a alguien ahí: preguntá en el grupo.` | `1 person in your group knows someone there: ask in the group.` |
+  | `know_someone`, `count` N > 1 | `N personas de tu grupo conocen a alguien ahí: preguntá en el grupo.` | `N people in your group know someone there: ask in the group.` |
+
+  **Singular y plural (C9):** el motivo lo arma una función pura `weeklyPlanReasonText(reason)` con **un mensaje
+  `$localize` por variante** (singular y plural elegidos en código), no ICU en la plantilla: se prueba sin renderizar y
+  el catálogo tiene un id por frase.
+- Tras «Hecho» en una acción `apply_before_close` (B5) la tarjeta muestra una línea «¿Ya postulaste? Movela a
+  Postulada» cuyo enlace abre el detalle de esa postulación; no escribe nada ni cambia el estado por su cuenta. La
+  línea desaparece con la siguiente decisión o al recargar.
 - Mientras una decisión viaja, los botones de esa acción quedan deshabilitados; el plan devuelto reemplaza al anterior.
+- Errores al decidir (C4): `404 weekly_plan_action_not_found` → el SPA recarga el plan (`GET`) sin mensaje de error,
+  porque la acción ya no aplica; cualquier otro error → «No pudimos guardar tu elección. Probá de nuevo.» y los
+  botones vuelven a habilitarse.
+- Coherencia con el tablero (C4): tras un `moveTo` exitoso del tablero, el store del plan se recarga, para que una
+  postulación movida a `applied` deje de aparecer como «postulá antes».
 
 Textos con ids `@@applications.weeklyPlan.*`; `messages.xlf` se regenera y `messages.en.xlf` se traduce (ADR-050).
 
@@ -234,6 +291,11 @@ Textos con ids `@@applications.weeklyPlan.*`; `messages.xlf` se regenera y `mess
 `UpdateLinkPreview` (el mismo camino que `ensurePreview`, `seed-demo.runner.ts:252-268`). Con lo que ya hay, Ana ve
 exactamente tres acciones: `apply_before_close` (`closingSoon`), `follow_up` (`staleApp`) y `ask_know_someone`
 (`openSalary`, marcado por Bob). Idempotente: una segunda corrida mueve la fecha a hoy+3 y no duplica nada.
+
+**Estabilidad entre corridas (C5).** `openSalary` está `applied`; si el seed se corre otra vez 10 días después, sin
+más, pasaría a `follow_up` y el plan de Ana dejaría de tener `ask_know_someone`. Por eso el seed fija también
+`statusChangedAt = now` de `openSalary` en **cada** corrida (con el mismo ayudante que ya fija el de `staleApp`,
+`markStaleStatusChangedAt`, `seed-demo.runner.ts:114-117`), y el test de segunda corrida usa `now` + 12 días.
 
 ### D12. Entradas canónicas desde ya
 
@@ -288,28 +350,47 @@ Cada corte es un change propio, con su debate, y ninguno se abre antes de que el
 - **R1. `expiresAt` tiene poca cobertura** (crítico, P2): muchas ofertas no lo traen. Mitigación: `high_fit` como
   segunda vía de la misma regla y el seed para la demo. Se mide en 35b cuántas acciones `closing_soon` salen.
 - **R2. Ex-miembros en `knowSomeoneUserIds`.** El conteo es el mismo array que ya muestra el listado de grupo; si
-  alguien deja el grupo sin que se le quite la marca, cuenta. Mismo comportamiento que `groups/know-someone`; no se
-  arregla aquí.
+  alguien deja el grupo sin que se le quite la marca, cuenta. Mismo comportamiento que `groups/know-someone`; queda
+  fuera de este change y, si se corrige, es en `groups` (iteración 1).
 - **R3. Solo postulaciones.** Una oferta en «Solo para mí» sin seguir no entra al plan. Es deliberado (el tablero es
   la superficie) y reduce lecturas; se revisa con datos.
-- **R4. Más de 200 postulaciones abiertas**: las más antiguas por `updatedAt` no entran. Con 3-5 invitados no ocurre.
+- **R4. Más de 200 postulaciones abiertas**: entran las 200 más quietas (`statusChangedAt` asc, C6); una guardada
+  recién movida podría quedar fuera de `apply_before_close`. Con 3-5 invitados no ocurre.
+- **R8. Registro de los textos.** Los textos fijados en la iteración 1 (B1, B2) usan voseo («postulá», «mandá», «Acá
+  vas a ver»); el resto del SPA usa tuteo («Pulsa», «muévela», «Aquí verás»). Ver Q5.
 - **R5. `isoWeekKey` duplicada** en api y worker. Mismos vectores de test en las dos; se unifica en el corte 3.
 - **R6. La rama no se fusiona** hasta una ventana del owner: la medición real llega con 35b y `main`. Hasta entonces se
   mide con el seed en local.
 - **R7. Ruido de decisiones**: un usuario puede descartar todo. Es su derecho; `doneThisWeek` y el conteo de
   `dismissed` son la métrica (ver Métrica).
 
-**Métrica de éxito (35b, 3-5 invitados):** proporción de acciones mostradas que terminan en `done` en su semana
-(objetivo ≥ 30 %) y proporción de semanas con al menos un `done` por persona activa; se lee de
-`weekly_plan_decisions` antes de que caduquen.
+**Métrica de éxito (35b, 3-5 invitados; iteración 1, B3):**
+
+1. **Semanas-persona con al menos un «Hecho»** sobre semanas-persona activas (con al menos una visita al tablero):
+   objetivo ≥ 50 % en las dos semanas de medición.
+2. **«Hecho» frente a «Ocultar sugerencia»** (`done` vs `dismissed`) por regla: si `dismissed` supera a `done` en una
+   regla, esa regla se revisa.
+3. Ambas se leen de `weekly_plan_decisions` **antes de que venza el TTL** de 35 días (consulta agregada en el RUNBOOK,
+   tarea 9.4), sin `userId` en el resultado.
+4. **Pregunta directa** a cada invitado a las 2 semanas: «¿"Tu semana" te ayudó a decidir qué hacer? ¿Qué le
+   sacarías o agregarías?», anotada en el informe de 35b.
 
 ## Migration Plan
 
-Colección e índices nuevos (Mongoose `autoIndex` como el resto del módulo); sin migración de datos. Rollback: revertir
-el PR; la colección queda huérfana y su TTL la vacía en 35 días. Sin variables de entorno ni flags.
+Colección e índices nuevos (Mongoose `autoIndex` como el resto del módulo, incluido el índice TTL); sin migración de
+datos. Rollback: revertir el PR; la colección queda huérfana y su TTL la vacía en 35 días (o se borra a mano con
+`db.weekly_plan_decisions.drop()`). Sin variables de entorno ni flags. Todo esto queda escrito en `docs/RUNBOOK.md`
+(tarea 9.4, C12).
 
 ## Open Questions
 
+Q1-Q4 quedaron resueltas en la iteración 1 con la recomendación (ver la tabla del debate); se conservan como registro.
+
+- **Q5 [no bloqueante] — voseo o tuteo en los textos nuevos.** B1 y B2 fijaron textos con voseo; el SPA vigente tutea.
+  Opciones: (a) respetar los textos tal como los fijó el debate; (b) pasarlos a tuteo («postula», «manda», «Aquí
+  verás») para que coincidan con el resto del catálogo; (c) decidir un registro único para todo el SPA en otro change.
+  Recomendación: (b) en este change, porque el texto no cambia y la tarjeta no desentona; se aplica solo si el owner o
+  la iteración 2 lo confirman. Mientras tanto, las specs llevan los textos de B1/B2 al pie de la letra.
 - **Q1 [no bloqueante] — e2e «con el seed demo» (condición 7).** `e2e-suite` prohíbe usar `api:seed-demo` en la suite
   por ser estado compartido y mutable (`openspec/changes/e2e-suite/design.md:256`). Opciones: (a) e2e con datos propios
   de la prueba en el perfil `local` (alta por la API y fechas escritas en Mongo como `links.spec.ts:182`) **más** un
@@ -321,6 +402,37 @@ el PR; la colección queda huérfana y su TTL la vacía en 35 días. Sin variabl
   constantes de `libs/shared` y revisarlos con los datos de 35b.
 - **Q4 [no bloqueante] — número de fila en §6.** Se anota como 38 (candidata); si otra rama sin fusionar usa el 38,
   se renumera al fusionar sin cambiar nada más.
+
+## Debate iteración 1 (2026-11-25)
+
+Participaron `critic` y `business`; la sesión principal actuó como `reflect`. V0 de business = obligatorio.
+
+| id | origen | decisión | motivo |
+|---|---|---|---|
+| B1 | business | aceptado | El vacío explica qué aparecerá y cuándo; texto fijo ES/EN en D10 y escenario en `web/weekly-plan`. |
+| B2 | business | aceptado | Cada motivo dice qué hacer con un verbo; textos ES/EN de los cuatro motivos en D10 y escenario. |
+| B3 | business | aceptado | La métrica pasa a semanas-persona con al menos un «Hecho», `done` vs `dismissed` antes del TTL y pregunta directa a las 2 semanas. |
+| B4 | business | adaptado | Tres botones: «Hecho», «Ahora no» (`snoozed`) y «Ocultar sugerencia» (`dismissed`); «Abrir» pasa al título de la acción. |
+| B5 | business | aceptado | Tras «Hecho» en `apply_before_close`, «¿Ya postulaste? Movela a Postulada» abre el detalle; sin escritura automática. |
+| B6 | business | aceptado | Texto del borrador fijado en D9: sin «adjunto mi CV» ni «como conversamos», cierra con una pregunta abierta. |
+| B7 | business | aceptado | `daysLeft` 0 se muestra «Cierra hoy». |
+| C1 | critic | aceptado | `count` = conteo del grupo elegido (máximo por grupo, sin quien pregunta), igual al del listado de ese grupo (D7). |
+| C2 | critic | aceptado | `expiresAt < hoy` no es elegible para `apply_before_close`, tampoco por encaje (D2). |
+| C3 | critic | aceptado | `weekly_plan_action_not_found` registrado en `apiErrorCodeSchema`, `api-error.ts`, errores del dominio y filtro (D8, tarea 4.5). |
+| C4 | critic | aceptado | 404 al decidir recarga el plan; otro error muestra mensaje y reactiva botones; el plan se recarga tras un `moveTo` exitoso (D10). |
+| C5 | critic | aceptado | El seed fija `statusChangedAt = now` de `openSalary` en cada corrida; test de segunda corrida con `now` + 12 días (D11). |
+| C6 | critic | adaptado | Antes del tope de 200, orden por `statusChangedAt` asc; la carga completa es aceptable con 3-5 usuarios (D2, R4). |
+| C7 | critic | aceptado | `high_fit` exige `degraded === false` (D2). |
+| C8 | critic | aceptado | Resuelto con B4: `dismissed` oculta todo el TTL, `done` W y W+1, `snoozed` solo W (D5). |
+| C9 | critic | aceptado | Singular/plural con dos mensajes `$localize` elegidos en código por `weeklyPlanReasonText` (D10). |
+| C10 | critic | aceptado | Comentario del puerto `ApplicationLinks.planSignalsOf` y spec del adaptador (tarea 4.2). |
+| C11 | critic | aceptado | 4.3, 4.6 y 8.1 partidas en tareas de menos de una hora. |
+| C12 | critic | aceptado | Tarea de RUNBOOK (colección, TTL, `autoIndex`, rollback, consulta de métrica) y `deleteMany({ userId: userOid })` en 5.1. |
+| C13 | critic | diferido | Resaltar el link en el grupo con `?linkId=` va al corte siguiente; en el MVP «Abrir» va al grupo y el motivo ya dice qué hacer. R2 (ex-miembros) queda fuera, en `groups`. |
+| Q1 | arquitecto | aceptado | e2e con datos propios en el perfil `local` + test de integración del seed (tareas 6.2, 8.1a-b). |
+| Q2-Q4 | arquitecto | aceptado | TTL de 35 días, umbrales como constantes de `libs/shared`, fila 38 renumerable. |
+
+Abierta tras la iteración 1: Q5 (registro voseo/tuteo, no bloqueante).
 
 ## Aprobación humana (2026-11-25)
 
