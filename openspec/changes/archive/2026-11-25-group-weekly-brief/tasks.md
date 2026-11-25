@@ -280,7 +280,7 @@ Todo en `group-brief/domain/`, puro, sin `@nestjs/*`, `mongoose` ni `bullmq`.
 - [x] 8.2 [infra] Cierre. Verificar: `pnpm nx affected -t lint,typecheck,test,i18n-check` en verde, `bash
   infra/ci/repo-checks.sh` en verde y `openspec validate group-weekly-brief --strict --no-interactive` en verde.
   Estado (2026-11-25): `pnpm nx affected -t lint,typecheck,test,i18n-check --base=origin/main`: 31 de 32 tareas en verde; `api:test` dio timeouts de hook por carga (los locales conocidos, también en main) y repetido solo con `--maxWorkers=2`: 293 ficheros y 3856 tests en verde. `openspec validate group-weekly-brief --strict` y `repo-checks.sh` en verde. QA (qa-reviewer): sin incumplimientos salvo esta tarea; un riesgo menor anotado (application/ del worker importa `mongoose` para EJSON), sin acción obligatoria.
-- [ ] 8.3 [infra] **Diferida: depende de 35b (`staging-host`); no bloquea el cierre de este change** (PO-5). Antes de
+- [ ] 8.3 [infra] **Diferida: depende de 35b (`staging-host`); no bloquea el cierre de este change** (PO-5). **Estado: archivada con esta tarea diferida (PO-5).** Antes de
   invitar en 35b, medir en staging la cobertura de `preview.skills` sobre las ofertas abiertas de los grupos (consulta
   del RUNBOOK). Verificar: la cobertura queda anotada en el informe de 35b. Si es ≥ 50 %, nada más; si no llega, **se invita
   igual** (R2-4) y el informe de 35b reporta la viñeta de habilidades por separado del resto en la métrica 1.

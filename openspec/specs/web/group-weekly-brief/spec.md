@@ -1,0 +1,141 @@
+# web/group-weekly-brief Specification
+
+## Purpose
+
+Tarjeta «La semana del grupo» del SPA: muestra en el detalle del grupo las viñetas verificadas de la semana, con sus
+ofertas a un toque, sin mostrar nunca nada de lo que hace cada miembro.
+
+## Requirements
+
+### Requirement: Tarjeta «La semana del grupo» en el detalle del grupo
+
+`/grupos/:id` SHALL mostrar, encima del listado de links y a todo el ancho, también en pantallas móviles, la tarjeta
+«La semana del grupo» con la respuesta de `GET /api/groups/:id/weekly-brief`. Con `brief`, SHALL mostrar «Actualizada
+el {fecha} · N ofertas abiertas» (singular «1 oferta abierta»), una línea por viñeta en el orden recibido y el pie
+«Solo cuenta datos de las ofertas, nunca lo que hace cada miembro.». Las fechas (`asOf`, `firstExpiresAt`, `expiresAt`) SHALL formatearse
+como fechas sin hora en UTC, con día de la semana, día y mes en el idioma de la interfaz. La tarjeta SHALL tener estado
+de carga (con `aria-busy="true"`), estado vacío con `brief` `null` («Todavía no hay novedades para resumir esta
+semana.» y «Aparecen cuando una oferta del grupo cierra de hoy a 7 días, dos o más mencionan la misma habilidad o se
+compartieron ofertas la semana pasada. Se revisa cada mañana.»; EN: «There is nothing to summarize for this week yet.»
+y «They appear when an offer in the group closes between today and 7 days from now, two or more mention the same skill,
+or offers were shared last week. It is checked every morning.») y estado de error («No pudimos cargar la semana del grupo.» con
+«Reintentar»). Un error de la tarjeta NO SHALL impedir ver ni usar el detalle del grupo ni su listado. La tarjeta NO
+SHALL mostrar nombres, avatares, estados de postulación, marcas, notas, etiquetas ni comentarios.
+
+#### Scenario: Tres viñetas visibles
+
+- **GIVEN** un grupo cuya semana tiene tres viñetas y 7 ofertas abiertas, actualizada el lunes 2026-11-23
+- **WHEN** un miembro abre `/grupos/:id` con la interfaz en español
+- **THEN** SHALL ver «La semana del grupo», «Actualizada el lunes, 23 de noviembre · 7 ofertas abiertas» y las tres
+  viñetas encima del listado de links
+
+#### Scenario: Vacío honesto
+
+- **GIVEN** un grupo con `brief` `null`
+- **WHEN** un miembro abre su detalle
+- **THEN** la tarjeta SHALL decir «Todavía no hay novedades para resumir esta semana.» y «Aparecen cuando una oferta
+  del grupo cierra de hoy a 7 días, dos o más mencionan la misma habilidad o se compartieron ofertas la semana pasada.
+  Se revisa cada mañana.»
+
+#### Scenario: Vacío en inglés
+
+- **GIVEN** la interfaz en inglés y `brief` `null`
+- **WHEN** un miembro abre el detalle
+- **THEN** la tarjeta SHALL decir «There is nothing to summarize for this week yet.»
+
+#### Scenario: Error de la tarjeta
+
+- **GIVEN** `GET /api/groups/:id/weekly-brief` responde `500`
+- **WHEN** un miembro abre el detalle
+- **THEN** la tarjeta SHALL mostrar «No pudimos cargar la semana del grupo.» y «Reintentar»
+- **AND** el listado de links del grupo SHALL mostrarse y SHALL poder guardarse un link
+
+#### Scenario: Reintentar
+
+- **GIVEN** la tarjeta en estado de error
+- **WHEN** el miembro pulsa «Reintentar» y la api responde `200`
+- **THEN** la tarjeta SHALL mostrar la semana sin recargar la página
+
+### Requirement: Texto de cada viñeta
+
+El texto de cada viñeta SHALL armarse en el SPA desde el hecho citado, con un mensaje del catálogo i18n por variante y
+el singular o el plural elegido en código, así:
+
+| Hecho | Español | English |
+|---|---|---|
+| `closing_soon`, `count` 1 | «1 oferta cierra el {firstExpiresAt}.» | «1 offer closes on {firstExpiresAt}.» |
+| `closing_soon`, `count` N > 1 | «N ofertas cierran en los próximos días; la primera, el {firstExpiresAt}.» | «N offers close soon; the first on {firstExpiresAt}.» |
+| `skill_demand` | «{skillLabel} aparece en N de las M ofertas abiertas con habilidades detectadas.» | «{skillLabel} appears in N of the M open offers with detected skills.» |
+| `shared_last_week`, `count` 1 | «Se compartió 1 oferta en el grupo la semana pasada.» | «1 offer was shared in the group last week.» |
+| `shared_last_week`, `count` N > 1 | «Se compartieron N ofertas en el grupo la semana pasada.» | «N offers were shared in the group last week.» |
+
+Los números SHALL ser exactamente los del hecho (`count`, `total`) y `{skillLabel}` SHALL mostrarse tal como viene, sin
+traducir. Todos los textos de la tarjeta SHALL estar en el catálogo i18n en español, con tuteo, y en inglés.
+
+#### Scenario: Habilidad
+
+- **GIVEN** un hecho `skill_demand` con `skillLabel` «Docker», `count` 4 y `total` 7
+- **WHEN** se muestra su viñeta en español y en inglés
+- **THEN** SHALL leerse «Docker aparece en 4 de las 7 ofertas abiertas con habilidades detectadas.» y «Docker appears
+  in 4 of the 7 open offers with detected skills.»
+
+#### Scenario: Cierre en singular y en plural
+
+- **GIVEN** un `closing_soon` con `count` 1 y `firstExpiresAt` `2026-11-26`, y otro con `count` 2 y el mismo
+  `firstExpiresAt`
+- **WHEN** se muestran en español y en inglés
+- **THEN** SHALL leerse «1 oferta cierra el jueves, 26 de noviembre.» y «2 ofertas cierran en los próximos días; la
+  primera, el jueves, 26 de noviembre.»
+- **AND** en inglés «1 offer closes on Thursday, November 26.» y «2 offers close soon; the first on Thursday,
+  November 26.»
+
+#### Scenario: Semana pasada en inglés
+
+- **GIVEN** un `shared_last_week` con `count` 3 y otro con `count` 1
+- **WHEN** se muestran con la interfaz en inglés
+- **THEN** SHALL leerse «3 offers were shared in the group last week.» y «1 offer was shared in the group last week.»
+- **AND** en español «Se compartieron 3 ofertas en el grupo la semana pasada.» y «Se compartió 1 oferta en el grupo la
+  semana pasada.»
+
+### Requirement: Ofertas de cada viñeta
+
+Cada viñeta con ofertas SHALL tener un botón «Ver ofertas (N)», con N = número de `offers` más `moreCount`, que
+despliega y repliega («Ocultar ofertas») la lista de sus ofertas, con `aria-expanded` y `aria-controls`, y un área
+táctil de al menos 44 px de alto. Cada oferta SHALL mostrar su título (o su `displayUrl` sin título) y su empresa si la
+tiene —y, en `closing_soon`, «cierra el {fecha}» / «closes on {date}» con su `expiresAt`—, como enlace a su `displayUrl` que se abre en otra pestaña con `rel="noopener noreferrer"`. Con `moreCount` > 0
+SHALL añadirse «y N más en el listado del grupo» (singular «y 1 más en el listado del grupo»); con `missingCount` > 0,
+«N ya no están en el grupo» (singular «1 ya no está en el grupo»). Una viñeta sin `offers` ni `moreCount` NO SHALL
+mostrar el botón y SHALL mostrar solo la línea de `missingCount`. Nada de la tarjeta SHALL escribir en la api.
+
+#### Scenario: Desplegar las ofertas
+
+- **GIVEN** una viñeta con dos ofertas, `moreCount` 0 y `missingCount` 0
+- **WHEN** el miembro pulsa «Ver ofertas (2)»
+- **THEN** SHALL ver los dos títulos como enlaces a sus `displayUrl` con `target="_blank"` y `rel="noopener noreferrer"`
+- **AND** el botón SHALL decir «Ocultar ofertas» con `aria-expanded="true"`
+
+#### Scenario: Fecha de cada oferta que cierra
+
+- **GIVEN** una viñeta `closing_soon` con una oferta de `expiresAt` `2026-11-26`
+- **WHEN** el miembro la despliega en español
+- **THEN** junto a esa oferta SHALL leerse «cierra el jueves, 26 de noviembre»
+
+#### Scenario: Más ofertas y ofertas que ya no están
+
+- **GIVEN** una viñeta con 10 ofertas, `moreCount` 4 y `missingCount` 1
+- **WHEN** el miembro la despliega
+- **THEN** SHALL ver «Ver ofertas (14)» antes de desplegar, 10 enlaces, «y 4 más en el listado del grupo» y «1 ya no
+  está en el grupo»
+
+#### Scenario: Todas salieron del grupo
+
+- **GIVEN** una viñeta con `offers` vacío, `moreCount` 0 y `missingCount` 2
+- **WHEN** se muestra
+- **THEN** NO SHALL haber botón «Ver ofertas» y SHALL leerse «2 ya no están en el grupo»
+
+#### Scenario: Móvil
+
+- **GIVEN** un viewport de 390 px de ancho y una semana con tres viñetas
+- **WHEN** un miembro abre el detalle del grupo
+- **THEN** la tarjeta SHALL estar encima del listado de links y cada botón «Ver ofertas» SHALL medir al menos 44 px de
+  alto
