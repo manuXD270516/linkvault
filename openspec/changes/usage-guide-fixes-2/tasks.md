@@ -20,7 +20,7 @@ atrasa, el grupo 3 (H3) es el primer recorte (PO-4).
 
 ## 1. H1 — el diálogo de encaje llega a «Necesitas un CV guardado» (design D1, D2)
 
-- [ ] 1.1 [frontend] **Rechazos por código (D1).** Primero, en `apps/web/src/app/features/match/match.dialog.spec.ts`:
+- [x] 1.1 [frontend] **Rechazos por código (D1).** Primero, en `apps/web/src/app/features/match/match.dialog.spec.ts`:
   - cambiar a `409` los `apiError(…, 422)` de `job_not_ready`, `cv_not_ready` y `cv_not_readable` de los casos
     existentes; el de `cv_not_ready` pasa a abrir con un CV con `extraction.status: 'pending'`, con `stopPolling` o
     fake timers para el sondeo del `CvStore` (P2-5);
@@ -37,7 +37,8 @@ atrasa, el grupo 3 (H3) es el primer recorte (PO-4).
   `pnpm nx run web:test --include="**/match.dialog.spec.ts" --skip-nx-cache` y el mismo con `**/api-error.spec.ts`,
   en verde. Falsación: volver a `isApiFailure(failure, 422, 'no_cv')` en `matchProblem` y ver caer «La API dice que no
   hay CV»; restaurar.
-- [ ] 1.2 [frontend] **Sin CV desde que se abre (D2).** Primero, en `match.dialog.spec.ts`:
+  **Estado (2026-11-25):** Antes del arreglo cayeron 4 casos (La oferta no se ha leído, La API dice que no hay CV, El CV se está leyendo, El CV no se pudo leer: 4 failed | 42 passed; hoy muestran «No pudimos analizar ahora.»); «Lo que manda es el código» (422) pasó antes porque 422 coincidía con el código viejo y queda como guardia. Con isApiFailureCode en matchProblem: match.dialog + api-error specs 48/48 en verde. Falsación: dejar no_cv comparando status 422 hace caer «La API dice que no hay CV» (1 failed | 45 passed); restaurado.
+- [x] 1.2 [frontend] **Sin CV desde que se abre (D2).** Primero, en `match.dialog.spec.ts`:
   - «Sin CV al abrir» (`flushOpen` con la lista de CV vacía): `match-no-cv` y `match-upload-cv` visibles, ningún
     `match-analyze`, ningún `match-routing` (P2-4) y `http.expectNone({ method: 'POST', url: MATCH_URL })`;
   - «Sin CV gana al permiso desconocido»: `setSession`, después `reloadConsent()` con `500` en `/api/users/me` (deja
@@ -53,6 +54,7 @@ atrasa, el grupo 3 (H3) es el primer recorte (PO-4).
   del diálogo entero en verde. Falsación: quitar la condición y ver caer «Sin CV al abrir» y «Sin CV gana al permiso
   desconocido»; moverla detrás de las fases del permiso y ver caer solo la segunda; quitar `report() === null` y ver
   caer «La lista se vacía con un informe en pantalla»; restaurar.
+  **Estado (2026-11-25):** Antes de D2 cayeron «Sin CV al abrir», «Sin CV gana al permiso desconocido» y «Subir mi CV lleva a /mi-cv y cierra con change-cv» (3 failed | 47 passed); «La lista se vacía con un informe en pantalla» pasó antes (guardia). Con la fase local no_cv y match-routing oculto: spec del diálogo 50/50. Falsación: quitar la condición hace caer los tres primeros; moverla tras el permiso, solo «Sin CV gana al permiso desconocido»; quitar report() === null, solo «La lista se vacía con un informe en pantalla»; restaurado. Salidas en scratchpad apply-ugf2/1.*.txt.
 
 ## 2. H2 — verificar el email quita el aviso sin recargar (design D3)
 

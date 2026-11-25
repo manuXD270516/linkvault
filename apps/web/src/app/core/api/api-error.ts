@@ -72,6 +72,14 @@ export function isApiFailure(
   return failure?.kind === 'api' && failure.status === status && failure.code === code;
 }
 
+/**
+ * `true` si la respuesta de la API lleva ese `code`, sea cual sea el estado HTTP. El SPA traduce el código, y la
+ * tabla código → estado vive solo en la API: repetir el estado aquí es una segunda fuente de verdad.
+ */
+export function isApiFailureCode(failure: RequestFailure | null, code: ApiErrorCode): boolean {
+  return failure?.kind === 'api' && failure.code === code;
+}
+
 /** `Retry-After` en segundos convertido a minutos redondeando hacia arriba (como mínimo 1). */
 export function retryAfterMinutes(header: string | null): number | null {
   if (header === null || !/^\d+$/.test(header.trim())) {
