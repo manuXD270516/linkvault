@@ -1890,6 +1890,70 @@ db.applications.aggregate([
 
 El denominador es una aproximación con el estado actual (el historial exacto por semana está en `application_events`). Divide numerador entre denominador por semana; objetivo ≥ 50 % en las dos semanas de medición, junto al número absoluto y a la pregunta directa a cada invitado.
 
+## La semana del grupo (`group_weekly_briefs`)
+
+Change `group-weekly-brief` (ADR-069). El **worker** calcula, por grupo y semana ISO UTC, unas pocas viñetas sobre las ofertas del grupo («cierran pronto», «aparece en N de M ofertas», «se compartieron N»). La api solo las lee en `GET /api/groups/:id/weekly-brief`. Todo sale de Mongo: sin red, IA ni correo.
+
+- **Colección `group_weekly_briefs`:** un documento por `(groupId, weekKey)` con `asOf`, `computedAt`, `scanTruncated`, los hechos (con `linkIds`) y las viñetas (`{ factId, source: 'template' }`). No guarda nombres, notas, etiquetas, comentarios ni ids de miembros. La escribe solo el worker; la api solo la lee y la borra al borrar el grupo.
+- **Índices (los crea el worker al arrancar, antes del primer tick; no hay migración):** único `(groupId, weekKey)` y TTL de 35 días (`expireAfterSeconds` 3 024 000) sobre `computedAt`. Comprobación: `db.group_weekly_briefs.getIndexes()`.
+- **Cambiar el TTL exige `collMod` (N2):** `createIndexes` no modifica un índice que ya existe con otras opciones. Para cambiarlo: `db.runCommand({ collMod: 'group_weekly_briefs', index: { keyPattern: { computedAt: 1 }, expireAfterSeconds: <segundos> } })`, y actualizar `GROUP_BRIEF_TTL_DAYS` para que un entorno nuevo nazca igual.
+- **Si los índices no se pueden crear:** el worker registra `group_brief_indexes_failed` y `group_brief_disabled reason=indexes`, el arranque sigue y el módulo queda **sin cron ni tick** hasta el próximo arranque. Arreglar Mongo y reiniciar el worker.
+- **Cuándo se calcula:** a las **05:00 UTC** todos los días (`@Cron('0 5 * * *')`, constante en código) y **al arrancar el worker**. Cada tick recorre todos los grupos (de 50 en 50) y calcula la semana ISO en curso con `asOf` = la fecha UTC. Con los mismos datos y el mismo día no escribe nada (`unchanged`); al día siguiente `asOf` cambia y recalcula. Un tick que se solapa con otro del mismo proceso se descarta.
+- **Flag `FEATURE_GROUP_BRIEF`:** opcional, **por defecto `true`** (al revés que el digest). En staging vale el valor por defecto porque el compose de producción no reenvía al worker variables que no declara, así que con `false` por defecto la feature quedaría muerta sin tocar el compose. Es aceptable encendida porque el trabajo no sale de Mongo, el arranque no espera al tick, los índices existen antes del primer tick y el tick nunca relanza. Precio: en staging no hay interruptor operable sin un change de compose; la salida es revertir. En local, `FEATURE_GROUP_BRIEF=false` lo apaga (ni cron ni tick de arranque); con `NODE_ENV=test` nunca corre.
+- **Qué significan los contadores del tick:**
+  - `upserted`: documento escrito (nuevo o con cambios).
+  - `unchanged`: igual que lo guardado (se compara sin `_id` ni `computedAt`); no se escribe.
+  - `cleared`: ese día el grupo no produjo ninguna viñeta y había una semana guardada; se **borró** para que la tarjeta muestre el vacío honesto en vez de una semana vieja que ya no es verdad.
+  - `rejected`: el resultado no pasó el evaluador (`verifyGroupWeeklyBrief`); **no se escribe y se conserva la versión anterior**. Cada rechazo deja una línea `group_brief_rejected groupId=… weekKey=… codes=…` (sin contenido) para depurar.
+  - Un error al leer un grupo deja `group_brief_group_failed groupId=…` y el tick sigue con los demás; el siguiente tick lo reintenta.
+- **Línea de resumen por tick (PO-4):** una por tick, sin ningún `groupId`. El mensaje del log es un JSON:
+
+```json
+{"event":"group_brief_tick","weekKey":"2026-W48","groupsScanned":4,"upserted":4,"unchanged":0,"cleared":0,"rejected":0,"bulletsByKind":{"closing_soon":3,"skill_demand":6,"shared_last_week":2}}
+```
+
+  Para leerla y sumarla por semana, saca el JSON de cada línea y ordena por `weekKey`. Cada día hay un tick que recalcula la misma semana: `upserted` mide actividad, no el total de grupos; para el total toma el `groupsScanned` del último tick de la semana, y para la distribución de viñetas, la última fila de cada semana.
+
+```bash
+docker compose logs worker --no-log-prefix | grep group_brief_tick \
+  | jq -r '(.msg // .) | (if type == "string" then fromjson else . end)
+           | select(.event == "group_brief_tick")
+           | [.weekKey, .groupsScanned, .upserted, .unchanged, .cleared, .rejected,
+              .bulletsByKind.closing_soon, .bulletsByKind.skill_demand, .bulletsByKind.shared_last_week] | @tsv' \
+  | sort
+```
+
+  Columnas: semana, grupos, upserted, unchanged, cleared, rejected y viñetas de `closing_soon`, `skill_demand` y `shared_last_week`. Si el log va a un fichero, sustituye el primer comando por `cat <fichero>`.
+- **Consultas de la métrica 1 de 35b (correr antes de que venza el TTL; la salida no lleva `groupId`):**
+
+```js
+// Semanas-grupo con documento, por semana, y cuántas se calcularon con el universo truncado (más de 500 ofertas)
+db.group_weekly_briefs.aggregate([
+  { $group: { _id: '$weekKey', gruposConDocumento: { $sum: 1 },
+              scanTruncated: { $sum: { $cond: ['$scanTruncated', 1, 0] } } } },
+  { $sort: { _id: 1 } },
+])
+// Distribución de viñetas por tipo
+db.group_weekly_briefs.aggregate([
+  { $unwind: '$bullets' },
+  { $group: { _id: { semana: '$weekKey', tipo: { $arrayElemAt: [{ $split: ['$bullets.factId', ':'] }, 0] } }, total: { $sum: 1 } } },
+  { $sort: { '_id.semana': 1, '_id.tipo': 1 } },
+])
+// Denominador aproximado: grupos con al menos una oferta compartida
+db.group_links.aggregate([{ $group: { _id: '$groupId' } }, { $count: 'gruposConOfertas' }])
+// Cobertura de habilidades (tarea 8.3): ofertas abiertas con preview.skills no vacío
+db.job_links.aggregate([
+  { $match: { closedAt: { $exists: false } } },
+  { $group: { _id: null, abiertas: { $sum: 1 },
+              conHabilidades: { $sum: { $cond: [{ $gt: [{ $size: { $ifNull: ['$preview.skills', []] } }, 0] }, 1, 0] } } } },
+])
+```
+
+  Cobertura = semanas-grupo con documento sobre grupos con ofertas, junto a la distribución de viñetas. La última consulta cuenta todas las ofertas abiertas, no solo las de grupos: es una cota. Si `conHabilidades / abiertas` queda por debajo de 0,5, **se invita igual** y el informe de 35b reporta la viñeta de habilidades por separado.
+- **Forzar un recálculo en local:** reiniciar el worker (el tick de arranque calcula todos los grupos). Tras `pnpm nx run api:seed-demo` (con `ALLOW_DEMO_SEED=true`) también hay que reiniciar el worker para ver las viñetas del grupo demo: «cierra pronto», «Docker en 3 de 3» y «TypeScript en 2 de 3».
+- **Rollback:** revertir el PR. La colección queda huérfana y su TTL la vacía en 35 días; opcional: `db.group_weekly_briefs.drop()`. En local, `FEATURE_GROUP_BRIEF=false` apaga cron y tick.
+- **Nota para la invitación de 35b (PO-3):** mencionar que cada grupo tiene la tarjeta «La semana del grupo», y a las 2 semanas preguntar a cada invitado: «¿La viste? ¿Te dijo algo que no sabías? ¿Lo comentaron en el grupo?». No hay métrica de visitas ni de despliegues: no se registran, a propósito. La respuesta va al informe de 35b.
+
 ## Paso 7 — Definition of Done (pégalo en cada PR)
 
 - [ ] Change archivado; spec delta mergeada en `openspec/specs/`

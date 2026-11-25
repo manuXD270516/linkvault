@@ -266,7 +266,7 @@ Todo en `group-brief/domain/`, puro, sin `@nestjs/*`, `mongoose` ni `bullmq`.
 
 ## 8. Documentación y cierre
 
-- [ ] 8.1 [infra] `docs/RUNBOOK.md`: sección «La semana del grupo» con la colección, sus dos índices (creados al
+- [x] 8.1 [infra] `docs/RUNBOOK.md`: sección «La semana del grupo» con la colección, sus dos índices (creados al
   arrancar), el TTL, el tick (05:00 UTC y al arrancar, recálculo diario), `FEATURE_GROUP_BRIEF` y por qué en staging
   vale su valor por defecto, cómo leer y sumar por semana la línea de resumen del tick (PO-4), la consulta agregada de
   la métrica 1 (sin `groupId` en el resultado) y la de `scanTruncated`, que cambiar el TTL exige `collMod` porque `createIndexes` no modifica un índice existente (N2), qué significa
@@ -274,6 +274,7 @@ Todo en `group-brief/domain/`, puro, sin `@nestjs/*`, `mongoose` ni `bullmq`.
   worker, también tras `api:seed-demo`), el rollback y la nota para la invitación de 35b: mencionar la tarjeta y
   preguntar a las 2 semanas «¿La viste?» (PO-3). Verificar: `bash infra/ci/repo-checks.sh` en verde (`docs-stack-up`
   incluido).
+  Estado (2026-11-25): docs/RUNBOOK.md, sección «La semana del grupo (group_weekly_briefs)»: colección, índices (único y TTL 3 024 000, creados al arrancar), tick 05:00 UTC y de arranque con recálculo diario, FEATURE_GROUP_BRIEF y por qué vale su valor por defecto en staging, contadores (cleared, rejected conserva lo anterior), línea de resumen por tick con comando jq para sumar por semana (PO-4), consultas agregadas de la métrica 1 y de scanTruncated y de cobertura de habilidades (sin groupId), collMod para cambiar el TTL (N2), recálculo local (reiniciar el worker, también tras api:seed-demo), rollback y nota de invitación de 35b con «¿La viste?» (PO-3); bash infra/ci/repo-checks.sh en verde (5 comprobaciones, docs-stack-up incluido).
 - [ ] 8.2 [infra] Cierre. Verificar: `pnpm nx affected -t lint,typecheck,test,i18n-check` en verde, `bash
   infra/ci/repo-checks.sh` en verde y `openspec validate group-weekly-brief --strict --no-interactive` en verde.
 - [ ] 8.3 [infra] **Diferida: depende de 35b (`staging-host`); no bloquea el cierre de este change** (PO-5). Antes de
