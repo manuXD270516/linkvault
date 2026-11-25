@@ -116,11 +116,12 @@ atrasa, el grupo 3 (H3) es el primer recorte (PO-4).
 
 ## 4. Catálogo y comprobación global
 
-- [ ] 4.1 [frontend] `pnpm nx run web:extract-i18n`. Si sale diff en `apps/web/src/locale/messages.xlf`, debe ser solo
+- [x] 4.1 [frontend] `pnpm nx run web:extract-i18n`. Si sale diff en `apps/web/src/locale/messages.xlf`, debe ser solo
   de `linenumber` y se commitea tal como sale; si no sale diff, no hay commit (P2-6). `messages.en.xlf` no se toca
   (ADR-050). Verificar: `git diff --stat apps/web/src/locale/messages.en.xlf` vacío, `git diff
   apps/web/src/locale/messages.xlf` vacío o solo con `linenumber`, y `pnpm nx affected -t lint,typecheck,test,i18n-check`
   en verde.
+  **Estado (2026-11-25):** web:extract-i18n dejó diff solo de linenumber en messages.xlf (58 líneas, comprobado sin cambios de texto), commiteado aparte; messages.en.xlf sin diff. CI=true pnpm nx affected -t lint,typecheck,test,i18n-check --base=origin/main: web, web-e2e y repo-checks, 8 tareas en verde (web:lint, web:i18n-check, web:typecheck, web:test, web-e2e:*). Además bash infra/ci/repo-checks.sh en verde y openspec validate usage-guide-fixes-2 --strict --no-interactive válido. api y worker sin cambios.
 
 ## 5. Guía de uso (design D6)
 
@@ -153,3 +154,4 @@ atrasa, el grupo 3 (H3) es el primer recorte (PO-4).
   `git status --short docs/guia-de-uso tools/guia-de-uso` no muestra capturas ni `resultados.json` nuevos. El recorrido
   a mano en staging antes de invitar (registro → verificar → encaje sin CV → subir CV → encaje con el CV en lectura)
   queda **diferido a 35b**: se anota allí, no en este change.
+  **Estado (2026-11-25): abierta.** No se corrió la verificación manual: los puertos 3000, 6379 y 27017 están ocupados en esta máquina por otros procesos (vitawallet-backend en Docker y listeners locales), y la pila e2e los necesita. Queda pendiente repetir M01, F03 y V03 (5 veces) con `capture.mts` cuando estén libres, antes de pedir la fusión.
