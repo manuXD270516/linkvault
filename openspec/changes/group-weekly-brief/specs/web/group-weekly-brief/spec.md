@@ -8,29 +8,38 @@ ofertas a un toque, sin mostrar nunca nada de lo que hace cada miembro.
 ### Requirement: Tarjeta «La semana del grupo» en el detalle del grupo
 
 `/grupos/:id` SHALL mostrar, encima del listado de links y a todo el ancho, también en pantallas móviles, la tarjeta
-«La semana del grupo» con la respuesta de `GET /api/groups/:id/weekly-brief`. Con `brief`, SHALL mostrar «Calculada el
-{fecha} · N ofertas abiertas» (singular «1 oferta abierta»; con `scanTruncated`, seguido de « (de las 500 más
-recientes)»), una línea por viñeta en el orden recibido y el pie «Solo cuenta datos de las ofertas, nunca lo que hace
-cada miembro.». Las fechas (`asOf`, `until`) SHALL formatearse como fechas sin hora en UTC, con día de la semana, día y
-mes en el idioma de la interfaz. La tarjeta SHALL tener estado de carga (con `aria-busy="true"`), estado vacío con
-`brief` `null` («Todavía no hay resumen de esta semana.» y «Se arma solo una vez por semana cuando el grupo tiene
-ofertas abiertas.») y estado de error («No pudimos cargar la semana del grupo.» con «Reintentar»). Un error de la
-tarjeta NO SHALL impedir ver ni usar el detalle del grupo ni su listado. La tarjeta NO SHALL mostrar nombres, avatares,
-estados de postulación, marcas, notas, etiquetas ni comentarios.
+«La semana del grupo» con la respuesta de `GET /api/groups/:id/weekly-brief`. Con `brief`, SHALL mostrar «Actualizada
+el {fecha} · N ofertas abiertas» (singular «1 oferta abierta»), una línea por viñeta en el orden recibido y el pie
+«Solo cuenta datos de las ofertas, nunca lo que hace cada miembro.». Las fechas (`asOf`, `until`) SHALL formatearse
+como fechas sin hora en UTC, con día de la semana, día y mes en el idioma de la interfaz. La tarjeta SHALL tener estado
+de carga (con `aria-busy="true"`), estado vacío con `brief` `null` («Todavía no hay novedades para resumir esta
+semana.» y «Aparecen cuando una oferta del grupo cierra en los próximos 7 días, dos o más piden la misma habilidad o se
+compartieron ofertas la semana pasada. Se revisa cada mañana.»; EN: «There is nothing to summarize for this week yet.»
+y «They appear when an offer in the group closes within the next 7 days, two or more ask for the same skill, or offers
+were shared last week. It is checked every morning.») y estado de error («No pudimos cargar la semana del grupo.» con
+«Reintentar»). Un error de la tarjeta NO SHALL impedir ver ni usar el detalle del grupo ni su listado. La tarjeta NO
+SHALL mostrar nombres, avatares, estados de postulación, marcas, notas, etiquetas ni comentarios.
 
 #### Scenario: Tres viñetas visibles
 
-- **GIVEN** un grupo cuya semana tiene tres viñetas y 7 ofertas abiertas, calculada el lunes 2026-11-23
+- **GIVEN** un grupo cuya semana tiene tres viñetas y 7 ofertas abiertas, actualizada el lunes 2026-11-23
 - **WHEN** un miembro abre `/grupos/:id` con la interfaz en español
-- **THEN** SHALL ver «La semana del grupo», «Calculada el lunes, 23 de noviembre · 7 ofertas abiertas» y las tres
+- **THEN** SHALL ver «La semana del grupo», «Actualizada el lunes, 23 de noviembre · 7 ofertas abiertas» y las tres
   viñetas encima del listado de links
 
 #### Scenario: Vacío honesto
 
 - **GIVEN** un grupo con `brief` `null`
 - **WHEN** un miembro abre su detalle
-- **THEN** la tarjeta SHALL decir «Todavía no hay resumen de esta semana.» y «Se arma solo una vez por semana cuando el
-  grupo tiene ofertas abiertas.»
+- **THEN** la tarjeta SHALL decir «Todavía no hay novedades para resumir esta semana.» y «Aparecen cuando una oferta
+  del grupo cierra en los próximos 7 días, dos o más piden la misma habilidad o se compartieron ofertas la semana
+  pasada. Se revisa cada mañana.»
+
+#### Scenario: Vacío en inglés
+
+- **GIVEN** la interfaz en inglés y `brief` `null`
+- **WHEN** un miembro abre el detalle
+- **THEN** la tarjeta SHALL decir «There is nothing to summarize for this week yet.»
 
 #### Scenario: Error de la tarjeta
 
@@ -45,12 +54,6 @@ estados de postulación, marcas, notas, etiquetas ni comentarios.
 - **WHEN** el miembro pulsa «Reintentar» y la api responde `200`
 - **THEN** la tarjeta SHALL mostrar la semana sin recargar la página
 
-#### Scenario: Grupo grande
-
-- **GIVEN** una semana con `scanTruncated` `true` y 500 ofertas abiertas
-- **WHEN** un miembro abre el detalle
-- **THEN** la cabecera SHALL terminar en «500 ofertas abiertas (de las 500 más recientes)»
-
 ### Requirement: Texto de cada viñeta
 
 El texto de cada viñeta SHALL armarse en el SPA desde el hecho citado, con un mensaje del catálogo i18n por variante y
@@ -61,10 +64,8 @@ el singular o el plural elegido en código, así:
 | `closing_soon`, `count` 1 | «1 oferta cierra hasta el {until}.» | «1 offer closes by {until}.» |
 | `closing_soon`, `count` N > 1 | «N ofertas cierran hasta el {until}.» | «N offers close by {until}.» |
 | `skill_demand` | «N de M ofertas con requisitos leídos mencionan {skillLabel}.» | «N of M offers with known requirements mention {skillLabel}.» |
-| `shared_last_week`, `count` 1 | «1 oferta nueva la semana pasada.» | «1 new offer last week.» |
-| `shared_last_week`, `count` N > 1 | «N ofertas nuevas la semana pasada.» | «N new offers last week.» |
-| `closed_last_week`, `count` 1 | «1 oferta cerró la semana pasada.» | «1 offer closed last week.» |
-| `closed_last_week`, `count` N > 1 | «N ofertas cerraron la semana pasada.» | «N offers closed last week.» |
+| `shared_last_week`, `count` 1 | «1 oferta se compartió la semana pasada.» | «1 offer was shared last week.» |
+| `shared_last_week`, `count` N > 1 | «N ofertas se compartieron la semana pasada.» | «N offers were shared last week.» |
 
 Los números SHALL ser exactamente los del hecho (`count`, `total`) y `{skillLabel}` SHALL mostrarse tal como viene, sin
 traducir. Todos los textos de la tarjeta SHALL estar en el catálogo i18n en español, con tuteo, y en inglés.
@@ -78,16 +79,16 @@ traducir. Todos los textos de la tarjeta SHALL estar en el catálogo i18n en esp
 
 #### Scenario: Cierre en singular y en plural
 
-- **GIVEN** un `closing_soon` con `count` 1 y `until` `2026-11-29`, y otro con `count` 2 y el mismo `until`
+- **GIVEN** un `closing_soon` con `count` 1 y `until` `2026-11-30`, y otro con `count` 2 y el mismo `until`
 - **WHEN** se muestran en español
-- **THEN** SHALL leerse «1 oferta cierra hasta el domingo, 29 de noviembre.» y «2 ofertas cierran hasta el domingo,
-  29 de noviembre.»
+- **THEN** SHALL leerse «1 oferta cierra hasta el lunes, 30 de noviembre.» y «2 ofertas cierran hasta el lunes, 30 de
+  noviembre.»
 
 #### Scenario: Semana pasada en inglés
 
-- **GIVEN** un `shared_last_week` con `count` 3 y un `closed_last_week` con `count` 1
+- **GIVEN** un `shared_last_week` con `count` 3 y otro con `count` 1
 - **WHEN** se muestran con la interfaz en inglés
-- **THEN** SHALL leerse «3 new offers last week.» y «1 offer closed last week.»
+- **THEN** SHALL leerse «3 offers were shared last week.» y «1 offer was shared last week.»
 
 ### Requirement: Ofertas de cada viñeta
 

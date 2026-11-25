@@ -14,7 +14,7 @@ habilidades.
 - **GIVEN** Mongo local sin datos demo y guards OK
 - **WHEN** se ejecuta `api:seed-demo` y después el worker calcula la semana en curso
 - **THEN** el documento del grupo demo SHALL tener las viñetas `closing_soon`, `skill_demand:docker` y
-  `skill_demand:typescript`, en ese orden
+  `skill_demand:typescript`, en ese orden relativo
 
 #### Scenario: Segunda corrida sin duplicados
 
