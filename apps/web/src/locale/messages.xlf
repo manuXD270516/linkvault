@@ -2078,20 +2078,6 @@
           <context context-type="linenumber">103,106</context>
         </context-group>
       </trans-unit>
-      <trans-unit id="groups.weeklyBrief.empty" datatype="html">
-        <source> Todavía no hay novedades para resumir esta semana. </source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/groups/group-weekly-brief-card.component.html</context>
-          <context context-type="linenumber">108,110</context>
-        </context-group>
-      </trans-unit>
-      <trans-unit id="groups.weeklyBrief.emptyHint" datatype="html">
-        <source> Aparecen cuando una oferta del grupo cierra de hoy a 7 días, dos o más mencionan la misma habilidad o se compartieron ofertas la semana pasada. Se revisa cada mañana. </source>
-        <context-group purpose="location">
-          <context context-type="sourcefile">apps/web/src/app/features/groups/group-weekly-brief-card.component.html</context>
-          <context context-type="linenumber">111,114</context>
-        </context-group>
-      </trans-unit>
       <trans-unit id="groups.weeklyBrief.bullet.closingOne" datatype="html">
         <source>1 oferta cierra el <x id="DATE" equiv-text="firstExpiresAt"/>.</source>
         <context-group purpose="location">
@@ -2181,6 +2167,20 @@
         <context-group purpose="location">
           <context context-type="sourcefile">apps/web/src/app/features/groups/group-weekly-brief-text.ts</context>
           <context context-type="linenumber">76</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.empty" datatype="html">
+        <source>Todavía no hay novedades para resumir esta semana.</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-weekly-brief-text.ts</context>
+          <context context-type="linenumber">81</context>
+        </context-group>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.emptyHint" datatype="html">
+        <source>Aparecen cuando una oferta del grupo cierra de hoy a 7 días, dos o más mencionan la misma habilidad o se compartieron ofertas la semana pasada. Se revisa cada mañana.</source>
+        <context-group purpose="location">
+          <context context-type="sourcefile">apps/web/src/app/features/groups/group-weekly-brief-text.ts</context>
+          <context context-type="linenumber">86</context>
         </context-group>
       </trans-unit>
       <trans-unit id="groups.list.title" datatype="html">

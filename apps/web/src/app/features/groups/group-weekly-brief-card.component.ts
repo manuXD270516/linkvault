@@ -14,6 +14,8 @@ import type { GroupBriefOffer } from '@linkvault/shared';
 import { GroupWeeklyBriefStore } from '../../core/groups/group-weekly-brief.store';
 import {
   groupBriefBulletText,
+  groupBriefEmptyHintText,
+  groupBriefEmptyText,
   groupBriefHeaderText,
   groupBriefMissingText,
   groupBriefMoreText,
@@ -58,6 +60,9 @@ export class GroupWeeklyBriefCard {
 
   /** `factId` de las viñetas con las ofertas desplegadas. */
   private readonly expanded = signal<ReadonlySet<string>>(new Set());
+
+  protected readonly emptyText = groupBriefEmptyText();
+  protected readonly emptyHintText = groupBriefEmptyHintText();
 
   protected readonly brief = computed(() => this.store.response()?.brief ?? null);
 

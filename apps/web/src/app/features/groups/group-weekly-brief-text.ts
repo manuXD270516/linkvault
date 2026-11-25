@@ -75,3 +75,13 @@ export function groupBriefMissingText(missingCount: number): string {
     ? $localize`:@@groups.weeklyBrief.missingOne:1 ya no está en el grupo`
     : $localize`:@@groups.weeklyBrief.missingMany:${missingCount}:COUNT: ya no están en el grupo`;
 }
+
+/** Título del estado vacío (`brief` `null`). En TypeScript para que su traducción se pruebe sin renderizar. */
+export function groupBriefEmptyText(): string {
+  return $localize`:@@groups.weeklyBrief.empty:Todavía no hay novedades para resumir esta semana.`;
+}
+
+/** Qué dispara una novedad y cada cuánto se revisa (R2-3 + N7). */
+export function groupBriefEmptyHintText(): string {
+  return $localize`:@@groups.weeklyBrief.emptyHint:Aparecen cuando una oferta del grupo cierra de hoy a 7 días, dos o más mencionan la misma habilidad o se compartieron ofertas la semana pasada. Se revisa cada mañana.`;
+}

@@ -2894,11 +2894,11 @@
         <target>It only counts offer data, never what each member does.</target>
       </trans-unit>
       <trans-unit id="groups.weeklyBrief.empty" datatype="html">
-        <source> Todavía no hay novedades para resumir esta semana. </source>
+        <source>Todavía no hay novedades para resumir esta semana.</source>
         <target>There is nothing to summarize for this week yet.</target>
       </trans-unit>
       <trans-unit id="groups.weeklyBrief.emptyHint" datatype="html">
-        <source> Aparecen cuando una oferta del grupo cierra de hoy a 7 días, dos o más mencionan la misma habilidad o se compartieron ofertas la semana pasada. Se revisa cada mañana. </source>
+        <source>Aparecen cuando una oferta del grupo cierra de hoy a 7 días, dos o más mencionan la misma habilidad o se compartieron ofertas la semana pasada. Se revisa cada mañana.</source>
         <target>They appear when an offer in the group closes between today and 7 days from now, two or more mention the same skill, or offers were shared last week. It is checked every morning.</target>
       </trans-unit>
       <trans-unit id="groups.weeklyBrief.bullet.closingOne" datatype="html">

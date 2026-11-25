@@ -3,6 +3,8 @@ import { useEnglishTranslations } from '../../../testing/english-translations';
 import {
   formatUtcDate,
   groupBriefBulletText,
+  groupBriefEmptyHintText,
+  groupBriefEmptyText,
   groupBriefHeaderText,
   groupBriefMissingText,
   groupBriefMoreText,
@@ -49,6 +51,11 @@ describe('group weekly brief text', () => {
     expect(groupBriefHeaderText('2026-11-23', 7, 'es')).toBe('Actualizada el lunes, 23 de noviembre · 7 ofertas abiertas');
   });
 
+  it('empty state text', () => {
+    expect(groupBriefEmptyText()).toBe('Todavía no hay novedades para resumir esta semana.');
+    expect(groupBriefEmptyHintText()).toContain('Se revisa cada mañana.');
+  });
+
   it('offer lines singular and plural', () => {
     expect(groupBriefOfferClosesText('2026-11-26', 'es')).toBe('cierra el jueves, 26 de noviembre');
     expect(groupBriefShowOffersText(14)).toBe('Ver ofertas (14)');
@@ -76,6 +83,10 @@ describe('group weekly brief text', () => {
       expect(groupBriefHeaderText('2026-11-23', 7, 'en')).toBe('Updated on Monday, November 23 · 7 open offers');
       expect(groupBriefHeaderText('2026-11-23', 1, 'en')).toBe('Updated on Monday, November 23 · 1 open offer');
       expect(groupBriefOfferClosesText('2026-11-26', 'en')).toBe('closes on Thursday, November 26');
+      expect(groupBriefEmptyText()).toBe('There is nothing to summarize for this week yet.');
+      expect(groupBriefEmptyHintText()).toBe(
+        'They appear when an offer in the group closes between today and 7 days from now, two or more mention the same skill, or offers were shared last week. It is checked every morning.',
+      );
       expect(groupBriefShowOffersText(2)).toBe('Show offers (2)');
       expect(groupBriefMoreText(1)).toBe('and 1 more in the group list');
       expect(groupBriefMoreText(4)).toBe('and 4 more in the group list');

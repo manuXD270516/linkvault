@@ -104,13 +104,8 @@
         </p>
       } @else {
         <div class="flex flex-col gap-1" data-testid="group-weekly-brief-empty">
-          <p class="m-0 font-medium" i18n="@@groups.weeklyBrief.empty">
-            Todavía no hay novedades para resumir esta semana.
-          </p>
-          <p class="m-0 text-sm" data-testid="group-weekly-brief-empty-hint" i18n="@@groups.weeklyBrief.emptyHint">
-            Aparecen cuando una oferta del grupo cierra de hoy a 7 días, dos o más mencionan la misma habilidad o se
-            compartieron ofertas la semana pasada. Se revisa cada mañana.
-          </p>
+          <p class="m-0 font-medium">{{ emptyText }}</p>
+          <p class="m-0 text-sm" data-testid="group-weekly-brief-empty-hint">{{ emptyHintText }}</p>
         </div>
       }
     }
