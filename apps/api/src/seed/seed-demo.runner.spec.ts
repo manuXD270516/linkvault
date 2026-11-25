@@ -139,7 +139,7 @@ describe('runSeedDemo weekly plan dataset', () => {
     return vi
       .mocked(deps.updatePreview.execute)
       .mock.calls.filter(([, id]) => id === linkId)
-      .map(([, , request]) => request.fields['expiresAt']);
+      .map(([, , request]) => request.fields?.['expiresAt']);
   }
 
   it('seeds a saved link closing in three days', async () => {
