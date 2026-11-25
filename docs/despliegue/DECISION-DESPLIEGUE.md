@@ -282,11 +282,14 @@ Su lugar en el plan es la Q1.
 
 ### C4. Correcciones del runbook de Oracle
 
-- [ ] `[infra]` `docs/runbooks/oracle-cloud-a1.md` §11 y §13.2: quitar «en PAYG Oracle mantiene 4 OCPU / 24 GB
+- [x] `[infra]` `docs/runbooks/oracle-cloud-a1.md` §11 y §13.2: quitar «en PAYG Oracle mantiene 4 OCPU / 24 GB
   gratuitos», sumar las cuotas de compartimento, la alerta de pronóstico, el estimador antes de pasar y la regla de
   confirmar la exención de inactividad; cambiar «alerta a 1 €» por «alerta de 1 en la moneda de la cuenta» (§11, §13.2
   y la lista de comprobación), y marcar como supuesto que el pago por uso dé prioridad de capacidad A1. Verificar con
   `node -e` que ya no aparecen «4 OCPU / 24 GB gratuitos» ni «1 €», y sí cada paso nuevo.
+  Estado (2026-11-25): hecho en la rama `docs/oracle-runbook-c4`: §11 pasos 11.1-11.5, §13.2 y la lista de
+  comprobación; el `node -e` da 0 apariciones de las dos frases y encuentra estimador, pronóstico, cuotas, exención,
+  «moneda de la cuenta» y el supuesto de capacidad.
 - [ ] `[infra]` Nota para 35b, sin editarla desde acá: la vuelta atrás sin GitHub de la 11.2 tiene el mismo hueco que
   corrige el runbook de esta propuesta. Si la imagen anterior ya no está en el host, el `up` falla sin credencial del
   registro; hace falta comprobarla con `docker image ls` y, si falta, `docker login` con el token por la entrada

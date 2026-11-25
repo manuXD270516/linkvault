@@ -218,15 +218,33 @@ PermitRootLogin no
 
 | | Cuenta gratuita | Pago por uso (PAYG) |
 |---|---|---|
-| Coste dentro de Always Free | 0 € | 0 € |
-| Reclamación por inactividad | **Sí:** si en 7 días el percentil 95 de CPU, red y memoria queda bajo el 20 %, Oracle puede reclamar la instancia | No aplica |
-| Capacidad ARM | Baja prioridad | Más fácil conseguir A1; en PAYG Oracle mantiene 4 OCPU / 24 GB gratuitos |
-| Riesgo | Perder staging (es desechable y se reconstruye) | Cobro si creas algo fuera de Always Free |
+| Coste dentro de Always Free | 0 | 0 (práctico, no contractual: lo sostienen las reglas de abajo) |
+| Reclamación por inactividad | **Sí:** si en 7 días el percentil 95 de CPU, red y memoria queda bajo el 20 %, Oracle puede reclamar la instancia | No aplicaría, pero **la documentación oficial no lo dice**: hay que confirmarlo (paso 5 de abajo) |
+| Capacidad ARM | Baja prioridad | Posiblemente más fácil conseguir A1. **Supuesto**, sin fuente oficial citada. La parte gratuita es la misma: **2 OCPU / 12 GB**, como en la cuenta gratuita |
+| Riesgo | Perder staging (es desechable y se reconstruye) | Cobro si creas algo fuera de Always Free (por ejemplo, una instancia de 4 OCPU / 24 GB) |
 
-Si pasas a PAYG: *Billing & Cost Management → Upgrade and Manage Payment → Upgrade to Pay As You Go*, y **en el mismo
-momento** crea un **presupuesto con alerta a 1 €** (*Billing & Cost Management → Budgets → Create Budget*, importe 1,
-alerta al 100 % por correo). 35b lo verifica en la tarea 5.10. La memoria real en régimen se mide tras el primer
-despliegue (tarea 6.4) para decidir con el dato.
+Si pasas a PAYG, en este orden (es la fase 1 de `docs/despliegue/RUNBOOK-DESPLIEGUE.md`, con más detalle):
+
+1. **Estimador, antes de pasar.** En el [estimador de costos de Oracle](https://www.oracle.com/cloud/costestimator.html)
+   carga exactamente lo del plan: A1 con 2 OCPU y 12 GB, un volumen de arranque de 50 a 100 GB, una IP pública
+   reservada y Object Storage Standard por debajo de 10 GB. Anota el total fuera del repositorio. Si no es 0, no pases
+   (regla de corte 3).
+2. **Pasar:** *Billing & Cost Management → Upgrade and Manage Payment → Upgrade to Pay As You Go*.
+3. **En el mismo momento, presupuesto con dos alertas:** *Billing & Cost Management → Budgets → Create Budget*, sobre
+   el tenancy, importe **1 en la moneda de la cuenta**, con una alerta de tipo **real** al 100 % y otra de tipo
+   **pronóstico** al 100 %, las dos por correo. La alerta avisa, no corta: si salta, busca el recurso en *Cost
+   Analysis* y bórralo (regla de corte 4).
+4. **Cuotas de compartimento:** *Governance & Administration → Quota Policies → Create Quota Policy*, en el
+   compartimento raíz: cero en toda familia de cómputo salvo A1, A1 con tope de 2 OCPU y 12 GB, y volúmenes con tope
+   de 200 GB (las sentencias están en la fase 1 del runbook de despliegue). Las cuotas no frenan los GB ni las
+   peticiones de Object Storage: eso lo vigilan el respaldo y la revisión mensual.
+5. **Confirmar la exención de inactividad (Q5 de la decisión de despliegue).** Busca en la documentación de Always Free,
+   o pregunta a soporte, si una cuenta de pago por uso queda exenta de la reclamación de instancias inactivas. Guarda
+   la respuesta fuera del repositorio, sin datos de la cuenta. Si en una semana no hay respuesta, acepta el riesgo por
+   escrito (con el respaldo cuesta horas, no datos) o pasa al plan B. No bloquea el despliegue; bloquea invitar (10.7).
+
+35b verifica el presupuesto en la tarea 5.10. La memoria real en régimen se mide tras el primer despliegue (tarea 6.4)
+para decidir con el dato.
 
 Documentación oficial de la política de reclamación:
 <https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm>
@@ -285,12 +303,15 @@ del paso 12 (región, AD, `nproc`/`free -g`, IP reservada, usuario `deploy`, rut
 
 La comparación está en el paso 11. Resumen para decidir:
 
-- **No pasar:** sigue costando 0 €, pero Oracle puede **reclamar** la instancia si en 7 días queda por debajo del
+- **No pasar:** sigue costando 0, pero Oracle puede **reclamar** la instancia si en 7 días queda por debajo del
   20 % de uso (CPU, red y memoria). Staging es desechable y se reconstruye, así que el riesgo es perder tiempo, no
-  datos de nadie: el aviso a las personas invitadas ya dice que el entorno puede perderse.
-- **Pasar:** también 0 € mientras no salgas de Always Free, sin reclamación por inactividad y con más facilidad para
-  conseguir capacidad ARM. El riesgo es un cobro si alguien crea algo fuera de lo gratuito; por eso, **en el mismo
-  momento**, el presupuesto con alerta a 1 € del paso 11.
+  datos de nadie: el aviso a las personas invitadas ya dice que el entorno puede perderse. Anota por escrito que
+  aceptas ese riesgo.
+- **Pasar:** también 0 mientras no salgas de Always Free (2 OCPU / 12 GB, igual que en la cuenta gratuita), sin
+  reclamación por inactividad **si se confirma** (paso 11.5) y quizá con más facilidad para conseguir capacidad ARM
+  (supuesto). El riesgo es un cobro si alguien crea algo fuera de lo gratuito; por eso van, en este orden, el
+  estimador **antes** de pasar y, **en el mismo momento** de pasar, el presupuesto de 1 en la moneda de la cuenta con
+  sus dos alertas (real y pronóstico) y las cuotas de compartimento (pasos 11.1-11.4).
 
 Dime la decisión en el chat. 35b la anota en `infra/README.md` y, si es «no», el aviso a los invitados lleva la
 reclamación a 7 días (9.10). La memoria real en régimen se mide tras el primer despliegue (6.4), por si quieres
@@ -367,7 +388,10 @@ código de unión. Esto último es la interpretación de tu «respetemos 5»: si
 - [ ] Clave del host copiada desde el historial de consola
 - [ ] Docker y Compose instalados desde el repositorio oficial; `hello-world` funciona
 - [ ] Usuario `deploy` con solo clave y en el grupo `docker`; SSH sin contraseñas ni root
-- [ ] Decisión de pago por uso tomada (y, si es sí, presupuesto con alerta a 1 €)
+- [ ] Estimador en 0 antes de pasar a pago por uso (§11.1)
+- [ ] Decisión de pago por uso tomada; si es sí, presupuesto de 1 en la moneda de la cuenta con alertas real y de
+  pronóstico, y cuotas de compartimento (§11.2-11.4); si es no, riesgo de reclamación aceptado por escrito
+- [ ] Exención de inactividad confirmada con Oracle, o riesgo aceptado por escrito (§11.5, Q5)
 - [ ] Datos del paso 12 pasados a 35b (sin secretos)
 - [ ] Brevo: cuenta con verificación en dos pasos, remitente verificado y clave SMTP generada
 - [ ] `.env.staging` con los `MAIL_*` de Brevo y su copia fuera del host actualizada; aviso a 35b de que está hecho
