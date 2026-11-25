@@ -152,7 +152,7 @@ otra cosa.
   days is plural», «high fit names the score», «quiet names the days» y «know someone is singular for one and plural
   for two».
 - [ ] 7.2b [frontend] `features/applications/weekly-plan-card.component.{ts,html}`: estados cargando (`aria-busy`), vacío
-  con las dos líneas fijas de B1 y `doneThisWeek`, error con «Reintentar» y «No pudimos guardar tu elección. Probá de
+  con las dos líneas fijas de B1 y `doneThisWeek`, error con «Reintentar» y «No pudimos guardar tu elección. Prueba de
   nuevo.». Verificar en `weekly-plan-card.component.spec.ts`: «renders three actions with their reasons», «renders the
   honest empty state with the explanation line», «renders done this week when greater than zero», «renders the error
   with retry», «renders the save failure message» y «uses the URL when there is no title».
