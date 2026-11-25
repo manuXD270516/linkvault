@@ -28,29 +28,29 @@ otra cosa.
 
 ## 2. Dominio del plan en `applications` (design D1-D5, D6, D12)
 
-- [ ] 2.1 [backend] `applications/domain/weekly-plan/week-key.ts`: `isoWeekKey(date)`, `previousWeekKey(weekKey)` y
+- [x] 2.1 [backend] `applications/domain/weekly-plan/week-key.ts`: `isoWeekKey(date)`, `previousWeekKey(weekKey)` y
   `nextWeekKey(weekKey)` en UTC, copiados de `apps/worker/src/modules/notifications/domain/iso-week.ts:21` con un
   comentario que lo diga. Verificar con `week-key.spec.ts`: «2026-12-31T23:30Z is 2026-W53», «2027-01-03 is 2026-W53»,
   «2027-01-04 is 2027-W01», «previous of 2027-W01 is 2026-W53», «next of 2026-W53 is 2027-W01» y «Monday 00:00Z starts
-  a new week».
-- [ ] 2.2a [backend] `applications/domain/weekly-plan/weekly-plan.ts` (tipos canónicos sin `ObjectId` ni `Date`:
+  a new week». **Estado (2026-11-25):** hecha; `week-key.spec.ts` 6/6 en verde.
+- [x] 2.2a [backend] `applications/domain/weekly-plan/weekly-plan.ts` (tipos canónicos sin `ObjectId` ni `Date`:
   días relativos y `today` `YYYY-MM-DD`; el encaje lleva `degraded`), `weekly-planner.ts` (interfaz `WeeklyPlanner` con
   `plan(input): Promise<WeeklyPlanOutcome>`) y en `rules.ts` la regla `apply_before_close` (N5). Verificar con
   `rules.spec.ts`: «saved link closing in 3 days is apply_before_close closing_soon», «closing today has daysLeft 0»,
   «expiresAt yesterday without closedAt is not closing_soon», «expired with fit 80 yields no apply action»,
-  «interested with non-degraded fit 80 and no expiresAt is high_fit» y «degraded fit does not count as high_fit».
-- [ ] 2.2b [backend] Depende de 2.2a. En `rules.ts`, las reglas `follow_up` y `ask_know_someone`, la exclusión de links
+  «interested with non-degraded fit 80 and no expiresAt is high_fit» y «degraded fit does not count as high_fit». **Estado (2026-11-25):** hecha; `rules.spec.ts` (apply_before_close) en verde.
+- [x] 2.2b [backend] Depende de 2.2a. En `rules.ts`, las reglas `follow_up` y `ask_know_someone`, la exclusión de links
   cerrados y la prioridad entre reglas (N5). Verificar en `rules.spec.ts`: «applied quiet 12 days is follow_up», «saved quiet 30 days without signals yields nothing», «closed link yields nothing», «own flag alone
-  does not count for ask_know_someone» y «one candidate per application, first rule wins».
-- [ ] 2.3 [backend] `applications/domain/weekly-plan/rule-based-planner.ts`: orden dentro de cada regla, desempate por
+  does not count for ask_know_someone» y «one candidate per application, first rule wins». **Estado (2026-11-25):** hecha; `rules.spec.ts` 14/14 en verde (reglas, link cerrado, prioridad).
+- [x] 2.3 [backend] `applications/domain/weekly-plan/rule-based-planner.ts`: orden dentro de cada regla, desempate por
   `applicationId`, ocultación por decisiones (D5: `snoozed` solo W; `done` W y W+1; `dismissed` mientras `decidedAt ≥ now − 35 días`), turnos
   por regla y tope 3. Verificar con `rule-based-planner.spec.ts`: «caps at three actions», «round-robins one per rule
   before repeating», «snoozed hides only its own week», «done hides its week and the next one», «dismissed hides for
   35 days», «fills the slot of a hidden action with the next candidate» y «same input yields the same
-  output». Falsación del tope: con `WEEKLY_PLAN_MAX_ACTIONS` cambiado a 4 en el test, «caps at three actions» falla.
-- [ ] 2.4 [backend] Guardia de capas. Verificar: `pnpm nx run api:lint` en verde con `domain/weekly-plan/**` sin
+  output». Falsación del tope: con `WEEKLY_PLAN_MAX_ACTIONS` cambiado a 4 en el test, «caps at three actions» falla. **Estado (2026-11-25):** hecha; `rule-based-planner.spec.ts` 11/11. Falsación hecha: con `WEEKLY_PLAN_MAX_ACTIONS = 4` falla «caps at three actions»; restaurado. El planificador recibe solo decisiones vigentes (el repositorio filtra los 35 días con el reloj), así que «dismissed» oculta mientras llegue.
+- [x] 2.4 [backend] Guardia de capas. Verificar: `pnpm nx run api:lint` en verde con `domain/weekly-plan/**` sin
   `@nestjs/*`, `mongoose` ni imports de otros módulos. Falsación: añadir temporalmente `import '@nestjs/common'` en
-  `rules.ts` hace fallar el lint; se revierte.
+  `rules.ts` hace fallar el lint; se revierte. **Estado (2026-11-25):** hecha; `api:lint` en verde (0 errores). Falsación hecha: `import '@nestjs/common'` en `rules.ts` da error de `no-restricted-imports`; revertido. `api:typecheck` en verde.
 
 ## 3. Señales de plan en `links` (design D7, spec `links/sharing`)
 
