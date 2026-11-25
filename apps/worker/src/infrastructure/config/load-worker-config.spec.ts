@@ -150,6 +150,7 @@ describe('worker configuration', () => {
       AI_CHAIN: 'mock',
       FEATURE_HEADLESS_EXTRACTION: false,
       FEATURE_GROUP_DIGEST: false,
+      FEATURE_GROUP_BRIEF: true,
       GROUP_DIGEST_CRON: '0 14 * * 1',
       ENRICH_FETCH_TIMEOUT_MS: 10_000,
       ENRICH_MAX_BYTES: 2_097_152,
@@ -170,6 +171,24 @@ describe('worker configuration', () => {
       MATCH_ANALYSIS_CONCURRENCY: 1,
       MATCH_ANALYSIS_MAX_AGE_MS: 240_000,
     });
+  });
+
+  it('FEATURE_GROUP_BRIEF defaults to true', () => {
+    const result = parseEnv(workerConfigSchema, {
+      ...readEnvExample(),
+      FEATURE_GROUP_BRIEF: undefined,
+    });
+
+    expect(result.ok && result.config.FEATURE_GROUP_BRIEF).toBe(true);
+  });
+
+  it('FEATURE_GROUP_BRIEF false is parsed', () => {
+    const result = parseEnv(workerConfigSchema, {
+      ...readEnvExample(),
+      FEATURE_GROUP_BRIEF: 'false',
+    });
+
+    expect(result.ok && result.config.FEATURE_GROUP_BRIEF).toBe(false);
   });
 
   it('requires the object storage variables, the CV bucket included', () => {

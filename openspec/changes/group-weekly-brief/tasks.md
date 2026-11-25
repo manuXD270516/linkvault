@@ -95,12 +95,13 @@ Todo en `group-brief/domain/`, puro, sin `@nestjs/*`, `mongoose` ni `bullmq`.
 
 ## 3. Persistencia, caso de uso y planificación en el worker (design D1, D2, D4, D7)
 
-- [ ] 3.1 [backend] `group-brief/application/ports/group-brief.ports.ts`: `GROUP_BRIEF_CATALOG`
+- [x] 3.1 [backend] `group-brief/application/ports/group-brief.ports.ts`: `GROUP_BRIEF_CATALOG`
   (`listGroupIds(afterId, limit)`, `currentBriefsOf(groupIds, weekKey)`, `scanGroupOffers(groupId, limit)`),
   `GROUP_BRIEF_STORE` (`replace(document): Promise<void>` y `clear(groupId, weekKey): Promise<void>`), `GROUP_BRIEF_CLOCK` y `GROUP_BRIEF_ENABLED`; dobles en memoria
   en `application/testing/`. Verificar: `worker:typecheck` en verde y `in-memory-group-brief.store.spec.ts`: «replace
   keeps a single brief per group and week» y «clear removes only that group and week».
-- [ ] 3.2 [backend] `infrastructure/persistence/group-weekly-brief.document.ts` (`GroupWeeklyBriefDocument` con
+  Estado (2026-11-25): group-brief.ports.ts (GROUP_BRIEF_CATALOG, GROUP_BRIEF_STORE, GROUP_BRIEF_CLOCK, GROUP_BRIEF_ENABLED) y dobles en memoria en application/testing/; worker:typecheck verde y 2 escenarios en verde; falsación: clear() que vacía todo el mapa hace fallar «clear removes only that group and week»; restaurado. Decisión: el puerto usa el tipo GroupWeeklyBriefDocument de infrastructure/persistence (solo tipo y toDocument puros) para comparar en el espacio del documento.
+- [x] 3.2 [backend] `infrastructure/persistence/group-weekly-brief.document.ts` (`GroupWeeklyBriefDocument` con
   `ObjectId`, `Date` y `linkIds` string, y `toDocument(brief)` **sin `_id`**, H1 y N3), `group-weekly-brief.schemas.ts` (colección
   `group_weekly_briefs`, índice único `(groupId, weekKey)`, TTL 35 días sobre `computedAt`) y
   `mongo-group-brief.store.ts` (`replaceOne` + `upsert`, una clave duplicada se reintenta una vez sin `upsert`; `clear`
@@ -110,17 +111,20 @@ Todo en `group-brief/domain/`, puro, sin `@nestjs/*`, `mongoose` ni `bullmq`.
   EJSON fixture» (lee `libs/shared/src/testing/group-weekly-brief.document.ejson`, sin `_id`, con un `workspaceRoot()`
   compartido con 4.1 y lo compara con `EJSON.parse(texto, { relaxed: false })` y `toEqual`, N6). Falsación: guardar
   `computedAt` como string en `toDocument` hace fallar «computedAt is stored as BSON date»; se restaura.
-- [ ] 3.3 [backend] `ensureGroupBriefIndexes()` (`await Model.init()`) llamado antes del primer tick (H3). Verificar en
+  Estado (2026-11-25): group-weekly-brief.document.ts (toDocument sin _id), group-weekly-brief.schemas.ts (índice único + TTL 35 d) y mongo-group-brief.store.ts (replaceOne+upsert, reintento una vez ante 11000, clear=deleteOne); mongo-group-brief.store.spec.ts en verde sobre replset en memoria, incluido el fixture libs/shared/src/testing/group-weekly-brief.document.ejson y el workspaceRoot() nuevo de @linkvault/testing; falsación: computedAt como string hace fallar «computedAt is stored as BSON date» y «writes the canonical EJSON fixture»; restaurado.
+- [x] 3.3 [backend] `ensureGroupBriefIndexes()` (`await Model.init()`) llamado antes del primer tick (H3). Verificar en
   `mongo-group-brief.store.spec.ts`: «indexes exist on an empty collection before the first tick» (`listIndexes`, único
   y `expireAfterSeconds` = 3 024 000). Falsación: quitar la llamada hace fallar el test; se restaura.
-- [ ] 3.4 [backend] `infrastructure/persistence/mongo-group-brief.catalog.ts`: grupos de 50 en 50 por `_id`, documentos
+  Estado (2026-11-25): ensureGroupBriefIndexes() (await Model.init()) en mongo-group-brief.store.ts; «indexes exist on an empty collection before the first tick» comprueba el índice único (groupId, weekKey) y el TTL expireAfterSeconds 3 024 000 sobre una colección vacía, y «returns false and logs…» cubre el fallo (N2); falsación: sin la llamada a init() fallan ambos; restaurado.
+- [x] 3.4 [backend] `infrastructure/persistence/mongo-group-brief.catalog.ts`: grupos de 50 en 50 por `_id`, documentos
   de la semana de la página en una lectura, y `scanGroupOffers` (una lectura de `group_links` con proyección `linkId,
   sharedAt`, orden `sharedAt` desc e `_id` desc, límite 501; una de `job_links` con proyección `closedAt,
   preview.expiresAt, preview.skills`, cada habilidad validada con `jobSkillSchema`, H10). Verificar en
   `mongo-group-brief.catalog.spec.ts`: «scan projects only offer fields» (sin `note`, `tags`, `pinned`, `sharedBy` ni
   `knowSomeoneUserIds`), «invalid skill entries are dropped» y «scan makes two reads for 3 and 300 links». Falsación
   del último: un `findOne` por link hace fallar el conteo; se restaura.
-- [ ] 3.5 [backend] `application/compute-group-weekly-briefs.usecase.ts`: `execute(now)` → `{ weekKey, groupsScanned,
+  Estado (2026-11-25): mongo-group-brief.catalog.ts: grupos de 50 en 50 por _id, currentBriefsOf en una lectura y scanGroupOffers con dos lecturas (group_links proyección linkId+sharedAt, job_links closedAt+preview.expiresAt+preview.skills, habilidades validadas con jobSkillSchema); mongo-group-brief.catalog.spec.ts 6 tests en verde con monitorCommands; falsación: un findOne por link hace fallar «scan makes two reads for 3 and 300 links»; restaurado.
+- [x] 3.5 [backend] `application/compute-group-weekly-briefs.usecase.ts`: `execute(now)` → `{ weekKey, groupsScanned,
   upserted, unchanged, cleared, rejected, bulletsByKind }` (PO-1): compara en el espacio del documento (EJSON canónico
   sin `_id` ni `computedAt`, N4) y sobrescribe un guardado ilegible; un día sin viñetas llama a `clear` (N1); un
   rechazo conserva lo guardado y registra `groupId`, `weekKey` y códigos.
@@ -129,38 +133,45 @@ Todo en `group-brief/domain/`, puro, sin `@nestjs/*`, `mongoose` ni `bullmq`.
   document is overwritten», «empty day clears the week», «rejected brief keeps the last saved one» (verificador forzado
   a fallar) y «disabled does nothing». Falsación: con el `clear` del día vacío sustituido por un `return`, «empty day
   clears the week» falla; se restaura.
-- [ ] 3.6 [backend] Depende de 3.5. Línea de resumen por tick (PO-4). Verificar en
+  Estado (2026-11-25): compute-group-weekly-briefs.usecase.ts (ComputeGroupWeeklyBriefs.execute(now)): comparación en el espacio del documento (EJSON canónico, claves ordenadas, sin _id ni computedAt), guardado ilegible sobrescrito, día vacío llama a clear, rechazo conserva lo guardado y registra groupId, weekKey y códigos; 9 escenarios en verde (los 7 de la tarea más «empty day with nothing stored does not write» y «a failing group does not stop the others»); falsación: clear sustituido por return hace fallar «empty day clears the week»; restaurado. Decisión: el día vacío solo llama a clear si había algo guardado; un error en un grupo se registra (groupId) y no detiene el tick.
+- [x] 3.6 [backend] Depende de 3.5. Línea de resumen por tick (PO-4). Verificar en
   `compute-group-weekly-briefs.usecase.spec.ts`: «tick summary counts bullets by kind» y «tick summary has no group
   ids» (la línea registrada no contiene ningún id del fixture). Falsación: añadir `groupId` al resumen hace fallar el
   segundo; se revierte.
-- [ ] 3.7 [backend] Depende de 3.2-3.5. Prueba de privacidad y de contrato de punta a punta en
+  Estado (2026-11-25): línea de resumen group_brief_tick con weekKey, groupsScanned, upserted, unchanged, cleared, rejected y bulletsByKind (sin groupId); «tick summary counts bullets by kind» y «tick summary has no group ids» en verde; falsación: añadir groupId al resumen hace fallar el segundo; revertido.
+- [x] 3.7 [backend] Depende de 3.2-3.5. Prueba de privacidad y de contrato de punta a punta en
   `compute-group-weekly-briefs.int.spec.ts` (replset en memoria, adaptadores Mongo, cliente con `monitorCommands:
   true`, H15): grupo de Ana y Beto con nota, etiqueta, comentario, marca «conozco a alguien» y postulación privada.
   Verificar: la serialización del documento guardado no contiene los ids de Ana ni Beto, sus nombres, la nota, la
   etiqueta ni el comentario; ningún `commandStarted` apunta a `applications`; y «worker document reads back through
   fromDocument» valida contra `groupWeeklyBriefSchema` y `verifyGroupWeeklyBrief`. Falsación: añadir `sharedBy` a la
   proyección de 3.4 hace fallar el test; se revierte.
+  Estado (2026-11-25): compute-group-weekly-briefs.int.spec.ts (replset en memoria, adaptadores Mongo reales, monitorCommands): el documento guardado no contiene ids de Ana ni Beto, nombres, nota, etiqueta, comentario ni título; ningún commandStarted toca applications, users ni group_link_comments; «worker document reads back through fromDocument» valida con groupWeeklyBriefSchema y verifyGroupWeeklyBrief; falsación: sharedBy en la proyección de group_links hace fallar los tests (proyección y catálogo); restaurado.
 - [ ] 3.8 [backend] `FEATURE_GROUP_BRIEF` opcional en `worker-config.schema.ts` (`default('true')`, D2, H7) con su
   comentario; `.env.example` gana la línea con un comentario que explica por qué este flag va encendido por defecto, al
   revés que el digest; `apps/worker/src/test-support/test-config.ts` lo fija. Verificar en `load-worker-config.spec.ts`:
   «FEATURE_GROUP_BRIEF defaults to true» y «FEATURE_GROUP_BRIEF false is parsed»; `bash infra/ci/repo-checks.sh` en
   verde (`compose-env-contract` no exige la variable porque es opcional).
-- [ ] 3.9a [backend] `infrastructure/scheduling/group-brief.scheduler.ts`: `tick()` con guardia de solapamiento que
+  Estado (2026-11-25): PARCIAL, queda abierta. Hecho: FEATURE_GROUP_BRIEF (default 'true') con su comentario en worker-config.schema.ts, fijado en test-config.ts y en load-worker-config.spec.ts; «FEATURE_GROUP_BRIEF defaults to true» y «FEATURE_GROUP_BRIEF false is parsed» en verde. Pendiente: la línea con su comentario en .env.example (el encargo me prohíbe leer .env*; la agrega quien tenga permiso) y correr infra/ci/repo-checks.sh.
+- [x] 3.9a [backend] `infrastructure/scheduling/group-brief.scheduler.ts`: `tick()` con guardia de solapamiento que
   **nunca relanza**. Verificar con `group-brief.scheduler.spec.ts`: «overlapping tick is skipped» y «tick error is
   logged and swallowed». Falsación: relanzar el error en el `catch` hace fallar el segundo; se restaura.
-- [ ] 3.9b [backend] Depende de 3.3 y 3.9a. `onApplicationBootstrap`: `await ensureGroupBriefIndexes()` dentro de un
+  Estado (2026-11-25): group-brief.scheduler.ts: tick() con guardia de solapamiento que nunca relanza (y GROUP_BRIEF_CRON = '0 5 * * *' como constante); group-brief.scheduler.spec.ts con «overlapping tick is skipped», «tick error is logged and swallowed» y un tercero (reintenta tras fallo) en verde; falsación: relanzar el error en el catch hace fallar los de error; restaurado.
+- [x] 3.9b [backend] Depende de 3.3 y 3.9a. `onApplicationBootstrap`: `await ensureGroupBriefIndexes()` dentro de un
   try/catch (N2: si falla, log y el módulo queda sin cron ni tick) y luego `void scheduler.tick().catch(log)` (H2). Verificar con `group-brief.bootstrap.spec.ts`: «app init resolves while the
   boot tick hangs» (tick que nunca resuelve; `app.init()` resuelve antes de un plazo de 2 s) y «indexes are ensured
   before the boot tick» (orden de llamadas) e «index failure disables the brief without failing boot» (índices forzados
   a fallar: `app.init()` resuelve, se registra el error y ni el cron ni el tick corren). Falsaciones: `await
   scheduler.tick()` hace fallar el primero por plazo; relanzar el error de los índices hace fallar `app.init()` en el
   tercero; se restauran.
-- [ ] 3.9c [backend] Depende de 3.9b. Host `@Cron(GROUP_BRIEF_CRON, { timeZone: 'UTC' })` con `GROUP_BRIEF_CRON = '0 5 *
+  Estado (2026-11-25): group-brief.bootstrap.ts (await de índices con try/catch y luego void scheduler.tick().catch(log); si fallan, scheduler.disable()) y group-brief.bootstrap.spec.ts con los 3 escenarios de la tarea (+1 de índices no listos) en verde; falsaciones: await del tick hace fallar «app init resolves while the boot tick hangs»; relanzar el error de índices hace fallar «index failure disables the brief without failing boot»; restauradas.
+- [x] 3.9c [backend] Depende de 3.9b. Host `@Cron(GROUP_BRIEF_CRON, { timeZone: 'UTC' })` con `GROUP_BRIEF_CRON = '0 5 *
   * *'`, `group-brief.module.ts` con `ScheduleModule.forRoot()` en las mismas condiciones que `NotificationsModule`, y
   registro en el módulo raíz del worker; nada con `NODE_ENV=test` ni con el flag apagado. Verificar con
   `group-brief.module.spec.ts`: «registers no cron in test», «registers no cron when disabled» y «digest and brief
   crons are both registered once» (los dos módulos juntos, `SchedulerRegistry.getCronJobs()`); `worker:test` y
   `worker:lint` en verde.
+  Estado (2026-11-25): group-brief.module.ts (GroupBriefModule.register: ScheduleModule.forRoot(), host @Cron(GROUP_BRIEF_CRON = '0 5 * * *', UTC), bootstrap y proveedores; no registra nada con NODE_ENV=test ni con el flag apagado) registrado en app.module.ts; group-brief.module.spec.ts con «registers no cron in test», «registers no cron when disabled», «digest and brief crons are both registered once» (NotificationsModule real con bullmq doblado) y «registers the daily cron when enabled outside test» en verde; worker:lint, worker:typecheck y worker:test en verde; falsación: registrar también con NODE_ENV=test hace fallar «registers no cron in test»; restaurado.
 
 ## 4. Lectura en la api y borrado de grupo (design D8, D11)
 
@@ -232,11 +243,11 @@ Todo en `group-brief/domain/`, puro, sin `@nestjs/*`, `mongoose` ni `bullmq`.
   were shared in the group last week.», «There is nothing to summarize for this week yet.», «2 offers close soon; the first on Thursday, November 26.» y
   «Updated on Monday, November 23 · 7 open
   offers».
+  Estado (2026-11-25): `extract-i18n` regenerado (19 unidades `groups.weeklyBrief.*`) y traducidas en `messages.en.xlf`; `web:i18n-check` en verde; el `describe` EN de `group-weekly-brief-text.spec.ts` afirma las frases de D9 y el vacío EN se prueba en `group-weekly-brief-card.component.en.spec.ts` (aparte: Angular cachea los textos `i18n` de la plantilla al crear el componente por primera vez); falsación: cambiar un `target` EN hace fallar ambos specs, y cambiar un texto español sin re-extraer hace fallar `i18n-check`; restaurado.
 
 ## 7. End-to-end (perfil `local`)
 
 - [ ] 7.1a [frontend] `apps/web-e2e/src/group-weekly-brief.spec.ts`, escritorio: la prueba crea su grupo y sus links
-  Estado (2026-11-25): `extract-i18n` regenerado (19 unidades `groups.weeklyBrief.*`) y traducidas en `messages.en.xlf`; `web:i18n-check` en verde; el `describe` EN de `group-weekly-brief-text.spec.ts` afirma las frases de D9 y el vacío EN se prueba en `group-weekly-brief-card.component.en.spec.ts` (aparte: Angular cachea los textos `i18n` de la plantilla al crear el componente por primera vez); falsación: cambiar un `target` EN hace fallar ambos specs, y cambiar un texto español sin re-extraer hace fallar `i18n-check`; restaurado.
   por la API y escribe en Mongo el documento de la semana en curso con `replaceOne` + `upsert` (así no choca con un
   tick del worker que ya lo haya creado), sin usar `api:seed-demo` (D5 de `e2e-suite`). `apps/web-e2e/e2e.env` gana `FEATURE_GROUP_BRIEF=false` para que el
   worker del perfil local no recalcule ni borre el documento sembrado (N5; configuración de la suite, no un workflow de

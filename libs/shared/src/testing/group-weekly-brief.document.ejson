@@ -1,0 +1,46 @@
+{
+  "groupId": { "$oid": "111111111111111111111111" },
+  "weekKey": "2026-W48",
+  "asOf": "2026-11-25",
+  "computedAt": { "$date": { "$numberLong": "1795582800000" } },
+  "version": { "$numberInt": "1" },
+  "scanTruncated": false,
+  "facts": [
+    {
+      "kind": "open_offers",
+      "factId": "open_offers",
+      "count": { "$numberInt": "3" },
+      "linkIds": ["aaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbb", "cccccccccccccccccccccccc"]
+    },
+    {
+      "kind": "closing_soon",
+      "factId": "closing_soon",
+      "count": { "$numberInt": "1" },
+      "linkIds": ["aaaaaaaaaaaaaaaaaaaaaaaa"],
+      "from": "2026-11-25",
+      "until": "2026-12-02",
+      "firstExpiresAt": "2026-11-27"
+    },
+    {
+      "kind": "skill_demand",
+      "factId": "skill_demand:docker",
+      "skillKey": "docker",
+      "skillLabel": "Docker",
+      "count": { "$numberInt": "2" },
+      "total": { "$numberInt": "3" },
+      "linkIds": ["aaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbb"]
+    },
+    {
+      "kind": "shared_last_week",
+      "factId": "shared_last_week",
+      "count": { "$numberInt": "1" },
+      "linkIds": ["dddddddddddddddddddddddd"],
+      "weekKey": "2026-W47"
+    }
+  ],
+  "bullets": [
+    { "factId": "closing_soon", "source": "template" },
+    { "factId": "skill_demand:docker", "source": "template" },
+    { "factId": "shared_last_week", "source": "template" }
+  ]
+}

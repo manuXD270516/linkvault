@@ -36,6 +36,7 @@ export async function workerTestConfig(
     LINK_FRESHNESS_INTERVAL_DAYS: 7,
     LINK_FRESHNESS_BATCH_LIMIT: 50,
     FEATURE_GROUP_DIGEST: false,
+    FEATURE_GROUP_BRIEF: true,
     GROUP_DIGEST_CRON: '0 14 * * 1',
     MEILI_HOST: '',
     MEILI_MASTER_KEY: '',
