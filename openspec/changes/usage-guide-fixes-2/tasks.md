@@ -145,7 +145,7 @@ atrasa, el grupo 3 (H3) es el primer recorte (PO-4).
 
 ## 6. Verificación manual del PR (design D5)
 
-- [ ] 6.1 [frontend] Depende de 1-5. Sobre la pila e2e (`apps/web-e2e/scripts/e2e-stack.ts --keep-stack --list`) y con
+- [x] 6.1 [frontend] Depende de 1-5. Sobre la pila e2e (`apps/web-e2e/scripts/e2e-stack.ts --keep-stack --list`) y con
   `--out=` a una carpeta temporal fuera del repo, **sin commitear capturas** ni `resultados.json`: corrida de
   `capture.mts` con las secciones de M01 y F03 (`--only=registro,verificacion,sesion,perfil,grupos,invitado,links,cv,encaje`
   o el subconjunto mínimo que deje en `.state.json` lo que esas secciones necesitan; el filtro es por sección, no por
@@ -154,4 +154,4 @@ atrasa, el grupo 3 (H3) es el primer recorte (PO-4).
   `git status --short docs/guia-de-uso tools/guia-de-uso` no muestra capturas ni `resultados.json` nuevos. El recorrido
   a mano en staging antes de invitar (registro → verificar → encaje sin CV → subir CV → encaje con el CV en lectura)
   queda **diferido a 35b**: se anota allí, no en este change.
-  **Estado (2026-11-25): abierta.** No se corrió la verificación manual: los puertos 3000, 6379 y 27017 están ocupados en esta máquina por otros procesos (vitawallet-backend en Docker y listeners locales), y la pila e2e los necesita. Queda pendiente repetir M01, F03 y V03 (5 veces) con `capture.mts` cuando estén libres, antes de pedir la fusión.
+  **Estado (2026-11-25): hecha, con una salvedad.** La pila e2e usa los puertos 3100/4300/27117 (no los de desarrollo), así que se corrió: `e2e-stack.ts --keep-stack --list` y `capture.mts` completa con `--out` al scratchpad (sin build EN). Resultado: **M01 OK** («Necesitas un CV guardado», sin «Analizar»), **F03 OK** (el aviso viejo ya no está), **V03 OK**; 123 casos, 11 FALLO: W01-W09 (sin el build `--localize=en`, opcional y documentado) y V11m/V12m (ver abajo). Las 4 repeticiones de `--only=verificacion` sobre la misma pila dieron V01/V03 FALLO **por método**: la cuenta ya estaba verificada tras la pasada completa y el aviso que esperan no aparece; no prueban nada sobre H2. La prueba de H2 es el test de componente de 2.1 que reproduce la carrera (P2-7). V11m/V12m: la sección `movil` quedó en «Conectando…» porque un `POST /api/auth/refresh` del contexto móvil se abortó al navegar (el script navega cada 1,5 s), el servidor ya había rotado el token, y los refresh siguientes recibieron `409 refresh_conflict` y luego `401` (en `stack-logs/api.log`). El diff de este change no toca la restauración de sesión, el interceptor ni la API de auth, así que es una carrera previa de la rotación del refresh: queda como hallazgo para un change propio. Pila apagada con `--down`, `.state.json` borrado, sin capturas ni `resultados.json` en el repo.
