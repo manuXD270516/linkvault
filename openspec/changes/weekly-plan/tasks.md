@@ -54,21 +54,21 @@ otra cosa.
 
 ## 3. Señales de plan en `links` (design D7, spec `links/sharing`)
 
-- [ ] 3.1 [backend] `JobLinkRepository.planCardsOf(linkIds)` en el puerto, el repositorio en memoria y
+- [x] 3.1 [backend] `JobLinkRepository.planCardsOf(linkIds)` en el puerto, el repositorio en memoria y
   `mongo-job-link.repository.ts` (un `$in` con proyección de D7). Verificar en `mongo-job-link.repository.spec.ts` (replset
-  en memoria) y en el spec del doble: «planCardsOf returns closed and expiresAt», «planCardsOf ignores malformed ids».
-- [ ] 3.2 [backend] `GroupLinkRepository.knowSomeoneOf(groupIds, linkIds)` en el puerto, el doble en memoria y
+  en memoria) y en el spec del doble: «planCardsOf returns closed and expiresAt», «planCardsOf ignores malformed ids». **Estado (2026-11-25):** hecha; `planCardsOf` en puerto, doble y Mongo; specs de ambos en verde (suite de `links` 88 ficheros, 1219 tests).
+- [x] 3.2 [backend] `GroupLinkRepository.knowSomeoneOf(groupIds, linkIds)` en el puerto, el doble en memoria y
   `mongo-group-link.repository.ts` (un `find` por el índice único `(groupId, linkId)` con proyección
   `groupId, linkId, knowSomeoneUserIds`). Verificar en `mongo-group-link.repository.spec.ts`: «knowSomeoneOf returns only
-  relations of the given groups» y «knowSomeoneOf with empty inputs makes no query».
-- [ ] 3.3 [backend] `LinksFacade.planSignalsOf(userId, linkIds)`: `groupsOf` + las dos lecturas en paralelo; por link, el
+  relations of the given groups» y «knowSomeoneOf with empty inputs makes no query». **Estado (2026-11-25):** hecha; `knowSomeoneOf` en puerto, doble y Mongo (replset en memoria); «with empty inputs makes no query» comprueba con un espía que `find` no se llama.
+- [x] 3.3 [backend] `LinksFacade.planSignalsOf(userId, linkIds)`: `groupsOf` + las dos lecturas en paralelo; por link, el
   grupo de quien pregunta con más marcas de otras personas (sin contarle; desempate `groupId` asc) y ese conteo (C1);
   tope 200. Verificar en `links.facade.spec.ts`: «planSignalsOf reports the count of the group with most flags by
   others» (Bob en G1; Carla, Dan y Ana en G2 → 2 y G2), «planSignalsOf count matches the group listing minus own
   flag», «planSignalsOf with only the own flag reports zero and no group», «planSignalsOf ignores groups the user is
   not in», «planSignalsOf reports freshness and skips malformed ids», «planSignalsOf never returns flagger ids» (la
   serialización JSON no contiene ids de Bob, Carla ni Dan) y «planSignalsOf makes the same number of queries for 3 and
-  150 links». Falsación del último: un bucle de una consulta por link hace fallar el conteo de consultas.
+  150 links». Falsación del último: un bucle de una consulta por link hace fallar el conteo de consultas. **Estado (2026-11-25):** hecha; `planSignalsOf` en `LinksFacade`, 9 tests en `links.facade.spec.ts` (incluidos desempate por groupId y tope 200). Falsación hecha: una consulta de fichas por link hace fallar «same number of queries» ([1,3,1] frente a [1,1,1]); restaurado. `api:lint` y `api:typecheck` en verde.
 
 ## 4. Casos de uso, persistencia y rutas en `applications` (design D2, D5, D8)
 

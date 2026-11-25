@@ -20,6 +20,7 @@ import type {
   AddedComment,
   CommentsCounters,
   GroupLink,
+  GroupLinkKnowSomeone,
   GroupLinkRepository,
   ShareInGroupInput,
   SharedGroupLink,
@@ -63,6 +64,13 @@ import { modelOf } from './model-of';
 interface RelationFilter {
   groupId: Types.ObjectId;
   linkId: Types.ObjectId;
+}
+
+/** Lo que trae la proyección de `knowSomeoneOf`. */
+interface KnowSomeoneDocument {
+  groupId: Types.ObjectId;
+  linkId: Types.ObjectId;
+  knowSomeoneUserIds?: Types.ObjectId[];
 }
 
 @Injectable()
@@ -317,6 +325,36 @@ export class MongoGroupLinkRepository implements GroupLinkRepository {
       .distinct('linkId', { groupId: group, linkId: { $in: ids } })
       .exec();
     return new Set(found.map((linkId: Types.ObjectId) => linkId.toHexString()));
+  }
+
+  async knowSomeoneOf(
+    groupIds: readonly string[],
+    linkIds: readonly string[],
+  ): Promise<GroupLinkKnowSomeone[]> {
+    const groups = [...new Set(groupIds)]
+      .map((groupId) => toGroupObjectId(groupId))
+      .filter((groupId): groupId is Types.ObjectId => groupId !== null);
+    const links = [...new Set(linkIds)]
+      .map((linkId) => toLinkObjectId(linkId))
+      .filter((linkId): linkId is Types.ObjectId => linkId !== null);
+    if (groups.length === 0 || links.length === 0) {
+      return [];
+    }
+    // Una sola consulta por el índice único `(groupId, linkId)` con proyección, sean 3 links o 150 (D7 de weekly-plan).
+    const documents = await this.groupLinks
+      .find(
+        { groupId: { $in: groups }, linkId: { $in: links } },
+        { groupId: 1, linkId: 1, knowSomeoneUserIds: 1 },
+      )
+      .lean<KnowSomeoneDocument[]>()
+      .exec();
+    return documents.map((document) => ({
+      groupId: document.groupId.toHexString(),
+      linkId: document.linkId.toHexString(),
+      knowSomeoneUserIds: (document.knowSomeoneUserIds ?? []).map((id) =>
+        id.toHexString(),
+      ),
+    }));
   }
 
   async removeWithComments(groupId: string, linkId: string): Promise<boolean> {

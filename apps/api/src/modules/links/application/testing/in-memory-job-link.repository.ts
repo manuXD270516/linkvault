@@ -10,6 +10,7 @@ import {
 import { isLinkId } from '../../domain/identifier';
 import type {
   JobLinkCard,
+  JobLinkPlanCard,
   JobLinkRepository,
   ManualPreviewWrite,
   PastedPreviewWrite,
@@ -67,6 +68,19 @@ export class InMemoryJobLinkRepository implements JobLinkRepository {
       .map((linkId) => this.links.get(linkId))
       .filter((link): link is JobLink => link !== undefined)
       .map(toJobLinkCard);
+    return Promise.resolve(cards);
+  }
+
+  /** Cuántas veces se pidieron fichas de plan: lo usa el test de consultas fijas de `planSignalsOf`. */
+  planCardsOfCalls = 0;
+
+  planCardsOf(linkIds: readonly string[]): Promise<JobLinkPlanCard[]> {
+    this.planCardsOfCalls += 1;
+    const cards = [...new Set(linkIds)]
+      .filter((linkId) => isLinkId(linkId))
+      .map((linkId) => this.links.get(linkId))
+      .filter((link): link is JobLink => link !== undefined)
+      .map(toJobLinkPlanCard);
     return Promise.resolve(cards);
   }
 
@@ -265,6 +279,20 @@ export class InMemoryJobLinkRepository implements JobLinkRepository {
 }
 
 /** Ficha de un link con la misma forma que la proyección del adaptador real. */
+export function toJobLinkPlanCard(link: JobLink): JobLinkPlanCard {
+  const title = link.preview?.title;
+  const company = link.preview?.company;
+  const expiresAt = link.preview?.expiresAt;
+  return {
+    id: link.id,
+    displayUrl: link.displayUrl,
+    closed: link.closedAt !== undefined,
+    ...(typeof title === 'string' && title.length > 0 ? { title } : {}),
+    ...(typeof company === 'string' && company.length > 0 ? { company } : {}),
+    ...(typeof expiresAt === 'string' ? { expiresAt } : {}),
+  };
+}
+
 export function toJobLinkCard(link: JobLink): JobLinkCard {
   const title = link.preview?.title;
   const company = link.preview?.company;

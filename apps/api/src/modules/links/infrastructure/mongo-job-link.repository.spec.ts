@@ -602,6 +602,66 @@ describe('listByPreviewStatus', () => {
   });
 });
 
+describe('planCardsOf', () => {
+  it('planCardsOf returns closed and expiresAt', async () => {
+    const open = await save(JOB_PAGE);
+    const closed = await save('https://www.linkedin.com/jobs/view/3822222222/');
+    const noExpiry = await save('https://www.linkedin.com/jobs/view/3833333333/');
+    const links = connection.collection(JOB_LINKS_COLLECTION);
+    await links.updateOne(
+      { _id: new mongoose.Types.ObjectId(open.link.id) },
+      {
+        $set: {
+          preview: { title: 'Backend', company: 'Acme', expiresAt: '2026-12-01' },
+        },
+      },
+    );
+    await links.updateOne(
+      { _id: new mongoose.Types.ObjectId(closed.link.id) },
+      {
+        $set: {
+          closedAt: new Date('2026-11-20T00:00:00.000Z'),
+          preview: { title: 'Old', company: null, expiresAt: null },
+        },
+      },
+    );
+
+    const cards = await repository.planCardsOf([
+      open.link.id,
+      closed.link.id,
+      noExpiry.link.id,
+    ]);
+    const byId = new Map(cards.map((card) => [card.id, card]));
+
+    expect(cards).toHaveLength(3);
+    expect(byId.get(open.link.id)).toEqual({
+      id: open.link.id,
+      displayUrl: open.link.displayUrl,
+      title: 'Backend',
+      company: 'Acme',
+      closed: false,
+      expiresAt: '2026-12-01',
+    });
+    expect(byId.get(closed.link.id)).toEqual({
+      id: closed.link.id,
+      displayUrl: closed.link.displayUrl,
+      title: 'Old',
+      closed: true,
+    });
+    expect(byId.get(noExpiry.link.id)).toEqual({
+      id: noExpiry.link.id,
+      displayUrl: noExpiry.link.displayUrl,
+      closed: false,
+    });
+  });
+
+  it('planCardsOf ignores malformed ids', async () => {
+    await expect(
+      repository.planCardsOf(['no-es-un-id', objectId(99)]),
+    ).resolves.toEqual([]);
+  });
+});
+
 describe('cardsOf', () => {
   it('answers the cards of several links in one query, without the malformed ids', async () => {
     const first = await save(JOB_PAGE);

@@ -130,6 +130,34 @@ describe('findById', () => {
   });
 });
 
+describe('planCardsOf', () => {
+  it('planCardsOf returns closed and expiresAt', async () => {
+    const { link } = await resolve(JOB_PAGE);
+    repository.overwrite(link.id, {
+      previewStatus: 'enriched',
+      preview: { title: 'Backend', company: 'Acme', expiresAt: '2026-12-01' },
+      closedAt: new Date('2026-11-20T00:00:00.000Z'),
+    });
+
+    await expect(repository.planCardsOf([link.id, link.id])).resolves.toEqual([
+      {
+        id: link.id,
+        displayUrl: link.displayUrl,
+        title: 'Backend',
+        company: 'Acme',
+        closed: true,
+        expiresAt: '2026-12-01',
+      },
+    ]);
+  });
+
+  it('planCardsOf ignores malformed ids', async () => {
+    await expect(
+      repository.planCardsOf(['no-es-un-id', objectId(99)]),
+    ).resolves.toEqual([]);
+  });
+});
+
 describe('cardsOf', () => {
   it('answers the card of each existing link, once, and nothing for malformed ids', async () => {
     const { link } = await resolve(JOB_PAGE);

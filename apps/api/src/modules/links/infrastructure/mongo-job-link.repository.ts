@@ -7,6 +7,7 @@ import { getConnectionToken } from '@nestjs/mongoose';
 import { mongo, type ClientSession, type Connection, type Model } from 'mongoose';
 import type {
   JobLinkCard,
+  JobLinkPlanCard,
   JobLinkRepository,
   ManualPreviewWrite,
   PastedPreviewWrite,
@@ -143,6 +144,30 @@ export class MongoJobLinkRepository implements JobLinkRepository {
       .lean<CardDocument[]>()
       .exec();
     return documents.map(toCard);
+  }
+
+  async planCardsOf(linkIds: readonly string[]): Promise<JobLinkPlanCard[]> {
+    const ids = [...new Set(linkIds)]
+      .map((linkId) => toLinkObjectId(linkId))
+      .filter((id): id is NonNullable<typeof id> => id !== null);
+    if (ids.length === 0) {
+      return [];
+    }
+    // Una sola consulta `$in` por `_id` con proyección: el plan semanal solo necesita la ficha y la frescura (D7).
+    const documents = await this.links
+      .find(
+        { _id: { $in: ids } },
+        {
+          displayUrl: 1,
+          closedAt: 1,
+          'preview.title': 1,
+          'preview.company': 1,
+          'preview.expiresAt': 1,
+        },
+      )
+      .lean<PlanCardDocument[]>()
+      .exec();
+    return documents.map(toPlanCard);
   }
 
   async listByPreviewStatus(
@@ -409,6 +434,31 @@ function toCard(document: CardDocument): JobLinkCard {
     previewStatus: document.previewStatus,
     ...(typeof title === 'string' && title.length > 0 ? { title } : {}),
     ...(typeof company === 'string' && company.length > 0 ? { company } : {}),
+  };
+}
+
+/** Lo que trae la proyección de `planCardsOf`. */
+type PlanCardDocument = Pick<JobLinkDocument, '_id' | 'displayUrl' | 'closedAt'> & {
+  preview?: {
+    title?: string;
+    company?: string | null;
+    expiresAt?: string | null;
+  };
+};
+
+function toPlanCard(document: PlanCardDocument): JobLinkPlanCard {
+  const title = document.preview?.title;
+  const company = document.preview?.company;
+  const expiresAt = document.preview?.expiresAt;
+  return {
+    id: document._id.toHexString(),
+    displayUrl: document.displayUrl,
+    closed: document.closedAt !== undefined && document.closedAt !== null,
+    ...(typeof title === 'string' && title.length > 0 ? { title } : {}),
+    ...(typeof company === 'string' && company.length > 0 ? { company } : {}),
+    ...(typeof expiresAt === 'string' && expiresAt.length > 0
+      ? { expiresAt }
+      : {}),
   };
 }
 
