@@ -126,11 +126,11 @@ otra cosa.
 
 ## 5. Borrado de cuenta (spec `users/account-deletion`)
 
-- [ ] 5.1 [backend] `users/infrastructure/mongo-account-deletion.cascade.ts`: `deleteMany({ userId: userOid }, { session })`
+- [x] 5.1 [backend] `users/infrastructure/mongo-account-deletion.cascade.ts`: `deleteMany({ userId: userOid }, { session })`
   en `weekly_plan_decisions` (el `ObjectId` de `:105`, porque la colección guarda `userId` como `ObjectId`; C12), junto a
   `applications` (`:154-170`). Verificar en `users/presentation/account-deletion.cascade.spec.ts`: «deletes weekly plan
   decisions of the user only» y «a failing cascade keeps weekly plan decisions». Falsación: con `{ userId }` como
-  string, el primero falla porque no borra nada.
+  string, el primero falla porque no borra nada. **Estado (2026-11-25):** hecha; `deleteMany({ userId: userOid })` sobre `weekly_plan_decisions` tras las postulaciones; `account-deletion.cascade.spec.ts` 7/7 con los dos tests nuevos. Falsación hecha: con `{ userId }` como string fallan los dos (no borra nada); restaurado.
 
 ## 6. Seed demo (design D11, spec `platform/demo-seed`)
 
