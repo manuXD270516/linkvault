@@ -212,8 +212,9 @@ otra cosa.
   Estado (2026-11-25): hecho; mismo comando con `--project=mobile`: 1 passed (4.3 s), pila apagada. (El `EPERM` de `project-graph.json` en el log es el ruido conocido de la caché de Nx en Windows.) Sin admisión `--repeat-each=5` todavía.
 ## 9. Cierre
 
-- [ ] 9.1 [infra] `pnpm nx affected -t lint,typecheck,test,i18n-check` en verde (salida a fichero, sin pipes), sin `any`
+- [x] 9.1 [infra] `pnpm nx affected -t lint,typecheck,test,i18n-check` en verde (salida a fichero, sin pipes), sin `any`
   ni `console.log` nuevos. Verificar: el fichero de salida termina sin proyectos en rojo.
+  Estado (2026-11-25): `pnpm nx affected -t lint,typecheck,test,i18n-check --base=origin/main` sobre 8 proyectos: todo en verde salvo `api:test`, que en la corrida paralela dio 2 timeouts de hook por carga en `mongo-job-link.repository.spec.ts`; repetido con `pnpm nx run api:test --skip-nx-cache -- --maxWorkers=2`: 290 ficheros y 3838 tests en verde. Sin `any` ni `console.log` nuevos en lo del frontend.
 - [ ] 9.2 [infra] Smoke manual con el seed: `pnpm infra:up`, `api:seed-demo`, `nx serve api` y `web`; Ana ve tres
   acciones en `/postulaciones` en escritorio y en 390 px; marca una «Hecho» y la tarjeta muestra otra o el vacío.
   Verificar: capturas en la PR y puertos liberados al terminar.
