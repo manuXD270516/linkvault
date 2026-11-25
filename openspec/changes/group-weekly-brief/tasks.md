@@ -277,8 +277,9 @@ Todo en `group-brief/domain/`, puro, sin `@nestjs/*`, `mongoose` ni `bullmq`.
   preguntar a las 2 semanas «¿La viste?» (PO-3). Verificar: `bash infra/ci/repo-checks.sh` en verde (`docs-stack-up`
   incluido).
   Estado (2026-11-25): docs/RUNBOOK.md, sección «La semana del grupo (group_weekly_briefs)»: colección, índices (único y TTL 3 024 000, creados al arrancar), tick 05:00 UTC y de arranque con recálculo diario, FEATURE_GROUP_BRIEF y por qué vale su valor por defecto en staging, contadores (cleared, rejected conserva lo anterior), línea de resumen por tick con comando jq para sumar por semana (PO-4), consultas agregadas de la métrica 1 y de scanTruncated y de cobertura de habilidades (sin groupId), collMod para cambiar el TTL (N2), recálculo local (reiniciar el worker, también tras api:seed-demo), rollback y nota de invitación de 35b con «¿La viste?» (PO-3); bash infra/ci/repo-checks.sh en verde (5 comprobaciones, docs-stack-up incluido).
-- [ ] 8.2 [infra] Cierre. Verificar: `pnpm nx affected -t lint,typecheck,test,i18n-check` en verde, `bash
+- [x] 8.2 [infra] Cierre. Verificar: `pnpm nx affected -t lint,typecheck,test,i18n-check` en verde, `bash
   infra/ci/repo-checks.sh` en verde y `openspec validate group-weekly-brief --strict --no-interactive` en verde.
+  Estado (2026-11-25): `pnpm nx affected -t lint,typecheck,test,i18n-check --base=origin/main`: 31 de 32 tareas en verde; `api:test` dio timeouts de hook por carga (los locales conocidos, también en main) y repetido solo con `--maxWorkers=2`: 293 ficheros y 3856 tests en verde. `openspec validate group-weekly-brief --strict` y `repo-checks.sh` en verde. QA (qa-reviewer): sin incumplimientos salvo esta tarea; un riesgo menor anotado (application/ del worker importa `mongoose` para EJSON), sin acción obligatoria.
 - [ ] 8.3 [infra] **Diferida: depende de 35b (`staging-host`); no bloquea el cierre de este change** (PO-5). Antes de
   invitar en 35b, medir en staging la cobertura de `preview.skills` sobre las ofertas abiertas de los grupos (consulta
   del RUNBOOK). Verificar: la cobertura queda anotada en el informe de 35b. Si es ≥ 50 %, nada más; si no llega, **se invita
