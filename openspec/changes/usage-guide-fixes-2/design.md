@@ -219,7 +219,7 @@ falta razonar algo más que la respuesta, el siguiente número libre en todas la
 
 ## Open Questions
 
-- **Q1 [bloqueante para `/opsx:apply`] Precedencia de la fila 35. Pendiente del owner.** Según ADR-048
+- **Q1 [bloqueante para `/opsx:apply`] Precedencia de la fila 35. Respondida por el owner (2026-11-25): (a).** Según ADR-048
   §Consecuencias y ADR-051 §1, ningún change de otra fila entra entre medias de la fila 35 (35b sigue abierta), y
   ADR-055 §1 dejó dicho que la excepción de `usage-guide-fixes` no liberaba la precedencia para ningún otro change.
   ¿Se aplica y fusiona este change antes de cerrar la fila?
@@ -259,10 +259,10 @@ Ronda 1 del 2026-11-25: critic, 0 P0 (3 P1, 9 P2); business, 0 V0 (1 V1 de produ
 | PO-3 | Aceptado | La otra pestaña que no refresca el perfil va como riesgo conocido en «Fuera de alcance», con el change chico propuesto (volver a pedir el perfil al recuperar el foco mientras `emailVerified` sea `false`) si alguien lo reporta en 35b (proposal, Risks). |
 | PO-4 | Aceptado | H3 es el primer recorte si el apply se atrasa (Goals / Non-Goals). |
 | PO-5 a PO-9 | Sin cambios | H4-H10 siguen fuera de alcance. |
-| Q1 | Pendiente del owner | Critic y business recomiendan (a); si el owner elige (c), aplica P2-8. |
+| Q1 | Respondida por el owner (2026-11-25): (a) | Critic y business recomendaban (a). Excepción como la de ADR-055 §1: se aplica y fusiona antes de cerrar la fila 35; anotada en ADR-055 §1 y en la fila 40. P2-8 no aplica. |
 | Q2 | Resuelta | Fila 40, comprobando antes que nadie la use en las ramas abiertas (tarea 0.1). |
 | Q3 | Resuelta | Sin pasada completa: la verificación manual del PR es la corrida acotada de M01 y F03 más V03 repetido 5 veces, sin commitear capturas, y un recorrido a mano en staging antes de invitar, diferido a 35b (D5, tarea 6.1). |
 
 **Convergencia: SI (2026-11-25, ronda 1: 0 P0 / 0 V0)**
 
-**Aprobación humana:** Pendiente.
+**Aprobación humana:** 2026-11-25, el owner respondió «Aprobado ambos, avancemos» al pedido de aprobar la spec y de responder la Q1 con la recomendación (a). Alcance: apply en la rama `change/usage-guide-fixes-2` y PR; la fusión solo cuando el owner lo diga.

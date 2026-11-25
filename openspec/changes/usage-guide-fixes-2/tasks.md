@@ -4,7 +4,7 @@ Cada tarea cabe en menos de una hora. En las de código, el test que reproduce e
 ve caer sobre el código sin arreglar; la salida de ese fallo se anota en el «Estado» de la tarea. Si el apply se
 atrasa, el grupo 3 (H3) es el primer recorte (PO-4).
 
-- [ ] 0.1 [infra] Q1 respondida por el owner y anotada con fecha en `design.md` y en una línea de `docs/adr/ADR-055.md`
+- [x] 0.1 [infra] Q1 respondida por el owner y anotada con fecha en `design.md` y en una línea de `docs/adr/ADR-055.md`
   §1 que empieza por «Respuesta del owner (Q1 de usage-guide-fixes-2), AAAA-MM-DD:». Con la respuesta, fila **40** en
   `docs/design-v0.2.md` §6 para `usage-guide-fixes-2`, fuera de `openspec-changes.yaml` (Q2), después de comprobar que
   ninguna rama abierta usa ya la 40: `for b in $(git for-each-ref --format='%(refname:short)' refs/heads refs/remotes);
@@ -13,8 +13,10 @@ atrasa, el grupo 3 (H3) es el primer recorte (PO-4).
   `specs/web/auth/` y los grupos 2 y 3, y del grupo 5 solo queda lo de M01 (P2-8). Verificar:
   `grep -c "Respuesta del owner (Q1 de usage-guide-fixes-2), 20" docs/adr/ADR-055.md` devuelve `1` (antes de anotarla
   devuelve `0`), y `grep -n "usage-guide-fixes-2" docs/design-v0.2.md` muestra la fila 40.
-- [ ] 0.2 [infra] Aprobación humana registrada. El debate cerró en la ronda 1 con «Convergencia: SI (2026-11-25, ronda
+  **Estado (2026-11-25):** Q1 = (a) anotada en design.md y en ADR-055 §1 (grep -c = 1, antes 0). Comprobación de ramas locales y remotas sin salida (nadie usa la fila 40 en origen); fila 40 en docs/design-v0.2.md §6, fuera de openspec-changes.yaml.
+- [x] 0.2 [infra] Aprobación humana registrada. El debate cerró en la ronda 1 con «Convergencia: SI (2026-11-25, ronda
   1: 0 P0 / 0 V0)». Verificar: la línea «Aprobación humana:» de `design.md` lleva fecha en vez de «Pendiente».
+  **Estado (2026-11-25):** Aprobación humana registrada en design.md con la cita literal «Aprobado ambos, avancemos»; alcance: apply en la rama y PR, fusión solo cuando el owner lo diga.
 
 ## 1. H1 — el diálogo de encaje llega a «Necesitas un CV guardado» (design D1, D2)
 
