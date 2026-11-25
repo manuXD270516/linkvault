@@ -218,8 +218,9 @@ otra cosa.
 - [ ] 9.2 [infra] Smoke manual con el seed: `pnpm infra:up`, `api:seed-demo`, `nx serve api` y `web`; Ana ve tres
   acciones en `/postulaciones` en escritorio y en 390 px; marca una «Hecho» y la tarjeta muestra otra o el vacío.
   Verificar: capturas en la PR y puertos liberados al terminar.
-- [ ] 9.3 [infra] PR desde `change/weekly-plan` **sin fusionar**, con la etiqueta de candidata y la nota «no se fusiona
+- [x] 9.3 [infra] PR desde `change/weekly-plan` **sin fusionar**, con la etiqueta de candidata y la nota «no se fusiona
   hasta que el owner abra una ventana». Verificar: la PR existe en estado abierto y su descripción enlaza ADR-068.
+  Estado (2026-11-25): PR #98 abierta en borrador, título «candidata — no fusionar», cita ADR-068 y la fila 38.
 - [x] 9.4 [infra] `docs/RUNBOOK.md`: sección «Plan semanal (`weekly_plan_decisions`)» con qué guarda la colección (sin
   texto), su TTL de 35 días, que los índices los crea `autoIndex` al arrancar la api, cómo comprobarlos
   (`db.weekly_plan_decisions.getIndexes()`), el rollback (revertir el PR; `drop()` opcional), que una sugerencia oculta vuelve a los 35 días si
