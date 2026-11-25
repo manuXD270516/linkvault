@@ -12,7 +12,7 @@ el ancho y también en pantallas móviles, la tarjeta «Tu semana» con las acci
 Cada acción SHALL mostrar el nombre de la oferta (título, o `displayUrl` sin título) como enlace, su motivo en una sola
 línea y los botones «Hecho», «Ahora no» y «Ocultar sugerencia», cada uno con un área táctil de al menos 44 px de alto.
 La tarjeta SHALL tener estado de carga, estado vacío y estado de error con «Reintentar»; un error del plan NO SHALL
-impedir usar el tablero. El estado vacío SHALL mostrar «No hay nada urgente esta semana.», la línea fija «Acá vas a ver
+impedir usar el tablero. El estado vacío SHALL mostrar «No hay nada urgente esta semana.», la línea fija «Aquí verás
 cuando una oferta guardada esté por cerrar, una postulación lleve 10 días sin novedades o alguien de tu grupo conozca a
 alguien.» (EN: «This is where you will see when a saved offer is about to close, an application has gone 10 days
 without news, or someone in your group knows someone there.») y, si `doneThisWeek` > 0, «Hiciste N esta semana.». Con
@@ -30,7 +30,7 @@ el tablero vacío la tarjeta NO SHALL mostrarse. Todos los textos SHALL estar en
 - **GIVEN** Ana con postulaciones y un plan sin acciones
 - **WHEN** abre `/postulaciones`
 - **THEN** la tarjeta SHALL decir «No hay nada urgente esta semana.»
-- **AND** SHALL decir «Acá vas a ver cuando una oferta guardada esté por cerrar, una postulación lleve 10 días sin
+- **AND** SHALL decir «Aquí verás cuando una oferta guardada esté por cerrar, una postulación lleve 10 días sin
   novedades o alguien de tu grupo conozca a alguien.»
 
 #### Scenario: Vacío en inglés
@@ -60,26 +60,26 @@ elegido en código, con estos textos:
 
 | `reason` | Español | English |
 |---|---|---|
-| `closing_soon`, `daysLeft` 0 | `Cierra hoy: postulá hoy.` | `Closes today: apply today.` |
-| `closing_soon`, `daysLeft` 1 | `Cierra en 1 día: postulá antes.` | `Closes in 1 day: apply before then.` |
-| `closing_soon`, `daysLeft` N > 1 | `Cierra en N días: postulá antes.` | `Closes in N days: apply before then.` |
-| `high_fit` | `Encaja N/100 según tu análisis: postulá.` | `Fits N/100 according to your analysis: apply.` |
-| `quiet` | `N días sin novedades: mandá un seguimiento.` | `N days with no news: send a follow-up.` |
-| `know_someone`, `count` 1 | `1 persona de tu grupo conoce a alguien ahí: preguntá en el grupo.` | `1 person in your group knows someone there: ask in the group.` |
-| `know_someone`, `count` N > 1 | `N personas de tu grupo conocen a alguien ahí: preguntá en el grupo.` | `N people in your group know someone there: ask in the group.` |
+| `closing_soon`, `daysLeft` 0 | `Cierra hoy: postula hoy.` | `Closes today: apply today.` |
+| `closing_soon`, `daysLeft` 1 | `Cierra en 1 día: postula antes.` | `Closes in 1 day: apply before then.` |
+| `closing_soon`, `daysLeft` N > 1 | `Cierra en N días: postula antes.` | `Closes in N days: apply before then.` |
+| `high_fit` | `Encaja N/100 según tu análisis: postula.` | `Fits N/100 according to your analysis: apply.` |
+| `quiet` | `N días sin novedades: manda un seguimiento.` | `N days with no news: send a follow-up.` |
+| `know_someone`, `count` 1 | `1 persona de tu grupo conoce a alguien ahí: pregunta en el grupo.` | `1 person in your group knows someone there: ask in the group.` |
+| `know_someone`, `count` N > 1 | `N personas de tu grupo conocen a alguien ahí: pregunta en el grupo.` | `N people in your group know someone there: ask in the group.` |
 
 #### Scenario: Motivos en español
 
 - **GIVEN** acciones con motivos `closing_soon` (`daysLeft` 4), `quiet` (`daysQuiet` 12) y `know_someone` (`count` 2)
 - **WHEN** Ana ve la tarjeta en español
-- **THEN** SHALL leer «Cierra en 4 días: postulá antes.», «12 días sin novedades: mandá un seguimiento.» y «2 personas
-  de tu grupo conocen a alguien ahí: preguntá en el grupo.»
+- **THEN** SHALL leer «Cierra en 4 días: postula antes.», «12 días sin novedades: manda un seguimiento.» y «2 personas
+  de tu grupo conocen a alguien ahí: pregunta en el grupo.»
 
 #### Scenario: Cierra hoy
 
 - **GIVEN** una acción `closing_soon` con `daysLeft` 0
 - **WHEN** Ana ve la tarjeta en español
-- **THEN** SHALL leer «Cierra hoy: postulá hoy.»
+- **THEN** SHALL leer «Cierra hoy: postula hoy.»
 
 #### Scenario: Singular
 
@@ -93,10 +93,10 @@ elegido en código, con estos textos:
 «Hecho», «Ahora no» y «Ocultar sugerencia» SHALL enviar `POST /api/applications/weekly-plan/decisions` con `done`,
 `snoozed` y `dismissed` respectivamente, deshabilitar los botones de esa acción mientras la petición viaja y reemplazar
 el plan por el de la respuesta. Si la respuesta es `404` con `weekly_plan_action_not_found`, el SPA SHALL recargar el
-plan sin mostrar error; ante cualquier otro error SHALL mostrar «No pudimos guardar tu elección. Probá de nuevo.» y
+plan sin mostrar error; ante cualquier otro error SHALL mostrar «No pudimos guardar tu elección. Prueba de nuevo.» y
 volver a habilitar los botones. El enlace del nombre de la oferta SHALL abrir el detalle de la postulación en el
 tablero, salvo en `ask_know_someone`, donde SHALL navegar a `/grupos/:groupId`. Tras «Hecho» en una acción
-`apply_before_close`, la tarjeta SHALL mostrar «¿Ya postulaste? Movela a Postulada» con un enlace que abre el detalle de
+`apply_before_close`, la tarjeta SHALL mostrar «¿Ya postulaste? Muévela a Postulada» con un enlace que abre el detalle de
 esa postulación, sin cambiar su estado. Tras mover una postulación de columna con éxito, el SPA SHALL recargar el plan.
 Ningún control de la tarjeta SHALL abrir la oferta externa, enviar mensajes ni cambiar el estado de una postulación.
 
@@ -117,7 +117,7 @@ Ningún control de la tarjeta SHALL abrir la oferta externa, enviar mensajes ni 
 
 - **GIVEN** una acción `apply_before_close`
 - **WHEN** Ana pulsa «Hecho»
-- **THEN** la tarjeta SHALL mostrar «¿Ya postulaste? Movela a Postulada»
+- **THEN** la tarjeta SHALL mostrar «¿Ya postulaste? Muévela a Postulada»
 - **AND** al pulsar su enlace SHALL abrirse el detalle de esa postulación sin ninguna petición de cambio de estado
 
 #### Scenario: La acción ya no aplica
@@ -130,7 +130,7 @@ Ningún control de la tarjeta SHALL abrir la oferta externa, enviar mensajes ni 
 
 - **GIVEN** la decisión responde `500`
 - **WHEN** Ana pulsa «Ocultar sugerencia»
-- **THEN** la tarjeta SHALL mostrar «No pudimos guardar tu elección. Probá de nuevo.» y los botones SHALL volver a
+- **THEN** la tarjeta SHALL mostrar «No pudimos guardar tu elección. Prueba de nuevo.» y los botones SHALL volver a
   estar habilitados
 
 #### Scenario: Mover en el tablero recarga el plan

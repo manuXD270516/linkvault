@@ -157,7 +157,7 @@ otra cosa.
   honest empty state with the explanation line», «renders done this week when greater than zero», «renders the error
   with retry», «renders the save failure message» y «uses the URL when there is no title».
 - [ ] 7.3 [frontend] Título como enlace «Abrir» (emite `applicationId` o navega a `/grupos/:groupId`), botones «Hecho»,
-  «Ahora no», «Ocultar sugerencia» con `min-h-11` (B4) y la línea «¿Ya postulaste? Movela a Postulada» tras «Hecho» en
+  «Ahora no», «Ocultar sugerencia» con `min-h-11` (B4) y la línea «¿Ya postulaste? Muévela a Postulada» tras «Hecho» en
   `apply_before_close` (B5). Verificar en el spec de la tarjeta: «done sends the done decision with its candidateId»,
   «not now sends snoozed and hide sends dismissed», «title opens the application», «title navigates to the group for
   ask_know_someone» y «done on apply_before_close offers to move it to applied without a status request».
@@ -181,7 +181,7 @@ otra cosa.
 - [ ] 8.1a [frontend] `apps/web-e2e/src/weekly-plan.spec.ts`, solo perfil `local`, preparación y flujo de escritorio:
   alta por la API, un link seguido como `saved` con `expiresAt` hoy + 3 y otro `applied` con `statusChangedAt` hace 12
   días (escritos en Mongo como `links.spec.ts:182`). Verificar en `chromium`: «weekly plan card shows two actions and
-  marks one done» (la acción marcada desaparece y aparece «¿Ya postulaste? Movela a Postulada»).
+  marks one done» (la acción marcada desaparece y aparece «¿Ya postulaste? Muévela a Postulada»).
 - [ ] 8.1b [frontend] Mismo fichero, caso de móvil y borrador. Verificar en `mobile`: «weekly plan card sits above the
   columns on mobile and copies a follow-up draft» (tarjeta por encima de la primera columna y botones ≥ 44 px por
   `boundingBox`; el portapapeles contiene «¿Me podrían contar en qué estado está el proceso de selección?»).

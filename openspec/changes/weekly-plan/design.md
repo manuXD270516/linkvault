@@ -248,7 +248,7 @@ tablero está vacío (el tablero ya tiene su estado vacío y la tarjeta no tendr
 **no** bloquea el tablero.
 
 - Cargando: esqueleto de 3 líneas con `aria-busy="true"`.
-- Vacío: «No hay nada urgente esta semana.», la línea fija (B1) «Acá vas a ver cuando una oferta guardada esté por
+- Vacío: «No hay nada urgente esta semana.», la línea fija (B1) «Aquí verás cuando una oferta guardada esté por
   cerrar, una postulación lleve 10 días sin novedades o alguien de tu grupo conozca a alguien.» (EN: «This is where
   you will see when a saved offer is about to close, an application has gone 10 days without news, or someone in your
   group knows someone there.») y, si `doneThisWeek > 0`, «Hiciste N esta semana.».
@@ -262,26 +262,26 @@ tablero está vacío (el tablero ya tiene su estado vacío y la tarjeta no tendr
 
   | `reason` | Español | English |
   |---|---|---|
-  | `closing_soon`, `daysLeft` 0 | `Cierra hoy: postulá hoy.` | `Closes today: apply today.` |
-  | `closing_soon`, `daysLeft` 1 | `Cierra en 1 día: postulá antes.` | `Closes in 1 day: apply before then.` |
-  | `closing_soon`, `daysLeft` N > 1 | `Cierra en N días: postulá antes.` | `Closes in N days: apply before then.` |
-  | `high_fit` | `Encaja N/100 según tu análisis: postulá.` | `Fits N/100 according to your analysis: apply.` |
-  | `quiet` | `N días sin novedades: mandá un seguimiento.` | `N days with no news: send a follow-up.` |
-  | `know_someone`, `count` 1 | `1 persona de tu grupo conoce a alguien ahí: preguntá en el grupo.` | `1 person in your group knows someone there: ask in the group.` |
-  | `know_someone`, `count` N > 1 | `N personas de tu grupo conocen a alguien ahí: preguntá en el grupo.` | `N people in your group know someone there: ask in the group.` |
+  | `closing_soon`, `daysLeft` 0 | `Cierra hoy: postula hoy.` | `Closes today: apply today.` |
+  | `closing_soon`, `daysLeft` 1 | `Cierra en 1 día: postula antes.` | `Closes in 1 day: apply before then.` |
+  | `closing_soon`, `daysLeft` N > 1 | `Cierra en N días: postula antes.` | `Closes in N days: apply before then.` |
+  | `high_fit` | `Encaja N/100 según tu análisis: postula.` | `Fits N/100 according to your analysis: apply.` |
+  | `quiet` | `N días sin novedades: manda un seguimiento.` | `N days with no news: send a follow-up.` |
+  | `know_someone`, `count` 1 | `1 persona de tu grupo conoce a alguien ahí: pregunta en el grupo.` | `1 person in your group knows someone there: ask in the group.` |
+  | `know_someone`, `count` N > 1 | `N personas de tu grupo conocen a alguien ahí: pregunta en el grupo.` | `N people in your group know someone there: ask in the group.` |
 
   **Singular y plural (C9):** el motivo lo arma una función pura `weeklyPlanReasonText(reason)` con **un mensaje
   `$localize` por variante** (singular y plural elegidos en código), no ICU en la plantilla: se prueba sin renderizar y
   el catálogo tiene un id por frase.
-- Tras «Hecho» en una acción `apply_before_close` (B5) la tarjeta muestra una línea «¿Ya postulaste? Movela a
+- Tras «Hecho» en una acción `apply_before_close` (B5) la tarjeta muestra una línea «¿Ya postulaste? Muévela a
   Postulada» cuyo enlace abre el detalle de esa postulación; no escribe nada ni cambia el estado por su cuenta. La
   línea desaparece con la siguiente decisión o al recargar.
 - Mientras una decisión viaja, los botones de esa acción quedan deshabilitados; el plan devuelto reemplaza al anterior.
 - Errores al decidir (C4): `404 weekly_plan_action_not_found` → el SPA recarga el plan (`GET`) sin mensaje de error,
-  porque la acción ya no aplica; cualquier otro error → «No pudimos guardar tu elección. Probá de nuevo.» y los
+  porque la acción ya no aplica; cualquier otro error → «No pudimos guardar tu elección. Prueba de nuevo.» y los
   botones vuelven a habilitarse.
 - Coherencia con el tablero (C4): tras un `moveTo` exitoso del tablero, el store del plan se recarga, para que una
-  postulación movida a `applied` deje de aparecer como «postulá antes».
+  postulación movida a `applied` deje de aparecer como «postula antes».
 
 Textos con ids `@@applications.weeklyPlan.*`; `messages.xlf` se regenera y `messages.en.xlf` se traduce (ADR-050).
 
@@ -356,8 +356,8 @@ Cada corte es un change propio, con su debate, y ninguno se abre antes de que el
   la superficie) y reduce lecturas; se revisa con datos.
 - **R4. Más de 200 postulaciones abiertas**: entran las 200 más quietas (`statusChangedAt` asc, C6); una guardada
   recién movida podría quedar fuera de `apply_before_close`. Con 3-5 invitados no ocurre.
-- **R8. Registro de los textos.** Los textos fijados en la iteración 1 (B1, B2) usan voseo («postulá», «mandá», «Acá
-  vas a ver»); el resto del SPA usa tuteo («Pulsa», «muévela», «Aquí verás»). Ver Q5.
+- **R8. Registro de los textos (cerrado).** Los textos de B1 y B2 se redactaron con voseo; se pasaron a tuteo, como el
+  resto del SPA («Pulsa», «muévela», «Aquí verás»). Ver Q5.
 - **R5. `isoWeekKey` duplicada** en api y worker. Mismos vectores de test en las dos; se unifica en el corte 3.
 - **R6. La rama no se fusiona** hasta una ventana del owner: la medición real llega con 35b y `main`. Hasta entonces se
   mide con el seed en local.
@@ -390,7 +390,9 @@ Q1-Q4 quedaron resueltas en la iteración 1 con la recomendación (ver la tabla 
   Opciones: (a) respetar los textos tal como los fijó el debate; (b) pasarlos a tuteo («postula», «manda», «Aquí
   verás») para que coincidan con el resto del catálogo; (c) decidir un registro único para todo el SPA en otro change.
   Recomendación: (b) en este change, porque el texto no cambia y la tarjeta no desentona; se aplica solo si el owner o
-  la iteración 2 lo confirman. Mientras tanto, las specs llevan los textos de B1/B2 al pie de la letra.
+  la iteración 2 lo confirman.
+  **Q5: tuteo (reflect, 2026-11-25).** Todos los textos ES fijados (vacío, motivos, botones, «¿Ya postulaste? Muévela
+  a Postulada», borrador) quedan en tuteo, como el resto del catálogo.
 - **Q1 [no bloqueante] — e2e «con el seed demo» (condición 7).** `e2e-suite` prohíbe usar `api:seed-demo` en la suite
   por ser estado compartido y mutable (`openspec/changes/e2e-suite/design.md:256`). Opciones: (a) e2e con datos propios
   de la prueba en el perfil `local` (alta por la API y fechas escritas en Mongo como `links.spec.ts:182`) **más** un
@@ -413,7 +415,7 @@ Participaron `critic` y `business`; la sesión principal actuó como `reflect`. 
 | B2 | business | aceptado | Cada motivo dice qué hacer con un verbo; textos ES/EN de los cuatro motivos en D10 y escenario. |
 | B3 | business | aceptado | La métrica pasa a semanas-persona con al menos un «Hecho», `done` vs `dismissed` antes del TTL y pregunta directa a las 2 semanas. |
 | B4 | business | adaptado | Tres botones: «Hecho», «Ahora no» (`snoozed`) y «Ocultar sugerencia» (`dismissed`); «Abrir» pasa al título de la acción. |
-| B5 | business | aceptado | Tras «Hecho» en `apply_before_close`, «¿Ya postulaste? Movela a Postulada» abre el detalle; sin escritura automática. |
+| B5 | business | aceptado | Tras «Hecho» en `apply_before_close`, «¿Ya postulaste? Muévela a Postulada» abre el detalle; sin escritura automática. |
 | B6 | business | aceptado | Texto del borrador fijado en D9: sin «adjunto mi CV» ni «como conversamos», cierra con una pregunta abierta. |
 | B7 | business | aceptado | `daysLeft` 0 se muestra «Cierra hoy». |
 | C1 | critic | aceptado | `count` = conteo del grupo elegido (máximo por grupo, sin quien pregunta), igual al del listado de ese grupo (D7). |
@@ -432,7 +434,7 @@ Participaron `critic` y `business`; la sesión principal actuó como `reflect`. 
 | Q1 | arquitecto | aceptado | e2e con datos propios en el perfil `local` + test de integración del seed (tareas 6.2, 8.1a-b). |
 | Q2-Q4 | arquitecto | aceptado | TTL de 35 días, umbrales como constantes de `libs/shared`, fila 38 renumerable. |
 
-Abierta tras la iteración 1: Q5 (registro voseo/tuteo, no bloqueante).
+Q5: tuteo (reflect, 2026-11-25). No queda ninguna pregunta abierta tras la iteración 1.
 
 ## Aprobación humana (2026-11-25)
 
