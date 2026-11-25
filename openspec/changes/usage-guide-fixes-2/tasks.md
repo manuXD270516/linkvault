@@ -124,7 +124,7 @@ atrasa, el grupo 3 (H3) es el primer recorte (PO-4).
 
 ## 5. Guía de uso (design D6)
 
-- [ ] 5.1 [frontend] `tools/guia-de-uso/capture.mts`: en M01, el diálogo de Beto debe abrir ya con `match-no-cv`, sin
+- [x] 5.1 [frontend] `tools/guia-de-uso/capture.mts`: en M01, el diálogo de Beto debe abrir ya con `match-no-cv`, sin
   `match-analyze` (una sola captura `encaje-sin-cv`; desaparecen `encaje-sin-cv-analizar` y el `throw` del hallazgo); en
   F03, tras el intento con la nueva `corta`, `expect(page.getByText('La contraseña actual no es correcta')).toHaveCount(0)`.
   `meta.mts`: «Esperado» y «Prueba automatizada» de M01 y F03 con los casos nuevos de 1.2 y 3.1; V03 con el de 2.1,
@@ -132,13 +132,15 @@ atrasa, el grupo 3 (H3) es el primer recorte (PO-4).
   --skipLibCheck --module nodenext --moduleResolution nodenext --target es2022 tools/guia-de-uso/capture.mts` sin
   errores nuevos respecto de `main` (el directorio no tiene `tsconfig` propio); y
   `grep -n "encaje-sin-cv-analizar" tools/guia-de-uso/capture.mts` sin resultados.
-- [ ] 5.2 [frontend] `tools/guia-de-uso/build-guide.mts` y, a mano y con el mismo texto, `docs/guia-de-uso/README.md`:
+  **Estado (2026-11-25):** capture.mts: M01 abre el diálogo de Beto, exige match-no-cv y match-upload-cv y toHaveCount(0) de match-analyze (una sola captura encaje-sin-cv; sin encaje-sin-cv-analizar ni el throw); F03 exige toHaveCount(0) de «La contraseña actual no es correcta» tras el intento con la nueva corta. meta.mts: M01, F03 y V03 con los casos nuevos (el de V03 como prueba de H2). tsc de la verificación: 45 líneas de error de entorno (@types/node y rutas), idénticas a las de main (comparación sin números de línea: sin errores nuevos); grep de encaje-sin-cv-analizar en capture.mts sin resultados. El script no se ejecutó aquí: queda para la 6.1.
+- [x] 5.2 [frontend] `tools/guia-de-uso/build-guide.mts` y, a mano y con el mismo texto, `docs/guia-de-uso/README.md`:
   H1, H2 y H3 salen de «Hallazgos» y pasan a una línea «Corregido por `usage-guide-fixes-2`, pendiente de comprobar en
   la próxima pasada: M01, V03 y F03»; la fila de M01 de la tabla y su ficha dicen «Corregido (pendiente de pasada)» en
   vez de **FALLO**, sin cambiar lo «Visto» de la corrida del 2026-11-25; el resumen lo dice. Verificar:
   `grep -n "H1\.\|H2\.\|H3\." docs/guia-de-uso/README.md` ya no los lista bajo «Hallazgos»;
   `grep -c "usage-guide-fixes-2" docs/guia-de-uso/README.md tools/guia-de-uso/build-guide.mts` es mayor que `0` en los
   dos; `pnpm exec prettier --check docs/guia-de-uso tools/guia-de-uso` en verde.
+  **Estado (2026-11-25):** build-guide.mts: constante FIXED_PENDING (M01), fila y ficha «Corregido (pendiente de pasada)», resumen, H1-H3 fuera de «Hallazgos» y la línea «Corregido por usage-guide-fixes-2, pendiente de comprobar en la próxima pasada: M01, V03 y F03». README editado a mano con el mismo texto y prettier; comprobado que build-guide.mts regenera esas mismas líneas. grep de H1./H2./H3. en el README sin resultados; grep -c usage-guide-fixes-2: 5 en README y 5 en build-guide; prettier --check en verde. Lo «Visto» de la corrida del 2026-11-25 no se tocó; la captura 114-encaje-sin-cv-analizar sigue referenciada porque es de esa corrida.
 
 ## 6. Verificación manual del PR (design D5)
 
