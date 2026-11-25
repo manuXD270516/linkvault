@@ -91,14 +91,17 @@ export async function runSeedDemo(deps: SeedDemoDeps): Promise<SeedDemoReport> {
       groupId: group.id,
     });
     linkIds[key] = saved.link.id;
-    await ensurePreview(deps, ana.id, saved.link.id, seed);
+    await ensurePreview(deps, ana.id, saved.link.id, seed, now);
   }
 
   await markClosedRecheck(deps.connection, linkIds['closedRecheck'] ?? '');
 
-  await ensureApplication(deps, ana.id, linkIds['openSalary'] ?? '', {
-    status: DEMO_LINKS.openSalary.appStatus,
-  });
+  const openSalary = await ensureApplication(
+    deps,
+    ana.id,
+    linkIds['openSalary'] ?? '',
+    { status: DEMO_LINKS.openSalary.appStatus },
+  );
   await ensureApplication(deps, ana.id, linkIds['closedRecheck'] ?? '', {
     status: DEMO_LINKS.closedRecheck.appStatus,
     stageLabel: DEMO_LINKS.closedRecheck.stageLabel,
@@ -117,6 +120,13 @@ export async function runSeedDemo(deps: SeedDemoDeps): Promise<SeedDemoReport> {
     stale.applicationId,
     daysAgo(now, DEMO_LINKS.staleApp.staleDays),
   );
+
+  await ensureApplication(deps, ana.id, linkIds['closingSoon'] ?? '', {
+    status: DEMO_LINKS.closingSoon.appStatus,
+  });
+  // Estabilidad de «Tu semana» entre corridas (C5 de weekly-plan): `openSalary` queda con `statusChangedAt` = ahora, así
+  // que nunca pasa a `follow_up` y conserva la acción `ask_know_someone` que dispara la marca de Bob.
+  await markStaleStatusChangedAt(deps.connection, openSalary.applicationId, now);
 
   await ensureComment(deps, ana.id, group.id, linkIds['openSalary'] ?? '', now);
   await deps.setKnowSomeone.execute(bob.id, group.id, linkIds['openSalary'] ?? '', {
@@ -255,6 +265,7 @@ async function ensurePreview(
   userId: string,
   linkId: string,
   seed: (typeof DEMO_LINKS)[keyof typeof DEMO_LINKS],
+  now: Date,
 ): Promise<void> {
   const fields: Record<string, unknown> = {
     title: seed.title,
@@ -264,6 +275,14 @@ async function ensurePreview(
   };
   if ('salary' in seed && seed.salary !== undefined) {
     fields['salary'] = seed.salary;
+  }
+  if ('expiresInDays' in seed) {
+    // Fecha sin hora, UTC de la corrida + N días (N3 de weekly-plan).
+    fields['expiresAt'] = new Date(
+      now.getTime() + seed.expiresInDays * 24 * 60 * 60 * 1000,
+    )
+      .toISOString()
+      .slice(0, 10);
   }
   await deps.updatePreview.execute(userId, linkId, { fields });
 }

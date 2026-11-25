@@ -134,16 +134,16 @@ otra cosa.
 
 ## 6. Seed demo (design D11, spec `platform/demo-seed`)
 
-- [ ] 6.1 [backend] `apps/api/src/seed/demo-seed.dataset.ts`: `DEMO_LINKS.closingSoon` (`appStatus: 'saved'`,
+- [x] 6.1 [backend] `apps/api/src/seed/demo-seed.dataset.ts`: `DEMO_LINKS.closingSoon` (`appStatus: 'saved'`,
   `expiresInDays: 3`); `seed-demo.runner.ts`: `ensurePreview` escribe `expiresAt` = `deps.now` (UTC) + 3 días, en
   `YYYY-MM-DD`, cuando el seed lo trae (N3), y
   cada corrida fija `statusChangedAt = now` de `openSalary` (C5). Verificar en `seed-demo.runner.spec.ts`: «seeds a saved
   link closing in three days», «resets openSalary statusChangedAt on every run» y «second run moves expiresAt without
-  duplicating links or applications».
-- [ ] 6.2 [backend] `apps/api/src/seed/seed-demo.weekly-plan.int.spec.ts` (replset en memoria): corre el seed y
+  duplicating links or applications». **Estado (2026-11-25):** hecha; `DEMO_LINKS.closingSoon` (`saved`, `expiresInDays: 3`), `ensurePreview` escribe `expiresAt` = fecha UTC de la corrida + 3 y cada corrida fija `statusChangedAt` de `openSalary`; `seed-demo.runner.spec.ts` 7/7 (tres tests nuevos).
+- [x] 6.2 [backend] `apps/api/src/seed/seed-demo.weekly-plan.int.spec.ts` (replset en memoria): corre el seed y
   `GetWeeklyPlan` para Ana. Verificar: «demo Ana gets one action of each rule» (`apply_before_close`, `follow_up`,
   `ask_know_someone`, en ese orden) y «a second run 12 days later still yields one action of each rule» (reloj en
-  `now` + 12 días).
+  `now` + 12 días). **Estado (2026-11-25):** hecha; `seed-demo.weekly-plan.int.spec.ts` 2/2 (app real y replset en memoria, reloj de la app movido con un espía): una acción de cada regla en el orden esperado y lo mismo 12 días después, sin duplicar links ni postulaciones.
 
 ## 7. SPA (design D9, D10, spec `web/weekly-plan`)
 
