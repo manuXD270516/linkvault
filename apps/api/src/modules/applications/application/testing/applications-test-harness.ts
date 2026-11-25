@@ -1,7 +1,11 @@
+import { RuleBasedPlanner } from '../../domain/weekly-plan/rule-based-planner';
 import { ApplicationFitScores } from '../application-fit-scores';
 import { ChangeApplicationStatus } from '../change-application-status.usecase';
+import { DecideWeeklyPlanAction } from '../decide-weekly-plan-action.usecase';
+import { GatherWeeklyPlanCandidates } from '../gather-weekly-plan-candidates';
 import { GetApplicationAnalytics } from '../get-application-analytics.usecase';
 import { GetApplicationTimeline } from '../get-application-timeline.usecase';
+import { GetWeeklyPlan } from '../get-weekly-plan.usecase';
 import { ListGroupTrackers } from '../list-group-trackers.usecase';
 import { ListMyApplications } from '../list-my-applications.usecase';
 import { TrackLink } from '../track-link.usecase';
@@ -15,6 +19,7 @@ import {
   MovableClock,
 } from './applications-test-doubles';
 import { InMemoryApplicationRepository } from './in-memory-application.repository';
+import { InMemoryWeeklyPlanDecisionRepository } from './in-memory-weekly-plan-decision.repository';
 
 // Casos de uso de `applications` montados sobre el repositorio en memoria y los dobles de sus puertos, para los tests
 // unitarios (D12 de applications-tracking). Cada test crea el suyo.
@@ -35,6 +40,10 @@ export interface ApplicationsHarness {
   readonly listMine: ListMyApplications;
   readonly analytics: GetApplicationAnalytics;
   readonly trackers: ListGroupTrackers;
+  readonly planDecisions: InMemoryWeeklyPlanDecisionRepository;
+  readonly gatherPlan: GatherWeeklyPlanCandidates;
+  readonly weeklyPlan: GetWeeklyPlan;
+  readonly decidePlan: DecideWeeklyPlanAction;
 }
 
 export function applicationsHarness(): ApplicationsHarness {
@@ -45,6 +54,14 @@ export function applicationsHarness(): ApplicationsHarness {
   const directory = new InMemoryApplicationUserDirectory();
   const fitScores = new ApplicationFitScores();
   const outbox = new InMemoryOutbox();
+  const planDecisions = new InMemoryWeeklyPlanDecisionRepository();
+  const gatherPlan = new GatherWeeklyPlanCandidates(repository, links, fitScores);
+  const weeklyPlan = new GetWeeklyPlan(
+    gatherPlan,
+    planDecisions,
+    new RuleBasedPlanner(),
+    clock,
+  );
   return {
     clock,
     repository,
@@ -68,6 +85,10 @@ export function applicationsHarness(): ApplicationsHarness {
     listMine: new ListMyApplications(repository, links, fitScores),
     analytics: new GetApplicationAnalytics(repository, clock),
     trackers: new ListGroupTrackers(groups, links, repository, directory),
+    planDecisions,
+    gatherPlan,
+    weeklyPlan,
+    decidePlan: new DecideWeeklyPlanAction(weeklyPlan, planDecisions, clock),
   };
 }
 

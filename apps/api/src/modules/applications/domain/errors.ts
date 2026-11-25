@@ -8,6 +8,7 @@ export type ApplicationsErrorCode =
   | 'application_conflict'
   | 'link_not_found'
   | 'group_not_found'
+  | 'weekly_plan_action_not_found'
   | 'validation_error';
 
 export abstract class ApplicationsError extends Error {
@@ -60,6 +61,19 @@ export class TrackersGroupNotFound extends ApplicationsError {
 
   constructor() {
     super('Group not found');
+  }
+}
+
+/**
+ * La acción de «Tu semana» no existe: id inventado, de otra persona, mal formado o que ya no aplica (404). Todos los casos
+ * comparten error y cuerpo, como `application_not_found` (D5 de weekly-plan).
+ */
+export class WeeklyPlanActionNotFound extends ApplicationsError {
+  override readonly name = 'WeeklyPlanActionNotFound';
+  readonly code = 'weekly_plan_action_not_found';
+
+  constructor() {
+    super('Weekly plan action not found');
   }
 }
 

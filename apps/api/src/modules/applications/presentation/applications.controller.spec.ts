@@ -4,6 +4,7 @@ import {
   applicationSchema,
   applicationTimelineResponseSchema,
   trackLinkResponseSchema,
+  weeklyPlanResponseSchema,
   type Application,
   type ApplicationStatus,
 } from '@linkvault/shared';
@@ -1041,5 +1042,111 @@ describe('applications fitScore derived on read (12.4–12.5)', () => {
     expect(without).not.toHaveProperty('fitScore');
     expect(without).not.toHaveProperty('fitScoreDegraded');
     expect(without?.version).toBe(tracked.application.version);
+  });
+});
+
+// «Tu semana» por HTTP (tarea 4.5b de weekly-plan), contra la app real y el MongoMemoryReplSet.
+describe('weekly plan endpoints', () => {
+  let http: ApplicationsTestApp;
+  let ana: TestMember;
+  let beto: TestMember;
+  let counter = 3_822_000_000;
+
+  beforeAll(async () => {
+    http = await createApplicationsTestApp(
+      'weekly-plan-http',
+      getMongoTestUri(),
+    );
+    ana = await http.authenticated('Ana');
+    beto = await http.authenticated('Beto');
+  });
+
+  afterAll(async () => {
+    await http.close();
+  });
+
+  /** Postulación `applied` de la persona, quieta desde hace `days` días. */
+  async function quietApplication(member: TestMember, days: number) {
+    counter += 1;
+    const saved = await http.save(
+      member,
+      `https://www.linkedin.com/jobs/view/${counter}/`,
+    );
+    const { application } = await http.track(member, saved.link.id, 'applied');
+    await http.connection.collection(APPLICATIONS_COLLECTION).updateOne(
+      { _id: new mongoose.Types.ObjectId(application.id) },
+      { $set: { statusChangedAt: new Date(Date.now() - days * DAY) } },
+    );
+    return application;
+  }
+
+  function decide(member: TestMember, body: unknown) {
+    return http.request('POST', '/api/applications/weekly-plan/decisions', {
+      authorization: member.authorization,
+      body,
+    });
+  }
+
+  it('GET weekly-plan returns the plan of the token user', async () => {
+    const mine = await quietApplication(ana, 14);
+    await quietApplication(beto, 20);
+
+    const response = await http.request('GET', '/api/applications/weekly-plan', {
+      authorization: ana.authorization,
+    });
+
+    expect(response.statusCode).toBe(200);
+    const plan = weeklyPlanResponseSchema.parse(response.json());
+    expect(plan.planner).toBe('rules');
+    expect(plan.actions.map((action) => action.applicationId)).toEqual([
+      mine.id,
+    ]);
+    expect(plan.actions[0]?.rule).toBe('follow_up');
+  });
+
+  it('POST decisions answers 200 with the recalculated plan', async () => {
+    const application = await quietApplication(ana, 15);
+
+    const response = await decide(ana, {
+      candidateId: `follow_up:${application.id}`,
+      decision: 'done',
+    });
+
+    expect(response.statusCode).toBe(200);
+    const plan = weeklyPlanResponseSchema.parse(response.json());
+    expect(plan.actions.map((action) => action.applicationId)).not.toContain(
+      application.id,
+    );
+    expect(plan.doneThisWeek).toBeGreaterThanOrEqual(1);
+  });
+
+  it.each([
+    ['an unknown decision', { candidateId: 'follow_up:x', decision: 'applied' }],
+    ['an extra field', { candidateId: 'follow_up:x', decision: 'done', userId: 'u' }],
+    ['no body fields', {}],
+    ['an empty candidateId', { candidateId: '   ', decision: 'done' }],
+  ])('POST decisions rejects an invalid body with 400 (%s)', async (_name, body) => {
+    const response = await decide(ana, body);
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ code: 'validation_error' });
+  });
+
+  it('POST decisions responds 404 weekly_plan_action_not_found', async () => {
+    const foreign = await quietApplication(beto, 12);
+
+    for (const candidateId of [
+      `follow_up:${foreign.id}`,
+      'follow_up:no-es-un-id',
+      `follow_up:${UNKNOWN_ID}`,
+    ]) {
+      const response = await decide(ana, { candidateId, decision: 'dismissed' });
+
+      expect(response.statusCode).toBe(404);
+      expect(response.json()).toEqual({
+        code: 'weekly_plan_action_not_found',
+        message: expect.any(String),
+      });
+    }
   });
 });

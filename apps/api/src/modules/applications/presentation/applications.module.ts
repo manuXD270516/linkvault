@@ -3,9 +3,13 @@ import { OutboxModule } from '../../../infrastructure/outbox/outbox.module';
 import { GroupsModule } from '../../groups/presentation/groups.module';
 import { UsersModule } from '../../users/presentation/users.module';
 import { ApplicationFitScores } from '../application/application-fit-scores';
+import { RuleBasedPlanner } from '../domain/weekly-plan/rule-based-planner';
 import { ChangeApplicationStatus } from '../application/change-application-status.usecase';
+import { DecideWeeklyPlanAction } from '../application/decide-weekly-plan-action.usecase';
+import { GatherWeeklyPlanCandidates } from '../application/gather-weekly-plan-candidates';
 import { GetApplicationAnalytics } from '../application/get-application-analytics.usecase';
 import { GetApplicationTimeline } from '../application/get-application-timeline.usecase';
+import { GetWeeklyPlan } from '../application/get-weekly-plan.usecase';
 import { ListGroupTrackers } from '../application/list-group-trackers.usecase';
 import { ListMyApplications } from '../application/list-my-applications.usecase';
 import { APPLICATION_GROUPS } from '../application/ports/application-groups.port';
@@ -13,12 +17,15 @@ import { APPLICATION_LINKS } from '../application/ports/application-links.port';
 import { APPLICATION_REPOSITORY } from '../application/ports/application-repository.port';
 import { APPLICATION_USER_DIRECTORY } from '../application/ports/application-user-directory.port';
 import { APPLICATIONS_CLOCK } from '../application/ports/clock.port';
+import { WEEKLY_PLAN_DECISION_REPOSITORY } from '../application/ports/weekly-plan-decision-repository.port';
+import { WEEKLY_PLANNER } from '../application/ports/weekly-planner.port';
 import { TrackLink } from '../application/track-link.usecase';
 import { UntrackApplication } from '../application/untrack-application.usecase';
 import { UpdateApplication } from '../application/update-application.usecase';
 import { GroupsFacadeApplicationGroups } from '../infrastructure/groups-facade-application-groups';
 import { LinksFacadeApplicationLinks } from '../infrastructure/links-facade-application-links';
 import { MongoApplicationRepository } from '../infrastructure/mongo-application.repository';
+import { MongoWeeklyPlanDecisionRepository } from '../infrastructure/mongo-weekly-plan-decision.repository';
 import { SystemClock } from '../infrastructure/system-clock';
 import { UsersFacadeApplicationDirectory } from '../infrastructure/users-facade-application-directory';
 import { ApplicationsController } from './applications.controller';
@@ -50,6 +57,11 @@ import { GroupApplicationsController } from './group-applications.controller';
       useClass: UsersFacadeApplicationDirectory,
     },
     { provide: APPLICATIONS_CLOCK, useClass: SystemClock },
+    { provide: WEEKLY_PLANNER, useClass: RuleBasedPlanner },
+    {
+      provide: WEEKLY_PLAN_DECISION_REPOSITORY,
+      useClass: MongoWeeklyPlanDecisionRepository,
+    },
     ApplicationFitScores,
     TrackLink,
     ListMyApplications,
@@ -59,6 +71,9 @@ import { GroupApplicationsController } from './group-applications.controller';
     GetApplicationTimeline,
     UntrackApplication,
     ListGroupTrackers,
+    GatherWeeklyPlanCandidates,
+    GetWeeklyPlan,
+    DecideWeeklyPlanAction,
   ],
   exports: [ApplicationFitScores],
 })

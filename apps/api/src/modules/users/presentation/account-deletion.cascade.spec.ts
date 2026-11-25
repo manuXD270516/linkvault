@@ -61,6 +61,7 @@ const REFRESH_TOKENS_COLLECTION = 'refresh_tokens';
 const AUTH_EMAIL_TOKENS_COLLECTION = 'auth_email_tokens';
 const APPLICATIONS_COLLECTION = 'applications';
 const APPLICATION_EVENTS_COLLECTION = 'application_events';
+const WEEKLY_PLAN_DECISIONS_COLLECTION = 'weekly_plan_decisions';
 const AI_ANALYSES_COLLECTION = 'ai_analyses';
 const ROADMAPS_COLLECTION = 'roadmaps';
 const AI_FEEDBACK_COLLECTION = 'ai_feedback';
@@ -342,6 +343,71 @@ describe('DELETE /api/users/me account deletion cascade', () => {
     ).resolves.toBe(0);
     expect(cvFiles.deletedPrefixes).toContain(ana.id);
     expect([...cvFiles.keys]).not.toContain(`${ana.id}/cv.pdf`);
+  });
+
+  it('deletes weekly plan decisions of the user only', async () => {
+    const ana = await createUser('Ana Plan');
+    const beto = await createUser('Beto Plan');
+    const anaOid = new Types.ObjectId(ana.id);
+    const betoOid = new Types.ObjectId(beto.id);
+    const decisions = db().collection(WEEKLY_PLAN_DECISIONS_COLLECTION);
+    await decisions.insertMany([
+      {
+        userId: anaOid,
+        weekKey: '2026-W48',
+        candidateId: 'follow_up:a',
+        decision: 'done',
+        decidedAt: NOW,
+      },
+      {
+        userId: anaOid,
+        weekKey: '2026-W48',
+        candidateId: 'follow_up:b',
+        decision: 'dismissed',
+        decidedAt: NOW,
+      },
+      {
+        userId: betoOid,
+        weekKey: '2026-W48',
+        candidateId: 'follow_up:c',
+        decision: 'done',
+        decidedAt: NOW,
+      },
+    ]);
+    const auth = await authorizationFor(ana.id);
+
+    const response = await deleteMe(auth.authorization, PASSWORD);
+
+    expect(response.statusCode).toBe(204);
+    await expect(decisions.countDocuments({ userId: anaOid })).resolves.toBe(0);
+    await expect(decisions.countDocuments({ userId: betoOid })).resolves.toBe(1);
+  });
+
+  it('a failing cascade keeps weekly plan decisions', async () => {
+    const ana = await createUser('Ana Plan Falla');
+    const anaOid = new Types.ObjectId(ana.id);
+    const decisions = db().collection(WEEKLY_PLAN_DECISIONS_COLLECTION);
+    await decisions.insertOne({
+      userId: anaOid,
+      weekKey: '2026-W48',
+      candidateId: 'follow_up:a',
+      decision: 'done',
+      decidedAt: NOW,
+    });
+    const auth = await authorizationFor(ana.id);
+    const deleteSpy = vi
+      .spyOn(userRepo, 'delete')
+      .mockRejectedValueOnce(new Error('forced mid-txn failure'));
+
+    const failed = await deleteMe(auth.authorization, PASSWORD);
+
+    expect(failed.statusCode).toBeGreaterThanOrEqual(500);
+    deleteSpy.mockRestore();
+    await expect(decisions.countDocuments({ userId: anaOid })).resolves.toBe(1);
+
+    const retried = await deleteMe(auth.authorization, PASSWORD);
+    expect(retried.statusCode).toBe(204);
+    await expect(decisions.countDocuments({ userId: anaOid })).resolves.toBe(0);
   });
 
   it('returns 204 and cascades personal data', async () => {

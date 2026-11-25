@@ -29,6 +29,7 @@ describe('API_ERROR_STATUS and API_ERROR_MESSAGES', () => {
     ['sole_owner_with_members', 409],
     ['application_not_found', 404],
     ['application_conflict', 409],
+    ['weekly_plan_action_not_found', 404],
     ['comment_not_found', 404],
     ['cv_not_found', 404],
     ['unsupported_file_type', 415],
@@ -44,6 +45,11 @@ describe('API_ERROR_STATUS and API_ERROR_MESSAGES', () => {
   ] as const)('answers %s with %i', (code, status) => {
     expect(API_ERROR_STATUS[code]).toBe(status);
     expect(API_ERROR_MESSAGES[code]).not.toBe('');
+  });
+
+  it('maps weekly_plan_action_not_found to 404', () => {
+    expect(API_ERROR_STATUS.weekly_plan_action_not_found).toBe(404);
+    expect(API_ERROR_MESSAGES.weekly_plan_action_not_found).not.toBe('');
   });
 
   it('keeps the unsupported media type message generic, now that two formats share it', () => {

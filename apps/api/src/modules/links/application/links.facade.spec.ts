@@ -162,3 +162,193 @@ describe('LinksFacade', () => {
     await expect(facade.matchJobSummaryOf('no-es-un-id')).resolves.toBeNull();
   });
 });
+
+// Señales de plan de «Tu semana» (D7 de weekly-plan): frescura y conteo de «conozco a alguien», nunca identidades.
+describe('LinksFacade.planSignalsOf', () => {
+  const G1 = objectId(31);
+  const G2 = objectId(32);
+  const G3 = objectId(33);
+  const CARLA = objectId(3);
+  const DAN = objectId(4);
+  const BOB = BETO;
+
+  let plan: InMemoryJobLinkRepository;
+  let planGroupLinks: InMemoryGroupLinkRepository;
+  let planMembership: InMemoryGroupMembership;
+  let planFacade: LinksFacade;
+  let shared: JobLink;
+
+  beforeEach(async () => {
+    plan = new InMemoryJobLinkRepository();
+    planGroupLinks = new InMemoryGroupLinkRepository(plan);
+    planMembership = new InMemoryGroupMembership()
+      .withMember(G1, ANA)
+      .withMember(G2, ANA);
+    planFacade = new LinksFacade(
+      plan,
+      planGroupLinks,
+      new InMemoryUserLinkRepository(plan),
+      planMembership,
+    );
+    shared = plan.seed(
+      jobLinkDraft('https://www.linkedin.com/jobs/view/3844444444/'),
+    );
+    for (const groupId of [G1, G2, G3]) {
+      await planGroupLinks.seed({
+        groupId,
+        linkId: shared.id,
+        sharedBy: ANA,
+        sharedAt: now,
+      });
+    }
+  });
+
+  async function flag(groupId: string, userId: string): Promise<number> {
+    const result = await planGroupLinks.setKnowSomeone(
+      groupId,
+      shared.id,
+      userId,
+      true,
+    );
+    return result?.count ?? 0;
+  }
+
+  it('planSignalsOf reports the count of the group with most flags by others', async () => {
+    await flag(G1, BOB);
+    await flag(G2, CARLA);
+    await flag(G2, DAN);
+    await flag(G2, ANA);
+
+    const signals = await planFacade.planSignalsOf(ANA, [shared.id]);
+
+    expect(signals.get(shared.id)).toMatchObject({
+      knowSomeoneCount: 2,
+      knowSomeoneGroupId: G2,
+    });
+  });
+
+  it('planSignalsOf count matches the group listing minus own flag', async () => {
+    await flag(G2, CARLA);
+    await flag(G2, DAN);
+    const listingCount = await flag(G2, ANA);
+
+    const signals = await planFacade.planSignalsOf(ANA, [shared.id]);
+
+    expect(signals.get(shared.id)?.knowSomeoneCount).toBe(listingCount - 1);
+  });
+
+  it('planSignalsOf with only the own flag reports zero and no group', async () => {
+    await flag(G1, ANA);
+
+    const signal = (await planFacade.planSignalsOf(ANA, [shared.id])).get(
+      shared.id,
+    );
+
+    expect(signal?.knowSomeoneCount).toBe(0);
+    expect(signal).not.toHaveProperty('knowSomeoneGroupId');
+  });
+
+  it('planSignalsOf ignores groups the user is not in', async () => {
+    await flag(G3, BOB);
+    await flag(G3, CARLA);
+
+    const signal = (await planFacade.planSignalsOf(ANA, [shared.id])).get(
+      shared.id,
+    );
+
+    expect(signal?.knowSomeoneCount).toBe(0);
+  });
+
+  it('planSignalsOf breaks a tie by groupId ascending', async () => {
+    await flag(G2, CARLA);
+    await flag(G1, BOB);
+
+    const signal = (await planFacade.planSignalsOf(ANA, [shared.id])).get(
+      shared.id,
+    );
+
+    expect(signal).toMatchObject({ knowSomeoneCount: 1, knowSomeoneGroupId: G1 });
+  });
+
+  it('planSignalsOf reports freshness and skips malformed ids', async () => {
+    plan.overwrite(shared.id, {
+      previewStatus: 'enriched',
+      preview: { title: 'Backend', company: 'Acme', expiresAt: '2026-12-01' },
+      closedAt: new Date('2026-11-20T00:00:00.000Z'),
+    });
+
+    const signals = await planFacade.planSignalsOf(ANA, [
+      shared.id,
+      'no-es-un-id',
+      objectId(999),
+    ]);
+
+    expect([...signals.keys()]).toEqual([shared.id]);
+    expect(signals.get(shared.id)).toEqual({
+      id: shared.id,
+      displayUrl: shared.displayUrl,
+      title: 'Backend',
+      company: 'Acme',
+      closed: true,
+      expiresAt: '2026-12-01',
+      knowSomeoneCount: 0,
+    });
+  });
+
+  it('planSignalsOf never returns flagger ids', async () => {
+    await flag(G2, BOB);
+    await flag(G2, CARLA);
+    await flag(G2, DAN);
+
+    const signals = await planFacade.planSignalsOf(ANA, [shared.id]);
+    const json = JSON.stringify([...signals.values()]);
+
+    for (const other of [BOB, CARLA, DAN]) {
+      expect(json).not.toContain(other);
+    }
+    expect(signals.get(shared.id)?.knowSomeoneCount).toBe(3);
+  });
+
+  it('planSignalsOf makes the same number of queries for 3 and 150 links', async () => {
+    const make = (count: number) =>
+      Array.from({ length: count }, (_, index) =>
+        plan.seed(
+          jobLinkDraft(
+            `https://www.linkedin.com/jobs/view/${4000000000 + index}/`,
+          ),
+        ).id,
+      );
+    const three = make(3);
+    const many = make(150);
+    const counters = () => [
+      planMembership.groupsOfCalls,
+      plan.planCardsOfCalls,
+      planGroupLinks.knowSomeoneOfCalls,
+    ];
+
+    const before = counters();
+    await planFacade.planSignalsOf(ANA, three);
+    const afterThree = counters();
+    await planFacade.planSignalsOf(ANA, many);
+    const afterMany = counters();
+
+    const delta = (a: number[], b: number[]) => a.map((n, i) => n - (b[i] ?? 0));
+    expect(delta(afterThree, before)).toEqual([1, 1, 1]);
+    expect(delta(afterMany, afterThree)).toEqual([1, 1, 1]);
+  });
+
+  it('planSignalsOf processes only the first 200 ids', async () => {
+    const ids = Array.from({ length: 201 }, (_, index) =>
+      plan.seed(
+        jobLinkDraft(
+          `https://www.linkedin.com/jobs/view/${5000000000 + index}/`,
+        ),
+      ).id,
+    );
+
+    const signals = await planFacade.planSignalsOf(ANA, ids);
+
+    expect(signals.size).toBe(200);
+    expect(signals.has(ids[200] ?? '')).toBe(false);
+  });
+});

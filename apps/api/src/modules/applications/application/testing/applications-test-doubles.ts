@@ -2,6 +2,7 @@ import type { ApplicationGroups } from '../ports/application-groups.port';
 import type {
   ApplicationLinks,
   LinkCard,
+  LinkPlanSignals,
 } from '../ports/application-links.port';
 import type { ApplicationUserDirectory } from '../ports/application-user-directory.port';
 import type { Clock } from '../ports/clock.port';
@@ -30,6 +31,8 @@ export class InMemoryApplicationLinks implements ApplicationLinks {
   canReadCalls = 0;
   cardsOfCalls = 0;
   linkIdsSharedInCalls = 0;
+  planSignalsOfCalls = 0;
+  private readonly planSignals = new Map<string, Partial<LinkPlanSignals>>();
 
   /** Declara un link con su ficha; por defecto sin preview. */
   withLink(linkId: string, card: Partial<LinkCard> = {}): this {
@@ -40,6 +43,15 @@ export class InMemoryApplicationLinks implements ApplicationLinks {
       previewStatus: 'pending',
       ...card,
     });
+    return this;
+  }
+
+  /** Frescura y conteo «conozco a alguien» de un link ya declarado, para `planSignalsOf`. */
+  withPlanSignals(
+    linkId: string,
+    signals: Partial<Omit<LinkPlanSignals, 'id'>>,
+  ): this {
+    this.planSignals.set(linkId, signals);
     return this;
   }
 
@@ -98,6 +110,30 @@ export class InMemoryApplicationLinks implements ApplicationLinks {
     return Promise.resolve(
       new Set(linkIds.filter((linkId) => shared.has(linkId))),
     );
+  }
+
+  planSignalsOf(
+    _userId: string,
+    linkIds: readonly string[],
+  ): Promise<ReadonlyMap<string, LinkPlanSignals>> {
+    this.planSignalsOfCalls += 1;
+    const signals = new Map<string, LinkPlanSignals>();
+    for (const linkId of new Set(linkIds)) {
+      const card = this.cards.get(linkId);
+      if (card === undefined) {
+        continue;
+      }
+      signals.set(linkId, {
+        id: linkId,
+        displayUrl: card.displayUrl,
+        ...(card.title === undefined ? {} : { title: card.title }),
+        ...(card.company === undefined ? {} : { company: card.company }),
+        closed: false,
+        knowSomeoneCount: 0,
+        ...this.planSignals.get(linkId),
+      });
+    }
+    return Promise.resolve(signals);
   }
 }
 

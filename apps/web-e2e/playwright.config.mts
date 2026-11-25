@@ -73,13 +73,17 @@ export default defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
+      // El caso de móvil de `weekly-plan.spec.ts` es solo del Pixel 7.
+      grepInvert: /@mobile-case/,
     },
     // Las personas invitadas usan el móvil (design D11): el camino crítico se ejecuta también en un Pixel 7 emulado
-    // (Chromium), y solo él; los demás specs siguen solo en escritorio.
+    // (Chromium), y con él el caso de móvil del plan semanal; los demás specs siguen solo en escritorio.
     {
       name: 'mobile',
       use: { ...devices['Pixel 7'] },
-      testMatch: 'critical-path.spec.ts',
+      testMatch: ['critical-path.spec.ts', 'weekly-plan.spec.ts'],
+      // De `weekly-plan.spec.ts` corre solo el caso de móvil: el de escritorio es de `chromium`.
+      grepInvert: /@desktop-case/,
     },
   ],
 });

@@ -1,7 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import { getMongoTestUri } from '@linkvault/testing';
 import mongoose, { type Connection } from 'mongoose';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import {
   ConstantPublicSlugGenerator,
   StubPublicSlugGenerator,
@@ -266,6 +274,44 @@ describe('removeWithComments and deleteByGroup', () => {
     ).toBe(2);
   });
 
+});
+
+describe('knowSomeoneOf', () => {
+  it('knowSomeoneOf returns only relations of the given groups', async () => {
+    const inBackend = await shareLink(JOB_PAGE, BACKEND, ANA);
+    const inFrontend = await shareLink(JOB_PAGE, FRONTEND, ANA);
+    const elsewhere = await shareLink(OTHER_JOB, FRONTEND, BETO);
+    await groupLinks.setKnowSomeone(BACKEND, inBackend.linkId, BETO, true);
+    await groupLinks.setKnowSomeone(FRONTEND, elsewhere.linkId, ANA, true);
+
+    const found = await groupLinks.knowSomeoneOf(
+      [BACKEND],
+      [inBackend.linkId, elsewhere.linkId, 'no-es-un-id'],
+    );
+
+    expect(inFrontend.linkId).toBe(inBackend.linkId);
+    expect(found).toEqual([
+      { groupId: BACKEND, linkId: inBackend.linkId, knowSomeoneUserIds: [BETO] },
+    ]);
+  });
+
+  it('knowSomeoneOf with empty inputs makes no query', async () => {
+    const shared = await shareLink(JOB_PAGE, BACKEND, ANA);
+    const find = vi.spyOn(connection.model(GROUP_LINK_MODEL_NAME), 'find');
+
+    await expect(groupLinks.knowSomeoneOf([], [shared.linkId])).resolves.toEqual(
+      [],
+    );
+    await expect(groupLinks.knowSomeoneOf([BACKEND], [])).resolves.toEqual([]);
+    await expect(
+      groupLinks.knowSomeoneOf(['no-es-un-id'], ['tampoco']),
+    ).resolves.toEqual([]);
+    expect(find).not.toHaveBeenCalled();
+
+    await groupLinks.knowSomeoneOf([BACKEND], [shared.linkId]);
+    expect(find).toHaveBeenCalledTimes(1);
+    find.mockRestore();
+  });
 });
 
 describe('linkIdsIn', () => {

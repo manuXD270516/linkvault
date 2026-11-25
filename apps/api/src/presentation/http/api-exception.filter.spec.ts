@@ -55,6 +55,7 @@ import {
 import {
   ApplicationConflict,
   ApplicationNotFound,
+  WeeklyPlanActionNotFound,
   InvalidAppliedAt,
   InvalidNotes,
   InvalidStageLabel,
@@ -161,6 +162,7 @@ const THROWN: Record<string, () => unknown> = {
   'public-share-forbidden': () => new PublicShareForbidden(),
   'public-share-not-found': () => new PublicShareNotFound(),
   'application-not-found': () => new ApplicationNotFound(),
+  'weekly-plan-action-not-found': () => new WeeklyPlanActionNotFound(),
   'application-conflict': () => new ApplicationConflict(),
   'tracked-link-not-found': () => new TrackedLinkNotFound(),
   'trackers-group-not-found': () => new TrackersGroupNotFound(),
@@ -421,6 +423,12 @@ describe('ApiExceptionFilter', () => {
     ['invalid-stage-label', 400, 'validation_error', ['stageLabel']],
     ['invalid-notes', 400, 'validation_error', ['notes']],
     ['application-not-found', 404, 'application_not_found', undefined],
+    [
+      'weekly-plan-action-not-found',
+      404,
+      'weekly_plan_action_not_found',
+      undefined,
+    ],
     ['application-conflict', 409, 'application_conflict', undefined],
     ['tracked-link-not-found', 404, 'link_not_found', undefined],
     ['trackers-group-not-found', 404, 'group_not_found', undefined],
@@ -436,6 +444,16 @@ describe('ApiExceptionFilter', () => {
     );
     expect(response.headers['retry-after']).toBeUndefined();
     expect(response.headers['set-cookie']).toBeUndefined();
+  });
+
+  it('translates WeeklyPlanActionNotFound to a 404 body with its code', async () => {
+    const response = await get('weekly-plan-action-not-found');
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({
+      code: 'weekly_plan_action_not_found',
+      message: expect.any(String),
+    });
   });
 
   it('gives the same body to a missing group, an unknown invite code and their variants', async () => {

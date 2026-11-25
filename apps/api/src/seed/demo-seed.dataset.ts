@@ -84,6 +84,19 @@ export const DEMO_LINKS = {
     /** Días hacia atrás para `statusChangedAt` (≥11). */
     staleDays: 11,
   },
+  /**
+   * Oferta guardada que vence pronto («Tu semana», D11 de weekly-plan): `preview.expiresAt` = fecha UTC de la corrida +
+   * `expiresInDays`, fijado por el mismo camino de edición de preview que el resto. Cada corrida lo mueve.
+   */
+  closingSoon: {
+    url: 'https://demo.linkvault.local/jobs/data-closing-soon',
+    title: 'Data Engineer (Cierra pronto)',
+    company: 'Closing Soon SRL',
+    location: 'Remote LatAm',
+    modality: 'remote' as const,
+    appStatus: 'saved' as const,
+    expiresInDays: 3,
+  },
 } as const;
 
 export type DemoLinkKey = keyof typeof DEMO_LINKS;

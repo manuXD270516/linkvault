@@ -135,6 +135,7 @@ El producto limita el registro a **10 intentos de registro cada 15 minutos por I
 | Corrida | Intentos de registro |
 |---|---|
 | `e2e-stack`: perfil `local`, `chromium` y `mobile`, dos personas cada uno | 4 |
+| Más `weekly-plan.spec.ts` (`@lot1`, una persona por proyecto: `chromium` el caso de escritorio, `mobile` el de móvil) | +2 (6 en total) |
 | `e2e-stack --rehearse-remote`: lo anterior + la siembra de la cuenta del ensayo | 5 |
 | Admisión de `local` en **un** proyecto, `--repeat-each=5` (una invocación por proyecto, pila nueva) | 10, **justo el límite** |
 | Admisión del ensayo en un proyecto (`--rehearse-remote --skip-local`) | 1 |
@@ -247,3 +248,16 @@ invocaciones, con la carga de arriba (24 procesos desde que empieza Playwright):
 | `pnpm nx run web-e2e:e2e-stack -- --rehearse-remote --skip-local --project=mobile --repeat-each=5` | 5 de 5 en verde (2,5 min) | 1 (la siembra) `201`, ningún `429` |
 
 Ningún fallo ni intermitente. El camino crítico sigue **admitido** con la sincronización nueva.
+
+### 2026-11-25 — `weekly-plan.spec.ts` en `chromium` y `mobile` (change `weekly-plan`, tareas 8.1a y 8.1b, sobre `bb0fa927`)
+
+Solo perfil `local`: la prueba escribe en Mongo y no lleva `@remote-safe`, así que no tiene ensayo. Una invocación por
+proyecto con `--grep "weekly plan"` (una persona por repetición), con la carga de arriba (24 procesos desde que empieza
+Playwright):
+
+| Invocación | Resultado | Registro |
+|---|---|---|
+| `pnpm nx run web-e2e:e2e-stack -- --project=chromium --grep "weekly plan" --repeat-each=5` | 5 de 5 en verde (1,9 min) | 5 `POST /api/auth/register` `201`, ningún `429` |
+| `pnpm nx run web-e2e:e2e-stack -- --project=mobile --grep "weekly plan" --repeat-each=5` | 5 de 5 en verde (2,0 min) | 5 `POST /api/auth/register` `201`, ningún `429` |
+
+Ningún fallo ni intermitente: la tarjeta del plan semanal queda **admitida** en el lote 1.

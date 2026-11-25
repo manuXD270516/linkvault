@@ -1855,6 +1855,41 @@ la lista de invitados ni en la de excluidos. Con 0, nada que hacer. Con más de 
       `db.users.countDocuments({ _id: ObjectId('<id>') })` da 0;
    5. anotar la fecha y cuántas cuentas se borraron **fuera del repositorio**, sin datos de nadie.
 
+## Plan semanal (`weekly_plan_decisions`)
+
+Change `weekly-plan` (ADR-068). «Tu semana» se calcula al leer; lo único que se persiste son las decisiones de la persona.
+
+- **Qué guarda la colección `weekly_plan_decisions`:** `{ userId, weekKey, candidateId, decision, decidedAt }` y nada más. `decision` es `done`, `dismissed` o `snoozed`; `candidateId` es `<regla>:<applicationId>`. Nunca guarda texto, notas ni datos de otras personas, y nunca toca `applications` ni `application_events`.
+- **Índices:** único `(userId, weekKey, candidateId)` y TTL de 35 días (`expireAfterSeconds` 3 024 000) sobre `decidedAt`. Los crea `autoIndex` de Mongoose al arrancar la api; no hay migración. Comprobación: `db.weekly_plan_decisions.getIndexes()`.
+- **«Ocultar sugerencia» no es para siempre:** `dismissed` oculta mientras `decidedAt >= ahora - 35 días`, medido con el reloj de la api y sin depender del monitor TTL. A los 35 días la sugerencia vuelve si sigue aplicando.
+- **Rollback:** revertir el PR. La colección queda huérfana y su TTL la vacía en 35 días; opcional: `db.weekly_plan_decisions.drop()`. Sin variables de entorno ni flags.
+- **Métrica de 35b (correr antes de que venza el TTL; la salida no lleva `userId`):**
+
+```js
+// Numerador: semanas-persona con al menos un «Hecho» (y su número absoluto)
+db.weekly_plan_decisions.aggregate([
+  { $match: { decision: 'done' } },
+  { $group: { _id: { u: '$userId', w: '$weekKey' } } },
+  { $group: { _id: '$_id.w', semanasPersonaConHecho: { $sum: 1 } } },
+  { $sort: { _id: 1 } },
+])
+// «Hecho» frente a «Ocultar sugerencia» por regla
+db.weekly_plan_decisions.aggregate([
+  { $match: { decision: { $in: ['done', 'dismissed'] } } },
+  { $group: { _id: { regla: { $arrayElemAt: [{ $split: ['$candidateId', ':'] }, 0] }, decision: '$decision' }, total: { $sum: 1 } } },
+  { $sort: { '_id.regla': 1, '_id.decision': 1 } },
+])
+// Denominador: personas-semana con al menos una postulación abierta (no cerrada ni accepted) creada hasta fin de cada semana
+db.applications.aggregate([
+  { $match: { status: { $nin: ['rejected', 'withdrawn', 'expired', 'accepted'] } } },
+  { $group: { _id: { $dateToString: { format: '%G-W%V', date: '$updatedAt' } }, personas: { $addToSet: '$userId' } } },
+  { $project: { _id: 1, personasConPostulacionAbierta: { $size: '$personas' } } },
+  { $sort: { _id: 1 } },
+])
+```
+
+El denominador es una aproximación con el estado actual (el historial exacto por semana está en `application_events`). Divide numerador entre denominador por semana; objetivo ≥ 50 % en las dos semanas de medición, junto al número absoluto y a la pregunta directa a cada invitado.
+
 ## Paso 7 — Definition of Done (pégalo en cada PR)
 
 - [ ] Change archivado; spec delta mergeada en `openspec/specs/`

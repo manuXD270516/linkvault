@@ -3,6 +3,7 @@ import {
   changeApplicationStatusRequestSchema,
   trackLinkRequestSchema,
   updateApplicationRequestSchema,
+  weeklyPlanDecisionRequestSchema,
   type Application,
   type ApplicationAnalyticsResponse,
   type ApplicationListQuery,
@@ -12,6 +13,8 @@ import {
   type TrackLinkRequest,
   type TrackLinkResponse,
   type UpdateApplicationRequest,
+  type WeeklyPlanDecisionRequest,
+  type WeeklyPlanResponse,
 } from '@linkvault/shared';
 import {
   Body,
@@ -29,8 +32,10 @@ import type { AuthenticatedUser } from '../../../presentation/http/auth-context/
 import { CurrentUser } from '../../../presentation/http/auth-context/current-user.decorator';
 import { ZodValidationPipe } from '../../../presentation/http/zod-validation.pipe';
 import { ChangeApplicationStatus } from '../application/change-application-status.usecase';
+import { DecideWeeklyPlanAction } from '../application/decide-weekly-plan-action.usecase';
 import { GetApplicationAnalytics } from '../application/get-application-analytics.usecase';
 import { GetApplicationTimeline } from '../application/get-application-timeline.usecase';
+import { GetWeeklyPlan } from '../application/get-weekly-plan.usecase';
 import { ListMyApplications } from '../application/list-my-applications.usecase';
 import { TrackLink } from '../application/track-link.usecase';
 import { UntrackApplication } from '../application/untrack-application.usecase';
@@ -51,6 +56,8 @@ export class ApplicationsController {
     private readonly updateApplication: UpdateApplication,
     private readonly timeline: GetApplicationTimeline,
     private readonly untrack: UntrackApplication,
+    private readonly weeklyPlan: GetWeeklyPlan,
+    private readonly decideAction: DecideWeeklyPlanAction,
   ) {}
 
   /** `201` también cuando ya la seguía (`created: false`): el SPA pinta el estado real sin una segunda petición (D4). */
@@ -78,6 +85,28 @@ export class ApplicationsController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<ApplicationAnalyticsResponse> {
     return this.analytics.execute(user.userId);
+  }
+
+  /**
+   * «Tu semana» (D1 de weekly-plan): como mucho 3 acciones calculadas al leer, sin escribir. Ruta estática declarada
+   * antes de las de `:id`.
+   */
+  @Get('weekly-plan')
+  weeklyPlanOf(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<WeeklyPlanResponse> {
+    return this.weeklyPlan.execute(user.userId);
+  }
+
+  /** Decide sobre una acción del plan (D5) y responde el plan recalculado: `200`, no `201`. */
+  @Post('weekly-plan/decisions')
+  @HttpCode(HttpStatus.OK)
+  decideWeeklyPlanAction(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(weeklyPlanDecisionRequestSchema))
+    body: WeeklyPlanDecisionRequest,
+  ): Promise<WeeklyPlanResponse> {
+    return this.decideAction.execute(user.userId, body);
   }
 
   @Patch(':id/status')

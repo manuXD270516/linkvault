@@ -71,6 +71,20 @@ export interface JobLinkCard {
   readonly company?: string;
 }
 
+/**
+ * Lo que `applications` necesita de una oferta para armar «Tu semana» (D7 de weekly-plan): la ficha mínima más la
+ * frescura. `expiresAt` es la fecha sin hora `YYYY-MM-DD` del preview y falta si el link no tiene preview o es `null`.
+ */
+export interface JobLinkPlanCard {
+  readonly id: string;
+  readonly displayUrl: string;
+  readonly title?: string;
+  readonly company?: string;
+  /** `true` si el link tiene `closedAt` (ADR-037). */
+  readonly closed: boolean;
+  readonly expiresAt?: string;
+}
+
 export interface JobLinkRepository {
   /**
    * Abre una transacción, resuelve el `JobLink` por su `dedupeKey` —lo crea o reutiliza el existente añadiendo la URL
@@ -94,6 +108,13 @@ export interface JobLinkRepository {
    * formados o que no existen no aportan nada; el orden de la respuesta no está garantizado.
    */
   cardsOf(linkIds: readonly string[]): Promise<JobLinkCard[]>;
+
+  /**
+   * Ficha y frescura de varios links en **una sola consulta** `$in` con proyección (D7 de weekly-plan): `displayUrl`,
+   * título, empresa, `preview.expiresAt` y `closedAt`. Los ids mal formados o que no existen no aportan nada; el orden
+   * de la respuesta no está garantizado.
+   */
+  planCardsOf(linkIds: readonly string[]): Promise<JobLinkPlanCard[]>;
 
   /**
    * Guarda el preview editado a mano con el estado que le dan —no lo toca el motivo del fallo— y sube `previewVersion`, **condicionado** a la versión

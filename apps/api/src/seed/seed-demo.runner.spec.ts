@@ -132,6 +132,82 @@ describe('runSeedDemo', () => {
   });
 });
 
+describe('runSeedDemo weekly plan dataset', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+
+  function expiresAtWrites(deps: SeedDemoDeps, linkId: string): unknown[] {
+    return vi
+      .mocked(deps.updatePreview.execute)
+      .mock.calls.filter(([, id]) => id === linkId)
+      .map(([, , request]) => request.fields?.['expiresAt']);
+  }
+
+  it('seeds a saved link closing in three days', async () => {
+    const deps = buildDeps();
+
+    const report = await runSeedDemo(deps);
+
+    const closingLinkId = report.linkIds['closingSoon'] ?? '';
+    expect(closingLinkId).not.toBe('');
+    expect(expiresAtWrites(deps, closingLinkId)).toEqual(['2026-09-26']);
+    expect(
+      vi
+        .mocked(deps.trackLink.execute)
+        .mock.calls.some(
+          ([, req]) => req.linkId === closingLinkId && req.status === 'saved',
+        ),
+    ).toBe(true);
+    // Los demás links no llevan fecha de cierre.
+    expect(expiresAtWrites(deps, report.linkIds['openSalary'] ?? '')).toEqual([
+      undefined,
+    ]);
+  });
+
+  it('resets openSalary statusChangedAt on every run', async () => {
+    const deps = buildDeps();
+
+    await runSeedDemo(deps);
+    await runSeedDemo(deps);
+
+    const { updateOne } = deps.connection.collection('probe') as unknown as {
+      updateOne: ReturnType<typeof vi.fn>;
+    };
+    const resets = updateOne.mock.calls.filter(
+      (call) =>
+        (call[1] as { $set?: { statusChangedAt?: Date } }).$set?.[
+          'statusChangedAt'
+        ]?.getTime() === NOW.getTime(),
+    );
+    expect(resets).toHaveLength(2);
+  });
+
+  it('second run moves expiresAt without duplicating links or applications', async () => {
+    const deps = buildDeps();
+    const first = await runSeedDemo(deps);
+    const later = new Date(NOW.getTime() + 12 * DAY);
+
+    const second = await runSeedDemo({ ...deps, now: later });
+
+    const closingLinkId = first.linkIds['closingSoon'] ?? '';
+    expect(second.linkIds).toEqual(first.linkIds);
+    expect(expiresAtWrites(deps, closingLinkId)).toEqual([
+      '2026-09-26',
+      '2026-10-08',
+    ]);
+    // Mismo id de postulación en las dos corridas: el alta es un upsert por (userId, linkId).
+    const trackCalls = vi
+      .mocked(deps.trackLink.execute)
+      .mock.results.length;
+    expect(trackCalls).toBe(Object.keys(DEMO_LINKS).length * 2);
+    const createdFlags = await Promise.all(
+      vi.mocked(deps.trackLink.execute).mock.results.map((r) => r.value),
+    );
+    expect(
+      createdFlags.filter((tracked) => tracked.created === true),
+    ).toHaveLength(Object.keys(DEMO_LINKS).length);
+  });
+});
+
 describe('seed-demo entrypoint source', () => {
   it('does not import the Meili client from the seed process', () => {
     const source = readFileSync(

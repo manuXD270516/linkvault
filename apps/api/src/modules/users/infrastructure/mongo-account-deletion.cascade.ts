@@ -36,6 +36,7 @@ const GROUP_LINKS_COLLECTION = 'group_links';
 const USER_LINKS_COLLECTION = 'user_links';
 const APPLICATIONS_COLLECTION = 'applications';
 const APPLICATION_EVENTS_COLLECTION = 'application_events';
+const WEEKLY_PLAN_DECISIONS_COLLECTION = 'weekly_plan_decisions';
 const CV_DOCUMENTS_COLLECTION = 'cv_documents';
 const CV_VERSION_COUNTERS_COLLECTION = 'cv_version_counters';
 const AI_ANALYSES_COLLECTION = 'ai_analyses';
@@ -167,6 +168,10 @@ export class MongoAccountDeletionCascade implements AccountDeletionCascade {
       .deleteMany({ userId: userOid }, { session });
     await this.connection
       .collection(APPLICATION_EVENTS_COLLECTION)
+      .deleteMany({ userId: userOid }, { session });
+    // Decisiones de «Tu semana» (D5 de weekly-plan): la colección guarda `userId` como `ObjectId`, no como string.
+    await this.connection
+      .collection(WEEKLY_PLAN_DECISIONS_COLLECTION)
       .deleteMany({ userId: userOid }, { session });
 
     await this.connection

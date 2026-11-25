@@ -24,6 +24,12 @@ import { APPLICATION_LINKS } from '../application/ports/application-links.port';
 import { APPLICATION_REPOSITORY } from '../application/ports/application-repository.port';
 import { APPLICATION_USER_DIRECTORY } from '../application/ports/application-user-directory.port';
 import { APPLICATIONS_CLOCK } from '../application/ports/clock.port';
+import { WEEKLY_PLAN_DECISION_REPOSITORY } from '../application/ports/weekly-plan-decision-repository.port';
+import { WEEKLY_PLANNER } from '../application/ports/weekly-planner.port';
+import { RuleBasedPlanner } from '../domain/weekly-plan/rule-based-planner';
+import { MongoWeeklyPlanDecisionRepository } from '../infrastructure/mongo-weekly-plan-decision.repository';
+import { DecideWeeklyPlanAction } from '../application/decide-weekly-plan-action.usecase';
+import { GetWeeklyPlan } from '../application/get-weekly-plan.usecase';
 import { TrackLink } from '../application/track-link.usecase';
 import { UntrackApplication } from '../application/untrack-application.usecase';
 import { UpdateApplication } from '../application/update-application.usecase';
@@ -91,8 +97,21 @@ describe('ApplicationsModule', () => {
     [APPLICATION_GROUPS, GroupsFacadeApplicationGroups],
     [APPLICATION_USER_DIRECTORY, UsersFacadeApplicationDirectory],
     [APPLICATIONS_CLOCK, SystemClock],
+    [WEEKLY_PLAN_DECISION_REPOSITORY, MongoWeeklyPlanDecisionRepository],
   ])('binds a port to its Mongo or facade adapter', (token, adapter) => {
     expect(app.get(token, { strict: false })).toBeInstanceOf(adapter);
+  });
+
+  it('resolves WEEKLY_PLANNER to RuleBasedPlanner', () => {
+    expect(app.get(WEEKLY_PLANNER, { strict: false })).toBeInstanceOf(
+      RuleBasedPlanner,
+    );
+  });
+
+  it('resolves the weekly plan use cases', () => {
+    for (const useCase of [GetWeeklyPlan, DecideWeeklyPlanAction]) {
+      expect(app.get(useCase, { strict: false })).toBeInstanceOf(useCase);
+    }
   });
 
   it('shares the one LinksModule that the app builds with the AI, instead of a second one', () => {
@@ -108,6 +127,8 @@ describe('ApplicationsModule', () => {
     ['POST', '/api/applications'],
     ['GET', '/api/applications'],
     ['GET', '/api/applications/analytics'],
+    ['GET', '/api/applications/weekly-plan'],
+    ['POST', '/api/applications/weekly-plan/decisions'],
     ['PATCH', `/api/applications/${ID}/status`],
     ['PATCH', `/api/applications/${ID}`],
     ['GET', `/api/applications/${ID}/events`],

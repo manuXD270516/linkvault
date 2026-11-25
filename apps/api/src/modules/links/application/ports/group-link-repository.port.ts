@@ -43,6 +43,16 @@ export interface GroupLink {
 }
 
 /**
+ * Marcas «conozco a alguien» de una relación, tal como las lee `LinksFacade.planSignalsOf` (D7 de weekly-plan). Lleva
+ * identidades porque se queda dentro de `links`: la fachada las reduce a un conteo y nunca las devuelve.
+ */
+export interface GroupLinkKnowSomeone {
+  readonly groupId: string;
+  readonly linkId: string;
+  readonly knowSomeoneUserIds: readonly string[];
+}
+
+/**
  * Contadores de comentarios de la relación tras un alta o un borrado. `sharedAt` identifica la relación: al quitar el
  * link y volver a compartirlo, la revisión vuelve a 0 con otro `sharedAt` (critic 2 de la iteración 2).
  */
@@ -144,6 +154,16 @@ export interface GroupLinkRepository {
    * applications-tracking). Los ids mal formados no aportan nada.
    */
   linkIdsIn(groupId: string, linkIds: readonly string[]): Promise<Set<string>>;
+  /**
+   * Marcas «conozco a alguien» de las relaciones `(grupo, link)` de esos grupos y esos links, en **una sola consulta**
+   * por el índice único `(groupId, linkId)` con proyección de `groupId`, `linkId` y `knowSomeoneUserIds` (D7 de
+   * weekly-plan). Solo trae las relaciones que existen; con una lista vacía no consulta. Los ids mal formados no
+   * aportan nada.
+   */
+  knowSomeoneOf(
+    groupIds: readonly string[],
+    linkIds: readonly string[],
+  ): Promise<GroupLinkKnowSomeone[]>;
   /**
    * Quita el link del grupo **con su nota y sus comentarios**, en una transacción (D2 y D8 de group-comments): o se
    * borra todo o nada. `false` si la relación no estaba. NUNCA borra el `JobLink`.

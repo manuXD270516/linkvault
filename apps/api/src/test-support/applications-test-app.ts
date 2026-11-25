@@ -11,6 +11,7 @@ import {
   APPLICATION_EVENT_MODEL_NAME,
   APPLICATION_MODEL_NAME,
 } from '../modules/applications/infrastructure/application.schemas';
+import { WEEKLY_PLAN_DECISION_MODEL_NAME } from '../modules/applications/infrastructure/weekly-plan-decision.schemas';
 import {
   createLinksTestApp,
   type InjectResponse,
@@ -65,7 +66,11 @@ export async function createApplicationsTestApp(
   mongoUri: string,
 ): Promise<ApplicationsTestApp> {
   const http = await createLinksTestApp(name, mongoUri);
-  for (const model of [APPLICATION_MODEL_NAME, APPLICATION_EVENT_MODEL_NAME]) {
+  for (const model of [
+    APPLICATION_MODEL_NAME,
+    APPLICATION_EVENT_MODEL_NAME,
+    WEEKLY_PLAN_DECISION_MODEL_NAME,
+  ]) {
     await http.connection.model(model).init();
   }
 

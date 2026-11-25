@@ -12,6 +12,7 @@ import type {
   AddedComment,
   CommentsCounters,
   GroupLink,
+  GroupLinkKnowSomeone,
   GroupLinkRepository,
   ShareInGroupInput,
   SharedGroupLink,
@@ -208,6 +209,30 @@ export class InMemoryGroupLinkRepository implements GroupLinkRepository {
       }
     }
     return Promise.resolve(found);
+  }
+
+  /** Cuántas veces se pidieron las marcas: lo usa el test de consultas fijas de `planSignalsOf`. */
+  knowSomeoneOfCalls = 0;
+
+  knowSomeoneOf(
+    groupIds: readonly string[],
+    linkIds: readonly string[],
+  ): Promise<GroupLinkKnowSomeone[]> {
+    this.knowSomeoneOfCalls += 1;
+    const groups = new Set(groupIds.filter((groupId) => isGroupId(groupId)));
+    const links = new Set(linkIds.filter((linkId) => isLinkId(linkId)));
+    return Promise.resolve(
+      this.relations
+        .filter(
+          (relation) =>
+            groups.has(relation.groupId) && links.has(relation.linkId),
+        )
+        .map((relation) => ({
+          groupId: relation.groupId,
+          linkId: relation.linkId,
+          knowSomeoneUserIds: [...relation.knowSomeoneUserIds],
+        })),
+    );
   }
 
   async removeWithComments(groupId: string, linkId: string): Promise<boolean> {
