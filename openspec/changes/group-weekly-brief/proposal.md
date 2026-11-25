@@ -8,7 +8,7 @@ siguientes» §5).
 El problema: un grupo de 3 a 5 personas que comparte ofertas por LinkVault acumula decenas de links y nadie tiene el
 panorama. Los datos ya están en las ofertas —cuáles cierran pronto (`preview.expiresAt`), qué habilidades piden
 (`preview.skills`), cuándo entraron al grupo (`sharedAt`)— pero el listado del grupo los muestra de a uno, tarjeta por
-tarjeta. Una tarjeta con hasta 4 viñetas **verificadas** («4 de 7 ofertas con requisitos leídos mencionan Docker», «2
+tarjeta. Una tarjeta con hasta 4 viñetas **verificadas** («Docker aparece en 4 de las 7 ofertas abiertas con habilidades detectadas», «2
 ofertas cierran hasta el lunes») le da al grupo de qué hablar sin que nadie tenga que contar a mano, y sin exponer nada
 de lo que cada miembro hace con esas ofertas.
 

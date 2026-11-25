@@ -63,9 +63,9 @@ el singular o el plural elegido en código, así:
 |---|---|---|
 | `closing_soon`, `count` 1 | «1 oferta cierra hasta el {until}.» | «1 offer closes by {until}.» |
 | `closing_soon`, `count` N > 1 | «N ofertas cierran hasta el {until}.» | «N offers close by {until}.» |
-| `skill_demand` | «N de M ofertas con requisitos leídos mencionan {skillLabel}.» | «N of M offers with known requirements mention {skillLabel}.» |
-| `shared_last_week`, `count` 1 | «1 oferta se compartió la semana pasada.» | «1 offer was shared last week.» |
-| `shared_last_week`, `count` N > 1 | «N ofertas se compartieron la semana pasada.» | «N offers were shared last week.» |
+| `skill_demand` | «{skillLabel} aparece en N de las M ofertas abiertas con habilidades detectadas.» | «{skillLabel} appears in N of the M open offers with detected skills.» |
+| `shared_last_week`, `count` 1 | «Se compartió 1 oferta en el grupo la semana pasada.» | «1 offer was shared in the group last week.» |
+| `shared_last_week`, `count` N > 1 | «Se compartieron N ofertas en el grupo la semana pasada.» | «N offers were shared in the group last week.» |
 
 Los números SHALL ser exactamente los del hecho (`count`, `total`) y `{skillLabel}` SHALL mostrarse tal como viene, sin
 traducir. Todos los textos de la tarjeta SHALL estar en el catálogo i18n en español, con tuteo, y en inglés.
@@ -74,8 +74,8 @@ traducir. Todos los textos de la tarjeta SHALL estar en el catálogo i18n en esp
 
 - **GIVEN** un hecho `skill_demand` con `skillLabel` «Docker», `count` 4 y `total` 7
 - **WHEN** se muestra su viñeta en español y en inglés
-- **THEN** SHALL leerse «4 de 7 ofertas con requisitos leídos mencionan Docker.» y «4 of 7 offers with known
-  requirements mention Docker.»
+- **THEN** SHALL leerse «Docker aparece en 4 de las 7 ofertas abiertas con habilidades detectadas.» y «Docker appears
+  in 4 of the 7 open offers with detected skills.»
 
 #### Scenario: Cierre en singular y en plural
 
@@ -88,7 +88,9 @@ traducir. Todos los textos de la tarjeta SHALL estar en el catálogo i18n en esp
 
 - **GIVEN** un `shared_last_week` con `count` 3 y otro con `count` 1
 - **WHEN** se muestran con la interfaz en inglés
-- **THEN** SHALL leerse «3 offers were shared last week.» y «1 offer was shared last week.»
+- **THEN** SHALL leerse «3 offers were shared in the group last week.» y «1 offer was shared in the group last week.»
+- **AND** en español «Se compartieron 3 ofertas en el grupo la semana pasada.» y «Se compartió 1 oferta en el grupo la
+  semana pasada.»
 
 ### Requirement: Ofertas de cada viñeta
 

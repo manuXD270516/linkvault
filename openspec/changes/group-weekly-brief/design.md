@@ -162,7 +162,7 @@ calendario aunque el detector aún no pasara, ADR-041). Cada habilidad leída se
   con al menos una habilidad válida (el denominador honesto). `skillLabel` = la forma original recortada más frecuente
   de esa clave (contada una vez por oferta); empate, la menor por orden de unidades de código. Se guardan como mucho
   `GROUP_BRIEF_SKILL_FACTS_MAX = 5` hechos de habilidad, por `count` desc y `skillKey` asc. Obligatorias y deseables
-  cuentan igual, y por eso el texto dice «mencionan», no «exigen».
+  cuentan igual, y por eso el texto dice «aparece en», no «exigen».
 - **`closing_soon`** usa la misma ventana que `weekly-plan` (ronda 1, PO-9): de `asOf` a `asOf` + 7 días, ambos
   incluidos, reutilizando `WEEKLY_PLAN_CLOSING_SOON_DAYS`. La fecha exacta viaja en el hecho y en el texto.
 - **`shared_last_week`** cuenta también ofertas ya cerradas: lo que dice es «se compartieron», no «siguen abiertas».
@@ -349,9 +349,9 @@ el detalle ni el listado.
   |---|---|---|
   | `closing_soon`, 1 | `1 oferta cierra hasta el {until}.` | `1 offer closes by {until}.` |
   | `closing_soon`, N | `N ofertas cierran hasta el {until}.` | `N offers close by {until}.` |
-  | `skill_demand` | `N de M ofertas con requisitos leídos mencionan {skill}.` | `N of M offers with known requirements mention {skill}.` |
-  | `shared_last_week`, 1 | `1 oferta se compartió la semana pasada.` | `1 offer was shared last week.` |
-  | `shared_last_week`, N | `N ofertas se compartieron la semana pasada.` | `N offers were shared last week.` |
+  | `skill_demand` | `{skill} aparece en N de las M ofertas abiertas con habilidades detectadas.` | `{skill} appears in N of the M open offers with detected skills.` |
+  | `shared_last_week`, 1 | `Se compartió 1 oferta en el grupo la semana pasada.` | `1 offer was shared in the group last week.` |
+  | `shared_last_week`, N | `Se compartieron N ofertas en el grupo la semana pasada.` | `N offers were shared in the group last week.` |
 
   Resto de textos EN: «The group's week», «Updated on {date} · N open offers» / «1 open offer», «It only counts offer
   data, never what each member does.», «Show offers (N)», «Hide offers», «and N more in the group list» / «and 1 more in
@@ -522,7 +522,9 @@ Participaron `critic` y `business`; la sesión principal actuó como `reflect`. 
 | PO-4 | aceptado | Log por tick `{groupsScanned, upserted, unchanged, empty, rejected}` + viñetas por tipo, sin `groupId`; suma en el RUNBOOK (D2; tareas 3.6, 8.1). |
 | PO-5 | aceptado | Tarea [infra] 8.3 diferida a 35b: cobertura de `preview.skills` ≥ 50 % antes de invitar; no bloquea el cierre. |
 | PO-6 | adaptado | Verificado: el listado no tiene ids por tarjeta, ni `anchorScrolling`, y pagina; se queda el enlace externo y el ancla pasa a corte siguiente §3 (D9). |
-| PO-7, PO-10, PO-12 | aceptado | Aplicado lo explícito: se borró el corte «nadie comparte su proceso» y la cabecera «(de las 500…)»; los demás textos propuestos no llegaron al arquitecto y se incorporan cuando los reciba. |
+| PO-7 | aceptado | Texto de habilidad: «{skill} aparece en N de las M ofertas abiertas con habilidades detectadas.» y su EN (D9). |
+| PO-10 | aceptado | Texto de compartidas: «Se compartieron N ofertas en el grupo la semana pasada.», su singular y su EN (D9); el vacío ya habla de ofertas compartidas la semana pasada. |
+| PO-12 | aceptado | Se borró el corte siguiente «nadie comparte su proceso» y la cabecera «(de las 500…)». |
 | PO-9 | aceptado | Ventana de cierre igual a `weekly-plan`: de `asOf` a `asOf` + 7 (D3, D6). |
 | Q2, Q3, Q4 | aceptado | Q2 = (a) fuera; Q3 = (a) mínimo 1; Q4 = fila 39. |
 

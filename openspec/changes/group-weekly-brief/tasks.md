@@ -199,8 +199,8 @@ Todo en `group-brief/domain/`, puro, sin `@nestjs/*`, `mongoose` ni `bullmq`.
   list or saving».
 - [ ] 6.6 [frontend] `pnpm nx run web:extract-i18n` y traducciones EN de D9 en `messages.en.xlf`. Verificar:
   `pnpm nx run web:i18n-check` en verde y un `describe` EN en `group-weekly-brief-text.spec.ts` que carga
-  `messages.en.xlf` con `loadTranslations` y afirma «4 of 7 offers with known requirements mention Docker.», «3 offers
-  were shared last week.», «There is nothing to summarize for this week yet.» y «Updated on Monday, November 23 · 7 open
+  `messages.en.xlf` con `loadTranslations` y afirma «Docker appears in 4 of the 7 open offers with detected skills.», «3 offers
+  were shared in the group last week.», «There is nothing to summarize for this week yet.» y «Updated on Monday, November 23 · 7 open
   offers».
 
 ## 7. End-to-end (perfil `local`)
