@@ -10,13 +10,13 @@ ofertas a un toque, sin mostrar nunca nada de lo que hace cada miembro.
 `/grupos/:id` SHALL mostrar, encima del listado de links y a todo el ancho, también en pantallas móviles, la tarjeta
 «La semana del grupo» con la respuesta de `GET /api/groups/:id/weekly-brief`. Con `brief`, SHALL mostrar «Actualizada
 el {fecha} · N ofertas abiertas» (singular «1 oferta abierta»), una línea por viñeta en el orden recibido y el pie
-«Solo cuenta datos de las ofertas, nunca lo que hace cada miembro.». Las fechas (`asOf`, `until`) SHALL formatearse
+«Solo cuenta datos de las ofertas, nunca lo que hace cada miembro.». Las fechas (`asOf`, `firstExpiresAt`, `expiresAt`) SHALL formatearse
 como fechas sin hora en UTC, con día de la semana, día y mes en el idioma de la interfaz. La tarjeta SHALL tener estado
 de carga (con `aria-busy="true"`), estado vacío con `brief` `null` («Todavía no hay novedades para resumir esta
-semana.» y «Aparecen cuando una oferta del grupo cierra en los próximos 7 días, dos o más piden la misma habilidad o se
+semana.» y «Aparecen cuando una oferta del grupo cierra de hoy a 7 días, dos o más mencionan la misma habilidad o se
 compartieron ofertas la semana pasada. Se revisa cada mañana.»; EN: «There is nothing to summarize for this week yet.»
-y «They appear when an offer in the group closes within the next 7 days, two or more ask for the same skill, or offers
-were shared last week. It is checked every morning.») y estado de error («No pudimos cargar la semana del grupo.» con
+y «They appear when an offer in the group closes between today and 7 days from now, two or more mention the same skill,
+or offers were shared last week. It is checked every morning.») y estado de error («No pudimos cargar la semana del grupo.» con
 «Reintentar»). Un error de la tarjeta NO SHALL impedir ver ni usar el detalle del grupo ni su listado. La tarjeta NO
 SHALL mostrar nombres, avatares, estados de postulación, marcas, notas, etiquetas ni comentarios.
 
@@ -32,8 +32,8 @@ SHALL mostrar nombres, avatares, estados de postulación, marcas, notas, etiquet
 - **GIVEN** un grupo con `brief` `null`
 - **WHEN** un miembro abre su detalle
 - **THEN** la tarjeta SHALL decir «Todavía no hay novedades para resumir esta semana.» y «Aparecen cuando una oferta
-  del grupo cierra en los próximos 7 días, dos o más piden la misma habilidad o se compartieron ofertas la semana
-  pasada. Se revisa cada mañana.»
+  del grupo cierra de hoy a 7 días, dos o más mencionan la misma habilidad o se compartieron ofertas la semana pasada.
+  Se revisa cada mañana.»
 
 #### Scenario: Vacío en inglés
 
@@ -61,8 +61,8 @@ el singular o el plural elegido en código, así:
 
 | Hecho | Español | English |
 |---|---|---|
-| `closing_soon`, `count` 1 | «1 oferta cierra hasta el {until}.» | «1 offer closes by {until}.» |
-| `closing_soon`, `count` N > 1 | «N ofertas cierran hasta el {until}.» | «N offers close by {until}.» |
+| `closing_soon`, `count` 1 | «1 oferta cierra el {firstExpiresAt}.» | «1 offer closes on {firstExpiresAt}.» |
+| `closing_soon`, `count` N > 1 | «N ofertas cierran en los próximos días; la primera, el {firstExpiresAt}.» | «N offers close soon; the first on {firstExpiresAt}.» |
 | `skill_demand` | «{skillLabel} aparece en N de las M ofertas abiertas con habilidades detectadas.» | «{skillLabel} appears in N of the M open offers with detected skills.» |
 | `shared_last_week`, `count` 1 | «Se compartió 1 oferta en el grupo la semana pasada.» | «1 offer was shared in the group last week.» |
 | `shared_last_week`, `count` N > 1 | «Se compartieron N ofertas en el grupo la semana pasada.» | «N offers were shared in the group last week.» |
@@ -79,10 +79,13 @@ traducir. Todos los textos de la tarjeta SHALL estar en el catálogo i18n en esp
 
 #### Scenario: Cierre en singular y en plural
 
-- **GIVEN** un `closing_soon` con `count` 1 y `until` `2026-11-30`, y otro con `count` 2 y el mismo `until`
-- **WHEN** se muestran en español
-- **THEN** SHALL leerse «1 oferta cierra hasta el lunes, 30 de noviembre.» y «2 ofertas cierran hasta el lunes, 30 de
-  noviembre.»
+- **GIVEN** un `closing_soon` con `count` 1 y `firstExpiresAt` `2026-11-26`, y otro con `count` 2 y el mismo
+  `firstExpiresAt`
+- **WHEN** se muestran en español y en inglés
+- **THEN** SHALL leerse «1 oferta cierra el jueves, 26 de noviembre.» y «2 ofertas cierran en los próximos días; la
+  primera, el jueves, 26 de noviembre.»
+- **AND** en inglés «1 offer closes on Thursday, November 26.» y «2 offers close soon; the first on Thursday,
+  November 26.»
 
 #### Scenario: Semana pasada en inglés
 
@@ -97,7 +100,7 @@ traducir. Todos los textos de la tarjeta SHALL estar en el catálogo i18n en esp
 Cada viñeta con ofertas SHALL tener un botón «Ver ofertas (N)», con N = número de `offers` más `moreCount`, que
 despliega y repliega («Ocultar ofertas») la lista de sus ofertas, con `aria-expanded` y `aria-controls`, y un área
 táctil de al menos 44 px de alto. Cada oferta SHALL mostrar su título (o su `displayUrl` sin título) y su empresa si la
-tiene, como enlace a su `displayUrl` que se abre en otra pestaña con `rel="noopener noreferrer"`. Con `moreCount` > 0
+tiene —y, en `closing_soon`, «cierra el {fecha}» / «closes on {date}» con su `expiresAt`—, como enlace a su `displayUrl` que se abre en otra pestaña con `rel="noopener noreferrer"`. Con `moreCount` > 0
 SHALL añadirse «y N más en el listado del grupo» (singular «y 1 más en el listado del grupo»); con `missingCount` > 0,
 «N ya no están en el grupo» (singular «1 ya no está en el grupo»). Una viñeta sin `offers` ni `moreCount` NO SHALL
 mostrar el botón y SHALL mostrar solo la línea de `missingCount`. Nada de la tarjeta SHALL escribir en la api.
@@ -108,6 +111,12 @@ mostrar el botón y SHALL mostrar solo la línea de `missingCount`. Nada de la t
 - **WHEN** el miembro pulsa «Ver ofertas (2)»
 - **THEN** SHALL ver los dos títulos como enlaces a sus `displayUrl` con `target="_blank"` y `rel="noopener noreferrer"`
 - **AND** el botón SHALL decir «Ocultar ofertas» con `aria-expanded="true"`
+
+#### Scenario: Fecha de cada oferta que cierra
+
+- **GIVEN** una viñeta `closing_soon` con una oferta de `expiresAt` `2026-11-26`
+- **WHEN** el miembro la despliega en español
+- **THEN** junto a esa oferta SHALL leerse «cierra el jueves, 26 de noviembre»
 
 #### Scenario: Más ofertas y ofertas que ya no están
 

@@ -11,17 +11,21 @@ viñeta y una lectura de solo lectura en la api. Solo usa datos de las ofertas; 
 Con `FEATURE_GROUP_BRIEF` en `true` (valor por defecto si la variable falta), el worker SHALL ejecutar un tick a las
 05:00 UTC de cada día y otro al arrancar. Cada tick SHALL calcular, para **todos** los grupos, la semana ISO UTC en
 curso (`weekKey` = `isoWeekKey(now)`, `asOf` = fecha UTC de `now`) y SHALL escribirla con `replaceOne` y `upsert` sobre
-la clave única `(groupId, weekKey)` de `group_weekly_briefs`, salvo que el resultado sea igual al guardado en todo
-menos `computedAt`, en cuyo caso NO SHALL escribir. Con los mismos datos, el mismo día SHALL producir el mismo
-documento. Si el cálculo no produce ninguna viñeta, o no pasa el evaluador, NO SHALL escribirse nada y SHALL
-conservarse la última versión guardada de esa semana. Dos cálculos simultáneos del mismo grupo SHALL dejar un solo
+la clave única `(groupId, weekKey)` de `group_weekly_briefs`, salvo que el documento resultante sea igual al guardado
+comparados en EJSON canónico sin `_id` ni `computedAt`, en cuyo caso NO SHALL escribir; un documento guardado que no
+se puede leer SHALL sobrescribirse. Con los mismos datos, el mismo día SHALL producir el mismo documento. Si el cálculo
+no produce ninguna viñeta, SHALL borrarse el documento de esa semana (`deleteOne({ groupId, weekKey })`). Si el
+resultado no pasa el evaluador, NO SHALL escribirse ni borrarse nada: SHALL conservarse la versión anterior y
+registrarse el rechazo. Dos cálculos simultáneos del mismo grupo SHALL dejar un solo
 documento y ninguno SHALL terminar con error.
 
-Antes del primer tick, el worker SHALL haber creado los índices de la colección, también si está vacía. El tick de
+Antes del primer tick, el worker SHALL haber creado los índices de la colección, también si está vacía. Si no puede
+crearlos, SHALL registrar el error, NO SHALL registrar el cron ni el tick de arranque de esta feature, y el arranque del
+worker SHALL completarse igual. El tick de
 arranque SHALL dispararse sin que el arranque lo espere, y el arranque SHALL completarse aunque el tick falle o no
 termine. Un tick NO SHALL relanzar errores: SHALL registrarlos y terminar. Un tick NO SHALL empezar mientras otro del
 mismo proceso sigue en curso. Cada tick SHALL registrar una línea de resumen con `weekKey`, `groupsScanned`,
-`upserted`, `unchanged`, `empty`, `rejected` y el número de viñetas por tipo, sin ningún `groupId`.
+`upserted`, `unchanged`, `cleared`, `rejected` y el número de viñetas por tipo, sin ningún `groupId`.
 
 Con `FEATURE_GROUP_BRIEF` en `false` NO SHALL registrarse el cron ni el tick de arranque. En `NODE_ENV=test` NO SHALL
 registrarse ninguno de los dos. El cálculo NO SHALL llamar a ningún proveedor de IA ni enviar correos o avisos.
@@ -48,13 +52,21 @@ registrarse ninguno de los dos. El cálculo NO SHALL llamar a ningún proveedor 
 - **THEN** el documento SHALL seguir idéntico, con el mismo `computedAt`
 - **AND** el resumen del tick SHALL contar G1 como `unchanged`
 
-#### Scenario: Día vacío conserva lo guardado
+#### Scenario: Día vacío borra la semana
 
 - **GIVEN** el documento de `(G1, 2026-W48)` del lunes con una viñeta `closing_soon`, y el martes esa oferta sale del
   grupo y no queda ningún otro hecho con viñeta
 - **WHEN** corre el tick del miércoles
+- **THEN** NO SHALL existir documento para `(G1, 2026-W48)`
+- **AND** el resumen del tick SHALL contar G1 como `cleared`
+- **AND** la lectura de la api SHALL devolver `brief` `null`
+
+#### Scenario: Rechazo conserva la versión anterior
+
+- **GIVEN** el documento de `(G1, 2026-W48)` del lunes y un cálculo del martes que no pasa el evaluador
+- **WHEN** corre el tick del martes
 - **THEN** el documento del lunes SHALL seguir guardado sin cambios
-- **AND** el resumen del tick SHALL contar G1 como `empty`
+- **AND** el resumen del tick SHALL contar G1 como `rejected`
 
 #### Scenario: Dos ticks a la vez
 
@@ -67,6 +79,13 @@ registrarse ninguno de los dos. El cálculo NO SHALL llamar a ningún proveedor 
 - **GIVEN** una base sin la colección `group_weekly_briefs`
 - **WHEN** arranca el worker y antes de que corra el primer tick
 - **THEN** la colección SHALL tener el índice único `(groupId, weekKey)` y el TTL sobre `computedAt`
+
+#### Scenario: Fallo al crear los índices
+
+- **GIVEN** una creación de índices que falla al arrancar
+- **WHEN** arranca el worker
+- **THEN** el error SHALL registrarse, la inicialización de la aplicación SHALL completarse y NO SHALL correr ningún
+  tick de la semana del grupo
 
 #### Scenario: El arranque no espera al tick
 
@@ -108,8 +127,8 @@ y la que no valide SHALL ignorarse sin error. Una oferta SHALL considerarse **ab
 `expiresAt` es `null` o no anterior a `asOf`. Los hechos SHALL ser:
 
 - `open_offers`: las abiertas, con `count` y `linkIds`;
-- `closing_soon`: las abiertas con `expiresAt` entre `asOf` y `asOf` + 7 días, ambos incluidos, con `from` = `asOf` y
-  `until` = `asOf` + 7 días; solo si hay al menos una;
+- `closing_soon`: las abiertas con `expiresAt` entre `asOf` y `asOf` + 7 días, ambos incluidos, con `from` = `asOf`,
+  `until` = `asOf` + 7 días y `firstExpiresAt` = el menor `expiresAt` de ellas; solo si hay al menos una;
 - `skill_demand:<skillKey>`: por habilidad mencionada en al menos 2 abiertas, con `skillKey` (nombre en NFKC,
   recortado, con espacios colapsados y en minúsculas; vacío o de más de 60 caracteres se ignora), `skillLabel` (la
   forma original más frecuente contada una vez por oferta; empate, la menor por unidades de código), `count` (ofertas
@@ -135,7 +154,8 @@ grupo ya lo muestra.
 
 - **GIVEN** con `asOf` `2026-11-23`, ofertas abiertas con `expiresAt` `2026-11-23`, `2026-11-30` y `2026-12-01`
 - **WHEN** se calculan los hechos
-- **THEN** `closing_soon` SHALL tener `count` 2 con las dos primeras, `from` `2026-11-23` y `until` `2026-11-30`
+- **THEN** `closing_soon` SHALL tener `count` 2 con las dos primeras, `from` `2026-11-23`, `until` `2026-11-30` y
+  `firstExpiresAt` `2026-11-23`
 
 #### Scenario: Habilidades normalizadas y denominador honesto
 
@@ -210,7 +230,7 @@ habilidad. `open_offers` NO SHALL ser viñeta. Con los mismos datos y el mismo r
 cada `factId` corresponde a su `kind`; cada viñeta cita un hecho existente distinto de `open_offers`, sin repetidas, de
 1 a 4 y como mucho 2 de habilidad; en cada hecho `count` es igual al número de `linkIds`, sin repetidos; los `linkIds`
 de `closing_soon` y de cada `skill_demand` están entre los de `open_offers`; en `skill_demand` se cumple `2 ≤ count ≤
-total ≤` el `count` de `open_offers`; `closing_soon` tiene `from` = `asOf` y `until` = `asOf` + 7 días; y el `weekKey`
+total ≤` el `count` de `open_offers`; `closing_soon` tiene `from` = `asOf`, `until` = `asOf` + 7 días y `firstExpiresAt` entre `from` y `until`; y el `weekKey`
 de `shared_last_week` es la semana anterior a la del documento. Si no, SHALL devolver las violaciones con un código por
 cada una. El worker NO SHALL escribir una semana que no pase, y la api NO SHALL servirla. El registro de una violación
 SHALL incluir solo `groupId`, `weekKey` y los códigos, nunca el contenido.
@@ -232,6 +252,12 @@ SHALL incluir solo `groupId`, `weekKey` y los códigos, nunca el contenido.
 - **GIVEN** un `closing_soon` con `count` 3 y dos `linkIds`
 - **WHEN** se verifica
 - **THEN** SHALL ser inválida con la violación `count_mismatch`
+
+#### Scenario: Primer cierre fuera de la ventana
+
+- **GIVEN** un `closing_soon` con `firstExpiresAt` posterior a `until`
+- **WHEN** se verifica
+- **THEN** SHALL ser inválida con la violación `closing_window_invalid`
 
 #### Scenario: Oferta fuera de las abiertas
 
@@ -273,7 +299,7 @@ curso según el reloj de la api) y `brief`. `brief` SHALL ser `null` si no hay d
 no pasa el schema o el evaluador; NO SHALL usarse el de una semana anterior. Si hay documento válido, `brief` SHALL
 traer `asOf`, `openOffers` (el `count` de `open_offers`) y, por cada viñeta en su orden, `factId`, la vista del hecho
 citado sin `linkIds`, `offers` (las primeras 10 ofertas del hecho que **siguen** en el grupo, en el orden del hecho,
-con `linkId`, `displayUrl` y título y empresa si los tienen), `moreCount` (las demás que siguen en el grupo) y
+con `linkId`, `displayUrl`, título y empresa si los tienen y, solo en `closing_soon`, su `expiresAt`), `moreCount` (las demás que siguen en el grupo) y
 `missingCount` (las del hecho que ya no están en el grupo). La pertenencia SHALL comprobarse con la entrada pública de
 `groups`; quien no es miembro, o un `:id` mal formado, SHALL recibir `404` con código `group_not_found`. La lectura
 SHALL hacer un número fijo de lecturas —pertenencia, documento, relaciones del grupo y fichas— que no dependa del

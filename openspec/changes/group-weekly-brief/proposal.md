@@ -17,7 +17,7 @@ de lo que cada miembro hace con esas ofertas.
 - **Tabla de hechos por grupo y semana ISO UTC, calculada en el worker y actualizada cada día**: un tick a las 05:00
   UTC y otro al arrancar el worker recalculan todos los grupos y escriben con `replaceOne` + `upsert` sobre la clave
   única `(groupId, weekKey)`; el mismo día da el mismo documento y un segundo tick no escribe. Un día sin viñetas
-  conserva la última versión guardada. Colección nueva `group_weekly_briefs`, con TTL de 35 días.
+  borra la semana (la tarjeta muestra el vacío honesto); un rechazo del evaluador conserva la versión anterior. Colección nueva `group_weekly_briefs`, con TTL de 35 días.
 - **Solo datos de ofertas**: ofertas abiertas, las que cierran en los próximos 7 días (misma ventana que «Tu semana»),
   habilidades más mencionadas y las que se compartieron la semana pasada. **Nunca** notas, comentarios, etiquetas,
   «conozco a alguien», postulaciones ni nombres o identificadores de miembros. «No la sigue nadie» queda **fuera** por

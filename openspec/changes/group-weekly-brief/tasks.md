@@ -33,16 +33,17 @@ diga otra cosa. La ronda 1 del debate partió 3.7, 4.5 y 7.1 (H8).
 - [ ] 1.4 [backend] `libs/shared/src/schemas/group-weekly-brief.schema.ts`: constantes, `groupBriefFactSchema`,
   `groupBriefBulletSchema` y `groupWeeklyBriefSchema` de D7 (tope 4, sin `closed_last_week`), exportados desde el
   índice. Verificar con `group-weekly-brief.schema.spec.ts`: «accepts a brief with one fact of each kind», «rejects five
-  bullets», «rejects a closed_last_week fact», «rejects a skill fact with count 1», «rejects a member id field in a
+  bullets», «rejects a closed_last_week fact», «closing fact requires firstExpiresAt», «rejects a skill fact with count 1», «rejects a member id field in a
   fact» y «rejects a malformed linkId».
 - [ ] 1.5 [backend] Depende de 1.4. `groupBriefFactViewSchema` variante por variante (H13), `groupBriefOfferSchema` y
   `groupWeeklyBriefResponseSchema` (sin `scanTruncated`). Verificar en `group-weekly-brief.schema.spec.ts`: «view of
-  each kind has no linkIds», «view rejects open_offers», «response accepts brief null» y «response rejects
+  each kind has no linkIds», «view rejects open_offers», «offer accepts an optional expiresAt», «response accepts brief null» y «response rejects
   scanTruncated».
 - [ ] 1.6 [backend] `libs/shared/src/group-weekly-brief/verify-group-weekly-brief.ts` (función pura, D6) con los
   códigos de D6. Verificar con `verify-group-weekly-brief.spec.ts`: «valid brief passes», «bullet citing a missing fact
   fails with bullet_fact_missing», «count different from linkIds fails with count_mismatch», «skill link outside open
-  offers fails with not_subset_of_open», «closing until not asOf plus seven fails», «shared_last_week of another week
+  offers fails with not_subset_of_open», «closing until not asOf plus seven fails», «firstExpiresAt after until fails with closing_window_invalid»,
+  «shared_last_week of another week
   fails» y «bullet citing open_offers fails». Falsación: con la comprobación de `count_mismatch` comentada, su test
   falla; se restaura.
 
@@ -57,7 +58,8 @@ Todo en `group-brief/domain/`, puro, sin `@nestjs/*`, `mongoose` ni `bullmq`.
   `expiresAt` `YYYY-MM-DD | null`, habilidades ya validadas) y en `build-group-brief-facts.ts` los hechos `open_offers`
   y `closing_soon` (ventana `[asOf, asOf+7]` con `WEEKLY_PLAN_CLOSING_SOON_DAYS`, PO-9). Verificar con
   `build-group-brief-facts.spec.ts`: «expiresAt before asOf is not open», «closedAt is not open», «closing window
-  includes asOf and asOf plus seven», «closing window excludes asOf plus eight» y «linkIds follow sharedAt desc then id
+  includes asOf and asOf plus seven», «closing window excludes asOf plus eight», «firstExpiresAt is the earliest
+  expiresAt» (R2-2) y «linkIds follow sharedAt desc then id
   desc».
 - [ ] 2.3 [backend] Depende de 2.1 y 2.2. Hechos `skill_demand`. Verificar en `build-group-brief-facts.spec.ts`:
   «Docker in four of seven offers with skills», «offers without skills are not in total», «a skill listed twice in one
@@ -81,16 +83,18 @@ Todo en `group-brief/domain/`, puro, sin `@nestjs/*`, `mongoose` ni `bullmq`.
 
 - [ ] 3.1 [backend] `group-brief/application/ports/group-brief.ports.ts`: `GROUP_BRIEF_CATALOG`
   (`listGroupIds(afterId, limit)`, `currentBriefsOf(groupIds, weekKey)`, `scanGroupOffers(groupId, limit)`),
-  `GROUP_BRIEF_STORE` (`replace(brief): Promise<void>`), `GROUP_BRIEF_CLOCK` y `GROUP_BRIEF_ENABLED`; dobles en memoria
+  `GROUP_BRIEF_STORE` (`replace(document): Promise<void>` y `clear(groupId, weekKey): Promise<void>`), `GROUP_BRIEF_CLOCK` y `GROUP_BRIEF_ENABLED`; dobles en memoria
   en `application/testing/`. Verificar: `worker:typecheck` en verde y `in-memory-group-brief.store.spec.ts`: «replace
-  keeps a single brief per group and week».
+  keeps a single brief per group and week» y «clear removes only that group and week».
 - [ ] 3.2 [backend] `infrastructure/persistence/group-weekly-brief.document.ts` (`GroupWeeklyBriefDocument` con
-  `ObjectId`, `Date` y `linkIds` string, y `toDocument(brief)`, H1), `group-weekly-brief.schemas.ts` (colección
+  `ObjectId`, `Date` y `linkIds` string, y `toDocument(brief)` **sin `_id`**, H1 y N3), `group-weekly-brief.schemas.ts` (colección
   `group_weekly_briefs`, índice único `(groupId, weekKey)`, TTL 35 días sobre `computedAt`) y
-  `mongo-group-brief.store.ts` (`replaceOne` + `upsert`; una clave duplicada se reintenta una vez sin `upsert`).
+  `mongo-group-brief.store.ts` (`replaceOne` + `upsert`, una clave duplicada se reintenta una vez sin `upsert`; `clear`
+  = `deleteOne({ groupId, weekKey })`).
   Verificar en `mongo-group-brief.store.spec.ts` (replset en memoria): «replace upserts then replaces in place»,
-  «concurrent replaces leave one document without error», «computedAt is stored as BSON date» y «writes the canonical
-  EJSON fixture» (compara con `libs/shared/src/testing/group-weekly-brief.document.ejson`). Falsación: guardar
+  «concurrent replaces leave one document without error», «computedAt is stored as BSON date», «toDocument has no _id» y «writes the canonical
+  EJSON fixture» (lee `libs/shared/src/testing/group-weekly-brief.document.ejson`, sin `_id`, con un `workspaceRoot()`
+  compartido con 4.1 y lo compara con `EJSON.parse(texto, { relaxed: false })` y `toEqual`, N6). Falsación: guardar
   `computedAt` como string en `toDocument` hace fallar «computedAt is stored as BSON date»; se restaura.
 - [ ] 3.3 [backend] `ensureGroupBriefIndexes()` (`await Model.init()`) llamado antes del primer tick (H3). Verificar en
   `mongo-group-brief.store.spec.ts`: «indexes exist on an empty collection before the first tick» (`listIndexes`, único
@@ -103,12 +107,14 @@ Todo en `group-brief/domain/`, puro, sin `@nestjs/*`, `mongoose` ni `bullmq`.
   `knowSomeoneUserIds`), «invalid skill entries are dropped» y «scan makes two reads for 3 and 300 links». Falsación
   del último: un `findOne` por link hace fallar el conteo; se restaura.
 - [ ] 3.5 [backend] `application/compute-group-weekly-briefs.usecase.ts`: `execute(now)` → `{ weekKey, groupsScanned,
-  upserted, unchanged, empty, rejected, bulletsByKind }` (PO-1): compara con lo guardado (todo salvo `computedAt`),
-  conserva lo guardado en días vacíos o rechazados y registra los rechazos con `groupId`, `weekKey` y códigos.
+  upserted, unchanged, cleared, rejected, bulletsByKind }` (PO-1): compara en el espacio del documento (EJSON canónico
+  sin `_id` ni `computedAt`, N4) y sobrescribe un guardado ilegible; un día sin viñetas llama a `clear` (N1); un
+  rechazo conserva lo guardado y registra `groupId`, `weekKey` y códigos.
   Verificar con `compute-group-weekly-briefs.usecase.spec.ts` (dobles en memoria): «first tick of the week creates the
-  brief», «next day recomputes with the new asOf», «same day rerun is unchanged and writes nothing», «empty day keeps
-  the last saved brief», «rejected brief keeps the last saved one» (verificador forzado a fallar) y «disabled does
-  nothing».
+  brief», «next day recomputes with the new asOf», «same day rerun is unchanged and writes nothing», «unreadable stored
+  document is overwritten», «empty day clears the week», «rejected brief keeps the last saved one» (verificador forzado
+  a fallar) y «disabled does nothing». Falsación: con el `clear` del día vacío sustituido por un `return`, «empty day
+  clears the week» falla; se restaura.
 - [ ] 3.6 [backend] Depende de 3.5. Línea de resumen por tick (PO-4). Verificar en
   `compute-group-weekly-briefs.usecase.spec.ts`: «tick summary counts bullets by kind» y «tick summary has no group
   ids» (la línea registrada no contiene ningún id del fixture). Falsación: añadir `groupId` al resumen hace fallar el
@@ -128,11 +134,13 @@ Todo en `group-brief/domain/`, puro, sin `@nestjs/*`, `mongoose` ni `bullmq`.
 - [ ] 3.9a [backend] `infrastructure/scheduling/group-brief.scheduler.ts`: `tick()` con guardia de solapamiento que
   **nunca relanza**. Verificar con `group-brief.scheduler.spec.ts`: «overlapping tick is skipped» y «tick error is
   logged and swallowed». Falsación: relanzar el error en el `catch` hace fallar el segundo; se restaura.
-- [ ] 3.9b [backend] Depende de 3.3 y 3.9a. `onApplicationBootstrap`: `await ensureGroupBriefIndexes()` y luego
-  `void scheduler.tick().catch(log)` (H2). Verificar con `group-brief.bootstrap.spec.ts`: «app init resolves while the
+- [ ] 3.9b [backend] Depende de 3.3 y 3.9a. `onApplicationBootstrap`: `await ensureGroupBriefIndexes()` dentro de un
+  try/catch (N2: si falla, log y el módulo queda sin cron ni tick) y luego `void scheduler.tick().catch(log)` (H2). Verificar con `group-brief.bootstrap.spec.ts`: «app init resolves while the
   boot tick hangs» (tick que nunca resuelve; `app.init()` resuelve antes de un plazo de 2 s) y «indexes are ensured
-  before the boot tick» (orden de llamadas). Falsación: `await scheduler.tick()` hace fallar el primero por plazo; se
-  restaura.
+  before the boot tick» (orden de llamadas) e «index failure disables the brief without failing boot» (índices forzados
+  a fallar: `app.init()` resuelve, se registra el error y ni el cron ni el tick corren). Falsaciones: `await
+  scheduler.tick()` hace fallar el primero por plazo; relanzar el error de los índices hace fallar `app.init()` en el
+  tercero; se restauran.
 - [ ] 3.9c [backend] Depende de 3.9b. Host `@Cron(GROUP_BRIEF_CRON, { timeZone: 'UTC' })` con `GROUP_BRIEF_CRON = '0 5 *
   * *'`, `group-brief.module.ts` con `ScheduleModule.forRoot()` en las mismas condiciones que `NotificationsModule`, y
   registro en el módulo raíz del worker; nada con `NODE_ENV=test` ni con el flag apagado. Verificar con
@@ -146,12 +154,13 @@ Todo en `group-brief/domain/`, puro, sin `@nestjs/*`, `mongoose` ni `bullmq`.
   `findCurrent(groupId, weekKey)`), `InMemoryGroupWeeklyBriefReader` en `application/testing/` y
   `links/infrastructure/mongo-group-weekly-brief.reader.ts` con `fromDocument(doc)` + zod (H1; colección cruda, sin
   `autoIndex`). Verificar en `mongo-group-weekly-brief.reader.spec.ts`: «reads the canonical EJSON fixture written by
-  the worker store» (mismo fixture que 3.2), «returns invalid for a document that fails the schema» y «malformed group
+  the worker store» (mismo fixture y mismo `workspaceRoot()` que 3.2, `EJSON.parse(..., { relaxed: false })`, N6), «returns invalid for a document that fails the schema» y «malformed group
   id returns null without query».
 - [ ] 4.2 [backend] `links/application/get-group-weekly-brief.usecase.ts` (D8: `membershipOf` de la fachada de `groups`,
-  H11; `isoWeekKey` con `LINKS_CLOCK`; evaluador; ofertas que siguen en el grupo; `offers`/`moreCount`/`missingCount`).
+  H11; `isoWeekKey` con `LINKS_CLOCK`; evaluador; ofertas que siguen en el grupo; `offers`/`moreCount`/`missingCount`; `expiresAt` solo en las ofertas de
+  `closing_soon`, R2-2).
   Verificar con `get-group-weekly-brief.usecase.spec.ts`: «member gets the brief with offers», «no brief this week
-  returns null even if last week exists», «stranger gets group_not_found», «offer removed from the group counts as
+  returns null even if last week exists», «stranger gets group_not_found», «closing offers carry expiresAt and others do not», «offer removed from the group counts as
   missing», «more than ten offers yields moreCount» y «corrupt document returns null».
 - [ ] 4.3 [backend] Depende de 4.2. Lecturas fijas y solo lectura. Verificar en `get-group-weekly-brief.usecase.spec.ts`:
   «same number of reads for 1 bullet and 4 bullets of 40 offers» (contadores en los dobles) y «writes nothing».
@@ -185,7 +194,7 @@ Todo en `group-brief/domain/`, puro, sin `@nestjs/*`, `mongoose` ni `bullmq`.
 - [ ] 6.2 [frontend] `features/groups/group-weekly-brief-text.ts`: `groupBriefBulletText(fact, locale)`,
   `groupBriefHeaderText(...)` («Actualizada el …») y `formatUtcDate(date, locale)`, un mensaje `$localize` por
   variante (ids `@@groups.weeklyBrief.*`). Verificar con `group-weekly-brief-text.spec.ts` (ES): «skill bullet text»,
-  «closing singular and plural with long date», «shared last week singular and plural» y «header with one open offer».
+  «closing singular names the date, plural names the first date» (R2-2), «shared last week singular and plural» y «header with one open offer».
 - [ ] 6.3 [frontend] `features/groups/group-weekly-brief-card.component.*`: cabecera, viñetas, pie, carga
   (`aria-busy`), vacío y error con «Reintentar». Verificar con `group-weekly-brief-card.component.spec.ts`: «fixture
   satisfies the response contract» (`groupWeeklyBriefResponseSchema.parse` sobre el fixture del test, H15), «shows
@@ -193,21 +202,25 @@ Todo en `group-brief/domain/`, puro, sin `@nestjs/*`, `mongoose` ni `bullmq`.
 - [ ] 6.4 [frontend] Desplegable de ofertas: «Ver ofertas (N)» / «Ocultar ofertas», `aria-expanded`/`aria-controls`,
   `min-h-11`, enlaces con `target="_blank"` y `rel="noopener noreferrer"`, `moreCount` y `missingCount`. Verificar en
   `group-weekly-brief-card.component.spec.ts`: «expands two offers as external links», «shows more and missing lines»,
-  «no toggle when every offer left the group» y «toggle has min height class».
+  «no toggle when every offer left the group», «closing offers show their own date» (R2-2) y «toggle has min height
+  class».
 - [ ] 6.5 [frontend] Integración en `features/groups/group-detail.page.{ts,html}` encima de `<lv-link-list>`. Verificar
   en `group-detail.page.spec.ts`: «renders the weekly brief above the link list» y «brief error does not block the link
   list or saving».
 - [ ] 6.6 [frontend] `pnpm nx run web:extract-i18n` y traducciones EN de D9 en `messages.en.xlf`. Verificar:
   `pnpm nx run web:i18n-check` en verde y un `describe` EN en `group-weekly-brief-text.spec.ts` que carga
   `messages.en.xlf` con `loadTranslations` y afirma «Docker appears in 4 of the 7 open offers with detected skills.», «3 offers
-  were shared in the group last week.», «There is nothing to summarize for this week yet.» y «Updated on Monday, November 23 · 7 open
+  were shared in the group last week.», «There is nothing to summarize for this week yet.», «2 offers close soon; the first on Thursday, November 26.» y
+  «Updated on Monday, November 23 · 7 open
   offers».
 
 ## 7. End-to-end (perfil `local`)
 
 - [ ] 7.1a [frontend] `apps/web-e2e/src/group-weekly-brief.spec.ts`, escritorio: la prueba crea su grupo y sus links
   por la API y escribe en Mongo el documento de la semana en curso con `replaceOne` + `upsert` (así no choca con un
-  tick del worker que ya lo haya creado), sin usar `api:seed-demo` (D5 de `e2e-suite`). Verificar: la tarjeta muestra
+  tick del worker que ya lo haya creado), sin usar `api:seed-demo` (D5 de `e2e-suite`). `apps/web-e2e/e2e.env` gana `FEATURE_GROUP_BRIEF=false` para que el
+  worker del perfil local no recalcule ni borre el documento sembrado (N5; configuración de la suite, no un workflow de
+  CI). Verificar: la tarjeta muestra
   la cabecera «Actualizada el …» y las viñetas, y «Ver ofertas (2)» despliega dos enlaces externos.
 - [ ] 7.1b [frontend] Depende de 7.1a. Mismo spec en móvil emulado y estado vacío. Verificar: el botón «Ver ofertas»
   mide al menos 44 px y la tarjeta está encima del listado; en otro grupo sin documento se ve «Todavía no hay novedades
@@ -218,7 +231,8 @@ Todo en `group-brief/domain/`, puro, sin `@nestjs/*`, `mongoose` ni `bullmq`.
 - [ ] 8.1 [infra] `docs/RUNBOOK.md`: sección «La semana del grupo» con la colección, sus dos índices (creados al
   arrancar), el TTL, el tick (05:00 UTC y al arrancar, recálculo diario), `FEATURE_GROUP_BRIEF` y por qué en staging
   vale su valor por defecto, cómo leer y sumar por semana la línea de resumen del tick (PO-4), la consulta agregada de
-  la métrica 1 (sin `groupId` en el resultado) y la de `scanTruncated`, cómo forzar un recálculo en local (reiniciar el
+  la métrica 1 (sin `groupId` en el resultado) y la de `scanTruncated`, que cambiar el TTL exige `collMod` porque `createIndexes` no modifica un índice existente (N2), qué significa
+  `cleared` y que un rechazo conserva la versión anterior, cómo forzar un recálculo en local (reiniciar el
   worker, también tras `api:seed-demo`), el rollback y la nota para la invitación de 35b: mencionar la tarjeta y
   preguntar a las 2 semanas «¿La viste?» (PO-3). Verificar: `bash infra/ci/repo-checks.sh` en verde (`docs-stack-up`
   incluido).
@@ -226,5 +240,5 @@ Todo en `group-brief/domain/`, puro, sin `@nestjs/*`, `mongoose` ni `bullmq`.
   infra/ci/repo-checks.sh` en verde y `openspec validate group-weekly-brief --strict --no-interactive` en verde.
 - [ ] 8.3 [infra] **Diferida: depende de 35b (`staging-host`); no bloquea el cierre de este change** (PO-5). Antes de
   invitar en 35b, medir en staging la cobertura de `preview.skills` sobre las ofertas abiertas de los grupos (consulta
-  del RUNBOOK). Verificar: cobertura ≥ 50 %, anotada en el informe de 35b; si no llega, se anota que la viñeta de
-  habilidades casi no aparecerá y se decide con el owner si se invita igual.
+  del RUNBOOK). Verificar: la cobertura queda anotada en el informe de 35b. Si es ≥ 50 %, nada más; si no llega, **se invita
+  igual** (R2-4) y el informe de 35b reporta la viñeta de habilidades por separado del resto en la métrica 1.

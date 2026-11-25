@@ -104,22 +104,29 @@ corte 1); cron en la api (la api no tiene scheduler y el worker ya tiene el patr
 
 - **Tick.** `@Cron(GROUP_BRIEF_CRON, { timeZone: 'UTC' })` con `GROUP_BRIEF_CRON = '0 5 * * *'` como **constante en
   código**, no como variable. Cada tick pagina `groups` por `_id` (50 por página), lee de una vez los documentos de la
-  semana en curso de esa página y, por cada grupo, calcula: si el resultado es igual al guardado (todo salvo
-  `computedAt`) cuenta `unchanged` y no escribe; si no, `replaceOne(..., { upsert: true })` y cuenta `upserted`.
+  semana en curso de esa página y, por cada grupo, calcula y convierte el resultado con `toDocument`. La comparación se
+  hace **en el espacio del documento** (ronda 2, N4): EJSON canónico sin `_id` ni `computedAt`. Si es igual al guardado
+  cuenta `unchanged` y no escribe; si no —o si el guardado no se puede leer—, `replaceOne(..., { upsert: true })` y
+  cuenta `upserted`.
 - **Semana.** `weekKey = isoWeekKey(now)` (la semana **en curso**, no la cerrada del digest) y `asOf` = fecha UTC del
   cálculo `YYYY-MM-DD`. El lunes nace el documento de la semana nueva; el de la anterior queda hasta el TTL.
-- **Día vacío.** Si el cálculo de un día no produce ninguna viñeta (D5), **no** se escribe nada y se **conserva** la
-  última versión guardada de esa semana, si la hay (cuenta `empty`). La cabecera muestra su fecha («Actualizada el»).
-- **Rechazo.** Si el resultado no pasa el evaluador (D6), no se escribe y se conserva lo guardado (cuenta `rejected`).
+- **Día vacío (ronda 2, N1 + R2-1).** Si el cálculo de un día no produce ninguna viñeta (D5), el worker hace
+  `deleteOne({ groupId, weekKey })` y cuenta `cleared`: la api devuelve `brief: null` y el grupo ve el vacío honesto, en
+  vez de una semana vieja que ya no es verdad.
+- **Rechazo.** Si el resultado no pasa el evaluador (D6), no se escribe, se **conserva** la versión anterior y queda la
+  línea de log del rechazo (cuenta `rejected`): un error del cálculo no debe borrar lo que era verdad.
 - **Concurrencia.** Dos ticks sobre el mismo grupo convergen en un solo documento por el índice único; un error de clave
   duplicada en el `upsert` se reintenta una vez como `replaceOne` sin `upsert`. Un guardia en memoria evita dos ticks
   solapados del mismo proceso.
 - **Arranque (ronda 1, H2 y H3).** En `onApplicationBootstrap` el módulo **espera** a que los índices existan
   (`await Model.init()`, que ejecuta `createIndexes` también sobre una colección vacía) y **después** dispara el tick con
   `void scheduler.tick().catch(log)`: el arranque nunca espera al tick ni falla por él. `tick()` **nunca relanza**:
-  captura y registra cualquier error.
+  captura y registra cualquier error. **Si crear los índices falla (ronda 2, N2)**, `ensureGroupBriefIndexes()` lo
+  captura, registra el error y deja el módulo **sin cron ni tick** hasta el próximo arranque; el arranque del worker
+  sigue. Cambiar el TTL más adelante exige `collMod` (`createIndexes` no modifica un índice existente): lo dice el
+  RUNBOOK.
 - **Resumen por tick (ronda 1, PO-4).** Una línea de log por tick: `{ weekKey, groupsScanned, upserted, unchanged,
-  empty, rejected, bulletsByKind: { closing_soon, skill_demand, shared_last_week } }`, **sin `groupId`** ni contenido. El
+  cleared, rejected, bulletsByKind: { closing_soon, skill_demand, shared_last_week } }`, **sin `groupId`** ni contenido. El
   RUNBOOK explica cómo sumarla por semana. La línea de rechazo (D6) sí lleva `groupId` para poder depurar, nunca
   contenido.
 - **Dependencia de `@nestjs/schedule` (ronda 1).** `GroupBriefModule` importa `ScheduleModule.forRoot()` en las mismas
@@ -130,7 +137,7 @@ corte 1); cron en la api (la api no tiene scheduler y el worker ya tiene el patr
   compose de producción no reenvía al worker variables que no declara (Context), así que un `default('false')` dejaría
   la feature muerta en staging sin tocar el compose, que este change no puede tocar. Es aceptable encendido solo porque
   el trabajo no sale de Mongo (sin red, IA ni correo), el arranque no depende del tick (H2), los índices existen antes
-  (H3) y el tick nunca relanza. Precio escrito: en staging el interruptor no es operable sin un change de compose; la
+  (H3) o, si no se pueden crear, el módulo se apaga sin tumbar el arranque (ronda 2, N2), y el tick nunca relanza. Precio escrito: en staging el interruptor no es operable sin un change de compose; la
   salida es revertir. `.env.example` lleva la línea con un comentario que explica por qué este flag está encendido por
   defecto, y `apps/worker/src/test-support/test-config.ts` lo fija explícitamente. ADR-069 §2 nombra la excepción.
 
@@ -153,7 +160,7 @@ calendario aunque el detector aún no pasara, ADR-041). Cada habilidad leída se
 | `kind` | `factId` | Existe si | Guarda |
 |---|---|---|---|
 | `open_offers` | `open_offers` | siempre que haya viñetas | `count`, `linkIds` de las abiertas |
-| `closing_soon` | `closing_soon` | ≥ 1 abierta con `expiresAt` en `[asOf, asOf+7]` | `count`, `linkIds`, `from` = `asOf`, `until` = `asOf`+7 días |
+| `closing_soon` | `closing_soon` | ≥ 1 abierta con `expiresAt` en `[asOf, asOf+7]` | `count`, `linkIds`, `from` = `asOf`, `until` = `asOf`+7 días, `firstExpiresAt` = el menor `expiresAt` |
 | `skill_demand` | `skill_demand:<skillKey>` | ≥ 2 abiertas mencionan la habilidad | `skillKey`, `skillLabel`, `count`, `total`, `linkIds` |
 | `shared_last_week` | `shared_last_week` | ≥ 1 `group_link` con `sharedAt` en la semana W−1 | `count`, `linkIds`, `weekKey` = W−1 |
 
@@ -164,7 +171,8 @@ calendario aunque el detector aún no pasara, ADR-041). Cada habilidad leída se
   `GROUP_BRIEF_SKILL_FACTS_MAX = 5` hechos de habilidad, por `count` desc y `skillKey` asc. Obligatorias y deseables
   cuentan igual, y por eso el texto dice «aparece en», no «exigen».
 - **`closing_soon`** usa la misma ventana que `weekly-plan` (ronda 1, PO-9): de `asOf` a `asOf` + 7 días, ambos
-  incluidos, reutilizando `WEEKLY_PLAN_CLOSING_SOON_DAYS`. La fecha exacta viaja en el hecho y en el texto.
+  incluidos, reutilizando `WEEKLY_PLAN_CLOSING_SOON_DAYS`. El texto dice la fecha del **primer** cierre
+  (`firstExpiresAt`, ronda 2, R2-2), no el final de la ventana, y cada oferta desplegada muestra su propia fecha.
 - **`shared_last_week`** cuenta también ofertas ya cerradas: lo que dice es «se compartieron», no «siguen abiertas».
 - `factId` es **estable y legible**: el mismo hecho otro día tiene el mismo `factId` (D13).
 
@@ -195,7 +203,8 @@ Con 3 a 5 miembros ningún umbral mínimo de grupo lo anonimiza. Por la misma ra
 también queda fuera: ya se ve por tarjeta y agregarlo no aporta.
 
 **Ofertas quitadas del grupo (ronda 1, H14).** El documento guarda `linkIds` de ofertas, no de personas. Si una oferta
-sale del grupo, desaparece del documento en el recálculo del día siguiente; mientras tanto la lectura la excluye (D8).
+sale del grupo, desaparece del documento en el recálculo del día siguiente (y si con eso no queda ninguna viñeta, la
+semana se borra, D2); mientras tanto la lectura la excluye (D8).
 Un `linkId` en un documento no revela nada que el miembro no haya podido ver en el listado.
 
 ### D5. Viñetas por plantilla, como mucho 4
@@ -210,7 +219,7 @@ hecho citado con `$localize` (D9). Selección determinista, en este orden y salt
 
 Tope `GROUP_BRIEF_MAX_BULLETS = 4` (lo máximo que permiten los hechos sin `closed_last_week`) en el dominio y en el
 contrato (`.max(4)`); como mucho `GROUP_BRIEF_SKILL_BULLETS_MAX = 2` de habilidades. `open_offers` **no** es viñeta: es
-la línea de cabecera. Con 0 viñetas no se escribe (D2). El mínimo es 1 (ronda 1: Q3 = (a)).
+la línea de cabecera. Con 0 viñetas se borra la semana guardada (D2, ronda 2). El mínimo es 1 (ronda 1: Q3 = (a)).
 
 ### D6. Evaluador determinista compartido
 
@@ -224,7 +233,8 @@ en `libs/shared`, sobre el **contrato** (D7), no sobre el documento de Mongo. Co
 3. En cada hecho, `count === linkIds.length` y sin ids repetidos.
 4. `closing_soon.linkIds` y cada `skill_demand.linkIds` ⊆ `open_offers.linkIds`; `skill_demand`: `2 ≤ count ≤ total ≤
    open_offers.count`.
-5. Fechas: `closing_soon.from === asOf` y `until === asOf + 7 días`; `shared_last_week.weekKey` = la semana anterior a
+5. Fechas: `closing_soon.from === asOf`, `until === asOf + 7 días` y `from ≤ firstExpiresAt ≤ until` (ronda 2,
+   R2-2; código `closing_window_invalid`); `shared_last_week.weekKey` = la semana anterior a
    la del documento.
 
 Códigos: `duplicate_fact_id`, `open_offers_missing`, `fact_id_kind_mismatch`, `bullet_fact_missing`,
@@ -248,7 +258,7 @@ linkIds = z.array(objectIdString).max(GROUP_BRIEF_SCAN_MAX)
 groupBriefFactSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('open_offers'), factId: z.literal('open_offers'), count: int.min(0), linkIds }),
   z.strictObject({ kind: z.literal('closing_soon'), factId: z.literal('closing_soon'), count: int.min(1), linkIds,
-                   from: z.iso.date(), until: z.iso.date() }),
+                   from: z.iso.date(), until: z.iso.date(), firstExpiresAt: z.iso.date() }),
   z.strictObject({ kind: z.literal('skill_demand'), factId: z.string().regex(/^skill_demand:.{1,60}$/),
                    skillKey: z.string().min(1).max(60), skillLabel: z.string().min(1).max(60),
                    count: int.min(2), total: int.min(2), linkIds }),
@@ -263,13 +273,15 @@ groupWeeklyBriefSchema = z.strictObject({
 })
 // Vista para el SPA, variante por variante (ronda 1, H13): la misma unión sin linkIds, escrita explícitamente.
 groupBriefFactViewSchema = z.discriminatedUnion('kind', [
-  z.strictObject({ kind: z.literal('closing_soon'), count: int.min(1), from: z.iso.date(), until: z.iso.date() }),
+  z.strictObject({ kind: z.literal('closing_soon'), count: int.min(1), from: z.iso.date(), until: z.iso.date(),
+                   firstExpiresAt: z.iso.date() }),
   z.strictObject({ kind: z.literal('skill_demand'), skillLabel: z.string().min(1).max(60), count: int.min(2),
                    total: int.min(2) }),
   z.strictObject({ kind: z.literal('shared_last_week'), count: int.min(1), weekKey: isoWeekKeySchema }),
 ])
 groupBriefOfferSchema = z.strictObject({ linkId: objectIdString, displayUrl: z.string().min(1),
-                                         title: z.string().optional(), company: z.string().optional() })
+                                         title: z.string().optional(), company: z.string().optional(),
+                                         expiresAt: z.iso.date().optional() })   // solo en ofertas de closing_soon
 groupWeeklyBriefResponseSchema = z.strictObject({
   weekKey: isoWeekKeySchema,                          // la semana en curso, haya documento o no
   brief: z.strictObject({
@@ -288,13 +300,15 @@ digest, `weekly-plan.schema.ts` y este contrato. La respuesta no lleva `linkIds`
 (ronda 1: sin «(de las 500…)»).
 
 **Documento de Mongo (ronda 1, H1).** `GroupWeeklyBriefDocument`, tipo **de infraestructura** (no de `libs/shared`):
-`{ _id: ObjectId, groupId: ObjectId, weekKey: string, asOf: string, computedAt: Date, version: 1, scanTruncated:
-boolean, facts: [...], bullets: [...] }`, con los `linkIds` de los hechos como **strings** de 24 hexadecimales. El store
-del worker lo construye con `toDocument(brief)` y el reader de la api lo convierte con `fromDocument(doc)` antes de
+`{ groupId: ObjectId, weekKey: string, asOf: string, computedAt: Date, version: 1, scanTruncated: boolean, facts:
+[...], bullets: [...] }`, con los `linkIds` de los hechos como **strings** de 24 hexadecimales. `toDocument` **no** pone
+`_id` (ronda 2, N3): lo asigna Mongo en el primer `upsert` y `replaceOne` lo conserva; el fixture tampoco lo lleva. El
+store del worker lo construye con `toDocument(brief)` y el reader de la api lo convierte con `fromDocument(doc)` antes de
 validar con zod y con el evaluador. Para que los dos lados no diverjan, un fixture canónico EJSON
 (`libs/shared/src/testing/group-weekly-brief.document.ejson`) es lo que escribe el store en su test y lo que lee el
 reader en el suyo; además, un test de integración del worker lee con un `fromDocument` equivalente lo que escribió el
-store. `version` permite que el corte LLM añada `source: 'llm'` sin romper documentos viejos.
+store. Las comparaciones con el fixture usan `EJSON.parse(texto, { relaxed: false })` y `toEqual`, y la ruta se
+resuelve con un `workspaceRoot()` común a los dos tests (ronda 2, N6). `version` permite que el corte LLM añada `source: 'llm'` sin romper documentos viejos.
 
 ### D8. Lectura en la api: `GET /api/groups/:id/weekly-brief`
 
@@ -307,7 +321,8 @@ En el módulo `links` (las viñetas son sobre sus ofertas y la ruta vive con `:i
 2. `weekKey = isoWeekKey(LINKS_CLOCK.now())`; lee el documento de **esa** semana (no cae a la anterior). Sin documento,
    inválido o que no pasa el evaluador → `200 { weekKey, brief: null }`.
 3. Por la unión de los `linkIds` de los hechos citados: **una** lectura de `group_links` (`groupId`, `linkId $in`)
-   para quedarse con los que **siguen en el grupo**, y **una** de fichas de `job_links` (`displayUrl`, título, empresa).
+   para quedarse con los que **siguen en el grupo**, y **una** de fichas de `job_links` (`displayUrl`, título, empresa
+   y `preview.expiresAt`, que solo se devuelve en las ofertas de `closing_soon`, ronda 2, R2-2).
 4. Por viñeta: `offers` = las primeras 10 que siguen en el grupo, en el orden del hecho; `moreCount` = las demás que
    siguen; `missingCount` = `count` − las que siguen. El texto usa los números del hecho; `missingCount` explica la
    diferencia hasta el recálculo del día siguiente.
@@ -328,7 +343,8 @@ el detalle ni el listado.
   miembro.»
 - **Viñeta:** el texto en una línea y un botón «Ver ofertas (N)» / «Ocultar ofertas» (N = `offers.length` +
   `moreCount`), con `aria-expanded`, `aria-controls` y alto mínimo de 44 px (`min-h-11`). Desplegada: cada oferta con
-  su título (o `displayUrl`) y empresa, enlazada a `displayUrl` con `target="_blank"` y `rel="noopener noreferrer"`;
+  su título (o `displayUrl`) y empresa —y, en `closing_soon`, «cierra el {fecha}» / «closes on {date}» con su
+  `expiresAt`—, enlazada a `displayUrl` con `target="_blank"` y `rel="noopener noreferrer"`;
   si `moreCount > 0`, «y N más en el listado del grupo»; si `missingCount > 0`, «N ya no están en el grupo». Con N = 0
   el botón no se muestra y solo queda esa línea.
 - **PO-6 (decidido en la ronda 1): enlace externo, sin ancla interna.** El listado del grupo no tiene `id` por
@@ -337,18 +353,19 @@ el detalle ni el listado.
   interna (ids `link-<id>` en `link-list`, `anchorScrolling` y cargar la página que contiene la oferta) es el corte
   siguiente §3.
 - **Cargando:** esqueleto de 3 líneas con `aria-busy="true"`. **Vacío** (`brief: null`, ronda 1, H6 + PO-2): «Todavía
-  no hay novedades para resumir esta semana.» y «Aparecen cuando una oferta del grupo cierra en los próximos 7 días,
-  dos o más piden la misma habilidad o se compartieron ofertas la semana pasada. Se revisa cada mañana.». **Error:**
+  no hay novedades para resumir esta semana.» y «Aparecen cuando una oferta del grupo cierra de hoy a 7 días, dos o
+  más mencionan la misma habilidad o se compartieron ofertas la semana pasada. Se revisa cada mañana.» (ronda 2, R2-3 +
+  N7). **Error:**
   «No pudimos cargar la semana del grupo.» con «Reintentar».
-- **Fechas:** `asOf` y `until` son fechas sin hora; se formatean en UTC con `Intl.DateTimeFormat(locale, { weekday:
+- **Fechas:** `asOf`, `firstExpiresAt` y `expiresAt` son fechas sin hora; se formatean en UTC con `Intl.DateTimeFormat(locale, { weekday:
   'long', day: 'numeric', month: 'long', timeZone: 'UTC' })` («lunes, 23 de noviembre» / «Monday, November 23»).
 - **Textos de las viñetas** (función pura `groupBriefBulletText(fact, locale)` con **un mensaje `$localize` por
   variante**, singular y plural elegidos en código, como `weeklyPlanReasonText`):
 
   | Hecho | Español | English |
   |---|---|---|
-  | `closing_soon`, 1 | `1 oferta cierra hasta el {until}.` | `1 offer closes by {until}.` |
-  | `closing_soon`, N | `N ofertas cierran hasta el {until}.` | `N offers close by {until}.` |
+  | `closing_soon`, 1 | `1 oferta cierra el {firstExpiresAt}.` | `1 offer closes on {firstExpiresAt}.` |
+  | `closing_soon`, N | `N ofertas cierran en los próximos días; la primera, el {firstExpiresAt}.` | `N offers close soon; the first on {firstExpiresAt}.` |
   | `skill_demand` | `{skill} aparece en N de las M ofertas abiertas con habilidades detectadas.` | `{skill} appears in N of the M open offers with detected skills.` |
   | `shared_last_week`, 1 | `Se compartió 1 oferta en el grupo la semana pasada.` | `1 offer was shared in the group last week.` |
   | `shared_last_week`, N | `Se compartieron N ofertas en el grupo la semana pasada.` | `N offers were shared in the group last week.` |
@@ -356,8 +373,8 @@ el detalle ni el listado.
   Resto de textos EN: «The group's week», «Updated on {date} · N open offers» / «1 open offer», «It only counts offer
   data, never what each member does.», «Show offers (N)», «Hide offers», «and N more in the group list» / «and 1 more in
   the group list», «N are no longer in the group» / «1 is no longer in the group», «There is nothing to summarize for
-  this week yet.», «They appear when an offer in the group closes within the next 7 days, two or more ask for the same
-  skill, or offers were shared last week. It is checked every morning.», «We couldn't load the group's week.», «Retry».
+  this week yet.», «They appear when an offer in the group closes between today and 7 days from now, two or more mention
+  the same skill, or offers were shared last week. It is checked every morning.», «We couldn't load the group's week.», «Retry».
   En español, el singular de las dos últimas variables: «y 1 más en el listado del grupo» y «1 ya no está en el grupo».
 - Ids `@@groups.weeklyBrief.*`; `messages.xlf` se regenera y `messages.en.xlf` se traduce (ADR-050). `{skill}` es la
   etiqueta tal como vino de la oferta y no se traduce.
@@ -380,8 +397,8 @@ el detalle ni el listado.
   desaparecen a los 35 días de su última versión.
 - **Borrado de cuenta:** nada que hacer: los documentos no tienen datos de usuario (D4). Se dice en la spec para que
   nadie lo añada «por si acaso».
-- **Ofertas quitadas del grupo:** salen del documento en el recálculo siguiente; mientras tanto, la lectura las excluye
-  (D4, H14).
+- **Ofertas quitadas del grupo:** salen del documento en el recálculo siguiente (si no queda ninguna viñeta, la semana
+  se borra: ronda 2, N1); mientras tanto, la lectura las excluye (D4, H14).
 
 ### D12. Seed demo
 
@@ -451,10 +468,12 @@ Cada corte es un change propio, con su debate y su aprobación, y ninguno se abr
 
 - **R1. Números de hasta un día.** Con el recálculo diario (PO-1) una oferta que cierra a media mañana sigue contando
   hasta el tick siguiente. Mitigación: «Actualizada el {fecha}», fechas exactas en el texto y la tarjeta de la oferta
-  muestra el cierre. Un día vacío conserva la última versión (D2): su fecha lo dice.
+  muestra el cierre. Un día sin viñetas borra la semana y la tarjeta muestra el vacío honesto (ronda 2, N1); solo un
+  rechazo del evaluador conserva la versión anterior.
 - **R2. Cobertura de `expiresAt` y de habilidades.** Muchas ofertas no traen fecha de cierre y las habilidades dependen
   de `extract-job`. Mitigación: el denominador honesto y viñetas que solo existen si hay datos; la tarea diferida 8.3
-  mide la cobertura de `preview.skills` antes de invitar en 35b (PO-5).
+  mide la cobertura de `preview.skills` antes de invitar en 35b (PO-5); por debajo del 50 % se invita igual y el informe
+  de 35b separa la viñeta de habilidades del resto (ronda 2, R2-4).
 - **R3. Habilidades escritas distinto** («Node.js» y «NodeJS») cuentan separadas. La normalización es deliberadamente
   simple y verificable; un diccionario de sinónimos sería otro change.
 - **R4. El interruptor no es operable en staging** (D2, H7): apagarlo exige revertir o un change de compose.
@@ -528,7 +547,26 @@ Participaron `critic` y `business`; la sesión principal actuó como `reflect`. 
 | PO-9 | aceptado | Ventana de cierre igual a `weekly-plan`: de `asOf` a `asOf` + 7 (D3, D6). |
 | Q2, Q3, Q4 | aceptado | Q2 = (a) fuera; Q3 = (a) mínimo 1; Q4 = fila 39. |
 
-Convergencia: pendiente de la ronda 2 (re-evaluación de lo cambiado).
+Nota de la ronda 2: N1 sustituye la parte «día vacío conserva lo guardado» de PO-1.
+
+## Debate (ronda 2)
+
+Participaron `critic` y `business` sobre lo cambiado en la ronda 1; la sesión principal actuó como `reflect`. No quedó
+ningún P0 ni V0 abierto. Decisiones de reflect del 2026-11-25.
+
+| id | decisión | motivo |
+|---|---|---|
+| N1 + R2-1 | aceptado | Día sin viñetas: `deleteOne({groupId, weekKey})` y cuenta `cleared`; la api da `null` y se ve el vacío honesto; el rechazo conserva la anterior con log (D2, D4, D5, D11, R1; tarea 3.5). |
+| N2 | aceptado | `ensureGroupBriefIndexes()` con try/catch: si falla, log, módulo sin cron ni tick y el arranque sigue; `collMod` para cambiar el TTL en el RUNBOOK (D2; tareas 3.3, 8.1; ADR-069 §2). |
+| N3 | aceptado | `toDocument` sin `_id`; el fixture no lo lleva (D7; tarea 3.2). |
+| N4 | aceptado | `unchanged` se compara en el espacio del documento (EJSON canónico sin `_id` ni `computedAt`); un guardado ilegible se sobrescribe (D2; tarea 3.5). |
+| N5 | adaptado | `FEATURE_GROUP_BRIEF=false` en `apps/web-e2e/e2e.env` para que el worker del perfil local no pise el documento sembrado; es configuración de la suite, no de CI (tarea 7.1a). |
+| N6 | aceptado | `EJSON.parse(..., { relaxed: false })` + `toEqual` y un `workspaceRoot()` común en 3.2 y 4.1 (D7). |
+| R2-2 | aceptado | `closing_soon` guarda `firstExpiresAt`, comprobado dentro de la ventana; textos «cierra el» / «la primera, el»; `expiresAt` en cada oferta de `closing_soon` (D3, D6, D7, D8, D9). |
+| R2-3 + N7 | aceptado | Vacío: «…cierra de hoy a 7 días, dos o más mencionan la misma habilidad o se compartieron ofertas la semana pasada. Se revisa cada mañana.» y su EN (D9). |
+| R2-4 | aceptado | 8.3: por debajo del 50 % se invita igual y el informe de 35b separa la viñeta de habilidades del resto. |
+
+Convergencia: SI (2026-11-25, ronda 2: 0 P0 / 0 V0)
 
 ## Aprobación humana
 
