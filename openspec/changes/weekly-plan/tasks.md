@@ -215,9 +215,15 @@ otra cosa.
 - [x] 9.1 [infra] `pnpm nx affected -t lint,typecheck,test,i18n-check` en verde (salida a fichero, sin pipes), sin `any`
   ni `console.log` nuevos. Verificar: el fichero de salida termina sin proyectos en rojo.
   Estado (2026-11-25): `pnpm nx affected -t lint,typecheck,test,i18n-check --base=origin/main` sobre 8 proyectos: todo en verde salvo `api:test`, que en la corrida paralela dio 2 timeouts de hook por carga en `mongo-job-link.repository.spec.ts`; repetido con `pnpm nx run api:test --skip-nx-cache -- --maxWorkers=2`: 290 ficheros y 3838 tests en verde. Sin `any` ni `console.log` nuevos en lo del frontend.
-- [ ] 9.2 [infra] Smoke manual con el seed: `pnpm infra:up`, `api:seed-demo`, `nx serve api` y `web`; Ana ve tres
+- [x] 9.2 [infra] Smoke manual con el seed: `pnpm infra:up`, `api:seed-demo`, `nx serve api` y `web`; Ana ve tres
   acciones en `/postulaciones` en escritorio y en 390 px; marca una «Hecho» y la tarjeta muestra otra o el vacío.
   Verificar: capturas en la PR y puertos liberados al terminar.
+  Estado (2026-11-25): hecho sobre la pila aislada del e2e (`e2e-stack --keep-stack`, api 3100 y web 4300, sin tocar
+  la base de desarrollo) con `ALLOW_DEMO_SEED=true pnpm nx run api:seed-demo`. Ana ve tres acciones, una por regla
+  (cierra en 3 días, 11 días sin novedades con «Preparar seguimiento», 1 persona conoce a alguien); «Hecho» en la
+  primera la quita y muestra «¿Ya postulaste? Muévela a Postulada»; a 390 px la tarjeta queda sobre el tablero y la
+  decisión persiste al recargar. Capturas en `smoke/`. Pila apagada con `--down` y puertos 3100, 3101, 4300, 27117,
+  6479 y 9100 libres. Admisión e2e `--repeat-each=5` con carga: 5 de 5 en `chromium` y en `mobile` (README del e2e).
 - [x] 9.3 [infra] PR desde `change/weekly-plan` **sin fusionar**, con la etiqueta de candidata y la nota «no se fusiona
   hasta que el owner abra una ventana». Verificar: la PR existe en estado abierto y su descripción enlaza ADR-068.
   Estado (2026-11-25): PR #98 abierta en borrador, título «candidata — no fusionar», cita ADR-068 y la fila 38.
