@@ -254,15 +254,17 @@ Todo en `group-brief/domain/`, puro, sin `@nestjs/*`, `mongoose` ni `bullmq`.
 
 ## 7. End-to-end (perfil `local`)
 
-- [ ] 7.1a [frontend] `apps/web-e2e/src/group-weekly-brief.spec.ts`, escritorio: la prueba crea su grupo y sus links
+- [x] 7.1a [frontend] `apps/web-e2e/src/group-weekly-brief.spec.ts`, escritorio: la prueba crea su grupo y sus links
   por la API y escribe en Mongo el documento de la semana en curso con `replaceOne` + `upsert` (así no choca con un
   tick del worker que ya lo haya creado), sin usar `api:seed-demo` (D5 de `e2e-suite`). `apps/web-e2e/e2e.env` gana `FEATURE_GROUP_BRIEF=false` para que el
   worker del perfil local no recalcule ni borre el documento sembrado (N5; configuración de la suite, no un workflow de
   CI). Verificar: la tarjeta muestra
   la cabecera «Actualizada el …» y las viñetas, y «Ver ofertas (2)» despliega dos enlaces externos.
-- [ ] 7.1b [frontend] Depende de 7.1a. Mismo spec en móvil emulado y estado vacío. Verificar: el botón «Ver ofertas»
+  Estado (2026-11-25): `group-weekly-brief.spec.ts` (`@lot1`, `@desktop-case`) con alta, grupo y tres ofertas por la interfaz, como `weekly-plan.spec.ts`, y el documento de la semana por Mongo con `replaceOne` + `upsert`; `FEATURE_GROUP_BRIEF=false` en `e2e.env`; franja `groupBrief` en `job-ids.ts`. `e2e-stack --project=chromium --grep "weekly brief"` en verde (1 de 1) y admisión `--repeat-each=5` con 24 procesos de carga: 5 de 5, 5 registros `201`, ningún `429`; anotada en `apps/web-e2e/README.md`. Falsación: texto de la habilidad cambiado a `3 de las 3` hace fallar la prueba; restaurado.
+- [x] 7.1b [frontend] Depende de 7.1a. Mismo spec en móvil emulado y estado vacío. Verificar: el botón «Ver ofertas»
   mide al menos 44 px y la tarjeta está encima del listado; en otro grupo sin documento se ve «Todavía no hay novedades
   para resumir esta semana.».
+  Estado (2026-11-25): el proyecto `mobile` de `playwright.config.mts` incluye el spec (`@mobile-case`; `chromium` lo excluye con `grepInvert`); el caso de móvil comprueba que la tarjeta termina antes que `link-list`, que los tres botones «Ver ofertas» miden al menos 44 px y, en un segundo grupo de la misma cuenta, «Todavía no hay novedades para resumir esta semana.». `e2e-stack --project=mobile --grep "weekly brief"` en verde y admisión `--repeat-each=5` con carga: 5 de 5, 5 registros `201`, ningún `429`; puertos 3100, 3101, 4300 y 27117 libres al terminar. Falsación: exigir 80 px de alto en el botón hace fallar `mobile`; restaurado.
 
 ## 8. Documentación y cierre
 

@@ -13,6 +13,7 @@ export const JOB_ID_SLOTS = {
   match: 5,
   freshness: 6,
   weeklyPlan: 7,
+  groupBrief: 8,
 } as const;
 
 export function jobIdBase(slot: (typeof JOB_ID_SLOTS)[keyof typeof JOB_ID_SLOTS]): number {

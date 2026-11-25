@@ -136,6 +136,7 @@ El producto limita el registro a **10 intentos de registro cada 15 minutos por I
 |---|---|
 | `e2e-stack`: perfil `local`, `chromium` y `mobile`, dos personas cada uno | 4 |
 | Más `weekly-plan.spec.ts` (`@lot1`, una persona por proyecto: `chromium` el caso de escritorio, `mobile` el de móvil) | +2 (6 en total) |
+| Más `group-weekly-brief.spec.ts` (`@lot1`, una persona por proyecto: `chromium` el caso de escritorio, `mobile` el de móvil y el vacío, con un segundo grupo de la misma cuenta) | +2 (8 en total) |
 | `e2e-stack --rehearse-remote`: lo anterior + la siembra de la cuenta del ensayo | 5 |
 | Admisión de `local` en **un** proyecto, `--repeat-each=5` (una invocación por proyecto, pila nueva) | 10, **justo el límite** |
 | Admisión del ensayo en un proyecto (`--rehearse-remote --skip-local`) | 1 |
@@ -261,3 +262,19 @@ Playwright):
 | `pnpm nx run web-e2e:e2e-stack -- --project=mobile --grep "weekly plan" --repeat-each=5` | 5 de 5 en verde (2,0 min) | 5 `POST /api/auth/register` `201`, ningún `429` |
 
 Ningún fallo ni intermitente: la tarjeta del plan semanal queda **admitida** en el lote 1.
+
+### 2026-11-25 — `group-weekly-brief.spec.ts` en `chromium` y `mobile` (change `group-weekly-brief`, tareas 7.1a y 7.1b, sobre `3c451a31`)
+
+Solo perfil `local`: la prueba escribe en Mongo (el documento de la semana en curso, con `replaceOne` + `upsert`) y no lleva
+`@remote-safe`, así que no tiene ensayo. `e2e.env` fija `FEATURE_GROUP_BRIEF=false` para que el `worker` de la pila no
+recalcule ni borre ese documento (N5). Una invocación por proyecto con `--grep "weekly brief"` (una persona por
+repetición; el caso de móvil crea además un segundo grupo, sin documento, para el estado vacío), con la carga de arriba
+(24 procesos desde que empieza Playwright):
+
+| Invocación | Resultado | Registro |
+|---|---|---|
+| `pnpm nx run web-e2e:e2e-stack -- --project=chromium --grep "weekly brief" --repeat-each=5` | 5 de 5 en verde (2,3 min) | 5 `POST /api/auth/register` `201`, ningún `429` |
+| `pnpm nx run web-e2e:e2e-stack -- --project=mobile --grep "weekly brief" --repeat-each=5` | 5 de 5 en verde (2,2 min) | 5 `POST /api/auth/register` `201`, ningún `429` |
+
+Ningún fallo ni intermitente: la tarjeta «La semana del grupo» queda **admitida** en el lote 1. Falsación previa: con el
+texto de la habilidad cambiado (`3 de las 3`) y el alto mínimo del botón subido a 80 px, `chromium` y `mobile` fallan.
