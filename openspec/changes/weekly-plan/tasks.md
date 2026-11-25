@@ -20,11 +20,11 @@ otra cosa.
 
 ## 1. Contrato en `libs/shared` (design D8)
 
-- [ ] 1.1 [backend] `libs/shared/src/schemas/weekly-plan.schema.ts` con las constantes, enums y schemas de D8, exportado
+- [x] 1.1 [backend] `libs/shared/src/schemas/weekly-plan.schema.ts` con las constantes, enums y schemas de D8, exportado
   desde `libs/shared/src/index.ts`. Verificar con `weekly-plan.schema.spec.ts`: «accepts a plan with three actions of
   each rule», «rejects a plan with four actions», «rejects an unknown reason kind», «rejects a quiet reason under ten
   days», «accepts closing_soon with daysLeft 0», «rejects extra fields in an action» y «decision request accepts done,
-  dismissed and snoozed only».
+  dismissed and snoozed only». **Estado (2026-11-25):** hecha; 7 tests de `weekly-plan.schema.spec.ts` en verde (`shared:test` 882/882), lint y typecheck de `shared` en verde.
 
 ## 2. Dominio del plan en `applications` (design D1-D5, D6, D12)
 

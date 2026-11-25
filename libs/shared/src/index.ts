@@ -33,6 +33,7 @@ export * from './schemas/public-preview.schema';
 export * from './schemas/roadmap.schema';
 export * from './schemas/search.schema';
 export * from './schemas/user-profile.schema';
+export * from './schemas/weekly-plan.schema';
 export * from './consent/ai-consent-text';
 export * from './cv/cv-file';
 export * from './cv/cv-file-key';
