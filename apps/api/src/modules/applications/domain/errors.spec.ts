@@ -10,6 +10,7 @@ import {
   InvalidStageLabel,
   TrackedLinkNotFound,
   TrackersGroupNotFound,
+  WeeklyPlanActionNotFound,
 } from './errors';
 import { normalizeStageLabel, STAGE_LABEL_MAX_LENGTH } from './stage-label';
 
@@ -19,6 +20,7 @@ describe('applications errors', () => {
     [new ApplicationConflict(), 'application_conflict'],
     [new TrackedLinkNotFound(), 'link_not_found'],
     [new TrackersGroupNotFound(), 'group_not_found'],
+    [new WeeklyPlanActionNotFound(), 'weekly_plan_action_not_found'],
     [new InvalidAppliedAt(), 'validation_error'],
     [new InvalidStageLabel(), 'validation_error'],
     [new InvalidNotes(), 'validation_error'],

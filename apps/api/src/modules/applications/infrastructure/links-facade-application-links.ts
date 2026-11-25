@@ -3,6 +3,7 @@ import { LinksFacade } from '../../links/application/links.facade';
 import type {
   ApplicationLinks,
   LinkCard,
+  LinkPlanSignals,
 } from '../application/ports/application-links.port';
 
 /**
@@ -26,5 +27,12 @@ export class LinksFacadeApplicationLinks implements ApplicationLinks {
     linkIds: readonly string[],
   ): Promise<Set<string>> {
     return this.links.linkIdsSharedIn(groupId, linkIds);
+  }
+
+  planSignalsOf(
+    userId: string,
+    linkIds: readonly string[],
+  ): Promise<ReadonlyMap<string, LinkPlanSignals>> {
+    return this.links.planSignalsOf(userId, linkIds);
   }
 }

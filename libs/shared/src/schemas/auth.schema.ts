@@ -177,6 +177,8 @@ export const apiErrorCodeSchema = z.enum([
   'application_not_found',
   // 409: el estado o la etapa cambiaron desde otra pestaña desde que se pintó (`version` distinta).
   'application_conflict',
+  // 404: la acción de «Tu semana» no existe, es de otra persona, está mal formada o ya no aplica (mismo cuerpo en todos).
+  'weekly_plan_action_not_found',
   // 404: el CV no existe, es de otra persona o su `:id` no tiene formato de identificador (mismo cuerpo en los tres).
   'cv_not_found',
   // 415: el archivo subido no es PDF ni DOCX, o sus bytes, su extensión y su `Content-Type` no apuntan al mismo tipo.

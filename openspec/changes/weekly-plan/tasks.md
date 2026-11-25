@@ -72,57 +72,57 @@ otra cosa.
 
 ## 4. Casos de uso, persistencia y rutas en `applications` (design D2, D5, D8)
 
-- [ ] 4.1 [backend] Puerto `WEEKLY_PLAN_DECISION_REPOSITORY` (`upsert`, `listActive(userId, now)`, que filtra
+- [x] 4.1 [backend] Puerto `WEEKLY_PLAN_DECISION_REPOSITORY` (`upsert`, `listActive(userId, now)`, que filtra
   `decidedAt ≥ now − 35 días` con el reloj inyectado, N2), `InMemoryWeeklyPlanDecisionRepository` en `application/testing/` y `MongoWeeklyPlanDecisionRepository`
   con `weekly-plan-decision.schemas.ts` (colección `weekly_plan_decisions`, índice único `(userId, weekKey,
   candidateId)`, TTL 35 días en `decidedAt`). Verificar en `mongo-weekly-plan-decision.repository.spec.ts`: «upsert
   keeps a single document per key with the last decision», «listActive returns only the user's decisions», «listActive ignores decisions older than 35
   days even if the document still exists» y «declares
-  the unique and TTL indexes» (lee `listIndexes`, `expireAfterSeconds` = 3 024 000).
-- [ ] 4.2 [backend] `ApplicationLinks.planSignalsOf` en `ports/application-links.port.ts`, con comentario del puerto que
+  the unique and TTL indexes» (lee `listIndexes`, `expireAfterSeconds` = 3 024 000). **Estado (2026-11-25):** hecha; puerto, doble en memoria y `MongoWeeklyPlanDecisionRepository` con su esquema; `mongo-weekly-plan-decision.repository.spec.ts` 4/4 (replset en memoria, `expireAfterSeconds` 3 024 000).
+- [x] 4.2 [backend] `ApplicationLinks.planSignalsOf` en `ports/application-links.port.ts`, con comentario del puerto que
   diga qué devuelve, que es una sola llamada a la fachada, que el conteo es el del grupo elegido y que nunca trae
   identidades (C10); el adaptador `links-facade-application-links.ts` y el doble de `applications-test-doubles.ts`.
   Verificar: `pnpm nx run api:typecheck` y el spec del adaptador `links-facade-application-links.spec.ts`: «delegates
-  planSignalsOf to the facade with the same arguments» y «returns the facade map untouched».
-- [ ] 4.3a [backend] `application/gather-weekly-plan-candidates.ts`: `listByUser`, filtro de estados (sin cerrados ni
+  planSignalsOf to the facade with the same arguments» y «returns the facade map untouched». **Estado (2026-11-25):** hecha; `ApplicationLinks.planSignalsOf` con el comentario de C10, adaptador y doble (`withPlanSignals`); `links-facade-application-links.spec.ts` 2/2 y `api:typecheck` en verde.
+- [x] 4.3a [backend] `application/gather-weekly-plan-candidates.ts`: `listByUser`, filtro de estados (sin cerrados ni
   `accepted`), orden por `statusChangedAt` asc con desempate `id` y tope 200 (C6), `planSignalsOf`, `scoresFor` solo para
   `saved`/`interested` con `degraded`, y traducción a la entrada canónica. Verificar en
   `gather-weekly-plan-candidates.spec.ts`: «keeps the 200 quietest applications», «skips closed and accepted
   applications», «skips links that no longer exist» y «does not call the fit source with no saved or interested
-  applications».
-- [ ] 4.3b [backend] Token `WEEKLY_PLANNER` en `application/ports/weekly-planner.port.ts` y `GetWeeklyPlan`
+  applications». **Estado (2026-11-25):** hecha; `GatherWeeklyPlanCandidates` (claves opacas `c001…` en orden de applicationId); `gather-weekly-plan-candidates.spec.ts` 7/7.
+- [x] 4.3b [backend] Token `WEEKLY_PLANNER` en `application/ports/weekly-planner.port.ts` y `GetWeeklyPlan`
   (`get-weekly-plan.usecase.ts`): recolecta (4.3a), lee `listActive(userId, now)`, llama al planificador, traduce de vuelta a ids
   reales y calcula `doneThisWeek`. Verificar en `get-weekly-plan.usecase.spec.ts` (repos en memoria, reloj fijo):
   «returns three actions for five candidates», «returns an empty plan when nothing applies», «reading twice writes
-  nothing» y «uses the UTC ISO week of the clock».
-- [ ] 4.4 [backend] `DecideWeeklyPlanAction` (`decide-weekly-plan-action.usecase.ts`): recalcula elegibles, error de
+  nothing» y «uses the UTC ISO week of the clock». **Estado (2026-11-25):** hecha; token `WEEKLY_PLANNER`, `GetWeeklyPlan` (con `evaluate` para la validación de 4.4); `get-weekly-plan.usecase.spec.ts` 6/6.
+- [x] 4.4 [backend] `DecideWeeklyPlanAction` (`decide-weekly-plan-action.usecase.ts`): recalcula elegibles, error de
   dominio `WeeklyPlanActionNotFound` (`code = 'weekly_plan_action_not_found'`) uniforme, upsert y plan recalculado.
   Verificar en su spec: «done hides the action and the next candidate enters», «decision does not touch the
   application» (misma `version`, mismo `statusChangedAt`, sin eventos), «unknown, foreign or malformed candidate is not
   found and writes nothing» y «repeating a decision keeps one document». Falsación: si el caso de uso escribiera antes
-  de validar, el test de no encontrada encuentra un documento y falla.
-- [ ] 4.5a [backend] Registro del código (C3): `weekly_plan_action_not_found` en `apiErrorCodeSchema`
+  de validar, el test de no encontrada encuentra un documento y falla. **Estado (2026-11-25):** hecha; `DecideWeeklyPlanAction` y `WeeklyPlanActionNotFound`; spec 6/6. Falsación hecha: con el `upsert` antes de la validación fallan «unknown, foreign or malformed…» (5 documentos) y «another rule…»; restaurado.
+- [x] 4.5a [backend] Registro del código (C3): `weekly_plan_action_not_found` en `apiErrorCodeSchema`
   (`libs/shared/src/schemas/auth.schema.ts:112`), su estado 404 y mensaje en
   `apps/api/src/presentation/http/api-error.ts` (junto a `application_not_found`, `:37` y `:96`), la unión de códigos y
   la clase en `applications/domain/errors.ts`, y el filtro `api-exception.filter.ts`. Verificar: casos nuevos
   «accepts weekly_plan_action_not_found» en el spec de `auth.schema`, «maps weekly_plan_action_not_found to 404» en
   `api-error.spec.ts`, «translates WeeklyPlanActionNotFound to a 404 body with its code» en
   `api-exception.filter.spec.ts` y el test de paridad de `applications/domain/errors.spec.ts` en verde. Falsación: sin
-  la entrada en `apiErrorCodeSchema`, el test de paridad falla.
-- [ ] 4.5b [backend] Rutas `@Get('weekly-plan')` y `@Post('weekly-plan/decisions')` en `applications.controller.ts`
+  la entrada en `apiErrorCodeSchema`, el test de paridad falla. **Estado (2026-11-25):** hecha; código registrado en `apiErrorCodeSchema`, `api-error.ts` (404 + mensaje), `domain/errors.ts` y comentario del filtro (la rama genérica `ApplicationsError` ya lo traduce por su `code`); tests nuevos en `auth.schema.spec`, `api-error.spec`, `api-exception.filter.spec` y `errors.spec`. Falsación hecha: sin la entrada en `apiErrorCodeSchema` fallan la paridad de `api-error.spec` y `errors.spec`; restaurado.
+- [x] 4.5b [backend] Rutas `@Get('weekly-plan')` y `@Post('weekly-plan/decisions')` en `applications.controller.ts`
   (validación zod del cuerpo como el resto del controlador) y providers en `applications.module.ts`
   (`{ provide: WEEKLY_PLANNER, useClass: RuleBasedPlanner }`, repositorio, casos de uso). Verificar en
   `applications.controller.spec.ts`: «GET weekly-plan returns the plan of the token user», «POST decisions rejects an
   invalid body with 400», «POST decisions responds 404 weekly_plan_action_not_found», y en `applications.module.spec.ts`
-  «resolves WEEKLY_PLANNER to RuleBasedPlanner».
-- [ ] 4.6a [backend] Integración HTTP de privacidad en `applications/weekly-plan.privacy.int.spec.ts`
+  «resolves WEEKLY_PLANNER to RuleBasedPlanner». **Estado (2026-11-25):** hecha; rutas `GET weekly-plan` y `POST weekly-plan/decisions` (200) y providers en el módulo; `applications.controller.spec.ts` y `applications.module.spec.ts` en verde (87 tests de `presentation/`).
+- [x] 4.6a [backend] Integración HTTP de privacidad en `applications/weekly-plan.privacy.int.spec.ts`
   (`mongodb-memory-server` replset): Ana, Bob, Carla y Dan en G1/G2. Verificar: «response carries the chosen group
   count but no ids or names of other members» (el cuerpo serializado no contiene ids ni `displayName` de Bob, Carla ni
-  Dan; `count` 2 y `groupId` G2).
-- [ ] 4.6b [backend] Integración HTTP de semanas en `applications/weekly-plan.weeks.int.spec.ts`: reloj movido de
+  Dan; `count` 2 y `groupId` G2). **Estado (2026-11-25):** hecha; `weekly-plan.privacy.int.spec.ts` 1/1 (HTTP real, replset en memoria; count 2, groupId G2, sin ids ni nombres).
+- [x] 4.6b [backend] Integración HTTP de semanas en `applications/weekly-plan.weeks.int.spec.ts`: reloj movido de
   2026-W48 a W49, W50 y W52. Verificar: «snoozed returns next week», «done skips one week» y «dismissed stays hidden
   while the decision lives» y «dismissed reappears after 35 days» (reloj a `decidedAt` + 35 días + 1 s, con el documento
-  todavía en la colección, N2).
+  todavía en la colección, N2). **Estado (2026-11-25):** hecha; `weekly-plan.weeks.int.spec.ts` 4/4 (el reloj de la app se mueve con un espía sobre `APPLICATIONS_CLOCK`; el documento sigue en la colección en «reappears after 35 days»).
 
 ## 5. Borrado de cuenta (spec `users/account-deletion`)
 

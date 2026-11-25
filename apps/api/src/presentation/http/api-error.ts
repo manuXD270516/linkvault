@@ -36,6 +36,7 @@ export const API_ERROR_STATUS: Readonly<Record<ApiErrorCode, number>> = {
   ai_quota_exceeded: 429,
   application_not_found: 404,
   application_conflict: 409,
+  weekly_plan_action_not_found: 404,
   cv_not_found: 404,
   unsupported_file_type: 415,
   file_too_large: 413,
@@ -95,6 +96,8 @@ export const API_ERROR_MESSAGES: Readonly<Record<ApiErrorCode, string>> = {
   ai_quota_exceeded: "You reached today's reading limit, come back tomorrow",
   application_not_found: 'Application not found',
   application_conflict: 'The application changed in another tab',
+  // La acción de «Tu semana» no existe, es ajena, está mal formada o ya no aplica: el mismo cuerpo en todos los casos.
+  weekly_plan_action_not_found: 'Weekly plan action not found',
   // El CV no existe, es de otra persona o su `:id` está mal formado: el mismo cuerpo en los tres casos.
   cv_not_found: 'CV not found',
   // El archivo no es PDF ni DOCX. NO es `unsupported_media_type`: eso es "el cuerpo de la petición no es lo que esta
