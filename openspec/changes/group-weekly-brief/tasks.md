@@ -59,33 +59,39 @@ diga otra cosa. La ronda 1 del debate partió 3.7, 4.5 y 7.1 (H8).
 
 Todo en `group-brief/domain/`, puro, sin `@nestjs/*`, `mongoose` ni `bullmq`.
 
-- [ ] 2.1 [backend] `skill-key.ts`: `skillKeyOf(name)` (NFKC, recorte, espacios colapsados, minúsculas; `null` si vacía
+- [x] 2.1 [backend] `skill-key.ts`: `skillKeyOf(name)` (NFKC, recorte, espacios colapsados, minúsculas; `null` si vacía
   o > 60) y `pickSkillLabel(forms)`. Verificar con `skill-key.spec.ts`: «Docker variants share a key», «empty and
   over-long names are ignored», «label is the most frequent form» y «label tie picks the lowest code unit order».
-- [ ] 2.2 [backend] `group-brief-universe.ts` (tipo canónico: id opaco, `sharedAt` y `closedAt` como instantes ISO,
+  Estado (2026-11-25): skill-key.ts con skillKeyOf y pickSkillLabel; 4 escenarios en verde; falsación: desempate invertido hace fallar «label tie picks the lowest code unit order»; restaurado.
+- [x] 2.2 [backend] `group-brief-universe.ts` (tipo canónico: id opaco, `sharedAt` y `closedAt` como instantes ISO,
   `expiresAt` `YYYY-MM-DD | null`, habilidades ya validadas) y en `build-group-brief-facts.ts` los hechos `open_offers`
   y `closing_soon` (ventana `[asOf, asOf+7]` con `WEEKLY_PLAN_CLOSING_SOON_DAYS`, PO-9). Verificar con
   `build-group-brief-facts.spec.ts`: «expiresAt before asOf is not open», «closedAt is not open», «closing window
   includes asOf and asOf plus seven», «closing window excludes asOf plus eight», «firstExpiresAt is the earliest
   expiresAt» (R2-2) y «linkIds follow sharedAt desc then id
   desc».
-- [ ] 2.3 [backend] Depende de 2.1 y 2.2. Hechos `skill_demand`. Verificar en `build-group-brief-facts.spec.ts`:
+  Estado (2026-11-25): group-brief-universe.ts (UniverseOffer/GroupBriefUniverse sin campos de miembro) y open_offers/closing_soon en build-group-brief-facts.ts; 6 escenarios en verde; falsación: ventana hasta asOf+8 hace fallar «closing window excludes asOf plus eight»; restaurado.
+- [x] 2.3 [backend] Depende de 2.1 y 2.2. Hechos `skill_demand`. Verificar en `build-group-brief-facts.spec.ts`:
   «Docker in four of seven offers with skills», «offers without skills are not in total», «a skill listed twice in one
   offer counts once», «a skill in a single offer is not a fact» y «keeps at most five skill facts by count then key».
-- [ ] 2.4 [backend] Depende de 2.2. Hecho `shared_last_week` y `scanTruncated`. Verificar en
+  Estado (2026-11-25): skill_demand en build-group-brief-facts.ts (clave NFKC, una vez por oferta, total honesto, máx. 5 por count desc y key asc); 5 escenarios + etiqueta en verde; falsación: total = todas las abiertas hace fallar «offers without skills are not in total»; restaurado.
+- [x] 2.4 [backend] Depende de 2.2. Hecho `shared_last_week` y `scanTruncated`. Verificar en
   `build-group-brief-facts.spec.ts`: «shared_last_week counts closed offers too», «sharedAt two weeks ago is not
   counted» y «more than 500 relations marks scanTruncated»; y «universe type has no member fields», test de tipos
   (`expectTypeOf`) que falla si el universo gana `userId`, `sharedBy`, `note` o `tags`.
-- [ ] 2.5 [backend] `select-group-brief-bullets.ts` (orden de D5, tope 4, como mucho 2 de habilidad, `open_offers`
+  Estado (2026-11-25): shared_last_week (cuenta cerradas, ventana W−1) y scanTruncated (>500) en build-group-brief-facts.ts; 3 escenarios + expectTypeOf de UniverseOffer en verde; falsación: scanTruncated=false fija hace fallar «more than 500 relations marks scanTruncated» y añadir userId a UniverseOffer rompe worker:typecheck; restaurado.
+- [x] 2.5 [backend] `select-group-brief-bullets.ts` (orden de D5, tope 4, como mucho 2 de habilidad, `open_offers`
   fuera). Verificar con `select-group-brief-bullets.spec.ts`: «orders closing, skill, shared, second skill», «caps at
   four bullets», «at most two skill bullets», «only skills yields one bullet», «no facts yields no bullets» y «same
   universe and clock yield identical output»; y «every computed brief passes the verifier», que genera 200 universos
   con un PRNG sembrado y pasa cada resultado por `verifyGroupWeeklyBrief`. Falsación del tope: con
   `GROUP_BRIEF_MAX_BULLETS` a 5 y un tercer `skill_demand` permitido en el test, «caps at four bullets» falla; se
   restaura.
-- [ ] 2.6 [backend] Guardia de capas. Verificar: `pnpm nx run worker:lint` en verde con `group-brief/domain/**` sin
+  Estado (2026-11-25): select-group-brief-bullets.ts y compute-group-brief.ts (ensamblado puro del documento del contrato); select-group-brief-bullets.spec.ts en verde (6 de selección, 3 de cálculo con 200 universos sembrados verificados con zod y verifyGroupWeeklyBrief); falsación: con tope 5 y 3 de habilidad fallan «caps at four bullets», «at most two skill bullets» y «every computed brief passes the verifier»; restaurado.
+- [x] 2.6 [backend] Guardia de capas. Verificar: `pnpm nx run worker:lint` en verde con `group-brief/domain/**` sin
   `@nestjs/*`, `mongoose` ni `bullmq`. Falsación: añadir `import '@nestjs/common'` en `select-group-brief-bullets.ts`
   hace fallar el lint; se revierte.
+  Estado (2026-11-25): worker:lint en verde con group-brief/domain/** sin @nestjs/*, mongoose ni bullmq; falsación: import '@nestjs/common' en select-group-brief-bullets.ts hace fallar el lint (no-restricted-imports de dominio); revertido.
 
 ## 3. Persistencia, caso de uso y planificación en el worker (design D1, D2, D4, D7)
 
@@ -199,6 +205,7 @@ Todo en `group-brief/domain/`, puro, sin `@nestjs/*`, `mongoose` ni `bullmq`.
   `core/groups/group-weekly-brief.store.ts` (`@ngrx/signals`: `loading | ready | error`, `load(groupId)`, `retry()`).
   Verificar con `group-weekly-brief.api.spec.ts` y `group-weekly-brief.store.spec.ts`: «parses a brief», «invalid
   payload is an error», «retry after error loads the brief».
+  Estado (2026-11-25): api (zod `parse`) y store `root` con `load`/`retry` y guarda de última petición; 8 tests en verde (api 3, store 5) con el fixture compartido `testing/group-brief-testing.ts`; falsación: devolver el cuerpo sin `parse` hace fallar «invalid payload is an error» en api y store; restaurado.
 - [ ] 6.2 [frontend] `features/groups/group-weekly-brief-text.ts`: `groupBriefBulletText(fact, locale)`,
   `groupBriefHeaderText(...)` («Actualizada el …») y `formatUtcDate(date, locale)`, un mensaje `$localize` por
   variante (ids `@@groups.weeklyBrief.*`). Verificar con `group-weekly-brief-text.spec.ts` (ES): «skill bullet text»,
