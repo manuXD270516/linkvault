@@ -357,3 +357,54 @@ PR); las colecciones caducan solas (35 y 3 días) o se borran con `db.weekly_pla
   propia aprobación. No incluye fusión, que espera una ventana.
 - **Q8 [no bloqueante] Valores de los topes y plazos** (20 por día, 9 candidatas, 2 500 ms, 40 000 ms, urgente ≤ 1
   día): constantes de código revisables con datos de 35b. **Recomendación: estos.**
+
+## Debate (ronda 1) y decisión: pospuesto (2026-11-25)
+
+Participaron `critic` y `business`; la sesión principal actuó como `reflect`. Hallazgos: 1 P0 (W1) del crítico y 2 V0
+(B1, B2) de negocio. **Decisión de reflect (2026-11-25): posponer el change.** No se aplica ahora, no se graba la
+tarea 2.7 con la clave del owner y el design **no** se reescribe para cerrar W1-W14: las tablas registran qué hacer al
+reabrir. Q1-Q8 quedan sin efecto hasta entonces (las opiniones de las dos revisiones van en las tablas).
+
+### Negocio (B1-B7)
+
+| id | sev | resumen | qué hacer al reabrir |
+|---|---|---|---|
+| B1 | V0 | El flag no puede encenderse con usuarios reales hasta cerrar 35b (Q6), que es justo la ventana de medición: 0 semanas-persona hoy y, como mucho, 0-2 de 10. | Reabrir solo con los datos de 35b de «Condiciones para reabrir» (semanas-persona con más de 3 visibles). |
+| B2 | V0 | El «Why» (señales secundarias, turnos fijos) se resuelve con un puntaje determinista en `RuleBasedPlanner`, alternativa que el design no evalúa. | Hacer antes un change de puntaje determinista; el LLM solo si ese puntaje se queda corto, y evaluarlo como alternativa en D3 y ADR-071. |
+| B3 | V1 | Ni la métrica online (`source`) ni la offline (golden sintético de 8 casos) pueden decidir con este volumen. | Sustituir la puerta por un criterio previo con datos de 35b; recortar `source` (D12, 4.9) hasta que haya volumen. |
+| B4 | V1 | «Elegidas con IA…» no deja ver qué eligió la IA, el motivo es de reglas y el orden cambia entre cargas. | Mantener el aviso, sin más superficie, y probarlo en la guía de uso con una persona real antes de fusionar. |
+| B5 | V1 | Complejidad alta (unas 30 tareas, núcleo de `libs/ai`, dos colecciones, promesa en segundo plano) para cambiar como mucho 1 de 3 acciones. | No aplicar ahora; fila 41 candidata. Al reabrir, recortar alcance según B2, B3 y B6. |
+| B6 | V2 | La espera de 2,5 s y la carrera con el plazo (D1, 4.4) solo sirven para ver la elección en la primera carga. | Lanzar sin esperar: la primera carga sale por reglas y la siguiente con la elección. |
+| B7 | V2 | `weekly-plan-monday` (depende del correo de 35b) y la interfaz en inglés (fila 37) tampoco son para ahora. | Revisar el orden de las tres al cerrar 35b con datos de retorno semanal y origen de los usuarios. |
+
+### Crítico (W1-W14)
+
+| id | sev | resumen | qué hacer al reabrir |
+|---|---|---|---|
+| W1 | P0 | El planificador solo ve claves posicionales `c00N` (`gather-weekly-plan-candidates.ts:102`); no puede guardar `<rule>:<applicationId>` y una clave guardada apuntaría a otra postulación tras un alta o un cierre. | `WeeklyPlannerContext` con `applicationIdOf(key)`/`keyOf(applicationId)` armado por `GetWeeklyPlan`; test «a stored pick survives a new application inserted before it in id order» con falsación. |
+| W2 | P1 | El `POST` llama al mismo `execute` que el `GET` (`decide-weekly-plan-action.usecase.ts:43`): `mayStartRun` no se puede distinguir sin cambiar la firma. | `execute(userId, { mayStartRun })` sin valor por defecto; falsación en 4.2. |
+| W3 | P1 | Si `store.fail()` lanza dentro del `catch` (Mongo cerrado al apagar, `main.ts:13`), queda un rechazo sin manejar que tira la api. | `void run().catch(log)` envolviendo también el `fail`; abortar las ejecuciones en vuelo en `beforeApplicationShutdown` con `failure: 'aborted'`; test «a failing fail() never rejects». |
+| W4 | P1 | Un `complete` tardío con `upsert` resucita la elección de un usuario borrado o pisa un `failed/timeout`; D7 no dice si se compensa cuando el global lanza. | `complete`/`fail` con `updateOne({ userId, weekKey, status: 'pending' })` sin `upsert`; compensar también si el global lanza; test «complete after account deletion writes nothing». |
+| W5 | P1 | El fixture `c4,c2,c5` del escenario choca con los de 2.6 (synth, `c1..c3`) y 2.7 (`--overwrite`); ObjectIds aleatorios con empates cambian la clave y dan `FixtureMissing` tragado como `failed`. | El test 4.10 escribe su propio fixture en un `AI_FIXTURES_DIR` temporal con `executionKey`; hechos sin empates u ObjectIds fijos; registrar los errores de programación como `error` y afirmar `ready`. |
+| W6 | P1 | D8 amplía `public` (ADR-018 §11: «contenido público») a «anónimo por construcción» sin decirlo, y el test del JSON Schema deja pasar `z.unknown()`, `z.record`, patrones laxos y objetos abiertos. | Anotar ADR-018 §11 desde ADR-071; test de **lista blanca** (enteros acotados, enums, `^c[1-9]$` exacto, `additionalProperties: false`, nodo sin `type` falla) con falsaciones `title: z.string()` y `extra: z.unknown()`. |
+| W7 | P1 | `degrade()` sigue validando con el schema estático (`run-task.usecase.ts:578`) y nada hace cumplir «más estricto o igual». | `TaskRegistry` rechaza `outputSchemaFor` + `degrade`; validar con `outputSchema.pipe(outputSchemaFor(input))`. |
+| W8 | P2 | `valid_pick_rate` es tautológica con `schema_validity_rate`. | Quitarla o calcularla sobre la salida cruda. |
+| W9 | P2 | La puerta `rules_agreement ≤ 0,8` mide cómo se armó el golden, no al LLM. | Puerta con `must_include_rate` sobre los casos de señales múltiples; `rules_agreement` informativa. |
+| W10 | P2 | El plazo de 40 s es menor que Ollama/BYOK (60 s) y `AbortSignal.timeout` no responde a timers falsos. | Fábrica de plazos inyectable; anotar en Q8 que un proveedor lento agota el intento; `failure: 'timeout'` por `signal.aborted`. |
+| W11 | P2 | «Determinista» deja de serlo en la primera lectura. | «Determinista para el mismo estado del documento al responder». |
+| W12 | P2 | `source` obliga a `DecideWeeklyPlanAction` a leer el store otra vez. | Exponer `llmPickIds` en el resultado de `evaluate` y calcular `source` desde ahí. |
+| W13 | P2 | 2.2 y 4.10 pasan de 1 h; 2.3, 4.1, 4.2, 4.7-4.10 y 6.1 sin falsación. | Partir 2.2 en 2.2a/2.2b; añadir falsaciones a 4.2, 4.8 y 4.9. |
+| W14 | P2 | Bug previo, ajeno al change: `record-fixtures.ts:83,136` comparan el campo literal `dataSensitivity === 'personal'` en vez de `dataSensitivityOf(task)`. | **Hallazgo independiente**: va como `fix(ai)` aparte, en el change `ai-record-sensitivity-guard` (rama `change/ai-record-sensitivity-guard`, propuesto en `2424afff`). No depende de este change. |
+
+Convergencia: NO (pospuesto por B1/B2; W1 abierto)
+
+### Condiciones para reabrir
+
+1. **Medir en 35b, sin código nuevo.** Con una consulta puntual (`mongosh`, agregada y sin `userId` en el resultado),
+   contar: (a) cuántas semanas-persona tienen **más de 3 candidatas visibles**; y (b) cuántas veces el orden de las
+   reglas dejó **fuera de las 3 mostradas** algo que la persona marcó «Hecho» después.
+2. **Si hace falta reordenar, primero un puntaje determinista (B2)**: un change propio que sume cierre, encaje,
+   contactos y días quieta en `RuleBasedPlanner`, sin IA, cupo, aviso ni consentimiento. El LLM se reabre solo si ese
+   puntaje se queda corto con datos.
+3. **Al reabrir este change**, resolver W1-W7 en el design, las specs y las tareas **antes** del apply, aplicar B3 y B6,
+   y volver a pasar el debate.
