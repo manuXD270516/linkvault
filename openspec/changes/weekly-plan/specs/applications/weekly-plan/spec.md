@@ -159,7 +159,9 @@ responder `200` con el plan recalculado. El `candidateId` SHALL estar entre las 
 `applications` ni `application_events`. Los documentos SHALL caducar a los 35 días de `decidedAt`.
 
 Al leer, una decisión `snoozed` SHALL ocultar la candidata solo en la semana de la decisión; `done` SHALL ocultarla en
-esa semana y en la siguiente; `dismissed` SHALL ocultarla mientras la decisión exista (hasta que caduque). `doneThisWeek` SHALL contar las decisiones `done`
+esa semana y en la siguiente; `dismissed` SHALL ocultarla mientras `decidedAt` sea posterior o igual a la hora actual menos 35 días, medido con el
+reloj de la aplicación y sin depender de cuándo borre Mongo el documento; pasado ese plazo, si sigue elegible, SHALL
+poder volver a aparecer. `doneThisWeek` SHALL contar las decisiones `done`
 de la semana en curso.
 
 #### Scenario: Hecho oculta y entra la siguiente
@@ -193,6 +195,12 @@ de la semana en curso.
 - **GIVEN** Ana marcó `dismissed` una candidata en `2026-W48`
 - **WHEN** pide el plan en `2026-W49`, `2026-W50` y `2026-W52` con la candidata aún elegible
 - **THEN** NO SHALL aparecer en ninguna de esas semanas
+
+#### Scenario: La sugerencia oculta vuelve a los 35 días
+
+- **GIVEN** Ana marcó `dismissed` una candidata el `2026-11-25T10:00:00Z` y el documento sigue en la colección
+- **WHEN** pide el plan el `2026-12-30T10:00:01Z` con la candidata aún elegible
+- **THEN** la candidata SHALL poder aparecer
 
 #### Scenario: Candidata ajena o inventada
 

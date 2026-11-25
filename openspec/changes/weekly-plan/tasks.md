@@ -4,14 +4,16 @@ Cada tarea cabe en menos de una hora (la iteración 1 partió 4.3, 4.5, 4.6, 7.2
 inglés y salen de los escenarios de `specs/`. Rutas de `apps/api` relativas a `apps/api/src/modules/` salvo que se diga
 otra cosa.
 
-- [ ] 0.1 [infra] Debate critic/business/reflect de este change cerrado sin P0/V0 abiertos. Verificar: `design.md` lleva
+- [x] 0.1 [infra] Debate critic/business/reflect de este change cerrado sin P0/V0 abiertos. Verificar: `design.md` lleva
   la sección `## Debate iteración N (fecha)` de la última iteración con «Convergencia: SI», P0 0 y V0 0, y las
-  decisiones no triviales nuevas están en ADR-068. **Estado (2026-11-25):** iteración 1 aplicada (tabla en design);
-  falta la iteración de convergencia.
-- [ ] 0.2 [infra] Aprobación humana registrada. Verificar: `grep -c "## Aprobación humana (2026-11-25)" design.md` = 1
+  decisiones no triviales nuevas están en ADR-068. **Estado (2026-11-25):** hecha. Iteración 1 aplicada y
+  iteración 2 cerrada con «Convergencia: SI» (sección «Debate iteración 2 (2026-11-25)» de design; sin P0 y con el
+  único V0, B3', resuelto).
+- [x] 0.2 [infra] Aprobación humana registrada. Verificar: `grep -c "## Aprobación humana (2026-11-25)" design.md` = 1
   y la sección cita literalmente el pedido del owner y dice que autoriza el apply en la rama, **no** la fusión.
   Falsación: si la sección dijera que autoriza fusionar, el revisor la rechaza; ningún PR de esta rama se fusiona sin
-  una ventana abierta por el owner.
+  una ventana abierta por el owner. **Estado (2026-11-25):** hecha; la sección `## Aprobación humana (2026-11-25)`
+  de design cita el pedido del owner y limita la autorización al apply en la rama, sin fusión.
 - [ ] 0.3 [infra] Plan y ADR coherentes. Verificar: `docs/design-v0.2.md` §6 tiene la fila `weekly-plan` como
   **Candidata** y `grep -c "weekly-plan" openspec-changes.yaml` = 0; `docs/adr/ADR-068.md` existe; `bash
   infra/ci/repo-checks.sh` y `openspec validate weekly-plan --strict --no-interactive` en verde.
@@ -31,19 +33,20 @@ otra cosa.
   comentario que lo diga. Verificar con `week-key.spec.ts`: «2026-12-31T23:30Z is 2026-W53», «2027-01-03 is 2026-W53»,
   «2027-01-04 is 2027-W01», «previous of 2027-W01 is 2026-W53», «next of 2026-W53 is 2027-W01» y «Monday 00:00Z starts
   a new week».
-- [ ] 2.2 [backend] `applications/domain/weekly-plan/weekly-plan.ts` (tipos canónicos sin `ObjectId` ni `Date`: días
-  relativos y `today` `YYYY-MM-DD`; el encaje lleva `degraded`), `weekly-planner.ts` (interfaz `WeeklyPlanner` con
-  `plan(input): Promise<WeeklyPlanOutcome>`) y `rules.ts` (elegibilidad pura por regla). Verificar con `rules.spec.ts`:
-  «saved link closing in 3 days is apply_before_close closing_soon», «closing today has daysLeft 0», «expiresAt
-  yesterday without closedAt is not closing_soon», «expired with fit 80 yields no apply action», «interested with
-  non-degraded fit 80 and no expiresAt is high_fit», «degraded fit does not count as high_fit», «applied quiet 12 days
-  is follow_up», «saved quiet 30 days without signals yields nothing», «closed link yields nothing», «own flag alone
+- [ ] 2.2a [backend] `applications/domain/weekly-plan/weekly-plan.ts` (tipos canónicos sin `ObjectId` ni `Date`:
+  días relativos y `today` `YYYY-MM-DD`; el encaje lleva `degraded`), `weekly-planner.ts` (interfaz `WeeklyPlanner` con
+  `plan(input): Promise<WeeklyPlanOutcome>`) y en `rules.ts` la regla `apply_before_close` (N5). Verificar con
+  `rules.spec.ts`: «saved link closing in 3 days is apply_before_close closing_soon», «closing today has daysLeft 0»,
+  «expiresAt yesterday without closedAt is not closing_soon», «expired with fit 80 yields no apply action»,
+  «interested with non-degraded fit 80 and no expiresAt is high_fit» y «degraded fit does not count as high_fit».
+- [ ] 2.2b [backend] Depende de 2.2a. En `rules.ts`, las reglas `follow_up` y `ask_know_someone`, la exclusión de links
+  cerrados y la prioridad entre reglas (N5). Verificar en `rules.spec.ts`: «applied quiet 12 days is follow_up», «saved quiet 30 days without signals yields nothing», «closed link yields nothing», «own flag alone
   does not count for ask_know_someone» y «one candidate per application, first rule wins».
 - [ ] 2.3 [backend] `applications/domain/weekly-plan/rule-based-planner.ts`: orden dentro de cada regla, desempate por
-  `applicationId`, ocultación por decisiones (D5: `snoozed` solo W; `done` W y W+1; `dismissed` mientras exista), turnos
+  `applicationId`, ocultación por decisiones (D5: `snoozed` solo W; `done` W y W+1; `dismissed` mientras `decidedAt ≥ now − 35 días`), turnos
   por regla y tope 3. Verificar con `rule-based-planner.spec.ts`: «caps at three actions», «round-robins one per rule
-  before repeating», «snoozed hides only its own week», «done hides its week and the next one», «dismissed hides while
-  the decision exists», «fills the slot of a hidden action with the next candidate» y «same input yields the same
+  before repeating», «snoozed hides only its own week», «done hides its week and the next one», «dismissed hides for
+  35 days», «fills the slot of a hidden action with the next candidate» y «same input yields the same
   output». Falsación del tope: con `WEEKLY_PLAN_MAX_ACTIONS` cambiado a 4 en el test, «caps at three actions» falla.
 - [ ] 2.4 [backend] Guardia de capas. Verificar: `pnpm nx run api:lint` en verde con `domain/weekly-plan/**` sin
   `@nestjs/*`, `mongoose` ni imports de otros módulos. Falsación: añadir temporalmente `import '@nestjs/common'` en
@@ -69,11 +72,12 @@ otra cosa.
 
 ## 4. Casos de uso, persistencia y rutas en `applications` (design D2, D5, D8)
 
-- [ ] 4.1 [backend] Puerto `WEEKLY_PLAN_DECISION_REPOSITORY` (`upsert`, `listActive(userId)` —todas las vivas, acotadas
-  por el TTL—), `InMemoryWeeklyPlanDecisionRepository` en `application/testing/` y `MongoWeeklyPlanDecisionRepository`
+- [ ] 4.1 [backend] Puerto `WEEKLY_PLAN_DECISION_REPOSITORY` (`upsert`, `listActive(userId, now)`, que filtra
+  `decidedAt ≥ now − 35 días` con el reloj inyectado, N2), `InMemoryWeeklyPlanDecisionRepository` en `application/testing/` y `MongoWeeklyPlanDecisionRepository`
   con `weekly-plan-decision.schemas.ts` (colección `weekly_plan_decisions`, índice único `(userId, weekKey,
   candidateId)`, TTL 35 días en `decidedAt`). Verificar en `mongo-weekly-plan-decision.repository.spec.ts`: «upsert
-  keeps a single document per key with the last decision», «listActive returns only the user's decisions» y «declares
+  keeps a single document per key with the last decision», «listActive returns only the user's decisions», «listActive ignores decisions older than 35
+  days even if the document still exists» y «declares
   the unique and TTL indexes» (lee `listIndexes`, `expireAfterSeconds` = 3 024 000).
 - [ ] 4.2 [backend] `ApplicationLinks.planSignalsOf` en `ports/application-links.port.ts`, con comentario del puerto que
   diga qué devuelve, que es una sola llamada a la fachada, que el conteo es el del grupo elegido y que nunca trae
@@ -87,7 +91,7 @@ otra cosa.
   applications», «skips links that no longer exist» y «does not call the fit source with no saved or interested
   applications».
 - [ ] 4.3b [backend] Token `WEEKLY_PLANNER` en `application/ports/weekly-planner.port.ts` y `GetWeeklyPlan`
-  (`get-weekly-plan.usecase.ts`): recolecta (4.3a), lee `listActive`, llama al planificador, traduce de vuelta a ids
+  (`get-weekly-plan.usecase.ts`): recolecta (4.3a), lee `listActive(userId, now)`, llama al planificador, traduce de vuelta a ids
   reales y calcula `doneThisWeek`. Verificar en `get-weekly-plan.usecase.spec.ts` (repos en memoria, reloj fijo):
   «returns three actions for five candidates», «returns an empty plan when nothing applies», «reading twice writes
   nothing» y «uses the UTC ISO week of the clock».
@@ -117,7 +121,8 @@ otra cosa.
   Dan; `count` 2 y `groupId` G2).
 - [ ] 4.6b [backend] Integración HTTP de semanas en `applications/weekly-plan.weeks.int.spec.ts`: reloj movido de
   2026-W48 a W49, W50 y W52. Verificar: «snoozed returns next week», «done skips one week» y «dismissed stays hidden
-  while the decision lives».
+  while the decision lives» y «dismissed reappears after 35 days» (reloj a `decidedAt` + 35 días + 1 s, con el documento
+  todavía en la colección, N2).
 
 ## 5. Borrado de cuenta (spec `users/account-deletion`)
 
@@ -130,7 +135,8 @@ otra cosa.
 ## 6. Seed demo (design D11, spec `platform/demo-seed`)
 
 - [ ] 6.1 [backend] `apps/api/src/seed/demo-seed.dataset.ts`: `DEMO_LINKS.closingSoon` (`appStatus: 'saved'`,
-  `expiresInDays: 3`); `seed-demo.runner.ts`: `ensurePreview` escribe `expiresAt` = hoy UTC + 3 cuando el seed lo trae, y
+  `expiresInDays: 3`); `seed-demo.runner.ts`: `ensurePreview` escribe `expiresAt` = `deps.now` (UTC) + 3 días, en
+  `YYYY-MM-DD`, cuando el seed lo trae (N3), y
   cada corrida fija `statusChangedAt = now` de `openSalary` (C5). Verificar en `seed-demo.runner.spec.ts`: «seeds a saved
   link closing in three days», «resets openSalary statusChangedAt on every run» y «second run moves expiresAt without
   duplicating links or applications».
@@ -150,11 +156,12 @@ otra cosa.
   `$localize` por variante, singular y plural elegidos en código (C9), con los textos de D10. Verificar en
   `weekly-plan-reason.spec.ts`: «closing today reads Cierra hoy», «closing in one day is singular», «closing in four
   days is plural», «high fit names the score», «quiet names the days» y «know someone is singular for one and plural
-  for two».
+  for two». Además, un `describe('in English')` que carga `messages.en.xlf` con `loadTranslations` y afirma los
+  textos EN exactos de D10 (N1); ese bloque queda en verde después de 7.6, que escribe las traducciones.
 - [ ] 7.2b [frontend] `features/applications/weekly-plan-card.component.{ts,html}`: estados cargando (`aria-busy`), vacío
   con las dos líneas fijas de B1 y `doneThisWeek`, error con «Reintentar» y «No pudimos guardar tu elección. Prueba de
   nuevo.». Verificar en `weekly-plan-card.component.spec.ts`: «renders three actions with their reasons», «renders the
-  honest empty state with the explanation line», «renders done this week when greater than zero», «renders the error
+  honest empty state with the explanation line ending in en una de tus ofertas» (B9), «renders Completaste 1 acción esta semana for one and the plural for three» (B8), «renders the error
   with retry», «renders the save failure message» y «uses the URL when there is no title».
 - [ ] 7.3 [frontend] Título como enlace «Abrir» (emite `applicationId` o navega a `/grupos/:groupId`), botones «Hecho»,
   «Ahora no», «Ocultar sugerencia» con `min-h-11` (B4) y la línea «¿Ya postulaste? Muévela a Postulada» tras «Hecho» en
@@ -166,12 +173,17 @@ otra cosa.
   tarjeta: «draft with appliedAt names title, company and date», «draft without appliedAt says a while ago», «draft
   falls back to generic words without title or company», «draft ends with the open question about the process»,
   «draft never says attached CV or as we discussed» y «copy puts the draft in the clipboard without HTTP calls»
-  (`HttpTestingController.verify()` sin peticiones).
+  (`HttpTestingController.verify()` sin peticiones). Además, un `describe('in English')` en
+  `follow-up-draft.spec.ts` que carga `messages.en.xlf` con `loadTranslations` y afirma las tres líneas EN exactas de D9,
+  con y sin `appliedAt` (N1); en verde después de 7.6.
 - [ ] 7.5 [frontend] `applications-board.page.html`/`.ts`: la tarjeta encima de las columnas, fuera del
-  `@if (isEmpty())`, conectada a `openDetail`; recarga del store del plan tras un `moveTo` exitoso (C4). Verificar en
+  `@if (isEmpty())`, conectada a `openDetail`. La recarga del store del plan se engancha en
+  `ApplicationMoves.move` (`application-moves.ts:58`) cuando el cambio termina bien, para el tablero y el detalle (N4).
+  Verificar en `application-moves.spec.ts`: «a successful move reloads the weekly plan», «a status change from the
+  detail reloads the weekly plan» y «a cancelled or failed move does not reload the weekly plan»; y en
   `applications-board.page.spec.ts`: «shows the weekly plan above the columns», «hides the weekly plan when the board is
   empty», «a weekly plan error still lets the user move an application» (mueve una tarjeta con el plan en error y
-  comprueba la petición de estado) y «a successful move reloads the weekly plan».
+  comprueba la petición de estado).
 - [ ] 7.6 [frontend] i18n: `pnpm nx run web:extract-i18n` y traducciones `@@applications.weeklyPlan.*` en
   `messages.en.xlf` con los textos EN de D9 y D10 (ADR-050). Verificar: `pnpm nx run web:i18n-check` en verde.
   Falsación: borrar una traducción inglesa nueva hace fallar el check; se restaura.
@@ -197,7 +209,9 @@ otra cosa.
   hasta que el owner abra una ventana». Verificar: la PR existe en estado abierto y su descripción enlaza ADR-068.
 - [ ] 9.4 [infra] `docs/RUNBOOK.md`: sección «Plan semanal (`weekly_plan_decisions`)» con qué guarda la colección (sin
   texto), su TTL de 35 días, que los índices los crea `autoIndex` al arrancar la api, cómo comprobarlos
-  (`db.weekly_plan_decisions.getIndexes()`), el rollback (revertir el PR; `drop()` opcional) y la consulta agregada de
-  la métrica de B3 (semanas-persona con `done`, `done` vs `dismissed` por regla, sin `userId` en la salida), a correr
-  antes de que venza el TTL (C12). Verificar: `grep -c "weekly_plan_decisions" docs/RUNBOOK.md` ≥ 3 y `bash
+  (`db.weekly_plan_decisions.getIndexes()`), el rollback (revertir el PR; `drop()` opcional), que una sugerencia oculta vuelve a los 35 días si
+  sigue aplicando (B10), y las consultas agregadas de la métrica (B3, B3'): numerador de `weekly_plan_decisions`
+  (semanas-persona con algún `done`, también en número absoluto, y `done` vs `dismissed` por regla) y denominador de
+  `applications` (semanas-persona con al menos una postulación abierta), sin `userId` en la salida, a correr antes de que
+  venza el TTL (C12). Verificar: `grep -c "weekly_plan_decisions" docs/RUNBOOK.md` ≥ 3 y `bash
   infra/ci/repo-checks.sh` en verde.

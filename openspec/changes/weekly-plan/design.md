@@ -130,10 +130,12 @@ Efecto al leer (iteración 1: B4 y C8):
 - `done` («Hecho») la oculta en W y W+1 («no me lo repitas el lunes»);
 - `dismissed` («Ocultar sugerencia») la oculta mientras viva la decisión, es decir, **todo el TTL** (35 días): la
   persona dijo que esa sugerencia no le sirve. Para leerlo, el caso de uso pide las decisiones de esa candidata sin
-  filtrar por semana (`listActive(userId)`, acotado por el TTL), no solo las de W y W−1.
+  filtrar por semana (`listActive(userId, now)`), no solo las de W y W−1. `listActive` filtra `decidedAt ≥ now − 35 días`
+  con el reloj inyectado (N2): el monitor TTL de Mongo borra con retraso de hasta un minuto o más, así que la regla
+  no depende de él y una sugerencia oculta vuelve exactamente a los 35 días si sigue aplicando (B10).
 
 Al ocultar una, entra la siguiente candidata si la hay: la tarjeta sigue diciendo lo más útil. La respuesta trae
-`doneThisWeek` (conteo de `done` de la semana) para el «Hiciste N esta semana».
+`doneThisWeek` (conteo de `done` de la semana) para el «Completaste N acciones esta semana».
 
 Validación: el `candidateId` tiene que estar entre las candidatas **elegibles** de ahora (antes del tope y antes de
 ocultar). Si no —inventado, de otra persona, o ya no aplica— responde `404 weekly_plan_action_not_found`, el mismo
@@ -249,9 +251,9 @@ tablero está vacío (el tablero ya tiene su estado vacío y la tarjeta no tendr
 
 - Cargando: esqueleto de 3 líneas con `aria-busy="true"`.
 - Vacío: «No hay nada urgente esta semana.», la línea fija (B1) «Aquí verás cuando una oferta guardada esté por
-  cerrar, una postulación lleve 10 días sin novedades o alguien de tu grupo conozca a alguien.» (EN: «This is where
+  cerrar, una postulación lleve 10 días sin novedades o alguien de tu grupo conozca a alguien en una de tus ofertas.» (EN: «This is where
   you will see when a saved offer is about to close, an application has gone 10 days without news, or someone in your
-  group knows someone there.») y, si `doneThisWeek > 0`, «Hiciste N esta semana.».
+  group knows someone at one of your offers.») y, si `doneThisWeek > 0`, «Completaste N acciones esta semana.» (singular: «Completaste 1 acción esta semana.»; EN: «You completed N actions this week.» / «You completed 1 action this week.»).
 - Error: «No pudimos armar tu semana.» con «Reintentar»; el tablero sigue funcionando y se pueden mover postulaciones.
 - Acción (B4): el **título** de la oferta (o `displayUrl`) es el enlace «Abrir»: abre el detalle de la postulación en la
   misma página (salida hacia `ApplicationsBoardPage.openDetail`) y, en `ask_know_someone`, navega a `/grupos/:groupId`
@@ -280,8 +282,10 @@ tablero está vacío (el tablero ya tiene su estado vacío y la tarjeta no tendr
 - Errores al decidir (C4): `404 weekly_plan_action_not_found` → el SPA recarga el plan (`GET`) sin mensaje de error,
   porque la acción ya no aplica; cualquier otro error → «No pudimos guardar tu elección. Prueba de nuevo.» y los
   botones vuelven a habilitarse.
-- Coherencia con el tablero (C4): tras un `moveTo` exitoso del tablero, el store del plan se recarga, para que una
-  postulación movida a `applied` deje de aparecer como «postula antes».
+- Coherencia con el tablero (C4, N4): la recarga se engancha en `ApplicationMoves.move`
+  (`features/applications/application-moves.ts:58`), el camino común del tablero y del diálogo de detalle, cuando el
+  cambio de estado termina bien; un movimiento cancelado o fallido no recarga. Así una postulación movida a `applied`
+  deja de aparecer como «postula antes» venga de donde venga el cambio.
 
 Textos con ids `@@applications.weeklyPlan.*`; `messages.xlf` se regenera y `messages.en.xlf` se traduce (ADR-050).
 
@@ -364,14 +368,16 @@ Cada corte es un change propio, con su debate, y ninguno se abre antes de que el
 - **R7. Ruido de decisiones**: un usuario puede descartar todo. Es su derecho; `doneThisWeek` y el conteo de
   `dismissed` son la métrica (ver Métrica).
 
-**Métrica de éxito (35b, 3-5 invitados; iteración 1, B3):**
+**Métrica de éxito (35b, 3-5 invitados; iteraciones 1 y 2, B3 y B3'):**
 
-1. **Semanas-persona con al menos un «Hecho»** sobre semanas-persona activas (con al menos una visita al tablero):
-   objetivo ≥ 50 % en las dos semanas de medición.
+1. **Semanas-persona con al menos un «Hecho»** sobre **semanas-persona con al menos una postulación abierta** (no
+   cerrada ni `accepted` en algún momento de esa semana; sale de `applications`, no de visitas, que no se registran):
+   objetivo ≥ 50 % en las dos semanas de medición. Se reporta también el **número absoluto** de semanas-persona con
+   algún «Hecho»: con 3-5 personas un porcentaje solo engaña.
 2. **«Hecho» frente a «Ocultar sugerencia»** (`done` vs `dismissed`) por regla: si `dismissed` supera a `done` en una
    regla, esa regla se revisa.
-3. Ambas se leen de `weekly_plan_decisions` **antes de que venza el TTL** de 35 días (consulta agregada en el RUNBOOK,
-   tarea 9.4), sin `userId` en el resultado.
+3. Numeradores de `weekly_plan_decisions` **antes de que venza el TTL** de 35 días y denominador de `applications`
+   (consultas agregadas en el RUNBOOK, tarea 9.4), sin `userId` en el resultado.
 4. **Pregunta directa** a cada invitado a las 2 semanas: «¿"Tu semana" te ayudó a decidir qué hacer? ¿Qué le
    sacarías o agregarías?», anotada en el informe de 35b.
 
@@ -435,6 +441,25 @@ Participaron `critic` y `business`; la sesión principal actuó como `reflect`. 
 | Q2-Q4 | arquitecto | aceptado | TTL de 35 días, umbrales como constantes de `libs/shared`, fila 38 renumerable. |
 
 Q5: tuteo (reflect, 2026-11-25). No queda ninguna pregunta abierta tras la iteración 1.
+
+## Debate iteración 2 (2026-11-25)
+
+Participaron `critic` y `business`; la sesión principal actuó como `reflect`. Ningún hallazgo nuevo es P0; el único V0
+(B3') queda resuelto con la decisión de esta tabla.
+
+| id | origen | decisión | motivo |
+|---|---|---|---|
+| B3' | business (V0) | aceptado | El denominador de la métrica 1 pasa a semanas-persona con al menos una postulación abierta, que sale de `applications` (las visitas no se registran); se reporta además el número absoluto de semanas-persona con algún «Hecho». Consultas en el RUNBOOK (tarea 9.4). |
+| B8 | business | aceptado | «Completaste N acciones esta semana.» con singular («Completaste 1 acción esta semana.») y EN («You completed N actions / 1 action this week.»); escenario en `web/weekly-plan`, test en 7.2b. |
+| B9 | business | aceptado | La línea fija del vacío termina en «…conozca a alguien en una de tus ofertas.» (EN «…knows someone at one of your offers.»). |
+| B10 | business | aceptado | El RUNBOOK dice que una sugerencia oculta vuelve a los 35 días si sigue aplicando (tarea 9.4). |
+| N1 | critic | aceptado | En 7.2a y 7.4, un `describe` EN que carga `messages.en.xlf` con `loadTranslations` y afirma los textos exactos; queda en verde tras 7.6. |
+| N2 | critic | aceptado | `listActive(userId, now)` filtra `decidedAt ≥ now − 35 días` con el reloj inyectado, sin depender del monitor TTL; escenario «La sugerencia oculta vuelve a los 35 días» y test «dismissed reappears after 35 days» (4.1, 4.6b). |
+| N3 | critic | aceptado | 6.1 fija `expiresAt` = `deps.now` (UTC) + 3 días. |
+| N4 | critic | aceptado | La recarga del plan se engancha en `ApplicationMoves.move` al terminar bien (tablero y detalle); escenarios nuevos del detalle y del movimiento cancelado; 7.5 ajustada (D10). |
+| N5 | critic | aceptado | 2.2 partida en 2.2a (`apply_before_close` y tipos) y 2.2b (`follow_up`, `ask_know_someone`, cierre y prioridad). |
+
+Convergencia: SI
 
 ## Aprobación humana (2026-11-25)
 

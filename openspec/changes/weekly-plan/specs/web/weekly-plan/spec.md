@@ -13,9 +13,8 @@ Cada acción SHALL mostrar el nombre de la oferta (título, o `displayUrl` sin t
 línea y los botones «Hecho», «Ahora no» y «Ocultar sugerencia», cada uno con un área táctil de al menos 44 px de alto.
 La tarjeta SHALL tener estado de carga, estado vacío y estado de error con «Reintentar»; un error del plan NO SHALL
 impedir usar el tablero. El estado vacío SHALL mostrar «No hay nada urgente esta semana.», la línea fija «Aquí verás
-cuando una oferta guardada esté por cerrar, una postulación lleve 10 días sin novedades o alguien de tu grupo conozca a
-alguien.» (EN: «This is where you will see when a saved offer is about to close, an application has gone 10 days
-without news, or someone in your group knows someone there.») y, si `doneThisWeek` > 0, «Hiciste N esta semana.». Con
+cuando una oferta guardada esté por cerrar, una postulación lleve 10 días sin novedades o alguien de tu grupo conozca a alguien en una de tus ofertas.» (EN: «This is where you will see when a saved offer is about to close, an application has gone 10 days
+without news, or someone in your group knows someone at one of your offers.») y, si `doneThisWeek` > 0, «Completaste N acciones esta semana.» (singular: «Completaste 1 acción esta semana.»; EN: «You completed N actions this week.» / «You completed 1 action this week.»). Con
 el tablero vacío la tarjeta NO SHALL mostrarse. Todos los textos SHALL estar en el catálogo i18n en español e inglés.
 
 #### Scenario: Tres acciones visibles
@@ -31,14 +30,21 @@ el tablero vacío la tarjeta NO SHALL mostrarse. Todos los textos SHALL estar en
 - **WHEN** abre `/postulaciones`
 - **THEN** la tarjeta SHALL decir «No hay nada urgente esta semana.»
 - **AND** SHALL decir «Aquí verás cuando una oferta guardada esté por cerrar, una postulación lleve 10 días sin
-  novedades o alguien de tu grupo conozca a alguien.»
+  novedades o alguien de tu grupo conozca a alguien en una de tus ofertas.»
 
 #### Scenario: Vacío en inglés
 
 - **GIVEN** la interfaz en inglés y un plan sin acciones
 - **WHEN** Ana abre `/postulaciones`
 - **THEN** la tarjeta SHALL decir «This is where you will see when a saved offer is about to close, an application has
-  gone 10 days without news, or someone in your group knows someone there.»
+  gone 10 days without news, or someone in your group knows someone at one of your offers.»
+
+#### Scenario: Acciones completadas
+
+- **GIVEN** un plan sin acciones con `doneThisWeek` 1, y después otro con `doneThisWeek` 3
+- **WHEN** Ana ve la tarjeta en español y luego en inglés
+- **THEN** SHALL leer «Completaste 1 acción esta semana.» y «Completaste 3 acciones esta semana.»
+- **AND** en inglés «You completed 1 action this week.» y «You completed 3 actions this week.»
 
 #### Scenario: Error del plan
 
@@ -97,7 +103,8 @@ plan sin mostrar error; ante cualquier otro error SHALL mostrar «No pudimos gua
 volver a habilitar los botones. El enlace del nombre de la oferta SHALL abrir el detalle de la postulación en el
 tablero, salvo en `ask_know_someone`, donde SHALL navegar a `/grupos/:groupId`. Tras «Hecho» en una acción
 `apply_before_close`, la tarjeta SHALL mostrar «¿Ya postulaste? Muévela a Postulada» con un enlace que abre el detalle de
-esa postulación, sin cambiar su estado. Tras mover una postulación de columna con éxito, el SPA SHALL recargar el plan.
+esa postulación, sin cambiar su estado. Cada cambio de estado que termine bien por el camino común de mover una postulación (tablero o detalle) SHALL
+recargar el plan; uno cancelado o fallido NO SHALL recargarlo.
 Ningún control de la tarjeta SHALL abrir la oferta externa, enviar mensajes ni cambiar el estado de una postulación.
 
 #### Scenario: Marcar hecho
@@ -138,6 +145,18 @@ Ningún control de la tarjeta SHALL abrir la oferta externa, enviar mensajes ni 
 - **GIVEN** una acción `apply_before_close` de una postulación `saved`
 - **WHEN** Ana la mueve a la columna Postulada y el cambio responde con éxito
 - **THEN** el SPA SHALL pedir de nuevo el plan
+
+#### Scenario: Cambiar el estado desde el detalle recarga el plan
+
+- **GIVEN** el detalle de una postulación abierto desde «¿Ya postulaste? Muévela a Postulada»
+- **WHEN** Ana cambia su estado a Postulada y el cambio responde con éxito
+- **THEN** el SPA SHALL pedir de nuevo el plan
+
+#### Scenario: Movimiento cancelado no recarga
+
+- **GIVEN** la tarjeta con un plan cargado
+- **WHEN** Ana empieza a mover una postulación y cancela la pregunta de la fecha
+- **THEN** el SPA NO SHALL pedir de nuevo el plan
 
 #### Scenario: Abrir quien conoce a alguien
 
