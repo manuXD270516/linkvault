@@ -58,7 +58,7 @@ atrasa, el grupo 3 (H3) es el primer recorte (PO-4).
 
 ## 2. H2 — verificar el email quita el aviso sin recargar (design D3)
 
-- [ ] 2.1 [frontend] **Esperar a la restauración.** Primero, en `apps/web/src/app/features/auth/verify-email.page.spec.ts`,
+- [x] 2.1 [frontend] **Esperar a la restauración.** Primero, en `apps/web/src/app/features/auth/verify-email.page.spec.ts`,
   un `describe` anidado con su propio `TestBed` (sin el `store.clear()` del `beforeEach` exterior, así que la sesión
   arranca en `unknown`) y `SessionRestore` sustituido por `{ provide: SessionRestore, useValue: { restore: () => … } }`
   con una promesa controlable (P2-2). Casos:
@@ -77,7 +77,8 @@ atrasa, el grupo 3 (H3) es el primer recorte (PO-4).
   de fijar cualquier fase y de mirar `isAuthenticated()`. Verificar: `pnpm nx run web:test
   --include="**/verify-email.page.spec.ts" --skip-nx-cache` en verde, con los casos existentes intactos. Falsación:
   quitar `restore()` de la espera y ver caer el primer y el tercer caso; restaurar.
-- [ ] 2.2 [frontend] **El perfil falla después de verificar (P1-2).** Primero, en el mismo spec:
+  **Estado (2026-11-25):** Antes del arreglo cayeron «La verificación responde antes que la restauración de la sesión» (no había GET /api/users/me: «Expected one matching request … found none») y «Enlace inválido mientras se restaura la sesión» (la página ya pintaba el enlace no válido y la pista de invitados); «Sin sesión tras la restauración» pasó antes (guardia). Los tres van en un describe anidado que rehace el TestBed con SessionRestore por useValue. Con Promise.allSettled([verifyEmail, restore()]): spec 12/12. Falsación: sustituir restore() por Promise.resolve() hace caer el primero y el tercero (2 failed | 10 passed); restaurado.
+- [x] 2.2 [frontend] **El perfil falla después de verificar (P1-2).** Primero, en el mismo spec:
   - «El perfil falla después de verificar»: con sesión, `POST` con éxito y `GET /api/users/me` con `500`; se espera
     «Email verificado», `store.user()?.emailVerified === true`, `store.needsEmailVerification()` en `false` y ningún
     `[role="alert"]`;
@@ -91,6 +92,7 @@ atrasa, el grupo 3 (H3) es el primer recorte (PO-4).
   «Enlace inválido» y el de error genérico de la verificación, y `pnpm nx run web:typecheck`. Falsación: dejar que el
   fallo del perfil llegue al `catch` común y ver caer los dos casos; quitar la comprobación de `null` (con un cast) y
   ver caer el segundo; restaurar.
+  **Estado (2026-11-25):** Antes cayeron «El perfil falla después de verificar» y «el perfil responde 401 y el refresh falla…» (no llegaban a «Email verificado»; fase error). Con refreshProfile() aparte (setUser solo si hay usuario): spec 12/12 y web:typecheck en verde. Falsación: dejar propagar el fallo del perfil hace caer los dos casos (2 failed | 10 passed); quitar la comprobación de null con cast hace caer solo el de 401 (1 failed | 11 passed); restaurado. En el de 401 se sustituye router.navigate por un mock para que el interceptor no saque la página de /verificar-email.
 
 ## 3. H3 — los avisos de la contraseña no se superponen (design D4)
 
