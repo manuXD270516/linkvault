@@ -1,8 +1,10 @@
 import {
+  groupWeeklyBriefResponseSchema,
   listGroupLinksQuerySchema,
   setGroupLinkPinnedRequestSchema,
   setGroupLinkTagsRequestSchema,
   setKnowSomeoneRequestSchema,
+  type GroupWeeklyBriefResponse,
   type LinkPage,
   type ListGroupLinksQuery,
   type PublicShare,
@@ -27,6 +29,7 @@ import {
 import type { AuthenticatedUser } from '../../../presentation/http/auth-context/authenticated-user';
 import { CurrentUser } from '../../../presentation/http/auth-context/current-user.decorator';
 import { ZodValidationPipe } from '../../../presentation/http/zod-validation.pipe';
+import { GetGroupWeeklyBrief } from '../application/get-group-weekly-brief.usecase';
 import { ListGroupLinks } from '../application/list-group-links.usecase';
 import { PublishGroupLink } from '../application/publish-group-link.usecase';
 import { RemoveGroupLink } from '../application/remove-group-link.usecase';
@@ -47,6 +50,7 @@ import { UnpublishGroupLink } from '../application/unpublish-group-link.usecase'
 export class GroupLinksController {
   constructor(
     private readonly listGroupLinks: ListGroupLinks,
+    private readonly getGroupWeeklyBrief: GetGroupWeeklyBrief,
     private readonly removeGroupLink: RemoveGroupLink,
     private readonly removeShareNote: RemoveShareNote,
     private readonly publishGroupLink: PublishGroupLink,
@@ -64,6 +68,17 @@ export class GroupLinksController {
     query: ListGroupLinksQuery,
   ): Promise<LinkPage> {
     return this.listGroupLinks.execute(user.userId, groupId, query);
+  }
+
+  /** «La semana del grupo»: lo calculado por el worker, solo lectura (design D8 de group-weekly-brief). */
+  @Get(':id/weekly-brief')
+  async weeklyBrief(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') groupId: string,
+  ): Promise<GroupWeeklyBriefResponse> {
+    return groupWeeklyBriefResponseSchema.parse(
+      await this.getGroupWeeklyBrief.execute(user.userId, groupId),
+    );
   }
 
   @Delete(':id/links/:linkId')

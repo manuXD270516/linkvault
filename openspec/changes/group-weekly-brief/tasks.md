@@ -175,32 +175,38 @@ Todo en `group-brief/domain/`, puro, sin `@nestjs/*`, `mongoose` ni `bullmq`.
 
 ## 4. Lectura en la api y borrado de grupo (design D8, D11)
 
-- [ ] 4.1 [backend] `links/application/ports/group-weekly-brief-reader.port.ts` (`GROUP_WEEKLY_BRIEF_READER`,
+- [x] 4.1 [backend] `links/application/ports/group-weekly-brief-reader.port.ts` (`GROUP_WEEKLY_BRIEF_READER`,
   `findCurrent(groupId, weekKey)`), `InMemoryGroupWeeklyBriefReader` en `application/testing/` y
   `links/infrastructure/mongo-group-weekly-brief.reader.ts` con `fromDocument(doc)` + zod (H1; colección cruda, sin
   `autoIndex`). Verificar en `mongo-group-weekly-brief.reader.spec.ts`: «reads the canonical EJSON fixture written by
   the worker store» (mismo fixture y mismo `workspaceRoot()` que 3.2, `EJSON.parse(..., { relaxed: false })`, N6), «returns invalid for a document that fails the schema» y «malformed group
   id returns null without query».
-- [ ] 4.2 [backend] `links/application/get-group-weekly-brief.usecase.ts` (D8: `membershipOf` de la fachada de `groups`,
+  Estado (2026-11-25): group-weekly-brief-reader.port.ts (GROUP_WEEKLY_BRIEF_READER, findCurrent), InMemoryGroupWeeklyBriefReader en application/testing/ y mongo-group-weekly-brief.reader.ts (fromDocument + zod, colección cruda); mongo-group-weekly-brief.reader.spec.ts: «reads the canonical EJSON fixture written by the worker store» (mismo fixture y workspaceRoot() de @linkvault/testing que el worker), «returns invalid for a document that fails the schema», «malformed group id returns null without query» y «does not fall back to another week» en verde; falsación: sin convertir computedAt a ISO falla «reads the canonical EJSON fixture written by the worker store»; restaurado.
+- [x] 4.2 [backend] `links/application/get-group-weekly-brief.usecase.ts` (D8: `membershipOf` de la fachada de `groups`,
   H11; `isoWeekKey` con `LINKS_CLOCK`; evaluador; ofertas que siguen en el grupo; `offers`/`moreCount`/`missingCount`; `expiresAt` solo en las ofertas de
   `closing_soon`, R2-2).
   Verificar con `get-group-weekly-brief.usecase.spec.ts`: «member gets the brief with offers», «no brief this week
   returns null even if last week exists», «stranger gets group_not_found», «closing offers carry expiresAt and others do not», «offer removed from the group counts as
   missing», «more than ten offers yields moreCount» y «corrupt document returns null».
-- [ ] 4.3 [backend] Depende de 4.2. Lecturas fijas y solo lectura. Verificar en `get-group-weekly-brief.usecase.spec.ts`:
+  Estado (2026-11-25): get-group-weekly-brief.usecase.ts (GetGroupWeeklyBrief): membershipOf, isoWeekKey con LINKS_CLOCK, verifyGroupWeeklyBrief, linkIdsIn + planCardsOf del repositorio de links existentes, offers/moreCount/missingCount y expiresAt solo en closing_soon; 7 escenarios de la tarea + «a brief that fails the verifier returns null» en verde.
+- [x] 4.3 [backend] Depende de 4.2. Lecturas fijas y solo lectura. Verificar en `get-group-weekly-brief.usecase.spec.ts`:
   «same number of reads for 1 bullet and 4 bullets of 40 offers» (contadores en los dobles) y «writes nothing».
   Falsación: resolver las fichas con una lectura por viñeta hace fallar el primero; se restaura.
-- [ ] 4.4 [backend] `@Get(':id/weekly-brief')` en `links/presentation/group-links.controller.ts`, respuesta validada
+  Estado (2026-11-25): get-group-weekly-brief.usecase.spec.ts: «same number of reads for 1 bullet and 4 bullets of 40 offers» (pertenencia, documento, relaciones y fichas = 4 lecturas en ambos casos, contadores en los dobles) y «writes nothing» en verde; falsación: una lectura de fichas por viñeta hace fallar el primero (5 lecturas contra 4); restaurado.
+- [x] 4.4 [backend] `@Get(':id/weekly-brief')` en `links/presentation/group-links.controller.ts`, respuesta validada
   contra `groupWeeklyBriefResponseSchema`, y proveedores en `links.module.ts`. Verificar con
   `group-weekly-brief.controller.spec.ts`: «200 with brief for a member», «200 with brief null», «404 group_not_found
   for a stranger» y «404 for a malformed id».
-- [ ] 4.5a [backend] `links/infrastructure/group-weekly-brief-deletion.hook.ts` (`GroupWeeklyBriefDeletionHook`, H9),
+  Estado (2026-11-25): @Get(':id/weekly-brief') en group-links.controller.ts (respuesta validada con groupWeeklyBriefResponseSchema) y proveedores GROUP_WEEKLY_BRIEF_READER y GetGroupWeeklyBrief en links.module.ts; group-weekly-brief.controller.spec.ts (app HTTP real): «200 with brief for a member», «200 with brief null», «404 group_not_found for a stranger» y «404 for a malformed id» en verde; falsación: ruta renombrada hace fallar los 4; restaurada.
+- [x] 4.5a [backend] `links/infrastructure/group-weekly-brief-deletion.hook.ts` (`GroupWeeklyBriefDeletionHook`, H9),
   registrado por `links` en `GroupDeletionHooks`, que borra `group_weekly_briefs` con `{ groupId }` en la misma sesión.
   Verificar en `group-weekly-brief-deletion.spec.ts`: «deleting a group removes its weekly briefs», «other groups keep
   their briefs» y «failing brief cleanup rolls back the whole deletion». Falsación: no registrar el hook hace fallar el
   primero; se restaura.
-- [ ] 4.5b [backend] Borrado de cuenta. Verificar en el spec de la cascada de `users`: «account deletion leaves group
+  Estado (2026-11-25): group-weekly-brief-deletion.hook.ts (GroupWeeklyBriefDeletionHook) registrado por LinksModule en GroupDeletionHooks, borra group_weekly_briefs {groupId} con la sesión de la transacción; group-weekly-brief-deletion.spec.ts: «deleting a group removes its weekly briefs», «other groups keep their briefs» y «failing brief cleanup rolls back the whole deletion» en verde; falsación: sin registrar el hook fallan los tres; restaurado.
+- [x] 4.5b [backend] Borrado de cuenta. Verificar en el spec de la cascada de `users`: «account deletion leaves group
   weekly briefs untouched» (Ana, miembro que no es dueña, con la semana de su grupo guardada).
+  Estado (2026-11-25): account-deletion.cascade.spec.ts: «account deletion leaves group weekly briefs untouched» (Ana miembro no dueña de un grupo con su semana guardada; DELETE /api/users/me da 204, la semana y el grupo siguen) en verde. Es un test de guarda: no hay código nuevo en la cascada de cuenta que romper, así que la falsación consiste en que ningún hook de usuario toca group_weekly_briefs (verificado con grep en users/).
 
 ## 5. Seed demo (design D12, spec `platform/demo-seed`)
 

@@ -25,6 +25,7 @@ import { DeliverLinkEnriched } from '../application/deliver-link-enriched.usecas
 import { GetPublicPreview } from '../application/get-public-preview.usecase';
 import { ImportLinks } from '../application/import-links.usecase';
 import { ListGroupLinkComments } from '../application/list-group-link-comments.usecase';
+import { GetGroupWeeklyBrief } from '../application/get-group-weekly-brief.usecase';
 import { ListGroupLinks } from '../application/list-group-links.usecase';
 import { LinksFacade } from '../application/links.facade';
 import { ListMyLinks } from '../application/list-my-links.usecase';
@@ -37,6 +38,7 @@ import { ENRICHMENT_NOTICES } from '../application/ports/enrichment-notices.port
 import { GROUP_LINK_COMMENT_REPOSITORY } from '../application/ports/group-link-comment-repository.port';
 import { GROUP_LINK_REPOSITORY } from '../application/ports/group-link-repository.port';
 import { GROUP_MEMBERSHIP } from '../application/ports/group-membership.port';
+import { GROUP_WEEKLY_BRIEF_READER } from '../application/ports/group-weekly-brief-reader.port';
 import { JOB_LINK_REPOSITORY } from '../application/ports/job-link-repository.port';
 import { LINK_LIMITER } from '../application/ports/link-limiter.port';
 import {
@@ -63,6 +65,8 @@ import { SetGroupLinkTags } from '../application/set-group-link-tags.usecase';
 import { SetGroupLinkPinned } from '../application/set-group-link-pinned.usecase';
 import { UpdateLinkPreview } from '../application/update-link-preview.usecase';
 import { GroupLinksDeletionHook } from '../infrastructure/group-links-deletion.hook';
+import { GroupWeeklyBriefDeletionHook } from '../infrastructure/group-weekly-brief-deletion.hook';
+import { MongoGroupWeeklyBriefReader } from '../infrastructure/mongo-group-weekly-brief.reader';
 import { CommentsChangedSubscription } from '../infrastructure/comments-changed.subscription';
 import { CounterLinkLimiter } from '../infrastructure/counter-link-limiter';
 import { EventStreamCommentsBroadcaster } from '../infrastructure/event-stream-comments-broadcaster';
@@ -205,11 +209,16 @@ import { PublicPreviewsController } from './public-previews.controller';
       useFactory: (client: Redis) => new RedisCommentsChangedPublisher(client),
     },
     { provide: LINKS_CLOCK, useClass: SystemClock },
+    {
+      provide: GROUP_WEEKLY_BRIEF_READER,
+      useClass: MongoGroupWeeklyBriefReader,
+    },
     PublicRouteLogger,
     SaveLink,
     PasteDescription,
     ImportLinks,
     ListGroupLinks,
+    GetGroupWeeklyBrief,
     ListMyLinks,
     RemoveGroupLink,
     RemoveMyLink,
@@ -233,6 +242,7 @@ import { PublicPreviewsController } from './public-previews.controller';
     BackfillEnrichment,
     BackfillSalaryParse,
     GroupLinksDeletionHook,
+    GroupWeeklyBriefDeletionHook,
     LinksFacade,
   ],
   exports: [LinksFacade, REDIS_SUBSCRIBER_CLIENT],
@@ -249,16 +259,21 @@ export class LinksModule implements OnModuleInit {
   ): DynamicModule {
     return {
       module: LinksModule,
-      imports: [aiModule, ...(searchModule === undefined ? [] : [searchModule])],
+      imports: [
+        aiModule,
+        ...(searchModule === undefined ? [] : [searchModule]),
+      ],
     };
   }
 
   constructor(
     private readonly deletionHooks: GroupDeletionHooks,
     private readonly groupLinksDeletion: GroupLinksDeletionHook,
+    private readonly groupBriefDeletion: GroupWeeklyBriefDeletionHook,
   ) {}
 
   onModuleInit(): void {
     this.deletionHooks.register(this.groupLinksDeletion);
+    this.deletionHooks.register(this.groupBriefDeletion);
   }
 }
