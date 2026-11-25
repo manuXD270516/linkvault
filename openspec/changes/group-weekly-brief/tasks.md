@@ -4,18 +4,21 @@ Cada tarea cabe en menos de una hora. Los títulos de test van en inglés y sale
 `apps/api` relativas a `apps/api/src/modules/` y de `apps/worker` relativas a `apps/worker/src/modules/`, salvo que se
 diga otra cosa. La ronda 1 del debate partió 3.7, 4.5 y 7.1 (H8).
 
-- [ ] 0.1 [infra] Debate critic/business/reflect de este change cerrado sin P0/V0 abiertos. Verificar: `design.md`
+- [x] 0.1 [infra] Debate critic/business/reflect de este change cerrado sin P0/V0 abiertos. Verificar: `design.md`
   lleva la última ronda del debate con «Convergencia: SI», P0 0 y V0 0, y las decisiones no triviales nuevas están en
   ADR-069.
-- [ ] 0.2 [infra] Aprobación humana registrada. Verificar: la sección `## Aprobación humana` de design tiene fecha, cita
+  Estado (2026-11-25): debate en dos rondas, «Convergencia: SI (2026-11-25, ronda 2: 0 P0 / 0 V0)» en design.md; ADR-069 con las decisiones.
+- [x] 0.2 [infra] Aprobación humana registrada. Verificar: la sección `## Aprobación humana` de design tiene fecha, cita
   literal del owner y alcance (apply en la rama, **no** la fusión). Falsación: si dijera que autoriza fusionar sin
   ventana, el revisor la rechaza.
-- [ ] 0.3 [infra] Plan y ADR coherentes. Verificar: `docs/design-v0.2.md` §6 tiene la fila `group-weekly-brief` como
+  Estado (2026-11-25): aprobación literal «Aprobado» del owner registrada en design.md con alcance apply sin fusión.
+- [x] 0.3 [infra] Plan y ADR coherentes. Verificar: `docs/design-v0.2.md` §6 tiene la fila `group-weekly-brief` como
   **Candidata**; `grep -c "group-weekly-brief" openspec-changes.yaml` = 0; `docs/adr/ADR-069.md` existe; `bash
   infra/ci/repo-checks.sh` y `openspec validate group-weekly-brief --strict --no-interactive` en verde.
 
 ## 1. Contrato y semana ISO en `libs/shared` (design D6, D7, D10)
 
+  Estado (2026-11-25): fila 39 candidata, 0 apariciones en `openspec-changes.yaml`, ADR-069 existe; validate y repo-checks en verde.
 - [ ] 1.1 [backend] `libs/shared/src/time/iso-week.ts` con `startOfIsoWeekUtc`, `isoWeekKey`, `previousWeekKey`,
   `nextWeekKey`, `startOfWeekKeyUtc`, `windowForWeekKey`, `previousClosedIsoWeek` e `isoWeekKeySchema` (H12), movidas
   de `worker/notifications/domain/iso-week.ts` y `api/applications/domain/weekly-plan/week-key.ts`, exportadas desde

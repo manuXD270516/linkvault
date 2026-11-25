@@ -570,6 +570,7 @@ Convergencia: SI (2026-11-25, ronda 2: 0 P0 / 0 V0)
 
 ## Aprobación humana
 
-Pendiente. El panel del 2026-11-25 propuso este corte; el owner todavía no autorizó el apply. La tarea 0.2 exige
-registrar aquí, con fecha, el pedido literal del owner y su alcance (apply en la rama `change/group-weekly-brief`, sin
-fusión salvo ventana abierta por el owner), igual que en `weekly-plan`.
+**Aprobado por el owner el 2026-11-25.** Cita literal: «Aprobado», en respuesta a la presentación del change tras
+«Convergencia: SI» (ronda 2), que pedía aprobar la spec y confirmar Q1 con la recomendación `true` por defecto.
+Alcance: apply en la rama `change/group-weekly-brief` y PR **sin fusionar**; la fusión solo con una ventana que abra el
+owner. Q1 queda en (a), `FEATURE_GROUP_BRIEF` en `true` por defecto, junto con Q2 (a), Q3 (a) y Q4 (fila 39), como resolvió el debate.
