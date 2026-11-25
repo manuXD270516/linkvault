@@ -22,18 +22,20 @@ que la misma persona acaba de leer, y H3 deja en pantalla un diagnóstico que ya
   `422` mientras la API y la spec `cv/match` responden `409`, así que los cuatro caen en «No pudimos analizar ahora.»;
   el arreglo devuelve también «Pegar la descripción» (`job_not_ready`) y los dos estados de CV en lectura o ilegible,
   que tenían el mismo defecto aunque la guía no los recorrió.
-- **H1, sin CV desde que se abre (design D2).** Si la lista de CV ya cargó y está vacía, el diálogo abre directamente
-  en el estado «Necesitas un CV guardado para analizar tu encaje.» con «Subir mi CV», sin ofrecer «Analizar» y sin
-  llamar a la API. Si la lista no se pudo cargar, «Analizar» sigue disponible y el `409 no_cv` lleva al mismo estado.
+- **H1, sin CV desde que se abre (design D2).** Si la lista de CV ya cargó y está vacía, y no hay informe ni fallo de
+  la API en pantalla, el diálogo abre directamente en el estado «Necesitas un CV guardado para analizar tu encaje.»
+  con «Subir mi CV», sin ofrecer «Analizar», sin la línea de por dónde saldría el CV y sin llamar a la API. Si la
+  lista no se pudo cargar, «Analizar» sigue disponible y el `409 no_cv` lleva al mismo estado.
 - **H2 (design D3).** `/verificar-email` espera a que termine la restauración de la sesión que arrancó al cargar antes
-  de decidir si hay sesión, y solo entonces vuelve a pedir el perfil. Si esa petición del perfil falla tras una
-  verificación correcta, la página sigue diciendo «Email verificado» y el perfil en memoria pasa a `emailVerified`
-  `true`, en vez de mostrar un error.
+  de decidir si hay sesión (también cuando la verificación falla), y solo entonces vuelve a pedir el perfil. Si esa
+  petición del perfil falla tras una verificación correcta, la página sigue diciendo «Email verificado» y, si sigue
+  habiendo perfil en memoria, pasa a `emailVerified` `true`, en vez de mostrar un error.
 - **H3 (design D4).** Cada intento de cambiar la contraseña, válido o no, borra el resultado del intento anterior; y
   los dos campos de contraseña usan un subíndice que crece con su contenido (`subscriptSizing="dynamic"`), para que el
-  error de dos líneas empuje lo que viene detrás en vez de montarse encima.
-- **Sin textos nuevos.** No cambia ningún texto visible; solo se re-extrae `messages.xlf` porque se mueven líneas de
-  plantillas (ADR-050).
+  error de dos líneas empuje lo que viene detrás en vez de montarse encima. Si el apply se atrasa, H3 es lo primero
+  que se recorta (PO-4 del debate).
+- **Sin textos nuevos.** No cambia ningún texto visible. Se re-extrae `messages.xlf` y se commitea solo si cambian
+  números de línea (ADR-050).
 - **Guía de uso (design D6).** `tools/guia-de-uso/` se ajusta para que la próxima pasada compruebe M01, V03 y F03 con
   el comportamiento nuevo, y el README de la guía anota los tres hallazgos como corregidos por este change, pendientes
   de comprobar en esa pasada.
@@ -55,7 +57,7 @@ Ninguna.
 
 - **Código:** solo `apps/web`: `features/match/match.dialog.ts` (y su spec), `core/api/api-error.ts` (un ayudante por
   código), `features/auth/verify-email.page.ts` (y su spec), `features/profile/profile.page.ts` y `.html` (y su spec),
-  `locale/messages.xlf` regenerado. `apps/api`, `apps/worker` y `libs/**` no cambian.
+  `locale/messages.xlf` si la re-extracción da diff. `apps/api`, `apps/worker` y `libs/**` no cambian.
 - **Contrato de la API:** ninguno. El SPA se alinea con el que ya está escrito en `cv/match` (`409`).
 - **Datos, dependencias, despliegue y CI:** ninguno.
 - **Herramientas y documentación:** `tools/guia-de-uso/capture.mts`, `meta.mts` y `build-guide.mts`;
@@ -76,5 +78,10 @@ Ninguna.
 - **H8 (no hay target para levantar la interfaz en inglés).** Es la fila 37 candidata (`web-english-locale`), que no se
   abre antes de cerrar la 35c.
 - H9 y H10 (pruebas) siguen en `e2e-suite-lot-2`.
+- **Riesgo conocido: el aviso en otra pestaña (PO-3 del debate).** Este change arregla la pestaña que abre el enlace
+  del correo. Quien se registró en una pestaña y abre el correo en otra nueva sigue viendo «Tu email aún no está
+  verificado…» en la primera hasta recargar: nada vuelve a pedir el perfil al recuperar el foco. El aviso no bloquea
+  nada. Si alguien lo reporta en 35b, se abre un change chico que vuelva a pedir el perfil al recuperar el foco
+  mientras `emailVerified` sea `false`.
 - Mover la tabla código → status de la API a `libs/shared` para que el SPA no pueda volver a divergir (design D1,
   alternativa C): toca la API y todos los códigos, y D1 ya quita la dependencia del status donde hizo daño.

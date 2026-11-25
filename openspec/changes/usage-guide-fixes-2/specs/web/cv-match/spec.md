@@ -11,11 +11,16 @@ acción:
 
 Ninguno de estos tres SHALL presentarse como una avería, y ninguno SHALL dejar el diálogo sin salida.
 
-Cuando el diálogo ya sabe al abrirse que la persona no tiene ningún CV —la lista de sus CV se cargó y está vacía—,
-SHALL mostrar directamente el estado de `no_cv`, con **"Subir mi CV"**, sin ofrecer **"Analizar"** y sin pedir nada a
-la API de análisis. Ese estado SHALL tener prioridad sobre los del permiso ("Comprobando el permiso…" y "No pudimos
-comprobar si diste permiso…"): sin CV no hay nada que enviar. Si la lista de CV no se pudo cargar, el diálogo NO SHALL
-suponer que falta: SHALL ofrecer "Analizar" como siempre, y un `no_cv` de la API SHALL llevar al mismo estado.
+Cuando el diálogo ya sabe al abrirse que la persona no tiene ningún CV —la lista de sus CV se cargó y está vacía— y
+no hay en pantalla ni un informe ni un fallo devuelto por la API, SHALL mostrar directamente el estado de `no_cv`, con
+**"Subir mi CV"**, sin ofrecer **"Analizar"** y sin pedir nada a la API de análisis. Ese estado SHALL tener prioridad
+sobre los del permiso ("Comprobando el permiso…" y "No pudimos comprobar si diste permiso…"): sin CV no hay nada que
+enviar. NO SHALL tapar un informe ni un fallo de la API ya mostrados. Si la lista de CV no se pudo cargar, el diálogo
+NO SHALL suponer que falta: SHALL ofrecer "Analizar" como siempre, y un `no_cv` de la API SHALL llevar al mismo estado.
+
+En el estado de `no_cv`, venga de la lista vacía o de la API, el diálogo NO SHALL mostrar la línea que dice por dónde
+saldría el CV ("Se analizará con IA externa…" o "Se analizará dentro de LinkVault…"): sin CV no hay análisis que
+enrutar.
 
 #### Scenario: Sin CV
 
@@ -23,7 +28,14 @@ suponer que falta: SHALL ofrecer "Analizar" como siempre, y un `no_cv` de la API
 - **WHEN** abre "Analizar mi encaje" en una oferta de su grupo
 - **THEN** SHALL ver "Necesitas un CV guardado para analizar tu encaje." y la acción "Subir mi CV", que lleva a `/mi-cv`
 - **AND** NO SHALL ver "Analizar"
+- **AND** NO SHALL ver la línea de por dónde saldría el CV
 - **AND** el SPA NO SHALL haber pedido ningún análisis
+
+#### Scenario: La lista se vacía con un informe en pantalla
+
+- **GIVEN** Ana con el informe de su encaje en pantalla
+- **WHEN** la lista de sus CV que el diálogo tiene cargada se queda vacía
+- **THEN** el diálogo SHALL seguir mostrando el informe y NO SHALL pasar al estado de `no_cv`
 
 #### Scenario: Sin CV y sin saber todavía el permiso
 
