@@ -147,12 +147,12 @@ Todo en `group-brief/domain/`, puro, sin `@nestjs/*`, `mongoose` ni `bullmq`.
   fromDocument» valida contra `groupWeeklyBriefSchema` y `verifyGroupWeeklyBrief`. Falsación: añadir `sharedBy` a la
   proyección de 3.4 hace fallar el test; se revierte.
   Estado (2026-11-25): compute-group-weekly-briefs.int.spec.ts (replset en memoria, adaptadores Mongo reales, monitorCommands): el documento guardado no contiene ids de Ana ni Beto, nombres, nota, etiqueta, comentario ni título; ningún commandStarted toca applications, users ni group_link_comments; «worker document reads back through fromDocument» valida con groupWeeklyBriefSchema y verifyGroupWeeklyBrief; falsación: sharedBy en la proyección de group_links hace fallar los tests (proyección y catálogo); restaurado.
-- [ ] 3.8 [backend] `FEATURE_GROUP_BRIEF` opcional en `worker-config.schema.ts` (`default('true')`, D2, H7) con su
+- [x] 3.8 [backend] `FEATURE_GROUP_BRIEF` opcional en `worker-config.schema.ts` (`default('true')`, D2, H7) con su
   comentario; `.env.example` gana la línea con un comentario que explica por qué este flag va encendido por defecto, al
   revés que el digest; `apps/worker/src/test-support/test-config.ts` lo fija. Verificar en `load-worker-config.spec.ts`:
   «FEATURE_GROUP_BRIEF defaults to true» y «FEATURE_GROUP_BRIEF false is parsed»; `bash infra/ci/repo-checks.sh` en
   verde (`compose-env-contract` no exige la variable porque es opcional).
-  Estado (2026-11-25): PARCIAL, queda abierta. Hecho: FEATURE_GROUP_BRIEF (default 'true') con su comentario en worker-config.schema.ts, fijado en test-config.ts y en load-worker-config.spec.ts; «FEATURE_GROUP_BRIEF defaults to true» y «FEATURE_GROUP_BRIEF false is parsed» en verde. Pendiente: la línea con su comentario en .env.example (el encargo me prohíbe leer .env*; la agrega quien tenga permiso) y correr infra/ci/repo-checks.sh.
+  Estado (2026-11-25): hecha. Hecho: FEATURE_GROUP_BRIEF (default 'true') con su comentario en worker-config.schema.ts, fijado en test-config.ts y en load-worker-config.spec.ts; «FEATURE_GROUP_BRIEF defaults to true» y «FEATURE_GROUP_BRIEF false is parsed» en verde. Completada por la sesión principal: `FEATURE_GROUP_BRIEF=true` con su comentario añadido al final de `.env.example` (sin leerlo) y `bash infra/ci/repo-checks.sh` en verde (5 comprobaciones).
 - [x] 3.9a [backend] `infrastructure/scheduling/group-brief.scheduler.ts`: `tick()` con guardia de solapamiento que
   **nunca relanza**. Verificar con `group-brief.scheduler.spec.ts`: «overlapping tick is skipped» y «tick error is
   logged and swallowed». Falsación: relanzar el error en el `catch` hace fallar el segundo; se restaura.
