@@ -14,9 +14,12 @@ otra cosa.
   Falsación: si la sección dijera que autoriza fusionar, el revisor la rechaza; ningún PR de esta rama se fusiona sin
   una ventana abierta por el owner. **Estado (2026-11-25):** hecha; la sección `## Aprobación humana (2026-11-25)`
   de design cita el pedido del owner y limita la autorización al apply en la rama, sin fusión.
-- [ ] 0.3 [infra] Plan y ADR coherentes. Verificar: `docs/design-v0.2.md` §6 tiene la fila `weekly-plan` como
+- [x] 0.3 [infra] Plan y ADR coherentes. Verificar: `docs/design-v0.2.md` §6 tiene la fila `weekly-plan` como
   **Candidata** y `grep -c "weekly-plan" openspec-changes.yaml` = 0; `docs/adr/ADR-068.md` existe; `bash
   infra/ci/repo-checks.sh` y `openspec validate weekly-plan --strict --no-interactive` en verde.
+  Estado (2026-11-25): fila 38 candidata en §6, 0 apariciones en `openspec-changes.yaml`, ADR-068 presente,
+  repo-checks rc=0 y `node node_modules/@fission-ai/openspec/bin/openspec.js validate weekly-plan --strict
+  --no-interactive` rc=0 («Change 'weekly-plan' is valid»).
 
 ## 1. Contrato en `libs/shared` (design D8)
 
