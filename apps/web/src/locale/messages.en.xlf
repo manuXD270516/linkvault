@@ -2757,6 +2757,122 @@
         <source>No se pudieron cargar tus grupos; puedes guardar en «Solo para mí».</source>
         <target>Could not load your groups; you can still save to “Just for me”.</target>
       </trans-unit>
+      <trans-unit id="applications.weeklyPlan.draft.fallbackTitle" datatype="html">
+        <source>la vacante</source>
+        <target>the position</target>
+      </trans-unit>
+      <trans-unit id="applications.weeklyPlan.draft.fallbackCompany" datatype="html">
+        <source>su empresa</source>
+        <target>your company</target>
+      </trans-unit>
+      <trans-unit id="applications.weeklyPlan.draft.greeting" datatype="html">
+        <source>Hola:</source>
+        <target>Hello,</target>
+      </trans-unit>
+      <trans-unit id="applications.weeklyPlan.draft.bodyUndated" datatype="html">
+        <source>Hace un tiempo me postulé a <x id="TITLE" equiv-text="title"/> en <x id="COMPANY" equiv-text="company"/>. Sigo con mucho interés en el puesto.</source>
+        <target>I applied for <x id="TITLE" equiv-text="title"/> at <x id="COMPANY" equiv-text="company"/> a while ago. I am still very interested in the role.</target>
+      </trans-unit>
+      <trans-unit id="applications.weeklyPlan.draft.bodyDated" datatype="html">
+        <source>Me postulé a <x id="TITLE" equiv-text="title"/> en <x id="COMPANY" equiv-text="company"/> el <x id="DATE" equiv-text="date"/>. Sigo con mucho interés en el puesto.</source>
+        <target>I applied for <x id="TITLE" equiv-text="title"/> at <x id="COMPANY" equiv-text="company"/> on <x id="DATE" equiv-text="date"/>. I am still very interested in the role.</target>
+      </trans-unit>
+      <trans-unit id="applications.weeklyPlan.draft.question" datatype="html">
+        <source>¿Me podrían contar en qué estado está el proceso de selección?</source>
+        <target>Could you tell me where the selection process currently stands?</target>
+      </trans-unit>
+      <trans-unit id="applications.weeklyPlan.title" datatype="html">
+        <source>Tu semana</source>
+        <target>Your week</target>
+      </trans-unit>
+      <trans-unit id="applications.weeklyPlan.error" datatype="html">
+        <source>No pudimos armar tu semana.</source>
+        <target>We could not put your week together.</target>
+      </trans-unit>
+      <trans-unit id="applications.weeklyPlan.retry" datatype="html">
+        <source> Reintentar </source>
+        <target>Retry</target>
+      </trans-unit>
+      <trans-unit id="applications.weeklyPlan.saveFailed" datatype="html">
+        <source> No pudimos guardar tu elección. Prueba de nuevo. </source>
+        <target>We could not save your choice. Try again.</target>
+      </trans-unit>
+      <trans-unit id="applications.weeklyPlan.movePrompt" datatype="html">
+        <source>¿Ya postulaste?</source>
+        <target>Already applied?</target>
+      </trans-unit>
+      <trans-unit id="applications.weeklyPlan.moveLink" datatype="html">
+        <source> Muévela a Postulada </source>
+        <target>Move it to Applied</target>
+      </trans-unit>
+      <trans-unit id="applications.weeklyPlan.empty" datatype="html">
+        <source>No hay nada urgente esta semana.</source>
+        <target>Nothing urgent this week.</target>
+      </trans-unit>
+      <trans-unit id="applications.weeklyPlan.emptyHint" datatype="html">
+        <source> Aquí verás cuando una oferta guardada esté por cerrar, una postulación lleve 10 días sin novedades o alguien de tu grupo conozca a alguien en una de tus ofertas. </source>
+        <target>This is where you will see when a saved offer is about to close, an application has gone 10 days without news, or someone in your group knows someone at one of your offers.</target>
+      </trans-unit>
+      <trans-unit id="applications.weeklyPlan.done" datatype="html">
+        <source> Hecho </source>
+        <target>Done</target>
+      </trans-unit>
+      <trans-unit id="applications.weeklyPlan.snooze" datatype="html">
+        <source> Ahora no </source>
+        <target>Not now</target>
+      </trans-unit>
+      <trans-unit id="applications.weeklyPlan.dismiss" datatype="html">
+        <source> Ocultar sugerencia </source>
+        <target>Hide suggestion</target>
+      </trans-unit>
+      <trans-unit id="applications.weeklyPlan.prepareFollowUp" datatype="html">
+        <source> Preparar seguimiento </source>
+        <target>Prepare follow-up</target>
+      </trans-unit>
+      <trans-unit id="applications.weeklyPlan.copy" datatype="html">
+        <source> Copiar </source>
+        <target>Copy</target>
+      </trans-unit>
+      <trans-unit id="applications.weeklyPlan.copied" datatype="html">
+        <source>Borrador copiado</source>
+        <target>Draft copied</target>
+      </trans-unit>
+      <trans-unit id="applications.weeklyPlan.doneOne" datatype="html">
+        <source>Completaste 1 acción esta semana.</source>
+        <target>You completed 1 action this week.</target>
+      </trans-unit>
+      <trans-unit id="applications.weeklyPlan.doneMany" datatype="html">
+        <source>Completaste <x id="COUNT" equiv-text="done"/> acciones esta semana.</source>
+        <target>You completed <x id="COUNT" equiv-text="done"/> actions this week.</target>
+      </trans-unit>
+      <trans-unit id="applications.weeklyPlan.reason.highFit" datatype="html">
+        <source>Encaja <x id="SCORE" equiv-text="reason.score"/>/100 según tu análisis: postula.</source>
+        <target>Fits <x id="SCORE" equiv-text="reason.score"/>/100 according to your analysis: apply.</target>
+      </trans-unit>
+      <trans-unit id="applications.weeklyPlan.reason.quiet" datatype="html">
+        <source><x id="DAYS" equiv-text="reason.daysQuiet"/> días sin novedades: manda un seguimiento.</source>
+        <target><x id="DAYS" equiv-text="reason.daysQuiet"/> days with no news: send a follow-up.</target>
+      </trans-unit>
+      <trans-unit id="applications.weeklyPlan.reason.knowSomeoneOne" datatype="html">
+        <source>1 persona de tu grupo conoce a alguien ahí: pregunta en el grupo.</source>
+        <target>1 person in your group knows someone there: ask in the group.</target>
+      </trans-unit>
+      <trans-unit id="applications.weeklyPlan.reason.knowSomeoneMany" datatype="html">
+        <source><x id="COUNT" equiv-text="reason.count"/> personas de tu grupo conocen a alguien ahí: pregunta en el grupo.</source>
+        <target><x id="COUNT" equiv-text="reason.count"/> people in your group know someone there: ask in the group.</target>
+      </trans-unit>
+      <trans-unit id="applications.weeklyPlan.reason.closesToday" datatype="html">
+        <source>Cierra hoy: postula hoy.</source>
+        <target>Closes today: apply today.</target>
+      </trans-unit>
+      <trans-unit id="applications.weeklyPlan.reason.closesInOneDay" datatype="html">
+        <source>Cierra en 1 día: postula antes.</source>
+        <target>Closes in 1 day: apply before then.</target>
+      </trans-unit>
+      <trans-unit id="applications.weeklyPlan.reason.closesInDays" datatype="html">
+        <source>Cierra en <x id="DAYS" equiv-text="daysLeft"/> días: postula antes.</source>
+        <target>Closes in <x id="DAYS" equiv-text="daysLeft"/> days: apply before then.</target>
+      </trans-unit>
   </body>
   </file>
 </xliff>

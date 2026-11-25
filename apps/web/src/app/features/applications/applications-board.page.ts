@@ -15,6 +15,7 @@ import {
   columnOf,
   columnTitle,
 } from './application-status.labels';
+import { WeeklyPlanCard } from './weekly-plan-card.component';
 
 /** Estado al que lleva soltar en cada columna; "Cerradas" pregunta cuál de los cierres. */
 const COLUMN_TARGET: Record<Exclude<BoardColumnId, 'closed'>, ApplicationStatus> = {
@@ -30,11 +31,21 @@ const COLUMN_TARGET: Record<Exclude<BoardColumnId, 'closed'>, ApplicationStatus>
  * solo cambia de columna cuando la API confirma: el arrastre no toca los datos, y si el cambio falla o se cancela, la
  * tarjeta vuelve sola a donde estaba. "Mover a…" es la misma operación sin ratón.
  *
+ * Encima de las columnas va la tarjeta «Tu semana» (plan semanal); un fallo suyo no impide mover postulaciones.
+ *
  * Query `applicationId` + `linkId` (desde insights stale): abre el detalle al cargar.
  */
 @Component({
   selector: 'lv-applications-board-page',
-  imports: [ApplicationCard, CdkDrag, CdkDropList, CdkDropListGroup, RequestError, RouterLink],
+  imports: [
+    ApplicationCard,
+    CdkDrag,
+    CdkDropList,
+    CdkDropListGroup,
+    RequestError,
+    RouterLink,
+    WeeklyPlanCard,
+  ],
   templateUrl: './applications-board.page.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -102,6 +113,14 @@ export class ApplicationsBoardPage {
       width: 'min(32rem, 100vw)',
       maxWidth: '100vw',
     });
+  }
+
+  /** Desde «Tu semana»: abre el detalle de la postulación si sigue en el tablero. */
+  protected openById(applicationId: string): void {
+    const application = this.store.applications().find((candidate) => candidate.id === applicationId);
+    if (application !== undefined) {
+      this.openDetail(application);
+    }
   }
 
   protected async dropped(event: CdkDragDrop<BoardColumnId, BoardColumnId, Application>): Promise<void> {

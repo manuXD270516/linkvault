@@ -147,28 +147,32 @@ otra cosa.
 
 ## 7. SPA (design D9, D10, spec `web/weekly-plan`)
 
-- [ ] 7.1 [frontend] `core/applications/weekly-plan.api.ts` (`get`, `decide`, tipos de `@linkvault/shared`) y
+- [x] 7.1 [frontend] `core/applications/weekly-plan.api.ts` (`get`, `decide`, tipos de `@linkvault/shared`) y
   `weekly-plan.store.ts` (`@ngrx/signals`: `loading | ready | error`, `plan`, `decidingId`, `saveFailed`,
   `justAppliedId`). Verificar en sus specs: «loads the plan», «exposes error and retries», «decide replaces the plan
   with the response», «decide disables only the deciding action», «a 404 on decide reloads the plan without error»
   y «another error on decide sets saveFailed and re-enables the action» (C4).
-- [ ] 7.2a [frontend] `features/applications/weekly-plan-reason.ts`: `weeklyPlanReasonText(reason)` con un mensaje
+  Estado (2026-11-25): hecho; `weekly-plan.store.spec.ts` en verde (los seis casos de la tarea). El 404 se reconoce comparando el `code` como texto en el store, sin depender del registro de `weekly_plan_action_not_found` en `ApiErrorCode` (tarea del backend).
+- [x] 7.2a [frontend] `features/applications/weekly-plan-reason.ts`: `weeklyPlanReasonText(reason)` con un mensaje
   `$localize` por variante, singular y plural elegidos en código (C9), con los textos de D10. Verificar en
   `weekly-plan-reason.spec.ts`: «closing today reads Cierra hoy», «closing in one day is singular», «closing in four
   days is plural», «high fit names the score», «quiet names the days» y «know someone is singular for one and plural
   for two». Además, un `describe('in English')` que carga `messages.en.xlf` con `loadTranslations` y afirma los
   textos EN exactos de D10 (N1); ese bloque queda en verde después de 7.6, que escribe las traducciones.
-- [ ] 7.2b [frontend] `features/applications/weekly-plan-card.component.{ts,html}`: estados cargando (`aria-busy`), vacío
+  Estado (2026-11-25): hecho; `weekly-plan-reason.spec.ts` en verde, incluido el `describe('in English')` tras 7.6.
+- [x] 7.2b [frontend] `features/applications/weekly-plan-card.component.{ts,html}`: estados cargando (`aria-busy`), vacío
   con las dos líneas fijas de B1 y `doneThisWeek`, error con «Reintentar» y «No pudimos guardar tu elección. Prueba de
   nuevo.». Verificar en `weekly-plan-card.component.spec.ts`: «renders three actions with their reasons», «renders the
   honest empty state with the explanation line ending in en una de tus ofertas» (B9), «renders Completaste 1 acción esta semana for one and the plural for three» (B8), «renders the error
   with retry», «renders the save failure message» y «uses the URL when there is no title».
-- [ ] 7.3 [frontend] Título como enlace «Abrir» (emite `applicationId` o navega a `/grupos/:groupId`), botones «Hecho»,
+  Estado (2026-11-25): hecho; `weekly-plan-card.component.spec.ts` en verde con los seis casos. Sin título, el enlace muestra `displayUrl` tal cual.
+- [x] 7.3 [frontend] Título como enlace «Abrir» (emite `applicationId` o navega a `/grupos/:groupId`), botones «Hecho»,
   «Ahora no», «Ocultar sugerencia» con `min-h-11` (B4) y la línea «¿Ya postulaste? Muévela a Postulada» tras «Hecho» en
   `apply_before_close` (B5). Verificar en el spec de la tarjeta: «done sends the done decision with its candidateId»,
   «not now sends snoozed and hide sends dismissed», «title opens the application», «title navigates to the group for
   ask_know_someone» y «done on apply_before_close offers to move it to applied without a status request».
-- [ ] 7.4 [frontend] `features/applications/follow-up-draft.ts` (función pura con `$localize`, texto exacto de D9) y su
+  Estado (2026-11-25): hecho; los cinco casos de la tarea en verde en el spec de la tarjeta (botones `min-h-11`; el enlace del título emite `applicationId` o navega a `/grupos/:groupId`).
+- [x] 7.4 [frontend] `features/applications/follow-up-draft.ts` (función pura con `$localize`, texto exacto de D9) y su
   panel con «Copiar» (CDK `Clipboard`) en acciones `follow_up`. Verificar en `follow-up-draft.spec.ts` y el spec de la
   tarjeta: «draft with appliedAt names title, company and date», «draft without appliedAt says a while ago», «draft
   falls back to generic words without title or company», «draft ends with the open question about the process»,
@@ -176,7 +180,8 @@ otra cosa.
   (`HttpTestingController.verify()` sin peticiones). Además, un `describe('in English')` en
   `follow-up-draft.spec.ts` que carga `messages.en.xlf` con `loadTranslations` y afirma las tres líneas EN exactas de D9,
   con y sin `appliedAt` (N1); en verde después de 7.6.
-- [ ] 7.5 [frontend] `applications-board.page.html`/`.ts`: la tarjeta encima de las columnas, fuera del
+  Estado (2026-11-25): hecho; `follow-up-draft.spec.ts` (ES y `in English`) y el spec de la tarjeta en verde; «Copiar» usa CDK `Clipboard` y `http.verify()` sin peticiones.
+- [x] 7.5 [frontend] `applications-board.page.html`/`.ts`: la tarjeta encima de las columnas, fuera del
   `@if (isEmpty())`, conectada a `openDetail`. La recarga del store del plan se engancha en
   `ApplicationMoves.move` (`application-moves.ts:58`) cuando el cambio termina bien, para el tablero y el detalle (N4).
   Verificar en `application-moves.spec.ts`: «a successful move reloads the weekly plan», «a status change from the
@@ -184,10 +189,12 @@ otra cosa.
   `applications-board.page.spec.ts`: «shows the weekly plan above the columns», «hides the weekly plan when the board is
   empty», «a weekly plan error still lets the user move an application» (mueve una tarjeta con el plan en error y
   comprueba la petición de estado).
-- [ ] 7.6 [frontend] i18n: `pnpm nx run web:extract-i18n` y traducciones `@@applications.weeklyPlan.*` en
+  Estado (2026-11-25): hecho; `application-moves.spec.ts` (3 casos), `applications-board.page.spec.ts` (3 casos) y un caso extra en `application-detail.dialog.spec.ts` en verde. `testing/auth-testing.ts` responde vacío al GET del plan en `flushPendingApplicationStates`.
+- [x] 7.6 [frontend] i18n: `pnpm nx run web:extract-i18n` y traducciones `@@applications.weeklyPlan.*` en
   `messages.en.xlf` con los textos EN de D9 y D10 (ADR-050). Verificar: `pnpm nx run web:i18n-check` en verde.
   Falsación: borrar una traducción inglesa nueva hace fallar el check; se restaura.
 
+  Estado (2026-11-25): hecho; `pnpm nx run web:extract-i18n` y 29 unidades `@@applications.weeklyPlan.*` traducidas en `messages.en.xlf`; `web:i18n-check` en verde y suite web completa en verde (94 ficheros, 1145 tests). Falsación: sin la unidad inglesa `applications.weeklyPlan.copied` falla `translations.spec.ts` («has exactly the units extracted…»); `i18n-check` por sí solo no mira el catálogo inglés. Restaurada.
 ## 8. E2E (Q1: datos propios en el perfil `local`)
 
 - [ ] 8.1a [frontend] `apps/web-e2e/src/weekly-plan.spec.ts`, solo perfil `local`, preparación y flujo de escritorio:

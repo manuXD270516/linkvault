@@ -159,6 +159,30 @@ describe('ApplicationDetailDialog', () => {
     expect(panel().querySelectorAll('[data-testid="detail-history"] li')).toHaveLength(4);
   });
 
+  it('a status change from the open panel reloads the weekly plan', async () => {
+    await openPanel();
+    // Al abrir el tablero ya se pidió el plan; se responde para que solo quede la recarga del cambio de estado.
+    http.expectOne('/api/applications/weekly-plan').flush({ weekKey: '2026-W48', planner: 'rules', actions: [], doneThisWeek: 0 });
+
+    panel().querySelector<HTMLButtonElement>('[data-testid="detail-edit-stage"]')?.click();
+    await refresh();
+    const stageDialog = containers().find((element) => element.querySelector('lv-stage-dialog'));
+    if (!stageDialog) {
+      throw new Error('Stage dialog not opened');
+    }
+    typeInto(stageDialog, '[data-testid="stage-input"]', 'Prueba técnica');
+    buttonWithText(stageDialog, 'Guardar').click();
+    (await vi.waitFor(() => http.expectOne(`/api/applications/${inProcess.id}/status`))).flush({
+      ...inProcess,
+      stageLabel: 'Prueba técnica',
+      version: 4,
+    });
+    (await vi.waitFor(() => http.expectOne(`/api/applications/${inProcess.id}/events`))).flush({ items: history });
+
+    const reload = await vi.waitFor(() => http.expectOne('/api/applications/weekly-plan'));
+    reload.flush({ weekKey: '2026-W48', planner: 'rules', actions: [], doneThisWeek: 0 });
+  });
+
   it('saves the note', async () => {
     await openPanel();
 

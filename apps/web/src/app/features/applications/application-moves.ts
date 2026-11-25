@@ -8,6 +8,7 @@ import {
   type StatusChange,
   isApplicationConflict,
 } from '../../core/applications/applications.store';
+import { WeeklyPlanStore } from '../../core/applications/weekly-plan.store';
 import { CLOSING_STATUSES, asksAppliedDate } from './application-status.labels';
 import { askAppliedDate } from './applied-date.dialog';
 import type { AppliedDateAnswer } from './applied-date-question.component';
@@ -38,6 +39,7 @@ export type MoveOutcome =
 export class ApplicationMoves {
   private readonly dialog = inject(MatDialog);
   private readonly store = inject(ApplicationsStore);
+  private readonly weeklyPlan = inject(WeeklyPlanStore);
 
   /** Soltar en "Cerradas": pregunta cuál de los tres cierres; `null` si se cancela. */
   async chooseClosing(): Promise<ApplicationStatus | null> {
@@ -70,7 +72,12 @@ export class ApplicationMoves {
         : change;
     try {
       const moved = await this.store.changeStatus(application, payload);
-      return moved === null ? { kind: 'gone' } : { kind: 'moved', application: moved };
+      if (moved === null) {
+        return { kind: 'gone' };
+      }
+      // El plan semanal depende del estado de las postulaciones: una movida a `applied` deja de ser "postula antes".
+      void this.weeklyPlan.load();
+      return { kind: 'moved', application: moved };
     } catch (error: unknown) {
       return isApplicationConflict(error)
         ? { kind: 'conflict' }

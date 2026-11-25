@@ -4,7 +4,7 @@ import { HttpTestingController, type TestRequest } from '@angular/common/http/te
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import type { Application } from '@linkvault/shared';
-import { applicationWith } from '../../../testing/applications-testing';
+import { applicationWith, weeklyPlanActionWith, weeklyPlanWith } from '../../../testing/applications-testing';
 import {
   apiError,
   buttonWithText,
@@ -423,6 +423,51 @@ describe('ApplicationsBoardPage', () => {
 
       expect(text()).not.toContain('Oferta l1');
       expect(host().querySelector('[role="alert"]')).toBeNull();
+    });
+  });
+
+  describe('weekly plan', () => {
+    const PLAN_URL = '/api/applications/weekly-plan';
+    const applied = applicationWith({ status: 'applied', appliedAt: daysAgoIso(2) });
+
+    it('shows the weekly plan above the columns', async () => {
+      await open([applied]);
+      http.expectOne({ method: 'GET', url: PLAN_URL }).flush(weeklyPlanWith([weeklyPlanActionWith()]));
+      await refresh();
+
+      const card = host().querySelector('[data-testid="weekly-plan"]');
+      const board = host().querySelector('[data-testid="board"]');
+      expect(card).not.toBeNull();
+      expect(board).not.toBeNull();
+      // La tarjeta precede al tablero en el documento.
+      expect(card && board && card.compareDocumentPosition(board) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(text(card as HTMLElement)).toContain('Cierra en 3 días: postula antes.');
+    });
+
+    it('hides the weekly plan when the board is empty', async () => {
+      await open([]);
+
+      expect(host().querySelector('[data-testid="weekly-plan"]')).toBeNull();
+      http.expectNone({ method: 'GET', url: PLAN_URL });
+    });
+
+    it('a weekly plan error still lets the user move an application', async () => {
+      await open([applied]);
+      const failure = apiError('internal_error', 500);
+      http.expectOne({ method: 'GET', url: PLAN_URL }).flush(failure.body, failure.options);
+      await refresh();
+      expect(text(host().querySelector('[data-testid="weekly-plan"]') as HTMLElement)).toContain(
+        'No pudimos armar tu semana.',
+      );
+      expect(host().querySelector('[data-testid="board"]')).not.toBeNull();
+
+      await drop(applied, 'applied', 'offer');
+
+      const request = await statusRequest();
+      expect(request.request.body).toEqual({ status: 'offer', version: 1 });
+      request.flush({ ...applied, status: 'offer', version: 2 });
+      await refresh();
+      http.expectOne({ method: 'GET', url: PLAN_URL }).flush(weeklyPlanWith());
     });
   });
 });

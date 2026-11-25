@@ -21,6 +21,10 @@
     <lv-request-error [failure]="currentFailure" />
   }
 
+  @if (loaded() && !isEmpty()) {
+    <lv-weekly-plan-card (open)="openById($event)" />
+  }
+
   @if (isEmpty()) {
     <div class="flex flex-col gap-2" data-testid="board-empty">
       <p i18n="@@applications.board.empty">

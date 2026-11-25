@@ -110,7 +110,7 @@ export function verifyNoPendingRequests(http: HttpTestingController): void {
 
 /**
  * Responde vacío a las peticiones de fondo que las pantallas disparan solas al pintar (estados de postulaciones
- * y listado BYOK del perfil). Los tests que no las ejercitan no tienen por qué responderlas a mano.
+ * listado BYOK del perfil y plan semanal). Los tests que no las ejercitan no tienen por qué responderlas a mano.
  */
 export function flushPendingApplicationStates(http: HttpTestingController): void {
   const pending = http.match(
@@ -118,12 +118,15 @@ export function flushPendingApplicationStates(http: HttpTestingController): void
       request.method === 'GET' &&
       (request.url === '/api/users/me/ai-keys' ||
         (request.url === '/api/applications' && request.params.has('linkIds')) ||
+        request.url === '/api/applications/weekly-plan' ||
         /^\/api\/groups\/[^/]+\/applications$/.test(request.url)),
   );
   for (const pendingRequest of pending) {
     if (!pendingRequest.cancelled) {
       if (pendingRequest.request.url === '/api/users/me/ai-keys') {
         pendingRequest.flush({ keys: [] });
+      } else if (pendingRequest.request.url === '/api/applications/weekly-plan') {
+        pendingRequest.flush({ weekKey: '2026-W48', planner: 'rules', actions: [], doneThisWeek: 0 });
       } else {
         pendingRequest.flush({ items: [] });
       }
