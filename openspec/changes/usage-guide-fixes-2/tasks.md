@@ -96,7 +96,7 @@ atrasa, el grupo 3 (H3) es el primer recorte (PO-4).
 
 ## 3. H3 — los avisos de la contraseña no se superponen (design D4)
 
-- [ ] 3.1 [frontend] **Cada intento borra el anterior.** Primero, en `apps/web/src/app/features/profile/profile.page.spec.ts`,
+- [x] 3.1 [frontend] **Cada intento borra el anterior.** Primero, en `apps/web/src/app/features/profile/profile.page.spec.ts`,
   «a client-invalid attempt clears the previous API error» (`401 invalid_credentials` → se ve «La contraseña actual no
   es correcta»; luego nueva `corta` y enviar: ese texto ya no está, se ve el error de longitud y
   `http.expectNone` de `POST /api/auth/password`), «a new attempt clears the previous success» (tras «Contraseña
@@ -105,12 +105,14 @@ atrasa, el grupo 3 (H3) es el primer recorte (PO-4).
   `passwordChanged.set(false)` antes de la comprobación de validez. Verificar: `pnpm nx run web:test
   --include="**/profile.page.spec.ts" --skip-nx-cache` en verde. Falsación: devolver los dos `set` a después del
   `return` del formulario inválido y ver caer los dos primeros; restaurar.
-- [ ] 3.2 [frontend] **Subíndice dinámico.** Primero, en el mismo spec, con `MatFormFieldModule` e `MatInputModule`
+  **Estado (2026-11-25):** Antes del arreglo cayeron «a client-invalid attempt clears the previous API error» y «a new attempt clears the previous success»; «editing a field does not clear the API error» pasó antes y después (guardia). Con los dos set antes de la comprobación de validez: profile.page.spec 38/38. Falsación: devolverlos tras el return hace caer los dos primeros (2 failed | 36 passed); restaurado.
+- [x] 3.2 [frontend] **Subíndice dinámico.** Primero, en el mismo spec, con `MatFormFieldModule` e `MatInputModule`
   reales, «both password fields use a dynamic subscript»: el subíndice de los dos `mat-form-field` de contraseña lleva
   `mat-mdc-form-field-subscript-dynamic-size` (sustituto aceptado de la geometría, como en `usage-guide-fixes` D10).
   Verlo caer y anotarlo. Después, `subscriptSizing="dynamic"` en los dos `mat-form-field` de contraseña de
   `profile.page.html`. Verificar: el spec entero en verde. Falsación: quitar el atributo de «Nueva contraseña» y ver
   caer el caso; restaurar.
+  **Estado (2026-11-25):** Antes cayó «both password fields use a dynamic subscript» (3 failed | 35 passed junto con los de 3.1). Con subscriptSizing="dynamic" en los dos mat-form-field: 38/38. Falsación: quitarlo de «Nueva contraseña» hace caer el caso (1 failed | 37 passed); restaurado. La geometría real no la calcula jsdom: se acepta la clase como sustituto (usage-guide-fixes D10) y la mira la 6.1 si la pila está libre.
 
 ## 4. Catálogo y comprobación global
 
