@@ -10,6 +10,7 @@ import { CvModule } from '../modules/cv/cv.module';
 import { EnrichmentModule } from '../modules/enrichment/enrichment.module';
 import { MatchModule } from '../modules/match/match.module';
 import { NotificationsModule } from '../modules/notifications/notifications.module';
+import { GroupBriefModule } from '../modules/group-brief/group-brief.module';
 import { FreshnessModule } from '../modules/freshness/freshness.module';
 import { SearchModule } from '../modules/search/search.module';
 import { HealthModule } from '../presentation/http/health.module';
@@ -46,6 +47,7 @@ export class AppModule {
         aiModule,
         searchModule,
         notificationsModule,
+        GroupBriefModule.register(config),
         freshnessModule,
         EnrichmentModule.register(config, aiModule, freshnessModule),
         CvModule.register(config, searchModule),

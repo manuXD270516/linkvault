@@ -40,6 +40,8 @@
             Pegar un chat
           </button>
         </div>
+        <!-- «La semana del grupo»: a todo el ancho y encima del listado, también en el móvil. Su error no toca nada más. -->
+        <lv-group-weekly-brief-card [groupId]="groupId" />
         <div class="flex flex-col gap-2" data-testid="group-link-filters">
           <mat-slide-toggle
             [checked]="pinnedOnly()"

@@ -50,6 +50,12 @@ export const DEMO_LINKS = {
       period: 'month' as const,
     },
     appStatus: 'applied' as const,
+    /** Habilidades del preview para «La semana del grupo» (D12 de group-weekly-brief). */
+    skills: [
+      { name: 'Docker', required: true },
+      { name: 'TypeScript', required: true },
+      { name: 'NestJS', required: true },
+    ],
   },
   closedRecheck: {
     url: 'https://demo.linkvault.local/jobs/frontend-closed',
@@ -81,6 +87,11 @@ export const DEMO_LINKS = {
     location: 'Remote LatAm',
     modality: 'remote' as const,
     appStatus: 'applied' as const,
+    /** Habilidades del preview para «La semana del grupo» (D12 de group-weekly-brief). */
+    skills: [
+      { name: 'Docker', required: true },
+      { name: 'Kotlin', required: true },
+    ],
     /** Días hacia atrás para `statusChangedAt` (≥11). */
     staleDays: 11,
   },
@@ -95,6 +106,12 @@ export const DEMO_LINKS = {
     location: 'Remote LatAm',
     modality: 'remote' as const,
     appStatus: 'saved' as const,
+    /** Habilidades del preview para «La semana del grupo» (D12 de group-weekly-brief). */
+    skills: [
+      { name: 'Docker', required: true },
+      { name: 'TypeScript', required: true },
+      { name: 'SQL', required: true },
+    ],
     expiresInDays: 3,
   },
 } as const;

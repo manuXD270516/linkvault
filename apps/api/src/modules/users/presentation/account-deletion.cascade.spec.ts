@@ -410,6 +410,36 @@ describe('DELETE /api/users/me account deletion cascade', () => {
     await expect(decisions.countDocuments({ userId: anaOid })).resolves.toBe(0);
   });
 
+  it('account deletion leaves group weekly briefs untouched', async () => {
+    // Ana es miembro (no dueña) de un grupo con su semana guardada: la semana es del grupo, no de ella.
+    const luis = await createUser('Luis Semana');
+    const ana = await createUser('Ana Semana');
+    const group = await createGroup.execute(luis.id, 'Con semana');
+    await groups.addMember({ groupId: group.id, userId: ana.id, now: NOW });
+    const briefs = db().collection('group_weekly_briefs');
+    await briefs.insertOne({
+      groupId: new Types.ObjectId(group.id),
+      weekKey: '2026-W48',
+      asOf: '2026-11-25',
+      computedAt: NOW,
+      version: 1,
+      scanTruncated: false,
+      facts: [],
+      bullets: [],
+    });
+    const auth = await authorizationFor(ana.id);
+
+    const response = await deleteMe(auth.authorization, PASSWORD);
+
+    expect(response.statusCode).toBe(204);
+    await expect(
+      briefs.countDocuments({ groupId: new Types.ObjectId(group.id) }),
+    ).resolves.toBe(1);
+    await expect(groups.findById(group.id)).resolves.toMatchObject({
+      id: group.id,
+    });
+  });
+
   it('returns 204 and cascades personal data', async () => {
     const ana = await createUser('Ana');
     const beto = await createUser('Beto');

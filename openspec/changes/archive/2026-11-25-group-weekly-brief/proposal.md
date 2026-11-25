@@ -1,0 +1,74 @@
+## Why
+
+El panel interno de nuevas features del 2026-11-25 dejó a **C3 `group-weekly-brief` («La semana del grupo»)** segunda,
+a 3 puntos de 250 de la ganadora (`weekly-plan`, ya fusionada y archivada con el PR #98), y los cinco jurados la
+propusieron como el corte siguiente. `weekly-plan` la dejó diseñada como su quinto corte (design archivado, «Cortes
+siguientes» §5).
+
+El problema: un grupo de 3 a 5 personas que comparte ofertas por LinkVault acumula decenas de links y nadie tiene el
+panorama. Los datos ya están en las ofertas —cuáles cierran pronto (`preview.expiresAt`), qué habilidades piden
+(`preview.skills`), cuándo entraron al grupo (`sharedAt`)— pero el listado del grupo los muestra de a uno, tarjeta por
+tarjeta. Una tarjeta con hasta 4 viñetas **verificadas** («Docker aparece en 4 de las 7 ofertas abiertas con habilidades detectadas», «2
+ofertas cierran hasta el lunes») le da al grupo de qué hablar sin que nadie tenga que contar a mano, y sin exponer nada
+de lo que cada miembro hace con esas ofertas.
+
+## What Changes
+
+- **Tabla de hechos por grupo y semana ISO UTC, calculada en el worker y actualizada cada día**: un tick a las 05:00
+  UTC y otro al arrancar el worker recalculan todos los grupos y escriben con `replaceOne` + `upsert` sobre la clave
+  única `(groupId, weekKey)`; el mismo día da el mismo documento y un segundo tick no escribe. Un día sin viñetas
+  borra la semana (la tarjeta muestra el vacío honesto); un rechazo del evaluador conserva la versión anterior. Colección nueva `group_weekly_briefs`, con TTL de 35 días.
+- **Solo datos de ofertas**: ofertas abiertas, las que cierran en los próximos 7 días (misma ventana que «Tu semana»),
+  habilidades más mencionadas y las que se compartieron la semana pasada. **Nunca** notas, comentarios, etiquetas,
+  «conozco a alguien», postulaciones ni nombres o identificadores de miembros. «No la sigue nadie» queda **fuera** por
+  privacidad (design D4).
+- **Viñetas por plantilla, sin LLM**: de 1 a 4, cada una cita un `factId` de la tabla; el texto lo arma el SPA con i18n
+  desde el hecho citado.
+- **Evaluador determinista** en `libs/shared` (`verifyGroupWeeklyBrief`): cada viñeta cita un hecho existente, los
+  conteos coinciden con sus listas de ofertas y los subconjuntos son coherentes. El worker no escribe una semana que no
+  lo pase y la api no sirve una que no lo pase.
+- **Documento de Mongo separado del contrato** (`ObjectId` y fecha BSON en Mongo; `fromDocument` en la api).
+- **Lectura en la api** (`GET /api/groups/:id/weekly-brief`): solo lee; para miembros; resuelve las ofertas de cada
+  viñeta que siguen en el grupo, en un número fijo de lecturas.
+- **Tarjeta «La semana del grupo»** en `/grupos/:id`, encima del listado de links: «Actualizada el {fecha}», número de
+  ofertas abiertas, viñetas y «Ver ofertas (N)» desplegable con enlaces a cada oferta; estados de carga, vacío y error;
+  móvil, 44 px e i18n ES/EN con tuteo.
+- **Borrar un grupo** se lleva sus semanas en la misma transacción (hook propio `GroupWeeklyBriefDeletionHook`).
+- **`isoWeekKey` e `isoWeekKeySchema` unificadas** en `libs/shared` (hoy duplicadas, R5 de `weekly-plan`).
+- **Seed demo**: habilidades en tres ofertas para que el grupo demo muestre al menos tres viñetas.
+- **Diseñado y fuera de las tareas** (design, «Cortes siguientes»): síntesis LLM `summarize-group-week` por `runTask`
+  que cita `factId` y pasa por el mismo evaluador, con tope de llamadas **en código**; el bloque en el correo del
+  `group-digest`; el ancla interna a la oferta en el listado del grupo; deltas contra la semana anterior.
+
+## Capabilities
+
+### New Capabilities
+
+- `groups/weekly-brief`: cálculo diario en el worker, tabla de hechos, viñetas, evaluador, documento de Mongo,
+  retención y lectura por la api.
+- `web/group-weekly-brief`: tarjeta «La semana del grupo» en el detalle del grupo, estados, textos ES/EN y enlaces a
+  las ofertas.
+
+### Modified Capabilities
+
+- `groups/group-management`: requirement nuevo, el borrado del grupo se lleva sus semanas.
+- `platform/demo-seed`: requirement nuevo, el grupo demo alimenta la semana del grupo con al menos tres viñetas.
+
+## Impact
+
+- `libs/shared`: `time/iso-week.ts` (movida, con `isoWeekKeySchema`), `schemas/group-weekly-brief.schema.ts`,
+  `group-weekly-brief/verify-group-weekly-brief.ts` y el fixture EJSON de `testing/`, exportados desde el índice.
+- `apps/worker`: módulo nuevo `group-brief` (dominio puro, caso de uso, catálogo Mongo de solo lectura, store con
+  documento propio, índices al arrancar, host `@Cron` y tick de arranque que no bloquea); flag opcional
+  `FEATURE_GROUP_BRIEF` con valor por defecto `true` (excepción escrita en ADR-069 §2); `notifications` importa
+  `isoWeekKey` de `libs/shared`.
+- `apps/api`: `links` (caso de uso y ruta de lectura, reader con `fromDocument`, hook de borrado propio);
+  `applications` importa `isoWeekKey` de `libs/shared`; `seed` (habilidades en tres links demo).
+- `apps/web`: `core/groups/group-weekly-brief.*` (API y store) y `features/groups/group-weekly-brief-card.*`; catálogo
+  i18n re-extraído y `messages.en.xlf`.
+- `apps/web-e2e`: `group-weekly-brief.spec.ts` (perfil `local`, semana escrita en Mongo por la prueba con upsert).
+- `.env.example` y `test-config.ts` del worker ganan la línea del flag. Sin cambios de despliegue, CI, compose,
+  variables obligatorias, `libs/ai` ni correo. Costo 0: lecturas de Mongo y como mucho una escritura por grupo y día.
+  ADR nuevo: **ADR-069**.
+- **Plan**: fila **candidata 39** en `docs/design-v0.2.md` §6; no está en `openspec-changes.yaml` y no se fusiona hasta
+  que el owner lo diga; no altera la precedencia de la fila 35.

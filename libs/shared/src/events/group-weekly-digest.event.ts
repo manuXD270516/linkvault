@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isoWeekKeySchema } from '../time/iso-week';
 
 // Digest semanal de grupo (change group-weekly-digest, ADR-035 enmienda B10).
 // Job raíz en worker (sin outbox): single-flight por weekKey ISO W−1.
@@ -16,9 +17,7 @@ export const GROUP_WEEKLY_DIGEST_TYPE = 'group_weekly_digest' as const;
 export const GROUP_DIGEST_MAX_TITLES = 10;
 
 /** weekKey ISO: `YYYY-Www` (semana cerrada W−1). */
-export const groupDigestWeekKeySchema = z
-  .string()
-  .regex(/^\d{4}-W\d{2}$/);
+export const groupDigestWeekKeySchema = isoWeekKeySchema;
 export type GroupDigestWeekKey = z.infer<typeof groupDigestWeekKeySchema>;
 
 export const groupDigestJobPayloadSchema = z.strictObject({

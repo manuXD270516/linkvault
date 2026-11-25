@@ -13,6 +13,7 @@ import {
   typeInto,
   verifyNoPendingRequests,
 } from '../../../testing/auth-testing';
+import { groupBriefResponse } from '../../../testing/group-brief-testing';
 import { SessionStore } from '../../core/auth/session.store';
 import { GroupsStore } from '../../core/groups/groups.store';
 import { LinksStore, type LinksScope } from '../../core/links/links.store';
@@ -345,6 +346,52 @@ describe('GroupDetailPage', () => {
     expect(text()).toContain('Sin vista previa todavía');
     // Un miembro que no es owner no puede quitar lo que compartió otro.
     expect(page().querySelector('[data-testid="link-remove"]')).toBeNull();
+  });
+
+  describe('La semana del grupo', () => {
+    const BRIEF_URL = `/api/groups/${memberDetail.id}/weekly-brief`;
+
+    it('renders the weekly brief above the link list', async () => {
+      await openDetail(memberDetail, members, [linkOfBeto]);
+      http.expectOne(BRIEF_URL).flush(groupBriefResponse());
+      await settle();
+      await harness.fixture.whenStable();
+
+      const card = page().querySelector('[data-testid="group-weekly-brief"]');
+      const list = page().querySelector('[data-testid="link-list"]');
+      expect(card).not.toBeNull();
+      expect(list).not.toBeNull();
+      expect(card?.textContent).toContain('La semana del grupo');
+      expect(card?.textContent).toContain('Actualizada el');
+      // La tarjeta precede al listado en el documento.
+      expect((card?.compareDocumentPosition(list as Node) ?? 0) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      // Y va debajo del formulario de guardar.
+      const form = page().querySelector('lv-save-link-form');
+      expect((form?.compareDocumentPosition(card as Node) ?? 0) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it('brief error does not block the link list or saving', async () => {
+      await openDetail(memberDetail, members, [linkOfBeto]);
+      http
+        .expectOne(BRIEF_URL)
+        .flush({ code: 'internal_error', message: 'boom' }, { status: 500, statusText: 'Internal Server Error' });
+      await settle();
+      await harness.fixture.whenStable();
+
+      expect(page().querySelector('[data-testid="group-weekly-brief-error"]')).not.toBeNull();
+      expect(text()).toContain('trabajo de analista de datos en acme');
+
+      typeInto(page(), 'lv-save-link-form input', 'https://www.linkedin.com/jobs/view/3999999999/');
+      await harness.fixture.whenStable();
+      buttonWithText(page(), 'Guardar').click();
+      const save = await vi.waitFor(() => http.expectOne({ method: 'POST', url: '/api/links' }));
+      expect(save.request.body).toEqual({
+        url: 'https://www.linkedin.com/jobs/view/3999999999/',
+        groupId: memberDetail.id,
+      });
+      save.flush(null, { status: 500, statusText: 'Error' });
+      await settle();
+    });
   });
 
   it('lets the owner remove any link of the group', async () => {
