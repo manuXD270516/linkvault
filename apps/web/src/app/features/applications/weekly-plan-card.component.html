@@ -1,0 +1,156 @@
+<section
+  class="flex flex-col gap-3 rounded border border-(--mat-sys-outline-variant) p-4"
+  aria-labelledby="weekly-plan-title"
+  data-testid="weekly-plan"
+>
+  <h2 class="text-lg font-medium" id="weekly-plan-title" i18n="@@applications.weeklyPlan.title">Tu semana</h2>
+
+  @switch (store.status()) {
+    @case ('loading') {
+      <div class="flex flex-col gap-2" aria-busy="true" data-testid="weekly-plan-loading">
+        @for (line of [1, 2, 3]; track line) {
+          <div class="h-5 animate-pulse rounded bg-(--mat-sys-surface-variant)"></div>
+        }
+      </div>
+    }
+    @case ('error') {
+      <div class="flex flex-wrap items-center gap-3" data-testid="weekly-plan-error">
+        <p role="alert" i18n="@@applications.weeklyPlan.error">No pudimos armar tu semana.</p>
+        <button
+          mat-stroked-button
+          type="button"
+          class="min-h-11"
+          (click)="retry()"
+          data-testid="weekly-plan-retry"
+          i18n="@@applications.weeklyPlan.retry"
+        >
+          Reintentar
+        </button>
+      </div>
+    }
+    @case ('ready') {
+      <div aria-live="polite" class="flex flex-col gap-3">
+        @if (store.saveFailed()) {
+          <p role="alert" class="text-(--mat-sys-error)" data-testid="weekly-plan-save-failed" i18n="@@applications.weeklyPlan.saveFailed">
+            No pudimos guardar tu elección. Prueba de nuevo.
+          </p>
+        }
+        @if (store.justAppliedId(); as appliedId) {
+          <p data-testid="weekly-plan-move-hint">
+            <span i18n="@@applications.weeklyPlan.movePrompt">¿Ya postulaste?</span>
+            {{ ' ' }}
+            <button
+              type="button"
+              class="min-h-11 underline"
+              (click)="openJustApplied(appliedId)"
+              data-testid="weekly-plan-move-link"
+              i18n="@@applications.weeklyPlan.moveLink"
+            >
+              Muévela a Postulada
+            </button>
+          </p>
+        }
+
+        @if (rows().length === 0) {
+          <div class="flex flex-col gap-1" data-testid="weekly-plan-empty">
+            <p class="font-medium" i18n="@@applications.weeklyPlan.empty">No hay nada urgente esta semana.</p>
+            <p class="text-sm" data-testid="weekly-plan-empty-hint" i18n="@@applications.weeklyPlan.emptyHint">
+              Aquí verás cuando una oferta guardada esté por cerrar, una postulación lleve 10 días sin novedades o alguien de
+              tu grupo conozca a alguien en una de tus ofertas.
+            </p>
+            @if (doneThisWeekText(); as done) {
+              <p class="text-sm" data-testid="weekly-plan-done">{{ done }}</p>
+            }
+          </div>
+        } @else {
+          <ul class="flex flex-col gap-3">
+            @for (row of rows(); track row.action.candidateId) {
+              @let deciding = store.decidingId() === row.action.candidateId;
+              <li class="flex flex-col gap-2" data-testid="weekly-plan-action" [attr.data-rule]="row.action.rule">
+                <button
+                  type="button"
+                  class="min-h-11 text-left font-medium underline underline-offset-2"
+                  (click)="openAction(row.action)"
+                  data-testid="weekly-plan-open"
+                >
+                  {{ row.name }}
+                </button>
+                <p class="text-sm" data-testid="weekly-plan-reason">{{ row.reason }}</p>
+                <div class="flex flex-wrap gap-2">
+                  <button
+                    mat-flat-button
+                    type="button"
+                    class="min-h-11"
+                    [disabled]="deciding"
+                    (click)="decide(row.action, 'done')"
+                    data-testid="weekly-plan-done-button"
+                    i18n="@@applications.weeklyPlan.done"
+                  >
+                    Hecho
+                  </button>
+                  <button
+                    mat-stroked-button
+                    type="button"
+                    class="min-h-11"
+                    [disabled]="deciding"
+                    (click)="decide(row.action, 'snoozed')"
+                    data-testid="weekly-plan-snooze-button"
+                    i18n="@@applications.weeklyPlan.snooze"
+                  >
+                    Ahora no
+                  </button>
+                  <button
+                    mat-stroked-button
+                    type="button"
+                    class="min-h-11"
+                    [disabled]="deciding"
+                    (click)="decide(row.action, 'dismissed')"
+                    data-testid="weekly-plan-dismiss-button"
+                    i18n="@@applications.weeklyPlan.dismiss"
+                  >
+                    Ocultar sugerencia
+                  </button>
+                  @if (row.draft !== null) {
+                    <button
+                      mat-button
+                      type="button"
+                      class="min-h-11"
+                      [attr.aria-expanded]="draftOpenId() === row.action.candidateId"
+                      (click)="toggleDraft(row.action.candidateId)"
+                      data-testid="weekly-plan-draft-button"
+                      i18n="@@applications.weeklyPlan.prepareFollowUp"
+                    >
+                      Preparar seguimiento
+                    </button>
+                  }
+                </div>
+                @if (row.draft !== null && draftOpenId() === row.action.candidateId) {
+                  <div class="flex flex-col gap-2 rounded bg-(--mat-sys-surface-variant) p-3" data-testid="weekly-plan-draft">
+                    <p class="whitespace-pre-line" data-testid="weekly-plan-draft-text">{{ row.draft }}</p>
+                    <div class="flex flex-wrap items-center gap-3">
+                      <button
+                        mat-stroked-button
+                        type="button"
+                        class="min-h-11"
+                        (click)="copy(row.action.candidateId, row.draft)"
+                        data-testid="weekly-plan-copy"
+                        i18n="@@applications.weeklyPlan.copy"
+                      >
+                        Copiar
+                      </button>
+                      @if (copiedId() === row.action.candidateId) {
+                        <span role="status" data-testid="weekly-plan-copied" i18n="@@applications.weeklyPlan.copied"
+                          >Borrador copiado</span
+                        >
+                      }
+                    </div>
+                  </div>
+                }
+              </li>
+            }
+          </ul>
+        }
+      </div>
+    }
+  }
+</section>
