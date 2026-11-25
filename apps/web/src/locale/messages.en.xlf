@@ -2873,6 +2873,86 @@
         <source>Cierra en <x id="DAYS" equiv-text="daysLeft"/> días: postula antes.</source>
         <target>Closes in <x id="DAYS" equiv-text="daysLeft"/> days: apply before then.</target>
       </trans-unit>
+      <trans-unit id="groups.weeklyBrief.title" datatype="html">
+        <source> La semana del grupo </source>
+        <target>The group's week</target>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.error" datatype="html">
+        <source>No pudimos cargar la semana del grupo.</source>
+        <target>We couldn't load the group's week.</target>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.retry" datatype="html">
+        <source> Reintentar </source>
+        <target>Retry</target>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.hideOffers" datatype="html">
+        <source>Ocultar ofertas</source>
+        <target>Hide offers</target>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.footer" datatype="html">
+        <source> Solo cuenta datos de las ofertas, nunca lo que hace cada miembro. </source>
+        <target>It only counts offer data, never what each member does.</target>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.empty" datatype="html">
+        <source> Todavía no hay novedades para resumir esta semana. </source>
+        <target>There is nothing to summarize for this week yet.</target>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.emptyHint" datatype="html">
+        <source> Aparecen cuando una oferta del grupo cierra de hoy a 7 días, dos o más mencionan la misma habilidad o se compartieron ofertas la semana pasada. Se revisa cada mañana. </source>
+        <target>They appear when an offer in the group closes between today and 7 days from now, two or more mention the same skill, or offers were shared last week. It is checked every morning.</target>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.bullet.closingOne" datatype="html">
+        <source>1 oferta cierra el <x id="DATE" equiv-text="firstExpiresAt"/>.</source>
+        <target>1 offer closes on <x id="DATE" equiv-text="firstExpiresAt"/>.</target>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.bullet.closingMany" datatype="html">
+        <source><x id="COUNT" equiv-text="fact.count"/> ofertas cierran en los próximos días; la primera, el <x id="DATE" equiv-text="firstExpiresAt"/>.</source>
+        <target><x id="COUNT" equiv-text="fact.count"/> offers close soon; the first on <x id="DATE" equiv-text="firstExpiresAt"/>.</target>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.bullet.skill" datatype="html">
+        <source><x id="SKILL" equiv-text="skillLabel"/> aparece en <x id="COUNT" equiv-text="fact.count"/> de las <x id="TOTAL" equiv-text="fact.total"/> ofertas abiertas con habilidades detectadas.</source>
+        <target><x id="SKILL" equiv-text="skillLabel"/> appears in <x id="COUNT" equiv-text="fact.count"/> of the <x id="TOTAL" equiv-text="fact.total"/> open offers with detected skills.</target>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.bullet.sharedOne" datatype="html">
+        <source>Se compartió 1 oferta en el grupo la semana pasada.</source>
+        <target>1 offer was shared in the group last week.</target>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.bullet.sharedMany" datatype="html">
+        <source>Se compartieron <x id="COUNT" equiv-text="fact.count"/> ofertas en el grupo la semana pasada.</source>
+        <target><x id="COUNT" equiv-text="fact.count"/> offers were shared in the group last week.</target>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.header.one" datatype="html">
+        <source>Actualizada el <x id="DATE" equiv-text="date"/> · 1 oferta abierta</source>
+        <target>Updated on <x id="DATE" equiv-text="date"/> · 1 open offer</target>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.header.many" datatype="html">
+        <source>Actualizada el <x id="DATE" equiv-text="date"/> · <x id="COUNT" equiv-text="openOffers"/> ofertas abiertas</source>
+        <target>Updated on <x id="DATE" equiv-text="date"/> · <x id="COUNT" equiv-text="openOffers"/> open offers</target>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.offer.closes" datatype="html">
+        <source>cierra el <x id="DATE" equiv-text="date"/></source>
+        <target>closes on <x id="DATE" equiv-text="date"/></target>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.showOffers" datatype="html">
+        <source>Ver ofertas (<x id="COUNT" equiv-text="count"/>)</source>
+        <target>Show offers (<x id="COUNT" equiv-text="count"/>)</target>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.moreOne" datatype="html">
+        <source>y 1 más en el listado del grupo</source>
+        <target>and 1 more in the group list</target>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.moreMany" datatype="html">
+        <source>y <x id="COUNT" equiv-text="moreCount"/> más en el listado del grupo</source>
+        <target>and <x id="COUNT" equiv-text="moreCount"/> more in the group list</target>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.missingOne" datatype="html">
+        <source>1 ya no está en el grupo</source>
+        <target>1 is no longer in the group</target>
+      </trans-unit>
+      <trans-unit id="groups.weeklyBrief.missingMany" datatype="html">
+        <source><x id="COUNT" equiv-text="missingCount"/> ya no están en el grupo</source>
+        <target><x id="COUNT" equiv-text="missingCount"/> are no longer in the group</target>
+      </trans-unit>
   </body>
   </file>
 </xliff>

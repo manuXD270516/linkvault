@@ -119,7 +119,7 @@ export function flushPendingApplicationStates(http: HttpTestingController): void
       (request.url === '/api/users/me/ai-keys' ||
         (request.url === '/api/applications' && request.params.has('linkIds')) ||
         request.url === '/api/applications/weekly-plan' ||
-        /^\/api\/groups\/[^/]+\/applications$/.test(request.url)),
+        /^\/api\/groups\/[^/]+\/(applications|weekly-brief)$/.test(request.url)),
   );
   for (const pendingRequest of pending) {
     if (!pendingRequest.cancelled) {
@@ -127,6 +127,8 @@ export function flushPendingApplicationStates(http: HttpTestingController): void
         pendingRequest.flush({ keys: [] });
       } else if (pendingRequest.request.url === '/api/applications/weekly-plan') {
         pendingRequest.flush({ weekKey: '2026-W48', planner: 'rules', actions: [], doneThisWeek: 0 });
+      } else if (pendingRequest.request.url.endsWith('/weekly-brief')) {
+        pendingRequest.flush({ weekKey: '2026-W48', brief: null });
       } else {
         pendingRequest.flush({ items: [] });
       }

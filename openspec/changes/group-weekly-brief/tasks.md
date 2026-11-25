@@ -201,28 +201,32 @@ Todo en `group-brief/domain/`, puro, sin `@nestjs/*`, `mongoose` ni `bullmq`.
 
 ## 6. Tarjeta en el SPA (design D9, spec `web/group-weekly-brief`)
 
-- [ ] 6.1 [frontend] `core/groups/group-weekly-brief.api.ts` (valida con `groupWeeklyBriefResponseSchema`) y
+- [x] 6.1 [frontend] `core/groups/group-weekly-brief.api.ts` (valida con `groupWeeklyBriefResponseSchema`) y
   `core/groups/group-weekly-brief.store.ts` (`@ngrx/signals`: `loading | ready | error`, `load(groupId)`, `retry()`).
   Verificar con `group-weekly-brief.api.spec.ts` y `group-weekly-brief.store.spec.ts`: «parses a brief», «invalid
   payload is an error», «retry after error loads the brief».
   Estado (2026-11-25): api (zod `parse`) y store `root` con `load`/`retry` y guarda de última petición; 8 tests en verde (api 3, store 5) con el fixture compartido `testing/group-brief-testing.ts`; falsación: devolver el cuerpo sin `parse` hace fallar «invalid payload is an error» en api y store; restaurado.
-- [ ] 6.2 [frontend] `features/groups/group-weekly-brief-text.ts`: `groupBriefBulletText(fact, locale)`,
+- [x] 6.2 [frontend] `features/groups/group-weekly-brief-text.ts`: `groupBriefBulletText(fact, locale)`,
   `groupBriefHeaderText(...)` («Actualizada el …») y `formatUtcDate(date, locale)`, un mensaje `$localize` por
   variante (ids `@@groups.weeklyBrief.*`). Verificar con `group-weekly-brief-text.spec.ts` (ES): «skill bullet text»,
   «closing singular names the date, plural names the first date» (R2-2), «shared last week singular and plural» y «header with one open offer».
-- [ ] 6.3 [frontend] `features/groups/group-weekly-brief-card.component.*`: cabecera, viñetas, pie, carga
+  Estado (2026-11-25): `group-weekly-brief-text.ts` con un `$localize` por variante (ids `@@groups.weeklyBrief.*`), más los textos de oferta («cierra el», «Ver ofertas (N)», «y N más», «N ya no están»); 7 tests en verde (6 ES + 1 EN); falsación: invertir el singular de `closing_soon` hace fallar los tests de cierre y de «semana pasada»; restaurado.
+- [x] 6.3 [frontend] `features/groups/group-weekly-brief-card.component.*`: cabecera, viñetas, pie, carga
   (`aria-busy`), vacío y error con «Reintentar». Verificar con `group-weekly-brief-card.component.spec.ts`: «fixture
   satisfies the response contract» (`groupWeeklyBriefResponseSchema.parse` sobre el fixture del test, H15), «shows
   three bullets and the header», «empty state text», «error state with retry» y «shows no member names or statuses».
-- [ ] 6.4 [frontend] Desplegable de ofertas: «Ver ofertas (N)» / «Ocultar ofertas», `aria-expanded`/`aria-controls`,
+  Estado (2026-11-25): `GroupWeeklyBriefCard` (`lv-group-weekly-brief-card`, `groupId = input.required`, store `root`) con cabecera, viñetas, pie, esqueleto `aria-busy`, vacío y error con «Reintentar»; spec en verde con el fixture validado por `groupWeeklyBriefResponseSchema.parse`; «shows no member names or statuses» compara el texto completo de la tarjeta y que no haya `img`/avatares; falsación: renombrar el pie y el botón Reintentar hace fallar «shows three bullets and the header» y «error state with retry»; restaurado.
+- [x] 6.4 [frontend] Desplegable de ofertas: «Ver ofertas (N)» / «Ocultar ofertas», `aria-expanded`/`aria-controls`,
   `min-h-11`, enlaces con `target="_blank"` y `rel="noopener noreferrer"`, `moreCount` y `missingCount`. Verificar en
   `group-weekly-brief-card.component.spec.ts`: «expands two offers as external links», «shows more and missing lines»,
   «no toggle when every offer left the group», «closing offers show their own date» (R2-2) y «toggle has min height
   class».
-- [ ] 6.5 [frontend] Integración en `features/groups/group-detail.page.{ts,html}` encima de `<lv-link-list>`. Verificar
+  Estado (2026-11-25): botón `min-h-11` con `aria-expanded`/`aria-controls` (id por índice de viñeta), enlaces `target="_blank"` `rel="noopener noreferrer"` con título o `displayUrl`, empresa y «cierra el» solo en `closing_soon`, «y N más» y «N ya no están» dentro del desplegable, y solo la línea de faltantes sin botón; 5 tests en verde; falsación: `rel="nofollow"` y `h-8` en el botón hacen fallar «expands two offers as external links» y «toggle has min height class»; restaurado.
+- [x] 6.5 [frontend] Integración en `features/groups/group-detail.page.{ts,html}` encima de `<lv-link-list>`. Verificar
   en `group-detail.page.spec.ts`: «renders the weekly brief above the link list» y «brief error does not block the link
   list or saving».
-- [ ] 6.6 [frontend] `pnpm nx run web:extract-i18n` y traducciones EN de D9 en `messages.en.xlf`. Verificar:
+  Estado (2026-11-25): `<lv-group-weekly-brief-card [groupId]="groupId" />` en `group-detail.page.html` debajo del formulario de guardar y de «Pegar un chat», encima de los filtros y del `<lv-link-list>`, a todo el ancho; `auth-testing.ts` responde `brief: null` a la lectura de fondo; `group-detail.page.spec.ts` 33 tests en verde; falsación: mover la tarjeta bajo el listado hace fallar «renders the weekly brief above the link list», y hacer depender el listado del estado de la tarjeta hace fallar «brief error does not block the link list or saving»; restaurado.
+- [x] 6.6 [frontend] `pnpm nx run web:extract-i18n` y traducciones EN de D9 en `messages.en.xlf`. Verificar:
   `pnpm nx run web:i18n-check` en verde y un `describe` EN en `group-weekly-brief-text.spec.ts` que carga
   `messages.en.xlf` con `loadTranslations` y afirma «Docker appears in 4 of the 7 open offers with detected skills.», «3 offers
   were shared in the group last week.», «There is nothing to summarize for this week yet.», «2 offers close soon; the first on Thursday, November 26.» y
@@ -232,6 +236,7 @@ Todo en `group-brief/domain/`, puro, sin `@nestjs/*`, `mongoose` ni `bullmq`.
 ## 7. End-to-end (perfil `local`)
 
 - [ ] 7.1a [frontend] `apps/web-e2e/src/group-weekly-brief.spec.ts`, escritorio: la prueba crea su grupo y sus links
+  Estado (2026-11-25): `extract-i18n` regenerado (19 unidades `groups.weeklyBrief.*`) y traducidas en `messages.en.xlf`; `web:i18n-check` en verde; el `describe` EN de `group-weekly-brief-text.spec.ts` afirma las frases de D9 y el vacío EN se prueba en `group-weekly-brief-card.component.en.spec.ts` (aparte: Angular cachea los textos `i18n` de la plantilla al crear el componente por primera vez); falsación: cambiar un `target` EN hace fallar ambos specs, y cambiar un texto español sin re-extraer hace fallar `i18n-check`; restaurado.
   por la API y escribe en Mongo el documento de la semana en curso con `replaceOne` + `upsert` (así no choca con un
   tick del worker que ya lo haya creado), sin usar `api:seed-demo` (D5 de `e2e-suite`). `apps/web-e2e/e2e.env` gana `FEATURE_GROUP_BRIEF=false` para que el
   worker del perfil local no recalcule ni borre el documento sembrado (N5; configuración de la suite, no un workflow de

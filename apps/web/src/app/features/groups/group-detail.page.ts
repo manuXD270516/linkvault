@@ -35,6 +35,7 @@ import { LinkList } from '../links/link-list.component';
 import { SaveLinkForm } from '../links/save-link.form';
 import { confirmWith } from '../../shared/ui/confirm.dialog';
 import { RequestError } from '../../shared/ui/request-error';
+import { GroupWeeklyBriefCard } from './group-weekly-brief-card.component';
 import { RenameGroupDialog, type RenameGroupDialogData } from './rename-group.dialog';
 
 /**
@@ -48,6 +49,7 @@ import { RenameGroupDialog, type RenameGroupDialogData } from './rename-group.di
   imports: [
     DatePipe,
     FormsModule,
+    GroupWeeklyBriefCard,
     LinkList,
     MatButtonModule,
     MatFormFieldModule,

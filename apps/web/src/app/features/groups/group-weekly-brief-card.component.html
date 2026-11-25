@@ -1,0 +1,118 @@
+<section
+  class="flex flex-col gap-3 rounded border border-(--mat-sys-outline-variant) p-4"
+  aria-labelledby="group-weekly-brief-title"
+  data-testid="group-weekly-brief"
+>
+  <h2 class="text-lg font-medium" id="group-weekly-brief-title" i18n="@@groups.weeklyBrief.title">
+    La semana del grupo
+  </h2>
+
+  @switch (store.status()) {
+    @case ('loading') {
+      <div class="flex flex-col gap-2" aria-busy="true" data-testid="group-weekly-brief-loading">
+        @for (line of [1, 2, 3]; track line) {
+          <div class="h-5 animate-pulse rounded bg-(--mat-sys-surface-variant)"></div>
+        }
+      </div>
+    }
+    @case ('error') {
+      <div class="flex flex-wrap items-center gap-3" data-testid="group-weekly-brief-error">
+        <p role="alert" i18n="@@groups.weeklyBrief.error">No pudimos cargar la semana del grupo.</p>
+        <button
+          mat-stroked-button
+          type="button"
+          class="min-h-11"
+          (click)="retry()"
+          data-testid="group-weekly-brief-retry"
+          i18n="@@groups.weeklyBrief.retry"
+        >
+          Reintentar
+        </button>
+      </div>
+    }
+    @case ('ready') {
+      @if (brief() !== null) {
+        <p class="text-sm" data-testid="group-weekly-brief-header">{{ header() }}</p>
+        <ul class="m-0 flex list-none flex-col gap-3 p-0">
+          @for (row of rows(); track row.factId; let index = $index) {
+            @let open = isExpanded(row.factId);
+            <li class="flex flex-col gap-2" data-testid="group-weekly-brief-bullet">
+              <p class="m-0" data-testid="group-weekly-brief-bullet-text">{{ row.text }}</p>
+              @if (row.offerCount > 0) {
+                <div>
+                  <button
+                    mat-stroked-button
+                    type="button"
+                    class="min-h-11"
+                    [attr.aria-expanded]="open"
+                    [attr.aria-controls]="'group-weekly-brief-offers-' + index"
+                    (click)="toggle(row.factId)"
+                    data-testid="group-weekly-brief-toggle"
+                  >
+                    @if (open) {
+                      <ng-container i18n="@@groups.weeklyBrief.hideOffers">Ocultar ofertas</ng-container>
+                    } @else {
+                      {{ row.showOffersLabel }}
+                    }
+                  </button>
+                </div>
+                <div
+                  class="flex flex-col gap-2"
+                  [id]="'group-weekly-brief-offers-' + index"
+                  [hidden]="!open"
+                  data-testid="group-weekly-brief-offers"
+                >
+                  @if (open) {
+                    <ul class="m-0 flex list-none flex-col gap-2 p-0">
+                      @for (item of row.offers; track item.offer.linkId) {
+                        <li class="flex flex-col" data-testid="group-weekly-brief-offer">
+                          <a
+                            class="min-h-11 py-2 underline underline-offset-2"
+                            [href]="item.offer.displayUrl"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            data-testid="group-weekly-brief-offer-link"
+                            >{{ item.name }}</a
+                          >
+                          @if (item.offer.company) {
+                            <span class="text-sm" data-testid="group-weekly-brief-offer-company">{{
+                              item.offer.company
+                            }}</span>
+                          }
+                          @if (item.closes) {
+                            <span class="text-sm" data-testid="group-weekly-brief-offer-closes">{{ item.closes }}</span>
+                          }
+                        </li>
+                      }
+                    </ul>
+                    @if (row.more) {
+                      <p class="m-0 text-sm" data-testid="group-weekly-brief-more">{{ row.more }}</p>
+                    }
+                    @if (row.missing) {
+                      <p class="m-0 text-sm" data-testid="group-weekly-brief-missing">{{ row.missing }}</p>
+                    }
+                  }
+                </div>
+              } @else if (row.missing) {
+                <p class="m-0 text-sm" data-testid="group-weekly-brief-missing">{{ row.missing }}</p>
+              }
+            </li>
+          }
+        </ul>
+        <p class="m-0 text-xs" data-testid="group-weekly-brief-footer" i18n="@@groups.weeklyBrief.footer">
+          Solo cuenta datos de las ofertas, nunca lo que hace cada miembro.
+        </p>
+      } @else {
+        <div class="flex flex-col gap-1" data-testid="group-weekly-brief-empty">
+          <p class="m-0 font-medium" i18n="@@groups.weeklyBrief.empty">
+            Todavía no hay novedades para resumir esta semana.
+          </p>
+          <p class="m-0 text-sm" data-testid="group-weekly-brief-empty-hint" i18n="@@groups.weeklyBrief.emptyHint">
+            Aparecen cuando una oferta del grupo cierra de hoy a 7 días, dos o más mencionan la misma habilidad o se
+            compartieron ofertas la semana pasada. Se revisa cada mañana.
+          </p>
+        </div>
+      }
+    }
+  }
+</section>
