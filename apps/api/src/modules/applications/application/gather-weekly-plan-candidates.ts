@@ -1,8 +1,11 @@
-import { isClosedStatus, WEEKLY_PLAN_SCAN_MAX } from '@linkvault/shared';
+import {
+  isClosedStatus,
+  isoWeekKey,
+  WEEKLY_PLAN_SCAN_MAX,
+} from '@linkvault/shared';
 import { Inject, Injectable } from '@nestjs/common';
 import type { Application } from '../domain/application.entity';
 import type { PlanCandidateFacts } from '../domain/weekly-plan/weekly-plan';
-import { isoWeekKey } from '../domain/weekly-plan/week-key';
 import { ApplicationFitScores } from './application-fit-scores';
 import {
   APPLICATION_LINKS,
@@ -129,7 +132,9 @@ function factsOf(
     linkClosed: link.closed,
     daysQuiet: Math.max(
       0,
-      Math.floor((now.getTime() - application.statusChangedAt.getTime()) / DAY_MS),
+      Math.floor(
+        (now.getTime() - application.statusChangedAt.getTime()) / DAY_MS,
+      ),
     ),
     ...(application.appliedAt === undefined
       ? {}

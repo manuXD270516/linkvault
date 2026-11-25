@@ -1,3 +1,4 @@
+import { previousClosedIsoWeek } from '@linkvault/shared';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   GROUP_DIGEST_QUEUE_PUBLISHER,
@@ -5,7 +6,6 @@ import {
   type Clock,
   type GroupDigestQueuePublisher,
 } from '../../application/ports/notify.ports';
-import { previousClosedIsoWeek } from '../../domain/iso-week';
 import { enqueueGroupDigestWeek } from './bullmq-group-digest-publisher';
 
 /**

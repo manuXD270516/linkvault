@@ -19,7 +19,7 @@ diga otra cosa. La ronda 1 del debate partió 3.7, 4.5 y 7.1 (H8).
 ## 1. Contrato y semana ISO en `libs/shared` (design D6, D7, D10)
 
   Estado (2026-11-25): fila 39 candidata, 0 apariciones en `openspec-changes.yaml`, ADR-069 existe; validate y repo-checks en verde.
-- [ ] 1.1 [backend] `libs/shared/src/time/iso-week.ts` con `startOfIsoWeekUtc`, `isoWeekKey`, `previousWeekKey`,
+- [x] 1.1 [backend] `libs/shared/src/time/iso-week.ts` con `startOfIsoWeekUtc`, `isoWeekKey`, `previousWeekKey`,
   `nextWeekKey`, `startOfWeekKeyUtc`, `windowForWeekKey`, `previousClosedIsoWeek` e `isoWeekKeySchema` (H12), movidas
   de `worker/notifications/domain/iso-week.ts` y `api/applications/domain/weekly-plan/week-key.ts`, exportadas desde
   el índice; `group-weekly-digest.event.ts` y `weekly-plan.schema.ts` usan `isoWeekKeySchema` en vez de su regex.
@@ -27,29 +27,34 @@ diga otra cosa. La ronda 1 del debate partió 3.7, 4.5 y 7.1 (H8).
   «2027-01-03 is 2026-W53», «2027-01-04 is 2027-W01», «previous of 2027-W01 is 2026-W53», «next of 2026-W53 is
   2027-W01», «Monday 00:00Z starts a new week», «window of 2026-W48 is Nov 23 to Nov 30» y «isoWeekKeySchema rejects
   2026-48»; `grep -rn "W\\\\d{2}" libs/shared/src` solo en `iso-week.ts`.
-- [ ] 1.2 [backend] Depende de 1.1. El worker (`notifications`: digest, scheduler y sus specs) importa de
+  Estado (2026-11-25): iso-week.ts + iso-week.spec.ts (14 tests, vectores de las dos copias) exportados desde el índice; evento y weekly-plan.schema usan isoWeekKeySchema; grep de la regex solo en iso-week.ts; shared:test verde; falsación: +2 en el cálculo de semana hace fallar 7 tests; restaurado.
+- [x] 1.2 [backend] Depende de 1.1. El worker (`notifications`: digest, scheduler y sus specs) importa de
   `@linkvault/shared` y se borra `notifications/domain/iso-week.ts` con su spec. Verificar: `pnpm nx run worker:test`
   y `worker:typecheck` en verde; `grep -rn "function isoWeekKey" apps/worker` sin resultados.
-- [ ] 1.3 [backend] Depende de 1.1. `applications` (weekly-plan) importa de `@linkvault/shared` y se borra
+  Estado (2026-11-25): worker importa de @linkvault/shared; iso-week.ts y su spec borrados; worker:test (646 pasan) y typecheck en verde, sin function isoWeekKey en apps/worker; falsación: windowForWeekKey con end +14 días hace fallar 1 test del digest; restaurado.
+- [x] 1.3 [backend] Depende de 1.1. `applications` (weekly-plan) importa de `@linkvault/shared` y se borra
   `applications/domain/weekly-plan/week-key.ts` con su spec. Verificar: `pnpm nx run api:test` de `weekly-plan` y
   `api:lint` en verde; `grep -rn "function isoWeekKey" apps/api` sin resultados.
-- [ ] 1.4 [backend] `libs/shared/src/schemas/group-weekly-brief.schema.ts`: constantes, `groupBriefFactSchema`,
+  Estado (2026-11-25): api importa isoWeekKey y nextWeekKey de @linkvault/shared; week-key.ts y su spec borrados; api:test weekly-plan 57 tests en verde, api:lint y typecheck en verde, sin function isoWeekKey en apps/api; falsación: nextWeekKey con +2 semanas hace fallar 2 tests de weekly-plan; restaurado.
+- [x] 1.4 [backend] `libs/shared/src/schemas/group-weekly-brief.schema.ts`: constantes, `groupBriefFactSchema`,
   `groupBriefBulletSchema` y `groupWeeklyBriefSchema` de D7 (tope 4, sin `closed_last_week`), exportados desde el
   índice. Verificar con `group-weekly-brief.schema.spec.ts`: «accepts a brief with one fact of each kind», «rejects five
   bullets», «rejects a closed_last_week fact», «closing fact requires firstExpiresAt», «rejects a skill fact with count 1», «rejects a member id field in a
   fact» y «rejects a malformed linkId».
-- [ ] 1.5 [backend] Depende de 1.4. `groupBriefFactViewSchema` variante por variante (H13), `groupBriefOfferSchema` y
+  Estado (2026-11-25): constantes, groupBriefFactSchema, groupBriefBulletSchema y groupWeeklyBriefSchema exportados; 7 escenarios en verde; falsación: sin .max(4) en viñetas falla «rejects five bullets»; restaurado.
+- [x] 1.5 [backend] Depende de 1.4. `groupBriefFactViewSchema` variante por variante (H13), `groupBriefOfferSchema` y
   `groupWeeklyBriefResponseSchema` (sin `scanTruncated`). Verificar en `group-weekly-brief.schema.spec.ts`: «view of
   each kind has no linkIds», «view rejects open_offers», «offer accepts an optional expiresAt», «response accepts brief null» y «response rejects
   scanTruncated».
-- [ ] 1.6 [backend] `libs/shared/src/group-weekly-brief/verify-group-weekly-brief.ts` (función pura, D6) con los
+  Estado (2026-11-25): groupBriefFactViewSchema, groupBriefOfferSchema y groupWeeklyBriefResponseSchema (strict, sin scanTruncated); 5 escenarios de la tarea en verde en group-weekly-brief.schema.spec.ts.
+- [x] 1.6 [backend] `libs/shared/src/group-weekly-brief/verify-group-weekly-brief.ts` (función pura, D6) con los
   códigos de D6. Verificar con `verify-group-weekly-brief.spec.ts`: «valid brief passes», «bullet citing a missing fact
   fails with bullet_fact_missing», «count different from linkIds fails with count_mismatch», «skill link outside open
   offers fails with not_subset_of_open», «closing until not asOf plus seven fails», «firstExpiresAt after until fails with closing_window_invalid»,
   «shared_last_week of another week
   fails» y «bullet citing open_offers fails». Falsación: con la comprobación de `count_mismatch` comentada, su test
   falla; se restaura.
-
+  Estado (2026-11-25): verify-group-weekly-brief.ts con los 14 códigos de D6; 17 tests en verde; falsación: con count_mismatch comentado fallan «count different from linkIds fails with count_mismatch»; restaurado.
 ## 2. Dominio del cálculo en el worker (design D3, D5, D13)
 
 Todo en `group-brief/domain/`, puro, sin `@nestjs/*`, `mongoose` ni `bullmq`.
