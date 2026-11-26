@@ -2,6 +2,7 @@ import { HttpTestingController } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { MatDialog } from '@angular/material/dialog';
 import { Router } from '@angular/router';
+import { firstValueFrom } from 'rxjs';
 import type {
   CvDocument,
   JobLinkSummary,
@@ -343,7 +344,7 @@ describe('MatchDialog', () => {
 
     click('match-analyze');
     await settle();
-    const { body, options } = apiError('job_not_ready', 422);
+    const { body, options } = apiError('job_not_ready', 409);
     http.expectOne({ method: 'POST', url: MATCH_URL }).flush(body, options);
     await settle();
     TestBed.tick();
@@ -788,9 +789,25 @@ describe('MatchDialog', () => {
     expect(text()).not.toContain('necesitamos tu permiso');
   });
 
-  it('Sin CV', async () => {
+  it('La API dice que no hay CV', async () => {
     await openDialog();
-    await flushOpen({ linkId: LINK_ID }, []);
+    await flushOpen({ linkId: LINK_ID }, [defaultCv]);
+
+    click('match-analyze');
+    await settle();
+    const { body, options } = apiError('no_cv', 409);
+    http.expectOne({ method: 'POST', url: MATCH_URL }).flush(body, options);
+    await settle();
+    TestBed.tick();
+
+    expect(text()).toContain('Necesitas un CV guardado para analizar tu encaje.');
+    expect(text()).not.toContain('No pudimos analizar ahora');
+    expect(dialog().querySelector('[data-testid="match-upload-cv"]')).not.toBeNull();
+  });
+
+  it('Lo que manda es el código', async () => {
+    await openDialog();
+    await flushOpen({ linkId: LINK_ID }, [defaultCv]);
 
     click('match-analyze');
     await settle();
@@ -803,13 +820,101 @@ describe('MatchDialog', () => {
     expect(dialog().querySelector('[data-testid="match-upload-cv"]')).not.toBeNull();
   });
 
+  it('Sin CV al abrir', async () => {
+    await openDialog();
+    await flushOpen({ linkId: LINK_ID }, []);
+
+    expect(text()).toContain('Necesitas un CV guardado para analizar tu encaje.');
+    expect(dialog().querySelector('[data-testid="match-no-cv"]')).not.toBeNull();
+    expect(dialog().querySelector('[data-testid="match-upload-cv"]')).not.toBeNull();
+    expect(dialog().querySelector('[data-testid="match-analyze"]')).toBeNull();
+    expect(dialog().querySelector('[data-testid="match-routing"]')).toBeNull();
+    http.expectNone({ method: 'POST', url: MATCH_URL });
+  });
+
+  it('Sin CV gana al permiso desconocido', async () => {
+    const store = TestBed.inject(SessionStore);
+    const failed = store.reloadConsent();
+    http.expectOne({ method: 'GET', url: '/api/users/me' }).flush(
+      { code: 'internal_error', message: 'x' },
+      { status: 500, statusText: 'Error' },
+    );
+    await failed;
+
+    await openDialog();
+    await flushOpen({ linkId: LINK_ID }, []);
+
+    expect(dialog().querySelector('[data-testid="match-no-cv"]')).not.toBeNull();
+    expect(dialog().querySelector('[data-testid="match-consent-unknown"]')).toBeNull();
+  });
+
+  it('Subir mi CV lleva a /mi-cv y cierra con change-cv', async () => {
+    const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+    const dialogRef = TestBed.inject(MatDialog).open<
+      MatchDialog,
+      MatchDialogData,
+      MatchDialogResult
+    >(MatchDialog, {
+      ...MATCH_DIALOG_SIZE,
+      data: { linkId: LINK_ID, jobTitle: 'Ingeniera de datos', link },
+    });
+    const closed = firstValueFrom(dialogRef.afterClosed());
+    TestBed.tick();
+    await settle();
+    await flushOpen({ linkId: LINK_ID }, []);
+
+    click('match-upload-cv');
+    const result = await closed;
+
+    expect(navigate).toHaveBeenCalledWith(['/mi-cv']);
+    expect(result).toEqual({ kind: 'change-cv' });
+    http.expectNone({ method: 'POST', url: MATCH_URL });
+  });
+
+  it('La lista se vacía con un informe en pantalla', async () => {
+    vi.useFakeTimers();
+    try {
+      TestBed.inject(MatDialog).open<MatchDialog, MatchDialogData, MatchDialogResult>(MatchDialog, {
+        ...MATCH_DIALOG_SIZE,
+        data: { linkId: LINK_ID, jobTitle: 'Ingeniera de datos', link },
+      });
+      TestBed.tick();
+      await vi.advanceTimersByTimeAsync(0);
+
+      http.expectOne({ method: 'GET', url: MATCH_URL }).flush({
+        linkId: LINK_ID,
+        latest: latestDone(),
+      });
+      http.expectOne({ method: 'GET', url: CV_URL }).flush({
+        items: [{ ...defaultCv, extraction: { status: 'pending', textChars: 0 } }],
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      TestBed.tick();
+      expect(dialog().querySelector('[data-testid="match-badge"]')).not.toBeNull();
+
+      await vi.advanceTimersByTimeAsync(2_000);
+      http.expectOne({ method: 'GET', url: CV_URL }).flush({ items: [] });
+      await vi.advanceTimersByTimeAsync(0);
+      TestBed.tick();
+
+      expect(dialog().querySelector('[data-testid="match-badge"]')).not.toBeNull();
+      expect(dialog().querySelector('[data-testid="match-no-cv"]')).toBeNull();
+    } finally {
+      TestBed.inject(MatDialog).closeAll();
+      await vi.advanceTimersByTimeAsync(0);
+      vi.useRealTimers();
+    }
+  });
+
   it('El CV se está leyendo', async () => {
     await openDialog();
-    await flushOpen();
+    await flushOpen({ linkId: LINK_ID }, [
+      { ...defaultCv, extraction: { status: 'pending', textChars: 0 } },
+    ]);
 
     click('match-analyze');
     await settle();
-    const { body, options } = apiError('cv_not_ready', 422);
+    const { body, options } = apiError('cv_not_ready', 409);
     http.expectOne({ method: 'POST', url: MATCH_URL }).flush(body, options);
     await settle();
     TestBed.tick();
@@ -824,7 +929,7 @@ describe('MatchDialog', () => {
 
     click('match-analyze');
     await settle();
-    const { body, options } = apiError('cv_not_readable', 422);
+    const { body, options } = apiError('cv_not_readable', 409);
     http.expectOne({ method: 'POST', url: MATCH_URL }).flush(body, options);
     await settle();
     TestBed.tick();

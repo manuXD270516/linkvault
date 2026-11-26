@@ -653,6 +653,9 @@ async function seccionPerfil(): Promise<void> {
       await expect(
         page.getByText(/al menos 10 caracteres/).first(),
       ).toBeVisible();
+      await expect(
+        page.getByText('La contraseña actual no es correcta'),
+      ).toHaveCount(0);
       await rec.shot(page, 'perfil-contrasena-nueva-corta');
       await next.fill(PASSWORDS.anaOtra);
       await rec.shot(page, 'perfil-contrasena-rellena');
@@ -1538,25 +1541,15 @@ async function seccionEncaje(): Promise<void> {
     await beto.page.goto(String(state['groupUrl']));
     await cardOf(beto.page, url1).getByTestId('link-analyze-match').click();
     await expect(beto.page.getByRole('dialog')).toBeVisible();
-    await beto.page.waitForTimeout(1500);
+    await expect(beto.page.getByTestId('match-no-cv')).toBeVisible();
+    await expect(beto.page.getByTestId('match-upload-cv')).toBeVisible();
+    await expect(beto.page.getByTestId('match-analyze')).toHaveCount(0);
     await rec.shot(beto.page, 'encaje-sin-cv', { full: false });
-    await beto.page.getByTestId('match-analyze').click();
-    const analysed = beto.page
-      .getByTestId('match-no-cv')
-      .or(beto.page.getByTestId('match-server-error'));
-    await expect(analysed).toBeVisible();
-    await rec.shot(beto.page, 'encaje-sin-cv-analizar', { full: false });
-    const noCv = (await beto.page.getByTestId('match-no-cv').count()) > 0;
     await beto.page
       .getByRole('dialog')
       .getByRole('button', { name: /Cerrar/ })
       .click();
-    if (!noCv) {
-      throw new Error(
-        'Esperado «Necesitas un CV guardado…» (catálogo, paso 31); la API responde 409 no_cv y el diálogo dice «No pudimos analizar ahora.» con «Reintentar» (ver Hallazgos)',
-      );
-    }
-    return 'El diálogo dice que hace falta un CV y ofrece «Subir CV».';
+    return 'El diálogo abre ya con «Necesitas un CV guardado para analizar tu encaje.» y «Subir mi CV», sin botón «Analizar».';
   });
   await rec.run(
     S,

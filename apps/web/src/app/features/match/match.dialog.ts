@@ -16,7 +16,7 @@ import {
   type MatchSuggestion,
   type MissingSkill,
 } from '@linkvault/shared';
-import { isApiFailure } from '../../core/api/api-error';
+import { isApiFailureCode } from '../../core/api/api-error';
 import { SessionStore } from '../../core/auth/session.store';
 import { CvStore } from '../../core/cv/cv.store';
 import { MatchStore } from '../../core/match/match.store';
@@ -181,16 +181,16 @@ export class MatchDialog {
     if (failure === null) {
       return null;
     }
-    if (isApiFailure(failure, 422, 'job_not_ready')) {
+    if (isApiFailureCode(failure, 'job_not_ready')) {
       return { kind: 'job_not_ready' as const };
     }
-    if (isApiFailure(failure, 422, 'no_cv')) {
+    if (isApiFailureCode(failure, 'no_cv')) {
       return { kind: 'no_cv' as const };
     }
-    if (isApiFailure(failure, 422, 'cv_not_ready')) {
+    if (isApiFailureCode(failure, 'cv_not_ready')) {
       return { kind: 'cv_not_ready' as const };
     }
-    if (isApiFailure(failure, 422, 'cv_not_readable')) {
+    if (isApiFailureCode(failure, 'cv_not_readable')) {
       return { kind: 'cv_not_readable' as const };
     }
     if (failure.kind === 'api' && failure.status === 429) {
@@ -228,6 +228,11 @@ export class MatchDialog {
    * el store, pero la espera manda mientras corre uno nuevo).
    */
   protected readonly phase = computed(() => {
+    // Sin CV no hay nada que mandar a ningún sitio: preguntar por el permiso no ayuda y «Subir mi CV» es la única
+    // salida útil. Solo mientras no haya informe ni fallo de la API, para no taparlos si el sondeo vacía la lista.
+    if (this.cvs.isEmpty() && this.report() === null && this.failure() === null) {
+      return 'no_cv' as const;
+    }
     if (this.consent() === 'unknown' && !this.consentLoading()) {
       return 'consent_unknown' as const;
     }
