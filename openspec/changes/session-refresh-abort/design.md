@@ -267,7 +267,11 @@ Convergencia: SI (2026-11-25, ronda 1: 0 P0 / 0 V0)
 
 ## Aprobación humana
 
-Pendiente. Q1 y Q5 abiertas para el owner.
+**Aprobado por el owner el 2026-11-25.** Cita literal: «aprobado», en respuesta a la presentación tras «Convergencia: SI»
+que pedía responder Q1 (recomendación (a), tope 3, con R1 y R6 tal como están descritos) y Q5 (recomendación (a)).
+- **Q1 = (a):** R1 y R6 aceptados tal como los describe ADR-072, con tope de 3 reemisiones.
+- **Q5 = (a):** aplicar **y fusionar** antes de la primera invitación de 35b, en la ventana de fusión que abra el owner;
+  no altera la precedencia 35a→35b→35c.
 
 ## Open Questions
 

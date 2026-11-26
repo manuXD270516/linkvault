@@ -9,18 +9,20 @@ concurrencia (H3).
 - [x] 0.1 [infra] Debate critic/business/reflect cerrado sin P0/V0 abiertos. Verificar: `design.md` lleva «Debate (ronda
   1)» y «Convergencia: SI», P0 0 y V0 0; las decisiones nuevas están en ADR-072.
   Estado (2026-11-25): ronda 1 con 0 P0 y 1 V0 (B1) aceptado; «Convergencia: SI (2026-11-25, ronda 1: 0 P0 / 0 V0)».
-- [ ] 0.2 [infra] Q1 y Q5 respondidas por el owner y aprobación humana registrada con fecha y cita literal en
+- [x] 0.2 [infra] Q1 y Q5 respondidas por el owner y aprobación humana registrada con fecha y cita literal en
   `design.md` («Aprobación humana») y, para Q1, en ADR-072 §Estado. El alcance aprobado tiene que decir si incluye
   **aplicar y fusionar antes de la primera invitación de 35b** (Q5) y en qué ventana de fusión; nunca altera la
   precedencia 35a→35b→35c. Falsación: si Q1 quedó en (c), el change se cierra sin aplicar y ADR-072 pasa a «Rechazado»;
   si Q5 quedó en (b), la fusión espera a 35c y la fila 42 lo dice.
-- [ ] 0.3 [infra] Coherencia del plan. Verificar: fila 42 de `docs/design-v0.2.md` §6 como **Candidata**;
+  Estado (2026-11-25): Q1 = (a) y Q5 = (a), aprobación literal «aprobado» registrada en `design.md` y en ADR-072 §Estado; incluye aplicar y fusionar antes de la primera invitación de 35b.
+- [x] 0.3 [infra] Coherencia del plan. Verificar: fila 42 de `docs/design-v0.2.md` §6 como **Candidata**;
   `grep -c "session-refresh-abort" openspec-changes.yaml` = 0; `docs/adr/ADR-072.md` existe y ADR-020 lleva la
   anotación de una línea; `openspec validate session-refresh-abort --strict --no-interactive`, `openspec validate --all
   --strict --no-interactive` y `bash infra/ci/repo-checks.sh` en verde.
 
 ## 1. API (design D2–D7)
 
+  Estado (2026-11-25): fila 42 candidata, 0 apariciones en `openspec-changes.yaml`, ADR-072 existe y ADR-020 lleva su anotación; validate (change y --all) y repo-checks en verde.
 - [ ] 1.1 [backend] Política de dominio. **Primero el test** en `domain/refresh-session.spec.ts`: «reissues a token
   rotated 2 seconds ago whose successor was never used» (en `main` devuelve `conflict`: rojo esperado), «returns
   conflict for a token rotated 2 seconds ago whose successor was used», «returns conflict after 3 reissues», «returns
