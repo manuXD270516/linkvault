@@ -98,7 +98,7 @@ concurrencia (H3).
 
 ## 2. SPA: restauración sin autoaborto (design D9)
 
-- [ ] 2.1 [frontend] Petición desprendida. **Primero el test** en `session-restore.spec.ts` (nuevo, con
+- [x] 2.1 [frontend] Petición desprendida. **Primero el test** en `session-restore.spec.ts` (nuevo, con
   `HttpTestingController` y temporizadores falsos): «keeps the restore request alive when the timeout fires» (al avanzar
   10 s, la restauración resuelve con la sesión `anonymous` y `testRequest.cancelled` es `false`; en `main` es `true`:
   rojo esperado) y «ignores a late 200 from a timed-out restore» (la respuesta a los 12 s no cambia el estado de la
@@ -107,12 +107,14 @@ concurrencia (H3).
   `setSession`; `SessionRestore` la usa. Verificar: `pnpm nx run web:test --include="**/session-restore.spec.ts"
   --skip-nx-cache` en verde y los tests de abort de `auth.api.refresh.spec.ts` siguen en verde (sin la opción, el
   comportamiento no cambia). Falsación: volver a pasar el `signal` a la petición hace fallar el primero; restaurar.
-- [ ] 2.2 [frontend] Depende de 2.1. Login, registro y refresh esperan a la desprendida. **Primero el test** en
+  Estado (2026-11-25): `session-restore.spec.ts` nuevo (3 tests, el tercero cubre un 409 tardío). Rojo observado en el código previo: los 3 fallan (`request.cancelled` true; «Cannot flush a cancelled request»). Con `AuthApi.refresh(signal, { detachOnAbort })` y `SessionRestore` usándola: verde. Falsación con `detachOnAbort: false`: los 3 vuelven a fallar; restaurado. `auth.api.refresh.spec.ts` sin cambios y en verde; `auth.guards.spec.ts` «API sin respuesta al cargar» pasa a esperar `cancelled` false (D9) y cierra la petición retenida.
+- [x] 2.2 [frontend] Depende de 2.1. Login, registro y refresh esperan a la desprendida. **Primero el test** en
   `auth.api.spec.ts`: «Login tras una restauración agotada» (con una petición desprendida en vuelo, el `POST
   /api/auth/login` no sale hasta que esa responde), «cancels the detached restore request after 5 seconds before
   logging in» y lo mismo para registro y para un refresh nuevo. Verificar: en verde con `--skip-nx-cache`; `pnpm nx
   affected -t lint,typecheck,test,i18n-check` en verde (sin textos nuevos). Falsación: sin la espera, el login sale
   antes que la respuesta desprendida y el primer test falla; restaurar.
+  Estado (2026-11-25): 7 tests nuevos en `auth.api.spec.ts` (login, registro y refresh: espera a la desprendida y cancelación a los 5 s; más «no aplica el cuerpo de un 200 tardío»). Rojo observado: 7 fallos con solo la firma de la opción. Con `awaitDetachedRefresh` verde; falsación sin la espera: fallan los 6 de espera/cancelación; restaurado. `CI=true pnpm nx run-many -t lint,typecheck,test,i18n-check -p web` en verde (1184 tests, sin textos nuevos).
 
 ## 3. Regresión de navegador (design D8)
 
